@@ -2,6 +2,7 @@ package com.saa.ws.rest.credito;
 
 import java.util.List;
 
+import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.credito.dao.TipoIdentificacionDaoService;
 import com.saa.ejb.credito.service.TipoIdentificacionService;
 import com.saa.model.credito.NombreEntidadesCredito;
@@ -17,6 +18,8 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 
 @Path("tpdn")
@@ -93,20 +96,29 @@ public class TipoIdentificacionRest {
         return tipoIdentificacionService.saveSingle(registro);
     }
     
-    /**
-     * Consulta registros de TipoIdentificacion por criterios (dummy method para pruebas).
-     * 
-     * @param test Parámetro de prueba
-     * @return Lista de TipoIdentificacion
-     * @throws Throwable
-     */
-    @Path("criteria")
     @POST
+    @Path("selectByCriteria")
     @Consumes("application/json")
-    public List<TipoIdentificacion> selectByCriteria(Long test) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DE SELECT BY CRITERIA DE TipoIdentificacion: " + test);
-        return tipoIdentificacionDaoService.selectAll(NombreEntidadesCredito.TIPO_IDENTIFICACION);
+    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+        System.out.println("selectByCriteria de TipoIdentificacion");
+        Response respuesta = null;
+
+        try {
+            respuesta = Response.status(Response.Status.OK)
+                    .entity(tipoIdentificacionService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+
+        } catch (Throwable e) {
+            respuesta = Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
+
+        return respuesta;
     }
+
     
     /**
      * Elimina un registro de TipoIdentificacion por ID.

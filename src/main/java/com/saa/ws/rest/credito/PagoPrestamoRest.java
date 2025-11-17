@@ -2,6 +2,7 @@ package com.saa.ws.rest.credito;
 
 import java.util.List;
 
+import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.credito.dao.PagoPrestamoDaoService;
 import com.saa.ejb.credito.service.PagoPrestamoService;
 import com.saa.model.credito.NombreEntidadesCredito;
@@ -17,6 +18,8 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 
 @Path("pgpr")
@@ -93,21 +96,28 @@ public class PagoPrestamoRest {
         return pagoPrestamoService.saveSingle(registro);
     }
 
-    /**
-     * Consulta registros de PagoPrestamo por criterios (dummy method para pruebas).
-     * 
-     * @param test Parámetro de prueba
-     * @return Lista de PagoPrestamo
-     * @throws Throwable
-     */
-    @Path("criteria")
     @POST
+    @Path("selectByCriteria")
     @Consumes("application/json")
-    public List<PagoPrestamo> selectByCriteria(Long test) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DE SELECT BY CRITERIA DE PagoPrestamo: " + test);
-        return pagoPrestamoDaoService.selectAll(NombreEntidadesCredito.PAGO_PRESTAMO);
-    }
+    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+        System.out.println("selectByCriteria de PagoPrestamo");
+        Response respuesta = null;
 
+        try {
+            respuesta = Response.status(Response.Status.OK)
+                    .entity(pagoPrestamoService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+
+        } catch (Throwable e) {
+            respuesta = Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
+
+        return respuesta;
+    }
     /**
      * Elimina un registro de PagoPrestamo por ID.
      * 

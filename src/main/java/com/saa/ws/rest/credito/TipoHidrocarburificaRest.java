@@ -2,6 +2,7 @@ package com.saa.ws.rest.credito;
 
 import java.util.List;
 
+import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.credito.dao.TipoHidrocarburificaDaoService;
 import com.saa.ejb.credito.service.TipoHidrocarburificaService;
 import com.saa.model.credito.NombreEntidadesCredito;
@@ -17,6 +18,8 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 
 @Path("tphd")
@@ -93,20 +96,29 @@ public class TipoHidrocarburificaRest {
         return tipoHidrocarburificaService.saveSingle(registro);
     }
     
-    /**
-     * Consulta registros de TipoHidrocarburifica por criterios (dummy method para pruebas).
-     * 
-     * @param test Parámetro de prueba
-     * @return Lista de TipoHidrocarburifica
-     * @throws Throwable
-     */
-    @Path("criteria")
     @POST
+    @Path("selectByCriteria")
     @Consumes("application/json")
-    public List<TipoHidrocarburifica> selectByCriteria(Long test) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DE SELECT BY CRITERIA DE TipoHidrocarburifica: " + test);
-        return tipoHidrocarburificaDaoService.selectAll(NombreEntidadesCredito.TIPO_HIDROCARBURIFICA);
+    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+        System.out.println("selectByCriteria de TipoHidrocarburifica");
+        Response respuesta = null;
+
+        try {
+            respuesta = Response.status(Response.Status.OK)
+                    .entity(tipoHidrocarburificaService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+
+        } catch (Throwable e) {
+            respuesta = Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
+
+        return respuesta;
     }
+
     
     /**
      * Elimina un registro de TipoHidrocarburifica por ID.

@@ -2,6 +2,7 @@ package com.saa.ws.rest.credito;
 
 import java.util.List;
 
+import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.credito.dao.EstadoCivilDaoService;
 import com.saa.ejb.credito.service.EstadoCivilService;
 import com.saa.model.credito.EstadoCivil;
@@ -17,6 +18,8 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 
 @Path("escv")
@@ -84,19 +87,27 @@ public class EstadoCivilRest {
         return estadoCivilService.saveSingle(registro);
     }
     
-    /**
-     * POST method for querying by criteria
-     * 
-     * @param test Dummy parameter for testing
-     * @return List of EstadoCivil
-     * @throws Throwable
-     */
-    @Path("criteria")
     @POST
+    @Path("selectByCriteria")
     @Consumes("application/json")
-    public List<EstadoCivil> selectByCriteria(Long test) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DE SELECT BY CRITERIA: " + test);
-        return estadoCivilDaoService.selectAll(NombreEntidadesCredito.ESTADO_CIVIL);
+    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+        System.out.println("selectByCriteria de EstadoCivil");
+        Response respuesta = null;
+
+        try {
+            respuesta = Response.status(Response.Status.OK)
+                    .entity(estadoCivilService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+
+        } catch (Throwable e) {
+            respuesta = Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
+
+        return respuesta;
     }
     
     /**
