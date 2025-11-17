@@ -1,0 +1,21 @@
+# CLI para agregar cabeceras CORS en Undertow (WildFly)
+# Ejecutar: jboss-cli.bat --connect --file=standalone-cors.cli
+
+# NOTA: En producción reemplaza "*" por el origen/es permitidos (ej. "https://localhost:8080")
+
+# Añadir filtros de response-header para CORS
+/subsystem=undertow/configuration=filter/response-header=Access-Control-Allow-Origin:add(header-name="Access-Control-Allow-Origin", header-value="*")
+/subsystem=undertow/configuration=filter/response-header=Access-Control-Allow-Methods:add(header-name="Access-Control-Allow-Methods", header-value="GET, POST, PUT, DELETE, OPTIONS, HEAD")
+/subsystem=undertow/configuration=filter/response-header=Access-Control-Allow-Headers:add(header-name="Access-Control-Allow-Headers", header-value="Origin, X-Requested-With, Content-Type, Accept, Authorization")
+/subsystem=undertow/configuration=filter/response-header=Access-Control-Allow-Credentials:add(header-name="Access-Control-Allow-Credentials", header-value="true")
+/subsystem=undertow/configuration=filter/response-header=Access-Control-Max-Age:add(header-name="Access-Control-Max-Age", header-value="3600")
+
+# Referenciar los filtros en el host por defecto
+/subsystem=undertow/server=default-server/host=default-host/filter-ref=Access-Control-Allow-Origin:add()
+/subsystem=undertow/server=default-server/host=default-host/filter-ref=Access-Control-Allow-Methods:add()
+/subsystem=undertow/server=default-server/host=default-host/filter-ref=Access-Control-Allow-Headers:add()
+/subsystem=undertow/server=default-server/host=default-host/filter-ref=Access-Control-Allow-Credentials:add()
+/subsystem=undertow/server=default-server/host=default-host/filter-ref=Access-Control-Max-Age:add()
+
+# Recargar configuración para aplicar cambios
+:reload

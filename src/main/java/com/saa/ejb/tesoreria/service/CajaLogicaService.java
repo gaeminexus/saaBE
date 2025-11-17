@@ -1,0 +1,25 @@
+package com.saa.ejb.tesoreria.service;
+
+import com.saa.basico.util.EntityService;
+import com.saa.model.contabilidad.PlanCuenta;
+import com.saa.model.tesoreria.CajaLogica;
+
+import jakarta.ejb.Remote;
+
+/**
+ * @author GaemiSoft
+ * <p>Servicio para la entidad CajaLogica.
+ *  Accede a los metodos DAO y procesa los datos para el cliente.</p>
+ */
+@Remote
+public interface CajaLogicaService extends EntityService<CajaLogica>{
+
+
+	 /**
+	  * Recupera la cuenta contable de una caja
+	  * @param idCaja	: Id de la caja
+	  * @return			: Cuenta contable recuperada
+	  * @throws Throwable: Excepcion
+	  */
+	  PlanCuenta recuperaCuentaContable(Long idCaja) throws Throwable;
+}

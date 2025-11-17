@@ -1,0 +1,23 @@
+package com.saa.ejb.tesoreria.service;
+
+import com.saa.basico.util.EntityService;
+import com.saa.model.tesoreria.TempCobroEfectivo;
+
+import jakarta.ejb.Remote;
+
+/**
+ * @author GaemiSoft
+ * <p>Servicio para la entidad TempCobroEfectivo.
+ *  Accede a los metodos DAO y procesa los datos para el cliente.</p>
+ */
+@Remote
+public interface TempCobroEfectivoService extends EntityService<TempCobroEfectivo>{
+
+	/**
+	 * Elimina cobros con efectivo temporales
+	 * @param idTempCobro	: id del cobro
+	 * @throws Throwable	: Excepcion
+	 */
+	 void eliminaCobroEfectivoByIdCobro (Long idTempCobro) throws Throwable; 
+
+}

@@ -1,0 +1,17 @@
+package com.saa.ejb.tesoreria.service;
+
+
+import com.saa.basico.util.EntityService;
+import com.saa.model.tesoreria.Chequera;
+
+import jakarta.ejb.Remote;
+
+/**
+ * @author GaemiSoft
+ * <p>Servicio para la entidad Chequera.
+ *  Accede a los metodos DAO y procesa los datos para el cliente.</p>
+ */
+@Remote
+public interface ChequeraService extends EntityService<Chequera>{
+	
+}
