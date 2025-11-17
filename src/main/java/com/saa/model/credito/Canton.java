@@ -15,7 +15,7 @@ import jakarta.persistence.Table;
 
 /**
  * Representa la tabla CNTN (Cantones).
- * Catálogo de cantones.
+ * Catálogo de cantones prueba.
  */
 @SuppressWarnings("serial")
 @Entity
@@ -28,7 +28,7 @@ import jakarta.persistence.Table;
 public class Canton implements Serializable {
     
     /**
-     * Código del cantón.
+     * Código del cantón.  
      */
     @Id
     @Basic
