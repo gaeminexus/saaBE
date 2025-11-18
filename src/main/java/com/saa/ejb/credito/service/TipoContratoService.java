@@ -1,5 +1,11 @@
 package com.saa.ejb.credito.service;
 
-public interface TipoContratoService {
+import com.saa.basico.util.EntityService;
+import com.saa.model.credito.TipoContrato;
+
+import jakarta.ejb.Remote;
+
+@Remote
+public interface TipoContratoService extends EntityService<TipoContrato> {
 
 }

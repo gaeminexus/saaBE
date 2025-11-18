@@ -22,5 +22,21 @@ public interface NombreEntidadesCredito {
 	String PARTICIPE = "Participe";
 	String APORTE = "Aporte";
 	String CONTRATO = "Contrato";
+	String METODO_PAGO = "MetodoPago";
+	String NIVEL_ESTUDIO = "NivelEstudio";
+	String PROFESION = "Profesion";
+	String PAIS = "Pais";
+	String TIPO_APORTE = "TipoAporte";
+	String TIPO_CALIFICACION_CREDITO = "TipoCalificacionCredito";
+	String TIPO_CONTRATO = "TipoContrato";
+	String TIPO_CESANTIA = "TipoCesantia";
+	String TIPO_ADJUNTO = "TipoAdjunto";
+	String TIPO_GENERO = "TipoGenero";
+	String TIPO_PAGO = "TipoPago";
+	String TIPO_PARTICIPE = "TipoParticipe";
+	String TIPO_REQUISITO_PRESTAMO = "TipoRequisitoPrestamo";
+	String MOTIVO_PRESTAMO = "MotivoPrestamo";
+	
+	
 	
 }

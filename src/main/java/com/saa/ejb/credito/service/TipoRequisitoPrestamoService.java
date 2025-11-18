@@ -1,5 +1,11 @@
 package com.saa.ejb.credito.service;
 
-public interface TipoRequisitoPrestamoService {
+import com.saa.basico.util.EntityService;
+import com.saa.model.credito.TipoRequisitoPrestamo;
+
+import jakarta.ejb.Remote;
+
+@Remote
+public interface TipoRequisitoPrestamoService  extends EntityService<TipoRequisitoPrestamo>  {
 
 }

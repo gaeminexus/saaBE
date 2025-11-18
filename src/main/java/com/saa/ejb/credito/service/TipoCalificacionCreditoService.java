@@ -1,5 +1,10 @@
 package com.saa.ejb.credito.service;
 
-public interface TipoCalificacionCreditoService {
+import com.saa.basico.util.EntityService;
+import com.saa.model.credito.TipoCalificacionCredito;
+import jakarta.ejb.Remote;
+
+@Remote
+public interface TipoCalificacionCreditoService extends EntityService<TipoCalificacionCredito> {
 
 }

@@ -1,5 +1,10 @@
 package com.saa.ejb.credito.service;
 
-public interface PaisService {
+import com.saa.basico.util.EntityService;
+import com.saa.model.credito.Pais;
+import jakarta.ejb.Remote;
+
+@Remote
+public interface PaisService extends EntityService<Pais> {
 
 }
