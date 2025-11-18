@@ -54,42 +54,42 @@ public class DetallePrestamo implements Serializable {
     /** Capital */
     @Basic
     @Column(name = "DTPRCPTL", precision = 10, scale = 2)
-    private Long capital;
+    private Double capital;
 
     /** Interés */
     @Basic
     @Column(name = "DTPRINTR", precision = 10, scale = 2)
-    private Long interes;
+    private Double interes;
 
     /** Mora */
     @Basic
     @Column(name = "DTPRMRAA", precision = 10, scale = 2)
-    private Long mora;
+    private Double mora;
 
     /** Interés Vencido */
     @Basic
     @Column(name = "DTPRINVN", precision = 10, scale = 2)
-    private Long interesVencido;
+    private Double interesVencido;
 
     /** Saldo capital */
     @Basic
     @Column(name = "DTPRSLCP", precision = 10, scale = 2)
-    private Long saldoCapital;
+    private Double saldoCapital;
 
     /** Saldo Interes */
     @Basic
     @Column(name = "DTPRSLIN", precision = 10, scale = 2)
-    private Long saldoInteres;
+    private Double saldoInteres;
 
     /** Saldo mora */
     @Basic
     @Column(name = "DTPRSLMR", precision = 10, scale = 2)
-    private Long saldoMora;
+    private Double saldoMora;
 
     /** Saldo Interes Vencido */
     @Basic
     @Column(name = "DTPRSLIV", precision = 10, scale = 2)
-    private Long saldoInteresVencido;
+    private Double saldoInteresVencido;
 
     /** Fecha pagado */
     @Basic
@@ -99,82 +99,82 @@ public class DetallePrestamo implements Serializable {
     /** Abono */
     @Basic
     @Column(name = "DTPRABNO", precision = 10, scale = 2)
-    private Long abono;
+    private Double abono;
 
     /** Capital Pagado */
     @Basic
     @Column(name = "DTPRCPPG", precision = 10, scale = 2)
-    private Long capitalPagado;
+    private Double capitalPagado;
 
     /** Interés Pagado */
     @Basic
     @Column(name = "DTPRINPG", precision = 10, scale = 2)
-    private Long interesPagado;
+    private Double interesPagado;
 
     /** Desgravamen */
     @Basic
     @Column(name = "DTPRDSGR", precision = 10, scale = 2)
-    private Long desgravamen;
+    private Double desgravamen;
 
     /** Cuota */
     @Basic
     @Column(name = "DTPRCTAA", precision = 10, scale = 2)
-    private Long cuota;
+    private Double cuota;
 
     /** Saldo */
     @Basic
     @Column(name = "DTPRSLDO", precision = 10, scale = 2)
-    private Long saldo;
+    private Double saldo;
 
     /** Saldo Otros */
     @Basic
     @Column(name = "DTPRSLOT", precision = 10, scale = 2)
-    private Long saldoOtros;
+    private Double saldoOtros;
 
     /** Desgravamen Firmado */
     @Basic
     @Column(name = "DTPRDSFR", precision = 10, scale = 2)
-    private Long desgravamenFirmado;
+    private Double desgravamenFirmado;
 
     /** Desgravamen Diferido */
     @Basic
     @Column(name = "DTPRDSDF", precision = 10, scale = 2)
-    private Long desgravamenDiferido;
+    private Double desgravamenDiferido;
 
     /** Desgravamen original */
     @Basic
     @Column(name = "DTPRDSOR", precision = 10, scale = 2)
-    private Long desgravamenOriginal;
+    private Double desgravamenOriginal;
 
     /** Valor diferido */
     @Basic
     @Column(name = "DTPRVLDF", precision = 10, scale = 2)
-    private Long valorDiferido;
+    private Double valorDiferido;
 
     /** Total */
     @Basic
     @Column(name = "DTPRTTLL", precision = 10, scale = 2)
-    private Long total;
+    private Double total;
 
     /** Mora pagado */
     @Basic
     @Column(name = "DTPRMRPG", precision = 10, scale = 2)
-    private Long moraPagado;
+    private Double moraPagado;
 
     /** Desgravamen Pagado */
     @Basic
     @Column(name = "DTPRDSPG", precision = 10, scale = 2)
-    private Long desgravamenPagado;
+    private Double desgravamenPagado;
 
     /** Interés vendido pagado */
     @Basic
     @Column(name = "DTPRINVP", precision = 10, scale = 2)
-    private Long interesVendidoPagado;
+    private Double interesVendidoPagado;
 
     /** Mora calculada */
     @Basic
     @Column(name = "DTPRMRCL", precision = 10, scale = 2)
-    private Long moraCalculada;
+    private Double moraCalculada;
 
     /** Días mora */
     @Basic
@@ -209,12 +209,12 @@ public class DetallePrestamo implements Serializable {
     /** Otros seguros */
     @Basic
     @Column(name = "DTPROTSG", precision = 10, scale = 2)
-    private Long otrosSeguros;
+    private Double otrosSeguros;
 
     /** Total con seguro */
     @Basic
     @Column(name = "DTPRTTCS", precision = 10, scale = 2)
-    private Long totalConSeguro;
+    private Double totalConSeguro;
 
     // ============================================================
     // Getters y Setters
@@ -252,67 +252,67 @@ public class DetallePrestamo implements Serializable {
         this.fechaVencimiento = fechaVencimiento;
     }
 
-    public Long getCapital() {
+    public Double getCapital() {
         return capital;
     }
 
-    public void setCapital(Long capital) {
+    public void setCapital(Double capital) {
         this.capital = capital;
     }
 
-    public Long getInteres() {
+    public Double getInteres() {
         return interes;
     }
 
-    public void setInteres(Long interes) {
+    public void setInteres(Double interes) {
         this.interes = interes;
     }
 
-    public Long getMora() {
+    public Double getMora() {
         return mora;
     }
 
-    public void setMora(Long mora) {
+    public void setMora(Double mora) {
         this.mora = mora;
     }
 
-    public Long getInteresVencido() {
+    public Double getInteresVencido() {
         return interesVencido;
     }
 
-    public void setInteresVencido(Long interesVencido) {
+    public void setInteresVencido(Double interesVencido) {
         this.interesVencido = interesVencido;
     }
 
-    public Long getSaldoCapital() {
+    public Double getSaldoCapital() {
         return saldoCapital;
     }
 
-    public void setSaldoCapital(Long saldoCapital) {
+    public void setSaldoCapital(Double saldoCapital) {
         this.saldoCapital = saldoCapital;
     }
 
-    public Long getSaldoInteres() {
+    public Double getSaldoInteres() {
         return saldoInteres;
     }
 
-    public void setSaldoInteres(Long saldoInteres) {
+    public void setSaldoInteres(Double saldoInteres) {
         this.saldoInteres = saldoInteres;
     }
 
-    public Long getSaldoMora() {
+    public Double getSaldoMora() {
         return saldoMora;
     }
 
-    public void setSaldoMora(Long saldoMora) {
+    public void setSaldoMora(Double saldoMora) {
         this.saldoMora = saldoMora;
     }
 
-    public Long getSaldoInteresVencido() {
+    public Double getSaldoInteresVencido() {
         return saldoInteresVencido;
     }
 
-    public void setSaldoInteresVencido(Long saldoInteresVencido) {
+    public void setSaldoInteresVencido(Double saldoInteresVencido) {
         this.saldoInteresVencido = saldoInteresVencido;
     }
 
@@ -324,131 +324,131 @@ public class DetallePrestamo implements Serializable {
         this.fechaPagado = fechaPagado;
     }
 
-    public Long getAbono() {
+    public Double getAbono() {
         return abono;
     }
 
-    public void setAbono(Long abono) {
+    public void setAbono(Double abono) {
         this.abono = abono;
     }
 
-    public Long getCapitalPagado() {
+    public Double getCapitalPagado() {
         return capitalPagado;
     }
 
-    public void setCapitalPagado(Long capitalPagado) {
+    public void setCapitalPagado(Double capitalPagado) {
         this.capitalPagado = capitalPagado;
     }
 
-    public Long getInteresPagado() {
+    public Double getInteresPagado() {
         return interesPagado;
     }
 
-    public void setInteresPagado(Long interesPagado) {
+    public void setInteresPagado(Double interesPagado) {
         this.interesPagado = interesPagado;
     }
 
-    public Long getDesgravamen() {
+    public Double getDesgravamen() {
         return desgravamen;
     }
 
-    public void setDesgravamen(Long desgravamen) {
+    public void setDesgravamen(Double desgravamen) {
         this.desgravamen = desgravamen;
     }
 
-    public Long getCuota() {
+    public Double getCuota() {
         return cuota;
     }
 
-    public void setCuota(Long cuota) {
+    public void setCuota(Double cuota) {
         this.cuota = cuota;
     }
 
-    public Long getSaldo() {
+    public Double getSaldo() {
         return saldo;
     }
 
-    public void setSaldo(Long saldo) {
+    public void setSaldo(Double saldo) {
         this.saldo = saldo;
     }
 
-    public Long getSaldoOtros() {
+    public Double getSaldoOtros() {
         return saldoOtros;
     }
 
-    public void setSaldoOtros(Long saldoOtros) {
+    public void setSaldoOtros(Double saldoOtros) {
         this.saldoOtros = saldoOtros;
     }
 
-    public Long getDesgravamenFirmado() {
+    public Double getDesgravamenFirmado() {
         return desgravamenFirmado;
     }
 
-    public void setDesgravamenFirmado(Long desgravamenFirmado) {
+    public void setDesgravamenFirmado(Double desgravamenFirmado) {
         this.desgravamenFirmado = desgravamenFirmado;
     }
 
-    public Long getDesgravamenDiferido() {
+    public Double getDesgravamenDiferido() {
         return desgravamenDiferido;
     }
 
-    public void setDesgravamenDiferido(Long desgravamenDiferido) {
+    public void setDesgravamenDiferido(Double desgravamenDiferido) {
         this.desgravamenDiferido = desgravamenDiferido;
     }
 
-    public Long getDesgravamenOriginal() {
+    public Double getDesgravamenOriginal() {
         return desgravamenOriginal;
     }
 
-    public void setDesgravamenOriginal(Long desgravamenOriginal) {
+    public void setDesgravamenOriginal(Double desgravamenOriginal) {
         this.desgravamenOriginal = desgravamenOriginal;
     }
 
-    public Long getValorDiferido() {
+    public Double getValorDiferido() {
         return valorDiferido;
     }
 
-    public void setValorDiferido(Long valorDiferido) {
+    public void setValorDiferido(Double valorDiferido) {
         this.valorDiferido = valorDiferido;
     }
 
-    public Long getTotal() {
+    public Double getTotal() {
         return total;
     }
 
-    public void setTotal(Long total) {
+    public void setTotal(Double total) {
         this.total = total;
     }
 
-    public Long getMoraPagado() {
+    public Double getMoraPagado() {
         return moraPagado;
     }
 
-    public void setMoraPagado(Long moraPagado) {
+    public void setMoraPagado(Double moraPagado) {
         this.moraPagado = moraPagado;
     }
 
-    public Long getDesgravamenPagado() {
+    public Double getDesgravamenPagado() {
         return desgravamenPagado;
     }
 
-    public void setDesgravamenPagado(Long desgravamenPagado) {
+    public void setDesgravamenPagado(Double desgravamenPagado) {
         this.desgravamenPagado = desgravamenPagado;
     }
 
-    public Long getInteresVendidoPagado() {
+    public Double getInteresVendidoPagado() {
         return interesVendidoPagado;
     }
 
-    public void setInteresVendidoPagado(Long interesVendidoPagado) {
+    public void setInteresVendidoPagado(Double interesVendidoPagado) {
         this.interesVendidoPagado = interesVendidoPagado;
     }
 
-    public Long getMoraCalculada() {
+    public Double getMoraCalculada() {
         return moraCalculada;
     }
 
-    public void setMoraCalculada(Long moraCalculada) {
+    public void setMoraCalculada(Double moraCalculada) {
         this.moraCalculada = moraCalculada;
     }
 
@@ -500,19 +500,19 @@ public class DetallePrestamo implements Serializable {
         this.codigoExterno = codigoExterno;
     }
 
-    public Long getOtrosSeguros() {
+    public Double getOtrosSeguros() {
         return otrosSeguros;
     }
 
-    public void setOtrosSeguros(Long otrosSeguros) {
+    public void setOtrosSeguros(Double otrosSeguros) {
         this.otrosSeguros = otrosSeguros;
     }
 
-    public Long getTotalConSeguro() {
+    public Double getTotalConSeguro() {
         return totalConSeguro;
     }
 
-    public void setTotalConSeguro(Long totalConSeguro) {
+    public void setTotalConSeguro(Double totalConSeguro) {
         this.totalConSeguro = totalConSeguro;
     }
 }
