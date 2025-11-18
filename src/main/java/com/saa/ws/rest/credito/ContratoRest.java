@@ -106,15 +106,9 @@ public class ContratoRest {
         System.out.println("selectByCriteria de Contrato");
         Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK)
-                    .entity(contratoService.selectByCriteria(registros))
-                    .type(MediaType.APPLICATION_JSON)
-                    .build();
+            respuesta = Response.status(Response.Status.OK).entity(contratoService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST)
-                    .entity(e.getMessage())
-                    .type(MediaType.APPLICATION_JSON)
-                    .build();
+            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
         return respuesta;
     }

@@ -103,20 +103,20 @@ public class AporteRest {
     @Path("selectByCriteria")
     @Consumes("application/json")
     public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
-        System.out.println("selectByCriteria de Aporte");
+        System.out.println("selectByCriteria de APORTE");
         Response respuesta = null;
-        try {
-            respuesta = Response.status(Response.Status.OK)
-                    .entity(aporteService.selectByCriteria(registros))
-                    .type(MediaType.APPLICATION_JSON)
-                    .build();
-        } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST)
-                    .entity(e.getMessage())
-                    .type(MediaType.APPLICATION_JSON)
-                    .build();
-        }
-        return respuesta;
+    	try {
+    		respuesta = Response.status(Response.Status.OK)
+    				.entity(aporteService.selectByCriteria(registros))
+    				.type(MediaType.APPLICATION_JSON)
+    				.build();
+		} catch (Throwable e) {
+			respuesta = Response.status(Response.Status.BAD_REQUEST)
+					.entity(e.getMessage())
+					.type(MediaType.APPLICATION_JSON)
+					.build();
+		}
+    	return respuesta;
     }
 
     /**

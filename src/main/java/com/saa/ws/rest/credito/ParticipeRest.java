@@ -106,15 +106,9 @@ public class ParticipeRest {
         System.out.println("selectByCriteria de Participe");
         Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK)
-                    .entity(participeService.selectByCriteria(registros))
-                    .type(MediaType.APPLICATION_JSON)
-                    .build();
+            respuesta = Response.status(Response.Status.OK).entity(participeService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST)
-                    .entity(e.getMessage())
-                    .type(MediaType.APPLICATION_JSON)
-                    .build();
+            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
         return respuesta;
     }
