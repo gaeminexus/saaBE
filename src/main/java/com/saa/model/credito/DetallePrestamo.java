@@ -53,42 +53,42 @@ public class DetallePrestamo implements Serializable {
 
     /** Capital */
     @Basic
-    @Column(name = "DTPRCPTL", precision = 10, scale = 2)
+    @Column(name = "DTPRCPTL")
     private Double capital;
 
     /** Interés */
     @Basic
-    @Column(name = "DTPRINTR", precision = 10, scale = 2)
+    @Column(name = "DTPRINTR")
     private Double interes;
 
     /** Mora */
     @Basic
-    @Column(name = "DTPRMRAA", precision = 10, scale = 2)
+    @Column(name = "DTPRMRAA")
     private Double mora;
 
     /** Interés Vencido */
     @Basic
-    @Column(name = "DTPRINVN", precision = 10, scale = 2)
+    @Column(name = "DTPRINVN")
     private Double interesVencido;
 
     /** Saldo capital */
     @Basic
-    @Column(name = "DTPRSLCP", precision = 10, scale = 2)
+    @Column(name = "DTPRSLCP")
     private Double saldoCapital;
 
     /** Saldo Interes */
     @Basic
-    @Column(name = "DTPRSLIN", precision = 10, scale = 2)
+    @Column(name = "DTPRSLIN")
     private Double saldoInteres;
 
     /** Saldo mora */
     @Basic
-    @Column(name = "DTPRSLMR", precision = 10, scale = 2)
+    @Column(name = "DTPRSLMR")
     private Double saldoMora;
 
     /** Saldo Interes Vencido */
     @Basic
-    @Column(name = "DTPRSLIV", precision = 10, scale = 2)
+    @Column(name = "DTPRSLIV")
     private Double saldoInteresVencido;
 
     /** Fecha pagado */
@@ -98,87 +98,87 @@ public class DetallePrestamo implements Serializable {
 
     /** Abono */
     @Basic
-    @Column(name = "DTPRABNO", precision = 10, scale = 2)
+    @Column(name = "DTPRABNO")
     private Double abono;
 
     /** Capital Pagado */
     @Basic
-    @Column(name = "DTPRCPPG", precision = 10, scale = 2)
+    @Column(name = "DTPRCPPG")
     private Double capitalPagado;
 
     /** Interés Pagado */
     @Basic
-    @Column(name = "DTPRINPG", precision = 10, scale = 2)
+    @Column(name = "DTPRINPG")
     private Double interesPagado;
 
     /** Desgravamen */
     @Basic
-    @Column(name = "DTPRDSGR", precision = 10, scale = 2)
+    @Column(name = "DTPRDSGR")
     private Double desgravamen;
 
     /** Cuota */
     @Basic
-    @Column(name = "DTPRCTAA", precision = 10, scale = 2)
+    @Column(name = "DTPRCTAA")
     private Double cuota;
 
     /** Saldo */
     @Basic
-    @Column(name = "DTPRSLDO", precision = 10, scale = 2)
+    @Column(name = "DTPRSLDO")
     private Double saldo;
 
     /** Saldo Otros */
     @Basic
-    @Column(name = "DTPRSLOT", precision = 10, scale = 2)
+    @Column(name = "DTPRSLOT")
     private Double saldoOtros;
 
     /** Desgravamen Firmado */
     @Basic
-    @Column(name = "DTPRDSFR", precision = 10, scale = 2)
+    @Column(name = "DTPRDSFR")
     private Double desgravamenFirmado;
 
     /** Desgravamen Diferido */
     @Basic
-    @Column(name = "DTPRDSDF", precision = 10, scale = 2)
+    @Column(name = "DTPRDSDF")
     private Double desgravamenDiferido;
 
     /** Desgravamen original */
     @Basic
-    @Column(name = "DTPRDSOR", precision = 10, scale = 2)
+    @Column(name = "DTPRDSOR")
     private Double desgravamenOriginal;
 
     /** Valor diferido */
     @Basic
-    @Column(name = "DTPRVLDF", precision = 10, scale = 2)
+    @Column(name = "DTPRVLDF")
     private Double valorDiferido;
 
     /** Total */
     @Basic
-    @Column(name = "DTPRTTLL", precision = 10, scale = 2)
+    @Column(name = "DTPRTTLL")
     private Double total;
 
     /** Mora pagado */
     @Basic
-    @Column(name = "DTPRMRPG", precision = 10, scale = 2)
+    @Column(name = "DTPRMRPG")
     private Double moraPagado;
 
     /** Desgravamen Pagado */
     @Basic
-    @Column(name = "DTPRDSPG", precision = 10, scale = 2)
+    @Column(name = "DTPRDSPG")
     private Double desgravamenPagado;
 
     /** Interés vendido pagado */
     @Basic
-    @Column(name = "DTPRINVP", precision = 10, scale = 2)
+    @Column(name = "DTPRINVP")
     private Double interesVendidoPagado;
 
     /** Mora calculada */
     @Basic
-    @Column(name = "DTPRMRCL", precision = 10, scale = 2)
+    @Column(name = "DTPRMRCL")
     private Double moraCalculada;
 
     /** Días mora */
     @Basic
-    @Column(name = "DTPRDSMR", precision = 10, scale = 2)
+    @Column(name = "DTPRDSMR")
     private Long diasMora;
 
     /** Estado */
