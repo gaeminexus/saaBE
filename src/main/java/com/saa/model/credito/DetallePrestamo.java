@@ -208,12 +208,12 @@ public class DetallePrestamo implements Serializable {
 
     /** Otros seguros */
     @Basic
-    @Column(name = "DTPROTSG", precision = 10, scale = 2)
+    @Column(name = "DTPROTSG")
     private Double otrosSeguros;
 
     /** Total con seguro */
     @Basic
-    @Column(name = "DTPRTTCS", precision = 10, scale = 2)
+    @Column(name = "DTPRTTCS")
     private Double totalConSeguro;
 
     // ============================================================
