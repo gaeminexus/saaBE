@@ -20,8 +20,5 @@ import jakarta.ejb.Stateless;
  */
 @Stateless
 public class BotOpcionDaoServiceImpl extends EntityDaoImpl<BotOpcion> implements BotOpcionDaoService {
-
-   
-
-
+	
 }

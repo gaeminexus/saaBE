@@ -19,5 +19,8 @@ public interface NombreEntidadesCredito {
 	String PRESTAMO = "Prestamo";
 	String DETALLE_PRESTAMO = "DetallePrestamo";
 	String PAGO_PRESTAMO = "PagoPrestamo";
+	String PARTICIPE = "Participe";
+	String APORTE = "Aporte";
+	String CONTRATO = "Contrato";
 	
 }
