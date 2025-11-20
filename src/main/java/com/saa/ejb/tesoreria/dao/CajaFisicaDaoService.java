@@ -11,14 +11,14 @@ package com.saa.ejb.tesoreria.dao;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.tesoreria.CajaFisica;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  *
  * Dao Sevice CajaFisica.  
  */
-@Remote
+@Local
 public interface CajaFisicaDaoService extends EntityDao<CajaFisica> {	
 	
 }

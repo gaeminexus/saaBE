@@ -4,9 +4,9 @@ import com.saa.basico.util.EntityService;
 import com.saa.model.contabilidad.DesgloseMayorizacionCC;
 import com.saa.model.contabilidad.DetalleMayorizacionCC;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
-@Remote
+@Local
 public interface DesgloseMayorizacionCCService extends EntityService <DesgloseMayorizacionCC> {
 		 
 	 /**

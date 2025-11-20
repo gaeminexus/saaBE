@@ -11,14 +11,14 @@ package com.saa.ejb.tesoreria.dao;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.tesoreria.Transferencia;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  *
  * Dao Sevice Transferencia.  
  */
-@Remote
+@Local
 public interface TransferenciaDaoService extends EntityDao<Transferencia>{
 
 }

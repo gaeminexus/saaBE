@@ -5,14 +5,14 @@ import com.saa.model.tesoreria.Cobro;
 import com.saa.model.tesoreria.CobroRetencion;
 import com.saa.model.tesoreria.TempCobroRetencion;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft
  * <p>Servicio para la entidad CobroRetencion.
  *  Accede a los metodos DAO y procesa los datos para el cliente.</p>
  */
-@Remote
+@Local
 public interface CobroRetencionService extends EntityService<CobroRetencion>{
  	 
 	/**

@@ -3,14 +3,14 @@ package com.saa.ejb.tesoreria.service;
 import com.saa.basico.util.EntityService;
 import com.saa.model.tesoreria.CajaFisica;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft
  * <p>Servicio para la entidad CajaFisica.
  *  Accede a los metodos DAO y procesa los datos para el cliente.</p>
  */
-@Remote
+@Local
 public interface CajaFisicaService extends EntityService<CajaFisica>{
 	
 	 /**

@@ -10,13 +10,13 @@ import java.util.List;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.contabilidad.NaturalezaCuenta;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  *         Interface DAO para la entidad NaturalezaCuenta.
  */
-@Remote
+@Local
 public interface NaturalezaCuentaDaoService extends EntityDao<NaturalezaCuenta> {
 	
 	/**

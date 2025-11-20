@@ -12,14 +12,14 @@ import com.saa.model.tesoreria.CuentaBancaria;
 import com.saa.model.tesoreria.DetalleDeposito;
 import com.saa.model.tesoreria.MovimientoBanco;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft
  * <p>Servicio para la entidad MovimientoBanco.
  *  Accede a los metodos DAO y procesa los datos para el cliente.</p>
  */
-@Remote
+@Local
 public interface MovimientoBancoService extends EntityService<MovimientoBanco>{
  	 
 	/**

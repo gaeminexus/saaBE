@@ -10,13 +10,13 @@ import java.util.List;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.contabilidad.DetalleAsiento;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  *         Interface DAO para la entidad DetalleAsiento.
  */
-@Remote
+@Local
 public interface DetalleAsientoDaoService extends EntityDao<DetalleAsiento> {
 
 

@@ -13,14 +13,14 @@ import java.util.List;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.tesoreria.AuxDepositoDesglose;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  *
  * Dao Sevice AuxDepositoDesglose.  
  */
-@Remote
+@Local
 public interface AuxDepositoDesgloseDaoService extends EntityDao<AuxDepositoDesglose> {	
 	
 	/**

@@ -1,8 +1,8 @@
 package com.saa.ejb.contabilidad.service;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
-@Remote
+@Local
 public interface CuentaService{
 	
 	

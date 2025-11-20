@@ -12,14 +12,14 @@ import com.saa.basico.util.EntityDao;
 import com.saa.model.contabilidad.PlanCuenta;
 import com.saa.model.tesoreria.CajaLogica;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  *
  * Dao Sevice CajaLogica.  
  */
-@Remote
+@Local
 public interface CajaLogicaDaoService extends EntityDao<CajaLogica> {
 	
 	/**

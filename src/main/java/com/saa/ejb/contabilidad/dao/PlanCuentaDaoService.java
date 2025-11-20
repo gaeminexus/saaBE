@@ -11,13 +11,13 @@ import java.util.List;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.contabilidad.PlanCuenta;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  *         Interface DAO para la entidad PlanCuenta.
  */ 
-@Remote
+@Local
 public interface PlanCuentaDaoService extends EntityDao<PlanCuenta> {
 
 	/**

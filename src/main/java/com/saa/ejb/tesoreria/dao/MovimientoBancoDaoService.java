@@ -15,14 +15,14 @@ import com.saa.basico.util.EntityDao;
 import com.saa.model.tesoreria.Conciliacion;
 import com.saa.model.tesoreria.MovimientoBanco;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  *
  * Dao Sevice MovimientoBanco.  
  */
-@Remote
+@Local
 public interface MovimientoBancoDaoService extends EntityDao<MovimientoBanco>{
 	
 	/**

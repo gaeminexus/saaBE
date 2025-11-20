@@ -8,13 +8,13 @@ package com.saa.ejb.contabilidad.dao;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.contabilidad.ReporteContable;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  *         Interface DAO para la entidad ReporteContable.
  */
-@Remote
+@Local
 public interface ReporteContableDaoService  extends EntityDao<ReporteContable>  {
 	 
 }

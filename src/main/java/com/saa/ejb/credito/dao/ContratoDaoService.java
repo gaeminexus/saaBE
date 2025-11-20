@@ -3,9 +3,9 @@ package com.saa.ejb.credito.dao;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.credito.Contrato;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
-@Remote
+@Local
 public interface ContratoDaoService extends EntityDao<Contrato> {
 
 }

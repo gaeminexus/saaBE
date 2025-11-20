@@ -4,9 +4,9 @@ import com.saa.basico.util.EntityService;
 import com.saa.model.contabilidad.HistMayorizacion;
 import com.saa.model.contabilidad.Mayorizacion;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
-@Remote
+@Local
 public interface MayorizacionService extends EntityService<Mayorizacion> {
 
 	 

@@ -5,14 +5,14 @@ import java.util.List;
 import com.saa.basico.util.EntityService;
 import com.saa.model.tesoreria.AuxDepositoCierre;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft
  * <p>Servicio para la entidad AuxDepositoCierre.
  *  Accede a los metodos DAO y procesa los datos para el cliente.</p>
  */
-@Remote
+@Local
 public interface AuxDepositoCierreService extends EntityService<AuxDepositoCierre>{
 	
    

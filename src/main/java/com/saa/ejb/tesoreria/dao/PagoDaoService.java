@@ -11,14 +11,14 @@ package com.saa.ejb.tesoreria.dao;
 import java.util.List;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.tesoreria.Pago;
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  *
  * Dao Sevice Pago.  
  */
-@Remote
+@Local
 public interface PagoDaoService extends EntityDao<Pago>{
 	
 	/**

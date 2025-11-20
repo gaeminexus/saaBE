@@ -13,14 +13,14 @@ import java.util.List;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.tesoreria.MotivoPago;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  *
  * Dao Sevice MotivoPago.  
  */
-@Remote
+@Local
 public interface MotivoPagoDaoService extends EntityDao<MotivoPago>{
 	
 	/**

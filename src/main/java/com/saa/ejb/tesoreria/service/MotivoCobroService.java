@@ -5,14 +5,14 @@ import com.saa.model.tesoreria.Cobro;
 import com.saa.model.tesoreria.MotivoCobro;
 import com.saa.model.tesoreria.TempMotivoCobro;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft
  * <p>Servicio para la entidad MotivoCobro.
  *  Accede a los metodos DAO y procesa los datos para el cliente.</p>
  */
-@Remote
+@Local
 public interface MotivoCobroService extends EntityService<MotivoCobro>{
  	 
 	/**

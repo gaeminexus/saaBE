@@ -11,14 +11,14 @@ package com.saa.ejb.tesoreria.dao;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.tesoreria.BancoExterno;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  *
  * Dao Sevice BancoExterno.  
  */
-@Remote
+@Local
 public interface BancoExternoDaoService extends EntityDao<BancoExterno>  {
 	
 }

@@ -11,13 +11,13 @@ import java.util.List;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.contabilidad.Periodo;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  *         Interface DAO para la entidad Periodo.
  */
-@Remote 
+@Local 
 public interface PeriodoDaoService extends EntityDao<Periodo> {
 
 	/**

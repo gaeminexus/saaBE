@@ -15,7 +15,7 @@ import java.util.List;
 import com.saa.basico.util.EntityService;
 import com.saa.model.contabilidad.AnioMotor;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
@@ -25,7 +25,7 @@ import jakarta.ejb.Remote;
  *         Accede a los metodos DAO y procesa los datos para el cliente.
  *         </p>
  */
-@Remote
+@Local
 public interface AnioMotorService extends EntityService<AnioMotor> {
 
 	/**

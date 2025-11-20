@@ -3,9 +3,9 @@ package com.saa.ejb.credito.service;
 import com.saa.basico.util.EntityService;
 import com.saa.model.credito.PagoPrestamo;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
-@Remote
+@Local
 public interface PagoPrestamoService extends EntityService<PagoPrestamo>{
 
 }

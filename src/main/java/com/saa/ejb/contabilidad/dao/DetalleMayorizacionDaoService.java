@@ -5,9 +5,9 @@ import java.util.List;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.contabilidad.DetalleMayorizacion;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
-@Remote
+@Local
 public interface DetalleMayorizacionDaoService extends EntityDao<DetalleMayorizacion>  {
 
 	/**

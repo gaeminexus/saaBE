@@ -6,14 +6,14 @@ import com.saa.model.contabilidad.Asiento;
 import com.saa.model.tesoreria.Pago;
 import com.saa.model.tesoreria.TempPago;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft
  * <p>Servicio para la entidad Persona.
  *  Accede a los metodos DAO y procesa los datos para el cliente.</p>
  */
-@Remote
+@Local
 public interface PagoService extends EntityService<Pago> {
 
 	/**	

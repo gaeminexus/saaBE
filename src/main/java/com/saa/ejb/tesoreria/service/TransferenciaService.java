@@ -4,14 +4,14 @@ import com.saa.basico.util.EntityService;
 import com.saa.model.tesoreria.CuentaBancaria;
 import com.saa.model.tesoreria.Transferencia;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft
  * <p>Servicio para la entidad Transferencia.
  *  Accede a los metodos DAO y procesa los datos para el cliente.</p>
  */
-@Remote
+@Local
 public interface TransferenciaService extends EntityService<Transferencia>{
 	 
 	/**

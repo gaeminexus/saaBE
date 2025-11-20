@@ -14,14 +14,14 @@ import com.saa.basico.util.EntityDao;
 import com.saa.model.contabilidad.PlanCuenta;
 import com.saa.model.tesoreria.CuentaBancaria;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  *
  * Dao Sevice CuentaBancaria.  
  */
-@Remote
+@Local
 public interface CuentaBancariaDaoService extends EntityDao<CuentaBancaria> {
 	
 	/**

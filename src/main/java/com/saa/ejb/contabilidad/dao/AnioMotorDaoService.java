@@ -13,7 +13,7 @@ package com.saa.ejb.contabilidad.dao;
 
 import java.util.List;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.contabilidad.AnioMotor;
 
@@ -21,7 +21,7 @@ import com.saa.model.contabilidad.AnioMotor;
  * @author GaemiSoft.
  *         Clase AnioMotorDao.
  */
-@Remote
+@Local
 public interface AnioMotorDaoService extends EntityDao<AnioMotor> {
 	/**
 	 * Recupera el listado de anion en forma descendente

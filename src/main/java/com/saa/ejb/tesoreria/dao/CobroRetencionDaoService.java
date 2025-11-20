@@ -13,14 +13,14 @@ import java.util.List;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.tesoreria.CobroRetencion;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  *
  * Dao Sevice CobroRetencion.  
  */
-@Remote
+@Local
 public interface CobroRetencionDaoService extends EntityDao<CobroRetencion>{
 
 	/**

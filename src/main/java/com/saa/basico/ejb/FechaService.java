@@ -14,7 +14,7 @@ package com.saa.basico.ejb;
 import java.util.Date;
 import java.util.List;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
@@ -22,7 +22,7 @@ import jakarta.ejb.Remote;
  *         Servicio para la administracion de procesos relacionados con cuentas.
  *         </p>
  */
-@Remote
+@Local
 public interface FechaService {
 
 	/**

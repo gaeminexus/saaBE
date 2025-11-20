@@ -12,7 +12,7 @@
 package com.saa.basico.ejb;
 
 import java.util.List;
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
@@ -21,7 +21,7 @@ import jakarta.ejb.Remote;
  *         cantidades.
  *         </p>
  */
-@Remote
+@Local
 public interface CantidadService {
 
 	/**

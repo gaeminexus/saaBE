@@ -13,14 +13,14 @@ import java.util.List;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.tesoreria.TempCobroTarjeta;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  *
  * Dao Sevice TempCobroTarjeta.  
  */
-@Remote
+@Local
 public interface TempCobroTarjetaDaoService extends EntityDao<TempCobroTarjeta>{
 	
 	/**

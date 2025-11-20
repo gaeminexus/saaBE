@@ -1,9 +1,13 @@
 package com.saa.ws.rest.files;
 
+import java.io.Serializable;
+
 /**
  * Respuesta para validación de archivos
  */
-public class FileValidationResponse {
+public class FileValidationResponse implements Serializable {
+    
+    private static final long serialVersionUID = 1L;
     
     private boolean valid;
     private String message;

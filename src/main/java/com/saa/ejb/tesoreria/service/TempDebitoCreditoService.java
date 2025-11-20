@@ -4,14 +4,14 @@ import java.util.List;
 import com.saa.basico.util.EntityService;
 import com.saa.model.tesoreria.TempDebitoCredito;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft
  * <p>Servicio para la entidad Chequera.
  *  Accede a los metodos DAO y procesa los datos para el cliente.</p>
  */
-@Remote
+@Local
 public interface TempDebitoCreditoService extends EntityService<TempDebitoCredito>{
 	 
 	/**

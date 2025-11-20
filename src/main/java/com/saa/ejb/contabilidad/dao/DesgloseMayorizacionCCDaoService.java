@@ -5,12 +5,12 @@ import java.util.List;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.contabilidad.DesgloseMayorizacionCC;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * 
  */
-@Remote
+@Local
 public interface DesgloseMayorizacionCCDaoService  extends EntityDao<DesgloseMayorizacionCC>  {	
 		
 		/**

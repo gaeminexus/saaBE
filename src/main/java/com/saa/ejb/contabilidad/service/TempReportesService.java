@@ -5,9 +5,9 @@ import java.util.Date;
 import com.saa.basico.util.EntityService;
 import com.saa.model.contabilidad.TempReportes;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
-@Remote
+@Local
 public interface TempReportesService extends EntityService<TempReportes>  {
 	
 

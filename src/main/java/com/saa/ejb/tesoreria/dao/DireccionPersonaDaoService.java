@@ -11,14 +11,14 @@ package com.saa.ejb.tesoreria.dao;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.tesoreria.DireccionPersona;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  *
  * Dao Sevice DireccionPersona.  
  */
-@Remote
+@Local
 public interface DireccionPersonaDaoService extends EntityDao<DireccionPersona> {
 	
 }

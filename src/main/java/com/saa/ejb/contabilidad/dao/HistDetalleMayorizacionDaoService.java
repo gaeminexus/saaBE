@@ -3,9 +3,9 @@ package com.saa.ejb.contabilidad.dao;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.contabilidad.HistDetalleMayorizacion;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
-@Remote
+@Local
 public interface HistDetalleMayorizacionDaoService  extends EntityDao<HistDetalleMayorizacion>  {
 
 	/**

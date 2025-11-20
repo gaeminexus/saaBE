@@ -11,14 +11,14 @@ package com.saa.ejb.tesoreria.dao;
 import java.util.List;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.tesoreria.CierreCaja;
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  *
  * Dao Sevice CierreCaja.  
  */
-@Remote
+@Local
 public interface CierreCajaDaoService extends EntityDao<CierreCaja> {
 	
 	/**

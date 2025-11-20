@@ -13,14 +13,14 @@ import java.util.List;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.tesoreria.DebitoCredito;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  *
  * Dao Sevice DebitoCredito.  
  */
-@Remote
+@Local
 public interface DebitoCreditoDaoService extends EntityDao<DebitoCredito>{
 	
 	/**

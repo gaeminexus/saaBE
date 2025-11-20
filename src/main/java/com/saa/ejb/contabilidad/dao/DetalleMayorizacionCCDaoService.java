@@ -7,13 +7,13 @@ package com.saa.ejb.contabilidad.dao;
 import java.util.List;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.contabilidad.DetalleMayorizacionCC;
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  *         Interface DAO para la entidad DetalleMayorizacionCC.
  */
-@Remote
+@Local
 public interface DetalleMayorizacionCCDaoService extends EntityDao<DetalleMayorizacionCC> {
 
 	/**

@@ -1,11 +1,14 @@
 package com.saa.ws.rest.files;
 
+import java.io.Serializable;
 import java.util.List;
 
 /**
  * Respuesta para listar archivos
  */
-public class FileListResponse {
+public class FileListResponse implements Serializable {
+    
+    private static final long serialVersionUID = 1L;
     
     private boolean success;
     private String message;

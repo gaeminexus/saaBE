@@ -4,14 +4,14 @@ import com.saa.basico.util.EntityService;
 import com.saa.model.tesoreria.Conciliacion;
 import com.saa.model.tesoreria.HistConciliacion;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft
  * <p>Servicio para la entidad HistConciliacion.
  *  Accede a los metodos DAO y procesa los datos para el cliente.</p>
  */
-@Remote
+@Local
 public interface HistConciliacionService extends EntityService<HistConciliacion>{
 	
 	  /**

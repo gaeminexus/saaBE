@@ -5,9 +5,9 @@ import java.util.List;
 import com.saa.basico.util.EntityService;
 import com.saa.model.contabilidad.DetalleReporteContable;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
-@Remote
+@Local
 public interface DetalleReporteContableService extends EntityService<DetalleReporteContable> {
 	
 

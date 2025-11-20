@@ -3,9 +3,9 @@ package com.saa.ejb.contabilidad.service;
 import com.saa.basico.util.EntityService;
 import com.saa.model.contabilidad.HistDetalleMayorizacion;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
-@Remote
+@Local
 public interface HistDetalleMayorizacionService extends EntityService <HistDetalleMayorizacion> {
 	
 	 /**

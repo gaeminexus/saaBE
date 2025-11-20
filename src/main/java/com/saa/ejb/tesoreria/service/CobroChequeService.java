@@ -7,14 +7,14 @@ import com.saa.model.tesoreria.CobroCheque;
 import com.saa.model.tesoreria.DetalleDeposito;
 import com.saa.model.tesoreria.TempCobroCheque;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft
  * <p>Servicio para la entidad CobroCheque.
  *  Accede a los metodos DAO y procesa los datos para el cliente.</p>
  */
-@Remote
+@Local
 public interface CobroChequeService extends EntityService<CobroCheque>{
 
 	 

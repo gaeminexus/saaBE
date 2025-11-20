@@ -6,10 +6,10 @@ import java.util.List;
 import com.saa.basico.util.EntityService;
 import com.saa.model.contabilidad.CentroCosto;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 
-@Remote
+@Local
 public interface CentroCostoService extends EntityService<CentroCosto> {
 	
 	/**

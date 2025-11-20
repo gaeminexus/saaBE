@@ -11,14 +11,14 @@ package com.saa.ejb.tesoreria.dao;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.tesoreria.HistConciliacion;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  *
  * Dao Sevice HistConciliacion.  
  */
-@Remote
+@Local
 public interface HistConciliacionDaoService extends EntityDao<HistConciliacion>{
 	
 	/**

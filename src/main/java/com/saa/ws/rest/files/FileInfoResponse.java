@@ -1,9 +1,13 @@
 package com.saa.ws.rest.files;
 
+import java.io.Serializable;
+
 /**
  * Respuesta para información de archivo
  */
-public class FileInfoResponse {
+public class FileInfoResponse implements Serializable {
+    
+    private static final long serialVersionUID = 1L;
     
     private boolean success;
     private String message;

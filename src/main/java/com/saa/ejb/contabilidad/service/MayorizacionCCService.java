@@ -5,9 +5,9 @@ import com.saa.model.contabilidad.Mayorizacion;
 import com.saa.model.contabilidad.MayorizacionCC;
 import com.saa.model.contabilidad.Periodo;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
-@Remote
+@Local
 public interface MayorizacionCCService extends EntityService<MayorizacionCC> {
 	
 	 

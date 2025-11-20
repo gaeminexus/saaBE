@@ -6,9 +6,9 @@ import java.util.List;
 import com.saa.basico.util.EntityService;
 import com.saa.model.contabilidad.PlanCuenta;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
-@Remote
+@Local
 public interface PlanCuentaService extends EntityService<PlanCuenta> {
  	
 	/**

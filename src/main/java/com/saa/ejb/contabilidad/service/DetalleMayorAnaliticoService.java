@@ -5,9 +5,9 @@ import com.saa.basico.util.EntityService;
 import com.saa.model.contabilidad.DetalleMayorAnalitico;
 import com.saa.model.contabilidad.MayorAnalitico;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
-@Remote
+@Local
 public interface DetalleMayorAnaliticoService extends EntityService <DetalleMayorAnalitico> {
 	
 	 

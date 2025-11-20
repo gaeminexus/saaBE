@@ -5,14 +5,14 @@ import com.saa.model.tesoreria.Cobro;
 import com.saa.model.tesoreria.CobroEfectivo;
 import com.saa.model.tesoreria.TempCobroEfectivo;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft
  * <p>Servicio para la entidad CobroEfectivo.
  *  Accede a los metodos DAO y procesa los datos para el cliente.</p>
  */
-@Remote
+@Local
 public interface CobroEfectivoService extends EntityService<CobroEfectivo>{
 	
 	/**

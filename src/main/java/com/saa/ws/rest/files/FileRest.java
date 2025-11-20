@@ -15,8 +15,6 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.Response.Status;
 
-// import org.jboss.resteasy.annotations.providers.multipart.MultipartForm;
-
 import com.saa.basico.ejb.FileService;
 
 /**
@@ -25,12 +23,12 @@ import com.saa.basico.ejb.FileService;
  *         Servicios REST para manejo de archivos (upload/download).
  *         </p>
  */
-@Path("/files")
+@Path("file")
 public class FileRest {
 
     @EJB
     private FileService fileService;
-
+    
     /**
      * Upload de archivo básico
      * 
@@ -39,7 +37,7 @@ public class FileRest {
      * @return Response con el resultado del upload
      */
     @POST
-    @Path("/upload")
+    @Path("upload")
     @Consumes(MediaType.APPLICATION_OCTET_STREAM)
     @Produces(MediaType.APPLICATION_JSON)
     public Response uploadFile(InputStream inputStream, @QueryParam("fileName") String fileName) {
@@ -58,7 +56,7 @@ public class FileRest {
                         .build();
             }
 
-            // Subir archivo
+            // Subir archivo usando InputStream directamente (EJB @Local)
             String filePath = fileService.uploadFile(inputStream, fileName);
 
             return Response.ok(new FileResponse(true, "Archivo subido exitosamente", filePath)).build();
@@ -79,7 +77,7 @@ public class FileRest {
      * @return Response con el resultado del upload
      */
     @POST
-    @Path("/upload/custom")
+    @Path("upload/custom")
     @Consumes(MediaType.APPLICATION_OCTET_STREAM)
     @Produces(MediaType.APPLICATION_JSON)
     public Response uploadFileCustomPath(InputStream inputStream, 
@@ -106,9 +104,10 @@ public class FileRest {
                         .entity(new FileResponse(false, "Extensión de archivo no permitida", null))
                         .build();
             }
-
-            // Subir archivo con path personalizado
-            String filePath = fileService.uploadFile(inputStream, fileName, uploadPath);
+           
+            String filePath = fileService.uploadFileToPath(inputStream, fileName, uploadPath);
+            
+            System.out.println("Resultado del upload: " + filePath);
 
             return Response.ok(new FileResponse(true, "Archivo subido exitosamente", filePath)).build();
 
@@ -126,7 +125,7 @@ public class FileRest {
      * @return Response con el archivo
      */
     @GET
-    @Path("/download")
+    @Path("download")
     @Produces(MediaType.APPLICATION_OCTET_STREAM)
     public Response downloadFile(@QueryParam("filePath") String filePath) {
         try {
@@ -168,7 +167,7 @@ public class FileRest {
      * @return Response con el resultado
      */
     @DELETE
-    @Path("/delete")
+    @Path("delete")
     @Produces(MediaType.APPLICATION_JSON)
     public Response deleteFile(@QueryParam("filePath") String filePath) {
         try {
@@ -204,7 +203,7 @@ public class FileRest {
      * @return Response con la lista de archivos
      */
     @GET
-    @Path("/list")
+    @Path("list")
     @Produces(MediaType.APPLICATION_JSON)
     public Response listFiles(@QueryParam("directoryPath") String directoryPath) {
         try {
@@ -231,7 +230,7 @@ public class FileRest {
      * @return Response con la información del archivo
      */
     @GET
-    @Path("/info")
+    @Path("info")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getFileInfo(@QueryParam("filePath") String filePath) {
         try {
@@ -306,4 +305,5 @@ public class FileRest {
                     .build();
         }
     }
+    
 }

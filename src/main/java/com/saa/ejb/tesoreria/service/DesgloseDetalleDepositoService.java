@@ -6,14 +6,14 @@ import com.saa.model.tesoreria.AuxDepositoDesglose;
 import com.saa.model.tesoreria.DesgloseDetalleDeposito;
 import com.saa.model.tesoreria.DetalleDeposito;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft
  * <p>Servicio para la entidad DesgloseDetalleDeposito.
  *  Accede a los metodos DAO y procesa los datos para el cliente.</p>
  */
-@Remote
+@Local
 public interface DesgloseDetalleDepositoService extends EntityService<DesgloseDetalleDeposito>{
  
 	/**

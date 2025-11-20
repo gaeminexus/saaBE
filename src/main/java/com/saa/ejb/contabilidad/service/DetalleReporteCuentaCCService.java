@@ -3,9 +3,9 @@ package com.saa.ejb.contabilidad.service;
 import com.saa.basico.util.EntityService;
 import com.saa.model.contabilidad.DetalleReporteCuentaCC;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
-@Remote
+@Local
 public interface DetalleReporteCuentaCCService extends EntityService <DetalleReporteCuentaCC> {
 
 

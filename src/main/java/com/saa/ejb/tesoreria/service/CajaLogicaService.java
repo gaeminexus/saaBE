@@ -4,14 +4,14 @@ import com.saa.basico.util.EntityService;
 import com.saa.model.contabilidad.PlanCuenta;
 import com.saa.model.tesoreria.CajaLogica;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft
  * <p>Servicio para la entidad CajaLogica.
  *  Accede a los metodos DAO y procesa los datos para el cliente.</p>
  */
-@Remote
+@Local
 public interface CajaLogicaService extends EntityService<CajaLogica>{
 
 

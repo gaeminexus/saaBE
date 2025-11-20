@@ -13,7 +13,7 @@ import java.util.List;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.tesoreria.Conciliacion;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
@@ -24,7 +24,7 @@ import jakarta.ejb.Remote;
  * @author gs-prog05
  *
  */
-@Remote
+@Local
 public interface ConciliacionDaoService extends EntityDao<Conciliacion>{
 	
 	/**

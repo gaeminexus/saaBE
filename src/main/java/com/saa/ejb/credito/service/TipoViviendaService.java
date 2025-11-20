@@ -3,9 +3,9 @@ package com.saa.ejb.credito.service;
 import com.saa.basico.util.EntityService;
 import com.saa.model.credito.TipoVivienda;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
-@Remote
+@Local
 public interface TipoViviendaService extends EntityService<TipoVivienda>{
 
 }

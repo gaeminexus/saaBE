@@ -11,14 +11,14 @@ package com.saa.ejb.tesoreria.dao;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.tesoreria.GrupoCaja;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  *
  * Dao Sevice GrupoCaja.  
  */
-@Remote
+@Local
 public interface GrupoCajaDaoService extends EntityDao<GrupoCaja> {
 	
 }

@@ -11,9 +11,9 @@ import com.saa.model.contabilidad.Mayorizacion;
 import com.saa.model.contabilidad.Periodo;
 import com.saa.model.contabilidad.PlanCuenta;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
-@Remote
+@Local
 public interface DetalleAsientoService extends EntityService<DetalleAsiento> {
 	
 	

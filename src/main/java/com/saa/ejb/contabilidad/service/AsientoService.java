@@ -9,9 +9,9 @@ import com.saa.model.contabilidad.Periodo;
 import com.saa.model.contabilidad.PlanCuenta;
 import com.saa.model.scp.DetalleRubro;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
-@Remote
+@Local
 public interface AsientoService extends EntityService<Asiento> {
 	
 	/**

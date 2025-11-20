@@ -7,9 +7,9 @@ import com.saa.model.contabilidad.DetalleMayorizacion;
 import com.saa.model.contabilidad.Mayorizacion;
 import com.saa.model.contabilidad.Periodo;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
-@Remote
+@Local
 public interface DetalleMayorizacionService extends EntityService<DetalleMayorizacion> {
 	
 

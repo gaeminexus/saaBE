@@ -5,14 +5,14 @@ import com.saa.basico.util.EntityService;
 import com.saa.model.tesoreria.CierreCaja;
 import com.saa.model.tesoreria.Deposito;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft
  * <p>Servicio para la entidad CierreCaja.
  *  Accede a los metodos DAO y procesa los datos para el cliente.</p>
  */
-@Remote
+@Local
 public interface CierreCajaService extends EntityService<CierreCaja>{
 	
 	/**

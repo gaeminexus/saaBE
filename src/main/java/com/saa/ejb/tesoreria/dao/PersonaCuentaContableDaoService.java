@@ -13,14 +13,14 @@ import java.util.List;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.tesoreria.PersonaCuentaContable;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  *
  * Dao Sevice PersonaCuentaContable.  
  */
-@Remote
+@Local
 public interface PersonaCuentaContableDaoService extends EntityDao<PersonaCuentaContable> {
 
 	/**

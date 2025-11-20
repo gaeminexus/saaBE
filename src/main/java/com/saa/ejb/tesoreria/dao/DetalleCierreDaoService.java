@@ -13,14 +13,14 @@ import java.util.List;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.tesoreria.DetalleCierre;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  *
  * Dao Sevice DetalleCierre.  
  */
-@Remote
+@Local
 public interface DetalleCierreDaoService extends EntityDao<DetalleCierre> {
 
 	/**

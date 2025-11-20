@@ -2,7 +2,7 @@ package com.saa.basico.ejb;
 
 import java.io.InputStream;
 import java.util.List;
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
@@ -10,7 +10,7 @@ import jakarta.ejb.Remote;
  *         Servicio para la administración de upload y download de archivos al servidor.
  *         </p>
  */
-@Remote
+@Local
 public interface FileService {
 
     /**
@@ -25,7 +25,7 @@ public interface FileService {
     long TAMAÑO_MAXIMO = 10 * 1024 * 1024;
 
     /**
-     * Sube un archivo al servidor
+     * Sube un archivo al servidor con path personalizado
      *
      * @param inputStream : Stream del archivo a subir
      * @param fileName    : Nombre del archivo
@@ -33,7 +33,7 @@ public interface FileService {
      * @return            : Ruta completa del archivo guardado
      * @throws Throwable  : Excepción
      */
-    String uploadFile(InputStream inputStream, String fileName, String uploadPath) throws Throwable;
+    String uploadFileToPath(InputStream inputStream, String fileName, String uploadPath) throws Throwable;
 
     /**
      * Sube un archivo con configuración por defecto

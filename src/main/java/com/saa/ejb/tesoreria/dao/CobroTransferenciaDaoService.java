@@ -13,14 +13,14 @@ import java.util.List;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.tesoreria.CobroTransferencia;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  *
  * Dao Sevice CobroTransferencia.  
  */
-@Remote
+@Local
 public interface CobroTransferenciaDaoService extends EntityDao<CobroTransferencia>{
 	
 	/**
