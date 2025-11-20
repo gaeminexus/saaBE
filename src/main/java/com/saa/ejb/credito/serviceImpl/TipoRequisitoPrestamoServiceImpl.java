@@ -7,6 +7,7 @@ import com.saa.basico.util.IncomeException;
 import com.saa.ejb.credito.dao.TipoRequisitoPrestamoDaoService;
 import com.saa.ejb.credito.service.TipoRequisitoPrestamoService;
 import com.saa.model.credito.TipoRequisitoPrestamo;
+import com.saa.rubros.Estado;
 import com.saa.model.credito.NombreEntidadesCredito;
 
 import jakarta.ejb.EJB;
@@ -70,6 +71,9 @@ public class TipoRequisitoPrestamoServiceImpl implements TipoRequisitoPrestamoSe
     @Override
     public TipoRequisitoPrestamo saveSingle(TipoRequisitoPrestamo requisito) throws Throwable {
         System.out.println("saveSingle - TipoRequisitoPrestamo");
+        if(requisito.getCodigo() == null){
+        	requisito.setEstado(Long.valueOf(Estado.ACTIVO)); //Activo
+		}
         requisito = tipoRequisitoPrestamoDaoService.save(requisito, requisito.getCodigo());
         return requisito;
     }

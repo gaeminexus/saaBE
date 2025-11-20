@@ -8,6 +8,7 @@ import com.saa.ejb.credito.dao.DetallePrestamoDaoService;
 import com.saa.ejb.credito.service.DetallePrestamoService;
 import com.saa.model.credito.DetallePrestamo;
 import com.saa.model.credito.NombreEntidadesCredito;
+import com.saa.rubros.Estado;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -69,6 +70,9 @@ public class DetallePrestamoServiceImpl implements DetallePrestamoService {
     @Override
     public DetallePrestamo saveSingle(DetallePrestamo detalle) throws Throwable {
         System.out.println("saveSingle - DetallePrestamo");
+        if(detalle.getCodigo() == null){
+        	detalle.setEstado(Long.valueOf(Estado.ACTIVO)); //Activo
+		}
         detalle = detallePrestamoDaoService.save(detalle, detalle.getCodigo());
         return detalle;
     }

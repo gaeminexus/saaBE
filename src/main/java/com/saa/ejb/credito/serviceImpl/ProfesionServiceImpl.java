@@ -7,6 +7,7 @@ import com.saa.basico.util.IncomeException;
 import com.saa.ejb.credito.dao.ProfesionDaoService;
 import com.saa.ejb.credito.service.ProfesionService;
 import com.saa.model.credito.Profesion;
+import com.saa.rubros.Estado;
 import com.saa.model.credito.NombreEntidadesCredito;
 
 import jakarta.ejb.EJB;
@@ -69,6 +70,9 @@ public class ProfesionServiceImpl implements ProfesionService {
     @Override
     public Profesion saveSingle(Profesion profesion) throws Throwable {
         System.out.println("saveSingle - Profesion");
+        if(profesion.getCodigo() == null){
+        	profesion.setEstado(Long.valueOf(Estado.ACTIVO)); //Activo
+		}
         profesion = profesionDaoService.save(profesion, profesion.getCodigo());
         return profesion;
     }

@@ -7,6 +7,7 @@ import com.saa.basico.util.IncomeException;
 import com.saa.ejb.credito.dao.TipoCalificacionCreditoDaoService;
 import com.saa.ejb.credito.service.TipoCalificacionCreditoService;
 import com.saa.model.credito.TipoCalificacionCredito;
+import com.saa.rubros.Estado;
 import com.saa.model.credito.NombreEntidadesCredito;
 
 import jakarta.ejb.EJB;
@@ -69,6 +70,9 @@ public class TipoCalificacionCreditoServiceImpl implements TipoCalificacionCredi
     @Override
     public TipoCalificacionCredito saveSingle(TipoCalificacionCredito tipo) throws Throwable {
         System.out.println("saveSingle - TipoCalificacionCredito");
+        if(tipo.getCodigo() == null){
+        	tipo.setEstado(Long.valueOf(Estado.ACTIVO)); //Activo
+		}
         tipo = tipoCalificacionCreditoDaoService.save(tipo, tipo.getCodigo());
         return tipo;
     }

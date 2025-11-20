@@ -12,7 +12,6 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
-import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
 
 /**
@@ -21,7 +20,6 @@ import jakarta.persistence.Table;
 @SuppressWarnings("serial")
 @Entity
 @Table(name = "TPHD", schema = "CRD")
-@SequenceGenerator(name = "SQ_TPHDCDGO", sequenceName = "CRD.SQ_TPHDCDGO", allocationSize = 1)
 @NamedQueries({
     @NamedQuery(name = "TipoHidrocarburificaAll", query = "select e from TipoHidrocarburifica e"),
     @NamedQuery(name = "TipoHidrocarburificaId", query = "select e from TipoHidrocarburifica e where e.codigo = :id")
@@ -34,7 +32,7 @@ public class TipoHidrocarburifica implements Serializable {
     @Id
     @Basic
     @Column(name = "TPHDCDGO", precision = 0)
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_TPHDCDGO")
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long codigo;
     
     /** FK - Código Filial */

@@ -8,6 +8,7 @@ import com.saa.ejb.credito.dao.MetodoPagoDaoService;
 import com.saa.ejb.credito.service.MetodoPagoService;
 import com.saa.model.credito.MetodoPago;
 import com.saa.model.credito.NombreEntidadesCredito;
+import com.saa.rubros.Estado;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -69,6 +70,9 @@ public class MetodoPagoServiceImpl implements MetodoPagoService {
     @Override
     public MetodoPago saveSingle(MetodoPago metodoPago) throws Throwable {
         System.out.println("saveSingle - MetodoPago");
+        if(metodoPago.getCodigo() == null){
+        	metodoPago.setEstado(Long.valueOf(Estado.ACTIVO)); //Activo
+		}
         metodoPago = metodoPagoDaoService.save(metodoPago, metodoPago.getCodigo());
         return metodoPago;
     }

@@ -8,6 +8,7 @@ import com.saa.ejb.credito.dao.EntidadDaoService;
 import com.saa.ejb.credito.service.EntidadService;
 import com.saa.model.credito.Entidad;
 import com.saa.model.credito.NombreEntidadesCredito;
+import com.saa.rubros.Estado;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -69,6 +70,9 @@ public class EntidadServiceImpl implements EntidadService {
     @Override
     public Entidad saveSingle(Entidad entidad) throws Throwable {
         System.out.println("saveSingle - Entidad");
+        if(entidad.getCodigo() == null){
+        	entidad.setEstado(Long.valueOf(Estado.ACTIVO)); //Activo
+		}
         entidad = entidadDaoService.save(entidad, entidad.getCodigo());
         return entidad;
     }

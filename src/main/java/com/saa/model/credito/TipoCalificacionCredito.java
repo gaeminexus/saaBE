@@ -10,7 +10,6 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
-import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
 
 /**
@@ -19,7 +18,6 @@ import jakarta.persistence.Table;
 @SuppressWarnings("serial")
 @Entity
 @Table(name = "TPCL", schema = "CRD")
-@SequenceGenerator(name = "SQ_TPCLCDGO", sequenceName = "CRD.SQ_TPCLCDGO", allocationSize = 1)
 @NamedQueries({
     @NamedQuery(name = "TipoCalificacionCreditoAll", query = "select e from TipoCalificacionCredito e"),
     @NamedQuery(name = "TipoCalificacionCreditoId", query = "select e from TipoCalificacionCredito e where e.codigo = :id")
@@ -32,7 +30,7 @@ public class TipoCalificacionCredito implements Serializable {
     @Id
     @Basic
     @Column(name = "TPCLCDGO", precision = 0)
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_TPCLCDGO")
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long codigo;
 
     /**
@@ -61,7 +59,7 @@ public class TipoCalificacionCredito implements Serializable {
      */
     @Basic
     @Column(name = "TPCLPRVS")
-    private Long provision;
+    private Double provision;
 
     /**
      * ID Estado.
@@ -142,7 +140,7 @@ public class TipoCalificacionCredito implements Serializable {
      * Devuelve provision.
      * @return provision.
      */
-    public Long getProvision() {
+    public Double getProvision() {
         return provision;
     }
 
@@ -150,7 +148,7 @@ public class TipoCalificacionCredito implements Serializable {
      * Asigna provision.
      * @param provision nuevo valor para provision.
      */
-    public void setProvision(Long provision) {
+    public void setProvision(Double provision) {
         this.provision = provision;
     }
 

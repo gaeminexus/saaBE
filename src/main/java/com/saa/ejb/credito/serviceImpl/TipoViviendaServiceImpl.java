@@ -8,6 +8,7 @@ import com.saa.ejb.credito.dao.TipoViviendaDaoService;
 import com.saa.ejb.credito.service.TipoViviendaService;
 import com.saa.model.credito.NombreEntidadesCredito;
 import com.saa.model.credito.TipoVivienda;
+import com.saa.rubros.Estado;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -68,7 +69,10 @@ public class TipoViviendaServiceImpl implements TipoViviendaService {
      */
     @Override
     public TipoVivienda saveSingle(TipoVivienda tipoVivienda) throws Throwable {
-        System.out.println("saveSingle - TipoVivienda");
+        System.out.println("saveSingle - TipoVivienda:" + tipoVivienda.getCodigo());
+        if(tipoVivienda.getCodigo() == null){
+			tipoVivienda.setEstado(Long.valueOf(Estado.ACTIVO)); //Activo
+		}
         tipoVivienda = tipoViviendaDaoService.save(tipoVivienda, tipoVivienda.getCodigo());
         return tipoVivienda;
     }

@@ -8,6 +8,7 @@ import com.saa.ejb.credito.dao.FilialDaoService;
 import com.saa.ejb.credito.service.FilialService;
 import com.saa.model.credito.Filial;
 import com.saa.model.credito.NombreEntidadesCredito;
+import com.saa.rubros.Estado;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -69,6 +70,9 @@ public class FilialServiceImpl implements FilialService {
     @Override
     public Filial saveSingle(Filial filial) throws Throwable {
         System.out.println("saveSingle - Filial");
+        if(filial.getCodigo() == null){
+        	filial.setEstado(Long.valueOf(Estado.ACTIVO)); //Activo
+		}
         filial = filialDaoService.save(filial, filial.getCodigo());
         return filial;
     }

@@ -8,6 +8,7 @@ import com.saa.ejb.credito.dao.CreditoMontoAprobacionDaoService;
 import com.saa.ejb.credito.service.CreditoMontoAprobacionService;
 import com.saa.model.credito.CreditoMontoAprobacion;
 import com.saa.model.credito.NombreEntidadesCredito;
+import com.saa.rubros.Estado;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -69,6 +70,9 @@ public class CreditoMontoAprobacionServiceImpl implements CreditoMontoAprobacion
     @Override
     public CreditoMontoAprobacion saveSingle(CreditoMontoAprobacion creditoMontoAprobacion) throws Throwable {
     	System.out.println("saveSingle - CreditoMontoAprobacion");
+    	if(creditoMontoAprobacion.getCodigo() == null){
+    		creditoMontoAprobacion.setEstado(Long.valueOf(Estado.ACTIVO)); //Activo
+		}
     	creditoMontoAprobacion = CreditoMontoAprobacionDaoService.save(creditoMontoAprobacion, creditoMontoAprobacion.getCodigo());
     	return creditoMontoAprobacion;
     }

@@ -7,6 +7,7 @@ import com.saa.basico.util.IncomeException;
 import com.saa.ejb.credito.dao.ProductoDaoService;
 import com.saa.ejb.credito.service.ProductoService;
 import com.saa.model.credito.Producto;
+import com.saa.rubros.Estado;
 import com.saa.model.credito.NombreEntidadesCredito;
 
 import jakarta.ejb.EJB;
@@ -69,6 +70,9 @@ public class ProductoServiceImpl implements ProductoService {
     @Override
     public Producto saveSingle(Producto producto) throws Throwable {
         System.out.println("saveSingle - Producto");
+        if(producto.getCodigo() == null){
+        	producto.setEstado(Long.valueOf(Estado.ACTIVO)); //Activo
+		}
         producto = productoDaoService.save(producto, producto.getCodigo());
         return producto;
     }

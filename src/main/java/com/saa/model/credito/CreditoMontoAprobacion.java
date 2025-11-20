@@ -2,6 +2,7 @@ package com.saa.model.credito;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
+
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -10,7 +11,6 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
-import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
 
 /**
@@ -19,7 +19,6 @@ import jakarta.persistence.Table;
 @SuppressWarnings("serial")
 @Entity
 @Table(name = "CRDT", schema = "CRD")
-@SequenceGenerator(name = "SQ_CRDTCDGO", sequenceName = "CRD.SEQ$S_77283", allocationSize = 1)
 @NamedQueries({
     @NamedQuery(name = "CreditoMontoAprobacionAll", query = "select e from CreditoMontoAprobacion e"),
     @NamedQuery(name = "CreditoMontoAprobacionId", query = "select e from CreditoMontoAprobacion e where e.codigo = :id")
@@ -32,7 +31,7 @@ public class CreditoMontoAprobacion implements Serializable {
     @Id
     @Basic
     @Column(name = "CRDTCDGO", precision = 10, scale = 0)
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_CRDTCDGO")
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long codigo;
     
     /**

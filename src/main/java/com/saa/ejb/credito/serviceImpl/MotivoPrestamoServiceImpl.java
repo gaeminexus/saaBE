@@ -8,6 +8,7 @@ import com.saa.ejb.credito.dao.MotivoPrestamoDaoService;
 import com.saa.ejb.credito.service.MotivoPrestamoService;
 import com.saa.model.credito.MotivoPrestamo;
 import com.saa.model.credito.NombreEntidadesCredito;
+import com.saa.rubros.Estado;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -69,6 +70,9 @@ public class MotivoPrestamoServiceImpl implements MotivoPrestamoService {
     @Override
     public MotivoPrestamo saveSingle(MotivoPrestamo motivo) throws Throwable {
         System.out.println("saveSingle - MotivoPrestamo");
+        if(motivo.getCodigo() == null){
+        	motivo.setEstado(Long.valueOf(Estado.ACTIVO)); //Activo
+		}
         motivo = motivoPrestamoDaoService.save(motivo, motivo.getCodigo());
         return motivo;
     }

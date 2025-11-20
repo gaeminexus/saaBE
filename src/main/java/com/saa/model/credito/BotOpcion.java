@@ -3,16 +3,15 @@ package com.saa.model.credito;
 
 	import java.io.Serializable;
 
-	import jakarta.persistence.Basic;
-	import jakarta.persistence.Column;
-	import jakarta.persistence.Entity;
-	import jakarta.persistence.GeneratedValue;
-	import jakarta.persistence.GenerationType;
-	import jakarta.persistence.Id;
-	import jakarta.persistence.NamedQueries;
-	import jakarta.persistence.NamedQuery;
-	import jakarta.persistence.SequenceGenerator;
-	import jakarta.persistence.Table;
+import jakarta.persistence.Basic;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.NamedQueries;
+import jakarta.persistence.NamedQuery;
+import jakarta.persistence.Table;
 
 	/**
 	 * Representa la tabla BTPC (Opciones del sistema).
@@ -20,7 +19,6 @@ package com.saa.model.credito;
 	@SuppressWarnings("serial")
 	@Entity
 	@Table(name = "BTPC", schema = "CRD")
-	@SequenceGenerator(name = "SQ_BTPCCDGO", sequenceName = "CRD.SQ_BTPCCDGO", allocationSize = 1)
 	@NamedQueries({
 	    @NamedQuery(name = "BotOpcionAll", query = "select e from BotOpcion e"),
 	    @NamedQuery(name = "BotOpcionId", query = "select e from BotOpcion e where e.codigo = :id")
@@ -33,7 +31,7 @@ package com.saa.model.credito;
 	    @Id
 	    @Basic
 	    @Column(name = "BTPCCDGO", precision = 0)
-	    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_BTPCCDGO")
+	    @GeneratedValue(strategy = GenerationType.IDENTITY)
 	    private Long codigo;
 
 	    /**

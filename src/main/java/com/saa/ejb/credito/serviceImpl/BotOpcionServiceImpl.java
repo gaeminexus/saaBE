@@ -8,6 +8,7 @@ import com.saa.ejb.credito.dao.BotOpcionDaoService;
 import com.saa.ejb.credito.service.BotOpcionService;
 import com.saa.model.credito.BotOpcion;
 import com.saa.model.credito.NombreEntidadesCredito;
+import com.saa.rubros.Estado;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -69,6 +70,9 @@ public class BotOpcionServiceImpl implements BotOpcionService {
     @Override
     public BotOpcion saveSingle(BotOpcion botOpcion) throws Throwable {
     	System.out.println("saveSingle - BotOpcion");
+    	if(botOpcion.getCodigo() == null){
+    		botOpcion.setEstado(Long.valueOf(Estado.ACTIVO)); //Activo
+		}
     	botOpcion = BotOpcionDaoService.save(botOpcion, botOpcion.getCodigo());
     	return botOpcion;
     }

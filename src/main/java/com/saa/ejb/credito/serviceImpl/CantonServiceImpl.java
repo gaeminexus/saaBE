@@ -8,6 +8,7 @@ import com.saa.ejb.credito.dao.CantonDaoService;
 import com.saa.ejb.credito.service.CantonService;
 import com.saa.model.credito.Canton;
 import com.saa.model.credito.NombreEntidadesCredito;
+import com.saa.rubros.Estado;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -69,6 +70,9 @@ public class CantonServiceImpl implements CantonService  {
     @Override
     public Canton saveSingle(Canton canton) throws Throwable {
     	System.out.println("saveSingle - Canton");
+    	if(canton.getCodigo() == null){
+    		canton.setIdEstado(Long.valueOf(Estado.ACTIVO)); //Activo
+		}
     	canton = CantonDaoService.save(canton, canton.getCodigo());
     	return canton;
     }

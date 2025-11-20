@@ -8,6 +8,7 @@ import com.saa.ejb.credito.dao.EstadoCivilDaoService;
 import com.saa.ejb.credito.service.EstadoCivilService;
 import com.saa.model.credito.EstadoCivil;
 import com.saa.model.credito.NombreEntidadesCredito;
+import com.saa.rubros.Estado;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -69,6 +70,9 @@ public class EstadoCivilServiceImpl implements EstadoCivilService {
     @Override
     public EstadoCivil saveSingle(EstadoCivil estadoCivil) throws Throwable {
     	System.out.println("saveSingle - EstadoCivil");
+    	if(estadoCivil.getCodigo() == null){
+    		estadoCivil.setIdEstado(Long.valueOf(Estado.ACTIVO)); //Activo
+		}
     	estadoCivil = EstadoCivilDaoService.save(estadoCivil, estadoCivil.getCodigo());
     	return estadoCivil;
     }

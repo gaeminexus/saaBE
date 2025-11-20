@@ -13,7 +13,6 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
-import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
 import jakarta.persistence.Temporal;
 import jakarta.persistence.TemporalType;
@@ -24,7 +23,6 @@ import jakarta.persistence.TemporalType;
 @SuppressWarnings("serial")
 @Entity
 @Table(name = "PRDC", schema = "CRD")
-@SequenceGenerator(name = "SQ_PRDCCDGO", sequenceName = "CRD.SQ_PRDCCDGO", allocationSize = 1)
 @NamedQueries({
     @NamedQuery(name = "ProductoAll", query = "select e from Producto e"),
     @NamedQuery(name = "ProductoId", query = "select e from Producto e where e.codigo = :id")
@@ -39,7 +37,7 @@ public class Producto implements Serializable {
     @Id
     @Basic
     @Column(name = "PRDCCDGO")
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_PRDCCDGO")
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long codigo;
 
     /** Código SBS */

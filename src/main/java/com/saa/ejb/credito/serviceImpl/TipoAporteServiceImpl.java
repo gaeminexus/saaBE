@@ -7,6 +7,7 @@ import com.saa.basico.util.IncomeException;
 import com.saa.ejb.credito.dao.TipoAporteDaoService;
 import com.saa.ejb.credito.service.TipoAporteService;
 import com.saa.model.credito.TipoAporte;
+import com.saa.rubros.Estado;
 import com.saa.model.credito.NombreEntidadesCredito;
 
 import jakarta.ejb.EJB;
@@ -69,6 +70,9 @@ public class TipoAporteServiceImpl implements TipoAporteService {
     @Override
     public TipoAporte saveSingle(TipoAporte tipoAporte) throws Throwable {
         System.out.println("saveSingle - TipoAporte");
+        if(tipoAporte.getCodigo() == null){
+        	tipoAporte.setEstado(Long.valueOf(Estado.ACTIVO)); //Activo
+		}
         tipoAporte = tipoAporteDaoService.save(tipoAporte, tipoAporte.getCodigo());
         return tipoAporte;
     }

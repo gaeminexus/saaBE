@@ -8,6 +8,7 @@ import com.saa.ejb.credito.dao.TipoHidrocarburificaDaoService;
 import com.saa.ejb.credito.service.TipoHidrocarburificaService;
 import com.saa.model.credito.NombreEntidadesCredito;
 import com.saa.model.credito.TipoHidrocarburifica;
+import com.saa.rubros.Estado;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -69,6 +70,9 @@ public class TipoHidrocarburificaServiceImpl implements TipoHidrocarburificaServ
     @Override
     public TipoHidrocarburifica saveSingle(TipoHidrocarburifica tipoHidrocarburifica) throws Throwable {
         System.out.println("saveSingle - TipoHidrocarburifica");
+        if(tipoHidrocarburifica.getCodigo() == null){
+        	tipoHidrocarburifica.setEstado(Long.valueOf(Estado.ACTIVO)); //Activo
+		}
         tipoHidrocarburifica = tipoHidrocarburificaDaoService.save(tipoHidrocarburifica, tipoHidrocarburifica.getCodigo());
         return tipoHidrocarburifica;
     }

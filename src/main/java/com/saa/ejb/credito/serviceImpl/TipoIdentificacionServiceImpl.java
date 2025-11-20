@@ -7,6 +7,7 @@ import com.saa.basico.util.IncomeException;
 import com.saa.ejb.credito.dao.TipoIdentificacionDaoService;
 import com.saa.ejb.credito.service.TipoIdentificacionService;
 import com.saa.model.credito.TipoIdentificacion;
+import com.saa.rubros.Estado;
 import com.saa.model.credito.NombreEntidadesCredito;
 
 import jakarta.ejb.EJB;
@@ -69,6 +70,9 @@ public class TipoIdentificacionServiceImpl implements TipoIdentificacionService 
     @Override
     public TipoIdentificacion saveSingle(TipoIdentificacion tipoIdentificacion) throws Throwable {
         System.out.println("saveSingle - TipoIdentificacion");
+        if(tipoIdentificacion.getCodigo() == null){
+        	tipoIdentificacion.setEstado(Long.valueOf(Estado.ACTIVO)); //Activo
+		}
         tipoIdentificacion = tipoIdentificacionDaoService.save(tipoIdentificacion, tipoIdentificacion.getCodigo());
         return tipoIdentificacion;
     }

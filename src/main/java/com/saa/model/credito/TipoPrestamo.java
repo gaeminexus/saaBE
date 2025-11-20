@@ -10,7 +10,6 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
-import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
 
 /**
@@ -19,7 +18,6 @@ import jakarta.persistence.Table;
 @SuppressWarnings("serial")
 @Entity
 @Table(name = "TPPR", schema = "CRD")
-@SequenceGenerator(name = "SQ_TPPRCDGO", sequenceName = "CRD.SQ_TPPRCDGO", allocationSize = 1)
 @NamedQueries({
     @NamedQuery(name = "TipoPrestamoAll", query = "select e from TipoPrestamo e"),
     @NamedQuery(name = "TipoPrestamoId", query = "select e from TipoPrestamo e where e.codigo = :id")
@@ -32,7 +30,7 @@ public class TipoPrestamo implements Serializable {
     @Id
     @Basic
     @Column(name = "TPPRCDGO", precision = 0)
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_TPPRCDGO")
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long codigo;
 
     /**
@@ -47,7 +45,7 @@ public class TipoPrestamo implements Serializable {
      */
     @Basic
     @Column(name = "TPPRCSPB", length = 50)
-    private String codigoSuperBancos;
+    private String codigoSBS;
 
     /**
      * Tipo.
@@ -110,16 +108,16 @@ public class TipoPrestamo implements Serializable {
      * Devuelve codigoSuperBancos.
      * @return codigoSuperBancos.
      */
-    public String getCodigoSuperBancos() {
-        return codigoSuperBancos;
+    public String getCodigoSBS() {
+        return codigoSBS;
     }
 
     /**
      * Asigna codigoSuperBancos.
      * @param codigoSuperBancos nuevo valor para codigoSuperBancos.
      */
-    public void setCodigoSuperBancos(String codigoSuperBancos) {
-        this.codigoSuperBancos = codigoSuperBancos;
+    public void setCodigoSBS(String codigoSBS) {
+        this.codigoSBS = codigoSBS;
     }
 
     /**

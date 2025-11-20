@@ -10,7 +10,6 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
-import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
 
 /**
@@ -19,7 +18,6 @@ import jakarta.persistence.Table;
 @SuppressWarnings("serial")
 @Entity
 @Table(name = "PRFS", schema = "CRD")
-@SequenceGenerator(name = "SQ_PRFSCDGO", sequenceName = "CRD.SQ_PRFSCDGO", allocationSize = 1)
 @NamedQueries({
     @NamedQuery(name = "ProfesionAll", query = "select e from Profesion e"),
     @NamedQuery(name = "ProfesionId", query = "select e from Profesion e where e.codigo = :id")
@@ -32,7 +30,7 @@ public class Profesion implements Serializable {
     @Id
     @Basic
     @Column(name = "PRFSCDGO", precision = 0)
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_PRFSCDGO")
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long codigo;
 
     /**

@@ -106,15 +106,9 @@ public class AporteRest {
         System.out.println("selectByCriteria de APORTE");
         Response respuesta = null;
     	try {
-    		respuesta = Response.status(Response.Status.OK)
-    				.entity(aporteService.selectByCriteria(registros))
-    				.type(MediaType.APPLICATION_JSON)
-    				.build();
+    		respuesta = Response.status(Response.Status.OK).entity(aporteService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
-			respuesta = Response.status(Response.Status.BAD_REQUEST)
-					.entity(e.getMessage())
-					.type(MediaType.APPLICATION_JSON)
-					.build();
+			respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
 		}
     	return respuesta;
     }

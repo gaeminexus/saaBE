@@ -13,7 +13,6 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
-import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
 
 /**
@@ -22,7 +21,6 @@ import jakarta.persistence.Table;
 @SuppressWarnings("serial")
 @Entity
 @Table(name = "PRTC", schema = "CRD")
-@SequenceGenerator(name = "SQ_PRTCCDGO", sequenceName = "CRD.SQ_PRTCCDGO", allocationSize = 1)
 @NamedQueries({
     @NamedQuery(name = "ParticipeAll", query = "select e from Participe e"),
     @NamedQuery(name = "ParticipeId", query = "select e from Participe e where e.codigo = :id")
@@ -33,7 +31,7 @@ public class Participe implements Serializable {
     @Id
     @Basic
     @Column(name = "PRTCCDGO")
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_PRTCCDGO")
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long codigo;
 
 

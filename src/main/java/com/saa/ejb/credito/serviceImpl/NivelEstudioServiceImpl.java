@@ -8,6 +8,7 @@ import com.saa.ejb.credito.dao.NivelEstudioDaoService;
 import com.saa.ejb.credito.service.NivelEstudioService;
 import com.saa.model.credito.NivelEstudio;
 import com.saa.model.credito.NombreEntidadesCredito;
+import com.saa.rubros.Estado;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -69,6 +70,9 @@ public class NivelEstudioServiceImpl implements NivelEstudioService {
     @Override
     public NivelEstudio saveSingle(NivelEstudio nivelEstudio) throws Throwable {
         System.out.println("saveSingle - NivelEstudio");
+        if(nivelEstudio.getCodigo() == null){
+        	nivelEstudio.setEstado(Long.valueOf(Estado.ACTIVO)); //Activo
+		}
         nivelEstudio = nivelEstudioDaoService.save(nivelEstudio, nivelEstudio.getCodigo());
         return nivelEstudio;
     }

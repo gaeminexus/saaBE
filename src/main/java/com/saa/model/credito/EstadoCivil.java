@@ -10,7 +10,6 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
-import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
 
 /**
@@ -20,7 +19,6 @@ import jakarta.persistence.Table;
 @SuppressWarnings("serial")
 @Entity
 @Table(name = "ESCV", schema = "CRD")
-@SequenceGenerator(name = "SQ_ESCVCDGO", sequenceName = "CRD.ISEQ$$_77253", allocationSize = 1)
 @NamedQueries({
     @NamedQuery(name = "EstadoCivilAll", query = "select e from EstadoCivil e"),
     @NamedQuery(name = "EstadoCivilId", query = "select e from EstadoCivil e where e.codigo = :id")

@@ -7,6 +7,7 @@ import com.saa.basico.util.IncomeException;
 import com.saa.ejb.credito.dao.TipoCesantiaDaoService;
 import com.saa.ejb.credito.service.TipoCesantiaService;
 import com.saa.model.credito.TipoCesantia;
+import com.saa.rubros.Estado;
 import com.saa.model.credito.NombreEntidadesCredito;
 
 import jakarta.ejb.EJB;
@@ -69,6 +70,9 @@ public class TipoCesantiaServiceImpl implements TipoCesantiaService {
     @Override
     public TipoCesantia saveSingle(TipoCesantia tipoCesantia) throws Throwable {
         System.out.println("saveSingle - TipoCesantia");
+        if(tipoCesantia.getCodigo() == null){
+        	tipoCesantia.setEstado(Long.valueOf(Estado.ACTIVO)); //Activo
+		}
         tipoCesantia = tipoCesantiaDaoService.save(tipoCesantia, tipoCesantia.getCodigo());
         return tipoCesantia;
     }

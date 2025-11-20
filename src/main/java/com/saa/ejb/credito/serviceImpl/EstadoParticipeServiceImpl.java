@@ -8,6 +8,7 @@ import com.saa.ejb.credito.dao.EstadoParticipeDaoService;
 import com.saa.ejb.credito.service.EstadoParticipeService;
 import com.saa.model.credito.EstadoParticipe;
 import com.saa.model.credito.NombreEntidadesCredito;
+import com.saa.rubros.Estado;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -69,6 +70,9 @@ public class EstadoParticipeServiceImpl implements EstadoParticipeService {
     @Override
     public EstadoParticipe saveSingle(EstadoParticipe estadoParticipe) throws Throwable {
     	System.out.println("saveSingle - EstadoParticipe");
+    	if(estadoParticipe.getCodigo() == null){
+    		estadoParticipe.setIdEstado(Long.valueOf(Estado.ACTIVO)); //Activo
+		}
     	estadoParticipe = EstadoParticipeDaoService.save(estadoParticipe, estadoParticipe.getCodigo());
     	return estadoParticipe;
     }

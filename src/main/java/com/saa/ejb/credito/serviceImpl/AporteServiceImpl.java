@@ -8,6 +8,7 @@ import com.saa.ejb.credito.dao.AporteDaoService;
 import com.saa.ejb.credito.service.AporteService;
 import com.saa.model.credito.Aporte;
 import com.saa.model.credito.NombreEntidadesCredito;
+import com.saa.rubros.Estado;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -69,6 +70,9 @@ public class AporteServiceImpl implements AporteService {
     @Override
     public Aporte saveSingle(Aporte aporte) throws Throwable {
         System.out.println("saveSingle - Aporte");
+        if(aporte.getCodigo() == null){
+        	aporte.setEstado(Long.valueOf(Estado.ACTIVO)); //Activo
+		}
         aporte = aporteDaoService.save(aporte, aporte.getCodigo());
         return aporte;
     }

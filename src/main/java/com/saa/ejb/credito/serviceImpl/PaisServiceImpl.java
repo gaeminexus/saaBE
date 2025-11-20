@@ -7,6 +7,7 @@ import com.saa.basico.util.IncomeException;
 import com.saa.ejb.credito.dao.PaisDaoService;
 import com.saa.ejb.credito.service.PaisService;
 import com.saa.model.credito.Pais;
+import com.saa.rubros.Estado;
 import com.saa.model.credito.NombreEntidadesCredito;
 
 import jakarta.ejb.EJB;
@@ -69,6 +70,9 @@ public class PaisServiceImpl implements PaisService {
     @Override
     public Pais saveSingle(Pais pais) throws Throwable {
         System.out.println("saveSingle - Pais");
+        if(pais.getCodigo() == null){
+        	pais.setEstado(Long.valueOf(Estado.ACTIVO)); //Activo
+		}
         pais = paisDaoService.save(pais, pais.getCodigo());
         return pais;
     }

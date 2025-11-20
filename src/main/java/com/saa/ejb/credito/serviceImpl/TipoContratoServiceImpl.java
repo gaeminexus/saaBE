@@ -7,6 +7,7 @@ import com.saa.basico.util.IncomeException;
 import com.saa.ejb.credito.dao.TipoContratoDaoService;
 import com.saa.ejb.credito.service.TipoContratoService;
 import com.saa.model.credito.TipoContrato;
+import com.saa.rubros.Estado;
 import com.saa.model.credito.NombreEntidadesCredito;
 
 import jakarta.ejb.EJB;
@@ -69,6 +70,9 @@ public class TipoContratoServiceImpl implements TipoContratoService {
     @Override
     public TipoContrato saveSingle(TipoContrato tipoContrato) throws Throwable {
         System.out.println("saveSingle - TipoContrato");
+        if(tipoContrato.getCodigo() == null){
+        	tipoContrato.setEstado(Long.valueOf(Estado.ACTIVO)); //Activo
+		}
         tipoContrato = tipoContratoDaoService.save(tipoContrato, tipoContrato.getCodigo());
         return tipoContrato;
     }

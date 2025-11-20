@@ -7,6 +7,7 @@ import com.saa.basico.util.IncomeException;
 import com.saa.ejb.credito.dao.TipoAdjuntoDaoService;
 import com.saa.ejb.credito.service.TipoAdjuntoService;
 import com.saa.model.credito.TipoAdjunto;
+import com.saa.rubros.Estado;
 import com.saa.model.credito.NombreEntidadesCredito;
 
 import jakarta.ejb.EJB;
@@ -69,6 +70,9 @@ public class TipoAdjuntoServiceImpl implements TipoAdjuntoService {
     @Override
     public TipoAdjunto saveSingle(TipoAdjunto tipoAdjunto) throws Throwable {
         System.out.println("saveSingle - TipoAdjunto");
+        if(tipoAdjunto.getCodigo() == null){
+        	tipoAdjunto.setEstado(Long.valueOf(Estado.ACTIVO)); //Activo
+		}
         tipoAdjunto = tipoAdjuntoDaoService.save(tipoAdjunto, tipoAdjunto.getCodigo());
         return tipoAdjunto;
     }
