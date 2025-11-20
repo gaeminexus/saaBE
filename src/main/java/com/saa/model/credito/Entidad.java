@@ -177,7 +177,7 @@ public class Entidad implements Serializable {
     /** ID Estado */
     @Basic
     @Column(name = "ENTDIDST")
-    private Long estado;
+    private Long idEstado;
 
     /** URL foto/logo */
     @Basic
@@ -273,8 +273,8 @@ public class Entidad implements Serializable {
 //    public LocalDateTime getFechaModificacion() { return fechaModificacion; }
 //    public void setFechaModificacion(LocalDateTime fechaModificacion) { this.fechaModificacion = fechaModificacion; }
 
-    public Long getEstado() { return estado; }
-    public void setEstado(Long estado) { this.estado = estado; }
+    public Long getIdEstado() { return idEstado; }
+    public void setIdEstado(Long idEstado) { this.idEstado = idEstado; }
 
     public String getUrlFotoLogo() { return urlFotoLogo; }
     public void setUrlFotoLogo(String urlFotoLogo) { this.urlFotoLogo = urlFotoLogo; }

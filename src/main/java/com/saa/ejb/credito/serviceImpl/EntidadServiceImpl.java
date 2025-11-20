@@ -71,7 +71,7 @@ public class EntidadServiceImpl implements EntidadService {
     public Entidad saveSingle(Entidad entidad) throws Throwable {
         System.out.println("saveSingle - Entidad");
         if(entidad.getCodigo() == null){
-        	entidad.setEstado(Long.valueOf(Estado.ACTIVO)); //Activo
+        	entidad.setIdEstado(Long.valueOf(Estado.ACTIVO)); //Activo
 		}
         entidad = entidadDaoService.save(entidad, entidad.getCodigo());
         return entidad;
