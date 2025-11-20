@@ -15,10 +15,13 @@ import java.util.List;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.scp.DetalleRubro;
 
+import jakarta.ejb.Local;
+
 /**
  * @author GaemiSoft.
  *         Clase DetalleRubroDao.
  */
+@Local
 public interface DetalleRubroDaoService extends EntityDao<DetalleRubro> {
 
 	/**

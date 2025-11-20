@@ -13,6 +13,7 @@ package com.saa.basico.ejb;
 
 import com.saa.basico.util.EntityService;
 import com.saa.model.scp.Usuario;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
@@ -22,6 +23,7 @@ import com.saa.model.scp.Usuario;
  *         Accede a los metodos DAO y procesa los datos para el cliente.
  *         </p>
  */
+@Local
 public interface UsuarioService extends EntityService<Usuario> {
 	/**
 	 * Recupera entidad con el id

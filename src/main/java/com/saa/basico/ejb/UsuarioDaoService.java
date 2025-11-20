@@ -15,12 +15,14 @@ import java.util.List;
 
 import com.saa.basico.util.EntityDao;
 import com.saa.model.scp.Usuario;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  *
  *         Clase UsuarioDao.
  */
+@Local
 public interface UsuarioDaoService extends EntityDao<Usuario> {
 
 List<Usuario> selectUsuarios() throws Throwable;

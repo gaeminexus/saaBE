@@ -16,6 +16,8 @@ import java.util.List;
 import com.saa.basico.util.EntityService;
 import com.saa.model.scp.DetalleRubro;
 
+import jakarta.ejb.Local;
+
 /**
  * @author GaemiSoft.
  *
@@ -24,6 +26,7 @@ import com.saa.model.scp.DetalleRubro;
  *         Accede a los metodos DAO y procesa los datos para el cliente.
  *         </p>
  */
+@Local
 public interface DetalleRubroService extends EntityService<DetalleRubro> {
 	/**
 	 * Recupera entidad con el id
