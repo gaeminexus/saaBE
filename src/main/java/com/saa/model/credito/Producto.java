@@ -43,7 +43,7 @@ public class Producto implements Serializable {
     /** Código SBS */
     @Basic
     @Column(name = "PRDCCSPB", length = 50, nullable = false)
-    private String codigoSbs;
+    private String codigoSBS;
 
     /** Nombre */
     @Basic
@@ -115,12 +115,12 @@ public class Producto implements Serializable {
         this.codigo = codigo;
     }
 
-    public String getCodigoSbs() {
-        return codigoSbs;
+    public String getCodigoSBS() {
+        return codigoSBS;
     }
 
-    public void setCodigoSbs(String codigoSbs) {
-        this.codigoSbs = codigoSbs;
+    public void setCodigoSBS(String codigoSBS) {
+        this.codigoSBS = codigoSBS;
     }
 
     public String getNombre() {

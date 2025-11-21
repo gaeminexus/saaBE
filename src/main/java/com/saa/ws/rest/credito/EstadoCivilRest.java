@@ -96,7 +96,7 @@ public class EstadoCivilRest {
 
         try {
             respuesta = Response.status(Response.Status.OK)
-                    .entity(estadoCivilService.selectByCriteria(registros))
+            		.entity(estadoCivilService.selectByCriteria(registros))
                     .type(MediaType.APPLICATION_JSON)
                     .build();
 
