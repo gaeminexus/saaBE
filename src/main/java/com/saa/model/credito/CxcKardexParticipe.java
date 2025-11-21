@@ -22,8 +22,8 @@ import jakarta.persistence.Table;
 @Entity
 @Table(name = "CXCK", schema = "CRD")
 @NamedQueries({
-    @NamedQuery(name = "CXCKardexParticipeAll", query = "select e from CXCKardexParticipe e"),
-    @NamedQuery(name = "CXCKardexParticipeId", query = "select e from CXCKardexParticipe e where e.codigo = :id")
+    @NamedQuery(name = "CxcKardexParticipeAll", query = "select e from CxcKardexParticipe e"),
+    @NamedQuery(name = "CxcKardexParticipeId", query = "select e from CxcKardexParticipe e where e.codigo = :id")
 })
 public class CxcKardexParticipe implements Serializable {
 
