@@ -1,0 +1,92 @@
+package com.saa.ws.rest.credito;
+
+import java.util.List;
+
+import com.saa.basico.util.DatosBusqueda;
+import com.saa.ejb.credito.dao.TasaPrestamoDaoService;
+import com.saa.ejb.credito.service.TasaPrestamoService;
+import com.saa.model.credito.NombreEntidadesCredito;
+import com.saa.model.credito.TasaPrestamo;
+
+import jakarta.ejb.EJB;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DELETE;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.PUT;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.UriInfo;
+
+@Path("tspr")
+public class TasaPrestamoRest {
+
+    @EJB
+    private TasaPrestamoDaoService tasaPrestamoDaoService;
+
+    @EJB
+    private TasaPrestamoService tasaPrestamoService;
+
+    @Context
+    private UriInfo context;
+
+    public TasaPrestamoRest() {}
+
+    @GET
+    @Path("/getAll")
+    @Produces("application/json")
+    public List<TasaPrestamo> getAll() throws Throwable {
+        return tasaPrestamoDaoService.selectAll(NombreEntidadesCredito.TASA_PRESTAMO);
+    }
+
+    @GET
+    @Path("/getId/{id}")
+    @Produces("application/json")
+    public TasaPrestamo getId(@PathParam("id") Long id) throws Throwable {
+        return tasaPrestamoDaoService.selectById(id, NombreEntidadesCredito.TASA_PRESTAMO);
+    }
+
+    @PUT
+    @Consumes("application/json")
+    public TasaPrestamo put(TasaPrestamo registro) throws Throwable {
+        System.out.println("LLEGA AL SERVICIO PUT - TASA PRESTAMO");
+        return tasaPrestamoService.saveSingle(registro);
+    }
+
+    @POST
+    @Consumes("application/json")
+    public TasaPrestamo post(TasaPrestamo registro) throws Throwable {
+        System.out.println("LLEGA AL SERVICIO POST - TASA PRESTAMO");
+        return tasaPrestamoService.saveSingle(registro);
+    }
+
+    @POST
+    @Path("selectByCriteria")
+    @Consumes("application/json")
+    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+        System.out.println("selectByCriteria de TASA PRESTAMO");
+        Response respuesta = null;
+        try {
+            respuesta = Response.status(Response.Status.OK)
+                    .entity(tasaPrestamoService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            respuesta = Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+        return respuesta;
+    }
+
+    @DELETE
+    @Path("/{id}")
+    @Consumes("application/json")
+    public void delete(@PathParam("id") Long id) throws Throwable {
+        System.out.println("LLEGA AL SERVICIO DELETE - TASA PRESTAMO");
+        TasaPrestamo elimina = new TasaPrestamo();
+        tasaPrestamoDaoService.remove(elimina, id);
+    }
+}

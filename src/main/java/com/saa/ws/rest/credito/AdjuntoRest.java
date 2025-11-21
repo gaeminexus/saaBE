@@ -1,0 +1,96 @@
+package com.saa.ws.rest.credito;
+
+import java.util.List;
+
+import com.saa.basico.util.DatosBusqueda;
+import com.saa.ejb.credito.dao.AdjuntoDaoService;
+import com.saa.ejb.credito.service.AdjuntoService;
+import com.saa.model.credito.Adjunto;
+import com.saa.model.credito.NombreEntidadesCredito;
+
+import jakarta.ejb.EJB;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DELETE;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.PUT;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.UriInfo;
+
+@Path("adjn")
+public class AdjuntoRest {
+
+    @EJB
+    private AdjuntoDaoService adjuntoDaoService;
+
+    @EJB
+    private AdjuntoService adjuntoService;
+
+    @Context
+    private UriInfo context;
+
+    public AdjuntoRest() {
+    }
+
+    @GET
+    @Path("/getAll")
+    @Produces("application/json")
+    public List<Adjunto> getAll() throws Throwable {
+        return adjuntoDaoService.selectAll(NombreEntidadesCredito.ADJUNTO);
+    }
+
+    @GET
+    @Path("/getId/{id}")
+    @Produces("application/json")
+    public Adjunto getId(@PathParam("id") Long id) throws Throwable {
+        return adjuntoDaoService.selectById(id, NombreEntidadesCredito.ADJUNTO);
+    }
+
+    @PUT
+    @Consumes("application/json")
+    public Adjunto put(Adjunto registro) throws Throwable {
+        System.out.println("LLEGA AL SERVICIO PUT - ADJUNTO");
+        return adjuntoService.saveSingle(registro);
+    }
+
+    @POST
+    @Consumes("application/json")
+    public Adjunto post(Adjunto registro) throws Throwable {
+        System.out.println("LLEGA AL SERVICIO POST - ADJUNTO");
+        return adjuntoService.saveSingle(registro);
+    }
+
+    @POST
+    @Path("selectByCriteria")
+    @Consumes("application/json")
+    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+        System.out.println("selectByCriteria de ADJUNTO");
+        Response respuesta = null;
+
+        try {
+            respuesta = Response.status(Response.Status.OK)
+                    .entity(adjuntoService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            respuesta = Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+
+        return respuesta;
+    }
+
+    @DELETE
+    @Path("/{id}")
+    @Consumes("application/json")
+    public void delete(@PathParam("id") Long id) throws Throwable {
+        System.out.println("LLEGA AL SERVICIO DELETE - ADJUNTO");
+        Adjunto elimina = new Adjunto();
+        adjuntoDaoService.remove(elimina, id);
+    }
+}
