@@ -121,5 +121,6 @@ public class MoraPrestamo implements Serializable {
     public void setTasaAnual(Long tasaAnual) {
         this.tasaAnual = tasaAnual;
     }
+
 }
 
