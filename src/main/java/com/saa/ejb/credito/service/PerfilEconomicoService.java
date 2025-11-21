@@ -1,5 +1,11 @@
 package com.saa.ejb.credito.service;
 
-public interface PerfilEconomicoService {
+import com.saa.basico.util.EntityService;
+import com.saa.model.credito.PerfilEconomico;
+
+import jakarta.ejb.Local;
+
+@Local
+public interface PerfilEconomicoService extends EntityService<PerfilEconomico>{
 
 }

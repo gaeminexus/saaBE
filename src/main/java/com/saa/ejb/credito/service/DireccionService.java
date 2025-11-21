@@ -1,5 +1,11 @@
 package com.saa.ejb.credito.service;
 
-public interface DireccionService {
+import com.saa.basico.util.EntityService;
+import com.saa.model.credito.Direccion;
+
+import jakarta.ejb.Local;
+
+@Local
+public interface DireccionService extends EntityService<Direccion>{
 
 }

@@ -1,5 +1,11 @@
 package com.saa.ejb.credito.service;
 
-public interface CesantiaService {
+import com.saa.basico.util.EntityService;
+import com.saa.model.credito.Cesantia;
+
+import jakarta.ejb.Local;
+
+@Local
+public interface CesantiaService extends EntityService<Cesantia>{
 
 }
