@@ -99,3 +99,4 @@ public class TipoAdjunto implements Serializable {
         this.estado = estado;
     }
 }
+

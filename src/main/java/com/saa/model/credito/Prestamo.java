@@ -458,3 +458,4 @@ public class Prestamo implements Serializable {
     public void setFirmadoTitular(Long firmadoTitular) { this.firmadoTitular = firmadoTitular; }
 
 }
+

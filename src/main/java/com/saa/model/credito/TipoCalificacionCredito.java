@@ -168,3 +168,4 @@ public class TipoCalificacionCredito implements Serializable {
         this.estado = estado;
     }
 }
+

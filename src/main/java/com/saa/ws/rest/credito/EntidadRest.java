@@ -75,9 +75,15 @@ public class EntidadRest {
      */
     @PUT
     @Consumes("application/json")
-    public Entidad put(Entidad registro) throws Throwable {
+    public Response put(Entidad registro) throws Throwable {
         System.out.println("LLEGA AL SERVICIO PUT");
-        return entidadService.saveSingle(registro);
+        Response respuesta = null;
+        try {
+            respuesta = Response.status(Response.Status.OK).entity(entidadService.saveSingle(registro)).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+        return respuesta;
     }
 
     /**
@@ -88,9 +94,15 @@ public class EntidadRest {
      */
     @POST
     @Consumes("application/json")
-    public Entidad post(Entidad registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO");
-        return entidadService.saveSingle(registro);
+    public Response post(Entidad registro) throws Throwable {
+        System.out.println("LLEGA AL POST");
+        Response respuesta = null;
+        try {
+            respuesta = Response.status(Response.Status.OK).entity(entidadService.saveSingle(registro)).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+        return respuesta;
     }
 
     /**

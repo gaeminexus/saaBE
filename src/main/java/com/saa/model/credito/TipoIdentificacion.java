@@ -99,3 +99,4 @@ public class TipoIdentificacion implements Serializable {
         this.estado = estado;
     }
 }
+

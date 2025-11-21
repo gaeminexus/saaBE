@@ -100,3 +100,4 @@ public class EstadoCesantia implements Serializable {
         this.idEstado = idEstado;
     }
 }
+

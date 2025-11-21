@@ -168,3 +168,4 @@ public class TipoPago implements Serializable {
         this.idEstado = idEstado;
     }
 }
+

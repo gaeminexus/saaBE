@@ -13,7 +13,6 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
-import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
 
 /**
@@ -22,7 +21,7 @@ import jakarta.persistence.Table;
 @SuppressWarnings("serial")
 @Entity
 @Table(name = "BPRF", schema = "CRD")
-@SequenceGenerator(name = "SQ_BPRFCDGO", sequenceName = "CRD.SQ_BPRFCDGO", allocationSize = 1)
+
 @NamedQueries({
     @NamedQuery(name = "BioProfileAll", query = "select e from BioProfile e"),
     @NamedQuery(name = "BioProfileId", query = "select e from BioProfile e where e.codigo = :id")
@@ -35,7 +34,7 @@ public class BioProfile implements Serializable {
     @Id
     @Basic
     @Column(name = "BPRFCDGO")
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_BPRFCDGO")
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long codigo;
 
     /**
@@ -110,3 +109,4 @@ public class BioProfile implements Serializable {
         this.estado = estado;
     }
 }
+

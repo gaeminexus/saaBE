@@ -123,3 +123,4 @@ public class Canton implements Serializable {
         this.idEstado = idEstado;
     }
 }
+

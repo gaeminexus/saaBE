@@ -99,3 +99,4 @@ public class NivelEstudio implements Serializable {
         this.estado = estado;
     }
 }
+

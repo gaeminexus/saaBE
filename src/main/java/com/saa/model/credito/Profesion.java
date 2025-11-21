@@ -122,3 +122,4 @@ public class Profesion implements Serializable {
         this.estado = estado;
     }
 }
+

@@ -122,3 +122,4 @@ public class TipoHidrocarburifica implements Serializable {
         this.estado = estado;
     }
 }
+

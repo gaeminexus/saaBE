@@ -122,3 +122,4 @@ public class Filial implements Serializable {
         this.estado = estado;
     }
 }
+

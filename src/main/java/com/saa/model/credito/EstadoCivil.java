@@ -123,3 +123,4 @@ public class EstadoCivil implements Serializable {
         this.idEstado = idEstado;
     }
 }
+

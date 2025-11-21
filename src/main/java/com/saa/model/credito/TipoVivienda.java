@@ -99,3 +99,4 @@ public class TipoVivienda implements Serializable {
         this.estado = estado;
     }
 }
+

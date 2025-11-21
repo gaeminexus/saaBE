@@ -168,3 +168,4 @@ public class TipoPrestamo implements Serializable {
         this.estado = estado;
     }
 }
+

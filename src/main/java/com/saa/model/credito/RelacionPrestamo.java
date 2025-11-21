@@ -13,7 +13,6 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
-import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
 
 /**
@@ -22,7 +21,6 @@ import jakarta.persistence.Table;
 @SuppressWarnings("serial")
 @Entity
 @Table(name = "RLPR", schema = "CRD")
-@SequenceGenerator(name = "SQ_RLPRCDGO", sequenceName = "CRD.SQ_RLPRCDGO", allocationSize = 1)
 @NamedQueries({
     @NamedQuery(name = "RelacionPrestamoAll", query = "select e from RelacionPrestamo e"),
     @NamedQuery(name = "RelacionPrestamoId", query = "select e from RelacionPrestamo e where e.codigo = :id")
@@ -33,7 +31,7 @@ public class RelacionPrestamo implements Serializable {
     @Id
     @Basic
     @Column(name = "RLPRCDGO")
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_RLPRCDGO")
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long codigo;
 
     /** FK - ID Préstamo Hijo */
@@ -126,3 +124,4 @@ public class RelacionPrestamo implements Serializable {
         this.estado = estado;
     }
 }
+

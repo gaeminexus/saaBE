@@ -122,3 +122,4 @@ public class TipoAporte implements Serializable {
         this.estado = estado;
     }
 }
+

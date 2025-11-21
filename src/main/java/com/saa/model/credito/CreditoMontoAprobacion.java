@@ -146,3 +146,4 @@ public class CreditoMontoAprobacion implements Serializable {
         this.montoMinimo = montoMinimo;
     }
 }
+

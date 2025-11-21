@@ -122,3 +122,4 @@ public class MetodoPago implements Serializable {
         this.estado = estado;
     }
 }
+

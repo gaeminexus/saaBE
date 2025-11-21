@@ -514,3 +514,4 @@ public class DetallePrestamo implements Serializable {
         this.totalConSeguro = totalConSeguro;
     }
 }
+

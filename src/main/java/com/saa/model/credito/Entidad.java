@@ -279,3 +279,4 @@ public class Entidad implements Serializable {
     public String getUrlFotoLogo() { return urlFotoLogo; }
     public void setUrlFotoLogo(String urlFotoLogo) { this.urlFotoLogo = urlFotoLogo; }
 }
+

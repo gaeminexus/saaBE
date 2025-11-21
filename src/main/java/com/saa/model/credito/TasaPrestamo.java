@@ -12,7 +12,6 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
-import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
 
 /**
@@ -21,7 +20,6 @@ import jakarta.persistence.Table;
 @SuppressWarnings("serial")
 @Entity
 @Table(name = "TSPR", schema = "CRD")
-@SequenceGenerator(name = "SQ_TSPRCDGO", sequenceName = "CRD.SQ_TSPRCDGO", allocationSize = 1)
 @NamedQueries({
     @NamedQuery(name = "TasaPrestamoAll", query = "select e from TasaPrestamo e"),
     @NamedQuery(name = "TasaPrestamoId", query = "select e from TasaPrestamo e where e.codigo = :id")
@@ -34,7 +32,7 @@ public class TasaPrestamo implements Serializable {
     @Id
     @Basic
     @Column(name = "TSPRCDGO")
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_TSPRCDGO")
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long codigo;
 
     /**
@@ -199,3 +197,4 @@ public class TasaPrestamo implements Serializable {
         this.montoMaximo = montoMaximo;
     }
 }
+

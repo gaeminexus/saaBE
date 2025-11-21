@@ -90,3 +90,4 @@ public class TipoRequisitoPrestamo implements Serializable {
         this.estado = estado;
     }
 }
+

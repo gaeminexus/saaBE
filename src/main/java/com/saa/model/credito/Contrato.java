@@ -267,3 +267,4 @@ public class Contrato implements Serializable {
         this.idEstado = idEstado;
     }
 }
+

@@ -122,3 +122,4 @@ public class TipoContrato implements Serializable {
         this.estado = estado;
     }
 }
+

@@ -122,3 +122,4 @@ public class TipoCesantia implements Serializable {
         this.estado = estado;
     }
 }
+

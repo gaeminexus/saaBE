@@ -267,3 +267,4 @@ public class PagoPrestamo implements Serializable {
         this.idEstado = idEstado;
     }
 }
+

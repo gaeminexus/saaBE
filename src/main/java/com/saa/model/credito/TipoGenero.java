@@ -122,3 +122,4 @@ public class TipoGenero implements Serializable {
         this.idEstado = idEstado;
     }
 }
+
