@@ -187,8 +187,7 @@ public class EntityDaoImpl<Tipo> implements EntityDao<Tipo> {
 							strQuery = strQuery +
 									detalleRubroDaoService.selectValorStringByRubAltDetAlt(
 											Rubros.TIPO_COMANDOS_BUSQUEDA, aBuscar.getTipoComparacion())
-									+
-									" :" + suprimirPuntos(campoBuscar); // **********************************
+									+ " :" + suprimirPuntos(campoBuscar); // **********************************
 						}
 						if (TipoComandosBusqueda.BETWEEN == aBuscar.getTipoComparacion()) {
 							strQuery = strQuery + " and :" + suprimirPuntos(campoBuscar) + "1"; // ******************************
@@ -232,7 +231,11 @@ public class EntityDaoImpl<Tipo> implements EntityDao<Tipo> {
 					switch (aBuscar.getTipoDato()) {
 						case TipoDatosBusqueda.STRING:
 							if (TipoComandosBusqueda.IS_NULL != aBuscar.getTipoComparacion()) {
-								query.setParameter(campoBuscar, aBuscar.getValor());
+								if (TipoComandosBusqueda.LIKE == aBuscar.getTipoComparacion()) {
+									query.setParameter(campoBuscar, "%" + aBuscar.getValor().toUpperCase() + "%");
+								} else {
+									query.setParameter(campoBuscar, aBuscar.getValor());
+								}
 								if (TipoComandosBusqueda.BETWEEN == aBuscar.getTipoComparacion()) {
 									query.setParameter(campoBuscar + "1", aBuscar.getValor1());
 								}
