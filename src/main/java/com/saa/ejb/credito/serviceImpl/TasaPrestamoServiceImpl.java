@@ -6,8 +6,8 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.credito.dao.TasaPrestamoDaoService;
 import com.saa.ejb.credito.service.TasaPrestamoService;
-import com.saa.model.credito.TasaPrestamo;
 import com.saa.model.credito.NombreEntidadesCredito;
+import com.saa.model.credito.TasaPrestamo;
 import com.saa.rubros.Estado;
 
 import jakarta.ejb.EJB;
@@ -34,9 +34,9 @@ public class TasaPrestamoServiceImpl implements TasaPrestamoService {
     @Override
     public void remove(List<Long> id) throws Throwable {
         System.out.println("Ingresa al metodo remove[] de TasaPrestamoService ... depurado");
-        TasaPrestamo tasa = new TasaPrestamo();
+        TasaPrestamo tasaPrestamo = new TasaPrestamo();
         for (Long registro : id) {
-            tasaPrestamoDaoService.remove(tasa, registro);
+            tasaPrestamoDaoService.remove(tasaPrestamo, registro);
         }
     }
 
@@ -68,17 +68,17 @@ public class TasaPrestamoServiceImpl implements TasaPrestamoService {
      * Guarda un solo registro de TasaPrestamo.
      */
     @Override
-    public TasaPrestamo saveSingle(TasaPrestamo tasa) throws Throwable {
+    public TasaPrestamo saveSingle(TasaPrestamo tasaPrestamo) throws Throwable {
         System.out.println("saveSingle - TasaPrestamo");
-        if (tasa.getCodigo() == null) {
-            tasa.setEstado(Long.valueOf(Estado.ACTIVO)); // Activo
+        if (tasaPrestamo.getCodigo() == null) {
+            tasaPrestamo.setEstado(Long.valueOf(Estado.ACTIVO)); //Activo
         }
-        tasa = tasaPrestamoDaoService.save(tasa, tasa.getCodigo());
-        return tasa;
+        tasaPrestamo = tasaPrestamoDaoService.save(tasaPrestamo, tasaPrestamo.getCodigo());
+        return tasaPrestamo;
     }
 
     /**
-     * Recupera registros de TasaPrestamo según criterios de búsqueda.
+     * Recupera registros de TasaPrestamo segun criterios de búsqueda.
      */
     @Override
     public List<TasaPrestamo> selectByCriteria(List<DatosBusqueda> datos) throws Throwable {

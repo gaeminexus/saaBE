@@ -58,8 +58,9 @@ public interface NombreEntidadesCredito {
 	String DIRECCION_TRABAJO = "DireccionTrabajo";
 	String PAGO_APORTE = "PagoAporte";
 	String CXC_KARDEX_PARTICIPE = "CxcKardexParticipe";
-	
-	
-	
+	String CARGA_ARCHIVO = "CargaArchivo";
+	String DETALLE_CARGA_ARCHIVO = "DetalleCargaArchivo";
+	String PARTICIPE_X_CARGA_ARCHIVO = "ParticipeXCargaArchivo";
+
 }
 

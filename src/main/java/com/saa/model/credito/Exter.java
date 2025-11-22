@@ -93,7 +93,7 @@ public class Exter implements Serializable {
      */
     @Basic
     @Column(name = "EXTRFCDF")
-    private Timestamp fechaDesde;
+    private Timestamp fechaDefuncion;
     
     /**
      * Nacionalidad.
@@ -370,19 +370,19 @@ public class Exter implements Serializable {
     }
     
     /**
-     * Devuelve fechaDesde.
-     * @return fechaDesde.
+     * Devuelve fechaDefuncion.
+     * @return fechaDefuncion.
      */
-    public Timestamp getFechaDesde() {
-        return fechaDesde;
+    public Timestamp getFechaDefuncion() {
+        return fechaDefuncion;
     }
     
     /**
-     * Asigna fechaDesde.
-     * @param fechaDesde nuevo valor para fechaDesde.
+     * Asigna fechaDefuncion.
+     * @param fechaDefuncion nuevo valor para fechaDesde.
      */
-    public void setFechaDesde(Timestamp fechaDesde) {
-        this.fechaDesde = fechaDesde;
+    public void setFechaDefuncion(Timestamp fechaDefuncion) {
+        this.fechaDefuncion = fechaDefuncion;
     }
     
     /**
