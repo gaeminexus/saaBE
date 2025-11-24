@@ -1,7 +1,9 @@
 package com.saa.model.credito;
 
 import java.io.Serializable;
-import java.sql.Timestamp;
+import java.time.LocalDateTime;
+
+import com.saa.model.scp.Usuario;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
@@ -42,12 +44,12 @@ public class CargaArchivo implements Serializable {
     /** Fecha de carga */
     @Basic
     @Column(name = "CRARFCCR")
-    private Timestamp fechaCarga;
+    private LocalDateTime fechaCarga;
 
     /** Usuario que cargó */
-    @Basic
-    @Column(name = "CRARUSCD")
-    private Long codigoUsuario;
+    @ManyToOne
+    @JoinColumn(name = "CRARUSCD", referencedColumnName = "PJRQCDGO")
+    private Usuario usuarioCarga;
 
     /** FK - Filial */
     @ManyToOne
@@ -149,20 +151,20 @@ public class CargaArchivo implements Serializable {
         this.nombre = nombre;
     }
 
-    public Timestamp getFechaCarga() {
+    public LocalDateTime getFechaCarga() {
         return fechaCarga;
     }
 
-    public void setFechaCarga(Timestamp fechaCarga) {
+    public void setFechaCarga(LocalDateTime fechaCarga) {
         this.fechaCarga = fechaCarga;
     }
 
-    public Long getCodigoUsuario() {
-        return codigoUsuario;
+    public Usuario getUsuarioCarga() {
+        return usuarioCarga;
     }
 
-    public void setCodigoUsuario(Long codigoUsuario) {
-        this.codigoUsuario = codigoUsuario;
+    public void setUsuarioCarga(Usuario usuarioCarga) {
+        this.usuarioCarga = usuarioCarga;
     }
 
     public Filial getFilial() {

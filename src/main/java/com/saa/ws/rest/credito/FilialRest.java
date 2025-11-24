@@ -42,6 +42,31 @@ public class FilialRest {
     }
     
     /**
+     * Método de prueba simple para verificar conectividad
+     */
+    @GET
+    @Path("/test")
+    @Produces("application/json")
+    public String test() {
+        return "{\"status\":\"OK\",\"message\":\"FilialRest está funcionando correctamente\",\"timestamp\":\"" + java.time.LocalDateTime.now() + "\"}";
+    }
+    
+    /**
+     * Método de diagnóstico para verificar inyección de EJBs
+     */
+    @GET
+    @Path("/diagnostico")
+    @Produces("application/json")
+    public String diagnostico() {
+        StringBuilder resultado = new StringBuilder();
+        resultado.append("{\"status\":\"OK\",");
+        resultado.append("\"ejbDaoInyectado\":").append(filialDaoService != null).append(",");
+        resultado.append("\"ejbServiceInyectado\":").append(filialService != null).append(",");
+        resultado.append("\"timestamp\":\"").append(java.time.LocalDateTime.now()).append("\"}");
+        return resultado.toString();
+    }
+    
+    /**
      * Obtiene todos los registros de Filial.
      * 
      * @return Lista de Filial

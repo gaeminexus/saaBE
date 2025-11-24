@@ -1,5 +1,6 @@
 package com.saa.ejb.credito.serviceImpl;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
@@ -71,6 +72,7 @@ public class CargaArchivoServiceImpl implements CargaArchivoService {
     public CargaArchivo saveSingle(CargaArchivo cargaArchivo) throws Throwable {
         System.out.println("saveSingle - CargaArchivo");
         if (cargaArchivo.getCodigo() == null) {
+        	cargaArchivo.setFechaCarga(LocalDateTime.now());
             cargaArchivo.setEstado(Long.valueOf(Estado.ACTIVO)); //Activo
         }
         cargaArchivo = CargaArchivoDaoService.save(cargaArchivo, cargaArchivo.getCodigo());

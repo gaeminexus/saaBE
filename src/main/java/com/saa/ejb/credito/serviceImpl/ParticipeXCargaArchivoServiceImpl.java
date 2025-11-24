@@ -69,7 +69,7 @@ public class ParticipeXCargaArchivoServiceImpl implements ParticipeXCargaArchivo
      */
     @Override
     public ParticipeXCargaArchivo saveSingle(ParticipeXCargaArchivo participe) throws Throwable {
-        System.out.println("saveSingle - ParticipeXCargaArchivo");
+        // System.out.println("saveSingle - ParticipeXCargaArchivo");
         if (participe.getCodigo() == null) {
             participe.setEstado(Long.valueOf(Estado.ACTIVO)); //Activo
         }
