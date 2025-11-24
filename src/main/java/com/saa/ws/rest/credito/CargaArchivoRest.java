@@ -49,6 +49,13 @@ public class CargaArchivoRest {
     public CargaArchivo getId(@PathParam("id") Long id) throws Throwable {
         return cargaArchivoDaoService.selectById(id, NombreEntidadesCredito.CARGA_ARCHIVO);
     }
+    
+    @GET
+    @Path("/getByAnio/{anio}")
+    @Produces("application/json")
+    public List<CargaArchivo> getByAnio(@PathParam("anio") Long anio) throws Throwable {
+        return cargaArchivoDaoService.selectByAnio(anio);
+    }
 
     @PUT
     @Consumes("application/json")
