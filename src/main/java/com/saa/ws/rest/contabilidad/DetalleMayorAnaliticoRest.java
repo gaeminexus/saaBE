@@ -2,6 +2,7 @@ package com.saa.ws.rest.contabilidad;
 
 import java.util.List;
 
+import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.contabilidad.dao.DetalleMayorAnaliticoDaoService;
 import com.saa.ejb.contabilidad.service.DetalleMayorAnaliticoService;
 import com.saa.model.contabilidad.DetalleMayorAnalitico;
@@ -17,7 +18,8 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.Context;
-
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 
 @Path("dtma")
@@ -89,16 +91,22 @@ public class DetalleMayorAnaliticoRest {
 
     /**
      * POST method for updating or creating an instance of DetalleMayorAnaliticoRest
-     * 
+     *
      * @param content representation for the resource
      * @return an HTTP response with content of the updated or created resource.
      */
-    @Path("criteria")
     @POST
+    @Path("selectByCriteria")
     @Consumes("application/json")
-    public List<DetalleMayorAnalitico> selectByCriteria(Long test) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DE SELECT BY CRITERIA: " + test);
-        return detalleMayorAnaliticoDaoService.selectAll(NombreEntidadesContabilidad.DETALLE_MAYOR_ANALITICO);
+    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+        System.out.println("selectByCriteria de DETALLE_MAYOR_ANALITICO");
+        Response respuesta = null;
+        try {
+            respuesta = Response.status(Response.Status.OK).entity(detalleMayorAnaliticoService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+        return respuesta;
     }
 
     /**
