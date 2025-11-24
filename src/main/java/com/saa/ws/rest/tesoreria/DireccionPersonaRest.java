@@ -2,6 +2,7 @@ package com.saa.ws.rest.tesoreria;
 
 import java.util.List;
 
+import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.tesoreria.dao.DireccionPersonaDaoService;
 import com.saa.ejb.tesoreria.service.DireccionPersonaService;
 import com.saa.model.tesoreria.DireccionPersona;
@@ -17,6 +18,8 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 
 @Path("pdrc")
@@ -77,17 +80,25 @@ public class DireccionPersonaRest {
         System.out.println("LLEGA AL SERVICIO POST DIRECCION PERSONA");
         return direccionPersonaService.saveSingle(registro);
     }
-
-    /**
-     * Selecciona registros de DireccionPersona por criterios personalizados.
-     */
-    @Path("criteria")
-    @POST
-    @Consumes("application/json")
-    public List<DireccionPersona> selectByCriteria(Long test) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DE SELECT BY CRITERIA DIRECCION PERSONA: " + test);
-        return direccionPersonaDaoService.selectAll(NombreEntidadesTesoreria.DIRECCION_PERSONA);
+/**
+ * POST method for updating or creating an instance of DireccionPersonaRest
+ *
+ * @param content representation for the resource
+ * @return an HTTP response with content of the updated or created resource.
+ */
+@POST
+@Path("selectByCriteria")
+@Consumes("application/json")
+public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    System.out.println("selectByCriteria de DIRECCION_PERSONA");
+    Response respuesta = null;
+    try {
+        respuesta = Response.status(Response.Status.OK).entity(direccionPersonaService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+    } catch (Throwable e) {
+        respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
     }
+    return respuesta;
+}
 
     /**
      * Elimina un registro de DireccionPersona por ID.

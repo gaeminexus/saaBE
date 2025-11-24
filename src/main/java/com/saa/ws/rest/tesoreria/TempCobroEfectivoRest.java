@@ -2,6 +2,7 @@ package com.saa.ws.rest.tesoreria;
 
 import java.util.List;
 
+import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.tesoreria.dao.TempCobroEfectivoDaoService;
 import com.saa.ejb.tesoreria.service.TempCobroEfectivoService;
 import com.saa.model.tesoreria.NombreEntidadesTesoreria;
@@ -17,6 +18,8 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 
 @Path("tcef")
@@ -79,14 +82,23 @@ public class TempCobroEfectivoRest {
     }
 
     /**
-     * Selecciona registros de TempCobroEfectivo por criterios personalizados.
+     * POST method for updating or creating an instance of TempCobroEfectivoRest
+     *
+     * @param content representation for the resource
+     * @return an HTTP response with content of the updated or created resource.
      */
-    @Path("criteria")
     @POST
+    @Path("selectByCriteria")
     @Consumes("application/json")
-    public List<TempCobroEfectivo> selectByCriteria(Long test) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DE SELECT BY CRITERIA TEMP_COBRO_EFECTIVO: " + test);
-        return tempCobroEfectivoDaoService.selectAll(NombreEntidadesTesoreria.TEMP_COBRO_EFECTIVO);
+    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+        System.out.println("selectByCriteria de TEMP_COBRO_EFECTIVO");
+        Response respuesta = null;
+        try {
+            respuesta = Response.status(Response.Status.OK).entity(tempCobroEfectivoService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+        return respuesta;
     }
 
     /**

@@ -2,6 +2,7 @@ package com.saa.ws.rest.tesoreria;
 
 import java.util.List;
 
+import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.tesoreria.dao.CajaLogicaPorCajaFisicaDaoService;
 import com.saa.ejb.tesoreria.service.CajaLogicaPorCajaFisicaService;
 import com.saa.model.tesoreria.CajaLogicaPorCajaFisica;
@@ -17,6 +18,8 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 
 @Path("ccxc")
@@ -79,15 +82,25 @@ public class CajaLogicaPorCajaFisicaRest {
     }
 
     /**
-     * Selecciona registros por criterios personalizados.
+     * POST method for updating or creating an instance of CajaLogicaPorCajaFisicaRest
+     *
+     * @param content representation for the resource
+     * @return an HTTP response with content of the updated or created resource.
      */
-    @Path("criteria")
     @POST
+    @Path("selectByCriteria")
     @Consumes("application/json")
-    public List<CajaLogicaPorCajaFisica> selectByCriteria(Long test) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DE SELECT BY CRITERIA CAJA_LOGICA_POR_CAJA_FISICA: " + test);
-        return cajaLogicaPorCajaFisicaDaoService.selectAll(NombreEntidadesTesoreria.CAJA_LOGICA_POR_CAJA_FISICA);
+    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+        System.out.println("selectByCriteria de CAJA_LOGICA_POR_CAJA_FISICA");
+        Response respuesta = null;
+        try {
+            respuesta = Response.status(Response.Status.OK).entity(cajaLogicaPorCajaFisicaService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+        return respuesta;
     }
+    
 
     /**
      * Elimina un registro por ID.

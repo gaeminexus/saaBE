@@ -2,6 +2,7 @@ package com.saa.ws.rest.tesoreria;
 
 import java.util.List;
 
+import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.tesoreria.dao.MotivoCobroDaoService;
 import com.saa.ejb.tesoreria.service.MotivoCobroService;
 import com.saa.model.tesoreria.MotivoCobro;
@@ -17,6 +18,8 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 
 @Path("cmtv")
@@ -79,14 +82,23 @@ public class MotivoCobroRest {
     }
 
     /**
-     * Selecciona registros de MotivoCobro por criterios personalizados.
+     * POST method for updating or creating an instance of MotivoCobroRest
+     *
+     * @param content representation for the resource
+     * @return an HTTP response with content of the updated or created resource.
      */
-    @Path("criteria")
     @POST
+    @Path("selectByCriteria")
     @Consumes("application/json")
-    public List<MotivoCobro> selectByCriteria(Long test) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DE SELECT BY CRITERIA MOTIVO COBRO: " + test);
-        return motivoCobroDaoService.selectAll(NombreEntidadesTesoreria.MOTIVO_COBRO);
+    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+        System.out.println("selectByCriteria de MOTIVO_COBRO");
+        Response respuesta = null;
+        try {
+            respuesta = Response.status(Response.Status.OK).entity(motivoCobroService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+        return respuesta;
     }
 
     /**

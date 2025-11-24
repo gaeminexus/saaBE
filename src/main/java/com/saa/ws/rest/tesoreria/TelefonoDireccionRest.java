@@ -2,6 +2,7 @@ package com.saa.ws.rest.tesoreria;
 
 import java.util.List;
 
+import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.tesoreria.dao.TelefonoDireccionDaoService;
 import com.saa.ejb.tesoreria.service.TelefonoDireccionService;
 import com.saa.model.tesoreria.NombreEntidadesTesoreria;
@@ -17,6 +18,8 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 
 @Path("pcnt")
@@ -79,14 +82,23 @@ public class TelefonoDireccionRest {
     }
 
     /**
-     * Selecciona registros de TelefonoDireccion por criterios personalizados.
+     * POST method for updating or creating an instance of TelefonoDireccionRest
+     *
+     * @param content representation for the resource
+     * @return an HTTP response with content of the updated or created resource.
      */
-    @Path("criteria")
     @POST
+    @Path("selectByCriteria")
     @Consumes("application/json")
-    public List<TelefonoDireccion> selectByCriteria(Long test) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DE SELECT BY CRITERIA TELEFONO_DIRECCION: " + test);
-        return telefonoDireccionDaoService.selectAll(NombreEntidadesTesoreria.TELEFONO_DIRECCION);
+    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+        System.out.println("selectByCriteria de TELEFONO_DIRECCION");
+        Response respuesta = null;
+        try {
+            respuesta = Response.status(Response.Status.OK).entity(telefonoDireccionService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+        return respuesta;
     }
 
     /**
