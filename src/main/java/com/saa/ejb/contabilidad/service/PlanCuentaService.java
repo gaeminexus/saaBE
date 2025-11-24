@@ -38,7 +38,7 @@ public interface PlanCuentaService extends EntityService<PlanCuenta> {
 	 * @return				: Mensaje
 	 * @throws Throwable	: Excepcion
 	 */
-	 String saveCuenta(Object[][] object, Object[] campos, Long empresa) throws Throwable;	
+	 String saveCuenta(List<PlanCuenta> object, Long empresa) throws Throwable;	
 	
 	/**
 	 * Metodo para verificar si la cuenta es de tipo acumulacion o movimiento

@@ -40,6 +40,14 @@ public interface DetalleAsientoDaoService extends EntityDao<DetalleAsiento> {
 	 * @throws Throwable	:Excepcion
 	 */
 	List<DetalleAsiento> selectByCuentaMes(Long mes, Long anio, Long cuenta) throws Throwable;
+	
+	/**
+	 * Recupera el detalle de asiento relacionado a una cuenta
+	 * @param idPlanCuenta	:Id de la cuenta
+	 * @return				:Detalle de asientos
+	 * @throws Throwable	:Excepcion
+	 */
+	List<DetalleAsiento> selectByIdPlanCuenta(Long idPlanCuenta) throws Throwable;
 
 	/**
 	 * Recupera el id del detalle del asiento

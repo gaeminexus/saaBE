@@ -385,4 +385,15 @@ public class DetalleAsientoDaoServiceImpl extends EntityDaoImpl<DetalleAsiento> 
 		return query.getResultList();
 	}
 
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<DetalleAsiento> selectByIdPlanCuenta(Long idPlanCuenta) throws Throwable {
+		System.out.println("Ingresa al metodo selectByIdPlanCuenta de idPlanCuenta: " + idPlanCuenta);
+		Query query = em.createQuery(" select b " +
+									 " from   DetalleAsiento b " +
+									 " where  b.planCuenta.codigo = :idPlanCuenta ");
+		query.setParameter("idPlanCuenta", idPlanCuenta);		
+		return query.getResultList();
+	}
+
 }

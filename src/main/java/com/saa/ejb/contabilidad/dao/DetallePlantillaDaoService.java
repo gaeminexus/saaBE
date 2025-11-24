@@ -35,6 +35,14 @@ public interface DetallePlantillaDaoService extends EntityDao<DetallePlantilla> 
 	 * @throws Throwable		: Excepcion
 	 */
 	PlanCuenta recuperaCuentaContable(Long idDetallePlantilla) throws Throwable;
+	
+	/**
+	 * Recupera el detalle de mayorizacion relacionado a una cuenta
+	 * @param idPlanCuenta	:Id de la cuenta
+	 * @return				:Detalle de mayorizacion
+	 * @throws Throwable	:Excepcion
+	 */
+	List<DetallePlantilla> selectByIdPlanCuenta(Long idPlanCuenta) throws Throwable;
 
 	
 }

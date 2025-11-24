@@ -20,6 +20,14 @@ public interface DetalleMayorizacionDaoService extends EntityDao<DetalleMayoriza
 	DetalleMayorizacion selectByMayorizacionCuenta(Long mayorizacion, Long cuenta) throws Throwable;
 	
 	/**
+	 * Recupera el detalle de mayorizacion relacionado a una cuenta
+	 * @param idPlanCuenta	:Id de la cuenta
+	 * @return				:Detalle de mayorizacion
+	 * @throws Throwable	:Excepcion
+	 */
+	List<DetalleMayorizacion> selectByIdPlanCuenta(Long idPlanCuenta) throws Throwable;
+	
+	/**
 	 * Recupera los niveles incluidos en una mayorizacion
 	 * @param mayorizacion	: Id de mayorizacion
 	 * @return				: Niveles

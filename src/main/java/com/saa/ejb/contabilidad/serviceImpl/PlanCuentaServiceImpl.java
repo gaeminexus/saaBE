@@ -1,12 +1,4 @@
-/**
- * Copyright (c) 2010 Compuseg Cía. Ltda. 
- * Av. Amazonas 3517 y Juan Pablo Sanz, Edif Xerox 6to. piso
- * Quito - Ecuador
- * Todos los derechos reservados. 
- * Este software es la información confidencial y patentada de   Compuseg Cía. Ltda. ( "Información Confidencial"). 
- * Usted no puede divulgar dicha Información confidencial y se utilizará sólo en  conformidad con los términos del acuerdo de licencia que ha introducido dentro de Compuseg
- */
-package com.compuseg.income.contabilidad.ejb.serviceImpl;
+package com.saa.ejb.contabilidad.serviceImpl;
 
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
@@ -14,14 +6,15 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
-import com.compuseg.income.contabilidad.ejb.array.PlanCuentaArray;
-import com.compuseg.income.sistema.ejb.util.Parametro;
 import com.saa.basico.ejb.DetalleRubroService;
 import com.saa.basico.ejb.EmpresaDaoService;
 import com.saa.basico.ejb.FechaService;
 import com.saa.basico.ejb.Mensaje;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
+import com.saa.ejb.contabilidad.dao.DetalleAsientoDaoService;
+import com.saa.ejb.contabilidad.dao.DetalleMayorizacionDaoService;
+import com.saa.ejb.contabilidad.dao.DetallePlantillaDaoService;
 import com.saa.ejb.contabilidad.dao.NaturalezaCuentaDaoService;
 import com.saa.ejb.contabilidad.dao.PlanCuentaDaoService;
 import com.saa.ejb.contabilidad.service.CuentaService;
@@ -30,7 +23,9 @@ import com.saa.ejb.contabilidad.service.DetalleMayorizacionService;
 import com.saa.ejb.contabilidad.service.NaturalezaCuentaService;
 import com.saa.ejb.contabilidad.service.PeriodoService;
 import com.saa.ejb.contabilidad.service.PlanCuentaService;
+import com.saa.model.contabilidad.DetalleAsiento;
 import com.saa.model.contabilidad.DetalleMayorizacion;
+import com.saa.model.contabilidad.DetallePlantilla;
 import com.saa.model.contabilidad.NaturalezaCuenta;
 import com.saa.model.contabilidad.NombreEntidadesContabilidad;
 import com.saa.model.contabilidad.Periodo;
@@ -86,12 +81,20 @@ public class PlanCuentaServiceImpl implements PlanCuentaService{
 	@EJB
 	private DetalleRubroService detalleRubroService;
 	
+	@EJB
+	private DetalleAsientoDaoService detalleAsientoDaoService;
+	
+	@EJB
+	private DetallePlantillaDaoService detallePlantillaDaoService;
+	
+	@EJB
+	private DetalleMayorizacionDaoService detalleMayorizacionDaoService;
+	
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.sistema.ejb.util.EntityService#remove(java.util.List)
 	 */
 	public void remove(List<Long> id) throws Throwable{
 		System.out.println("Servicio remove[] de PlanCuenta service");
-		//ELIMINA UNO A UNO LOS REGISTROS DEL ARREGLO
 		for (Long registro : id) {
 			Long tipo = recuperaTipo(registro);
 			// CUENTA MOVIMIENTO
@@ -106,114 +109,40 @@ public class PlanCuentaServiceImpl implements PlanCuentaService{
 	}	
 	
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.sistema.ejb.util.EntityService#save(java.lang.Object[][])
+	 * @see com.compuseg.income.sistema.ejb.util.EntityService#save(java.lang.List<PlanCuenta>)
 	 */
-	public void save(Object[][] object, Object[] campos) throws Throwable {
+	public void save(List<PlanCuenta> lista) throws Throwable {
 		System.out.println("Servicio save de planCuenta service");
-		//INSTANCIA NUEVA ENTIDAD
-		PlanCuenta planCuenta = new PlanCuenta();
-		// BARRIDA COMPLETA DE LOS REGISTROS
-		for (int i = 0; i < object.length; i++) {			
-			//CONVIERTE REGISTRO DE OBJETO A ENTIDAD
-			planCuenta = planCuentaArray.toEntity(object[i], campos);
-			//INSERTA O ACTUALIZA REGISTRO
-			planCuentaDaoService.save(planCuenta, planCuenta.getCodigo());
-		}
+		for (PlanCuenta registro : lista) {
+			planCuentaDaoService.save(registro, registro.getCodigo());
+        }
 	}	
 	
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.sistema.ejb.util.EntityService#selectAll()
 	 */
-	public Object[][] selectAll(Object[] campos) throws Throwable {
+	public List<PlanCuenta> selectAll() throws Throwable {
 		System.out.println("Servicio selectAll PlanCuentaService");
 		//CREA EL LISTADO CON LOS REGISTROS DE LA BUSQUEDA
 		List<PlanCuenta> result = planCuentaDaoService.selectAll(NombreEntidadesContabilidad.PLAN_CUENTA); 
-		//INICIALIZA EL OBJETO
-		Object[][] listado = null;
-		//PREGUNTA SI ENCONTRO REGISTROS
-		if(result.isEmpty()){
-			//NO ENCUENTRA REGISTROS
-			LOG.warn("Busqueda total PlanCuenta no devolvio ningun registro");
-			//MENSAJE DE REGISTRO NO ENCONTRADO
-			listado = new Object[][]{new Object[]{"FAILED"}};
-		}else{
-			//ENCUENTRA REGISTROS
-			System.out.println("Recupero ["+result.size()+"] registros de PlanCuenta");
-			//INICIALIZA ARREGLO DE OBJETOS
-			listado = new Object[result.size()][planCuentaArray.toArray(result.get(0), campos).length];
-			//CONVIERTE ENTIDADES A OBJETOS
-			int i = 0;
-			for (PlanCuenta registro : result) {
-				listado[i] = planCuentaArray.toArray(registro, campos);
-				i++;
-			}
-		}
-		//RETORNA ARREGLO DE OBJETOS
-		return listado;
+		if (result.isEmpty()) {
+            throw new IncomeException("Busqueda total PlanCuenta no devolvio ningun registro");
+        }
+        return result;
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.sistema.ejb.util.EntityService#selectByWhere(java.util.List)
-	 */
-	public Object[][] selectByWhere(List<Parametro> parametro, Object[] campos, List<Parametro> orderBy) throws Throwable {
-		System.out.println("Servicio selectByWhere PlanCuentaService");
-		//CREA EL LISTADO CON LOS REGISTROS DE LA BUSQUEDA
-		List<PlanCuenta> result = planCuentaDaoService.selectByWhere(parametro, NombreEntidadesContabilidad.PLAN_CUENTA, orderBy); 
-		//INICIALIZA EL OBJETO
-		Object[][] listado = null;
-		//PREGUNTA SI ENCONTRO REGISTROS
-		if(result.isEmpty()){
-			//NO ENCUENTRA REGISTROS
-			LOG.warn("Busqueda de PlanCuenta por criterio no devolvio ningun registro");
-			//MENSAJE DE REGISTRO NO ENCONTRADO
-			listado = new Object[][]{new Object[]{"FAILED"}};
-		}else{
-			//ENCUENTRA REGISTROS
-			System.out.println("Recupero ["+result.size()+"] registros de PlanCuenta");
-			//INICIALIZA ARREGLO DE OBJETOS
-			listado = new Object[result.size()][planCuentaArray.toArray(result.get(0), campos).length];
-			//CONVIERTE ENTIDADES A OBJETOS
-			int i = 0;
-			for (PlanCuenta registro : result) {
-				listado[i] = planCuentaArray.toArray(registro, campos);
-				i++;
-			}
-		}
-		//RETORNA ARREGLO DE OBJETOS
-		return listado;
-	}
-	
-	/* (non-Javadoc)
 	 * @see com.compuseg.income.sistema.ejb.util.EntityService#selectByCriteria(java.lang.Object[], java.util.List)
 	 */
-	public Object[][] selectByCriteria(Object[] campos,
-			List<DatosBusqueda> datos) throws Throwable {
+	public List<PlanCuenta> selectByCriteria(List<DatosBusqueda> datos) throws Throwable {
 		System.out.println("Servicio (selectByCriteria) PlanCuenta");
 		//CREA EL LISTADO CON LOS REGISTROS DE LA BUSQUEDA
 		List<PlanCuenta> result = planCuentaDaoService.selectByCriteria
-		(datos, planCuentaDaoService.obtieneCampos(), NombreEntidadesContabilidad.PLAN_CUENTA); 
-		//INICIALIZA EL OBJETO
-		Object[][] listado = null;
-		//PREGUNTA SI ENCONTRO REGISTROS
-		if(result.isEmpty()){
-			//NO ENCUENTRA REGISTROS
-			LOG.warn("Busqueda por criterio de planCuenta no devolvio ningun registro");
-			//MENSAJE DE REGISTRO NO ENCONTRADO
-			listado = new Object[][]{new Object[]{"FAILED"}};
-		}else{
-			//ENCUENTRA REGISTROS
-			System.out.println("Recupero ["+result.size()+"] registros de planCuenta");
-			//INICIALIZA ARREGLO DE OBJETOS
-			listado = new Object[result.size()][planCuentaArray.toArray(result.get(0), campos).length];
-			//CONVIERTE ENTIDADES A OBJETOS
-			int i = 0;
-			for (PlanCuenta registro : result) {
-				listado[i] = planCuentaArray.toArray(registro, campos);
-				i++;
-			}
-		}
-		//RETORNA ARREGLO DE OBJETOS
-		return listado;
+		(datos, NombreEntidadesContabilidad.PLAN_CUENTA); 
+		if (result.isEmpty()) {
+            throw new IncomeException("Busqueda total PlanCuenta no devolvio ningun registro");
+        }
+        return result;
 	}
 	
 	/* (non-Javadoc)
@@ -266,12 +195,10 @@ public class PlanCuentaServiceImpl implements PlanCuentaService{
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.PlanCuentaService#saveCuenta(java.lang.Object[][], java.lang.Object[])
+	 * @see com.compuseg.income.contabilidad.ejb.service.PlanCuentaService#saveCuenta(java.lang.List<PlanCuenta>, java.lang.Object[])
 	 */
-	public String saveCuenta(Object[][] object, Object[] campos, Long empresa) throws Throwable {
+	public String saveCuenta(List<PlanCuenta> object, Long empresa) throws Throwable {
 		System.out.println("Servicio saveCuenta de planCuenta service");
-		//INSTANCIA NUEVA ENTIDAD
-		PlanCuenta planCuenta = new PlanCuenta();
 		Date date = new Date();
 		//INSTANCIA NUEVA ENTIDAD PARA PADRE
 		PlanCuenta planCuentaPadre = new PlanCuenta();
@@ -284,8 +211,7 @@ public class PlanCuentaServiceImpl implements PlanCuentaService{
 		boolean tieneHijos = false;
 		String cuentaPadre = "";
 		// BARRIDA COMPLETA DE LOS REGISTROS
-		for (int i = 0; i < object.length; i++) {			
-			planCuenta = planCuentaArray.toEntity(object[i], campos);			
+		for (PlanCuenta planCuenta : object) {			
 			if (planCuenta.getCodigo().equals(0L)) {
 				//CREA NODO BASE
 				resultado = creaNodoArbolCero(empresa);
@@ -468,74 +394,6 @@ public class PlanCuentaServiceImpl implements PlanCuentaService{
 		planCuentaDaoService.save(planCuenta, id);
 	}	
 	
-	/* (non-Javadoc)
-	 * @see com.compuseg.income.sistema.ejb.util.EntityService#verificaHijos(java.lang.Long)
-	 */
-	public boolean verificaHijos(Long id) throws Throwable {
-		System.out.println("Servicio verificaHijos con id: " + id);
-		boolean flag = false;
-		List<PlanCuenta> todos = new ArrayList<PlanCuenta>();
-		Long tipo = recuperaTipo(id);
-		if (Long.valueOf(TipoCuentaContable.MOVIMIENTO).equals(tipo)){
-			todos.add(planCuentaDaoService.selectById(id, NombreEntidadesContabilidad.PLAN_CUENTA));
-		}else{
-			todos = recuperaCuentasHijo(id);	
-		}		
-		//INSTANCIA NUEVA ENTIDAD
-		PlanCuenta planCuenta = new PlanCuenta();		
-		for(PlanCuenta i : todos){			
-			planCuenta = planCuentaDaoService.recuperaConHijos(i.getCodigo());
-			if (!planCuenta.getHistDetalleAsientos().isEmpty()) {
-				flag = true;
-				break;
-			}	
-			if (!planCuenta.getDetalleAsientos().isEmpty()) {
-				flag = true;
-				break;
-			}
-			if (!planCuenta.getHistDetalleAsientos().isEmpty()) {
-				flag = true;
-				break;
-			}
-			if (!planCuenta.getDesgloseMayorizacionCCs().isEmpty()) {
-				flag = true;
-				break;
-			}
-			if (!planCuenta.getHistDetalleAsientos().isEmpty()) {
-				flag = true;
-				break;
-			}
-			if (!planCuenta.getHistDetalleMayorizacions().isEmpty()) {
-				flag = true;
-				break;
-			}
-			if (!planCuenta.getDetalleMayorizacions().isEmpty()) {
-				flag = true;
-				break;
-			}
-			if (!planCuenta.getDetallePlantillas().isEmpty()) {
-				flag = true;
-				break;
-			}
-			if (!planCuenta.getDetalleReporteContableDesdes().isEmpty()) {
-				flag = true;
-				break;
-			}
-			if (!planCuenta.getDetalleReporteContableHastas().isEmpty()) {
-				flag = true;
-				break;
-			}
-			if (!planCuenta.getMatchCuentaOrigens().isEmpty()) {
-				flag = true;
-				break;
-			}
-			if (!planCuenta.getMatchCuentaDestinos().isEmpty()) {
-				flag = true;
-				break;
-			}		
-		}
-		return flag;
-	}
 
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.contabilidad.ejb.service.PlanCuentaService#copiaPlanEmpresa(java.lang.Long, java.lang.Long)
@@ -806,30 +664,22 @@ public class PlanCuentaServiceImpl implements PlanCuentaService{
 		}else{
 			todos = recuperaCuentasHijo(id);	
 		}		
-		//INSTANCIA NUEVA ENTIDAD
-		PlanCuenta planCuenta = new PlanCuenta();		
 		for(PlanCuenta i : todos){			
-			planCuenta = planCuentaDaoService.recuperaConHijos(i.getCodigo());
-			if (!planCuenta.getHistDetalleAsientos().isEmpty()) {
+			List<DetalleAsiento> detallesAsientos = detalleAsientoDaoService.selectByIdPlanCuenta(i.getCodigo());
+			if (!detallesAsientos.isEmpty()) {
+				flag = true;
+				break;
+			}			
+			List<DetalleMayorizacion> detallesMayorizacion = detalleMayorizacionDaoService.selectByIdPlanCuenta(i.getCodigo());
+			if (!detallesMayorizacion.isEmpty()) {
+				flag = true;
+				break;
+			}
+			List<DetallePlantilla> detallesPlantilla = detallePlantillaDaoService.selectByIdPlanCuenta(i.getCodigo());
+			if (!detallesPlantilla.isEmpty()) {
 				flag = true;
 				break;
 			}	
-			if (!planCuenta.getDetalleAsientos().isEmpty()) {
-				flag = true;
-				break;
-			}
-			if (!planCuenta.getDetallePlantillas().isEmpty()) {
-				flag = true;
-				break;
-			}
-			if (!planCuenta.getMatchCuentaOrigens().isEmpty()) {
-				flag = true;
-				break;
-			}
-			if (!planCuenta.getMatchCuentaDestinos().isEmpty()) {
-				flag = true;
-				break;
-			}		
 		}
 		return flag;
 	}
@@ -847,34 +697,22 @@ public class PlanCuentaServiceImpl implements PlanCuentaService{
 		}else{
 			todos = recuperaCuentasHijo(id);	
 		}		
-		//INSTANCIA NUEVA ENTIDAD
-		PlanCuenta planCuenta = new PlanCuenta();		
-		for(PlanCuenta i : todos){			
-			planCuenta = planCuentaDaoService.recuperaConHijos(i.getCodigo());
-			if (!planCuenta.getDetalleAsientos().isEmpty()) {
+		for(PlanCuenta i : todos){	
+			List<DetalleAsiento> detallesAsientos = detalleAsientoDaoService.selectByIdPlanCuenta(i.getCodigo());
+			if (!detallesAsientos.isEmpty()) {
 				flag = true;
 				break;
 			}			
-			if (!planCuenta.getDesgloseMayorizacionCCs().isEmpty()) {
-				flag = true;
-				break;
-			}			
-			if (!planCuenta.getDetalleMayorizacions().isEmpty()) {
+			List<DetalleMayorizacion> detallesMayorizacion = detalleMayorizacionDaoService.selectByIdPlanCuenta(i.getCodigo());
+			if (!detallesMayorizacion.isEmpty()) {
 				flag = true;
 				break;
 			}
-			if (!planCuenta.getDetallePlantillas().isEmpty()) {
+			List<DetallePlantilla> detallesPlantilla = detallePlantillaDaoService.selectByIdPlanCuenta(i.getCodigo());
+			if (!detallesPlantilla.isEmpty()) {
 				flag = true;
 				break;
 			}			
-			if (!planCuenta.getMatchCuentaOrigens().isEmpty()) {
-				flag = true;
-				break;
-			}
-			if (!planCuenta.getMatchCuentaDestinos().isEmpty()) {
-				flag = true;
-				break;
-			}		
 		}
 		return flag;
 	}
@@ -929,6 +767,16 @@ public class PlanCuentaServiceImpl implements PlanCuentaService{
 				}
 		}
 		return flag;
+	}
+
+	@Override
+	public PlanCuenta saveSingle(PlanCuenta planCuenta) throws Throwable {
+		System.out.println("saveSingle - planCuenta");
+        if(planCuenta.getCodigo() == null){
+        	planCuenta.setEstado(Long.valueOf(Estado.ACTIVO)); //Activo
+		}
+        planCuenta = planCuentaDaoService.save(planCuenta, planCuenta.getCodigo());
+        return planCuenta;
 	}
 
 }

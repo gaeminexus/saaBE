@@ -167,5 +167,16 @@ public class DetalleMayorizacionDaoServiceImpl extends EntityDaoImpl<DetalleMayo
 		
 		return query.getResultList();
 	}
+
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<DetalleMayorizacion> selectByIdPlanCuenta(Long idPlanCuenta) throws Throwable {
+		System.out.println("Ingresa al metodo selectByIdPlanCuenta de idPlanCuenta: " + idPlanCuenta);
+		Query query = em.createQuery(" select b " +
+									 " from   DetalleMayorizacion b " +
+									 " where  b.planCuenta.codigo = :idPlanCuenta ");
+		query.setParameter("idPlanCuenta", idPlanCuenta);		
+		return query.getResultList();
+	}
 	
 }
