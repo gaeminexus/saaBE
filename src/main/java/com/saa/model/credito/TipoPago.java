@@ -66,7 +66,7 @@ public class TipoPago implements Serializable {
      */
     @Basic
     @Column(name = "TPPGIDST")
-    private Long idEstado;
+    private Long estado;
 
     // ============================================================
     // Getters y Setters
@@ -156,16 +156,16 @@ public class TipoPago implements Serializable {
      * Devuelve idEstado.
      * @return idEstado.
      */
-    public Long getIdEstado() {
-        return idEstado;
+    public Long getEstado() {
+        return estado;
     }
 
     /**
      * Asigna idEstado.
      * @param idEstado nuevo valor para idEstado.
      */
-    public void setIdEstado(Long idEstado) {
-        this.idEstado = idEstado;
+    public void setEstado(Long estado) {
+        this.estado = estado;
     }
 }
 

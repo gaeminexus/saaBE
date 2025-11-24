@@ -38,7 +38,7 @@ public class Prestamo implements Serializable {
 
     @Basic
     @Column(name = "PRSTIDAS")
-    private Long idSistema;
+    private Long idAsoprep;
     
     @ManyToOne
     @JoinColumn(name = "ENTDCDGO", referencedColumnName = "ENTDCDGO")
@@ -160,10 +160,11 @@ public class Prestamo implements Serializable {
     @Basic
     @Column(name = "PRSTOBSR", length = 2000)
     private String observacion;
-
-    @Basic
-    @Column(name = "MTVPCDGO")
-    private String motivoPrestamo;
+    
+    /** FK - Motivo Prestamo */
+    @ManyToOne
+    @JoinColumn(name = "MTVPCDGO", referencedColumnName = "FLLLCDGO")
+    private MotivoPrestamo motivoPrestamo;
 
     @Basic
     @Column(name = "PRSTESOP")
@@ -280,8 +281,8 @@ public class Prestamo implements Serializable {
     public Long getCodigo() { return codigo; }
     public void setCodigo(Long codigo) { this.codigo = codigo; }
 
-    public Long getIdSistema() { return idSistema; }
-    public void setIdSistema(Long idSistema) { this.idSistema = idSistema; }
+    public Long getIdSistema() { return idAsoprep; }
+    public void setIdSistema(Long idAsoprep) { this.idAsoprep = idAsoprep; }
 
     public Entidad getEntidad() { return entidad; }
     public void setEntidad(Entidad entidad) { this.entidad = entidad; }
@@ -372,9 +373,10 @@ public class Prestamo implements Serializable {
 
     public String getObservacion() { return observacion; }
     public void setObservacion(String observacion) { this.observacion = observacion; }
+    
 
-    public String getMotivoPrestamo() { return motivoPrestamo; }
-    public void setMotivoPrestamo(String motivoPrestamo) { this.motivoPrestamo = motivoPrestamo; }
+    public MotivoPrestamo getMotivoPrestamo() { return motivoPrestamo; }
+    public void setMotivoPrestamo(MotivoPrestamo motivoPrestamo) { this.motivoPrestamo = motivoPrestamo; }
 
     public Long getEstadoOperacion() { return estadoOperacion; }
     public void setEstadoOperacion(Long estadoOperacion) { this.estadoOperacion = estadoOperacion; }

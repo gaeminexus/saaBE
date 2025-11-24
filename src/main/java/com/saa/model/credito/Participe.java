@@ -84,7 +84,7 @@ public class Participe implements Serializable {
 
     @Basic
     @Column(name = "PRTCIAAC", length = 2000)
-    private String ingresoActividad;
+    private String ingresoAdicionalActividad;
 
     @Basic
     @Column(name = "PRTCFCIF")
@@ -222,12 +222,12 @@ public class Participe implements Serializable {
         this.ingresoAdicionalMensual = ingresoAdicionalMensual;
     }
 
-    public String getIngresoActividad() {
-        return ingresoActividad;
+    public String getIngresoAdicionalActividad() {
+        return ingresoAdicionalActividad;
     }
 
-    public void setIngresoActividad(String ingresoActividad) {
-        this.ingresoActividad = ingresoActividad;
+    public void setIngresoActividad(String ingresoAdicionalActividad) {
+        this.ingresoAdicionalActividad = ingresoAdicionalActividad;
     }
 
     public LocalDate getFechaIngresoFondo() {

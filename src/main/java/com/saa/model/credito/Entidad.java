@@ -132,7 +132,7 @@ public class Entidad implements Serializable {
     /** ID ciudad */
     @Basic
     @Column(name = "ENTDIDCD", length = 50)
-    private String ciudadId;
+    private String idCiudad;
 
     /** Porcentaje similitud */
     @Basic
@@ -168,11 +168,6 @@ public class Entidad implements Serializable {
     @Basic
     @Column(name = "ENTDUSMD", length = 50)
     private String usuarioModificacion;
-
-    /** Fecha modificación */
-//    @Basic
-//    @Column(name = "ENTDFCMD")
-//    private LocalDateTime fechaModificacion;
 
     /** ID Estado */
     @Basic
@@ -246,8 +241,8 @@ public class Entidad implements Serializable {
     public String getMovil() { return movil; }
     public void setMovil(String movil) { this.movil = movil; }
 
-    public String getCiudadId() { return ciudadId; }
-    public void setCiudadId(String ciudadId) { this.ciudadId = ciudadId; }
+    public String getidCiudad() { return idCiudad; }
+    public void setCiudadId(String idCiudad) { this.idCiudad = idCiudad; }
 
     public Long getPorcentajeSimilitud() { return porcentajeSimilitud; }
     public void setPorcentajeSimilitud(Long porcentajeSimilitud) { this.porcentajeSimilitud = porcentajeSimilitud; }
