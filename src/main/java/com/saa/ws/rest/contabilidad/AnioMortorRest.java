@@ -2,6 +2,7 @@ package com.saa.ws.rest.contabilidad;
 
 import java.util.List;
 
+import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.contabilidad.dao.AnioMotorDaoService;
 import com.saa.ejb.contabilidad.service.AnioMotorService;
 import com.saa.model.contabilidad.AnioMotor;
@@ -17,6 +18,7 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 
@@ -112,17 +114,23 @@ public class AnioMortorRest {
     }
 
     /**
-     * POST method for updating or creating an instance of AnioMortorRest
-     * 
+     * POST method for updating or creating an instance of AnioMotorRest
+     *
      * @param content representation for the resource
      * @return an HTTP response with content of the updated or created resource.
      */
-    @Path("criteria")
     @POST
+    @Path("selectByCriteria")
     @Consumes("application/json")
-    public List<AnioMotor> selectByCriteria(Long test) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DE SELECT BY CRITERIA: " + test);
-        return anioMotorDaoService.selectAll(NombreEntidadesContabilidad.ANIO_MOTOR);
+    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+        System.out.println("selectByCriteria de ANIO_MOTOR");
+        Response respuesta = null;
+        try {
+            respuesta = Response.status(Response.Status.OK).entity(anioMotorService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+        return respuesta;
     }
 
     /**

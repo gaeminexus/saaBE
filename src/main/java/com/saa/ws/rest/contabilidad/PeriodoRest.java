@@ -2,10 +2,11 @@ package com.saa.ws.rest.contabilidad;
 
 import java.util.List;
 
+import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.contabilidad.dao.PeriodoDaoService;
 import com.saa.ejb.contabilidad.service.PeriodoService;
-import com.saa.model.contabilidad.Periodo;
 import com.saa.model.contabilidad.NombreEntidadesContabilidad;
+import com.saa.model.contabilidad.Periodo;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;
@@ -17,6 +18,8 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 
 @Path("prdo")
@@ -113,18 +116,23 @@ public class PeriodoRest {
 
     /**
      * POST method for updating or creating an instance of PeriodoRest
-     * 
+     *
      * @param content representation for the resource
      * @return an HTTP response with content of the updated or created resource.
      */
-    @Path("criteria")
     @POST
+    @Path("selectByCriteria")
     @Consumes("application/json")
-    public List<Periodo> selectByCriteria(Long test) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DE SELECT BY CRITERIA: " + test);
-        return periodoDaoService.selectAll(NombreEntidadesContabilidad.PERIODO);
+    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+        System.out.println("selectByCriteria de PERIODO");
+        Response respuesta = null;
+        try {
+            respuesta = Response.status(Response.Status.OK).entity(periodoService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+        return respuesta;
     }
-
     /**
      * POST method for updating or creating an instance of PeriodoRest
      * 
