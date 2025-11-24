@@ -56,7 +56,7 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
         	for (ParticipeXCargaArchivo participe : participesXCargaArchivo) {
             	if (participe.getCodigoPetro().equals(55145L)) {
             		System.out.println("TAL COMO LLEGA EL NOMBRE DE 55145: " + participe.getNombre());
-            		System.out.println("CONVERTIDO A UTF 55145: " + convertirAUTF8(participe.getNombre()));
+            		System.out.println("CONVERTIDO A UTF 55145: " + convertirAISO8859(participe.getNombre()));
             	}
 			}
         	
@@ -96,6 +96,20 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
         // Re-interpretar: asume que los bytes son ISO-8859-1, conviértelos a UTF-8
         byte[] bytesIso = textoOriginal.getBytes(StandardCharsets.ISO_8859_1);
         return new String(bytesIso, StandardCharsets.UTF_8);
+    }
+    
+    /**
+     * Convierte un string de ISO-8859-1 a UTF-8
+     * Útil cuando FormData envía UTF-8 pero el servidor lo interpreta como ISO-8859-1
+     */
+    private String convertirAISO8859(String textoOriginal) {
+        if (textoOriginal == null) {
+            return null;
+        }
+        
+        // Re-interpretar: asume que los bytes son ISO-8859-1, conviértelos a UTF-8
+        byte[] bytesIso = textoOriginal.getBytes(StandardCharsets.UTF_8);
+        return new String(bytesIso, StandardCharsets.ISO_8859_1);
     }
 
     /**

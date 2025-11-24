@@ -6,7 +6,6 @@ import java.util.Arrays;
 import java.util.List;
 
 import com.saa.basico.ejb.FileService;
-import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.asoprep.service.CargaArchivoPetroService;
 import com.saa.ejb.credito.service.EstadoCivilService;
 import com.saa.model.credito.CargaArchivo;
@@ -105,7 +104,7 @@ public class AsoprepGenerales {
      */
     @POST
     @Path("procesarArchivoPetro")
-    @Consumes(MediaType.MULTIPART_FORM_DATA + ";charset=UTF-8")
+    @Consumes(MediaType.MULTIPART_FORM_DATA)
     @Produces(MediaType.APPLICATION_JSON)
     public Response procesarArchivoPetro(
     		@Context HttpHeaders headers,
@@ -126,10 +125,10 @@ public class AsoprepGenerales {
         System.out.println("java.version: " + System.getProperty("java.version"));
         System.out.println("===============================\n");
         
-        analizarDatosJSON(participesXCargaArchivoJson, "participesXCargaArchivo");
-        /*System.out.println("=============================================");
+        //analizarDatosJSON(participesXCargaArchivoJson, "participesXCargaArchivo");
+        System.out.println("=============================================");
         System.out.println(participesXCargaArchivoJson);
-        System.out.println("=============================================");*/
+        System.out.println("=============================================");
         try {
             // Validar archivo
             if (archivoInputStream == null || archivoNombre == null || archivoNombre.trim().isEmpty()) {
