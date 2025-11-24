@@ -38,7 +38,7 @@ public class MetodoPago implements Serializable {
      */
     @Basic
     @Column(name = "MTDPCSBC", length = 50)
-    private String codigoSBS;
+    private String codigoSbs;
 
     /**
      * Nombre del método de pago.
@@ -78,16 +78,16 @@ public class MetodoPago implements Serializable {
      * Devuelve codigoSBS.
      * @return codigoSBS.
      */
-    public String getCodigoSBS() {
-        return codigoSBS;
+    public String getCodigoSbs() {
+        return codigoSbs;
     }
 
     /**
      * Asigna codigoSBS.
      * @param codigoSBS nuevo valor para codigoSBS.
      */
-    public void setCodigoSBS(String codigoSBS) {
-        this.codigoSBS = codigoSBS;
+    public void setCodigoSBS(String codigoSbs) {
+        this.codigoSbs = codigoSbs;
     }
 
     /**

@@ -2,10 +2,11 @@ package com.saa.ws.rest.contabilidad;
 
 import java.util.List;
 
+import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.contabilidad.dao.PlanCuentaDaoService;
 import com.saa.ejb.contabilidad.service.PlanCuentaService;
-import com.saa.model.contabilidad.PlanCuenta;
 import com.saa.model.contabilidad.NombreEntidadesContabilidad;
+import com.saa.model.contabilidad.PlanCuenta;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;
@@ -17,6 +18,8 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 
 @Path("plnn")
@@ -114,16 +117,22 @@ public class PlanCuentaRest {
 
     /**
      * POST method for updating or creating an instance of PlanCuentaRest
-     * 
+     *
      * @param content representation for the resource
      * @return an HTTP response with content of the updated or created resource.
      */
-    @Path("criteria")
     @POST
+    @Path("selectByCriteria")
     @Consumes("application/json")
-    public List<PlanCuenta> selectByCriteria(Long test) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DE SELECT BY CRITERIA: " + test);
-        return planCuentaDaoService.selectAll(NombreEntidadesContabilidad.PLAN_CUENTA);
+    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+        System.out.println("selectByCriteria de PLAN_CUENTA");
+        Response respuesta = null;
+        try {
+            respuesta = Response.status(Response.Status.OK).entity(planCuentaService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+        return respuesta;
     }
 
     /**
