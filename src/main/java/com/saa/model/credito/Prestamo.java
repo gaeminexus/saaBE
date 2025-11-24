@@ -163,7 +163,7 @@ public class Prestamo implements Serializable {
     
     /** FK - Motivo Prestamo */
     @ManyToOne
-    @JoinColumn(name = "MTVPCDGO", referencedColumnName = "FLLLCDGO")
+    @JoinColumn(name = "MTVPCDGO", referencedColumnName = "MTVPCDGO")
     private MotivoPrestamo motivoPrestamo;
 
     @Basic
