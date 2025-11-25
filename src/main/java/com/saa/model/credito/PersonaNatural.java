@@ -57,12 +57,13 @@ public class PersonaNatural implements Serializable {
     @Column(name = "PRSNAPLL", length = 2000)
     private String apellidos;
 
+
     /**
-     * Estado civil.
+     * Estado Civil.
      */
-    @Basic
-    @Column(name = "PRSNESCV", length = 2000)
-    private String estadoCivil;
+    @ManyToOne
+    @JoinColumn(name = "PRSNESCV", referencedColumnName = "PRSNESCV")
+    private EstadoCivil estadoCivil;
 
     /**
      * Género.
@@ -128,11 +129,11 @@ public class PersonaNatural implements Serializable {
         this.apellidos = apellidos;
     }
 
-    public String getEstadoCivil() {
+    public EstadoCivil getEstadoCivil() {
         return estadoCivil;
     }
 
-    public void setEstadoCivil(String estadoCivil) {
+    public void setEstadoCivil(EstadoCivil estadoCivil) {
         this.estadoCivil = estadoCivil;
     }
 
