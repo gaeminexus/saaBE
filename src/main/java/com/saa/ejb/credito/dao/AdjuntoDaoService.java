@@ -7,5 +7,5 @@ import jakarta.ejb.Local;
 
 @Local
 public interface AdjuntoDaoService extends EntityDao<Adjunto> {
-
+ 
 }
