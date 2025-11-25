@@ -62,7 +62,7 @@ public class PersonaNatural implements Serializable {
      * Estado Civil.
      */
     @ManyToOne
-    @JoinColumn(name = "PRSNESCV", referencedColumnName = "PRSNESCV")
+    @JoinColumn(name = "PRSNESCV", referencedColumnName = "ESCVCDGO")
     private EstadoCivil estadoCivil;
 
     /**
