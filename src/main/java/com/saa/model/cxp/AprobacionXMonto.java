@@ -8,6 +8,7 @@
  */
 package com.saa.model.cxp;
 
+
 import java.io.Serializable;
 import java.util.Date;
 
