@@ -37,8 +37,8 @@ import jakarta.persistence.Table;
 @Table(name = "TCIC", schema = "CBR")
 @SequenceGenerator(name = "SQ_TCICCDGO", sequenceName = "CBR.SQ_TCICCDGO", allocationSize = 1)
 @NamedQueries({
-    @NamedQuery(name = "TempComposicionCuotaInicialCobroAll", query = "from TempComposicionCuotaInicialCobro e"),
-    @NamedQuery(name = "TempComposicionCuotaInicialCobroId", query = "from TempComposicionCuotaInicialCobro e where e.codigo = :id")
+    @NamedQuery(name = "TempComposicionCuotaInicialCobroAll", query = "select e from TempComposicionCuotaInicialCobro e"),
+    @NamedQuery(name = "TempComposicionCuotaInicialCobroId", query = "select e from TempComposicionCuotaInicialCobro e where e.codigo = :id")
 })
 public class TempComposicionCuotaInicialCobro implements Serializable {
 

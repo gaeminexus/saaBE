@@ -41,9 +41,9 @@ import jakarta.persistence.Table;
 )
 @NamedQueries({
         @NamedQuery(name = "ResumenValorDocumentoCobroAll",
-                query = "from ResumenValorDocumentoCobro e"),
+                query = "select e from ResumenValorDocumentoCobro e"),
         @NamedQuery(name = "ResumenValorDocumentoCobroId",
-                query = "from ResumenValorDocumentoCobro e where e.codigo = :id")
+                query = "select e from ResumenValorDocumentoCobro e where e.codigo = :id")
 })
 public class ResumenValorDocumentoCobro implements Serializable {
 

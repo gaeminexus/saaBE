@@ -38,8 +38,8 @@ import jakarta.persistence.TemporalType;
 @Table(name = "TCDC", schema = "CBR")
 @SequenceGenerator(name = "SQ_TCDCCDGO", sequenceName = "CBR.SQ_TCDCCDGO", allocationSize = 1)
 @NamedQueries({
-    @NamedQuery(name = "TempCuotaXFinanciacionCobroAll", query = "from TempCuotaXFinanciacionCobro e"),
-    @NamedQuery(name = "TempCuotaXFinanciacionCobroId", query = "from TempCuotaXFinanciacionCobro e where e.codigo = :id")
+    @NamedQuery(name = "TempCuotaXFinanciacionCobroAll", query = "select e from TempCuotaXFinanciacionCobro e"),
+    @NamedQuery(name = "TempCuotaXFinanciacionCobroId", query = "select e from TempCuotaXFinanciacionCobro e where e.codigo = :id")
 })
 public class TempCuotaXFinanciacionCobro implements Serializable {
 
