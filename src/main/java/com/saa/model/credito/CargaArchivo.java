@@ -131,6 +131,36 @@ public class CargaArchivo implements Serializable {
     @Column(name = "CRARESTD")
     private Long estado;
 
+    /** Número de Transferencia */
+    @Basic
+    @Column(name = "CRARNMTF")
+    private Long numeroTransferencia;
+
+    /** Usuario Contabilidad que Confirma */
+    @ManyToOne
+    @JoinColumn(name = "CRARUSCC", referencedColumnName = "PJRQCDGO")
+    private Usuario usuarioContabilidadConfirma;
+
+    /** Fecha de Autorización Contabilidad */
+    @Basic
+    @Column(name = "CRARFCAC")
+    private LocalDateTime fechaAutorizacionContabilidad;
+
+    /** Usuario de Anulación */
+    @ManyToOne
+    @JoinColumn(name = "CRARUSAN", referencedColumnName = "PJRQCDGO")
+    private Usuario usuarioAnulacion;
+
+    /** Motivo de Anulación */
+    @Basic
+    @Column(name = "CRARMTAN", length = 2000)
+    private String motivoAnulacion;
+
+    /** Fecha de Anulación */
+    @Basic
+    @Column(name = "CRARFCAN")
+    private LocalDateTime fechaAnulacion;
+
     // ============================================================
     // GETTERS Y SETTERS
     // ============================================================
@@ -293,5 +323,53 @@ public class CargaArchivo implements Serializable {
 
     public void setEstado(Long estado) {
         this.estado = estado;
+    }
+
+    public Long getNumeroTransferencia() {
+        return numeroTransferencia;
+    }
+
+    public void setNumeroTransferencia(Long numeroTransferencia) {
+        this.numeroTransferencia = numeroTransferencia;
+    }
+
+    public Usuario getUsuarioContabilidadConfirma() {
+        return usuarioContabilidadConfirma;
+    }
+
+    public void setUsuarioContabilidadConfirma(Usuario usuarioContabilidadConfirma) {
+        this.usuarioContabilidadConfirma = usuarioContabilidadConfirma;
+    }
+
+    public LocalDateTime getFechaAutorizacionContabilidad() {
+        return fechaAutorizacionContabilidad;
+    }
+
+    public void setFechaAutorizacionContabilidad(LocalDateTime fechaAutorizacionContabilidad) {
+        this.fechaAutorizacionContabilidad = fechaAutorizacionContabilidad;
+    }
+
+    public Usuario getUsuarioAnulacion() {
+        return usuarioAnulacion;
+    }
+
+    public void setUsuarioAnulacion(Usuario usuarioAnulacion) {
+        this.usuarioAnulacion = usuarioAnulacion;
+    }
+
+    public String getMotivoAnulacion() {
+        return motivoAnulacion;
+    }
+
+    public void setMotivoAnulacion(String motivoAnulacion) {
+        this.motivoAnulacion = motivoAnulacion;
+    }
+
+    public LocalDateTime getFechaAnulacion() {
+        return fechaAnulacion;
+    }
+
+    public void setFechaAnulacion(LocalDateTime fechaAnulacion) {
+        this.fechaAnulacion = fechaAnulacion;
     }
 }
