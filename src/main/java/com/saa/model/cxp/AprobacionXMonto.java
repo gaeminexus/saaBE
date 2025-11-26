@@ -43,6 +43,7 @@ import jakarta.persistence.TemporalType;
 })
 public class AprobacionXMonto implements Serializable {
 
+	
 	/**
 	 * Codigo de la entidad.
 	 */
