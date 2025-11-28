@@ -44,7 +44,7 @@ public class FinanciacionXDocumentoCobro implements Serializable {
     @Id
     @Basic
     @Column(name = "FXDCCDGO", precision = 0)
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_FXDCCDGO")
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     @SequenceGenerator(name = "SQ_FXDCCDGO", sequenceName = "CBR.SQ_FXDCCDGO", allocationSize = 1)
     private Long codigo;
     

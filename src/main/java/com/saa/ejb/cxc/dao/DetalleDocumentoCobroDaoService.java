@@ -11,21 +11,14 @@ package com.saa.ejb.cxc.dao;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.cxc.DetalleDocumentoCobro;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  * DaoService DetalleDocumentoCobro. 
  */
-@Remote
+@Local
 public interface DetalleDocumentoCobroDaoService  extends EntityDao<DetalleDocumentoCobro>  {
 	
-	/**
-	 * Metodo que recupero objeto de entidad con datos de detalle relacionado
-	 * @param id		:Id de la entidad a recuperar
-	 * @return			:Objeto con los hijos atachados
-	 * @throws Throwable:Excepcion
-	 */
-	DetalleDocumentoCobro recuperaConHijos(Long id) throws Throwable;
 	
 }

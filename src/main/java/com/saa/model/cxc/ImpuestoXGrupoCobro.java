@@ -44,7 +44,7 @@ public class ImpuestoXGrupoCobro implements Serializable {
     @Id
     @Basic
     @Column(name = "IXGCCDGO", precision = 0)
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_IXGCCDGO")
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     @SequenceGenerator(name = "SQ_IXGCCDGO", sequenceName = "CBR.SQ_IXGCCDGO", allocationSize = 1)
     private Long codigo;
     

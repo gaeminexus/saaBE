@@ -48,7 +48,7 @@ public class DetalleDocumentoCobro implements Serializable {
     @Id
     @Basic
     @Column(name = "DTDCCDGO", precision = 0)
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_DTDCCDGO")
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long codigo;
     
     /**

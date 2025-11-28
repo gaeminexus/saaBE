@@ -53,7 +53,7 @@ public class DocumentoCobro implements Serializable {
     @Id
     @Basic
     @Column(name = "DCMCCDGO", precision = 0)
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_DCMCCDGO")
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long codigo;
     
     /**

@@ -11,13 +11,13 @@ package com.saa.ejb.cxc.dao;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.cxc.GrupoProductoCobro;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  * DaoService GrupoProductoCobro. 
  */
-@Remote
+@Local
 public interface GrupoProductoCobroDaoService  extends EntityDao<GrupoProductoCobro>  {
 	
 	/**

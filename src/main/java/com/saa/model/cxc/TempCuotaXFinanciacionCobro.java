@@ -1,11 +1,10 @@
 /**
- * Copyright (c) 2010 Compuseg Cía. Ltda.
+ * Copyright (c) 2010 Compuseg Cía. Ltda. 
  * Av. Amazonas 3517 y Juan Pablo Sanz, Edif Xerox 6to. piso
  * Quito - Ecuador
- * Todos los derechos reservados.
- * Este software es información confidencial y patentada de Compuseg Cía. Ltda.
- * Usted no puede divulgar dicha Información confidencial y se utilizará sólo
- * conforme los términos del acuerdo de licencia con Compuseg.
+ * Todos los derechos reservados. 
+ * Este software es la información confidencial y patentada de Compuseg Cía. Ltda. ("Información Confidencial"). 
+ * Usted no puede divulgar dicha Información confidencial y se utilizará sólo en conformidad con los términos del acuerdo de licencia que ha introducido dentro de Compuseg
  */
 package com.saa.model.cxc;
 
@@ -28,10 +27,12 @@ import jakarta.persistence.Temporal;
 import jakarta.persistence.TemporalType;
 
 /**
+ * @author GaemiSoft
  * Pojo mapeo de tabla CBR.TCDC.
  * Entity TempCuotaXFinanciacionCobro.
- * Cuotas resultantes de la financiación de un documento de cobro.
- * Son hijas de la entidad TFDC (financiación por documento de cobro).
+ * Cuotas que se deben cancelar del documento de cobro. 
+ * Son el resultado de la financiacion por lo que son hijas de la entidad de 
+ * financiacion por documento de cobro TFDC.
  */
 @SuppressWarnings("serial")
 @Entity
@@ -44,89 +45,106 @@ import jakarta.persistence.TemporalType;
 public class TempCuotaXFinanciacionCobro implements Serializable {
 
     /**
-     * Código de la entidad.
+     * Codigo de la entidad.
      */
+    @Id
+    @Basic
+    @Column(name = "TCDCCDGO", precision = 0)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_TCDCCDGO")
     private Long codigo;
-
+    
     /**
-     * Financiación a la que pertenece la cuota.
+     * Financiacion a la que pertenece la cuota inicial.
      */
+    @ManyToOne
+    @JoinColumn(name = "TFDCCDGO", referencedColumnName = "TFDCCDGO")
     private TempFinanciacionXDocumentoCobro tempFinanciacionXDocumentoCobro;
-
+    
     /**
-     * Fecha de generación o ingreso de la cuota.
+     * Fecha de generacion o ingreso de la cuota.
      */
+    @Basic
+    @Column(name = "TCDCFCIN")
+    @Temporal(TemporalType.TIMESTAMP)
     private Date fechaIngreso;
-
+    
     /**
      * Fecha de vencimiento de la cuota.
      */
+    @Basic
+    @Column(name = "TCDCFCVN")
+    @Temporal(TemporalType.DATE)
     private Date fechaVencimiento;
-
+    
     /**
-     * Tipo de cobro: 1 = cuota, 2 = letra, 3 = cuota inicial.
+     * Tipo de cobro. 1 = cuota, 2 = letra, 3 = cuota inicial.
      */
+    @Basic
+    @Column(name = "TCDCTPOO")
     private Long tipo;
-
+    
     /**
-     * Valor a cobrar por la cuota.
+     * Valor a cobrar por la cuota.    
      */
+    @Basic
+    @Column(name = "TCDCVLRR")
     private Double valor;
-
+    
     /**
-     * Número secuencial dentro de la financiación.
+     * Numero secuencial de cuota dentro del total de la financiación. 
      */
+    @Basic
+    @Column(name = "TCDCNMSC")
     private Long numeroSecuencial;
-
+    
     /**
-     * Número de cuota o letra.
+     * Numero de cuota o letra. el numero de letra es un secuencial dentro de toda la empresa. 
      */
+    @Basic
+    @Column(name = "TCDCNMCL")
     private Long numeroCuotaLetra;
-
+    
     /**
-     * Total de cuotas en la financiación.
+     * Numero total de cuotas en las que fue financiado el documento. 
      */
+    @Basic
+    @Column(name = "TCDCNMTC")
     private Long numeroTotalCuotas;
-
+    
     /**
-     * Total abonado a la cuota.
+     * Total abonado a la cuota.   
      */
+    @Basic
+    @Column(name = "TCDCABNO")
     private Double totalAbono;
-
+    
     /**
      * Saldo de la cuota.
      */
+    @Basic
+    @Column(name = "TCDCSLDO")
     private Double saldo;
-
-    // ---------------------------------------------------
-    // GETTERS Y SETTERS
-    // ---------------------------------------------------
-
-    @Id
-    @Column(name = "TCDCCDGO", precision = 0)
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_TCDCCDGO")
+    
+    // ============================================================
+    // Getters y Setters
+    // ============================================================
+    
     public Long getCodigo() {
         return codigo;
     }
-
+    
     public void setCodigo(Long codigo) {
         this.codigo = codigo;
     }
-
-    @ManyToOne
-    @JoinColumn(name = "TFDCCDGO", referencedColumnName = "TFDCCDGO")
+    
     public TempFinanciacionXDocumentoCobro getTempFinanciacionXDocumentoCobro() {
         return tempFinanciacionXDocumentoCobro;
     }
 
-    public void setTempFinanciacionXDocumentoCobro(
-            TempFinanciacionXDocumentoCobro tempFinanciacionXDocumentoCobro) {
+    public void setTempFinanciacionXDocumentoCobro(TempFinanciacionXDocumentoCobro tempFinanciacionXDocumentoCobro) {
         this.tempFinanciacionXDocumentoCobro = tempFinanciacionXDocumentoCobro;
     }
 
-    @Basic
-    @Column(name = "TCDCFCIN")
-    @Temporal(TemporalType.TIMESTAMP)
     public Date getFechaIngreso() {
         return fechaIngreso;
     }
@@ -135,9 +153,6 @@ public class TempCuotaXFinanciacionCobro implements Serializable {
         this.fechaIngreso = fechaIngreso;
     }
 
-    @Basic
-    @Column(name = "TCDCFCVN")
-    @Temporal(TemporalType.DATE)
     public Date getFechaVencimiento() {
         return fechaVencimiento;
     }
@@ -146,8 +161,6 @@ public class TempCuotaXFinanciacionCobro implements Serializable {
         this.fechaVencimiento = fechaVencimiento;
     }
 
-    @Basic
-    @Column(name = "TCDCTPOO")
     public Long getTipo() {
         return tipo;
     }
@@ -156,8 +169,6 @@ public class TempCuotaXFinanciacionCobro implements Serializable {
         this.tipo = tipo;
     }
 
-    @Basic
-    @Column(name = "TCDCVLRR")
     public Double getValor() {
         return valor;
     }
@@ -166,8 +177,6 @@ public class TempCuotaXFinanciacionCobro implements Serializable {
         this.valor = valor;
     }
 
-    @Basic
-    @Column(name = "TCDCNMSC")
     public Long getNumeroSecuencial() {
         return numeroSecuencial;
     }
@@ -176,8 +185,6 @@ public class TempCuotaXFinanciacionCobro implements Serializable {
         this.numeroSecuencial = numeroSecuencial;
     }
 
-    @Basic
-    @Column(name = "TCDCNMCL")
     public Long getNumeroCuotaLetra() {
         return numeroCuotaLetra;
     }
@@ -186,8 +193,6 @@ public class TempCuotaXFinanciacionCobro implements Serializable {
         this.numeroCuotaLetra = numeroCuotaLetra;
     }
 
-    @Basic
-    @Column(name = "TCDCNMTC")
     public Long getNumeroTotalCuotas() {
         return numeroTotalCuotas;
     }
@@ -196,8 +201,6 @@ public class TempCuotaXFinanciacionCobro implements Serializable {
         this.numeroTotalCuotas = numeroTotalCuotas;
     }
 
-    @Basic
-    @Column(name = "TCDCABNO")
     public Double getTotalAbono() {
         return totalAbono;
     }
@@ -206,8 +209,6 @@ public class TempCuotaXFinanciacionCobro implements Serializable {
         this.totalAbono = totalAbono;
     }
 
-    @Basic
-    @Column(name = "TCDCSLDO")
     public Double getSaldo() {
         return saldo;
     }

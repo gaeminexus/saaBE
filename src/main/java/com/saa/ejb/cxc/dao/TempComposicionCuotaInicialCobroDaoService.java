@@ -11,13 +11,13 @@ package com.saa.ejb.cxc.dao;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.cxc.TempComposicionCuotaInicialCobro;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  * DaoService TempComposicionCuotaInicialCobro. 
  */
-@Remote
+@Local
 public interface TempComposicionCuotaInicialCobroDaoService  extends EntityDao<TempComposicionCuotaInicialCobro>  {
 	
 }

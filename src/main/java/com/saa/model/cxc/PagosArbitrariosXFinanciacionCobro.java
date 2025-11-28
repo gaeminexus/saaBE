@@ -48,7 +48,7 @@ public class PagosArbitrariosXFinanciacionCobro implements Serializable {
     @Id
     @Basic
     @Column(name = "PAFCCDGO", precision = 0)
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_PAFCCDGO")
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     @SequenceGenerator(name = "SQ_PAFCCDGO", sequenceName = "CBR.SQ_PAFCCDGO", allocationSize = 1)
     private Long codigo;
     

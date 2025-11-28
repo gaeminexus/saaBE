@@ -11,13 +11,13 @@ package com.saa.ejb.cxc.dao;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.cxc.ValorImpuestoDocumentoCobro;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  * DaoService ValorImpuestoDocumentoCobro. 
  */
-@Remote
+@Local
 public interface ValorImpuestoDocumentoCobroDaoService  extends EntityDao<ValorImpuestoDocumentoCobro>  {
 	
 }

@@ -54,7 +54,7 @@ public interface ProductoCobroService extends EntityService<ProductoCobro> {
 	  * @return				: Mensaje
 	  * @throws Throwable	: Excepcion
 	 */
-	 String saveProducto(Object[][] object, Object[] campos, Long idGrupo) throws Throwable;
+	 public String saveProducto(ProductoCobro productoCobro, Long idGrupo) throws Throwable;
 	 
 	 /**
 	 * Metodo para verificar si el producto es de tipo acumulacion o movimiento

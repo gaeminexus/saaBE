@@ -13,13 +13,13 @@ import java.util.List;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.cxc.ProductoCobro;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  * DaoService ProductoCobro. 
  */
-@Remote
+@Local
 public interface ProductoCobroDaoService  extends EntityDao<ProductoCobro>  {
 	
 	/**

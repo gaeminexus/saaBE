@@ -48,7 +48,7 @@ public class CuotaXFinanciacionCobro implements Serializable {
     @Id
     @Basic
     @Column(name = "CXDCCDGO", precision = 0)
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_CXDCCDGO")
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long codigo;
     
     /**

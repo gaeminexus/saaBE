@@ -45,7 +45,7 @@ public class TempResumenValorDocumentoCobro implements Serializable {
     @Id
     @Basic
     @Column(name = "TRDCCDGO", precision = 0)
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_TRDCCDGO")
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long codigo;
 
     /**
