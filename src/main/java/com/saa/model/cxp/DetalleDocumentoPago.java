@@ -38,7 +38,7 @@ import jakarta.persistence.TemporalType;
 @SuppressWarnings("serial")
 @Entity
 @Table(name = "DTDP", schema = "PGS")
-@SequenceGenerator(name = "SQ_DTDPCDGO", sequenceName = "PGS.SQ_DTDPCDGO", allocationSize = 1)
+// @SequenceGenerator(name = "SQ_DTDPCDGO", sequenceName = "PGS.SQ_DTDPCDGO", allocationSize = 1)
 @NamedQueries({
 	@NamedQuery(name = "DetalleDocumentoPagoAll", query = "select e from DetalleDocumentoPago e"),
 	@NamedQuery(name = "DetalleDocumentoPagoId", query = "select e from DetalleDocumentoPago e where e.codigo = :id")
