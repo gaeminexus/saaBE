@@ -15,7 +15,6 @@ import com.saa.model.cxc.GrupoProductoCobro;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
-import jakarta.persistence.Query;
 
 /**
  * @author GaemiSoft.
@@ -43,27 +42,6 @@ public class GrupoProductoCobroDaoServiceImpl extends EntityDaoImpl<GrupoProduct
 							"productoCobros"};
 	}
 	
-	/* (non-Javadoc)
-	 * @see com.compuseg.income.cxc.ejb.dao.GrupoProductoCobroDaoService#recuperaConHijos(java.lang.Long)
-	 */
-	@SuppressWarnings("unchecked")
-	public GrupoProductoCobro recuperaConHijos(Long id) throws Throwable {
-		System.out.println("Ingresa al metodo recuperaConHijos de GrupoProductoCobro: " + id);
-		Query query = null;
-		//CREA LA VARIABLE STRING QUE CONTIENE LA SENTENCIA WHERE
-		query = em.createQuery(" from   GrupoProductoCobro " +
-							   " where  codigo = :codigo");
-		query.setParameter("codigo", id);
-		GrupoProductoCobro grupoProductoCobro = (GrupoProductoCobro)query.getSingleResult();
-		System.out.println("Antes de recuperar detalles: " + id);
-		// RECUPERA HIJOS PRODUCTO PAGOS
-		query = em.createQuery(" select   b.productoCobros " +
-							   " from     GrupoProductoCobro b " +
-							   " where    b.codigo = :id");
-		query.setParameter("id", id);
-		grupoProductoCobro.setProductoCobros(query.getResultList());
-		
-		return grupoProductoCobro;
-	}
+
 	
 }

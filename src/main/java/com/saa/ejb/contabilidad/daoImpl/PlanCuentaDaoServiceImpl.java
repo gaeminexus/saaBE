@@ -372,5 +372,16 @@ public class PlanCuentaDaoServiceImpl extends EntityDaoImpl<PlanCuenta>  impleme
 		query.setParameter("idPadre", idPadre);	
 		return query.getResultList();
 	}
+
+	@SuppressWarnings({ "unchecked" })
+	@Override
+	public List<PlanCuenta> selectByNaturalezaCuenta(Long naturaleza) throws Throwable {
+		System.out.println("selectNaturalezaCuenta: ");
+		Query query = em.createQuery(" select b " +
+									 " from   PlanCuenta b " +
+									 " where  b.naturaleza.codigo = :naturaleza");
+		query.setParameter("naturaleza", naturaleza);		
+		return query.getResultList();
+	}
 	
 }

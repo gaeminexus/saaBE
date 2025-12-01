@@ -20,12 +20,5 @@ import jakarta.ejb.Local;
 @Local
 public interface GrupoProductoCobroDaoService  extends EntityDao<GrupoProductoCobro>  {
 	
-	/**
-	 * Metodo que recupero objeto de entidad con datos de detalle relacionado
-	 * @param id		:Id de la entidad a recuperar
-	 * @return			:Objeto con los hijos atachados
-	 * @throws Throwable:Excepcion
-	 */
-	GrupoProductoCobro recuperaConHijos(Long id) throws Throwable;
 	
 }

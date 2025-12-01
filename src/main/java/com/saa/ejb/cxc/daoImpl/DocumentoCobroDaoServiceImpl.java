@@ -15,7 +15,6 @@ import com.saa.model.cxc.DocumentoCobro;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
-import jakarta.persistence.Query;
 
 /**
  * @author GaemiSoft.
@@ -66,44 +65,5 @@ public class DocumentoCobroDaoServiceImpl extends EntityDaoImpl<DocumentoCobro> 
 							"financiacionXDocumentoCobros"};
 	}
 	
-	/* (non-Javadoc)
-	 * @see com.compuseg.income.cxc.ejb.dao.DocumentoCobroDaoService#recuperaConHijos(java.lang.Long)
-	 */
-	@SuppressWarnings("unchecked")
-	public DocumentoCobro recuperaConHijos(Long id) throws Throwable {
-		System.out.println("Ingresa al metodo recuperaConHijos de DocumentoCobro: " + id);
-		Query query = null;
-		//CREA LA VARIABLE STRING QUE CONTIENE LA SENTENCIA WHERE
-		query = em.createQuery(" from   DocumentoCobro " +
-							   " where  codigo = :codigo");
-		query.setParameter("codigo", id);
-		DocumentoCobro documentoCobro = (DocumentoCobro)query.getSingleResult();
-		// RECUPERA HIJOS DETALLE
-		query = em.createQuery(" select   b.detalleDocumentoCobros " +
-							   " from     DocumentoCobro b " +
-							   " where    b.codigo = :id");
-		query.setParameter("id", id);
-		documentoCobro.setDetalleDocumentoCobros(query.getResultList());
-		// RECUPERA HIJOS VALOR IMPUESTO
-		query = em.createQuery(" select   b.valorImpuestoDocumentoCobros " +
-							   " from     DocumentoCobro b " +
-							   " where    b.codigo = :id");
-		query.setParameter("id", id);
-		documentoCobro.setValorImpuestoDocumentoCobros(query.getResultList());
-		// RECUPERA HIJOS RESUMEN VALOR
-		query = em.createQuery(" select   b.resumenValorDocumentoCobros " +
-							   " from     DocumentoCobro b " +
-							   " where    b.codigo = :id");
-		query.setParameter("id", id);
-		documentoCobro.setResumenValorDocumentoCobros(query.getResultList());
-		// RECUPERA HIJOS FINANCIACION POR DOCUMENTO
-		query = em.createQuery(" select   b.financiacionXDocumentoCobros " +
-							   " from     DocumentoCobro b " +
-							   " where    b.codigo = :id");
-		query.setParameter("id", id);
-		documentoCobro.setFinanciacionXDocumentoCobros(query.getResultList());
-		
-		return documentoCobro;
-	}
 	
 }

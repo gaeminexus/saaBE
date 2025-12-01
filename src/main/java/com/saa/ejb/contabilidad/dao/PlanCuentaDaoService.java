@@ -45,6 +45,15 @@ public interface PlanCuentaDaoService extends EntityDao<PlanCuenta> {
 	List<PlanCuenta> selectByEmpresaNaturaleza(Long empresa, Long naturaleza) throws Throwable;
 	
 	/**
+	 * Recupera las cuentas de una empresa que pertenecen a una naturaleza
+	 * @param empresa	: Id de la empresa
+	 * @param naturaleza: Numero de naturaleza
+	 * @return			: Listado de cuentas
+	 * @throws Throwable: Excepcion
+	 */
+	List<PlanCuenta> selectByNaturalezaCuenta( Long naturaleza) throws Throwable;
+	
+	/**
 	 * Recupera las cuentas de una empresa que manejan centro de costo
 	 * @param empresa	: Id de la empresa
 	 * @return			: Listado de cuentas que cumplen la condicion

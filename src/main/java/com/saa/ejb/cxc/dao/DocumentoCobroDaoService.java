@@ -20,12 +20,5 @@ import jakarta.ejb.Local;
 @Local
 public interface DocumentoCobroDaoService  extends EntityDao<DocumentoCobro>  {
 	
-	/**
-	 * Metodo que recupero objeto de entidad con datos de detalle relacionado
-	 * @param id		:Id de la entidad a recuperar
-	 * @return			:Objeto con los hijos atachados
-	 * @throws Throwable:Excepcion
-	 */
-	DocumentoCobro recuperaConHijos(Long id) throws Throwable;
 	
 }
