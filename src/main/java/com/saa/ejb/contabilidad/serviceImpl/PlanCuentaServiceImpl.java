@@ -1,7 +1,6 @@
 package com.saa.ejb.contabilidad.serviceImpl;
 
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -34,7 +33,6 @@ import com.saa.model.scp.DetalleRubro;
 import com.saa.model.scp.Empresa;
 import com.saa.rubros.Estado;
 import com.saa.rubros.EstadoPeriodos;
-import com.saa.rubros.FormatoFecha;
 import com.saa.rubros.Rubros;
 import com.saa.rubros.TipoCuentaContable;
 
@@ -199,14 +197,9 @@ public class PlanCuentaServiceImpl implements PlanCuentaService{
 	 */
 	public String saveCuenta(List<PlanCuenta> object, Long empresa) throws Throwable {
 		System.out.println("Servicio saveCuenta de planCuenta service");
-		Date date = new Date();
 		//INSTANCIA NUEVA ENTIDAD PARA PADRE
 		PlanCuenta planCuentaPadre = new PlanCuenta();
-		//INICIALIZA VARIABLE DE RESULTADO
-		DateFormat df = new SimpleDateFormat(
-				detalleRubroService.selectValorStringByRubAltDetAlt(Rubros.FORMATO_FECHA, FormatoFecha.EJB_CON_HORA)); 
 		String resultado = Mensaje.OK;
-		Date fecha = new Date();
 		Empresa empresaEntity = new Empresa();
 		boolean tieneHijos = false;
 		String cuentaPadre = "";
@@ -250,7 +243,7 @@ public class PlanCuentaServiceImpl implements PlanCuentaService{
 						// ASIGNA ESTADO
 						planCuenta.setEstado(Long.valueOf(Estado.ACTIVO));
 						// ASIGNA FECHA CREACION
-						planCuenta.setFechaUpdate(fecha);
+						planCuenta.setFechaUpdate(LocalDate.now());
 						// ALMACENA EL REGISTRO
 						planCuentaDaoService.save(planCuenta, Long.valueOf("0"));					
 						// MODIFICA PADRE COMO ACUMULACION
@@ -261,7 +254,7 @@ public class PlanCuentaServiceImpl implements PlanCuentaService{
 				}			
 			}else{
 				//INSERTA O ACTUALIZA REGISTRO
-				planCuenta.setFechaUpdate(df.parse(df.format(date)));
+				planCuenta.setFechaUpdate(LocalDate.now());
 				planCuentaDaoService.save(planCuenta, planCuenta.getCodigo());	
 			}
 		}
@@ -491,10 +484,8 @@ public class PlanCuentaServiceImpl implements PlanCuentaService{
 	 */
 	public void actualizaEstadoCuenta(Long id, int tipo) throws Throwable {
 		System.out.println("Servicio actualizaEstadoCuenta de PlanCuenta con id: " + id);
-		DateFormat df = new SimpleDateFormat(
-				detalleRubroService.selectValorStringByRubAltDetAlt(Rubros.FORMATO_FECHA, FormatoFecha.EJB_CON_HORA)); 
 		PlanCuenta planCuenta = planCuentaDaoService.selectById(id, NombreEntidadesContabilidad.PLAN_CUENTA);
-		planCuenta.setFechaInactivo(df.parse(df.format(new Date())));
+		planCuenta.setFechaInactivo(LocalDate.now());
 		planCuenta.setEstado(Long.valueOf(tipo));
 		planCuentaDaoService.save(planCuenta, id);		
 	}
