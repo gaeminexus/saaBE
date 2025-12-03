@@ -321,10 +321,12 @@ public class PlanCuentaDaoServiceImpl extends EntityDaoImpl<PlanCuenta>  impleme
 		Query query = em.createQuery(" select b " +
 									 " from   PlanCuenta b " +
 									 " where  b.empresa.codigo = :empresa" +
-									 "        and   b.nivel = :raiz ");
+									 "        and   b.nivel = 0 ");
 		query.setParameter("empresa", empresa);		
-		query.setParameter("raiz", Long.valueOf(TipoCuentaContable.RAIZ));
-
+		// query.setParameter("raiz", Long.valueOf(TipoCuentaContable.RAIZ));
+		for (PlanCuenta pc : (List<PlanCuenta>)query.getResultList()) {
+			System.out.println("Plan Cuenta Raiz: " + pc.getCodigo());
+		}
 		return (PlanCuenta)query.getSingleResult();
 	}
 
@@ -391,7 +393,7 @@ public class PlanCuentaDaoServiceImpl extends EntityDaoImpl<PlanCuenta>  impleme
 		Query query = em.createQuery(" select b " +
 									 " from   PlanCuenta b " +
 									 " where  b.naturalezaCuenta.codigo = :idNaturaleza" +
-									 "        and   b.planCuenta.nivel = :idNivel ");
+									 "        and   b.nivel = :idNivel ");
 		query.setParameter("idNaturaleza", idNaturaleza);		
 		query.setParameter("idNivel", idNivel);
 		return query.getResultList();

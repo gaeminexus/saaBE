@@ -157,9 +157,13 @@ public class NaturalezaCuentaServiceImpl implements NaturalezaCuentaService{
 	@Override
 	public NaturalezaCuenta saveSingle(NaturalezaCuenta naturalezaCuenta) throws Throwable {
 		System.out.println("saveSingle - NaturalezaCuenta");
-		// Actualiza plan Cuenta de nivel 1
+		boolean esNuevo = false;
+		if (naturalezaCuenta.getCodigo() == null) {
+			esNuevo = true;
+			naturalezaCuenta = naturalezaCuentaDaoService.save(naturalezaCuenta, naturalezaCuenta.getCodigo());
+		}
 		Long nivelPlanCuenta = 1L;
-		Long nivelBase = 0L;
+		// Actualiza plan Cuenta de nivel 1
 		List<PlanCuenta> planCuentas = planCuentaDaoService.selectByNivelPlanCuenta(naturalezaCuenta.getCodigo(), nivelPlanCuenta);
 		PlanCuenta planCuenta = new PlanCuenta();
 		if (planCuentas.isEmpty()) {
@@ -168,7 +172,8 @@ public class NaturalezaCuentaServiceImpl implements NaturalezaCuentaService{
 			planCuenta.setCuentaContable(naturalezaCuenta.getNumero().toString());
 			planCuenta.setNombre(naturalezaCuenta.getNombre());
 			planCuenta.setTipo(Long.valueOf(TipoCuentaContable.ACUMULACION));
-			planCuenta.setNivel(nivelBase);
+			planCuenta.setNivel(nivelPlanCuenta);
+			System.out.println("Nivel Base: " + naturalezaCuenta.getEmpresa().getCodigo());
 			planCuenta.setIdPadre(planCuentaDaoService.selectRaizByEmpresa(naturalezaCuenta.getEmpresa().getCodigo()).getCodigo());
 			planCuenta.setEstado(Long.valueOf(Estado.ACTIVO));
 			planCuenta.setEmpresa(naturalezaCuenta.getEmpresa());
@@ -178,9 +183,11 @@ public class NaturalezaCuentaServiceImpl implements NaturalezaCuentaService{
 			planCuenta = planCuentas.get(0);
 			planCuenta.setNombre(naturalezaCuenta.getNombre());
 			planCuentaDaoService.save(planCuenta, planCuenta.getCodigo());
-		} 
-		//ACTUALIZA NATURALEZA CUENTA
-		naturalezaCuenta = naturalezaCuentaDaoService.save(naturalezaCuenta, naturalezaCuenta.getCodigo());
+		}
+		if(!esNuevo) {
+			//ACTUALIZA NATURALEZA CUENTA
+			naturalezaCuenta = naturalezaCuentaDaoService.save(naturalezaCuenta, naturalezaCuenta.getCodigo());
+		}
 		return naturalezaCuenta; 
 	}
 

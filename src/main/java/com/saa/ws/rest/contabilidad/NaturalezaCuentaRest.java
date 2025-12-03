@@ -74,6 +74,19 @@ public class NaturalezaCuentaRest {
 	 * @throws Throwable
 	 */
     @GET
+    @Path("/getByEmpresa/{idEmpresa}")
+    @Produces("application/json")
+    public List<NaturalezaCuenta> getByEmpresa(@PathParam("idEmpresa") Long idEmpresa) throws Throwable {
+        return naturalezaCuentaDaoService.selectByEmpresa(idEmpresa);
+    }
+    
+    /**
+	 * Retrieves representation of an instance of NaturalezaCuentaRest
+	 * 
+	 * @return an instance of String
+	 * @throws Throwable
+	 */
+    @GET
     @Path("/validaTieneCuentas/{idNaturaleza}") /* hizo mely*/
     @Produces("application/json")
     public Long validaTieneCuentas(@PathParam("idNaturaleza") Long idNaturaleza) throws Throwable {
