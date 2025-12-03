@@ -66,6 +66,19 @@ public class NaturalezaCuentaRest {
     public NaturalezaCuenta getId(@PathParam("id") Long id) throws Throwable {
         return naturalezaCuentaDaoService.selectById(id, NombreEntidadesContabilidad.NATURALEZA_CUENTA);
     }
+    
+    /**
+	 * Retrieves representation of an instance of NaturalezaCuentaRest
+	 * 
+	 * @return an instance of String
+	 * @throws Throwable
+	 */
+    @GET
+    @Path("/validaTieneCuentas/{idNaturaleza}") /* hizo mely*/
+    @Produces("application/json")
+    public Long validaTieneCuentas(@PathParam("idNaturaleza") Long idNaturaleza) throws Throwable {
+        return naturalezaCuentaService.validaTieneCuentas(idNaturaleza);
+    }
 
     /**
      * PUT method for updating or creating an instance of NaturalezaCuentaRest

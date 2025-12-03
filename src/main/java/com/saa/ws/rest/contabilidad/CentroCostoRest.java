@@ -61,6 +61,13 @@ public class CentroCostoRest {
     public CentroCosto getId(@PathParam("id") Long id) throws Throwable {
         return centroCostoDaoService.selectById(id, NombreEntidadesContabilidad.CENTRO_COSTO);
     }
+    
+    @GET
+    @Produces("application/json")
+    @Path("/validaExistenAsientos/{idCentroCosto}")
+    public Long validaExistenAsientos(@PathParam("idCentroCosto") Long idCentroCosto) throws Throwable {
+        return centroCostoService.validaExistenAsientos(idCentroCosto);
+    }
 
     /**
      * PUT method for updating or creating an instance of CentroCostoRest

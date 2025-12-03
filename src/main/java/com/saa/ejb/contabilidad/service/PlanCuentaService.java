@@ -141,7 +141,7 @@ public interface PlanCuentaService extends EntityService<PlanCuenta> {
 	 * @return				: Mensaje de error
 	 * @throws Throwable	: Excepcion
 	 */
-	 String validaExisteCuentasNaturaleza(Long empresa) throws Throwable;
+	 String validaExisteCentroCosto(Long empresa) throws Throwable;
 	
 	/**
 	 * Recupera entidad con el id
@@ -272,4 +272,5 @@ public interface PlanCuentaService extends EntityService<PlanCuenta> {
 	 * @throws Throwable	:  Excepcions
 	 */
 	boolean servicioRango (Long empresa, String cuentaInicio, String cuentaFin, String cuentaComparar )throws Throwable;
+	
 }

@@ -1,7 +1,7 @@
 package com.saa.model.contabilidad;
 
 import java.io.Serializable;
-import java.util.Date;
+import java.time.LocalDate;
 
 import com.saa.model.scp.Empresa;
 
@@ -17,8 +17,6 @@ import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
-import jakarta.persistence.Temporal;
-import jakarta.persistence.TemporalType;
 
 @SuppressWarnings("serial")
 @Entity
@@ -97,8 +95,7 @@ public class PlanCuenta implements Serializable {
      */
     @Basic
     @Column(name = "PLNNFCDS")
-    @Temporal(TemporalType.DATE)
-    private Date fechaInactivo;
+    private LocalDate fechaInactivo;
     
     /**
      * Empresa.
@@ -112,8 +109,7 @@ public class PlanCuenta implements Serializable {
      */
     @Basic
     @Column(name = "PLNNFCHA")
-    @Temporal(TemporalType.DATE)
-    private Date fechaUpdate;
+    private LocalDate fechaUpdate;
     
     /**
 	 * Devuelve codigo
@@ -245,7 +241,7 @@ public class PlanCuenta implements Serializable {
 	 * Devuelve fechaInactivo
 	 * @return fechaInactivo.
 	 */
-	public Date getFechaInactivo() {
+	public LocalDate getFechaInactivo() {
 		return fechaInactivo;
 	}
 
@@ -253,7 +249,7 @@ public class PlanCuenta implements Serializable {
 	 * Asigna fechaInactivo
 	 * @param fechaInactivo nuevo valor para fechaInactivo. 
 	 */
-	public void setFechaInactivo(Date fechaInactivo) {
+	public void setFechaInactivo(LocalDate fechaInactivo) {
 		this.fechaInactivo = fechaInactivo;
 	}
 	
@@ -277,7 +273,7 @@ public class PlanCuenta implements Serializable {
 	 * Devuelve fechaUpdate
 	 * @return fechaUpdate.
 	 */
-	public Date getFechaUpdate() {
+	public LocalDate getFechaUpdate() {
 		return fechaUpdate;
 	}
 
@@ -285,7 +281,7 @@ public class PlanCuenta implements Serializable {
 	 * Asigna fechaUpdate
 	 * @param fechaUpdate nuevo valor para fechaUpdate. 
 	 */
-	public void setFechaUpdate(Date fechaUpdate) {
+	public void setFechaUpdate(LocalDate fechaUpdate) {
 		this.fechaUpdate = fechaUpdate;
 	}
 	

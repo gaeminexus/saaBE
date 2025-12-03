@@ -375,12 +375,25 @@ public class PlanCuentaDaoServiceImpl extends EntityDaoImpl<PlanCuenta>  impleme
 
 	@SuppressWarnings({ "unchecked" })
 	@Override
-	public List<PlanCuenta> selectByNaturalezaCuenta(Long naturaleza) throws Throwable {
+	public List<PlanCuenta> selectByIdNaturalezaCuenta(Long idNaturaleza) throws Throwable {
 		System.out.println("selectNaturalezaCuenta: ");
 		Query query = em.createQuery(" select b " +
 									 " from   PlanCuenta b " +
-									 " where  b.naturaleza.codigo = :naturaleza");
-		query.setParameter("naturaleza", naturaleza);		
+									 " where  b.naturalezaCuenta.codigo = :idNaturaleza");
+		query.setParameter("idNaturaleza", idNaturaleza);		
+		return query.getResultList();
+	}
+
+	@SuppressWarnings("unchecked") /* hizo mely*/
+	@Override
+	public List<PlanCuenta> selectByNivelPlanCuenta(Long idNaturaleza, Long idNivel) throws Throwable {
+		System.out.println(" selectByNivelPlanCuenta de" + idNaturaleza + idNivel);
+		Query query = em.createQuery(" select b " +
+									 " from   PlanCuenta b " +
+									 " where  b.naturalezaCuenta.codigo = :idNaturaleza" +
+									 "        and   b.planCuenta.nivel = :idNivel ");
+		query.setParameter("idNaturaleza", idNaturaleza);		
+		query.setParameter("idNivel", idNivel);
 		return query.getResultList();
 	}
 	

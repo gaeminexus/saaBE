@@ -1,5 +1,6 @@
 package com.saa.ejb.contabilidad.serviceImpl;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.ejb.DetalleRubroService;
@@ -8,14 +9,17 @@ import com.saa.basico.ejb.Mensaje;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.contabilidad.dao.NaturalezaCuentaDaoService;
+import com.saa.ejb.contabilidad.dao.PlanCuentaDaoService;
 import com.saa.ejb.contabilidad.service.CentroCostoService;
 import com.saa.ejb.contabilidad.service.NaturalezaCuentaService;
 import com.saa.model.contabilidad.CentroCosto;
 import com.saa.model.contabilidad.NaturalezaCuenta;
 import com.saa.model.contabilidad.NombreEntidadesContabilidad;
+import com.saa.model.contabilidad.PlanCuenta;
 import com.saa.model.scp.DetalleRubro;
 import com.saa.rubros.Estado;
 import com.saa.rubros.Rubros;
+import com.saa.rubros.TipoCuentaContable;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -34,6 +38,9 @@ public class NaturalezaCuentaServiceImpl implements NaturalezaCuentaService{
 	
 	@EJB
 	private DetalleRubroService detalleRubroService;
+	
+	@EJB
+	private PlanCuentaDaoService planCuentaDaoService;
 	
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.sistema.ejb.util.EntityService#remove(java.util.List)
@@ -150,8 +157,38 @@ public class NaturalezaCuentaServiceImpl implements NaturalezaCuentaService{
 	@Override
 	public NaturalezaCuenta saveSingle(NaturalezaCuenta naturalezaCuenta) throws Throwable {
 		System.out.println("saveSingle - NaturalezaCuenta");
+		// Actualiza plan Cuenta de nivel 1
+		Long nivelPlanCuenta = 1L;
+		Long nivelBase = 0L;
+		List<PlanCuenta> planCuentas = planCuentaDaoService.selectByNivelPlanCuenta(naturalezaCuenta.getCodigo(), nivelPlanCuenta);
+		PlanCuenta planCuenta = new PlanCuenta();
+		if (planCuentas.isEmpty()) {
+			planCuenta.setCodigo(null);
+			planCuenta.setNaturalezaCuenta(naturalezaCuenta);
+			planCuenta.setCuentaContable(naturalezaCuenta.getNumero().toString());
+			planCuenta.setNombre(naturalezaCuenta.getNombre());
+			planCuenta.setTipo(Long.valueOf(TipoCuentaContable.ACUMULACION));
+			planCuenta.setNivel(nivelBase);
+			planCuenta.setIdPadre(planCuentaDaoService.selectRaizByEmpresa(naturalezaCuenta.getEmpresa().getCodigo()).getCodigo());
+			planCuenta.setEstado(Long.valueOf(Estado.ACTIVO));
+			planCuenta.setEmpresa(naturalezaCuenta.getEmpresa());
+			planCuenta.setFechaUpdate(LocalDate.now());
+			planCuentaDaoService.save(planCuenta, null);
+		} else{
+			planCuenta = planCuentas.get(0);
+			planCuenta.setNombre(naturalezaCuenta.getNombre());
+			planCuentaDaoService.save(planCuenta, planCuenta.getCodigo());
+		} 
+		//ACTUALIZA NATURALEZA CUENTA
 		naturalezaCuenta = naturalezaCuentaDaoService.save(naturalezaCuenta, naturalezaCuenta.getCodigo());
-		return naturalezaCuenta;
+		return naturalezaCuenta; 
+	}
+
+	@Override
+	public Long validaTieneCuentas(Long idNaturaleza) throws Throwable {
+		System.out.println("Ingresa al metodo validaByNaturalezaCuenta de naturalezaCuenta con naturaleza: " + idNaturaleza);
+		List<PlanCuenta> listado = planCuentaDaoService.selectByIdNaturalezaCuenta(idNaturaleza);
+		return Long.valueOf(listado.size());
 	}
 	
 }

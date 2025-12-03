@@ -51,7 +51,7 @@ public interface PlanCuentaDaoService extends EntityDao<PlanCuenta> {
 	 * @return			: Listado de cuentas
 	 * @throws Throwable: Excepcion
 	 */
-	List<PlanCuenta> selectByNaturalezaCuenta( Long naturaleza) throws Throwable;
+	List<PlanCuenta> selectByIdNaturalezaCuenta(Long idNaturaleza) throws Throwable;
 	
 	/**
 	 * Recupera las cuentas de una empresa que manejan centro de costo
@@ -197,5 +197,14 @@ public interface PlanCuentaDaoService extends EntityDao<PlanCuenta> {
 	 * @throws Throwable	: Excepcion
 	 */
 	List<PlanCuenta> selectByIdPadre(Long idPadre) throws Throwable;
+	
+	
+	/**
+	 * Recupera el listado de cuentas que tienen el mismo padre
+	 * @param idPadre		: Id del la cuenta padre
+	 * @return				: Lista de cuentas que tienen el mismo padre
+	 * @throws Throwable	: Excepcion
+	 */
+	List<PlanCuenta> selectByNivelPlanCuenta(Long idNaturaleza, Long idNivel) throws Throwable; /* mely hizo */
 
 }

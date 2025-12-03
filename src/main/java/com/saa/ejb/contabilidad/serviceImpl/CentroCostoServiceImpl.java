@@ -10,12 +10,14 @@ import com.saa.basico.ejb.Mensaje;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.contabilidad.dao.CentroCostoDaoService;
+import com.saa.ejb.contabilidad.dao.DetalleAsientoDaoService;
 import com.saa.ejb.contabilidad.dao.DetalleMayorizacionCCDaoService;
 import com.saa.ejb.contabilidad.service.CentroCostoService;
 import com.saa.ejb.contabilidad.service.CuentaService;
 import com.saa.ejb.contabilidad.service.DetalleAsientoService;
 import com.saa.ejb.contabilidad.service.PeriodoService;
 import com.saa.model.contabilidad.CentroCosto;
+import com.saa.model.contabilidad.DetalleAsiento;
 import com.saa.model.contabilidad.DetalleMayorizacionCC;
 import com.saa.model.contabilidad.NombreEntidadesContabilidad;
 import com.saa.model.contabilidad.Periodo;
@@ -51,6 +53,11 @@ public class CentroCostoServiceImpl implements CentroCostoService {
 	
 	@EJB
 	private FechaService fechaService;
+	
+	@EJB
+	private DetalleAsientoDaoService detalleAsientoDaoService;
+
+	
 
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.sistema.ejb.util.EntityService#remove(java.util.List)
@@ -593,6 +600,13 @@ public class CentroCostoServiceImpl implements CentroCostoService {
 		System.out.println("saveSingle - CentroCostoService");
 		centroCosto = centroCostoDaoService.save(centroCosto, centroCosto.getCodigo());
 		return centroCosto;
+	}
+
+	@Override
+	public Long validaExistenAsientos(Long idCentroCosto) throws Throwable {
+		System.out.println("Ingresa al metodo validaByNaturalezaCuenta de naturalezaCuenta con naturaleza: " + idCentroCosto);
+		List<DetalleAsiento> listado = detalleAsientoDaoService.selectByIdCentroCosto(idCentroCosto);
+		return Long.valueOf(listado.size());
 	}
 
 }

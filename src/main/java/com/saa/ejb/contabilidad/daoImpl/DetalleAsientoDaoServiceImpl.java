@@ -2,6 +2,7 @@ package com.saa.ejb.contabilidad.daoImpl;
 
 import java.util.Date;
 import java.util.List;
+
 import com.saa.basico.util.IncomeException;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.contabilidad.dao.DetalleAsientoDaoService;
@@ -393,6 +394,17 @@ public class DetalleAsientoDaoServiceImpl extends EntityDaoImpl<DetalleAsiento> 
 									 " from   DetalleAsiento b " +
 									 " where  b.planCuenta.codigo = :idPlanCuenta ");
 		query.setParameter("idPlanCuenta", idPlanCuenta);		
+		return query.getResultList();
+	}
+
+	@SuppressWarnings({ "unchecked"})
+	@Override
+	public List<DetalleAsiento> selectByIdCentroCosto(Long idCentroCosto) throws Throwable {
+		System.out.println("Ingresa al metodo selectByCentroCosto " + idCentroCosto);
+		Query query = em.createQuery(" select b " +
+									 " from   DetalleAsiento b " +
+									 " where  b.centroCosto.codigo = :idCentroCosto ");
+		query.setParameter("idCentroCosto", idCentroCosto);		
 		return query.getResultList();
 	}
 

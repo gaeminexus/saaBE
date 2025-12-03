@@ -148,6 +148,14 @@ public interface CentroCostoService extends EntityService<CentroCosto> {
 	 List<CentroCosto> selectMovimientosByEmpresa(Long empresa) throws Throwable;
 	 
 	 /**
+	 * Recupera centro de costos detalle asiento 
+	 * @param empresa	: Id de empresa	
+	 * @return			: Listado de registros recuperados
+	 * @throws Throwable: Excepcion
+	 */
+	 Long validaExistenAsientos(Long idCentroCosto) throws Throwable; /* creado mely */ 
+	 
+	 /**
 	 * Obtiene los Movimientos de una Empresa dado un rango de fechas, cuentas, y centro de costo
 	 * @param empresa		: Id de la Empresa
 	 * @param fechaInicio	: Fecha Inicio 

@@ -542,7 +542,7 @@ public class PlanCuentaServiceImpl implements PlanCuentaService{
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.contabilidad.ejb.service.PlanCuentaService#validaExisteCuentasNaturaleza(java.lang.Long)
 	 */
-	public String validaExisteCuentasNaturaleza(Long empresa) throws Throwable {
+	public String validaExisteCentroCosto(Long empresa) throws Throwable {
 		System.out.println("Servicio validaExisteCuentasNaturaleza de PlanCuenta con empresa: " + empresa);
 		String resultado = Mensaje.OK;
 		List<DetalleRubro> listado = detalleRubroService.selectByCodigoAlternoRubro(Rubros.GRUPOS_CUENTAS_BASICAS);

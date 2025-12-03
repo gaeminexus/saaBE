@@ -18,7 +18,6 @@ public interface NaturalezaCuentaService extends EntityService<NaturalezaCuenta>
 	 */
 	 NaturalezaCuenta recuperaNaturalezaByCuenta(String cuenta, Long empresa) throws Throwable;	
 	
-	
 	/**
 	 * Método que valida la existencia de naturalezas de cuentas básicas en una empresa 
 	 * @param empresa		: Empresa en la que se valida
@@ -33,5 +32,13 @@ public interface NaturalezaCuentaService extends EntityService<NaturalezaCuenta>
 	 * @throws Throwable	: Excepcion
 	 */
 	 NaturalezaCuenta selectById(Long id) throws Throwable;
+	 
+	 /**
+	 * @param empresa		: Id de empresa en la que se valida
+	 * Valida que existan cuentas activas para las naturalezas basicas
+	 * @return				: Mensaje de error
+	 * @throws Throwable	: Excepcion
+	 */
+	 Long validaTieneCuentas(Long idNaturaleza) throws Throwable;
 
 }

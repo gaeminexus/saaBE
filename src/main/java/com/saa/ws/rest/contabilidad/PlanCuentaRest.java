@@ -54,34 +54,6 @@ public class PlanCuentaRest {
         return planCuentaDaoService.selectAll(NombreEntidadesContabilidad.PLAN_CUENTA);
     }
 
-    // Ya no usamos esta parte porque no hacemos un orden descendente
-    /**
-     * Retrieves representation of an instance of PlanCuentaRest
-     * 
-     * @return an instance of String
-     * @throws Throwable
-     */
-//    @GET
-//    @Produces("application/json")
-//    @Path("/getDesc")
-//    public List<PlanCuenta> getDesc() throws Throwable {
-//        return planCuentaDaoService.selectOrderDesc();
-//    }
-
-    // Ya no usamos esta parte porque no hacemos un orden descendente
-    /**
-     * Retrieves representation of an instance of PlanCuentaRest
-     * 
-     * @return an instance of String
-     * @throws Throwable
-     */
-//    @GET
-//    @Produces("application/json")
-//    @Path("/getTest")
-//    public Response getTest() throws Throwable {
-//        return Response.status(200).entity(planCuentaDaoService.selectOrderDesc()).build();
-//    }
-
     @GET
     @Produces("application/json")
     @Path("/getId/{id}")

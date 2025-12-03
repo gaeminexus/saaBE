@@ -297,7 +297,7 @@ public class AsientoDaoServiceImpl extends EntityDaoImpl<Asiento> implements Asi
 			return query.getResultList();
 		}
 
-		@SuppressWarnings("unchecked")
+		@SuppressWarnings("unchecked") 
 		@Override
 		public List<Asiento> selectByIdPeriodo(Long idPeriodo) throws Throwable {
 			System.out.println("Ingresa al metodo selectByIdPeriodo con idPeriodo: " + idPeriodo);

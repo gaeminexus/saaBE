@@ -47,7 +47,15 @@ public interface DetalleAsientoDaoService extends EntityDao<DetalleAsiento> {
 	 * @return				:Detalle de asientos
 	 * @throws Throwable	:Excepcion
 	 */
-	List<DetalleAsiento> selectByIdPlanCuenta(Long idPlanCuenta) throws Throwable;
+	List<DetalleAsiento> selectByIdPlanCuenta(Long idPlanCuenta) throws Throwable; /* creado mely */
+	
+	/**
+	 * Recupera el IdCentroCosto relacionado a una detalle Asiento.
+	 * @param idPlanCuenta	:Id de la cuenta
+	 * @return				:Detalle de asientos
+	 * @throws Throwable	:Excepcion
+	 */
+	List<DetalleAsiento> selectByIdCentroCosto(Long idCentroCosto ) throws Throwable; /* creado mely */
 
 	/**
 	 * Recupera el id del detalle del asiento
