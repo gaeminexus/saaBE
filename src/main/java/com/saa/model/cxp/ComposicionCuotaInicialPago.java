@@ -161,5 +161,10 @@ public class ComposicionCuotaInicialPago implements Serializable {
 			FinanciacionXDocumentoPago financiacionXDocumentoPago) {
 		this.financiacionXDocumentoPago = financiacionXDocumentoPago;
 	}
+
+	public ComposicionCuotaInicialPago saveSingle(ComposicionCuotaInicialPago composicionCuotaInicialPago, Long codigo2) {
+		// TODO Auto-generated method stub
+		return null;
+	}
 	
 }

@@ -12,6 +12,7 @@ package com.saa.model.cxp;
 
 import java.io.Serializable;
 import java.util.Date;
+import java.util.List;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
@@ -230,5 +231,10 @@ public class AprobacionXMonto implements Serializable {
 	 */
 	public void setSeleccionaBanco(Long seleccionaBanco) {
 		this.seleccionaBanco = seleccionaBanco;
+	}
+
+	public void setUsuarioXAprobacions(@SuppressWarnings("rawtypes") List resultList) {
+		// TODO Auto-generated method stub
+		
 	}	
 }
