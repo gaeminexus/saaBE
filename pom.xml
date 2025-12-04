@@ -39,7 +39,7 @@
   </dependencies>
 
   <build>
-	<finalName>saa-backend</finalName>
+	<finalName>saaBE</finalName>
     <plugins>
       <!-- WAR plugin -->
       <plugin>
