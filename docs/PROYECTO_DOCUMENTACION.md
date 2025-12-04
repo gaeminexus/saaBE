@@ -1,4 +1,4 @@
-# Documentación del Proyecto saa-backend
+# Documentación del Proyecto SaaBE
 ## Historial de Implementación y Configuración
 
 **Fecha de última actualización:** 24/11/2024  
@@ -68,7 +68,7 @@ Clase: `MultipartConfigServlet.java`
 
 ### 1. **Procesar Archivo Petro**
 ```
-POST /saa-backend/rest/asgn/procesarArchivoPetro
+POST /SaaBE/rest/asgn/procesarArchivoPetro
 Content-Type: multipart/form-data
 ```
 
@@ -89,20 +89,20 @@ Content-Type: multipart/form-data
 
 ### 2. **Upload Personalizado**
 ```
-POST /saa-backend/rest/asgn/upload/custom
+POST /SaaBE/rest/asgn/upload/custom
 Content-Type: application/octet-stream
 ```
 
 ### 3. **Filtros por Criterio**
 ```
-POST /saa-backend/rest/asgn/selectByCriteria
+POST /SaaBE/rest/asgn/selectByCriteria
 Content-Type: application/json
 ```
 
 ### 4. **Test de Filiales**
 ```
-GET /saa-backend/rest/flll/test
-GET /saa-backend/rest/flll/getAll
+GET /SaaBE/rest/flll/test
+GET /SaaBE/rest/flll/getAll
 ```
 
 ---
@@ -194,7 +194,7 @@ formData.append('cargaArchivo', JSON.stringify({
 formData.append('detallesCargaArchivos', JSON.stringify(detalles));
 formData.append('participesXCargaArchivo', JSON.stringify(participes));
 
-fetch('/saa-backend/rest/asgn/procesarArchivoPetro', {
+fetch('/SaaBE/rest/asgn/procesarArchivoPetro', {
   method: 'POST',
   body: formData
 });
@@ -205,9 +205,9 @@ fetch('/saa-backend/rest/asgn/procesarArchivoPetro', {
 ## 🔍 TESTING Y VALIDACIÓN
 
 ### URLs de Prueba:
-- **Procesar Petro**: `POST http://localhost:8080/saa-backend/rest/asgn/procesarArchivoPetro`
-- **Test Filial**: `GET http://localhost:8080/saa-backend/rest/flll/test`
-- **Upload Custom**: `POST http://localhost:8080/saa-backend/rest/asgn/upload/custom`
+- **Procesar Petro**: `POST http://localhost:8080/SaaBE/rest/asgn/procesarArchivoPetro`
+- **Test Filial**: `GET http://localhost:8080/SaaBE/rest/flll/test`
+- **Upload Custom**: `POST http://localhost:8080/SaaBE/rest/asgn/upload/custom`
 
 ### Validaciones Implementadas:
 - ✅ Extensión de archivo (via FileService)

@@ -5,7 +5,7 @@
 
 ### ✅ **Endpoint Principal:**
 ```
-POST /saa-backend/rest/asgn/procesarArchivoPetro
+POST /SaaBE/rest/asgn/procesarArchivoPetro
 Content-Type: multipart/form-data
 ```
 
@@ -41,7 +41,7 @@ formData.append('cargaArchivo', JSON.stringify(cargaArchivo));
 formData.append('detallesCargaArchivos', JSON.stringify(detalles));
 formData.append('participesXCargaArchivo', JSON.stringify(participes));
 
-fetch('/saa-backend/rest/asgn/procesarArchivoPetro', {
+fetch('/SaaBE/rest/asgn/procesarArchivoPetro', {
   method: 'POST', 
   body: formData
 });
@@ -63,7 +63,7 @@ fetch('/saa-backend/rest/asgn/procesarArchivoPetro', {
 1. Abrir Eclipse
 2. Proyecto: `saaBE` 
 3. Run As → Run on Server
-4. Probar: `http://localhost:8080/saa-backend/rest/flll/test`
+4. Probar: `http://localhost:8080/SaaBE/rest/flll/test`
 5. Si funciona → sistema OK ✅
 
 **📋 Documentación completa:** `docs/PROYECTO_DOCUMENTACION.md`
