@@ -20,9 +20,5 @@ public interface EstadoSolicitud {
 	// Ids de los elementos hijos
 	public static final int RAIZ = 0;
 	public static final int INGRESADA = 1;
-	public static final int EN_PROCESO_APROBACION = 2;
-	public static final int APROBADA = 3;
-	public static final int EJECUTADA = 4;
-	public static final int ANULADA = 5;
-	public static final int IMPRESA = 6;
+	
 }

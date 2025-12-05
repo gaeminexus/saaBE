@@ -2,7 +2,7 @@ package com.saa.rubros;
 
 /**
  * @author GaemiSoft
- *         Interfaz del rubro Estado Promocion (167)
+ *         Interfaz del rubro Estado Promocion (168)
  */
 
 public interface EstadoRevisionParticipeCarga {
