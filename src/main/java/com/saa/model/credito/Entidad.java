@@ -178,6 +178,11 @@ public class Entidad implements Serializable {
     @Basic
     @Column(name = "ENTDURFL", length = 2000)
     private String urlFotoLogo;
+    
+    /** Rol Petro Comercial */
+    @Basic
+    @Column(name = "ENTDRLPC")
+    private Long rolPetroComercial;
 
 
     // ============================================================
@@ -241,7 +246,15 @@ public class Entidad implements Serializable {
     public String getMovil() { return movil; }
     public void setMovil(String movil) { this.movil = movil; }
 
-    public String getidCiudad() { return idCiudad; }
+    public String getIdCiudad() {
+		return idCiudad;
+	}
+    
+	public void setIdCiudad(String idCiudad) {
+		this.idCiudad = idCiudad;
+	}
+	
+	public String getidCiudad() { return idCiudad; }
     public void setCiudadId(String idCiudad) { this.idCiudad = idCiudad; }
 
     public Long getPorcentajeSimilitud() { return porcentajeSimilitud; }
@@ -273,5 +286,13 @@ public class Entidad implements Serializable {
 
     public String getUrlFotoLogo() { return urlFotoLogo; }
     public void setUrlFotoLogo(String urlFotoLogo) { this.urlFotoLogo = urlFotoLogo; }
+    
+	public Long getRolPetroComercial() {
+		return rolPetroComercial;
+	}
+	public void setRolPetroComercial(Long rolPetroComercial) {
+		this.rolPetroComercial = rolPetroComercial;
+	}
+    
 }
 

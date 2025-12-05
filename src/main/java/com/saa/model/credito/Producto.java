@@ -102,6 +102,10 @@ public class Producto implements Serializable {
     @Column(name = "PRDCESTD")
     private Long estado;
 
+    /** codigoPetro */
+    @Basic
+    @Column(name = "PRDCCDPT")
+    private String codigoPetro;
 
     // ============================================================
     // GETTERS Y SETTERS
@@ -209,6 +213,14 @@ public class Producto implements Serializable {
 
     public void setEstado(Long estado) {
         this.estado = estado;
+    }
+    
+    public String getCodigoPetro() {
+        return codigoPetro;
+    }
+
+    public void setCodigoPetro(String codigoPetro) {
+        this.codigoPetro = codigoPetro;
     }
 }
 

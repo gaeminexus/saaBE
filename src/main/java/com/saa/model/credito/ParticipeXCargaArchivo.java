@@ -112,11 +112,18 @@ public class ParticipeXCargaArchivo implements Serializable {
     @Basic
     @Column(name = "PXCADSND")
     private Long desgravamenNoDescontado;
+    
+    /** Estado revisión */
+    @Basic
+    @Column(name = "PXCAESRV")
+    private Long estadoRevision;
 
     /** Estado del registro */
     @Basic
     @Column(name = "PXCAESTD")
     private Long estado;
+    
+
 
     // ============================================================
     // GETTERS Y SETTERS
@@ -258,10 +265,18 @@ public class ParticipeXCargaArchivo implements Serializable {
         this.desgravamenNoDescontado = desgravamenNoDescontado;
     }
 
+    public Long getEstadoRevision() {
+        return estadoRevision;
+    }
+
+    public void setEstadoRevision(Long estadoRevision) {
+        this.estadoRevision = estadoRevision;
+    }
+    
     public Long getEstado() {
         return estado;
     }
-
+    
     public void setEstado(Long estado) {
         this.estado = estado;
     }

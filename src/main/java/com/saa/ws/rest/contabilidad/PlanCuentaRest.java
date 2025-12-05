@@ -60,6 +60,7 @@ public class PlanCuentaRest {
     public PlanCuenta getId(@PathParam("id") Long id) throws Throwable {
         return planCuentaDaoService.selectById(id, NombreEntidadesContabilidad.PLAN_CUENTA);
     }
+    
 
     /**
      * PUT method for updating or creating an instance of PlanCuentaRest
