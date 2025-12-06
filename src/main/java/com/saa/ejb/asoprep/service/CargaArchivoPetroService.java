@@ -30,4 +30,15 @@ public interface CargaArchivoPetroService {
                                CargaArchivo cargaArchivo, 
                                List<DetalleCargaArchivo> detallesCargaArchivos,
                                List<ParticipeXCargaArchivo> participesXCargaArchivo) throws Throwable;
+    
+    /**
+     * Metodo para validar el archivo de Petro Comercial
+     * 
+     * @param archivoInputStream : Stream del archivo
+     * @param fileName : Nombre del archivo
+     * @param cargaArchivo : Registro de CargaArchivo
+     * @return Ruta donde se almacenó el archivo
+     * @throws Throwable : Excepción
+     */
+    String validarArchivoPetro(InputStream archivoInputStream, String fileName, CargaArchivo cargaArchivo) throws Throwable;
 }

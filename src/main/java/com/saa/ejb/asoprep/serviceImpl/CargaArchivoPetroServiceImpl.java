@@ -1,18 +1,27 @@
 package com.saa.ejb.asoprep.serviceImpl;
 
+import java.io.BufferedReader;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import com.saa.basico.ejb.FileService;
 import com.saa.ejb.asoprep.service.CargaArchivoPetroService;
+import com.saa.ejb.credito.dao.EntidadDaoService;
 import com.saa.ejb.credito.service.CargaArchivoService;
 import com.saa.ejb.credito.service.DetalleCargaArchivoService;
 import com.saa.ejb.credito.service.ParticipeXCargaArchivoService;
 import com.saa.model.credito.CargaArchivo;
 import com.saa.model.credito.DetalleCargaArchivo;
+import com.saa.model.credito.Entidad;
 import com.saa.model.credito.ParticipeXCargaArchivo;
+import com.saa.rubros.NovedadesCargaArchivo;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateful;
@@ -37,6 +46,9 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     @EJB
     private ParticipeXCargaArchivoService participeXCargaArchivoService;
     
+    @EJB
+    private EntidadDaoService entidadDaoService;
+    
     /**
      * Método principal que procesa archivos Petro
      * OPCIÓN 1 APLICADA: Primero operaciones de BD, luego subir archivo
@@ -52,16 +64,31 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
         System.out.println("Iniciando procesamiento de archivo Petro: " + fileName);
         
         try {
-        	
-        	for (ParticipeXCargaArchivo participe : participesXCargaArchivo) {
-            	if (participe.getCodigoPetro().equals(55145L)) {
-            		System.out.println("TAL COMO LLEGA EL NOMBRE DE 55145: " + participe.getNombre());
-            		System.out.println("CONVERTIDO A UTF 55145: " + convertirAISO8859(participe.getNombre()));
-            	}
+            // 0. PROCESAR EL CONTENIDO DEL ARCHIVO
+            String contenido = leerContenidoArchivo(archivoInputStream);
+            List<ParticipeXCargaArchivo> registrosProcesados = procesarContenido(contenido);
+            
+            System.out.println("REGISTROS PROCESADOS: " + registrosProcesados.size());
+            for(ParticipeXCargaArchivo reg : registrosProcesados) {
+				if (reg.getCodigoPetro().equals(55145L)) {
+					System.out.println("Registro con código Petro 55145 encontrado: " + reg.getNombre());
+				}
 			}
+            
+            // Agrupar por aporte (DetalleCargaArchivo)
+            Map<String, DetalleCargaArchivo> aporteAgrupados = agruparPorAporte(registrosProcesados);
+            
+            // Convertir a listas para persistir
+            List<DetalleCargaArchivo> detallesGenerados = new ArrayList<>(aporteAgrupados.values());
+            
+            // Calcular totales generales para CargaArchivo
+            cargaArchivo = calcularTotalesGenerales(cargaArchivo, detallesGenerados);
+            
+            System.out.println("Archivo procesado: " + registrosProcesados.size() + " registros encontrados");
+            System.out.println("Aportes agrupados: " + detallesGenerados.size());
         	
             // 1. PRIMERO: Almacenar registros en BD (TRANSACCIONAL)
-            CargaArchivo cargaArchivoGuardado = almacenaRegistros(cargaArchivo, detallesCargaArchivos, participesXCargaArchivo);
+            CargaArchivo cargaArchivoGuardado = almacenaRegistros(cargaArchivo, detallesGenerados, registrosProcesados);
         	
             System.out.println(cargaArchivoGuardado.getCodigo() + " - CargaArchivo almacenado con éxito");
             
@@ -78,40 +105,11 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
             
         } catch (Throwable e) {
             System.err.println("Error en procesamiento: " + e.getMessage());
-            // BENEFICIO: Si falla antes de cargar el archivo, no se sube archivo innecesario
-            // Si falla en operaciones de BD, se hace rollback automático
+            e.printStackTrace();
             throw e;
         }
     }
     
-    /**
-     * Convierte un string de ISO-8859-1 a UTF-8
-     * Útil cuando FormData envía UTF-8 pero el servidor lo interpreta como ISO-8859-1
-     */
-    private String convertirAUTF8(String textoOriginal) {
-        if (textoOriginal == null) {
-            return null;
-        }
-        
-        // Re-interpretar: asume que los bytes son ISO-8859-1, conviértelos a UTF-8
-        byte[] bytesIso = textoOriginal.getBytes(StandardCharsets.ISO_8859_1);
-        return new String(bytesIso, StandardCharsets.UTF_8);
-    }
-    
-    /**
-     * Convierte un string de ISO-8859-1 a UTF-8
-     * Útil cuando FormData envía UTF-8 pero el servidor lo interpreta como ISO-8859-1
-     */
-    private String convertirAISO8859(String textoOriginal) {
-        if (textoOriginal == null) {
-            return null;
-        }
-        
-        // Re-interpretar: asume que los bytes son ISO-8859-1, conviértelos a UTF-8
-        byte[] bytesIso = textoOriginal.getBytes(StandardCharsets.UTF_8);
-        return new String(bytesIso, StandardCharsets.ISO_8859_1);
-    }
-
     /**
      * Carga el archivo en la carpeta aportes/año/mes usando FileService
      */
@@ -167,20 +165,36 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		
 		// Asignar la referencia al CargaArchivo guardado
         for (DetalleCargaArchivo detalle : detallesCargaArchivos) {
-        	Long codigoDetalleOriginal = detalle.getCodigo();
-        	detalle.setCodigo(null); // Para que se genere uno nuevo
             detalle.setCargaArchivo(cargaArchivoGuardado);
-            detalle = detalleCargaArchivoService.saveSingle(detalle);
-            for (ParticipeXCargaArchivo participe : filtrarPorCodigoDetalle(participesXCargaArchivo, codigoDetalleOriginal)) {
-            	if (participe.getCodigoPetro().equals(55145L)) {
-            		System.out.println("Participe con código Petro 55145 encontrado para detalle código: " + participe.getNombre());
+            DetalleCargaArchivo detalleGuardado = detalleCargaArchivoService.saveSingle(detalle);
+            
+            // Filtrar partícipes que pertenecen a este detalle usando el código del producto
+            String codigoProducto = detalle.getCodigoPetroProducto();
+            for (ParticipeXCargaArchivo participe : participesXCargaArchivo) {
+            	// Verificar que el participe pertenece a este detalle comparando por código de producto
+            	if (participe.getDetalleCargaArchivo() != null && 
+            		codigoProducto.equals(participe.getDetalleCargaArchivo().getCodigoPetroProducto())) {
+					participe.setCodigo(null); // Limpiar código para que se genere uno nuevo
+					participe.setDetalleCargaArchivo(detalleGuardado);
+					participe = participeXCargaArchivoService.saveSingle(participe);
             	}
-				participe.setCodigo(null); // Limpiar código para que se genere uno nuevo
-				participe.setDetalleCargaArchivo(detalle);
-				participe = participeXCargaArchivoService.saveSingle(participe);
 			}
         }
 		return cargaArchivoGuardado;
+	}
+    
+    private int validacionXCodigoPetro(Long codigoPetro) throws Throwable {
+		//VALIDAR SI CODIGO EXISTE EN TABLA ENTIDAD
+    	List<Entidad> entidades = entidadDaoService.selectByCodigoPetro(codigoPetro);
+    	int novedades = 0;
+    	// VALIDA SI EXISTE 
+    	if(entidades.size() == 0) {
+    		novedades = NovedadesCargaArchivo.PARTICIPE_NO_ENCONTRADO;
+		}
+    	if(entidades.size() > 1) {
+    		novedades = NovedadesCargaArchivo.CODIGO_ROL_DUPLICADO;
+		}
+    	return novedades;
 	}
     
     // Filtrar partícipes por código específico de DetalleCargaArchivo
@@ -191,5 +205,293 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
                                participe.getDetalleCargaArchivo().getCodigo().equals(codigoDetalle))
             .collect(Collectors.toList());
     }
+    
+    /**
+     * Lee el contenido completo del archivo
+     * Usa ISO-8859-1 para leer correctamente caracteres especiales como ñ, á, é, í, ó, ú
+     */
+    private String leerContenidoArchivo(InputStream inputStream) throws Exception {
+        StringBuilder contenido = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.ISO_8859_1))) {
+            String linea;
+            while ((linea = reader.readLine()) != null) {
+                contenido.append(linea).append("\n");
+            }
+        }
+        return contenido.toString();
+    }
+    
+    /**
+     * Procesa el contenido del archivo y extrae los registros
+     */
+    private List<ParticipeXCargaArchivo> procesarContenido(String contenido) {
+        String[] lineas = contenido.split("\n");
+        List<ParticipeXCargaArchivo> registrosProcesados = new ArrayList<>();
+        int i = 0;
+        
+        while (i < lineas.length) {
+            String lineaActual = lineas[i];
+            
+            if (lineaActual != null && lineaActual.trim().startsWith("EP")) {
+                i += 8;
+                if (i >= lineas.length) break;
+                
+                String lineaAporte = lineas[i];
+                String codigoAporte = lineaAporte.substring(0, Math.min(4, lineaAporte.length())).trim();
+                String descripcionAporte = lineaAporte.length() > 4 ? lineaAporte.substring(4).trim() : "";
+                
+                i++;
+                i++;
+                if (i >= lineas.length) break;
+                
+                while (i < lineas.length) {
+                    String lineaRegistro = lineas[i];
+                    
+                    if (lineaRegistro != null && lineaRegistro.trim().startsWith("EP")) {
+                        break;
+                    }
+                    
+                    if (lineaRegistro != null && lineaRegistro.trim().length() > 0) {
+                        ParticipeXCargaArchivo registro = new ParticipeXCargaArchivo();
+                        
+                        // Crear un DetalleCargaArchivo temporal para identificación
+                        DetalleCargaArchivo detalleTemp = new DetalleCargaArchivo();
+                        detalleTemp.setCodigoPetroProducto(codigoAporte);
+                        detalleTemp.setNombreProductoPetro(descripcionAporte);
+                        registro.setDetalleCargaArchivo(detalleTemp);
+                        
+                        // Extraer campos del registro
+                        String codigo = extraerCampo(lineaRegistro, 0, 7).trim();
+                        registro.setNombre(extraerCampo(lineaRegistro, 7, 44).trim());
+                        registro.setPlazoInicial(parseLong(extraerCampo(lineaRegistro, 44, 50).trim()));
+                        registro.setSaldoActual(parseLong(extraerCampo(lineaRegistro, 50, 61).trim()));
+                        registro.setMesesPlazo(parseLong(extraerCampo(lineaRegistro, 61, 65).trim()));
+                        registro.setInteresAnual(parseLong(extraerCampo(lineaRegistro, 65, 70).trim()));
+                        registro.setValorSeguro(parseLong(extraerCampo(lineaRegistro, 70, 80).trim()));
+                        registro.setMontoDescontar(parseLong(extraerCampo(lineaRegistro, 80, 95).trim()));
+                        registro.setCapitalDescontado(parseLong(extraerCampo(lineaRegistro, 95, 110).trim()));
+                        registro.setInteresDescontado(parseLong(extraerCampo(lineaRegistro, 110, 125).trim()));
+                        registro.setSeguroDescontado(parseLong(extraerCampo(lineaRegistro, 125, 140).trim()));
+                        registro.setTotalDescontado(parseLong(extraerCampo(lineaRegistro, 140, 155).trim()));
+                        registro.setCapitalNoDescontado(parseLong(extraerCampo(lineaRegistro, 155, 170).trim()));
+                        registro.setInteresNoDescontado(parseLong(extraerCampo(lineaRegistro, 170, 184).trim()));
+                        registro.setDesgravamenNoDescontado(parseLong(extraerCampo(lineaRegistro, 184, 198).trim()));
+                        
+                        if (!codigo.isEmpty()) {
+                            registro.setCodigoPetro(parseLongSimple(codigo));
+                            registrosProcesados.add(registro);
+                        }
+                    }
+                    
+                    i++;
+                }
+                
+                continue;
+            }
+            
+            i++;
+        }
+        
+        return registrosProcesados;
+    }
+    
+    /**
+     * Extrae un campo de una línea
+     */
+    private String extraerCampo(String linea, int inicio, int fin) {
+        if (linea == null) return "";
+        
+        // Rellenar con espacios si la línea es más corta
+        StringBuilder lineaCompleta = new StringBuilder(linea);
+        while (lineaCompleta.length() < fin) {
+            lineaCompleta.append(" ");
+        }
+        
+        return lineaCompleta.substring(inicio, Math.min(fin, lineaCompleta.length()));
+    }
+    
+    /**
+     * Agrupa registros por código de aporte (crea DetalleCargaArchivo)
+     */
+    private Map<String, DetalleCargaArchivo> agruparPorAporte(List<ParticipeXCargaArchivo> registrosProcesados) {
+        Map<String, DetalleCargaArchivo> mapaAportes = new HashMap<>();
+        
+        for (ParticipeXCargaArchivo registro : registrosProcesados) {
+            String key = registro.getDetalleCargaArchivo().getCodigoPetroProducto();
+            
+            if (!mapaAportes.containsKey(key)) {
+                DetalleCargaArchivo detalle = new DetalleCargaArchivo();
+                detalle.setCodigoPetroProducto(registro.getDetalleCargaArchivo().getCodigoPetroProducto());
+                detalle.setNombreProductoPetro(registro.getDetalleCargaArchivo().getNombreProductoPetro());
+                detalle.setTotalParticipes(0L);
+                detalle.setTotalSaldoActual(0L);
+                detalle.setTotalInteresAnual(0L);
+                detalle.setTotalValorSeguro(0L);
+                detalle.setTotalDescontar(0L);
+                detalle.setTotalCapitalDescontado(0L);
+                detalle.setTotalInteresDescontado(0L);
+                detalle.setTotalSeguroDescontado(0L);
+                detalle.setTotalDescontado(0L);
+                detalle.setTotalCapitalNoDescontado(0L);
+                detalle.setTotalInteresNoDescontado(0L);
+                detalle.setTotalDesgravamenNoDescontado(0L);
+                
+                mapaAportes.put(key, detalle);
+            }
+            
+            DetalleCargaArchivo aporte = mapaAportes.get(key);
+            
+            // Actualizar el DetalleCargaArchivo del registro para que apunte al agrupado
+            registro.setDetalleCargaArchivo(aporte);
+            
+            // Acumular totales
+            aporte.setTotalParticipes(aporte.getTotalParticipes() + 1);
+            aporte.setTotalSaldoActual(aporte.getTotalSaldoActual() + nullSafe(registro.getSaldoActual()));
+            aporte.setTotalInteresAnual(aporte.getTotalInteresAnual() + nullSafe(registro.getInteresAnual()));
+            aporte.setTotalValorSeguro(aporte.getTotalValorSeguro() + nullSafe(registro.getValorSeguro()));
+            aporte.setTotalDescontar(aporte.getTotalDescontar() + nullSafe(registro.getMontoDescontar()));
+            aporte.setTotalCapitalDescontado(aporte.getTotalCapitalDescontado() + nullSafe(registro.getCapitalDescontado()));
+            aporte.setTotalInteresDescontado(aporte.getTotalInteresDescontado() + nullSafe(registro.getInteresDescontado()));
+            aporte.setTotalSeguroDescontado(aporte.getTotalSeguroDescontado() + nullSafe(registro.getSeguroDescontado()));
+            aporte.setTotalDescontado(aporte.getTotalDescontado() + nullSafe(registro.getTotalDescontado()));
+            aporte.setTotalCapitalNoDescontado(aporte.getTotalCapitalNoDescontado() + nullSafe(registro.getCapitalNoDescontado()));
+            aporte.setTotalInteresNoDescontado(aporte.getTotalInteresNoDescontado() + nullSafe(registro.getInteresNoDescontado()));
+            aporte.setTotalDesgravamenNoDescontado(aporte.getTotalDesgravamenNoDescontado() + nullSafe(registro.getDesgravamenNoDescontado()));
+        }
+        
+        return mapaAportes;
+    }
+    
+    /**
+     * Calcula totales generales para CargaArchivo
+     */
+    private CargaArchivo calcularTotalesGenerales(CargaArchivo cargaArchivo, List<DetalleCargaArchivo> aporteAgrupados) {
+        long totalSaldoActual = 0;
+        long totalInteresAnual = 0;
+        long totalValorSeguro = 0;
+        long totalDescontar = 0;
+        long totalCapitalDescontado = 0;
+        long totalInteresDescontado = 0;
+        long totalSeguroDescontado = 0;
+        long totalDescontado = 0;
+        long totalCapitalNoDescontado = 0;
+        long totalInteresNoDescontado = 0;
+        long totalDesgravamenNoDescontado = 0;
+        
+        for (DetalleCargaArchivo aporte : aporteAgrupados) {
+            totalSaldoActual += nullSafe(aporte.getTotalSaldoActual());
+            totalInteresAnual += nullSafe(aporte.getTotalInteresAnual());
+            totalValorSeguro += nullSafe(aporte.getTotalValorSeguro());
+            totalDescontar += nullSafe(aporte.getTotalDescontar());
+            totalCapitalDescontado += nullSafe(aporte.getTotalCapitalDescontado());
+            totalInteresDescontado += nullSafe(aporte.getTotalInteresDescontado());
+            totalSeguroDescontado += nullSafe(aporte.getTotalSeguroDescontado());
+            totalDescontado += nullSafe(aporte.getTotalDescontado());
+            totalCapitalNoDescontado += nullSafe(aporte.getTotalCapitalNoDescontado());
+            totalInteresNoDescontado += nullSafe(aporte.getTotalInteresNoDescontado());
+            totalDesgravamenNoDescontado += nullSafe(aporte.getTotalDesgravamenNoDescontado());
+        }
+        
+        cargaArchivo.setTotalSaldoActual(totalSaldoActual);
+        cargaArchivo.setTotalInteresAnual(totalInteresAnual);
+        cargaArchivo.setTotalValorSeguro(totalValorSeguro);
+        cargaArchivo.setTotalDescontar(totalDescontar);
+        cargaArchivo.setTotalCapitalDescontado(totalCapitalDescontado);
+        cargaArchivo.setTotalInteresDescontado(totalInteresDescontado);
+        cargaArchivo.setTotalSeguroDescontado(totalSeguroDescontado);
+        cargaArchivo.setTotalDescontado(totalDescontado);
+        cargaArchivo.setTotalCapitalNoDescontado(totalCapitalNoDescontado);
+        cargaArchivo.setTotalInteresNoDescontado(totalInteresNoDescontado);
+        cargaArchivo.setTotalDesgravamenNoDescontado(totalDesgravamenNoDescontado);
+        
+        return cargaArchivo;
+    }
+    
+    /**
+     * Convierte string a número manejando formatos europeos
+     */
+    private Long parseLong(String valor) {
+        if (valor == null || valor.trim().isEmpty()) return 0L;
+        
+        try {
+            // Limpiar espacios
+            String valorLimpio = valor.trim().replaceAll("\\s", "");
+            
+            boolean tieneComa = valorLimpio.contains(",");
+            boolean tienePunto = valorLimpio.contains(".");
+            
+            if (tieneComa && tienePunto) {
+                // Formato europeo: 1.234.567,89 -> 1234567.89
+                valorLimpio = valorLimpio.replace(".", "").replace(",", ".");
+            } else if (tieneComa) {
+                // Solo comas: 1234,89 -> 1234.89
+                valorLimpio = valorLimpio.replace(",", ".");
+            }
+            
+            // Convertir a double y luego a long (multiplicar por 100 para guardar centavos como entero)
+            double numero = Double.parseDouble(valorLimpio);
+            return Math.round(numero * 100); // Guardar como centavos
+            
+        } catch (NumberFormatException e) {
+            return 0L;
+        }
+    }
+    
+    /**
+     * Convierte string a Long simple (sin decimales)
+     */
+    private Long parseLongSimple(String valor) {
+        if (valor == null || valor.trim().isEmpty()) return 0L;
+        
+        try {
+            return Long.parseLong(valor.trim());
+        } catch (NumberFormatException e) {
+            return 0L;
+        }
+    }
+    
+    /**
+     * Devuelve 0 si el valor es null
+     */
+    private Long nullSafe(Long valor) {
+        return valor != null ? valor : 0L;
+    }
+
+	@Override
+	public String validarArchivoPetro(InputStream archivoInputStream, String fileName, CargaArchivo cargaArchivo) throws Throwable {
+		System.out.println("Iniciando validarArchivoPetro: " + fileName);
+		
+		String contenido = leerContenidoArchivo(archivoInputStream);
+        List<ParticipeXCargaArchivo> registrosProcesados = procesarContenido(contenido);
+        
+        /*for(ParticipeXCargaArchivo reg : registrosProcesados) {
+			if (reg.getCodigoPetro().equals(55145L)) {
+				System.out.println("Registro con código Petro 55145 encontrado: " + reg.getNombre());
+			}
+			OYARVIDE BOLANO ADOLFO ENRIQUE
+		}*/
+        
+        // Agrupar por aporte (DetalleCargaArchivo)
+        Map<String, DetalleCargaArchivo> aporteAgrupados = agruparPorAporte(registrosProcesados);
+        
+        // Convertir a listas para persistir
+        List<DetalleCargaArchivo> detallesGenerados = new ArrayList<>(aporteAgrupados.values());
+        
+        // Calcular totales generales para CargaArchivo
+        cargaArchivo = calcularTotalesGenerales(cargaArchivo, detallesGenerados);
+        
+        System.out.println("Archivo procesado: " + cargaArchivo.getTotalDescontado() + " registros encontrados");
+        System.out.println("Aportes agrupados: " + detallesGenerados.size());
+    	
+        List<BigDecimal> entidadesExistentes = entidadDaoService.selectCoincidenciasByNombre("OYARVIDE BOLANO ADOLFO ENRIQUE");
+        
+        for(BigDecimal ent : entidadesExistentes) {
+        	System.out.println("Entidad encontrada: " + ent);
+        }
+        // 1. PRIMERO: Almacenar registros en BD (TRANSACCIONAL)
+        //CargaArchivo cargaArchivoGuardado = almacenaRegistros(cargaArchivo, detallesGenerados, registrosProcesados);
+		
+		return null;
+	}
    
 }

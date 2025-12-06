@@ -117,6 +117,11 @@ public class ParticipeXCargaArchivo implements Serializable {
     @Basic
     @Column(name = "PXCAESRV")
     private Long estadoRevision;
+    
+    /** Novedades durante la carga */
+    @Basic
+    @Column(name = "PXCANVCA")
+    private Long novedadesCarga;
 
     /** Estado del registro */
     @Basic
@@ -273,7 +278,15 @@ public class ParticipeXCargaArchivo implements Serializable {
         this.estadoRevision = estadoRevision;
     }
     
-    public Long getEstado() {
+    public Long getNovedadesCarga() {
+		return novedadesCarga;
+	}
+
+	public void setNovedadesCarga(Long novedadesCarga) {
+		this.novedadesCarga = novedadesCarga;
+	}
+
+	public Long getEstado() {
         return estado;
     }
     

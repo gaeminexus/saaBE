@@ -201,6 +201,88 @@ public class AsoprepGenerales {
     }
     
     /**
+     * Procesa archivo Petro - Usando formData para archivos extensos (5000+ líneas)
+     * 
+     * @param archivoInputStream Stream del archivo
+     * @param archivoDetails Detalles del archivo (nombre, tipo, etc.)
+     * @param cargaArchivoJson JSON con datos de CargaArchivo
+     * @param detallesCargaArchivosJson JSON con lista de DetalleCargaArchivo
+     * @param participesXCargaArchivoJson JSON con lista de ParticipeXCargaArchivo
+     * @return Response con el resultado del procesamiento
+     */
+    @POST
+    @Path("validarArchivoPetro")
+    @Consumes(MediaType.MULTIPART_FORM_DATA)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response validarArchivoPetro(
+    		@Context HttpHeaders headers,
+            @Context UriInfo uriInfo,
+    		@FormParam("archivo") InputStream archivoInputStream,
+            @FormParam("archivoNombre") String archivoNombre,
+            @FormParam("cargaArchivo") String cargaArchivoJson) {
+
+        System.out.println("LLEGA A PROCESAR EL ARCHIVO PETRO - formData para archivos extensos");
+        System.out.println("java.version: " + System.getProperty("java.version"));
+        System.out.println("===============================\n");
+        
+        try {
+            // Validar archivo
+            if (archivoInputStream == null || archivoNombre == null || archivoNombre.trim().isEmpty()) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(new FileResponse(false, "No se ha enviado el archivo", null))
+                        .build();
+            }
+
+            String fileName = archivoNombre;
+            System.out.println("Archivo encontrado: " + fileName);
+
+            // Validar extensión del archivo
+            try {
+                if (!fileService.validarExtension(fileName)) {
+                    return Response.status(Response.Status.BAD_REQUEST)
+                            .entity(new FileResponse(false, "Extensión de archivo no permitida", null))
+                            .build();
+                }
+            } catch (Throwable e) {
+                return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                        .entity(new FileResponse(false, "Error al validar extensión: " + e.getMessage(), null))
+                        .build();
+            }
+            
+            // Validar que se recibieron todos los datos JSON necesarios
+            if (cargaArchivoJson == null) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(new FileResponse(false, "Faltan datos de carga", null))
+                        .build();
+            }
+            
+            // Deserializar los JSON usando Jakarta JSON Binding (no necesita URL decode porque viene por formData)
+            Jsonb jsonb = crearJsonbUTF8();
+            
+            CargaArchivo cargaArchivo = jsonb.fromJson(cargaArchivoJson, CargaArchivo.class);
+
+            // Procesar con el EJB CargaArchivoPetroService
+            String rutaArchivo;
+            try {
+                rutaArchivo = cargaArchivoPetroService.validarArchivoPetro(
+                    archivoInputStream, fileName, cargaArchivo);
+            } catch (Throwable e) {
+                return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                        .entity(new FileResponse(false, "Error al procesar archivo en EJB: " + e.getMessage(), null))
+                        .build();
+            }
+
+            return Response.ok(new FileResponse(true, "Archivo procesado exitosamente", rutaArchivo)).build();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(new FileResponse(false, "Error al procesar archivo: " + e.getMessage(), null))
+                    .build();
+        }
+    }
+    
+    /**
      * Crea un Jsonb configurado específicamente para UTF-8
      */
     private Jsonb crearJsonbUTF8() {
