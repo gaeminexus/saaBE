@@ -61,6 +61,7 @@ public interface NombreEntidadesCredito {
 	String CARGA_ARCHIVO = "CargaArchivo";
 	String DETALLE_CARGA_ARCHIVO = "DetalleCargaArchivo";
 	String PARTICIPE_X_CARGA_ARCHIVO = "ParticipeXCargaArchivo";
+	String AUDITORIA = "Auditoria";
 
 }
 
