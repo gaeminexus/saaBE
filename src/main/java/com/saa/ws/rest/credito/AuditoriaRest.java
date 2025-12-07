@@ -23,7 +23,7 @@ import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 
 
-@Path("auditoria")
+@Path("adtr")
 public class AuditoriaRest {
 	
 	@EJB
