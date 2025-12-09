@@ -323,10 +323,6 @@ public class PlanCuentaDaoServiceImpl extends EntityDaoImpl<PlanCuenta>  impleme
 									 " where  b.empresa.codigo = :empresa" +
 									 "        and   b.nivel = 0 ");
 		query.setParameter("empresa", empresa);		
-		// query.setParameter("raiz", Long.valueOf(TipoCuentaContable.RAIZ));
-		for (PlanCuenta pc : (List<PlanCuenta>)query.getResultList()) {
-			System.out.println("Plan Cuenta Raiz: " + pc.getCodigo());
-		}
 		return (PlanCuenta)query.getSingleResult();
 	}
 

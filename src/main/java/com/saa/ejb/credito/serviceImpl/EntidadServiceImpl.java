@@ -1,5 +1,7 @@
 package com.saa.ejb.credito.serviceImpl;
 
+import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
@@ -89,4 +91,20 @@ public class EntidadServiceImpl implements EntidadService {
         }
         return result;
     }
+
+	@Override
+	public List<Entidad> selectCoincidenciasByNombre(String nombre) throws Throwable {
+		System.out.println("selectCoincidenciasByNombre");
+		List<Entidad> entidades = new ArrayList<>();
+        List<BigDecimal> result = entidadDaoService.selectCoincidenciasByNombre(nombre);
+        if (result.isEmpty()) {
+            throw new IncomeException("No existen coincidencias para el nombre proporcionado");
+        } else {
+        	for (BigDecimal codigo : result) {
+				Entidad entidad = entidadDaoService.selectById(codigo.longValue(), NombreEntidadesCredito.ENTIDAD);
+				entidades.add(entidad);
+			}
+        }
+        return entidades;
+	}
 }

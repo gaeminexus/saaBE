@@ -66,6 +66,19 @@ public class EntidadRest {
     public Entidad getId(@PathParam("id") Long id) throws Throwable {
         return entidadDaoService.selectById(id, NombreEntidadesCredito.ENTIDAD);
     }
+    
+    /**
+     * Retrieves representation of an instance of EntidadRest
+     * 
+     * @return an instance of String
+     * @throws Throwable
+     */
+    @GET
+    @Path("/getCoincidencias/{nombre}")
+    @Produces("application/json")
+    public List<Entidad> getCoincidencias(@PathParam("nombre") String nombre) throws Throwable {
+        return entidadService.selectCoincidenciasByNombre(nombre);
+    }
 
     /**
      * PUT method for updating or creating an instance of EntidadRest
