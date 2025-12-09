@@ -1,8 +1,6 @@
 package com.saa.model.credito;
 
 import java.io.Serializable;
-import java.time.LocalDateTime;
-
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -157,7 +155,7 @@ public class Entidad implements Serializable {
     /** Fecha ingreso */
     @Basic
     @Column(name = "ENTDFCIN")
-    private LocalDateTime fechaIngreso;
+    private String fechaIngreso;
 
     /** IP modificación */
     @Basic
@@ -269,8 +267,8 @@ public class Entidad implements Serializable {
     public String getUsuarioIngreso() { return usuarioIngreso; }
     public void setUsuarioIngreso(String usuarioIngreso) { this.usuarioIngreso = usuarioIngreso; }
 
-    public LocalDateTime getFechaIngreso() { return fechaIngreso; }
-    public void setFechaIngreso(LocalDateTime fechaIngreso) { this.fechaIngreso = fechaIngreso; }
+    public String getFechaIngreso() { return fechaIngreso; }
+    public void setFechaIngreso(String fechaIngreso) { this.fechaIngreso = fechaIngreso; }
 
     public String getIpModificacion() { return ipModificacion; }
     public void setIpModificacion(String ipModificacion) { this.ipModificacion = ipModificacion; }
@@ -278,8 +276,8 @@ public class Entidad implements Serializable {
     public String getUsuarioModificacion() { return usuarioModificacion; }
     public void setUsuarioModificacion(String usuarioModificacion) { this.usuarioModificacion = usuarioModificacion; }
 
-//    public LocalDateTime getFechaModificacion() { return fechaModificacion; }
-//    public void setFechaModificacion(LocalDateTime fechaModificacion) { this.fechaModificacion = fechaModificacion; }
+//    public String getFechaModificacion() { return fechaModificacion; }
+//    public void setFechaModificacion(String fechaModificacion) { this.fechaModificacion = fechaModificacion; }
 
     public Long getIdEstado() { return idEstado; }
     public void setIdEstado(Long idEstado) { this.idEstado = idEstado; }

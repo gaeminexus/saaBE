@@ -22,7 +22,7 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 	@SuppressWarnings("unchecked")
 	@Override
 	public List<Entidad> selectByCodigoPetro(Long codigoPetro) throws Throwable {
-		System.out.println("Ingresa al metodo selectByCodigoPetro con codigoPetro: " + codigoPetro);
+		// System.out.println("Ingresa al metodo selectByCodigoPetro con codigoPetro: " + codigoPetro);
 		Query query = em.createQuery(" select b " +
 									 " from   Entidad b" +
 									 " where  b.rolPetroComercial = :codigoPetro");
@@ -39,6 +39,17 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 									 	   " where    UTL_MATCH.JARO_WINKLER_SIMILARITY(e.ENTDNMCM, :nombre) > 80 ");
 		query.setParameter("nombre", nombre);		
 		return query.getResultList();
+	}
+
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<Entidad> selectByNombrePetro35(String nombre) throws Throwable {
+		// System.out.println("Ingresa al metodo selectByNombrePetro35 con nombre: " + nombre);
+		Query query = em.createQuery(" select b " +
+									 " from   Entidad b " +
+									 " where  substring(trim(b.razonSocial),1,35) = trim(:nombre) ");
+		query.setParameter("nombre", nombre);
+		return  query.getResultList();
 	}
 
 }

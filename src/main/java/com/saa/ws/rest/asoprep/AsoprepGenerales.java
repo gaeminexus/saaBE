@@ -262,9 +262,8 @@ public class AsoprepGenerales {
             CargaArchivo cargaArchivo = jsonb.fromJson(cargaArchivoJson, CargaArchivo.class);
 
             // Procesar con el EJB CargaArchivoPetroService
-            String rutaArchivo;
             try {
-                rutaArchivo = cargaArchivoPetroService.validarArchivoPetro(
+            	cargaArchivo = cargaArchivoPetroService.validarArchivoPetro(
                     archivoInputStream, fileName, cargaArchivo);
             } catch (Throwable e) {
                 return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
@@ -272,7 +271,7 @@ public class AsoprepGenerales {
                         .build();
             }
 
-            return Response.ok(new FileResponse(true, "Archivo procesado exitosamente", rutaArchivo)).build();
+            return Response.ok(cargaArchivo).build();
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -297,110 +296,5 @@ public class AsoprepGenerales {
         
         return JsonbBuilder.create(config);
     }
-    
-    /**
-     * Analiza los datos JSON recibidos ANTES del parsing
-     */
-    private void analizarDatosJSON(String jsonData, String nombre) {
-        if (jsonData == null) return;
-
-        System.out.println("=== ANÁLISIS " + nombre.toUpperCase() + " ===");
-
-        // Buscar nombres con caracteres especiales en el JSON crudo
-        String[] lineas = jsonData.split("\\n");
-        for (int i = 0; i < Math.min(10, lineas.length); i++) {
-            String linea = lineas[i];
-            if (linea.toLowerCase().contains("nombre") && 
-                (linea.matches(".*[áéíóúñüÁÉÍÓÚÑÜ].*") || linea.contains("�"))) {
-                System.out.println("Línea " + (i+1) + ": " + linea);
-                
-                if (linea.contains("�")) {
-                    System.out.println("  ⚠️ PROBLEMA: JSON YA TIENE CARACTERES CORRUPTOS");
-                } else {
-                    System.out.println("  ✅ BIEN: Caracteres especiales correctos en JSON");
-                }
-            }
-        }
-
-        // Análisis general
-        boolean tieneCaracteresCorruptos = jsonData.contains("�") || jsonData.contains("??");
-        boolean tieneCaracteresEspeciales = jsonData.matches(".*[áéíóúñüÁÉÍÓÚÑÜ].*");
-
-        System.out.println("JSON contiene caracteres especiales: " + tieneCaracteresEspeciales);
-        System.out.println("JSON contiene caracteres corruptos: " + tieneCaracteresCorruptos);
-
-        if (tieneCaracteresCorruptos) {
-            System.out.println("⚠️ CRÍTICO: Los datos JSON ya llegan corruptos desde el frontend");
-            System.out.println("⚠️ El problema NO está en WildFly, está en el cliente/frontend");
-        }
-
-        System.out.println("=== FIN " + nombre.toUpperCase() + " ===\n");
-    }
-
-    /**
-     * Verifica los nombres después del parsing JSON
-     */
-    private void verificarNombresParseados(List<ParticipeXCargaArchivo> participesXCargaArchivo) {
-        System.out.println("=== VERIFICACIÓN NOMBRES PARSEADOS ===");
-
-        if (participesXCargaArchivo != null && !participesXCargaArchivo.isEmpty()) {
-            System.out.println("Total partícipes parseados: " + participesXCargaArchivo.size());
-
-            // Verificar primeros 20 nombres para encontrar corruptos
-            int limite = Math.min(20, participesXCargaArchivo.size());
-            for (int i = 0; i < limite; i++) {
-                ParticipeXCargaArchivo participe = participesXCargaArchivo.get(i);
-                String nombre = participe.getNombre();
-
-                if (nombre != null) {
-                    boolean tieneCorruptos = nombre.contains("�") || nombre.contains("??");
-                    boolean tieneEspeciales = nombre.matches(".*[áéíóúñüÁÉÍÓÚÑÜ].*");
-
-                    // Solo mostrar los que tienen problemas o caracteres especiales
-                    if (tieneCorruptos || tieneEspeciales) {
-                        System.out.println("Partícipe " + (i+1) + ": " + nombre);
-                        
-                        if (tieneCorruptos) {
-                            System.out.println("  ⚠️ CORRUPTO: El JSON ya venía corrupto desde el frontend");
-                        } else if (tieneEspeciales) {
-                            System.out.println("  ✅ CORRECTO: Caracteres especiales preservados");
-                        }
-                    }
-                }
-            }
-        }
-
-        System.out.println("=== FIN VERIFICACIÓN NOMBRES ===\n");
-    }
-
-    /**
-     * Analiza los headers HTTP para detectar problemas de charset
-     */
-    private void analizarHeadersHTTP(HttpHeaders headers) {
-        System.out.println("=== HEADERS HTTP ===");
-        
-        String contentType = headers.getHeaderString("Content-Type");
-        String acceptCharset = headers.getHeaderString("Accept-Charset");
-        String userAgent = headers.getHeaderString("User-Agent");
-        
-        System.out.println("Content-Type: " + contentType);
-        System.out.println("Accept-Charset: " + acceptCharset);
-        System.out.println("User-Agent: " + userAgent);
-        
-        // Verificar si el Content-Type especifica charset
-        if (contentType != null) {
-            if (contentType.toLowerCase().contains("charset=utf-8")) {
-                System.out.println("✅ Content-Type especifica UTF-8");
-            } else if (contentType.toLowerCase().contains("charset=")) {
-                System.out.println("⚠️ Content-Type especifica charset diferente a UTF-8: " + contentType);
-            } else {
-                System.out.println("⚠️ Content-Type NO especifica charset - usando por defecto");
-            }
-        }
-        
-        System.out.println("===================\n");
-    }
-
-    
 
 }

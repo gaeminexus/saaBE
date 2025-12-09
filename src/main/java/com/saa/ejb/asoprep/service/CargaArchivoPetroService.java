@@ -40,5 +40,6 @@ public interface CargaArchivoPetroService {
      * @return Ruta donde se almacenó el archivo
      * @throws Throwable : Excepción
      */
-    String validarArchivoPetro(InputStream archivoInputStream, String fileName, CargaArchivo cargaArchivo) throws Throwable;
+    CargaArchivo validarArchivoPetro(InputStream archivoInputStream, String fileName, CargaArchivo cargaArchivo) throws Throwable;
+    
 }

@@ -26,5 +26,13 @@ public interface EntidadDaoService extends EntityDao<Entidad> {
 	 * @throws Throwable: Excepción en caso de error.
 	 */
 	List<BigDecimal> selectCoincidenciasByNombre(String nombre) throws Throwable;
+	
+	/**
+	 * Recupera una lista de Entidad cuyo nombre completo coincida con el proporcionado por petro de 35 caracteres.
+	 * @param nombre: Nombre completo a buscar.
+	 * @return: Lista de Entidad que coinciden con el nombre completo.
+	 * @throws Throwable: Excepción en caso de error.
+	 */
+	List<Entidad> selectByNombrePetro35(String nombre) throws Throwable;
 
 }

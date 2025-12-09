@@ -3,7 +3,6 @@ package com.saa.ejb.asoprep.serviceImpl;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -176,25 +175,43 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
             		codigoProducto.equals(participe.getDetalleCargaArchivo().getCodigoPetroProducto())) {
 					participe.setCodigo(null); // Limpiar código para que se genere uno nuevo
 					participe.setDetalleCargaArchivo(detalleGuardado);
+					// VALIDACIONES DE EXISTENCIA DE PARTICIPE COMO ENTIDAD
+					List<Entidad> entidades = entidadDaoService.selectByCodigoPetro(participe.getCodigoPetro());
+					if(entidades.size() > 1) {
+						participe.setNovedadesCarga(Long.valueOf(NovedadesCargaArchivo.CODIGO_ROL_DUPLICADO));
+					} else if(entidades.size() == 0) {
+						// Si no ecuentra en codigo petro busca al participe por nombre
+						List<Entidad> entidadesPorNombre = entidadDaoService.selectByNombrePetro35(participe.getNombre());
+						if(entidadesPorNombre.size() == 0) {
+							participe.setNovedadesCarga(Long.valueOf(NovedadesCargaArchivo.PARTICIPE_NO_ENCONTRADO));
+						} else if(entidadesPorNombre.size() > 1) {
+							participe.setNovedadesCarga(Long.valueOf(NovedadesCargaArchivo.NOMBRE_ENTIDAD_DUPLICADO));
+						} else {
+							// Si encuentra por nombre solo a uno que no tenia el código petro entonces actualiza la endidad con el codigo petro
+							Entidad entidadActualizar = entidadesPorNombre.get(0);
+							entidadActualizar.setRolPetroComercial(participe.getCodigoPetro());
+							entidadDaoService.save(entidadActualizar, entidadActualizar.getCodigo());
+							// actualiza la novedad del participe como OK
+							participe.setNovedadesCarga(Long.valueOf(NovedadesCargaArchivo.OK));
+						}
+					} else { // cuando se encuentra solo un codigo petro
+						// Si encuentra solo uno entonces valida que el nombre del participe coincida con el de la entidad
+						int LARGO_NOMBRE_PETRO = 35;
+						int largoTrim = LARGO_NOMBRE_PETRO;
+						if(entidades.get(0).getRazonSocial().trim().length() < LARGO_NOMBRE_PETRO) {
+							largoTrim = entidades.get(0).getRazonSocial().trim().length();
+						}
+						if (!entidades.get(0).getRazonSocial().trim().substring(0,largoTrim).equalsIgnoreCase(participe.getNombre().trim())) {
+							participe.setNovedadesCarga(Long.valueOf(NovedadesCargaArchivo.CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE));
+						} else {
+							participe.setNovedadesCarga(Long.valueOf(NovedadesCargaArchivo.OK));
+						}
+					}
 					participe = participeXCargaArchivoService.saveSingle(participe);
             	}
 			}
         }
 		return cargaArchivoGuardado;
-	}
-    
-    private int validacionXCodigoPetro(Long codigoPetro) throws Throwable {
-		//VALIDAR SI CODIGO EXISTE EN TABLA ENTIDAD
-    	List<Entidad> entidades = entidadDaoService.selectByCodigoPetro(codigoPetro);
-    	int novedades = 0;
-    	// VALIDA SI EXISTE 
-    	if(entidades.size() == 0) {
-    		novedades = NovedadesCargaArchivo.PARTICIPE_NO_ENCONTRADO;
-		}
-    	if(entidades.size() > 1) {
-    		novedades = NovedadesCargaArchivo.CODIGO_ROL_DUPLICADO;
-		}
-    	return novedades;
 	}
     
     // Filtrar partícipes por código específico de DetalleCargaArchivo
@@ -428,9 +445,9 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
                 valorLimpio = valorLimpio.replace(",", ".");
             }
             
-            // Convertir a double y luego a long (multiplicar por 100 para guardar centavos como entero)
+            // Convertir a double y luego a long (redondear para evitar decimales flotantes)
             double numero = Double.parseDouble(valorLimpio);
-            return Math.round(numero * 100); // Guardar como centavos
+            return Math.round(numero); // El archivo ya trae el valor en la unidad correcta
             
         } catch (NumberFormatException e) {
             return 0L;
@@ -458,7 +475,7 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     }
 
 	@Override
-	public String validarArchivoPetro(InputStream archivoInputStream, String fileName, CargaArchivo cargaArchivo) throws Throwable {
+	public CargaArchivo validarArchivoPetro(InputStream archivoInputStream, String fileName, CargaArchivo cargaArchivo) throws Throwable {
 		System.out.println("Iniciando validarArchivoPetro: " + fileName);
 		
 		String contenido = leerContenidoArchivo(archivoInputStream);
@@ -483,15 +500,29 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
         System.out.println("Archivo procesado: " + cargaArchivo.getTotalDescontado() + " registros encontrados");
         System.out.println("Aportes agrupados: " + detallesGenerados.size());
     	
-        List<BigDecimal> entidadesExistentes = entidadDaoService.selectCoincidenciasByNombre("OYARVIDE BOLANO ADOLFO ENRIQUE");
+        /*List<BigDecimal> entidadesExistentes = entidadDaoService.selectCoincidenciasByNombre("OYARVIDE BOLANO ADOLFO ENRIQUE");
         
         for(BigDecimal ent : entidadesExistentes) {
         	System.out.println("Entidad encontrada: " + ent);
+        }*/
+        List <Entidad> entidadesPetro35 = entidadDaoService.selectByNombrePetro35("ALVAREZ TOAPANTA DAYUMA");
+        System.out.println("registros recuperados:" + entidadesPetro35.size());
+        for(Entidad entPetro35 : entidadesPetro35) {
+        	System.out.println("Entidad encontrada por nombre petro 35: " + entPetro35.getCodigo() + " - " + entPetro35.getRolPetroComercial());
         }
         // 1. PRIMERO: Almacenar registros en BD (TRANSACCIONAL)
-        //CargaArchivo cargaArchivoGuardado = almacenaRegistros(cargaArchivo, detallesGenerados, registrosProcesados);
+        CargaArchivo cargaArchivoGuardado = almacenaRegistros(cargaArchivo, detallesGenerados, registrosProcesados);
 		
-		return null;
+        // 2. AL FINAL: Cargar el archivo físico (NO TRANSACCIONAL)
+        // Solo se ejecuta si todas las operaciones de BD fueron exitosas
+        String rutaArchivo = cargarArchivo(archivoInputStream, fileName, cargaArchivo);
+        System.out.println("Archivo cargado en: " + rutaArchivo);
+        
+        cargaArchivoGuardado.setRutaArchivo(rutaArchivo);
+        cargaArchivoGuardado = cargaArchivoService.saveSingle(cargaArchivoGuardado);
+        
+        System.out.println("Procesamiento completado exitosamente");
+        return cargaArchivoGuardado;
 	}
    
 }

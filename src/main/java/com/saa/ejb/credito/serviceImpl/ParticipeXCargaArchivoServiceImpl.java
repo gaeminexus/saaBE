@@ -82,7 +82,7 @@ public class ParticipeXCargaArchivoServiceImpl implements ParticipeXCargaArchivo
      */
     @Override
     public List<ParticipeXCargaArchivo> selectByCriteria(List<DatosBusqueda> datos) throws Throwable {
-        System.out.println("Ingresa al metodo selectByCriteria ParticipeXCargaArchivoService");
+        // System.out.println("Ingresa al metodo selectByCriteria ParticipeXCargaArchivoService");
         List<ParticipeXCargaArchivo> result = ParticipeXCargaArchivoDaoService.selectByCriteria(datos, NombreEntidadesCredito.PARTICIPE_X_CARGA_ARCHIVO);
         if (result.isEmpty()) {
             throw new IncomeException("Busqueda por criterio ParticipeXCargaArchivo no devolvio ningun registro");

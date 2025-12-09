@@ -8,7 +8,8 @@ public class EstadoCargaArchivoPetro {
 	// Ids de los elementos hijos
 	public static final int RAIZ = 0;
 	public static final int CARGADO = 1;
-	public static final int APROBADO_CONTABILIDAD = 2;
-	public static final int PROCESADO = 3;
+	public static final int VALIDADO = 2;
+	public static final int APROBADO_CONTABILIDAD = 3;
+	public static final int PROCESADO = 4;
 
 }
