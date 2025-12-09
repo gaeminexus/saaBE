@@ -85,21 +85,21 @@ public class Aporte implements Serializable {
      */
     @Basic
     @Column(name = "APRTVLRR")
-    private Long valor;
+    private Double valor;
 
     /**
      * Valor pagado.
      */
     @Basic
     @Column(name = "APRTVLPG")
-    private Long valorPagado;
+    private Double valorPagado;
 
     /**
      * Saldo.
      */
     @Basic
     @Column(name = "APRTSLDO")
-    private Long saldo;
+    private Double saldo;
 
     /**
      * ID Sistema ASOPREP.
@@ -189,27 +189,27 @@ public class Aporte implements Serializable {
         this.glosa = glosa;
     }
 
-    public Long getValor() {
+    public Double getValor() {
         return valor;
     }
 
-    public void setValor(Long valor) {
+    public void setValor(Double valor) {
         this.valor = valor;
     }
 
-    public Long getValorPagado() {
+    public Double getValorPagado() {
         return valorPagado;
     }
 
-    public void setValorPagado(Long valorPagado) {
+    public void setValorPagado(Double valorPagado) {
         this.valorPagado = valorPagado;
     }
 
-    public Long getSaldo() {
+    public Double getSaldo() {
         return saldo;
     }
 
-    public void setSaldo(Long saldo) {
+    public void setSaldo(Double saldo) {
         this.saldo = saldo;
     }
 
