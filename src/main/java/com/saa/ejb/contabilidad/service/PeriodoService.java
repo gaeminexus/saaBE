@@ -1,5 +1,6 @@
 package com.saa.ejb.contabilidad.service;
 
+import java.time.LocalDate;
 import java.util.Date;
 import java.util.List;
 
@@ -164,5 +165,14 @@ public interface PeriodoService extends EntityService<Periodo> {
 	 * @throws Throwable	: Excepcion
 	 */
 	boolean verificaPeriodoMayorizadoByFecha(Date fechaSistema, Long idEmpresa ) throws Throwable;
+	
+	/**
+	 * Verifica las condiciones de un periodo por fecha en una empresa
+	 * @param empresa: Id de la empresa
+	 * @param fecha: Fecha a verificar
+	 * @return: Periodo encontrado
+	 * @throws Throwable: Excepcion
+	 */
+	Periodo verificaPeriodoAbierto(Long empresa, LocalDate fecha) throws Throwable;
 	
 }

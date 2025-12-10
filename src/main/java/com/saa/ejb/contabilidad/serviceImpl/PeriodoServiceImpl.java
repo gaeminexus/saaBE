@@ -1,5 +1,6 @@
 package com.saa.ejb.contabilidad.serviceImpl;
 
+import java.time.LocalDate;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
@@ -390,6 +391,20 @@ public class PeriodoServiceImpl implements PeriodoService{
 	public Periodo saveSingle(Periodo periodo) throws Throwable {
 		System.out.println("saveSingle - PeriodoService");
 		periodo = periodoDaoService.save(periodo, periodo.getCodigo());
+		return periodo;
+	}
+
+	@Override
+	public Periodo verificaPeriodoAbierto(Long empresa, LocalDate fecha) throws Throwable {
+		System.out.println("verificaPeriodoAbierto: - PeriodoService con empresa: " + empresa + " y fecha: " + fecha);
+		Long anioFecha = Long.valueOf(fecha.getYear());
+		Long mesFecha = Long.valueOf(fecha.getMonthValue());
+		Periodo periodo = periodoDaoService.selectByMesAnioEmpresa(empresa, mesFecha, anioFecha);
+		if (periodo != null) {
+			if (!periodo.getEstado().equals(Long.valueOf(EstadoPeriodos.ACTIVO))) {
+				throw new IncomeException("El periodo seleccionado se encuentra cerrado.");
+			}
+		}
 		return periodo;
 	}
 

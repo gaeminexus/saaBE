@@ -1,5 +1,6 @@
 package com.saa.ws.rest.contabilidad;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
@@ -86,6 +87,13 @@ public class PeriodoRest {
     @Path("/getId/{id}")
     public Periodo getId(@PathParam("id") Long id) throws Throwable {
         return periodoDaoService.selectById(id, NombreEntidadesContabilidad.PERIODO);
+    }
+    
+    @GET
+    @Produces("application/json")
+    @Path("/verificaPeriodoAbierto/{idEmpresa}/{fecha}")
+    public Periodo verificaPeriodoAbierto(@PathParam("idEmpresa") Long idEmpresa, @PathParam("fecha") LocalDate fecha) throws Throwable {
+        return periodoService.verificaPeriodoAbierto(idEmpresa, fecha);
     }
 
     /**
