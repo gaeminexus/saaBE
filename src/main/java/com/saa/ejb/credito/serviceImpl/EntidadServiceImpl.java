@@ -107,4 +107,5 @@ public class EntidadServiceImpl implements EntidadService {
         }
         return entidades;
 	}
+
 }

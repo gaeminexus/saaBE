@@ -19,8 +19,10 @@ import jakarta.json.bind.JsonbBuilder;
 import jakarta.json.bind.JsonbConfig;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.FormParam;
+import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Context;
@@ -41,6 +43,13 @@ public class AsoprepGenerales {
 	
 	@EJB
     private CargaArchivoPetroService cargaArchivoPetroService;
+	
+	@GET
+    @Path("/actualizaCodigoPetroEntidad/{codigoPetro}/{idParticipeXCarga}/{idEntidad}") 
+    @Produces("application/json")
+    public ParticipeXCargaArchivo actualizaCodigoPetroEntidad(@PathParam("codigoPetro") Long codigoPetro, @PathParam("idParticipeXCarga") Long idParticipeXCarga, @PathParam("idEntidad") Long idEntidad) throws Throwable {
+        return cargaArchivoPetroService.actualizaCodigoPetroEntidad(codigoPetro, idParticipeXCarga, idEntidad);
+    }
 	
 	/**
      * Upload de archivo con path personalizado

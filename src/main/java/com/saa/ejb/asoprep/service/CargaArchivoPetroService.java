@@ -42,4 +42,13 @@ public interface CargaArchivoPetroService {
      */
     CargaArchivo validarArchivoPetro(InputStream archivoInputStream, String fileName, CargaArchivo cargaArchivo) throws Throwable;
     
+    /**
+	 * Actualiza el código Petro de una Entidad dada su ID. Para correccion de errores en la carga de archivos de petro
+	 * @param idEntidad: ID de la Entidad a actualizar.
+	 * @param codigoPetro: Nuevo código Petro a asignar.
+	 * @return: Participe actualizado.
+	 * @throws Throwable: Excepción en caso de error.
+	 */
+    ParticipeXCargaArchivo actualizaCodigoPetroEntidad(Long codigoPetro, Long idParticipeXCarga, Long idEntidad) throws Throwable;
+    
 }

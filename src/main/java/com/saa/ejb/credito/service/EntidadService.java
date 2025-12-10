@@ -17,5 +17,5 @@ public interface EntidadService extends EntityService<Entidad>{
 	 * @throws Throwable: Excepción en caso de error.
 	 */
 	List<Entidad> selectCoincidenciasByNombre(String nombre) throws Throwable;
-
+	
 }

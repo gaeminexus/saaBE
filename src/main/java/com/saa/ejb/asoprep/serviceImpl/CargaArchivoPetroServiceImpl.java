@@ -19,6 +19,7 @@ import com.saa.ejb.credito.service.ParticipeXCargaArchivoService;
 import com.saa.model.credito.CargaArchivo;
 import com.saa.model.credito.DetalleCargaArchivo;
 import com.saa.model.credito.Entidad;
+import com.saa.model.credito.NombreEntidadesCredito;
 import com.saa.model.credito.ParticipeXCargaArchivo;
 import com.saa.rubros.NovedadesCargaArchivo;
 
@@ -523,6 +524,21 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
         
         System.out.println("Procesamiento completado exitosamente");
         return cargaArchivoGuardado;
+	}
+
+	@Override
+	public ParticipeXCargaArchivo actualizaCodigoPetroEntidad(Long codigoPetro, Long idParticipeXCarga, Long idEntidad) throws Throwable {
+		System.out.println("actualizaCodigoPetro");
+		ParticipeXCargaArchivo participe = participeXCargaArchivoService.selectById(idParticipeXCarga);
+		Entidad entidad = entidadDaoService.selectById(idEntidad, NombreEntidadesCredito.ENTIDAD);
+		if (entidad != null) {
+			entidad.setRolPetroComercial(codigoPetro);
+			entidad = entidadDaoService.save(entidad, entidad.getCodigo());
+			// Actualizar el ParticipeXCargaArchivo asociado si es necesario
+			participe.setNovedadesCarga(Long.valueOf(NovedadesCargaArchivo.OK));
+			participeXCargaArchivoService.saveSingle(participe);
+		}
+		return participe;
 	}
    
 }

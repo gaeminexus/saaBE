@@ -36,7 +36,7 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 		System.out.println("Ingresa al metodo selectCoincidenciasByNombre de asiento con empresa: " + nombre);
 		Query query = em.createNativeQuery(" select   e.ENTDCDGO " +
 									 	   " from     CRD.ENTD e " +
-									 	   " where    UTL_MATCH.JARO_WINKLER_SIMILARITY(e.ENTDNMCM, :nombre) > 80 ");
+									 	   " where    UTL_MATCH.JARO_WINKLER_SIMILARITY(e.ENTDNMCM, :nombre) > 90 ");
 		query.setParameter("nombre", nombre);		
 		return query.getResultList();
 	}
