@@ -92,8 +92,9 @@ public class PeriodoRest {
     @GET
     @Produces("application/json")
     @Path("/verificaPeriodoAbierto/{idEmpresa}/{fecha}")
-    public Periodo verificaPeriodoAbierto(@PathParam("idEmpresa") Long idEmpresa, @PathParam("fecha") LocalDate fecha) throws Throwable {
-        return periodoService.verificaPeriodoAbierto(idEmpresa, fecha);
+    public Periodo verificaPeriodoAbierto(@PathParam("idEmpresa") Long idEmpresa, @PathParam("fecha") String fecha) throws Throwable {
+        LocalDate localDate = LocalDate.parse(fecha);
+        return periodoService.verificaPeriodoAbierto(idEmpresa, localDate);
     }
 
     /**
