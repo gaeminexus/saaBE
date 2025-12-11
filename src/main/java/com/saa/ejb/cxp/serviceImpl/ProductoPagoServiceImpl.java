@@ -265,11 +265,11 @@ public class ProductoPagoServiceImpl implements ProductoPagoService {
 		ProductoPago productoPago = new ProductoPago();
 		boolean tieneRegistros = false;
 		List<ProductoPago> lista = recuperaProductosHijo(id);
-		for (ProductoPago registro:lista){
+		/*for (ProductoPago registro:lista){
 			if (tieneRegistros) {
 				break;
 			}
-		}
+		}*/
 		if ((tieneRegistros) && (actualiza)) {
 			// INACTIVA	LOS REGISTROS ASOCIADOS
 			for (ProductoPago registro : lista){

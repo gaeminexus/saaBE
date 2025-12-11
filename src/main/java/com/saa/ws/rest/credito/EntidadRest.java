@@ -79,6 +79,19 @@ public class EntidadRest {
     public List<Entidad> getCoincidencias(@PathParam("nombre") String nombre) throws Throwable {
         return entidadService.selectCoincidenciasByNombre(nombre);
     }
+    
+    /**
+     * Recupera las entidades cuyo nombre completo coincide con el proporcionado por petro de 35 caracteres.
+     * 
+     * @return: Recupera una lista de Entidad.
+     * @throws Throwable
+     */
+    @GET
+    @Path("/getByNombrePetro35/{nombre}")
+    @Produces("application/json")
+    public List<Entidad> getByNombrePetro35(@PathParam("nombre") String nombre) throws Throwable {
+        return entidadDaoService.selectByNombrePetro35(nombre);
+    }
 
     /**
      * PUT method for updating or creating an instance of EntidadRest

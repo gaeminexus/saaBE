@@ -21,7 +21,7 @@ import com.saa.model.credito.DetalleCargaArchivo;
 import com.saa.model.credito.Entidad;
 import com.saa.model.credito.NombreEntidadesCredito;
 import com.saa.model.credito.ParticipeXCargaArchivo;
-import com.saa.rubros.NovedadesCargaArchivo;
+import com.saa.rubros.ASPNovedadesCargaArchivo;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateful;
@@ -179,21 +179,21 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 					// VALIDACIONES DE EXISTENCIA DE PARTICIPE COMO ENTIDAD
 					List<Entidad> entidades = entidadDaoService.selectByCodigoPetro(participe.getCodigoPetro());
 					if(entidades.size() > 1) {
-						participe.setNovedadesCarga(Long.valueOf(NovedadesCargaArchivo.CODIGO_ROL_DUPLICADO));
+						participe.setNovedadesCarga(Long.valueOf(ASPNovedadesCargaArchivo.CODIGO_ROL_DUPLICADO));
 					} else if(entidades.size() == 0) {
 						// Si no ecuentra en codigo petro busca al participe por nombre
 						List<Entidad> entidadesPorNombre = entidadDaoService.selectByNombrePetro35(participe.getNombre());
 						if(entidadesPorNombre.size() == 0) {
-							participe.setNovedadesCarga(Long.valueOf(NovedadesCargaArchivo.PARTICIPE_NO_ENCONTRADO));
+							participe.setNovedadesCarga(Long.valueOf(ASPNovedadesCargaArchivo.PARTICIPE_NO_ENCONTRADO));
 						} else if(entidadesPorNombre.size() > 1) {
-							participe.setNovedadesCarga(Long.valueOf(NovedadesCargaArchivo.NOMBRE_ENTIDAD_DUPLICADO));
+							participe.setNovedadesCarga(Long.valueOf(ASPNovedadesCargaArchivo.NOMBRE_ENTIDAD_DUPLICADO));
 						} else {
 							// Si encuentra por nombre solo a uno que no tenia el código petro entonces actualiza la endidad con el codigo petro
 							Entidad entidadActualizar = entidadesPorNombre.get(0);
 							entidadActualizar.setRolPetroComercial(participe.getCodigoPetro());
 							entidadDaoService.save(entidadActualizar, entidadActualizar.getCodigo());
 							// actualiza la novedad del participe como OK
-							participe.setNovedadesCarga(Long.valueOf(NovedadesCargaArchivo.OK));
+							participe.setNovedadesCarga(Long.valueOf(ASPNovedadesCargaArchivo.OK));
 						}
 					} else { // cuando se encuentra solo un codigo petro
 						// Si encuentra solo uno entonces valida que el nombre del participe coincida con el de la entidad
@@ -203,9 +203,9 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 							largoTrim = entidades.get(0).getRazonSocial().trim().length();
 						}
 						if (!entidades.get(0).getRazonSocial().trim().substring(0,largoTrim).equalsIgnoreCase(participe.getNombre().trim())) {
-							participe.setNovedadesCarga(Long.valueOf(NovedadesCargaArchivo.CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE));
+							participe.setNovedadesCarga(Long.valueOf(ASPNovedadesCargaArchivo.CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE));
 						} else {
-							participe.setNovedadesCarga(Long.valueOf(NovedadesCargaArchivo.OK));
+							participe.setNovedadesCarga(Long.valueOf(ASPNovedadesCargaArchivo.OK));
 						}
 					}
 					participe = participeXCargaArchivoService.saveSingle(participe);
@@ -535,7 +535,7 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			entidad.setRolPetroComercial(codigoPetro);
 			entidad = entidadDaoService.save(entidad, entidad.getCodigo());
 			// Actualizar el ParticipeXCargaArchivo asociado si es necesario
-			participe.setNovedadesCarga(Long.valueOf(NovedadesCargaArchivo.OK));
+			participe.setNovedadesCarga(Long.valueOf(ASPNovedadesCargaArchivo.OK));
 			participeXCargaArchivoService.saveSingle(participe);
 		}
 		return participe;

@@ -5,7 +5,7 @@ package com.saa.rubros;
  *         Interfaz del rubro Estado Promocion (168)
  */
 
-public interface EstadoRevisionParticipeCarga {
+public interface ASPEstadoRevisionParticipeCarga {
 
 		// Estados de carga
 		public static final int PENDIENTE_REVISION = 1;
