@@ -55,33 +55,6 @@ public class PeriodoRest {
         return periodoDaoService.selectAll(NombreEntidadesContabilidad.PERIODO);
     }
 
-    /* Comentamos esta parte por que ya no usamos orden descendente
-     * Retrieves representation of an instance of PeriodoRest
-     * 
-     * @return an instance of String
-     * @throws Throwable
-     
-    @GET
-    @Produces("application/json")
-    @Path("/getDesc")
-    public List<Periodo> getDesc() throws Throwable {
-        return periodoDaoService.selectOrderDesc();
-    }
-
-    /**
-     * Retrieves representation of an instance of PeriodoRest
-     * 
-     * @return an instance of String
-     * @throws Throwable
-    
-    @GET
-    @Produces("application/json")
-    @Path("/getTest")
-    public Response getTest() throws Throwable {
-        return Response.status(200).entity(periodoDaoService.selectOrderDesc()).build();
-    }
-   */
-
     @GET
     @Produces("application/json")
     @Path("/getId/{id}")

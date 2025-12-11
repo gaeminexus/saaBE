@@ -13,6 +13,7 @@ import com.saa.basico.util.IncomeException;
 import com.saa.ejb.contabilidad.dao.AsientoDaoService;
 import com.saa.ejb.contabilidad.dao.PeriodoDaoService;
 import com.saa.ejb.contabilidad.service.PeriodoService;
+import com.saa.model.contabilidad.Asiento;
 import com.saa.model.contabilidad.NombreEntidadesContabilidad;
 import com.saa.model.contabilidad.Periodo;
 import com.saa.model.scp.Empresa;
@@ -407,6 +408,20 @@ public class PeriodoServiceImpl implements PeriodoService{
 		}
 		return periodo;
 	}
+
+	@Override
+	public String verificaAsientoEnPeriodo(Long idPeriodo) throws Throwable {
+	    System.out.println("verificaAsientoEnPeriodo: " + idPeriodo);
+	    List<Asiento> asientos = asientoDaoService.selectByIdPeriodo(idPeriodo);
+	    String resultado = "OK";
+	    if (!asientos.isEmpty()) {
+	    	resultado = "No se puede eliminar el periodo porque tiene asientos asociados.";
+	    }
+	    return resultado;
+	}
+
+	
+	
 
 	
 }

@@ -175,4 +175,13 @@ public interface PeriodoService extends EntityService<Periodo> {
 	 */
 	Periodo verificaPeriodoAbierto(Long empresa, LocalDate fecha) throws Throwable;
 	
+	
+	/**
+	 * Verifica las si hay asientos en un periodo 
+	 * @param fecha: Fecha a verificar
+	 * @return: Periodo encontrado
+	 * @throws Throwable: Excepcion
+	 */
+	String verificaAsientoEnPeriodo(Long periodo) throws Throwable;
+	
 }
