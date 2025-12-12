@@ -82,7 +82,7 @@ public class Plantilla implements Serializable {
 	 */
 	@Basic
 	@Column(name = "PLNSSSTM")
-	private Long sistema;
+	private Long sistema; 
 
 	/**
 	 * Devuelve codigo
