@@ -126,8 +126,7 @@ public class PeriodoRest {
     @Path("/{id}")
     public void delete(@PathParam("id") Long id) throws Throwable {
         System.out.println("LLEGA AL SERVICIO DELETE");
-        Periodo elimina = new Periodo();
-        periodoDaoService.remove(elimina, id);
+        periodoService.remove(id);
     }
 
 }

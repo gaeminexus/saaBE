@@ -184,4 +184,12 @@ public interface PeriodoService extends EntityService<Periodo> {
 	 */
 	String verificaAsientoEnPeriodo(Long periodo) throws Throwable;
 	
+	/**
+	 * Elimina periodo pero con validaciones de por medio
+	 * @param periodo: Id del periodo a eliminar
+	 * @return: Mensaje de exito o error
+	 * @throws Throwable: Excepcion
+	 */
+	String remove(Long idPeriodo) throws Throwable;
+	
 }
