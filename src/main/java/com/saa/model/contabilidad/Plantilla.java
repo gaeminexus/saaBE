@@ -27,7 +27,7 @@ import jakarta.persistence.Table;
 public class Plantilla implements Serializable {
 
 	/**
-	 * id de la tabla.
+	 * id de la tabla. 
 	 */
 	@Basic
 	@Id
