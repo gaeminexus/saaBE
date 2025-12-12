@@ -284,7 +284,7 @@ public class ParticipeXCargaArchivo implements Serializable {
     }
     
     public Long getNovedadesCarga() {
-		return novedadesCarga;
+		return novedadesCarga; 
 	}
 
 	public void setNovedadesCarga(Long novedadesCarga) {
