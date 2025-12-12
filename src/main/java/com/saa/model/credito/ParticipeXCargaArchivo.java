@@ -128,7 +128,7 @@ public class ParticipeXCargaArchivo implements Serializable {
     @Column(name = "PXCAESTD")
     private Long estado;
     
-    /** Estado del registro */
+    /** Novedades Financieras */
     @Basic
     @Column(name = "PXCANVFN")
     private Long novedadesFinancieras;
