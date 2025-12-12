@@ -128,6 +128,11 @@ public class ParticipeXCargaArchivo implements Serializable {
     @Column(name = "PXCAESTD")
     private Long estado;
     
+    /** Estado del registro */
+    @Basic
+    @Column(name = "PXCANVFN")
+    private Long novedadesFinancieras;
+    
 
 
     // ============================================================
@@ -293,4 +298,12 @@ public class ParticipeXCargaArchivo implements Serializable {
     public void setEstado(Long estado) {
         this.estado = estado;
     }
+
+	public Long getNovedadesFinancieras() {
+		return novedadesFinancieras;
+	}
+
+	public void setNovedadesFinancieras(Long novedadesFinancieras) {
+		this.novedadesFinancieras = novedadesFinancieras;
+	}
 }
