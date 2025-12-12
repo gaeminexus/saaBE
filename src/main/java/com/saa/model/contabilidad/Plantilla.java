@@ -77,6 +77,12 @@ public class Plantilla implements Serializable {
 	@Column(name = "PLNSFCDS")
 	private LocalDateTime fechaInactivo;
 	
+	/**
+	 * Sistema.
+	 */
+	@Basic
+	@Column(name = "PLNSSSTM")
+	private Long sistema;
 
 	/**
 	 * Devuelve codigo
@@ -187,6 +193,14 @@ public class Plantilla implements Serializable {
 	 */
 	public void setFechaInactivo(LocalDateTime fechaInactivo) {
 		this.fechaInactivo = fechaInactivo;
+	}
+
+	public Long getSistema() {
+		return sistema;
+	}
+
+	public void setSistema(Long sistema) {
+		this.sistema = sistema;
 	}
 
    
