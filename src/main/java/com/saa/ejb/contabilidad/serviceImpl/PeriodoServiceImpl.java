@@ -420,6 +420,16 @@ public class PeriodoServiceImpl implements PeriodoService{
 	    return resultado;
 	}
 
+	@Override
+	public String remove(Long idPeriodo) throws Throwable {
+		System.out.println("remove Service: " + idPeriodo);
+	    String resultado = verificaAsientoEnPeriodo(idPeriodo);
+	    if (resultado == "OK"){
+	    	periodoDaoService.remove(new Periodo(), idPeriodo);
+	    }
+	    return resultado;
+	}
+
 	
 	
 

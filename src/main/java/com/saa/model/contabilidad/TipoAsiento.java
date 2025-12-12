@@ -84,7 +84,6 @@ public class TipoAsiento implements Serializable {
 	
 	@Basic
 	@Column(name = "PLNTSSTM")
-	@Temporal(TemporalType.DATE)
 	private Long sistema; 
 
 	/**
