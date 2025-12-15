@@ -273,4 +273,19 @@ public interface PlanCuentaService extends EntityService<PlanCuenta> {
 	 */
 	boolean servicioRango (Long empresa, String cuentaInicio, String cuentaFin, String cuentaComparar )throws Throwable;
 	
+	
+	/**
+	 * Recupera si hay  detalles plantilla en plan de cuenta 
+	 * @param idPlanCuenta	: plan Cuenta
+	 * @throws Throwable	: Excepcions
+	 */
+	String validaDetallePlantilla(Long idPlanCuenta) throws Throwable;
+	
+	
+	/**
+	 * Valida si exiten asiento en una cuenta contable 
+	 * @param idPlanCuenta		: idPlanCuenta
+	 * @throws Throwable	: Excepcion
+	 */
+	String validaAsientoEnCuenta(Long idPlanCuenta) throws Throwable;
 }

@@ -770,4 +770,26 @@ public class PlanCuentaServiceImpl implements PlanCuentaService{
         return planCuenta;
 	}
 
+	@Override
+	public String validaDetallePlantilla(Long idPlanCuenta) throws Throwable {
+		System.out.println("verificaAsientoEnPeriodo: " + idPlanCuenta);
+	    List<DetallePlantilla> detallePlantilla = detallePlantillaDaoService.selectByIdPlanCuenta(idPlanCuenta);
+	    String resultado = "OK";
+	    if (!detallePlantilla.isEmpty()) {
+	    	resultado = "No se puede eliminar el Plan de cuenta porque tiene plantilla asociada.";
+	    }
+	    return resultado;
+	}
+
+	@Override
+	public String validaAsientoEnCuenta(Long idPlanCuenta) throws Throwable {
+		System.out.println("verificaAsientoEnPeriodo: " + idPlanCuenta);
+	    List<DetalleAsiento> detalleAsientos = detalleAsientoDaoService.selectByIdPlanCuenta(idPlanCuenta);
+	    String resultado = "OK";
+	    if (!detalleAsientos.isEmpty()) {
+	    	resultado = "No se puede eliminar el Plan de cuenta porque tiene asientos asociados.";
+	    }
+	    return resultado;
+	}
+
 }

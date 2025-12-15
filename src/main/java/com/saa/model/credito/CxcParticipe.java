@@ -1,4 +1,4 @@
-package com.saa.model.credito;
+ package com.saa.model.credito;
 
 import java.io.Serializable;
 import java.sql.Timestamp;

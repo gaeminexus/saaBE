@@ -61,57 +61,57 @@ public class ParticipeXCargaArchivo implements Serializable {
     /** Saldo Actual */
     @Basic
     @Column(name = "PXCASLAC")
-    private Long saldoActual;
+    private Double saldoActual;
 
     /** Interés Anual */
     @Basic
     @Column(name = "PXCAINAN")
-    private Long interesAnual;
+    private Double interesAnual;
 
     /** Valor Seguro */
     @Basic
     @Column(name = "PXCAVLSG")
-    private Long valorSeguro;
+    private Double valorSeguro;
 
     /** Monto a Descontar */
     @Basic
     @Column(name = "PXCADSCT")
-    private Long montoDescontar;
+    private Double montoDescontar;
 
     /** Capital Descontado */
     @Basic
     @Column(name = "PXCACPDS")
-    private Long capitalDescontado;
+    private Double capitalDescontado;
 
     /** Interés Descontado */
     @Basic
     @Column(name = "PXCAINDS")
-    private Long interesDescontado;
+    private Double interesDescontado;
 
     /** Seguro Descontado */
     @Basic
     @Column(name = "PXCASGDS")
-    private Long seguroDescontado;
+    private Double seguroDescontado;
 
     /** Total Descontado */
     @Basic
     @Column(name = "PXCADSDO")
-    private Long totalDescontado;
+    private Double totalDescontado;
 
     /** Capital No Descontado */
     @Basic
     @Column(name = "PXCACPND")
-    private Long capitalNoDescontado;
+    private Double capitalNoDescontado;
 
     /** Interés No Descontado */
     @Basic
     @Column(name = "PXCAITND")
-    private Long interesNoDescontado;
+    private Double interesNoDescontado;
 
     /** Desgravamen No Descontado */
     @Basic
     @Column(name = "PXCADSND")
-    private Long desgravamenNoDescontado;
+    private Double desgravamenNoDescontado;
     
     /** Estado revisión */
     @Basic
@@ -187,91 +187,91 @@ public class ParticipeXCargaArchivo implements Serializable {
         this.mesesPlazo = mesesPlazo;
     }
 
-    public Long getSaldoActual() {
+    public Double getSaldoActual() {
         return saldoActual;
     }
 
-    public void setSaldoActual(Long saldoActual) {
+    public void setSaldoActual(Double saldoActual) {
         this.saldoActual = saldoActual;
     }
 
-    public Long getInteresAnual() {
+    public Double getInteresAnual() {
         return interesAnual;
     }
 
-    public void setInteresAnual(Long interesAnual) {
+    public void setInteresAnual(Double interesAnual) {
         this.interesAnual = interesAnual;
     }
 
-    public Long getValorSeguro() {
+    public Double getValorSeguro() {
         return valorSeguro;
     }
 
-    public void setValorSeguro(Long valorSeguro) {
+    public void setValorSeguro(Double valorSeguro) {
         this.valorSeguro = valorSeguro;
     }
 
-    public Long getMontoDescontar() {
+    public Double getMontoDescontar() {
         return montoDescontar;
     }
 
-    public void setMontoDescontar(Long montoDescontar) {
+    public void setMontoDescontar(Double montoDescontar) {
         this.montoDescontar = montoDescontar;
     }
 
-    public Long getCapitalDescontado() {
+    public Double getCapitalDescontado() {
         return capitalDescontado;
     }
 
-    public void setCapitalDescontado(Long capitalDescontado) {
+    public void setCapitalDescontado(Double capitalDescontado) {
         this.capitalDescontado = capitalDescontado;
     }
 
-    public Long getInteresDescontado() {
+    public Double getInteresDescontado() {
         return interesDescontado;
     }
 
-    public void setInteresDescontado(Long interesDescontado) {
+    public void setInteresDescontado(Double interesDescontado) {
         this.interesDescontado = interesDescontado;
     }
 
-    public Long getSeguroDescontado() {
+    public Double getSeguroDescontado() {
         return seguroDescontado;
     }
 
-    public void setSeguroDescontado(Long seguroDescontado) {
+    public void setSeguroDescontado(Double seguroDescontado) {
         this.seguroDescontado = seguroDescontado;
     }
 
-    public Long getTotalDescontado() {
+    public Double getTotalDescontado() {
         return totalDescontado;
     }
 
-    public void setTotalDescontado(Long totalDescontado) {
+    public void setTotalDescontado(Double totalDescontado) {
         this.totalDescontado = totalDescontado;
     }
 
-    public Long getCapitalNoDescontado() {
+    public Double getCapitalNoDescontado() {
         return capitalNoDescontado;
     }
 
-    public void setCapitalNoDescontado(Long capitalNoDescontado) {
+    public void setCapitalNoDescontado(Double capitalNoDescontado) {
         this.capitalNoDescontado = capitalNoDescontado;
     }
 
-    public Long getInteresNoDescontado() {
+    public Double getInteresNoDescontado() {
         return interesNoDescontado;
     }
 
-    public void setInteresNoDescontado(Long interesNoDescontado) {
+    public void setInteresNoDescontado(Double interesNoDescontado) {
         this.interesNoDescontado = interesNoDescontado;
     }
 
-    public Long getDesgravamenNoDescontado() {
+    public Double getDesgravamenNoDescontado() {
         return desgravamenNoDescontado;
     }
 
-    public void setDesgravamenNoDescontado(Long desgravamenNoDescontado) {
+    public void setDesgravamenNoDescontado(Double desgravamenNoDescontado) {
         this.desgravamenNoDescontado = desgravamenNoDescontado;
     }
 
