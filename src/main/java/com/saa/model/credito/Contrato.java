@@ -1,7 +1,7 @@
 package com.saa.model.credito;
 
 import java.io.Serializable;
-import java.sql.Timestamp;
+import java.time.LocalDateTime;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
@@ -52,7 +52,7 @@ public class Contrato implements Serializable {
     /** Fecha de inicio */
     @Basic
     @Column(name = "CNTRFCIN")
-    private Timestamp fechaInicio;
+    private LocalDateTime fechaInicio;
 
     /** % Aporte Individual */
     @Basic
@@ -67,12 +67,12 @@ public class Contrato implements Serializable {
     /** Monto aporte adicional */
     @Basic
     @Column(name = "CNTRMNAA")
-    private Long montoAporteAdicional;
+    private Double montoAporteAdicional;
 
     /** Fecha de terminación */
     @Basic
     @Column(name = "CNTRFCTR")
-    private Timestamp fechaTerminacion;
+    private LocalDateTime fechaTerminacion;
 
     /** Motivo terminación */
     @Basic
@@ -92,7 +92,7 @@ public class Contrato implements Serializable {
     /** Fecha aprobación */
     @Basic
     @Column(name = "CNTRFCAP")
-    private Timestamp fechaAprobacion;
+    private LocalDateTime fechaAprobacion;
 
     /** Usuario aprobación */
     @Basic
@@ -102,12 +102,12 @@ public class Contrato implements Serializable {
     /** Fecha reporte */
     @Basic
     @Column(name = "CNTRFCRP")
-    private Timestamp fechaReporte;
+    private LocalDateTime fechaReporte;
 
     /** Fecha registro */
     @Basic
     @Column(name = "CNTRFCRG")
-    private Timestamp fechaRegistro;
+    private LocalDateTime fechaRegistro;
 
     /** Usuario registro */
     @Basic
@@ -155,11 +155,11 @@ public class Contrato implements Serializable {
         this. entidad = entidad;
     }
 
-    public Timestamp getFechaInicio() {
+    public LocalDateTime getFechaInicio() {
         return fechaInicio;
     }
 
-    public void setFechaInicio(Timestamp fechaInicio) {
+    public void setFechaInicio(LocalDateTime fechaInicio) {
         this.fechaInicio = fechaInicio;
     }
 
@@ -179,19 +179,19 @@ public class Contrato implements Serializable {
         this.porcentajeAporteJubilacion = porcentajeAporteJubilacion;
     }
 
-    public Long getMontoAporteAdicional() {
+    public Double getMontoAporteAdicional() {
         return montoAporteAdicional;
     }
 
-    public void setMontoAporteAdicional(Long montoAporteAdicional) {
+    public void setMontoAporteAdicional(Double montoAporteAdicional) {
         this.montoAporteAdicional = montoAporteAdicional;
     }
 
-    public Timestamp getFechaTerminacion() {
+    public LocalDateTime getFechaTerminacion() {
         return fechaTerminacion;
     }
 
-    public void setFechaTerminacion(Timestamp fechaTerminacion) {
+    public void setFechaTerminacion(LocalDateTime fechaTerminacion) {
         this.fechaTerminacion = fechaTerminacion;
     }
 
@@ -219,11 +219,11 @@ public class Contrato implements Serializable {
         this.estado = estado;
     }
 
-    public Timestamp getFechaAprobacion() {
+    public LocalDateTime getFechaAprobacion() {
         return fechaAprobacion;
     }
 
-    public void setFechaAprobacion(Timestamp fechaAprobacion) {
+    public void setFechaAprobacion(LocalDateTime fechaAprobacion) {
         this.fechaAprobacion = fechaAprobacion;
     }
 
@@ -235,19 +235,19 @@ public class Contrato implements Serializable {
         this.usuarioAprobacion = usuarioAprobacion;
     }
 
-    public Timestamp getFechaReporte() {
+    public LocalDateTime getFechaReporte() {
         return fechaReporte;
     }
 
-    public void setFechaReporte(Timestamp fechaReporte) {
+    public void setFechaReporte(LocalDateTime fechaReporte) {
         this.fechaReporte = fechaReporte;
     }
 
-    public Timestamp getFechaRegistro() {
+    public LocalDateTime getFechaRegistro() {
         return fechaRegistro;
     }
 
-    public void setFechaRegistro(Timestamp fechaRegistro) {
+    public void setFechaRegistro(LocalDateTime fechaRegistro) {
         this.fechaRegistro = fechaRegistro;
     }
 

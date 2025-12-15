@@ -1,7 +1,7 @@
 package com.saa.model.credito;
 
 import java.io.Serializable;
-import java.util.Date;
+import java.time.LocalDateTime;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
@@ -42,12 +42,12 @@ public class DetallePrestamo implements Serializable {
     /** Número de cuota */
     @Basic
     @Column(name = "DTPRNMCT")
-    private Long numeroCuota;
+    private Double numeroCuota;
 
     /** Fecha vencimiento */
     @Basic
     @Column(name = "DTPRFCVN")
-    private Date fechaVencimiento;
+    private LocalDateTime fechaVencimiento;
 
     /** Capital */
     @Basic
@@ -92,7 +92,7 @@ public class DetallePrestamo implements Serializable {
     /** Fecha pagado */
     @Basic
     @Column(name = "DTPRFCPG")
-    private Date fechaPagado;
+    private LocalDateTime fechaPagado;
 
     /** Abono */
     @Basic
@@ -187,7 +187,7 @@ public class DetallePrestamo implements Serializable {
     /** Fecha registro */
     @Basic
     @Column(name = "DTPRFCRG")
-    private Date fechaRegistro;
+    private LocalDateTime fechaRegistro;
 
     /** Usuario registro */
     @Basic
@@ -234,19 +234,19 @@ public class DetallePrestamo implements Serializable {
         this.prestamo = prestamo;
     }
 
-    public Long getNumeroCuota() {
+    public Double getNumeroCuota() {
         return numeroCuota;
     }
 
-    public void setNumeroCuota(Long numeroCuota) {
+    public void setNumeroCuota(Double numeroCuota) {
         this.numeroCuota = numeroCuota;
     }
 
-    public Date getFechaVencimiento() {
+    public LocalDateTime getFechaVencimiento() {
         return fechaVencimiento;
     }
 
-    public void setFechaVencimiento(Date fechaVencimiento) {
+    public void setFechaVencimiento(LocalDateTime fechaVencimiento) {
         this.fechaVencimiento = fechaVencimiento;
     }
 
@@ -314,11 +314,11 @@ public class DetallePrestamo implements Serializable {
         this.saldoInteresVencido = saldoInteresVencido;
     }
 
-    public Date getFechaPagado() {
+    public LocalDateTime getFechaPagado() {
         return fechaPagado;
     }
 
-    public void setFechaPagado(Date fechaPagado) {
+    public void setFechaPagado(LocalDateTime fechaPagado) {
         this.fechaPagado = fechaPagado;
     }
 
@@ -466,11 +466,11 @@ public class DetallePrestamo implements Serializable {
         this.estado = estado;
     }
 
-    public Date getFechaRegistro() {
+    public LocalDateTime getFechaRegistro() {
         return fechaRegistro;
     }
 
-    public void setFechaRegistro(Date fechaRegistro) {
+    public void setFechaRegistro(LocalDateTime fechaRegistro) {
         this.fechaRegistro = fechaRegistro;
     }
 

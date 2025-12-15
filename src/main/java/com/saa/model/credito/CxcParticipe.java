@@ -1,7 +1,7 @@
- package com.saa.model.credito;
+package com.saa.model.credito;
 
 import java.io.Serializable;
-import java.sql.Timestamp;
+import java.time.LocalDateTime;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
@@ -69,7 +69,7 @@ public class CxcParticipe implements Serializable {
      */
     @Basic
     @Column(name = "CXCPFCHC")
-    private Timestamp fechaCreacion;
+    private LocalDateTime fechaCreacion;
 
     // ======================
     // Getters y Setters
@@ -115,11 +115,11 @@ public class CxcParticipe implements Serializable {
         this.saldoCuenta = saldoCuenta;
     }
 
-    public Timestamp getFechaCreacion() {
+    public LocalDateTime getFechaCreacion() {
         return fechaCreacion;
     }
 
-    public void setFechaCreacion(Timestamp fechaCreacion) {
+    public void setFechaCreacion(LocalDateTime fechaCreacion) {
         this.fechaCreacion = fechaCreacion;
     }
 }

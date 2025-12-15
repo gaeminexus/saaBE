@@ -1,7 +1,7 @@
 package com.saa.model.credito;
 
 import java.io.Serializable;
-import java.sql.Timestamp;
+import java.time.LocalDateTime;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
@@ -42,27 +42,27 @@ public class DatosPrestamo implements Serializable {
     /** Total Salario */
     @Basic
     @Column(name = "DTSPTTSL")
-    private Long totalSalario;
+    private Double totalSalario;
 
     /** Total Egresos */
     @Basic
     @Column(name = "DTSPTTEG")
-    private Long totalEgresos;
+    private Double totalEgresos;
 
     /** Otros ingresos ROL */
     @Basic
     @Column(name = "DTSPOTIR")
-    private Long otrosIngresosRol;
+    private Double otrosIngresosRol;
 
     /** Otros ingresos Externos */
     @Basic
     @Column(name = "DTSPOTIE")
-    private Long otrosIngresosExternos;
+    private Double otrosIngresosExternos;
 
     /** Fecha registro */
     @Basic
     @Column(name = "DTSPFCRG")
-    private Timestamp fechaRegistro;
+    private LocalDateTime fechaRegistro;
 
     /** Usuario registro */
     @Basic
@@ -94,43 +94,43 @@ public class DatosPrestamo implements Serializable {
         this.prestamo = prestamo;
     }
 
-    public Long getTotalSalario() {
+    public Double getTotalSalario() {
         return totalSalario;
     }
 
-    public void setTotalSalario(Long totalSalario) {
+    public void setTotalSalario(Double totalSalario) {
         this.totalSalario = totalSalario;
     }
 
-    public Long getTotalEgresos() {
+    public Double getTotalEgresos() {
         return totalEgresos;
     }
 
-    public void setTotalEgresos(Long totalEgresos) {
+    public void setTotalEgresos(Double totalEgresos) {
         this.totalEgresos = totalEgresos;
     }
 
-    public Long getOtrosIngresosRol() {
+    public Double getOtrosIngresosRol() {
         return otrosIngresosRol;
     }
 
-    public void setOtrosIngresosRol(Long otrosIngresosRol) {
+    public void setOtrosIngresosRol(Double otrosIngresosRol) {
         this.otrosIngresosRol = otrosIngresosRol;
     }
 
-    public Long getOtrosIngresosExternos() {
+    public Double getOtrosIngresosExternos() {
         return otrosIngresosExternos;
     }
 
-    public void setOtrosIngresosExternos(Long otrosIngresosExternos) {
+    public void setOtrosIngresosExternos(Double otrosIngresosExternos) {
         this.otrosIngresosExternos = otrosIngresosExternos;
     }
 
-    public Timestamp getFechaRegistro() {
+    public LocalDateTime getFechaRegistro() {
         return fechaRegistro;
     }
 
-    public void setFechaRegistro(Timestamp fechaRegistro) {
+    public void setFechaRegistro(LocalDateTime fechaRegistro) {
         this.fechaRegistro = fechaRegistro;
     }
 

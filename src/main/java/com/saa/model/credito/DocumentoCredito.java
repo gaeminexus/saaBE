@@ -1,7 +1,7 @@
 package com.saa.model.credito;
 
 import java.io.Serializable;
-import java.sql.Timestamp;
+import java.time.LocalDateTime;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
@@ -83,7 +83,7 @@ public class DocumentoCredito implements Serializable {
      */
     @Basic
     @Column(name = "DCMNFCIN")
-    private Timestamp fechaIngreso;
+    private LocalDateTime fechaIngreso;
 
     /**
      * Estado.
@@ -152,11 +152,11 @@ public class DocumentoCredito implements Serializable {
         this.usuarioIngreso = usuarioIngreso;
     }
 
-    public Timestamp getFechaIngreso() {
+    public LocalDateTime getFechaIngreso() {
         return fechaIngreso;
     }
 
-    public void setFechaIngreso(Timestamp fechaIngreso) {
+    public void setFechaIngreso(LocalDateTime fechaIngreso) {
         this.fechaIngreso = fechaIngreso;
     }
 

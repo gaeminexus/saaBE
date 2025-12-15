@@ -48,7 +48,7 @@ public class HistorialSueldo implements Serializable {
      */
     @Basic
     @Column(name = "HSTRSLDO")
-    private Long sueldo;
+    private Double sueldo;
 
     /**
      * Porcentaje Cesantía.
@@ -69,21 +69,21 @@ public class HistorialSueldo implements Serializable {
      */
     @Basic
     @Column(name = "HSTRMNAJ")
-    private Long montoJubilacion;
+    private Double montoJubilacion;
 
     /**
      * Monto Aporte Cesantía.
      */
     @Basic
     @Column(name = "HSTRMNAC")
-    private Long montoCesantia;
+    private Double montoCesantia;
 
     /**
      * Monto Aporte Adicional.
      */
     @Basic
     @Column(name = "HSTRMNAA")
-    private Long montoAdicional;
+    private Double montoAdicional;
 
     /**
      * Usuario ingreso.
@@ -126,11 +126,11 @@ public class HistorialSueldo implements Serializable {
         this.entidad = entidad;
     }
 
-    public Long getSueldo() {
+    public Double getSueldo() {
         return sueldo;
     }
 
-    public void setSueldo(Long sueldo) {
+    public void setSueldo(Double sueldo) {
         this.sueldo = sueldo;
     }
 
@@ -150,27 +150,27 @@ public class HistorialSueldo implements Serializable {
         this.porcentajeJubilacion = porcentajeJubilacion;
     }
 
-    public Long getMontoJubilacion() {
+    public Double getMontoJubilacion() {
         return montoJubilacion;
     }
 
-    public void setMontoJubilacion(Long montoJubilacion) {
+    public void setMontoJubilacion(Double montoJubilacion) {
         this.montoJubilacion = montoJubilacion;
     }
 
-    public Long getMontoCesantia() {
+    public Double getMontoCesantia() {
         return montoCesantia;
     }
 
-    public void setMontoCesantia(Long montoCesantia) {
+    public void setMontoCesantia(Double montoCesantia) {
         this.montoCesantia = montoCesantia;
     }
 
-    public Long getMontoAdicional() {
+    public Double getMontoAdicional() {
         return montoAdicional;
     }
 
-    public void setMontoAdicional(Long montoAdicional) {
+    public void setMontoAdicional(Double montoAdicional) {
         this.montoAdicional = montoAdicional;
     }
 

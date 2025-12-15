@@ -53,14 +53,14 @@ public class CreditoMontoAprobacion implements Serializable {
      */
     @Basic
     @Column(name = "CRDTMNMX")
-    private BigDecimal montoMaximo;
+    private Double montoMaximo;
     
     /**
      * Monto Mínimo.
      */
     @Basic
     @Column(name = "CRDTMNMN")
-    private BigDecimal montoMinimo;
+    private Double montoMinimo;
     
     // ============================================================
     // Getters y Setters
@@ -118,7 +118,7 @@ public class CreditoMontoAprobacion implements Serializable {
      * Devuelve montoMaximo.
      * @return montoMaximo.
      */
-    public BigDecimal getMontoMaximo() {
+    public Double getMontoMaximo() {
         return montoMaximo;
     }
     
@@ -126,7 +126,7 @@ public class CreditoMontoAprobacion implements Serializable {
      * Asigna montoMaximo.
      * @param montoMaximo nuevo valor para montoMaximo.
      */
-    public void setMontoMaximo(BigDecimal montoMaximo) {
+    public void setMontoMaximo(Double montoMaximo) {
         this.montoMaximo = montoMaximo;
     }
     
@@ -134,7 +134,7 @@ public class CreditoMontoAprobacion implements Serializable {
      * Devuelve montoMinimo.
      * @return montoMinimo.
      */
-    public BigDecimal getMontoMinimo() {
+    public Double getMontoMinimo() {
         return montoMinimo;
     }
     
@@ -142,7 +142,7 @@ public class CreditoMontoAprobacion implements Serializable {
      * Asigna montoMinimo.
      * @param montoMinimo nuevo valor para montoMinimo.
      */
-    public void setMontoMinimo(BigDecimal montoMinimo) {
+    public void setMontoMinimo(Double montoMinimo) {
         this.montoMinimo = montoMinimo;
     }
 }
