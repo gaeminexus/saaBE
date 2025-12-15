@@ -137,7 +137,7 @@ public class Auditoria implements Serializable {
      */
     @Basic
     @Column(name = "ADTRVLNN")
-    private Long valorNuevo;
+    private Double valorNuevo;
 
     /**
      * Fecha de inserción del registro de auditoría.
@@ -270,11 +270,11 @@ public class Auditoria implements Serializable {
         this.nombreCampoNuevo = nombreCampoNuevo;
     }
 
-    public Long getValorNuevo() {
+    public Double getValorNuevo() {
         return valorNuevo;
     }
 
-    public void setValorNuevo(Long valorNuevo) {
+    public void setValorNuevo(Double valorNuevo) {
         this.valorNuevo = valorNuevo;
     }
 

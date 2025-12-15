@@ -74,57 +74,57 @@ public class CargaArchivo implements Serializable {
     /** Total Saldo Actual */
     @Basic
     @Column(name = "CRARTTSA")
-    private Long totalSaldoActual;
+    private Double totalSaldoActual;
 
     /** Total Interés Anual */
     @Basic
     @Column(name = "CRARTTIA")
-    private Long totalInteresAnual;
+    private Double totalInteresAnual;
 
     /** Total Valor Seguro */
     @Basic
     @Column(name = "CRARTTVS")
-    private Long totalValorSeguro;
+    private Double totalValorSeguro;
 
     /** Total Descontar */
     @Basic
     @Column(name = "CRARTTDS")
-    private Long totalDescontar;
+    private Double totalDescontar;
 
     /** Total Capital Descontado */
     @Basic
     @Column(name = "CRARTTCD")
-    private Long totalCapitalDescontado;
+    private Double totalCapitalDescontado;
 
     /** Total Interés Descontado */
     @Basic
     @Column(name = "CRARTTID")
-    private Long totalInteresDescontado;
+    private Double totalInteresDescontado;
 
     /** Total Seguro Descontado */
     @Basic
     @Column(name = "CRARTTSD")
-    private Long totalSeguroDescontado;
+    private Double totalSeguroDescontado;
 
     /** Total Descontado */
     @Basic
     @Column(name = "CRARTTDO")
-    private Long totalDescontado;
+    private Double totalDescontado;
 
     /** Total Capital No Descontado */
     @Basic
     @Column(name = "CRARTCND")
-    private Long totalCapitalNoDescontado;
+    private Double totalCapitalNoDescontado;
 
     /** Total Interés No Descontado */
     @Basic
     @Column(name = "CRARTIND")
-    private Long totalInteresNoDescontado;
+    private Double totalInteresNoDescontado;
 
     /** Total Desgravamen No Descontado */
     @Basic
     @Column(name = "CRARTDND")
-    private Long totalDesgravamenNoDescontado;
+    private Double totalDesgravamenNoDescontado;
 
     /** Estado del registro */
     @Basic
@@ -229,91 +229,91 @@ public class CargaArchivo implements Serializable {
         this.anioAfectacion = anioAfectacion;
     }
 
-    public Long getTotalSaldoActual() {
+    public Double getTotalSaldoActual() {
         return totalSaldoActual;
     }
 
-    public void setTotalSaldoActual(Long totalSaldoActual) {
+    public void setTotalSaldoActual(Double totalSaldoActual) {
         this.totalSaldoActual = totalSaldoActual;
     }
 
-    public Long getTotalInteresAnual() {
+    public Double getTotalInteresAnual() {
         return totalInteresAnual;
     }
 
-    public void setTotalInteresAnual(Long totalInteresAnual) {
+    public void setTotalInteresAnual(Double totalInteresAnual) {
         this.totalInteresAnual = totalInteresAnual;
     }
 
-    public Long getTotalValorSeguro() {
+    public Double getTotalValorSeguro() {
         return totalValorSeguro;
     }
 
-    public void setTotalValorSeguro(Long totalValorSeguro) {
+    public void setTotalValorSeguro(Double totalValorSeguro) {
         this.totalValorSeguro = totalValorSeguro;
     }
 
-    public Long getTotalDescontar() {
+    public Double getTotalDescontar() {
         return totalDescontar;
     }
 
-    public void setTotalDescontar(Long totalDescontar) {
+    public void setTotalDescontar(Double totalDescontar) {
         this.totalDescontar = totalDescontar;
     }
 
-    public Long getTotalCapitalDescontado() {
+    public Double getTotalCapitalDescontado() {
         return totalCapitalDescontado;
     }
 
-    public void setTotalCapitalDescontado(Long totalCapitalDescontado) {
+    public void setTotalCapitalDescontado(Double totalCapitalDescontado) {
         this.totalCapitalDescontado = totalCapitalDescontado;
     }
 
-    public Long getTotalInteresDescontado() {
+    public Double getTotalInteresDescontado() {
         return totalInteresDescontado;
     }
 
-    public void setTotalInteresDescontado(Long totalInteresDescontado) {
+    public void setTotalInteresDescontado(Double totalInteresDescontado) {
         this.totalInteresDescontado = totalInteresDescontado;
     }
 
-    public Long getTotalSeguroDescontado() {
+    public Double getTotalSeguroDescontado() {
         return totalSeguroDescontado;
     }
 
-    public void setTotalSeguroDescontado(Long totalSeguroDescontado) {
+    public void setTotalSeguroDescontado(Double totalSeguroDescontado) {
         this.totalSeguroDescontado = totalSeguroDescontado;
     }
 
-    public Long getTotalDescontado() {
+    public Double getTotalDescontado() {
         return totalDescontado;
     }
 
-    public void setTotalDescontado(Long totalDescontado) {
+    public void setTotalDescontado(Double totalDescontado) {
         this.totalDescontado = totalDescontado;
     }
 
-    public Long getTotalCapitalNoDescontado() {
+    public Double getTotalCapitalNoDescontado() {
         return totalCapitalNoDescontado;
     }
 
-    public void setTotalCapitalNoDescontado(Long totalCapitalNoDescontado) {
+    public void setTotalCapitalNoDescontado(Double totalCapitalNoDescontado) {
         this.totalCapitalNoDescontado = totalCapitalNoDescontado;
     }
 
-    public Long getTotalInteresNoDescontado() {
+    public Double getTotalInteresNoDescontado() {
         return totalInteresNoDescontado;
     }
 
-    public void setTotalInteresNoDescontado(Long totalInteresNoDescontado) {
+    public void setTotalInteresNoDescontado(Double totalInteresNoDescontado) {
         this.totalInteresNoDescontado = totalInteresNoDescontado;
     }
 
-    public Long getTotalDesgravamenNoDescontado() {
+    public Double getTotalDesgravamenNoDescontado() {
         return totalDesgravamenNoDescontado;
     }
 
-    public void setTotalDesgravamenNoDescontado(Long totalDesgravamenNoDescontado) {
+    public void setTotalDesgravamenNoDescontado(Double totalDesgravamenNoDescontado) {
         this.totalDesgravamenNoDescontado = totalDesgravamenNoDescontado;
     }
 

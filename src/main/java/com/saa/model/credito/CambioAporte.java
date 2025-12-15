@@ -48,7 +48,7 @@ public class CambioAporte implements Serializable {
      */
     @Basic
     @Column(name = "CMBPSLDO")
-    private Long sueldo;
+    private Double sueldo;
 
     /**
      * Porcentaje Cesantía.
@@ -133,11 +133,11 @@ public class CambioAporte implements Serializable {
         this.entidad = entidad;
     }
 
-    public Long getSueldo() {
+    public Double getSueldo() {
         return sueldo;
     }
 
-    public void setSueldo(Long sueldo) {
+    public void setSueldo(Double sueldo) {
         this.sueldo = sueldo;
     }
 

@@ -1,7 +1,7 @@
 package com.saa.model.credito;
 
 import java.io.Serializable;
-import java.sql.Timestamp;
+import java.time.LocalDateTime;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
@@ -55,7 +55,7 @@ public class Cesantia implements Serializable {
      */
     @Basic
     @Column(name = "CSNTFCHA")
-    private Timestamp fecha;
+    private LocalDateTime fecha;
 
     /**
      * ID Solicitante.
@@ -69,14 +69,14 @@ public class Cesantia implements Serializable {
      */
     @Basic
     @Column(name = "CSNTFCLQ")
-    private Timestamp fechaLiquidacion;
+    private LocalDateTime fechaLiquidacion;
 
     /**
      * Fecha salida.
      */
     @Basic
     @Column(name = "CSNTFCSL")
-    private Timestamp fechaSalida;
+    private LocalDateTime fechaSalida;
 
     /**
      * Es fallecido.
@@ -97,35 +97,35 @@ public class Cesantia implements Serializable {
      */
     @Basic
     @Column(name = "CSNTTTIN")
-    private Long totalIngresos;
+    private Double totalIngresos;
 
     /**
      * Total egresos.
      */
     @Basic
     @Column(name = "CSNTTTEG")
-    private Long totalEgresos;
+    private Double totalEgresos;
 
     /**
      * Saldo pagar.
      */
     @Basic
     @Column(name = "CSNTSLPG")
-    private Long saldoPagar;
+    private Double saldoPagar;
 
     /**
      * Saldo cobrar.
      */
     @Basic
     @Column(name = "CSNTSLCB")
-    private Long saldoCobrar;
+    private Double saldoCobrar;
 
     /**
      * Fecha registro.
      */
     @Basic
     @Column(name = "CSNTFCRG")
-    private Timestamp fechaRegistro;
+    private LocalDateTime fechaRegistro;
 
     /**
      * Usuario registro.
@@ -167,7 +167,7 @@ public class Cesantia implements Serializable {
      */
     @Basic
     @Column(name = "CSNTFCEC")
-    private Timestamp fechaEntregaCheque;
+    private LocalDateTime fechaEntregaCheque;
 
     // ======================
     // Getters y Setters
@@ -197,11 +197,11 @@ public class Cesantia implements Serializable {
         this.entidad = entidad;
     }
 
-    public Timestamp getFecha() {
+    public LocalDateTime getFecha() {
         return fecha;
     }
 
-    public void setFecha(Timestamp fecha) {
+    public void setFecha(LocalDateTime fecha) {
         this.fecha = fecha;
     }
 
@@ -213,19 +213,19 @@ public class Cesantia implements Serializable {
         this.idSolicitante = idSolicitante;
     }
 
-    public Timestamp getFechaLiquidacion() {
+    public LocalDateTime getFechaLiquidacion() {
         return fechaLiquidacion;
     }
 
-    public void setFechaLiquidacion(Timestamp fechaLiquidacion) {
+    public void setFechaLiquidacion(LocalDateTime fechaLiquidacion) {
         this.fechaLiquidacion = fechaLiquidacion;
     }
 
-    public Timestamp getFechaSalida() {
+    public LocalDateTime getFechaSalida() {
         return fechaSalida;
     }
 
-    public void setFechaSalida(Timestamp fechaSalida) {
+    public void setFechaSalida(LocalDateTime fechaSalida) {
         this.fechaSalida = fechaSalida;
     }
 
@@ -245,43 +245,43 @@ public class Cesantia implements Serializable {
         this.aplicaDesgravamen = aplicaDesgravamen;
     }
 
-    public Long getTotalIngresos() {
+    public Double getTotalIngresos() {
         return totalIngresos;
     }
 
-    public void setTotalIngresos(Long totalIngresos) {
+    public void setTotalIngresos(Double totalIngresos) {
         this.totalIngresos = totalIngresos;
     }
 
-    public Long getTotalEgresos() {
+    public Double getTotalEgresos() {
         return totalEgresos;
     }
 
-    public void setTotalEgresos(Long totalEgresos) {
+    public void setTotalEgresos(Double totalEgresos) {
         this.totalEgresos = totalEgresos;
     }
 
-    public Long getSaldoPagar() {
+    public Double getSaldoPagar() {
         return saldoPagar;
     }
 
-    public void setSaldoPagar(Long saldoPagar) {
+    public void setSaldoPagar(Double saldoPagar) {
         this.saldoPagar = saldoPagar;
     }
 
-    public Long getSaldoCobrar() {
+    public Double getSaldoCobrar() {
         return saldoCobrar;
     }
 
-    public void setSaldoCobrar(Long saldoCobrar) {
+    public void setSaldoCobrar(Double saldoCobrar) {
         this.saldoCobrar = saldoCobrar;
     }
 
-    public Timestamp getFechaRegistro() {
+    public LocalDateTime getFechaRegistro() {
         return fechaRegistro;
     }
 
-    public void setFechaRegistro(Timestamp fechaRegistro) {
+    public void setFechaRegistro(LocalDateTime fechaRegistro) {
         this.fechaRegistro = fechaRegistro;
     }
 
@@ -325,11 +325,11 @@ public class Cesantia implements Serializable {
         this.valorPagado = valorPagado;
     }
 
-    public Timestamp getFechaEntregaCheque() {
+    public LocalDateTime getFechaEntregaCheque() {
         return fechaEntregaCheque;
     }
 
-    public void setFechaEntregaCheque(Timestamp fechaEntregaCheque) {
+    public void setFechaEntregaCheque(LocalDateTime fechaEntregaCheque) {
         this.fechaEntregaCheque = fechaEntregaCheque;
     }
 }
