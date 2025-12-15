@@ -1,7 +1,7 @@
 package com.saa.model.credito;
 
 import java.io.Serializable;
-import java.sql.Timestamp;
+import java.time.LocalDateTime;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
@@ -39,7 +39,7 @@ public class Auditoria implements Serializable {
      */
     @Basic
     @Column(name = "ADTRFCHA")
-    private Timestamp fechaEvento;
+    private LocalDateTime fechaEvento;
 
     /**
      * Sistema / aplicación (SAA, SIGCAL, etc.).
@@ -144,7 +144,7 @@ public class Auditoria implements Serializable {
      */
     @Basic
     @Column(name = "ADTRFCIN")
-    private Timestamp fechaCreacion;
+    private LocalDateTime fechaCreacion;
 
     // ============================================================
     // Getters y Setters
@@ -158,11 +158,11 @@ public class Auditoria implements Serializable {
         this.codigo = codigo;
     }
 
-    public Timestamp getFechaEvento() {
+    public LocalDateTime getFechaEvento() {
         return fechaEvento;
     }
 
-    public void setFechaEvento(Timestamp fechaEvento) {
+    public void setFechaEvento(LocalDateTime fechaEvento) {
         this.fechaEvento = fechaEvento;
     }
 
@@ -278,11 +278,11 @@ public class Auditoria implements Serializable {
         this.valorNuevo = valorNuevo;
     }
 
-    public Timestamp getFechaCreacion() {
+    public LocalDateTime getFechaCreacion() {
         return fechaCreacion;
     }
 
-    public void setFechaCreacion(Timestamp fechaCreacion) {
+    public void setFechaCreacion(LocalDateTime fechaCreacion) {
         this.fechaCreacion = fechaCreacion;
     }
 }

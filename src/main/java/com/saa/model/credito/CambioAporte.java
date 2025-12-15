@@ -1,7 +1,7 @@
 package com.saa.model.credito;
 
 import java.io.Serializable;
-import java.sql.Timestamp;
+import java.time.LocalDateTime;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
@@ -76,14 +76,14 @@ public class CambioAporte implements Serializable {
      */
     @Basic
     @Column(name = "CMBPFCSL")
-    private Timestamp fechaSolicitud;
+    private LocalDateTime fechaSolicitud;
 
     /**
      * Fecha de aprobación.
      */
     @Basic
     @Column(name = "CMBPFCAP")
-    private Timestamp fechaAprobacion;
+    private LocalDateTime fechaAprobacion;
 
     /**
      * Indica si la solicitud fue por la Web.
@@ -104,7 +104,7 @@ public class CambioAporte implements Serializable {
      */
     @Basic
     @Column(name = "CMBPFCIN")
-    private Timestamp fechaIngreso;
+    private LocalDateTime fechaIngreso;
 
     /**
      * Estado.
@@ -165,19 +165,19 @@ public class CambioAporte implements Serializable {
         this.estadoActual = estadoActual;
     }
 
-    public Timestamp getFechaSolicitud() {
+    public LocalDateTime getFechaSolicitud() {
         return fechaSolicitud;
     }
 
-    public void setFechaSolicitud(Timestamp fechaSolicitud) {
+    public void setFechaSolicitud(LocalDateTime fechaSolicitud) {
         this.fechaSolicitud = fechaSolicitud;
     }
 
-    public Timestamp getFechaAprobacion() {
+    public LocalDateTime getFechaAprobacion() {
         return fechaAprobacion;
     }
 
-    public void setFechaAprobacion(Timestamp fechaAprobacion) {
+    public void setFechaAprobacion(LocalDateTime fechaAprobacion) {
         this.fechaAprobacion = fechaAprobacion;
     }
 
@@ -197,11 +197,11 @@ public class CambioAporte implements Serializable {
         this.usuarioIngreso = usuarioIngreso;
     }
 
-    public Timestamp getFechaIngreso() {
+    public LocalDateTime getFechaIngreso() {
         return fechaIngreso;
     }
 
-    public void setFechaIngreso(Timestamp fechaIngreso) {
+    public void setFechaIngreso(LocalDateTime fechaIngreso) {
         this.fechaIngreso = fechaIngreso;
     }
 

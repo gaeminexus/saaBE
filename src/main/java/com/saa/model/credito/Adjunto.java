@@ -1,7 +1,7 @@
 package com.saa.model.credito;
 
 import java.io.Serializable;
-import java.sql.Timestamp;
+import java.time.LocalDateTime;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
@@ -111,7 +111,7 @@ public class Adjunto implements Serializable {
      */
     @Basic
     @Column(name = "ADJNFCRG")
-    private Timestamp fechaRegistro;
+    private LocalDateTime fechaRegistro;
 
     /**
      * Usuario registro.
@@ -212,11 +212,11 @@ public class Adjunto implements Serializable {
         this.estado = estado;
     }
 
-    public Timestamp getFechaRegistro() {
+    public LocalDateTime getFechaRegistro() {
         return fechaRegistro;
     }
 
-    public void setFechaRegistro(Timestamp fechaRegistro) {
+    public void setFechaRegistro(LocalDateTime fechaRegistro) {
         this.fechaRegistro = fechaRegistro;
     }
 

@@ -1,7 +1,9 @@
 package com.saa.model.credito;
 
 import java.io.Serializable;
-import java.sql.Timestamp;
+import java.time.LocalDateTime;
+
+import com.saa.model.contabilidad.Periodo;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
@@ -132,14 +134,14 @@ public class PerfilEconomico implements Serializable {
      */
     @Basic
     @Column(name = "PRECFCAC")
-    private Timestamp fechaActualizacion;
+    private LocalDateTime fechaActualizacion;
 
     /**
      * Fecha de registro.
      */
     @Basic
     @Column(name = "PRECFCRG")
-    private Timestamp fechaRegistro;
+    private LocalDateTime fechaRegistro;
 
     /**
      * Usuario de registro.
@@ -160,14 +162,14 @@ public class PerfilEconomico implements Serializable {
      */
     @Basic
     @Column(name = "PRECFCIT")
-    private Timestamp fechaIngresoTrabajo;
+    private LocalDateTime fechaIngresoTrabajo;
 
     /**
      * Fecha de registro del trabajo.
      */
     @Basic
     @Column(name = "PRECFCRT")
-    private Timestamp fechaRegistroTrabajo;
+    private LocalDateTime fechaRegistroTrabajo;
 
     /**
      * Salario neto.
@@ -181,7 +183,7 @@ public class PerfilEconomico implements Serializable {
      */
     @Basic
     @Column(name = "PRECPRDO", length = 2000)
-    private String periodo;
+    private Periodo periodo;
 
     /**
      * ID del préstamo.
@@ -306,19 +308,19 @@ public class PerfilEconomico implements Serializable {
         this.patrimonioNeto = patrimonioNeto;
     }
 
-    public Timestamp getFechaActualizacion() {
+    public LocalDateTime getFechaActualizacion() {
         return fechaActualizacion;
     }
 
-    public void setFechaActualizacion(Timestamp fechaActualizacion) {
+    public void setFechaActualizacion(LocalDateTime fechaActualizacion) {
         this.fechaActualizacion = fechaActualizacion;
     }
 
-    public Timestamp getFechaRegistro() {
+    public LocalDateTime getFechaRegistro() {
         return fechaRegistro;
     }
 
-    public void setFechaRegistro(Timestamp fechaRegistro) {
+    public void setFechaRegistro(LocalDateTime fechaRegistro) {
         this.fechaRegistro = fechaRegistro;
     }
 
@@ -338,19 +340,19 @@ public class PerfilEconomico implements Serializable {
         this.estado = estado;
     }
 
-    public Timestamp getFechaIngresoTrabajo() {
+    public LocalDateTime getFechaIngresoTrabajo() {
         return fechaIngresoTrabajo;
     }
 
-    public void setFechaIngresoTrabajo(Timestamp fechaIngresoTrabajo) {
+    public void setFechaIngresoTrabajo(LocalDateTime fechaIngresoTrabajo) {
         this.fechaIngresoTrabajo = fechaIngresoTrabajo;
     }
 
-    public Timestamp getFechaRegistroTrabajo() {
+    public LocalDateTime getFechaRegistroTrabajo() {
         return fechaRegistroTrabajo;
     }
 
-    public void setFechaRegistroTrabajo(Timestamp fechaRegistroTrabajo) {
+    public void setFechaRegistroTrabajo(LocalDateTime fechaRegistroTrabajo) {
         this.fechaRegistroTrabajo = fechaRegistroTrabajo;
     }
 
@@ -362,11 +364,11 @@ public class PerfilEconomico implements Serializable {
         this.salarioNeto = salarioNeto;
     }
 
-    public String getPeriodo() {
+    public Periodo getPeriodo() {
         return periodo;
     }
 
-    public void setPeriodo(String periodo) {
+    public void setPeriodo(Periodo periodo) {
         this.periodo = periodo;
     }
 

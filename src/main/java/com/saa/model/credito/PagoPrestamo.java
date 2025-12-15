@@ -1,7 +1,7 @@
 package com.saa.model.credito;
 
 import java.io.Serializable;
-import java.util.Date;
+import java.time.LocalDateTime;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
@@ -47,47 +47,47 @@ public class PagoPrestamo implements Serializable {
     /** Fecha */
     @Basic
     @Column(name = "PGPRFCHA")
-    private Date fecha;
+    private LocalDateTime fecha;
 
     /** Valor */
     @Basic
     @Column(name = "PGPRVLRR")
-    private Long valor;
+    private Double valor;
 
     /** Número de cuota */
     @Basic
     @Column(name = "PGPRNMCT")
-    private Long numeroCuota;
+    private Double numeroCuota;
 
     /** Capital Pagado */
     @Basic
     @Column(name = "PGPRCPPG")
-    private Long capitalPagado;
+    private Double capitalPagado;
 
     /** Interés Pagado */
     @Basic
     @Column(name = "PGPRINPG")
-    private Long interesPagado;
+    private Double interesPagado;
 
     /** Mora pagada */
     @Basic
     @Column(name = "PGPRMRPG")
-    private Long moraPagada;
+    private Double moraPagada;
 
     /** Interés vencido pagado */
     @Basic
     @Column(name = "PGPRINVP")
-    private Long interesVencidoPagado;
+    private Double interesVencidoPagado;
 
     /** Desgravamen */
     @Basic
     @Column(name = "PGPRDSGR")
-    private Long desgravamen;
+    private Double desgravamen;
 
     /** Saldo otros */
     @Basic
     @Column(name = "PGPRSLOT")
-    private Long saldoOtros;
+    private Double saldoOtros;
 
     /** Observación */
     @Basic
@@ -107,7 +107,7 @@ public class PagoPrestamo implements Serializable {
     /** Fecha registro */
     @Basic
     @Column(name = "PGPRFCRG")
-    private Date fechaRegistro;
+    private LocalDateTime fechaRegistro;
 
     /** Usuario registro */
     @Basic
@@ -147,75 +147,75 @@ public class PagoPrestamo implements Serializable {
         this.detallePrestamo = detallePrestamo;
     }
 
-    public Date getFecha() {
+    public LocalDateTime getFecha() {
         return fecha;
     }
 
-    public void setFecha(Date fecha) {
+    public void setFecha(LocalDateTime fecha) {
         this.fecha = fecha;
     }
 
-    public Long getValor() {
+    public Double getValor() {
         return valor;
     }
 
-    public void setValor(Long valor) {
+    public void setValor(Double valor) {
         this.valor = valor;
     }
 
-    public Long getNumeroCuota() {
+    public Double getNumeroCuota() {
         return numeroCuota;
     }
 
-    public void setNumeroCuota(Long numeroCuota) {
+    public void setNumeroCuota(Double numeroCuota) {
         this.numeroCuota = numeroCuota;
     }
 
-    public Long getCapitalPagado() {
+    public Double getCapitalPagado() {
         return capitalPagado;
     }
 
-    public void setCapitalPagado(Long capitalPagado) {
+    public void setCapitalPagado(Double capitalPagado) {
         this.capitalPagado = capitalPagado;
     }
 
-    public Long getInteresPagado() {
+    public Double getInteresPagado() {
         return interesPagado;
     }
 
-    public void setInteresPagado(Long interesPagado) {
+    public void setInteresPagado(Double interesPagado) {
         this.interesPagado = interesPagado;
     }
 
-    public Long getMoraPagada() {
+    public Double getMoraPagada() {
         return moraPagada;
     }
 
-    public void setMoraPagada(Long moraPagada) {
+    public void setMoraPagada(Double moraPagada) {
         this.moraPagada = moraPagada;
     }
 
-    public Long getInteresVencidoPagado() {
+    public Double getInteresVencidoPagado() {
         return interesVencidoPagado;
     }
 
-    public void setInteresVencidoPagado(Long interesVencidoPagado) {
+    public void setInteresVencidoPagado(Double interesVencidoPagado) {
         this.interesVencidoPagado = interesVencidoPagado;
     }
 
-    public Long getDesgravamen() {
+    public Double getDesgravamen() {
         return desgravamen;
     }
 
-    public void setDesgravamen(Long desgravamen) {
+    public void setDesgravamen(Double desgravamen) {
         this.desgravamen = desgravamen;
     }
 
-    public Long getSaldoOtros() {
+    public Double getSaldoOtros() {
         return saldoOtros;
     }
 
-    public void setSaldoOtros(Long saldoOtros) {
+    public void setSaldoOtros(Double saldoOtros) {
         this.saldoOtros = saldoOtros;
     }
 
@@ -243,11 +243,11 @@ public class PagoPrestamo implements Serializable {
         this.estado = estado;
     }
 
-    public Date getFechaRegistro() {
+    public LocalDateTime getFechaRegistro() {
         return fechaRegistro;
     }
 
-    public void setFechaRegistro(Date fechaRegistro) {
+    public void setFechaRegistro(LocalDateTime fechaRegistro) {
         this.fechaRegistro = fechaRegistro;
     }
 

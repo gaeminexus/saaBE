@@ -1,7 +1,7 @@
 package com.saa.model.credito;
 
 import java.io.Serializable;
-import java.sql.Timestamp;
+import java.time.LocalDateTime;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
@@ -56,7 +56,7 @@ public class BioProfile implements Serializable {
      */
     @Basic
     @Column(name = "BPRFFCHR")
-    private Timestamp fechaRegistro;
+    private LocalDateTime fechaRegistro;
 
     /**
      * ID Estado.
@@ -93,11 +93,11 @@ public class BioProfile implements Serializable {
         this.entidad = entidad;
     }
 
-    public Timestamp getFechaRegistro() {
+    public LocalDateTime getFechaRegistro() {
         return fechaRegistro;
     }
 
-    public void setFechaRegistro(Timestamp fechaRegistro) {
+    public void setFechaRegistro(LocalDateTime fechaRegistro) {
         this.fechaRegistro = fechaRegistro;
     }
 

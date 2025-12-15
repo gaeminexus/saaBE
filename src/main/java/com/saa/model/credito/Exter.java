@@ -1,8 +1,7 @@
 package com.saa.model.credito;
 
 import java.io.Serializable;
-import java.math.BigDecimal;
-import java.sql.Timestamp;
+import java.time.LocalDateTime;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
@@ -51,7 +50,7 @@ public class Exter implements Serializable {
      */
     @Basic
     @Column(name = "EXTRFCNC")
-    private Timestamp fechaNacimiento;
+    private LocalDateTime fechaNacimiento;
     
     /**
      * Estado Civil.
@@ -93,7 +92,7 @@ public class Exter implements Serializable {
      */
     @Basic
     @Column(name = "EXTRFCDF")
-    private Timestamp fechaDefuncion;
+    private LocalDateTime fechaDefuncion;
     
     /**
      * Nacionalidad.
@@ -184,42 +183,42 @@ public class Exter implements Serializable {
      */
     @Basic
     @Column(name = "EXTRSLFJ", precision = 10, scale = 2)
-    private BigDecimal salarioFijo;
+    private Double salarioFijo;
     
     /**
      * Salario Variable.
      */
     @Basic
     @Column(name = "EXTRSLVR", precision = 10, scale = 2)
-    private BigDecimal salarioVariable;
+    private Double salarioVariable;
     
     /**
      * Salario Total.
      */
     @Basic
     @Column(name = "EXTRSLTT", precision = 10, scale = 2)
-    private BigDecimal salarioTotal;
+    private Double salarioTotal;
     
     /**
      * Sumados Ingresos.
      */
     @Basic
     @Column(name = "EXTRSMCI", precision = 10, scale = 2)
-    private BigDecimal sumadosIngresos;
+    private Double sumadosIngresos;
     
     /**
      * Sumados Egresos.
      */
     @Basic
     @Column(name = "EXTRSMSC", precision = 10, scale = 2)
-    private BigDecimal sumadosEgresos;
+    private Double sumadosEgresos;
     
     /**
      * Disponible.
      */
     @Basic
     @Column(name = "EXTRDSPN", precision = 10, scale = 6)
-    private BigDecimal disponible;
+    private Double disponible;
     
     // ============================================================
     // Getters y Setters
@@ -277,7 +276,7 @@ public class Exter implements Serializable {
      * Devuelve fechaNacimiento.
      * @return fechaNacimiento.
      */
-    public Timestamp getFechaNacimiento() {
+    public LocalDateTime getFechaNacimiento() {
         return fechaNacimiento;
     }
     
@@ -285,7 +284,7 @@ public class Exter implements Serializable {
      * Asigna fechaNacimiento.
      * @param fechaNacimiento nuevo valor para fechaNacimiento.
      */
-    public void setFechaNacimiento(Timestamp fechaNacimiento) {
+    public void setFechaNacimiento(LocalDateTime fechaNacimiento) {
         this.fechaNacimiento = fechaNacimiento;
     }
     
@@ -373,7 +372,7 @@ public class Exter implements Serializable {
      * Devuelve fechaDefuncion.
      * @return fechaDefuncion.
      */
-    public Timestamp getFechaDefuncion() {
+    public LocalDateTime getFechaDefuncion() {
         return fechaDefuncion;
     }
     
@@ -381,7 +380,7 @@ public class Exter implements Serializable {
      * Asigna fechaDefuncion.
      * @param fechaDefuncion nuevo valor para fechaDesde.
      */
-    public void setFechaDefuncion(Timestamp fechaDefuncion) {
+    public void setFechaDefuncion(LocalDateTime fechaDefuncion) {
         this.fechaDefuncion = fechaDefuncion;
     }
     
@@ -581,7 +580,7 @@ public class Exter implements Serializable {
      * Devuelve salarioFijo.
      * @return salarioFijo.
      */
-    public BigDecimal getSalarioFijo() {
+    public Double getSalarioFijo() {
         return salarioFijo;
     }
     
@@ -589,7 +588,7 @@ public class Exter implements Serializable {
      * Asigna salarioFijo.
      * @param salarioFijo nuevo valor para salarioFijo.
      */
-    public void setSalarioFijo(BigDecimal salarioFijo) {
+    public void setSalarioFijo(Double salarioFijo) {
         this.salarioFijo = salarioFijo;
     }
     
@@ -597,7 +596,7 @@ public class Exter implements Serializable {
      * Devuelve salarioVariable.
      * @return salarioVariable.
      */
-    public BigDecimal getSalarioVariable() {
+    public Double getSalarioVariable() {
         return salarioVariable;
     }
     
@@ -605,7 +604,7 @@ public class Exter implements Serializable {
      * Asigna salarioVariable.
      * @param salarioVariable nuevo valor para salarioVariable.
      */
-    public void setSalarioVariable(BigDecimal salarioVariable) {
+    public void setSalarioVariable(Double salarioVariable) {
         this.salarioVariable = salarioVariable;
     }
     
@@ -613,7 +612,7 @@ public class Exter implements Serializable {
      * Devuelve salarioTotal.
      * @return salarioTotal.
      */
-    public BigDecimal getSalarioTotal() {
+    public Double getSalarioTotal() {
         return salarioTotal;
     }
     
@@ -621,7 +620,7 @@ public class Exter implements Serializable {
      * Asigna salarioTotal.
      * @param salarioTotal nuevo valor para salarioTotal.
      */
-    public void setSalarioTotal(BigDecimal salarioTotal) {
+    public void setSalarioTotal(Double salarioTotal) {
         this.salarioTotal = salarioTotal;
     }
     
@@ -629,7 +628,7 @@ public class Exter implements Serializable {
      * Devuelve sumadosIngresos.
      * @return sumadosIngresos.
      */
-    public BigDecimal getSumadosIngresos() {
+    public Double getSumadosIngresos() {
         return sumadosIngresos;
     }
     
@@ -637,7 +636,7 @@ public class Exter implements Serializable {
      * Asigna sumadosIngresos.
      * @param sumadosIngresos nuevo valor para sumadosIngresos.
      */
-    public void setSumadosIngresos(BigDecimal sumadosIngresos) {
+    public void setSumadosIngresos(Double sumadosIngresos) {
         this.sumadosIngresos = sumadosIngresos;
     }
     
@@ -645,7 +644,7 @@ public class Exter implements Serializable {
      * Devuelve sumadosEgresos.
      * @return sumadosEgresos.
      */
-    public BigDecimal getSumadosEgresos() {
+    public Double getSumadosEgresos() {
         return sumadosEgresos;
     }
     
@@ -653,7 +652,7 @@ public class Exter implements Serializable {
      * Asigna sumadosEgresos.
      * @param sumadosEgresos nuevo valor para sumadosEgresos.
      */
-    public void setSumadosEgresos(BigDecimal sumadosEgresos) {
+    public void setSumadosEgresos(Double sumadosEgresos) {
         this.sumadosEgresos = sumadosEgresos;
     }
     
@@ -661,7 +660,7 @@ public class Exter implements Serializable {
      * Devuelve disponible.
      * @return disponible.
      */
-    public BigDecimal getDisponible() {
+    public Double getDisponible() {
         return disponible;
     }
     
@@ -669,7 +668,7 @@ public class Exter implements Serializable {
      * Asigna disponible.
      * @param disponible nuevo valor para disponible.
      */
-    public void setDisponible(BigDecimal disponible) {
+    public void setDisponible(Double disponible) {
         this.disponible = disponible;
     }
 }

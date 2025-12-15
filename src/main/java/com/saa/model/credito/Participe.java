@@ -1,7 +1,6 @@
 package com.saa.model.credito;
 
 import java.io.Serializable;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import jakarta.persistence.Basic;
@@ -60,7 +59,7 @@ public class Participe implements Serializable {
 
     @Basic
     @Column(name = "PRTCFCIT")
-    private LocalDate fechaIngresoTrabajo;
+    private LocalDateTime fechaIngresoTrabajo;
 
     @Basic
     @Column(name = "PRTCLGRT", length = 50)
@@ -88,7 +87,7 @@ public class Participe implements Serializable {
 
     @Basic
     @Column(name = "PRTCFCIF")
-    private LocalDate fechaIngresoFondo;
+    private LocalDateTime fechaIngresoFondo;
 
     @Basic
     @Column(name = "PRTCESAC")
@@ -96,7 +95,7 @@ public class Participe implements Serializable {
 
     @Basic
     @Column(name = "PRTCFCHF")
-    private LocalDate fechaFallecimiento;
+    private LocalDateTime fechaFallecimiento;
 
     @Basic
     @Column(name = "PRTCCSFL", length = 2000)
@@ -108,7 +107,7 @@ public class Participe implements Serializable {
 
     @Basic
     @Column(name = "PRTCFCSL")
-    private LocalDate fechaSalida;
+    private LocalDateTime fechaSalida;
 
     @Basic
     @Column(name = "PRTCESCS")
@@ -174,11 +173,11 @@ public class Participe implements Serializable {
         this.remuneracionUnificada = remuneracionUnificada;
     }
 
-    public LocalDate getFechaIngresoTrabajo() {
+    public LocalDateTime getFechaIngresoTrabajo() {
         return fechaIngresoTrabajo;
     }
 
-    public void setFechaIngresoTrabajo(LocalDate fechaIngresoTrabajo) {
+    public void setFechaIngresoTrabajo(LocalDateTime fechaIngresoTrabajo) {
         this.fechaIngresoTrabajo = fechaIngresoTrabajo;
     }
 
@@ -230,11 +229,11 @@ public class Participe implements Serializable {
         this.ingresoAdicionalActividad = ingresoAdicionalActividad;
     }
 
-    public LocalDate getFechaIngresoFondo() {
+    public LocalDateTime getFechaIngresoFondo() {
         return fechaIngresoFondo;
     }
 
-    public void setFechaIngresoFondo(LocalDate fechaIngresoFondo) {
+    public void setFechaIngresoFondo(LocalDateTime fechaIngresoFondo) {
         this.fechaIngresoFondo = fechaIngresoFondo;
     }
 
@@ -246,11 +245,11 @@ public class Participe implements Serializable {
         this.estadoActual = estadoActual;
     }
 
-    public LocalDate getFechaFallecimiento() {
+    public LocalDateTime getFechaFallecimiento() {
         return fechaFallecimiento;
     }
 
-    public void setFechaFallecimiento(LocalDate fechaFallecimiento) {
+    public void setFechaFallecimiento(LocalDateTime fechaFallecimiento) {
         this.fechaFallecimiento = fechaFallecimiento;
     }
 
@@ -270,11 +269,11 @@ public class Participe implements Serializable {
         this.motivoSalida = motivoSalida;
     }
 
-    public LocalDate getFechaSalida() {
+    public LocalDateTime getFechaSalida() {
         return fechaSalida;
     }
 
-    public void setFechaSalida(LocalDate fechaSalida) {
+    public void setFechaSalida(LocalDateTime fechaSalida) {
         this.fechaSalida = fechaSalida;
     }
 

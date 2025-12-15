@@ -1,7 +1,7 @@
 package com.saa.model.credito;
 
 import java.io.Serializable;
-import java.sql.Timestamp;
+import java.time.LocalDateTime;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
@@ -62,7 +62,7 @@ public class PagoAporte implements Serializable {
      */
     @Basic
     @Column(name = "PGAPFCCN")
-    private Timestamp fechaContable;
+    private LocalDateTime fechaContable;
 
     /**
      * Número de asiento.
@@ -83,7 +83,7 @@ public class PagoAporte implements Serializable {
      */
     @Basic
     @Column(name = "PGAPFCRG")
-    private Timestamp fechaRegistro;
+    private LocalDateTime fechaRegistro;
 
     /**
      * Usuario registro.
@@ -135,11 +135,11 @@ public class PagoAporte implements Serializable {
         this.valor = valor;
     }
 
-    public Timestamp getFechaContable() {
+    public LocalDateTime getFechaContable() {
         return fechaContable;
     }
 
-    public void setFechaContable(Timestamp fechaContable) {
+    public void setFechaContable(LocalDateTime fechaContable) {
         this.fechaContable = fechaContable;
     }
 
@@ -159,11 +159,11 @@ public class PagoAporte implements Serializable {
         this.concepto = concepto;
     }
 
-    public Timestamp getFechaRegistro() {
+    public LocalDateTime getFechaRegistro() {
         return fechaRegistro;
     }
 
-    public void setFechaRegistro(Timestamp fechaRegistro) {
+    public void setFechaRegistro(LocalDateTime fechaRegistro) {
         this.fechaRegistro = fechaRegistro;
     }
 
