@@ -50,6 +50,7 @@ public class AdjuntoRest {
     public Adjunto getId(@PathParam("id") Long id) throws Throwable {
         return adjuntoDaoService.selectById(id, NombreEntidadesCredito.ADJUNTO);
     }
+    
 
     @PUT
     @Consumes("application/json")

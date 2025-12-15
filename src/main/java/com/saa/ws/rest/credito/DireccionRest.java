@@ -49,6 +49,13 @@ public class DireccionRest {
     public Direccion getId(@PathParam("id") Long id) throws Throwable {
         return direccionDaoService.selectById(id, NombreEntidadesCredito.DIRECCION);
     }
+    
+    @GET
+    @Path("/getByParent/{idParent}")
+    @Produces("application/json")
+    public List<Direccion> getByParent(@PathParam("idParent") Long idParent) throws Throwable {
+        return direccionDaoService.selectByParent(idParent);
+    }
 
     @PUT
     @Consumes("application/json")
@@ -89,6 +96,8 @@ public class DireccionRest {
         System.out.println("LLEGA AL SERVICIO DELETE - DRCC");
         Direccion elimina = new Direccion();
         direccionDaoService.remove(elimina, id);
+        
+        
     }
 
 }
