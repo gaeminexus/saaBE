@@ -281,19 +281,19 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
                         // Extraer campos del registro
                         String codigo = extraerCampo(lineaRegistro, 0, 7).trim();
                         registro.setNombre(extraerCampo(lineaRegistro, 7, 44).trim());
-                        registro.setPlazoInicial(parseLong(extraerCampo(lineaRegistro, 44, 50).trim()));
-                        registro.setSaldoActual(parseLong(extraerCampo(lineaRegistro, 50, 61).trim()));
-                        registro.setMesesPlazo(parseLong(extraerCampo(lineaRegistro, 61, 65).trim()));
-                        registro.setInteresAnual(parseLong(extraerCampo(lineaRegistro, 65, 70).trim()));
-                        registro.setValorSeguro(parseLong(extraerCampo(lineaRegistro, 70, 80).trim()));
-                        registro.setMontoDescontar(parseLong(extraerCampo(lineaRegistro, 80, 95).trim()));
-                        registro.setCapitalDescontado(parseLong(extraerCampo(lineaRegistro, 95, 110).trim()));
-                        registro.setInteresDescontado(parseLong(extraerCampo(lineaRegistro, 110, 125).trim()));
-                        registro.setSeguroDescontado(parseLong(extraerCampo(lineaRegistro, 125, 140).trim()));
-                        registro.setTotalDescontado(parseLong(extraerCampo(lineaRegistro, 140, 155).trim()));
-                        registro.setCapitalNoDescontado(parseLong(extraerCampo(lineaRegistro, 155, 170).trim()));
-                        registro.setInteresNoDescontado(parseLong(extraerCampo(lineaRegistro, 170, 184).trim()));
-                        registro.setDesgravamenNoDescontado(parseLong(extraerCampo(lineaRegistro, 184, 198).trim()));
+                        registro.setPlazoInicial(parseDouble(extraerCampo(lineaRegistro, 44, 50).trim()).longValue());
+                        registro.setSaldoActual(parseDouble(extraerCampo(lineaRegistro, 50, 61).trim()));
+                        registro.setMesesPlazo(parseDouble(extraerCampo(lineaRegistro, 61, 65).trim()).longValue());
+                        registro.setInteresAnual(parseDouble(extraerCampo(lineaRegistro, 65, 70).trim()));
+                        registro.setValorSeguro(parseDouble(extraerCampo(lineaRegistro, 70, 80).trim()));
+                        registro.setMontoDescontar(parseDouble(extraerCampo(lineaRegistro, 80, 95).trim()));
+                        registro.setCapitalDescontado(parseDouble(extraerCampo(lineaRegistro, 95, 110).trim()));
+                        registro.setInteresDescontado(parseDouble(extraerCampo(lineaRegistro, 110, 125).trim()));
+                        registro.setSeguroDescontado(parseDouble(extraerCampo(lineaRegistro, 125, 140).trim()));
+                        registro.setTotalDescontado(parseDouble(extraerCampo(lineaRegistro, 140, 155).trim()));
+                        registro.setCapitalNoDescontado(parseDouble(extraerCampo(lineaRegistro, 155, 170).trim()));
+                        registro.setInteresNoDescontado(parseDouble(extraerCampo(lineaRegistro, 170, 184).trim()));
+                        registro.setDesgravamenNoDescontado(parseDouble(extraerCampo(lineaRegistro, 184, 198).trim()));
                         
                         if (!codigo.isEmpty()) {
                             registro.setCodigoPetro(parseLongSimple(codigo));
@@ -341,18 +341,18 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
                 DetalleCargaArchivo detalle = new DetalleCargaArchivo();
                 detalle.setCodigoPetroProducto(registro.getDetalleCargaArchivo().getCodigoPetroProducto());
                 detalle.setNombreProductoPetro(registro.getDetalleCargaArchivo().getNombreProductoPetro());
-                detalle.setTotalParticipes(0L);
-                detalle.setTotalSaldoActual(0L);
-                detalle.setTotalInteresAnual(0L);
-                detalle.setTotalValorSeguro(0L);
-                detalle.setTotalDescontar(0L);
-                detalle.setTotalCapitalDescontado(0L);
-                detalle.setTotalInteresDescontado(0L);
-                detalle.setTotalSeguroDescontado(0L);
-                detalle.setTotalDescontado(0L);
-                detalle.setTotalCapitalNoDescontado(0L);
-                detalle.setTotalInteresNoDescontado(0L);
-                detalle.setTotalDesgravamenNoDescontado(0L);
+                detalle.setTotalParticipes(0.0);
+                detalle.setTotalSaldoActual(0.0);
+                detalle.setTotalInteresAnual(0.0);
+                detalle.setTotalValorSeguro(0.0);
+                detalle.setTotalDescontar(0.0);
+                detalle.setTotalCapitalDescontado(0.0);
+                detalle.setTotalInteresDescontado(0.0);
+                detalle.setTotalSeguroDescontado(0.0);
+                detalle.setTotalDescontado(0.0);
+                detalle.setTotalCapitalNoDescontado(0.0);
+                detalle.setTotalInteresNoDescontado(0.0);
+                detalle.setTotalDesgravamenNoDescontado(0.0);
                 
                 mapaAportes.put(key, detalle);
             }
@@ -363,7 +363,7 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
             registro.setDetalleCargaArchivo(aporte);
             
             // Acumular totales
-            aporte.setTotalParticipes(aporte.getTotalParticipes() + 1);
+            aporte.setTotalParticipes(aporte.getTotalParticipes() + 1.0);
             aporte.setTotalSaldoActual(aporte.getTotalSaldoActual() + nullSafe(registro.getSaldoActual()));
             aporte.setTotalInteresAnual(aporte.getTotalInteresAnual() + nullSafe(registro.getInteresAnual()));
             aporte.setTotalValorSeguro(aporte.getTotalValorSeguro() + nullSafe(registro.getValorSeguro()));
@@ -384,30 +384,30 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
      * Calcula totales generales para CargaArchivo
      */
     private CargaArchivo calcularTotalesGenerales(CargaArchivo cargaArchivo, List<DetalleCargaArchivo> aporteAgrupados) {
-        long totalSaldoActual = 0;
-        long totalInteresAnual = 0;
-        long totalValorSeguro = 0;
-        long totalDescontar = 0;
-        long totalCapitalDescontado = 0;
-        long totalInteresDescontado = 0;
-        long totalSeguroDescontado = 0;
-        long totalDescontado = 0;
-        long totalCapitalNoDescontado = 0;
-        long totalInteresNoDescontado = 0;
-        long totalDesgravamenNoDescontado = 0;
+        double totalSaldoActual = 0;
+        double totalInteresAnual = 0;
+        double totalValorSeguro = 0;
+        double totalDescontar = 0;
+        double totalCapitalDescontado = 0;
+        double totalInteresDescontado = 0;
+        double totalSeguroDescontado = 0;
+        double totalDescontado = 0;
+        double totalCapitalNoDescontado = 0;
+        double totalInteresNoDescontado = 0;
+        double totalDesgravamenNoDescontado = 0;
         
         for (DetalleCargaArchivo aporte : aporteAgrupados) {
-            totalSaldoActual += nullSafe(aporte.getTotalSaldoActual());
-            totalInteresAnual += nullSafe(aporte.getTotalInteresAnual());
-            totalValorSeguro += nullSafe(aporte.getTotalValorSeguro());
-            totalDescontar += nullSafe(aporte.getTotalDescontar());
-            totalCapitalDescontado += nullSafe(aporte.getTotalCapitalDescontado());
-            totalInteresDescontado += nullSafe(aporte.getTotalInteresDescontado());
-            totalSeguroDescontado += nullSafe(aporte.getTotalSeguroDescontado());
-            totalDescontado += nullSafe(aporte.getTotalDescontado());
-            totalCapitalNoDescontado += nullSafe(aporte.getTotalCapitalNoDescontado());
-            totalInteresNoDescontado += nullSafe(aporte.getTotalInteresNoDescontado());
-            totalDesgravamenNoDescontado += nullSafe(aporte.getTotalDesgravamenNoDescontado());
+            totalSaldoActual += nullSafe((double)aporte.getTotalSaldoActual());
+            totalInteresAnual += nullSafe((double)aporte.getTotalInteresAnual());
+            totalValorSeguro += nullSafe((double)aporte.getTotalValorSeguro());
+            totalDescontar += nullSafe((double)aporte.getTotalDescontar());
+            totalCapitalDescontado += nullSafe((double)aporte.getTotalCapitalDescontado());
+            totalInteresDescontado += nullSafe((double)aporte.getTotalInteresDescontado());
+            totalSeguroDescontado += nullSafe((double)aporte.getTotalSeguroDescontado());
+            totalDescontado += nullSafe((double)aporte.getTotalDescontado());
+            totalCapitalNoDescontado += nullSafe((double)aporte.getTotalCapitalNoDescontado());
+            totalInteresNoDescontado += nullSafe((double)aporte.getTotalInteresNoDescontado());
+            totalDesgravamenNoDescontado += nullSafe((double)aporte.getTotalDesgravamenNoDescontado());
         }
         
         cargaArchivo.setTotalSaldoActual(totalSaldoActual);
@@ -428,8 +428,8 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     /**
      * Convierte string a número manejando formatos europeos
      */
-    private Long parseLong(String valor) {
-        if (valor == null || valor.trim().isEmpty()) return 0L;
+    private Double parseDouble(String valor) {
+        if (valor == null || valor.trim().isEmpty()) return 0.0;
         
         try {
             // Limpiar espacios
@@ -446,12 +446,11 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
                 valorLimpio = valorLimpio.replace(",", ".");
             }
             
-            // Convertir a double y luego a long (redondear para evitar decimales flotantes)
-            double numero = Double.parseDouble(valorLimpio);
-            return Math.round(numero); // El archivo ya trae el valor en la unidad correcta
+            // Convertir a double
+            return Double.parseDouble(valorLimpio);
             
         } catch (NumberFormatException e) {
-            return 0L;
+            return 0.0;
         }
     }
     
@@ -471,8 +470,8 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     /**
      * Devuelve 0 si el valor es null
      */
-    private Long nullSafe(Long valor) {
-        return valor != null ? valor : 0L;
+    private Double nullSafe(Double valor) {
+        return valor != null ? valor : 0.0;
     }
 
 	@Override
@@ -482,30 +481,13 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		String contenido = leerContenidoArchivo(archivoInputStream);
         List<ParticipeXCargaArchivo> registrosProcesados = procesarContenido(contenido);
         
-        /*for(ParticipeXCargaArchivo reg : registrosProcesados) {
-			if (reg.getCodigoPetro().equals(55145L)) {
-				System.out.println("Registro con código Petro 55145 encontrado: " + reg.getNombre());
-			}
-			OYARVIDE BOLANO ADOLFO ENRIQUE
-		}*/
-        
         // Agrupar por aporte (DetalleCargaArchivo)
         Map<String, DetalleCargaArchivo> aporteAgrupados = agruparPorAporte(registrosProcesados);
-        
         // Convertir a listas para persistir
         List<DetalleCargaArchivo> detallesGenerados = new ArrayList<>(aporteAgrupados.values());
-        
         // Calcular totales generales para CargaArchivo
         cargaArchivo = calcularTotalesGenerales(cargaArchivo, detallesGenerados);
         
-        System.out.println("Archivo procesado: " + cargaArchivo.getTotalDescontado() + " registros encontrados");
-        System.out.println("Aportes agrupados: " + detallesGenerados.size());
-    	
-        /*List<BigDecimal> entidadesExistentes = entidadDaoService.selectCoincidenciasByNombre("OYARVIDE BOLANO ADOLFO ENRIQUE");
-        
-        for(BigDecimal ent : entidadesExistentes) {
-        	System.out.println("Entidad encontrada: " + ent);
-        }*/
         List <Entidad> entidadesPetro35 = entidadDaoService.selectByNombrePetro35("ALVAREZ TOAPANTA DAYUMA");
         System.out.println("registros recuperados:" + entidadesPetro35.size());
         for(Entidad entPetro35 : entidadesPetro35) {
