@@ -30,7 +30,7 @@ public class CreditoMontoAprobacion implements Serializable {
      */
     @Id
     @Basic
-    @Column(name = "CRDTCDGO", precision = 10, scale = 0)
+    @Column(name = "CRDTCDGO", precision = 10)
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long codigo;
     
@@ -38,7 +38,7 @@ public class CreditoMontoAprobacion implements Serializable {
      * Estado.
      */
     @Basic
-    @Column(name = "CRDTIDST", precision = 1, scale = 0)
+    @Column(name = "CRDTIDST", precision = 1)
     private Long estado;
     
     /**
