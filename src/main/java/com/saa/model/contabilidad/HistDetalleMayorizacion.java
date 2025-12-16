@@ -46,7 +46,7 @@ public class HistDetalleMayorizacion implements Serializable {
 	 */ 
 	@Basic
 	@Column(name = "PLNNCDGO")	
-	private Long planCuenta;	
+	private PlanCuenta planCuenta;	
 
 	/**
 	 * saldo del periodo anterior de la cuenta contable.
@@ -116,7 +116,7 @@ public class HistDetalleMayorizacion implements Serializable {
 	 */
 	@Basic
 	@Column(name = "MYRZCDGO")
-	private Long idMayorizacion;
+	private Mayorizacion mayorizacion;
 	
 	/**
 	 * Devuelve codigo
@@ -151,14 +151,14 @@ public class HistDetalleMayorizacion implements Serializable {
 	/**
 	 * Devuelve planCuenta
 	 */
-	public Long getPlanCuenta() {
+	public PlanCuenta getPlanCuenta() {
 		return this.planCuenta;
 	}
 	
 	/**
 	 * Asigna planCuenta
 	 */
-	public void setPlanCuenta(Long planCuenta) {
+	public void setPlanCuenta(PlanCuenta planCuenta) {
 		this.planCuenta = planCuenta;
 	}
 
@@ -310,16 +310,16 @@ public class HistDetalleMayorizacion implements Serializable {
 	 * Devuelve idMayorizacion
 	 * @return idMayorizacion
 	 */
-	public Long getIdMayorizacion() {
-		return idMayorizacion;
+	public Mayorizacion getMayorizacion() {
+		return mayorizacion;
 	}
 
 	/**
 	 * Asigna idMayorizacion
 	 * @param idMayorizacion
 	 */
-	public void setIdMayorizacion(Long idMayorizacion) {
-		this.idMayorizacion = idMayorizacion;
+	public void setMayorizacion(Mayorizacion mayorizacion) {
+		this.mayorizacion = mayorizacion;
 	}
    
 }

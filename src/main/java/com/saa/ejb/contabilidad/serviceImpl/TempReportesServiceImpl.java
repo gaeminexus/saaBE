@@ -117,7 +117,7 @@ public class TempReportesServiceImpl implements TempReportesService {
 			for (PlanCuenta registros : planCuentas){	
 				tempReportes.setCodigo(0L);
 				tempReportes.setSecuencia(idEjecucion);
-				tempReportes.setIdPlanCuenta(registros.getCodigo());
+				tempReportes.setPlanCuenta(registros);
 				tempReportes.setSaldoCuenta(0D);
 				tempReportes.setValorDebe(0D);
 				tempReportes.setValorHaber(0D);
@@ -148,10 +148,10 @@ public class TempReportesServiceImpl implements TempReportesService {
 		if(!tempReportess.isEmpty()){
 			for(TempReportes registros : tempReportess){
 				valoresDebeHaber = detalleAsientoService.selectSumaDebeHaberByFechasEmpresaCuenta
-										(empresa, fechaInicio, fechaFin, registros.getIdPlanCuenta());				
+										(empresa, fechaInicio, fechaFin, registros.getPlanCuenta().getCodigo());				
 				if(ReporteTipoAcumulacion.ACUMULADO == acumulacion){
 					diaAnteriorInicio = fechaService.sumaRestaDias(fechaInicio, -1);
-					saldoAnterior = planCuentaService.saldoCuentaFechaEmpresa(empresa, registros.getIdPlanCuenta(), diaAnteriorInicio);
+					saldoAnterior = planCuentaService.saldoCuentaFechaEmpresa(empresa, registros.getPlanCuenta().getCodigo(), diaAnteriorInicio);
 				}else{
 					saldoAnterior = 0D;
 				}
@@ -365,7 +365,7 @@ public class TempReportesServiceImpl implements TempReportesService {
 					for (PlanCuenta registros : planCuentas){	
 						tempReportes.setCodigo(0L);
 						tempReportes.setSecuencia(idEjecucion);
-						tempReportes.setIdPlanCuenta(registros.getCodigo());
+						tempReportes.setPlanCuenta(registros);
 						tempReportes.setSaldoCuenta(0D);
 						tempReportes.setValorDebe(0D);
 						tempReportes.setValorHaber(0D);
@@ -375,7 +375,7 @@ public class TempReportesServiceImpl implements TempReportesService {
 						tempReportes.setNombreCuenta(registros.getNombre());
 						tempReportes.setNivel(registros.getNivel());
 						tempReportes.setTipo(registros.getTipo());
-						tempReportes.setIdCentroCosto(registroCentro.getCodigo());
+						tempReportes.setCentroCosto(registroCentro);
 						tempReportes.setNombreCentroCosto(registroCentro.getNombre());
 						tempReportes.setNumeroCentroCosto(registroCentro.getNumero());
 						tempReportesDaoService.save(tempReportes, tempReportes.getCodigo());
@@ -405,11 +405,11 @@ public class TempReportesServiceImpl implements TempReportesService {
 		if(!tempReportess.isEmpty()){
 			for(TempReportes registros : tempReportess){
 				valoresDebeHaber = detalleAsientoService.selectSumaDebeHaberByFechasEmpresaCentroCuenta
-										(empresa, fechaInicio, fechaFin, registros.getIdPlanCuenta(), registros.getIdCentroCosto());				
+										(empresa, fechaInicio, fechaFin, registros.getPlanCuenta().getCodigo(), registros.getCentroCosto().getCodigo());				
 				if(ReporteTipoAcumulacion.ACUMULADO == acumulacion){
 					diaAnteriorInicio = fechaService.sumaRestaDias(fechaInicio, -1);
 					saldoAnterior = detalleAsientoService.recuperaSaldoCuentaCentroEmpresaAFecha
-					  (empresa, registros.getIdCentroCosto(), registros.getIdPlanCuenta(), diaAnteriorInicio);
+					  (empresa, registros.getCentroCosto().getCodigo(), registros.getPlanCuenta().getCodigo(), diaAnteriorInicio);
 				}else{
 					saldoAnterior = 0D;
 				}
@@ -587,7 +587,7 @@ public class TempReportesServiceImpl implements TempReportesService {
 					for(CentroCosto registroCentro : centroCostos){
 						tempReportes.setCodigo(0L);
 						tempReportes.setSecuencia(idEjecucion);
-						tempReportes.setIdPlanCuenta(registroCentro.getCodigo());
+						tempReportes.setPlanCuenta(registros);
 						tempReportes.setSaldoCuenta(0D);
 						tempReportes.setValorDebe(0D);
 						tempReportes.setValorHaber(0D);
@@ -597,7 +597,7 @@ public class TempReportesServiceImpl implements TempReportesService {
 						tempReportes.setNombreCuenta(registroCentro.getNombre());
 						tempReportes.setNivel(registroCentro.getNivel());
 						tempReportes.setTipo(registroCentro.getTipo());
-						tempReportes.setIdCentroCosto(registros.getCodigo());
+						tempReportes.setCentroCosto(registroCentro);
 						tempReportes.setNombreCentroCosto(registros.getNombre());
 						tempReportes.setNumeroCentroCosto(registros.getCuentaContable());
 						tempReportesDaoService.save(tempReportes, tempReportes.getCodigo());
@@ -627,11 +627,11 @@ public class TempReportesServiceImpl implements TempReportesService {
 		if(!tempReportess.isEmpty()){
 			for(TempReportes registros : tempReportess){
 				valoresDebeHaber = detalleAsientoService.selectSumaDebeHaberByFechasEmpresaCentroCuenta
-										(empresa, fechaInicio, fechaFin, registros.getIdCentroCosto(), registros.getIdPlanCuenta());				
+										(empresa, fechaInicio, fechaFin, registros.getCentroCosto().getCodigo(), registros.getPlanCuenta().getCodigo());				
 				if(ReporteTipoAcumulacion.ACUMULADO == acumulacion){
 					diaAnteriorInicio = fechaService.sumaRestaDias(fechaInicio, -1);
 					saldoAnterior = detalleAsientoService.recuperaSaldoCuentaCentroEmpresaAFecha
-					  (empresa, registros.getIdPlanCuenta(), registros.getIdCentroCosto(), diaAnteriorInicio);
+					  (empresa, registros.getPlanCuenta().getCodigo(), registros.getCentroCosto().getCodigo(), diaAnteriorInicio);
 				}
 				registros.setSaldoCuenta(saldoAnterior);
 				registros.setValorDebe(valoresDebeHaber[0]);

@@ -1,7 +1,7 @@
 package com.saa.model.contabilidad;
 
 import java.io.Serializable;
-import java.util.Date;
+import java.time.LocalDateTime;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
@@ -47,7 +47,7 @@ public class Mayorizacion implements Serializable {
 	 */
 	@Basic
 	@Column(name = "MYRZFCHA")
-	private Date fecha;	
+	private LocalDateTime fecha;	
 	
 	/**
 	 * Devuelve codigo
@@ -83,7 +83,7 @@ public class Mayorizacion implements Serializable {
 	 * Devuelve fecha
 	 * @return fecha
 	 */
-	public Date getFecha() {
+	public LocalDateTime getFecha() {
 		return fecha;
 	}
 
@@ -91,7 +91,7 @@ public class Mayorizacion implements Serializable {
 	 * Asigna fecha
 	 * @param fecha nuevo valor para  fecha 
 	 */
-	public void setFecha(Date fecha) {
+	public void setFecha(LocalDateTime fecha) {
 		this.fecha = fecha;
 	}
 

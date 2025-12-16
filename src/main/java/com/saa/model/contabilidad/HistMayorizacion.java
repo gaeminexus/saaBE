@@ -1,7 +1,7 @@
 package com.saa.model.contabilidad;
 
 import java.io.Serializable;
-import java.util.Date;
+import java.time.LocalDateTime;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
@@ -47,7 +47,7 @@ public class HistMayorizacion implements Serializable {
 	 */
 	@Basic
 	@Column(name = "MYRHFCHA")
-	private Date fecha;	
+	private LocalDateTime fecha;	
 	
 	/**
 	 * Id de la mayorizacion que origina el respaldo
@@ -90,16 +90,16 @@ public class HistMayorizacion implements Serializable {
 	 * Devuelve fecha
 	 * @return fecha
 	 */
-	public Date getFecha() {
+	public LocalDateTime getFecha() {
 		return fecha;
 	}
 
 	/**
 	 * Asigna fecha
-	 * @param fecha nuevo valor para fecha 
+	 * @param localDateTime nuevo valor para fecha 
 	 */
-	public void setFecha(Date fecha) {
-		this.fecha = fecha;
+	public void setFecha(LocalDateTime localDateTime) {
+		this.fecha = localDateTime;
 	}
 
 	/**

@@ -128,7 +128,7 @@ public class HistDetalleMayorizacionServiceImpl implements HistDetalleMayorizaci
 			for(DetalleMayorizacion detalle : detalleARespaldar){
 				histDetalleMayorizacion.setCodigo(Long.valueOf(0));
 				histDetalleMayorizacion.setHistMayorizacion(cabeceraHist);
-				histDetalleMayorizacion.setPlanCuenta(detalle.getPlanCuenta().getCodigo());
+				histDetalleMayorizacion.setPlanCuenta(detalle.getPlanCuenta());
 				histDetalleMayorizacion.setSaldoAnterior(detalle.getSaldoAnterior());
 				histDetalleMayorizacion.setValorDebe(detalle.getValorDebe());
 				histDetalleMayorizacion.setValorHaber(detalle.getValorHaber());
@@ -138,7 +138,7 @@ public class HistDetalleMayorizacionServiceImpl implements HistDetalleMayorizaci
 				histDetalleMayorizacion.setNombreCuenta(detalle.getNombreCuenta());
 				histDetalleMayorizacion.setTipoCuenta(detalle.getTipoCuenta());
 				histDetalleMayorizacion.setNivelCuenta(detalle.getNivelCuenta());
-				histDetalleMayorizacion.setIdMayorizacion(mayorizacionRespaldar);
+				histDetalleMayorizacion.setMayorizacion(detalle.getMayorizacion());
 				histDetalleMayorizacionDaoService.save(histDetalleMayorizacion, histDetalleMayorizacion.getCodigo());
 			}
 		}

@@ -54,7 +54,7 @@ public class TempReportes implements Serializable {
 	 */
 	@Basic
 	@Column(name = "DTMTPLNN")
-	private Long idPlanCuenta;	
+	private PlanCuenta planCuenta;	
 
 	/**
 	 * Saldo del periodo anterior de la cuenta contable.
@@ -112,12 +112,12 @@ public class TempReportes implements Serializable {
 	/**
 	 * Id de la mayorizacion MYRZCDGO.
 	 */
-	private Long mayorizacion;
+	private Mayorizacion mayorizacion;
 	
 	/**
 	 * ID Centro de Costo asociado a la cuenta contable.
 	 */
-	private Long idCentroCosto;
+	private CentroCosto centroCosto;
 	
 	/**
 	 * Nombre del centro de costo.
@@ -180,15 +180,15 @@ public class TempReportes implements Serializable {
 	/**
 	 * get planCuenta.
 	 */
-	public Long getIdPlanCuenta() {
-		return this.idPlanCuenta;
+	public PlanCuenta getPlanCuenta() {
+		return this.planCuenta;
 	}
 	
 	/**
 	 * set planCuenta.
 	 */
-	public void setIdPlanCuenta(Long idPlanCuenta) {
-		this.idPlanCuenta = idPlanCuenta;
+	public void setPlanCuenta(PlanCuenta planCuenta) {
+		this.planCuenta = planCuenta;
 	}
 
 	/**
@@ -339,7 +339,7 @@ public class TempReportes implements Serializable {
 	 * Metodo que recupera los valores de la variable mayorizacion
 	 * @return mayorizacion.
 	 */
-	public Long getMayorizacion() {
+	public Mayorizacion getMayorizacion() {
 		return mayorizacion;
 	}
 
@@ -347,7 +347,7 @@ public class TempReportes implements Serializable {
 	 * Metodo que asigna los valores de la variable mayorizacion
 	 * @param mayorizacion nuevo valor para mayorizacion. 
 	 */
-	public void setMayorizacion(Long mayorizacion) {
+	public void setMayorizacion(Mayorizacion mayorizacion) {
 		this.mayorizacion = mayorizacion;
 	}
 	
@@ -355,16 +355,16 @@ public class TempReportes implements Serializable {
 	 * Metodo que recupera los valores de la variable idcentroCosto
 	 * @return idCentroCosto.
 	 */
-	public Long getIdCentroCosto() {
-		return idCentroCosto;
+	public CentroCosto getCentroCosto() {
+		return centroCosto;
 	}
 
 	/**
 	 * Metodo que asigna los valores de la variable idcentroCosto
 	 * @param idCentroCosto nuevo valor para idCentroCosto. 
 	 */
-	public void setIdCentroCosto(Long idCentroCosto) {
-		this.idCentroCosto = idCentroCosto;
+	public void setCentroCosto(CentroCosto centroCosto) {
+		this.centroCosto = centroCosto;
 	}
 	
 	/**

@@ -1,8 +1,6 @@
 package com.saa.ejb.contabilidad.serviceImpl;
 
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
-import java.util.Date;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import com.saa.basico.ejb.DetalleRubroService;
@@ -15,8 +13,6 @@ import com.saa.model.contabilidad.Mayorizacion;
 import com.saa.model.contabilidad.MayorizacionCC;
 import com.saa.model.contabilidad.NombreEntidadesContabilidad;
 import com.saa.model.contabilidad.Periodo;
-import com.saa.rubros.FormatoFecha;
-import com.saa.rubros.Rubros;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -132,11 +128,9 @@ public class MayorizacionCCServiceImpl implements MayorizacionCCService {
 	public void creaByMayorizacion(Long idMayorizacion, Periodo periodo) throws Throwable {
 		System.out.println("Ingresa al creaByMayorizacion con id: " + idMayorizacion);
 		MayorizacionCC mayorizacionCC = new MayorizacionCC();
-		DateFormat df = new SimpleDateFormat(
-				detalleRubroService.selectValorStringByRubAltDetAlt(Rubros.FORMATO_FECHA, FormatoFecha.EJB_CON_HORA));
 		mayorizacionCC.setCodigo(idMayorizacion);
 		mayorizacionCC.setPeriodo(periodo);
-		mayorizacionCC.setFecha((df.parse(df.format(new Date()))));
+		mayorizacionCC.setFecha(LocalDateTime.now());
 		mayorizacionCCDaoService.save(mayorizacionCC, mayorizacionCC.getCodigo());
 	}
 
