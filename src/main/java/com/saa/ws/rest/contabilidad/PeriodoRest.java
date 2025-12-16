@@ -124,9 +124,9 @@ public class PeriodoRest {
     @DELETE
     @Consumes("application/json")
     @Path("/{id}")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    public String delete(@PathParam("id") Long id) throws Throwable {
         System.out.println("LLEGA AL SERVICIO DELETE");
-        periodoService.remove(id);
+        return periodoService.remove(id);
     }
 
 }
