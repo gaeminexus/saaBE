@@ -102,7 +102,8 @@ public class NaturalezaCuentaDaoServiceImpl extends EntityDaoImpl<NaturalezaCuen
 		System.out.println("Ingresa al metodo selectByEmpresa de empresa: " + empresa);
 		Query query = em.createQuery(" select b " +
 								 	 " from    NaturalezaCuenta b " +
-									 " where   b.empresa.codigo = :empresa ");									 
+									 " where   b.empresa.codigo = :empresa " +
+									 " order by b.numero ");									 
 		query.setParameter("empresa", empresa);		
 		
 		return query.getResultList();
