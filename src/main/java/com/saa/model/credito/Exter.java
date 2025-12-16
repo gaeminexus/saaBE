@@ -182,42 +182,42 @@ public class Exter implements Serializable {
      * Salario Fijo.
      */
     @Basic
-    @Column(name = "EXTRSLFJ", precision = 10, scale = 2)
+    @Column(name = "EXTRSLFJ", precision = 10)
     private Double salarioFijo;
     
     /**
      * Salario Variable.
      */
     @Basic
-    @Column(name = "EXTRSLVR", precision = 10, scale = 2)
+    @Column(name = "EXTRSLVR", precision = 10)
     private Double salarioVariable;
     
     /**
      * Salario Total.
      */
     @Basic
-    @Column(name = "EXTRSLTT", precision = 10, scale = 2)
+    @Column(name = "EXTRSLTT", precision = 10)
     private Double salarioTotal;
     
     /**
      * Sumados Ingresos.
      */
     @Basic
-    @Column(name = "EXTRSMCI", precision = 10, scale = 2)
+    @Column(name = "EXTRSMCI", precision = 10)
     private Double sumadosIngresos;
     
     /**
      * Sumados Egresos.
      */
     @Basic
-    @Column(name = "EXTRSMSC", precision = 10, scale = 2)
+    @Column(name = "EXTRSMSC", precision = 10)
     private Double sumadosEgresos;
     
     /**
      * Disponible.
      */
     @Basic
-    @Column(name = "EXTRDSPN", precision = 10, scale = 6)
+    @Column(name = "EXTRDSPN", precision = 10)
     private Double disponible;
     
     // ============================================================
