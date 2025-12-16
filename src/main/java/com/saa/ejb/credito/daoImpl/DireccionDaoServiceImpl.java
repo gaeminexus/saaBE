@@ -24,8 +24,8 @@ public class DireccionDaoServiceImpl extends EntityDaoImpl<Direccion> implements
 	public List<Direccion> selectByParent(Long idIdentidad) {
 		System.out.println("DireccionDaoServiceImpl - selectByParent - idIdentidad: " + idIdentidad);
 		Query query = em.createQuery(" select d " +
-								 " from   Direccion d " +
-								 " where  d.identidad.codigo = :idIdentidad");
+								 	 " from   Direccion d " +
+								 	 " where  d.entidad.codigo = :idIdentidad");
 		query.setParameter("idIdentidad", idIdentidad);
 		return query.getResultList();
 	}

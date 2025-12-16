@@ -3,10 +3,14 @@ package com.saa.ejb.credito.daoImpl;
 import java.math.BigDecimal;
 import java.util.List;
 
+import com.saa.basico.ejb.DetalleRubroDaoService;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.credito.dao.EntidadDaoService;
 import com.saa.model.credito.Entidad;
+import com.saa.rubros.ASPSensibilidadBusquedaCoincidencias;
+import com.saa.rubros.Rubros;
 
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -18,6 +22,9 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 	//Inicializa persistence context
 	@PersistenceContext
 	EntityManager em;
+	
+	@EJB
+	DetalleRubroDaoService detalleRubroDaoService;
 	
 	@SuppressWarnings("unchecked")
 	@Override
@@ -34,10 +41,14 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 	@Override
 	public List<BigDecimal> selectCoincidenciasByNombre(String nombre) throws Throwable {
 		System.out.println("Ingresa al metodo selectCoincidenciasByNombre de asiento con empresa: " + nombre);
+		Double sensibilidad = detalleRubroDaoService.selectValorNumericoByRubAltDetAlt(
+				Rubros.ASP_SENSIBILIDAD_BUSQUEDA_COINCIDENCIAS, 
+				ASPSensibilidadBusquedaCoincidencias.PORCENTAJE_SENSIBILIDAD);
 		Query query = em.createNativeQuery(" select   e.ENTDCDGO " +
 									 	   " from     CRD.ENTD e " +
-									 	   " where    UTL_MATCH.JARO_WINKLER_SIMILARITY(e.ENTDNMCM, :nombre) > 90 ");
+									 	   " where    UTL_MATCH.JARO_WINKLER_SIMILARITY(e.ENTDNMCM, :nombre) > :sensibilidad ");
 		query.setParameter("nombre", nombre);		
+		query.setParameter("sensibilidad", sensibilidad);
 		return query.getResultList();
 	}
 
