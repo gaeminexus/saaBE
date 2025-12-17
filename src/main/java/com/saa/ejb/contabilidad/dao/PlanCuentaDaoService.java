@@ -200,11 +200,12 @@ public interface PlanCuentaDaoService extends EntityDao<PlanCuenta> {
 	
 	
 	/**
-	 * Recupera el listado de cuentas que tienen el mismo padre
-	 * @param idPadre		: Id del la cuenta padre
-	 * @return				: Lista de cuentas que tienen el mismo padre
-	 * @throws Throwable	: Excepcion
+	 * Recupera las cuentas de un nivel y naturaleza especifica
+	 * @param idNaturaleza: Id de la naturaleza
+	 * @param nivel: Nivel de la cuenta
+	 * @return: Listado de cuentas que cumplen con los parametros
+	 * @throws Throwable: Excepcion
 	 */
-	List<PlanCuenta> selectByNivelPlanCuenta(Long idNaturaleza, Long idNivel) throws Throwable; /* mely hizo */
+	List<PlanCuenta> selectByNivelPlanCuenta(Long idNaturaleza, Long nivel) throws Throwable; /* mely hizo */
 
 }
