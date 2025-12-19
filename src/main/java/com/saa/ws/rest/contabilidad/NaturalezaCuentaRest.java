@@ -148,10 +148,31 @@ public class NaturalezaCuentaRest {
     @DELETE
     @Path("/{id}")
     @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    public String delete(@PathParam("id") Long id) throws Throwable {
         System.out.println("LLEGA AL SERVICIO DELETE 11");
-        NaturalezaCuenta elimina = new NaturalezaCuenta();
-        naturalezaCuentaDaoService.remove(elimina, id);
+        /*NaturalezaCuenta elimina = new NaturalezaCuenta();
+        naturalezaCuentaDaoService.remove(elimina, id);*/
+        return naturalezaCuentaService.eliminaNaturalezaCuenta(id);
+    }
+    
+    /**
+     * POST method for updating or creating an instance of NaturalezaCuentaRest
+     * 
+     * @param content representation for the resource
+     * @return an HTTP response with content of the updated or created resource.
+     */
+    @POST
+    @Path("inactivaNaturalezaCuenta")
+    @Consumes("application/json")
+    public Response inactivaNaturalezaCuenta(Long idNaturaleza) throws Throwable {
+        System.out.println("selectByCriteria de Naturaleza Cuenta");
+        Response respuesta = null;
+    	try {
+    		respuesta = Response.status(Response.Status.OK).entity(naturalezaCuentaService.inactivaNaturalezaCuenta(idNaturaleza)).type(MediaType.APPLICATION_JSON).build();
+		} catch (Throwable e) {
+			respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+		}
+    	return respuesta;
     }
 
 }

@@ -12,6 +12,7 @@ import com.saa.ejb.contabilidad.dao.NaturalezaCuentaDaoService;
 import com.saa.ejb.contabilidad.dao.PlanCuentaDaoService;
 import com.saa.ejb.contabilidad.service.CentroCostoService;
 import com.saa.ejb.contabilidad.service.NaturalezaCuentaService;
+import com.saa.ejb.contabilidad.service.PlanCuentaService;
 import com.saa.model.contabilidad.CentroCosto;
 import com.saa.model.contabilidad.NaturalezaCuenta;
 import com.saa.model.contabilidad.NombreEntidadesContabilidad;
@@ -41,6 +42,9 @@ public class NaturalezaCuentaServiceImpl implements NaturalezaCuentaService{
 	
 	@EJB
 	private PlanCuentaDaoService planCuentaDaoService;
+	
+	@EJB
+	private PlanCuentaService planCuentaService;
 	
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.sistema.ejb.util.EntityService#remove(java.util.List)
@@ -196,6 +200,53 @@ public class NaturalezaCuentaServiceImpl implements NaturalezaCuentaService{
 		System.out.println("Ingresa al metodo validaByNaturalezaCuenta de naturalezaCuenta con naturaleza: " + idNaturaleza);
 		List<PlanCuenta> listado = planCuentaDaoService.selectByIdNaturalezaCuenta(idNaturaleza);
 		return Long.valueOf(listado.size());
+	}
+
+	@Override
+	public String eliminaNaturalezaCuenta(Long idNaturaleza) throws Throwable {
+		System.out.println("eliminaNaturalezaCuenta naturaleza: " + idNaturaleza);
+		String mensaje = Mensaje.OK;
+		List<PlanCuenta> listado = planCuentaDaoService.selectByIdNaturalezaCuenta(idNaturaleza);
+		if (!listado.isEmpty()) {
+			for (PlanCuenta planCuenta : listado) {
+				mensaje = planCuentaService.validaAsientoEnCuenta(planCuenta.getCodigo());
+				if (mensaje.equals(Mensaje.OK)) {
+					mensaje = planCuentaService.validaDetallePlantilla(planCuenta.getCodigo());
+					if (!mensaje.equals(Mensaje.OK)) {
+						break;
+					}
+				} else {
+					break;
+				}
+			}
+			if (mensaje.equals(Mensaje.OK)) {
+				for (PlanCuenta planCuenta : listado) {
+					planCuentaDaoService.remove(new PlanCuenta(), planCuenta.getCodigo());
+				}
+				//ELIMINA LA NATURALEZA DE CUENTA
+				naturalezaCuentaDaoService.remove(new NaturalezaCuenta(), idNaturaleza);
+			}
+		} else {
+			//ELIMINA LA NATURALEZA DE CUENTA
+			naturalezaCuentaDaoService.remove(new NaturalezaCuenta(), idNaturaleza);
+		}
+		return mensaje;
+	}
+
+	@Override
+	public String inactivaNaturalezaCuenta(Long idNaturaleza) throws Throwable {
+		String mensaje = Mensaje.OK;
+		List<PlanCuenta> listado = planCuentaDaoService.selectByIdNaturalezaCuenta(idNaturaleza);
+		if (!listado.isEmpty()) {
+			for (PlanCuenta planCuenta : listado) {
+				planCuenta.setEstado(Long.valueOf(Estado.INACTIVO));
+				planCuentaDaoService.save(planCuenta, planCuenta.getCodigo());
+			}
+		}
+		NaturalezaCuenta naturalezaCuenta = naturalezaCuentaDaoService.selectById(idNaturaleza, NombreEntidadesContabilidad.NATURALEZA_CUENTA);
+		naturalezaCuenta.setEstado(Long.valueOf(Estado.INACTIVO));
+		naturalezaCuentaDaoService.save(naturalezaCuenta, naturalezaCuenta.getCodigo());
+		return mensaje;
 	}
 	
 }

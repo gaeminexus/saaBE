@@ -40,5 +40,20 @@ public interface NaturalezaCuentaService extends EntityService<NaturalezaCuenta>
 	 * @throws Throwable	: Excepcion
 	 */
 	 Long validaTieneCuentas(Long idNaturaleza) throws Throwable;
+	 
+	 /**
+	  * Elimina una naturaleza de cuenta
+	 * @param idNaturaleza:	 Id de la naturaleza a eliminar
+	 * @return:		: Mensaje de error
+	 * @throws Throwable: Excepcion
+	 */
+	 String eliminaNaturalezaCuenta(Long idNaturaleza) throws Throwable;
+	 
+	 /**
+	 * @param idNaturaleza
+	 * @return
+	 * @throws Throwable
+	 */
+	String inactivaNaturalezaCuenta(Long idNaturaleza) throws Throwable;
 
 }

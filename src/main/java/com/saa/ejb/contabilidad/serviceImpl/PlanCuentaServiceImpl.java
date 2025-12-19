@@ -772,7 +772,7 @@ public class PlanCuentaServiceImpl implements PlanCuentaService{
 
 	@Override
 	public String validaDetallePlantilla(Long idPlanCuenta) throws Throwable {
-		System.out.println("verificaAsientoEnPeriodo: " + idPlanCuenta);
+		System.out.println("validaDetallePlantilla: " + idPlanCuenta);
 	    List<DetallePlantilla> detallePlantilla = detallePlantillaDaoService.selectByIdPlanCuenta(idPlanCuenta);
 	    String resultado = "OK";
 	    if (!detallePlantilla.isEmpty()) {
