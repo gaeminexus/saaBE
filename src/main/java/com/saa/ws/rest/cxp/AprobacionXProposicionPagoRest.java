@@ -22,7 +22,7 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 
-@Path("apxm")
+@Path("axpr")
 public class AprobacionXProposicionPagoRest {
 
     @EJB
@@ -50,18 +50,19 @@ public class AprobacionXProposicionPagoRest {
     public AprobacionXProposicionPago getId(@PathParam("id") Long id) throws Throwable {
         return AprobacionXProposicionPagoDaoService.selectById(id, NombreEntidadesPago.APROBACION_X_PROPOSICION_PAGO);
     }
+    
 
     @PUT
     @Consumes("application/json")
     public AprobacionXProposicionPago put(AprobacionXProposicionPago registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT - AprobacionXProposicionPago");
+        System.out.println("LLEGA AL SERVICIO PUT - APROBACION_X_PROPOSICION_PAGO");
         return AprobacionXProposicionPagoService.saveSingle(registro);
     }
 
     @POST
     @Consumes("application/json")
     public AprobacionXProposicionPago post(AprobacionXProposicionPago registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO POST - AprobacionXProposicionPago");
+        System.out.println("LLEGA AL SERVICIO POST - APROBACION_X_PROPOSICION_PAGO");
         return AprobacionXProposicionPagoService.saveSingle(registro);
     }
 
@@ -69,7 +70,7 @@ public class AprobacionXProposicionPagoRest {
     @Path("selectByCriteria")
     @Consumes("application/json")
     public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
-        System.out.println("selectByCriteria de AprobacionXProposicionPago");
+        System.out.println("selectByCriteria de APROBACION_X_PROPOSICION_PAGO");
         Response respuesta = null;
 
         try {
@@ -89,7 +90,7 @@ public class AprobacionXProposicionPagoRest {
     @Path("/{id}")
     @Consumes("application/json")
     public void delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE - AprobacionXProposicionPago");
+        System.out.println("LLEGA AL SERVICIO DELETE - APROBACION_X_PROPOSICION_PAGO");
         AprobacionXProposicionPago elimina = new AprobacionXProposicionPago();
         AprobacionXProposicionPagoDaoService.remove(elimina, id);
     }
