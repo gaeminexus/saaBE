@@ -235,7 +235,7 @@ public class NaturalezaCuentaServiceImpl implements NaturalezaCuentaService{
 
 	@Override
 	public String inactivaNaturalezaCuenta(Long idNaturaleza) throws Throwable {
-		String mensaje = Mensaje.OK;
+		String mensaje = "{\"resultado\":\"" + Mensaje.OK + "\"}";
 		List<PlanCuenta> listado = planCuentaDaoService.selectByIdNaturalezaCuenta(idNaturaleza);
 		if (!listado.isEmpty()) {
 			for (PlanCuenta planCuenta : listado) {

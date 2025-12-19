@@ -165,7 +165,7 @@ public class NaturalezaCuentaRest {
     @Path("inactivaNaturalezaCuenta")
     @Consumes("application/json")
     public Response inactivaNaturalezaCuenta(Long idNaturaleza) throws Throwable {
-        System.out.println("selectByCriteria de Naturaleza Cuenta");
+        System.out.println("inactivaNaturalezaCuenta de Naturaleza Cuenta:" + idNaturaleza);
         Response respuesta = null;
     	try {
     		respuesta = Response.status(Response.Status.OK).entity(naturalezaCuentaService.inactivaNaturalezaCuenta(idNaturaleza)).type(MediaType.APPLICATION_JSON).build();
