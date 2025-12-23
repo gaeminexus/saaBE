@@ -2,72 +2,52 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
+
   <groupId>com.saa</groupId>
   <artifactId>saa-backend</artifactId>
   <version>1.0-SNAPSHOT</version>
   <packaging>war</packaging>
-  
+
   <name>saa-backend</name>
   <url>http://saa.com</url>
 
-  <!-- Añadidas propiedades de codificación -->
   <properties>
     <maven.compiler.source>21</maven.compiler.source>
     <maven.compiler.target>21</maven.compiler.target>
+    <maven.compiler.release>21</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>${project.build.sourceEncoding}</project.reporting.outputEncoding>
-    <!-- Asegura que el plugin use la opción 'release' para compilar contra Java 21 -->
-    <maven.compiler.release>21</maven.compiler.release>
+
+    <!-- Jasper: una sola versión -->
+    <jasper.version>7.0.3</jasper.version>
   </properties>
 
   <dependencies>
+
+    <!-- Jakarta EE 10 API (WildFly la provee) -->
     <dependency>
       <groupId>jakarta.platform</groupId>
       <artifactId>jakarta.jakartaee-api</artifactId>
       <version>10.0.0</version>
       <scope>provided</scope>
     </dependency>
-    
-    <!-- RESTEasy multipart provider for file uploads -->
+
+    <!-- RESTEasy multipart provider (WildFly suele proveerlo; por eso provided) -->
     <dependency>
       <groupId>org.jboss.resteasy</groupId>
       <artifactId>resteasy-multipart-provider</artifactId>
       <version>6.2.9.Final</version>
       <scope>provided</scope>
     </dependency>
-    
-    <!-- JasperReports Engine -->
-	<dependency>
-	  <groupId>net.sf.jasperreports</groupId>
-	  <artifactId>jasperreports</artifactId>
-	  <version>6.21.3</version>
-	</dependency>
-	
-	<!-- Logging simple (evita warnings raros al exportar) -->
-	<dependency>
-	  <groupId>org.slf4j</groupId>
-	  <artifactId>slf4j-simple</artifactId>
-	  <version>2.0.13</version>
-	</dependency>
-	
-	<dependency>
-	  <groupId>net.sf.jasperreports</groupId>
-	  <artifactId>jasperreports</artifactId>
-	  <version>7.0.3</version>
-	</dependency>
-	
-	<dependency>
-	  <groupId>net.sf.jasperreports</groupId>
-	  <artifactId>jasperreports</artifactId>
-	  <version>7.0.3</version>
-	</dependency>
-	
-	<dependency>
-	  <groupId>net.sf.jasperreports</groupId>
-	  <artifactId>jasperreports</artifactId>
-	  <version>7.0.3</version>
-	</dependency>
 
+	<!-- JasperReports Engine (UNA sola versión) -->
+	<dependency>
+	  <groupId>net.sf.jasperreports</groupId>
+	  <artifactId>jasperreports</artifactId>
+	  <version>7.0.3</version>
+	</dependency>
+	
+	<!-- Export PDF (obligatorio desde Jasper 7.x) -->
 	<dependency>
 	  <groupId>net.sf.jasperreports</groupId>
 	  <artifactId>jasperreports-pdf</artifactId>
@@ -77,28 +57,26 @@
   </dependencies>
 
   <build>
-	<finalName>SaaBE</finalName>
+    <finalName>SaaBE</finalName>
+
     <plugins>
-      <!-- WAR plugin -->
+
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-war-plugin</artifactId>
         <version>3.3.2</version>
       </plugin>
 
-      <!-- Compiler plugin (añadida propiedad encoding y release) -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
         <version>3.11.0</version>
         <configuration>
-          <!-- Use the 'release' option to compile for Java 21 -->
           <release>${maven.compiler.release}</release>
           <encoding>${project.build.sourceEncoding}</encoding>
         </configuration>
       </plugin>
 
-      <!-- Resources plugin para asegurar codificación en recursos -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-resources-plugin</artifactId>
@@ -108,7 +86,6 @@
         </configuration>
       </plugin>
 
-      <!-- Enforcer plugin: asegura que Maven se ejecute con JDK 21 o superior -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-enforcer-plugin</artifactId>
@@ -122,7 +99,6 @@
             <configuration>
               <rules>
                 <requireJavaVersion>
-                  <!-- require Java 21 or newer -->
                   <version>[21,)</version>
                 </requireJavaVersion>
               </rules>
@@ -132,7 +108,6 @@
         </executions>
       </plugin>
 
-      <!-- WildFly Maven Plugin para despliegue automático -->
       <plugin>
         <groupId>org.wildfly.plugins</groupId>
         <artifactId>wildfly-maven-plugin</artifactId>
@@ -145,6 +120,7 @@
           <filename>${project.build.finalName}.war</filename>
         </configuration>
       </plugin>
+
     </plugins>
   </build>
 </project>
