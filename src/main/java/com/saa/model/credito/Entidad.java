@@ -252,9 +252,6 @@ public class Entidad implements Serializable {
 		this.idCiudad = idCiudad;
 	}
 	
-	public String getidCiudad() { return idCiudad; }
-    public void setCiudadId(String idCiudad) { this.idCiudad = idCiudad; }
-
     public Long getPorcentajeSimilitud() { return porcentajeSimilitud; }
     public void setPorcentajeSimilitud(Long porcentajeSimilitud) { this.porcentajeSimilitud = porcentajeSimilitud; }
 

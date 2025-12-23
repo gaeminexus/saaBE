@@ -1,123 +1,80 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-
   <modelVersion>4.0.0</modelVersion>
-
   <groupId>com.saa</groupId>
   <artifactId>saa-backend</artifactId>
   <version>1.0-SNAPSHOT</version>
   <packaging>war</packaging>
-
+  
   <name>saa-backend</name>
   <url>http://saa.com</url>
 
+  <!-- Añadidas propiedades de codificación -->
   <properties>
-    <maven.compiler.release>21</maven.compiler.release>
+    <maven.compiler.source>21</maven.compiler.source>
+    <maven.compiler.target>21</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-
-    <!-- Versiones -->
-    <jakartaee.version>10.0.0</jakartaee.version>
-    <resteasy.multipart.version>6.2.9.Final</resteasy.multipart.version>
-
-    <!-- Jasper 7.x (tu jrxml dice Studio 7.0.3) -->
-    <jasper.version>7.0.3</jasper.version>
-
-    <!-- Plugins -->
-    <maven.compiler.plugin.version>3.11.0</maven.compiler.plugin.version>
-    <maven.war.plugin.version>3.3.2</maven.war.plugin.version>
-    <maven.resources.plugin.version>3.3.0</maven.resources.plugin.version>
-    <maven.enforcer.plugin.version>3.2.1</maven.enforcer.plugin.version>
-
-    <wildfly.maven.plugin.version>2.1.0.Final</wildfly.maven.plugin.version>
+    <project.reporting.outputEncoding>${project.build.sourceEncoding}</project.reporting.outputEncoding>
+    <!-- Asegura que el plugin use la opción 'release' para compilar contra Java 21 -->
+    <maven.compiler.release>21</maven.compiler.release>
   </properties>
 
   <dependencies>
-
-    <!-- Jakarta EE (lo provee WildFly) -->
     <dependency>
       <groupId>jakarta.platform</groupId>
       <artifactId>jakarta.jakartaee-api</artifactId>
-      <version>${jakartaee.version}</version>
+      <version>10.0.0</version>
       <scope>provided</scope>
     </dependency>
-
-    <!-- Multipart (si realmente lo usas). En WildFly suele ir provided -->
+    
+    <!-- RESTEasy multipart provider for file uploads -->
     <dependency>
       <groupId>org.jboss.resteasy</groupId>
       <artifactId>resteasy-multipart-provider</artifactId>
-      <version>${resteasy.multipart.version}</version>
+      <version>6.2.9.Final</version>
       <scope>provided</scope>
     </dependency>
-
-    <!-- JasperReports Engine -->
-    <dependency>
-      <groupId>net.sf.jasperreports</groupId>
-      <artifactId>jasperreports</artifactId>
-      <version>${jasper.version}</version>
-      <!-- OJO: NO excluyo Jackson aquí a ciegas.
-           Primero dejemos que funcione; si el equipo exige JSON-B puro,
-           luego hacemos exclusiones dirigidas. -->
-    </dependency>
-
-    <!-- Export PDF (en Jasper 7 suele ser extensión separada) -->
-    <dependency>
-      <groupId>net.sf.jasperreports</groupId>
-      <artifactId>jasperreports-pdf</artifactId>
-      <version>${jasper.version}</version>
-    </dependency>
-
-    <!-- Si tus reportes usan fuentes TTF o assets, normalmente no necesitas nada extra.
-         Si usaras gráficos, Excel, etc. ahí sí se agregan extensiones específicas. -->
 
   </dependencies>
 
   <build>
-    <finalName>SaaBE</finalName>
-
+	<finalName>SaaBE</finalName>
     <plugins>
-
+      <!-- WAR plugin -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-war-plugin</artifactId>
-        <version>${maven.war.plugin.version}</version>
-        <configuration>
-          <!-- Evita problemas con web.xml si no usas -->
-          <failOnMissingWebXml>false</failOnMissingWebXml>
-
-          <!-- Opcional: excluye basura típica -->
-          <packagingExcludes>
-            **/*.bak,
-            **/*.tmp,
-            **/*.log,
-            **/.DS_Store
-          </packagingExcludes>
-        </configuration>
+        <version>3.3.2</version>
       </plugin>
 
+      <!-- Compiler plugin (añadida propiedad encoding y release) -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
-        <version>${maven.compiler.plugin.version}</version>
+        <version>3.11.0</version>
         <configuration>
+          <!-- Use the 'release' option to compile for Java 21 -->
           <release>${maven.compiler.release}</release>
           <encoding>${project.build.sourceEncoding}</encoding>
         </configuration>
       </plugin>
 
+      <!-- Resources plugin para asegurar codificación en recursos -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-resources-plugin</artifactId>
-        <version>${maven.resources.plugin.version}</version>
+        <version>3.3.0</version>
         <configuration>
           <encoding>${project.build.sourceEncoding}</encoding>
         </configuration>
       </plugin>
 
+      <!-- Enforcer plugin: asegura que Maven se ejecute con JDK 21 o superior -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-enforcer-plugin</artifactId>
-        <version>${maven.enforcer.plugin.version}</version>
+        <version>3.2.1</version>
         <executions>
           <execution>
             <id>enforce-java</id>
@@ -127,6 +84,7 @@
             <configuration>
               <rules>
                 <requireJavaVersion>
+                  <!-- require Java 21 or newer -->
                   <version>[21,)</version>
                 </requireJavaVersion>
               </rules>
@@ -136,11 +94,11 @@
         </executions>
       </plugin>
 
-      <!-- Deploy a WildFly (si lo usas así) -->
+      <!-- WildFly Maven Plugin para despliegue automático -->
       <plugin>
         <groupId>org.wildfly.plugins</groupId>
         <artifactId>wildfly-maven-plugin</artifactId>
-        <version>${wildfly.maven.plugin.version}</version>
+        <version>2.1.0.Final</version>
         <configuration>
           <hostname>saa-wildfly</hostname>
           <port>9990</port>
@@ -149,8 +107,6 @@
           <filename>${project.build.finalName}.war</filename>
         </configuration>
       </plugin>
-
     </plugins>
   </build>
-
 </project>
