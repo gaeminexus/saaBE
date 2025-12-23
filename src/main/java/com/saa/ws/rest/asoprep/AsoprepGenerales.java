@@ -1,7 +1,6 @@
 package com.saa.ws.rest.asoprep;
 
 import java.io.InputStream;
-import java.nio.charset.Charset;
 import java.util.Arrays;
 import java.util.List;
 
@@ -124,20 +123,6 @@ public class AsoprepGenerales {
             @FormParam("detallesCargaArchivos") String detallesCargaArchivosJson,
             @FormParam("participesXCargaArchivo") String participesXCargaArchivoJson) {
 
-        System.out.println("LLEGA A PROCESAR EL ARCHIVO PETRO - formData para archivos extensos");
-        System.out.println("=== ENTORNO WILDFLY CHARSET ===");
-        System.out.println("Charset por defecto JVM: " + Charset.defaultCharset().name());
-        System.out.println("file.encoding: " + System.getProperty("file.encoding"));
-        System.out.println("sun.jnu.encoding: " + System.getProperty("sun.jnu.encoding"));
-        System.out.println("user.language: " + System.getProperty("user.language"));
-        System.out.println("user.country: " + System.getProperty("user.country"));
-        System.out.println("java.version: " + System.getProperty("java.version"));
-        System.out.println("===============================\n");
-        
-        //analizarDatosJSON(participesXCargaArchivoJson, "participesXCargaArchivo");
-        System.out.println("=============================================");
-        System.out.println(participesXCargaArchivoJson);
-        System.out.println("=============================================");
         try {
             // Validar archivo
             if (archivoInputStream == null || archivoNombre == null || archivoNombre.trim().isEmpty()) {
@@ -147,7 +132,6 @@ public class AsoprepGenerales {
             }
 
             String fileName = archivoNombre;
-            System.out.println("Archivo encontrado: " + fileName);
 
             // Validar que se recibieron todos los datos JSON necesarios
             if (cargaArchivoJson == null || detallesCargaArchivosJson == null || participesXCargaArchivoJson == null) {
@@ -179,14 +163,6 @@ public class AsoprepGenerales {
             
             ParticipeXCargaArchivo[] participesArray = jsonb.fromJson(participesXCargaArchivoJson, ParticipeXCargaArchivo[].class);
             List<ParticipeXCargaArchivo> participesXCargaArchivo = Arrays.asList(participesArray);
-
-            // Log para verificación
-            System.out.println("Procesando archivo: " + fileName);
-            System.out.println("CargaArchivo: " + cargaArchivo.getNombre());
-            System.out.println("Filial: " + (cargaArchivo.getFilial() != null ? cargaArchivo.getFilial().getNombre() : "null"));
-            System.out.println("Usuario: " + (cargaArchivo.getUsuarioCarga() != null ? cargaArchivo.getUsuarioCarga().getCodigo() : "null"));
-            System.out.println("Cantidad de detalles: " + detallesCargaArchivos.size());
-            System.out.println("Cantidad de partícipes: " + participesXCargaArchivo.size());
 
             // Procesar con el EJB CargaArchivoPetroService
             String rutaArchivo;
@@ -230,10 +206,6 @@ public class AsoprepGenerales {
             @FormParam("archivoNombre") String archivoNombre,
             @FormParam("cargaArchivo") String cargaArchivoJson) {
 
-        System.out.println("LLEGA A PROCESAR EL ARCHIVO PETRO - formData para archivos extensos");
-        System.out.println("java.version: " + System.getProperty("java.version"));
-        System.out.println("===============================\n");
-        
         try {
             // Validar archivo
             if (archivoInputStream == null || archivoNombre == null || archivoNombre.trim().isEmpty()) {

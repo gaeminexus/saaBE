@@ -11,6 +11,7 @@
 **/
 package com.saa.basico.ejb;
 
+import java.time.LocalDate;
 import java.util.Date;
 import java.util.List;
 
@@ -55,6 +56,26 @@ public interface FechaService {
 	 * @throws Throwable: Excepcion
 	 */
 	Date primerDiaMesAnio(Long mes, Long anio) throws Throwable;
+	
+	/**
+	 * Recupera el ultimo d�a del mes de un per�odo con el mes y anio
+	 * 
+	 * @param mes  :Mes
+	 * @param anio : Anio
+	 * @return : Ultimo dia del mes
+	 * @throws Throwable: Excepcion
+	 */
+	LocalDate ultimoDiaMesAnioLocal(Long mes, Long anio) throws Throwable;
+
+	/**
+	 * Recupera el primer d�a del mes de un per�odo con el mes y anio
+	 * 
+	 * @param mes  :Mes
+	 * @param anio : Anio
+	 * @return : Primer dia del mes
+	 * @throws Throwable: Excepcion
+	 */
+	LocalDate primerDiaMesAnioLocal(Long mes, Long anio) throws Throwable;
 
 	/**
 	 * Recupera el primer d�a de la semana de la fecha dada

@@ -162,12 +162,10 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 										List<ParticipeXCargaArchivo> participesXCargaArchivo) throws Throwable {
 		// Almacenar CargaArchivo
 		CargaArchivo cargaArchivoGuardado = almacenarCargaArchivo(cargaArchivo);
-		
 		// Asignar la referencia al CargaArchivo guardado
         for (DetalleCargaArchivo detalle : detallesCargaArchivos) {
             detalle.setCargaArchivo(cargaArchivoGuardado);
             DetalleCargaArchivo detalleGuardado = detalleCargaArchivoService.saveSingle(detalle);
-            
             // Filtrar partícipes que pertenecen a este detalle usando el código del producto
             String codigoProducto = detalle.getCodigoPetroProducto();
             for (ParticipeXCargaArchivo participe : participesXCargaArchivo) {
@@ -207,6 +205,17 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 						} else {
 							participe.setNovedadesCarga(Long.valueOf(ASPNovedadesCargaArchivo.OK));
 						}
+					}
+					// validacion financiera
+					if (participe.getCapitalNoDescontado() > 0 || participe.getInteresNoDescontado() > 0 || 
+						participe.getDesgravamenNoDescontado() > 0) {
+						if (participe.getTotalDescontado() == 0) {
+							participe.setNovedadesFinancieras(Long.valueOf(ASPNovedadesCargaArchivo.SIN_DESCUENTOS));
+						} else {
+							participe.setNovedadesFinancieras(Long.valueOf(ASPNovedadesCargaArchivo.DESCUENTOS_INCOMPLETOS));
+						}
+					} else {
+						
 					}
 					participe = participeXCargaArchivoService.saveSingle(participe);
             	}

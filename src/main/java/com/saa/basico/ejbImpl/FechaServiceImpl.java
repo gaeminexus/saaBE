@@ -13,6 +13,7 @@ package com.saa.basico.ejbImpl;
 
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
+import java.time.LocalDate;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
@@ -91,6 +92,21 @@ public class FechaServiceImpl implements FechaService {
 		primerDia.set(Calendar.YEAR, anio.intValue());
 		primerDia.set(Calendar.DATE, 1);
 		return df.parse(df.format(primerDia.getTime()));
+	}
+	
+	@Override
+	public LocalDate ultimoDiaMesAnioLocal(Long mes, Long anio) throws Throwable {
+		System.out.println("ultimoDiaMesAnioLocal con mes: " + mes + ", y anio: " + anio);
+		LocalDate primerDia = LocalDate.of(anio.intValue(), mes.intValue(), 1);
+		LocalDate resultado = primerDia.withDayOfMonth(primerDia.lengthOfMonth());
+		return resultado;
+	}
+
+	@Override
+	public LocalDate primerDiaMesAnioLocal(Long mes, Long anio) throws Throwable {
+		System.out.println("primerDiaMesAnioLocal con mes: " + mes + ", y anio: " + anio);
+		LocalDate resultado = LocalDate.of(anio.intValue(), mes.intValue(), 1);
+		return resultado;
 	}
 
 	/*
@@ -397,4 +413,5 @@ public class FechaServiceImpl implements FechaService {
 		result = Double.valueOf(milResult / (60 * 1000));
 		return result;
 	}
+
 }

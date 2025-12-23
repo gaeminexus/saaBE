@@ -13,4 +13,11 @@ public interface ASPNovedadesCargaArchivo {
 	public static final int NOMBRE_ENTIDAD_DUPLICADO = 3;
 	public static final int CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE = 4;
 	
+	// Novedades financieras
+	public static final int SIN_DESCUENTOS = 5;
+	public static final int DESCUENTOS_INCOMPLETOS = 6;
+	public static final int DESCUENTOS_ADICIONALES = 7;
+	public static final int VALORES_CERO = 8;
+	
+	
 }
