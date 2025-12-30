@@ -49,16 +49,29 @@ public class MayorizacionCCRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<MayorizacionCC> getAll() throws Throwable {
-        return mayorizacionCCDaoService.selectAll(NombreEntidadesContabilidad.MAYORIZACION_CC);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<MayorizacionCC> lista = mayorizacionCCDaoService.selectAll(NombreEntidadesContabilidad.MAYORIZACION_CC);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener mayorizaciones CC: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
-    @Produces("application/json")
     @Path("/getId/{id}")
-    public MayorizacionCC getId(@PathParam("id") Long id) throws Throwable {
-        return mayorizacionCCDaoService.selectById(id, NombreEntidadesContabilidad.MAYORIZACION_CC);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            MayorizacionCC mayorizacion = mayorizacionCCDaoService.selectById(id, NombreEntidadesContabilidad.MAYORIZACION_CC);
+            if (mayorizacion == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Mayorización CC con ID " + id + " no encontrada").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(mayorizacion).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener mayorización CC: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -68,23 +81,29 @@ public class MayorizacionCCRest {
      * @return an HTTP response with content of the updated or created resource.
      */
     @PUT
-    @Consumes("application/json")
-    public MayorizacionCC put(MayorizacionCC registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT");
-        return mayorizacionCCService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(MayorizacionCC registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - MAYORIZACION_CC");
+        try {
+            MayorizacionCC resultado = mayorizacionCCService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar mayorización CC: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST method for updating or creating an instance of MayorizacionCCRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
-    @Consumes("application/json")
-    public MayorizacionCC post(MayorizacionCC registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO");
-        return mayorizacionCCService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(MayorizacionCC registro) {
+        System.out.println("LLEGA AL SERVICIO POST - MAYORIZACION_CC");
+        try {
+            MayorizacionCC resultado = mayorizacionCCService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear mayorización CC: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -95,31 +114,33 @@ public class MayorizacionCCRest {
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de MAYORIZACION_CC");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(mayorizacionCCService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(mayorizacionCCService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
-    /**
-     * POST method for updating or creating an instance of MayorizacionCCRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @DELETE
-    @Consumes("application/json")
     @Path("/{id}")
-    public void delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE");
-        MayorizacionCC elimina = new MayorizacionCC();
-        mayorizacionCCDaoService.remove(elimina, id);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - MAYORIZACION_CC");
+        try {
+            MayorizacionCC elimina = new MayorizacionCC();
+            mayorizacionCCDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar mayorización CC: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

@@ -49,48 +49,55 @@ public class BotOpcionRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<BotOpcion> getAll() throws Throwable {
-        return botOpcionDaoService.selectAll(NombreEntidadesCredito.BOT_OPCION);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<BotOpcion> lista = botOpcionDaoService.selectAll(NombreEntidadesCredito.BOT_OPCION);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener bot opciones: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Retrieves representation of an instance of BotOpcionRest
-     * 
-     * @return an instance of String
-     * @throws Throwable
-     */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public BotOpcion getId(@PathParam("id") Long id) throws Throwable {
-        return botOpcionDaoService.selectById(id, NombreEntidadesCredito.BOT_OPCION);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            BotOpcion botOpcion = botOpcionDaoService.selectById(id, NombreEntidadesCredito.BOT_OPCION);
+            if (botOpcion == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("BotOpcion con ID " + id + " no encontrada").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(botOpcion).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener bot opción: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * PUT method for updating or creating an instance of BotOpcionRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @PUT
-    @Consumes("application/json")
-    public BotOpcion put(BotOpcion registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(BotOpcion registro) {
         System.out.println("LLEGA AL SERVICIO PUT");
-        return botOpcionService.saveSingle(registro);
+        try {
+            BotOpcion resultado = botOpcionService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar bot opción: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST method for updating or creating an instance of BotOpcionRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
-    @Consumes("application/json")
-    public BotOpcion post(BotOpcion registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(BotOpcion registro) {
         System.out.println("LLEGA AL SERVICIO");
-        return botOpcionService.saveSingle(registro);
+        try {
+            BotOpcion resultado = botOpcionService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear bot opción: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**

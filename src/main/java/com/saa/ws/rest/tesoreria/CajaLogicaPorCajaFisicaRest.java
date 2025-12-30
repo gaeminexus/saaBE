@@ -46,39 +46,55 @@ public class CajaLogicaPorCajaFisicaRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<CajaLogicaPorCajaFisica> getAll() throws Throwable {
-        return cajaLogicaPorCajaFisicaDaoService.selectAll(NombreEntidadesTesoreria.CAJA_LOGICA_POR_CAJA_FISICA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<CajaLogicaPorCajaFisica> lista = cajaLogicaPorCajaFisicaDaoService.selectAll(NombreEntidadesTesoreria.CAJA_LOGICA_POR_CAJA_FISICA);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cajas lógicas por caja física: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Recupera un registro de CajaLogicaPorCajaFisica por ID.
-     */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public CajaLogicaPorCajaFisica getId(@PathParam("id") Long id) throws Throwable {
-        return cajaLogicaPorCajaFisicaDaoService.selectById(id, NombreEntidadesTesoreria.CAJA_LOGICA_POR_CAJA_FISICA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            CajaLogicaPorCajaFisica registro = cajaLogicaPorCajaFisicaDaoService.selectById(id, NombreEntidadesTesoreria.CAJA_LOGICA_POR_CAJA_FISICA);
+            if (registro == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("CajaLogicaPorCajaFisica con ID " + id + " no encontrada").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(registro).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener caja lógica por caja física: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Guarda o actualiza un registro (PUT).
-     */
     @PUT
-    @Consumes("application/json")
-    public CajaLogicaPorCajaFisica put(CajaLogicaPorCajaFisica registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(CajaLogicaPorCajaFisica registro) {
         System.out.println("LLEGA AL SERVICIO PUT CAJA_LOGICA_POR_CAJA_FISICA");
-        return cajaLogicaPorCajaFisicaService.saveSingle(registro);
+        try {
+            CajaLogicaPorCajaFisica resultado = cajaLogicaPorCajaFisicaService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar caja lógica por caja física: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Guarda o actualiza un registro (POST).
-     */
     @POST
-    @Consumes("application/json")
-    public CajaLogicaPorCajaFisica post(CajaLogicaPorCajaFisica registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(CajaLogicaPorCajaFisica registro) {
         System.out.println("LLEGA AL SERVICIO POST CAJA_LOGICA_POR_CAJA_FISICA");
-        return cajaLogicaPorCajaFisicaService.saveSingle(registro);
+        try {
+            CajaLogicaPorCajaFisica resultado = cajaLogicaPorCajaFisicaService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear caja lógica por caja física: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -107,10 +123,15 @@ public class CajaLogicaPorCajaFisicaRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE CAJA_LOGICA_POR_CAJA_FISICA");
-        CajaLogicaPorCajaFisica elimina = new CajaLogicaPorCajaFisica();
-        cajaLogicaPorCajaFisicaDaoService.remove(elimina, id);
+        try {
+            CajaLogicaPorCajaFisica elimina = new CajaLogicaPorCajaFisica();
+            cajaLogicaPorCajaFisicaDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar caja lógica por caja física: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

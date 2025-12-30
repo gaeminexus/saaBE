@@ -42,55 +42,106 @@ public class CantonRest {
     }
 
     /**
-     * Retrieves representation of an instance of CantonRest
+     * Obtiene todos los registros de Canton.
      * 
-     * @return an instance of String
-     * @throws Throwable
+     * @return Response con lista de Canton
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<Canton> getAll() throws Throwable {
-        return cantonDaoService.selectAll(NombreEntidadesCredito.CANTON);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<Canton> lista = cantonDaoService.selectAll(NombreEntidadesCredito.CANTON);
+            return Response.status(Response.Status.OK)
+                    .entity(lista)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener cantones: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
 
     /**
-     * Retrieves representation of an instance of CantonRest
+     * Obtiene un registro de Canton por su ID.
      * 
-     * @return an instance of String
-     * @throws Throwable
+     * @param id Identificador del registro
+     * @return Response con objeto Canton
      */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public Canton getId(@PathParam("id") Long id) throws Throwable {
-        return cantonDaoService.selectById(id, NombreEntidadesCredito.CANTON);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            Canton canton = cantonDaoService.selectById(id, NombreEntidadesCredito.CANTON);
+            if (canton == null) {
+                return Response.status(Response.Status.NOT_FOUND)
+                        .entity("Canton con ID " + id + " no encontrado")
+                        .type(MediaType.APPLICATION_JSON)
+                        .build();
+            }
+            return Response.status(Response.Status.OK)
+                    .entity(canton)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener cantón: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
 
     /**
-     * PUT method for updating or creating an instance of CantonRest
+     * Crea o actualiza un registro de Canton (PUT).
      * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
+     * @param registro Objeto Canton
+     * @return Response con registro actualizado o creado
      */
     @PUT
-    @Consumes("application/json")
-    public Canton put(Canton registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(Canton registro) {
         System.out.println("LLEGA AL SERVICIO PUT");
-        return cantonService.saveSingle(registro);
+        try {
+            Canton resultado = cantonService.saveSingle(registro);
+            return Response.status(Response.Status.OK)
+                    .entity(resultado)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al actualizar cantón: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
 
     /**
-     * POST method for updating or creating an instance of CantonRest
+     * Crea o actualiza un registro de Canton (POST).
      * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
+     * @param registro Objeto Canton
+     * @return Response con registro creado o actualizado
      */
     @POST
-    @Consumes("application/json")
-    public Canton post(Canton registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(Canton registro) {
         System.out.println("LLEGA AL SERVICIO");
-        return cantonService.saveSingle(registro);
+        try {
+            Canton resultado = cantonService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED)
+                    .entity(resultado)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al crear cantón: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
 
     /**
@@ -114,18 +165,27 @@ public class CantonRest {
     }
 
     /**
-     * POST method for updating or creating an instance of CantonRest
+     * Elimina un registro de Canton por ID.
      * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
+     * @param id Identificador del registro
+     * @return Response con resultado de la eliminación
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE");
-        Canton elimina = new Canton();
-        cantonDaoService.remove(elimina, id);
+        try {
+            Canton elimina = new Canton();
+            cantonDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al eliminar cantón: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
 
 }

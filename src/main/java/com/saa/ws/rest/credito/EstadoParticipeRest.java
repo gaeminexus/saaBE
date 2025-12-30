@@ -49,48 +49,55 @@ public class EstadoParticipeRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<EstadoParticipe> getAll() throws Throwable {
-        return estadoParticipeDaoService.selectAll(NombreEntidadesCredito.ESTADO_PARTICIPE);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<EstadoParticipe> lista = estadoParticipeDaoService.selectAll(NombreEntidadesCredito.ESTADO_PARTICIPE);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener estados de partícipe: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Retrieves representation of an instance of EstadoParticipeRest
-     * 
-     * @return an instance of String
-     * @throws Throwable
-     */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public EstadoParticipe getId(@PathParam("id") Long id) throws Throwable {
-        return estadoParticipeDaoService.selectById(id, NombreEntidadesCredito.ESTADO_PARTICIPE);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            EstadoParticipe estado = estadoParticipeDaoService.selectById(id, NombreEntidadesCredito.ESTADO_PARTICIPE);
+            if (estado == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("EstadoParticipe con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(estado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener estado de partícipe: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * PUT method for updating or creating an instance of EstadoParticipeRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @PUT
-    @Consumes("application/json")
-    public EstadoParticipe put(EstadoParticipe registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(EstadoParticipe registro) {
         System.out.println("LLEGA AL SERVICIO PUT");
-        return estadoParticipeService.saveSingle(registro);
+        try {
+            EstadoParticipe resultado = estadoParticipeService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar estado de partícipe: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST method for updating or creating an instance of EstadoParticipeRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
-    @Consumes("application/json")
-    public EstadoParticipe post(EstadoParticipe registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(EstadoParticipe registro) {
         System.out.println("LLEGA AL SERVICIO");
-        return estadoParticipeService.saveSingle(registro);
+        try {
+            EstadoParticipe resultado = estadoParticipeService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear estado de partícipe: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**

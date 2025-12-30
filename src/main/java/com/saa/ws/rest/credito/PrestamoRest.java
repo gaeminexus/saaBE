@@ -44,56 +44,104 @@ public class PrestamoRest {
     /**
      * Obtiene todos los registros de Prestamo.
      * 
-     * @return Lista de Prestamo
-     * @throws Throwable
+     * @return Response con lista de Prestamo
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<Prestamo> getAll() throws Throwable {
-        return prestamoDaoService.selectAll(NombreEntidadesCredito.PRESTAMO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<Prestamo> prestamos = prestamoDaoService.selectAll(NombreEntidadesCredito.PRESTAMO);
+            return Response.status(Response.Status.OK)
+                    .entity(prestamos)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener préstamos: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
     
     /**
      * Obtiene un registro de Prestamo por su ID.
      * 
      * @param id Identificador del registro
-     * @return Objeto Prestamo
-     * @throws Throwable
+     * @return Response con objeto Prestamo
      */
     @GET
-    @Produces("application/json")
+    @Produces(MediaType.APPLICATION_JSON)
     @Path("/getId/{id}")
-    public Prestamo getId(@PathParam("id") Long id) throws Throwable {
-        return prestamoDaoService.selectById(id, NombreEntidadesCredito.PRESTAMO);
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            Prestamo prestamo = prestamoDaoService.selectById(id, NombreEntidadesCredito.PRESTAMO);
+            if (prestamo == null) {
+                return Response.status(Response.Status.NOT_FOUND)
+                        .entity("Prestamo con ID " + id + " no encontrado")
+                        .type(MediaType.APPLICATION_JSON)
+                        .build();
+            }
+            return Response.status(Response.Status.OK)
+                    .entity(prestamo)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener préstamo: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
     
     /**
      * Crea o actualiza un registro de Prestamo (PUT).
      * 
      * @param registro Objeto Prestamo
-     * @return Registro actualizado o creado
-     * @throws Throwable
+     * @return Response con registro actualizado o creado
      */
     @PUT
-    @Consumes("application/json")
-    public Prestamo put(Prestamo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(Prestamo registro) {
         System.out.println("LLEGA AL SERVICIO PUT DE Prestamo");
-        return prestamoService.saveSingle(registro);
+        try {
+            Prestamo resultado = prestamoService.saveSingle(registro);
+            return Response.status(Response.Status.OK)
+                    .entity(resultado)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al actualizar préstamo: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
     
     /**
      * Crea o actualiza un registro de Prestamo (POST).
      * 
      * @param registro Objeto Prestamo
-     * @return Registro creado o actualizado
-     * @throws Throwable
+     * @return Response con registro creado o actualizado
      */
     @POST
-    @Consumes("application/json")
-    public Prestamo post(Prestamo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(Prestamo registro) {
         System.out.println("LLEGA AL SERVICIO POST DE Prestamo");
-        return prestamoService.saveSingle(registro);
+        try {
+            Prestamo resultado = prestamoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED)
+                    .entity(resultado)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al crear préstamo: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
     
     /**
@@ -121,14 +169,23 @@ public class PrestamoRest {
      * Elimina un registro de Prestamo por ID.
      * 
      * @param id Identificador del registro
-     * @throws Throwable
+     * @return Response con resultado de la eliminación
      */
     @DELETE
-    @Consumes("application/json")
     @Path("/{id}")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE DE Prestamo");
-        Prestamo elimina = new Prestamo();
-        prestamoDaoService.remove(elimina, id);
+        try {
+            Prestamo elimina = new Prestamo();
+            prestamoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al eliminar préstamo: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
 }

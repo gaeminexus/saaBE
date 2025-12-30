@@ -46,39 +46,55 @@ public class CuentaBancariaRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<CuentaBancaria> getAll() throws Throwable {
-        return cuentaBancariaDaoService.selectAll(NombreEntidadesTesoreria.CUENTA_BANCARIA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<CuentaBancaria> lista = cuentaBancariaDaoService.selectAll(NombreEntidadesTesoreria.CUENTA_BANCARIA);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cuentas bancarias: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Recupera un registro de CuentaBancaria por su ID.
-     */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public CuentaBancaria getId(@PathParam("id") Long id) throws Throwable {
-        return cuentaBancariaDaoService.selectById(id, NombreEntidadesTesoreria.CUENTA_BANCARIA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            CuentaBancaria cuentaBancaria = cuentaBancariaDaoService.selectById(id, NombreEntidadesTesoreria.CUENTA_BANCARIA);
+            if (cuentaBancaria == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("CuentaBancaria con ID " + id + " no encontrada").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(cuentaBancaria).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cuenta bancaria: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Guarda o actualiza un registro (PUT).
-     */
     @PUT
-    @Consumes("application/json")
-    public CuentaBancaria put(CuentaBancaria registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(CuentaBancaria registro) {
         System.out.println("LLEGA AL SERVICIO PUT CUENTA BANCARIA");
-        return cuentaBancariaService.saveSingle(registro);
+        try {
+            CuentaBancaria resultado = cuentaBancariaService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar cuenta bancaria: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Guarda o actualiza un registro (POST).
-     */
     @POST
-    @Consumes("application/json")
-    public CuentaBancaria post(CuentaBancaria registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(CuentaBancaria registro) {
         System.out.println("LLEGA AL SERVICIO POST CUENTA BANCARIA");
-        return cuentaBancariaService.saveSingle(registro);
+        try {
+            CuentaBancaria resultado = cuentaBancariaService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear cuenta bancaria: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -106,10 +122,15 @@ public class CuentaBancariaRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE CUENTA BANCARIA");
-        CuentaBancaria elimina = new CuentaBancaria();
-        cuentaBancariaDaoService.remove(elimina, id);
+        try {
+            CuentaBancaria elimina = new CuentaBancaria();
+            cuentaBancariaDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar cuenta bancaria: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

@@ -42,55 +42,106 @@ public class ExterRest {
     }
 
     /**
-     * Retrieves representation of an instance of ExterRest
+     * Obtiene todos los registros de Exter.
      * 
-     * @return an instance of String
-     * @throws Throwable
+     * @return Response con lista de Exter
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<Exter> getAll() throws Throwable {
-        return exterDaoService.selectAll(NombreEntidadesCredito.EXTER);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<Exter> lista = exterDaoService.selectAll(NombreEntidadesCredito.EXTER);
+            return Response.status(Response.Status.OK)
+                    .entity(lista)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener registros: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
 
     /**
-     * Retrieves representation of an instance of ExterRest
+     * Obtiene un registro de Exter por su ID.
      * 
-     * @return an instance of String
-     * @throws Throwable
+     * @param id Identificador del registro
+     * @return Response con objeto Exter
      */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public Exter getId(@PathParam("id") Long id) throws Throwable {
-        return exterDaoService.selectById(id, NombreEntidadesCredito.EXTER);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            Exter exter = exterDaoService.selectById(id, NombreEntidadesCredito.EXTER);
+            if (exter == null) {
+                return Response.status(Response.Status.NOT_FOUND)
+                        .entity("Exter con ID " + id + " no encontrado")
+                        .type(MediaType.APPLICATION_JSON)
+                        .build();
+            }
+            return Response.status(Response.Status.OK)
+                    .entity(exter)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener registro: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
 
     /**
-     * PUT method for updating or creating an instance of ExterRest
+     * Crea o actualiza un registro de Exter (PUT).
      * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
+     * @param registro Objeto Exter
+     * @return Response con registro actualizado o creado
      */
     @PUT
-    @Consumes("application/json")
-    public Exter put(Exter registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(Exter registro) {
         System.out.println("LLEGA AL SERVICIO PUT");
-        return exterService.saveSingle(registro);
+        try {
+            Exter resultado = exterService.saveSingle(registro);
+            return Response.status(Response.Status.OK)
+                    .entity(resultado)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al actualizar registro: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
 
     /**
-     * POST method for updating or creating an instance of ExterRest
+     * Crea o actualiza un registro de Exter (POST).
      * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
+     * @param registro Objeto Exter
+     * @return Response con registro creado o actualizado
      */
     @POST
-    @Consumes("application/json")
-    public Exter post(Exter registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(Exter registro) {
         System.out.println("LLEGA AL SERVICIO");
-        return exterService.saveSingle(registro);
+        try {
+            Exter resultado = exterService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED)
+                    .entity(resultado)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al crear registro: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
 
     /**
@@ -114,18 +165,27 @@ public class ExterRest {
     }
 
     /**
-     * POST method for updating or creating an instance of ExterRest
+     * Elimina un registro de Exter por ID.
      * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
+     * @param id Identificador del registro
+     * @return Response con resultado de la eliminación
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE");
-        Exter elimina = new Exter();
-        exterDaoService.remove(elimina, id);
+        try {
+            Exter elimina = new Exter();
+            exterDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al eliminar registro: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
 
 }

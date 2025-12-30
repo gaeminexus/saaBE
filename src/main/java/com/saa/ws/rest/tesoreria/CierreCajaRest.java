@@ -46,39 +46,55 @@ public class CierreCajaRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<CierreCaja> getAll() throws Throwable {
-        return cierreCajaDaoService.selectAll(NombreEntidadesTesoreria.CIERRE_CAJA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<CierreCaja> lista = cierreCajaDaoService.selectAll(NombreEntidadesTesoreria.CIERRE_CAJA);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cierres de caja: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Recupera un registro de CierreCaja por su ID.
-     */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public CierreCaja getId(@PathParam("id") Long id) throws Throwable {
-        return cierreCajaDaoService.selectById(id, NombreEntidadesTesoreria.CIERRE_CAJA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            CierreCaja cierreCaja = cierreCajaDaoService.selectById(id, NombreEntidadesTesoreria.CIERRE_CAJA);
+            if (cierreCaja == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("CierreCaja con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(cierreCaja).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cierre de caja: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Guarda o actualiza un registro (PUT).
-     */
     @PUT
-    @Consumes("application/json")
-    public CierreCaja put(CierreCaja registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(CierreCaja registro) {
         System.out.println("LLEGA AL SERVICIO PUT CIERRE CAJA");
-        return cierreCajaService.saveSingle(registro);
+        try {
+            CierreCaja resultado = cierreCajaService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar cierre de caja: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Guarda o actualiza un registro (POST).
-     */
     @POST
-    @Consumes("application/json")
-    public CierreCaja post(CierreCaja registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(CierreCaja registro) {
         System.out.println("LLEGA AL SERVICIO POST CIERRE CAJA");
-        return cierreCajaService.saveSingle(registro);
+        try {
+            CierreCaja resultado = cierreCajaService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear cierre de caja: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -106,10 +122,15 @@ public class CierreCajaRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE CIERRE CAJA");
-        CierreCaja elimina = new CierreCaja();
-        cierreCajaDaoService.remove(elimina, id);
+        try {
+            CierreCaja elimina = new CierreCaja();
+            cierreCajaDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar cierre de caja: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

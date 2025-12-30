@@ -49,48 +49,55 @@ public class PagoAporteRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<PagoAporte> getAll() throws Throwable {
-        return pagoAporteDaoService.selectAll(NombreEntidadesCredito.PAGO_APORTE);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<PagoAporte> lista = pagoAporteDaoService.selectAll(NombreEntidadesCredito.PAGO_APORTE);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener pagos de aporte: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Retrieves representation of an instance of PagoAporteRest
-     * 
-     * @return an instance of PagoAporte
-     * @throws Throwable
-     */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public PagoAporte getId(@PathParam("id") Long id) throws Throwable {
-        return pagoAporteDaoService.selectById(id, NombreEntidadesCredito.PAGO_APORTE);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            PagoAporte pago = pagoAporteDaoService.selectById(id, NombreEntidadesCredito.PAGO_APORTE);
+            if (pago == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("PagoAporte con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(pago).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener pago de aporte: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * PUT method for updating or creating an instance of PagoAporte
-     * 
-     * @param registro representation for the resource
-     * @return the updated or created resource.
-     */
     @PUT
-    @Consumes("application/json")
-    public PagoAporte put(PagoAporte registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(PagoAporte registro) {
         System.out.println("LLEGA AL SERVICIO PUT - PagoAporte");
-        return pagoAporteService.saveSingle(registro);
+        try {
+            PagoAporte resultado = pagoAporteService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar pago de aporte: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST method for updating or creating an instance of PagoAporte
-     * 
-     * @param registro representation for the resource
-     * @return the updated or created resource.
-     */
     @POST
-    @Consumes("application/json")
-    public PagoAporte post(PagoAporte registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(PagoAporte registro) {
         System.out.println("LLEGA AL SERVICIO POST - PagoAporte");
-        return pagoAporteService.saveSingle(registro);
+        try {
+            PagoAporte resultado = pagoAporteService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear pago de aporte: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -126,11 +133,16 @@ public class PagoAporteRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - PagoAporte");
-        PagoAporte elimina = new PagoAporte();
-        pagoAporteDaoService.remove(elimina, id);
+        try {
+            PagoAporte elimina = new PagoAporte();
+            pagoAporteDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar pago de aporte: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

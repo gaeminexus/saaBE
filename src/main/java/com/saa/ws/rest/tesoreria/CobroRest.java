@@ -46,39 +46,55 @@ public class CobroRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<Cobro> getAll() throws Throwable {
-        return cobroDaoService.selectAll(NombreEntidadesTesoreria.COBRO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<Cobro> lista = cobroDaoService.selectAll(NombreEntidadesTesoreria.COBRO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cobros: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Recupera un registro de Cobro por su ID.
-     */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public Cobro getId(@PathParam("id") Long id) throws Throwable {
-        return cobroDaoService.selectById(id, NombreEntidadesTesoreria.COBRO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            Cobro cobro = cobroDaoService.selectById(id, NombreEntidadesTesoreria.COBRO);
+            if (cobro == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Cobro con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(cobro).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cobro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Guarda o actualiza un registro (PUT).
-     */
     @PUT
-    @Consumes("application/json")
-    public Cobro put(Cobro registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(Cobro registro) {
         System.out.println("LLEGA AL SERVICIO PUT COBRO");
-        return cobroService.saveSingle(registro);
+        try {
+            Cobro resultado = cobroService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar cobro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Guarda o actualiza un registro (POST).
-     */
     @POST
-    @Consumes("application/json")
-    public Cobro post(Cobro registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(Cobro registro) {
         System.out.println("LLEGA AL SERVICIO POST COBRO");
-        return cobroService.saveSingle(registro);
+        try {
+            Cobro resultado = cobroService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear cobro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -101,15 +117,17 @@ public class CobroRest {
         return respuesta;
     }
 
-    /**
-     * Elimina un registro de Cobro por ID.
-     */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE COBRO");
-        Cobro elimina = new Cobro();
-        cobroDaoService.remove(elimina, id);
+        try {
+            Cobro elimina = new Cobro();
+            cobroDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar cobro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

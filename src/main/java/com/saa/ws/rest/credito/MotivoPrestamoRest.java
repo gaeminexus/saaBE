@@ -39,30 +39,55 @@ public class MotivoPrestamoRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<MotivoPrestamo> getAll() throws Throwable {
-        return motivoPrestamoDaoService.selectAll(NombreEntidadesCredito.MOTIVO_PRESTAMO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<MotivoPrestamo> lista = motivoPrestamoDaoService.selectAll(NombreEntidadesCredito.MOTIVO_PRESTAMO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener motivos de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public MotivoPrestamo getId(@PathParam("id") Long id) throws Throwable {
-        return motivoPrestamoDaoService.selectById(id, NombreEntidadesCredito.MOTIVO_PRESTAMO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            MotivoPrestamo motivo = motivoPrestamoDaoService.selectById(id, NombreEntidadesCredito.MOTIVO_PRESTAMO);
+            if (motivo == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("MotivoPrestamo con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(motivo).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener motivo de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @PUT
-    @Consumes("application/json")
-    public MotivoPrestamo put(MotivoPrestamo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(MotivoPrestamo registro) {
         System.out.println("LLEGA AL SERVICIO PUT");
-        return motivoPrestamoService.saveSingle(registro);
+        try {
+            MotivoPrestamo resultado = motivoPrestamoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar motivo de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public MotivoPrestamo post(MotivoPrestamo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(MotivoPrestamo registro) {
         System.out.println("LLEGA AL SERVICIO");
-        return motivoPrestamoService.saveSingle(registro);
+        try {
+            MotivoPrestamo resultado = motivoPrestamoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear motivo de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
@@ -84,10 +109,15 @@ public class MotivoPrestamoRest {
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE");
-        MotivoPrestamo elimina = new MotivoPrestamo();
-        motivoPrestamoDaoService.remove(elimina, id);
+        try {
+            MotivoPrestamo elimina = new MotivoPrestamo();
+            motivoPrestamoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar motivo de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

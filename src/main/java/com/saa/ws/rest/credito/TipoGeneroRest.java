@@ -44,38 +44,54 @@ public class TipoGeneroRest {
     @GET
     @Path("/getAll")
     @Produces(MediaType.APPLICATION_JSON)
-    public List<TipoGenero> getAll() throws Throwable {
-        return tipoGeneroDaoService.selectAll(NombreEntidadesCredito.TIPO_GENERO);
+    public Response getAll() {
+        try {
+            List<TipoGenero> lista = tipoGeneroDaoService.selectAll(NombreEntidadesCredito.TIPO_GENERO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener tipos de género: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * GET - Obtener por ID
-     */
     @GET
     @Path("/getId/{id}")
     @Produces(MediaType.APPLICATION_JSON)
-    public TipoGenero getId(@PathParam("id") Long id) throws Throwable {
-        return tipoGeneroDaoService.selectById(id, NombreEntidadesCredito.TIPO_GENERO);
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            TipoGenero tipo = tipoGeneroDaoService.selectById(id, NombreEntidadesCredito.TIPO_GENERO);
+            if (tipo == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("TipoGenero con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(tipo).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener tipo de género: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * PUT - Actualizar o crear registro
-     */
     @PUT
     @Consumes(MediaType.APPLICATION_JSON)
-    public TipoGenero put(TipoGenero registro) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(TipoGenero registro) {
         System.out.println("LLEGA AL SERVICIO PUT");
-        return tipoGeneroService.saveSingle(registro);
+        try {
+            TipoGenero resultado = tipoGeneroService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar tipo de género: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST - Crear registro
-     */
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
-    public TipoGenero post(TipoGenero registro) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(TipoGenero registro) {
         System.out.println("LLEGA AL SERVICIO");
-        return tipoGeneroService.saveSingle(registro);
+        try {
+            TipoGenero resultado = tipoGeneroService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear tipo de género: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**

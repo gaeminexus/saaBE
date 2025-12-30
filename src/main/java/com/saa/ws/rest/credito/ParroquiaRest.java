@@ -38,30 +38,55 @@ public class ParroquiaRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<Parroquia> getAll() throws Throwable {
-        return parroquiaDaoService.selectAll(NombreEntidadesCredito.PARROQUIA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<Parroquia> lista = parroquiaDaoService.selectAll(NombreEntidadesCredito.PARROQUIA);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener parroquias: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public Parroquia getId(@PathParam("id") Long id) throws Throwable {
-        return parroquiaDaoService.selectById(id, NombreEntidadesCredito.PARROQUIA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            Parroquia parroquia = parroquiaDaoService.selectById(id, NombreEntidadesCredito.PARROQUIA);
+            if (parroquia == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Parroquia con ID " + id + " no encontrada").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(parroquia).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener parroquia: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @PUT
-    @Consumes("application/json")
-    public Parroquia put(Parroquia registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(Parroquia registro) {
         System.out.println("LLEGA AL SERVICIO PUT - PRRQ");
-        return parroquiaService.saveSingle(registro);
+        try {
+            Parroquia resultado = parroquiaService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar parroquia: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public Parroquia post(Parroquia registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(Parroquia registro) {
         System.out.println("LLEGA AL SERVICIO POST - PRRQ");
-        return parroquiaService.saveSingle(registro);
+        try {
+            Parroquia resultado = parroquiaService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear parroquia: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
@@ -83,10 +108,15 @@ public class ParroquiaRest {
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - PRRQ");
-        Parroquia elimina = new Parroquia();
-        parroquiaDaoService.remove(elimina, id);
+        try {
+            Parroquia elimina = new Parroquia();
+            parroquiaDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar parroquia: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

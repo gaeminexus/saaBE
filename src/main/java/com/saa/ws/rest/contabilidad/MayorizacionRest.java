@@ -49,16 +49,29 @@ public class MayorizacionRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<Mayorizacion> getAll() throws Throwable {
-        return mayorizacionDaoService.selectAll(NombreEntidadesContabilidad.MAYORIZACION);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<Mayorizacion> lista = mayorizacionDaoService.selectAll(NombreEntidadesContabilidad.MAYORIZACION);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener mayorizaciones: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
-    @Produces("application/json")
     @Path("/getId/{id}")
-    public Mayorizacion getId(@PathParam("id") Long id) throws Throwable {
-        return mayorizacionDaoService.selectById(id, NombreEntidadesContabilidad.MAYORIZACION);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            Mayorizacion mayorizacion = mayorizacionDaoService.selectById(id, NombreEntidadesContabilidad.MAYORIZACION);
+            if (mayorizacion == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Mayorización con ID " + id + " no encontrada").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(mayorizacion).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener mayorización: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -68,23 +81,29 @@ public class MayorizacionRest {
      * @return an HTTP response with content of the updated or created resource.
      */
     @PUT
-    @Consumes("application/json")
-    public Mayorizacion put(Mayorizacion registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT");
-        return mayorizacionService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(Mayorizacion registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - MAYORIZACION");
+        try {
+            Mayorizacion resultado = mayorizacionService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar mayorización: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST method for updating or creating an instance of MayorizacionRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
-    @Consumes("application/json")
-    public Mayorizacion post(Mayorizacion registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO");
-        return mayorizacionService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(Mayorizacion registro) {
+        System.out.println("LLEGA AL SERVICIO POST - MAYORIZACION");
+        try {
+            Mayorizacion resultado = mayorizacionService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear mayorización: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -95,31 +114,33 @@ public class MayorizacionRest {
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de MAYORIZACION");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(mayorizacionService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(mayorizacionService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
-    /**
-     * POST method for updating or creating an instance of MayorizacionRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @DELETE
-    @Consumes("application/json")
     @Path("/{id}")
-    public void delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE");
-        Mayorizacion elimina = new Mayorizacion();
-        mayorizacionDaoService.remove(elimina, id);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - MAYORIZACION");
+        try {
+            Mayorizacion elimina = new Mayorizacion();
+            mayorizacionDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar mayorización: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

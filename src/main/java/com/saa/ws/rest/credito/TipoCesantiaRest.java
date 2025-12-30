@@ -45,44 +45,57 @@ public class TipoCesantiaRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<TipoCesantia> getAll() throws Throwable {
-        return tipoCesantiaDaoService.selectAll(NombreEntidadesCredito.TIPO_CESANTIA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<TipoCesantia> lista = tipoCesantiaDaoService.selectAll(NombreEntidadesCredito.TIPO_CESANTIA);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener tipos de cesantía: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * GET BY ID
-     */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public TipoCesantia getId(@PathParam("id") Long id) throws Throwable {
-        return tipoCesantiaDaoService.selectById(id, NombreEntidadesCredito.TIPO_CESANTIA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            TipoCesantia tipo = tipoCesantiaDaoService.selectById(id, NombreEntidadesCredito.TIPO_CESANTIA);
+            if (tipo == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("TipoCesantia con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(tipo).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener tipo de cesantía: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * PUT - UPDATE
-     */
     @PUT
-    @Consumes("application/json")
-    public TipoCesantia put(TipoCesantia registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(TipoCesantia registro) {
         System.out.println("LLEGA AL SERVICIO PUT TipoCesantia");
-        return tipoCesantiaService.saveSingle(registro);
+        try {
+            TipoCesantia resultado = tipoCesantiaService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar tipo de cesantía: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST - CREATE
-     */
     @POST
-    @Consumes("application/json")
-    public TipoCesantia post(TipoCesantia registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(TipoCesantia registro) {
         System.out.println("LLEGA AL SERVICIO POST TipoCesantia");
-        return tipoCesantiaService.saveSingle(registro);
+        try {
+            TipoCesantia resultado = tipoCesantiaService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear tipo de cesantía: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST - SELECT BY CRITERIA
-     */
     @POST
     @Path("selectByCriteria")
     @Consumes("application/json")
@@ -103,16 +116,18 @@ public class TipoCesantiaRest {
         return respuesta;
     }
 
-    /**
-     * DELETE
-     */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE TipoCesantia");
-        TipoCesantia elimina = new TipoCesantia();
-        tipoCesantiaDaoService.remove(elimina, id);
+        try {
+            TipoCesantia elimina = new TipoCesantia();
+            tipoCesantiaDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar tipo de cesantía: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

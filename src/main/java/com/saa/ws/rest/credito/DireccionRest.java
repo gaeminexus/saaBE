@@ -38,37 +38,67 @@ public class DireccionRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<Direccion> getAll() throws Throwable {
-        return direccionDaoService.selectAll(NombreEntidadesCredito.DIRECCION);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<Direccion> lista = direccionDaoService.selectAll(NombreEntidadesCredito.DIRECCION);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener direcciones: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public Direccion getId(@PathParam("id") Long id) throws Throwable {
-        return direccionDaoService.selectById(id, NombreEntidadesCredito.DIRECCION);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            Direccion direccion = direccionDaoService.selectById(id, NombreEntidadesCredito.DIRECCION);
+            if (direccion == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Direccion con ID " + id + " no encontrada").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(direccion).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener dirección: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
     
     @GET
     @Path("/getByParent/{idParent}")
-    @Produces("application/json")
-    public List<Direccion> getByParent(@PathParam("idParent") Long idParent) throws Throwable {
-        return direccionDaoService.selectByParent(idParent);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getByParent(@PathParam("idParent") Long idParent) {
+        try {
+            List<Direccion> lista = direccionDaoService.selectByParent(idParent);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener direcciones por parent: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @PUT
-    @Consumes("application/json")
-    public Direccion put(Direccion registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(Direccion registro) {
         System.out.println("LLEGA AL SERVICIO PUT - DRCC");
-        return direccionService.saveSingle(registro);
+        try {
+            Direccion resultado = direccionService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar dirección: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public Direccion post(Direccion registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(Direccion registro) {
         System.out.println("LLEGA AL SERVICIO POST - DRCC");
-        return direccionService.saveSingle(registro);
+        try {
+            Direccion resultado = direccionService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear dirección: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
@@ -91,13 +121,16 @@ public class DireccionRest {
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - DRCC");
-        Direccion elimina = new Direccion();
-        direccionDaoService.remove(elimina, id);
-        
-        
+        try {
+            Direccion elimina = new Direccion();
+            direccionDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar dirección: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

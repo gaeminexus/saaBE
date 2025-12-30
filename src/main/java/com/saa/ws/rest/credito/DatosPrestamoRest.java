@@ -38,30 +38,55 @@ public class DatosPrestamoRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<DatosPrestamo> getAll() throws Throwable {
-        return datosPrestamoDaoService.selectAll(NombreEntidadesCredito.DATOS_PRESTAMO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<DatosPrestamo> lista = datosPrestamoDaoService.selectAll(NombreEntidadesCredito.DATOS_PRESTAMO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener datos de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public DatosPrestamo getId(@PathParam("id") Long id) throws Throwable {
-        return datosPrestamoDaoService.selectById(id, NombreEntidadesCredito.DATOS_PRESTAMO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            DatosPrestamo datos = datosPrestamoDaoService.selectById(id, NombreEntidadesCredito.DATOS_PRESTAMO);
+            if (datos == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("DatosPrestamo con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(datos).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener datos de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @PUT
-    @Consumes("application/json")
-    public DatosPrestamo put(DatosPrestamo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(DatosPrestamo registro) {
         System.out.println("LLEGA AL SERVICIO PUT - DTSP");
-        return datosPrestamoService.saveSingle(registro);
+        try {
+            DatosPrestamo resultado = datosPrestamoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar datos de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public DatosPrestamo post(DatosPrestamo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(DatosPrestamo registro) {
         System.out.println("LLEGA AL SERVICIO POST - DTSP");
-        return datosPrestamoService.saveSingle(registro);
+        try {
+            DatosPrestamo resultado = datosPrestamoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear datos de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
@@ -86,10 +111,15 @@ public class DatosPrestamoRest {
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - DTSP");
-        DatosPrestamo elimina = new DatosPrestamo();
-        datosPrestamoDaoService.remove(elimina, id);
+        try {
+            DatosPrestamo elimina = new DatosPrestamo();
+            datosPrestamoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar datos de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

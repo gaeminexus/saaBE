@@ -38,30 +38,55 @@ public class DocumentoCreditoRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<DocumentoCredito> getAll() throws Throwable {
-        return documentoCreditoDaoService.selectAll(NombreEntidadesCredito.DOCUMENTO_CREDITO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<DocumentoCredito> lista = documentoCreditoDaoService.selectAll(NombreEntidadesCredito.DOCUMENTO_CREDITO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener documentos de crédito: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public DocumentoCredito getId(@PathParam("id") Long id) throws Throwable {
-        return documentoCreditoDaoService.selectById(id, NombreEntidadesCredito.DOCUMENTO_CREDITO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            DocumentoCredito documento = documentoCreditoDaoService.selectById(id, NombreEntidadesCredito.DOCUMENTO_CREDITO);
+            if (documento == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("DocumentoCredito con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(documento).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener documento de crédito: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @PUT
-    @Consumes("application/json")
-    public DocumentoCredito put(DocumentoCredito registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(DocumentoCredito registro) {
         System.out.println("LLEGA AL SERVICIO PUT - DCMN");
-        return documentoCreditoService.saveSingle(registro);
+        try {
+            DocumentoCredito resultado = documentoCreditoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar documento de crédito: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public DocumentoCredito post(DocumentoCredito registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(DocumentoCredito registro) {
         System.out.println("LLEGA AL SERVICIO POST - DCMN");
-        return documentoCreditoService.saveSingle(registro);
+        try {
+            DocumentoCredito resultado = documentoCreditoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear documento de crédito: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
@@ -83,10 +108,15 @@ public class DocumentoCreditoRest {
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - DCMN");
-        DocumentoCredito elimina = new DocumentoCredito();
-        documentoCreditoDaoService.remove(elimina, id);
+        try {
+            DocumentoCredito elimina = new DocumentoCredito();
+            documentoCreditoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar documento de crédito: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

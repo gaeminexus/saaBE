@@ -49,9 +49,14 @@ public class HistMayorizacionRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<HistMayorizacion> getAll() throws Throwable {
-        return histMayorizacionDaoService.selectAll(NombreEntidadesContabilidad.HIST_MAYORIZACION);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<HistMayorizacion> lista = histMayorizacionDaoService.selectAll(NombreEntidadesContabilidad.HIST_MAYORIZACION);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener historial de mayorizaciones: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
     
     
@@ -85,72 +90,75 @@ public class HistMayorizacionRest {
     */
 
     @GET
-    @Produces("application/json")
     @Path("/getId/{id}")
-    public HistMayorizacion getId(@PathParam("id") Long id) throws Throwable {
-        return histMayorizacionDaoService.selectById(id, NombreEntidadesContabilidad.HIST_MAYORIZACION);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            HistMayorizacion hist = histMayorizacionDaoService.selectById(id, NombreEntidadesContabilidad.HIST_MAYORIZACION);
+            if (hist == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Historial de mayorización con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(hist).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener historial de mayorización: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * PUT method for updating or creating an instance of HistMayorizacionRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @PUT
-    @Consumes("application/json")
-    public HistMayorizacion put(HistMayorizacion registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT");
-        return histMayorizacionService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(HistMayorizacion registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - HIST_MAYORIZACION");
+        try {
+            HistMayorizacion resultado = histMayorizacionService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar historial de mayorización: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST method for updating or creating an instance of HistMayorizacionRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
-    @Consumes("application/json")
-    public HistMayorizacion post(HistMayorizacion registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO");
-        return histMayorizacionService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(HistMayorizacion registro) {
+        System.out.println("LLEGA AL SERVICIO POST - HIST_MAYORIZACION");
+        try {
+            HistMayorizacion resultado = histMayorizacionService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear historial de mayorización: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST method for updating or creating an instance of HistMayorizacionRest
-     *
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de HIST_MAYORIZACION");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(histMayorizacionService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(histMayorizacionService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
-    
 
-    /**
-     * POST method for updating or creating an instance of HistMayorizacionRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @DELETE
-    @Consumes("application/json")
     @Path("/{id}")
-    public void delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE");
-        HistMayorizacion elimina = new HistMayorizacion();
-        histMayorizacionDaoService.remove(elimina, id);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - HIST_MAYORIZACION");
+        try {
+            HistMayorizacion elimina = new HistMayorizacion();
+            histMayorizacionDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar historial de mayorización: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

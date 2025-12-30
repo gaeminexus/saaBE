@@ -49,51 +49,55 @@ public class TipoIdentificacionRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<TipoIdentificacion> getAll() throws Throwable {
-        return tipoIdentificacionDaoService.selectAll(NombreEntidadesCredito.TIPO_IDENTIFICACION);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<TipoIdentificacion> lista = tipoIdentificacionDaoService.selectAll(NombreEntidadesCredito.TIPO_IDENTIFICACION);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener tipos de identificación: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
     
-    /**
-     * Obtiene un registro de TipoIdentificacion por su ID.
-     * 
-     * @param id Identificador del registro
-     * @return Objeto TipoIdentificacion
-     * @throws Throwable
-     */
     @GET
-    @Produces("application/json")
+    @Produces(MediaType.APPLICATION_JSON)
     @Path("/getId/{id}")
-    public TipoIdentificacion getId(@PathParam("id") Long id) throws Throwable {
-        return tipoIdentificacionDaoService.selectById(id, NombreEntidadesCredito.TIPO_IDENTIFICACION);
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            TipoIdentificacion tipo = tipoIdentificacionDaoService.selectById(id, NombreEntidadesCredito.TIPO_IDENTIFICACION);
+            if (tipo == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("TipoIdentificacion con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(tipo).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener tipo de identificación: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
     
-    /**
-     * Crea o actualiza un registro de TipoIdentificacion (PUT).
-     * 
-     * @param registro Objeto TipoIdentificacion
-     * @return Registro actualizado o creado
-     * @throws Throwable
-     */
     @PUT
-    @Consumes("application/json")
-    public TipoIdentificacion put(TipoIdentificacion registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(TipoIdentificacion registro) {
         System.out.println("LLEGA AL SERVICIO PUT DE TipoIdentificacion");
-        return tipoIdentificacionService.saveSingle(registro);
+        try {
+            TipoIdentificacion resultado = tipoIdentificacionService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar tipo de identificación: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
     
-    /**
-     * Crea o actualiza un registro de TipoIdentificacion (POST).
-     * 
-     * @param registro Objeto TipoIdentificacion
-     * @return Registro creado o actualizado
-     * @throws Throwable
-     */
     @POST
-    @Consumes("application/json")
-    public TipoIdentificacion post(TipoIdentificacion registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(TipoIdentificacion registro) {
         System.out.println("LLEGA AL SERVICIO POST DE TipoIdentificacion");
-        return tipoIdentificacionService.saveSingle(registro);
+        try {
+            TipoIdentificacion resultado = tipoIdentificacionService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear tipo de identificación: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
     
     @POST

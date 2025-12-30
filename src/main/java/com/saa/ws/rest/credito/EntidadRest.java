@@ -42,55 +42,104 @@ public class EntidadRest {
     }
 
     /**
-     * Retrieves representation of an instance of EntidadRest
+     * Obtiene todos los registros de Entidad.
      * 
-     * @return an instance of String
-     * @throws Throwable
+     * @return Response con lista de Entidad
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<Entidad> getAll() throws Throwable {
-        return entidadDaoService.selectAll(NombreEntidadesCredito.ENTIDAD);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<Entidad> lista = entidadDaoService.selectAll(NombreEntidadesCredito.ENTIDAD);
+            return Response.status(Response.Status.OK)
+                    .entity(lista)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener entidades: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
 
     /**
-     * Retrieves representation of an instance of EntidadRest
+     * Obtiene un registro de Entidad por su ID.
      * 
-     * @return an instance of String
-     * @throws Throwable
+     * @param id Identificador del registro
+     * @return Response con objeto Entidad
      */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public Entidad getId(@PathParam("id") Long id) throws Throwable {
-        return entidadDaoService.selectById(id, NombreEntidadesCredito.ENTIDAD);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            Entidad entidad = entidadDaoService.selectById(id, NombreEntidadesCredito.ENTIDAD);
+            if (entidad == null) {
+                return Response.status(Response.Status.NOT_FOUND)
+                        .entity("Entidad con ID " + id + " no encontrada")
+                        .type(MediaType.APPLICATION_JSON)
+                        .build();
+            }
+            return Response.status(Response.Status.OK)
+                    .entity(entidad)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener entidad: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
     
     /**
-     * Retrieves representation of an instance of EntidadRest
+     * Obtiene entidades por coincidencias de nombre.
      * 
-     * @return an instance of String
-     * @throws Throwable
+     * @param nombre Nombre a buscar
+     * @return Response con lista de Entidad
      */
     @GET
     @Path("/getCoincidencias/{nombre}")
-    @Produces("application/json")
-    public List<Entidad> getCoincidencias(@PathParam("nombre") String nombre) throws Throwable {
-        return entidadService.selectCoincidenciasByNombre(nombre);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getCoincidencias(@PathParam("nombre") String nombre) {
+        try {
+            List<Entidad> lista = entidadService.selectCoincidenciasByNombre(nombre);
+            return Response.status(Response.Status.OK)
+                    .entity(lista)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al buscar coincidencias: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
     
     /**
      * Recupera las entidades cuyo nombre completo coincide con el proporcionado por petro de 35 caracteres.
      * 
-     * @return: Recupera una lista de Entidad.
-     * @throws Throwable
+     * @param nombre Nombre a buscar
+     * @return Response con lista de Entidad
      */
     @GET
     @Path("/getByNombrePetro35/{nombre}")
-    @Produces("application/json")
-    public List<Entidad> getByNombrePetro35(@PathParam("nombre") String nombre) throws Throwable {
-        return entidadDaoService.selectByNombrePetro35(nombre);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getByNombrePetro35(@PathParam("nombre") String nombre) {
+        try {
+            List<Entidad> lista = entidadDaoService.selectByNombrePetro35(nombre);
+            return Response.status(Response.Status.OK)
+                    .entity(lista)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al buscar por nombre Petro: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
 
     /**
@@ -152,18 +201,27 @@ public class EntidadRest {
     }
 
     /**
-     * POST method for updating or creating an instance of EntidadRest
+     * Elimina un registro de Entidad por ID.
      * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
+     * @param id Identificador del registro
+     * @return Response con resultado de la eliminación
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE");
-        Entidad elimina = new Entidad();
-        entidadDaoService.remove(elimina, id);
+        try {
+            Entidad elimina = new Entidad();
+            entidadDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al eliminar entidad: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
 
 }

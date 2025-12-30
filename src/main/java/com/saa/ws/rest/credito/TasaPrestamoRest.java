@@ -38,30 +38,55 @@ public class TasaPrestamoRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<TasaPrestamo> getAll() throws Throwable {
-        return tasaPrestamoDaoService.selectAll(NombreEntidadesCredito.TASA_PRESTAMO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<TasaPrestamo> lista = tasaPrestamoDaoService.selectAll(NombreEntidadesCredito.TASA_PRESTAMO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener tasas de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public TasaPrestamo getId(@PathParam("id") Long id) throws Throwable {
-        return tasaPrestamoDaoService.selectById(id, NombreEntidadesCredito.TASA_PRESTAMO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            TasaPrestamo tasa = tasaPrestamoDaoService.selectById(id, NombreEntidadesCredito.TASA_PRESTAMO);
+            if (tasa == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("TasaPrestamo con ID " + id + " no encontrada").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(tasa).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener tasa de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @PUT
-    @Consumes("application/json")
-    public TasaPrestamo put(TasaPrestamo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(TasaPrestamo registro) {
         System.out.println("LLEGA AL SERVICIO PUT - TASA PRESTAMO");
-        return tasaPrestamoService.saveSingle(registro);
+        try {
+            TasaPrestamo resultado = tasaPrestamoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar tasa de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public TasaPrestamo post(TasaPrestamo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(TasaPrestamo registro) {
         System.out.println("LLEGA AL SERVICIO POST - TASA PRESTAMO");
-        return tasaPrestamoService.saveSingle(registro);
+        try {
+            TasaPrestamo resultado = tasaPrestamoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear tasa de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
@@ -83,10 +108,15 @@ public class TasaPrestamoRest {
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - TASA PRESTAMO");
-        TasaPrestamo elimina = new TasaPrestamo();
-        tasaPrestamoDaoService.remove(elimina, id);
+        try {
+            TasaPrestamo elimina = new TasaPrestamo();
+            tasaPrestamoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar tasa de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

@@ -39,30 +39,55 @@ public class MoraPrestamoRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<MoraPrestamo> getAll() throws Throwable {
-        return moraPrestamoDaoService.selectAll(NombreEntidadesCredito.MORA_PRESTAMO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<MoraPrestamo> lista = moraPrestamoDaoService.selectAll(NombreEntidadesCredito.MORA_PRESTAMO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener moras de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public MoraPrestamo getId(@PathParam("id") Long id) throws Throwable {
-        return moraPrestamoDaoService.selectById(id, NombreEntidadesCredito.MORA_PRESTAMO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            MoraPrestamo mora = moraPrestamoDaoService.selectById(id, NombreEntidadesCredito.MORA_PRESTAMO);
+            if (mora == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("MoraPrestamo con ID " + id + " no encontrada").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(mora).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener mora de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @PUT
-    @Consumes("application/json")
-    public MoraPrestamo put(MoraPrestamo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(MoraPrestamo registro) {
         System.out.println("LLEGA AL SERVICIO PUT - MORAPRESTAMO");
-        return moraPrestamoService.saveSingle(registro);
+        try {
+            MoraPrestamo resultado = moraPrestamoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar mora de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public MoraPrestamo post(MoraPrestamo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(MoraPrestamo registro) {
         System.out.println("LLEGA AL SERVICIO POST - MORAPRESTAMO");
-        return moraPrestamoService.saveSingle(registro);
+        try {
+            MoraPrestamo resultado = moraPrestamoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear mora de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
@@ -85,11 +110,16 @@ public class MoraPrestamoRest {
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - MORAPRESTAMO");
-        MoraPrestamo elimina = new MoraPrestamo();
-        moraPrestamoDaoService.remove(elimina, id);
+        try {
+            MoraPrestamo elimina = new MoraPrestamo();
+            moraPrestamoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar mora de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

@@ -49,48 +49,55 @@ public class CreditoMontoAprobacionRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<CreditoMontoAprobacion> getAll() throws Throwable {
-        return creditoMontoAprobacionDaoService.selectAll(NombreEntidadesCredito.CREDITO_MONTO_APROBACION);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<CreditoMontoAprobacion> lista = creditoMontoAprobacionDaoService.selectAll(NombreEntidadesCredito.CREDITO_MONTO_APROBACION);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener montos de aprobación: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Retrieves representation of an instance of CreditoMontoAprobacionRest
-     * 
-     * @return an instance of String
-     * @throws Throwable
-     */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public CreditoMontoAprobacion getId(@PathParam("id") Long id) throws Throwable {
-        return creditoMontoAprobacionDaoService.selectById(id, NombreEntidadesCredito.CREDITO_MONTO_APROBACION);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            CreditoMontoAprobacion monto = creditoMontoAprobacionDaoService.selectById(id, NombreEntidadesCredito.CREDITO_MONTO_APROBACION);
+            if (monto == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("CreditoMontoAprobacion con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(monto).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener monto de aprobación: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * PUT method for updating or creating an instance of CreditoMontoAprobacionRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @PUT
-    @Consumes("application/json")
-    public CreditoMontoAprobacion put(CreditoMontoAprobacion registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(CreditoMontoAprobacion registro) {
         System.out.println("LLEGA AL SERVICIO PUT");
-        return creditoMontoAprobacionService.saveSingle(registro);
+        try {
+            CreditoMontoAprobacion resultado = creditoMontoAprobacionService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar monto de aprobación: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST method for updating or creating an instance of CreditoMontoAprobacionRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
-    @Consumes("application/json")
-    public CreditoMontoAprobacion post(CreditoMontoAprobacion registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(CreditoMontoAprobacion registro) {
         System.out.println("LLEGA AL SERVICIO");
-        return creditoMontoAprobacionService.saveSingle(registro);
+        try {
+            CreditoMontoAprobacion resultado = creditoMontoAprobacionService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear monto de aprobación: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -121,11 +128,16 @@ public class CreditoMontoAprobacionRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE");
-        CreditoMontoAprobacion elimina = new CreditoMontoAprobacion();
-        creditoMontoAprobacionDaoService.remove(elimina, id);
+        try {
+            CreditoMontoAprobacion elimina = new CreditoMontoAprobacion();
+            creditoMontoAprobacionDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar monto de aprobación: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

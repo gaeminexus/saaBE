@@ -46,39 +46,55 @@ public class ChequeRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<Cheque> getAll() throws Throwable {
-        return chequeDaoService.selectAll(NombreEntidadesTesoreria.CHEQUE);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<Cheque> lista = chequeDaoService.selectAll(NombreEntidadesTesoreria.CHEQUE);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cheques: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Recupera un registro de Cheque por ID.
-     */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public Cheque getId(@PathParam("id") Long id) throws Throwable {
-        return chequeDaoService.selectById(id, NombreEntidadesTesoreria.CHEQUE);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            Cheque cheque = chequeDaoService.selectById(id, NombreEntidadesTesoreria.CHEQUE);
+            if (cheque == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Cheque con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(cheque).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cheque: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Guarda o actualiza un registro (PUT).
-     */
     @PUT
-    @Consumes("application/json")
-    public Cheque put(Cheque registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(Cheque registro) {
         System.out.println("LLEGA AL SERVICIO PUT CHEQUE");
-        return chequeService.saveSingle(registro);
+        try {
+            Cheque resultado = chequeService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar cheque: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Guarda o actualiza un registro (POST).
-     */
     @POST
-    @Consumes("application/json")
-    public Cheque post(Cheque registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(Cheque registro) {
         System.out.println("LLEGA AL SERVICIO POST CHEQUE");
-        return chequeService.saveSingle(registro);
+        try {
+            Cheque resultado = chequeService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear cheque: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -106,10 +122,15 @@ public class ChequeRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE CHEQUE");
-        Cheque elimina = new Cheque();
-        chequeDaoService.remove(elimina, id);
+        try {
+            Cheque elimina = new Cheque();
+            chequeDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar cheque: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

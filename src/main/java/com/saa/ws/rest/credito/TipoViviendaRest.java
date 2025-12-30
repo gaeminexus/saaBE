@@ -49,51 +49,55 @@ public class TipoViviendaRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<TipoVivienda> getAll() throws Throwable {
-        return tipoViviendaDaoService.selectAll(NombreEntidadesCredito.TIPO_VIVIENDA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<TipoVivienda> lista = tipoViviendaDaoService.selectAll(NombreEntidadesCredito.TIPO_VIVIENDA);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener tipos de vivienda: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
     
-    /**
-     * Obtiene un registro de TipoVivienda por su ID.
-     * 
-     * @param id Identificador del registro
-     * @return Objeto TipoVivienda
-     * @throws Throwable
-     */
     @GET
-    @Produces("application/json")
+    @Produces(MediaType.APPLICATION_JSON)
     @Path("/getId/{id}")
-    public TipoVivienda getId(@PathParam("id") Long id) throws Throwable {
-        return tipoViviendaDaoService.selectById(id, NombreEntidadesCredito.TIPO_VIVIENDA);
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            TipoVivienda tipo = tipoViviendaDaoService.selectById(id, NombreEntidadesCredito.TIPO_VIVIENDA);
+            if (tipo == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("TipoVivienda con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(tipo).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener tipo de vivienda: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
     
-    /**
-     * Crea o actualiza un registro de TipoVivienda (PUT).
-     * 
-     * @param registro Objeto TipoVivienda
-     * @return Registro actualizado o creado
-     * @throws Throwable
-     */
     @PUT
-    @Consumes("application/json")
-    public TipoVivienda put(TipoVivienda registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(TipoVivienda registro) {
         System.out.println("LLEGA AL SERVICIO PUT DE TipoVivienda");
-        return tipoViviendaService.saveSingle(registro);
+        try {
+            TipoVivienda resultado = tipoViviendaService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar tipo de vivienda: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
     
-    /**
-     * Crea o actualiza un registro de TipoVivienda (POST).
-     * 
-     * @param registro Objeto TipoVivienda
-     * @return Registro creado o actualizado
-     * @throws Throwable
-     */
     @POST
-    @Consumes("application/json")
-    public TipoVivienda post(TipoVivienda registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(TipoVivienda registro) {
         System.out.println("LLEGA AL SERVICIO POST DE TipoVivienda");
-        return tipoViviendaService.saveSingle(registro);
+        try {
+            TipoVivienda resultado = tipoViviendaService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear tipo de vivienda: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
     
     @POST
@@ -126,11 +130,17 @@ public class TipoViviendaRest {
      * @throws Throwable
      */
     @DELETE
-    @Consumes("application/json")
+    @Consumes(MediaType.APPLICATION_JSON)
     @Path("/{id}")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE DE TipoVivienda");
-        TipoVivienda elimina = new TipoVivienda();
-        tipoViviendaDaoService.remove(elimina, id);
+        try {
+            TipoVivienda elimina = new TipoVivienda();
+            tipoViviendaDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar tipo de vivienda: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

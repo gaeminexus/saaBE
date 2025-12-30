@@ -46,39 +46,55 @@ public class DireccionPersonaRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<DireccionPersona> getAll() throws Throwable {
-        return direccionPersonaDaoService.selectAll(NombreEntidadesTesoreria.DIRECCION_PERSONA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<DireccionPersona> lista = direccionPersonaDaoService.selectAll(NombreEntidadesTesoreria.DIRECCION_PERSONA);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener direcciones de personas: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Recupera un registro de DireccionPersona por su ID.
-     */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public DireccionPersona getId(@PathParam("id") Long id) throws Throwable {
-        return direccionPersonaDaoService.selectById(id, NombreEntidadesTesoreria.DIRECCION_PERSONA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            DireccionPersona direccionPersona = direccionPersonaDaoService.selectById(id, NombreEntidadesTesoreria.DIRECCION_PERSONA);
+            if (direccionPersona == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("DireccionPersona con ID " + id + " no encontrada").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(direccionPersona).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener dirección de persona: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Guarda o actualiza un registro (PUT).
-     */
     @PUT
-    @Consumes("application/json")
-    public DireccionPersona put(DireccionPersona registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(DireccionPersona registro) {
         System.out.println("LLEGA AL SERVICIO PUT DIRECCION PERSONA");
-        return direccionPersonaService.saveSingle(registro);
+        try {
+            DireccionPersona resultado = direccionPersonaService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar dirección de persona: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Guarda o actualiza un registro (POST).
-     */
     @POST
-    @Consumes("application/json")
-    public DireccionPersona post(DireccionPersona registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(DireccionPersona registro) {
         System.out.println("LLEGA AL SERVICIO POST DIRECCION PERSONA");
-        return direccionPersonaService.saveSingle(registro);
+        try {
+            DireccionPersona resultado = direccionPersonaService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear dirección de persona: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 /**
  * POST method for updating or creating an instance of DireccionPersonaRest
@@ -105,10 +121,15 @@ public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE DIRECCION PERSONA");
-        DireccionPersona elimina = new DireccionPersona();
-        direccionPersonaDaoService.remove(elimina, id);
+        try {
+            DireccionPersona elimina = new DireccionPersona();
+            direccionPersonaDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar dirección de persona: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

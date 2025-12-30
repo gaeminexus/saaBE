@@ -38,30 +38,55 @@ public class PaisRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<Pais> getAll() throws Throwable {
-        return paisDaoService.selectAll(NombreEntidadesCredito.PAIS);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<Pais> lista = paisDaoService.selectAll(NombreEntidadesCredito.PAIS);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener países: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public Pais getId(@PathParam("id") Long id) throws Throwable {
-        return paisDaoService.selectById(id, NombreEntidadesCredito.PAIS);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            Pais pais = paisDaoService.selectById(id, NombreEntidadesCredito.PAIS);
+            if (pais == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("País con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(pais).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener país: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @PUT
-    @Consumes("application/json")
-    public Pais put(Pais registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(Pais registro) {
         System.out.println("LLEGA AL SERVICIO PUT Pais");
-        return paisService.saveSingle(registro);
+        try {
+            Pais resultado = paisService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar país: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public Pais post(Pais registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(Pais registro) {
         System.out.println("LLEGA AL SERVICIO POST Pais");
-        return paisService.saveSingle(registro);
+        try {
+            Pais resultado = paisService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear país: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
@@ -86,11 +111,16 @@ public class PaisRest {
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE Pais");
-        Pais elimina = new Pais();
-        paisDaoService.remove(elimina, id);
+        try {
+            Pais elimina = new Pais();
+            paisDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar país: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

@@ -45,44 +45,55 @@ public class TipoCalificacionCreditoRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<TipoCalificacionCredito> getAll() throws Throwable {
-        return tipoCalificacionCreditoDaoService.selectAll(
-                NombreEntidadesCredito.TIPO_CALIFICACION_CREDITO
-        );
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<TipoCalificacionCredito> lista = tipoCalificacionCreditoDaoService.selectAll(NombreEntidadesCredito.TIPO_CALIFICACION_CREDITO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener tipos de calificación: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * GET BY ID
-     */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public TipoCalificacionCredito getId(@PathParam("id") Long id) throws Throwable {
-        return tipoCalificacionCreditoDaoService.selectById(
-                id,
-                NombreEntidadesCredito.TIPO_CALIFICACION_CREDITO
-        );
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            TipoCalificacionCredito tipo = tipoCalificacionCreditoDaoService.selectById(id, NombreEntidadesCredito.TIPO_CALIFICACION_CREDITO);
+            if (tipo == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("TipoCalificacionCredito con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(tipo).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener tipo de calificación: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * PUT - UPDATE
-     */
     @PUT
-    @Consumes("application/json")
-    public TipoCalificacionCredito put(TipoCalificacionCredito registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(TipoCalificacionCredito registro) {
         System.out.println("LLEGA AL SERVICIO PUT TipoCalificacionCredito");
-        return tipoCalificacionCreditoService.saveSingle(registro);
+        try {
+            TipoCalificacionCredito resultado = tipoCalificacionCreditoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar tipo de calificación: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST - CREATE
-     */
     @POST
-    @Consumes("application/json")
-    public TipoCalificacionCredito post(TipoCalificacionCredito registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(TipoCalificacionCredito registro) {
         System.out.println("LLEGA AL SERVICIO POST TipoCalificacionCredito");
-        return tipoCalificacionCreditoService.saveSingle(registro);
+        try {
+            TipoCalificacionCredito resultado = tipoCalificacionCreditoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear tipo de calificación: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -113,11 +124,16 @@ public class TipoCalificacionCreditoRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE TipoCalificacionCredito");
-        TipoCalificacionCredito elimina = new TipoCalificacionCredito();
-        tipoCalificacionCreditoDaoService.remove(elimina, id);
+        try {
+            TipoCalificacionCredito elimina = new TipoCalificacionCredito();
+            tipoCalificacionCreditoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar tipo de calificación: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

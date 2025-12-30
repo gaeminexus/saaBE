@@ -69,56 +69,104 @@ public class FilialRest {
     /**
      * Obtiene todos los registros de Filial.
      * 
-     * @return Lista de Filial
-     * @throws Throwable
+     * @return Response con lista de Filial
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<Filial> getAll() throws Throwable {
-        return filialDaoService.selectAll(NombreEntidadesCredito.FILIAL);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<Filial> filiales = filialDaoService.selectAll(NombreEntidadesCredito.FILIAL);
+            return Response.status(Response.Status.OK)
+                    .entity(filiales)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener filiales: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
     
     /**
      * Obtiene un registro de Filial por su ID.
      * 
      * @param id Identificador del registro
-     * @return Objeto Filial
-     * @throws Throwable
+     * @return Response con objeto Filial
      */
     @GET
-    @Produces("application/json")
+    @Produces(MediaType.APPLICATION_JSON)
     @Path("/getId/{id}")
-    public Filial getId(@PathParam("id") Long id) throws Throwable {
-        return filialDaoService.selectById(id, NombreEntidadesCredito.FILIAL);
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            Filial filial = filialDaoService.selectById(id, NombreEntidadesCredito.FILIAL);
+            if (filial == null) {
+                return Response.status(Response.Status.NOT_FOUND)
+                        .entity("Filial con ID " + id + " no encontrada")
+                        .type(MediaType.APPLICATION_JSON)
+                        .build();
+            }
+            return Response.status(Response.Status.OK)
+                    .entity(filial)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener filial: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
     
     /**
      * Crea o actualiza un registro de Filial (PUT).
      * 
      * @param registro Objeto Filial
-     * @return Registro actualizado o creado
-     * @throws Throwable
+     * @return Response con registro actualizado o creado
      */
     @PUT
-    @Consumes("application/json")
-    public Filial put(Filial registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(Filial registro) {
         System.out.println("LLEGA AL SERVICIO PUT DE Filial");
-        return filialService.saveSingle(registro);
+        try {
+            Filial resultado = filialService.saveSingle(registro);
+            return Response.status(Response.Status.OK)
+                    .entity(resultado)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al actualizar filial: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
     
     /**
      * Crea o actualiza un registro de Filial (POST).
      * 
      * @param registro Objeto Filial
-     * @return Registro creado o actualizado
-     * @throws Throwable
+     * @return Response con registro creado o actualizado
      */
     @POST
-    @Consumes("application/json")
-    public Filial post(Filial registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(Filial registro) {
         System.out.println("LLEGA AL SERVICIO POST DE Filial");
-        return filialService.saveSingle(registro);
+        try {
+            Filial resultado = filialService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED)
+                    .entity(resultado)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al crear filial: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
     
     @POST
@@ -149,14 +197,23 @@ public class FilialRest {
      * Elimina un registro de Filial por ID.
      * 
      * @param id Identificador del registro
-     * @throws Throwable
+     * @return Response con resultado de la eliminación
      */
     @DELETE
-    @Consumes("application/json")
     @Path("/{id}")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE DE Filial");
-        Filial elimina = new Filial();
-        filialDaoService.remove(elimina, id);
+        try {
+            Filial elimina = new Filial();
+            filialDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al eliminar filial: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
 }

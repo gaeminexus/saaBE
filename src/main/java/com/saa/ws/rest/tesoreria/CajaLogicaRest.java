@@ -46,39 +46,55 @@ public class CajaLogicaRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<CajaLogica> getAll() throws Throwable {
-        return cajaLogicaDaoService.selectAll(NombreEntidadesTesoreria.CAJA_LOGICA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<CajaLogica> lista = cajaLogicaDaoService.selectAll(NombreEntidadesTesoreria.CAJA_LOGICA);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cajas lógicas: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Recupera un registro de CajaLogica por ID.
-     */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public CajaLogica getId(@PathParam("id") Long id) throws Throwable {
-        return cajaLogicaDaoService.selectById(id, NombreEntidadesTesoreria.CAJA_LOGICA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            CajaLogica cajaLogica = cajaLogicaDaoService.selectById(id, NombreEntidadesTesoreria.CAJA_LOGICA);
+            if (cajaLogica == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("CajaLogica con ID " + id + " no encontrada").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(cajaLogica).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener caja lógica: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Guarda o actualiza un registro (PUT).
-     */
     @PUT
-    @Consumes("application/json")
-    public CajaLogica put(CajaLogica registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(CajaLogica registro) {
         System.out.println("LLEGA AL SERVICIO PUT CAJA_LOGICA");
-        return cajaLogicaService.saveSingle(registro);
+        try {
+            CajaLogica resultado = cajaLogicaService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar caja lógica: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Guarda o actualiza un registro (POST).
-     */
     @POST
-    @Consumes("application/json")
-    public CajaLogica post(CajaLogica registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(CajaLogica registro) {
         System.out.println("LLEGA AL SERVICIO POST CAJA_LOGICA");
-        return cajaLogicaService.saveSingle(registro);
+        try {
+            CajaLogica resultado = cajaLogicaService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear caja lógica: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -107,10 +123,15 @@ public class CajaLogicaRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE CAJA_LOGICA");
-        CajaLogica elimina = new CajaLogica();
-        cajaLogicaDaoService.remove(elimina, id);
+        try {
+            CajaLogica elimina = new CajaLogica();
+            cajaLogicaDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar caja lógica: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

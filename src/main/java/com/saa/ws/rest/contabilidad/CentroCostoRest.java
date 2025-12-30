@@ -49,84 +49,98 @@ public class CentroCostoRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<CentroCosto> getAll() throws Throwable {
-        return centroCostoDaoService.selectAll(NombreEntidadesContabilidad.CENTRO_COSTO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<CentroCosto> lista = centroCostoDaoService.selectAll(NombreEntidadesContabilidad.CENTRO_COSTO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener centros de costo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-
     @GET
-    @Produces("application/json")
+    @Produces(MediaType.APPLICATION_JSON)
     @Path("/getId/{id}")
-    public CentroCosto getId(@PathParam("id") Long id) throws Throwable {
-        return centroCostoDaoService.selectById(id, NombreEntidadesContabilidad.CENTRO_COSTO);
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            CentroCosto centroCosto = centroCostoDaoService.selectById(id, NombreEntidadesContabilidad.CENTRO_COSTO);
+            if (centroCosto == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("CentroCosto con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(centroCosto).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener centro de costo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
     
     @GET
-    @Produces("application/json")
+    @Produces(MediaType.APPLICATION_JSON)
     @Path("/validaExistenAsientos/{idCentroCosto}")
-    public Long validaExistenAsientos(@PathParam("idCentroCosto") Long idCentroCosto) throws Throwable {
-        return centroCostoService.validaExistenAsientos(idCentroCosto);
+    public Response validaExistenAsientos(@PathParam("idCentroCosto") Long idCentroCosto) {
+        try {
+            Long resultado = centroCostoService.validaExistenAsientos(idCentroCosto);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al validar asientos: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * PUT method for updating or creating an instance of CentroCostoRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @PUT
-    @Consumes("application/json")
-    public CentroCosto put(CentroCosto registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT");
-        return centroCostoService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(CentroCosto registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - CENTRO_COSTO");
+        try {
+            CentroCosto resultado = centroCostoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar centro de costo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST method for updating or creating an instance of CentroCostoRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
-    @Consumes("application/json")
-    public CentroCosto post(CentroCosto registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO");
-        return centroCostoService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(CentroCosto registro) {
+        System.out.println("LLEGA AL SERVICIO POST - CENTRO_COSTO");
+        try {
+            CentroCosto resultado = centroCostoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear centro de costo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST method for updating or creating an instance of CentroCostoRest
-     *
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de CENTRO_COSTO");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(centroCostoService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(centroCostoService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
-    /**
-     * POST method for updating or creating an instance of CentroCostoRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
+
     @DELETE
-    @Consumes("application/json")
     @Path("/{id}")
-    public void delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE");
-        CentroCosto elimina = new CentroCosto();
-        centroCostoDaoService.remove(elimina, id);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - CENTRO_COSTO");
+        try {
+            CentroCosto elimina = new CentroCosto();
+            centroCostoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar centro de costo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

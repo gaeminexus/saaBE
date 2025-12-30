@@ -46,39 +46,55 @@ public class ChequeraRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<Chequera> getAll() throws Throwable {
-        return chequeraDaoService.selectAll(NombreEntidadesTesoreria.CHEQUERA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<Chequera> lista = chequeraDaoService.selectAll(NombreEntidadesTesoreria.CHEQUERA);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener chequeras: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Recupera un registro de Chequera por ID.
-     */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public Chequera getId(@PathParam("id") Long id) throws Throwable {
-        return chequeraDaoService.selectById(id, NombreEntidadesTesoreria.CHEQUERA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            Chequera chequera = chequeraDaoService.selectById(id, NombreEntidadesTesoreria.CHEQUERA);
+            if (chequera == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Chequera con ID " + id + " no encontrada").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(chequera).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener chequera: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Guarda o actualiza un registro (PUT).
-     */
     @PUT
-    @Consumes("application/json")
-    public Chequera put(Chequera registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(Chequera registro) {
         System.out.println("LLEGA AL SERVICIO PUT CHEQUERA");
-        return chequeraService.saveSingle(registro);
+        try {
+            Chequera resultado = chequeraService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar chequera: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Guarda o actualiza un registro (POST).
-     */
     @POST
-    @Consumes("application/json")
-    public Chequera post(Chequera registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(Chequera registro) {
         System.out.println("LLEGA AL SERVICIO POST CHEQUERA");
-        return chequeraService.saveSingle(registro);
+        try {
+            Chequera resultado = chequeraService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear chequera: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
     
     /**
@@ -106,10 +122,15 @@ public class ChequeraRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE CHEQUERA");
-        Chequera elimina = new Chequera();
-        chequeraDaoService.remove(elimina, id);
+        try {
+            Chequera elimina = new Chequera();
+            chequeraDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar chequera: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

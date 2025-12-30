@@ -39,30 +39,55 @@ public class BioProfileRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<BioProfile> getAll() throws Throwable {
-        return bioProfileDaoService.selectAll(NombreEntidadesCredito.BIO_PROFILE);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<BioProfile> lista = bioProfileDaoService.selectAll(NombreEntidadesCredito.BIO_PROFILE);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener bio profiles: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public BioProfile getId(@PathParam("id") Long id) throws Throwable {
-        return bioProfileDaoService.selectById(id, NombreEntidadesCredito.BIO_PROFILE);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            BioProfile bioProfile = bioProfileDaoService.selectById(id, NombreEntidadesCredito.BIO_PROFILE);
+            if (bioProfile == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("BioProfile con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(bioProfile).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener bio profile: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @PUT
-    @Consumes("application/json")
-    public BioProfile put(BioProfile registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(BioProfile registro) {
         System.out.println("LLEGA AL SERVICIO PUT - BIOPROFILE");
-        return bioProfileService.saveSingle(registro);
+        try {
+            BioProfile resultado = bioProfileService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar bio profile: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public BioProfile post(BioProfile registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(BioProfile registro) {
         System.out.println("LLEGA AL SERVICIO POST - BIOPROFILE");
-        return bioProfileService.saveSingle(registro);
+        try {
+            BioProfile resultado = bioProfileService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear bio profile: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
@@ -85,11 +110,16 @@ public class BioProfileRest {
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - BIOPROFILE");
-        BioProfile elimina = new BioProfile();
-        bioProfileDaoService.remove(elimina, id);
+        try {
+            BioProfile elimina = new BioProfile();
+            bioProfileDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar bio profile: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

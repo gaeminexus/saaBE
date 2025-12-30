@@ -39,30 +39,55 @@ public class DireccionTrabajoRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<DireccionTrabajo> getAll() throws Throwable {
-        return direccionTrabajoDaoService.selectAll(NombreEntidadesCredito.DIRECCION_TRABAJO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<DireccionTrabajo> lista = direccionTrabajoDaoService.selectAll(NombreEntidadesCredito.DIRECCION_TRABAJO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener direcciones de trabajo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public DireccionTrabajo getId(@PathParam("id") Long id) throws Throwable {
-        return direccionTrabajoDaoService.selectById(id, NombreEntidadesCredito.DIRECCION_TRABAJO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            DireccionTrabajo direccionTrabajo = direccionTrabajoDaoService.selectById(id, NombreEntidadesCredito.DIRECCION_TRABAJO);
+            if (direccionTrabajo == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("DireccionTrabajo con ID " + id + " no encontrada").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(direccionTrabajo).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener dirección de trabajo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @PUT
-    @Consumes("application/json")
-    public DireccionTrabajo put(DireccionTrabajo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(DireccionTrabajo registro) {
         System.out.println("LLEGA AL SERVICIO PUT - DIRECCION TRABAJO");
-        return direccionTrabajoService.saveSingle(registro);
+        try {
+            DireccionTrabajo resultado = direccionTrabajoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar dirección de trabajo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public DireccionTrabajo post(DireccionTrabajo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(DireccionTrabajo registro) {
         System.out.println("LLEGA AL SERVICIO POST - DIRECCION TRABAJO");
-        return direccionTrabajoService.saveSingle(registro);
+        try {
+            DireccionTrabajo resultado = direccionTrabajoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear dirección de trabajo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
@@ -87,10 +112,15 @@ public class DireccionTrabajoRest {
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - DIRECCION TRABAJO");
-        DireccionTrabajo elimina = new DireccionTrabajo();
-        direccionTrabajoDaoService.remove(elimina, id);
+        try {
+            DireccionTrabajo elimina = new DireccionTrabajo();
+            direccionTrabajoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar dirección de trabajo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

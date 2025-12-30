@@ -49,16 +49,29 @@ public class PlanCuentaRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<PlanCuenta> getAll() throws Throwable {
-        return planCuentaDaoService.selectAll(NombreEntidadesContabilidad.PLAN_CUENTA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<PlanCuenta> lista = planCuentaDaoService.selectAll(NombreEntidadesContabilidad.PLAN_CUENTA);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener plan de cuentas: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
-    @Produces("application/json")
     @Path("/getId/{id}")
-    public PlanCuenta getId(@PathParam("id") Long id) throws Throwable {
-        return planCuentaDaoService.selectById(id, NombreEntidadesContabilidad.PLAN_CUENTA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            PlanCuenta planCuenta = planCuentaDaoService.selectById(id, NombreEntidadesContabilidad.PLAN_CUENTA);
+            if (planCuenta == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Plan de cuenta con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(planCuenta).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener plan de cuenta: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
     
 
@@ -69,10 +82,16 @@ public class PlanCuentaRest {
      * @return an HTTP response with content of the updated or created resource.
      */
     @PUT
-    @Consumes("application/json")
-    public PlanCuenta put(PlanCuenta registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT");
-        return planCuentaService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(PlanCuenta registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - PLAN_CUENTA");
+        try {
+            PlanCuenta resultado = planCuentaService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar plan de cuenta: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -82,10 +101,16 @@ public class PlanCuentaRest {
      * @return an HTTP response with content of the updated or created resource.
      */
     @POST
-    @Consumes("application/json")
-    public PlanCuenta post(PlanCuenta registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO");
-        return planCuentaService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(PlanCuenta registro) {
+        System.out.println("LLEGA AL SERVICIO POST - PLAN_CUENTA");
+        try {
+            PlanCuenta resultado = planCuentaService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear plan de cuenta: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -96,16 +121,19 @@ public class PlanCuentaRest {
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de PLAN_CUENTA");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(planCuentaService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(planCuentaService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
     /**
@@ -115,12 +143,17 @@ public class PlanCuentaRest {
      * @return an HTTP response with content of the updated or created resource.
      */
     @DELETE
-    @Consumes("application/json")
     @Path("/{id}")
-    public void delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE");
-        PlanCuenta elimina = new PlanCuenta();
-        planCuentaDaoService.remove(elimina, id);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - PLAN_CUENTA");
+        try {
+            PlanCuenta elimina = new PlanCuenta();
+            planCuentaDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar plan de cuenta: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

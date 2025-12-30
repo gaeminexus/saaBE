@@ -44,56 +44,104 @@ public class ProductoRest {
     /**
      * Obtiene todos los registros de Producto.
      * 
-     * @return Lista de Producto
-     * @throws Throwable
+     * @return Response con lista de Producto
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<Producto> getAll() throws Throwable {
-        return productoDaoService.selectAll(NombreEntidadesCredito.PRODUCTO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<Producto> productos = productoDaoService.selectAll(NombreEntidadesCredito.PRODUCTO);
+            return Response.status(Response.Status.OK)
+                    .entity(productos)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener productos: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
     
     /**
      * Obtiene un registro de Producto por su ID.
      * 
      * @param id Identificador del registro
-     * @return Objeto Producto
-     * @throws Throwable
+     * @return Response con objeto Producto
      */
     @GET
-    @Produces("application/json")
     @Path("/getId/{id}")
-    public Producto getId(@PathParam("id") Long id) throws Throwable {
-        return productoDaoService.selectById(id, NombreEntidadesCredito.PRODUCTO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            Producto producto = productoDaoService.selectById(id, NombreEntidadesCredito.PRODUCTO);
+            if (producto == null) {
+                return Response.status(Response.Status.NOT_FOUND)
+                        .entity("Producto con ID " + id + " no encontrado")
+                        .type(MediaType.APPLICATION_JSON)
+                        .build();
+            }
+            return Response.status(Response.Status.OK)
+                    .entity(producto)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener producto: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
     
     /**
      * Crea o actualiza un registro de Producto (PUT).
      * 
      * @param registro Objeto Producto
-     * @return Registro actualizado o creado
-     * @throws Throwable
+     * @return Response con registro actualizado o creado
      */
     @PUT
-    @Consumes("application/json")
-    public Producto put(Producto registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(Producto registro) {
         System.out.println("LLEGA AL SERVICIO PUT DE Producto");
-        return productoService.saveSingle(registro);
+        try {
+            Producto resultado = productoService.saveSingle(registro);
+            return Response.status(Response.Status.OK)
+                    .entity(resultado)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al actualizar producto: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
     
     /**
      * Crea o actualiza un registro de Producto (POST).
      * 
      * @param registro Objeto Producto
-     * @return Registro creado o actualizado
-     * @throws Throwable
+     * @return Response con registro creado o actualizado
      */
     @POST
-    @Consumes("application/json")
-    public Producto post(Producto registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(Producto registro) {
         System.out.println("LLEGA AL SERVICIO POST DE Producto");
-        return productoService.saveSingle(registro);
+        try {
+            Producto resultado = productoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED)
+                    .entity(resultado)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al crear producto: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
     
     @POST
@@ -124,14 +172,23 @@ public class ProductoRest {
      * Elimina un registro de Producto por ID.
      * 
      * @param id Identificador del registro
-     * @throws Throwable
+     * @return Response con resultado de la eliminación
      */
     @DELETE
-    @Consumes("application/json")
     @Path("/{id}")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE DE Producto");
-        Producto elimina = new Producto();
-        productoDaoService.remove(elimina, id);
+        try {
+            Producto elimina = new Producto();
+            productoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al eliminar producto: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
 }

@@ -17,6 +17,8 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 
 @Path("rprt")
@@ -46,9 +48,14 @@ public class ReporteContableRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<ReporteContable> getAll() throws Throwable {
-        return reporteContableDaoService.selectAll(NombreEntidadesContabilidad.REPORTE_CONTABLE);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<ReporteContable> lista = reporteContableDaoService.selectAll(NombreEntidadesContabilidad.REPORTE_CONTABLE);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener reportes contables: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     // Ya no usamos esta parte porque no hacemos un orden descendente
@@ -80,10 +87,18 @@ public class ReporteContableRest {
 //    }
 
     @GET
-    @Produces("application/json")
     @Path("/getId/{id}")
-    public ReporteContable getId(@PathParam("id") Long id) throws Throwable {
-        return reporteContableDaoService.selectById(id, NombreEntidadesContabilidad.REPORTE_CONTABLE);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            ReporteContable reporte = reporteContableDaoService.selectById(id, NombreEntidadesContabilidad.REPORTE_CONTABLE);
+            if (reporte == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Reporte contable con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(reporte).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener reporte contable: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -93,10 +108,29 @@ public class ReporteContableRest {
      * @return an HTTP response with content of the updated or created resource.
      */
     @PUT
-    @Consumes("application/json")
-    public ReporteContable put(ReporteContable registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT");
-        return reporteContableService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(ReporteContable registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - REPORTE_CONTABLE");
+        try {
+            ReporteContable resultado = reporteContableService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar reporte contable: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    @POST
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(ReporteContable registro) {
+        System.out.println("LLEGA AL SERVICIO POST - REPORTE_CONTABLE");
+        try {
+            ReporteContable resultado = reporteContableService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear reporte contable: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -106,39 +140,31 @@ public class ReporteContableRest {
      * @return an HTTP response with content of the updated or created resource.
      */
     @POST
-    @Consumes("application/json")
-    public ReporteContable post(ReporteContable registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO");
-        return reporteContableService.saveSingle(registro);
-    }
-
-    /**
-     * POST method for updating or creating an instance of ReporteContableRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @Path("criteria")
-    @POST
-    @Consumes("application/json")
-    public List<ReporteContable> selectByCriteria(Long test) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(Long test) {
         System.out.println("LLEGA AL SERVICIO DE SELECT BY CRITERIA: " + test);
-        return reporteContableDaoService.selectAll(NombreEntidadesContabilidad.REPORTE_CONTABLE);
+        try {
+            List<ReporteContable> lista = reporteContableDaoService.selectAll(NombreEntidadesContabilidad.REPORTE_CONTABLE);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error en criteria: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST method for updating or creating an instance of ReporteContableRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @DELETE
-    @Consumes("application/json")
     @Path("/{id}")
-    public void delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE");
-        ReporteContable elimina = new ReporteContable();
-        reporteContableDaoService.remove(elimina, id);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - REPORTE_CONTABLE");
+        try {
+            ReporteContable elimina = new ReporteContable();
+            reporteContableDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar reporte contable: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

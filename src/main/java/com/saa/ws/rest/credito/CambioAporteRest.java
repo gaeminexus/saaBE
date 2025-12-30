@@ -38,30 +38,55 @@ public class CambioAporteRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<CambioAporte> getAll() throws Throwable {
-        return cambioAporteDaoService.selectAll(NombreEntidadesCredito.CAMBIO_APORTE);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<CambioAporte> lista = cambioAporteDaoService.selectAll(NombreEntidadesCredito.CAMBIO_APORTE);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cambios de aporte: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public CambioAporte getId(@PathParam("id") Long id) throws Throwable {
-        return cambioAporteDaoService.selectById(id, NombreEntidadesCredito.CAMBIO_APORTE);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            CambioAporte cambio = cambioAporteDaoService.selectById(id, NombreEntidadesCredito.CAMBIO_APORTE);
+            if (cambio == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("CambioAporte con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(cambio).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cambio de aporte: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @PUT
-    @Consumes("application/json")
-    public CambioAporte put(CambioAporte registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(CambioAporte registro) {
         System.out.println("LLEGA AL SERVICIO PUT - CAMBIO APORTE");
-        return cambioAporteService.saveSingle(registro);
+        try {
+            CambioAporte resultado = cambioAporteService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar cambio de aporte: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public CambioAporte post(CambioAporte registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(CambioAporte registro) {
         System.out.println("LLEGA AL SERVICIO POST - CAMBIO APORTE");
-        return cambioAporteService.saveSingle(registro);
+        try {
+            CambioAporte resultado = cambioAporteService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear cambio de aporte: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
@@ -84,11 +109,16 @@ public class CambioAporteRest {
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - CAMBIO APORTE");
-        CambioAporte elimina = new CambioAporte();
-        cambioAporteDaoService.remove(elimina, id);
+        try {
+            CambioAporte elimina = new CambioAporte();
+            cambioAporteDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar cambio de aporte: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

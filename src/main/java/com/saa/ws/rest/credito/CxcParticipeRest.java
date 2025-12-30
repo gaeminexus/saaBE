@@ -38,30 +38,55 @@ public class CxcParticipeRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<CxcParticipe> getAll() throws Throwable {
-        return cxcParticipeDaoService.selectAll(NombreEntidadesCredito.CXC_PARTICIPE);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<CxcParticipe> lista = cxcParticipeDaoService.selectAll(NombreEntidadesCredito.CXC_PARTICIPE);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener CxcParticipe: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public CxcParticipe getId(@PathParam("id") Long id) throws Throwable {
-        return cxcParticipeDaoService.selectById(id, NombreEntidadesCredito.CXC_PARTICIPE);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            CxcParticipe cxc = cxcParticipeDaoService.selectById(id, NombreEntidadesCredito.CXC_PARTICIPE);
+            if (cxc == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("CxcParticipe con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(cxc).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener CxcParticipe: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @PUT
-    @Consumes("application/json")
-    public CxcParticipe put(CxcParticipe registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(CxcParticipe registro) {
         System.out.println("LLEGA AL SERVICIO PUT - CXCP");
-        return cxcParticipeService.saveSingle(registro);
+        try {
+            CxcParticipe resultado = cxcParticipeService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar CxcParticipe: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public CxcParticipe post(CxcParticipe registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(CxcParticipe registro) {
         System.out.println("LLEGA AL SERVICIO POST - CXCP");
-        return cxcParticipeService.saveSingle(registro);
+        try {
+            CxcParticipe resultado = cxcParticipeService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear CxcParticipe: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
@@ -84,11 +109,16 @@ public class CxcParticipeRest {
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - CXCP");
-        CxcParticipe elimina = new CxcParticipe();
-        cxcParticipeDaoService.remove(elimina, id);
+        try {
+            CxcParticipe elimina = new CxcParticipe();
+            cxcParticipeDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar CxcParticipe: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

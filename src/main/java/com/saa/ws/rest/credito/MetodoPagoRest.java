@@ -39,30 +39,55 @@ public class MetodoPagoRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<MetodoPago> getAll() throws Throwable {
-        return metodoPagoDaoService.selectAll(NombreEntidadesCredito.METODO_PAGO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<MetodoPago> lista = metodoPagoDaoService.selectAll(NombreEntidadesCredito.METODO_PAGO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener métodos de pago: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public MetodoPago getId(@PathParam("id") Long id) throws Throwable {
-        return metodoPagoDaoService.selectById(id, NombreEntidadesCredito.METODO_PAGO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            MetodoPago metodo = metodoPagoDaoService.selectById(id, NombreEntidadesCredito.METODO_PAGO);
+            if (metodo == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("MetodoPago con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(metodo).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener método de pago: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @PUT
-    @Consumes("application/json")
-    public MetodoPago put(MetodoPago registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(MetodoPago registro) {
         System.out.println("LLEGA AL SERVICIO PUT");
-        return metodoPagoService.saveSingle(registro);
+        try {
+            MetodoPago resultado = metodoPagoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar método de pago: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public MetodoPago post(MetodoPago registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(MetodoPago registro) {
         System.out.println("LLEGA AL SERVICIO");
-        return metodoPagoService.saveSingle(registro);
+        try {
+            MetodoPago resultado = metodoPagoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear método de pago: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
@@ -84,10 +109,15 @@ public class MetodoPagoRest {
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE");
-        MetodoPago elimina = new MetodoPago();
-        metodoPagoDaoService.remove(elimina, id);
+        try {
+            MetodoPago elimina = new MetodoPago();
+            metodoPagoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar método de pago: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

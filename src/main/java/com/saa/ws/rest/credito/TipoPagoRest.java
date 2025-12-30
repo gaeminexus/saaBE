@@ -44,38 +44,54 @@ public class TipoPagoRest {
     @GET
     @Path("/getAll")
     @Produces(MediaType.APPLICATION_JSON)
-    public List<TipoPago> getAll() throws Throwable {
-        return tipoPagoDaoService.selectAll(NombreEntidadesCredito.TIPO_PAGO);
+    public Response getAll() {
+        try {
+            List<TipoPago> lista = tipoPagoDaoService.selectAll(NombreEntidadesCredito.TIPO_PAGO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener tipos de pago: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * GET - Obtener por ID
-     */
     @GET
     @Path("/getId/{id}")
     @Produces(MediaType.APPLICATION_JSON)
-    public TipoPago getId(@PathParam("id") Long id) throws Throwable {
-        return tipoPagoDaoService.selectById(id, NombreEntidadesCredito.TIPO_PAGO);
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            TipoPago tipo = tipoPagoDaoService.selectById(id, NombreEntidadesCredito.TIPO_PAGO);
+            if (tipo == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("TipoPago con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(tipo).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener tipo de pago: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * PUT - Actualizar o crear registro
-     */
     @PUT
     @Consumes(MediaType.APPLICATION_JSON)
-    public TipoPago put(TipoPago registro) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(TipoPago registro) {
         System.out.println("LLEGA AL SERVICIO PUT");
-        return tipoPagoService.saveSingle(registro);
+        try {
+            TipoPago resultado = tipoPagoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar tipo de pago: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST - Crear registro
-     */
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
-    public TipoPago post(TipoPago registro) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(TipoPago registro) {
         System.out.println("LLEGA AL SERVICIO");
-        return tipoPagoService.saveSingle(registro);
+        try {
+            TipoPago resultado = tipoPagoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear tipo de pago: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -106,10 +122,15 @@ public class TipoPagoRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes(MediaType.APPLICATION_JSON)
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE");
-        TipoPago elimina = new TipoPago();
-        tipoPagoDaoService.remove(elimina, id);
+        try {
+            TipoPago elimina = new TipoPago();
+            tipoPagoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar tipo de pago: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

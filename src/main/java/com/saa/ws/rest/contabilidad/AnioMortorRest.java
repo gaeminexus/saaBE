@@ -49,103 +49,100 @@ public class AnioMortorRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<AnioMotor> getAll() throws Throwable {
-        return anioMotorDaoService.selectAll(NombreEntidadesContabilidad.ANIO_MOTOR);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<AnioMotor> lista = anioMotorDaoService.selectAll(NombreEntidadesContabilidad.ANIO_MOTOR);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener años motor: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Retrieves representation of an instance of AnioMortorRest
-     * 
-     * @return an instance of String
-     * @throws Throwable
-     */
     @GET
-    @Produces("application/json")
+    @Produces(MediaType.APPLICATION_JSON)
     @Path("/getDesc")
-    public List<AnioMotor> getDesc() throws Throwable {
-        return anioMotorDaoService.selectOrderDesc();
+    public Response getDesc() {
+        try {
+            List<AnioMotor> lista = anioMotorDaoService.selectOrderDesc();
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener años motor: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Retrieves representation of an instance of AnioMortorRest
-     * 
-     * @return an instance of String
-     * @throws Throwable
-     */
-    @GET
-    @Produces("application/json")
-    @Path("/getTest")
-    public Response getTest() throws Throwable {
-        return Response.status(200).entity(anioMotorDaoService.selectOrderDesc()).build();
-    }
+    // ...existing code...
 
     @GET
-    @Produces("application/json")
+    @Produces(MediaType.APPLICATION_JSON)
     @Path("/getId/{id}")
-    public AnioMotor getId(@PathParam("id") Long id) throws Throwable {
-        return anioMotorDaoService.selectById(id, NombreEntidadesContabilidad.ANIO_MOTOR);
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            AnioMotor anioMotor = anioMotorDaoService.selectById(id, NombreEntidadesContabilidad.ANIO_MOTOR);
+            if (anioMotor == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("AnioMotor con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(anioMotor).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener año motor: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * PUT method for updating or creating an instance of AnioMortorRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @PUT
-    @Consumes("application/json")
-    public AnioMotor put(AnioMotor registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT");
-        return anioMotorService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(AnioMotor registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - ANIO_MOTOR");
+        try {
+            AnioMotor resultado = anioMotorService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar año motor: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST method for updating or creating an instance of AnioMortorRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
-    @Consumes("application/json")
-    public AnioMotor post(AnioMotor registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO");
-        return anioMotorService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(AnioMotor registro) {
+        System.out.println("LLEGA AL SERVICIO POST - ANIO_MOTOR");
+        try {
+            AnioMotor resultado = anioMotorService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear año motor: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST method for updating or creating an instance of AnioMotorRest
-     *
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de ANIO_MOTOR");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(anioMotorService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(anioMotorService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
-    /**
-     * POST method for updating or creating an instance of AnioMortorRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @DELETE
-    @Consumes("application/json")
     @Path("/{id}")
-    public void delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE");
-        AnioMotor elimina = new AnioMotor();
-        anioMotorDaoService.remove(elimina, id);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - ANIO_MOTOR");
+        try {
+            AnioMotor elimina = new AnioMotor();
+            anioMotorDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar año motor: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

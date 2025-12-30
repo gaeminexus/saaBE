@@ -49,42 +49,55 @@ public class EstadoCivilRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<EstadoCivil> getAll() throws Throwable {
-        return estadoCivilDaoService.selectAll(NombreEntidadesCredito.ESTADO_CIVIL);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<EstadoCivil> lista = estadoCivilDaoService.selectAll(NombreEntidadesCredito.ESTADO_CIVIL);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener estados civiles: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
     
     @GET
-    @Produces("application/json")
+    @Produces(MediaType.APPLICATION_JSON)
     @Path("/getId/{id}")
-    public EstadoCivil getId(@PathParam("id") Long id) throws Throwable {
-        return estadoCivilDaoService.selectById(id, NombreEntidadesCredito.ESTADO_CIVIL);
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            EstadoCivil estado = estadoCivilDaoService.selectById(id, NombreEntidadesCredito.ESTADO_CIVIL);
+            if (estado == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("EstadoCivil con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(estado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener estado civil: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
     
-    /**
-     * PUT method for updating or creating an instance of EstadoCivilRest
-     * 
-     * @param registro representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @PUT
-    @Consumes("application/json")
-    public EstadoCivil put(EstadoCivil registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(EstadoCivil registro) {
         System.out.println("LLEGA AL SERVICIO PUT DE EstadoCivil");
-        return estadoCivilService.saveSingle(registro);
+        try {
+            EstadoCivil resultado = estadoCivilService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar estado civil: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
     
-    /**
-     * POST method for updating or creating an instance of EstadoCivilRest
-     * 
-     * @param registro representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
-    @Consumes("application/json")
-    public EstadoCivil post(EstadoCivil registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(EstadoCivil registro) {
         System.out.println("LLEGA AL SERVICIO POST DE EstadoCivil");
-        return estadoCivilService.saveSingle(registro);
+        try {
+            EstadoCivil resultado = estadoCivilService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear estado civil: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
     
     @POST

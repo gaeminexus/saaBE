@@ -17,6 +17,8 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 
 @Path("dtmc")
@@ -31,87 +33,88 @@ public class DesgloseMayorizacionCCRest {
     @Context
     private UriInfo context;
 
-    /**
-     * Default constructor.
-     */
     public DesgloseMayorizacionCCRest() {
-        // TODO Auto-generated constructor stub
     }
 
-    /**
-     * Retrieves representation of an instance of DesgloseMayorizacionCCRest
-     * 
-     * @return an instance of String
-     * @throws Throwable
-     */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<DesgloseMayorizacionCC> getAll() throws Throwable {
-        return desgloseMayorizacionCCDaoService.selectAll(NombreEntidadesContabilidad.DESGLOSE_MAYORIZACION_CC);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<DesgloseMayorizacionCC> lista = desgloseMayorizacionCCDaoService.selectAll(NombreEntidadesContabilidad.DESGLOSE_MAYORIZACION_CC);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener desgloses de mayorización CC: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
-
 
     @GET
-    @Produces("application/json")
     @Path("/getId/{id}")
-    public DesgloseMayorizacionCC getId(@PathParam("id") Long id) throws Throwable {
-        return desgloseMayorizacionCCDaoService.selectById(id, NombreEntidadesContabilidad.DESGLOSE_MAYORIZACION_CC);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            DesgloseMayorizacionCC desglose = desgloseMayorizacionCCDaoService.selectById(id, NombreEntidadesContabilidad.DESGLOSE_MAYORIZACION_CC);
+            if (desglose == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Desglose de mayorización CC con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(desglose).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener desglose de mayorización CC: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * PUT method for updating or creating an instance of DesgloseMayorizacionCCRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @PUT
-    @Consumes("application/json")
-    public DesgloseMayorizacionCC put(DesgloseMayorizacionCC registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT");
-        return desgloseMayorizacionCCService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(DesgloseMayorizacionCC registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - DESGLOSE_MAYORIZACION_CC");
+        try {
+            DesgloseMayorizacionCC resultado = desgloseMayorizacionCCService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar desglose de mayorización CC: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST method for updating or creating an instance of DesgloseMayorizacionCCRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
-    @Consumes("application/json")
-    public DesgloseMayorizacionCC post(DesgloseMayorizacionCC registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO");
-        return desgloseMayorizacionCCService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(DesgloseMayorizacionCC registro) {
+        System.out.println("LLEGA AL SERVICIO POST - DESGLOSE_MAYORIZACION_CC");
+        try {
+            DesgloseMayorizacionCC resultado = desgloseMayorizacionCCService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear desglose de mayorización CC: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST method for updating or creating an instance of DesgloseMayorizacionCCRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
+    @POST
     @Path("criteria")
-    @POST
-    @Consumes("application/json")
-    public List<DesgloseMayorizacionCC> selectByCriteria(Long test) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(Long test) {
         System.out.println("LLEGA AL SERVICIO DE SELECT BY CRITERIA: " + test);
-        return desgloseMayorizacionCCDaoService.selectAll(NombreEntidadesContabilidad.DESGLOSE_MAYORIZACION_CC);
+        try {
+            List<DesgloseMayorizacionCC> lista = desgloseMayorizacionCCDaoService.selectAll(NombreEntidadesContabilidad.DESGLOSE_MAYORIZACION_CC);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error en criteria: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST method for updating or creating an instance of DesgloseMayorizacionCCRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @DELETE
-    @Consumes("application/json")
     @Path("/{id}")
-    public void delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE");
-        DesgloseMayorizacionCC elimina = new DesgloseMayorizacionCC();
-        desgloseMayorizacionCCDaoService.remove(elimina, id);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - DESGLOSE_MAYORIZACION_CC");
+        try {
+            DesgloseMayorizacionCC elimina = new DesgloseMayorizacionCC();
+            desgloseMayorizacionCCDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar desglose de mayorización CC: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

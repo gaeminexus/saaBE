@@ -44,38 +44,54 @@ public class TipoParticipeRest {
     @GET
     @Path("/getAll")
     @Produces(MediaType.APPLICATION_JSON)
-    public List<TipoParticipe> getAll() throws Throwable {
-        return tipoParticipeDaoService.selectAll(NombreEntidadesCredito.TIPO_PARTICIPE);
+    public Response getAll() {
+        try {
+            List<TipoParticipe> lista = tipoParticipeDaoService.selectAll(NombreEntidadesCredito.TIPO_PARTICIPE);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener tipos de partícipe: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * GET - Obtener por ID
-     */
     @GET
     @Path("/getId/{id}")
     @Produces(MediaType.APPLICATION_JSON)
-    public TipoParticipe getId(@PathParam("id") Long id) throws Throwable {
-        return tipoParticipeDaoService.selectById(id, NombreEntidadesCredito.TIPO_PARTICIPE);
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            TipoParticipe tipo = tipoParticipeDaoService.selectById(id, NombreEntidadesCredito.TIPO_PARTICIPE);
+            if (tipo == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("TipoParticipe con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(tipo).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener tipo de partícipe: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * PUT - Actualizar o crear registro
-     */
     @PUT
     @Consumes(MediaType.APPLICATION_JSON)
-    public TipoParticipe put(TipoParticipe registro) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(TipoParticipe registro) {
         System.out.println("LLEGA AL SERVICIO PUT");
-        return tipoParticipeService.saveSingle(registro);
+        try {
+            TipoParticipe resultado = tipoParticipeService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar tipo de partícipe: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST - Crear registro
-     */
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
-    public TipoParticipe post(TipoParticipe registro) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(TipoParticipe registro) {
         System.out.println("LLEGA AL SERVICIO");
-        return tipoParticipeService.saveSingle(registro);
+        try {
+            TipoParticipe resultado = tipoParticipeService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear tipo de partícipe: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -106,10 +122,15 @@ public class TipoParticipeRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes(MediaType.APPLICATION_JSON)
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE");
-        TipoParticipe elimina = new TipoParticipe();
-        tipoParticipeDaoService.remove(elimina, id);
+        try {
+            TipoParticipe elimina = new TipoParticipe();
+            tipoParticipeDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar tipo de partícipe: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

@@ -38,30 +38,55 @@ public class RequisitosPrestamoRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<RequisitosPrestamo> getAll() throws Throwable {
-        return requisitosPrestamoDaoService.selectAll(NombreEntidadesCredito.REQUISITOS_PRESTAMO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<RequisitosPrestamo> lista = requisitosPrestamoDaoService.selectAll(NombreEntidadesCredito.REQUISITOS_PRESTAMO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener requisitos de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public RequisitosPrestamo getId(@PathParam("id") Long id) throws Throwable {
-        return requisitosPrestamoDaoService.selectById(id, NombreEntidadesCredito.REQUISITOS_PRESTAMO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            RequisitosPrestamo requisito = requisitosPrestamoDaoService.selectById(id, NombreEntidadesCredito.REQUISITOS_PRESTAMO);
+            if (requisito == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("RequisitosPrestamo con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(requisito).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener requisito de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @PUT
-    @Consumes("application/json")
-    public RequisitosPrestamo put(RequisitosPrestamo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(RequisitosPrestamo registro) {
         System.out.println("LLEGA AL SERVICIO PUT - RQPR");
-        return requisitosPrestamoService.saveSingle(registro);
+        try {
+            RequisitosPrestamo resultado = requisitosPrestamoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar requisito de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public RequisitosPrestamo post(RequisitosPrestamo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(RequisitosPrestamo registro) {
         System.out.println("LLEGA AL SERVICIO POST - RQPR");
-        return requisitosPrestamoService.saveSingle(registro);
+        try {
+            RequisitosPrestamo resultado = requisitosPrestamoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear requisito de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
@@ -86,10 +111,15 @@ public class RequisitosPrestamoRest {
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - RQPR");
-        RequisitosPrestamo elimina = new RequisitosPrestamo();
-        requisitosPrestamoDaoService.remove(elimina, id);
+        try {
+            RequisitosPrestamo elimina = new RequisitosPrestamo();
+            requisitosPrestamoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar requisito de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

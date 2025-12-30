@@ -39,30 +39,55 @@ public class ComentarioRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<Comentario> getAll() throws Throwable {
-        return comentarioDaoService.selectAll(NombreEntidadesCredito.COMENTARIO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<Comentario> lista = comentarioDaoService.selectAll(NombreEntidadesCredito.COMENTARIO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener comentarios: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public Comentario getId(@PathParam("id") Long id) throws Throwable {
-        return comentarioDaoService.selectById(id, NombreEntidadesCredito.COMENTARIO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            Comentario comentario = comentarioDaoService.selectById(id, NombreEntidadesCredito.COMENTARIO);
+            if (comentario == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Comentario con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(comentario).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener comentario: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @PUT
-    @Consumes("application/json")
-    public Comentario put(Comentario registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(Comentario registro) {
         System.out.println("LLEGA AL SERVICIO PUT - COMENTARIO");
-        return comentarioService.saveSingle(registro);
+        try {
+            Comentario resultado = comentarioService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar comentario: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public Comentario post(Comentario registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(Comentario registro) {
         System.out.println("LLEGA AL SERVICIO POST - COMENTARIO");
-        return comentarioService.saveSingle(registro);
+        try {
+            Comentario resultado = comentarioService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear comentario: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
@@ -87,10 +112,15 @@ public class ComentarioRest {
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - COMENTARIO");
-        Comentario elimina = new Comentario();
-        comentarioDaoService.remove(elimina, id);
+        try {
+            Comentario elimina = new Comentario();
+            comentarioDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar comentario: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

@@ -38,30 +38,55 @@ public class ParticipeXCargaArchivoRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<ParticipeXCargaArchivo> getAll() throws Throwable {
-        return participeXCargaArchivoDaoService.selectAll(NombreEntidadesCredito.PARTICIPE_X_CARGA_ARCHIVO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<ParticipeXCargaArchivo> lista = participeXCargaArchivoDaoService.selectAll(NombreEntidadesCredito.PARTICIPE_X_CARGA_ARCHIVO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener partícipes por carga: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public ParticipeXCargaArchivo getId(@PathParam("id") Long id) throws Throwable {
-        return participeXCargaArchivoDaoService.selectById(id, NombreEntidadesCredito.PARTICIPE_X_CARGA_ARCHIVO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            ParticipeXCargaArchivo participe = participeXCargaArchivoDaoService.selectById(id, NombreEntidadesCredito.PARTICIPE_X_CARGA_ARCHIVO);
+            if (participe == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("ParticipeXCargaArchivo con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(participe).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener partícipe por carga: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @PUT
-    @Consumes("application/json")
-    public ParticipeXCargaArchivo put(ParticipeXCargaArchivo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(ParticipeXCargaArchivo registro) {
         System.out.println("LLEGA AL SERVICIO PUT - PARTICIPEXCARGAARCHIVO");
-        return participeXCargaArchivoService.saveSingle(registro);
+        try {
+            ParticipeXCargaArchivo resultado = participeXCargaArchivoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar partícipe por carga: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public ParticipeXCargaArchivo post(ParticipeXCargaArchivo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(ParticipeXCargaArchivo registro) {
         System.out.println("LLEGA AL SERVICIO POST - PARTICIPEXCARGAARCHIVO");
-        return participeXCargaArchivoService.saveSingle(registro);
+        try {
+            ParticipeXCargaArchivo resultado = participeXCargaArchivoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear partícipe por carga: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
@@ -80,10 +105,15 @@ public class ParticipeXCargaArchivoRest {
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - PARTICIPEXCARGAARCHIVO");
-        ParticipeXCargaArchivo elimina = new ParticipeXCargaArchivo();
-        participeXCargaArchivoDaoService.remove(elimina, id);
+        try {
+            ParticipeXCargaArchivo elimina = new ParticipeXCargaArchivo();
+            participeXCargaArchivoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar partícipe por carga: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

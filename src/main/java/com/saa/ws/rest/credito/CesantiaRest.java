@@ -38,30 +38,55 @@ public class CesantiaRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<Cesantia> getAll() throws Throwable {
-        return cesantiaDaoService.selectAll(NombreEntidadesCredito.CESANTIA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<Cesantia> lista = cesantiaDaoService.selectAll(NombreEntidadesCredito.CESANTIA);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cesantías: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public Cesantia getId(@PathParam("id") Long id) throws Throwable {
-        return cesantiaDaoService.selectById(id, NombreEntidadesCredito.CESANTIA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            Cesantia cesantia = cesantiaDaoService.selectById(id, NombreEntidadesCredito.CESANTIA);
+            if (cesantia == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Cesantia con ID " + id + " no encontrada").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(cesantia).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cesantía: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @PUT
-    @Consumes("application/json")
-    public Cesantia put(Cesantia registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(Cesantia registro) {
         System.out.println("LLEGA AL SERVICIO PUT - CESANTIA");
-        return cesantiaService.saveSingle(registro);
+        try {
+            Cesantia resultado = cesantiaService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar cesantía: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public Cesantia post(Cesantia registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(Cesantia registro) {
         System.out.println("LLEGA AL SERVICIO POST - CESANTIA");
-        return cesantiaService.saveSingle(registro);
+        try {
+            Cesantia resultado = cesantiaService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear cesantía: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
@@ -84,11 +109,16 @@ public class CesantiaRest {
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - CESANTIA");
-        Cesantia elimina = new Cesantia();
-        cesantiaDaoService.remove(elimina, id);
+        try {
+            Cesantia elimina = new Cesantia();
+            cesantiaDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar cesantía: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

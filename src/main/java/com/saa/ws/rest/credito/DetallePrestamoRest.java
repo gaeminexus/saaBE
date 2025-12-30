@@ -49,48 +49,55 @@ public class DetallePrestamoRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<DetallePrestamo> getAll() throws Throwable {
-        return detallePrestamoDaoService.selectAll(NombreEntidadesCredito.DETALLE_PRESTAMO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<DetallePrestamo> lista = detallePrestamoDaoService.selectAll(NombreEntidadesCredito.DETALLE_PRESTAMO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener detalles de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Retrieves representation of an instance of DetallePrestamoRest
-     * 
-     * @return an instance of String
-     * @throws Throwable
-     */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public DetallePrestamo getId(@PathParam("id") Long id) throws Throwable {
-        return detallePrestamoDaoService.selectById(id, NombreEntidadesCredito.DETALLE_PRESTAMO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            DetallePrestamo detalle = detallePrestamoDaoService.selectById(id, NombreEntidadesCredito.DETALLE_PRESTAMO);
+            if (detalle == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("DetallePrestamo con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(detalle).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener detalle de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * PUT method for updating or creating an instance of DetallePrestamoRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @PUT
-    @Consumes("application/json")
-    public DetallePrestamo put(DetallePrestamo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(DetallePrestamo registro) {
         System.out.println("LLEGA AL SERVICIO PUT");
-        return detallePrestamoService.saveSingle(registro);
+        try {
+            DetallePrestamo resultado = detallePrestamoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar detalle de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST method for updating or creating an instance of DetallePrestamoRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
-    @Consumes("application/json")
-    public DetallePrestamo post(DetallePrestamo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(DetallePrestamo registro) {
         System.out.println("LLEGA AL SERVICIO");
-        return detallePrestamoService.saveSingle(registro);
+        try {
+            DetallePrestamo resultado = detallePrestamoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear detalle de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -121,11 +128,16 @@ public class DetallePrestamoRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE");
-        DetallePrestamo elimina = new DetallePrestamo();
-        detallePrestamoDaoService.remove(elimina, id);
+        try {
+            DetallePrestamo elimina = new DetallePrestamo();
+            detallePrestamoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar detalle de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

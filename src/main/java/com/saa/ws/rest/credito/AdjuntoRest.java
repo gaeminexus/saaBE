@@ -39,31 +39,56 @@ public class AdjuntoRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<Adjunto> getAll() throws Throwable {
-        return adjuntoDaoService.selectAll(NombreEntidadesCredito.ADJUNTO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<Adjunto> lista = adjuntoDaoService.selectAll(NombreEntidadesCredito.ADJUNTO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener adjuntos: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public Adjunto getId(@PathParam("id") Long id) throws Throwable {
-        return adjuntoDaoService.selectById(id, NombreEntidadesCredito.ADJUNTO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            Adjunto adjunto = adjuntoDaoService.selectById(id, NombreEntidadesCredito.ADJUNTO);
+            if (adjunto == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Adjunto con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(adjunto).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener adjunto: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
     
 
     @PUT
-    @Consumes("application/json")
-    public Adjunto put(Adjunto registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(Adjunto registro) {
         System.out.println("LLEGA AL SERVICIO PUT - ADJUNTO");
-        return adjuntoService.saveSingle(registro);
+        try {
+            Adjunto resultado = adjuntoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar adjunto: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public Adjunto post(Adjunto registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(Adjunto registro) {
         System.out.println("LLEGA AL SERVICIO POST - ADJUNTO");
-        return adjuntoService.saveSingle(registro);
+        try {
+            Adjunto resultado = adjuntoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear adjunto: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
@@ -88,10 +113,15 @@ public class AdjuntoRest {
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - ADJUNTO");
-        Adjunto elimina = new Adjunto();
-        adjuntoDaoService.remove(elimina, id);
+        try {
+            Adjunto elimina = new Adjunto();
+            adjuntoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar adjunto: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

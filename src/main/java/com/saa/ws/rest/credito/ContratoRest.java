@@ -49,48 +49,55 @@ public class ContratoRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<Contrato> getAll() throws Throwable {
-        return contratoDaoService.selectAll(NombreEntidadesCredito.CONTRATO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<Contrato> lista = contratoDaoService.selectAll(NombreEntidadesCredito.CONTRATO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener contratos: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Retrieves representation of an instance of ContratoRest
-     * 
-     * @return an instance of String
-     * @throws Throwable
-     */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public Contrato getId(@PathParam("id") Long id) throws Throwable {
-        return contratoDaoService.selectById(id, NombreEntidadesCredito.CONTRATO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            Contrato contrato = contratoDaoService.selectById(id, NombreEntidadesCredito.CONTRATO);
+            if (contrato == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Contrato con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(contrato).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener contrato: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * PUT method for updating or creating an instance of ContratoRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @PUT
-    @Consumes("application/json")
-    public Contrato put(Contrato registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(Contrato registro) {
         System.out.println("LLEGA AL SERVICIO PUT - CONTRATO");
-        return contratoService.saveSingle(registro);
+        try {
+            Contrato resultado = contratoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar contrato: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST method for updating or creating an instance of ContratoRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
-    @Consumes("application/json")
-    public Contrato post(Contrato registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(Contrato registro) {
         System.out.println("LLEGA AL SERVICIO POST - CONTRATO");
-        return contratoService.saveSingle(registro);
+        try {
+            Contrato resultado = contratoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear contrato: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -120,11 +127,16 @@ public class ContratoRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - CONTRATO");
-        Contrato elimina = new Contrato();
-        contratoDaoService.remove(elimina, id);
+        try {
+            Contrato elimina = new Contrato();
+            contratoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar contrato: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

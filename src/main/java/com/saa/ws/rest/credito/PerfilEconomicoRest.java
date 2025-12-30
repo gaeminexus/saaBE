@@ -39,30 +39,55 @@ public class PerfilEconomicoRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<PerfilEconomico> getAll() throws Throwable {
-        return perfilEconomicoDaoService.selectAll(NombreEntidadesCredito.PERFIL_ECONOMICO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<PerfilEconomico> lista = perfilEconomicoDaoService.selectAll(NombreEntidadesCredito.PERFIL_ECONOMICO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener perfiles económicos: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public PerfilEconomico getId(@PathParam("id") Long id) throws Throwable {
-        return perfilEconomicoDaoService.selectById(id, NombreEntidadesCredito.PERFIL_ECONOMICO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            PerfilEconomico perfil = perfilEconomicoDaoService.selectById(id, NombreEntidadesCredito.PERFIL_ECONOMICO);
+            if (perfil == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("PerfilEconomico con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(perfil).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener perfil económico: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @PUT
-    @Consumes("application/json")
-    public PerfilEconomico put(PerfilEconomico registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(PerfilEconomico registro) {
         System.out.println("LLEGA AL SERVICIO PUT - PERFIL ECONOMICO");
-        return perfilEconomicoService.saveSingle(registro);
+        try {
+            PerfilEconomico resultado = perfilEconomicoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar perfil económico: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public PerfilEconomico post(PerfilEconomico registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(PerfilEconomico registro) {
         System.out.println("LLEGA AL SERVICIO POST - PERFIL ECONOMICO");
-        return perfilEconomicoService.saveSingle(registro);
+        try {
+            PerfilEconomico resultado = perfilEconomicoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear perfil económico: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
@@ -87,10 +112,15 @@ public class PerfilEconomicoRest {
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - PERFIL ECONOMICO");
-        PerfilEconomico elimina = new PerfilEconomico();
-        perfilEconomicoDaoService.remove(elimina, id);
+        try {
+            PerfilEconomico elimina = new PerfilEconomico();
+            perfilEconomicoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar perfil económico: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

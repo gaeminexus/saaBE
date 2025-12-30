@@ -49,51 +49,55 @@ public class TipoHidrocarburificaRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<TipoHidrocarburifica> getAll() throws Throwable {
-        return tipoHidrocarburificaDaoService.selectAll(NombreEntidadesCredito.TIPO_HIDROCARBURIFICA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<TipoHidrocarburifica> lista = tipoHidrocarburificaDaoService.selectAll(NombreEntidadesCredito.TIPO_HIDROCARBURIFICA);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener tipos hidrocarburíficos: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
     
-    /**
-     * Obtiene un registro de TipoHidrocarburifica por su ID.
-     * 
-     * @param id Identificador del registro
-     * @return Objeto TipoHidrocarburifica
-     * @throws Throwable
-     */
     @GET
-    @Produces("application/json")
+    @Produces(MediaType.APPLICATION_JSON)
     @Path("/getId/{id}")
-    public TipoHidrocarburifica getId(@PathParam("id") Long id) throws Throwable {
-        return tipoHidrocarburificaDaoService.selectById(id, NombreEntidadesCredito.TIPO_HIDROCARBURIFICA);
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            TipoHidrocarburifica tipo = tipoHidrocarburificaDaoService.selectById(id, NombreEntidadesCredito.TIPO_HIDROCARBURIFICA);
+            if (tipo == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("TipoHidrocarburifica con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(tipo).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener tipo hidrocarburífero: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
     
-    /**
-     * Crea o actualiza un registro de TipoHidrocarburifica (PUT).
-     * 
-     * @param registro Objeto TipoHidrocarburifica
-     * @return Registro actualizado o creado
-     * @throws Throwable
-     */
     @PUT
-    @Consumes("application/json")
-    public TipoHidrocarburifica put(TipoHidrocarburifica registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(TipoHidrocarburifica registro) {
         System.out.println("LLEGA AL SERVICIO PUT DE TipoHidrocarburifica");
-        return tipoHidrocarburificaService.saveSingle(registro);
+        try {
+            TipoHidrocarburifica resultado = tipoHidrocarburificaService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar tipo hidrocarburífero: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
     
-    /**
-     * Crea o actualiza un registro de TipoHidrocarburifica (POST).
-     * 
-     * @param registro Objeto TipoHidrocarburifica
-     * @return Registro creado o actualizado
-     * @throws Throwable
-     */
     @POST
-    @Consumes("application/json")
-    public TipoHidrocarburifica post(TipoHidrocarburifica registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(TipoHidrocarburifica registro) {
         System.out.println("LLEGA AL SERVICIO POST DE TipoHidrocarburifica");
-        return tipoHidrocarburificaService.saveSingle(registro);
+        try {
+            TipoHidrocarburifica resultado = tipoHidrocarburificaService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear tipo hidrocarburífero: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
     
     @POST
@@ -127,11 +131,17 @@ public class TipoHidrocarburificaRest {
      * @throws Throwable
      */
     @DELETE
-    @Consumes("application/json")
+    @Consumes(MediaType.APPLICATION_JSON)
     @Path("/{id}")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE DE TipoHidrocarburifica");
-        TipoHidrocarburifica elimina = new TipoHidrocarburifica();
-        tipoHidrocarburificaDaoService.remove(elimina, id);
+        try {
+            TipoHidrocarburifica elimina = new TipoHidrocarburifica();
+            tipoHidrocarburificaDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar tipo hidrocarburífero: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

@@ -49,48 +49,55 @@ public class EstadoPrestamoRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<EstadoPrestamo> getAll() throws Throwable {
-        return estadoPrestamoDaoService.selectAll(NombreEntidadesCredito.ESTADO_PRESTAMO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<EstadoPrestamo> lista = estadoPrestamoDaoService.selectAll(NombreEntidadesCredito.ESTADO_PRESTAMO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener estados de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Retrieves representation of an instance of EstadoPrestamoRest
-     * 
-     * @return an instance of String
-     * @throws Throwable
-     */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public EstadoPrestamo getId(@PathParam("id") Long id) throws Throwable {
-        return estadoPrestamoDaoService.selectById(id, NombreEntidadesCredito.ESTADO_PRESTAMO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            EstadoPrestamo estado = estadoPrestamoDaoService.selectById(id, NombreEntidadesCredito.ESTADO_PRESTAMO);
+            if (estado == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("EstadoPrestamo con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(estado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener estado de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * PUT method for updating or creating an instance of EstadoPrestamoRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @PUT
-    @Consumes("application/json")
-    public EstadoPrestamo put(EstadoPrestamo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(EstadoPrestamo registro) {
         System.out.println("LLEGA AL SERVICIO PUT");
-        return estadoPrestamoService.saveSingle(registro);
+        try {
+            EstadoPrestamo resultado = estadoPrestamoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar estado de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST method for updating or creating an instance of EstadoPrestamoRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
-    @Consumes("application/json")
-    public EstadoPrestamo post(EstadoPrestamo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(EstadoPrestamo registro) {
         System.out.println("LLEGA AL SERVICIO");
-        return estadoPrestamoService.saveSingle(registro);
+        try {
+            EstadoPrestamo resultado = estadoPrestamoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear estado de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**

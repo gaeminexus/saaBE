@@ -44,56 +44,104 @@ public class TipoPrestamoRest {
     /**
      * Obtiene todos los registros de TipoPrestamo.
      * 
-     * @return Lista de TipoPrestamo
-     * @throws Throwable
+     * @return Response con lista de TipoPrestamo
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<TipoPrestamo> getAll() throws Throwable {
-        return tipoPrestamoDaoService.selectAll(NombreEntidadesCredito.TIPO_PRESTAMO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<TipoPrestamo> tipos = tipoPrestamoDaoService.selectAll(NombreEntidadesCredito.TIPO_PRESTAMO);
+            return Response.status(Response.Status.OK)
+                    .entity(tipos)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener tipos de préstamo: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
     
     /**
      * Obtiene un registro de TipoPrestamo por su ID.
      * 
      * @param id Identificador del registro
-     * @return Objeto TipoPrestamo
-     * @throws Throwable
+     * @return Response con objeto TipoPrestamo
      */
     @GET
-    @Produces("application/json")
+    @Produces(MediaType.APPLICATION_JSON)
     @Path("/getId/{id}")
-    public TipoPrestamo getId(@PathParam("id") Long id) throws Throwable {
-        return tipoPrestamoDaoService.selectById(id, NombreEntidadesCredito.TIPO_PRESTAMO);
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            TipoPrestamo tipo = tipoPrestamoDaoService.selectById(id, NombreEntidadesCredito.TIPO_PRESTAMO);
+            if (tipo == null) {
+                return Response.status(Response.Status.NOT_FOUND)
+                        .entity("TipoPrestamo con ID " + id + " no encontrado")
+                        .type(MediaType.APPLICATION_JSON)
+                        .build();
+            }
+            return Response.status(Response.Status.OK)
+                    .entity(tipo)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener tipo de préstamo: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
     
     /**
      * Crea o actualiza un registro de TipoPrestamo (PUT).
      * 
      * @param registro Objeto TipoPrestamo
-     * @return Registro actualizado o creado
-     * @throws Throwable
+     * @return Response con registro actualizado o creado
      */
     @PUT
-    @Consumes("application/json")
-    public TipoPrestamo put(TipoPrestamo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(TipoPrestamo registro) {
         System.out.println("LLEGA AL SERVICIO PUT DE TipoPrestamo");
-        return tipoPrestamoService.saveSingle(registro);
+        try {
+            TipoPrestamo resultado = tipoPrestamoService.saveSingle(registro);
+            return Response.status(Response.Status.OK)
+                    .entity(resultado)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al actualizar tipo de préstamo: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
     
     /**
      * Crea o actualiza un registro de TipoPrestamo (POST).
      * 
      * @param registro Objeto TipoPrestamo
-     * @return Registro creado o actualizado
-     * @throws Throwable
+     * @return Response con registro creado o actualizado
      */
     @POST
-    @Consumes("application/json")
-    public TipoPrestamo post(TipoPrestamo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(TipoPrestamo registro) {
         System.out.println("LLEGA AL SERVICIO POST DE TipoPrestamo");
-        return tipoPrestamoService.saveSingle(registro);
+        try {
+            TipoPrestamo resultado = tipoPrestamoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED)
+                    .entity(resultado)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al crear tipo de préstamo: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
     
     @POST
@@ -124,14 +172,23 @@ public class TipoPrestamoRest {
      * Elimina un registro de TipoPrestamo por ID.
      * 
      * @param id Identificador del registro
-     * @throws Throwable
+     * @return Response con resultado de la eliminación
      */
     @DELETE
-    @Consumes("application/json")
     @Path("/{id}")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE DE TipoPrestamo");
-        TipoPrestamo elimina = new TipoPrestamo();
-        tipoPrestamoDaoService.remove(elimina, id);
+        try {
+            TipoPrestamo elimina = new TipoPrestamo();
+            tipoPrestamoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al eliminar tipo de préstamo: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
 }

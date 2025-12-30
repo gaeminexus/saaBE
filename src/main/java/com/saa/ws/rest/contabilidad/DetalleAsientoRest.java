@@ -49,78 +49,86 @@ public class DetalleAsientoRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<DetalleAsiento> getAll() throws Throwable {
-        return detalleAsientoDaoService.selectAll(NombreEntidadesContabilidad.DETALLE_ASIENTO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<DetalleAsiento> lista = detalleAsientoDaoService.selectAll(NombreEntidadesContabilidad.DETALLE_ASIENTO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener detalles de asiento: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    
     @GET
-    @Produces("application/json")
+    @Produces(MediaType.APPLICATION_JSON)
     @Path("/getId/{id}")
-    public DetalleAsiento getId(@PathParam("id") Long id) throws Throwable {
-        return detalleAsientoDaoService.selectById(id, NombreEntidadesContabilidad.DETALLE_ASIENTO);
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            DetalleAsiento detalle = detalleAsientoDaoService.selectById(id, NombreEntidadesContabilidad.DETALLE_ASIENTO);
+            if (detalle == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("DetalleAsiento con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(detalle).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener detalle de asiento: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * PUT method for updating or creating an instance of DetalleAsientoRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @PUT
-    @Consumes("application/json")
-    public DetalleAsiento put(DetalleAsiento registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT");
-        return detalleAsientoService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(DetalleAsiento registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - DETALLE_ASIENTO");
+        try {
+            DetalleAsiento resultado = detalleAsientoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar detalle de asiento: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST method for updating or creating an instance of DetalleAsientoRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
-    @Consumes("application/json")
-    public DetalleAsiento post(DetalleAsiento registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO");
-        return detalleAsientoService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(DetalleAsiento registro) {
+        System.out.println("LLEGA AL SERVICIO POST - DETALLE_ASIENTO");
+        try {
+            DetalleAsiento resultado = detalleAsientoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear detalle de asiento: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST method for updating or creating an instance of DetalleAsientoRest
-     *
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de DETALLE_ASIENTO");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(detalleAsientoService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(detalleAsientoService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
-    /**
-     * POST method for updating or creating an instance of DetalleAsientoRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @DELETE
-    @Consumes("application/json")
     @Path("/{id}")
-    public void delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE");
-        DetalleAsiento elimina = new DetalleAsiento();
-        detalleAsientoDaoService.remove(elimina, id);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - DETALLE_ASIENTO");
+        try {
+            DetalleAsiento elimina = new DetalleAsiento();
+            detalleAsientoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar detalle de asiento: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

@@ -38,37 +38,67 @@ public class CargaArchivoRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<CargaArchivo> getAll() throws Throwable {
-        return cargaArchivoDaoService.selectAll(NombreEntidadesCredito.CARGA_ARCHIVO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<CargaArchivo> lista = cargaArchivoDaoService.selectAll(NombreEntidadesCredito.CARGA_ARCHIVO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cargas de archivo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public CargaArchivo getId(@PathParam("id") Long id) throws Throwable {
-        return cargaArchivoDaoService.selectById(id, NombreEntidadesCredito.CARGA_ARCHIVO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            CargaArchivo cargaArchivo = cargaArchivoDaoService.selectById(id, NombreEntidadesCredito.CARGA_ARCHIVO);
+            if (cargaArchivo == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("CargaArchivo con ID " + id + " no encontrada").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(cargaArchivo).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener carga de archivo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
     
     @GET
     @Path("/getByAnio/{anio}")
-    @Produces("application/json")
-    public List<CargaArchivo> getByAnio(@PathParam("anio") Long anio) throws Throwable {
-        return cargaArchivoDaoService.selectByAnio(anio);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getByAnio(@PathParam("anio") Long anio) {
+        try {
+            List<CargaArchivo> lista = cargaArchivoDaoService.selectByAnio(anio);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cargas por año: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @PUT
-    @Consumes("application/json")
-    public CargaArchivo put(CargaArchivo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(CargaArchivo registro) {
         System.out.println("LLEGA AL SERVICIO PUT - CARGAARCHIVO");
-        return cargaArchivoService.saveSingle(registro);
+        try {
+            CargaArchivo resultado = cargaArchivoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar carga de archivo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public CargaArchivo post(CargaArchivo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(CargaArchivo registro) {
         System.out.println("LLEGA AL SERVICIO POST - CARGAARCHIVO");
-        return cargaArchivoService.saveSingle(registro);
+        try {
+            CargaArchivo resultado = cargaArchivoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear carga de archivo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
@@ -87,10 +117,15 @@ public class CargaArchivoRest {
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - CARGAARCHIVO");
-        CargaArchivo elimina = new CargaArchivo();
-        cargaArchivoDaoService.remove(elimina, id);
+        try {
+            CargaArchivo elimina = new CargaArchivo();
+            cargaArchivoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar carga de archivo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

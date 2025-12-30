@@ -46,39 +46,55 @@ public class CobroChequeRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<CobroCheque> getAll() throws Throwable {
-        return cobroChequeDaoService.selectAll(NombreEntidadesTesoreria.COBRO_CHEQUE);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<CobroCheque> lista = cobroChequeDaoService.selectAll(NombreEntidadesTesoreria.COBRO_CHEQUE);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cobros por cheque: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Recupera un registro de CobroCheque por su ID.
-     */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public CobroCheque getId(@PathParam("id") Long id) throws Throwable {
-        return cobroChequeDaoService.selectById(id, NombreEntidadesTesoreria.COBRO_CHEQUE);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            CobroCheque cobroCheque = cobroChequeDaoService.selectById(id, NombreEntidadesTesoreria.COBRO_CHEQUE);
+            if (cobroCheque == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("CobroCheque con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(cobroCheque).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cobro por cheque: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Guarda o actualiza un registro (PUT).
-     */
     @PUT
-    @Consumes("application/json")
-    public CobroCheque put(CobroCheque registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(CobroCheque registro) {
         System.out.println("LLEGA AL SERVICIO PUT COBRO CHEQUE");
-        return cobroChequeService.saveSingle(registro);
+        try {
+            CobroCheque resultado = cobroChequeService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar cobro por cheque: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Guarda o actualiza un registro (POST).
-     */
     @POST
-    @Consumes("application/json")
-    public CobroCheque post(CobroCheque registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(CobroCheque registro) {
         System.out.println("LLEGA AL SERVICIO POST COBRO CHEQUE");
-        return cobroChequeService.saveSingle(registro);
+        try {
+            CobroCheque resultado = cobroChequeService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear cobro por cheque: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -101,15 +117,17 @@ public class CobroChequeRest {
         return respuesta;
     }
 
-    /**
-     * Elimina un registro de CobroCheque por ID.
-     */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE COBRO CHEQUE");
-        CobroCheque elimina = new CobroCheque();
-        cobroChequeDaoService.remove(elimina, id);
+        try {
+            CobroCheque elimina = new CobroCheque();
+            cobroChequeDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar cobro por cheque: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

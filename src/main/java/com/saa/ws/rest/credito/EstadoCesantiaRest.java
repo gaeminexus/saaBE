@@ -49,48 +49,55 @@ public class EstadoCesantiaRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<EstadoCesantia> getAll() throws Throwable {
-        return estadoCesantiaDaoService.selectAll(NombreEntidadesCredito.ESTADO_CESANTIA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<EstadoCesantia> lista = estadoCesantiaDaoService.selectAll(NombreEntidadesCredito.ESTADO_CESANTIA);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener estados de cesantía: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Retrieves representation of an instance of EstadoCesantiaRest
-     * 
-     * @return an instance of String
-     * @throws Throwable
-     */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public EstadoCesantia getId(@PathParam("id") Long id) throws Throwable {
-        return estadoCesantiaDaoService.selectById(id, NombreEntidadesCredito.ESTADO_CESANTIA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            EstadoCesantia estadoCesantia = estadoCesantiaDaoService.selectById(id, NombreEntidadesCredito.ESTADO_CESANTIA);
+            if (estadoCesantia == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("EstadoCesantia con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(estadoCesantia).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener estado de cesantía: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * PUT method for updating or creating an instance of EstadoCesantiaRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @PUT
-    @Consumes("application/json")
-    public EstadoCesantia put(EstadoCesantia registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(EstadoCesantia registro) {
         System.out.println("LLEGA AL SERVICIO PUT");
-        return estadoCesantiaService.saveSingle(registro);
+        try {
+            EstadoCesantia resultado = estadoCesantiaService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar estado de cesantía: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST method for updating or creating an instance of EstadoCesantiaRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
-    @Consumes("application/json")
-    public EstadoCesantia post(EstadoCesantia registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(EstadoCesantia registro) {
         System.out.println("LLEGA AL SERVICIO");
-        return estadoCesantiaService.saveSingle(registro);
+        try {
+            EstadoCesantia resultado = estadoCesantiaService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear estado de cesantía: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -113,19 +120,18 @@ public class EstadoCesantiaRest {
         return respuesta;
     }
 
-    /**
-     * POST method for updating or creating an instance of EstadoCesantiaRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE");
-        EstadoCesantia elimina = new EstadoCesantia();
-        estadoCesantiaDaoService.remove(elimina, id);
+        try {
+            EstadoCesantia elimina = new EstadoCesantia();
+            estadoCesantiaDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar estado de cesantía: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

@@ -42,55 +42,106 @@ public class ParticipeRest {
     }
 
     /**
-     * Retrieves representation of an instance of ParticipeRest
+     * Obtiene todos los registros de Participe.
      * 
-     * @return an instance of String
-     * @throws Throwable
+     * @return Response con lista de Participe
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<Participe> getAll() throws Throwable {
-        return participeDaoService.selectAll(NombreEntidadesCredito.PARTICIPE);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<Participe> participes = participeDaoService.selectAll(NombreEntidadesCredito.PARTICIPE);
+            return Response.status(Response.Status.OK)
+                    .entity(participes)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener partícipes: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
 
     /**
-     * Retrieves representation of an instance of ParticipeRest
+     * Obtiene un registro de Participe por su ID.
      * 
-     * @return an instance of String
-     * @throws Throwable
+     * @param id Identificador del registro
+     * @return Response con objeto Participe
      */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public Participe getId(@PathParam("id") Long id) throws Throwable {
-        return participeDaoService.selectById(id, NombreEntidadesCredito.PARTICIPE);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            Participe participe = participeDaoService.selectById(id, NombreEntidadesCredito.PARTICIPE);
+            if (participe == null) {
+                return Response.status(Response.Status.NOT_FOUND)
+                        .entity("Participe con ID " + id + " no encontrado")
+                        .type(MediaType.APPLICATION_JSON)
+                        .build();
+            }
+            return Response.status(Response.Status.OK)
+                    .entity(participe)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener partícipe: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
 
     /**
-     * PUT method for updating or creating an instance of ParticipeRest
+     * Crea o actualiza un registro de Participe (PUT).
      * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
+     * @param registro Objeto Participe
+     * @return Response con registro actualizado o creado
      */
     @PUT
-    @Consumes("application/json")
-    public Participe put(Participe registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(Participe registro) {
         System.out.println("LLEGA AL SERVICIO PUT - PARTICIPE");
-        return participeService.saveSingle(registro);
+        try {
+            Participe resultado = participeService.saveSingle(registro);
+            return Response.status(Response.Status.OK)
+                    .entity(resultado)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al actualizar partícipe: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
 
     /**
-     * POST method for updating or creating an instance of ParticipeRest
+     * Crea o actualiza un registro de Participe (POST).
      * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
+     * @param registro Objeto Participe
+     * @return Response con registro creado o actualizado
      */
     @POST
-    @Consumes("application/json")
-    public Participe post(Participe registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(Participe registro) {
         System.out.println("LLEGA AL SERVICIO POST - PARTICIPE");
-        return participeService.saveSingle(registro);
+        try {
+            Participe resultado = participeService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED)
+                    .entity(resultado)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al crear partícipe: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
 
     /**
@@ -114,17 +165,27 @@ public class ParticipeRest {
     }
 
     /**
-     * DELETE method for deleting an instance of ParticipeRest
+     * Elimina un registro de Participe por ID.
      * 
-     * @param id identifier for the resource
+     * @param id Identificador del registro
+     * @return Response con resultado de la eliminación
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - PARTICIPE");
-        Participe elimina = new Participe();
-        participeDaoService.remove(elimina, id);
+        try {
+            Participe elimina = new Participe();
+            participeDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al eliminar partícipe: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
     }
 
 }

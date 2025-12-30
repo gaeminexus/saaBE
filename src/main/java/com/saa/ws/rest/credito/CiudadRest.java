@@ -38,30 +38,55 @@ public class CiudadRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<Ciudad> getAll() throws Throwable {
-        return ciudadDaoService.selectAll(NombreEntidadesCredito.CIUDAD);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<Ciudad> lista = ciudadDaoService.selectAll(NombreEntidadesCredito.CIUDAD);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener ciudades: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public Ciudad getId(@PathParam("id") Long id) throws Throwable {
-        return ciudadDaoService.selectById(id, NombreEntidadesCredito.CIUDAD);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            Ciudad ciudad = ciudadDaoService.selectById(id, NombreEntidadesCredito.CIUDAD);
+            if (ciudad == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Ciudad con ID " + id + " no encontrada").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(ciudad).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener ciudad: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @PUT
-    @Consumes("application/json")
-    public Ciudad put(Ciudad registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(Ciudad registro) {
         System.out.println("LLEGA AL SERVICIO PUT - CIUDAD");
-        return ciudadService.saveSingle(registro);
+        try {
+            Ciudad resultado = ciudadService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar ciudad: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public Ciudad post(Ciudad registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(Ciudad registro) {
         System.out.println("LLEGA AL SERVICIO POST - CIUDAD");
-        return ciudadService.saveSingle(registro);
+        try {
+            Ciudad resultado = ciudadService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear ciudad: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
@@ -83,10 +108,15 @@ public class CiudadRest {
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - CIUDAD");
-        Ciudad elimina = new Ciudad();
-        ciudadDaoService.remove(elimina, id);
+        try {
+            Ciudad elimina = new Ciudad();
+            ciudadDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar ciudad: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

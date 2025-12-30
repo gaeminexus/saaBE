@@ -34,91 +34,91 @@ public class MatchCuentaRest {
     @Context
     private UriInfo context;
 
-    /**
-     * Default constructor.
-     */
     public MatchCuentaRest() {
-        // TODO Auto-generated constructor stub
     }
 
-    /**
-     * Retrieves representation of an instance of MatchCuentaRest
-     * 
-     * @return an instance of String
-     * @throws Throwable
-     */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<MatchCuenta> getAll() throws Throwable {
-        return matchCuentaDaoService.selectAll(NombreEntidadesContabilidad.MATCH_CUENTA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<MatchCuenta> lista = matchCuentaDaoService.selectAll(NombreEntidadesContabilidad.MATCH_CUENTA);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener match de cuentas: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
-    @Produces("application/json")
     @Path("/getId/{id}")
-    public MatchCuenta getId(@PathParam("id") Long id) throws Throwable {
-        return matchCuentaDaoService.selectById(id, NombreEntidadesContabilidad.MATCH_CUENTA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            MatchCuenta match = matchCuentaDaoService.selectById(id, NombreEntidadesContabilidad.MATCH_CUENTA);
+            if (match == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Match de cuenta con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(match).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener match de cuenta: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * PUT method for updating or creating an instance of MatchCuentaRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @PUT
-    @Consumes("application/json")
-    public MatchCuenta put(MatchCuenta registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT");
-        return matchCuentaService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(MatchCuenta registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - MATCH_CUENTA");
+        try {
+            MatchCuenta resultado = matchCuentaService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar match de cuenta: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST method for updating or creating an instance of MatchCuentaRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
-    @Consumes("application/json")
-    public MatchCuenta post(MatchCuenta registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO");
-        return matchCuentaService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(MatchCuenta registro) {
+        System.out.println("LLEGA AL SERVICIO POST - MATCH_CUENTA");
+        try {
+            MatchCuenta resultado = matchCuentaService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear match de cuenta: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST method for updating or creating an instance of MatchCuentaRest
-     *
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de MATCH_CUENTA");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(matchCuentaService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(matchCuentaService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
-    /**
-     * POST method for updating or creating an instance of MatchCuentaRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
+
     @DELETE
-    @Consumes("application/json")
     @Path("/{id}")
-    public void delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE");
-        MatchCuenta elimina = new MatchCuenta();
-        matchCuentaDaoService.remove(elimina, id);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - MATCH_CUENTA");
+        try {
+            MatchCuenta elimina = new MatchCuenta();
+            matchCuentaDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar match de cuenta: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

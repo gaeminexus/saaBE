@@ -38,30 +38,55 @@ public class DetalleCargaArchivoRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<DetalleCargaArchivo> getAll() throws Throwable {
-        return detalleCargaArchivoDaoService.selectAll(NombreEntidadesCredito.DETALLE_CARGA_ARCHIVO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<DetalleCargaArchivo> lista = detalleCargaArchivoDaoService.selectAll(NombreEntidadesCredito.DETALLE_CARGA_ARCHIVO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener detalles: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public DetalleCargaArchivo getId(@PathParam("id") Long id) throws Throwable {
-        return detalleCargaArchivoDaoService.selectById(id, NombreEntidadesCredito.DETALLE_CARGA_ARCHIVO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            DetalleCargaArchivo detalle = detalleCargaArchivoDaoService.selectById(id, NombreEntidadesCredito.DETALLE_CARGA_ARCHIVO);
+            if (detalle == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("DetalleCargaArchivo con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(detalle).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener detalle: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @PUT
-    @Consumes("application/json")
-    public DetalleCargaArchivo put(DetalleCargaArchivo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(DetalleCargaArchivo registro) {
         System.out.println("LLEGA AL SERVICIO PUT - DETALLECARGAARCHIVO");
-        return detalleCargaArchivoService.saveSingle(registro);
+        try {
+            DetalleCargaArchivo resultado = detalleCargaArchivoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar detalle: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public DetalleCargaArchivo post(DetalleCargaArchivo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(DetalleCargaArchivo registro) {
         System.out.println("LLEGA AL SERVICIO POST - DETALLECARGAARCHIVO");
-        return detalleCargaArchivoService.saveSingle(registro);
+        try {
+            DetalleCargaArchivo resultado = detalleCargaArchivoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear detalle: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
@@ -80,10 +105,15 @@ public class DetalleCargaArchivoRest {
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - DETALLECARGAARCHIVO");
-        DetalleCargaArchivo elimina = new DetalleCargaArchivo();
-        detalleCargaArchivoDaoService.remove(elimina, id);
+        try {
+            DetalleCargaArchivo elimina = new DetalleCargaArchivo();
+            detalleCargaArchivoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar detalle: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

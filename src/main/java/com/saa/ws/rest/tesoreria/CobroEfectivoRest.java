@@ -46,39 +46,55 @@ public class CobroEfectivoRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<CobroEfectivo> getAll() throws Throwable {
-        return cobroEfectivoDaoService.selectAll(NombreEntidadesTesoreria.COBRO_EFECTIVO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<CobroEfectivo> lista = cobroEfectivoDaoService.selectAll(NombreEntidadesTesoreria.COBRO_EFECTIVO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cobros en efectivo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Recupera un registro de CobroEfectivo por su ID.
-     */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public CobroEfectivo getId(@PathParam("id") Long id) throws Throwable {
-        return cobroEfectivoDaoService.selectById(id, NombreEntidadesTesoreria.COBRO_EFECTIVO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            CobroEfectivo cobroEfectivo = cobroEfectivoDaoService.selectById(id, NombreEntidadesTesoreria.COBRO_EFECTIVO);
+            if (cobroEfectivo == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("CobroEfectivo con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(cobroEfectivo).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cobro en efectivo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Guarda o actualiza un registro (PUT).
-     */
     @PUT
-    @Consumes("application/json")
-    public CobroEfectivo put(CobroEfectivo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(CobroEfectivo registro) {
         System.out.println("LLEGA AL SERVICIO PUT COBRO EFECTIVO");
-        return cobroEfectivoService.saveSingle(registro);
+        try {
+            CobroEfectivo resultado = cobroEfectivoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar cobro en efectivo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Guarda o actualiza un registro (POST).
-     */
     @POST
-    @Consumes("application/json")
-    public CobroEfectivo post(CobroEfectivo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(CobroEfectivo registro) {
         System.out.println("LLEGA AL SERVICIO POST COBRO EFECTIVO");
-        return cobroEfectivoService.saveSingle(registro);
+        try {
+            CobroEfectivo resultado = cobroEfectivoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear cobro en efectivo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -101,15 +117,17 @@ public class CobroEfectivoRest {
         return respuesta;
     }
 
-    /**
-     * Elimina un registro de CobroEfectivo por ID.
-     */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE COBRO EFECTIVO");
-        CobroEfectivo elimina = new CobroEfectivo();
-        cobroEfectivoDaoService.remove(elimina, id);
+        try {
+            CobroEfectivo elimina = new CobroEfectivo();
+            cobroEfectivoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar cobro en efectivo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

@@ -47,9 +47,14 @@ public class TipoAsientoRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<TipoAsiento> getAll() throws Throwable {
-        return tipoAsientoDaoService.selectAll(NombreEntidadesContabilidad.TIPO_ASIENTO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<TipoAsiento> lista = tipoAsientoDaoService.selectAll(NombreEntidadesContabilidad.TIPO_ASIENTO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener tipos de asiento: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
     
     /* Comentamos esta parte por que no usamos orden descendente 
@@ -79,30 +84,50 @@ public class TipoAsientoRest {
      * Obtiene un TipoAsiento por su ID
      */
     @GET
-    @Produces("application/json")
     @Path("/getId/{id}")
-    public TipoAsiento getId(@PathParam("id") Long id) throws Throwable {
-        return tipoAsientoDaoService.selectById(id, NombreEntidadesContabilidad.TIPO_ASIENTO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            TipoAsiento tipoAsiento = tipoAsientoDaoService.selectById(id, NombreEntidadesContabilidad.TIPO_ASIENTO);
+            if (tipoAsiento == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Tipo de asiento con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(tipoAsiento).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener tipo de asiento: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Actualiza o crea un registro de TipoAsiento (PUT)
      */
     @PUT
-    @Consumes("application/json")
-    public TipoAsiento put(TipoAsiento registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT (TipoAsiento)");
-        return tipoAsientoService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(TipoAsiento registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - TIPO_ASIENTO");
+        try {
+            TipoAsiento resultado = tipoAsientoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar tipo de asiento: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Crea un nuevo registro de TipoAsiento (POST)
      */
     @POST
-    @Consumes("application/json")
-    public TipoAsiento post(TipoAsiento registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO POST (TipoAsiento)");
-        return tipoAsientoService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(TipoAsiento registro) {
+        System.out.println("LLEGA AL SERVICIO POST - TIPO_ASIENTO");
+        try {
+            TipoAsiento resultado = tipoAsientoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear tipo de asiento: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -113,28 +138,36 @@ public class TipoAsientoRest {
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de TIPO_ASIENTO");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(tipoAsientoService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(tipoAsientoService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
     /**
      * Elimina un registro de TipoAsiento
      */
     @DELETE
-    @Consumes("application/json")
     @Path("/{id}")
-    public void delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE (TipoAsiento)");
-        TipoAsiento elimina = new TipoAsiento();
-        tipoAsientoDaoService.remove(elimina, id);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - TIPO_ASIENTO");
+        try {
+            TipoAsiento elimina = new TipoAsiento();
+            tipoAsientoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar tipo de asiento: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

@@ -45,39 +45,55 @@ public class TipoContratoRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<TipoContrato> getAll() throws Throwable {
-        return tipoContratoDaoService.selectAll(NombreEntidadesCredito.TIPO_CONTRATO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<TipoContrato> lista = tipoContratoDaoService.selectAll(NombreEntidadesCredito.TIPO_CONTRATO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener tipos de contrato: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * GET BY ID
-     */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public TipoContrato getId(@PathParam("id") Long id) throws Throwable {
-        return tipoContratoDaoService.selectById(id, NombreEntidadesCredito.TIPO_CONTRATO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            TipoContrato tipo = tipoContratoDaoService.selectById(id, NombreEntidadesCredito.TIPO_CONTRATO);
+            if (tipo == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("TipoContrato con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(tipo).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener tipo de contrato: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * PUT - UPDATE
-     */
     @PUT
-    @Consumes("application/json")
-    public TipoContrato put(TipoContrato registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(TipoContrato registro) {
         System.out.println("LLEGA AL SERVICIO PUT TipoContrato");
-        return tipoContratoService.saveSingle(registro);
+        try {
+            TipoContrato resultado = tipoContratoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar tipo de contrato: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST - CREATE
-     */
     @POST
-    @Consumes("application/json")
-    public TipoContrato post(TipoContrato registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(TipoContrato registro) {
         System.out.println("LLEGA AL SERVICIO POST TipoContrato");
-        return tipoContratoService.saveSingle(registro);
+        try {
+            TipoContrato resultado = tipoContratoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear tipo de contrato: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**

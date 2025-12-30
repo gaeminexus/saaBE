@@ -50,24 +50,42 @@ public class PeriodoRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<Periodo> getAll() throws Throwable {
-        return periodoDaoService.selectAll(NombreEntidadesContabilidad.PERIODO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<Periodo> lista = periodoDaoService.selectAll(NombreEntidadesContabilidad.PERIODO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener periodos: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
-    @Produces("application/json")
     @Path("/getId/{id}")
-    public Periodo getId(@PathParam("id") Long id) throws Throwable {
-        return periodoDaoService.selectById(id, NombreEntidadesContabilidad.PERIODO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            Periodo periodo = periodoDaoService.selectById(id, NombreEntidadesContabilidad.PERIODO);
+            if (periodo == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Periodo con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(periodo).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener periodo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
     
     @GET
-    @Produces("application/json")
     @Path("/verificaPeriodoAbierto/{idEmpresa}/{fecha}")
-    public Periodo verificaPeriodoAbierto(@PathParam("idEmpresa") Long idEmpresa, @PathParam("fecha") String fecha) throws Throwable {
-        LocalDate localDate = LocalDate.parse(fecha);
-        return periodoService.verificaPeriodoAbierto(idEmpresa, localDate);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response verificaPeriodoAbierto(@PathParam("idEmpresa") Long idEmpresa, @PathParam("fecha") String fecha) {
+        try {
+            LocalDate localDate = LocalDate.parse(fecha);
+            Periodo periodo = periodoService.verificaPeriodoAbierto(idEmpresa, localDate);
+            return Response.status(Response.Status.OK).entity(periodo).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al verificar periodo abierto: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -77,10 +95,16 @@ public class PeriodoRest {
      * @return an HTTP response with content of the updated or created resource.
      */
     @PUT
-    @Consumes("application/json")
-    public Periodo put(Periodo registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT");
-        return periodoService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(Periodo registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - PERIODO");
+        try {
+            Periodo resultado = periodoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar periodo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -90,10 +114,16 @@ public class PeriodoRest {
      * @return an HTTP response with content of the updated or created resource.
      */
     @POST
-    @Consumes("application/json")
-    public Periodo post(Periodo registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO");
-        return periodoService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(Periodo registro) {
+        System.out.println("LLEGA AL SERVICIO POST - PERIODO");
+        try {
+            Periodo resultado = periodoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear periodo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -104,16 +134,19 @@ public class PeriodoRest {
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de PERIODO");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(periodoService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(periodoService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
     /**
      * POST method for updating or creating an instance of PeriodoRest
@@ -122,11 +155,16 @@ public class PeriodoRest {
      * @return an HTTP response with content of the updated or created resource.
      */
     @DELETE
-    @Consumes("application/json")
     @Path("/{id}")
-    public String delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE");
-        return periodoService.remove(id);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - PERIODO");
+        try {
+            String resultado = periodoService.remove(id);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar periodo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

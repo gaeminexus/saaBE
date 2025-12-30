@@ -44,38 +44,54 @@ public class TipoAdjuntoRest {
     @GET
     @Path("/getAll")
     @Produces(MediaType.APPLICATION_JSON)
-    public List<TipoAdjunto> getAll() throws Throwable {
-        return tipoAdjuntoDaoService.selectAll(NombreEntidadesCredito.TIPO_ADJUNTO);
+    public Response getAll() {
+        try {
+            List<TipoAdjunto> lista = tipoAdjuntoDaoService.selectAll(NombreEntidadesCredito.TIPO_ADJUNTO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener tipos de adjunto: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * GET - Obtener por ID
-     */
     @GET
     @Path("/getId/{id}")
     @Produces(MediaType.APPLICATION_JSON)
-    public TipoAdjunto getId(@PathParam("id") Long id) throws Throwable {
-        return tipoAdjuntoDaoService.selectById(id, NombreEntidadesCredito.TIPO_ADJUNTO);
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            TipoAdjunto tipo = tipoAdjuntoDaoService.selectById(id, NombreEntidadesCredito.TIPO_ADJUNTO);
+            if (tipo == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("TipoAdjunto con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(tipo).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener tipo de adjunto: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * PUT - Actualizar o crear registro
-     */
     @PUT
     @Consumes(MediaType.APPLICATION_JSON)
-    public TipoAdjunto put(TipoAdjunto registro) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(TipoAdjunto registro) {
         System.out.println("LLEGA AL SERVICIO PUT");
-        return tipoAdjuntoService.saveSingle(registro);
+        try {
+            TipoAdjunto resultado = tipoAdjuntoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar tipo de adjunto: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST - Crear registro
-     */
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
-    public TipoAdjunto post(TipoAdjunto registro) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(TipoAdjunto registro) {
         System.out.println("LLEGA AL SERVICIO");
-        return tipoAdjuntoService.saveSingle(registro);
+        try {
+            TipoAdjunto resultado = tipoAdjuntoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear tipo de adjunto: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -106,10 +122,15 @@ public class TipoAdjuntoRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes(MediaType.APPLICATION_JSON)
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE");
-        TipoAdjunto elimina = new TipoAdjunto();
-        tipoAdjuntoDaoService.remove(elimina, id);
+        try {
+            TipoAdjunto elimina = new TipoAdjunto();
+            tipoAdjuntoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar tipo de adjunto: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

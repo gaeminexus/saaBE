@@ -41,30 +41,55 @@ public class AuditoriaRest {
 	
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-	public List<Auditoria> getAll() throws Throwable {
-		return auditoriaDaoService.selectAll(NombreEntidadesCredito.AUDITORIA);
+    @Produces(MediaType.APPLICATION_JSON)
+	public Response getAll() {
+		try {
+			List<Auditoria> lista = auditoriaDaoService.selectAll(NombreEntidadesCredito.AUDITORIA);
+			return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+		} catch (Throwable e) {
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener auditorias: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+		}
 	}
     
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public Auditoria getId(@PathParam("id") Long id) throws Throwable {
-		return auditoriaDaoService.selectById(id, NombreEntidadesCredito.AUDITORIA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+		try {
+			Auditoria auditoria = auditoriaDaoService.selectById(id, NombreEntidadesCredito.AUDITORIA);
+			if (auditoria == null) {
+				return Response.status(Response.Status.NOT_FOUND).entity("Auditoria con ID " + id + " no encontrada").type(MediaType.APPLICATION_JSON).build();
+			}
+			return Response.status(Response.Status.OK).entity(auditoria).type(MediaType.APPLICATION_JSON).build();
+		} catch (Throwable e) {
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener auditoria: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+		}
     }
     
     @PUT
-    @Consumes("application/json")
-    public Auditoria put(Auditoria registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(Auditoria registro) {
 		System.out.println("LLEGA AL SERVICIO PUT - AUDITORIA");
-		return auditoriaService.saveSingle(registro);
+		try {
+			Auditoria resultado = auditoriaService.saveSingle(registro);
+			return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+		} catch (Throwable e) {
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar auditoria: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+		}
     }
 	
     @POST
-    @Consumes("application/json")
-    public Auditoria post(Auditoria registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(Auditoria registro) {
 		System.out.println("LLEGA AL SERVICIO POST - AUDITORIA");
-		return auditoriaService.saveSingle(registro);
+		try {
+			Auditoria resultado = auditoriaService.saveSingle(registro);
+			return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+		} catch (Throwable e) {
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear auditoria: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+		}
     }
     
     @POST
@@ -90,11 +115,16 @@ public class AuditoriaRest {
     
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
     	System.out.println("LLEGA AL SERVICIO DELETE - AUDITORIA");
-    	Auditoria entidad = new Auditoria();
-    	auditoriaDaoService.remove(entidad, id);
+		try {
+			Auditoria entidad = new Auditoria();
+			auditoriaDaoService.remove(entidad, id);
+			return Response.status(Response.Status.NO_CONTENT).build();
+		} catch (Throwable e) {
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar auditoria: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+		}
     }
 
 }

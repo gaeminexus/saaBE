@@ -49,9 +49,14 @@ public class PlantillaRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<Plantilla> getAll() throws Throwable {
-        return plantillaDaoService.selectAll(NombreEntidadesContabilidad.PLANTILLA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<Plantilla> lista = plantillaDaoService.selectAll(NombreEntidadesContabilidad.PLANTILLA);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener plantillas: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     // Ya no usamos esta parte porque no hacemos un orden descendente
@@ -83,10 +88,18 @@ public class PlantillaRest {
 //    }
 
     @GET
-    @Produces("application/json")
     @Path("/getId/{id}")
-    public Plantilla getId(@PathParam("id") Long id) throws Throwable {
-        return plantillaDaoService.selectById(id, NombreEntidadesContabilidad.PLANTILLA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            Plantilla plantilla = plantillaDaoService.selectById(id, NombreEntidadesContabilidad.PLANTILLA);
+            if (plantilla == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Plantilla con ID " + id + " no encontrada").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(plantilla).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener plantilla: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -96,10 +109,16 @@ public class PlantillaRest {
      * @return an HTTP response with content of the updated or created resource.
      */
     @PUT
-    @Consumes("application/json")
-    public Plantilla put(Plantilla registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT");
-        return plantillaService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(Plantilla registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - PLANTILLA");
+        try {
+            Plantilla resultado = plantillaService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar plantilla: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -109,10 +128,16 @@ public class PlantillaRest {
      * @return an HTTP response with content of the updated or created resource.
      */
     @POST
-    @Consumes("application/json")
-    public Plantilla post(Plantilla registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO");
-        return plantillaService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(Plantilla registro) {
+        System.out.println("LLEGA AL SERVICIO POST - PLANTILLA");
+        try {
+            Plantilla resultado = plantillaService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear plantilla: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -123,16 +148,19 @@ public class PlantillaRest {
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de PLANTILLA");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(plantillaService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(plantillaService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
     /**
@@ -142,12 +170,17 @@ public class PlantillaRest {
      * @return an HTTP response with content of the updated or created resource.
      */
     @DELETE
-    @Consumes("application/json")
     @Path("/{id}")
-    public void delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE");
-        Plantilla elimina = new Plantilla();
-        plantillaDaoService.remove(elimina, id);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - PLANTILLA");
+        try {
+            Plantilla elimina = new Plantilla();
+            plantillaDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar plantilla: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

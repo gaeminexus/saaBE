@@ -46,39 +46,55 @@ public class CajaFisicaRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<CajaFisica> getAll() throws Throwable {
-        return cajaFisicaDaoService.selectAll(NombreEntidadesTesoreria.CAJA_FISICA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<CajaFisica> lista = cajaFisicaDaoService.selectAll(NombreEntidadesTesoreria.CAJA_FISICA);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cajas físicas: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Recupera un registro de CajaFisica por ID.
-     */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public CajaFisica getId(@PathParam("id") Long id) throws Throwable {
-        return cajaFisicaDaoService.selectById(id, NombreEntidadesTesoreria.CAJA_FISICA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            CajaFisica cajaFisica = cajaFisicaDaoService.selectById(id, NombreEntidadesTesoreria.CAJA_FISICA);
+            if (cajaFisica == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("CajaFisica con ID " + id + " no encontrada").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(cajaFisica).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener caja física: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Guarda o actualiza un registro (PUT).
-     */
     @PUT
-    @Consumes("application/json")
-    public CajaFisica put(CajaFisica registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(CajaFisica registro) {
         System.out.println("LLEGA AL SERVICIO PUT CAJA_FISICA");
-        return cajaFisicaService.saveSingle(registro);
+        try {
+            CajaFisica resultado = cajaFisicaService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar caja física: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Guarda o actualiza un registro (POST).
-     */
     @POST
-    @Consumes("application/json")
-    public CajaFisica post(CajaFisica registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(CajaFisica registro) {
         System.out.println("LLEGA AL SERVICIO POST CAJA_FISICA");
-        return cajaFisicaService.saveSingle(registro);
+        try {
+            CajaFisica resultado = cajaFisicaService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear caja física: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -107,10 +123,15 @@ public class CajaFisicaRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE CAJA_FISICA");
-        CajaFisica elimina = new CajaFisica();
-        cajaFisicaDaoService.remove(elimina, id);
+        try {
+            CajaFisica elimina = new CajaFisica();
+            cajaFisicaDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar caja física: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

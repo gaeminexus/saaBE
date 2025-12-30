@@ -39,30 +39,55 @@ public class ProfesionRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<Profesion> getAll() throws Throwable {
-        return profesionDaoService.selectAll(NombreEntidadesCredito.PROFESION);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<Profesion> lista = profesionDaoService.selectAll(NombreEntidadesCredito.PROFESION);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener profesiones: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public Profesion getId(@PathParam("id") Long id) throws Throwable {
-        return profesionDaoService.selectById(id, NombreEntidadesCredito.PROFESION);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            Profesion profesion = profesionDaoService.selectById(id, NombreEntidadesCredito.PROFESION);
+            if (profesion == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Profesion con ID " + id + " no encontrada").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(profesion).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener profesión: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @PUT
-    @Consumes("application/json")
-    public Profesion put(Profesion registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(Profesion registro) {
         System.out.println("LLEGA AL SERVICIO PUT");
-        return profesionService.saveSingle(registro);
+        try {
+            Profesion resultado = profesionService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar profesión: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public Profesion post(Profesion registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(Profesion registro) {
         System.out.println("LLEGA AL SERVICIO");
-        return profesionService.saveSingle(registro);
+        try {
+            Profesion resultado = profesionService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear profesión: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
@@ -84,10 +109,15 @@ public class ProfesionRest {
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE");
-        Profesion elimina = new Profesion();
-        profesionDaoService.remove(elimina, id);
+        try {
+            Profesion elimina = new Profesion();
+            profesionDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar profesión: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

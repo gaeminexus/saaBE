@@ -39,30 +39,55 @@ public class NivelEstudioRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<NivelEstudio> getAll() throws Throwable {
-        return nivelEstudioDaoService.selectAll(NombreEntidadesCredito.NIVEL_ESTUDIO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<NivelEstudio> lista = nivelEstudioDaoService.selectAll(NombreEntidadesCredito.NIVEL_ESTUDIO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener niveles de estudio: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public NivelEstudio getId(@PathParam("id") Long id) throws Throwable {
-        return nivelEstudioDaoService.selectById(id, NombreEntidadesCredito.NIVEL_ESTUDIO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            NivelEstudio nivel = nivelEstudioDaoService.selectById(id, NombreEntidadesCredito.NIVEL_ESTUDIO);
+            if (nivel == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("NivelEstudio con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(nivel).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener nivel de estudio: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @PUT
-    @Consumes("application/json")
-    public NivelEstudio put(NivelEstudio registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(NivelEstudio registro) {
         System.out.println("LLEGA AL SERVICIO PUT");
-        return nivelEstudioService.saveSingle(registro);
+        try {
+            NivelEstudio resultado = nivelEstudioService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar nivel de estudio: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public NivelEstudio post(NivelEstudio registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(NivelEstudio registro) {
         System.out.println("LLEGA AL SERVICIO");
-        return nivelEstudioService.saveSingle(registro);
+        try {
+            NivelEstudio resultado = nivelEstudioService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear nivel de estudio: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
@@ -84,10 +109,15 @@ public class NivelEstudioRest {
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE");
-        NivelEstudio elimina = new NivelEstudio();
-        nivelEstudioDaoService.remove(elimina, id);
+        try {
+            NivelEstudio elimina = new NivelEstudio();
+            nivelEstudioDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar nivel de estudio: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

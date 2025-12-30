@@ -49,79 +49,86 @@ public class DetalleMayorAnaliticoRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<DetalleMayorAnalitico> getAll() throws Throwable {
-        return detalleMayorAnaliticoDaoService.selectAll(NombreEntidadesContabilidad.DETALLE_MAYOR_ANALITICO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<DetalleMayorAnalitico> lista = detalleMayorAnaliticoDaoService.selectAll(NombreEntidadesContabilidad.DETALLE_MAYOR_ANALITICO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener detalles de mayor analítico: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
-
-   
 
     @GET
-    @Produces("application/json")
     @Path("/getId/{id}")
-    public DetalleMayorAnalitico getId(@PathParam("id") Long id) throws Throwable {
-        return detalleMayorAnaliticoDaoService.selectById(id, NombreEntidadesContabilidad.DETALLE_MAYOR_ANALITICO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            DetalleMayorAnalitico detalle = detalleMayorAnaliticoDaoService.selectById(id, NombreEntidadesContabilidad.DETALLE_MAYOR_ANALITICO);
+            if (detalle == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Detalle de mayor analítico con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(detalle).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener detalle de mayor analítico: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * PUT method for updating or creating an instance of DetalleMayorAnaliticoRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @PUT
-    @Consumes("application/json")
-    public DetalleMayorAnalitico put(DetalleMayorAnalitico registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT");
-        return detalleMayorAnaliticoService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(DetalleMayorAnalitico registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - DETALLE_MAYOR_ANALITICO");
+        try {
+            DetalleMayorAnalitico resultado = detalleMayorAnaliticoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar detalle de mayor analítico: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST method for updating or creating an instance of DetalleMayorAnaliticoRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
-    @Consumes("application/json")
-    public DetalleMayorAnalitico post(DetalleMayorAnalitico registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO");
-        return detalleMayorAnaliticoService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(DetalleMayorAnalitico registro) {
+        System.out.println("LLEGA AL SERVICIO POST - DETALLE_MAYOR_ANALITICO");
+        try {
+            DetalleMayorAnalitico resultado = detalleMayorAnaliticoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear detalle de mayor analítico: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST method for updating or creating an instance of DetalleMayorAnaliticoRest
-     *
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de DETALLE_MAYOR_ANALITICO");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(detalleMayorAnaliticoService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(detalleMayorAnaliticoService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
-    /**
-     * POST method for updating or creating an instance of DetalleMayorAnaliticoRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @DELETE
-    @Consumes("application/json")
     @Path("/{id}")
-    public void delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE");
-        DetalleMayorAnalitico elimina = new DetalleMayorAnalitico();
-        detalleMayorAnaliticoDaoService.remove(elimina, id);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - DETALLE_MAYOR_ANALITICO");
+        try {
+            DetalleMayorAnalitico elimina = new DetalleMayorAnalitico();
+            detalleMayorAnaliticoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar detalle de mayor analítico: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

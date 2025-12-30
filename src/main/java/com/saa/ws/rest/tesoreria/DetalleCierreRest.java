@@ -46,39 +46,55 @@ public class DetalleCierreRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<DetalleCierre> getAll() throws Throwable {
-        return detalleCierreDaoService.selectAll(NombreEntidadesTesoreria.DETALLE_CIERRE);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<DetalleCierre> lista = detalleCierreDaoService.selectAll(NombreEntidadesTesoreria.DETALLE_CIERRE);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener detalles de cierre: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Recupera un registro de DetalleCierre por su ID.
-     */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public DetalleCierre getId(@PathParam("id") Long id) throws Throwable {
-        return detalleCierreDaoService.selectById(id, NombreEntidadesTesoreria.DETALLE_CIERRE);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            DetalleCierre detalleCierre = detalleCierreDaoService.selectById(id, NombreEntidadesTesoreria.DETALLE_CIERRE);
+            if (detalleCierre == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("DetalleCierre con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(detalleCierre).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener detalle de cierre: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Guarda o actualiza un registro (PUT).
-     */
     @PUT
-    @Consumes("application/json")
-    public DetalleCierre put(DetalleCierre registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(DetalleCierre registro) {
         System.out.println("LLEGA AL SERVICIO PUT DETALLE CIERRE");
-        return detalleCierreService.saveSingle(registro);
+        try {
+            DetalleCierre resultado = detalleCierreService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar detalle de cierre: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Guarda o actualiza un registro (POST).
-     */
     @POST
-    @Consumes("application/json")
-    public DetalleCierre post(DetalleCierre registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(DetalleCierre registro) {
         System.out.println("LLEGA AL SERVICIO POST DETALLE CIERRE");
-        return detalleCierreService.saveSingle(registro);
+        try {
+            DetalleCierre resultado = detalleCierreService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear detalle de cierre: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -106,10 +122,15 @@ public class DetalleCierreRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE DETALLE CIERRE");
-        DetalleCierre elimina = new DetalleCierre();
-        detalleCierreDaoService.remove(elimina, id);
+        try {
+            DetalleCierre elimina = new DetalleCierre();
+            detalleCierreDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar detalle de cierre: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

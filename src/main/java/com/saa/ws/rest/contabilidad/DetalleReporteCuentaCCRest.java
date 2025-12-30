@@ -49,9 +49,14 @@ public class DetalleReporteCuentaCCRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<DetalleReporteCuentaCC> getAll() throws Throwable {
-        return detalleReporteCuentaCCDaoService.selectAll(NombreEntidadesContabilidad.DETALLE_REPORTE_CUENTA_CC);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<DetalleReporteCuentaCC> lista = detalleReporteCuentaCCDaoService.selectAll(NombreEntidadesContabilidad.DETALLE_REPORTE_CUENTA_CC);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener detalles de reporte cuenta CC: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /*  Comentamos esta parte por que ya no estamos usando el orden descendente
@@ -82,10 +87,18 @@ public class DetalleReporteCuentaCCRest {
     */
 
     @GET
-    @Produces("application/json")
     @Path("/getId/{id}")
-    public DetalleReporteCuentaCC getId(@PathParam("id") Long id) throws Throwable {
-        return detalleReporteCuentaCCDaoService.selectById(id, NombreEntidadesContabilidad.DETALLE_REPORTE_CUENTA_CC);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            DetalleReporteCuentaCC detalle = detalleReporteCuentaCCDaoService.selectById(id, NombreEntidadesContabilidad.DETALLE_REPORTE_CUENTA_CC);
+            if (detalle == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Detalle de reporte cuenta CC con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(detalle).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener detalle de reporte cuenta CC: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -95,57 +108,60 @@ public class DetalleReporteCuentaCCRest {
      * @return an HTTP response with content of the updated or created resource.
      */
     @PUT
-    @Consumes("application/json")
-    public DetalleReporteCuentaCC put(DetalleReporteCuentaCC registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT");
-        return detalleReporteCuentaCCService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(DetalleReporteCuentaCC registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - DETALLE_REPORTE_CUENTA_CC");
+        try {
+            DetalleReporteCuentaCC resultado = detalleReporteCuentaCCService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar detalle de reporte cuenta CC: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST method for updating or creating an instance of DetalleReporteCuentaCCRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
-    @Consumes("application/json")
-    public DetalleReporteCuentaCC post(DetalleReporteCuentaCC registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO");
-        return detalleReporteCuentaCCService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(DetalleReporteCuentaCC registro) {
+        System.out.println("LLEGA AL SERVICIO POST - DETALLE_REPORTE_CUENTA_CC");
+        try {
+            DetalleReporteCuentaCC resultado = detalleReporteCuentaCCService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear detalle de reporte cuenta CC: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST method for updating or creating an instance of DetalleReporteCuentaCCRest
-     *
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de DETALLE_REPORTE_CUENTA_CC");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(detalleReporteCuentaCCService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(detalleReporteCuentaCCService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
-    /**
-     * POST method for updating or creating an instance of DetalleReporteCuentaCCRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
+
     @DELETE
-    @Consumes("application/json")
     @Path("/{id}")
-    public void delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE");
-        DetalleReporteCuentaCC elimina = new DetalleReporteCuentaCC();
-        detalleReporteCuentaCCDaoService.remove(elimina, id);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - DETALLE_REPORTE_CUENTA_CC");
+        try {
+            DetalleReporteCuentaCC elimina = new DetalleReporteCuentaCC();
+            detalleReporteCuentaCCDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar detalle de reporte cuenta CC: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

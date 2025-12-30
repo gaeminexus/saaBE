@@ -49,42 +49,55 @@ public class CxcKardexParticipeRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<CxcKardexParticipe> getAll() throws Throwable {
-        return cxcKardexParticipeDaoService.selectAll(NombreEntidadesCredito.CXC_KARDEX_PARTICIPE);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<CxcKardexParticipe> lista = cxcKardexParticipeDaoService.selectAll(NombreEntidadesCredito.CXC_KARDEX_PARTICIPE);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener kardex: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Retrieves CxcKardexParticipe by ID
-     * 
-     * @return CxcKardexParticipe
-     * @throws Throwable
-     */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public CxcKardexParticipe getId(@PathParam("id") Long id) throws Throwable {
-        return cxcKardexParticipeDaoService.selectById(id, NombreEntidadesCredito.CXC_KARDEX_PARTICIPE);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            CxcKardexParticipe kardex = cxcKardexParticipeDaoService.selectById(id, NombreEntidadesCredito.CXC_KARDEX_PARTICIPE);
+            if (kardex == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("CxcKardexParticipe con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(kardex).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener kardex: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * PUT method for updating or creating CxcKardexParticipe
-     */
     @PUT
-    @Consumes("application/json")
-    public CxcKardexParticipe put(CxcKardexParticipe registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(CxcKardexParticipe registro) {
         System.out.println("LLEGA AL SERVICIO PUT - CxcKardexParticipe");
-        return cxcKardexParticipeService.saveSingle(registro);
+        try {
+            CxcKardexParticipe resultado = cxcKardexParticipeService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar kardex: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST method for updating or creating CxcKardexParticipe
-     */
     @POST
-    @Consumes("application/json")
-    public CxcKardexParticipe post(CxcKardexParticipe registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(CxcKardexParticipe registro) {
         System.out.println("LLEGA AL SERVICIO POST - CxcKardexParticipe");
-        return cxcKardexParticipeService.saveSingle(registro);
+        try {
+            CxcKardexParticipe resultado = cxcKardexParticipeService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear kardex: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -115,11 +128,16 @@ public class CxcKardexParticipeRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - CxcKardexParticipe");
-        CxcKardexParticipe elimina = new CxcKardexParticipe();
-        cxcKardexParticipeDaoService.remove(elimina, id);
+        try {
+            CxcKardexParticipe elimina = new CxcKardexParticipe();
+            cxcKardexParticipeDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar kardex: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

@@ -39,30 +39,55 @@ public class PersonaNaturalRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<PersonaNatural> getAll() throws Throwable {
-        return personaNaturalDaoService.selectAll(NombreEntidadesCredito.PERSONA_NATURAL);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<PersonaNatural> lista = personaNaturalDaoService.selectAll(NombreEntidadesCredito.PERSONA_NATURAL);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener personas naturales: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public PersonaNatural getId(@PathParam("id") Long id) throws Throwable {
-        return personaNaturalDaoService.selectById(id, NombreEntidadesCredito.PERSONA_NATURAL);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            PersonaNatural persona = personaNaturalDaoService.selectById(id, NombreEntidadesCredito.PERSONA_NATURAL);
+            if (persona == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("PersonaNatural con ID " + id + " no encontrada").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(persona).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener persona natural: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @PUT
-    @Consumes("application/json")
-    public PersonaNatural put(PersonaNatural registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(PersonaNatural registro) {
         System.out.println("LLEGA AL SERVICIO PUT - PERSONA NATURAL");
-        return personaNaturalService.saveSingle(registro);
+        try {
+            PersonaNatural resultado = personaNaturalService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar persona natural: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public PersonaNatural post(PersonaNatural registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(PersonaNatural registro) {
         System.out.println("LLEGA AL SERVICIO POST - PERSONA NATURAL");
-        return personaNaturalService.saveSingle(registro);
+        try {
+            PersonaNatural resultado = personaNaturalService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear persona natural: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
@@ -85,11 +110,16 @@ public class PersonaNaturalRest {
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - PERSONA NATURAL");
-        PersonaNatural elimina = new PersonaNatural();
-        personaNaturalDaoService.remove(elimina, id);
+        try {
+            PersonaNatural elimina = new PersonaNatural();
+            personaNaturalDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar persona natural: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

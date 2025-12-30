@@ -49,51 +49,55 @@ public class PagoPrestamoRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<PagoPrestamo> getAll() throws Throwable {
-        return pagoPrestamoDaoService.selectAll(NombreEntidadesCredito.PAGO_PRESTAMO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<PagoPrestamo> lista = pagoPrestamoDaoService.selectAll(NombreEntidadesCredito.PAGO_PRESTAMO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener pagos de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Obtiene un registro de PagoPrestamo por su ID.
-     * 
-     * @param id Identificador del registro
-     * @return Objeto PagoPrestamo
-     * @throws Throwable
-     */
     @GET
-    @Produces("application/json")
+    @Produces(MediaType.APPLICATION_JSON)
     @Path("/getId/{id}")
-    public PagoPrestamo getId(@PathParam("id") Long id) throws Throwable {
-        return pagoPrestamoDaoService.selectById(id, NombreEntidadesCredito.PAGO_PRESTAMO);
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            PagoPrestamo pago = pagoPrestamoDaoService.selectById(id, NombreEntidadesCredito.PAGO_PRESTAMO);
+            if (pago == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("PagoPrestamo con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(pago).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener pago de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Crea o actualiza un registro de PagoPrestamo (PUT).
-     * 
-     * @param registro Objeto PagoPrestamo
-     * @return Registro actualizado o creado
-     * @throws Throwable
-     */
     @PUT
-    @Consumes("application/json")
-    public PagoPrestamo put(PagoPrestamo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(PagoPrestamo registro) {
         System.out.println("LLEGA AL SERVICIO PUT DE PagoPrestamo");
-        return pagoPrestamoService.saveSingle(registro);
+        try {
+            PagoPrestamo resultado = pagoPrestamoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar pago de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Crea o actualiza un registro de PagoPrestamo (POST).
-     * 
-     * @param registro Objeto PagoPrestamo
-     * @return Registro creado o actualizado
-     * @throws Throwable
-     */
     @POST
-    @Consumes("application/json")
-    public PagoPrestamo post(PagoPrestamo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(PagoPrestamo registro) {
         System.out.println("LLEGA AL SERVICIO POST DE PagoPrestamo");
-        return pagoPrestamoService.saveSingle(registro);
+        try {
+            PagoPrestamo resultado = pagoPrestamoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear pago de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
@@ -118,18 +122,19 @@ public class PagoPrestamoRest {
 
         return respuesta;
     }
-    /**
-     * Elimina un registro de PagoPrestamo por ID.
-     * 
-     * @param id Identificador del registro
-     * @throws Throwable
-     */
+
     @DELETE
-    @Consumes("application/json")
+    @Consumes(MediaType.APPLICATION_JSON)
     @Path("/{id}")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE DE PagoPrestamo");
-        PagoPrestamo elimina = new PagoPrestamo();
-        pagoPrestamoDaoService.remove(elimina, id);
+        try {
+            PagoPrestamo elimina = new PagoPrestamo();
+            pagoPrestamoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar pago de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

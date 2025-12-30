@@ -38,30 +38,55 @@ public class TipoAporteRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<TipoAporte> getAll() throws Throwable {
-        return tipoAporteDaoService.selectAll(NombreEntidadesCredito.TIPO_APORTE);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<TipoAporte> lista = tipoAporteDaoService.selectAll(NombreEntidadesCredito.TIPO_APORTE);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener tipos de aporte: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public TipoAporte getId(@PathParam("id") Long id) throws Throwable {
-        return tipoAporteDaoService.selectById(id, NombreEntidadesCredito.TIPO_APORTE);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            TipoAporte tipo = tipoAporteDaoService.selectById(id, NombreEntidadesCredito.TIPO_APORTE);
+            if (tipo == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("TipoAporte con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(tipo).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener tipo de aporte: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @PUT
-    @Consumes("application/json")
-    public TipoAporte put(TipoAporte registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(TipoAporte registro) {
         System.out.println("LLEGA AL SERVICIO PUT TipoAporte");
-        return tipoAporteService.saveSingle(registro);
+        try {
+            TipoAporte resultado = tipoAporteService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar tipo de aporte: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public TipoAporte post(TipoAporte registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(TipoAporte registro) {
         System.out.println("LLEGA AL SERVICIO POST TipoAporte");
-        return tipoAporteService.saveSingle(registro);
+        try {
+            TipoAporte resultado = tipoAporteService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear tipo de aporte: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
@@ -86,11 +111,16 @@ public class TipoAporteRest {
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE TipoAporte");
-        TipoAporte elimina = new TipoAporte();
-        tipoAporteDaoService.remove(elimina, id);
+        try {
+            TipoAporte elimina = new TipoAporte();
+            tipoAporteDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar tipo de aporte: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

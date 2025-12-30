@@ -46,39 +46,55 @@ public class GrupoCajaRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<GrupoCaja> getAll() throws Throwable {
-        return grupoCajaDaoService.selectAll(NombreEntidadesTesoreria.GRUPO_CAJA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<GrupoCaja> lista = grupoCajaDaoService.selectAll(NombreEntidadesTesoreria.GRUPO_CAJA);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener grupos de caja: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Recupera un registro de GrupoCaja por su ID.
-     */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public GrupoCaja getId(@PathParam("id") Long id) throws Throwable {
-        return grupoCajaDaoService.selectById(id, NombreEntidadesTesoreria.GRUPO_CAJA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            GrupoCaja grupoCaja = grupoCajaDaoService.selectById(id, NombreEntidadesTesoreria.GRUPO_CAJA);
+            if (grupoCaja == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("GrupoCaja con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(grupoCaja).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener grupo de caja: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Guarda o actualiza un registro (PUT).
-     */
     @PUT
-    @Consumes("application/json")
-    public GrupoCaja put(GrupoCaja registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(GrupoCaja registro) {
         System.out.println("LLEGA AL SERVICIO PUT GRUPO CAJA");
-        return grupoCajaService.saveSingle(registro);
+        try {
+            GrupoCaja resultado = grupoCajaService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar grupo de caja: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Guarda o actualiza un registro (POST).
-     */
     @POST
-    @Consumes("application/json")
-    public GrupoCaja post(GrupoCaja registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(GrupoCaja registro) {
         System.out.println("LLEGA AL SERVICIO POST GRUPO CAJA");
-        return grupoCajaService.saveSingle(registro);
+        try {
+            GrupoCaja resultado = grupoCajaService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear grupo de caja: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -106,10 +122,15 @@ public class GrupoCajaRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE GRUPO CAJA");
-        GrupoCaja elimina = new GrupoCaja();
-        grupoCajaDaoService.remove(elimina, id);
+        try {
+            GrupoCaja elimina = new GrupoCaja();
+            grupoCajaDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar grupo de caja: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

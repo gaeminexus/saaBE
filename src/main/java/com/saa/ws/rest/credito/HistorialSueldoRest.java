@@ -38,30 +38,55 @@ public class HistorialSueldoRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<HistorialSueldo> getAll() throws Throwable {
-        return historialSueldoDaoService.selectAll(NombreEntidadesCredito.HISTORIAL_SUELDO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<HistorialSueldo> lista = historialSueldoDaoService.selectAll(NombreEntidadesCredito.HISTORIAL_SUELDO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener historial de sueldos: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public HistorialSueldo getId(@PathParam("id") Long id) throws Throwable {
-        return historialSueldoDaoService.selectById(id, NombreEntidadesCredito.HISTORIAL_SUELDO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            HistorialSueldo historial = historialSueldoDaoService.selectById(id, NombreEntidadesCredito.HISTORIAL_SUELDO);
+            if (historial == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("HistorialSueldo con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(historial).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener historial de sueldo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @PUT
-    @Consumes("application/json")
-    public HistorialSueldo put(HistorialSueldo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(HistorialSueldo registro) {
         System.out.println("LLEGA AL SERVICIO PUT - HSTR");
-        return historialSueldoService.saveSingle(registro);
+        try {
+            HistorialSueldo resultado = historialSueldoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar historial de sueldo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public HistorialSueldo post(HistorialSueldo registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(HistorialSueldo registro) {
         System.out.println("LLEGA AL SERVICIO POST - HSTR");
-        return historialSueldoService.saveSingle(registro);
+        try {
+            HistorialSueldo resultado = historialSueldoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear historial de sueldo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
@@ -83,10 +108,15 @@ public class HistorialSueldoRest {
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - HSTR");
-        HistorialSueldo elimina = new HistorialSueldo();
-        historialSueldoDaoService.remove(elimina, id);
+        try {
+            HistorialSueldo elimina = new HistorialSueldo();
+            historialSueldoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar historial de sueldo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

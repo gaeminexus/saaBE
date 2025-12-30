@@ -39,30 +39,55 @@ public class ProvinciaRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<Provincia> getAll() throws Throwable {
-        return provinciaDaoService.selectAll(NombreEntidadesCredito.PROVINCIA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<Provincia> lista = provinciaDaoService.selectAll(NombreEntidadesCredito.PROVINCIA);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener provincias: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public Provincia getId(@PathParam("id") Long id) throws Throwable {
-        return provinciaDaoService.selectById(id, NombreEntidadesCredito.PROVINCIA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            Provincia provincia = provinciaDaoService.selectById(id, NombreEntidadesCredito.PROVINCIA);
+            if (provincia == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Provincia con ID " + id + " no encontrada").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(provincia).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener provincia: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @PUT
-    @Consumes("application/json")
-    public Provincia put(Provincia registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(Provincia registro) {
         System.out.println("LLEGA AL SERVICIO PUT - PROVINCIA");
-        return provinciaService.saveSingle(registro);
+        try {
+            Provincia resultado = provinciaService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar provincia: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public Provincia post(Provincia registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(Provincia registro) {
         System.out.println("LLEGA AL SERVICIO POST - PROVINCIA");
-        return provinciaService.saveSingle(registro);
+        try {
+            Provincia resultado = provinciaService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear provincia: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
@@ -85,11 +110,16 @@ public class ProvinciaRest {
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - PROVINCIA");
-        Provincia elimina = new Provincia();
-        provinciaDaoService.remove(elimina, id);
+        try {
+            Provincia elimina = new Provincia();
+            provinciaDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar provincia: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

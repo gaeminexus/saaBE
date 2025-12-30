@@ -44,43 +44,56 @@ public class TipoRequisitoPrestamoRest {
     @GET
     @Path("/getAll")
     @Produces(MediaType.APPLICATION_JSON)
-    public List<TipoRequisitoPrestamo> getAll() throws Throwable {
-        return tipoRequisitoPrestamoDaoService.selectAll(NombreEntidadesCredito.TIPO_REQUISITO_PRESTAMO);
+    public Response getAll() {
+        try {
+            List<TipoRequisitoPrestamo> lista = tipoRequisitoPrestamoDaoService.selectAll(NombreEntidadesCredito.TIPO_REQUISITO_PRESTAMO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener tipos de requisito: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * GET - Obtener por ID
-     */
     @GET
     @Path("/getId/{id}")
     @Produces(MediaType.APPLICATION_JSON)
-    public TipoRequisitoPrestamo getId(@PathParam("id") Long id) throws Throwable {
-        return tipoRequisitoPrestamoDaoService.selectById(id, NombreEntidadesCredito.TIPO_REQUISITO_PRESTAMO);
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            TipoRequisitoPrestamo tipo = tipoRequisitoPrestamoDaoService.selectById(id, NombreEntidadesCredito.TIPO_REQUISITO_PRESTAMO);
+            if (tipo == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("TipoRequisitoPrestamo con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(tipo).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener tipo de requisito: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * PUT - Actualizar o crear registro
-     */
     @PUT
     @Consumes(MediaType.APPLICATION_JSON)
-    public TipoRequisitoPrestamo put(TipoRequisitoPrestamo registro) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(TipoRequisitoPrestamo registro) {
         System.out.println("LLEGA AL SERVICIO PUT");
-        return tipoRequisitoPrestamoService.saveSingle(registro);
+        try {
+            TipoRequisitoPrestamo resultado = tipoRequisitoPrestamoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar tipo de requisito: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST - Crear registro
-     */
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
-    public TipoRequisitoPrestamo post(TipoRequisitoPrestamo registro) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(TipoRequisitoPrestamo registro) {
         System.out.println("LLEGA AL SERVICIO");
-        return tipoRequisitoPrestamoService.saveSingle(registro);
+        try {
+            TipoRequisitoPrestamo resultado = tipoRequisitoPrestamoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear tipo de requisito: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * POST - Select by criteria
-     */
     @POST
     @Path("selectByCriteria")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -101,15 +114,17 @@ public class TipoRequisitoPrestamoRest {
         return respuesta;
     }
 
-    /**
-     * DELETE - Eliminar registro por ID
-     */
     @DELETE
     @Path("/{id}")
-    @Consumes(MediaType.APPLICATION_JSON)
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE");
-        TipoRequisitoPrestamo elimina = new TipoRequisitoPrestamo();
-        tipoRequisitoPrestamoDaoService.remove(elimina, id);
+        try {
+            TipoRequisitoPrestamo elimina = new TipoRequisitoPrestamo();
+            tipoRequisitoPrestamoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar tipo de requisito: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

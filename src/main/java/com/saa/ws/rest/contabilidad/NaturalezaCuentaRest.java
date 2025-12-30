@@ -49,9 +49,14 @@ public class NaturalezaCuentaRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<NaturalezaCuenta> getAll() throws Throwable {
-        return naturalezaCuentaDaoService.selectAll(NombreEntidadesContabilidad.NATURALEZA_CUENTA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<NaturalezaCuenta> lista = naturalezaCuentaDaoService.selectAll(NombreEntidadesContabilidad.NATURALEZA_CUENTA);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener naturalezas de cuenta: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 	/**
@@ -62,9 +67,17 @@ public class NaturalezaCuentaRest {
 	 */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public NaturalezaCuenta getId(@PathParam("id") Long id) throws Throwable {
-        return naturalezaCuentaDaoService.selectById(id, NombreEntidadesContabilidad.NATURALEZA_CUENTA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            NaturalezaCuenta naturaleza = naturalezaCuentaDaoService.selectById(id, NombreEntidadesContabilidad.NATURALEZA_CUENTA);
+            if (naturaleza == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Naturaleza de cuenta con ID " + id + " no encontrada").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(naturaleza).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener naturaleza de cuenta: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
     
     /**
@@ -75,9 +88,14 @@ public class NaturalezaCuentaRest {
 	 */
     @GET
     @Path("/getByEmpresa/{idEmpresa}")
-    @Produces("application/json")
-    public List<NaturalezaCuenta> getByEmpresa(@PathParam("idEmpresa") Long idEmpresa) throws Throwable {
-        return naturalezaCuentaDaoService.selectByEmpresa(idEmpresa);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getByEmpresa(@PathParam("idEmpresa") Long idEmpresa) {
+        try {
+            List<NaturalezaCuenta> lista = naturalezaCuentaDaoService.selectByEmpresa(idEmpresa);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener naturalezas por empresa: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
     
     /**
@@ -87,10 +105,15 @@ public class NaturalezaCuentaRest {
 	 * @throws Throwable
 	 */
     @GET
-    @Path("/validaTieneCuentas/{idNaturaleza}") /* hizo mely*/
-    @Produces("application/json")
-    public Long validaTieneCuentas(@PathParam("idNaturaleza") Long idNaturaleza) throws Throwable {
-        return naturalezaCuentaService.validaTieneCuentas(idNaturaleza);
+    @Path("/validaTieneCuentas/{idNaturaleza}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response validaTieneCuentas(@PathParam("idNaturaleza") Long idNaturaleza) {
+        try {
+            Long resultado = naturalezaCuentaService.validaTieneCuentas(idNaturaleza);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al validar cuentas: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -100,10 +123,16 @@ public class NaturalezaCuentaRest {
      * @return an HTTP response with content of the updated or created resource.
      */
     @PUT
-    @Consumes("application/json")
-    public NaturalezaCuenta put(NaturalezaCuenta registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT");
-        return naturalezaCuentaService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(NaturalezaCuenta registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - NATURALEZA_CUENTA");
+        try {
+            NaturalezaCuenta resultado = naturalezaCuentaService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar naturaleza de cuenta: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -113,10 +142,16 @@ public class NaturalezaCuentaRest {
      * @return an HTTP response with content of the updated or created resource.
      */
     @POST
-    @Consumes("application/json")
-    public NaturalezaCuenta post(NaturalezaCuenta registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO");
-        return naturalezaCuentaService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(NaturalezaCuenta registro) {
+        System.out.println("LLEGA AL SERVICIO POST - NATURALEZA_CUENTA");
+        try {
+            NaturalezaCuenta resultado = naturalezaCuentaService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear naturaleza de cuenta: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -127,16 +162,19 @@ public class NaturalezaCuentaRest {
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
-        System.out.println("selectByCriteria de Naturaleza Cuenta");
-        Response respuesta = null;
-    	try {
-    		respuesta = Response.status(Response.Status.OK).entity(naturalezaCuentaService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
-		} catch (Throwable e) {
-			respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
-		}
-    	return respuesta;
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
+        System.out.println("selectByCriteria de NATURALEZA_CUENTA");
+        try {
+            return Response.status(Response.Status.OK)
+                    .entity(naturalezaCuentaService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -147,32 +185,32 @@ public class NaturalezaCuentaRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public String delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE 11");
-        /*NaturalezaCuenta elimina = new NaturalezaCuenta();
-        naturalezaCuentaDaoService.remove(elimina, id);*/
-        return naturalezaCuentaService.eliminaNaturalezaCuenta(id);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - NATURALEZA_CUENTA");
+        try {
+            String resultado = naturalezaCuentaService.eliminaNaturalezaCuenta(id);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar naturaleza de cuenta: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
     
-    /**
-     * POST method for updating or creating an instance of NaturalezaCuentaRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
     @Path("inactivaNaturalezaCuenta")
-    @Consumes("application/json")
-    public Response inactivaNaturalezaCuenta(Long idNaturaleza) throws Throwable {
-        System.out.println("inactivaNaturalezaCuenta de Naturaleza Cuenta:" + idNaturaleza);
-        Response respuesta = null;
-    	try {
-    		respuesta = Response.status(Response.Status.OK).entity(naturalezaCuentaService.inactivaNaturalezaCuenta(idNaturaleza)).type(MediaType.APPLICATION_JSON).build();
-		} catch (Throwable e) {
-			respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
-		}
-    	return respuesta;
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response inactivaNaturalezaCuenta(Long idNaturaleza) {
+        System.out.println("inactivaNaturalezaCuenta de NATURALEZA_CUENTA: " + idNaturaleza);
+        try {
+            return Response.status(Response.Status.OK)
+                    .entity(naturalezaCuentaService.inactivaNaturalezaCuenta(idNaturaleza))
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

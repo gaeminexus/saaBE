@@ -46,39 +46,55 @@ public class CobroTarjetaRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<CobroTarjeta> getAll() throws Throwable {
-        return cobroTarjetaDaoService.selectAll(NombreEntidadesTesoreria.COBRO_TARJETA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<CobroTarjeta> lista = cobroTarjetaDaoService.selectAll(NombreEntidadesTesoreria.COBRO_TARJETA);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cobros con tarjeta: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Recupera un registro de CobroTarjeta por su ID.
-     */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public CobroTarjeta getId(@PathParam("id") Long id) throws Throwable {
-        return cobroTarjetaDaoService.selectById(id, NombreEntidadesTesoreria.COBRO_TARJETA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            CobroTarjeta cobroTarjeta = cobroTarjetaDaoService.selectById(id, NombreEntidadesTesoreria.COBRO_TARJETA);
+            if (cobroTarjeta == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("CobroTarjeta con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(cobroTarjeta).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cobro con tarjeta: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Guarda o actualiza un registro (PUT).
-     */
     @PUT
-    @Consumes("application/json")
-    public CobroTarjeta put(CobroTarjeta registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(CobroTarjeta registro) {
         System.out.println("LLEGA AL SERVICIO PUT COBRO TARJETA");
-        return cobroTarjetaService.saveSingle(registro);
+        try {
+            CobroTarjeta resultado = cobroTarjetaService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar cobro con tarjeta: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Guarda o actualiza un registro (POST).
-     */
     @POST
-    @Consumes("application/json")
-    public CobroTarjeta post(CobroTarjeta registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(CobroTarjeta registro) {
         System.out.println("LLEGA AL SERVICIO POST COBRO TARJETA");
-        return cobroTarjetaService.saveSingle(registro);
+        try {
+            CobroTarjeta resultado = cobroTarjetaService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear cobro con tarjeta: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -101,15 +117,17 @@ public class CobroTarjetaRest {
         return respuesta;
     }
 
-    /**
-     * Elimina un registro de CobroTarjeta por ID.
-     */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE COBRO TARJETA");
-        CobroTarjeta elimina = new CobroTarjeta();
-        cobroTarjetaDaoService.remove(elimina, id);
+        try {
+            CobroTarjeta elimina = new CobroTarjeta();
+            cobroTarjetaDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar cobro con tarjeta: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }
