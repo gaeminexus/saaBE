@@ -46,9 +46,14 @@ public class TempCobroRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<TempCobro> getAll() throws Throwable {
-        return tempCobroDaoService.selectAll(NombreEntidadesTesoreria.TEMP_COBRO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<TempCobro> lista = tempCobroDaoService.selectAll(NombreEntidadesTesoreria.TEMP_COBRO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cobros temporales: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -56,29 +61,49 @@ public class TempCobroRest {
      */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public TempCobro getId(@PathParam("id") Long id) throws Throwable {
-        return tempCobroDaoService.selectById(id, NombreEntidadesTesoreria.TEMP_COBRO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            TempCobro tempCobro = tempCobroDaoService.selectById(id, NombreEntidadesTesoreria.TEMP_COBRO);
+            if (tempCobro == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("TempCobro con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(tempCobro).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cobro temporal: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (PUT).
      */
     @PUT
-    @Consumes("application/json")
-    public TempCobro put(TempCobro registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT TEMP_COBRO");
-        return tempCobroService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(TempCobro registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - TEMP_COBRO");
+        try {
+            TempCobro resultado = tempCobroService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar cobro temporal: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (POST).
      */
     @POST
-    @Consumes("application/json")
-    public TempCobro post(TempCobro registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO POST TEMP_COBRO");
-        return tempCobroService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(TempCobro registro) {
+        System.out.println("LLEGA AL SERVICIO POST - TEMP_COBRO");
+        try {
+            TempCobro resultado = tempCobroService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear cobro temporal: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -89,16 +114,19 @@ public class TempCobroRest {
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de TEMP_COBRO");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(tempCobroService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(tempCobroService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
     /**
@@ -106,10 +134,15 @@ public class TempCobroRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE TEMP_COBRO");
-        TempCobro elimina = new TempCobro();
-        tempCobroDaoService.remove(elimina, id);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - TEMP_COBRO");
+        try {
+            TempCobro elimina = new TempCobro();
+            tempCobroDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar cobro temporal: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

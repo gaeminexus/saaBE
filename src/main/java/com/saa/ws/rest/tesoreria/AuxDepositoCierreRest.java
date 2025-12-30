@@ -42,39 +42,64 @@ public class AuxDepositoCierreRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<AuxDepositoCierre> getAll() throws Throwable {
-        return auxDepositoCierreDaoService.selectAll(NombreEntidadesTesoreria.AUX_DEPOSITO_CIERRE);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<AuxDepositoCierre> lista = auxDepositoCierreDaoService.selectAll(NombreEntidadesTesoreria.AUX_DEPOSITO_CIERRE);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cierres de depósito auxiliares: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Obtiene un registro por ID.
      */
     @GET
-    @Produces("application/json")
+    @Produces(MediaType.APPLICATION_JSON)
     @Path("/getId/{id}")
-    public AuxDepositoCierre getId(@PathParam("id") Long id) throws Throwable {
-        return auxDepositoCierreDaoService.selectById(id, NombreEntidadesTesoreria.AUX_DEPOSITO_CIERRE);
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            AuxDepositoCierre auxDepositoCierre = auxDepositoCierreDaoService.selectById(id, NombreEntidadesTesoreria.AUX_DEPOSITO_CIERRE);
+            if (auxDepositoCierre == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("AuxDepositoCierre con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(auxDepositoCierre).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cierre de depósito auxiliar: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Actualiza o crea un registro.
      */
     @PUT
-    @Consumes("application/json")
-    public AuxDepositoCierre put(AuxDepositoCierre registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT");
-        return auxDepositoCierreService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(AuxDepositoCierre registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - AUX_DEPOSITO_CIERRE");
+        try {
+            AuxDepositoCierre resultado = auxDepositoCierreService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar cierre de depósito auxiliar: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Crea un nuevo registro.
      */
     @POST
-    @Consumes("application/json")
-    public AuxDepositoCierre post(AuxDepositoCierre registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO POST");
-        return auxDepositoCierreService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(AuxDepositoCierre registro) {
+        System.out.println("LLEGA AL SERVICIO POST - AUX_DEPOSITO_CIERRE");
+        try {
+            AuxDepositoCierre resultado = auxDepositoCierreService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear cierre de depósito auxiliar: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -85,28 +110,36 @@ public class AuxDepositoCierreRest {
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de AUX_DEPOSITO_CIERRE");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(auxDepositoCierreService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(auxDepositoCierreService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
     /**
      * Elimina un registro.
      */
     @DELETE
-    @Consumes("application/json")
+    @Produces(MediaType.APPLICATION_JSON)
     @Path("/{id}")
-    public void delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE");
-        AuxDepositoCierre elimina = new AuxDepositoCierre();
-        auxDepositoCierreDaoService.remove(elimina, id);
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - AUX_DEPOSITO_CIERRE");
+        try {
+            AuxDepositoCierre elimina = new AuxDepositoCierre();
+            auxDepositoCierreDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar cierre de depósito auxiliar: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

@@ -46,9 +46,14 @@ public class DepositoRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<Deposito> getAll() throws Throwable {
-        return depositoDaoService.selectAll(NombreEntidadesTesoreria.DEPOSITO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<Deposito> lista = depositoDaoService.selectAll(NombreEntidadesTesoreria.DEPOSITO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener depósitos: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -56,29 +61,49 @@ public class DepositoRest {
      */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public Deposito getId(@PathParam("id") Long id) throws Throwable {
-        return depositoDaoService.selectById(id, NombreEntidadesTesoreria.DEPOSITO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            Deposito deposito = depositoDaoService.selectById(id, NombreEntidadesTesoreria.DEPOSITO);
+            if (deposito == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Deposito con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(deposito).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener depósito: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (PUT).
      */
     @PUT
-    @Consumes("application/json")
-    public Deposito put(Deposito registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT DEPOSITO");
-        return depositoService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(Deposito registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - DEPOSITO");
+        try {
+            Deposito resultado = depositoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar depósito: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (POST).
      */
     @POST
-    @Consumes("application/json")
-    public Deposito post(Deposito registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO POST DEPOSITO");
-        return depositoService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(Deposito registro) {
+        System.out.println("LLEGA AL SERVICIO POST - DEPOSITO");
+        try {
+            Deposito resultado = depositoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear depósito: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -89,16 +114,19 @@ public class DepositoRest {
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de DEPOSITO");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(depositoService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(depositoService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
     /**
@@ -106,10 +134,15 @@ public class DepositoRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE DEPOSITO");
-        Deposito elimina = new Deposito();
-        depositoDaoService.remove(elimina, id);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - DEPOSITO");
+        try {
+            Deposito elimina = new Deposito();
+            depositoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar depósito: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

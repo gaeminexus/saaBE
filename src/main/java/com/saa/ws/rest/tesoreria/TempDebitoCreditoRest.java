@@ -46,9 +46,14 @@ public class TempDebitoCreditoRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<TempDebitoCredito> getAll() throws Throwable {
-        return tempDebitoCreditoDaoService.selectAll(NombreEntidadesTesoreria.TEMP_DEBITO_CREDITO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<TempDebitoCredito> lista = tempDebitoCreditoDaoService.selectAll(NombreEntidadesTesoreria.TEMP_DEBITO_CREDITO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener débitos/créditos temporales: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -56,29 +61,49 @@ public class TempDebitoCreditoRest {
      */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public TempDebitoCredito getId(@PathParam("id") Long id) throws Throwable {
-        return tempDebitoCreditoDaoService.selectById(id, NombreEntidadesTesoreria.TEMP_DEBITO_CREDITO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            TempDebitoCredito tempDebitoCredito = tempDebitoCreditoDaoService.selectById(id, NombreEntidadesTesoreria.TEMP_DEBITO_CREDITO);
+            if (tempDebitoCredito == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("TempDebitoCredito con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(tempDebitoCredito).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener débito/crédito temporal: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (PUT).
      */
     @PUT
-    @Consumes("application/json")
-    public TempDebitoCredito put(TempDebitoCredito registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT TEMP_DEBITO_CREDITO");
-        return tempDebitoCreditoService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(TempDebitoCredito registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - TEMP_DEBITO_CREDITO");
+        try {
+            TempDebitoCredito resultado = tempDebitoCreditoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar débito/crédito temporal: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (POST).
      */
     @POST
-    @Consumes("application/json")
-    public TempDebitoCredito post(TempDebitoCredito registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO POST TEMP_DEBITO_CREDITO");
-        return tempDebitoCreditoService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(TempDebitoCredito registro) {
+        System.out.println("LLEGA AL SERVICIO POST - TEMP_DEBITO_CREDITO");
+        try {
+            TempDebitoCredito resultado = tempDebitoCreditoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear débito/crédito temporal: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -89,26 +114,34 @@ public class TempDebitoCreditoRest {
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de TEMP_DEBITO_CREDITO");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(tempDebitoCreditoService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(tempDebitoCreditoService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
     /**
      * Elimina un registro de TempDebitoCredito por ID.
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE TEMP_DEBITO_CREDITO");
-        TempDebitoCredito elimina = new TempDebitoCredito();
-        tempDebitoCreditoDaoService.remove(elimina, id);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - TEMP_DEBITO_CREDITO");
+        try {
+            TempDebitoCredito elimina = new TempDebitoCredito();
+            tempDebitoCreditoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar débito/crédito temporal: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

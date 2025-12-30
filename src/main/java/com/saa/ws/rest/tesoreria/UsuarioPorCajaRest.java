@@ -46,9 +46,14 @@ public class UsuarioPorCajaRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<UsuarioPorCaja> getAll() throws Throwable {
-        return usuarioPorCajaDaoService.selectAll(NombreEntidadesTesoreria.USUARIO_POR_CAJA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<UsuarioPorCaja> lista = usuarioPorCajaDaoService.selectAll(NombreEntidadesTesoreria.USUARIO_POR_CAJA);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener usuarios por caja: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -56,29 +61,49 @@ public class UsuarioPorCajaRest {
      */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public UsuarioPorCaja getId(@PathParam("id") Long id) throws Throwable {
-        return usuarioPorCajaDaoService.selectById(id, NombreEntidadesTesoreria.USUARIO_POR_CAJA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            UsuarioPorCaja usuarioPorCaja = usuarioPorCajaDaoService.selectById(id, NombreEntidadesTesoreria.USUARIO_POR_CAJA);
+            if (usuarioPorCaja == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("UsuarioPorCaja con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(usuarioPorCaja).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener usuario por caja: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (PUT).
      */
     @PUT
-    @Consumes("application/json")
-    public UsuarioPorCaja put(UsuarioPorCaja registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT USUARIO_POR_CAJA");
-        return usuarioPorCajaService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(UsuarioPorCaja registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - USUARIO_POR_CAJA");
+        try {
+            UsuarioPorCaja resultado = usuarioPorCajaService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar usuario por caja: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (POST).
      */
     @POST
-    @Consumes("application/json")
-    public UsuarioPorCaja post(UsuarioPorCaja registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO POST USUARIO_POR_CAJA");
-        return usuarioPorCajaService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(UsuarioPorCaja registro) {
+        System.out.println("LLEGA AL SERVICIO POST - USUARIO_POR_CAJA");
+        try {
+            UsuarioPorCaja resultado = usuarioPorCajaService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear usuario por caja: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -89,16 +114,19 @@ public class UsuarioPorCajaRest {
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de USUARIO_POR_CAJA");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(usuarioPorCajaService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(usuarioPorCajaService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
     /**
@@ -106,10 +134,15 @@ public class UsuarioPorCajaRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE USUARIO_POR_CAJA");
-        UsuarioPorCaja elimina = new UsuarioPorCaja();
-        usuarioPorCajaDaoService.remove(elimina, id);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - USUARIO_POR_CAJA");
+        try {
+            UsuarioPorCaja elimina = new UsuarioPorCaja();
+            usuarioPorCajaDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar usuario por caja: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

@@ -46,9 +46,14 @@ public class TempCobroTarjetaRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<TempCobroTarjeta> getAll() throws Throwable {
-        return tempCobroTarjetaDaoService.selectAll(NombreEntidadesTesoreria.TEMP_COBRO_TARJETA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<TempCobroTarjeta> lista = tempCobroTarjetaDaoService.selectAll(NombreEntidadesTesoreria.TEMP_COBRO_TARJETA);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cobros con tarjeta temporales: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -56,29 +61,49 @@ public class TempCobroTarjetaRest {
      */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public TempCobroTarjeta getId(@PathParam("id") Long id) throws Throwable {
-        return tempCobroTarjetaDaoService.selectById(id, NombreEntidadesTesoreria.TEMP_COBRO_TARJETA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            TempCobroTarjeta tempCobroTarjeta = tempCobroTarjetaDaoService.selectById(id, NombreEntidadesTesoreria.TEMP_COBRO_TARJETA);
+            if (tempCobroTarjeta == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("TempCobroTarjeta con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(tempCobroTarjeta).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cobro con tarjeta temporal: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (PUT).
      */
     @PUT
-    @Consumes("application/json")
-    public TempCobroTarjeta put(TempCobroTarjeta registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT TEMP_COBRO_TARJETA");
-        return tempCobroTarjetaService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(TempCobroTarjeta registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - TEMP_COBRO_TARJETA");
+        try {
+            TempCobroTarjeta resultado = tempCobroTarjetaService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar cobro con tarjeta temporal: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (POST).
      */
     @POST
-    @Consumes("application/json")
-    public TempCobroTarjeta post(TempCobroTarjeta registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO POST TEMP_COBRO_TARJETA");
-        return tempCobroTarjetaService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(TempCobroTarjeta registro) {
+        System.out.println("LLEGA AL SERVICIO POST - TEMP_COBRO_TARJETA");
+        try {
+            TempCobroTarjeta resultado = tempCobroTarjetaService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear cobro con tarjeta temporal: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -89,16 +114,19 @@ public class TempCobroTarjetaRest {
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de TEMP_COBRO_TARJETA");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(tempCobroTarjetaService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(tempCobroTarjetaService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
     /**
@@ -106,10 +134,15 @@ public class TempCobroTarjetaRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE TEMP_COBRO_TARJETA");
-        TempCobroTarjeta elimina = new TempCobroTarjeta();
-        tempCobroTarjetaDaoService.remove(elimina, id);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - TEMP_COBRO_TARJETA");
+        try {
+            TempCobroTarjeta elimina = new TempCobroTarjeta();
+            tempCobroTarjetaDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar cobro con tarjeta temporal: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

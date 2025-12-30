@@ -46,9 +46,14 @@ public class TempCobroChequeRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<TempCobroCheque> getAll() throws Throwable {
-        return tempCobroChequeDaoService.selectAll(NombreEntidadesTesoreria.TEMP_COBRO_CHEQUE);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<TempCobroCheque> lista = tempCobroChequeDaoService.selectAll(NombreEntidadesTesoreria.TEMP_COBRO_CHEQUE);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cobros con cheque temporales: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -56,29 +61,49 @@ public class TempCobroChequeRest {
      */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public TempCobroCheque getId(@PathParam("id") Long id) throws Throwable {
-        return tempCobroChequeDaoService.selectById(id, NombreEntidadesTesoreria.TEMP_COBRO_CHEQUE);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            TempCobroCheque tempCobroCheque = tempCobroChequeDaoService.selectById(id, NombreEntidadesTesoreria.TEMP_COBRO_CHEQUE);
+            if (tempCobroCheque == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("TempCobroCheque con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(tempCobroCheque).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cobro con cheque temporal: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (PUT).
      */
     @PUT
-    @Consumes("application/json")
-    public TempCobroCheque put(TempCobroCheque registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT TEMP_COBRO_CHEQUE");
-        return tempCobroChequeService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(TempCobroCheque registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - TEMP_COBRO_CHEQUE");
+        try {
+            TempCobroCheque resultado = tempCobroChequeService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar cobro con cheque temporal: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (POST).
      */
     @POST
-    @Consumes("application/json")
-    public TempCobroCheque post(TempCobroCheque registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO POST TEMP_COBRO_CHEQUE");
-        return tempCobroChequeService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(TempCobroCheque registro) {
+        System.out.println("LLEGA AL SERVICIO POST - TEMP_COBRO_CHEQUE");
+        try {
+            TempCobroCheque resultado = tempCobroChequeService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear cobro con cheque temporal: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -89,16 +114,19 @@ public class TempCobroChequeRest {
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de TEMP_COBRO_CHEQUE");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(tempCobroChequeService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(tempCobroChequeService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
     /**
@@ -106,10 +134,15 @@ public class TempCobroChequeRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE TEMP_COBRO_CHEQUE");
-        TempCobroCheque elimina = new TempCobroCheque();
-        tempCobroChequeDaoService.remove(elimina, id);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - TEMP_COBRO_CHEQUE");
+        try {
+            TempCobroCheque elimina = new TempCobroCheque();
+            tempCobroChequeDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar cobro con cheque temporal: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

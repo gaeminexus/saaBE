@@ -46,9 +46,14 @@ public class SaldoBancoRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<SaldoBanco> getAll() throws Throwable {
-        return saldoBancoDaoService.selectAll(NombreEntidadesTesoreria.SALDO_BANCO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<SaldoBanco> lista = saldoBancoDaoService.selectAll(NombreEntidadesTesoreria.SALDO_BANCO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener saldos de banco: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -56,29 +61,49 @@ public class SaldoBancoRest {
      */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public SaldoBanco getId(@PathParam("id") Long id) throws Throwable {
-        return saldoBancoDaoService.selectById(id, NombreEntidadesTesoreria.SALDO_BANCO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            SaldoBanco saldoBanco = saldoBancoDaoService.selectById(id, NombreEntidadesTesoreria.SALDO_BANCO);
+            if (saldoBanco == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("SaldoBanco con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(saldoBanco).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener saldo de banco: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (PUT).
      */
     @PUT
-    @Consumes("application/json")
-    public SaldoBanco put(SaldoBanco registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(SaldoBanco registro) {
         System.out.println("LLEGA AL SERVICIO PUT SALDO_BANCO");
-        return saldoBancoService.saveSingle(registro);
+        try {
+            SaldoBanco resultado = saldoBancoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar saldo de banco: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (POST).
      */
     @POST
-    @Consumes("application/json")
-    public SaldoBanco post(SaldoBanco registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(SaldoBanco registro) {
         System.out.println("LLEGA AL SERVICIO POST SALDO_BANCO");
-        return saldoBancoService.saveSingle(registro);
+        try {
+            SaldoBanco resultado = saldoBancoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear saldo de banco: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -89,16 +114,19 @@ public class SaldoBancoRest {
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de SALDO_BANCO");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(saldoBancoService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(saldoBancoService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
     /**
@@ -106,11 +134,16 @@ public class SaldoBancoRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE SALDO_BANCO");
-        SaldoBanco elimina = new SaldoBanco();
-        saldoBancoDaoService.remove(elimina, id);
+        try {
+            SaldoBanco elimina = new SaldoBanco();
+            saldoBancoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar saldo de banco: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }
 

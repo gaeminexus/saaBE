@@ -46,9 +46,14 @@ public class TempCobroTransferenciaRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<TempCobroTransferencia> getAll() throws Throwable {
-        return tempCobroTransferenciaDaoService.selectAll(NombreEntidadesTesoreria.TEMP_COBRO_TRANSFERENCIA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<TempCobroTransferencia> lista = tempCobroTransferenciaDaoService.selectAll(NombreEntidadesTesoreria.TEMP_COBRO_TRANSFERENCIA);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener transferencias de cobro temporales: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -56,29 +61,49 @@ public class TempCobroTransferenciaRest {
      */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public TempCobroTransferencia getId(@PathParam("id") Long id) throws Throwable {
-        return tempCobroTransferenciaDaoService.selectById(id, NombreEntidadesTesoreria.TEMP_COBRO_TRANSFERENCIA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            TempCobroTransferencia tempCobroTransferencia = tempCobroTransferenciaDaoService.selectById(id, NombreEntidadesTesoreria.TEMP_COBRO_TRANSFERENCIA);
+            if (tempCobroTransferencia == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("TempCobroTransferencia con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(tempCobroTransferencia).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener transferencia de cobro temporal: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (PUT).
      */
     @PUT
-    @Consumes("application/json")
-    public TempCobroTransferencia put(TempCobroTransferencia registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT TEMP_COBRO_TRANSFERENCIA");
-        return tempCobroTransferenciaService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(TempCobroTransferencia registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - TEMP_COBRO_TRANSFERENCIA");
+        try {
+            TempCobroTransferencia resultado = tempCobroTransferenciaService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar transferencia de cobro temporal: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (POST).
      */
     @POST
-    @Consumes("application/json")
-    public TempCobroTransferencia post(TempCobroTransferencia registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO POST TEMP_COBRO_TRANSFERENCIA");
-        return tempCobroTransferenciaService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(TempCobroTransferencia registro) {
+        System.out.println("LLEGA AL SERVICIO POST - TEMP_COBRO_TRANSFERENCIA");
+        try {
+            TempCobroTransferencia resultado = tempCobroTransferenciaService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear transferencia de cobro temporal: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -89,26 +114,34 @@ public class TempCobroTransferenciaRest {
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de TEMP_COBRO_TRANSFERENCIA");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(tempCobroTransferenciaService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(tempCobroTransferenciaService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
     /**
      * Elimina un registro de TempCobroTransferencia por ID.
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE TEMP_COBRO_TRANSFERENCIA");
-        TempCobroTransferencia elimina = new TempCobroTransferencia();
-        tempCobroTransferenciaDaoService.remove(elimina, id);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - TEMP_COBRO_TRANSFERENCIA");
+        try {
+            TempCobroTransferencia elimina = new TempCobroTransferencia();
+            tempCobroTransferenciaDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar transferencia de cobro temporal: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

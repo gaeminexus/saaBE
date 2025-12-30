@@ -46,9 +46,14 @@ public class TelefonoDireccionRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<TelefonoDireccion> getAll() throws Throwable {
-        return telefonoDireccionDaoService.selectAll(NombreEntidadesTesoreria.TELEFONO_DIRECCION);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<TelefonoDireccion> lista = telefonoDireccionDaoService.selectAll(NombreEntidadesTesoreria.TELEFONO_DIRECCION);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener teléfonos: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -56,29 +61,49 @@ public class TelefonoDireccionRest {
      */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public TelefonoDireccion getId(@PathParam("id") Long id) throws Throwable {
-        return telefonoDireccionDaoService.selectById(id, NombreEntidadesTesoreria.TELEFONO_DIRECCION);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            TelefonoDireccion telefonoDireccion = telefonoDireccionDaoService.selectById(id, NombreEntidadesTesoreria.TELEFONO_DIRECCION);
+            if (telefonoDireccion == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("TelefonoDireccion con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(telefonoDireccion).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener teléfono: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (PUT).
      */
     @PUT
-    @Consumes("application/json")
-    public TelefonoDireccion put(TelefonoDireccion registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(TelefonoDireccion registro) {
         System.out.println("LLEGA AL SERVICIO PUT TELEFONO_DIRECCION");
-        return telefonoDireccionService.saveSingle(registro);
+        try {
+            TelefonoDireccion resultado = telefonoDireccionService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar teléfono: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (POST).
      */
     @POST
-    @Consumes("application/json")
-    public TelefonoDireccion post(TelefonoDireccion registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(TelefonoDireccion registro) {
         System.out.println("LLEGA AL SERVICIO POST TELEFONO_DIRECCION");
-        return telefonoDireccionService.saveSingle(registro);
+        try {
+            TelefonoDireccion resultado = telefonoDireccionService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear teléfono: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -89,16 +114,19 @@ public class TelefonoDireccionRest {
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de TELEFONO_DIRECCION");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(telefonoDireccionService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(telefonoDireccionService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
     /**
@@ -106,10 +134,15 @@ public class TelefonoDireccionRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE TELEFONO_DIRECCION");
-        TelefonoDireccion elimina = new TelefonoDireccion();
-        telefonoDireccionDaoService.remove(elimina, id);
+        try {
+            TelefonoDireccion elimina = new TelefonoDireccion();
+            telefonoDireccionDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar teléfono: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

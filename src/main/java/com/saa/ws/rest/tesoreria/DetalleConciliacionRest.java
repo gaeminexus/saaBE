@@ -46,9 +46,14 @@ public class DetalleConciliacionRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<DetalleConciliacion> getAll() throws Throwable {
-        return detalleConciliacionDaoService.selectAll(NombreEntidadesTesoreria.DETALLE_CONCILIACION);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<DetalleConciliacion> lista = detalleConciliacionDaoService.selectAll(NombreEntidadesTesoreria.DETALLE_CONCILIACION);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener detalles de conciliación: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -56,29 +61,49 @@ public class DetalleConciliacionRest {
      */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public DetalleConciliacion getId(@PathParam("id") Long id) throws Throwable {
-        return detalleConciliacionDaoService.selectById(id, NombreEntidadesTesoreria.DETALLE_CONCILIACION);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            DetalleConciliacion detalleConciliacion = detalleConciliacionDaoService.selectById(id, NombreEntidadesTesoreria.DETALLE_CONCILIACION);
+            if (detalleConciliacion == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("DetalleConciliacion con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(detalleConciliacion).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener detalle de conciliación: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (PUT).
      */
     @PUT
-    @Consumes("application/json")
-    public DetalleConciliacion put(DetalleConciliacion registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT DETALLE CONCILIACION");
-        return detalleConciliacionService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(DetalleConciliacion registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - DETALLE CONCILIACION");
+        try {
+            DetalleConciliacion resultado = detalleConciliacionService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar detalle de conciliación: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (POST).
      */
     @POST
-    @Consumes("application/json")
-    public DetalleConciliacion post(DetalleConciliacion registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO POST DETALLE CONCILIACION");
-        return detalleConciliacionService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(DetalleConciliacion registro) {
+        System.out.println("LLEGA AL SERVICIO POST - DETALLE CONCILIACION");
+        try {
+            DetalleConciliacion resultado = detalleConciliacionService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear detalle de conciliación: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -89,16 +114,19 @@ public class DetalleConciliacionRest {
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de DETALLE_CONCILIACION");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(detalleConciliacionService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(detalleConciliacionService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
     /**
@@ -106,10 +134,15 @@ public class DetalleConciliacionRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE DETALLE CONCILIACION");
-        DetalleConciliacion elimina = new DetalleConciliacion();
-        detalleConciliacionDaoService.remove(elimina, id);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - DETALLE CONCILIACION");
+        try {
+            DetalleConciliacion elimina = new DetalleConciliacion();
+            detalleConciliacionDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar detalle de conciliación: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

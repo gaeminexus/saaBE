@@ -46,9 +46,14 @@ public class DetalleDebitoCreditoRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<DetalleDebitoCredito> getAll() throws Throwable {
-        return detalleDebitoCreditoDaoService.selectAll(NombreEntidadesTesoreria.DETALLE_DEBITO_CREDITO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<DetalleDebitoCredito> lista = detalleDebitoCreditoDaoService.selectAll(NombreEntidadesTesoreria.DETALLE_DEBITO_CREDITO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener detalles de débito/crédito: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -56,29 +61,49 @@ public class DetalleDebitoCreditoRest {
      */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public DetalleDebitoCredito getId(@PathParam("id") Long id) throws Throwable {
-        return detalleDebitoCreditoDaoService.selectById(id, NombreEntidadesTesoreria.DETALLE_DEBITO_CREDITO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            DetalleDebitoCredito detalleDebitoCredito = detalleDebitoCreditoDaoService.selectById(id, NombreEntidadesTesoreria.DETALLE_DEBITO_CREDITO);
+            if (detalleDebitoCredito == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("DetalleDebitoCredito con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(detalleDebitoCredito).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener detalle de débito/crédito: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (PUT).
      */
     @PUT
-    @Consumes("application/json")
-    public DetalleDebitoCredito put(DetalleDebitoCredito registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT DETALLE DEBITO CREDITO");
-        return detalleDebitoCreditoService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(DetalleDebitoCredito registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - DETALLE DEBITO CREDITO");
+        try {
+            DetalleDebitoCredito resultado = detalleDebitoCreditoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar detalle de débito/crédito: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (POST).
      */
     @POST
-    @Consumes("application/json")
-    public DetalleDebitoCredito post(DetalleDebitoCredito registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO POST DETALLE DEBITO CREDITO");
-        return detalleDebitoCreditoService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(DetalleDebitoCredito registro) {
+        System.out.println("LLEGA AL SERVICIO POST - DETALLE DEBITO CREDITO");
+        try {
+            DetalleDebitoCredito resultado = detalleDebitoCreditoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear detalle de débito/crédito: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -89,16 +114,19 @@ public class DetalleDebitoCreditoRest {
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de DETALLE_DEBITO_CREDITO");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(detalleDebitoCreditoService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(detalleDebitoCreditoService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
     /**
@@ -106,10 +134,15 @@ public class DetalleDebitoCreditoRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE DETALLE DEBITO CREDITO");
-        DetalleDebitoCredito elimina = new DetalleDebitoCredito();
-        detalleDebitoCreditoDaoService.remove(elimina, id);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - DETALLE DEBITO CREDITO");
+        try {
+            DetalleDebitoCredito elimina = new DetalleDebitoCredito();
+            detalleDebitoCreditoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar detalle de débito/crédito: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

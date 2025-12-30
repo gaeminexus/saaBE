@@ -46,9 +46,14 @@ public class HistConciliacionRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<HistConciliacion> getAll() throws Throwable {
-        return histConciliacionDaoService.selectAll(NombreEntidadesTesoreria.HIST_CONCILIACION);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<HistConciliacion> lista = histConciliacionDaoService.selectAll(NombreEntidadesTesoreria.HIST_CONCILIACION);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener histórico de conciliaciones: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -56,29 +61,49 @@ public class HistConciliacionRest {
      */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public HistConciliacion getId(@PathParam("id") Long id) throws Throwable {
-        return histConciliacionDaoService.selectById(id, NombreEntidadesTesoreria.HIST_CONCILIACION);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            HistConciliacion histConciliacion = histConciliacionDaoService.selectById(id, NombreEntidadesTesoreria.HIST_CONCILIACION);
+            if (histConciliacion == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("HistConciliacion con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(histConciliacion).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener histórico de conciliación: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (PUT).
      */
     @PUT
-    @Consumes("application/json")
-    public HistConciliacion put(HistConciliacion registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(HistConciliacion registro) {
         System.out.println("LLEGA AL SERVICIO PUT HIST CONCILIACION");
-        return histConciliacionService.saveSingle(registro);
+        try {
+            HistConciliacion resultado = histConciliacionService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar histórico de conciliación: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (POST).
      */
     @POST
-    @Consumes("application/json")
-    public HistConciliacion post(HistConciliacion registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(HistConciliacion registro) {
         System.out.println("LLEGA AL SERVICIO POST HIST CONCILIACION");
-        return histConciliacionService.saveSingle(registro);
+        try {
+            HistConciliacion resultado = histConciliacionService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear histórico de conciliación: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -89,16 +114,19 @@ public class HistConciliacionRest {
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de HIST_CONCILIACION");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(histConciliacionService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(histConciliacionService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
     /**
@@ -106,10 +134,15 @@ public class HistConciliacionRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE HIST CONCILIACION");
-        HistConciliacion elimina = new HistConciliacion();
-        histConciliacionDaoService.remove(elimina, id);
+        try {
+            HistConciliacion elimina = new HistConciliacion();
+            histConciliacionDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar histórico de conciliación: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

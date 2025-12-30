@@ -46,9 +46,14 @@ public class TempMotivoCobroRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<TempMotivoCobro> getAll() throws Throwable {
-        return tempMotivoCobroDaoService.selectAll(NombreEntidadesTesoreria.TEMP_MOTIVO_COBRO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<TempMotivoCobro> lista = tempMotivoCobroDaoService.selectAll(NombreEntidadesTesoreria.TEMP_MOTIVO_COBRO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener motivos de cobro temporales: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -56,29 +61,49 @@ public class TempMotivoCobroRest {
      */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public TempMotivoCobro getId(@PathParam("id") Long id) throws Throwable {
-        return tempMotivoCobroDaoService.selectById(id, NombreEntidadesTesoreria.TEMP_MOTIVO_COBRO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            TempMotivoCobro tempMotivoCobro = tempMotivoCobroDaoService.selectById(id, NombreEntidadesTesoreria.TEMP_MOTIVO_COBRO);
+            if (tempMotivoCobro == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("TempMotivoCobro con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(tempMotivoCobro).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener motivo de cobro temporal: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (PUT).
      */
     @PUT
-    @Consumes("application/json")
-    public TempMotivoCobro put(TempMotivoCobro registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT TEMP_MOTIVO_COBRO");
-        return tempMotivoCobroService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(TempMotivoCobro registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - TEMP_MOTIVO_COBRO");
+        try {
+            TempMotivoCobro resultado = tempMotivoCobroService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar motivo de cobro temporal: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (POST).
      */
     @POST
-    @Consumes("application/json")
-    public TempMotivoCobro post(TempMotivoCobro registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO POST TEMP_MOTIVO_COBRO");
-        return tempMotivoCobroService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(TempMotivoCobro registro) {
+        System.out.println("LLEGA AL SERVICIO POST - TEMP_MOTIVO_COBRO");
+        try {
+            TempMotivoCobro resultado = tempMotivoCobroService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear motivo de cobro temporal: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -89,26 +114,34 @@ public class TempMotivoCobroRest {
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de TEMP_MOTIVO_COBRO");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(tempMotivoCobroService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(tempMotivoCobroService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
     /**
      * Elimina un registro de TempMotivoCobro por ID.
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE TEMP_MOTIVO_COBRO");
-        TempMotivoCobro elimina = new TempMotivoCobro();
-        tempMotivoCobroDaoService.remove(elimina, id);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - TEMP_MOTIVO_COBRO");
+        try {
+            TempMotivoCobro elimina = new TempMotivoCobro();
+            tempMotivoCobroDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar motivo de cobro temporal: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

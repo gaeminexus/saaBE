@@ -46,9 +46,14 @@ public class MovimientoBancoRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<MovimientoBanco> getAll() throws Throwable {
-        return movimientoBancoDaoService.selectAll(NombreEntidadesTesoreria.MOVIMIENTO_BANCO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<MovimientoBanco> lista = movimientoBancoDaoService.selectAll(NombreEntidadesTesoreria.MOVIMIENTO_BANCO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener movimientos de banco: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -56,29 +61,49 @@ public class MovimientoBancoRest {
      */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public MovimientoBanco getId(@PathParam("id") Long id) throws Throwable {
-        return movimientoBancoDaoService.selectById(id, NombreEntidadesTesoreria.MOVIMIENTO_BANCO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            MovimientoBanco movimientoBanco = movimientoBancoDaoService.selectById(id, NombreEntidadesTesoreria.MOVIMIENTO_BANCO);
+            if (movimientoBanco == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("MovimientoBanco con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(movimientoBanco).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener movimiento de banco: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (PUT).
      */
     @PUT
-    @Consumes("application/json")
-    public MovimientoBanco put(MovimientoBanco registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(MovimientoBanco registro) {
         System.out.println("LLEGA AL SERVICIO PUT MOVIMIENTO BANCO");
-        return movimientoBancoService.saveSingle(registro);
+        try {
+            MovimientoBanco resultado = movimientoBancoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar movimiento de banco: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (POST).
      */
     @POST
-    @Consumes("application/json")
-    public MovimientoBanco post(MovimientoBanco registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(MovimientoBanco registro) {
         System.out.println("LLEGA AL SERVICIO POST MOVIMIENTO BANCO");
-        return movimientoBancoService.saveSingle(registro);
+        try {
+            MovimientoBanco resultado = movimientoBancoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear movimiento de banco: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -89,16 +114,19 @@ public class MovimientoBancoRest {
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de MOVIMIENTO_BANCO");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(movimientoBancoService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(movimientoBancoService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
     /**
@@ -106,10 +134,15 @@ public class MovimientoBancoRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE MOVIMIENTO BANCO");
-        MovimientoBanco elimina = new MovimientoBanco();
-        movimientoBancoDaoService.remove(elimina, id);
+        try {
+            MovimientoBanco elimina = new MovimientoBanco();
+            movimientoBancoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar movimiento de banco: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

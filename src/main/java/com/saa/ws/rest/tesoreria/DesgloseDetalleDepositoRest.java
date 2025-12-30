@@ -46,9 +46,14 @@ public class DesgloseDetalleDepositoRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<DesgloseDetalleDeposito> getAll() throws Throwable {
-        return desgloseDetalleDepositoDaoService.selectAll(NombreEntidadesTesoreria.DESGLOSE_DETALLE_DEPOSITO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<DesgloseDetalleDeposito> lista = desgloseDetalleDepositoDaoService.selectAll(NombreEntidadesTesoreria.DESGLOSE_DETALLE_DEPOSITO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener desgloses de detalle de depósito: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -56,29 +61,49 @@ public class DesgloseDetalleDepositoRest {
      */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public DesgloseDetalleDeposito getId(@PathParam("id") Long id) throws Throwable {
-        return desgloseDetalleDepositoDaoService.selectById(id, NombreEntidadesTesoreria.DESGLOSE_DETALLE_DEPOSITO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            DesgloseDetalleDeposito desgloseDetalleDeposito = desgloseDetalleDepositoDaoService.selectById(id, NombreEntidadesTesoreria.DESGLOSE_DETALLE_DEPOSITO);
+            if (desgloseDetalleDeposito == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("DesgloseDetalleDeposito con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(desgloseDetalleDeposito).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener desglose de detalle de depósito: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (PUT).
      */
     @PUT
-    @Consumes("application/json")
-    public DesgloseDetalleDeposito put(DesgloseDetalleDeposito registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(DesgloseDetalleDeposito registro) {
         System.out.println("LLEGA AL SERVICIO PUT DESGLOSE DETALLE DEPOSITO");
-        return desgloseDetalleDepositoService.saveSingle(registro);
+        try {
+            DesgloseDetalleDeposito resultado = desgloseDetalleDepositoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar desglose de detalle de depósito: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (POST).
      */
     @POST
-    @Consumes("application/json")
-    public DesgloseDetalleDeposito post(DesgloseDetalleDeposito registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(DesgloseDetalleDeposito registro) {
         System.out.println("LLEGA AL SERVICIO POST DESGLOSE DETALLE DEPOSITO");
-        return desgloseDetalleDepositoService.saveSingle(registro);
+        try {
+            DesgloseDetalleDeposito resultado = desgloseDetalleDepositoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear desglose de detalle de depósito: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -89,16 +114,19 @@ public class DesgloseDetalleDepositoRest {
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de DESGLOSE_DETALLE_DEPOSITO");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(desgloseDetalleDepositoService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(desgloseDetalleDepositoService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
     /**
@@ -106,10 +134,15 @@ public class DesgloseDetalleDepositoRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE DESGLOSE DETALLE DEPOSITO");
-        DesgloseDetalleDeposito elimina = new DesgloseDetalleDeposito();
-        desgloseDetalleDepositoDaoService.remove(elimina, id);
+        try {
+            DesgloseDetalleDeposito elimina = new DesgloseDetalleDeposito();
+            desgloseDetalleDepositoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar desglose de detalle de depósito: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

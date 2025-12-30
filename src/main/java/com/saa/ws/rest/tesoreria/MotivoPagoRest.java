@@ -46,9 +46,14 @@ public class MotivoPagoRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<MotivoPago> getAll() throws Throwable {
-        return motivoPagoDaoService.selectAll(NombreEntidadesTesoreria.MOTIVO_PAGO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<MotivoPago> lista = motivoPagoDaoService.selectAll(NombreEntidadesTesoreria.MOTIVO_PAGO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener motivos de pago: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -56,29 +61,49 @@ public class MotivoPagoRest {
      */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public MotivoPago getId(@PathParam("id") Long id) throws Throwable {
-        return motivoPagoDaoService.selectById(id, NombreEntidadesTesoreria.MOTIVO_PAGO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            MotivoPago motivoPago = motivoPagoDaoService.selectById(id, NombreEntidadesTesoreria.MOTIVO_PAGO);
+            if (motivoPago == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("MotivoPago con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(motivoPago).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener motivo de pago: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (PUT).
      */
     @PUT
-    @Consumes("application/json")
-    public MotivoPago put(MotivoPago registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT MOTIVO PAGO");
-        return motivoPagoService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(MotivoPago registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - MOTIVO PAGO");
+        try {
+            MotivoPago resultado = motivoPagoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar motivo de pago: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (POST).
      */
     @POST
-    @Consumes("application/json")
-    public MotivoPago post(MotivoPago registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO POST MOTIVO PAGO");
-        return motivoPagoService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(MotivoPago registro) {
+        System.out.println("LLEGA AL SERVICIO POST - MOTIVO PAGO");
+        try {
+            MotivoPago resultado = motivoPagoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear motivo de pago: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -89,16 +114,19 @@ public class MotivoPagoRest {
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de MOTIVO_PAGO");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(motivoPagoService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(motivoPagoService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
     /**
@@ -106,10 +134,15 @@ public class MotivoPagoRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE MOTIVO PAGO");
-        MotivoPago elimina = new MotivoPago();
-        motivoPagoDaoService.remove(elimina, id);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - MOTIVO PAGO");
+        try {
+            MotivoPago elimina = new MotivoPago();
+            motivoPagoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar motivo de pago: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

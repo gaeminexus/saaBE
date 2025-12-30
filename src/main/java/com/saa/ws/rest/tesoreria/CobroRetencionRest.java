@@ -46,9 +46,14 @@ public class CobroRetencionRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<CobroRetencion> getAll() throws Throwable {
-        return cobroRetencionDaoService.selectAll(NombreEntidadesTesoreria.COBRO_RETENCION);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<CobroRetencion> lista = cobroRetencionDaoService.selectAll(NombreEntidadesTesoreria.COBRO_RETENCION);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cobros de retención: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -56,29 +61,49 @@ public class CobroRetencionRest {
      */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public CobroRetencion getId(@PathParam("id") Long id) throws Throwable {
-        return cobroRetencionDaoService.selectById(id, NombreEntidadesTesoreria.COBRO_RETENCION);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            CobroRetencion cobroRetencion = cobroRetencionDaoService.selectById(id, NombreEntidadesTesoreria.COBRO_RETENCION);
+            if (cobroRetencion == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("CobroRetencion con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(cobroRetencion).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cobro de retención: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (PUT).
      */
     @PUT
-    @Consumes("application/json")
-    public CobroRetencion put(CobroRetencion registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(CobroRetencion registro) {
         System.out.println("LLEGA AL SERVICIO PUT COBRO RETENCION");
-        return cobroRetencionService.saveSingle(registro);
+        try {
+            CobroRetencion resultado = cobroRetencionService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar cobro de retención: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (POST).
      */
     @POST
-    @Consumes("application/json")
-    public CobroRetencion post(CobroRetencion registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(CobroRetencion registro) {
         System.out.println("LLEGA AL SERVICIO POST COBRO RETENCION");
-        return cobroRetencionService.saveSingle(registro);
+        try {
+            CobroRetencion resultado = cobroRetencionService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear cobro de retención: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -89,16 +114,19 @@ public class CobroRetencionRest {
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de COBRO_RETENCION");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(cobroRetencionService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(cobroRetencionService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
     /**
@@ -106,10 +134,15 @@ public class CobroRetencionRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE COBRO RETENCION");
-        CobroRetencion elimina = new CobroRetencion();
-        cobroRetencionDaoService.remove(elimina, id);
+        try {
+            CobroRetencion elimina = new CobroRetencion();
+            cobroRetencionDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar cobro de retención: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

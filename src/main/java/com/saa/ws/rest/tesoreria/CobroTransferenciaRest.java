@@ -46,9 +46,14 @@ public class CobroTransferenciaRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<CobroTransferencia> getAll() throws Throwable {
-        return cobroTransferenciaDaoService.selectAll(NombreEntidadesTesoreria.COBRO_TRANSFERENCIA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<CobroTransferencia> lista = cobroTransferenciaDaoService.selectAll(NombreEntidadesTesoreria.COBRO_TRANSFERENCIA);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cobros por transferencia: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -56,29 +61,49 @@ public class CobroTransferenciaRest {
      */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public CobroTransferencia getId(@PathParam("id") Long id) throws Throwable {
-        return cobroTransferenciaDaoService.selectById(id, NombreEntidadesTesoreria.COBRO_TRANSFERENCIA);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            CobroTransferencia cobroTransferencia = cobroTransferenciaDaoService.selectById(id, NombreEntidadesTesoreria.COBRO_TRANSFERENCIA);
+            if (cobroTransferencia == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("CobroTransferencia con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(cobroTransferencia).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener cobro por transferencia: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (PUT).
      */
     @PUT
-    @Consumes("application/json")
-    public CobroTransferencia put(CobroTransferencia registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT COBRO TRANSFERENCIA");
-        return cobroTransferenciaService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(CobroTransferencia registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - COBRO TRANSFERENCIA");
+        try {
+            CobroTransferencia resultado = cobroTransferenciaService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar cobro por transferencia: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (POST).
      */
     @POST
-    @Consumes("application/json")
-    public CobroTransferencia post(CobroTransferencia registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO POST COBRO TRANSFERENCIA");
-        return cobroTransferenciaService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(CobroTransferencia registro) {
+        System.out.println("LLEGA AL SERVICIO POST - COBRO TRANSFERENCIA");
+        try {
+            CobroTransferencia resultado = cobroTransferenciaService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear cobro por transferencia: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -89,26 +114,34 @@ public class CobroTransferenciaRest {
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de COBRO_TRANSFERENCIA");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(cobroTransferenciaService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(cobroTransferenciaService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
     /**
      * Elimina un registro de CobroTransferencia por ID.
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE COBRO TRANSFERENCIA");
-        CobroTransferencia elimina = new CobroTransferencia();
-        cobroTransferenciaDaoService.remove(elimina, id);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - COBRO TRANSFERENCIA");
+        try {
+            CobroTransferencia elimina = new CobroTransferencia();
+            cobroTransferenciaDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar cobro por transferencia: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

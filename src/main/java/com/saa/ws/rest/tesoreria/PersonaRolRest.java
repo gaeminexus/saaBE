@@ -46,9 +46,14 @@ public class PersonaRolRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<PersonaRol> getAll() throws Throwable {
-        return personaRolDaoService.selectAll(NombreEntidadesTesoreria.PERSONA_ROL);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<PersonaRol> lista = personaRolDaoService.selectAll(NombreEntidadesTesoreria.PERSONA_ROL);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener roles de persona: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -56,29 +61,49 @@ public class PersonaRolRest {
      */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public PersonaRol getId(@PathParam("id") Long id) throws Throwable {
-        return personaRolDaoService.selectById(id, NombreEntidadesTesoreria.PERSONA_ROL);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            PersonaRol personaRol = personaRolDaoService.selectById(id, NombreEntidadesTesoreria.PERSONA_ROL);
+            if (personaRol == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("PersonaRol con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(personaRol).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener rol de persona: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (PUT).
      */
     @PUT
-    @Consumes("application/json")
-    public PersonaRol put(PersonaRol registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(PersonaRol registro) {
         System.out.println("LLEGA AL SERVICIO PUT PERSONA_ROL");
-        return personaRolService.saveSingle(registro);
+        try {
+            PersonaRol resultado = personaRolService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar rol de persona: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (POST).
      */
     @POST
-    @Consumes("application/json")
-    public PersonaRol post(PersonaRol registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(PersonaRol registro) {
         System.out.println("LLEGA AL SERVICIO POST PERSONA_ROL");
-        return personaRolService.saveSingle(registro);
+        try {
+            PersonaRol resultado = personaRolService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear rol de persona: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -89,16 +114,19 @@ public class PersonaRolRest {
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de PERSONA_ROL");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(personaRolService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(personaRolService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
     /**
@@ -106,10 +134,15 @@ public class PersonaRolRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE PERSONA_ROL");
-        PersonaRol elimina = new PersonaRol();
-        personaRolDaoService.remove(elimina, id);
+        try {
+            PersonaRol elimina = new PersonaRol();
+            personaRolDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar rol de persona: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

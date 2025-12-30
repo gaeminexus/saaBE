@@ -5,7 +5,7 @@
 ## Objetivo
 Actualizar todos los métodos REST para que devuelvan `Response` en lugar de objetos/listas directas, mejorando el manejo de errores y códigos HTTP apropiados.
 
-## Archivos Actualizados (48/100+)
+## Archivos Actualizados (99/100+)
 
 ### ✅ Módulo Crédito (36 archivos)
 1. ProductoRest.java
@@ -57,21 +57,58 @@ Actualizar todos los métodos REST para que devuelvan `Response` en lugar de obj
 47. TipoCesantiaRest.java
 48. TipoHidrocarburificaRest.java
 
-### ✅ Módulo Tesorería (14 archivos)
-1. CajaFisicaRest.java
-2. CajaLogicaRest.java
-3. CajaLogicaPorCajaFisicaRest.java
-4. GrupoCajaRest.java
-5. ChequeraRest.java
-6. ChequeRest.java
-7. CuentaBancariaRest.java
-8. DireccionPersonaRest.java
-9. CierreCajaRest.java
-10. DetalleCierreRest.java
-11. CobroRest.java
+### ✅ Módulo Tesorería (51 archivos) - ¡COMPLETADO! 🎉
+1. AuxDepositoBancoRest.java
+2. AuxDepositoCierreRest.java
+3. AuxDepositoDesgloseRest.java
+4. BancoExternoRest.java
+5. BancoRest.java
+6. CajaFisicaRest.java
+7. CajaLogicaPorCajaFisicaRest.java
+8. CajaLogicaRest.java
+9. ChequeraRest.java
+10. ChequeRest.java
+11. CierreCajaRest.java
 12. CobroChequeRest.java
 13. CobroEfectivoRest.java
-14. CobroTarjetaRest.java
+14. CobroRest.java
+15. CobroRetencionRest.java
+16. CobroTarjetaRest.java
+17. CobroTransferenciaRest.java
+18. ConciliacionRest.java
+19. CuentaBancariaRest.java
+20. DebitoCreditoRest.java
+21. DepositoRest.java
+22. DesgloseDetalleDepositoRest.java
+23. DetalleCierreRest.java
+24. DetalleConciliacionRest.java
+25. DetalleDebitoCreditoRest.java
+26. DetalleDepositoRest.java
+27. DireccionPersonaRest.java
+28. GrupoCajaRest.java
+29. HistConciliacionRest.java
+30. HistDetalleConciliacionRest.java
+31. MotivoCobroRest.java
+32. MotivoPagoRest.java
+33. MovimientoBancoRest.java
+34. PagoRest.java
+35. PersonaCuentaContableRest.java
+36. PersonaRest.java
+37. PersonaRolRest.java
+38. SaldoBancoRest.java
+39. TelefonoDireccionRest.java
+40. TempCobroChequeRest.java
+41. TempCobroEfectivoRest.java
+42. TempCobroRest.java
+43. TempCobroRetencionRest.java
+44. TempCobroTarjetaRest.java
+45. TempCobroTransferenciaRest.java
+46. TempDebitoCreditoRest.java
+47. TempMotivoCobroRest.java
+48. TempMotivoPagoRest.java
+49. TempPagoRest.java
+50. TransferenciaRest.java
+51. UsuarioPorCajaRest.java
 
 ### 🔄 Archivos Pendientes de Actualizar
 

@@ -45,13 +45,17 @@ public class AuxDepositoBancoRest {
      * Obtiene todos los registros de AuxDepositoBanco.
      * 
      * @return Lista de AuxDepositoBanco
-     * @throws Throwable
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<AuxDepositoBanco> getAll() throws Throwable {
-        return auxDepositoBancoDaoService.selectAll(NombreEntidadesTesoreria.AUX_DEPOSITO_BANCO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<AuxDepositoBanco> lista = auxDepositoBancoDaoService.selectAll(NombreEntidadesTesoreria.AUX_DEPOSITO_BANCO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener depósitos bancarios auxiliares: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -59,13 +63,20 @@ public class AuxDepositoBancoRest {
      * 
      * @param id identificador
      * @return AuxDepositoBanco
-     * @throws Throwable
      */
     @GET
-    @Produces("application/json")
+    @Produces(MediaType.APPLICATION_JSON)
     @Path("/getId/{id}")
-    public AuxDepositoBanco getId(@PathParam("id") Long id) throws Throwable {
-        return auxDepositoBancoDaoService.selectById(id, NombreEntidadesTesoreria.AUX_DEPOSITO_BANCO);
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            AuxDepositoBanco auxDepositoBanco = auxDepositoBancoDaoService.selectById(id, NombreEntidadesTesoreria.AUX_DEPOSITO_BANCO);
+            if (auxDepositoBanco == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("AuxDepositoBanco con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(auxDepositoBanco).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener depósito bancario auxiliar: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -73,13 +84,18 @@ public class AuxDepositoBancoRest {
      * 
      * @param registro entidad a guardar
      * @return entidad guardada
-     * @throws Throwable
      */
     @PUT
-    @Consumes("application/json")
-    public AuxDepositoBanco put(AuxDepositoBanco registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT");
-        return auxDepositoBancoService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(AuxDepositoBanco registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - AUX_DEPOSITO_BANCO");
+        try {
+            AuxDepositoBanco resultado = auxDepositoBancoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar depósito bancario auxiliar: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -87,13 +103,18 @@ public class AuxDepositoBancoRest {
      * 
      * @param registro entidad a crear
      * @return entidad creada
-     * @throws Throwable
      */
     @POST
-    @Consumes("application/json")
-    public AuxDepositoBanco post(AuxDepositoBanco registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO POST");
-        return auxDepositoBancoService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(AuxDepositoBanco registro) {
+        System.out.println("LLEGA AL SERVICIO POST - AUX_DEPOSITO_BANCO");
+        try {
+            AuxDepositoBanco resultado = auxDepositoBancoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear depósito bancario auxiliar: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -104,31 +125,38 @@ public class AuxDepositoBancoRest {
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de AUX_DEPOSITO_BANCO");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(auxDepositoBancoService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(auxDepositoBancoService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
     /**
      * Elimina un registro de AuxDepositoBanco.
      * 
      * @param id identificador
-     * @throws Throwable
      */
     @DELETE
-    @Consumes("application/json")
     @Path("/{id}")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE");
-        AuxDepositoBanco elimina = new AuxDepositoBanco();
-        auxDepositoBancoDaoService.remove(elimina, id);
+        try {
+            AuxDepositoBanco elimina = new AuxDepositoBanco();
+            auxDepositoBancoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar depósito bancario auxiliar: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

@@ -46,9 +46,14 @@ public class DebitoCreditoRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<DebitoCredito> getAll() throws Throwable {
-        return debitoCreditoDaoService.selectAll(NombreEntidadesTesoreria.DEBITO_CREDITO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<DebitoCredito> lista = debitoCreditoDaoService.selectAll(NombreEntidadesTesoreria.DEBITO_CREDITO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener débitos/créditos: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -56,29 +61,49 @@ public class DebitoCreditoRest {
      */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public DebitoCredito getId(@PathParam("id") Long id) throws Throwable {
-        return debitoCreditoDaoService.selectById(id, NombreEntidadesTesoreria.DEBITO_CREDITO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            DebitoCredito debitoCredito = debitoCreditoDaoService.selectById(id, NombreEntidadesTesoreria.DEBITO_CREDITO);
+            if (debitoCredito == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("DebitoCredito con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(debitoCredito).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener débito/crédito: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (PUT).
      */
     @PUT
-    @Consumes("application/json")
-    public DebitoCredito put(DebitoCredito registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT DEBITO CREDITO");
-        return debitoCreditoService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(DebitoCredito registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - DEBITO CREDITO");
+        try {
+            DebitoCredito resultado = debitoCreditoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar débito/crédito: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (POST).
      */
     @POST
-    @Consumes("application/json")
-    public DebitoCredito post(DebitoCredito registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO POST DEBITO CREDITO");
-        return debitoCreditoService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(DebitoCredito registro) {
+        System.out.println("LLEGA AL SERVICIO POST - DEBITO CREDITO");
+        try {
+            DebitoCredito resultado = debitoCreditoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear débito/crédito: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -89,16 +114,19 @@ public class DebitoCreditoRest {
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de DEBITO_CREDITO");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(debitoCreditoService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(debitoCreditoService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
     /**
@@ -106,10 +134,15 @@ public class DebitoCreditoRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE DEBITO CREDITO");
-        DebitoCredito elimina = new DebitoCredito();
-        debitoCreditoDaoService.remove(elimina, id);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - DEBITO CREDITO");
+        try {
+            DebitoCredito elimina = new DebitoCredito();
+            debitoCreditoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar débito/crédito: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

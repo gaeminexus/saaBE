@@ -46,9 +46,14 @@ public class TempCobroRetencionRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<TempCobroRetencion> getAll() throws Throwable {
-        return tempCobroRetencionDaoService.selectAll(NombreEntidadesTesoreria.TEMP_COBRO_RETENCION);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<TempCobroRetencion> lista = tempCobroRetencionDaoService.selectAll(NombreEntidadesTesoreria.TEMP_COBRO_RETENCION);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener retenciones de cobro temporales: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -56,29 +61,49 @@ public class TempCobroRetencionRest {
      */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public TempCobroRetencion getId(@PathParam("id") Long id) throws Throwable {
-        return tempCobroRetencionDaoService.selectById(id, NombreEntidadesTesoreria.TEMP_COBRO_RETENCION);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            TempCobroRetencion tempCobroRetencion = tempCobroRetencionDaoService.selectById(id, NombreEntidadesTesoreria.TEMP_COBRO_RETENCION);
+            if (tempCobroRetencion == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("TempCobroRetencion con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(tempCobroRetencion).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener retención de cobro temporal: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (PUT).
      */
     @PUT
-    @Consumes("application/json")
-    public TempCobroRetencion put(TempCobroRetencion registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO PUT TEMP_COBRO_RETENCION");
-        return tempCobroRetencionService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(TempCobroRetencion registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - TEMP_COBRO_RETENCION");
+        try {
+            TempCobroRetencion resultado = tempCobroRetencionService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar retención de cobro temporal: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
      * Guarda o actualiza un registro (POST).
      */
     @POST
-    @Consumes("application/json")
-    public TempCobroRetencion post(TempCobroRetencion registro) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO POST TEMP_COBRO_RETENCION");
-        return tempCobroRetencionService.saveSingle(registro);
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(TempCobroRetencion registro) {
+        System.out.println("LLEGA AL SERVICIO POST - TEMP_COBRO_RETENCION");
+        try {
+            TempCobroRetencion resultado = tempCobroRetencionService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear retención de cobro temporal: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -89,16 +114,19 @@ public class TempCobroRetencionRest {
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de TEMP_COBRO_RETENCION");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(tempCobroRetencionService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(tempCobroRetencionService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
     /**
@@ -106,10 +134,15 @@ public class TempCobroRetencionRest {
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
-        System.out.println("LLEGA AL SERVICIO DELETE TEMP_COBRO_RETENCION");
-        TempCobroRetencion elimina = new TempCobroRetencion();
-        tempCobroRetencionDaoService.remove(elimina, id);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - TEMP_COBRO_RETENCION");
+        try {
+            TempCobroRetencion elimina = new TempCobroRetencion();
+            tempCobroRetencionDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar retención de cobro temporal: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }
