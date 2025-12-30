@@ -39,60 +39,83 @@ public class UsuarioXAprobacionRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<UsuarioXAprobacion> getAll() throws Throwable {
-        return UsuarioXAprobacionDaoService.selectAll(NombreEntidadesPago.USUARIO_X_APROBACION);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<UsuarioXAprobacion> lista = UsuarioXAprobacionDaoService.selectAll(NombreEntidadesPago.USUARIO_X_APROBACION);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener registros: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public UsuarioXAprobacion getId(@PathParam("id") Long id) throws Throwable {
-        return UsuarioXAprobacionDaoService.selectById(id, NombreEntidadesPago.USUARIO_X_APROBACION);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            UsuarioXAprobacion registro = UsuarioXAprobacionDaoService.selectById(id, NombreEntidadesPago.USUARIO_X_APROBACION);
+            if (registro == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Registro con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(registro).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
-    
 
     @PUT
-    @Consumes("application/json")
-    public UsuarioXAprobacion put(UsuarioXAprobacion registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(UsuarioXAprobacion registro) {
         System.out.println("LLEGA AL SERVICIO PUT - USUARIO_X_APROBACION");
-        return UsuarioXAprobacionService.saveSingle(registro);
+        try {
+            UsuarioXAprobacion actualizado = UsuarioXAprobacionService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(actualizado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public UsuarioXAprobacion post(UsuarioXAprobacion registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(UsuarioXAprobacion registro) {
         System.out.println("LLEGA AL SERVICIO POST - USUARIO_X_APROBACION");
-        return UsuarioXAprobacionService.saveSingle(registro);
+        try {
+            UsuarioXAprobacion creado = UsuarioXAprobacionService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(creado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de USUARIO_X_APROBACION");
-        Response respuesta = null;
-
         try {
-            respuesta = Response.status(Response.Status.OK)
-                    .entity(UsuarioXAprobacionService.selectByCriteria(registros))
-                    .type(MediaType.APPLICATION_JSON).build();
+            List<UsuarioXAprobacion> lista = UsuarioXAprobacionService.selectByCriteria(registros);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST)
-                    .entity(e.getMessage())
-                    .type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST).entity("Error en búsqueda: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
-
-        return respuesta;
     }
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - USUARIO_X_APROBACION");
-        UsuarioXAprobacion elimina = new UsuarioXAprobacion();
-        UsuarioXAprobacionDaoService.remove(elimina, id);
+        try {
+            UsuarioXAprobacion elimina = new UsuarioXAprobacion();
+            UsuarioXAprobacionDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }
  

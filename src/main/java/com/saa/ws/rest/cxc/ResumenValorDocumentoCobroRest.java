@@ -40,64 +40,85 @@ public class ResumenValorDocumentoCobroRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<ResumenValorDocumentoCobro> getAll() throws Throwable {
-        return resumenValorDocumentoCobroDaoService.selectAll(NombreEntidadesCobro.RESUMEN_VALOR_DOCUMENTO_COBRO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<ResumenValorDocumentoCobro> lista = resumenValorDocumentoCobroDaoService.selectAll(NombreEntidadesCobro.RESUMEN_VALOR_DOCUMENTO_COBRO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public ResumenValorDocumentoCobro getId(@PathParam("id") Long id) throws Throwable {
-        return resumenValorDocumentoCobroDaoService.selectById(id, NombreEntidadesCobro.RESUMEN_VALOR_DOCUMENTO_COBRO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            ResumenValorDocumentoCobro registro = resumenValorDocumentoCobroDaoService.selectById(id, NombreEntidadesCobro.RESUMEN_VALOR_DOCUMENTO_COBRO);
+            if (registro == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(registro).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @PUT
-    @Consumes("application/json")
-    public Response put(ResumenValorDocumentoCobro registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(ResumenValorDocumentoCobro registro) {
         System.out.println("LLEGA AL SERVICIO PUT");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(resumenValorDocumentoCobroService.saveSingle(registro)).type(MediaType.APPLICATION_JSON).build();
+            ResumenValorDocumentoCobro resultado = resumenValorDocumentoCobroService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
     @POST
-    @Consumes("application/json")
-    public Response post(ResumenValorDocumentoCobro registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(ResumenValorDocumentoCobro registro) {
         System.out.println("LLEGA AL POST");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(resumenValorDocumentoCobroService.saveSingle(registro)).type(MediaType.APPLICATION_JSON).build();
+            ResumenValorDocumentoCobro resultado = resumenValorDocumentoCobroService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de ResumenValorDocumentoCobro");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(resumenValorDocumentoCobroService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(resumenValorDocumentoCobroService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE");
-        ResumenValorDocumentoCobro elimina = new ResumenValorDocumentoCobro();
-        resumenValorDocumentoCobroDaoService.remove(elimina, id);
+        try {
+            ResumenValorDocumentoCobro elimina = new ResumenValorDocumentoCobro();
+            resumenValorDocumentoCobroDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

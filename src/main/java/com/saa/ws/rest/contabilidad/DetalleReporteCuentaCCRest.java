@@ -66,10 +66,15 @@ public class DetalleReporteCuentaCCRest {
      * @throws Throwable
      
     @GET
-    @Produces("application/json")
+    @Produces(MediaType.APPLICATION_JSON)
     @Path("/getDesc")
-    public List<DetalleReporteCuentaCC> getDesc() throws Throwable {
-        return detalleReporteCuentaCCDaoService.selectOrderDesc();
+    public Response getDesc() {
+        try {
+            List<DetalleReporteCuentaCC> lista = detalleReporteCuentaCCDaoService.selectOrderDesc();
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener registros: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**

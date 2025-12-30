@@ -12,6 +12,8 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 
 @Path("pdtr")
@@ -33,13 +35,17 @@ public class DetalleRubroRest {
     /**
      * Retrieves representation of an instance of AnioMortorRest
      * @return an instance of String
-     * @throws Throwable 
      */
     @GET
-    @Produces("application/json")
+    @Produces(MediaType.APPLICATION_JSON)
     @Path("/getAll")
-    public List<DetalleRubro> getAll() throws Throwable {
-        return detalleRubroDaoService.selectAll(NombreEntidadesSistema.DETALLE_RUBRO);
+    public Response getAll() {
+        try {
+            List<DetalleRubro> lista = detalleRubroDaoService.selectAll(NombreEntidadesSistema.DETALLE_RUBRO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener registros: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
@@ -47,10 +53,15 @@ public class DetalleRubroRest {
      * @return an instance of String
      */
     @GET
-    @Produces("application/json")
+    @Produces(MediaType.APPLICATION_JSON)
     @Path("/getRubros/{idRubro}")
-    public List<DetalleRubro> getRubros(@PathParam("idRubro") int idRubro) throws Throwable {
-        return detalleRubroDaoService.selectByCodigoAlternoRubro(idRubro, 1L);
+    public Response getRubros(@PathParam("idRubro") int idRubro) {
+        try {
+            List<DetalleRubro> lista = detalleRubroDaoService.selectByCodigoAlternoRubro(idRubro, 1L);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener rubros: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

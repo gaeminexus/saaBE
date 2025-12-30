@@ -49,95 +49,86 @@ public class ValorImpuestoDetalleCobroRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<ValorImpuestoDetalleCobro> getAll() throws Throwable {
-        return valorImpuestoDetalleCobroDaoService.selectAll(NombreEntidadesCobro.VALOR_IMPUESTO_DETALLE_COBRO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<ValorImpuestoDetalleCobro> lista = valorImpuestoDetalleCobroDaoService.selectAll(NombreEntidadesCobro.VALOR_IMPUESTO_DETALLE_COBRO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Retrieves representation of an instance of ValorImpuestoDetalleCobroRest
-     * 
-     * @return an instance of String
-     * @throws Throwable
-     */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public ValorImpuestoDetalleCobro getId(@PathParam("id") Long id) throws Throwable {
-        return valorImpuestoDetalleCobroDaoService.selectById(id, NombreEntidadesCobro.VALOR_IMPUESTO_DETALLE_COBRO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            ValorImpuestoDetalleCobro registro = valorImpuestoDetalleCobroDaoService.selectById(id, NombreEntidadesCobro.VALOR_IMPUESTO_DETALLE_COBRO);
+            if (registro == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(registro).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * PUT method for updating or creating an instance of ValorImpuestoDetalleCobroRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @PUT
-    @Consumes("application/json")
-    public Response put(ValorImpuestoDetalleCobro registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(ValorImpuestoDetalleCobro registro) {
         System.out.println("LLEGA AL SERVICIO PUT");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(valorImpuestoDetalleCobroService.saveSingle(registro)).type(MediaType.APPLICATION_JSON).build();
+            ValorImpuestoDetalleCobro resultado = valorImpuestoDetalleCobroService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
-    /**
-     * POST method for updating or creating an instance of ValorImpuestoDetalleCobroRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
-    @Consumes("application/json")
-    public Response post(ValorImpuestoDetalleCobro registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(ValorImpuestoDetalleCobro registro) {
         System.out.println("LLEGA AL POST");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(valorImpuestoDetalleCobroService.saveSingle(registro)).type(MediaType.APPLICATION_JSON).build();
+            ValorImpuestoDetalleCobro resultado = valorImpuestoDetalleCobroService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
-    /**
-     * POST method for updating or creating an instance of ValorImpuestoDetalleCobroRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de ValorImpuestoDetalleCobro");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(valorImpuestoDetalleCobroService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(valorImpuestoDetalleCobroService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
-    /**
-     * POST method for updating or creating an instance of ValorImpuestoDetalleCobroRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE");
-        ValorImpuestoDetalleCobro elimina = new ValorImpuestoDetalleCobro();
-        valorImpuestoDetalleCobroDaoService.remove(elimina, id);
+        try {
+            ValorImpuestoDetalleCobro elimina = new ValorImpuestoDetalleCobro();
+            valorImpuestoDetalleCobroDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

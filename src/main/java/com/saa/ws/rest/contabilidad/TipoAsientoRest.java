@@ -63,10 +63,15 @@ public class TipoAsientoRest {
      * Obtiene todos los registros ordenados descendentemente
     
     @GET
-    @Produces("application/json")
+    @Produces(MediaType.APPLICATION_JSON)
     @Path("/getDesc")
-    public List<TipoAsiento> getDesc() throws Throwable {
-        return tipoAsientoDaoService.selectOrderDesc();
+    public Response getDesc() {
+        try {
+            List<TipoAsiento> lista = tipoAsientoDaoService.selectOrderDesc();
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener registros: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**

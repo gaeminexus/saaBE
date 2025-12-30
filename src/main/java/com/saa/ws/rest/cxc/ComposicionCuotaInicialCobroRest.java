@@ -42,102 +42,105 @@ public class ComposicionCuotaInicialCobroRest {
     }
 
     /**
-     * Retrieves representation of an instance of ComposicionCuotaInicialCobroRest
-     * 
-     * @return an instance of String
-     * @throws Throwable
+     * Recupera todos los registros de ComposicionCuotaInicialCobro.
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<ComposicionCuotaInicialCobro> getAll() throws Throwable {
-        return composicionCuotaInicialCobroDaoService.selectAll(NombreEntidadesCobro.COMPOSICION_CUOTA_INICIAL_COBRO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<ComposicionCuotaInicialCobro> lista = composicionCuotaInicialCobroDaoService.selectAll(NombreEntidadesCobro.COMPOSICION_CUOTA_INICIAL_COBRO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener composiciones de cuota inicial: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
-     * Retrieves representation of an instance of ComposicionCuotaInicialCobroRest
-     * 
-     * @return an instance of String
-     * @throws Throwable
+     * Recupera un registro de ComposicionCuotaInicialCobro por su ID.
      */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public ComposicionCuotaInicialCobro getId(@PathParam("id") Long id) throws Throwable {
-        return composicionCuotaInicialCobroDaoService.selectById(id, NombreEntidadesCobro.COMPOSICION_CUOTA_INICIAL_COBRO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            ComposicionCuotaInicialCobro registro = composicionCuotaInicialCobroDaoService.selectById(id, NombreEntidadesCobro.COMPOSICION_CUOTA_INICIAL_COBRO);
+            if (registro == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("ComposicionCuotaInicialCobro con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(registro).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener composición de cuota inicial: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
-     * PUT method for updating or creating an instance of ComposicionCuotaInicialCobroRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
+     * Guarda o actualiza un registro (PUT).
      */
     @PUT
-    @Consumes("application/json")
-    public Response put(ComposicionCuotaInicialCobro registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(ComposicionCuotaInicialCobro registro) {
         System.out.println("LLEGA AL SERVICIO PUT");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(composicionCuotaInicialCobroService.saveSingle(registro)).type(MediaType.APPLICATION_JSON).build();
+            ComposicionCuotaInicialCobro resultado = composicionCuotaInicialCobroService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar composición de cuota inicial: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
     /**
-     * POST method for updating or creating an instance of ComposicionCuotaInicialCobroRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
+     * Guarda o actualiza un registro (POST).
      */
     @POST
-    @Consumes("application/json")
-    public Response post(ComposicionCuotaInicialCobro registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(ComposicionCuotaInicialCobro registro) {
         System.out.println("LLEGA AL POST");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(composicionCuotaInicialCobroService.saveSingle(registro)).type(MediaType.APPLICATION_JSON).build();
+            ComposicionCuotaInicialCobro resultado = composicionCuotaInicialCobroService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear composición de cuota inicial: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
     /**
-     * POST method for updating or creating an instance of ComposicionCuotaInicialCobroRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
+     * Busca registros por criterios.
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de ComposicionCuotaInicialCobro");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(composicionCuotaInicialCobroService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(composicionCuotaInicialCobroService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
     /**
-     * POST method for updating or creating an instance of ComposicionCuotaInicialCobroRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
+     * Elimina un registro por ID.
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE");
-        ComposicionCuotaInicialCobro elimina = new ComposicionCuotaInicialCobro();
-        composicionCuotaInicialCobroDaoService.remove(elimina, id);
+        try {
+            ComposicionCuotaInicialCobro elimina = new ComposicionCuotaInicialCobro();
+            composicionCuotaInicialCobroDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar composición de cuota inicial: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

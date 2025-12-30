@@ -49,95 +49,83 @@ public class TempValorImpuestoDocumentoCobroRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<TempValorImpuestoDocumentoCobro> getAll() throws Throwable {
-        return tempValorImpuestoDocumentoCobroDaoService.selectAll(NombreEntidadesCobro.TEMP_VALOR_IMPUESTO_DOCUMENTO_COBRO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<TempValorImpuestoDocumentoCobro> lista = tempValorImpuestoDocumentoCobroDaoService.selectAll(NombreEntidadesCobro.TEMP_VALOR_IMPUESTO_DOCUMENTO_COBRO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener registros: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Retrieves representation of an instance of TempValorImpuestoDocumentoCobroRest
-     * 
-     * @return an instance of String
-     * @throws Throwable
-     */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public TempValorImpuestoDocumentoCobro getId(@PathParam("id") Long id) throws Throwable {
-        return tempValorImpuestoDocumentoCobroDaoService.selectById(id, NombreEntidadesCobro.TEMP_VALOR_IMPUESTO_DOCUMENTO_COBRO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            TempValorImpuestoDocumentoCobro registro = tempValorImpuestoDocumentoCobroDaoService.selectById(id, NombreEntidadesCobro.TEMP_VALOR_IMPUESTO_DOCUMENTO_COBRO);
+            if (registro == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Registro con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(registro).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * PUT method for updating or creating an instance of TempValorImpuestoDocumentoCobroRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @PUT
-    @Consumes("application/json")
-    public Response put(TempValorImpuestoDocumentoCobro registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(TempValorImpuestoDocumentoCobro registro) {
         System.out.println("LLEGA AL SERVICIO PUT");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(tempValorImpuestoDocumentoCobroService.saveSingle(registro)).type(MediaType.APPLICATION_JSON).build();
+            TempValorImpuestoDocumentoCobro actualizado = tempValorImpuestoDocumentoCobroService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(actualizado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
-    /**
-     * POST method for updating or creating an instance of TempValorImpuestoDocumentoCobroRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
-    @Consumes("application/json")
-    public Response post(TempValorImpuestoDocumentoCobro registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(TempValorImpuestoDocumentoCobro registro) {
         System.out.println("LLEGA AL POST");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(tempValorImpuestoDocumentoCobroService.saveSingle(registro)).type(MediaType.APPLICATION_JSON).build();
+            TempValorImpuestoDocumentoCobro creado = tempValorImpuestoDocumentoCobroService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(creado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
-    /**
-     * POST method for updating or creating an instance of TempValorImpuestoDocumentoCobroRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de TempValorImpuestoDocumentoCobro");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(tempValorImpuestoDocumentoCobroService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            List<TempValorImpuestoDocumentoCobro> lista = tempValorImpuestoDocumentoCobroService.selectByCriteria(registros);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST).entity("Error en búsqueda: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
-    /**
-     * POST method for updating or creating an instance of TempValorImpuestoDocumentoCobroRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE");
-        TempValorImpuestoDocumentoCobro elimina = new TempValorImpuestoDocumentoCobro();
-        tempValorImpuestoDocumentoCobroDaoService.remove(elimina, id);
+        try {
+            TempValorImpuestoDocumentoCobro elimina = new TempValorImpuestoDocumentoCobro();
+            tempValorImpuestoDocumentoCobroDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

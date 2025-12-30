@@ -39,59 +39,82 @@ public class PagosArbitrariosXFinanciacionPagoRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<PagosArbitrariosXFinanciacionPago> getAll() throws Throwable {
-        return PagosArbitrariosXFinanciacionPagoDaoService.selectAll(NombreEntidadesPago.PAGOS_ARBITRARIOS_X_FINANCIACION_PAGO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<PagosArbitrariosXFinanciacionPago> lista = PagosArbitrariosXFinanciacionPagoDaoService.selectAll(NombreEntidadesPago.PAGOS_ARBITRARIOS_X_FINANCIACION_PAGO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener registros: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public PagosArbitrariosXFinanciacionPago getId(@PathParam("id") Long id) throws Throwable {
-        return PagosArbitrariosXFinanciacionPagoDaoService.selectById(id, NombreEntidadesPago.PAGOS_ARBITRARIOS_X_FINANCIACION_PAGO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            PagosArbitrariosXFinanciacionPago registro = PagosArbitrariosXFinanciacionPagoDaoService.selectById(id, NombreEntidadesPago.PAGOS_ARBITRARIOS_X_FINANCIACION_PAGO);
+            if (registro == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Registro con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(registro).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
-    
 
     @PUT
-    @Consumes("application/json")
-    public PagosArbitrariosXFinanciacionPago put(PagosArbitrariosXFinanciacionPago registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(PagosArbitrariosXFinanciacionPago registro) {
         System.out.println("LLEGA AL SERVICIO PUT - PAGOS_ARBITRARIOS_X_FINANCIACION_PAGO");
-        return PagosArbitrariosXFinanciacionPagoService.saveSingle(registro);
+        try {
+            PagosArbitrariosXFinanciacionPago actualizado = PagosArbitrariosXFinanciacionPagoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(actualizado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public PagosArbitrariosXFinanciacionPago post(PagosArbitrariosXFinanciacionPago registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(PagosArbitrariosXFinanciacionPago registro) {
         System.out.println("LLEGA AL SERVICIO POST - PAGOS_ARBITRARIOS_X_FINANCIACION_PAGO");
-        return PagosArbitrariosXFinanciacionPagoService.saveSingle(registro);
+        try {
+            PagosArbitrariosXFinanciacionPago creado = PagosArbitrariosXFinanciacionPagoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(creado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de PAGOS_ARBITRARIOS_X_FINANCIACION_PAGO");
-        Response respuesta = null;
-
         try {
-            respuesta = Response.status(Response.Status.OK)
-                    .entity(PagosArbitrariosXFinanciacionPagoService.selectByCriteria(registros))
-                    .type(MediaType.APPLICATION_JSON).build();
+            List<PagosArbitrariosXFinanciacionPago> lista = PagosArbitrariosXFinanciacionPagoService.selectByCriteria(registros);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST)
-                    .entity(e.getMessage())
-                    .type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST).entity("Error en búsqueda: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
-
-        return respuesta;
     }
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - PAGOS_ARBITRARIOS_X_FINANCIACION_PAGO");
-        PagosArbitrariosXFinanciacionPago elimina = new PagosArbitrariosXFinanciacionPago();
-        PagosArbitrariosXFinanciacionPagoDaoService.remove(elimina, id);
+        try {
+            PagosArbitrariosXFinanciacionPago elimina = new PagosArbitrariosXFinanciacionPago();
+            PagosArbitrariosXFinanciacionPagoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

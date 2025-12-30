@@ -39,60 +39,83 @@ public class TempFinanciacionXDocumentoPagoRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<TempFinanciacionXDocumentoPago> getAll() throws Throwable {
-        return TempFinanciacionXDocumentoPagoDaoService.selectAll(NombreEntidadesPago.TEMP_FINANCIACION_X_DOCUMENTO_PAGO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<TempFinanciacionXDocumentoPago> lista = TempFinanciacionXDocumentoPagoDaoService.selectAll(NombreEntidadesPago.TEMP_FINANCIACION_X_DOCUMENTO_PAGO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener registros: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public TempFinanciacionXDocumentoPago getId(@PathParam("id") Long id) throws Throwable {
-        return TempFinanciacionXDocumentoPagoDaoService.selectById(id, NombreEntidadesPago.TEMP_FINANCIACION_X_DOCUMENTO_PAGO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            TempFinanciacionXDocumentoPago registro = TempFinanciacionXDocumentoPagoDaoService.selectById(id, NombreEntidadesPago.TEMP_FINANCIACION_X_DOCUMENTO_PAGO);
+            if (registro == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Registro con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(registro).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
-    
 
     @PUT
-    @Consumes("application/json")
-    public TempFinanciacionXDocumentoPago put(TempFinanciacionXDocumentoPago registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(TempFinanciacionXDocumentoPago registro) {
         System.out.println("LLEGA AL SERVICIO PUT - TEMP_FINANCIACION_X_DOCUMENTO_PAGO");
-        return TempFinanciacionXDocumentoPagoService.saveSingle(registro);
+        try {
+            TempFinanciacionXDocumentoPago actualizado = TempFinanciacionXDocumentoPagoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(actualizado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public TempFinanciacionXDocumentoPago post(TempFinanciacionXDocumentoPago registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(TempFinanciacionXDocumentoPago registro) {
         System.out.println("LLEGA AL SERVICIO POST - TEMP_FINANCIACION_X_DOCUMENTO_PAGO");
-        return TempFinanciacionXDocumentoPagoService.saveSingle(registro);
+        try {
+            TempFinanciacionXDocumentoPago creado = TempFinanciacionXDocumentoPagoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(creado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de TEMP_FINANCIACION_X_DOCUMENTO_PAGO");
-        Response respuesta = null;
-
         try {
-            respuesta = Response.status(Response.Status.OK)
-                    .entity(TempFinanciacionXDocumentoPagoService.selectByCriteria(registros))
-                    .type(MediaType.APPLICATION_JSON).build();
+            List<TempFinanciacionXDocumentoPago> lista = TempFinanciacionXDocumentoPagoService.selectByCriteria(registros);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST)
-                    .entity(e.getMessage())
-                    .type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST).entity("Error en búsqueda: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
-
-        return respuesta;
     }
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - TEMP_FINANCIACION_X_DOCUMENTO_PAGO");
-        TempFinanciacionXDocumentoPago elimina = new TempFinanciacionXDocumentoPago();
-        TempFinanciacionXDocumentoPagoDaoService.remove(elimina, id);
+        try {
+            TempFinanciacionXDocumentoPago elimina = new TempFinanciacionXDocumentoPago();
+            TempFinanciacionXDocumentoPagoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }
  

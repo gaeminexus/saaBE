@@ -39,59 +39,82 @@ public class GrupoProductoPagoRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<GrupoProductoPago> getAll() throws Throwable {
-        return GrupoProductoPagoDaoService.selectAll(NombreEntidadesPago.GRUPO_PRODUCTO_PAGO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<GrupoProductoPago> lista = GrupoProductoPagoDaoService.selectAll(NombreEntidadesPago.GRUPO_PRODUCTO_PAGO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener registros: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public GrupoProductoPago getId(@PathParam("id") Long id) throws Throwable {
-        return GrupoProductoPagoDaoService.selectById(id, NombreEntidadesPago.GRUPO_PRODUCTO_PAGO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            GrupoProductoPago registro = GrupoProductoPagoDaoService.selectById(id, NombreEntidadesPago.GRUPO_PRODUCTO_PAGO);
+            if (registro == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Registro con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(registro).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
-    
 
     @PUT
-    @Consumes("application/json")
-    public GrupoProductoPago put(GrupoProductoPago registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(GrupoProductoPago registro) {
         System.out.println("LLEGA AL SERVICIO PUT - GRUPO_PRODUCTO_PAGO");
-        return GrupoProductoPagoService.saveSingle(registro);
+        try {
+            GrupoProductoPago actualizado = GrupoProductoPagoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(actualizado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public GrupoProductoPago post(GrupoProductoPago registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(GrupoProductoPago registro) {
         System.out.println("LLEGA AL SERVICIO POST - GRUPO_PRODUCTO_PAGO");
-        return GrupoProductoPagoService.saveSingle(registro);
+        try {
+            GrupoProductoPago creado = GrupoProductoPagoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(creado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de GRUPO_PRODUCTO_PAGO");
-        Response respuesta = null;
-
         try {
-            respuesta = Response.status(Response.Status.OK)
-                    .entity(GrupoProductoPagoService.selectByCriteria(registros))
-                    .type(MediaType.APPLICATION_JSON).build();
+            List<GrupoProductoPago> lista = GrupoProductoPagoService.selectByCriteria(registros);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST)
-                    .entity(e.getMessage())
-                    .type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST).entity("Error en búsqueda: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
-
-        return respuesta;
     }
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - GRUPO_PRODUCTO_PAGO");
-        GrupoProductoPago elimina = new GrupoProductoPago();
-        GrupoProductoPagoDaoService.remove(elimina, id);
+        try {
+            GrupoProductoPago elimina = new GrupoProductoPago();
+            GrupoProductoPagoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

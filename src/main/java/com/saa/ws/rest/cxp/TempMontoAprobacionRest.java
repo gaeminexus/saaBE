@@ -39,60 +39,83 @@ public class TempMontoAprobacionRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<TempMontoAprobacion> getAll() throws Throwable {
-        return TempMontoAprobacionDaoService.selectAll(NombreEntidadesPago.TEMP_MONTO_APROBACION);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<TempMontoAprobacion> lista = TempMontoAprobacionDaoService.selectAll(NombreEntidadesPago.TEMP_MONTO_APROBACION);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener registros: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public TempMontoAprobacion getId(@PathParam("id") Long id) throws Throwable {
-        return TempMontoAprobacionDaoService.selectById(id, NombreEntidadesPago.TEMP_MONTO_APROBACION);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            TempMontoAprobacion registro = TempMontoAprobacionDaoService.selectById(id, NombreEntidadesPago.TEMP_MONTO_APROBACION);
+            if (registro == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Registro con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(registro).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
-    
 
     @PUT
-    @Consumes("application/json")
-    public TempMontoAprobacion put(TempMontoAprobacion registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(TempMontoAprobacion registro) {
         System.out.println("LLEGA AL SERVICIO PUT - TEMP_MONTO_APROBACION");
-        return TempMontoAprobacionService.saveSingle(registro);
+        try {
+            TempMontoAprobacion actualizado = TempMontoAprobacionService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(actualizado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public TempMontoAprobacion post(TempMontoAprobacion registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(TempMontoAprobacion registro) {
         System.out.println("LLEGA AL SERVICIO POST - TEMP_MONTO_APROBACION");
-        return TempMontoAprobacionService.saveSingle(registro);
+        try {
+            TempMontoAprobacion creado = TempMontoAprobacionService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(creado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de TEMP_MONTO_APROBACION");
-        Response respuesta = null;
-
         try {
-            respuesta = Response.status(Response.Status.OK)
-                    .entity(TempMontoAprobacionService.selectByCriteria(registros))
-                    .type(MediaType.APPLICATION_JSON).build();
+            List<TempMontoAprobacion> lista = TempMontoAprobacionService.selectByCriteria(registros);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST)
-                    .entity(e.getMessage())
-                    .type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST).entity("Error en búsqueda: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
-
-        return respuesta;
     }
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - TEMP_MONTO_APROBACION");
-        TempMontoAprobacion elimina = new TempMontoAprobacion();
-        TempMontoAprobacionDaoService.remove(elimina, id);
+        try {
+            TempMontoAprobacion elimina = new TempMontoAprobacion();
+            TempMontoAprobacionDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }
  

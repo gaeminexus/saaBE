@@ -49,95 +49,86 @@ public class ImpuestoXGrupoCobroRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<ImpuestoXGrupoCobro> getAll() throws Throwable {
-        return impuestoXGrupoCobroDaoService.selectAll(NombreEntidadesCobro.IMPUESTO_X_GRUPO_COBRO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<ImpuestoXGrupoCobro> lista = impuestoXGrupoCobroDaoService.selectAll(NombreEntidadesCobro.IMPUESTO_X_GRUPO_COBRO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Retrieves representation of an instance of ImpuestoXGrupoCobroRest
-     * 
-     * @return an instance of String
-     * @throws Throwable
-     */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public ImpuestoXGrupoCobro getId(@PathParam("id") Long id) throws Throwable {
-        return impuestoXGrupoCobroDaoService.selectById(id, NombreEntidadesCobro.IMPUESTO_X_GRUPO_COBRO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            ImpuestoXGrupoCobro registro = impuestoXGrupoCobroDaoService.selectById(id, NombreEntidadesCobro.IMPUESTO_X_GRUPO_COBRO);
+            if (registro == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(registro).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * PUT method for updating or creating an instance of ImpuestoXGrupoCobroRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @PUT
-    @Consumes("application/json")
-    public Response put(ImpuestoXGrupoCobro registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(ImpuestoXGrupoCobro registro) {
         System.out.println("LLEGA AL SERVICIO PUT");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(impuestoXGrupoCobroService.saveSingle(registro)).type(MediaType.APPLICATION_JSON).build();
+            ImpuestoXGrupoCobro resultado = impuestoXGrupoCobroService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
-    /**
-     * POST method for updating or creating an instance of ImpuestoXGrupoCobroRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
-    @Consumes("application/json")
-    public Response post(ImpuestoXGrupoCobro registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(ImpuestoXGrupoCobro registro) {
         System.out.println("LLEGA AL POST");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(impuestoXGrupoCobroService.saveSingle(registro)).type(MediaType.APPLICATION_JSON).build();
+            ImpuestoXGrupoCobro resultado = impuestoXGrupoCobroService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
-    /**
-     * POST method for updating or creating an instance of ImpuestoXGrupoCobroRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de ImpuestoXGrupoCobro");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(impuestoXGrupoCobroService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(impuestoXGrupoCobroService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
-    /**
-     * POST method for updating or creating an instance of ImpuestoXGrupoCobroRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE");
-        ImpuestoXGrupoCobro elimina = new ImpuestoXGrupoCobro();
-        impuestoXGrupoCobroDaoService.remove(elimina, id);
+        try {
+            ImpuestoXGrupoCobro elimina = new ImpuestoXGrupoCobro();
+            impuestoXGrupoCobroDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

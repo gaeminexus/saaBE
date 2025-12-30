@@ -42,102 +42,105 @@ public class DocumentoCobroRest {
     }
 
     /**
-     * Retrieves representation of an instance of DocumentoCobroRest
-     * 
-     * @return an instance of String
-     * @throws Throwable
+     * Recupera todos los registros.
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<DocumentoCobro> getAll() throws Throwable {
-        return documentoCobroDaoService.selectAll(NombreEntidadesCobro.DOCUMENTO_COBRO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<DocumentoCobro> lista = documentoCobroDaoService.selectAll(NombreEntidadesCobro.DOCUMENTO_COBRO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener documentos: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
-     * Retrieves representation of an instance of DocumentoCobroRest
-     * 
-     * @return an instance of String
-     * @throws Throwable
+     * Recupera un registro por su ID.
      */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public DocumentoCobro getId(@PathParam("id") Long id) throws Throwable {
-        return documentoCobroDaoService.selectById(id, NombreEntidadesCobro.DOCUMENTO_COBRO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            DocumentoCobro registro = documentoCobroDaoService.selectById(id, NombreEntidadesCobro.DOCUMENTO_COBRO);
+            if (registro == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Documento con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(registro).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener documento: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**
-     * PUT method for updating or creating an instance of DocumentoCobroRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
+     * Actualiza un registro (PUT).
      */
     @PUT
-    @Consumes("application/json")
-    public Response put(DocumentoCobro registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(DocumentoCobro registro) {
         System.out.println("LLEGA AL SERVICIO PUT");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(documentoCobroService.saveSingle(registro)).type(MediaType.APPLICATION_JSON).build();
+            DocumentoCobro resultado = documentoCobroService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
     /**
-     * POST method for updating or creating an instance of DocumentoCobroRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
+     * Crea un registro (POST).
      */
     @POST
-    @Consumes("application/json")
-    public Response post(DocumentoCobro registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(DocumentoCobro registro) {
         System.out.println("LLEGA AL POST");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(documentoCobroService.saveSingle(registro)).type(MediaType.APPLICATION_JSON).build();
+            DocumentoCobro resultado = documentoCobroService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
     /**
-     * POST method for updating or creating an instance of DocumentoCobroRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
+     * Busca por criterios.
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de DocumentoCobro");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(documentoCobroService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(documentoCobroService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
     /**
-     * POST method for updating or creating an instance of DocumentoCobroRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
+     * Elimina un registro.
      */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE");
-        DocumentoCobro elimina = new DocumentoCobro();
-        documentoCobroDaoService.remove(elimina, id);
+        try {
+            DocumentoCobro elimina = new DocumentoCobro();
+            documentoCobroDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }

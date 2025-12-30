@@ -39,60 +39,83 @@ public class ValorImpuestoDocumentoPagoRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<ValorImpuestoDocumentoPago> getAll() throws Throwable {
-        return ValorImpuestoDocumentoPagoDaoService.selectAll(NombreEntidadesPago.VALOR_IMPUESTO_DOCUMENTO_PAGO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<ValorImpuestoDocumentoPago> lista = ValorImpuestoDocumentoPagoDaoService.selectAll(NombreEntidadesPago.VALOR_IMPUESTO_DOCUMENTO_PAGO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener registros: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public ValorImpuestoDocumentoPago getId(@PathParam("id") Long id) throws Throwable {
-        return ValorImpuestoDocumentoPagoDaoService.selectById(id, NombreEntidadesPago.VALOR_IMPUESTO_DOCUMENTO_PAGO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            ValorImpuestoDocumentoPago registro = ValorImpuestoDocumentoPagoDaoService.selectById(id, NombreEntidadesPago.VALOR_IMPUESTO_DOCUMENTO_PAGO);
+            if (registro == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Registro con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(registro).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
-    
 
     @PUT
-    @Consumes("application/json")
-    public ValorImpuestoDocumentoPago put(ValorImpuestoDocumentoPago registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(ValorImpuestoDocumentoPago registro) {
         System.out.println("LLEGA AL SERVICIO PUT - VALOR_IMPUESTO_DOCUMENTO_PAGO");
-        return ValorImpuestoDocumentoPagoService.saveSingle(registro);
+        try {
+            ValorImpuestoDocumentoPago actualizado = ValorImpuestoDocumentoPagoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(actualizado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public ValorImpuestoDocumentoPago post(ValorImpuestoDocumentoPago registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(ValorImpuestoDocumentoPago registro) {
         System.out.println("LLEGA AL SERVICIO POST - VALOR_IMPUESTO_DOCUMENTO_PAGO");
-        return ValorImpuestoDocumentoPagoService.saveSingle(registro);
+        try {
+            ValorImpuestoDocumentoPago creado = ValorImpuestoDocumentoPagoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(creado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de VALOR_IMPUESTO_DOCUMENTO_PAGO");
-        Response respuesta = null;
-
         try {
-            respuesta = Response.status(Response.Status.OK)
-                    .entity(ValorImpuestoDocumentoPagoService.selectByCriteria(registros))
-                    .type(MediaType.APPLICATION_JSON).build();
+            List<ValorImpuestoDocumentoPago> lista = ValorImpuestoDocumentoPagoService.selectByCriteria(registros);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST)
-                    .entity(e.getMessage())
-                    .type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST).entity("Error en búsqueda: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
-
-        return respuesta;
     }
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - VALOR_IMPUESTO_DOCUMENTO_PAGO");
-        ValorImpuestoDocumentoPago elimina = new ValorImpuestoDocumentoPago();
-        ValorImpuestoDocumentoPagoDaoService.remove(elimina, id);
+        try {
+            ValorImpuestoDocumentoPago elimina = new ValorImpuestoDocumentoPago();
+            ValorImpuestoDocumentoPagoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }
  

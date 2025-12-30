@@ -39,59 +39,82 @@ public class ComposicionCuotaInicialPagoRest {
 
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<ComposicionCuotaInicialPago> getAll() throws Throwable {
-        return ComposicionCuotaInicialPagoDaoService.selectAll(NombreEntidadesPago.COMPOSICION_CUOTA_INICIAL_PAGO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<ComposicionCuotaInicialPago> lista = ComposicionCuotaInicialPagoDaoService.selectAll(NombreEntidadesPago.COMPOSICION_CUOTA_INICIAL_PAGO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener registros: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public ComposicionCuotaInicialPago getId(@PathParam("id") Long id) throws Throwable {
-        return ComposicionCuotaInicialPagoDaoService.selectById(id, NombreEntidadesPago.COMPOSICION_CUOTA_INICIAL_PAGO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            ComposicionCuotaInicialPago registro = ComposicionCuotaInicialPagoDaoService.selectById(id, NombreEntidadesPago.COMPOSICION_CUOTA_INICIAL_PAGO);
+            if (registro == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("Registro con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(registro).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
-    
 
     @PUT
-    @Consumes("application/json")
-    public ComposicionCuotaInicialPago put(ComposicionCuotaInicialPago registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(ComposicionCuotaInicialPago registro) {
         System.out.println("LLEGA AL SERVICIO PUT - COMPOSICION_CUOTA_INICIAL_PAGO");
-        return ComposicionCuotaInicialPagoService.saveSingle(registro);
+        try {
+            ComposicionCuotaInicialPago actualizado = ComposicionCuotaInicialPagoService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(actualizado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
-    @Consumes("application/json")
-    public ComposicionCuotaInicialPago post(ComposicionCuotaInicialPago registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(ComposicionCuotaInicialPago registro) {
         System.out.println("LLEGA AL SERVICIO POST - COMPOSICION_CUOTA_INICIAL_PAGO");
-        return ComposicionCuotaInicialPagoService.saveSingle(registro);
+        try {
+            ComposicionCuotaInicialPago creado = ComposicionCuotaInicialPagoService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(creado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de COMPOSICION_CUOTA_INICIAL_PAGO");
-        Response respuesta = null;
-
         try {
-            respuesta = Response.status(Response.Status.OK)
-                    .entity(ComposicionCuotaInicialPagoService.selectByCriteria(registros))
-                    .type(MediaType.APPLICATION_JSON).build();
+            List<ComposicionCuotaInicialPago> lista = ComposicionCuotaInicialPagoService.selectByCriteria(registros);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST)
-                    .entity(e.getMessage())
-                    .type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST).entity("Error en búsqueda: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
-
-        return respuesta;
     }
 
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - COMPOSICION_CUOTA_INICIAL_PAGO");
-        ComposicionCuotaInicialPago elimina = new ComposicionCuotaInicialPago();
-        ComposicionCuotaInicialPagoDaoService.remove(elimina, id);
+        try {
+            ComposicionCuotaInicialPago elimina = new ComposicionCuotaInicialPago();
+            ComposicionCuotaInicialPagoDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 }

@@ -69,10 +69,15 @@ public class HistMayorizacionRest {
      * @throws Throwable
      
     @GET
-    @Produces("application/json")
+    @Produces(MediaType.APPLICATION_JSON)
     @Path("/getDesc")
-    public List<HistMayorizacion> getDesc() throws Throwable {
-        return histMayorizacionDaoService.selectOrderDesc();
+    public Response getDesc() {
+        try {
+            List<HistMayorizacion> lista = histMayorizacionDaoService.selectOrderDesc();
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener registros: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**

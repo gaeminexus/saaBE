@@ -68,10 +68,15 @@ public class HistDetalleAsientoRest {
      * @throws Throwable
      
     @GET
-    @Produces("application/json")
+    @Produces(MediaType.APPLICATION_JSON)
     @Path("/getDesc")
-    public List<HistDetalleAsiento> getDesc() throws Throwable {
-        return histDetalleAsientoDaoService.selectOrderDesc();
+    public Response getDesc() {
+        try {
+            List<HistDetalleAsiento> lista = histDetalleAsientoDaoService.selectOrderDesc();
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener registros: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     /**

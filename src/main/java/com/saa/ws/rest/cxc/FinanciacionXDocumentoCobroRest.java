@@ -49,95 +49,86 @@ public class FinanciacionXDocumentoCobroRest {
      */
     @GET
     @Path("/getAll")
-    @Produces("application/json")
-    public List<FinanciacionXDocumentoCobro> getAll() throws Throwable {
-        return financiacionXDocumentoCobroDaoService.selectAll(NombreEntidadesCobro.FINANCIACION_X_DOCUMENTO_COBRO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAll() {
+        try {
+            List<FinanciacionXDocumentoCobro> lista = financiacionXDocumentoCobroDaoService.selectAll(NombreEntidadesCobro.FINANCIACION_X_DOCUMENTO_COBRO);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * Retrieves representation of an instance of FinanciacionXDocumentoCobroRest
-     * 
-     * @return an instance of String
-     * @throws Throwable
-     */
     @GET
     @Path("/getId/{id}")
-    @Produces("application/json")
-    public FinanciacionXDocumentoCobro getId(@PathParam("id") Long id) throws Throwable {
-        return financiacionXDocumentoCobroDaoService.selectById(id, NombreEntidadesCobro.FINANCIACION_X_DOCUMENTO_COBRO);
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getId(@PathParam("id") Long id) {
+        try {
+            FinanciacionXDocumentoCobro registro = financiacionXDocumentoCobroDaoService.selectById(id, NombreEntidadesCobro.FINANCIACION_X_DOCUMENTO_COBRO);
+            if (registro == null) {
+                return Response.status(Response.Status.NOT_FOUND).entity("ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(registro).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
-    /**
-     * PUT method for updating or creating an instance of FinanciacionXDocumentoCobroRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @PUT
-    @Consumes("application/json")
-    public Response put(FinanciacionXDocumentoCobro registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response put(FinanciacionXDocumentoCobro registro) {
         System.out.println("LLEGA AL SERVICIO PUT");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(financiacionXDocumentoCobroService.saveSingle(registro)).type(MediaType.APPLICATION_JSON).build();
+            FinanciacionXDocumentoCobro resultado = financiacionXDocumentoCobroService.saveSingle(registro);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
-    /**
-     * POST method for updating or creating an instance of FinanciacionXDocumentoCobroRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
-    @Consumes("application/json")
-    public Response post(FinanciacionXDocumentoCobro registro) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response post(FinanciacionXDocumentoCobro registro) {
         System.out.println("LLEGA AL POST");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(financiacionXDocumentoCobroService.saveSingle(registro)).type(MediaType.APPLICATION_JSON).build();
+            FinanciacionXDocumentoCobro resultado = financiacionXDocumentoCobroService.saveSingle(registro);
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
-    /**
-     * POST method for updating or creating an instance of FinanciacionXDocumentoCobroRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @POST
     @Path("selectByCriteria")
-    @Consumes("application/json")
-    public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de FinanciacionXDocumentoCobro");
-        Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(financiacionXDocumentoCobroService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(financiacionXDocumentoCobroService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
-        return respuesta;
     }
 
-    /**
-     * POST method for updating or creating an instance of FinanciacionXDocumentoCobroRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
     @DELETE
     @Path("/{id}")
-    @Consumes("application/json")
-    public void delete(@PathParam("id") Long id) throws Throwable {
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE");
-        FinanciacionXDocumentoCobro elimina = new FinanciacionXDocumentoCobro();
-        financiacionXDocumentoCobroDaoService.remove(elimina, id);
+        try {
+            FinanciacionXDocumentoCobro elimina = new FinanciacionXDocumentoCobro();
+            financiacionXDocumentoCobroDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
 }
