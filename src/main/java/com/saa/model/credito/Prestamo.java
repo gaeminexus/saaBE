@@ -281,8 +281,8 @@ public class Prestamo implements Serializable {
     public Long getCodigo() { return codigo; }
     public void setCodigo(Long codigo) { this.codigo = codigo; }
 
-    public Long getIdSistema() { return idAsoprep; }
-    public void setIdSistema(Long idAsoprep) { this.idAsoprep = idAsoprep; }
+    public Long getIdAsoprep() { return idAsoprep; }
+    public void setIdAsoprep(Long idAsoprep) { this.idAsoprep = idAsoprep; }
 
     public Entidad getEntidad() { return entidad; }
     public void setEntidad(Entidad entidad) { this.entidad = entidad; }

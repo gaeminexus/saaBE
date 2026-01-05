@@ -1,7 +1,9 @@
 package com.saa.ejb.credito.serviceImpl;
 
+import java.time.LocalDate;
 import java.util.List;
 
+import com.saa.basico.ejb.FechaService;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.credito.dao.DetallePrestamoDaoService;
@@ -18,6 +20,9 @@ public class DetallePrestamoServiceImpl implements DetallePrestamoService {
 
     @EJB
     private DetallePrestamoDaoService detallePrestamoDaoService;
+    
+    @EJB
+    private FechaService fechaService;
 
     /**
      * Recupera un registro de DetallePrestamo por su ID.
@@ -89,4 +94,16 @@ public class DetallePrestamoServiceImpl implements DetallePrestamoService {
         }
         return result;
     }
+
+	@Override
+	public List<DetallePrestamo> selectByMesAnio(Long mes, Long anio) throws Throwable {
+		System.out.println("selectByMesAnio con mes: " + mes + " anio: " + anio);
+		LocalDate fechaInicio = fechaService.primerDiaMesAnioLocal(mes, anio);
+		LocalDate fechaHasta = fechaService.ultimoDiaMesAnioLocal(mes, anio);
+        List<DetallePrestamo> result = detallePrestamoDaoService.selectByRangoFechas(fechaInicio.atStartOfDay(), fechaHasta.atStartOfDay());
+        if (result.isEmpty()) {
+            throw new IncomeException("selectByMesAnio DetallePrestamo no devolvio ningun registro");
+        }
+        return result;
+	}
 }

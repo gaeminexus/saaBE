@@ -73,6 +73,21 @@ public class DetallePrestamoRest {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener detalle de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
     }
+    
+    @GET
+    @Path("/getByMesAnio/{mes}/{anio}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getByMesAnio(@PathParam("mes") Long mes, @PathParam("anio") Long anio) {
+        try {
+            List<DetallePrestamo> detalles = detallePrestamoService.selectByMesAnio(mes, anio);
+            if (detalles.isEmpty()) {
+                return Response.status(Response.Status.NOT_FOUND).entity("getByMesAnio con mes " + mes + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(detalles).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener detalle de préstamo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+    }
 
     @PUT
     @Consumes(MediaType.APPLICATION_JSON)

@@ -226,11 +226,11 @@ public class DetallePrestamo implements Serializable {
         this.codigo = codigo;
     }
 
-    public Prestamo getPrestamoId() {
+    public Prestamo getPrestamo() {
         return prestamo;
     }
 
-    public void setPrestamoId(Prestamo prestamo) {
+    public void setPrestamo(Prestamo prestamo) {
         this.prestamo = prestamo;
     }
 
