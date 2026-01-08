@@ -9,7 +9,7 @@
 package com.saa.model.cxc;
 
 import java.io.Serializable;
-import java.util.Date;
+import java.time.LocalDateTime;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
@@ -22,8 +22,6 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
 import jakarta.persistence.Table;
-import jakarta.persistence.Temporal;
-import jakarta.persistence.TemporalType;
 
 /**
  * @author GaemiSoft
@@ -63,16 +61,14 @@ public class CuotaXFinanciacionCobro implements Serializable {
      */
     @Basic
     @Column(name = "CXDCFCIN")
-    @Temporal(TemporalType.TIMESTAMP)
-    private Date fechaIngreso;
+    private LocalDateTime fechaIngreso;
     
     /**
      * Fecha de vencimiento de la cuota.
      */
     @Basic
     @Column(name = "CXDCFCVN")
-    @Temporal(TemporalType.DATE)
-    private Date fechaVencimiento;
+    private LocalDateTime fechaVencimiento;
     
     /**
      * Tipo de cobro. 1 = cuota, 2 = letra, 3 = cuota inicial.
@@ -143,19 +139,19 @@ public class CuotaXFinanciacionCobro implements Serializable {
         this.financiacionXDocumentoCobro = financiacionXDocumentoCobro;
     }
 
-    public Date getFechaIngreso() {
+    public LocalDateTime getFechaIngreso() {
         return fechaIngreso;
     }
 
-    public void setFechaIngreso(Date fechaIngreso) {
+    public void setFechaIngreso(LocalDateTime fechaIngreso) {
         this.fechaIngreso = fechaIngreso;
     }
 
-    public Date getFechaVencimiento() {
+    public LocalDateTime getFechaVencimiento() {
         return fechaVencimiento;
     }
 
-    public void setFechaVencimiento(Date fechaVencimiento) {
+    public void setFechaVencimiento(LocalDateTime fechaVencimiento) {
         this.fechaVencimiento = fechaVencimiento;
     }
 

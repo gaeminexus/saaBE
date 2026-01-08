@@ -9,7 +9,7 @@
 package com.saa.model.cxc;
 
 import java.io.Serializable;
-import java.util.Date;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import com.saa.model.contabilidad.Asiento;
@@ -29,8 +29,6 @@ import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
-import jakarta.persistence.Temporal;
-import jakarta.persistence.TemporalType;
 
 /**
  * @author GaemiSoft
@@ -83,8 +81,7 @@ public class DocumentoCobro implements Serializable {
      */
     @Basic
     @Column(name = "DCMCFCDC")
-    @Temporal(TemporalType.DATE)
-    private Date fechaDocumento;
+    private LocalDateTime fechaDocumento;
     
     /**
      * Razon social del proveedor o persona que entrega el documento.
@@ -119,8 +116,7 @@ public class DocumentoCobro implements Serializable {
      */
     @Basic
     @Column(name = "DCMCFCVN")
-    @Temporal(TemporalType.DATE)
-    private Date fechaVencimiento;
+    private LocalDateTime fechaVencimiento;
     
     /**
      * Numero de serie del documento.
@@ -141,7 +137,7 @@ public class DocumentoCobro implements Serializable {
      */
     @ManyToOne
     @JoinColumn(name = "PRDOCDGO", referencedColumnName = "PRDOCDGO")
-    private Periodo perido;
+    private Periodo periodo;
     
     /**
      * Numero de mes en el que se encuentra el documento.
@@ -169,8 +165,7 @@ public class DocumentoCobro implements Serializable {
      */
     @Basic
     @Column(name = "DCMCFCAU")
-    @Temporal(TemporalType.DATE)
-    private Date fechaAutorizacion;
+    private LocalDateTime fechaAutorizacion;
     
     /**
      * Numero de resolucion del documento.
@@ -304,11 +299,11 @@ public class DocumentoCobro implements Serializable {
     }
     */
 
-    public Date getFechaDocumento() {
+    public LocalDateTime getFechaDocumento() {
         return fechaDocumento;
     }
 
-    public void setFechaDocumento(Date fechaDocumento) {
+    public void setFechaDocumento(LocalDateTime fechaDocumento) {
         this.fechaDocumento = fechaDocumento;
     }
 
@@ -344,11 +339,11 @@ public class DocumentoCobro implements Serializable {
         this.diasVencimiento = diasVencimiento;
     }
 
-    public Date getFechaVencimiento() {
+    public LocalDateTime getFechaVencimiento() {
         return fechaVencimiento;
     }
 
-    public void setFechaVencimiento(Date fechaVencimiento) {
+    public void setFechaVencimiento(LocalDateTime fechaVencimiento) {
         this.fechaVencimiento = fechaVencimiento;
     }
 
@@ -369,11 +364,11 @@ public class DocumentoCobro implements Serializable {
     }
 
     public Periodo getPerido() {
-        return perido;
+        return periodo;
     }
 
-    public void setPerido(Periodo perido) {
-        this.perido = perido;
+    public void setPerido(Periodo periodo) {
+        this.periodo = periodo;
     }
 
     public Long getMes() {
@@ -400,11 +395,11 @@ public class DocumentoCobro implements Serializable {
         this.numeroAutorizacion = numeroAutorizacion;
     }
 
-    public Date getFechaAutorizacion() {
+    public LocalDateTime getFechaAutorizacion() {
         return fechaAutorizacion;
     }
 
-    public void setFechaAutorizacion(Date fechaAutorizacion) {
+    public void setFechaAutorizacion(LocalDateTime fechaAutorizacion) {
         this.fechaAutorizacion = fechaAutorizacion;
     }
 

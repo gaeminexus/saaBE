@@ -10,7 +10,7 @@
 package com.saa.model.cxc;
 
 import java.io.Serializable;
-import java.util.Date;
+import java.time.LocalDateTime;
 
 import com.saa.model.scp.Empresa;
 
@@ -26,8 +26,6 @@ import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
-import jakarta.persistence.Temporal;
-import jakarta.persistence.TemporalType;
 
 /**
  * @author GaemiSoft
@@ -103,8 +101,7 @@ public class ProductoCobro implements Serializable {
      */
     @Basic
     @Column(name = "PRDCFCIN")
-    @Temporal(TemporalType.TIMESTAMP)
-    private Date fechaIngreso;
+    private LocalDateTime fechaIngreso;
 
     /**
      * Nivel del producto en el árbol.
@@ -141,8 +138,7 @@ public class ProductoCobro implements Serializable {
      */
     @Basic
     @Column(name = "PRDCFCAN")
-    @Temporal(TemporalType.TIMESTAMP)
-    private Date fechaAnulacion;
+    private LocalDateTime fechaAnulacion;
 
     /**
      * Número que identifica al producto en el árbol.
@@ -220,11 +216,11 @@ public class ProductoCobro implements Serializable {
         this.estado = estado;
     }
 
-    public Date getFechaIngreso() {
+    public LocalDateTime getFechaIngreso() {
         return fechaIngreso;
     }
 
-    public void setFechaIngreso(Date fechaIngreso) {
+    public void setFechaIngreso(LocalDateTime fechaIngreso) {
         this.fechaIngreso = fechaIngreso;
     }
 
@@ -260,11 +256,11 @@ public class ProductoCobro implements Serializable {
         this.porcentajeBaseRetencion = porcentajeBaseRetencion;
     }
 
-    public Date getFechaAnulacion() {
+    public LocalDateTime getFechaAnulacion() {
         return fechaAnulacion;
     }
 
-    public void setFechaAnulacion(Date fechaAnulacion) {
+    public void setFechaAnulacion(LocalDateTime fechaAnulacion) {
         this.fechaAnulacion = fechaAnulacion;
     }
 

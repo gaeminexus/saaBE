@@ -86,11 +86,15 @@ public class TempFinanciacionXDocumentoPago implements Serializable {
 	/**
 	 * Campo que indica si es que aplica cuota inicial. 1 = si aplica cuota inicial, 0 = no aplica cuota inicial.
 	 */
+	@Basic
+	@Column(name = "TFDPAPCI")
 	private Long aplicaCuotaInicial;
 	
 	/**
 	 * Valor de porcentaje de la cuota inicial. es el porcentaje que se aplica al subtotal.    
 	 */
+	@Basic
+	@Column(name = "TFDPVPRC")
 	private Double valorPorcentaCI;
 	
 	/**
@@ -98,6 +102,8 @@ public class TempFinanciacionXDocumentoPago implements Serializable {
 	 * En caso de que se desee aplicar un valor especifico al que luego se le podrá sumar 
 	 * los impuestos en caso de que la cuota inicial sea acumulada.   
 	 */
+	@Basic
+	@Column(name = "TFDPVNMC")
 	private Double valorFijoCI;	
 	
 	/**
@@ -106,7 +112,7 @@ public class TempFinanciacionXDocumentoPago implements Serializable {
 	 * 2 = fijo(cuando se aplica un valor fijo a la cuota inicial).
 	 */
 	@Basic
-	@Column(name = "TFDPAPCI")
+	@Column(name = "TFDPTPCI")
 	private Long tipoCuotaInicial;
 	
 	/**
@@ -305,8 +311,6 @@ public class TempFinanciacionXDocumentoPago implements Serializable {
 	 * Obtiene Valor de porcentaje de la cuota inicial. es el porcentaje que se aplica al subtotal.
 	 * @return : Valor de porcentaje de la cuota inicial. es el porcentaje que se aplica al subtotal.
 	 */
-	@Basic
-	@Column(name = "TFDPVPRC")
 	public Double getValorPorcentaCI() {
 		return valorPorcentaCI;
 	}
@@ -327,8 +331,6 @@ public class TempFinanciacionXDocumentoPago implements Serializable {
 	 * En caso de que se desee aplicar un valor especifico al que luego se le podrá sumar 
 	 * los impuestos en caso de que la cuota inicial sea acumulada.  
 	 */
-	@Basic
-	@Column(name = "TFDPVNMC")
 	public Double getValorFijoCI() {
 		return valorFijoCI;
 	}
@@ -353,8 +355,6 @@ public class TempFinanciacionXDocumentoPago implements Serializable {
 	 * 1 = acumulada(cuando es la union de un valor mas los impuestos seleccionados), 
 	 * 2 = fijo(cuando se aplica un valor fijo a la cuota inicial).
 	 */
-	@Basic
-	@Column(name = "TFDPTPCI")
 	public Long getTipoCuotaInicial() {
 		return tipoCuotaInicial;
 	}

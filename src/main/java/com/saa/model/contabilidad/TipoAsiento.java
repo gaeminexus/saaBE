@@ -2,6 +2,7 @@ package com.saa.model.contabilidad;
 
 import java.io.Serializable;
 import java.util.Date;
+
 import com.saa.model.scp.Empresa;
 
 import jakarta.persistence.Basic;
@@ -16,8 +17,6 @@ import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
-import jakarta.persistence.Temporal;
-import jakarta.persistence.TemporalType;
 
 @SuppressWarnings("serial")
 @Entity
@@ -78,7 +77,6 @@ public class TipoAsiento implements Serializable {
 	 */
 	@Basic
 	@Column(name = "PLNTFCDS")
-	@Temporal(TemporalType.DATE)
 	private Date fechaInactivo;
 
 	

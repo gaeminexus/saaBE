@@ -8,9 +8,7 @@
  */
 package com.saa.ejb.cxc.serviceImpl;
 
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
-import java.util.Date;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import com.saa.basico.ejb.DetalleRubroService;
@@ -25,8 +23,6 @@ import com.saa.model.cxc.GrupoProductoCobro;
 import com.saa.model.cxc.NombreEntidadesCobro;
 import com.saa.model.cxc.ProductoCobro;
 import com.saa.rubros.Estado;
-import com.saa.rubros.FormatoFecha;
-import com.saa.rubros.Rubros;
 import com.saa.rubros.TipoCuentaContable;
 
 import jakarta.ejb.EJB;
@@ -143,9 +139,6 @@ public class ProductoCobroServiceImpl implements ProductoCobroService {
 		System.out.println("Ingresa al metodo creaNodoArbolCero ProductoCobroService con idGrupo: " + idGrupo);
 		//INICIALIZA VARIABLE DE RESULTADO
 		String resultado = Mensaje.OK;
-		Date date = new Date();
-		DateFormat df = new SimpleDateFormat(
-				detalleRubroService.selectValorStringByRubAltDetAlt(Rubros.FORMATO_FECHA, FormatoFecha.EJB_CON_HORA)); 
 		int numeroRegistros = numeroRegistrosGrupo(idGrupo);
 		//VERIFICA SI SE RECUPERARON REGISTROS O NO
 		if (numeroRegistros == 0) {
@@ -161,7 +154,7 @@ public class ProductoCobroServiceImpl implements ProductoCobroService {
 				productoCobro.setNombre(grupoProductoCobro.getNombre());
 				productoCobro.setGrupoProductoCobro(grupoProductoCobro);
 				productoCobro.setEstado(Long.valueOf(Estado.ACTIVO));
-				productoCobro.setFechaIngreso(df.parse(df.format(date)));
+				productoCobro.setFechaIngreso(LocalDateTime.now());
 				productoCobro.setNivel(0L);
 				productoCobro.setIdPadre(0L);
 				productoCobro.setTipoNivel(Long.valueOf(TipoCuentaContable.MOVIMIENTO));
@@ -186,10 +179,7 @@ public class ProductoCobroServiceImpl implements ProductoCobroService {
 		//INSTANCIA NUEVA ENTIDAD PARA PADRE
 		ProductoCobro productoCobroPadre = new ProductoCobro();
 		//INICIALIZA VARIABLE DE RESULTADO
-		DateFormat df = new SimpleDateFormat(
-				detalleRubroService.selectValorStringByRubAltDetAlt(Rubros.FORMATO_FECHA, FormatoFecha.EJB_CON_HORA)); 
 		String resultado = Mensaje.OK;
-		Date fecha = new Date();
 		GrupoProductoCobro grupoProductoCobro = grupoProductoCobroDaoService.selectById(idGrupo, NombreEntidadesCobro.GRUPO_PRODUCTO_COBRO);
 		boolean tieneHijos = false;
 		String numeroPadre = "";
@@ -231,7 +221,7 @@ public class ProductoCobroServiceImpl implements ProductoCobroService {
 					// ASIGNA ESTADO
 					productoCobro.setEstado(Long.valueOf(Estado.ACTIVO));
 					// ASIGNA FECHA CREACION
-					productoCobro.setFechaIngreso(df.parse(df.format(fecha)));
+					productoCobro.setFechaIngreso(LocalDateTime.now());
 					// ALMACENA EL REGISTRO
 					productoCobroDaoService.save(productoCobro, Long.valueOf("0"));					
 					// MODIFICA PADRE COMO ACUMULACION
@@ -337,10 +327,7 @@ public class ProductoCobroServiceImpl implements ProductoCobroService {
 	 */
 	public void actualizaEstadoProducto(Long id, int tipo) throws Throwable {
 		System.out.println("Ingresa al metodo actualizaEstadoProducto de ProductoCobro con id: " + id);
-		DateFormat df = new SimpleDateFormat(
-				detalleRubroService.selectValorStringByRubAltDetAlt(Rubros.FORMATO_FECHA, FormatoFecha.EJB_CON_HORA)); 
 		ProductoCobro productoCobro = productoCobroDaoService.selectById(id, NombreEntidadesCobro.PRODUCTO_COBRO);
-		productoCobro.setFechaAnulacion(df.parse(df.format(new Date())));
 		productoCobro.setEstado(Long.valueOf(tipo));
 		productoCobroDaoService.save(productoCobro, id);		
 	}

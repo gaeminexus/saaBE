@@ -9,6 +9,7 @@
 package com.saa.model.cxp;
 
 import java.io.Serializable;
+import java.time.LocalDateTime;
 import java.util.Date;
 
 import com.saa.model.scp.Empresa;
@@ -101,7 +102,7 @@ public class ProductoPago implements Serializable {
 	@Basic
 	@Column(name = "PRDPFCIN")
 	@Temporal(TemporalType.TIMESTAMP)
-	private Date fechaIngreso;
+	private LocalDateTime fechaIngreso;
 	
 	/**
 	 * Nivel del producto en el arbol.
@@ -134,18 +135,23 @@ public class ProductoPago implements Serializable {
 	/**
 	 * Fecha de anulacion.
 	 */
-	private Date fechaAnulacion;
+	@Basic
+	@Column(name = "PRDPFCAN")
+	private LocalDateTime fechaAnulacion;
 	
 	/**
 	 * Numero que identifica al producto en el arbol.
 	 */
+	@Basic
+	@Column(name = "PRDPNMRO")
 	private String numero;
 	
 	/**
 	 * Tipo de producto dependiendo el nivel que ocupa. Puede ser acumulacion o movimiento.
 	 */
+	@Basic
+	@Column(name = "PRDPTPNV")
 	private Long tipoNivel;
-	
 	
 	/**
 	 * Obtiene codigo
@@ -263,7 +269,7 @@ public class ProductoPago implements Serializable {
 	 * Obtiene la fecha de ingreso.
 	 * @return : Fecha de ingreso.
 	 */
-	public Date getFechaIngreso() {
+	public LocalDateTime getFechaIngreso() {
 		return fechaIngreso;
 	}
 
@@ -271,7 +277,7 @@ public class ProductoPago implements Serializable {
 	 * Asigna la fecha de ingreso.
 	 * @param fechaInactivo : Fecha de ingreso.
 	 */
-	public void setFechaIngreso(Date fechaIngreso) {
+	public void setFechaIngreso(LocalDateTime fechaIngreso) {
 		this.fechaIngreso = fechaIngreso;
 	}
 
@@ -347,10 +353,7 @@ public class ProductoPago implements Serializable {
 	 * Obtiene fecha de anulacion.
 	 * @return the fechaAnulacion : Fecha de anulacion.
 	 */
-	@Basic
-	@Column(name = "PRDPFCAN")
-	@Temporal(TemporalType.TIMESTAMP)
-	public Date getFechaAnulacion() {
+	public LocalDateTime getFechaAnulacion() {
 		return fechaAnulacion;
 	}
 
@@ -358,7 +361,7 @@ public class ProductoPago implements Serializable {
 	 * Asigna fecha de anulacion.
 	 * @param fechaAnulacion : Fecha de anulacion.
 	 */
-	public void setFechaAnulacion(Date fechaAnulacion) {
+	public void setFechaAnulacion(LocalDateTime fechaAnulacion) {
 		this.fechaAnulacion = fechaAnulacion;
 	}
 
@@ -366,8 +369,7 @@ public class ProductoPago implements Serializable {
 	 * Obtiene Numero que identifica al producto en el arbol.
 	 * @return : Numero que identifica al producto en el arbol.
 	 */
-	@Basic
-	@Column(name = "PRDPNMRO")
+	
 	public String getNumero() {
 		return numero;
 	}
@@ -384,8 +386,6 @@ public class ProductoPago implements Serializable {
 	 * Obtiene Tipo de producto dependiendo el nivel que ocupa. Puede ser acumulacion o movimiento.
 	 * @return : Tipo de producto dependiendo el nivel que ocupa. Puede ser acumulacion o movimiento.
 	 */
-	@Basic
-	@Column(name = "PRDPTPNV")
 	public Long getTipoNivel() {
 		return tipoNivel;
 	}
@@ -396,6 +396,11 @@ public class ProductoPago implements Serializable {
 	 */
 	public void setTipoNivel(Long tipoNivel) {
 		this.tipoNivel = tipoNivel;
+	}
+
+	public void setFechaAnulacion(Date date) {
+		// TODO Auto-generated method stub
+		
 	}
 	
 }

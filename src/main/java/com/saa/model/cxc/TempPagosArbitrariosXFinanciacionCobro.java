@@ -9,7 +9,7 @@
 package com.saa.model.cxc;
 
 import java.io.Serializable;
-import java.util.Date;
+import java.time.LocalDateTime;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
@@ -23,8 +23,6 @@ import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
-import jakarta.persistence.Temporal;
-import jakarta.persistence.TemporalType;
 
 /**
  * @author GaemiSoft
@@ -85,8 +83,7 @@ public class TempPagosArbitrariosXFinanciacionCobro implements Serializable {
      */
     @Basic
     @Column(name = "TPFCFCPG")
-    @Temporal(TemporalType.DATE)
-    private Date fechaCobro;
+    private LocalDateTime fechaCobro;
 
     /**
      * Valor del pago.
@@ -139,11 +136,11 @@ public class TempPagosArbitrariosXFinanciacionCobro implements Serializable {
         this.anioCobro = anioCobro;
     }
 
-    public Date getFechaCobro() {
+    public LocalDateTime getFechaCobro() {
         return fechaCobro;
     }
 
-    public void setFechaCobro(Date fechaCobro) {
+    public void setFechaCobro(LocalDateTime fechaCobro) {
         this.fechaCobro = fechaCobro;
     }
 

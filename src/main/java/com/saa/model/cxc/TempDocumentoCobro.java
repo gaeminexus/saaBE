@@ -9,7 +9,7 @@
 package com.saa.model.cxc;
 
 import java.io.Serializable;
-import java.util.Date;
+import java.time.LocalDateTime;
 
 import com.saa.model.contabilidad.Asiento;
 import com.saa.model.contabilidad.Periodo;
@@ -28,8 +28,6 @@ import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
-import jakarta.persistence.Temporal;
-import jakarta.persistence.TemporalType;
 
 /**
  * @author GaemiSoft
@@ -84,8 +82,7 @@ public class TempDocumentoCobro implements Serializable {
      */
     @Basic
     @Column(name = "TDCCFCDC")
-    @Temporal(TemporalType.DATE)
-    private Date fechaDocumento;
+    private LocalDateTime fechaDocumento;
 
     /**
      * Razon social del proveedor o persona que entrega el documento.
@@ -120,8 +117,7 @@ public class TempDocumentoCobro implements Serializable {
      */
     @Basic
     @Column(name = "TDCCFCVN")
-    @Temporal(TemporalType.DATE)
-    private Date fechaVencimiento;
+    private LocalDateTime fechaVencimiento;
 
     /**
      * Numero de serie del documento.
@@ -170,8 +166,7 @@ public class TempDocumentoCobro implements Serializable {
      */
     @Basic
     @Column(name = "TDCCFCAT")
-    @Temporal(TemporalType.DATE)
-    private Date fechaAutorizacion;
+    private LocalDateTime fechaAutorizacion;
 
     /**
      * Numero de resolución del documento.
@@ -281,11 +276,11 @@ public class TempDocumentoCobro implements Serializable {
     }
     */
 
-    public Date getFechaDocumento() {
+    public LocalDateTime getFechaDocumento() {
         return fechaDocumento;
     }
 
-    public void setFechaDocumento(Date fechaDocumento) {
+    public void setFechaDocumento(LocalDateTime fechaDocumento) {
         this.fechaDocumento = fechaDocumento;
     }
 
@@ -321,11 +316,11 @@ public class TempDocumentoCobro implements Serializable {
         this.diasVencimiento = diasVencimiento;
     }
 
-    public Date getFechaVencimiento() {
+    public LocalDateTime getFechaVencimiento() {
         return fechaVencimiento;
     }
 
-    public void setFechaVencimiento(Date fechaVencimiento) {
+    public void setFechaVencimiento(LocalDateTime fechaVencimiento) {
         this.fechaVencimiento = fechaVencimiento;
     }
 
@@ -377,11 +372,11 @@ public class TempDocumentoCobro implements Serializable {
         this.numeroAutorizacion = numeroAutorizacion;
     }
 
-    public Date getFechaAutorizacion() {
+    public LocalDateTime getFechaAutorizacion() {
         return fechaAutorizacion;
     }
 
-    public void setFechaAutorizacion(Date fechaAutorizacion) {
+    public void setFechaAutorizacion(LocalDateTime fechaAutorizacion) {
         this.fechaAutorizacion = fechaAutorizacion;
     }
 
