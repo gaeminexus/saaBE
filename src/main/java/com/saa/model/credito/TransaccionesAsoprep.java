@@ -13,16 +13,16 @@ import jakarta.persistence.NamedQuery;
 import jakarta.persistence.Table;
 
 	/**
-	 * Representa la tabla TRAS (Transacciones).
+	 * Representa la tabla TRAS (TransaccionesAsoprep).
 	 */
 	@SuppressWarnings("serial")
 	@Entity
 	@Table(name = "TRAS", schema = "CRD")
 	@NamedQueries({
-	    @NamedQuery(name = "TransaccionesAll", query = "select t from Transacciones t"),
-	    @NamedQuery(name = "TransaccionesById", query = "select t from Transacciones t where t.codigo = :id")
+	    @NamedQuery(name = "TransaccionesAsoprepAll", query = "select t from TransaccionesAsoprep t"),
+	    @NamedQuery(name = "TransaccionesAsoprepById", query = "select t from TransaccionesAsoprep t where t.codigo = :id")
 	})
-	public class Transacciones implements Serializable {
+	public class TransaccionesAsoprep implements Serializable {
 
 	    // ============================================================
 	    // PK

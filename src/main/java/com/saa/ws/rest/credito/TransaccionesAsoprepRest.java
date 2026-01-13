@@ -3,10 +3,10 @@ package com.saa.ws.rest.credito;
 import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
-import com.saa.ejb.credito.dao.TransaccionesDaoService;
-import com.saa.ejb.credito.service.TransaccionesService;
+import com.saa.ejb.credito.dao.TransaccionesAsoprepDaoService;
+import com.saa.ejb.credito.service.TransaccionesAsoprepService;
 import com.saa.model.credito.NombreEntidadesCredito;
-import com.saa.model.credito.Transacciones;
+import com.saa.model.credito.TransaccionesAsoprep;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;
@@ -23,13 +23,13 @@ import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 
 @Path("tras")
-public class TransaccionesRest {
+public class TransaccionesAsoprepRest {
     
     @EJB
-    private TransaccionesDaoService transaccionesDaoService;
+    private TransaccionesAsoprepDaoService transaccionesAsoprepDaoService;
     
     @EJB
-    private TransaccionesService transaccionesService;
+    private TransaccionesAsoprepService transaccionesAsoprepService;
     
     @Context
     private UriInfo context;
@@ -37,7 +37,7 @@ public class TransaccionesRest {
     /**
      * Constructor por defecto.
      */
-    public TransaccionesRest() {
+    public TransaccionesAsoprepRest() {
         // Constructor vacío
     }
     
@@ -52,7 +52,7 @@ public class TransaccionesRest {
     @Produces(MediaType.APPLICATION_JSON)
     public Response getAll() {
         try {
-            List<Transacciones> lista = transaccionesDaoService.selectAll(NombreEntidadesCredito.TRANSACCIONES);
+            List<TransaccionesAsoprep> lista = transaccionesAsoprepDaoService.selectAll(NombreEntidadesCredito.TRANSACCIONES_ASOPREP);
             return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener tipos de vivienda: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
@@ -64,7 +64,7 @@ public class TransaccionesRest {
     @Path("/getId/{id}")
     public Response getId(@PathParam("id") Long id) {
         try {
-            Transacciones tipo = transaccionesDaoService.selectById(id, NombreEntidadesCredito.TRANSACCIONES);
+            TransaccionesAsoprep tipo = transaccionesAsoprepDaoService.selectById(id, NombreEntidadesCredito.TRANSACCIONES_ASOPREP);
             if (tipo == null) {
                 return Response.status(Response.Status.NOT_FOUND).entity("Transacciones con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
             }
@@ -77,10 +77,10 @@ public class TransaccionesRest {
     @PUT
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response put(Transacciones registro) {
+    public Response put(TransaccionesAsoprep registro) {
         System.out.println("LLEGA AL SERVICIO PUT DE Transacciones");
         try {
-            Transacciones resultado = transaccionesService.saveSingle(registro);
+            TransaccionesAsoprep resultado = transaccionesAsoprepService.saveSingle(registro);
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar Transacciones: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
@@ -90,10 +90,10 @@ public class TransaccionesRest {
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response post(Transacciones registro) {
+    public Response post(TransaccionesAsoprep registro) {
         System.out.println("LLEGA AL SERVICIO POST DE Transacciones");
         try {
-            Transacciones resultado = transaccionesService.saveSingle(registro);
+            TransaccionesAsoprep resultado = transaccionesAsoprepService.saveSingle(registro);
             return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear Transacciones: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
@@ -109,7 +109,7 @@ public class TransaccionesRest {
 
         try {
             respuesta = Response.status(Response.Status.OK)
-                    .entity(transaccionesService.selectByCriteria(registros))
+                    .entity(transaccionesAsoprepService.selectByCriteria(registros))
                     .type(MediaType.APPLICATION_JSON)
                     .build();
 
@@ -136,8 +136,8 @@ public class TransaccionesRest {
     public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE DE Transacciones");
         try {
-            Transacciones elimina = new Transacciones();
-            transaccionesDaoService.remove(elimina, id);
+            TransaccionesAsoprep elimina = new TransaccionesAsoprep();
+            transaccionesAsoprepDaoService.remove(elimina, id);
             return Response.status(Response.Status.NO_CONTENT).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar Transacciones: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();

@@ -4,27 +4,27 @@ import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
-import com.saa.ejb.credito.dao.TransaccionesDaoService;
-import com.saa.ejb.credito.service.TransaccionesService;
+import com.saa.ejb.credito.dao.TransaccionesAsoprepDaoService;
+import com.saa.ejb.credito.service.TransaccionesAsoprepService;
 import com.saa.model.credito.NombreEntidadesCredito;
-import com.saa.model.credito.Transacciones;
+import com.saa.model.credito.TransaccionesAsoprep;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 
 @Stateless
-public class TransaccionesServiceImpl implements TransaccionesService {
+public class TransaccionesAsoprepServiceImpl implements TransaccionesAsoprepService {
 
     @EJB
-    private TransaccionesDaoService transaccionesDaoService;
+    private TransaccionesAsoprepDaoService transaccionesAsoprepDaoService;
 
     /**
      * Recupera un registro de Transacciones por su ID.
      */
     @Override
-    public Transacciones selectById(Long id) throws Throwable {
+    public TransaccionesAsoprep selectById(Long id) throws Throwable {
         System.out.println("Ingresa al selectById Transacciones con id: " + id);
-        return transaccionesDaoService.selectById(id, NombreEntidadesCredito.TRANSACCIONES);
+        return transaccionesAsoprepDaoService.selectById(id, NombreEntidadesCredito.TRANSACCIONES_ASOPREP);
     }
 
     /**
@@ -33,9 +33,9 @@ public class TransaccionesServiceImpl implements TransaccionesService {
     @Override
     public void remove(List<Long> id) throws Throwable {
         System.out.println("Ingresa al metodo remove[] de TransaccionesService ...");
-        Transacciones transacciones = new Transacciones();
+        TransaccionesAsoprep transaccionesAsoprep = new TransaccionesAsoprep();
         for (Long registro : id) {
-            transaccionesDaoService.remove(transacciones, registro);
+            transaccionesAsoprepDaoService.remove(transaccionesAsoprep, registro);
         }
     }
 
@@ -43,10 +43,10 @@ public class TransaccionesServiceImpl implements TransaccionesService {
      * Guarda una lista de registros de Transacciones.
      */
     @Override
-    public void save(List<Transacciones> lista) throws Throwable {
+    public void save(List<TransaccionesAsoprep> lista) throws Throwable {
         System.out.println("Ingresa al metodo save de TransaccionesService");
-        for (Transacciones registro : lista) {
-            transaccionesDaoService.save(registro, registro.getCodigo());
+        for (TransaccionesAsoprep registro : lista) {
+            transaccionesAsoprepDaoService.save(registro, registro.getCodigo());
         }
     }
 
@@ -54,10 +54,10 @@ public class TransaccionesServiceImpl implements TransaccionesService {
      * Recupera todos los registros de Transacciones.
      */
     @Override
-    public List<Transacciones> selectAll() throws Throwable {
+    public List<TransaccionesAsoprep> selectAll() throws Throwable {
         System.out.println("Ingresa al metodo selectAll TransaccionesService");
-        List<Transacciones> result =
-                transaccionesDaoService.selectAll(NombreEntidadesCredito.TRANSACCIONES);
+        List<TransaccionesAsoprep> result =
+                transaccionesAsoprepDaoService.selectAll(NombreEntidadesCredito.TRANSACCIONES_ASOPREP);
 
         if (result.isEmpty()) {
             throw new IncomeException("Busqueda total Transacciones no devolvio ningun registro");
@@ -69,22 +69,22 @@ public class TransaccionesServiceImpl implements TransaccionesService {
      * Guarda un solo registro de Transacciones.
      */
     @Override
-    public Transacciones saveSingle(Transacciones transacciones) throws Throwable {
+    public TransaccionesAsoprep saveSingle(TransaccionesAsoprep transaccionesAsoprep) throws Throwable {
         System.out.println("saveSingle - Transacciones");
-        if(transacciones.getCodigo() == null)	
-        transacciones = transaccionesDaoService.save(transacciones, transacciones.getCodigo());  
-        return transacciones;
+        if(transaccionesAsoprep.getCodigo() == null)	
+        transaccionesAsoprep = transaccionesAsoprepDaoService.save(transaccionesAsoprep, transaccionesAsoprep.getCodigo());  
+        return transaccionesAsoprep;
     }
 	
     /**
      * Recupera registros de Transacciones según criterios de búsqueda.
      */
     @Override
-    public List<Transacciones> selectByCriteria(List<DatosBusqueda> datos) throws Throwable {
+    public List<TransaccionesAsoprep> selectByCriteria(List<DatosBusqueda> datos) throws Throwable {
         System.out.println("Ingresa al metodo selectByCriteria TransaccionesService");
 
-        List<Transacciones> result =
-                transaccionesDaoService.selectByCriteria(datos, NombreEntidadesCredito.TRANSACCIONES);
+        List<TransaccionesAsoprep> result =
+                transaccionesAsoprepDaoService.selectByCriteria(datos, NombreEntidadesCredito.TRANSACCIONES_ASOPREP);
 
         if (result.isEmpty()) {
             throw new IncomeException("Busqueda por criterio Transacciones no devolvio ningun registro");

@@ -64,7 +64,7 @@ public interface NombreEntidadesCredito {
 	String AUDITORIA = "Auditoria";
 	String PARTICIPE_ASOPREP = "ParticipeAsoprep";
 	String APORTE_ASOPREP = "AporteAsoprep";
-	String TRANSACCIONES = "Transacciones";
+	String TRANSACCIONES_ASOPREP = "TransaccionesAsoprep";
 	
 
 }
