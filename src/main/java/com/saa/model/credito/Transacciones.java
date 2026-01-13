@@ -19,8 +19,8 @@ import jakarta.persistence.Table;
 	@Entity
 	@Table(name = "TRAS", schema = "CRD")
 	@NamedQueries({
-	    @NamedQuery(name = "TrasAll", query = "select t from Tras t"),
-	    @NamedQuery(name = "TrasById", query = "select t from Tras t where t.codigo = :id")
+	    @NamedQuery(name = "TransaccionesAll", query = "select t from Transacciones t"),
+	    @NamedQuery(name = "TransaccionesById", query = "select t from Transacciones t where t.codigo = :id")
 	})
 	public class Transacciones implements Serializable {
 

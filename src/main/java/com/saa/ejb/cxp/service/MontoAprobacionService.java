@@ -11,14 +11,14 @@ package com.saa.ejb.cxp.service;
 import com.saa.basico.util.EntityService;
 import com.saa.model.cxp.MontoAprobacion;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft
  * <p>Servicio para la entidad MontoAprobacion.
  *  Accede a los metodos DAO y procesa los datos para el MontoAprobacion.</p>
  */
-@Remote
+@Local
 public interface MontoAprobacionService extends EntityService<MontoAprobacion>{
 
 	 /**

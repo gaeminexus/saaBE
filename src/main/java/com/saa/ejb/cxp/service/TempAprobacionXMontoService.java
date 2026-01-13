@@ -13,14 +13,14 @@ import java.util.List;
 import com.saa.basico.util.EntityService;
 import com.saa.model.cxp.TempAprobacionXMonto;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft
  * <p>Servicio para la entidad TempAprobacionXMonto.
  *  Accede a los metodos DAO y procesa los datos para el TempAprobacionXMonto.</p>
  */
-@Remote
+@Local
 public interface TempAprobacionXMontoService extends EntityService<TempAprobacionXMonto>{
 
 	 /**

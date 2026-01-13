@@ -11,14 +11,14 @@ package com.saa.ejb.cxp.service;
 import com.saa.basico.util.EntityService;
 import com.saa.model.cxp.CuotaXFinanciacionPago;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft
  * <p>Servicio para la entidad CuotaXFinanciacionPago.
  *  Accede a los metodos DAO y procesa los datos para el CuotaXFinanciacionPago.</p>
  */
-@Remote
+@Local
 public interface CuotaXFinanciacionPagoService extends EntityService<CuotaXFinanciacionPago>{
 	
 	 /**

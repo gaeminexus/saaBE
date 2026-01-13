@@ -12,14 +12,14 @@ package com.saa.ejb.cxc.service;
 import com.saa.basico.util.EntityService;
 import com.saa.model.cxc.TempCuotaXFinanciacionCobro;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft
  * <p>Servicio para la entidad TempCuotaXFinanciacionCobro.
  *  Accede a los metodos DAO y procesa los datos para el TempCuotaXFinanciacionCobro.</p>
  */
-@Remote
+@Local
 public interface TempCuotaXFinanciacionCobroService extends EntityService<TempCuotaXFinanciacionCobro> {
 
 	 /**

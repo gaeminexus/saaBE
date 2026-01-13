@@ -13,14 +13,14 @@ import java.util.List;
 import com.saa.basico.util.EntityService;
 import com.saa.model.cxp.ProductoPago;
 
-import jakarta.ejb.Remote;
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft
  * <p>Servicio para la entidad ProductoPago.
  *  Accede a los metodos DAO y procesa los datos para el ProductoPago.</p>
  */
-@Remote
+@Local
 public interface ProductoPagoService extends EntityService<ProductoPago>{
 
 	 /**

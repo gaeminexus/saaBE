@@ -20,11 +20,8 @@ import jakarta.persistence.Table;
 	@Entity
 	@Table(name = "APAS", schema = "CRD")
 	@NamedQueries({
-	    @NamedQuery(name = "ApasAll", query = "select a from Apas a"),
-	    @NamedQuery(
-	        name = "ApasByCuentaInstitucion",
-	        query = "select a from Apas a where a.cuenta = :cuenta and a.institucion = :institucion"
-	    )
+	    @NamedQuery(name = "AporteAsoprepAll", query = "select e from AporteAsoprep e"),
+	    @NamedQuery(name = "AporteAsoprepId", query = "select e from AporteAsoprep e where e.cuenta = :id")
 	})
 	public class AporteAsoprep implements Serializable {
 
