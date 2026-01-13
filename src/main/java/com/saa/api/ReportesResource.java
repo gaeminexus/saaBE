@@ -3,6 +3,7 @@ package com.saa.api;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Response;
 
 import javax.naming.InitialContext;
@@ -41,9 +42,7 @@ public class ReportesResource {
         for (String jndi : DS_CANDIDATES) {
             try {
                 Object obj = ctx.lookup(jndi);
-                if (obj instanceof DataSource ds) {
-                    return ds;
-                }
+                if (obj instanceof DataSource ds) return ds;
             } catch (NamingException e) {
                 last = e;
             }
@@ -77,61 +76,84 @@ public class ReportesResource {
     }
 
     /**
-     * REPORTE REAL: Naturaleza de cuentas
-     * Usa el .jasper precompilado para evitar compilar JRXML en WildFly.
+     * REPORTE: Naturaleza de cuentas (con parámetro empresa)
      *
-     * Recurso esperado:
-     * src/main/resources/reports/test/naturaleza_cuenta.jasper
+     * Espera el recurso:
+     *   src/main/resources/rep/test/naturaleza_cuenta_empresa.jasper
+     *
+     * URL:
+     *   GET /SaaBE/api/reportes/naturaleza-cuentas-empresa?empresa=1236
      */
     @GET
-    @Path("/naturaleza-cuentas")
+    @Path("/naturaleza-cuentas-empresa")
     @Produces("application/pdf")
-    public Response naturalezaCuentasPdf() {
+    public Response naturalezaCuentasEmpresaPdf(@QueryParam("empresa") Long empresa) {
 
-        // OJO: aquí NO hay parámetros obligatorios (como pediste).
+        if (empresa == null) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("Falta parámetro requerido: empresa")
+                    .type("text/plain")
+                    .build();
+        }
+
         Map<String, Object> params = new HashMap<>();
+        params.put("pr_empresa", empresa); // ✅ debe coincidir con JRXML
 
-        // Si tu .jasper trae el query con WHERE fijo (PJRQCDGO = 1236), ok.
-        // Si luego lo pasas a parámetro, aquí lo pones: params.put("PJRQCDGO", 1236);
+        // ✅ si el reporte usa logo por parámetro
+        InputStream logo = getClass().getResourceAsStream("/rep/_common/images/logo_empresa.png");
+        if (logo != null) {
+            params.put("pr_logo", logo);
+        }
 
-        try (InputStream jasper = getClass().getResourceAsStream("/reports/test/naturaleza_cuenta.jasper")) {
+        try (InputStream jasper = getClass().getResourceAsStream("/rep/test/naturaleza_cuenta_empresa.jasper")) {
 
             if (jasper == null) {
                 return Response.status(Response.Status.NOT_FOUND)
-                        .entity("No se encontró /reports/test/naturaleza_cuenta.jasper en resources")
+                        .entity("No se encontró /rep/test/naturaleza_cuenta_empresa.jasper en resources")
                         .type("text/plain")
                         .build();
             }
 
             DataSource ds = lookupDs();
-
             try (Connection con = ds.getConnection()) {
+
                 JasperPrint print = JasperFillManager.fillReport(jasper, params, con);
+
+                // 🔎 Debug útil: cuántas páginas generó realmente
+                if (print.getPages() == null || print.getPages().isEmpty()) {
+                    return Response.serverError()
+                            .entity("El reporte se llenó pero generó 0 páginas. Revisa query/param/WhenNoDataType.")
+                            .type("text/plain")
+                            .build();
+                }
+
                 byte[] pdf = JasperExportManager.exportReportToPdf(print);
 
                 return Response.ok(pdf)
-                        .header("Content-Disposition", "inline; filename=\"naturaleza_cuentas.pdf\"")
+                        .header("Content-Disposition", "inline; filename=\"naturaleza_cuentas_empresa.pdf\"")
                         .build();
             }
 
         } catch (Exception e) {
             return Response.serverError()
-                    .entity("ERROR generando PDF (jasper): " + e.getClass().getSimpleName()
-                            + " - " + e.getMessage())
+                    .entity("ERROR Jasper: " + e.getClass().getSimpleName() + " - " + e.getMessage())
                     .type("text/plain")
                     .build();
         }
     }
 
-    // Endpoint de ayuda para confirmar que el recurso está dentro del WAR
+
+    /**
+     * Debug: confirma que el .jasper está dentro del WAR en la ruta correcta
+     */
     @GET
-    @Path("/debug-report")
+    @Path("/debug-rep")
     @Produces("text/plain")
-    public String debugReport() {
-        try (InputStream jasper = getClass().getResourceAsStream("/reports/test/naturaleza_cuenta.jasper")) {
+    public String debugRep() {
+        try (InputStream jasper = getClass().getResourceAsStream("/rep/test/naturaleza_cuenta_empresa.jasper")) {
             return (jasper != null)
-                    ? "OK: encontrado /reports/test/naturaleza_cuenta.jasper"
-                    : "FAIL: no existe /reports/test/naturaleza_cuenta.jasper";
+                    ? "OK: encontrado /rep/test/naturaleza_cuenta_empresa.jasper"
+                    : "FAIL: no existe /rep/test/naturaleza_cuenta_empresa.jasper";
         } catch (Exception e) {
             return "ERROR: " + e.getMessage();
         }
