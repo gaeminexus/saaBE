@@ -1,0 +1,200 @@
+package com.saa.model.rhh;
+
+import java.io.Serializable;
+import java.time.LocalDate;
+
+import jakarta.persistence.Basic;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.NamedQueries;
+import jakarta.persistence.NamedQuery;
+import jakarta.persistence.Table;
+
+/**
+ * Registro maestro de empleados.
+ */
+@SuppressWarnings("serial")
+@Entity
+@Table(name = "MPLD", schema = "RHH")
+@NamedQueries({
+    @NamedQuery(name = "Empleado.findAll", query = "select e from Empleado e"),
+    @NamedQuery(name = "Empleado.findById", query = "select e from Empleado e where e.codigo = :id"),
+    @NamedQuery(name = "Empleado.findByIdentificacion", query = "select e from Empleado e where e.identificacion = :identificacion"),
+    @NamedQuery(name = "Empleado.findActivos", query = "select e from Empleado e where e.estado = 'A'")
+})
+public class Empleado implements Serializable {
+
+    /**
+     * Código único del empleado.
+     */
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Basic
+    @Column(name = "MPLDCDGO")
+    private Long codigo;
+
+    /**
+     * Identificación (cédula/RUC/pasaporte).
+     */
+    @Basic
+    @Column(name = "MPLDIDNT", length = 20, nullable = false, unique = true)
+    private String identificacion;
+
+    /**
+     * Apellidos.
+     */
+    @Basic
+    @Column(name = "MPLDAPLL", length = 120, nullable = false)
+    private String apellidos;
+
+    /**
+     * Nombres.
+     */
+    @Basic
+    @Column(name = "MPLDNMBR", length = 120, nullable = false)
+    private String nombres;
+
+    /**
+     * Fecha de nacimiento.
+     */
+    @Basic
+    @Column(name = "MPLDFCHN")
+    private LocalDate fechaNacimiento;
+
+    /**
+     * Correo electrónico.
+     */
+    @Basic
+    @Column(name = "MPLDEMAI", length = 150)
+    private String email;
+
+    /**
+     * Teléfono.
+     */
+    @Basic
+    @Column(name = "MPLDTLFN", length = 30)
+    private String telefono;
+
+    /**
+     * Dirección.
+     */
+    @Basic
+    @Column(name = "MPLDDRCC", length = 250)
+    private String direccion;
+
+    /**
+     * Estado del empleado (A=Activo, I=Inactivo).
+     */
+    @Basic
+    @Column(name = "MPLDESTD", length = 1, nullable = false)
+    private String estado;
+
+    /**
+     * Fecha de registro.
+     */
+    @Basic
+    @Column(name = "MPLDFCHR", nullable = false)
+    private LocalDate fechaRegistro;
+
+    /**
+     * Usuario que registró.
+     */
+    @Basic
+    @Column(name = "MPLDUSRR", length = 60)
+    private String usuarioRegistro;
+
+    // =============================
+    // Getters y Setters
+    // =============================
+
+    public Long getCodigo() {
+        return codigo;
+    }
+
+    public void setCodigo(Long codigo) {
+        this.codigo = codigo;
+    }
+
+    public String getIdentificacion() {
+        return identificacion;
+    }
+
+    public void setIdentificacion(String identificacion) {
+        this.identificacion = identificacion;
+    }
+
+    public String getApellidos() {
+        return apellidos;
+    }
+
+    public void setApellidos(String apellidos) {
+        this.apellidos = apellidos;
+    }
+
+    public String getNombres() {
+        return nombres;
+    }
+
+    public void setNombres(String nombres) {
+        this.nombres = nombres;
+    }
+
+    public LocalDate getFechaNacimiento() {
+        return fechaNacimiento;
+    }
+
+    public void setFechaNacimiento(LocalDate fechaNacimiento) {
+        this.fechaNacimiento = fechaNacimiento;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    public String getTelefono() {
+        return telefono;
+    }
+
+    public void setTelefono(String telefono) {
+        this.telefono = telefono;
+    }
+
+    public String getDireccion() {
+        return direccion;
+    }
+
+    public void setDireccion(String direccion) {
+        this.direccion = direccion;
+    }
+
+    public String getEstado() {
+        return estado;
+    }
+
+    public void setEstado(String estado) {
+        this.estado = estado;
+    }
+
+    public LocalDate getFechaRegistro() {
+        return fechaRegistro;
+    }
+
+    public void setFechaRegistro(LocalDate fechaRegistro) {
+        this.fechaRegistro = fechaRegistro;
+    }
+
+    public String getUsuarioRegistro() {
+        return usuarioRegistro;
+    }
+
+    public void setUsuarioRegistro(String usuarioRegistro) {
+        this.usuarioRegistro = usuarioRegistro;
+    }
+}

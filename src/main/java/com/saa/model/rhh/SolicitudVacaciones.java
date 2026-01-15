@@ -1,0 +1,191 @@
+package com.saa.model.rhh;
+
+import java.io.Serializable;
+import java.time.LocalDate;
+
+import jakarta.persistence.Basic;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.NamedQueries;
+import jakarta.persistence.NamedQuery;
+import jakarta.persistence.Table;
+
+/**
+ * Solicitudes de vacaciones.
+ */
+@SuppressWarnings("serial")
+@Entity
+@Table(name = "SLCT", schema = "RHH")
+@NamedQueries({
+    @NamedQuery(name = "SolicitudVacaciones.findAll",
+                query = "select s from SolicitudVacaciones s"),
+    @NamedQuery(name = "SolicitudVacaciones.findById",
+                query = "select s from SolicitudVacaciones s where s.codigo = :id"),
+    @NamedQuery(name = "SolicitudVacaciones.findByEmpleado",
+                query = "select s from SolicitudVacaciones s where s.empleado.codigo = :idEmpleado"),
+    @NamedQuery(name = "SolicitudVacaciones.findByEstado",
+                query = "select s from SolicitudVacaciones s where s.estado = :estado")
+})
+public class SolicitudVacaciones implements Serializable {
+
+    /**
+     * Código único de la solicitud.
+     */
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Basic
+    @Column(name = "SLCTCDGO")
+    private Long codigo;
+
+    /**
+     * Empleado solicitante.
+     */
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "MPLDCDGO", nullable = false)
+    private Empleado empleado;
+
+    /**
+     * Fecha desde.
+     */
+    @Basic
+    @Column(name = "SLCTFCHD", nullable = false)
+    private LocalDate fechaDesde;
+
+    /**
+     * Fecha hasta.
+     */
+    @Basic
+    @Column(name = "SLCTFCHH", nullable = false)
+    private LocalDate fechaHasta;
+
+    /**
+     * Días solicitados.
+     */
+    @Basic
+    @Column(name = "SLCTDIAS", nullable = false, precision = 5, scale = 2)
+    private Double diasSolicitados;
+
+    /**
+     * Estado de la solicitud.
+     */
+    @Basic
+    @Column(name = "SLCTESTD", length = 12, nullable = false)
+    private String estado;
+
+    /**
+     * Usuario que aprueba/rechaza.
+     */
+    @Basic
+    @Column(name = "SLCTAPRB", length = 60)
+    private String usuarioAprobacion;
+
+    /**
+     * Observación.
+     */
+    @Basic
+    @Column(name = "SLCTOBSR", length = 500)
+    private String observacion;
+
+    /**
+     * Fecha de registro.
+     */
+    @Basic
+    @Column(name = "SLCTFCHR", nullable = false)
+    private LocalDate fechaRegistro;
+
+    /**
+     * Usuario que registró.
+     */
+    @Basic
+    @Column(name = "SLCTUSRR", length = 60)
+    private String usuarioRegistro;
+
+    // =============================
+    // Getters y Setters
+    // =============================
+
+    public Long getCodigo() {
+        return codigo;
+    }
+
+    public void setCodigo(Long codigo) {
+        this.codigo = codigo;
+    }
+
+    public Empleado getEmpleado() {
+        return empleado;
+    }
+
+    public void setEmpleado(Empleado empleado) {
+        this.empleado = empleado;
+    }
+
+    public LocalDate getFechaDesde() {
+        return fechaDesde;
+    }
+
+    public void setFechaDesde(LocalDate fechaDesde) {
+        this.fechaDesde = fechaDesde;
+    }
+
+    public LocalDate getFechaHasta() {
+        return fechaHasta;
+    }
+
+    public void setFechaHasta(LocalDate fechaHasta) {
+        this.fechaHasta = fechaHasta;
+    }
+
+    public Double getDiasSolicitados() {
+        return diasSolicitados;
+    }
+
+    public void setDiasSolicitados(Double diasSolicitados) {
+        this.diasSolicitados = diasSolicitados;
+    }
+
+    public String getEstado() {
+        return estado;
+    }
+
+    public void setEstado(String estado) {
+        this.estado = estado;
+    }
+
+    public String getUsuarioAprobacion() {
+        return usuarioAprobacion;
+    }
+
+    public void setUsuarioAprobacion(String usuarioAprobacion) {
+        this.usuarioAprobacion = usuarioAprobacion;
+    }
+
+    public String getObservacion() {
+        return observacion;
+    }
+
+    public void setObservacion(String observacion) {
+        this.observacion = observacion;
+    }
+
+    public LocalDate getFechaRegistro() {
+        return fechaRegistro;
+    }
+
+    public void setFechaRegistro(LocalDate fechaRegistro) {
+        this.fechaRegistro = fechaRegistro;
+    }
+
+    public String getUsuarioRegistro() {
+        return usuarioRegistro;
+    }
+
+    public void setUsuarioRegistro(String usuarioRegistro) {
+        this.usuarioRegistro = usuarioRegistro;
+    }
+}
