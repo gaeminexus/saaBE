@@ -46,6 +46,7 @@ public interface NombreEntidadesContabilidad {
     String MAYORIZACION_CC = "MayorizacionCC";
     String REPORTE_CUENTA_CC = "ReporteCuentaCC";
     String DETALLE_REPORTE_CUENTA_CC = "DetalleReporteCuentaCC";
+    String SALDOS = "Saldos";
     
     // Entidades de detalle
     String DETALLE_PLANTILLA = "DetallePlantilla";
