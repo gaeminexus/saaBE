@@ -9,7 +9,7 @@
 package com.saa.ejb.rhh.service;
 
 import com.saa.basico.util.EntityService;
-import com.saa.model.rhh.Contrato;
+import com.saa.model.rhh.ContratoEmpleado;
 
 import jakarta.ejb.Local;
 
@@ -19,7 +19,7 @@ import jakarta.ejb.Local;
  *  Accede a los metodos DAO y procesa los datos para el Contrato.</p>
  */
 @Local
-public interface ContratoService extends EntityService<Contrato>{
+public interface ContratoEmpleadoService extends EntityService<ContratoEmpleado> {
 	 
 	 /**
 	  * Recupera entidad con el id
@@ -27,6 +27,6 @@ public interface ContratoService extends EntityService<Contrato>{
 	  * @return				: Recupera entidad
 	  * @throws Throwable	: Excepcion
 	  */
-	  Contrato selectById(Long id) throws Throwable;
+	ContratoEmpleado selectById(Long id) throws Throwable;
 	  
 }

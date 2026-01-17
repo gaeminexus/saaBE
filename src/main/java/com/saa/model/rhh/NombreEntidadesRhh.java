@@ -10,7 +10,7 @@ public interface NombreEntidadesRhh {
     String APORTES_RETENCIONES   = "AportesRetenciones";
     String CARGO                 = "Cargo";
     String CATALOGO              = "Catalogo";
-    String CONTRATO              = "Contrato";
+    String CONTRATO_EMPLEADO     = "ContratoEmpleado";
     String DEPARTAMENTO_CARGO    = "DepartamentoCargo";
     String DETALLE_LIQUIDACION   = "DetalleLiquidacion";
     String DETALLE_TURNO         = "DetalleTurno";
@@ -27,7 +27,7 @@ public interface NombreEntidadesRhh {
     String RUBRO                 = "Rubro";
     String SALDO_VACACIONES      = "SaldoVacaciones";
     String SOLICITUD_VACACIONES  = "SolicitudVacaciones";
-    String TIPO_CONTRATO         = "TipoContrato";
+    String TIPO_CONTRATO_EMPLEADO= "TipoContratoEmpleado";
     String TURNO                 = "Turno";
 
 }

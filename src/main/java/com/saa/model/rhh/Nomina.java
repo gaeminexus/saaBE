@@ -58,7 +58,7 @@ public class Nomina implements Serializable {
      */
     @ManyToOne
     @JoinColumn(name = "CNTRCDGO", referencedColumnName = "CNTRCDGO", nullable = false)
-    private Contrato contrato;
+    private ContratoEmpleado contratoEmpleado;
 
     /**
      * Salario base usado.
@@ -137,12 +137,12 @@ public class Nomina implements Serializable {
         this.empleado = empleado;
     }
 
-    public Contrato getContrato() {
-        return contrato;
+    public ContratoEmpleado getContrato() {
+        return contratoEmpleado;
     }
 
-    public void setContrato(Contrato contrato) {
-        this.contrato = contrato;
+    public void setContrato(ContratoEmpleado contrato) {
+        this.contratoEmpleado = contrato;
     }
 
     public Double getSalarioBase() {

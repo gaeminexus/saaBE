@@ -28,7 +28,7 @@ import jakarta.persistence.Table;
     @NamedQuery(name = "Contrato.findById", query = "select c from Contrato c where c.codigo = :id"),
     @NamedQuery(name = "Contrato.findByNumero", query = "select c from Contrato c where c.numero = :numero")
 })
-public class Contrato implements Serializable {
+public class ContratoEmpleado implements Serializable {
 
     /**
      * Código único del contrato.

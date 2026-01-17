@@ -11,7 +11,6 @@ package com.saa.ejb.rhh.daoImpl;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.rhh.dao.CargoDaoService;
 import com.saa.model.rhh.Cargo;
-
 import jakarta.ejb.Stateless;
 
 /**
@@ -27,13 +26,13 @@ public class CargoDaoServiceImpl extends EntityDaoImpl<Cargo>  implements CargoD
 	public String[] obtieneCampos() {
 		System.out.println("Ingresa al metodo (campos) Cargo");
 		return new String[]{"codigo",
-							"proposicionPagoXCuota",
-							"fechaAprobacion",
-							"nivelAprobacion",
-							"usuarioAprueba",
-							"nombreUsuarioAprueba",
+							"nombre",
+							"descripcion",
+							"requisitos",
 							"estado",
-							"observacion"};
+							"fecahRegistro",
+							"usuarioRegistro"
+							};
 	}
 	
 }

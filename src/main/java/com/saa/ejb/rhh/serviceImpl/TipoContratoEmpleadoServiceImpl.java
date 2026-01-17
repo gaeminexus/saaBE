@@ -9,14 +9,12 @@
 package com.saa.ejb.rhh.serviceImpl;
 
 import java.util.List;
-
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
-import com.saa.ejb.rhh.dao.TipoContratoDaoService;
-import com.saa.ejb.rhh.service.TipoContratoService;
+import com.saa.ejb.rhh.dao.TipoContratoEmpleadoDaoService;
+import com.saa.ejb.rhh.service.TipoContratoEmpleadoService;
 import com.saa.model.rhh.NombreEntidadesRhh;
-import com.saa.model.rhh.TipoContrato;
-
+import com.saa.model.rhh.TipoContratoEmpleado;
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 
@@ -26,18 +24,18 @@ import jakarta.ejb.Stateless;
  *  Contiene los servicios relacionados con la entidad TipoContrato</p>
  */
 @Stateless
-public class TipoContratoServiceImpl implements TipoContratoService {
+public class TipoContratoEmpleadoServiceImpl implements TipoContratoEmpleadoService {
 	
 	@EJB
-	private TipoContratoDaoService tipoContratoDaoService;
+	private TipoContratoEmpleadoDaoService tipoContratoEmpleadoDaoService;
 	
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.sistema.ejb.util.EntityService#save(java.lang.Object[][], java.lang.Object[])
 	 */
-	public void save(List<TipoContrato> lista) throws Throwable {
+	public void save(List<TipoContratoEmpleado> lista) throws Throwable {
 		System.out.println("Ingresa al metodo save de tipoContrato service");
-		for (TipoContrato registro:lista) {			
-			tipoContratoDaoService.save(registro, registro.getCodigo());
+		for (TipoContratoEmpleado registro:lista) {			
+			tipoContratoEmpleadoDaoService.save(registro, registro.getCodigo());
 		}
 	}
 
@@ -47,11 +45,11 @@ public class TipoContratoServiceImpl implements TipoContratoService {
 	public void remove(List<Long> id) throws Throwable{
 		System.out.println("Ingresa al metodo remove[] de tipoContrato service");
 		//INSTANCIA UNA ENTIDAD
-		TipoContrato tipoContrato = new TipoContrato();
+		TipoContratoEmpleado tipoContrato = new TipoContratoEmpleado();
 		//ELIMINA UNO A UNO LOS REGISTROS DEL ARREGLO
 		for (Long registro : id) {
 			
-				tipoContratoDaoService.remove(tipoContrato, registro);	
+				tipoContratoEmpleadoDaoService.remove(tipoContrato, registro);	
 			}				
 
 	}
@@ -59,10 +57,10 @@ public class TipoContratoServiceImpl implements TipoContratoService {
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.sistema.ejb.util.EntityService#selectAll(java.lang.Object[])
 	 */
-	public List<TipoContrato> selectAll() throws Throwable {
+	public List<TipoContratoEmpleado> selectAll() throws Throwable {
 		System.out.println("Ingresa al metodo (selectAll) TipoContrato");
 		//CREA EL LISTADO CON LOS REGISTROS DE LA BUSQUEDA
-		List<TipoContrato> result = tipoContratoDaoService.selectAll(NombreEntidadesRhh.TIPO_CONTRATO); 
+		List<TipoContratoEmpleado> result = tipoContratoEmpleadoDaoService.selectAll(NombreEntidadesRhh.TIPO_CONTRATO_EMPLEADO); 
 		if(result.isEmpty()){
 			throw new IncomeException("Busqueda completa de tipoContrato no devolvio ningun registro");
 			}
@@ -73,18 +71,18 @@ public class TipoContratoServiceImpl implements TipoContratoService {
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.parametrizacion.ejb.Service.TipoContratoService#selectById(java.lang.Long)
 	 */
-	public TipoContrato selectById(Long id) throws Throwable {
+	public TipoContratoEmpleado selectById(Long id) throws Throwable {
 		System.out.println("Ingresa al selectById con id: " + id);		
-		return tipoContratoDaoService.selectById(id, NombreEntidadesRhh.TIPO_CONTRATO);
+		return tipoContratoEmpleadoDaoService.selectById(id, NombreEntidadesRhh.TIPO_CONTRATO_EMPLEADO);
 	}
 
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.parametrizacion.ejb.Service.TipoContratoService#selectByCriteria(java.lang.Object[], java.util.List)
 	 */
-	public List<TipoContrato> selectByCriteria(List<DatosBusqueda> datos) throws Throwable {
+	public List<TipoContratoEmpleado> selectByCriteria(List<DatosBusqueda> datos) throws Throwable {
 		System.out.println("Ingresa al metodo (selectByCriteria) TipoContrato");
 		//CREA EL LISTADO CON LOS REGISTROS DE LA BUSQUEDA
-		List<TipoContrato> result = tipoContratoDaoService.selectByCriteria(datos, NombreEntidadesRhh.TIPO_CONTRATO); 
+		List<TipoContratoEmpleado> result = tipoContratoEmpleadoDaoService.selectByCriteria(datos, NombreEntidadesRhh.TIPO_CONTRATO_EMPLEADO); 
 		if(result.isEmpty()){
 			throw new IncomeException("Busqueda por criterio de tipoContrato no devolvio ningun registro");
 			}
@@ -93,9 +91,9 @@ public class TipoContratoServiceImpl implements TipoContratoService {
 	}
 
 	@Override
-	public TipoContrato saveSingle(TipoContrato tipoContrato) throws Throwable {
+	public TipoContratoEmpleado saveSingle(TipoContratoEmpleado tipoContrato) throws Throwable {
 		System.out.println("Ingresa al metodo (selectByCriteria) TipoContrato");
-		tipoContrato = tipoContratoDaoService.save(tipoContrato, tipoContrato.getCodigo());
+		tipoContrato = tipoContratoEmpleadoDaoService.save(tipoContrato, tipoContrato.getCodigo());
 		return tipoContrato;
 	}
 }

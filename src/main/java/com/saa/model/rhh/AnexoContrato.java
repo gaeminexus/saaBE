@@ -43,7 +43,7 @@ public class AnexoContrato implements Serializable {
      */
     @ManyToOne
     @JoinColumn(name = "CNTRCDGO", referencedColumnName = "CNTRCDGO", nullable = false)
-    private Contrato contrato;
+    private ContratoEmpleado contratoEmpleado;
 
     /**
      * Tipo de anexo (RENOVACION / ANEXO / ADENDUM).
@@ -106,12 +106,12 @@ public class AnexoContrato implements Serializable {
         this.codigo = codigo;
     }
 
-    public Contrato getContrato() {
-        return contrato;
+    public ContratoEmpleado getContrato() {
+        return contratoEmpleado;
     }
 
-    public void setContrato(Contrato contrato) {
-        this.contrato = contrato;
+    public void setContrato(ContratoEmpleado contrato) {
+        this.contratoEmpleado = contrato;
     }
 
     public String getTipo() {

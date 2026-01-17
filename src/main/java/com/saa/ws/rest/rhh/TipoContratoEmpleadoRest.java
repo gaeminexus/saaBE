@@ -3,10 +3,10 @@ package com.saa.ws.rest.rhh;
 import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
-import com.saa.ejb.rhh.dao.TipoContratoDaoService;
-import com.saa.ejb.rhh.service.TipoContratoService;
+import com.saa.ejb.rhh.dao.TipoContratoEmpleadoDaoService;
+import com.saa.ejb.rhh.service.TipoContratoEmpleadoService;
 import com.saa.model.rhh.NombreEntidadesRhh;
-import com.saa.model.rhh.TipoContrato;
+import com.saa.model.rhh.TipoContratoEmpleado;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;
@@ -23,18 +23,18 @@ import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 
 @Path("tpcn")
-public class TipoContratoRest {
+public class TipoContratoEmpleadoRest {
 
     @EJB
-    private TipoContratoDaoService TipoContratoDaoService;
+    private TipoContratoEmpleadoDaoService TipoContratoDaoService;
 
     @EJB
-    private TipoContratoService TipoContratoService;
+    private TipoContratoEmpleadoService TipoContratoService;
 
     @Context
     private UriInfo context;
 
-    public TipoContratoRest() {
+    public TipoContratoEmpleadoRest() {
     }
 
     @GET
@@ -42,7 +42,7 @@ public class TipoContratoRest {
     @Produces(MediaType.APPLICATION_JSON)
     public Response getAll() {
         try {
-            List<TipoContrato> lista = TipoContratoDaoService.selectAll(NombreEntidadesRhh.TIPO_CONTRATO);
+            List<TipoContratoEmpleado> lista = TipoContratoDaoService.selectAll(NombreEntidadesRhh.TIPO_CONTRATO_EMPLEADO);
             return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener registros: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
@@ -54,7 +54,7 @@ public class TipoContratoRest {
     @Produces(MediaType.APPLICATION_JSON)
     public Response getId(@PathParam("id") Long id) {
         try {
-            TipoContrato registro = TipoContratoDaoService.selectById(id, NombreEntidadesRhh.TIPO_CONTRATO);
+        	TipoContratoEmpleado registro = TipoContratoDaoService.selectById(id, NombreEntidadesRhh.TIPO_CONTRATO_EMPLEADO);
             if (registro == null) {
                 return Response.status(Response.Status.NOT_FOUND).entity("Registro con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
             }
@@ -67,10 +67,10 @@ public class TipoContratoRest {
     @PUT
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response put(TipoContrato registro) {
+    public Response put(TipoContratoEmpleado registro) {
         System.out.println("LLEGA AL SERVICIO PUT - TIPO_CONTRATO");
         try {
-            TipoContrato actualizado = TipoContratoService.saveSingle(registro);
+        	TipoContratoEmpleado actualizado = TipoContratoService.saveSingle(registro);
             return Response.status(Response.Status.OK).entity(actualizado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
@@ -80,10 +80,10 @@ public class TipoContratoRest {
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response post(TipoContrato registro) {
+    public Response post(TipoContratoEmpleado registro) {
         System.out.println("LLEGA AL SERVICIO POST - TIPO_CONTRATO");
         try {
-            TipoContrato creado = TipoContratoService.saveSingle(registro);
+        	TipoContratoEmpleado creado = TipoContratoService.saveSingle(registro);
             return Response.status(Response.Status.CREATED).entity(creado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
@@ -97,7 +97,7 @@ public class TipoContratoRest {
     public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de TIPO_CONTRATO");
         try {
-            List<TipoContrato> lista = TipoContratoService.selectByCriteria(registros);
+            List<TipoContratoEmpleado> lista = TipoContratoService.selectByCriteria(registros);
             return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.BAD_REQUEST).entity("Error en búsqueda: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
@@ -110,7 +110,7 @@ public class TipoContratoRest {
     public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - TIPO_CONTRATO");
         try {
-            TipoContrato elimina = new TipoContrato();
+            TipoContratoEmpleado elimina = new TipoContratoEmpleado();
             TipoContratoDaoService.remove(elimina, id);
             return Response.status(Response.Status.NO_CONTENT).build();
         } catch (Throwable e) {

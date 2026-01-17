@@ -9,15 +9,15 @@
 package com.saa.ejb.rhh.dao;
 
 import com.saa.basico.util.EntityDao;
-import com.saa.model.rhh.Contrato;
+import com.saa.model.rhh.ContratoEmpleado;
 
 import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
- * DaoService Contrato. 
+ * DaoService Contrato Empleado. 
  */
 @Local
-public interface ContratoDaoService  extends EntityDao<Contrato>  {
+public interface ContratoEmpleadoDaoService  extends EntityDao<ContratoEmpleado>  {
 	
 }

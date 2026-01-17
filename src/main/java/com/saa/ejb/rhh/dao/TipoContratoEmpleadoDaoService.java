@@ -9,7 +9,7 @@
 package com.saa.ejb.rhh.dao;
 
 import com.saa.basico.util.EntityDao;
-import com.saa.model.rhh.TipoContrato;
+import com.saa.model.rhh.TipoContratoEmpleado;
 
 import jakarta.ejb.Local;
 
@@ -18,6 +18,6 @@ import jakarta.ejb.Local;
  * DaoService TipoContrato. 
  */
 @Local
-public interface TipoContratoDaoService  extends EntityDao<TipoContrato>  {
+public interface TipoContratoEmpleadoDaoService  extends EntityDao<TipoContratoEmpleado> { 
 	
 }

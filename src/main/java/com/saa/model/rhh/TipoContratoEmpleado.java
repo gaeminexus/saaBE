@@ -25,7 +25,7 @@ import jakarta.persistence.Table;
     @NamedQuery(name = "TipoContrato.findActivos",
                 query = "select t from TipoContrato t where t.estado = 'A'")
 })
-public class TipoContrato implements Serializable {
+public class TipoContratoEmpleado implements Serializable {
 
     /**
      * Código único del tipo de contrato.

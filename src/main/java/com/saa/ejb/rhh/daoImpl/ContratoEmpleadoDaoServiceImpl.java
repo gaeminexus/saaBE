@@ -9,8 +9,8 @@
 package com.saa.ejb.rhh.daoImpl;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
-import com.saa.ejb.rhh.dao.ContratoDaoService;
-import com.saa.model.rhh.Contrato;
+import com.saa.ejb.rhh.dao.ContratoEmpleadoDaoService;
+import com.saa.model.rhh.ContratoEmpleado;
 
 import jakarta.ejb.Stateless;
 
@@ -19,7 +19,7 @@ import jakarta.ejb.Stateless;
  * Implementacion ContratoDaoService. 
  */
 @Stateless
-public class ContratoDaoServiceImpl extends EntityDaoImpl<Contrato>  implements ContratoDaoService{
+public class ContratoEmpleadoDaoServiceImpl extends EntityDaoImpl<ContratoEmpleado>  implements ContratoEmpleadoDaoService{
 
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.parametrizacion.ejb.dao.ContratoDaoService#obtieneCampos()

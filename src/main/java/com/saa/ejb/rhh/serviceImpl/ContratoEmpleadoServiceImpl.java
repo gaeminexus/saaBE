@@ -12,11 +12,10 @@ import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
-import com.saa.ejb.rhh.dao.ContratoDaoService;
-import com.saa.ejb.rhh.service.ContratoService;
-import com.saa.model.rhh.Contrato;
+import com.saa.ejb.rhh.dao.ContratoEmpleadoDaoService;
+import com.saa.ejb.rhh.service.ContratoEmpleadoService;
+import com.saa.model.rhh.ContratoEmpleado;
 import com.saa.model.rhh.NombreEntidadesRhh;
-
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 
@@ -26,18 +25,18 @@ import jakarta.ejb.Stateless;
  *  Contiene los servicios relacionados con la entidad Contrato</p>
  */
 @Stateless
-public class ContratoServiceImpl implements ContratoService {
+public class ContratoEmpleadoServiceImpl implements ContratoEmpleadoService {
 	
 	@EJB
-	private ContratoDaoService contratoDaoService;
+	private ContratoEmpleadoDaoService contratoEmpleadoDaoService;
 	
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.sistema.ejb.util.EntityService#save(java.lang.Object[][], java.lang.Object[])
 	 */
-	public void save(List<Contrato> lista) throws Throwable {
+	public void save(List<ContratoEmpleado> lista) throws Throwable {
 		System.out.println("Ingresa al metodo save de contrato service");
-		for (Contrato registro:lista) {			
-			contratoDaoService.save(registro, registro.getCodigo());
+		for (ContratoEmpleado registro:lista) {			
+			contratoEmpleadoDaoService.save(registro, registro.getCodigo());
 		}
 	}
 
@@ -47,11 +46,11 @@ public class ContratoServiceImpl implements ContratoService {
 	public void remove(List<Long> id) throws Throwable{
 		System.out.println("Ingresa al metodo remove[] de contrato service");
 		//INSTANCIA UNA ENTIDAD
-		Contrato contrato = new Contrato();
+		ContratoEmpleado contratoEmpleado = new ContratoEmpleado();
 		//ELIMINA UNO A UNO LOS REGISTROS DEL ARREGLO
 		for (Long registro : id) {
 			
-				contratoDaoService.remove(contrato, registro);	
+				contratoEmpleadoDaoService.remove(contratoEmpleado, registro);	
 			}				
 
 	}
@@ -59,10 +58,10 @@ public class ContratoServiceImpl implements ContratoService {
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.sistema.ejb.util.EntityService#selectAll(java.lang.Object[])
 	 */
-	public List<Contrato> selectAll() throws Throwable {
+	public List<ContratoEmpleado> selectAll() throws Throwable {
 		System.out.println("Ingresa al metodo (selectAll) Contrato");
 		//CREA EL LISTADO CON LOS REGISTROS DE LA BUSQUEDA
-		List<Contrato> result = contratoDaoService.selectAll(NombreEntidadesRhh.CONTRATO); 
+		List<ContratoEmpleado> result = contratoEmpleadoDaoService.selectAll(NombreEntidadesRhh.CONTRATO_EMPLEADO); 
 		if(result.isEmpty()){
 			throw new IncomeException("Busqueda completa de contrato no devolvio ningun registro");
 			}
@@ -73,18 +72,18 @@ public class ContratoServiceImpl implements ContratoService {
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.parametrizacion.ejb.Service.ContratoService#selectById(java.lang.Long)
 	 */
-	public Contrato selectById(Long id) throws Throwable {
+	public ContratoEmpleado selectById(Long id) throws Throwable {
 		System.out.println("Ingresa al selectById con id: " + id);		
-		return contratoDaoService.selectById(id, NombreEntidadesRhh.CONTRATO);
+		return contratoEmpleadoDaoService.selectById(id, NombreEntidadesRhh.CONTRATO_EMPLEADO);
 	}
 
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.parametrizacion.ejb.Service.ContratoService#selectByCriteria(java.lang.Object[], java.util.List)
 	 */
-	public List<Contrato> selectByCriteria(List<DatosBusqueda> datos) throws Throwable {
+	public List<ContratoEmpleado> selectByCriteria(List<DatosBusqueda> datos) throws Throwable {
 		System.out.println("Ingresa al metodo (selectByCriteria) Contrato");
 		//CREA EL LISTADO CON LOS REGISTROS DE LA BUSQUEDA
-		List<Contrato> result = contratoDaoService.selectByCriteria(datos, NombreEntidadesRhh.CONTRATO); 
+		List<ContratoEmpleado> result = contratoEmpleadoDaoService.selectByCriteria(datos, NombreEntidadesRhh.CONTRATO_EMPLEADO); 
 		if(result.isEmpty()){
 			throw new IncomeException("Busqueda por criterio de contrato no devolvio ningun registro");
 			}
@@ -93,9 +92,11 @@ public class ContratoServiceImpl implements ContratoService {
 	}
 
 	@Override
-	public Contrato saveSingle(Contrato contrato) throws Throwable {
-		System.out.println("Ingresa al metodo (selectByCriteria) Contrato");
-		contrato = contratoDaoService.save(contrato, contrato.getCodigo());
-		return contrato;
+	public ContratoEmpleado saveSingle(ContratoEmpleado contratoEmpleado) throws Throwable {
+		System.out.println("Ingresa al metodo (selectByCriteria) Contrato Empleado");
+		contratoEmpleado = contratoEmpleadoDaoService.save(contratoEmpleado, contratoEmpleado.getCodigo());
+		return contratoEmpleado;
 	}
+	
 }
+

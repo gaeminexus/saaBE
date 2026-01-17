@@ -16,7 +16,7 @@ import jakarta.ejb.Stateless;
 
 /**
  * @author GaemiSoft.
- * Implementacion AportesRetencionesDaoService. 
+ * Implementation AportesRetencionesDaoService. 
  */
 @Stateless
 public class AportesRetencionesDaoServiceImpl extends EntityDaoImpl<AportesRetenciones>  implements AportesRetencionesDaoService{
