@@ -50,12 +50,6 @@ public class ReglonNomina implements Serializable {
     @JoinColumn(name = "NMNACDGO", nullable = false)
     private Nomina nomina;
 
-    /**
-     * Rubro aplicado.
-     */
-    @ManyToOne(optional = false)
-    @JoinColumn(name = "RBROCDGO", nullable = false)
-    private RubroRhh rubroRhh;
 
     /**
      * Cantidad o factor del rubro.
@@ -117,14 +111,6 @@ public class ReglonNomina implements Serializable {
 
     public void setNomina(Nomina nomina) {
         this.nomina = nomina;
-    }
-
-    public RubroRhh getRubro() {
-        return rubroRhh;
-    }
-
-    public void setRubro(RubroRhh rubroRhh) {
-        this.rubroRhh = rubroRhh;
     }
 
     public BigDecimal getCantidad() {

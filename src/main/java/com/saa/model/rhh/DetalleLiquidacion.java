@@ -48,13 +48,6 @@ public class DetalleLiquidacion implements Serializable {
     private Liquidacion liquidacion;
 
     /**
-     * Rubro aplicado.
-     */
-    @ManyToOne(optional = false)
-    @JoinColumn(name = "RBROCDGO", nullable = false)
-    private RubroRhh rubro;
-
-    /**
      * Valor del rubro.
      */
     @Basic
@@ -102,13 +95,6 @@ public class DetalleLiquidacion implements Serializable {
         this.liquidacion = liquidacion;
     }
 
-    public RubroRhh getRubro() {
-        return rubro;
-    }
-
-    public void setRubro(RubroRhh rubro) {
-        this.rubro = rubro;
-    }
 
     public Double getValor() {
         return valor;
