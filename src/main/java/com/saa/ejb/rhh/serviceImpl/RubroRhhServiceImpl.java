@@ -14,10 +14,8 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.rhh.dao.RubroRhhDaoService;
 import com.saa.ejb.rhh.service.RubroRhhService;
-
 import com.saa.model.rhh.NombreEntidadesRhh;
 import com.saa.model.rhh.RubroRhh;
-
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 
