@@ -42,7 +42,7 @@ public class DetalleTurno implements Serializable {
      */
     @ManyToOne
     @JoinColumn(name = "TRNOCDGO", referencedColumnName = "TRNOCDGO", nullable = false)
-    private DetalleTurno detalleTurno;
+    private Turno turno;
 
     /**
      * Día de la semana (1=Lunes ... 7=Domingo).
@@ -98,12 +98,12 @@ public class DetalleTurno implements Serializable {
         this.codigo = codigo;
     }
 
-    public DetalleTurno getDetalleTurno() {
-        return detalleTurno;
+    public Turno getTurno() {
+        return turno;
     }
 
-    public void setDetalleTurno(DetalleTurno detalleTurno) {
-        this.detalleTurno = detalleTurno;
+    public void setTurno(Turno turno) {
+        this.turno = turno;
     }
 
     public Integer getDiaSemana() {
