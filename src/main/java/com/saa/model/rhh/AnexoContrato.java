@@ -24,7 +24,7 @@ import jakarta.persistence.Table;
 @NamedQueries({
     @NamedQuery(name = "AnexoContrato.findAll", query = "select a from AnexoContrato a"),
     @NamedQuery(name = "AnexoContrato.findById", query = "select a from AnexoContrato a where a.codigo = :id"),
-    @NamedQuery(name = "AnexoContrato.findByContrato", query = "select a from AnexoContrato a where a.contrato.codigo = :contratoId"),
+    @NamedQuery(name = "AnexoContrato.findByContrato", query = "select a from AnexoContrato a where a.contratoEmpleado.codigo = :contratoId"),
     @NamedQuery(name = "AnexoContrato.findByTipo", query = "select a from AnexoContrato a where a.tipo = :tipo")
 })
 public class AnexoContrato implements Serializable {

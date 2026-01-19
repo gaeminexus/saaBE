@@ -24,9 +24,8 @@ import jakarta.persistence.Table;
 @Entity
 @Table(name = "CNTR", schema = "RHH")
 @NamedQueries({
-    @NamedQuery(name = "Contrato.findAll", query = "select c from Contrato c"),
-    @NamedQuery(name = "Contrato.findById", query = "select c from Contrato c where c.codigo = :id"),
-    @NamedQuery(name = "Contrato.findByNumero", query = "select c from Contrato c where c.numero = :numero")
+    @NamedQuery(name = "ContratoEmpleado.findAll", query = "select c from ContratoEmpleado c"),
+    @NamedQuery(name = "ContratoEmpleado.findById", query = "select c from ContratoEmpleado c where c.codigo = :id"),
 })
 public class ContratoEmpleado implements Serializable {
 
