@@ -4,6 +4,7 @@ import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -136,10 +137,7 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     private CargaArchivo almacenarCargaArchivo(CargaArchivo cargaArchivo) throws Throwable {
         System.out.println("Guardando CargaArchivo: " + cargaArchivo.getNombre());
         
-        // Asignar fecha de carga si no viene del frontend
-        if (cargaArchivo.getFechaCarga() == null) {
-            cargaArchivo.setFechaCarga(java.time.LocalDateTime.now());
-        }
+        cargaArchivo.setFechaCarga(LocalDateTime.now());
         
         // Validar que los campos obligatorios vengan del frontend
         if (cargaArchivo.getFilial() == null) {
