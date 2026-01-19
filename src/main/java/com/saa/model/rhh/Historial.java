@@ -77,14 +77,14 @@ public class Historial implements Serializable {
      * Indica si es la asignación actual (S/N).
      */
     @Basic
-    @Column(name = "HSTRACTL", length = 1, nullable = false)
+    @Column(name = "HSTRACTL")
     private String actual;
 
     /**
      * Observación.
      */
     @Basic
-    @Column(name = "HSTROBSR", length = 500)
+    @Column(name = "HSTROBSR")
     private String observacion;
 
     /**
@@ -98,7 +98,7 @@ public class Historial implements Serializable {
      * Usuario que registró.
      */
     @Basic
-    @Column(name = "HSTRUSRR", length = 60)
+    @Column(name = "HSTRUSRR")
     private String usuarioRegistro;
 
     // =============================

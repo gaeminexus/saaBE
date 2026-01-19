@@ -25,7 +25,7 @@ import jakarta.persistence.Table;
     @NamedQuery(name = "Liquidacion.findAll", query = "select l from Liquidacion l"),
     @NamedQuery(name = "Liquidacion.findById", query = "select l from Liquidacion l where l.codigo = :id"),
     @NamedQuery(name = "Liquidacion.findByEmpleado", query = "select l from Liquidacion l where l.empleado.codigo = :empleadoId"),
-    @NamedQuery(name = "Liquidacion.findByContrato", query = "select l from Liquidacion l where l.contrato.codigo = :contratoId")
+    @NamedQuery(name = "Liquidacion.findByContrato", query = "select l from Liquidacion l where l.contratoEmpleado.codigo = :contratoId")
 })
 public class Liquidacion implements Serializable {
 
@@ -63,21 +63,21 @@ public class Liquidacion implements Serializable {
      * Motivo de salida.
      */
     @Basic
-    @Column(name = "LQDCMTVO", length = 250)
+    @Column(name = "LQDCMTVO")
     private String motivo;
 
     /**
      * Neto a pagar.
      */
     @Basic
-    @Column(name = "LQDCNETO", precision = 12, scale = 2, nullable = false)
+    @Column(name = "LQDCNETO")
     private Double neto;
 
     /**
      * Estado de la liquidación.
      */
     @Basic
-    @Column(name = "LQDCESTD", length = 12, nullable = false)
+    @Column(name = "LQDCESTD")
     private String estado;
 
     /**
@@ -91,7 +91,7 @@ public class Liquidacion implements Serializable {
      * Usuario que registró.
      */
     @Basic
-    @Column(name = "LQDCUSRR", length = 60)
+    @Column(name = "LQDCUSRR")
     private String usuarioRegistro;
 
     // =============================

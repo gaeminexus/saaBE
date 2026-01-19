@@ -53,42 +53,42 @@ public class RolPago implements Serializable {
      * Número del rol de pago.
      */
     @Basic
-    @Column(name = "RLPGNMRO", length = 40, nullable = false, unique = true)
+    @Column(name = "RLPGNMRO")
     private String numero;
 
     /**
      * Fecha de emisión.
      */
     @Basic
-    @Column(name = "RLPGFCHA", nullable = false)
+    @Column(name = "RLPGFCHA")
     private LocalDate fechaEmision;
 
     /**
      * Ruta o referencia del PDF del rol.
      */
     @Basic
-    @Column(name = "RLPGPDFO", length = 400)
+    @Column(name = "RLPGPDFO")
     private String rutaPdf;
 
     /**
      * Estado del registro (A=Activo, I=Inactivo).
      */
     @Basic
-    @Column(name = "RLPGESTD", length = 1, nullable = false)
+    @Column(name = "RLPGESTD")
     private String estado;
 
     /**
      * Fecha de registro.
      */
     @Basic
-    @Column(name = "RLPGFCHR", nullable = false)
+    @Column(name = "RLPGFCHR")
     private LocalDate fechaRegistro;
 
     /**
      * Usuario que registró.
      */
     @Basic
-    @Column(name = "RLPGUSRR", length = 60)
+    @Column(name = "RLPGUSRR")
     private String usuarioRegistro;
 
     // =============================

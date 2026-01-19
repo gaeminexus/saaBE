@@ -40,49 +40,49 @@ public class Turno implements Serializable {
      * Nombre del turno.
      */
     @Basic
-    @Column(name = "TRNONMBR", nullable = false, length = 120)
+    @Column(name = "TRNONMBR")
     private String nombre;
 
     /**
      * Hora de entrada (HH24:MI).
      */
     @Basic
-    @Column(name = "TRNOENTR", nullable = false, length = 5)
+    @Column(name = "TRNOENTR")
     private String horaEntrada;
 
     /**
      * Hora de salida (HH24:MI).
      */
     @Basic
-    @Column(name = "TRNOSLDA", nullable = false, length = 5)
+    @Column(name = "TRNOSLDA")
     private String horaSalida;
 
     /**
      * Minutos de tolerancia.
      */
     @Basic
-    @Column(name = "TRNOMNTS", nullable = false)
+    @Column(name = "TRNOMNTS")
     private Integer minutosTolerancia;
 
     /**
      * Estado del registro (A=Activo, I=Inactivo).
      */
     @Basic
-    @Column(name = "TRNOESTD", nullable = false, length = 1)
+    @Column(name = "TRNOESTD")
     private String estado;
 
     /**
      * Fecha de registro.
      */
     @Basic
-    @Column(name = "TRNOFCHR", nullable = false)
+    @Column(name = "TRNOFCHR")
     private LocalDate fechaRegistro;
 
     /**
      * Usuario que registró.
      */
     @Basic
-    @Column(name = "TRNOUSRR", length = 60)
+    @Column(name = "TRNOUSRR")
     private String usuarioRegistro;
 
     // =============================

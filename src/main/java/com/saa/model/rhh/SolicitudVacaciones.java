@@ -67,28 +67,28 @@ public class SolicitudVacaciones implements Serializable {
      * Días solicitados.
      */
     @Basic
-    @Column(name = "SLCTDIAS", nullable = false, precision = 5, scale = 2)
+    @Column(name = "SLCTDIAS")
     private Double diasSolicitados;
 
     /**
      * Estado de la solicitud.
      */
     @Basic
-    @Column(name = "SLCTESTD", length = 12, nullable = false)
+    @Column(name = "SLCTESTD")
     private String estado;
 
     /**
      * Usuario que aprueba/rechaza.
      */
     @Basic
-    @Column(name = "SLCTAPRB", length = 60)
+    @Column(name = "SLCTAPRB")
     private String usuarioAprobacion;
 
     /**
      * Observación.
      */
     @Basic
-    @Column(name = "SLCTOBSR", length = 500)
+    @Column(name = "SLCTOBSR")
     private String observacion;
 
     /**

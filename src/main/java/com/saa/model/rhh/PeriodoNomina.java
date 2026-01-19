@@ -41,49 +41,49 @@ public class PeriodoNomina implements Serializable {
      * Año del periodo.
      */
     @Basic
-    @Column(name = "PRDNANOO", nullable = false)
+    @Column(name = "PRDNANOO")
     private Integer anio;
 
     /**
      * Mes del periodo (1-12).
      */
     @Basic
-    @Column(name = "PRDNMSEE", nullable = false)
+    @Column(name = "PRDNMSEE")
     private Integer mes;
 
     /**
      * Fecha de inicio.
      */
     @Basic
-    @Column(name = "PRDNFCHI", nullable = false)
+    @Column(name = "PRDNFCHI")
     private LocalDate fechaInicio;
 
     /**
      * Fecha de fin.
      */
     @Basic
-    @Column(name = "PRDNFCHF", nullable = false)
+    @Column(name = "PRDNFCHF")
     private LocalDate fechaFin;
 
     /**
      * Estado del periodo (ABIERTO / CALCULADO / CERRADO).
      */
     @Basic
-    @Column(name = "PRDNESTD", length = 12, nullable = false)
+    @Column(name = "PRDNESTD")
     private String estado;
 
     /**
      * Fecha de registro.
      */
     @Basic
-    @Column(name = "PRDNFCHR", nullable = false)
+    @Column(name = "PRDNFCHR")
     private LocalDate fechaRegistro;
 
     /**
      * Usuario que registró.
      */
     @Basic
-    @Column(name = "PRDNUSRR", length = 60)
+    @Column(name = "PRDNUSRR")
     private String usuarioRegistro;
 
     // =============================

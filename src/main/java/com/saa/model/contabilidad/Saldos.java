@@ -53,7 +53,7 @@ public class Saldos implements Serializable {
 	 * Valor del saldo inicial.
 	 */
 	@Basic
-	@Column(name = "SLDSVLRR", precision = 15, scale = 2, nullable = false)
+	@Column(name = "SLDSVLRR")
 	private Double valor;
 
 	/**

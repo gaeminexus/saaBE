@@ -64,49 +64,49 @@ public class Nomina implements Serializable {
      * Salario base usado.
      */
     @Basic
-    @Column(name = "NMNASLRB", precision = 12, scale = 2, nullable = false)
+    @Column(name = "NMNASLRB")
     private Double salarioBase;
 
     /**
      * Total de ingresos.
      */
     @Basic
-    @Column(name = "NMNATING", precision = 12, scale = 2, nullable = false)
+    @Column(name = "NMNATING")
     private Double totalIngresos;
 
     /**
      * Total de descuentos.
      */
     @Basic
-    @Column(name = "NMNATDSC", precision = 12, scale = 2, nullable = false)
+    @Column(name = "NMNATDSC")
     private Double totalDescuentos;
 
     /**
      * Neto a pagar.
      */
     @Basic
-    @Column(name = "NMNANETO", precision = 12, scale = 2, nullable = false)
+    @Column(name = "NMNANETO")
     private Double netoPagar;
 
     /**
      * Estado de la nómina (GENERADO / VALIDADO / PAGADO).
      */
     @Basic
-    @Column(name = "NMNAESTD", length = 12, nullable = false)
+    @Column(name = "NMNAESTD")
     private String estado;
 
     /**
      * Fecha de registro.
      */
     @Basic
-    @Column(name = "NMNAFCHR", nullable = false)
+    @Column(name = "NMNAFCHR")
     private LocalDate fechaRegistro;
 
     /**
      * Usuario que registró.
      */
     @Basic
-    @Column(name = "NMNAUSRR", length = 60)
+    @Column(name = "NMNAUSRR")
     private String usuarioRegistro;
 
     // =============================

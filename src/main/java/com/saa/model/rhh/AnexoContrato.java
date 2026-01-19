@@ -49,7 +49,7 @@ public class AnexoContrato implements Serializable {
      * Tipo de anexo (RENOVACION / ANEXO / ADENDUM).
      */
     @Basic
-    @Column(name = "NXOOTPOO", length = 15, nullable = false)
+    @Column(name = "NXOOTPOO")
     private String tipo;
 
     /**
@@ -63,14 +63,14 @@ public class AnexoContrato implements Serializable {
      * Detalle del anexo.
      */
     @Basic
-    @Column(name = "NXOODTLL", length = 800)
+    @Column(name = "NXOODTLL")
     private String detalle;
 
     /**
      * Nuevo salario base (si aplica).
      */
     @Basic
-    @Column(name = "NXOOSLRN", precision = 12, scale = 2)
+    @Column(name = "NXOOSLRN")
     private Double nuevoSalario;
 
     /**
@@ -91,7 +91,7 @@ public class AnexoContrato implements Serializable {
      * Usuario que registró.
      */
     @Basic
-    @Column(name = "NXOOUSRR", length = 60)
+    @Column(name = "NXOOUSRR")
     private String usuarioRegistro;
 
     // =============================

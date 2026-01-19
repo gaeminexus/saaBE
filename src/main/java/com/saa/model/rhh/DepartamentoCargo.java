@@ -20,10 +20,8 @@ import jakarta.persistence.Table;
 @Entity
 @Table(name = "DPRT", schema = "RHH")
 @NamedQueries({
-    @NamedQuery(name = "Departamento.findAll", query = "select d from Departamento d"),
-    @NamedQuery(name = "Departamento.findById", query = "select d from Departamento d where d.codigo = :id"),
-    @NamedQuery(name = "Departamento.findByNombre", query = "select d from Departamento d where d.nombre = :nombre"),
-    @NamedQuery(name = "Departamento.findActivos", query = "select d from Departamento d where d.estado = 'A'")
+    @NamedQuery(name = "DepartamentoCargo.findAll", query = "select d from DepartamentoCargo d"),
+    @NamedQuery(name = "DepartamentoCargo.findById", query = "select d from DepartamentoCargo d where d.codigo = :id"),
 })
 public class DepartamentoCargo implements Serializable {
 
@@ -40,28 +38,28 @@ public class DepartamentoCargo implements Serializable {
      * Nombre del departamento.
      */
     @Basic
-    @Column(name = "DPRTNMBR", length = 120, nullable = false)
+    @Column(name = "DPRTNMBR")
     private String nombre;
 
     /**
      * Estado del registro (A=Activo, I=Inactivo).
      */
     @Basic
-    @Column(name = "DPRTESTD", length = 1, nullable = false)
+    @Column(name = "DPRTESTD")
     private String estado;
 
     /**
      * Fecha de registro.
      */
     @Basic
-    @Column(name = "DPRTFCHR", nullable = false)
+    @Column(name = "DPRTFCHR")
     private LocalDate fechaRegistro;
 
     /**
      * Usuario que registró.
      */
     @Basic
-    @Column(name = "DPRTUSRR", length = 60)
+    @Column(name = "DPRTUSRR")
     private String usuarioRegistro;
 
     // =============================

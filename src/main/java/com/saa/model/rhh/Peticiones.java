@@ -60,70 +60,70 @@ public class Peticiones implements Serializable {
      * Fecha desde.
      */
     @Basic
-    @Column(name = "PTCNFCHD", nullable = false)
+    @Column(name = "PTCNFCHD")
     private LocalDate fechaDesde;
 
     /**
      * Fecha hasta.
      */
     @Basic
-    @Column(name = "PTCNFCHH", nullable = false)
+    @Column(name = "PTCNFCHH")
     private LocalDate fechaHasta;
 
     /**
      * Horas solicitadas (si aplica).
      */
     @Basic
-    @Column(name = "PTCNHRAS", precision = 6, scale = 2)
+    @Column(name = "PTCNHRAS")
     private Double horas;
 
     /**
      * Motivo del permiso.
      */
     @Basic
-    @Column(name = "PTCNMTVO", length = 500)
+    @Column(name = "PTCNMTVO")
     private String motivo;
 
     /**
      * Documento de respaldo (ruta o referencia).
      */
     @Basic
-    @Column(name = "PTCNDOCC", length = 400)
+    @Column(name = "PTCNDOCC")
     private String documento;
 
     /**
      * Estado de la solicitud (SOLICITADO / APROBADO / RECHAZADO / ANULADO).
      */
     @Basic
-    @Column(name = "PTCNESTD", length = 12, nullable = false)
+    @Column(name = "PTCNESTD")
     private String estado;
 
     /**
      * Usuario que aprueba o rechaza.
      */
     @Basic
-    @Column(name = "PTCNAPRB", length = 60)
+    @Column(name = "PTCNAPRB")
     private String usuarioAprobador;
 
     /**
      * Observación.
      */
     @Basic
-    @Column(name = "PTCNOBSR", length = 500)
+    @Column(name = "PTCNOBSR")
     private String observacion;
 
     /**
      * Fecha de registro.
      */
     @Basic
-    @Column(name = "PTCNFCHR", nullable = false)
+    @Column(name = "PTCNFCHR")
     private LocalDate fechaRegistro;
 
     /**
      * Usuario que registró.
      */
     @Basic
-    @Column(name = "PTCNUSRR", length = 60)
+    @Column(name = "PTCNUSRR")
     private String usuarioRegistro;
 
     // =============================

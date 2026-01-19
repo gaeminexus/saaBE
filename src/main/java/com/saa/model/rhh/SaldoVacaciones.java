@@ -60,35 +60,35 @@ public class SaldoVacaciones implements Serializable {
      * Días asignados.
      */
     @Basic
-    @Column(name = "SLDVASGN", nullable = false, precision = 5, scale = 2)
+    @Column(name = "SLDVASGN")
     private Double diasAsignados;
 
     /**
      * Días usados.
      */
     @Basic
-    @Column(name = "SLDVUSDO", nullable = false, precision = 5, scale = 2)
+    @Column(name = "SLDVUSDO")
     private Double diasUsados;
 
     /**
      * Días pendientes.
      */
     @Basic
-    @Column(name = "SLDVPNDE", nullable = false, precision = 5, scale = 2)
+    @Column(name = "SLDVPNDE")
     private Double diasPendientes;
 
     /**
      * Fecha de registro.
      */
     @Basic
-    @Column(name = "SLDVFCHR", nullable = false)
+    @Column(name = "SLDVFCHR")
     private LocalDate fechaRegistro;
 
     /**
      * Usuario que registró.
      */
     @Basic
-    @Column(name = "SLDVUSRR", length = 60)
+    @Column(name = "SLDVUSRR")
     private String usuarioRegistro;
 
     // =============================

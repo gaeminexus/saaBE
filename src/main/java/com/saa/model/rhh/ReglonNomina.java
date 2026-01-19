@@ -55,42 +55,42 @@ public class ReglonNomina implements Serializable {
      * Cantidad o factor del rubro.
      */
     @Basic
-    @Column(name = "RNGLCANT", precision = 12, scale = 4, nullable = false)
+    @Column(name = "RNGLCANT")
     private BigDecimal cantidad;
 
     /**
      * Valor del rubro.
      */
     @Basic
-    @Column(name = "RNGLVLRO", precision = 12, scale = 2, nullable = false)
+    @Column(name = "RNGLVLRO")
     private BigDecimal valor;
 
     /**
      * Indica si es imponible (S/N).
      */
     @Basic
-    @Column(name = "RNGLIMPN", length = 1, nullable = false)
+    @Column(name = "RNGLIMPN")
     private String imponible;
 
     /**
      * Orden de cálculo o visualización.
      */
     @Basic
-    @Column(name = "RNGLORDN", nullable = false)
+    @Column(name = "RNGLORDN")
     private Integer orden;
 
     /**
      * Fecha de registro.
      */
     @Basic
-    @Column(name = "RNGLFCHR", nullable = false)
+    @Column(name = "RNGLFCHR")
     private LocalDate fechaRegistro;
 
     /**
      * Usuario que registró.
      */
     @Basic
-    @Column(name = "RNGLUSRR", length = 60)
+    @Column(name = "RNGLUSRR")
     private String usuarioRegistro;
 
     // =============================

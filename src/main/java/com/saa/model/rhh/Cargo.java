@@ -39,28 +39,28 @@ public class Cargo implements Serializable {
      * Nombre del cargo.
      */
     @Basic
-    @Column(name = "CRGONMBR", length = 120, nullable = false)
+    @Column(name = "CRGONMBR")
     private String nombre;
 
     /**
      * Descripción general del cargo.
      */
     @Basic
-    @Column(name = "CRGODSCR", length = 500)
+    @Column(name = "CRGODSCR")
     private String descripcion;
 
     /**
      * Requisitos del cargo.
      */
     @Basic
-    @Column(name = "CRGORQST", length = 500)
+    @Column(name = "CRGORQST")
     private String requisitos;
 
     /**
      * Estado del registro (A=Activo, I=Inactivo).
      */
     @Basic
-    @Column(name = "CRGOESTD", length = 1, nullable = false)
+    @Column(name = "CRGOESTD")
     private String estado;
 
     /**
@@ -74,7 +74,7 @@ public class Cargo implements Serializable {
      * Usuario que registró.
      */
     @Basic
-    @Column(name = "CRGOUSRR", length = 60)
+    @Column(name = "CRGOUSRR")
     private String usuarioRegistro;
 
     // =============================

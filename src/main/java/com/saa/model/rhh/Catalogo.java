@@ -39,28 +39,28 @@ public class Catalogo implements Serializable {
      * Nombre del permiso o licencia.
      */
     @Basic
-    @Column(name = "CTLGNMBR", length = 120, nullable = false)
+    @Column(name = "CTLGNMBR")
     private String nombre;
 
     /**
      * Indica si requiere documento (S/N).
      */
     @Basic
-    @Column(name = "CTLGRQDC", length = 1, nullable = false)
+    @Column(name = "CTLGRQDC")
     private String requiereDocumento;
 
     /**
      * Indica si es con goce (S/N).
      */
     @Basic
-    @Column(name = "CTLGGCEE", length = 1, nullable = false)
+    @Column(name = "CTLGGCEE")
     private String conGoce;
 
     /**
      * Estado del registro (A=Activo, I=Inactivo).
      */
     @Basic
-    @Column(name = "CTLGESTD", length = 1, nullable = false)
+    @Column(name = "CTLGESTD")
     private String estado;
 
     /**
@@ -74,7 +74,7 @@ public class Catalogo implements Serializable {
      * Usuario que registró.
      */
     @Basic
-    @Column(name = "CTLGUSRR", length = 60)
+    @Column(name = "CTLGUSRR")
     private String usuarioRegistro;
 
     // =============================

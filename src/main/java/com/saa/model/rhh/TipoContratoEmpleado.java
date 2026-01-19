@@ -22,8 +22,6 @@ import jakarta.persistence.Table;
 @NamedQueries({
     @NamedQuery(name = "TipoContrato.findAll",
                 query = "select t from TipoContrato t"),
-    @NamedQuery(name = "TipoContrato.findActivos",
-                query = "select t from TipoContrato t where t.estado = 'A'")
 })
 public class TipoContratoEmpleado implements Serializable {
 
@@ -40,35 +38,35 @@ public class TipoContratoEmpleado implements Serializable {
      * Nombre del tipo de contrato.
      */
     @Basic
-    @Column(name = "TPCNNMBR", nullable = false, length = 120)
+    @Column(name = "TPCNNMBR")
     private String nombre;
 
     /**
      * Indica si requiere fecha de fin (S/N).
      */
     @Basic
-    @Column(name = "TPCNRQRE", nullable = false, length = 1)
+    @Column(name = "TPCNRQRE")
     private String requiereFechaFin;
 
     /**
      * Estado del registro (A=Activo, I=Inactivo).
      */
     @Basic
-    @Column(name = "TPCNESTD", nullable = false, length = 1)
+    @Column(name = "TPCNESTD")
     private String estado;
 
     /**
      * Fecha de registro.
      */
     @Basic
-    @Column(name = "TPCNFCHR", nullable = false)
+    @Column(name = "TPCNFCHR")
     private LocalDate fechaRegistro;
 
     /**
      * Usuario que registró.
      */
     @Basic
-    @Column(name = "TPCNUSRR", length = 60)
+    @Column(name = "TPCNUSRR")
     private String usuarioRegistro;
 
     // =============================

@@ -53,35 +53,35 @@ public class AportesRetenciones implements Serializable {
      * Entidad (IESS, SRI u otra).
      */
     @Basic
-    @Column(name = "PRTEENTD", length = 10, nullable = false)
+    @Column(name = "PRTEENTD")
     private String entidad;
 
     /**
      * Concepto del aporte/retención.
      */
     @Basic
-    @Column(name = "PRTECNCP", length = 120, nullable = false)
+    @Column(name = "PRTECNCP")
     private String concepto;
 
     /**
      * Base de cálculo.
      */
     @Basic
-    @Column(name = "PRTEBSEE", precision = 12, scale = 2, nullable = false)
+    @Column(name = "PRTEBSEE")
     private Double baseCalculo;
 
     /**
      * Porcentaje aplicado.
      */
     @Basic
-    @Column(name = "PRTEPRCN", precision = 7, scale = 4, nullable = false)
+    @Column(name = "PRTEPRCN")
     private Double porcentaje;
 
     /**
      * Valor calculado.
      */
     @Basic
-    @Column(name = "PRTEVLRO", precision = 12, scale = 2, nullable = false)
+    @Column(name = "PRTEVLRO")
     private Double valor;
 
     /**
@@ -95,7 +95,7 @@ public class AportesRetenciones implements Serializable {
      * Usuario que registró.
      */
     @Basic
-    @Column(name = "PRTEUSRR", length = 60)
+    @Column(name = "PRTEUSRR")
     private String usuarioRegistro;
 
     // =============================

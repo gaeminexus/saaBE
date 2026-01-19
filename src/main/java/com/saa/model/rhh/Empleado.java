@@ -40,21 +40,21 @@ public class Empleado implements Serializable {
      * Identificación (cédula/RUC/pasaporte).
      */
     @Basic
-    @Column(name = "MPLDIDNT", length = 20, nullable = false, unique = true)
+    @Column(name = "MPLDIDNT")
     private String identificacion;
 
     /**
      * Apellidos.
      */
     @Basic
-    @Column(name = "MPLDAPLL", length = 120, nullable = false)
+    @Column(name = "MPLDAPLL")
     private String apellidos;
 
     /**
      * Nombres.
      */
     @Basic
-    @Column(name = "MPLDNMBR", length = 120, nullable = false)
+    @Column(name = "MPLDNMBR")
     private String nombres;
 
     /**
@@ -68,42 +68,42 @@ public class Empleado implements Serializable {
      * Correo electrónico.
      */
     @Basic
-    @Column(name = "MPLDEMAI", length = 150)
+    @Column(name = "MPLDEMAI")
     private String email;
 
     /**
      * Teléfono.
      */
     @Basic
-    @Column(name = "MPLDTLFN", length = 30)
+    @Column(name = "MPLDTLFN")
     private String telefono;
 
     /**
      * Dirección.
      */
     @Basic
-    @Column(name = "MPLDDRCC", length = 250)
+    @Column(name = "MPLDDRCC")
     private String direccion;
 
     /**
      * Estado del empleado (A=Activo, I=Inactivo).
      */
     @Basic
-    @Column(name = "MPLDESTD", length = 1, nullable = false)
+    @Column(name = "MPLDESTD")
     private String estado;
 
     /**
      * Fecha de registro.
      */
     @Basic
-    @Column(name = "MPLDFCHR", nullable = false)
+    @Column(name = "MPLDFCHR")
     private LocalDate fechaRegistro;
 
     /**
      * Usuario que registró.
      */
     @Basic
-    @Column(name = "MPLDUSRR", length = 60)
+    @Column(name = "MPLDUSRR")
     private String usuarioRegistro;
 
     // =============================

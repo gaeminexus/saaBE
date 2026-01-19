@@ -22,9 +22,9 @@ import jakarta.persistence.Table;
 @Entity
 @Table(name = "DTLL", schema = "RHH")
 @NamedQueries({
-    @NamedQuery(name = "DetalleDetalleTurno.findAll", query = "select d from DetalleDetalleTurno d"),
-    @NamedQuery(name = "DetalleDetalleTurno.findById", query = "select d from DetalleDetalleTurno d where d.codigo = :id"),
-    @NamedQuery(name = "DetalleDetalleTurno.findByDetalleTurno", query = "select d from DetalleDetalleTurno d where d.detalleTurno.codigo = :detalleTurnoId")
+    @NamedQuery(name = "DetalleTurno.findAll", query = "select d from DetalleTurno d"),
+    @NamedQuery(name = "DetalleTurno.findById", query = "select d from DetalleTurno d where d.codigo = :id"),
+    @NamedQuery(name = "DetalleTurno.findByDetalleTurno", query = "select d from DetalleTurno d where d.turno.codigo = :turnoId")
 })
 public class DetalleTurno implements Serializable {
 
@@ -55,21 +55,21 @@ public class DetalleTurno implements Serializable {
      * Hora de entrada (HH24:MI).
      */
     @Basic
-    @Column(name = "DTLLENTR", length = 5)
+    @Column(name = "DTLLENTR")
     private String horaEntrada;
 
     /**
      * Hora de salida (HH24:MI).
      */
     @Basic
-    @Column(name = "DTLLSLDA", length = 5)
+    @Column(name = "DTLLSLDA")
     private String horaSalida;
 
     /**
      * Indica si el día es laborable (S/N).
      */
     @Basic
-    @Column(name = "DTLLLBRB", length = 1, nullable = false)
+    @Column(name = "DTLLLBRB")
     private String laborable;
 
     /**
@@ -83,7 +83,7 @@ public class DetalleTurno implements Serializable {
      * Usuario que registró.
      */
     @Basic
-    @Column(name = "DTLLUSRR", length = 60)
+    @Column(name = "DTLLUSRR")
     private String usuarioRegistro;
 
     // =============================

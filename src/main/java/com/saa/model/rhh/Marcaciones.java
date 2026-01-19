@@ -57,35 +57,35 @@ public class Marcaciones implements Serializable {
      * Tipo de marcación (ENTRADA / SALIDA).
      */
     @Basic
-    @Column(name = "MRCCTPOO", length = 10, nullable = false)
+    @Column(name = "MRCCTPOO")
     private String tipo;
 
     /**
      * Origen (RELOJ / WEB / MOVIL / etc.).
      */
     @Basic
-    @Column(name = "MRCCORGN", length = 10)
+    @Column(name = "MRCCORGN")
     private String origen;
 
     /**
      * Observación.
      */
     @Basic
-    @Column(name = "MRCCOBSR", length = 250)
+    @Column(name = "MRCCOBSR")
     private String observacion;
 
     /**
      * Fecha de registro.
      */
     @Basic
-    @Column(name = "MRCCFCHR", nullable = false)
+    @Column(name = "MRCCFCHR")
     private LocalDate fechaRegistro;
 
     /**
      * Usuario que registró.
      */
     @Basic
-    @Column(name = "MRCCUSRR", length = 60)
+    @Column(name = "MRCCUSRR")
     private String usuarioRegistro;
 
     // =============================

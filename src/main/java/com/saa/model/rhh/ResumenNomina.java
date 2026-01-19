@@ -65,63 +65,63 @@ public class ResumenNomina implements Serializable {
      * Hora de entrada (HH24:MI).
      */
     @Basic
-    @Column(name = "RSMNENTR", length = 5)
+    @Column(name = "RSMNENTR")
     private String horaEntrada;
 
     /**
      * Hora de salida (HH24:MI).
      */
     @Basic
-    @Column(name = "RSMNSLDA", length = 5)
+    @Column(name = "RSMNSLDA")
     private String horaSalida;
 
     /**
      * Minutos de tardanza.
      */
     @Basic
-    @Column(name = "RSMNTRDE", nullable = false)
+    @Column(name = "RSMNTRDE")
     private Integer minutosTarde;
 
     /**
      * Minutos extra.
      */
     @Basic
-    @Column(name = "RSMNEXTR", nullable = false)
+    @Column(name = "RSMNEXTR")
     private Integer minutosExtra;
 
     /**
      * Indica ausencia (S/N).
      */
     @Basic
-    @Column(name = "RSMNASNT", length = 1, nullable = false)
+    @Column(name = "RSMNASNT")
     private String ausencia;
 
     /**
      * Indica justificación (S/N).
      */
     @Basic
-    @Column(name = "RSMNJSTF", length = 1, nullable = false)
+    @Column(name = "RSMNJSTF")
     private String justificado;
 
     /**
      * Fuente del registro (CALCULO / AJUSTE).
      */
     @Basic
-    @Column(name = "RSMNFNTE", length = 15, nullable = false)
+    @Column(name = "RSMNFNTE")
     private String fuente;
 
     /**
      * Fecha de registro.
      */
     @Basic
-    @Column(name = "RSMNFCHR", nullable = false)
+    @Column(name = "RSMNFCHR")
     private LocalDate fechaRegistro;
 
     /**
      * Usuario que registró.
      */
     @Basic
-    @Column(name = "RSMNUSRR", length = 60)
+    @Column(name = "RSMNUSRR")
     private String usuarioRegistro;
 
     // =============================

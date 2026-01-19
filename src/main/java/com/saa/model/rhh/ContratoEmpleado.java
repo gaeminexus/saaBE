@@ -56,7 +56,7 @@ public class ContratoEmpleado implements Serializable {
      * Número de contrato.
      */
     @Basic
-    @Column(name = "CNTRNMRO", length = 40, nullable = false, unique = true)
+    @Column(name = "CNTRNMRO")
     private String numero;
 
     /**
@@ -77,14 +77,14 @@ public class ContratoEmpleado implements Serializable {
      * Salario base.
      */
     @Basic
-    @Column(name = "CNTRSLRB", precision = 12, scale = 2, nullable = false)
+    @Column(name = "CNTRSLRB")
     private Double salarioBase;
 
     /**
      * Estado del contrato.
      */
     @Basic
-    @Column(name = "CNTRESTD", length = 12, nullable = false)
+    @Column(name = "CNTRESTD")
     private String estado;
 
     /**
@@ -98,21 +98,21 @@ public class ContratoEmpleado implements Serializable {
      * Observación.
      */
     @Basic
-    @Column(name = "CNTROBSR", length = 500)
+    @Column(name = "CNTROBSR")
     private String observacion;
 
     /**
      * Fecha de registro.
      */
     @Basic
-    @Column(name = "CNTRFCHR", nullable = false)
+    @Column(name = "CNTRFCHR")
     private LocalDate fechaRegistro;
 
     /**
      * Usuario que registró.
      */
     @Basic
-    @Column(name = "CNTRUSRR", length = 60)
+    @Column(name = "CNTRUSRR")
     private String usuarioRegistro;
 
     // =============================

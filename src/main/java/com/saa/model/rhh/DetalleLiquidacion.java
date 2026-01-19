@@ -51,14 +51,14 @@ public class DetalleLiquidacion implements Serializable {
      * Valor del rubro.
      */
     @Basic
-    @Column(name = "TMLQVLRO", nullable = false, precision = 12, scale = 2)
+    @Column(name = "TMLQVLRO")
     private Double valor;
 
     /**
      * Descripción del rubro.
      */
     @Basic
-    @Column(name = "TMLQDSCR", length = 250)
+    @Column(name = "TMLQDSCR")
     private String descripcion;
 
     /**
@@ -72,7 +72,7 @@ public class DetalleLiquidacion implements Serializable {
      * Usuario que registró.
      */
     @Basic
-    @Column(name = "TMLQUSRR", length = 60)
+    @Column(name = "TMLQUSRR")
     private String usuarioRegistro;
 
     // =============================
