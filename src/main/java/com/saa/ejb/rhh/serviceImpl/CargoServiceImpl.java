@@ -20,6 +20,7 @@ import com.saa.model.rhh.NombreEntidadesRhh;
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 
+
 /**
  * @author GaemiSoft
  * <p>Implementación de la interfaz CargoService.
@@ -34,6 +35,7 @@ public class CargoServiceImpl implements CargoService {
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.sistema.ejb.util.EntityService#save(java.lang.Object[][], java.lang.Object[])
 	 */
+	@Override
 	public void save(List<Cargo> lista) throws Throwable {
 		System.out.println("Ingresa al metodo save de cargo service");
 		for (Cargo registro:lista) {			
@@ -44,6 +46,7 @@ public class CargoServiceImpl implements CargoService {
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.sistema.ejb.util.EntityService#remove(java.util.List)
 	 */
+	@Override
 	public void remove(List<Long> id) throws Throwable{
 		System.out.println("Ingresa al metodo remove[] de cargo service");
 		//INSTANCIA UNA ENTIDAD
@@ -59,6 +62,7 @@ public class CargoServiceImpl implements CargoService {
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.sistema.ejb.util.EntityService#selectAll(java.lang.Object[])
 	 */
+	@Override
 	public List<Cargo> selectAll() throws Throwable {
 		System.out.println("Ingresa al metodo (selectAll) Cargo");
 		//CREA EL LISTADO CON LOS REGISTROS DE LA BUSQUEDA
@@ -73,6 +77,7 @@ public class CargoServiceImpl implements CargoService {
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.parametrizacion.ejb.Service.CargoService#selectById(java.lang.Long)
 	 */
+	@Override
 	public Cargo selectById(Long id) throws Throwable {
 		System.out.println("Ingresa al selectById con id: " + id);		
 		return cargoDaoService.selectById(id, NombreEntidadesRhh.CARGO);
@@ -81,6 +86,7 @@ public class CargoServiceImpl implements CargoService {
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.parametrizacion.ejb.Service.CargoService#selectByCriteria(java.lang.Object[], java.util.List)
 	 */
+	@Override
 	public List<Cargo> selectByCriteria(List<DatosBusqueda> datos) throws Throwable {
 		System.out.println("Ingresa al metodo (selectByCriteria) Cargo");
 		//CREA EL LISTADO CON LOS REGISTROS DE LA BUSQUEDA

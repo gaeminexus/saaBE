@@ -13,6 +13,8 @@ import com.saa.model.rhh.Cargo;
 
 import jakarta.ejb.Local;
 
+
+
 /**
  * @author GaemiSoft.
  * DaoService Cargo. 
