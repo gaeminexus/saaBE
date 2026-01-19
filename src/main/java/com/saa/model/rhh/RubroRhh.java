@@ -20,16 +20,16 @@ import jakarta.persistence.Table;
 @Entity
 @Table(name = "RBRO", schema = "RHH")
 @NamedQueries({
-    @NamedQuery(name = "Rubro.findAll",
+    @NamedQuery(name = "RubroRhh.findAll",
                 query = "select r from Rubro r"),
-    @NamedQuery(name = "Rubro.findById",
+    @NamedQuery(name = "RubroRhh.findById",
                 query = "select r from Rubro r where r.codigo = :id"),
-    @NamedQuery(name = "Rubro.findActivos",
+    @NamedQuery(name = "RubroRhh.findActivos",
                 query = "select r from Rubro r where r.estado = 'A'"),
-    @NamedQuery(name = "Rubro.findByTipo",
+    @NamedQuery(name = "RubroRhh.findByTipo",
                 query = "select r from Rubro r where r.tipo = :tipo")
 })
-public class Rubro implements Serializable {
+public class RubroRhh implements Serializable {
 
     /**
      * Código único del rubro.

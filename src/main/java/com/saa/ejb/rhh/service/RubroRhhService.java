@@ -9,8 +9,7 @@
 package com.saa.ejb.rhh.service;
 
 import com.saa.basico.util.EntityService;
-import com.saa.model.rhh.Rubro;
-
+import com.saa.model.rhh.RubroRhh;
 import jakarta.ejb.Local;
 
 /**
@@ -19,7 +18,7 @@ import jakarta.ejb.Local;
  *  Accede a los metodos DAO y procesa los datos para el Rubro.</p>
  */
 @Local
-public interface RubroService extends EntityService<Rubro>{
+public interface RubroRhhService extends EntityService<RubroRhh>{
 	 
 	 /**
 	  * Recupera entidad con el id
@@ -27,6 +26,6 @@ public interface RubroService extends EntityService<Rubro>{
 	  * @return				: Recupera entidad
 	  * @throws Throwable	: Excepcion
 	  */
-	  Rubro selectById(Long id) throws Throwable;
+	  RubroRhh selectById(Long id) throws Throwable;
 	  
 }

@@ -12,10 +12,11 @@ import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
-import com.saa.ejb.rhh.dao.RubroDaoService;
-import com.saa.ejb.rhh.service.RubroService;
+import com.saa.ejb.rhh.dao.RubroRhhDaoService;
+import com.saa.ejb.rhh.service.RubroRhhService;
+
 import com.saa.model.rhh.NombreEntidadesRhh;
-import com.saa.model.rhh.Rubro;
+import com.saa.model.rhh.RubroRhh;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -26,17 +27,17 @@ import jakarta.ejb.Stateless;
  *  Contiene los servicios relacionados con la entidad Rubro</p>
  */
 @Stateless
-public class RubroServiceImpl implements RubroService {
+public class RubroRhhServiceImpl implements RubroRhhService {
 	
 	@EJB
-	private RubroDaoService rubroDaoService;
+	private RubroRhhDaoService rubroDaoService;
 	
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.sistema.ejb.util.EntityService#save(java.lang.Object[][], java.lang.Object[])
 	 */
-	public void save(List<Rubro> lista) throws Throwable {
+	public void save(List<RubroRhh> lista) throws Throwable {
 		System.out.println("Ingresa al metodo save de rubro service");
-		for (Rubro registro:lista) {			
+		for (RubroRhh registro:lista) {			
 			rubroDaoService.save(registro, registro.getCodigo());
 		}
 	}
@@ -47,11 +48,11 @@ public class RubroServiceImpl implements RubroService {
 	public void remove(List<Long> id) throws Throwable{
 		System.out.println("Ingresa al metodo remove[] de rubro service");
 		//INSTANCIA UNA ENTIDAD
-		Rubro rubro = new Rubro();
+		RubroRhh rubroRhh = new RubroRhh();
 		//ELIMINA UNO A UNO LOS REGISTROS DEL ARREGLO
 		for (Long registro : id) {
 			
-				rubroDaoService.remove(rubro, registro);	
+				rubroDaoService.remove(rubroRhh, registro);	
 			}				
 
 	}
@@ -59,10 +60,10 @@ public class RubroServiceImpl implements RubroService {
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.sistema.ejb.util.EntityService#selectAll(java.lang.Object[])
 	 */
-	public List<Rubro> selectAll() throws Throwable {
+	public List<RubroRhh> selectAll() throws Throwable {
 		System.out.println("Ingresa al metodo (selectAll) Rubro");
 		//CREA EL LISTADO CON LOS REGISTROS DE LA BUSQUEDA
-		List<Rubro> result = rubroDaoService.selectAll(NombreEntidadesRhh.RUBRO); 
+		List<RubroRhh> result = rubroDaoService.selectAll(NombreEntidadesRhh.RUBRO_RHH); 
 		if(result.isEmpty()){
 			throw new IncomeException("Busqueda completa de rubro no devolvio ningun registro");
 			}
@@ -73,18 +74,18 @@ public class RubroServiceImpl implements RubroService {
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.parametrizacion.ejb.Service.RubroService#selectById(java.lang.Long)
 	 */
-	public Rubro selectById(Long id) throws Throwable {
+	public RubroRhh selectById(Long id) throws Throwable {
 		System.out.println("Ingresa al selectById con id: " + id);		
-		return rubroDaoService.selectById(id, NombreEntidadesRhh.RUBRO);
+		return rubroDaoService.selectById(id, NombreEntidadesRhh.RUBRO_RHH);
 	}
 
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.parametrizacion.ejb.Service.RubroService#selectByCriteria(java.lang.Object[], java.util.List)
 	 */
-	public List<Rubro> selectByCriteria(List<DatosBusqueda> datos) throws Throwable {
+	public List<RubroRhh> selectByCriteria(List<DatosBusqueda> datos) throws Throwable {
 		System.out.println("Ingresa al metodo (selectByCriteria) Rubro");
 		//CREA EL LISTADO CON LOS REGISTROS DE LA BUSQUEDA
-		List<Rubro> result = rubroDaoService.selectByCriteria(datos, NombreEntidadesRhh.RUBRO); 
+		List<RubroRhh> result = rubroDaoService.selectByCriteria(datos, NombreEntidadesRhh.RUBRO_RHH); 
 		if(result.isEmpty()){
 			throw new IncomeException("Busqueda por criterio de rubro no devolvio ningun registro");
 			}
@@ -93,7 +94,7 @@ public class RubroServiceImpl implements RubroService {
 	}
 
 	@Override
-	public Rubro saveSingle(Rubro rubro) throws Throwable {
+	public RubroRhh saveSingle(RubroRhh rubro) throws Throwable {
 		System.out.println("Ingresa al metodo (selectByCriteria) Rubro");
 		rubro = rubroDaoService.save(rubro, rubro.getCodigo());
 		return rubro;

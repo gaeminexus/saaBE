@@ -9,8 +9,10 @@
 package com.saa.ejb.rhh.daoImpl;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
-import com.saa.ejb.rhh.dao.RubroDaoService;
-import com.saa.model.rhh.Rubro;
+
+import com.saa.ejb.rhh.dao.RubroRhhDaoService;
+
+import com.saa.model.rhh.RubroRhh;
 
 import jakarta.ejb.Stateless;
 
@@ -19,7 +21,7 @@ import jakarta.ejb.Stateless;
  * Implementacion RubroDaoService. 
  */
 @Stateless
-public class RubroDaoServiceImpl extends EntityDaoImpl<Rubro>  implements RubroDaoService{
+public class RubroRhhDaoServiceImpl extends EntityDaoImpl<RubroRhh>  implements RubroRhhDaoService{
 
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.parametrizacion.ejb.dao.RubroDaoService#obtieneCampos()

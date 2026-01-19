@@ -10,6 +10,7 @@ package com.saa.ejb.rhh.dao;
 
 import com.saa.basico.util.EntityDao;
 import com.saa.model.rhh.Rubro;
+import com.saa.model.rhh.RubroRhh;
 
 import jakarta.ejb.Local;
 
@@ -18,6 +19,6 @@ import jakarta.ejb.Local;
  * DaoService Rubro. 
  */
 @Local
-public interface RubroDaoService  extends EntityDao<Rubro>  {
+public interface RubroRhhDaoService  extends EntityDao<RubroRhh>  {
 	
 }
