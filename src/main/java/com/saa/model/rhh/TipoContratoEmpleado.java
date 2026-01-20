@@ -20,8 +20,8 @@ import jakarta.persistence.Table;
 @Entity
 @Table(name = "TPCN", schema = "RHH")
 @NamedQueries({
-    @NamedQuery(name = "TipoContratoId", query = "select e from TipoContrato e where e.codigo=:id"),
-    @NamedQuery(name = "TipoContratoAll", query = "select e from TipoContrato e")
+    @NamedQuery(name = "TipoContratoEmpleadoId", query = "select e from TipoContratoEmpleado e where e.codigo=:id"),
+    @NamedQuery(name = "TipoContratoEmpleadoAll", query = "select e from TipoContratoEmpleado e")
 })
 public class TipoContratoEmpleado implements Serializable {
 
