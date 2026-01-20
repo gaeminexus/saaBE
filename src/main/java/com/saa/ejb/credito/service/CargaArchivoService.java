@@ -7,5 +7,7 @@ import jakarta.ejb.Local;
 
 @Local
 public interface CargaArchivoService extends EntityService<CargaArchivo>{
+	
+	public String melyTest(Long idEntidad) throws Throwable;
 
 }

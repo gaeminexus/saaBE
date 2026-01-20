@@ -64,6 +64,17 @@ public class CargaArchivoRest {
     }
     
     @GET
+    @Path("/melyTest/{idEntidad}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public String melyTest(@PathParam("idEntidad") Long idEntidad) throws Throwable {
+        String nombre = "";
+        nombre = cargaArchivoService.melyTest(idEntidad);
+        nombre = "{\"nombre\": \"" + nombre + "\"}";
+        System.out.println("nombre retornado en el rest: " + nombre);
+        return nombre;
+    }
+    
+    @GET
     @Path("/getByAnio/{anio}")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getByAnio(@PathParam("anio") Long anio) {

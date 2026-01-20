@@ -22,12 +22,9 @@ import jakarta.persistence.Table;
 @Entity
 @Table(name = "TMLQ", schema = "RHH")
 @NamedQueries({
-    @NamedQuery(name = "DetalleLiquidacion.findAll",
-                query = "select d from DetalleLiquidacion d"),
-    @NamedQuery(name = "DetalleLiquidacion.findById",
-                query = "select d from DetalleLiquidacion d where d.codigo = :id"),
-    @NamedQuery(name = "DetalleLiquidacion.findByLiquidacion",
-                query = "select d from DetalleLiquidacion d where d.liquidacion.codigo = :idLiquidacion")
+    @NamedQuery(name = "DetalleLiquidacionId", query = "select e from DetalleLiquidacion e where e.codigo=:id"),
+    @NamedQuery(name = "DetalleLiquidacionAll", query = "select e from DetalleLiquidacion e")
+    
 })
 public class DetalleLiquidacion implements Serializable {
 

@@ -20,9 +20,8 @@ import jakarta.persistence.Table;
 @Entity
 @Table(name = "CRGO", schema = "RHH")
 @NamedQueries({
-    @NamedQuery(name = "Cargo.findAll", query = "select c from Cargo c"),
-    @NamedQuery(name = "Cargo.findById", query = "select c from Cargo c where c.codigo = :id"),
-    @NamedQuery(name = "Cargo.findByNombre", query = "select c from Cargo c where c.nombre = :nombre")
+	@NamedQuery(name = "CargoId", query = "select e from Cargo e where e.codigo=:id"),
+    @NamedQuery(name = "CargoAll", query = "select e from Cargo e")
 })
 public class Cargo implements Serializable {
 
