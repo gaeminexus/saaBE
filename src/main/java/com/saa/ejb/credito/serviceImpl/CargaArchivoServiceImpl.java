@@ -69,6 +69,7 @@ public class CargaArchivoServiceImpl implements CargaArchivoService {
      * Guarda un solo registro de CargaArchivo.
      */
     @Override
+    @jakarta.ejb.TransactionAttribute(jakarta.ejb.TransactionAttributeType.REQUIRED)
     public CargaArchivo saveSingle(CargaArchivo cargaArchivo) throws Throwable {
         System.out.println("saveSingle - CargaArchivo");
         if (cargaArchivo.getCodigo() == null) {

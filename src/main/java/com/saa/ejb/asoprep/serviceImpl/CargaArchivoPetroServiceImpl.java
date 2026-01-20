@@ -5,6 +5,8 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -137,6 +139,10 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     private CargaArchivo almacenarCargaArchivo(CargaArchivo cargaArchivo) throws Throwable {
         System.out.println("Guardando CargaArchivo: " + cargaArchivo.getNombre());
         
+        System.out.println("Zona horaria por defecto: " + ZoneId.systemDefault());
+        System.out.println("Fecha/Hora sistema: " + LocalDateTime.now());
+        System.out.println("Fecha/Hora con zona: " + ZonedDateTime.now());
+        System.out.println("Offset UTC: " + ZonedDateTime.now().getOffset());
         cargaArchivo.setFechaCarga(LocalDateTime.now());
         
         // Validar que los campos obligatorios vengan del frontend
@@ -249,21 +255,35 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     /**
      * Procesa el contenido del archivo y extrae los registros
      */
-    private List<ParticipeXCargaArchivo> procesarContenido(String contenido) {
+    private List<ParticipeXCargaArchivo> procesarContenido(String contenido) throws Exception {
         String[] lineas = contenido.split("\n");
         List<ParticipeXCargaArchivo> registrosProcesados = new ArrayList<>();
         int i = 0;
+        int numeroLinea = 1; // Para rastrear la línea en caso de error
+        boolean encontroEP = false;
         
         while (i < lineas.length) {
             String lineaActual = lineas[i];
             
             if (lineaActual != null && lineaActual.trim().startsWith("EP")) {
+                encontroEP = true;
                 i += 8;
                 if (i >= lineas.length) break;
                 
                 String lineaAporte = lineas[i];
+                
+                // Validar que la línea de aporte tenga contenido
+                if (lineaAporte == null || lineaAporte.trim().isEmpty()) {
+                    throw new IllegalArgumentException("Error en línea " + (numeroLinea + 8) + ": Se esperaba línea de producto/aporte después del encabezado EP");
+                }
+                
                 String codigoAporte = lineaAporte.substring(0, Math.min(4, lineaAporte.length())).trim();
                 String descripcionAporte = lineaAporte.length() > 4 ? lineaAporte.substring(4).trim() : "";
+                
+                // Validar que exista código de aporte
+                if (codigoAporte.isEmpty()) {
+                    throw new IllegalArgumentException("Error en línea " + (numeroLinea + 8) + ": Código de producto/aporte vacío");
+                }
                 
                 i++;
                 i++;
@@ -277,44 +297,60 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
                     }
                     
                     if (lineaRegistro != null && lineaRegistro.trim().length() > 0) {
-                        ParticipeXCargaArchivo registro = new ParticipeXCargaArchivo();
-                        
-                        // Crear un DetalleCargaArchivo temporal para identificación
-                        DetalleCargaArchivo detalleTemp = new DetalleCargaArchivo();
-                        detalleTemp.setCodigoPetroProducto(codigoAporte);
-                        detalleTemp.setNombreProductoPetro(descripcionAporte);
-                        registro.setDetalleCargaArchivo(detalleTemp);
-                        
-                        // Extraer campos del registro
-                        String codigo = extraerCampo(lineaRegistro, 0, 7).trim();
-                        registro.setNombre(extraerCampo(lineaRegistro, 7, 44).trim());
-                        registro.setPlazoInicial(parseDouble(extraerCampo(lineaRegistro, 44, 50).trim()).longValue());
-                        registro.setSaldoActual(parseDouble(extraerCampo(lineaRegistro, 50, 61).trim()));
-                        registro.setMesesPlazo(parseDouble(extraerCampo(lineaRegistro, 61, 65).trim()).longValue());
-                        registro.setInteresAnual(parseDouble(extraerCampo(lineaRegistro, 65, 70).trim()));
-                        registro.setValorSeguro(parseDouble(extraerCampo(lineaRegistro, 70, 80).trim()));
-                        registro.setMontoDescontar(parseDouble(extraerCampo(lineaRegistro, 80, 95).trim()));
-                        registro.setCapitalDescontado(parseDouble(extraerCampo(lineaRegistro, 95, 110).trim()));
-                        registro.setInteresDescontado(parseDouble(extraerCampo(lineaRegistro, 110, 125).trim()));
-                        registro.setSeguroDescontado(parseDouble(extraerCampo(lineaRegistro, 125, 140).trim()));
-                        registro.setTotalDescontado(parseDouble(extraerCampo(lineaRegistro, 140, 155).trim()));
-                        registro.setCapitalNoDescontado(parseDouble(extraerCampo(lineaRegistro, 155, 170).trim()));
-                        registro.setInteresNoDescontado(parseDouble(extraerCampo(lineaRegistro, 170, 184).trim()));
-                        registro.setDesgravamenNoDescontado(parseDouble(extraerCampo(lineaRegistro, 184, 198).trim()));
-                        
-                        if (!codigo.isEmpty()) {
-                            registro.setCodigoPetro(parseLongSimple(codigo));
-                            registrosProcesados.add(registro);
+                        try {
+                            ParticipeXCargaArchivo registro = new ParticipeXCargaArchivo();
+                            
+                            // Crear un DetalleCargaArchivo temporal para identificación
+                            DetalleCargaArchivo detalleTemp = new DetalleCargaArchivo();
+                            detalleTemp.setCodigoPetroProducto(codigoAporte);
+                            detalleTemp.setNombreProductoPetro(descripcionAporte);
+                            registro.setDetalleCargaArchivo(detalleTemp);
+                            
+                            // Validar que la línea tenga la longitud mínima esperada
+                            if (lineaRegistro.length() < 50) {
+                                throw new IllegalArgumentException("Línea muy corta, longitud mínima esperada: 50 caracteres");
+                            }
+                            
+                            // Extraer campos del registro
+                            String codigo = extraerCampo(lineaRegistro, 0, 7).trim();
+                            registro.setNombre(extraerCampo(lineaRegistro, 7, 44).trim());
+                            registro.setPlazoInicial(parseDouble(extraerCampo(lineaRegistro, 44, 50).trim()).longValue());
+                            registro.setSaldoActual(parseDouble(extraerCampo(lineaRegistro, 50, 61).trim()));
+                            registro.setMesesPlazo(parseDouble(extraerCampo(lineaRegistro, 61, 65).trim()).longValue());
+                            registro.setInteresAnual(parseDouble(extraerCampo(lineaRegistro, 65, 70).trim()));
+                            registro.setValorSeguro(parseDouble(extraerCampo(lineaRegistro, 70, 80).trim()));
+                            registro.setMontoDescontar(parseDouble(extraerCampo(lineaRegistro, 80, 95).trim()));
+                            registro.setCapitalDescontado(parseDouble(extraerCampo(lineaRegistro, 95, 110).trim()));
+                            registro.setInteresDescontado(parseDouble(extraerCampo(lineaRegistro, 110, 125).trim()));
+                            registro.setSeguroDescontado(parseDouble(extraerCampo(lineaRegistro, 125, 140).trim()));
+                            registro.setTotalDescontado(parseDouble(extraerCampo(lineaRegistro, 140, 155).trim()));
+                            registro.setCapitalNoDescontado(parseDouble(extraerCampo(lineaRegistro, 155, 170).trim()));
+                            registro.setInteresNoDescontado(parseDouble(extraerCampo(lineaRegistro, 170, 184).trim()));
+                            registro.setDesgravamenNoDescontado(parseDouble(extraerCampo(lineaRegistro, 184, 198).trim()));
+                            
+                            if (!codigo.isEmpty()) {
+                                registro.setCodigoPetro(parseLongSimple(codigo));
+                                registrosProcesados.add(registro);
+                            }
+                        } catch (Exception e) {
+                            throw new IllegalArgumentException("Error al procesar línea " + (numeroLinea + i) + " del producto '" + descripcionAporte + "': " + e.getMessage(), e);
                         }
                     }
                     
                     i++;
                 }
                 
+                numeroLinea = i;
                 continue;
             }
             
             i++;
+            numeroLinea++;
+        }
+        
+        // Validar que se haya encontrado al menos un encabezado EP
+        if (!encontroEP) {
+            throw new IllegalArgumentException("El archivo no contiene ningún encabezado 'EP' válido. Formato de archivo incorrecto.");
         }
         
         return registrosProcesados;
@@ -482,14 +518,51 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     }
 
 	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public CargaArchivo validarArchivoPetro(InputStream archivoInputStream, String fileName, CargaArchivo cargaArchivo) throws Throwable {
 		System.out.println("Iniciando validarArchivoPetro: " + fileName);
 		
-		String contenido = leerContenidoArchivo(archivoInputStream);
+		// VALIDACIÓN 1: Verificar que el archivo tenga extensión .txt
+		if (fileName == null || !fileName.toLowerCase().endsWith(".txt")) {
+			throw new IllegalArgumentException("El archivo debe tener extensión .txt. Archivo recibido: " + fileName);
+		}
+		
+		// Leer el InputStream completo en un byte array para poder reutilizarlo
+		byte[] archivoBytes = archivoInputStream.readAllBytes();
+		
+		// VALIDACIÓN 2: Verificar que el archivo no esté vacío
+		if (archivoBytes == null || archivoBytes.length == 0) {
+			throw new IllegalArgumentException("El archivo está vacío");
+		}
+		
+		// Crear un nuevo InputStream desde el byte array para leer el contenido
+		java.io.ByteArrayInputStream contenidoStream = new java.io.ByteArrayInputStream(archivoBytes);
+		String contenido = leerContenidoArchivo(contenidoStream);
+		
+		// VALIDACIÓN 3: Verificar que el contenido tenga el formato correcto (debe empezar con "EP")
+		if (contenido == null || contenido.trim().isEmpty()) {
+			throw new IllegalArgumentException("El archivo no tiene contenido legible");
+		}
+		
+		if (!contenido.trim().startsWith("EP")) {
+			throw new IllegalArgumentException("El formato del archivo es incorrecto. El archivo debe comenzar con 'EP' según el formato PETROCOMERCIAL");
+		}
+		
         List<ParticipeXCargaArchivo> registrosProcesados = procesarContenido(contenido);
+        
+        // VALIDACIÓN 4: Verificar que se hayan procesado registros
+        if (registrosProcesados == null || registrosProcesados.isEmpty()) {
+        	throw new IllegalArgumentException("No se encontraron registros válidos en el archivo. Verifique que el formato sea correcto");
+        }
         
         // Agrupar por aporte (DetalleCargaArchivo)
         Map<String, DetalleCargaArchivo> aporteAgrupados = agruparPorAporte(registrosProcesados);
+        
+        // VALIDACIÓN 5: Verificar que se hayan generado detalles agrupados
+        if (aporteAgrupados == null || aporteAgrupados.isEmpty()) {
+        	throw new IllegalArgumentException("No se pudieron agrupar los registros por producto. Verifique el formato del archivo");
+        }
+        
         // Convertir a listas para persistir
         List<DetalleCargaArchivo> detallesGenerados = new ArrayList<>(aporteAgrupados.values());
         // Calcular totales generales para CargaArchivo
@@ -504,8 +577,9 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
         CargaArchivo cargaArchivoGuardado = almacenaRegistros(cargaArchivo, detallesGenerados, registrosProcesados);
 		
         // 2. AL FINAL: Cargar el archivo físico (NO TRANSACCIONAL)
-        // Solo se ejecuta si todas las operaciones de BD fueron exitosas
-        String rutaArchivo = cargarArchivo(archivoInputStream, fileName, cargaArchivo);
+        // Crear un nuevo InputStream desde el byte array para cargar el archivo
+        java.io.ByteArrayInputStream archivoStream = new java.io.ByteArrayInputStream(archivoBytes);
+        String rutaArchivo = cargarArchivo(archivoStream, fileName, cargaArchivo);
         System.out.println("Archivo cargado en: " + rutaArchivo);
         
         cargaArchivoGuardado.setRutaArchivo(rutaArchivo);
