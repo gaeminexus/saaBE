@@ -22,14 +22,8 @@ import jakarta.persistence.Table;
 @Entity
 @Table(name = "SLCT", schema = "RHH")
 @NamedQueries({
-    @NamedQuery(name = "SolicitudVacaciones.findAll",
-                query = "select s from SolicitudVacaciones s"),
-    @NamedQuery(name = "SolicitudVacaciones.findById",
-                query = "select s from SolicitudVacaciones s where s.codigo = :id"),
-    @NamedQuery(name = "SolicitudVacaciones.findByEmpleado",
-                query = "select s from SolicitudVacaciones s where s.empleado.codigo = :idEmpleado"),
-    @NamedQuery(name = "SolicitudVacaciones.findByEstado",
-                query = "select s from SolicitudVacaciones s where s.estado = :estado")
+    @NamedQuery(name = "SolicitudVacacionesId", query = "select e from SolicitudVacaciones e where e.codigo=:id"),
+    @NamedQuery(name = "SolicitudVacacionesAll", query = "select e from SolicitudVacaciones e")
 })
 public class SolicitudVacaciones implements Serializable {
 

@@ -22,10 +22,8 @@ import jakarta.persistence.Table;
 @Entity
 @Table(name = "HSTR", schema = "RHH")
 @NamedQueries({
-    @NamedQuery(name = "Historial.findAll", query = "select h from Historial h"),
-    @NamedQuery(name = "Historial.findById", query = "select h from Historial h where h.codigo = :id"),
-    @NamedQuery(name = "Historial.findByEmpleado", query = "select h from Historial h where h.empleado.codigo = :empleadoId"),
-    @NamedQuery(name = "Historial.findActual", query = "select h from Historial h where h.empleado.codigo = :empleadoId and h.actual = 'S'")
+    @NamedQuery(name = "HistorialId", query = "select e from Historial e where e.codigo=:id"),
+    @NamedQuery(name = "HistorialAll", query = "select e from Historial e")
 })
 public class Historial implements Serializable {
 

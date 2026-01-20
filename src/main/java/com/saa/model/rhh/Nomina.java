@@ -22,11 +22,8 @@ import jakarta.persistence.Table;
 @Entity
 @Table(name = "NMNA", schema = "RHH")
 @NamedQueries({
-    @NamedQuery(name = "Nomina.findAll", query = "select n from Nomina n"),
-    @NamedQuery(name = "Nomina.findById", query = "select n from Nomina n where n.codigo = :id"),
-    @NamedQuery(name = "Nomina.findByPeriodoNomina", query = "select n from Nomina n where n.periodoNomina.codigo = :periodoNominaId"),
-    @NamedQuery(name = "Nomina.findByEmpleado", query = "select n from Nomina n where n.empleado.codigo = :empleadoId"),
-    @NamedQuery(name = "Nomina.findByEstado", query = "select n from Nomina n where n.estado = :estado")
+    @NamedQuery(name = "NominaId", query = "select e from Nomina e where e.codigo=:id"),
+    @NamedQuery(name = "NominaAll", query = "select e from Nomina e")
 })
 public class Nomina implements Serializable {
 

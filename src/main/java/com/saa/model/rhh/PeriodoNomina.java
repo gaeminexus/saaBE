@@ -20,11 +20,8 @@ import jakarta.persistence.Table;
 @Entity
 @Table(name = "PRDN", schema = "RHH")
 @NamedQueries({
-    @NamedQuery(name = "PeriodoNomina.findAll", query = "select p from PeriodoNomina p"),
-    @NamedQuery(name = "PeriodoNomina.findById", query = "select p from PeriodoNomina p where p.codigo = :id"),
-    @NamedQuery(name = "PeriodoNomina.findAbiertos", query = "select p from PeriodoNomina p where p.estado = 'ABIERTO'"),
-    @NamedQuery(name = "PeriodoNomina.findByAnioMes",
-                query = "select p from PeriodoNomina p where p.anio = :anio and p.mes = :mes")
+    @NamedQuery(name = "PeriodoNominaId", query = "select e from PeriodoNomina e where e.codigo=:id"),
+    @NamedQuery(name = "PeriodoNominaAll", query = "select e from PeriodoNomina e")
 })
 public class PeriodoNomina implements Serializable {
 

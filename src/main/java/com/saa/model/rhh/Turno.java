@@ -20,10 +20,8 @@ import jakarta.persistence.Table;
 @Entity
 @Table(name = "TRNO", schema = "RHH")
 @NamedQueries({
-    @NamedQuery(name = "Turno.findAll",
-                query = "select t from Turno t"),
-    @NamedQuery(name = "Turno.findActivos",
-                query = "select t from Turno t where t.estado = 'A'")
+    @NamedQuery(name = "TurnoId", query = "select e from Turno e where e.codigo=:id"),
+    @NamedQuery(name = "TurnoAll", query = "select e from Turno e")
 })
 public class Turno implements Serializable {
 

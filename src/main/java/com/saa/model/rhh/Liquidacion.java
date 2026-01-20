@@ -22,10 +22,8 @@ import jakarta.persistence.Table;
 @Entity
 @Table(name = "LQDC", schema = "RHH")
 @NamedQueries({
-    @NamedQuery(name = "Liquidacion.findAll", query = "select l from Liquidacion l"),
-    @NamedQuery(name = "Liquidacion.findById", query = "select l from Liquidacion l where l.codigo = :id"),
-    @NamedQuery(name = "Liquidacion.findByEmpleado", query = "select l from Liquidacion l where l.empleado.codigo = :empleadoId"),
-    @NamedQuery(name = "Liquidacion.findByContrato", query = "select l from Liquidacion l where l.contratoEmpleado.codigo = :contratoId")
+    @NamedQuery(name = "LiquidacionId", query = "select e from Liquidacion e where e.codigo=:id"),
+    @NamedQuery(name = "LiquidacionAll", query = "select e from Liquidacion e")
 })
 public class Liquidacion implements Serializable {
 

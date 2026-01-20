@@ -23,14 +23,8 @@ import jakarta.persistence.Table;
 @Entity
 @Table(name = "RNGL", schema = "RHH")
 @NamedQueries({
-    @NamedQuery(name = "ReglonNomina.findAll",
-                query = "select r from ReglonNomina r"),
-    @NamedQuery(name = "ReglonNomina.findById",
-                query = "select r from ReglonNomina r where r.codigo = :id"),
-    @NamedQuery(name = "ReglonNomina.findByNomina",
-                query = "select r from ReglonNomina r where r.nomina.codigo = :idNomina"),
-    @NamedQuery(name = "ReglonNomina.findImponibles",
-                query = "select r from ReglonNomina r where r.imponible = 'S'")
+    @NamedQuery(name = "ReglonNominaId", query = "select e from ReglonNomina e where e.codigo=:id"),
+    @NamedQuery(name = "ReglonNominaAll", query = "select e from ReglonNomina e")
 })
 public class ReglonNomina implements Serializable {
 

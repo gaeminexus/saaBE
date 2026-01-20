@@ -27,14 +27,8 @@ import jakarta.persistence.UniqueConstraint;
     }
 )
 @NamedQueries({
-    @NamedQuery(name = "ResumenNomina.findAll",
-                query = "select r from ResumenNomina r"),
-    @NamedQuery(name = "ResumenNomina.findById",
-                query = "select r from ResumenNomina r where r.codigo = :id"),
-    @NamedQuery(name = "ResumenNomina.findByEmpleado",
-                query = "select r from ResumenNomina r where r.empleado.codigo = :idEmpleado"),
-    @NamedQuery(name = "ResumenNomina.findByFecha",
-                query = "select r from ResumenNomina r where r.fecha = :fecha")
+    @NamedQuery(name = "ResumenNominaId", query = "select e from ResumenNomina e where e.codigo=:id"),
+    @NamedQuery(name = "ResumenNominaAll", query = "select e from ResumenNomina e")
 })
 public class ResumenNomina implements Serializable {
 
