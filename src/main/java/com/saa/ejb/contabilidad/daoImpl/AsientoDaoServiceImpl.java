@@ -244,7 +244,7 @@ public class AsientoDaoServiceImpl extends EntityDaoImpl<Asiento> implements Asi
 				strQuery +=   " 		and  b.numeroMes = :numeroMes";	
 			}
 			if(desde.get(Calendar.YEAR) != 1900){
-				strQuery +=   " 		and trunc(b.fecheIngreso) between :fechaIngresoDesde and :fechaIngresoHasta";
+				strQuery +=   " 		and trunc(b.fechaIngreso) between :fechaIngresoDesde and :fechaIngresoHasta";
 			}
 			if(desdeAsiento.get(Calendar.YEAR) != 1900){
 				strQuery +=   " 		and trunc(b.fechaAsiento) between :fechaAsientoDesde and :fechaAsientoHasta";

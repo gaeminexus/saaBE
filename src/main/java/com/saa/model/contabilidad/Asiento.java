@@ -1,7 +1,7 @@
 package com.saa.model.contabilidad;
 
 import java.io.Serializable;
-import java.util.Date;
+import java.time.LocalDateTime;
 
 import com.saa.model.scp.Empresa;
 
@@ -56,7 +56,7 @@ public class Asiento implements Serializable {
 	 */
 	@Basic
 	@Column(name = "ASNTFCHA")
-	private Date fechaAsiento;
+	private LocalDateTime fechaAsiento;
 	
 	/**
 	 * número de asiento contable.
@@ -140,7 +140,7 @@ public class Asiento implements Serializable {
 	 */
 	@Basic
 	@Column(name = "ASNTFCPR")
-	private Date fechaIngreso;
+	private LocalDateTime fechaIngreso;
 	
 	/**
 	 * id del periodo, clave foranea a prdocdgo de la tabla periodo.
@@ -213,7 +213,7 @@ public class Asiento implements Serializable {
 	 * Devuelve fechaAsiento
 	 * @return fechaAsiento.
 	 */
-	public Date getFechaAsiento() {
+	public LocalDateTime getFechaAsiento() {
 		return fechaAsiento;
 	}
 
@@ -221,7 +221,7 @@ public class Asiento implements Serializable {
 	 * Asigna fechaAsiento
 	 * @param fechaAsiento nuevo valor para fechaAsiento. 
 	 */
-	public void setFechaAsiento(Date fechaAsiento) {
+	public void setFechaAsiento(LocalDateTime fechaAsiento) {
 		this.fechaAsiento = fechaAsiento;
 	}
 	
@@ -407,7 +407,7 @@ public class Asiento implements Serializable {
 	 */
 	@Basic
 	@Column(name = "ASNTFCPR")
-	public Date getFecheIngreso() {
+	public LocalDateTime getFechaIngreso() {
 		return fechaIngreso;
 	}
 
@@ -415,8 +415,8 @@ public class Asiento implements Serializable {
 	 * Asigna fechaIngreso
 	 * @param fechaIngreso nuevo valor para fecheIngreso. 
 	 */
-	public void setFecheIngreso(Date fecheIngreso) {
-		this.fechaIngreso = fecheIngreso;
+	public void setFechaIngreso(LocalDateTime fechaIngreso) {
+		this.fechaIngreso = fechaIngreso;
 	}
 	
 	/**
