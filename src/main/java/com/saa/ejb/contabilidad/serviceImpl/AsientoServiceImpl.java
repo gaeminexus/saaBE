@@ -1,9 +1,8 @@
 package com.saa.ejb.contabilidad.serviceImpl;
 
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Calendar;
-import java.util.Date;
 import java.util.List;
 
 import com.saa.basico.ejb.DetalleRubroService;
@@ -27,7 +26,6 @@ import com.saa.model.scp.DetalleRubro;
 import com.saa.model.scp.Empresa;
 import com.saa.rubros.EstadoAsiento;
 import com.saa.rubros.EstadoPeriodos;
-import com.saa.rubros.FormatoFecha;
 import com.saa.rubros.ModuloSistema;
 import com.saa.rubros.ProcesosAsiento;
 import com.saa.rubros.Rubros;
@@ -189,10 +187,15 @@ public class AsientoServiceImpl implements AsientoService {
 		System.out.println("Ingresa al metodo siguienteNumeroAsiento con tipo: " + tipo + ", en empresa: " + empresa);
 		Long numero = null;
 		List<Asiento> asientos = asientoDaoService.selectMaxNumero(tipo, empresa);
-		if(asientos.get(0) == null){
-			numero = Long.valueOf(0);			
-		}else{
+		if(asientos.isEmpty()){
+			numero = Long.valueOf(0);
+		}else {
 			for(Object o : asientos){
+				System.out.println("Valor Obtenido: " + o);
+				if(o == null){
+					numero = Long.valueOf(0);
+				}
+				else
 				numero = (Long)o;
 			}
 		}
@@ -204,9 +207,7 @@ public class AsientoServiceImpl implements AsientoService {
 	 */
 	public void generaCabeceraCierre(Periodo periodo, Long empresa, String usuario) throws Throwable {
 		System.out.println("Ingresa al metodo generaCabeceraCierre con periodo: " + periodo.getCodigo() + ", en empresa: " + empresa);
-		DateFormat df = new SimpleDateFormat(
-				detalleRubroService.selectValorStringByRubAltDetAlt(Rubros.FORMATO_FECHA, FormatoFecha.EJB_CON_HORA));
-		Date fechaIngreso = df.parse(df.format(new Date()));
+		LocalDateTime fechaIngreso = LocalDateTime.now();;
 		Asiento asientoCierre = new Asiento();
 		Long idTipoAsiento = tipoAsientoService.codigoByAlterno(TipoAsientos.ASIENTO_CIERRE, empresa);
 		if(idTipoAsiento.equals(0L)){
@@ -228,7 +229,7 @@ public class AsientoServiceImpl implements AsientoService {
 			asientoCierre.setRubroModuloSistemaP(Long.valueOf(Rubros.MODULO_SISTEMA));
 			asientoCierre.setRubroModuloSistemaH(Long.valueOf(ModuloSistema.CONTABILIDAD));
 			asientoCierre.setEstado(Long.valueOf(EstadoAsiento.INCOMPLETO));
-			asientoCierre.setFecheIngreso(fechaIngreso);
+			asientoCierre.setFechaIngreso(fechaIngreso);
 			asientoCierre.setNumeroMes(periodo.getMes());
 			asientoCierre.setNumeroAnio(periodo.getAnio());
 			asientoCierre.setPeriodo(periodo);
@@ -360,16 +361,12 @@ public class AsientoServiceImpl implements AsientoService {
 	public Asiento generaCabeceraReversion(Asiento asientoOriginal) throws Throwable {
 		System.out.println("Ingresa al metodo generaCabeceraReversion con Asiento: " + asientoOriginal.getCodigo());
 		Long numeroAsientoReversion = null;
-		DateFormat dfSinHora = new SimpleDateFormat(
-				detalleRubroService.selectValorStringByRubAltDetAlt(Rubros.FORMATO_FECHA, FormatoFecha.EJB_SIN_HORA)); 
-		DateFormat dfConHora = new SimpleDateFormat(
-				detalleRubroService.selectValorStringByRubAltDetAlt(Rubros.FORMATO_FECHA, FormatoFecha.EJB_CON_HORA));
 		Asiento asientoReversion = new Asiento();		
 		asientoReversion.setCodigo(Long.valueOf(0));
 		asientoReversion.setEmpresa(asientoOriginal.getEmpresa());
 		asientoReversion.setTipoAsiento(asientoOriginal.getTipoAsiento());
-		asientoReversion.setFechaAsiento((dfSinHora.parse(dfSinHora.format(new Date()))));
-		asientoReversion.setFecheIngreso((dfConHora.parse(dfConHora.format(new Date()))));
+		asientoReversion.setFechaAsiento(LocalDate.now());
+		asientoReversion.setFechaIngreso((LocalDateTime.now()));
 		numeroAsientoReversion = siguienteNumeroAsiento(asientoReversion.getTipoAsiento().getCodigo(), asientoReversion.getEmpresa().getCodigo());
 		asientoReversion.setNumero(numeroAsientoReversion);
 		asientoReversion.setEstado(Long.valueOf(EstadoAsiento.REVERSADO));
@@ -438,19 +435,18 @@ public class AsientoServiceImpl implements AsientoService {
 		TipoAsiento tipoAsiento = tipoAsientoService.selectById(idTipoAsiento);
 		//Genera asiento
 		Asiento asiento = recuperaDatosAsiento(alternoTipo, empresa);
-		
 		asiento.setCodigo(0L);
 		Empresa empresaDatos = empresaService.selectById(empresa);
 		asiento.setEmpresa(empresaDatos);
 		asiento.setTipoAsiento(tipoAsiento);
-		asiento.setFechaAsiento(new Date());
+		asiento.setFechaAsiento(LocalDate.now());
 		asiento.setEstado(Long.valueOf(EstadoAsiento.ACTIVO));
 		asiento.setObservaciones(observacion);
 		asiento.setNombreUsuario(nombreUsuario);
 		asiento.setMoneda(Long.valueOf(TipoMoneda.DOLAR));
 		asiento.setRubroModuloClienteP(Long.valueOf(Rubros.MODULO_SISTEMA));
 		asiento.setRubroModuloClienteH(Long.valueOf(ModuloSistema.TESORERIA));
-		asiento.setFecheIngreso(new Date());
+		asiento.setFechaIngreso(LocalDateTime.now());
 		asiento.setRubroModuloSistemaP(Long.valueOf(Rubros.MODULO_SISTEMA));
 		asiento.setRubroModuloSistemaH(Long.valueOf(ModuloSistema.TESORERIA));
 		Long[] datosAsiento = saveCabecera(asiento);
@@ -494,16 +490,12 @@ public class AsientoServiceImpl implements AsientoService {
 		System.out.println("Ingresa al Metodo generaCabeceraTransferencia con empresa : " + empresa + ", usuario: " + usuario);
 		//RECUPERA ASIENTO		
 		Asiento cabeceraTransferencia = new Asiento();
-		DateFormat dfSinHora = new SimpleDateFormat(
-				detalleRubroService.selectValorStringByRubAltDetAlt(Rubros.FORMATO_FECHA, FormatoFecha.EJB_SIN_HORA)); 
-		DateFormat dfConHora = new SimpleDateFormat(
-				detalleRubroService.selectValorStringByRubAltDetAlt(Rubros.FORMATO_FECHA, FormatoFecha.EJB_CON_HORA));		
 		Long idTipoAsiento = tipoAsientoService.codigoByAlterno(TipoAsientos.TRANSFERENCIAS, empresa);
 		Long numeroAsiento = siguienteNumeroAsiento(idTipoAsiento, empresa);
 		cabeceraTransferencia.setCodigo(0L);
 		cabeceraTransferencia.setEmpresa(empresaService.selectById(empresa));
 		cabeceraTransferencia.setTipoAsiento(tipoAsientoService.selectById(idTipoAsiento));
-		cabeceraTransferencia.setFechaAsiento(dfSinHora.parse(dfSinHora.format(new Date())));
+		cabeceraTransferencia.setFechaAsiento(LocalDate.now());
 		cabeceraTransferencia.setNumero(numeroAsiento);
 		cabeceraTransferencia.setEstado(Long.valueOf(EstadoAsiento.ACTIVO));
 		cabeceraTransferencia.setObservaciones(concepto);
@@ -516,7 +508,7 @@ public class AsientoServiceImpl implements AsientoService {
 		cabeceraTransferencia.setMoneda(Long.valueOf(TipoMoneda.DOLAR));
 		cabeceraTransferencia.setRubroModuloClienteP(Long.valueOf(Rubros.MODULO_SISTEMA));
 		cabeceraTransferencia.setRubroModuloClienteH(Long.valueOf(ModuloSistema.TESORERIA));
-		cabeceraTransferencia.setFecheIngreso(dfConHora.parse(dfConHora.format(new Date())));
+		cabeceraTransferencia.setFechaIngreso(LocalDateTime.now());
 		Periodo periodo = periodoService.recuperaByMesAnioEmpresa(empresa, mes, anio);
 		cabeceraTransferencia.setPeriodo(periodo);
 		cabeceraTransferencia.setRubroModuloSistemaP(Long.valueOf(Rubros.MODULO_SISTEMA));
@@ -563,6 +555,9 @@ public class AsientoServiceImpl implements AsientoService {
 	@Override
 	public Asiento saveSingle(Asiento asiento) throws Throwable {
 		System.out.println("saveSingle - AsientoService");
+		if (asiento.getCodigo() == null) {
+			asiento.setNumero(siguienteNumeroAsiento(asiento.getTipoAsiento().getCodigo(), asiento.getEmpresa().getCodigo()));
+		}
 		asiento = asientoDaoService.save(asiento, asiento.getCodigo());
 		return asiento;
 	}

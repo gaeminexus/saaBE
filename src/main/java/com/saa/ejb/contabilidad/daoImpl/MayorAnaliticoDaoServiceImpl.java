@@ -1,6 +1,6 @@
 package com.saa.ejb.contabilidad.daoImpl;
 
-import java.util.Date;
+import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
@@ -70,9 +70,9 @@ public class MayorAnaliticoDaoServiceImpl extends EntityDaoImpl<MayorAnalitico> 
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.dao.MayorAnaliticoDaoService#selectPeriodosMayorizadoNoMayorizado(java.lang.Long, java.util.Date, java.util.Date, java.util.Date, java.lang.Long)
+	 * @see com.compuseg.income.contabilidad.ejb.dao.MayorAnaliticoDaoService#selectPeriodosMayorizadoNoMayorizado(java.lang.Long, java.util.LocalDate, java.util.LocalDate, java.util.LocalDate, java.lang.Long)
 	 */
-	public Long selectPeriodosMayorizadoNoMayorizado(Long empresa, Date fechaInicio, Date fechaFin, 
+	public Long selectPeriodosMayorizadoNoMayorizado(Long empresa, LocalDate fechaInicio, LocalDate fechaFin, 
 													 Long estado1, Long estado2, Long estado3) throws Throwable {
 		System.out.println("Ingresa al Metodo selectPeriodosMayorizadoNoMayorizado con empresa:" + empresa + ", fechaInicio" + fechaInicio + ", fechaFin" + fechaFin 
 																					   + ", estado1" + estado1 + ", estado2" + estado2 + ", estado3" + estado3);

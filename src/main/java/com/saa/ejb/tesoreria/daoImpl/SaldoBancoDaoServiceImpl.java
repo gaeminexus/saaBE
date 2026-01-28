@@ -8,7 +8,7 @@
  */
 package com.saa.ejb.tesoreria.daoImpl;
 
-import java.util.Date;
+import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
@@ -54,7 +54,7 @@ public class SaldoBancoDaoServiceImpl extends EntityDaoImpl<SaldoBanco> implemen
 	}
 	
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.tesoreria.ejb.dao.SaldoBancoDaoService#recuperaUltimoRegistro(java.lang.Long, java.util.Date)
+	 * @see com.compuseg.income.tesoreria.ejb.dao.SaldoBancoDaoService#recuperaUltimoRegistro(java.lang.Long, java.util.LocalDate)
 	 */
 	public Long recuperaUltimoIdSaldo (Long idCuenta, Long mes, Long anio)throws Throwable {		
 		System.out.println("Ingresa al metodo recuperaUltimoIdSaldo con Cuenta : " + idCuenta + " Fecha : " + mes+"/"+anio);
@@ -123,9 +123,9 @@ public class SaldoBancoDaoServiceImpl extends EntityDaoImpl<SaldoBanco> implemen
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.tesoreria.ejb.dao.SaldoBancoDaoService#selectMaxCuentaMenorFecha(java.lang.Long, java.util.Date)
+	 * @see com.compuseg.income.tesoreria.ejb.dao.SaldoBancoDaoService#selectMaxCuentaMenorFecha(java.lang.Long, java.util.LocalDate)
 	 */
-	public SaldoBanco selectMaxCuentaMenorFecha(Long idCuenta, Date fecha)
+	public SaldoBanco selectMaxCuentaMenorFecha(Long idCuenta, LocalDate fecha)
 			throws Throwable {
 		System.out.println("Ingresa al Metodo selectMaxCuentaMenorFecha con idCuenta: " + idCuenta 
 				 + ", fecha: " + fecha);

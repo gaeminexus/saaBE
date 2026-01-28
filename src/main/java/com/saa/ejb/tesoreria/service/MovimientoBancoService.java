@@ -1,6 +1,6 @@
 package com.saa.ejb.tesoreria.service;
 
-import java.util.Date;
+import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.util.EntityService;
@@ -28,7 +28,7 @@ public interface MovimientoBancoService extends EntityService<MovimientoBanco>{
 	 * @return
 	 * @throws Throwable
 	 */
-	Date obtieneFechaPrimerMovimiento (Long idCuenta) throws Throwable;
+	LocalDate obtieneFechaPrimerMovimiento (Long idCuenta) throws Throwable;
 	
 	/**
 	 * Metodo para Recuperar los movimientos en transito de la cuenta bancaria en rango de fecha
@@ -38,7 +38,7 @@ public interface MovimientoBancoService extends EntityService<MovimientoBanco>{
 	 * @return					: Movimientos
 	 * @throws Throwable		: Exepciones
 	 */
-	Double recuperaValorTrancitoCuentaBancaria(Long idCuenta, Date fechaInicio, Date fechaFin)throws Throwable; 
+	Double recuperaValorTrancitoCuentaBancaria(Long idCuenta, LocalDate fechaInicio, LocalDate fechaFin)throws Throwable; 
 
 	/**
 	 * Recibir transferencias bancarias de bancos externos por proceso de cobros
@@ -109,7 +109,7 @@ public interface MovimientoBancoService extends EntityService<MovimientoBanco>{
 	 * @return					: Numero de registros encontrados
 	 * @throws Throwable		: Excepcions
 	 */
-	 Long cuentaByCuentaBancariaEstadoMenorAFecha(Long idCuentaBancaria, Date fecha) throws Throwable;
+	 Long cuentaByCuentaBancariaEstadoMenorAFecha(Long idCuentaBancaria, LocalDate fecha) throws Throwable;
 	 
 	 /**
 	  * Recupera los saldos de los movimientos según el banco
@@ -134,7 +134,7 @@ public interface MovimientoBancoService extends EntityService<MovimientoBanco>{
 	 * @throws Throwable		: Excepcions
 	 */
 	 List<MovimientoBanco> selectSinConsByCuentaEstadoMenorAFecha
-	 					(Long idCuentaBancaria, Date fecha) throws Throwable;
+	 					(Long idCuentaBancaria, LocalDate fecha) throws Throwable;
 	 
 	 /**
 	  * Actualiza el estado del movimiento bancario dependiendo el tipo de movimiento
@@ -145,7 +145,7 @@ public interface MovimientoBancoService extends EntityService<MovimientoBanco>{
 	 * @throws Throwable	: Excepcion
 	 */
 	void actualizaEstadoMovimiento(Conciliacion Conciliacion, Long idMovimiento, 
-			                       int estado, Date fecha) throws Throwable;
+			                       int estado, LocalDate fecha) throws Throwable;
 	
 	/**
 	 * Recupera el saldo de una cuenta bancaria en un rango de fechas
@@ -155,8 +155,8 @@ public interface MovimientoBancoService extends EntityService<MovimientoBanco>{
 	 * @return
 	 * @throws Throwable
 	 */
-	Double saldoCuentaRangoFechas(Long idCuenta, Date fechaDesde, 
-					Date fechaHasta) throws Throwable;
+	Double saldoCuentaRangoFechas(Long idCuenta, LocalDate fechaDesde, 
+					LocalDate fechaHasta) throws Throwable;
 	
     /**
      * Metodo que recupera los registros que cumplen con la condicion de los parametros 
@@ -179,7 +179,7 @@ public interface MovimientoBancoService extends EntityService<MovimientoBanco>{
 	 * @return					: Arreglo de objetos
 	 * @throws Throwable		: Excepcion
 	 */
-	List<MovimientoBanco> selectRIED(Object[] campos,Long idCuentaBancaria, Date fechaInicio, Date fechaFin) throws Throwable;
+	List<MovimientoBanco> selectRIED(Object[] campos,Long idCuentaBancaria, LocalDate fechaInicio, LocalDate fechaFin) throws Throwable;
 	
 	/**
 	 * Actualiza el tipo de movimiento, la conciliacion y la fecha de conciliacion de los registros que se desconcilian 

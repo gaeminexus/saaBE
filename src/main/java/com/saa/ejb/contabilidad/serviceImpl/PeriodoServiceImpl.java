@@ -1,8 +1,6 @@
 package com.saa.ejb.contabilidad.serviceImpl;
 
 import java.time.LocalDate;
-import java.util.Calendar;
-import java.util.Date;
 import java.util.List;
 
 import com.saa.basico.ejb.DetalleRubroService;
@@ -148,8 +146,8 @@ public class PeriodoServiceImpl implements PeriodoService{
 			periodo.setEmpresa((Empresa)empresaDaoService.find(empresas, empresa));
 			periodo.setNombre(detalleRubroService.selectValorStringByRubAltDetAlt(Rubros.MES_ANIO, mesInicio.intValue()));
 			periodo.setEstado(Long.valueOf(Estado.ACTIVO));
-			periodo.setPrimerDia(fechaService.primerDiaMesAnio(mesInicio, anioInicio));
-			periodo.setUltimoDia(fechaService.ultimoDiaMesAnio(mesInicio, anioInicio));
+			periodo.setPrimerDia(fechaService.primerDiaMesAnioLocal(mesInicio, anioInicio));
+			periodo.setUltimoDia(fechaService.ultimoDiaMesAnioLocal(mesInicio, anioInicio));
 			// GRABA VALOR
 			periodoDaoService.save(periodo, Long.valueOf(0));
 			if (mesInicio.equals(12L)) {	
@@ -341,7 +339,7 @@ public class PeriodoServiceImpl implements PeriodoService{
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.contabilidad.ejb.service.PeriodoService#obtieneUlminoPeriodoFecha(java.lang.Long, java.lang.Long, java.util.Date)
 	 */
-	public Periodo obtieneMaximoPeriodoFechaEstado(Long empresa, int estado, Date fecha)throws Throwable {
+	public Periodo obtieneMaximoPeriodoFechaEstado(Long empresa, int estado, LocalDate fecha)throws Throwable {
 		System.out.println("Ingresa al Metodo obtieneMaximoPeriodoFechaEstado con empresa : " + empresa + ", estado = " + estado + ", fecha = " + fecha);
 		return periodoDaoService.selectMaximoAnteriorByEstadoEmpresa(empresa, estado, fecha);
 	}
@@ -350,7 +348,7 @@ public class PeriodoServiceImpl implements PeriodoService{
 	 * @see com.compuseg.income.contabilidad.ejb.service.PeriodoService#obtieneMinimoPeriodoFechaEstado(java.lang.Long, int, java.util.Date)
 	 */
 	public Periodo obtieneMinimoPeriodoFechaEstado(Long empresa, int estado,
-			Date fecha) throws Throwable {
+			LocalDate fecha) throws Throwable {
 		System.out.println("Ingresa al Metodo obtieneMinimoPeriodoFechaEstado con empresa : " + empresa + ", estado = " + estado + ", fecha = " + fecha);
 		return periodoDaoService.selectMinimoAnteriorByEstadoEmpresa(empresa, estado, fecha);
 	}
@@ -372,13 +370,11 @@ public class PeriodoServiceImpl implements PeriodoService{
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.contabilidad.ejb.service.PeriodoService#verificaPeriodoMayorizadoByFecha(java.util.Date, java.lang.Long)
 	 */
-	public boolean verificaPeriodoMayorizadoByFecha(Date fechaSistema, Long idEmpresa ) throws Throwable {
+	public boolean verificaPeriodoMayorizadoByFecha(LocalDate fechaSistema, Long idEmpresa ) throws Throwable {
 		System.out.println("Ingresa al metodo verificaPeriodoMayorizadoByFecha con fecha: " + fechaSistema);
 		boolean resultado = true;
-		Calendar fecha = Calendar.getInstance();
-		fecha.setTime(fechaSistema);		
-		Long mes = Long.valueOf(fecha.get(Calendar.MONTH)+1);
-		Long anio = Long.valueOf(fecha.get(Calendar.YEAR));
+		Long mes = Long.valueOf(fechaSistema.getMonthValue());
+		Long anio = Long.valueOf(fechaSistema.getYear());
 		//OBTIENE EL ID DEL PERIODO
 		Periodo periodo = recuperaByMesAnioEmpresa(idEmpresa, mes, anio);		
 		Long estado = Long.valueOf(EstadoPeriodos.MAYORIZADO);

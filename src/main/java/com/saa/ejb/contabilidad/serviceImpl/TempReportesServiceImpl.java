@@ -1,6 +1,6 @@
 package com.saa.ejb.contabilidad.serviceImpl;
 
-import java.util.Date;
+import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.ejb.FechaService;
@@ -135,13 +135,13 @@ public class TempReportesServiceImpl implements TempReportesService {
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.Service#actualizaDebeHaberCuentaContable(java.lang.Long, java.util.Date, java.util.Date, java.lang.Long)
+	 * @see com.compuseg.income.contabilidad.ejb.service.Service#actualizaDebeHaberCuentaContable(java.lang.Long, java.util.LocalDate, java.util.LocalDate, java.lang.Long)
 	 */
-	public void actualizaDebeHaberMovimiento(Long empresa, Date fechaInicio, Date fechaFin, Long idEjecucion
+	public void actualizaDebeHaberMovimiento(Long empresa, LocalDate fechaInicio, LocalDate fechaFin, Long idEjecucion
 			, int acumulacion) throws Throwable {
 		System.out.println("Ingresa al Metodo actualizaDebeHaberMovimiento com empresa : " + empresa + ", fechaInicio" + fechaInicio);
 		//INSTANCIA NUEVA ENTIDAD
-		Date diaAnteriorInicio = new Date();
+		LocalDate diaAnteriorInicio = LocalDate.now();
 		Double[] valoresDebeHaber = {0D,0D};
 		Double saldoAnterior = 0D;
 		List<TempReportes> tempReportess = tempReportesDaoService.selectMovimientosByIdEjecucion(idEjecucion);		
@@ -150,7 +150,7 @@ public class TempReportesServiceImpl implements TempReportesService {
 				valoresDebeHaber = detalleAsientoService.selectSumaDebeHaberByFechasEmpresaCuenta
 										(empresa, fechaInicio, fechaFin, registros.getPlanCuenta().getCodigo());				
 				if(ReporteTipoAcumulacion.ACUMULADO == acumulacion){
-					diaAnteriorInicio = fechaService.sumaRestaDias(fechaInicio, -1);
+					diaAnteriorInicio = fechaService.sumaRestaDiasLocal(fechaInicio, -1);
 					saldoAnterior = planCuentaService.saldoCuentaFechaEmpresa(empresa, registros.getPlanCuenta().getCodigo(), diaAnteriorInicio);
 				}else{
 					saldoAnterior = 0D;
@@ -248,9 +248,9 @@ public class TempReportesServiceImpl implements TempReportesService {
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.TempReportesService#reporteRangoFecha(java.util.Date, java.util.Date, java.lang.Long, java.lang.Long)
+	 * @see com.compuseg.income.contabilidad.ejb.service.TempReportesService#reporteRangoFecha(java.util.LocalDate, java.util.LocalDate, java.lang.Long, java.lang.Long)
 	 */
-	public Long reporteRangoFecha(Date fechaFin, Date fechaInicio, Long empresa, Long codigoAlterno, int acumulacion) throws Throwable {
+	public Long reporteRangoFecha(LocalDate fechaFin, LocalDate fechaInicio, Long empresa, Long codigoAlterno, int acumulacion) throws Throwable {
 		// REPORTE POR RANGO DE FECHAS 
 		System.out.println("Ingresa al Metodo reporteRangoFecha con fechaFin: " + fechaFin + 
 				 ", FechaInicio: " + fechaInicio + ", empresa: " + empresa +
@@ -297,9 +297,9 @@ public class TempReportesServiceImpl implements TempReportesService {
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.TempReportesService#reporteCentroRangoFecha(java.util.Date, java.util.Date, java.lang.Long, java.lang.Long, int)
+	 * @see com.compuseg.income.contabilidad.ejb.service.TempReportesService#reporteCentroRangoFecha(java.util.LocalDate, java.util.LocalDate, java.lang.Long, java.lang.Long, int)
 	 */
-	public Long reporteCentroRangoFecha(Date fechaFin, Date fechaInicio,
+	public Long reporteCentroRangoFecha(LocalDate fechaFin, LocalDate fechaInicio,
 			Long empresa, Long codigoAlterno, int acumulacion) throws Throwable {
 		System.out.println("Ingresa al Metodo reporteCentroRangoFecha con fechaFin: " + fechaFin + 
 				 ", FechaInicio: " + fechaInicio + ", empresa: " + empresa +
@@ -390,15 +390,15 @@ public class TempReportesServiceImpl implements TempReportesService {
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.TempReportesService#actualizaDebeHaberMovimientoCentro(java.lang.Long, java.util.Date, java.util.Date, java.lang.Long, int)
+	 * @see com.compuseg.income.contabilidad.ejb.service.TempReportesService#actualizaDebeHaberMovimientoCentro(java.lang.Long, java.util.LocalDate, java.util.LocalDate, java.lang.Long, int)
 	 */
 	public void actualizaDebeHaberMovimientoCentro(Long empresa,
-			Date fechaInicio, Date fechaFin, Long idEjecucion, int acumulacion)
+			LocalDate fechaInicio, LocalDate fechaFin, Long idEjecucion, int acumulacion)
 			throws Throwable {
 		System.out.println("Ingresa al Metodo actualizaDebeHaberMovimientoCentro com empresa: "
 				  + empresa + ", fechaInicio: " + fechaInicio);
 		//INSTANCIA NUEVA ENTIDAD
-		Date diaAnteriorInicio = new Date();
+		LocalDate diaAnteriorInicio = LocalDate.now();
 		Double[] valoresDebeHaber = {0D,0D};
 		Double saldoAnterior = 0D;
 		List<TempReportes> tempReportess = tempReportesDaoService.selectMovimientosByIdEjecucion(idEjecucion);		
@@ -407,7 +407,7 @@ public class TempReportesServiceImpl implements TempReportesService {
 				valoresDebeHaber = detalleAsientoService.selectSumaDebeHaberByFechasEmpresaCentroCuenta
 										(empresa, fechaInicio, fechaFin, registros.getPlanCuenta().getCodigo(), registros.getCentroCosto().getCodigo());				
 				if(ReporteTipoAcumulacion.ACUMULADO == acumulacion){
-					diaAnteriorInicio = fechaService.sumaRestaDias(fechaInicio, -1);
+					diaAnteriorInicio = fechaService.sumaRestaDiasLocal(fechaInicio, -1);
 					saldoAnterior = detalleAsientoService.recuperaSaldoCuentaCentroEmpresaAFecha
 					  (empresa, registros.getCentroCosto().getCodigo(), registros.getPlanCuenta().getCodigo(), diaAnteriorInicio);
 				}else{
@@ -520,9 +520,9 @@ public class TempReportesServiceImpl implements TempReportesService {
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.TempReportesService#reportePlanCentroRangoFecha(java.util.Date, java.util.Date, java.lang.Long, java.lang.Long, int)
+	 * @see com.compuseg.income.contabilidad.ejb.service.TempReportesService#reportePlanCentroRangoFecha(java.util.LocalDate, java.util.LocalDate, java.lang.Long, java.lang.Long, int)
 	 */
-	public Long reportePlanCentroRangoFecha(Date fechaFin, Date fechaInicio,
+	public Long reportePlanCentroRangoFecha(LocalDate fechaFin, LocalDate fechaInicio,
 			Long empresa, Long codigoAlterno, int acumulacion) throws Throwable {
 		System.out.println("Ingresa al Metodo reportePlanCentroRangoFecha con fechaFin: " + fechaFin + 
 				 ", FechaInicio: " + fechaInicio + ", empresa: " + empresa +
@@ -612,15 +612,15 @@ public class TempReportesServiceImpl implements TempReportesService {
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.TempReportesService#actualizaDebeHaberMovimientoPlanByCentro(java.lang.Long, java.util.Date, java.util.Date, java.lang.Long, int)
+	 * @see com.compuseg.income.contabilidad.ejb.service.TempReportesService#actualizaDebeHaberMovimientoPlanByCentro(java.lang.Long, java.util.LocalDate, java.util.LocalDate, java.lang.Long, int)
 	 */
 	public void actualizaDebeHaberMovimientoPlanByCentro(Long empresa,
-			Date fechaInicio, Date fechaFin, Long idEjecucion, int acumulacion)
+			LocalDate fechaInicio, LocalDate fechaFin, Long idEjecucion, int acumulacion)
 			throws Throwable {
 		System.out.println("Ingresa al Metodo actualizaDebeHaberMovimientoPlanByCentro com empresa: "
 				  + empresa + ", fechaInicio: " + fechaInicio);
 		//INSTANCIA NUEVA ENTIDAD
-		Date diaAnteriorInicio = new Date();
+		LocalDate diaAnteriorInicio = LocalDate.now();
 		Double[] valoresDebeHaber = {0D,0D};
 		Double saldoAnterior = 0D;
 		List<TempReportes> tempReportess = tempReportesDaoService.selectMovimientosByIdEjecucion(idEjecucion);		
@@ -629,7 +629,7 @@ public class TempReportesServiceImpl implements TempReportesService {
 				valoresDebeHaber = detalleAsientoService.selectSumaDebeHaberByFechasEmpresaCentroCuenta
 										(empresa, fechaInicio, fechaFin, registros.getCentroCosto().getCodigo(), registros.getPlanCuenta().getCodigo());				
 				if(ReporteTipoAcumulacion.ACUMULADO == acumulacion){
-					diaAnteriorInicio = fechaService.sumaRestaDias(fechaInicio, -1);
+					diaAnteriorInicio = fechaService.sumaRestaDiasLocal(fechaInicio, -1);
 					saldoAnterior = detalleAsientoService.recuperaSaldoCuentaCentroEmpresaAFecha
 					  (empresa, registros.getPlanCuenta().getCodigo(), registros.getCentroCosto().getCodigo(), diaAnteriorInicio);
 				}

@@ -1,7 +1,7 @@
 package com.saa.ejb.contabilidad.serviceImpl;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 
 import com.saa.basico.ejb.EmpresaDaoService;
@@ -503,10 +503,10 @@ public class CentroCostoServiceImpl implements CentroCostoService {
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.CentroCostoService#selectByEmpresaCuentaFechaCentro(java.lang.Long, java.util.Date, java.util.Date, java.lang.String, java.lang.String, java.lang.String, java.lang.String)
+	 * @see com.compuseg.income.contabilidad.ejb.service.CentroCostoService#selectByEmpresaCuentaFechaCentro(java.lang.Long, java.util.LocalDate, java.util.LocalDate, java.lang.String, java.lang.String, java.lang.String, java.lang.String)
 	 */
 	public List<CentroCosto> selectByEmpresaCuentaFechaCentro(Long empresa,
-			Date fechaInicio, Date fechaFin, String cuentaInicio,
+			LocalDate fechaInicio, LocalDate fechaFin, String cuentaInicio,
 			String cuentaFin, String centroInicio, String centroFin)
 			throws Throwable {
 		System.out.println("Ingresa al Metodo selectMovimientoByEmpresaCuentaFecha con empresa: " + empresa + ", fechaInicio: " + fechaInicio +
@@ -518,15 +518,15 @@ public class CentroCostoServiceImpl implements CentroCostoService {
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.CentroCostoService#saldoCuentaAnteriorFechaEmpresa(java.lang.Long, java.lang.Long, java.util.Date)
+	 * @see com.compuseg.income.contabilidad.ejb.service.CentroCostoService#saldoCuentaAnteriorFechaEmpresa(java.lang.Long, java.lang.Long, java.util.LocalDate)
 	 */
 	public Double saldoCentroFechaEmpresa(Long idEmpresa,
-			Long idCentro, Date fechaInicio) throws Throwable {
+			Long idCentro, LocalDate fechaInicio) throws Throwable {
 		System.out.println("Ingresa al Metodo saldoCentroFechaEmpresa con idEmpresa: " + idEmpresa + ", idCentro: " + idCentro +
 				 ", fecha: " + fechaInicio);
 		
 		Double saldoAnteriorCuenta = 0D;
-		Date diaInicio = new Date();
+		LocalDate diaInicio = LocalDate.now();
 		DetalleMayorizacionCC detalleMayorizacionCCAnterior = null;
 		Periodo periodoAnteriorMayorizado = new Periodo();
 		Periodo periodoInicial = new Periodo();
@@ -547,7 +547,7 @@ public class CentroCostoServiceImpl implements CentroCostoService {
 			}else{
 				saldoAnteriorCuenta = detalleMayorizacionCCAnterior.getSaldoActual();	
 			}			
-			diaInicio = fechaService.sumaRestaDias(periodoAnteriorMayorizado.getUltimoDia(), 1);
+			diaInicio = fechaService.sumaRestaDiasLocal(periodoAnteriorMayorizado.getUltimoDia(), 1);
 		}	
 		saldoAnteriorCuenta += detalleAsientoService.recuperaSaldoCentroEmpresaFechas(idEmpresa, idCentro, diaInicio, fechaInicio);
 								

@@ -5,7 +5,7 @@
  */
 package com.saa.ejb.contabilidad.dao;
 
-import java.util.Date;
+import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.util.EntityDao;
@@ -89,7 +89,7 @@ public interface PeriodoDaoService extends EntityDao<Periodo> {
 	 * @return			: Id del Periodo
 	 * @throws Throwable: Excepcions
 	 */
-	Periodo selectMaximoAnteriorByEstadoEmpresa(Long empresa, int estado, Date fecha)throws Throwable;
+	Periodo selectMaximoAnteriorByEstadoEmpresa(Long empresa, int estado, LocalDate fecha)throws Throwable;
 	
 	/**
 	 * Recupera el periodo que pertenece a una fecha
@@ -98,7 +98,7 @@ public interface PeriodoDaoService extends EntityDao<Periodo> {
 	 * @return			: Periodo correspondiente a la fecha
 	 * @throws Throwable: Excepcion
 	 */
-	Periodo selectByFecha(Date fecha, Long empresa) throws Throwable;
+	Periodo selectByFecha(LocalDate fecha, Long empresa) throws Throwable;
 	
 	/**
 	 * Proceso que devuelve el minimo periodo en cualquier estado anterior a una fecha
@@ -108,7 +108,7 @@ public interface PeriodoDaoService extends EntityDao<Periodo> {
 	 * @return			: Id del Periodo
 	 * @throws Throwable: Excepcions
 	 */
-	Periodo selectMinimoAnteriorByEstadoEmpresa(Long empresa, int estado, Date fecha)throws Throwable;
+	Periodo selectMinimoAnteriorByEstadoEmpresa(Long empresa, int estado, LocalDate fecha)throws Throwable;
 	
 	/**
 	 * Recupera todos los periodos de una empresa

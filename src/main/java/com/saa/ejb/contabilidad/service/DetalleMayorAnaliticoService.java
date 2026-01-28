@@ -1,5 +1,5 @@
 package com.saa.ejb.contabilidad.service;
-import java.util.Date;
+import java.time.LocalDate;
 
 import com.saa.basico.util.EntityService;
 import com.saa.model.contabilidad.DetalleMayorAnalitico;
@@ -26,8 +26,8 @@ public interface DetalleMayorAnaliticoService extends EntityService <DetalleMayo
 	  * @param fechaFin		: Fecha de fin de reporte
 	  * @throws Throwable	: Exception
 	  */
-	 void insertaDetalleSinCentro(MayorAnalitico mayor, Date fechaInicio, 
-			 Date fechaFin) throws Throwable;
+	 void insertaDetalleSinCentro(MayorAnalitico mayor, LocalDate fechaInicio, 
+			 LocalDate fechaFin) throws Throwable;
 	 
 	 /**
 	  * Ingresa el detalle del mayor analitico de centro de costo por plan de cuenta
@@ -38,8 +38,8 @@ public interface DetalleMayorAnaliticoService extends EntityService <DetalleMayo
 	  * @param centroFin		: Centro de costo fin del reporte
 	  * @throws Throwable		: Exception
 	  */
-	void insertaDetalleCentroPorPlan(MayorAnalitico mayor, Date fechaInicio, 
-			Date fechaFin, String centroInicio, String centroFin) throws Throwable;
+	void insertaDetalleCentroPorPlan(MayorAnalitico mayor, LocalDate fechaInicio, 
+			LocalDate fechaFin, String centroInicio, String centroFin) throws Throwable;
 	
 	/**
 	  * Ingresa el detalle del mayor analitico de plan de cuenta por centro de costo
@@ -50,8 +50,8 @@ public interface DetalleMayorAnaliticoService extends EntityService <DetalleMayo
 	  * @param cuentaFin		: Cuenta contable fin del reporte
 	  * @throws Throwable		: Exception
 	  */
-	void insertaDetallePlanPorCentro(MayorAnalitico mayor, Date fechaInicio, 
-			Date fechaFin, String cuentaInicio, String cuentaFin) throws Throwable;
+	void insertaDetallePlanPorCentro(MayorAnalitico mayor, LocalDate fechaInicio, 
+			LocalDate fechaFin, String cuentaInicio, String cuentaFin) throws Throwable;
 	
 	/**
 	 * Elimina un registro por id

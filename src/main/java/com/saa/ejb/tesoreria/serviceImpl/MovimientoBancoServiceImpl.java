@@ -1,8 +1,6 @@
 package com.saa.ejb.tesoreria.serviceImpl;
 
-import java.text.SimpleDateFormat;
-import java.time.LocalDateTime;
-import java.util.Date;
+import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.ejb.EmpresaService;
@@ -107,21 +105,20 @@ public class MovimientoBancoServiceImpl implements MovimientoBancoService {
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.tesoreria.ejb.service.MovimientoBancoService#obtieneFechaPrimerMovimiento(java.lang.Long)
 	 */
-	public Date obtieneFechaPrimerMovimiento(Long idCuenta) throws Throwable {
+	public LocalDate obtieneFechaPrimerMovimiento(Long idCuenta) throws Throwable {
 		System.out.println("Ingresa al metodo ultima Fecha :" + idCuenta);
 		//Obtiene la fecha del primer movimiento de una cuenta bancaria
-		Date fechaMovimiento = null;
-		SimpleDateFormat formato = new SimpleDateFormat("yyyy-MM-dd");
-		String movimiento = movimientoBancoDaoService.obtieneFechaPrimerMovimiento (idCuenta);
-		if(!movimiento.isEmpty())
-			fechaMovimiento = formato.parse(movimiento.split(" ")[0]);
+		LocalDate fechaMovimiento = null;
+		LocalDate movimiento = movimientoBancoDaoService.obtieneFechaPrimerMovimiento (idCuenta);
+		if(movimiento != null)
+			fechaMovimiento = movimiento;
 		return fechaMovimiento;
 		}
 	
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.tesoreria.ejb.service.MovimientoBancoService#recuperaValorTrancitoCuentaBancaria(java.lang.Long, java.util.Date, java.util.Date)
+	 * @see com.compuseg.income.tesoreria.ejb.service.MovimientoBancoService#recuperaValorTrancitoCuentaBancaria(java.lang.Long, java.util.LocalDate, java.util.LocalDate)
 	 */
-	public Double recuperaValorTrancitoCuentaBancaria(Long idCuenta, Date fechaInicio, Date fechaFin)throws Throwable {
+	public Double recuperaValorTrancitoCuentaBancaria(Long idCuenta, LocalDate fechaInicio, LocalDate fechaFin)throws Throwable {
 			System.out.println("Ingresa al Metodo recuperaValorTrancitoCuentaBancaria con Cuenta:" + idCuenta + ",Fecha Inicio " + fechaInicio + ",Fecha Fin " + fechaFin );
 	 		//busca los movimientos en transito de la cuenta bancaria en rango de fecha 
 			Double valor = movimientoBancoDaoService.recuperaValorTrancitoCuentaBancaria (idCuenta, fechaInicio, fechaFin);
@@ -146,7 +143,7 @@ public class MovimientoBancoServiceImpl implements MovimientoBancoService {
 			movimientoBanco.setConciliado(0L);
 			movimientoBanco.setRubroTipoMovimientoP(Long.valueOf(Rubros.TIPO_MOVIMIENTO_CONCILIACION));
 			movimientoBanco.setRubroTipoMovimientoH(Long.valueOf(TipoMovimientoConciliacion.TRANSFERENCIAS_CREDITOS_EN_TRANSITO));
-			movimientoBanco.setFechaRegistro(LocalDateTime.now());
+			movimientoBanco.setFechaRegistro(LocalDate.now());
 			movimientoBanco.setNumeroAsiento(cobro.getAsiento().getNumero());
 			movimientoBanco.setEstado(Long.valueOf(Estado.ACTIVO));
 			movimientoBanco.setCuentaBancaria(cobroTransferencia.getCuentaBancaria());
@@ -180,7 +177,7 @@ public class MovimientoBancoServiceImpl implements MovimientoBancoService {
 		movimientoBanco.setConciliado(0L);
 		movimientoBanco.setRubroTipoMovimientoP(Long.valueOf(Rubros.TIPO_MOVIMIENTO_CONCILIACION));
 		movimientoBanco.setRubroTipoMovimientoH(Long.valueOf(TipoMovimientoConciliacion.TRANSFERENCIAS_DEBITOS_EN_TRANSITO));
-		movimientoBanco.setFechaRegistro(LocalDateTime.now());
+		movimientoBanco.setFechaRegistro(LocalDate.now());
 		movimientoBanco.setNumeroAsiento(movimientoBanco.getAsiento().getNumero());
 		movimientoBanco.setEstado(Long.valueOf(Estado.ACTIVO));
 		movimientoBanco.setCuentaBancaria(movimientoBanco.getCuentaBancaria());
@@ -211,7 +208,7 @@ public class MovimientoBancoServiceImpl implements MovimientoBancoService {
 		movimientoBanco.setConciliado(0L);
 		movimientoBanco.setRubroTipoMovimientoP(Long.valueOf(Rubros.TIPO_MOVIMIENTO_CONCILIACION));
 		movimientoBanco.setRubroTipoMovimientoH(Long.valueOf(TipoMovimientoConciliacion.DEPOSITO_EN_TRANSITO));
-		movimientoBanco.setFechaRegistro(LocalDateTime.now());
+		movimientoBanco.setFechaRegistro(LocalDate.now());
 		movimientoBanco.setNumeroAsiento(asiento.getNumero());
 		movimientoBanco.setEstado(Long.valueOf(Estado.ACTIVO));
 		movimientoBanco.setCuentaBancaria(detalleDeposito.getCuentaBancaria());
@@ -261,7 +258,7 @@ public class MovimientoBancoServiceImpl implements MovimientoBancoService {
 		movimientoBanco.setConciliado(0L);
 		movimientoBanco.setRubroTipoMovimientoP(Long.valueOf(Rubros.TIPO_MOVIMIENTO_CONCILIACION));
 		movimientoBanco.setRubroTipoMovimientoH(Long.valueOf(tipoMovimiento));
-		movimientoBanco.setFechaRegistro(LocalDateTime.now());
+		movimientoBanco.setFechaRegistro(LocalDate.now());
 		movimientoBanco.setNumeroAsiento(asiento.getNumero());
 		movimientoBanco.setEstado(Long.valueOf(Estado.ACTIVO));
 		movimientoBanco.setCuentaBancaria(cuentaBancaria);
@@ -291,7 +288,7 @@ public class MovimientoBancoServiceImpl implements MovimientoBancoService {
 		movimientoBanco.setConciliado(0L);
 		movimientoBanco.setRubroTipoMovimientoP(Long.valueOf(Rubros.TIPO_MOVIMIENTO_CONCILIACION));
 		movimientoBanco.setRubroTipoMovimientoH(Long.valueOf(tipoMovimiento));
-		movimientoBanco.setFechaRegistro(LocalDateTime.now());
+		movimientoBanco.setFechaRegistro(LocalDate.now());
 		movimientoBanco.setNumeroAsiento(asiento.getNumero());
 		movimientoBanco.setEstado(Long.valueOf(Estado.ACTIVO));
 		movimientoBanco.setCuentaBancaria(cheque.getChequera().getCuentaBancaria());
@@ -308,10 +305,10 @@ public class MovimientoBancoServiceImpl implements MovimientoBancoService {
 	}
 
 	/* (non-Javadoc)wwwe
-	 * @see com.compuseg.income.tesoreria.ejb.service.MovimientoBancoService#cuentaByCuentaBancariaEstadoMenorAFecha(java.lang.Long, java.util.Date)
+	 * @see com.compuseg.income.tesoreria.ejb.service.MovimientoBancoService#cuentaByCuentaBancariaEstadoMenorAFecha(java.lang.Long, java.util.LocalDate)
 	 */
 	public Long cuentaByCuentaBancariaEstadoMenorAFecha(Long idCuentaBancaria,
-			Date fecha) throws Throwable {
+			LocalDate fecha) throws Throwable {
 		System.out.println(" Ingresa cuentaByCuentaBancariaEstadoMenorAFecha con idCuentaBancaria, : "
 				 + idCuentaBancaria +  ", fecha : " + fecha) ;
 		return movimientoBancoDaoService.cuentaByCuentaBancariaEstadoMenorAFecha(idCuentaBancaria, fecha);
@@ -378,10 +375,10 @@ public class MovimientoBancoServiceImpl implements MovimientoBancoService {
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.tesoreria.ejb.service.MovimientoBancoService#selectSinConsByCuentaEstadoMenorAFecha(java.lang.Long, java.util.Date)
+	 * @see com.compuseg.income.tesoreria.ejb.service.MovimientoBancoService#selectSinConsByCuentaEstadoMenorAFecha(java.lang.Long, java.util.LocalDate)
 	 */
 	public List<MovimientoBanco> selectSinConsByCuentaEstadoMenorAFecha(
-			Long idCuentaBancaria, Date fecha) throws Throwable {
+			Long idCuentaBancaria, LocalDate fecha) throws Throwable {
 		System.out.println(" Ingresa selectSinConsByCuentaEstadoMenorAFecha con idCuentaBancaria, : "
 				 + idCuentaBancaria +  ", fecha : " + fecha);
 		return movimientoBancoDaoService.selectSinConsByCuentaEstadoMenorAFecha(idCuentaBancaria, fecha);
@@ -391,7 +388,7 @@ public class MovimientoBancoServiceImpl implements MovimientoBancoService {
 	 * @see com.compuseg.income.tesoreria.ejb.service.MovimientoBancoService#actualizaEstadoMovimiento(java.lang.Long, java.lang.Long, int)
 	 */
 	public void actualizaEstadoMovimiento(Conciliacion conciliacion,
-			Long idMovimiento, int estado, Date fecha) throws Throwable {
+			Long idMovimiento, int estado, LocalDate fecha) throws Throwable {
 		System.out.println(" Ingresa actualizaEstadoMovimiento con conciliacion, : "
 				 + conciliacion.getCodigo() +  ", idMovimiento : " + idMovimiento 
 				 + ", estado: " + estado);
@@ -422,10 +419,10 @@ public class MovimientoBancoServiceImpl implements MovimientoBancoService {
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.tesoreria.ejb.service.MovimientoBancoService#saldoCuentaRangoFechas3Origenes(java.lang.Long, java.util.Date, java.util.Date)
+	 * @see com.compuseg.income.tesoreria.ejb.service.MovimientoBancoService#saldoCuentaRangoFechas3Origenes(java.lang.Long, java.util.LocalDate, java.util.LocalDate)
 	 */
 	public Double saldoCuentaRangoFechas(Long idCuenta,
-			Date fechaDesde, Date fechaHasta) throws Throwable {
+			LocalDate fechaDesde, LocalDate fechaHasta) throws Throwable {
 		System.out.println(" Ingresa saldoCuentaRangoFechas con idCuenta, : "
 				 + idCuenta +  ", fechaDesde : " + fechaDesde 
 				 + ", fechaHasta: " + fechaHasta);
@@ -454,8 +451,8 @@ public class MovimientoBancoServiceImpl implements MovimientoBancoService {
 		return result;
 	}
 
-	public List<MovimientoBanco> selectRIED(Object[] campos,Long idCuentaBancaria, Date fechaInicio,
-			Date fechaFin) throws Throwable {
+	public List<MovimientoBanco> selectRIED(Object[] campos,Long idCuentaBancaria, LocalDate fechaInicio,
+			LocalDate fechaFin) throws Throwable {
 		System.out.println("Ingresa al metodo (selectRIED) idCuenta: [" + idCuentaBancaria+
 				"] fechaInicio: ["+fechaInicio+"] fechaFin: ["+fechaFin+"]");
 		//CREA EL LISTADO CON LOS REGISTROS DE LA BUSQUEDA

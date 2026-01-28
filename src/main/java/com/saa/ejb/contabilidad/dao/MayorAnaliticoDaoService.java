@@ -4,7 +4,7 @@
  * Quito - Ecuador
  */
 package com.saa.ejb.contabilidad.dao;
-import java.util.Date;
+import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.util.EntityDao;
@@ -44,7 +44,7 @@ public interface MayorAnaliticoDaoService extends EntityDao<MayorAnalitico> {
 	 * @return				: Conteo 
 	 * @throws Throwable	: Excepciones
 	 */
-	Long selectPeriodosMayorizadoNoMayorizado(Long empresa, Date fechaInicio, Date fechaFin, 
+	Long selectPeriodosMayorizadoNoMayorizado(Long empresa, LocalDate fechaInicio, LocalDate fechaFin, 
 											  Long estado1, Long estado2, 
 											  Long estado3)throws Throwable;
 	

@@ -1,7 +1,8 @@
 package com.saa.ejb.contabilidad.daoImpl;
 
-import java.util.Date;
+import java.time.LocalDate;
 import java.util.List;
+
 import com.saa.basico.util.IncomeException;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.contabilidad.dao.PeriodoDaoService;
@@ -166,10 +167,10 @@ public class PeriodoDaoServiceImpl extends EntityDaoImpl<Periodo>  implements Pe
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.dao.PeriodoDaoService#selectMaximoAnteriorByEstadoEmpresa(java.lang.Long, int, java.util.Date)
+	 * @see com.compuseg.income.contabilidad.ejb.dao.PeriodoDaoService#selectMaximoAnteriorByEstadoEmpresa(java.lang.Long, int, java.util.LocalDate)
 	 */
 	public Periodo selectMaximoAnteriorByEstadoEmpresa(Long empresa,
-			int estado, Date fecha) throws Throwable {
+			int estado, LocalDate fecha) throws Throwable {
 		System.out.println("Ingresa al Metodo selectMaximoAnteriorByEstadoEmpresa con empresa : " + empresa + ", estado = " + estado + ", fecha = " + fecha);
 		Periodo periodo = new Periodo();
 		String sentencia = " select b " +
@@ -197,9 +198,9 @@ public class PeriodoDaoServiceImpl extends EntityDaoImpl<Periodo>  implements Pe
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.dao.PeriodoDaoService#selectByFecha(java.util.Date, java.lang.Long)
+	 * @see com.compuseg.income.contabilidad.ejb.dao.PeriodoDaoService#selectByFecha(java.util.LocalDate, java.lang.Long)
 	 */
-	public Periodo selectByFecha(Date fecha, Long empresa) throws Throwable {
+	public Periodo selectByFecha(LocalDate fecha, Long empresa) throws Throwable {
 		System.out.println("Ingresa al Metodo selectByFecha con empresa : " + empresa + ", fecha = " + fecha);
 		Periodo periodo = new Periodo();
 		Query query = em.createQuery(" select b " +
@@ -217,7 +218,7 @@ public class PeriodoDaoServiceImpl extends EntityDaoImpl<Periodo>  implements Pe
 	}
 
 	public Periodo selectMinimoAnteriorByEstadoEmpresa(Long empresa,
-			int estado, Date fecha) throws Throwable {
+			int estado, LocalDate fecha) throws Throwable {
 		System.out.println("Ingresa al Metodo selectMinimoAnteriorByEstadoEmpresa con empresa : " + empresa + ", estado = " + estado + ", fecha = " + fecha);
 		Periodo periodo = new Periodo();
 		String sentencia = " select b " +

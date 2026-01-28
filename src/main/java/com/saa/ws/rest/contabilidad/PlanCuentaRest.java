@@ -74,6 +74,24 @@ public class PlanCuentaRest {
         }
     }
     
+    /**
+	 * Retrieves representation of an instance of NaturalezaCuentaRest
+	 * 
+	 * @return an instance of String
+	 * @throws Throwable
+	 */
+    @GET
+    @Path("/getByEmpresa/{idEmpresa}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getByEmpresa(@PathParam("idEmpresa") Long idEmpresa) {
+        try {
+            List<PlanCuenta> lista = planCuentaDaoService.selectByEmpresa(idEmpresa);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener naturalezas por empresa: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+    
 
     /**
      * PUT method for updating or creating an instance of PlanCuentaRest

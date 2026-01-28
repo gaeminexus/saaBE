@@ -1,7 +1,8 @@
 package com.saa.model.contabilidad;
 
 import java.io.Serializable;
-import java.util.Date;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 import com.saa.model.scp.Empresa;
 
@@ -56,7 +57,7 @@ public class HistAsiento implements Serializable {
 	 */
 	@Basic
 	@Column(name = "ASNHFCHA")
-	private Date fechaAsiento;
+	private LocalDate fechaAsiento;
 	
 	/**
 	 * Número de asiento contable.
@@ -140,7 +141,7 @@ public class HistAsiento implements Serializable {
 	 */
 	@Basic
 	@Column(name = "ASNHFCPR")
-	private Date fechaIngreso;	
+	private LocalDateTime fechaIngreso;	
 	
 	/**
 	 * rubro de modulo del sistema para almacenar internamente el modulo desde el que se genera.
@@ -213,7 +214,7 @@ public class HistAsiento implements Serializable {
 	 * Devuelve fechaAsiento
 	 * @return fechaAsiento
 	 */
-	public Date getFechaAsiento() {
+	public LocalDate getFechaAsiento() {
 		return fechaAsiento;
 	}
 
@@ -221,7 +222,7 @@ public class HistAsiento implements Serializable {
 	 * Asigna fechaAsiento
 	 * @param fechaAsiento nuevo valor para fechaAsiento 
 	 */
-	public void setFechaAsiento(Date fechaAsiento) {
+	public void setFechaAsiento(LocalDate fechaAsiento) {
 		this.fechaAsiento = fechaAsiento;
 	}
 	
@@ -405,7 +406,7 @@ public class HistAsiento implements Serializable {
 	 * Devuelve fecheIngreso
 	 * @return fecheIngreso
 	 */
-	public Date getFechaIngreso() {
+	public LocalDateTime getFechaIngreso() {
 		return fechaIngreso;
 	}
 
@@ -413,7 +414,7 @@ public class HistAsiento implements Serializable {
 	 * Asigna fechaIngreso
 	 * @param fechaIngreso nuevo valor para fecheIngreso 
 	 */
-	public void setFechaIngreso(Date fechaIngreso) {
+	public void setFechaIngreso(LocalDateTime fechaIngreso) {
 		this.fechaIngreso = fechaIngreso;
 	}
 	

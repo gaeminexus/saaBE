@@ -13,7 +13,12 @@ package com.saa.basico.ejbImpl;
 
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.Period;
+import java.time.temporal.ChronoUnit;
+import java.time.temporal.TemporalAdjusters;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
@@ -54,6 +59,13 @@ public class FechaServiceImpl implements FechaService {
 		anterior.setTime(fecha);
 		anterior.add(Calendar.DAY_OF_YEAR, numeroDias);
 		return df.parse(df.format(anterior.getTime()));
+	}
+
+	@Override
+	public LocalDate sumaRestaDiasLocal(LocalDate fecha, int numeroDias) throws Throwable {
+		System.out.println("sumaRestaDiasLocal con fecha: " + fecha + ", dias: " + numeroDias);
+		LocalDate resultado = fecha.plusDays(numeroDias);
+		return resultado;
 	}
 
 	/*
@@ -132,6 +144,13 @@ public class FechaServiceImpl implements FechaService {
 		return df.parse(df.format(resultado.getTime()));
 	}
 
+	@Override
+	public LocalDate primerDiaSemanaLocal(LocalDate fecha) throws Throwable {
+		System.out.println("primerDiaSemanaLocal con fecha: " + fecha);
+		LocalDate resultado = fecha.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+		return resultado;
+	}
+
 	/*
 	 * (non-Javadoc)
 	 * 
@@ -148,6 +167,13 @@ public class FechaServiceImpl implements FechaService {
 		primerDia.setTime(fecha);
 		primerDia.set(Calendar.DATE, 1);
 		return df.parse(df.format(primerDia.getTime()));
+	}
+
+	@Override
+	public LocalDate primerDiaMesLocal(LocalDate fecha) throws Throwable {
+		System.out.println("primerDiaMesLocal con fecha: " + fecha);
+		LocalDate resultado = fecha.withDayOfMonth(1);
+		return resultado;
 	}
 
 	/*
@@ -167,6 +193,13 @@ public class FechaServiceImpl implements FechaService {
 		primerDia.set(Calendar.MONTH, Calendar.JANUARY);
 		primerDia.set(Calendar.DATE, 1);
 		return df.parse(df.format(primerDia.getTime()));
+	}
+
+	@Override
+	public LocalDate primerDiaAnioLocal(LocalDate fecha) throws Throwable {
+		System.out.println("primerDiaAnioLocal con fecha: " + fecha);
+		LocalDate resultado = fecha.withDayOfYear(1);
+		return resultado;
 	}
 
 	@SuppressWarnings("rawtypes")
@@ -319,6 +352,13 @@ public class FechaServiceImpl implements FechaService {
 		return df.parse(df.format(anterior.getTime()));
 	}
 
+	@Override
+	public LocalDate sumaRestaMesesLocal(LocalDate fecha, int numeroMeses) throws Throwable {
+		System.out.println("sumaRestaMesesLocal con fecha: " + fecha + ", meses: " + numeroMeses);
+		LocalDate resultado = fecha.plusMonths(numeroMeses);
+		return resultado;
+	}
+
 	public String calculoEdad(Date fechaNacimiento) throws Throwable {
 		String resultado;
 		int years = 0;
@@ -371,6 +411,15 @@ public class FechaServiceImpl implements FechaService {
 		return resultado;
 	}
 
+	@Override
+	public String calculoEdadLocal(LocalDate fechaNacimiento) throws Throwable {
+		System.out.println("calculoEdadLocal con fechaNacimiento: " + fechaNacimiento);
+		LocalDate fechaActual = LocalDate.now();
+		Period periodo = Period.between(fechaNacimiento, fechaActual);
+		String resultado = periodo.getYears() + " a�os, " + periodo.getMonths() + " meses y " + periodo.getDays() + " dias";
+		return resultado;
+	}
+
 	public Long diferenciaMeses(Date fecha1, Date fecha2) throws Throwable {
 		System.out.println("Service diferenciaMeses con fecha1: " + fecha1 + ", fecha2: " + fecha2);
 		Long milFec1;
@@ -388,6 +437,13 @@ public class FechaServiceImpl implements FechaService {
 		result = milResult / (24 * 60 * 60 * 1000);
 		result2 = result / 30;
 		return result2;
+	}
+
+	@Override
+	public Long diferenciaMesesLocal(LocalDate fecha1, LocalDate fecha2) throws Throwable {
+		System.out.println("diferenciaMesesLocal con fecha1: " + fecha1 + ", fecha2: " + fecha2);
+		Long resultado = ChronoUnit.MONTHS.between(fecha1, fecha2);
+		return resultado;
 	}
 
 	/*
@@ -412,6 +468,14 @@ public class FechaServiceImpl implements FechaService {
 		milResult = milFec2 - milFec1;
 		result = Double.valueOf(milResult / (60 * 1000));
 		return result;
+	}
+
+	@Override
+	public Double diferenciaMinutosLocal(LocalDateTime fecha1, LocalDateTime fecha2) throws Throwable {
+		System.out.println("diferenciaMinutosLocal con fecha1: " + fecha1 + ", fecha2: " + fecha2);
+		Long minutos = ChronoUnit.MINUTES.between(fecha1, fecha2);
+		Double resultado = minutos.doubleValue();
+		return resultado;
 	}
 
 }

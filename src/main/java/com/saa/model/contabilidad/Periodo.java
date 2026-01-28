@@ -1,7 +1,7 @@
 package com.saa.model.contabilidad;
 
 import java.io.Serializable;
-import java.util.Date;
+import java.time.LocalDate;
 
 import com.saa.model.scp.Empresa;
 
@@ -113,14 +113,14 @@ public class Periodo implements Serializable {
 	 */
 	@Basic
 	@Column(name = "PRDOINCO")
-	private Date primerDia;
+	private LocalDate primerDia;
 	
 	/**
 	 * Fecha del último día del periodo
 	 */
 	@Basic
 	@Column(name = "PRDOFNN")
-	private Date ultimoDia;
+	private LocalDate ultimoDia;
 	
 	
 	/**
@@ -302,7 +302,7 @@ public class Periodo implements Serializable {
 	 * Devuelve el primer día del periodo 
 	 * @return	: primer dia
 	 */
-	public Date getPrimerDia() {
+	public LocalDate getPrimerDia() {
 		return primerDia;
 	}
 
@@ -310,7 +310,7 @@ public class Periodo implements Serializable {
 	 * Asigna el primer dia del mes
 	 * @param primerDia
 	 */
-	public void setPrimerDia(Date primerDia) {
+	public void setPrimerDia(LocalDate primerDia) {
 		this.primerDia = primerDia;
 	}
 
@@ -318,7 +318,7 @@ public class Periodo implements Serializable {
 	 * Devuelve el ultimo día del periodo
 	 * @return : ultimo dia
 	 */
-	public Date getUltimoDia() {
+	public LocalDate getUltimoDia() {
 		return ultimoDia;
 	}
 
@@ -326,7 +326,7 @@ public class Periodo implements Serializable {
 	 * Asigna el ultimo día del periodo
 	 * @param ultimoDia
 	 */
-	public void setUltimoDia(Date ultimoDia) {
+	public void setUltimoDia(LocalDate ultimoDia) {
 		this.ultimoDia = ultimoDia;
 	}
 	}

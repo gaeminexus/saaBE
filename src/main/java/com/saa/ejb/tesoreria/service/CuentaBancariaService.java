@@ -1,6 +1,6 @@
 package com.saa.ejb.tesoreria.service;
 
-import java.util.Date;
+import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.util.EntityService;
@@ -76,7 +76,7 @@ public interface CuentaBancariaService extends EntityService<CuentaBancaria>{
 	 * @return			: Saldo de la cuenta bancaria
 	 * @throws Throwable: Excepcion
 	 */
-	Double obtieneSaldoFecha(Long idCuenta, Date fecha) throws Throwable;	
+	Double obtieneSaldoFecha(Long idCuenta, LocalDate fecha) throws Throwable;	
 	
 	/**
 	 * Recupera los saldos de las cuentas de una empresa en un rango de fechas
@@ -89,5 +89,5 @@ public interface CuentaBancariaService extends EntityService<CuentaBancaria>{
 	 * @throws Throwable	: Excepcion
 	 */
 	List<CuentaBancaria> selectSaldoCuentasByFecha(Long idEmpresa, Object[] campos,
-		Date fechaDesde, Date fechaHasta, Long idBanco, Long idCuenta) throws Throwable;	
+		LocalDate fechaDesde, LocalDate fechaHasta, Long idBanco, Long idCuenta) throws Throwable;	
 }

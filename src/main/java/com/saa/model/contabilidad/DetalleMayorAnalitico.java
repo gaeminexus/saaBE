@@ -1,7 +1,7 @@
 package com.saa.model.contabilidad;
 
 import java.io.Serializable;
-import java.util.Date;
+import java.time.LocalDate;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
@@ -47,7 +47,7 @@ public class DetalleMayorAnalitico implements Serializable {
 	 */
 	@Basic
 	@Column(name = "DTMAFCHA")
-	private Date fechaAsiento;
+	private LocalDate fechaAsiento;
 	
 	/**
 	 * Número de asiento. numeroAsiento.
@@ -153,7 +153,7 @@ public class DetalleMayorAnalitico implements Serializable {
 	 * Devuelve fechaAsiento
 	 * @return fechaAsiento
 	 */
-	public Date getFechaAsiento() {
+	public LocalDate getFechaAsiento() {
 		return fechaAsiento;
 	}
 
@@ -161,7 +161,7 @@ public class DetalleMayorAnalitico implements Serializable {
 	 * Asigna fechaAsiento
 	 * @param fechaAsiento nuevo valor para fechaAsiento 
 	 */
-	public void setFechaAsiento(Date fechaAsiento) {
+	public void setFechaAsiento(LocalDate fechaAsiento) {
 		this.fechaAsiento = fechaAsiento;
 	}
 	

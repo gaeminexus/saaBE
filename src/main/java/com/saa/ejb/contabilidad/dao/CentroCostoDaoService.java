@@ -5,8 +5,9 @@
  */
 package com.saa.ejb.contabilidad.dao;
 
-import java.util.Date;
+import java.time.LocalDate;
 import java.util.List;
+
 import com.saa.basico.util.EntityDao;
 import com.saa.model.contabilidad.CentroCosto;
 
@@ -55,7 +56,7 @@ public interface CentroCostoDaoService extends EntityDao<CentroCosto> {
 	 * @return				: Movimientos
 	 * @throws Throwable	: Excepcions
 	 */
-	List<CentroCosto> selectByEmpresaCuentaFechaCentro(Long empresa, Date fechaInicio, Date fechaFin, 
+	List<CentroCosto> selectByEmpresaCuentaFechaCentro(Long empresa, LocalDate fechaInicio, LocalDate fechaFin, 
 			String cuentaInicio, String cuentaFin, String centroInicio,
 			String centroFin) throws Throwable;
 	

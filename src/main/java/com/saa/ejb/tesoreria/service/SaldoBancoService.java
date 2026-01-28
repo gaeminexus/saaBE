@@ -1,6 +1,7 @@
 package com.saa.ejb.tesoreria.service;
 
-import java.util.Date;
+import java.time.LocalDate;
+
 import com.saa.basico.util.EntityService;
 import com.saa.model.contabilidad.Periodo;
 import com.saa.model.tesoreria.CuentaBancaria;
@@ -23,7 +24,7 @@ public interface SaldoBancoService extends EntityService<SaldoBanco>{
 	 * @return					: Saldo de la cuenta bancaria a la fecha
 	 * @throws Throwable		: Excepcion
 	 */
-	Double saldoCuentaFecha(Long idCuentaBancaria, Date fecha)throws Throwable;
+	Double saldoCuentaFecha(Long idCuentaBancaria, LocalDate fecha)throws Throwable;
 	
 	/**
 	 * Recupera por id de cuenta bancaria y de periodo
@@ -41,7 +42,7 @@ public interface SaldoBancoService extends EntityService<SaldoBanco>{
 	 * @return			: Maximo saldo bancario
 	 * @throws Throwable: Excepcion
 	 */
-	SaldoBanco selectMaxCuentaMenorFecha(Long idCuenta, Date fecha) throws Throwable;
+	SaldoBanco selectMaxCuentaMenorFecha(Long idCuenta, LocalDate fecha) throws Throwable;
 	
 	/**
 	 * Inserta saldos de todas las cuentas bancarias con movimientos

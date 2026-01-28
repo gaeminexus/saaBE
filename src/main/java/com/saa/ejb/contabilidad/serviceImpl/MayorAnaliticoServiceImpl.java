@@ -1,7 +1,7 @@
 package com.saa.ejb.contabilidad.serviceImpl;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 
 import com.saa.basico.ejb.EmpresaService;
@@ -147,10 +147,10 @@ public class MayorAnaliticoServiceImpl implements MayorAnaliticoService {
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.MayorAnaliticoService#generaReporte(java.lang.Long, java.util.Date, java.util.Date, java.lang.String, java.lang.String, int, java.lang.String, java.lang.String, int)
+	 * @see com.compuseg.income.contabilidad.ejb.service.MayorAnaliticoService#generaReporte(java.lang.Long, java.util.LocalDate, java.util.LocalDate, java.lang.String, java.lang.String, int, java.lang.String, java.lang.String, int)
 	 */
-	public Long generaReporte(Long empresa, Date fechaInicio,
-			Date fechaFin, String cuentaInicio, String cuentaFin,
+	public Long generaReporte(Long empresa, LocalDate fechaInicio,
+			LocalDate fechaFin, String cuentaInicio, String cuentaFin,
 			int tipoDistribucion, String centroInicio,
 			String centroFin, int tipoAcumulacion) throws Throwable {
 		System.out.println("Ingresa al generaReporte de mayor analitico con empresa: " + empresa + 
@@ -187,10 +187,10 @@ public class MayorAnaliticoServiceImpl implements MayorAnaliticoService {
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.MayorAnaliticoService#insertaDetalleSinCentro(java.lang.Long, java.lang.Long, java.util.Date, java.util.Date)
+	 * @see com.compuseg.income.contabilidad.ejb.service.MayorAnaliticoService#insertaDetalleSinCentro(java.lang.Long, java.lang.Long, java.util.LocalDate, java.util.LocalDate)
 	 */
 	public void insertaDetalleSinCentro(Long secuenciaReporte,
-			Long empresa, Date fechaInicio, Date fechaFin)
+			Long empresa, LocalDate fechaInicio, LocalDate fechaFin)
 			throws Throwable {
 		System.out.println("Ingresa al insertaDetalleSinCentro de mayor analitico con secuencia = " + secuenciaReporte);
 		List<MayorAnalitico> registros = mayorAnaliticoDaoService.selectBySecuencia(secuenciaReporte);
@@ -203,17 +203,17 @@ public class MayorAnaliticoServiceImpl implements MayorAnaliticoService {
 
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.MayorAnaliticoService#insertaCabeceraPorDistribucion(java.lang.Long, java.lang.Long, java.util.Date, java.util.Date, java.lang.String, java.lang.String, java.lang.String, java.lang.String, int, int)
+	 * @see com.compuseg.income.contabilidad.ejb.service.MayorAnaliticoService#insertaCabeceraPorDistribucion(java.lang.Long, java.lang.Long, java.util.LocalDate, java.util.LocalDate, java.lang.String, java.lang.String, java.lang.String, java.lang.String, int, int)
 	 */
 	public void insertaCabeceraPorDistribucion(Long secuenciaReporte,
-			Long empresa, Date fechaInicio, Date fechaFin,
+			Long empresa, LocalDate fechaInicio, LocalDate fechaFin,
 			String cuentaInicio, String cuentaFin, String centroInicio,
 			String centroFin, int tipoAcumulacion, int tipoDistribucion) throws Throwable {
 		System.out.println("Ingresa al insertaCabeceraPorDistribucion de mayor analitico");
 		Double saldoAnteriorCuenta;
 		MayorAnalitico cabecera = new MayorAnalitico();
 		String observacionReporte = null;
-		Date diaAnterior = new Date();
+		LocalDate diaAnterior = LocalDate.now();
 		List<PlanCuenta> movimientos = new ArrayList<PlanCuenta>();
 		switch (tipoDistribucion) {				
 		case ReporteTipoDistribucion.SIN_CENTRO_COSTO:
@@ -242,7 +242,7 @@ public class MayorAnaliticoServiceImpl implements MayorAnaliticoService {
 				if(tipoAcumulacion == ReporteTipoAcumulacion.SIN_ACUMULAR){
 					saldoAnteriorCuenta = 0D;
 				}else{
-					diaAnterior = fechaService.sumaRestaDias(fechaInicio, -1);
+					diaAnterior = fechaService.sumaRestaDiasLocal(fechaInicio, -1);
 					saldoAnteriorCuenta = planCuentaService.saldoCuentaFechaEmpresa(empresa, registro.getCodigo(), diaAnterior);
 				}						
 				cabecera.setCodigo(0L);
@@ -259,10 +259,10 @@ public class MayorAnaliticoServiceImpl implements MayorAnaliticoService {
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.MayorAnaliticoService#insertaDetalleCentroPorPlan(java.lang.Long, java.lang.Long, java.util.Date, java.util.Date, java.lang.String, java.lang.String)
+	 * @see com.compuseg.income.contabilidad.ejb.service.MayorAnaliticoService#insertaDetalleCentroPorPlan(java.lang.Long, java.lang.Long, java.util.LocalDate, java.util.LocalDate, java.lang.String, java.lang.String)
 	 */
 	public void insertaDetalleCentroPorPlan(Long secuenciaReporte,
-			Long empresa, Date fechaInicio, Date fechaFin,
+			Long empresa, LocalDate fechaInicio, LocalDate fechaFin,
 			String centroInicio, String centroFin) throws Throwable {
 		System.out.println("Ingresa al insertaDetalleCentroPorPlan de mayor analitico con secuencia = " + secuenciaReporte +
 				 ", empresa: " + empresa + ",fechaInicio: " + fechaInicio + ", fechaFin: " + fechaFin +
@@ -277,10 +277,10 @@ public class MayorAnaliticoServiceImpl implements MayorAnaliticoService {
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.MayorAnaliticoService#insertaCabeceraPorCentro(java.lang.Long, java.lang.Long, java.util.Date, java.util.Date, java.lang.String, java.lang.String, java.lang.String, java.lang.String, int)
+	 * @see com.compuseg.income.contabilidad.ejb.service.MayorAnaliticoService#insertaCabeceraPorCentro(java.lang.Long, java.lang.Long, java.util.LocalDate, java.util.LocalDate, java.lang.String, java.lang.String, java.lang.String, java.lang.String, int)
 	 */
 	public void insertaCabeceraPorCentro(Long secuenciaReporte,
-			Long empresa, Date fechaInicio, Date fechaFin,
+			Long empresa, LocalDate fechaInicio, LocalDate fechaFin,
 			String cuentaInicio, String cuentaFin, String centroInicio,
 			String centroFin, int tipoAcumulacion) throws Throwable {
 		System.out.println("Ingresa al insertaCabeceraPorCentro de mayor analitico con secuencia = " + secuenciaReporte +
@@ -290,7 +290,7 @@ public class MayorAnaliticoServiceImpl implements MayorAnaliticoService {
 		Double saldoAnteriorCuenta;
 		MayorAnalitico cabecera = new MayorAnalitico();
 		String observacionReporte = null;
-		Date diaAnterior = new Date();
+		LocalDate diaAnterior = LocalDate.now();
 		List<CentroCosto> movimientos = new ArrayList<CentroCosto>();
 		
 		observacionReporte = "MAYOR ANALITICO PLAN CONTABLE POR CENTRO DE COSTO, EMPRESA = " +
@@ -306,7 +306,7 @@ public class MayorAnaliticoServiceImpl implements MayorAnaliticoService {
 				if(tipoAcumulacion == ReporteTipoAcumulacion.SIN_ACUMULAR){
 					saldoAnteriorCuenta = 0D;
 				}else{
-					diaAnterior = fechaService.sumaRestaDias(fechaInicio, -1);
+					diaAnterior = fechaService.sumaRestaDiasLocal(fechaInicio, -1);
 					saldoAnteriorCuenta = centroCostoService.saldoCentroFechaEmpresa(empresa, registro.getCodigo(), diaAnterior);
 				}						
 				cabecera.setCodigo(0L);
@@ -323,10 +323,10 @@ public class MayorAnaliticoServiceImpl implements MayorAnaliticoService {
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.MayorAnaliticoService#insertaDetallePlanPorCentro(java.lang.Long, java.lang.Long, java.util.Date, java.util.Date, java.lang.String, java.lang.String)
+	 * @see com.compuseg.income.contabilidad.ejb.service.MayorAnaliticoService#insertaDetallePlanPorCentro(java.lang.Long, java.lang.Long, java.util.LocalDate, java.util.LocalDate, java.lang.String, java.lang.String)
 	 */
 	public void insertaDetallePlanPorCentro(Long secuenciaReporte,
-			Long empresa, Date fechaInicio, Date fechaFin,
+			Long empresa, LocalDate fechaInicio, LocalDate fechaFin,
 			String cuentaInicio, String cuentaFin) throws Throwable {
 		System.out.println("Ingresa al insertaDetallePlanPorCentro de mayor analitico con secuencia = " + secuenciaReporte +
 				 ", empresa: " + empresa + ",fechaInicio: " + fechaInicio + ", fechaFin: " + fechaFin +
@@ -362,9 +362,9 @@ public class MayorAnaliticoServiceImpl implements MayorAnaliticoService {
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.MayorAnaliticoService#selectPeriodosMayorizadoNoMayorizado(java.lang.Long, java.util.Date, java.util.Date, java.util.Date, java.lang.Long)
+	 * @see com.compuseg.income.contabilidad.ejb.service.MayorAnaliticoService#selectPeriodosMayorizadoNoMayorizado(java.lang.Long, java.util.LocalDate, java.util.LocalDate, java.util.LocalDate, java.lang.Long)
 	 */
-	public Long selectPeriodosMayorizadoNoMayorizado(Long empresa, Date fechaInicio, Date fechaFin, Long estado1, Long estado2, Long estado3) throws Throwable {
+	public Long selectPeriodosMayorizadoNoMayorizado(Long empresa, LocalDate fechaInicio, LocalDate fechaFin, Long estado1, Long estado2, Long estado3) throws Throwable {
 		System.out.println("Ingresa al Metodo selectPeriodosMayorizadoNoMayorizado con empresa:" + empresa + ", fechaInicio" + fechaInicio +  
 				   																	   ", fechaFin" + fechaFin + ", estado1" + estado1 + ", estado2" + estado2 + ", estado3" + estado3);
 		Long periodos = mayorAnaliticoDaoService.selectPeriodosMayorizadoNoMayorizado(empresa, fechaInicio, fechaFin, estado1, estado2, estado3);

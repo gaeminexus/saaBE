@@ -2,7 +2,6 @@ package com.saa.ejb.contabilidad.serviceImpl;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 
 import com.saa.basico.ejb.DetalleRubroService;
@@ -579,20 +578,20 @@ public class PlanCuentaServiceImpl implements PlanCuentaService{
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.PlanCuentaService#selectMovimientoByEmpresaCuentaFecha(java.lang.Long, java.util.Date, java.util.Date, java.lang.String, java.lang.String)
+	 * @see com.compuseg.income.contabilidad.ejb.service.PlanCuentaService#selectMovimientoByEmpresaCuentaFecha(java.lang.Long, java.util.LocalDate, java.util.LocalDate, java.lang.String, java.lang.String)
 	 */
 	public List<PlanCuenta> selectMovimientoByEmpresaCuentaFecha(Long empresa,
-			Date fechaInicio, Date fechaFin, String cuentaInicio,
+			LocalDate fechaInicio, LocalDate fechaFin, String cuentaInicio,
 			String cuentaFin) throws Throwable {
 		System.out.println("Servicio selectMovimientoByEmpresaCuentaFecha con empresa: " + empresa + ", fechaInicio " + fechaInicio);
 		return planCuentaDaoService.selectMovimientoByEmpresaCuentaFecha(empresa, fechaInicio, fechaFin, cuentaInicio, cuentaFin);
 	}
 	
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.PlanCuentaService#selectByEmpresaCuentaFechaCentro(java.lang.Long, java.util.Date, java.util.Date, java.lang.String, java.lang.String, java.lang.String, java.lang.String)
+	 * @see com.compuseg.income.contabilidad.ejb.service.PlanCuentaService#selectByEmpresaCuentaFechaCentro(java.lang.Long, java.util.LocalDate, java.util.LocalDate, java.lang.String, java.lang.String, java.lang.String, java.lang.String)
 	 */
 	public List<PlanCuenta> selectByEmpresaCuentaFechaCentro(Long empresa,
-			Date fechaInicio, Date fechaFin, String cuentaInicio,
+			LocalDate fechaInicio, LocalDate fechaFin, String cuentaInicio,
 			String cuentaFin, String centroInicio, String centroFin)
 			throws Throwable {
 		System.out.println("Servicio selectMovimientoByEmpresaCuentaFecha con empresa: " + empresa + ", fechaInicio: " + fechaInicio +
@@ -605,15 +604,15 @@ public class PlanCuentaServiceImpl implements PlanCuentaService{
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.PlanCuentaService#saldoCuentaFechaEmpresa(java.lang.Long, java.lang.Long, java.util.Date)
+	 * @see com.compuseg.income.contabilidad.ejb.service.PlanCuentaService#saldoCuentaFechaEmpresa(java.lang.Long, java.lang.Long, java.util.LocalDate)
 	 */
 	public Double saldoCuentaFechaEmpresa(Long idEmpresa, Long idCuenta,
-			Date fechaInicio) throws Throwable {
+			LocalDate fechaInicio) throws Throwable {
 		System.out.println("Servicio saldoCuentaFechaEmpresa con idEmpresa: " + idEmpresa + ", idCuenta: " + idCuenta +
 				 ", fecha: " + fechaInicio);
 		
 		Double saldoAnteriorCuenta = 0D;
-		Date diaInicio = new Date();
+		LocalDate diaInicio = LocalDate.now();
 		DetalleMayorizacion detalleMayorizacionAnterior = null;
 		Periodo periodoAnteriorMayorizado = new Periodo();
 		Periodo periodoInicial = new Periodo();
@@ -634,7 +633,7 @@ public class PlanCuentaServiceImpl implements PlanCuentaService{
 			}else{
 				saldoAnteriorCuenta = detalleMayorizacionAnterior.getSaldoActual();	
 			}			
-			diaInicio = fechaService.sumaRestaDias(periodoAnteriorMayorizado.getUltimoDia(), 1);
+			diaInicio = fechaService.sumaRestaDiasLocal(periodoAnteriorMayorizado.getUltimoDia(), 1);
 		}	
 		saldoAnteriorCuenta += detalleAsientoService.recuperaSaldoCuentaEmpresaFechas(idEmpresa,
 					idCuenta, diaInicio, fechaInicio);

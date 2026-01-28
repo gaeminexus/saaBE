@@ -9,6 +9,7 @@
 package com.saa.model.tesoreria;
 
 import java.io.Serializable;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import com.saa.model.contabilidad.Asiento;
@@ -131,7 +132,7 @@ public class MovimientoBanco implements Serializable {
 	 */
 	@Basic
 	@Column(name = "MVCBFRGS")
-	private LocalDateTime fechaRegistro;
+	private LocalDate fechaRegistro;
 	
 	/**
 	 * Numero de asiento relacionado con el movimiento.
@@ -384,7 +385,7 @@ public class MovimientoBanco implements Serializable {
 	 * Devuelve fechaRegistro
 	 * @return fechaRegistro
 	 */
-	public LocalDateTime getFechaRegistro() {
+	public LocalDate getFechaRegistro() {
 		return fechaRegistro;
 	}
 
@@ -392,7 +393,7 @@ public class MovimientoBanco implements Serializable {
 	 * Asigna fechaRegistro
 	 * @param fechaRegistro Nuevo valor para fechaRegistro 
 	 */
-	public void setFechaRegistro(LocalDateTime fechaRegistro) {
+	public void setFechaRegistro(LocalDate fechaRegistro) {
 		this.fechaRegistro = fechaRegistro;
 	}
 	

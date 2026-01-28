@@ -1,6 +1,6 @@
 package com.saa.ejb.contabilidad.daoImpl;
 
-import java.util.Date;
+import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.util.IncomeException;
@@ -95,11 +95,11 @@ public class CentroCostoDaoServiceImpl extends EntityDaoImpl<CentroCosto>  imple
 	}	
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.dao.CentroCostoDaoService#selectByEmpresaCuentaFechaCentro(java.lang.Long, java.util.Date, java.util.Date, java.lang.String, java.lang.String, java.lang.String, java.lang.String)
+	 * @see com.compuseg.income.contabilidad.ejb.dao.CentroCostoDaoService#selectByEmpresaCuentaFechaCentro(java.lang.Long, java.util.LocalDate, java.util.LocalDate, java.lang.String, java.lang.String, java.lang.String, java.lang.String)
 	 */
 	@SuppressWarnings("unchecked")
 	public List<CentroCosto> selectByEmpresaCuentaFechaCentro(Long empresa,
-			Date fechaInicio, Date fechaFin, String cuentaInicio,
+			LocalDate fechaInicio, LocalDate fechaFin, String cuentaInicio,
 			String cuentaFin, String centroInicio, String centroFin)
 			throws Throwable {
 		System.out.println("Ingresa al Metodo selectMovimientoByEmpresaCuentaFecha con empresa: " + empresa + ", fechaInicio: " + fechaInicio +

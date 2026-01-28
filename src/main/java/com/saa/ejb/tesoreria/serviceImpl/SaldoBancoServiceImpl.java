@@ -8,11 +8,10 @@
  */
 package com.saa.ejb.tesoreria.serviceImpl;
 
-import java.text.SimpleDateFormat;
-import java.util.Calendar;
-import java.util.Date;
+import java.time.LocalDate;
 import java.util.List;
 
+import com.saa.basico.ejb.FechaService;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.contabilidad.service.PeriodoService;
@@ -45,6 +44,10 @@ public class SaldoBancoServiceImpl implements SaldoBancoService {
 
 	@EJB
 	private PeriodoService periodoService;
+	
+	@EJB
+	private FechaService fechaService;
+	
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.tesoreria.ejb.service.BancoExternoService#remove(java.util.List)
 	 */
@@ -116,17 +119,15 @@ public class SaldoBancoServiceImpl implements SaldoBancoService {
 	}
 	
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.tesoreria.ejb.service.SaldoBancoService#saldoCuentaFecha(java.lang.Long, java.util.Date)
+	 * @see com.compuseg.income.tesoreria.ejb.service.SaldoBancoService#saldoCuentaFecha(java.lang.Long, java.util.LocalDate)
 	 */
-	public Double saldoCuentaFecha(Long idCuentaBancaria, Date fecha) throws Throwable {
+	public Double saldoCuentaFecha(Long idCuentaBancaria, LocalDate fecha) throws Throwable {
 		System.out.println("Ingresa al metodo saldoCuentaFecha con id de cuenta bancaria: "+idCuentaBancaria+", fecha: "+fecha);
-		Calendar calendario = Calendar.getInstance();
-		calendario.setTime(fecha);
-		Long mes = Long.valueOf(calendario.get(Calendar.MONTH))+1;
-		Long anio = Long.valueOf(calendario.get(Calendar.YEAR));
+		Long mes = Long.valueOf(fecha.getMonthValue());
+		Long anio = Long.valueOf(fecha.getYear());
 		//busca la ultima mayorizacion anterior a la fecha inicial
 		Long idSaldo = saldoBancoDaoService.recuperaUltimoIdSaldo(idCuentaBancaria, mes, anio);
-		Date fechaInicio;
+		LocalDate fechaInicio;
 		double saldoAnterior = 0d;
 		if(idSaldo == 0){//si no hay mayorizacion anterior SUM = 0
 			saldoAnterior = 0d;
@@ -135,10 +136,9 @@ public class SaldoBancoServiceImpl implements SaldoBancoService {
 		else{
 			//Si hay mayorizacion SUM = Saldo final de ultima mayorizacion
 			SaldoBanco saldoBanco = selectById(idSaldo);
-			Calendar fechaActual = Calendar.getInstance();
-			SimpleDateFormat formato = new SimpleDateFormat("dd/MM/yyyy");
-			String fechaSaldo = fechaActual.getActualMaximum(Calendar.DAY_OF_MONTH)+"/"+saldoBanco.getNumeroMes()+"/"+saldoBanco.getNumeroAnio();
-			fechaInicio = formato.parse(fechaSaldo);
+			LocalDate fechaActual = LocalDate.now();
+			LocalDate fechaSaldo = fechaService.ultimoDiaMesAnioLocal(Long.valueOf(fechaActual.getMonthValue()), Long.valueOf(fechaActual.getYear()));
+			fechaInicio = fechaSaldo;
 			saldoAnterior = saldoBanco.getSaldoFinal();
 		}
 		//calcula los MOV movimientos desde la ultima mayorizacion hasta fecha inicio
@@ -160,9 +160,9 @@ public class SaldoBancoServiceImpl implements SaldoBancoService {
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.tesoreria.ejb.service.SaldoBancoService#selectMaxCuentaMenorFecha(java.lang.Long, java.util.Date)
+	 * @see com.compuseg.income.tesoreria.ejb.service.SaldoBancoService#selectMaxCuentaMenorFecha(java.lang.Long, java.util.LocalDate)
 	 */
-	public SaldoBanco selectMaxCuentaMenorFecha(Long idCuenta, Date fecha)
+	public SaldoBanco selectMaxCuentaMenorFecha(Long idCuenta, LocalDate fecha)
 			throws Throwable {
 		System.out.println("Ingresa al Metodo selectMaxCuentaMenorFecha con idCuenta: " + idCuenta 
 				 + ", fecha: " + fecha);

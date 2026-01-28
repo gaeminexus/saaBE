@@ -1,6 +1,6 @@
 package com.saa.ejb.contabilidad.service;
 
-import java.util.Date;
+import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.util.EntityService;
@@ -167,7 +167,7 @@ public interface CentroCostoService extends EntityService<CentroCosto> {
 	 * @return				: Movimientos
 	 * @throws Throwable	: Excepcions
 	 */
-	List<CentroCosto> selectByEmpresaCuentaFechaCentro(Long empresa, Date fechaInicio, Date fechaFin, 
+	List<CentroCosto> selectByEmpresaCuentaFechaCentro(Long empresa, LocalDate fechaInicio, LocalDate fechaFin, 
 			String cuentaInicio, String cuentaFin, String centroInicio,
 			String centroFin) throws Throwable;
 	
@@ -179,7 +179,7 @@ public interface CentroCostoService extends EntityService<CentroCosto> {
 	 * @return			: Saldo del centro a fecha
 	 * @throws Throwable: Excepcion
 	 */
-	Double saldoCentroFechaEmpresa(Long idEmpresa, Long idCentro, Date fechaInicio) throws Throwable;
+	Double saldoCentroFechaEmpresa(Long idEmpresa, Long idCentro, LocalDate fechaInicio) throws Throwable;
 	
 	/**
 	 * Verifica los registros asociados a un centro de costo sin tomar en cuenta los registros de mayorizacion

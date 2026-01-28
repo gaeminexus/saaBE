@@ -8,7 +8,7 @@
  */
 package com.saa.ejb.tesoreria.daoImpl;
 
-import java.util.Date;
+import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
@@ -70,10 +70,10 @@ public class MovimientoBancoDaoServiceImpl extends EntityDaoImpl<MovimientoBanco
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.tesoreria.ejb.dao.MovimientoBancoDaoService#obtieneFechaPrimerMovimiento(java.lang.Long)
 	 */
-	public String obtieneFechaPrimerMovimiento(Long idCuenta)throws Throwable {
+	public LocalDate obtieneFechaPrimerMovimiento(Long idCuenta)throws Throwable {
 		//004
 		System.out.println("Ingresa al metodo obtieneFechaMovimiento con Cuenta:" + idCuenta);
-		String fecha = "";
+		LocalDate fecha = null;
 		Query query = em.createQuery(" select   MIN(b.fechaRegistro) " +
 									 " from     MovimientoBanco b " +
 									 " where    b.cuentaBancaria.codigo = :idCuenta " +
@@ -81,14 +81,14 @@ public class MovimientoBancoDaoServiceImpl extends EntityDaoImpl<MovimientoBanco
 		query.setParameter("idCuenta",idCuenta);
 		query.setParameter("estado",Estado.ACTIVO);
 		if(query.getResultList().get(0) != null)
-			fecha = query.getResultList().get(0).toString();
+			fecha = (LocalDate)query.getResultList().get(0);
 		return fecha;
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.tesoreria.ejb.dao.MovimientoBancoDaoService#recuperaValorTrancitoCuentaBancaria(java.lang.Long, java.util.Date, java.util.Date)
+	 * @see com.compuseg.income.tesoreria.ejb.dao.MovimientoBancoDaoService#recuperaValorTrancitoCuentaBancaria(java.lang.Long, java.util.LocalDate, java.util.LocalDate)
 	 */
-	public Double recuperaValorTrancitoCuentaBancaria(Long idCuenta, Date fechaInicio, Date fechaFin)throws Throwable {
+	public Double recuperaValorTrancitoCuentaBancaria(Long idCuenta, LocalDate fechaInicio, LocalDate fechaFin)throws Throwable {
 		// 008
 		System.out.println("Ingresa al metodo recuperaValorTrancitoCuentaBancaria con :" + idCuenta + " Fecha Inicio " + fechaInicio + " FechaFin " + fechaFin );
 		Double valor = 0.0D;
@@ -201,9 +201,9 @@ public class MovimientoBancoDaoServiceImpl extends EntityDaoImpl<MovimientoBanco
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.tesoreria.ejb.dao.MovimientoBancoDaoService#selectSaldosCuentaByRangoFechas(java.lang.Long, java.util.Date, java.util.Date, java.lang.Long, java.lang.Long, java.lang.Long, java.lang.Long, java.lang.Long)
+	 * @see com.compuseg.income.tesoreria.ejb.dao.MovimientoBancoDaoService#selectSaldosCuentaByRangoFechas(java.lang.Long, java.util.LocalDate, java.util.LocalDate, java.lang.Long, java.lang.Long, java.lang.Long, java.lang.Long, java.lang.Long)
 	 */
-	public Long selectSaldosCuentaByRangoFechas(Long idCuenta,Date fechaInicio, Date fechaFin,
+	public Long selectSaldosCuentaByRangoFechas(Long idCuenta,LocalDate fechaInicio, LocalDate fechaFin,
 												Long codigoAlternoRubro, Long tipoMovimiento1, Long tipoMovimiento2,
 												Long tipoMovimiento3, Long estado) throws Throwable {
 		System.out.println("Ingresa al Metodo selectSaldosCuentaByRangoFechas con idCuenta : " + idCuenta + ", FechaInicio" + fechaInicio + ", FechaFin" + fechaFin +
@@ -226,10 +226,10 @@ public class MovimientoBancoDaoServiceImpl extends EntityDaoImpl<MovimientoBanco
 
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.tesoreria.ejb.dao.MovimientoBancoDaoService#cuentaByCuentaBancariaEstadoMenorAFecha(java.lang.Long, java.util.Date)
+	 * @see com.compuseg.income.tesoreria.ejb.dao.MovimientoBancoDaoService#cuentaByCuentaBancariaEstadoMenorAFecha(java.lang.Long, java.util.LocalDate)
 	 */
 	public Long cuentaByCuentaBancariaEstadoMenorAFecha(Long idCuentaBancaria,
-			Date fecha) throws Throwable {
+			LocalDate fecha) throws Throwable {
 		System.out.println(" Ingresa cuentaByCuentaBancariaEstadoMenorAFecha con idCuentaBancaria, : "
 				 + idCuentaBancaria +  ", fecha : " + fecha) ;
 		Query query = em.createQuery (" select   count(*)" +
@@ -247,11 +247,11 @@ public class MovimientoBancoDaoServiceImpl extends EntityDaoImpl<MovimientoBanco
 
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.tesoreria.ejb.dao.MovimientoBancoDaoService#selectSinConsByCuentaEstadoMenorAFecha(java.lang.Long, java.util.Date)
+	 * @see com.compuseg.income.tesoreria.ejb.dao.MovimientoBancoDaoService#selectSinConsByCuentaEstadoMenorAFecha(java.lang.Long, java.util.LocalDate)
 	 */
 	@SuppressWarnings("unchecked")
 	public List<MovimientoBanco>  selectSinConsByCuentaEstadoMenorAFecha(Long idCuentaBancaria,
-			Date fecha) throws Throwable {
+			LocalDate fecha) throws Throwable {
 		System.out.println(" Ingresa selectSinConsByCuentaEstadoMenorAFecha con idCuentaBancaria, : "
 				 + idCuentaBancaria +  ", fecha : " + fecha);
 		Query query = em.createQuery (" select b " +
@@ -269,9 +269,9 @@ public class MovimientoBancoDaoServiceImpl extends EntityDaoImpl<MovimientoBanco
 
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.tesoreria.ejb.dao.MovimientoBancoDaoService#updateEstadoFechaConciliaById(java.lang.Long, java.util.Date, com.compuseg.income.tesoreria.ejb.model.Conciliacion, int)
+	 * @see com.compuseg.income.tesoreria.ejb.dao.MovimientoBancoDaoService#updateEstadoFechaConciliaById(java.lang.Long, java.util.LocalDate, com.compuseg.income.tesoreria.ejb.model.Conciliacion, int)
 	 */
-	public void updateEstadoFechaConciliaById(Long idMovimiento, Date fechaConciliacion,
+	public void updateEstadoFechaConciliaById(Long idMovimiento, LocalDate fechaConciliacion,
 			Conciliacion conciliacion, int estado) throws Throwable {
 		System.out.println(" Ingresa updateEstadoFechaConciliaById con idMovimiento: " + idMovimiento
 				 + ",fechaConciliacion, : " + fechaConciliacion +  ", conciliacion: " 
@@ -290,10 +290,10 @@ public class MovimientoBancoDaoServiceImpl extends EntityDaoImpl<MovimientoBanco
 
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.tesoreria.ejb.dao.MovimientoBancoDaoService#selectSumValorCuentaRangoFechas3Origenes(java.lang.Long, java.util.Date, java.util.Date, int, int, int)
+	 * @see com.compuseg.income.tesoreria.ejb.dao.MovimientoBancoDaoService#selectSumValorCuentaRangoFechas3Origenes(java.lang.Long, java.util.LocalDate, java.util.LocalDate, int, int, int)
 	 */
 	public Double selectSumValorCuentaRangoFechas3Origenes(Long idCuenta,
-			Date fechaDesde, Date fechaHasta, int rubroOrigen1,
+			LocalDate fechaDesde, LocalDate fechaHasta, int rubroOrigen1,
 			int rubroOrigen2, int rubroOrigen3) throws Throwable {
 		System.out.println(" Ingresa selectSumValorCuentaRangoFechas3Origenes con idCuenta: " + idCuenta
 				 + ",fechaDesde, : " + fechaDesde +  ", fechaHasta: " 
@@ -350,10 +350,10 @@ public class MovimientoBancoDaoServiceImpl extends EntityDaoImpl<MovimientoBanco
 
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.tesoreria.ejb.dao.MovimientoBancoDaoService#selectRIED(java.lang.Long, java.util.Date, java.util.Date)
+	 * @see com.compuseg.income.tesoreria.ejb.dao.MovimientoBancoDaoService#selectRIED(java.lang.Long, java.util.LocalDate, java.util.LocalDate)
 	 */
 	@SuppressWarnings("unchecked")
-	public List<MovimientoBanco> selectRIED(Long idCuentaBancaria, Date fechaInicio, Date fechaFin) throws Throwable {
+	public List<MovimientoBanco> selectRIED(Long idCuentaBancaria, LocalDate fechaInicio, LocalDate fechaFin) throws Throwable {
 		System.out.println("Ingresa al metodo (selectRIED) idCuenta: [" + idCuentaBancaria+
 				"] fechaInicio: ["+fechaInicio+"] fechaFin: ["+fechaFin+"]");
 		String strQuery = " from     MovimientoBanco b " +

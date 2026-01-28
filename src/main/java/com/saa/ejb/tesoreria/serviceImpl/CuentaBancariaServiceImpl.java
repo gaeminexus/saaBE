@@ -1,7 +1,7 @@
 package com.saa.ejb.tesoreria.serviceImpl;
 
+import java.time.LocalDate;
 import java.util.Calendar;
-import java.util.Date;
 import java.util.List;
 
 import com.saa.basico.ejb.FechaService;
@@ -184,14 +184,14 @@ public class CuentaBancariaServiceImpl implements CuentaBancariaService{
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.tesoreria.ejb.service.CuentaBancariaService#obtieneSaldoFecha(java.lang.Long, java.util.Date)
+	 * @see com.compuseg.income.tesoreria.ejb.service.CuentaBancariaService#obtieneSaldoFecha(java.lang.Long, java.util.LocalDate)
 	 */
-	public Double obtieneSaldoFecha(Long idCuenta, Date fecha) throws Throwable {
+	public Double obtieneSaldoFecha(Long idCuenta, LocalDate fecha) throws Throwable {
 		System.out.println("Ingresa al metodo obtieneSaldoFecha con idCuenta: " + idCuenta
 				 + ", fecha: " + fecha);
 		Double ultimoSaldo = 0D;
 		Double sumaMovimientos = 0D;
-		Date fechaInicio = new Date();		
+		LocalDate fechaInicio = LocalDate.now();		
 		SaldoBanco saldo =  saldoBancoService.selectMaxCuentaMenorFecha(idCuenta, fecha);
 		if(saldo == null){
 			CuentaBancaria cuentaBancaria = cuentaBancariaDaoService.selectById(idCuenta, NombreEntidadesTesoreria.CUENTA_BANCARIA);
@@ -206,14 +206,14 @@ public class CuentaBancariaServiceImpl implements CuentaBancariaService{
 		}else{
 			ultimoSaldo = saldo.getSaldoFinal();
 			fechaInicio = fechaService.
-			        sumaRestaDias(fechaService.ultimoDiaMesAnio(saldo.getNumeroMes(), saldo.getNumeroAnio()),1);
+			        sumaRestaDiasLocal(fechaService.ultimoDiaMesAnioLocal(saldo.getNumeroMes(), saldo.getNumeroAnio()),1);
 		}
 		sumaMovimientos = movimientoBancoService.saldoCuentaRangoFechas(idCuenta, fechaInicio, fecha);
 		return ultimoSaldo + sumaMovimientos;
 	}
 
 	public List<CuentaBancaria> selectSaldoCuentasByFecha(Long idEmpresa, Object[] campos,
-			Date fechaDesde, Date fechaHasta, Long idBanco, Long idCuenta)
+			LocalDate fechaDesde, LocalDate fechaHasta, Long idBanco, Long idCuenta)
 			throws Throwable {
 		//CREA EL LISTADO CON LOS REGISTROS DE LA BUSQUEDA
 		List<CuentaBancaria> result = cuentaBancariaDaoService.selectSaldosByBancoCta(idEmpresa, idBanco, idCuenta);

@@ -9,7 +9,7 @@
 package com.saa.model.tesoreria;
 
 import java.io.Serializable;
-import java.time.LocalDateTime;
+import java.time.LocalDate;
 
 import com.saa.model.contabilidad.Asiento;
 import com.saa.model.contabilidad.Periodo;
@@ -127,7 +127,7 @@ public class DetalleConciliacion implements Serializable {
      */
     @Basic
     @Column(name = "DTCLFRGS")
-    private LocalDateTime fechaRegistro;
+    private LocalDate fechaRegistro;
     
     /**
      * Id del movimiento dependiendo del tipo. Ej: Ingreso, egreso, etc.
@@ -361,7 +361,7 @@ public class DetalleConciliacion implements Serializable {
      * Devuelve fechaRegistro
      * @return fechaRegistro
      */
-    public LocalDateTime getFechaRegistro() {
+    public LocalDate getFechaRegistro() {
         return fechaRegistro;
     }
 
@@ -369,7 +369,7 @@ public class DetalleConciliacion implements Serializable {
      * Asigna fechaRegistro
      * @param fechaRegistro Nuevo valor para fechaRegistro 
      */
-    public void setFechaRegistro(LocalDateTime fechaRegistro) {
+    public void setFechaRegistro(LocalDate fechaRegistro) {
         this.fechaRegistro = fechaRegistro;
     }
     

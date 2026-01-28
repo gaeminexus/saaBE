@@ -1,6 +1,6 @@
 package com.saa.ejb.contabilidad.service;
 
-import java.util.Date;
+import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.util.EntityService;
@@ -125,7 +125,7 @@ public interface DetalleAsientoService extends EntityService<DetalleAsiento> {
 	 * @return					: Debe y Haber
 	 * @throws Throwable		: Excepcions
 	 */
-	Double[] selectSumaDebeHaberByFechasEmpresaCuenta(Long empresa, Date fechaInicio, Date fechaFin, Long idCuentaContable )throws Throwable;
+	Double[] selectSumaDebeHaberByFechasEmpresaCuenta(Long empresa, LocalDate fechaInicio, LocalDate fechaFin, Long idCuentaContable )throws Throwable;
 	
 	/**
 	 * Obtiene los Movimientos de una Empresa dado Fecha Inicio
@@ -137,7 +137,7 @@ public interface DetalleAsientoService extends EntityService<DetalleAsiento> {
 	 * @return				: Movimientos
 	 * @throws Throwable	: Excepcions
 	 */
-	List<DetalleAsiento> selectMovimientoByEmpresaCuentaFecha(Long empresa, Date fechaInicio, Date fechaFin, String cuentaInicio, String cuentaFin)throws Throwable;
+	List<DetalleAsiento> selectMovimientoByEmpresaCuentaFecha(Long empresa, LocalDate fechaInicio, LocalDate fechaFin, String cuentaInicio, String cuentaFin)throws Throwable;
 	
 	/**
 	 * Recupera los registros de una empresa que se encuentren entre las fechas indicadas y que pertenezcan a una cuenta 
@@ -146,7 +146,7 @@ public interface DetalleAsientoService extends EntityService<DetalleAsiento> {
 	 * @return			: DetalleAsiento
 	 * @throws Throwable: Excepcions
 	 */
-	List<DetalleAsiento> selectByEmpresaCuentaFechas(Long empresa, Long idCuenta, Date fechaInicio, Date fechaFin) throws Throwable;
+	List<DetalleAsiento> selectByEmpresaCuentaFechas(Long empresa, Long idCuenta, LocalDate fechaInicio, LocalDate fechaFin) throws Throwable;
 	
 	/**
 	 * Obtiene los Movimientos de una Empresa dado un rango de fechas, cuentas, y centro de costo
@@ -160,7 +160,7 @@ public interface DetalleAsientoService extends EntityService<DetalleAsiento> {
 	 * @return				: Movimientos
 	 * @throws Throwable	: Excepcions
 	 */
-	List<DetalleAsiento> selectByEmpresaCuentaFechaCentro(Long empresa, Date fechaInicio, Date fechaFin, 
+	List<DetalleAsiento> selectByEmpresaCuentaFechaCentro(Long empresa, LocalDate fechaInicio, LocalDate fechaFin, 
 			String cuentaInicio, String cuentaFin, String centroInicio,
 			String centroFin) throws Throwable;
 	
@@ -172,7 +172,7 @@ public interface DetalleAsientoService extends EntityService<DetalleAsiento> {
 	 * @param fechaFin	: Fecha hasta la que se realiza la búsqueda
 	 * @return
 	 */
-	Double recuperaSaldoCuentaEmpresaFechas(Long idEmpresa, Long idCuenta, Date fechaDesde, Date fechaFin) throws Throwable;
+	Double recuperaSaldoCuentaEmpresaFechas(Long idEmpresa, Long idCuenta, LocalDate fechaDesde, LocalDate fechaFin) throws Throwable;
 	
 	/**
 	 * Obtiene los Movimientos de una Empresa dado un rango de fechas, cuentas, y centro de costo
@@ -184,7 +184,7 @@ public interface DetalleAsientoService extends EntityService<DetalleAsiento> {
 	 * @return				: Movimientos
 	 * @throws Throwable	: Excepcions
 	 */
-	List<DetalleAsiento> selectByCuentaFechasCentros(Long idCuenta, Date fechaInicio, Date fechaFin, 
+	List<DetalleAsiento> selectByCuentaFechasCentros(Long idCuenta, LocalDate fechaInicio, LocalDate fechaFin, 
 			String centroInicio, String centroFin) throws Throwable;
 	
 	/**
@@ -197,7 +197,7 @@ public interface DetalleAsientoService extends EntityService<DetalleAsiento> {
 	 * @return				: Movimientos
 	 * @throws Throwable	: Excepcions
 	 */
-	List<DetalleAsiento> selectByCentroFechasCuentas(Long idCentro, Date fechaInicio, Date fechaFin, 
+	List<DetalleAsiento> selectByCentroFechasCuentas(Long idCentro, LocalDate fechaInicio, LocalDate fechaFin, 
 			String cuentaInicio, String cuentaFin) throws Throwable;
 	
 	/**
@@ -208,7 +208,7 @@ public interface DetalleAsientoService extends EntityService<DetalleAsiento> {
 	 * @param fechaFin	: Fecha hasta la que se realiza la búsqueda
 	 * @return
 	 */
-	Double recuperaSaldoCentroEmpresaFechas(Long idEmpresa, Long idCentro, Date fechaDesde, Date fechaFin) throws Throwable;
+	Double recuperaSaldoCentroEmpresaFechas(Long idEmpresa, Long idCentro, LocalDate fechaDesde, LocalDate fechaFin) throws Throwable;
 	
 	/**
 	 * Obtiene el Debe y Haber de las Cuentas Contables filtradas por cuenta, empresa y centro de costo
@@ -221,7 +221,7 @@ public interface DetalleAsientoService extends EntityService<DetalleAsiento> {
 	 * @throws Throwable		: Excepcions
 	 */
 	Double[] selectSumaDebeHaberByFechasEmpresaCentroCuenta
-			(Long empresa, Date fechaInicio, Date fechaFin, Long idCuentaContable, Long idCentro)throws Throwable;
+			(Long empresa, LocalDate fechaInicio, LocalDate fechaFin, Long idCuentaContable, Long idCentro)throws Throwable;
 	
 	/**
 	 * Recupera la suma del debe y el haber de una cuenta en un centro hasta una fecha dada
@@ -233,7 +233,7 @@ public interface DetalleAsientoService extends EntityService<DetalleAsiento> {
 	 * @throws Throwable: Excepcion
 	 */
 	Double[] selectSumaDebeHaberAFechaByEmpresaCentroCuenta(Long idEmpresa, 
-			Long idCentro, Long idCuenta, Date fechaHasta) throws Throwable;	
+			Long idCentro, Long idCuenta, LocalDate fechaHasta) throws Throwable;	
 	
 	/**
 	 * Recupera el saldo de un centro de costo en una cuenta contable en una empresa hasta una fecha
@@ -244,5 +244,5 @@ public interface DetalleAsientoService extends EntityService<DetalleAsiento> {
 	 * @return
 	 */
 	Double recuperaSaldoCuentaCentroEmpresaAFecha(Long idEmpresa, 
-			Long idCentro, Long idCuenta, Date fechaHasta) throws Throwable;	
+			Long idCentro, Long idCuenta, LocalDate fechaHasta) throws Throwable;	
 }

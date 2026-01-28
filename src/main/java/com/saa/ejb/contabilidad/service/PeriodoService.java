@@ -1,7 +1,6 @@
 package com.saa.ejb.contabilidad.service;
 
 import java.time.LocalDate;
-import java.util.Date;
 import java.util.List;
 
 import com.saa.basico.util.EntityService;
@@ -137,7 +136,7 @@ public interface PeriodoService extends EntityService<Periodo> {
 	 * @return			: Id del Periodo
 	 * @throws Throwable: Excepcions
 	 */
-	Periodo obtieneMaximoPeriodoFechaEstado(Long empresa, int estado, Date fecha)throws Throwable;
+	Periodo obtieneMaximoPeriodoFechaEstado(Long empresa, int estado, LocalDate fecha)throws Throwable;
 	
 	/**
 	 * Proceso que devuelve el minimo periodo en cualquier estado anterior a una fecha
@@ -147,7 +146,7 @@ public interface PeriodoService extends EntityService<Periodo> {
 	 * @return			: Id del Periodo
 	 * @throws Throwable: Excepcions
 	 */
-	Periodo obtieneMinimoPeriodoFechaEstado(Long empresa, int estado, Date fecha)throws Throwable;
+	Periodo obtieneMinimoPeriodoFechaEstado(Long empresa, int estado, LocalDate fecha)throws Throwable;
 	
 	/**
 	 * Valida que un periodo se encuentre mayorizado
@@ -164,7 +163,7 @@ public interface PeriodoService extends EntityService<Periodo> {
 	 * @return				: Verdadero o Falso
 	 * @throws Throwable	: Excepcion
 	 */
-	boolean verificaPeriodoMayorizadoByFecha(Date fechaSistema, Long idEmpresa ) throws Throwable;
+	boolean verificaPeriodoMayorizadoByFecha(LocalDate fechaSistema, Long idEmpresa ) throws Throwable;
 	
 	/**
 	 * Verifica las condiciones de un periodo por fecha en una empresa

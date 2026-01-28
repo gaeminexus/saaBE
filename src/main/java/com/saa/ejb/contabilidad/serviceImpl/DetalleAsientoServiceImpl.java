@@ -1,6 +1,6 @@
 package com.saa.ejb.contabilidad.serviceImpl;
 
-import java.util.Date;
+import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
@@ -327,9 +327,9 @@ public class DetalleAsientoServiceImpl implements DetalleAsientoService{
 	}
 	
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.DetalleAsientoService#obtieneDebeHaberCuentaContable(java.lang.Long, java.util.Date, java.util.Date, java.lang.Long)
+	 * @see com.compuseg.income.contabilidad.ejb.service.DetalleAsientoService#obtieneDebeHaberCuentaContable(java.lang.Long, java.util.LocalDate, java.util.LocalDate, java.lang.Long)
 	 */
-	public Double[] selectSumaDebeHaberByFechasEmpresaCuenta(Long empresa, Date fechaInicio, Date fechaFin, Long idCuentaContable) throws Throwable {
+	public Double[] selectSumaDebeHaberByFechasEmpresaCuenta(Long empresa, LocalDate fechaInicio, LocalDate fechaFin, Long idCuentaContable) throws Throwable {
 		System.out.println("Ingresa al Metodo selectSumaDebeHaberByFechasEmpresaCuenta com empresa : " + empresa );
 		Double valorDebe = 0D;
 		Double valorHaber = 0D;
@@ -352,29 +352,29 @@ public class DetalleAsientoServiceImpl implements DetalleAsientoService{
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.DetalleAsientoService#selectMovimientoByEmpresaCuentaFecha(java.lang.Long, java.util.Date, java.util.Date, java.lang.String, java.lang.String)
+	 * @see com.compuseg.income.contabilidad.ejb.service.DetalleAsientoService#selectMovimientoByEmpresaCuentaFecha(java.lang.Long, java.util.LocalDate, java.util.LocalDate, java.lang.String, java.lang.String)
 	 */
-	public List<DetalleAsiento> selectMovimientoByEmpresaCuentaFecha(Long empresa, Date fechaInicio, Date fechaFin,
+	public List<DetalleAsiento> selectMovimientoByEmpresaCuentaFecha(Long empresa, LocalDate fechaInicio, LocalDate fechaFin,
 															   String cuentaInicio,String cuentaFin) throws Throwable {
 		System.out.println("Ingresa al Metodo selectMovimientoByEmpresaCuentaFecha con empresa: " + empresa + ", fechaInicio " + fechaInicio);
 		return detalleAsientoDaoService.selectMovimientoByEmpresaCuentaFecha(empresa, fechaInicio, fechaFin, cuentaInicio, cuentaFin);
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.DetalleAsientoService#selectByEmpresaCuentaFechas(java.lang.Long, java.lang.Long, java.util.Date, java.util.Date)
+	 * @see com.compuseg.income.contabilidad.ejb.service.DetalleAsientoService#selectByEmpresaCuentaFechas(java.lang.Long, java.lang.Long, java.util.LocalDate, java.util.LocalDate)
 	 */
 	public List<DetalleAsiento> selectByEmpresaCuentaFechas(Long empresa,
-			Long idCuenta, Date fechaInicio, Date fechaFin) throws Throwable {
+			Long idCuenta, LocalDate fechaInicio, LocalDate fechaFin) throws Throwable {
 		System.out.println("Ingresa al Metodo selectByEmpresaCuentaFechas con enpresa : " + empresa
 				 + ", cuenta = " + idCuenta + ", entre " + fechaInicio + " y " + fechaFin);
 		return detalleAsientoDaoService.selectByEmpresaCuentaFechas(empresa, idCuenta, fechaInicio, fechaFin);
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.DetalleAsientoService#selectByEmpresaCuentaFechaCentro(java.lang.Long, java.util.Date, java.util.Date, java.lang.String, java.lang.String, java.lang.String, java.lang.String)
+	 * @see com.compuseg.income.contabilidad.ejb.service.DetalleAsientoService#selectByEmpresaCuentaFechaCentro(java.lang.Long, java.util.LocalDate, java.util.LocalDate, java.lang.String, java.lang.String, java.lang.String, java.lang.String)
 	 */
 	public List<DetalleAsiento> selectByEmpresaCuentaFechaCentro(Long empresa,
-			Date fechaInicio, Date fechaFin, String cuentaInicio,
+			LocalDate fechaInicio, LocalDate fechaFin, String cuentaInicio,
 			String cuentaFin, String centroInicio, String centroFin)
 			throws Throwable {
 		System.out.println("Ingresa al Metodo selectByEmpresaCuentaFechaCentro con empresa: " + empresa + ", fechaInicio: " + fechaInicio +
@@ -387,10 +387,10 @@ public class DetalleAsientoServiceImpl implements DetalleAsientoService{
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.DetalleAsientoService#recuperaSaldoCuentaEmpresaFecha(java.lang.Long, java.lang.Long, java.util.Date)
+	 * @see com.compuseg.income.contabilidad.ejb.service.DetalleAsientoService#recuperaSaldoCuentaEmpresaFecha(java.lang.Long, java.lang.Long, java.util.LocalDate)
 	 */
 	public Double recuperaSaldoCuentaEmpresaFechas(Long idEmpresa,
-			Long idCuenta, Date fechaDesde, Date fechaFin) throws Throwable {
+			Long idCuenta, LocalDate fechaDesde, LocalDate fechaFin) throws Throwable {
 		System.out.println("Ingresa al metodo recuperaSaldoCuentaEmpresaFecha con idEmpresa: " 
 				 + idEmpresa + ", idCuenta: " + idCuenta + ", fechaDesde: " + fechaDesde +
 				 ", fechaFin : " + fechaFin);
@@ -415,10 +415,10 @@ public class DetalleAsientoServiceImpl implements DetalleAsientoService{
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.DetalleAsientoService#selectByCuentaFechasCentros(java.lang.Long, java.util.Date, java.util.Date, java.lang.String, java.lang.String)
+	 * @see com.compuseg.income.contabilidad.ejb.service.DetalleAsientoService#selectByCuentaFechasCentros(java.lang.Long, java.util.LocalDate, java.util.LocalDate, java.lang.String, java.lang.String)
 	 */
 	public List<DetalleAsiento> selectByCuentaFechasCentros(Long idCuenta,
-			Date fechaInicio, Date fechaFin, String centroInicio,
+			LocalDate fechaInicio, LocalDate fechaFin, String centroInicio,
 			String centroFin) throws Throwable {
 		System.out.println("Ingresa al Metodo selectByCuentaFechasCentros con idCuenta: " + idCuenta + ", fechaInicio: " + fechaInicio +
 				  ", fechaFin: " + fechaFin + ", centroInicio: " 
@@ -427,10 +427,10 @@ public class DetalleAsientoServiceImpl implements DetalleAsientoService{
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.DetalleAsientoService#selectByCentroFechasCuentas(java.lang.Long, java.util.Date, java.util.Date, java.lang.String, java.lang.String)
+	 * @see com.compuseg.income.contabilidad.ejb.service.DetalleAsientoService#selectByCentroFechasCuentas(java.lang.Long, java.util.LocalDate, java.util.LocalDate, java.lang.String, java.lang.String)
 	 */
 	public List<DetalleAsiento> selectByCentroFechasCuentas(Long idCentro,
-			Date fechaInicio, Date fechaFin, String cuentaInicio,
+			LocalDate fechaInicio, LocalDate fechaFin, String cuentaInicio,
 			String cuentaFin) throws Throwable {
 		System.out.println("Ingresa al Metodo selectByCentroFechasCuentas con idCentro: " + idCentro + ", fechaInicio: " + fechaInicio +
 				  ", fechaFin: " + fechaFin + ", cuentaInicio: " 
@@ -440,10 +440,10 @@ public class DetalleAsientoServiceImpl implements DetalleAsientoService{
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.DetalleAsientoService#recuperaSaldoCentroEmpresaFechas(java.lang.Long, java.lang.Long, java.util.Date, java.util.Date)
+	 * @see com.compuseg.income.contabilidad.ejb.service.DetalleAsientoService#recuperaSaldoCentroEmpresaFechas(java.lang.Long, java.lang.Long, java.util.LocalDate, java.util.LocalDate)
 	 */
 	public Double recuperaSaldoCentroEmpresaFechas(Long idEmpresa,
-			Long idCentro, Date fechaDesde, Date fechaFin) throws Throwable {
+			Long idCentro, LocalDate fechaDesde, LocalDate fechaFin) throws Throwable {
 		System.out.println("Ingresa al metodo recuperaSaldoCentroEmpresaFechas con idEmpresa: " 
 				 + idEmpresa + ", idCentro: " + idCentro + ", fechaDesde: " + fechaDesde +
 				 ", fechaFin : " + fechaFin);
@@ -468,10 +468,10 @@ public class DetalleAsientoServiceImpl implements DetalleAsientoService{
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.DetalleAsientoService#selectSumaDebeHaberByFechasEmpresaCentroCuenta(java.lang.Long, java.util.Date, java.util.Date, java.lang.Long, java.lang.Long)
+	 * @see com.compuseg.income.contabilidad.ejb.service.DetalleAsientoService#selectSumaDebeHaberByFechasEmpresaCentroCuenta(java.lang.Long, java.util.LocalDate, java.util.LocalDate, java.lang.Long, java.lang.Long)
 	 */
 	public Double[] selectSumaDebeHaberByFechasEmpresaCentroCuenta(
-			Long empresa, Date fechaInicio, Date fechaFin,
+			Long empresa, LocalDate fechaInicio, LocalDate fechaFin,
 			Long idCuentaContable, Long idCentro) throws Throwable {
 		System.out.println("Ingresa al Metodo selectSumaDebeHaberByFechasEmpresaCentroCuenta com empresa : " + empresa );
 		Double valorDebe = 0D;
@@ -496,10 +496,10 @@ public class DetalleAsientoServiceImpl implements DetalleAsientoService{
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.DetalleAsientoService#selectSumaDebeHaberAFechaByEmpresaCentroCuenta(java.lang.Long, java.lang.Long, java.lang.Long, java.util.Date)
+	 * @see com.compuseg.income.contabilidad.ejb.service.DetalleAsientoService#selectSumaDebeHaberAFechaByEmpresaCentroCuenta(java.lang.Long, java.lang.Long, java.lang.Long, java.util.LocalDate)
 	 */
 	public Double[] selectSumaDebeHaberAFechaByEmpresaCentroCuenta(
-			Long idEmpresa, Long idCentro, Long idCuenta, Date fechaHasta)
+			Long idEmpresa, Long idCentro, Long idCuenta, LocalDate fechaHasta)
 			throws Throwable {
 		System.out.println("Ingresa al Metodo selectSumaDebeHaberAFechaByEmpresaCentroCuenta com empresa : " + idEmpresa);
 		Double valorDebe = 0D;
@@ -524,10 +524,10 @@ public class DetalleAsientoServiceImpl implements DetalleAsientoService{
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.DetalleAsientoService#recuperaSaldoCuentaCentroEmpresaAFecha(java.lang.Long, java.lang.Long, java.lang.Long, java.util.Date)
+	 * @see com.compuseg.income.contabilidad.ejb.service.DetalleAsientoService#recuperaSaldoCuentaCentroEmpresaAFecha(java.lang.Long, java.lang.Long, java.lang.Long, java.util.LocalDate)
 	 */
 	public Double recuperaSaldoCuentaCentroEmpresaAFecha(Long idEmpresa,
-			Long idCentro, Long idCuenta, Date fechaHasta) throws Throwable {
+			Long idCentro, Long idCuenta, LocalDate fechaHasta) throws Throwable {
 		System.out.println("Ingresa al metodo recuperaSaldoCuentaCentroEmpresaAFecha con idEmpresa: " 
 				 + idEmpresa + ", idCentro: " + idCentro + ", idCuenta: " + idCuenta +
 				 ", fechaHasta : " + fechaHasta);

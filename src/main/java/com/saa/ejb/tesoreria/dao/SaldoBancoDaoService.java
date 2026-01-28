@@ -8,7 +8,7 @@
  */
 package com.saa.ejb.tesoreria.dao;
 
-import java.util.Date;
+import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.util.EntityDao;
@@ -69,6 +69,6 @@ public interface SaldoBancoDaoService extends EntityDao<SaldoBanco> {
 	 * @return			: Maximo saldo bancario
 	 * @throws Throwable: Excepcion
 	 */
-	SaldoBanco selectMaxCuentaMenorFecha(Long idCuenta, Date fecha) throws Throwable;
+	SaldoBanco selectMaxCuentaMenorFecha(Long idCuenta, LocalDate fecha) throws Throwable;
 	
 }

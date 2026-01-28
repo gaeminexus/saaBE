@@ -1,7 +1,7 @@
 package com.saa.ejb.tesoreria.serviceImpl;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.Date;
 import java.util.List;
 
 import com.saa.basico.ejb.EmpresaService;
@@ -155,7 +155,7 @@ public class ConciliacionServiceImpl implements ConciliacionService {
 		boolean permite = true;
 		// LocalDateTime primerDiaPeriodo = LocalDateTime.now();
 		Long registrosAnteriores = 0L;
-		Date primerDiaPeriodo = new Date();
+		LocalDate primerDiaPeriodo = LocalDate.now();
 		/*LocalDateTime ldt = LocalDateTime.ofInstant(primerDiaPeriodo.toInstant(), ZoneId.systemDefault());
 		primerDiaPeriodo = Date.from(ldt.atZone(ZoneId.systemDefault()).toInstant());*/
 		permite = periodoService.verificaPeriodoMayorizado(idPeriodo);
@@ -163,7 +163,7 @@ public class ConciliacionServiceImpl implements ConciliacionService {
 			throw new IncomeException("EL PERIODO NO SE ENCUENTRA MAYORIZADO POR LO TANTO NO SE PUEDE CONCILIAR");
 		}else{
 			validaConciliacionPeriodo(idCuentaBancaria, idPeriodo, TipoPeriodoValidacionConciliacion.PERIODO_ACTUAL);
-			primerDiaPeriodo = fechaService.primerDiaMesAnio(mes, anio);
+			primerDiaPeriodo = fechaService.primerDiaMesAnioLocal(mes, anio);
 			registrosAnteriores = movimientoBancoService.
 						cuentaByCuentaBancariaEstadoMenorAFecha(idCuentaBancaria, primerDiaPeriodo);
 			if(registrosAnteriores > 0){

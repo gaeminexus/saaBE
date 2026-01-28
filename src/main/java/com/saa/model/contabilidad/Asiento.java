@@ -1,6 +1,7 @@
 package com.saa.model.contabilidad;
 
 import java.io.Serializable;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import com.saa.model.scp.Empresa;
@@ -56,7 +57,7 @@ public class Asiento implements Serializable {
 	 */
 	@Basic
 	@Column(name = "ASNTFCHA")
-	private LocalDateTime fechaAsiento;
+	private LocalDate fechaAsiento;
 	
 	/**
 	 * número de asiento contable.
@@ -213,7 +214,7 @@ public class Asiento implements Serializable {
 	 * Devuelve fechaAsiento
 	 * @return fechaAsiento.
 	 */
-	public LocalDateTime getFechaAsiento() {
+	public LocalDate getFechaAsiento() {
 		return fechaAsiento;
 	}
 
@@ -221,7 +222,7 @@ public class Asiento implements Serializable {
 	 * Asigna fechaAsiento
 	 * @param fechaAsiento nuevo valor para fechaAsiento. 
 	 */
-	public void setFechaAsiento(LocalDateTime fechaAsiento) {
+	public void setFechaAsiento(LocalDate fechaAsiento) {
 		this.fechaAsiento = fechaAsiento;
 	}
 	

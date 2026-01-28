@@ -1,6 +1,6 @@
 package com.saa.ejb.contabilidad.service;
 
-import java.util.Date;
+import java.time.LocalDate;
 
 import com.saa.basico.util.EntityService;
 import com.saa.model.contabilidad.MayorAnalitico;
@@ -32,7 +32,7 @@ public interface MayorAnaliticoService extends EntityService<MayorAnalitico> {
 	  * @param tipoAcumulacion	: Tipo de acumulación. 1 = Acumulado, 0 = Sin acumular. Saldo anterior = 0
 	  * @return					: Id de ejecución del reporte con el que se realiza la búsqueda en las entidades
 	  */
-	 Long generaReporte(Long empresa, Date fechaInicio, Date fechaFin, 
+	 Long generaReporte(Long empresa, LocalDate fechaInicio, LocalDate fechaFin, 
 			 			String cuentaInicio, String cuentaFin, int tipoDistribucion, 
 			 			String centroInicio, String centroFin, int tipoAcumulacion) throws Throwable;
 	  
@@ -44,8 +44,8 @@ public interface MayorAnaliticoService extends EntityService<MayorAnalitico> {
 	  * @param fechaFin			: Fecha de fin de reporte
 	  * @throws Throwable		: Exception
 	  */
-	void insertaDetalleSinCentro(Long secuenciaReporte, Long empresa, Date fechaInicio, 
-			Date fechaFin) throws Throwable;
+	void insertaDetalleSinCentro(Long secuenciaReporte, Long empresa, LocalDate fechaInicio, 
+			LocalDate fechaFin) throws Throwable;
 	
 	/**
 	  * Ingresa la cabecera del mayor analitico cuando es centro de costo por plan de cuenta
@@ -61,8 +61,8 @@ public interface MayorAnaliticoService extends EntityService<MayorAnalitico> {
 	  * @param tipoDistribucion	: Indica el tipo de distribución. 0 = Sin centroCosto, 1 = Centro de costo por cuenta contable. 2 = Cta contable por centro de costo
 	  * @throws Throwable		: Exception
 	  */
-	void insertaCabeceraPorDistribucion(Long secuenciaReporte, Long empresa, Date fechaInicio, 
-								  Date fechaFin, String cuentaInicio, String cuentaFin, 
+	void insertaCabeceraPorDistribucion(Long secuenciaReporte, Long empresa, LocalDate fechaInicio, 
+								  LocalDate fechaFin, String cuentaInicio, String cuentaFin, 
 			  					  String centroInicio, String centroFin, int tipoAcumulacion,
 			  					  int tipoDistribucion) throws Throwable;
 	
@@ -76,8 +76,8 @@ public interface MayorAnaliticoService extends EntityService<MayorAnalitico> {
 	  * @param centroFin		: Centro de costo fin del reporte
 	  * @throws Throwable		: Exception
 	  */
-	void insertaDetalleCentroPorPlan(Long secuenciaReporte, Long empresa, Date fechaInicio, 
-			Date fechaFin, String centroInicio, String centroFin) throws Throwable;
+	void insertaDetalleCentroPorPlan(Long secuenciaReporte, Long empresa, LocalDate fechaInicio, 
+			LocalDate fechaFin, String centroInicio, String centroFin) throws Throwable;
 	
 	/**
 	  * Ingresa la cabecera del mayor analitico cuando es centro de costo por plan de cuenta
@@ -92,8 +92,8 @@ public interface MayorAnaliticoService extends EntityService<MayorAnalitico> {
 	  * @param tipoAcumulacion	: Tipo de acumulación. 1 = Acumulado, 0 = Sin acumular. Saldo anterior = 0
 	  * @throws Throwable		: Exception
 	  */
-	void insertaCabeceraPorCentro(Long secuenciaReporte, Long empresa, Date fechaInicio, 
-								  Date fechaFin, String cuentaInicio, String cuentaFin, 
+	void insertaCabeceraPorCentro(Long secuenciaReporte, Long empresa, LocalDate fechaInicio, 
+								  LocalDate fechaFin, String cuentaInicio, String cuentaFin, 
 			  					  String centroInicio, String centroFin, int tipoAcumulacion) throws Throwable;
 	
 	/**
@@ -106,8 +106,8 @@ public interface MayorAnaliticoService extends EntityService<MayorAnalitico> {
 	  * @param cuentaFin		: Cuenta contable fin del reporte
 	  * @throws Throwable		: Exception
 	  */
-	void insertaDetallePlanPorCentro(Long secuenciaReporte, Long empresa, Date fechaInicio, 
-			Date fechaFin, String cuentaInicio, String cuentaFin) throws Throwable;
+	void insertaDetallePlanPorCentro(Long secuenciaReporte, Long empresa, LocalDate fechaInicio, 
+			LocalDate fechaFin, String cuentaInicio, String cuentaFin) throws Throwable;
 	
 	/**
 	 * Elimina los registros de mayor analitico una vez impreso
@@ -126,6 +126,6 @@ public interface MayorAnaliticoService extends EntityService<MayorAnalitico> {
 	 * @return				: Conteo 
 	 * @throws Throwable	: Excepciones
 	 */
-	Long selectPeriodosMayorizadoNoMayorizado(Long empresa, Date fechaInicio, Date fechaFin, Long estado1, Long estado2, Long estado3)throws Throwable;
+	Long selectPeriodosMayorizadoNoMayorizado(Long empresa, LocalDate fechaInicio, LocalDate fechaFin, Long estado1, Long estado2, Long estado3)throws Throwable;
 
 }

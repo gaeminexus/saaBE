@@ -1,6 +1,6 @@
 package com.saa.ejb.contabilidad.service;
 
-import java.util.Date;
+import java.time.LocalDate;
 
 import com.saa.basico.util.EntityService;
 import com.saa.model.contabilidad.TempReportes;
@@ -45,7 +45,7 @@ public interface TempReportesService extends EntityService<TempReportes>  {
 	 * @param acumulacion	: 1 Acumulacion, 0 sin acumulacion 
 	 * @throws Throwable	: Excepcions
 	 */
-	void actualizaDebeHaberMovimiento(Long empresa, Date fechaInicio, Date fechaFin, Long idEjecucion
+	void actualizaDebeHaberMovimiento(Long empresa, LocalDate fechaInicio, LocalDate fechaFin, Long idEjecucion
 			  , int acumulacion) throws Throwable;
 	
 	/**
@@ -65,7 +65,7 @@ public interface TempReportesService extends EntityService<TempReportes>  {
 	 * @return				: Id de Ejecucion 
 	 * @throws Throwable	: Excepcions
 	 */
-	Long reporteRangoFecha (Date fechaFin, Date fechaInicio, Long empresa, Long codigoAlterno, int acumulacion) throws Throwable;
+	Long reporteRangoFecha (LocalDate fechaFin, LocalDate fechaInicio, Long empresa, Long codigoAlterno, int acumulacion) throws Throwable;
 
 	/**
 	 * Metodo para copiar Plan desde la Parametrizacion 
@@ -86,7 +86,7 @@ public interface TempReportesService extends EntityService<TempReportes>  {
 	 * @return				: Id de Ejecucion 
 	 * @throws Throwable	: Excepcions
 	 */
-	Long reporteCentroRangoFecha (Date fechaFin, Date fechaInicio, Long empresa, Long codigoAlterno, int acumulacion) throws Throwable;
+	Long reporteCentroRangoFecha (LocalDate fechaFin, LocalDate fechaInicio, Long empresa, Long codigoAlterno, int acumulacion) throws Throwable;
 	
 	/**
 	 * Metodo para copiar Plan con datos de centro de costo desde la Parametrizacion 
@@ -116,7 +116,7 @@ public interface TempReportesService extends EntityService<TempReportes>  {
 	 * @param acumulacion	: 1 Acumulacion, 0 sin acumulacion 
 	 * @throws Throwable	: Excepcions
 	 */
-	void actualizaDebeHaberMovimientoCentro(Long empresa, Date fechaInicio, Date fechaFin, Long idEjecucion
+	void actualizaDebeHaberMovimientoCentro(Long empresa, LocalDate fechaInicio, LocalDate fechaFin, Long idEjecucion
 			  , int acumulacion) throws Throwable;
 
 	/**
@@ -136,7 +136,7 @@ public interface TempReportesService extends EntityService<TempReportes>  {
 	 * @return				: Id de Ejecucion 
 	 * @throws Throwable	: Excepcions
 	 */
-	Long reportePlanCentroRangoFecha (Date fechaFin, Date fechaInicio, Long empresa, Long codigoAlterno, int acumulacion) throws Throwable;
+	Long reportePlanCentroRangoFecha (LocalDate fechaFin, LocalDate fechaInicio, Long empresa, Long codigoAlterno, int acumulacion) throws Throwable;
 	
 	/**
 	 * Metodo para copiar centro de costo desde la Parametrizacion para el reporte distribuido de Plan de cuentas por centro de costo
@@ -166,7 +166,7 @@ public interface TempReportesService extends EntityService<TempReportes>  {
 	 * @param acumulacion	: 1 Acumulacion, 0 sin acumulacion 
 	 * @throws Throwable	: Excepcions
 	 */
-	void actualizaDebeHaberMovimientoPlanByCentro(Long empresa, Date fechaInicio, Date fechaFin, Long idEjecucion
+	void actualizaDebeHaberMovimientoPlanByCentro(Long empresa, LocalDate fechaInicio, LocalDate fechaFin, Long idEjecucion
 			  , int acumulacion) throws Throwable;
 	
 	/**

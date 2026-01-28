@@ -1,6 +1,6 @@
 package com.saa.ejb.tesoreria.serviceImpl;
 
-import java.util.Date;
+import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.ejb.FechaService;
@@ -105,8 +105,8 @@ public class DetalleConciliacionServiceImpl implements DetalleConciliacionServic
 			throws Throwable {
 		System.out.println("Ingresa al insertaDetalleConciliacion con id: " + conciliacion.getCodigo());		
 		Long cuentaBancaria = conciliacion.getCuentaBancaria().getCodigo();
-		Date ultimoDiaPeriodo = fechaService.ultimoDiaMesAnio(mes, anio);
-		Date fechaActual = new Date();
+		LocalDate ultimoDiaPeriodo = fechaService.ultimoDiaMesAnioLocal(mes, anio);
+		LocalDate fechaActual = LocalDate.now();
 		DetalleConciliacion detalle = new DetalleConciliacion();
 		List<MovimientoBanco> listadoMovimientos = movimientoBancoService.
 									selectSinConsByCuentaEstadoMenorAFecha(cuentaBancaria, ultimoDiaPeriodo);

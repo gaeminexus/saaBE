@@ -8,7 +8,7 @@
  */
 package com.saa.ejb.tesoreria.dao;
 
-import java.util.Date;
+import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.util.EntityDao;
@@ -31,7 +31,7 @@ public interface MovimientoBancoDaoService extends EntityDao<MovimientoBanco>{
 	 * @return				: Fecha del Primer Movimiento
 	 * @throws Throwable	: Exepcions
 	 */
-	 String obtieneFechaPrimerMovimiento (Long idCuenta) throws Throwable; 
+	LocalDate obtieneFechaPrimerMovimiento (Long idCuenta) throws Throwable; 
 	
 	/**
 	 * Metodo para Recuperar los movimientos en transito de la cuenta bancaria en rango de fecha
@@ -41,7 +41,7 @@ public interface MovimientoBancoDaoService extends EntityDao<MovimientoBanco>{
 	 * @return					: Movimientos
 	 * @throws Throwable		: Exepciones
 	 */
-	 Double recuperaValorTrancitoCuentaBancaria(Long idCuenta, Date fechaInicio, Date fechaFin)throws Throwable;
+	 Double recuperaValorTrancitoCuentaBancaria(Long idCuenta, LocalDate fechaInicio, LocalDate fechaFin)throws Throwable;
 	
 	/**
 	 * Recupera la lista de movimientos bancarios por asiento 
@@ -100,7 +100,7 @@ public interface MovimientoBancoDaoService extends EntityDao<MovimientoBanco>{
 	 * @return					: Saldos de Cuentas
 	 * @throws Throwable		: Excepcions
 	 */
-	Long selectSaldosCuentaByRangoFechas(Long idCuenta, Date fechaInicio, Date fechaFin, 
+	Long selectSaldosCuentaByRangoFechas(Long idCuenta, LocalDate fechaInicio, LocalDate fechaFin, 
 										 Long codigoAlternoRubro, Long tipoMovimiento1, Long tipoMovimiento2, 
 										 Long tipoMovimiento3, Long estado)throws Throwable;
 	
@@ -111,7 +111,7 @@ public interface MovimientoBancoDaoService extends EntityDao<MovimientoBanco>{
 	 * @return					: Numero de registros encontrados
 	 * @throws Throwable		: Excepcions
 	 */
-	 Long cuentaByCuentaBancariaEstadoMenorAFecha(Long idCuentaBancaria, Date fecha) throws Throwable;
+	 Long cuentaByCuentaBancariaEstadoMenorAFecha(Long idCuentaBancaria, LocalDate fecha) throws Throwable;
 	 
 	 /**
 	 * Recupera registros para conciliar 
@@ -121,7 +121,7 @@ public interface MovimientoBancoDaoService extends EntityDao<MovimientoBanco>{
 	 * @throws Throwable		: Excepcions
 	 */
 	 List<MovimientoBanco> selectSinConsByCuentaEstadoMenorAFecha
-	 					(Long idCuentaBancaria, Date fecha) throws Throwable;
+	 					(Long idCuentaBancaria, LocalDate fecha) throws Throwable;
 	 
 	 /**
 	  * Actualiza el estado, fecha de conciliacion y id de conciliacion
@@ -131,7 +131,7 @@ public interface MovimientoBancoDaoService extends EntityDao<MovimientoBanco>{
 	 * @param estado			: Estado del movimiento
 	 * @throws Throwable		: Excepcion
 	 */
-	void updateEstadoFechaConciliaById(Long idMovimiento, Date fechaConciliacion, 
+	void updateEstadoFechaConciliaById(Long idMovimiento, LocalDate fechaConciliacion, 
 									   Conciliacion conciliacion, int estado) throws Throwable;
 	
 	/**
@@ -145,8 +145,8 @@ public interface MovimientoBancoDaoService extends EntityDao<MovimientoBanco>{
 	 * @return			: Suma de valores
 	 * @throws Throwable: Excepcion
 	 */
-	Double selectSumValorCuentaRangoFechas3Origenes(Long idCuenta, Date fechaDesde, 
-					Date fechaHasta, int rubroOrigen1, int rubroOrigen2,
+	Double selectSumValorCuentaRangoFechas3Origenes(Long idCuenta, LocalDate fechaDesde, 
+					LocalDate fechaHasta, int rubroOrigen1, int rubroOrigen2,
 					int rubroOrigen3) throws Throwable;
 	
     /**
@@ -169,7 +169,7 @@ public interface MovimientoBancoDaoService extends EntityDao<MovimientoBanco>{
 	 * @return					: Arreglo de objetos
 	 * @throws Throwable		: Excepcion
 	 */
-	List<MovimientoBanco> selectRIED(Long idCuentaBancaria, Date fechaInicio, Date fechaFin) throws Throwable;
+	List<MovimientoBanco> selectRIED(Long idCuentaBancaria, LocalDate fechaInicio, LocalDate fechaFin) throws Throwable;
 	
 	/**
 	 * Actualiza el tipo de movimiento y los datos de conciliacion y fecha por el id de conciliacion y el tipo de movimiento 

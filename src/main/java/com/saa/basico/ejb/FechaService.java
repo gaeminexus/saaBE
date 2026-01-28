@@ -12,6 +12,7 @@
 package com.saa.basico.ejb;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Date;
 import java.util.List;
 
@@ -36,6 +37,17 @@ public interface FechaService {
 	 * @throws Throwable: Excepcion
 	 */
 	Date sumaRestaDias(Date fecha, int numeroDias) throws Throwable;
+
+	/**
+	 * Suma o resta dias a una fecha dada usando LocalDate
+	 * 
+	 * @param fecha       : Fecha de la que se desea sumar o restar dias
+	 * @param numeroDias: Numero de dias a sumar o restar a la fecha. En caso de
+	 *                    resta enviar numero negativo
+	 * @return : Fecha sumada o restada los dias indicados
+	 * @throws Throwable: Excepcion
+	 */
+	LocalDate sumaRestaDiasLocal(LocalDate fecha, int numeroDias) throws Throwable;
 
 	/**
 	 * Recupera el ultimo d�a del mes de un per�odo con el mes y anio
@@ -87,6 +99,15 @@ public interface FechaService {
 	Date primerDiaSemana(Date fecha) throws Throwable;
 
 	/**
+	 * Recupera el primer d�a de la semana de la fecha dada usando LocalDate
+	 * 
+	 * @param fecha : Fecha de la que se desea obtener el dato
+	 * @return : Primer dia de la semana
+	 * @throws Throwable: Excepcion
+	 */
+	LocalDate primerDiaSemanaLocal(LocalDate fecha) throws Throwable;
+
+	/**
 	 * Recupera el primer d�a del mes de una fecha dada
 	 * 
 	 * @param fecha : Fecha de la que se desea obtener el dato
@@ -96,6 +117,15 @@ public interface FechaService {
 	Date primerDiaMes(Date fecha) throws Throwable;
 
 	/**
+	 * Recupera el primer d�a del mes de una fecha dada usando LocalDate
+	 * 
+	 * @param fecha : Fecha de la que se desea obtener el dato
+	 * @return : Primer dia del mes
+	 * @throws Throwable: Excepcion
+	 */
+	LocalDate primerDiaMesLocal(LocalDate fecha) throws Throwable;
+
+	/**
 	 * Recupera el primer d�a del anio de una fecha dada
 	 * 
 	 * @param fecha : Fecha de la que se desea obtener el dato
@@ -103,6 +133,15 @@ public interface FechaService {
 	 * @throws Throwable: Excepcion
 	 */
 	Date primerDiaAnio(Date fecha) throws Throwable;
+
+	/**
+	 * Recupera el primer d�a del anio de una fecha dada usando LocalDate
+	 * 
+	 * @param fecha : Fecha de la que se desea obtener el dato
+	 * @return : Primer dia del anio
+	 * @throws Throwable: Excepcion
+	 */
+	LocalDate primerDiaAnioLocal(LocalDate fecha) throws Throwable;
 
 	/**
 	 * Verifica si es que un rango de fechas se traslapa en otros registros.
@@ -140,6 +179,17 @@ public interface FechaService {
 	Date sumaRestaMeses(Date fecha, int numeroMeses) throws Throwable;
 
 	/**
+	 * Suma o resta meses a una fecha dada usando LocalDate
+	 * 
+	 * @param fecha        : Fecha de la que se desea sumar o restar meses
+	 * @param numeroMeses: Numero de meses a sumar o restar a la fecha. En caso de
+	 *                     resta enviar numero negativo
+	 * @return : Fecha sumada o restada los meses indicados
+	 * @throws Throwable: Excepcion
+	 */
+	LocalDate sumaRestaMesesLocal(LocalDate fecha, int numeroMeses) throws Throwable;
+
+	/**
 	 * Calcula la edad en base a la fecha de nacimiento
 	 * 
 	 * @param fechaNacimiento : Fecha de nacimiento
@@ -147,6 +197,15 @@ public interface FechaService {
 	 * @throws Throwable : Excepcion
 	 */
 	String calculoEdad(Date fechaNacimiento) throws Throwable;
+
+	/**
+	 * Calcula la edad en base a la fecha de nacimiento usando LocalDate
+	 * 
+	 * @param fechaNacimiento : Fecha de nacimiento
+	 * @return : Texto que indica la edad
+	 * @throws Throwable : Excepcion
+	 */
+	String calculoEdadLocal(LocalDate fechaNacimiento) throws Throwable;
 
 	/**
 	 * Calcula la diferencia en meses entre dos fechas,
@@ -159,6 +218,16 @@ public interface FechaService {
 	Long diferenciaMeses(Date fecha1, Date fecha2) throws Throwable;
 
 	/**
+	 * Calcula la diferencia en meses entre dos fechas usando LocalDate
+	 * 
+	 * @param fecha1 : Fecha 1
+	 * @param fecha2 : Fecha 2
+	 * @return : Resultado meses
+	 * @throws Throwable: Excepcins
+	 */
+	Long diferenciaMesesLocal(LocalDate fecha1, LocalDate fecha2) throws Throwable;
+
+	/**
 	 * Calcula la diferencia en minutos entre dos fechas con hora
 	 * 
 	 * @param fecha1 : Fecha 1 que se va a restar
@@ -167,5 +236,15 @@ public interface FechaService {
 	 * @throws Throwable: Excepcins
 	 */
 	Double diferenciaMinutos(Date fecha1, Date fecha2) throws Throwable;
+
+	/**
+	 * Calcula la diferencia en minutos entre dos fechas con hora usando LocalDateTime
+	 * 
+	 * @param fecha1 : Fecha 1 que se va a restar
+	 * @param fecha2 : Fecha 2 de la que se va a restar
+	 * @return : Resultado en minutos
+	 * @throws Throwable: Excepcins
+	 */
+	Double diferenciaMinutosLocal(LocalDateTime fecha1, LocalDateTime fecha2) throws Throwable;
 
 }

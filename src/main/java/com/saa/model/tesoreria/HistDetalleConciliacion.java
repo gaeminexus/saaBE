@@ -9,7 +9,7 @@
 package com.saa.model.tesoreria;
 
 import java.io.Serializable;
-import java.time.LocalDateTime;
+import java.time.LocalDate;
 
 import com.saa.model.contabilidad.Asiento;
 import com.saa.model.contabilidad.Periodo;
@@ -142,7 +142,7 @@ public class HistDetalleConciliacion implements Serializable {
 	 */
 	@Basic
 	@Column(name = "DCHIFRGS")
-	private LocalDateTime fechaRegistro;
+	private LocalDate fechaRegistro;
 	
 	/**
 	 * Id del movimiento dependiendo del tipo. Ej: Ingreso, egreso, etc.
@@ -394,7 +394,7 @@ public class HistDetalleConciliacion implements Serializable {
 	 * Devuelve fechaRegistro
 	 * @return fechaRegistro
 	 */
-	public LocalDateTime getFechaRegistro() {
+	public LocalDate getFechaRegistro() {
 		return fechaRegistro;
 	}
 
@@ -402,7 +402,7 @@ public class HistDetalleConciliacion implements Serializable {
 	 * Asigna fechaRegistro
 	 * @param fechaRegistro Nuevo valor para fechaRegistro 
 	 */
-	public void setFechaRegistro(LocalDateTime fechaRegistro) {
+	public void setFechaRegistro(LocalDate fechaRegistro) {
 		this.fechaRegistro = fechaRegistro;
 	}
 	

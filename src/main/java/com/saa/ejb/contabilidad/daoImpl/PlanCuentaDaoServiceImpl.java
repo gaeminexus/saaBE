@@ -5,7 +5,7 @@
  */
 package com.saa.ejb.contabilidad.daoImpl;
 
-import java.util.Date;
+import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
@@ -140,10 +140,10 @@ public class PlanCuentaDaoServiceImpl extends EntityDaoImpl<PlanCuenta>  impleme
 	}
 	
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.dao.PlanCuentaDaoService#selectMovimientoByEmpresaCuentaFecha(java.lang.Long, java.util.Date, java.util.Date, java.lang.String, java.lang.String)
+	 * @see com.compuseg.income.contabilidad.ejb.dao.PlanCuentaDaoService#selectMovimientoByEmpresaCuentaFecha(java.lang.Long, java.util.LocalDate, java.util.LocalDate, java.lang.String, java.lang.String)
 	 */
 	@SuppressWarnings("unchecked")
-	public List<PlanCuenta> selectMovimientoByEmpresaCuentaFecha(Long empresa, Date fechaInicio, Date fechaFin,
+	public List<PlanCuenta> selectMovimientoByEmpresaCuentaFecha(Long empresa, LocalDate fechaInicio, LocalDate fechaFin,
 															   String cuentaInicio,String cuentaFin) throws Throwable {
 		System.out.println("Dao selectMovimientoByEmpresaCuentaFecha con empresa: " + empresa + ", fechaInicio: " + fechaInicio +
 				 ", fechaFin: " + fechaFin + ", cuentaInicio: " 
@@ -166,11 +166,11 @@ public class PlanCuentaDaoServiceImpl extends EntityDaoImpl<PlanCuenta>  impleme
 	}
 	
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.dao.PlanCuentaDaoService#selectByEmpresaCuentaFechaCentro(java.lang.Long, java.util.Date, java.util.Date, java.lang.String, java.lang.String, java.lang.String, java.lang.String)
+	 * @see com.compuseg.income.contabilidad.ejb.dao.PlanCuentaDaoService#selectByEmpresaCuentaFechaCentro(java.lang.Long, java.util.LocalDate, java.util.LocalDate, java.lang.String, java.lang.String, java.lang.String, java.lang.String)
 	 */
 	@SuppressWarnings("unchecked")
 	public List<PlanCuenta> selectByEmpresaCuentaFechaCentro(Long empresa,
-			Date fechaInicio, Date fechaFin, String cuentaInicio,
+			LocalDate fechaInicio, LocalDate fechaFin, String cuentaInicio,
 			String cuentaFin, String centroInicio, String centroFin)
 			throws Throwable {
 		System.out.println("Dao selectMovimientoByEmpresaCuentaFecha con empresa: " + empresa + ", fechaInicio: " + fechaInicio +

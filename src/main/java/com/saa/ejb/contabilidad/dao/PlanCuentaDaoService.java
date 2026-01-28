@@ -5,7 +5,7 @@
  */
 package com.saa.ejb.contabilidad.dao;
 
-import java.util.Date;
+import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.util.EntityDao;
@@ -90,7 +90,7 @@ public interface PlanCuentaDaoService extends EntityDao<PlanCuenta> {
 	 * @return				: Movimientos
 	 * @throws Throwable	: Excepcions
 	 */
-	List<PlanCuenta> selectMovimientoByEmpresaCuentaFecha(Long empresa, Date fechaInicio, Date fechaFin, String cuentaInicio, String cuentaFin)throws Throwable;
+	List<PlanCuenta> selectMovimientoByEmpresaCuentaFecha(Long empresa, LocalDate fechaInicio, LocalDate fechaFin, String cuentaInicio, String cuentaFin)throws Throwable;
 	
 	/**
 	 * Obtiene los Movimientos de una Empresa dado un rango de fechas, cuentas, y centro de costo
@@ -104,7 +104,7 @@ public interface PlanCuentaDaoService extends EntityDao<PlanCuenta> {
 	 * @return				: Movimientos
 	 * @throws Throwable	: Excepcions
 	 */
-	List<PlanCuenta> selectByEmpresaCuentaFechaCentro(Long empresa, Date fechaInicio, Date fechaFin, 
+	List<PlanCuenta> selectByEmpresaCuentaFechaCentro(Long empresa, LocalDate fechaInicio, LocalDate fechaFin, 
 			String cuentaInicio, String cuentaFin, String centroInicio,
 			String centroFin) throws Throwable;
 	

@@ -143,7 +143,7 @@ public class HistAsientoServiceImpl implements HistAsientoService {
 				histAsiento.setRubroModuloClienteH(asiento.getRubroModuloClienteH());
 				histAsiento.setRubroModuloSistemaP(asiento.getRubroModuloSistemaP());
 				histAsiento.setRubroModuloSistemaH(asiento.getRubroModuloSistemaH());
-				histAsiento.setFechaIngreso(asiento.getFecheIngreso());
+				histAsiento.setFechaIngreso(asiento.getFechaIngreso());
 				histAsiento.setIdAsientoOriginal(asiento.getCodigo());
 				// ALMACENA EL REGISTRO
 				histAsientoDaoService.save(histAsiento, histAsiento.getCodigo());

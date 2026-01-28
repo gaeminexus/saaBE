@@ -1,6 +1,6 @@
 package com.saa.ejb.contabilidad.daoImpl;
 
-import java.util.Date;
+import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.util.IncomeException;
@@ -168,10 +168,10 @@ public class DetalleAsientoDaoServiceImpl extends EntityDaoImpl<DetalleAsiento> 
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.dao.DetalleAsientoDaoService#selectDetalleAsiento(java.lang.Long, java.lang.Long, java.util.Date, java.util.Date)
+	 * @see com.compuseg.income.contabilidad.ejb.dao.DetalleAsientoDaoService#selectDetalleAsiento(java.lang.Long, java.lang.Long, java.util.LocalDate, java.util.LocalDate)
 	 */
 	@SuppressWarnings("unchecked")
-	public List<DetalleAsiento> selectByEmpresaCuentaFechas(Long empresa, Long idCuenta, Date fechaInicio, Date fechaFin) throws Throwable {
+	public List<DetalleAsiento> selectByEmpresaCuentaFechas(Long empresa, Long idCuenta, LocalDate fechaInicio, LocalDate fechaFin) throws Throwable {
 		System.out.println("Ingresa al Metodo selectByEmpresaCuentaFechas con enpresa(CORREGIDO) : " + empresa
 				 + ", cuenta = " + idCuenta + ", entre " + fechaInicio + " y " + fechaFin);
 		Query query = em.createQuery(" select b " +
@@ -188,10 +188,10 @@ public class DetalleAsientoDaoServiceImpl extends EntityDaoImpl<DetalleAsiento> 
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.dao.DetalleAsientoDaoService#selectMovimientoByEmpresaCuentaFecha(java.lang.Long, java.util.Date, java.util.Date, java.lang.String, java.lang.String)
+	 * @see com.compuseg.income.contabilidad.ejb.dao.DetalleAsientoDaoService#selectMovimientoByEmpresaCuentaFecha(java.lang.Long, java.util.LocalDate, java.util.LocalDate, java.lang.String, java.lang.String)
 	 */
 	@SuppressWarnings("unchecked")
-	public List<DetalleAsiento> selectMovimientoByEmpresaCuentaFecha(Long empresa, Date fechaInicio, Date fechaFin,
+	public List<DetalleAsiento> selectMovimientoByEmpresaCuentaFecha(Long empresa, LocalDate fechaInicio, LocalDate fechaFin,
 															   String cuentaInicio,String cuentaFin) throws Throwable {
 		System.out.println("Ingresa al Metodo selectMovimientoByEmpresaCuentaFecha con empresa: " + empresa + ", fechaInicio: " + fechaInicio +
 																					  ", fechaFin: " + fechaFin + ", cuentaInicio: " 
@@ -211,11 +211,11 @@ public class DetalleAsientoDaoServiceImpl extends EntityDaoImpl<DetalleAsiento> 
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.dao.DetalleAsientoDaoService#selectByEmpresaCuentaFechaCentro(java.lang.Long, java.util.Date, java.util.Date, java.lang.String, java.lang.String, java.lang.String, java.lang.String)
+	 * @see com.compuseg.income.contabilidad.ejb.dao.DetalleAsientoDaoService#selectByEmpresaCuentaFechaCentro(java.lang.Long, java.util.LocalDate, java.util.LocalDate, java.lang.String, java.lang.String, java.lang.String, java.lang.String)
 	 */
 	@SuppressWarnings("unchecked")
 	public List<DetalleAsiento> selectByEmpresaCuentaFechaCentro(Long empresa,
-			Date fechaInicio, Date fechaFin, String cuentaInicio,
+			LocalDate fechaInicio, LocalDate fechaFin, String cuentaInicio,
 			String cuentaFin, String centroInicio, String centroFin)
 			throws Throwable {
 		System.out.println("Ingresa al Metodo selectByEmpresaCuentaFechaCentro con empresa: " + empresa + ", fechaInicio: " + fechaInicio +
@@ -240,10 +240,10 @@ public class DetalleAsientoDaoServiceImpl extends EntityDaoImpl<DetalleAsiento> 
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.dao.DetalleAsientoDaoService#selectSumaDebeHaberByFechaEmpresa(java.lang.Long, java.util.Date)
+	 * @see com.compuseg.income.contabilidad.ejb.dao.DetalleAsientoDaoService#selectSumaDebeHaberByFechaEmpresa(java.lang.Long, java.util.LocalDate)
 	 */
 	@SuppressWarnings({ "rawtypes" })
-	public List selectSumaDebeHaberByFechasEmpresaCuenta(Long idEmpresa, Long idCuenta, Date fechaDesde, Date fechaFin)
+	public List selectSumaDebeHaberByFechasEmpresaCuenta(Long idEmpresa, Long idCuenta, LocalDate fechaDesde, LocalDate fechaFin)
 			throws Throwable {
 		System.out.println("Ingresa al metodo selectSumaDebeHaberByFechasEmpresaCuenta con id de empresa: " + idEmpresa + ", fechaDesde: " + 
 				 fechaDesde + ", fechaFin: " + fechaFin);
@@ -263,11 +263,11 @@ public class DetalleAsientoDaoServiceImpl extends EntityDaoImpl<DetalleAsiento> 
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.dao.DetalleAsientoDaoService#selectByCuentaFechasCentros(java.lang.Long, java.util.Date, java.util.Date, java.lang.String, java.lang.String)
+	 * @see com.compuseg.income.contabilidad.ejb.dao.DetalleAsientoDaoService#selectByCuentaFechasCentros(java.lang.Long, java.util.LocalDate, java.util.LocalDate, java.lang.String, java.lang.String)
 	 */
 	@SuppressWarnings("unchecked")
 	public List<DetalleAsiento> selectByCuentaFechasCentros(Long idCuenta,
-			Date fechaInicio, Date fechaFin, String centroInicio,
+			LocalDate fechaInicio, LocalDate fechaFin, String centroInicio,
 			String centroFin) throws Throwable {
 		System.out.println("Ingresa al Metodo selectByCuentaFechasCentros con idCuenta: " + idCuenta + ", fechaInicio: " + fechaInicio +
 				  ", fechaFin: " + fechaFin + ", centroInicio: " 
@@ -287,11 +287,11 @@ public class DetalleAsientoDaoServiceImpl extends EntityDaoImpl<DetalleAsiento> 
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.dao.DetalleAsientoDaoService#selectByCentroFechasCuentas(java.lang.Long, java.util.Date, java.util.Date, java.lang.String, java.lang.String)
+	 * @see com.compuseg.income.contabilidad.ejb.dao.DetalleAsientoDaoService#selectByCentroFechasCuentas(java.lang.Long, java.util.LocalDate, java.util.LocalDate, java.lang.String, java.lang.String)
 	 */
 	@SuppressWarnings("unchecked")
 	public List<DetalleAsiento> selectByCentroFechasCuentas(Long idCentro,
-			Date fechaInicio, Date fechaFin, String cuentaInicio,
+			LocalDate fechaInicio, LocalDate fechaFin, String cuentaInicio,
 			String cuentaFin) throws Throwable {
 		System.out.println("Ingresa al Metodo selectByCentroFechasCuentas con idCentro: " + idCentro + ", fechaInicio: " + fechaInicio +
 				  ", fechaFin: " + fechaFin + ", cuentaInicio: " 
@@ -311,11 +311,11 @@ public class DetalleAsientoDaoServiceImpl extends EntityDaoImpl<DetalleAsiento> 
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.dao.DetalleAsientoDaoService#selectSumaDebeHaberByFechasEmpresaCentro(java.lang.Long, java.lang.Long, java.util.Date, java.util.Date)
+	 * @see com.compuseg.income.contabilidad.ejb.dao.DetalleAsientoDaoService#selectSumaDebeHaberByFechasEmpresaCentro(java.lang.Long, java.lang.Long, java.util.LocalDate, java.util.LocalDate)
 	 */
 	@SuppressWarnings({"rawtypes" })
 	public List selectSumaDebeHaberByFechasEmpresaCentro(Long idEmpresa,
-			Long idCentro, Date fechaDesde, Date fechaFin) throws Throwable {
+			Long idCentro, LocalDate fechaDesde, LocalDate fechaFin) throws Throwable {
 		System.out.println("Ingresa al metodo selectSumaDebeHaberByFechasEmpresaCentro con id de empresa: " + idEmpresa + ", fechaDesde: " + 
 				 fechaDesde + ", fechaFin: " + fechaFin + ", idCentro: " + idCentro);
 		Query query = em.createQuery(" select   sum(valorDebe), sum(valorHaber) " +
@@ -334,11 +334,11 @@ public class DetalleAsientoDaoServiceImpl extends EntityDaoImpl<DetalleAsiento> 
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.dao.DetalleAsientoDaoService#selectSumaDebeHaberByFechasEmpresaCentro(java.lang.Long, java.lang.Long, java.lang.Long, java.util.Date, java.util.Date)
+	 * @see com.compuseg.income.contabilidad.ejb.dao.DetalleAsientoDaoService#selectSumaDebeHaberByFechasEmpresaCentro(java.lang.Long, java.lang.Long, java.lang.Long, java.util.LocalDate, java.util.LocalDate)
 	 */
 	@SuppressWarnings({"rawtypes" })
 	public List selectSumaDebeHaberByFechasEmpresaCentroCuenta(Long idEmpresa,
-			Long idCentro, Long idCuenta, Date fechaDesde, Date fechaFin)
+			Long idCentro, Long idCuenta, LocalDate fechaDesde, LocalDate fechaFin)
 			throws Throwable {
 		System.out.println("Ingresa al metodo selectSumaDebeHaberByFechasEmpresaCentroCuenta " +
 				 " con id de empresa: " + idEmpresa + ", fechaDesde: " + 
@@ -362,11 +362,11 @@ public class DetalleAsientoDaoServiceImpl extends EntityDaoImpl<DetalleAsiento> 
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.dao.DetalleAsientoDaoService#selectSumaDebeHaberAFechaByEmpresaCentroCuenta(java.lang.Long, java.lang.Long, java.lang.Long, java.util.Date)
+	 * @see com.compuseg.income.contabilidad.ejb.dao.DetalleAsientoDaoService#selectSumaDebeHaberAFechaByEmpresaCentroCuenta(java.lang.Long, java.lang.Long, java.lang.Long, java.util.LocalDate)
 	 */
 	@SuppressWarnings({"rawtypes" })
 	public List selectSumaDebeHaberAFechaByEmpresaCentroCuenta(Long idEmpresa,
-			Long idCentro, Long idCuenta, Date fechaHasta) throws Throwable {
+			Long idCentro, Long idCuenta, LocalDate fechaHasta) throws Throwable {
 		System.out.println("Ingresa al metodo selectSumaDebeHaberAFechaByEmpresaCentroCuenta " +
 				 " con id de empresa: " + idEmpresa + ", fechaHasta: " + fechaHasta + 
 				 ", idCentro: " + idCentro + ", idCuenta: " + idCuenta);

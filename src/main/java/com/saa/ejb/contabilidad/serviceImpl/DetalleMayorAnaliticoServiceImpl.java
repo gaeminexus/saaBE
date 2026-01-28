@@ -1,6 +1,6 @@
 package com.saa.ejb.contabilidad.serviceImpl;
 
-import java.util.Date;
+import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
@@ -97,10 +97,10 @@ public class DetalleMayorAnaliticoServiceImpl implements DetalleMayorAnaliticoSe
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.DetalleMayorAnaliticoService#insertaDetalleSinCentro(com.compuseg.income.contabilidad.ejb.model.MayorAnalitico, java.util.Date, java.util.Date)
+	 * @see com.compuseg.income.contabilidad.ejb.service.DetalleMayorAnaliticoService#insertaDetalleSinCentro(com.compuseg.income.contabilidad.ejb.model.MayorAnalitico, java.util.LocalDate, java.util.LocalDate)
 	 */
-	public void insertaDetalleSinCentro(MayorAnalitico mayor, Date fechaInicio, 
-			Date fechaFin) throws Throwable {
+	public void insertaDetalleSinCentro(MayorAnalitico mayor, LocalDate fechaInicio, 
+			LocalDate fechaFin) throws Throwable {
 		System.out.println("Ingresa al insertaDetalleSinCentro de mayor analitico con secuencia = " + mayor.getSecuencial());
 		Double saldoActual = mayor.getSaldoAnterior();
 		DetalleMayorAnalitico detalleAnalitico = new DetalleMayorAnalitico();
@@ -134,10 +134,10 @@ public class DetalleMayorAnaliticoServiceImpl implements DetalleMayorAnaliticoSe
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.DetalleMayorAnaliticoService#insertaDetalleCentroPorPlan(com.compuseg.income.contabilidad.ejb.model.MayorAnalitico, java.util.Date, java.util.Date, java.lang.String, java.lang.String)
+	 * @see com.compuseg.income.contabilidad.ejb.service.DetalleMayorAnaliticoService#insertaDetalleCentroPorPlan(com.compuseg.income.contabilidad.ejb.model.MayorAnalitico, java.util.LocalDate, java.util.LocalDate, java.lang.String, java.lang.String)
 	 */
 	public void insertaDetalleCentroPorPlan(MayorAnalitico mayor,
-			Date fechaInicio, Date fechaFin, String centroInicio,
+			LocalDate fechaInicio, LocalDate fechaFin, String centroInicio,
 			String centroFin) throws Throwable {
 		System.out.println("Ingresa al insertaDetalleCentroPorPlan de mayor analitico con secuencia = " + mayor.getSecuencial() +
 				",fechaInicio: " + fechaInicio + ", fechaFin: " + fechaFin +
@@ -165,10 +165,10 @@ public class DetalleMayorAnaliticoServiceImpl implements DetalleMayorAnaliticoSe
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.DetalleMayorAnaliticoService#insertaDetallePlanPorCentro(com.compuseg.income.contabilidad.ejb.model.MayorAnalitico, java.util.Date, java.util.Date, java.lang.String, java.lang.String)
+	 * @see com.compuseg.income.contabilidad.ejb.service.DetalleMayorAnaliticoService#insertaDetallePlanPorCentro(com.compuseg.income.contabilidad.ejb.model.MayorAnalitico, java.util.LocalDate, java.util.LocalDate, java.lang.String, java.lang.String)
 	 */
 	public void insertaDetallePlanPorCentro(MayorAnalitico mayor,
-			Date fechaInicio, Date fechaFin, String cuentaInicio,
+			LocalDate fechaInicio, LocalDate fechaFin, String cuentaInicio,
 			String cuentaFin) throws Throwable {
 		System.out.println("Ingresa al insertaDetallePlanPorCentro de mayor analitico con secuencia = " + mayor.getSecuencial() +
 				",fechaInicio: " + fechaInicio + ", fechaFin: " + fechaFin +

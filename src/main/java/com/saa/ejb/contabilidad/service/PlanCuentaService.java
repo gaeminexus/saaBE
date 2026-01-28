@@ -1,6 +1,6 @@
 package com.saa.ejb.contabilidad.service;
 
-import java.util.Date;
+import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.util.EntityService;
@@ -188,7 +188,7 @@ public interface PlanCuentaService extends EntityService<PlanCuenta> {
 	 * @return				: Movimientos
 	 * @throws Throwable	: Excepcions
 	 */
-	List<PlanCuenta> selectMovimientoByEmpresaCuentaFecha(Long empresa, Date fechaInicio, Date fechaFin, String cuentaInicio, String cuentaFin)throws Throwable;
+	List<PlanCuenta> selectMovimientoByEmpresaCuentaFecha(Long empresa, LocalDate fechaInicio, LocalDate fechaFin, String cuentaInicio, String cuentaFin)throws Throwable;
 	
 	/**
 	 * Obtiene los Movimientos de una Empresa dado un rango de fechas, cuentas, y centro de costo
@@ -202,7 +202,7 @@ public interface PlanCuentaService extends EntityService<PlanCuenta> {
 	 * @return				: Movimientos
 	 * @throws Throwable	: Excepcions
 	 */
-	List<PlanCuenta> selectByEmpresaCuentaFechaCentro(Long empresa, Date fechaInicio, Date fechaFin, 
+	List<PlanCuenta> selectByEmpresaCuentaFechaCentro(Long empresa, LocalDate fechaInicio, LocalDate fechaFin, 
 			String cuentaInicio, String cuentaFin, String centroInicio,
 			String centroFin) throws Throwable;
 	
@@ -214,7 +214,7 @@ public interface PlanCuentaService extends EntityService<PlanCuenta> {
 	 * @return			: Saldo de cuenta a fecha
 	 * @throws Throwable: Excepcion
 	 */
-	Double saldoCuentaFechaEmpresa(Long idEmpresa, Long idCuenta, Date fechaInicio) throws Throwable;
+	Double saldoCuentaFechaEmpresa(Long idEmpresa, Long idCuenta, LocalDate fechaInicio) throws Throwable;
 	
 	/**
 	 * Verifica los registros asociados a una cuenta contable sin tomar en cuenta los registros de mayorizacion
