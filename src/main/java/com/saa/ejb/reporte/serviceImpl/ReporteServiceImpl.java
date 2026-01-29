@@ -1,0 +1,200 @@
+package com.saa.ejb.reporte.serviceImpl;
+
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.sql.Connection;
+import java.util.List;
+import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import javax.naming.InitialContext;
+import javax.naming.NamingException;
+import javax.sql.DataSource;
+
+import com.saa.ejb.reporte.service.ReporteService;
+
+import jakarta.ejb.Stateless;
+import net.sf.jasperreports.engine.JasperCompileManager;
+import net.sf.jasperreports.engine.JasperExportManager;
+import net.sf.jasperreports.engine.JasperFillManager;
+import net.sf.jasperreports.engine.JasperPrint;
+import net.sf.jasperreports.engine.JasperReport;
+import net.sf.jasperreports.engine.export.ooxml.JRXlsxExporter;
+import net.sf.jasperreports.export.SimpleExporterInput;
+import net.sf.jasperreports.export.SimpleOutputStreamExporterOutput;
+import net.sf.jasperreports.engine.export.HtmlExporter;
+import net.sf.jasperreports.export.SimpleHtmlExporterOutput;
+import net.sf.jasperreports.export.SimpleXlsxReportConfiguration;
+
+/**
+ * Servicio para la generación de reportes JasperReports
+ */
+@Stateless
+public class ReporteServiceImpl implements ReporteService {
+    
+    private static final Logger LOGGER = Logger.getLogger(ReporteServiceImpl.class.getName());
+    
+    // Candidatos típicos de DataSource en WildFly
+    private static final List<String> DS_CANDIDATES = List.of(
+            "java:jboss/datasources/SaaDS",
+            "java:/SaaDS",
+            "java:/jdbc/SaaDS",
+            "java:jboss/datasources/OracleDS",
+            "java:/OracleDS",
+            "java:/jdbc/OracleDS"
+    );
+    
+    /**
+     * Busca el DataSource mediante JNDI
+     */
+    private DataSource lookupDataSource() throws NamingException {
+        InitialContext ctx = new InitialContext();
+        NamingException last = null;
+
+        for (String jndi : DS_CANDIDATES) {
+            try {
+                Object obj = ctx.lookup(jndi);
+                if (obj instanceof DataSource ds) {
+                    LOGGER.log(Level.INFO, "DataSource encontrado en: {0}", jndi);
+                    return ds;
+                }
+            } catch (NamingException e) {
+                last = e;
+            }
+        }
+        throw (last != null) ? last : new NamingException("No DataSource encontrado en: " + DS_CANDIDATES);
+    }
+    
+    /**
+     * Genera un reporte basado en el módulo, nombre y parámetros proporcionados
+     * 
+     * @param modulo Módulo del reporte (cnt, tsr, crd, cxc, cxp, rhh)
+     * @param nombreReporte Nombre del archivo jrxml sin extensión
+     * @param parametros Parámetros para el reporte
+     * @param formato Formato de salida (PDF, EXCEL, HTML)
+     * @return Bytes del reporte generado
+     * @throws Exception Si ocurre un error al generar el reporte
+     */
+    public byte[] generarReporte(String modulo, String nombreReporte, 
+                                  Map<String, Object> parametros, String formato) throws Exception {
+        
+        LOGGER.log(Level.INFO, "Generando reporte: modulo={0}, nombre={1}, formato={2}", 
+                   new Object[]{modulo, nombreReporte, formato});
+        
+        Connection conn = null;
+        try {
+            // Construir la ruta del reporte .jrxml
+            String rutaJrxml = String.format("/rep/%s/%s.jrxml", modulo, nombreReporte);
+            
+            LOGGER.log(Level.INFO, "Compilando reporte desde: {0}", rutaJrxml);
+            
+            // Cargar el archivo jrxml
+            InputStream reportStream = getClass().getResourceAsStream(rutaJrxml);
+            
+            if (reportStream == null) {
+                throw new IllegalArgumentException("No se encontró el reporte: " + rutaJrxml);
+            }
+            
+            // Compilar el reporte (siempre desde .jrxml para evitar problemas de compatibilidad)
+            JasperReport jasperReport = JasperCompileManager.compileReport(reportStream);
+            
+            // Agregar ruta de imágenes a los parámetros
+            String rutaImagenes = getClass().getResource("/rep/img/").toString();
+            parametros.put("RUTA_IMAGENES", rutaImagenes);
+            parametros.put("SUBREPORT_DIR", getClass().getResource("/rep/" + modulo + "/").toString());
+            
+            // Obtener conexión a la base de datos
+            DataSource dataSource = lookupDataSource();
+            conn = dataSource.getConnection();
+            
+            // Llenar el reporte con datos
+            JasperPrint jasperPrint = JasperFillManager.fillReport(jasperReport, parametros, conn);
+            
+            // Exportar según el formato solicitado
+            return exportarReporte(jasperPrint, formato);
+            
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "Error al generar reporte", e);
+            throw new Exception("Error al generar el reporte: " + e.getMessage(), e);
+        } finally {
+            if (conn != null) {
+                try {
+                    conn.close();
+                } catch (Exception e) {
+                    LOGGER.log(Level.WARNING, "Error al cerrar conexión", e);
+                }
+            }
+        }
+    }
+    
+    /**
+     * Exporta el reporte al formato especificado
+     */
+    private byte[] exportarReporte(JasperPrint jasperPrint, String formato) throws Exception {
+        
+        String formatoUpper = formato != null ? formato.toUpperCase() : "PDF";
+        
+        switch (formatoUpper) {
+            case "PDF":
+                return JasperExportManager.exportReportToPdf(jasperPrint);
+                
+            case "EXCEL":
+            case "XLS":
+            case "XLSX":
+                return exportarExcel(jasperPrint);
+                
+            case "HTML":
+                return exportarHtml(jasperPrint);
+                
+            default:
+                LOGGER.log(Level.WARNING, "Formato no soportado: {0}, usando PDF", formato);
+                return JasperExportManager.exportReportToPdf(jasperPrint);
+        }
+    }
+    
+    /**
+     * Exporta el reporte a formato Excel
+     */
+    private byte[] exportarExcel(JasperPrint jasperPrint) throws Exception {
+        
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        
+        JRXlsxExporter exporter = new JRXlsxExporter();
+        exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
+        exporter.setExporterOutput(new SimpleOutputStreamExporterOutput(outputStream));
+        
+        SimpleXlsxReportConfiguration configuration = new SimpleXlsxReportConfiguration();
+        configuration.setOnePagePerSheet(false);
+        configuration.setDetectCellType(true);
+        configuration.setCollapseRowSpan(false);
+        
+        exporter.setConfiguration(configuration);
+        exporter.exportReport();
+        
+        return outputStream.toByteArray();
+    }
+    
+    /**
+     * Exporta el reporte a formato HTML
+     */
+    private byte[] exportarHtml(JasperPrint jasperPrint) throws Exception {
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        
+        HtmlExporter exporter = new HtmlExporter();
+        exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
+        exporter.setExporterOutput(new SimpleHtmlExporterOutput(outputStream));
+        exporter.exportReport();
+        
+        return outputStream.toByteArray();
+    }
+    
+    /**
+     * Valida que el módulo sea válido
+     */
+    public boolean esModuloValido(String modulo) {
+        return modulo != null && 
+               (modulo.equals("cnt") || modulo.equals("tsr") || modulo.equals("crd") || 
+                modulo.equals("cxc") || modulo.equals("cxp") || modulo.equals("rhh"));
+    }
+}

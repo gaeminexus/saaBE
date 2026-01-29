@@ -60,15 +60,21 @@
            luego hacemos exclusiones dirigidas. -->
     </dependency>
 
-    <!-- Export PDF (en Jasper 7 suele ser extensión separada) -->
+    <!-- Apache POI para exportar a Excel (requerido por JasperReports) -->
     <dependency>
-      <groupId>net.sf.jasperreports</groupId>
-      <artifactId>jasperreports-pdf</artifactId>
-      <version>${jasper.version}</version>
+      <groupId>org.apache.poi</groupId>
+      <artifactId>poi</artifactId>
+      <version>5.2.3</version>
+    </dependency>
+    
+    <dependency>
+      <groupId>org.apache.poi</groupId>
+      <artifactId>poi-ooxml</artifactId>
+      <version>5.2.3</version>
     </dependency>
 
-    <!-- Si tus reportes usan fuentes TTF o assets, normalmente no necesitas nada extra.
-         Si usaras gráficos, Excel, etc. ahí sí se agregan extensiones específicas. -->
+    <!-- Las funcionalidades de PDF y HTML están incluidas en jasperreports-core
+         No se necesitan dependencias adicionales para JasperReports 7.x -->
 
   </dependencies>
 

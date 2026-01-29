@@ -558,6 +558,9 @@ public class AsientoServiceImpl implements AsientoService {
 		if (asiento.getCodigo() == null) {
 			asiento.setNumero(siguienteNumeroAsiento(asiento.getTipoAsiento().getCodigo(), asiento.getEmpresa().getCodigo()));
 		}
+		if (asiento.getNumero() == null) {
+			asiento.setNumero(siguienteNumeroAsiento(asiento.getTipoAsiento().getCodigo(), asiento.getEmpresa().getCodigo()));
+		}
 		asiento = asientoDaoService.save(asiento, asiento.getCodigo());
 		return asiento;
 	}
