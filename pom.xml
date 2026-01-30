@@ -60,6 +60,33 @@
            luego hacemos exclusiones dirigidas. -->
     </dependency>
 
+    <!-- JasperReports Extensions para exportar a diferentes formatos -->
+    <dependency>
+      <groupId>net.sf.jasperreports</groupId>
+      <artifactId>jasperreports-pdf</artifactId>
+      <version>${jasper.version}</version>
+    </dependency>
+    
+    <dependency>
+      <groupId>net.sf.jasperreports</groupId>
+      <artifactId>jasperreports-fonts</artifactId>
+      <version>${jasper.version}</version>
+    </dependency>
+    
+    <!-- JasperReports Functions (necesario para compilación de expresiones) -->
+    <dependency>
+      <groupId>net.sf.jasperreports</groupId>
+      <artifactId>jasperreports-functions</artifactId>
+      <version>${jasper.version}</version>
+    </dependency>
+    
+    <!-- Compilador Java para JasperReports (necesario para compilar .jrxml en runtime) -->
+    <dependency>
+      <groupId>org.eclipse.jdt</groupId>
+      <artifactId>ecj</artifactId>
+      <version>3.33.0</version>
+    </dependency>
+
     <!-- Apache POI para exportar a Excel (requerido por JasperReports) -->
     <dependency>
       <groupId>org.apache.poi</groupId>
@@ -72,9 +99,6 @@
       <artifactId>poi-ooxml</artifactId>
       <version>5.2.3</version>
     </dependency>
-
-    <!-- Las funcionalidades de PDF y HTML están incluidas en jasperreports-core
-         No se necesitan dependencias adicionales para JasperReports 7.x -->
 
   </dependencies>
 

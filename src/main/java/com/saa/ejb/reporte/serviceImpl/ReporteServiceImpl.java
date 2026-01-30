@@ -15,11 +15,11 @@ import javax.sql.DataSource;
 import com.saa.ejb.reporte.service.ReporteService;
 
 import jakarta.ejb.Stateless;
-import net.sf.jasperreports.engine.JasperCompileManager;
 import net.sf.jasperreports.engine.JasperExportManager;
 import net.sf.jasperreports.engine.JasperFillManager;
 import net.sf.jasperreports.engine.JasperPrint;
 import net.sf.jasperreports.engine.JasperReport;
+import net.sf.jasperreports.engine.util.JRLoader;
 import net.sf.jasperreports.engine.export.ooxml.JRXlsxExporter;
 import net.sf.jasperreports.export.SimpleExporterInput;
 import net.sf.jasperreports.export.SimpleOutputStreamExporterOutput;
@@ -84,22 +84,31 @@ public class ReporteServiceImpl implements ReporteService {
         
         Connection conn = null;
         try {
-            // Construir la ruta del reporte .jrxml
-            String rutaJrxml = String.format("/rep/%s/%s.jrxml", modulo, nombreReporte);
+            // Construir la ruta del reporte .jasper (precompilado)
+            String rutaJasper = String.format("/rep/%s/%s.jasper", modulo, nombreReporte);
             
-            LOGGER.log(Level.INFO, "Compilando reporte desde: {0}", rutaJrxml);
+            LOGGER.log(Level.INFO, "Cargando reporte precompilado: {0}", rutaJasper);
             
-            // Cargar el archivo jrxml
-            InputStream reportStream = getClass().getResourceAsStream(rutaJrxml);
+            // Cargar el archivo jasper precompilado
+            InputStream reportStream = getClass().getResourceAsStream(rutaJasper);
             
             if (reportStream == null) {
-                throw new IllegalArgumentException("No se encontró el reporte: " + rutaJrxml);
+                throw new IllegalArgumentException("No se encontró el reporte precompilado: " + rutaJasper + 
+                    ". Por favor, compile el archivo .jrxml con JasperSoft Studio 7.0.3 primero.");
             }
             
-            // Compilar el reporte (siempre desde .jrxml para evitar problemas de compatibilidad)
-            JasperReport jasperReport = JasperCompileManager.compileReport(reportStream);
+            // Cargar el reporte precompilado (mucho más rápido que compilar en runtime)
+            JasperReport jasperReport = (JasperReport) JRLoader.loadObject(reportStream);
             
-            // Agregar ruta de imágenes a los parámetros
+            // Agregar ruta de imágenes a los parámetros (si el frontend no la envió)
+            if (!parametros.containsKey("P_IMAGEN")) {
+                // Construir la ruta completa a la imagen por defecto
+                String rutaImagen = getClass().getResource("/rep/img/logo_aso.jpeg").toString();
+                parametros.put("P_IMAGEN", rutaImagen);
+                LOGGER.log(Level.INFO, "Ruta de imagen por defecto: {0}", rutaImagen);
+            }
+            
+            // Agregar ruta de imágenes genérica (por si acaso se usa en el reporte)
             String rutaImagenes = getClass().getResource("/rep/img/").toString();
             parametros.put("RUTA_IMAGENES", rutaImagenes);
             parametros.put("SUBREPORT_DIR", getClass().getResource("/rep/" + modulo + "/").toString());

@@ -1,11 +1,11 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports" name="plantilla" pageWidth="595" pageHeight="842" columnWidth="555" leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20">
+<!-- Created with Jaspersoft Studio version 7.0.3.final using JasperReports Library version 7.0.3-41034ca841d452f3305ba55b9042260aaa1ab5dd  -->
+<jasperReport name="plantilla" language="java" pageWidth="595" pageHeight="842" columnWidth="555" leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20" uuid="21264758-cb8f-4a77-9011-9b494f6caa19">
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="Oracle"/>
 	<parameter name="P_PATH" class="java.lang.String"/>
 	<parameter name="P_REPORTE" class="java.lang.String"/>
 	<parameter name="P_ASNTCDGO" class="java.lang.Integer"/>
 	<parameter name="P_IMAGEN" class="java.lang.String"/>
-	<queryString>
-		<![CDATA[SELECT A.ASNTNMRO, A.ASNTFCHA, A.ASNTFCPR, A.PLNTCDGO, DT.DTASCNTA, DT.DTASNMCT, DT.DTASDSCR, DT.CNCSCDGO, DT.DTASDBEE, DT.DTASHBRR, P.PLNTNMBR, NVL(C.CNCSNMBR,' ') CENTROC,  SCP.PC_PRMT_GNRL.fn_rcpr_vlrs_pdtr(21, A.ASNTESTD,1) ESTADO,
+	<query language="sql"><![CDATA[SELECT A.ASNTNMRO, A.ASNTFCHA, A.ASNTFCPR, A.PLNTCDGO, DT.DTASCNTA, DT.DTASNMCT, DT.DTASDSCR, DT.CNCSCDGO, DT.DTASDBEE, DT.DTASHBRR, P.PLNTNMBR, NVL(C.CNCSNMBR,' ') CENTROC,  SCP.PC_PRMT_GNRL.fn_rcpr_vlrs_pdtr(21, A.ASNTESTD,1) ESTADO,
 A.ASNTUSRO,NVL(A.ASNTOBSR,' ') OBSERVACION, a.ASNTRYYA, A.ASNTRZZA, 
 decode ( a.asntasrv, null, a.asntasrv,  scp.pc_prmt_gnrl.fn_obtn_gnrl_cmpo('cnt.asnt', 'asntcdgo' , 'asntnmro' ,a.asntasrv)) nr,
 SCP.PC_PRMT_GNRL.fn_rcpr_vlrs_pdtr(A.ASNTRYYA, A.ASNTRZZA,1) AFECTADO , 
@@ -15,406 +15,222 @@ WHERE A.ASNTCDGO = DT.ASNTCDGO
 AND A.PLNTCDGO = P.PLNTCDGO
 AND DT.CNCSCDGO  = C.CNCSCDGO (+)
 AND   A.ASNTCDGO = $P{P_ASNTCDGO}
-ORDER BY DT.DTASHBRR, DT.DTASCNTA]]>
-	</queryString>
+ORDER BY DT.DTASHBRR, DT.DTASCNTA]]></query>
 	<field name="ASNTNMRO" class="java.math.BigDecimal">
-		<fieldDescription><![CDATA[]]></fieldDescription>
+		<description><![CDATA[]]></description>
 	</field>
 	<field name="ASNTFCHA" class="java.sql.Timestamp">
-		<fieldDescription><![CDATA[]]></fieldDescription>
+		<description><![CDATA[]]></description>
 	</field>
 	<field name="ASNTFCPR" class="java.sql.Timestamp">
-		<fieldDescription><![CDATA[]]></fieldDescription>
+		<description><![CDATA[]]></description>
 	</field>
 	<field name="PLNTCDGO" class="java.math.BigDecimal">
-		<fieldDescription><![CDATA[]]></fieldDescription>
+		<description><![CDATA[]]></description>
 	</field>
 	<field name="DTASCNTA" class="java.lang.String">
-		<fieldDescription><![CDATA[]]></fieldDescription>
+		<description><![CDATA[]]></description>
 	</field>
 	<field name="DTASNMCT" class="java.lang.String">
-		<fieldDescription><![CDATA[]]></fieldDescription>
+		<description><![CDATA[]]></description>
 	</field>
 	<field name="DTASDSCR" class="java.lang.String">
-		<fieldDescription><![CDATA[]]></fieldDescription>
+		<description><![CDATA[]]></description>
 	</field>
 	<field name="CNCSCDGO" class="java.math.BigDecimal">
-		<fieldDescription><![CDATA[]]></fieldDescription>
+		<description><![CDATA[]]></description>
 	</field>
 	<field name="DTASDBEE" class="java.math.BigDecimal">
-		<fieldDescription><![CDATA[]]></fieldDescription>
+		<description><![CDATA[]]></description>
 	</field>
 	<field name="DTASHBRR" class="java.math.BigDecimal">
-		<fieldDescription><![CDATA[]]></fieldDescription>
+		<description><![CDATA[]]></description>
 	</field>
 	<field name="PLNTNMBR" class="java.lang.String">
-		<fieldDescription><![CDATA[]]></fieldDescription>
+		<description><![CDATA[]]></description>
 	</field>
 	<field name="CENTROC" class="java.lang.String">
-		<fieldDescription><![CDATA[]]></fieldDescription>
+		<description><![CDATA[]]></description>
 	</field>
 	<field name="ESTADO" class="java.lang.String">
-		<fieldDescription><![CDATA[]]></fieldDescription>
+		<description><![CDATA[]]></description>
 	</field>
 	<field name="ASNTUSRO" class="java.lang.String">
-		<fieldDescription><![CDATA[]]></fieldDescription>
+		<description><![CDATA[]]></description>
 	</field>
 	<field name="OBSERVACION" class="java.lang.String">
-		<fieldDescription><![CDATA[]]></fieldDescription>
+		<description><![CDATA[]]></description>
 	</field>
 	<field name="ASNTRYYA" class="java.math.BigDecimal">
-		<fieldDescription><![CDATA[]]></fieldDescription>
+		<description><![CDATA[]]></description>
 	</field>
 	<field name="ASNTRZZA" class="java.math.BigDecimal">
-		<fieldDescription><![CDATA[]]></fieldDescription>
+		<description><![CDATA[]]></description>
 	</field>
 	<field name="NR" class="java.math.BigDecimal">
-		<fieldDescription><![CDATA[]]></fieldDescription>
+		<description><![CDATA[]]></description>
 	</field>
 	<field name="AFECTADO" class="java.lang.String">
-		<fieldDescription><![CDATA[]]></fieldDescription>
+		<description><![CDATA[]]></description>
 	</field>
 	<field name="ORIGEN" class="java.lang.String">
-		<fieldDescription><![CDATA[]]></fieldDescription>
+		<description><![CDATA[]]></description>
 	</field>
-	<variable name="SUMA_DEBE" class="java.math.BigDecimal" resetType="Group" resetGroup="ASNTNMRO" calculation="Sum">
-		<variableExpression><![CDATA[$F{DTASDBEE}]]></variableExpression>
+	<variable name="SUMA_DEBE" resetType="Group" calculation="Sum" resetGroup="ASNTNMRO" class="java.math.BigDecimal">
+		<expression><![CDATA[$F{DTASDBEE}]]></expression>
 	</variable>
-	<variable name="SUMA_HABER" class="java.math.BigDecimal" resetType="Group" resetGroup="ASNTNMRO" calculation="Sum">
-		<variableExpression><![CDATA[$F{DTASHBRR}]]></variableExpression>
+	<variable name="SUMA_HABER" resetType="Group" calculation="Sum" resetGroup="ASNTNMRO" class="java.math.BigDecimal">
+		<expression><![CDATA[$F{DTASHBRR}]]></expression>
 	</variable>
 	<group name="ASNTNMRO">
-		<groupExpression><![CDATA[$F{ASNTNMRO}]]></groupExpression>
+		<expression><![CDATA[$F{ASNTNMRO}]]></expression>
 		<groupHeader>
 			<band height="125" splitType="Stretch">
-				<rectangle>
-					<reportElement x="10" y="3" width="533" height="86"/>
-				</rectangle>
-				<staticText>
-					<reportElement x="10" y="105" width="56" height="13"/>
-					<textElement>
-						<font fontName="Tahoma" size="8" isBold="true"/>
-					</textElement>
+				<element kind="rectangle" uuid="a5304eab-cc3b-4f90-9203-56c146d711de" x="10" y="3" width="533" height="86"/>
+				<element kind="staticText" uuid="6bfc8c13-d848-4a4b-8bd9-1746ca187654" x="10" y="105" width="56" height="13" fontName="Tahoma" fontSize="8.0" bold="true">
 					<text><![CDATA[CUENTA]]></text>
-				</staticText>
-				<staticText>
-					<reportElement x="68" y="105" width="114" height="13"/>
-					<textElement>
-						<font fontName="Tahoma" size="8" isBold="true"/>
-					</textElement>
+				</element>
+				<element kind="staticText" uuid="4987aa1b-dd8c-4b1d-b3ca-81cb054dc23f" x="68" y="105" width="114" height="13" fontName="Tahoma" fontSize="8.0" bold="true">
 					<text><![CDATA[NOMBRE]]></text>
-				</staticText>
-				<staticText>
-					<reportElement x="185" y="105" width="114" height="13"/>
-					<textElement>
-						<font fontName="Tahoma" size="8" isBold="true"/>
-					</textElement>
+				</element>
+				<element kind="staticText" uuid="6b6f9411-c8dc-418b-ab46-90d729778885" x="185" y="105" width="114" height="13" fontName="Tahoma" fontSize="8.0" bold="true">
 					<text><![CDATA[DESCRIPCION]]></text>
-				</staticText>
-				<staticText>
-					<reportElement x="453" y="105" width="90" height="13"/>
-					<textElement textAlignment="Center">
-						<font fontName="Tahoma" size="8" isBold="true"/>
-					</textElement>
+				</element>
+				<element kind="staticText" uuid="7791d0ea-5112-40cf-8a53-ac974e4ef741" x="453" y="105" width="90" height="13" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center">
 					<text><![CDATA[CC]]></text>
-				</staticText>
-				<staticText>
-					<reportElement x="304" y="105" width="65" height="13"/>
-					<textElement textAlignment="Right">
-						<font fontName="Tahoma" size="8" isBold="true"/>
-					</textElement>
+				</element>
+				<element kind="staticText" uuid="8b6b2d42-79f4-46b0-9af7-049056ac41fe" x="304" y="105" width="65" height="13" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Right">
 					<text><![CDATA[DEBE]]></text>
-				</staticText>
-				<staticText>
-					<reportElement x="371" y="105" width="65" height="13"/>
-					<textElement textAlignment="Right">
-						<font fontName="Tahoma" size="8" isBold="true"/>
-					</textElement>
+				</element>
+				<element kind="staticText" uuid="d3440b81-bf84-4fc2-94cc-32f0f8f2e58b" x="371" y="105" width="65" height="13" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Right">
 					<text><![CDATA[HABER]]></text>
-				</staticText>
-				<staticText>
-					<reportElement x="21" y="5" width="43" height="15"/>
-					<textElement>
-						<font fontName="Tahoma" size="8" isBold="true"/>
-					</textElement>
+				</element>
+				<element kind="staticText" uuid="e434315e-e2ae-4abd-b968-dd19f8b83373" x="21" y="5" width="57" height="15" fontName="Tahoma" fontSize="8.0" bold="true">
 					<text><![CDATA[NUMERO:]]></text>
-				</staticText>
-				<staticText>
-					<reportElement x="358" y="6" width="76" height="15"/>
-					<textElement>
-						<font fontName="Tahoma" size="8" isBold="true"/>
-					</textElement>
+				</element>
+				<element kind="staticText" uuid="ba6630d3-1812-46a4-a249-fc2922156111" x="358" y="6" width="76" height="15" fontName="Tahoma" fontSize="8.0" bold="true">
 					<text><![CDATA[FECHA INGRESO:]]></text>
-				</staticText>
-				<line>
-					<reportElement x="10" y="99" width="533" height="1"/>
-				</line>
-				<line>
-					<reportElement x="10" y="122" width="533" height="1"/>
-				</line>
-				<textField isBlankWhenNull="true">
-					<reportElement x="239" y="21" width="70" height="15"/>
-					<textElement>
-						<font fontName="Tahoma" size="8"/>
-					</textElement>
-					<textFieldExpression class="java.lang.String"><![CDATA[$F{ESTADO}]]></textFieldExpression>
-				</textField>
-				<staticText>
-					<reportElement x="195" y="21" width="43" height="15"/>
-					<textElement>
-						<font fontName="Tahoma" size="8" isBold="true"/>
-					</textElement>
+				</element>
+				<element kind="line" uuid="90e15e88-fa73-4b44-ac9d-b5d3bfd68e9f" x="10" y="99" width="533" height="1"/>
+				<element kind="line" uuid="0fd658f1-04d2-4cc5-9bac-34623b11a09c" x="10" y="122" width="533" height="1"/>
+				<element kind="textField" uuid="4b42616a-5849-4883-a6bc-a56033193749" x="239" y="21" width="70" height="15" fontName="Tahoma" fontSize="8.0" blankWhenNull="true">
+					<expression><![CDATA[$F{ESTADO}]]></expression>
+				</element>
+				<element kind="staticText" uuid="e3ee11b1-c2f3-4b79-9358-0ef835d8afbd" x="195" y="21" width="43" height="15" fontName="Tahoma" fontSize="8.0" bold="true">
 					<text><![CDATA[ESTADO:]]></text>
-				</staticText>
-				<textField>
-					<reportElement x="79" y="5" width="39" height="15"/>
-					<textElement>
-						<font fontName="Tahoma" size="8"/>
-					</textElement>
-					<textFieldExpression class="java.math.BigDecimal"><![CDATA[$F{ASNTNMRO}]]></textFieldExpression>
-				</textField>
-				<textField pattern="dd/MM/yyyy" isBlankWhenNull="true">
-					<reportElement x="433" y="20" width="100" height="15"/>
-					<textElement>
-						<font fontName="Tahoma" size="8"/>
-					</textElement>
-					<textFieldExpression class="java.sql.Timestamp"><![CDATA[$F{ASNTFCHA}]]></textFieldExpression>
-				</textField>
-				<staticText>
-					<reportElement x="195" y="6" width="43" height="15"/>
-					<textElement>
-						<font fontName="Tahoma" size="8" isBold="true"/>
-					</textElement>
+				</element>
+				<element kind="textField" uuid="456795c0-ed09-4e65-82e0-54e907f508fc" x="79" y="5" width="39" height="15" fontName="Tahoma" fontSize="8.0">
+					<expression><![CDATA[$F{ASNTNMRO}]]></expression>
+				</element>
+				<element kind="textField" uuid="c8530445-11b2-4899-b3f1-ee5a76d53bdf" x="433" y="20" width="100" height="15" fontName="Tahoma" fontSize="8.0" pattern="dd/MM/yyyy" blankWhenNull="true">
+					<expression><![CDATA[$F{ASNTFCHA}]]></expression>
+				</element>
+				<element kind="staticText" uuid="76231861-aad3-4429-8b8c-64982f6ab275" x="195" y="6" width="43" height="15" fontName="Tahoma" fontSize="8.0" bold="true">
 					<text><![CDATA[ORIGEN:]]></text>
-				</staticText>
-				<staticText>
-					<reportElement x="21" y="35" width="43" height="15"/>
-					<textElement>
-						<font fontName="Tahoma" size="8" isBold="true"/>
-					</textElement>
+				</element>
+				<element kind="staticText" uuid="158b4150-d3c5-4a7c-b982-6a427afb4470" x="21" y="35" width="43" height="15" fontName="Tahoma" fontSize="8.0" bold="true">
 					<text><![CDATA[USUARIO:]]></text>
-				</staticText>
-				<textField isBlankWhenNull="true">
-					<reportElement x="239" y="6" width="100" height="15"/>
-					<textElement>
-						<font fontName="Tahoma" size="8"/>
-					</textElement>
-					<textFieldExpression class="java.lang.String"><![CDATA[$F{ORIGEN}]]></textFieldExpression>
-				</textField>
-				<textField isBlankWhenNull="true">
-					<reportElement x="79" y="35" width="100" height="15"/>
-					<textElement>
-						<font fontName="Tahoma" size="8"/>
-					</textElement>
-					<textFieldExpression class="java.lang.String"><![CDATA[$F{ASNTUSRO}]]></textFieldExpression>
-				</textField>
-				<staticText>
-					<reportElement x="21" y="51" width="76" height="15"/>
-					<textElement>
-						<font fontName="Tahoma" size="8" isBold="true"/>
-					</textElement>
+				</element>
+				<element kind="textField" uuid="5e6748df-5e90-43ee-accc-d15495523821" x="239" y="6" width="100" height="15" fontName="Tahoma" fontSize="8.0" blankWhenNull="true">
+					<expression><![CDATA[$F{ORIGEN}]]></expression>
+				</element>
+				<element kind="textField" uuid="6720d562-cbbe-4e61-8b52-8a27d9782e83" x="79" y="35" width="100" height="15" fontName="Tahoma" fontSize="8.0" blankWhenNull="true">
+					<expression><![CDATA[$F{ASNTUSRO}]]></expression>
+				</element>
+				<element kind="staticText" uuid="b0d36ca5-71c7-4f84-929d-f4a6801eb328" x="21" y="51" width="76" height="15" fontName="Tahoma" fontSize="8.0" bold="true">
 					<text><![CDATA[OBSERVACIONES:]]></text>
-				</staticText>
-				<textField isBlankWhenNull="true">
-					<reportElement x="105" y="52" width="428" height="34"/>
-					<textElement>
-						<font fontName="Tahoma" size="8"/>
-					</textElement>
-					<textFieldExpression class="java.lang.String"><![CDATA[$F{OBSERVACION}]]></textFieldExpression>
-				</textField>
-				<textField isBlankWhenNull="true">
-					<reportElement x="78" y="21" width="100" height="15"/>
-					<textElement verticalAlignment="Top">
-						<font fontName="Tahoma" size="8"/>
-					</textElement>
-					<textFieldExpression class="java.math.BigDecimal"><![CDATA[$F{NR}]]></textFieldExpression>
-				</textField>
-				<staticText>
-					<reportElement x="21" y="21" width="59" height="15"/>
-					<textElement>
-						<font fontName="Tahoma" size="8" isBold="true"/>
-					</textElement>
+				</element>
+				<element kind="textField" uuid="576c88a7-35b7-4257-8fd5-8e4e1cc9c52b" x="105" y="52" width="428" height="34" fontName="Tahoma" fontSize="8.0" blankWhenNull="true">
+					<expression><![CDATA[$F{OBSERVACION}]]></expression>
+				</element>
+				<element kind="textField" uuid="a8669c04-8a0f-459f-836e-3fe8fff3d9b0" x="78" y="21" width="100" height="15" fontName="Tahoma" fontSize="8.0" blankWhenNull="true" vTextAlign="Top">
+					<expression><![CDATA[$F{NR}]]></expression>
+				</element>
+				<element kind="staticText" uuid="36557eac-6cec-49a2-868a-5178ea68b7b4" x="21" y="21" width="59" height="15" fontName="Tahoma" fontSize="8.0" bold="true">
 					<text><![CDATA[REVERSADO:]]></text>
-				</staticText>
-				<staticText>
-					<reportElement x="358" y="21" width="76" height="15"/>
-					<textElement>
-						<font fontName="Tahoma" size="8" isBold="true"/>
-					</textElement>
+				</element>
+				<element kind="staticText" uuid="c7219ba6-0aa9-4a94-8fb4-b5d035e2a98e" x="358" y="21" width="76" height="15" fontName="Tahoma" fontSize="8.0" bold="true">
 					<text><![CDATA[FECHA ASIENTO:]]></text>
-				</staticText>
-				<textField pattern="dd/MM/yyyy" isBlankWhenNull="true">
-					<reportElement x="433" y="6" width="100" height="15"/>
-					<textElement>
-						<font fontName="Tahoma" size="8"/>
-					</textElement>
-					<textFieldExpression class="java.sql.Timestamp"><![CDATA[$F{ASNTFCPR}]]></textFieldExpression>
-				</textField>
+				</element>
+				<element kind="textField" uuid="aac5d8e8-1004-41be-bb0f-ed37cfa3feea" x="433" y="6" width="100" height="15" fontName="Tahoma" fontSize="8.0" pattern="dd/MM/yyyy" blankWhenNull="true">
+					<expression><![CDATA[$F{ASNTFCPR}]]></expression>
+				</element>
 			</band>
 		</groupHeader>
 		<groupFooter>
 			<band height="188" splitType="Stretch">
-				<staticText>
-					<reportElement x="95" y="157" width="100" height="20"/>
-					<textElement textAlignment="Center">
-						<font fontName="Tahoma" size="8"/>
-					</textElement>
+				<element kind="staticText" uuid="8810504a-092d-402d-97d0-9e07348da1a3" x="95" y="157" width="100" height="20" fontName="Tahoma" fontSize="8.0" hTextAlign="Center">
 					<text><![CDATA[Realizado por]]></text>
-				</staticText>
-				<line>
-					<reportElement x="95" y="155" width="100" height="1"/>
-				</line>
-				<line>
-					<reportElement x="352" y="155" width="100" height="1"/>
-				</line>
-				<staticText>
-					<reportElement x="262" y="15" width="37" height="15"/>
-					<textElement textAlignment="Right">
-						<font size="8" isBold="true"/>
-					</textElement>
+				</element>
+				<element kind="line" uuid="e8c4ff1f-80ec-4b47-ae6e-c3b8232c38eb" x="95" y="155" width="100" height="1"/>
+				<element kind="line" uuid="9a289538-3f5d-45b5-82f5-ded54ae99adb" x="352" y="155" width="100" height="1"/>
+				<element kind="staticText" uuid="bef3dee5-4ec7-4bd8-94dd-039df16d1ecf" x="262" y="15" width="37" height="15" fontSize="8.0" bold="true" hTextAlign="Right">
 					<text><![CDATA[TOTAL:]]></text>
-				</staticText>
-				<textField pattern="#,##0.00;(-#,##0.00)">
-					<reportElement x="304" y="14" width="65" height="15"/>
-					<textElement textAlignment="Right">
-						<font size="8" isBold="true"/>
-					</textElement>
-					<textFieldExpression class="java.math.BigDecimal"><![CDATA[$V{SUMA_DEBE}]]></textFieldExpression>
-				</textField>
-				<textField pattern="#,##0.00;(-#,##0.00)">
-					<reportElement x="370" y="14" width="65" height="15"/>
-					<textElement textAlignment="Right">
-						<font size="8" isBold="true"/>
-					</textElement>
-					<textFieldExpression class="java.math.BigDecimal"><![CDATA[$V{SUMA_HABER}]]></textFieldExpression>
-				</textField>
-				<staticText>
-					<reportElement x="352" y="156" width="100" height="20"/>
-					<textElement textAlignment="Center">
-						<font fontName="Tahoma" size="8"/>
-					</textElement>
+				</element>
+				<element kind="textField" uuid="977c9846-c226-4720-a4c0-4f1218942321" x="304" y="14" width="65" height="15" fontSize="8.0" pattern="#,##0.00;(-#,##0.00)" bold="true" hTextAlign="Right">
+					<expression><![CDATA[$V{SUMA_DEBE}]]></expression>
+				</element>
+				<element kind="textField" uuid="f3bb574f-9527-42fe-91e3-3a39e0191fa4" x="370" y="14" width="65" height="15" fontSize="8.0" pattern="#,##0.00;(-#,##0.00)" bold="true" hTextAlign="Right">
+					<expression><![CDATA[$V{SUMA_HABER}]]></expression>
+				</element>
+				<element kind="staticText" uuid="5a1026eb-c1a3-4e6a-8299-9eec3b69e58d" x="352" y="156" width="100" height="20" fontName="Tahoma" fontSize="8.0" hTextAlign="Center">
 					<text><![CDATA[Aprobado por]]></text>
-				</staticText>
-				<line>
-					<reportElement x="10" y="13" width="533" height="1"/>
-				</line>
-				<line>
-					<reportElement x="10" y="27" width="533" height="1"/>
-				</line>
+				</element>
+				<element kind="line" uuid="5be81a7f-1c35-4bac-b5f4-d53b1977887f" x="10" y="13" width="533" height="1"/>
+				<element kind="line" uuid="65607863-7a3a-414c-823c-207c6a00bda1" x="10" y="27" width="533" height="1"/>
 			</band>
 		</groupFooter>
 	</group>
-	<background>
-		<band splitType="Stretch"/>
-	</background>
-	<pageHeader>
-		<band height="71" splitType="Stretch">
-			<image scaleImage="RealSize" isLazy="true">
-				<reportElement positionType="FixRelativeToBottom" x="10" y="5" width="80" height="40"/>
-				<imageExpression class="java.lang.String"><![CDATA[$P{P_IMAGEN}]]></imageExpression>
-			</image>
-			<textField>
-				<reportElement x="95" y="5" width="370" height="20"/>
-				<textElement textAlignment="Center">
-					<font size="13" isBold="true"/>
-				</textElement>
-				<textFieldExpression class="java.lang.String"><![CDATA[$P{P_REPORTE}]]></textFieldExpression>
-			</textField>
-			<textField evaluationTime="Report">
-				<reportElement x="519" y="5" width="24" height="15"/>
-				<textElement>
-					<font size="8"/>
-				</textElement>
-				<textFieldExpression class="java.lang.String"><![CDATA[" " + $V{PAGE_NUMBER}]]></textFieldExpression>
-			</textField>
-			<textField>
-				<reportElement x="10" y="50" width="332" height="15"/>
-				<textElement>
-					<font size="8" isBold="true"/>
-				</textElement>
-				<textFieldExpression class="java.lang.String"><![CDATA[$P{P_PATH}]]></textFieldExpression>
-			</textField>
-			<textField pattern="h.mm a">
-				<reportElement x="475" y="35" width="58" height="15"/>
-				<textElement>
-					<font size="8"/>
-				</textElement>
-				<textFieldExpression class="java.util.Date"><![CDATA[new java.util.Date()]]></textFieldExpression>
-			</textField>
-			<textField pattern="dd-MMM-yyyy">
-				<reportElement x="475" y="20" width="58" height="15"/>
-				<textElement>
-					<font size="8"/>
-				</textElement>
-				<textFieldExpression class="java.util.Date"><![CDATA[new java.util.Date()]]></textFieldExpression>
-			</textField>
-			<textField>
-				<reportElement x="468" y="5" width="51" height="15"/>
-				<textElement textAlignment="Right">
-					<font size="8"/>
-				</textElement>
-				<textFieldExpression class="java.lang.String"><![CDATA["Página "+$V{PAGE_NUMBER}+" de"]]></textFieldExpression>
-			</textField>
-			<textField>
-				<reportElement x="261" y="25" width="106" height="15"/>
-				<textElement>
-					<font fontName="Tahoma" size="8"/>
-				</textElement>
-				<textFieldExpression class="java.lang.String"><![CDATA[$F{PLNTNMBR}]]></textFieldExpression>
-			</textField>
-			<staticText>
-				<reportElement x="216" y="25" width="43" height="15"/>
-				<textElement textAlignment="Center">
-					<font fontName="Tahoma" size="8" isBold="true"/>
-				</textElement>
-				<text><![CDATA[TIPO:]]></text>
-			</staticText>
-		</band>
+	<background splitType="Stretch"/>
+	<pageHeader height="71" splitType="Stretch">
+		<element kind="image" uuid="5cde03e2-7a9e-4896-989e-059ce8948227" positionType="FixRelativeToBottom" x="10" y="5" width="80" height="40" scaleImage="RealSize" linkType="None" linkTarget="Self" lazy="true">
+			<expression><![CDATA[$P{P_IMAGEN}]]></expression>
+		</element>
+		<element kind="textField" uuid="7efe785f-c193-4b61-85a9-86a150d6cad1" x="95" y="5" width="370" height="20" fontSize="13.0" bold="true" hTextAlign="Center">
+			<expression><![CDATA[$P{P_REPORTE}]]></expression>
+		</element>
+		<element kind="textField" uuid="a1c7c46f-b15c-4e57-9a99-bb62edf93c01" x="519" y="5" width="24" height="15" fontSize="8.0" evaluationTime="Report">
+			<expression><![CDATA[" " + $V{PAGE_NUMBER}]]></expression>
+		</element>
+		<element kind="textField" uuid="5a721b5c-6385-4fe5-a07b-e7e42d476a5b" x="10" y="50" width="332" height="15" fontSize="8.0" bold="true">
+			<expression><![CDATA[$P{P_PATH}]]></expression>
+		</element>
+		<element kind="textField" uuid="a6a39eed-13cb-4a40-ace4-f79c6bfaac66" x="475" y="35" width="58" height="15" fontSize="8.0" pattern="h.mm a">
+			<expression><![CDATA[new java.util.Date()]]></expression>
+		</element>
+		<element kind="textField" uuid="71d6fc9c-9020-433e-9976-1edb34a41e34" x="475" y="20" width="58" height="15" fontSize="8.0" pattern="dd-MMM-yyyy">
+			<expression><![CDATA[new java.util.Date()]]></expression>
+		</element>
+		<element kind="textField" uuid="9c4f36aa-c093-4c1e-be22-5db9ea3a745d" x="468" y="5" width="51" height="15" fontSize="8.0" hTextAlign="Right">
+			<expression><![CDATA["Página "+$V{PAGE_NUMBER}+" de"]]></expression>
+		</element>
+		<element kind="textField" uuid="1bef441c-9276-4705-88cb-f73fdeb52380" x="261" y="25" width="106" height="15" fontName="Tahoma" fontSize="8.0">
+			<expression><![CDATA[$F{PLNTNMBR}]]></expression>
+		</element>
+		<element kind="staticText" uuid="d7f3080e-993d-46e2-b589-f38e5487601f" x="216" y="25" width="43" height="15" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center">
+			<text><![CDATA[TIPO:]]></text>
+		</element>
 	</pageHeader>
 	<detail>
 		<band height="12" splitType="Stretch">
-			<textField>
-				<reportElement x="10" y="0" width="56" height="11"/>
-				<textElement>
-					<font fontName="Tahoma" size="7"/>
-				</textElement>
-				<textFieldExpression class="java.lang.String"><![CDATA[$F{DTASCNTA}]]></textFieldExpression>
-			</textField>
-			<textField>
-				<reportElement x="69" y="0" width="114" height="11"/>
-				<textElement>
-					<font fontName="Tahoma" size="7"/>
-				</textElement>
-				<textFieldExpression class="java.lang.String"><![CDATA[$F{DTASNMCT}]]></textFieldExpression>
-			</textField>
-			<textField>
-				<reportElement x="185" y="0" width="114" height="11"/>
-				<textElement>
-					<font fontName="Tahoma" size="7"/>
-				</textElement>
-				<textFieldExpression class="java.lang.String"><![CDATA[$F{DTASDSCR}.toUpperCase()]]></textFieldExpression>
-			</textField>
-			<textField pattern="#,##0.00;(-#,##0.00)">
-				<reportElement x="303" y="0" width="65" height="11"/>
-				<textElement textAlignment="Right">
-					<font fontName="Tahoma" size="7"/>
-				</textElement>
-				<textFieldExpression class="java.math.BigDecimal"><![CDATA[$F{DTASDBEE}]]></textFieldExpression>
-			</textField>
-			<textField pattern="#,##0.00;(-#,##0.00)">
-				<reportElement x="371" y="0" width="65" height="11"/>
-				<textElement textAlignment="Right">
-					<font fontName="Tahoma" size="7"/>
-				</textElement>
-				<textFieldExpression class="java.math.BigDecimal"><![CDATA[$F{DTASHBRR}]]></textFieldExpression>
-			</textField>
-			<textField>
-				<reportElement x="453" y="0" width="90" height="11"/>
-				<textElement textAlignment="Center">
-					<font fontName="Tahoma" size="7"/>
-				</textElement>
-				<textFieldExpression class="java.lang.String"><![CDATA[$F{CENTROC}]]></textFieldExpression>
-			</textField>
+			<element kind="textField" uuid="82d793c6-052f-43b0-b781-ca10b2e68b53" x="10" y="0" width="56" height="11" fontName="Tahoma" fontSize="7.0">
+				<expression><![CDATA[$F{DTASCNTA}]]></expression>
+			</element>
+			<element kind="textField" uuid="63575668-d6b6-4db9-86de-7ab3e769cadb" x="69" y="0" width="114" height="11" fontName="Tahoma" fontSize="7.0">
+				<expression><![CDATA[$F{DTASNMCT}]]></expression>
+			</element>
+			<element kind="textField" uuid="acf51b0b-a8f8-454f-8225-fedb93b82637" x="185" y="0" width="114" height="11" fontName="Tahoma" fontSize="7.0">
+				<expression><![CDATA[$F{DTASDSCR}.toUpperCase()]]></expression>
+			</element>
+			<element kind="textField" uuid="7b616551-02fe-4c50-b768-767363ff346f" x="303" y="0" width="65" height="11" fontName="Tahoma" fontSize="7.0" pattern="#,##0.00;(-#,##0.00)" hTextAlign="Right">
+				<expression><![CDATA[$F{DTASDBEE}]]></expression>
+			</element>
+			<element kind="textField" uuid="a4ec943f-92d3-4e86-8e3f-9e403db73897" x="371" y="0" width="65" height="11" fontName="Tahoma" fontSize="7.0" pattern="#,##0.00;(-#,##0.00)" hTextAlign="Right">
+				<expression><![CDATA[$F{DTASHBRR}]]></expression>
+			</element>
+			<element kind="textField" uuid="6826fdab-a35c-493e-9e79-26f94d280ad9" x="453" y="0" width="90" height="11" fontName="Tahoma" fontSize="7.0" hTextAlign="Center">
+				<expression><![CDATA[$F{CENTROC}]]></expression>
+			</element>
 		</band>
 	</detail>
 </jasperReport>

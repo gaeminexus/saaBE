@@ -282,7 +282,7 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
                 
                 // Validar que exista código de aporte
                 if (codigoAporte.isEmpty()) {
-                    throw new IllegalArgumentException("Error en línea " + (numeroLinea + 8) + ": Código de producto/aporte vacío");
+                    // throw new IllegalArgumentException("Error en línea " + (numeroLinea + 8) + ": Código de producto/aporte vacío");
                 }
                 
                 i++;
