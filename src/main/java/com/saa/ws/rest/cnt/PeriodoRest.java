@@ -1,4 +1,4 @@
-package com.saa.ws.rest.contabilidad;
+package com.saa.ws.rest.cnt;
 
 import java.time.LocalDate;
 import java.util.List;

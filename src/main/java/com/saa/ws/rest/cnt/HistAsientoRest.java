@@ -1,11 +1,11 @@
-package com.saa.ws.rest.contabilidad;
+package com.saa.ws.rest.cnt;
 
 import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
-import com.saa.ejb.cnt.dao.HistDetalleAsientoDaoService;
-import com.saa.ejb.cnt.service.HistDetalleAsientoService;
-import com.saa.model.cnt.HistDetalleAsiento;
+import com.saa.ejb.cnt.dao.HistAsientoDaoService;
+import com.saa.ejb.cnt.service.HistAsientoService;
+import com.saa.model.cnt.HistAsiento;
 import com.saa.model.cnt.NombreEntidadesContabilidad;
 
 import jakarta.ejb.EJB;
@@ -22,14 +22,14 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 
-@Path("dtah")
-public class HistDetalleAsientoRest {
+@Path("asnh")
+public class HistAsientoRest {
 
     @EJB
-    private HistDetalleAsientoDaoService histDetalleAsientoDaoService;
+    private HistAsientoDaoService histAsientoDaoService;
 
     @EJB
-    private HistDetalleAsientoService histDetalleAsientoService;
+    private HistAsientoService histAsientoService;
 
     @Context
     private UriInfo context;
@@ -37,12 +37,12 @@ public class HistDetalleAsientoRest {
     /**
      * Default constructor.
      */
-    public HistDetalleAsientoRest() {
+    public HistAsientoRest() {
         // TODO Auto-generated constructor stub
     }
 
     /**
-     * Retrieves representation of an instance of HistDetalleAsientoRest
+     * Retrieves representation of an instance of HistAsientoRest
      * 
      * @return an instance of String
      * @throws Throwable
@@ -52,17 +52,20 @@ public class HistDetalleAsientoRest {
     @Produces(MediaType.APPLICATION_JSON)
     public Response getAll() {
         try {
-            List<HistDetalleAsiento> lista = histDetalleAsientoDaoService.selectAll(NombreEntidadesContabilidad.HIST_DETALLE_ASIENTO);
+            List<HistAsiento> lista = histAsientoDaoService.selectAll(NombreEntidadesContabilidad.HIST_ASIENTO);
             return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener historial de detalles de asiento: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener historial de asientos: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
     }
     
-    /* Eliminamos esta parte por que ya no usamos orden descendente
+    
+    
+    /* Comentamos esta parte por que ya no estamos usando el orden descendente
+     */
 
     /**
-     * Retrieves representation of an instance of HistDetalleAsientoRest
+     * Retrieves representation of an instance of HistAsientoRest
      * 
      * @return an instance of String
      * @throws Throwable
@@ -72,15 +75,16 @@ public class HistDetalleAsientoRest {
     @Path("/getDesc")
     public Response getDesc() {
         try {
-            List<HistDetalleAsiento> lista = histDetalleAsientoDaoService.selectOrderDesc();
+            List<HistAsiento> lista = histAsientoDaoService.selectOrderDesc();
             return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener registros: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
     }
 
+
     /**
-     * Retrieves representation of an instance of HistDetalleAsientoRest
+     * Retrieves representation of an instance of HistAsientoRest
      * 
      * @return an instance of String
      * @throws Throwable
@@ -89,9 +93,8 @@ public class HistDetalleAsientoRest {
     @Produces("application/json")
     @Path("/getTest")
     public Response getTest() throws Throwable {
-        return Response.status(200).entity(histDetalleAsientoDaoService.selectOrderDesc()).build();
+        return Response.status(200).entity(histAsientoDaoService.selectOrderDesc()).build();
     }
-    
     */
 
     @GET
@@ -99,51 +102,57 @@ public class HistDetalleAsientoRest {
     @Produces(MediaType.APPLICATION_JSON)
     public Response getId(@PathParam("id") Long id) {
         try {
-            HistDetalleAsiento hist = histDetalleAsientoDaoService.selectById(id, NombreEntidadesContabilidad.HIST_DETALLE_ASIENTO);
+            HistAsiento hist = histAsientoDaoService.selectById(id, NombreEntidadesContabilidad.HIST_ASIENTO);
             if (hist == null) {
-                return Response.status(Response.Status.NOT_FOUND).entity("Historial de detalle de asiento con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
+                return Response.status(Response.Status.NOT_FOUND).entity("Historial de asiento con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
             }
             return Response.status(Response.Status.OK).entity(hist).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener historial de detalle de asiento: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener historial de asiento: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
     }
 
     @PUT
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response put(HistDetalleAsiento registro) {
-        System.out.println("LLEGA AL SERVICIO PUT - HIST_DETALLE_ASIENTO");
+    public Response put(HistAsiento registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - HIST_ASIENTO");
         try {
-            HistDetalleAsiento resultado = histDetalleAsientoService.saveSingle(registro);
+            HistAsiento resultado = histAsientoService.saveSingle(registro);
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar historial de detalle de asiento: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar historial de asiento: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
     }
 
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response post(HistDetalleAsiento registro) {
-        System.out.println("LLEGA AL SERVICIO POST - HIST_DETALLE_ASIENTO");
+    public Response post(HistAsiento registro) {
+        System.out.println("LLEGA AL SERVICIO POST - HIST_ASIENTO");
         try {
-            HistDetalleAsiento resultado = histDetalleAsientoService.saveSingle(registro);
+            HistAsiento resultado = histAsientoService.saveSingle(registro);
             return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear historial de detalle de asiento: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear historial de asiento: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
     }
 
+    /**
+     * POST method for updating or creating an instance of HistAsientoRest
+     *
+     * @param content representation for the resource
+     * @return an HTTP response with content of the updated or created resource.
+     */
     @POST
     @Path("selectByCriteria")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response selectByCriteria(List<DatosBusqueda> registros) {
-        System.out.println("selectByCriteria de HIST_DETALLE_ASIENTO");
+        System.out.println("selectByCriteria de HIST_ASIENTO");
         try {
             return Response.status(Response.Status.OK)
-                    .entity(histDetalleAsientoService.selectByCriteria(registros))
+                    .entity(histAsientoService.selectByCriteria(registros))
                     .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.BAD_REQUEST)
@@ -156,13 +165,13 @@ public class HistDetalleAsientoRest {
     @Path("/{id}")
     @Produces(MediaType.APPLICATION_JSON)
     public Response delete(@PathParam("id") Long id) {
-        System.out.println("LLEGA AL SERVICIO DELETE - HIST_DETALLE_ASIENTO");
+        System.out.println("LLEGA AL SERVICIO DELETE - HIST_ASIENTO");
         try {
-            HistDetalleAsiento elimina = new HistDetalleAsiento();
-            histDetalleAsientoDaoService.remove(elimina, id);
+            HistAsiento elimina = new HistAsiento();
+            histAsientoDaoService.remove(elimina, id);
             return Response.status(Response.Status.NO_CONTENT).build();
         } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar historial de detalle de asiento: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar historial de asiento: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
     }
 
