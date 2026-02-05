@@ -3,7 +3,7 @@ package com.saa.ejb.contabilidad.dao;
 import java.util.List;
 
 import com.saa.basico.util.EntityDao;
-import com.saa.model.contabilidad.DetalleMayorizacion;
+import com.saa.model.cnt.DetalleMayorizacion;
 
 import jakarta.ejb.Local;
 

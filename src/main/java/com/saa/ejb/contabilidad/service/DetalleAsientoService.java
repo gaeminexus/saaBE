@@ -4,12 +4,12 @@ import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.util.EntityService;
-import com.saa.model.contabilidad.Asiento;
-import com.saa.model.contabilidad.CentroCosto;
-import com.saa.model.contabilidad.DetalleAsiento;
-import com.saa.model.contabilidad.Mayorizacion;
-import com.saa.model.contabilidad.Periodo;
-import com.saa.model.contabilidad.PlanCuenta;
+import com.saa.model.cnt.Asiento;
+import com.saa.model.cnt.CentroCosto;
+import com.saa.model.cnt.DetalleAsiento;
+import com.saa.model.cnt.Mayorizacion;
+import com.saa.model.cnt.Periodo;
+import com.saa.model.cnt.PlanCuenta;
 
 import jakarta.ejb.Local;
 

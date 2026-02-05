@@ -4,7 +4,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.util.EntityService;
-import com.saa.model.contabilidad.CentroCosto;
+import com.saa.model.cnt.CentroCosto;
 
 import jakarta.ejb.Local;
 

@@ -3,7 +3,7 @@ package com.saa.ejb.contabilidad.daoImpl;
 import java.util.List;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.contabilidad.dao.DetalleMayorizacionDaoService;
-import com.saa.model.contabilidad.DetalleMayorizacion;
+import com.saa.model.cnt.DetalleMayorizacion;
 import com.saa.rubros.GrupoCuentasBasicas;
 import com.saa.rubros.TipoCuentaContable;
 

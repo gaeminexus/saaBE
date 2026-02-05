@@ -1,7 +1,7 @@
 package com.saa.ejb.contabilidad.service;
 
 import com.saa.basico.util.EntityService;
-import com.saa.model.contabilidad.NaturalezaCuenta;
+import com.saa.model.cnt.NaturalezaCuenta;
 
 import jakarta.ejb.Local;
 

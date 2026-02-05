@@ -4,7 +4,7 @@ import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.contabilidad.dao.NaturalezaCuentaDaoService;
-import com.saa.model.contabilidad.NaturalezaCuenta;
+import com.saa.model.cnt.NaturalezaCuenta;
 import com.saa.rubros.Estado;
 
 import jakarta.ejb.Stateless;

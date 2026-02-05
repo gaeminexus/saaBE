@@ -1,7 +1,7 @@
 package com.saa.ejb.tesoreria.service;
 
 import com.saa.basico.util.EntityService;
-import com.saa.model.contabilidad.Asiento;
+import com.saa.model.cnt.Asiento;
 import com.saa.model.tesoreria.CajaFisica;
 import com.saa.model.tesoreria.Deposito;
 import com.saa.model.tesoreria.UsuarioPorCaja;

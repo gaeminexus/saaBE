@@ -7,10 +7,10 @@ import com.saa.basico.util.IncomeException;
 import com.saa.ejb.contabilidad.dao.HistDetalleAsientoDaoService;
 import com.saa.ejb.contabilidad.service.DetalleAsientoService;
 import com.saa.ejb.contabilidad.service.HistDetalleAsientoService;
-import com.saa.model.contabilidad.DetalleAsiento;
-import com.saa.model.contabilidad.HistAsiento;
-import com.saa.model.contabilidad.HistDetalleAsiento;
-import com.saa.model.contabilidad.NombreEntidadesContabilidad;
+import com.saa.model.cnt.DetalleAsiento;
+import com.saa.model.cnt.HistAsiento;
+import com.saa.model.cnt.HistDetalleAsiento;
+import com.saa.model.cnt.NombreEntidadesContabilidad;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;

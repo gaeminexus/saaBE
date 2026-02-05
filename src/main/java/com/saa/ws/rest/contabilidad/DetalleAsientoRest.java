@@ -5,8 +5,8 @@ import java.util.List;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.contabilidad.dao.DetalleAsientoDaoService;
 import com.saa.ejb.contabilidad.service.DetalleAsientoService;
-import com.saa.model.contabilidad.DetalleAsiento;
-import com.saa.model.contabilidad.NombreEntidadesContabilidad;
+import com.saa.model.cnt.DetalleAsiento;
+import com.saa.model.cnt.NombreEntidadesContabilidad;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;

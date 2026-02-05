@@ -7,9 +7,9 @@ import com.saa.basico.util.IncomeException;
 import com.saa.ejb.contabilidad.dao.DetallePlantillaDaoService;
 import com.saa.ejb.contabilidad.dao.PlantillaDaoService;
 import com.saa.ejb.contabilidad.service.DetallePlantillaService;
-import com.saa.model.contabilidad.DetallePlantilla;
-import com.saa.model.contabilidad.NombreEntidadesContabilidad;
-import com.saa.model.contabilidad.PlanCuenta;
+import com.saa.model.cnt.DetallePlantilla;
+import com.saa.model.cnt.NombreEntidadesContabilidad;
+import com.saa.model.cnt.PlanCuenta;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.EJBException;

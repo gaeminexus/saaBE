@@ -18,7 +18,7 @@ import com.saa.ejb.contabilidad.service.PeriodoService;
 import com.saa.ejb.tesoreria.dao.SaldoBancoDaoService;
 import com.saa.ejb.tesoreria.service.MovimientoBancoService;
 import com.saa.ejb.tesoreria.service.SaldoBancoService;
-import com.saa.model.contabilidad.Periodo;
+import com.saa.model.cnt.Periodo;
 import com.saa.model.tesoreria.CuentaBancaria;
 import com.saa.model.tesoreria.MovimientoBanco;
 import com.saa.model.tesoreria.NombreEntidadesTesoreria;

@@ -5,7 +5,7 @@ import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.contabilidad.dao.SaldosDaoService;
-import com.saa.model.contabilidad.Saldos;
+import com.saa.model.cnt.Saldos;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

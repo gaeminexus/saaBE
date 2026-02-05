@@ -16,10 +16,10 @@ import com.saa.ejb.contabilidad.service.HistMayorizacionService;
 import com.saa.ejb.contabilidad.service.MayorizacionCCService;
 import com.saa.ejb.contabilidad.service.MayorizacionService;
 import com.saa.ejb.contabilidad.service.PeriodoService;
-import com.saa.model.contabilidad.HistMayorizacion;
-import com.saa.model.contabilidad.Mayorizacion;
-import com.saa.model.contabilidad.NombreEntidadesContabilidad;
-import com.saa.model.contabilidad.Periodo;
+import com.saa.model.cnt.HistMayorizacion;
+import com.saa.model.cnt.Mayorizacion;
+import com.saa.model.cnt.NombreEntidadesContabilidad;
+import com.saa.model.cnt.Periodo;
 import com.saa.rubros.ProcesosMayorizacion;
 
 import jakarta.ejb.EJB;

@@ -2,7 +2,7 @@ package com.saa.ejb.contabilidad.daoImpl;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.contabilidad.dao.HistDetalleAsientoDaoService;
-import com.saa.model.contabilidad.HistDetalleAsiento;
+import com.saa.model.cnt.HistDetalleAsiento;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

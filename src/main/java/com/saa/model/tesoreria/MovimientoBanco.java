@@ -12,8 +12,8 @@ import java.io.Serializable;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
-import com.saa.model.contabilidad.Asiento;
-import com.saa.model.contabilidad.Periodo;
+import com.saa.model.cnt.Asiento;
+import com.saa.model.cnt.Periodo;
 import com.saa.model.scp.Empresa;
 
 import jakarta.persistence.Basic;

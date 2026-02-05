@@ -3,7 +3,7 @@ package com.saa.ejb.contabilidad.service;
 import java.time.LocalDate;
 
 import com.saa.basico.util.EntityService;
-import com.saa.model.contabilidad.MayorAnalitico;
+import com.saa.model.cnt.MayorAnalitico;
 
 import jakarta.ejb.Local;
 

@@ -10,7 +10,7 @@ package com.saa.model.tesoreria;
 
 import java.io.Serializable;
 
-import com.saa.model.contabilidad.DetallePlantilla;
+import com.saa.model.cnt.DetallePlantilla;
 import com.saa.model.scp.Empresa;
 import com.saa.model.scp.Usuario;
 

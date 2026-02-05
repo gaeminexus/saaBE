@@ -4,7 +4,7 @@ import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.contabilidad.dao.PlantillaDaoService;
-import com.saa.model.contabilidad.Plantilla;
+import com.saa.model.cnt.Plantilla;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

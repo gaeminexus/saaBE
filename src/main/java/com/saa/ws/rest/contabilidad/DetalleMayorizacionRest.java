@@ -5,8 +5,8 @@ import java.util.List;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.contabilidad.dao.DetalleMayorizacionDaoService;
 import com.saa.ejb.contabilidad.service.DetalleMayorizacionService;
-import com.saa.model.contabilidad.DetalleMayorizacion;
-import com.saa.model.contabilidad.NombreEntidadesContabilidad;
+import com.saa.model.cnt.DetalleMayorizacion;
+import com.saa.model.cnt.NombreEntidadesContabilidad;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;

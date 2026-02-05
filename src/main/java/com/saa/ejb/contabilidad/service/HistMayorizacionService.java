@@ -1,8 +1,8 @@
 package com.saa.ejb.contabilidad.service;
 
 import com.saa.basico.util.EntityService;
-import com.saa.model.contabilidad.HistMayorizacion;
-import com.saa.model.contabilidad.Mayorizacion;
+import com.saa.model.cnt.HistMayorizacion;
+import com.saa.model.cnt.Mayorizacion;
 
 import jakarta.ejb.Local;
 

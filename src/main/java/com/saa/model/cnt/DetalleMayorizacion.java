@@ -1,4 +1,4 @@
-package com.saa.model.contabilidad;
+package com.saa.model.cnt;
 
 import java.io.Serializable;
 
@@ -17,70 +17,70 @@ import jakarta.persistence.Table;
 
 @SuppressWarnings("serial")
 @Entity
-@Table(name = "DTMH", schema = "CNT")
-@SequenceGenerator(name = "SQ_DTMHCDGO", sequenceName = "CNT.SQ_DTMHCDGO", allocationSize = 1)
+@Table(name = "DTMY", schema = "CNT")
+@SequenceGenerator(name = "SQ_DTMYCDGO", sequenceName = "CNT.SQ_DTMYCDGO", allocationSize = 1)
 @NamedQueries({
-	@NamedQuery(name = "HistDetalleMayorizacionAll", query = "select e from HistDetalleMayorizacion e"),
-	@NamedQuery(name = "HistDetalleMayorizacionId", query = "select e from HistDetalleMayorizacion e where e.codigo = :id")
+	@NamedQuery(name = "DetalleMayorizacionAll", query = "select e from DetalleMayorizacion e"),
+	@NamedQuery(name = "DetalleMayorizacionId", query = "select e from DetalleMayorizacion e where e.codigo = :id")
 })
-public class HistDetalleMayorizacion implements Serializable {
+public class DetalleMayorizacion implements Serializable {
 
 	/**
 	 * id de la tabla.
 	 */
 	@Basic
 	@Id
-	@Column(name = "DTMHCDGO", precision = 0)
-	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_DTMHCDGO")
+	@Column(name = "DTMYCDGO", precision = 0)
+	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_DTMYCDGO")
 	private Long codigo;
 	
 	/**
-	 * Mayorizacion histórica a la que pertence.
+	 * id de la tabla mayorizacion.
 	 */
 	@ManyToOne
-	@JoinColumn(name = "MYRHCDGO", referencedColumnName = "MYRHCDGO")	
-	private HistMayorizacion histMayorizacion;	
+	@JoinColumn(name = "MYRZCDGO", referencedColumnName = "MYRZCDGO")
+	private Mayorizacion mayorizacion;	
 
 	/**
-	 * id de tabla plnn.
-	 */ 
-	@Basic
-	@Column(name = "PLNNCDGO")	
+	 * id de tabla planCuenta.
+	 */
+	@ManyToOne
+	@JoinColumn(name = "PLNNCDGO", referencedColumnName = "PLNNCDGO")
 	private PlanCuenta planCuenta;	
 
 	/**
 	 * saldo del periodo anterior de la cuenta contable.
 	 */
 	@Basic
-	@Column(name = "DTMHSLAN")
+	@Column(name = "DTMYSLAN")
 	private Double saldoAnterior;
 	
 	/**
 	 * valor del debe del periodo actual.
 	 */
 	@Basic
-	@Column(name = "DTMHDBEE")
+	@Column(name = "DTMYDBEE")
 	private Double valorDebe;
 	
 	/**
 	 * valor del haber del periodo actual.
 	 */
 	@Basic
-	@Column(name = "DTMHHBRR")
+	@Column(name = "DTMYHBRR")
 	private Double valorHaber;
 	
 	/**
-	 * valor del saldo del periodo actual.
+	 * valor del saldo del periodo actual. 
 	 */
 	@Basic
-	@Column(name = "DTMHSLAC")
+	@Column(name = "DTMYSLAC")
 	private Double saldoActual;
 	
 	/**
 	 * cuenta contable.
 	 */
 	@Basic
-	@Column(name = "DTMHCTCN", length = 50)
+	@Column(name = "DTMYCTCN", length = 50)
 	private String numeroCuenta;
 	
 	/**
@@ -98,25 +98,18 @@ public class HistDetalleMayorizacion implements Serializable {
 	private String nombreCuenta;
 	
 	/**
-	 * tipo de la cuenta contable. 1 = acumulación, 2 = movimiento.
+	 * tipo de la cuenta contable 1 = acumulación, 2 = movimiento.
 	 */
 	@Basic
 	@Column(name = "PLNNTPOO")
 	private Long tipoCuenta;
 	
 	/**
-	 * nivel de la cuenta contable.
+	 * nivel de la cuenta contable. nivelCuenta.
 	 */
 	@Basic
 	@Column(name = "PLNNNVLL")
 	private Long nivelCuenta;
-	
-	/**
-	 * Id de la mayorizacion que origina el respaldo
-	 */
-	@Basic
-	@Column(name = "MYRZCDGO")
-	private Mayorizacion mayorizacion;
 	
 	/**
 	 * Devuelve codigo
@@ -135,17 +128,17 @@ public class HistDetalleMayorizacion implements Serializable {
 	}
 	
 	/**
-	 * Devuelve histMayorizacion
+	 * Devuelve mayorizacion
 	 */
-	public HistMayorizacion getHistMayorizacion() {
-		return this.histMayorizacion;
+	public Mayorizacion getMayorizacion() {
+		return this.mayorizacion;
 	}
 	
 	/**
-	 * Asigna histMayorizacion
+	 * Asigna mayorizacion
 	 */
-	public void setHistMayorizacion(HistMayorizacion histMayorizacion) {
-		this.histMayorizacion = histMayorizacion;
+	public void setMayorizacion(Mayorizacion mayorizacion) {
+		this.mayorizacion = mayorizacion;
 	}
 
 	/**
@@ -304,22 +297,6 @@ public class HistDetalleMayorizacion implements Serializable {
 	 */
 	public void setNivelCuenta(Long nivelCuenta) {
 		this.nivelCuenta = nivelCuenta;
-	}
-	
-	/**
-	 * Devuelve idMayorizacion
-	 * @return idMayorizacion
-	 */
-	public Mayorizacion getMayorizacion() {
-		return mayorizacion;
-	}
-
-	/**
-	 * Asigna idMayorizacion
-	 * @param idMayorizacion
-	 */
-	public void setMayorizacion(Mayorizacion mayorizacion) {
-		this.mayorizacion = mayorizacion;
 	}
    
 }

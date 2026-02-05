@@ -8,7 +8,7 @@ package com.saa.ejb.contabilidad.dao;
 import java.util.List;
 
 import com.saa.basico.util.EntityDao;
-import com.saa.model.contabilidad.NaturalezaCuenta;
+import com.saa.model.cnt.NaturalezaCuenta;
 
 import jakarta.ejb.Local;
 

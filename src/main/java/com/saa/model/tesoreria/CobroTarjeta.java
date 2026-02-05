@@ -3,7 +3,7 @@ package com.saa.model.tesoreria;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
-import com.saa.model.contabilidad.DetallePlantilla;
+import com.saa.model.cnt.DetallePlantilla;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;

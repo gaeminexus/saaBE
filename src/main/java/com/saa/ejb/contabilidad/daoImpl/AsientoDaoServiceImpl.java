@@ -11,7 +11,7 @@ import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.contabilidad.dao.AsientoDaoService;
-import com.saa.model.contabilidad.Asiento;
+import com.saa.model.cnt.Asiento;
 import com.saa.rubros.EstadoAsiento;
 
 import jakarta.ejb.Stateless;

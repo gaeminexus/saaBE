@@ -6,7 +6,7 @@
 package com.saa.ejb.contabilidad.dao;
 
 import com.saa.basico.util.EntityDao;
-import com.saa.model.contabilidad.ReporteContable;
+import com.saa.model.cnt.ReporteContable;
 
 import jakarta.ejb.Local;
 

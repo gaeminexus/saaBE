@@ -4,8 +4,8 @@ import java.util.List;
 
 import com.saa.ejb.contabilidad.dao.DesgloseMayorizacionCCDaoService;
 import com.saa.ejb.contabilidad.service.DesgloseMayorizacionCCService;
-import com.saa.model.contabilidad.DesgloseMayorizacionCC;
-import com.saa.model.contabilidad.NombreEntidadesContabilidad;
+import com.saa.model.cnt.DesgloseMayorizacionCC;
+import com.saa.model.cnt.NombreEntidadesContabilidad;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;

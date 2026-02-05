@@ -22,7 +22,7 @@ import com.saa.ejb.tesoreria.service.DesgloseDetalleDepositoService;
 import com.saa.ejb.tesoreria.service.DetalleDepositoService;
 import com.saa.ejb.tesoreria.service.MovimientoBancoService;
 import com.saa.ejb.tesoreria.service.UsuarioPorCajaService;
-import com.saa.model.contabilidad.Asiento;
+import com.saa.model.cnt.Asiento;
 import com.saa.model.tesoreria.AuxDepositoBanco;
 import com.saa.model.tesoreria.AuxDepositoCierre;
 import com.saa.model.tesoreria.AuxDepositoDesglose;

@@ -1,4 +1,4 @@
-package com.saa.model.contabilidad;
+package com.saa.model.cnt;
 
 import java.io.Serializable;
 
@@ -15,38 +15,34 @@ import jakarta.persistence.NamedQuery;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
 
-/**
- * Entity implementation class for Entity: HistDetalleAsiento
- *
- */
 @SuppressWarnings("serial")
 @Entity
-@Table(name = "DTAH", schema = "CNT")
-@SequenceGenerator(name = "SQ_DTAHCDGO", sequenceName = "CNT.SQ_DTAHCDGO", allocationSize = 1)
+@Table(name = "DTAS", schema = "CNT")
+@SequenceGenerator(name = "SQ_DTASCDGO", sequenceName = "CNT.SQ_DTASCDGO", allocationSize = 1)
 @NamedQueries({
-	@NamedQuery(name = "HistDetalleAsientoAll", query = "select e from HistDetalleAsiento e"),
-	@NamedQuery(name = "HistDetalleAsientoId", query = "select e from HistDetalleAsiento e where e.codigo = :id")
+	@NamedQuery(name = "DetalleAsientoAll", query = "select e from DetalleAsiento e"),
+	@NamedQuery(name = "DetalleAsientoId", query = "select e from DetalleAsiento e where e.codigo = :id")
 })
-public class HistDetalleAsiento implements Serializable {
-	
+public class DetalleAsiento implements Serializable {
+
 	/**
-	 * Id de la tabla.
+	 * id de la tabla.
 	 */
 	@Basic
 	@Id
-	@Column(name = "DTAHCDGO", precision = 0)
-	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_DTAHCDGO")
+	@Column(name = "DTASCDGO", precision = 0)
+	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_DTASCDGO")	
 	private Long codigo;
 	
 	/**
-	 * Clave de asiento contabla tomada de la tabla asnt.
+	 * clave de asiento contabla tomada de la entidad asiento.
 	 */
 	@ManyToOne
-	@JoinColumn(name = "ASNHCDGO", referencedColumnName = "ASNHCDGO")
-	private HistAsiento histAsiento; 	
+	@JoinColumn(name = "ASNTCDGO", referencedColumnName = "ASNTCDGO")
+	private Asiento asiento;	
 
 	/**
-	 * Id de la cuenta contable.
+	 * id de la cuenta contable.
 	 */
 	@ManyToOne
 	@JoinColumn(name = "PLNNCDGO", referencedColumnName = "PLNNCDGO")
@@ -56,43 +52,44 @@ public class HistDetalleAsiento implements Serializable {
 	 * Descripción de detalle.
 	 */
 	@Basic
-	@Column(name = "DTAHDSCR", length = 200)
+	@Column(name = "DTASDSCR", length = 200)
 	private String descripcion;
 	
 	/**
-	 * Valor en el debe.
+	 * valor en el debe.
 	 */
 	@Basic
-	@Column(name = "DTAHDBEE")
+	@Column(name = "DTASDBEE")
 	private Double valorDebe;
 	
 	/**
-	 * Valor en el haber.
+	 * valor en el haber.
 	 */
 	@Basic
-	@Column(name = "DTAHHBRR")
+	@Column(name = "DTASHBRR")
 	private Double valorHaber;
 	
 	/**
-	 * Nombre de cuenta contable.
+	 * nombre de cuenta contable.
 	 */
 	@Basic
-	@Column(name = "DTAHNMCT", length = 200)
+	@Column(name = "DTASNMCT", length = 200)
 	private String nombreCuenta;
 	
 	/**
-	 * Id del centro de costo.
+	 * id del centro de costo.
 	 */
 	@ManyToOne
 	@JoinColumn(name = "CNCSCDGO", referencedColumnName = "CNCSCDGO")
-	private CentroCosto centroCosto;	
+	 private CentroCosto centroCosto;	
 
 	/**
-	 * Número de cuenta contable.
+	 * número de la cuenta contable.
 	 */
 	@Basic
-	@Column(name = "DTAHCNTA", length = 50)
-	private String numeroCuenta;	
+	@Column(name = "DTASCNTA", length = 50)
+	private String numeroCuenta;
+	
 	
 	/**
 	 * Devuelve codigo
@@ -108,20 +105,20 @@ public class HistDetalleAsiento implements Serializable {
 	 */
 	public void setCodigo(Long codigo) {
 		this.codigo = codigo;
+	}	
+	
+	/**
+	 * Devuelve asiento
+	 */
+	public Asiento getAsiento() {
+		return this.asiento;
 	}
 	
 	/**
-	 * Devuelve histAsiento
+	 * Asigna asiento
 	 */
-	public HistAsiento getHistAsiento() {
-		return this.histAsiento;
-	}
-	
-	/**
-	 * Asigna histAsiento
-	 */
-	public void setHistAsiento(HistAsiento histAsiento) {
-		this.histAsiento = histAsiento;
+	public void setAsiento(Asiento asiento) {
+		this.asiento = asiento;
 	}
 
 	/**
@@ -147,7 +144,7 @@ public class HistDetalleAsiento implements Serializable {
 	}
 
 	/**
-	 * Asignan descripcion
+	 * Asigna descripcion
 	 * @param descripcion nuevo valor para descripcion 
 	 */
 	public void setDescripcion(String descripcion) {

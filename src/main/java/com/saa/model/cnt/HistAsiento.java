@@ -1,4 +1,4 @@
-package com.saa.model.contabilidad;
+package com.saa.model.cnt;
 
 import java.io.Serializable;
 import java.time.LocalDate;
@@ -21,152 +21,152 @@ import jakarta.persistence.Table;
 
 @SuppressWarnings("serial")
 @Entity
-@Table(name = "ASNT", schema = "CNT")
-@SequenceGenerator(name = "SQ_ASNTCDGO", sequenceName = "CNT.SQ_ASNTCDGO", allocationSize = 1)
+@Table(name = "ASNH", schema = "CNT")
+@SequenceGenerator(name = "SQ_ASNHCDGO", sequenceName = "CNT.SQ_ASNHCDGO", allocationSize = 1)
 @NamedQueries({
-	@NamedQuery(name = "AsientoAll", query = "select e from Asiento e"),
-	@NamedQuery(name = "AsientoId", query = "select e from Asiento e where e.codigo = :id")
+	@NamedQuery(name = "HistAsientoAll", query = "select e from HistAsiento e"),
+	@NamedQuery(name = "HistAsientoId", query = "select e from HistAsiento e where e.codigo = :id")
 })
-public class Asiento implements Serializable {
+public class HistAsiento implements Serializable {
 
 	/**
-	 * id de la tabla.
+	 * Id de la tabla. codigo.
 	 */
 	@Basic
 	@Id
-	@Column(name = "ASNTCDGO", precision = 0)
-	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_ASNTCDGO")
+	@Column(name = "ASNHCDGO", precision = 0)
+	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_ASNHCDGO")	
 	private Long codigo;
 	
 	/**
-	 * id de nivel de empresa.
+	 * Id de nivel de empresa.
 	 */
 	@ManyToOne
 	@JoinColumn(name = "PJRQCDGO", referencedColumnName = "PJRQCDGO")
 	private Empresa empresa;
 	
 	/**
-	 * id de tipo de asiento.
+	 * Id de tipo de asiento.
 	 */
 	@ManyToOne
 	@JoinColumn(name = "PLNTCDGO", referencedColumnName = "PLNTCDGO")
-	 private TipoAsiento tipoAsiento;	
+	private TipoAsiento tipoAsiento;	
 
 	/**
-	 * fecha del asiento.
+	 * Fecha del asiento.
 	 */
 	@Basic
-	@Column(name = "ASNTFCHA")
+	@Column(name = "ASNHFCHA")
 	private LocalDate fechaAsiento;
 	
 	/**
-	 * número de asiento contable.
+	 * Número de asiento contable.
 	 */
 	@Basic
-	@Column(name = "ASNTNMRO")
+	@Column(name = "ASNHNMRO")
 	private Long numero;
 	
 	/**
-	 * estado del asiento 1 = activo, 2 = anulado, 3 = reversado, 4 = incompleto.
+	 * Estado del asiento 1 = activo, 2 = anulado, 3 = reversado, 4 = incompleto.
 	 */
 	@Basic
-	@Column(name = "ASNTESTD")
+	@Column(name = "ASNHESTD")
 	private Long estado;
 	
 	/**
-	 * observaciones de asiento contable.
+	 * Observaciones de asiento contable.
 	 */
 	@Basic
-	@Column(name = "ASNTOBSR", length = 200)
+	@Column(name = "ASNHOBSR", length = 200)
 	private String observaciones;
 	
 	/**
-	 * usuario que genero el asiento.
+	 * Usuario que genero el asiento.
 	 */
 	@Basic
-	@Column(name = "ASNTUSRO", length = 50)
+	@Column(name = "ASNHUSRO", length = 50)
 	private String nombreUsuario;
 	
 	/**
-	 * id del asiento con el que se reversó el asiento.
+	 * Id del asiento con el que se reversó el asiento.
 	 */
 	@Basic
-	@Column(name = "ASNTASRV")
+	@Column(name = "ASNHASRV")
 	private Long idReversion;
 	
 	/**
-	 * numero de periodo.
+	 * Numero de periodo.
 	 */
 	@Basic
-	@Column(name = "ASNTPRDO")
+	@Column(name = "ASNHPRDO")
 	private Long numeroMes;
 	
 	/**
-	 * número de año.
+	 * Número de año.
 	 */
 	@Basic
-	@Column(name = "ASNTANOO")
+	@Column(name = "ASNHANOO")
 	private Long numeroAnio;
 	
 	/**
-	 * id de moneda moneda.
+	 * Id de moneda.
 	 */
 	@Basic
-	@Column(name = "ASNTMNDA")
+	@Column(name = "ASNHMNDA")
 	private Long moneda;
 	
 	/**
-	 * Mayorizacion myrzcdgo.
+	 * Mayorizacion en la que se incluye el asiento.
 	 */
 	@ManyToOne
-	@JoinColumn(name = "MYRZCDGO", referencedColumnName = "MYRZCDGO")
-	private Mayorizacion mayorizacion;	 
+	@JoinColumn(name = "MYRHCDGO", referencedColumnName = "MYRHCDGO")
+	private HistMayorizacion histMayorizacion;
 	
 	/**
-	 * rubro de modulos del sistema (15).
+	 * Rubro de Modulos del sistema (15).
 	 */
 	@Basic
-	@Column(name = "ASNTRYYA")
+	@Column(name = "ASNHRYYA")
 	private Long rubroModuloClienteP;
 	
 	/**
-	 * detalle de rubro de modulo del sistema. rubroModuloClienteH.
+	 * Detalle de rubro de Modulo del sistema.
 	 */
 	@Basic
-	@Column(name = "ASNTRZZA")
+	@Column(name = "ASNHRZZA")
 	private Long rubroModuloClienteH;
 	
 	/**
-	 * fecha en que se ingreso el registro.
+	 * Fecha de proceso.
 	 */
 	@Basic
-	@Column(name = "ASNTFCPR")
-	private LocalDateTime fechaIngreso;
+	@Column(name = "ASNHFCPR")
+	private LocalDateTime fechaIngreso;	
 	
-	/**
-	 * id del periodo, clave foranea a prdocdgo de la tabla periodo.
-	 */
-	@ManyToOne
-	@JoinColumn(name = "PRDOCDGO", referencedColumnName = "PRDOCDGO")
-	private Periodo periodo;	
-
 	/**
 	 * rubro de modulo del sistema para almacenar internamente el modulo desde el que se genera.
 	 */
 	@Basic
-	@Column(name = "ASNTRYYB")
+	@Column(name = "ASNHRYYB")
 	private Long rubroModuloSistemaP;
 	
 	/**
 	 * detalle de rubro de modulo del sistema para almacenar internamente el modulo desde el que se genera. rubroModuloSistemaH.
 	 */
 	@Basic
-	@Column(name = "ASNTRZZB")
+	@Column(name = "ASNHRZZB")
 	private Long rubroModuloSistemaH;
 	
 	/**
+	 * Id del asiento que genero el respaldo
+	 */
+	@Basic
+	@Column(name = "ASNHASNT")
+	private Long idAsientoOriginal;
+	
+	/**
 	 * Devuelve codigo
-	 * @return codigo.
+	 * @return codigo
 	 */
 	public Long getCodigo() {
 		return codigo;
@@ -174,7 +174,7 @@ public class Asiento implements Serializable {
 
 	/**
 	 * Asigna codigo
-	 * @param codigo nuevo valor para codigo. 
+	 * @param codigo nuevo valor para codigo 
 	 */
 	public void setCodigo(Long codigo) {
 		this.codigo = codigo;
@@ -182,7 +182,7 @@ public class Asiento implements Serializable {
 	
 	/**
 	 * Devuelve empresa
-	 * @return empresa.
+	 * @return empresa
 	 */
 	public Empresa getEmpresa() {
 		return empresa;
@@ -190,21 +190,21 @@ public class Asiento implements Serializable {
 
 	/**
 	 * Asigna empresa
-	 * @param empresa nuevo valor para empresa. 
+	 * @param empresa nuevo valor para empresa 
 	 */
 	public void setEmpresa(Empresa empresa) {
 		this.empresa = empresa;
 	}
 	
 	/**
-	 * Devuelve tipoAsiento.
+	 * Devuelve tipoAsiento
 	 */
 	public TipoAsiento getTipoAsiento() {
 		return this.tipoAsiento;
 	}
 	
 	/**
-	 * Asigna tipoAsiento.
+	 * Asigna tipoAsiento
 	 */
 	public void setTipoAsiento(TipoAsiento tipoAsiento) {
 		this.tipoAsiento = tipoAsiento;
@@ -212,7 +212,7 @@ public class Asiento implements Serializable {
 
 	/**
 	 * Devuelve fechaAsiento
-	 * @return fechaAsiento.
+	 * @return fechaAsiento
 	 */
 	public LocalDate getFechaAsiento() {
 		return fechaAsiento;
@@ -220,7 +220,7 @@ public class Asiento implements Serializable {
 
 	/**
 	 * Asigna fechaAsiento
-	 * @param fechaAsiento nuevo valor para fechaAsiento. 
+	 * @param fechaAsiento nuevo valor para fechaAsiento 
 	 */
 	public void setFechaAsiento(LocalDate fechaAsiento) {
 		this.fechaAsiento = fechaAsiento;
@@ -228,7 +228,7 @@ public class Asiento implements Serializable {
 	
 	/**
 	 * Devuelve numero
-	 * @return numero.
+	 * @return numero
 	 */
 	public Long getNumero() {
 		return numero;
@@ -236,7 +236,7 @@ public class Asiento implements Serializable {
 
 	/**
 	 * Asigna numero
-	 * @param numero nuevo valor para numero. 
+	 * @param numero nuevo valor para numero 
 	 */
 	public void setNumero(Long numero) {
 		this.numero = numero;
@@ -244,7 +244,7 @@ public class Asiento implements Serializable {
 	
 	/**
 	 * Devuelve estado
-	 * @return estado.
+	 * @return estado
 	 */
 	public Long getEstado() {
 		return estado;
@@ -252,7 +252,7 @@ public class Asiento implements Serializable {
 
 	/**
 	 * Asigna estado
-	 * @param estado nuevo valor para estado. 
+	 * @param estado nuevo valor para estado 
 	 */
 	public void setEstado(Long estado) {
 		this.estado = estado;
@@ -260,7 +260,7 @@ public class Asiento implements Serializable {
 	
 	/**
 	 * Devuelve observaciones
-	 * @return observaciones.
+	 * @return observaciones
 	 */
 	public String getObservaciones() {
 		return observaciones;
@@ -268,7 +268,7 @@ public class Asiento implements Serializable {
 
 	/**
 	 * Asigna observaciones
-	 * @param observaciones nuevo valor para observaciones. 
+	 * @param observaciones nuevo valor para observaciones 
 	 */
 	public void setObservaciones(String observaciones) {
 		this.observaciones = observaciones;
@@ -276,7 +276,7 @@ public class Asiento implements Serializable {
 	
 	/**
 	 * Devuelve nombreUsuario
-	 * @return nombreUsuario.
+	 * @return nombreUsuario
 	 */
 	public String getNombreUsuario() {
 		return nombreUsuario;
@@ -284,7 +284,7 @@ public class Asiento implements Serializable {
 
 	/**
 	 * Asigna nombreUsuario
-	 * @param nombreUsuario nuevo valor para nombreUsuario. 
+	 * @param nombreUsuario nuevo valor para nombreUsuario 
 	 */
 	public void setNombreUsuario(String nombreUsuario) {
 		this.nombreUsuario = nombreUsuario;
@@ -292,7 +292,7 @@ public class Asiento implements Serializable {
 	
 	/**
 	 * Devuelve idReversion
-	 * @return idReversion.
+	 * @return idReversion
 	 */
 	public Long getIdReversion() {
 		return idReversion;
@@ -300,7 +300,7 @@ public class Asiento implements Serializable {
 
 	/**
 	 * Asigna idReversion
-	 * @param idReversion nuevo valor para idReversion. 
+	 * @param idReversion nuevo valor para idReversion 
 	 */
 	public void setIdReversion(Long idReversion) {
 		this.idReversion = idReversion;
@@ -308,17 +308,15 @@ public class Asiento implements Serializable {
 	
 	/**
 	 * Devuelve numeroMes
-	 * @return numeroMes.
+	 * @return numeroMes
 	 */
-	@Basic
-	@Column(name = "ASNTPRDO")
 	public Long getNumeroMes() {
 		return numeroMes;
 	}
 
 	/**
 	 * Asigna numeroMes
-	 * @param numeroMes nuevo valor para numeroMes. 
+	 * @param numeroMes nuevo valor para numeroMes 
 	 */
 	public void setNumeroMes(Long numeroMes) {
 		this.numeroMes = numeroMes;
@@ -326,7 +324,7 @@ public class Asiento implements Serializable {
 	
 	/**
 	 * Devuelve numeroAnio
-	 * @return numeroAnio.
+	 * @return numeroAnio
 	 */
 	public Long getNumeroAnio() {
 		return numeroAnio;
@@ -334,7 +332,7 @@ public class Asiento implements Serializable {
 
 	/**
 	 * Asigna numeroAnio
-	 * @param numeroAnio nuevo valor para numeroAnio. 
+	 * @param numeroAnio nuevo valor para numeroAnio 
 	 */
 	public void setNumeroAnio(Long numeroAnio) {
 		this.numeroAnio = numeroAnio;
@@ -342,7 +340,7 @@ public class Asiento implements Serializable {
 	
 	/**
 	 * Devuelve moneda
-	 * @return moneda.
+	 * @return moneda
 	 */
 	public Long getMoneda() {
 		return moneda;
@@ -350,29 +348,31 @@ public class Asiento implements Serializable {
 
 	/**
 	 * Asigna moneda
-	 * @param moneda nuevo valor para moneda. 
+	 * @param moneda nuevo valor para moneda 
 	 */
 	public void setMoneda(Long moneda) {
 		this.moneda = moneda;
 	}
-
+	
 	/**
-	 * Devuelve Mayorizacion.
+	 * Devuelve mayorizacion
+	 * @return mayorizacion
 	 */
-	public Mayorizacion getMayorizacion() {
-		return this.mayorizacion;	
+	public HistMayorizacion getHistMayorizacion() {
+		return histMayorizacion;
 	}
 
 	/**
-	 * Asigna Mayorizacion.
+	 * Asigna mayorizacion
+	 * @param mayorizacion nuevo valor para mayorizacion 
 	 */
-	public void setMayorizacion(Mayorizacion mayorizacion) {
-		this.mayorizacion = mayorizacion;
-	}	
+	public void setHistMayorizacion(HistMayorizacion histMayorizacion) {
+		this.histMayorizacion = histMayorizacion;
+	}
 	
 	/**
 	 * Devuelve rubroModuloClienteP
-	 * @return rubroModuloClienteP.
+	 * @return rubroModuloClienteP
 	 */
 	public Long getRubroModuloClienteP() {
 		return rubroModuloClienteP;
@@ -380,7 +380,7 @@ public class Asiento implements Serializable {
 
 	/**
 	 * Asigna rubroModuloClienteP
-	 * @param rubroModuloClienteP nuevo valor para rubroModuloClienteP. 
+	 * @param rubroModuloClienteP nuevo valor para rubroModuloClienteP 
 	 */
 	public void setRubroModuloClienteP(Long rubroModuloClienteP) {
 		this.rubroModuloClienteP = rubroModuloClienteP;
@@ -388,7 +388,7 @@ public class Asiento implements Serializable {
 	
 	/**
 	 * Devuelve rubroModuloClienteH
-	 * @return rubroModuloClienteH.
+	 * @return rubroModuloClienteH
 	 */
 	public Long getRubroModuloClienteH() {
 		return rubroModuloClienteH;
@@ -396,44 +396,28 @@ public class Asiento implements Serializable {
 
 	/**
 	 * Asigna rubroModuloClienteH
-	 * @param rubroModuloClienteH nuevo valor para rubroModuloClienteH. 
+	 * @param rubroModuloClienteH nuevo valor para rubroModuloClienteH 
 	 */
 	public void setRubroModuloClienteH(Long rubroModuloClienteH) {
 		this.rubroModuloClienteH = rubroModuloClienteH;
 	}
 	
 	/**
-	 * Devuelve fechaIngreso
-	 * @return fechaIngreso.
+	 * Devuelve fecheIngreso
+	 * @return fecheIngreso
 	 */
-	@Basic
-	@Column(name = "ASNTFCPR")
 	public LocalDateTime getFechaIngreso() {
 		return fechaIngreso;
 	}
 
 	/**
 	 * Asigna fechaIngreso
-	 * @param fechaIngreso nuevo valor para fecheIngreso. 
+	 * @param fechaIngreso nuevo valor para fecheIngreso 
 	 */
 	public void setFechaIngreso(LocalDateTime fechaIngreso) {
 		this.fechaIngreso = fechaIngreso;
 	}
 	
-	/**
-	 * Devuelve periodo.
-	 */
-	public Periodo getPeriodo() {
-		return this.periodo;
-	}
-	
-	/**
-	 * Asigna periodo.
-	 */
-	public void setPeriodo(Periodo periodo) {
-		this.periodo = periodo;
-	}
-
 	/**
 	 * Devuelve rubroModuloSistemaP
 	 * @return rubroModuloSistemaP.
@@ -465,6 +449,21 @@ public class Asiento implements Serializable {
 	public void setRubroModuloSistemaH(Long rubroModuloSistemaH) {
 		this.rubroModuloSistemaH = rubroModuloSistemaH;
 	}
+	
+	/**
+	 * Devuelve idAsientoOriginal
+	 * @return idAsientoOriginal
+	 */
+	public Long getIdAsientoOriginal() {
+		return idAsientoOriginal;
+	}
 
-   
+	/**
+	 * Asigna idAsientoOriginal
+	 * @param idAsientoOriginal nuevo valor para idAsientoOriginal
+	 */
+	public void setIdAsientoOriginal(Long idAsientoOriginal) {
+		this.idAsientoOriginal = idAsientoOriginal;
+	}
+
 }

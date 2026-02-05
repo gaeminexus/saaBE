@@ -3,7 +3,7 @@ package com.saa.ejb.tesoreria.service;
 import java.time.LocalDate;
 
 import com.saa.basico.util.EntityService;
-import com.saa.model.contabilidad.Periodo;
+import com.saa.model.cnt.Periodo;
 import com.saa.model.tesoreria.CuentaBancaria;
 import com.saa.model.tesoreria.SaldoBanco;
 

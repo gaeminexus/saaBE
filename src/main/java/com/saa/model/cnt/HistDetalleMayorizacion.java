@@ -1,4 +1,4 @@
-package com.saa.model.contabilidad;
+package com.saa.model.cnt;
 
 import java.io.Serializable;
 
@@ -17,85 +17,106 @@ import jakarta.persistence.Table;
 
 @SuppressWarnings("serial")
 @Entity
-@Table(name = "DTMC", schema = "CNT")
-@SequenceGenerator(name = "SQ_DTMCCDGO", sequenceName = "CNT.SQ_DTMCCDGO", allocationSize = 1)
+@Table(name = "DTMH", schema = "CNT")
+@SequenceGenerator(name = "SQ_DTMHCDGO", sequenceName = "CNT.SQ_DTMHCDGO", allocationSize = 1)
 @NamedQueries({
-	@NamedQuery(name = "DesgloseMayorizacionCCAll", query = "select e from DesgloseMayorizacionCC e"),
-	@NamedQuery(name = "DesgloseMayorizacionCCId", query = "select e from DesgloseMayorizacionCC e where e.codigo = :id")
+	@NamedQuery(name = "HistDetalleMayorizacionAll", query = "select e from HistDetalleMayorizacion e"),
+	@NamedQuery(name = "HistDetalleMayorizacionId", query = "select e from HistDetalleMayorizacion e where e.codigo = :id")
 })
-public class DesgloseMayorizacionCC implements Serializable {
+public class HistDetalleMayorizacion implements Serializable {
 
 	/**
-	 * Id de la tabla codigo.
+	 * id de la tabla.
 	 */
 	@Basic
 	@Id
-	@Column(name = "DTMCCDGO", precision = 0)
-	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_DTMCCDGO")
+	@Column(name = "DTMHCDGO", precision = 0)
+	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_DTMHCDGO")
 	private Long codigo;
 	
 	/**
-	 * Id de la tabla MYCC. detalleMayorizacionCC
+	 * Mayorizacion histórica a la que pertence.
 	 */
 	@ManyToOne
-	@JoinColumn(name = "MYCCCDGO", referencedColumnName = "MYCCCDGO")
-	private DetalleMayorizacionCC detalleMayorizacionCC;	
+	@JoinColumn(name = "MYRHCDGO", referencedColumnName = "MYRHCDGO")	
+	private HistMayorizacion histMayorizacion;	
 
 	/**
-	 * Id de tabla PLNN.
-	 */
-	@ManyToOne
-	@JoinColumn(name = "PLNNCDGO", referencedColumnName = "PLNNCDGO")
+	 * id de tabla plnn.
+	 */ 
+	@Basic
+	@Column(name = "PLNNCDGO")	
 	private PlanCuenta planCuenta;	
 
 	/**
-	 * Valor del Debe del periodo actual.
+	 * saldo del periodo anterior de la cuenta contable.
 	 */
 	@Basic
-	@Column(name = "DTMCDBEE")
+	@Column(name = "DTMHSLAN")
+	private Double saldoAnterior;
+	
+	/**
+	 * valor del debe del periodo actual.
+	 */
+	@Basic
+	@Column(name = "DTMHDBEE")
 	private Double valorDebe;
 	
 	/**
-	 * Valor del Haber del periodo actual.
+	 * valor del haber del periodo actual.
 	 */
 	@Basic
-	@Column(name = "DTMCHBRR")
+	@Column(name = "DTMHHBRR")
 	private Double valorHaber;
 	
 	/**
-	 * Cuenta contable. 
+	 * valor del saldo del periodo actual.
 	 */
 	@Basic
-	@Column(name = "DTMCCTCN", length = 50)
+	@Column(name = "DTMHSLAC")
+	private Double saldoActual;
+	
+	/**
+	 * cuenta contable.
+	 */
+	@Basic
+	@Column(name = "DTMHCTCN", length = 50)
 	private String numeroCuenta;
 	
 	/**
-	 * Código de padre de la cuenta contable.
+	 * código de padre de la cuenta contable.
 	 */
 	@Basic
 	@Column(name = "PLNNCDPD")
 	private Long codigoPadreCuenta;
 	
 	/**
-	 * Nombre de la cuenta contable.
+	 * nombre de la cuenta contable.
 	 */
 	@Basic
 	@Column(name = "PLNNNMBR", length = 100)
 	private String nombreCuenta;
 	
 	/**
-	 * Tipo de la cuenta contable. 1=Acumulación, 2 = Movimiento.
+	 * tipo de la cuenta contable. 1 = acumulación, 2 = movimiento.
 	 */
 	@Basic
 	@Column(name = "PLNNTPOO")
 	private Long tipoCuenta;
 	
 	/**
-	 * Nivel de la cuenta contable.
+	 * nivel de la cuenta contable.
 	 */
 	@Basic
 	@Column(name = "PLNNNVLL")
-	private Long nivelCuenta;	
+	private Long nivelCuenta;
+	
+	/**
+	 * Id de la mayorizacion que origina el respaldo
+	 */
+	@Basic
+	@Column(name = "MYRZCDGO")
+	private Mayorizacion mayorizacion;
 	
 	/**
 	 * Devuelve codigo
@@ -103,7 +124,7 @@ public class DesgloseMayorizacionCC implements Serializable {
 	 */
 	public Long getCodigo() {
 		return codigo;
-	}
+	}	
 
 	/**
 	 * Asigna codigo
@@ -114,19 +135,17 @@ public class DesgloseMayorizacionCC implements Serializable {
 	}
 	
 	/**
-	 * Devuelve detalleMayorizacionCC
-	 */	
-	@ManyToOne
-	@JoinColumn(name = "MYCCCDGO", referencedColumnName = "MYCCCDGO")
-	public DetalleMayorizacionCC getDetalleMayorizacionCC() {
-		return this.detalleMayorizacionCC;
+	 * Devuelve histMayorizacion
+	 */
+	public HistMayorizacion getHistMayorizacion() {
+		return this.histMayorizacion;
 	}
 	
 	/**
-	 * Asigna detalleMayorizacionCC
+	 * Asigna histMayorizacion
 	 */
-	public void setDetalleMayorizacionCC(DetalleMayorizacionCC detalleMayorizacionCC) {
-		this.detalleMayorizacionCC = detalleMayorizacionCC;
+	public void setHistMayorizacion(HistMayorizacion histMayorizacion) {
+		this.histMayorizacion = histMayorizacion;
 	}
 
 	/**
@@ -143,6 +162,22 @@ public class DesgloseMayorizacionCC implements Serializable {
 		this.planCuenta = planCuenta;
 	}
 
+	/**
+	 * Devuelve saldoAnterior
+	 * @return saldoAnterior
+	 */
+	public Double getSaldoAnterior() {
+		return saldoAnterior;
+	}
+
+	/**
+	 * Asigna saldoAnterior
+	 * @param saldoAnterior nuevo valor para saldoAnterior 
+	 */
+	public void setSaldoAnterior(Double saldoAnterior) {
+		this.saldoAnterior = saldoAnterior;
+	}
+	
 	/**
 	 * Devuelve valorDebe
 	 * @return valorDebe
@@ -173,6 +208,22 @@ public class DesgloseMayorizacionCC implements Serializable {
 	 */
 	public void setValorHaber(Double valorHaber) {
 		this.valorHaber = valorHaber;
+	}
+	
+	/**
+	 * Devuelve saldoActual
+	 * @return saldoActual
+	 */
+	public Double getSaldoActual() {
+		return saldoActual;
+	}
+
+	/**
+	 * Asigna saldoActual
+	 * @param saldoActual nuevo valor para saldoActual 
+	 */
+	public void setSaldoActual(Double saldoActual) {
+		this.saldoActual = saldoActual;
 	}
 	
 	/**
@@ -253,6 +304,22 @@ public class DesgloseMayorizacionCC implements Serializable {
 	 */
 	public void setNivelCuenta(Long nivelCuenta) {
 		this.nivelCuenta = nivelCuenta;
+	}
+	
+	/**
+	 * Devuelve idMayorizacion
+	 * @return idMayorizacion
+	 */
+	public Mayorizacion getMayorizacion() {
+		return mayorizacion;
+	}
+
+	/**
+	 * Asigna idMayorizacion
+	 * @param idMayorizacion
+	 */
+	public void setMayorizacion(Mayorizacion mayorizacion) {
+		this.mayorizacion = mayorizacion;
 	}
    
 }

@@ -6,7 +6,8 @@
 package com.saa.ejb.contabilidad.dao;
 import java.util.List;
 import com.saa.basico.util.EntityDao;
-import com.saa.model.contabilidad.TipoAsiento;
+import com.saa.model.cnt.TipoAsiento;
+
 import jakarta.ejb.Local;
  
 /**

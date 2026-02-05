@@ -4,7 +4,7 @@ import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.contabilidad.dao.DetalleMayorAnaliticoDaoService;
-import com.saa.model.contabilidad.DetalleMayorAnalitico;
+import com.saa.model.cnt.DetalleMayorAnalitico;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

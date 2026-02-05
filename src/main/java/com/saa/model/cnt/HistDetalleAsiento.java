@@ -1,4 +1,4 @@
-package com.saa.model.contabilidad;
+package com.saa.model.cnt;
 
 import java.io.Serializable;
 
@@ -15,34 +15,38 @@ import jakarta.persistence.NamedQuery;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
 
+/**
+ * Entity implementation class for Entity: HistDetalleAsiento
+ *
+ */
 @SuppressWarnings("serial")
 @Entity
-@Table(name = "DTAS", schema = "CNT")
-@SequenceGenerator(name = "SQ_DTASCDGO", sequenceName = "CNT.SQ_DTASCDGO", allocationSize = 1)
+@Table(name = "DTAH", schema = "CNT")
+@SequenceGenerator(name = "SQ_DTAHCDGO", sequenceName = "CNT.SQ_DTAHCDGO", allocationSize = 1)
 @NamedQueries({
-	@NamedQuery(name = "DetalleAsientoAll", query = "select e from DetalleAsiento e"),
-	@NamedQuery(name = "DetalleAsientoId", query = "select e from DetalleAsiento e where e.codigo = :id")
+	@NamedQuery(name = "HistDetalleAsientoAll", query = "select e from HistDetalleAsiento e"),
+	@NamedQuery(name = "HistDetalleAsientoId", query = "select e from HistDetalleAsiento e where e.codigo = :id")
 })
-public class DetalleAsiento implements Serializable {
-
+public class HistDetalleAsiento implements Serializable {
+	
 	/**
-	 * id de la tabla.
+	 * Id de la tabla.
 	 */
 	@Basic
 	@Id
-	@Column(name = "DTASCDGO", precision = 0)
-	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_DTASCDGO")	
+	@Column(name = "DTAHCDGO", precision = 0)
+	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_DTAHCDGO")
 	private Long codigo;
 	
 	/**
-	 * clave de asiento contabla tomada de la entidad asiento.
+	 * Clave de asiento contabla tomada de la tabla asnt.
 	 */
 	@ManyToOne
-	@JoinColumn(name = "ASNTCDGO", referencedColumnName = "ASNTCDGO")
-	private Asiento asiento;	
+	@JoinColumn(name = "ASNHCDGO", referencedColumnName = "ASNHCDGO")
+	private HistAsiento histAsiento; 	
 
 	/**
-	 * id de la cuenta contable.
+	 * Id de la cuenta contable.
 	 */
 	@ManyToOne
 	@JoinColumn(name = "PLNNCDGO", referencedColumnName = "PLNNCDGO")
@@ -52,44 +56,43 @@ public class DetalleAsiento implements Serializable {
 	 * Descripción de detalle.
 	 */
 	@Basic
-	@Column(name = "DTASDSCR", length = 200)
+	@Column(name = "DTAHDSCR", length = 200)
 	private String descripcion;
 	
 	/**
-	 * valor en el debe.
+	 * Valor en el debe.
 	 */
 	@Basic
-	@Column(name = "DTASDBEE")
+	@Column(name = "DTAHDBEE")
 	private Double valorDebe;
 	
 	/**
-	 * valor en el haber.
+	 * Valor en el haber.
 	 */
 	@Basic
-	@Column(name = "DTASHBRR")
+	@Column(name = "DTAHHBRR")
 	private Double valorHaber;
 	
 	/**
-	 * nombre de cuenta contable.
+	 * Nombre de cuenta contable.
 	 */
 	@Basic
-	@Column(name = "DTASNMCT", length = 200)
+	@Column(name = "DTAHNMCT", length = 200)
 	private String nombreCuenta;
 	
 	/**
-	 * id del centro de costo.
+	 * Id del centro de costo.
 	 */
 	@ManyToOne
 	@JoinColumn(name = "CNCSCDGO", referencedColumnName = "CNCSCDGO")
-	 private CentroCosto centroCosto;	
+	private CentroCosto centroCosto;	
 
 	/**
-	 * número de la cuenta contable.
+	 * Número de cuenta contable.
 	 */
 	@Basic
-	@Column(name = "DTASCNTA", length = 50)
-	private String numeroCuenta;
-	
+	@Column(name = "DTAHCNTA", length = 50)
+	private String numeroCuenta;	
 	
 	/**
 	 * Devuelve codigo
@@ -105,20 +108,20 @@ public class DetalleAsiento implements Serializable {
 	 */
 	public void setCodigo(Long codigo) {
 		this.codigo = codigo;
-	}	
-	
-	/**
-	 * Devuelve asiento
-	 */
-	public Asiento getAsiento() {
-		return this.asiento;
 	}
 	
 	/**
-	 * Asigna asiento
+	 * Devuelve histAsiento
 	 */
-	public void setAsiento(Asiento asiento) {
-		this.asiento = asiento;
+	public HistAsiento getHistAsiento() {
+		return this.histAsiento;
+	}
+	
+	/**
+	 * Asigna histAsiento
+	 */
+	public void setHistAsiento(HistAsiento histAsiento) {
+		this.histAsiento = histAsiento;
 	}
 
 	/**
@@ -144,7 +147,7 @@ public class DetalleAsiento implements Serializable {
 	}
 
 	/**
-	 * Asigna descripcion
+	 * Asignan descripcion
 	 * @param descripcion nuevo valor para descripcion 
 	 */
 	public void setDescripcion(String descripcion) {

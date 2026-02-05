@@ -4,7 +4,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.util.EntityService;
-import com.saa.model.contabilidad.Asiento;
+import com.saa.model.cnt.Asiento;
 import com.saa.model.tesoreria.Cheque;
 import com.saa.model.tesoreria.Cobro;
 import com.saa.model.tesoreria.Conciliacion;

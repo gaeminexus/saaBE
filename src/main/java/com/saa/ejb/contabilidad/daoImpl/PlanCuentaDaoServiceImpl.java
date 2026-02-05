@@ -10,7 +10,7 @@ import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.contabilidad.dao.PlanCuentaDaoService;
-import com.saa.model.contabilidad.PlanCuenta;
+import com.saa.model.cnt.PlanCuenta;
 import com.saa.rubros.Estado;
 import com.saa.rubros.TipoCuentaContable;
 

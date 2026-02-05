@@ -11,8 +11,8 @@ package com.saa.model.tesoreria;
 
 import java.io.Serializable;
 
-import com.saa.model.contabilidad.DetallePlantilla;
-import com.saa.model.contabilidad.Plantilla;
+import com.saa.model.cnt.DetallePlantilla;
+import com.saa.model.cnt.Plantilla;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;

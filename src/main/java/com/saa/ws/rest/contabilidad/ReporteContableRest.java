@@ -4,8 +4,8 @@ import java.util.List;
 
 import com.saa.ejb.contabilidad.dao.ReporteContableDaoService;
 import com.saa.ejb.contabilidad.service.ReporteContableService;
-import com.saa.model.contabilidad.ReporteContable;
-import com.saa.model.contabilidad.NombreEntidadesContabilidad;
+import com.saa.model.cnt.NombreEntidadesContabilidad;
+import com.saa.model.cnt.ReporteContable;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;

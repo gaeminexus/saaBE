@@ -9,7 +9,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.util.EntityDao;
-import com.saa.model.contabilidad.PlanCuenta;
+import com.saa.model.cnt.PlanCuenta;
 
 import jakarta.ejb.Local;
 

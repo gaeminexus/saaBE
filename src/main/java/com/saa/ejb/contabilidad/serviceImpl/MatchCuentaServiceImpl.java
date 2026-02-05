@@ -6,8 +6,8 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.contabilidad.dao.MatchCuentaDaoService;
 import com.saa.ejb.contabilidad.service.MatchCuentaService;
-import com.saa.model.contabilidad.MatchCuenta;
-import com.saa.model.contabilidad.NombreEntidadesContabilidad;
+import com.saa.model.cnt.MatchCuenta;
+import com.saa.model.cnt.NombreEntidadesContabilidad;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;

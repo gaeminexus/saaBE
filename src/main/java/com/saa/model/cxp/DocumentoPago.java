@@ -11,8 +11,8 @@ package com.saa.model.cxp;
 import java.io.Serializable;
 import java.util.Date;
 
-import com.saa.model.contabilidad.Asiento;
-import com.saa.model.contabilidad.Periodo;
+import com.saa.model.cnt.Asiento;
+import com.saa.model.cnt.Periodo;
 import com.saa.model.scp.Empresa;
 import com.saa.model.tesoreria.Persona;
 

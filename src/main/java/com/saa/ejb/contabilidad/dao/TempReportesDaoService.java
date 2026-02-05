@@ -3,7 +3,7 @@ package com.saa.ejb.contabilidad.dao;
 import java.util.List;
 
 import com.saa.basico.util.EntityDao;
-import com.saa.model.contabilidad.TempReportes;
+import com.saa.model.cnt.TempReportes;
 
 import jakarta.ejb.Local;
 

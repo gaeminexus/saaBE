@@ -8,8 +8,8 @@ package com.saa.ejb.contabilidad.dao;
 import java.util.List;
 
 import com.saa.basico.util.EntityDao;
-import com.saa.model.contabilidad.DetallePlantilla;
-import com.saa.model.contabilidad.PlanCuenta;
+import com.saa.model.cnt.DetallePlantilla;
+import com.saa.model.cnt.PlanCuenta;
 
 import jakarta.ejb.Local;
 

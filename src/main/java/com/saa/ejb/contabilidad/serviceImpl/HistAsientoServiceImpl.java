@@ -8,10 +8,10 @@ import com.saa.ejb.contabilidad.dao.HistAsientoDaoService;
 import com.saa.ejb.contabilidad.service.AsientoService;
 import com.saa.ejb.contabilidad.service.HistAsientoService;
 import com.saa.ejb.contabilidad.service.HistDetalleAsientoService;
-import com.saa.model.contabilidad.Asiento;
-import com.saa.model.contabilidad.HistAsiento;
-import com.saa.model.contabilidad.HistMayorizacion;
-import com.saa.model.contabilidad.NombreEntidadesContabilidad;
+import com.saa.model.cnt.Asiento;
+import com.saa.model.cnt.HistAsiento;
+import com.saa.model.cnt.HistMayorizacion;
+import com.saa.model.cnt.NombreEntidadesContabilidad;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;

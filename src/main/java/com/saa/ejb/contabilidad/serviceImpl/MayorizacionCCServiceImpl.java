@@ -9,10 +9,10 @@ import com.saa.basico.util.IncomeException;
 import com.saa.ejb.contabilidad.dao.MayorizacionCCDaoService;
 import com.saa.ejb.contabilidad.service.DetalleMayorizacionCCService;
 import com.saa.ejb.contabilidad.service.MayorizacionCCService;
-import com.saa.model.contabilidad.Mayorizacion;
-import com.saa.model.contabilidad.MayorizacionCC;
-import com.saa.model.contabilidad.NombreEntidadesContabilidad;
-import com.saa.model.contabilidad.Periodo;
+import com.saa.model.cnt.Mayorizacion;
+import com.saa.model.cnt.MayorizacionCC;
+import com.saa.model.cnt.NombreEntidadesContabilidad;
+import com.saa.model.cnt.Periodo;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;

@@ -8,10 +8,10 @@ import com.saa.basico.util.IncomeException;
 import com.saa.ejb.contabilidad.dao.DetalleMayorAnaliticoDaoService;
 import com.saa.ejb.contabilidad.service.DetalleAsientoService;
 import com.saa.ejb.contabilidad.service.DetalleMayorAnaliticoService;
-import com.saa.model.contabilidad.DetalleAsiento;
-import com.saa.model.contabilidad.DetalleMayorAnalitico;
-import com.saa.model.contabilidad.MayorAnalitico;
-import com.saa.model.contabilidad.NombreEntidadesContabilidad;
+import com.saa.model.cnt.DetalleAsiento;
+import com.saa.model.cnt.DetalleMayorAnalitico;
+import com.saa.model.cnt.MayorAnalitico;
+import com.saa.model.cnt.NombreEntidadesContabilidad;
 import com.saa.rubros.EstadoAsiento;
 
 import jakarta.ejb.EJB;

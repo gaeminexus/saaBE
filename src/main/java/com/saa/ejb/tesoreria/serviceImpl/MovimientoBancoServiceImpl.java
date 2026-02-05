@@ -9,7 +9,7 @@ import com.saa.basico.util.IncomeException;
 import com.saa.ejb.tesoreria.dao.CobroTransferenciaDaoService;
 import com.saa.ejb.tesoreria.dao.MovimientoBancoDaoService;
 import com.saa.ejb.tesoreria.service.MovimientoBancoService;
-import com.saa.model.contabilidad.Asiento;
+import com.saa.model.cnt.Asiento;
 import com.saa.model.scp.Empresa;
 import com.saa.model.tesoreria.Cheque;
 import com.saa.model.tesoreria.Cobro;

@@ -9,7 +9,7 @@
  * Usted no puede divulgar dicha Informacion confidencial y se utilizaro solo en  conformidad  
  * con los torminos del acuerdo de licencia que ha introducido dentro de Gaemi Soft.
 **/
-package com.saa.model.contabilidad;
+package com.saa.model.cnt;
 
 /**
  * <p>

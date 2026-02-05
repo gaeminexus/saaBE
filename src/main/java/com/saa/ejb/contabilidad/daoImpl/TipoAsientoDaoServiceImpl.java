@@ -4,7 +4,7 @@ import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.contabilidad.dao.TipoAsientoDaoService;
-import com.saa.model.contabilidad.TipoAsiento;
+import com.saa.model.cnt.TipoAsiento;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

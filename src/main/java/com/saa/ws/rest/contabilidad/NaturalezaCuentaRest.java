@@ -5,8 +5,8 @@ import java.util.List;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.contabilidad.dao.NaturalezaCuentaDaoService;
 import com.saa.ejb.contabilidad.service.NaturalezaCuentaService;
-import com.saa.model.contabilidad.NaturalezaCuenta;
-import com.saa.model.contabilidad.NombreEntidadesContabilidad;
+import com.saa.model.cnt.NaturalezaCuenta;
+import com.saa.model.cnt.NombreEntidadesContabilidad;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;

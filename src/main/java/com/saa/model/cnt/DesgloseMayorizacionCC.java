@@ -1,4 +1,4 @@
-package com.saa.model.contabilidad;
+package com.saa.model.cnt;
 
 import java.io.Serializable;
 
@@ -17,99 +17,85 @@ import jakarta.persistence.Table;
 
 @SuppressWarnings("serial")
 @Entity
-@Table(name = "DTMY", schema = "CNT")
-@SequenceGenerator(name = "SQ_DTMYCDGO", sequenceName = "CNT.SQ_DTMYCDGO", allocationSize = 1)
+@Table(name = "DTMC", schema = "CNT")
+@SequenceGenerator(name = "SQ_DTMCCDGO", sequenceName = "CNT.SQ_DTMCCDGO", allocationSize = 1)
 @NamedQueries({
-	@NamedQuery(name = "DetalleMayorizacionAll", query = "select e from DetalleMayorizacion e"),
-	@NamedQuery(name = "DetalleMayorizacionId", query = "select e from DetalleMayorizacion e where e.codigo = :id")
+	@NamedQuery(name = "DesgloseMayorizacionCCAll", query = "select e from DesgloseMayorizacionCC e"),
+	@NamedQuery(name = "DesgloseMayorizacionCCId", query = "select e from DesgloseMayorizacionCC e where e.codigo = :id")
 })
-public class DetalleMayorizacion implements Serializable {
+public class DesgloseMayorizacionCC implements Serializable {
 
 	/**
-	 * id de la tabla.
+	 * Id de la tabla codigo.
 	 */
 	@Basic
 	@Id
-	@Column(name = "DTMYCDGO", precision = 0)
-	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_DTMYCDGO")
+	@Column(name = "DTMCCDGO", precision = 0)
+	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_DTMCCDGO")
 	private Long codigo;
 	
 	/**
-	 * id de la tabla mayorizacion.
+	 * Id de la tabla MYCC. detalleMayorizacionCC
 	 */
 	@ManyToOne
-	@JoinColumn(name = "MYRZCDGO", referencedColumnName = "MYRZCDGO")
-	private Mayorizacion mayorizacion;	
+	@JoinColumn(name = "MYCCCDGO", referencedColumnName = "MYCCCDGO")
+	private DetalleMayorizacionCC detalleMayorizacionCC;	
 
 	/**
-	 * id de tabla planCuenta.
+	 * Id de tabla PLNN.
 	 */
 	@ManyToOne
 	@JoinColumn(name = "PLNNCDGO", referencedColumnName = "PLNNCDGO")
 	private PlanCuenta planCuenta;	
 
 	/**
-	 * saldo del periodo anterior de la cuenta contable.
+	 * Valor del Debe del periodo actual.
 	 */
 	@Basic
-	@Column(name = "DTMYSLAN")
-	private Double saldoAnterior;
-	
-	/**
-	 * valor del debe del periodo actual.
-	 */
-	@Basic
-	@Column(name = "DTMYDBEE")
+	@Column(name = "DTMCDBEE")
 	private Double valorDebe;
 	
 	/**
-	 * valor del haber del periodo actual.
+	 * Valor del Haber del periodo actual.
 	 */
 	@Basic
-	@Column(name = "DTMYHBRR")
+	@Column(name = "DTMCHBRR")
 	private Double valorHaber;
 	
 	/**
-	 * valor del saldo del periodo actual. 
+	 * Cuenta contable. 
 	 */
 	@Basic
-	@Column(name = "DTMYSLAC")
-	private Double saldoActual;
-	
-	/**
-	 * cuenta contable.
-	 */
-	@Basic
-	@Column(name = "DTMYCTCN", length = 50)
+	@Column(name = "DTMCCTCN", length = 50)
 	private String numeroCuenta;
 	
 	/**
-	 * código de padre de la cuenta contable.
+	 * Código de padre de la cuenta contable.
 	 */
 	@Basic
 	@Column(name = "PLNNCDPD")
 	private Long codigoPadreCuenta;
 	
 	/**
-	 * nombre de la cuenta contable.
+	 * Nombre de la cuenta contable.
 	 */
 	@Basic
 	@Column(name = "PLNNNMBR", length = 100)
 	private String nombreCuenta;
 	
 	/**
-	 * tipo de la cuenta contable 1 = acumulación, 2 = movimiento.
+	 * Tipo de la cuenta contable. 1=Acumulación, 2 = Movimiento.
 	 */
 	@Basic
 	@Column(name = "PLNNTPOO")
 	private Long tipoCuenta;
 	
 	/**
-	 * nivel de la cuenta contable. nivelCuenta.
+	 * Nivel de la cuenta contable.
 	 */
 	@Basic
 	@Column(name = "PLNNNVLL")
-	private Long nivelCuenta;
+	private Long nivelCuenta;	
 	
 	/**
 	 * Devuelve codigo
@@ -117,7 +103,7 @@ public class DetalleMayorizacion implements Serializable {
 	 */
 	public Long getCodigo() {
 		return codigo;
-	}	
+	}
 
 	/**
 	 * Asigna codigo
@@ -128,17 +114,19 @@ public class DetalleMayorizacion implements Serializable {
 	}
 	
 	/**
-	 * Devuelve mayorizacion
-	 */
-	public Mayorizacion getMayorizacion() {
-		return this.mayorizacion;
+	 * Devuelve detalleMayorizacionCC
+	 */	
+	@ManyToOne
+	@JoinColumn(name = "MYCCCDGO", referencedColumnName = "MYCCCDGO")
+	public DetalleMayorizacionCC getDetalleMayorizacionCC() {
+		return this.detalleMayorizacionCC;
 	}
 	
 	/**
-	 * Asigna mayorizacion
+	 * Asigna detalleMayorizacionCC
 	 */
-	public void setMayorizacion(Mayorizacion mayorizacion) {
-		this.mayorizacion = mayorizacion;
+	public void setDetalleMayorizacionCC(DetalleMayorizacionCC detalleMayorizacionCC) {
+		this.detalleMayorizacionCC = detalleMayorizacionCC;
 	}
 
 	/**
@@ -155,22 +143,6 @@ public class DetalleMayorizacion implements Serializable {
 		this.planCuenta = planCuenta;
 	}
 
-	/**
-	 * Devuelve saldoAnterior
-	 * @return saldoAnterior
-	 */
-	public Double getSaldoAnterior() {
-		return saldoAnterior;
-	}
-
-	/**
-	 * Asigna saldoAnterior
-	 * @param saldoAnterior nuevo valor para saldoAnterior 
-	 */
-	public void setSaldoAnterior(Double saldoAnterior) {
-		this.saldoAnterior = saldoAnterior;
-	}
-	
 	/**
 	 * Devuelve valorDebe
 	 * @return valorDebe
@@ -201,22 +173,6 @@ public class DetalleMayorizacion implements Serializable {
 	 */
 	public void setValorHaber(Double valorHaber) {
 		this.valorHaber = valorHaber;
-	}
-	
-	/**
-	 * Devuelve saldoActual
-	 * @return saldoActual
-	 */
-	public Double getSaldoActual() {
-		return saldoActual;
-	}
-
-	/**
-	 * Asigna saldoActual
-	 * @param saldoActual nuevo valor para saldoActual 
-	 */
-	public void setSaldoActual(Double saldoActual) {
-		this.saldoActual = saldoActual;
 	}
 	
 	/**

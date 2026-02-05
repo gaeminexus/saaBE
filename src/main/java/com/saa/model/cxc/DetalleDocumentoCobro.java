@@ -10,7 +10,8 @@ package com.saa.model.cxc;
 
 import java.io.Serializable;
 import java.util.Date;
-import com.saa.model.contabilidad.CentroCosto;
+
+import com.saa.model.cnt.CentroCosto;
 import com.saa.model.scp.Empresa;
 
 import jakarta.persistence.Basic;

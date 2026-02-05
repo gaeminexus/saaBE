@@ -14,11 +14,11 @@ import com.saa.ejb.contabilidad.service.CentroCostoService;
 import com.saa.ejb.contabilidad.service.DetalleMayorAnaliticoService;
 import com.saa.ejb.contabilidad.service.MayorAnaliticoService;
 import com.saa.ejb.contabilidad.service.PlanCuentaService;
-import com.saa.model.contabilidad.CentroCosto;
-import com.saa.model.contabilidad.DetalleMayorAnalitico;
-import com.saa.model.contabilidad.MayorAnalitico;
-import com.saa.model.contabilidad.NombreEntidadesContabilidad;
-import com.saa.model.contabilidad.PlanCuenta;
+import com.saa.model.cnt.CentroCosto;
+import com.saa.model.cnt.DetalleMayorAnalitico;
+import com.saa.model.cnt.MayorAnalitico;
+import com.saa.model.cnt.NombreEntidadesContabilidad;
+import com.saa.model.cnt.PlanCuenta;
 import com.saa.rubros.ReporteTipoAcumulacion;
 import com.saa.rubros.ReporteTipoDistribucion;
 

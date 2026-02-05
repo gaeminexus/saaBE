@@ -2,7 +2,7 @@ package com.saa.ejb.contabilidad.daoImpl;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.contabilidad.dao.DetalleReporteCuentaCCDaoService;
-import com.saa.model.contabilidad.DetalleReporteCuentaCC;
+import com.saa.model.cnt.DetalleReporteCuentaCC;
 
 import jakarta.ejb.Stateless;
 

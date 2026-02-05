@@ -6,8 +6,8 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.contabilidad.dao.ReporteCuentaCCDaoService;
 import com.saa.ejb.contabilidad.service.ReporteCuentaCCService;
-import com.saa.model.contabilidad.NombreEntidadesContabilidad;
-import com.saa.model.contabilidad.ReporteCuentaCC;
+import com.saa.model.cnt.NombreEntidadesContabilidad;
+import com.saa.model.cnt.ReporteCuentaCC;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;

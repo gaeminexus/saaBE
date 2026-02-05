@@ -2,7 +2,7 @@ package com.saa.ejb.contabilidad.daoImpl;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.contabilidad.dao.MayorizacionCCDaoService;
-import com.saa.model.contabilidad.MayorizacionCC;
+import com.saa.model.cnt.MayorizacionCC;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

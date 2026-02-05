@@ -5,7 +5,8 @@
  */
 package com.saa.ejb.contabilidad.dao;
 import com.saa.basico.util.EntityDao;
-import com.saa.model.contabilidad.MayorizacionCC;
+import com.saa.model.cnt.MayorizacionCC;
+
 import jakarta.ejb.Local;
 /**
  * @author GaemiSoft.

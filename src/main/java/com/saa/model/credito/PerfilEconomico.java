@@ -3,7 +3,7 @@ package com.saa.model.credito;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
-import com.saa.model.contabilidad.Periodo;
+import com.saa.model.cnt.Periodo;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;

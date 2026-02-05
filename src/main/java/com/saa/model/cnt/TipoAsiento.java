@@ -1,8 +1,10 @@
-package com.saa.model.contabilidad;
+package com.saa.model.cnt;
 
 import java.io.Serializable;
-import java.time.LocalDateTime;
+import java.util.Date;
+
 import com.saa.model.scp.Empresa;
+
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -18,82 +20,99 @@ import jakarta.persistence.Table;
 
 @SuppressWarnings("serial")
 @Entity
-@Table(name = "PLNS", schema = "CNT")
-@SequenceGenerator(name = "SQ_PLNSCDGO", sequenceName = "CNT.SQ_PLNSCDGO", allocationSize = 1)
+@Table(name = "PLNT", schema = "CNT")
+@SequenceGenerator(name = "SQ_PLNTCDGO", sequenceName = "CNT.SQ_PLNTCDGO", allocationSize = 1)
 @NamedQueries({
-	@NamedQuery(name = "PlantillaAll", query = "select e from Plantilla e"),
-	@NamedQuery(name = "PlantillaId", query = "select e from Plantilla e where e.codigo = :id")
+	@NamedQuery(name = "TipoAsientoAll", query = "select e from TipoAsiento e"),
+	@NamedQuery(name = "TipoAsientoId", query = "select e from TipoAsiento e where e.codigo = :id")
 })
-public class Plantilla implements Serializable {
+public class TipoAsiento implements Serializable {
 
 	/**
-	 * id de la tabla. 
+	 * id de la tabla.
 	 */
 	@Basic
 	@Id
-	@Column(name = "PLNSCDGO", precision = 0)
-	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_PLNSCDGO")
+	@Column(name = "PLNTCDGO", precision = 0)
+	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_PLNTCDGO")
 	private Long codigo;
 	
 	/**
 	 * nombre de la plantilla.
 	 */
 	@Basic
-	@Column(name = "PLNSNMBR", length = 100)
+	@Column(name = "PLNTNMBR", length = 100)
 	private String nombre;
 	
 	/**
 	 * código alterno de la plantilla será numerico y estará documentado.
 	 */
 	@Basic
-	@Column(name = "PLNSCDAL")
+	@Column(name = "PLNTCDAL")
 	private Long codigoAlterno;
 	
 	/**
-	 * estado 1 = activo,2 = inactivo.
+	 * estado 1 = activo, 2 = inactivo.
 	 */
 	@Basic
-	@Column(name = "PLNSESTD")
+	@Column(name = "PLNTESTD")
 	private Long estado;
 	
 	/**
-	 * código del nivel de empresa tomado de scp.pjrq con pgspcdgo 12.
+	 * código del nivel de empresa tomado de scp.pjrq con pgspcdgo 12. empresa.
 	 */
 	@ManyToOne
 	@JoinColumn(name = "PJRQCDGO", referencedColumnName = "PJRQCDGO")
 	private Empresa empresa;
 	
 	/**
-	 * observaciones de plantilla.
+	 * observaciones de plantilla. observacion.
 	 */
 	@Basic
-	@Column(name = "PLNSOBSR", length = 500)
+	@Column(name = "PLNTOBSR", length = 500)
 	private String observacion;
 	
 	/**
-	 * fecha de desactivación de plantilla.
+	 * fecha de desactivación de plantilla. fechaInactivo.
 	 */
 	@Basic
-	@Column(name = "PLNSFCDS")
-	private LocalDateTime fechaInactivo;
+	@Column(name = "PLNTFCDS")
+	private Date fechaInactivo;
+
 	
-	/**
-	 * Sistema.
-	 */
 	@Basic
-	@Column(name = "PLNSSSTM")
+	@Column(name = "PLNTSSTM")
 	private Long sistema; 
 
 	/**
-	 * Devuelve codigo
+	 * Metodo que recupera los valores de la variable codigo
+	 * @return codigo
+	 */
+	public Long getSistema() {
+		return sistema;
+	}
+	
+	/**
+	 * Metodo que recupera los valores de la variable codigo
+	 * @param codigo nuevo valor para codigo 
+	 */
+	public void setSistema(Long sistema) {
+		this.sistema = sistema;
+	}
+	
+	
+	
+	
+	/**
+	 * Metodo que recupera los valores de la variable codigo
 	 * @return codigo
 	 */
 	public Long getCodigo() {
 		return codigo;
 	}
-
+	
 	/**
-	 * Asigna codigo
+	 * Metodo que recupera los valores de la variable codigo
 	 * @param codigo nuevo valor para codigo 
 	 */
 	public void setCodigo(Long codigo) {
@@ -101,7 +120,7 @@ public class Plantilla implements Serializable {
 	}
 	
 	/**
-	 * Devuelve nombre
+	 * Metodo que recupera los valores de la variable Nombre
 	 * @return nombre
 	 */
 	public String getNombre() {
@@ -109,7 +128,7 @@ public class Plantilla implements Serializable {
 	}
 
 	/**
-	 * Asigna nombre
+	 * Metodo que asigna los valores de la variable nombre
 	 * @param nombre nuevo valor para nombre 
 	 */
 	public void setNombre(String nombre) {
@@ -117,7 +136,7 @@ public class Plantilla implements Serializable {
 	}
 	
 	/**
-	 * Devuelve codigoAlterno
+	 * Metodo que recupera los valores de la variable codigo Alterno
 	 * @return codigoAlterno
 	 */
 	public Long getCodigoAlterno() {
@@ -125,7 +144,7 @@ public class Plantilla implements Serializable {
 	}
 
 	/**
-	 * Asigna codigoAlterno
+	 * Metodo que asigna los valores de la variable codigo Alterno
 	 * @param codigoAlterno nuevo valor para codigoAlterno 
 	 */
 	public void setCodigoAlterno(Long codigoAlterno) {
@@ -133,7 +152,7 @@ public class Plantilla implements Serializable {
 	}
 	
 	/**
-	 * Devuelve estado
+	 * Metodo que recupera los valores de la variable Estado
 	 * @return estado
 	 */
 	public Long getEstado() {
@@ -141,7 +160,7 @@ public class Plantilla implements Serializable {
 	}
 
 	/**
-	 * Asigna estado
+	 * Metodo que asigna los valores de la variable Estado
 	 * @param estado nuevo valor para estado 
 	 */
 	public void setEstado(Long estado) {
@@ -149,14 +168,15 @@ public class Plantilla implements Serializable {
 	}
 	
 	/**
-	 * Devuelve empresa
+	 * Metodo que recupera los valores de la variable empresa
+	 * get empresa
 	 */
 	public Empresa getEmpresa() {
 		return empresa;
 	}
 
 	/**
-	 * Asigna empresa
+	 * Metodo que asigna los valores de la variable empresa
 	 * @param empresa nuevo valor para empresa 
 	 */
 	public void setEmpresa(Empresa empresa) {
@@ -164,7 +184,7 @@ public class Plantilla implements Serializable {
 	}
 	
 	/**
-	 * Devuelve observacion
+	 * Metodo que recupera los valores de la variable observacion
 	 * @return observacion
 	 */
 	public String getObservacion() {
@@ -172,7 +192,7 @@ public class Plantilla implements Serializable {
 	}
 
 	/**
-	 * Asigna observacion
+	 * Metodo que asigna los valores de la variable observacion
 	 * @param observacion nuevo valor para observacion 
 	 */
 	public void setObservacion(String observacion) {
@@ -180,28 +200,19 @@ public class Plantilla implements Serializable {
 	}
 	
 	/**
-	 * Devuelve fechaInactivo
+	 * Metodo que recupera los valores de la variable fechainactivo
 	 * @return fechaInactivo
 	 */
-	public LocalDateTime getFechaInactivo() {
+	public Date getFechaInactivo() {
 		return fechaInactivo;
 	}
 
 	/**
-	 * Asigna fechaInactivo
+	 * Metodo que asigna los valores de la variable fechainactivo
 	 * @param fechaInactivo nuevo valor para fechaInactivo 
 	 */
-	public void setFechaInactivo(LocalDateTime fechaInactivo) {
+	public void setFechaInactivo(Date fechaInactivo) {
 		this.fechaInactivo = fechaInactivo;
 	}
 
-	public Long getSistema() {
-		return sistema;
-	}
-
-	public void setSistema(Long sistema) {
-		this.sistema = sistema;
-	}
-
-   
 }

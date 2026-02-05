@@ -1,7 +1,7 @@
 package com.saa.ejb.contabilidad.service;
 
 import com.saa.basico.util.EntityService;
-import com.saa.model.contabilidad.ReporteCuentaCC;
+import com.saa.model.cnt.ReporteCuentaCC;
 
 import jakarta.ejb.Local;
 

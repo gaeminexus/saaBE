@@ -8,8 +8,8 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.contabilidad.dao.TipoAsientoDaoService;
 import com.saa.ejb.contabilidad.service.TipoAsientoService;
-import com.saa.model.contabilidad.NombreEntidadesContabilidad;
-import com.saa.model.contabilidad.TipoAsiento;
+import com.saa.model.cnt.NombreEntidadesContabilidad;
+import com.saa.model.cnt.TipoAsiento;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;

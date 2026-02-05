@@ -12,11 +12,11 @@ import com.saa.ejb.contabilidad.service.DetalleAsientoService;
 import com.saa.ejb.contabilidad.service.DetalleReporteContableService;
 import com.saa.ejb.contabilidad.service.PlanCuentaService;
 import com.saa.ejb.contabilidad.service.TempReportesService;
-import com.saa.model.contabilidad.CentroCosto;
-import com.saa.model.contabilidad.DetalleReporteContable;
-import com.saa.model.contabilidad.NombreEntidadesContabilidad;
-import com.saa.model.contabilidad.PlanCuenta;
-import com.saa.model.contabilidad.TempReportes;
+import com.saa.model.cnt.CentroCosto;
+import com.saa.model.cnt.DetalleReporteContable;
+import com.saa.model.cnt.NombreEntidadesContabilidad;
+import com.saa.model.cnt.PlanCuenta;
+import com.saa.model.cnt.TempReportes;
 import com.saa.rubros.ReporteTipoAcumulacion;
 
 import jakarta.ejb.EJB;

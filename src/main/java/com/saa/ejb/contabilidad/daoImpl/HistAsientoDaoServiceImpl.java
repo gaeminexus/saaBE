@@ -4,7 +4,7 @@ import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.contabilidad.dao.HistAsientoDaoService;
-import com.saa.model.contabilidad.HistAsiento;
+import com.saa.model.cnt.HistAsiento;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

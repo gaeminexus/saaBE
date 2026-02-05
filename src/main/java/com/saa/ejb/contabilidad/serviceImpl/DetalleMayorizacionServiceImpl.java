@@ -8,12 +8,12 @@ import com.saa.ejb.contabilidad.dao.DetalleAsientoDaoService;
 import com.saa.ejb.contabilidad.dao.DetalleMayorizacionDaoService;
 import com.saa.ejb.contabilidad.dao.PlanCuentaDaoService;
 import com.saa.ejb.contabilidad.service.DetalleMayorizacionService;
-import com.saa.model.contabilidad.DetalleAsiento;
-import com.saa.model.contabilidad.DetalleMayorizacion;
-import com.saa.model.contabilidad.Mayorizacion;
-import com.saa.model.contabilidad.NombreEntidadesContabilidad;
-import com.saa.model.contabilidad.Periodo;
-import com.saa.model.contabilidad.PlanCuenta;
+import com.saa.model.cnt.DetalleAsiento;
+import com.saa.model.cnt.DetalleMayorizacion;
+import com.saa.model.cnt.Mayorizacion;
+import com.saa.model.cnt.NombreEntidadesContabilidad;
+import com.saa.model.cnt.Periodo;
+import com.saa.model.cnt.PlanCuenta;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;

@@ -3,7 +3,7 @@ package com.saa.ejb.contabilidad.daoImpl;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.contabilidad.dao.ReporteContableDaoService;
-import com.saa.model.contabilidad.ReporteContable;
+import com.saa.model.cnt.ReporteContable;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

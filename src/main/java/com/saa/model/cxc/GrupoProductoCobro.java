@@ -11,7 +11,7 @@ package com.saa.model.cxc;
 import java.io.Serializable;
 import java.util.List;
 
-import com.saa.model.contabilidad.PlanCuenta;
+import com.saa.model.cnt.PlanCuenta;
 import com.saa.model.scp.Empresa;
 
 import jakarta.persistence.Basic;

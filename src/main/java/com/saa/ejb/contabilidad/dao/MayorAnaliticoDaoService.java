@@ -8,7 +8,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.util.EntityDao;
-import com.saa.model.contabilidad.MayorAnalitico;
+import com.saa.model.cnt.MayorAnalitico;
 
 import jakarta.ejb.Local;
 

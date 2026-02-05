@@ -1,8 +1,8 @@
 package com.saa.ejb.contabilidad.service;
 
 import com.saa.basico.util.EntityService;
-import com.saa.model.contabilidad.DetallePlantilla;
-import com.saa.model.contabilidad.PlanCuenta;
+import com.saa.model.cnt.DetallePlantilla;
+import com.saa.model.cnt.PlanCuenta;
 
 import jakarta.ejb.Local;
 

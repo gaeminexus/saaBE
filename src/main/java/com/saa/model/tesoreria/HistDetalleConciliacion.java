@@ -11,8 +11,8 @@ package com.saa.model.tesoreria;
 import java.io.Serializable;
 import java.time.LocalDate;
 
-import com.saa.model.contabilidad.Asiento;
-import com.saa.model.contabilidad.Periodo;
+import com.saa.model.cnt.Asiento;
+import com.saa.model.cnt.Periodo;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;

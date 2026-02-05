@@ -6,7 +6,7 @@ import java.util.List;
 import com.saa.basico.util.IncomeException;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.contabilidad.dao.CentroCostoDaoService;
-import com.saa.model.contabilidad.CentroCosto;
+import com.saa.model.cnt.CentroCosto;
 import com.saa.rubros.Estado;
 import com.saa.rubros.TipoCuentaContable;
 

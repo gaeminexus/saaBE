@@ -9,7 +9,7 @@ import java.util.Date;
 import java.util.List;
 
 import com.saa.basico.util.EntityDao;
-import com.saa.model.contabilidad.Asiento;
+import com.saa.model.cnt.Asiento;
 
 import jakarta.ejb.Local;
 

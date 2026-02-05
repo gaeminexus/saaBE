@@ -19,7 +19,7 @@ import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.contabilidad.dao.AnioMotorDaoService;
-import com.saa.model.contabilidad.AnioMotor;
+import com.saa.model.cnt.AnioMotor;
 
 /**
  * @author GaemiSoft.

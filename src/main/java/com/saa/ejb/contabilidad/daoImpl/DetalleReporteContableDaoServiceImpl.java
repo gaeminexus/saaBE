@@ -4,7 +4,7 @@ import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.contabilidad.dao.DetalleReporteContableDaoService;
-import com.saa.model.contabilidad.DetalleReporteContable;
+import com.saa.model.cnt.DetalleReporteContable;
 import com.saa.rubros.Estado;
 
 import jakarta.ejb.Stateless;

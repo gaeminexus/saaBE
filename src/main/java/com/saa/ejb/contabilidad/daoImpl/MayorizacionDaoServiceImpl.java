@@ -5,7 +5,7 @@ import java.util.List;
 import com.saa.basico.util.IncomeException;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.contabilidad.dao.MayorizacionDaoService;
-import com.saa.model.contabilidad.Mayorizacion;
+import com.saa.model.cnt.Mayorizacion;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

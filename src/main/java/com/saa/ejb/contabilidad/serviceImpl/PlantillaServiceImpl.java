@@ -10,9 +10,10 @@ import com.saa.ejb.contabilidad.dao.DetallePlantillaDaoService;
 import com.saa.ejb.contabilidad.dao.PlantillaDaoService;
 import com.saa.ejb.contabilidad.service.DetallePlantillaService;
 import com.saa.ejb.contabilidad.service.PlantillaService;
-import com.saa.model.contabilidad.DetallePlantilla;
-import com.saa.model.contabilidad.NombreEntidadesContabilidad;
-import com.saa.model.contabilidad.Plantilla;
+import com.saa.model.cnt.DetallePlantilla;
+import com.saa.model.cnt.NombreEntidadesContabilidad;
+import com.saa.model.cnt.Plantilla;
+
 import jakarta.ejb.EJB;
 import jakarta.ejb.EJBException;
 import jakarta.ejb.Stateless;

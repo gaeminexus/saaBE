@@ -2,7 +2,7 @@ package com.saa.ejb.tesoreria.service;
 
 import java.util.List;
 import com.saa.basico.util.EntityService;
-import com.saa.model.contabilidad.Asiento;
+import com.saa.model.cnt.Asiento;
 import com.saa.model.tesoreria.Pago;
 import com.saa.model.tesoreria.TempPago;
 

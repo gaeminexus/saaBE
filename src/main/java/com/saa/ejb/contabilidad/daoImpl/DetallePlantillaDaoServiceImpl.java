@@ -3,8 +3,8 @@ package com.saa.ejb.contabilidad.daoImpl;
 import java.util.List;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.contabilidad.dao.DetallePlantillaDaoService;
-import com.saa.model.contabilidad.DetallePlantilla;
-import com.saa.model.contabilidad.PlanCuenta;
+import com.saa.model.cnt.DetallePlantilla;
+import com.saa.model.cnt.PlanCuenta;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

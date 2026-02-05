@@ -6,7 +6,7 @@ import java.util.List;
 import com.saa.basico.util.IncomeException;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.contabilidad.dao.PeriodoDaoService;
-import com.saa.model.contabilidad.Periodo;
+import com.saa.model.cnt.Periodo;
 import com.saa.rubros.EstadoPeriodos;
 import com.saa.rubros.ProcesosMayorizacion;
 

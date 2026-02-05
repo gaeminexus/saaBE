@@ -6,7 +6,7 @@ import java.util.List;
 import com.saa.basico.util.IncomeException;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.contabilidad.dao.DetalleAsientoDaoService;
-import com.saa.model.contabilidad.DetalleAsiento;
+import com.saa.model.cnt.DetalleAsiento;
 import com.saa.rubros.EstadoAsiento;
 
 import jakarta.ejb.Stateless;

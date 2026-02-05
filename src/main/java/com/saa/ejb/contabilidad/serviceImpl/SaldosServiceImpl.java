@@ -4,7 +4,7 @@ import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.contabilidad.service.SaldosService;
-import com.saa.model.contabilidad.Saldos;
+import com.saa.model.cnt.Saldos;
 
 import jakarta.ejb.Stateless;
 

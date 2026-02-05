@@ -6,9 +6,9 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.contabilidad.dao.HistMayorizacionDaoService;
 import com.saa.ejb.contabilidad.service.HistMayorizacionService;
-import com.saa.model.contabilidad.HistMayorizacion;
-import com.saa.model.contabilidad.Mayorizacion;
-import com.saa.model.contabilidad.NombreEntidadesContabilidad;
+import com.saa.model.cnt.HistMayorizacion;
+import com.saa.model.cnt.Mayorizacion;
+import com.saa.model.cnt.NombreEntidadesContabilidad;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;

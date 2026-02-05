@@ -1,7 +1,7 @@
 package com.saa.ejb.contabilidad.dao;
 
 import com.saa.basico.util.EntityDao;
-import com.saa.model.contabilidad.HistDetalleMayorizacion;
+import com.saa.model.cnt.HistDetalleMayorizacion;
 
 import jakarta.ejb.Local;
 
