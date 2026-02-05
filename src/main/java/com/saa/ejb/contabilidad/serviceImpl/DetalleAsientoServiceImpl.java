@@ -191,18 +191,21 @@ public class DetalleAsientoServiceImpl implements DetalleAsientoService{
 	 */
 	public void generaDetalleReversion(Asiento asientoOriginal, Asiento asientoReversion) throws Throwable {
 		System.out.println("Ingresa al save de generaDetalleReversion con asiento original : " + asientoOriginal.getCodigo() + " y asiento de reversion: " + asientoReversion.getCodigo());
-		Double valorDebeOriginal = null;
-		Double valorHaberOriginal = null;
+		DetalleAsiento detalleReversion;
 		List<DetalleAsiento> detallesOriginales = detalleAsientoDaoService.selectByIdAsiento(asientoOriginal.getCodigo());
 		// GENERA DETALLE REVERSION		
 		for(DetalleAsiento detalle : detallesOriginales){
-			valorDebeOriginal = detalle.getValorDebe();
-			valorHaberOriginal = detalle.getValorHaber();
-			detalle.setCodigo(Long.valueOf(0));
-			detalle.setValorDebe(valorHaberOriginal);
-			detalle.setValorHaber(valorDebeOriginal);
-			detalle.setAsiento(asientoReversion);
-			save(detalle, detalle.getCodigo());				
+			detalleReversion = new DetalleAsiento();
+			detalleReversion.setCodigo(null);
+			detalleReversion.setAsiento(asientoReversion);
+			detalleReversion.setPlanCuenta(detalle.getPlanCuenta());
+			detalleReversion.setDescripcion("REVERSIÓN :" + detalle.getDescripcion());
+			detalleReversion.setValorDebe(detalle.getValorHaber());
+			detalleReversion.setValorHaber(detalle.getValorDebe());
+			detalleReversion.setNombreCuenta(detalle.getNombreCuenta());
+			detalleReversion.setNumeroCuenta(detalle.getNumeroCuenta());
+			detalleReversion.setCentroCosto(detalle.getCentroCosto());
+			detalleReversion = saveSingle(detalleReversion);				
 		}		
 	}
 

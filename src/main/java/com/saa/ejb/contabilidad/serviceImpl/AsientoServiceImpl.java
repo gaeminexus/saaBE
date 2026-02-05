@@ -304,7 +304,7 @@ public class AsientoServiceImpl implements AsientoService {
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.contabilidad.ejb.service.AsientoService#reversionAsiento(java.lang.Long)
 	 */
-	public void reversionAsiento(Long idAsiento) throws Throwable {
+	public Asiento reversionAsiento(Long idAsiento) throws Throwable {
 		System.out.println("Ingresa al metodo reversionAsiento con Id Asiento: " + idAsiento);
 		Asiento asientoReversion = new Asiento();		
 		boolean permiteProceso = true;
@@ -318,8 +318,9 @@ public class AsientoServiceImpl implements AsientoService {
 			// ACTULIZA ASIENTO ORIGINAL
 			asiento.setIdReversion(asientoReversion.getCodigo());
 			asiento.setEstado(Long.valueOf(EstadoAsiento.REVERSADO));
-			asientoDaoService.save(asiento, asiento.getCodigo());
+			asiento = asientoDaoService.save(asiento, asiento.getCodigo());
 		}
+		return asiento;
 		
 	}
 
@@ -362,14 +363,14 @@ public class AsientoServiceImpl implements AsientoService {
 		System.out.println("Ingresa al metodo generaCabeceraReversion con Asiento: " + asientoOriginal.getCodigo());
 		Long numeroAsientoReversion = null;
 		Asiento asientoReversion = new Asiento();		
-		asientoReversion.setCodigo(Long.valueOf(0));
+		asientoReversion.setCodigo(null);
 		asientoReversion.setEmpresa(asientoOriginal.getEmpresa());
 		asientoReversion.setTipoAsiento(asientoOriginal.getTipoAsiento());
 		asientoReversion.setFechaAsiento(LocalDate.now());
 		asientoReversion.setFechaIngreso((LocalDateTime.now()));
 		numeroAsientoReversion = siguienteNumeroAsiento(asientoReversion.getTipoAsiento().getCodigo(), asientoReversion.getEmpresa().getCodigo());
 		asientoReversion.setNumero(numeroAsientoReversion);
-		asientoReversion.setEstado(Long.valueOf(EstadoAsiento.REVERSADO));
+		asientoReversion.setEstado(Long.valueOf(EstadoAsiento.ACTIVO));
 		asientoReversion.setObservaciones("ASIENTO DE REVERSION DE ASIENTO " + asientoOriginal.getNumero());
 		asientoReversion.setIdReversion(asientoOriginal.getCodigo());
 		Calendar calendario = Calendar.getInstance();
@@ -387,12 +388,12 @@ public class AsientoServiceImpl implements AsientoService {
 		asientoReversion.setRubroModuloSistemaH(asientoOriginal.getRubroModuloSistemaH());
 		
 		try{
-			asientoDaoService.save(asientoReversion, asientoReversion.getCodigo());
+			asientoReversion = asientoDaoService.save(asientoReversion, asientoReversion.getCodigo());
 		}
 		catch (EJBException e) {
 			throw new Exception("Error al genera Cabecera Reversion: "+e.getCause());
 		}
-		asientoReversion = selectByNumeroEmpresaTipo(asientoReversion.getNumero(), asientoReversion.getEmpresa().getCodigo(), asientoReversion.getTipoAsiento().getCodigo());
+		// asientoReversion = selectByNumeroEmpresaTipo(asientoReversion.getNumero(), asientoReversion.getEmpresa().getCodigo(), asientoReversion.getTipoAsiento().getCodigo());
 		return asientoReversion;
 	}
 
@@ -561,6 +562,9 @@ public class AsientoServiceImpl implements AsientoService {
 		if (asiento.getNumero() == null) {
 			asiento.setNumero(siguienteNumeroAsiento(asiento.getTipoAsiento().getCodigo(), asiento.getEmpresa().getCodigo()));
 		}
+		/* falta validar si el periodo esta abierto 
+		 * y tambien que recupere el id del periodo dependiendo de la fecha de asiento
+		 * y que se llenen los campos de rubros*/
 		asiento = asientoDaoService.save(asiento, asiento.getCodigo());
 		return asiento;
 	}

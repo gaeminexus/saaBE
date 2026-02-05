@@ -73,6 +73,17 @@ public class AsientoRest {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener asiento: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
     }
+    
+    @GET
+    @Produces(MediaType.APPLICATION_JSON)
+    @Path("/generaReversion/{idAsiento}")
+    public Response generaReversion(@PathParam("idAsiento") Long idAsiento) {
+        try {
+            return Response.status(Response.Status.OK).entity(asientoService.reversionAsiento(idAsiento)).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener asiento: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+    }
 
     @PUT
     @Consumes(MediaType.APPLICATION_JSON)

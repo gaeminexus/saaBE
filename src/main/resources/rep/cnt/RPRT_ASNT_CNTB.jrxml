@@ -93,16 +93,16 @@ ORDER BY DT.DTASHBRR, DT.DTASCNTA]]></query>
 				<element kind="staticText" uuid="4987aa1b-dd8c-4b1d-b3ca-81cb054dc23f" x="68" y="105" width="114" height="13" fontName="Tahoma" fontSize="8.0" bold="true">
 					<text><![CDATA[NOMBRE]]></text>
 				</element>
-				<element kind="staticText" uuid="6b6f9411-c8dc-418b-ab46-90d729778885" x="185" y="105" width="114" height="13" fontName="Tahoma" fontSize="8.0" bold="true">
+				<element kind="staticText" uuid="6b6f9411-c8dc-418b-ab46-90d729778885" x="185" y="105" width="129" height="13" fontName="Tahoma" fontSize="8.0" bold="true">
 					<text><![CDATA[DESCRIPCION]]></text>
 				</element>
 				<element kind="staticText" uuid="7791d0ea-5112-40cf-8a53-ac974e4ef741" x="453" y="105" width="90" height="13" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center">
 					<text><![CDATA[CC]]></text>
 				</element>
-				<element kind="staticText" uuid="8b6b2d42-79f4-46b0-9af7-049056ac41fe" x="304" y="105" width="65" height="13" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Right">
+				<element kind="staticText" uuid="8b6b2d42-79f4-46b0-9af7-049056ac41fe" x="314" y="105" width="69" height="13" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Right">
 					<text><![CDATA[DEBE]]></text>
 				</element>
-				<element kind="staticText" uuid="d3440b81-bf84-4fc2-94cc-32f0f8f2e58b" x="371" y="105" width="65" height="13" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Right">
+				<element kind="staticText" uuid="d3440b81-bf84-4fc2-94cc-32f0f8f2e58b" x="383" y="105" width="69" height="13" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Right">
 					<text><![CDATA[HABER]]></text>
 				</element>
 				<element kind="staticText" uuid="e434315e-e2ae-4abd-b968-dd19f8b83373" x="21" y="5" width="57" height="15" fontName="Tahoma" fontSize="8.0" bold="true">
@@ -215,21 +215,59 @@ ORDER BY DT.DTASHBRR, DT.DTASCNTA]]></query>
 		<band height="12" splitType="Stretch">
 			<element kind="textField" uuid="82d793c6-052f-43b0-b781-ca10b2e68b53" x="10" y="0" width="56" height="11" fontName="Tahoma" fontSize="7.0">
 				<expression><![CDATA[$F{DTASCNTA}]]></expression>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
 			</element>
-			<element kind="textField" uuid="63575668-d6b6-4db9-86de-7ab3e769cadb" x="69" y="0" width="114" height="11" fontName="Tahoma" fontSize="7.0">
+			<element kind="textField" uuid="63575668-d6b6-4db9-86de-7ab3e769cadb" x="66" y="0" width="115" height="11" fontName="Tahoma" fontSize="7.0">
 				<expression><![CDATA[$F{DTASNMCT}]]></expression>
+				<property name="com.jaspersoft.studio.unit.y" value="px"/>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
 			</element>
-			<element kind="textField" uuid="acf51b0b-a8f8-454f-8225-fedb93b82637" x="185" y="0" width="114" height="11" fontName="Tahoma" fontSize="7.0">
+			<element kind="textField" uuid="acf51b0b-a8f8-454f-8225-fedb93b82637" x="181" y="0" width="133" height="11" fontName="Tahoma" fontSize="7.0">
 				<expression><![CDATA[$F{DTASDSCR}.toUpperCase()]]></expression>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
 			</element>
-			<element kind="textField" uuid="7b616551-02fe-4c50-b768-767363ff346f" x="303" y="0" width="65" height="11" fontName="Tahoma" fontSize="7.0" pattern="#,##0.00;(-#,##0.00)" hTextAlign="Right">
+			<element kind="textField" uuid="7b616551-02fe-4c50-b768-767363ff346f" x="314" y="0" width="69" height="11" fontName="Tahoma" fontSize="7.0" pattern="#,##0.00;(-#,##0.00)" hTextAlign="Right">
 				<expression><![CDATA[$F{DTASDBEE}]]></expression>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
 			</element>
-			<element kind="textField" uuid="a4ec943f-92d3-4e86-8e3f-9e403db73897" x="371" y="0" width="65" height="11" fontName="Tahoma" fontSize="7.0" pattern="#,##0.00;(-#,##0.00)" hTextAlign="Right">
+			<element kind="textField" uuid="a4ec943f-92d3-4e86-8e3f-9e403db73897" x="383" y="0" width="69" height="11" fontName="Tahoma" fontSize="7.0" pattern="#,##0.00;(-#,##0.00)" hTextAlign="Right">
 				<expression><![CDATA[$F{DTASHBRR}]]></expression>
+				<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
 			</element>
-			<element kind="textField" uuid="6826fdab-a35c-493e-9e79-26f94d280ad9" x="453" y="0" width="90" height="11" fontName="Tahoma" fontSize="7.0" hTextAlign="Center">
+			<element kind="textField" uuid="6826fdab-a35c-493e-9e79-26f94d280ad9" x="452" y="0" width="91" height="11" fontName="Tahoma" fontSize="7.0" hTextAlign="Center">
 				<expression><![CDATA[$F{CENTROC}]]></expression>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
 			</element>
 		</band>
 	</detail>
