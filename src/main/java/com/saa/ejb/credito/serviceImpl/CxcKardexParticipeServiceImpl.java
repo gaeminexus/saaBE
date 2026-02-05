@@ -7,9 +7,8 @@ import com.saa.basico.util.IncomeException;
 
 import com.saa.ejb.credito.dao.CxcKardexParticipeDaoService;
 import com.saa.ejb.credito.service.CxcKardexParticipeService;
-
-import com.saa.model.credito.CxcKardexParticipe;
-import com.saa.model.credito.NombreEntidadesCredito;
+import com.saa.model.crd.CxcKardexParticipe;
+import com.saa.model.crd.NombreEntidadesCredito;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;

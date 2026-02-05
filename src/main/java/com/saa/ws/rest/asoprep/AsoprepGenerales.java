@@ -7,9 +7,9 @@ import java.util.List;
 import com.saa.basico.ejb.FileService;
 import com.saa.ejb.asoprep.service.CargaArchivoPetroService;
 import com.saa.ejb.credito.service.EstadoCivilService;
-import com.saa.model.credito.CargaArchivo;
-import com.saa.model.credito.DetalleCargaArchivo;
-import com.saa.model.credito.ParticipeXCargaArchivo;
+import com.saa.model.crd.CargaArchivo;
+import com.saa.model.crd.DetalleCargaArchivo;
+import com.saa.model.crd.ParticipeXCargaArchivo;
 import com.saa.ws.rest.files.FileResponse;
 
 import jakarta.ejb.EJB;

@@ -6,7 +6,7 @@ import java.util.List;
 import com.saa.basico.ejb.DetalleRubroDaoService;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.credito.dao.EntidadDaoService;
-import com.saa.model.credito.Entidad;
+import com.saa.model.crd.Entidad;
 import com.saa.rubros.ASPSensibilidadBusquedaCoincidencias;
 import com.saa.rubros.Rubros;
 

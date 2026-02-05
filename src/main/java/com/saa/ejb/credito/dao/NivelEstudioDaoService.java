@@ -1,7 +1,7 @@
 package com.saa.ejb.credito.dao;
 
 import com.saa.basico.util.EntityDao;
-import com.saa.model.credito.NivelEstudio;
+import com.saa.model.crd.NivelEstudio;
 
 import jakarta.ejb.Local;
 

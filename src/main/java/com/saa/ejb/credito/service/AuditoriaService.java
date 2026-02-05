@@ -1,7 +1,7 @@
 package com.saa.ejb.credito.service;
 
 import com.saa.basico.util.EntityService;
-import com.saa.model.credito.Auditoria;
+import com.saa.model.crd.Auditoria;
 
 import jakarta.ejb.Local;
 

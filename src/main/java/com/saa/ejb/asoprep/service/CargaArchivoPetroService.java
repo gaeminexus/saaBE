@@ -3,9 +3,9 @@ package com.saa.ejb.asoprep.service;
 import java.io.InputStream;
 import java.util.List;
 
-import com.saa.model.credito.CargaArchivo;
-import com.saa.model.credito.DetalleCargaArchivo;
-import com.saa.model.credito.ParticipeXCargaArchivo;
+import com.saa.model.crd.CargaArchivo;
+import com.saa.model.crd.DetalleCargaArchivo;
+import com.saa.model.crd.ParticipeXCargaArchivo;
 
 import jakarta.ejb.Local;
 

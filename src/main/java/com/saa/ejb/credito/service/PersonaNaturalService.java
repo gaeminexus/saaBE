@@ -1,7 +1,7 @@
 package com.saa.ejb.credito.service;
 
 import com.saa.basico.util.EntityService;
-import com.saa.model.credito.PersonaNatural;
+import com.saa.model.crd.PersonaNatural;
 
 import jakarta.ejb.Local;
 

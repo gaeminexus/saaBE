@@ -6,8 +6,8 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.credito.dao.CesantiaDaoService;
 import com.saa.ejb.credito.service.CesantiaService;
-import com.saa.model.credito.Cesantia;
-import com.saa.model.credito.NombreEntidadesCredito;
+import com.saa.model.crd.Cesantia;
+import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.rubros.Estado;
 
 import jakarta.ejb.EJB;

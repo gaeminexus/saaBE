@@ -5,8 +5,8 @@ import java.util.List;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.credito.dao.TipoCalificacionCreditoDaoService;
 import com.saa.ejb.credito.service.TipoCalificacionCreditoService;
-import com.saa.model.credito.TipoCalificacionCredito;
-import com.saa.model.credito.NombreEntidadesCredito;
+import com.saa.model.crd.NombreEntidadesCredito;
+import com.saa.model.crd.TipoCalificacionCredito;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;

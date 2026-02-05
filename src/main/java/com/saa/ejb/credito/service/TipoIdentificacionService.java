@@ -1,7 +1,7 @@
 package com.saa.ejb.credito.service;
 
 import com.saa.basico.util.EntityService;
-import com.saa.model.credito.TipoIdentificacion;
+import com.saa.model.crd.TipoIdentificacion;
 
 import jakarta.ejb.Local;
 

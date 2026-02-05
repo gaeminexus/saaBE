@@ -4,7 +4,7 @@ import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.credito.dao.CargaArchivoDaoService;
-import com.saa.model.credito.CargaArchivo;
+import com.saa.model.crd.CargaArchivo;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

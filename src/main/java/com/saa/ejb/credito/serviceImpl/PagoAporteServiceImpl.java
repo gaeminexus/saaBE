@@ -7,9 +7,8 @@ import com.saa.basico.util.IncomeException;
 
 import com.saa.ejb.credito.dao.PagoAporteDaoService;
 import com.saa.ejb.credito.service.PagoAporteService;
-
-import com.saa.model.credito.PagoAporte;
-import com.saa.model.credito.NombreEntidadesCredito;
+import com.saa.model.crd.NombreEntidadesCredito;
+import com.saa.model.crd.PagoAporte;
 import com.saa.rubros.Estado;
 
 import jakarta.ejb.EJB;

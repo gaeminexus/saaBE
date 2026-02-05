@@ -3,7 +3,7 @@ package com.saa.ejb.credito.dao;
 import java.util.List;
 
 import com.saa.basico.util.EntityDao;
-import com.saa.model.credito.CargaArchivo;
+import com.saa.model.crd.CargaArchivo;
 
 import jakarta.ejb.Local;
 

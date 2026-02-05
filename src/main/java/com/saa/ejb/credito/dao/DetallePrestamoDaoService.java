@@ -4,7 +4,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import com.saa.basico.util.EntityDao;
-import com.saa.model.credito.DetallePrestamo;
+import com.saa.model.crd.DetallePrestamo;
 
 import jakarta.ejb.Local;
 

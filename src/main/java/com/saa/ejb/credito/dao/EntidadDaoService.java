@@ -4,7 +4,7 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import com.saa.basico.util.EntityDao;
-import com.saa.model.credito.Entidad;
+import com.saa.model.crd.Entidad;
 
 import jakarta.ejb.Local;
 

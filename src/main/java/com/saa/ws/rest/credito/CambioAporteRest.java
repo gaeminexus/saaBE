@@ -5,8 +5,8 @@ import java.util.List;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.credito.dao.CambioAporteDaoService;
 import com.saa.ejb.credito.service.CambioAporteService;
-import com.saa.model.credito.CambioAporte;
-import com.saa.model.credito.NombreEntidadesCredito;
+import com.saa.model.crd.CambioAporte;
+import com.saa.model.crd.NombreEntidadesCredito;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;

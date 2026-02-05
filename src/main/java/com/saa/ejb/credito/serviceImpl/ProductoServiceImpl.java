@@ -6,9 +6,9 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.credito.dao.ProductoDaoService;
 import com.saa.ejb.credito.service.ProductoService;
-import com.saa.model.credito.Producto;
+import com.saa.model.crd.NombreEntidadesCredito;
+import com.saa.model.crd.Producto;
 import com.saa.rubros.Estado;
-import com.saa.model.credito.NombreEntidadesCredito;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;

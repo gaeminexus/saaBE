@@ -4,7 +4,7 @@ import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.credito.dao.DireccionDaoService;
-import com.saa.model.credito.Direccion;
+import com.saa.model.crd.Direccion;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

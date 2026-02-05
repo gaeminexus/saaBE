@@ -4,7 +4,7 @@ import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.credito.dao.AporteDaoService;
-import com.saa.model.credito.Aporte;
+import com.saa.model.crd.Aporte;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

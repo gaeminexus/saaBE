@@ -1,7 +1,8 @@
 package com.saa.ejb.credito.service;
 
 import com.saa.basico.util.EntityService;
-import com.saa.model.credito.NivelEstudio;
+import com.saa.model.crd.NivelEstudio;
+
 import jakarta.ejb.Local;
 
 @Local

@@ -7,9 +7,8 @@ import com.saa.basico.util.IncomeException;
 
 import com.saa.ejb.credito.dao.DireccionTrabajoDaoService;
 import com.saa.ejb.credito.service.DireccionTrabajoService;
-
-import com.saa.model.credito.DireccionTrabajo;
-import com.saa.model.credito.NombreEntidadesCredito;
+import com.saa.model.crd.DireccionTrabajo;
+import com.saa.model.crd.NombreEntidadesCredito;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;

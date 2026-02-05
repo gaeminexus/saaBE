@@ -1,7 +1,7 @@
 package com.saa.ejb.credito.dao;
 
 import com.saa.basico.util.EntityDao;
-import com.saa.model.credito.HistorialSueldo;
+import com.saa.model.crd.HistorialSueldo;
 
 import jakarta.ejb.Local;
 

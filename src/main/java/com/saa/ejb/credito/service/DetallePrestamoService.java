@@ -3,7 +3,7 @@ package com.saa.ejb.credito.service;
 import java.util.List;
 
 import com.saa.basico.util.EntityService;
-import com.saa.model.credito.DetallePrestamo;
+import com.saa.model.crd.DetallePrestamo;
 
 import jakarta.ejb.Local;
 

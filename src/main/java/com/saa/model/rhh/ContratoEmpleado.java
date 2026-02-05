@@ -3,7 +3,7 @@ package com.saa.model.rhh;
 import java.io.Serializable;
 import java.time.LocalDate;
 
-import com.saa.model.credito.TipoContrato;
+import com.saa.model.crd.TipoContrato;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;

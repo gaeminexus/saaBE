@@ -19,11 +19,11 @@ import com.saa.ejb.credito.dao.EntidadDaoService;
 import com.saa.ejb.credito.service.CargaArchivoService;
 import com.saa.ejb.credito.service.DetalleCargaArchivoService;
 import com.saa.ejb.credito.service.ParticipeXCargaArchivoService;
-import com.saa.model.credito.CargaArchivo;
-import com.saa.model.credito.DetalleCargaArchivo;
-import com.saa.model.credito.Entidad;
-import com.saa.model.credito.NombreEntidadesCredito;
-import com.saa.model.credito.ParticipeXCargaArchivo;
+import com.saa.model.crd.CargaArchivo;
+import com.saa.model.crd.DetalleCargaArchivo;
+import com.saa.model.crd.Entidad;
+import com.saa.model.crd.NombreEntidadesCredito;
+import com.saa.model.crd.ParticipeXCargaArchivo;
 import com.saa.rubros.ASPNovedadesCargaArchivo;
 
 import jakarta.ejb.EJB;

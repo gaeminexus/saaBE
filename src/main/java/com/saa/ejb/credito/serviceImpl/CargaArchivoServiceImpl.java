@@ -9,9 +9,9 @@ import com.saa.ejb.credito.dao.AporteDaoService;
 import com.saa.ejb.credito.dao.CargaArchivoDaoService;
 import com.saa.ejb.credito.dao.EntidadDaoService;
 import com.saa.ejb.credito.service.CargaArchivoService;
-import com.saa.model.credito.CargaArchivo;
-import com.saa.model.credito.Entidad;
-import com.saa.model.credito.NombreEntidadesCredito;
+import com.saa.model.crd.CargaArchivo;
+import com.saa.model.crd.Entidad;
+import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.rubros.Estado;
 
 import jakarta.ejb.EJB;

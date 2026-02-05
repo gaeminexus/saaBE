@@ -1,6 +1,6 @@
 package com.saa.ejb.credito.dao;
 import com.saa.basico.util.EntityDao;
-import com.saa.model.credito.EstadoParticipe;
+import com.saa.model.crd.EstadoParticipe;
 
 import jakarta.ejb.Local;
 

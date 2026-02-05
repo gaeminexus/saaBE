@@ -6,8 +6,8 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.credito.dao.TipoHidrocarburificaDaoService;
 import com.saa.ejb.credito.service.TipoHidrocarburificaService;
-import com.saa.model.credito.NombreEntidadesCredito;
-import com.saa.model.credito.TipoHidrocarburifica;
+import com.saa.model.crd.NombreEntidadesCredito;
+import com.saa.model.crd.TipoHidrocarburifica;
 import com.saa.rubros.Estado;
 
 import jakarta.ejb.EJB;

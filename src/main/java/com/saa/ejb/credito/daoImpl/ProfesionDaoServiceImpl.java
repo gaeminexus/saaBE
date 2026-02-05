@@ -2,7 +2,7 @@ package com.saa.ejb.credito.daoImpl;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.credito.dao.ProfesionDaoService;
-import com.saa.model.credito.Profesion;
+import com.saa.model.crd.Profesion;
 
 import jakarta.ejb.Stateless;
 

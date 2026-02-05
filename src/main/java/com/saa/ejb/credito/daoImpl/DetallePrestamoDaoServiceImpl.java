@@ -5,7 +5,7 @@ import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.credito.dao.DetallePrestamoDaoService;
-import com.saa.model.credito.DetallePrestamo;
+import com.saa.model.crd.DetallePrestamo;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

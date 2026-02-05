@@ -5,8 +5,8 @@ import java.util.List;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.credito.dao.TipoHidrocarburificaDaoService;
 import com.saa.ejb.credito.service.TipoHidrocarburificaService;
-import com.saa.model.credito.NombreEntidadesCredito;
-import com.saa.model.credito.TipoHidrocarburifica;
+import com.saa.model.crd.NombreEntidadesCredito;
+import com.saa.model.crd.TipoHidrocarburifica;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;

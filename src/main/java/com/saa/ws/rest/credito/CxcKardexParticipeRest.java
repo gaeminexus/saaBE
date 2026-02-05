@@ -5,8 +5,8 @@ import java.util.List;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.credito.dao.CxcKardexParticipeDaoService;
 import com.saa.ejb.credito.service.CxcKardexParticipeService;
-import com.saa.model.credito.CxcKardexParticipe;
-import com.saa.model.credito.NombreEntidadesCredito;
+import com.saa.model.crd.CxcKardexParticipe;
+import com.saa.model.crd.NombreEntidadesCredito;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;

@@ -2,7 +2,7 @@ package com.saa.ejb.credito.daoImpl;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.credito.dao.EstadoParticipeDaoService;
-import com.saa.model.credito.EstadoParticipe;
+import com.saa.model.crd.EstadoParticipe;
 
 import jakarta.ejb.Stateless;
 

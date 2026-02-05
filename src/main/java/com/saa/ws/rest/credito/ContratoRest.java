@@ -5,8 +5,8 @@ import java.util.List;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.credito.dao.ContratoDaoService;
 import com.saa.ejb.credito.service.ContratoService;
-import com.saa.model.credito.Contrato;
-import com.saa.model.credito.NombreEntidadesCredito;
+import com.saa.model.crd.Contrato;
+import com.saa.model.crd.NombreEntidadesCredito;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;
