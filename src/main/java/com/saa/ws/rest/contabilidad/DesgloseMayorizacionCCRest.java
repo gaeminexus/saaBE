@@ -2,8 +2,8 @@ package com.saa.ws.rest.contabilidad;
 
 import java.util.List;
 
-import com.saa.ejb.contabilidad.dao.DesgloseMayorizacionCCDaoService;
-import com.saa.ejb.contabilidad.service.DesgloseMayorizacionCCService;
+import com.saa.ejb.cnt.dao.DesgloseMayorizacionCCDaoService;
+import com.saa.ejb.cnt.service.DesgloseMayorizacionCCService;
 import com.saa.model.cnt.DesgloseMayorizacionCC;
 import com.saa.model.cnt.NombreEntidadesContabilidad;
 

@@ -15,7 +15,7 @@ import com.saa.basico.ejb.DetalleRubroService;
 import com.saa.basico.ejb.Mensaje;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
-import com.saa.ejb.contabilidad.service.CuentaService;
+import com.saa.ejb.cnt.service.CuentaService;
 import com.saa.ejb.cxp.dao.GrupoProductoPagoDaoService;
 import com.saa.ejb.cxp.dao.ProductoPagoDaoService;
 import com.saa.ejb.cxp.service.ProductoPagoService;

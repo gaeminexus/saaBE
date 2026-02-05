@@ -3,8 +3,8 @@ package com.saa.ws.rest.contabilidad;
 import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
-import com.saa.ejb.contabilidad.dao.DetalleReporteContableDaoService;
-import com.saa.ejb.contabilidad.service.DetalleReporteContableService;
+import com.saa.ejb.cnt.dao.DetalleReporteContableDaoService;
+import com.saa.ejb.cnt.service.DetalleReporteContableService;
 import com.saa.model.cnt.DetalleReporteContable;
 import com.saa.model.cnt.NombreEntidadesContabilidad;
 

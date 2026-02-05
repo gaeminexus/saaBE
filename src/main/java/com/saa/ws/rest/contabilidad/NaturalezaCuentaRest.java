@@ -3,8 +3,8 @@ package com.saa.ws.rest.contabilidad;
 import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
-import com.saa.ejb.contabilidad.dao.NaturalezaCuentaDaoService;
-import com.saa.ejb.contabilidad.service.NaturalezaCuentaService;
+import com.saa.ejb.cnt.dao.NaturalezaCuentaDaoService;
+import com.saa.ejb.cnt.service.NaturalezaCuentaService;
 import com.saa.model.cnt.NaturalezaCuenta;
 import com.saa.model.cnt.NombreEntidadesContabilidad;
 

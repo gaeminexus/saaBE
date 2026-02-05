@@ -5,9 +5,9 @@ import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
-import com.saa.ejb.contabilidad.service.AsientoService;
-import com.saa.ejb.contabilidad.service.DetalleAsientoService;
-import com.saa.ejb.contabilidad.service.PlanCuentaService;
+import com.saa.ejb.cnt.service.AsientoService;
+import com.saa.ejb.cnt.service.DetalleAsientoService;
+import com.saa.ejb.cnt.service.PlanCuentaService;
 import com.saa.ejb.tesoreria.dao.TransferenciaDaoService;
 import com.saa.ejb.tesoreria.service.CuentaBancariaService;
 import com.saa.ejb.tesoreria.service.MovimientoBancoService;

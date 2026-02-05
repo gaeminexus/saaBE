@@ -7,7 +7,7 @@ import java.util.List;
 import com.saa.basico.ejb.FechaService;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
-import com.saa.ejb.contabilidad.service.PeriodoService;
+import com.saa.ejb.cnt.service.PeriodoService;
 import com.saa.ejb.tesoreria.dao.CuentaBancariaDaoService;
 import com.saa.ejb.tesoreria.service.ConciliacionService;
 import com.saa.ejb.tesoreria.service.CuentaBancariaService;

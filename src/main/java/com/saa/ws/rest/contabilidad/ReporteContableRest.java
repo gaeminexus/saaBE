@@ -2,8 +2,8 @@ package com.saa.ws.rest.contabilidad;
 
 import java.util.List;
 
-import com.saa.ejb.contabilidad.dao.ReporteContableDaoService;
-import com.saa.ejb.contabilidad.service.ReporteContableService;
+import com.saa.ejb.cnt.dao.ReporteContableDaoService;
+import com.saa.ejb.cnt.service.ReporteContableService;
 import com.saa.model.cnt.NombreEntidadesContabilidad;
 import com.saa.model.cnt.ReporteContable;
 

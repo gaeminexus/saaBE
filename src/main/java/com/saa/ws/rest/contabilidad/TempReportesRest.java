@@ -4,8 +4,8 @@ package com.saa.ws.rest.contabilidad;
 import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
-import com.saa.ejb.contabilidad.dao.TempReportesDaoService;
-import com.saa.ejb.contabilidad.service.TempReportesService;
+import com.saa.ejb.cnt.dao.TempReportesDaoService;
+import com.saa.ejb.cnt.service.TempReportesService;
 import com.saa.model.cnt.NombreEntidadesContabilidad;
 import com.saa.model.cnt.TempReportes;
 
