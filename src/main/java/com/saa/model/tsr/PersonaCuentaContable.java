@@ -56,8 +56,8 @@ public class PersonaCuentaContable implements Serializable {
 	 * Persona a la que pertenecen las cuentas contables
 	 */
 	@ManyToOne
-	@JoinColumn(name = "PRSNCDGO", referencedColumnName = "PRSNCDGO")
-	private Persona persona;	
+	@JoinColumn(name = "TTLRCDGO", referencedColumnName = "TTLRCDGO")
+	private Titular titular;	
 
 	/**
 	 * Empresa a la pertenecen las cuentas contables
@@ -109,15 +109,15 @@ public class PersonaCuentaContable implements Serializable {
 	/**
 	 * Devuelve persona
 	 */
-	public Persona getPersona() {
-		return this.persona;
+	public Titular getTitular() {
+		return this.titular;
 	}
 	
 	/**
 	 * Asigna persona
 	 */
-	public void setPersona(Persona persona) {
-		this.persona = persona;
+	public void setPersona(Titular titular) {
+		this.titular = titular;
 	}
 
 	/**

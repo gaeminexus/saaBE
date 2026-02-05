@@ -126,7 +126,7 @@ public class Cheque implements Serializable {
 	 */
 	@ManyToOne
 	@JoinColumn(name = "PRSNCDGO", referencedColumnName = "PRSNCDGO")
-	private Persona persona;
+	private Titular titular;
 
 	/**
 	 * Valor del cheque.
@@ -161,7 +161,7 @@ public class Cheque implements Serializable {
 	 */
 	@ManyToOne
 	@JoinColumn(name = "DTCHIDBN", referencedColumnName = "PRSNCDGO")	
-	private Persona idBeneficiario;	
+	private Titular idBeneficiario;	
 	
 	/**
 	 * Devuelve codigo
@@ -356,16 +356,16 @@ public class Cheque implements Serializable {
 	 * Devuelve persona
 	 * @return persona
 	 */
-	public Persona getPersona() {
-		return persona;
+	public Titular getTitular() {
+		return titular;
 	}
 
 	/**
 	 * Asigna persona
 	 * @param persona Nuevo valor para persona
 	 */
-	public void setPersona(Persona persona) {
-		this.persona = persona;
+	public void setTitular(Titular titular) {
+		this.titular = titular;
 	}
 
 	/**
@@ -437,11 +437,11 @@ public class Cheque implements Serializable {
 	 * @return beneficiario
 	 */
 	
-	public Persona getIdBeneficiario() {
+	public Titular getIdBeneficiario() {
 		return idBeneficiario;
 	}
 
-	public void setIdBeneficiario(Persona idBeneficiario) {
+	public void setIdBeneficiario(Titular idBeneficiario) {
 		this.idBeneficiario = idBeneficiario;
 	}		
 

@@ -336,7 +336,7 @@ public class CobroServiceImpl implements CobroService {
 		cobro.setRubroEstadoH(tempCobro.getRubroEstadoH());
 		cobro.setUsuarioPorCaja(tempCobro.getUsuarioPorCaja());
 		cobro.setCajaLogica(tempCobro.getCajaLogica());
-		cobro.setPersona(tempCobro.getPersona());
+		cobro.setPersona(tempCobro.getTitular());
 		cobro.setTipoCobro(tempCobro.getTipoCobro());
 		try {
 			cobroDaoService.save(cobro, cobro.getCodigo());
@@ -530,7 +530,7 @@ public class CobroServiceImpl implements CobroService {
 		System.out.println("Ingresa al metodo obtenerCuentaBancariasCliente con id cobro: " + idCobro + "y empresa: " + empresa);
 		Cobro cobro = cobroDaoService.selectById(idCobro, NombreEntidadesTesoreria.COBRO);
 		Long idEmpresa = cobro.getEmpresa().getCodigo();
-		Long idPersona = cobro.getPersona().getCodigo();
+		Long idPersona = cobro.getTitular().getCodigo();
 		Long tipoCuenta = cobro.getTipoCobro();		
 		List<PersonaCuentaContable> personaCuentaContables = personaCuentaContableService.selectByPersonaTipoCuenta(idEmpresa, idPersona, RolPersona.CLIENTE, tipoCuenta);
 		PlanCuenta planCuenta = personaCuentaContables.get(0).getPlanCuenta();

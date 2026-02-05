@@ -56,7 +56,7 @@ public class PersonaRol implements Serializable {
 	 */
 	@ManyToOne
 	@JoinColumn(name = "PRSNCDGO", referencedColumnName = "PRSNCDGO")
-	private Persona persona;
+	private Titular titular;
 	
 	/**
 	 * Codigo alterno del rubro para el rol de persona. Tomado del rubro 55.
@@ -120,15 +120,15 @@ public class PersonaRol implements Serializable {
 	/**
 	 * Devuelve persona
 	 */
-	public Persona getPersona() {
-		return this.persona;
+	public Titular getTitular() {
+		return this.titular;
 	}
 	
 	/**
 	 * Asigna persona
 	 */
-	public void setPersona(Persona persona) {
-		this.persona = persona;
+	public void setTitular(Titular titular) {
+		this.titular = titular;
 	}
 
 	/**

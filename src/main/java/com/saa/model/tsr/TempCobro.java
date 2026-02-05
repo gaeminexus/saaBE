@@ -168,8 +168,8 @@ public class TempCobro implements Serializable {
      * Persona a la que se realiza el cobro
      */
     @ManyToOne
-    @JoinColumn(name = "PRSNCDGO", referencedColumnName = "PRSNCDGO")
-    private Persona persona;    
+    @JoinColumn(name = "TTLRCDGO", referencedColumnName = "TTLRCDGO")
+    private Titular titular;    
 
     /**
      * Tipo de cobro. 1 = Factura, 2 = Anticipo.
@@ -445,15 +445,15 @@ public class TempCobro implements Serializable {
     /**
      * Devuelve persona
      */
-    public Persona getPersona() {
-        return this.persona;
+    public Titular getTitular() {
+        return this.titular;
     }
     
     /**
      * Asigna persona
      */
-    public void setPersona(Persona persona) {
-        this.persona = persona;
+    public void setPersona(Titular titular) {
+        this.titular = titular;
     }
 
     /**

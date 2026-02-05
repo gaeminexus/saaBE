@@ -3,10 +3,11 @@ package com.saa.ws.rest.tsr;
 import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
-import com.saa.ejb.tsr.dao.PersonaDaoService;
-import com.saa.ejb.tsr.service.PersonaService;
+import com.saa.ejb.tsr.dao.TitularDaoService;
+
+import com.saa.ejb.tsr.service.TitularService;
 import com.saa.model.tsr.NombreEntidadesTesoreria;
-import com.saa.model.tsr.Persona;
+import com.saa.model.tsr.Titular;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;
@@ -22,14 +23,14 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 
-@Path("prsn")
-public class PersonaRest {
+@Path("ttlr")
+public class TitularRest {
 
     @EJB
-    private PersonaDaoService personaDaoService;
-
+    private TitularDaoService titularDaoService;
+    
     @EJB
-    private PersonaService personaService;
+    private TitularService titularService;
 
     @Context
     private UriInfo context;
@@ -37,7 +38,7 @@ public class PersonaRest {
     /**
      * Constructor por defecto.
      */
-    public PersonaRest() {
+    public TitularRest() {
         // Constructor vacío
     }
 
@@ -49,7 +50,7 @@ public class PersonaRest {
     @Produces(MediaType.APPLICATION_JSON)
     public Response getAll() {
         try {
-            List<Persona> lista = personaDaoService.selectAll(NombreEntidadesTesoreria.PERSONA);
+            List<Titular> lista = titularDaoService.selectAll(NombreEntidadesTesoreria.TITULAR);
             return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener personas: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
@@ -64,7 +65,7 @@ public class PersonaRest {
     @Produces(MediaType.APPLICATION_JSON)
     public Response getId(@PathParam("id") Long id) {
         try {
-            Persona persona = personaDaoService.selectById(id, NombreEntidadesTesoreria.PERSONA);
+            Titular persona = titularDaoService.selectById(id, NombreEntidadesTesoreria.TITULAR);
             if (persona == null) {
                 return Response.status(Response.Status.NOT_FOUND).entity("Persona con ID " + id + " no encontrada").type(MediaType.APPLICATION_JSON).build();
             }
@@ -80,10 +81,10 @@ public class PersonaRest {
     @PUT
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response put(Persona registro) {
-        System.out.println("LLEGA AL SERVICIO PUT - PERSONA");
+    public Response put(Titular registro) {
+        System.out.println("LLEGA AL SERVICIO PUT - TITULAR");
         try {
-            Persona resultado = personaService.saveSingle(registro);
+            Titular resultado = titularService.saveSingle(registro);
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar persona: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
@@ -96,10 +97,10 @@ public class PersonaRest {
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response post(Persona registro) {
+    public Response post(Titular registro) {
         System.out.println("LLEGA AL SERVICIO POST - PERSONA");
         try {
-            Persona resultado = personaService.saveSingle(registro);
+        	Titular resultado = titularService.saveSingle(registro);
             return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear persona: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
@@ -120,7 +121,7 @@ public class PersonaRest {
         System.out.println("selectByCriteria de PERSONA");
         try {
             return Response.status(Response.Status.OK)
-                    .entity(personaService.selectByCriteria(registros))
+                    .entity(titularService.selectByCriteria(registros))
                     .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.BAD_REQUEST)
@@ -138,11 +139,11 @@ public class PersonaRest {
     public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - PERSONA");
         try {
-            Persona elimina = new Persona();
-            personaDaoService.remove(elimina, id);
+            Titular elimina = new Titular();
+            titularDaoService.remove(elimina, id);
             return Response.status(Response.Status.NO_CONTENT).build();
         } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar persona: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar titular: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
     }
 }

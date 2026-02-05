@@ -9,16 +9,16 @@
 package com.saa.ejb.tsr.dao;
 
 import com.saa.basico.util.EntityDao;
-import com.saa.model.tsr.Persona;
+import com.saa.model.tsr.Titular;
 
 import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
  *
- * Dao Sevice Persona.  
+ * Dao Sevice Titular.  
  */
 @Local
-public interface PersonaDaoService extends EntityDao<Persona> {
+public interface TitularDaoService extends EntityDao<Titular> {
 	
 }

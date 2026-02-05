@@ -155,8 +155,8 @@ public class Pago implements Serializable {
 	 * Persona a la que se realiza el pago
 	 */
 	@ManyToOne
-	@JoinColumn(name = "PRSNCDGO", referencedColumnName = "PRSNCDGO")
-	private Persona persona;	
+	@JoinColumn(name = "TTLRCDGO", referencedColumnName = "TTLRCDGO")
+	private Titular titular;	
 	
 	/**
 	 * Asiento contable ligado a la emision del cheque
@@ -432,15 +432,15 @@ public class Pago implements Serializable {
 	/**
 	 * Devuelve persona
 	 */
-	public Persona getPersona() {
-		return this.persona;
+	public Titular getTitular() {
+		return this.titular;
 	}
 	
 	/**
 	 * Asigna persona
 	 */
-	public void setPersona(Persona persona) {
-		this.persona = persona;
+	public void setPersona(Titular titular) {
+		this.titular = titular;
 	}
 	
 	/**

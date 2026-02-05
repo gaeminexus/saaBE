@@ -16,15 +16,15 @@ import com.saa.ejb.tsr.service.CuentaBancariaService;
 import com.saa.ejb.tsr.service.MovimientoBancoService;
 import com.saa.ejb.tsr.service.PagoService;
 import com.saa.ejb.tsr.service.PersonaCuentaContableService;
-import com.saa.ejb.tsr.service.PersonaService;
+import com.saa.ejb.tsr.service.TitularService;
 import com.saa.model.cnt.Asiento;
 import com.saa.model.cnt.PlanCuenta;
 import com.saa.model.tsr.Cheque;
 import com.saa.model.tsr.Chequera;
 import com.saa.model.tsr.NombreEntidadesTesoreria;
 import com.saa.model.tsr.Pago;
-import com.saa.model.tsr.Persona;
 import com.saa.model.tsr.PersonaCuentaContable;
+import com.saa.model.tsr.Titular;
 import com.saa.rubros.EstadoCheque;
 import com.saa.rubros.EstadoMovimientoBanco;
 import com.saa.rubros.EstadoPago;
@@ -68,7 +68,7 @@ public class ChequeServiceImpl implements ChequeService {
 	private PagoDaoService pagoDaoService;	
 	
 	@EJB
-	private PersonaService personaService;
+	private TitularService titularService;
 	
 	@EJB
 	private PersonaCuentaContableService personaCuantaContableService;
@@ -208,13 +208,13 @@ public class ChequeServiceImpl implements ChequeService {
 		Long[] datosAsiento = generaAsientoImpresion(idEmpresa, idCheque, idCuentaBancaria, idPersona, nombreUsuario, valor, beneficiario);
 		//Actualiza detalle de cheque a generado y fecha que se imprime el cheque
 		Asiento asiento = asientoService.selectById(datosAsiento[0]);
-		Persona persona = personaService.selectById(idPersona);
-		Persona personaBeneficiario = personaService.selectById(idBeneficiario);
+		Titular persona = titularService.selectById(idPersona);
+		Titular personaBeneficiario = titularService.selectById(idBeneficiario);
 		Cheque cheque = chequeDaoService.selectById(idCheque, NombreEntidadesTesoreria.CHEQUE);
 		cheque.setEgreso(datosAsiento[1]);
 		cheque.setFechaUso(LocalDateTime.now());
 		cheque.setAsiento(asiento);
-		cheque.setPersona(persona);
+		cheque.setTitular(persona);
 		cheque.setValor(valor);	
 		cheque.setIdBeneficiario(personaBeneficiario);
 		cheque.setBeneficiario(beneficiario);
@@ -232,12 +232,12 @@ public class ChequeServiceImpl implements ChequeService {
 	 * @see com.compuseg.income.tesoreria.ejb.service.ChequeService#generaAsientoImpresion(java.lang.Long, java.lang.Long, java.lang.Long, java.lang.Long, java.lang.String, java.lang.Double)
 	 */
 	public Long[] generaAsientoImpresion(Long idEmpresa, Long idCheque, Long idCuentaBancaria, 
-		Long idPersona, String nombreUsuario, Double valor, String beneficiario) throws Throwable {
-		System.out.println("Ingresa al metodo generaAsientoImpresion con id de empresa: "+idEmpresa+", id de cheque: "+idCheque+", id de cuenta: "+idCuentaBancaria+", id de persona: "+idPersona+", nombre usuario: "+nombreUsuario+", valor: "+valor);
+		Long idTitular, String nombreUsuario, Double valor, String beneficiario) throws Throwable {
+		System.out.println("Ingresa al metodo generaAsientoImpresion con id de empresa: "+idEmpresa+", id de cheque: "+idCheque+", id de cuenta: "+idCuentaBancaria+", id de titular: "+idTitular+", nombre usuario: "+nombreUsuario+", valor: "+valor);
 		//obtiene datos para generar asiento
 		Cheque cheque = chequeDaoService.selectById(idCheque, NombreEntidadesTesoreria.CHEQUE);
 		String proveedor = null;		
-		Persona persona = personaService.selectById(idPersona);
+		Titular persona = titularService.selectById(idTitular);
 		if(persona.getRazonSocial() == null || "".equals(persona.getRazonSocial())){
 			proveedor = persona.getApellido()+" "+persona.getNombre();
 		}else{
@@ -277,7 +277,7 @@ public class ChequeServiceImpl implements ChequeService {
 			PlanCuenta planCuenta = new PlanCuenta();
 			List<PersonaCuentaContable> planes = personaCuantaContableService.selectByPersonaTipoCuenta(
 				pago.getEmpresa().getCodigo(),
-				pago.getPersona().getCodigo(),
+				pago.getTitular().getCodigo(),
 				RolPersona.PROVEEDOR, 
 				pago.getTipoPago());
 			if(!planes.isEmpty()){

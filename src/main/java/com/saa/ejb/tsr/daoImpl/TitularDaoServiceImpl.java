@@ -9,9 +9,8 @@
 package com.saa.ejb.tsr.daoImpl;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
-import com.saa.ejb.tsr.dao.PersonaDaoService;
-import com.saa.model.tsr.Persona;
-
+import com.saa.ejb.tsr.dao.TitularDaoService;
+import com.saa.model.tsr.Titular;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -22,7 +21,7 @@ import jakarta.persistence.PersistenceContext;
  * Implementacion PersonaDaoService.
  */
 @Stateless
-public class PersonaDaoServiceImpl extends EntityDaoImpl<Persona> implements PersonaDaoService {
+public class TitularDaoServiceImpl extends EntityDaoImpl<Titular> implements TitularDaoService {
 
 	//Inicializa persistence context
 	@PersistenceContext

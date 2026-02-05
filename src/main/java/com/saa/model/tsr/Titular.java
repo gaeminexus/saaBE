@@ -23,27 +23,27 @@ import jakarta.persistence.Table;
 
 /**
  *  @author GaemiSoft
- * <p>Pojo mapeo de tabla TSR.PRSN.
- *  Entity Persona.
+ * <p>Pojo mapeo de tabla TSR.TTLR.
+ *  Entity Titular.
  *  Almacena las personas con las que interactua la empresa.
  *  Se utiliza para almacenar clientes y proveedores.</p>
  */
 @SuppressWarnings("serial")
 @Entity
-@Table(name = "PRSN", schema = "TSR")
-@SequenceGenerator(name = "SQ_PRSNCDGO", sequenceName = "TSR.SQ_PRSNCDGO", allocationSize = 1)
+@Table(name = "TTSR", schema = "TSR")
+@SequenceGenerator(name = "SQ_TTSRCDGO", sequenceName = "TSR.SQ_TTSRCDGO", allocationSize = 1)
 @NamedQueries({
-	@NamedQuery(name = "PersonaAll", query = "select e from Persona e"),
-	@NamedQuery(name = "PersonaId", query = "select e from Persona e where e.codigo = :id")
+	@NamedQuery(name = "TitularAll", query = "select e from Titular e"),
+	@NamedQuery(name = "TitularId", query = "select e from Titular e where e.codigo = :id")
 })
-public class Persona implements Serializable {
+public class Titular implements Serializable {
 
 	/**
 	 * Id de Tabla.
 	 */
 	@Basic
 	@Id
-	@Column(name = "PRSNCDGO", precision = 0)
+	@Column(name = "TTLRCDGO", precision = 0)
 	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_PRSNCDGO")
 	private Long codigo;
 	
@@ -51,112 +51,112 @@ public class Persona implements Serializable {
 	 * Numero de Identificacion.
 	 */
 	@Basic
-	@Column(name = "PRSNIDNT", length = 20)
+	@Column(name = "TTLRIDNT", length = 20)
 	private String identificacion;
 	
 	/**
 	 * Nombre para le caso de personas naturales.
 	 */
 	@Basic
-	@Column(name = "PRSNNMBR", length = 50)
+	@Column(name = "TTLRNMBR", length = 50)
 	private String nombre;
 	
 	/**
 	 * Apellido para el caso de personas naturales.
 	 */
 	@Basic
-	@Column(name = "PRSNAPLL", length = 50)
+	@Column(name = "TTLRAPLL", length = 50)
 	private String apellido;
 	
 	/**
 	 * Razon social para el caso de personas juridicas.
 	 */
 	@Basic
-	@Column(name = "PRSNRZSC", length = 100)
+	@Column(name = "TTLRRZSC", length = 100)
 	private String razonSocial;
 	
 	/**
 	 * Indica si la persona es cliente. 1 = Cliente, 0 = No es cliente.
 	 */
 	@Basic
-	@Column(name = "PRSNCLNT")
+	@Column(name = "TTLRCLNT")
 	private Long tipoCliente;
 	
 	/**
 	 * Indica si la persona es proveedor. 1 = Proveedor, 0 = No es proveedor.
 	 */
 	@Basic
-	@Column(name = "PRSNPRVD")
+	@Column(name = "TTLRPRVD")
 	private Long tipoProveedor;
 	
 	/**
 	 * Rubro 35. Indica el tipo de persona.
 	 */
 	@Basic
-	@Column(name = "PRSNRYYA")
+	@Column(name = "TTLRRYYA")
 	private Long rubroTipoPersonaP;
 	
 	/**
 	 * Detalle de Rubro 35. Indica el tipo de persona.
 	 */
 	@Basic
-	@Column(name = "PRSNRZZA")
+	@Column(name = "TTLRRZZA")
 	private Long rubroTipoPersonaH;
 	
 	/**
 	 * Rubro 36. Indica el tipo de identificacion.
 	 */
 	@Basic
-	@Column(name = "PRSNRYYB")
+	@Column(name = "TTLRRYYB")
 	private Long rubroTipoIdentificacionP;
 	
 	/**
 	 * Detalle de Rubro 36. Indica el tipo de identificacion.
 	 */
 	@Basic
-	@Column(name = "PRSNRZZB")
+	@Column(name = "TTLRRZZB")
 	private Long rubroTipoIdentificacionH;
 	
 	/**
 	 * Estado.
 	 */
 	@Basic
-	@Column(name = "PRSNESTD")
+	@Column(name = "TTLRESTD")
 	private Long estado;
 	
 	/**
 	 * Indica si es beneficiario. 1 beneficiario, 0 no es beneficiario 
 	 */
 	@Basic
-	@Column(name = "PRSNBNFC")
+	@Column(name = "TTLRBNFC")
 	private Long tipoBeneficiario;
 	
 	/**
 	 * Indica si es empleado. 1 empleado, 0 no es empleado 
 	 */
 	@Basic
-	@Column(name = "PRSNEMPL")
+	@Column(name = "TTLREMPL")
 	private Long tipoEmpleado;
 	
 	/**
 	 * Indica si aplica iva. 1 aplica iva, 0 no aplica iva 
 	 */
 	@Basic
-	@Column(name = "PRSNAPIV")
+	@Column(name = "TTLRAPIV")
 	private Long aplicaIVA;
 	
 	/**
 	 * Indica si aplica retencion. 1 aplica retencion. 0 no aplica retencion 
 	 */
 	@Basic
-	@Column(name = "PRSNAPRT")
+	@Column(name = "TTLRAPRT")
 	private Long aplicaRetencion;
 	
 	/**
 	 * Indica si es socio. 1 socio, 0 no es socio 
 	 */
 	@Basic
-	@Column(name = "PRSNSCOO")
+	@Column(name = "TTLRSCOO")
 	private Long tipoSocio;
 	
 

@@ -14,7 +14,7 @@ import java.util.Date;
 import com.saa.model.cnt.Asiento;
 import com.saa.model.cnt.Periodo;
 import com.saa.model.scp.Empresa;
-import com.saa.model.tsr.Persona;
+import com.saa.model.tsr.Titular;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
@@ -66,8 +66,8 @@ public class TempDocumentoPago implements Serializable {
 	 * Persona o proveedor de la que se recibe el documento.
 	 */
 	@ManyToOne
-	@JoinColumn(name = "PRSNCDGO", referencedColumnName = "PRSNCDGO")
-	private Persona persona;
+	@JoinColumn(name = "TTLRCDGO", referencedColumnName = "TTLRCDGO")
+	private Titular titular;
 	
 	/**
 	 * Tipo de documento tomado de la entidad de Tipo documento.
@@ -274,16 +274,16 @@ public class TempDocumentoPago implements Serializable {
 	 * Obtiene Persona o proveedor de la que se recibe el documento.
 	 * @return : Persona o proveedor de la que se recibe el documento.
 	 */
-	public Persona getPersona() {
-		return persona;
+	public Titular getTitular() {
+		return titular;
 	}
 
 	/**
 	 * Asigna Persona o proveedor de la que se recibe el documento.
 	 * @param persona : Persona o proveedor de la que se recibe el documento.
 	 */
-	public void setPersona(Persona persona) {
-		this.persona = persona;
+	public void setTitular(Titular titular) {
+		this.titular = titular;
 	}
 
 	/**

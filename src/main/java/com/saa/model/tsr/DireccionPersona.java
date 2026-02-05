@@ -53,8 +53,8 @@ public class DireccionPersona implements Serializable {
      * Persona a la que pertenece la direccion
      */
     @ManyToOne
-    @JoinColumn(name = "PRSNCDGO", referencedColumnName = "PRSNCDGO")
-    private Persona persona;    
+    @JoinColumn(name = "TTLRCDGO", referencedColumnName = "TTLRCDGO")
+    private Titular titular;    
 
     /**
      * Rubro 30. Indica el tipo de banco.
@@ -103,15 +103,15 @@ public class DireccionPersona implements Serializable {
     /**
      * Devuelve persona
      */
-    public Persona getPersona() {
-        return this.persona;
+    public Titular getTitular() {
+        return this.titular;
     }
     
     /**
      * Asigna persona
      */
-    public void setPersona(Persona persona) {
-        this.persona = persona;
+    public void setPersona(Titular titular) {
+        this.titular = titular;
     }
 
     /**

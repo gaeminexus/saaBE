@@ -1,6 +1,6 @@
 package com.saa.ejb.tsr.service;
 import com.saa.basico.util.EntityService;
-import com.saa.model.tsr.Persona;
+import com.saa.model.tsr.Titular;
 
 import jakarta.ejb.Local;
 
@@ -10,7 +10,7 @@ import jakarta.ejb.Local;
  *  Accede a los metodos DAO y procesa los datos para el cliente.</p>
  */
 @Local
-public interface PersonaService extends EntityService<Persona>{
+public interface TitularService extends EntityService<Titular>{
  	 
 	/**
 	 * Valida si la identificacion(Cedula o Ruc) es correcta

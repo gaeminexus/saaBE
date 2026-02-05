@@ -48,7 +48,7 @@ public interface NombreEntidadesTesoreria {
 		 String MOTIVO_PAGO = "MotivoPago";
 		 String MOVIMIENTO_BANCO = "MovimientoBanco";
 		 String PAGO = "Pago";
-		 String PERSONA = "Persona";
+		 String TITULAR = "Titular";
 		 String PERSONA_CUENTA_CONTABLE = "PersonaCuentaContable";
 		 String PERSONA_ROL = "PersonaRol";
 		 String SALDO_BANCO = "SaldoBanco";

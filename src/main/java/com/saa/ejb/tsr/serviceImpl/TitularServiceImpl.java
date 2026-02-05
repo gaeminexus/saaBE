@@ -12,10 +12,13 @@ import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
-import com.saa.ejb.tsr.dao.PersonaDaoService;
-import com.saa.ejb.tsr.service.PersonaService;
+
+import com.saa.ejb.tsr.dao.TitularDaoService;
+
+import com.saa.ejb.tsr.service.TitularService;
 import com.saa.model.tsr.NombreEntidadesTesoreria;
-import com.saa.model.tsr.Persona;
+
+import com.saa.model.tsr.Titular;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -26,10 +29,10 @@ import jakarta.ejb.Stateless;
  *  Contiene los servicios relacionados con la entidad Persona.</p>
  */
 @Stateless
-public class PersonaServiceImpl implements PersonaService {
+public class TitularServiceImpl implements TitularService {
 	
 	@EJB
-	private PersonaDaoService personaDaoService;
+	private TitularDaoService titularDaoService;
 	
 
 	/* (non-Javadoc)
@@ -38,21 +41,21 @@ public class PersonaServiceImpl implements PersonaService {
 	public void remove(List<Long> id) throws Throwable {
 		System.out.println("Ingresa al metodo remove[] de Persona service ... depurado");
 		//INSTANCIA LA ENTIDAD
-		Persona persona = new Persona();
+		Titular persona = new Titular();
 		//ELIMINA UNO A UNO LOS REGISTROS DEL ARREGLO
 		for (Long registro : id) {
-			personaDaoService.remove(persona, registro);
+			titularDaoService.remove(persona, registro);
 		}
 	}
 
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.tesoreria.ejb.util.EntityService#save(java.lang.Object[][])
 	 */
-	public void save(List<Persona> lista) throws Throwable {
+	public void save(List<Titular> lista) throws Throwable {
 		System.out.println("Ingresa al metodo save de Persona service");
 		// BARRIDA COMPLETA DE LOS REGISTROS
-		for (Persona persona : lista) {			
-			personaDaoService.save(persona, persona.getCodigo());
+		for (Titular persona : lista) {			
+			titularDaoService.save(persona, persona.getCodigo());
 		}
 	}
 
@@ -61,10 +64,10 @@ public class PersonaServiceImpl implements PersonaService {
 	 * @see com.compuseg.income.tesoreria.ejb.service.BancoExternoService#selectAll()
 	 */
 	@Override
-	public List<Persona> selectAll() throws Throwable {
+	public List<Titular> selectAll() throws Throwable {
 		System.out.println("Ingresa al metodo selectAll PersonaService");
 		// CREA EL LISTADO CON LOS REGISTROS DE LA BUSQUEDA
-		List<Persona> result = personaDaoService.selectAll(NombreEntidadesTesoreria.PERSONA);
+		List<Titular> result = titularDaoService.selectAll(NombreEntidadesTesoreria.TITULAR);
 		// INICIALIZA EL OBJETO
 		if (result.isEmpty()) {
 			// NO ENCUENTRA REGISTROS
@@ -77,11 +80,11 @@ public class PersonaServiceImpl implements PersonaService {
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.sistema.ejb.util.EntityService#selectByCriteria(java.lang.Object[], java.util.List)
 	 */
-	public List<Persona> selectByCriteria(List<DatosBusqueda> datos) throws Throwable {
+	public List<Titular> selectByCriteria(List<DatosBusqueda> datos) throws Throwable {
 	    System.out.println("Ingresa al metodo (selectByCriteria) Persona");
 	    // CREA EL LISTADO CON LOS REGISTROS DE LA BUSQUEDA
-	    List<Persona> result = personaDaoService.selectByCriteria(
-	        datos, NombreEntidadesTesoreria.PERSONA
+	    List<Titular> result = titularDaoService.selectByCriteria(
+	        datos, NombreEntidadesTesoreria.TITULAR
 	    );
 	    // PREGUNTA SI ENCONTRO REGISTROS
 	    if (result.isEmpty()) {
@@ -96,9 +99,9 @@ public class PersonaServiceImpl implements PersonaService {
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.tesoreria.ejb.service.PersonaService#selectById(java.lang.Long)
 	 */
-	public Persona selectById(Long id) throws Throwable {
+	public Titular selectById(Long id) throws Throwable {
 		System.out.println("Ingresa al selectById con id: " + id);		
-		return personaDaoService.selectById(id, NombreEntidadesTesoreria.PERSONA);
+		return titularDaoService.selectById(id, NombreEntidadesTesoreria.TITULAR);
 	}
 
 	/* (non-Javadoc)
@@ -249,10 +252,10 @@ public class PersonaServiceImpl implements PersonaService {
 	}
 
 	@Override
-	public Persona saveSingle(Persona persona) throws Throwable {
+	public Titular saveSingle(Titular titular) throws Throwable {
 		System.out.println("saveSingle - Persona");
-		persona = personaDaoService.save(persona, persona.getCodigo());
-		return persona;
+		titular = titularDaoService.save(titular, titular.getCodigo());
+		return titular;
 	}
 
 }

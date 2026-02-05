@@ -178,7 +178,7 @@ public class PagoServiceImpl implements PagoService {
 		pago.setNombreUsuario(tempPago.getNombreUsuario());
 		pago.setNumeroAsiento(tempPago.getNumeroAsiento());
 		pago.setNumeroId(tempPago.getNumeroId());
-		pago.setPersona(tempPago.getPersona());
+		pago.setPersona(tempPago.getTitular());
 		pago.setProveedor(tempPago.getProveedor());
 		pago.setRubroEstadoH(tempPago.getRubroEstadoH());
 		pago.setRubroEstadoP(tempPago.getRubroEstadoP());
@@ -242,7 +242,7 @@ public class PagoServiceImpl implements PagoService {
 		}		
 
 		PlanCuenta planCuentaHaber = new PlanCuenta();
-		List<PersonaCuentaContable> planes = personaCuantaContableService.selectByPersonaTipoCuenta(pago.getEmpresa().getCodigo(),pago.getPersona().getCodigo(),
+		List<PersonaCuentaContable> planes = personaCuantaContableService.selectByPersonaTipoCuenta(pago.getEmpresa().getCodigo(),pago.getTitular().getCodigo(),
 			RolPersona.PROVEEDOR, pago.getTipoPago());
 		if(!planes.isEmpty()){
 			planCuentaHaber=planes.get(0).getPlanCuenta();
