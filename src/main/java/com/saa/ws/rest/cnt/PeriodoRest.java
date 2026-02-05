@@ -156,11 +156,12 @@ public class PeriodoRest {
      */
     @DELETE
     @Path("/{id}")
-    @Produces(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.TEXT_PLAIN)
     public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - PERIODO");
         try {
             String resultado = periodoService.remove(id);
+            System.out.println("MENSAJE DEVUELTO: " + resultado);
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar periodo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();

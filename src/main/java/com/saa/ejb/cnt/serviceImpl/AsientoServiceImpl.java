@@ -556,16 +556,20 @@ public class AsientoServiceImpl implements AsientoService {
 	@Override
 	public Asiento saveSingle(Asiento asiento) throws Throwable {
 		System.out.println("saveSingle - AsientoService");
-		if (asiento.getCodigo() == null) {
-			asiento.setNumero(siguienteNumeroAsiento(asiento.getTipoAsiento().getCodigo(), asiento.getEmpresa().getCodigo()));
+		boolean permiteProceso = false;
+		permiteProceso = validacionAsiento(asiento);
+		if (!permiteProceso) {
+			if (asiento.getCodigo() == null) {
+				asiento.setNumero(siguienteNumeroAsiento(asiento.getTipoAsiento().getCodigo(), asiento.getEmpresa().getCodigo()));
+			}
+			if (asiento.getNumero() == null) {
+				asiento.setNumero(siguienteNumeroAsiento(asiento.getTipoAsiento().getCodigo(), asiento.getEmpresa().getCodigo()));
+			}
+			/* falta validar si el periodo esta abierto 
+			 * y tambien que recupere el id del periodo dependiendo de la fecha de asiento
+			 * y que se llenen los campos de rubros*/
+			asiento = asientoDaoService.save(asiento, asiento.getCodigo());
 		}
-		if (asiento.getNumero() == null) {
-			asiento.setNumero(siguienteNumeroAsiento(asiento.getTipoAsiento().getCodigo(), asiento.getEmpresa().getCodigo()));
-		}
-		/* falta validar si el periodo esta abierto 
-		 * y tambien que recupere el id del periodo dependiendo de la fecha de asiento
-		 * y que se llenen los campos de rubros*/
-		asiento = asientoDaoService.save(asiento, asiento.getCodigo());
 		return asiento;
 	}
 
@@ -580,6 +584,22 @@ public class AsientoServiceImpl implements AsientoService {
 			throw new IncomeException("Busqueda total Asiento no devolvio ningun registro");
 		}
 		return result;
+	}
+
+	@Override
+	public boolean validacionAsiento(Asiento asiento) throws Throwable {
+		System.out.println("validacionAsiento");
+		boolean permite = false;
+		// Valida que exista periodo contable primero
+		Periodo periodo = periodoService.recuperaByMesAnioEmpresa(asiento.getEmpresa().getCodigo(), asiento.getNumeroMes(), asiento.getNumeroAnio());
+		if (periodo != null) {
+			// valida el estado del periodo
+			if (Long.valueOf(EstadoPeriodos.CERRADO).equals(periodo.getEstado())) {
+				permite = false;
+				throw new IncomeException("NO SE PUEDE GUARDAR EL ASIENTO PORQUE EL PERIODO ESTA CERRADO");
+			}
+		}
+		return permite;
 	}
 
 }

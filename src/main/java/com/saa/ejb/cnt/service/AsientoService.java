@@ -223,5 +223,13 @@ public interface AsientoService extends EntityService<Asiento> {
 	 */
 	void eliminaIdMayorizacion(Long idMayorizacion) throws Throwable;
 	
+	/**
+	 * Valida si el asiento se puede mayorizado o no
+	 * @param asiento: Asiento a validar
+	 * @return: True = Puede ser mayorizado, False = No puede ser mayorizado
+	 * @throws Throwable: Excepcion
+	 */
+	boolean validacionAsiento(Asiento asiento) throws Throwable;
+	
 	
 }

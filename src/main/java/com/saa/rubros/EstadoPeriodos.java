@@ -22,5 +22,6 @@ public interface EstadoPeriodos {
 	public static final int ACTIVO = 1;
 	public static final int MAYORIZADO = 2;
 	public static final int DESMAYORIZADO = 3;
+	public static final int CERRADO = 4;
 
 }
