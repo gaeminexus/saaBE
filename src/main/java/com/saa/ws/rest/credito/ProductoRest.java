@@ -3,8 +3,8 @@
 import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
-import com.saa.ejb.credito.dao.ProductoDaoService;
-import com.saa.ejb.credito.service.ProductoService;
+import com.saa.ejb.crd.dao.ProductoDaoService;
+import com.saa.ejb.crd.service.ProductoService;
 import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.model.crd.Producto;
 

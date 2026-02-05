@@ -3,8 +3,8 @@ package com.saa.ws.rest.credito;
 import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
-import com.saa.ejb.credito.dao.ContratoDaoService;
-import com.saa.ejb.credito.service.ContratoService;
+import com.saa.ejb.crd.dao.ContratoDaoService;
+import com.saa.ejb.crd.service.ContratoService;
 import com.saa.model.crd.Contrato;
 import com.saa.model.crd.NombreEntidadesCredito;
 

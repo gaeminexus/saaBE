@@ -15,10 +15,10 @@ import java.util.stream.Collectors;
 
 import com.saa.basico.ejb.FileService;
 import com.saa.ejb.asoprep.service.CargaArchivoPetroService;
-import com.saa.ejb.credito.dao.EntidadDaoService;
-import com.saa.ejb.credito.service.CargaArchivoService;
-import com.saa.ejb.credito.service.DetalleCargaArchivoService;
-import com.saa.ejb.credito.service.ParticipeXCargaArchivoService;
+import com.saa.ejb.crd.dao.EntidadDaoService;
+import com.saa.ejb.crd.service.CargaArchivoService;
+import com.saa.ejb.crd.service.DetalleCargaArchivoService;
+import com.saa.ejb.crd.service.ParticipeXCargaArchivoService;
 import com.saa.model.crd.CargaArchivo;
 import com.saa.model.crd.DetalleCargaArchivo;
 import com.saa.model.crd.Entidad;

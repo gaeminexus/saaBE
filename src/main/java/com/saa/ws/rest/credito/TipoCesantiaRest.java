@@ -3,8 +3,8 @@ package com.saa.ws.rest.credito;
 import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
-import com.saa.ejb.credito.dao.TipoCesantiaDaoService;
-import com.saa.ejb.credito.service.TipoCesantiaService;
+import com.saa.ejb.crd.dao.TipoCesantiaDaoService;
+import com.saa.ejb.crd.service.TipoCesantiaService;
 import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.model.crd.TipoCesantia;
 

@@ -1,0 +1,11 @@
+package com.saa.ejb.crd.service;
+
+import com.saa.basico.util.EntityService;
+import com.saa.model.crd.Direccion;
+
+import jakarta.ejb.Local;
+
+@Local
+public interface DireccionService extends EntityService<Direccion>{
+
+}
