@@ -13,7 +13,7 @@ import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tesoreria.dao.SaldoBancoDaoService;
-import com.saa.model.tesoreria.SaldoBanco;
+import com.saa.model.tsr.SaldoBanco;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

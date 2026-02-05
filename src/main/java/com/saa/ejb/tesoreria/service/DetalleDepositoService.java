@@ -2,10 +2,10 @@ package com.saa.ejb.tesoreria.service;
 
 import com.saa.basico.util.EntityService;
 import com.saa.model.cnt.Asiento;
-import com.saa.model.tesoreria.AuxDepositoBanco;
-import com.saa.model.tesoreria.CajaFisica;
-import com.saa.model.tesoreria.Deposito;
-import com.saa.model.tesoreria.DetalleDeposito;
+import com.saa.model.tsr.AuxDepositoBanco;
+import com.saa.model.tsr.CajaFisica;
+import com.saa.model.tsr.Deposito;
+import com.saa.model.tsr.DetalleDeposito;
 
 import jakarta.ejb.Local;
 

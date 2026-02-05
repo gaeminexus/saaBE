@@ -2,8 +2,8 @@ package com.saa.ejb.tesoreria.service;
 
 import java.util.List;
 import com.saa.basico.util.EntityService;
-import com.saa.model.tesoreria.CierreCaja;
-import com.saa.model.tesoreria.DetalleCierre;
+import com.saa.model.tsr.CierreCaja;
+import com.saa.model.tsr.DetalleCierre;
 
 import jakarta.ejb.Local;
 

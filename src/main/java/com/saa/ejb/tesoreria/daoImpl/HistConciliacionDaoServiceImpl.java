@@ -10,7 +10,7 @@ package com.saa.ejb.tesoreria.daoImpl;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tesoreria.dao.HistConciliacionDaoService;
-import com.saa.model.tesoreria.HistConciliacion;
+import com.saa.model.tsr.HistConciliacion;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

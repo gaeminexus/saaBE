@@ -11,7 +11,7 @@ package com.saa.ejb.tesoreria.daoImpl;
 import java.util.List;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tesoreria.dao.CierreCajaDaoService;
-import com.saa.model.tesoreria.CierreCaja;
+import com.saa.model.tsr.CierreCaja;
 import com.saa.rubros.EstadoCierreCajas;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

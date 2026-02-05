@@ -10,7 +10,7 @@ package com.saa.ejb.tesoreria.daoImpl;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tesoreria.dao.PersonaDaoService;
-import com.saa.model.tesoreria.Persona;
+import com.saa.model.tsr.Persona;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

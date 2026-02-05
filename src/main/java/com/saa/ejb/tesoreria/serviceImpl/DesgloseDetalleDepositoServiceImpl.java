@@ -6,10 +6,10 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.tesoreria.dao.DesgloseDetalleDepositoDaoService;
 import com.saa.ejb.tesoreria.service.DesgloseDetalleDepositoService;
-import com.saa.model.tesoreria.AuxDepositoDesglose;
-import com.saa.model.tesoreria.DesgloseDetalleDeposito;
-import com.saa.model.tesoreria.DetalleDeposito;
-import com.saa.model.tesoreria.NombreEntidadesTesoreria;
+import com.saa.model.tsr.AuxDepositoDesglose;
+import com.saa.model.tsr.DesgloseDetalleDeposito;
+import com.saa.model.tsr.DetalleDeposito;
+import com.saa.model.tsr.NombreEntidadesTesoreria;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;

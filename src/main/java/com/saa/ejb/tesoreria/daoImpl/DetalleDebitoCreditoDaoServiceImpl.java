@@ -12,7 +12,7 @@ import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tesoreria.dao.DetalleDebitoCreditoDaoService;
-import com.saa.model.tesoreria.DetalleDebitoCredito;
+import com.saa.model.tsr.DetalleDebitoCredito;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

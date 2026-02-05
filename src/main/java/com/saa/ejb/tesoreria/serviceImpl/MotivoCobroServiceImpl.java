@@ -14,10 +14,10 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.tesoreria.dao.MotivoCobroDaoService;
 import com.saa.ejb.tesoreria.service.MotivoCobroService;
-import com.saa.model.tesoreria.Cobro;
-import com.saa.model.tesoreria.MotivoCobro;
-import com.saa.model.tesoreria.NombreEntidadesTesoreria;
-import com.saa.model.tesoreria.TempMotivoCobro;
+import com.saa.model.tsr.Cobro;
+import com.saa.model.tsr.MotivoCobro;
+import com.saa.model.tsr.NombreEntidadesTesoreria;
+import com.saa.model.tsr.TempMotivoCobro;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.EJBException;

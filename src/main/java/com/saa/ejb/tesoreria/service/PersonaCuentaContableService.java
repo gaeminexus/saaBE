@@ -3,7 +3,7 @@ package com.saa.ejb.tesoreria.service;
 import java.util.List;
 
 import com.saa.basico.util.EntityService;
-import com.saa.model.tesoreria.PersonaCuentaContable;
+import com.saa.model.tsr.PersonaCuentaContable;
 
 import jakarta.ejb.Local;
 

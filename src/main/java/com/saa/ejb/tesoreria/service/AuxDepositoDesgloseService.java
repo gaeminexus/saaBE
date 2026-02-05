@@ -3,8 +3,8 @@ package com.saa.ejb.tesoreria.service;
 import java.util.List;
 
 import com.saa.basico.util.EntityService;
-import com.saa.model.tesoreria.AuxDepositoDesglose;
-import com.saa.model.tesoreria.Cobro;
+import com.saa.model.tsr.AuxDepositoDesglose;
+import com.saa.model.tsr.Cobro;
 
 import jakarta.ejb.Local;
 

@@ -5,8 +5,8 @@ import java.util.List;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.tesoreria.dao.PagoDaoService;
 import com.saa.ejb.tesoreria.service.PagoService;
-import com.saa.model.tesoreria.NombreEntidadesTesoreria;
-import com.saa.model.tesoreria.Pago;
+import com.saa.model.tsr.NombreEntidadesTesoreria;
+import com.saa.model.tsr.Pago;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;

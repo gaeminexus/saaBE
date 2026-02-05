@@ -12,7 +12,7 @@ import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tesoreria.dao.PersonaCuentaContableDaoService;
-import com.saa.model.tesoreria.PersonaCuentaContable;
+import com.saa.model.tsr.PersonaCuentaContable;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

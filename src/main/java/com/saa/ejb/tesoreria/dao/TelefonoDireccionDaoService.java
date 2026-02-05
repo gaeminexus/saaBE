@@ -9,7 +9,7 @@
 package com.saa.ejb.tesoreria.dao;
 
 import com.saa.basico.util.EntityDao;
-import com.saa.model.tesoreria.TelefonoDireccion;
+import com.saa.model.tsr.TelefonoDireccion;
 
 import jakarta.ejb.Local;
 

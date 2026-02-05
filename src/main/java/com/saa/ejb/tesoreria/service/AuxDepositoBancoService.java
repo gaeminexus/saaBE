@@ -3,7 +3,7 @@ package com.saa.ejb.tesoreria.service;
 import java.util.List;
 
 import com.saa.basico.util.EntityService;
-import com.saa.model.tesoreria.AuxDepositoBanco;
+import com.saa.model.tsr.AuxDepositoBanco;
 
 import jakarta.ejb.Local;
 

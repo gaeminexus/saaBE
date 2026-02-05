@@ -12,7 +12,7 @@ import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tesoreria.dao.CobroRetencionDaoService;
-import com.saa.model.tesoreria.CobroRetencion;
+import com.saa.model.tsr.CobroRetencion;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

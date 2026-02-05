@@ -8,10 +8,10 @@ import com.saa.ejb.tesoreria.dao.AuxDepositoCierreDaoService;
 import com.saa.ejb.tesoreria.service.AuxDepositoCierreService;
 import com.saa.ejb.tesoreria.service.CierreCajaService;
 import com.saa.ejb.tesoreria.service.UsuarioPorCajaService;
-import com.saa.model.tesoreria.AuxDepositoCierre;
-import com.saa.model.tesoreria.CierreCaja;
-import com.saa.model.tesoreria.NombreEntidadesTesoreria;
-import com.saa.model.tesoreria.UsuarioPorCaja;
+import com.saa.model.tsr.AuxDepositoCierre;
+import com.saa.model.tsr.CierreCaja;
+import com.saa.model.tsr.NombreEntidadesTesoreria;
+import com.saa.model.tsr.UsuarioPorCaja;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.EJBException;

@@ -13,7 +13,7 @@ import java.util.List;
 import com.saa.basico.util.IncomeException;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tesoreria.dao.CobroDaoService;
-import com.saa.model.tesoreria.Cobro;
+import com.saa.model.tsr.Cobro;
 import com.saa.rubros.EstadoCobro;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

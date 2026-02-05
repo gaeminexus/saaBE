@@ -15,8 +15,8 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.tesoreria.dao.TempCobroChequeDaoService;
 import com.saa.ejb.tesoreria.service.TempCobroChequeService;
-import com.saa.model.tesoreria.NombreEntidadesTesoreria;
-import com.saa.model.tesoreria.TempCobroCheque;
+import com.saa.model.tsr.NombreEntidadesTesoreria;
+import com.saa.model.tsr.TempCobroCheque;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;

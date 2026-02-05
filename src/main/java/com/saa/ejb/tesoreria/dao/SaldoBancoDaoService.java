@@ -12,7 +12,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.util.EntityDao;
-import com.saa.model.tesoreria.SaldoBanco;
+import com.saa.model.tsr.SaldoBanco;
 
 import jakarta.ejb.Local;
 

@@ -2,7 +2,7 @@ package com.saa.ejb.tesoreria.service;
 
 
 import com.saa.basico.util.EntityService;
-import com.saa.model.tesoreria.Chequera;
+import com.saa.model.tsr.Chequera;
 
 import jakarta.ejb.Local;
 

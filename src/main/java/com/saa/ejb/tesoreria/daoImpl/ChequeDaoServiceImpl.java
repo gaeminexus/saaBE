@@ -12,7 +12,7 @@ import java.util.List;
 import com.saa.basico.util.IncomeException;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tesoreria.dao.ChequeDaoService;
-import com.saa.model.tesoreria.Cheque;
+import com.saa.model.tsr.Cheque;
 import com.saa.rubros.EstadoCheque;
 
 import jakarta.ejb.Stateless;

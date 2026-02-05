@@ -20,8 +20,8 @@ import com.saa.ejb.tesoreria.service.TempCobroService;
 import com.saa.ejb.tesoreria.service.TempCobroTarjetaService;
 import com.saa.ejb.tesoreria.service.TempCobroTransferenciaService;
 import com.saa.ejb.tesoreria.service.TempMotivoCobroService;
-import com.saa.model.tesoreria.NombreEntidadesTesoreria;
-import com.saa.model.tesoreria.TempCobro;
+import com.saa.model.tsr.NombreEntidadesTesoreria;
+import com.saa.model.tsr.TempCobro;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;

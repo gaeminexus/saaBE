@@ -2,9 +2,9 @@ package com.saa.ejb.tesoreria.service;
 
 import java.util.List;
 import com.saa.basico.util.EntityService;
-import com.saa.model.tesoreria.AuxDepositoDesglose;
-import com.saa.model.tesoreria.DesgloseDetalleDeposito;
-import com.saa.model.tesoreria.DetalleDeposito;
+import com.saa.model.tsr.AuxDepositoDesglose;
+import com.saa.model.tsr.DesgloseDetalleDeposito;
+import com.saa.model.tsr.DetalleDeposito;
 
 import jakarta.ejb.Local;
 

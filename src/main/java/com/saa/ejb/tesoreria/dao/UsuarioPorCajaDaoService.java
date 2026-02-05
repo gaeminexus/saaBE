@@ -11,7 +11,7 @@ package com.saa.ejb.tesoreria.dao;
 import java.util.List;
 
 import com.saa.basico.util.EntityDao;
-import com.saa.model.tesoreria.UsuarioPorCaja;
+import com.saa.model.tsr.UsuarioPorCaja;
 
 import jakarta.ejb.Local;
 

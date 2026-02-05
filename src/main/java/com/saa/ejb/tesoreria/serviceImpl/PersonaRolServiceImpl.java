@@ -15,8 +15,8 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.tesoreria.dao.PersonaRolDaoService;
 import com.saa.ejb.tesoreria.service.PersonaRolService;
-import com.saa.model.tesoreria.NombreEntidadesTesoreria;
-import com.saa.model.tesoreria.PersonaRol;
+import com.saa.model.tsr.NombreEntidadesTesoreria;
+import com.saa.model.tsr.PersonaRol;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;

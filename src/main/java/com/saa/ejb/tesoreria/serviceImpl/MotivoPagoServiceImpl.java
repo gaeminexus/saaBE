@@ -6,8 +6,8 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.tesoreria.dao.MotivoPagoDaoService;
 import com.saa.ejb.tesoreria.service.MotivoPagoService;
-import com.saa.model.tesoreria.MotivoPago;
-import com.saa.model.tesoreria.NombreEntidadesTesoreria;
+import com.saa.model.tsr.MotivoPago;
+import com.saa.model.tsr.NombreEntidadesTesoreria;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;

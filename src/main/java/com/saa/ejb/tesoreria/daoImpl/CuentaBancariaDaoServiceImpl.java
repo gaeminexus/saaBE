@@ -13,7 +13,7 @@ import java.util.List;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tesoreria.dao.CuentaBancariaDaoService;
 import com.saa.model.cnt.PlanCuenta;
-import com.saa.model.tesoreria.CuentaBancaria;
+import com.saa.model.tsr.CuentaBancaria;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

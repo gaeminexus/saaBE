@@ -12,10 +12,10 @@ import com.saa.ejb.tesoreria.service.CobroService;
 import com.saa.ejb.tesoreria.service.CobroTarjetaService;
 import com.saa.ejb.tesoreria.service.CobroTransferenciaService;
 import com.saa.ejb.tesoreria.service.DetalleCierreService;
-import com.saa.model.tesoreria.CierreCaja;
-import com.saa.model.tesoreria.Cobro;
-import com.saa.model.tesoreria.DetalleCierre;
-import com.saa.model.tesoreria.NombreEntidadesTesoreria;
+import com.saa.model.tsr.CierreCaja;
+import com.saa.model.tsr.Cobro;
+import com.saa.model.tsr.DetalleCierre;
+import com.saa.model.tsr.NombreEntidadesTesoreria;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.EJBException;

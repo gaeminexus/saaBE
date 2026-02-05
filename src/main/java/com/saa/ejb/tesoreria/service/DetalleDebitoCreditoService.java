@@ -1,9 +1,9 @@
 package com.saa.ejb.tesoreria.service;
 
 import com.saa.basico.util.EntityService;
-import com.saa.model.tesoreria.DebitoCredito;
-import com.saa.model.tesoreria.DetalleDebitoCredito;
-import com.saa.model.tesoreria.TempDebitoCredito;
+import com.saa.model.tsr.DebitoCredito;
+import com.saa.model.tsr.DetalleDebitoCredito;
+import com.saa.model.tsr.TempDebitoCredito;
 
 import jakarta.ejb.Local;
 

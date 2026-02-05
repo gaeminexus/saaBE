@@ -1,8 +1,8 @@
 package com.saa.ejb.tesoreria.service;
 
 import com.saa.basico.util.EntityService;
-import com.saa.model.tesoreria.Conciliacion;
-import com.saa.model.tesoreria.DetalleConciliacion;
+import com.saa.model.tsr.Conciliacion;
+import com.saa.model.tsr.DetalleConciliacion;
 
 import jakarta.ejb.Local;
 

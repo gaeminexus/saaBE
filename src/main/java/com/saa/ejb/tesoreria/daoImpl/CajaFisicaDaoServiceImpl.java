@@ -10,7 +10,7 @@ package com.saa.ejb.tesoreria.daoImpl;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tesoreria.dao.CajaFisicaDaoService;
-import com.saa.model.tesoreria.CajaFisica;
+import com.saa.model.tsr.CajaFisica;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

@@ -11,7 +11,7 @@ package com.saa.ejb.tesoreria.daoImpl;
 import com.saa.basico.util.IncomeException;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tesoreria.dao.CajaLogicaPorCajaFisicaDaoService;
-import com.saa.model.tesoreria.CajaLogicaPorCajaFisica;
+import com.saa.model.tsr.CajaLogicaPorCajaFisica;
 import com.saa.rubros.Estado;
 
 import jakarta.ejb.Stateless;

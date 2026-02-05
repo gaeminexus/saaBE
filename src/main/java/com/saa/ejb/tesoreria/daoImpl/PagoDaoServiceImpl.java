@@ -11,7 +11,7 @@ package com.saa.ejb.tesoreria.daoImpl;
 import java.util.List;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tesoreria.dao.PagoDaoService;
-import com.saa.model.tesoreria.Pago;
+import com.saa.model.tsr.Pago;
 import com.saa.rubros.EstadoPago;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

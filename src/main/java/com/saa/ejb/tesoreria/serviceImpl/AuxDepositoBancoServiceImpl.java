@@ -13,8 +13,9 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.tesoreria.dao.AuxDepositoBancoDaoService;
 import com.saa.ejb.tesoreria.service.AuxDepositoBancoService;
-import com.saa.model.tesoreria.AuxDepositoBanco;
-import com.saa.model.tesoreria.NombreEntidadesTesoreria;
+import com.saa.model.tsr.AuxDepositoBanco;
+import com.saa.model.tsr.NombreEntidadesTesoreria;
+
 import jakarta.ejb.EJB;
 import jakarta.ejb.EJBException;
 import jakarta.ejb.Stateless;

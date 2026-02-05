@@ -11,7 +11,7 @@ package com.saa.ejb.tesoreria.daoImpl;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tesoreria.dao.CajaLogicaDaoService;
 import com.saa.model.cnt.PlanCuenta;
-import com.saa.model.tesoreria.CajaLogica;
+import com.saa.model.tsr.CajaLogica;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

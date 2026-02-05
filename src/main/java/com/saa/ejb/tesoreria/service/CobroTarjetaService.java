@@ -1,9 +1,9 @@
 package com.saa.ejb.tesoreria.service;
 
 import com.saa.basico.util.EntityService;
-import com.saa.model.tesoreria.Cobro;
-import com.saa.model.tesoreria.CobroTarjeta;
-import com.saa.model.tesoreria.TempCobroTarjeta;
+import com.saa.model.tsr.Cobro;
+import com.saa.model.tsr.CobroTarjeta;
+import com.saa.model.tsr.TempCobroTarjeta;
 
 import jakarta.ejb.Local;
 

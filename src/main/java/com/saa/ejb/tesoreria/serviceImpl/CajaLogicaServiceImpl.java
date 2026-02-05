@@ -9,8 +9,9 @@ import com.saa.basico.util.IncomeException;
 import com.saa.ejb.tesoreria.dao.CajaLogicaDaoService;
 import com.saa.ejb.tesoreria.service.CajaLogicaService;
 import com.saa.model.cnt.PlanCuenta;
-import com.saa.model.tesoreria.CajaLogica;
-import com.saa.model.tesoreria.NombreEntidadesTesoreria;
+import com.saa.model.tsr.CajaLogica;
+import com.saa.model.tsr.NombreEntidadesTesoreria;
+
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 

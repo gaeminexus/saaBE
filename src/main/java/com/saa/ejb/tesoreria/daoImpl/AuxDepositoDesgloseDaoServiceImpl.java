@@ -12,7 +12,7 @@ import java.util.List;
 import com.saa.basico.util.IncomeException;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tesoreria.dao.AuxDepositoDesgloseDaoService;
-import com.saa.model.tesoreria.AuxDepositoDesglose;
+import com.saa.model.tsr.AuxDepositoDesglose;
 import com.saa.rubros.TipoDesgloseDeposito;
 
 import jakarta.ejb.Stateless;

@@ -5,8 +5,8 @@ import java.util.List;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.tesoreria.dao.DetalleConciliacionDaoService;
 import com.saa.ejb.tesoreria.service.DetalleConciliacionService;
-import com.saa.model.tesoreria.DetalleConciliacion;
-import com.saa.model.tesoreria.NombreEntidadesTesoreria;
+import com.saa.model.tsr.DetalleConciliacion;
+import com.saa.model.tsr.NombreEntidadesTesoreria;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;

@@ -12,7 +12,7 @@ import java.util.List;
 import com.saa.basico.util.IncomeException;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tesoreria.dao.AuxDepositoCierreDaoService;
-import com.saa.model.tesoreria.AuxDepositoCierre;
+import com.saa.model.tsr.AuxDepositoCierre;
 import com.saa.rubros.Estado;
 
 import jakarta.ejb.Stateless;

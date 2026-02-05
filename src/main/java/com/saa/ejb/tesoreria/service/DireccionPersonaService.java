@@ -1,7 +1,7 @@
 package com.saa.ejb.tesoreria.service;
 
 import com.saa.basico.util.EntityService;
-import com.saa.model.tesoreria.DireccionPersona;
+import com.saa.model.tsr.DireccionPersona;
 
 import jakarta.ejb.Local;
 

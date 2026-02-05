@@ -4,8 +4,8 @@ import java.time.LocalDate;
 
 import com.saa.basico.util.EntityService;
 import com.saa.model.cnt.Periodo;
-import com.saa.model.tesoreria.CuentaBancaria;
-import com.saa.model.tesoreria.SaldoBanco;
+import com.saa.model.tsr.CuentaBancaria;
+import com.saa.model.tsr.SaldoBanco;
 
 import jakarta.ejb.Local;
 

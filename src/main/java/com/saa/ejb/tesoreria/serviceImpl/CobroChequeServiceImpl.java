@@ -7,11 +7,11 @@ import com.saa.basico.util.IncomeException;
 import com.saa.ejb.tesoreria.dao.CobroChequeDaoService;
 import com.saa.ejb.tesoreria.dao.DetalleDepositoDaoService;
 import com.saa.ejb.tesoreria.service.CobroChequeService;
-import com.saa.model.tesoreria.Cobro;
-import com.saa.model.tesoreria.CobroCheque;
-import com.saa.model.tesoreria.DetalleDeposito;
-import com.saa.model.tesoreria.NombreEntidadesTesoreria;
-import com.saa.model.tesoreria.TempCobroCheque;
+import com.saa.model.tsr.Cobro;
+import com.saa.model.tsr.CobroCheque;
+import com.saa.model.tsr.DetalleDeposito;
+import com.saa.model.tsr.NombreEntidadesTesoreria;
+import com.saa.model.tsr.TempCobroCheque;
 import com.saa.rubros.EstadoCobroCheque;
 
 import jakarta.ejb.EJB;

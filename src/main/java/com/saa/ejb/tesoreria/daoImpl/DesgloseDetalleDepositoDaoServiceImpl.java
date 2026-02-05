@@ -12,7 +12,7 @@ import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tesoreria.dao.DesgloseDetalleDepositoDaoService;
-import com.saa.model.tesoreria.DesgloseDetalleDeposito;
+import com.saa.model.tsr.DesgloseDetalleDeposito;
 import com.saa.rubros.EstadoDeposito;
 
 import jakarta.ejb.Stateless;

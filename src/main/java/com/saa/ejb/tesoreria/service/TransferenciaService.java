@@ -1,8 +1,8 @@
 package com.saa.ejb.tesoreria.service;
 
 import com.saa.basico.util.EntityService;
-import com.saa.model.tesoreria.CuentaBancaria;
-import com.saa.model.tesoreria.Transferencia;
+import com.saa.model.tsr.CuentaBancaria;
+import com.saa.model.tsr.Transferencia;
 
 import jakarta.ejb.Local;
 

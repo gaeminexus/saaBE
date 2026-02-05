@@ -9,7 +9,7 @@
 package com.saa.ejb.tesoreria.dao;
 
 import com.saa.basico.util.EntityDao;
-import com.saa.model.tesoreria.CajaLogicaPorCajaFisica;
+import com.saa.model.tsr.CajaLogicaPorCajaFisica;
 
 import jakarta.ejb.Local;
 

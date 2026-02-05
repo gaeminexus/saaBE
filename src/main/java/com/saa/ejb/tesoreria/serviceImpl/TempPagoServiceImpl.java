@@ -15,8 +15,8 @@ import com.saa.basico.util.IncomeException;
 import com.saa.ejb.tesoreria.dao.TempPagoDaoService;
 import com.saa.ejb.tesoreria.service.TempMotivoPagoService;
 import com.saa.ejb.tesoreria.service.TempPagoService;
-import com.saa.model.tesoreria.NombreEntidadesTesoreria;
-import com.saa.model.tesoreria.TempPago;
+import com.saa.model.tsr.NombreEntidadesTesoreria;
+import com.saa.model.tsr.TempPago;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;

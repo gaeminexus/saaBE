@@ -11,7 +11,7 @@ package com.saa.ejb.tesoreria.dao;
 import java.util.List;
 
 import com.saa.basico.util.EntityDao;
-import com.saa.model.tesoreria.MotivoPago;
+import com.saa.model.tsr.MotivoPago;
 
 import jakarta.ejb.Local;
 

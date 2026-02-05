@@ -1,7 +1,7 @@
 package com.saa.ejb.tesoreria.service;
 
 import com.saa.basico.util.EntityService;
-import com.saa.model.tesoreria.TempMotivoPago;
+import com.saa.model.tsr.TempMotivoPago;
 
 import jakarta.ejb.Local;
 

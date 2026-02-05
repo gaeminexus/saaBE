@@ -5,8 +5,8 @@ import java.util.List;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.tesoreria.dao.AuxDepositoDesgloseDaoService;
 import com.saa.ejb.tesoreria.service.AuxDepositoDesgloseService;
-import com.saa.model.tesoreria.AuxDepositoDesglose;
-import com.saa.model.tesoreria.NombreEntidadesTesoreria;
+import com.saa.model.tsr.AuxDepositoDesglose;
+import com.saa.model.tsr.NombreEntidadesTesoreria;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;

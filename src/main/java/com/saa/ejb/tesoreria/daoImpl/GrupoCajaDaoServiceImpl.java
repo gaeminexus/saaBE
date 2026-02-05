@@ -10,7 +10,8 @@ package com.saa.ejb.tesoreria.daoImpl;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tesoreria.dao.GrupoCajaDaoService;
-import com.saa.model.tesoreria.GrupoCaja;
+import com.saa.model.tsr.GrupoCaja;
+
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;

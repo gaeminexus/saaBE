@@ -10,7 +10,7 @@ package com.saa.ejb.tesoreria.daoImpl;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tesoreria.dao.TelefonoDireccionDaoService;
-import com.saa.model.tesoreria.TelefonoDireccion;
+import com.saa.model.tsr.TelefonoDireccion;
 
 import jakarta.ejb.Stateless;
 

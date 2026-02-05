@@ -10,7 +10,7 @@ package com.saa.ejb.tesoreria.daoImpl;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tesoreria.dao.DepositoDaoService;
-import com.saa.model.tesoreria.Deposito;
+import com.saa.model.tsr.Deposito;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

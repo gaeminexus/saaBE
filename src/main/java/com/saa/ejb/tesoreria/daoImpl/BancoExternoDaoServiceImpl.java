@@ -10,7 +10,7 @@ package com.saa.ejb.tesoreria.daoImpl;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tesoreria.dao.BancoExternoDaoService;
-import com.saa.model.tesoreria.BancoExterno;
+import com.saa.model.tsr.BancoExterno;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

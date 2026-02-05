@@ -11,7 +11,7 @@ package com.saa.ejb.tesoreria.dao;
 import java.util.List;
 
 import com.saa.basico.util.EntityDao;
-import com.saa.model.tesoreria.DebitoCredito;
+import com.saa.model.tsr.DebitoCredito;
 
 import jakarta.ejb.Local;
 

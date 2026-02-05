@@ -11,7 +11,8 @@ package com.saa.ejb.tesoreria.daoImpl;
 import java.util.List;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tesoreria.dao.DetalleDepositoDaoService;
-import com.saa.model.tesoreria.DetalleDeposito;
+import com.saa.model.tsr.DetalleDeposito;
+
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;

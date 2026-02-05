@@ -12,8 +12,8 @@ import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.util.EntityDao;
-import com.saa.model.tesoreria.Conciliacion;
-import com.saa.model.tesoreria.MovimientoBanco;
+import com.saa.model.tsr.Conciliacion;
+import com.saa.model.tsr.MovimientoBanco;
 
 import jakarta.ejb.Local;
 

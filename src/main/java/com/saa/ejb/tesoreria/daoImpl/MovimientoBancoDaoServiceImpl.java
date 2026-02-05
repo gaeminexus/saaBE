@@ -13,8 +13,8 @@ import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tesoreria.dao.MovimientoBancoDaoService;
-import com.saa.model.tesoreria.Conciliacion;
-import com.saa.model.tesoreria.MovimientoBanco;
+import com.saa.model.tsr.Conciliacion;
+import com.saa.model.tsr.MovimientoBanco;
 import com.saa.rubros.Estado;
 import com.saa.rubros.EstadoMovimientoBanco;
 import com.saa.rubros.EstadosConciliacion;

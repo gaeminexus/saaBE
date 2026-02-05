@@ -12,7 +12,7 @@ import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tesoreria.dao.DetalleConciliacionDaoService;
-import com.saa.model.tesoreria.DetalleConciliacion;
+import com.saa.model.tsr.DetalleConciliacion;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

@@ -12,7 +12,7 @@ import java.util.List;
 
 import com.saa.basico.util.EntityDao;
 import com.saa.model.cnt.PlanCuenta;
-import com.saa.model.tesoreria.CuentaBancaria;
+import com.saa.model.tsr.CuentaBancaria;
 
 import jakarta.ejb.Local;
 

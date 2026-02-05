@@ -14,7 +14,7 @@ import java.util.Date;
 import com.saa.model.cnt.Asiento;
 import com.saa.model.cnt.Periodo;
 import com.saa.model.scp.Empresa;
-import com.saa.model.tesoreria.Persona;
+import com.saa.model.tsr.Persona;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;

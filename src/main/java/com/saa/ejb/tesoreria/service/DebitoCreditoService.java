@@ -2,7 +2,7 @@ package com.saa.ejb.tesoreria.service;
 
 import com.saa.basico.util.EntityService;
 import com.saa.model.cnt.Asiento;
-import com.saa.model.tesoreria.DebitoCredito;
+import com.saa.model.tsr.DebitoCredito;
 
 import jakarta.ejb.Local;
 

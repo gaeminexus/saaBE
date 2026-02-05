@@ -6,10 +6,10 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.tesoreria.dao.CobroTransferenciaDaoService;
 import com.saa.ejb.tesoreria.service.CobroTransferenciaService;
-import com.saa.model.tesoreria.Cobro;
-import com.saa.model.tesoreria.CobroTransferencia;
-import com.saa.model.tesoreria.NombreEntidadesTesoreria;
-import com.saa.model.tesoreria.TempCobroTransferencia;
+import com.saa.model.tsr.Cobro;
+import com.saa.model.tsr.CobroTransferencia;
+import com.saa.model.tsr.NombreEntidadesTesoreria;
+import com.saa.model.tsr.TempCobroTransferencia;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;

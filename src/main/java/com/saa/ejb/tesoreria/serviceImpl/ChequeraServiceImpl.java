@@ -5,8 +5,8 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.tesoreria.dao.ChequeraDaoService;
 import com.saa.ejb.tesoreria.service.ChequeraService;
-import com.saa.model.tesoreria.Chequera;
-import com.saa.model.tesoreria.NombreEntidadesTesoreria;
+import com.saa.model.tsr.Chequera;
+import com.saa.model.tsr.NombreEntidadesTesoreria;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;

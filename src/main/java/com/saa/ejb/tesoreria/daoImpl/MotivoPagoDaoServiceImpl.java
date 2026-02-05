@@ -12,7 +12,7 @@ import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tesoreria.dao.MotivoPagoDaoService;
-import com.saa.model.tesoreria.MotivoPago;
+import com.saa.model.tsr.MotivoPago;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

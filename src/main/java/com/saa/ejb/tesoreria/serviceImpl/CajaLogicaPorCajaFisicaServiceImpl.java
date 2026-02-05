@@ -8,8 +8,8 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.tesoreria.dao.CajaLogicaPorCajaFisicaDaoService;
 import com.saa.ejb.tesoreria.service.CajaLogicaPorCajaFisicaService;
-import com.saa.model.tesoreria.CajaLogicaPorCajaFisica;
-import com.saa.model.tesoreria.NombreEntidadesTesoreria;
+import com.saa.model.tsr.CajaLogicaPorCajaFisica;
+import com.saa.model.tsr.NombreEntidadesTesoreria;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;

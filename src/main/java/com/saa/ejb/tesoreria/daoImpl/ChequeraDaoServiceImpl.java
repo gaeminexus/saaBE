@@ -10,7 +10,7 @@ package com.saa.ejb.tesoreria.daoImpl;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tesoreria.dao.ChequeraDaoService;
-import com.saa.model.tesoreria.Chequera;
+import com.saa.model.tsr.Chequera;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

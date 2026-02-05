@@ -13,7 +13,7 @@ import java.util.List;
 import com.saa.basico.util.IncomeException;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tesoreria.dao.TempMotivoPagoDaoService;
-import com.saa.model.tesoreria.TempMotivoPago;
+import com.saa.model.tsr.TempMotivoPago;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;

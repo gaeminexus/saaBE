@@ -7,11 +7,11 @@ import com.saa.basico.util.IncomeException;
 import com.saa.ejb.tesoreria.dao.DetalleConciliacionDaoService;
 import com.saa.ejb.tesoreria.dao.HistDetalleConciliacionDaoService;
 import com.saa.ejb.tesoreria.service.HistDetalleConciliacionService;
-import com.saa.model.tesoreria.Conciliacion;
-import com.saa.model.tesoreria.DetalleConciliacion;
-import com.saa.model.tesoreria.HistConciliacion;
-import com.saa.model.tesoreria.HistDetalleConciliacion;
-import com.saa.model.tesoreria.NombreEntidadesTesoreria;
+import com.saa.model.tsr.Conciliacion;
+import com.saa.model.tsr.DetalleConciliacion;
+import com.saa.model.tsr.HistConciliacion;
+import com.saa.model.tsr.HistDetalleConciliacion;
+import com.saa.model.tsr.NombreEntidadesTesoreria;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;

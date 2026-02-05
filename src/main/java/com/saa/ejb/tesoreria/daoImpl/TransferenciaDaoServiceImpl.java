@@ -10,7 +10,7 @@ package com.saa.ejb.tesoreria.daoImpl;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tesoreria.dao.TransferenciaDaoService;
-import com.saa.model.tesoreria.Transferencia;
+import com.saa.model.tsr.Transferencia;
 
 import jakarta.ejb.Stateless;
 

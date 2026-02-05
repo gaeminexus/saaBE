@@ -12,7 +12,7 @@ import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tesoreria.dao.UsuarioPorCajaDaoService;
-import com.saa.model.tesoreria.UsuarioPorCaja;
+import com.saa.model.tsr.UsuarioPorCaja;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
