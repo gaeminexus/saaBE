@@ -55,7 +55,7 @@ public class PersonaRol implements Serializable {
 	 * Persona a la que pertenecen los roles.
 	 */
 	@ManyToOne
-	@JoinColumn(name = "PRSNCDGO", referencedColumnName = "PRSNCDGO")
+	@JoinColumn(name = "PRSNCDGO", referencedColumnName = "TTLRCDGO")
 	private Titular titular;
 	
 	/**

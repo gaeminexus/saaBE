@@ -125,7 +125,7 @@ public class Cheque implements Serializable {
 	 * Persona a la que se entrega el cheque
 	 */
 	@ManyToOne
-	@JoinColumn(name = "PRSNCDGO", referencedColumnName = "PRSNCDGO")
+	@JoinColumn(name = "PRSNCDGO", referencedColumnName = "TTLRCDGO")
 	private Titular titular;
 
 	/**
@@ -160,7 +160,7 @@ public class Cheque implements Serializable {
 	 * Id del Beneficiario
 	 */
 	@ManyToOne
-	@JoinColumn(name = "DTCHIDBN", referencedColumnName = "PRSNCDGO")	
+	@JoinColumn(name = "DTCHIDBN", referencedColumnName = "TTLRCDGO")	
 	private Titular idBeneficiario;	
 	
 	/**
