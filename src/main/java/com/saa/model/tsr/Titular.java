@@ -30,8 +30,8 @@ import jakarta.persistence.Table;
  */
 @SuppressWarnings("serial")
 @Entity
-@Table(name = "TTSR", schema = "TSR")
-@SequenceGenerator(name = "SQ_TTSRCDGO", sequenceName = "TSR.SQ_TTSRCDGO", allocationSize = 1)
+@Table(name = "TTLR", schema = "TSR")
+@SequenceGenerator(name = "SQ_TTLRCDGO", sequenceName = "TSR.SQ_TTLRCDGO", allocationSize = 1)
 @NamedQueries({
 	@NamedQuery(name = "TitularAll", query = "select e from Titular e"),
 	@NamedQuery(name = "TitularId", query = "select e from Titular e where e.codigo = :id")
@@ -44,7 +44,7 @@ public class Titular implements Serializable {
 	@Basic
 	@Id
 	@Column(name = "TTLRCDGO", precision = 0)
-	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_TTSRCDGO")
+	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_TTLRCDGO")
 	private Long codigo;
 	
 	/**
