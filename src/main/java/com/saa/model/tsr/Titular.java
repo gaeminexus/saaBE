@@ -44,7 +44,7 @@ public class Titular implements Serializable {
 	@Basic
 	@Id
 	@Column(name = "TTLRCDGO", precision = 0)
-	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_PRSNCDGO")
+	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_TTSRCDGO")
 	private Long codigo;
 	
 	/**
