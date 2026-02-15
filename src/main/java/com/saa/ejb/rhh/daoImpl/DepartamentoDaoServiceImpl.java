@@ -9,26 +9,26 @@
 package com.saa.ejb.rhh.daoImpl;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
-import com.saa.ejb.rhh.dao.DepartamentoCargoDaoService;
-import com.saa.model.rhh.DepartamentoCargo;
+import com.saa.ejb.rhh.dao.DepartamentoDaoService;
+import com.saa.model.rhh.Departamento;
+
 
 import jakarta.ejb.Stateless;
 
 /**
  * @author GaemiSoft.
- * Implementacion DepartamentoCargoDaoService. 
+ * Implementacion DepartamentoDaoService. 
  */
 @Stateless
-public class DepartamentoCargoDaoServiceImpl extends EntityDaoImpl<DepartamentoCargo>  implements DepartamentoCargoDaoService{
+public class DepartamentoDaoServiceImpl extends EntityDaoImpl<Departamento>  implements DepartamentoDaoService{
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.parametrizacion.ejb.dao.DepartamentoCargoDaoService#obtieneCampos()
+	 * @see com.compuseg.income.parametrizacion.ejb.dao.DepartamentoDaoService#obtieneCampos()
 	 */
 	public String[] obtieneCampos() {
 		System.out.println("Ingresa al metodo (campos) DepartamentoCargo");
 		return new String[]{"codigo",
-							"departamento",
-							"cargo",
+							"nombre",
 							"estado",
 							"fechaRegistro",
 							"usuarioRegistro"

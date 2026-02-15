@@ -11,6 +11,7 @@ public interface NombreEntidadesRhh {
     String CARGO                 = "Cargo";
     String CATALOGO              = "Catalogo";
     String CONTRATO_EMPLEADO     = "ContratoEmpleado";
+    String DEPARTAMENTO		     = "Departamento";
     String DEPARTAMENTO_CARGO    = "DepartamentoCargo";
     String DETALLE_LIQUIDACION   = "DetalleLiquidacion";
     String DETALLE_TURNO         = "DetalleTurno";

@@ -9,6 +9,8 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
 import jakarta.persistence.Table;
@@ -18,7 +20,7 @@ import jakarta.persistence.Table;
  */
 @SuppressWarnings("serial")
 @Entity
-@Table(name = "DPRT", schema = "RHH")
+@Table(name = "DPTC", schema = "RHH")
 @NamedQueries({
     @NamedQuery(name = "DepartamentoCargoId", query = "select e from DepartamentoCargo e where e.codigo=:id"),
     @NamedQuery(name = "DepartamentoCargoAll", query = "select e from DepartamentoCargo e")
@@ -31,78 +33,97 @@ public class DepartamentoCargo implements Serializable {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Basic
-    @Column(name = "DPRTCDGO")
+    @Column(name = "DPTCCDGO")
     private Long codigo;
-
+    
     /**
-     * Nombre del departamento.
+     * Departamento.
      */
-    @Basic
-    @Column(name = "DPRTNMBR")
-    private String nombre;
-
+    @ManyToOne
+    @JoinColumn(name = "DPRTCDGO", referencedColumnName = "DPRTCDGO", nullable = false)
+    private Departamento departamento;
+    
+    
+    /**
+     * Cargo.
+     */
+    @ManyToOne
+    @JoinColumn(name = "CRGOCDGO", referencedColumnName = "CRGOCDGO", nullable = false)
+    private Cargo cargo;
+    
+    
     /**
      * Estado del registro (A=Activo, I=Inactivo).
      */
     @Basic
-    @Column(name = "DPRTESTD")
+    @Column(name = "DPTCESTD")
     private String estado;
-
+    
     /**
      * Fecha de registro.
      */
     @Basic
-    @Column(name = "DPRTFCHR")
+    @Column(name = "DPTCFCHR")
     private LocalDate fechaRegistro;
-
+   
     /**
      * Usuario que registró.
      */
     @Basic
-    @Column(name = "DPRTUSRR")
+    @Column(name = "DPTCUSRR")
     private String usuarioRegistro;
-
+    
     // =============================
     // Getters y Setters
     // =============================
 
-    public Long getCodigo() {
-        return codigo;
-    }
+	public Long getCodigo() {
+		return codigo;
+	}
 
-    public void setCodigo(Long codigo) {
-        this.codigo = codigo;
-    }
+	public void setCodigo(Long codigo) {
+		this.codigo = codigo;
+	}
 
-    public String getNombre() {
-        return nombre;
-    }
+	public Departamento getDepartamento() {
+		return departamento;
+	}
 
-    public void setNombre(String nombre) {
-        this.nombre = nombre;
-    }
+	public void setDepartamento(Departamento departamento) {
+		this.departamento = departamento;
+	}
 
-    public String getEstado() {
-        return estado;
-    }
+	public Cargo getCargo() {
+		return cargo;
+	}
 
-    public void setEstado(String estado) {
-        this.estado = estado;
-    }
+	public void setCargo(Cargo cargo) {
+		this.cargo = cargo;
+	}
 
-    public LocalDate getFechaRegistro() {
-        return fechaRegistro;
-    }
+	public String getEstado() {
+		return estado;
+	}
 
-    public void setFechaRegistro(LocalDate fechaRegistro) {
-        this.fechaRegistro = fechaRegistro;
-    }
+	public void setEstado(String estado) {
+		this.estado = estado;
+	}
 
-    public String getUsuarioRegistro() {
-        return usuarioRegistro;
-    }
+	public LocalDate getFechaRegistro() {
+		return fechaRegistro;
+	}
 
-    public void setUsuarioRegistro(String usuarioRegistro) {
-        this.usuarioRegistro = usuarioRegistro;
-    }
+	public void setFechaRegistro(LocalDate fechaRegistro) {
+		this.fechaRegistro = fechaRegistro;
+	}
+
+	public String getUsuarioRegistro() {
+		return usuarioRegistro;
+	}
+
+	public void setUsuarioRegistro(String usuarioRegistro) {
+		this.usuarioRegistro = usuarioRegistro;
+	}
+
+
 }

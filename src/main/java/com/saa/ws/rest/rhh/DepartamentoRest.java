@@ -3,9 +3,9 @@ package com.saa.ws.rest.rhh;
 import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
-import com.saa.ejb.rhh.dao.DepartamentoCargoDaoService;
-import com.saa.ejb.rhh.service.DepartamentoCargoService;
-import com.saa.model.rhh.DepartamentoCargo;
+import com.saa.ejb.rhh.dao.DepartamentoDaoService;
+import com.saa.ejb.rhh.service.DepartamentoService;
+import com.saa.model.rhh.Departamento;
 import com.saa.model.rhh.NombreEntidadesRhh;
 
 import jakarta.ejb.EJB;
@@ -22,39 +22,40 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 
-@Path("dptc")
-public class DepartamentoCargoRest {
-
+@Path("dprt")
+public class DepartamentoRest {
+	
     @EJB
-    private DepartamentoCargoDaoService DepartamentoCargoDaoService;
-
+    private DepartamentoDaoService departamentoDaoService;
+    
     @EJB
-    private DepartamentoCargoService DepartamentoCargoService;
-
+    private DepartamentoService departamentoService;
+    
     @Context
     private UriInfo context;
-
-    public DepartamentoCargoRest() {
+    
+    public DepartamentoRest() {
     }
-
+    
     @GET
     @Path("/getAll")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getAll() {
         try {
-            List<DepartamentoCargo> lista = DepartamentoCargoDaoService.selectAll(NombreEntidadesRhh.DEPARTAMENTO_CARGO);
+            List<Departamento> lista = departamentoDaoService.selectAll(NombreEntidadesRhh.DEPARTAMENTO);
             return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        	
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener registros: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
     }
-
+    
     @GET
     @Path("/getId/{id}")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getId(@PathParam("id") Long id) {
         try {
-            DepartamentoCargo registro = DepartamentoCargoDaoService.selectById(id, NombreEntidadesRhh.DEPARTAMENTO_CARGO);
+            Departamento registro = departamentoDaoService.selectById(id, NombreEntidadesRhh.DEPARTAMENTO);
             if (registro == null) {
                 return Response.status(Response.Status.NOT_FOUND).entity("Registro con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
             }
@@ -67,10 +68,10 @@ public class DepartamentoCargoRest {
     @PUT
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response put(DepartamentoCargo registro) {
+    public Response put(Departamento registro) {
         System.out.println("LLEGA AL SERVICIO PUT - DEPARTAMENTO_CARGO");
         try {
-            DepartamentoCargo actualizado = DepartamentoCargoService.saveSingle(registro);
+            Departamento actualizado = departamentoService.saveSingle(registro);
             return Response.status(Response.Status.OK).entity(actualizado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
@@ -80,10 +81,10 @@ public class DepartamentoCargoRest {
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response post(DepartamentoCargo registro) {
+    public Response post(Departamento registro) {
         System.out.println("LLEGA AL SERVICIO POST - DEPARTAMENTO_CARGO");
         try {
-            DepartamentoCargo creado = DepartamentoCargoService.saveSingle(registro);
+            Departamento creado = departamentoService.saveSingle(registro);
             return Response.status(Response.Status.CREATED).entity(creado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
@@ -97,7 +98,7 @@ public class DepartamentoCargoRest {
     public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de DEPARTAMENTO_CARGO");
         try {
-            List<DepartamentoCargo> lista = DepartamentoCargoService.selectByCriteria(registros);
+            List<Departamento> lista = departamentoService.selectByCriteria(registros);
             return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.BAD_REQUEST).entity("Error en búsqueda: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
@@ -110,11 +111,11 @@ public class DepartamentoCargoRest {
     public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - DEPARTAMENTO_CARGO");
         try {
-            DepartamentoCargo elimina = new DepartamentoCargo();
-            DepartamentoCargoDaoService.remove(elimina, id);
+            Departamento elimina = new Departamento();
+            departamentoDaoService.remove(elimina, id);
             return Response.status(Response.Status.NO_CONTENT).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
-    }
+    }	
 }
