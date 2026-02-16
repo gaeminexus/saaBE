@@ -18,7 +18,7 @@ import jakarta.persistence.Table;
  */
 @SuppressWarnings("serial")
 @Entity
-@Table(name = "TPCN", schema = "RHH")
+@Table(name = "TPCE", schema = "RHH")
 @NamedQueries({
     @NamedQuery(name = "TipoContratoEmpleadoId", query = "select e from TipoContratoEmpleado e where e.codigo=:id"),
     @NamedQuery(name = "TipoContratoEmpleadoAll", query = "select e from TipoContratoEmpleado e")
@@ -31,42 +31,42 @@ public class TipoContratoEmpleado implements Serializable {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Basic
-    @Column(name = "TPCNCDGO")
+    @Column(name = "TPCECDGO")
     private Long codigo;
 
     /**
      * Nombre del tipo de contrato.
      */
     @Basic
-    @Column(name = "TPCNNMBR")
+    @Column(name = "TPCENMBR")
     private String nombre;
 
     /**
      * Indica si requiere fecha de fin (S/N).
      */
     @Basic
-    @Column(name = "TPCNRQRE")
+    @Column(name = "TPCERQRE")
     private String requiereFechaFin;
 
     /**
      * Estado del registro (A=Activo, I=Inactivo).
      */
     @Basic
-    @Column(name = "TPCNESTD")
+    @Column(name = "TPCEESTD")
     private String estado;
 
     /**
      * Fecha de registro.
      */
     @Basic
-    @Column(name = "TPCNFCHR")
+    @Column(name = "TPCEFCHR")
     private LocalDate fechaRegistro;
 
     /**
      * Usuario que registró.
      */
     @Basic
-    @Column(name = "TPCNUSRR")
+    @Column(name = "TPCEUSRR")
     private String usuarioRegistro;
 
     // =============================

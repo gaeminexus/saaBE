@@ -22,7 +22,7 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 
-@Path("tpcn")
+@Path("tpce")
 public class TipoContratoEmpleadoRest {
 
     @EJB

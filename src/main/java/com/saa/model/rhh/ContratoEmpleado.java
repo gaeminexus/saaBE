@@ -3,8 +3,6 @@ package com.saa.model.rhh;
 import java.io.Serializable;
 import java.time.LocalDate;
 
-import com.saa.model.crd.TipoContrato;
-
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -49,8 +47,8 @@ public class ContratoEmpleado implements Serializable {
      * Tipo de contrato.
      */
     @ManyToOne
-    @JoinColumn(name = "TPCNCDGO", referencedColumnName = "TPCNCDGO", nullable = false)
-    private TipoContrato tipoContrato;
+    @JoinColumn(name = "TPCECDGO", referencedColumnName = "TPCECDGO", nullable = false)
+    private TipoContratoEmpleado tipoContratoEmpleado;
 
     /**
      * Número de contrato.
@@ -135,12 +133,12 @@ public class ContratoEmpleado implements Serializable {
         this.empleado = empleado;
     }
 
-    public TipoContrato getTipoContrato() {
-        return tipoContrato;
+    public TipoContratoEmpleado getTipoContratoEmpleado() {
+        return tipoContratoEmpleado;
     }
 
-    public void setTipoContrato(TipoContrato tipoContrato) {
-        this.tipoContrato = tipoContrato;
+    public void setTipoContrato(TipoContratoEmpleado tipoContratoEmpleado) {
+        this.tipoContratoEmpleado = tipoContratoEmpleado;
     }
 
     public String getNumero() {
