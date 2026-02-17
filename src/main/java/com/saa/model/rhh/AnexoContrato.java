@@ -40,7 +40,7 @@ public class AnexoContrato implements Serializable {
      * Contrato asociado.
      */
     @ManyToOne
-    @JoinColumn(name = "CNTRCDGO", referencedColumnName = "CNTRCDGO", nullable = false)
+    @JoinColumn(name = "CNTECDGO", referencedColumnName = "CNTECDGO", nullable = false)
     private ContratoEmpleado contratoEmpleado;
 
     /**

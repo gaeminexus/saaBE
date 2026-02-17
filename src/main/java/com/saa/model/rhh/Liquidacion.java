@@ -47,7 +47,7 @@ public class Liquidacion implements Serializable {
      * Contrato liquidado.
      */
     @ManyToOne
-    @JoinColumn(name = "CNTRCDGO", referencedColumnName = "CNTRCDGO", nullable = false)
+    @JoinColumn(name = "CNTECDGO", referencedColumnName = "CNTECDGO", nullable = false)
     private ContratoEmpleado contratoEmpleado;
 
     /**

@@ -54,7 +54,7 @@ public class Nomina implements Serializable {
      * Contrato aplicado.
      */
     @ManyToOne
-    @JoinColumn(name = "CNTRCDGO", referencedColumnName = "CNTRCDGO", nullable = false)
+    @JoinColumn(name = "CNTECDGO", referencedColumnName = "CNTECDGO", nullable = false)
     private ContratoEmpleado contratoEmpleado;
 
     /**

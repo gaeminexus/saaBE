@@ -20,7 +20,7 @@ import jakarta.persistence.Table;
  */
 @SuppressWarnings("serial")
 @Entity
-@Table(name = "CNTR", schema = "RHH")
+@Table(name = "CNTE", schema = "RHH")
 @NamedQueries({
 	@NamedQuery(name = "ContratoEmpleadoId", query = "select e from ContratoEmpleado e where e.codigo=:id"),
     @NamedQuery(name = "ContratoEmpleadoAll", query = "select e from ContratoEmpleado e")
@@ -33,7 +33,7 @@ public class ContratoEmpleado implements Serializable {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Basic
-    @Column(name = "CNTRCDGO")
+    @Column(name = "CNTECDGO")
     private Long codigo;
 
     /**
@@ -54,63 +54,63 @@ public class ContratoEmpleado implements Serializable {
      * Número de contrato.
      */
     @Basic
-    @Column(name = "CNTRNMRO")
+    @Column(name = "CNTENMRO")
     private String numero;
 
     /**
      * Fecha de inicio.
      */
     @Basic
-    @Column(name = "CNTRFCHI", nullable = false)
+    @Column(name = "CNTEFCHI", nullable = false)
     private LocalDate fechaInicio;
 
     /**
      * Fecha de fin.
      */
     @Basic
-    @Column(name = "CNTRFCHF")
+    @Column(name = "CNTEFCHF")
     private LocalDate fechaFin;
 
     /**
      * Salario base.
      */
     @Basic
-    @Column(name = "CNTRSLRB")
+    @Column(name = "CNTESLRB")
     private Double salarioBase;
 
     /**
      * Estado del contrato.
      */
     @Basic
-    @Column(name = "CNTRESTD")
+    @Column(name = "CNTEESTD")
     private String estado;
 
     /**
      * Fecha de firma.
      */
     @Basic
-    @Column(name = "CNTRFRMA")
+    @Column(name = "CNTEFRMA")
     private LocalDate fechaFirma;
 
     /**
      * Observación.
      */
     @Basic
-    @Column(name = "CNTROBSR")
+    @Column(name = "CNTEOBSR")
     private String observacion;
 
     /**
      * Fecha de registro.
      */
     @Basic
-    @Column(name = "CNTRFCHR")
+    @Column(name = "CNTEFCHR")
     private LocalDate fechaRegistro;
 
     /**
      * Usuario que registró.
      */
     @Basic
-    @Column(name = "CNTRUSRR")
+    @Column(name = "CNTEUSRR")
     private String usuarioRegistro;
 
     // =============================
