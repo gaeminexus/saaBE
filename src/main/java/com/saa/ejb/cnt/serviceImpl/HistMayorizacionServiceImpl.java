@@ -111,17 +111,15 @@ public class HistMayorizacionServiceImpl implements HistMayorizacionService {
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.contabilidad.ejb.service.HistMayorizacionService#respaldaCabeceraMayorizacion(java.lang.Long)
 	 */
-	public Long respaldaCabeceraMayorizacion(Mayorizacion aRespaldar) throws Throwable {
+	public HistMayorizacion respaldaCabeceraMayorizacion(Mayorizacion aRespaldar) throws Throwable {
 		System.out.println("Ingresa al metodo respaldaMayorizacion con codigo " + aRespaldar.getCodigo());		
 		HistMayorizacion respaldo = new HistMayorizacion();
-		respaldo.setCodigo(Long.valueOf(0));
+		respaldo.setCodigo(null);
 		respaldo.setIdMayorizacion(aRespaldar.getCodigo());
 		respaldo.setPeriodo(aRespaldar.getPeriodo());
 		respaldo.setFecha(aRespaldar.getFecha());
-		save(respaldo, respaldo.getCodigo());
-		respaldo = histMayorizacionDaoService.selectByMayorizacion(aRespaldar.getCodigo());
-		
-		return respaldo.getCodigo();
+		respaldo = histMayorizacionDaoService.save(respaldo, respaldo.getCodigo());
+		return respaldo;
 	}
 
 	@Override

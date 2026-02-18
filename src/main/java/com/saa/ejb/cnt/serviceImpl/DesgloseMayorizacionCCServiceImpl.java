@@ -75,7 +75,7 @@ import jakarta.ejb.Stateless;
 		 * @see com.compuseg.income.sistema.ejb.util.EntityService#selectByWhere(java.util.List)
 		 */
 		public List<DesgloseMayorizacionCC> selectByCriteria(List<DatosBusqueda> datos) throws Throwable {
-			System.out.println("Ingresa al metodo selectByWhere DesgloseMayorizacionCCService");
+			System.out.println("Ingresa al metodo selectByCriteria DesgloseMayorizacionCCService");
 			//CREA EL LISTADO CON LOS REGISTROS DE LA BUSQUEDA
 			List<DesgloseMayorizacionCC> result = desgloseMayorizacionCCDaoService.selectByCriteria
 			(datos, NombreEntidadesContabilidad.DESGLOSE_MAYORIZACION_CC); 
@@ -106,7 +106,8 @@ import jakarta.ejb.Stateless;
 			List<PlanCuenta> planCuentas = planCuentaService.selectByEmpresaManejaCC(empresa);
 			if(!planCuentas.isEmpty()){
 				for(PlanCuenta planCuenta : planCuentas){
-					desgloseMayorizacionCC.setCodigo(Long.valueOf(0));
+					desgloseMayorizacionCC = new DesgloseMayorizacionCC();
+					desgloseMayorizacionCC.setCodigo(null);
 					desgloseMayorizacionCC.setDetalleMayorizacionCC(detalleMayorizacionCC);
 					desgloseMayorizacionCC.setPlanCuenta(planCuenta);
 					desgloseMayorizacionCC.setValorDebe(Double.valueOf(0));
@@ -116,7 +117,7 @@ import jakarta.ejb.Stateless;
 					desgloseMayorizacionCC.setNombreCuenta(planCuenta.getNombre());
 					desgloseMayorizacionCC.setTipoCuenta(planCuenta.getTipo());
 					desgloseMayorizacionCC.setNivelCuenta(planCuenta.getNivel());
-					desgloseMayorizacionCCDaoService.save(desgloseMayorizacionCC, desgloseMayorizacionCC.getCodigo());
+					desgloseMayorizacionCC = desgloseMayorizacionCCDaoService.save(desgloseMayorizacionCC, desgloseMayorizacionCC.getCodigo());
 				}
 			}
 		}

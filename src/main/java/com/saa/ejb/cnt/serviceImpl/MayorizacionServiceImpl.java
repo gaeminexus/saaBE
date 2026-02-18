@@ -118,10 +118,11 @@ public class MayorizacionServiceImpl implements MayorizacionService{
 		Mayorizacion mayorizacionIngresada = new Mayorizacion();
 		List<Periodo> periodos = periodoDaoService.selectRangoPeriodos(empresa, periodoDesde, periodoHasta, proceso);
 		for(Periodo periodo : periodos){
+			System.out.println("Datos Periodo: " + periodo.getCodigo() + ", " + periodo.getNombre());
 			// CREA MAYORIZACION
-			creaMayorizacion(periodo.getCodigo());
+			mayorizacionIngresada = creaMayorizacion(periodo);
 			// OBTIENE MAYORIZACION CREADA
-			mayorizacionIngresada = obtieneMayorizacionPeriodo(periodo.getCodigo());
+			// mayorizacionIngresada = obtieneMayorizacionPeriodo(periodo.getCodigo());
 			// CREA DETALLE MAYORIZACION
 			detalleMayorizacionService.creaDetalleMayorizacion(mayorizacionIngresada, empresa);
 			// OBTIENE LA MAYORIZACION ANTERIOR
@@ -149,13 +150,15 @@ public class MayorizacionServiceImpl implements MayorizacionService{
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.contabilidad.ejb.service.MayorizacionService#creaMayorizacion(java.lang.Long)
 	 */
-	public void creaMayorizacion(Long periodo) throws Throwable {
+	public Mayorizacion creaMayorizacion(Periodo periodo) throws Throwable {
 		System.out.println("Ingresa al metodo creaMayorizacion con periodo: " + periodo);
 		Mayorizacion mayorizacion = new Mayorizacion();
-		mayorizacion.setCodigo(Long.valueOf("0"));
-		mayorizacion.setPeriodo(periodoDaoService.find(new Periodo(), periodo));
+		mayorizacion.setCodigo(null);
+		mayorizacion.setPeriodo(periodo);
 		mayorizacion.setFecha(LocalDateTime.now());
-		mayorizacionDaoService.save(mayorizacion, mayorizacion.getCodigo());
+		mayorizacion = mayorizacionDaoService.save(mayorizacion, mayorizacion.getCodigo());
+		System.out.println("Mayorizacion creada: " + mayorizacion.getCodigo());
+		return mayorizacion;
 	}
 
 	/* (non-Javadoc)
@@ -236,9 +239,9 @@ public class MayorizacionServiceImpl implements MayorizacionService{
 	public Long respaldaDatosMayorizacion(Long codigoMayorizacion) throws Throwable {
 		System.out.println("Ingresa al metodo respaldaDatosMayorizacion con codigo " + codigoMayorizacion);
 		Mayorizacion aRespaldar = mayorizacionDaoService.selectById(codigoMayorizacion, NombreEntidadesContabilidad.MAYORIZACION);
-		Long idHistMayorizacion = histMayorizacionService.respaldaCabeceraMayorizacion(aRespaldar);
-		histDetalleMayorizacionService.respaldaDetalleMayorizacion(codigoMayorizacion, idHistMayorizacion);
-		return idHistMayorizacion;
+		HistMayorizacion histMayorizacion = histMayorizacionService.respaldaCabeceraMayorizacion(aRespaldar);
+		histDetalleMayorizacionService.respaldaDetalleMayorizacion(codigoMayorizacion, histMayorizacion.getCodigo());
+		return histMayorizacion.getCodigo();
 	}
 
 	/* (non-Javadoc)

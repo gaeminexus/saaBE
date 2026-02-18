@@ -7,7 +7,7 @@
 	</parameter>
 	<parameter name="P_REPORTE" class="java.lang.String"/>
 	<parameter name="P_PATH" class="java.lang.String"/>
-	<parameter name="P_IMAGEN" class="java.lang.String"/>
+	<parameter name="P_IMAGEN" class="java.awt.Image"/>
 	<parameter name="P_FILTRO" class="java.lang.String"/>
 	<parameter name="P_MAYORIZADO" class="java.lang.String"/>
 	<queryString language="SQL">
@@ -133,12 +133,12 @@ ORDER BY DTMTCTCN]]>
 				<textElement textAlignment="Center">
 					<font size="13" isBold="true"/>
 				</textElement>
-				<textFieldExpression class="java.lang.String"><![CDATA[$P{P_REPORTE}]]></textFieldExpression>
-			</textField>
-			<image scaleImage="RealSize" isLazy="true">
-				<reportElement positionType="FixRelativeToBottom" x="10" y="5" width="80" height="40"/>
-				<imageExpression class="java.lang.String"><![CDATA[$P{P_IMAGEN}]]></imageExpression>
-			</image>
+			<textFieldExpression class="java.lang.String"><![CDATA[$P{P_REPORTE}]]></textFieldExpression>
+		</textField>
+		<image scaleImage="RealSize" isLazy="true" evaluationTime="Report">
+			<reportElement positionType="FixRelativeToBottom" x="10" y="5" width="80" height="40"/>
+			<imageExpression class="java.lang.String"><![CDATA[$P{P_IMAGEN}]]></imageExpression>
+		</image>
 			<textField>
 				<reportElement x="10" y="49" width="332" height="13"/>
 				<textElement>

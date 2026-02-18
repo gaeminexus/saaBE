@@ -6,16 +6,19 @@ import java.time.LocalDateTime;
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
+import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
 @SuppressWarnings("serial")
 @Entity
 @Table(name = "MYRC", schema = "CNT")
-//@SequenceGenerator(name = "SQ_MYRCCDGO", sequenceName = "CNT.SQ_MYRCCDGO", allocationSize = 1)
+@SequenceGenerator(name = "SQ_MYRCCDGO", sequenceName = "CNT.SQ_MYRCCDGO", allocationSize = 1)
 @NamedQueries({
 	@NamedQuery(name = "MayorizacionCCAll", query = "select e from MayorizacionCC e"),
 	@NamedQuery(name = "MayorizacionCCId", query = "select e from MayorizacionCC e where e.codigo = :id")
@@ -28,7 +31,7 @@ public class MayorizacionCC implements Serializable {
 	@Basic
 	@Id
 	@Column(name = "MYRCCDGO", precision = 0)
-//	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_MYRCCDGO")
+	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_MYRCCDGO")
 	private Long codigo;
 	
 	/**

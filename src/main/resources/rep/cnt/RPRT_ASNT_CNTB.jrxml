@@ -58,7 +58,7 @@
 	<parameter name="P_PATH" class="java.lang.String"/>
 	<parameter name="P_REPORTE" class="java.lang.String"/>
 	<parameter name="P_ASNTCDGO" class="java.lang.Integer"/>
-	<parameter name="P_IMAGEN" class="java.lang.String"/>
+	<parameter name="P_IMAGEN" class="java.awt.Image"/>
 	<query language="sql"><![CDATA[SELECT A.ASNTNMRO, A.ASNTFCHA, A.ASNTFCPR, A.PLNTCDGO, DT.DTASCNTA, DT.DTASNMCT, DT.DTASDSCR, DT.CNCSCDGO, DT.DTASDBEE, DT.DTASHBRR, P.PLNTNMBR, NVL(C.CNCSNMBR,' ') CENTROC,  SCP.PC_PRMT_GNRL.fn_rcpr_vlrs_pdtr(21, A.ASNTESTD,1) ESTADO,
 A.ASNTUSRO,NVL(A.ASNTOBSR,' ') OBSERVACION, a.ASNTRYYA, A.ASNTRZZA, 
 decode ( a.asntasrv, null, a.asntasrv,  scp.pc_prmt_gnrl.fn_obtn_gnrl_cmpo('cnt.asnt', 'asntcdgo' , 'asntnmro' ,a.asntasrv)) nr,
@@ -288,7 +288,7 @@ ORDER BY DT.DTASHBRR, DT.DTASCNTA]]></query>
 	</group>
 	<background splitType="Stretch"/>
 	<pageHeader height="78" splitType="Stretch">
-		<element kind="image" uuid="5cde03e2-7a9e-4896-989e-059ce8948227" positionType="FixRelativeToBottom" x="10" y="5" width="80" height="40" scaleImage="RealSize" linkType="None" linkTarget="Self" lazy="true">
+		<element kind="image" uuid="5cde03e2-7a9e-4896-989e-059ce8948227" positionType="FixRelativeToBottom" x="10" y="5" width="80" height="40" scaleImage="RealSize" linkType="None" linkTarget="Self" lazy="true" evaluationTime="Report">
 			<expression><![CDATA[$P{P_IMAGEN}]]></expression>
 		</element>
 		<element kind="textField" uuid="7efe785f-c193-4b61-85a9-86a150d6cad1" x="90" y="2" width="370" height="20" fontSize="13.0" bold="true" hTextAlign="Center">

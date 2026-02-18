@@ -73,6 +73,34 @@ public class MayorizacionRest {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener mayorización: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
     }
+    
+    @GET
+    @Path("/mayorizacion/{empresa}/{periodoDesde}/{periodoHasta}/{proceso}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response mayorizacion(@PathParam("empresa") Long empresa, @PathParam("periodoDesde") Long periodoDesde, @PathParam("periodoHasta") Long periodoHasta, @PathParam("proceso") Long proceso) {
+    	System.out.println("Llega al servicio de mayorizacion - empresa: " + empresa + ", periodoDesde: " + periodoDesde + ", periodoHasta: " + periodoHasta + ", proceso: " + proceso);
+    	try {
+            mayorizacionService.mayorizacion(empresa, periodoDesde, periodoHasta, proceso.intValue());
+            String mensaje = "OK";
+            return Response.status(Response.Status.OK).entity(mensaje).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener mayorización: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+    
+    @GET
+    @Path("/desmayorizacion/{empresa}/{periodoDesde}/{periodoHasta}/{proceso}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response desmayorizacion(@PathParam("empresa") Long empresa, @PathParam("periodoDesde") Long periodoDesde, @PathParam("periodoHasta") Long periodoHasta, @PathParam("proceso") Long proceso) {
+    	System.out.println("Llega al servicio de desmayorizacion - empresa: " + empresa + ", periodoDesde: " + periodoDesde + ", periodoHasta: " + periodoHasta + ", proceso: " + proceso);
+    	try {
+            mayorizacionService.desmayorizacion(empresa, periodoDesde, periodoHasta, proceso.intValue());
+            String mensaje = "OK";
+            return Response.status(Response.Status.OK).entity(mensaje).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener mayorización: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+    }
 
     /**
      * PUT method for updating or creating an instance of MayorizacionRest

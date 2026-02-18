@@ -38,6 +38,6 @@ public interface HistMayorizacionService extends EntityService <HistMayorizacion
 	  * @return				: Codigo de desmayorización generado
 	  * @throws Throwable	: Excepcion
 	  */
-	  Long respaldaCabeceraMayorizacion(Mayorizacion aRespaldar) throws Throwable;
+	  HistMayorizacion respaldaCabeceraMayorizacion(Mayorizacion aRespaldar) throws Throwable;
 
 }

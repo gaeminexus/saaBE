@@ -125,13 +125,14 @@ public class MayorizacionCCServiceImpl implements MayorizacionCCService {
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.contabilidad.ejb.service.MayorizacionCCService#creaByMayorizacion(java.lang.Long, com.compuseg.income.contabilidad.ejb.model.Periodo)
 	 */
-	public void creaByMayorizacion(Long idMayorizacion, Periodo periodo) throws Throwable {
+	public MayorizacionCC creaByMayorizacion(Long idMayorizacion, Periodo periodo) throws Throwable {
 		System.out.println("Ingresa al creaByMayorizacion con id: " + idMayorizacion);
 		MayorizacionCC mayorizacionCC = new MayorizacionCC();
-		mayorizacionCC.setCodigo(idMayorizacion);
+		mayorizacionCC.setCodigo(null);
 		mayorizacionCC.setPeriodo(periodo);
 		mayorizacionCC.setFecha(LocalDateTime.now());
-		mayorizacionCCDaoService.save(mayorizacionCC, mayorizacionCC.getCodigo());
+		mayorizacionCC = mayorizacionCCDaoService.save(mayorizacionCC, mayorizacionCC.getCodigo());
+		return mayorizacionCC;
 	}
 
 	/* (non-Javadoc)
@@ -139,8 +140,8 @@ public class MayorizacionCCServiceImpl implements MayorizacionCCService {
 	 */
 	public MayorizacionCC generaDatosMayorizacionCC(Mayorizacion mayorizacion, Periodo periodo, Mayorizacion maximaAnterior) throws Throwable {
 		System.out.println("Ingresa al generaDatosMayorizacionCC con id: " + mayorizacion.getCodigo() + ", en periodo: " + periodo.getCodigo());
-		creaByMayorizacion(mayorizacion.getCodigo(), periodo);
-		MayorizacionCC ingresada = selectById(mayorizacion.getCodigo());
+		MayorizacionCC ingresada = creaByMayorizacion(mayorizacion.getCodigo(), periodo);
+		// MayorizacionCC ingresada = selectById(mayorizacion.getCodigo());
 		detalleMayorizacionCCService.creaDetalleMayorizacionCC(ingresada, periodo.getEmpresa().getCodigo());
 		detalleMayorizacionCCService.creaDesgloseDetalle(ingresada.getCodigo(), periodo.getEmpresa().getCodigo());
 		detalleMayorizacionCCService.creaSaldoInicial(ingresada, maximaAnterior);

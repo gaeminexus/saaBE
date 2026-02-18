@@ -111,7 +111,8 @@ public class HistDetalleAsientoServiceImpl implements HistDetalleAsientoService 
 		detalleAsientoOriginal = detalleAsientoService.selectByIdAsiento(idAsiento);
 		if(!detalleAsientoOriginal.isEmpty()){
 			for(DetalleAsiento detalle : detalleAsientoOriginal){
-				respaldo.setCodigo(Long.valueOf(0));
+				respaldo = new HistDetalleAsiento();
+				respaldo.setCodigo(null);
 				respaldo.setHistAsiento(asientoRespaldo);
 				respaldo.setPlanCuenta(detalle.getPlanCuenta());
 				respaldo.setDescripcion(detalle.getDescripcion());
@@ -120,7 +121,7 @@ public class HistDetalleAsientoServiceImpl implements HistDetalleAsientoService 
 				respaldo.setNumeroCuenta(detalle.getNumeroCuenta());
 				respaldo.setNombreCuenta(detalle.getNombreCuenta());
 				respaldo.setCentroCosto(detalle.getCentroCosto());
-				histDetalleAsientoDaoService.save(respaldo, respaldo.getCodigo());
+				respaldo = histDetalleAsientoDaoService.save(respaldo, respaldo.getCodigo());
 			}
 		}
 		

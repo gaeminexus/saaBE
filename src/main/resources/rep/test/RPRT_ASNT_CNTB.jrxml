@@ -3,7 +3,7 @@
 	<parameter name="P_PATH" class="java.lang.String"/>
 	<parameter name="P_REPORTE" class="java.lang.String"/>
 	<parameter name="P_ASNTCDGO" class="java.lang.Integer"/>
-	<parameter name="P_IMAGEN" class="java.lang.String"/>
+	<parameter name="P_IMAGEN" class="java.awt.Image"/>
 	<queryString>
 		<![CDATA[SELECT A.ASNTNMRO, A.ASNTFCHA, A.ASNTFCPR, A.PLNTCDGO, DT.DTASCNTA, DT.DTASNMCT, DT.DTASDSCR, DT.CNCSCDGO, DT.DTASDBEE, DT.DTASHBRR, P.PLNTNMBR, NVL(C.CNCSNMBR,' ') CENTROC,  SCP.PC_PRMT_GNRL.fn_rcpr_vlrs_pdtr(21, A.ASNTESTD,1) ESTADO,
 A.ASNTUSRO,NVL(A.ASNTOBSR,' ') OBSERVACION, a.ASNTRYYA, A.ASNTRZZA, 

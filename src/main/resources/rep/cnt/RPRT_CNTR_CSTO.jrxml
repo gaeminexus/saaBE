@@ -4,7 +4,7 @@
 	<property name="com.jaspersoft.studio.data.sql.tables" value=""/>
 	<parameter name="P_PJRQCDGO" class="java.lang.Integer"/>
 	<parameter name="P_PATH" class="java.lang.String"/>
-	<parameter name="P_IMAGEN" class="java.lang.String"/>
+	<parameter name="P_IMAGEN" class="java.awt.Image"/>
 	<query language="sql"><![CDATA[SELECT CNCSNMRO, CNCSNMBR, D.PDTRDSCR
 FROM CNT.CNCS C, SCP.PDTR D
 WHERE PJRQCDGO = $P{P_PJRQCDGO} AND CNCSESTD = 1  AND CNCSNMRO != '0' 
@@ -33,7 +33,7 @@ ORDER BY CNCSNMRO]]></query>
 		<element kind="rectangle" uuid="b0c2043c-1203-4714-b0c2-d1fa232c2c28" x="0" y="10" width="555" height="60">
 			<pen lineWidth="0.75"/>
 		</element>
-		<element kind="image" uuid="0bd811ad-a118-49dc-a4c9-bb9bb5c1ba0f" positionType="FixRelativeToBottom" x="10" y="18" width="110" height="45" scaleImage="RealSize" linkType="None" linkTarget="Self" lazy="true">
+		<element kind="image" uuid="0bd811ad-a118-49dc-a4c9-bb9bb5c1ba0f" positionType="FixRelativeToBottom" x="10" y="18" width="110" height="45" scaleImage="RealSize" linkType="None" linkTarget="Self" lazy="true" evaluationTime="Report">
 			<expression><![CDATA[$P{P_IMAGEN}]]></expression>
 		</element>
 		<element kind="textField" uuid="7047602f-2cf4-4707-bf3e-8e2e7a517fac" x="530" y="18" width="19" height="15" fontSize="8.0" evaluationTime="Report" hTextAlign="Left">

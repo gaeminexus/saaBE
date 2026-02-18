@@ -44,8 +44,8 @@ public class HistDetalleMayorizacion implements Serializable {
 	/**
 	 * id de tabla plnn.
 	 */ 
-	@Basic
-	@Column(name = "PLNNCDGO")	
+	@ManyToOne
+	@JoinColumn(name = "PLNNCDGO", referencedColumnName = "PLNNCDGO")	
 	private PlanCuenta planCuenta;	
 
 	/**
@@ -114,8 +114,8 @@ public class HistDetalleMayorizacion implements Serializable {
 	/**
 	 * Id de la mayorizacion que origina el respaldo
 	 */
-	@Basic
-	@Column(name = "MYRZCDGO")
+	@ManyToOne
+	@JoinColumn(name = "MYRZCDGO", referencedColumnName = "MYRZCDGO")
 	private Mayorizacion mayorizacion;
 	
 	/**

@@ -119,7 +119,8 @@ public class DetalleMayorizacionCCServiceImpl implements DetalleMayorizacionCCSe
 		List<CentroCosto> centroCostos = centroCostoService.selectMovimientosByEmpresa(empresa);
 		if(!centroCostos.isEmpty()){
 			for(CentroCosto centroCosto : centroCostos){
-				detalleMayorizacionCC.setCodigo(Long.valueOf(0));
+				detalleMayorizacionCC = new DetalleMayorizacionCC();
+				detalleMayorizacionCC.setCodigo(null);
 				detalleMayorizacionCC.setMayorizacionCC(mayorizacionCC);
 				detalleMayorizacionCC.setCentroCosto(centroCosto);
 				detalleMayorizacionCC.setNumeroCC(centroCosto.getNumero());
@@ -129,7 +130,7 @@ public class DetalleMayorizacionCCServiceImpl implements DetalleMayorizacionCCSe
 				detalleMayorizacionCC.setValorHaber(Double.valueOf(0));
 				detalleMayorizacionCC.setSaldoAnterior(Double.valueOf(0));
 				detalleMayorizacionCC.setSaldoActual(Double.valueOf(0));
-				detalleMayorizacionCCDaoService.save(detalleMayorizacionCC, detalleMayorizacionCC.getCodigo());
+				detalleMayorizacionCC = detalleMayorizacionCCDaoService.save(detalleMayorizacionCC, detalleMayorizacionCC.getCodigo());
 			}
 		}
 	}

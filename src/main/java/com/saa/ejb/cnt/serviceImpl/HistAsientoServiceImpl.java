@@ -126,7 +126,8 @@ public class HistAsientoServiceImpl implements HistAsientoService {
 		HistAsiento histAsiento = new HistAsiento();
 		if(!asientosOriginal.isEmpty()){
 			for(Asiento asiento : asientosOriginal){
-				histAsiento.setCodigo(Long.valueOf(0));
+				histAsiento = new HistAsiento();
+				histAsiento.setCodigo(null);
 				histAsiento.setEmpresa(asiento.getEmpresa());
 				histAsiento.setTipoAsiento(asiento.getTipoAsiento());
 				histAsiento.setFechaAsiento(asiento.getFechaAsiento());
@@ -146,9 +147,7 @@ public class HistAsientoServiceImpl implements HistAsientoService {
 				histAsiento.setFechaIngreso(asiento.getFechaIngreso());
 				histAsiento.setIdAsientoOriginal(asiento.getCodigo());
 				// ALMACENA EL REGISTRO
-				histAsientoDaoService.save(histAsiento, histAsiento.getCodigo());
-				// RECUPERA EL REGISTRO CON ID GENERADO
-				histAsiento = histAsientoDaoService.selectByIdAsientoOrigen(asiento.getCodigo(), desmayorizacion.getCodigo());
+				histAsiento = histAsientoDaoService.save(histAsiento, histAsiento.getCodigo());
 				// RESPALDA DETALLE
 				histDetalleAsientoService.respaldaDetalleByAsientos(asiento.getCodigo(), histAsiento);
 			}

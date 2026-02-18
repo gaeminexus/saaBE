@@ -1,5 +1,6 @@
 package com.saa.ejb.reporte.serviceImpl;
 
+import java.awt.Image;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.sql.Connection;
@@ -8,6 +9,7 @@ import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import javax.imageio.ImageIO;
 import javax.naming.InitialContext;
 import javax.naming.NamingException;
 import javax.sql.DataSource;
@@ -100,12 +102,30 @@ public class ReporteServiceImpl implements ReporteService {
             // Cargar el reporte precompilado (mucho más rápido que compilar en runtime)
             JasperReport jasperReport = (JasperReport) JRLoader.loadObject(reportStream);
             
-            // Agregar ruta de imágenes a los parámetros (si el frontend no la envió)
-            if (!parametros.containsKey("P_IMAGEN")) {
-                // Construir la ruta completa a la imagen por defecto
-                String rutaImagen = getClass().getResource("/rep/img/logo_aso.jpeg").toString();
-                parametros.put("P_IMAGEN", rutaImagen);
-                LOGGER.log(Level.INFO, "Ruta de imagen por defecto: {0}", rutaImagen);
+            // Agregar ruta de imágenes a los parámetros (si el frontend no la envió o es null)
+            if (!parametros.containsKey("P_IMAGEN") || parametros.get("P_IMAGEN") == null) {
+                // Cargar la imagen como objeto java.awt.Image para compatibilidad con evaluationTime="Report"
+                try {
+                    InputStream imageStream = getClass().getResourceAsStream("/rep/img/logo_aso.jpeg");
+                    if (imageStream != null) {
+                        Image image = ImageIO.read(imageStream);
+                        imageStream.close();
+                        
+                        if (image != null) {
+                            parametros.put("P_IMAGEN", image);
+                            LOGGER.log(Level.INFO, "Imagen cargada como java.awt.Image: {0}x{1}", 
+                                      new Object[]{image.getWidth(null), image.getHeight(null)});
+                        } else {
+                            LOGGER.log(Level.WARNING, "No se pudo decodificar la imagen logo_aso.jpeg");
+                        }
+                    } else {
+                        LOGGER.log(Level.WARNING, "No se pudo encontrar la imagen en /rep/img/logo_aso.jpeg");
+                    }
+                } catch (Exception e) {
+                    LOGGER.log(Level.WARNING, "Error al cargar imagen: {0}", e.getMessage());
+                }
+            } else {
+                LOGGER.log(Level.INFO, "P_IMAGEN ya proporcionado por el frontend: {0}", parametros.get("P_IMAGEN"));
             }
             
             // Agregar ruta de imágenes genérica (por si acaso se usa en el reporte)

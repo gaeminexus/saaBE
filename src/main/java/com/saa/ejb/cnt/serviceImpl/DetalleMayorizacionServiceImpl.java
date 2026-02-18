@@ -97,7 +97,8 @@ public class DetalleMayorizacionServiceImpl implements DetalleMayorizacionServic
 		List<PlanCuenta> planCuentas = planCuentaDaoService.selectByEmpresa(empresa);
 		for(PlanCuenta plan : planCuentas){
 			// ASIGNA VALORES
-			detalleMayorizacion.setCodigo(Long.valueOf(0));
+			detalleMayorizacion = new DetalleMayorizacion();
+			detalleMayorizacion.setCodigo(null);
 			detalleMayorizacion.setCodigoPadreCuenta(plan.getIdPadre());
 			detalleMayorizacion.setMayorizacion(mayorizacion);
 			detalleMayorizacion.setNivelCuenta(plan.getNivel());

@@ -9,7 +9,7 @@
 	<parameter name="P_CTAFIN" class="java.lang.String"/>
 	<parameter name="P_CNCSINI" class="java.lang.String"/>
 	<parameter name="P_CNCSFIN" class="java.lang.String"/>
-	<parameter name="P_IMAGEN" class="java.lang.String"/>
+	<parameter name="P_IMAGEN" class="java.awt.Image"/>
 	<parameter name="P_MAYORIZADO" class="java.lang.String"/>
 	<parameter name="P_FILTRO" class="java.lang.String"/>
 	<query language="sql"><![CDATA[SELECT M.MYANCNTA, M.MYANNMBR, M.MYANSLAN, DM.DTMAFCHA, DM.DTMANMRO, DM.DTMADSCR, DM.DTMADBEE, DM.DTMAHBRR, 
@@ -178,7 +178,7 @@ ORDER BY M.MYANCNTA, C.CNCSNMRO, DM.DTMAFCHA]]></query>
 		<element kind="rectangle" uuid="14a78e43-3f2c-4085-b250-fee04165ebb0" x="0" y="0" width="555" height="60">
 			<pen lineWidth="0.75"/>
 		</element>
-		<element kind="image" uuid="9d830c02-c700-46a7-8d60-3771d2a3d119" positionType="FixRelativeToBottom" x="10" y="8" width="110" height="45" scaleImage="RealSize" linkType="None" linkTarget="Self" lazy="true">
+		<element kind="image" uuid="9d830c02-c700-46a7-8d60-3771d2a3d119" positionType="FixRelativeToBottom" x="10" y="8" width="110" height="45" scaleImage="RealSize" linkType="None" linkTarget="Self" lazy="true" evaluationTime="Report">
 			<expression><![CDATA[$P{P_IMAGEN}]]></expression>
 		</element>
 		<element kind="textField" uuid="2ff22539-8ffe-4dd1-8446-a3dc4e41d71b" x="530" y="8" width="19" height="15" fontSize="8.0" evaluationTime="Report" hTextAlign="Left">

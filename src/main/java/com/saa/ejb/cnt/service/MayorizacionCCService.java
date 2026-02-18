@@ -41,7 +41,7 @@ public interface MayorizacionCCService extends EntityService<MayorizacionCC> {
 	  * @param periodo			: Periodo a mayorizar
 	  * @throws Throwable		: Excepcion
 	  */
-	  void creaByMayorizacion(Long idMayorizacion, Periodo periodo) throws Throwable;
+	  MayorizacionCC creaByMayorizacion(Long idMayorizacion, Periodo periodo) throws Throwable;
 	
 	 /**
 	  * Genera los datos en las entidades de mayorizacion por centro de costo

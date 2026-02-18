@@ -104,10 +104,6 @@ public class DetalleMayorizacionCC implements Serializable {
 	 * Devuelve codigo
 	 * @return codigo.
 	 */	
-	@Basic
-	@Id
-	@Column(name = "MYCCCDGO", precision = 0)
-	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_MYCCCDGO")
 	public Long getCodigo() {	
 		return codigo;
 	}

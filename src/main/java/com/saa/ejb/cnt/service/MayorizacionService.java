@@ -3,6 +3,7 @@ package com.saa.ejb.cnt.service;
 import com.saa.basico.util.EntityService;
 import com.saa.model.cnt.HistMayorizacion;
 import com.saa.model.cnt.Mayorizacion;
+import com.saa.model.cnt.Periodo;
 
 import jakarta.ejb.Local;
 
@@ -25,7 +26,7 @@ public interface MayorizacionService extends EntityService<Mayorizacion> {
 	 * @param periodo	: Periodo ligado a la mayorizacion
 	 * @throws Throwable: Excepcion
 	 */
-	 void creaMayorizacion(Long periodo) throws Throwable;
+	 Mayorizacion creaMayorizacion(Periodo periodo) throws Throwable;
 	
 	/**
 	 * Obtiene la mayorizacion que pertenece a un periodo
