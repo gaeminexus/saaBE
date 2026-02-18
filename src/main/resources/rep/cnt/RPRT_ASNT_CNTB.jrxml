@@ -268,10 +268,10 @@ ORDER BY DT.DTASHBRR, DT.DTASCNTA]]></query>
 				<element kind="staticText" uuid="bef3dee5-4ec7-4bd8-94dd-039df16d1ecf" x="320" y="10" width="37" height="15" fontSize="6.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 					<text><![CDATA[TOTAL:]]></text>
 				</element>
-				<element kind="textField" uuid="977c9846-c226-4720-a4c0-4f1218942321" x="368" y="10" width="52" height="15" fontSize="6.0" pattern="#,##0.00;(-#,##0.00)" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<element kind="textField" uuid="977c9846-c226-4720-a4c0-4f1218942321" x="408" y="10" width="52" height="15" fontSize="6.0" pattern="#,##0.00;(-#,##0.00)" bold="true" hTextAlign="Center" vTextAlign="Middle">
 					<expression><![CDATA[$V{SUMA_DEBE}]]></expression>
 				</element>
-				<element kind="textField" uuid="f3bb574f-9527-42fe-91e3-3a39e0191fa4" x="420" y="10" width="54" height="15" fontSize="6.0" pattern="#,##0.00;(-#,##0.00)" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<element kind="textField" uuid="f3bb574f-9527-42fe-91e3-3a39e0191fa4" x="460" y="10" width="54" height="15" fontSize="6.0" pattern="#,##0.00;(-#,##0.00)" bold="true" hTextAlign="Center" vTextAlign="Middle">
 					<expression><![CDATA[$V{SUMA_HABER}]]></expression>
 				</element>
 				<element kind="staticText" uuid="5a1026eb-c1a3-4e6a-8299-9eec3b69e58d" x="375" y="160" width="100" height="20" fontName="Tahoma" fontSize="8.0" hTextAlign="Center">
@@ -288,7 +288,7 @@ ORDER BY DT.DTASHBRR, DT.DTASCNTA]]></query>
 	</group>
 	<background splitType="Stretch"/>
 	<pageHeader height="78" splitType="Stretch">
-		<element kind="image" uuid="5cde03e2-7a9e-4896-989e-059ce8948227" positionType="FixRelativeToBottom" x="10" y="5" width="80" height="40" scaleImage="RealSize" linkType="None" linkTarget="Self" lazy="true" evaluationTime="Report">
+		<element kind="image" uuid="5cde03e2-7a9e-4896-989e-059ce8948227" positionType="FixRelativeToBottom" x="10" y="5" width="80" height="40" scaleImage="RealSize" evaluationTime="Report" linkType="None" linkTarget="Self" lazy="true">
 			<expression><![CDATA[$P{P_IMAGEN}]]></expression>
 		</element>
 		<element kind="textField" uuid="7efe785f-c193-4b61-85a9-86a150d6cad1" x="90" y="2" width="370" height="20" fontSize="13.0" bold="true" hTextAlign="Center">
