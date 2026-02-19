@@ -1,7 +1,7 @@
 <!-- Created with Jaspersoft Studio version 7.0.3.final using JasperReports Library version 7.0.3-41034ca841d452f3305ba55b9042260aaa1ab5dd  -->
 <jasperReport name="RPRT_TBLA_ACML" language="java" columnCount="1" printOrder="Horizontal" pageWidth="842" pageHeight="595" columnWidth="802" leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20" uuid="e755f84b-cdb8-4a99-a846-a56911786218">
 	<property name="com.jaspersoft.studio.data.sql.tables" value=""/>
-	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="saa_oracle_xe"/>
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="Oracle"/>
 	<parameter name="suma_totales" forPrompting="false" class="java.math.BigDecimal"/>
 	<query language="SQL"><![CDATA[SELECT 
     ROW_NUMBER() OVER (ORDER BY NOMBRE) AS no,
@@ -161,11 +161,29 @@ ORDER BY NOMBRE;]]></query>
 		<property name="com.jaspersoft.studio.field.name" value="TOTAL_CUENTAS"/>
 		<property name="com.jaspersoft.studio.field.label" value="TOTAL_CUENTAS"/>
 	</field>
-	<variable name="suma_cp" incrementType="Report" calculation="Sum" class="java.math.BigDecimal">
+	<variable name="suma_cp" class="java.math.BigDecimal" calculation="Sum" resetType="Report">
 		<expression><![CDATA[$F{CESANTIA_PERSONAL}]]></expression>
 	</variable>
-	<variable name="suma_jp" class="java.lang.String">
+	<variable name="suma_jp" class="java.math.BigDecimal" calculation="Sum" resetType="Report">
 		<expression><![CDATA[$F{JUBILACION_PERSONAL}]]></expression>
+	</variable>
+	<variable name="suma_crv" class="java.math.BigDecimal" calculation="Sum" resetType="Report">
+		<expression><![CDATA[$F{CESANTIA_RETIRO_VOLUNTARIO}]]></expression>
+	</variable>
+	<variable name="suma_jrv" class="java.math.BigDecimal" calculation="Sum" resetType="Report">
+		<expression><![CDATA[$F{JUBILACION_RETIRO_VOLUNTARIO}]]></expression>
+	</variable>
+	<variable name="suma_jpa" class="java.math.BigDecimal" calculation="Sum" resetType="Report">
+		<expression><![CDATA[$F{JUBILACION_PATRONAL}]]></expression>
+	</variable>
+	<variable name="suma_cpa" class="java.math.BigDecimal" calculation="Sum" resetType="Report">
+		<expression><![CDATA[$F{CESANTIA_PATRONAL}]]></expression>
+	</variable>
+	<variable name="suma_pc" class="java.math.BigDecimal" calculation="Sum" resetType="Report">
+		<expression><![CDATA[$F{PENSION_COMPLEMENTARIA}]]></expression>
+	</variable>
+	<variable name="suma_total" class="java.math.BigDecimal" calculation="Sum" resetType="Report">
+		<expression><![CDATA[$F{TOTAL_CUENTAS}]]></expression>
 	</variable>
 	<background splitType="Stretch"/>
 	<title height="79" splitType="Stretch">
@@ -315,56 +333,56 @@ ORDER BY NOMBRE;]]></query>
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="a6014bf6-5832-4e04-8782-08315d992844" x="350" y="0" width="66" height="18" fontSize="6.0" hTextAlign="Right" vTextAlign="Middle">
+			<element kind="textField" uuid="a6014bf6-5832-4e04-8782-08315d992844" x="350" y="0" width="66" height="18" fontSize="6.0" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
 				<expression><![CDATA[$F{JUBILACION_PERSONAL}]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="7748785e-82d0-4028-b16c-2f1b93e9574e"/>
 				<box rightPadding="5">
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="22a7578b-096e-4a2f-ba9f-188f608b754d" x="416" y="0" width="62" height="18" fontSize="6.0" hTextAlign="Right" vTextAlign="Middle">
+			<element kind="textField" uuid="22a7578b-096e-4a2f-ba9f-188f608b754d" x="416" y="0" width="62" height="18" fontSize="6.0" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
 				<expression><![CDATA[$F{CESANTIA_RETIRO_VOLUNTARIO}]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="c260b199-8ddc-4b90-8ca2-d2de2baac953"/>
 				<box rightPadding="5">
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="451aad77-872e-4da9-9b71-d2f1274e4234" x="478" y="0" width="62" height="18" fontSize="6.0" hTextAlign="Right" vTextAlign="Middle">
+			<element kind="textField" uuid="451aad77-872e-4da9-9b71-d2f1274e4234" x="478" y="0" width="62" height="18" fontSize="6.0" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
 				<expression><![CDATA[$F{JUBILACION_RETIRO_VOLUNTARIO}]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="a4cfe201-f2c2-4ffe-9864-56d52ebe31fc"/>
 				<box rightPadding="5">
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="5c016645-d829-4855-9df1-99d9d7214378" x="540" y="0" width="50" height="18" fontSize="6.0" hTextAlign="Right" vTextAlign="Middle">
+			<element kind="textField" uuid="5c016645-d829-4855-9df1-99d9d7214378" x="540" y="0" width="50" height="18" fontSize="6.0" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
 				<expression><![CDATA[$F{JUBILACION_PATRONAL}]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="fafdec06-72dc-4d69-a6d2-d4f1862046f5"/>
 				<box rightPadding="5">
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="91b07b5b-c312-4f49-96bf-b6f05c950bb3" x="590" y="0" width="55" height="18" fontSize="6.0" hTextAlign="Right" vTextAlign="Middle">
+			<element kind="textField" uuid="91b07b5b-c312-4f49-96bf-b6f05c950bb3" x="590" y="0" width="55" height="18" fontSize="6.0" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
 				<expression><![CDATA[$F{CESANTIA_PATRONAL}]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="aa69c340-a623-48fd-bb36-4539bf52c067"/>
 				<box rightPadding="5">
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="febb7ffd-adde-4dfe-9c24-186b2d07ebb9" x="715" y="0" width="67" height="18" fontSize="6.0" hTextAlign="Right" vTextAlign="Middle">
+			<element kind="textField" uuid="febb7ffd-adde-4dfe-9c24-186b2d07ebb9" x="715" y="0" width="67" height="18" fontSize="6.0" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
 				<expression><![CDATA[$F{TOTAL_CUENTAS}]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="0f1bd2d8-abfe-46e3-8dd6-5381fb8635fd"/>
 				<box rightPadding="5">
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="f5866287-4443-4272-b375-864104f744a0" x="280" y="0" width="70" height="18" fontSize="6.0" hTextAlign="Right" vTextAlign="Middle">
+			<element kind="textField" uuid="f5866287-4443-4272-b375-864104f744a0" x="280" y="0" width="70" height="18" fontSize="6.0" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
 				<expression><![CDATA[$F{CESANTIA_PERSONAL}]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="fe83dde2-b261-4e81-a615-0f76ca354a01"/>
 				<box rightPadding="5">
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="5da1bd91-e347-4fff-91f0-c5461d068829" x="645" y="0" width="70" height="18" fontSize="6.0" hTextAlign="Right" vTextAlign="Middle">
+			<element kind="textField" uuid="5da1bd91-e347-4fff-91f0-c5461d068829" x="645" y="0" width="70" height="18" fontSize="6.0" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
 				<expression><![CDATA[$F{PENSION_COMPLEMENTARIA}]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="c06720fa-875d-4079-a4aa-93e4827804ab"/>
 				<box rightPadding="5">
@@ -381,11 +399,53 @@ ORDER BY NOMBRE;]]></query>
 		</element>
 		<element kind="line" uuid="07d62170-b5f1-4142-8e05-4cc190800ef0" x="20" y="13" width="762" height="1"/>
 		<element kind="line" uuid="faba951f-64da-458f-9ad0-6f4e95adde84" x="20" y="33" width="762" height="1"/>
-		<element kind="textField" uuid="e6a8eeef-df1e-409d-bd74-049118bffe9a" x="280" y="13" width="70" height="20" fontSize="7.0" evaluationTime="Report" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="textField" uuid="e6a8eeef-df1e-409d-bd74-049118bffe9a" x="280" y="13" width="70" height="20" fontSize="7.0" pattern="#,##0.00" bold="true" hTextAlign="Right" vTextAlign="Middle">
 			<expression><![CDATA[$V{suma_cp}]]></expression>
+			<box rightPadding="5">
+				<pen lineWidth="0.25"/>
+			</box>
 		</element>
-		<element kind="textField" uuid="0cce931a-1196-4dcb-96da-8165aa042c34" x="350" y="14" width="66" height="19" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="textField" uuid="0cce931a-1196-4dcb-96da-8165aa042c34" x="350" y="13" width="66" height="20" fontSize="7.0" pattern="#,##0.00" bold="true" hTextAlign="Right" vTextAlign="Middle">
 			<expression><![CDATA[$V{suma_jp}]]></expression>
+			<box rightPadding="5">
+				<pen lineWidth="0.25"/>
+			</box>
+		</element>
+		<element kind="textField" uuid="1f3e8a2f-c1d4-4e5f-8a3c-9b2e7f4d6c8a" x="416" y="13" width="62" height="20" fontSize="7.0" pattern="#,##0.00" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$V{suma_crv}]]></expression>
+			<box rightPadding="5">
+				<pen lineWidth="0.25"/>
+			</box>
+		</element>
+		<element kind="textField" uuid="2a4f9b3e-d2e5-4f6a-9c4d-8e3f7a5b9d1c" x="478" y="13" width="62" height="20" fontSize="7.0" pattern="#,##0.00" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$V{suma_jrv}]]></expression>
+			<box rightPadding="5">
+				<pen lineWidth="0.25"/>
+			</box>
+		</element>
+		<element kind="textField" uuid="3b5a0c4f-e3f6-4a7b-0d5e-9f4a8b6c0e2d" x="540" y="13" width="50" height="20" fontSize="7.0" pattern="#,##0.00" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$V{suma_jpa}]]></expression>
+			<box rightPadding="5">
+				<pen lineWidth="0.25"/>
+			</box>
+		</element>
+		<element kind="textField" uuid="4c6a1d5a-f4a7-5b8c-1e6f-0a5a9c7d1f3e" x="590" y="13" width="55" height="20" fontSize="7.0" pattern="#,##0.00" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$V{suma_cpa}]]></expression>
+			<box rightPadding="5">
+				<pen lineWidth="0.25"/>
+			</box>
+		</element>
+		<element kind="textField" uuid="5d7a2e6a-a5a8-6c9d-2f7a-1a6a0d8e2a4f" x="645" y="13" width="70" height="20" fontSize="7.0" pattern="#,##0.00" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$V{suma_pc}]]></expression>
+			<box rightPadding="5">
+				<pen lineWidth="0.25"/>
+			</box>
+		</element>
+		<element kind="textField" uuid="6e8a3f7a-a6a9-7d0e-3a8a-2a7a1e9f3a5a" x="715" y="13" width="67" height="20" fontSize="7.0" pattern="#,##0.00" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$V{suma_total}]]></expression>
+			<box rightPadding="5">
+				<pen lineWidth="0.25"/>
+			</box>
 		</element>
 	</summary>
 </jasperReport>
