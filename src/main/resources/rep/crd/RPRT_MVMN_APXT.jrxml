@@ -1,0 +1,427 @@
+<!-- Created with Jaspersoft Studio version 7.0.3.final using JasperReports Library version 7.0.3-41034ca841d452f3305ba55b9042260aaa1ab5dd  -->
+<jasperReport name="RPRT_TBLA_ACML" language="java" pageWidth="595" pageHeight="842" columnWidth="555" leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20" uuid="e755f84b-cdb8-4a99-a846-a56911786218">
+	<property name="com.jaspersoft.studio.data.sql.tables" value=""/>
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="saa_oracle_xe"/>
+	<property name="com.jaspersoft.studio.property.dataset.dialog.DatasetDialog.sash.w1" value="421"/>
+	<property name="com.jaspersoft.studio.property.dataset.dialog.DatasetDialog.sash.w2" value="568"/>
+	<parameter name="P_ENTDCDGO" class="java.lang.Long">
+		<description><![CDATA[codigo del prestamo]]></description>
+	</parameter>
+	<parameter name="P_TPAPCDGO" class="java.lang.Long"/>
+	<query language="SQL"><![CDATA[SELECT   *
+FROM	 crd.APRT a, crd.TPAP t, crd.ENTD e 
+WHERE	 a.TPAPCDGO  = t.TPAPCDGO 
+		 AND   a.ENTDCDGO = e.ENTDCDGO 
+		 AND   a.ENTDCDGO = $P{P_ENTDCDGO}
+	     AND   a.TPAPCDGO =  $P{P_TPAPCDGO}]]></query>
+	<field name="APRTCDGO" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="APRTCDGO"/>
+		<property name="com.jaspersoft.studio.field.label" value="APRTCDGO"/>
+	</field>
+	<field name="FLLLCDGO" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="FLLLCDGO"/>
+		<property name="com.jaspersoft.studio.field.label" value="FLLLCDGO"/>
+	</field>
+	<field name="ENTDCDGO" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="ENTDCDGO"/>
+		<property name="com.jaspersoft.studio.field.label" value="ENTDCDGO"/>
+	</field>
+	<field name="CNTRCDGO" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="CNTRCDGO"/>
+		<property name="com.jaspersoft.studio.field.label" value="CNTRCDGO"/>
+	</field>
+	<field name="TPAPCDGO" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="TPAPCDGO"/>
+		<property name="com.jaspersoft.studio.field.label" value="TPAPCDGO"/>
+	</field>
+	<field name="APRTFCTR" class="java.sql.Timestamp">
+		<property name="com.jaspersoft.studio.field.name" value="APRTFCTR"/>
+		<property name="com.jaspersoft.studio.field.label" value="APRTFCTR"/>
+	</field>
+	<field name="APRTGLSA" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="APRTGLSA"/>
+		<property name="com.jaspersoft.studio.field.label" value="APRTGLSA"/>
+	</field>
+	<field name="APRTVLRR" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="APRTVLRR"/>
+		<property name="com.jaspersoft.studio.field.label" value="APRTVLRR"/>
+	</field>
+	<field name="APRTVLPG" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="APRTVLPG"/>
+		<property name="com.jaspersoft.studio.field.label" value="APRTVLPG"/>
+	</field>
+	<field name="APRTSLDO" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="APRTSLDO"/>
+		<property name="com.jaspersoft.studio.field.label" value="APRTSLDO"/>
+	</field>
+	<field name="APRTIDAS" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="APRTIDAS"/>
+		<property name="com.jaspersoft.studio.field.label" value="APRTIDAS"/>
+	</field>
+	<field name="APRTFCRG" class="java.sql.Timestamp">
+		<property name="com.jaspersoft.studio.field.name" value="APRTFCRG"/>
+		<property name="com.jaspersoft.studio.field.label" value="APRTFCRG"/>
+	</field>
+	<field name="APRTUSRG" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="APRTUSRG"/>
+		<property name="com.jaspersoft.studio.field.label" value="APRTUSRG"/>
+	</field>
+	<field name="APRTIDST" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="APRTIDST"/>
+		<property name="com.jaspersoft.studio.field.label" value="APRTIDST"/>
+	</field>
+	<field name="COLUMN_15" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="TPAPCDGO"/>
+		<property name="com.jaspersoft.studio.field.label" value="TPAPCDGO"/>
+	</field>
+	<field name="TPAPNMBR" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="TPAPNMBR"/>
+		<property name="com.jaspersoft.studio.field.label" value="TPAPNMBR"/>
+	</field>
+	<field name="TPAPCSBC" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="TPAPCSBC"/>
+		<property name="com.jaspersoft.studio.field.label" value="TPAPCSBC"/>
+	</field>
+	<field name="TPAPIDST" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="TPAPIDST"/>
+		<property name="com.jaspersoft.studio.field.label" value="TPAPIDST"/>
+	</field>
+	<field name="COLUMN_19" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="ENTDCDGO"/>
+		<property name="com.jaspersoft.studio.field.label" value="ENTDCDGO"/>
+	</field>
+	<field name="COLUMN_20" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="FLLLCDGO"/>
+		<property name="com.jaspersoft.studio.field.label" value="FLLLCDGO"/>
+	</field>
+	<field name="TPHDCDGO" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="TPHDCDGO"/>
+		<property name="com.jaspersoft.studio.field.label" value="TPHDCDGO"/>
+	</field>
+	<field name="TPDNCDGO" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="TPDNCDGO"/>
+		<property name="com.jaspersoft.studio.field.label" value="TPDNCDGO"/>
+	</field>
+	<field name="ENTDNMID" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="ENTDNMID"/>
+		<property name="com.jaspersoft.studio.field.label" value="ENTDNMID"/>
+	</field>
+	<field name="ENTDRZNS" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="ENTDRZNS"/>
+		<property name="com.jaspersoft.studio.field.label" value="ENTDRZNS"/>
+	</field>
+	<field name="ENTDNMCF" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="ENTDNMCF"/>
+		<property name="com.jaspersoft.studio.field.label" value="ENTDNMCF"/>
+	</field>
+	<field name="ENTDNMCM" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="ENTDNMCM"/>
+		<property name="com.jaspersoft.studio.field.label" value="ENTDNMCM"/>
+	</field>
+	<field name="ENTDFCNC" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="ENTDFCNC"/>
+		<property name="com.jaspersoft.studio.field.label" value="ENTDFCNC"/>
+	</field>
+	<field name="TPVVCDGO" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="TPVVCDGO"/>
+		<property name="com.jaspersoft.studio.field.label" value="TPVVCDGO"/>
+	</field>
+	<field name="ENTDSCPB" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="ENTDSCPB"/>
+		<property name="com.jaspersoft.studio.field.label" value="ENTDSCPB"/>
+	</field>
+	<field name="ENTDCRPR" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="ENTDCRPR"/>
+		<property name="com.jaspersoft.studio.field.label" value="ENTDCRPR"/>
+	</field>
+	<field name="ENTDCRIN" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="ENTDCRIN"/>
+		<property name="com.jaspersoft.studio.field.label" value="ENTDCRIN"/>
+	</field>
+	<field name="ENTDTLFN" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="ENTDTLFN"/>
+		<property name="com.jaspersoft.studio.field.label" value="ENTDTLFN"/>
+	</field>
+	<field name="ENTDCPVR" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="ENTDCPVR"/>
+		<property name="com.jaspersoft.studio.field.label" value="ENTDCPVR"/>
+	</field>
+	<field name="ENTDCIVR" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="ENTDCIVR"/>
+		<property name="com.jaspersoft.studio.field.label" value="ENTDCIVR"/>
+	</field>
+	<field name="ENTDTLVR" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="ENTDTLVR"/>
+		<property name="com.jaspersoft.studio.field.label" value="ENTDTLVR"/>
+	</field>
+	<field name="ENTDMGRD" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="ENTDMGRD"/>
+		<property name="com.jaspersoft.studio.field.label" value="ENTDMGRD"/>
+	</field>
+	<field name="ENTDMVLI" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="ENTDMVLI"/>
+		<property name="com.jaspersoft.studio.field.label" value="ENTDMVLI"/>
+	</field>
+	<field name="ENTDIDCD" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="ENTDIDCD"/>
+		<property name="com.jaspersoft.studio.field.label" value="ENTDIDCD"/>
+	</field>
+	<field name="ENTDPRSM" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="ENTDPRSM"/>
+		<property name="com.jaspersoft.studio.field.label" value="ENTDPRSM"/>
+	</field>
+	<field name="ENTDBSQD" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="ENTDBSQD"/>
+		<property name="com.jaspersoft.studio.field.label" value="ENTDBSQD"/>
+	</field>
+	<field name="ENTDIPIN" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="ENTDIPIN"/>
+		<property name="com.jaspersoft.studio.field.label" value="ENTDIPIN"/>
+	</field>
+	<field name="ENTDUSIN" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="ENTDUSIN"/>
+		<property name="com.jaspersoft.studio.field.label" value="ENTDUSIN"/>
+	</field>
+	<field name="ENTDFCIN" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="ENTDFCIN"/>
+		<property name="com.jaspersoft.studio.field.label" value="ENTDFCIN"/>
+	</field>
+	<field name="ENTDIPMD" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="ENTDIPMD"/>
+		<property name="com.jaspersoft.studio.field.label" value="ENTDIPMD"/>
+	</field>
+	<field name="ENTDUSMD" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="ENTDUSMD"/>
+		<property name="com.jaspersoft.studio.field.label" value="ENTDUSMD"/>
+	</field>
+	<field name="ENTDFCMD" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="ENTDFCMD"/>
+		<property name="com.jaspersoft.studio.field.label" value="ENTDFCMD"/>
+	</field>
+	<field name="ENTDIDST" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="ENTDIDST"/>
+		<property name="com.jaspersoft.studio.field.label" value="ENTDIDST"/>
+	</field>
+	<field name="ENTDURFL" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="ENTDURFL"/>
+		<property name="com.jaspersoft.studio.field.label" value="ENTDURFL"/>
+	</field>
+	<field name="ENTDRLPC" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="ENTDRLPC"/>
+		<property name="com.jaspersoft.studio.field.label" value="ENTDRLPC"/>
+	</field>
+	<variable name="NUMERO_REGISTROS" calculation="Count" class="java.math.BigDecimal">
+		<expression><![CDATA[$F{APRTCDGO}]]></expression>
+	</variable>
+	<background splitType="Stretch"/>
+	<title height="79" splitType="Stretch">
+		<element kind="rectangle" uuid="caf138d8-0d75-4021-8a39-5ab1b7c1da80" x="0" y="10" width="555" height="60">
+			<pen lineWidth="0.75"/>
+		</element>
+		<element kind="textField" uuid="237a2116-4c84-4d73-89cf-b8b4b1d6ea6a" x="530" y="18" width="19" height="15" fontSize="8.0" evaluationTime="Report" hTextAlign="Left">
+			<expression><![CDATA[" " + $V{PAGE_NUMBER}]]></expression>
+		</element>
+		<element kind="textField" uuid="2ef5f9f3-7d62-4da4-bd4b-eabffac507db" x="485" y="48" width="64" height="15" fontSize="8.0" pattern="h.mm a" hTextAlign="Left">
+			<expression><![CDATA[new java.util.Date()]]></expression>
+		</element>
+		<element kind="textField" uuid="52c14308-9183-47cc-8a57-c86b3cea5e9f" x="485" y="33" width="64" height="15" fontSize="8.0" pattern="dd-MMM-yyyy" hTextAlign="Left">
+			<expression><![CDATA[new java.util.Date()]]></expression>
+		</element>
+		<element kind="textField" uuid="397e3f80-e4ab-4ef0-8f5b-af3a1fc06ac3" x="485" y="18" width="45" height="15" fontSize="8.0" hTextAlign="Left">
+			<expression><![CDATA["Página "+$V{PAGE_NUMBER}+" de"]]></expression>
+		</element>
+		<element kind="textField" uuid="5569f5c6-2c30-4eb3-969b-248434f286e8" x="84" y="28" width="390" height="24" fontSize="16.0" hTextAlign="Center" vTextAlign="Middle">
+			<expression><![CDATA[$F{TPAPNMBR}]]></expression>
+		</element>
+	</title>
+	<pageHeader height="12" splitType="Stretch"/>
+	<columnHeader height="160" splitType="Stretch">
+		<element kind="staticText" uuid="b57f2bfc-ea44-45c2-b538-5675d5020b0a" mode="Opaque" x="80" y="23" width="201" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[IDENTIFICACIÓN]]></text>
+			<box>
+				<pen lineWidth="0.25"/>
+				<topPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+				<leftPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+				<bottomPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+				<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+			</box>
+		</element>
+		<element kind="staticText" uuid="85f03830-5ea3-4261-9c08-e89ae5ba65e8" mode="Opaque" x="80" y="36" width="201" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[NOMBRE]]></text>
+			<box>
+				<pen lineWidth="0.25"/>
+				<topPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+				<leftPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+				<bottomPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+				<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+			</box>
+		</element>
+		<element kind="staticText" uuid="924c3560-06d3-46fa-8508-da5b6f24da16" mode="Opaque" x="80" y="10" width="394" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[DATOS GENERALES DEL PARTICIPE]]></text>
+			<box>
+				<pen lineWidth="0.25"/>
+				<topPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+				<leftPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+				<bottomPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+				<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+			</box>
+		</element>
+		<element kind="staticText" uuid="91fdbafa-805a-4a10-99aa-a748c3d8b29b" mode="Opaque" x="80" y="49" width="201" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[ID CUENTA]]></text>
+			<box>
+				<pen lineWidth="0.25"/>
+				<topPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+				<leftPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+				<bottomPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+				<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+			</box>
+		</element>
+		<element kind="staticText" uuid="818bfe87-e584-417e-881a-2a060bfd177c" mode="Opaque" x="80" y="62" width="201" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[TOTAL APORTES]]></text>
+			<box>
+				<pen lineWidth="0.25"/>
+				<topPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+				<leftPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+				<bottomPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+				<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+			</box>
+		</element>
+		<element kind="staticText" uuid="0c592621-8030-49c8-af7b-5b5e06e0b2fc" mode="Opaque" x="40" y="120" width="474" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="9.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[TABLA DE APORTES Y ACUMULACIÓN]]></text>
+			<box>
+				<pen lineWidth="0.25"/>
+				<topPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+				<leftPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+				<bottomPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+				<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+			</box>
+		</element>
+		<element kind="staticText" uuid="2cab6396-fe5a-4c62-90c8-2be22a7fdb0b" x="40" y="133" width="44" height="27" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[No°]]></text>
+			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="73be61df-46f4-4fff-99e3-4d910a2dbe36"/>
+			<box>
+				<pen lineWidth="0.25"/>
+			</box>
+		</element>
+		<element kind="staticText" uuid="5e34068a-33b9-44c1-a73a-a7611d73bcf6" x="84" y="133" width="67" height="27" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[FECHA]]></text>
+			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="1efe2930-9b62-435a-be72-f5d442008b3f"/>
+			<box>
+				<pen lineWidth="0.25"/>
+			</box>
+		</element>
+		<element kind="staticText" uuid="2c5f055f-6b58-4f4d-81c4-f28df59350cc" x="151" y="133" width="175" height="27" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[DETALLE]]></text>
+			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="9a95a64e-8d9c-4d7f-83dd-2a9338854f63"/>
+			<box>
+				<pen lineWidth="0.25"/>
+			</box>
+		</element>
+		<element kind="staticText" uuid="eec4320c-6198-4cc3-9fc0-8dbededb8b19" mode="Opaque" x="80" y="90" width="200" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<text><![CDATA[MOVIMIENTOS REALIZADOS]]></text>
+			<box rightPadding="3">
+				<pen lineWidth="0.0"/>
+				<topPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+				<leftPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+				<bottomPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+				<rightPen lineWidth="0.0" lineStyle="Solid" lineColor="#000000"/>
+			</box>
+		</element>
+		<element kind="staticText" uuid="067e7964-4647-43d0-b8d2-6cf2f3d68349" x="326" y="133" width="68" height="27" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[CREDITO]]></text>
+			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="88b90731-8435-48ee-afd8-4ebd33a876b9"/>
+			<box>
+				<pen lineWidth="0.25"/>
+			</box>
+		</element>
+		<element kind="staticText" uuid="af7af36a-8eb0-4fd3-b4af-740f57cbc012" x="394" y="133" width="60" height="27" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[DEBITO]]></text>
+			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="2597655d-08f1-4e64-a52d-436f62f8eaa8"/>
+			<box>
+				<pen lineWidth="0.25"/>
+			</box>
+		</element>
+		<element kind="textField" uuid="aa130774-8a39-4ff0-b222-91e0bdf6e7a6" x="281" y="23" width="193" height="13" fontSize="8.0" hTextAlign="Center">
+			<expression><![CDATA[$F{ENTDNMID}]]></expression>
+			<box>
+				<pen lineWidth="0.25"/>
+			</box>
+		</element>
+		<element kind="textField" uuid="e3363944-c05c-46ff-bf4c-d0479e955810" x="281" y="36" width="193" height="13" fontSize="8.0" hTextAlign="Center">
+			<expression><![CDATA[$F{ENTDRZNS}]]></expression>
+			<box>
+				<pen lineWidth="0.25"/>
+			</box>
+		</element>
+		<element kind="textField" uuid="d41c1e1f-85da-4d9c-a49c-707d6b474b64" x="281" y="62" width="193" height="13" fontSize="8.0" evaluationTime="Report" hTextAlign="Center">
+			<expression><![CDATA[$V{NUMERO_REGISTROS}]]></expression>
+			<box>
+				<pen lineWidth="0.25"/>
+			</box>
+		</element>
+		<element kind="staticText" uuid="b81af720-fe0c-469e-83f0-8f59d1762139" x="454" y="133" width="60" height="27" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[SALDO]]></text>
+			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="2597655d-08f1-4e64-a52d-436f62f8eaa8"/>
+			<box>
+				<pen lineWidth="0.25"/>
+			</box>
+		</element>
+		<element kind="textField" uuid="9158059c-b25f-4193-9268-1732a8138d8e" mode="Opaque" x="280" y="90" width="194" height="13" forecolor="#050505" backcolor="#D1D1D1" fontSize="7.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+			<expression><![CDATA[$F{TPAPNMBR}]]></expression>
+			<box leftPadding="1">
+				<topPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+				<leftPen lineWidth="0.0" lineStyle="Solid" lineColor="#000000"/>
+				<bottomPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+				<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+			</box>
+		</element>
+	</columnHeader>
+	<detail>
+		<band height="20" splitType="Stretch">
+			<element kind="textField" uuid="af386d65-c120-48bb-98ab-a704b39a537a" x="40" y="0" width="44" height="20" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[$F{APRTCDGO}]]></expression>
+				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="966eb76a-9ec8-4002-aca8-642085c170d1"/>
+				<box>
+					<pen lineWidth="0.25"/>
+				</box>
+			</element>
+			<element kind="textField" uuid="ff158529-ea3d-40a9-a083-b50f9536a5de" x="84" y="0" width="67" height="20" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[$F{APRTFCTR}]]></expression>
+				<box>
+					<pen lineWidth="0.25"/>
+				</box>
+			</element>
+			<element kind="textField" uuid="a1f9ba9d-b443-47ca-aebb-f96b0755d38e" x="151" y="0" width="175" height="20" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[$F{APRTGLSA}]]></expression>
+				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="43978227-3205-401e-9ad7-ee75c6b647d4"/>
+				<box>
+					<pen lineWidth="0.25"/>
+				</box>
+			</element>
+			<element kind="textField" uuid="1b13538b-1c81-42fd-9c39-1c1e0100df7d" x="326" y="0" width="68" height="20" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[$F{APRTVLRR}]]></expression>
+				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="437da433-ad4e-4289-872c-61012f86fef2"/>
+				<box>
+					<pen lineWidth="0.25"/>
+				</box>
+			</element>
+			<element kind="textField" uuid="bca0f654-dbb2-4151-b072-c01dd8e1f865" x="394" y="0" width="60" height="20" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[$F{APRTVLPG}]]></expression>
+				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="eca8f2f7-e8f2-4a05-b7e9-d67bceb090a0"/>
+				<box>
+					<pen lineWidth="0.25"/>
+				</box>
+			</element>
+			<element kind="textField" uuid="2810dce2-bf95-4e0a-a8fa-6be8063c8a3d" x="454" y="0" width="60" height="20" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[$F{APRTSLDO}]]></expression>
+				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="4835c970-f750-40b5-a3d7-411ade39b4bc"/>
+				<box>
+					<pen lineWidth="0.25"/>
+				</box>
+			</element>
+		</band>
+	</detail>
+	<columnFooter height="45" splitType="Stretch"/>
+	<pageFooter height="54" splitType="Stretch"/>
+	<summary height="42" splitType="Stretch"/>
+</jasperReport>
