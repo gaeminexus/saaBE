@@ -2,87 +2,114 @@
 <jasperReport name="RPRT_TBLA_ACML" language="java" columnCount="1" printOrder="Horizontal" pageWidth="842" pageHeight="595" columnWidth="802" leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20" uuid="e755f84b-cdb8-4a99-a846-a56911786218">
 	<property name="com.jaspersoft.studio.data.sql.tables" value=""/>
 	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="saa_oracle_xe"/>
+	<parameter name="suma_totales" forPrompting="false" class="java.math.BigDecimal"/>
 	<query language="SQL"><![CDATA[SELECT 
     ROW_NUMBER() OVER (ORDER BY NOMBRE) AS no,
     codigo,
     rol,
     NOMBRE,
+
+    /* CESANTIA PERSONAL (calculada) */
     CASE 
-        WHEN jubilacion_personal = 0 AND cesantia_personal > 0
-            THEN cesantia_personal + NVL(aportes_ah,0)
-        WHEN jubilacion_personal > 0 AND cesantia_personal = 0
-            THEN cesantia_personal
-        WHEN jubilacion_personal > 0 AND cesantia_personal > 0
-            THEN cesantia_personal + ROUND(NVL(aportes_ah,0) * 0.3, 2)
-        ELSE cesantia_personal
+        WHEN NVL(jubilacion_personal, 0) = 0 AND NVL(cesantia_personal, 0) > 0
+            THEN NVL(cesantia_personal, 0) + NVL(aportes_ah, 0)
+        WHEN NVL(jubilacion_personal, 0) > 0 AND NVL(cesantia_personal, 0) = 0
+            THEN NVL(cesantia_personal, 0)
+        WHEN NVL(jubilacion_personal, 0) > 0 AND NVL(cesantia_personal, 0) > 0
+            THEN NVL(cesantia_personal, 0) + ROUND(NVL(aportes_ah, 0) * 0.3, 2)
+        ELSE NVL(cesantia_personal, 0)
     END AS cesantia_personal,
+
+    /* JUBILACION PERSONAL (calculada) */
     CASE 
-        WHEN jubilacion_personal = 0 AND cesantia_personal > 0
-            THEN jubilacion_personal
-        WHEN jubilacion_personal > 0 AND cesantia_personal = 0
-            THEN jubilacion_personal + NVL(aportes_ah,0)
-        WHEN jubilacion_personal > 0 AND cesantia_personal > 0
-            THEN jubilacion_personal + ROUND(NVL(aportes_ah,0) * 0.7, 2)
-        ELSE jubilacion_personal
+        WHEN NVL(jubilacion_personal, 0) = 0 AND NVL(cesantia_personal, 0) > 0
+            THEN NVL(jubilacion_personal, 0)
+        WHEN NVL(jubilacion_personal, 0) > 0 AND NVL(cesantia_personal, 0) = 0
+            THEN NVL(jubilacion_personal, 0) + NVL(aportes_ah, 0)
+        WHEN NVL(jubilacion_personal, 0) > 0 AND NVL(cesantia_personal, 0) > 0
+            THEN NVL(jubilacion_personal, 0) + ROUND(NVL(aportes_ah, 0) * 0.7, 2)
+        ELSE NVL(jubilacion_personal, 0)
     END AS jubilacion_personal,
-    cesantia_retiro_voluntario,
-    jubilacion_retiro_voluntario,
-    jubilacion_patronal,
-    cesantia_patronal,
-    pension_complementaria,
+
+    /* Columnas directas del PIVOT (ya en 0) */
+    NVL(cesantia_retiro_voluntario, 0)      AS cesantia_retiro_voluntario,
+    NVL(jubilacion_retiro_voluntario, 0)    AS jubilacion_retiro_voluntario,
+    NVL(jubilacion_patronal, 0)             AS jubilacion_patronal,
+    NVL(cesantia_patronal, 0)               AS cesantia_patronal,
+    NVL(pension_complementaria, 0)          AS pension_complementaria,
+
+    /* TOTAL CUENTAS */
     (
+        /* Parte cesantia_personal calculada */
         CASE 
-            WHEN jubilacion_personal = 0 AND cesantia_personal > 0
-                THEN NVL(cesantia_personal + NVL(aportes_ah,0), 0)
-            WHEN jubilacion_personal > 0 AND cesantia_personal = 0
+            WHEN NVL(jubilacion_personal, 0) = 0 AND NVL(cesantia_personal, 0) > 0
+                THEN NVL(cesantia_personal, 0) + NVL(aportes_ah, 0)
+            WHEN NVL(jubilacion_personal, 0) > 0 AND NVL(cesantia_personal, 0) = 0
                 THEN NVL(cesantia_personal, 0)
-            WHEN jubilacion_personal > 0 AND cesantia_personal > 0
-                THEN NVL(cesantia_personal + ROUND(NVL(aportes_ah,0) * 0.3, 2),0)
-            ELSE NVL(cesantia_personal,0)
+            WHEN NVL(jubilacion_personal, 0) > 0 AND NVL(cesantia_personal, 0) > 0
+                THEN NVL(cesantia_personal, 0) + ROUND(NVL(aportes_ah, 0) * 0.3, 2)
+            ELSE NVL(cesantia_personal, 0)
         END
         +
+        /* Parte jubilacion_personal calculada */
         CASE 
-            WHEN jubilacion_personal = 0 AND cesantia_personal > 0
-                THEN NVL(jubilacion_personal,0)
-            WHEN jubilacion_personal > 0 AND cesantia_personal = 0
-                THEN NVL(jubilacion_personal + NVL(aportes_ah,0),0)
-            WHEN jubilacion_personal > 0 AND cesantia_personal > 0
-                THEN NVL(jubilacion_personal + ROUND(NVL(aportes_ah,0) * 0.7, 2),0)
-            ELSE NVL(jubilacion_personal,0)
+            WHEN NVL(jubilacion_personal, 0) = 0 AND NVL(cesantia_personal, 0) > 0
+                THEN NVL(jubilacion_personal, 0)
+            WHEN NVL(jubilacion_personal, 0) > 0 AND NVL(cesantia_personal, 0) = 0
+                THEN NVL(jubilacion_personal, 0) + NVL(aportes_ah, 0)
+            WHEN NVL(jubilacion_personal, 0) > 0 AND NVL(cesantia_personal, 0) > 0
+                THEN NVL(jubilacion_personal, 0) + ROUND(NVL(aportes_ah, 0) * 0.7, 2)
+            ELSE NVL(jubilacion_personal, 0)
         END
-        + NVL(cesantia_retiro_voluntario,0)
-        + NVL(jubilacion_retiro_voluntario,0)
-        + NVL(jubilacion_patronal,0)
-        + NVL(cesantia_patronal,0)
-        + NVL(pension_complementaria,0)
+        + NVL(cesantia_retiro_voluntario, 0)
+        + NVL(jubilacion_retiro_voluntario, 0)
+        + NVL(jubilacion_patronal, 0)
+        + NVL(cesantia_patronal, 0)
+        + NVL(pension_complementaria, 0)
     ) AS total_cuentas
+
 FROM (
     SELECT 
-        e.ENTDNMID AS codigo,
-        e.ENTDRLPC AS rol,
-        e.ENTDRZNS AS NOMBRE,
-        a.TPAPCDGO,
-        a.APRTVLRR,
-        (SELECT SUM(p.PXCADSDO) 
-         FROM crd.pxca p
-         JOIN crd.dtca d ON p.dtcacdgo = d.dtcacdgo
-         WHERE p.pxcacdpt = e.ENTDRLPC
-           AND d.DTCACDPP = 'AH') AS aportes_ah
-    FROM crd.entd e
-    JOIN crd.aprt a 
-        ON e.entdcdgo = a.entdcdgo
-    WHERE e.ENTDRLPC IS NOT NULL
-) 
-PIVOT (
-    SUM(APRTVLRR)
-    FOR TPAPCDGO IN (
-        11 AS cesantia_personal,
-        9  AS jubilacion_personal,
-        21 AS cesantia_retiro_voluntario,
-        22 AS jubilacion_retiro_voluntario,
-        13 AS jubilacion_patronal,
-        14 AS cesantia_patronal,
-        23 AS pension_complementaria
+        codigo,
+        rol,
+        NOMBRE,
+        NVL(aportes_ah, 0) AS aportes_ah,
+        NVL(cesantia_personal, 0)           AS cesantia_personal,
+        NVL(jubilacion_personal, 0)         AS jubilacion_personal,
+        NVL(cesantia_retiro_voluntario, 0)  AS cesantia_retiro_voluntario,
+        NVL(jubilacion_retiro_voluntario, 0)AS jubilacion_retiro_voluntario,
+        NVL(jubilacion_patronal, 0)         AS jubilacion_patronal,
+        NVL(cesantia_patronal, 0)           AS cesantia_patronal,
+        NVL(pension_complementaria, 0)      AS pension_complementaria
+    FROM (
+        SELECT 
+            e.ENTDNMID AS codigo,
+            e.ENTDRLPC AS rol,
+            e.ENTDRZNS AS NOMBRE,
+            a.TPAPCDGO,
+            a.APRTVLRR,
+            (SELECT SUM(p.PXCADSDO) 
+             FROM crd.pxca p
+             JOIN crd.dtca d ON p.dtcacdgo = d.dtcacdgo
+             WHERE p.pxcacdpt = e.ENTDRLPC
+               AND d.DTCACDPP = 'AH'
+            ) AS aportes_ah
+        FROM crd.entd e
+        JOIN crd.aprt a 
+            ON e.entdcdgo = a.entdcdgo
+        WHERE e.ENTDRLPC IS NOT NULL
+    )
+    PIVOT (
+        SUM(APRTVLRR)
+        FOR TPAPCDGO IN (
+            11 AS cesantia_personal,
+            9  AS jubilacion_personal,
+            21 AS cesantia_retiro_voluntario,
+            22 AS jubilacion_retiro_voluntario,
+            13 AS jubilacion_patronal,
+            14 AS cesantia_patronal,
+            23 AS pension_complementaria
+        )
     )
 )
 ORDER BY NOMBRE;]]></query>
@@ -134,9 +161,15 @@ ORDER BY NOMBRE;]]></query>
 		<property name="com.jaspersoft.studio.field.name" value="TOTAL_CUENTAS"/>
 		<property name="com.jaspersoft.studio.field.label" value="TOTAL_CUENTAS"/>
 	</field>
+	<variable name="suma_cp" incrementType="Report" calculation="Sum" class="java.math.BigDecimal">
+		<expression><![CDATA[$F{CESANTIA_PERSONAL}]]></expression>
+	</variable>
+	<variable name="suma_jp" class="java.lang.String">
+		<expression><![CDATA[$F{JUBILACION_PERSONAL}]]></expression>
+	</variable>
 	<background splitType="Stretch"/>
 	<title height="79" splitType="Stretch">
-		<element kind="rectangle" uuid="caf138d8-0d75-4021-8a39-5ab1b7c1da80" x="0" y="8" width="800" height="60">
+		<element kind="rectangle" uuid="caf138d8-0d75-4021-8a39-5ab1b7c1da80" x="20" y="8" width="759" height="60">
 			<pen lineWidth="0.75"/>
 		</element>
 		<element kind="textField" uuid="237a2116-4c84-4d73-89cf-b8b4b1d6ea6a" x="760" y="20" width="19" height="15" fontSize="8.0" evaluationTime="Report" hTextAlign="Left">
@@ -156,9 +189,9 @@ ORDER BY NOMBRE;]]></query>
 		</element>
 	</title>
 	<pageHeader height="12" splitType="Stretch"/>
-	<columnHeader height="45" splitType="Stretch">
-		<element kind="staticText" uuid="0c592621-8030-49c8-af7b-5b5e06e0b2fc" mode="Opaque" x="0" y="10" width="800" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="9.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[TABLA DE APORTES Y ACUMULACIÓN]]></text>
+	<columnHeader height="54" splitType="Stretch">
+		<element kind="staticText" uuid="0c592621-8030-49c8-af7b-5b5e06e0b2fc" mode="Opaque" x="20" y="10" width="762" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="9.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[TABLA DE CUENTA INDIVIDUAL DE LOS PARTICIPES]]></text>
 			<box>
 				<pen lineWidth="0.25"/>
 				<topPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
@@ -167,84 +200,84 @@ ORDER BY NOMBRE;]]></query>
 				<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="8226d1af-84a8-4cfa-82a4-71508c63aad4" x="64" y="23" width="50" height="22" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="8226d1af-84a8-4cfa-82a4-71508c63aad4" x="80" y="23" width="54" height="31" fontSize="6.0" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[CÉDULA]]></text>
 			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="f39e42ef-bfb9-4ab5-a5ce-0c19393dcbc0"/>
 			<box>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="18e1793b-c50c-44a0-8336-216bc5e90455" x="24" y="23" width="40" height="22" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="18e1793b-c50c-44a0-8336-216bc5e90455" x="50" y="23" width="30" height="31" fontSize="6.0" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[ROL]]></text>
 			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="7cbef621-1ed0-4f91-b7f3-1230ece76435"/>
 			<box>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="e934811a-ee56-4741-8ea5-d94d452d5e82" x="114" y="23" width="70" height="22" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="e934811a-ee56-4741-8ea5-d94d452d5e82" x="134" y="23" width="146" height="31" fontSize="6.0" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[NOMBRE]]></text>
 			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="c53aea3e-eb65-48cc-81e4-d4807a01e9bd"/>
 			<box>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="de570e97-0c9e-4824-a559-0f1f5ce32a17" x="184" y="23" width="70" height="22" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="de570e97-0c9e-4824-a559-0f1f5ce32a17" x="280" y="23" width="70" height="31" fontSize="6.0" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[ TOTAL CESANTIA PERSONAL]]></text>
 			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="fe83dde2-b261-4e81-a615-0f76ca354a01"/>
 			<box>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="84118100-0755-4124-9c92-2a229c71d8ca" x="0" y="23" width="24" height="22" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="84118100-0755-4124-9c92-2a229c71d8ca" x="20" y="23" width="30" height="31" fontSize="6.0" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[No°]]></text>
 			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="5e1148b9-66ad-4e1f-8fb7-52c2ccf06c14"/>
 			<box>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="9ed2dd04-07e0-45ef-abd0-afb92875f49f" x="254" y="23" width="68" height="22" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="9ed2dd04-07e0-45ef-abd0-afb92875f49f" x="350" y="23" width="66" height="31" fontSize="6.0" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[TOTAL JUBILACION PERSONAL]]></text>
 			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="7748785e-82d0-4028-b16c-2f1b93e9574e"/>
 			<box>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="ba5e6539-6454-498c-8f96-7edd819a0c24" x="322" y="23" width="72" height="22" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[TONSUPA CESANTIA RETIRO VOLUNTARIO]]></text>
+		<element kind="staticText" uuid="ba5e6539-6454-498c-8f96-7edd819a0c24" x="416" y="23" width="62" height="31" fontSize="6.0" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[TOTAL CESANTIA RETIRO VOLUNTARIO]]></text>
 			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="c260b199-8ddc-4b90-8ca2-d2de2baac953"/>
 			<box>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="c737f36e-eba4-45b0-b9a6-195a6ef66c89" x="394" y="23" width="80" height="22" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[TONTUSA JUBILACION RETIRO VOLUNTARIO]]></text>
+		<element kind="staticText" uuid="c737f36e-eba4-45b0-b9a6-195a6ef66c89" x="478" y="23" width="62" height="31" fontSize="6.0" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[TOTAL JUBILACION RETIRO VOLUNTARIO]]></text>
 			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="a4cfe201-f2c2-4ffe-9864-56d52ebe31fc"/>
 			<box>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="ece28b51-663a-45a2-97db-22b002659983" x="474" y="23" width="82" height="22" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="ece28b51-663a-45a2-97db-22b002659983" x="540" y="23" width="50" height="31" fontSize="6.0" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[TOTAL JUBILACION PATRONAL]]></text>
 			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="fafdec06-72dc-4d69-a6d2-d4f1862046f5"/>
 			<box>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="0d531655-e2dc-4e4d-8e9d-cf43cd55b6a3" x="556" y="23" width="80" height="22" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="0d531655-e2dc-4e4d-8e9d-cf43cd55b6a3" x="590" y="23" width="55" height="31" fontSize="6.0" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[TOTAL CESANTIA PATRONAL]]></text>
 			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="aa69c340-a623-48fd-bb36-4539bf52c067"/>
 			<box>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="5ac13ee1-9dc2-4d7c-911c-6ad18da3f555" x="636" y="23" width="82" height="22" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="5ac13ee1-9dc2-4d7c-911c-6ad18da3f555" x="645" y="23" width="70" height="31" fontSize="6.0" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[TOTAL PENSION COMPLEMENTARIA]]></text>
 			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="c06720fa-875d-4079-a4aa-93e4827804ab"/>
 			<box>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="391d5361-52c0-43b2-ace3-b5f11fe48374" x="718" y="23" width="82" height="22" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="391d5361-52c0-43b2-ace3-b5f11fe48374" x="715" y="23" width="67" height="31" fontSize="6.0" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[TOTAL CUENTAS]]></text>
 			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="0f1bd2d8-abfe-46e3-8dd6-5381fb8635fd"/>
 			<box>
@@ -254,93 +287,105 @@ ORDER BY NOMBRE;]]></query>
 	</columnHeader>
 	<detail>
 		<band height="18" splitType="Stretch">
-			<element kind="textField" uuid="bd42b8d1-b6bb-4b18-946d-c59375432ba6" x="0" y="0" width="24" height="18" fontSize="6.0" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="textField" uuid="bd42b8d1-b6bb-4b18-946d-c59375432ba6" x="20" y="0" width="30" height="18" fontSize="6.0" hTextAlign="Center" vTextAlign="Middle">
 				<expression><![CDATA[$F{NO}]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="5e1148b9-66ad-4e1f-8fb7-52c2ccf06c14"/>
 				<box>
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="283f8768-56b7-454c-8480-6d409579d93f" x="64" y="0" width="50" height="18" fontSize="6.0" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="textField" uuid="283f8768-56b7-454c-8480-6d409579d93f" x="80" y="0" width="54" height="18" fontSize="6.0" hTextAlign="Center" vTextAlign="Middle">
 				<expression><![CDATA[$F{CODIGO}]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="f39e42ef-bfb9-4ab5-a5ce-0c19393dcbc0"/>
 				<box>
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="6aecd402-4bf4-4b9d-9e1f-c1f4a667d4c2" x="24" y="0" width="40" height="18" fontSize="6.0" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="textField" uuid="6aecd402-4bf4-4b9d-9e1f-c1f4a667d4c2" x="50" y="0" width="30" height="18" fontSize="6.0" hTextAlign="Center" vTextAlign="Middle">
 				<expression><![CDATA[$F{ROL}]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="7cbef621-1ed0-4f91-b7f3-1230ece76435"/>
 				<box>
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="0bd57408-6bfa-4163-8792-3feaaca694c0" x="114" y="0" width="70" height="18" fontSize="6.0" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="textField" uuid="0bd57408-6bfa-4163-8792-3feaaca694c0" x="134" y="0" width="146" height="18" fontSize="6.0" hTextAlign="Left" vTextAlign="Middle">
 				<expression><![CDATA[$F{NOMBRE}]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="c53aea3e-eb65-48cc-81e4-d4807a01e9bd"/>
-				<box>
+				<box leftPadding="5">
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="f5866287-4443-4272-b375-864104f744a0" x="184" y="0" width="70" height="18" fontSize="6.0" hTextAlign="Center" vTextAlign="Middle">
-				<expression><![CDATA[$F{CESANTIA_PERSONAL}]]></expression>
-				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="fe83dde2-b261-4e81-a615-0f76ca354a01"/>
-				<box>
-					<pen lineWidth="0.25"/>
-				</box>
-			</element>
-			<element kind="textField" uuid="a6014bf6-5832-4e04-8782-08315d992844" x="254" y="0" width="68" height="18" fontSize="6.0" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="textField" uuid="a6014bf6-5832-4e04-8782-08315d992844" x="350" y="0" width="66" height="18" fontSize="6.0" hTextAlign="Right" vTextAlign="Middle">
 				<expression><![CDATA[$F{JUBILACION_PERSONAL}]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="7748785e-82d0-4028-b16c-2f1b93e9574e"/>
-				<box>
+				<box rightPadding="5">
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="22a7578b-096e-4a2f-ba9f-188f608b754d" x="322" y="0" width="72" height="18" fontSize="6.0" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="textField" uuid="22a7578b-096e-4a2f-ba9f-188f608b754d" x="416" y="0" width="62" height="18" fontSize="6.0" hTextAlign="Right" vTextAlign="Middle">
 				<expression><![CDATA[$F{CESANTIA_RETIRO_VOLUNTARIO}]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="c260b199-8ddc-4b90-8ca2-d2de2baac953"/>
-				<box>
+				<box rightPadding="5">
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="451aad77-872e-4da9-9b71-d2f1274e4234" x="394" y="0" width="80" height="18" fontSize="6.0" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="textField" uuid="451aad77-872e-4da9-9b71-d2f1274e4234" x="478" y="0" width="62" height="18" fontSize="6.0" hTextAlign="Right" vTextAlign="Middle">
 				<expression><![CDATA[$F{JUBILACION_RETIRO_VOLUNTARIO}]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="a4cfe201-f2c2-4ffe-9864-56d52ebe31fc"/>
-				<box>
+				<box rightPadding="5">
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="5c016645-d829-4855-9df1-99d9d7214378" x="474" y="0" width="82" height="18" fontSize="6.0" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="textField" uuid="5c016645-d829-4855-9df1-99d9d7214378" x="540" y="0" width="50" height="18" fontSize="6.0" hTextAlign="Right" vTextAlign="Middle">
 				<expression><![CDATA[$F{JUBILACION_PATRONAL}]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="fafdec06-72dc-4d69-a6d2-d4f1862046f5"/>
-				<box>
+				<box rightPadding="5">
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="91b07b5b-c312-4f49-96bf-b6f05c950bb3" x="556" y="0" width="80" height="18" fontSize="6.0" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="textField" uuid="91b07b5b-c312-4f49-96bf-b6f05c950bb3" x="590" y="0" width="55" height="18" fontSize="6.0" hTextAlign="Right" vTextAlign="Middle">
 				<expression><![CDATA[$F{CESANTIA_PATRONAL}]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="aa69c340-a623-48fd-bb36-4539bf52c067"/>
-				<box>
+				<box rightPadding="5">
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="5da1bd91-e347-4fff-91f0-c5461d068829" x="636" y="0" width="82" height="18" fontSize="6.0" hTextAlign="Center" vTextAlign="Middle">
-				<expression><![CDATA[$F{PENSION_COMPLEMENTARIA}]]></expression>
-				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="c06720fa-875d-4079-a4aa-93e4827804ab"/>
-				<box>
-					<pen lineWidth="0.25"/>
-				</box>
-			</element>
-			<element kind="textField" uuid="febb7ffd-adde-4dfe-9c24-186b2d07ebb9" x="718" y="0" width="82" height="18" fontSize="6.0" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="textField" uuid="febb7ffd-adde-4dfe-9c24-186b2d07ebb9" x="715" y="0" width="67" height="18" fontSize="6.0" hTextAlign="Right" vTextAlign="Middle">
 				<expression><![CDATA[$F{TOTAL_CUENTAS}]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="0f1bd2d8-abfe-46e3-8dd6-5381fb8635fd"/>
-				<box>
+				<box rightPadding="5">
+					<pen lineWidth="0.25"/>
+				</box>
+			</element>
+			<element kind="textField" uuid="f5866287-4443-4272-b375-864104f744a0" x="280" y="0" width="70" height="18" fontSize="6.0" hTextAlign="Right" vTextAlign="Middle">
+				<expression><![CDATA[$F{CESANTIA_PERSONAL}]]></expression>
+				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="fe83dde2-b261-4e81-a615-0f76ca354a01"/>
+				<box rightPadding="5">
+					<pen lineWidth="0.25"/>
+				</box>
+			</element>
+			<element kind="textField" uuid="5da1bd91-e347-4fff-91f0-c5461d068829" x="645" y="0" width="70" height="18" fontSize="6.0" hTextAlign="Right" vTextAlign="Middle">
+				<expression><![CDATA[$F{PENSION_COMPLEMENTARIA}]]></expression>
+				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="c06720fa-875d-4079-a4aa-93e4827804ab"/>
+				<box rightPadding="5">
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
 		</band>
 	</detail>
-	<columnFooter height="32" splitType="Stretch"/>
-	<pageFooter height="54" splitType="Stretch"/>
-	<summary height="42" splitType="Stretch"/>
+	<columnFooter height="20" splitType="Stretch"/>
+	<pageFooter height="40" splitType="Stretch"/>
+	<summary height="52" splitType="Stretch">
+		<element kind="staticText" uuid="5862b10c-a58c-4446-93f6-00e67a1dda8e" x="134" y="13" width="146" height="20" fontSize="6.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<text><![CDATA[TOTAL:]]></text>
+		</element>
+		<element kind="line" uuid="07d62170-b5f1-4142-8e05-4cc190800ef0" x="20" y="13" width="762" height="1"/>
+		<element kind="line" uuid="faba951f-64da-458f-9ad0-6f4e95adde84" x="20" y="33" width="762" height="1"/>
+		<element kind="textField" uuid="e6a8eeef-df1e-409d-bd74-049118bffe9a" x="280" y="13" width="70" height="20" fontSize="7.0" evaluationTime="Report" hTextAlign="Center" vTextAlign="Middle">
+			<expression><![CDATA[$V{suma_cp}]]></expression>
+		</element>
+		<element kind="textField" uuid="0cce931a-1196-4dcb-96da-8165aa042c34" x="350" y="14" width="66" height="19" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+			<expression><![CDATA[$V{suma_jp}]]></expression>
+		</element>
+	</summary>
 </jasperReport>
