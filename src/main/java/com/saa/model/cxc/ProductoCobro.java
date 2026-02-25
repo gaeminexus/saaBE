@@ -50,7 +50,7 @@ public class ProductoCobro implements Serializable {
     @Id
     @Basic
     @Column(name = "PRDCCDGO", precision = 0)
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_PRDCCDGO")
     private Long codigo;
 
     /**

@@ -9,7 +9,6 @@
 package com.saa.model.cxc;
 
 import java.io.Serializable;
-import java.util.List;
 
 import com.saa.model.cnt.PlanCuenta;
 import com.saa.model.scp.Empresa;
@@ -24,7 +23,6 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
-import jakarta.persistence.OneToMany;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
 
@@ -37,6 +35,7 @@ import jakarta.persistence.Table;
 @SuppressWarnings("serial")
 @Entity
 @Table(name = "GRPC", schema = "CBR")
+@SequenceGenerator(name = "SQ_GPCCCDGO", sequenceName = "CBR.SQ_GPCCCDGO", allocationSize = 1)
 @NamedQueries({
     @NamedQuery(name = "GrupoProductoCobroAll", query = "select e from GrupoProductoCobro e"),
     @NamedQuery(name = "GrupoProductoCobroId", query = "select e from GrupoProductoCobro e where e.codigo = :id")
@@ -46,11 +45,10 @@ public class GrupoProductoCobro implements Serializable {
     /**
      * Codigo de la entidad.
      */
+	@Basic
     @Id
-    @Basic
     @Column(name = "GRPCCDGO", precision = 0)
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @SequenceGenerator(name = "SQ_GRPCCDGO", sequenceName = "CBR.SQ_GRPCCDGO", allocationSize = 1)
+	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_GPCCCDGO")
     private Long codigo;
     
     /**
@@ -95,12 +93,7 @@ public class GrupoProductoCobro implements Serializable {
     @JoinColumn(name = "PJRQCDGO", referencedColumnName = "PJRQCDGO")
     private Empresa empresa;
     
-    /**
-     * Listado de productos que pertenecen a este grupo.
-     */
-    @OneToMany(mappedBy = "grupoProductoCobro")
-    private List<ProductoCobro> productoCobros;
-    
+
     // ============================================================
     // Getters y Setters
     // ============================================================
@@ -161,11 +154,4 @@ public class GrupoProductoCobro implements Serializable {
         this.empresa = empresa;
     }
     
-    public List<ProductoCobro> getProductoCobros() {
-        return productoCobros;
-    }
-    
-    public void setProductoCobros(List<ProductoCobro> productoCobros) {
-        this.productoCobros = productoCobros;
-    }
 }

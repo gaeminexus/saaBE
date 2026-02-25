@@ -544,7 +544,7 @@ public class DetalleAsientoServiceImpl implements DetalleAsientoService{
 
 	@Override
 	public DetalleAsiento saveSingle(DetalleAsiento detalleAsiento) throws Throwable {
-		System.out.println("saveSingle - AsientoService");
+		System.out.println("saveSingle - DetalleAsiento");
 		detalleAsiento = detalleAsientoDaoService.save(detalleAsiento, detalleAsiento.getCodigo());
 		return detalleAsiento;
 	}
