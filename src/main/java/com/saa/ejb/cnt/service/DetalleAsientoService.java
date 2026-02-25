@@ -49,6 +49,14 @@ public interface DetalleAsientoService extends EntityService<DetalleAsiento> {
 	 * @throws Throwable		: Excepcion
 	 */
 	 void generaDetalleReversion(Asiento asientoOriginal, Asiento asientoReversion) throws Throwable;
+	 
+	 /**
+	 * Genera el detalle de copia de asiento
+	 * @param asientoOriginal	: Asiento a copiar
+	 * @param asientoReversion	: Asiento Copia
+	 * @throws Throwable		: Excepcion
+	 */
+	 void generaDetalleCopia(Asiento asientoOriginal, Asiento asientoCopia) throws Throwable;
 
 	/**
 	 * Almacena el detalle de asiento contable y devuelve id

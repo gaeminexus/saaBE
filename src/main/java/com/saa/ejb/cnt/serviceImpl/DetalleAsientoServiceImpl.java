@@ -549,4 +549,25 @@ public class DetalleAsientoServiceImpl implements DetalleAsientoService{
 		return detalleAsiento;
 	}
 
+	@Override
+	public void generaDetalleCopia(Asiento asientoOriginal, Asiento asientoCopia) throws Throwable {
+		System.out.println("Ingresa al save de generaDetalleCopia con asiento original : " + asientoOriginal.getCodigo() + " y asiento de reversion: " + asientoCopia.getCodigo());
+		DetalleAsiento detalleCopia;
+		List<DetalleAsiento> detallesOriginales = detalleAsientoDaoService.selectByIdAsiento(asientoOriginal.getCodigo());
+		// GENERA DETALLE REVERSION		
+		for(DetalleAsiento detalle : detallesOriginales){
+			detalleCopia = new DetalleAsiento();
+			detalleCopia.setCodigo(null);
+			detalleCopia.setAsiento(asientoCopia);
+			detalleCopia.setPlanCuenta(detalle.getPlanCuenta());
+			detalleCopia.setDescripcion(detalle.getDescripcion());
+			detalleCopia.setValorDebe(detalle.getValorDebe());
+			detalleCopia.setValorHaber(detalle.getValorHaber());
+			detalleCopia.setNombreCuenta(detalle.getNombreCuenta());
+			detalleCopia.setNumeroCuenta(detalle.getNumeroCuenta());
+			detalleCopia.setCentroCosto(detalle.getCentroCosto());
+			detalleCopia = saveSingle(detalleCopia);				
+		}		
+	}
+
 }

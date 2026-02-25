@@ -133,6 +133,13 @@ public interface AsientoService extends EntityService<Asiento> {
 	 * @throws Throwable: Excepcion
 	 */
 	 Asiento reversionAsiento(Long idAsiento) throws Throwable;
+	 
+	 /**
+	 * Copia asiento 
+	 * @param idAsiento	: Id Asiento
+	 * @throws Throwable: Excepcion
+	 */
+	 Asiento copiaAsiento(Long idAsientoOriginal) throws Throwable;
 	
 	/**
 	 * Verifica si se puede Anular o Reversar Asiento

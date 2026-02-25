@@ -321,7 +321,6 @@ public class AsientoServiceImpl implements AsientoService {
 			asiento = asientoDaoService.save(asiento, asiento.getCodigo());
 		}
 		return asiento;
-		
 	}
 
 	/* (non-Javadoc)
@@ -600,6 +599,49 @@ public class AsientoServiceImpl implements AsientoService {
 			}
 		}
 		return permite;
+	}
+
+	@Override
+	public Asiento copiaAsiento(Long idAsientoOriginal) throws Throwable {
+		System.out.println("Ingresa al metodo reversionAsiento con Id Asiento: " + idAsientoOriginal);
+		// boolean permiteProceso = true;
+		Asiento asientoOriginal = asientoDaoService.selectById(idAsientoOriginal, NombreEntidadesContabilidad.ASIENTO);
+		
+		Long numeroAsientoCopia = null;
+		Asiento asientoCopia = new Asiento();		
+		asientoCopia.setCodigo(null);
+		asientoCopia.setEmpresa(asientoOriginal.getEmpresa());
+		asientoCopia.setTipoAsiento(asientoOriginal.getTipoAsiento());
+		asientoCopia.setFechaAsiento(LocalDate.now());
+		asientoCopia.setFechaIngreso((LocalDateTime.now()));
+		numeroAsientoCopia = siguienteNumeroAsiento(asientoCopia.getTipoAsiento().getCodigo(), asientoCopia.getEmpresa().getCodigo());
+		asientoCopia.setNumero(numeroAsientoCopia);
+		asientoCopia.setEstado(Long.valueOf(EstadoAsiento.ACTIVO));
+		asientoCopia.setObservaciones("ASIENTO DE REVERSION DE ASIENTO " + asientoOriginal.getNumero());
+		asientoCopia.setIdReversion(asientoOriginal.getCodigo());
+		Calendar calendario = Calendar.getInstance();
+		Long mes = Long.valueOf(calendario.get(Calendar.MONTH))+1;
+		Long anio = Long.valueOf(calendario.get(Calendar.YEAR));
+		asientoCopia.setNumeroMes(mes);
+		asientoCopia.setNumeroAnio(anio);
+		Periodo periodo = periodoService.recuperaByMesAnioEmpresa(asientoCopia.getEmpresa().getCodigo(), mes, anio);
+		asientoCopia.setPeriodo(periodo);
+		asientoCopia.setNombreUsuario(asientoOriginal.getNombreUsuario());
+		asientoCopia.setMoneda(asientoOriginal.getMoneda());
+		asientoCopia.setRubroModuloClienteP(asientoOriginal.getRubroModuloClienteP());
+		asientoCopia.setRubroModuloClienteH(asientoOriginal.getRubroModuloClienteH());
+		asientoCopia.setRubroModuloSistemaP(asientoOriginal.getRubroModuloSistemaP());
+		asientoCopia.setRubroModuloSistemaH(asientoOriginal.getRubroModuloSistemaH());
+		asientoCopia.setIdReversion(null);
+		asientoCopia.setEstado(Long.valueOf(EstadoAsiento.INCOMPLETO));
+		try{
+			asientoCopia = asientoDaoService.save(asientoCopia, asientoCopia.getCodigo());
+		}
+		catch (EJBException e) {
+			throw new Exception("Error al genera Cabecera Reversion: "+e.getCause());
+		}
+		detalleAsientoService.generaDetalleCopia(asientoOriginal, asientoCopia);
+		return asientoCopia;
 	}
 
 }
