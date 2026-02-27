@@ -25,7 +25,7 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 
-@Path("tempReportes")
+@Path("dtmt")
 public class TempReportesRest {
 
     @EJB
@@ -168,7 +168,7 @@ public class TempReportesRest {
      * @return RespuestaBalance con el idEjecucion y total de registros
      */
     @POST
-    @Path("/generarBalance")
+    @Path("generarBalance")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response generarBalance(ParametrosBalance parametros) {

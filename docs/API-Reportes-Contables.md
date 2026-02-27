@@ -3,7 +3,7 @@
 
 **Fecha:** 2026-02-27  
 **Versión:** 1.0  
-**Base URL:** `http://localhost:8080/saaBE/api/cnt`
+**Base URL:** `http://localhost:8080/saaBE/api`
 
 ---
 
@@ -19,7 +19,7 @@
 
 ## 🔷 Mayor Analítico - Generar Reporte
 
-**Base Path:** `/cnt/myan`
+**Base Path:** `/myan`
 
 ### Endpoint: Generar Reporte de Mayor Analítico
 
@@ -27,7 +27,7 @@ Genera un reporte detallado línea por línea de los movimientos contables (Libr
 
 **URL:**
 ```
-POST /cnt/myan/generarReporte
+POST /myan/generarReporte
 ```
 
 **Request Body:**
@@ -93,7 +93,7 @@ POST /cnt/myan/generarReporte
 
 ## 🔶 Balance Contable - Generar Balance
 
-**Base Path:** `/cnt/tempReportes`
+**Base Path:** `/dtmt`
 
 ### Endpoint: Generar Balance Contable
 
@@ -101,7 +101,7 @@ Genera un balance contable con saldos por cuenta para un periodo específico.
 
 **URL:**
 ```
-POST /cnt/tempReportes/generarBalance
+POST /dtmt/generarBalance
 ```
 
 **Request Body:**
@@ -234,7 +234,7 @@ import { environment } from '../../environments/environment';
 })
 export class MayorAnaliticoService {
   
-  private apiUrl = `${environment.apiUrl}/cnt/myan`;
+  private apiUrl = `${environment.apiUrl}/myan`;
   
   constructor(private http: HttpClient) {}
   
@@ -296,7 +296,7 @@ import { environment } from '../../environments/environment';
 })
 export class BalanceService {
   
-  private apiUrl = `${environment.apiUrl}/cnt/tempReportes`;
+  private apiUrl = `${environment.apiUrl}/dtmt`;
   
   constructor(private http: HttpClient) {}
   
@@ -511,12 +511,12 @@ Después de generar los reportes, puedes consultar los datos usando los endpoint
 
 ```typescript
 // Obtener cabeceras del reporte generado
-this.http.get(`${apiUrl}/cnt/myan/resultado/${secuencialReporte}`).subscribe(cabeceras => {
+this.http.get(`${apiUrl}/myan/resultado/${secuencialReporte}`).subscribe(cabeceras => {
   console.log('Cabeceras:', cabeceras);
 });
 
 // Obtener detalles de una cabecera específica
-this.http.get(`${apiUrl}/cnt/myan/detalle/${idMayorAnalitico}`).subscribe(detalles => {
+this.http.get(`${apiUrl}/myan/detalle/${idMayorAnalitico}`).subscribe(detalles => {
   console.log('Detalles:', detalles);
 });
 ```
@@ -525,7 +525,7 @@ this.http.get(`${apiUrl}/cnt/myan/detalle/${idMayorAnalitico}`).subscribe(detall
 
 ```typescript
 // Obtener datos del balance generado
-this.http.get(`${apiUrl}/cnt/tempReportes/resultado/${idEjecucion}`).subscribe(datos => {
+this.http.get(`${apiUrl}/dtmt/resultado/${idEjecucion}`).subscribe(datos => {
   console.log('Datos Balance:', datos);
 });
 ```

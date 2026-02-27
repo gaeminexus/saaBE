@@ -148,7 +148,7 @@ public class PlanCuentaDaoServiceImpl extends EntityDaoImpl<PlanCuenta>  impleme
 		System.out.println("Dao selectMovimientoByEmpresaCuentaFecha con empresa: " + empresa + ", fechaInicio: " + fechaInicio +
 				 ", fechaFin: " + fechaFin + ", cuentaInicio: " 
 				 + cuentaInicio + ", cuentaFin: " + cuentaFin);
-		Query query = em.createQuery(" select b " +
+		Query query = em.createQuery(" select c " +
 									 " from     PlanCuenta c " +
 									 " where    c.codigo IN " +
 									 "                      (select   distinct b.planCuenta.codigo " +
@@ -177,7 +177,7 @@ public class PlanCuentaDaoServiceImpl extends EntityDaoImpl<PlanCuenta>  impleme
 				  ", fechaFin: " + fechaFin + ", cuentaInicio: " 
 				  + cuentaInicio + ", cuentaFin: " + cuentaFin + ", centroInicio: " +
 				  centroInicio + ", centroFin: " + centroFin);
-		Query query = em.createQuery(" select b " +
+		Query query = em.createQuery(" select c " +
 									 " from     PlanCuenta c " +
 				 					 " where    c.codigo IN " +
 				 					 "                      (select   distinct b.planCuenta.codigo " +
@@ -204,7 +204,7 @@ public class PlanCuentaDaoServiceImpl extends EntityDaoImpl<PlanCuenta>  impleme
 	public List<PlanCuenta> selectHijosByNumeroCuenta(String numeroCuenta,
 			Long idEmpresa) throws Throwable {
 		System.out.println("Dao selectHijosByNumeroCuenta con numeroCuenta: " + numeroCuenta + ", idEmpresa: " + idEmpresa);
-		Query query = em.createQuery(" select b " +
+		Query query = em.createQuery(" select c " +
 									 " from     PlanCuenta c " +
 									 " where    c.empresa.codigo = :idEmpresa " +
 									 "			and   c.cuentaContable LIKE :numeroCuenta " +

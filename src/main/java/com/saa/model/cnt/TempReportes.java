@@ -14,7 +14,6 @@ import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
-import jakarta.persistence.Transient;
 
 @SuppressWarnings("serial")
 @Entity
@@ -38,57 +37,36 @@ public class TempReportes implements Serializable {
 	 * Secuencia de cada ejecución de Reporte.
 	 */
 	@Basic
-	@Column(name = "DTMTSECN")
+	@Column(name = "DTMTSCRP")
 	private Long secuencia;
 	
 	/**
 	 * Id de tabla PLNN.
 	 */
 	@ManyToOne
-	@JoinColumn(name = "DTMTPLNN", referencedColumnName = "PLNNCDGO")
+	@JoinColumn(name = "PLNNCDGO", referencedColumnName = "PLNNCDGO")
 	private PlanCuenta planCuenta;
-	
-	/**
-	 * Id de la mayorizacion MYRZCDGO.
-	 */
-	@ManyToOne
-	@JoinColumn(name = "DTMTMYRZ", referencedColumnName = "MYRZCDGO")
-	private Mayorizacion mayorizacion;
-	
-	/**
-	 * ID Centro de Costo asociado a la cuenta contable.
-	 */
-	@ManyToOne
-	@JoinColumn(name = "DTMTCCST", referencedColumnName = "CNCSCDGO")
-	private CentroCosto centroCosto;
 	
 	/**
 	 * Saldo del periodo anterior de la cuenta contable.
 	 */
 	@Basic
-	@Column(name = "DTMTSLDO")
+	@Column(name = "DTMTSLAN")
 	private Double saldoCuenta;
 	
 	/**
 	 * Valor del Debe del periodo actual.
 	 */
 	@Basic
-	@Column(name = "DTMTVLDB")
+	@Column(name = "DTMTDBEE")
 	private Double valorDebe;
 	
 	/**
 	 * Valor del Haber del periodo actual.
 	 */
 	@Basic
-	@Column(name = "DTMTVLHB")
+	@Column(name = "DTMTHBRR")
 	private Double valorHaber;
-	
-	/**
-	 * Saldo al final del período actual.
-	 */
-	@Basic
-	@Column(name = "DTMTSLFN")
-	private Double saldoFinal;
 	
 	/**
 	 * Valor actual de la cuenta.
@@ -97,50 +75,68 @@ public class TempReportes implements Serializable {
 	@Column(name = "DTMTSLAC")
 	private Double valorActual;
 	
-	// Campos transitorios (no persistidos en BD)
-	
 	/**
 	 * Cuenta contable (campo transitorio).
 	 */
-	@Transient
+	@Basic
+	@Column(name = "DTMTCTCN")
 	private String cuentaContable;
 	
 	/**
 	 * Código de padre de la cuenta contable (campo transitorio).
 	 */
-	@Transient
+	@Basic
+	@Column(name = "PLNNCDPD")
 	private Long codigoCuentaPadre;
 	
 	/**
 	 * Nombre de la cuenta contable (campo transitorio).
 	 */
-	@Transient
+	@Basic
+	@Column(name = "PLNNNMBR")
 	private String nombreCuenta;
 	
 	/**
 	 * Tipo de la cuenta contable. 1 = Acumulación, 2 = Movimiento (campo transitorio).
 	 */
-	@Transient
+	@Basic
+	@Column(name = "PLNNTPOO")
 	private Long tipo;
 	
 	/**
 	 * Nivel de la cuenta contable (campo transitorio).
 	 */
-	@Transient
+	@Basic
+	@Column(name = "PLNNNVLL")
 	private Long nivel;
+	
+	/**
+	 * Id de la mayorizacion MYRZCDGO.
+	 */
+	@ManyToOne
+	@JoinColumn(name = "MYRZCDGO", referencedColumnName = "MYRZCDGO")
+	private Mayorizacion mayorizacion;
+	
+	/**
+	 * ID Centro de Costo asociado a la cuenta contable.
+	 */
+	@ManyToOne
+	@JoinColumn(name = "DTMTCSCG", referencedColumnName = "CNCSCDGO")
+	private CentroCosto centroCosto;
 	
 	/**
 	 * Nombre del centro de costo (campo transitorio).
 	 */
-	@Transient
+	@Basic
+	@Column(name = "DTMTCSNB")
 	private String nombreCentroCosto;
 	
 	/**
 	 * Numero del centro de costo (campo transitorio).
 	 */
-	@Transient
+	@Basic
+	@Column(name = "DTMTCSNM")
 	private String numeroCentroCosto;	
-	
 	
 	
 	public Double getValorActual() {
@@ -251,21 +247,6 @@ public class TempReportes implements Serializable {
 		this.valorHaber = valorHaber;
 	}
 	
-	/**
-	 * Metodo que recupera los valores de la variable saldo final
-	 * @return saldoFinal.
-	 */
-	public Double getSaldoFinal() {
-		return saldoFinal;
-	}
-
-	/**
-	 * Metodo que asigna los valores de la variable saldo final
-	 * @param saldoFinal nuevo valor para saldoFinal. 
-	 */
-	public void setSaldoFinal(Double saldoFinal) {
-		this.saldoFinal = saldoFinal;
-	}
 	
 	/**
 	 * Metodo que recupera los valores de la variable valor cuenta contable

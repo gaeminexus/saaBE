@@ -27,7 +27,7 @@ public class TempReportesDaoServiceImpl extends EntityDaoImpl<TempReportes>  imp
 		System.out.println("Ingresa al metodo (campos) Ambito");
 		return new String[]{"codigo",
 							"secuencia",
-							"idPlanCuenta",
+							"planCuenta",
 							"saldoCuenta",
 							"valorDebe",
 							"valorHaber",
@@ -155,7 +155,7 @@ public class TempReportesDaoServiceImpl extends EntityDaoImpl<TempReportes>  imp
 		Query query = em.createQuery(" select b " +
 									 " from   TempReportes b" +
 				 					 " where  b.secuencia = :idEjecucion" +
-				 					 " 		  and   b.idPlanCuenta = :idCuenta");
+				 					 " 		  and   b.planCuenta.codigo = :idCuenta");
 		query.setParameter("idEjecucion", idEjecucion);
 		query.setParameter("idCuenta", idCuenta);	
 		try {
@@ -251,7 +251,7 @@ public class TempReportesDaoServiceImpl extends EntityDaoImpl<TempReportes>  imp
 		Query query = em.createQuery(" select b " +
 									 " from   TempReportes b" +
 				 					 " where  b.secuencia = :idEjecucion" +
-				 					 " 		  and   b.idPlanCuenta = :idCuenta" + 
+				 					 " 		  and   b.planCuenta.codigo = :idCuenta" + 
 				 					" 		  and   b.numeroCentroCosto = :numeroCentro");
 		query.setParameter("idEjecucion", idEjecucion);
 		query.setParameter("idCuenta", idCuenta);	

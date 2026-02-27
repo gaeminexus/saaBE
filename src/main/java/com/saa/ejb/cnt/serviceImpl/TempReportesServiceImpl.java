@@ -116,8 +116,9 @@ public class TempReportesServiceImpl implements TempReportesService {
 		//RECUPERA PLAN CUENTA
 		List<PlanCuenta> planCuentas = planCuentaService.selectByRangoEmpresaEstado(empresa, cuentaInicio, cuentaFin);
 		if(!planCuentas.isEmpty()){
-			for (PlanCuenta registros : planCuentas){	
-				tempReportes.setCodigo(0L);
+			for (PlanCuenta registros : planCuentas){
+				tempReportes = new TempReportes();
+				tempReportes.setCodigo(null);
 				tempReportes.setSecuencia(idEjecucion);
 				tempReportes.setPlanCuenta(registros);
 				tempReportes.setSaldoCuenta(0D);

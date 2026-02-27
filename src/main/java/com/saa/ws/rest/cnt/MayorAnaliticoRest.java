@@ -122,7 +122,7 @@ public class MayorAnaliticoRest {
      * @return RespuestaMayorAnalitico con el secuencialReporte
      */
     @POST
-    @Path("/generarReporte")
+    @Path("generarReporte")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response generarReporte(ParametrosMayorAnalitico parametros) {

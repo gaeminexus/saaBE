@@ -2,6 +2,7 @@ package com.saa.ws.rest.cnt;
 
 import java.util.List;
 
+import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.cnt.dao.ReporteContableDaoService;
 import com.saa.ejb.cnt.service.ReporteContableService;
 import com.saa.model.cnt.NombreEntidadesContabilidad;
@@ -140,16 +141,19 @@ public class ReporteContableRest {
      * @return an HTTP response with content of the updated or created resource.
      */
     @POST
-    @Path("criteria")
+    @Path("selectByCriteria")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response selectByCriteria(Long test) {
-        System.out.println("LLEGA AL SERVICIO DE SELECT BY CRITERIA: " + test);
+    public Response selectByCriteria(List<DatosBusqueda> registros) {
+    	System.out.println("selectByCriteria de reporteContable");
         try {
-            List<ReporteContable> lista = reporteContableDaoService.selectAll(NombreEntidadesContabilidad.REPORTE_CONTABLE);
-            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.OK)
+                    .entity(reporteContableService.selectByCriteria(registros))
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error en criteria: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
     }
 

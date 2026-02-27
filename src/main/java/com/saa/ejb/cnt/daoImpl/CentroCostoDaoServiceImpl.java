@@ -106,7 +106,8 @@ public class CentroCostoDaoServiceImpl extends EntityDaoImpl<CentroCosto>  imple
 				  ", fechaFin: " + fechaFin + ", cuentaInicio: " 
 				  + cuentaInicio + ", cuentaFin: " + cuentaFin + ", centroInicio: " +
 				  centroInicio + ", centroFin: " + centroFin);
-		Query query = em.createQuery(" from     CentroCosto c " +
+		Query query = em.createQuery(" select c " +
+				  					 " from     CentroCosto c " +
 				 					 " where    c.codigo IN " +
 				 					 "                      (select   distinct b.centroCosto.codigo " +
 									 " 						 from     DetalleAsiento b " +
@@ -153,7 +154,8 @@ public class CentroCostoDaoServiceImpl extends EntityDaoImpl<CentroCosto>  imple
 	public List<CentroCosto> selectByEmpresaSinRaiz(Long idEmpresa)
 			throws Throwable {
 		System.out.println("Ingresa al metodo selectByEmpresaSinRaiz de empresa: " + idEmpresa);
-		Query query = em.createQuery(" from   CentroCosto b " +
+		Query query = em.createQuery(" select b " +
+				 					 " from   CentroCosto b " +
 									 " where  b.empresa.codigo = :empresa" +
 									 "        and   nivel > :nivel ");
 		query.setParameter("empresa", idEmpresa);		
@@ -166,7 +168,8 @@ public class CentroCostoDaoServiceImpl extends EntityDaoImpl<CentroCosto>  imple
 	 */
 	public CentroCosto selectRaizByEmpresa(Long empresa) throws Throwable {
 		System.out.println("Ingresa al metodo selectRaizByEmpresa de empresa: " + empresa);
-		Query query = em.createQuery(" from   CentroCosto b " +
+		Query query = em.createQuery(" select b " +
+									 " from   CentroCosto b " +
 									 " where  b.empresa.codigo = :empresa" +
 									 "        and   b.nivel = :raiz ");
 		query.setParameter("empresa", empresa);		
@@ -196,7 +199,8 @@ public class CentroCostoDaoServiceImpl extends EntityDaoImpl<CentroCosto>  imple
 	@SuppressWarnings("unchecked")
 	public List<CentroCosto> selectByIdPadre(Long idPadre) throws Throwable {
 		System.out.println("Ingresa al metodo selectByIdPadre con idPadre: " + idPadre);
-		Query query = em.createQuery(" from   CentroCosto b " +
+		Query query = em.createQuery(" select b " +
+									 " from   CentroCosto b " +
 									 " where  b.idPadre = :idPadre");
 		query.setParameter("idPadre", idPadre);		
 
