@@ -62,9 +62,11 @@ public class TempReportesServiceImpl implements TempReportesService {
 	public void save(List<TempReportes> lista) throws Throwable {
 		System.out.println("Ingresa al metodo save de tempReportes service");
 		// BARRIDA COMPLETA DE LOS REGISTROS
-		for (TempReportes tempReportes: lista) {			
+		for (int i = 0; i < lista.size(); i++) {
+			TempReportes tempReportes = lista.get(i);
 			//INSERTA O ACTUALIZA REGISTRO
-			tempReportesDaoService.save(tempReportes, tempReportes.getCodigo());
+			tempReportes = tempReportesDaoService.save(tempReportes, tempReportes.getCodigo());
+			lista.set(i, tempReportes);
 		}
 	}
 
@@ -127,7 +129,7 @@ public class TempReportesServiceImpl implements TempReportesService {
 				tempReportes.setNombreCuenta(registros.getNombre());
 				tempReportes.setNivel(registros.getNivel());
 				tempReportes.setTipo(registros.getTipo());
-				tempReportesDaoService.save(tempReportes, tempReportes.getCodigo());
+				tempReportes = tempReportesDaoService.save(tempReportes, tempReportes.getCodigo());
 			}	
 		}else{
 			throw new IncomeException("NO EXISTE PLAN DE CUENTAS EN LA EMPRESA");
@@ -159,7 +161,7 @@ public class TempReportesServiceImpl implements TempReportesService {
 				registros.setValorDebe(valoresDebeHaber[0]);
 				registros.setValorHaber(valoresDebeHaber[1]);
 				registros.setValorActual(saldoAnterior + valoresDebeHaber[0] - valoresDebeHaber[1]);
-				tempReportesDaoService.save(registros, registros.getCodigo());
+				registros = tempReportesDaoService.save(registros, registros.getCodigo());
 			}	
 		}		
 	}
@@ -238,7 +240,7 @@ public class TempReportesServiceImpl implements TempReportesService {
 								acumulacion.setValorDebe(anteriorDebe + valorDebe);
 								acumulacion.setValorHaber(anteriorHaber + valorHaber);
 								acumulacion.setValorActual(saldoFinal);
-								tempReportesDaoService.save(acumulacion, acumulacion.getCodigo());
+								acumulacion = tempReportesDaoService.save(acumulacion, acumulacion.getCodigo());
 							}
 						}
 					}
@@ -378,7 +380,7 @@ public class TempReportesServiceImpl implements TempReportesService {
 						tempReportes.setCentroCosto(registroCentro);
 						tempReportes.setNombreCentroCosto(registroCentro.getNombre());
 						tempReportes.setNumeroCentroCosto(registroCentro.getNumero());
-						tempReportesDaoService.save(tempReportes, tempReportes.getCodigo());
+						tempReportes = tempReportesDaoService.save(tempReportes, tempReportes.getCodigo());
 					}					
 				}else{
 					throw new IncomeException("NO EXISTE PLAN DE CUENTAS EN LA EMPRESA");
@@ -417,7 +419,7 @@ public class TempReportesServiceImpl implements TempReportesService {
 				registros.setValorDebe(valoresDebeHaber[0]);
 				registros.setValorHaber(valoresDebeHaber[1]);
 				registros.setValorActual(saldoAnterior + valoresDebeHaber[0] - valoresDebeHaber[1]);
-				tempReportesDaoService.save(registros, registros.getCodigo());
+				registros = tempReportesDaoService.save(registros, registros.getCodigo());
 			}	
 		}		
 	}
@@ -508,7 +510,7 @@ public class TempReportesServiceImpl implements TempReportesService {
 										acumulacion.setValorDebe(anteriorDebe + valorDebe);
 										acumulacion.setValorHaber(anteriorHaber + valorHaber);
 										acumulacion.setValorActual(saldoFinal);
-										tempReportesDaoService.save(acumulacion, acumulacion.getCodigo());
+										acumulacion = tempReportesDaoService.save(acumulacion, acumulacion.getCodigo());
 									}
 								}
 							}
@@ -600,7 +602,7 @@ public class TempReportesServiceImpl implements TempReportesService {
 						tempReportes.setCentroCosto(registroCentro);
 						tempReportes.setNombreCentroCosto(registros.getNombre());
 						tempReportes.setNumeroCentroCosto(registros.getCuentaContable());
-						tempReportesDaoService.save(tempReportes, tempReportes.getCodigo());
+						tempReportes = tempReportesDaoService.save(tempReportes, tempReportes.getCodigo());
 					}					
 				}else{
 					throw new IncomeException("NO EXISTE CENTRO DE COSTO EN LA EMPRESA");
@@ -637,7 +639,7 @@ public class TempReportesServiceImpl implements TempReportesService {
 				registros.setValorDebe(valoresDebeHaber[0]);
 				registros.setValorHaber(valoresDebeHaber[1]);
 				registros.setValorActual(saldoAnterior + valoresDebeHaber[0] - valoresDebeHaber[1]);
-				tempReportesDaoService.save(registros, registros.getCodigo());
+				registros = tempReportesDaoService.save(registros, registros.getCodigo());
 			}	
 		}		
 	}

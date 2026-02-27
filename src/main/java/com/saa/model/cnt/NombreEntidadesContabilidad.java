@@ -33,6 +33,7 @@ public interface NombreEntidadesContabilidad {
     String TEMP_REPORTES = "TempReportes";
     String DESGLOSE_MAYORIZACION_CC = "DesgloseMayorizacionCC";
     String DETALLE_ASIENTO = "DetalleAsiento";
+    String SUBDETALLE_ASIENTO = "SubdetalleAsiento";
     String DETALLE_MAYORIZACION_CC = "DetalleMayorizacionCC";
     String DETALLE_MAYORIZACION = "DetalleMayorizacion";
     

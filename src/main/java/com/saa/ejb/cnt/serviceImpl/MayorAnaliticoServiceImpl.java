@@ -253,7 +253,7 @@ public class MayorAnaliticoServiceImpl implements MayorAnaliticoService {
 				cabecera.setSaldoAnterior(saldoAnteriorCuenta);
 				cabecera.setEmpresa(empresaService.selectById(empresa));
 				cabecera.setObservacion(observacionReporte);
-				mayorAnaliticoDaoService.save(cabecera, cabecera.getCodigo());
+				cabecera = mayorAnaliticoDaoService.save(cabecera, cabecera.getCodigo()); // ✅ Asigna el resultado para actualizar el ID
 			}					
 		}				
 	}
@@ -317,7 +317,7 @@ public class MayorAnaliticoServiceImpl implements MayorAnaliticoService {
 				cabecera.setSaldoAnterior(saldoAnteriorCuenta);
 				cabecera.setEmpresa(empresaService.selectById(empresa));
 				cabecera.setObservacion(observacionReporte);
-				mayorAnaliticoDaoService.save(cabecera, cabecera.getCodigo());
+				cabecera = mayorAnaliticoDaoService.save(cabecera, cabecera.getCodigo()); // ✅ Asigna el resultado para actualizar el ID
 			}					
 		}				
 	}

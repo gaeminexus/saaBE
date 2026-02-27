@@ -617,7 +617,7 @@ public class AsientoServiceImpl implements AsientoService {
 		numeroAsientoCopia = siguienteNumeroAsiento(asientoCopia.getTipoAsiento().getCodigo(), asientoCopia.getEmpresa().getCodigo());
 		asientoCopia.setNumero(numeroAsientoCopia);
 		asientoCopia.setEstado(Long.valueOf(EstadoAsiento.ACTIVO));
-		asientoCopia.setObservaciones("ASIENTO DE REVERSION DE ASIENTO " + asientoOriginal.getNumero());
+		asientoCopia.setObservaciones("COPIA: " + asientoOriginal.getNumero() + " - " + asientoOriginal.getObservaciones());
 		asientoCopia.setIdReversion(asientoOriginal.getCodigo());
 		Calendar calendario = Calendar.getInstance();
 		Long mes = Long.valueOf(calendario.get(Calendar.MONTH))+1;

@@ -7,6 +7,8 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.cnt.dao.TempReportesDaoService;
 import com.saa.ejb.cnt.service.TempReportesService;
 import com.saa.model.cnt.NombreEntidadesContabilidad;
+import com.saa.model.cnt.ParametrosBalance;
+import com.saa.model.cnt.RespuestaBalance;
 import com.saa.model.cnt.TempReportes;
 
 import jakarta.ejb.EJB;
@@ -155,6 +157,151 @@ public class TempReportesRest {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(e.getMessage())
                     .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * POST - Generar balance contable por rango de fechas
+     * Este endpoint genera los registros temporales del balance
+     * 
+     * @param parametros Parámetros para la generación del balance
+     * @return RespuestaBalance con el idEjecucion y total de registros
+     */
+    @POST
+    @Path("/generarBalance")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response generarBalance(ParametrosBalance parametros) {
+        System.out.println("LLEGA AL SERVICIO generarBalance - TEMP_REPORTES");
+        try {
+            // Validaciones
+            if (parametros.getFechaInicio() == null || parametros.getFechaFin() == null) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("Las fechas de inicio y fin son obligatorias")
+                    .type(MediaType.APPLICATION_JSON).build();
+            }
+            
+            if (parametros.getFechaInicio().isAfter(parametros.getFechaFin())) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("La fecha de inicio no puede ser mayor a la fecha fin")
+                    .type(MediaType.APPLICATION_JSON).build();
+            }
+            
+            if (parametros.getEmpresa() == null) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("El ID de empresa es obligatorio")
+                    .type(MediaType.APPLICATION_JSON).build();
+            }
+            
+            Long idEjecucion = null;
+            
+            // Determinar tipo de reporte según parámetros
+            if (parametros.getReporteDistribuido() != null && parametros.getReporteDistribuido()) {
+                // Reporte distribuido: plan de cuentas por centros de costo
+                idEjecucion = tempReportesService.reportePlanCentroRangoFecha(
+                    parametros.getFechaFin(),
+                    parametros.getFechaInicio(),
+                    parametros.getEmpresa(),
+                    parametros.getCodigoAlterno(),
+                    parametros.getAcumulacion() != null ? parametros.getAcumulacion() : 0
+                );
+            } else if (parametros.getIncluyeCentrosCosto() != null && parametros.getIncluyeCentrosCosto()) {
+                // Reporte con centros de costo
+                idEjecucion = tempReportesService.reporteCentroRangoFecha(
+                    parametros.getFechaFin(),
+                    parametros.getFechaInicio(),
+                    parametros.getEmpresa(),
+                    parametros.getCodigoAlterno(),
+                    parametros.getAcumulacion() != null ? parametros.getAcumulacion() : 0
+                );
+            } else {
+                // Reporte estándar
+                idEjecucion = tempReportesService.reporteRangoFecha(
+                    parametros.getFechaFin(),
+                    parametros.getFechaInicio(),
+                    parametros.getEmpresa(),
+                    parametros.getCodigoAlterno(),
+                    parametros.getAcumulacion() != null ? parametros.getAcumulacion() : 0
+                );
+            }
+            
+            // Eliminar registros con saldo cero si se solicita
+            if (parametros.getEliminarSaldosCero() != null && parametros.getEliminarSaldosCero()) {
+                tempReportesDaoService.deleteBySaldosCeroIdEjecucion(idEjecucion);
+            }
+            
+            // Obtener total de registros generados
+            List<TempReportes> registros = tempReportesDaoService.selectBySecuencia(idEjecucion);
+            
+            RespuestaBalance respuesta = new RespuestaBalance(
+                idEjecucion,
+                registros.size(),
+                "Balance generado exitosamente"
+            );
+            
+            return Response.status(Response.Status.CREATED)
+                .entity(respuesta)
+                .type(MediaType.APPLICATION_JSON).build();
+                
+        } catch (Throwable e) {
+            RespuestaBalance respuesta = new RespuestaBalance();
+            respuesta.setExitoso(false);
+            respuesta.setMensaje("Error al generar balance: " + e.getMessage());
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                .entity(respuesta)
+                .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * GET - Consultar resultado de un balance generado
+     * 
+     * @param idEjecucion ID de la ejecución del balance
+     * @return Lista de registros del balance
+     */
+    @GET
+    @Path("/resultado/{idEjecucion}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getResultado(@PathParam("idEjecucion") Long idEjecucion) {
+        System.out.println("LLEGA AL SERVICIO getResultado con idEjecucion: " + idEjecucion);
+        try {
+            List<TempReportes> registros = tempReportesDaoService.selectBySecuencia(idEjecucion);
+            
+            if (registros == null || registros.isEmpty()) {
+                return Response.status(Response.Status.NOT_FOUND)
+                    .entity("No se encontraron registros para la ejecución " + idEjecucion)
+                    .type(MediaType.APPLICATION_JSON).build();
+            }
+            
+            return Response.status(Response.Status.OK)
+                .entity(registros)
+                .type(MediaType.APPLICATION_JSON).build();
+                
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                .entity("Error al consultar resultado: " + e.getMessage())
+                .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * DELETE - Eliminar registros de una ejecución de balance
+     * 
+     * @param idEjecucion ID de la ejecución a eliminar
+     * @return Response sin contenido si es exitoso
+     */
+    @DELETE
+    @Path("/resultado/{idEjecucion}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response deleteResultado(@PathParam("idEjecucion") Long idEjecucion) {
+        System.out.println("LLEGA AL SERVICIO deleteResultado - TEMP_REPORTES con id: " + idEjecucion);
+        try {
+            tempReportesService.removeBySecuencia(idEjecucion);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                .entity("Error al eliminar resultado: " + e.getMessage())
+                .type(MediaType.APPLICATION_JSON).build();
         }
     }
 

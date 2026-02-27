@@ -8,10 +8,13 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 
 @SuppressWarnings("serial")
 @Entity
@@ -23,24 +26,13 @@ import jakarta.persistence.Table;
 })
 public class TempReportes implements Serializable {
 	
-	
-	/**
-	 * Secuencia de cada ejecución de Reporte.
-	 */
-	@Basic
-	@Column(name = "DTMTSLAC")
-	private Double valorActual;
-
 	/**
 	 * Id de la tabla.
 	 */
-	@Basic
 	@Id
 	@Column(name = "DTMTCDGO", precision = 0)
 	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_DTMTCDGO")
 	private Long codigo;
-	
-	
 	
 	/**
 	 * Secuencia de cada ejecución de Reporte.
@@ -52,10 +44,24 @@ public class TempReportes implements Serializable {
 	/**
 	 * Id de tabla PLNN.
 	 */
-	@Basic
-	@Column(name = "DTMTPLNN")
-	private PlanCuenta planCuenta;	
-
+	@ManyToOne
+	@JoinColumn(name = "DTMTPLNN", referencedColumnName = "PLNNCDGO")
+	private PlanCuenta planCuenta;
+	
+	/**
+	 * Id de la mayorizacion MYRZCDGO.
+	 */
+	@ManyToOne
+	@JoinColumn(name = "DTMTMYRZ", referencedColumnName = "MYRZCDGO")
+	private Mayorizacion mayorizacion;
+	
+	/**
+	 * ID Centro de Costo asociado a la cuenta contable.
+	 */
+	@ManyToOne
+	@JoinColumn(name = "DTMTCCST", referencedColumnName = "CNCSCDGO")
+	private CentroCosto centroCosto;
+	
 	/**
 	 * Saldo del periodo anterior de la cuenta contable.
 	 */
@@ -64,7 +70,7 @@ public class TempReportes implements Serializable {
 	private Double saldoCuenta;
 	
 	/**
-	 * Valor del Debe del periodo actual. 
+	 * Valor del Debe del periodo actual.
 	 */
 	@Basic
 	@Column(name = "DTMTVLDB")
@@ -83,50 +89,56 @@ public class TempReportes implements Serializable {
 	@Basic
 	@Column(name = "DTMTSLFN")
 	private Double saldoFinal;
-
+	
 	/**
-	 * Cuenta contable.
+	 * Valor actual de la cuenta.
 	 */
+	@Basic
+	@Column(name = "DTMTSLAC")
+	private Double valorActual;
+	
+	// Campos transitorios (no persistidos en BD)
+	
+	/**
+	 * Cuenta contable (campo transitorio).
+	 */
+	@Transient
 	private String cuentaContable;
 	
 	/**
-	 * Código de padre de la cuenta contable. 
+	 * Código de padre de la cuenta contable (campo transitorio).
 	 */
+	@Transient
 	private Long codigoCuentaPadre;
 	
 	/**
-	 * Nombre de la cuenta contable. nombreCuenta.
+	 * Nombre de la cuenta contable (campo transitorio).
 	 */
+	@Transient
 	private String nombreCuenta;
 	
 	/**
-	 * Tipo de la cuenta contable. 1 = Acumulación, 2 = Movimiento.
+	 * Tipo de la cuenta contable. 1 = Acumulación, 2 = Movimiento (campo transitorio).
 	 */
+	@Transient
 	private Long tipo;
 	
 	/**
-	 * Nivel de la cuenta contable. 
+	 * Nivel de la cuenta contable (campo transitorio).
 	 */
+	@Transient
 	private Long nivel;
 	
 	/**
-	 * Id de la mayorizacion MYRZCDGO.
+	 * Nombre del centro de costo (campo transitorio).
 	 */
-	private Mayorizacion mayorizacion;
-	
-	/**
-	 * ID Centro de Costo asociado a la cuenta contable.
-	 */
-	private CentroCosto centroCosto;
-	
-	/**
-	 * Nombre del centro de costo.
-	 */
+	@Transient
 	private String nombreCentroCosto;
 	
 	/**
-	 * Numero del centro de costo. 
+	 * Numero del centro de costo (campo transitorio).
 	 */
+	@Transient
 	private String numeroCentroCosto;	
 	
 	
