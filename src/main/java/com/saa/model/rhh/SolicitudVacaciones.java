@@ -84,6 +84,14 @@ public class SolicitudVacaciones implements Serializable {
     @Basic
     @Column(name = "SLCTOBSR")
     private String observacion;
+    
+    /**
+     * Fecha de Aprobacion.
+     */
+    @Basic
+    @Column(name = "SLCTFHAP", nullable = true)
+    private LocalDate fechaAprobacion;
+    
 
     /**
      * Fecha de registro.
@@ -167,6 +175,16 @@ public class SolicitudVacaciones implements Serializable {
         this.observacion = observacion;
     }
 
+    public LocalDate getFechaAprobacion() {
+        return fechaAprobacion;
+    }
+
+    public void setFechaAprobacion(LocalDate fechaAprobacion) {
+        this.fechaAprobacion = fechaAprobacion;
+    }
+
+
+    
     public LocalDate getFechaRegistro() {
         return fechaRegistro;
     }

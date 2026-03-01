@@ -27,13 +27,16 @@ public class SolicitudVacacionesDaoServiceImpl extends EntityDaoImpl<SolicitudVa
 	public String[] obtieneCampos() {
 		System.out.println("Ingresa al metodo (campos) SolicitudVacaciones");
 		return new String[]{"codigo",
-							"proposicionPagoXCuota",
-							"fechaAprobacion",
-							"nivelAprobacion",
-							"usuarioAprueba",
-							"nombreUsuarioAprueba",
+							"empleado",
+							"fechaDesde",
+							"fechaHasta",
+							"diasSolicitados",
 							"estado",
-							"observacion"};
+							"usuarioAprobacion",
+							"observacion",
+							"fechaAprobacion",
+							"fechaRegistro",
+							"usuarioRegistro"};
 	}
 	
 }
