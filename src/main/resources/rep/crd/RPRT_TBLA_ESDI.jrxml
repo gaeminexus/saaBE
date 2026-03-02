@@ -378,7 +378,7 @@ ORDER BY U.DTPRNMCT
 		<band height="32" splitType="Stretch"/>
 	</detail>
 	<columnFooter height="45" splitType="Stretch">
-		<element kind="staticText" uuid="e8c28367-2816-46a7-816f-7b5b02c080c1" x="210" y="10" width="60" height="15" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="e8c28367-2816-46a7-816f-7b5b02c080c1" x="260" y="0" width="60" height="15" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[TOTAL:]]></text>
 			<box rightPadding="8">
 				<pen lineWidth="0.25"/>
