@@ -155,12 +155,12 @@ ORDER BY U.DTPRNMCT
 			<expression><![CDATA["Página "+$V{PAGE_NUMBER}+" de"]]></expression>
 		</element>
 		<element kind="staticText" uuid="474120b5-5fe9-4901-91da-3e888804a84a" x="155" y="28" width="247" height="20" fontName="Tahoma" fontSize="12.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[ESTADO DE CUENTA INDIVIDUAL]]></text>
+			<text><![CDATA[PENSIÓN COMPLEMENTARIA]]></text>
 		</element>
 	</title>
 	<pageHeader height="12" splitType="Stretch"/>
-	<columnHeader height="200" splitType="Stretch">
-		<element kind="staticText" uuid="b57f2bfc-ea44-45c2-b538-5675d5020b0a" mode="Opaque" x="80" y="23" width="200" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+	<columnHeader height="170" splitType="Stretch">
+		<element kind="staticText" uuid="b57f2bfc-ea44-45c2-b538-5675d5020b0a" mode="Opaque" x="80" y="23" width="201" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[IDENTIFICACIÓN]]></text>
 			<box>
 				<pen lineWidth="0.25"/>
@@ -170,7 +170,7 @@ ORDER BY U.DTPRNMCT
 				<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="85f03830-5ea3-4261-9c08-e89ae5ba65e8" mode="Opaque" x="80" y="36" width="200" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="85f03830-5ea3-4261-9c08-e89ae5ba65e8" mode="Opaque" x="80" y="36" width="201" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[NOMBRE]]></text>
 			<box>
 				<pen lineWidth="0.25"/>
@@ -190,20 +190,20 @@ ORDER BY U.DTPRNMCT
 				<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
 			</box>
 		</element>
-		<element kind="textField" uuid="28056d41-e480-4180-9654-8593359cd85b" x="280" y="23" width="194" height="13" fontSize="8.0" hTextAlign="Center">
+		<element kind="textField" uuid="28056d41-e480-4180-9654-8593359cd85b" x="281" y="23" width="193" height="13" fontSize="8.0" hTextAlign="Center">
 			<expression><![CDATA[$F{IDENTIFICACION}]]></expression>
 			<box>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="textField" uuid="72626a0c-c3f1-4bc2-96d6-f920bf99de13" x="280" y="36" width="194" height="13" fontSize="8.0" hTextAlign="Center">
+		<element kind="textField" uuid="72626a0c-c3f1-4bc2-96d6-f920bf99de13" x="281" y="36" width="193" height="13" fontSize="8.0" hTextAlign="Center">
 			<expression><![CDATA[$F{NOMBRES}]]></expression>
 			<box>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
 		<element kind="staticText" uuid="91fdbafa-805a-4a10-99aa-a748c3d8b29b" mode="Opaque" x="80" y="49" width="201" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[ESTADO DEL PARTICIPE]]></text>
+			<text><![CDATA[ID CUENTA]]></text>
 			<box>
 				<pen lineWidth="0.25"/>
 				<topPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
@@ -213,7 +213,7 @@ ORDER BY U.DTPRNMCT
 			</box>
 		</element>
 		<element kind="staticText" uuid="818bfe87-e584-417e-881a-2a060bfd177c" mode="Opaque" x="80" y="62" width="201" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[TELÉFONO]]></text>
+			<text><![CDATA[TOTAL REGISTROS]]></text>
 			<box>
 				<pen lineWidth="0.25"/>
 				<topPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
@@ -235,47 +235,7 @@ ORDER BY U.DTPRNMCT
 			</box>
 		</element>
 		<element kind="staticText" uuid="8dac5be5-5fa1-45c6-a183-8940604f9417" mode="Opaque" x="80" y="75" width="201" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[CORREO]]></text>
-			<box>
-				<pen lineWidth="0.25"/>
-				<topPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
-				<leftPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
-				<bottomPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
-				<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
-			</box>
-		</element>
-		<element kind="staticText" uuid="c3b19bc1-9d37-4d76-b95e-c0d47fa99cfb" mode="Opaque" x="80" y="88" width="201" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[DIRECCIÓN]]></text>
-			<box>
-				<pen lineWidth="0.25"/>
-				<topPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
-				<leftPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
-				<bottomPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
-				<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
-			</box>
-		</element>
-		<element kind="staticText" uuid="935ef6b4-1b51-48e8-bf78-8b97a6f4f7a6" mode="Opaque" x="80" y="101" width="201" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[CARGO ACTUAL]]></text>
-			<box>
-				<pen lineWidth="0.25"/>
-				<topPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
-				<leftPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
-				<bottomPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
-				<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
-			</box>
-		</element>
-		<element kind="staticText" uuid="615e1f7d-f0f2-480c-9d5b-06dffdd3914b" mode="Opaque" x="80" y="114" width="201" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[INSTITUCIÓN]]></text>
-			<box>
-				<pen lineWidth="0.25"/>
-				<topPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
-				<leftPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
-				<bottomPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
-				<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
-			</box>
-		</element>
-		<element kind="staticText" uuid="291e9fea-a0aa-4d5b-9ae7-d1993fe6c544" mode="Opaque" x="80" y="127" width="201" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[ID PETRO]]></text>
+			<text><![CDATA[FECHA CREACIÓN DE CUENTA]]></text>
 			<box>
 				<pen lineWidth="0.25"/>
 				<topPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
@@ -290,32 +250,8 @@ ORDER BY U.DTPRNMCT
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="textField" uuid="7bd78dae-fcb4-42a0-b4cb-4c9139ae2d8b" x="281" y="88" width="193" height="13" fontSize="8.0" hTextAlign="Center">
-			<expression><![CDATA[$F{MONTO_CREDITO}]]></expression>
-			<box>
-				<pen lineWidth="0.25"/>
-			</box>
-		</element>
-		<element kind="textField" uuid="feadf596-aa9d-4f20-a2e9-c8f4688abd79" x="281" y="101" width="193" height="13" fontSize="8.0" hTextAlign="Center">
-			<expression><![CDATA[$F{LIQUIDO_RECIBIR}]]></expression>
-			<box>
-				<pen lineWidth="0.25"/>
-			</box>
-		</element>
-		<element kind="textField" uuid="2b8ccd55-a483-4967-aa14-e8147d263202" x="281" y="114" width="193" height="13" fontSize="8.0" hTextAlign="Center">
-			<expression><![CDATA[$F{PLAZO_MESES}]]></expression>
-			<box>
-				<pen lineWidth="0.25"/>
-			</box>
-		</element>
-		<element kind="textField" uuid="f743cbf8-ca77-4b32-9f60-38eb5093a4cf" x="281" y="127" width="193" height="13" fontSize="8.0" hTextAlign="Center">
-			<expression><![CDATA[$F{TASA_INTERES}]]></expression>
-			<box>
-				<pen lineWidth="0.25"/>
-			</box>
-		</element>
-		<element kind="staticText" uuid="0c592621-8030-49c8-af7b-5b5e06e0b2fc" mode="Opaque" x="0" y="160" width="555" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="9.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[DATOS DE LA CUENTA QUE SE EFECTUO EL DEPÓSITO]]></text>
+		<element kind="staticText" uuid="0c592621-8030-49c8-af7b-5b5e06e0b2fc" mode="Opaque" x="40" y="130" width="474" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="9.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[TABLA DE APORTES Y ACUMULACIÓN]]></text>
 			<box>
 				<pen lineWidth="0.25"/>
 				<topPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
@@ -324,67 +260,63 @@ ORDER BY U.DTPRNMCT
 				<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="2cab6396-fe5a-4c62-90c8-2be22a7fdb0b" x="0" y="173" width="40" height="27" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[TIPO CUENTA]]></text>
+		<element kind="staticText" uuid="2cab6396-fe5a-4c62-90c8-2be22a7fdb0b" x="40" y="143" width="44" height="27" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[No°]]></text>
 			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="73be61df-46f4-4fff-99e3-4d910a2dbe36"/>
 			<box>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="5e34068a-33b9-44c1-a73a-a7611d73bcf6" x="40" y="173" width="60" height="27" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[ID CUENTA]]></text>
+		<element kind="staticText" uuid="5e34068a-33b9-44c1-a73a-a7611d73bcf6" x="84" y="143" width="67" height="27" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[FECHA]]></text>
 			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="1efe2930-9b62-435a-be72-f5d442008b3f"/>
 			<box>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="2c5f055f-6b58-4f4d-81c4-f28df59350cc" x="100" y="173" width="50" height="27" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[SALDO CUENTA]]></text>
+		<element kind="staticText" uuid="2c5f055f-6b58-4f4d-81c4-f28df59350cc" x="151" y="143" width="170" height="27" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[DETALLE]]></text>
 			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="9a95a64e-8d9c-4d7f-83dd-2a9338854f63"/>
 			<box>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="067e7964-4647-43d0-b8d2-6cf2f3d68349" x="150" y="173" width="60" height="27" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[ESTADO]]></text>
+		<element kind="staticText" uuid="067e7964-4647-43d0-b8d2-6cf2f3d68349" x="321" y="143" width="68" height="27" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[CREDITO]]></text>
 			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="88b90731-8435-48ee-afd8-4ebd33a876b9"/>
 			<box>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="d15d14b1-8bd2-45dd-930d-df3c38fa3cdb" x="270" y="173" width="50" height="27" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[FECHA LIQUIDA]]></text>
+		<element kind="staticText" uuid="d15d14b1-8bd2-45dd-930d-df3c38fa3cdb" x="449" y="143" width="65" height="27" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[SALDO]]></text>
 			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="03406852-4932-4051-9b11-32babb7e313e"/>
 			<box>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="b81af720-fe0c-469e-83f0-8f59d1762139" x="210" y="173" width="60" height="27" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[FECHA CREACIÓN	 CUENTA]]></text>
+		<element kind="staticText" uuid="b81af720-fe0c-469e-83f0-8f59d1762139" x="389" y="143" width="60" height="27" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[DEBITO]]></text>
 			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="2597655d-08f1-4e64-a52d-436f62f8eaa8"/>
 			<box>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="d894b928-8f45-49c8-a4f0-1d31202a1099" x="474" y="173" width="80" height="27" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[FECHA ÚLTIMO MOVIMIENTO]]></text>
-			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="bd0cce9f-2f17-4384-b1d3-2f1bb1f67fd1"/>
+		<element kind="staticText" uuid="eec4320c-6198-4cc3-9fc0-8dbededb8b19" mode="Opaque" x="80" y="100" width="394" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[MOVIMIENTOS REALIZADOS EN LA PENSIÓN COMPLEMENTARIA]]></text>
 			<box>
 				<pen lineWidth="0.25"/>
+				<topPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+				<leftPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+				<bottomPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+				<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
 			</box>
 		</element>
 	</columnHeader>
 	<detail>
 		<band height="32" splitType="Stretch"/>
 	</detail>
-	<columnFooter height="45" splitType="Stretch">
-		<element kind="staticText" uuid="e8c28367-2816-46a7-816f-7b5b02c080c1" x="210" y="10" width="60" height="15" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[TOTAL:]]></text>
-			<box rightPadding="8">
-				<pen lineWidth="0.25"/>
-			</box>
-		</element>
-	</columnFooter>
+	<columnFooter height="45" splitType="Stretch"/>
 	<pageFooter height="54" splitType="Stretch"/>
 	<summary height="42" splitType="Stretch"/>
 </jasperReport>
