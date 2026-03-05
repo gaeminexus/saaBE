@@ -188,4 +188,29 @@ public class PrestamoRest {
                     .build();
         }
     }
+    
+    /**
+     * Genera la tabla de amortización para un préstamo.
+     * 
+     * @param id Identificador del préstamo
+     * @return Response con el préstamo actualizado
+     */
+    @POST
+    @Path("/generarTablaAmortizacion/{id}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response generarTablaAmortizacion(@PathParam("id") Long id) {
+        System.out.println("GENERAR TABLA DE AMORTIZACIÓN - Préstamo ID: " + id);
+        try {
+            Prestamo prestamo = prestamoService.generarTablaAmortizacion(id);
+            return Response.status(Response.Status.OK)
+                    .entity(prestamo)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al generar tabla de amortización: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
+    }
 }

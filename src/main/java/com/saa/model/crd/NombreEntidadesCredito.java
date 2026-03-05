@@ -66,7 +66,7 @@ public interface NombreEntidadesCredito {
 	String APORTE_ASOPREP = "AporteAsoprep";
 	String TRANSACCIONES_ASOPREP = "TransaccionesAsoprep";
 	String BASE_INICIAL_PARTICIPES = "BaseInicialParticipes";
-	
+	String ESTADO_CUOTA_PRESTAMO = "EstadoCuotaPrestamo";
+	String ORDEN_AFECTACION_VALOR_PRESTAMO = "OrdenAfectacionValorPrestamo";
 
 }
-
