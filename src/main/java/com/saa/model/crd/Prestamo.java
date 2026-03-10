@@ -274,6 +274,21 @@ public class Prestamo implements Serializable {
     @Column(name = "PRSTFRTT")
     private Long firmadoTitular;
 
+    /** Valor asegurado del préstamo */
+    @Basic
+    @Column(name = "PRSTVLAS")
+    private Double valorAsegurado;
+
+    /** Tasa de seguro de incendio del préstamo */
+    @Basic
+    @Column(name = "PRSTTSIN")
+    private Double tasaSeguroIncendio;
+
+    /** Prima de seguro de incendio del préstamo */
+    @Basic
+    @Column(name = "PRSTPRIN")
+    private Double primaSeguroIncendio;
+
     // ============================================================
     // Getters y Setters
     // ============================================================
@@ -458,6 +473,15 @@ public class Prestamo implements Serializable {
 
     public Long getFirmadoTitular() { return firmadoTitular; }
     public void setFirmadoTitular(Long firmadoTitular) { this.firmadoTitular = firmadoTitular; }
+
+    public Double getValorAsegurado() { return valorAsegurado; }
+    public void setValorAsegurado(Double valorAsegurado) { this.valorAsegurado = valorAsegurado; }
+
+    public Double getTasaSeguroIncendio() { return tasaSeguroIncendio; }
+    public void setTasaSeguroIncendio(Double tasaSeguroIncendio) { this.tasaSeguroIncendio = tasaSeguroIncendio; }
+
+    public Double getPrimaSeguroIncendio() { return primaSeguroIncendio; }
+    public void setPrimaSeguroIncendio(Double primaSeguroIncendio) { this.primaSeguroIncendio = primaSeguroIncendio; }
 
 }
 

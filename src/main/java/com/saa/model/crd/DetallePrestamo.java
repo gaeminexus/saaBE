@@ -214,6 +214,16 @@ public class DetallePrestamo implements Serializable {
     @Column(name = "DTPRTTCS")
     private Double totalConSeguro;
 
+    /** Valor del seguro de incendio en el detalle del préstamo */
+    @Basic
+    @Column(name = "DTPRVLSI")
+    private Double valorSeguroIncendio;
+
+    /** Saldo Inicial Capital de la cuota */
+    @Basic
+    @Column(name = "DTPRSICP")
+    private Double saldoInicialCapital;
+
     // ============================================================
     // Getters y Setters
     // ============================================================
@@ -512,6 +522,22 @@ public class DetallePrestamo implements Serializable {
 
     public void setTotalConSeguro(Double totalConSeguro) {
         this.totalConSeguro = totalConSeguro;
+    }
+
+    public Double getValorSeguroIncendio() {
+        return valorSeguroIncendio;
+    }
+
+    public void setValorSeguroIncendio(Double valorSeguroIncendio) {
+        this.valorSeguroIncendio = valorSeguroIncendio;
+    }
+
+    public Double getSaldoInicialCapital() {
+        return saldoInicialCapital;
+    }
+
+    public void setSaldoInicialCapital(Double saldoInicialCapital) {
+        this.saldoInicialCapital = saldoInicialCapital;
     }
 }
 
