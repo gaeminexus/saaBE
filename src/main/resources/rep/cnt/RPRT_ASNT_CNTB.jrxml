@@ -222,16 +222,19 @@ ORDER BY DT.DTASHBRR, DT.DTASCNTA]]></query>
 				<element kind="textField" uuid="c8530445-11b2-4899-b3f1-ee5a76d53bdf" x="475" y="25" width="79" height="15" fontName="Tahoma" fontSize="8.0" pattern="dd/MM/yyyy" blankWhenNull="true">
 					<expression><![CDATA[$F{ASNTFCHA}]]></expression>
 				</element>
-				<element kind="staticText" uuid="158b4150-d3c5-4a7c-b982-6a427afb4470" x="400" y="41" width="43" height="15" fontName="Tahoma" fontSize="8.0" bold="true">
+				<element kind="staticText" uuid="158b4150-d3c5-4a7c-b982-6a427afb4470" x="400" y="41" width="43" height="13" fontName="Tahoma" fontSize="8.0" bold="true">
 					<text><![CDATA[USUARIO:]]></text>
+					<property name="com.jaspersoft.studio.unit.y" value="pixel"/>
+					<property name="com.jaspersoft.studio.unit.height" value="px"/>
 				</element>
-				<element kind="textField" uuid="6720d562-cbbe-4e61-8b52-8a27d9782e83" x="475" y="41" width="79" height="15" fontName="Tahoma" fontSize="8.0" blankWhenNull="true">
+				<element kind="textField" uuid="6720d562-cbbe-4e61-8b52-8a27d9782e83" x="475" y="41" width="79" height="13" fontName="Tahoma" fontSize="8.0" blankWhenNull="true">
 					<expression><![CDATA[$F{ASNTUSRO}]]></expression>
+					<property name="com.jaspersoft.studio.unit.height" value="px"/>
 				</element>
 				<element kind="staticText" uuid="b0d36ca5-71c7-4f84-929d-f4a6801eb328" x="22" y="56" width="76" height="15" fontName="Tahoma" fontSize="8.0" bold="true">
 					<text><![CDATA[OBSERVACIONES:]]></text>
 				</element>
-				<element kind="textField" uuid="576c88a7-35b7-4257-8fd5-8e4e1cc9c52b" x="98" y="56" width="282" height="24" fontName="Tahoma" fontSize="8.0" blankWhenNull="true">
+				<element kind="textField" uuid="576c88a7-35b7-4257-8fd5-8e4e1cc9c52b" x="98" y="56" width="456" height="44" fontName="Tahoma" fontSize="7.0" blankWhenNull="true">
 					<expression><![CDATA[$F{OBSERVACION}]]></expression>
 				</element>
 				<element kind="textField" uuid="a8669c04-8a0f-459f-836e-3fe8fff3d9b0" x="79" y="26" width="100" height="15" fontName="Tahoma" fontSize="8.0" blankWhenNull="true" vTextAlign="Top">

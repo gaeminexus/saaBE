@@ -77,7 +77,7 @@ public class Asiento implements Serializable {
 	 * observaciones de asiento contable.
 	 */
 	@Basic
-	@Column(name = "ASNTOBSR", length = 200)
+	@Column(name = "ASNTOBSR", length = 2000)
 	private String observaciones;
 	
 	/**

@@ -607,15 +607,15 @@ public class AsientoServiceImpl implements AsientoService {
 		// boolean permiteProceso = true;
 		Asiento asientoOriginal = asientoDaoService.selectById(idAsientoOriginal, NombreEntidadesContabilidad.ASIENTO);
 		
-		Long numeroAsientoCopia = null;
+		// Long numeroAsientoCopia = null;
 		Asiento asientoCopia = new Asiento();		
 		asientoCopia.setCodigo(null);
 		asientoCopia.setEmpresa(asientoOriginal.getEmpresa());
-		asientoCopia.setTipoAsiento(asientoOriginal.getTipoAsiento());
-		asientoCopia.setFechaAsiento(LocalDate.now());
+		asientoCopia.setTipoAsiento(null);
+		asientoCopia.setFechaAsiento(null);
 		asientoCopia.setFechaIngreso((LocalDateTime.now()));
-		numeroAsientoCopia = siguienteNumeroAsiento(asientoCopia.getTipoAsiento().getCodigo(), asientoCopia.getEmpresa().getCodigo());
-		asientoCopia.setNumero(numeroAsientoCopia);
+		//  numeroAsientoCopia = siguienteNumeroAsiento(asientoCopia.getTipoAsiento().getCodigo(), asientoCopia.getEmpresa().getCodigo());
+		asientoCopia.setNumero(null);
 		asientoCopia.setEstado(Long.valueOf(EstadoAsiento.ACTIVO));
 		asientoCopia.setObservaciones("COPIA: " + asientoOriginal.getNumero() + " - " + asientoOriginal.getObservaciones());
 		asientoCopia.setIdReversion(asientoOriginal.getCodigo());

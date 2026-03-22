@@ -268,7 +268,7 @@ public class Prestamo implements Serializable {
 
     @Basic
     @Column(name = "PRSTIDST")
-    private Long estado;
+    private Long idEstado;
 
     @Basic
     @Column(name = "PRSTFRTT")
@@ -468,8 +468,8 @@ public class Prestamo implements Serializable {
     public Long getMesesACobrar() { return mesesACobrar; }
     public void setMesesACobrar(Long mesesACobrar) { this.mesesACobrar = mesesACobrar; }
 
-    public Long getEstado() { return estado; }
-    public void setEstado(Long estado) { this.estado = estado; }
+    public Long getIdEstado() { return idEstado; }
+    public void setIdEstado(Long idEstado) { this.idEstado = idEstado; }
 
     public Long getFirmadoTitular() { return firmadoTitular; }
     public void setFirmadoTitular(Long firmadoTitular) { this.firmadoTitular = firmadoTitular; }
