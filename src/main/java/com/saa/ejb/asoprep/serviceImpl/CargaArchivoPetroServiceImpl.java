@@ -50,7 +50,29 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     private ParticipeXCargaArchivoService participeXCargaArchivoService;
     
     @EJB
+    private com.saa.ejb.crd.dao.ParticipeXCargaArchivoDaoService participeXCargaArchivoDaoService;
+    
+    @EJB
     private EntidadDaoService entidadDaoService;
+    
+    @EJB
+    private com.saa.ejb.crd.dao.ProductoDaoService productoDaoService;
+    
+    @EJB
+    private com.saa.ejb.crd.dao.PrestamoDaoService prestamoDaoService;
+    
+    @EJB
+    private com.saa.ejb.crd.dao.DetallePrestamoDaoService detallePrestamoDaoService;
+    
+    @EJB
+    private com.saa.ejb.crd.service.NovedadParticipeCargaService novedadParticipeCargaService;
+    
+    private static final double TOLERANCIA = 1.0; // Tolerancia de $1 para redondeos
+    
+    // Códigos de producto Petro que NO se validan como préstamos
+    private static final String CODIGO_PRODUCTO_APORTES = "AH";
+    private static final String CODIGO_PRODUCTO_HS = "HS";
+    private static final String CODIGO_PRODUCTO_PH = "PH"; // El seguro de PH viene en HS
     
     /**
      * Método principal que procesa archivos Petro
@@ -128,8 +150,6 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
             uploadPath.append("/").append(cargaArchivo.getMesAfectacion());
         }
         
-        System.out.println("Cargando archivo en ruta: " + uploadPath.toString());
-        
         return fileService.uploadFileToPath(archivoInputStream, fileName, uploadPath.toString());
     }
 
@@ -137,12 +157,6 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
      * Almacena el registro de CargaArchivo
      */
     private CargaArchivo almacenarCargaArchivo(CargaArchivo cargaArchivo) throws Throwable {
-        System.out.println("Guardando CargaArchivo: " + cargaArchivo.getNombre());
-        
-        System.out.println("Zona horaria por defecto: " + ZoneId.systemDefault());
-        System.out.println("Fecha/Hora sistema: " + LocalDateTime.now());
-        System.out.println("Fecha/Hora con zona: " + ZonedDateTime.now());
-        System.out.println("Offset UTC: " + ZonedDateTime.now().getOffset());
         cargaArchivo.setFechaCarga(LocalDateTime.now());
         
         // Validar que los campos obligatorios vengan del frontend
@@ -153,10 +167,6 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
         if (cargaArchivo.getUsuarioCarga() == null) {
             throw new RuntimeException("El campo 'usuarioCarga' es obligatorio y debe ser enviado desde el frontend");
         }
-        
-        // Log de los datos recibidos
-        System.out.println("Filial recibida: " + cargaArchivo.getFilial().getCodigo() + " - " + cargaArchivo.getFilial().getNombre());
-        System.out.println("Usuario recibido: " + cargaArchivo.getUsuarioCarga().getCodigo());
         
         return cargaArchivoService.saveSingle(cargaArchivo);
     }
@@ -210,18 +220,65 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 							participe.setNovedadesCarga(Long.valueOf(ASPNovedadesCargaArchivo.OK));
 						}
 					}
-					// validacion financiera
-					if (participe.getCapitalNoDescontado() > 0 || participe.getInteresNoDescontado() > 0 || 
-						participe.getDesgravamenNoDescontado() > 0) {
-						if (participe.getTotalDescontado() == 0) {
-							participe.setNovedadesFinancieras(Long.valueOf(ASPNovedadesCargaArchivo.SIN_DESCUENTOS));
-						} else {
-							participe.setNovedadesFinancieras(Long.valueOf(ASPNovedadesCargaArchivo.DESCUENTOS_INCOMPLETOS));
-						}
-					} else {
-						
+					
+					// ==========================================
+				// VALIDACIÓN 8: VALORES_CERO
+				// Detectar cuando todos los valores financieros son cero
+				// ==========================================
+				if (participe.getNovedadesCarga() != null && participe.getNovedadesCarga() == ASPNovedadesCargaArchivo.OK) {
+					if (validarValoresCero(participe)) {
+						participe.setNovedadesCarga(Long.valueOf(ASPNovedadesCargaArchivo.VALORES_CERO));
 					}
-					participe = participeXCargaArchivoService.saveSingle(participe);
+				}
+					
+				// ==========================================
+				// VALIDACIÓN FINANCIERA
+				// IMPORTANTE: Solo para PRÉSTAMOS, NO para AH (aportes) ni HS
+				// ==========================================
+				boolean esProductoEspecial = CODIGO_PRODUCTO_APORTES.equalsIgnoreCase(codigoProducto) ||
+				                             CODIGO_PRODUCTO_HS.equalsIgnoreCase(codigoProducto);
+				
+			if (!esProductoEspecial) {
+				// Solo validar novedades financieras para PRÉSTAMOS
+				if (participe.getCapitalNoDescontado() > 0 || participe.getInteresNoDescontado() > 0 || 
+					participe.getDesgravamenNoDescontado() > 0) {
+					if (participe.getTotalDescontado() == 0) {
+						participe.setNovedadesFinancieras(Long.valueOf(ASPNovedadesCargaArchivo.SIN_DESCUENTOS));
+					} else {
+						participe.setNovedadesFinancieras(Long.valueOf(ASPNovedadesCargaArchivo.DESCUENTOS_INCOMPLETOS));
+					}
+				}
+			}
+					
+				// ==========================================
+				// GUARDAR REGISTRO (INSERT) - Asigna el ID
+				// ==========================================
+				participe = participeXCargaArchivoService.saveSingle(participe);
+				
+			// ==========================================
+			// VALIDACIONES DE FASE 2 (NOVEDADES 9-15) 
+			// Se ejecutan DESPUÉS de guardar para no afectar la transacción
+			// IMPORTANTE: Solo para PRÉSTAMOS, NO para AH (aportes) ni HS
+			// ==========================================
+			if (participe.getNovedadesCarga() != null && participe.getNovedadesCarga() == ASPNovedadesCargaArchivo.OK) {
+				try {
+					// Solo validar novedades de FASE 2 para préstamos, NO para productos especiales
+					if (!esProductoEspecial) {
+						validarNovedadesFase2(participe, codigoProducto, cargaArchivo);
+					}
+							
+							// Las novedades ahora se guardan en la tabla hija NovedadParticipeCarga
+							// No es necesario actualizar el campo novedadesCarga del partícipe
+							
+						} catch (Throwable e) {
+							// Si falla la validación de FASE 2, no marcar toda la transacción para rollback
+							// Solo registrar el error y continuar
+							System.err.println("  ❌ Error en validaciones FASE 2 para partícipe " + participe.getCodigoPetro() + ": " + e.getMessage());
+							e.printStackTrace();
+							// El registro ya está guardado con estado OK
+							// El error se detectará nuevamente en FASE 2
+						}
+					}
             	}
 			}
         }
@@ -603,5 +660,453 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		}
 		return participe;
 	}
+	
+	/**
+	 * Registra una novedad en la tabla hija NovedadParticipeCarga
+	 * Permite que un partícipe tenga múltiples novedades
+	 * 
+	 * @param participe El partícipe relacionado
+	 * @param tipoNovedad Tipo de novedad (código del rubro)
+	 * @param descripcion Descripción de la novedad
+	 * @param codigoProducto Código del producto relacionado (opcional)
+	 * @param codigoPrestamo Código del préstamo relacionado (opcional)
+	 * @param montoEsperado Monto esperado del sistema (opcional)
+	 * @param montoRecibido Monto recibido del archivo (opcional)
+	 */
+	private void registrarNovedad(ParticipeXCargaArchivo participe, int tipoNovedad, String descripcion, 
+								  Long codigoProducto, Long codigoPrestamo, Double montoEsperado, Double montoRecibido) {
+		try {
+			if (participe == null || participe.getCodigo() == null) {
+				return;
+			}
+			
+			ParticipeXCargaArchivo participeRef = new ParticipeXCargaArchivo();
+			participeRef.setCodigo(participe.getCodigo());
+			
+			com.saa.model.crd.NovedadParticipeCarga novedad = new com.saa.model.crd.NovedadParticipeCarga();
+			novedad.setParticipeXCargaArchivo(participeRef);
+			novedad.setTipoNovedad(Long.valueOf(tipoNovedad));
+			novedad.setDescripcion(descripcion);
+			novedad.setCodigoProducto(codigoProducto);
+			novedad.setCodigoPrestamo(codigoPrestamo);
+			novedad.setMontoEsperado(montoEsperado);
+			novedad.setMontoRecibido(montoRecibido);
+			
+			if (montoEsperado != null && montoRecibido != null) {
+				// Diferencia CON SIGNO: 
+				// Negativa = Falta dinero (recibido < esperado)
+				// Positiva = Sobra dinero (recibido > esperado)
+				novedad.setMontoDiferencia(montoRecibido - montoEsperado);
+			}
+			
+			// Llenar código de carga archivo desde el detalle del partícipe
+			if (participe.getDetalleCargaArchivo() != null && 
+			    participe.getDetalleCargaArchivo().getCargaArchivo() != null) {
+				novedad.setCodigoCargaArchivo(participe.getDetalleCargaArchivo().getCargaArchivo().getCodigo());
+			}
+			
+			// Llenar idAsoprep del préstamo si está disponible
+			if (codigoPrestamo != null) {
+				try {
+					com.saa.model.crd.Prestamo prestamo = prestamoDaoService.selectById(codigoPrestamo, "Prestamo");
+					if (prestamo != null && prestamo.getIdAsoprep() != null) {
+						novedad.setIdAsoprepPrestamo(prestamo.getIdAsoprep());
+					}
+				} catch (Throwable e) {
+					// Si falla, continuar sin el idAsoprep
+				}
+			}
+			
+			novedad.setEstado(1L);
+			novedadParticipeCargaService.saveSingle(novedad);
+			
+		} catch (Throwable e) {
+			System.err.println("Error al registrar novedad: " + descripcion);
+			e.printStackTrace();
+		}
+	}
+	
+	/**
+	 * Valida si todos los valores financieros del partícipe son cero (Novedad 8)
+	 * 
+	 * @param participe El registro del partícipe a validar
+	 * @return true si todos los valores financieros son cero, false en caso contrario
+	 */
+	private boolean validarValoresCero(ParticipeXCargaArchivo participe) {
+		// Verificar que todos los valores financieros principales sean cero
+		boolean saldoActualCero = (participe.getSaldoActual() == null || participe.getSaldoActual() == 0.0);
+		boolean montoDescontarCero = (participe.getMontoDescontar() == null || participe.getMontoDescontar() == 0.0);
+		boolean capitalDescontadoCero = (participe.getCapitalDescontado() == null || participe.getCapitalDescontado() == 0.0);
+		boolean interesDescontadoCero = (participe.getInteresDescontado() == null || participe.getInteresDescontado() == 0.0);
+		boolean seguroDescontadoCero = (participe.getSeguroDescontado() == null || participe.getSeguroDescontado() == 0.0);
+		boolean totalDescontadoCero = (participe.getTotalDescontado() == null || participe.getTotalDescontado() == 0.0);
+		boolean capitalNoDescontadoCero = (participe.getCapitalNoDescontado() == null || participe.getCapitalNoDescontado() == 0.0);
+		boolean interesNoDescontadoCero = (participe.getInteresNoDescontado() == null || participe.getInteresNoDescontado() == 0.0);
+		boolean desgravamenNoDescontadoCero = (participe.getDesgravamenNoDescontado() == null || participe.getDesgravamenNoDescontado() == 0.0);
+		
+		// Si TODOS los valores financieros son cero, retornar true
+		return saldoActualCero && 
+		       montoDescontarCero && 
+		       capitalDescontadoCero && 
+		       interesDescontadoCero && 
+		       seguroDescontadoCero && 
+		       totalDescontadoCero && 
+		       capitalNoDescontadoCero && 
+		       interesNoDescontadoCero && 
+		       desgravamenNoDescontadoCero;
+	}
+	
+	/**
+	 * Valida que el desglose de una cuota coincida con los valores del archivo
+	 * @param cuota La cuota a validar
+	 * @param participe El registro del archivo con los valores esperados
+	 * @return true si el desglose coincide, false en caso contrario
+	 */
+	private boolean validarDesgloseCuota(com.saa.model.crd.DetallePrestamo cuota, ParticipeXCargaArchivo participe) {
+		double capitalCuota = nullSafe(cuota.getCapital());
+		double interesCuota = nullSafe(cuota.getInteres());
+		double desgravamenCuota = nullSafe(cuota.getDesgravamen());
+		
+		double capitalArchivo = nullSafe(participe.getCapitalDescontado());
+		double interesArchivo = nullSafe(participe.getInteresDescontado());
+		double desgravamenArchivo = nullSafe(participe.getSeguroDescontado());
+		
+		boolean capitalCoincide = Math.abs(capitalCuota - capitalArchivo) <= TOLERANCIA;
+		boolean interesCoincide = Math.abs(interesCuota - interesArchivo) <= TOLERANCIA;
+		boolean desgravamenCoincide = Math.abs(desgravamenCuota - desgravamenArchivo) <= TOLERANCIA;
+		
+		return capitalCoincide && interesCoincide && desgravamenCoincide;
+	}
+	
+	/**
+	 * Valida las novedades de FASE 2 (novedades 9-15) durante la carga del archivo
+	 * Estas validaciones se ejecutan ANTES del procesamiento para detectar problemas tempranamente
+	 * 
+	 * @param participe El registro del partícipe a validar
+	 * @param codigoProducto Código del producto del archivo
+	 * @param cargaArchivo Información del archivo de carga (mes/año)
+	 */
+	private void validarNovedadesFase2(ParticipeXCargaArchivo participe, String codigoProducto, CargaArchivo cargaArchivo) {
+		try {
+			// VALIDACIÓN 9: PRODUCTO_NO_MAPEADO
+			List<com.saa.model.crd.Producto> productos = null;
+			try {
+				productos = productoDaoService.selectAllByCodigoPetro(codigoProducto);
+			} catch (Throwable e) {
+				System.err.println("Error al buscar productos: " + e.getMessage());
+			}
+			
+			if (productos == null || productos.isEmpty()) {
+				registrarNovedad(participe, ASPNovedadesCargaArchivo.PRODUCTO_NO_MAPEADO, 
+					"No se encontró producto con código Petro: " + codigoProducto, null, null, null, null);
+				return;
+			}
+			
+			// VALIDACIÓN 10: PRESTAMO_NO_ENCONTRADO
+			Long rolPetroLong = participe.getCodigoPetro();
+			if (rolPetroLong == null) {
+				registrarNovedad(participe, ASPNovedadesCargaArchivo.PRESTAMO_NO_ENCONTRADO,
+					"El partícipe no tiene código Petro válido", null, null, null, null);
+				return;
+			}
+			
+			// Buscar la entidad por código Petro
+			List<com.saa.model.crd.Entidad> entidades = null;
+			try {
+				entidades = entidadDaoService.selectByCodigoPetro(rolPetroLong);
+			} catch (Throwable e) {
+				System.err.println("Error al buscar entidad: " + e.getMessage());
+			}
+			
+			if (entidades == null || entidades.isEmpty()) {
+				registrarNovedad(participe, ASPNovedadesCargaArchivo.PRESTAMO_NO_ENCONTRADO,
+					"No se encontró entidad con código Petro: " + rolPetroLong, null, null, null, null);
+				return;
+			}
+			
+			com.saa.model.crd.Entidad entidad = entidades.get(0);
+			
+			// Buscar préstamos usando IDs numéricos
+			List<com.saa.model.crd.Prestamo> prestamos = new ArrayList<>();
+			
+			for (com.saa.model.crd.Producto producto : productos) {
+				try {
+					List<com.saa.model.crd.Prestamo> prestamosDelProducto = 
+						prestamoDaoService.selectByEntidadYProductoActivosById(
+							entidad.getCodigo(),
+							producto.getCodigo()
+						);
+						
+					if (prestamosDelProducto != null && !prestamosDelProducto.isEmpty()) {
+						prestamos.addAll(prestamosDelProducto);
+					}
+				} catch (Throwable e) {
+					System.err.println("Error al buscar préstamos del producto " + producto.getCodigo() + ": " + e.getMessage());
+				}
+			}
+				
+			if (prestamos.isEmpty()) {
+				Long codigoProductoDB = (productos != null && !productos.isEmpty()) ? productos.get(0).getCodigo() : null;
+				registrarNovedad(participe, ASPNovedadesCargaArchivo.PRESTAMO_NO_ENCONTRADO,
+					"No se encontró ningún préstamo activo para el código Petro: " + codigoProducto,
+					codigoProductoDB, null, null, null);
+				return;
+			}
+			
+		// VALIDACIÓN 12: CUOTA_NO_ENCONTRADA / CUOTA_FECHA_DIFERENTE
+		// IMPORTANTE: Si el código es PH, el seguro viene en un registro separado con código HS
+		// Debemos sumar PH + HS antes de comparar
+		double montoArchivo = nullSafe(participe.getTotalDescontado());
+		
+		// Caso especial para PH: buscar el registro HS correspondiente
+		if (CODIGO_PRODUCTO_PH.equalsIgnoreCase(codigoProducto)) {
+			try {
+				ParticipeXCargaArchivo participeHS = participeXCargaArchivoDaoService.selectByCodigoPetroYProductoEnCarga(
+					participe.getCodigoPetro(),
+					CODIGO_PRODUCTO_HS,
+					cargaArchivo.getCodigo()
+				);
+				
+				if (participeHS != null) {
+					// Sumar el monto del seguro (HS) al monto del préstamo (PH)
+					double montoHS = nullSafe(participeHS.getTotalDescontado());
+					montoArchivo += montoHS;
+				}
+			} catch (Throwable e) {
+				System.err.println("Error al buscar registro HS para PH: " + e.getMessage());
+			}
+		}
+		
+		List<com.saa.model.crd.DetallePrestamo> cuotasEncontradas = new ArrayList<>();
+		boolean algunaCuotaConFechaDiferente = false;
+		boolean necesitaSumarMultiplesCuotas = false;
+		
+		// VALIDACIÓN ESPECIAL: Si el monto descontado es 0, significa que NO se realizó el pago
+		if (montoArchivo == 0.0 || Math.abs(montoArchivo) < 0.01) {
+			// Buscar si existe una cuota pendiente para este partícipe
+			boolean cuotaEncontrada = false;
+			for (com.saa.model.crd.Prestamo prestamo : prestamos) {
+				try {
+					List<com.saa.model.crd.DetallePrestamo> cuotasDelMes = detallePrestamoDaoService.selectByPrestamoYMesAnio(
+						prestamo.getCodigo(),
+						cargaArchivo.getMesAfectacion().intValue(),
+						cargaArchivo.getAnioAfectacion().intValue()
+					);
+					
+					if (cuotasDelMes != null && !cuotasDelMes.isEmpty()) {
+						for (com.saa.model.crd.DetallePrestamo cuota : cuotasDelMes) {
+							Long estadoCuota = cuota.getEstado();
+							if (estadoCuota != null && 
+								estadoCuota != com.saa.rubros.EstadoCuotaPrestamo.PAGADA && 
+								estadoCuota != com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA) {
+								// Encontramos una cuota pendiente pero no se realizó el pago
+								cuotaEncontrada = true;
+								registrarNovedad(participe, ASPNovedadesCargaArchivo.SIN_DESCUENTOS,
+									"No se realizó el pago de la cuota #" + cuota.getNumeroCuota() + ". La cuota pasará a mora",
+									prestamo.getProducto().getCodigo(),
+									prestamo.getCodigo(),
+									nullSafe(cuota.getTotal()),
+									0.0);
+								return;
+							}
+						}
+					}
+				} catch (Throwable e) {
+					System.err.println("Error al buscar cuota sin pago: " + e.getMessage());
+				}
+			}
+			
+			// Si no se encontró cuota específica, registrar novedad genérica
+			if (!cuotaEncontrada) {
+				Long codigoProductoDB = (!prestamos.isEmpty()) ? prestamos.get(0).getProducto().getCodigo() : null;
+				Long codigoPrestamoDB = (!prestamos.isEmpty()) ? prestamos.get(0).getCodigo() : null;
+				registrarNovedad(participe, ASPNovedadesCargaArchivo.SIN_DESCUENTOS,
+					"No se realizó ningún descuento para este partícipe. Las cuotas pendientes pasarán a mora",
+					codigoProductoDB,
+					codigoPrestamoDB,
+					null,
+					0.0);
+				return;
+			}
+		}
+		
+		// PASO 1: Buscar UNA cuota que coincida EXACTAMENTE
+		for (com.saa.model.crd.Prestamo prestamo : prestamos) {
+			com.saa.model.crd.DetallePrestamo cuotaDelPrestamo = null;
+			boolean cuotaConFechaDiferente = false;
+			
+			// Buscar cuota del mes/año del archivo en este préstamo
+			List<com.saa.model.crd.DetallePrestamo> cuotasDelMes = null;
+			try {
+				cuotasDelMes = detallePrestamoDaoService.selectByPrestamoYMesAnio(
+					prestamo.getCodigo(),
+					cargaArchivo.getMesAfectacion().intValue(),
+					cargaArchivo.getAnioAfectacion().intValue()
+				);
+			} catch (Throwable e) {
+				System.err.println("Error al buscar cuota del mes: " + e.getMessage());
+			}
+			
+			// Filtrar cuotas que NO estén PAGADAS o CANCELADAS_ANTICIPADA
+			if (cuotasDelMes != null && !cuotasDelMes.isEmpty()) {
+				for (com.saa.model.crd.DetallePrestamo cuotaTemp : cuotasDelMes) {
+					Long estadoCuota = cuotaTemp.getEstado();
+					if (estadoCuota != null && 
+						estadoCuota != com.saa.rubros.EstadoCuotaPrestamo.PAGADA && 
+						estadoCuota != com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA) {
+						cuotaDelPrestamo = cuotaTemp;
+						break;
+					}
+				}
+			}
+				
+		// Si no se encontró cuota del mes, buscar la MÍNIMA cuota pendiente
+		if (cuotaDelPrestamo == null) {
+			Long estadoPrestamo = prestamo.getIdEstado();
+			boolean prestamoEnEstadoValido = (estadoPrestamo != null && (
+				estadoPrestamo == com.saa.rubros.EstadoPrestamo.GENERADO ||
+				estadoPrestamo == com.saa.rubros.EstadoPrestamo.VIGENTE ||
+				estadoPrestamo == com.saa.rubros.EstadoPrestamo.DE_PLAZO_VENCIDO ||
+				estadoPrestamo == com.saa.rubros.EstadoPrestamo.EN_MORA
+			));
+				
+			if (prestamoEnEstadoValido) {
+				List<com.saa.model.crd.DetallePrestamo> todasLasCuotas = null;
+				try {
+					todasLasCuotas = detallePrestamoDaoService.selectByPrestamo(prestamo.getCodigo());
+				} catch (Throwable e) {
+					System.err.println("Error al buscar todas las cuotas: " + e.getMessage());
+				}
+				
+				if (todasLasCuotas != null && !todasLasCuotas.isEmpty()) {
+					com.saa.model.crd.DetallePrestamo cuotaMinima = null;
+					
+					for (com.saa.model.crd.DetallePrestamo cuotaTemp : todasLasCuotas) {
+						Long estadoCuota = cuotaTemp.getEstado();
+						
+						if (estadoCuota != null && 
+							estadoCuota != com.saa.rubros.EstadoCuotaPrestamo.PAGADA && 
+							estadoCuota != com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA) {
+							
+							if (cuotaMinima == null || cuotaTemp.getNumeroCuota() < cuotaMinima.getNumeroCuota()) {
+								cuotaMinima = cuotaTemp;
+							}
+						}
+					}
+					
+					if (cuotaMinima != null) {
+						cuotaDelPrestamo = cuotaMinima;
+						cuotaConFechaDiferente = true;
+						algunaCuotaConFechaDiferente = true;
+					}
+				}
+			}
+		}
+				
+		// Si se encontró una cuota, validar si coincide
+		if (cuotaDelPrestamo != null) {
+			double montoCuota = nullSafe(cuotaDelPrestamo.getTotal());
+			double diferencia = Math.abs(montoCuota - montoArchivo);
+			
+			// Verificar si está dentro de la tolerancia
+			if (diferencia <= TOLERANCIA) {
+				cuotasEncontradas.clear();
+				cuotasEncontradas.add(cuotaDelPrestamo);
+				
+				// Si la diferencia es mayor a 0 pero menor a $1, registrar novedad especial
+				if (diferencia > 0.01 && diferencia <= TOLERANCIA) {
+					double montoCuotaEncontrada = nullSafe(cuotaDelPrestamo.getTotal());
+					String descripcion = String.format("Diferencia menor a $1 - Esperado: $%.2f, Archivo: $%.2f, Diferencia: $%.2f",
+						montoCuotaEncontrada, montoArchivo, diferencia);
+					registrarNovedad(participe, ASPNovedadesCargaArchivo.DIFERENCIA_MENOR_UN_DOLAR,
+						descripcion,
+						cuotaDelPrestamo.getPrestamo().getProducto().getCodigo(), 
+						cuotaDelPrestamo.getPrestamo().getCodigo(), 
+						montoCuotaEncontrada, montoArchivo);
+					return;
+				}
+				
+				// Si tiene fecha diferente pero diferencia es 0, registrar esa novedad
+				if (cuotaConFechaDiferente) {
+					double montoCuotaEncontrada = nullSafe(cuotaDelPrestamo.getTotal());
+					registrarNovedad(participe, ASPNovedadesCargaArchivo.CUOTA_FECHA_DIFERENTE,
+						"Cuota #" + cuotaDelPrestamo.getNumeroCuota() + " encontrada con fecha diferente al archivo",
+						cuotaDelPrestamo.getPrestamo().getProducto().getCodigo(), 
+						cuotaDelPrestamo.getPrestamo().getCodigo(), 
+						montoCuotaEncontrada, montoArchivo);
+				}
+				return;
+			}
+			
+			// No coincide exactamente, agregar a la lista para sumar después
+			cuotasEncontradas.add(cuotaDelPrestamo);
+		}
+	}
+			
+	// PASO 2: Si no hubo coincidencia exacta y hay múltiples cuotas, SUMAR
+	if (cuotasEncontradas.isEmpty()) {
+		participe.setNovedadesCarga(Long.valueOf(ASPNovedadesCargaArchivo.CUOTA_NO_ENCONTRADA));
+		return;
+	}
+	
+	if (cuotasEncontradas.size() > 1) {
+		necesitaSumarMultiplesCuotas = true;
+	}
+	
+	// PASO 3: Validar suma de cuotas vs archivo
+	double montoEsperadoTotal = 0.0;
+	double capitalEsperadoTotal = 0.0;
+	double interesEsperadoTotal = 0.0;
+	double desgravamenEsperadoTotal = 0.0;
+	
+	for (com.saa.model.crd.DetallePrestamo cuota : cuotasEncontradas) {
+		double capitalCuota = nullSafe(cuota.getCapital());
+		double interesCuota = nullSafe(cuota.getInteres());
+		double desgravamenCuota = nullSafe(cuota.getDesgravamen());
+		double montoCuota = nullSafe(cuota.getTotal());
+		
+		capitalEsperadoTotal += capitalCuota;
+		interesEsperadoTotal += interesCuota;
+		desgravamenEsperadoTotal += desgravamenCuota;
+		montoEsperadoTotal += montoCuota;
+	}
+	
+	// Comparar el monto total con tolerancia
+	double diferenciaTotal = Math.abs(montoEsperadoTotal - montoArchivo);
+	if (diferenciaTotal > TOLERANCIA) {
+		String descripcion = String.format("Monto inconsistente - Esperado: $%.2f, Archivo: $%.2f, Diferencia: $%.2f",
+			montoEsperadoTotal, montoArchivo, diferenciaTotal);
+		Long codigoProductoDB = (!cuotasEncontradas.isEmpty()) ? cuotasEncontradas.get(0).getPrestamo().getProducto().getCodigo() : null;
+		Long codigoPrestamoDB = (!cuotasEncontradas.isEmpty()) ? cuotasEncontradas.get(0).getPrestamo().getCodigo() : null;
+		registrarNovedad(participe, ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE,
+			descripcion, codigoProductoDB, codigoPrestamoDB, montoEsperadoTotal, montoArchivo);
+		return;
+	}
+	
+	// Si la diferencia es mayor a 0 pero menor o igual a $1, registrar novedad especial
+	if (diferenciaTotal > 0.01 && diferenciaTotal <= TOLERANCIA) {
+		String descripcion = String.format("Diferencia menor a $1 - Esperado: $%.2f, Archivo: $%.2f, Diferencia: $%.2f",
+			montoEsperadoTotal, montoArchivo, diferenciaTotal);
+		Long codigoProductoDB = (!cuotasEncontradas.isEmpty()) ? cuotasEncontradas.get(0).getPrestamo().getProducto().getCodigo() : null;
+		Long codigoPrestamoDB = (!cuotasEncontradas.isEmpty()) ? cuotasEncontradas.get(0).getPrestamo().getCodigo() : null;
+		registrarNovedad(participe, ASPNovedadesCargaArchivo.DIFERENCIA_MENOR_UN_DOLAR,
+			descripcion, codigoProductoDB, codigoPrestamoDB, montoEsperadoTotal, montoArchivo);
+		return;
+	}
+	
+	// Si alguna cuota tenía fecha diferente, marcar con CUOTA_FECHA_DIFERENTE
+	if (algunaCuotaConFechaDiferente) {
+		Long codigoProductoDB = (!cuotasEncontradas.isEmpty()) ? cuotasEncontradas.get(0).getPrestamo().getProducto().getCodigo() : null;
+		Long codigoPrestamoDB = (!cuotasEncontradas.isEmpty()) ? cuotasEncontradas.get(0).getPrestamo().getCodigo() : null;
+		registrarNovedad(participe, ASPNovedadesCargaArchivo.CUOTA_FECHA_DIFERENTE,
+			"Al menos una cuota encontrada tiene fecha diferente al mes/año del archivo",
+			codigoProductoDB, codigoPrestamoDB, montoEsperadoTotal, montoArchivo);
+		return;
+	}
+		
+	} catch (Exception e) {
+		System.err.println("Error en validación FASE 2: " + e.getMessage());
+	}
+}
    
 }

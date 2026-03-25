@@ -7,6 +7,7 @@ import java.util.List;
 import com.saa.basico.ejb.FileService;
 import com.saa.ejb.asoprep.service.CargaArchivoPetroService;
 import com.saa.ejb.crd.service.EstadoCivilService;
+import com.saa.ejb.crd.service.ProcesoCargaPetroService;
 import com.saa.model.crd.CargaArchivo;
 import com.saa.model.crd.DetalleCargaArchivo;
 import com.saa.model.crd.ParticipeXCargaArchivo;
@@ -42,6 +43,9 @@ public class AsoprepGenerales {
 	
 	@EJB
     private CargaArchivoPetroService cargaArchivoPetroService;
+	
+	@EJB
+    private ProcesoCargaPetroService procesoCargaPetroService;
 	
 	@GET
     @Path("/actualizaCodigoPetroEntidad/{codigoPetro}/{idParticipeXCarga}/{idEntidad}") 
@@ -258,6 +262,82 @@ public class AsoprepGenerales {
             e.printStackTrace();
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(new FileResponse(false, "Error al procesar archivo: " + e.getMessage(), null))
+                    .build();
+        }
+    }
+    
+    /**
+     * Obtiene el reporte de novedades del procesamiento FASE 2
+     * 
+     * @param idCargaArchivo ID del CargaArchivo procesado
+     * @return Response con el reporte de novedades
+     */
+    @GET
+    @Path("/reporteProcesamientoPetro/{idCargaArchivo}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response obtenerReporteProcesamientoPetro(@PathParam("idCargaArchivo") Long idCargaArchivo) {
+        System.out.println("Obteniendo reporte de procesamiento para carga: " + idCargaArchivo);
+        
+        try {
+            if (idCargaArchivo == null) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(new FileResponse(false, "El ID de carga archivo es requerido", null))
+                        .build();
+            }
+            
+            // TODO: Implementar método en el servicio que retorne el reporte estructurado
+            // Por ahora retornamos mensaje de éxito
+            String mensaje = "Para obtener las novedades, consulta la tabla PRCA con el query SQL correspondiente. " +
+                           "Ver documentación en docs/PROCESO-CARGA-ARCHIVO-PETROCOMERCIAL.md";
+            
+            return Response.ok()
+                    .entity(new FileResponse(true, mensaje, null))
+                    .build();
+            
+        } catch (Throwable e) {
+            System.err.println("ERROR al obtener reporte:");
+            e.printStackTrace();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(new FileResponse(false, "Error: " + e.getMessage(), null))
+                    .build();
+        }
+    }
+    
+    /**
+     * Procesa un archivo de carga Petrocomercial ya validado (FASE 2)
+     * Cruza la información con préstamos y aportes del sistema
+     * 
+     * @param idCargaArchivo ID del CargaArchivo a procesar
+     * @return Response con el resultado del procesamiento
+     */
+    @POST
+    @Path("/procesarCargaPetro/{idCargaArchivo}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response procesarCargaPetro(@PathParam("idCargaArchivo") Long idCargaArchivo) {
+        System.out.println("========================================");
+        System.out.println("REST: PROCESAR CARGA PETRO FASE 2");
+        System.out.println("ID Carga Archivo: " + idCargaArchivo);
+        System.out.println("========================================");
+        
+        try {
+            // Validar parámetro
+            if (idCargaArchivo == null) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(new FileResponse(false, "El ID de carga archivo es requerido", null))
+                        .build();
+            }
+            
+            // Procesar con el servicio FASE 2
+            CargaArchivo resultado = procesoCargaPetroService.procesarCargaPetro(idCargaArchivo);
+            
+            System.out.println("Procesamiento completado exitosamente");
+            return Response.ok(resultado).build();
+            
+        } catch (Throwable e) {
+            System.err.println("ERROR al procesar carga Petro FASE 2:");
+            e.printStackTrace();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(new FileResponse(false, "Error al procesar: " + e.getMessage(), null))
                     .build();
         }
     }

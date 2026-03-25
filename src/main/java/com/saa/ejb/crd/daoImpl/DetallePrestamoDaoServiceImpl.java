@@ -23,14 +23,81 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 	@Override
 	public List<DetallePrestamo> selectByRangoFechas(LocalDateTime fechaDesde, LocalDateTime fechaHasta)
 			throws Throwable {
-		// System.out.println("Ingresa al metodo selectByCodigoPetro con codigoPetro: " + codigoPetro);
-		Query query = em.createQuery(" select b " +
-									 " from   DetallePrestamo b" +
-									 " where  b.fechaVencimiento between :fechaDesde and :fechaHasta " +
-									 " order by b.prestamo.entidad.razonSocial, b.fechaVencimiento ");
-		query.setParameter("fechaDesde", fechaDesde);
-		query.setParameter("fechaHasta", fechaHasta);
-		return  query.getResultList();
+		System.out.println("Buscando detalles de préstamo entre fechas: " + fechaDesde + " y " + fechaHasta);
+		
+		try {
+			String jpql = "SELECT d FROM DetallePrestamo d " +
+						 "WHERE d.fechaVencimiento >= :fechaDesde " +
+						 "AND d.fechaVencimiento <= :fechaHasta " +
+						 "ORDER BY d.fechaVencimiento";
+			
+			Query query = em.createQuery(jpql);
+			query.setParameter("fechaDesde", fechaDesde);
+			query.setParameter("fechaHasta", fechaHasta);
+			
+			// @SuppressWarnings("unchecked")
+			List<DetallePrestamo> resultados = query.getResultList();
+			
+			System.out.println("Detalles encontrados: " + (resultados != null ? resultados.size() : 0));
+			return resultados;
+			
+		} catch (Exception e) {
+			System.err.println("Error al buscar detalles por rango de fechas: " + e.getMessage());
+			e.printStackTrace();
+			throw e;
+		}
+	}
+
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<DetallePrestamo> selectByPrestamoYMesAnio(Long codigoPrestamo, Integer mes, Integer anio) throws Throwable {
+		System.out.println("Buscando cuota del préstamo " + codigoPrestamo + " para " + mes + "/" + anio);
+		
+		try {
+			String jpql = "SELECT d FROM DetallePrestamo d " +
+						 "WHERE d.prestamo.codigo = :codigoPrestamo " +
+						 "AND MONTH(d.fechaVencimiento) = :mes " +
+						 "AND YEAR(d.fechaVencimiento) = :anio " +
+						 "ORDER BY d.numeroCuota";
+			
+			Query query = em.createQuery(jpql);
+			query.setParameter("codigoPrestamo", codigoPrestamo);
+			query.setParameter("mes", mes);
+			query.setParameter("anio", anio);
+			
+			List<DetallePrestamo> resultados = query.getResultList();
+			System.out.println("Cuotas encontradas: " + (resultados != null ? resultados.size() : 0));
+			return resultados;
+			
+		} catch (Exception e) {
+			System.err.println("Error al buscar cuota por mes/año: " + e.getMessage());
+			e.printStackTrace();
+			throw e;
+		}
+	}
+
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<DetallePrestamo> selectByPrestamo(Long codigoPrestamo) throws Throwable {
+		System.out.println("Buscando todas las cuotas del préstamo: " + codigoPrestamo);
+		
+		try {
+			String jpql = "SELECT d FROM DetallePrestamo d " +
+						 "WHERE d.prestamo.codigo = :codigoPrestamo " +
+						 "ORDER BY d.numeroCuota";
+			
+			Query query = em.createQuery(jpql);
+			query.setParameter("codigoPrestamo", codigoPrestamo);
+			
+			List<DetallePrestamo> resultados = query.getResultList();
+			System.out.println("Total de cuotas encontradas: " + (resultados != null ? resultados.size() : 0));
+			return resultados;
+			
+		} catch (Exception e) {
+			System.err.println("Error al buscar cuotas del préstamo: " + e.getMessage());
+			e.printStackTrace();
+			throw e;
+		}
 	}
 
 }

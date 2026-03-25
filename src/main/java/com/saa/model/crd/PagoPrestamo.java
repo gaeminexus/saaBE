@@ -89,6 +89,11 @@ public class PagoPrestamo implements Serializable {
     @Column(name = "PGPRSLOT")
     private Double saldoOtros;
 
+    /** Valor seguro incendio */
+    @Basic
+    @Column(name = "PGPRVLSI")
+    private Double valorSeguroIncendio;
+
     /** Observación */
     @Basic
     @Column(name = "PGPROBSR", length = 2000)
@@ -265,6 +270,14 @@ public class PagoPrestamo implements Serializable {
 
     public void setIdEstado(Long idEstado) {
         this.idEstado = idEstado;
+    }
+    
+    public Double getValorSeguroIncendio() {
+        return valorSeguroIncendio;
+    }
+
+    public void setValorSeguroIncendio(Double valorSeguroIncendio) {
+        this.valorSeguroIncendio = valorSeguroIncendio;
     }
 }
 

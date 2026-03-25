@@ -496,7 +496,7 @@ public class PrestamoServiceImpl implements PrestamoService {
         double totalInteres = 0.0;
         double valorCuotaPrimera = 0.0;
         LocalDateTime fechaFin = null;
-        double saldoCapitalAnterior = prestamo.getMontoSolicitado(); // Para la primera cuota
+        // double saldoCapitalAnterior = prestamo.getMontoSolicitado(); // Para la primera cuota
         
         try (Workbook workbook = WorkbookFactory.create(archivoExcel)) {
             Sheet sheet = workbook.getSheetAt(0); // Primera hoja
@@ -584,7 +584,7 @@ public class PrestamoServiceImpl implements PrestamoService {
                 detalle.setEstado(estadoCodigo);
                 
                 // Actualizar el saldo para la siguiente iteración (usar el saldo calculado)
-                saldoCapitalAnterior = saldoCapitalCalculado;
+                // saldoCapitalAnterior = saldoCapitalCalculado;
                 
                 // Inicializar campos restantes en cero
                 detalle.setPrestamo(prestamo);
@@ -867,13 +867,13 @@ public class PrestamoServiceImpl implements PrestamoService {
 		});
 		
 		// Encontrar la última cuota pagada y la primera cuota pendiente
-		DetallePrestamo ultimaCuotaPagada = null;
+		// DetallePrestamo ultimaCuotaPagada = null;
 		DetallePrestamo primeraCuotaPendiente = null;
 		
 		for (DetallePrestamo detalle : detalles) {
 			if (detalle.getEstado() != null && detalle.getEstado() == 4L) {
 				// Estado PAGADO
-				ultimaCuotaPagada = detalle;
+				// ultimaCuotaPagada = detalle;
 			} else if (primeraCuotaPendiente == null && detalle.getEstado() != null && 
 					  (detalle.getEstado() == 2L || detalle.getEstado() == 5L)) {
 				// Estado PENDIENTE o EMITIDO
