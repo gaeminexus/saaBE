@@ -217,7 +217,7 @@ public class EntityDaoImpl<Tipo> implements EntityDao<Tipo> {
 				}
 			}
 		}
-		System.out.println("SELECT ES:" + strQuery);
+		// System.out.println("SELECT ES:" + strQuery);
 		Query query = em.createQuery(strQuery);
 		if (!datos.isEmpty()) {
 			for (DatosBusqueda aBuscar : datos) {

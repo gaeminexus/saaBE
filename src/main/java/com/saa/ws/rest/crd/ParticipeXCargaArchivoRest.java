@@ -93,7 +93,7 @@ public class ParticipeXCargaArchivoRest {
     @Path("selectByCriteria")
     @Consumes("application/json")
     public Response selectByCriteria(List<DatosBusqueda> registros) throws Throwable {
-        System.out.println("selectByCriteria de PARTICIPEXCARGAARCHIVO");
+        // System.out.println("selectByCriteria de PARTICIPEXCARGAARCHIVO");
         Response respuesta = null;
         try {
             respuesta = Response.status(Response.Status.OK).entity(participeXCargaArchivoService.selectByCriteria(registros)).type(MediaType.APPLICATION_JSON).build();

@@ -71,5 +71,6 @@ public interface NombreEntidadesCredito {
 	String BASE_INICIAL_PARTICIPES = "BaseInicialParticipes";
 	String ESTADO_CUOTA_PRESTAMO = "EstadoCuotaPrestamo";
 	String ORDEN_AFECTACION_VALOR_PRESTAMO = "OrdenAfectacionValorPrestamo";
+	String HISTORICO_DESGLOSE_APORTE_PARTICIPE = "HistoricoDesgloseAporteParticipe";
 
 }

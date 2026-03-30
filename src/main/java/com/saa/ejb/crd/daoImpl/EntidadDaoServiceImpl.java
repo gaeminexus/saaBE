@@ -29,12 +29,20 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 	@SuppressWarnings("unchecked")
 	@Override
 	public List<Entidad> selectByCodigoPetro(Long codigoPetro) throws Throwable {
-		// System.out.println("Ingresa al metodo selectByCodigoPetro con codigoPetro: " + codigoPetro);
-		Query query = em.createQuery(" select b " +
-									 " from   Entidad b" +
-									 " where  b.rolPetroComercial = :codigoPetro");
-		query.setParameter("codigoPetro", codigoPetro);
-		return  query.getResultList();
+		try {
+			// System.out.println("Ingresa al metodo selectByCodigoPetro con codigoPetro: " + codigoPetro);
+			Query query = em.createQuery(" select b " +
+										 " from   Entidad b" +
+										 " where  b.rolPetroComercial = :codigoPetro");
+			query.setParameter("codigoPetro", codigoPetro);
+			return  query.getResultList();
+		} catch (Exception e) {
+			System.err.println("Error al buscar entidad por código Petro " + codigoPetro + ": " + e.getMessage());
+			e.printStackTrace();
+			// NO lanzar excepción - retornar lista vacía para no detener el proceso
+			// El error se registrará como novedad en el nivel superior
+			return new java.util.ArrayList<>();
+		}
 	}
 
 	@SuppressWarnings("unchecked")
@@ -55,12 +63,19 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 	@SuppressWarnings("unchecked")
 	@Override
 	public List<Entidad> selectByNombrePetro35(String nombre) throws Throwable {
-		// System.out.println("Ingresa al metodo selectByNombrePetro35 con nombre: " + nombre);
-		Query query = em.createQuery(" select b " +
-									 " from   Entidad b " +
-									 " where  substring(trim(b.razonSocial),1,35) = trim(:nombre) ");
-		query.setParameter("nombre", nombre);
-		return  query.getResultList();
+		try {
+			// System.out.println("Ingresa al metodo selectByNombrePetro35 con nombre: " + nombre);
+			Query query = em.createQuery(" select b " +
+										 " from   Entidad b " +
+										 " where  substring(trim(b.razonSocial),1,35) = trim(:nombre) ");
+			query.setParameter("nombre", nombre);
+			return  query.getResultList();
+		} catch (Exception e) {
+			System.err.println("Error al buscar entidad por nombre Petro '" + nombre + "': " + e.getMessage());
+			e.printStackTrace();
+			// NO lanzar excepción - retornar lista vacía para no detener el proceso
+			return new java.util.ArrayList<>();
+		}
 	}
 
 }

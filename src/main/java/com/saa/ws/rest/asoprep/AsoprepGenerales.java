@@ -343,6 +343,55 @@ public class AsoprepGenerales {
     }
     
     /**
+     * Aplica los pagos de un archivo Petro ya validado
+     * Este endpoint ejecuta el proceso final de carga:
+     * - Verifica si existen afectaciones manuales (tabla AVPC)
+     * - Si no hay afectaciones manuales, aplica reglas automáticas
+     * - Orden de afectación: Desgravamen → Interés → Capital
+     * - Maneja casos especiales PH/PP con búsqueda de HS
+     * - Actualiza estados de cuotas (PAGADA/PARCIAL)
+     * - Registra pagos en la tabla PagoPrestamo
+     * 
+     * @param idCargaArchivo ID del CargaArchivo a procesar
+     * @return Response con el resumen de la aplicación de pagos
+     */
+    @POST
+    @Path("/aplicarPagosArchivoPetro/{idCargaArchivo}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response aplicarPagosArchivoPetro(@PathParam("idCargaArchivo") Long idCargaArchivo) {
+        System.out.println("========================================");
+        System.out.println("REST: APLICAR PAGOS ARCHIVO PETRO");
+        System.out.println("ID Carga Archivo: " + idCargaArchivo);
+        System.out.println("========================================");
+        
+        try {
+            // Validar parámetro
+            if (idCargaArchivo == null) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(new FileResponse(false, "El ID de carga archivo es requerido", null))
+                        .build();
+            }
+            
+            // Aplicar pagos con el servicio
+            String resumen = cargaArchivoPetroService.aplicarPagosArchivoPetro(idCargaArchivo);
+            
+            System.out.println("Aplicación de pagos completada exitosamente");
+            System.out.println(resumen);
+            
+            return Response.ok()
+                    .entity(new FileResponse(true, resumen, null))
+                    .build();
+            
+        } catch (Throwable e) {
+            System.err.println("ERROR al aplicar pagos del archivo Petro:");
+            e.printStackTrace();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(new FileResponse(false, "Error al aplicar pagos: " + e.getMessage(), null))
+                    .build();
+        }
+    }
+    
+    /**
      * Crea un Jsonb configurado específicamente para UTF-8
      */
     private Jsonb crearJsonbUTF8() {

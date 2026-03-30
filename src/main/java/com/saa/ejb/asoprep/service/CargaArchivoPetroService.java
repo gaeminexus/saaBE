@@ -51,4 +51,15 @@ public interface CargaArchivoPetroService {
 	 */
     ParticipeXCargaArchivo actualizaCodigoPetroEntidad(Long codigoPetro, Long idParticipeXCarga, Long idEntidad) throws Throwable;
     
+    /**
+     * Aplica los pagos de un archivo Petro que ya fue validado.
+     * Este método se ejecuta DESPUÉS de que el usuario revisa las novedades.
+     * Solo procesa los registros que están OK (sin novedades bloqueantes).
+     * 
+     * @param codigoCargaArchivo : ID del CargaArchivo a procesar
+     * @return : Resumen del procesamiento (cantidad de pagos aplicados, errores, etc.)
+     * @throws Throwable : Excepción en caso de error
+     */
+    String aplicarPagosArchivoPetro(Long codigoCargaArchivo) throws Throwable;
+    
 }

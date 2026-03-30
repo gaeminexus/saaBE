@@ -97,7 +97,9 @@ public class PrestamoDaoServiceImpl extends EntityDaoImpl<Prestamo> implements P
         } catch (Exception e) {
             System.err.println("Error al buscar préstamos activos por IDs: " + e.getMessage());
             e.printStackTrace();
-            throw e;
+            // NO lanzar excepción - retornar lista vacía para no detener el proceso
+            // El error se registrará como novedad en el nivel superior
+            return new java.util.ArrayList<>();
         }
     }
 

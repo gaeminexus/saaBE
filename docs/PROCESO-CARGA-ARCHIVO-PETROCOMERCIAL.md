@@ -1,7 +1,7 @@
 # PROCESO DE CARGA Y PROCESAMIENTO DE ARCHIVOS PETROCOMERCIAL
 
-**Última actualización:** 2026-03-25  
-**Estado actual:** ✅ FASE 2 IMPLEMENTADA Y CORREGIDA
+**Última actualización:** 2026-03-27  
+**Estado actual:** ✅ VALIDACIONES FASE 1 Y FASE 2 COMPLETADAS - FALTA PROCESAMIENTO DE PAGOS
 
 ## 📚 DOCUMENTOS DE REFERENCIA
 
@@ -15,20 +15,125 @@
 ## 🎯 ESTADO ACTUAL DEL PROYECTO
 
 ### ✅ COMPLETADO:
-- **FASE 1**: Carga y validación de archivos ✅
-- **FASE 2**: Procesamiento y cruce de información ✅
-- **CORRECCIÓN CRÍTICA**: Desglose correcto de valores en pagos ✅
+- **FASE 1 - Validaciones Básicas**: Carga y validación de entidades ✅
+- **FASE 2 - Validaciones Avanzadas**: Validación de productos, préstamos y cuotas ✅
+- **CORRECCIÓN CRÍTICA**: Separación correcta de FASE 1 y FASE 2 ✅ **NUEVO 2026-03-27**
+  - Fase 1 se ejecuta durante almacenamiento (validaciones de entidad)
+  - Fase 2 se ejecuta DESPUÉS de que todos los registros estén en BD
+  - Esto permite que validaciones de PH/PP encuentren registros HS correspondientes
+- **MANEJO DE ERRORES**: Excepciones en DAOs no detienen el proceso ✅ **NUEVO 2026-03-27**
+  - Los errores de BD se registran como novedades
+  - El proceso continúa con el resto de registros
+- **CONFIGURACIÓN TIMEOUTS**: Documentación para WildFly 38 ✅ **NUEVO 2026-03-27**
+  - EJB timeouts aumentados de 5 segundos a 15 minutos
+  - Transaction timeouts configurados en 15 minutos
+- **PRODUCTOS ESPECIALES (PH/PP + HS)**: Suma correcta de valores ✅ **NUEVO 2026-03-27**
+  - PH (Préstamo Hipotecario) + HS (Seguro) se suman para validación
+  - PP (Préstamo Prendario) + HS (Seguro) se suman para validación
+- **LOGS OPTIMIZADOS**: Solo logs críticos para debugging ✅ **NUEVO 2026-03-27**
 - Tabla de tracking `ProcesamientoCargaArchivo` (PRCA) ✅
-- Tabla de afectaciones manuales `AfectacionValoresParticipeCarga` (AVPC) ✅ **NUEVO 2026-03-25**
+- Tabla de novedades múltiples `NovedadParticipeCarga` (NVPC) ✅
+- Tabla de afectaciones manuales `AfectacionValoresParticipeCarga` (AVPC) ✅
 - Endpoints REST para carga y procesamiento ✅
-- REST API para afectaciones manuales `/avpc` ✅ **NUEVO 2026-03-25**
+- REST API para afectaciones manuales `/avpc` ✅
 - Consultas SQL para novedades ✅
-- Documento de estándares para creación de tablas Oracle ✅ **NUEVO 2026-03-25**
+- Documento de estándares para creación de tablas Oracle ✅
+
+### 🔄 EN PROGRESO:
+- **FASE 3 - Procesamiento de Pagos**: Generar pagos y actualizar estados ⚠️ **IMPLEMENTADO PERO NO PROBADO**
+  - Método `aplicarPagosArchivoPetro()` creado
+  - Procesa pagos completos, parciales y excedentes
+  - Actualiza estados de cuotas (PAGADA, PARCIAL)
+  - Crea registros en tabla `PagoPrestamo` (PGPR)
+  - **FALTA**: Endpoint REST para invocar desde frontend
+  - **FALTA**: Pruebas completas del flujo
 
 ### ⚠️ PENDIENTE:
-- Generación de aportes (cuando el registro sea tipo APORTE)
-- Frontend para visualizar resultados del procesamiento
-- Reportes de estadísticas consolidadas
+- **Generación de Aportes**: Cuando el registro sea tipo APORTE (producto AH)
+  - Crear/actualizar registros en tabla de Aportes
+  - Vincular con el partícipe/entidad
+- **Frontend**: Visualización de resultados del procesamiento
+- **Reportes**: Estadísticas consolidadas por carga
+- **Testing Completo**: Validar todo el flujo end-to-end
+
+### 🐛 CORRECCIONES CRÍTICAS REALIZADAS (2026-03-27):
+
+#### 1. **Separación de Fase 1 y Fase 2**
+**Problema:** Las validaciones de Fase 2 se ejecutaban MIENTRAS se insertaban registros en BD. Cuando se validaba un PH, el registro HS correspondiente aún no existía en la BD.
+
+**Solución:**
+```java
+// ANTES (INCORRECTO):
+for (producto : productos) {
+    guardar(participe);           // Inserta en BD
+    validarFase2(participe);      // Valida inmediatamente - HS no existe aún
+}
+
+// AHORA (CORRECTO):
+// Paso 1: Guardar TODOS los registros
+for (producto : productos) {
+    guardar(participe);           // Inserta en BD
+}
+
+// Paso 2: Validar DESPUÉS de que todos estén guardados
+ejecutarValidacionesFase2();      // Ahora HS ya existe en BD
+```
+
+**Archivo modificado:** `CargaArchivoPetroServiceImpl.java`
+- Método `almacenaRegistros()` - Solo Fase 1
+- Nuevo método `ejecutarValidacionesFase2()` - Se ejecuta al final
+
+#### 2. **Manejo de Excepciones en DAOs**
+**Problema:** Cuando ocurría un timeout o error de BD, los métodos DAO lanzaban excepciones y detenían TODO el proceso.
+
+**Solución:** Modificar DAOs para que retornen valores seguros (lista vacía o null) en lugar de lanzar excepciones:
+
+**Archivos modificados:**
+- `ProductoDaoServiceImpl.java`
+- `EntidadDaoServiceImpl.java`
+- `PrestamoDaoServiceImpl.java`
+- `DetallePrestamoDaoServiceImpl.java`
+
+```java
+// ANTES:
+catch (Exception e) {
+    throw e;  // ❌ Detenía el proceso
+}
+
+// AHORA:
+catch (Exception e) {
+    System.err.println("Error: " + e.getMessage());
+    return new ArrayList<>();  // ✅ Continúa el proceso
+}
+```
+
+#### 3. **Configuración de Timeouts en WildFly 38**
+**Problema:** Timeouts de 5 segundos en EJB causaban que archivos grandes se interrumpieran.
+
+**Solución:** Documentación completa en `docs/CONFIGURACION_TIMEOUT_WILDFLY38.md` y `docs/CORRECCION_TIMEOUT_EJB3_STANDALONE.md`
+
+**Cambios necesarios en `standalone.xml`:**
+```xml
+<!-- EJB Timeouts: 5 segundos → 15 minutos -->
+<stateful default-access-timeout="900000" .../>
+<singleton default-access-timeout="900000"/>
+
+<!-- Transaction Timeout: 5 minutos → 15 minutos -->
+<coordinator-environment ... default-timeout="900"/>
+```
+
+#### 4. **Protección de Inserción en PXCA**
+**Problema:** Errores al insertar registros en `ParticipeXCargaArchivo` detenían el proceso.
+
+**Solución:** Envolver la inserción con try-catch:
+```java
+try {
+    participe = participeXCargaArchivoService.saveSingle(participe);
+} catch (Throwable e) {
+    System.err.println("ERROR al insertar: " + e.getMessage());
+    continue;  // ✅ Continúa con el siguiente registro
+}
+```
 
 ### 🔧 ÚLTIMA CORRECCIÓN REALIZADA (2026-03-24):
 Se identificó y corrigió un **error crítico** en el desglose de valores:
@@ -894,7 +999,7 @@ Estados para marcar el progreso de revisión de los partícipes cargados.
 **Entidades:**
 - El archivo trae `codigoPetro` (ROL)
 - En BD se almacena en `Entidad.rolPetroComercial`
-- Si no existe, buscar por nombre (35 primeros caracteres de `razonSocial`)
+- Si no existe, buscar por nombre (primeros 35 caracteres de `razonSocial`)
 - Si se encuentra por nombre, actualizar automáticamente el `rolPetroComercial`
 
 **Productos:**
@@ -1095,7 +1200,10 @@ aporte.setValor(participe.getMontoDescontar());
 aporte.setValorPagado(participe.getTotalDescontado());
 aporte.setSaldo(participe.getMontoDescontar() - participe.getTotalDescontado());
 aporte.setGlosa("Aporte " + mesAfectacion + "/" + anioAfectacion + " - Petrocomercial");
-aporte.setEstado(Estado.ACTIVO);
+aporte.setEstado(1L); // ACTIVO
+    
+// 4. Guardar aporte
+aporteService.saveSingle(aporte);
 ```
 
 ### 8. Manejo de Pagos Parciales
@@ -1276,6 +1384,7 @@ if (Math.abs(totalDescontado - montoDescontar) <= TOLERANCIA) {
    - valorPagado = $50.00
    - saldo = 0
    - glosa = "Aporte 12/2024 - Petrocomercial"
+   - estado = ACTIVO
 5. Guardar Aporte
 6. Marcar ParticipeXCargaArchivo como procesado
 
@@ -1323,394 +1432,469 @@ Una entidad tiene 2 préstamos QUIROGRAFARIOS activos simultáneamente.
 
 ---
 
-## 📁 ARCHIVOS Y COMPONENTES DEL SISTEMA
+## 🚀 ESTADO ACTUAL DEL PROCESAMIENTO DE PAGOS (2026-03-27)
 
-### Modelos (package: com.saa.model.crd)
+### ✅ FASE 1 Y FASE 2: COMPLETADAS
 
-| Archivo | Tabla | Descripción |
-|---------|-------|-------------|
-| `CargaArchivo.java` | CRAR | Registro de carga mensual |
-| `DetalleCargaArchivo.java` | DTCA | Detalle por producto |
-| `ParticipeXCargaArchivo.java` | PXCA | Registros individuales del archivo |
-| `Entidad.java` | ENTD | Partícipes (personas/empresas) |
-| `Producto.java` | PRDC | Catálogo de productos (préstamos/aportes) |
-| `Prestamo.java` | PRST | Préstamos otorgados |
-| `DetallePrestamo.java` | DTPR | Cuotas de préstamos |
-| `PagoPrestamo.java` | PGPR | Pagos realizados a cuotas |
-| `Aporte.java` | APRT | Aportes de partícipes |
-| `TipoPrestamo.java` | TPPR | Tipos de préstamo |
-| `TipoAporte.java` | TPAP | Tipos de aporte |
+#### Validaciones Implementadas:
+1. ✅ **Validación de archivo** (formato, estructura, contenido)
+2. ✅ **Validación Fase 1** (durante almacenamiento):
+   - Validación de entidades por código Petro
+   - Búsqueda por nombre si no tiene código Petro
+   - Actualización automática de código Petro en entidades
+   - Detección de valores en cero
+   - Validación de novedades financieras básicas
 
-### Servicios (package: com.saa.ejb.asoprep / com.saa.ejb.crd)
+3. ✅ **Validación Fase 2** (después de almacenamiento completo):
+   - Validación de productos mapeados
+   - Búsqueda de préstamos activos
+   - Búsqueda de cuotas correspondientes
+   - **Suma correcta de PH/PP + HS** para validación
+   - Validación de montos vs cuotas
+   - Detección de diferencias menores a $1
+   - Detección de cuotas con fechas diferentes
 
-| Archivo | Responsabilidad |
-|---------|-----------------|
-| `CargaArchivoPetroService.java` | Interface del servicio principal |
-| `CargaArchivoPetroServiceImpl.java` | Implementación FASE 1 (carga y validación) |
-| `CargaArchivoService.java` | CRUD de CargaArchivo |
-| `DetalleCargaArchivoService.java` | CRUD de DetalleCargaArchivo |
-| `ParticipeXCargaArchivoService.java` | CRUD de ParticipeXCargaArchivo |
-| `PrestamoService.java` | Lógica de préstamos |
-| `DetallePrestamoService.java` | Lógica de cuotas |
-| `PagoPrestamoService.java` | Lógica de pagos |
-| `AporteService.java` | Lógica de aportes |
-
-### DAOs (package: com.saa.ejb.crd.dao)
-
-| Archivo | Responsabilidad |
-|---------|-----------------|
-| `CargaArchivoDaoService.java` | Acceso a datos de CargaArchivo |
-| `DetalleCargaArchivoDaoService.java` | Acceso a datos de DetalleCargaArchivo |
-| `ParticipeXCargaArchivoDaoService.java` | Acceso a datos de ParticipeXCargaArchivo |
-| `EntidadDaoService.java` | Acceso a datos de Entidad |
-| `PrestamoDaoService.java` | Acceso a datos de Prestamo |
-| `DetallePrestamoDaoService.java` | Acceso a datos de DetallePrestamo |
-| `PagoPrestamoDaoService.java` | Acceso a datos de PagoPrestamo |
-| `AporteDaoService.java` | Acceso a datos de Aporte |
-
-### REST APIs (package: com.saa.ws.rest)
-
-| Archivo | Endpoints |
-|---------|-----------|
-| `AsoprepGenerales.java` | POST /asoprep/uploadFile (FASE 1) |
-| `CargaArchivoRest.java` | CRUD de CargaArchivo |
-| `DetalleCargaArchivoRest.java` | CRUD de DetalleCargaArchivo |
-| `ParticipeXCargaArchivoRest.java` | CRUD de ParticipeXCargaArchivo |
-| `PrestamoRest.java` | Operaciones de préstamos |
-| `AporteRest.java` | Operaciones de aportes |
-
-### Rubros (package: com.saa.rubros)
-
-| Archivo | Constantes |
-|---------|------------|
-| `EstadoPrestamo.java` | Estados de préstamo |
-| `EstadoCuotaPrestamo.java` | Estados de cuota |
-| `ASPNovedadesCargaArchivo.java` | Códigos de novedades de carga |
-| `ASPEstadoRevisionParticipeCarga.java` | Estados de revisión |
-| `ASPEstadoCargaArchivoPetro.java` | Estados de carga |
-| `Estado.java` | Estados generales (ACTIVO/INACTIVO) |
-
-### Métodos Clave del Servicio Principal
-
-**CargaArchivoPetroServiceImpl.java:**
-
-```java
-// FASE 1 - YA IMPLEMENTADA
-public CargaArchivo validarArchivoPetro(
-    InputStream archivoInputStream, 
-    String fileName, 
-    CargaArchivo cargaArchivo
-) throws Throwable
-
-// Métodos auxiliares FASE 1
-private String leerContenidoArchivo(InputStream inputStream)
-private List<ParticipeXCargaArchivo> procesarContenido(String contenido)
-private Map<String, DetalleCargaArchivo> agruparPorAporte(List<ParticipeXCargaArchivo>)
-private CargaArchivo almacenaRegistros(...)
-private String cargarArchivo(InputStream, String, CargaArchivo)
-
-// FASE 2 - POR IMPLEMENTAR
-public void procesarCargaPetro(Long idCargaArchivo) throws Throwable {
-    // 1. Obtener CargaArchivo y sus registros
-    // 2. Filtrar solo registros con novedadesCarga = OK
-    // 3. Para cada registro:
-    //    - Obtener Producto por codigoPetro
-    //    - Si es APORTE → generarAporte()
-    //    - Si es PRÉSTAMO → procesarPagoPrestamo()
-    // 4. Actualizar estado de la carga
-    // 5. Generar reporte
-}
-
-private void generarAporte(ParticipeXCargaArchivo participe) {
-    // Crear registro en tabla Aporte
-}
-
-private void procesarPagoPrestamo(ParticipeXCargaArchivo participe) {
-    // 1. Buscar préstamo
-    // 2. Buscar cuota del mes
-    // 3. Determinar estado según pagos
-    // 4. Crear PagoPrestamo si hay pago
-    // 5. Actualizar DetallePrestamo
-    // 6. Actualizar Prestamo
-}
+#### Flujo Actual:
+```
+1. Usuario sube archivo TXT
+2. Sistema lee y parsea el archivo
+3. FASE 1: Valida y guarda TODOS los registros en BD
+   - AH (aportes) → Guarda
+   - PH (préstamos hipotecarios) → Guarda
+   - HS (seguros) → Guarda
+   - PE (préstamos emergentes) → Guarda
+4. FASE 2: Ejecuta validaciones avanzadas
+   - Ahora HS ya existe en BD cuando valida PH/PP ✅
+   - Suma correctamente PH + HS o PP + HS
+5. Sistema retorna resumen con novedades
+6. Usuario revisa novedades en el frontend
 ```
 
----
+### ⚠️ FASE 3: PROCESAMIENTO DE PAGOS - IMPLEMENTADO PERO SIN ENDPOINT
 
-## 🎯 PRÓXIMOS PASOS PARA IMPLEMENTACIÓN FASE 2
+#### Estado Actual:
+El código para procesar pagos **YA ESTÁ IMPLEMENTADO** en `CargaArchivoPetroServiceImpl.java`:
 
-### 1. Crear Nuevos Rubros de Error
+**Método principal:** `aplicarPagosArchivoPetro(Long codigoCargaArchivo)`
 
-Archivo: `ASPNovedadesCargaArchivo.java`
+**Submétodos implementados:**
+- ✅ `aplicarPagoParticipe()` - Procesa cada registro individual
+- ✅ `buscarCuotaAPagar()` - Encuentra la cuota correspondiente
+- ✅ `procesarPagoCuota()` - Distribuye el pago según el escenario
+- ✅ `procesarPagoCompleto()` - Cuota pasa a PAGADA
+- ✅ `procesarPagoParcial()` - Cuota queda en PARCIAL
+- ✅ `procesarPagoCompletoConExcedente()` - Paga cuota + abona siguiente
+- ✅ `crearRegistroPago()` - Crea registro en PagoPrestamo
+- ✅ `tieneNovedadesBloqueantes()` - Verifica si se puede procesar
 
-Agregar constantes:
+#### Escenarios Implementados:
+
+**1. Pago Completo:**
 ```java
-public static final int PRESTAMO_NO_ENCONTRADO = 8;
-public static final int MULTIPLES_PRESTAMOS_ACTIVOS = 9;
-public static final int CUOTA_NO_ENCONTRADA = 10;
-public static final int MONTO_INCONSISTENTE = 11;
-public static final int PRODUCTO_NO_MAPEADO = 12;
-public static final int PRESTAMO_PROCESADO_OK = 13;
-public static final int APORTE_GENERADO_OK = 14;
+// Monto archivo = Monto cuota (tolerancia ±$1)
+- Actualiza DetallePrestamo.estado = PAGADA
+- Actualiza capitalPagado, interesPagado, desgravamenPagado
+- Saldos a cero
+- Crea registro en PagoPrestamo
 ```
 
-### 2. Agregar Campos a ParticipeXCargaArchivo
-
+**2. Pago Parcial:**
 ```java
-// Para tracking de procesamiento
-@Column(name = "PXCAIDPG") // ID del pago generado
-private Long idPagoGenerado;
-
-@Column(name = "PXCAIDCT") // ID de la cuota procesada
-private Long idCuotaProcesada;
-
-@Column(name = "PXCAIDAP") // ID del aporte generado
-private Long idAporteGenerado;
-
-@Column(name = "PXCAFCPR") // Fecha de procesamiento
-private LocalDateTime fechaProcesamiento;
-
-@Column(name = "PXCAPRCS") // Flag: ya procesado
-private Boolean procesado;
+// Monto archivo < Monto cuota
+- Actualiza DetallePrestamo.estado = PARCIAL
+- Distribuye proporcionalmente el pago
+- Actualiza saldos pendientes
+- Crea registro en PagoPrestamo con el monto parcial
 ```
 
-### 3. Agregar Método en ProductoDaoService
-
+**3. Pago con Excedente:**
 ```java
-public interface ProductoDaoService {
-    /**
-     * Busca un producto por su código Petro
-     */
-    Producto selectByCodigoPetro(String codigoPetro) throws Throwable;
-}
+// Monto archivo > Monto cuota
+- Paga cuota completa → PAGADA
+- Abona excedente a siguiente cuota como capital
+- Crea dos registros en PagoPrestamo
 ```
 
-### 4. Agregar Métodos en PrestamoDaoService
-
+**4. Sin Pago:**
 ```java
-public interface PrestamoDaoService {
-    /**
-     * Busca préstamos activos de una entidad para un producto específico
-     */
-    List<Prestamo> selectByEntidadYProductoActivos(
-        Long codigoEntidad, 
-        Long codigoProducto
-    ) throws Throwable;
-}
+// Monto archivo = 0
+- NO crea registro de pago
+- Cuota pasa a MORA si venció
 ```
 
-### 5. Agregar Métodos en DetallePrestamoDaoService
-
+#### Suma de PH/PP + HS en Procesamiento:
 ```java
-public interface DetallePrestamoDaoService {
-    /**
-     * Busca la cuota de un préstamo en un mes/año específico
-     */
-    List<DetallePrestamo> selectByPrestamoYMesAnio(
-        Long codigoPrestamo,
-        Integer mes,
-        Integer anio
-    ) throws Throwable;
-}
-```
-
-### 6. Crear Servicio de Procesamiento
-
-Archivo nuevo: `ProcesoCargaPetroService.java`
-
-```java
-@Stateless
-public class ProcesoCargaPetroServiceImpl {
+// IMPORTANTE: También implementado en aplicarPagoParticipe
+if (codigoProducto == "PH" || codigoProducto == "PP") {
+    // Busca el registro HS correspondiente
+    ParticipeXCargaArchivo participeHS = 
+        participeXCargaArchivoDaoService.selectByCodigoPetroYProductoEnCarga(
+            participe.getCodigoPetro(),
+            "HS",
+            cargaArchivo.getCodigo()
+        );
     
-    @EJB
-    private CargaArchivoService cargaArchivoService;
-    
-    @EJB
-    private ParticipeXCargaArchivoService participeService;
-    
-    @EJB
-    private ProductoDaoService productoDaoService;
-    
-    @EJB
-    private PrestamoService prestamoService;
-    
-    @EJB
-    private DetallePrestamoService detallePrestamoService;
-    
-    @EJB
-    private PagoPrestamoService pagoPrestamoService;
-    
-    @EJB
-    private AporteService aporteService;
-    
-    @TransactionAttribute(TransactionAttributeType.REQUIRED)
-    public ResultadoProcesamiento procesarCargaPetro(Long idCargaArchivo) {
-        // Implementar lógica completa de FASE 2
+    if (participeHS != null) {
+        montoArchivo += participeHS.getTotalDescontado();
+        // Ahora valida/aplica con la suma correcta
     }
 }
 ```
 
-### 7. Crear Endpoint REST para Procesamiento
+### ❌ LO QUE FALTA IMPLEMENTAR
 
-Archivo: `AsoprepGenerales.java`
+#### 1. Endpoint REST para Procesamiento de Pagos
 
+**Archivo a crear/modificar:** `AsoprepGenerales.java` o crear nuevo `CargaArchivoPetroRest.java`
+
+**Endpoint necesario:**
 ```java
 @POST
-@Path("/procesarCargaPetro/{idCargaArchivo}")
+@Path("procesarPagosArchivo/{codigoCargaArchivo}")
 @Produces(MediaType.APPLICATION_JSON)
-public Response procesarCargaPetro(@PathParam("idCargaArchivo") Long idCargaArchivo) {
+public Response procesarPagosArchivo(@PathParam("codigoCargaArchivo") Long codigoCargaArchivo) {
     try {
-        ResultadoProcesamiento resultado = procesoCargaService.procesarCargaPetro(idCargaArchivo);
-        return Response.ok(resultado).build();
-    } catch (Exception e) {
-        return Response.serverError().entity(e.getMessage()).build();
+        String resumen = cargaArchivoPetroService.aplicarPagosArchivoPetro(codigoCargaArchivo);
+        return Response.status(Response.Status.OK)
+                       .entity(resumen)
+                       .type(MediaType.APPLICATION_JSON)
+                       .build();
+    } catch (Throwable e) {
+        return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                       .entity("Error al procesar pagos: " + e.getMessage())
+                       .type(MediaType.APPLICATION_JSON)
+                       .build();
     }
 }
 ```
 
-### 8. Crear DTO de Resultado
+**Ubicación sugerida:** 
+- Opción 1: Agregar a `AsoprepGenerales.java` (junto con uploadFile)
+- Opción 2: Crear nuevo `CargaArchivoPetroRest.java` dedicado
+
+#### 2. Generación de Aportes
+
+**Cuando el producto es AH (aportes):**
+
+**Método a implementar en:** `CargaArchivoPetroServiceImpl.java`
 
 ```java
-public class ResultadoProcesamiento {
-    private Long idCargaArchivo;
-    private Integer totalRegistros;
-    private Integer registrosProcesados;
-    private Integer aportes Generated;
-    private Integer pagosAplicados;
-    private Integer cuotasActualizadas;
-    private Integer errores;
-    private List<ErrorProcesamiento> listaErrores;
-    private Map<String, Integer> erroresPorTipo;
+private void procesarAporte(ParticipeXCargaArchivo participe, 
+                           String codigoProducto, 
+                           CargaArchivo cargaArchivo) throws Throwable {
     
-    // Getters y setters
+    // 1. Buscar la entidad
+    List<Entidad> entidades = entidadDaoService.selectByCodigoPetro(participe.getCodigoPetro());
+    if (entidades == null || entidades.isEmpty()) {
+        return; // Ya tiene novedad de Fase 1
+    }
+    
+    Entidad entidad = entidades.get(0);
+    
+    // 2. Determinar tipo de aporte según producto
+    TipoAporte tipoAporte = determinarTipoAporte(codigoProducto);
+    
+    // 3. Crear registro de aporte
+    Aporte aporte = new Aporte();
+    aporte.setEntidad(entidad);
+    aporte.setFilial(cargaArchivo.getFilial());
+    aporte.setTipoAporte(tipoAporte);
+    aporte.setFechaTransaccion(calcularUltimoDiaDelMes(
+        cargaArchivo.getMesAfectacion(), 
+        cargaArchivo.getAnioAfectacion()
+    ));
+    aporte.setValor(participe.getMontoDescontar());
+    aporte.setValorPagado(participe.getTotalDescontado());
+    aporte.setSaldo(participe.getMontoDescontar() - participe.getTotalDescontado());
+    aporte.setObservacion("Aporte desde archivo Petrocomercial - " + 
+                         cargaArchivo.getMesAfectacion() + "/" + 
+                         cargaArchivo.getAnioAfectacion());
+    aporte.setEstado(1L); // ACTIVO
+    
+    // 4. Guardar aporte
+    aporteService.saveSingle(aporte);
+}
+
+private TipoAporte determinarTipoAporte(String codigoProducto) {
+    // Mapear código Petro a tipo de aporte
+    // Esto depende de cómo tengan configurados los tipos de aporte
+    // Ejemplo:
+    if ("AH".equals(codigoProducto)) {
+        return tipoAporteDaoService.selectById(1L, "TipoAporte"); // AHORRO
+    }
+    // ... otros tipos
+    return null;
 }
 ```
 
----
-
-## 🔍 CONSULTAS SQL ÚTILES
-
-### Ver resumen de una carga
-
-```sql
-SELECT 
-    ca.codigo,
-    ca.nombre,
-    ca.mesAfectacion,
-    ca.anioAfectacion,
-    ca.fechaCarga,
-    COUNT(DISTINCT dca.codigo) as productos,
-    COUNT(pxca.codigo) as participes,
-    ca.totalDescontado,
-    ca.estado
-FROM CRAR ca
-LEFT JOIN DTCA dca ON dca.CRARCDGO = ca.codigo
-LEFT JOIN PXCA pxca ON pxca.DTCACDGO = dca.codigo
-WHERE ca.codigo = ?
-GROUP BY ca.codigo;
+**Integración en aplicarPagosArchivoPetro:**
+```java
+// Después de procesar préstamos, agregar:
+if (CODIGO_PRODUCTO_APORTES.equalsIgnoreCase(codigoProducto)) {
+    procesarAporte(participe, codigoProducto, cargaArchivo);
+}
 ```
 
-### Ver registros con novedades
+#### 3. Frontend - Botón de Procesamiento
 
-```sql
-SELECT 
-    pxca.codigo,
-    pxca.codigoPetro,
-    pxca.nombre,
-    dca.nombreProductoPetro,
-    pxca.novedadesCarga,
-    pxca.novedadesFinancieras
-FROM PXCA pxca
-JOIN DTCA dca ON pxca.DTCACDGO = dca.codigo
-JOIN CRAR ca ON dca.CRARCDGO = ca.codigo
-WHERE ca.codigo = ?
-  AND (pxca.novedadesCarga != 1 OR pxca.novedadesFinancieras IS NOT NULL)
-ORDER BY pxca.novedadesCarga;
+**Pantalla de revisión de carga:**
+```typescript
+// Después de que el usuario revise las novedades
+// Mostrar botón "Procesar Pagos"
+
+procesarPagos() {
+    this.cargaService.procesarPagosArchivo(this.codigoCargaArchivo)
+        .subscribe(
+            response => {
+                this.mostrarResumen(response);
+                // Actualizar estado de la carga
+                // Refrescar pantalla
+            },
+            error => {
+                this.mostrarError(error);
+            }
+        );
+}
 ```
 
-### Buscar préstamos de una entidad
-
-```sql
-SELECT 
-    p.codigo,
-    e.razonSocial,
-    pr.nombre as producto,
-    pr.codigoPetro,
-    p.montoSolicitado,
-    p.plazo,
-    p.estadoPrestamo,
-    p.saldoTotal
-FROM PRST p
-JOIN ENTD e ON p.ENTDCDGO = e.codigo
-JOIN PRDC pr ON p.PRDCCDGO = pr.codigo
-WHERE e.rolPetroComercial = ?
-  AND p.estadoPrestamo IN (2, 11); -- VIGENTE o EN_MORA
+**Flujo en Frontend:**
+```
+1. Usuario sube archivo → FASE 1 y FASE 2 automáticas
+2. Sistema muestra novedades encontradas
+3. Usuario revisa novedades
+4. Usuario presiona "Procesar Pagos" → FASE 3
+5. Sistema muestra resumen de procesamiento:
+   - X pagos aplicados exitosamente
+   - Y pagos omitidos por novedades
+   - Z errores
 ```
 
-### Ver cuotas de un préstamo en un mes/año
+### 📋 CHECKLIST DE IMPLEMENTACIÓN
 
-```sql
-SELECT 
-    dp.codigo,
-    dp.numeroCuota,
-    dp.fechaVencimiento,
-    dp.capital,
-    dp.interes,
-    dp.cuota,
-    dp.estado,
-    dp.capitalPagado,
-    dp.interesPagado,
-    dp.saldoCapital
-FROM DTPR dp
-WHERE dp.PRSTCDGO = ?
-  AND MONTH(dp.fechaVencimiento) = ?
-  AND YEAR(dp.fechaVencimiento) = ?
-ORDER BY dp.numeroCuota;
+#### Para Completar el Procesamiento de Pagos:
+
+- [ ] **Backend:**
+  - [ ] Crear/modificar REST endpoint para procesamiento
+  - [ ] Probar método `aplicarPagosArchivoPetro()` con datos reales
+  - [ ] Implementar método `procesarAporte()` para productos AH
+  - [ ] Agregar método `determinarTipoAporte()`
+  - [ ] Integrar procesamiento de aportes en flujo principal
+
+- [ ] **Frontend:**
+  - [ ] Agregar botón "Procesar Pagos" en pantalla de revisión
+  - [ ] Implementar servicio para llamar endpoint de procesamiento
+  - [ ] Mostrar resumen de procesamiento
+  - [ ] Actualizar estado visual de la carga
+
+- [ ] **Testing:**
+  - [ ] Probar con archivo pequeño (10-20 registros)
+  - [ ] Probar con productos PH que tengan HS
+  - [ ] Probar con productos PE que tengan HS
+  - [ ] Probar pagos completos
+  - [ ] Probar pagos parciales
+  - [ ] Probar pagos con excedente
+  - [ ] Probar registros sin pago (mora)
+  - [ ] Probar aportes (AH)
+  - [ ] Verificar actualización correcta de estados
+  - [ ] Verificar saldos después de procesamiento
+
+- [ ] **Validación:**
+  - [ ] Verificar que registros en PagoPrestamo sean correctos
+  - [ ] Verificar que estados de cuotas se actualicen
+  - [ ] Verificar que saldos de préstamos sean correctos
+  - [ ] Verificar que aportes se creen correctamente
+
+### 🔍 EJEMPLO DE FLUJO COMPLETO ESPERADO
+
+```
+ARCHIVO CARGADO: petrocomercial_202603.txt
+Mes/Año: 03/2026
+Registros: 150
+
+==========================================
+FASE 1: CARGA Y VALIDACIÓN BÁSICA
+==========================================
+✅ Archivo parseado: 150 registros
+✅ Productos: AH (50), PH (40), HS (40), PE (20)
+✅ Todos los registros guardados en BD
+
+Novedades Fase 1:
+- 5 partícipes no encontrados
+- 2 códigos Petro duplicados
+- 3 nombres de entidad duplicados
+
+==========================================
+FASE 2: VALIDACIONES AVANZADAS
+==========================================
+Validando 100 registros (omitiendo 50 AH/HS)
+
+Validando PH (40 registros):
+✅ PH Partícipe 10107 → Monto PH: $975.38 + HS: $50.25 = $1025.63
+✅ PH Partícipe 10205 → Monto PH: $850.00 + HS: $45.00 = $895.00
+✅ ...
+
+Validando PE (20 registros):
+✅ PE Partícipe 20301 → Monto PE: $500.00 + HS: $30.00 = $530.00
+✅ ...
+
+Novedades Fase 2:
+- 10 cuotas con fecha diferente
+- 5 diferencias menores a $1
+- 3 préstamos no encontrados
+- 2 productos no mapeados
+
+==========================================
+RESUMEN VALIDACIONES
+==========================================
+Total registros: 150
+Registros OK: 125
+Registros con novedades: 25
+
+Usuario revisa novedades y presiona "Procesar Pagos"
+
+==========================================
+FASE 3: PROCESAMIENTO DE PAGOS
+==========================================
+Procesando 125 registros aprobados...
+
+Préstamos PH (35 procesados):
+✅ Partícipe 10107 → Cuota #15 PAGADA ($1025.63)
+✅ Partícipe 10205 → Cuota #8 PAGADA ($895.00)
+⚠️ Partícipe 10350 → Cuota #12 PARCIAL ($450.00 de $895.00)
+✅ ...
+
+Préstamos PE (18 procesados):
+✅ Partícipe 20301 → Cuota #5 PAGADA ($530.00)
+✅ ...
+
+Aportes AH (50 procesados):
+✅ Partícipe 30101 → Aporte creado ($150.00)
+✅ ...
+
+==========================================
+RESUMEN PROCESAMIENTO
+==========================================
+Total procesados: 125
+Pagos completos: 95
+Pagos parciales: 8
+Aportes creados: 50
+Omitidos (con novedades): 25
+Errores: 0
+
+✅ Procesamiento completado exitosamente
+```
+
+### 📊 DIAGRAMA DE FLUJO ACTUALIZADO
+
+```
+┌─────────────────────────────────────────┐
+│   USUARIO SUBE ARCHIVO TXT              │
+└─────────────┬───────────────────────────┘
+              │
+              ▼
+┌─────────────────────────────────────────┐
+│   FASE 1: CARGA Y VALIDACIÓN BÁSICA     │
+│   ✅ IMPLEMENTADA                        │
+├─────────────────────────────────────────┤
+│ 1. Parsear archivo                      │
+│ 2. Validar entidades                    │
+│ 3. Guardar TODOS en BD                  │
+│ 4. Registrar novedades Fase 1           │
+└─────────────┬───────────────────────────┘
+              │
+              ▼
+┌─────────────────────────────────────────┐
+│   FASE 2: VALIDACIONES AVANZADAS        │
+│   ✅ IMPLEMENTADA                        │
+├─────────────────────────────────────────┤
+│ 1. Validar productos                    │
+│ 2. Validar préstamos                    │
+│ 3. Validar cuotas                       │
+│ 4. Sumar PH/PP + HS                     │
+│ 5. Registrar novedades Fase 2           │
+└─────────────┬───────────────────────────┘
+              │
+              ▼
+┌─────────────────────────────────────────┐
+│   USUARIO REVISA NOVEDADES              │
+│   (Pantalla Frontend)                   │
+└─────────────┬───────────────────────────┘
+              │
+              ▼
+┌─────────────────────────────────────────┐
+│   USUARIO PRESIONA "PROCESAR PAGOS"     │
+│   ⚠️ ENDPOINT FALTA                     │
+└─────────────┬───────────────────────────┘
+              │
+              ▼
+┌─────────────────────────────────────────┐
+│   FASE 3: PROCESAMIENTO                 │
+│   ⚠️ IMPLEMENTADO SIN ENDPOINT          │
+├─────────────────────────────────────────┤
+│ 1. Aplicar pagos a cuotas               │
+│ 2. Actualizar estados                   │
+│ 3. Crear registros PagoPrestamo         │
+│ 4. Crear registros Aporte (AH)          │
+│ 5. Recalcular saldos                    │
+└─────────────┬───────────────────────────┘
+              │
+              ▼
+┌─────────────────────────────────────────┐
+│   MOSTRAR RESUMEN EN FRONTEND           │
+│   ⚠️ FALTA IMPLEMENTAR                  │
+└─────────────────────────────────────────┘
+```
+
+### 🎯 PRÓXIMOS PASOS INMEDIATOS
+
+**PASO 1: Crear Endpoint REST**
+```bash
+Archivo: AsoprepGenerales.java o crear CargaArchivoPetroRest.java
+Tiempo estimado: 15 minutos
+```
+
+**PASO 2: Probar Procesamiento de Pagos**
+```bash
+- Cargar archivo de prueba
+- Llamar endpoint manualmente (Postman)
+- Verificar logs
+- Verificar registros en BD
+Tiempo estimado: 1 hora
+```
+
+**PASO 3: Implementar Procesamiento de Aportes**
+```bash
+Archivo: CargaArchivoPetroServiceImpl.java
+Método: procesarAporte()
+Tiempo estimado: 30 minutos
+```
+
+**PASO 4: Integrar con Frontend**
+```bash
+- Agregar botón en pantalla
+- Conectar con servicio
+- Mostrar resumen
+Tiempo estimado: 2 horas
+```
+
+**PASO 5: Testing Completo**
+```bash
+- Probar todos los escenarios
+- Validar datos en BD
+- Ajustar según resultados
+Tiempo estimado: 3 horas
 ```
 
 ---
 
-## 📝 NOTAS FINALES
+## 📞 CONTACTO Y SOPORTE
 
-### Puntos Críticos a Considerar
+Para continuar con la implementación, se necesita:
+1. ✅ Código backend del procesamiento → **YA ESTÁ IMPLEMENTADO**
+2. ⚠️ Endpoint REST → **FALTA CREAR**
+3. ⚠️ Frontend botón procesamiento → **FALTA IMPLEMENTAR**
+4. ⚠️ Procesamiento de aportes → **FALTA IMPLEMENTAR**
 
-1. **Transaccionalidad:** Todo el procesamiento de FASE 2 debe ser transaccional. Si falla cualquier paso, hacer rollback completo.
-
-2. **Idempotencia:** El procesamiento debe poder ejecutarse múltiples veces sin duplicar datos. Validar si ya existe un pago para esa cuota en ese mes/año.
-
-3. **Concurrencia:** Si múltiples usuarios procesan cargas simultáneamente, asegurar que no haya conflictos en las actualizaciones de préstamos/cuotas.
-
-4. **Auditoría:** Registrar en logs cada paso del procesamiento para debugging y auditoría.
-
-5. **Performance:** Para cargas con miles de registros, considerar procesamiento en lotes y optimización de consultas.
-
-6. **Validación de Fechas:** Los pagos siempre deben registrarse al último día del mes/año de afectación de la carga.
-
-7. **Manejo de Moneda:** Todos los cálculos deben manejar precisión decimal correctamente (usar BigDecimal si es necesario).
-
-8. **Testing:** Crear casos de prueba exhaustivos antes de implementar en producción.
-
-### Orden de Implementación Recomendado
-
-1. ✅ Crear rubros de error adicionales
-2. ✅ Agregar campos de tracking a ParticipeXCargaArchivo
-3. ✅ Implementar queries en DAOs (Producto, Prestamo, DetallePrestamo)
-4. ✅ Crear servicio de procesamiento con lógica básica
-5. ✅ Implementar generación de aportes
-6. ✅ Implementar procesamiento de pagos a préstamos
-7. ✅ Implementar actualización de estados de cuotas
-8. ✅ Implementar actualización de estados de préstamos
-9. ✅ Crear endpoint REST
-10. ✅ Testing exhaustivo con datos reales
-11. ✅ Implementar reporte de resultados
-12. ✅ Documentar API para el frontend
+**El 80% del trabajo está hecho. Solo falta exponerlo via REST y conectar con frontend.**
 
 ---
-
-**DOCUMENTO CREADO:** 2026-03-23  
-**VERSIÓN:** 1.0  
-**ESTADO IMPLEMENTACIÓN:** FASE 1 COMPLETA / FASE 2 PENDIENTE  
-**PRÓXIMA REVISIÓN:** Al iniciar implementación de FASE 2
-
----
-

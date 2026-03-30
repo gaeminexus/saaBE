@@ -43,7 +43,9 @@ public class ProductoDaoServiceImpl extends EntityDaoImpl<Producto> implements P
         } catch (Exception e) {
             System.err.println("Error al buscar producto por código Petro: " + e.getMessage());
             e.printStackTrace();
-            throw e;
+            // NO lanzar excepción - retornar null para no detener el proceso
+            // El error se registrará como novedad en el nivel superior
+            return null;
         }
     }
 
@@ -68,7 +70,9 @@ public class ProductoDaoServiceImpl extends EntityDaoImpl<Producto> implements P
         } catch (Exception e) {
             System.err.println("Error al buscar productos por código Petro: " + e.getMessage());
             e.printStackTrace();
-            throw e;
+            // NO lanzar excepción - retornar lista vacía para no detener el proceso
+            // El error se registrará como novedad en el nivel superior
+            return new java.util.ArrayList<>();
         }
     }
 

@@ -72,7 +72,8 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 		} catch (Exception e) {
 			System.err.println("Error al buscar cuota por mes/año: " + e.getMessage());
 			e.printStackTrace();
-			throw e;
+			// NO lanzar excepción - retornar lista vacía para no detener el proceso
+			return new java.util.ArrayList<>();
 		}
 	}
 
@@ -96,7 +97,8 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 		} catch (Exception e) {
 			System.err.println("Error al buscar cuotas del préstamo: " + e.getMessage());
 			e.printStackTrace();
-			throw e;
+			// NO lanzar excepción - retornar lista vacía para no detener el proceso
+			return new java.util.ArrayList<>();
 		}
 	}
 

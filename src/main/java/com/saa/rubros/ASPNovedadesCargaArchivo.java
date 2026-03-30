@@ -30,4 +30,12 @@ public interface ASPNovedadesCargaArchivo {
 	public static final int CUOTA_FECHA_DIFERENTE = 16; // Cuota encontrada pero con fecha diferente al mes del archivo
 	public static final int DIFERENCIA_MENOR_UN_DOLAR = 17; // Diferencia menor a $1 en el monto (dentro de tolerancia)
 	
+	// Novedades específicas de APORTES (Producto AH) - FASE 2
+	public static final int HISTORIAL_SUELDO_NO_ENCONTRADO = 18; // No existe HistorialSueldo para la entidad
+	public static final int MULTIPLES_REGISTROS_HISTORIAL_SUELDO = 19; // Existen múltiples registros activos en HistorialSueldo
+	public static final int VALORES_HISTORIAL_NULOS = 20; // montoJubilacion o montoCesantia son NULL
+	public static final int APORTE_VALORES_CERO = 21; // El archivo indica $0 en AH (no se hizo descuento)
+	public static final int APORTE_MONTO_INCONSISTENTE = 22; // Monto archivo != Monto esperado (diferencia > $1)
+	public static final int APORTE_DIFERENCIA_MENOR_UN_DOLAR = 23; // Diferencia <= $1 en aportes
+	
 }
