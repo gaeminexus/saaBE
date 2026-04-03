@@ -19,4 +19,14 @@ public interface HistorialSueldoDaoService extends EntityDao<HistorialSueldo>  {
 	 */
 	List<HistorialSueldo> selectByEntidad(Long codigoEntidad) throws Throwable;
 
+	/**
+	 * Busca el registro de HistorialSueldo activo (estado 99) para una entidad
+	 * ✅ CRÍTICO: Estado 99 indica el registro vigente con los montos actuales de aportes
+	 * 
+	 * @param codigoEntidad Código de la entidad
+	 * @return HistorialSueldo con estado 99, o null si no existe
+	 * @throws Throwable Si ocurre algún error
+	 */
+	HistorialSueldo selectByEntidadYEstadoActivo(Long codigoEntidad) throws Throwable;
+
 }

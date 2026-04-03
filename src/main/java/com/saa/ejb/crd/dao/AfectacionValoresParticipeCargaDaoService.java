@@ -33,4 +33,13 @@ public interface AfectacionValoresParticipeCargaDaoService extends EntityDao<Afe
      * @throws Throwable Si ocurre un error
      */
     List<AfectacionValoresParticipeCarga> selectByCuota(Long codigoCuota) throws Throwable;
+    
+    /**
+     * Busca una afectación específica por código de novedad y código de cuota
+     * @param codigoNovedad Código de la NovedadParticipeCarga
+     * @param codigoDetallePrestamo Código del DetallePrestamo
+     * @return AfectacionValoresParticipeCarga encontrada o null
+     * @throws Throwable Si ocurre un error
+     */
+    AfectacionValoresParticipeCarga selectByNovedadYCuota(Long codigoNovedad, Long codigoDetallePrestamo) throws Throwable;
 }

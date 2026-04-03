@@ -15,5 +15,13 @@ public interface CargaArchivoDaoService extends EntityDao<CargaArchivo>{
 	 * @return Lista de CargaArchivo
 	 */
 	List<CargaArchivo> selectByAnio(Long anio) throws Throwable;
+	
+	/**
+	 * Busca todas las cargas con estado específico (estado 3 = procesada)
+	 * @param estado Estado de la carga
+	 * @return Lista de CargaArchivo encontradas
+	 * @throws Throwable Si ocurre un error
+	 */
+	List<CargaArchivo> selectByEstado(Long estado) throws Throwable;
 
 }

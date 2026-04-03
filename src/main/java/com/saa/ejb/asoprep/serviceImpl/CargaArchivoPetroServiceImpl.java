@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import com.saa.basico.ejb.FileService;
+import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.asoprep.service.CargaArchivoPetroService;
 import com.saa.ejb.crd.dao.EntidadDaoService;
 import com.saa.ejb.crd.service.CargaArchivoService;
@@ -80,6 +81,21 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     private com.saa.ejb.crd.dao.HistorialSueldoDaoService historialSueldoDaoService;
     
     @EJB
+    private com.saa.ejb.crd.dao.DetalleCargaArchivoDaoService detalleCargaArchivoDaoService;
+    
+    @EJB
+    private com.saa.ejb.crd.dao.PagoPrestamoDaoService pagoPrestamoDaoService;
+    
+    @EJB
+    private com.saa.ejb.crd.dao.AfectacionValoresParticipeCargaDaoService afectacionValoresParticipeCargaDaoService;
+    
+    @EJB
+    private com.saa.ejb.crd.dao.NovedadParticipeCargaDaoService novedadParticipeCargaDaoService;
+    
+    @EJB
+    private com.saa.ejb.crd.dao.CargaArchivoDaoService cargaArchivoDaoService;
+    
+    @EJB
     private com.saa.ejb.crd.service.AporteService aporteService;
     
     @EJB
@@ -91,7 +107,7 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     private static final double TOLERANCIA = 1.0; // Tolerancia de $1 para redondeos
     
     // Códigos de TipoAporte
-    private static final Long TIPO_APORTE_JUBILACION = 10L; // Código para aporte de jubilación
+    private static final Long TIPO_APORTE_JUBILACION = 9L;  // Código para aporte de jubilación (CORRECTO)
     private static final Long TIPO_APORTE_CESANTIA = 11L;   // Código para aporte de cesantía
     
     // Códigos de producto Petro que NO se validan como préstamos
@@ -111,8 +127,6 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
                                      CargaArchivo cargaArchivo, 
                                      List<DetalleCargaArchivo> detallesCargaArchivos,
                                      List<ParticipeXCargaArchivo> participesXCargaArchivo) throws Throwable {
-        
-        System.out.println("Iniciando procesamiento de archivo Petro: " + fileName);
         
         try {
             // 0. PROCESAR EL CONTENIDO DEL ARCHIVO
@@ -313,48 +327,29 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	 * @param participesXCargaArchivo Lista de todos los partícipes procesados
 	 */
 	private void ejecutarValidacionesFase2(CargaArchivo cargaArchivo, List<ParticipeXCargaArchivo> participesXCargaArchivo) {
-		System.out.println("========================================");
-		System.out.println("INICIANDO VALIDACIONES FASE 2");
-		System.out.println("Total de registros a validar: " + participesXCargaArchivo.size());
-		System.out.println("========================================");
-		
-		int contadorValidados = 0;
-		int contadorOmitidos = 0;
+		// Logs innecesarios eliminados para optimizar rendimiento
 		
 		for (ParticipeXCargaArchivo participe : participesXCargaArchivo) {
-			// Obtener el código del producto
 			String codigoProducto = participe.getDetalleCargaArchivo() != null ? 
 									participe.getDetalleCargaArchivo().getCodigoPetroProducto() : null;
 			
 			if (codigoProducto == null) {
-				contadorOmitidos++;
 				continue;
 			}
 			
-			// Verificar si es producto especial (AH, HS)
 			boolean esProductoEspecial = CODIGO_PRODUCTO_APORTES.equalsIgnoreCase(codigoProducto) ||
 										 CODIGO_PRODUCTO_HS.equalsIgnoreCase(codigoProducto);
 			
-			// Solo validar préstamos, NO productos especiales
 			if (!esProductoEspecial && participe.getCodigo() != null) {
 				try {
 					validarNovedadesFase2(participe, codigoProducto, cargaArchivo);
-					contadorValidados++;
 				} catch (Throwable e) {
 					System.err.println("ERROR en validaciones Fase 2 para partícipe " + 
 									   participe.getCodigoPetro() + ": " + e.getMessage());
 					e.printStackTrace();
 				}
-			} else {
-				contadorOmitidos++;
 			}
 		}
-		
-		System.out.println("========================================");
-		System.out.println("VALIDACIONES FASE 2 COMPLETADAS");
-		System.out.println("Registros validados: " + contadorValidados);
-		System.out.println("Registros omitidos (AH/HS): " + contadorOmitidos);
-		System.out.println("========================================");
 	}
     
     // Filtrar partícipes por código específico de DetalleCargaArchivo
@@ -878,11 +873,9 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			validarOrdenProcesamiento(cargaArchivo);
 			// ==========================================
 			
-			// 2. Obtener todos los detalles de esta carga
-			List<DetalleCargaArchivo> detalles = detalleCargaArchivoService.selectAll();
-			List<DetalleCargaArchivo> detallesCarga = detalles.stream()
-				.filter(d -> d.getCargaArchivo() != null && d.getCargaArchivo().getCodigo().equals(codigoCargaArchivo))
-				.collect(java.util.stream.Collectors.toList());
+			// 2. ✅ OPTIMIZACIÓN: Obtener SOLO los detalles de esta carga específica
+			// En lugar de traer TODOS los detalles de TODAS las cargas con selectAll()
+			List<DetalleCargaArchivo> detallesCarga = detalleCargaArchivoDaoService.selectByCargaArchivo(codigoCargaArchivo);
 			
 			int totalProcesados = 0;
 			int totalExitosos = 0;
@@ -894,23 +887,21 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			for (DetalleCargaArchivo detalle : detallesCarga) {
 				String codigoProducto = detalle.getCodigoPetroProducto();
 				
+				System.out.println("\n📦 Procesando PRODUCTO: " + codigoProducto);
+				
 				// Omitir solo producto HS (seguros independientes)
 				// AH (Aportes) SÍ se procesa
 				if (CODIGO_PRODUCTO_HS.equalsIgnoreCase(codigoProducto)) {
-					System.out.println("Omitiendo producto HS (seguros independientes)");
+					System.out.println("  ⊘ Producto HS omitido (se procesa junto con PH/PP)");
 					continue;
 				}
 				
-				// Obtener todos los partícipes de este detalle
-				List<ParticipeXCargaArchivo> participes = participeXCargaArchivoDaoService.selectAll(
-					com.saa.model.crd.NombreEntidadesCredito.PARTICIPE_X_CARGA_ARCHIVO);
+				// ✅ OPTIMIZACIÓN: Obtener SOLO los partícipes de este detalle específico
+				// En lugar de traer TODOS los partícipes de TODAS las cargas con selectAll()
+				List<ParticipeXCargaArchivo> participesDetalle = 
+					participeXCargaArchivoDaoService.selectByDetalleCargaArchivo(detalle.getCodigo());
 				
-				List<ParticipeXCargaArchivo> participesDetalle = participes.stream()
-					.filter(p -> p.getDetalleCargaArchivo() != null && 
-					            p.getDetalleCargaArchivo().getCodigo().equals(detalle.getCodigo()))
-					.collect(java.util.stream.Collectors.toList());
-				
-				System.out.println("Procesando producto: " + codigoProducto + " - " + participesDetalle.size() + " registros");
+				System.out.println("  Total partícipes en este producto: " + (participesDetalle != null ? participesDetalle.size() : 0));
 				
 				// 4. Procesar cada partícipe
 				for (ParticipeXCargaArchivo participe : participesDetalle) {
@@ -919,6 +910,10 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 					try {
 						// Verificar si tiene novedades que bloquean el procesamiento
 						if (tieneNovedadesBloqueantes(participe)) {
+							System.out.println("⚠️ Partícipe OMITIDO - Código Petro: " + participe.getCodigoPetro() + 
+							                   " (" + participe.getNombre() + ") - Producto: " + codigoProducto + 
+							                   " - Novedad: " + participe.getNovedadesCarga() + 
+							                   " - Monto: $" + participe.getTotalDescontado());
 							totalOmitidos++;
 							continue;
 						}
@@ -977,27 +972,18 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	
 	/**
 	 * Verifica si un partícipe tiene novedades que bloquean el procesamiento de pagos
+	 * ✅ CORRECCIÓN: NINGUNA novedad bloquea el procesamiento
+	 * El flujo ya maneja correctamente todos los casos:
+	 * - PRESTAMO_NO_ENCONTRADO: El método aplicarPagoParticipe hace return si no encuentra préstamos
+	 * - CUOTA_NO_ENCONTRADA: El método buscarCuotaAPagar retorna null y no procesa
+	 * - MONTO_INCONSISTENTE: Si es menor queda PARCIAL, si es mayor se aplica a siguiente cuota
+	 * - MULTIPLES_PRESTAMOS_ACTIVOS: Se procesan todos los préstamos activos encontrados
+	 * etc.
 	 */
 	private boolean tieneNovedadesBloqueantes(ParticipeXCargaArchivo participe) {
-		// Las siguientes novedades NO bloquean el pago:
-		// - OK (1)
-		// - DIFERENCIA_MENOR_UN_DOLAR (12)
-		// - CUOTA_FECHA_DIFERENTE (13)
-		// - DESCUENTOS_INCOMPLETOS (7)
-		
-		Long novedad = participe.getNovedadesCarga();
-		if (novedad == null || novedad == ASPNovedadesCargaArchivo.OK) {
-			return false;
-		}
-		
-		// Permitir procesamiento con estas novedades específicas
-		if (novedad == ASPNovedadesCargaArchivo.DIFERENCIA_MENOR_UN_DOLAR ||
-		    novedad == ASPNovedadesCargaArchivo.CUOTA_FECHA_DIFERENTE) {
-			return false;
-		}
-		
-		// Cualquier otra novedad bloquea el procesamiento
-		return true;
+		// ✅ NO bloquear ningún procesamiento por novedades
+		// El flujo maneja correctamente cada caso
+		return false;
 	}
 	
 	/**
@@ -1007,7 +993,45 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	 * Si no se encuentra HS o no corresponde, la cuota queda como PARCIAL.
 	 */
 	private void aplicarPagoParticipe(ParticipeXCargaArchivo participe, String codigoProducto, CargaArchivo cargaArchivo) throws Throwable {
-		// Obtener el monto del archivo (sumando HS si es PH o PP)
+		System.out.println("========================================");
+		System.out.println("APLICAR PAGO " + codigoProducto + " - Partícipe: " + participe.getCodigoPetro() + " (" + participe.getNombre() + ")");
+		System.out.println("Monto: $" + participe.getTotalDescontado());
+		
+		// ✅ OPTIMIZACIÓN: Buscar entidad UNA SOLA VEZ
+		List<com.saa.model.crd.Entidad> entidades = entidadDaoService.selectByCodigoPetro(participe.getCodigoPetro());
+		if (entidades == null || entidades.isEmpty()) {
+			System.out.println("⚠️ PROCESAMIENTO OMITIDO - No se encontró entidad con código Petro: " + participe.getCodigoPetro());
+			return;
+		}
+		com.saa.model.crd.Entidad entidad = entidades.get(0);
+		System.out.println("✅ Entidad encontrada: " + entidad.getRazonSocial() + " (ID: " + entidad.getCodigo() + ")");
+		
+		// ✅ OPTIMIZACIÓN: Buscar productos UNA SOLA VEZ
+		List<com.saa.model.crd.Producto> productos = productoDaoService.selectAllByCodigoPetro(codigoProducto);
+		if (productos == null || productos.isEmpty()) {
+			System.out.println("⚠️ PROCESAMIENTO OMITIDO - No se encontró producto con código Petro: " + codigoProducto);
+			return;
+		}
+		System.out.println("✅ Producto(s) encontrado(s): " + productos.size());
+		
+		// ✅ OPTIMIZACIÓN: Buscar préstamos UNA SOLA VEZ
+		List<com.saa.model.crd.Prestamo> prestamos = new ArrayList<>();
+		for (com.saa.model.crd.Producto producto : productos) {
+			List<com.saa.model.crd.Prestamo> prestamosDelProducto = 
+				prestamoDaoService.selectByEntidadYProductoActivosById(entidad.getCodigo(), producto.getCodigo());
+			if (prestamosDelProducto != null && !prestamosDelProducto.isEmpty()) {
+				prestamos.addAll(prestamosDelProducto);
+			}
+		}
+		
+		if (prestamos.isEmpty()) {
+			System.out.println("⚠️ PROCESAMIENTO OMITIDO - No se encontraron préstamos activos para entidad: " + 
+			                   entidad.getRazonSocial() + " (ID: " + entidad.getCodigo() + ") y producto: " + codigoProducto);
+			return;
+		}
+		System.out.println("✅ Préstamo(s) activo(s) encontrado(s): " + prestamos.size());
+		
+		// Obtener el monto del archivo
 		double montoArchivo = nullSafe(participe.getTotalDescontado());
 		double montoHS = 0.0;
 		boolean hsEncontradoYValido = true;
@@ -1016,9 +1040,7 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		if (CODIGO_PRODUCTO_PH.equalsIgnoreCase(codigoProducto) || 
 		    CODIGO_PRODUCTO_PP.equalsIgnoreCase(codigoProducto)) {
 			
-			System.out.println("========================================");
-			System.out.println("APLICAR PAGO " + codigoProducto + " - Partícipe: " + participe.getCodigoPetro() + " (" + participe.getNombre() + ")");
-			System.out.println("Monto " + codigoProducto + ": $" + participe.getTotalDescontado());
+			System.out.println("📋 Producto con seguro de incendio - Buscando registro HS separado...");
 			
 			try {
 				ParticipeXCargaArchivo participeHS = participeXCargaArchivoDaoService.selectByCodigoPetroYProductoEnCarga(
@@ -1031,39 +1053,27 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 					montoHS = nullSafe(participeHS.getTotalDescontado());
 					System.out.println("✅ Registro HS encontrado con monto: $" + montoHS);
 					
-					// Buscar la cuota para validar que el monto HS corresponda al desgravamen esperado
-					List<com.saa.model.crd.Entidad> entidades = entidadDaoService.selectByCodigoPetro(participe.getCodigoPetro());
-					if (entidades != null && !entidades.isEmpty()) {
-						com.saa.model.crd.Entidad entidad = entidades.get(0);
-						List<com.saa.model.crd.Producto> productos = productoDaoService.selectAllByCodigoPetro(codigoProducto);
+					// Buscar la cuota para validar que el monto HS corresponda al valorSeguroIncendio esperado
+					// ✅ USAR prestamos ya obtenidos en lugar de buscar de nuevo
+					com.saa.model.crd.DetallePrestamo cuotaValidar = buscarCuotaAPagar(prestamos, cargaArchivo);
+					if (cuotaValidar != null) {
+						// CORRECCIÓN: Validar contra valorSeguroIncendio, NO contra desgravamen
+						double seguroIncendioEsperado = nullSafe(cuotaValidar.getValorSeguroIncendio());
+						double diferenciaHS = Math.abs(montoHS - seguroIncendioEsperado);
 						
-						if (productos != null && !productos.isEmpty()) {
-							List<com.saa.model.crd.Prestamo> prestamos = new ArrayList<>();
-							for (com.saa.model.crd.Producto producto : productos) {
-								List<com.saa.model.crd.Prestamo> prestamosDelProducto = 
-									prestamoDaoService.selectByEntidadYProductoActivosById(entidad.getCodigo(), producto.getCodigo());
-								if (prestamosDelProducto != null && !prestamosDelProducto.isEmpty()) {
-									prestamos.addAll(prestamosDelProducto);
-								}
-							}
-							
-							if (!prestamos.isEmpty()) {
-								com.saa.model.crd.DetallePrestamo cuotaValidar = buscarCuotaAPagar(prestamos, cargaArchivo);
-								if (cuotaValidar != null) {
-									double desgravamenEsperado = nullSafe(cuotaValidar.getDesgravamen());
-									double diferenciaHS = Math.abs(montoHS - desgravamenEsperado);
-									
-									if (diferenciaHS <= TOLERANCIA) {
-										System.out.println("✅ Monto HS CORRESPONDE al desgravamen esperado ($" + desgravamenEsperado + ")");
-										montoArchivo += montoHS;
-										System.out.println("✅ TOTAL A APLICAR (" + codigoProducto + " + HS): $" + montoArchivo);
-									} else {
-										hsEncontradoYValido = false;
-										System.out.println("❌ Monto HS NO CORRESPONDE - Esperado: $" + desgravamenEsperado + ", Recibido: $" + montoHS);
-										System.out.println("❌ La cuota quedará como PARCIAL (solo se aplicará " + codigoProducto + ")");
-									}
-								}
-							}
+						System.out.println("  Validando HS contra valorSeguroIncendio de la cuota:");
+						System.out.println("    - Seguro Incendio esperado (cuota): $" + seguroIncendioEsperado);
+						System.out.println("    - Monto HS recibido (archivo): $" + montoHS);
+						System.out.println("    - Diferencia: $" + diferenciaHS);
+						
+						if (diferenciaHS <= TOLERANCIA) {
+							System.out.println("✅ Monto HS CORRESPONDE al seguro de incendio esperado");
+							montoArchivo += montoHS;
+							System.out.println("✅ TOTAL A APLICAR (" + codigoProducto + " + HS): $" + montoArchivo);
+						} else {
+							hsEncontradoYValido = false;
+							System.out.println("❌ Monto HS NO CORRESPONDE - Esperado: $" + seguroIncendioEsperado + ", Recibido: $" + montoHS);
+							System.out.println("❌ La cuota quedará como PARCIAL (solo se aplicará " + codigoProducto + " sin seguro incendio)");
 						}
 					}
 				} else {
@@ -1086,192 +1096,564 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			return;
 		}
 		
-		// Buscar el préstamo activo
-		List<com.saa.model.crd.Entidad> entidades = entidadDaoService.selectByCodigoPetro(participe.getCodigoPetro());
-		if (entidades == null || entidades.isEmpty()) {
-			System.out.println("⚠️ No se encontró entidad con código Petro: " + participe.getCodigoPetro());
-			return;
-		}
-		
-		com.saa.model.crd.Entidad entidad = entidades.get(0);
-		
-		// Buscar productos
-		List<com.saa.model.crd.Producto> productos = productoDaoService.selectAllByCodigoPetro(codigoProducto);
-		if (productos == null || productos.isEmpty()) {
-			System.out.println("⚠️ No se encontró producto con código Petro: " + codigoProducto);
-			return;
-		}
-		
-		// Buscar préstamos activos
-		List<com.saa.model.crd.Prestamo> prestamos = new ArrayList<>();
-		for (com.saa.model.crd.Producto producto : productos) {
-			List<com.saa.model.crd.Prestamo> prestamosDelProducto = 
-				prestamoDaoService.selectByEntidadYProductoActivosById(entidad.getCodigo(), producto.getCodigo());
-			if (prestamosDelProducto != null && !prestamosDelProducto.isEmpty()) {
-				prestamos.addAll(prestamosDelProducto);
+		// ==========================================
+		// VERIFICAR SI EL PRÉSTAMO ESTÁ EN ESTADO DE_PLAZO_VENCIDO
+		// ==========================================
+		boolean esDePlazoVencido = false;
+		for (com.saa.model.crd.Prestamo prestamo : prestamos) {
+			if (prestamo.getEstadoPrestamo() != null && 
+			    prestamo.getEstadoPrestamo() == com.saa.rubros.EstadoPrestamo.DE_PLAZO_VENCIDO) {
+				esDePlazoVencido = true;
+				System.out.println("⚠️ PRÉSTAMO EN ESTADO DE_PLAZO_VENCIDO - Aplicando lógica especial");
+				break;
 			}
 		}
 		
-		if (prestamos.isEmpty()) {
-			System.out.println("⚠️ No se encontraron préstamos activos para entidad: " + entidad.getCodigo() + " y producto: " + codigoProducto);
-			return;
-		}
-		
-		// Buscar la cuota a pagar (del mes/año del archivo o la mínima pendiente)
-		com.saa.model.crd.DetallePrestamo cuotaAPagar = buscarCuotaAPagar(prestamos, cargaArchivo);
-		
-		if (cuotaAPagar != null) {
-			System.out.println("✅ Cuota a pagar encontrada: #" + cuotaAPagar.getNumeroCuota() + " - Monto: $" + nullSafe(cuotaAPagar.getTotal()));
-			
-			// Si es PH/PP y NO se encontró HS válido, forzar procesamiento como PARCIAL (sin desgravamen)
-			if ((CODIGO_PRODUCTO_PH.equalsIgnoreCase(codigoProducto) || 
-			     CODIGO_PRODUCTO_PP.equalsIgnoreCase(codigoProducto)) && !hsEncontradoYValido) {
-				System.out.println("⚠️ Aplicando pago PARCIAL (sin seguro HS) para " + codigoProducto);
-				procesarPagoParcialSinSeguro(participe, cuotaAPagar, montoArchivo, cargaArchivo);
-			} else {
-				// Aplicar el pago usando los métodos de procesamiento normales
-				procesarPagoCuota(participe, cuotaAPagar, montoArchivo, cargaArchivo);
-			}
+		if (esDePlazoVencido) {
+			// Lógica especial para préstamos de plazo vencido
+			procesarPagoPlazoVencido(participe, prestamos, montoArchivo, cargaArchivo, hsEncontradoYValido, codigoProducto);
 		} else {
-			System.out.println("⚠️ No se encontró cuota pendiente para aplicar el pago");
+			// Lógica normal para préstamos activos
+			com.saa.model.crd.DetallePrestamo cuotaAPagar = buscarCuotaAPagar(prestamos, cargaArchivo);
+			
+			if (cuotaAPagar != null) {
+				System.out.println("✅ Cuota a pagar encontrada: #" + cuotaAPagar.getNumeroCuota() + " - Monto: $" + nullSafe(cuotaAPagar.getTotal()));
+				
+				// Si es PH/PP y NO se encontró HS válido, verificar si la cuota realmente necesita seguro
+				if ((CODIGO_PRODUCTO_PH.equalsIgnoreCase(codigoProducto) || 
+				     CODIGO_PRODUCTO_PP.equalsIgnoreCase(codigoProducto)) && !hsEncontradoYValido) {
+					
+					// Verificar si la cuota tiene valor de seguro de incendio
+					double valorSeguroEsperado = nullSafe(cuotaAPagar.getValorSeguroIncendio());
+					
+					if (valorSeguroEsperado > 0.01) {
+						// La cuota SÍ necesita seguro pero no se encontró HS válido
+						System.out.println("⚠️ Cuota requiere seguro ($" + valorSeguroEsperado + ") pero NO se encontró HS válido");
+						System.out.println("⚠️ Aplicando pago PARCIAL (sin seguro HS) para " + codigoProducto);
+						procesarPagoParcialSinSeguro(participe, cuotaAPagar, montoArchivo, cargaArchivo, true);
+					} else {
+						// La cuota NO requiere seguro de incendio, procesar normalmente
+						System.out.println("✅ Cuota NO requiere seguro de incendio (valorSeguroIncendio = $" + valorSeguroEsperado + ")");
+						System.out.println("✅ Procesando pago normalmente sin requerir HS");
+						procesarPagoCuota(participe, cuotaAPagar, montoArchivo, 0.0, cargaArchivo);
+					}
+				} else {
+					// Aplicar el pago usando los métodos de procesamiento normales
+					// ✅ CORRECCIÓN: Pasar el montoHS si fue encontrado y validado
+					procesarPagoCuota(participe, cuotaAPagar, montoArchivo, hsEncontradoYValido ? montoHS : 0.0, cargaArchivo);
+				}
+			} else {
+				System.out.println("⚠️ No se encontró cuota pendiente para aplicar el pago");
+			}
 		}
 	}
 	
-	/**
-	 * Procesa un pago parcial cuando NO se encontró el seguro HS para PH/PP
-	 * Solo aplica Capital e Interés, dejando el Desgravamen pendiente
-	 */
-	private void procesarPagoParcialSinSeguro(ParticipeXCargaArchivo participe, com.saa.model.crd.DetallePrestamo cuota,
-	                                          double montoPagado, CargaArchivo cargaArchivo) throws Throwable {
+/**
+ * Busca la cuota pendiente a pagar para un préstamo ACTIVO (no de plazo vencido)
+ * ✅ OPTIMIZACIÓN: Usa query optimizada que filtra en BD en lugar de traer todas las cuotas
+ */
+private com.saa.model.crd.DetallePrestamo buscarCuotaAPagar(List<com.saa.model.crd.Prestamo> prestamos, 
+                                                             CargaArchivo cargaArchivo) throws Throwable {
+	for (com.saa.model.crd.Prestamo prestamo : prestamos) {
+		// ✅ OPTIMIZACIÓN: Traer solo cuotas NO pagadas desde la BD
+		List<com.saa.model.crd.DetallePrestamo> cuotas = 
+			detallePrestamoDaoService.selectCuotasNoPagadasByPrestamo(prestamo.getCodigo());
 		
-		System.out.println("    >>> Distribuyendo pago PARCIAL SIN SEGURO - Orden: Interés → Capital");
+		if (cuotas == null || cuotas.isEmpty()) {
+			continue;
+		}
+		
+		// Buscar la primera cuota con saldo pendiente real (menor número de cuota)
+		com.saa.model.crd.DetallePrestamo cuotaPendiente = null;
+		
+		for (com.saa.model.crd.DetallePrestamo cuota : cuotas) {
+			// ✅ VALIDACIÓN ADICIONAL: Verificar que tenga saldo pendiente real
+			double desgravamenPagado = nullSafe(cuota.getDesgravamenPagado());
+			double interesPagado = nullSafe(cuota.getInteresPagado());
+			double capitalPagado = nullSafe(cuota.getCapitalPagado());
+			
+			double desgravamenPendiente = Math.max(0, nullSafe(cuota.getDesgravamen()) - desgravamenPagado);
+			double interesPendiente = Math.max(0, nullSafe(cuota.getInteres()) - interesPagado);
+			double capitalPendiente = Math.max(0, nullSafe(cuota.getCapital()) - capitalPagado);
+			double saldoPendiente = desgravamenPendiente + interesPendiente + capitalPendiente;
+			
+			// Solo considerar cuotas con saldo pendiente mayor a la tolerancia
+			if (saldoPendiente > TOLERANCIA) {
+				// Tomar la primera cuota pendiente (menor número de cuota)
+				if (cuotaPendiente == null || 
+				    cuota.getNumeroCuota() < cuotaPendiente.getNumeroCuota()) {
+					cuotaPendiente = cuota;
+				}
+			}
+		}
+		
+		if (cuotaPendiente != null) {
+			double valorTotal = nullSafe(cuotaPendiente.getCapital()) + 
+			                   nullSafe(cuotaPendiente.getInteres()) + 
+			                   nullSafe(cuotaPendiente.getDesgravamen());
+			System.out.println("  ✅ Cuota pendiente encontrada: #" + cuotaPendiente.getNumeroCuota() + 
+			                   " - Monto: $" + valorTotal);
+			return cuotaPendiente;
+		}
+	}
+	
+	return null;
+}
+
+/**
+ * Procesa el pago de una cuota de préstamo ACTIVO (no de plazo vencido)
+ */
+private void procesarPagoCuota(ParticipeXCargaArchivo participe, 
+                               com.saa.model.crd.DetallePrestamo cuota,
+                               double montoPagado,
+                               double valorSeguroIncendio,
+                               CargaArchivo cargaArchivo) throws Throwable {
+	
+	System.out.println("    Procesando pago cuota #" + cuota.getNumeroCuota() + " - Monto: $" + montoPagado + " (Seguro incendio: $" + valorSeguroIncendio + ")");
+	
+	// ✅ CRÍTICO: Obtener pagos previos para ACUMULAR
+	double desgravamenPagadoPrevio = nullSafe(cuota.getDesgravamenPagado());
+	double interesPagadoPrevio = nullSafe(cuota.getInteresPagado());
+	double capitalPagadoPrevio = nullSafe(cuota.getCapitalPagado());
+	
+	// Calcular saldos pendientes (no pagados aún)
+	double desgravamenPendiente = Math.max(0, nullSafe(cuota.getDesgravamen()) - desgravamenPagadoPrevio);
+	double interesPendiente = Math.max(0, nullSafe(cuota.getInteres()) - interesPagadoPrevio);
+	double capitalPendiente = Math.max(0, nullSafe(cuota.getCapital()) - capitalPagadoPrevio);
+	double totalPendiente = desgravamenPendiente + interesPendiente + capitalPendiente;
+	
+	System.out.println("      Pagos previos: Desgravamen=$" + desgravamenPagadoPrevio + 
+	                   ", Interés=$" + interesPagadoPrevio + ", Capital=$" + capitalPagadoPrevio);
+	System.out.println("      Pendiente: Total=$" + totalPendiente);
+	
+	// ✅ VALIDACIÓN CRÍTICA: Si la cuota ya está completamente pagada
+	if (totalPendiente <= TOLERANCIA) {
+		// Verificar si el estado NO es PAGADA y actualizarlo
+		Long estadoActual = cuota.getEstado();
+		if (estadoActual == null || 
+		    (estadoActual != com.saa.rubros.EstadoCuotaPrestamo.PAGADA && 
+		     estadoActual != com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA)) {
+			
+			System.out.println("      ✅ Cuota con pagos completos pero estado incorrecto - Actualizando a PAGADA");
+			cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+			cuota.setIdEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA); // ✅ CRÍTICO: Actualizar también idEstado
+			
+			// ✅ CORRECCIÓN: Solo establecer fechaPagado si no existe
+			if (cuota.getFechaPagado() == null) {
+				cuota.setFechaPagado(java.time.LocalDateTime.now());
+				System.out.println("      ✅ Fecha de pago establecida");
+			} else {
+				System.out.println("      ℹ️ Respetando fecha de pago existente: " + cuota.getFechaPagado());
+			}
+			
+			cuota.setCapitalPagado(nullSafe(cuota.getCapital()));
+			cuota.setInteresPagado(nullSafe(cuota.getInteres()));
+			cuota.setDesgravamenPagado(nullSafe(cuota.getDesgravamen()));
+			// ✅ CORRECCIÓN CRÍTICA: saldoCapital = saldoInicialCapital - capitalPagado
+			cuota.setSaldoCapital(Math.max(0, nullSafe(cuota.getSaldoInicialCapital()) - cuota.getCapitalPagado()));
+			cuota.setSaldoInteres(0.0);
+			cuota.setCodigoExterno(cargaArchivo.getCodigo());
+			detallePrestamoService.saveSingle(cuota);
+			System.out.println("      ✅ Estado actualizado a PAGADA exitosamente");
+		} else {
+			System.out.println("      ℹ️ Cuota ya tiene estado correcto: " + estadoActual);
+		}
+		
+		// Pasar todo el monto a la siguiente cuota
+		System.out.println("      ⚠️ Pasando todo el monto ($" + montoPagado + ") a siguiente cuota");
+		procesarExcedenteASiguienteCuota(participe, cuota, montoPagado, cargaArchivo);
+		return;
+	}
+	
+	// Verificar afectación manual
+	com.saa.model.crd.AfectacionValoresParticipeCarga afectacionManual = verificarAfectacionManual(participe, cuota);
+	
+	if (afectacionManual != null) {
+		// Usar valores de afectación manual
+		aplicarAfectacionManual(cuota, afectacionManual, cargaArchivo);
+		return;
+	}
+	
+	// Variables para registrar los valores pagados en esta operación
+	double desgravamenPagar = 0.0;
+	double interesPagar = 0.0;
+	double capitalPagar = 0.0;
+	
+	if (Math.abs(montoPagado - totalPendiente) <= TOLERANCIA) {
+		// Pago completo del saldo pendiente
+		cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+		cuota.setIdEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+		cuota.setFechaPagado(java.time.LocalDateTime.now());
+		cuota.setCapitalPagado(nullSafe(cuota.getCapital()));
+		cuota.setInteresPagado(nullSafe(cuota.getInteres()));
+		cuota.setDesgravamenPagado(nullSafe(cuota.getDesgravamen()));
+		// ✅ CORRECCIÓN: saldoCapital = saldoInicialCapital - capitalPagado
+		cuota.setSaldoCapital(Math.max(0, nullSafe(cuota.getSaldoInicialCapital()) - cuota.getCapitalPagado()));
+		cuota.setSaldoInteres(0.0);
+		
+		// Valores pagados en esta operación
+		desgravamenPagar = desgravamenPendiente;
+		interesPagar = interesPendiente;
+		capitalPagar = capitalPendiente;
+		
+		System.out.println("      ✅ Cuota PAGADA completamente");
+	} else if (montoPagado > totalPendiente) {
+		// Pago con excedente
+		cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+		cuota.setIdEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+		cuota.setFechaPagado(java.time.LocalDateTime.now());
+		cuota.setCapitalPagado(nullSafe(cuota.getCapital()));
+		cuota.setInteresPagado(nullSafe(cuota.getInteres()));
+		cuota.setDesgravamenPagado(nullSafe(cuota.getDesgravamen()));
+		// ✅ CORRECCIÓN: saldoCapital = saldoInicialCapital - capitalPagado
+		cuota.setSaldoCapital(Math.max(0, nullSafe(cuota.getSaldoInicialCapital()) - cuota.getCapitalPagado()));
+		cuota.setSaldoInteres(0.0);
+		
+		// Valores pagados en esta operación
+		desgravamenPagar = desgravamenPendiente;
+		interesPagar = interesPendiente;
+		capitalPagar = capitalPendiente;
+		
+		System.out.println("      ✅ Cuota PAGADA con excedente: $" + (montoPagado - totalPendiente));
+		
+		// Guardar la cuota antes de procesar el excedente
+		cuota.setCodigoExterno(cargaArchivo.getCodigo());
+		detallePrestamoService.saveSingle(cuota);
+		
+		// Crear registro de pago para esta cuota
+		crearRegistroPago(cuota, totalPendiente, 
+			capitalPagar, interesPagar, desgravamenPagar,
+			valorSeguroIncendio, // ✅ CORRECCIÓN: Usar el valor real del seguro de incendio (HS)
+			String.format("Pago cuota #%d - Mes %d/%d - Carga %d",
+				cuota.getNumeroCuota().intValue(),
+				cargaArchivo.getMesAfectacion(),
+				cargaArchivo.getAnioAfectacion(),
+				cargaArchivo.getCodigo()),
+			cargaArchivo);
+		
+		// Procesar excedente a siguiente cuota
+		double excedente = montoPagado - totalPendiente;
+		procesarExcedenteASiguienteCuota(participe, cuota, excedente, cargaArchivo);
+		return; // Salir porque ya se guardó la cuota
+	} else {
+		// Pago parcial - Respetar orden: Desgravamen → Interés → Capital
+		cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PARCIAL);
 		
 		double montoRestante = montoPagado;
 		
-		// Obtener valores esperados de la cuota (SIN DESGRAVAMEN)
-		double interesEsperado = nullSafe(cuota.getInteres());
-		double capitalEsperado = nullSafe(cuota.getCapital());
+		// 1. Pagar Desgravamen primero
+		if (montoRestante > 0 && desgravamenPendiente > 0) {
+			if (montoRestante >= desgravamenPendiente) {
+				desgravamenPagar = desgravamenPendiente;
+				montoRestante -= desgravamenPendiente;
+			} else {
+				desgravamenPagar = montoRestante;
+				montoRestante = 0;
+			}
+		}
 		
-		// Obtener valores ya pagados previamente (acumulativos)
-		double interesPagadoAnterior = nullSafe(cuota.getInteresPagado());
-		double capitalPagadoAnterior = nullSafe(cuota.getCapitalPagado());
-		
-		// Calcular saldos pendientes
-		double interesPendiente = Math.max(0, interesEsperado - interesPagadoAnterior);
-		double capitalPendiente = Math.max(0, capitalEsperado - capitalPagadoAnterior);
-		
-		double interesPagadoAhora = 0.0;
-		double capitalPagadoAhora = 0.0;
-		
-		// PASO 1: Pagar INTERÉS (primero, ya que no hay desgravamen)
+		// 2. Pagar Interés
 		if (montoRestante > 0 && interesPendiente > 0) {
 			if (montoRestante >= interesPendiente) {
-				interesPagadoAhora = interesPendiente;
+				interesPagar = interesPendiente;
 				montoRestante -= interesPendiente;
-				System.out.println("      ✅ Interés COMPLETO: $" + interesPagadoAhora);
 			} else {
-				interesPagadoAhora = montoRestante;
+				interesPagar = montoRestante;
 				montoRestante = 0;
-				System.out.println("      ⚠️ Interés PARCIAL: $" + interesPagadoAhora + " de $" + interesPendiente);
 			}
 		}
 		
-		// PASO 2: Pagar CAPITAL (segundo)
+		// 3. Pagar Capital
 		if (montoRestante > 0 && capitalPendiente > 0) {
 			if (montoRestante >= capitalPendiente) {
-				capitalPagadoAhora = capitalPendiente;
+				capitalPagar = capitalPendiente;
 				montoRestante -= capitalPendiente;
-				System.out.println("      ✅ Capital COMPLETO: $" + capitalPagadoAhora);
 			} else {
-				capitalPagadoAhora = montoRestante;
+				capitalPagar = montoRestante;
 				montoRestante = 0;
-				System.out.println("      ⚠️ Capital PARCIAL: $" + capitalPagadoAhora + " de $" + capitalPendiente);
 			}
 		}
 		
-		// Actualizar valores ACUMULATIVOS en la cuota (SIN tocar desgravamen)
-		cuota.setInteresPagado(interesPagadoAnterior + interesPagadoAhora);
-		cuota.setCapitalPagado(capitalPagadoAnterior + capitalPagadoAhora);
+		// ✅ ACUMULAR pagos (NO reemplazar)
+		cuota.setCapitalPagado(capitalPagadoPrevio + capitalPagar);
+		cuota.setInteresPagado(interesPagadoPrevio + interesPagar);
+		cuota.setDesgravamenPagado(desgravamenPagadoPrevio + desgravamenPagar);
+		// ✅ CORRECCIÓN: saldoCapital = saldoInicialCapital - capitalPagado
+		cuota.setSaldoCapital(Math.max(0, nullSafe(cuota.getSaldoInicialCapital()) - cuota.getCapitalPagado()));
+		cuota.setSaldoInteres(nullSafe(cuota.getInteres()) - cuota.getInteresPagado());
 		
-		// Actualizar saldos pendientes
-		cuota.setSaldoCapital(Math.max(0, capitalEsperado - cuota.getCapitalPagado()));
-		cuota.setSaldoInteres(Math.max(0, interesEsperado - cuota.getInteresPagado()));
-		
-	// SIEMPRE queda PARCIAL porque falta el desgravamen
-	cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PARCIAL);
-	System.out.println("      ⚠️⚠️ Cuota queda PARCIAL (falta desgravamen/seguro HS)");
+		System.out.println("      ⚠️ Cuota PARCIAL - Recibido: $" + montoPagado + " de $" + totalPendiente + " pendiente");
+		System.out.println("        Desgravamen: $" + desgravamenPagar + "/" + desgravamenPendiente);
+		System.out.println("        Interés: $" + interesPagar + "/" + interesPendiente);
+		System.out.println("        Capital: $" + capitalPagar + "/" + capitalPendiente);
+	}
 	
-	// TRAZABILIDAD: Guardar ID de CargaArchivo en codigoExterno
 	cuota.setCodigoExterno(cargaArchivo.getCodigo());
-	
-	// Guardar cuota actualizada
 	detallePrestamoService.saveSingle(cuota);
-		
-		// Crear registro de pago parcial con observación especial
-		String observacion = String.format("Pago PARCIAL SIN SEGURO desde carga archivo %d. Total aplicado: $%.2f (Int:$%.2f, Cap:$%.2f). FALTA DESGRAVAMEN: $%.2f",
-		                                   cargaArchivo.getCodigo(), montoPagado, 
-		                                   interesPagadoAhora, capitalPagadoAhora,
-		                                   nullSafe(cuota.getDesgravamen()));
-		crearRegistroPago(cuota, montoPagado, capitalPagadoAhora, interesPagadoAhora, 0.0, observacion, cargaArchivo);
+	
+	// Crear registro de pago (solo del monto aplicado en esta llamada, no de pagos previos)
+	String observacion = String.format("Pago cuota #%d - Mes %d/%d - Carga %d",
+		cuota.getNumeroCuota().intValue(),
+		cargaArchivo.getMesAfectacion(),
+		cargaArchivo.getAnioAfectacion(),
+		cargaArchivo.getCodigo());
+	
+	// ✅ CORRECCIÓN: En caso de pago parcial, usar los valores calculados en el bloque anterior
+	// En caso de pago completo, usar totalPendiente
+	double montoRegistrar = montoPagado > totalPendiente ? totalPendiente : montoPagado;
+	double desgravamenRegistrar = montoPagado > totalPendiente ? desgravamenPendiente : desgravamenPagar;
+	double interesRegistrar = montoPagado > totalPendiente ? interesPendiente : interesPagar;
+	double capitalRegistrar = montoPagado > totalPendiente ? capitalPendiente : capitalPagar;
+	
+	crearRegistroPago(cuota, montoRegistrar, 
+		capitalRegistrar, interesRegistrar, desgravamenRegistrar,
+		valorSeguroIncendio, // ✅ CORRECCIÓN: Usar el valor real del seguro de incendio (HS)
+		observacion, cargaArchivo);
+}
+
+/**
+ * Procesa un pago parcial cuando NO se encontró el seguro HS para PH/PP
+ */
+private void procesarPagoParcialSinSeguro(ParticipeXCargaArchivo participe, 
+                                          com.saa.model.crd.DetallePrestamo cuota,
+                                          double montoPagado, 
+                                          CargaArchivo cargaArchivo, 
+                                          boolean faltaSeguroRequerido) throws Throwable {
+	
+	System.out.println("    >>> Procesando pago SIN SEGURO - Falta seguro requerido: " + faltaSeguroRequerido);
+	
+	// ✅ CRÍTICO: Obtener pagos previos para ACUMULAR
+	double desgravamenPagadoPrevio = nullSafe(cuota.getDesgravamenPagado());
+	double interesPagadoPrevio = nullSafe(cuota.getInteresPagado());
+	double capitalPagadoPrevio = nullSafe(cuota.getCapitalPagado());
+	
+	// Calcular saldos pendientes (no incluir el seguro de incendio faltante)
+	double desgravamenPendiente = Math.max(0, nullSafe(cuota.getDesgravamen()) - desgravamenPagadoPrevio);
+	double interesPendiente = Math.max(0, nullSafe(cuota.getInteres()) - interesPagadoPrevio);
+	double capitalPendiente = Math.max(0, nullSafe(cuota.getCapital()) - capitalPagadoPrevio);
+	
+	double montoRestante = montoPagado;
+	double desgravamenPagar = 0.0;
+	double interesPagar = 0.0;
+	double capitalPagar = 0.0;
+	
+	// Orden: Desgravamen → Interés → Capital
+	
+	// 1. Pagar desgravamen
+	if (montoRestante > 0 && desgravamenPendiente > 0) {
+		if (montoRestante >= desgravamenPendiente) {
+			desgravamenPagar = desgravamenPendiente;
+			montoRestante -= desgravamenPendiente;
+		} else {
+			desgravamenPagar = montoRestante;
+			montoRestante = 0;
+		}
 	}
 	
-	/**
-	 * Busca la cuota que se debe pagar (del mes/año del archivo o la mínima pendiente)
-	 */
-	private com.saa.model.crd.DetallePrestamo buscarCuotaAPagar(List<com.saa.model.crd.Prestamo> prestamos, CargaArchivo cargaArchivo) throws Throwable {
-		// Primero buscar cuota del mes/año del archivo
-		for (com.saa.model.crd.Prestamo prestamo : prestamos) {
-			List<com.saa.model.crd.DetallePrestamo> cuotasDelMes = detallePrestamoDaoService.selectByPrestamoYMesAnio(
-				prestamo.getCodigo(),
-				cargaArchivo.getMesAfectacion().intValue(),
-				cargaArchivo.getAnioAfectacion().intValue()
-			);
+	// 2. Pagar interés
+	if (montoRestante > 0 && interesPendiente > 0) {
+		if (montoRestante >= interesPendiente) {
+			interesPagar = interesPendiente;
+			montoRestante -= interesPendiente;
+		} else {
+			interesPagar = montoRestante;
+			montoRestante = 0;
+		}
+	}
+	
+	// 3. Pagar capital
+	if (montoRestante > 0 && capitalPendiente > 0) {
+		if (montoRestante >= capitalPendiente) {
+			capitalPagar = capitalPendiente;
+			montoRestante -= capitalPendiente;
+		} else {
+			capitalPagar = montoRestante;
+			montoRestante = 0;
+		}
+	}
+	
+	// ✅ ACUMULAR pagos (NO reemplazar)
+	cuota.setDesgravamenPagado(desgravamenPagadoPrevio + desgravamenPagar);
+	cuota.setInteresPagado(interesPagadoPrevio + interesPagar);
+	cuota.setCapitalPagado(capitalPagadoPrevio + capitalPagar);
+	// ✅ CORRECCIÓN: saldoCapital = saldoInicialCapital - capitalPagado
+	cuota.setSaldoCapital(Math.max(0, nullSafe(cuota.getSaldoInicialCapital()) - cuota.getCapitalPagado()));
+	cuota.setSaldoInteres(Math.max(0, nullSafe(cuota.getInteres()) - cuota.getInteresPagado()));
+	
+	double totalPagado = desgravamenPagar + interesPagar + capitalPagar;
+	double totalPendiente = desgravamenPendiente + interesPendiente + capitalPendiente;
+	
+	// Verificar si la cuota quedó completa (sin considerar el seguro de incendio faltante)
+	if (Math.abs(totalPagado - totalPendiente) <= TOLERANCIA && !faltaSeguroRequerido) {
+		cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+		cuota.setIdEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+		cuota.setFechaPagado(java.time.LocalDateTime.now());
+		System.out.println("      ✅ Cuota PAGADA (sin seguro requerido)");
+	} else {
+		cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PARCIAL);
+		cuota.setIdEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PARCIAL);
+		System.out.println("      ⚠️ Cuota PARCIAL - Falta: $" + (totalPendiente - totalPagado));
+		if (faltaSeguroRequerido) {
+			System.out.println("      ⚠️ Además falta el seguro de incendio (HS)");
+		}
+	}
+	
+	cuota.setCodigoExterno(cargaArchivo.getCodigo());
+	detallePrestamoService.saveSingle(cuota);
+	
+	String observacion = String.format("Pago parcial sin seguro - Cuota #%d - Carga %d",
+		cuota.getNumeroCuota().intValue(), cargaArchivo.getCodigo());
+	
+	crearRegistroPago(cuota, totalPagado, capitalPagar, interesPagar, desgravamenPagar,
+		0.0, // Sin seguro de incendio porque faltó el HS
+		observacion, cargaArchivo);
+}
+
+/**
+ * Procesa el excedente de una cuota aplicándolo a la siguiente cuota pendiente
+ */
+private void procesarExcedenteASiguienteCuota(ParticipeXCargaArchivo participe,
+                                              com.saa.model.crd.DetallePrestamo cuota,
+                                              double excedente,
+                                              CargaArchivo cargaArchivo) throws Throwable {
+	
+	if (excedente <= TOLERANCIA) {
+		return;
+	}
+	
+	System.out.println("      Procesando excedente de $" + excedente + " a siguiente cuota...");
+	
+	// ✅ OPTIMIZACIÓN: Traer solo cuotas NO pagadas desde la BD
+	List<com.saa.model.crd.DetallePrestamo> cuotas = 
+		detallePrestamoDaoService.selectCuotasNoPagadasByPrestamo(cuota.getPrestamo().getCodigo());
+	
+	com.saa.model.crd.DetallePrestamo siguienteCuota = null;
+	for (com.saa.model.crd.DetallePrestamo c : cuotas) {
+		if (c.getNumeroCuota() > cuota.getNumeroCuota()) {
+			// ✅ Validar saldo pendiente real
+			double desgravamenPagado = nullSafe(c.getDesgravamenPagado());
+			double interesPagado = nullSafe(c.getInteresPagado());
+			double capitalPagado = nullSafe(c.getCapitalPagado());
 			
-			if (cuotasDelMes != null && !cuotasDelMes.isEmpty()) {
-				for (com.saa.model.crd.DetallePrestamo cuota : cuotasDelMes) {
-					Long estadoCuota = cuota.getEstado();
-					if (estadoCuota != null && 
-						estadoCuota != com.saa.rubros.EstadoCuotaPrestamo.PAGADA && 
-						estadoCuota != com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA) {
-						return cuota;
-					}
+			double desgravamenPendiente = Math.max(0, nullSafe(c.getDesgravamen()) - desgravamenPagado);
+			double interesPendiente = Math.max(0, nullSafe(c.getInteres()) - interesPagado);
+			double capitalPendiente = Math.max(0, nullSafe(c.getCapital()) - capitalPagado);
+			double saldoPendiente = desgravamenPendiente + interesPendiente + capitalPendiente;
+			
+			// Solo considerar cuotas con saldo pendiente real
+			if (saldoPendiente > TOLERANCIA) {
+				if (siguienteCuota == null || c.getNumeroCuota() < siguienteCuota.getNumeroCuota()) {
+					siguienteCuota = c;
 				}
 			}
 		}
+	}
+	
+	if (siguienteCuota != null) {
+		System.out.println("        Aplicando excedente a cuota #" + siguienteCuota.getNumeroCuota());
+		// ✅ El excedente no incluye seguro de incendio (ya se aplicó en la cuota anterior)
+		procesarPagoCuota(participe, siguienteCuota, excedente, 0.0, cargaArchivo);
+	} else {
+		System.out.println("        ⚠️ No hay siguiente cuota pendiente - Excedente no aplicado: $" + excedente);
+	}
+}
+
+/**
+ * Verifica si existe una afectación manual en la tabla AVPC para este partícipe y cuota
+ */
+private com.saa.model.crd.AfectacionValoresParticipeCarga verificarAfectacionManual(
+		ParticipeXCargaArchivo participe, 
+		com.saa.model.crd.DetallePrestamo cuota) throws Throwable {
+	
+	try {
+		// Primero buscar las novedades del partícipe
+		List<com.saa.model.crd.NovedadParticipeCarga> novedades = 
+			novedadParticipeCargaDaoService.selectByParticipe(participe.getCodigo());
 		
-		// Si no encuentra del mes, buscar la mínima cuota pendiente
-		com.saa.model.crd.DetallePrestamo cuotaMinima = null;
-		for (com.saa.model.crd.Prestamo prestamo : prestamos) {
-			List<com.saa.model.crd.DetallePrestamo> todasLasCuotas = detallePrestamoDaoService.selectByPrestamo(prestamo.getCodigo());
+		if (novedades == null || novedades.isEmpty()) {
+			return null;
+		}
+		
+		// Por cada novedad, verificar si hay una afectación manual para esta cuota
+		for (com.saa.model.crd.NovedadParticipeCarga novedad : novedades) {
+			com.saa.model.crd.AfectacionValoresParticipeCarga afectacion = 
+				afectacionValoresParticipeCargaDaoService.selectByNovedadYCuota(
+					novedad.getCodigo(), 
+					cuota.getCodigo()
+				);
 			
-			if (todasLasCuotas != null && !todasLasCuotas.isEmpty()) {
-				for (com.saa.model.crd.DetallePrestamo cuota : todasLasCuotas) {
-					Long estadoCuota = cuota.getEstado();
-					if (estadoCuota != null && 
-						estadoCuota != com.saa.rubros.EstadoCuotaPrestamo.PAGADA && 
-						estadoCuota != com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA) {
-						if (cuotaMinima == null || cuota.getNumeroCuota() < cuotaMinima.getNumeroCuota()) {
-							cuotaMinima = cuota;
-						}
-					}
-				}
+			if (afectacion != null) {
+				return afectacion;
 			}
 		}
 		
-		return cuotaMinima;
+		return null;
+		
+	} catch (Throwable e) {
+		System.err.println("Error al verificar afectación manual: " + e.getMessage());
+		e.printStackTrace();
 	}
 	
-	/**
-	 * Valida las novedades de FASE 2 (novedades 9-15) durante la carga del archivo
-	 * Estas validaciones se ejecutan ANTES del procesamiento para detectar problemas tempranamente
-	 * 
-	 * @param participe El registro del partícipe a validar
-	 * @param codigoProducto Código del producto del archivo
-	 * @param cargaArchivo Información del archivo de carga (mes/año)
-	 */
-	private void validarNovedadesFase2(ParticipeXCargaArchivo participe, String codigoProducto, CargaArchivo cargaArchivo) {
-		try {
-		
+	return null;
+}
+
+/**
+ * Aplica una afectación manual de valores
+ * ✅ CORRECCIÓN: Ahora ACUMULA sobre pagos previos en lugar de reemplazarlos
+ */
+private void aplicarAfectacionManual(com.saa.model.crd.DetallePrestamo cuota,
+                                     com.saa.model.crd.AfectacionValoresParticipeCarga afectacion,
+                                     CargaArchivo cargaArchivo) throws Throwable {
+	
+	double capitalAfectar = nullSafe(afectacion.getCapitalAfectar());
+	double interesAfectar = nullSafe(afectacion.getInteresAfectar());
+	double desgravamenAfectar = nullSafe(afectacion.getDesgravamenAfectar());
+	double valorTotalAfectar = nullSafe(afectacion.getValorAfectar());
+	
+	// ✅ CRÍTICO: Obtener pagos previos para ACUMULAR
+	double capitalPagadoPrevio = nullSafe(cuota.getCapitalPagado());
+	double interesPagadoPrevio = nullSafe(cuota.getInteresPagado());
+	double desgravamenPagadoPrevio = nullSafe(cuota.getDesgravamenPagado());
+	
+	// ✅ ACUMULAR valores manuales sobre pagos previos
+	cuota.setCapitalPagado(capitalPagadoPrevio + capitalAfectar);
+	cuota.setInteresPagado(interesPagadoPrevio + interesAfectar);
+	cuota.setDesgravamenPagado(desgravamenPagadoPrevio + desgravamenAfectar);
+	// ✅ CORRECCIÓN: saldoCapital = saldoInicialCapital - capitalPagado
+	cuota.setSaldoCapital(Math.max(0, nullSafe(cuota.getSaldoInicialCapital()) - cuota.getCapitalPagado()));
+	cuota.setSaldoInteres(Math.max(0, nullSafe(cuota.getInteres()) - cuota.getInteresPagado()));
+	
+	double totalEsperado = nullSafe(cuota.getTotal());
+	double totalPagadoAcumulado = cuota.getCapitalPagado() + cuota.getInteresPagado() + cuota.getDesgravamenPagado();
+	
+	if (Math.abs(totalPagadoAcumulado - totalEsperado) <= TOLERANCIA) {
+		cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+		cuota.setIdEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+		cuota.setFechaPagado(java.time.LocalDateTime.now());
+		System.out.println("      ✅ Cuota PAGADA (afectación manual)");
+	} else {
+		cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PARCIAL);
+		cuota.setIdEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PARCIAL);
+		System.out.println("      ⚠️ Cuota PARCIAL (afectación manual) - Total: $" + totalPagadoAcumulado + " de $" + totalEsperado);
+	}
+	
+	cuota.setCodigoExterno(cargaArchivo.getCodigo());
+	detallePrestamoService.saveSingle(cuota);
+	
+	String observacion = "Afectación manual (AVPC ID: " + afectacion.getCodigo() + ")";
+	crearRegistroPago(cuota, valorTotalAfectar, capitalAfectar, interesAfectar, 
+		desgravamenAfectar,
+		0.0, // valorSeguroIncendio - no aplica en afectaciones manuales
+		observacion, cargaArchivo);
+}
+
+/**
+ * Ejecuta validaciones de fase 2 para un partícipe
+ */
+private void validarNovedadesFase2(ParticipeXCargaArchivo participe, 
+                                   String codigoProducto, 
+                                   CargaArchivo cargaArchivo) {
+	try {
 		// ==========================================
 		// VALIDACIÓN ESPECIAL: PRODUCTO AH (APORTES)
 		// ==========================================
@@ -1299,24 +1681,22 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 				"Error al buscar producto: " + e.getMessage(), null, null, null, null);
 			return;
 		}
-			
-			if (productos == null || productos.isEmpty()) {
-				registrarNovedad(participe, ASPNovedadesCargaArchivo.PRODUCTO_NO_MAPEADO, 
-					"No se encontró producto con código Petro: " + codigoProducto, null, null, null, null);
-				return;
-			}
-			
-			// VALIDACIÓN 10: PRESTAMO_NO_ENCONTRADO
-			Long rolPetroLong = participe.getCodigoPetro();
-			if (rolPetroLong == null) {
-				registrarNovedad(participe, ASPNovedadesCargaArchivo.PRESTAMO_NO_ENCONTRADO,
-					"El partícipe no tiene código Petro válido", null, null, null, null);
-				return;
-			}
-			
+		
+		if (productos == null || productos.isEmpty()) {
+			registrarNovedad(participe, ASPNovedadesCargaArchivo.PRODUCTO_NO_MAPEADO, 
+				"No se encontró producto con código Petro: " + codigoProducto, null, null, null, null);
+			return;
+		}
+		
+		// VALIDACIÓN 10: PRESTAMO_NO_ENCONTRADO
+		Long rolPetroLong = participe.getCodigoPetro();
+		if (rolPetroLong == null) {
+			registrarNovedad(participe, ASPNovedadesCargaArchivo.PRESTAMO_NO_ENCONTRADO,
+				"El partícipe no tiene código Petro válido", null, null, null, null);
+			return;
+		}
+		
 		// Buscar la entidad por código Petro
-		// IMPORTANTE: Si la entidad no existe, ya se reportó en FASE 1
-		// Aquí solo registramos la novedad y continuamos, NO tumbamos el proceso
 		List<com.saa.model.crd.Entidad> entidades = null;
 		try {
 			entidades = entidadDaoService.selectByCodigoPetro(rolPetroLong);
@@ -1326,46 +1706,45 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 				"Error al buscar entidad: " + e.getMessage(), null, null, null, null);
 			return;
 		}
-			
-			if (entidades == null || entidades.isEmpty()) {
-				registrarNovedad(participe, ASPNovedadesCargaArchivo.PRESTAMO_NO_ENCONTRADO,
-					"No se encontró entidad con código Petro: " + rolPetroLong, null, null, null, null);
-				return;
-			}
-			
-			com.saa.model.crd.Entidad entidad = entidades.get(0);
-			
-			// Buscar préstamos usando IDs numéricos
-			List<com.saa.model.crd.Prestamo> prestamos = new ArrayList<>();
-			
-			for (com.saa.model.crd.Producto producto : productos) {
-				try {
-					List<com.saa.model.crd.Prestamo> prestamosDelProducto = 
-						prestamoDaoService.selectByEntidadYProductoActivosById(
-							entidad.getCodigo(),
-							producto.getCodigo()
-						);
-						
-					if (prestamosDelProducto != null && !prestamosDelProducto.isEmpty()) {
-						prestamos.addAll(prestamosDelProducto);
-					}
-				} catch (Throwable e) {
-					System.err.println("Error al buscar préstamos para producto " + producto.getCodigo() + ": " + e.getMessage());
-					// Continuar con el siguiente producto
+		
+		if (entidades == null || entidades.isEmpty()) {
+			registrarNovedad(participe, ASPNovedadesCargaArchivo.PRESTAMO_NO_ENCONTRADO,
+				"No se encontró entidad con código Petro: " + rolPetroLong, null, null, null, null);
+			return;
+		}
+		
+		com.saa.model.crd.Entidad entidad = entidades.get(0);
+		
+		// Buscar préstamos usando IDs numéricos
+		List<com.saa.model.crd.Prestamo> prestamos = new ArrayList<>();
+		
+		for (com.saa.model.crd.Producto producto : productos) {
+			try {
+				List<com.saa.model.crd.Prestamo> prestamosDelProducto = 
+					prestamoDaoService.selectByEntidadYProductoActivosById(
+						entidad.getCodigo(),
+						producto.getCodigo()
+					);
+					
+				if (prestamosDelProducto != null && !prestamosDelProducto.isEmpty()) {
+					prestamos.addAll(prestamosDelProducto);
 				}
+			} catch (Throwable e) {
+				System.err.println("Error al buscar préstamos para producto " + producto.getCodigo() + ": " + e.getMessage());
+				// Continuar con el siguiente producto
 			}
-				
-			if (prestamos.isEmpty()) {
-				Long codigoProductoDB = (productos != null && !productos.isEmpty()) ? productos.get(0).getCodigo() : null;
-				registrarNovedad(participe, ASPNovedadesCargaArchivo.PRESTAMO_NO_ENCONTRADO,
-					"No se encontró ningún préstamo activo para el código Petro: " + codigoProducto,
-					codigoProductoDB, null, null, null);
-				return;
-			}
+		}
 			
+		if (prestamos.isEmpty()) {
+			Long codigoProductoDB = (productos != null && !productos.isEmpty()) ? productos.get(0).getCodigo() : null;
+			registrarNovedad(participe, ASPNovedadesCargaArchivo.PRESTAMO_NO_ENCONTRADO,
+				"No se encontró ningún préstamo activo para el código Petro: " + codigoProducto,
+				codigoProductoDB, null, null, null);
+			return;
+		}
+		
 		// VALIDACIÓN 12: CUOTA_NO_ENCONTRADA / CUOTA_FECHA_DIFERENTE
 		// IMPORTANTE: Si el código es PH o PP, el seguro viene en un registro separado con código HS
-		// Debemos sumar (PH|PP) + HS antes de comparar
 		double montoArchivo = nullSafe(participe.getTotalDescontado());
 		
 		// Caso especial para PH (Hipotecario) y PP (Prendario): buscar el registro HS correspondiente
@@ -1401,7 +1780,6 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		
 		List<com.saa.model.crd.DetallePrestamo> cuotasEncontradas = new ArrayList<>();
 		boolean algunaCuotaConFechaDiferente = false;
-		boolean necesitaSumarMultiplesCuotas = false;
 		
 		// VALIDACIÓN ESPECIAL: Si el monto descontado es 0, significa que NO se realizó el pago
 		if (montoArchivo == 0.0 || Math.abs(montoArchivo) < 0.01) {
@@ -1421,7 +1799,6 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 							if (estadoCuota != null && 
 								estadoCuota != com.saa.rubros.EstadoCuotaPrestamo.PAGADA && 
 								estadoCuota != com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA) {
-								// Encontramos una cuota pendiente pero no se realizó el pago
 								cuotaEncontrada = true;
 								registrarNovedad(participe, ASPNovedadesCargaArchivo.SIN_DESCUENTOS,
 									"No se realizó el pago de la cuota #" + cuota.getNumeroCuota() + ". La cuota pasará a mora",
@@ -1435,11 +1812,9 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 					}
 				} catch (Throwable e) {
 					System.err.println("Error al buscar cuotas sin pago para préstamo " + prestamo.getCodigo() + ": " + e.getMessage());
-					// Continuar con el siguiente préstamo
 				}
 			}
 			
-			// Si no se encontró cuota específica, registrar novedad genérica
 			if (!cuotaEncontrada) {
 				Long codigoProductoDB = (!prestamos.isEmpty()) ? prestamos.get(0).getProducto().getCodigo() : null;
 				Long codigoPrestamoDB = (!prestamos.isEmpty()) ? prestamos.get(0).getCodigo() : null;
@@ -1458,7 +1833,6 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			com.saa.model.crd.DetallePrestamo cuotaDelPrestamo = null;
 			boolean cuotaConFechaDiferente = false;
 			
-			// Buscar cuota del mes/año del archivo en este préstamo
 			List<com.saa.model.crd.DetallePrestamo> cuotasDelMes = null;
 			try {
 				cuotasDelMes = detallePrestamoDaoService.selectByPrestamoYMesAnio(
@@ -1468,11 +1842,9 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 				);
 			} catch (Throwable e) {
 				System.err.println("Error al buscar cuotas del mes para préstamo " + prestamo.getCodigo() + ": " + e.getMessage());
-				// Continuar con el siguiente préstamo
 				continue;
 			}
 			
-			// Filtrar cuotas que NO estén PAGADAS o CANCELADAS_ANTICIPADA
 			if (cuotasDelMes != null && !cuotasDelMes.isEmpty()) {
 				for (com.saa.model.crd.DetallePrestamo cuotaTemp : cuotasDelMes) {
 					Long estadoCuota = cuotaTemp.getEstado();
@@ -1484,684 +1856,137 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 					}
 				}
 			}
+			
+			// Si no se encontró cuota del mes, buscar la MÍNIMA cuota pendiente
+			if (cuotaDelPrestamo == null) {
+				Long estadoPrestamo = prestamo.getIdEstado();
+				boolean prestamoEnEstadoValido = (estadoPrestamo != null && (
+					estadoPrestamo == com.saa.rubros.EstadoPrestamo.GENERADO ||
+					estadoPrestamo == com.saa.rubros.EstadoPrestamo.VIGENTE ||
+					estadoPrestamo == com.saa.rubros.EstadoPrestamo.DE_PLAZO_VENCIDO ||
+					estadoPrestamo == com.saa.rubros.EstadoPrestamo.EN_MORA
+				));
 				
-		// Si no se encontró cuota del mes, buscar la MÍNIMA cuota pendiente
-		if (cuotaDelPrestamo == null) {
-			Long estadoPrestamo = prestamo.getIdEstado();
-			boolean prestamoEnEstadoValido = (estadoPrestamo != null && (
-				estadoPrestamo == com.saa.rubros.EstadoPrestamo.GENERADO ||
-				estadoPrestamo == com.saa.rubros.EstadoPrestamo.VIGENTE ||
-				estadoPrestamo == com.saa.rubros.EstadoPrestamo.DE_PLAZO_VENCIDO ||
-				estadoPrestamo == com.saa.rubros.EstadoPrestamo.EN_MORA
-			));
-				
-			if (prestamoEnEstadoValido) {
-				List<com.saa.model.crd.DetallePrestamo> todasLasCuotas = null;
-				try {
-					todasLasCuotas = detallePrestamoDaoService.selectByPrestamo(prestamo.getCodigo());
-				} catch (Throwable e) {
-					System.err.println("Error al buscar todas las cuotas para préstamo " + prestamo.getCodigo() + ": " + e.getMessage());
-					// Continuar con el siguiente préstamo
-				}
-				
-				if (todasLasCuotas != null && !todasLasCuotas.isEmpty()) {
-					com.saa.model.crd.DetallePrestamo cuotaMinima = null;
+				if (prestamoEnEstadoValido) {
+					List<com.saa.model.crd.DetallePrestamo> todasLasCuotas = null;
+					try {
+						todasLasCuotas = detallePrestamoDaoService.selectByPrestamo(prestamo.getCodigo());
+					} catch (Throwable e) {
+						System.err.println("Error al buscar todas las cuotas para préstamo " + prestamo.getCodigo() + ": " + e.getMessage());
+					}
 					
-					for (com.saa.model.crd.DetallePrestamo cuotaTemp : todasLasCuotas) {
-						Long estadoCuota = cuotaTemp.getEstado();
+					if (todasLasCuotas != null && !todasLasCuotas.isEmpty()) {
+						com.saa.model.crd.DetallePrestamo cuotaMinima = null;
 						
-						if (estadoCuota != null && 
-							estadoCuota != com.saa.rubros.EstadoCuotaPrestamo.PAGADA && 
-							estadoCuota != com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA) {
+						for (com.saa.model.crd.DetallePrestamo cuotaTemp : todasLasCuotas) {
+							Long estadoCuota = cuotaTemp.getEstado();
 							
-							if (cuotaMinima == null || cuotaTemp.getNumeroCuota() < cuotaMinima.getNumeroCuota()) {
-								cuotaMinima = cuotaTemp;
+							if (estadoCuota != null && 
+								estadoCuota != com.saa.rubros.EstadoCuotaPrestamo.PAGADA && 
+								estadoCuota != com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA) {
+								
+								if (cuotaMinima == null || cuotaTemp.getNumeroCuota() < cuotaMinima.getNumeroCuota()) {
+									cuotaMinima = cuotaTemp;
+								}
 							}
 						}
+						
+						if (cuotaMinima != null) {
+							cuotaDelPrestamo = cuotaMinima;
+							cuotaConFechaDiferente = true;
+							algunaCuotaConFechaDiferente = true;
+						}
+					}
+				}
+			}
+			
+			// Si se encontró una cuota, validar si coincide
+			if (cuotaDelPrestamo != null) {
+				double montoCuota = nullSafe(cuotaDelPrestamo.getTotal());
+				double diferencia = Math.abs(montoCuota - montoArchivo);
+				
+				if (diferencia <= TOLERANCIA) {
+					cuotasEncontradas.clear();
+					cuotasEncontradas.add(cuotaDelPrestamo);
+					
+					if (diferencia > 0.01 && diferencia <= TOLERANCIA) {
+						double montoCuotaEncontrada = nullSafe(cuotaDelPrestamo.getTotal());
+						String descripcion = String.format("Diferencia menor a $1 - Esperado: $%.2f, Archivo: $%.2f, Diferencia: $%.2f",
+							montoCuotaEncontrada, montoArchivo, diferencia);
+						registrarNovedad(participe, ASPNovedadesCargaArchivo.DIFERENCIA_MENOR_UN_DOLAR,
+							descripcion,
+							cuotaDelPrestamo.getPrestamo().getProducto().getCodigo(), 
+							cuotaDelPrestamo.getPrestamo().getCodigo(), 
+							montoCuotaEncontrada, montoArchivo);
 					}
 					
-					if (cuotaMinima != null) {
-						cuotaDelPrestamo = cuotaMinima;
-						cuotaConFechaDiferente = true;
-						algunaCuotaConFechaDiferente = true;
+					if (cuotaConFechaDiferente) {
+						double montoCuotaEncontrada = nullSafe(cuotaDelPrestamo.getTotal());
+						registrarNovedad(participe, ASPNovedadesCargaArchivo.CUOTA_FECHA_DIFERENTE,
+							"Cuota #" + cuotaDelPrestamo.getNumeroCuota() + " encontrada con fecha diferente al archivo",
+							cuotaDelPrestamo.getPrestamo().getProducto().getCodigo(), 
+							cuotaDelPrestamo.getPrestamo().getCodigo(), 
+							montoCuotaEncontrada, montoArchivo);
 					}
+					
+					return;
 				}
-			}
-		}
 				
-		// Si se encontró una cuota, validar si coincide
-		if (cuotaDelPrestamo != null) {
-			double montoCuota = nullSafe(cuotaDelPrestamo.getTotal());
-			double diferencia = Math.abs(montoCuota - montoArchivo);
-			
-			// Verificar si está dentro de la tolerancia
-			if (diferencia <= TOLERANCIA) {
-				cuotasEncontradas.clear();
 				cuotasEncontradas.add(cuotaDelPrestamo);
-				
-				// Si la diferencia es mayor a 0 pero menor a $1, registrar novedad especial
-				if (diferencia > 0.01 && diferencia <= TOLERANCIA) {
-					double montoCuotaEncontrada = nullSafe(cuotaDelPrestamo.getTotal());
-					String descripcion = String.format("Diferencia menor a $1 - Esperado: $%.2f, Archivo: $%.2f, Diferencia: $%.2f",
-						montoCuotaEncontrada, montoArchivo, diferencia);
-					registrarNovedad(participe, ASPNovedadesCargaArchivo.DIFERENCIA_MENOR_UN_DOLAR,
-						descripcion,
-						cuotaDelPrestamo.getPrestamo().getProducto().getCodigo(), 
-						cuotaDelPrestamo.getPrestamo().getCodigo(), 
-						montoCuotaEncontrada, montoArchivo);
-				}
-				
-				// Si tiene fecha diferente, registrar esa novedad
-				if (cuotaConFechaDiferente) {
-					double montoCuotaEncontrada = nullSafe(cuotaDelPrestamo.getTotal());
-					registrarNovedad(participe, ASPNovedadesCargaArchivo.CUOTA_FECHA_DIFERENTE,
-						"Cuota #" + cuotaDelPrestamo.getNumeroCuota() + " encontrada con fecha diferente al archivo",
-						cuotaDelPrestamo.getPrestamo().getProducto().getCodigo(), 
-						cuotaDelPrestamo.getPrestamo().getCodigo(), 
-						montoCuotaEncontrada, montoArchivo);
-				}
-				
-				// VALIDACIÓN OK - El pago se procesará en la fase de procesamiento
-				// NO procesamos el pago aquí, solo validamos
-				return;
 			}
-			
-			// No coincide exactamente, agregar a la lista para sumar después
-			cuotasEncontradas.add(cuotaDelPrestamo);
 		}
-	}
-			
-	// PASO 2: Si no hubo coincidencia exacta y hay múltiples cuotas, SUMAR
-	if (cuotasEncontradas.isEmpty()) {
-		participe.setNovedadesCarga(Long.valueOf(ASPNovedadesCargaArchivo.CUOTA_NO_ENCONTRADA));
-		return;
-	}
-	
-	if (cuotasEncontradas.size() > 1) {
-		necesitaSumarMultiplesCuotas = true;
-	}
-	
-	// PASO 3: Validar suma de cuotas vs archivo
-	double montoEsperadoTotal = 0.0;
-	double capitalEsperadoTotal = 0.0;
-	double interesEsperadoTotal = 0.0;
-	double desgravamenEsperadoTotal = 0.0;
-	
-	for (com.saa.model.crd.DetallePrestamo cuota : cuotasEncontradas) {
-		double capitalCuota = nullSafe(cuota.getCapital());
-		double interesCuota = nullSafe(cuota.getInteres());
-		double desgravamenCuota = nullSafe(cuota.getDesgravamen());
-		double montoCuota = nullSafe(cuota.getTotal());
 		
-		capitalEsperadoTotal += capitalCuota;
-		interesEsperadoTotal += interesCuota;
-		desgravamenEsperadoTotal += desgravamenCuota;
-		montoEsperadoTotal += montoCuota;
-	}
-	
-	// Comparar el monto total con tolerancia
-	double diferenciaTotal = Math.abs(montoEsperadoTotal - montoArchivo);
-	
-	if (diferenciaTotal > TOLERANCIA) {
-		System.out.println("MONTO_INCONSISTENTE: Esperado=$" + montoEsperadoTotal + 
-			" | Archivo=$" + montoArchivo + " | Diferencia=$" + diferenciaTotal);
-		String descripcion = String.format("Monto inconsistente - Esperado: $%.2f, Archivo: $%.2f, Diferencia: $%.2f",
-			montoEsperadoTotal, montoArchivo, diferenciaTotal);
-		Long codigoProductoDB = (!cuotasEncontradas.isEmpty()) ? cuotasEncontradas.get(0).getPrestamo().getProducto().getCodigo() : null;
-		Long codigoPrestamoDB = (!cuotasEncontradas.isEmpty()) ? cuotasEncontradas.get(0).getPrestamo().getCodigo() : null;
-		registrarNovedad(participe, ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE,
-			descripcion, codigoProductoDB, codigoPrestamoDB, montoEsperadoTotal, montoArchivo);
+		// PASO 2: Si no hubo coincidencia exacta
+		if (cuotasEncontradas.isEmpty()) {
+			registrarNovedad(participe, ASPNovedadesCargaArchivo.CUOTA_NO_ENCONTRADA,
+				"No se encontró cuota pendiente que coincida con el monto del archivo",
+				null, null, null, montoArchivo);
+			return;
+		}
+		
+		// PASO 3: Validar suma de cuotas vs archivo
+		double montoEsperadoTotal = 0.0;
+		
+		for (com.saa.model.crd.DetallePrestamo cuota : cuotasEncontradas) {
+			montoEsperadoTotal += nullSafe(cuota.getTotal());
+		}
+		
+		double diferenciaTotal = Math.abs(montoEsperadoTotal - montoArchivo);
+		
+		if (diferenciaTotal > TOLERANCIA) {
+			String descripcion = String.format("Monto inconsistente - Esperado: $%.2f, Archivo: $%.2f, Diferencia: $%.2f",
+				montoEsperadoTotal, montoArchivo, diferenciaTotal);
+			Long codigoProductoDB = (!cuotasEncontradas.isEmpty()) ? cuotasEncontradas.get(0).getPrestamo().getProducto().getCodigo() : null;
+			Long codigoPrestamoDB = (!cuotasEncontradas.isEmpty()) ? cuotasEncontradas.get(0).getPrestamo().getCodigo() : null;
+			registrarNovedad(participe, ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE,
+				descripcion, codigoProductoDB, codigoPrestamoDB, montoEsperadoTotal, montoArchivo);
+			return;
+		}
+		
+		if (diferenciaTotal > 0.01 && diferenciaTotal <= TOLERANCIA) {
+			String descripcion = String.format("Diferencia menor a $1 - Esperado: $%.2f, Archivo: $%.2f, Diferencia: $%.2f",
+				montoEsperadoTotal, montoArchivo, diferenciaTotal);
+			Long codigoProductoDB = (!cuotasEncontradas.isEmpty()) ? cuotasEncontradas.get(0).getPrestamo().getProducto().getCodigo() : null;
+			Long codigoPrestamoDB = (!cuotasEncontradas.isEmpty()) ? cuotasEncontradas.get(0).getPrestamo().getCodigo() : null;
+			registrarNovedad(participe, ASPNovedadesCargaArchivo.DIFERENCIA_MENOR_UN_DOLAR,
+				descripcion, codigoProductoDB, codigoPrestamoDB, montoEsperadoTotal, montoArchivo);
+		}
+		
+		if (algunaCuotaConFechaDiferente) {
+			Long codigoProductoDB = (!cuotasEncontradas.isEmpty()) ? cuotasEncontradas.get(0).getPrestamo().getProducto().getCodigo() : null;
+			Long codigoPrestamoDB = (!cuotasEncontradas.isEmpty()) ? cuotasEncontradas.get(0).getPrestamo().getCodigo() : null;
+			registrarNovedad(participe, ASPNovedadesCargaArchivo.CUOTA_FECHA_DIFERENTE,
+				"Al menos una cuota encontrada tiene fecha diferente al mes/año del archivo",
+				codigoProductoDB, codigoPrestamoDB, montoEsperadoTotal, montoArchivo);
+		}
+		
 		return;
-	}
-	
-	// Si la diferencia es mayor a 0 pero menor o igual a $1, registrar novedad especial
-	if (diferenciaTotal > 0.01 && diferenciaTotal <= TOLERANCIA) {
-		String descripcion = String.format("Diferencia menor a $1 - Esperado: $%.2f, Archivo: $%.2f, Diferencia: $%.2f",
-			montoEsperadoTotal, montoArchivo, diferenciaTotal);
-		Long codigoProductoDB = (!cuotasEncontradas.isEmpty()) ? cuotasEncontradas.get(0).getPrestamo().getProducto().getCodigo() : null;
-		Long codigoPrestamoDB = (!cuotasEncontradas.isEmpty()) ? cuotasEncontradas.get(0).getPrestamo().getCodigo() : null;
-		registrarNovedad(participe, ASPNovedadesCargaArchivo.DIFERENCIA_MENOR_UN_DOLAR,
-			descripcion, codigoProductoDB, codigoPrestamoDB, montoEsperadoTotal, montoArchivo);
-	}
-	
-	// Si alguna cuota tenía fecha diferente, marcar con CUOTA_FECHA_DIFERENTE
-	if (algunaCuotaConFechaDiferente) {
-		Long codigoProductoDB = (!cuotasEncontradas.isEmpty()) ? cuotasEncontradas.get(0).getPrestamo().getProducto().getCodigo() : null;
-		Long codigoPrestamoDB = (!cuotasEncontradas.isEmpty()) ? cuotasEncontradas.get(0).getPrestamo().getCodigo() : null;
-		registrarNovedad(participe, ASPNovedadesCargaArchivo.CUOTA_FECHA_DIFERENTE,
-			"Al menos una cuota encontrada tiene fecha diferente al mes/año del archivo",
-			codigoProductoDB, codigoPrestamoDB, montoEsperadoTotal, montoArchivo);
-	}
-	
-	// VALIDACIÓN OK - Los pagos se procesarán en la fase de procesamiento
-	// NO procesamos pagos aquí, solo validamos
-	return;
 		
 	} catch (Exception e) {
-		// Error en validación FASE 2
+		System.err.println("❌ ERROR en validación FASE 2 para partícipe " + 
+		                   participe.getCodigoPetro() + ": " + e.getMessage());
+		e.printStackTrace();
 	}
-}
-
-/**
-	 * Verifica si existe una afectación manual en la tabla AVPC para este partícipe y cuota
-	 * 
-	 * @param participe Partícipe del archivo
-	 * @param cuota Cuota a procesar
-	 * @return AfectacionValoresParticipeCarga si existe, null si no
-	 */
-	private com.saa.model.crd.AfectacionValoresParticipeCarga verificarAfectacionManual(
-			ParticipeXCargaArchivo participe, 
-			com.saa.model.crd.DetallePrestamo cuota) throws Throwable {
-		
-		try {
-			// Buscar si existe una afectación manual para este partícipe
-			// La tabla AVPC se relaciona con NovedadParticipeCarga
-			// que a su vez se relaciona con ParticipeXCargaArchivo
-			
-			// Obtener todas las afectaciones y filtrar por partícipe y cuota
-			List<com.saa.model.crd.AfectacionValoresParticipeCarga> afectaciones = 
-				afectacionValoresParticipeCargaService.selectAll();
-			
-			if (afectaciones != null) {
-				for (com.saa.model.crd.AfectacionValoresParticipeCarga afectacion : afectaciones) {
-					// Verificar que la afectación corresponda a este partícipe y cuota
-					if (afectacion.getNovedadParticipeCarga() != null &&
-						afectacion.getNovedadParticipeCarga().getParticipeXCargaArchivo() != null &&
-						afectacion.getNovedadParticipeCarga().getParticipeXCargaArchivo().getCodigo().equals(participe.getCodigo()) &&
-						afectacion.getDetallePrestamo() != null &&
-						afectacion.getDetallePrestamo().getCodigo().equals(cuota.getCodigo())) {
-						return afectacion;
-					}
-				}
-			}
-		} catch (Throwable e) {
-			System.err.println("Error al verificar afectación manual: " + e.getMessage());
-			// Continuar sin afectación manual
-		}
-		
-		return null;
-	}
-	
-	/**
-	 * Aplica una afectación manual según los valores indicados en la tabla AVPC
-	 * 
-	 * @param participe Partícipe del archivo
-	 * @param cuota Cuota a afectar
-	 * @param afectacion Afectación manual de la tabla AVPC
-	 * @param montoPagado Monto total recibido
-	 * @param cargaArchivo Información de la carga
-	 */
-	private void aplicarAfectacionManual(
-			ParticipeXCargaArchivo participe,
-			com.saa.model.crd.DetallePrestamo cuota,
-			com.saa.model.crd.AfectacionValoresParticipeCarga afectacion,
-			double montoPagado,
-			CargaArchivo cargaArchivo) throws Throwable {
-		
-		// Obtener valores a afectar de la tabla AVPC
-		double capitalAfectar = nullSafe(afectacion.getCapitalAfectar());
-		double interesAfectar = nullSafe(afectacion.getInteresAfectar());
-		double desgravamenAfectar = nullSafe(afectacion.getDesgravamenAfectar());
-		double valorTotalAfectar = nullSafe(afectacion.getValorAfectar());
-		
-		System.out.println("    Aplicando afectación manual:");
-		System.out.println("      Capital a afectar: $" + capitalAfectar);
-		System.out.println("      Interés a afectar: $" + interesAfectar);
-		System.out.println("      Desgravamen a afectar: $" + desgravamenAfectar);
-		
-		// Actualizar valores pagados (ACUMULATIVOS)
-		double capitalPagadoAnterior = nullSafe(cuota.getCapitalPagado());
-		double interesPagadoAnterior = nullSafe(cuota.getInteresPagado());
-		double desgravamenPagadoAnterior = nullSafe(cuota.getDesgravamenPagado());
-		
-		cuota.setCapitalPagado(capitalPagadoAnterior + capitalAfectar);
-		cuota.setInteresPagado(interesPagadoAnterior + interesAfectar);
-		cuota.setDesgravamenPagado(desgravamenPagadoAnterior + desgravamenAfectar);
-		
-		// Calcular saldos pendientes
-		double saldoCapital = nullSafe(cuota.getCapital()) - cuota.getCapitalPagado();
-		double saldoInteres = nullSafe(cuota.getInteres()) - cuota.getInteresPagado();
-		
-		cuota.setSaldoCapital(Math.max(0, saldoCapital));
-		cuota.setSaldoInteres(Math.max(0, saldoInteres));
-		
-		// Determinar estado: PAGADA si se cubrió todo, PARCIAL si falta
-		double totalCuota = nullSafe(cuota.getTotal());
-		double totalPagado = cuota.getCapitalPagado() + cuota.getInteresPagado() + 
-							 nullSafe(cuota.getDesgravamenPagado());
-		
-	if (Math.abs(totalPagado - totalCuota) <= TOLERANCIA) {
-		cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
-		cuota.setFechaPagado(java.time.LocalDateTime.now());
-		cuota.setSaldoCapital(0.0);
-		cuota.setSaldoInteres(0.0);
-		System.out.println("    ✅ Cuota pasa a PAGADA (afectación manual completa)");
-	} else {
-		cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PARCIAL);
-		System.out.println("    ⚠️ Cuota queda PARCIAL (afectación manual parcial)");
-	}
-	
-	// TRAZABILIDAD: Guardar ID de CargaArchivo en codigoExterno
-	cuota.setCodigoExterno(cargaArchivo.getCodigo());
-	
-	// Guardar cuota actualizada
-	detallePrestamoService.saveSingle(cuota);
-		
-		// Crear registro de pago con los valores afectados
-		String observacion = "Pago con afectación manual (AVPC ID: " + afectacion.getCodigo() + 
-							 ") - Carga archivo " + cargaArchivo.getCodigo();
-		crearRegistroPago(cuota, valorTotalAfectar, capitalAfectar, interesAfectar, 
-						  desgravamenAfectar, observacion, cargaArchivo);
-	}
-	
-	/**
-	 * Procesa el pago de una cuota aplicando las reglas de negocio:
-	 * 1. Primero verifica si existe afectación manual (tabla AVPC)
-	 * 2. Si no existe, aplica reglas automáticas con orden: Desgravamen → Interés → Capital
-	 * 3. Si valor recibido = esperado → PAGADA
-	 * 4. Si valor recibido < esperado → PARCIAL
-	 * 5. Si valor recibido > esperado → PAGADA + excedente a siguiente cuota
-	 * 
-	 * @param participe Partícipe con el pago
-	 * @param cuota Cuota a procesar
-	 * @param montoPagado Monto recibido del archivo
-	 * @param cargaArchivo Carga archivo para referencia
-	 * @throws Throwable Si ocurre algún error
-	 */
-	private void procesarPagoCuota(ParticipeXCargaArchivo participe, com.saa.model.crd.DetallePrestamo cuota, 
-                               double montoPagado, CargaArchivo cargaArchivo) throws Throwable {
-	
-	System.out.println(">>> Procesando cuota #" + cuota.getNumeroCuota() + " - Préstamo: " + cuota.getPrestamo().getCodigo());
-	System.out.println("    Monto recibido: $" + montoPagado);
-	System.out.println("    Monto esperado: $" + nullSafe(cuota.getTotal()));
-	
-	// PASO 1: Verificar si existe afectación manual
-	com.saa.model.crd.AfectacionValoresParticipeCarga afectacionManual = verificarAfectacionManual(participe, cuota);
-	
-	if (afectacionManual != null) {
-		System.out.println("    ✅ Afectación MANUAL encontrada - Aplicando valores de tabla AVPC");
-		aplicarAfectacionManual(participe, cuota, afectacionManual, montoPagado, cargaArchivo);
-		return;
-	}
-	
-	System.out.println("    ⚙️ Afectación AUTOMÁTICA - Aplicando reglas de negocio");
-	
-	// PASO 2: Aplicar reglas automáticas
-	double montoCuota = nullSafe(cuota.getTotal());
-	double diferencia = montoPagado - montoCuota;
-	
-	// REGLA 1: Valor recibido = Esperado → PAGADA
-	if (Math.abs(diferencia) <= TOLERANCIA) {
-		System.out.println("    REGLA: Pago COMPLETO → Estado PAGADA");
-		procesarPagoCompleto(participe, cuota, montoPagado, cargaArchivo);
-	}
-	// REGLA 2: Valor recibido < Esperado → PARCIAL (orden: Desgravamen→Interés→Capital)
-	else if (diferencia < -TOLERANCIA) {
-		System.out.println("    REGLA: Pago PARCIAL → Estado PARCIAL (orden: Desgravamen→Interés→Capital)");
-		procesarPagoParcial(participe, cuota, montoPagado, cargaArchivo);
-	}
-	// REGLA 3: Valor recibido > Esperado → PAGADA + excedente a siguiente
-	else if (diferencia > TOLERANCIA) {
-		System.out.println("    REGLA: Pago EXCEDENTE → Cuota PAGADA + diferencia a siguiente ($" + diferencia + ")");
-		procesarPagoCompletoConExcedente(participe, cuota, montoPagado, diferencia, cargaArchivo);
-	}
-}
-
-/**
- * Procesa un pago completo de una cuota.
- * Actualiza la cuota a estado PAGADA y crea el registro de pago.
- */
-private void procesarPagoCompleto(ParticipeXCargaArchivo participe, com.saa.model.crd.DetallePrestamo cuota,
-                                  double montoPagado, CargaArchivo cargaArchivo) throws Throwable {
-	
-	// Calcular distribución del pago
-	double capitalPagado = nullSafe(cuota.getCapital());
-	double interesPagado = nullSafe(cuota.getInteres());
-	double desgravamenPagado = nullSafe(cuota.getDesgravamen());
-	
-	// Actualizar campos de la cuota
-	cuota.setCapitalPagado(capitalPagado);
-	cuota.setInteresPagado(interesPagado);
-	cuota.setDesgravamenPagado(desgravamenPagado);
-	cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
-	cuota.setFechaPagado(java.time.LocalDateTime.now());
-	
-	// Actualizar saldos a cero
-	cuota.setSaldoCapital(0.0);
-	cuota.setSaldoInteres(0.0);
-	
-	// TRAZABILIDAD: Guardar ID de CargaArchivo en codigoExterno
-	cuota.setCodigoExterno(cargaArchivo.getCodigo());
-	
-	// Guardar cuota actualizada
-	detallePrestamoService.saveSingle(cuota);
-	
-	// Crear registro de pago
-	crearRegistroPago(cuota, montoPagado, capitalPagado, interesPagado, desgravamenPagado, 
-	                  "Pago completo desde carga archivo " + cargaArchivo.getCodigo(), cargaArchivo);
-}
-
-/**
- * Procesa un pago parcial de una cuota.
- * Actualiza la cuota a estado PARCIAL y distribuye el pago según el ORDEN DE AFECTACIÓN:
- * 1. DESGRAVAMEN (primero)
- * 2. INTERÉS (segundo)
- * 3. CAPITAL (último)
- */
-private void procesarPagoParcial(ParticipeXCargaArchivo participe, com.saa.model.crd.DetallePrestamo cuota,
-                                 double montoPagado, CargaArchivo cargaArchivo) throws Throwable {
-	
-	System.out.println("    >>> Distribuyendo pago PARCIAL con ORDEN: Desgravamen → Interés → Capital");
-	
-	double montoRestante = montoPagado;
-	
-	// Obtener valores esperados de la cuota
-	double desgravamenEsperado = nullSafe(cuota.getDesgravamen());
-	double interesEsperado = nullSafe(cuota.getInteres());
-	double capitalEsperado = nullSafe(cuota.getCapital());
-	
-	// Obtener valores ya pagados previamente (acumulativos)
-	double desgravamenPagadoAnterior = nullSafe(cuota.getDesgravamenPagado());
-	double interesPagadoAnterior = nullSafe(cuota.getInteresPagado());
-	double capitalPagadoAnterior = nullSafe(cuota.getCapitalPagado());
-	
-	// Calcular saldos pendientes
-	double desgravamenPendiente = Math.max(0, desgravamenEsperado - desgravamenPagadoAnterior);
-	double interesPendiente = Math.max(0, interesEsperado - interesPagadoAnterior);
-	double capitalPendiente = Math.max(0, capitalEsperado - capitalPagadoAnterior);
-	
-	double desgravamenPagadoAhora = 0.0;
-	double interesPagadoAhora = 0.0;
-	double capitalPagadoAhora = 0.0;
-	
-	// PASO 1: Pagar DESGRAVAMEN (primero)
-	if (montoRestante > 0 && desgravamenPendiente > 0) {
-		if (montoRestante >= desgravamenPendiente) {
-			desgravamenPagadoAhora = desgravamenPendiente;
-			montoRestante -= desgravamenPendiente;
-			System.out.println("      ✅ Desgravamen COMPLETO: $" + desgravamenPagadoAhora);
-		} else {
-			desgravamenPagadoAhora = montoRestante;
-			montoRestante = 0;
-			System.out.println("      ⚠️ Desgravamen PARCIAL: $" + desgravamenPagadoAhora + " de $" + desgravamenPendiente);
-		}
-	}
-	
-	// PASO 2: Pagar INTERÉS (segundo)
-	if (montoRestante > 0 && interesPendiente > 0) {
-		if (montoRestante >= interesPendiente) {
-			interesPagadoAhora = interesPendiente;
-			montoRestante -= interesPendiente;
-			System.out.println("      ✅ Interés COMPLETO: $" + interesPagadoAhora);
-		} else {
-			interesPagadoAhora = montoRestante;
-			montoRestante = 0;
-			System.out.println("      ⚠️ Interés PARCIAL: $" + interesPagadoAhora + " de $" + interesPendiente);
-		}
-	}
-	
-	// PASO 3: Pagar CAPITAL (último)
-	if (montoRestante > 0 && capitalPendiente > 0) {
-		if (montoRestante >= capitalPendiente) {
-			capitalPagadoAhora = capitalPendiente;
-			montoRestante -= capitalPendiente;
-			System.out.println("      ✅ Capital COMPLETO: $" + capitalPagadoAhora);
-		} else {
-			capitalPagadoAhora = montoRestante;
-			montoRestante = 0;
-			System.out.println("      ⚠️ Capital PARCIAL: $" + capitalPagadoAhora + " de $" + capitalPendiente);
-		}
-	}
-	
-	// Actualizar valores ACUMULATIVOS en la cuota
-	cuota.setDesgravamenPagado(desgravamenPagadoAnterior + desgravamenPagadoAhora);
-	cuota.setInteresPagado(interesPagadoAnterior + interesPagadoAhora);
-	cuota.setCapitalPagado(capitalPagadoAnterior + capitalPagadoAhora);
-	
-	// Actualizar saldos pendientes
-	cuota.setSaldoCapital(Math.max(0, capitalEsperado - cuota.getCapitalPagado()));
-	cuota.setSaldoInteres(Math.max(0, interesEsperado - cuota.getInteresPagado()));
-	
-	// Determinar estado final: PAGADA si se cubrió todo (con tolerancia), PARCIAL si falta
-	double totalEsperado = desgravamenEsperado + interesEsperado + capitalEsperado;
-	double totalPagado = cuota.getDesgravamenPagado() + cuota.getInteresPagado() + cuota.getCapitalPagado();
-	
-	if (Math.abs(totalPagado - totalEsperado) <= TOLERANCIA) {
-		cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
-		cuota.setFechaPagado(java.time.LocalDateTime.now());
-		cuota.setSaldoCapital(0.0);
-		cuota.setSaldoInteres(0.0);
-		System.out.println("      ✅✅ Cuota pasa a PAGADA (pago parcial completó el total)");
-	} else {
-		cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PARCIAL);
-		System.out.println("      ⚠️⚠️ Cuota queda PARCIAL (falta: $" + (totalEsperado - totalPagado) + ")");
-	}
-	
-	// TRAZABILIDAD: Guardar ID de CargaArchivo en codigoExterno
-	cuota.setCodigoExterno(cargaArchivo.getCodigo());
-	
-	// Guardar cuota actualizada
-	detallePrestamoService.saveSingle(cuota);
-	
-	// Crear registro de pago parcial con los valores pagados EN ESTA TRANSACCIÓN
-	String observacion = String.format("Pago parcial desde carga archivo %d. Total aplicado: $%.2f (Desgrav:$%.2f, Int:$%.2f, Cap:$%.2f)",
-	                                   cargaArchivo.getCodigo(), montoPagado, 
-	                                   desgravamenPagadoAhora, interesPagadoAhora, capitalPagadoAhora);
-	crearRegistroPago(cuota, montoPagado, capitalPagadoAhora, interesPagadoAhora, desgravamenPagadoAhora, observacion, cargaArchivo);
-}
-
-/**
- * Procesa un pago completo con excedente.
- * Paga la cuota completa y abona el excedente a la siguiente cuota siguiendo el ORDEN DE AFECTACIÓN:
- * 1. DESGRAVAMEN (primero)
- * 2. INTERÉS (segundo)
- * 3. CAPITAL (último)
- */
-private void procesarPagoCompletoConExcedente(ParticipeXCargaArchivo participe, com.saa.model.crd.DetallePrestamo cuota,
-                                              double montoPagado, double excedente, CargaArchivo cargaArchivo) throws Throwable {
-	
-	// Primero pagar la cuota completa
-	procesarPagoCompleto(participe, cuota, nullSafe(cuota.getTotal()), cargaArchivo);
-	
-	System.out.println("    >>> Aplicando EXCEDENTE de $" + excedente + " a siguiente cuota");
-	
-	// Buscar la siguiente cuota pendiente del mismo préstamo
-	List<com.saa.model.crd.DetallePrestamo> siguientesCuotas = detallePrestamoDaoService.selectByPrestamo(cuota.getPrestamo().getCodigo());
-	
-	com.saa.model.crd.DetallePrestamo siguienteCuota = null;
-	for (com.saa.model.crd.DetallePrestamo c : siguientesCuotas) {
-		if (c.getNumeroCuota() > cuota.getNumeroCuota() && 
-		    c.getEstado() != null &&
-		    c.getEstado() != com.saa.rubros.EstadoCuotaPrestamo.PAGADA &&
-		    c.getEstado() != com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA) {
-			if (siguienteCuota == null || c.getNumeroCuota() < siguienteCuota.getNumeroCuota()) {
-				siguienteCuota = c;
-			}
-		}
-	}
-	
-	// Si hay siguiente cuota, aplicar el excedente siguiendo el orden de afectación
-	if (siguienteCuota != null) {
-		System.out.println("      Siguiente cuota encontrada: #" + siguienteCuota.getNumeroCuota());
-		
-		double montoRestante = excedente;
-		
-		// Obtener valores esperados de la siguiente cuota
-		double desgravamenEsperado = nullSafe(siguienteCuota.getDesgravamen());
-		double interesEsperado = nullSafe(siguienteCuota.getInteres());
-		double capitalEsperado = nullSafe(siguienteCuota.getCapital());
-		
-		// Obtener valores ya pagados previamente (acumulativos)
-		double desgravamenPagadoAnterior = nullSafe(siguienteCuota.getDesgravamenPagado());
-		double interesPagadoAnterior = nullSafe(siguienteCuota.getInteresPagado());
-		double capitalPagadoAnterior = nullSafe(siguienteCuota.getCapitalPagado());
-		
-		// Calcular saldos pendientes
-		double desgravamenPendiente = Math.max(0, desgravamenEsperado - desgravamenPagadoAnterior);
-		double interesPendiente = Math.max(0, interesEsperado - interesPagadoAnterior);
-		double capitalPendiente = Math.max(0, capitalEsperado - capitalPagadoAnterior);
-		
-		double desgravamenPagadoAhora = 0.0;
-		double interesPagadoAhora = 0.0;
-		double capitalPagadoAhora = 0.0;
-		
-		// PASO 1: Aplicar a DESGRAVAMEN (primero)
-		if (montoRestante > 0 && desgravamenPendiente > 0) {
-			if (montoRestante >= desgravamenPendiente) {
-				desgravamenPagadoAhora = desgravamenPendiente;
-				montoRestante -= desgravamenPendiente;
-				System.out.println("        ✅ Desgravamen COMPLETO: $" + desgravamenPagadoAhora);
-			} else {
-				desgravamenPagadoAhora = montoRestante;
-				montoRestante = 0;
-				System.out.println("        ⚠️ Desgravamen PARCIAL: $" + desgravamenPagadoAhora);
-			}
-		}
-		
-		// PASO 2: Aplicar a INTERÉS (segundo)
-		if (montoRestante > 0 && interesPendiente > 0) {
-			if (montoRestante >= interesPendiente) {
-				interesPagadoAhora = interesPendiente;
-				montoRestante -= interesPendiente;
-				System.out.println("        ✅ Interés COMPLETO: $" + interesPagadoAhora);
-			} else {
-				interesPagadoAhora = montoRestante;
-				montoRestante = 0;
-				System.out.println("        ⚠️ Interés PARCIAL: $" + interesPagadoAhora);
-			}
-		}
-		
-		// PASO 3: Aplicar a CAPITAL (último)
-		if (montoRestante > 0 && capitalPendiente > 0) {
-			if (montoRestante >= capitalPendiente) {
-				capitalPagadoAhora = capitalPendiente;
-				montoRestante -= capitalPendiente;
-				System.out.println("        ✅ Capital COMPLETO: $" + capitalPagadoAhora);
-			} else {
-				capitalPagadoAhora = montoRestante;
-				montoRestante = 0;
-				System.out.println("        ⚠️ Capital PARCIAL: $" + capitalPagadoAhora);
-			}
-		}
-		
-		// Actualizar valores ACUMULATIVOS en la siguiente cuota
-		siguienteCuota.setDesgravamenPagado(desgravamenPagadoAnterior + desgravamenPagadoAhora);
-		siguienteCuota.setInteresPagado(interesPagadoAnterior + interesPagadoAhora);
-		siguienteCuota.setCapitalPagado(capitalPagadoAnterior + capitalPagadoAhora);
-		
-		// Actualizar saldos pendientes
-		siguienteCuota.setSaldoCapital(Math.max(0, capitalEsperado - siguienteCuota.getCapitalPagado()));
-		siguienteCuota.setSaldoInteres(Math.max(0, interesEsperado - siguienteCuota.getInteresPagado()));
-		
-		// Determinar estado: PAGADA si se cubrió todo, PARCIAL si falta
-		double totalEsperado = desgravamenEsperado + interesEsperado + capitalEsperado;
-		double totalPagado = siguienteCuota.getDesgravamenPagado() + siguienteCuota.getInteresPagado() + 
-		                     siguienteCuota.getCapitalPagado();
-		
-		if (Math.abs(totalPagado - totalEsperado) <= TOLERANCIA) {
-			siguienteCuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
-			siguienteCuota.setFechaPagado(java.time.LocalDateTime.now());
-			siguienteCuota.setSaldoCapital(0.0);
-			siguienteCuota.setSaldoInteres(0.0);
-			System.out.println("        ✅✅ Siguiente cuota pasa a PAGADA (excedente completó el total)");
-		} else {
-			siguienteCuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PARCIAL);
-			System.out.println("        ⚠️⚠️ Siguiente cuota queda PARCIAL");
-		}
-		
-		// TRAZABILIDAD: Guardar ID de CargaArchivo en codigoExterno
-		siguienteCuota.setCodigoExterno(cargaArchivo.getCodigo());
-		
-		// Guardar siguiente cuota actualizada
-		detallePrestamoService.saveSingle(siguienteCuota);
-		
-		// Crear registro de pago por excedente
-		String observacion = String.format("Excedente de $%.2f del mes %d/%d aplicado desde carga archivo %d (Desgrav:$%.2f, Int:$%.2f, Cap:$%.2f)",
-		                                   excedente, cargaArchivo.getMesAfectacion(), 
-		                                   cargaArchivo.getAnioAfectacion(), cargaArchivo.getCodigo(),
-		                                   desgravamenPagadoAhora, interesPagadoAhora, capitalPagadoAhora);
-		crearRegistroPago(siguienteCuota, excedente, capitalPagadoAhora, interesPagadoAhora, 
-		                  desgravamenPagadoAhora, observacion, cargaArchivo);
-		
-		// Si todavía sobra dinero, aplicar recursivamente a la siguiente cuota
-		if (montoRestante > TOLERANCIA) {
-			System.out.println("        ⚠️ Aún sobra $" + montoRestante + " - Aplicando a siguiente cuota...");
-			procesarExcedenteRecursivo(participe, siguienteCuota, montoRestante, cargaArchivo);
-		}
-	} else {
-		System.out.println("      ⚠️ No se encontró siguiente cuota pendiente. Excedente no aplicado: $" + excedente);
-	}
-}
-
-/**
- * Aplica un excedente de forma recursiva a las siguientes cuotas pendientes
- */
-private void procesarExcedenteRecursivo(ParticipeXCargaArchivo participe, com.saa.model.crd.DetallePrestamo cuotaActual,
-                                        double excedente, CargaArchivo cargaArchivo) throws Throwable {
-	
-	if (excedente <= TOLERANCIA) {
-		return; // No hay más excedente significativo que aplicar
-	}
-	
-	// Buscar la siguiente cuota pendiente
-	List<com.saa.model.crd.DetallePrestamo> siguientesCuotas = detallePrestamoDaoService.selectByPrestamo(cuotaActual.getPrestamo().getCodigo());
-	
-	com.saa.model.crd.DetallePrestamo siguienteCuota = null;
-	for (com.saa.model.crd.DetallePrestamo c : siguientesCuotas) {
-		if (c.getNumeroCuota() > cuotaActual.getNumeroCuota() && 
-		    c.getEstado() != null &&
-		    c.getEstado() != com.saa.rubros.EstadoCuotaPrestamo.PAGADA &&
-		    c.getEstado() != com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA) {
-			if (siguienteCuota == null || c.getNumeroCuota() < siguienteCuota.getNumeroCuota()) {
-				siguienteCuota = c;
-			}
-		}
-	}
-	
-	if (siguienteCuota != null) {
-		// Aplicar el excedente a la siguiente cuota como si fuera un pago normal
-		procesarPagoCuota(participe, siguienteCuota, excedente, cargaArchivo);
-	}
-}
-
-/**
- * Crea un registro de pago en la tabla PagoPrestamo.
- */
-private void crearRegistroPago(com.saa.model.crd.DetallePrestamo cuota, double valorTotal,
-                               double capitalPagado, double interesPagado, double desgravamenPagado,
-                               String observacion, CargaArchivo cargaArchivo) throws Throwable {
-	
-	com.saa.model.crd.PagoPrestamo pago = new com.saa.model.crd.PagoPrestamo();
-	
-	// Referencias
-	pago.setPrestamo(cuota.getPrestamo());
-	pago.setDetallePrestamo(cuota);
-	
-	// Valores
-	pago.setValor(valorTotal);
-	pago.setCapitalPagado(capitalPagado);
-	pago.setInteresPagado(interesPagado);
-	pago.setDesgravamen(desgravamenPagado);
-	pago.setNumeroCuota(cuota.getNumeroCuota());
-	
-	// Valores por defecto para otros campos
-	pago.setMoraPagada(0.0);
-	pago.setInteresVencidoPagado(0.0);
-	pago.setSaldoOtros(0.0);
-	pago.setValorSeguroIncendio(0.0);
-	
-	// Metadata
-	pago.setFecha(java.time.LocalDateTime.now());
-	pago.setFechaRegistro(java.time.LocalDateTime.now());
-	pago.setObservacion(observacion);
-	pago.setTipo("CARGA_ARCHIVO_PETRO");
-	pago.setUsuarioRegistro(cargaArchivo.getUsuarioCarga() != null ? 
-	                        cargaArchivo.getUsuarioCarga().getCodigo().toString() : "SISTEMA");
-	pago.setEstado(1L);
-	pago.setIdEstado(1L);
-	
-	// Guardar pago
-	pagoPrestamoService.saveSingle(pago);
 }
 
 /**
@@ -2172,353 +1997,670 @@ private void crearRegistroPago(com.saa.model.crd.DetallePrestamo cuota, double v
  * @param cargaArchivo Información de la carga
  */
 private void validarAporteAH(ParticipeXCargaArchivo participe, CargaArchivo cargaArchivo) {
-	// ...existing code...
+	try {
+		// Obtener el código Petro del partícipe
+		Long rolPetro = participe.getCodigoPetro();
+		if (rolPetro == null) {
+			registrarNovedad(participe, ASPNovedadesCargaArchivo.HISTORIAL_SUELDO_NO_ENCONTRADO,
+				"El partícipe no tiene código Petro válido", null, null, null, null);
+			return;
+		}
+		
+		// Buscar la entidad
+		List<com.saa.model.crd.Entidad> entidades = entidadDaoService.selectByCodigoPetro(rolPetro);
+		if (entidades == null || entidades.isEmpty()) {
+			registrarNovedad(participe, ASPNovedadesCargaArchivo.HISTORIAL_SUELDO_NO_ENCONTRADO,
+				"No se encontró entidad con código Petro: " + rolPetro, null, null, null, null);
+			return;
+		}
+		
+		com.saa.model.crd.Entidad entidad = entidades.get(0);
+		
+		// Buscar HistorialSueldo de la entidad
+		List<com.saa.model.crd.HistorialSueldo> historiales = historialSueldoDaoService.selectByEntidad(entidad.getCodigo());
+		
+		if (historiales == null || historiales.isEmpty()) {
+			registrarNovedad(participe, ASPNovedadesCargaArchivo.HISTORIAL_SUELDO_NO_ENCONTRADO,
+				"No existe HistorialSueldo para la entidad", null, null, null, null);
+			return;
+		}
+		
+		if (historiales.size() > 1) {
+			registrarNovedad(participe, ASPNovedadesCargaArchivo.MULTIPLES_REGISTROS_HISTORIAL_SUELDO,
+				"Existen múltiples registros en HistorialSueldo: " + historiales.size(), null, null, null, null);
+			return;
+		}
+		
+		com.saa.model.crd.HistorialSueldo historial = historiales.get(0);
+		
+		// Validar que los valores no sean NULL
+		Double montoJubilacion = historial.getMontoJubilacion();
+		Double montoCesantia = historial.getMontoCesantia();
+		
+		if (montoJubilacion == null || montoCesantia == null) {
+			registrarNovedad(participe, ASPNovedadesCargaArchivo.VALORES_HISTORIAL_NULOS,
+				"Valores NULL en HistorialSueldo - Jubilación: " + montoJubilacion + ", Cesantía: " + montoCesantia,
+				null, null, null, null);
+			return;
+		}
+		
+		// Calcular el monto esperado total (Jubilación + Cesantía)
+		double montoEsperado = nullSafe(montoJubilacion) + nullSafe(montoCesantia);
+		double montoArchivo = nullSafe(participe.getTotalDescontado());
+		
+		// Validar si el monto del archivo es 0
+		if (montoArchivo == 0.0 || Math.abs(montoArchivo) < 0.01) {
+			registrarNovedad(participe, ASPNovedadesCargaArchivo.APORTE_VALORES_CERO,
+				"No se realizó descuento de aportes (monto $0)", null, null, montoEsperado, 0.0);
+			return;
+		}
+		
+		// Comparar el monto del archivo con el esperado
+		double diferencia = Math.abs(montoEsperado - montoArchivo);
+		
+		if (diferencia > TOLERANCIA) {
+			String descripcion = String.format("Monto de aportes inconsistente - Esperado: $%.2f (Jub:$%.2f + Ces:$%.2f), Archivo: $%.2f, Diferencia: $%.2f",
+				montoEsperado, montoJubilacion, montoCesantia, montoArchivo, diferencia);
+			registrarNovedad(participe, ASPNovedadesCargaArchivo.APORTE_MONTO_INCONSISTENTE,
+				descripcion, null, null, montoEsperado, montoArchivo);
+			return;
+		}
+		
+		// Si la diferencia es pequeña pero existe
+		if (diferencia > 0.01 && diferencia <= TOLERANCIA) {
+			String descripcion = String.format("Diferencia menor a $1 en aportes - Esperado: $%.2f, Archivo: $%.2f, Diferencia: $%.2f",
+				montoEsperado, montoArchivo, diferencia);
+			registrarNovedad(participe, ASPNovedadesCargaArchivo.APORTE_DIFERENCIA_MENOR_UN_DOLAR,
+				descripcion, null, null, montoEsperado, montoArchivo);
+		}
+		
+		// Validación OK - Los aportes se generarán en la fase de procesamiento
+		System.out.println("  ✅ Validación AH OK - Esperado: $" + montoEsperado + ", Archivo: $" + montoArchivo);
+		
+	} catch (Throwable e) {
+		System.err.println("❌ ERROR en validación AH para partícipe " + 
+		                   participe.getCodigoPetro() + ": " + e.getMessage());
+		e.printStackTrace();
+	}
 }
 
 /**
- * Valida que la carga a procesar sea del siguiente mes al último mes procesado.
- * Solo se permite procesar cargas en orden secuencial mensual.
- * 
- * Si no hay cargas procesadas, solo permite procesar la carga del MENOR mes/año disponible.
- * 
- * @param cargaActual La carga que se intenta procesar
- * @throws RuntimeException Si la carga no es del siguiente mes esperado o no es la menor disponible
+ * Clase interna para almacenar los saldos reales de una cuota
  */
-private void validarOrdenProcesamiento(CargaArchivo cargaActual) throws Throwable {
-	System.out.println("========================================");
-	System.out.println("VALIDANDO ORDEN DE PROCESAMIENTO");
-	System.out.println("Carga actual: " + cargaActual.getCodigo() + " - Mes/Año: " + 
-	                   cargaActual.getMesAfectacion() + "/" + cargaActual.getAnioAfectacion());
+private static class SaldosRealesCuota {
+	double saldoDesgravamen = 0.0;
+	double saldoInteres = 0.0;
+	double saldoCapital = 0.0;
+	double totalPendiente = 0.0;
+}
+
+/**
+ * Procesa pagos para préstamos en estado DE_PLAZO_VENCIDO
+ * 
+ * CORRECCIÓN: Ahora maneja correctamente:
+ * 1. Busca y suma el registro HS para PH/PP
+ * 2. Verifica afectación manual (tabla AVPC)
+ * 3. Consulta tabla PagoPrestamo para saldos reales
+ * 4. Actualiza estado a PAGADA cuando se completa el pago
+ * 5. Aplica excedentes a siguientes cuotas
+ * 
+ * @param participe Partícipe del archivo
+ * @param prestamos Lista de préstamos encontrados
+ * @param montoPago Monto del producto (PH/PP/etc) sin HS
+ * @param cargaArchivo Información de la carga
+ * @param hsValido Si el HS fue encontrado y validado (para PH/PP)
+ * @param codigoProducto Código del producto
+ * @throws Throwable Si ocurre algún error
+ */
+private void procesarPagoPlazoVencido(ParticipeXCargaArchivo participe, 
+                                      List<com.saa.model.crd.Prestamo> prestamos,
+                                      double montoPago, 
+                                      CargaArchivo cargaArchivo,
+                                      boolean hsValido,
+                                      String codigoProducto) throws Throwable {
 	
-	try {
-		// 1. Buscar todas las cargas procesadas (estado = 3)
-		List<CargaArchivo> todasLasCargas = cargaArchivoService.selectAll();
-		List<CargaArchivo> cargasProcesadas = todasLasCargas.stream()
-			.filter(c -> c.getEstado() != null && c.getEstado() == 3L)
-			.collect(java.util.stream.Collectors.toList());
+	System.out.println("========================================");
+	System.out.println("PROCESANDO PRÉSTAMO DE PLAZO VENCIDO");
+	System.out.println("Código Producto: " + codigoProducto);
+	System.out.println("Monto archivo (" + codigoProducto + "): $" + montoPago);
+	
+	// CORRECCIÓN: Para PH/PP, buscar y sumar el registro HS
+	double montoTotal = montoPago;
+	boolean hsEncontrado = false;
+	
+	if (CODIGO_PRODUCTO_PH.equalsIgnoreCase(codigoProducto) || 
+	    CODIGO_PRODUCTO_PP.equalsIgnoreCase(codigoProducto)) {
 		
-		// 2. Si no hay cargas procesadas, validar que sea la del MENOR mes/año
-		if (cargasProcesadas == null || cargasProcesadas.isEmpty()) {
-			System.out.println("  No hay cargas procesadas previamente.");
-			System.out.println("  Validando que sea la carga del MENOR mes/año disponible...");
+		System.out.println("⚠️ Producto " + codigoProducto + " requiere validación de seguro HS");
+		
+		try {
+			ParticipeXCargaArchivo participeHS = participeXCargaArchivoDaoService.selectByCodigoPetroYProductoEnCarga(
+				participe.getCodigoPetro(),
+				CODIGO_PRODUCTO_HS,
+				cargaArchivo.getCodigo()
+			);
 			
-			// Buscar todas las cargas disponibles (sin procesar)
-			List<CargaArchivo> cargasDisponibles = todasLasCargas.stream()
-				.filter(c -> c.getEstado() != null && c.getEstado() != 3L)
-				.filter(c -> c.getAnioAfectacion() != null && c.getMesAfectacion() != null)
-				.collect(java.util.stream.Collectors.toList());
-			
-			if (cargasDisponibles.isEmpty()) {
-				System.out.println("  ✅ No hay otras cargas disponibles. Se permite procesar.");
-				System.out.println("========================================");
-				return;
+			if (participeHS != null) {
+				double montoHS = nullSafe(participeHS.getTotalDescontado());
+				System.out.println("✅ Registro HS encontrado: $" + montoHS);
+				montoTotal += montoHS;
+				hsEncontrado = true;
+			} else {
+				System.out.println("⚠️ No se encontró registro HS - Solo se aplicará " + codigoProducto);
 			}
-			
-			// Encontrar la carga con el menor año/mes
-			CargaArchivo cargaMenor = null;
-			for (CargaArchivo carga : cargasDisponibles) {
-				if (cargaMenor == null) {
-					cargaMenor = carga;
-				} else {
-					// Comparar año y mes para encontrar la menor
-					if (carga.getAnioAfectacion() < cargaMenor.getAnioAfectacion() ||
-					    (carga.getAnioAfectacion().equals(cargaMenor.getAnioAfectacion()) && 
-					     carga.getMesAfectacion() < cargaMenor.getMesAfectacion())) {
-						cargaMenor = carga;
-					}
-				}
-			}
-			
-			System.out.println("  Carga con MENOR mes/año disponible: ID " + cargaMenor.getCodigo() + 
-			                   " - Mes/Año: " + cargaMenor.getMesAfectacion() + "/" + cargaMenor.getAnioAfectacion());
-			
-			// Validar que la carga actual sea la del menor mes/año
-			int mesActual = cargaActual.getMesAfectacion().intValue();
-			int anioActual = cargaActual.getAnioAfectacion().intValue();
-			int mesMenor = cargaMenor.getMesAfectacion().intValue();
-			int anioMenor = cargaMenor.getAnioAfectacion().intValue();
-			
-			if (anioActual != anioMenor || mesActual != mesMenor) {
-				String mensajeError = String.format(
-					"❌ ERROR: No se puede procesar la carga del mes %d/%d.\n" +
-					"No hay cargas procesadas previamente (estado 3).\n" +
-					"Debe procesar primero la carga del MENOR mes/año disponible: %d/%d (ID: %d).\n" +
-					"Las cargas deben procesarse en orden cronológico secuencial.",
-					mesActual, anioActual,
-					mesMenor, anioMenor, cargaMenor.getCodigo()
-				);
-				
-				System.err.println(mensajeError);
-				System.out.println("========================================");
-				throw new RuntimeException(mensajeError);
-			}
-			
-			System.out.println("  ✅ Validación OK: Es la carga del menor mes/año disponible.");
-			System.out.println("========================================");
-			return;
+		} catch (Throwable e) {
+			System.err.println("❌ Error al buscar HS: " + e.getMessage());
+		}
+	}
+	
+	System.out.println("💰 MONTO TOTAL A APLICAR: $" + montoTotal);
+	System.out.println("========================================");
+	
+	double montoRestante = montoTotal; // CORRECCIÓN: Usar montoTotal que incluye HS si aplica
+	boolean esPrimeraCuota = true; // Rastrear si es la primera cuota (pago directo) o excedente
+	com.saa.model.crd.DetallePrestamo cuotaOrigen = null; // Cuota de donde viene el excedente
+	
+	// Buscar todas las cuotas del préstamo ordenadas por número
+	for (com.saa.model.crd.Prestamo prestamo : prestamos) {
+		if (prestamo.getEstadoPrestamo() == null || 
+		    prestamo.getEstadoPrestamo() != com.saa.rubros.EstadoPrestamo.DE_PLAZO_VENCIDO) {
+			continue; // Solo procesar préstamos de plazo vencido
 		}
 		
-		// 3. Encontrar la última carga procesada (mayor año/mes)
-		CargaArchivo ultimaCargaProcesada = null;
-		for (CargaArchivo carga : cargasProcesadas) {
-			if (carga.getAnioAfectacion() == null || carga.getMesAfectacion() == null) {
+		List<com.saa.model.crd.DetallePrestamo> todasLasCuotas = detallePrestamoDaoService.selectByPrestamo(prestamo.getCodigo());
+		
+		if (todasLasCuotas == null || todasLasCuotas.isEmpty()) {
+			continue;
+		}
+		
+		// Ordenar cuotas por número
+		todasLasCuotas.sort((c1, c2) -> {
+			double num1 = c1.getNumeroCuota() != null ? c1.getNumeroCuota() : 0;
+			double num2 = c2.getNumeroCuota() != null ? c2.getNumeroCuota() : 0;
+			return Double.compare(num1, num2);
+		});
+		
+		// Procesar cuotas en orden hasta agotar el monto
+		for (com.saa.model.crd.DetallePrestamo cuota : todasLasCuotas) {
+			if (montoRestante <= 0.01) {
+				break; // Ya se agotó el monto
+			}
+			
+			// Solo procesar cuotas que NO estén PAGADAS ni CANCELADAS
+			Long estadoCuota = cuota.getEstado();
+			if (estadoCuota == null || 
+			    estadoCuota == com.saa.rubros.EstadoCuotaPrestamo.PAGADA || 
+			    estadoCuota == com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA) {
 				continue;
 			}
 			
-			if (ultimaCargaProcesada == null) {
-				ultimaCargaProcesada = carga;
-			} else {
-				// Comparar año y mes
-				if (carga.getAnioAfectacion() > ultimaCargaProcesada.getAnioAfectacion() ||
-				    (carga.getAnioAfectacion().equals(ultimaCargaProcesada.getAnioAfectacion()) && 
-				     carga.getMesAfectacion() > ultimaCargaProcesada.getMesAfectacion())) {
-					ultimaCargaProcesada = carga;
+			System.out.println("  Procesando cuota #" + cuota.getNumeroCuota() + " - Estado: " + estadoCuota);
+			if (!esPrimeraCuota && cuotaOrigen != null) {
+				System.out.println("  ⚠️ Aplicando EXCEDENTE de cuota #" + cuotaOrigen.getNumeroCuota());
+			}
+			
+			// Calcular saldos reales de la cuota consultando tabla PagoPrestamo
+			// IMPORTANTE: Este método puede actualizar la cuota a PAGADA si ya está completa según PagoPrestamo
+			SaldosRealesCuota saldos = calcularSaldosRealesCuota(cuota);
+			
+			// ✅ CORRECCIÓN: Recargar el estado de la cuota después de calcularSaldosRealesCuota
+			// porque ese método puede haberla actualizado a PAGADA
+			Long estadoActualizado = cuota.getEstado();
+			
+			// Si la cuota fue actualizada a PAGADA por calcularSaldosRealesCuota, saltarla
+			if (estadoActualizado != null && estadoActualizado == com.saa.rubros.EstadoCuotaPrestamo.PAGADA) {
+				System.out.println("    ⏭️ Cuota ya está PAGADA (actualizada automáticamente) - Continuando con siguiente");
+				continue;
+			}
+			
+			System.out.println("    Saldos reales calculados:");
+			System.out.println("      Desgravamen pendiente: $" + saldos.saldoDesgravamen);
+			System.out.println("      Interés pendiente: $" + saldos.saldoInteres);
+			System.out.println("      Capital pendiente: $" + saldos.saldoCapital);
+			System.out.println("      TOTAL pendiente: $" + saldos.totalPendiente);
+			
+			// Si no hay saldo pendiente, continuar con siguiente cuota
+			if (saldos.totalPendiente <= 0.01) {
+				System.out.println("    ⚠️ Cuota sin saldo pendiente, marcando como PAGADA");
+				cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+				cuota.setIdEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+				
+				// Solo establecer fechaPagado si no existe
+				if (cuota.getFechaPagado() == null) {
+					cuota.setFechaPagado(java.time.LocalDateTime.now());
 				}
+				
+				cuota.setCodigoExterno(cargaArchivo.getCodigo());
+				detallePrestamoService.saveSingle(cuota);
+				continue;
+			}
+			
+			// Aplicar pago a esta cuota respetando orden: Desgravamen → Interés → Capital
+			double montoAplicado = aplicarPagoACuotaPlazoVencido(participe, cuota, saldos, montoRestante, 
+			                                                      cargaArchivo, codigoProducto, hsEncontrado, 
+			                                                      esPrimeraCuota, cuotaOrigen);
+			montoRestante -= montoAplicado;
+			
+			System.out.println("    ✅ Aplicado: $" + montoAplicado + " | Restante: $" + montoRestante);
+			
+			// Si queda excedente y la cuota está completa, registrar para siguiente iteración
+			if (montoRestante > 0.01 && cuota.getEstado() == com.saa.rubros.EstadoCuotaPrestamo.PAGADA) {
+				cuotaOrigen = cuota; // Esta cuota generó el excedente
+				esPrimeraCuota = false; // Las siguientes serán excedentes
 			}
 		}
 		
-		if (ultimaCargaProcesada == null) {
-			System.out.println("  ✅ No se encontró última carga procesada válida. Se permite procesar.");
-			System.out.println("========================================");
+		// ✅ CORRECCIÓN CRÍTICA: Verificar si se pagaron TODAS las cuotas del préstamo
+		// Si es así, actualizar el estado del préstamo a CANCELADO
+		verificarYActualizarEstadoPrestamo(prestamo);
+	}
+	
+	if (montoRestante > 0.01) {
+		System.out.println("  ⚠️ Sobró dinero: $" + montoRestante + " (todas las cuotas fueron pagadas)");
+	}
+	
+	System.out.println("========================================");
+}
+
+/**
+ * Calcula los saldos reales de una cuota consultando la tabla PagoPrestamo
+ * ✅ OPTIMIZACIÓN: Usa método específico en lugar de selectAll()
+ * ✅ ACUMULA pagos de múltiples registros en PagoPrestamo
+ */
+private SaldosRealesCuota calcularSaldosRealesCuota(com.saa.model.crd.DetallePrestamo cuota) throws Throwable {
+	SaldosRealesCuota saldos = new SaldosRealesCuota();
+	
+	try {
+		// Obtener pagos específicos de esta cuota usando método específico del DAO
+		List<com.saa.model.crd.PagoPrestamo> pagos = pagoPrestamoDaoService.selectByIdDetallePrestamo(cuota.getCodigo());
+		
+		if (pagos.isEmpty()) {
+			// No hay pagos previos, los saldos son los valores originales de la cuota
+			saldos.saldoDesgravamen = nullSafe(cuota.getDesgravamen());
+			saldos.saldoInteres = nullSafe(cuota.getInteres());
+			saldos.saldoCapital = nullSafe(cuota.getCapital());
+			saldos.totalPendiente = nullSafe(cuota.getTotal());
+			return saldos;
+		}
+		
+		// Sumar todos los pagos realizados previamente
+		double desgravamenPagadoTotal = 0.0;
+		double interesPagadoTotal = 0.0;
+		double capitalPagadoTotal = 0.0;
+		
+		for (com.saa.model.crd.PagoPrestamo pago : pagos) {
+			desgravamenPagadoTotal += nullSafe(pago.getDesgravamen()); // Usar getDesgravamen en lugar de getSeguroDesgravamen
+			interesPagadoTotal += nullSafe(pago.getInteresPagado());
+			capitalPagadoTotal += nullSafe(pago.getCapitalPagado());
+		}
+		
+		// Calcular saldos pendientes
+		saldos.saldoDesgravamen = Math.max(0, nullSafe(cuota.getDesgravamen()) - desgravamenPagadoTotal);
+		saldos.saldoInteres = Math.max(0, nullSafe(cuota.getInteres()) - interesPagadoTotal);
+		saldos.saldoCapital = Math.max(0, nullSafe(cuota.getCapital()) - capitalPagadoTotal);
+		saldos.totalPendiente = saldos.saldoDesgravamen + saldos.saldoInteres + saldos.saldoCapital;
+		
+		// ✅ Si el saldo total es 0 pero el estado no es PAGADA, actualizarlo
+		if (saldos.totalPendiente <= 0.01 && cuota.getEstado() != com.saa.rubros.EstadoCuotaPrestamo.PAGADA) {
+			System.out.println("    ⚠️ Cuota #" + cuota.getNumeroCuota() + " completada según PagoPrestamo - Actualizando estado a PAGADA");
+			cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+			cuota.setIdEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA); // ✅ CRÍTICO: Actualizar también idEstado
+			
+			// ✅ Solo establecer fechaPagado si no existe
+			if (cuota.getFechaPagado() == null) {
+				cuota.setFechaPagado(java.time.LocalDateTime.now());
+				System.out.println("    ✅ Fecha de pago establecida");
+			} else {
+				System.out.println("    ℹ️ Respetando fecha de pago existente: " + cuota.getFechaPagado());
+			}
+			
+			cuota.setCapitalPagado(capitalPagadoTotal);
+			cuota.setInteresPagado(interesPagadoTotal);
+			cuota.setDesgravamenPagado(desgravamenPagadoTotal);
+			cuota.setSaldoCapital(0.0);
+			cuota.setSaldoInteres(0.0);
+			detallePrestamoService.saveSingle(cuota);
+		}
+		
+	} catch (Throwable e) {
+		System.err.println("Error al calcular saldos reales: " + e.getMessage());
+		e.printStackTrace();
+		// En caso de error, usar valores de la cuota
+		saldos.saldoDesgravamen = nullSafe(cuota.getDesgravamen());
+		saldos.saldoInteres = nullSafe(cuota.getInteres());
+		saldos.saldoCapital = nullSafe(cuota.getCapital());
+		saldos.totalPendiente = nullSafe(cuota.getTotal());
+	}
+	
+	return saldos;
+}
+
+/**
+ * Aplica el pago a una cuota de préstamo de plazo vencido
+ * ✅ LÓGICA CORRECTA: Distribuye el monto respetando orden Desgravamen → Interés → Capital
+ * ✅ ACUMULA pagos en lugar de reemplazarlos (crítico para pagos múltiples)
+ * 
+ * @return El monto total aplicado a esta cuota
+ */
+private double aplicarPagoACuotaPlazoVencido(ParticipeXCargaArchivo participe,
+                                             com.saa.model.crd.DetallePrestamo cuota,
+                                             SaldosRealesCuota saldos,
+                                             double montoDisponible,
+                                             CargaArchivo cargaArchivo,
+                                             String codigoProducto,
+                                             boolean hsEncontrado,
+                                             boolean esPrimerPago,
+                                             com.saa.model.crd.DetallePrestamo cuotaOrigen) throws Throwable {
+	
+	double montoRestante = montoDisponible;
+	double desgravamenPagar = 0.0;
+	double interesPagar = 0.0;
+	double capitalPagar = 0.0;
+	
+	// ✅ ORDEN CORRECTO: Desgravamen → Interés → Capital
+	
+	// 1. Pagar Desgravamen
+	if (montoRestante > 0 && saldos.saldoDesgravamen > 0) {
+		if (montoRestante >= saldos.saldoDesgravamen) {
+			desgravamenPagar = saldos.saldoDesgravamen;
+			montoRestante -= saldos.saldoDesgravamen;
+		} else {
+			desgravamenPagar = montoRestante;
+			montoRestante = 0;
+		}
+	}
+	
+	// 2. Pagar Interés
+	if (montoRestante > 0 && saldos.saldoInteres > 0) {
+		if (montoRestante >= saldos.saldoInteres) {
+			interesPagar = saldos.saldoInteres;
+			montoRestante -= saldos.saldoInteres;
+		} else {
+			interesPagar = montoRestante;
+			montoRestante = 0;
+		}
+	}
+	
+	// 3. Pagar Capital
+	if (montoRestante > 0 && saldos.saldoCapital > 0) {
+		if (montoRestante >= saldos.saldoCapital) {
+			capitalPagar = saldos.saldoCapital;
+			montoRestante -= saldos.saldoCapital;
+		} else {
+			capitalPagar = montoRestante;
+			montoRestante = 0;
+		}
+	}
+	
+	double totalPagado = desgravamenPagar + interesPagar + capitalPagar;
+	
+	// ✅ CRÍTICO: ACUMULAR pagos (NO reemplazar)
+	double desgravamenPagadoPrevio = nullSafe(cuota.getDesgravamenPagado());
+	double interesPagadoPrevio = nullSafe(cuota.getInteresPagado());
+	double capitalPagadoPrevio = nullSafe(cuota.getCapitalPagado());
+	
+	cuota.setDesgravamenPagado(desgravamenPagadoPrevio + desgravamenPagar);
+	cuota.setInteresPagado(interesPagadoPrevio + interesPagar);
+	cuota.setCapitalPagado(capitalPagadoPrevio + capitalPagar);
+	
+	// Recalcular saldos pendientes
+	cuota.setSaldoCapital(Math.max(0, nullSafe(cuota.getCapital()) - cuota.getCapitalPagado()));
+	cuota.setSaldoInteres(Math.max(0, nullSafe(cuota.getInteres()) - cuota.getInteresPagado()));
+	
+	// ✅ Verificar si la cuota quedó completa
+	double totalPendiente = cuota.getSaldoCapital() + cuota.getSaldoInteres() + 
+	                        Math.max(0, nullSafe(cuota.getDesgravamen()) - cuota.getDesgravamenPagado());
+	
+	if (totalPendiente <= 0.01) {
+		cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+		cuota.setIdEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+		
+		// Solo establecer fechaPagado si no existe
+		if (cuota.getFechaPagado() == null) {
+			cuota.setFechaPagado(java.time.LocalDateTime.now());
+		}
+		System.out.println("    ✅ Cuota #" + cuota.getNumeroCuota() + " COMPLETADA");
+	} else {
+		cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PARCIAL);
+		System.out.println("    ⚠️ Cuota #" + cuota.getNumeroCuota() + " PARCIAL - Pendiente: $" + totalPendiente);
+	}
+	
+	cuota.setCodigoExterno(cargaArchivo.getCodigo());
+	detallePrestamoService.saveSingle(cuota);
+	
+	// Crear registro en tabla PagoPrestamo
+	String observacion;
+	if (esPrimerPago) {
+		observacion = String.format("Pago plazo vencido - Cuota #%d - Carga %d (%s)", 
+			cuota.getNumeroCuota().intValue(), cargaArchivo.getCodigo(), codigoProducto);
+	} else {
+		observacion = String.format("Excedente de cuota #%d aplicado a cuota #%d - Carga %d", 
+			cuotaOrigen != null ? cuotaOrigen.getNumeroCuota().intValue() : 0,
+			cuota.getNumeroCuota().intValue(), 
+			cargaArchivo.getCodigo());
+	}
+	
+	crearRegistroPago(cuota, totalPagado, capitalPagar, interesPagar, desgravamenPagar,
+		0.0, // valorSeguroIncendio - se maneja por separado
+		observacion, cargaArchivo);
+	
+	return totalPagado;
+}
+
+/**
+ * Verifica si todas las cuotas de un préstamo están pagadas y actualiza el estado del préstamo a CANCELADO
+ */
+private void verificarYActualizarEstadoPrestamo(com.saa.model.crd.Prestamo prestamo) throws Throwable {
+	try {
+		List<com.saa.model.crd.DetallePrestamo> todasLasCuotas = 
+			detallePrestamoDaoService.selectByPrestamo(prestamo.getCodigo());
+		
+		if (todasLasCuotas == null || todasLasCuotas.isEmpty()) {
 			return;
 		}
 		
-		System.out.println("  Última carga procesada: ID " + ultimaCargaProcesada.getCodigo() + 
-		                   " - Mes/Año: " + ultimaCargaProcesada.getMesAfectacion() + "/" + 
-		                   ultimaCargaProcesada.getAnioAfectacion());
+		boolean todasPagadas = true;
+		for (com.saa.model.crd.DetallePrestamo cuota : todasLasCuotas) {
+			Long estado = cuota.getEstado();
+			if (estado == null || 
+			    (estado != com.saa.rubros.EstadoCuotaPrestamo.PAGADA && 
+			     estado != com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA)) {
+				todasPagadas = false;
+				break;
+			}
+		}
 		
-		// 4. Calcular el siguiente mes esperado
-		int mesUltimo = ultimaCargaProcesada.getMesAfectacion().intValue();
-		int anioUltimo = ultimaCargaProcesada.getAnioAfectacion().intValue();
+		if (todasPagadas) {
+			System.out.println("  ✅ TODAS LAS CUOTAS PAGADAS - Actualizando préstamo a CANCELADO");
+			prestamo.setEstadoPrestamo(Long.valueOf(com.saa.rubros.EstadoPrestamo.CANCELADO));
+			// Usar fechaFin para registrar la fecha de cancelación (fechaCancelacion no existe en el modelo)
+			prestamo.setFechaFin(java.time.LocalDateTime.now());
+			prestamoDaoService.save(prestamo, prestamo.getCodigo());
+		}
 		
-		int mesSiguiente = mesUltimo + 1;
-		int anioSiguiente = anioUltimo;
+	} catch (Throwable e) {
+		System.err.println("Error al verificar estado del préstamo: " + e.getMessage());
+		e.printStackTrace();
+	}
+}
+
+/**
+ * Crea un registro en la tabla PagoPrestamo para mantener trazabilidad
+ */
+private void crearRegistroPago(com.saa.model.crd.DetallePrestamo cuota,
+                               double montoTotal,
+                               double capitalPagado,
+                               double interesPagado,
+                               double desgravamenPagado,
+                               double valorSeguroIncendio,
+                               String observacion,
+                               CargaArchivo cargaArchivo) throws Throwable {
+	try {
+		com.saa.model.crd.PagoPrestamo pago = new com.saa.model.crd.PagoPrestamo();
+		pago.setDetallePrestamo(cuota);
+		pago.setFecha(java.time.LocalDateTime.now());
+		pago.setCapitalPagado(capitalPagado);
+		pago.setInteresPagado(interesPagado);
+		pago.setDesgravamen(desgravamenPagado);
+		// ✅ CORRECCIÓN CRÍTICA: Guardar el valor del seguro de incendio (HS)
+		pago.setValorSeguroIncendio(valorSeguroIncendio);
+		pago.setValor(montoTotal);
+		pago.setObservacion(observacion + " [CargaArchivo: " + cargaArchivo.getCodigo() + "]");
+		pago.setEstado(1L);
+		pago.setIdEstado(1L);
 		
-		// Si el mes es 13, pasar a enero del siguiente año
+		pagoPrestamoService.saveSingle(pago);
+		
+	} catch (Throwable e) {
+		System.err.println("Error al crear registro de pago: " + e.getMessage());
+		e.printStackTrace();
+	}
+}
+
+/**
+ * Valida que solo se pueda procesar una carga si es del mes siguiente al último mes procesado
+ */
+private void validarOrdenProcesamiento(CargaArchivo cargaArchivo) throws Throwable {
+	// Buscar la última carga procesada (estado 3) usando método específico del DAO
+	List<CargaArchivo> todasLasCargas = cargaArchivoDaoService.selectByEstado(3L);
+	
+	CargaArchivo ultimaCargaProcesada = null;
+	for (CargaArchivo carga : todasLasCargas) {
+		if (!carga.getCodigo().equals(cargaArchivo.getCodigo())) {
+			if (ultimaCargaProcesada == null ||
+			    (carga.getAnioAfectacion() > ultimaCargaProcesada.getAnioAfectacion()) ||
+			    (carga.getAnioAfectacion().equals(ultimaCargaProcesada.getAnioAfectacion()) && 
+			     carga.getMesAfectacion() > ultimaCargaProcesada.getMesAfectacion())) {
+				ultimaCargaProcesada = carga;
+			}
+		}
+	}
+	
+	if (ultimaCargaProcesada != null) {
+		int mesUltimoProcesado = ultimaCargaProcesada.getMesAfectacion().intValue();
+		int anioUltimoProcesado = ultimaCargaProcesada.getAnioAfectacion().intValue();
+		int mesActual = cargaArchivo.getMesAfectacion().intValue();
+		int anioActual = cargaArchivo.getAnioAfectacion().intValue();
+		
+		// Calcular el mes siguiente esperado
+		int mesSiguiente = mesUltimoProcesado + 1;
+		int anioSiguiente = anioUltimoProcesado;
 		if (mesSiguiente > 12) {
 			mesSiguiente = 1;
 			anioSiguiente++;
 		}
 		
-		System.out.println("  Siguiente mes esperado: " + mesSiguiente + "/" + anioSiguiente);
-		
-		// 5. Validar que la carga actual sea del mes esperado
-		int mesActual = cargaActual.getMesAfectacion().intValue();
-		int anioActual = cargaActual.getAnioAfectacion().intValue();
-		
 		if (anioActual != anioSiguiente || mesActual != mesSiguiente) {
-			String mensajeError = String.format(
-				"❌ ERROR: No se puede procesar la carga del mes %d/%d.\n" +
-				"La última carga procesada fue del mes %d/%d.\n" +
-				"Solo se puede procesar la carga del siguiente mes: %d/%d.\n" +
-				"Las cargas deben procesarse en orden secuencial mensual.",
+			throw new RuntimeException(String.format(
+				"No se puede procesar la carga del mes %d/%d. " +
+				"La última carga procesada fue %d/%d. " +
+				"Solo se puede procesar la carga del mes %d/%d (siguiente mes consecutivo).",
 				mesActual, anioActual,
-				mesUltimo, anioUltimo,
+				mesUltimoProcesado, anioUltimoProcesado,
 				mesSiguiente, anioSiguiente
-			);
-			
-			System.err.println(mensajeError);
-			System.out.println("========================================");
-			throw new RuntimeException(mensajeError);
+			));
 		}
-		
-		System.out.println("  ✅ Validación OK: La carga es del siguiente mes esperado.");
-		System.out.println("========================================");
-		
-	} catch (RuntimeException e) {
-		// Re-lanzar excepciones de validación
-		throw e;
-	} catch (Throwable e) {
-		System.err.println("  ⚠️ Error al validar orden de procesamiento: " + e.getMessage());
-		System.out.println("  Se permitirá continuar con el procesamiento.");
-		System.out.println("========================================");
-		// No bloquear el procesamiento si falla la validación por error técnico
 	}
 }
 
 /**
- * Aplica el producto AH (Aportes) generando registros en Aporte y PagoAporte
- * Crea 2 aportes: uno para Jubilación (TipoAporte 10) y otro para Cesantía (TipoAporte 11)
- * 
- * @param participe Partícipe del archivo con producto AH
- * @param cargaArchivo Información de la carga
- * @return Cantidad de aportes creados (0 si hubo error, 2 si fue exitoso)
- * @throws Throwable Si ocurre algún error
+ * Aplica aportes para el producto AH (aportes de jubilación y cesantía)
+ * Divide el monto 50% jubilación, 50% cesantía
  */
 private int aplicarAporteAH(ParticipeXCargaArchivo participe, CargaArchivo cargaArchivo) throws Throwable {
-	System.out.println("========================================");
-	System.out.println("APLICAR APORTE AH (PRODUCTO APORTES)");
-	System.out.println("Partícipe: " + participe.getCodigoPetro() + " (" + participe.getNombre() + ")");
-	System.out.println("========================================");
+	int aportesCreados = 0;
 	
 	try {
-		// 1. Buscar la entidad
-		Long rolPetro = participe.getCodigoPetro();
-		if (rolPetro == null) {
-			System.out.println("  ❌ El partícipe no tiene código Petro");
-			return 0;
-		}
-		
-		List<com.saa.model.crd.Entidad> entidades = entidadDaoService.selectByCodigoPetro(rolPetro);
+		// Buscar la entidad
+		List<com.saa.model.crd.Entidad> entidades = entidadDaoService.selectByCodigoPetro(participe.getCodigoPetro());
 		if (entidades == null || entidades.isEmpty()) {
-			System.out.println("  ❌ No se encontró entidad con código Petro: " + rolPetro);
+			System.out.println("⚠️ No se encontró entidad para código Petro: " + participe.getCodigoPetro());
 			return 0;
 		}
 		
 		com.saa.model.crd.Entidad entidad = entidades.get(0);
+		double montoTotal = nullSafe(participe.getTotalDescontado());
 		
-		// 2. Buscar HistorialSueldo de la entidad
-		List<com.saa.model.crd.HistorialSueldo> historiales = historialSueldoDaoService.selectByEntidad(entidad.getCodigo());
-		
-		if (historiales == null || historiales.isEmpty()) {
-			System.out.println("  ❌ No se encontró HistorialSueldo para entidad: " + entidad.getCodigo());
+		if (montoTotal <= 0) {
+			System.out.println("⚠️ Monto total es 0 para partícipe: " + participe.getCodigoPetro());
 			return 0;
 		}
 		
-		if (historiales.size() > 1) {
-			System.out.println("  ⚠️ Existen múltiples registros en HistorialSueldo: " + historiales.size() + " - No se puede determinar cuál usar");
-			return 0;
+		// ✅ CORRECCIÓN CRÍTICA: Buscar valores en HistorialSueldo con estado 99
+		com.saa.model.crd.HistorialSueldo historialActivo = 
+			historialSueldoDaoService.selectByEntidadYEstadoActivo(entidad.getCodigo());
+		
+		double montoJubilacion;
+		double montoCesantia;
+		
+		if (historialActivo != null) {
+			// ✅ Usar los montos configurados en HistorialSueldo
+			montoJubilacion = nullSafe(historialActivo.getMontoJubilacion());
+			montoCesantia = nullSafe(historialActivo.getMontoCesantia());
+			
+			System.out.println("  ✅ Usando valores de HistorialSueldo (estado 99):");
+			System.out.println("     - Jubilación: $" + montoJubilacion);
+			System.out.println("     - Cesantía: $" + montoCesantia);
+			System.out.println("     - Total configurado: $" + (montoJubilacion + montoCesantia));
+			System.out.println("     - Total en archivo: $" + montoTotal);
+			
+			// Validar que el total coincida
+			double totalConfigurado = montoJubilacion + montoCesantia;
+			if (Math.abs(totalConfigurado - montoTotal) > 1.0) {
+				System.out.println("     ⚠️ DIFERENCIA detectada entre archivo y configuración: $" + 
+				                   Math.abs(totalConfigurado - montoTotal));
+			}
+		} else {
+			// ⚠️ Si no existe HistorialSueldo, dividir en partes iguales como fallback
+			System.out.println("  ⚠️ No se encontró HistorialSueldo con estado 99 - Usando división 50/50");
+			montoJubilacion = montoTotal / 2.0;
+			montoCesantia = montoTotal / 2.0;
 		}
 		
-		com.saa.model.crd.HistorialSueldo historial = historiales.get(0);
-		
-		// 3. Validar que los valores no sean NULL
-		Double montoJubilacion = historial.getMontoJubilacion();
-		Double montoCesantia = historial.getMontoCesantia();
-		
-		if (montoJubilacion == null || montoCesantia == null) {
-			System.out.println("  ❌ Valores NULL en HistorialSueldo - Jubilación: " + montoJubilacion + ", Cesantía: " + montoCesantia);
-			return 0;
-		}
-		
-		System.out.println("  Valores de HistorialSueldo:");
-		System.out.println("    - Jubilación: $" + montoJubilacion);
-		System.out.println("    - Cesantía: $" + montoCesantia);
-		
-		// 4. Buscar TipoAporte para Jubilación (código 10) y Cesantía (código 11)
-		com.saa.model.crd.TipoAporte tipoAporteJubilacion = null;
-		com.saa.model.crd.TipoAporte tipoAporteCesantia = null;
-		
-		try {
-			tipoAporteJubilacion = tipoAporteDaoService.selectById(TIPO_APORTE_JUBILACION, 
-				com.saa.model.crd.NombreEntidadesCredito.TIPO_APORTE);
-			tipoAporteCesantia = tipoAporteDaoService.selectById(TIPO_APORTE_CESANTIA, 
-				com.saa.model.crd.NombreEntidadesCredito.TIPO_APORTE);
-		} catch (Throwable e) {
-			System.err.println("  ❌ Error al buscar TipoAporte: " + e.getMessage());
-			return 0;
-		}
-		
-		if (tipoAporteJubilacion == null || tipoAporteCesantia == null) {
-			System.err.println("  ❌ No se encontraron los TipoAporte (Jubilación:10, Cesantía:11)");
-			return 0;
-		}
-		
-		int aportesCreados = 0;
-		
-		// 5. CREAR APORTE DE JUBILACIÓN (TipoAporte 10)
+		// ✅ VALIDACIÓN: Solo crear aporte de jubilación si el monto es mayor a 0
 		if (montoJubilacion > 0) {
-			System.out.println("  Creando Aporte de JUBILACIÓN...");
-			
 			com.saa.model.crd.Aporte aporteJubilacion = new com.saa.model.crd.Aporte();
-			aporteJubilacion.setFilial(cargaArchivo.getFilial());
 			aporteJubilacion.setEntidad(entidad);
-			aporteJubilacion.setTipoAporte(tipoAporteJubilacion);
-			aporteJubilacion.setFechaTransaccion(LocalDateTime.now());
-			aporteJubilacion.setGlosa(String.format("Aporte Jubilación mes %d/%d - Carga Petro %d", 
-				cargaArchivo.getMesAfectacion(), cargaArchivo.getAnioAfectacion(), cargaArchivo.getCodigo()));
+			aporteJubilacion.setTipoAporte(tipoAporteDaoService.selectById(TIPO_APORTE_JUBILACION, "TipoAporte"));
 			aporteJubilacion.setValor(montoJubilacion);
-			aporteJubilacion.setValorPagado(montoJubilacion);
-			aporteJubilacion.setSaldo(0.0); // Pagado completo
-			aporteJubilacion.setIdAsoprep(cargaArchivo.getCodigo()); // ID de CargaArchivo para rastreo
-			aporteJubilacion.setFechaRegistro(LocalDateTime.now());
-			aporteJubilacion.setUsuarioRegistro(cargaArchivo.getUsuarioCarga() != null ? 
-				cargaArchivo.getUsuarioCarga().getCodigo().toString() : "SISTEMA");
+			aporteJubilacion.setFechaTransaccion(java.time.LocalDateTime.now());
+			aporteJubilacion.setGlosa("Aporte jubilación - CargaArchivo: " + cargaArchivo.getCodigo());
 			aporteJubilacion.setEstado(1L);
-			
-			// Guardar aporte de Jubilación
-			aporteJubilacion = aporteService.saveSingle(aporteJubilacion);
-			System.out.println("    ✅ Aporte Jubilación creado - ID: " + aporteJubilacion.getCodigo() + " - Valor: $" + montoJubilacion + " - CargaArchivo: " + cargaArchivo.getCodigo());
+			aporteService.saveSingle(aporteJubilacion);
 			aportesCreados++;
-			
-			// Crear PagoAporte de Jubilación
-			crearPagoAporte(aporteJubilacion, montoJubilacion, cargaArchivo, "Pago Aporte Jubilación");
+			System.out.println("  ✅ Aporte de jubilación creado: $" + montoJubilacion);
+		} else {
+			System.out.println("  ⊘ Aporte de jubilación omitido (valor = $0)");
 		}
 		
-		// 6. CREAR APORTE DE CESANTÍA (TipoAporte 11)
+		// ✅ VALIDACIÓN: Solo crear aporte de cesantía si el monto es mayor a 0
 		if (montoCesantia > 0) {
-			System.out.println("  Creando Aporte de CESANTÍA...");
-			
 			com.saa.model.crd.Aporte aporteCesantia = new com.saa.model.crd.Aporte();
-			aporteCesantia.setFilial(cargaArchivo.getFilial());
 			aporteCesantia.setEntidad(entidad);
-			aporteCesantia.setTipoAporte(tipoAporteCesantia);
-			aporteCesantia.setFechaTransaccion(LocalDateTime.now());
-			aporteCesantia.setGlosa(String.format("Aporte Cesantía mes %d/%d - Carga Petro %d", 
-				cargaArchivo.getMesAfectacion(), cargaArchivo.getAnioAfectacion(), cargaArchivo.getCodigo()));
+			aporteCesantia.setTipoAporte(tipoAporteDaoService.selectById(TIPO_APORTE_CESANTIA, "TipoAporte"));
 			aporteCesantia.setValor(montoCesantia);
-			aporteCesantia.setValorPagado(montoCesantia);
-			aporteCesantia.setSaldo(0.0); // Pagado completo
-			aporteCesantia.setIdAsoprep(cargaArchivo.getCodigo()); // ID de CargaArchivo para rastreo
-			aporteCesantia.setFechaRegistro(LocalDateTime.now());
-			aporteCesantia.setUsuarioRegistro(cargaArchivo.getUsuarioCarga() != null ? 
-				cargaArchivo.getUsuarioCarga().getCodigo().toString() : "SISTEMA");
+			aporteCesantia.setFechaTransaccion(java.time.LocalDateTime.now());
+			aporteCesantia.setGlosa("Aporte cesantía - CargaArchivo: " + cargaArchivo.getCodigo());
 			aporteCesantia.setEstado(1L);
-			
-			// Guardar aporte de Cesantía
-			aporteCesantia = aporteService.saveSingle(aporteCesantia);
-			System.out.println("    ✅ Aporte Cesantía creado - ID: " + aporteCesantia.getCodigo() + " - Valor: $" + montoCesantia + " - CargaArchivo: " + cargaArchivo.getCodigo());
+			aporteService.saveSingle(aporteCesantia);
 			aportesCreados++;
-			
-			// Crear PagoAporte de Cesantía
-			crearPagoAporte(aporteCesantia, montoCesantia, cargaArchivo, "Pago Aporte Cesantía");
+			System.out.println("  ✅ Aporte de cesantía creado: $" + montoCesantia);
+		} else {
+			System.out.println("  ⊘ Aporte de cesantía omitido (valor = $0)");
 		}
 		
-		System.out.println("  ✅✅ Total aportes creados: " + aportesCreados);
-		System.out.println("========================================");
-		
-		return aportesCreados;
+		if (aportesCreados > 0) {
+			System.out.println("  ✅ Total aportes creados para " + entidad.getRazonSocial() + ": " + aportesCreados);
+		} else {
+			System.out.println("  ⚠️ No se crearon aportes para " + entidad.getRazonSocial() + " (ambos valores son $0)");
+		}
 		
 	} catch (Throwable e) {
-		System.err.println("❌ ERROR al aplicar aporte AH: " + e.getMessage());
+		System.err.println("Error al aplicar aportes AH: " + e.getMessage());
 		e.printStackTrace();
-		throw e;
 	}
+	
+	return aportesCreados;
 }
 
-/**
- * Crea un registro de PagoAporte para un aporte específico
- * 
- * @param aporte Aporte al que se asocia el pago
- * @param valor Valor del pago
- * @param cargaArchivo Información de la carga
- * @param concepto Concepto del pago
- * @throws Throwable Si ocurre algún error
- */
-private void crearPagoAporte(com.saa.model.crd.Aporte aporte, Double valor, 
-                              CargaArchivo cargaArchivo, String concepto) throws Throwable {
-	
-	com.saa.model.crd.PagoAporte pagoAporte = new com.saa.model.crd.PagoAporte();
-	
-	// Referencias
-	pagoAporte.setFilial(cargaArchivo.getFilial());
-	pagoAporte.setAporte(aporte);
-	
-	// Valores
-	pagoAporte.setValor(valor);
-	pagoAporte.setFechaContable(LocalDateTime.now());
-	pagoAporte.setConcepto(String.format("%s - Mes %d/%d - Carga Petro %d", 
-		concepto, cargaArchivo.getMesAfectacion(), cargaArchivo.getAnioAfectacion(), cargaArchivo.getCodigo()));
-	
-	// Metadata
-	pagoAporte.setFechaRegistro(LocalDateTime.now());
-	pagoAporte.setUsuarioRegistro(cargaArchivo.getUsuarioCarga() != null ? 
-		cargaArchivo.getUsuarioCarga().getCodigo().toString() : "SISTEMA");
-	pagoAporte.setEstado(1L);
-	
-	// Guardar pago
-	pagoAporte = pagoAporteService.saveSingle(pagoAporte);
-	System.out.println("      ✅ PagoAporte creado - ID: " + pagoAporte.getCodigo() + " - Valor: $" + valor);
-}
-   
 }

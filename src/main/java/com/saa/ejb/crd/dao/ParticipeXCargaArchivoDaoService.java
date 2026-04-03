@@ -1,5 +1,7 @@
 package com.saa.ejb.crd.dao;
 
+import java.util.List;
+
 import com.saa.basico.util.EntityDao;
 import com.saa.model.crd.ParticipeXCargaArchivo;
 
@@ -19,5 +21,14 @@ public interface ParticipeXCargaArchivoDaoService extends EntityDao<ParticipeXCa
 	 * @throws Throwable Si ocurre algún error
 	 */
 	ParticipeXCargaArchivo selectByCodigoPetroYProductoEnCarga(Long codigoPetro, String codigoProducto, Long codigoCargaArchivo) throws Throwable;
+	
+	/**
+	 * Busca todos los partícipes asociados a un DetalleCargaArchivo específico
+	 * 
+	 * @param codigoDetalleCargaArchivo Código del DetalleCargaArchivo
+	 * @return Lista de ParticipeXCargaArchivo encontrados
+	 */
+	List<ParticipeXCargaArchivo> selectByDetalleCargaArchivo(Long codigoDetalleCargaArchivo);
 			
 }
+

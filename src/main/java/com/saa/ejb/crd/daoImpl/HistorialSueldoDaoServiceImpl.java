@@ -21,7 +21,7 @@ public class HistorialSueldoDaoServiceImpl extends EntityDaoImpl<HistorialSueldo
 
 	/**
 	 * Busca todos los registros de HistorialSueldo para una entidad específica
-	 * Retorna registros con estado = 1 (ACTIVO)
+	 * Retorna registros con estado = 99 (ACTIVO para HistorialSueldo)
 	 * 
 	 * @param codigoEntidad Código de la entidad
 	 * @return Lista de HistorialSueldo encontrados (vacía si hay error o no se encuentran)
@@ -36,7 +36,7 @@ public class HistorialSueldoDaoServiceImpl extends EntityDaoImpl<HistorialSueldo
 				"SELECT h " +
 				"FROM HistorialSueldo h " +
 				"WHERE h.entidad.codigo = :codigoEntidad " +
-				"  AND h.estado = 1 " +
+				"  AND h.estado = 99 " +
 				"ORDER BY h.fechaIngreso DESC"
 			);
 			query.setParameter("codigoEntidad", codigoEntidad);
@@ -51,6 +51,45 @@ public class HistorialSueldoDaoServiceImpl extends EntityDaoImpl<HistorialSueldo
 			e.printStackTrace();
 			// Retornar lista vacía en lugar de lanzar excepción
 			return new ArrayList<>();
+		}
+	}
+
+	/**
+	 * Busca el registro de HistorialSueldo activo (estado 99) para una entidad
+	 * ✅ CRÍTICO: Estado 99 indica el registro vigente con los montos actuales de aportes
+	 */
+	@Override
+	public HistorialSueldo selectByEntidadYEstadoActivo(Long codigoEntidad) throws Throwable {
+		System.out.println("HistorialSueldoDaoService.selectByEntidadYEstadoActivo - Entidad: " + codigoEntidad);
+		
+		try {
+			Query query = em.createQuery(
+				"SELECT h " +
+				"FROM HistorialSueldo h " +
+				"WHERE h.entidad.codigo = :codigoEntidad " +
+				"  AND h.estado = 99 " +
+				"ORDER BY h.fechaIngreso DESC"
+			);
+			query.setParameter("codigoEntidad", codigoEntidad);
+			query.setMaxResults(1); // Solo necesitamos el más reciente
+			
+			@SuppressWarnings("unchecked")
+			List<HistorialSueldo> resultados = query.getResultList();
+			
+			if (resultados != null && !resultados.isEmpty()) {
+				HistorialSueldo registro = resultados.get(0);
+				System.out.println("  ✅ Registro encontrado - Jubilación: $" + registro.getMontoJubilacion() + 
+				                   ", Cesantía: $" + registro.getMontoCesantia());
+				return registro;
+			}
+			
+			System.out.println("  ⚠️ No se encontró registro con estado 99");
+			return null;
+			
+		} catch (Exception e) {
+			System.err.println("ERROR en selectByEntidadYEstadoActivo: " + e.getMessage());
+			e.printStackTrace();
+			throw e;
 		}
 	}
 

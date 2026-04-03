@@ -60,4 +60,25 @@ public class AfectacionValoresParticipeCargaDaoServiceImpl extends EntityDaoImpl
         query.setParameter("codigoCuota", codigoCuota);
         return query.getResultList();
     }
+    
+    @Override
+    public AfectacionValoresParticipeCarga selectByNovedadYCuota(Long codigoNovedad, Long codigoDetallePrestamo) throws Throwable {
+        System.out.println("Ingresa al metodo selectByNovedadYCuota con codigoNovedad: " + codigoNovedad + ", codigoCuota: " + codigoDetallePrestamo);
+        Query query = em.createQuery(
+            " SELECT a " +
+            " FROM   AfectacionValoresParticipeCarga a " +
+            " WHERE  a.novedadParticipeCarga.codigo = :codigoNovedad " +
+            "   AND  a.detallePrestamo.codigo = :codigoCuota "
+        );
+        query.setParameter("codigoNovedad", codigoNovedad);
+        query.setParameter("codigoCuota", codigoDetallePrestamo);
+        
+        @SuppressWarnings("unchecked")
+        List<AfectacionValoresParticipeCarga> resultado = query.getResultList();
+        
+        if (resultado != null && !resultado.isEmpty()) {
+            return resultado.get(0);
+        }
+        return null;
+    }
 }

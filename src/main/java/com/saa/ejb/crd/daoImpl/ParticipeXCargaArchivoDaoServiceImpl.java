@@ -48,4 +48,30 @@ public class ParticipeXCargaArchivoDaoServiceImpl extends EntityDaoImpl<Particip
 		}
 	}
 	
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<ParticipeXCargaArchivo> selectByDetalleCargaArchivo(Long codigoDetalleCargaArchivo) {
+		System.out.println("ParticipeXCargaArchivoDaoService.selectByDetalleCargaArchivo - DetalleCargaArchivo: " + codigoDetalleCargaArchivo);
+		
+		try {
+			Query query = em.createQuery(
+				"SELECT p " +
+				"FROM ParticipeXCargaArchivo p " +
+				"WHERE p.detalleCargaArchivo.codigo = :codigoDetalleCargaArchivo " +
+				"ORDER BY p.codigo ASC"
+			);
+			query.setParameter("codigoDetalleCargaArchivo", codigoDetalleCargaArchivo);
+			
+			List<ParticipeXCargaArchivo> resultados = query.getResultList();
+			System.out.println("  Partícipes encontrados: " + resultados.size());
+			
+			return resultados;
+			
+		} catch (Exception e) {
+			System.err.println("ERROR en selectByDetalleCargaArchivo: " + e.getMessage());
+			e.printStackTrace();
+			return new java.util.ArrayList<>();
+		}
+	}
+	
 }

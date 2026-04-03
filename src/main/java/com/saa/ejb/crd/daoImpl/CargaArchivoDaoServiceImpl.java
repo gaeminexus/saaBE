@@ -29,4 +29,15 @@ public class CargaArchivoDaoServiceImpl extends EntityDaoImpl<CargaArchivo> impl
 		query.setParameter("anio", anio);
 		return query.getResultList();
 	}
+	
+	@SuppressWarnings("unchecked")
+	public List<CargaArchivo> selectByEstado(Long estado) throws Throwable {
+		System.out.println("Ingresa al metodo selectByEstado con estado: " + estado);
+		Query query = em.createQuery(" select b " +
+									 " from   CargaArchivo b " +
+									 " where  b.estado = :estado " +
+									 " order by b.anioAfectacion desc, b.mesAfectacion desc");
+		query.setParameter("estado", estado);
+		return query.getResultList();
+	}
 }

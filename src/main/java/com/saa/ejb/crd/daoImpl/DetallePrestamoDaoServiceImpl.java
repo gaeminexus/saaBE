@@ -102,4 +102,34 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 		}
 	}
 
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<DetallePrestamo> selectCuotasNoPagadasByPrestamo(Long codigoPrestamo) throws Throwable {
+		System.out.println("Buscando cuotas NO pagadas del préstamo: " + codigoPrestamo);
+		
+		try {
+			// ✅ OPTIMIZACIÓN: Filtrar en BD en lugar de traer todas las cuotas
+			String jpql = "SELECT d FROM DetallePrestamo d " +
+						 "WHERE d.prestamo.codigo = :codigoPrestamo " +
+						 "AND d.estado NOT IN (:estadoPagada, :estadoCanceladaAnticipada) " +
+						 "ORDER BY d.numeroCuota";
+			
+			Query query = em.createQuery(jpql);
+			query.setParameter("codigoPrestamo", codigoPrestamo);
+			// ✅ Convertir explícitamente a Long para que coincida con el tipo del campo
+			query.setParameter("estadoPagada", (long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+			query.setParameter("estadoCanceladaAnticipada", (long) com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
+			
+			List<DetallePrestamo> resultados = query.getResultList();
+			System.out.println("Cuotas pendientes encontradas: " + (resultados != null ? resultados.size() : 0));
+			return resultados;
+			
+		} catch (Exception e) {
+			System.err.println("Error al buscar cuotas no pagadas del préstamo: " + e.getMessage());
+			e.printStackTrace();
+			// NO lanzar excepción - retornar lista vacía para no detener el proceso
+			return new java.util.ArrayList<>();
+		}
+	}
+
 }

@@ -39,4 +39,13 @@ public interface DetallePrestamoDaoService extends EntityDao<DetallePrestamo> {
 	 */
 	List<DetallePrestamo> selectByPrestamo(Long codigoPrestamo) throws Throwable;
 
+	/**
+	 * Obtiene solo las cuotas NO pagadas ni canceladas anticipadamente de un préstamo.
+	 * ✅ OPTIMIZACIÓN: Filtra directamente en la BD en lugar de traer todas las cuotas a memoria.
+	 * @param codigoPrestamo Código del préstamo
+	 * @return Lista de cuotas pendientes ordenadas por número de cuota
+	 * @throws Throwable Si ocurre algún error
+	 */
+	List<DetallePrestamo> selectCuotasNoPagadasByPrestamo(Long codigoPrestamo) throws Throwable;
+
 }
