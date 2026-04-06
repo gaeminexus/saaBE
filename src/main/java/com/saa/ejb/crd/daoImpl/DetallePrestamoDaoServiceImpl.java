@@ -132,4 +132,39 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 		}
 	}
 
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<DetallePrestamo> selectMinCuotaNoPagadaByPrestamo(Long codigoPrestamo) throws Throwable {
+		System.out.println("Buscando la mínima cuota NO pagada del préstamo: " + codigoPrestamo);
+		
+		try {
+			// ✅ OPTIMIZACIÓN: Buscar solo la mínima cuota pendiente (por número de cuota)
+			String jpql = "SELECT d FROM DetallePrestamo d " +
+						 "WHERE d.prestamo.codigo = :codigoPrestamo " +
+						 "AND d.estado NOT IN (:estadoPagada, :estadoCanceladaAnticipada) " +
+						 "AND d.numeroCuota = (" +
+						 "    SELECT MIN(d2.numeroCuota) FROM DetallePrestamo d2 " +
+						 "    WHERE d2.prestamo.codigo = :codigoPrestamo " +
+						 "    AND d2.estado NOT IN (:estadoPagada, :estadoCanceladaAnticipada)" +
+						 ")";
+			
+			Query query = em.createQuery(jpql);
+			query.setParameter("codigoPrestamo", codigoPrestamo);
+			// ✅ Convertir explícitamente a Long para que coincida con el tipo del campo
+			query.setParameter("estadoPagada", (long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+			query.setParameter("estadoCanceladaAnticipada", (long) com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
+			
+			List<DetallePrestamo> resultados = query.getResultList();
+			System.out.println("Mínima cuota pendiente encontrada: " + (resultados != null && !resultados.isEmpty() ? 
+				"Cuota #" + resultados.get(0).getNumeroCuota() : "Ninguna"));
+			return resultados;
+			
+		} catch (Exception e) {
+			System.err.println("Error al buscar la mínima cuota no pagada del préstamo: " + e.getMessage());
+			e.printStackTrace();
+			// NO lanzar excepción - retornar lista vacía para no detener el proceso
+			return new java.util.ArrayList<>();
+		}
+	}
+
 }

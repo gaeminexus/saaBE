@@ -48,4 +48,13 @@ public interface DetallePrestamoDaoService extends EntityDao<DetallePrestamo> {
 	 */
 	List<DetallePrestamo> selectCuotasNoPagadasByPrestamo(Long codigoPrestamo) throws Throwable;
 
+	/**
+	 * Obtiene la mínima cuota NO pagada (por número de cuota) de un préstamo.
+	 * ✅ OPTIMIZACIÓN: Usa subconsulta con MIN() para traer solo la primera cuota pendiente.
+	 * @param codigoPrestamo Código del préstamo
+	 * @return Lista con la cuota pendiente más antigua (por número de cuota), o lista vacía si no hay pendientes
+	 * @throws Throwable Si ocurre algún error
+	 */
+	List<DetallePrestamo> selectMinCuotaNoPagadaByPrestamo(Long codigoPrestamo) throws Throwable;
+
 }

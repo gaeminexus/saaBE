@@ -1118,47 +1118,59 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 private DetallePrestamo buscarCuotaAPagar(List<Prestamo> prestamos, 
                                           CargaArchivo cargaArchivo) throws Throwable {
 	for (Prestamo prestamo : prestamos) {
-		// ✅ OPTIMIZACIÓN: Traer solo cuotas NO pagadas desde la BD
-		List<DetallePrestamo> cuotas = 
-			detallePrestamoDaoService.selectCuotasNoPagadasByPrestamo(prestamo.getCodigo());
+		// ✅ MEGA OPTIMIZACIÓN: Buscar iterativamente la mínima cuota pendiente
+		// hasta encontrar una con saldo real > 0, en lugar de traer todas las cuotas a memoria
 		
-		if (cuotas == null || cuotas.isEmpty()) {
-			continue;
-		}
+		int intentos = 0;
+		int maxIntentos = 100; // Límite de seguridad para evitar ciclo infinito
 		
-		// Buscar la primera cuota con saldo pendiente real (menor número de cuota)
-		DetallePrestamo cuotaPendiente = null;
-		
-		for (DetallePrestamo cuota : cuotas) {
+		while (intentos < maxIntentos) {
+			intentos++;
+			
+			// Buscar la mínima cuota NO pagada (por número de cuota)
+			List<DetallePrestamo> resultado = 
+				detallePrestamoDaoService.selectMinCuotaNoPagadaByPrestamo(prestamo.getCodigo());
+			
+			// Si no hay más cuotas pendientes en este préstamo, pasar al siguiente
+			if (resultado == null || resultado.isEmpty()) {
+				System.out.println("  ℹ️ No hay más cuotas pendientes en préstamo #" + prestamo.getCodigo());
+				break;
+			}
+			
+			DetallePrestamo cuota = resultado.get(0);
+			
 			// ✅ CORRECCIÓN CRÍTICA: Calcular saldos reales consultando tabla PagoPrestamo
-			// NO usar los campos de la cuota directamente
 			SaldosRealesCuota saldos = calcularSaldosRealesCuota(cuota);
 			
-			// ✅ IMPORTANTE: Si calcularSaldosRealesCuota actualizó la cuota a PAGADA,
-			// continuar con la siguiente cuota (no retornar esta)
+			// ✅ Si calcularSaldosRealesCuota actualizó la cuota a PAGADA, 
+			// volver a buscar la mínima cuota (ahora será la siguiente)
 			if (cuota.getEstado() != null && 
 			    cuota.getEstado() == com.saa.rubros.EstadoCuotaPrestamo.PAGADA) {
 				System.out.println("  ℹ️ Cuota #" + cuota.getNumeroCuota() + 
-				                   " actualizada a PAGADA según PagoPrestamo - Buscando siguiente cuota");
-				continue;
+				                   " actualizada a PAGADA según PagoPrestamo - Buscando siguiente cuota (intento " + intentos + ")");
+				continue; // Volver a ejecutar el ciclo para buscar la siguiente mínima cuota
 			}
 			
-			// ✅ SIN TOLERANCIA: Considerar cualquier cuota con saldo pendiente > 0
+			// ✅ SIN TOLERANCIA: Si tiene saldo pendiente real, retornarla
 			if (saldos.totalPendiente > 0.01) {
-				// Tomar la primera cuota pendiente (menor número de cuota)
-				if (cuotaPendiente == null || 
-				    cuota.getNumeroCuota() < cuotaPendiente.getNumeroCuota()) {
-					cuotaPendiente = cuota;
-				}
+				System.out.println("  ✅ Cuota pendiente encontrada: #" + cuota.getNumeroCuota() + 
+				                   " - Saldo pendiente real: $" + saldos.totalPendiente + 
+				                   " (encontrada en intento " + intentos + ")");
+				return cuota;
 			}
+			
+			// Si llegamos aquí, la cuota tiene saldo <= 0.01 pero no fue marcada como PAGADA
+			// Marcarla explícitamente y buscar la siguiente
+			System.out.println("  ⚠️ Cuota #" + cuota.getNumeroCuota() + 
+			                   " tiene saldo insignificante ($" + saldos.totalPendiente + 
+			                   ") - Marcando como PAGADA y continuando");
+			cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+			detallePrestamoDaoService.save(cuota, cuota.getCodigo());
 		}
 		
-		if (cuotaPendiente != null) {
-			// Recalcular saldos de la cuota seleccionada para mostrar valores correctos
-			SaldosRealesCuota saldosFinales = calcularSaldosRealesCuota(cuotaPendiente);
-			System.out.println("  ✅ Cuota pendiente encontrada: #" + cuotaPendiente.getNumeroCuota() + 
-			                   " - Saldo pendiente real: $" + saldosFinales.totalPendiente);
-			return cuotaPendiente;
+		if (intentos >= maxIntentos) {
+			System.err.println("  ⚠️ Se alcanzó el límite de intentos (" + maxIntentos + 
+			                   ") buscando cuota pendiente en préstamo #" + prestamo.getCodigo());
 		}
 	}
 	
@@ -1205,15 +1217,13 @@ private void procesarPagoCuota(ParticipeXCargaArchivo participe,
 	double seguroIncendioPendiente = saldos.saldoSeguroIncendio;
 	double totalPendiente = saldos.totalPendiente;
 	
-	// ✅ VALIDACIÓN CRÍTICA: Verificar que el desglose de la cuota coincida con los valores del archivo
-	// SIN TOLERANCIA - Comparación exacta (hasta 1 centavo de diferencia)
-	// NOTA: Las afectaciones manuales ya se validaron y aplicaron al inicio de aplicarPagoParticipe
+	// ✅ VALIDACIÓN INFORMATIVA: Verificar que el desglose de la cuota coincida con los valores del archivo
+	// Esto es solo para logging - NO afecta si la cuota se marca como PAGADA o no
 	boolean desgloseCoincide = validarDesgloseCuotaSinTolerancia(cuota, participe, valorSeguroIncendio);
 	
 	if (!desgloseCoincide) {
-		System.out.println("      ⚠️ DESGLOSE NO COINCIDE - Los valores del archivo no coinciden con la cuota");
-		System.out.println("      ⚠️ Cuota quedará como PARCIAL aunque se apliquen los valores");
-		// La cuota se procesará pero quedará como PARCIAL por inconsistencia en desglose
+		System.out.println("      ⚠️ ADVERTENCIA: El desglose del archivo no coincide exactamente con la cuota");
+		System.out.println("      ℹ️ Se aplicarán los valores recibidos de todas formas");
 	}
 	
 	// Variables para registrar los valores pagados en esta operación
@@ -1222,55 +1232,11 @@ private void procesarPagoCuota(ParticipeXCargaArchivo participe,
 	double capitalPagar = 0.0;
 	double seguroIncendioPagar = 0.0;
 	
-	// ✅ PROCESAMIENTO SIN TOLERANCIA: Comparación exacta para pago completo
-	// ⚠️ IMPORTANTE: La cuota solo se marca como PAGADA si:
-	//    1. El monto pagado cubre el total pendiente
-	//    2. El desglose de valores del archivo coincide con la cuota
-	if (Math.abs(montoPagado - totalPendiente) <= 0.01 && desgloseCoincide) {
-		// Pago completo del saldo pendiente CON desglose correcto
-		cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
-		cuota.setIdEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
-		cuota.setFechaPagado(java.time.LocalDateTime.now());
-		
-		// ✅ ACUMULAR: Sumar los pagos pendientes a los valores actuales de la cuota
-		cuota.setCapitalPagado(nullSafe(cuota.getCapital()));
-		cuota.setInteresPagado(nullSafe(cuota.getInteres()));
-		cuota.setDesgravamenPagado(nullSafe(cuota.getDesgravamen()));
-		cuota.setSaldoCapital(Math.max(0, nullSafe(cuota.getSaldoInicialCapital()) - cuota.getCapitalPagado()));
-		cuota.setSaldoInteres(0.0);
-		
-		// Valores pagados en esta operación
-		desgravamenPagar = desgravamenPendiente;
-		interesPagar = interesPendiente;
-		capitalPagar = capitalPendiente;
-		seguroIncendioPagar = seguroIncendioPendiente;
-		
-		System.out.println("      ✅ Cuota PAGADA completamente (monto Y desglose correctos)");
-	} else if (Math.abs(montoPagado - totalPendiente) <= 0.01 && !desgloseCoincide) {
-		// Monto correcto pero desglose incorrecto → PARCIAL
-		cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PARCIAL);
-		cuota.setIdEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PARCIAL);
-		
-		// Aplicar valores según desglose del archivo (aunque no coincida)
-		double capitalArchivo = nullSafe(participe.getCapitalDescontado());
-		double interesArchivo = nullSafe(participe.getInteresDescontado());
-		double desgravamenArchivo = nullSafe(participe.getSeguroDescontado());
-		
-		cuota.setCapitalPagado(nullSafe(cuota.getCapitalPagado()) + capitalArchivo);
-		cuota.setInteresPagado(nullSafe(cuota.getInteresPagado()) + interesArchivo);
-		cuota.setDesgravamenPagado(nullSafe(cuota.getDesgravamenPagado()) + desgravamenArchivo);
-		cuota.setSaldoCapital(Math.max(0, nullSafe(cuota.getSaldoInicialCapital()) - cuota.getCapitalPagado()));
-		cuota.setSaldoInteres(Math.max(0, nullSafe(cuota.getInteres()) - cuota.getInteresPagado()));
-		
-		// Valores pagados en esta operación
-		desgravamenPagar = desgravamenArchivo;
-		interesPagar = interesArchivo;
-		capitalPagar = capitalArchivo;
-		seguroIncendioPagar = valorSeguroIncendio;
-		
-		System.out.println("      ⚠️ Cuota PARCIAL - Monto correcto pero desglose NO coincide");
-	} else if (montoPagado > totalPendiente && desgloseCoincide) {
-		// Pago con excedente Y desglose correcto
+	// ✅ LÓGICA CORREGIDA: Lo importante es si el monto cubre el saldo, no si el desglose coincide
+	// Si hay dinero suficiente para cubrir la cuota, se marca como PAGADA independientemente del desglose
+	
+	if (Math.abs(montoPagado - totalPendiente) <= 0.01) {
+		// ✅ Pago exacto del saldo pendiente → PAGADA (independiente del desglose)
 		cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
 		cuota.setIdEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
 		cuota.setFechaPagado(java.time.LocalDateTime.now());
@@ -1288,7 +1254,38 @@ private void procesarPagoCuota(ParticipeXCargaArchivo participe,
 		capitalPagar = capitalPendiente;
 		seguroIncendioPagar = seguroIncendioPendiente;
 		
-		System.out.println("      ✅ Cuota PAGADA con excedente: $" + (montoPagado - totalPendiente));
+		if (desgloseCoincide) {
+			System.out.println("      ✅ Cuota PAGADA completamente (monto correcto y desglose coincide)");
+		} else {
+			System.out.println("      ✅ Cuota PAGADA completamente (monto correcto - desglose no coincide pero se aplicó)");
+		}
+		
+	} else if (montoPagado > totalPendiente) {
+		// ✅ Pago con excedente → PAGADA y procesar excedente (independiente del desglose)
+		cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+		cuota.setIdEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+		cuota.setFechaPagado(java.time.LocalDateTime.now());
+		
+		// ✅ ACUMULAR: Completar el pago total de la cuota
+		cuota.setCapitalPagado(nullSafe(cuota.getCapital()));
+		cuota.setInteresPagado(nullSafe(cuota.getInteres()));
+		cuota.setDesgravamenPagado(nullSafe(cuota.getDesgravamen()));
+		cuota.setSaldoCapital(Math.max(0, nullSafe(cuota.getSaldoInicialCapital()) - cuota.getCapitalPagado()));
+		cuota.setSaldoInteres(0.0);
+		
+		// Valores pagados en esta operación
+		desgravamenPagar = desgravamenPendiente;
+		interesPagar = interesPendiente;
+		capitalPagar = capitalPendiente;
+		seguroIncendioPagar = seguroIncendioPendiente;
+		
+		double excedente = montoPagado - totalPendiente;
+		
+		if (desgloseCoincide) {
+			System.out.println("      ✅ Cuota PAGADA con excedente: $" + excedente + " (desglose coincide)");
+		} else {
+			System.out.println("      ✅ Cuota PAGADA con excedente: $" + excedente + " (desglose no coincide pero se aplicó)");
+		}
 		
 		// Guardar la cuota antes de procesar el excedente
 		cuota.setCodigoExterno(cargaArchivo.getCodigo());
@@ -1305,34 +1302,10 @@ private void procesarPagoCuota(ParticipeXCargaArchivo participe,
 				cargaArchivo.getCodigo()),
 			cargaArchivo);
 		
-		// Procesar excedente a siguiente cuota
-		double excedente = montoPagado - totalPendiente;
+		// ✅ CORRECCIÓN: Procesar excedente SIEMPRE que haya, independiente del desglose
 		procesarExcedenteASiguienteCuota(participe, cuota, excedente, cargaArchivo);
 		return; // Salir porque ya se guardó la cuota
-	} else if (montoPagado > totalPendiente && !desgloseCoincide) {
-		// Pago con excedente pero desglose incorrecto → PARCIAL (no se puede marcar como PAGADA)
-		cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PARCIAL);
-		cuota.setIdEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PARCIAL);
 		
-		// Aplicar valores según desglose del archivo (aunque no coincida)
-		double capitalArchivo = nullSafe(participe.getCapitalDescontado());
-		double interesArchivo = nullSafe(participe.getInteresDescontado());
-		double desgravamenArchivo = nullSafe(participe.getSeguroDescontado());
-		
-		cuota.setCapitalPagado(nullSafe(cuota.getCapitalPagado()) + capitalArchivo);
-		cuota.setInteresPagado(nullSafe(cuota.getInteresPagado()) + interesArchivo);
-		cuota.setDesgravamenPagado(nullSafe(cuota.getDesgravamenPagado()) + desgravamenArchivo);
-		cuota.setSaldoCapital(Math.max(0, nullSafe(cuota.getSaldoInicialCapital()) - cuota.getCapitalPagado()));
-		cuota.setSaldoInteres(Math.max(0, nullSafe(cuota.getInteres()) - cuota.getInteresPagado()));
-		
-		// Valores pagados en esta operación
-		desgravamenPagar = desgravamenArchivo;
-		interesPagar = interesArchivo;
-		capitalPagar = capitalArchivo;
-		seguroIncendioPagar = valorSeguroIncendio;
-		
-		System.out.println("      ⚠️ Cuota PARCIAL - Hay excedente pero desglose NO coincide");
-		System.out.println("      ⚠️ No se procesa excedente porque el desglose es incorrecto");
 	} else {
 		// Pago parcial - Respetar orden: Desgravamen → Interés → Capital → Seguro Incendio
 		cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PARCIAL);
@@ -1569,38 +1542,75 @@ private void procesarExcedenteASiguienteCuota(ParticipeXCargaArchivo participe,
 	
 	System.out.println("      Procesando excedente de $" + excedente + " a siguiente cuota...");
 	
-	// ✅ OPTIMIZACIÓN: Traer solo cuotas NO pagadas desde la BD
-	List<DetallePrestamo> cuotas = 
-		detallePrestamoDaoService.selectCuotasNoPagadasByPrestamo(cuota.getPrestamo().getCodigo());
+	// ✅ MEGA OPTIMIZACIÓN: Buscar iterativamente la siguiente cuota pendiente con saldo real
+	// solo si hay excedente que aplicar (ya validado arriba)
+	int intentos = 0;
+	int maxIntentos = 100; // Límite de seguridad
 	
-	DetallePrestamo siguienteCuota = null;
-	for (DetallePrestamo c : cuotas) {
-		if (c.getNumeroCuota() > cuota.getNumeroCuota()) {
-			// ✅ Validar saldo pendiente real
-			double desgravamenPagado = nullSafe(c.getDesgravamenPagado());
-			double interesPagado = nullSafe(c.getInteresPagado());
-			double capitalPagado = nullSafe(c.getCapitalPagado());
+	while (intentos < maxIntentos) {
+		intentos++;
+		
+		// Buscar la mínima cuota NO pagada del préstamo
+		List<DetallePrestamo> resultado = 
+			detallePrestamoDaoService.selectMinCuotaNoPagadaByPrestamo(cuota.getPrestamo().getCodigo());
+		
+		if (resultado == null || resultado.isEmpty()) {
+			System.out.println("        ℹ️ No hay más cuotas pendientes - Excedente no aplicado: $" + excedente);
+			return;
+		}
+		
+		DetallePrestamo candidata = resultado.get(0);
+		
+		// La siguiente cuota debe tener número mayor a la cuota actual
+		if (candidata.getNumeroCuota() <= cuota.getNumeroCuota()) {
+			// Esta es la cuota actual o anterior, buscar más adelante
+			// Marcarla como PAGADA si tiene saldo insignificante
+			SaldosRealesCuota saldos = calcularSaldosRealesCuota(candidata);
 			
-			double desgravamenPendiente = Math.max(0, nullSafe(c.getDesgravamen()) - desgravamenPagado);
-			double interesPendiente = Math.max(0, nullSafe(c.getInteres()) - interesPagado);
-			double capitalPendiente = Math.max(0, nullSafe(c.getCapital()) - capitalPagado);
-			double saldoPendiente = desgravamenPendiente + interesPendiente + capitalPendiente;
-			
-			// ✅ SIN TOLERANCIA: Considerar cualquier cuota con saldo > 0, incluso 1 centavo
-			if (saldoPendiente > 0) {
-				if (siguienteCuota == null || c.getNumeroCuota() < siguienteCuota.getNumeroCuota()) {
-					siguienteCuota = c;
-				}
+			if (saldos.totalPendiente <= 0.01) {
+				candidata.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+				detallePrestamoDaoService.save(candidata, candidata.getCodigo());
+				continue; // Buscar la siguiente
+			} else {
+				// Tiene saldo pero es cuota anterior/actual - no debería pasar
+				System.out.println("        ⚠️ Cuota #" + candidata.getNumeroCuota() + 
+				                   " es anterior/igual a la actual #" + cuota.getNumeroCuota() + 
+				                   " - Excedente no aplicado: $" + excedente);
+				return;
 			}
 		}
+		
+		// Esta es una cuota posterior a la actual, validar saldo real
+		SaldosRealesCuota saldos = calcularSaldosRealesCuota(candidata);
+		
+		// Si fue marcada como PAGADA por calcularSaldosRealesCuota, buscar la siguiente
+		if (candidata.getEstado() != null && 
+		    candidata.getEstado() == com.saa.rubros.EstadoCuotaPrestamo.PAGADA) {
+			System.out.println("        ℹ️ Cuota #" + candidata.getNumeroCuota() + 
+			                   " actualizada a PAGADA según PagoPrestamo - Buscando siguiente cuota (intento " + intentos + ")");
+			continue;
+		}
+		
+		// ✅ Si tiene saldo pendiente real, aplicar el excedente
+		if (saldos.totalPendiente > 0.01) {
+			System.out.println("        ✅ Aplicando excedente a cuota #" + candidata.getNumeroCuota() + 
+			                   " (Saldo pendiente: $" + saldos.totalPendiente + ")");
+			// ✅ El excedente no incluye seguro de incendio (ya se aplicó en la cuota anterior)
+			procesarPagoCuota(participe, candidata, excedente, 0.0, cargaArchivo);
+			return;
+		}
+		
+		// Si tiene saldo insignificante, marcarla como PAGADA y continuar
+		System.out.println("        ⚠️ Cuota #" + candidata.getNumeroCuota() + 
+		                   " tiene saldo insignificante ($" + saldos.totalPendiente + 
+		                   ") - Marcando como PAGADA y continuando");
+		candidata.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+		detallePrestamoDaoService.save(candidata, candidata.getCodigo());
 	}
 	
-	if (siguienteCuota != null) {
-		System.out.println("        Aplicando excedente a cuota #" + siguienteCuota.getNumeroCuota());
-		// ✅ El excedente no incluye seguro de incendio (ya se aplicó en la cuota anterior)
-		procesarPagoCuota(participe, siguienteCuota, excedente, 0.0, cargaArchivo);
-	} else {
-		System.out.println("        ⚠️ No hay siguiente cuota pendiente - Excedente no aplicado: $" + excedente);
+	if (intentos >= maxIntentos) {
+		System.err.println("        ⚠️ Se alcanzó el límite de intentos (" + maxIntentos + 
+		                   ") buscando siguiente cuota - Excedente no aplicado: $" + excedente);
 	}
 }
 
@@ -1759,6 +1769,7 @@ private void aplicarAfectacionManualConRegistroPago(
 	double seguroIncendioAfectar = 0.0; // Por ahora no se maneja seguro en afectaciones manuales
 	
 	System.out.println("      📋 Aplicando afectación manual (AVPC ID: " + afectacion.getCodigo() + ")");
+	System.out.println("         Valores originales en AVPC:");
 	System.out.println("         Capital a afectar: $" + capitalAfectar);
 	System.out.println("         Interés a afectar: $" + interesAfectar);
 	System.out.println("         Desgravamen a afectar: $" + desgravamenAfectar);
@@ -1766,6 +1777,72 @@ private void aplicarAfectacionManualConRegistroPago(
 	
 	// ✅ CRÍTICO: Calcular saldos reales desde tabla PagoPrestamo
 	SaldosRealesCuota saldos = calcularSaldosRealesCuota(cuota);
+	
+	// ✅ CORRECCIÓN CRÍTICA: Si NO hay desglose manual (todos en 0), pero SÍ hay valorTotalAfectar,
+	// entonces distribuir el monto respetando el orden correcto: Desgravamen → Interés → Capital
+	double sumaDesglose = capitalAfectar + interesAfectar + desgravamenAfectar;
+	
+	if (sumaDesglose <= 0.01 && valorTotalAfectar > 0.01) {
+		System.out.println("      ⚠️ DESGLOSE MANUAL VACÍO - Distribuyendo $" + valorTotalAfectar + 
+		                   " según orden de prioridad: Desgravamen → Interés → Capital");
+		
+		double montoRestante = valorTotalAfectar;
+		
+		// 1. Aplicar primero al Desgravamen
+		if (montoRestante > 0 && saldos.saldoDesgravamen > 0.01) {
+			if (montoRestante >= saldos.saldoDesgravamen) {
+				desgravamenAfectar = saldos.saldoDesgravamen;
+				montoRestante -= saldos.saldoDesgravamen;
+			} else {
+				desgravamenAfectar = montoRestante;
+				montoRestante = 0;
+			}
+		}
+		
+		// 2. Aplicar al Interés
+		if (montoRestante > 0 && saldos.saldoInteres > 0.01) {
+			if (montoRestante >= saldos.saldoInteres) {
+				interesAfectar = saldos.saldoInteres;
+				montoRestante -= saldos.saldoInteres;
+			} else {
+				interesAfectar = montoRestante;
+				montoRestante = 0;
+			}
+		}
+		
+		// 3. Aplicar al Capital
+		if (montoRestante > 0 && saldos.saldoCapital > 0.01) {
+			if (montoRestante >= saldos.saldoCapital) {
+				capitalAfectar = saldos.saldoCapital;
+				montoRestante -= saldos.saldoCapital;
+			} else {
+				capitalAfectar = montoRestante;
+				montoRestante = 0;
+			}
+		}
+		
+		// 4. Si quedó algo, aplicar al Seguro de Incendio (si existe)
+		if (montoRestante > 0 && saldos.saldoSeguroIncendio > 0.01) {
+			if (montoRestante >= saldos.saldoSeguroIncendio) {
+				seguroIncendioAfectar = saldos.saldoSeguroIncendio;
+				montoRestante -= saldos.saldoSeguroIncendio;
+			} else {
+				seguroIncendioAfectar = montoRestante;
+				montoRestante = 0;
+			}
+		}
+		
+		System.out.println("      ✅ Distribución automática aplicada:");
+		System.out.println("         Desgravamen: $" + desgravamenAfectar);
+		System.out.println("         Interés: $" + interesAfectar);
+		System.out.println("         Capital: $" + capitalAfectar);
+		System.out.println("         Seguro Incendio: $" + seguroIncendioAfectar);
+		if (montoRestante > 0.01) {
+			System.out.println("         ⚠️ Excedente no aplicado: $" + montoRestante);
+		}
+	} else if (sumaDesglose > 0.01) {
+		System.out.println("      ℹ️ Usando desglose manual de la tabla AVPC");
+	}
 	
 	System.out.println("      Saldos actuales de la cuota:");
 	System.out.println("         Capital pendiente: $" + saldos.saldoCapital);
