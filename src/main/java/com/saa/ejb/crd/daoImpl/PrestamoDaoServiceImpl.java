@@ -86,7 +86,7 @@ public class PrestamoDaoServiceImpl extends EntityDaoImpl<Prestamo> implements P
             String jpql = "SELECT p FROM Prestamo p " +
                          "WHERE p.entidad.codigo = :codigoEntidad " +
                          "AND p.producto.codigo = :codigoProducto " +
-                         "AND p.idEstado IN (2, 8, 10, 11)";
+                         "AND p.idEstado IN (1, 2, 8, 10, 11)";
             
             Query query = em.createQuery(jpql);
             query.setParameter("codigoEntidad", codigoEntidad);
