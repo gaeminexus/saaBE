@@ -78,4 +78,177 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 		}
 	}
 
+	/**
+	 * Obtiene resumen de entidades agrupadas por estado
+	 * Query optimizada para dashboard
+	 */
+	@Override
+	public java.util.List<com.saa.model.crd.dto.EntidadResumenEstadoDTO> selectResumenPorEstado(
+			java.util.List<Long> estadosPermitidos) throws Throwable {
+		
+		// Validar que la lista no esté vacía
+		if (estadosPermitidos == null || estadosPermitidos.isEmpty()) {
+			estadosPermitidos = java.util.Arrays.asList(10L, 2L, 30L); // Valores por defecto
+		}
+		
+		String sql = 
+			"SELECT " +
+			"    e.ENTDIDST AS estado_id, " +
+			"    COUNT(*) AS total_entidades " +
+			"FROM CRD.ENTD e " +
+			"WHERE e.ENTDIDST IN (:estadosPermitidos) " +
+			"GROUP BY e.ENTDIDST " +
+			"ORDER BY e.ENTDIDST";
+		
+		Query query = em.createNativeQuery(sql);
+		query.setParameter("estadosPermitidos", estadosPermitidos);
+		
+		@SuppressWarnings("unchecked")
+		java.util.List<Object[]> results = query.getResultList();
+		
+		java.util.List<com.saa.model.crd.dto.EntidadResumenEstadoDTO> dtos = new java.util.ArrayList<>();
+		for (Object[] row : results) {
+			Long estadoId = row[0] != null ? ((Number) row[0]).longValue() : null;
+			Long totalEntidades = row[1] != null ? ((Number) row[1]).longValue() : 0L;
+			
+			dtos.add(new com.saa.model.crd.dto.EntidadResumenEstadoDTO(estadoId, totalEntidades));
+		}
+		
+		return dtos;
+	}
+
+	/**
+	 * Obtiene resumen de préstamos agrupados por estado de entidad
+	 */
+	@Override
+	public java.util.List<com.saa.model.crd.dto.EntidadResumenPrestamosDTO> selectResumenPrestamosPorEstado(
+			java.util.List<Long> estadosPermitidos) throws Throwable {
+		
+		if (estadosPermitidos == null || estadosPermitidos.isEmpty()) {
+			estadosPermitidos = java.util.Arrays.asList(10L, 2L, 30L);
+		}
+		
+		String sql = 
+			"SELECT " +
+			"    e.ENTDIDST AS estado_id, " +
+			"    SUM(NVL(p.PRSTTTPR, NVL(p.PRSTMNSL, 0))) AS total_prestamos " +
+			"FROM CRD.ENTD e " +
+			"JOIN CRD.PRST p ON p.ENTDCDGO = e.ENTDCDGO " +
+			"WHERE e.ENTDIDST IN (:estadosPermitidos) " +
+			"GROUP BY e.ENTDIDST " +
+			"ORDER BY e.ENTDIDST";
+		
+		Query query = em.createNativeQuery(sql);
+		query.setParameter("estadosPermitidos", estadosPermitidos);
+		
+		@SuppressWarnings("unchecked")
+		java.util.List<Object[]> results = query.getResultList();
+		
+		java.util.List<com.saa.model.crd.dto.EntidadResumenPrestamosDTO> dtos = new java.util.ArrayList<>();
+		for (Object[] row : results) {
+			Long estadoId = row[0] != null ? ((Number) row[0]).longValue() : null;
+			Double totalPrestamos = row[1] != null ? ((Number) row[1]).doubleValue() : 0.0;
+			
+			dtos.add(new com.saa.model.crd.dto.EntidadResumenPrestamosDTO(estadoId, totalPrestamos));
+		}
+		
+		return dtos;
+	}
+
+	/**
+	 * Obtiene resumen de aportes agrupados por estado de entidad
+	 */
+	@Override
+	public java.util.List<com.saa.model.crd.dto.EntidadResumenAportesDTO> selectResumenAportesPorEstado(
+			java.util.List<Long> estadosPermitidos) throws Throwable {
+		
+		if (estadosPermitidos == null || estadosPermitidos.isEmpty()) {
+			estadosPermitidos = java.util.Arrays.asList(10L, 2L, 30L);
+		}
+		
+		String sql = 
+			"SELECT " +
+			"    e.ENTDIDST AS estado_id, " +
+			"    SUM(NVL(a.APRTVLRR, 0)) AS total_aportes " +
+			"FROM CRD.ENTD e " +
+			"JOIN CRD.APRT a ON a.ENTDCDGO = e.ENTDCDGO " +
+			"WHERE e.ENTDIDST IN (:estadosPermitidos) " +
+			"GROUP BY e.ENTDIDST " +
+			"ORDER BY e.ENTDIDST";
+		
+		Query query = em.createNativeQuery(sql);
+		query.setParameter("estadosPermitidos", estadosPermitidos);
+		
+		@SuppressWarnings("unchecked")
+		java.util.List<Object[]> results = query.getResultList();
+		
+		java.util.List<com.saa.model.crd.dto.EntidadResumenAportesDTO> dtos = new java.util.ArrayList<>();
+		for (Object[] row : results) {
+			Long estadoId = row[0] != null ? ((Number) row[0]).longValue() : null;
+			Double totalAportes = row[1] != null ? ((Number) row[1]).doubleValue() : 0.0;
+			
+			dtos.add(new com.saa.model.crd.dto.EntidadResumenAportesDTO(estadoId, totalAportes));
+		}
+		
+		return dtos;
+	}
+
+	/**
+	 * Obtiene resumen consolidado (entidades, préstamos y aportes) por estado
+	 * Query optimizada con subqueries para evitar duplicados
+	 */
+	@Override
+	public java.util.List<com.saa.model.crd.dto.EntidadResumenConsolidadoDTO> selectResumenConsolidadoPorEstado(
+			java.util.List<Long> estadosPermitidos) throws Throwable {
+		
+		if (estadosPermitidos == null || estadosPermitidos.isEmpty()) {
+			estadosPermitidos = java.util.Arrays.asList(10L, 2L, 30L);
+		}
+		
+		String sql = 
+			"SELECT " +
+			"    e.ENTDIDST AS estado_id, " +
+			"    COUNT(*) AS total_entidades, " +
+			"    NVL(SUM(pr.total_prestamos), 0) AS total_prestamos, " +
+			"    NVL(SUM(ap.total_aportes), 0) AS total_aportes " +
+			"FROM CRD.ENTD e " +
+			"LEFT JOIN ( " +
+			"    SELECT " +
+			"        p.ENTDCDGO, " +
+			"        SUM(NVL(p.PRSTTTPR, NVL(p.PRSTMNSL, 0))) AS total_prestamos " +
+			"    FROM CRD.PRST p " +
+			"    GROUP BY p.ENTDCDGO " +
+			") pr ON pr.ENTDCDGO = e.ENTDCDGO " +
+			"LEFT JOIN ( " +
+			"    SELECT " +
+			"        a.ENTDCDGO, " +
+			"        SUM(NVL(a.APRTVLRR, 0)) AS total_aportes " +
+			"    FROM CRD.APRT a " +
+			"    GROUP BY a.ENTDCDGO " +
+			") ap ON ap.ENTDCDGO = e.ENTDCDGO " +
+			"WHERE e.ENTDIDST IN (:estadosPermitidos) " +
+			"GROUP BY e.ENTDIDST " +
+			"ORDER BY e.ENTDIDST";
+		
+		Query query = em.createNativeQuery(sql);
+		query.setParameter("estadosPermitidos", estadosPermitidos);
+		
+		@SuppressWarnings("unchecked")
+		java.util.List<Object[]> results = query.getResultList();
+		
+		java.util.List<com.saa.model.crd.dto.EntidadResumenConsolidadoDTO> dtos = new java.util.ArrayList<>();
+		for (Object[] row : results) {
+			Long estadoId = row[0] != null ? ((Number) row[0]).longValue() : null;
+			Long totalEntidades = row[1] != null ? ((Number) row[1]).longValue() : 0L;
+			Double totalPrestamos = row[2] != null ? ((Number) row[2]).doubleValue() : 0.0;
+			Double totalAportes = row[3] != null ? ((Number) row[3]).doubleValue() : 0.0;
+			
+			dtos.add(new com.saa.model.crd.dto.EntidadResumenConsolidadoDTO(
+				estadoId, totalEntidades, totalPrestamos, totalAportes
+			));
+		}
+		
+		return dtos;
+	}
+
 }

@@ -139,4 +139,186 @@ public class AporteRest {
         }
     }
 
+    /**
+     * Obtiene KPIs globales de aportes para el dashboard
+     * 
+     * @param fechaDesde Fecha inicial (opcional, formato: yyyy-MM-dd)
+     * @param fechaHasta Fecha final (opcional, formato: yyyy-MM-dd)
+     * @param estadoAporte Estado del aporte (opcional)
+     * @return JSON con los KPIs calculados
+     */
+    @GET
+    @Path("/kpis-globales")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getKpisGlobales(
+            @jakarta.ws.rs.QueryParam("fechaDesde") String fechaDesde,
+            @jakarta.ws.rs.QueryParam("fechaHasta") String fechaHasta,
+            @jakarta.ws.rs.QueryParam("estadoAporte") Long estadoAporte) {
+        try {
+            java.time.LocalDateTime fechaDesdeDate = null;
+            java.time.LocalDateTime fechaHastaDate = null;
+            
+            // Parseo de fechas si vienen como parámetros
+            if (fechaDesde != null && !fechaDesde.isEmpty()) {
+                fechaDesdeDate = java.time.LocalDate.parse(fechaDesde).atStartOfDay();
+            }
+            if (fechaHasta != null && !fechaHasta.isEmpty()) {
+                fechaHastaDate = java.time.LocalDate.parse(fechaHasta).atStartOfDay();
+            }
+            
+            com.saa.model.crd.dto.AporteKpiDTO kpis = aporteDaoService.selectKpisGlobales(
+                fechaDesdeDate, 
+                fechaHastaDate, 
+                estadoAporte
+            );
+            
+            return Response.status(Response.Status.OK)
+                    .entity(kpis)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener KPIs globales: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
+    }
+
+    /**
+     * Obtiene resumen de aportes por tipo (para gráfico de dona y tarjetas)
+     * 
+     * @param fechaDesde Fecha inicial (opcional, formato: yyyy-MM-dd)
+     * @param fechaHasta Fecha final (opcional, formato: yyyy-MM-dd)
+     * @param estadoAporte Estado del aporte (opcional)
+     * @return JSON con lista de tipos y sus porcentajes
+     */
+    @GET
+    @Path("/resumen-por-tipo")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getResumenPorTipo(
+            @jakarta.ws.rs.QueryParam("fechaDesde") String fechaDesde,
+            @jakarta.ws.rs.QueryParam("fechaHasta") String fechaHasta,
+            @jakarta.ws.rs.QueryParam("estadoAporte") Long estadoAporte) {
+        try {
+            java.time.LocalDateTime fechaDesdeDate = null;
+            java.time.LocalDateTime fechaHastaDate = null;
+            
+            if (fechaDesde != null && !fechaDesde.isEmpty()) {
+                fechaDesdeDate = java.time.LocalDate.parse(fechaDesde).atStartOfDay();
+            }
+            if (fechaHasta != null && !fechaHasta.isEmpty()) {
+                fechaHastaDate = java.time.LocalDate.parse(fechaHasta).atStartOfDay();
+            }
+            
+            java.util.List<com.saa.model.crd.dto.AporteResumenTipoDTO> resumen = 
+                aporteDaoService.selectResumenPorTipo(fechaDesdeDate, fechaHastaDate, estadoAporte);
+            
+            return Response.status(Response.Status.OK)
+                    .entity(resumen)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener resumen por tipo: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
+    }
+
+    /**
+     * Obtiene top N entidades con mayor impacto por tipo de aporte
+     * 
+     * @param fechaDesde Fecha inicial (opcional, formato: yyyy-MM-dd)
+     * @param fechaHasta Fecha final (opcional, formato: yyyy-MM-dd)
+     * @param estadoAporte Estado del aporte (opcional)
+     * @param tipoAporteId Tipo de aporte específico (opcional)
+     * @param topN Cantidad de entidades a retornar (por defecto 10)
+     * @return JSON con lista de top entidades
+     */
+    @GET
+    @Path("/top-entidades")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getTopEntidades(
+            @jakarta.ws.rs.QueryParam("fechaDesde") String fechaDesde,
+            @jakarta.ws.rs.QueryParam("fechaHasta") String fechaHasta,
+            @jakarta.ws.rs.QueryParam("estadoAporte") Long estadoAporte,
+            @jakarta.ws.rs.QueryParam("tipoAporteId") Long tipoAporteId,
+            @jakarta.ws.rs.QueryParam("topN") Integer topN) {
+        try {
+            java.time.LocalDateTime fechaDesdeDate = null;
+            java.time.LocalDateTime fechaHastaDate = null;
+            
+            if (fechaDesde != null && !fechaDesde.isEmpty()) {
+                fechaDesdeDate = java.time.LocalDate.parse(fechaDesde).atStartOfDay();
+            }
+            if (fechaHasta != null && !fechaHasta.isEmpty()) {
+                fechaHastaDate = java.time.LocalDate.parse(fechaHasta).atStartOfDay();
+            }
+            
+            // Valor por defecto para topN
+            Integer limit = (topN != null && topN > 0) ? topN : 10;
+            
+            java.util.List<com.saa.model.crd.dto.AporteTopEntidadDTO> topEntidades = 
+                aporteDaoService.selectTopEntidades(fechaDesdeDate, fechaHastaDate, estadoAporte, tipoAporteId, limit);
+            
+            return Response.status(Response.Status.OK)
+                    .entity(topEntidades)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener top entidades: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
+    }
+
+    /**
+     * Obtiene top N movimientos individuales más grandes
+     * 
+     * @param fechaDesde Fecha inicial (opcional, formato: yyyy-MM-dd)
+     * @param fechaHasta Fecha final (opcional, formato: yyyy-MM-dd)
+     * @param estadoAporte Estado del aporte (opcional)
+     * @param tipoAporteId Tipo de aporte específico (opcional)
+     * @param topN Cantidad de movimientos a retornar (por defecto 10)
+     * @return JSON con lista de top movimientos
+     */
+    @GET
+    @Path("/top-movimientos")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getTopMovimientos(
+            @jakarta.ws.rs.QueryParam("fechaDesde") String fechaDesde,
+            @jakarta.ws.rs.QueryParam("fechaHasta") String fechaHasta,
+            @jakarta.ws.rs.QueryParam("estadoAporte") Long estadoAporte,
+            @jakarta.ws.rs.QueryParam("tipoAporteId") Long tipoAporteId,
+            @jakarta.ws.rs.QueryParam("topN") Integer topN) {
+        try {
+            java.time.LocalDateTime fechaDesdeDate = null;
+            java.time.LocalDateTime fechaHastaDate = null;
+            
+            if (fechaDesde != null && !fechaDesde.isEmpty()) {
+                fechaDesdeDate = java.time.LocalDate.parse(fechaDesde).atStartOfDay();
+            }
+            if (fechaHasta != null && !fechaHasta.isEmpty()) {
+                fechaHastaDate = java.time.LocalDate.parse(fechaHasta).atStartOfDay();
+            }
+            
+            // Valor por defecto para topN
+            Integer limit = (topN != null && topN > 0) ? topN : 10;
+            
+            java.util.List<com.saa.model.crd.dto.AporteTopMovimientoDTO> topMovimientos = 
+                aporteDaoService.selectTopMovimientos(fechaDesdeDate, fechaHastaDate, estadoAporte, tipoAporteId, limit);
+            
+            return Response.status(Response.Status.OK)
+                    .entity(topMovimientos)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener top movimientos: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
+    }
+
 }

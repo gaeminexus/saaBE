@@ -40,4 +40,23 @@ public class CargaArchivoDaoServiceImpl extends EntityDaoImpl<CargaArchivo> impl
 		query.setParameter("estado", estado);
 		return query.getResultList();
 	}
+	
+	/**
+	 * OPTIMIZADO: Busca la última carga procesada (MAX año/mes) directamente en BD
+	 */
+	@Override
+	public CargaArchivo selectUltimaCargaProcesada(Long estado) throws Throwable {
+		Query query = em.createQuery(
+			" select b " +
+			" from   CargaArchivo b " +
+			" where  b.estado = :estado " +
+			" order by b.anioAfectacion desc, b.mesAfectacion desc");
+		query.setParameter("estado", estado);
+		query.setMaxResults(1);
+		
+		@SuppressWarnings("unchecked")
+		List<CargaArchivo> resultados = query.getResultList();
+		
+		return resultados.isEmpty() ? null : resultados.get(0);
+	}
 }

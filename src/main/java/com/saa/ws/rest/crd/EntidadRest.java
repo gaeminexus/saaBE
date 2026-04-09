@@ -224,4 +224,158 @@ public class EntidadRest {
         }
     }
 
+    /**
+     * Obtiene resumen de entidades agrupadas por estado (para dashboard)
+     * 
+     * @param estados Lista de estados separados por coma (opcional, default: 10,2,30)
+     * @return JSON con lista de estados y cantidad de entidades
+     */
+    @GET
+    @Path("/resumen-por-estado")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getResumenPorEstado(
+            @jakarta.ws.rs.QueryParam("estados") String estados) {
+        try {
+            java.util.List<Long> estadosPermitidos;
+            
+            // Parsear estados si vienen como parámetro
+            if (estados != null && !estados.isEmpty()) {
+                estadosPermitidos = new java.util.ArrayList<>();
+                for (String estado : estados.split(",")) {
+                    estadosPermitidos.add(Long.parseLong(estado.trim()));
+                }
+            } else {
+                // Valores por defecto
+                estadosPermitidos = java.util.Arrays.asList(10L, 2L, 30L);
+            }
+            
+            java.util.List<com.saa.model.crd.dto.EntidadResumenEstadoDTO> resumen = 
+                entidadDaoService.selectResumenPorEstado(estadosPermitidos);
+            
+            return Response.status(Response.Status.OK)
+                    .entity(resumen)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener resumen por estado: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
+    }
+
+    /**
+     * Obtiene resumen de préstamos agrupados por estado de entidad
+     * 
+     * @param estados Lista de estados separados por coma (opcional, default: 10,2,30)
+     * @return JSON con lista de estados y total de préstamos
+     */
+    @GET
+    @Path("/resumen-prestamos-por-estado")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getResumenPrestamosPorEstado(
+            @jakarta.ws.rs.QueryParam("estados") String estados) {
+        try {
+            java.util.List<Long> estadosPermitidos;
+            
+            if (estados != null && !estados.isEmpty()) {
+                estadosPermitidos = new java.util.ArrayList<>();
+                for (String estado : estados.split(",")) {
+                    estadosPermitidos.add(Long.parseLong(estado.trim()));
+                }
+            } else {
+                estadosPermitidos = java.util.Arrays.asList(10L, 2L, 30L);
+            }
+            
+            java.util.List<com.saa.model.crd.dto.EntidadResumenPrestamosDTO> resumen = 
+                entidadDaoService.selectResumenPrestamosPorEstado(estadosPermitidos);
+            
+            return Response.status(Response.Status.OK)
+                    .entity(resumen)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener resumen de préstamos: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
+    }
+
+    /**
+     * Obtiene resumen de aportes agrupados por estado de entidad
+     * 
+     * @param estados Lista de estados separados por coma (opcional, default: 10,2,30)
+     * @return JSON con lista de estados y total de aportes
+     */
+    @GET
+    @Path("/resumen-aportes-por-estado")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getResumenAportesPorEstado(
+            @jakarta.ws.rs.QueryParam("estados") String estados) {
+        try {
+            java.util.List<Long> estadosPermitidos;
+            
+            if (estados != null && !estados.isEmpty()) {
+                estadosPermitidos = new java.util.ArrayList<>();
+                for (String estado : estados.split(",")) {
+                    estadosPermitidos.add(Long.parseLong(estado.trim()));
+                }
+            } else {
+                estadosPermitidos = java.util.Arrays.asList(10L, 2L, 30L);
+            }
+            
+            java.util.List<com.saa.model.crd.dto.EntidadResumenAportesDTO> resumen = 
+                entidadDaoService.selectResumenAportesPorEstado(estadosPermitidos);
+            
+            return Response.status(Response.Status.OK)
+                    .entity(resumen)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener resumen de aportes: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
+    }
+
+    /**
+     * Obtiene resumen consolidado (entidades, préstamos y aportes) por estado
+     * 
+     * @param estados Lista de estados separados por coma (opcional, default: 10,2,30)
+     * @return JSON con resumen consolidado por estado
+     */
+    @GET
+    @Path("/resumen-consolidado-por-estado")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getResumenConsolidadoPorEstado(
+            @jakarta.ws.rs.QueryParam("estados") String estados) {
+        try {
+            java.util.List<Long> estadosPermitidos;
+            
+            if (estados != null && !estados.isEmpty()) {
+                estadosPermitidos = new java.util.ArrayList<>();
+                for (String estado : estados.split(",")) {
+                    estadosPermitidos.add(Long.parseLong(estado.trim()));
+                }
+            } else {
+                estadosPermitidos = java.util.Arrays.asList(10L, 2L, 30L);
+            }
+            
+            java.util.List<com.saa.model.crd.dto.EntidadResumenConsolidadoDTO> resumen = 
+                entidadDaoService.selectResumenConsolidadoPorEstado(estadosPermitidos);
+            
+            return Response.status(Response.Status.OK)
+                    .entity(resumen)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener resumen consolidado: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
+    }
+
 }

@@ -34,5 +34,45 @@ public interface EntidadDaoService extends EntityDao<Entidad> {
 	 * @throws Throwable: Excepción en caso de error.
 	 */
 	List<Entidad> selectByNombrePetro35(String nombre) throws Throwable;
+	
+	/**
+	 * Obtiene resumen de entidades agrupadas por estado (para dashboard)
+	 * 
+	 * @param estadosPermitidos Lista de estados a incluir (ej: 10, 2, 30)
+	 * @return Lista de resúmenes con estado y cantidad de entidades
+	 * @throws Throwable Excepción en caso de error
+	 */
+	java.util.List<com.saa.model.crd.dto.EntidadResumenEstadoDTO> selectResumenPorEstado(
+			java.util.List<Long> estadosPermitidos) throws Throwable;
+	
+	/**
+	 * Obtiene resumen de préstamos agrupados por estado de entidad
+	 * 
+	 * @param estadosPermitidos Lista de estados a incluir (ej: 10, 2, 30)
+	 * @return Lista de resúmenes con estado y total de préstamos
+	 * @throws Throwable Excepción en caso de error
+	 */
+	java.util.List<com.saa.model.crd.dto.EntidadResumenPrestamosDTO> selectResumenPrestamosPorEstado(
+			java.util.List<Long> estadosPermitidos) throws Throwable;
+	
+	/**
+	 * Obtiene resumen de aportes agrupados por estado de entidad
+	 * 
+	 * @param estadosPermitidos Lista de estados a incluir (ej: 10, 2, 30)
+	 * @return Lista de resúmenes con estado y total de aportes
+	 * @throws Throwable Excepción en caso de error
+	 */
+	java.util.List<com.saa.model.crd.dto.EntidadResumenAportesDTO> selectResumenAportesPorEstado(
+			java.util.List<Long> estadosPermitidos) throws Throwable;
+	
+	/**
+	 * Obtiene resumen consolidado (entidades, préstamos y aportes) por estado
+	 * 
+	 * @param estadosPermitidos Lista de estados a incluir (ej: 10, 2, 30)
+	 * @return Lista de resúmenes consolidados
+	 * @throws Throwable Excepción en caso de error
+	 */
+	java.util.List<com.saa.model.crd.dto.EntidadResumenConsolidadoDTO> selectResumenConsolidadoPorEstado(
+			java.util.List<Long> estadosPermitidos) throws Throwable;
 
 }

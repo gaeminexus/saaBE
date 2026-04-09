@@ -24,4 +24,12 @@ public interface CargaArchivoDaoService extends EntityDao<CargaArchivo>{
 	 */
 	List<CargaArchivo> selectByEstado(Long estado) throws Throwable;
 
+	/**
+	 * OPTIMIZADO: Busca la última carga procesada (MAX año/mes) con estado específico
+	 * @param estado Estado de la carga (3 = procesada)
+	 * @return Última CargaArchivo procesada o null
+	 * @throws Throwable Si ocurre un error
+	 */
+	CargaArchivo selectUltimaCargaProcesada(Long estado) throws Throwable;
+
 }

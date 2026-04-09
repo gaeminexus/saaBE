@@ -18,6 +18,7 @@ import com.saa.ejb.crd.service.CargaArchivoService;
 import com.saa.ejb.crd.service.DetalleCargaArchivoService;
 import com.saa.ejb.crd.service.ParticipeXCargaArchivoService;
 import com.saa.model.crd.AfectacionValoresParticipeCarga;
+import com.saa.model.crd.Aporte;
 import com.saa.model.crd.CargaArchivo;
 import com.saa.model.crd.DetalleCargaArchivo;
 import com.saa.model.crd.DetallePrestamo;
@@ -102,7 +103,13 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     private com.saa.ejb.crd.service.AporteService aporteService;
     
     @EJB
+    private com.saa.ejb.crd.dao.AporteDaoService aporteDaoService;
+    
+    @EJB
     private com.saa.ejb.crd.service.PagoAporteService pagoAporteService;
+    
+    @EJB
+    private com.saa.ejb.crd.dao.PagoAporteDaoService pagoAporteDaoService;
     
     @EJB
     private com.saa.ejb.crd.dao.TipoAporteDaoService tipoAporteDaoService;
@@ -340,10 +347,11 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 				continue;
 			}
 			
-			boolean esProductoEspecial = CODIGO_PRODUCTO_APORTES.equalsIgnoreCase(codigoProducto) ||
-										 CODIGO_PRODUCTO_HS.equalsIgnoreCase(codigoProducto);
+			// ✅ CORRECCIÓN: Solo excluir HS de validaciones Fase 2
+			// El producto AH (aportes) SÍ debe validarse en Fase 2
+			boolean esProductoHS = CODIGO_PRODUCTO_HS.equalsIgnoreCase(codigoProducto);
 			
-			if (!esProductoEspecial && participe.getCodigo() != null) {
+			if (!esProductoHS && participe.getCodigo() != null) {
 				try {
 					validarNovedadesFase2(participe, codigoProducto, cargaArchivo);
 				} catch (Throwable e) {
@@ -961,9 +969,14 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	 * - MULTIPLES_PRESTAMOS_ACTIVOS: Se procesan todos los préstamos activos encontrados
 	 * etc.
 	 */
+	/**
+	 * Verifica si un partícipe tiene novedades que bloquean el procesamiento
+	 * ✅ CORRECTO: Las novedades son INFORMATIVAS, NO bloqueantes
+	 * Se procesa el valor recibido aunque existan novedades
+	 */
 	private boolean tieneNovedadesBloqueantes(ParticipeXCargaArchivo participe) {
-		// ✅ NO bloquear ningún procesamiento por novedades
-		// El flujo maneja correctamente cada caso
+		// ✅ NO bloquear procesamiento - Las novedades son solo informativas
+		// Se procesa el monto que viene en el archivo independientemente de las novedades
 		return false;
 	}
 	
@@ -1248,6 +1261,13 @@ private void procesarPagoCuota(ParticipeXCargaArchivo participe,
 		cuota.setSaldoCapital(Math.max(0, nullSafe(cuota.getSaldoInicialCapital()) - cuota.getCapitalPagado()));
 		cuota.setSaldoInteres(0.0);
 		
+		// ✅ CRÍTICO: Actualizar saldo total global de la cuota (independiente del desglose)
+		double totalCuota = nullSafe(cuota.getCapital()) + nullSafe(cuota.getInteres()) + 
+		                    nullSafe(cuota.getDesgravamen()) + nullSafe(cuota.getValorSeguroIncendio());
+		double totalPagadoCuota = cuota.getCapitalPagado() + cuota.getInteresPagado() + 
+		                          cuota.getDesgravamenPagado() + valorSeguroIncendio;
+		cuota.setSaldo(Math.max(0, totalCuota - totalPagadoCuota));
+		
 		// Valores pagados en esta operación
 		desgravamenPagar = desgravamenPendiente;
 		interesPagar = interesPendiente;
@@ -1272,6 +1292,13 @@ private void procesarPagoCuota(ParticipeXCargaArchivo participe,
 		cuota.setDesgravamenPagado(nullSafe(cuota.getDesgravamen()));
 		cuota.setSaldoCapital(Math.max(0, nullSafe(cuota.getSaldoInicialCapital()) - cuota.getCapitalPagado()));
 		cuota.setSaldoInteres(0.0);
+		
+		// ✅ CRÍTICO: Actualizar saldo total global de la cuota (independiente del desglose)
+		double totalCuota = nullSafe(cuota.getCapital()) + nullSafe(cuota.getInteres()) + 
+		                    nullSafe(cuota.getDesgravamen()) + nullSafe(cuota.getValorSeguroIncendio());
+		double totalPagadoCuota = cuota.getCapitalPagado() + cuota.getInteresPagado() + 
+		                          cuota.getDesgravamenPagado() + valorSeguroIncendio;
+		cuota.setSaldo(Math.max(0, totalCuota - totalPagadoCuota));
 		
 		// Valores pagados en esta operación
 		desgravamenPagar = desgravamenPendiente;
@@ -1366,6 +1393,13 @@ private void procesarPagoCuota(ParticipeXCargaArchivo participe,
 		cuota.setDesgravamenPagado(desgravamenPagadoActual + desgravamenPagar);
 		cuota.setSaldoCapital(Math.max(0, nullSafe(cuota.getSaldoInicialCapital()) - cuota.getCapitalPagado()));
 		cuota.setSaldoInteres(nullSafe(cuota.getInteres()) - cuota.getInteresPagado());
+		
+		// ✅ CRÍTICO: Actualizar saldo total global de la cuota (independiente del desglose)
+		double totalCuota = nullSafe(cuota.getCapital()) + nullSafe(cuota.getInteres()) + 
+		                    nullSafe(cuota.getDesgravamen()) + nullSafe(cuota.getValorSeguroIncendio());
+		double totalPagadoCuota = cuota.getCapitalPagado() + cuota.getInteresPagado() + 
+		                          cuota.getDesgravamenPagado() + seguroIncendioPagar;
+		cuota.setSaldo(Math.max(0, totalCuota - totalPagadoCuota));
 		
 		System.out.println("      ⚠️ Cuota PARCIAL - Recibido: $" + montoPagado + " de $" + totalPendiente + " pendiente");
 		System.out.println("        Desgravamen: $" + desgravamenPagar + "/" + desgravamenPendiente);
@@ -1863,6 +1897,13 @@ private void aplicarAfectacionManualConRegistroPago(
 	cuota.setSaldoCapital(Math.max(0, nullSafe(cuota.getSaldoInicialCapital()) - cuota.getCapitalPagado()));
 	cuota.setSaldoInteres(Math.max(0, nullSafe(cuota.getInteres()) - cuota.getInteresPagado()));
 	
+	// ✅ CRÍTICO: Actualizar saldo total global de la cuota (independiente del desglose)
+	double totalCuotaManual = nullSafe(cuota.getCapital()) + nullSafe(cuota.getInteres()) + 
+	                          nullSafe(cuota.getDesgravamen()) + nullSafe(cuota.getValorSeguroIncendio());
+	double totalPagadoCuotaManual = cuota.getCapitalPagado() + cuota.getInteresPagado() + 
+	                                cuota.getDesgravamenPagado() + seguroIncendioAfectar;
+	cuota.setSaldo(Math.max(0, totalCuotaManual - totalPagadoCuotaManual));
+	
 	// ✅ Determinar el estado de la cuota según el total pagado
 	double valorSeguroIncendio = nullSafe(cuota.getValorSeguroIncendio());
 	double totalEsperado;
@@ -2276,22 +2317,17 @@ private void validarAporteAH(ParticipeXCargaArchivo participe, CargaArchivo carg
 		
 		Entidad entidad = entidades.get(0);
 		
-		// Buscar HistorialSueldo de la entidad
-		List<com.saa.model.crd.HistorialSueldo> historiales = historialSueldoDaoService.selectByEntidad(entidad.getCodigo());
+		// ✅ OPTIMIZADO: Buscar HistorialSueldo activo (estado 99) directamente
+		// Antes: Traía TODOS los historiales y verificaba en Java si había más de 1
+		// Ahora: Usa método optimizado que trae solo el activo
+		com.saa.model.crd.HistorialSueldo historial = 
+			historialSueldoDaoService.selectByEntidadYEstadoActivo(entidad.getCodigo());
 		
-		if (historiales == null || historiales.isEmpty()) {
+		if (historial == null) {
 			registrarNovedad(participe, ASPNovedadesCargaArchivo.HISTORIAL_SUELDO_NO_ENCONTRADO,
-				"No existe HistorialSueldo para la entidad", null, null, null, null);
+				"No existe HistorialSueldo activo (estado 99) para la entidad", null, null, null, null);
 			return;
 		}
-		
-		if (historiales.size() > 1) {
-			registrarNovedad(participe, ASPNovedadesCargaArchivo.MULTIPLES_REGISTROS_HISTORIAL_SUELDO,
-				"Existen múltiples registros en HistorialSueldo: " + historiales.size(), null, null, null, null);
-			return;
-		}
-		
-		com.saa.model.crd.HistorialSueldo historial = historiales.get(0);
 		
 		// Validar que los valores no sean NULL
 		Double montoJubilacion = historial.getMontoJubilacion();
@@ -2417,6 +2453,14 @@ private SaldosRealesCuota calcularSaldosRealesCuota(DetallePrestamo cuota) throw
 			// ✅ CORRECCIÓN CRÍTICA: saldoCapital = saldoInicialCapital - capitalPagado (NO poner en 0)
 			cuota.setSaldoCapital(Math.max(0, nullSafe(cuota.getSaldoInicialCapital()) - capitalPagadoTotal));
 			cuota.setSaldoInteres(0.0);
+			
+			// ✅ CRÍTICO: Actualizar saldo total global de la cuota (independiente del desglose)
+			double totalCuotaRecalculo = nullSafe(cuota.getCapital()) + nullSafe(cuota.getInteres()) + 
+			                             nullSafe(cuota.getDesgravamen()) + nullSafe(cuota.getValorSeguroIncendio());
+			double totalPagadoCuotaRecalculo = capitalPagadoTotal + interesPagadoTotal + 
+			                                   desgravamenPagadoTotal + seguroIncendioPagadoTotal;
+			cuota.setSaldo(Math.max(0, totalCuotaRecalculo - totalPagadoCuotaRecalculo));
+			
 			detallePrestamoService.saveSingle(cuota);
 		}
 		
@@ -2468,21 +2512,17 @@ private void crearRegistroPago(DetallePrestamo cuota,
 
 /**
  * Valida que solo se pueda procesar una carga si es del mes siguiente al último mes procesado
+ * ✅ OPTIMIZADO: Usa consulta directa para obtener la última carga sin traer todas
  */
 private void validarOrdenProcesamiento(CargaArchivo cargaArchivo) throws Throwable {
-	// Buscar la última carga procesada (estado 3) usando método específico del DAO
-	List<CargaArchivo> todasLasCargas = cargaArchivoDaoService.selectByEstado(3L);
+	// ✅ OPTIMIZACIÓN: Obtener directamente la última carga procesada (MAX año/mes)
+	// Antes: Traía TODAS las cargas procesadas y buscaba el MAX en Java
+	// Ahora: Una consulta que trae solo la última carga
+	CargaArchivo ultimaCargaProcesada = cargaArchivoDaoService.selectUltimaCargaProcesada(3L);
 	
-	CargaArchivo ultimaCargaProcesada = null;
-	for (CargaArchivo carga : todasLasCargas) {
-		if (!carga.getCodigo().equals(cargaArchivo.getCodigo())) {
-			if (ultimaCargaProcesada == null ||
-			    (carga.getAnioAfectacion() > ultimaCargaProcesada.getAnioAfectacion()) ||
-			    (carga.getAnioAfectacion().equals(ultimaCargaProcesada.getAnioAfectacion()) && 
-			     carga.getMesAfectacion() > ultimaCargaProcesada.getMesAfectacion())) {
-				ultimaCargaProcesada = carga;
-			}
-		}
+	// Excluir la carga actual si es la que se está procesando
+	if (ultimaCargaProcesada != null && ultimaCargaProcesada.getCodigo().equals(cargaArchivo.getCodigo())) {
+		ultimaCargaProcesada = null; // No validar contra sí misma
 	}
 	
 	if (ultimaCargaProcesada != null) {
@@ -2514,12 +2554,16 @@ private void validarOrdenProcesamiento(CargaArchivo cargaArchivo) throws Throwab
 
 /**
  * Aplica aportes para el producto AH (aportes de jubilación y cesantía)
- * Divide el monto 50% jubilación, 50% cesantía
+ * ✅ NUEVA LÓGICA: Similar a procesamiento de préstamos con estados, acumulación y excedentes
  */
 private int aplicarAporteAH(ParticipeXCargaArchivo participe, CargaArchivo cargaArchivo) throws Throwable {
 	int aportesCreados = 0;
 	
 	try {
+		System.out.println("========================================");
+		System.out.println("PROCESANDO APORTES (AH) - Partícipe: " + participe.getCodigoPetro() + " (" + participe.getNombre() + ")");
+		System.out.println("========================================");
+		
 		// Buscar la entidad
 		List<Entidad> entidades = entidadDaoService.selectByCodigoPetro(participe.getCodigoPetro());
 		if (entidades == null || entidades.isEmpty()) {
@@ -2528,88 +2572,350 @@ private int aplicarAporteAH(ParticipeXCargaArchivo participe, CargaArchivo carga
 		}
 		
 		Entidad entidad = entidades.get(0);
-		double montoTotal = nullSafe(participe.getTotalDescontado());
+		double montoRecibido = nullSafe(participe.getTotalDescontado());
 		
-		if (montoTotal <= 0) {
-			System.out.println("⚠️ Monto total es 0 para partícipe: " + participe.getCodigoPetro());
+		if (montoRecibido <= 0.01) {
+			System.out.println("⚠️ Monto recibido es $0 para partícipe: " + participe.getCodigoPetro());
 			return 0;
 		}
 		
-		// ✅ CORRECCIÓN CRÍTICA: Buscar valores en HistorialSueldo con estado 99
+		System.out.println("📥 Monto total recibido: $" + montoRecibido);
+		
+		// ✅ Buscar valores esperados en HistorialSueldo con estado 99
 		com.saa.model.crd.HistorialSueldo historialActivo = 
 			historialSueldoDaoService.selectByEntidadYEstadoActivo(entidad.getCodigo());
 		
-		double montoJubilacion;
-		double montoCesantia;
-		
-		if (historialActivo != null) {
-			// ✅ Usar los montos configurados en HistorialSueldo
-			montoJubilacion = nullSafe(historialActivo.getMontoJubilacion());
-			montoCesantia = nullSafe(historialActivo.getMontoCesantia());
-			
-			System.out.println("  ✅ Usando valores de HistorialSueldo (estado 99):");
-			System.out.println("     - Jubilación: $" + montoJubilacion);
-			System.out.println("     - Cesantía: $" + montoCesantia);
-			System.out.println("     - Total configurado: $" + (montoJubilacion + montoCesantia));
-			System.out.println("     - Total en archivo: $" + montoTotal);
-			
-			// Validar que el total coincida
-			double totalConfigurado = montoJubilacion + montoCesantia;
-			if (Math.abs(totalConfigurado - montoTotal) > 1.0) {
-				System.out.println("     ⚠️ DIFERENCIA detectada entre archivo y configuración: $" + 
-				                   Math.abs(totalConfigurado - montoTotal));
-			}
-		} else {
-			// ⚠️ Si no existe HistorialSueldo, dividir en partes iguales como fallback
-			System.out.println("  ⚠️ No se encontró HistorialSueldo con estado 99 - Usando división 50/50");
-			montoJubilacion = montoTotal / 2.0;
-			montoCesantia = montoTotal / 2.0;
+		if (historialActivo == null) {
+			System.out.println("⚠️ No se encontró HistorialSueldo activo (estado 99) - No se pueden procesar aportes");
+			return 0;
 		}
 		
-		// ✅ VALIDACIÓN: Solo crear aporte de jubilación si el monto es mayor a 0
-		if (montoJubilacion > 0) {
-			com.saa.model.crd.Aporte aporteJubilacion = new com.saa.model.crd.Aporte();
-			aporteJubilacion.setEntidad(entidad);
-			aporteJubilacion.setTipoAporte(tipoAporteDaoService.selectById(TIPO_APORTE_JUBILACION, "TipoAporte"));
-			aporteJubilacion.setValor(montoJubilacion);
-			aporteJubilacion.setFechaTransaccion(java.time.LocalDateTime.now());
-			aporteJubilacion.setGlosa("Aporte jubilación - CargaArchivo: " + cargaArchivo.getCodigo());
-			aporteJubilacion.setEstado(1L);
-			aporteService.saveSingle(aporteJubilacion);
+		double montoEsperadoJubilacion = nullSafe(historialActivo.getMontoJubilacion());
+		double montoEsperadoCesantia = nullSafe(historialActivo.getMontoCesantia());
+		double montoEsperadoTotal = montoEsperadoJubilacion + montoEsperadoCesantia;
+		
+		System.out.println("💰 Valores esperados (HistorialSueldo):");
+		System.out.println("   - Jubilación: $" + montoEsperadoJubilacion);
+		System.out.println("   - Cesantía: $" + montoEsperadoCesantia);
+		System.out.println("   - TOTAL: $" + montoEsperadoTotal);
+		
+		// ✅ PROCESAR APORTE DE JUBILACIÓN (si existe monto esperado)
+		if (montoEsperadoJubilacion > 0.01) {
+			double montoParaJubilacion = Math.min(montoRecibido, montoEsperadoJubilacion);
+			double montoUtilizado = procesarAporteIndividual(entidad, TIPO_APORTE_JUBILACION, "Jubilación", 
+			                        montoEsperadoJubilacion, montoParaJubilacion, 
+			                        cargaArchivo, participe);
+			montoRecibido -= montoUtilizado; // ✅ Restar solo lo que realmente se utilizó
 			aportesCreados++;
-			System.out.println("  ✅ Aporte de jubilación creado: $" + montoJubilacion);
-		} else {
-			System.out.println("  ⊘ Aporte de jubilación omitido (valor = $0)");
 		}
 		
-		// ✅ VALIDACIÓN: Solo crear aporte de cesantía si el monto es mayor a 0
-		if (montoCesantia > 0) {
-			com.saa.model.crd.Aporte aporteCesantia = new com.saa.model.crd.Aporte();
-			aporteCesantia.setEntidad(entidad);
-			aporteCesantia.setTipoAporte(tipoAporteDaoService.selectById(TIPO_APORTE_CESANTIA, "TipoAporte"));
-			aporteCesantia.setValor(montoCesantia);
-			aporteCesantia.setFechaTransaccion(java.time.LocalDateTime.now());
-			aporteCesantia.setGlosa("Aporte cesantía - CargaArchivo: " + cargaArchivo.getCodigo());
-			aporteCesantia.setEstado(1L);
-			aporteService.saveSingle(aporteCesantia);
+		// ✅ PROCESAR APORTE DE CESANTÍA (si existe monto esperado y queda saldo)
+		if (montoEsperadoCesantia > 0.01 && montoRecibido > 0.01) {
+			double montoParaCesantia = Math.min(montoRecibido, montoEsperadoCesantia);
+			double montoUtilizado = procesarAporteIndividual(entidad, TIPO_APORTE_CESANTIA, "Cesantía", 
+			                        montoEsperadoCesantia, montoParaCesantia, 
+			                        cargaArchivo, participe);
+			montoRecibido -= montoUtilizado; // ✅ Restar solo lo que realmente se utilizó
 			aportesCreados++;
-			System.out.println("  ✅ Aporte de cesantía creado: $" + montoCesantia);
-		} else {
-			System.out.println("  ⊘ Aporte de cesantía omitido (valor = $0)");
 		}
 		
-		if (aportesCreados > 0) {
-			System.out.println("  ✅ Total aportes creados para " + entidad.getRazonSocial() + ": " + aportesCreados);
-		} else {
-			System.out.println("  ⚠️ No se crearon aportes para " + entidad.getRazonSocial() + " (ambos valores son $0)");
+		// ✅ MANEJO DE EXCEDENTE: Si sobra dinero, crear aportes del siguiente mes
+		if (montoRecibido > 0.01) {
+			System.out.println("💵 EXCEDENTE DETECTADO: $" + montoRecibido + " - Creando aportes para mes siguiente");
+			crearAportesMesSiguiente(entidad, montoRecibido, cargaArchivo, participe);
 		}
+		
+		System.out.println("✅ Procesamiento de aportes completado - Total aportes: " + aportesCreados);
+		System.out.println("========================================\n");
 		
 	} catch (Throwable e) {
-		System.err.println("Error al aplicar aportes AH: " + e.getMessage());
+		System.err.println("❌ Error al aplicar aportes AH: " + e.getMessage());
 		e.printStackTrace();
 	}
 	
 	return aportesCreados;
+}
+
+/**
+ * Procesa un aporte individual (Jubilación o Cesantía) con lógica de estados y acumulación
+ * ✅ CORREGIDO: Retorna el monto total utilizado (saldo anterior + mes actual)
+ * 
+ * @return Monto total utilizado en este procesamiento
+ */
+private double procesarAporteIndividual(Entidad entidad, Long idTipoAporte, String nombreTipo,
+                                     double valorEsperado, double montoPagar,
+                                     CargaArchivo cargaArchivo, ParticipeXCargaArchivo participe) throws Throwable {
+	
+	System.out.println("\n📋 Procesando aporte de " + nombreTipo + ":");
+	System.out.println("   Valor esperado mes actual: $" + valorEsperado);
+	System.out.println("   Monto recibido: $" + montoPagar);
+	
+	double montoDisponible = montoPagar;
+	double montoTotalUtilizado = 0.0; // ✅ Contador de cuánto dinero se usó
+	
+	// ✅ PASO 1: BUSCAR APORTES ANTERIORES CON SALDO PENDIENTE
+	// Debe aplicarse PRIMERO a cualquier aporte anterior con saldo > 0
+	Aporte aporteConSaldo = buscarAporteConSaldoPendiente(entidad, idTipoAporte, cargaArchivo);
+	
+	if (aporteConSaldo != null) {
+		// ✅ APLICAR PRIMERO AL APORTE EXISTENTE CON SALDO
+		System.out.println("   🔍 Encontrado aporte anterior con saldo pendiente:");
+		System.out.println("      ID Aporte: " + aporteConSaldo.getCodigo());
+		System.out.println("      Valor: $" + aporteConSaldo.getValor());
+		System.out.println("      Ya pagado: $" + nullSafe(aporteConSaldo.getValorPagado()));
+		System.out.println("      Saldo: $" + nullSafe(aporteConSaldo.getSaldo()));
+		
+		double saldoPendiente = nullSafe(aporteConSaldo.getSaldo());
+		double montoAAplicar = Math.min(montoDisponible, saldoPendiente);
+		
+		System.out.println("      💰 Aplicando: $" + montoAAplicar + " al aporte anterior");
+		
+		// Actualizar el aporte anterior
+		double nuevoValorPagado = nullSafe(aporteConSaldo.getValorPagado()) + montoAAplicar;
+		double nuevoSaldo = Math.max(0, nullSafe(aporteConSaldo.getValor()) - nuevoValorPagado);
+		
+		aporteConSaldo.setValorPagado(nuevoValorPagado);
+		aporteConSaldo.setSaldo(nuevoSaldo);
+		
+		// Actualizar estado
+		if (nuevoSaldo <= 0.01) {
+			aporteConSaldo.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+			System.out.println("      ✅ Aporte anterior completado - Estado: PAGADA");
+		} else {
+			aporteConSaldo.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PARCIAL);
+			System.out.println("      ⚠️ Aporte anterior aún con saldo - Estado: PARCIAL - Saldo: $" + nuevoSaldo);
+		}
+		
+		aporteService.saveSingle(aporteConSaldo);
+		crearRegistroPagoAporte(aporteConSaldo, montoAAplicar, cargaArchivo, participe);
+		
+		// Reducir el monto disponible y actualizar el contador
+		montoDisponible -= montoAAplicar;
+		montoTotalUtilizado += montoAAplicar;
+		System.out.println("      💵 Monto restante para mes actual: $" + montoDisponible);
+	}
+	
+	// ✅ PASO 2: CREAR APORTE DEL MES ACTUAL SOLO SI HAY MONTO DISPONIBLE
+	if (montoDisponible > 0.01) {
+		System.out.println("   ✨ Creando aporte del mes actual con monto: $" + montoDisponible);
+		
+		Aporte aporteActual = crearNuevoAporte(entidad, idTipoAporte, nombreTipo, valorEsperado, cargaArchivo);
+		
+		// Aplicar el monto disponible al aporte del mes actual
+		double nuevoValorPagado = montoDisponible;
+		double nuevoSaldo = Math.max(0, valorEsperado - nuevoValorPagado);
+		
+		aporteActual.setValorPagado(nuevoValorPagado);
+		aporteActual.setSaldo(nuevoSaldo);
+		
+		// Determinar estado
+		if (nuevoSaldo <= 0.01) {
+			aporteActual.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+			System.out.println("   ✅ Aporte mes actual completado - Estado: PAGADA");
+		} else if (nuevoValorPagado > 0.01) {
+			aporteActual.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PARCIAL);
+			System.out.println("   ⚠️ Aporte mes actual parcial - Pagado: $" + nuevoValorPagado + " - Saldo: $" + nuevoSaldo);
+		} else {
+			aporteActual.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PENDIENTE);
+			System.out.println("   ⏳ Aporte mes actual pendiente - Saldo: $" + nuevoSaldo);
+		}
+		
+		aporteService.saveSingle(aporteActual);
+		
+		if (nuevoValorPagado > 0.01) {
+			crearRegistroPagoAporte(aporteActual, nuevoValorPagado, cargaArchivo, participe);
+		}
+		
+		// Actualizar el contador con lo usado en el mes actual
+		montoTotalUtilizado += nuevoValorPagado;
+	} else {
+		System.out.println("   ℹ️ No queda monto para crear aporte del mes actual (todo aplicado a aportes anteriores)");
+	}
+	
+	System.out.println("   💰 TOTAL UTILIZADO EN ESTE TIPO: $" + montoTotalUtilizado);
+	return montoTotalUtilizado; // ✅ Retornar cuánto dinero se usó realmente
+}
+
+/**
+ * Busca CUALQUIER aporte anterior con saldo pendiente (PENDIENTE o PARCIAL)
+ * ✅ CORREGIDO: Busca el aporte más antiguo con saldo > 0, sin importar quién lo creó
+ * 
+ * Esto asegura que los pagos se apliquen primero a deudas anteriores antes de crear nuevos aportes
+ */
+private Aporte buscarAporteConSaldoPendiente(Entidad entidad, Long idTipoAporte, CargaArchivo cargaArchivo) throws Throwable {
+	// ✅ Buscar el aporte más antiguo (MIN codigo) con saldo pendiente
+	// Esto garantiza que aplicamos los pagos en orden cronológico (FIFO)
+	Aporte aporteConSaldo = aporteDaoService.selectMinAporteConSaldo(
+		entidad.getCodigo(), 
+		idTipoAporte
+	);
+	
+	if (aporteConSaldo != null) {
+		System.out.println("      🔍 Aporte anterior con saldo encontrado (aplicar primero aquí):");
+		System.out.println("         ID: " + aporteConSaldo.getCodigo());
+		System.out.println("         IdAsoprep: " + aporteConSaldo.getIdAsoprep() + " (carga anterior)");
+		System.out.println("         Usuario: " + aporteConSaldo.getUsuarioRegistro());
+		System.out.println("         Estado: " + (aporteConSaldo.getEstado() == 1L ? "PENDIENTE" : "PARCIAL"));
+		System.out.println("         Valor: $" + aporteConSaldo.getValor());
+		System.out.println("         Valor Pagado: $" + nullSafe(aporteConSaldo.getValorPagado()));
+		System.out.println("         Saldo: $" + nullSafe(aporteConSaldo.getSaldo()));
+	}
+	
+	return aporteConSaldo;
+}
+
+/**
+ * Crea un nuevo registro de aporte
+ */
+private Aporte crearNuevoAporte(Entidad entidad, Long idTipoAporte, String nombreTipo,
+                               double valorEsperado, CargaArchivo cargaArchivo) throws Throwable {
+	
+	com.saa.model.crd.TipoAporte tipoAporte = tipoAporteDaoService.selectById(idTipoAporte, "TipoAporte");
+	
+	Aporte nuevoAporte = new Aporte();
+	nuevoAporte.setFilial(entidad.getFilial()); // ✅ Obtener filial desde la entidad
+	nuevoAporte.setEntidad(entidad);
+	nuevoAporte.setTipoAporte(tipoAporte);
+	nuevoAporte.setValor(valorEsperado);
+	nuevoAporte.setValorPagado(0.0);
+	nuevoAporte.setSaldo(valorEsperado);
+	nuevoAporte.setIdAsoprep(cargaArchivo.getCodigo()); // ✅ CRÍTICO: Enlazar con CargaArchivo
+	nuevoAporte.setFechaTransaccion(java.time.LocalDateTime.now());
+	nuevoAporte.setGlosa(String.format("Aporte %s - Mes %d/%d - CargaArchivo: %d",
+	                                   nombreTipo,
+	                                   cargaArchivo.getMesAfectacion(),
+	                                   cargaArchivo.getAnioAfectacion(),
+	                                   cargaArchivo.getCodigo()));
+	nuevoAporte.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PENDIENTE); // ✅ Estado PENDIENTE inicial
+	nuevoAporte.setFechaRegistro(java.time.LocalDateTime.now());
+	nuevoAporte.setUsuarioRegistro("SAA_AH"); // ✅ Identificador de aportes creados por el sistema
+	
+	aporteService.saveSingle(nuevoAporte);
+	
+	System.out.println("   ✅ Nuevo aporte creado - Valor esperado: $" + valorEsperado);
+	
+	return nuevoAporte;
+}
+
+/**
+ * Crea un registro en la tabla PagoAporte para trazabilidad
+ */
+private void crearRegistroPagoAporte(Aporte aporte, double montoPagado, 
+                                    CargaArchivo cargaArchivo, ParticipeXCargaArchivo participe) throws Throwable {
+	try {
+		com.saa.model.crd.PagoAporte pago = new com.saa.model.crd.PagoAporte();
+		pago.setFilial(aporte.getFilia()); // ✅ Obtener filial desde el aporte (método es getFilia())
+		pago.setAporte(aporte);
+		pago.setValor(montoPagado);
+		pago.setFechaContable(java.time.LocalDateTime.now());
+		pago.setConcepto(String.format("Pago aporte mes %d/%d - Partícipe: %d (%s) - CargaArchivo: %d",
+		                               cargaArchivo.getMesAfectacion(),
+		                               cargaArchivo.getAnioAfectacion(),
+		                               participe.getCodigoPetro(),
+		                               participe.getNombre(),
+		                               cargaArchivo.getCodigo()));
+		pago.setFechaRegistro(java.time.LocalDateTime.now());
+		pago.setUsuarioRegistro("SISTEMA");
+		pago.setEstado(1L);
+		
+		pagoAporteService.saveSingle(pago);
+		
+		System.out.println("   ✅ Pago registrado en PagoAporte: $" + montoPagado);
+		
+	} catch (Throwable e) {
+		System.err.println("   ❌ Error al crear registro de pago aporte: " + e.getMessage());
+		e.printStackTrace();
+	}
+}
+
+/**
+ * Crea aportes del siguiente mes cuando hay excedente
+ */
+private void crearAportesMesSiguiente(Entidad entidad, double montoExcedente,
+                                     CargaArchivo cargaArchivo, ParticipeXCargaArchivo participe) throws Throwable {
+	
+	System.out.println("\n💵 Creando aportes para mes siguiente con excedente: $" + montoExcedente);
+	
+	// Calcular mes y año siguiente
+	int mesSiguiente = cargaArchivo.getMesAfectacion().intValue() + 1;
+	int anioSiguiente = cargaArchivo.getAnioAfectacion().intValue();
+	
+	if (mesSiguiente > 12) {
+		mesSiguiente = 1;
+		anioSiguiente++;
+	}
+	
+	// ✅ Buscar valores esperados del HistorialSueldo
+	com.saa.model.crd.HistorialSueldo historialActivo = 
+		historialSueldoDaoService.selectByEntidadYEstadoActivo(entidad.getCodigo());
+	
+	if (historialActivo == null) {
+		System.out.println("   ⚠️ No se encontró HistorialSueldo - No se pueden crear aportes del mes siguiente");
+		return;
+	}
+	
+	double montoEsperadoJubilacion = nullSafe(historialActivo.getMontoJubilacion());
+	double montoEsperadoCesantia = nullSafe(historialActivo.getMontoCesantia());
+	
+	double montoRestante = montoExcedente;
+	
+	// ✅ Crear aporte de Jubilación del mes siguiente (PARCIAL)
+	if (montoEsperadoJubilacion > 0.01 && montoRestante > 0.01) {
+		double montoParaJubilacion = Math.min(montoRestante, montoEsperadoJubilacion);
+		crearAporteExcedenteMesSiguiente(entidad, TIPO_APORTE_JUBILACION, "Jubilación",
+		                                montoEsperadoJubilacion, montoParaJubilacion,
+		                                mesSiguiente, anioSiguiente, cargaArchivo, participe);
+		montoRestante -= montoParaJubilacion;
+	}
+	
+	// ✅ Crear aporte de Cesantía del mes siguiente (PARCIAL) si queda saldo
+	if (montoEsperadoCesantia > 0.01 && montoRestante > 0.01) {
+		double montoParaCesantia = Math.min(montoRestante, montoEsperadoCesantia);
+		crearAporteExcedenteMesSiguiente(entidad, TIPO_APORTE_CESANTIA, "Cesantía",
+		                                montoEsperadoCesantia, montoParaCesantia,
+		                                mesSiguiente, anioSiguiente, cargaArchivo, participe);
+		montoRestante -= montoParaCesantia;
+	}
+	
+	if (montoRestante > 0.01) {
+		System.out.println("   ⚠️ Aún queda excedente sin aplicar: $" + montoRestante);
+	}
+}
+
+/**
+ * Crea un aporte del mes siguiente con estado PARCIAL y valor pagado del excedente
+ */
+private void crearAporteExcedenteMesSiguiente(Entidad entidad, Long idTipoAporte, String nombreTipo,
+                                             double valorEsperado, double montoPagado,
+                                             int mes, int anio,
+                                             CargaArchivo cargaArchivo, ParticipeXCargaArchivo participe) throws Throwable {
+	
+	com.saa.model.crd.TipoAporte tipoAporte = tipoAporteDaoService.selectById(idTipoAporte, "TipoAporte");
+	
+	Aporte aporteExcedente = new Aporte();
+	aporteExcedente.setFilial(entidad.getFilial()); // ✅ Obtener filial desde la entidad
+	aporteExcedente.setEntidad(entidad);
+	aporteExcedente.setTipoAporte(tipoAporte);
+	aporteExcedente.setValor(valorEsperado);
+	aporteExcedente.setValorPagado(montoPagado); // ✅ Ya tiene pago adelantado
+	aporteExcedente.setSaldo(Math.max(0, valorEsperado - montoPagado));
+	aporteExcedente.setIdAsoprep(cargaArchivo.getCodigo()); // ✅ Referencia a la carga que generó el excedente
+	aporteExcedente.setFechaTransaccion(java.time.LocalDateTime.now());
+	aporteExcedente.setGlosa(String.format("Aporte %s - Abono anticipado mes %d/%d (excedente de mes %d/%d) - CargaArchivo: %d",
+	                                       nombreTipo, mes, anio,
+	                                       cargaArchivo.getMesAfectacion(),
+	                                       cargaArchivo.getAnioAfectacion(),
+	                                       cargaArchivo.getCodigo()));
+	aporteExcedente.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PARCIAL); // ✅ PARCIAL porque tiene abono pero no está completo
+	aporteExcedente.setFechaRegistro(java.time.LocalDateTime.now());
+	aporteExcedente.setUsuarioRegistro("SAA_AH"); // ✅ Identificador de aportes creados por el sistema
+	
+	aporteService.saveSingle(aporteExcedente);
+	
+	System.out.println("   ✅ Aporte " + nombreTipo + " del mes " + mes + "/" + anio + " creado con abono de $" + montoPagado);
+	
+	// ✅ Registrar el pago en PagoAporte con la fecha actual
+	crearRegistroPagoAporte(aporteExcedente, montoPagado, cargaArchivo, participe);
 }
 
 }
