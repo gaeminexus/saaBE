@@ -109,6 +109,7 @@ public class DetalleMayorAnaliticoServiceImpl implements DetalleMayorAnaliticoSe
 					mayor.getPlanCuenta().getCodigo(), fechaInicio, fechaFin);
 		if(!movimientosProcesar.isEmpty()){
 			for(DetalleAsiento detalle : movimientosProcesar){
+				detalleAnalitico = new DetalleMayorAnalitico();
 				if(
 				   (Long.valueOf(EstadoAsiento.ACTIVO).equals(detalle.getAsiento().getEstado())) || 
 				   (Long.valueOf(EstadoAsiento.REVERSADO).equals(detalle.getAsiento().getEstado()))
@@ -117,9 +118,10 @@ public class DetalleMayorAnaliticoServiceImpl implements DetalleMayorAnaliticoSe
 					saldoActual = saldoActual + detalle.getValorDebe() - detalle.getValorHaber();  
 				}
 				// INSERTA DETALLE
-				detalleAnalitico.setCodigo(0L);
+				detalleAnalitico.setCodigo(null);
 				detalleAnalitico.setMayorAnalitico(mayor);
 				detalleAnalitico.setFechaAsiento(detalle.getAsiento().getFechaAsiento());
+				detalleAnalitico.setPlanCuenta(detalle.getPlanCuenta());
 				detalleAnalitico.setNumeroAsiento(detalle.getAsiento().getNumero());
 				detalleAnalitico.setDescripcionAsiento(detalle.getDescripcion());
 				detalleAnalitico.setValorDebe(detalle.getValorDebe());
@@ -127,7 +129,7 @@ public class DetalleMayorAnaliticoServiceImpl implements DetalleMayorAnaliticoSe
 				detalleAnalitico.setSaldoActual(saldoActual);
 				detalleAnalitico.setAsiento(detalle.getAsiento());
 				detalleAnalitico.setEstadoAsiento(detalle.getAsiento().getEstado());
-				detalleMayorAnaliticoDaoService.save(detalleAnalitico, detalleAnalitico.getCodigo());
+				detalleAnalitico= detalleMayorAnaliticoDaoService.save(detalleAnalitico, null);
 			}
 		}
 		
@@ -148,10 +150,12 @@ public class DetalleMayorAnaliticoServiceImpl implements DetalleMayorAnaliticoSe
 						fechaInicio, fechaFin, centroInicio, centroFin);
 		if(!movimientosProcesar.isEmpty()){
 			for(DetalleAsiento detalle : movimientosProcesar){
+				detalleAnalitico = new DetalleMayorAnalitico();
 				// INSERTA DETALLE
-				detalleAnalitico.setCodigo(0L);
+				detalleAnalitico.setCodigo(null);
 				detalleAnalitico.setMayorAnalitico(mayor);
 				detalleAnalitico.setFechaAsiento(detalle.getAsiento().getFechaAsiento());
+				detalleAnalitico.setPlanCuenta(detalle.getPlanCuenta());
 				detalleAnalitico.setNumeroAsiento(detalle.getAsiento().getNumero());
 				detalleAnalitico.setDescripcionAsiento(detalle.getDescripcion());
 				detalleAnalitico.setValorDebe(detalle.getValorDebe());
@@ -159,7 +163,7 @@ public class DetalleMayorAnaliticoServiceImpl implements DetalleMayorAnaliticoSe
 				detalleAnalitico.setAsiento(detalle.getAsiento());
 				detalleAnalitico.setSaldoActual(0D);
 				detalleAnalitico.setEstadoAsiento(detalle.getAsiento().getEstado());
-				detalleMayorAnaliticoDaoService.save(detalleAnalitico, detalleAnalitico.getCodigo());
+				detalleAnalitico = detalleMayorAnaliticoDaoService.save(detalleAnalitico, null);
 			}
 		}		
 	}
@@ -179,10 +183,12 @@ public class DetalleMayorAnaliticoServiceImpl implements DetalleMayorAnaliticoSe
 					fechaInicio, fechaFin, cuentaInicio, cuentaFin);
 		if(!movimientosProcesar.isEmpty()){
 			for(DetalleAsiento detalle : movimientosProcesar){
+				detalleAnalitico = new DetalleMayorAnalitico();
 				// INSERTA DETALLE
-				detalleAnalitico.setCodigo(0L);
+				detalleAnalitico.setCodigo(null);
 				detalleAnalitico.setMayorAnalitico(mayor);
 				detalleAnalitico.setFechaAsiento(detalle.getAsiento().getFechaAsiento());
+				detalleAnalitico.setPlanCuenta(detalle.getPlanCuenta());
 				detalleAnalitico.setNumeroAsiento(detalle.getAsiento().getNumero());
 				detalleAnalitico.setDescripcionAsiento(detalle.getDescripcion());
 				detalleAnalitico.setValorDebe(detalle.getValorDebe());
@@ -193,7 +199,7 @@ public class DetalleMayorAnaliticoServiceImpl implements DetalleMayorAnaliticoSe
 				detalleAnalitico.setPlanCuenta(detalle.getPlanCuenta());
 				detalleAnalitico.setNombreCosto(detalle.getNombreCuenta());
 				detalleAnalitico.setNumeroCentroCosto(detalle.getNumeroCuenta());
-				detalleMayorAnaliticoDaoService.save(detalleAnalitico, detalleAnalitico.getCodigo());
+				detalleAnalitico = detalleMayorAnaliticoDaoService.save(detalleAnalitico, null);
 			}
 		}
 	}

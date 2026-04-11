@@ -19,6 +19,7 @@ import com.saa.model.cnt.DetalleMayorAnalitico;
 import com.saa.model.cnt.MayorAnalitico;
 import com.saa.model.cnt.NombreEntidadesContabilidad;
 import com.saa.model.cnt.PlanCuenta;
+import com.saa.model.scp.Empresa;
 import com.saa.rubros.ReporteTipoAcumulacion;
 import com.saa.rubros.ReporteTipoDistribucion;
 
@@ -158,26 +159,27 @@ public class MayorAnaliticoServiceImpl implements MayorAnaliticoService {
 				 cuentaInicio + ", cuentaFin: " + cuentaFin + ", tipoDistribucion: " + tipoDistribucion +
 				 ", centroIncio: " + centroInicio + ", centroFin: " + centroFin + ", tipoAcu: " + tipoAcumulacion);
 		Long secuenciaReporte = mayorAnaliticoDaoService.obtieneSecuenciaReporte();
+		List<MayorAnalitico> registrosCabecera = null;
 		switch (tipoDistribucion) {
 		case ReporteTipoDistribucion.SIN_CENTRO_COSTO:
-			insertaCabeceraPorDistribucion(secuenciaReporte, empresa, fechaInicio, 
+			registrosCabecera = insertaCabeceraPorDistribucion(secuenciaReporte, empresa, fechaInicio, 
 					fechaFin, cuentaInicio, cuentaFin, 
 					centroInicio, centroFin, tipoAcumulacion,
 					tipoDistribucion);
-			insertaDetalleSinCentro(secuenciaReporte, empresa, fechaInicio, fechaFin);
+			insertaDetalleSinCentro(registrosCabecera, fechaInicio, fechaFin);
 			break;
 		case ReporteTipoDistribucion.CENTRO_COSTO_POR_CUENTA_CONTABLE:					
-			insertaCabeceraPorDistribucion(secuenciaReporte, empresa, fechaInicio, 
+			registrosCabecera = insertaCabeceraPorDistribucion(secuenciaReporte, empresa, fechaInicio, 
 					fechaFin, cuentaInicio, cuentaFin, 
 					centroInicio, centroFin, tipoAcumulacion,
 					tipoDistribucion);
-			insertaDetalleCentroPorPlan(secuenciaReporte, empresa, fechaInicio, fechaFin, centroInicio, centroFin);
+			insertaDetalleCentroPorPlan(registrosCabecera, fechaInicio, fechaFin, centroInicio, centroFin);
 			break;
 		case ReporteTipoDistribucion.CUENTA_CONTABLE_POR_CENTRO_COSTO:					
-			insertaCabeceraPorCentro(secuenciaReporte, empresa, fechaInicio, 
+			registrosCabecera = insertaCabeceraPorCentro(secuenciaReporte, empresa, fechaInicio, 
 					fechaFin, cuentaInicio, cuentaFin, 
 					centroInicio, centroFin, tipoAcumulacion);
-			insertaDetallePlanPorCentro(secuenciaReporte, empresa, fechaInicio, 
+			insertaDetallePlanPorCentro(registrosCabecera, fechaInicio, 
 					fechaFin, cuentaInicio, cuentaFin);
 			break;	
 		default:
@@ -187,13 +189,12 @@ public class MayorAnaliticoServiceImpl implements MayorAnaliticoService {
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.MayorAnaliticoService#insertaDetalleSinCentro(java.lang.Long, java.lang.Long, java.util.LocalDate, java.util.LocalDate)
+	 * @see com.compuseg.income.contabilidad.ejb.service.MayorAnaliticoService#insertaDetalleSinCentro(java.util.List, java.util.LocalDate, java.util.LocalDate)
 	 */
-	public void insertaDetalleSinCentro(Long secuenciaReporte,
-			Long empresa, LocalDate fechaInicio, LocalDate fechaFin)
+	public void insertaDetalleSinCentro(List<MayorAnalitico> registros,
+			LocalDate fechaInicio, LocalDate fechaFin)
 			throws Throwable {
-		System.out.println("Ingresa al insertaDetalleSinCentro de mayor analitico con secuencia = " + secuenciaReporte);
-		List<MayorAnalitico> registros = mayorAnaliticoDaoService.selectBySecuencia(secuenciaReporte);
+		System.out.println("Ingresa al insertaDetalleSinCentro de mayor analitico con " + registros.size() + " registros");
 		if(!registros.isEmpty()){
 			for(MayorAnalitico mayor : registros){
 				detalleMayorAnaliticoService.insertaDetalleSinCentro(mayor, fechaInicio, fechaFin);
@@ -205,16 +206,17 @@ public class MayorAnaliticoServiceImpl implements MayorAnaliticoService {
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.contabilidad.ejb.service.MayorAnaliticoService#insertaCabeceraPorDistribucion(java.lang.Long, java.lang.Long, java.util.LocalDate, java.util.LocalDate, java.lang.String, java.lang.String, java.lang.String, java.lang.String, int, int)
 	 */
-	public void insertaCabeceraPorDistribucion(Long secuenciaReporte,
+	public List<MayorAnalitico> insertaCabeceraPorDistribucion(Long secuenciaReporte,
 			Long empresa, LocalDate fechaInicio, LocalDate fechaFin,
 			String cuentaInicio, String cuentaFin, String centroInicio,
 			String centroFin, int tipoAcumulacion, int tipoDistribucion) throws Throwable {
 		System.out.println("Ingresa al insertaCabeceraPorDistribucion de mayor analitico");
 		Double saldoAnteriorCuenta;
-		MayorAnalitico cabecera = new MayorAnalitico();
 		String observacionReporte = null;
 		LocalDate diaAnterior = LocalDate.now();
 		List<PlanCuenta> movimientos = new ArrayList<PlanCuenta>();
+		List<MayorAnalitico> registrosCreados = new ArrayList<MayorAnalitico>();
+		
 		switch (tipoDistribucion) {				
 		case ReporteTipoDistribucion.SIN_CENTRO_COSTO:
 			observacionReporte = "MAYOR ANALITICO SIN CENTRO DE COSTO, EMPRESA = " +
@@ -237,37 +239,45 @@ public class MayorAnaliticoServiceImpl implements MayorAnaliticoService {
 		default:
 			break;
 		}
+		System.out.println("LLEGA 1");
 		if(!movimientos.isEmpty()){
+			Empresa empresaObj = empresaService.selectById(empresa);
 			for(PlanCuenta registro : movimientos){
+				System.out.println("LLEGA 2");
+				// Crear nueva instancia en cada iteración para evitar conflictos con IDs
+				MayorAnalitico cabecera = new MayorAnalitico();
+				
 				if(tipoAcumulacion == ReporteTipoAcumulacion.SIN_ACUMULAR){
 					saldoAnteriorCuenta = 0D;
 				}else{
 					diaAnterior = fechaService.sumaRestaDiasLocal(fechaInicio, -1);
 					saldoAnteriorCuenta = planCuentaService.saldoCuentaFechaEmpresa(empresa, registro.getCodigo(), diaAnterior);
 				}						
-				cabecera.setCodigo(0L);
+				cabecera.setCodigo(null);
 				cabecera.setSecuencial(secuenciaReporte);
 				cabecera.setPlanCuenta(registro);
 				cabecera.setNumeroCuenta(registro.getCuentaContable());
 				cabecera.setNombreCuenta(registro.getNombre());
 				cabecera.setSaldoAnterior(saldoAnteriorCuenta);
-				cabecera.setEmpresa(empresaService.selectById(empresa));
+				cabecera.setEmpresa(empresaObj);
 				cabecera.setObservacion(observacionReporte);
-				cabecera = mayorAnaliticoDaoService.save(cabecera, cabecera.getCodigo()); // ✅ Asigna el resultado para actualizar el ID
+				cabecera = mayorAnaliticoDaoService.save(cabecera, null);
+				registrosCreados.add(cabecera);
+				System.out.println("LLEGA 3");
 			}					
-		}				
+		}
+		return registrosCreados;
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.MayorAnaliticoService#insertaDetalleCentroPorPlan(java.lang.Long, java.lang.Long, java.util.LocalDate, java.util.LocalDate, java.lang.String, java.lang.String)
+	 * @see com.compuseg.income.contabilidad.ejb.service.MayorAnaliticoService#insertaDetalleCentroPorPlan(java.util.List, java.util.LocalDate, java.util.LocalDate, java.lang.String, java.lang.String)
 	 */
-	public void insertaDetalleCentroPorPlan(Long secuenciaReporte,
-			Long empresa, LocalDate fechaInicio, LocalDate fechaFin,
+	public void insertaDetalleCentroPorPlan(List<MayorAnalitico> registros,
+			LocalDate fechaInicio, LocalDate fechaFin,
 			String centroInicio, String centroFin) throws Throwable {
-		System.out.println("Ingresa al insertaDetalleCentroPorPlan de mayor analitico con secuencia = " + secuenciaReporte +
-				 ", empresa: " + empresa + ",fechaInicio: " + fechaInicio + ", fechaFin: " + fechaFin +
-				 ", centroInicio: " + centroInicio + ", centroFin: " + centroFin);
-		List<MayorAnalitico> registros = mayorAnaliticoDaoService.selectBySecuencia(secuenciaReporte);
+		System.out.println("Ingresa al insertaDetalleCentroPorPlan de mayor analitico con " + registros.size() + 
+				" registros, fechaInicio: " + fechaInicio + ", fechaFin: " + fechaFin +
+				", centroInicio: " + centroInicio + ", centroFin: " + centroFin);
 		if(!registros.isEmpty()){
 			for(MayorAnalitico mayor : registros){
 				detalleMayorAnaliticoService.insertaDetalleCentroPorPlan(mayor, fechaInicio, 
@@ -279,7 +289,7 @@ public class MayorAnaliticoServiceImpl implements MayorAnaliticoService {
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.contabilidad.ejb.service.MayorAnaliticoService#insertaCabeceraPorCentro(java.lang.Long, java.lang.Long, java.util.LocalDate, java.util.LocalDate, java.lang.String, java.lang.String, java.lang.String, java.lang.String, int)
 	 */
-	public void insertaCabeceraPorCentro(Long secuenciaReporte,
+	public List<MayorAnalitico> insertaCabeceraPorCentro(Long secuenciaReporte,
 			Long empresa, LocalDate fechaInicio, LocalDate fechaFin,
 			String cuentaInicio, String cuentaFin, String centroInicio,
 			String centroFin, int tipoAcumulacion) throws Throwable {
@@ -288,10 +298,10 @@ public class MayorAnaliticoServiceImpl implements MayorAnaliticoService {
 				 ", centroInicio: " + centroInicio + ", centroFin: " + centroFin);
 		
 		Double saldoAnteriorCuenta;
-		MayorAnalitico cabecera = new MayorAnalitico();
 		String observacionReporte = null;
 		LocalDate diaAnterior = LocalDate.now();
 		List<CentroCosto> movimientos = new ArrayList<CentroCosto>();
+		List<MayorAnalitico> registrosCreados = new ArrayList<MayorAnalitico>();
 		
 		observacionReporte = "MAYOR ANALITICO PLAN CONTABLE POR CENTRO DE COSTO, EMPRESA = " +
 							 empresa + ", FECHA INICIO = " + fechaInicio +
@@ -303,6 +313,9 @@ public class MayorAnaliticoServiceImpl implements MayorAnaliticoService {
 
 		if(!movimientos.isEmpty()){
 			for(CentroCosto registro : movimientos){
+				// Crear nueva instancia en cada iteración para evitar conflictos con IDs
+				MayorAnalitico cabecera = new MayorAnalitico();
+				
 				if(tipoAcumulacion == ReporteTipoAcumulacion.SIN_ACUMULAR){
 					saldoAnteriorCuenta = 0D;
 				}else{
@@ -317,21 +330,22 @@ public class MayorAnaliticoServiceImpl implements MayorAnaliticoService {
 				cabecera.setSaldoAnterior(saldoAnteriorCuenta);
 				cabecera.setEmpresa(empresaService.selectById(empresa));
 				cabecera.setObservacion(observacionReporte);
-				cabecera = mayorAnaliticoDaoService.save(cabecera, cabecera.getCodigo()); // ✅ Asigna el resultado para actualizar el ID
+				cabecera = mayorAnaliticoDaoService.save(cabecera, cabecera.getCodigo());
+				registrosCreados.add(cabecera);
 			}					
-		}				
+		}
+		return registrosCreados;
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.contabilidad.ejb.service.MayorAnaliticoService#insertaDetallePlanPorCentro(java.lang.Long, java.lang.Long, java.util.LocalDate, java.util.LocalDate, java.lang.String, java.lang.String)
+	 * @see com.compuseg.income.contabilidad.ejb.service.MayorAnaliticoService#insertaDetallePlanPorCentro(java.util.List, java.util.LocalDate, java.util.LocalDate, java.lang.String, java.lang.String)
 	 */
-	public void insertaDetallePlanPorCentro(Long secuenciaReporte,
-			Long empresa, LocalDate fechaInicio, LocalDate fechaFin,
+	public void insertaDetallePlanPorCentro(List<MayorAnalitico> registros,
+			LocalDate fechaInicio, LocalDate fechaFin,
 			String cuentaInicio, String cuentaFin) throws Throwable {
-		System.out.println("Ingresa al insertaDetallePlanPorCentro de mayor analitico con secuencia = " + secuenciaReporte +
-				 ", empresa: " + empresa + ",fechaInicio: " + fechaInicio + ", fechaFin: " + fechaFin +
-				 ", cuentaInicio: " + cuentaInicio + ", cuentaFin: " + cuentaFin);
-		List<MayorAnalitico> registros = mayorAnaliticoDaoService.selectBySecuencia(secuenciaReporte);
+		System.out.println("Ingresa al insertaDetallePlanPorCentro de mayor analitico con " + registros.size() +
+				" registros, fechaInicio: " + fechaInicio + ", fechaFin: " + fechaFin +
+				", cuentaInicio: " + cuentaInicio + ", cuentaFin: " + cuentaFin);
 		if(!registros.isEmpty()){
 			for(MayorAnalitico mayor : registros){
 				detalleMayorAnaliticoService.insertaDetallePlanPorCentro(mayor, fechaInicio, fechaFin, 

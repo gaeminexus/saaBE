@@ -38,13 +38,12 @@ public interface MayorAnaliticoService extends EntityService<MayorAnalitico> {
 	  
 	/**
 	  * Ingresa el detalle del mayor analitico cuando no tiene centro de costo
-	  * @param secuenciaReporte	: Id de la secuencia de ejecucion del reporte
-	  * @param empresa			: Id de empresa
+	  * @param registros		: Lista de registros de MayorAnalitico
 	  * @param fechaInicio		: Fecha de inicio del reporte
 	  * @param fechaFin			: Fecha de fin de reporte
 	  * @throws Throwable		: Exception
 	  */
-	void insertaDetalleSinCentro(Long secuenciaReporte, Long empresa, LocalDate fechaInicio, 
+	void insertaDetalleSinCentro(java.util.List<MayorAnalitico> registros, LocalDate fechaInicio, 
 			LocalDate fechaFin) throws Throwable;
 	
 	/**
@@ -59,24 +58,24 @@ public interface MayorAnaliticoService extends EntityService<MayorAnalitico> {
 	  * @param centroFin		: Centro de costo fin del reporte
 	  * @param tipoAcumulacion	: Tipo de acumulación. 1 = Acumulado, 0 = Sin acumular. Saldo anterior = 0
 	  * @param tipoDistribucion	: Indica el tipo de distribución. 0 = Sin centroCosto, 1 = Centro de costo por cuenta contable. 2 = Cta contable por centro de costo
+	  * @return					: Lista de registros MayorAnalitico creados
 	  * @throws Throwable		: Exception
 	  */
-	void insertaCabeceraPorDistribucion(Long secuenciaReporte, Long empresa, LocalDate fechaInicio, 
+	java.util.List<MayorAnalitico> insertaCabeceraPorDistribucion(Long secuenciaReporte, Long empresa, LocalDate fechaInicio, 
 								  LocalDate fechaFin, String cuentaInicio, String cuentaFin, 
 			  					  String centroInicio, String centroFin, int tipoAcumulacion,
 			  					  int tipoDistribucion) throws Throwable;
 	
 	/**
 	  * Ingresa el detalle del mayor analitico de centro de costo por plan de cuenta
-	  * @param secuenciaReporte	: Id de la secuencia de ejecucion del reporte
-	  * @param empresa			: Id de empresa
+	  * @param registros		: Lista de registros de MayorAnalitico
 	  * @param fechaInicio		: Fecha de inicio del reporte
 	  * @param fechaFin			: Fecha de fin de reporte
 	  * @param centroInicio		: Centro de costo inicio del reporte
 	  * @param centroFin		: Centro de costo fin del reporte
 	  * @throws Throwable		: Exception
 	  */
-	void insertaDetalleCentroPorPlan(Long secuenciaReporte, Long empresa, LocalDate fechaInicio, 
+	void insertaDetalleCentroPorPlan(java.util.List<MayorAnalitico> registros, LocalDate fechaInicio, 
 			LocalDate fechaFin, String centroInicio, String centroFin) throws Throwable;
 	
 	/**
@@ -90,23 +89,23 @@ public interface MayorAnaliticoService extends EntityService<MayorAnalitico> {
 	  * @param centroInicio		: Centro de costo inicio del reporte
 	  * @param centroFin		: Centro de costo fin del reporte
 	  * @param tipoAcumulacion	: Tipo de acumulación. 1 = Acumulado, 0 = Sin acumular. Saldo anterior = 0
+	  * @return					: Lista de registros MayorAnalitico creados
 	  * @throws Throwable		: Exception
 	  */
-	void insertaCabeceraPorCentro(Long secuenciaReporte, Long empresa, LocalDate fechaInicio, 
+	java.util.List<MayorAnalitico> insertaCabeceraPorCentro(Long secuenciaReporte, Long empresa, LocalDate fechaInicio, 
 								  LocalDate fechaFin, String cuentaInicio, String cuentaFin, 
 			  					  String centroInicio, String centroFin, int tipoAcumulacion) throws Throwable;
 	
 	/**
 	  * Ingresa el detalle del mayor analitico de centro de costo por plan de cuenta
-	  * @param secuenciaReporte	: Id de la secuencia de ejecucion del reporte
-	  * @param empresa			: Id de empresa
+	  * @param registros		: Lista de registros de MayorAnalitico
 	  * @param fechaInicio		: Fecha de inicio del reporte
 	  * @param fechaFin			: Fecha de fin de reporte
 	  * @param cuentaInicio		: Cuenta contable inicio del reporte
 	  * @param cuentaFin		: Cuenta contable fin del reporte
 	  * @throws Throwable		: Exception
 	  */
-	void insertaDetallePlanPorCentro(Long secuenciaReporte, Long empresa, LocalDate fechaInicio, 
+	void insertaDetallePlanPorCentro(java.util.List<MayorAnalitico> registros, LocalDate fechaInicio, 
 			LocalDate fechaFin, String cuentaInicio, String cuentaFin) throws Throwable;
 	
 	/**
