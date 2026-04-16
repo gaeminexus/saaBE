@@ -72,5 +72,9 @@ public interface NombreEntidadesCredito {
 	String ESTADO_CUOTA_PRESTAMO = "EstadoCuotaPrestamo";
 	String ORDEN_AFECTACION_VALOR_PRESTAMO = "OrdenAfectacionValorPrestamo";
 	String HISTORICO_DESGLOSE_APORTE_PARTICIPE = "HistoricoDesgloseAporteParticipe";
+	String GENERACION_ARCHIVOS_PETRO = "GeneracionArchivoPetro";
+	String DETALLE_GENERACION_ARCHIVO = "DetalleGeneracionArchivo";
+	String PARTICIPE_DETALLE_GENERACION_ARCHIVO = "ParticipeDetalleGeneracionArchivo";
+	String CUOTA_X_PARTICIPE_GENERACION = "CuotaXParticipeGeneracion";
 
 }
