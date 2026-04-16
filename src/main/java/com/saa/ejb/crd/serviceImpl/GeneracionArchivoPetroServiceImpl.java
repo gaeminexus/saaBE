@@ -28,6 +28,7 @@ import com.saa.model.crd.HistorialSueldo;
 import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.model.crd.ParticipeDetalleGeneracionArchivo;
 import com.saa.model.crd.Prestamo;
+import com.saa.model.crd.TipoAporte;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -259,8 +260,9 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
                     throw new Exception("Error al crear partícipe detalle: " + e.getMessage(), e);
                 }
                 
-                // Crear registros de CXPG (detalle de cuotas) si es un préstamo
+                // Crear registros de CXPG (detalle de cuotas)
                 if (linea.codigoPrestamo != null && !linea.cuotasSumadas.isEmpty()) {
+                    // Es un PRÉSTAMO: crear un registro por cada cuota sumada
                     for (CuotaInfo cuotaInfo : linea.cuotasSumadas) {
                         CuotaXParticipeGeneracion cxpg = new CuotaXParticipeGeneracion();
                         cxpg.setParticipeDetalleGeneracion(participeDetalle);
@@ -271,6 +273,7 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
                         
                         cxpg.setNumeroCuota(cuotaInfo.numeroCuota);
                         cxpg.setValorCuota(cuotaInfo.valorCuota);
+                        cxpg.setTipoAporte(null); // No aplica para préstamos
                         cxpg.setUsuarioIngreso(usuario);
                         cxpg.setFechaIngreso(LocalDateTime.now());
                         
@@ -282,6 +285,62 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
                     }
                     
                     System.out.println("  → Creados " + linea.cuotasSumadas.size() + " registros CXPG para préstamo " + linea.codigoPrestamo);
+                    
+                } else if ("AH".equals(codigoProducto)) {
+                    // Es un APORTE: crear registros separados para jubilación y cesantía
+                    int registrosCreados = 0;
+                    
+                    // Registro para JUBILACIÓN (Tipo Aporte 9)
+                    if (linea.montoJubilacion != null && linea.montoJubilacion > 0) {
+                        CuotaXParticipeGeneracion cxpgJubilacion = new CuotaXParticipeGeneracion();
+                        cxpgJubilacion.setParticipeDetalleGeneracion(participeDetalle);
+                        cxpgJubilacion.setPrestamo(null); // No aplica para aportes
+                        cxpgJubilacion.setNumeroCuota(null); // No aplica para aportes
+                        cxpgJubilacion.setValorCuota(linea.montoJubilacion);
+                        
+                        TipoAporte tipoAporteJubilacion = new TipoAporte();
+                        tipoAporteJubilacion.setCodigo(9L); // Código 9 = Jubilación
+                        cxpgJubilacion.setTipoAporte(tipoAporteJubilacion);
+                        
+                        cxpgJubilacion.setUsuarioIngreso(usuario);
+                        cxpgJubilacion.setFechaIngreso(LocalDateTime.now());
+                        
+                        try {
+                            cuotaXParticipeService.crear(cxpgJubilacion);
+                            registrosCreados++;
+                        } catch (Throwable e) {
+                            throw new Exception("Error al crear CXPG para jubilación: " + e.getMessage(), e);
+                        }
+                    }
+                    
+                    // Registro para CESANTÍA (Tipo Aporte 11)
+                    if (linea.montoCesantia != null && linea.montoCesantia > 0) {
+                        CuotaXParticipeGeneracion cxpgCesantia = new CuotaXParticipeGeneracion();
+                        cxpgCesantia.setParticipeDetalleGeneracion(participeDetalle);
+                        cxpgCesantia.setPrestamo(null); // No aplica para aportes
+                        cxpgCesantia.setNumeroCuota(null); // No aplica para aportes
+                        cxpgCesantia.setValorCuota(linea.montoCesantia);
+                        
+                        TipoAporte tipoAporteCesantia = new TipoAporte();
+                        tipoAporteCesantia.setCodigo(11L); // Código 11 = Cesantía
+                        cxpgCesantia.setTipoAporte(tipoAporteCesantia);
+                        
+                        cxpgCesantia.setUsuarioIngreso(usuario);
+                        cxpgCesantia.setFechaIngreso(LocalDateTime.now());
+                        
+                        try {
+                            cuotaXParticipeService.crear(cxpgCesantia);
+                            registrosCreados++;
+                        } catch (Throwable e) {
+                            throw new Exception("Error al crear CXPG para cesantía: " + e.getMessage(), e);
+                        }
+                    }
+                    
+                    if (registrosCreados > 0) {
+                        System.out.println("  → Creados " + registrosCreados + " registros CXPG para aporte (Jub: $" + 
+                            String.format("%.2f", linea.montoJubilacion) + ", Ces: $" + 
+                            String.format("%.2f", linea.montoCesantia) + ")");
+                    }
                 }
                 
                 numeroLinea++;
@@ -596,6 +655,9 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
                 linea.rolPetrocomercial = historial.getEntidad().getRolPetroComercial();
                 linea.monto = montoTotal;
                 linea.codigoPrestamo = null;
+                // Almacenar montos por separado para crear registros CXPG individuales
+                linea.montoJubilacion = montoJubilacion;
+                linea.montoCesantia = montoCesantia;
                 
                 listaAportes.add(linea);
             }
@@ -868,9 +930,14 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
         Double monto;
         Long codigoPrestamo;
         List<CuotaInfo> cuotasSumadas;
+        // Para aportes (producto AH): almacena montos por separado
+        Double montoJubilacion;
+        Double montoCesantia;
         
         public LineaArchivo() {
             this.cuotasSumadas = new ArrayList<>();
+            this.montoJubilacion = 0.0;
+            this.montoCesantia = 0.0;
         }
     }
     

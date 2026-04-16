@@ -87,6 +87,14 @@ public class CuotaXParticipeGeneracion implements Serializable {
     @ManyToOne
     @JoinColumn(name = "PRSTCDGO", referencedColumnName = "PRSTCDGO")
     private Prestamo prestamo;
+    
+    /**
+     * FK - Tipo de Aporte (solo se llena para aportes, producto AH).
+     * Valores: 9 = Jubilación, 11 = Cesantía
+     */
+    @ManyToOne
+    @JoinColumn(name = "TPAPCDGO", referencedColumnName = "TPAPCDGO")
+    private TipoAporte tipoAporte;
 
     // ============================================================
     // DATOS DE LA CUOTA
@@ -172,6 +180,14 @@ public class CuotaXParticipeGeneracion implements Serializable {
 
     public void setPrestamo(Prestamo prestamo) {
         this.prestamo = prestamo;
+    }
+
+    public TipoAporte getTipoAporte() {
+        return tipoAporte;
+    }
+
+    public void setTipoAporte(TipoAporte tipoAporte) {
+        this.tipoAporte = tipoAporte;
     }
 
     public Integer getNumeroCuota() {
