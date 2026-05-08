@@ -26,14 +26,18 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 		System.out.println("Buscando detalles de préstamo entre fechas: " + fechaDesde + " y " + fechaHasta);
 		
 		try {
-			String jpql = "SELECT d FROM DetallePrestamo d " +
-						 "WHERE d.fechaVencimiento >= :fechaDesde " +
-						 "AND d.fechaVencimiento <= :fechaHasta " +
-						 "ORDER BY d.fechaVencimiento";
+			String jpql = " SELECT d FROM DetallePrestamo d, Prestamo p " +
+						 " WHERE d.prestamo.codigo = p.codigo " +
+						 " AND d.fechaVencimiento >= :fechaDesde " +
+						 " AND d.fechaVencimiento <= :fechaHasta " +
+						 " AND p.idEstado IN (:estadoActivo, :estadoEnMora) " +
+						 " ORDER BY d.fechaVencimiento";
 			
 			Query query = em.createQuery(jpql);
 			query.setParameter("fechaDesde", fechaDesde);
 			query.setParameter("fechaHasta", fechaHasta);
+			query.setParameter("estadoActivo", 2L);
+			query.setParameter("estadoEnMora", 11L);
 			
 			// @SuppressWarnings("unchecked")
 			List<DetallePrestamo> resultados = query.getResultList();

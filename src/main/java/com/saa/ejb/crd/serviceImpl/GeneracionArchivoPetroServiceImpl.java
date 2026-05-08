@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.saa.basico.ejb.FechaService;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.crd.dao.GeneracionArchivoPetroDaoService;
@@ -57,6 +58,9 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
     
     @EJB
     private CuotaXParticipeGeneracionService cuotaXParticipeService;
+    
+    @EJB
+    private FechaService fechaService;
 
     @PersistenceContext
     private EntityManager em;
@@ -261,7 +265,35 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
                 }
                 
                 // Crear registros de CXPG (detalle de cuotas)
-                if (linea.codigoPrestamo != null && !linea.cuotasSumadas.isEmpty()) {
+                if ("HS".equals(codigoProducto) && !linea.cuotasSumadas.isEmpty()) {
+                    // Es SEGURO DE INCENDIO: crear un registro por cada cuota, indicando el préstamo de origen
+                    for (CuotaInfo cuotaInfo : linea.cuotasSumadas) {
+                        CuotaXParticipeGeneracion cxpg = new CuotaXParticipeGeneracion();
+                        cxpg.setParticipeDetalleGeneracion(participeDetalle);
+                        
+                        // El préstamo de origen está en cuotaInfo.codigoPrestamo
+                        if (cuotaInfo.codigoPrestamo != null) {
+                            Prestamo prestamo = new Prestamo();
+                            prestamo.setCodigo(cuotaInfo.codigoPrestamo);
+                            cxpg.setPrestamo(prestamo);
+                        }
+                        
+                        cxpg.setNumeroCuota(cuotaInfo.numeroCuota);
+                        cxpg.setValorCuota(cuotaInfo.valorCuota);
+                        cxpg.setTipoAporte(null); // No aplica para seguros
+                        cxpg.setUsuarioIngreso(usuario);
+                        cxpg.setFechaIngreso(LocalDateTime.now());
+                        
+                        try {
+                            cuotaXParticipeService.crear(cxpg);
+                        } catch (Throwable e) {
+                            throw new Exception("Error al crear CXPG para seguro de incendio: " + e.getMessage(), e);
+                        }
+                    }
+                    
+                    System.out.println("  → Creados " + linea.cuotasSumadas.size() + " registros CXPG para seguros de incendio");
+                    
+                } else if (linea.codigoPrestamo != null && !linea.cuotasSumadas.isEmpty()) {
                     // Es un PRÉSTAMO: crear un registro por cada cuota sumada
                     for (CuotaInfo cuotaInfo : linea.cuotasSumadas) {
                         CuotaXParticipeGeneracion cxpg = new CuotaXParticipeGeneracion();
@@ -670,24 +702,43 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
 
     private void recopilarPrestamos(Long mes, Long anio, Map<String, List<LineaArchivo>> datosPorProducto) throws Exception {
         System.out.println("Recopilando cuotas de préstamos...");
-        System.out.println("Filtros: Entidad.idEstado=10 (ACTIVO), Prestamo.estadoPrestamo IN (1,2)");
+        System.out.println("Filtros: Entidad.idEstado=10 (ACTIVO), Prestamo.idEstado IN (1,2) (VIGENTE/ACTIVO)");
+        System.out.println("Incluyendo cuotas en estado: PENDIENTE, ACTIVA, EMITIDA, EN_MORA, PARCIAL, VENCIDA");
         System.out.println("Excluyendo cuotas en estado: 4 (PAGADA), 7 (CANCELADA_ANTICIPADA)");
         
         final Long ESTADO_PAGADA = 4L;
         final Long ESTADO_CANCELADA_ANTICIPADA = 7L;
         
-        java.time.LocalDateTime inicioMes = java.time.LocalDateTime.of(anio.intValue(), mes.intValue(), 1, 0, 0, 0);
-        int ultimoDia = obtenerUltimoDiaMes(mes.intValue(), anio.intValue());
-        java.time.LocalDateTime finMes = java.time.LocalDateTime.of(anio.intValue(), mes.intValue(), ultimoDia, 23, 59, 59);
+        // ✅ Estructura para acumular seguros de incendio por entidad
+        // Clave: codigoEntidad, Valor: LineaArchivo con acumulación de seguros
+        Map<Long, LineaArchivo> segurosPorEntidad = new LinkedHashMap<>();
         
+        // ✅ Usar fechaService para obtener el primer y último día del mes
+        LocalDate inicioMesDate;
+        LocalDate finMesDate;
+        try {
+            inicioMesDate = fechaService.primerDiaMesAnioLocal(mes, anio);
+            finMesDate = fechaService.ultimoDiaMesAnioLocal(mes, anio);
+        } catch (Throwable e) {
+            throw new Exception("Error al calcular fechas del periodo: " + e.getMessage(), e);
+        }
+        
+        // ✅ Convertir a LocalDateTime para comparar con fechaVencimiento (que es LocalDateTime)
+        LocalDateTime inicioMes = inicioMesDate.atStartOfDay();
+        LocalDateTime finMes = finMesDate.atTime(23, 59, 59);
+        
+        // ✅ CORREGIDO: 
+        // 1. Comparar directamente con LocalDateTime (tipo del campo fechaVencimiento)
+        // 2. Usar COALESCE (estándar JPA) para rolPetroComercial
+        // 3. Usar dp.prestamo.idEstado IN (1,2) para préstamos VIGENTES/ACTIVOS
+        // 4. Usar dp.prestamo.entidad.idEstado = 10 para entidades ACTIVAS
         String jpql = "SELECT dp FROM DetallePrestamo dp " +
                      "WHERE dp.fechaVencimiento >= :inicioMes " +
                      "AND dp.fechaVencimiento <= :finMes " +
-                     "AND dp.prestamo.estadoPrestamo IN (1, 2) " +
+                     "AND dp.prestamo.idEstado IN (1, 2) " +
                      "AND dp.prestamo.entidad.idEstado = 10 " +
                      "AND dp.prestamo.producto.codigoPetro IS NOT NULL " +
-                     "AND dp.prestamo.entidad.rolPetroComercial IS NOT NULL " +
-                     "AND dp.prestamo.entidad.rolPetroComercial > 0 " +
+                     "AND COALESCE(dp.prestamo.entidad.rolPetroComercial, 0) > 0 " +
                      "AND dp.estado NOT IN (:estadoPagada, :estadoCanceladaAnticipada) " +
                      "ORDER BY dp.prestamo.codigo, dp.numeroCuota";
         
@@ -716,10 +767,15 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
                 continue;
             }
             
-            // Buscar cuotas anteriores pendientes
+            // ✅ CORREGIDO: Buscar cuotas anteriores pendientes usando LAS MISMAS CONDICIONES del SELECT principal
+            // Solo que filtramos por el préstamo específico y cuotas con número menor a la actual
             String jpqlAnteriores = "SELECT dp FROM DetallePrestamo dp " +
                                    "WHERE dp.prestamo.codigo = :codigoPrestamo " +
                                    "AND dp.numeroCuota < :numeroCuotaActual " +
+                                   "AND dp.prestamo.idEstado IN (1, 2) " +
+                                   "AND dp.prestamo.entidad.idEstado = 10 " +
+                                   "AND dp.prestamo.producto.codigoPetro IS NOT NULL " +
+                                   "AND COALESCE(dp.prestamo.entidad.rolPetroComercial, 0) > 0 " +
                                    "AND dp.estado NOT IN (:estadoPagada, :estadoCanceladaAnticipada) " +
                                    "ORDER BY dp.numeroCuota";
             
@@ -770,6 +826,35 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
                 
                 listaProducto.add(linea);
             }
+            
+            // ✅ NUEVO: Extraer y acumular seguros de incendio para productos PH y PP
+            if ("PH".equals(codigoProductoPetro) || "PP".equals(codigoProductoPetro)) {
+                Long codigoEntidad = cuotaDelMes.getPrestamo().getEntidad().getCodigo();
+                Long rolPetro = cuotaDelMes.getPrestamo().getEntidad().getRolPetroComercial();
+                
+                // Acumular seguro de la cuota actual
+                acumularSeguroIncendio(segurosPorEntidad, codigoEntidad, rolPetro, 
+                                      codigoPrestamo, cuotaDelMes);
+                
+                // Acumular seguros de cuotas anteriores pendientes
+                for (DetallePrestamo cuotaAnterior : cuotasAnterioresPendientes) {
+                    acumularSeguroIncendio(segurosPorEntidad, codigoEntidad, rolPetro, 
+                                          codigoPrestamo, cuotaAnterior);
+                }
+            }
+        }
+        
+        // ✅ Agregar los seguros de incendio acumulados al producto HS
+        List<LineaArchivo> listaHS = datosPorProducto.get("HS");
+        for (LineaArchivo seguro : segurosPorEntidad.values()) {
+            if (seguro.monto > 0) {
+                listaHS.add(seguro);
+            }
+        }
+        
+        if (!listaHS.isEmpty()) {
+            System.out.println("Seguros de Incendio (HS): " + listaHS.size() + " registros, Total: $" + 
+                             String.format("%.2f", listaHS.stream().mapToDouble(l -> l.monto).sum()));
         }
         
         for (Map.Entry<String, List<LineaArchivo>> entry : datosPorProducto.entrySet()) {
@@ -781,13 +866,24 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
         System.out.println("Préstamos recopilados exitosamente");
     }
 
+    /**
+     * Calcula el monto a descontar de una cuota de préstamo.
+     * 
+     * ✅ CORREGIDO: Suma capital + interés + mora + interésVencido + DESGRAVAMEN
+     * 
+     * El desgravamen es un seguro obligatorio que debe incluirse en el descuento mensual.
+     * 
+     * @param cuota DetallePrestamo con los datos de la cuota
+     * @return Monto total a descontar
+     */
     private double calcularMontoCuota(DetallePrestamo cuota) {
         double capital = cuota.getCapital() != null ? cuota.getCapital() : 0.0;
         double interes = cuota.getInteres() != null ? cuota.getInteres() : 0.0;
         double mora = cuota.getMora() != null ? cuota.getMora() : 0.0;
         double interesVencido = cuota.getInteresVencido() != null ? cuota.getInteresVencido() : 0.0;
+        double desgravamen = cuota.getDesgravamen() != null ? cuota.getDesgravamen() : 0.0;
         
-        return capital + interes + mora + interesVencido;
+        return capital + interes + mora + interesVencido + desgravamen;
     }
 
     private String generarArchivoTXT(Map<String, List<LineaArchivo>> datosPorProducto, 
@@ -860,13 +956,53 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
     private String obtenerDescripcionProducto(String codigo) {
         switch (codigo) {
             case "AH": return "Aportes Voluntarios / Ahorro";
-            case "HS": return "Hipoteca Secundaria";
+            case "HS": return "Seguro";
             case "PE": return "Préstamo Emergente";
             case "PH": return "Préstamo Hipotecario";
             case "PQ": return "Préstamo Quirografario";
             case "PP": return "Préstamo Personal";
             default: return "Desconocido";
         }
+    }
+
+    /**
+     * Acumula los valores de seguro de incendio por entidad.
+     * Solo aplica para préstamos PH (Hipotecario) y PP (Personal).
+     * 
+     * @param segurosPorEntidad Mapa acumulador de seguros por entidad
+     * @param codigoEntidad Código de la entidad/partícipe
+     * @param rolPetro Rol Petrocomercial de la entidad
+     * @param codigoPrestamo Código del préstamo
+     * @param cuota Cuota de la cual extraer el seguro de incendio
+     */
+    private void acumularSeguroIncendio(Map<Long, LineaArchivo> segurosPorEntidad, 
+                                       Long codigoEntidad, Long rolPetro,
+                                       Long codigoPrestamo, DetallePrestamo cuota) {
+        Double valorSeguro = cuota.getValorSeguroIncendio();
+        if (valorSeguro == null || valorSeguro <= 0) {
+            return; // No hay seguro en esta cuota
+        }
+        
+        // Obtener o crear la línea de seguro para esta entidad
+        LineaArchivo lineaSeguro = segurosPorEntidad.get(codigoEntidad);
+        if (lineaSeguro == null) {
+            lineaSeguro = new LineaArchivo();
+            lineaSeguro.codigoEntidad = codigoEntidad;
+            lineaSeguro.rolPetrocomercial = rolPetro;
+            lineaSeguro.monto = 0.0;
+            lineaSeguro.codigoPrestamo = null; // HS no tiene un préstamo único, son múltiples
+            segurosPorEntidad.put(codigoEntidad, lineaSeguro);
+        }
+        
+        // Acumular el monto del seguro
+        lineaSeguro.monto += valorSeguro;
+        
+        // Registrar la cuota de donde proviene este seguro
+        lineaSeguro.cuotasSumadas.add(new CuotaInfo(
+            cuota.getNumeroCuota() != null ? cuota.getNumeroCuota().intValue() : 0,
+            valorSeguro,
+            codigoPrestamo // Guardar el préstamo de origen
+        ));
     }
 
     // ========================================================================
@@ -944,10 +1080,18 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
     private static class CuotaInfo {
         Integer numeroCuota;
         Double valorCuota;
+        Long codigoPrestamo; // Para seguros de incendio: indica de qué préstamo proviene
         
         public CuotaInfo(Integer numeroCuota, Double valorCuota) {
             this.numeroCuota = numeroCuota;
             this.valorCuota = valorCuota;
+            this.codigoPrestamo = null;
+        }
+        
+        public CuotaInfo(Integer numeroCuota, Double valorCuota, Long codigoPrestamo) {
+            this.numeroCuota = numeroCuota;
+            this.valorCuota = valorCuota;
+            this.codigoPrestamo = codigoPrestamo;
         }
     }
 }
