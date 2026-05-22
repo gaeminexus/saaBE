@@ -161,7 +161,15 @@ public class TempReportesServiceImpl implements TempReportesService {
 				registros.setSaldoCuenta(saldoAnterior);
 				registros.setValorDebe(valoresDebeHaber[0]);
 				registros.setValorHaber(valoresDebeHaber[1]);
-				registros.setValorActual(saldoAnterior + valoresDebeHaber[0] - valoresDebeHaber[1]);
+				/*cuentas acreedoras suman en el haber restan en el debe 1 = deudora 2 = acreedora
+				  cuentas deudoras suman en el debe restan en el haber*/
+				if (registros.getPlanCuenta().getNaturalezaCuenta().getTipo() == 1L) {
+					registros.setValorActual(saldoAnterior + valoresDebeHaber[0] - valoresDebeHaber[1]);
+				} else if (registros.getPlanCuenta().getNaturalezaCuenta().getTipo() == 2L) {
+					registros.setValorActual(saldoAnterior - valoresDebeHaber[0] + valoresDebeHaber[1]);
+				} else {
+					throw new IncomeException("LA CUENTA CONTABLE DEBE TENER UNA NATURALEZA DEFINIDA DEBE SER DEUDORA O ACREEDORA");	
+				}
 				registros = tempReportesDaoService.save(registros, registros.getCodigo());
 			}	
 		}		
