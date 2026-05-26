@@ -93,4 +93,23 @@ public class HistorialSueldoDaoServiceImpl extends EntityDaoImpl<HistorialSueldo
 		}
 	}
 
+	/**
+	 * G42 — Aporte Personal: SUM(montoCesantia + montoJubilacion) agrupado por entidad,
+	 * solo registros con estado = 99 (vigente activo).
+	 * Retorna Object[]{Long codigoEntidad, Double suma}
+	 */
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<Object[]> selectSumaAportePersonalPorEntidad(java.time.LocalDateTime fechaCorte) throws Throwable {
+		System.out.println("HistorialSueldoDaoServiceImpl.selectSumaAportePersonalPorEntidad (sin filtro fecha)");
+		Query query = em.createQuery(
+			" select   h.entidad.codigo, sum(coalesce(h.montoCesantia, 0) + coalesce(h.montoJubilacion, 0)) " +
+			" from     HistorialSueldo h " +
+			" where    h.estado = 99 " +
+			"   and    exists (select 1 from Entidad e where e.codigo = h.entidad.codigo) " +
+			" group by h.entidad.codigo "
+		);
+		return query.getResultList();
+	}
+
 }

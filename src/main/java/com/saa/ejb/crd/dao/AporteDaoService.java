@@ -1,5 +1,6 @@
 package com.saa.ejb.crd.dao;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import com.saa.basico.util.EntityDao;
@@ -9,8 +10,43 @@ import jakarta.ejb.Local;
 
 @Local
 public interface AporteDaoService extends EntityDao<Aporte>{
-	
-	
+
+	/**
+	 * Para G42 — Grupo 1: Suma de aportes (tipoAporte.estado=1, tipoAporte.codigoSBS='RE')
+	 * agrupada por entidad, con fechaTransaccion <= fechaCorte.
+	 * Retorna Object[]{Long codigoEntidad, Double suma}.
+	 */
+	List<Object[]> selectSumaRendimientoPorEntidad(LocalDateTime fechaCorte) throws Throwable;
+
+	/**
+	 * Para G42 — Grupo 2: Suma de aportes (tipoAporte.estado=1, tipoAporte.codigo IN(3,13,14))
+	 * agrupada por entidad, con fechaTransaccion <= fechaCorte.
+	 * Retorna Object[]{Long codigoEntidad, Double suma}.
+	 */
+	List<Object[]> selectSumaPatronalPorEntidad(LocalDateTime fechaCorte) throws Throwable;
+
+	/**
+	 * Para G42 — Grupo 3: Suma de aportes (tipoAporte.estado=1) que NO sean codigoSBS='RE'
+	 * ni codigo IN(3,13,14), agrupada por entidad, con fechaTransaccion <= fechaCorte.
+	 * Retorna Object[]{Long codigoEntidad, Double suma}.
+	 */
+	List<Object[]> selectSumaPersonalPorEntidad(LocalDateTime fechaCorte) throws Throwable;
+
+	/**
+	 * Para G44 — Imposiciones acumuladas: COUNT de aportes con tipoAporte.codigo IN (9, 11)
+	 * agrupado por entidad, con fechaTransaccion <= fechaCorte.
+	 * Retorna Object[]{Long codigoEntidad, Long count}.
+	 */
+	List<Object[]> selectCountImposicionesJubilacionPorEntidad(LocalDateTime fechaCorte) throws Throwable;
+
+	/**
+	 * Para G44 — Saldo de cuenta: SUM del campo valor de aportes con tipoAporte.codigo = 23
+	 * agrupado por entidad, con fechaTransaccion <= fechaCorte.
+	 * Retorna Object[]{Long codigoEntidad, Double suma}.
+	 */
+	List<Object[]> selectSumaSaldoCuentaJubilacionPorEntidad(LocalDateTime fechaCorte) throws Throwable;
+
+
 	/*filtra todos los aporte por id de entidad
 	 * @param :idEntidad
 	 * @return Lista de Aporte

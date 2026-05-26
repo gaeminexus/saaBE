@@ -71,8 +71,14 @@ public class ValorPagoPensionComplementariaServiceImpl implements ValorPagoPensi
         System.out.println("Ingresa al metodo selectByCriteria ValorPagoPensionComplementariaService");
         List<ValorPagoPensionComplementaria> result = valorPagoPensionComplementariaDaoService.selectByCriteria(datos, NombreEntidadesCredito.VALOR_PAGO_PENSION_COMPLEMENTARIA);
         if (result.isEmpty()) {
-            throw new IncomeException("Busqueda por criterio ValorPagoPensionComplementaria no devolvió ningún registro");
+            throw new IncomeException("Busqueda por criterio ValorPagoPensionComplementaria no devolvio ningun registro");
         }
         return result;
+    }
+
+    @Override
+    public List<ValorPagoPensionComplementaria> selectByEntidad(Long codigoEntidad) throws Throwable {
+        System.out.println("selectByEntidad ValorPagoPensionComplementaria codigoEntidad: " + codigoEntidad);
+        return valorPagoPensionComplementariaDaoService.selectByEntidad(codigoEntidad);
     }
 }

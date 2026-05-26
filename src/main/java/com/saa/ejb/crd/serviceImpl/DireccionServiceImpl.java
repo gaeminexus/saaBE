@@ -68,10 +68,15 @@ public class DireccionServiceImpl implements DireccionService {
         System.out.println("selectByCriteria - Direccion");
         List<Direccion> result =
             direccionDaoService.selectByCriteria(datos, NombreEntidadesCredito.DIRECCION);
-
         if (result.isEmpty()) {
-            throw new IncomeException("Busqueda por criterio Direccion no devolvió registros");
+            throw new IncomeException("Busqueda por criterio Direccion no devolvio registros");
         }
         return result;
+    }
+
+    @Override
+    public List<Direccion> selectByParent(Long codigoEntidad) throws Throwable {
+        System.out.println("selectByParent DireccionService codigoEntidad: " + codigoEntidad);
+        return direccionDaoService.selectByParent(codigoEntidad);
     }
 }

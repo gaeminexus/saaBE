@@ -67,8 +67,14 @@ public class PerfilEconomicoServiceImpl implements PerfilEconomicoService {
         System.out.println("Ingresa al metodo selectByCriteria PerfilEconomicoService");
         List<PerfilEconomico> result = perfilEconomicoDaoService.selectByCriteria(datos, NombreEntidadesCredito.PERFIL_ECONOMICO);
         if (result.isEmpty()) {
-            throw new IncomeException("Busqueda por criterio PerfilEconomico no devolvió registros");
+            throw new IncomeException("Busqueda por criterio PerfilEconomico no devolvio registros");
         }
         return result;
+    }
+
+    @Override
+    public List<PerfilEconomico> selectByEntidad(Long codigoEntidad) throws Throwable {
+        System.out.println("selectByEntidad PerfilEconomicoService codigoEntidad: " + codigoEntidad);
+        return perfilEconomicoDaoService.selectByEntidad(codigoEntidad);
     }
 }

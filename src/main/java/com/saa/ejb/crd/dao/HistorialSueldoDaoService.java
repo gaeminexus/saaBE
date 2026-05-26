@@ -29,4 +29,11 @@ public interface HistorialSueldoDaoService extends EntityDao<HistorialSueldo>  {
 	 */
 	HistorialSueldo selectByEntidadYEstadoActivo(Long codigoEntidad) throws Throwable;
 
+	/**
+	 * Para G42 — Aporte Personal: SUM(montoCesantia + montoJubilacion) por entidad
+	 * Solo registros con estado = 99 (registro vigente activo) y fechaRegistro <= fechaCorte.
+	 * Retorna Object[]{Long codigoEntidad, Double suma}
+	 */
+	List<Object[]> selectSumaAportePersonalPorEntidad(java.time.LocalDateTime fechaCorte) throws Throwable;
+
 }

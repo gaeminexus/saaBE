@@ -124,6 +124,18 @@ public interface AsientoDaoService extends EntityDao<Asiento> {
 	 * @throws Throwable	: Excepcion
 	 */
 	List<Asiento> selectByIdPeriodo(Long idPeriodo) throws Throwable;
+
+	/**
+	 * Recupera el maximo numeroMesTipo de acuerdo a tipo, empresa, mes y anio.
+	 * Se utiliza para generar la numeracion alterna mensual del asiento.
+	 * @param tipo		: Id de tipo de asiento
+	 * @param empresa	: Id de empresa
+	 * @param mes		: Numero de mes
+	 * @param anio		: Numero de anio
+	 * @return			: Maximo numeroMesTipo encontrado, o null si no existe
+	 * @throws Throwable: Excepcion
+	 */
+	Long selectMaxNumeroMesTipo(Long tipo, Long empresa, Long mes, Long anio) throws Throwable;
 	
 	
 }

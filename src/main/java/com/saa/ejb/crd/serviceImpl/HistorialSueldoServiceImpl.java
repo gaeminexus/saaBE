@@ -71,4 +71,9 @@ public class HistorialSueldoServiceImpl implements HistorialSueldoService {
         }
         return result;
     }
+
+    @Override
+    public List<Object[]> selectSumaAportePersonalPorEntidad(java.time.LocalDateTime fechaCorte) throws Throwable {
+        return historialDaoService.selectSumaAportePersonalPorEntidad(fechaCorte);
+    }
 }

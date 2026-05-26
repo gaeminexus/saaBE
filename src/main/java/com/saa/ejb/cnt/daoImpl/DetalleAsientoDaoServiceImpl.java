@@ -178,7 +178,8 @@ public class DetalleAsientoDaoServiceImpl extends EntityDaoImpl<DetalleAsiento> 
 									 " from   DetalleAsiento b" +
 									 " where  b.planCuenta.codigo = :idCuenta" +
 									 "        and    b.asiento.empresa.codigo = :empresa" +
-									 "        and    b.asiento.fechaAsiento between :fechaInicio and :fechaFin" +
+									 "        and    b.asiento.fechaAsiento between :fechaInicio and :fechaFin " +
+									 "        and    b.asiento.estado IN (1,3) " +
 									 " order by b.asiento.fechaAsiento, b.asiento.codigo");
 		query.setParameter("empresa", empresa);
 		query.setParameter("idCuenta", idCuenta);

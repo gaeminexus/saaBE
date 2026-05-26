@@ -1,6 +1,7 @@
 <!-- Created with Jaspersoft Studio version 7.0.3.final using JasperReports Library version 7.0.3-41034ca841d452f3305ba55b9042260aaa1ab5dd  -->
 <jasperReport name="plantilla" language="java" pageWidth="595" pageHeight="842" columnWidth="555" leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20" uuid="21264758-cb8f-4a77-9011-9b494f6caa19">
 	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="Oracle"/>
+	<property name="com.jaspersoft.studio.data.sql.tables" value=""/>
 	<style name="Table_TH" mode="Opaque" backcolor="#F0F8FF">
 		<box>
 			<pen lineWidth="0.5" lineColor="#000000"/>
@@ -59,7 +60,7 @@
 	<parameter name="P_REPORTE" class="java.lang.String"/>
 	<parameter name="P_ASNTCDGO" class="java.lang.Integer"/>
 	<parameter name="P_IMAGEN" class="java.awt.Image"/>
-	<query language="sql"><![CDATA[SELECT A.ASNTNMRO, A.ASNTFCHA, A.ASNTFCPR, A.PLNTCDGO, DT.DTASCNTA, DT.DTASNMCT, DT.DTASDSCR, DT.CNCSCDGO, DT.DTASDBEE, DT.DTASHBRR, P.PLNTNMBR, NVL(C.CNCSNMBR,' ') CENTROC,  SCP.PC_PRMT_GNRL.fn_rcpr_vlrs_pdtr(21, A.ASNTESTD,1) ESTADO,
+	<query language="sql"><![CDATA[SELECT  A.ASNTNMAL,A.ASNTNMRO, A.ASNTFCHA, A.ASNTFCPR, A.PLNTCDGO, DT.DTASCNTA, DT.DTASNMCT, DT.DTASDSCR, DT.CNCSCDGO, DT.DTASDBEE, DT.DTASHBRR, P.PLNTNMBR, NVL(C.CNCSNMBR,' ') CENTROC,  SCP.PC_PRMT_GNRL.fn_rcpr_vlrs_pdtr(21, A.ASNTESTD,1) ESTADO,
 A.ASNTUSRO,NVL(A.ASNTOBSR,' ') OBSERVACION, a.ASNTRYYA, A.ASNTRZZA, 
 decode ( a.asntasrv, null, a.asntasrv,  scp.pc_prmt_gnrl.fn_obtn_gnrl_cmpo('cnt.asnt', 'asntcdgo' , 'asntnmro' ,a.asntasrv)) nr,
 SCP.PC_PRMT_GNRL.fn_rcpr_vlrs_pdtr(A.ASNTRYYA, A.ASNTRZZA,1) AFECTADO , 
@@ -70,65 +71,109 @@ AND A.PLNTCDGO = P.PLNTCDGO
 AND DT.CNCSCDGO  = C.CNCSCDGO (+)
 AND   A.ASNTCDGO = $P{P_ASNTCDGO}
 ORDER BY DT.DTASHBRR, DT.DTASCNTA]]></query>
+	<field name="ASNTNMAL" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="ASNTNMAL"/>
+		<property name="com.jaspersoft.studio.field.label" value="ASNTNMAL"/>
+	</field>
 	<field name="ASNTNMRO" class="java.math.BigDecimal">
 		<description><![CDATA[]]></description>
+		<property name="com.jaspersoft.studio.field.name" value="ASNTNMRO"/>
+		<property name="com.jaspersoft.studio.field.label" value="ASNTNMRO"/>
 	</field>
 	<field name="ASNTFCHA" class="java.sql.Timestamp">
 		<description><![CDATA[]]></description>
+		<property name="com.jaspersoft.studio.field.name" value="ASNTFCHA"/>
+		<property name="com.jaspersoft.studio.field.label" value="ASNTFCHA"/>
 	</field>
 	<field name="ASNTFCPR" class="java.sql.Timestamp">
 		<description><![CDATA[]]></description>
+		<property name="com.jaspersoft.studio.field.name" value="ASNTFCPR"/>
+		<property name="com.jaspersoft.studio.field.label" value="ASNTFCPR"/>
 	</field>
 	<field name="PLNTCDGO" class="java.math.BigDecimal">
 		<description><![CDATA[]]></description>
+		<property name="com.jaspersoft.studio.field.name" value="PLNTCDGO"/>
+		<property name="com.jaspersoft.studio.field.label" value="PLNTCDGO"/>
 	</field>
 	<field name="DTASCNTA" class="java.lang.String">
 		<description><![CDATA[]]></description>
+		<property name="com.jaspersoft.studio.field.name" value="DTASCNTA"/>
+		<property name="com.jaspersoft.studio.field.label" value="DTASCNTA"/>
 	</field>
 	<field name="DTASNMCT" class="java.lang.String">
 		<description><![CDATA[]]></description>
+		<property name="com.jaspersoft.studio.field.name" value="DTASNMCT"/>
+		<property name="com.jaspersoft.studio.field.label" value="DTASNMCT"/>
 	</field>
 	<field name="DTASDSCR" class="java.lang.String">
 		<description><![CDATA[]]></description>
+		<property name="com.jaspersoft.studio.field.name" value="DTASDSCR"/>
+		<property name="com.jaspersoft.studio.field.label" value="DTASDSCR"/>
 	</field>
 	<field name="CNCSCDGO" class="java.math.BigDecimal">
 		<description><![CDATA[]]></description>
+		<property name="com.jaspersoft.studio.field.name" value="CNCSCDGO"/>
+		<property name="com.jaspersoft.studio.field.label" value="CNCSCDGO"/>
 	</field>
 	<field name="DTASDBEE" class="java.math.BigDecimal">
 		<description><![CDATA[]]></description>
+		<property name="com.jaspersoft.studio.field.name" value="DTASDBEE"/>
+		<property name="com.jaspersoft.studio.field.label" value="DTASDBEE"/>
 	</field>
 	<field name="DTASHBRR" class="java.math.BigDecimal">
 		<description><![CDATA[]]></description>
+		<property name="com.jaspersoft.studio.field.name" value="DTASHBRR"/>
+		<property name="com.jaspersoft.studio.field.label" value="DTASHBRR"/>
 	</field>
 	<field name="PLNTNMBR" class="java.lang.String">
 		<description><![CDATA[]]></description>
+		<property name="com.jaspersoft.studio.field.name" value="PLNTNMBR"/>
+		<property name="com.jaspersoft.studio.field.label" value="PLNTNMBR"/>
 	</field>
 	<field name="CENTROC" class="java.lang.String">
 		<description><![CDATA[]]></description>
+		<property name="com.jaspersoft.studio.field.name" value="CENTROC"/>
+		<property name="com.jaspersoft.studio.field.label" value="CENTROC"/>
 	</field>
 	<field name="ESTADO" class="java.lang.String">
 		<description><![CDATA[]]></description>
+		<property name="com.jaspersoft.studio.field.name" value="ESTADO"/>
+		<property name="com.jaspersoft.studio.field.label" value="ESTADO"/>
 	</field>
 	<field name="ASNTUSRO" class="java.lang.String">
 		<description><![CDATA[]]></description>
+		<property name="com.jaspersoft.studio.field.name" value="ASNTUSRO"/>
+		<property name="com.jaspersoft.studio.field.label" value="ASNTUSRO"/>
 	</field>
 	<field name="OBSERVACION" class="java.lang.String">
 		<description><![CDATA[]]></description>
+		<property name="com.jaspersoft.studio.field.name" value="OBSERVACION"/>
+		<property name="com.jaspersoft.studio.field.label" value="OBSERVACION"/>
 	</field>
 	<field name="ASNTRYYA" class="java.math.BigDecimal">
 		<description><![CDATA[]]></description>
+		<property name="com.jaspersoft.studio.field.name" value="ASNTRYYA"/>
+		<property name="com.jaspersoft.studio.field.label" value="ASNTRYYA"/>
 	</field>
 	<field name="ASNTRZZA" class="java.math.BigDecimal">
 		<description><![CDATA[]]></description>
+		<property name="com.jaspersoft.studio.field.name" value="ASNTRZZA"/>
+		<property name="com.jaspersoft.studio.field.label" value="ASNTRZZA"/>
 	</field>
 	<field name="NR" class="java.math.BigDecimal">
 		<description><![CDATA[]]></description>
+		<property name="com.jaspersoft.studio.field.name" value="NR"/>
+		<property name="com.jaspersoft.studio.field.label" value="NR"/>
 	</field>
 	<field name="AFECTADO" class="java.lang.String">
 		<description><![CDATA[]]></description>
+		<property name="com.jaspersoft.studio.field.name" value="AFECTADO"/>
+		<property name="com.jaspersoft.studio.field.label" value="AFECTADO"/>
 	</field>
 	<field name="ORIGEN" class="java.lang.String">
 		<description><![CDATA[]]></description>
+		<property name="com.jaspersoft.studio.field.name" value="ORIGEN"/>
+		<property name="com.jaspersoft.studio.field.label" value="ORIGEN"/>
 	</field>
 	<variable name="SUMA_DEBE" resetType="Group" calculation="Sum" resetGroup="ASNTNMRO" class="java.math.BigDecimal">
 		<expression><![CDATA[$F{DTASDBEE}]]></expression>
@@ -205,8 +250,8 @@ ORDER BY DT.DTASHBRR, DT.DTASCNTA]]></query>
 				<element kind="staticText" uuid="e3ee11b1-c2f3-4b79-9358-0ef835d8afbd" x="22" y="41" width="43" height="15" fontName="Tahoma" fontSize="8.0" bold="true">
 					<text><![CDATA[ESTADO:]]></text>
 				</element>
-				<element kind="textField" uuid="456795c0-ed09-4e65-82e0-54e907f508fc" x="80" y="10" width="39" height="15" fontName="Tahoma" fontSize="8.0">
-					<expression><![CDATA[$F{ASNTNMRO}]]></expression>
+				<element kind="textField" uuid="456795c0-ed09-4e65-82e0-54e907f508fc" x="80" y="10" width="99" height="15" fontName="Tahoma" fontSize="8.0">
+					<expression><![CDATA[$F{ASNTNMAL}]]></expression>
 				</element>
 				<element kind="textField" uuid="c8530445-11b2-4899-b3f1-ee5a76d53bdf" x="475" y="25" width="79" height="15" fontName="Tahoma" fontSize="8.0" pattern="dd/MM/yyyy" blankWhenNull="true">
 					<expression><![CDATA[$F{ASNTFCHA}]]></expression>

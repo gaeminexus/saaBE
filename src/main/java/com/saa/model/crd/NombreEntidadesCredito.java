@@ -77,5 +77,6 @@ public interface NombreEntidadesCredito {
 	String PARTICIPE_DETALLE_GENERACION_ARCHIVO = "ParticipeDetalleGeneracionArchivo";
 	String CUOTA_X_PARTICIPE_GENERACION = "CuotaXParticipeGeneracion";
 	String VALOR_PAGO_PENSION_COMPLEMENTARIA = "ValorPagoPensionComplementaria";
+	String INFORMACION_GENERAL_FONDO = "InformacionGeneralFondo";
 
 }

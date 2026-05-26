@@ -306,5 +306,21 @@ public class AsientoDaoServiceImpl extends EntityDaoImpl<Asiento> implements Asi
 										 " where  b.periodo.codigo = :idPeriodo");
 			query.setParameter("idPeriodo", idPeriodo);
 			return  query.getResultList();
-		}	
+		}
+
+		@Override
+		public Long selectMaxNumeroMesTipo(Long tipo, Long empresa, Long mes, Long anio) throws Throwable {
+			System.out.println("Ingresa al metodo selectMaxNumeroMesTipo de tipo: " + tipo + ", empresa: " + empresa + ", mes: " + mes + ", anio: " + anio);
+			Query query = em.createQuery(" select Max(b.numeroMesTipo) " +
+										 " from   Asiento b " +
+										 " where  b.empresa.codigo = :empresa " +
+										 "        and b.tipoAsiento.codigo = :tipo " +
+										 "        and b.numeroMes = :mes " +
+										 "        and b.numeroAnio = :anio");
+			query.setParameter("empresa", empresa);
+			query.setParameter("tipo", tipo);
+			query.setParameter("mes", mes);
+			query.setParameter("anio", anio);
+			return (Long) query.getSingleResult();
+		}
 }

@@ -201,6 +201,41 @@ public class AsientoServiceImpl implements AsientoService {
 		}
 		return numero + 1;
 	}
+
+	/**
+	 * Calcula y asigna la numeracion alterna legible al asiento.
+	 * Formato: XXX-AAAA-MM-NNNN donde XXX son las 3 primeras letras del tipo de asiento,
+	 * AAAA es el año, MM es el mes con cero a la izquierda y NNNN es el consecutivo mensual por tipo.
+	 * Asigna numeroMesTipo (parte numerica) y numeroAlterno (cadena completa) al asiento.
+	 * El asiento debe tener tipoAsiento, empresa, numeroMes y numeroAnio asignados antes de invocar este metodo.
+	 * @param asiento : Asiento al que se le asignara la numeracion alterna
+	 * @throws Throwable : Excepcion
+	 */
+	private Asiento asignaNumeroAlterno(Asiento asiento) throws Throwable {
+		System.out.println("Ingresa al metodo asignaNumeroAlterno");
+		Long mes = asiento.getNumeroMes();
+		Long anio = asiento.getNumeroAnio();
+		Long tipo = asiento.getTipoAsiento().getCodigo();
+		Long empresa = asiento.getEmpresa().getCodigo();
+
+		// Obtiene el maximo consecutivo mensual para este tipo/empresa/mes/anio
+		Long maxNumeroMesTipo = asientoDaoService.selectMaxNumeroMesTipo(tipo, empresa, mes, anio);
+		Long siguienteNumeroMesTipo = (maxNumeroMesTipo == null ? 0L : maxNumeroMesTipo) + 1L;
+
+		// Obtiene las 3 primeras letras del nombre del tipo de asiento en mayusculas
+		String nombreTipo = asiento.getTipoAsiento().getNombre();
+		String prefijo = (nombreTipo != null && nombreTipo.length() >= 3)
+				? nombreTipo.substring(0, 3).toUpperCase()
+				: nombreTipo != null ? nombreTipo.toUpperCase() : "ASN";
+
+		// Construye el numero alterno: EGR-2026-03-0001
+		String numeroAlterno = String.format("%s-%d-%02d-%04d", prefijo, anio, mes, siguienteNumeroMesTipo);
+
+		asiento.setNumeroMesTipo(siguienteNumeroMesTipo);
+		asiento.setNumeroAlterno(numeroAlterno);
+		System.out.println("numeroAlterno generado: " + numeroAlterno);
+		return asiento;
+	}
 	
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.contabilidad.ejb.service.AsientoService#generaCabeceraCierre(com.compuseg.income.contabilidad.ejb.model.Periodo, java.lang.Long, java.lang.String)
@@ -233,6 +268,7 @@ public class AsientoServiceImpl implements AsientoService {
 			asientoCierre.setNumeroMes(periodo.getMes());
 			asientoCierre.setNumeroAnio(periodo.getAnio());
 			asientoCierre.setPeriodo(periodo);
+			asientoCierre = asignaNumeroAlterno(asientoCierre);
 			asientoDaoService.save(asientoCierre, asientoCierre.getCodigo());	
 		}		
 	}
@@ -385,7 +421,7 @@ public class AsientoServiceImpl implements AsientoService {
 		asientoReversion.setRubroModuloClienteH(asientoOriginal.getRubroModuloClienteH());
 		asientoReversion.setRubroModuloSistemaP(asientoOriginal.getRubroModuloSistemaP());
 		asientoReversion.setRubroModuloSistemaH(asientoOriginal.getRubroModuloSistemaH());
-		
+		asientoReversion = asignaNumeroAlterno(asientoReversion);
 		try{
 			asientoReversion = asientoDaoService.save(asientoReversion, asientoReversion.getCodigo());
 		}
@@ -449,6 +485,7 @@ public class AsientoServiceImpl implements AsientoService {
 		asiento.setFechaIngreso(LocalDateTime.now());
 		asiento.setRubroModuloSistemaP(Long.valueOf(Rubros.MODULO_SISTEMA));
 		asiento.setRubroModuloSistemaH(Long.valueOf(ModuloSistema.TESORERIA));
+		asiento = asignaNumeroAlterno(asiento);
 		Long[] datosAsiento = saveCabecera(asiento);
 		return datosAsiento;
 	}
@@ -512,7 +549,8 @@ public class AsientoServiceImpl implements AsientoService {
 		Periodo periodo = periodoService.recuperaByMesAnioEmpresa(empresa, mes, anio);
 		cabeceraTransferencia.setPeriodo(periodo);
 		cabeceraTransferencia.setRubroModuloSistemaP(Long.valueOf(Rubros.MODULO_SISTEMA));
-		cabeceraTransferencia.setRubroModuloSistemaH(Long.valueOf(ModuloSistema.TESORERIA));		
+		cabeceraTransferencia.setRubroModuloSistemaH(Long.valueOf(ModuloSistema.TESORERIA));
+		cabeceraTransferencia = asignaNumeroAlterno(cabeceraTransferencia);
 		try {
 			asientoDaoService.save(cabeceraTransferencia, cabeceraTransferencia.getCodigo());
 		} catch (EJBException e) {
@@ -560,9 +598,7 @@ public class AsientoServiceImpl implements AsientoService {
 		if (!permiteProceso) {
 			if (asiento.getCodigo() == null) {
 				asiento.setNumero(siguienteNumeroAsiento(asiento.getTipoAsiento().getCodigo(), asiento.getEmpresa().getCodigo()));
-			}
-			if (asiento.getNumero() == null) {
-				asiento.setNumero(siguienteNumeroAsiento(asiento.getTipoAsiento().getCodigo(), asiento.getEmpresa().getCodigo()));
+				asiento = asignaNumeroAlterno(asiento);
 			}
 			/* falta validar si el periodo esta abierto 
 			 * y tambien que recupere el id del periodo dependiendo de la fecha de asiento

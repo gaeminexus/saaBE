@@ -87,4 +87,10 @@ public class ExterServiceImpl implements ExterService {
         return result;
     }
 
+    @Override
+    public List<Exter> selectByCedula(String cedula) throws Throwable {
+        System.out.println("Ingresa al metodo selectByCedula ExterService con cedula: " + cedula);
+        return exterDaoService.selectByCedula(cedula);
+    }
+
 }

@@ -89,4 +89,33 @@ public class AporteServiceImpl implements AporteService {
         }
         return result;
     }
+
+    // ============================================================
+    // G42 — Sumatorias agrupadas por entidad (delegadas al DAO)
+    // ============================================================
+
+    @Override
+    public List<Object[]> selectSumaRendimientoPorEntidad(java.time.LocalDateTime fechaCorte) throws Throwable {
+        return aporteDaoService.selectSumaRendimientoPorEntidad(fechaCorte);
+    }
+
+    @Override
+    public List<Object[]> selectSumaPatronalPorEntidad(java.time.LocalDateTime fechaCorte) throws Throwable {
+        return aporteDaoService.selectSumaPatronalPorEntidad(fechaCorte);
+    }
+
+    @Override
+    public List<Object[]> selectSumaPersonalPorEntidad(java.time.LocalDateTime fechaCorte) throws Throwable {
+        return aporteDaoService.selectSumaPersonalPorEntidad(fechaCorte);
+    }
+
+    @Override
+    public List<Object[]> selectCountImposicionesJubilacionPorEntidad(java.time.LocalDateTime fechaCorte) throws Throwable {
+        return aporteDaoService.selectCountImposicionesJubilacionPorEntidad(fechaCorte);
+    }
+
+    @Override
+    public List<Object[]> selectSumaSaldoCuentaJubilacionPorEntidad(java.time.LocalDateTime fechaCorte) throws Throwable {
+        return aporteDaoService.selectSumaSaldoCuentaJubilacionPorEntidad(fechaCorte);
+    }
 }

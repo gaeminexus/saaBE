@@ -251,4 +251,34 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 		return dtos;
 	}
 
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<Entidad> selectByIdEstado(Long idEstado) throws Throwable {
+		System.out.println("Ingresa al metodo selectByIdEstado Entidad con idEstado: " + idEstado);
+		Query query = em.createQuery(
+			"select e from Entidad e where e.idEstado = :idEstado");
+		query.setParameter("idEstado", idEstado);
+		return query.getResultList();
+	}
+
+	@Override
+	public Entidad findById(Long codigo) throws Throwable {
+		System.out.println("Ingresa al metodo findById Entidad con codigo: " + codigo);
+		return em.find(Entidad.class, codigo);
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public Entidad selectByNumeroIdentificacion(String numeroIdentificacion) throws Throwable {
+		System.out.println("EntidadDaoServiceImpl.selectByNumeroIdentificacion: " + numeroIdentificacion);
+		Query query = em.createQuery(
+			" select e from Entidad e " +
+			" where  e.numeroIdentificacion = :numeroIdentificacion "
+		);
+		query.setParameter("numeroIdentificacion", numeroIdentificacion);
+		query.setMaxResults(1);
+		List<Entidad> result = query.getResultList();
+		return result.isEmpty() ? null : result.get(0);
+	}
+
 }

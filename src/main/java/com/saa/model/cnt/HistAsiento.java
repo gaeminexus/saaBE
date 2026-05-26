@@ -165,6 +165,20 @@ public class HistAsiento implements Serializable {
 	private Long idAsientoOriginal;
 	
 	/**
+	 * Numero alterno de asiento solicitado por contabilidad.
+	 */
+	@Basic
+	@Column(name = "ASNHNMAL", length = 100)
+	private String numeroAlterno;
+	
+	/**
+	 * Numerico de asiento por mes y por tipo de asiento.
+	 */
+	@Basic
+	@Column(name = "ASNHNMMS")
+	private Long numeroMesTipo;
+	
+	/**
 	 * Devuelve codigo
 	 * @return codigo
 	 */
@@ -464,6 +478,38 @@ public class HistAsiento implements Serializable {
 	 */
 	public void setIdAsientoOriginal(Long idAsientoOriginal) {
 		this.idAsientoOriginal = idAsientoOriginal;
+	}
+
+	/**
+	 * Devuelve numeroAlterno
+	 * @return numeroAlterno.
+	 */
+	public String getNumeroAlterno() {
+		return numeroAlterno;
+	}
+
+	/**
+	 * Asigna numeroAlterno
+	 * @param numeroAlterno nuevo valor para numeroAlterno.
+	 */
+	public void setNumeroAlterno(String numeroAlterno) {
+		this.numeroAlterno = numeroAlterno;
+	}
+
+	/**
+	 * Devuelve numeroMesTipo
+	 * @return numeroMesTipo.
+	 */
+	public Long getNumeroMesTipo() {
+		return numeroMesTipo;
+	}
+
+	/**
+	 * Asigna numeroMesTipo
+	 * @param numeroMesTipo nuevo valor para numeroMesTipo.
+	 */
+	public void setNumeroMesTipo(Long numeroMesTipo) {
+		this.numeroMesTipo = numeroMesTipo;
 	}
 
 }

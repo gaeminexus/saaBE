@@ -165,6 +165,20 @@ public class Asiento implements Serializable {
 	private Long rubroModuloSistemaH;
 	
 	/**
+	 * Numero alterno de asiento solicitado por contabilidad.
+	 */
+	@Basic
+	@Column(name = "ASNTNMAL", length = 100)
+	private String numeroAlterno;
+	
+	/**
+	 * Numerico de asiento por mes y por tipo de asiento.
+	 */
+	@Basic
+	@Column(name = "ASNTNMMS")
+	private Long numeroMesTipo;
+	
+	/**
 	 * Devuelve codigo
 	 * @return codigo.
 	 */
@@ -464,6 +478,38 @@ public class Asiento implements Serializable {
 	 */
 	public void setRubroModuloSistemaH(Long rubroModuloSistemaH) {
 		this.rubroModuloSistemaH = rubroModuloSistemaH;
+	}
+
+	/**
+	 * Devuelve numeroAlterno
+	 * @return numeroAlterno.
+	 */
+	public String getNumeroAlterno() {
+		return numeroAlterno;
+	}
+
+	/**
+	 * Asigna numeroAlterno
+	 * @param numeroAlterno nuevo valor para numeroAlterno.
+	 */
+	public void setNumeroAlterno(String numeroAlterno) {
+		this.numeroAlterno = numeroAlterno;
+	}
+
+	/**
+	 * Devuelve numeroMesTipo
+	 * @return numeroMesTipo.
+	 */
+	public Long getNumeroMesTipo() {
+		return numeroMesTipo;
+	}
+
+	/**
+	 * Asigna numeroMesTipo
+	 * @param numeroMesTipo nuevo valor para numeroMesTipo.
+	 */
+	public void setNumeroMesTipo(Long numeroMesTipo) {
+		this.numeroMesTipo = numeroMesTipo;
 	}
 
    

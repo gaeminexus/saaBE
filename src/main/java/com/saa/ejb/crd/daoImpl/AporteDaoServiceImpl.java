@@ -451,4 +451,101 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 		return dtos;
 	}
 
+	// ============================================================
+	// G42 — Métodos de sumatoria agrupada por entidad
+	// ============================================================
+
+	/**
+	 * G42 Grupo 1 — Rendimiento: SUM(valor) de aportes cuyo tipoAporte tiene
+	 * estado=1 y codigoSBS='RE', agrupado por entidad.
+	 * Retorna Object[]{Long codigoEntidad, Double suma}
+	 */
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<Object[]> selectSumaRendimientoPorEntidad(java.time.LocalDateTime fechaCorte) throws Throwable {
+		System.out.println("AporteDaoServiceImpl.selectSumaRendimientoPorEntidad fechaCorte: " + fechaCorte);
+		Query query = em.createQuery(
+			" select   a.entidad.codigo, sum(a.valor) " +
+			" from     Aporte a " +
+			" where    a.tipoAporte.estado = 1 " +
+			"   and    a.tipoAporte.codigoSBS = 'RE' " +
+			"   and    a.fechaTransaccion <= :fechaCorte " +
+			"   and    exists (select 1 from Entidad e where e.codigo = a.entidad.codigo) " +
+			" group by a.entidad.codigo "
+		);
+		query.setParameter("fechaCorte", fechaCorte);
+		return query.getResultList();
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<Object[]> selectSumaPatronalPorEntidad(java.time.LocalDateTime fechaCorte) throws Throwable {
+		System.out.println("AporteDaoServiceImpl.selectSumaPatronalPorEntidad fechaCorte: " + fechaCorte);
+		List<Long> codigosPatronal = java.util.Arrays.asList(3L, 13L, 14L);
+		Query query = em.createQuery(
+			" select   a.entidad.codigo, sum(a.valor) " +
+			" from     Aporte a " +
+			" where    a.tipoAporte.estado = 1 " +
+			"   and    a.tipoAporte.codigo in :codigos " +
+			"   and    a.fechaTransaccion <= :fechaCorte " +
+			"   and    exists (select 1 from Entidad e where e.codigo = a.entidad.codigo) " +
+			" group by a.entidad.codigo "
+		);
+		query.setParameter("codigos", codigosPatronal);
+		query.setParameter("fechaCorte", fechaCorte);
+		return query.getResultList();
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<Object[]> selectSumaPersonalPorEntidad(java.time.LocalDateTime fechaCorte) throws Throwable {
+		System.out.println("AporteDaoServiceImpl.selectSumaPersonalPorEntidad fechaCorte: " + fechaCorte);
+		List<Long> codigosPatronal = java.util.Arrays.asList(3L, 13L, 14L);
+		Query query = em.createQuery(
+			" select   a.entidad.codigo, sum(a.valor) " +
+			" from     Aporte a " +
+			" where    a.tipoAporte.estado = 1 " +
+			"   and    (a.tipoAporte.codigoSBS <> 'RE' or a.tipoAporte.codigoSBS is null) " +
+			"   and    a.tipoAporte.codigo not in :codigos " +
+			"   and    a.fechaTransaccion <= :fechaCorte " +
+			"   and    exists (select 1 from Entidad e where e.codigo = a.entidad.codigo) " +
+			" group by a.entidad.codigo "
+		);
+		query.setParameter("codigos", codigosPatronal);
+		query.setParameter("fechaCorte", fechaCorte);
+		return query.getResultList();
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<Object[]> selectCountImposicionesJubilacionPorEntidad(java.time.LocalDateTime fechaCorte) throws Throwable {
+		System.out.println("AporteDaoServiceImpl.selectCountImposicionesJubilacionPorEntidad fechaCorte: " + fechaCorte);
+		Query query = em.createQuery(
+			" select   a.entidad.codigo, count(a.codigo) " +
+			" from     Aporte a " +
+			" where    a.tipoAporte.codigo in :codigos " +
+			"   and    a.fechaTransaccion <= :fechaCorte " +
+			" group by a.entidad.codigo "
+		);
+		query.setParameter("codigos", java.util.Arrays.asList(9L, 11L));
+		query.setParameter("fechaCorte", fechaCorte);
+		return query.getResultList();
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<Object[]> selectSumaSaldoCuentaJubilacionPorEntidad(java.time.LocalDateTime fechaCorte) throws Throwable {
+		System.out.println("AporteDaoServiceImpl.selectSumaSaldoCuentaJubilacionPorEntidad fechaCorte: " + fechaCorte);
+		Query query = em.createQuery(
+			" select   a.entidad.codigo, sum(a.valor) " +
+			" from     Aporte a " +
+			" where    a.tipoAporte.codigo = :codigo " +
+			"   and    a.fechaTransaccion <= :fechaCorte " +
+			" group by a.entidad.codigo "
+		);
+		query.setParameter("codigo", 23L);
+		query.setParameter("fechaCorte", fechaCorte);
+		return query.getResultList();
+	}
+
 }

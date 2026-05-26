@@ -108,4 +108,22 @@ public class EntidadServiceImpl implements EntidadService {
         return entidades;
 	}
 
+	@Override
+	public List<Entidad> selectByIdEstado(Long idEstado) throws Throwable {
+		System.out.println("Ingresa al metodo selectByIdEstado EntidadService con idEstado: " + idEstado);
+		return entidadDaoService.selectByIdEstado(idEstado);
+	}
+
+	@Override
+	public Entidad findById(Long codigo) throws Throwable {
+		System.out.println("Ingresa al metodo findById EntidadService con codigo: " + codigo);
+		return entidadDaoService.findById(codigo);
+	}
+
+	@Override
+	public Entidad selectByNumeroIdentificacion(String numeroIdentificacion) throws Throwable {
+		System.out.println("selectByNumeroIdentificacion EntidadService: " + numeroIdentificacion);
+		return entidadDaoService.selectByNumeroIdentificacion(numeroIdentificacion);
+	}
+
 }

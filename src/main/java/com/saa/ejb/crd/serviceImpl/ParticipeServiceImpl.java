@@ -89,4 +89,10 @@ public class ParticipeServiceImpl implements ParticipeService {
         }
         return result;
     }
+
+    @Override
+    public List<Participe> selectByEntidad(Long codigoEntidad) throws Throwable {
+        System.out.println("Ingresa al metodo selectByEntidad ParticipeService con codigoEntidad: " + codigoEntidad);
+        return participeDaoService.selectByEntidad(codigoEntidad);
+    }
 }

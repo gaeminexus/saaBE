@@ -75,4 +75,24 @@ public interface EntidadDaoService extends EntityDao<Entidad> {
 	java.util.List<com.saa.model.crd.dto.EntidadResumenConsolidadoDTO> selectResumenConsolidadoPorEstado(
 			java.util.List<Long> estadosPermitidos) throws Throwable;
 
+	/**
+	 * Recupera todas las entidades que tengan un idEstado específico.
+	 * @param idEstado : Estado a filtrar
+	 * @return : Listado de entidades con ese estado
+	 * @throws Throwable : Excepcion
+	 */
+	List<Entidad> selectByIdEstado(Long idEstado) throws Throwable;
+
+	/**
+	 * Para G45 — Busca una Entidad por su número de identificación.
+	 * @param numeroIdentificacion : Número de identificación (cédula/RUC)
+	 * @return : Entidad encontrada o null
+	 */
+	Entidad selectByNumeroIdentificacion(String numeroIdentificacion) throws Throwable;
+
+	/**
+	 * Busca una Entidad por su código usando em.find() — retorna null si no existe.
+	 */
+	Entidad findById(Long codigo) throws Throwable;
+
 }

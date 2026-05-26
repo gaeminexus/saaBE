@@ -6,6 +6,7 @@ import java.util.List;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.cnt.dao.DetalleAsientoDaoService;
+import com.saa.ejb.cnt.dao.PlanCuentaDaoService;
 import com.saa.ejb.cnt.service.DetalleAsientoService;
 import com.saa.ejb.cnt.service.DetalleMayorizacionService;
 import com.saa.ejb.cnt.service.DetallePlantillaService;
@@ -42,6 +43,9 @@ public class DetalleAsientoServiceImpl implements DetalleAsientoService{
 	
 	@EJB
 	private DetallePlantillaService detallePlantillaService;	
+	
+	@EJB
+	private PlanCuentaDaoService planCuentaDaoService;	
 	
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.sistema.ejb.util.EntityService#remove(java.util.List)
@@ -413,8 +417,16 @@ public class DetalleAsientoServiceImpl implements DetalleAsientoService{
 				recuperados[1] = 0D;
 			}
 			haber = Double.valueOf(recuperados[1].toString());
-		}			
-		return debe - haber;
+		}
+		// recupera el registro de cuenta para calcular correctamente los saldos
+		PlanCuenta cuenta = planCuentaDaoService.selectById(idCuenta, NombreEntidadesContabilidad.PLAN_CUENTA);
+		if (cuenta.getNaturalezaCuenta().getTipo() == 1L) {
+			return debe - haber;
+		} else if (cuenta.getNaturalezaCuenta().getTipo() == 2L) {
+			return haber - debe;
+		} else {
+			throw new IncomeException("La naturaleza de la cuenta no tiene tipo para el calculo del saldo");
+		}
 	}
 
 	/* (non-Javadoc)
