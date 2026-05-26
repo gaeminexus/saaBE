@@ -38,5 +38,10 @@ public interface PrestamoDaoService extends EntityDao<Prestamo> {
      */
     List<Prestamo> selectByEntidadYProductoActivosById(Long codigoEntidad, Long codigoProducto) throws Throwable;
 
+    /**
+     * Busca préstamos cuya fecha esté entre el primer y último día del mes indicado.
+     */
+    List<Prestamo> selectByRangoFechas(java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable;
+
 }
 

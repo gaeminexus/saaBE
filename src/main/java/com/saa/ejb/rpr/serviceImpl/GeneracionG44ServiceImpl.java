@@ -57,19 +57,8 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
         }
 
         // -------------------------------------------------------
-        // 2. Ejecutar SELECTs con COUNT/SUM en BD filtrados por fechaCorte
+        // 2. Ejecutar SELECT con SUM en BD filtrado por fechaCorte
         // -------------------------------------------------------
-
-        // COUNT de aportes con tipoAporte.codigo IN (9, 11) → imposicionesAcumuladas
-        List<Object[]> listaImposiciones = aporteService.selectCountImposicionesJubilacionPorEntidad(fechaCorte);
-        Map<Long, Long> mapaImposiciones = new HashMap<>();
-        for (Object[] fila : listaImposiciones) {
-            Long codigoEntidad = toLong(fila[0]);
-            Long count         = toLong(fila[1]);
-            if (codigoEntidad != null && count != null) {
-                mapaImposiciones.put(codigoEntidad, count);
-            }
-        }
 
         // SUM de aportes.valor con tipoAporte.codigo = 23 → saldoCuenta
         List<Object[]> listaSaldo = aporteService.selectSumaSaldoCuentaJubilacionPorEntidad(fechaCorte);
@@ -82,7 +71,6 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
             }
         }
 
-        System.out.println("G44 - Imposiciones en BD: " + mapaImposiciones.size() + " entidades");
         System.out.println("G44 - Saldos cuenta en BD: " + mapaSaldo.size() + " entidades");
 
         // -------------------------------------------------------
@@ -100,14 +88,36 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
                 valorPension = vppcList.get(0).getValorPagar();
             }
 
-            // fechaJubilacion → buscar en HistoricoG44 por cédula; null si no existe
+            // fechaJubilacion e imposicionesAcumuladas → buscar en HistoricoG44 por cédula
             java.time.LocalDate fechaJubilacion = null;
+            Long imposicionesAcumuladas = null;
             List<HistoricoG44> historicoList = historicoG44Service.selectByIdentificacion(entidad.getNumeroIdentificacion());
-            if (historicoList != null && !historicoList.isEmpty() && historicoList.get(0).getFechaJubilacion() != null) {
-                try {
-                    fechaJubilacion = java.time.LocalDate.parse(historicoList.get(0).getFechaJubilacion());
-                } catch (Exception ex) {
-                    System.out.println("G44 - fechaJubilacion no parseable para cedula: " + entidad.getNumeroIdentificacion());
+            if (historicoList != null && !historicoList.isEmpty()) {
+                HistoricoG44 hist = historicoList.get(0);
+                imposicionesAcumuladas = hist.getImposicionesAcumuladas();
+                if (hist.getFechaJubilacion() != null) {
+                    String rawFecha = hist.getFechaJubilacion().trim();
+                    java.time.format.DateTimeFormatter[] formatos = {
+                        java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"),
+                        java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"),
+                        java.time.format.DateTimeFormatter.ofPattern("dd-MM-yyyy"),
+                        java.time.format.DateTimeFormatter.ofPattern("yyyy/MM/dd"),
+                        java.time.format.DateTimeFormatter.ofPattern("MM/dd/yyyy"),
+                        java.time.format.DateTimeFormatter.ofPattern("d/M/yyyy"),
+                        java.time.format.DateTimeFormatter.ofPattern("d-M-yyyy")
+                    };
+                    for (java.time.format.DateTimeFormatter fmt : formatos) {
+                        try {
+                            fechaJubilacion = java.time.LocalDate.parse(rawFecha, fmt);
+                            break;
+                        } catch (Exception ex) {
+                            // intentar siguiente formato
+                        }
+                    }
+                    if (fechaJubilacion == null) {
+                        System.out.println("G44 - fechaJubilacion no parseable para cedula: "
+                            + entidad.getNumeroIdentificacion() + " valor en BD: [" + rawFecha + "]");
+                    }
                 }
             }
 
@@ -116,7 +126,7 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
             jubilado.setTipoIdentificacion("C");
             jubilado.setTipoJubilacion("V");
             jubilado.setFechaJubilacion(fechaJubilacion);
-            jubilado.setImposicionesAcumuladas(mapaImposiciones.getOrDefault(codigoEntidad, 0L));
+            jubilado.setImposicionesAcumuladas(imposicionesAcumuladas != null ? imposicionesAcumuladas : 0L);
             jubilado.setValorPension(valorPension);
             jubilado.setValorNetoRecibir(valorPension);
             jubilado.setSaldoCuenta(mapaSaldo.getOrDefault(codigoEntidad, 0.0));

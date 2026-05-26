@@ -103,4 +103,16 @@ public class PrestamoDaoServiceImpl extends EntityDaoImpl<Prestamo> implements P
         }
     }
 
+    @Override
+    @SuppressWarnings("unchecked")
+    public List<Prestamo> selectByRangoFechas(java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable {
+        Query query = em.createQuery(
+            "select p from Prestamo p " +
+            "where p.fecha >= :fechaInicio and p.fecha <= :fechaFin"
+        );
+        query.setParameter("fechaInicio", fechaInicio);
+        query.setParameter("fechaFin", fechaFin);
+        return query.getResultList();
+    }
+
 }

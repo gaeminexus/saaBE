@@ -1114,4 +1114,9 @@ public class PrestamoServiceImpl implements PrestamoService {
 		
 		return cuotasRecalculadas;
 	}
+
+	@Override
+	public java.util.List<Prestamo> selectByRangoFechas(java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable {
+		return prestamoDaoService.selectByRangoFechas(fechaInicio, fechaFin);
+	}
 }

@@ -37,4 +37,9 @@ public interface PrestamoService extends EntityService<Prestamo>{
 	 */
 	Prestamo aplicarAbonoCapital(Long idPrestamo, Double valorAbono, Integer opcionRecalculo) throws Throwable;
 
+	/**
+	 * Busca préstamos cuya fecha esté entre fechaInicio y fechaFin.
+	 */
+	java.util.List<Prestamo> selectByRangoFechas(java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable;
+
 }

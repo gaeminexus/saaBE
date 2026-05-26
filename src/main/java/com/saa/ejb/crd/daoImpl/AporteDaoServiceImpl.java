@@ -523,7 +523,8 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 		Query query = em.createQuery(
 			" select   a.entidad.codigo, count(a.codigo) " +
 			" from     Aporte a " +
-			" where    a.tipoAporte.codigo in :codigos " +
+			" join     a.tipoAporte ta " +
+			" where    ta.codigo in (:codigos) " +
 			"   and    a.fechaTransaccion <= :fechaCorte " +
 			" group by a.entidad.codigo "
 		);

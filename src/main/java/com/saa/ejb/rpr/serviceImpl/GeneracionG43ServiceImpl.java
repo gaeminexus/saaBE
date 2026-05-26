@@ -134,7 +134,6 @@ public class GeneracionG43ServiceImpl implements GeneracionG43Service {
         } else {
             System.out.println("G43 generado con " + contador + " registros");
         }
-
         return contador;
     }
 }

@@ -151,6 +151,10 @@ public class GeneracionG42ServiceImpl implements GeneracionG42Service {
         return mapa.computeIfAbsent(codigoEntidad, id -> {
             SaldoCuentaG42 g42 = new SaldoCuentaG42();
             g42.setDetalleEjecucion(detalle);
+            g42.setRendimiento(0.0);
+            g42.setSaldoAportePatronal(0.0);
+            g42.setSaldoAportePersonal(0.0);
+            g42.setAportePersonal(0.0);
             return g42;
         });
     }

@@ -233,6 +233,7 @@ public class AsientoServiceImpl implements AsientoService {
 
 		asiento.setNumeroMesTipo(siguienteNumeroMesTipo);
 		asiento.setNumeroAlterno(numeroAlterno);
+		asiento = asientoDaoService.save(asiento, asiento.getCodigo());
 		System.out.println("numeroAlterno generado: " + numeroAlterno);
 		return asiento;
 	}
