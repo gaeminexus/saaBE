@@ -138,7 +138,91 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
             contador++;
         }
 
-        System.out.println("G44 generado con " + contador + " registros");
+        // -------------------------------------------------------
+        // 4. Ex-jubilados: en HistoricoG44 con estado != 30 en ENTD
+        // -------------------------------------------------------
+        LocalDateTime fechaInicio = LocalDateTime.of((int) anio, (int) mes, 1, 0, 0, 0);
+
+        List<HistoricoG44> exJubiladosHist = null;
+        try {
+            exJubiladosHist = historicoG44Service.selectExJubilados();
+        } catch (Throwable e) {
+            exJubiladosHist = new java.util.ArrayList<>();
+            System.out.println("G44 - selectExJubilados error: " + e.getMessage());
+        }
+        System.out.println("G44 - Ex-jubilados desde HistoricoG44: " + exJubiladosHist.size());
+
+        if (!exJubiladosHist.isEmpty()) {
+            // Cargar sumas de aportes tipo 23 en el mes
+            List<Object[]> sumaEnMesList = aporteService.selectSumaAportesTipo23EnRango(fechaInicio, fechaCorte);
+            Map<Long, Double> mapaAportesMes = new HashMap<>();
+            for (Object[] fila : sumaEnMesList) {
+                Long cod = toLong(fila[0]);
+                Double suma = toDouble(fila[1]);
+                if (cod != null && suma != null) mapaAportesMes.put(cod, suma);
+            }
+
+            for (HistoricoG44 hist : exJubiladosHist) {
+                String identificacion = hist.getIdentificacion();
+
+                // Obtener codigo de entidad para buscar en el mapa
+                Entidad entidad = null;
+                try {
+                    entidad = entidadService.selectByNumeroIdentificacion(identificacion);
+                } catch (Throwable e) {
+                    System.out.println("G44 - entidad no encontrada para ex-jubilado: " + identificacion);
+                    continue;
+                }
+                if (entidad == null) continue;
+
+                Long codigoEntidad = entidad.getCodigo();
+                Double sumaEnMes  = mapaAportesMes.getOrDefault(codigoEntidad, 0.0);
+                Double saldoTotal = mapaSaldo.getOrDefault(codigoEntidad, 0.0);
+
+                // Exclusión: sin saldo y sin aportes en el mes → NO incluir
+                if (saldoTotal == 0.0 && sumaEnMes == 0.0) {
+                    System.out.println("G44 - SKIP ex-jubilado " + identificacion + " (sin saldo ni aportes en el mes)");
+                    continue;
+                }
+
+                // Parsear fechaJubilacion
+                java.time.LocalDate fechaJubilacion = null;
+                if (hist.getFechaJubilacion() != null) {
+                    String rawFecha = hist.getFechaJubilacion().trim();
+                    java.time.format.DateTimeFormatter[] formatos = {
+                        java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"),
+                        java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"),
+                        java.time.format.DateTimeFormatter.ofPattern("dd-MM-yyyy"),
+                        java.time.format.DateTimeFormatter.ofPattern("yyyy/MM/dd"),
+                        java.time.format.DateTimeFormatter.ofPattern("d/M/yyyy"),
+                        java.time.format.DateTimeFormatter.ofPattern("d-M-yyyy")
+                    };
+                    for (java.time.format.DateTimeFormatter fmt : formatos) {
+                        try { fechaJubilacion = java.time.LocalDate.parse(rawFecha, fmt); break; }
+                        catch (Exception ex) { /* siguiente formato */ }
+                    }
+                }
+
+                ParticipeJubiladoG44 exJubilado = new ParticipeJubiladoG44();
+                exJubilado.setIdentificacion(identificacion);
+                exJubilado.setTipoIdentificacion("C");
+                exJubilado.setTipoJubilacion("V");
+                exJubilado.setFechaJubilacion(fechaJubilacion);
+                exJubilado.setImposicionesAcumuladas(hist.getImposicionesAcumuladas() != null ? hist.getImposicionesAcumuladas() : 0L);
+                exJubilado.setValorPension(sumaEnMes);
+                exJubilado.setValorNetoRecibir(sumaEnMes);
+                exJubilado.setValoresCompensados(sumaEnMes);
+                exJubilado.setSaldoCuenta(saldoTotal);
+                exJubilado.setJubilacionIess("S");
+                exJubilado.setDetalleEjecucion(detalle);
+
+                cg44DaoService.save(exJubilado, null);
+                System.out.println("G44 INSERT ex-jubilado: " + identificacion + " (sumaEnMes=" + sumaEnMes + ", saldoTotal=" + saldoTotal + ")");
+                contador++;
+            }
+        }
+
+        System.out.println("G44 generado TOTAL con " + contador + " registros");
         return contador;
     }
 

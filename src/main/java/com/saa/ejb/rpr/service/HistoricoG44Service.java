@@ -6,4 +6,5 @@ import jakarta.ejb.Local;
 @Local
 public interface HistoricoG44Service extends EntityDao<HistoricoG44> {
     List<HistoricoG44> selectByIdentificacion(String identificacion);
+    List<HistoricoG44> selectExJubilados() throws Throwable;
 }

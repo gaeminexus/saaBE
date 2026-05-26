@@ -6,4 +6,10 @@ import jakarta.ejb.Local;
 @Local
 public interface HistoricoG44DaoService extends EntityDao<HistoricoG44> {
     List<HistoricoG44> selectByIdentificacion(String identificacion);
+
+    /**
+     * Retorna los registros de HM44 cuya identificación existe en ENTD
+     * pero con idEstado diferente a 30 (ex-jubilados).
+     */
+    List<HistoricoG44> selectExJubilados() throws Throwable;
 }

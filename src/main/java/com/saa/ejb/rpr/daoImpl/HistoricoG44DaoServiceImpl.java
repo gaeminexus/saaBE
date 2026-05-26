@@ -22,4 +22,16 @@ public class HistoricoG44DaoServiceImpl extends EntityDaoImpl<HistoricoG44> impl
             .setParameter("ced", identificacion)
             .getResultList();
     }
+
+    @Override
+    public List<HistoricoG44> selectExJubilados() throws Throwable {
+        return em.createQuery(
+            "select h from HistoricoG44 h " +
+            "where exists (" +
+            "  select e from Entidad e " +
+            "  where e.numeroIdentificacion = h.identificacion " +
+            "  and e.idEstado <> 30 " +
+            ")", HistoricoG44.class)
+            .getResultList();
+    }
 }

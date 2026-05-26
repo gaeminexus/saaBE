@@ -118,4 +118,9 @@ public class AporteServiceImpl implements AporteService {
     public List<Object[]> selectSumaSaldoCuentaJubilacionPorEntidad(java.time.LocalDateTime fechaCorte) throws Throwable {
         return aporteDaoService.selectSumaSaldoCuentaJubilacionPorEntidad(fechaCorte);
     }
+
+    @Override
+    public List<Object[]> selectSumaAportesTipo23EnRango(java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable {
+        return aporteDaoService.selectSumaAportesTipo23EnRango(fechaInicio, fechaFin);
+    }
 }

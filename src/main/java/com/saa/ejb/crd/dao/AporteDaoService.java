@@ -46,6 +46,13 @@ public interface AporteDaoService extends EntityDao<Aporte>{
 	 */
 	List<Object[]> selectSumaSaldoCuentaJubilacionPorEntidad(LocalDateTime fechaCorte) throws Throwable;
 
+	/**
+	 * Para G44 ex-jubilados: SUM de aportes con tipoAporte.codigo = 23
+	 * cuya fechaTransaccion esté entre fechaInicio y fechaFin (rango del mes).
+	 * Retorna Object[]{Long codigoEntidad, Double suma}.
+	 */
+	List<Object[]> selectSumaAportesTipo23EnRango(LocalDateTime fechaInicio, LocalDateTime fechaFin) throws Throwable;
+
 
 	/*filtra todos los aporte por id de entidad
 	 * @param :idEntidad

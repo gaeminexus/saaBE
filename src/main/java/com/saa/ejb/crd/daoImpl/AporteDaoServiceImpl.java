@@ -549,4 +549,22 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 		return query.getResultList();
 	}
 
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<Object[]> selectSumaAportesTipo23EnRango(java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable {
+		System.out.println("AporteDaoServiceImpl.selectSumaAportesTipo23EnRango desde: " + fechaInicio + " hasta: " + fechaFin);
+		Query query = em.createQuery(
+			" select   a.entidad.codigo, sum(a.valor) " +
+			" from     Aporte a " +
+			" where    a.tipoAporte.codigo = :codigo " +
+			"   and    a.fechaTransaccion >= :fechaInicio " +
+			"   and    a.fechaTransaccion <= :fechaFin " +
+			" group by a.entidad.codigo "
+		);
+		query.setParameter("codigo", 23L);
+		query.setParameter("fechaInicio", fechaInicio);
+		query.setParameter("fechaFin", fechaFin);
+		return query.getResultList();
+	}
+
 }

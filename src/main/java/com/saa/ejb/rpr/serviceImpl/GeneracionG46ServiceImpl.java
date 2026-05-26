@@ -51,6 +51,12 @@ public class GeneracionG46ServiceImpl implements GeneracionG46Service {
         long contador = 0L;
 
         for (Prestamo prestamo : prestamos) {
+            // FILTRO: Solo préstamos con idAsoprep válido
+            if (prestamo.getIdAsoprep() == null || prestamo.getIdAsoprep().toString().trim().isEmpty()) {
+                System.out.println("G46 - SKIP prestamo codigo " + prestamo.getCodigo() + " (idAsoprep nulo o vacío)");
+                continue;
+            }
+
             NuevoPrestamoG46 g46 = new NuevoPrestamoG46();
 
             // Identificación del partícipe
