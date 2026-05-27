@@ -111,4 +111,39 @@ public class DetallePrestamoServiceImpl implements DetallePrestamoService {
 	public List<Object[]> selectSumaCuotasPagadasPorEntidad(java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable {
 		return detallePrestamoDaoService.selectSumaCuotasPagadasPorEntidad(fechaInicio, fechaFin);
 	}
+
+	@Override
+	public DetallePrestamo selectMenorCuotaActiva(Long codigoPrestamo, java.time.LocalDateTime fechaCorte) throws Throwable {
+		return detallePrestamoDaoService.selectMenorCuotaActiva(codigoPrestamo, fechaCorte);
+	}
+
+	@Override
+	public List<DetallePrestamo> selectCuotasDelMes(Long codigoPrestamo, java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable {
+		return detallePrestamoDaoService.selectCuotasDelMes(codigoPrestamo, fechaInicio, fechaFin);
+	}
+
+	@Override
+	public DetallePrestamo selectMenorCuotaAnteriorAlMes(Long codigoPrestamo, java.time.LocalDateTime fechaInicio) throws Throwable {
+		return detallePrestamoDaoService.selectMenorCuotaAnteriorAlMes(codigoPrestamo, fechaInicio);
+	}
+
+	@Override
+	public List<DetallePrestamo> selectCuotasDelMesGlobal(java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable {
+		return detallePrestamoDaoService.selectCuotasDelMesGlobal(fechaInicio, fechaFin);
+	}
+
+	@Override
+	public List<DetallePrestamo> selectMenorCuotaAnteriorAlMesGlobal(java.time.LocalDateTime fechaInicio) throws Throwable {
+		return detallePrestamoDaoService.selectMenorCuotaAnteriorAlMesGlobal(fechaInicio);
+	}
+
+	@Override
+	public List<DetallePrestamo> selectMaxCuotaPagadaDelMesGlobal(java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable {
+		return detallePrestamoDaoService.selectMaxCuotaPagadaDelMesGlobal(fechaInicio, fechaFin);
+	}
+
+	@Override
+	public List<DetallePrestamo> selectMaxCuotaPagadaCanceladoAnticipadoDelMesGlobal(java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable {
+		return detallePrestamoDaoService.selectMaxCuotaPagadaCanceladoAnticipadoDelMesGlobal(fechaInicio, fechaFin);
+	}
 }

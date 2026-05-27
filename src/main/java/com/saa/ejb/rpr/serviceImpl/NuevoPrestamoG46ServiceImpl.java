@@ -65,4 +65,9 @@ public class NuevoPrestamoG46ServiceImpl implements NuevoPrestamoG46Service {
         }
         return result;
     }
+
+    @Override
+    public List<NuevoPrestamoG46> selectByDetalle(Long codigoDetalle) throws Throwable {
+        return nuevoPrestamoG46DaoService.selectByDetalle(codigoDetalle);
+    }
 }

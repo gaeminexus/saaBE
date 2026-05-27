@@ -65,4 +65,14 @@ public class SaldoOperacionG48ServiceImpl implements SaldoOperacionG48Service {
         }
         return result;
     }
+
+    @Override
+    public List<SaldoOperacionG48> selectByDetalle(Long codigoDetalle) throws Throwable {
+        return saldoOperacionG48DaoService.selectByDetalle(codigoDetalle);
+    }
+
+    @Override
+    public SaldoOperacionG48 selectByDetalleYOperacion(Long codigoDetalle, String numeroOperacion) throws Throwable {
+        return saldoOperacionG48DaoService.selectByDetalleYOperacion(codigoDetalle, numeroOperacion);
+    }
 }

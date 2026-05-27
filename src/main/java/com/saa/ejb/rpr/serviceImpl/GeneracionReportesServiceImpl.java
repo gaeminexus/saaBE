@@ -13,6 +13,11 @@ import com.saa.ejb.rpr.service.GeneracionG43Service;
 import com.saa.ejb.rpr.service.GeneracionG44Service;
 import com.saa.ejb.rpr.service.GeneracionG45Service;
 import com.saa.ejb.rpr.service.GeneracionG46Service;
+import com.saa.ejb.rpr.service.GeneracionG47Service;
+import com.saa.ejb.rpr.service.GeneracionG48Service;
+import com.saa.ejb.rpr.service.GeneracionG49Service;
+import com.saa.ejb.rpr.service.GeneracionG50Service;
+import com.saa.ejb.rpr.service.GeneracionG51Service;
 import com.saa.ejb.rpr.service.GeneracionReportesService;
 import com.saa.model.rpr.DetalleEjecucionReporte;
 import com.saa.model.rpr.EjecucionReporte;
@@ -52,6 +57,11 @@ public class GeneracionReportesServiceImpl implements GeneracionReportesService 
     @EJB private GeneracionG44Service           g44Service;
     @EJB private GeneracionG45Service           g45Service;
     @EJB private GeneracionG46Service           g46Service;
+    @EJB private GeneracionG47Service           g47Service;
+    @EJB private GeneracionG48Service           g48Service;
+    @EJB private GeneracionG49Service           g49Service;
+    @EJB private GeneracionG50Service           g50Service;
+    @EJB private GeneracionG51Service           g51Service;
 
     // -------------------------------------------------------
     // TODO: agregar @EJB de cada GeneracionGxxService
@@ -95,11 +105,7 @@ public class GeneracionReportesServiceImpl implements GeneracionReportesService 
             // ---------------------------------------------------
             // 3. Obtener solo los EJRD pendientes o con novedades
             // ---------------------------------------------------
-            try {
-                ejrdsAProcesar = ejrdService.selectPendientesYNovedadesByEjecucion(ejrc.getCodigo());
-            } catch (Throwable e) {
-                ejrdsAProcesar = new ArrayList<>();
-            }
+            ejrdsAProcesar = ejrdService.selectPendientesYNovedadesByEjecucion(ejrc.getCodigo());
             esCorreccion = true;
 
             // Marcar EJRC como en proceso nuevamente
@@ -171,12 +177,7 @@ public class GeneracionReportesServiceImpl implements GeneracionReportesService 
         // -------------------------------------------------------
         // 7. Evaluar estado final del EJRC
         // -------------------------------------------------------
-        List<DetalleEjecucionReporte> conProblemas = new ArrayList<>();
-        try {
-            conProblemas = ejrdService.selectPendientesYNovedadesByEjecucion(ejrc.getCodigo());
-        } catch (Throwable e) {
-            // No hay problemas
-        }
+        List<DetalleEjecucionReporte> conProblemas = ejrdService.selectPendientesYNovedadesByEjecucion(ejrc.getCodigo());
 
         if (conProblemas.isEmpty()) {
             ejrc.setEstado(EJRC_COMPLETO);
@@ -205,11 +206,11 @@ public class GeneracionReportesServiceImpl implements GeneracionReportesService 
             case "G44": return g44Service.generar(ejrd);
             case "G45": return g45Service.generar(ejrd);
             case "G46": return g46Service.generar(ejrd);
-            // case "G47": return g47Service.generar(ejrd);
-            // case "G48": return g48Service.generar(ejrd);
-            // case "G49": return g49Service.generar(ejrd);
-            // case "G50": return g50Service.generar(ejrd);
-            // case "G51": return g51Service.generar(ejrd);
+            case "G47": return g47Service.generar(ejrd);
+            case "G48": return g48Service.generar(ejrd);
+            case "G49": return g49Service.generar(ejrd);
+            case "G50": return g50Service.generar(ejrd);
+            case "G51": return g51Service.generar(ejrd);
             default:
                 throw new Exception("Logica de generacion no implementada para: " + ejrd.getTipoReporte());
         }

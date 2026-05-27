@@ -264,38 +264,229 @@
 
 ---
 
-## ⏳ G47 — NovacionG47 — PENDIENTE
+## ✅ G47 — NovacionG47 — COMPLETADO
 
 **Tabla destino:** `RPR.CG47`  
-**Regla:** pendiente — el usuario la proporcionará
+**Fuente:** `CRD.PRST` (Prestamo) con `estadoPrestamo = 9`
+
+**Regla:**
+- Obtener todos los préstamos con `estadoPrestamo = 9` (novaciones)
+- Si no hay ninguno → G47 vacío, OK
+- Por cada préstamo mapear a CG47
+
+**Mapeo de campos:**
+| Campo CG47 | Fuente | Valor |
+|---|---|---|
+| `tipoIdentificacion` | — | **FIJO: `"C"`** |
+| `identificacion` | `Prestamo.entidad.numeroIdentificacion` | dinámico |
+| `numeroOperacion` | `Prestamo.idAsoprep` (como String) | dinámico |
+| `fechaNovacion` | `Prestamo.fecha.toLocalDate()` | dinámico |
+| `numeroOperacionAnterior` | — | `null` (no disponible) |
+
+**Archivos creados/modificados:**
+- `PrestamoDaoService/Impl` → método `selectByEstado(Long estado)` agregado
+- `PrestamoService/Impl` → método expuesto
+- `GeneracionG47Service.java` + `GeneracionG47ServiceImpl.java` → creados
+- Orquestador → `@EJB g47Service` activo, `case "G47"` activado
 
 ---
 
-## ⏳ G48 — SaldoOperacionG48 — PENDIENTE
+## ✅ G48 — SaldoOperacionG48 — COMPLETADO
 
-**Tabla destino:** `RPR.CG48`  
-**Regla:** pendiente — el usuario la proporcionará
+**Tabla destino:** `RPR.CG48`
 
----
-
-## ⏳ G49 — CancelacionG49 — PENDIENTE
-
-**Tabla destino:** `RPR.CG49`  
-**Regla:** pendiente — el usuario la proporcionará
+**Fuente principal:** `CRD.DTPR` (DetallePrestamo) — dos grupos de cuotas
 
 ---
 
-## ⏳ G50 — GaranteG50 — PENDIENTE
+### Grupos de cuotas
 
-**Tabla destino:** `RPR.CG50`  
-**Regla:** pendiente — el usuario la proporcionará
+**GRUPO 1:** Cuotas con `fechaVencimiento` dentro del mes de ejecución y `estado != 7` (canceladaAnticipada).
+
+**GRUPO 2:** La menor cuota (MIN numeroCuota) por préstamo con `fechaVencimiento < primerDíaMes`, `estado IN (2,3,5,6)` y `prestamo.estadoPrestamo IN (2,8,11)` — préstamos con cuotas vencidas sin pagar.
+
+> Un préstamo que aparece en el Grupo 1 **no** se incluye en el Grupo 2 (se excluye por duplicado).
 
 ---
 
-## ⏳ G51 — GarantiaRealG51 — PENDIENTE
+### Mapeo de campos
 
-**Tabla destino:** `RPR.CG51`  
-**Regla:** pendiente — el usuario la proporcionará
+| Campo CG48 | Fuente | Valor |
+|---|---|---|
+| `tipoIdentificacion` | — | **FIJO: `"C"`** |
+| `identificacion` | `Prestamo.entidad.numeroIdentificacion` | dinámico |
+| `numeroOperacion` | `Prestamo.idAsoprep` (como String) | dinámico |
+| `tipoCredito` | `Prestamo.producto.nombre.charAt(0)` | dinámico |
+| `diasMorosidad` | días entre `fechaVencimiento` y último día del mes (si estado != 4) | calculado |
+| `calificacionPropia` | según tabla de días (ver abajo) | calculado |
+| `tasaInteres` | `Prestamo.interesNominal` | dinámico |
+| `valorPorVencer` | `DetallePrestamo.saldoInicialCapital` | dinámico |
+| `valorVencido` | Grupo 1 → `0`. Grupo 2 → `DetallePrestamo.capital` | calculado |
+| `interesOrdinario` | `DetallePrestamo.interes` | dinámico |
+| `costosOperativos` | — | **FIJO: `0`** |
+| `interesMora` | — | **FIJO: `0`** |
+| `valorDemandaJudicial` | — | **FIJO: `0`** |
+| `carteraCastigada` | — | **FIJO: `0`** |
+| `valorTotalCuentaIndividual` | `CG42` del mismo EJRC: `saldoAportePatronal + saldoAportePersonal` de la entidad | calculado |
+| `valorSujetoProvision` | `max(0, valorPorVencer - valorTotalCuentaIndividual)` | calculado |
+| `provisionRequeridaOriginal` | Si VSAP > 0 → `VSAP × %` según calificación, sino `0` | calculado |
+| `provisionConstituida` | `provisionRequeridaOriginal` del G48 del período anterior para esa operación | calculado |
+| `tipoSistemaAmortizacion` | — | **FIJO: `"FR"`** |
+| `cuotaCredito` | `DetallePrestamo.cuota` | dinámico |
+| `dividendo` | — | **FIJO: `0`** |
+| `fechaExigibilidad` | `DetallePrestamo.fechaVencimiento.toLocalDate()` | dinámico |
+
+---
+
+### Tabla de calificación propia (por días de morosidad)
+
+| Días | Calificación |
+|---|---|
+| 0 | A1 |
+| 1–8 | A2 |
+| 9–15 | A3 |
+| 16–30 | B1 |
+| 31–45 | B2 |
+| 46–70 | C1 |
+| 71–90 | C2 |
+| 91–120 | D |
+| > 120 | E |
+
+---
+
+### Tabla de porcentajes de provisión por calificación
+
+| Calificación | Porcentaje |
+|---|---|
+| A1 | 0.99% |
+| A2 | 1.99% |
+| A3 | 2.00% |
+| B1 | 5.00% |
+| B2 | 10.00% |
+| C1 | 20.00% |
+| C2 | 40.00% |
+| D | 60.00% |
+| E | 100.00% |
+
+---
+
+### Provisión Constituida — lógica del período anterior
+
+1. Buscar EJRC del mes/año anterior con `selectByMesAnio(mesPrevio, anioPrevio)`.
+2. Si existe → obtener EJRD G48 de ese EJRC → cargar todo el `CG48` en un `Map<numeroOperacion, provisionRequeridaOriginal>` (en bloque, un solo query).
+3. Si **no existe** EJRC anterior → consultar `RPR.HM48` (HistoricoG48) **individualmente** por `numeroOperacion` de cada préstamo procesado (con caché en memoria para no repetir la misma consulta). Si tampoco existe en el histórico → `0`.
+
+---
+
+### Archivos creados/modificados
+
+- `HistoricoG48DaoService.java` → método `selectByNumeroOperacion(String)` agregado
+- `HistoricoG48DaoServiceImpl.java` → implementación del método anterior
+- `HistoricoG48Service.java` → **CREADO** — interface con `selectByNumeroOperacion(String)`
+- `HistoricoG48ServiceImpl.java` → **CREADO** — implementación delegada
+- `SaldoOperacionG48DaoService.java` → métodos `selectByDetalle(Long)` y `selectByDetalleYOperacion(Long, String)` agregados
+- `SaldoOperacionG48DaoServiceImpl.java` → implementaciones de los métodos anteriores
+- `SaldoOperacionG48Service.java` → mismos 2 métodos expuestos
+- `SaldoOperacionG48ServiceImpl.java` → implementaciones delegadas
+- `DetallePrestamoDaoServiceImpl.java` → `JOIN FETCH d.prestamo`, `JOIN FETCH d.prestamo.entidad`, `LEFT JOIN FETCH d.prestamo.producto` en `selectCuotasDelMesGlobal` y `selectMenorCuotaAnteriorAlMesGlobal` (sin alias — JPA spec no lo permite)
+- `GeneracionG48Service.java` → **CREADO** — interface
+- `GeneracionG48ServiceImpl.java` → **CREADO** — implementación completa
+- Orquestador → `@EJB g48Service` activo, `case "G48"` activado
+
+---
+
+## ✅ G49 — CancelacionG49 — COMPLETADO
+
+**Tabla destino:** `RPR.CG49`
+
+**Fuente principal:** `CRD.DTPR` (DetallePrestamo) — tres grupos
+
+---
+
+### Grupos
+
+**GRUPO 1:** Préstamos cuya cuota con **mayor numeroCuota** esté dentro del mes de ejecución y sea de estado **pagada (4)**. Indica que la última cuota fue pagada → cancelación normal.
+
+**GRUPO 2:** Préstamos con `estadoPrestamo = 4` (cancelado anticipado) cuya cuota con **mayor numeroCuota pagada (estado=4)** esté dentro del mes. Excluye los que ya entraron por grupo 1.
+
+**GRUPO 3:** Operaciones que estaban en el **G48 del período anterior** pero ya **no aparecen en el G48 del período actual**. Si no hay EJRC anterior → grupo 3 vacío.
+
+> Se usa un `Set<numeroOperacion>` para evitar duplicados entre los tres grupos.
+
+---
+
+### Mapeo de campos
+
+| Campo CG49 | Fuente | Valor |
+|---|---|---|
+| `tipoIdentificacion` | — | **FIJO: `"C"`** |
+| `identificacion` | `Prestamo.entidad.numeroIdentificacion` (grupos 1 y 2) / `CG48anterior.identificacion` (grupo 3) | dinámico |
+| `numeroOperacion` | `Prestamo.idAsoprep` (como String) | dinámico |
+| `fechaCancelacion` | — | **último día del mes de ejecución** |
+| `formaCancelacion` | — | **FIJO: `"N"`** |
+
+---
+
+### Archivos creados/modificados
+
+- `DetallePrestamoDaoService.java` → métodos `selectMaxCuotaPagadaDelMesGlobal` y `selectMaxCuotaPagadaCanceladoAnticipadoDelMesGlobal` agregados
+- `DetallePrestamoDaoServiceImpl.java` → implementaciones con `JOIN FETCH d.prestamo` y `JOIN FETCH d.prestamo.entidad`
+- `DetallePrestamoService.java` → mismos 2 métodos expuestos
+- `DetallePrestamoServiceImpl.java` → implementaciones delegadas
+- `GeneracionG49Service.java` → **CREADO** — interface
+- `GeneracionG49ServiceImpl.java` → **CREADO** — implementación completa con los 3 grupos
+- Orquestador → `@EJB g49Service` activo, `case "G49"` activado
+
+---**Regla:** pendiente — el usuario la proporcionará
+
+---
+
+## ✅ G50 — GaranteG50 — COMPLETADO (sin registros)
+
+**Tabla destino:** `RPR.CG50`
+
+**Regla:** Por el momento no se generan registros. El service retorna `0` registros y el EJRD queda en estado OK. La lógica real se implementará posteriormente cuando el usuario la proporcione.
+
+**Archivos creados:**
+- `GeneracionG50Service.java` → **CREADO** — interface
+- `GeneracionG50ServiceImpl.java` → **CREADO** — retorna 0, OK
+- Orquestador → `@EJB g50Service` activo, `case "G50"` activado
+
+---
+
+## ✅ G51 — GarantiaRealG51 — COMPLETADO
+
+**Tabla destino:** `RPR.CG51`
+
+**Fuente:** `RPR.CG46` (NuevoPrestamoG46) del mismo EJRC — misma cantidad de registros que G46.
+
+**Regla:** Por cada registro del G46 del período actual → insertar un registro en G51. Si G46 está vacío → G51 vacío, OK.
+
+**Mapeo de campos:**
+
+| Campo CG51 | Fuente | Valor |
+|---|---|---|
+| `tipoIdentificacion` | `CG46.tipoIdentificacion` | dinámico |
+| `identificacion` | `CG46.identificacion` | dinámico |
+| `numeroOperacion` | `CG46.numeroOperacion` | dinámico |
+| `numeroGarantia` | `CG46.numeroOperacion` | igual al número de operación |
+| `tipoGarantia` | — | **FIJO: `"A21"`** (TODO: cambiar a otro código para productos cuyo nombre empiece con H) |
+| `descripcionGarantia` | — | **FIJO: `"Cuenta Individual"`** |
+| `valorAvaluo` | — | **FIJO: `0`** |
+| `fechaAvaluo` | — | **FIJO: `null`** |
+| `numeroRegistroGarantia` | — | **FIJO: `null`** |
+| `fechaContabilizacion` | — | **FIJO: `null`** |
+| `porcentajeCubre` | — | **FIJO: `100`** |
+| `estadoRegistro` | — | **FIJO: `"N"`** |
+
+**Archivos creados/modificados:**
+- `NuevoPrestamoG46DaoService.java` → método `selectByDetalle(Long)` agregado
+- `NuevoPrestamoG46DaoServiceImpl.java` → implementación del método anterior
+- `NuevoPrestamoG46Service.java` → método `selectByDetalle(Long)` expuesto
+- `NuevoPrestamoG46ServiceImpl.java` → implementación delegada
+- `GeneracionG51Service.java` → **CREADO** — interface
+- `GeneracionG51ServiceImpl.java` → **CREADO** — implementación completa
+- Orquestador → `@EJB g51Service` activo, `case "G51"` activado
 
 ---
 
@@ -327,16 +518,32 @@ GeneracionReportesServiceImpl.java
 
 ---
 
+## Corrección aplicada al orquestador
+
+### Bug: re-ejecución no procesaba ningún G
+**Causa:** `DetalleEjecucionReporteServiceImpl.selectPendientesYNovedadesByEjecucion` lanzaba `IncomeException` cuando la lista estaba vacía (patrón genérico). En el orquestador esa llamada estaba en `try-catch` que silenciaba la excepción y dejaba `ejrdsAProcesar` vacío → el bucle no procesaba nada en re-ejecuciones.
+
+**Archivos corregidos:**
+- `DetalleEjecucionReporteServiceImpl.java` → ya **no lanza excepción** cuando no hay pendientes; retorna lista vacía (resultado válido: todos OK).
+- `GeneracionReportesServiceImpl.java` → eliminados los `try-catch` silenciosos en:
+  - Paso 3: obtener EJRDs pendientes en re-ejecución
+  - Paso 7: evaluación final del estado del EJRC
+
+---
+
 ## Instrucciones para retomar en nueva conversación
 
 1. Leer: `REGLAS_GENERACION_REPORTES_G.md` (este archivo)
 2. Leer: `PLAN_GENERACION_REPORTES_G.md` (estado técnico detallado)
-3. El siguiente G a implementar es el **G42**
-4. El usuario dará la lógica y se seguirá el patrón estándar descrito arriba
+3. **Toda la implementación G40–G51 está completa y funcional**
+4. Pendientes menores conocidos:
+   - **G50** — sin registros por ahora (retorna 0, OK). Lógica real a definir.
+   - **G51** — `tipoGarantia = "A21"` fijo. TODO: préstamos con producto cuyo nombre empiece con H → cambiar a otro código.
 
 ---
 
 ## NOTA FINAL
-> ⚠️ Una vez completada toda la implementación, **eliminar los siguientes archivos**:
+> ⚠️ Una vez que no se necesite más referencia, **eliminar los siguientes archivos**:
 > - `REGLAS_GENERACION_REPORTES_G.md` (este archivo)
 > - `PLAN_GENERACION_REPORTES_G.md`
+

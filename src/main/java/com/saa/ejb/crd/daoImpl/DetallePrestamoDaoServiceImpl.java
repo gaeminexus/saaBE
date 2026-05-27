@@ -124,6 +124,103 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 		return query.getResultList();
 	}
 
+	@Override
+	public DetallePrestamo selectMenorCuotaActiva(Long codigoPrestamo, LocalDateTime fechaCorte) throws Throwable {
+		System.out.println("DetallePrestamoDaoServiceImpl.selectMenorCuotaActiva prestamo: " + codigoPrestamo + ", fechaCorte: " + fechaCorte);
+		Query query = em.createQuery(
+			" select d from DetallePrestamo d " +
+			" where d.prestamo.codigo = :codigoPrestamo " +
+			"   and d.estado in (2, 3, 4, 5, 6) " +
+			"   and d.fechaVencimiento <= :fechaCorte " +
+			" order by d.numeroCuota asc "
+		);
+		query.setParameter("codigoPrestamo", codigoPrestamo);
+		query.setParameter("fechaCorte", fechaCorte);
+		query.setMaxResults(1);
+		@SuppressWarnings("unchecked")
+		List<DetallePrestamo> resultados = query.getResultList();
+		return resultados.isEmpty() ? null : resultados.get(0);
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<DetallePrestamo> selectCuotasDelMes(Long codigoPrestamo, LocalDateTime fechaInicio, LocalDateTime fechaFin) throws Throwable {
+		System.out.println("DetallePrestamoDaoServiceImpl.selectCuotasDelMes prestamo: " + codigoPrestamo + ", rango: " + fechaInicio + " a " + fechaFin);
+		Query query = em.createQuery(
+			" select d from DetallePrestamo d " +
+			" where d.prestamo.codigo = :codigoPrestamo " +
+			"   and d.estado <> 7 " +
+			"   and d.fechaVencimiento >= :fechaInicio " +
+			"   and d.fechaVencimiento <= :fechaFin " +
+			" order by d.numeroCuota asc "
+		);
+		query.setParameter("codigoPrestamo", codigoPrestamo);
+		query.setParameter("fechaInicio", fechaInicio);
+		query.setParameter("fechaFin", fechaFin);
+		return query.getResultList();
+	}
+
+	@Override
+	public DetallePrestamo selectMenorCuotaAnteriorAlMes(Long codigoPrestamo, LocalDateTime fechaInicio) throws Throwable {
+		System.out.println("DetallePrestamoDaoServiceImpl.selectMenorCuotaAnteriorAlMes prestamo: " + codigoPrestamo + ", fechaInicio: " + fechaInicio);
+		Query query = em.createQuery(
+			" select d from DetallePrestamo d " +
+			" where d.prestamo.codigo = :codigoPrestamo " +
+			"   and d.estado in (2, 3, 5, 6) " +
+			"   and d.fechaVencimiento < :fechaInicio " +
+			"   and d.prestamo.estadoPrestamo in (2, 8, 11) " +
+			" order by d.numeroCuota asc "
+		);
+		query.setParameter("codigoPrestamo", codigoPrestamo);
+		query.setParameter("fechaInicio", fechaInicio);
+		query.setMaxResults(1);
+		@SuppressWarnings("unchecked")
+		List<DetallePrestamo> resultados = query.getResultList();
+		return resultados.isEmpty() ? null : resultados.get(0);
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<DetallePrestamo> selectCuotasDelMesGlobal(LocalDateTime fechaInicio, LocalDateTime fechaFin) throws Throwable {
+		System.out.println("DetallePrestamoDaoServiceImpl.selectCuotasDelMesGlobal rango: " + fechaInicio + " a " + fechaFin);
+		Query query = em.createQuery(
+			" select d from DetallePrestamo d " +
+			" join fetch d.prestamo " +
+			" join fetch d.prestamo.entidad " +
+			" left join fetch d.prestamo.producto " +
+			" where d.estado <> 7 " +
+			"   and d.fechaVencimiento >= :fechaInicio " +
+			"   and d.fechaVencimiento <= :fechaFin "
+		);
+		query.setParameter("fechaInicio", fechaInicio);
+		query.setParameter("fechaFin", fechaFin);
+		return query.getResultList();
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<DetallePrestamo> selectMenorCuotaAnteriorAlMesGlobal(LocalDateTime fechaInicio) throws Throwable {
+		System.out.println("DetallePrestamoDaoServiceImpl.selectMenorCuotaAnteriorAlMesGlobal fechaInicio: " + fechaInicio);
+		Query query = em.createQuery(
+			" select d from DetallePrestamo d " +
+			" join fetch d.prestamo " +
+			" join fetch d.prestamo.entidad " +
+			" left join fetch d.prestamo.producto " +
+			" where d.estado in (2, 3, 5, 6) " +
+			"   and d.fechaVencimiento < :fechaInicio " +
+			"   and d.prestamo.estadoPrestamo in (2, 8, 11) " +
+			"   and d.numeroCuota = (" +
+			"     select min(d2.numeroCuota) from DetallePrestamo d2 " +
+			"     where d2.prestamo.codigo = d.prestamo.codigo " +
+			"       and d2.estado in (2, 3, 5, 6) " +
+			"       and d2.fechaVencimiento < :fechaInicio " +
+			"       and d2.prestamo.estadoPrestamo in (2, 8, 11) " +
+			"   ) "
+		);
+		query.setParameter("fechaInicio", fechaInicio);
+		return query.getResultList();
+	}
+
 	@SuppressWarnings("unchecked")
 	@Override
 	public List<DetallePrestamo> selectCuotasNoPagadasByPrestamo(Long codigoPrestamo) throws Throwable {
@@ -187,6 +284,55 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 			// NO lanzar excepción - retornar lista vacía para no detener el proceso
 			return new java.util.ArrayList<>();
 		}
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<DetallePrestamo> selectMaxCuotaPagadaDelMesGlobal(java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable {
+		System.out.println("DetallePrestamoDaoServiceImpl.selectMaxCuotaPagadaDelMesGlobal rango: " + fechaInicio + " a " + fechaFin);
+		// Trae la cuota con mayor numeroCuota del préstamo cuyo estado sea pagada (4)
+		// y cuya fechaVencimiento esté en el mes, y que ese numeroCuota sea el máximo del préstamo completo.
+		Query query = em.createQuery(
+			" select d from DetallePrestamo d " +
+			" join fetch d.prestamo " +
+			" join fetch d.prestamo.entidad " +
+			" where d.estado = 4 " +
+			"   and d.fechaVencimiento >= :fechaInicio " +
+			"   and d.fechaVencimiento <= :fechaFin " +
+			"   and d.numeroCuota = (" +
+			"     select max(d2.numeroCuota) from DetallePrestamo d2 " +
+			"     where d2.prestamo.codigo = d.prestamo.codigo " +
+			"   ) "
+		);
+		query.setParameter("fechaInicio", fechaInicio);
+		query.setParameter("fechaFin", fechaFin);
+		return query.getResultList();
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<DetallePrestamo> selectMaxCuotaPagadaCanceladoAnticipadoDelMesGlobal(java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable {
+		System.out.println("DetallePrestamoDaoServiceImpl.selectMaxCuotaPagadaCanceladoAnticipadoDelMesGlobal rango: " + fechaInicio + " a " + fechaFin);
+		// Trae la cuota con mayor numeroCuota pagada (estado=4) dentro del mes,
+		// cuyo préstamo esté en estadoPrestamo=4 (cancelado anticipado),
+		// y que ese numeroCuota sea el máximo entre las cuotas pagadas del préstamo.
+		Query query = em.createQuery(
+			" select d from DetallePrestamo d " +
+			" join fetch d.prestamo " +
+			" join fetch d.prestamo.entidad " +
+			" where d.estado = 4 " +
+			"   and d.prestamo.estadoPrestamo = 4 " +
+			"   and d.fechaVencimiento >= :fechaInicio " +
+			"   and d.fechaVencimiento <= :fechaFin " +
+			"   and d.numeroCuota = (" +
+			"     select max(d2.numeroCuota) from DetallePrestamo d2 " +
+			"     where d2.prestamo.codigo = d.prestamo.codigo " +
+			"       and d2.estado = 4 " +
+			"   ) "
+		);
+		query.setParameter("fechaInicio", fechaInicio);
+		query.setParameter("fechaFin", fechaFin);
+		return query.getResultList();
 	}
 
 }

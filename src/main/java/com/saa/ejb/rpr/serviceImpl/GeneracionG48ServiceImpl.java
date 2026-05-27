@@ -1,0 +1,329 @@
+package com.saa.ejb.rpr.serviceImpl;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.YearMonth;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import com.saa.ejb.crd.service.DetallePrestamoService;
+import com.saa.ejb.rpr.dao.SaldoOperacionG48DaoService;
+import com.saa.ejb.rpr.service.DetalleEjecucionReporteService;
+import com.saa.ejb.rpr.service.EjecucionReporteService;
+import com.saa.ejb.rpr.service.GeneracionG48Service;
+import com.saa.ejb.rpr.service.HistoricoG48Service;
+import com.saa.ejb.rpr.service.SaldoCuentaG42Service;
+import com.saa.ejb.rpr.service.SaldoOperacionG48Service;
+import com.saa.model.crd.DetallePrestamo;
+import com.saa.model.crd.Prestamo;
+import com.saa.model.rpr.DetalleEjecucionReporte;
+import com.saa.model.rpr.EjecucionReporte;
+import com.saa.model.rpr.HistoricoG48;
+import com.saa.model.rpr.SaldoCuentaG42;
+import com.saa.model.rpr.SaldoOperacionG48;
+
+import jakarta.ejb.EJB;
+import jakarta.ejb.Stateless;
+
+@Stateless
+public class GeneracionG48ServiceImpl implements GeneracionG48Service {
+
+    @EJB private DetallePrestamoService         detallePrestamoService;
+    @EJB private SaldoCuentaG42Service          saldoCuentaG42Service;
+    @EJB private DetalleEjecucionReporteService ejrdService;
+    @EJB private SaldoOperacionG48DaoService    cg48DaoService;
+    @EJB private SaldoOperacionG48Service       saldoG48Service;
+    @EJB private EjecucionReporteService        ejrcService;
+    @EJB private HistoricoG48Service            historicoG48Service;
+
+    @Override
+    public long generar(DetalleEjecucionReporte detalle) throws Throwable {
+        System.out.println("Ingresa al metodo generar G48");
+
+        long mes  = detalle.getEjecucionReporte().getMes();
+        long anio = detalle.getEjecucionReporte().getAnio();
+        int ultimoDia = YearMonth.of((int) anio, (int) mes).lengthOfMonth();
+
+        LocalDateTime fechaInicio = LocalDateTime.of((int) anio, (int) mes, 1, 0, 0, 0);
+        LocalDateTime fechaFin    = LocalDateTime.of((int) anio, (int) mes, ultimoDia, 23, 59, 59);
+        LocalDate     fechaFinDate = fechaFin.toLocalDate();
+
+        System.out.println("G48 - Rango: " + fechaInicio + " a " + fechaFin);
+
+        // -------------------------------------------------------
+        // 1. Cargar valorTotalCuentaIndividual desde G42 del mismo mes
+        // -------------------------------------------------------
+        Map<Long, Double> mapaValorCuentaIndividual = new HashMap<>();
+        try {
+            DetalleEjecucionReporte ejrdG42 = ejrdService.selectByEjecucionYTipo(
+                detalle.getEjecucionReporte().getCodigo(), "G42"
+            );
+            if (ejrdG42 != null) {
+                List<SaldoCuentaG42> registrosG42 = saldoCuentaG42Service.selectByDetalle(ejrdG42.getCodigo());
+                for (SaldoCuentaG42 g42 : registrosG42) {
+                    if (g42.getEntidad() != null) {
+                        Double patronal = g42.getSaldoAportePatronal() != null ? g42.getSaldoAportePatronal() : 0.0;
+                        Double personal = g42.getSaldoAportePersonal() != null ? g42.getSaldoAportePersonal() : 0.0;
+                        mapaValorCuentaIndividual.put(g42.getEntidad().getCodigo(), patronal + personal);
+                    }
+                }
+            }
+        } catch (Throwable e) {
+            System.out.println("G48 - No se pudo cargar G42: " + e.getMessage());
+        }
+        System.out.println("G48 - Valores cuenta individual cargados: " + mapaValorCuentaIndividual.size());
+
+        // -------------------------------------------------------
+        // 2. Cargar provisionRequeridaOriginal del período anterior
+        //    en un Map<numeroOperacion, provisionRequeridaOriginal>
+        //    Solo aplica si hay EJRC anterior con G48; si no, se consultará
+        //    individualmente desde HistoricoG48 por cada operación.
+        // -------------------------------------------------------
+        Map<String, Double> mapaProvisionAnterior = new HashMap<>();
+        boolean usarHistorico = cargarProvisionAnterior(
+            detalle.getEjecucionReporte(), mes, anio, mapaProvisionAnterior
+        );
+        System.out.println("G48 - Provisiones período anterior cargadas: " + mapaProvisionAnterior.size()
+            + (usarHistorico ? " (se consultará HistoricoG48 por operación)" : ""));
+
+        // -------------------------------------------------------
+        // 3. GRUPO 1: Cuotas con fechaVencimiento en el mes, estado != 7
+        // -------------------------------------------------------
+        List<DetallePrestamo> grupo1 = detallePrestamoService.selectCuotasDelMesGlobal(fechaInicio, fechaFin);
+        System.out.println("G48 - Grupo 1 (cuotas del mes): " + grupo1.size());
+
+        // -------------------------------------------------------
+        // 4. GRUPO 2: Menor cuota por préstamo anterior al mes,
+        //    estado 2,3,5,6 y préstamo en estado 2,8,11
+        // -------------------------------------------------------
+        List<DetallePrestamo> grupo2 = detallePrestamoService.selectMenorCuotaAnteriorAlMesGlobal(fechaInicio);
+        System.out.println("G48 - Grupo 2 (menor cuota anterior): " + grupo2.size());
+
+        // -------------------------------------------------------
+        // 5. Consolidar evitando duplicados (mismo préstamo en ambos grupos)
+        //    Del grupo 2 excluimos los préstamos que ya están en grupo 1
+        // -------------------------------------------------------
+        Set<Long> prestamosEnGrupo1 = new HashSet<>();
+        for (DetallePrestamo d : grupo1) {
+            if (d.getPrestamo() != null) prestamosEnGrupo1.add(d.getPrestamo().getCodigo());
+        }
+
+        List<DetallePrestamo> cuotasAProcesar = new ArrayList<>(grupo1);
+        for (DetallePrestamo d : grupo2) {
+            if (d.getPrestamo() != null && !prestamosEnGrupo1.contains(d.getPrestamo().getCodigo())) {
+                cuotasAProcesar.add(d);
+            }
+        }
+        System.out.println("G48 - Total cuotas a procesar: " + cuotasAProcesar.size());
+
+        if (cuotasAProcesar.isEmpty()) {
+            System.out.println("G48 - Sin cuotas. G48 vacío, OK.");
+            return 0L;
+        }
+
+        // -------------------------------------------------------
+        // 6. Por cada cuota → generar un registro en G48
+        // -------------------------------------------------------
+        long contador = 0L;
+
+        for (DetallePrestamo cuota : cuotasAProcesar) {
+            try {
+                Prestamo prestamo = cuota.getPrestamo();
+                if (prestamo == null) continue;
+
+                // ¿Viene del grupo 1 o del grupo 2?
+                boolean esGrupo1 = prestamosEnGrupo1.contains(prestamo.getCodigo());
+
+                // Calcular días de morosidad (solo si estado != 4 pagada)
+                Long diasMorosidad = 0L;
+                if (cuota.getEstado() != null && !cuota.getEstado().equals(4L)) {
+                    if (cuota.getFechaVencimiento() != null) {
+                        LocalDate fechaVencimiento = cuota.getFechaVencimiento().toLocalDate();
+                        diasMorosidad = ChronoUnit.DAYS.between(fechaVencimiento, fechaFinDate);
+                        if (diasMorosidad < 0) diasMorosidad = 0L;
+                    }
+                }
+
+                String calificacionPropia = calcularCalificacion(diasMorosidad);
+
+                // ----- VALOR POR VENCER -----
+                Double valorPorVencer = cuota.getSaldoInicialCapital() != null ? cuota.getSaldoInicialCapital() : 0.0;
+
+                // ----- VALOR VENCIDO -----
+                // Grupo 1 → 0. Grupo 2 → capital de la cuota.
+                Double valorVencido = esGrupo1 ? 0.0
+                        : (cuota.getCapital() != null ? cuota.getCapital() : 0.0);
+
+                // ----- VALOR TOTAL CUENTA INDIVIDUAL -----
+                Double valorCuentaIndividual = 0.0;
+                if (prestamo.getEntidad() != null) {
+                    valorCuentaIndividual = mapaValorCuentaIndividual.getOrDefault(
+                        prestamo.getEntidad().getCodigo(), 0.0
+                    );
+                }
+
+                // ----- VALOR SUJETO A PROVISIÓN -----
+                // max(0, valorPorVencer - valorTotalCuentaIndividual)
+                Double valorSujetoProvision = Math.max(0.0, valorPorVencer - valorCuentaIndividual);
+
+                // ----- PROVISIÓN REQUERIDA ORIGINAL -----
+                Double provisionRequeridaOriginal = calcularProvision(valorSujetoProvision, calificacionPropia);
+
+                // ----- PROVISIÓN CONSTITUIDA -----
+                // = provisionRequeridaOriginal del período anterior para esta operación
+                String numeroOperacion = prestamo.getIdAsoprep() != null
+                        ? String.valueOf(prestamo.getIdAsoprep()) : null;
+                Double provisionConstituida = 0.0;
+                if (numeroOperacion != null) {
+                    if (mapaProvisionAnterior.containsKey(numeroOperacion)) {
+                        provisionConstituida = mapaProvisionAnterior.get(numeroOperacion);
+                    } else if (usarHistorico) {
+                        // Consulta individual al histórico — evita cargar miles de registros
+                        try {
+                            HistoricoG48 hist = historicoG48Service.selectByNumeroOperacion(numeroOperacion);
+                            if (hist != null && hist.getProvisionRequeridaOriginal() != null) {
+                                provisionConstituida = hist.getProvisionRequeridaOriginal();
+                                // Cachear para no repetir la consulta si la misma op. aparece de nuevo
+                                mapaProvisionAnterior.put(numeroOperacion, provisionConstituida);
+                            }
+                        } catch (Throwable eh) {
+                            System.out.println("G48 - HistoricoG48 no encontrado para op: " + numeroOperacion);
+                        }
+                    }
+                }
+
+                SaldoOperacionG48 g48 = new SaldoOperacionG48();
+
+                g48.setTipoIdentificacion("C");
+                if (prestamo.getEntidad() != null) {
+                    g48.setIdentificacion(prestamo.getEntidad().getNumeroIdentificacion());
+                }
+
+                g48.setNumeroOperacion(numeroOperacion);
+
+                if (prestamo.getProducto() != null && prestamo.getProducto().getNombre() != null
+                        && !prestamo.getProducto().getNombre().isEmpty()) {
+                    g48.setTipoCredito(String.valueOf(prestamo.getProducto().getNombre().charAt(0)));
+                }
+
+                g48.setDiasMorosidad(diasMorosidad);
+                g48.setCalificacionPropia(calificacionPropia);
+                g48.setTasaInteres(prestamo.getInteresNominal() != null ? prestamo.getInteresNominal() : 0.0);
+                g48.setValorPorVencer(valorPorVencer);
+                g48.setValorVencido(valorVencido);
+                g48.setCostosOperativos(0.0);
+                g48.setInteresOrdinario(cuota.getInteres() != null ? cuota.getInteres() : 0.0);
+                g48.setInteresMora(0.0);
+                g48.setValorDemandaJudicial(0.0);
+                g48.setCarteraCastigada(0.0);
+                g48.setValorTotalCuentaIndividual(valorCuentaIndividual);
+                g48.setValorSujetoProvision(valorSujetoProvision);
+                g48.setProvisionRequeridaOriginal(provisionRequeridaOriginal);
+                g48.setProvisionConstituida(provisionConstituida);
+                g48.setTipoSistemaAmortizacion("FR");
+                g48.setCuotaCredito(cuota.getCuota() != null ? cuota.getCuota() : 0.0);
+                g48.setDividendo(0L);
+
+                if (cuota.getFechaVencimiento() != null) {
+                    g48.setFechaExigibilidad(cuota.getFechaVencimiento().toLocalDate());
+                }
+
+                g48.setDetalleEjecucion(detalle);
+
+                cg48DaoService.save(g48, null);
+                System.out.println("G48 INSERT prestamo: " + prestamo.getIdAsoprep()
+                    + " cuota: " + cuota.getNumeroCuota()
+                    + " grupo: " + (esGrupo1 ? "1" : "2")
+                    + " diasMora: " + diasMorosidad
+                    + " calif: " + calificacionPropia
+                    + " vsap: " + valorSujetoProvision
+                    + " prov: " + provisionRequeridaOriginal);
+                contador++;
+
+            } catch (Throwable e) {
+                System.out.println("G48 ERROR cuota " + cuota.getCodigo() + ": " + e.getMessage());
+                e.printStackTrace();
+            }
+        }
+
+        System.out.println("G48 generado con " + contador + " registros");
+        return contador;
+    }
+
+    /**
+     * Carga en el mapa el campo provisionRequeridaOriginal del G48 del período anterior,
+     * indexado por numeroOperacion.
+     * @return false si el mapa fue poblado desde el EJRC anterior (no necesita histórico),
+     *         true si no hay EJRC anterior y se debe consultar HistoricoG48 individualmente.
+     */
+    private boolean cargarProvisionAnterior(EjecucionReporte ejrcActual, long mes, long anio,
+            Map<String, Double> mapa) {
+        try {
+            long mesPrevio  = mes == 1 ? 12 : mes - 1;
+            long anioPrevio = mes == 1 ? anio - 1 : anio;
+
+            List<EjecucionReporte> listaPrev = ejrcService.selectByMesAnio(mesPrevio, anioPrevio);
+            if (listaPrev != null && !listaPrev.isEmpty()) {
+                EjecucionReporte ejrcPrev = listaPrev.get(0);
+                DetalleEjecucionReporte ejrdG48Prev = ejrdService.selectByEjecucionYTipo(
+                    ejrcPrev.getCodigo(), "G48"
+                );
+                if (ejrdG48Prev != null) {
+                    List<SaldoOperacionG48> prevRegistros = saldoG48Service.selectByDetalle(ejrdG48Prev.getCodigo());
+                    for (SaldoOperacionG48 prev : prevRegistros) {
+                        if (prev.getNumeroOperacion() != null && prev.getProvisionRequeridaOriginal() != null) {
+                            mapa.put(prev.getNumeroOperacion(), prev.getProvisionRequeridaOriginal());
+                        }
+                    }
+                    System.out.println("G48 - Provision anterior cargada desde G48 previo: " + mapa.size());
+                    return false; // mapa completo, no usar histórico
+                }
+            }
+        } catch (Throwable e) {
+            System.out.println("G48 - No se pudo cargar provision del EJRC anterior: " + e.getMessage());
+        }
+        // No hay EJRC anterior con G48 → consultar HistoricoG48 individualmente
+        System.out.println("G48 - Sin EJRC anterior, se consultará HistoricoG48 por operación.");
+        return true;
+    }
+
+    /**
+     * Calcula la provisionRequeridaOriginal:
+     * Si valorSujetoProvision > 0 → valorSujetoProvision * porcentaje(calificacion), else 0.
+     * Porcentajes: A1=0.99%, A2=1.99%, A3=2%, B1=5%, B2=10%, C1=20%, C2=40%, D=60%, E=100%.
+     */
+    private Double calcularProvision(Double valorSujetoProvision, String calificacion) {
+        if (valorSujetoProvision == null || valorSujetoProvision <= 0.0) return 0.0;
+        double porcentaje;
+        switch (calificacion == null ? "" : calificacion) {
+            case "A1": porcentaje = 0.0099; break;
+            case "A2": porcentaje = 0.0199; break;
+            case "A3": porcentaje = 0.02;   break;
+            case "B1": porcentaje = 0.05;   break;
+            case "B2": porcentaje = 0.10;   break;
+            case "C1": porcentaje = 0.20;   break;
+            case "C2": porcentaje = 0.40;   break;
+            case "D":  porcentaje = 0.60;   break;
+            case "E":  porcentaje = 1.00;   break;
+            default:   porcentaje = 0.0;    break;
+        }
+        return valorSujetoProvision * porcentaje;
+    }
+
+    private String calcularCalificacion(Long dias) {
+        if (dias == null || dias == 0)               return "A1";
+        if (dias >= 1   && dias <= 8)                return "A2";
+        if (dias >= 9   && dias <= 15)               return "A3";
+        if (dias >= 16  && dias <= 30)               return "B1";
+        if (dias >= 31  && dias <= 45)               return "B2";
+        if (dias >= 46  && dias <= 70)               return "C1";
+        if (dias >= 71  && dias <= 90)               return "C2";
+        if (dias >= 91  && dias <= 120)              return "D";
+        return "E";
+    }
+}

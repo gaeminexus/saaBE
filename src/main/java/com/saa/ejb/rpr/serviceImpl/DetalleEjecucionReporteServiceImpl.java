@@ -92,10 +92,8 @@ public class DetalleEjecucionReporteServiceImpl implements DetalleEjecucionRepor
     public List<DetalleEjecucionReporte> selectPendientesYNovedadesByEjecucion(Long idEjecucion) throws Throwable {
         System.out.println("Ingresa al metodo selectPendientesYNovedadesByEjecucion DetalleEjecucionReporteService con idEjecucion: " + idEjecucion);
         List<DetalleEjecucionReporte> result = detalleEjecucionReporteDaoService.selectPendientesYNovedadesByEjecucion(idEjecucion);
-        if (result.isEmpty()) {
-            throw new IncomeException("No hay detalles pendientes o con novedades para la ejecucion: " + idEjecucion);
-        }
-        return result;
+        System.out.println("selectPendientesYNovedadesByEjecucion - registros encontrados: " + result.size());
+        return result; // lista vacía es resultado válido: todos están OK
     }
 
     @Override

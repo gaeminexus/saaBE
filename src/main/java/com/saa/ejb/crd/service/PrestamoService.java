@@ -42,4 +42,7 @@ public interface PrestamoService extends EntityService<Prestamo>{
 	 */
 	java.util.List<Prestamo> selectByRangoFechas(java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable;
 
+	/** Retorna todos los préstamos con un estadoPrestamo específico */
+	java.util.List<Prestamo> selectByEstado(Long estado) throws Throwable;
+
 }

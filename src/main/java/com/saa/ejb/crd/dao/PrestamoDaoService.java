@@ -43,5 +43,7 @@ public interface PrestamoDaoService extends EntityDao<Prestamo> {
      */
     List<Prestamo> selectByRangoFechas(java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable;
 
+    /** Retorna todos los préstamos con un estadoPrestamo específico */
+    List<Prestamo> selectByEstado(Long estado) throws Throwable;
 }
 

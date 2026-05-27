@@ -115,4 +115,14 @@ public class PrestamoDaoServiceImpl extends EntityDaoImpl<Prestamo> implements P
         return query.getResultList();
     }
 
+    @Override
+    @SuppressWarnings("unchecked")
+    public List<Prestamo> selectByEstado(Long estado) throws Throwable {
+        Query query = em.createQuery(
+            "select p from Prestamo p where p.estadoPrestamo = :estado"
+        );
+        query.setParameter("estado", estado);
+        return query.getResultList();
+    }
+
 }

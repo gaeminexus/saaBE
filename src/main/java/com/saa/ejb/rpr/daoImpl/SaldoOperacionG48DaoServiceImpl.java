@@ -1,11 +1,14 @@
 package com.saa.ejb.rpr.daoImpl;
 
+import java.util.List;
+
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.rpr.dao.SaldoOperacionG48DaoService;
 import com.saa.model.rpr.SaldoOperacionG48;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.Query;
 
 @Stateless
 public class SaldoOperacionG48DaoServiceImpl extends EntityDaoImpl<SaldoOperacionG48> implements SaldoOperacionG48DaoService {
@@ -24,5 +27,33 @@ public class SaldoOperacionG48DaoServiceImpl extends EntityDaoImpl<SaldoOperacio
             "valorTotalCuentaIndividual", "valorSujetoProvision",
             "tipoSistemaAmortizacion", "cuotaCredito", "dividendo", "fechaExigibilidad"
         };
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public List<SaldoOperacionG48> selectByDetalle(Long codigoDetalle) throws Throwable {
+        System.out.println("SaldoOperacionG48DaoServiceImpl.selectByDetalle codigoDetalle: " + codigoDetalle);
+        Query query = em.createQuery(
+            " select g from SaldoOperacionG48 g " +
+            " where g.detalleEjecucion.codigo = :codigoDetalle "
+        );
+        query.setParameter("codigoDetalle", codigoDetalle);
+        return query.getResultList();
+    }
+
+    @Override
+    public SaldoOperacionG48 selectByDetalleYOperacion(Long codigoDetalle, String numeroOperacion) throws Throwable {
+        System.out.println("SaldoOperacionG48DaoServiceImpl.selectByDetalleYOperacion detalle: " + codigoDetalle + " op: " + numeroOperacion);
+        Query query = em.createQuery(
+            " select g from SaldoOperacionG48 g " +
+            " where g.detalleEjecucion.codigo = :codigoDetalle " +
+            "   and g.numeroOperacion = :numeroOperacion "
+        );
+        query.setParameter("codigoDetalle", codigoDetalle);
+        query.setParameter("numeroOperacion", numeroOperacion);
+        query.setMaxResults(1);
+        @SuppressWarnings("unchecked")
+        List<SaldoOperacionG48> result = query.getResultList();
+        return result.isEmpty() ? null : result.get(0);
     }
 }

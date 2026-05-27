@@ -103,86 +103,35 @@ serviceImpl/
 
 ---
 
-### ⏳ PENDIENTE — Continuar desde aquí
+### ✅ IMPLEMENTACIÓN COMPLETA — G40 a G51
 
-#### Paso 1 — Crear `GeneracionReportesServiceImpl.java`
-**Archivo:** `src/main/java/com/saa/ejb/rpr/serviceImpl/GeneracionReportesServiceImpl.java`
+Todos los Gs están implementados y conectados en el orquestador.
 
-Lógica:
-```
-@Stateless
-public class GeneracionReportesServiceImpl implements GeneracionReportesService {
+---
 
-  @EJB EjecucionReporteService ejrcService;
-  @EJB DetalleEjecucionReporteService ejrdService;
-  @EJB GeneracionG40Service g40Service;
-  @EJB GeneracionG41Service g41Service;
-  ... (un @EJB por cada G)
+## Correcciones aplicadas al orquestador
 
-  ejecutarGeneracion(mes, anio, usuario):
-    1. Buscar EJRC por mes/anio → ejrcService.selectByMesAnio(mes, anio)
-    2. Si existe y todos EJRD OK → throw "ya generados"
-    3. Si existe → obtener lista de EJRD pendientes/con novedades
-    4. Si no existe → crear EJRC + crear 12 EJRD
-    5. Para cada EJRD a ejecutar → llamar gXXService.generar(ejrd)
-    6. Actualizar estado EJRC final
-    7. return ejrc
-}
-```
+### Bug: re-ejecución no procesaba ningún G
+**Causa:** `DetalleEjecucionReporteServiceImpl.selectPendientesYNovedadesByEjecucion` lanzaba `IncomeException` cuando la lista estaba vacía (siguiendo el patrón genérico). En el orquestador esa llamada estaba en un `try-catch` que silenciaba la excepción y dejaba `ejrdsAProcesar` vacío → el bucle no procesaba nada.
 
-#### Paso 2 — Crear `GeneracionReportesRest.java`
-**Archivo:** `src/main/java/com/saa/ws/rest/rpr/GeneracionReportesRest.java`
+**Corrección:**
+- `DetalleEjecucionReporteServiceImpl.java` → ya no lanza excepción cuando no hay pendientes; retorna lista vacía (resultado válido).
+- `GeneracionReportesServiceImpl.java` → eliminados los dos `try-catch` silenciosos: paso 3 (obtener EJRDs pendientes en re-ejecución) y paso 7 (evaluación final del estado del EJRC).
 
-```
-@Path("generacion")
-POST /generacion/ejecutar
-Body: { "mes": 4, "anio": 2026, "usuario": "jperez" }
-Response: 200 OK + EjecucionReporte
-```
+---
 
-#### Paso 3 — Crear services de generación por G (uno a la vez, el usuario dará la lógica)
+## Instrucciones para retomar en nueva conversación
 
-**Lista de Gs pendientes de lógica:**
-- [x] G40 — `CreditoG40` — **COMPLETADO**
-  - `GeneracionG40Service.java` + `GeneracionG40ServiceImpl.java`
-  - Lógica: único registro IGFN, si estado=2 → copia a CG40 y resetea a 1, si estado=1 → 0 registros OK
-  - `ALTER_TABLE_IGFN_agregar_auditoria.sql` — campos `IGFNESTD`, `IGFNUSRM`, `IGFNFCMD`
-  - `InformacionGeneralFondo.java` — campos `estado`, `usuarioModificacion`, `fechaModificacion` agregados
-  - `InformacionGeneralFondoDaoService/Impl` — método `selectModificados()` agregado
-  - `InformacionGeneralFondoService/Impl` — método `selectModificados()` agregado
-  - Orquestador `GeneracionReportesServiceImpl` — `@EJB g40Service` activo, `case "G40"` descomentado
-- [x] G41 — `ParticipeActivoG41` — **COMPLETADO**
-  - `GeneracionG41Service.java` + `GeneracionG41ServiceImpl.java`
-  - Lógica: busca Entidad con idEstado=1, si no hay → 0 registros OK. Por cada entidad busca Participe y Exter (por cedula), mapea a CG41, actualiza entidad.idEstado=10
-  - `EntidadDaoService/Impl` + `EntidadService/Impl` → método `selectByIdEstado(idEstado)` agregado
-  - `ExterDaoService/Impl` + `ExterService/Impl` → método `selectByCedula(cedula)` agregado
-  - `ParticipeDaoService/Impl` + `ParticipeService/Impl` → método `selectByEntidad(codigoEntidad)` agregado
-  - Orquestador → `@EJB g41Service` activo, `case "G41"` descomentado
-- [x] G42 — `SaldoCuentaG42` — **COMPLETADO**
-  - `GeneracionG42Service.java` + `GeneracionG42ServiceImpl.java`
-  - Lógica: 4 SELECTs con SUM en BD agrupados por entidad. Consolida en mapa y hace INSERT o UPDATE en CG42 por entidad+detalle
-  - `ALTER_TABLE_CG42_agregar_entidad.sql` — columna `CG42ENTD` (FK a ENTD) + índice `IDX_CG42_ENTD_EJRD`
-  - `SaldoCuentaG42.java` — campo `entidad` agregado
-  - `SaldoCuentaG42DaoService/Impl` — método `selectByEntidadYDetalle()` agregado
-  - `AporteDaoService/Impl` + `AporteService/Impl` — métodos `selectSumaRendimientoPorEntidad()`, `selectSumaPatronalPorEntidad()`, `selectSumaPersonalPorEntidad()` agregados
-  - `HistorialSueldoDaoService/Impl` + `HistorialSueldoService/Impl` — método `selectSumaAportePersonalPorEntidad()` agregado
-  - Orquestador → `@EJB g42Service` activo, `case "G42"` descomentado
-- [x] G43 — `ParticipeCesanteG43` — **COMPLETADO**
-  - `GeneracionG43Service.java` + `GeneracionG43ServiceImpl.java`
-  - Lógica: compara entidades del G42 mes anterior vs G42 mes actual con NOT EXISTS en BD. Si no hay EJRC del mes anterior, compara HistoricoG42 vs G42 actual.
-  - `SaldoCuentaG42DaoService/Impl` → métodos `selectByDetalle()` y `selectCesantesDesdeG42Previo()` (NOT EXISTS) agregados
-  - `SaldoCuentaG42Service/Impl` → mismos métodos expuestos
-  - `DetalleEjecucionReporteDaoService/Impl` → método `selectByEjecucionYTipo()` agregado
-  - `DetalleEjecucionReporteService/Impl` → mismo método expuesto
-  - `HistoricoG42DaoService/Impl` → método `selectCesantesDesdeHistorico()` (NOT EXISTS) agregado
-  - `HistoricoG40..G51.java` → `NamedQuery` por Id eliminado de todos (solo queda `All`) — fix error Hibernate
-  - Orquestador → `@EJB g43Service` activo, `case "G43"` descomentado
-- [x] G44 — `ParticipeJubiladoG44` — **COMPLETADO**
-  - `GeneracionG44Service.java` + `GeneracionG44ServiceImpl.java`
-  - Lógica: Entidades con idEstado=30. COUNT aportes tipos 9/11 → imposiciones. VPPC.valorPagar → valorPension y valorNetoRecibir. SUM aportes tipo 23 → saldoCuenta. jubilacionIess = "S" fijo.
-  - `AporteDaoService/Impl` + `AporteService/Impl` → `selectCountImposicionesJubilacionPorEntidad()` y `selectSumaSaldoCuentaJubilacionPorEntidad()` agregados
-  - `ValorPagoPensionComplementariaDaoService/Impl` → `selectByEntidad()` agregado + clase completada con `EntityManager` y `obtieneCampos()`
-  - `ValorPagoPensionComplementariaService/Impl` → `selectByEntidad()` expuesto
+1. Leer este archivo: `PLAN_GENERACION_REPORTES_G.md`
+2. Leer: `REGLAS_GENERACION_REPORTES_G.md` para ver la lógica completa de cada G
+3. **Toda la implementación G40–G51 está completa y funcional**
+4. Pendientes menores conocidos:
+   - **G50** — sin lógica de registros (retorna 0 OK). Lógica real a definir.
+   - **G51** — `tipoGarantia = "A21"` fijo para todos. TODO: préstamos cuyo producto empiece con H → cambiar a otro código.
+
+---
+
+
   - Orquestador → `@EJB g44Service` activo, `case "G44"` descomentado
 - [x] G45 — `NuevoParticipeG45` — **COMPLETADO**
   - `GeneracionG45Service.java` + `GeneracionG45ServiceImpl.java`
@@ -193,11 +142,42 @@ Response: 200 OK + EjecucionReporte
   - `DireccionService/Impl` → `selectByParent(Long)` expuesto (ya existía en DAO)
   - Orquestador → `@EJB g45Service` activo, `case "G45"` descomentado
 - [ ] G46 — `NuevoPrestamoG46` — lógica pendiente
-- [ ] G47 — `NovacionG47` — lógica pendiente
-- [ ] G48 — `SaldoOperacionG48` — lógica pendiente
-- [ ] G49 — `CancelacionG49` — lógica pendiente
-- [ ] G50 — `GaranteG50` — lógica pendiente
-- [ ] G51 — `GarantiaRealG51` — lógica pendiente
+- [x] G47 — `NovacionG47` — **COMPLETADO**
+  - `GeneracionG47Service.java` + `GeneracionG47ServiceImpl.java`
+  - Lógica: préstamos con `estadoPrestamo = 9`. tipoIdentificacion="C" fijo. numeroOperacion=idAsoprep. fechaNovacion=fecha.toLocalDate(). numeroOperacionAnterior=null.
+  - `PrestamoDaoService/Impl` + `PrestamoService/Impl` → `selectByEstado(Long)` agregado
+  - Orquestador → `@EJB g47Service` activo, `case "G47"` activado
+- [x] G48 — `SaldoOperacionG48` — **COMPLETADO**
+  - `GeneracionG48Service.java` + `GeneracionG48ServiceImpl.java`
+  - Lógica: 2 grupos desde `DetallePrestamo`. Grupo 1 = cuotas del mes (estado!=7). Grupo 2 = menor cuota anterior al mes (estado 2,3,5,6 y préstamo 2,8,11). Sin duplicados entre grupos.
+  - valorVencido: Grupo1=0, Grupo2=capital de la cuota.
+  - valorSujetoProvision = max(0, valorPorVencer - valorTotalCuentaIndividual).
+  - provisionRequeridaOriginal = VSAP × % según calificación (A1=0.99%..E=100%).
+  - provisionConstituida = provisionRequeridaOriginal del G48 del período anterior. Si no hay EJRC previo → consulta individual en HM48 (HistoricoG48) con caché. Si no existe → 0.
+  - calificacionPropia calculada por días de morosidad (0=A1, 1-8=A2, ..., >120=E).
+  - `HistoricoG48DaoService/Impl` → `selectByNumeroOperacion(String)` agregado
+  - `HistoricoG48Service.java` + `HistoricoG48ServiceImpl.java` → **CREADOS**
+  - `SaldoOperacionG48DaoService/Impl` → `selectByDetalle(Long)` y `selectByDetalleYOperacion(Long, String)` agregados
+  - `SaldoOperacionG48Service/Impl` → mismos 2 métodos expuestos
+  - `DetallePrestamoDaoServiceImpl` → `JOIN FETCH` en `selectCuotasDelMesGlobal` y `selectMenorCuotaAnteriorAlMesGlobal` (sin alias — JPA spec no lo permite)
+  - Orquestador → `@EJB g48Service` activo, `case "G48"` activado
+- [x] G49 — `CancelacionG49` — **COMPLETADO**
+  - `GeneracionG49Service.java` + `GeneracionG49ServiceImpl.java`
+  - Lógica: 3 grupos. Grupo 1 = préstamos cuya max cuota del mes sea pagada (estado=4). Grupo 2 = préstamos estadoPrestamo=4 cuya max cuota pagada esté en el mes. Grupo 3 = operaciones del G48 anterior que ya no están en el G48 actual. Deduplicación por Set<numeroOperacion>.
+  - fechaCancelacion = último día del mes. formaCancelacion = "N" fijo.
+  - `DetallePrestamoDaoService/Impl` → `selectMaxCuotaPagadaDelMesGlobal` y `selectMaxCuotaPagadaCanceladoAnticipadoDelMesGlobal` agregados (con JOIN FETCH prestamo + entidad)
+  - `DetallePrestamoService/Impl` → mismos 2 métodos expuestos
+  - Orquestador → `@EJB g49Service` activo, `case "G49"` activado
+- [x] G50 — `GaranteG50` — **COMPLETADO (sin registros por ahora)**
+  - `GeneracionG50Service.java` + `GeneracionG50ServiceImpl.java`
+  - Lógica: retorna 0 registros, EJRD queda OK. Lógica real pendiente.
+  - Orquestador → `@EJB g50Service` activo, `case "G50"` activado
+- [x] G51 — `GarantiaRealG51` — **COMPLETADO**
+  - `GeneracionG51Service.java` + `GeneracionG51ServiceImpl.java`
+  - Lógica: misma cantidad de registros que G46 del mismo EJRC. Por cada CG46 → INSERT en CG51. tipoGarantia="A21" fijo (TODO: productos con nombre H → otro código). descripcionGarantia="Cuenta Individual", valorAvaluo=0, porcentajeCubre=100, estadoRegistro="N".
+  - `NuevoPrestamoG46DaoService/Impl` → `selectByDetalle(Long)` agregado
+  - `NuevoPrestamoG46Service/Impl` → método expuesto y delegado
+  - Orquestador → `@EJB g51Service` activo, `case "G51"` activado
 
 ---
 
