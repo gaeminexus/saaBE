@@ -176,10 +176,10 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
                 if (entidad == null) continue;
 
                 Long codigoEntidad = entidad.getCodigo();
-                Double sumaEnMes  = mapaAportesMes.getOrDefault(codigoEntidad, 0.0);
+                Double sumaEnMes  = Math.abs(mapaAportesMes.getOrDefault(codigoEntidad, 0.0));
                 Double saldoTotal = mapaSaldo.getOrDefault(codigoEntidad, 0.0);
 
-                // Exclusión: sin saldo y sin aportes en el mes → NO incluir
+                // Exclusión: saldoCuenta = 0 y valorPension = 0 → NO incluir
                 if (saldoTotal == 0.0 && sumaEnMes == 0.0) {
                     System.out.println("G44 - SKIP ex-jubilado " + identificacion + " (sin saldo ni aportes en el mes)");
                     continue;
