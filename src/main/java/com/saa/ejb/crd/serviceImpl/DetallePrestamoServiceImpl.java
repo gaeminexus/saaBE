@@ -166,7 +166,10 @@ public class DetallePrestamoServiceImpl implements DetallePrestamoService {
 			java.time.LocalDateTime fechaVenc = (java.time.LocalDateTime) fila[1];
 			Double interesNominal = fila[2] != null ? ((Number) fila[2]).doubleValue() : 0.0;
 
-			if (capital <= 0.0 || fechaVenc == null || interesNominal <= 0.0) continue;
+			if (capital <= 0.0 || fechaVenc == null) continue;
+
+			// Si la tasa nominal es 0 o nula, se usa 9 como valor por defecto para el G48
+			if (interesNominal <= 0.0) interesNominal = 9.0;
 
 			// Tasa de mora = tasa nominal del préstamo (almacenada como porcentaje, ej: 9 = 9%)
 			double tasaMora = interesNominal / 100.0;

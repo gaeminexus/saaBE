@@ -235,7 +235,10 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
 
                 g48.setDiasMorosidad(diasMorosidad);
                 g48.setCalificacionPropia(calificacionPropia);
-                g48.setTasaInteres(prestamo.getInteresNominal() != null ? prestamo.getInteresNominal() : 0.0);
+                // Si la tasa nominal es 0 o nula, se usa 9 como valor por defecto
+                double tasaInteres = (prestamo.getInteresNominal() != null && prestamo.getInteresNominal() > 0.0)
+                        ? prestamo.getInteresNominal() : 9.0;
+                g48.setTasaInteres(tasaInteres);
                 g48.setValorPorVencer(valorPorVencer);
                 g48.setValorVencido(valorVencido);
                 g48.setCostosOperativos(0.0);

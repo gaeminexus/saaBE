@@ -83,6 +83,11 @@ public class GeneracionG46ServiceImpl implements GeneracionG46Service {
             g46.setFrecuenciaRevision("365");
             g46.setGarantias("GA");
 
+            // Destino geográfico — valores fijos
+            g46.setDestinoProvincia("17");
+            g46.setDestinoCanton("01");
+            g46.setDestinoParroquia("12");
+
             // Fechas de concesión y vencimiento
             if (prestamo.getFecha() != null) {
                 g46.setFechaConcesion(prestamo.getFecha().toLocalDate());

@@ -31,4 +31,7 @@ public interface AporteService extends EntityService<Aporte> {
 
     /** G42 — Tipo de prestación: Obtiene los códigos de tipoAporte distintos (9, 11) por entidad, fechaTransaccion <= fechaCorte */
     List<Object[]> selectTiposAportePorEntidad(LocalDateTime fechaCorte) throws Throwable;
+
+    /** G40 — Suma total global de aportes con tipoAporte.codigo = tipoAporte, fechaTransaccion <= fechaCorte */
+    Double selectSumaTotalPorTipoAporte(LocalDateTime fechaCorte, Long tipoAporte) throws Throwable;
 }

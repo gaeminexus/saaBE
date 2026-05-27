@@ -60,6 +60,13 @@ public interface AporteDaoService extends EntityDao<Aporte>{
 	 */
 	List<Object[]> selectTiposAportePorEntidad(LocalDateTime fechaCorte) throws Throwable;
 
+	/**
+	 * Para G40 — Suma total (todas las entidades) de aportes con tipoAporte.codigo = tipoAporte,
+	 * con fechaTransaccion <= fechaCorte.
+	 * Retorna Double suma global, o null si no hay registros.
+	 */
+	Double selectSumaTotalPorTipoAporte(LocalDateTime fechaCorte, Long tipoAporte) throws Throwable;
+
 
 	/*filtra todos los aporte por id de entidad
 	 * @param :idEntidad

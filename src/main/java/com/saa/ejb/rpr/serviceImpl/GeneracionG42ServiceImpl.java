@@ -128,8 +128,11 @@ public class GeneracionG42ServiceImpl implements GeneracionG42Service {
                 if (nuevo.getSaldoAportePatronal() != null) existente.setSaldoAportePatronal(nuevo.getSaldoAportePatronal());
                 if (nuevo.getSaldoAportePersonal() != null) existente.setSaldoAportePersonal(nuevo.getSaldoAportePersonal());
                 if (nuevo.getAportePersonal()      != null) existente.setAportePersonal(nuevo.getAportePersonal());
+                // Recalcular tipoPrestacion también en UPDATE
+                String tipoPrestacionUpd = calcularTipoPrestacion(mapaTiposAporte.get(codigoEntidad));
+                existente.setTipoPrestacion(tipoPrestacionUpd);
                 cg42DaoService.save(existente, existente.getCodigo());
-                System.out.println("G42 UPDATE entidad: " + codigoEntidad);
+                System.out.println("G42 UPDATE entidad: " + codigoEntidad + " tipoPrestacion: " + tipoPrestacionUpd);
             } else {
                 // INSERT — completar datos de identificación desde Entidad
                 Entidad entidad = entidadService.findById(codigoEntidad);
@@ -198,7 +201,7 @@ public class GeneracionG42ServiceImpl implements GeneracionG42Service {
      */
     private String calcularTipoPrestacion(java.util.Set<Long> tiposAporte) {
         if (tiposAporte == null || tiposAporte.isEmpty()) {
-            return null;
+            return "C"; // Valor por defecto
         }
 
         boolean tiene9  = tiposAporte.contains(9L);
@@ -212,6 +215,6 @@ public class GeneracionG42ServiceImpl implements GeneracionG42Service {
             return "J"; // Jubilación
         }
 
-        return null;
+        return "C"; // Valor por defecto si no coincide ningún tipo conocido
     }
 }

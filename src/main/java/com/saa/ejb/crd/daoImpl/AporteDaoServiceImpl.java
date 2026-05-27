@@ -568,6 +568,21 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 	}
 
 	@Override
+	public Double selectSumaTotalPorTipoAporte(java.time.LocalDateTime fechaCorte, Long tipoAporte) throws Throwable {
+		System.out.println("AporteDaoServiceImpl.selectSumaTotalPorTipoAporte tipoAporte: " + tipoAporte + " fechaCorte: " + fechaCorte);
+		Query query = em.createQuery(
+			" select   sum(a.valor) " +
+			" from     Aporte a " +
+			" where    a.tipoAporte.codigo = :tipoAporte " +
+			"   and    a.fechaTransaccion <= :fechaCorte "
+		);
+		query.setParameter("tipoAporte", tipoAporte);
+		query.setParameter("fechaCorte", fechaCorte);
+		Object result = query.getSingleResult();
+		return result != null ? ((Number) result).doubleValue() : 0.0;
+	}
+
+	@Override
 	@SuppressWarnings("unchecked")
 	public List<Object[]> selectTiposAportePorEntidad(java.time.LocalDateTime fechaCorte) throws Throwable {
 		System.out.println("AporteDaoServiceImpl.selectTiposAportePorEntidad fechaCorte: " + fechaCorte);
