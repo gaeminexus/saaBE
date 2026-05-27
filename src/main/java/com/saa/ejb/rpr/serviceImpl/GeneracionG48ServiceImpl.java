@@ -67,9 +67,10 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
                 List<SaldoCuentaG42> registrosG42 = saldoCuentaG42Service.selectByDetalle(ejrdG42.getCodigo());
                 for (SaldoCuentaG42 g42 : registrosG42) {
                     if (g42.getEntidad() != null) {
-                        Double patronal = g42.getSaldoAportePatronal() != null ? g42.getSaldoAportePatronal() : 0.0;
-                        Double personal = g42.getSaldoAportePersonal() != null ? g42.getSaldoAportePersonal() : 0.0;
-                        mapaValorCuentaIndividual.put(g42.getEntidad().getCodigo(), patronal + personal);
+                        Double patronal    = g42.getSaldoAportePatronal()  != null ? g42.getSaldoAportePatronal()  : 0.0;
+                        Double personal    = g42.getSaldoAportePersonal()  != null ? g42.getSaldoAportePersonal()  : 0.0;
+                        Double rendimiento = g42.getRendimiento()           != null ? g42.getRendimiento()           : 0.0;
+                        mapaValorCuentaIndividual.put(g42.getEntidad().getCodigo(), patronal + personal + rendimiento);
                     }
                 }
             }
@@ -154,10 +155,31 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
                 // ----- VALOR POR VENCER -----
                 Double valorPorVencer = cuota.getSaldoInicialCapital() != null ? cuota.getSaldoInicialCapital() : 0.0;
 
-                // ----- VALOR VENCIDO -----
-                // Grupo 1 → 0. Grupo 2 → capital de la cuota.
-                Double valorVencido = esGrupo1 ? 0.0
-                        : (cuota.getCapital() != null ? cuota.getCapital() : 0.0);
+                // ----- VALOR VENCIDO e INTERÉS ORDINARIO -----
+                // Grupo 1 → 0 para ambos
+                // Grupo 2 → suma de capital e interés desde la cuota incluida hasta la máxima con fechaVencimiento <= fechaFin
+                Double valorVencido = 0.0;
+                Double interesOrdinario = 0.0;
+                
+                if (esGrupo1) {
+                    valorVencido = 0.0;
+                    interesOrdinario = cuota.getInteres() != null ? cuota.getInteres() : 0.0;
+                } else {
+                    // Grupo 2: sumar todas las cuotas desde esta hasta la máxima con fechaVencimiento <= fechaFin
+                    try {
+                        Object[] sumas = detallePrestamoService.selectSumaCapitalInteresGrupo2(
+                            prestamo.getCodigo(), 
+                            cuota.getNumeroCuota(), 
+                            fechaFin
+                        );
+                        valorVencido = sumas[0] != null ? (Double) sumas[0] : 0.0;
+                        interesOrdinario = sumas[1] != null ? (Double) sumas[1] : 0.0;
+                    } catch (Throwable e) {
+                        System.out.println("G48 ERROR al sumar cuotas grupo 2 para prestamo " + prestamo.getCodigo() + ": " + e.getMessage());
+                        valorVencido = 0.0;
+                        interesOrdinario = 0.0;
+                    }
+                }
 
                 // ----- VALOR TOTAL CUENTA INDIVIDUAL -----
                 Double valorCuentaIndividual = 0.0;
@@ -217,8 +239,23 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
                 g48.setValorPorVencer(valorPorVencer);
                 g48.setValorVencido(valorVencido);
                 g48.setCostosOperativos(0.0);
-                g48.setInteresOrdinario(cuota.getInteres() != null ? cuota.getInteres() : 0.0);
-                g48.setInteresMora(0.0);
+                g48.setInteresOrdinario(interesOrdinario);
+
+                // ----- INTERÉS MORA -----
+                // Grupo 1 → 0 (cuotas del mes, no están vencidas aún)
+                // Grupo 2 → sumatoria del interés por mora de todas las cuotas
+                //           desde la incluida hasta la máxima con fechaVencimiento <= fechaFin
+                //           Fórmula por cuota: capital × (interesNominal × 1.5 / 360) × diasMora
+                Double interesMora = 0.0;
+                if (!esGrupo1) {
+                    try {
+                        interesMora = detallePrestamoService.calcularInteresMora(cuota.getCodigo(), fechaFin);
+                    } catch (Throwable e) {
+                        System.out.println("G48 ERROR al calcular mora grupo 2 para cuota " + cuota.getCodigo() + ": " + e.getMessage());
+                        interesMora = 0.0;
+                    }
+                }
+                g48.setInteresMora(interesMora);
                 g48.setValorDemandaJudicial(0.0);
                 g48.setCarteraCastigada(0.0);
                 g48.setValorTotalCuentaIndividual(valorCuentaIndividual);
@@ -227,7 +264,7 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
                 g48.setProvisionConstituida(provisionConstituida);
                 g48.setTipoSistemaAmortizacion("FR");
                 g48.setCuotaCredito(cuota.getCuota() != null ? cuota.getCuota() : 0.0);
-                g48.setDividendo(0L);
+                g48.setDividendo(cuota.getTotal() != null ? cuota.getTotal() : 0.0);
 
                 if (cuota.getFechaVencimiento() != null) {
                     g48.setFechaExigibilidad(cuota.getFechaVencimiento().toLocalDate());

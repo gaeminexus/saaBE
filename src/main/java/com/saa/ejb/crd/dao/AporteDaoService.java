@@ -53,6 +53,13 @@ public interface AporteDaoService extends EntityDao<Aporte>{
 	 */
 	List<Object[]> selectSumaAportesTipo23EnRango(LocalDateTime fechaInicio, LocalDateTime fechaFin) throws Throwable;
 
+	/**
+	 * Para G42 — Tipo de prestación: Obtiene los códigos de tipoAporte distintos (9, 11) por entidad
+	 * con tipoAporte.estado=1 y fechaTransaccion <= fechaCorte.
+	 * Retorna Object[]{Long codigoEntidad, List<Long> codigosTipoAporte}.
+	 */
+	List<Object[]> selectTiposAportePorEntidad(LocalDateTime fechaCorte) throws Throwable;
+
 
 	/*filtra todos los aporte por id de entidad
 	 * @param :idEntidad

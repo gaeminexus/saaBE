@@ -76,7 +76,7 @@ public interface DetallePrestamoDaoService extends EntityDao<DetallePrestamo> {
 	DetallePrestamo selectMenorCuotaAnteriorAlMes(Long codigoPrestamo, LocalDateTime fechaInicio) throws Throwable;
 
 	/**
-	 * G48 GRUPO 1 GLOBAL: Todas las cuotas con fechaVencimiento en el mes (BETWEEN) y estado != 7.
+	 * G48 GRUPO 1 GLOBAL: Todas las cuotas con fechaVencimiento en el mes (BETWEEN) y estado = 4 (pagada).
 	 * Un query a BD devuelve todos los registros necesarios con el préstamo ya cargado.
 	 */
 	List<DetallePrestamo> selectCuotasDelMesGlobal(LocalDateTime fechaInicio, LocalDateTime fechaFin) throws Throwable;
@@ -117,5 +117,25 @@ public interface DetallePrestamoDaoService extends EntityDao<DetallePrestamo> {
 	 * con mayor numeroCuota pagada (estado=4) esté dentro del mes.
 	 */
 	List<DetallePrestamo> selectMaxCuotaPagadaCanceladoAnticipadoDelMesGlobal(java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable;
+
+	/**
+	 * G48 GRUPO 2: Suma capital e interés de todas las cuotas desde la cuota incluida
+	 * hasta la máxima cuota con fechaVencimiento <= fechaFin (último día del período).
+	 * @param codigoPrestamo Código del préstamo
+	 * @param numeroCuotaInicio Número de cuota desde donde iniciar la suma (incluida)
+	 * @param fechaFin Último día del período de ejecución
+	 * @return Object[]{Double sumaCapital, Double sumaInteres}
+	 */
+	Object[] selectSumaCapitalInteresGrupo2(Long codigoPrestamo, Double numeroCuotaInicio, LocalDateTime fechaFin) throws Throwable;
+
+	/**
+	 * Calculo de interés por mora: obtiene todas las cuotas desde la cuota de origen
+	 * (inclusive) hasta la máxima cuota con fechaVencimiento <= fechaHasta.
+	 * Retorna para cada cuota: capital, fechaVencimiento y tasa de interés nominal del préstamo.
+	 * @param codigoCuotaOrigen Código (PK) de la cuota desde la que se comienza a sumar
+	 * @param fechaHasta        Fecha hasta la que se considera el vencimiento (último día del período)
+	 * @return Lista de Object[]{Double capital, LocalDateTime fechaVencimiento, Double interesNominal}
+	 */
+	List<Object[]> selectCuotasParaMora(Long codigoCuotaOrigen, LocalDateTime fechaHasta) throws Throwable;
 
 }

@@ -28,4 +28,7 @@ public interface AporteService extends EntityService<Aporte> {
 
     /** G44 ex-jubilados — SUM de aportes tipo 23 en el rango del mes (BETWEEN fechaInicio AND fechaFin) */
     List<Object[]> selectSumaAportesTipo23EnRango(LocalDateTime fechaInicio, LocalDateTime fechaFin) throws Throwable;
+
+    /** G42 — Tipo de prestación: Obtiene los códigos de tipoAporte distintos (9, 11) por entidad, fechaTransaccion <= fechaCorte */
+    List<Object[]> selectTiposAportePorEntidad(LocalDateTime fechaCorte) throws Throwable;
 }

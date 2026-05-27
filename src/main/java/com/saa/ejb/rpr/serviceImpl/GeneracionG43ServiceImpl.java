@@ -111,6 +111,19 @@ public class GeneracionG43ServiceImpl implements GeneracionG43Service {
                 cesante.setIdentificacion(g42.getIdentificacion());
                 cesante.setTipoIdentificacion(g42.getTipoIdentificacion());
                 cesante.setDetalleEjecucion(detalle);
+
+                // saldoCuentaIndividual = saldoAportePatronal + saldoAportePersonal + rendimiento
+                double saldoPatronal  = g42.getSaldoAportePatronal()  != null ? g42.getSaldoAportePatronal()  : 0.0;
+                double saldoPersonal  = g42.getSaldoAportePersonal()  != null ? g42.getSaldoAportePersonal()  : 0.0;
+                double rendimiento    = g42.getRendimiento()           != null ? g42.getRendimiento()           : 0.0;
+                cesante.setSaldoCuentaIndividual(saldoPatronal + saldoPersonal + rendimiento);
+
+                // No disponibles en G42 → 0
+                cesante.setNumeroImposicionesPersonales(0L);
+                cesante.setNumeroImposicionesPatronales(0L);
+                cesante.setValoresCompensados(0.0);
+                cesante.setValoresPagados(0.0);
+
                 cg43DaoService.save(cesante, null);
                 System.out.println("G43 INSERT cesante (desde G42 previo): " + g42.getIdentificacion());
                 contador++;
@@ -123,6 +136,19 @@ public class GeneracionG43ServiceImpl implements GeneracionG43Service {
                 cesante.setIdentificacion(h.getIdentificacion());
                 cesante.setTipoIdentificacion(h.getTipoIdentificacion());
                 cesante.setDetalleEjecucion(detalle);
+
+                // saldoCuentaIndividual = saldoAportePatronal + saldoAportePersonal + rendimiento
+                double saldoPatronal  = h.getSaldoAportePatronal()  != null ? h.getSaldoAportePatronal()  : 0.0;
+                double saldoPersonal  = h.getSaldoAportePersonal()  != null ? h.getSaldoAportePersonal()  : 0.0;
+                double rendimiento    = h.getRendimiento()           != null ? h.getRendimiento()           : 0.0;
+                cesante.setSaldoCuentaIndividual(saldoPatronal + saldoPersonal + rendimiento);
+
+                // No disponibles en HistoricoG42 → 0
+                cesante.setNumeroImposicionesPersonales(0L);
+                cesante.setNumeroImposicionesPatronales(0L);
+                cesante.setValoresCompensados(0.0);
+                cesante.setValoresPagados(0.0);
+
                 cg43DaoService.save(cesante, null);
                 System.out.println("G43 INSERT cesante (desde HistoricoG42): " + h.getIdentificacion());
                 contador++;

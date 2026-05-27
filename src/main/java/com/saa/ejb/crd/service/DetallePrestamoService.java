@@ -36,4 +36,19 @@ public interface DetallePrestamoService extends EntityService<DetallePrestamo> {
 
 	/** G49 GRUPO 2: Préstamos en estadoPrestamo=4 (cancelado anticipado) cuya máxima cuota pagada esté en el mes. */
 	List<DetallePrestamo> selectMaxCuotaPagadaCanceladoAnticipadoDelMesGlobal(LocalDateTime fechaInicio, LocalDateTime fechaFin) throws Throwable;
+
+	/** G48 GRUPO 2: Suma capital e interés de todas las cuotas desde la cuota incluida hasta la máxima cuota con fechaVencimiento <= fechaFin. */
+	Object[] selectSumaCapitalInteresGrupo2(Long codigoPrestamo, Double numeroCuotaInicio, LocalDateTime fechaFin) throws Throwable;
+
+	/**
+	 * Calcula el interés por mora acumulado según normativa ecuatoriana (tasa mora = interesNominal * 1.5, base 360 días).
+	 * Suma el interés por mora de todas las cuotas desde la cuota indicada hasta la máxima cuota
+	 * con fechaVencimiento <= fechaHasta.
+	 * Fórmula por cuota: capital × (interesNominal × 1.5 / 360) × diasMora
+	 * donde diasMora = días entre fechaVencimiento de la cuota y fechaHasta (mínimo 0).
+	 * @param codigoCuotaOrigen Código (PK) de la cuota de inicio (inclusive)
+	 * @param fechaHasta        Último día del período hasta el que se calcula la mora
+	 * @return Sumatoria del interés por mora de todas las cuotas en el rango
+	 */
+	Double calcularInteresMora(Long codigoCuotaOrigen, LocalDateTime fechaHasta) throws Throwable;
 }

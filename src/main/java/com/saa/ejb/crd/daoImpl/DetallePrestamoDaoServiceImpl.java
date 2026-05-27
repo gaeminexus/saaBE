@@ -166,9 +166,9 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 		Query query = em.createQuery(
 			" select d from DetallePrestamo d " +
 			" where d.prestamo.codigo = :codigoPrestamo " +
-			"   and d.estado in (2, 3, 5, 6) " +
+			"   and d.estado in (1, 2, 3, 5, 6) " +
 			"   and d.fechaVencimiento < :fechaInicio " +
-			"   and d.prestamo.estadoPrestamo in (2, 8, 11) " +
+			"   and d.prestamo.idEstado in (2, 8, 11) " +
 			" order by d.numeroCuota asc "
 		);
 		query.setParameter("codigoPrestamo", codigoPrestamo);
@@ -188,7 +188,7 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 			" join fetch d.prestamo " +
 			" join fetch d.prestamo.entidad " +
 			" left join fetch d.prestamo.producto " +
-			" where d.estado <> 7 " +
+			" where d.estado = 4 " +
 			"   and d.fechaVencimiento >= :fechaInicio " +
 			"   and d.fechaVencimiento <= :fechaFin "
 		);
@@ -206,15 +206,15 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 			" join fetch d.prestamo " +
 			" join fetch d.prestamo.entidad " +
 			" left join fetch d.prestamo.producto " +
-			" where d.estado in (2, 3, 5, 6) " +
+			" where d.estado in (1, 2, 3, 5, 6) " +
 			"   and d.fechaVencimiento < :fechaInicio " +
-			"   and d.prestamo.estadoPrestamo in (2, 8, 11) " +
+			"   and d.prestamo.idEstado in (2, 8, 11) " +
 			"   and d.numeroCuota = (" +
 			"     select min(d2.numeroCuota) from DetallePrestamo d2 " +
 			"     where d2.prestamo.codigo = d.prestamo.codigo " +
-			"       and d2.estado in (2, 3, 5, 6) " +
+			"       and d2.estado in (1, 2, 3, 5, 6) " +
 			"       and d2.fechaVencimiento < :fechaInicio " +
-			"       and d2.prestamo.estadoPrestamo in (2, 8, 11) " +
+			"       and d2.prestamo.idEstado in (2, 8, 11) " +
 			"   ) "
 		);
 		query.setParameter("fechaInicio", fechaInicio);
@@ -321,7 +321,7 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 			" join fetch d.prestamo " +
 			" join fetch d.prestamo.entidad " +
 			" where d.estado = 4 " +
-			"   and d.prestamo.estadoPrestamo = 4 " +
+			"   and d.prestamo.idEstado = 4 " +
 			"   and d.fechaVencimiento >= :fechaInicio " +
 			"   and d.fechaVencimiento <= :fechaFin " +
 			"   and d.numeroCuota = (" +
@@ -332,6 +332,59 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 		);
 		query.setParameter("fechaInicio", fechaInicio);
 		query.setParameter("fechaFin", fechaFin);
+		return query.getResultList();
+	}
+
+	@Override
+	public Object[] selectSumaCapitalInteresGrupo2(Long codigoPrestamo, Double numeroCuotaInicio, java.time.LocalDateTime fechaFin) throws Throwable {
+		System.out.println("DetallePrestamoDaoServiceImpl.selectSumaCapitalInteresGrupo2 prestamo: " + codigoPrestamo 
+			+ " cuotaInicio: " + numeroCuotaInicio + " hasta: " + fechaFin);
+		
+		// Suma capital e interés de todas las cuotas desde numeroCuotaInicio
+		// hasta la máxima cuota con fechaVencimiento <= fechaFin
+		Query query = em.createQuery(
+			" select sum(d.capital), sum(d.interes) " +
+			" from DetallePrestamo d " +
+			" where d.prestamo.codigo = :codigoPrestamo " +
+			"   and d.numeroCuota >= :numeroCuotaInicio " +
+			"   and d.fechaVencimiento <= :fechaFin "
+		);
+		query.setParameter("codigoPrestamo", codigoPrestamo);
+		query.setParameter("numeroCuotaInicio", numeroCuotaInicio);
+		query.setParameter("fechaFin", fechaFin);
+		
+		Object[] result = (Object[]) query.getSingleResult();
+		
+		// Convertir nulls a 0.0
+		Double sumaCapital = result[0] != null ? ((Number) result[0]).doubleValue() : 0.0;
+		Double sumaInteres = result[1] != null ? ((Number) result[1]).doubleValue() : 0.0;
+		
+		System.out.println("  → sumaCapital: " + sumaCapital + ", sumaInteres: " + sumaInteres);
+		
+		return new Object[]{sumaCapital, sumaInteres};
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<Object[]> selectCuotasParaMora(Long codigoCuotaOrigen, java.time.LocalDateTime fechaHasta) throws Throwable {
+		System.out.println("DetallePrestamoDaoServiceImpl.selectCuotasParaMora cuotaOrigen: " + codigoCuotaOrigen + " hasta: " + fechaHasta);
+		// Trae capital, fechaVencimiento e interesNominal del préstamo
+		// de todas las cuotas del mismo préstamo, desde la cuota origen (inclusive)
+		// hasta la máxima con fechaVencimiento <= fechaHasta
+		Query query = em.createQuery(
+			" select d.capital, d.fechaVencimiento, d.prestamo.interesNominal " +
+			" from DetallePrestamo d " +
+			" where d.prestamo.codigo = (" +
+			"     select d0.prestamo.codigo from DetallePrestamo d0 where d0.codigo = :codigoCuotaOrigen" +
+			" ) " +
+			"   and d.numeroCuota >= (" +
+			"     select d0.numeroCuota from DetallePrestamo d0 where d0.codigo = :codigoCuotaOrigen" +
+			" ) " +
+			"   and d.fechaVencimiento <= :fechaHasta " +
+			" order by d.numeroCuota asc "
+		);
+		query.setParameter("codigoCuotaOrigen", codigoCuotaOrigen);
+		query.setParameter("fechaHasta", fechaHasta);
 		return query.getResultList();
 	}
 

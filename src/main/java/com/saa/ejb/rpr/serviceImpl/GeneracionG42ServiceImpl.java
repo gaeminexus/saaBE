@@ -46,16 +46,30 @@ public class GeneracionG42ServiceImpl implements GeneracionG42Service {
         List<Object[]> patronales     = aporteService.selectSumaPatronalPorEntidad(fechaCorte);
         List<Object[]> personales     = aporteService.selectSumaPersonalPorEntidad(fechaCorte);
         List<Object[]> aportePersonal = historialSueldoService.selectSumaAportePersonalPorEntidad(fechaCorte);
+        List<Object[]> tiposAporte    = aporteService.selectTiposAportePorEntidad(fechaCorte);
 
         System.out.println("G42 - Rendimientos: "   + rendimientos.size()   + " entidades");
         System.out.println("G42 - Patronales: "      + patronales.size()     + " entidades");
         System.out.println("G42 - Personales: "      + personales.size()     + " entidades");
         System.out.println("G42 - AportePersonal: "  + aportePersonal.size() + " entidades");
+        System.out.println("G42 - TiposAporte: "     + tiposAporte.size()    + " registros");
 
         // Si no hay ningún dato en ningún grupo → G42 vacío, OK
         if (rendimientos.isEmpty() && patronales.isEmpty() && personales.isEmpty() && aportePersonal.isEmpty()) {
             System.out.println("No hay datos en ningún grupo → G42 queda vacío y OK");
             return 0L;
+        }
+
+        // -------------------------------------------------------
+        // 1.5. Construir mapa de tipos de aporte por entidad para calcular tipoPrestacion
+        //      Regla: tipoAporte=11 → C, tipoAporte=9 → J, ambos → M
+        // -------------------------------------------------------
+        Map<Long, java.util.Set<Long>> mapaTiposAporte = new HashMap<>();
+        for (Object[] fila : tiposAporte) {
+            Long codigoEntidad = toLong(fila[0]);
+            Long codigoTipoAporte = toLong(fila[1]);
+            if (codigoEntidad == null || codigoTipoAporte == null) continue;
+            mapaTiposAporte.computeIfAbsent(codigoEntidad, k -> new java.util.HashSet<>()).add(codigoTipoAporte);
         }
 
         // -------------------------------------------------------
@@ -126,8 +140,13 @@ public class GeneracionG42ServiceImpl implements GeneracionG42Service {
                 nuevo.setEntidad(entidad);
                 nuevo.setIdentificacion(entidad.getNumeroIdentificacion());
                 nuevo.setTipoIdentificacion("C");
+                
+                // Calcular tipoPrestacion basándose en los tipos de aporte
+                String tipoPrestacion = calcularTipoPrestacion(mapaTiposAporte.get(codigoEntidad));
+                nuevo.setTipoPrestacion(tipoPrestacion);
+                
                 cg42DaoService.save(nuevo, null);
-                System.out.println("G42 INSERT entidad: " + codigoEntidad);
+                System.out.println("G42 INSERT entidad: " + codigoEntidad + " tipoPrestacion: " + tipoPrestacion);
             }
 
             contador++;
@@ -167,5 +186,32 @@ public class GeneracionG42ServiceImpl implements GeneracionG42Service {
     private Double toDouble(Object obj) {
         if (obj == null) return null;
         return ((Number) obj).doubleValue();
+    }
+
+    /**
+     * Calcula el tipo de prestación basándose en los tipos de aporte de la entidad.
+     * Regla:
+     * - Si solo tiene tipoAporte = 11 → "C" (Cesantía)
+     * - Si solo tiene tipoAporte = 9  → "J" (Jubilación)
+     * - Si tiene ambos (9 y 11)       → "M" (Mixto)
+     * - Si no tiene ninguno           → null
+     */
+    private String calcularTipoPrestacion(java.util.Set<Long> tiposAporte) {
+        if (tiposAporte == null || tiposAporte.isEmpty()) {
+            return null;
+        }
+
+        boolean tiene9  = tiposAporte.contains(9L);
+        boolean tiene11 = tiposAporte.contains(11L);
+
+        if (tiene9 && tiene11) {
+            return "M"; // Mixto
+        } else if (tiene11) {
+            return "C"; // Cesantía
+        } else if (tiene9) {
+            return "J"; // Jubilación
+        }
+
+        return null;
     }
 }

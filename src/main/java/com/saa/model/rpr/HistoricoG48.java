@@ -31,7 +31,7 @@ public class HistoricoG48 implements Serializable {
     @Basic @Column(name = "HM48VSAP")               private Double valorSujetoProvision;
     @Basic @Column(name = "HM48TDSA", length = 50)  private String tipoSistemaAmortizacion;
     @Basic @Column(name = "HM48CDCR")               private Double cuotaCredito;
-    @Basic @Column(name = "HM48DVDN")               private Long dividendo;
+    @Basic @Column(name = "HM48DVDN")               private Double dividendo;
     @Basic @Column(name = "HM48FDEC", length = 100) private String fechaExigibilidadCuota;
 
     public String getNumeroOperacion() { return numeroOperacion; }
@@ -74,8 +74,8 @@ public class HistoricoG48 implements Serializable {
     public void setTipoSistemaAmortizacion(String v) { this.tipoSistemaAmortizacion = v; }
     public Double getCuotaCredito() { return cuotaCredito; }
     public void setCuotaCredito(Double v) { this.cuotaCredito = v; }
-    public Long getDividendo() { return dividendo; }
-    public void setDividendo(Long v) { this.dividendo = v; }
+    public Double getDividendo() { return dividendo; }
+    public void setDividendo(Double v) { this.dividendo = v; }
     public String getFechaExigibilidadCuota() { return fechaExigibilidadCuota; }
     public void setFechaExigibilidadCuota(String v) { this.fechaExigibilidadCuota = v; }
 }

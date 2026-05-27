@@ -146,4 +146,44 @@ public class DetallePrestamoServiceImpl implements DetallePrestamoService {
 	public List<DetallePrestamo> selectMaxCuotaPagadaCanceladoAnticipadoDelMesGlobal(java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable {
 		return detallePrestamoDaoService.selectMaxCuotaPagadaCanceladoAnticipadoDelMesGlobal(fechaInicio, fechaFin);
 	}
+
+	@Override
+	public Object[] selectSumaCapitalInteresGrupo2(Long codigoPrestamo, Double numeroCuotaInicio, java.time.LocalDateTime fechaFin) throws Throwable {
+		return detallePrestamoDaoService.selectSumaCapitalInteresGrupo2(codigoPrestamo, numeroCuotaInicio, fechaFin);
+	}
+
+	@Override
+	public Double calcularInteresMora(Long codigoCuotaOrigen, java.time.LocalDateTime fechaHasta) throws Throwable {
+		System.out.println("calcularInteresMora - cuotaOrigen: " + codigoCuotaOrigen + " hasta: " + fechaHasta);
+
+		List<Object[]> cuotas = detallePrestamoDaoService.selectCuotasParaMora(codigoCuotaOrigen, fechaHasta);
+
+		java.time.LocalDate fechaHastaDate = fechaHasta.toLocalDate();
+		double totalMora = 0.0;
+
+		for (Object[] fila : cuotas) {
+			Double capital        = fila[0] != null ? ((Number) fila[0]).doubleValue() : 0.0;
+			java.time.LocalDateTime fechaVenc = (java.time.LocalDateTime) fila[1];
+			Double interesNominal = fila[2] != null ? ((Number) fila[2]).doubleValue() : 0.0;
+
+			if (capital <= 0.0 || fechaVenc == null || interesNominal <= 0.0) continue;
+
+			// Tasa de mora = tasa nominal del préstamo (almacenada como porcentaje, ej: 9 = 9%)
+			double tasaMora = interesNominal / 100.0;
+
+			// Días de mora: desde el día siguiente al vencimiento hasta fechaHasta
+			long diasMora = java.time.temporal.ChronoUnit.DAYS.between(fechaVenc.toLocalDate(), fechaHastaDate);
+			if (diasMora <= 0) continue;
+
+			// Interés mora cuota = capital × (tasaMora / 360) × diasMora
+			double interesMoraCuota = capital * (tasaMora / 360.0) * diasMora;
+			totalMora += interesMoraCuota;
+
+			System.out.println("  cuota capital=" + capital + " tasaMora=" + tasaMora
+				+ " dias=" + diasMora + " mora=" + interesMoraCuota);
+		}
+
+		System.out.println("calcularInteresMora TOTAL=" + totalMora);
+		return totalMora;
+	}
 }

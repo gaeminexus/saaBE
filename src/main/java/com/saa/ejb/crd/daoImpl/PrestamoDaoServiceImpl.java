@@ -119,7 +119,7 @@ public class PrestamoDaoServiceImpl extends EntityDaoImpl<Prestamo> implements P
     @SuppressWarnings("unchecked")
     public List<Prestamo> selectByEstado(Long estado) throws Throwable {
         Query query = em.createQuery(
-            "select p from Prestamo p where p.estadoPrestamo = :estado"
+            "select p from Prestamo p where p.idEstado = :estado"
         );
         query.setParameter("estado", estado);
         return query.getResultList();

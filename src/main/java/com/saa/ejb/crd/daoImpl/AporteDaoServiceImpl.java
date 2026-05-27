@@ -567,4 +567,22 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 		return query.getResultList();
 	}
 
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<Object[]> selectTiposAportePorEntidad(java.time.LocalDateTime fechaCorte) throws Throwable {
+		System.out.println("AporteDaoServiceImpl.selectTiposAportePorEntidad fechaCorte: " + fechaCorte);
+		Query query = em.createQuery(
+			" select   a.entidad.codigo, a.tipoAporte.codigo " +
+			" from     Aporte a " +
+			" where    a.tipoAporte.estado = 1 " +
+			"   and    a.tipoAporte.codigo in (:codigos) " +
+			"   and    a.fechaTransaccion <= :fechaCorte " +
+			"   and    exists (select 1 from Entidad e where e.codigo = a.entidad.codigo) " +
+			" group by a.entidad.codigo, a.tipoAporte.codigo "
+		);
+		query.setParameter("codigos", java.util.Arrays.asList(9L, 11L));
+		query.setParameter("fechaCorte", fechaCorte);
+		return query.getResultList();
+	}
+
 }

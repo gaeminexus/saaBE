@@ -137,7 +137,7 @@ public class SaldoOperacionG48 implements Serializable {
     /** Dividendo. */
     @Basic
     @Column(name = "CG48DVDN")
-    private Long dividendo;
+    private Double dividendo;
 
     /** Fecha de exigibilidad de la cuota. */
     @Basic
@@ -216,8 +216,8 @@ public class SaldoOperacionG48 implements Serializable {
     public Double getCuotaCredito() { return cuotaCredito; }
     public void setCuotaCredito(Double cuotaCredito) { this.cuotaCredito = cuotaCredito; }
 
-    public Long getDividendo() { return dividendo; }
-    public void setDividendo(Long dividendo) { this.dividendo = dividendo; }
+    public Double getDividendo() { return dividendo; }
+    public void setDividendo(Double dividendo) { this.dividendo = dividendo; }
 
     public LocalDate getFechaExigibilidad() { return fechaExigibilidad; }
     public void setFechaExigibilidad(LocalDate fechaExigibilidad) { this.fechaExigibilidad = fechaExigibilidad; }
