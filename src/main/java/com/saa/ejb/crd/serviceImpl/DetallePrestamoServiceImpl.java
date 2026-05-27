@@ -106,4 +106,9 @@ public class DetallePrestamoServiceImpl implements DetallePrestamoService {
         }
         return result;
 	}
+
+	@Override
+	public List<Object[]> selectSumaCuotasPagadasPorEntidad(java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable {
+		return detallePrestamoDaoService.selectSumaCuotasPagadasPorEntidad(fechaInicio, fechaFin);
+	}
 }

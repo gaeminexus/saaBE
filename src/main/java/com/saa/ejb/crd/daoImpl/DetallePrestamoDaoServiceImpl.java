@@ -106,6 +106,24 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 		}
 	}
 
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<Object[]> selectSumaCuotasPagadasPorEntidad(LocalDateTime fechaInicio, LocalDateTime fechaFin) throws Throwable {
+		System.out.println("DetallePrestamoDaoServiceImpl.selectSumaCuotasPagadasPorEntidad desde: " + fechaInicio + " hasta: " + fechaFin);
+		Query query = em.createQuery(
+			" select   d.prestamo.entidad.codigo, sum(d.cuota) " +
+			" from     DetallePrestamo d " +
+			" where    d.estado = :estadoPagado " +
+			"   and    d.fechaVencimiento >= :fechaInicio " +
+			"   and    d.fechaVencimiento <= :fechaFin " +
+			" group by d.prestamo.entidad.codigo "
+		);
+		query.setParameter("estadoPagado", 4L);
+		query.setParameter("fechaInicio", fechaInicio);
+		query.setParameter("fechaFin", fechaFin);
+		return query.getResultList();
+	}
+
 	@SuppressWarnings("unchecked")
 	@Override
 	public List<DetallePrestamo> selectCuotasNoPagadasByPrestamo(Long codigoPrestamo) throws Throwable {

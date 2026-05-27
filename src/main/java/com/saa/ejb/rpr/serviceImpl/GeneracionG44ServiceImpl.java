@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.saa.ejb.crd.service.AporteService;
+import com.saa.ejb.crd.service.DetallePrestamoService;
 import com.saa.ejb.crd.service.EntidadService;
 import com.saa.ejb.crd.service.ValorPagoPensionComplementariaService;
 import com.saa.ejb.rpr.dao.ParticipeJubiladoG44DaoService;
@@ -28,6 +29,7 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
 
     @EJB private EntidadService                       entidadService;
     @EJB private AporteService                        aporteService;
+    @EJB private DetallePrestamoService               detallePrestamoService;
     @EJB private ValorPagoPensionComplementariaService vppcService;
     @EJB private ParticipeJubiladoG44DaoService       cg44DaoService;
     @EJB private HistoricoG44Service                  historicoG44Service;
@@ -73,6 +75,26 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
 
         System.out.println("G44 - Saldos cuenta en BD: " + mapaSaldo.size() + " entidades");
 
+        // Calcular fechaInicio del mes (necesario para cuotas y aportes del mes)
+        LocalDateTime fechaInicio = LocalDateTime.of((int) anio, (int) mes, 1, 0, 0, 0);
+
+        // SUM aportes tipo 23 en el mes (para valorPension de ex-jubilados y cuotas)
+        List<Object[]> sumaAportesMesList = aporteService.selectSumaAportesTipo23EnRango(fechaInicio, fechaCorte);
+        Map<Long, Double> mapaAportesMes = new HashMap<>();
+        for (Object[] fila : sumaAportesMesList) {
+            Long cod = toLong(fila[0]); Double suma = toDouble(fila[1]);
+            if (cod != null && suma != null) mapaAportesMes.put(cod, suma);
+        }
+
+        // SUM cuotas pagadas (estado=4) con fechaVencimiento en el mes
+        List<Object[]> sumaCuotasList = detallePrestamoService.selectSumaCuotasPagadasPorEntidad(fechaInicio, fechaCorte);
+        Map<Long, Double> mapaCuotasPagadas = new HashMap<>();
+        for (Object[] fila : sumaCuotasList) {
+            Long cod = toLong(fila[0]); Double suma = toDouble(fila[1]);
+            if (cod != null && suma != null) mapaCuotasPagadas.put(cod, suma);
+        }
+        System.out.println("G44 - Cuotas pagadas en BD: " + mapaCuotasPagadas.size() + " entidades");
+
         // -------------------------------------------------------
         // 3. Por cada jubilado → obtener valorPension desde VPPC e INSERT en CG44
         // -------------------------------------------------------
@@ -81,10 +103,10 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
         for (Entidad entidad : jubilados) {
             Long codigoEntidad = entidad.getCodigo();
 
-            // valorPension y valorNetoRecibir → valorPagar de VPPC
-            Double valorPension = null;
+            // valorPension → valorPagar de VPPC
+            Double valorPension = 0.0;
             List<ValorPagoPensionComplementaria> vppcList = vppcService.selectByEntidad(codigoEntidad);
-            if (vppcList != null && !vppcList.isEmpty()) {
+            if (vppcList != null && !vppcList.isEmpty() && vppcList.get(0).getValorPagar() != null) {
                 valorPension = vppcList.get(0).getValorPagar();
             }
 
@@ -107,18 +129,33 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
                         java.time.format.DateTimeFormatter.ofPattern("d-M-yyyy")
                     };
                     for (java.time.format.DateTimeFormatter fmt : formatos) {
-                        try {
-                            fechaJubilacion = java.time.LocalDate.parse(rawFecha, fmt);
-                            break;
-                        } catch (Exception ex) {
-                            // intentar siguiente formato
-                        }
+                        try { fechaJubilacion = java.time.LocalDate.parse(rawFecha, fmt); break; }
+                        catch (Exception ex) { /* siguiente formato */ }
                     }
                     if (fechaJubilacion == null) {
                         System.out.println("G44 - fechaJubilacion no parseable para cedula: "
                             + entidad.getNumeroIdentificacion() + " valor en BD: [" + rawFecha + "]");
                     }
                 }
+            }
+
+            // Aplicar 4 casos de valoresCompensados y valorNetoRecibir
+            Double sumaCuotas = mapaCuotasPagadas.getOrDefault(codigoEntidad, 0.0);
+            Double valoresCompensados;
+            Double valorNetoRecibir;
+
+            if (sumaCuotas == 0.0) {
+                valoresCompensados = 0.0;
+                valorNetoRecibir   = valorPension;
+            } else if (sumaCuotas < valorPension) {
+                valoresCompensados = sumaCuotas;
+                valorNetoRecibir   = valorPension - valoresCompensados;
+            } else if (sumaCuotas > valorPension) {
+                valoresCompensados = sumaCuotas - valorPension;
+                valorNetoRecibir   = 0.0;
+            } else {
+                valoresCompensados = sumaCuotas;
+                valorNetoRecibir   = 0.0;
             }
 
             ParticipeJubiladoG44 jubilado = new ParticipeJubiladoG44();
@@ -128,21 +165,22 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
             jubilado.setFechaJubilacion(fechaJubilacion);
             jubilado.setImposicionesAcumuladas(imposicionesAcumuladas != null ? imposicionesAcumuladas : 0L);
             jubilado.setValorPension(valorPension);
-            jubilado.setValorNetoRecibir(valorPension);
+            jubilado.setValorNetoRecibir(valorNetoRecibir);
+            jubilado.setValoresCompensados(valoresCompensados);
             jubilado.setSaldoCuenta(mapaSaldo.getOrDefault(codigoEntidad, 0.0));
             jubilado.setJubilacionIess("S");
             jubilado.setDetalleEjecucion(detalle);
 
             cg44DaoService.save(jubilado, null);
-            System.out.println("G44 INSERT jubilado: " + entidad.getNumeroIdentificacion());
+            System.out.println("G44 INSERT jubilado: " + entidad.getNumeroIdentificacion()
+                + " (valorPension=" + valorPension + ", sumaCuotas=" + sumaCuotas
+                + ", valoresCompensados=" + valoresCompensados + ", valorNetoRecibir=" + valorNetoRecibir + ")");
             contador++;
         }
 
         // -------------------------------------------------------
         // 4. Ex-jubilados: en HistoricoG44 con estado != 30 en ENTD
         // -------------------------------------------------------
-        LocalDateTime fechaInicio = LocalDateTime.of((int) anio, (int) mes, 1, 0, 0, 0);
-
         List<HistoricoG44> exJubiladosHist = null;
         try {
             exJubiladosHist = historicoG44Service.selectExJubilados();
@@ -153,19 +191,11 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
         System.out.println("G44 - Ex-jubilados desde HistoricoG44: " + exJubiladosHist.size());
 
         if (!exJubiladosHist.isEmpty()) {
-            // Cargar sumas de aportes tipo 23 en el mes
-            List<Object[]> sumaEnMesList = aporteService.selectSumaAportesTipo23EnRango(fechaInicio, fechaCorte);
-            Map<Long, Double> mapaAportesMes = new HashMap<>();
-            for (Object[] fila : sumaEnMesList) {
-                Long cod = toLong(fila[0]);
-                Double suma = toDouble(fila[1]);
-                if (cod != null && suma != null) mapaAportesMes.put(cod, suma);
-            }
+            // Los mapas mapaAportesMes y mapaCuotasPagadas ya están cargados arriba
 
             for (HistoricoG44 hist : exJubiladosHist) {
                 String identificacion = hist.getIdentificacion();
 
-                // Obtener codigo de entidad para buscar en el mapa
                 Entidad entidad = null;
                 try {
                     entidad = entidadService.selectByNumeroIdentificacion(identificacion);
@@ -176,13 +206,36 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
                 if (entidad == null) continue;
 
                 Long codigoEntidad = entidad.getCodigo();
-                Double sumaEnMes  = Math.abs(mapaAportesMes.getOrDefault(codigoEntidad, 0.0));
-                Double saldoTotal = mapaSaldo.getOrDefault(codigoEntidad, 0.0);
+                Double valorPension    = Math.abs(mapaAportesMes.getOrDefault(codigoEntidad, 0.0));
+                Double saldoTotal      = mapaSaldo.getOrDefault(codigoEntidad, 0.0);
+                Double sumaCuotas      = mapaCuotasPagadas.getOrDefault(codigoEntidad, 0.0);
 
                 // Exclusión: saldoCuenta = 0 y valorPension = 0 → NO incluir
-                if (saldoTotal == 0.0 && sumaEnMes == 0.0) {
-                    System.out.println("G44 - SKIP ex-jubilado " + identificacion + " (sin saldo ni aportes en el mes)");
+                if (saldoTotal == 0.0 && valorPension == 0.0) {
+                    System.out.println("G44 - SKIP ex-jubilado " + identificacion + " (saldoCuenta=0 y valorPension=0)");
                     continue;
+                }
+
+                // Calcular valoresCompensados y valorNetoRecibir según los 4 casos
+                Double valoresCompensados;
+                Double valorNetoRecibir;
+
+                if (sumaCuotas == 0.0) {
+                    // Caso 1: suma de cuotas = 0
+                    valoresCompensados = 0.0;
+                    valorNetoRecibir   = valorPension;
+                } else if (sumaCuotas < valorPension) {
+                    // Caso 2: suma < valorPension
+                    valoresCompensados = sumaCuotas;
+                    valorNetoRecibir   = valorPension - valoresCompensados;
+                } else if (sumaCuotas > valorPension) {
+                    // Caso 3: suma > valorPension
+                    valoresCompensados = sumaCuotas - valorPension;
+                    valorNetoRecibir   = 0.0;
+                } else {
+                    // Caso 4: suma == valorPension
+                    valoresCompensados = sumaCuotas;
+                    valorNetoRecibir   = 0.0;
                 }
 
                 // Parsear fechaJubilacion
@@ -209,15 +262,18 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
                 exJubilado.setTipoJubilacion("V");
                 exJubilado.setFechaJubilacion(fechaJubilacion);
                 exJubilado.setImposicionesAcumuladas(hist.getImposicionesAcumuladas() != null ? hist.getImposicionesAcumuladas() : 0L);
-                exJubilado.setValorPension(sumaEnMes);
-                exJubilado.setValorNetoRecibir(sumaEnMes);
-                exJubilado.setValoresCompensados(sumaEnMes);
+                exJubilado.setValorPension(valorPension);
+                exJubilado.setValorNetoRecibir(valorNetoRecibir);
+                exJubilado.setValoresCompensados(valoresCompensados);
                 exJubilado.setSaldoCuenta(saldoTotal);
                 exJubilado.setJubilacionIess("S");
                 exJubilado.setDetalleEjecucion(detalle);
 
                 cg44DaoService.save(exJubilado, null);
-                System.out.println("G44 INSERT ex-jubilado: " + identificacion + " (sumaEnMes=" + sumaEnMes + ", saldoTotal=" + saldoTotal + ")");
+                System.out.println("G44 INSERT ex-jubilado: " + identificacion
+                    + " (valorPension=" + valorPension + ", sumaCuotas=" + sumaCuotas
+                    + ", valoresCompensados=" + valoresCompensados + ", valorNetoRecibir=" + valorNetoRecibir
+                    + ", saldoCuenta=" + saldoTotal + ")");
                 contador++;
             }
         }

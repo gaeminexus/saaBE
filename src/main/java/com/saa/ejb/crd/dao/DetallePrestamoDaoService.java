@@ -40,6 +40,13 @@ public interface DetallePrestamoDaoService extends EntityDao<DetallePrestamo> {
 	List<DetallePrestamo> selectByPrestamo(Long codigoPrestamo) throws Throwable;
 
 	/**
+	 * Para G44 ex-jubilados: SUM de cuota de cuotas en estado pagado (estado=4)
+	 * cuya fechaVencimiento esté entre fechaInicio y fechaFin, agrupado por entidad (via prestamo).
+	 * Retorna Object[]{Long codigoEntidad, Double sumaCuotas}.
+	 */
+	List<Object[]> selectSumaCuotasPagadasPorEntidad(LocalDateTime fechaInicio, LocalDateTime fechaFin) throws Throwable;
+
+	/**
 	 * Obtiene solo las cuotas NO pagadas ni canceladas anticipadamente de un préstamo.
 	 * ✅ OPTIMIZACIÓN: Filtra directamente en la BD en lugar de traer todas las cuotas a memoria.
 	 * @param codigoPrestamo Código del préstamo
