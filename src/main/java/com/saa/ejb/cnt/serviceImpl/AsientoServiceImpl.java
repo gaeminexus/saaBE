@@ -600,6 +600,11 @@ public class AsientoServiceImpl implements AsientoService {
 			if (asiento.getCodigo() == null) {
 				asiento.setNumero(siguienteNumeroAsiento(asiento.getTipoAsiento().getCodigo(), asiento.getEmpresa().getCodigo()));
 				asiento = asignaNumeroAlterno(asiento);
+			} else {
+				if (asiento.getNumero() == null || asiento.getNumeroAlterno() == null) {
+					asiento.setNumero(siguienteNumeroAsiento(asiento.getTipoAsiento().getCodigo(), asiento.getEmpresa().getCodigo()));
+					asiento = asignaNumeroAlterno(asiento);
+				}	
 			}
 			/* falta validar si el periodo esta abierto 
 			 * y tambien que recupere el id del periodo dependiendo de la fecha de asiento

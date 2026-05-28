@@ -1,5 +1,6 @@
 package com.saa.ejb.rpr.serviceImpl;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.HashMap;
@@ -100,6 +101,10 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
         // -------------------------------------------------------
         long contador = 0L;
 
+        // Fecha de referencia: ejecuciones desde enero 2026 en adelante
+        LocalDate fechaLimite2026 = LocalDate.of(2026, 1, 1);
+        boolean esDesde2026 = (anio > 2026) || (anio == 2026 && mes >= 1);
+
         for (Entidad entidad : jubilados) {
             Long codigoEntidad = entidad.getCodigo();
 
@@ -111,7 +116,7 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
             }
 
             // fechaJubilacion e imposicionesAcumuladas → buscar en HistoricoG44 por cédula
-            java.time.LocalDate fechaJubilacion = null;
+            LocalDate fechaJubilacion = null;
             Long imposicionesAcumuladas = null;
             List<HistoricoG44> historicoList = historicoG44Service.selectByIdentificacion(entidad.getNumeroIdentificacion());
             if (historicoList != null && !historicoList.isEmpty()) {
@@ -129,7 +134,7 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
                         java.time.format.DateTimeFormatter.ofPattern("d-M-yyyy")
                     };
                     for (java.time.format.DateTimeFormatter fmt : formatos) {
-                        try { fechaJubilacion = java.time.LocalDate.parse(rawFecha, fmt); break; }
+                        try { fechaJubilacion = LocalDate.parse(rawFecha, fmt); break; }
                         catch (Exception ex) { /* siguiente formato */ }
                     }
                     if (fechaJubilacion == null) {
@@ -137,6 +142,20 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
                             + entidad.getNumeroIdentificacion() + " valor en BD: [" + rawFecha + "]");
                     }
                 }
+            }
+
+            // Regla fecha jubilacion nula:
+            // - Ejecución anterior a 01/01/2026 → omitir el registro
+            // - Ejecución desde 01/01/2026 en adelante → usar 01/01/2026 como fecha de jubilacion
+            if (fechaJubilacion == null) {
+                if (!esDesde2026) {
+                    System.out.println("G44 SKIP jubilado sin fechaJubilacion (ejecución antes 2026): "
+                        + entidad.getNumeroIdentificacion());
+                    continue;
+                }
+                fechaJubilacion = fechaLimite2026;
+                System.out.println("G44 - fechaJubilacion nula, se asigna 01/01/2026 para: "
+                    + entidad.getNumeroIdentificacion());
             }
 
             // Aplicar 4 casos de valoresCompensados y valorNetoRecibir
@@ -239,7 +258,7 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
                 }
 
                 // Parsear fechaJubilacion
-                java.time.LocalDate fechaJubilacion = null;
+                LocalDate fechaJubilacion = null;
                 if (hist.getFechaJubilacion() != null) {
                     String rawFecha = hist.getFechaJubilacion().trim();
                     java.time.format.DateTimeFormatter[] formatos = {
@@ -251,9 +270,23 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
                         java.time.format.DateTimeFormatter.ofPattern("d-M-yyyy")
                     };
                     for (java.time.format.DateTimeFormatter fmt : formatos) {
-                        try { fechaJubilacion = java.time.LocalDate.parse(rawFecha, fmt); break; }
+                        try { fechaJubilacion = LocalDate.parse(rawFecha, fmt); break; }
                         catch (Exception ex) { /* siguiente formato */ }
                     }
+                }
+
+                // Regla fecha jubilacion nula:
+                // - Ejecución anterior a 01/01/2026 → omitir el registro
+                // - Ejecución desde 01/01/2026 en adelante → usar 01/01/2026 como fecha de jubilacion
+                if (fechaJubilacion == null) {
+                    if (!esDesde2026) {
+                        System.out.println("G44 SKIP ex-jubilado sin fechaJubilacion (ejecución antes 2026): "
+                            + identificacion);
+                        continue;
+                    }
+                    fechaJubilacion = fechaLimite2026;
+                    System.out.println("G44 - fechaJubilacion nula, se asigna 01/01/2026 para ex-jubilado: "
+                        + identificacion);
                 }
 
                 ParticipeJubiladoG44 exJubilado = new ParticipeJubiladoG44();
