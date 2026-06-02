@@ -246,7 +246,7 @@ public class EntidadRest {
                 }
             } else {
                 // Valores por defecto
-                estadosPermitidos = java.util.Arrays.asList(10L, 2L, 30L);
+                estadosPermitidos = java.util.Arrays.asList(10L, 2L, 30L, 23L, 42L);
             }
             
             java.util.List<com.saa.model.crd.dto.EntidadResumenEstadoDTO> resumen = 
@@ -284,7 +284,7 @@ public class EntidadRest {
                     estadosPermitidos.add(Long.parseLong(estado.trim()));
                 }
             } else {
-                estadosPermitidos = java.util.Arrays.asList(10L, 2L, 30L);
+                estadosPermitidos = java.util.Arrays.asList(10L, 2L, 30L, 23L, 42L);
             }
             
             java.util.List<com.saa.model.crd.dto.EntidadResumenPrestamosDTO> resumen = 
@@ -322,7 +322,7 @@ public class EntidadRest {
                     estadosPermitidos.add(Long.parseLong(estado.trim()));
                 }
             } else {
-                estadosPermitidos = java.util.Arrays.asList(10L, 2L, 30L);
+                estadosPermitidos = java.util.Arrays.asList(10L, 2L, 30L, 23L, 42L);
             }
             
             java.util.List<com.saa.model.crd.dto.EntidadResumenAportesDTO> resumen = 
@@ -360,7 +360,7 @@ public class EntidadRest {
                     estadosPermitidos.add(Long.parseLong(estado.trim()));
                 }
             } else {
-                estadosPermitidos = java.util.Arrays.asList(10L, 2L, 30L);
+                estadosPermitidos = java.util.Arrays.asList(10L, 2L, 30L, 23L, 42L);
             }
             
             java.util.List<com.saa.model.crd.dto.EntidadResumenConsolidadoDTO> resumen = 

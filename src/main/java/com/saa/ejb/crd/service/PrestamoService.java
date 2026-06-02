@@ -45,4 +45,16 @@ public interface PrestamoService extends EntityService<Prestamo>{
 	/** Retorna todos los préstamos con un estadoPrestamo específico */
 	java.util.List<Prestamo> selectByEstado(Long estado) throws Throwable;
 
+	/**
+	 * Cuenta los préstamos de una entidad en estado vigente (2), en mora (8) o plazo vencido (11).
+	 */
+	long countVigentesMoraVencidosByEntidad(Long codigoEntidad) throws Throwable;
+
+	/**
+	 * Cuenta los préstamos de una entidad cuya última cuota (MAX numeroCuota)
+	 * tenga fechaVencimiento dentro del período indicado.
+	 * Cubre cancelaciones normales y anticipadas en el período.
+	 */
+	long countPrestamosConUltimaCuotaEnPeriodoByEntidad(Long codigoEntidad, java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable;
+
 }

@@ -45,5 +45,23 @@ public interface PrestamoDaoService extends EntityDao<Prestamo> {
 
     /** Retorna todos los préstamos con un estadoPrestamo específico */
     List<Prestamo> selectByEstado(Long estado) throws Throwable;
+
+    /**
+     * Cuenta los préstamos de una entidad que estén en estado vigente (2), en mora (8) o plazo vencido (11).
+     * Usado en la generación del G45 para determinar si una entidad tiene más de un préstamo activo.
+     * @param codigoEntidad ID numérico de la entidad
+     * @return cantidad de préstamos en esos estados para la entidad
+     */
+    long countVigentesMoraVencidosByEntidad(Long codigoEntidad) throws Throwable;
+
+    /**
+     * Verifica si una entidad tiene algún préstamo cancelado (3) o cancelado anticipado (4)
+     * cuya última cuota (MAX numeroCuota) tenga fechaVencimiento >= fechaInicio del período de ejecución.
+     * Usado en G45 para excluir entidades con préstamos cancelados en o después del inicio del período.
+     * @param codigoEntidad ID numérico de la entidad
+     * @param fechaInicio   Primer día del mes de ejecución
+     * @return cantidad de préstamos cancelados/cancelados anticipados con última cuota >= fechaInicio
+     */
+    long countPrestamosConUltimaCuotaEnPeriodoByEntidad(Long codigoEntidad, java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable;
 }
 

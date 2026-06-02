@@ -44,8 +44,8 @@ public class GeneracionReportesServiceImpl implements GeneracionReportesService 
 
     // Tipos de reporte
     private static final String[] TIPOS_REPORTE = {
-        "G40", "G41", "G42", "G43", "G44", "G45",
-        "G46", "G47", "G48", "G49", "G50", "G51"
+        "G40", "G41", "G42", "G43", "G44", "G46", "G45",
+        "G47", "G48", "G49", "G50", "G51"
     };
 
     @EJB private EjecucionReporteService        ejrcService;

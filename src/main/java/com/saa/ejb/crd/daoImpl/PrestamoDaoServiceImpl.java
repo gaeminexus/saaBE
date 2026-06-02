@@ -125,4 +125,39 @@ public class PrestamoDaoServiceImpl extends EntityDaoImpl<Prestamo> implements P
         return query.getResultList();
     }
 
+    @Override
+    public long countVigentesMoraVencidosByEntidad(Long codigoEntidad) throws Throwable {
+        Query query = em.createQuery(
+            "select count(p) from Prestamo p " +
+            "where p.entidad.codigo = :codigoEntidad " +
+            "  and p.idEstado in (2, 8, 11)"
+        );
+        query.setParameter("codigoEntidad", codigoEntidad);
+        return ((Number) query.getSingleResult()).longValue();
+    }
+
+    @Override
+    public long countPrestamosConUltimaCuotaEnPeriodoByEntidad(Long codigoEntidad,
+            java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable {
+        // Cuenta préstamos cancelados (3) o cancelados anticipados (4) de la entidad
+        // cuya última cuota (MAX numeroCuota) tenga fechaVencimiento >= fechaInicio del período
+        Query query = em.createQuery(
+            "select count(p) from Prestamo p " +
+            "where p.entidad.codigo = :codigoEntidad " +
+            "  and p.idEstado in (3, 4) " +
+            "  and exists (" +
+            "    select 1 from DetallePrestamo d " +
+            "    where d.prestamo.codigo = p.codigo " +
+            "      and d.numeroCuota = (" +
+            "          select max(d2.numeroCuota) from DetallePrestamo d2 " +
+            "          where d2.prestamo.codigo = p.codigo" +
+            "      )" +
+            "      and d.fechaVencimiento >= :fechaInicio " +
+            "  )"
+        );
+        query.setParameter("codigoEntidad", codigoEntidad);
+        query.setParameter("fechaInicio", fechaInicio);
+        return ((Number) query.getSingleResult()).longValue();
+    }
+
 }

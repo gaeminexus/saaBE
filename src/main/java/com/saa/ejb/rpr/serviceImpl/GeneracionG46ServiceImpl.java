@@ -4,10 +4,14 @@ import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.List;
 
+import com.saa.ejb.crd.service.ExterService;
 import com.saa.ejb.crd.service.PrestamoService;
+import com.saa.ejb.crd.service.ProvinciaService;
 import com.saa.ejb.rpr.dao.NuevoPrestamoG46DaoService;
 import com.saa.ejb.rpr.service.GeneracionG46Service;
+import com.saa.model.crd.Exter;
 import com.saa.model.crd.Prestamo;
+import com.saa.model.crd.Provincia;
 import com.saa.model.rpr.DetalleEjecucionReporte;
 import com.saa.model.rpr.NuevoPrestamoG46;
 
@@ -17,7 +21,9 @@ import jakarta.ejb.Stateless;
 @Stateless
 public class GeneracionG46ServiceImpl implements GeneracionG46Service {
 
-    @EJB private PrestamoService         prestamoService;
+    @EJB private PrestamoService            prestamoService;
+    @EJB private ExterService               exterService;
+    @EJB private ProvinciaService           provinciaService;
     @EJB private NuevoPrestamoG46DaoService cg46DaoService;
 
     @Override
@@ -73,7 +79,8 @@ public class GeneracionG46ServiceImpl implements GeneracionG46Service {
             // Tipo de crédito = primera letra del nombre del producto
             if (prestamo.getProducto() != null && prestamo.getProducto().getNombre() != null
                     && !prestamo.getProducto().getNombre().isEmpty()) {
-                g46.setTipoCredito(String.valueOf(prestamo.getProducto().getNombre().charAt(0)));
+                char inicialProducto = Character.toUpperCase(prestamo.getProducto().getNombre().charAt(0));
+                g46.setTipoCredito(String.valueOf(inicialProducto == 'E' ? 'Q' : inicialProducto));
             }
 
             // Valores fijos
@@ -83,10 +90,27 @@ public class GeneracionG46ServiceImpl implements GeneracionG46Service {
             g46.setFrecuenciaRevision("365");
             g46.setGarantias("GA");
 
-            // Destino geográfico — valores fijos
-            g46.setDestinoProvincia("17");
+            // Destino geográfico — provincia desde EXTR → PRVN, canton y parroquia fijos
+            String identificacionEntidad = prestamo.getEntidad() != null
+                    ? prestamo.getEntidad().getNumeroIdentificacion() : null;
+            String codigoAlternoProvincia = null;
+            if (identificacionEntidad != null) {
+                try {
+                    List<Exter> exters = exterService.selectByCedula(identificacionEntidad);
+                    if (exters != null && !exters.isEmpty() && exters.get(0).getProvincia() != null
+                            && !exters.get(0).getProvincia().isEmpty()) {
+                        Provincia prov = provinciaService.selectByNombre(exters.get(0).getProvincia());
+                        if (prov != null) {
+                            codigoAlternoProvincia = prov.getCodigoAlterno();
+                        }
+                    }
+                } catch (Throwable ex) {
+                    System.out.println("G46 WARN - No se pudo obtener provincia para: " + identificacionEntidad);
+                }
+            }
+            g46.setDestinoProvincia(codigoAlternoProvincia);
             g46.setDestinoCanton("01");
-            g46.setDestinoParroquia("12");
+            g46.setDestinoParroquia("50");
 
             // Fechas de concesión y vencimiento
             if (prestamo.getFecha() != null) {

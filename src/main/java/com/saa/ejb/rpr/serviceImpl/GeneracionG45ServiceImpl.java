@@ -1,25 +1,22 @@
 package com.saa.ejb.rpr.serviceImpl;
 
-import java.time.LocalDate;
 import java.util.List;
 
-import com.saa.ejb.crd.service.DireccionService;
 import com.saa.ejb.crd.service.EntidadService;
 import com.saa.ejb.crd.service.ExterService;
-import com.saa.ejb.crd.service.PerfilEconomicoService;
-import com.saa.ejb.crd.service.ParticipeService;
+import com.saa.ejb.crd.service.ProvinciaService;
 import com.saa.ejb.rpr.dao.NuevoParticipeG45DaoService;
-import com.saa.ejb.rpr.dao.ParticipeActivoG41DaoService;
+import com.saa.ejb.rpr.dao.SaldoCuentaG42DaoService;
 import com.saa.ejb.rpr.service.DetalleEjecucionReporteService;
 import com.saa.ejb.rpr.service.GeneracionG45Service;
-import com.saa.model.crd.Direccion;
+import com.saa.ejb.rpr.service.NuevoPrestamoG46Service;
 import com.saa.model.crd.Entidad;
 import com.saa.model.crd.Exter;
-import com.saa.model.crd.PerfilEconomico;
-import com.saa.model.crd.Participe;
+import com.saa.model.crd.Provincia;
 import com.saa.model.rpr.DetalleEjecucionReporte;
 import com.saa.model.rpr.NuevoParticipeG45;
-import com.saa.model.rpr.ParticipeActivoG41;
+import com.saa.model.rpr.NuevoPrestamoG46;
+import com.saa.model.rpr.SaldoCuentaG42;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -28,12 +25,11 @@ import jakarta.ejb.Stateless;
 public class GeneracionG45ServiceImpl implements GeneracionG45Service {
 
     @EJB private DetalleEjecucionReporteService ejrdService;
-    @EJB private ParticipeActivoG41DaoService   cg41DaoService;
+    @EJB private NuevoPrestamoG46Service        g46Service;
+    @EJB private SaldoCuentaG42DaoService       g42DaoService;
     @EJB private EntidadService                 entidadService;
     @EJB private ExterService                   exterService;
-    @EJB private DireccionService               direccionService;
-    @EJB private PerfilEconomicoService         perfilEconomicoService;
-    @EJB private ParticipeService               participeService;
+    @EJB private ProvinciaService               provinciaService;
     @EJB private NuevoParticipeG45DaoService    cg45DaoService;
 
     @Override
@@ -41,36 +37,41 @@ public class GeneracionG45ServiceImpl implements GeneracionG45Service {
         System.out.println("Ingresa al metodo generar G45");
 
         // -------------------------------------------------------
-        // 1. Obtener el EJRD del G41 del mismo EJRC
-        //    G41 ya cambió idEstado 1→10, así que no podemos filtrar por idEstado=1.
-        //    Leemos directamente los registros que G41 insertó en CG41.
+        // 1. Obtener el EJRD del G46 del mismo EJRC
+        //    G45 usa exactamente los mismos registros que el G46.
         // -------------------------------------------------------
         Long codigoEjrc = detalle.getEjecucionReporte().getCodigo();
-        DetalleEjecucionReporte ejrdG41 = ejrdService.selectByEjecucionYTipo(codigoEjrc, "G41");
+        DetalleEjecucionReporte ejrdG46 = ejrdService.selectByEjecucionYTipo(codigoEjrc, "G46");
 
-        if (ejrdG41 == null) {
-            System.out.println("G45 - No se encontro EJRD del G41. G45 vacio, OK.");
+        if (ejrdG46 == null) {
+            System.out.println("G45 - No se encontro EJRD del G46. G45 vacio, OK.");
             return 0L;
         }
 
-        List<ParticipeActivoG41> registrosG41 = cg41DaoService.selectByDetalle(ejrdG41.getCodigo());
-        System.out.println("G45 - Registros de CG41 (nuevos participes): " + registrosG41.size());
+        List<NuevoPrestamoG46> registrosG46 = g46Service.selectByDetalle(ejrdG46.getCodigo());
+        System.out.println("G45 - Registros de CG46: " + registrosG46.size());
 
-        if (registrosG41.isEmpty()) {
-            System.out.println("G45 - Sin nuevos participes. G45 vacio, OK.");
+        if (registrosG46.isEmpty()) {
+            System.out.println("G45 - G46 sin datos. G45 vacio, OK.");
             return 0L;
         }
 
         // -------------------------------------------------------
-        // 2. Por cada nuevo partícipe del G41 → enriquecer y hacer INSERT en CG45
+        // 2. Obtener el EJRD del G42 del mismo EJRC para calcular patrimonio
         // -------------------------------------------------------
+        DetalleEjecucionReporte ejrdG42 = ejrdService.selectByEjecucionYTipo(codigoEjrc, "G42");
+
         long contador = 0L;
 
-        for (ParticipeActivoG41 g41 : registrosG41) {
-            String identificacion = g41.getIdentificacion();
+        // -------------------------------------------------------
+        // 3. Por cada registro del G46, generar un registro G45 identico
+        //    con los datos fijos requeridos y patrimonio desde G42.
+        // -------------------------------------------------------
+        for (NuevoPrestamoG46 g46 : registrosG46) {
+            String identificacion = g46.getIdentificacion();
             if (identificacion == null) continue;
 
-            // Buscar Entidad por número de identificación (query directa en BD)
+            // --- Entidad: necesaria para patrimonio y tipo de participe ---
             Entidad entidad = null;
             try {
                 entidad = entidadService.selectByNumeroIdentificacion(identificacion);
@@ -78,102 +79,88 @@ public class GeneracionG45ServiceImpl implements GeneracionG45Service {
                 System.out.println("G45 WARN - No se pudo obtener entidad para: " + identificacion);
             }
 
-            Long codigoEntidad = entidad != null ? entidad.getCodigo() : null;
+            // --- Patrimonio: suma saldoAportePatronal + saldoAportePersonal + rendimiento desde G42 ---
+            Double patrimonio = 0.0;
+            if (ejrdG42 != null && entidad != null) {
+                try {
+                    SaldoCuentaG42 g42 = g42DaoService.selectByEntidadYDetalle(entidad.getCodigo(), ejrdG42);
+                    if (g42 != null) {
+                        double saldoPat = g42.getSaldoAportePatronal() != null ? g42.getSaldoAportePatronal() : 0.0;
+                        double saldoPer = g42.getSaldoAportePersonal() != null ? g42.getSaldoAportePersonal() : 0.0;
+                        double rendim   = g42.getRendimiento()         != null ? g42.getRendimiento()         : 0.0;
+                        patrimonio = saldoPat + saldoPer + rendim;
+                    }
+                } catch (Throwable ex) {
+                    System.out.println("G45 WARN - No se encontro G42 para entidad: " + entidad.getCodigo());
+                }
+            }
 
-            // --- Exter: genero, estadoCivil, profesion, provincia, canton, fechaNacimiento ---
-            String genero         = null;
-            String estadoCivil    = null;
-            String profesion      = null;
-            String provincia      = null;
-            String canton         = null;
-            LocalDate fechaNac    = null;
+            // --- Tipo de participe: J si idEstado == 30, caso contrario C ---
+            String tipoParticipe = "C";
+            if (entidad != null && entidad.getIdEstado() != null && entidad.getIdEstado() == 30L) {
+                tipoParticipe = "J";
+            }
+
+            // --- Exter: genero, estadoCivil, fechaNacimiento, provincia ---
+            String genero      = null;
+            String estadoCivil = null;
+            java.time.LocalDate fechaNac = null;
+            String codigoAlternoProvincia = null;
             try {
                 List<Exter> exters = exterService.selectByCedula(identificacion);
                 if (exters != null && !exters.isEmpty()) {
                     Exter exter = exters.get(0);
-                    genero      = exter.getGenero();
-                    estadoCivil = exter.getEstadoCivil();
-                    profesion   = exter.getProfesion();
-                    provincia   = exter.getProvincia();
-                    canton      = exter.getCanton();
+                    if (exter.getGenero() != null && !exter.getGenero().isEmpty()) {
+                        char primeraLetraGenero = Character.toUpperCase(exter.getGenero().charAt(0));
+                        if (primeraLetraGenero == 'H') {
+                            genero = "M";
+                        } else if (primeraLetraGenero == 'M') {
+                            genero = "F";
+                        } else {
+                            genero = String.valueOf(primeraLetraGenero);
+                        }
+                    }
+                    // ESTADO CIVIL: siempre se envía "S"
+                    estadoCivil = "S";
                     if (exter.getFechaNacimiento() != null) {
                         fechaNac = exter.getFechaNacimiento().toLocalDate();
+                    }
+                    // --- Provincia: buscar en tabla PRVN por nombre ---
+                    if (exter.getProvincia() != null && !exter.getProvincia().isEmpty()) {
+                        try {
+                            Provincia prov = provinciaService.selectByNombre(exter.getProvincia());
+                            if (prov != null) {
+                                codigoAlternoProvincia = prov.getCodigoAlterno();
+                            }
+                        } catch (Throwable ex) {
+                            System.out.println("G45 WARN - No se encontro Provincia por nombre: " + exter.getProvincia());
+                        }
                     }
                 }
             } catch (Throwable ex) {
                 System.out.println("G45 WARN - No se encontro Exter para: " + identificacion);
             }
 
-            // --- Direccion: parroquia.nombre ---
-            String parroquia = null;
-            if (codigoEntidad != null) {
-                try {
-                    List<Direccion> dirs = direccionService.selectByParent(codigoEntidad);
-                    if (dirs != null && !dirs.isEmpty() && dirs.get(0).getParroquia() != null) {
-                        parroquia = dirs.get(0).getParroquia().getNombre();
-                    }
-                } catch (Throwable ex) {
-                    System.out.println("G45 WARN - No se encontro Direccion para entidad: " + codigoEntidad);
-                }
-            }
-
-            // --- PerfilEconomico: patrimonio, origenIngresos ---
-            Double patrimonio     = null;
-            String origenIngresos = null;
-            if (codigoEntidad != null) {
-                try {
-                    List<PerfilEconomico> perfiles = perfilEconomicoService.selectByEntidad(codigoEntidad);
-                    if (perfiles != null && !perfiles.isEmpty()) {
-                        PerfilEconomico perfil = perfiles.get(0);
-                        patrimonio    = perfil.getPatrimonioNeto();
-                        origenIngresos = perfil.getOrigenOtrosIngresos();
-                    }
-                } catch (Throwable ex) {
-                    System.out.println("G45 WARN - No se encontro PerfilEconomico para entidad: " + codigoEntidad);
-                }
-            }
-
-            // --- Participe: tipoParticipe, actividadEconomica ---
-            String tipoParticipe       = null;
-            String actividadEconomica  = null;
-            if (codigoEntidad != null) {
-                try {
-                    List<Participe> participes = participeService.selectByEntidad(codigoEntidad);
-                    if (participes != null && !participes.isEmpty()) {
-                        Participe participe = participes.get(0);
-                        if (participe.getTipoParticipante() != null) {
-                            tipoParticipe = participe.getTipoParticipante().getNombre();
-                        }
-                        actividadEconomica = participe.getIngresoAdicionalActividad();
-                    }
-                } catch (Throwable ex) {
-                    System.out.println("G45 WARN - No se encontro Participe para entidad: " + codigoEntidad);
-                }
-            }
-
-            // --- Cargasfamiliares desde Entidad ---
-            Long cargasFamiliares = entidad != null ? entidad.getCargasFamiliares() : null;
-
             // --- Construir y guardar CG45 ---
             NuevoParticipeG45 g45 = new NuevoParticipeG45();
             g45.setIdentificacion(identificacion);
-            g45.setTipoIdentificacion(g41.getTipoIdentificacion());
+            g45.setTipoIdentificacion(g46.getTipoIdentificacion());
             g45.setGenero(genero);
             g45.setEstadoCivil(estadoCivil);
             g45.setFechaNacimiento(fechaNac);
-            g45.setProfesion(profesion);
-            g45.setProvincia(provincia);
-            g45.setCanton(canton);
-            g45.setParroquia(parroquia);
-            g45.setPatrimonio(patrimonio);
-            g45.setOrigenIngresos(origenIngresos);
             g45.setTipoParticipe(tipoParticipe);
-            g45.setActividadEconomica(actividadEconomica);
-            g45.setCargasFamiliares(cargasFamiliares);
+            g45.setActividadEconomica("009");
+            g45.setPatrimonio(patrimonio);
+            g45.setProvincia(codigoAlternoProvincia);
+            g45.setCanton("01");
+            g45.setParroquia("50");
+            g45.setProfesion("O");
+            g45.setCargasFamiliares(0L);
+            g45.setOrigenIngresos("B");
             g45.setDetalleEjecucion(detalle);
 
             cg45DaoService.save(g45, null);
-            System.out.println("G45 INSERT nuevo participe: " + identificacion);
+            System.out.println("G45 INSERT participe: " + identificacion + " patrimonio=" + patrimonio);
             contador++;
         }
 

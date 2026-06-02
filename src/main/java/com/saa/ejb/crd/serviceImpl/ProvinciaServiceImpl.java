@@ -89,4 +89,10 @@ public class ProvinciaServiceImpl implements ProvinciaService {
         }
         return result;
     }
+
+    @Override
+    public Provincia selectByNombre(String nombre) throws Throwable {
+        System.out.println("selectByNombre Provincia: " + nombre);
+        return provinciaDaoService.selectByNombre(nombre);
+    }
 }

@@ -1124,4 +1124,15 @@ public class PrestamoServiceImpl implements PrestamoService {
 	public java.util.List<Prestamo> selectByEstado(Long estado) throws Throwable {
 		return prestamoDaoService.selectByEstado(estado);
 	}
+
+	@Override
+	public long countVigentesMoraVencidosByEntidad(Long codigoEntidad) throws Throwable {
+		return prestamoDaoService.countVigentesMoraVencidosByEntidad(codigoEntidad);
+	}
+
+	@Override
+	public long countPrestamosConUltimaCuotaEnPeriodoByEntidad(Long codigoEntidad,
+			java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable {
+		return prestamoDaoService.countPrestamosConUltimaCuotaEnPeriodoByEntidad(codigoEntidad, fechaInicio, fechaFin);
+	}
 }

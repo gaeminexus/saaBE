@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.Set;
 
 import com.saa.ejb.crd.service.DetallePrestamoService;
+import com.saa.ejb.rpr.dao.CancelacionG49DaoService;
 import com.saa.ejb.rpr.dao.SaldoOperacionG48DaoService;
 import com.saa.ejb.rpr.service.DetalleEjecucionReporteService;
 import com.saa.ejb.rpr.service.EjecucionReporteService;
@@ -21,6 +22,7 @@ import com.saa.ejb.rpr.service.SaldoCuentaG42Service;
 import com.saa.ejb.rpr.service.SaldoOperacionG48Service;
 import com.saa.model.crd.DetallePrestamo;
 import com.saa.model.crd.Prestamo;
+import com.saa.model.rpr.CancelacionG49;
 import com.saa.model.rpr.DetalleEjecucionReporte;
 import com.saa.model.rpr.EjecucionReporte;
 import com.saa.model.rpr.HistoricoG48;
@@ -40,6 +42,7 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
     @EJB private SaldoOperacionG48Service       saldoG48Service;
     @EJB private EjecucionReporteService        ejrcService;
     @EJB private HistoricoG48Service            historicoG48Service;
+    @EJB private CancelacionG49DaoService       cg49DaoService;
 
     @Override
     public long generar(DetalleEjecucionReporte detalle) throws Throwable {
@@ -93,6 +96,28 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
             + (usarHistorico ? " (se consultará HistoricoG48 por operación)" : ""));
 
         // -------------------------------------------------------
+        // 2.1. Cargar operaciones incluidas en G49 del mismo período
+        //      para excluirlas del G48
+        // -------------------------------------------------------
+        Set<String> operacionesEnG49 = new HashSet<>();
+        try {
+            DetalleEjecucionReporte ejrdG49 = ejrdService.selectByEjecucionYTipo(
+                detalle.getEjecucionReporte().getCodigo(), "G49"
+            );
+            if (ejrdG49 != null) {
+                List<CancelacionG49> registrosG49 = cg49DaoService.selectByDetalle(ejrdG49.getCodigo());
+                for (CancelacionG49 g49 : registrosG49) {
+                    if (g49.getNumeroOperacion() != null) {
+                        operacionesEnG49.add(g49.getNumeroOperacion());
+                    }
+                }
+            }
+        } catch (Throwable e) {
+            System.out.println("G48 - No se pudo cargar G49: " + e.getMessage());
+        }
+        System.out.println("G48 - Operaciones en G49 a excluir: " + operacionesEnG49.size());
+
+        // -------------------------------------------------------
         // 3. GRUPO 1: Cuotas con fechaVencimiento en el mes, estado != 7
         // -------------------------------------------------------
         List<DetallePrestamo> grupo1 = detallePrestamoService.selectCuotasDelMesGlobal(fechaInicio, fechaFin);
@@ -131,11 +156,21 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
         // 6. Por cada cuota → generar un registro en G48
         // -------------------------------------------------------
         long contador = 0L;
+        
+        // Set para controlar que solo la primera cuota de cada entidad tenga valorTotalCuentaIndividual
+        Set<String> entidadesConValorAsignado = new HashSet<>();
 
         for (DetallePrestamo cuota : cuotasAProcesar) {
             try {
                 Prestamo prestamo = cuota.getPrestamo();
                 if (prestamo == null) continue;
+
+                // Excluir préstamos que están en G49 del mismo período
+                String numOp = prestamo.getIdAsoprep() != null ? String.valueOf(prestamo.getIdAsoprep()) : null;
+                if (numOp != null && operacionesEnG49.contains(numOp)) {
+                    System.out.println("G48 SKIP - Operación " + numOp + " está en G49, se excluye del G48");
+                    continue;
+                }
 
                 // ¿Viene del grupo 1 o del grupo 2?
                 boolean esGrupo1 = prestamosEnGrupo1.contains(prestamo.getCodigo());
@@ -153,7 +188,14 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
                 String calificacionPropia = calcularCalificacion(diasMorosidad);
 
                 // ----- VALOR POR VENCER -----
-                Double valorPorVencer = cuota.getSaldoInicialCapital() != null ? cuota.getSaldoInicialCapital() : 0.0;
+                // Usar el saldoPorVencer del préstamo completo, no solo de la cuota
+                Double valorPorVencer = 0.0;
+                if (prestamo.getSaldoPorVencer() != null && prestamo.getSaldoPorVencer() > 0.0) {
+                    valorPorVencer = prestamo.getSaldoPorVencer();
+                } else if (cuota.getSaldoInicialCapital() != null) {
+                    // Fallback: si no hay saldo por vencer en el préstamo, usar el de la cuota
+                    valorPorVencer = cuota.getSaldoInicialCapital();
+                }
 
                 // ----- VALOR VENCIDO e INTERÉS ORDINARIO -----
                 // Grupo 1 → 0 para ambos
@@ -182,11 +224,28 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
                 }
 
                 // ----- VALOR TOTAL CUENTA INDIVIDUAL -----
+                // Si el estado de la entidad es 30 (jubilado voluntario) → siempre 0
+                // Solo se asigna en la primera cuota de cada entidad, el resto debe ser 0
                 Double valorCuentaIndividual = 0.0;
+                String identificacionEntidad = null;
                 if (prestamo.getEntidad() != null) {
-                    valorCuentaIndividual = mapaValorCuentaIndividual.getOrDefault(
-                        prestamo.getEntidad().getCodigo(), 0.0
-                    );
+                    Long estadoEntidad = prestamo.getEntidad().getIdEstado();
+                    
+                    // Si es jubilado voluntario (estado 30), el valor es siempre 0
+                    if (estadoEntidad != null && estadoEntidad == 30L) {
+                        valorCuentaIndividual = 0.0;
+                    } else {
+                        // Para otros estados, aplicar la lógica de primera cuota
+                        identificacionEntidad = prestamo.getEntidad().getNumeroIdentificacion();
+                        if (identificacionEntidad != null && !entidadesConValorAsignado.contains(identificacionEntidad)) {
+                            // Primera cuota de esta entidad → asignar el valor
+                            valorCuentaIndividual = mapaValorCuentaIndividual.getOrDefault(
+                                prestamo.getEntidad().getCodigo(), 0.0
+                            );
+                            entidadesConValorAsignado.add(identificacionEntidad);
+                        }
+                        // Si ya se asignó antes, valorCuentaIndividual queda en 0
+                    }
                 }
 
                 // ----- VALOR SUJETO A PROVISIÓN -----
@@ -195,6 +254,16 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
 
                 // ----- PROVISIÓN REQUERIDA ORIGINAL -----
                 Double provisionRequeridaOriginal = calcularProvision(valorSujetoProvision, calificacionPropia);
+                
+                // Log de depuración para identificar el problema
+                if (valorCuentaIndividual == 0.0 && valorSujetoProvision > 0.0) {
+                    System.out.println("G48 DEBUG Provision - Op: " + (prestamo.getIdAsoprep() != null ? prestamo.getIdAsoprep() : "null")
+                        + " | diasMorosidad: " + diasMorosidad
+                        + " | calificacion: " + calificacionPropia
+                        + " | valorSujetoProvision: " + valorSujetoProvision
+                        + " | provisionRequeridaOriginal: " + provisionRequeridaOriginal
+                        + " | esperado: " + (valorSujetoProvision * 0.0099));
+                }
 
                 // ----- PROVISIÓN CONSTITUIDA -----
                 // = provisionRequeridaOriginal del período anterior para esta operación
@@ -230,7 +299,8 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
 
                 if (prestamo.getProducto() != null && prestamo.getProducto().getNombre() != null
                         && !prestamo.getProducto().getNombre().isEmpty()) {
-                    g48.setTipoCredito(String.valueOf(prestamo.getProducto().getNombre().charAt(0)));
+                    char inicialProducto = Character.toUpperCase(prestamo.getProducto().getNombre().charAt(0));
+                    g48.setTipoCredito(String.valueOf(inicialProducto == 'E' ? 'Q' : inicialProducto));
                 }
 
                 g48.setDiasMorosidad(diasMorosidad);
