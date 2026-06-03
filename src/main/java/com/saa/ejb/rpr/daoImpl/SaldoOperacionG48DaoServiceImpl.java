@@ -56,4 +56,27 @@ public class SaldoOperacionG48DaoServiceImpl extends EntityDaoImpl<SaldoOperacio
         List<SaldoOperacionG48> result = query.getResultList();
         return result.isEmpty() ? null : result.get(0);
     }
+
+    @Override
+    public int deleteByDetalleYOperacion(Long codigoDetalle, String numeroOperacion) throws Throwable {
+        System.out.println("SaldoOperacionG48DaoServiceImpl.deleteByDetalleYOperacion detalle: " + codigoDetalle + " op: " + numeroOperacion);
+        return em.createQuery(
+            "DELETE FROM SaldoOperacionG48 g " +
+            "WHERE g.detalleEjecucion.codigo = :codigoDetalle " +
+            "  AND g.numeroOperacion = :numeroOperacion"
+        )
+        .setParameter("codigoDetalle", codigoDetalle)
+        .setParameter("numeroOperacion", numeroOperacion)
+        .executeUpdate();
+    }
+
+    @Override
+    public long countByDetalle(Long codigoDetalle) throws Throwable {
+        System.out.println("SaldoOperacionG48DaoServiceImpl.countByDetalle codigoDetalle: " + codigoDetalle);
+        return (Long) em.createQuery(
+            "SELECT COUNT(g) FROM SaldoOperacionG48 g WHERE g.detalleEjecucion.codigo = :codigoDetalle"
+        )
+        .setParameter("codigoDetalle", codigoDetalle)
+        .getSingleResult();
+    }
 }

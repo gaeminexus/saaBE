@@ -199,25 +199,25 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 
 	@Override
 	@SuppressWarnings("unchecked")
-	public List<DetallePrestamo> selectMenorCuotaAnteriorAlMesGlobal(LocalDateTime fechaInicio) throws Throwable {
-		System.out.println("DetallePrestamoDaoServiceImpl.selectMenorCuotaAnteriorAlMesGlobal fechaInicio: " + fechaInicio);
+	public List<DetallePrestamo> selectMenorCuotaAnteriorAlMesGlobal(LocalDateTime fechaInicio, LocalDateTime fechaFin) throws Throwable {
+		System.out.println("DetallePrestamoDaoServiceImpl.selectMenorCuotaAnteriorAlMesGlobal hasta: " + fechaFin);
 		Query query = em.createQuery(
 			" select d from DetallePrestamo d " +
 			" join fetch d.prestamo " +
 			" join fetch d.prestamo.entidad " +
 			" left join fetch d.prestamo.producto " +
-			" where d.estado in (1, 2, 3, 5, 6) " +
-			"   and d.fechaVencimiento < :fechaInicio " +
+			" where d.estado in (1, 2, 3, 5, 6, 7) " +
+			"   and d.fechaVencimiento <= :fechaFin " +
 			"   and d.prestamo.idEstado in (2, 8, 11) " +
 			"   and d.numeroCuota = (" +
 			"     select min(d2.numeroCuota) from DetallePrestamo d2 " +
 			"     where d2.prestamo.codigo = d.prestamo.codigo " +
-			"       and d2.estado in (1, 2, 3, 5, 6) " +
-			"       and d2.fechaVencimiento < :fechaInicio " +
+			"       and d2.estado in (1, 2, 3, 5, 6, 7) " +
+			"       and d2.fechaVencimiento <= :fechaFin " +
 			"       and d2.prestamo.idEstado in (2, 8, 11) " +
 			"   ) "
 		);
-		query.setParameter("fechaInicio", fechaInicio);
+		query.setParameter("fechaFin", fechaFin);
 		return query.getResultList();
 	}
 

@@ -86,7 +86,7 @@ public interface DetallePrestamoDaoService extends EntityDao<DetallePrestamo> {
 	 * estado IN (2,3,5,6) y préstamo.estadoPrestamo IN (2,8,11).
 	 * Usa subquery MIN para traer solo una cuota por préstamo.
 	 */
-	List<DetallePrestamo> selectMenorCuotaAnteriorAlMesGlobal(LocalDateTime fechaInicio) throws Throwable;
+	List<DetallePrestamo> selectMenorCuotaAnteriorAlMesGlobal(LocalDateTime fechaInicio, LocalDateTime fechaFin) throws Throwable;
 
 	/**
 	 * Obtiene solo las cuotas NO pagadas ni canceladas anticipadamente de un préstamo.

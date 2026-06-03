@@ -32,4 +32,18 @@ public class HistoricoG48DaoServiceImpl extends EntityDaoImpl<HistoricoG48> impl
         List<HistoricoG48> result = query.getResultList();
         return result.isEmpty() ? null : result.get(0);
     }
+
+    @Override
+    public List<HistoricoG48> selectEnHm48NoEnCg48Junio2025() throws Throwable {
+        System.out.println("HistoricoG48DaoServiceImpl.selectEnHm48NoEnCg48Junio2025");
+        String jpql =
+            "SELECT h FROM HistoricoG48 h " +
+            "WHERE NOT EXISTS (" +
+            "    SELECT 1 FROM SaldoOperacionG48 g48 " +
+            "    WHERE g48.numeroOperacion = h.numeroOperacion " +
+            "    AND g48.detalleEjecucion.ejecucionReporte.mes  = 6 " +
+            "    AND g48.detalleEjecucion.ejecucionReporte.anio = 2025 " +
+            ")";
+        return em.createQuery(jpql, HistoricoG48.class).getResultList();
+    }
 }

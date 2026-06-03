@@ -14,4 +14,10 @@ public interface SaldoOperacionG48DaoService extends EntityDao<SaldoOperacionG48
 
     /** Retorna el registro G48 de un EJRD específico filtrado por numeroOperacion. */
     SaldoOperacionG48 selectByDetalleYOperacion(Long codigoDetalle, String numeroOperacion) throws Throwable;
+
+    /** Elimina el registro G48 de un EJRD específico por numeroOperacion. */
+    int deleteByDetalleYOperacion(Long codigoDetalle, String numeroOperacion) throws Throwable;
+
+    /** Cuenta los registros G48 de un EJRD específico. */
+    long countByDetalle(Long codigoDetalle) throws Throwable;
 }

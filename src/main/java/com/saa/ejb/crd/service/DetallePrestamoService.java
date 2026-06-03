@@ -29,7 +29,7 @@ public interface DetallePrestamoService extends EntityService<DetallePrestamo> {
 	List<DetallePrestamo> selectCuotasDelMesGlobal(LocalDateTime fechaInicio, LocalDateTime fechaFin) throws Throwable;
 
 	/** G48 GRUPO 2 GLOBAL: La menor cuota por préstamo anterior al mes, estado 2,3,5,6, préstamo 2,8,11 */
-	List<DetallePrestamo> selectMenorCuotaAnteriorAlMesGlobal(LocalDateTime fechaInicio) throws Throwable;
+	List<DetallePrestamo> selectMenorCuotaAnteriorAlMesGlobal(LocalDateTime fechaInicio, LocalDateTime fechaFin) throws Throwable;
 
 	/** G49 GRUPO 1: Préstamos cuya cuota con mayor numeroCuota esté en el mes y sea pagada (estado=4). */
 	List<DetallePrestamo> selectMaxCuotaPagadaDelMesGlobal(LocalDateTime fechaInicio, LocalDateTime fechaFin) throws Throwable;

@@ -133,8 +133,8 @@ public class DetallePrestamoServiceImpl implements DetallePrestamoService {
 	}
 
 	@Override
-	public List<DetallePrestamo> selectMenorCuotaAnteriorAlMesGlobal(java.time.LocalDateTime fechaInicio) throws Throwable {
-		return detallePrestamoDaoService.selectMenorCuotaAnteriorAlMesGlobal(fechaInicio);
+	public List<DetallePrestamo> selectMenorCuotaAnteriorAlMesGlobal(java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable {
+		return detallePrestamoDaoService.selectMenorCuotaAnteriorAlMesGlobal(fechaInicio, fechaFin);
 	}
 
 	@Override

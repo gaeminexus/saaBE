@@ -64,4 +64,9 @@ public class HistoricoG48ServiceImpl implements HistoricoG48Service {
     public HistoricoG48 selectByNumeroOperacion(String numeroOperacion) throws Throwable {
         return historicoG48DaoService.selectByNumeroOperacion(numeroOperacion);
     }
+
+    @Override
+    public List<HistoricoG48> selectEnHm48NoEnCg48Junio2025() throws Throwable {
+        return historicoG48DaoService.selectEnHm48NoEnCg48Junio2025();
+    }
 }

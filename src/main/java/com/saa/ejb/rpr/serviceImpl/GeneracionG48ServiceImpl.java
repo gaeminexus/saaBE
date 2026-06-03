@@ -22,7 +22,6 @@ import com.saa.ejb.rpr.service.SaldoCuentaG42Service;
 import com.saa.ejb.rpr.service.SaldoOperacionG48Service;
 import com.saa.model.crd.DetallePrestamo;
 import com.saa.model.crd.Prestamo;
-import com.saa.model.rpr.CancelacionG49;
 import com.saa.model.rpr.DetalleEjecucionReporte;
 import com.saa.model.rpr.EjecucionReporte;
 import com.saa.model.rpr.HistoricoG48;
@@ -96,28 +95,6 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
             + (usarHistorico ? " (se consultará HistoricoG48 por operación)" : ""));
 
         // -------------------------------------------------------
-        // 2.1. Cargar operaciones incluidas en G49 del mismo período
-        //      para excluirlas del G48
-        // -------------------------------------------------------
-        Set<String> operacionesEnG49 = new HashSet<>();
-        try {
-            DetalleEjecucionReporte ejrdG49 = ejrdService.selectByEjecucionYTipo(
-                detalle.getEjecucionReporte().getCodigo(), "G49"
-            );
-            if (ejrdG49 != null) {
-                List<CancelacionG49> registrosG49 = cg49DaoService.selectByDetalle(ejrdG49.getCodigo());
-                for (CancelacionG49 g49 : registrosG49) {
-                    if (g49.getNumeroOperacion() != null) {
-                        operacionesEnG49.add(g49.getNumeroOperacion());
-                    }
-                }
-            }
-        } catch (Throwable e) {
-            System.out.println("G48 - No se pudo cargar G49: " + e.getMessage());
-        }
-        System.out.println("G48 - Operaciones en G49 a excluir: " + operacionesEnG49.size());
-
-        // -------------------------------------------------------
         // 3. GRUPO 1: Cuotas con fechaVencimiento en el mes, estado != 7
         // -------------------------------------------------------
         List<DetallePrestamo> grupo1 = detallePrestamoService.selectCuotasDelMesGlobal(fechaInicio, fechaFin);
@@ -127,7 +104,7 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
         // 4. GRUPO 2: Menor cuota por préstamo anterior al mes,
         //    estado 2,3,5,6 y préstamo en estado 2,8,11
         // -------------------------------------------------------
-        List<DetallePrestamo> grupo2 = detallePrestamoService.selectMenorCuotaAnteriorAlMesGlobal(fechaInicio);
+        List<DetallePrestamo> grupo2 = detallePrestamoService.selectMenorCuotaAnteriorAlMesGlobal(fechaInicio, fechaFin);
         System.out.println("G48 - Grupo 2 (menor cuota anterior): " + grupo2.size());
 
         // -------------------------------------------------------
@@ -164,13 +141,6 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
             try {
                 Prestamo prestamo = cuota.getPrestamo();
                 if (prestamo == null) continue;
-
-                // Excluir préstamos que están en G49 del mismo período
-                String numOp = prestamo.getIdAsoprep() != null ? String.valueOf(prestamo.getIdAsoprep()) : null;
-                if (numOp != null && operacionesEnG49.contains(numOp)) {
-                    System.out.println("G48 SKIP - Operación " + numOp + " está en G49, se excluye del G48");
-                    continue;
-                }
 
                 // ¿Viene del grupo 1 o del grupo 2?
                 boolean esGrupo1 = prestamosEnGrupo1.contains(prestamo.getCodigo());
@@ -286,6 +256,15 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
                             System.out.println("G48 - HistoricoG48 no encontrado para op: " + numeroOperacion);
                         }
                     }
+                }
+
+                // Si provisionConstituida > valorSujetoProvision → limitar al valorSujetoProvision
+                if (provisionConstituida > valorSujetoProvision) {
+                    System.out.println("G48 - Op: " + numeroOperacion
+                        + " provisionConstituida (" + provisionConstituida
+                        + ") > valorSujetoProvision (" + valorSujetoProvision
+                        + "), se ajusta al valorSujetoProvision");
+                    provisionConstituida = valorSujetoProvision;
                 }
 
                 SaldoOperacionG48 g48 = new SaldoOperacionG48();
