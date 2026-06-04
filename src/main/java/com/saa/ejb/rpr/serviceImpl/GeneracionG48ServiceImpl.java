@@ -155,7 +155,8 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
                     }
                 }
 
-                String calificacionPropia = calcularCalificacion(diasMorosidad);
+                String calificacionPropia = calcularCalificacion(diasMorosidad,
+                    (prestamo.getProducto() != null ? prestamo.getProducto().getCodigo() : null));
 
                 // ----- VALOR POR VENCER -----
                 // Usar el saldoPorVencer del préstamo completo, no solo de la cuota
@@ -404,15 +405,33 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
         return valorSujetoProvision * porcentaje;
     }
 
-    private String calcularCalificacion(Long dias) {
-        if (dias == null || dias == 0)               return "A1";
-        if (dias >= 1   && dias <= 8)                return "A2";
-        if (dias >= 9   && dias <= 15)               return "A3";
-        if (dias >= 16  && dias <= 30)               return "B1";
-        if (dias >= 31  && dias <= 45)               return "B2";
-        if (dias >= 46  && dias <= 70)               return "C1";
-        if (dias >= 71  && dias <= 90)               return "C2";
-        if (dias >= 91  && dias <= 120)              return "D";
-        return "E";
+    private String calcularCalificacion(Long dias, Long codigoProducto) {
+        if (dias == null || dias == 0) return "A1";
+
+        // Productos hipotecarios: 7, 8, 21
+        boolean esHipotecario = codigoProducto != null &&
+            (codigoProducto == 7L || codigoProducto == 8L || codigoProducto == 21L);
+
+        if (esHipotecario) {
+            // Tabla hipotecaria
+            if (dias >= 1   && dias <= 30)  return "A2";
+            if (dias >= 31  && dias <= 60)  return "A3";
+            if (dias >= 61  && dias <= 120) return "B1";
+            if (dias >= 121 && dias <= 180) return "B2";
+            if (dias >= 181 && dias <= 210) return "C1";
+            if (dias >= 211 && dias <= 270) return "C2";
+            if (dias >= 271 && dias <= 450) return "D";
+            return "E"; // más de 450 días
+        } else {
+            // Tabla general
+            if (dias >= 1   && dias <= 15)  return "A2";
+            if (dias >= 16  && dias <= 30)  return "A3";
+            if (dias >= 31  && dias <= 60)  return "B1";
+            if (dias >= 61  && dias <= 90)  return "B2";
+            if (dias >= 91  && dias <= 120) return "C1";
+            if (dias >= 121 && dias <= 180) return "C2";
+            if (dias >= 181 && dias <= 270) return "D";
+            return "E"; // más de 270 días
+        }
     }
 }

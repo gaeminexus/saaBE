@@ -20,6 +20,7 @@ import jakarta.ejb.Stateless;
 import net.sf.jasperreports.engine.JasperExportManager;
 import net.sf.jasperreports.engine.JasperFillManager;
 import net.sf.jasperreports.engine.JasperPrint;
+import net.sf.jasperreports.engine.JRParameter;
 import net.sf.jasperreports.engine.JasperReport;
 import net.sf.jasperreports.engine.util.JRLoader;
 import net.sf.jasperreports.engine.export.ooxml.JRXlsxExporter;
@@ -137,6 +138,10 @@ public class ReporteServiceImpl implements ReporteService {
             DataSource dataSource = lookupDataSource();
             conn = dataSource.getConnection();
             
+            // Convertir tipos de parámetros para que coincidan con los declarados en el .jasper
+            // (Jackson deserializa números como Integer; Jasper puede declarar Long, etc.)
+            convertirTiposParametros(jasperReport, parametros);
+
             // Llenar el reporte con datos
             JasperPrint jasperPrint = JasperFillManager.fillReport(jasperReport, parametros, conn);
             
@@ -157,6 +162,42 @@ public class ReporteServiceImpl implements ReporteService {
         }
     }
     
+    /**
+     * Convierte los valores del mapa de parámetros al tipo declarado en el .jasper.
+     * Jackson deserializa números JSON como Integer por defecto; si el reporte declara
+     * un parámetro como Long, BigDecimal, etc., se produce un ClassCastException en
+     * JasperFillManager. Este método corrige esa discrepancia.
+     */
+    private void convertirTiposParametros(JasperReport jasperReport, Map<String, Object> parametros) {
+        for (JRParameter jrParam : jasperReport.getParameters()) {
+            String nombre = jrParam.getName();
+            Class<?> tipoEsperado = jrParam.getValueClass();
+            if (!parametros.containsKey(nombre)) continue;
+            Object valor = parametros.get(nombre);
+            if (valor == null) continue;
+            try {
+                if (tipoEsperado == Long.class && valor instanceof Number) {
+                    parametros.put(nombre, ((Number) valor).longValue());
+                } else if (tipoEsperado == Integer.class && valor instanceof Number) {
+                    parametros.put(nombre, ((Number) valor).intValue());
+                } else if (tipoEsperado == Double.class && valor instanceof Number) {
+                    parametros.put(nombre, ((Number) valor).doubleValue());
+                } else if (tipoEsperado == Float.class && valor instanceof Number) {
+                    parametros.put(nombre, ((Number) valor).floatValue());
+                } else if (tipoEsperado == java.math.BigDecimal.class && valor instanceof Number) {
+                    parametros.put(nombre, new java.math.BigDecimal(valor.toString()));
+                } else if (tipoEsperado == Short.class && valor instanceof Number) {
+                    parametros.put(nombre, ((Number) valor).shortValue());
+                } else if (tipoEsperado == String.class && !(valor instanceof String)) {
+                    parametros.put(nombre, valor.toString());
+                }
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "No se pudo convertir parámetro ''{0}'' al tipo {1}: {2}",
+                        new Object[]{nombre, tipoEsperado.getSimpleName(), e.getMessage()});
+            }
+        }
+    }
+
     /**
      * Exporta el reporte al formato especificado
      */
