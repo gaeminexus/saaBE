@@ -126,4 +126,10 @@ public class EntidadServiceImpl implements EntidadService {
 		return entidadDaoService.selectByNumeroIdentificacion(numeroIdentificacion);
 	}
 
+	@Override
+	public List<Entidad> findByCodigosIn(List<Long> codigos) throws Throwable {
+		System.out.println("findByCodigosIn EntidadService - cantidad: " + (codigos != null ? codigos.size() : 0));
+		return entidadDaoService.findByCodigosIn(codigos);
+	}
+
 }

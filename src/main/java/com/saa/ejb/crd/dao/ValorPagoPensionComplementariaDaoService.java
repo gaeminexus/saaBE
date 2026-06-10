@@ -18,4 +18,13 @@ public interface ValorPagoPensionComplementariaDaoService extends EntityDao<Valo
      * @return Lista de ValorPagoPensionComplementaria para esa entidad
      */
     List<ValorPagoPensionComplementaria> selectByEntidad(Long codigoEntidad) throws Throwable;
+
+    /**
+     * Carga VPPC para múltiples entidades en una sola consulta.
+     * Optimización para evitar N+1 queries.
+     * 
+     * @param codigosEntidades Lista de códigos de entidades
+     * @return Lista de ValorPagoPensionComplementaria
+     */
+    List<ValorPagoPensionComplementaria> selectByEntidadesIn(List<Long> codigosEntidades) throws Throwable;
 }

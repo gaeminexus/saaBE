@@ -600,4 +600,26 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 		return query.getResultList();
 	}
 
+	/**
+	 * Para CPRM — Suma de aportes agrupada por entidad Y tipo de aporte hasta fechaCorte.
+	 * Genera un registro por cada combinación entidad+tipoAporte con suma != 0.
+	 * Retorna Object[]{Long codigoEntidad, Long codigoTipoAporte, String nombreTipoAporte, Double suma}.
+	 */
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<Object[]> selectSumaPorEntidadYTipoAporte(java.time.LocalDateTime fechaCorte) throws Throwable {
+		System.out.println("AporteDaoServiceImpl.selectSumaPorEntidadYTipoAporte fechaCorte: " + fechaCorte);
+		Query query = em.createQuery(
+			" select   a.entidad.codigo, a.tipoAporte.codigo, a.tipoAporte.nombre, sum(a.valor) " +
+			" from     Aporte a " +
+			" where    a.tipoAporte.estado = 1 " +
+			"   and    a.fechaTransaccion <= :fechaCorte " +
+			"   and    exists (select 1 from Entidad e where e.codigo = a.entidad.codigo) " +
+			" group by a.entidad.codigo, a.tipoAporte.codigo, a.tipoAporte.nombre " +
+			" having   sum(a.valor) <> 0 "
+		);
+		query.setParameter("fechaCorte", fechaCorte);
+		return query.getResultList();
+	}
+
 }

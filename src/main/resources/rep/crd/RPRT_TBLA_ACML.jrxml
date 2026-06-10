@@ -23,6 +23,7 @@
     P.PRSTUSMD              AS USUARIO,
     P.PRSTVLCT              AS VALOR_CUOTA,
     P.PRSTSLTT              AS SALDO_TOTAL,
+    P2.PRDCNMBR	            AS PRODUCTO,
     DECODE(P.PRSTIDST , 1, 'GENERADO',
            2, 'VIGENTE',
            3, 'CANCELADO',
@@ -37,7 +38,7 @@
     U.DTPRNMCT              AS NUMERO_CUOTA,
     TRUNC(U.DTPRFCVN)       AS FECHA_VENCIMIENTO,
     U.DTPRSLOT              AS PAGO_EXTRA,
-    U.DTPRSLCP               AS SALDO_INICIAL,
+    U.DTPRSICP               AS SALDO_INICIAL,
     U.DTPRCPTL              AS CAPITAL,
     U.DTPRINTR              AS INTERES,
     U.DTPRDSGR              AS SEGURO_DESGRAVA,
@@ -52,11 +53,12 @@
            8, 'VENCIDA')              AS ESTADO_DIVIDENDOS
 FROM CRD.PRST P,
      CRD.ENTD E,
-     CRD.DTPR U
-WHERE P.PRSTCDGO =  $P{P_PRSTCDGO} 
+     CRD.DTPR U,
+     CRD.PRDC P2 
+WHERE P.PRSTCDGO =   $P{P_PRSTCDGO} 
   AND E.ENTDCDGO = P.ENTDCDGO
   AND U.PRSTCDGO = P.PRSTCDGO
-  AND U.DTPRESTD != 7
+  AND P.PRDCCDGO = P2.PRDCCDGO
 ORDER BY U.DTPRNMCT;]]></query>
 	<field name="IDENTIFICACION" class="java.lang.String">
 		<property name="com.jaspersoft.studio.field.name" value="IDENTIFICACION"/>
@@ -118,6 +120,10 @@ ORDER BY U.DTPRNMCT;]]></query>
 		<property name="com.jaspersoft.studio.field.name" value="SALDO_TOTAL"/>
 		<property name="com.jaspersoft.studio.field.label" value="SALDO_TOTAL"/>
 	</field>
+	<field name="PRODUCTO" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="PRODUCTO"/>
+		<property name="com.jaspersoft.studio.field.label" value="PRODUCTO"/>
+	</field>
 	<field name="ESTADO_PRESTAMO" class="java.lang.String">
 		<property name="com.jaspersoft.studio.field.name" value="ESTADO_PRESTAMO"/>
 		<property name="com.jaspersoft.studio.field.label" value="ESTADO_PRESTAMO"/>
@@ -160,7 +166,7 @@ ORDER BY U.DTPRNMCT;]]></query>
 	</field>
 	<background splitType="Stretch"/>
 	<title height="287" splitType="Stretch">
-		<element kind="rectangle" uuid="caf138d8-0d75-4021-8a39-5ab1b7c1da80" x="90" y="10" width="465" height="60">
+		<element kind="rectangle" uuid="caf138d8-0d75-4021-8a39-5ab1b7c1da80" x="100" y="10" width="455" height="60">
 			<pen lineWidth="0.75"/>
 		</element>
 		<element kind="textField" uuid="237a2116-4c84-4d73-89cf-b8b4b1d6ea6a" x="530" y="18" width="19" height="15" fontSize="8.0" evaluationTime="Report" hTextAlign="Left">
@@ -178,7 +184,7 @@ ORDER BY U.DTPRNMCT;]]></query>
 		<element kind="staticText" uuid="474120b5-5fe9-4901-91da-3e888804a84a" x="155" y="28" width="247" height="20" fontName="Tahoma" fontSize="12.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[TABLA DE AMORTIZACIÓN]]></text>
 		</element>
-		<element kind="image" uuid="20f5ccf6-33e9-4ea6-b9f3-69689acb5132" x="0" y="10" width="90" height="60">
+		<element kind="image" uuid="20f5ccf6-33e9-4ea6-b9f3-69689acb5132" x="0" y="18" width="90" height="50">
 			<expression><![CDATA[$P{P_IMAGEN}]]></expression>
 			<property name="com.jaspersoft.studio.unit.width" value="px"/>
 		</element>
@@ -269,7 +275,7 @@ ORDER BY U.DTPRNMCT;]]></query>
 			</box>
 		</element>
 		<element kind="textField" uuid="5f4acf05-0307-46a5-8b84-630c640b2881" x="281" y="157" width="193" height="13" fontSize="8.0" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
-			<expression><![CDATA[$F{NOMBRES}]]></expression>
+			<expression><![CDATA[$F{PRODUCTO}]]></expression>
 			<box>
 				<pen lineWidth="0.25"/>
 			</box>
@@ -405,7 +411,7 @@ ORDER BY U.DTPRNMCT;]]></query>
 	</title>
 	<columnHeader height="41" splitType="Stretch">
 		<element kind="staticText" uuid="0c592621-8030-49c8-af7b-5b5e06e0b2fc" mode="Opaque" x="0" y="0" width="555" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="9.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[DATOS DE LA CUENTA QUE SE EFECTUO EL DEPÓSITO]]></text>
+			<text><![CDATA[DESGLOSE DE TABLA]]></text>
 			<box>
 				<pen lineWidth="0.25"/>
 				<topPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
@@ -583,7 +589,5 @@ ORDER BY U.DTPRNMCT;]]></query>
 			<property name="com.jaspersoft.studio.layout"/>
 		</band>
 	</detail>
-	<columnFooter height="45" splitType="Stretch"/>
-	<pageFooter height="54" splitType="Stretch"/>
-	<summary height="42" splitType="Stretch"/>
+	<pageFooter height="54" splitType="Immediate"/>
 </jasperReport>

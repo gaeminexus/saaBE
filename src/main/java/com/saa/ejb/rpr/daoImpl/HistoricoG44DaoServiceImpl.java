@@ -34,4 +34,17 @@ public class HistoricoG44DaoServiceImpl extends EntityDaoImpl<HistoricoG44> impl
             ")", HistoricoG44.class)
             .getResultList();
     }
+
+    @Override
+    public List<HistoricoG44> selectByIdentificacionesIn(List<String> identificaciones) throws Throwable {
+        if (identificaciones == null || identificaciones.isEmpty()) {
+            return new java.util.ArrayList<>();
+        }
+        System.out.println("HistoricoG44DaoServiceImpl.selectByIdentificacionesIn - cantidad: " + identificaciones.size());
+        return em.createQuery(
+            "select h from HistoricoG44 h where h.identificacion IN :identificaciones", 
+            HistoricoG44.class)
+            .setParameter("identificaciones", identificaciones)
+            .getResultList();
+    }
 }

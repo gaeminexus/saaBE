@@ -33,4 +33,15 @@ public interface NombreEntidadesReporte {
     String HISTORICO_G49 = "HistoricoG49";
     String HISTORICO_G50 = "HistoricoG50";
     String HISTORICO_G51 = "HistoricoG51";
+
+    // Reportes de Cartera (uso interno departamento)
+    String EJECUCION_REPORTE_CARTERA = "EjecucionReporteCartera";
+    String CREDITO_PARTICIPES_MENSUAL = "CreditoParticipesMensual";
+    String CREDITO_JUBILADOS_MENSUAL = "CreditoJubiladosMensual";
+    String CREDITO_CUOTAS_PRESTAMOS_MENSUAL = "CreditoCuotasPrestamosMensual";
+    
+    // Históricos Reportes de Cartera
+    String HISTORICO_CPRM = "HistoricoCPRM";
+    String HISTORICO_CJBM = "HistoricoCJBM";
+    String HISTORICO_CCPM = "HistoricoCCPM";
 }

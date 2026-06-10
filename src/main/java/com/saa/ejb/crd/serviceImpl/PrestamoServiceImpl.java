@@ -26,6 +26,7 @@ import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.model.crd.PagoPrestamo;
 import com.saa.model.crd.Prestamo;
 import com.saa.rubros.Estado;
+import com.saa.rubros.EstadoCuotaPrestamo;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -582,22 +583,46 @@ public class PrestamoServiceImpl implements PrestamoService {
                 Cell estadoCell = row.getCell(9);
                 Long estadoCodigo = mapearEstadoTextoACodigo(estadoCell);
                 detalle.setEstado(estadoCodigo);
-                
-                // Actualizar el saldo para la siguiente iteración (usar el saldo calculado)
-                // saldoCapitalAnterior = saldoCapitalCalculado;
-                
-                // Inicializar campos restantes en cero
+                detalle.setIdEstado(estadoCodigo);
+
+                // Ajustar campos saldo/pagado según el estado
                 detalle.setPrestamo(prestamo);
                 detalle.setMora(0.0);
                 detalle.setInteresVencido(0.0);
-                detalle.setSaldoInteres(valorInteres != null ? valorInteres : 0.0);
-                detalle.setSaldoMora(0.0);
-                detalle.setSaldoInteresVencido(0.0);
-                detalle.setAbono(0.0);
-                detalle.setCapitalPagado(0.0);
-                detalle.setInteresPagado(0.0);
                 detalle.setDesgravamenDiferido(0.0);
                 detalle.setValorDiferido(0.0);
+
+                int estadoInt = estadoCodigo.intValue();
+                if (estadoInt == EstadoCuotaPrestamo.PAGADA ||
+                    estadoInt == EstadoCuotaPrestamo.CANCELADA_ANTICIPADA) {
+                    // Cuota ya pagada: saldos pendientes = 0, registrar lo pagado
+                    detalle.setSaldoCapital(0.0);
+                    detalle.setSaldo(0.0);
+                    detalle.setSaldoInteres(0.0);
+                    detalle.setSaldoMora(0.0);
+                    detalle.setSaldoInteresVencido(0.0);
+                    detalle.setCapitalPagado(pagoCapital != null ? pagoCapital : 0.0);
+                    detalle.setInteresPagado(valorInteres != null ? valorInteres : 0.0);
+                    detalle.setMoraPagado(0.0);
+                    detalle.setDesgravamenPagado(desgravamen != null ? desgravamen : 0.0);
+                    detalle.setAbono(cuota);
+                    detalle.setFechaPagado(fechaVencimiento);
+                    System.out.println("Cuota " + numeroCuota + " cargada como " +
+                        (estadoInt == EstadoCuotaPrestamo.PAGADA ? "PAGADA" : "CANCELADA_ANTICIPADA") +
+                        " - Capital pagado: " + detalle.getCapitalPagado() +
+                        ", Interés pagado: " + detalle.getInteresPagado());
+                } else {
+                    // Cuota pendiente/mora/parcial/vencida: saldos según lo calculado
+                    detalle.setSaldoInteres(valorInteres != null ? valorInteres : 0.0);
+                    detalle.setSaldoMora(0.0);
+                    detalle.setSaldoInteresVencido(0.0);
+                    detalle.setAbono(0.0);
+                    detalle.setCapitalPagado(0.0);
+                    detalle.setInteresPagado(0.0);
+                    detalle.setMoraPagado(0.0);
+                    detalle.setDesgravamenPagado(0.0);
+                    detalle.setFechaPagado(null);
+                }
                 
                 detalles.add(detalle);
             }
@@ -616,8 +641,10 @@ public class PrestamoServiceImpl implements PrestamoService {
         for (DetallePrestamo detalle : detalles) {
             detallePrestamoDaoService.save(detalle, detalle.getCodigo());
             
-            // Si el estado es PAGADO (4), crear registro de PagoPrestamo
-            if (detalle.getEstado() != null && detalle.getEstado() == 4L) {
+            // Si el estado es PAGADA o CANCELADA_ANTICIPADA, crear registro de PagoPrestamo
+            if (detalle.getEstado() != null && 
+                (detalle.getEstado() == EstadoCuotaPrestamo.PAGADA || 
+                 detalle.getEstado() == EstadoCuotaPrestamo.CANCELADA_ANTICIPADA)) {
                 crearPagoPrestamo(prestamo, detalle);
             }
         }
@@ -651,46 +678,74 @@ public class PrestamoServiceImpl implements PrestamoService {
     }
     
     /**
-     * Mapea el estado de texto del Excel a código numérico.
+     * Mapea el estado de texto del Excel a código numérico según EstadoCuotaPrestamo.
+     * Estados válidos:
+     *   PENDIENTE = 1, ACTIVA = 2, EMITIDA = 3, PAGADA = 4,
+     *   EN_MORA = 5, PARCIAL = 6, CANCELADA_ANTICIPADA = 7, VENCIDA = 8
+     *
      * @param cell Celda que contiene el estado
      * @return Código numérico del estado
      */
     private Long mapearEstadoTextoACodigo(Cell cell) {
         if (cell == null) {
-            return 2L; // PENDIENTE por defecto
+            return Long.valueOf(EstadoCuotaPrestamo.PENDIENTE);
         }
-        
-        // Intentar leer como texto primero
-        String estadoTexto = null;
+
         try {
-            if (cell.getCellType() == CellType.STRING) {
-                estadoTexto = cell.getStringCellValue().trim().toUpperCase();
-            } else if (cell.getCellType() == CellType.NUMERIC) {
-                // Si es numérico, devolverlo directamente
+            if (cell.getCellType() == CellType.NUMERIC) {
+                // Si ya viene como número, usarlo directamente
                 return (long) cell.getNumericCellValue();
             }
+
+            if (cell.getCellType() != CellType.STRING) {
+                return Long.valueOf(EstadoCuotaPrestamo.PENDIENTE);
+            }
+
+            String estadoTexto = cell.getStringCellValue().trim().toUpperCase()
+                    .replace("  ", " "); // normalizar espacios dobles
+
+            if (estadoTexto.isEmpty()) {
+                return Long.valueOf(EstadoCuotaPrestamo.PENDIENTE);
+            }
+
+            switch (estadoTexto) {
+                case "PENDIENTE":
+                    return Long.valueOf(EstadoCuotaPrestamo.PENDIENTE);         // 1
+                case "ACTIVA":
+                case "ACTIVO":
+                    return Long.valueOf(EstadoCuotaPrestamo.ACTIVA);            // 2
+                case "EMITIDA":
+                case "EMITIDO":
+                    return Long.valueOf(EstadoCuotaPrestamo.EMITIDA);           // 3
+                case "PAGADA":
+                case "PAGADO":
+                    return Long.valueOf(EstadoCuotaPrestamo.PAGADA);            // 4
+                case "EN MORA":
+                case "EN_MORA":
+                case "MORA":
+                    return Long.valueOf(EstadoCuotaPrestamo.EN_MORA);           // 5
+                case "PARCIAL":
+                case "PAGO PARCIAL":
+                case "PAGO_PARCIAL":
+                    return Long.valueOf(EstadoCuotaPrestamo.PARCIAL);           // 6
+                case "CANCELADA ANTICIPADA":
+                case "CANCELADA_ANTICIPADA":
+                case "CANCELADO ANTICIPADO":
+                case "CANCELADO_ANTICIPADO":
+                case "CANCELADA":
+                    return Long.valueOf(EstadoCuotaPrestamo.CANCELADA_ANTICIPADA); // 7
+                case "VENCIDA":
+                case "VENCIDO":
+                    return Long.valueOf(EstadoCuotaPrestamo.VENCIDA);           // 8
+                default:
+                    System.out.println("Estado desconocido en Excel: '" + estadoTexto + 
+                                       "', se asigna PENDIENTE (" + EstadoCuotaPrestamo.PENDIENTE + ")");
+                    return Long.valueOf(EstadoCuotaPrestamo.PENDIENTE);
+            }
+
         } catch (Exception e) {
             System.err.println("Error al leer estado de la celda: " + e.getMessage());
-            return 2L; // PENDIENTE por defecto
-        }
-        
-        if (estadoTexto == null || estadoTexto.isEmpty()) {
-            return 2L; // PENDIENTE por defecto
-        }
-        
-        // Mapear texto a código
-        switch (estadoTexto) {
-            case "PAGADO":
-            case "PAGADA":
-                return 4L;
-            case "EMITIDO":
-            case "EMITIDA":
-                return 5L;
-            case "PENDIENTE":
-                return 2L;
-            default:
-                System.out.println("Estado desconocido: " + estadoTexto + ", usando PENDIENTE (2)");
-                return 2L;
+            return Long.valueOf(EstadoCuotaPrestamo.PENDIENTE);
         }
     }
     

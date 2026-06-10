@@ -34,4 +34,10 @@ public interface AporteService extends EntityService<Aporte> {
 
     /** G40 — Suma total global de aportes con tipoAporte.codigo = tipoAporte, fechaTransaccion <= fechaCorte */
     Double selectSumaTotalPorTipoAporte(LocalDateTime fechaCorte, Long tipoAporte) throws Throwable;
+
+    /**
+     * CPRM — Suma de aportes agrupada por entidad Y tipo de aporte hasta fechaCorte.
+     * Retorna Object[]{Long codigoEntidad, Long codigoTipoAporte, String nombreTipoAporte, Double suma}.
+     */
+    List<Object[]> selectSumaPorEntidadYTipoAporte(LocalDateTime fechaCorte) throws Throwable;
 }

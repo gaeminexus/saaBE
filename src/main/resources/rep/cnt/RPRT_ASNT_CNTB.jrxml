@@ -347,7 +347,7 @@ ORDER BY DT.DTASHBRR, DT.DTASCNTA]]></query>
 		<element kind="image" uuid="5cde03e2-7a9e-4896-989e-059ce8948227" positionType="FixRelativeToBottom" x="0" y="0" width="80" height="40" scaleImage="RealSize" evaluationTime="Report" linkType="None" linkTarget="Self" lazy="true">
 			<expression><![CDATA[$P{P_IMAGEN}]]></expression>
 		</element>
-		<element kind="textField" uuid="7efe785f-c193-4b61-85a9-86a150d6cad1" x="80" y="-3" width="370" height="20" fontSize="13.0" bold="true" hTextAlign="Center">
+		<element kind="textField" uuid="7efe785f-c193-4b61-85a9-86a150d6cad1" x="80" y="0" width="370" height="20" fontSize="13.0" bold="true" hTextAlign="Center">
 			<expression><![CDATA[$P{P_REPORTE}]]></expression>
 		</element>
 		<element kind="textField" uuid="a1c7c46f-b15c-4e57-9a99-bb62edf93c01" x="511" y="5" width="24" height="15" fontSize="8.0" evaluationTime="Report">

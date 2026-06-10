@@ -42,4 +42,19 @@ public class ValorPagoPensionComplementariaDaoServiceImpl extends EntityDaoImpl<
         query.setParameter("codigoEntidad", codigoEntidad);
         return query.getResultList();
     }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public List<ValorPagoPensionComplementaria> selectByEntidadesIn(List<Long> codigosEntidades) throws Throwable {
+        if (codigosEntidades == null || codigosEntidades.isEmpty()) {
+            return new java.util.ArrayList<>();
+        }
+        System.out.println("ValorPagoPensionComplementariaDaoServiceImpl.selectByEntidadesIn - cantidad: " + codigosEntidades.size());
+        Query query = em.createQuery(
+            " select v from ValorPagoPensionComplementaria v " +
+            " where  v.entidad.codigo IN :codigosEntidades "
+        );
+        query.setParameter("codigosEntidades", codigosEntidades);
+        return query.getResultList();
+    }
 }

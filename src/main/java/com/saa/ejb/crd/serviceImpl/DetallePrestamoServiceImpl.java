@@ -189,4 +189,31 @@ public class DetallePrestamoServiceImpl implements DetallePrestamoService {
 		System.out.println("calcularInteresMora TOTAL=" + totalMora);
 		return totalMora;
 	}
+
+	@Override
+	public List<Object[]> selectSumaCapitalInteresGrupo2Batch(List<Long> codigosCuotasOrigen, java.time.LocalDateTime fechaFin) throws Throwable {
+		return detallePrestamoDaoService.selectSumaCapitalInteresGrupo2Batch(codigosCuotasOrigen, fechaFin);
+	}
+
+	@Override
+	public List<Object[]> calcularInteresMoraBatch(List<Long> codigosCuotas, java.time.LocalDateTime fechaHasta) throws Throwable {
+		return detallePrestamoDaoService.calcularInteresMoraBatch(codigosCuotas, fechaHasta);
+	}
+
+	@Override
+	public List<Object[]> selectCapitalCuotasFuturasBatch(List<Long> codigosPrestamos, java.time.LocalDateTime fechaEjecucion) throws Throwable {
+		return detallePrestamoDaoService.selectCapitalCuotasFuturasBatch(codigosPrestamos, fechaEjecucion);
+	}
+
+	@Override
+	public List<Object[]> selectCapitalCuotasDesdeInicioMesBatch(List<Long> codigosPrestamos,
+			java.time.LocalDateTime fechaInicio) throws Throwable {
+		return detallePrestamoDaoService.selectCapitalCuotasDesdeInicioMesBatch(codigosPrestamos, fechaInicio);
+	}
+
+	@Override
+	public List<Object[]> selectSaldoInicialCapitalDelMesBatch(List<Long> codigosPrestamos,
+			java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable {
+		return detallePrestamoDaoService.selectSaldoInicialCapitalDelMesBatch(codigosPrestamos, fechaInicio, fechaFin);
+	}
 }

@@ -138,4 +138,58 @@ public interface DetallePrestamoDaoService extends EntityDao<DetallePrestamo> {
 	 */
 	List<Object[]> selectCuotasParaMora(Long codigoCuotaOrigen, LocalDateTime fechaHasta) throws Throwable;
 
+	/**
+	 * OPTIMIZACIÓN BATCH: Calcula suma de capital e interés del grupo 2 para múltiples préstamos.
+	 * El SUM/GROUP BY ocurre en la BD; solo se transfiere 1 fila por préstamo.
+	 * @param codigosCuotasOrigen PKs (codigo) de las cuotas origen de cada préstamo del grupo 2
+	 * @param fechaFin Fecha límite (último instante del mes de ejecución)
+	 * @return Lista de Object[]{Long codigoPrestamo, Double sumaCapital, Double sumaInteres}
+	 */
+	List<Object[]> selectSumaCapitalInteresGrupo2Batch(List<Long> codigosCuotasOrigen, LocalDateTime fechaFin) throws Throwable;
+
+	/**
+	 * OPTIMIZACIÓN BATCH: Calcula interés de mora para múltiples cuotas en una sola consulta.
+	 * Retorna: codigoCuotaOrigen, interesMora
+	 * @param codigosCuotas Lista de códigos de cuotas origen
+	 * @param fechaHasta Fecha límite
+	 * @return Lista de Object[]{Long codigoCuota, Double interesMora}
+	 */
+	List<Object[]> calcularInteresMoraBatch(List<Long> codigosCuotas, LocalDateTime fechaHasta) throws Throwable;
+
+	/**
+	 * CCPM: Obtiene todas las cuotas futuras (numeroCuota y capital) de múltiples préstamos en un solo query.
+	 * Solo trae cuotas con estado != 4 (no pagadas) y estado != 7 (no canceladas anticipadas).
+	 * Retorna ordenado por (codigoPrestamo, numeroCuota) para facilitar el cálculo de offsets.
+	 * @param codigosPrestamos Lista de códigos de préstamo
+	 * @param fechaEjecucion   Fecha fin del mes de ejecución; solo cuotas con fechaVencimiento > fechaEjecucion
+	 * @return Lista de Object[]{Long codigoPrestamo, Double numeroCuota, Double capital}
+	 */
+	List<Object[]> selectCapitalCuotasFuturasBatch(List<Long> codigosPrestamos, java.time.LocalDateTime fechaEjecucion) throws Throwable;
+
+	/**
+	 * CCPM Grupo 2: Para una lista de préstamos, obtiene las cuotas cuya
+	 * fechaVencimiento >= fechaInicio del mes de ejecución, estado != 4 y != 7,
+	 * ordenadas por (codigoPrestamo ASC, numeroCuota ASC).
+	 * El índice 0 del resultado corresponde a la cuota del mes de ejecución (bucket 1-30 días).
+	 * @param codigosPrestamos Lista de códigos de préstamo del Grupo 2
+	 * @param fechaInicio      Primer instante del mes de ejecución
+	 * @return Lista de Object[]{Long codigoPrestamo, Double numeroCuota, Double capital}
+	 */
+	List<Object[]> selectCapitalCuotasDesdeInicioMesBatch(List<Long> codigosPrestamos,
+		java.time.LocalDateTime fechaInicio) throws Throwable;
+
+	/**
+	 * CCPM / G48 Grupo 2: Para una lista de préstamos, obtiene la cuota cuya
+	 * fechaVencimiento cae dentro del mes de ejecución (BETWEEN fechaInicio y fechaFin),
+	 * retornando saldoInicialCapital y capital para calcular el valorPorVencer correcto.
+	 * Si un préstamo tiene más de una cuota en el mes, se toma la de menor numeroCuota.
+	 * @param codigosPrestamos Lista de códigos de préstamo del Grupo 2
+	 * @param fechaInicio      Primer instante del mes de ejecución
+	 * @param fechaFin         Último instante del mes de ejecución
+	 * @return Lista de Object[]{Long codigoPrestamo, Double saldoInicialCapital, Double capital}
+	 */
+	List<Object[]> selectSaldoInicialCapitalDelMesBatch(List<Long> codigosPrestamos,
+		LocalDateTime fechaInicio, LocalDateTime fechaFin) throws Throwable;
+
 }
+

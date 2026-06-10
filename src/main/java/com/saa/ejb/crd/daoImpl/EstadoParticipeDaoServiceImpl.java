@@ -7,6 +7,10 @@ import com.saa.model.crd.EstadoParticipe;
 import jakarta.ejb.Stateless;
 
 @Stateless
-public class EstadoParticipeDaoServiceImpl extends EntityDaoImpl<EstadoParticipe> implements EstadoParticipeDaoService{
+public class EstadoParticipeDaoServiceImpl extends EntityDaoImpl<EstadoParticipe> implements EstadoParticipeDaoService {
 
+    @Override
+    public String[] obtieneCampos() {
+        return new String[]{ "codigo", "nombre", "codigoExterno", "idEstado" };
+    }
 }

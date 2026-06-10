@@ -1995,7 +1995,7 @@ private void validarNovedadesFase2(ParticipeXCargaArchivo participe,
 		Long rolPetroLong = participe.getCodigoPetro();
 		if (rolPetroLong == null) {
 			registrarNovedad(participe, ASPNovedadesCargaArchivo.PRESTAMO_NO_ENCONTRADO,
-				"El partícipe no tiene código Petro válido", null, null, null, null);
+				"El partícipe no tiene código Petro válido", null, null, null, participe.getTotalDescontado());
 			return;
 		}
 		
@@ -2006,13 +2006,13 @@ private void validarNovedadesFase2(ParticipeXCargaArchivo participe,
 		} catch (Throwable e) {
 			System.err.println("Error al buscar entidad " + rolPetroLong + ": " + e.getMessage());
 			registrarNovedad(participe, ASPNovedadesCargaArchivo.PRESTAMO_NO_ENCONTRADO,
-				"Error al buscar entidad: " + e.getMessage(), null, null, null, null);
+				"Error al buscar entidad: " + e.getMessage(), null, null, null, participe.getTotalDescontado());
 			return;
 		}
 		
 		if (entidades == null || entidades.isEmpty()) {
 			registrarNovedad(participe, ASPNovedadesCargaArchivo.PRESTAMO_NO_ENCONTRADO,
-				"No se encontró entidad con código Petro: " + rolPetroLong, null, null, null, null);
+				"No se encontró entidad con código Petro: " + rolPetroLong, null, null, null, participe.getTotalDescontado());
 			return;
 		}
 		
@@ -2042,7 +2042,7 @@ private void validarNovedadesFase2(ParticipeXCargaArchivo participe,
 			Long codigoProductoDB = (productos != null && !productos.isEmpty()) ? productos.get(0).getCodigo() : null;
 			registrarNovedad(participe, ASPNovedadesCargaArchivo.PRESTAMO_NO_ENCONTRADO,
 				"No se encontró ningún préstamo activo para el código Petro: " + codigoProducto,
-				codigoProductoDB, null, null, null);
+				codigoProductoDB, null, null, nullSafe(participe.getTotalDescontado()));
 			return;
 		}
 		

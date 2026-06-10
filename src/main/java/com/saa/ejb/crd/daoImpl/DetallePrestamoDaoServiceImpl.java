@@ -388,4 +388,202 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 		return query.getResultList();
 	}
 
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<Object[]> selectSumaCapitalInteresGrupo2Batch(List<Long> codigosCuotasOrigen, java.time.LocalDateTime fechaFin) throws Throwable {
+		if (codigosCuotasOrigen == null || codigosCuotasOrigen.isEmpty()) {
+			return new java.util.ArrayList<>();
+		}
+		System.out.println("DetallePrestamoDaoServiceImpl.selectSumaCapitalInteresGrupo2Batch - cuotas origen: " + codigosCuotasOrigen.size());
+		// El SUM y GROUP BY ocurren en la BD: devuelve exactamente 1 fila por préstamo.
+		// La subconsulta correlacionada filtra numeroCuota >= numeroCuotaOrigen dentro del SQL.
+		Query query = em.createQuery(
+			" select d.prestamo.codigo, sum(d.capital), sum(d.interes) " +
+			" from DetallePrestamo d " +
+			" where d.prestamo.codigo in (" +
+			"     select d0.prestamo.codigo from DetallePrestamo d0 where d0.codigo in :codigosOrigen" +
+			" ) " +
+			"   and d.numeroCuota >= (" +
+			"     select d0.numeroCuota from DetallePrestamo d0 " +
+			"     where d0.codigo in :codigosOrigen " +
+			"       and d0.prestamo.codigo = d.prestamo.codigo" +
+			" ) " +
+			"   and d.fechaVencimiento <= :fechaFin " +
+			" group by d.prestamo.codigo "
+		);
+		query.setParameter("codigosOrigen", codigosCuotasOrigen);
+		query.setParameter("fechaFin", fechaFin);
+		List<Object[]> filas = query.getResultList();
+		List<Object[]> resultado = new java.util.ArrayList<>(filas.size());
+		for (Object[] fila : filas) {
+			Long   codPrest    = (Long)   fila[0];
+			Double sumaCapital = fila[1] != null ? ((Number) fila[1]).doubleValue() : 0.0;
+			Double sumaInteres = fila[2] != null ? ((Number) fila[2]).doubleValue() : 0.0;
+			resultado.add(new Object[]{codPrest, sumaCapital, sumaInteres});
+		}
+		System.out.println("  → Sumas grupo 2 calculadas en BD: " + resultado.size() + " préstamos");
+		return resultado;
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<Object[]> calcularInteresMoraBatch(List<Long> codigosCuotas, java.time.LocalDateTime fechaHasta) throws Throwable {
+		if (codigosCuotas == null || codigosCuotas.isEmpty()) {
+			return new java.util.ArrayList<>();
+		}
+		System.out.println("DetallePrestamoDaoServiceImpl.calcularInteresMoraBatch - cantidad: " + codigosCuotas.size());
+
+		// Query 1 (pequeña): obtener codigoPrestamo de cada cuota origen para el mapa de retorno.
+		Query queryOrigen = em.createQuery(
+			" select d0.codigo, d0.prestamo.codigo " +
+			" from DetallePrestamo d0 where d0.codigo in :codigosCuotas "
+		);
+		queryOrigen.setParameter("codigosCuotas", codigosCuotas);
+		java.util.Map<Long, Long> mapaCuotaAPrestamo = new java.util.HashMap<>();
+		for (Object[] row : (List<Object[]>) queryOrigen.getResultList()) {
+			mapaCuotaAPrestamo.put((Long) row[0], (Long) row[1]);
+		}
+
+		// Query 2: trae SOLO las cuotas relevantes para el cálculo de mora.
+		// El filtro numeroCuota >= numeroCuotaOrigen se aplica en el SQL mediante subconsulta,
+		// evitando traer cuotas anteriores a la cuota en mora.
+		Query queryMora = em.createQuery(
+			" select d.prestamo.codigo, d.capital, d.fechaVencimiento, d.prestamo.interesNominal " +
+			" from DetallePrestamo d " +
+			" where d.prestamo.codigo in (" +
+			"     select d0.prestamo.codigo from DetallePrestamo d0 where d0.codigo in :codigosCuotas" +
+			" ) " +
+			"   and d.numeroCuota >= (" +
+			"     select d0.numeroCuota from DetallePrestamo d0 " +
+			"     where d0.codigo in :codigosCuotas " +
+			"       and d0.prestamo.codigo = d.prestamo.codigo" +
+			" ) " +
+			"   and d.fechaVencimiento <= :fechaHasta "
+		);
+		queryMora.setParameter("codigosCuotas", codigosCuotas);
+		queryMora.setParameter("fechaHasta", fechaHasta);
+		List<Object[]> cuotasMora = queryMora.getResultList();
+		System.out.println("  → Cuotas para mora traídas de BD: " + cuotasMora.size());
+
+		// Agrupar las cuotas traídas por codigoPrestamo
+		java.util.Map<Long, List<Object[]>> cuotasPorPrestamo = new java.util.HashMap<>();
+		for (Object[] row : cuotasMora) {
+			Long codPrest = (Long) row[0];
+			cuotasPorPrestamo.computeIfAbsent(codPrest, k -> new java.util.ArrayList<>()).add(row);
+		}
+
+		// Calcular mora por cuota origen (la fórmula requiere días por fila, no se puede hacer SUM en BD)
+		List<Object[]> resultado = new java.util.ArrayList<>();
+		for (Long codCuotaOrigen : codigosCuotas) {
+			Long codPrest = mapaCuotaAPrestamo.get(codCuotaOrigen);
+			if (codPrest == null) {
+				resultado.add(new Object[]{codCuotaOrigen, 0.0});
+				continue;
+			}
+			List<Object[]> cuotasPrestamo = cuotasPorPrestamo.get(codPrest);
+			double totalMora = 0.0;
+			if (cuotasPrestamo != null) {
+				for (Object[] cuota : cuotasPrestamo) {
+					Double capital        = cuota[1] != null ? ((Number) cuota[1]).doubleValue() : 0.0;
+					java.time.LocalDateTime fechaVenc = (java.time.LocalDateTime) cuota[2];
+					Double interesNominal = cuota[3] != null ? ((Number) cuota[3]).doubleValue() : 0.0;
+					if (capital <= 0.0 || fechaVenc == null) continue;
+					if (interesNominal <= 0.0) interesNominal = 9.0;
+					long diasMora = java.time.temporal.ChronoUnit.DAYS.between(
+						fechaVenc.toLocalDate(), fechaHasta.toLocalDate()
+					);
+					if (diasMora <= 0) continue;
+					totalMora += capital * (interesNominal / 100.0 / 360.0) * diasMora;
+				}
+			}
+			resultado.add(new Object[]{codCuotaOrigen, totalMora});
+		}
+		System.out.println("  → Mora calculada para " + resultado.size() + " cuotas");
+		return resultado;
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<Object[]> selectCapitalCuotasFuturasBatch(List<Long> codigosPrestamos, java.time.LocalDateTime fechaEjecucion) throws Throwable {
+		if (codigosPrestamos == null || codigosPrestamos.isEmpty()) {
+			return new java.util.ArrayList<>();
+		}
+		System.out.println("DetallePrestamoDaoServiceImpl.selectCapitalCuotasFuturasBatch - préstamos: " + codigosPrestamos.size());
+		// Trae todas las cuotas futuras (vencen después del cierre del mes de ejecución).
+		// Se excluye SOLO estado 7 (cancelada anticipada).
+		// Las cuotas pagadas (estado 4) y cualquier otro estado SÍ se incluyen.
+		Query query = em.createQuery(
+			" select d.prestamo.codigo, d.numeroCuota, d.capital " +
+			" from DetallePrestamo d " +
+			" where d.prestamo.codigo IN :codigosPrestamos " +
+			"   and d.fechaVencimiento > :fechaEjecucion " +
+			"   and d.estado <> 7 " +
+			" order by d.prestamo.codigo asc, d.numeroCuota asc "
+		);
+		query.setParameter("codigosPrestamos", codigosPrestamos);
+		query.setParameter("fechaEjecucion", fechaEjecucion);
+		List<Object[]> resultados = query.getResultList();
+		System.out.println("  → Cuotas futuras obtenidas: " + resultados.size());
+		return resultados;
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<Object[]> selectSaldoInicialCapitalDelMesBatch(List<Long> codigosPrestamos,
+			java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable {
+		if (codigosPrestamos == null || codigosPrestamos.isEmpty()) {
+			return new java.util.ArrayList<>();
+		}
+		System.out.println("DetallePrestamoDaoServiceImpl.selectSaldoInicialCapitalDelMesBatch - préstamos: " + codigosPrestamos.size());
+		// Para cada préstamo del Grupo 2, busca la cuota que cae dentro del mes de ejecución
+		// (fechaVencimiento BETWEEN fechaInicio y fechaFin) con el menor numeroCuota.
+		// Retorna saldoInicialCapital y capital para calcular: valorPorVencer = saldoInicialCapital - capital.
+		Query query = em.createQuery(
+			" select d.prestamo.codigo, d.saldoInicialCapital, d.capital " +
+			" from DetallePrestamo d " +
+			" where d.prestamo.codigo IN :codigosPrestamos " +
+			"   and d.fechaVencimiento >= :fechaInicio " +
+			"   and d.fechaVencimiento <= :fechaFin " +
+			"   and d.numeroCuota = (" +
+			"     select min(d2.numeroCuota) from DetallePrestamo d2 " +
+			"     where d2.prestamo.codigo = d.prestamo.codigo " +
+			"       and d2.fechaVencimiento >= :fechaInicio " +
+			"       and d2.fechaVencimiento <= :fechaFin " +
+			"   ) "
+		);
+		query.setParameter("codigosPrestamos", codigosPrestamos);
+		query.setParameter("fechaInicio", fechaInicio);
+		query.setParameter("fechaFin", fechaFin);
+		List<Object[]> resultados = query.getResultList();
+		System.out.println("  → Cuotas del mes para Grupo 2 obtenidas: " + resultados.size());
+		return resultados;
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<Object[]> selectCapitalCuotasDesdeInicioMesBatch(List<Long> codigosPrestamos,
+			java.time.LocalDateTime fechaInicio) throws Throwable {
+		if (codigosPrestamos == null || codigosPrestamos.isEmpty()) {
+			return new java.util.ArrayList<>();
+		}
+		System.out.println("DetallePrestamoDaoServiceImpl.selectCapitalCuotasDesdeInicioMesBatch - préstamos: " + codigosPrestamos.size());
+		// Para el Grupo 2, el desglose de capital por vencer comienza desde la cuota
+		// del mes de ejecución (fechaVencimiento >= fechaInicio), no desde la siguiente.
+		// Se excluye SOLO estado 7 (cancelada anticipada).
+		// Las cuotas pagadas (estado 4) y cualquier otro estado SÍ se incluyen.
+		Query query = em.createQuery(
+			" select d.prestamo.codigo, d.numeroCuota, d.capital " +
+			" from DetallePrestamo d " +
+			" where d.prestamo.codigo IN :codigosPrestamos " +
+			"   and d.fechaVencimiento >= :fechaInicio " +
+			"   and d.estado <> 7 " +
+			" order by d.prestamo.codigo asc, d.numeroCuota asc "
+		);
+		query.setParameter("codigosPrestamos", codigosPrestamos);
+		query.setParameter("fechaInicio", fechaInicio);
+		List<Object[]> resultados = query.getResultList();
+		System.out.println("  → Cuotas desde inicio mes Grupo 2 obtenidas: " + resultados.size());
+		return resultados;
+	}
+
 }

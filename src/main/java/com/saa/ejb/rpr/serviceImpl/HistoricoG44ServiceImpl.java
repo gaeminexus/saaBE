@@ -20,4 +20,10 @@ public class HistoricoG44ServiceImpl extends EntityDaoImpl<HistoricoG44> impleme
     public List<HistoricoG44> selectExJubilados() throws Throwable {
         return dao.selectExJubilados();
     }
+
+    @Override
+    public List<HistoricoG44> selectByIdentificacionesIn(List<String> identificaciones) throws Throwable {
+        System.out.println("HistoricoG44ServiceImpl.selectByIdentificacionesIn - cantidad: " + (identificaciones != null ? identificaciones.size() : 0));
+        return dao.selectByIdentificacionesIn(identificaciones);
+    }
 }

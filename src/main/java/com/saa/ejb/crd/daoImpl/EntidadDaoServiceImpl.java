@@ -281,4 +281,19 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 		return result.isEmpty() ? null : result.get(0);
 	}
 
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<Entidad> findByCodigosIn(List<Long> codigos) throws Throwable {
+		if (codigos == null || codigos.isEmpty()) {
+			return new java.util.ArrayList<>();
+		}
+		System.out.println("EntidadDaoServiceImpl.findByCodigosIn - cantidad: " + codigos.size());
+		Query query = em.createQuery(
+			" select e from Entidad e " +
+			" where  e.codigo IN :codigos "
+		);
+		query.setParameter("codigos", codigos);
+		return query.getResultList();
+	}
+
 }

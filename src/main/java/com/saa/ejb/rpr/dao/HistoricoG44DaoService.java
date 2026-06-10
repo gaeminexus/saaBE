@@ -12,4 +12,10 @@ public interface HistoricoG44DaoService extends EntityDao<HistoricoG44> {
      * pero con idEstado diferente a 30 (ex-jubilados).
      */
     List<HistoricoG44> selectExJubilados() throws Throwable;
+    
+    /**
+     * Carga múltiples HistoricoG44 por identificaciones en una sola consulta.
+     * Optimización para evitar N+1 queries.
+     */
+    List<HistoricoG44> selectByIdentificacionesIn(List<String> identificaciones) throws Throwable;
 }

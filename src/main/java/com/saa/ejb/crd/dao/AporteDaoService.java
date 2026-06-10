@@ -67,6 +67,13 @@ public interface AporteDaoService extends EntityDao<Aporte>{
 	 */
 	Double selectSumaTotalPorTipoAporte(LocalDateTime fechaCorte, Long tipoAporte) throws Throwable;
 
+	/**
+	 * Para CPRM — Suma de aportes agrupada por entidad Y tipo de aporte hasta fechaCorte.
+	 * Genera un registro por cada combinación entidad+tipoAporte con valor != 0.
+	 * Retorna Object[]{Long codigoEntidad, Long codigoTipoAporte, String nombreTipoAporte, Double suma}.
+	 */
+	List<Object[]> selectSumaPorEntidadYTipoAporte(LocalDateTime fechaCorte) throws Throwable;
+
 
 	/*filtra todos los aporte por id de entidad
 	 * @param :idEntidad

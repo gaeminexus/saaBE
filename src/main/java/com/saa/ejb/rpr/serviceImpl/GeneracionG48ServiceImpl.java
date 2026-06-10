@@ -130,6 +130,73 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
         }
 
         // -------------------------------------------------------
+        // 5b. Cargar datos del Grupo 2 en batch (igual que CCPM).
+        // -------------------------------------------------------
+        List<DetallePrestamo> cuotasGrupo2 = new ArrayList<>();
+        for (DetallePrestamo d : cuotasAProcesar) {
+            if (d.getPrestamo() != null && !prestamosEnGrupo1.contains(d.getPrestamo().getCodigo())) {
+                cuotasGrupo2.add(d);
+            }
+        }
+        System.out.println("G48 - Cuotas grupo 2 para optimizar: " + cuotasGrupo2.size());
+
+        // Recolectar PKs de las cuotas origen del grupo 2 (sirve para ambos batch)
+        List<Long> codigosCuotasMora = new ArrayList<>();
+        for (DetallePrestamo cuota2 : cuotasGrupo2) {
+            if (cuota2.getPrestamo() != null) {
+                codigosCuotasMora.add(cuota2.getCodigo());
+            }
+        }
+
+        // Batch suma capital/interés grupo 2
+        Map<Long, Object[]> mapaSumasGrupo2 = new HashMap<>();
+        if (!codigosCuotasMora.isEmpty()) {
+            List<Object[]> sumasGrupo2 = detallePrestamoService.selectSumaCapitalInteresGrupo2Batch(
+                codigosCuotasMora, fechaFin
+            );
+            for (Object[] suma : sumasGrupo2) {
+                Long codPrest = (Long) suma[0];
+                mapaSumasGrupo2.put(codPrest, new Object[]{suma[1], suma[2]});
+            }
+            System.out.println("G48 - Sumas grupo 2 cargadas en batch: " + mapaSumasGrupo2.size());
+        }
+
+        // Batch mora grupo 2
+        Map<Long, Double> mapaMoraGrupo2 = new HashMap<>();
+        if (!codigosCuotasMora.isEmpty()) {
+            List<Object[]> morasGrupo2 = detallePrestamoService.calcularInteresMoraBatch(
+                codigosCuotasMora, fechaFin
+            );
+            for (Object[] mora : morasGrupo2) {
+                Long codCuota = (Long) mora[0];
+                Double valorMora = mora[1] != null ? (Double) mora[1] : 0.0;
+                mapaMoraGrupo2.put(codCuota, valorMora);
+            }
+            System.out.println("G48 - Moras grupo 2 cargadas en batch: " + mapaMoraGrupo2.size());
+        }
+
+        // Batch valorPorVencer Grupo 2:
+        // saldoInicialCapital - capital de la cuota que cae DENTRO del mes de ejecución,
+        // no de la cuota en mora que se está insertando.
+        Map<Long, Double> mapaValorPorVencerGrupo2 = new HashMap<>();
+        List<Long> codsPrestamosGrupo2 = new ArrayList<>();
+        for (DetallePrestamo d : cuotasGrupo2) {
+            if (d.getPrestamo() != null) codsPrestamosGrupo2.add(d.getPrestamo().getCodigo());
+        }
+        if (!codsPrestamosGrupo2.isEmpty()) {
+            List<Object[]> saldosDelMes = detallePrestamoService.selectSaldoInicialCapitalDelMesBatch(
+                codsPrestamosGrupo2, fechaInicio, fechaFin
+            );
+            for (Object[] fila : saldosDelMes) {
+                Long   codPrest        = (Long)   fila[0];
+                Double saldoInicialCap = fila[1] != null ? ((Number) fila[1]).doubleValue() : 0.0;
+                Double capitalDelMes   = fila[2] != null ? ((Number) fila[2]).doubleValue() : 0.0;
+                mapaValorPorVencerGrupo2.put(codPrest, Math.max(0.0, saldoInicialCap - capitalDelMes));
+            }
+            System.out.println("G48 - ValorPorVencer Grupo 2 cargados en batch: " + mapaValorPorVencerGrupo2.size());
+        }
+
+        // -------------------------------------------------------
         // 6. Por cada cuota → generar un registro en G48
         // -------------------------------------------------------
         long contador = 0L;
@@ -159,13 +226,17 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
                     (prestamo.getProducto() != null ? prestamo.getProducto().getCodigo() : null));
 
                 // ----- VALOR POR VENCER -----
-                // Usar el saldoPorVencer del préstamo completo, no solo de la cuota
-                Double valorPorVencer = 0.0;
-                if (prestamo.getSaldoPorVencer() != null && prestamo.getSaldoPorVencer() > 0.0) {
-                    valorPorVencer = prestamo.getSaldoPorVencer();
-                } else if (cuota.getSaldoInicialCapital() != null) {
-                    // Fallback: si no hay saldo por vencer en el préstamo, usar el de la cuota
-                    valorPorVencer = cuota.getSaldoInicialCapital();
+                // Grupo 1: saldoInicialCapital - capital de la cuota del mes (la cuota que se procesa).
+                // Grupo 2: saldoInicialCapital - capital de la cuota que cae DENTRO del mes de ejecución,
+                //          no de la cuota en mora que se está insertando.
+                Double valorPorVencer;
+                if (esGrupo1) {
+                    Double saldoInicialCapital = cuota.getSaldoInicialCapital() != null ? cuota.getSaldoInicialCapital() : 0.0;
+                    Double capitalCuota        = cuota.getCapital()             != null ? cuota.getCapital()             : 0.0;
+                    valorPorVencer = Math.max(0.0, saldoInicialCapital - capitalCuota);
+                } else {
+                    // Tomar del mapa pre-cargado; si no hay cuota en el mes para ese préstamo → 0
+                    valorPorVencer = mapaValorPorVencerGrupo2.getOrDefault(prestamo.getCodigo(), 0.0);
                 }
 
                 // ----- VALOR VENCIDO e INTERÉS ORDINARIO -----
@@ -178,19 +249,11 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
                     valorVencido = 0.0;
                     interesOrdinario = cuota.getInteres() != null ? cuota.getInteres() : 0.0;
                 } else {
-                    // Grupo 2: sumar todas las cuotas desde esta hasta la máxima con fechaVencimiento <= fechaFin
-                    try {
-                        Object[] sumas = detallePrestamoService.selectSumaCapitalInteresGrupo2(
-                            prestamo.getCodigo(), 
-                            cuota.getNumeroCuota(), 
-                            fechaFin
-                        );
-                        valorVencido = sumas[0] != null ? (Double) sumas[0] : 0.0;
+                    // Obtener del mapa pre-cargado en batch (grupo 2)
+                    Object[] sumas = mapaSumasGrupo2.get(prestamo.getCodigo());
+                    if (sumas != null) {
+                        valorVencido     = sumas[0] != null ? (Double) sumas[0] : 0.0;
                         interesOrdinario = sumas[1] != null ? (Double) sumas[1] : 0.0;
-                    } catch (Throwable e) {
-                        System.out.println("G48 ERROR al sumar cuotas grupo 2 para prestamo " + prestamo.getCodigo() + ": " + e.getMessage());
-                        valorVencido = 0.0;
-                        interesOrdinario = 0.0;
                     }
                 }
 
@@ -296,17 +359,10 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
 
                 // ----- INTERÉS MORA -----
                 // Grupo 1 → 0 (cuotas del mes, no están vencidas aún)
-                // Grupo 2 → sumatoria del interés por mora de todas las cuotas
-                //           desde la incluida hasta la máxima con fechaVencimiento <= fechaFin
-                //           Fórmula por cuota: capital × (interesNominal × 1.5 / 360) × diasMora
+                // Grupo 2 → del mapa pre-cargado en batch
                 Double interesMora = 0.0;
                 if (!esGrupo1) {
-                    try {
-                        interesMora = detallePrestamoService.calcularInteresMora(cuota.getCodigo(), fechaFin);
-                    } catch (Throwable e) {
-                        System.out.println("G48 ERROR al calcular mora grupo 2 para cuota " + cuota.getCodigo() + ": " + e.getMessage());
-                        interesMora = 0.0;
-                    }
+                    interesMora = mapaMoraGrupo2.getOrDefault(cuota.getCodigo(), 0.0);
                 }
                 g48.setInteresMora(interesMora);
                 g48.setValorDemandaJudicial(0.0);

@@ -81,4 +81,10 @@ public class ValorPagoPensionComplementariaServiceImpl implements ValorPagoPensi
         System.out.println("selectByEntidad ValorPagoPensionComplementaria codigoEntidad: " + codigoEntidad);
         return valorPagoPensionComplementariaDaoService.selectByEntidad(codigoEntidad);
     }
+
+    @Override
+    public List<ValorPagoPensionComplementaria> selectByEntidadesIn(List<Long> codigosEntidades) throws Throwable {
+        System.out.println("selectByEntidadesIn ValorPagoPensionComplementaria - cantidad: " + (codigosEntidades != null ? codigosEntidades.size() : 0));
+        return valorPagoPensionComplementariaDaoService.selectByEntidadesIn(codigosEntidades);
+    }
 }

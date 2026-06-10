@@ -38,4 +38,10 @@ public interface EntidadService extends EntityService<Entidad>{
 	 */
 	Entidad findById(Long codigo) throws Throwable;
 
+	/**
+	 * Carga múltiples entidades por sus códigos en una sola consulta.
+	 * Optimización para evitar N+1 queries.
+	 */
+	List<Entidad> findByCodigosIn(List<Long> codigos) throws Throwable;
+
 }
