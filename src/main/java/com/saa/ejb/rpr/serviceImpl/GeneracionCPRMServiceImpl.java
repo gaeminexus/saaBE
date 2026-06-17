@@ -106,6 +106,16 @@ public class GeneracionCPRMServiceImpl implements GeneracionCPRMService {
 
             if (codigoEntidad == null || codigoTipoAporte == null || suma == null) continue;
 
+            // Normalizar negativo a 0
+            suma = Math.max(0.0, suma);
+
+            // Si el total es 0, no incluir el registro
+            if (suma == 0.0) {
+                System.out.println("CPRM SKIP entidad: " + codigoEntidad
+                        + " tipoAporte: " + codigoTipoAporte + " — total es 0");
+                continue;
+            }
+
             try {
                 // Obtener entidad del mapa pre-cargado
                 Entidad entidad = mapaEntidades.get(codigoEntidad);

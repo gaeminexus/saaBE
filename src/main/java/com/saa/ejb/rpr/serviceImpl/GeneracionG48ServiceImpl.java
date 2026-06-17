@@ -283,8 +283,8 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
                 }
 
                 // ----- VALOR SUJETO A PROVISIÓN -----
-                // max(0, valorPorVencer - valorTotalCuentaIndividual)
-                Double valorSujetoProvision = Math.max(0.0, valorPorVencer - valorCuentaIndividual);
+                // max(0, (valorPorVencer + valorVencido) - valorTotalCuentaIndividual)
+                Double valorSujetoProvision = Math.max(0.0, (valorPorVencer + valorVencido) - valorCuentaIndividual);
 
                 // ----- PROVISIÓN REQUERIDA ORIGINAL -----
                 Double provisionRequeridaOriginal = calcularProvision(valorSujetoProvision, calificacionPropia);

@@ -91,10 +91,20 @@ public class CreditoCuotasPrestamosMensual implements Serializable {
     @Column(name = "CCPMINRD")
     private Double interesOrdinario;
 
-    /** Interés sobre mora. */
+    /** Interés sobre mora (acumulado de todas las cuotas vencidas). */
     @Basic
     @Column(name = "CCPMISMR")
     private Double interesMora;
+
+    /** Interés sobre mora únicamente de la cuota del mes del reporte. */
+    @Basic
+    @Column(name = "CCPMISMD")
+    private Double interesMoraDelMes;
+
+    /** Interés ordinario únicamente de la cuota con fecha de vencimiento dentro del mes de ejecución. */
+    @Basic
+    @Column(name = "CCPMINRM")
+    private Double interesOrdinarioDelMes;
 
     /** Valor en demanda judicial. */
     @Basic
@@ -242,6 +252,12 @@ public class CreditoCuotasPrestamosMensual implements Serializable {
 
     public Double getInteresMora() { return interesMora; }
     public void setInteresMora(Double interesMora) { this.interesMora = interesMora; }
+
+    public Double getInteresMoraDelMes() { return interesMoraDelMes; }
+    public void setInteresMoraDelMes(Double interesMoraDelMes) { this.interesMoraDelMes = interesMoraDelMes; }
+
+    public Double getInteresOrdinarioDelMes() { return interesOrdinarioDelMes; }
+    public void setInteresOrdinarioDelMes(Double interesOrdinarioDelMes) { this.interesOrdinarioDelMes = interesOrdinarioDelMes; }
 
     public Double getValorDemandaJudicial() { return valorDemandaJudicial; }
     public void setValorDemandaJudicial(Double valorDemandaJudicial) { this.valorDemandaJudicial = valorDemandaJudicial; }

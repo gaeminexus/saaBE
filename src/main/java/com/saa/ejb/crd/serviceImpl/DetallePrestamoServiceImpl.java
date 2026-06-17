@@ -216,4 +216,10 @@ public class DetallePrestamoServiceImpl implements DetallePrestamoService {
 			java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable {
 		return detallePrestamoDaoService.selectSaldoInicialCapitalDelMesBatch(codigosPrestamos, fechaInicio, fechaFin);
 	}
+
+	@Override
+	public List<Object[]> calcularInteresMoraDelMesBatch(List<Long> codigosPrestamos,
+			java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable {
+		return detallePrestamoDaoService.calcularInteresMoraDelMesBatch(codigosPrestamos, fechaInicio, fechaFin);
+	}
 }

@@ -1,19 +1,23 @@
 <!-- Created with Jaspersoft Studio version 7.0.3.final using JasperReports Library version 7.0.3-41034ca841d452f3305ba55b9042260aaa1ab5dd  -->
-<jasperReport name="RPRT_TBLA_ACML" language="java" pageWidth="595" pageHeight="842" columnWidth="555" leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20" uuid="e755f84b-cdb8-4a99-a846-a56911786218">
+<jasperReport name="RPRT_MVMN_APXT" language="java" pageWidth="595" pageHeight="842" columnWidth="555" leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20" uuid="e755f84b-cdb8-4a99-a846-a56911786218">
 	<property name="com.jaspersoft.studio.data.sql.tables" value=""/>
-	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="saa_oracle_xe"/>
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="Oracle"/>
 	<property name="com.jaspersoft.studio.property.dataset.dialog.DatasetDialog.sash.w1" value="421"/>
 	<property name="com.jaspersoft.studio.property.dataset.dialog.DatasetDialog.sash.w2" value="568"/>
+	<property name="com.jaspersoft.studio.report.description" value=""/>
 	<parameter name="P_ENTDCDGO" class="java.lang.Long">
 		<description><![CDATA[codigo del prestamo]]></description>
 	</parameter>
 	<parameter name="P_TPAPCDGO" class="java.lang.Long"/>
+	<parameter name="P_IMAGEN" class="java.awt.Image"/>
+	<parameter name="P_USUARIO" class="java.lang.String"/>
 	<query language="SQL"><![CDATA[SELECT   *
 FROM	 crd.APRT a, crd.TPAP t, crd.ENTD e 
 WHERE	 a.TPAPCDGO  = t.TPAPCDGO 
 		 AND   a.ENTDCDGO = e.ENTDCDGO 
 		 AND   a.ENTDCDGO = $P{P_ENTDCDGO}
-	     AND   a.TPAPCDGO =  $P{P_TPAPCDGO}]]></query>
+	     AND   a.TPAPCDGO =  $P{P_TPAPCDGO}
+	     ORDER BY a.APRTFCTR ASC]]></query>
 	<field name="APRTCDGO" class="java.math.BigDecimal">
 		<property name="com.jaspersoft.studio.field.name" value="APRTCDGO"/>
 		<property name="com.jaspersoft.studio.field.label" value="APRTCDGO"/>
@@ -34,7 +38,7 @@ WHERE	 a.TPAPCDGO  = t.TPAPCDGO
 		<property name="com.jaspersoft.studio.field.name" value="TPAPCDGO"/>
 		<property name="com.jaspersoft.studio.field.label" value="TPAPCDGO"/>
 	</field>
-	<field name="APRTFCTR" class="java.sql.Timestamp">
+	<field name="APRTFCTR" class="java.sql.Date">
 		<property name="com.jaspersoft.studio.field.name" value="APRTFCTR"/>
 		<property name="com.jaspersoft.studio.field.label" value="APRTFCTR"/>
 	</field>
@@ -58,7 +62,7 @@ WHERE	 a.TPAPCDGO  = t.TPAPCDGO
 		<property name="com.jaspersoft.studio.field.name" value="APRTIDAS"/>
 		<property name="com.jaspersoft.studio.field.label" value="APRTIDAS"/>
 	</field>
-	<field name="APRTFCRG" class="java.sql.Timestamp">
+	<field name="APRTFCRG" class="java.sql.Date">
 		<property name="com.jaspersoft.studio.field.name" value="APRTFCRG"/>
 		<property name="com.jaspersoft.studio.field.label" value="APRTFCRG"/>
 	</field>
@@ -213,9 +217,12 @@ WHERE	 a.TPAPCDGO  = t.TPAPCDGO
 	<variable name="NUMERO_REGISTROS" calculation="Count" class="java.math.BigDecimal">
 		<expression><![CDATA[$F{APRTCDGO}]]></expression>
 	</variable>
+	<variable name="V_SALDO_ACUM" calculation="Sum" class="java.math.BigDecimal">
+		<expression><![CDATA[$F{APRTVLRR} != null ? $F{APRTVLRR} : java.math.BigDecimal.ZERO]]></expression>
+	</variable>
 	<background splitType="Stretch"/>
-	<title height="79" splitType="Stretch">
-		<element kind="rectangle" uuid="caf138d8-0d75-4021-8a39-5ab1b7c1da80" x="0" y="10" width="555" height="60">
+	<title height="152" splitType="Stretch">
+		<element kind="rectangle" uuid="caf138d8-0d75-4021-8a39-5ab1b7c1da80" x="90" y="10" width="465" height="60">
 			<pen lineWidth="0.75"/>
 		</element>
 		<element kind="textField" uuid="237a2116-4c84-4d73-89cf-b8b4b1d6ea6a" x="530" y="18" width="19" height="15" fontSize="8.0" evaluationTime="Report" hTextAlign="Left">
@@ -230,13 +237,10 @@ WHERE	 a.TPAPCDGO  = t.TPAPCDGO
 		<element kind="textField" uuid="397e3f80-e4ab-4ef0-8f5b-af3a1fc06ac3" x="485" y="18" width="45" height="15" fontSize="8.0" hTextAlign="Left">
 			<expression><![CDATA["Página "+$V{PAGE_NUMBER}+" de"]]></expression>
 		</element>
-		<element kind="textField" uuid="5569f5c6-2c30-4eb3-969b-248434f286e8" x="84" y="28" width="390" height="24" fontSize="16.0" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="textField" uuid="5569f5c6-2c30-4eb3-969b-248434f286e8" x="130" y="28" width="324" height="24" fontSize="16.0" hTextAlign="Center" vTextAlign="Middle">
 			<expression><![CDATA[$F{TPAPNMBR}]]></expression>
 		</element>
-	</title>
-	<pageHeader height="12" splitType="Stretch"/>
-	<columnHeader height="160" splitType="Stretch">
-		<element kind="staticText" uuid="b57f2bfc-ea44-45c2-b538-5675d5020b0a" mode="Opaque" x="80" y="23" width="201" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="cc1fe22e-b497-41a8-863c-7e1e72195cf6" mode="Opaque" x="80" y="96" width="201" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[IDENTIFICACIÓN]]></text>
 			<box>
 				<pen lineWidth="0.25"/>
@@ -246,7 +250,7 @@ WHERE	 a.TPAPCDGO  = t.TPAPCDGO
 				<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="85f03830-5ea3-4261-9c08-e89ae5ba65e8" mode="Opaque" x="80" y="36" width="201" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="e3696193-d04f-4ad8-a91d-b8a29b5ba773" mode="Opaque" x="80" y="109" width="201" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[NOMBRE]]></text>
 			<box>
 				<pen lineWidth="0.25"/>
@@ -256,7 +260,7 @@ WHERE	 a.TPAPCDGO  = t.TPAPCDGO
 				<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="924c3560-06d3-46fa-8508-da5b6f24da16" mode="Opaque" x="80" y="10" width="394" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="cda7972b-dfce-4dac-bcbd-382d88ad2b7b" mode="Opaque" x="80" y="83" width="394" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[DATOS GENERALES DEL PARTICIPE]]></text>
 			<box>
 				<pen lineWidth="0.25"/>
@@ -266,17 +270,7 @@ WHERE	 a.TPAPCDGO  = t.TPAPCDGO
 				<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="91fdbafa-805a-4a10-99aa-a748c3d8b29b" mode="Opaque" x="80" y="49" width="201" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[ID CUENTA]]></text>
-			<box>
-				<pen lineWidth="0.25"/>
-				<topPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
-				<leftPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
-				<bottomPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
-				<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
-			</box>
-		</element>
-		<element kind="staticText" uuid="818bfe87-e584-417e-881a-2a060bfd177c" mode="Opaque" x="80" y="62" width="201" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="bb8bbd20-6bd2-4769-8978-9e1f75d0f051" mode="Opaque" x="80" y="122" width="201" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[TOTAL APORTES]]></text>
 			<box>
 				<pen lineWidth="0.25"/>
@@ -286,38 +280,7 @@ WHERE	 a.TPAPCDGO  = t.TPAPCDGO
 				<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="0c592621-8030-49c8-af7b-5b5e06e0b2fc" mode="Opaque" x="40" y="120" width="474" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="9.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[TABLA DE APORTES Y ACUMULACIÓN]]></text>
-			<box>
-				<pen lineWidth="0.25"/>
-				<topPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
-				<leftPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
-				<bottomPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
-				<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
-			</box>
-		</element>
-		<element kind="staticText" uuid="2cab6396-fe5a-4c62-90c8-2be22a7fdb0b" x="40" y="133" width="44" height="27" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[No°]]></text>
-			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="73be61df-46f4-4fff-99e3-4d910a2dbe36"/>
-			<box>
-				<pen lineWidth="0.25"/>
-			</box>
-		</element>
-		<element kind="staticText" uuid="5e34068a-33b9-44c1-a73a-a7611d73bcf6" x="84" y="133" width="67" height="27" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[FECHA]]></text>
-			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="1efe2930-9b62-435a-be72-f5d442008b3f"/>
-			<box>
-				<pen lineWidth="0.25"/>
-			</box>
-		</element>
-		<element kind="staticText" uuid="2c5f055f-6b58-4f4d-81c4-f28df59350cc" x="151" y="133" width="175" height="27" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[DETALLE]]></text>
-			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="9a95a64e-8d9c-4d7f-83dd-2a9338854f63"/>
-			<box>
-				<pen lineWidth="0.25"/>
-			</box>
-		</element>
-		<element kind="staticText" uuid="eec4320c-6198-4cc3-9fc0-8dbededb8b19" mode="Opaque" x="80" y="90" width="200" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+		<element kind="staticText" uuid="1cb29061-1adf-4d1a-baf1-c9f744c3bcbb" mode="Opaque" x="80" y="139" width="200" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
 			<text><![CDATA[MOVIMIENTOS REALIZADOS]]></text>
 			<box rightPadding="3">
 				<pen lineWidth="0.0"/>
@@ -327,46 +290,25 @@ WHERE	 a.TPAPCDGO  = t.TPAPCDGO
 				<rightPen lineWidth="0.0" lineStyle="Solid" lineColor="#000000"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="067e7964-4647-43d0-b8d2-6cf2f3d68349" x="326" y="133" width="68" height="27" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[CREDITO]]></text>
-			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="88b90731-8435-48ee-afd8-4ebd33a876b9"/>
-			<box>
-				<pen lineWidth="0.25"/>
-			</box>
-		</element>
-		<element kind="staticText" uuid="af7af36a-8eb0-4fd3-b4af-740f57cbc012" x="394" y="133" width="60" height="27" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[DEBITO]]></text>
-			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="2597655d-08f1-4e64-a52d-436f62f8eaa8"/>
-			<box>
-				<pen lineWidth="0.25"/>
-			</box>
-		</element>
-		<element kind="textField" uuid="aa130774-8a39-4ff0-b222-91e0bdf6e7a6" x="281" y="23" width="193" height="13" fontSize="8.0" hTextAlign="Center">
+		<element kind="textField" uuid="c9c95a90-8964-4fc7-b946-6514faf6182d" x="281" y="96" width="193" height="13" fontSize="8.0" hTextAlign="Center">
 			<expression><![CDATA[$F{ENTDNMID}]]></expression>
 			<box>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="textField" uuid="e3363944-c05c-46ff-bf4c-d0479e955810" x="281" y="36" width="193" height="13" fontSize="8.0" hTextAlign="Center">
+		<element kind="textField" uuid="45dd3076-b331-4489-9551-cf884758feb3" x="281" y="109" width="193" height="13" fontSize="8.0" hTextAlign="Center">
 			<expression><![CDATA[$F{ENTDRZNS}]]></expression>
 			<box>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="textField" uuid="d41c1e1f-85da-4d9c-a49c-707d6b474b64" x="281" y="62" width="193" height="13" fontSize="8.0" evaluationTime="Report" hTextAlign="Center">
+		<element kind="textField" uuid="615ad32f-e079-440a-bb95-cd155d9c3d3a" x="281" y="122" width="193" height="13" fontSize="8.0" evaluationTime="Report" hTextAlign="Center">
 			<expression><![CDATA[$V{NUMERO_REGISTROS}]]></expression>
 			<box>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="b81af720-fe0c-469e-83f0-8f59d1762139" x="454" y="133" width="60" height="27" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[SALDO]]></text>
-			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="2597655d-08f1-4e64-a52d-436f62f8eaa8"/>
-			<box>
-				<pen lineWidth="0.25"/>
-			</box>
-		</element>
-		<element kind="textField" uuid="9158059c-b25f-4193-9268-1732a8138d8e" mode="Opaque" x="280" y="90" width="194" height="13" forecolor="#050505" backcolor="#D1D1D1" fontSize="7.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+		<element kind="textField" uuid="9d3fabe5-680e-44a6-b9b6-ff225b4bc288" mode="Opaque" x="280" y="139" width="194" height="13" forecolor="#050505" backcolor="#D1D1D1" fontSize="7.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
 			<expression><![CDATA[$F{TPAPNMBR}]]></expression>
 			<box leftPadding="1">
 				<topPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
@@ -375,53 +317,116 @@ WHERE	 a.TPAPCDGO  = t.TPAPCDGO
 				<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
 			</box>
 		</element>
+		<element kind="image" uuid="6088d4d7-4164-445e-ab3b-001eb4e626dc" positionType="FixRelativeToBottom" x="0" y="10" width="85" height="60" scaleImage="RealSize" evaluationTime="Report" linkType="None" linkTarget="Self" lazy="true">
+			<expression><![CDATA[$P{P_IMAGEN}]]></expression>
+			<property name="com.jaspersoft.studio.unit.width" value="px"/>
+		</element>
+		<element kind="staticText" uuid="d8c6bafc-ccfc-4b06-937c-94bd99f84511" x="405" y="70" width="50" height="10" fontSize="7.0" vTextAlign="Middle">
+			<text><![CDATA[Generado por:]]></text>
+		</element>
+		<element kind="textField" uuid="057f8de5-929e-4d5a-90c0-8382d7f68805" x="455" y="70" width="100" height="10" fontSize="7.0" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$P{P_USUARIO}]]></expression>
+			<property name="com.jaspersoft.studio.unit.height" value="px"/>
+			<property name="com.jaspersoft.studio.unit.y" value="px"/>
+		</element>
+	</title>
+	<columnHeader height="40" splitType="Stretch">
+		<element kind="staticText" uuid="0c592621-8030-49c8-af7b-5b5e06e0b2fc" mode="Opaque" x="52" y="0" width="474" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="9.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[TABLA DE APORTES Y ACUMULACIÓN]]></text>
+			<box>
+				<pen lineWidth="0.25"/>
+				<topPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+				<leftPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+				<bottomPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+				<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
+			</box>
+		</element>
+		<element kind="staticText" uuid="5e34068a-33b9-44c1-a73a-a7611d73bcf6" x="52" y="13" width="55" height="27" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[FECHA]]></text>
+			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="1efe2930-9b62-435a-be72-f5d442008b3f"/>
+			<property name="com.jaspersoft.studio.unit.width" value="px"/>
+			<box>
+				<pen lineWidth="0.25"/>
+			</box>
+		</element>
+		<element kind="staticText" uuid="2c5f055f-6b58-4f4d-81c4-f28df59350cc" x="107" y="13" width="269" height="27" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[DETALLE]]></text>
+			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="9a95a64e-8d9c-4d7f-83dd-2a9338854f63"/>
+			<box>
+				<pen lineWidth="0.25"/>
+			</box>
+		</element>
+		<element kind="staticText" uuid="067e7964-4647-43d0-b8d2-6cf2f3d68349" x="376" y="13" width="50" height="27" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[CREDITO]]></text>
+			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="88b90731-8435-48ee-afd8-4ebd33a876b9"/>
+			<property name="com.jaspersoft.studio.unit.width" value="px"/>
+			<box>
+				<pen lineWidth="0.25"/>
+			</box>
+		</element>
+		<element kind="staticText" uuid="af7af36a-8eb0-4fd3-b4af-740f57cbc012" x="426" y="13" width="50" height="27" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[DEBITO]]></text>
+			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="2597655d-08f1-4e64-a52d-436f62f8eaa8"/>
+			<property name="com.jaspersoft.studio.unit.width" value="px"/>
+			<box>
+				<pen lineWidth="0.25"/>
+			</box>
+		</element>
+		<element kind="staticText" uuid="b81af720-fe0c-469e-83f0-8f59d1762139" x="476" y="13" width="50" height="27" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[SALDO]]></text>
+			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="2597655d-08f1-4e64-a52d-436f62f8eaa8"/>
+			<property name="com.jaspersoft.studio.unit.width" value="px"/>
+			<box>
+				<pen lineWidth="0.25"/>
+			</box>
+		</element>
 	</columnHeader>
 	<detail>
-		<band height="20" splitType="Stretch">
-			<element kind="textField" uuid="af386d65-c120-48bb-98ab-a704b39a537a" x="40" y="0" width="44" height="20" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
-				<expression><![CDATA[$F{APRTCDGO}]]></expression>
-				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="966eb76a-9ec8-4002-aca8-642085c170d1"/>
-				<box>
-					<pen lineWidth="0.25"/>
-				</box>
-			</element>
-			<element kind="textField" uuid="ff158529-ea3d-40a9-a083-b50f9536a5de" x="84" y="0" width="67" height="20" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+		<band height="15" splitType="Stretch">
+			<element kind="textField" uuid="ff158529-ea3d-40a9-a083-b50f9536a5de" x="52" y="0" width="55" height="15" fontSize="7.0" pattern="dd/MM/yyyy" hTextAlign="Center" vTextAlign="Middle">
 				<expression><![CDATA[$F{APRTFCTR}]]></expression>
+				<property name="com.jaspersoft.studio.unit.x" value="px"/>
+				<property name="com.jaspersoft.studio.unit.height" value="px"/>
 				<box>
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="a1f9ba9d-b443-47ca-aebb-f96b0755d38e" x="151" y="0" width="175" height="20" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
-				<expression><![CDATA[$F{APRTGLSA}]]></expression>
+			<element kind="textField" uuid="a1f9ba9d-b443-47ca-aebb-f96b0755d38e" x="107" y="0" width="269" height="15" fontSize="6.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[UPPER($F{APRTGLSA})]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="43978227-3205-401e-9ad7-ee75c6b647d4"/>
-				<box>
+				<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				<property name="com.jaspersoft.studio.unit.height" value="px"/>
+				<box leftPadding="3">
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="1b13538b-1c81-42fd-9c39-1c1e0100df7d" x="326" y="0" width="68" height="20" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
-				<expression><![CDATA[$F{APRTVLRR}]]></expression>
+			<element kind="textField" uuid="1b13538b-1c81-42fd-9c39-1c1e0100df7d" x="376" y="0" width="50" height="15" fontSize="7.0" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+				<expression><![CDATA[$F{APRTVLRR} != null && $F{APRTVLRR}.compareTo(java.math.BigDecimal.ZERO) > 0 ? $F{APRTVLRR} : 0]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="437da433-ad4e-4289-872c-61012f86fef2"/>
-				<box>
+				<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				<property name="com.jaspersoft.studio.unit.height" value="px"/>
+				<box rightPadding="4">
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="bca0f654-dbb2-4151-b072-c01dd8e1f865" x="394" y="0" width="60" height="20" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
-				<expression><![CDATA[$F{APRTVLPG}]]></expression>
+			<element kind="textField" uuid="bca0f654-dbb2-4151-b072-c01dd8e1f865" x="426" y="0" width="50" height="15" fontSize="7.0" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+				<expression><![CDATA[$F{APRTVLRR} != null && $F{APRTVLRR}.compareTo(java.math.BigDecimal.ZERO) < 0 ? $F{APRTVLRR}.abs() : 0]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="eca8f2f7-e8f2-4a05-b7e9-d67bceb090a0"/>
-				<box>
+				<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				<property name="com.jaspersoft.studio.unit.height" value="px"/>
+				<box rightPadding="4">
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="2810dce2-bf95-4e0a-a8fa-6be8063c8a3d" x="454" y="0" width="60" height="20" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
-				<expression><![CDATA[$F{APRTSLDO}]]></expression>
+			<element kind="textField" uuid="2810dce2-bf95-4e0a-a8fa-6be8063c8a3d" x="476" y="0" width="50" height="15" fontSize="7.0" pattern="#,##0.00" hTextAlign="Right" vTextAlign="Middle">
+				<expression><![CDATA[$V{V_SALDO_ACUM}]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="4835c970-f750-40b5-a3d7-411ade39b4bc"/>
-				<box>
+				<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				<property name="com.jaspersoft.studio.unit.height" value="px"/>
+				<box rightPadding="4">
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
 		</band>
 	</detail>
-	<columnFooter height="45" splitType="Stretch"/>
-	<pageFooter height="54" splitType="Stretch"/>
-	<summary height="42" splitType="Stretch"/>
 </jasperReport>

@@ -119,6 +119,23 @@ public class GeneracionG42ServiceImpl implements GeneracionG42Service {
             Long codigoEntidad   = entry.getKey();
             SaldoCuentaG42 nuevo = entry.getValue();
 
+            // Normalizar valores negativos a 0
+            double rend = nuevo.getRendimiento()         != null ? Math.max(0.0, nuevo.getRendimiento())         : 0.0;
+            double patr = nuevo.getSaldoAportePatronal() != null ? Math.max(0.0, nuevo.getSaldoAportePatronal()) : 0.0;
+            double pers = nuevo.getSaldoAportePersonal() != null ? Math.max(0.0, nuevo.getSaldoAportePersonal()) : 0.0;
+            double apor = nuevo.getAportePersonal()      != null ? Math.max(0.0, nuevo.getAportePersonal())      : 0.0;
+
+            // Si todos los saldos (incluido rendimiento) son 0, no incluir el registro
+            if (rend == 0.0 && patr == 0.0 && pers == 0.0 && apor == 0.0) {
+                System.out.println("G42 SKIP entidad: " + codigoEntidad + " — todos los saldos son 0");
+                continue;
+            }
+
+            nuevo.setRendimiento(rend);
+            nuevo.setSaldoAportePatronal(patr);
+            nuevo.setSaldoAportePersonal(pers);
+            nuevo.setAportePersonal(apor);
+
             // Buscar si ya existe un registro para esta entidad + detalle
             SaldoCuentaG42 existente = cg42DaoService.selectByEntidadYDetalle(codigoEntidad, detalle);
 

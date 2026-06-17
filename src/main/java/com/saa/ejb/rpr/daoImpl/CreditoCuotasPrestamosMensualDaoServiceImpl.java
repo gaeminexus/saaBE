@@ -22,7 +22,8 @@ public class CreditoCuotasPrestamosMensualDaoServiceImpl extends EntityDaoImpl<C
             "codigo", "tipoIdentificacion", "identificacion", "numeroOperacion",
             "tipoCredito", "diasMorosidad", "calificacionPropia", "tasaInteres",
             "valorPorVencer", "valorVencido", "costosOperativos", "interesOrdinario",
-            "interesMora", "valorDemandaJudicial", "carteraCastigada",
+            "interesMora", "interesMoraDelMes", "interesOrdinarioDelMes",
+            "valorDemandaJudicial", "carteraCastigada",
             "provisionRequeridaOriginal", "provisionConstituida",
             "valorTotalCuentaIndividual", "valorSujetoProvision",
             "tipoSistemaAmortizacion", "cuotaCredito", "dividendo", "fechaExigibilidad",
@@ -76,5 +77,19 @@ public class CreditoCuotasPrestamosMensualDaoServiceImpl extends EntityDaoImpl<C
         )
         .setParameter("codigoEjecucion", codigoEjecucion)
         .executeUpdate();
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public List<Object[]> selectInteresMoraPorEjecucion(Long codigoEjecucion) throws Throwable {
+        System.out.println("CreditoCuotasPrestamosMensualDaoServiceImpl.selectInteresMoraPorEjecucion codigoEjecucion: " + codigoEjecucion);
+        return em.createQuery(
+            " select c.numeroOperacion, c.interesMora " +
+            " from CreditoCuotasPrestamosMensual c " +
+            " where c.ejecucionReporte.codigo = :codigoEjecucion " +
+            "   and c.numeroOperacion is not null "
+        )
+        .setParameter("codigoEjecucion", codigoEjecucion)
+        .getResultList();
     }
 }

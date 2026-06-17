@@ -20,4 +20,11 @@ public interface CreditoCuotasPrestamosMensualDaoService extends EntityDao<Credi
 
     /** Elimina todos los registros CCPM de una ejecución específica. */
     int deleteByEjecucion(Long codigoEjecucion) throws Throwable;
+
+    /**
+     * Retorna un mapa de numeroOperacion → interesMora para todos los registros
+     * de una ejecución específica. Se usa para calcular el delta de mora entre ejecuciones.
+     * @return Lista de Object[]{String numeroOperacion, Double interesMora}
+     */
+    List<Object[]> selectInteresMoraPorEjecucion(Long codigoEjecucion) throws Throwable;
 }

@@ -2,14 +2,12 @@ package com.saa.ejb.rpr.serviceImpl;
 
 import java.time.LocalDate;
 
-import com.saa.ejb.rpr.dao.CreditoCuotasPrestamosMensualDaoService;
-import com.saa.ejb.rpr.dao.CreditoJubiladosMensualDaoService;
-import com.saa.ejb.rpr.dao.CreditoParticipesMensualDaoService;
 import com.saa.ejb.rpr.service.EjecucionReporteCarteraService;
 import com.saa.ejb.rpr.service.GeneracionCCPMService;
 import com.saa.ejb.rpr.service.GeneracionCJBMService;
 import com.saa.ejb.rpr.service.GeneracionCPRMService;
 import com.saa.ejb.rpr.service.GeneracionReportesCarteraService;
+import com.saa.ejb.rpr.service.LimpiezaReportesService;
 import com.saa.model.rpr.EjecucionReporteCartera;
 
 import jakarta.ejb.EJB;
@@ -26,9 +24,7 @@ public class GeneracionReportesCarteraServiceImpl implements GeneracionReportesC
     @EJB private GeneracionCPRMService                  cprmService;
     @EJB private GeneracionCJBMService                  cjbmService;
     @EJB private GeneracionCCPMService                  ccpmService;
-    @EJB private CreditoCuotasPrestamosMensualDaoService ccpmDaoService;
-    @EJB private CreditoJubiladosMensualDaoService       cjbmDaoService;
-    @EJB private CreditoParticipesMensualDaoService      cprmDaoService;
+    @EJB private LimpiezaReportesService                limpiezaReportesService;
 
     @Override
     public EjecucionReporteCartera ejecutarGeneracion(Long mes, Long anio, String usuario) throws Throwable {
@@ -147,15 +143,9 @@ public class GeneracionReportesCarteraServiceImpl implements GeneracionReportesC
         Long anio = ejccExistente.getAnio();
         System.out.println("Regenerando reportes de cartera para " + mes + "/" + anio);
 
-        // 2. Borrar hijos primero (orden: CCPM → CJBM → CPRM) para respetar las FK
-        int borradosCCPM = ccpmDaoService.deleteByEjecucion(codigoEjecucion);
-        System.out.println("Registros CCPM eliminados: " + borradosCCPM);
-
-        int borradosCJBM = cjbmDaoService.deleteByEjecucion(codigoEjecucion);
-        System.out.println("Registros CJBM eliminados: " + borradosCJBM);
-
-        int borradosCPRM = cprmDaoService.deleteByEjecucion(codigoEjecucion);
-        System.out.println("Registros CPRM eliminados: " + borradosCPRM);
+        // 2. Borrar hijos en una transacción separada (REQUIRES_NEW) para asegurar el commit antes de borrar el padre
+        limpiezaReportesService.limpiarDatosReportes(codigoEjecucion);
+        System.out.println("Limpieza de reportes hijos completada y confirmada.");
 
         // 3. Borrar el EJCC padre
         java.util.List<Long> ids = new java.util.ArrayList<>();

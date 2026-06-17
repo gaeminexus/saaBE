@@ -42,6 +42,7 @@
     U.DTPRCPTL              AS CAPITAL,
     U.DTPRINTR              AS INTERES,
     U.DTPRDSGR              AS SEGURO_DESGRAVA,
+    U.DTPRVLSI              AS SEGURO_INCENDIO,
     U.DTPRTTLL              AS CUOTA_TOTAL,
     DECODE(U.DTPRESTD, 1, 'PENDIENTE',
            2, 'ACTIVA',
@@ -155,6 +156,10 @@ ORDER BY U.DTPRNMCT;]]></query>
 	<field name="SEGURO_DESGRAVA" class="java.math.BigDecimal">
 		<property name="com.jaspersoft.studio.field.name" value="SEGURO_DESGRAVA"/>
 		<property name="com.jaspersoft.studio.field.label" value="SEGURO_DESGRAVA"/>
+	</field>
+	<field name="SEGURO_INCENDIO" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="SEGURO_INCENDIO"/>
+		<property name="com.jaspersoft.studio.field.label" value="SEGURO_INCENDIO"/>
 	</field>
 	<field name="CUOTA_TOTAL" class="java.math.BigDecimal">
 		<property name="com.jaspersoft.studio.field.name" value="CUOTA_TOTAL"/>
@@ -579,7 +584,7 @@ ORDER BY U.DTPRNMCT;]]></query>
 				</box>
 			</element>
 			<element kind="textField" uuid="40d8f1b1-f024-43f3-9a52-2cfdd33dc7a3" x="380" y="0" width="60" height="14" fontName="SansSerif" fontSize="7.0" pattern="¤#,##0.00;¤-#,##0.00" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
-				<expression><![CDATA[$F{SEGURO_DESGRAVA}]]></expression>
+				<expression><![CDATA[$F{SEGURO_INCENDIO}]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="bd0cce9f-2f17-4384-b1d3-2f1bb1f67fd1"/>
 				<box>
 					<pen lineWidth="0.25"/>

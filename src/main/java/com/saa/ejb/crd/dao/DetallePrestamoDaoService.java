@@ -191,5 +191,18 @@ public interface DetallePrestamoDaoService extends EntityDao<DetallePrestamo> {
 	List<Object[]> selectSaldoInicialCapitalDelMesBatch(List<Long> codigosPrestamos,
 		LocalDateTime fechaInicio, LocalDateTime fechaFin) throws Throwable;
 
+	/**
+	 * CCPM: Calcula el interés de mora únicamente de la cuota cuya fechaVencimiento
+	 * cae dentro del mes del reporte (BETWEEN fechaInicio y fechaFin), para cada préstamo.
+	 * Fórmula: capital × (interesNominal / 100.0 / 360.0) × diasMora
+	 * donde diasMora = días entre fechaVencimiento de esa cuota y fechaFin.
+	 * @param codigosPrestamos Lista de códigos de préstamo
+	 * @param fechaInicio      Primer instante del mes de ejecución
+	 * @param fechaFin         Último instante del mes de ejecución
+	 * @return Lista de Object[]{Long codigoPrestamo, Double interesMoraDelMes}
+	 */
+	List<Object[]> calcularInteresMoraDelMesBatch(List<Long> codigosPrestamos,
+		LocalDateTime fechaInicio, LocalDateTime fechaFin) throws Throwable;
+
 }
 
