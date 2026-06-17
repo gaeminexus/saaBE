@@ -42,7 +42,7 @@
     U.DTPRCPTL              AS CAPITAL,
     U.DTPRINTR              AS INTERES,
     U.DTPRDSGR              AS SEGURO_DESGRAVA,
-    U.DTPRVLSI              AS SEGURO_INCENDIO,
+    NVL(U.DTPRVLSI,0)              AS SEGURO_INCENDIO,
     U.DTPRTTLL              AS CUOTA_TOTAL,
     DECODE(U.DTPRESTD, 1, 'PENDIENTE',
            2, 'ACTIVA',
