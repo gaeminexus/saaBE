@@ -76,6 +76,18 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
 
         System.out.println("G44 - Saldos cuenta en BD: " + mapaSaldo.size() + " entidades");
 
+        // COUNT de imposiciones por entidad (aportes tipo 9, 11 con tipoAporte.estado=1)
+        List<Object[]> listaImposiciones = aporteService.selectCountImposicionesJubilacionPorEntidad(fechaCorte);
+        Map<Long, Long> mapaImposiciones = new HashMap<>();
+        for (Object[] fila : listaImposiciones) {
+            Long   codigoEntidad = toLong(fila[0]);
+            Long   count         = toLong(fila[1]);
+            if (codigoEntidad != null && count != null) {
+                mapaImposiciones.put(codigoEntidad, count);
+            }
+        }
+        System.out.println("G44 - Imposiciones contadas en BD: " + mapaImposiciones.size() + " entidades");
+
         // Calcular fechaInicio del mes (necesario para cuotas y aportes del mes)
         LocalDateTime fechaInicio = LocalDateTime.of((int) anio, (int) mes, 1, 0, 0, 0);
 
@@ -115,6 +127,12 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
                 valorPension = vppcList.get(0).getValorPagar();
             }
 
+            // Exclusión: valorPension = 0 → NO incluir
+            if (valorPension == 0.0) {
+                System.out.println("G44 - SKIP jubilado " + entidad.getNumeroIdentificacion() + " (valorPension=0)");
+                continue;
+            }
+
             // fechaJubilacion e imposicionesAcumuladas → buscar en HistoricoG44 por cédula
             LocalDate fechaJubilacion = null;
             Long imposicionesAcumuladas = null;
@@ -122,6 +140,7 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
             if (historicoList != null && !historicoList.isEmpty()) {
                 HistoricoG44 hist = historicoList.get(0);
                 imposicionesAcumuladas = hist.getImposicionesAcumuladas();
+                
                 if (hist.getFechaJubilacion() != null) {
                     String rawFecha = hist.getFechaJubilacion().trim();
                     java.time.format.DateTimeFormatter[] formatos = {
@@ -142,6 +161,11 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
                             + entidad.getNumeroIdentificacion() + " valor en BD: [" + rawFecha + "]");
                     }
                 }
+            }
+
+            // Si no hay histórico o imposicionesAcumuladas es null/0, obtener del conteo de aportes
+            if (imposicionesAcumuladas == null || imposicionesAcumuladas == 0L) {
+                imposicionesAcumuladas = mapaImposiciones.getOrDefault(codigoEntidad, 0L);
             }
 
             // Regla fecha jubilacion nula:
@@ -229,9 +253,10 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
                 Double saldoTotal      = mapaSaldo.getOrDefault(codigoEntidad, 0.0);
                 Double sumaCuotas      = mapaCuotasPagadas.getOrDefault(codigoEntidad, 0.0);
 
-                // Exclusión: saldoCuenta = 0 y valorPension = 0 → NO incluir
-                if (saldoTotal == 0.0 && valorPension == 0.0) {
-                    System.out.println("G44 - SKIP ex-jubilado " + identificacion + " (saldoCuenta=0 y valorPension=0)");
+                // Exclusión: valorPension = 0 → NO incluir
+                // Para ex-jubilados, también excluir si saldoCuenta = 0 y valorPension = 0
+                if (valorPension == 0.0) {
+                    System.out.println("G44 - SKIP ex-jubilado " + identificacion + " (valorPension=0, saldoCuenta=" + saldoTotal + ")");
                     continue;
                 }
 
@@ -289,12 +314,18 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
                         + identificacion);
                 }
 
+                // Obtener imposicionesAcumuladas del histórico o contarlas desde aportes
+                Long imposicionesAcumuladas = hist.getImposicionesAcumuladas();
+                if (imposicionesAcumuladas == null || imposicionesAcumuladas == 0L) {
+                    imposicionesAcumuladas = mapaImposiciones.getOrDefault(codigoEntidad, 0L);
+                }
+
                 ParticipeJubiladoG44 exJubilado = new ParticipeJubiladoG44();
                 exJubilado.setIdentificacion(identificacion);
                 exJubilado.setTipoIdentificacion("C");
                 exJubilado.setTipoJubilacion("V");
                 exJubilado.setFechaJubilacion(fechaJubilacion);
-                exJubilado.setImposicionesAcumuladas(hist.getImposicionesAcumuladas() != null ? hist.getImposicionesAcumuladas() : 0L);
+                exJubilado.setImposicionesAcumuladas(imposicionesAcumuladas != null ? imposicionesAcumuladas : 0L);
                 exJubilado.setValorPension(valorPension);
                 exJubilado.setValorNetoRecibir(valorNetoRecibir);
                 exJubilado.setValoresCompensados(valoresCompensados);

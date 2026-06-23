@@ -114,8 +114,7 @@ public class BancoRest {
      */
     @POST
     @Path("selectByCriteria")
-    @Consumes(MediaType.APPLICATION_JSON)
-    @Produces(MediaType.APPLICATION_JSON)
+    @Consumes("application/json")
     public Response selectByCriteria(List<DatosBusqueda> registros) {
         System.out.println("selectByCriteria de BANCO");
         try {

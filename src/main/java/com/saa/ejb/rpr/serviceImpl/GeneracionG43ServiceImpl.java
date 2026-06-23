@@ -101,7 +101,17 @@ public class GeneracionG43ServiceImpl implements GeneracionG43Service {
         }
 
         // -------------------------------------------------------
-        // 4. Insertar los cesantes en CG43
+        // 4. Calcular fechas: último día del mes anterior y del mes actual
+        // -------------------------------------------------------
+        java.time.LocalDate ultimoDiaMesAnterior = java.time.LocalDate.of((int) anioActual, (int) mesActual, 1)
+                .minusDays(1);
+        java.time.LocalDate ultimoDiaMesActual = java.time.LocalDate.of((int) anioActual, (int) mesActual, 1)
+                .plusMonths(1).minusDays(1);
+        System.out.println("G43 - Último día del mes anterior: " + ultimoDiaMesAnterior);
+        System.out.println("G43 - Último día del mes actual: " + ultimoDiaMesActual);
+
+        // -------------------------------------------------------
+        // 5. Insertar los cesantes en CG43
         // -------------------------------------------------------
         long contador = 0L;
 
@@ -112,11 +122,16 @@ public class GeneracionG43ServiceImpl implements GeneracionG43Service {
                 cesante.setTipoIdentificacion(g42.getTipoIdentificacion());
                 cesante.setDetalleEjecucion(detalle);
 
+                // Fechas → terminación laboral: último día mes anterior, liquidación: último día mes actual
+                cesante.setFechaTerminoRelacionLaboral(ultimoDiaMesAnterior);
+                cesante.setFechaLiquidacion(ultimoDiaMesActual);
+
                 // saldoCuentaIndividual = saldoAportePatronal + saldoAportePersonal + rendimiento
                 double saldoPatronal  = g42.getSaldoAportePatronal()  != null ? g42.getSaldoAportePatronal()  : 0.0;
                 double saldoPersonal  = g42.getSaldoAportePersonal()  != null ? g42.getSaldoAportePersonal()  : 0.0;
                 double rendimiento    = g42.getRendimiento()           != null ? g42.getRendimiento()           : 0.0;
-                cesante.setSaldoCuentaIndividual(saldoPatronal + saldoPersonal + rendimiento);
+                // cesante.setSaldoCuentaIndividual(saldoPatronal + saldoPersonal + rendimiento);
+                cesante.setSaldoCuentaIndividual(0D);
 
                 // No disponibles en G42 → 0
                 cesante.setNumeroImposicionesPersonales(0L);
@@ -137,11 +152,16 @@ public class GeneracionG43ServiceImpl implements GeneracionG43Service {
                 cesante.setTipoIdentificacion(h.getTipoIdentificacion());
                 cesante.setDetalleEjecucion(detalle);
 
+                // Fechas → terminación laboral: último día mes anterior, liquidación: último día mes actual
+                cesante.setFechaTerminoRelacionLaboral(ultimoDiaMesAnterior);
+                cesante.setFechaLiquidacion(ultimoDiaMesActual);
+
                 // saldoCuentaIndividual = saldoAportePatronal + saldoAportePersonal + rendimiento
                 double saldoPatronal  = h.getSaldoAportePatronal()  != null ? h.getSaldoAportePatronal()  : 0.0;
                 double saldoPersonal  = h.getSaldoAportePersonal()  != null ? h.getSaldoAportePersonal()  : 0.0;
                 double rendimiento    = h.getRendimiento()           != null ? h.getRendimiento()           : 0.0;
-                cesante.setSaldoCuentaIndividual(saldoPatronal + saldoPersonal + rendimiento);
+                //cesante.setSaldoCuentaIndividual(saldoPatronal + saldoPersonal + rendimiento);
+                cesante.setSaldoCuentaIndividual(0D);
 
                 // No disponibles en HistoricoG42 → 0
                 cesante.setNumeroImposicionesPersonales(0L);

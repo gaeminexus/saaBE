@@ -106,7 +106,7 @@ public class HistorialSueldoDaoServiceImpl extends EntityDaoImpl<HistorialSueldo
 			" select   h.entidad.codigo, sum(coalesce(h.montoCesantia, 0) + coalesce(h.montoJubilacion, 0)) " +
 			" from     HistorialSueldo h " +
 			" where    h.estado = 99 " +
-			"   and    exists (select 1 from Entidad e where e.codigo = h.entidad.codigo) " +
+			"   and    exists (select 1 from Entidad e where e.codigo = h.entidad.codigo and e.numeroIdentificacion <> '0') " +
 			" group by h.entidad.codigo "
 		);
 		return query.getResultList();

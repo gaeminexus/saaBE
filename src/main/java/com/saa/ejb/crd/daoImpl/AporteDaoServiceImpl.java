@@ -470,7 +470,7 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 			" where    a.tipoAporte.estado = 1 " +
 			"   and    a.tipoAporte.codigoSBS = 'RE' " +
 			"   and    a.fechaTransaccion <= :fechaCorte " +
-			"   and    exists (select 1 from Entidad e where e.codigo = a.entidad.codigo) " +
+			"   and    exists (select 1 from Entidad e where e.codigo = a.entidad.codigo and e.numeroIdentificacion <> '0') " +
 			" group by a.entidad.codigo "
 		);
 		query.setParameter("fechaCorte", fechaCorte);
@@ -488,7 +488,7 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 			" where    a.tipoAporte.estado = 1 " +
 			"   and    a.tipoAporte.codigo in :codigos " +
 			"   and    a.fechaTransaccion <= :fechaCorte " +
-			"   and    exists (select 1 from Entidad e where e.codigo = a.entidad.codigo) " +
+			"   and    exists (select 1 from Entidad e where e.codigo = a.entidad.codigo and e.numeroIdentificacion <> '0') " +
 			" group by a.entidad.codigo "
 		);
 		query.setParameter("codigos", codigosPatronal);
@@ -508,7 +508,7 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 			"   and    (a.tipoAporte.codigoSBS <> 'RE' or a.tipoAporte.codigoSBS is null) " +
 			"   and    a.tipoAporte.codigo not in :codigos " +
 			"   and    a.fechaTransaccion <= :fechaCorte " +
-			"   and    exists (select 1 from Entidad e where e.codigo = a.entidad.codigo) " +
+			"   and    exists (select 1 from Entidad e where e.codigo = a.entidad.codigo and e.numeroIdentificacion <> '0') " +
 			" group by a.entidad.codigo "
 		);
 		query.setParameter("codigos", codigosPatronal);
@@ -524,11 +524,11 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 			" select   a.entidad.codigo, count(a.codigo) " +
 			" from     Aporte a " +
 			" join     a.tipoAporte ta " +
-			" where    ta.codigo in (:codigos) " +
+			" where    ta.estado = 1 " +
+			"   and    a.valor > 0 " +
 			"   and    a.fechaTransaccion <= :fechaCorte " +
 			" group by a.entidad.codigo "
 		);
-		query.setParameter("codigos", java.util.Arrays.asList(9L, 11L));
 		query.setParameter("fechaCorte", fechaCorte);
 		return query.getResultList();
 	}
@@ -592,7 +592,7 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 			" where    a.tipoAporte.estado = 1 " +
 			"   and    a.tipoAporte.codigo in (:codigos) " +
 			"   and    a.fechaTransaccion <= :fechaCorte " +
-			"   and    exists (select 1 from Entidad e where e.codigo = a.entidad.codigo) " +
+			"   and    exists (select 1 from Entidad e where e.codigo = a.entidad.codigo and e.numeroIdentificacion <> '0') " +
 			" group by a.entidad.codigo, a.tipoAporte.codigo "
 		);
 		query.setParameter("codigos", java.util.Arrays.asList(9L, 11L));
