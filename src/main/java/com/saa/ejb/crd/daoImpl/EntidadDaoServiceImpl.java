@@ -1,6 +1,7 @@
 package com.saa.ejb.crd.daoImpl;
 
 import java.math.BigDecimal;
+import java.util.Arrays;
 import java.util.List;
 
 import com.saa.basico.ejb.DetalleRubroDaoService;
@@ -88,7 +89,7 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 		
 		// Validar que la lista no esté vacía
 		if (estadosPermitidos == null || estadosPermitidos.isEmpty()) {
-			estadosPermitidos = java.util.Arrays.asList(10L, 2L, 30L); // Valores por defecto
+			estadosPermitidos = Arrays.asList(10L, 2L, 30L); // Valores por defecto
 		}
 		
 		String sql = 
@@ -125,7 +126,7 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 			java.util.List<Long> estadosPermitidos) throws Throwable {
 		
 		if (estadosPermitidos == null || estadosPermitidos.isEmpty()) {
-			estadosPermitidos = java.util.Arrays.asList(10L, 2L, 30L);
+			estadosPermitidos = Arrays.asList(10L, 2L, 30L);
 		}
 		
 		String sql = 
@@ -163,7 +164,7 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 			java.util.List<Long> estadosPermitidos) throws Throwable {
 		
 		if (estadosPermitidos == null || estadosPermitidos.isEmpty()) {
-			estadosPermitidos = java.util.Arrays.asList(10L, 2L, 30L);
+			estadosPermitidos = Arrays.asList(10L, 2L, 30L);
 		}
 		
 		String sql = 
@@ -202,7 +203,7 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 			java.util.List<Long> estadosPermitidos) throws Throwable {
 		
 		if (estadosPermitidos == null || estadosPermitidos.isEmpty()) {
-			estadosPermitidos = java.util.Arrays.asList(10L, 2L, 30L);
+			estadosPermitidos = Arrays.asList(10L, 2L, 30L);
 		}
 		
 		String sql = 

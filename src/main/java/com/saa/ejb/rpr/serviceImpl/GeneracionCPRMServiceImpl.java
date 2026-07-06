@@ -2,7 +2,12 @@ package com.saa.ejb.rpr.serviceImpl;
 
 import java.time.LocalDateTime;
 import java.time.YearMonth;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import com.saa.ejb.crd.service.AporteService;
 import com.saa.ejb.crd.service.EntidadService;
@@ -62,7 +67,7 @@ public class GeneracionCPRMServiceImpl implements GeneracionCPRMService {
         // -------------------------------------------------------
         // 2. Cargar todas las entidades necesarias en una sola consulta (optimización N+1)
         // -------------------------------------------------------
-        java.util.Set<Long> codigosEntidadesNecesarias = new java.util.HashSet<>();
+        Set<Long> codigosEntidadesNecesarias = new HashSet<>();
         for (Object[] fila : filas) {
             Long codigoEntidad = toLong(fila[0]);
             if (codigoEntidad != null) {
@@ -71,16 +76,16 @@ public class GeneracionCPRMServiceImpl implements GeneracionCPRMService {
         }
         
         List<Entidad> entidadesCargadas = entidadService.findByCodigosIn(
-            new java.util.ArrayList<>(codigosEntidadesNecesarias)
+            new ArrayList<>(codigosEntidadesNecesarias)
         );
-        java.util.Map<Long, Entidad> mapaEntidades = new java.util.HashMap<>();
+        Map<Long, Entidad> mapaEntidades = new HashMap<>();
         for (Entidad e : entidadesCargadas) {
             mapaEntidades.put(e.getCodigo(), e);
         }
         System.out.println("CPRM - Entidades cargadas en batch: " + mapaEntidades.size());
 
         // Cargar todos los estados de partícipe desde CRD.ESPR en una sola consulta
-        java.util.Map<Long, String> mapaEstados = new java.util.HashMap<>();
+        Map<Long, String> mapaEstados = new HashMap<>();
         try {
             List<EstadoParticipe> estados = estadoParticipeService.selectAll();
             for (EstadoParticipe ep : estados) {

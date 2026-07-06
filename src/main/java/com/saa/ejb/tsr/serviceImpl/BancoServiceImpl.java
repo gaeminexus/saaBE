@@ -1,5 +1,6 @@
 package com.saa.ejb.tsr.serviceImpl;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
@@ -87,6 +88,9 @@ public class BancoServiceImpl implements BancoService {
 	@Override
 	public Banco saveSingle(Banco banco) throws Throwable {
 		System.out.println("saveSingle - Banco");
+		if (banco.getCodigo() == null) {
+			banco.setFechaIngreso(LocalDateTime.now());;
+		}
 		banco = bancoDaoService.save(banco, banco.getCodigo());
 		return banco;
 	}

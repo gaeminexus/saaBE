@@ -1,5 +1,6 @@
 package com.saa.ejb.rpr.daoImpl;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
@@ -41,7 +42,7 @@ public class HistoricoCJBMDaoServiceImpl extends EntityDaoImpl<HistoricoCJBM> im
     @SuppressWarnings("unchecked")
     public List<HistoricoCJBM> selectByIdentificacionesIn(List<String> identificaciones) throws Throwable {
         if (identificaciones == null || identificaciones.isEmpty()) {
-            return new java.util.ArrayList<>();
+            return new ArrayList<>();
         }
         System.out.println("HistoricoCJBMDaoServiceImpl.selectByIdentificacionesIn - cantidad: " + identificaciones.size());
         Query query = em.createQuery(

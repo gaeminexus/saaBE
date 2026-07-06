@@ -1,4 +1,5 @@
 package com.saa.ejb.rpr.daoImpl;
+import java.util.ArrayList;
 import java.util.List;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.rpr.dao.HistoricoG44DaoService;
@@ -38,7 +39,7 @@ public class HistoricoG44DaoServiceImpl extends EntityDaoImpl<HistoricoG44> impl
     @Override
     public List<HistoricoG44> selectByIdentificacionesIn(List<String> identificaciones) throws Throwable {
         if (identificaciones == null || identificaciones.isEmpty()) {
-            return new java.util.ArrayList<>();
+            return new ArrayList<>();
         }
         System.out.println("HistoricoG44DaoServiceImpl.selectByIdentificacionesIn - cantidad: " + identificaciones.size());
         return em.createQuery(

@@ -1,6 +1,7 @@
 package com.saa.ejb.crd.serviceImpl;
 
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 import com.saa.basico.ejb.FechaService;
@@ -175,7 +176,7 @@ public class DetallePrestamoServiceImpl implements DetallePrestamoService {
 			double tasaMora = interesNominal / 100.0;
 
 			// Días de mora: desde el día siguiente al vencimiento hasta fechaHasta
-			long diasMora = java.time.temporal.ChronoUnit.DAYS.between(fechaVenc.toLocalDate(), fechaHastaDate);
+			long diasMora = ChronoUnit.DAYS.between(fechaVenc.toLocalDate(), fechaHastaDate);
 			if (diasMora <= 0) continue;
 
 			// Interés mora cuota = capital × (tasaMora / 360) × diasMora

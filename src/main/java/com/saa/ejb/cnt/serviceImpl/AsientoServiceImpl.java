@@ -595,6 +595,48 @@ public class AsientoServiceImpl implements AsientoService {
 	public Asiento saveSingle(Asiento asiento) throws Throwable {
 		System.out.println("saveSingle - AsientoService");
 		boolean permiteProceso = false;
+		
+		// Si el asiento ya existe, verificar si cambió la fechaAsiento
+		if (asiento.getCodigo() != null && asiento.getFechaAsiento() != null) {
+			Asiento asientoExistente = asientoDaoService.selectById(asiento.getCodigo(), NombreEntidadesContabilidad.ASIENTO);
+			if (asientoExistente != null && asientoExistente.getFechaAsiento() != null) {
+				// Comparar si la fecha cambió
+				if (!asientoExistente.getFechaAsiento().equals(asiento.getFechaAsiento())) {
+					System.out.println("saveSingle - Detectado cambio en fechaAsiento, actualizando numeroMes, numeroAnio y periodo");
+					// Actualizar numeroMes y numeroAnio según la nueva fechaAsiento
+					Long nuevoMes = Long.valueOf(asiento.getFechaAsiento().getMonthValue());
+					Long nuevoAnio = Long.valueOf(asiento.getFechaAsiento().getYear());
+					asiento.setNumeroMes(nuevoMes);
+					asiento.setNumeroAnio(nuevoAnio);
+					
+					// Recuperar el periodo correspondiente a la nueva fecha
+					Periodo nuevoPeriodo = periodoService.recuperaByMesAnioEmpresa(
+						asiento.getEmpresa().getCodigo(), nuevoMes, nuevoAnio);
+					asiento.setPeriodo(nuevoPeriodo);
+					
+					System.out.println("saveSingle - Actualizado a mes: " + nuevoMes + ", anio: " + nuevoAnio + ", periodo: " + (nuevoPeriodo != null ? nuevoPeriodo.getCodigo() : "null"));
+				}
+			}
+		}
+		
+		// Si la fechaAsiento está presente pero numeroMes/numeroAnio no están sincronizados, actualizarlos
+		if (asiento.getFechaAsiento() != null) {
+			Long mesDesdeAsiento = Long.valueOf(asiento.getFechaAsiento().getMonthValue());
+			Long anioDesdeAsiento = Long.valueOf(asiento.getFechaAsiento().getYear());
+			
+			if (asiento.getNumeroMes() == null || asiento.getNumeroAnio() == null ||
+				!asiento.getNumeroMes().equals(mesDesdeAsiento) || !asiento.getNumeroAnio().equals(anioDesdeAsiento)) {
+				System.out.println("saveSingle - Sincronizando numeroMes y numeroAnio con fechaAsiento");
+				asiento.setNumeroMes(mesDesdeAsiento);
+				asiento.setNumeroAnio(anioDesdeAsiento);
+				
+				// Actualizar periodo también
+				Periodo periodo = periodoService.recuperaByMesAnioEmpresa(
+					asiento.getEmpresa().getCodigo(), mesDesdeAsiento, anioDesdeAsiento);
+				asiento.setPeriodo(periodo);
+			}
+		}
+		
 		permiteProceso = validacionAsiento(asiento);
 		if (!permiteProceso) {
 			if (asiento.getCodigo() == null) {
@@ -645,20 +687,17 @@ public class AsientoServiceImpl implements AsientoService {
 
 	@Override
 	public Asiento copiaAsiento(Long idAsientoOriginal) throws Throwable {
-		System.out.println("Ingresa al metodo reversionAsiento con Id Asiento: " + idAsientoOriginal);
-		// boolean permiteProceso = true;
+		System.out.println("Ingresa al metodo copiaAsiento con Id Asiento: " + idAsientoOriginal);
 		Asiento asientoOriginal = asientoDaoService.selectById(idAsientoOriginal, NombreEntidadesContabilidad.ASIENTO);
 		
-		// Long numeroAsientoCopia = null;
 		Asiento asientoCopia = new Asiento();		
 		asientoCopia.setCodigo(null);
 		asientoCopia.setEmpresa(asientoOriginal.getEmpresa());
-		asientoCopia.setTipoAsiento(null);
-		asientoCopia.setFechaAsiento(null);
-		asientoCopia.setFechaIngreso((LocalDateTime.now()));
-		//  numeroAsientoCopia = siguienteNumeroAsiento(asientoCopia.getTipoAsiento().getCodigo(), asientoCopia.getEmpresa().getCodigo());
+		asientoCopia.setTipoAsiento(asientoOriginal.getTipoAsiento());
+		asientoCopia.setFechaAsiento(LocalDate.now());
+		asientoCopia.setFechaIngreso(LocalDateTime.now());
 		asientoCopia.setNumero(null);
-		asientoCopia.setEstado(Long.valueOf(EstadoAsiento.ACTIVO));
+		asientoCopia.setEstado(Long.valueOf(EstadoAsiento.INCOMPLETO));
 		asientoCopia.setObservaciones("COPIA: " + asientoOriginal.getNumero() + " - " + asientoOriginal.getObservaciones());
 		asientoCopia.setIdReversion(asientoOriginal.getCodigo());
 		Calendar calendario = Calendar.getInstance();
@@ -674,14 +713,10 @@ public class AsientoServiceImpl implements AsientoService {
 		asientoCopia.setRubroModuloClienteH(asientoOriginal.getRubroModuloClienteH());
 		asientoCopia.setRubroModuloSistemaP(asientoOriginal.getRubroModuloSistemaP());
 		asientoCopia.setRubroModuloSistemaH(asientoOriginal.getRubroModuloSistemaH());
-		asientoCopia.setIdReversion(null);
-		asientoCopia.setEstado(Long.valueOf(EstadoAsiento.INCOMPLETO));
-		try{
-			asientoCopia = asientoDaoService.save(asientoCopia, asientoCopia.getCodigo());
-		}
-		catch (EJBException e) {
-			throw new Exception("Error al genera Cabecera Reversion: "+e.getCause());
-		}
+		
+		// NO guardamos aquí para evitar que se salte un número en la numeración
+		// El método generaDetalleCopia llamará a saveSingle que se encargará de 
+		// asignar el número correcto y guardar el asiento una sola vez
 		detalleAsientoService.generaDetalleCopia(asientoOriginal, asientoCopia);
 		return asientoCopia;
 	}

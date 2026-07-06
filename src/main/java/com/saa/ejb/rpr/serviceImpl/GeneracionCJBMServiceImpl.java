@@ -3,6 +3,7 @@ package com.saa.ejb.rpr.serviceImpl;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -103,8 +104,8 @@ public class GeneracionCJBMServiceImpl implements GeneracionCJBMService {
         // -------------------------------------------------------
         // 2b. Cargar todos los VPPC y HistoricoCJBM en batch (optimización N+1)
         // -------------------------------------------------------
-        List<Long> codigosEntidadesJubilados = new java.util.ArrayList<>();
-        List<String> identificacionesJubilados = new java.util.ArrayList<>();
+        List<Long> codigosEntidadesJubilados = new ArrayList<>();
+        List<String> identificacionesJubilados = new ArrayList<>();
         for (Entidad j : jubilados) {
             codigosEntidadesJubilados.add(j.getCodigo());
             identificacionesJubilados.add(j.getNumeroIdentificacion());
@@ -112,8 +113,8 @@ public class GeneracionCJBMServiceImpl implements GeneracionCJBMService {
 
         // Cargar todos los VPPC de una vez
         List<ValorPagoPensionComplementaria> vppcList = vppcService.selectByEntidadesIn(codigosEntidadesJubilados);
-        java.util.Map<Long, Double> mapaValorPension = new java.util.HashMap<>();
-        java.util.Map<Long, Double> mapaValorSeguro  = new java.util.HashMap<>();
+        Map<Long, Double> mapaValorPension = new HashMap<>();
+        Map<Long, Double> mapaValorSeguro  = new HashMap<>();
         for (ValorPagoPensionComplementaria vppc : vppcList) {
             if (vppc.getEntidad() != null) {
                 Long codEntidad = vppc.getEntidad().getCodigo();
@@ -128,7 +129,7 @@ public class GeneracionCJBMServiceImpl implements GeneracionCJBMService {
 
         // Cargar todos los HistoricoG44 de una vez (misma tabla que usa G44)
         List<HistoricoG44> historicoList = historicoG44Service.selectByIdentificacionesIn(identificacionesJubilados);
-        java.util.Map<String, HistoricoG44> mapaHistorico = new java.util.HashMap<>();
+        Map<String, HistoricoG44> mapaHistorico = new HashMap<>();
         for (HistoricoG44 hist : historicoList) {
             if (hist.getIdentificacion() != null) {
                 // Guardar solo el primero por identificación
@@ -244,7 +245,7 @@ public class GeneracionCJBMServiceImpl implements GeneracionCJBMService {
         try {
             exJubiladosHist = historicoG44Service.selectExJubilados();
         } catch (Throwable e) {
-            exJubiladosHist = new java.util.ArrayList<>();
+            exJubiladosHist = new ArrayList<>();
             System.out.println("CJBM - selectExJubilados error: " + e.getMessage());
         }
         System.out.println("CJBM - Ex-jubilados desde HistoricoG44: " + exJubiladosHist.size());

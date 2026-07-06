@@ -1,5 +1,6 @@
 package com.saa.ejb.rpr.serviceImpl;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.ejb.rpr.dao.HistoricoG42DaoService;
@@ -103,9 +104,9 @@ public class GeneracionG43ServiceImpl implements GeneracionG43Service {
         // -------------------------------------------------------
         // 4. Calcular fechas: último día del mes anterior y del mes actual
         // -------------------------------------------------------
-        java.time.LocalDate ultimoDiaMesAnterior = java.time.LocalDate.of((int) anioActual, (int) mesActual, 1)
+        LocalDate ultimoDiaMesAnterior = LocalDate.of((int) anioActual, (int) mesActual, 1)
                 .minusDays(1);
-        java.time.LocalDate ultimoDiaMesActual = java.time.LocalDate.of((int) anioActual, (int) mesActual, 1)
+        LocalDate ultimoDiaMesActual = LocalDate.of((int) anioActual, (int) mesActual, 1)
                 .plusMonths(1).minusDays(1);
         System.out.println("G43 - Último día del mes anterior: " + ultimoDiaMesAnterior);
         System.out.println("G43 - Último día del mes actual: " + ultimoDiaMesActual);

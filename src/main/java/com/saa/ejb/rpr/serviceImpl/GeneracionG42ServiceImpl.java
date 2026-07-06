@@ -3,6 +3,7 @@ package com.saa.ejb.rpr.serviceImpl;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -69,7 +70,7 @@ public class GeneracionG42ServiceImpl implements GeneracionG42Service {
             Long codigoEntidad = toLong(fila[0]);
             Long codigoTipoAporte = toLong(fila[1]);
             if (codigoEntidad == null || codigoTipoAporte == null) continue;
-            mapaTiposAporte.computeIfAbsent(codigoEntidad, k -> new java.util.HashSet<>()).add(codigoTipoAporte);
+            mapaTiposAporte.computeIfAbsent(codigoEntidad, k -> new HashSet<>()).add(codigoTipoAporte);
         }
 
         // -------------------------------------------------------

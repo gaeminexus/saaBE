@@ -3,6 +3,7 @@ package com.saa.ejb.rpr.serviceImpl;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -228,7 +229,7 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
         try {
             exJubiladosHist = historicoG44Service.selectExJubilados();
         } catch (Throwable e) {
-            exJubiladosHist = new java.util.ArrayList<>();
+            exJubiladosHist = new ArrayList<>();
             System.out.println("G44 - selectExJubilados error: " + e.getMessage());
         }
         System.out.println("G44 - Ex-jubilados desde HistoricoG44: " + exJubiladosHist.size());

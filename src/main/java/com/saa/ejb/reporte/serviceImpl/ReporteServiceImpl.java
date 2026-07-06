@@ -3,6 +3,7 @@ package com.saa.ejb.reporte.serviceImpl;
 import java.awt.Image;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.util.List;
 import java.util.Map;
@@ -184,8 +185,8 @@ public class ReporteServiceImpl implements ReporteService {
                     parametros.put(nombre, ((Number) valor).doubleValue());
                 } else if (tipoEsperado == Float.class && valor instanceof Number) {
                     parametros.put(nombre, ((Number) valor).floatValue());
-                } else if (tipoEsperado == java.math.BigDecimal.class && valor instanceof Number) {
-                    parametros.put(nombre, new java.math.BigDecimal(valor.toString()));
+                } else if (tipoEsperado == BigDecimal.class && valor instanceof Number) {
+                    parametros.put(nombre, new BigDecimal(valor.toString()));
                 } else if (tipoEsperado == Short.class && valor instanceof Number) {
                     parametros.put(nombre, ((Number) valor).shortValue());
                 } else if (tipoEsperado == String.class && !(valor instanceof String)) {

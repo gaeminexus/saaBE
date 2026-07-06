@@ -1,5 +1,6 @@
 package com.saa.ejb.crd.daoImpl;
 
+import java.util.Arrays;
 import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
@@ -481,7 +482,7 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 	@SuppressWarnings("unchecked")
 	public List<Object[]> selectSumaPatronalPorEntidad(java.time.LocalDateTime fechaCorte) throws Throwable {
 		System.out.println("AporteDaoServiceImpl.selectSumaPatronalPorEntidad fechaCorte: " + fechaCorte);
-		List<Long> codigosPatronal = java.util.Arrays.asList(3L, 13L, 14L);
+		List<Long> codigosPatronal = Arrays.asList(3L, 13L, 14L);
 		Query query = em.createQuery(
 			" select   a.entidad.codigo, sum(a.valor) " +
 			" from     Aporte a " +
@@ -500,7 +501,7 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 	@SuppressWarnings("unchecked")
 	public List<Object[]> selectSumaPersonalPorEntidad(java.time.LocalDateTime fechaCorte) throws Throwable {
 		System.out.println("AporteDaoServiceImpl.selectSumaPersonalPorEntidad fechaCorte: " + fechaCorte);
-		List<Long> codigosPatronal = java.util.Arrays.asList(3L, 13L, 14L);
+		List<Long> codigosPatronal = Arrays.asList(3L, 13L, 14L);
 		Query query = em.createQuery(
 			" select   a.entidad.codigo, sum(a.valor) " +
 			" from     Aporte a " +

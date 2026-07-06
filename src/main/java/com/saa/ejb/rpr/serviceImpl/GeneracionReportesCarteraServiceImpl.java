@@ -1,6 +1,8 @@
 package com.saa.ejb.rpr.serviceImpl;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 import com.saa.ejb.rpr.service.EjecucionReporteCarteraService;
 import com.saa.ejb.rpr.service.GeneracionCCPMService;
@@ -37,7 +39,7 @@ public class GeneracionReportesCarteraServiceImpl implements GeneracionReportesC
         try {
             ejecucionesExistentes = ejccService.selectByMesAnio(mes, anio);
         } catch (Throwable e) {
-            ejecucionesExistentes = new java.util.ArrayList<>();
+            ejecucionesExistentes = new ArrayList<>();
         }
 
         if (!ejecucionesExistentes.isEmpty()) {
@@ -148,7 +150,7 @@ public class GeneracionReportesCarteraServiceImpl implements GeneracionReportesC
         System.out.println("Limpieza de reportes hijos completada y confirmada.");
 
         // 3. Borrar el EJCC padre
-        java.util.List<Long> ids = new java.util.ArrayList<>();
+        List<Long> ids = new ArrayList<>();
         ids.add(codigoEjecucion);
         ejccService.remove(ids);
         System.out.println("Ejecución EJCC " + codigoEjecucion + " eliminada");

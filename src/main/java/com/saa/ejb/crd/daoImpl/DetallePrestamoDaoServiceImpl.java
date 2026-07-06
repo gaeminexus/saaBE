@@ -1,6 +1,8 @@
 package com.saa.ejb.crd.daoImpl;
 
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
@@ -77,7 +79,7 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 			System.err.println("Error al buscar cuota por mes/año: " + e.getMessage());
 			e.printStackTrace();
 			// NO lanzar excepción - retornar lista vacía para no detener el proceso
-			return new java.util.ArrayList<>();
+			return new ArrayList<>();
 		}
 	}
 
@@ -102,7 +104,7 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 			System.err.println("Error al buscar cuotas del préstamo: " + e.getMessage());
 			e.printStackTrace();
 			// NO lanzar excepción - retornar lista vacía para no detener el proceso
-			return new java.util.ArrayList<>();
+			return new ArrayList<>();
 		}
 	}
 
@@ -247,7 +249,7 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 			System.err.println("Error al buscar cuotas no pagadas del préstamo: " + e.getMessage());
 			e.printStackTrace();
 			// NO lanzar excepción - retornar lista vacía para no detener el proceso
-			return new java.util.ArrayList<>();
+			return new ArrayList<>();
 		}
 	}
 
@@ -282,7 +284,7 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 			System.err.println("Error al buscar la mínima cuota no pagada del préstamo: " + e.getMessage());
 			e.printStackTrace();
 			// NO lanzar excepción - retornar lista vacía para no detener el proceso
-			return new java.util.ArrayList<>();
+			return new ArrayList<>();
 		}
 	}
 
@@ -392,7 +394,7 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 	@SuppressWarnings("unchecked")
 	public List<Object[]> selectSumaCapitalInteresGrupo2Batch(List<Long> codigosCuotasOrigen, java.time.LocalDateTime fechaFin) throws Throwable {
 		if (codigosCuotasOrigen == null || codigosCuotasOrigen.isEmpty()) {
-			return new java.util.ArrayList<>();
+			return new ArrayList<>();
 		}
 		System.out.println("DetallePrestamoDaoServiceImpl.selectSumaCapitalInteresGrupo2Batch - cuotas origen: " + codigosCuotasOrigen.size());
 		// El SUM y GROUP BY ocurren en la BD: devuelve exactamente 1 fila por préstamo.
@@ -431,7 +433,7 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 	@SuppressWarnings("unchecked")
 	public List<Object[]> calcularInteresMoraBatch(List<Long> codigosCuotas, java.time.LocalDateTime fechaHasta) throws Throwable {
 		if (codigosCuotas == null || codigosCuotas.isEmpty()) {
-			return new java.util.ArrayList<>();
+			return new ArrayList<>();
 		}
 		System.out.println("DetallePrestamoDaoServiceImpl.calcularInteresMoraBatch - cantidad: " + codigosCuotas.size());
 
@@ -487,11 +489,11 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 			if (cuotasPrestamo != null) {
 				for (Object[] cuota : cuotasPrestamo) {
 					Double capital        = cuota[1] != null ? ((Number) cuota[1]).doubleValue() : 0.0;
-					java.time.LocalDateTime fechaVenc = (java.time.LocalDateTime) cuota[2];
+					LocalDateTime fechaVenc = (LocalDateTime) cuota[2];
 					Double interesNominal = cuota[3] != null ? ((Number) cuota[3]).doubleValue() : 0.0;
 					if (capital <= 0.0 || fechaVenc == null) continue;
 					if (interesNominal <= 0.0) interesNominal = 9.0;
-					long diasMora = java.time.temporal.ChronoUnit.DAYS.between(
+					long diasMora = ChronoUnit.DAYS.between(
 						fechaVenc.toLocalDate(), fechaHasta.toLocalDate()
 					);
 					if (diasMora <= 0) continue;
@@ -508,7 +510,7 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 	@SuppressWarnings("unchecked")
 	public List<Object[]> selectCapitalCuotasFuturasBatch(List<Long> codigosPrestamos, java.time.LocalDateTime fechaEjecucion) throws Throwable {
 		if (codigosPrestamos == null || codigosPrestamos.isEmpty()) {
-			return new java.util.ArrayList<>();
+			return new ArrayList<>();
 		}
 		System.out.println("DetallePrestamoDaoServiceImpl.selectCapitalCuotasFuturasBatch - préstamos: " + codigosPrestamos.size());
 		// Trae todas las cuotas futuras (vencen después del cierre del mes de ejecución).
@@ -534,7 +536,7 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 	public List<Object[]> selectSaldoInicialCapitalDelMesBatch(List<Long> codigosPrestamos,
 			java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable {
 		if (codigosPrestamos == null || codigosPrestamos.isEmpty()) {
-			return new java.util.ArrayList<>();
+			return new ArrayList<>();
 		}
 		System.out.println("DetallePrestamoDaoServiceImpl.selectSaldoInicialCapitalDelMesBatch - préstamos: " + codigosPrestamos.size());
 		// Para cada préstamo del Grupo 2, busca la cuota que cae dentro del mes de ejecución
@@ -566,7 +568,7 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 	public List<Object[]> selectCapitalCuotasDesdeInicioMesBatch(List<Long> codigosPrestamos,
 			java.time.LocalDateTime fechaInicio) throws Throwable {
 		if (codigosPrestamos == null || codigosPrestamos.isEmpty()) {
-			return new java.util.ArrayList<>();
+			return new ArrayList<>();
 		}
 		System.out.println("DetallePrestamoDaoServiceImpl.selectCapitalCuotasDesdeInicioMesBatch - préstamos: " + codigosPrestamos.size());
 		// Para el Grupo 2, el desglose de capital por vencer comienza desde la cuota
@@ -593,7 +595,7 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 	public List<Object[]> calcularInteresMoraDelMesBatch(List<Long> codigosPrestamos,
 			java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable {
 		if (codigosPrestamos == null || codigosPrestamos.isEmpty()) {
-			return new java.util.ArrayList<>();
+			return new ArrayList<>();
 		}
 		System.out.println("DetallePrestamoDaoServiceImpl.calcularInteresMoraDelMesBatch - préstamos: " + codigosPrestamos.size());
 		// Obtiene la cuota cuya fechaVencimiento cae dentro del mes (BETWEEN fechaInicio y fechaFin)
@@ -623,13 +625,13 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 		for (Object[] fila : filas) {
 			Long   codPrest       = (Long)   fila[0];
 			Double capital        = fila[1] != null ? ((Number) fila[1]).doubleValue() : 0.0;
-			java.time.LocalDateTime fechaVenc = (java.time.LocalDateTime) fila[2];
+			LocalDateTime fechaVenc = (LocalDateTime) fila[2];
 			Double interesNominal = fila[3] != null ? ((Number) fila[3]).doubleValue() : 9.0;
 			if (interesNominal <= 0.0) interesNominal = 9.0;
 
 			double mora = 0.0;
 			if (capital > 0.0 && fechaVenc != null) {
-				long diasMora = java.time.temporal.ChronoUnit.DAYS.between(
+				long diasMora = ChronoUnit.DAYS.between(
 					fechaVenc.toLocalDate(), fechaFin.toLocalDate()
 				);
 				if (diasMora > 0) {
