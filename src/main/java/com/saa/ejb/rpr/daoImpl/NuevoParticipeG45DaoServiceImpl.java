@@ -3,6 +3,7 @@ package com.saa.ejb.rpr.daoImpl;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.rpr.dao.NuevoParticipeG45DaoService;
 import com.saa.model.rpr.NuevoParticipeG45;
+
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;

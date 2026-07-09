@@ -12,12 +12,9 @@ import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
-
 import com.saa.ejb.tsr.dao.TitularDaoService;
-
 import com.saa.ejb.tsr.service.TitularService;
 import com.saa.model.tsr.NombreEntidadesTesoreria;
-
 import com.saa.model.tsr.Titular;
 
 import jakarta.ejb.EJB;

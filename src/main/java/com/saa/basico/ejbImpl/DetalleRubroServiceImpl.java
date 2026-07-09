@@ -12,15 +12,17 @@
 package com.saa.basico.ejbImpl;
 
 import java.util.List;
-import jakarta.ejb.EJB;
-import jakarta.ejb.Stateless;
+
 import com.saa.basico.ejb.DetalleRubroDaoService;
 import com.saa.basico.ejb.DetalleRubroService;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
-import com.saa.rubros.Estado;
 import com.saa.model.scp.DetalleRubro;
 import com.saa.model.scp.NombreEntidadesSistema;
+import com.saa.rubros.Estado;
+
+import jakarta.ejb.EJB;
+import jakarta.ejb.Stateless;
 
 /**
  * @author GaemiSoft.

@@ -6,8 +6,8 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.crd.dao.OrdenAfectacionValorPrestamoDaoService;
 import com.saa.ejb.crd.service.OrdenAfectacionValorPrestamoService;
-import com.saa.model.crd.OrdenAfectacionValorPrestamo;
 import com.saa.model.crd.NombreEntidadesCredito;
+import com.saa.model.crd.OrdenAfectacionValorPrestamo;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;

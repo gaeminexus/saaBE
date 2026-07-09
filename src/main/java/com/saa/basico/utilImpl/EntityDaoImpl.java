@@ -16,13 +16,6 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
-import jakarta.ejb.EJB;
-import jakarta.ejb.Stateless;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
-import jakarta.persistence.PersistenceException;
-import jakarta.persistence.Query;
-
 import com.saa.basico.ejb.DetalleRubroDaoService;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.EntityDao;
@@ -30,6 +23,13 @@ import com.saa.rubros.Estado;
 import com.saa.rubros.Rubros;
 import com.saa.rubros.TipoComandosBusqueda;
 import com.saa.rubros.TipoDatosBusqueda;
+
+import jakarta.ejb.EJB;
+import jakarta.ejb.Stateless;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.PersistenceException;
+import jakarta.persistence.Query;
 
 /**
  * @author GaemiSoft.

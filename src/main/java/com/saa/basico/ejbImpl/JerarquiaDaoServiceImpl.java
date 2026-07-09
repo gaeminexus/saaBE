@@ -11,11 +11,11 @@
 **/
 package com.saa.basico.ejbImpl;
 
-import jakarta.ejb.Stateless;
-
 import com.saa.basico.ejb.JerarquiaDaoService;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.model.scp.Jerarquia;
+
+import jakarta.ejb.Stateless;
 
 /**
  * @author GaemiSoft. Clase JerarquiaDaoImpl.

@@ -5,8 +5,8 @@ import java.util.List;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.cxc.dao.ResumenValorDocumentoCobroDaoService;
 import com.saa.ejb.cxc.service.ResumenValorDocumentoCobroService;
-import com.saa.model.cxc.ResumenValorDocumentoCobro;
 import com.saa.model.cxc.NombreEntidadesCobro;
+import com.saa.model.cxc.ResumenValorDocumentoCobro;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;

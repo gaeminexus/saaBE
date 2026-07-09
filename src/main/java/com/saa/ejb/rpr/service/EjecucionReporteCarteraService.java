@@ -4,6 +4,7 @@ import java.util.List;
 
 import com.saa.basico.util.EntityService;
 import com.saa.model.rpr.EjecucionReporteCartera;
+
 import jakarta.ejb.Local;
 
 @Local

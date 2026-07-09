@@ -6,6 +6,7 @@ import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.rpr.dao.SaldoCuentaG42DaoService;
 import com.saa.model.rpr.DetalleEjecucionReporte;
 import com.saa.model.rpr.SaldoCuentaG42;
+
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;

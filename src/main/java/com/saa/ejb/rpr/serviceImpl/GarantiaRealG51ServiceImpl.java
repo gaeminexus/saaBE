@@ -1,12 +1,14 @@
 package com.saa.ejb.rpr.serviceImpl;
 
 import java.util.List;
+
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.rpr.dao.GarantiaRealG51DaoService;
 import com.saa.ejb.rpr.service.GarantiaRealG51Service;
-import com.saa.model.rpr.NombreEntidadesReporte;
 import com.saa.model.rpr.GarantiaRealG51;
+import com.saa.model.rpr.NombreEntidadesReporte;
+
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 

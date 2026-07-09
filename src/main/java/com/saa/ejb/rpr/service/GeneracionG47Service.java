@@ -1,6 +1,7 @@
 package com.saa.ejb.rpr.service;
 
 import com.saa.model.rpr.DetalleEjecucionReporte;
+
 import jakarta.ejb.Local;
 
 @Local

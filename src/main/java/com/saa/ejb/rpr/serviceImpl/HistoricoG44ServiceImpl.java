@@ -1,9 +1,11 @@
 package com.saa.ejb.rpr.serviceImpl;
 import java.util.List;
+
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.rpr.dao.HistoricoG44DaoService;
 import com.saa.ejb.rpr.service.HistoricoG44Service;
 import com.saa.model.rpr.HistoricoG44;
+
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 @Stateless

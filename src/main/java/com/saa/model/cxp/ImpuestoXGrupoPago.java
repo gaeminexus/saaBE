@@ -10,7 +10,6 @@ package com.saa.model.cxp;
 
 import java.io.Serializable;
 
-
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

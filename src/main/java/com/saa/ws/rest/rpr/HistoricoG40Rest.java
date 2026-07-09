@@ -1,12 +1,17 @@
 package com.saa.ws.rest.rpr;
 
+import java.util.List;
+
 import com.saa.ejb.rpr.dao.HistoricoG40DaoService;
 import com.saa.model.rpr.HistoricoG40;
 import com.saa.model.rpr.NombreEntidadesReporte;
+
 import jakarta.ejb.EJB;
-import jakarta.ws.rs.*;
-import jakarta.ws.rs.core.*;
-import java.util.List;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 
 @Path("hm40")
 public class HistoricoG40Rest {

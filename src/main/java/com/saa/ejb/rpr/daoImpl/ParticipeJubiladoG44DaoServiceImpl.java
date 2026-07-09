@@ -3,6 +3,7 @@ package com.saa.ejb.rpr.daoImpl;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.rpr.dao.ParticipeJubiladoG44DaoService;
 import com.saa.model.rpr.ParticipeJubiladoG44;
+
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;

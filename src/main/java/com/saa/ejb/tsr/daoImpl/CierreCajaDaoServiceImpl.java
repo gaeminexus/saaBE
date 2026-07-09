@@ -9,10 +9,12 @@
 package com.saa.ejb.tsr.daoImpl;
 
 import java.util.List;
+
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tsr.dao.CierreCajaDaoService;
 import com.saa.model.tsr.CierreCaja;
 import com.saa.rubros.EstadoCierreCajas;
+
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;

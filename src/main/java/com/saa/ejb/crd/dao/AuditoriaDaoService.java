@@ -1,8 +1,9 @@
 package com.saa.ejb.crd.dao;
 
-import jakarta.ejb.Local;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.crd.Auditoria;
+
+import jakarta.ejb.Local;
 
 @Local
 public interface AuditoriaDaoService extends EntityDao<Auditoria> {

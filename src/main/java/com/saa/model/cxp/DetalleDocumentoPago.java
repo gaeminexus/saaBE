@@ -69,9 +69,9 @@ public class DetalleDocumentoPago implements Serializable {
 	/**
 	 * Producto incluido en el detalle tomado de la tabla de productos.
 	 */
-	@ManyToOne
-	@JoinColumn(name = "PRDPCDGO", referencedColumnName = "PRDPCDGO")
-	private ProductoPago productoPago;
+	/*@ManyToOne
+	@JoinColumn(name = "PRDPCDGO", referencedColumnName = "PRDPCDGO")*/
+//	private ProductoPago productoPago;
 	
 	/**
 	 * Descripcion del detalle.
@@ -194,17 +194,17 @@ public class DetalleDocumentoPago implements Serializable {
 	 * Obtiene Producto incluido en el detalle tomado de la tabla de productos.
 	 * @return : Producto incluido en el detalle tomado de la tabla de productos.
 	 */
-	public ProductoPago getProductoPago() {
-		return productoPago;
-	}
+//	public ProductoPago getProductoPago() {
+//		return productoPago;
+//	}
 
 	/**
 	 * Asigna Producto incluido en el detalle tomado de la tabla de productos.
 	 * @param productoPago : Producto incluido en el detalle tomado de la tabla de productos.
 	 */
-	public void setProductoPago(ProductoPago productoPago) {
-		this.productoPago = productoPago;
-	}
+//	public void setProductoPago(ProductoPago productoPago) {
+//		this.productoPago = productoPago;
+//	}
 
 	/**
 	 * Obtiene Descripcion del detalle.

@@ -697,6 +697,8 @@ public class AsientoServiceImpl implements AsientoService {
 		asientoCopia.setFechaAsiento(LocalDate.now());
 		asientoCopia.setFechaIngreso(LocalDateTime.now());
 		asientoCopia.setNumero(null);
+		asientoCopia.setNumeroAlterno(null);
+		asientoCopia.setNumeroMesTipo(null);
 		asientoCopia.setEstado(Long.valueOf(EstadoAsiento.INCOMPLETO));
 		asientoCopia.setObservaciones("COPIA: " + asientoOriginal.getNumero() + " - " + asientoOriginal.getObservaciones());
 		asientoCopia.setIdReversion(asientoOriginal.getCodigo());
@@ -714,10 +716,21 @@ public class AsientoServiceImpl implements AsientoService {
 		asientoCopia.setRubroModuloSistemaP(asientoOriginal.getRubroModuloSistemaP());
 		asientoCopia.setRubroModuloSistemaH(asientoOriginal.getRubroModuloSistemaH());
 		
-		// NO guardamos aquí para evitar que se salte un número en la numeración
-		// El método generaDetalleCopia llamará a saveSingle que se encargará de 
-		// asignar el número correcto y guardar el asiento una sola vez
+		// Guardamos el asiento SIN número para obtener el ID (necesario para los detalles)
+		try{
+			asientoCopia = asientoDaoService.save(asientoCopia, asientoCopia.getCodigo());
+		}
+		catch (EJBException e) {
+			throw new Exception("Error al generar Cabecera Copia: "+e.getCause());
+		}
+		
+		// Copia los detalles del asiento original
 		detalleAsientoService.generaDetalleCopia(asientoOriginal, asientoCopia);
+		
+		// AHORA asigna el número al asiento (una sola vez)
+		// saveSingle verifica si numero == null y solo entonces asigna
+		asientoCopia = saveSingle(asientoCopia);
+		
 		return asientoCopia;
 	}
 

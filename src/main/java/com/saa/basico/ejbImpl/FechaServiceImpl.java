@@ -23,13 +23,13 @@ import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
 
-import jakarta.ejb.EJB;
-import jakarta.ejb.Stateless;
-
 import com.saa.basico.ejb.DetalleRubroDaoService;
 import com.saa.basico.ejb.FechaService;
 import com.saa.rubros.FormatoFecha;
 import com.saa.rubros.Rubros;
+
+import jakarta.ejb.EJB;
+import jakarta.ejb.Stateless;
 
 /**
  * @author GaemiSoft.

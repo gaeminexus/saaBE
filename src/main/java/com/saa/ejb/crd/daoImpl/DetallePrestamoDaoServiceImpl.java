@@ -28,6 +28,14 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 		System.out.println("Buscando detalles de préstamo entre fechas: " + fechaDesde + " y " + fechaHasta);
 		
 		try {
+			// Truncar las fechas en Java para comparar solo por días
+			// fechaDesde: inicio del día (00:00:00)
+			// fechaHasta: fin del día (23:59:59.999999999)
+			LocalDateTime fechaDesdeAjustada = fechaDesde.toLocalDate().atStartOfDay();
+			LocalDateTime fechaHastaAjustada = fechaHasta.toLocalDate().atTime(23, 59, 59, 999999999);
+			
+			System.out.println("Rango ajustado: " + fechaDesdeAjustada + " hasta " + fechaHastaAjustada);
+			
 			String jpql = " SELECT d FROM DetallePrestamo d, Prestamo p " +
 						 " WHERE d.prestamo.codigo = p.codigo " +
 						 " AND d.fechaVencimiento >= :fechaDesde " +
@@ -36,12 +44,11 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 						 " ORDER BY d.fechaVencimiento";
 			
 			Query query = em.createQuery(jpql);
-			query.setParameter("fechaDesde", fechaDesde);
-			query.setParameter("fechaHasta", fechaHasta);
+			query.setParameter("fechaDesde", fechaDesdeAjustada);
+			query.setParameter("fechaHasta", fechaHastaAjustada);
 			query.setParameter("estadoActivo", 2L);
 			query.setParameter("estadoEnMora", 11L);
 			
-			// @SuppressWarnings("unchecked")
 			List<DetallePrestamo> resultados = query.getResultList();
 			
 			System.out.println("Detalles encontrados: " + (resultados != null ? resultados.size() : 0));

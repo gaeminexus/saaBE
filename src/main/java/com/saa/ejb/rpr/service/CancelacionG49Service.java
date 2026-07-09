@@ -2,6 +2,7 @@ package com.saa.ejb.rpr.service;
 
 import com.saa.basico.util.EntityService;
 import com.saa.model.rpr.CancelacionG49;
+
 import jakarta.ejb.Local;
 
 @Local

@@ -9,8 +9,6 @@
 package com.saa.model.cxp;
 
 import java.io.Serializable;
-import java.time.LocalDateTime;
-import java.util.Date;
 
 import com.saa.model.scp.Empresa;
 
@@ -24,383 +22,353 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
-import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
-import jakarta.persistence.Temporal;
-import jakarta.persistence.TemporalType;
 
 /**
 *  @author GaemiSoft
 *  Pojo mapeo de tabla PGS.PRDP.
 *  Entity ProductoPago.
-*  Tabla que contiene los productos que ofrecen los proveedores. Hija de la tabla grupo producto (GRPP).
+*  Tabla que contiene los productos para facturación electrónica.
 */
 @SuppressWarnings("serial")
 @Entity
 @Table(name = "PRDP", schema = "PGS")
-@SequenceGenerator(name = "SQ_PRDPCDGO", sequenceName = "PGS.SQ_PRDPCDGO", allocationSize = 1)
 @NamedQueries({
 	@NamedQuery(name = "ProductoPagoAll", query = "select e from ProductoPago e"),
-	@NamedQuery(name = "ProductoPagoId", query = "select e from ProductoPago e where e.codigo = :id")
+	@NamedQuery(name = "ProductoPagoId", query = "select e from ProductoPago e where e.id = :id")
 })
 public class ProductoPago implements Serializable {
 
 	/**
-	 * Codigo de la entidad.
+	 * ID del producto
 	 */
 	@Id
-	@Column(name = "PRDPCDGO", precision = 0)
-	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_PRDPCDGO")
-	private Long codigo;
+	@Column(name = "ID")
+	@GeneratedValue(strategy = GenerationType.IDENTITY)
+	private Long id;
 	
 	/**
-	 * Empresa a la que pertenece el grupo de producto.
+	 * Facturador al que pertenece el producto
 	 */
 	@ManyToOne
-	@JoinColumn(name = "PJRQCDGO", referencedColumnName = "PJRQCDGO")
+	@JoinColumn(name = "EMPRESA", referencedColumnName = "PJRQCDGO")
 	private Empresa empresa;
 	
 	/**
-	 * Tipo de producto tomado de la tabla de mapeo de productos del sri del usuario prg.
-	 
+	 * Grupo de producto al que pertenece
+	 */
 	@ManyToOne
-	@JoinColumn(name = "STPRCDGO", referencedColumnName = "STPRCDGO")
-	private SRITipoProducto sRTipoProducto;
-	*/
+	@JoinColumn(name = "GRUPOPRODUCTO", referencedColumnName = "GRPPCDGO")
+	private GrupoProductoPago grupoProducto;
 	
 	/**
-	 * Nombre del grupo de productos.
+	 * Nombre del producto
 	 */
 	@Basic
-	@Column(name = "PRDPNMBR")
-	private String nombre;	
+	@Column(name = "NOMBRE", length = 1000)
+	private String nombre;
 	
 	/**
-	 * Aplica iva. 1 = si, 0 = no
+	 * Código que utiliza el facturador para este producto
 	 */
 	@Basic
-	@Column(name = "PRDPAPIV")
-	private Long aplicaIVA;
+	@Column(name = "CODIGO", length = 500)
+	private String codigo;
 	
 	/**
-	 * Aplica Retencion. 1 = si, 0 = no
+	 * Código auxiliar del producto
 	 */
 	@Basic
-	@Column(name = "PRDPAPRT")
-	private Long aplicaRetencion;
+	@Column(name = "CODIGOAUX", length = 500)
+	private String codigoAux;
 	
 	/**
-	 * Estado 1 = activo, 2 = inactivo.
+	 * Precio unitario del producto
 	 */
 	@Basic
-	@Column(name = "PRDPESTD")
+	@Column(name = "PRECIOUNITARIO")
+	private Double precioUnitario;
+	
+	/**
+	 * Descuento aplicable
+	 */
+	@Basic
+	@Column(name = "DESCUENTO")
+	private Double descuento;
+	
+	/**
+	 * Tipo de descuento: 0 - Valor, 1 - Porcentaje
+	 */
+	@Basic
+	@Column(name = "TIPODESCUENTO")
+	private Long tipoDescuento;
+	
+	/**
+	 * Indica si el precio incluye IVA (1=Sí, 0=No)
+	 */
+	@Basic
+	@Column(name = "INCLUYEIVA")
+	private Long incluyeIVA;
+	
+	/**
+	 * Tipo de IVA aplicable
+	 */
+	@Basic
+	@Column(name = "TIPOIVA")
+	private Long tipoIVA;
+	
+	/**
+	 * Tipo de ICE aplicable
+	 */
+	@Basic
+	@Column(name = "TIPOICE")
+	private Long tipoICE;
+	
+	/**
+	 * Valor del ICE
+	 */
+	@Basic
+	@Column(name = "ICE")
+	private Double ice;
+	
+	/**
+	 * Descripción del producto
+	 */
+	@Basic
+	@Column(name = "DESCRIPCION", length = 1000)
+	private String descripcion;
+	
+	/**
+	 * Subsidio aplicable
+	 */
+	@Basic
+	@Column(name = "SUBSIDIO")
+	private Double subsidio;
+	
+	/**
+	 * Precio sin subsidio
+	 */
+	@Basic
+	@Column(name = "PRECIOSINSUB")
+	private Double precioSinSub;
+	
+	/**
+	 * IRBPNR (Impuesto Redimible Botellas Plásticas No Retornables)
+	 */
+	@Basic
+	@Column(name = "IRBPNR")
+	private Double irbpnr;
+	
+	/**
+	 * Maneja múltiples precios: 0=NO, 1=SI
+	 */
+	@Basic
+	@Column(name = "MULTIPRECIO")
+	private Long multiPrecio;
+	
+	/**
+	 * Stock disponible del producto
+	 */
+	@Basic
+	@Column(name = "STOCK")
+	private Long stock;
+	
+	/**
+	 * Indica si maneja unidad de medida
+	 */
+	@Basic
+	@Column(name = "MANEJAUNIDAD")
+	private Long manejaUnidad;
+	
+	/**
+	 * Unidad de medida
+	 */
+	@Basic
+	@Column(name = "UNIDAD")
+	private Long unidad;
+	
+	/**
+	 * Estado del producto
+	 */
+	@Basic
+	@Column(name = "ESTADO")
 	private Long estado;
-	
-	/**
-	 * Fecha de ingreso.
-	 */
-	@Basic
-	@Column(name = "PRDPFCIN")
-	@Temporal(TemporalType.TIMESTAMP)
-	private LocalDateTime fechaIngreso;
-	
-	/**
-	 * Nivel del producto en el arbol.
-	 */
-	@Basic
-	@Column(name = "PRDPNVLL")
-	private Long nivel;
-	
-	/**
-	 * Codigo del padre del producto. tomado del id de esta misma entidad.  
-	 */
-	@Basic
-	@Column(name = "PRDPCDPD")
-	private Long idPadre;
-		
-	/**
-	 * Grupo de producto de pagos al que pertenece.    
-	 */
-	@ManyToOne
-	@JoinColumn(name = "GRPPCDGO", referencedColumnName = "GRPPCDGO")
-	private GrupoProductoPago grupoProductoPago;	
-	
-	/**
-	 * Porcentaje de la base para la retencion. Normalmente es el 100% actualmente solo para productos de seguros es el 10%
-	 */
-	@Basic
-	@Column(name = "PRDPPRBR")
-	private Double porcentajeBaseRetencion; 
-	
-	/**
-	 * Fecha de anulacion.
-	 */
-	@Basic
-	@Column(name = "PRDPFCAN")
-	private LocalDateTime fechaAnulacion;
-	
-	/**
-	 * Numero que identifica al producto en el arbol.
-	 */
-	@Basic
-	@Column(name = "PRDPNMRO")
-	private String numero;
-	
-	/**
-	 * Tipo de producto dependiendo el nivel que ocupa. Puede ser acumulacion o movimiento.
-	 */
-	@Basic
-	@Column(name = "PRDPTPNV")
-	private Long tipoNivel;
-	
-	/**
-	 * Obtiene codigo
-	 */
-	public Long getCodigo(){
-		return codigo;
+
+	// Getters y Setters
+
+	public Long getId() {
+		return id;
 	}
-	
-	/**
-	 * Asigna para el codigo
-	 */
-	public void setCodigo(Long codigo){
-		this.codigo = codigo;
+
+	public void setId(Long id) {
+		this.id = id;
 	}
-	
-	/**
-	 * Obtiene la empresa a la que pertenece el grupo de productos
-	 * @return : Empresa a la que pertenece el grupo de productos
-	 */
+
 	public Empresa getEmpresa() {
 		return empresa;
 	}
 
-	/**
-	 * Asigna la empresa a la que pertenece el grupo de productos
-	 * @param empresa : Empresa a la que pertenece el grupo de productos
-	 */
 	public void setEmpresa(Empresa empresa) {
 		this.empresa = empresa;
-	}	
-
-	/**
-	 * Obtiene el tipo de producto tomado de la tabla de mapeo de productos del sri del usuario prg.
-	 * @return : Tipo de producto tomado de la tabla de mapeo de productos del sri del usuario prg.
-	 
-	public SRITipoProducto getsRTipoProducto() {
-		return sRTipoProducto;
 	}
-	*/
 
-	/**
-	 * Asigna el tipo de producto tomado de la tabla de mapeo de productos del sri del usuario prg.
-	 * @param sRTipoProducto : Tipo de producto tomado de la tabla de mapeo de productos del sri del usuario prg.
-	 
-	public void setsRTipoProducto(SRITipoProducto sRTipoProducto) {
-		this.sRTipoProducto = sRTipoProducto;
+	public GrupoProductoPago getGrupoProducto() {
+		return grupoProducto;
 	}
-	*/
 
-	/**
-	 * Obtiene el nombre del grupo de productos.
-	 * @return : Nombre del grupo de productos.
-	 */
+	public void setGrupoProducto(GrupoProductoPago grupoProducto) {
+		this.grupoProducto = grupoProducto;
+	}
+
 	public String getNombre() {
 		return nombre;
 	}
 
-	/**
-	 * Asigna el nombre del grupo de productos.
-	 * @param nombre : Nombre del grupo de productos.
-	 */
 	public void setNombre(String nombre) {
 		this.nombre = nombre;
 	}
 
-	/**
-	 * Obtiene el campo que indica si aplica iva. 1 = si, 0 = no.
-	 * @return : Campo que indica si aplica iva. 1 = si, 0 = no.
-	 */
-	public Long getAplicaIVA() {
-		return aplicaIVA;
+	public String getCodigo() {
+		return codigo;
 	}
 
-	/**
-	 * Asigna el campo que indica si aplica iva. 1 = si, 0 = no.
-	 * @param aplicaIVA : Campo que indica si aplica iva. 1 = si, 0 = no.
-	 */
-	public void setAplicaIVA(Long aplicaIVA) {
-		this.aplicaIVA = aplicaIVA;
+	public void setCodigo(String codigo) {
+		this.codigo = codigo;
 	}
 
-	/**
-	 * Obtiene el campo que indica si aplica Retencion. 1 = si, 0 = no.
-	 * @return : Campo que indica si aplica Retencion. 1 = si, 0 = no.
-	 */
-	public Long getAplicaRetencion() {
-		return aplicaRetencion;
+	public String getCodigoAux() {
+		return codigoAux;
 	}
 
-	/**
-	 * Asigna el campo que indica si aplica Retencion. 1 = si, 0 = no.
-	 * @param aplicaRetencion : Campo que indica si aplica Retencion. 1 = si, 0 = no.
-	 */
-	public void setAplicaRetencion(Long aplicaRetencion) {
-		this.aplicaRetencion = aplicaRetencion;
+	public void setCodigoAux(String codigoAux) {
+		this.codigoAux = codigoAux;
 	}
-	
-	/**
-	 * Obtiene el estado 1 = activo, 2 = inactivo. 
-	 * @return : Estado 1 = activo, 2 = inactivo.
-	 */
+
+	public Double getPrecioUnitario() {
+		return precioUnitario;
+	}
+
+	public void setPrecioUnitario(Double precioUnitario) {
+		this.precioUnitario = precioUnitario;
+	}
+
+	public Double getDescuento() {
+		return descuento;
+	}
+
+	public void setDescuento(Double descuento) {
+		this.descuento = descuento;
+	}
+
+	public Long getTipoDescuento() {
+		return tipoDescuento;
+	}
+
+	public void setTipoDescuento(Long tipoDescuento) {
+		this.tipoDescuento = tipoDescuento;
+	}
+
+	public Long getIncluyeIVA() {
+		return incluyeIVA;
+	}
+
+	public void setIncluyeIVA(Long incluyeIVA) {
+		this.incluyeIVA = incluyeIVA;
+	}
+
+	public Long getTipoIVA() {
+		return tipoIVA;
+	}
+
+	public void setTipoIVA(Long tipoIVA) {
+		this.tipoIVA = tipoIVA;
+	}
+
+	public Long getTipoICE() {
+		return tipoICE;
+	}
+
+	public void setTipoICE(Long tipoICE) {
+		this.tipoICE = tipoICE;
+	}
+
+	public Double getIce() {
+		return ice;
+	}
+
+	public void setIce(Double ice) {
+		this.ice = ice;
+	}
+
+	public String getDescripcion() {
+		return descripcion;
+	}
+
+	public void setDescripcion(String descripcion) {
+		this.descripcion = descripcion;
+	}
+
+	public Double getSubsidio() {
+		return subsidio;
+	}
+
+	public void setSubsidio(Double subsidio) {
+		this.subsidio = subsidio;
+	}
+
+	public Double getPrecioSinSub() {
+		return precioSinSub;
+	}
+
+	public void setPrecioSinSub(Double precioSinSub) {
+		this.precioSinSub = precioSinSub;
+	}
+
+	public Double getIrbpnr() {
+		return irbpnr;
+	}
+
+	public void setIrbpnr(Double irbpnr) {
+		this.irbpnr = irbpnr;
+	}
+
+	public Long getMultiPrecio() {
+		return multiPrecio;
+	}
+
+	public void setMultiPrecio(Long multiPrecio) {
+		this.multiPrecio = multiPrecio;
+	}
+
+	public Long getStock() {
+		return stock;
+	}
+
+	public void setStock(Long stock) {
+		this.stock = stock;
+	}
+
+	public Long getManejaUnidad() {
+		return manejaUnidad;
+	}
+
+	public void setManejaUnidad(Long manejaUnidad) {
+		this.manejaUnidad = manejaUnidad;
+	}
+
+	public Long getUnidad() {
+		return unidad;
+	}
+
+	public void setUnidad(Long unidad) {
+		this.unidad = unidad;
+	}
+
 	public Long getEstado() {
 		return estado;
 	}
 
-	/**
-	 * Asigna el estado 1 = activo, 2 = inactivo.
-	 * @param estado : Estado 1 = activo, 2 = inactivo.
-	 */
 	public void setEstado(Long estado) {
 		this.estado = estado;
 	}
-
-	/**
-	 * Obtiene la fecha de ingreso.
-	 * @return : Fecha de ingreso.
-	 */
-	public LocalDateTime getFechaIngreso() {
-		return fechaIngreso;
-	}
-
-	/**
-	 * Asigna la fecha de ingreso.
-	 * @param fechaInactivo : Fecha de ingreso.
-	 */
-	public void setFechaIngreso(LocalDateTime fechaIngreso) {
-		this.fechaIngreso = fechaIngreso;
-	}
-
-	/**
-	 * Obtiene el nivel del producto en el arbol.
-	 * @return : Nivel del producto en el arbol.
-	 */
-	public Long getNivel() {
-		return nivel;
-	}
-
-	/**
-	 * Asigna el nivel del producto en el arbol.
-	 * @param nivel : Nivel del producto en el arbol.
-	 */
-	public void setNivel(Long nivel) {
-		this.nivel = nivel;
-	}
-
-	/**
-	 * Obtiene el codigo del padre del producto. tomado del id de esta misma entidad.
-	 * @return : Codigo del padre del producto. tomado del id de esta misma entidad.
-	 */
-	public Long getIdPadre() {
-		return idPadre;
-	}
-
-	/**
-	 * Asigna el codigo del padre del producto. tomado del id de esta misma entidad.
-	 * @param codigoPadre : Codigo del padre del producto. tomado del id de esta misma entidad.
-	 */
-	public void setIdPadre(Long idPadre) {
-		this.idPadre = idPadre;
-	}
-
-	/**
-	 * Obtiene el grupo de producto de pagos al que pertenece. 
-	 * @return : Grupo de producto de pagos al que pertenece.     
-	 */
-	public GrupoProductoPago getGrupoProductoPago() {
-		return grupoProductoPago;
-	}
-
-	/**
-	 * Asigna el grupo de producto de pagos al que pertenece.
-	 * @param grupoProductoPago : Grupo de producto de pagos al que pertenece.     
-	 */
-	public void setGrupoProductoPago(GrupoProductoPago grupoProductoPago) {
-		this.grupoProductoPago = grupoProductoPago;
-	}
-
-	/**
-	 * Obtiene campo de Porcentaje de la base para la retencion. 
-	 * Normalmente es el 100% actualmente solo para productos de seguros es el 10%
-	 * @return : Porcentaje de la base para la retencion. 
-	 * Normalmente es el 100% actualmente solo para productos de seguros es el 10%
-	 */
-	public Double getPorcentajeBaseRetencion() {
-		return porcentajeBaseRetencion;
-	}
-
-	/**
-	 * Asigna campo de Porcentaje de la base para la retencion. 
-	 * Normalmente es el 100% actualmente solo para productos de seguros es el 10%
-	 * @param porcentajeBaseRetencion : Porcentaje de la base para la retencion. 
-	 * Normalmente es el 100% actualmente solo para productos de seguros es el 10%
-	 */
-	public void setPorcentajeBaseRetencion(Double porcentajeBaseRetencion) {
-		this.porcentajeBaseRetencion = porcentajeBaseRetencion;
-	}
-
-	/**
-	 * Obtiene fecha de anulacion.
-	 * @return the fechaAnulacion : Fecha de anulacion.
-	 */
-	public LocalDateTime getFechaAnulacion() {
-		return fechaAnulacion;
-	}
-
-	/**
-	 * Asigna fecha de anulacion.
-	 * @param fechaAnulacion : Fecha de anulacion.
-	 */
-	public void setFechaAnulacion(LocalDateTime fechaAnulacion) {
-		this.fechaAnulacion = fechaAnulacion;
-	}
-
-	/**
-	 * Obtiene Numero que identifica al producto en el arbol.
-	 * @return : Numero que identifica al producto en el arbol.
-	 */
-	
-	public String getNumero() {
-		return numero;
-	}
-
-	/**
-	 * Setea Numero que identifica al producto en el arbol.
-	 * @param numero : Numero que identifica al producto en el arbol.
-	 */
-	public void setNumero(String numero) {
-		this.numero = numero;
-	}
-
-	/**
-	 * Obtiene Tipo de producto dependiendo el nivel que ocupa. Puede ser acumulacion o movimiento.
-	 * @return : Tipo de producto dependiendo el nivel que ocupa. Puede ser acumulacion o movimiento.
-	 */
-	public Long getTipoNivel() {
-		return tipoNivel;
-	}
-
-	/**
-	 * Setea Tipo de producto dependiendo el nivel que ocupa. Puede ser acumulacion o movimiento.
-	 * @param tipoNivel : Tipo de producto dependiendo el nivel que ocupa. Puede ser acumulacion o movimiento.
-	 */
-	public void setTipoNivel(Long tipoNivel) {
-		this.tipoNivel = tipoNivel;
-	}
-
-	public void setFechaAnulacion(Date date) {
-		// TODO Auto-generated method stub
-		
-	}
-	
 }

@@ -35,5 +35,9 @@ public interface NombreEntidadesCobro {
 	String TEMP_VALOR_IMPUESTO_DOCUMENTO_COBRO = "TempValorImpuestoDocumentoCobro";
 	String VALOR_IMPUESTO_DETALLE_COBRO = "ValorImpuestoDetalleCobro";
 	String VALOR_IMPUESTO_DOCUMENTO_COBRO = "ValorImpuestoDocumentoCobro";
+	String FACTURADOR = "Facturador";
+	String ESTABLECIMIENTO = "Establecimiento";
+	String PUNTO_EMISION = "PuntoEmision";
+	String NUMERACION_PUNTO_EMISION = "NumeracionPuntoEmision";
 	
 }

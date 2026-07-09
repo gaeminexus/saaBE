@@ -5,8 +5,8 @@ import java.util.List;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.cxc.dao.TempPagosArbitrariosXFinanciacionCobroDaoService;
 import com.saa.ejb.cxc.service.TempPagosArbitrariosXFinanciacionCobroService;
-import com.saa.model.cxc.TempPagosArbitrariosXFinanciacionCobro;
 import com.saa.model.cxc.NombreEntidadesCobro;
+import com.saa.model.cxc.TempPagosArbitrariosXFinanciacionCobro;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;

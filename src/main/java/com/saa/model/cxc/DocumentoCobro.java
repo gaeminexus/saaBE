@@ -15,7 +15,6 @@ import java.util.List;
 import com.saa.model.cnt.Asiento;
 import com.saa.model.cnt.Periodo;
 import com.saa.model.scp.Empresa;
-
 import com.saa.model.tsr.Titular;
 
 import jakarta.persistence.Basic;

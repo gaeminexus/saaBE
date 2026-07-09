@@ -2,6 +2,7 @@ package com.saa.ejb.cnt.serviceImpl;
 
 import java.time.LocalDateTime;
 import java.util.List;
+
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.cnt.dao.DetallePlantillaDaoService;

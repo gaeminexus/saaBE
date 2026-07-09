@@ -1,6 +1,7 @@
 package com.saa.ejb.cnt.daoImpl;
 
 import java.util.List;
+
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.cnt.dao.DetallePlantillaDaoService;
 import com.saa.model.cnt.DetallePlantilla;

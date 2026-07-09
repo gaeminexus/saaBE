@@ -11,6 +11,7 @@ package com.saa.ejb.rhh.daoImpl;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.rhh.dao.CargoDaoService;
 import com.saa.model.rhh.Cargo;
+
 import jakarta.ejb.Stateless;
 
 /**

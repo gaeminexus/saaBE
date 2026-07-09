@@ -93,7 +93,7 @@ public class GrupoProductoPagoServiceImpl implements GrupoProductoPagoService {
 
 	@Override
 	public GrupoProductoPago saveSingle(GrupoProductoPago grupoProductoPago) throws Throwable {
-		System.out.println("Ingresa al metodo (selectByCriteria) GrupoProductoPago");
+		System.out.println("Ingresa al metodo (saveSingle) GrupoProductoPago");
 		grupoProductoPago = grupoProductoPagoDaoService.save(grupoProductoPago, grupoProductoPago.getCodigo());
 		return grupoProductoPago;
 	}

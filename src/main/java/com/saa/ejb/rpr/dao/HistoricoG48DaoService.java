@@ -4,6 +4,7 @@ import java.util.List;
 
 import com.saa.basico.util.EntityDao;
 import com.saa.model.rpr.HistoricoG48;
+
 import jakarta.ejb.Local;
 
 @Local

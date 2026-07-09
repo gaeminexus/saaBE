@@ -3,6 +3,8 @@ package com.saa.ws.rest.files;
 import java.io.InputStream;
 import java.util.List;
 
+import com.saa.basico.ejb.FileService;
+
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
@@ -14,8 +16,6 @@ import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.Response.Status;
-
-import com.saa.basico.ejb.FileService;
 
 /**
  * @author GaemiSoft.

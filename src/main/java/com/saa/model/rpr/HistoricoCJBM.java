@@ -1,7 +1,14 @@
 package com.saa.model.rpr;
 
 import java.io.Serializable;
-import jakarta.persistence.*;
+
+import jakarta.persistence.Basic;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.NamedQueries;
+import jakarta.persistence.NamedQuery;
+import jakarta.persistence.Table;
 
 /**
  * Entidad histórica HMJB - Histórico de CJBM (Crédito Jubilados Mensual).

@@ -13,15 +13,15 @@ package com.saa.basico.ejbImpl;
 
 import java.util.List;
 
+import com.saa.basico.ejb.EmpresaDaoService;
+import com.saa.basico.utilImpl.EntityDaoImpl;
+import com.saa.model.scp.Empresa;
+import com.saa.rubros.CodigoAlternoJerarquias;
+
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
-
-import com.saa.basico.ejb.EmpresaDaoService;
-import com.saa.basico.utilImpl.EntityDaoImpl;
-import com.saa.rubros.CodigoAlternoJerarquias;
-import com.saa.model.scp.Empresa;
 
 /**
  * @author GaemiSoft. Clase EmpresaDaoImpl.

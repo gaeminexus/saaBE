@@ -1,15 +1,16 @@
 package com.saa.model.scp;
 
 import java.io.Serializable;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.NamedQueries;
-import jakarta.persistence.Table;
-import jakarta.persistence.Id;
+
 import jakarta.persistence.Column;
-import jakarta.persistence.SequenceGenerator;
+import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
+import jakarta.persistence.SequenceGenerator;
+import jakarta.persistence.Table;
 
 @Entity
 @Table(name = "PGSP", schema = "SCP")

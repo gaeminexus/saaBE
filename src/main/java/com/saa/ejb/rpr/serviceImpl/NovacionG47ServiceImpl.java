@@ -1,12 +1,14 @@
 package com.saa.ejb.rpr.serviceImpl;
 
 import java.util.List;
+
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.rpr.dao.NovacionG47DaoService;
 import com.saa.ejb.rpr.service.NovacionG47Service;
 import com.saa.model.rpr.NombreEntidadesReporte;
 import com.saa.model.rpr.NovacionG47;
+
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 

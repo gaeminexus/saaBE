@@ -3,9 +3,9 @@ package com.saa.ws.rest.reporte;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.saa.ejb.reporte.service.ReporteService;
 import com.saa.model.reporte.ReporteRequest;
 import com.saa.model.reporte.ReporteResponse;
-import com.saa.ejb.reporte.service.ReporteService;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.GET;

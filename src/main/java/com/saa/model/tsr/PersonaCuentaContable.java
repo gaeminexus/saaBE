@@ -56,8 +56,8 @@ public class PersonaCuentaContable implements Serializable {
 	 * Persona a la que pertenecen las cuentas contables
 	 */
 	@ManyToOne
-	@JoinColumn(name = "TTLRCDGO", referencedColumnName = "TTLRCDGO")
-	private Titular titular;	
+	@JoinColumn(name = "PRRLCDGO", referencedColumnName = "PRRLCDGO")
+	private PersonaRol personaRol;	
 
 	/**
 	 * Empresa a la pertenecen las cuentas contables
@@ -91,6 +91,13 @@ public class PersonaCuentaContable implements Serializable {
 	private PlanCuenta planCuenta;
 	
 	/**
+	 * Tipo de cuenta. 1 = Facturas, 2 = Anticipos
+	 */
+	@Basic
+	@Column(name = "PRCCSLIN")
+	private Double saldoInicial;
+	
+	/**
 	 * Devuelve codigo
 	 * @return codigo
 	 */
@@ -109,15 +116,15 @@ public class PersonaCuentaContable implements Serializable {
 	/**
 	 * Devuelve persona
 	 */
-	public Titular getTitular() {
-		return this.titular;
+	public PersonaRol getPersonaRol() {
+		return this.personaRol;
 	}
 	
 	/**
 	 * Asigna persona
 	 */
-	public void setPersona(Titular titular) {
-		this.titular = titular;
+	public void setPersonaRol(PersonaRol personaRol) {
+		this.personaRol = personaRol;
 	}
 
 	/**
@@ -179,5 +186,21 @@ public class PersonaCuentaContable implements Serializable {
 	 */
 	public void setPlanCuenta(PlanCuenta planCuenta) {
 		this.planCuenta = planCuenta;
+	}
+	
+	/**
+	 * Devuelve saldoInicial
+	 * @return saldoInicial
+	 */
+	public Double getSaldoInicial() {
+		return saldoInicial;
+	}
+
+	/**
+	 * Asigna saldoInicial
+	 * @param saldoInicial Nuevo valor para saldoInicial 
+	 */
+	public void setSaldoInicial(Double saldoInicial) {
+		this.saldoInicial = saldoInicial;
 	}
 }

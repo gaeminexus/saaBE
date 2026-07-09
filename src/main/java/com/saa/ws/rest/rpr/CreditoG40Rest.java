@@ -2,14 +2,26 @@ package com.saa.ws.rest.rpr;
 
 import java.util.ArrayList;
 import java.util.List;
+
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.rpr.dao.CreditoG40DaoService;
 import com.saa.ejb.rpr.service.CreditoG40Service;
 import com.saa.model.rpr.CreditoG40;
 import com.saa.model.rpr.NombreEntidadesReporte;
+
 import jakarta.ejb.EJB;
-import jakarta.ws.rs.*;
-import jakarta.ws.rs.core.*;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DELETE;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.PUT;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.UriInfo;
 
 @Path("cg40")
 public class CreditoG40Rest {

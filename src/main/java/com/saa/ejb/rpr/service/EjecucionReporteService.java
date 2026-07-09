@@ -1,10 +1,11 @@
 package com.saa.ejb.rpr.service;
 
+import java.util.List;
+
 import com.saa.basico.util.EntityService;
 import com.saa.model.rpr.EjecucionReporte;
-import jakarta.ejb.Local;
 
-import java.util.List;
+import jakarta.ejb.Local;
 
 @Local
 public interface EjecucionReporteService extends EntityService<EjecucionReporte> {

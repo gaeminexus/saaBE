@@ -1,5 +1,7 @@
 package com.saa.ejb.crd.daoImpl;
 
+import java.util.List;
+
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.crd.dao.OrdenAfectacionValorPrestamoDaoService;
 import com.saa.model.crd.OrdenAfectacionValorPrestamo;
@@ -8,7 +10,6 @@ import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
-import java.util.List;
 
 /**
  * Implementación DAO para OrdenAfectacionValorPrestamo.

@@ -5,6 +5,7 @@
  */
 package com.saa.ejb.cnt.dao;
 import java.util.List;
+
 import com.saa.basico.util.EntityDao;
 import com.saa.model.cnt.TipoAsiento;
 

@@ -1,14 +1,15 @@
 package com.saa.ejb.rpr.daoImpl;
 
+import java.util.List;
+
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.rpr.dao.EjecucionReporteDaoService;
 import com.saa.model.rpr.EjecucionReporte;
+
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
-
-import java.util.List;
 
 @Stateless
 public class EjecucionReporteDaoServiceImpl extends EntityDaoImpl<EjecucionReporte>

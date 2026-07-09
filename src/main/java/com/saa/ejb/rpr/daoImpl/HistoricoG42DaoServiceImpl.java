@@ -5,6 +5,7 @@ import java.util.List;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.rpr.dao.HistoricoG42DaoService;
 import com.saa.model.rpr.HistoricoG42;
+
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;

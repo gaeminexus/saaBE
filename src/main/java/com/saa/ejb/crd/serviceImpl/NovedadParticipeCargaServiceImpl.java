@@ -5,8 +5,8 @@ import java.util.List;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.crd.dao.NovedadParticipeCargaDaoService;
 import com.saa.ejb.crd.service.NovedadParticipeCargaService;
-import com.saa.model.crd.NovedadParticipeCarga;
 import com.saa.model.crd.NombreEntidadesCredito;
+import com.saa.model.crd.NovedadParticipeCarga;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;

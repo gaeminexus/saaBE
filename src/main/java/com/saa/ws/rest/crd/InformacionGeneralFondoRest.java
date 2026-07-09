@@ -2,11 +2,13 @@ package com.saa.ws.rest.crd;
 
 import java.util.ArrayList;
 import java.util.List;
+
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.crd.dao.InformacionGeneralFondoDaoService;
 import com.saa.ejb.crd.service.InformacionGeneralFondoService;
 import com.saa.model.crd.InformacionGeneralFondo;
 import com.saa.model.crd.NombreEntidadesCredito;
+
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;

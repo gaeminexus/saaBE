@@ -9,10 +9,12 @@
 package com.saa.ejb.tsr.daoImpl;
 
 import java.util.List;
+
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tsr.dao.PagoDaoService;
 import com.saa.model.tsr.Pago;
 import com.saa.rubros.EstadoPago;
+
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;

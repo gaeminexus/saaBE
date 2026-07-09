@@ -12,16 +12,18 @@
 package com.saa.basico.ejbImpl;
 
 import java.util.List;
-import jakarta.ejb.Stateless;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
-import jakarta.persistence.PersistenceException;
-import jakarta.persistence.Query;
+
 import com.saa.basico.ejb.DetalleRubroDaoService;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.model.scp.DetalleRubro;
 import com.saa.rubros.ModuloSistema;
 import com.saa.rubros.Rubros;
+
+import jakarta.ejb.Stateless;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.PersistenceException;
+import jakarta.persistence.Query;
 
 /**
  * @author GaemiSoft.

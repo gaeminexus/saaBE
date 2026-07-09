@@ -159,6 +159,27 @@ public class Titular implements Serializable {
 	@Column(name = "TTLRSCOO")
 	private Long tipoSocio;
 	
+	/**
+	 * Teléfono del titular
+	 */
+	@Basic
+	@Column(name = "TTLRTLFN", length = 500)
+	private String telefono;
+	
+	/**
+	 * Email del titular
+	 */
+	@Basic
+	@Column(name = "TTLRMLLL", length = 500)
+	private String email;
+	
+	/**
+	 * Direccion del titular
+	 */
+	@Basic
+	@Column(name = "TTLRDRCC", length = 2000)
+	private String direccion;
+	
 
 	/**
 	 * Devuelve codigo
@@ -430,6 +451,54 @@ public class Titular implements Serializable {
 	 */
 	public void setTipoSocio(Long tipoSocio) {
 		this.tipoSocio = tipoSocio;
+	}
+
+	/**
+	 * Obtiene el teléfono del titular
+	 * @return telefono
+	 */
+	public String getTelefono() {
+		return telefono;
+	}
+
+	/**
+	 * Asigna el teléfono del titular
+	 * @param telefono Nuevo valor para telefono
+	 */
+	public void setTelefono(String telefono) {
+		this.telefono = telefono;
+	}
+
+	/**
+	 * Obtiene el email del titular
+	 * @return email
+	 */
+	public String getEmail() {
+		return email;
+	}
+
+	/**
+	 * Asigna el email del titular
+	 * @param email Nuevo valor para email
+	 */
+	public void setEmail(String email) {
+		this.email = email;
+	}
+	
+	/**
+	 * Obtiene el direccion del titular
+	 * @return direccion
+	 */
+	public String getDireccion() {
+		return direccion;
+	}
+
+	/**
+	 * Asigna el direccion del titular
+	 * @param direccion Nuevo valor para direccion
+	 */
+	public void setDireccion(String direccion) {
+		this.direccion = direccion;
 	}
 
 }

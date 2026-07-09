@@ -15,6 +15,7 @@ import java.util.List;
 
 import com.saa.basico.util.EntityDao;
 import com.saa.model.scp.Usuario;
+
 import jakarta.ejb.Local;
 
 /**

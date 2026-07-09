@@ -12,6 +12,7 @@
 package com.saa.basico.ejb;
 
 import java.util.List;
+
 import com.saa.basico.util.EntityService;
 import com.saa.model.scp.Empresa;
 

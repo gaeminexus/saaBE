@@ -1,9 +1,11 @@
 package com.saa.ejb.crd.service;
 
+import java.util.List;
+
 import com.saa.basico.util.EntityService;
 import com.saa.model.crd.Participe;
+
 import jakarta.ejb.Local;
-import java.util.List;
 
 @Local
 public interface ParticipeService extends EntityService<Participe> {

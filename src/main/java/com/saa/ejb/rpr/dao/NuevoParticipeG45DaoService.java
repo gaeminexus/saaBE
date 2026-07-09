@@ -2,6 +2,7 @@ package com.saa.ejb.rpr.dao;
 
 import com.saa.basico.util.EntityDao;
 import com.saa.model.rpr.NuevoParticipeG45;
+
 import jakarta.ejb.Local;
 
 @Local

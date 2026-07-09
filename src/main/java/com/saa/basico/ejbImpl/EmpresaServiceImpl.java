@@ -13,14 +13,14 @@ package com.saa.basico.ejbImpl;
 
 import java.util.List;
 
-import jakarta.ejb.EJB;
-import jakarta.ejb.Stateless;
-
 import com.saa.basico.ejb.EmpresaDaoService;
 import com.saa.basico.ejb.EmpresaService;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.model.scp.Empresa;
 import com.saa.model.scp.NombreEntidadesSistema;
+
+import jakarta.ejb.EJB;
+import jakarta.ejb.Stateless;
 
 /**
  * @author GaemiSoft.

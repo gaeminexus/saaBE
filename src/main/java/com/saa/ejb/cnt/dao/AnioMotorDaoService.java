@@ -13,9 +13,10 @@ package com.saa.ejb.cnt.dao;
 
 import java.util.List;
 
-import jakarta.ejb.Local;
 import com.saa.basico.util.EntityDao;
 import com.saa.model.cnt.AnioMotor;
+
+import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.

@@ -12,6 +12,7 @@
 package com.saa.basico.util;
 
 import java.io.Serializable;
+
 import com.saa.rubros.TipoComandosBusqueda;
 
 /**

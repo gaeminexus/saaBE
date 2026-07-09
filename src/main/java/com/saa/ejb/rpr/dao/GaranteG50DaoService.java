@@ -2,6 +2,7 @@ package com.saa.ejb.rpr.dao;
 
 import com.saa.basico.util.EntityDao;
 import com.saa.model.rpr.GaranteG50;
+
 import jakarta.ejb.Local;
 
 @Local

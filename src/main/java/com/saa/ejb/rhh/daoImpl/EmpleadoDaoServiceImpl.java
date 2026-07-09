@@ -9,9 +9,7 @@
 package com.saa.ejb.rhh.daoImpl;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
-
 import com.saa.ejb.rhh.dao.EmpleadoDaoService;
-
 import com.saa.model.rhh.Empleado;
 
 import jakarta.ejb.Stateless;

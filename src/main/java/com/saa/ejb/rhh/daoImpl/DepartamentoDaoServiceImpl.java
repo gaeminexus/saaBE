@@ -12,7 +12,6 @@ import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.rhh.dao.DepartamentoDaoService;
 import com.saa.model.rhh.Departamento;
 
-
 import jakarta.ejb.Stateless;
 
 /**

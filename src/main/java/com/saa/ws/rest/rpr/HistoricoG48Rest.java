@@ -1,12 +1,17 @@
 package com.saa.ws.rest.rpr;
 
+import java.util.List;
+
 import com.saa.ejb.rpr.dao.HistoricoG48DaoService;
 import com.saa.model.rpr.HistoricoG48;
 import com.saa.model.rpr.NombreEntidadesReporte;
+
 import jakarta.ejb.EJB;
-import jakarta.ws.rs.*;
-import jakarta.ws.rs.core.*;
-import java.util.List;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 
 @Path("hm48")
 public class HistoricoG48Rest {

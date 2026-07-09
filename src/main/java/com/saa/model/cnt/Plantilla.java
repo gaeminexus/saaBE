@@ -2,7 +2,9 @@ package com.saa.model.cnt;
 
 import java.io.Serializable;
 import java.time.LocalDateTime;
+
 import com.saa.model.scp.Empresa;
+
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

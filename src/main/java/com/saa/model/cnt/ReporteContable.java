@@ -1,6 +1,7 @@
 package com.saa.model.cnt;
 
 import java.io.Serializable;
+
 import com.saa.model.scp.Empresa;
 
 import jakarta.persistence.Basic;

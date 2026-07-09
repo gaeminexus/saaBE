@@ -1,9 +1,11 @@
 package com.saa.ejb.rpr.daoImpl;
 import java.util.ArrayList;
 import java.util.List;
+
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.rpr.dao.HistoricoG44DaoService;
 import com.saa.model.rpr.HistoricoG44;
+
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;

@@ -1,10 +1,11 @@
 package com.saa.ejb.crd.dao;
 
+import java.util.List;
+
 import com.saa.basico.util.EntityDao;
 import com.saa.model.crd.OrdenAfectacionValorPrestamo;
 
 import jakarta.ejb.Local;
-import java.util.List;
 
 /**
  * Interface DAO para OrdenAfectacionValorPrestamo.

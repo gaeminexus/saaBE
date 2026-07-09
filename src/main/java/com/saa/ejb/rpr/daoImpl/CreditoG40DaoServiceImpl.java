@@ -3,6 +3,7 @@ package com.saa.ejb.rpr.daoImpl;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.rpr.dao.CreditoG40DaoService;
 import com.saa.model.rpr.CreditoG40;
+
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;

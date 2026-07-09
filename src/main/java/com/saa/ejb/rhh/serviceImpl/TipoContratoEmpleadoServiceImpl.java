@@ -9,12 +9,14 @@
 package com.saa.ejb.rhh.serviceImpl;
 
 import java.util.List;
+
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.rhh.dao.TipoContratoEmpleadoDaoService;
 import com.saa.ejb.rhh.service.TipoContratoEmpleadoService;
 import com.saa.model.rhh.NombreEntidadesRhh;
 import com.saa.model.rhh.TipoContratoEmpleado;
+
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 

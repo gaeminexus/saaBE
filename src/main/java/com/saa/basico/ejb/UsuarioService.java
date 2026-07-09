@@ -13,6 +13,7 @@ package com.saa.basico.ejb;
 
 import com.saa.basico.util.EntityService;
 import com.saa.model.scp.Usuario;
+
 import jakarta.ejb.Local;
 
 /**

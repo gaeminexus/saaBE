@@ -11,6 +11,7 @@ package com.saa.ejb.tsr.daoImpl;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tsr.dao.TitularDaoService;
 import com.saa.model.tsr.Titular;
+
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
