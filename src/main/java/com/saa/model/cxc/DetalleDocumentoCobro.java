@@ -69,9 +69,9 @@ public class DetalleDocumentoCobro implements Serializable {
     /**
      * Producto incluido en el detalle tomado de la tabla de productos.
      */
-    @ManyToOne
-    @JoinColumn(name = "PRDCCDGO", referencedColumnName = "PRDCCDGO")
-    private ProductoCobro productoCobro;
+//    @ManyToOne
+//    @JoinColumn(name = "PRDCCDGO", referencedColumnName = "PRDCCDGO")
+//    private ProductoCobro productoCobro;
     
     /**
      * Descripcion del detalle.
@@ -173,13 +173,13 @@ public class DetalleDocumentoCobro implements Serializable {
         this.documentoCobro = documentoCobro;
     }
 
-    public ProductoCobro getProductoCobro() {
-        return productoCobro;
-    }
-
-    public void setProductoCobro(ProductoCobro productoCobro) {
-        this.productoCobro = productoCobro;
-    }
+//    public ProductoCobro getProductoCobro() {
+//        return productoCobro;
+//    }
+//
+//    public void setProductoCobro(ProductoCobro productoCobro) {
+//        this.productoCobro = productoCobro;
+//    }
 
     public String getDescripcion() {
         return descripcion;

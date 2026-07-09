@@ -9,24 +9,31 @@
 package com.saa.ejb.cxc.service;
 
 import com.saa.basico.util.EntityService;
-import com.saa.model.cxc.ProductoCobro;
+import com.saa.model.cxc.Lsri;
 
 import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft
- * <p>Servicio para la entidad ProductoCobro.
- *  Accede a los metodos DAO y procesa los datos para el ProductoCobro.</p>
+ * <p>Servicio para la entidad Lsri.
+ *  Accede a los metodos DAO y procesa los datos para Lsri.</p>
  */
 @Local
-public interface ProductoCobroService extends EntityService<ProductoCobro> {
+public interface LsriService extends EntityService<Lsri> {
 
 	 /**
 	  * Recupera entidad con el id
 	  * @param id			: Id de la entidad
 	  * @return				: Recupera entidad
 	  * @throws Throwable	: Excepcion
-	 */
-	 ProductoCobro selectById(Long id) throws Throwable;
+	  */
+	  Lsri selectById(Long id) throws Throwable;
 	  
+	 /**
+	  * Guarda un solo registro de Lsri
+	  * @param lsri			: Entidad a guardar
+	  * @return				: Entidad guardada
+	  * @throws Throwable	: Excepcion
+	  */
+	  Lsri saveSingle(Lsri lsri) throws Throwable;
 }

@@ -71,9 +71,9 @@ public class TempDetalleDocumentoCobro implements Serializable {
     /**
      * Producto incluido en el detalle.
      */
-    @ManyToOne
-    @JoinColumn(name = "PRDCCDGO", referencedColumnName = "PRDCCDGO")
-    private ProductoCobro productoCobro;
+//    @ManyToOne
+//    @JoinColumn(name = "PRDCCDGO", referencedColumnName = "PRDCCDGO")
+//    private ProductoCobro productoCobro;
 
     /**
      * Descripción del detalle.
@@ -175,13 +175,13 @@ public class TempDetalleDocumentoCobro implements Serializable {
         this.tempDocumentoCobro = tempDocumentoCobro;
     }
 
-    public ProductoCobro getProductoCobro() {
-        return productoCobro;
-    }
-
-    public void setProductoCobro(ProductoCobro productoCobro) {
-        this.productoCobro = productoCobro;
-    }
+//    public ProductoCobro getProductoCobro() {
+//        return productoCobro;
+//    }
+//
+//    public void setProductoCobro(ProductoCobro productoCobro) {
+//        this.productoCobro = productoCobro;
+//    }
 
     public String getDescripcion() {
         return descripcion;

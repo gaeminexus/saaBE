@@ -35,7 +35,7 @@ import jakarta.persistence.Table;
 @SuppressWarnings("serial")
 @Entity
 @Table(name = "GRPC", schema = "CBR")
-@SequenceGenerator(name = "SQ_GPCCCDGO", sequenceName = "CBR.SQ_GPCCCDGO", allocationSize = 1)
+@SequenceGenerator(name = "SQ_GRPCCDGO", sequenceName = "CBR.SQ_GRPCCDGO", allocationSize = 1)
 @NamedQueries({
     @NamedQuery(name = "GrupoProductoCobroAll", query = "select e from GrupoProductoCobro e"),
     @NamedQuery(name = "GrupoProductoCobroId", query = "select e from GrupoProductoCobro e where e.codigo = :id")

@@ -10,10 +10,7 @@
 package com.saa.model.cxc;
 
 import java.io.Serializable;
-import java.time.LocalDateTime;
-
 import com.saa.model.scp.Empresa;
-
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -24,147 +21,188 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
-import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
 
 /**
  * @author GaemiSoft
  * Pojo mapeo de tabla CBR.PRDC.
  * Entity ProductoCobro.
- * Tabla que contiene los productos que la empresa ofrece a los clientes.
- * Hija de la tabla grupo producto (GRPC).
+ * Tabla que contiene los productos para facturación electrónica.
  */
 @SuppressWarnings("serial")
 @Entity
 @Table(name = "PRDC", schema = "CBR")
-@SequenceGenerator(name = "SQ_PRDCCDGO", sequenceName = "CBR.SQ_PRDCCDGO", allocationSize = 1)
 @NamedQueries({
     @NamedQuery(name = "ProductoCobroAll", query = "select e from ProductoCobro e"),
-    @NamedQuery(name = "ProductoCobroId", query = "select e from ProductoCobro e where e.codigo = :id")
+    @NamedQuery(name = "ProductoCobroId", query = "select e from ProductoCobro e where e.id = :id")
 })
 public class ProductoCobro implements Serializable {
 
     /**
-     * Código de la entidad.
+     * ID del producto
      */
     @Id
-    @Basic
-    @Column(name = "PRDCCDGO", precision = 0)
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_PRDCCDGO")
-    private Long codigo;
+    @Column(name = "ID")
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
     /**
-     * Empresa a la que pertenece el grupo de producto.
+     * Empresa a la que pertenece el producto
      */
     @ManyToOne
-    @JoinColumn(name = "PJRQCDGO", referencedColumnName = "PJRQCDGO")
+    @JoinColumn(name = "EMPRESA", referencedColumnName = "PJRQCDGO")
     private Empresa empresa;
 
-    /* /**
-     * Tipo de producto tomado de la tabla de mapeo de productos
-     * del SRI del usuario PRG.
-     
+    /**
+     * Grupo de producto al que pertenece
+     */
     @ManyToOne
-    @JoinColumn(name = "STPRCDGO", referencedColumnName = "STPRCDGO")
-    private SRITipoProducto sRTipoProducto;*/
+    @JoinColumn(name = "GRUPOPRODUCTO", referencedColumnName = "GRPCCDGO")
+    private GrupoProductoCobro grupoProducto;
 
     /**
-     * Nombre del grupo de productos.
+     * Nombre del producto
      */
     @Basic
-    @Column(name = "PRDCNMBR")
+    @Column(name = "NOMBRE", length = 1000)
     private String nombre;
 
     /**
-     * Aplica IVA. 1 = sí, 0 = no.
+     * Código que utiliza el facturador para este producto
      */
     @Basic
-    @Column(name = "PRDCAPIV")
-    private Long aplicaIVA;
+    @Column(name = "CODIGO", length = 500)
+    private String codigo;
 
     /**
-     * Aplica retención. 1 = sí, 0 = no.
+     * Código auxiliar del producto
      */
     @Basic
-    @Column(name = "PRDCAPRT")
-    private Long aplicaRetencion;
+    @Column(name = "CODIGOAUX", length = 500)
+    private String codigoAux;
 
     /**
-     * Estado: 1 = activo, 2 = inactivo.
+     * Precio unitario del producto
      */
     @Basic
-    @Column(name = "PRDCESTD")
+    @Column(name = "PRECIOUNITARIO")
+    private Double precioUnitario;
+
+    /**
+     * Descuento aplicable
+     */
+    @Basic
+    @Column(name = "DESCUENTO")
+    private Double descuento;
+
+    /**
+     * Tipo de descuento: 0 - Valor, 1 - Porcentaje
+     */
+    @Basic
+    @Column(name = "TIPODESCUENTO")
+    private Long tipoDescuento;
+
+    /**
+     * Indica si el precio incluye IVA (1=Sí, 0=No)
+     */
+    @Basic
+    @Column(name = "INCLUYEIVA")
+    private Long incluyeIVA;
+
+    /**
+     * Tipo de IVA aplicable
+     */
+    @Basic
+    @Column(name = "TIPOIVA")
+    private Long tipoIVA;
+
+    /**
+     * Tipo de ICE aplicable
+     */
+    @Basic
+    @Column(name = "TIPOICE")
+    private Long tipoICE;
+
+    /**
+     * Valor del ICE
+     */
+    @Basic
+    @Column(name = "ICE")
+    private Double ice;
+
+    /**
+     * Descripción del producto
+     */
+    @Basic
+    @Column(name = "DESCRIPCION", length = 1000)
+    private String descripcion;
+
+    /**
+     * Subsidio aplicable
+     */
+    @Basic
+    @Column(name = "SUBSIDIO")
+    private Double subsidio;
+
+    /**
+     * Precio sin subsidio
+     */
+    @Basic
+    @Column(name = "PRECIOSINSUB")
+    private Double precioSinSub;
+
+    /**
+     * IRBPNR (Impuesto Redimible Botellas Plásticas No Retornables)
+     */
+    @Basic
+    @Column(name = "IRBPNR")
+    private Double irbpnr;
+
+    /**
+     * Maneja múltiples precios: 0=NO, 1=SI
+     */
+    @Basic
+    @Column(name = "MULTIPRECIO")
+    private Long multiPrecio;
+
+    /**
+     * Stock disponible del producto
+     */
+    @Basic
+    @Column(name = "STOCK")
+    private Long stock;
+
+    /**
+     * Indica si maneja unidad de medida
+     */
+    @Basic
+    @Column(name = "MANEJAUNIDAD")
+    private Long manejaUnidad;
+
+    /**
+     * Unidad de medida
+     */
+    @Basic
+    @Column(name = "UNIDAD")
+    private Long unidad;
+
+    /**
+     * Estado del producto
+     */
+    @Basic
+    @Column(name = "ESTADO")
     private Long estado;
-
-    /**
-     * Fecha de ingreso.
-     */
-    @Basic
-    @Column(name = "PRDCFCIN")
-    private LocalDateTime fechaIngreso;
-
-    /**
-     * Nivel del producto en el árbol.
-     */
-    @Basic
-    @Column(name = "PRDCNVLL")
-    private Long nivel;
-
-    /**
-     * Código del padre del producto.
-     * Tomado del id de esta misma entidad.
-     */
-    @Basic
-    @Column(name = "PRDCCDPD")
-    private Long idPadre;
-
-    /**
-     * Grupo de producto de pagos al que pertenece.
-     */
-    @ManyToOne
-    @JoinColumn(name = "GRPCCDGO", referencedColumnName = "GRPCCDGO")
-    private GrupoProductoCobro grupoProductoCobro;
-
-    /**
-     * Porcentaje de la base para la retención.
-     * Usualmente 100%. Para productos de seguros puede ser 10%.
-     */
-    @Basic
-    @Column(name = "PRDCPRBR")
-    private Double porcentajeBaseRetencion;
-
-    /**
-     * Fecha de anulación.
-     */
-    @Basic
-    @Column(name = "PRDCFCAN")
-    private LocalDateTime fechaAnulacion;
-
-    /**
-     * Número que identifica al producto en el árbol.
-     */
-    @Basic
-    @Column(name = "PRDCNMRO")
-    private String numero;
-
-    /**
-     * Tipo de producto dependiendo del nivel que ocupa:
-     * acumulación o movimiento.
-     */
-    @Basic
-    @Column(name = "PRDCTPNV")
-    private Long tipoNivel;
 
     // ============================================================
     // Getters y Setters
     // ============================================================
 
-    public Long getCodigo() {
-        return codigo;
+    public Long getId() {
+        return id;
     }
 
-    public void setCodigo(Long codigo) {
-        this.codigo = codigo;
+    public void setId(Long id) {
+        this.id = id;
     }
 
     public Empresa getEmpresa() {
@@ -175,14 +213,13 @@ public class ProductoCobro implements Serializable {
         this.empresa = empresa;
     }
 
-    /*
-    public SRITipoProducto getsRTipoProducto() {
-        return sRTipoProducto;
+    public GrupoProductoCobro getGrupoProducto() {
+        return grupoProducto;
     }
 
-    public void setsRTipoProducto(SRITipoProducto sRTipoProducto) {
-        this.sRTipoProducto = sRTipoProducto;
-    }*/
+    public void setGrupoProducto(GrupoProductoCobro grupoProducto) {
+        this.grupoProducto = grupoProducto;
+    }
 
     public String getNombre() {
         return nombre;
@@ -192,20 +229,140 @@ public class ProductoCobro implements Serializable {
         this.nombre = nombre;
     }
 
-    public Long getAplicaIVA() {
-        return aplicaIVA;
+    public String getCodigo() {
+        return codigo;
     }
 
-    public void setAplicaIVA(Long aplicaIVA) {
-        this.aplicaIVA = aplicaIVA;
+    public void setCodigo(String codigo) {
+        this.codigo = codigo;
     }
 
-    public Long getAplicaRetencion() {
-        return aplicaRetencion;
+    public String getCodigoAux() {
+        return codigoAux;
     }
 
-    public void setAplicaRetencion(Long aplicaRetencion) {
-        this.aplicaRetencion = aplicaRetencion;
+    public void setCodigoAux(String codigoAux) {
+        this.codigoAux = codigoAux;
+    }
+
+    public Double getPrecioUnitario() {
+        return precioUnitario;
+    }
+
+    public void setPrecioUnitario(Double precioUnitario) {
+        this.precioUnitario = precioUnitario;
+    }
+
+    public Double getDescuento() {
+        return descuento;
+    }
+
+    public void setDescuento(Double descuento) {
+        this.descuento = descuento;
+    }
+
+    public Long getTipoDescuento() {
+        return tipoDescuento;
+    }
+
+    public void setTipoDescuento(Long tipoDescuento) {
+        this.tipoDescuento = tipoDescuento;
+    }
+
+    public Long getIncluyeIVA() {
+        return incluyeIVA;
+    }
+
+    public void setIncluyeIVA(Long incluyeIVA) {
+        this.incluyeIVA = incluyeIVA;
+    }
+
+    public Long getTipoIVA() {
+        return tipoIVA;
+    }
+
+    public void setTipoIVA(Long tipoIVA) {
+        this.tipoIVA = tipoIVA;
+    }
+
+    public Long getTipoICE() {
+        return tipoICE;
+    }
+
+    public void setTipoICE(Long tipoICE) {
+        this.tipoICE = tipoICE;
+    }
+
+    public Double getIce() {
+        return ice;
+    }
+
+    public void setIce(Double ice) {
+        this.ice = ice;
+    }
+
+    public String getDescripcion() {
+        return descripcion;
+    }
+
+    public void setDescripcion(String descripcion) {
+        this.descripcion = descripcion;
+    }
+
+    public Double getSubsidio() {
+        return subsidio;
+    }
+
+    public void setSubsidio(Double subsidio) {
+        this.subsidio = subsidio;
+    }
+
+    public Double getPrecioSinSub() {
+        return precioSinSub;
+    }
+
+    public void setPrecioSinSub(Double precioSinSub) {
+        this.precioSinSub = precioSinSub;
+    }
+
+    public Double getIrbpnr() {
+        return irbpnr;
+    }
+
+    public void setIrbpnr(Double irbpnr) {
+        this.irbpnr = irbpnr;
+    }
+
+    public Long getMultiPrecio() {
+        return multiPrecio;
+    }
+
+    public void setMultiPrecio(Long multiPrecio) {
+        this.multiPrecio = multiPrecio;
+    }
+
+    public Long getStock() {
+        return stock;
+    }
+
+    public void setStock(Long stock) {
+        this.stock = stock;
+    }
+
+    public Long getManejaUnidad() {
+        return manejaUnidad;
+    }
+
+    public void setManejaUnidad(Long manejaUnidad) {
+        this.manejaUnidad = manejaUnidad;
+    }
+
+    public Long getUnidad() {
+        return unidad;
+    }
+
+    public void setUnidad(Long unidad) {
+        this.unidad = unidad;
     }
 
     public Long getEstado() {
@@ -214,69 +371,5 @@ public class ProductoCobro implements Serializable {
 
     public void setEstado(Long estado) {
         this.estado = estado;
-    }
-
-    public LocalDateTime getFechaIngreso() {
-        return fechaIngreso;
-    }
-
-    public void setFechaIngreso(LocalDateTime fechaIngreso) {
-        this.fechaIngreso = fechaIngreso;
-    }
-
-    public Long getNivel() {
-        return nivel;
-    }
-
-    public void setNivel(Long nivel) {
-        this.nivel = nivel;
-    }
-
-    public Long getIdPadre() {
-        return idPadre;
-    }
-
-    public void setIdPadre(Long idPadre) {
-        this.idPadre = idPadre;
-    }
-
-    public GrupoProductoCobro getGrupoProductoCobro() {
-        return grupoProductoCobro;
-    }
-
-    public void setGrupoProductoCobro(GrupoProductoCobro grupoProductoCobro) {
-        this.grupoProductoCobro = grupoProductoCobro;
-    }
-
-    public Double getPorcentajeBaseRetencion() {
-        return porcentajeBaseRetencion;
-    }
-
-    public void setPorcentajeBaseRetencion(Double porcentajeBaseRetencion) {
-        this.porcentajeBaseRetencion = porcentajeBaseRetencion;
-    }
-
-    public LocalDateTime getFechaAnulacion() {
-        return fechaAnulacion;
-    }
-
-    public void setFechaAnulacion(LocalDateTime fechaAnulacion) {
-        this.fechaAnulacion = fechaAnulacion;
-    }
-
-    public String getNumero() {
-        return numero;
-    }
-
-    public void setNumero(String numero) {
-        this.numero = numero;
-    }
-
-    public Long getTipoNivel() {
-        return tipoNivel;
-    }
-
-    public void setTipoNivel(Long tipoNivel) {
-        this.tipoNivel = tipoNivel;
     }
 }

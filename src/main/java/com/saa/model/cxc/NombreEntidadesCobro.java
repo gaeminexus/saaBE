@@ -39,5 +39,7 @@ public interface NombreEntidadesCobro {
 	String ESTABLECIMIENTO = "Establecimiento";
 	String PUNTO_EMISION = "PuntoEmision";
 	String NUMERACION_PUNTO_EMISION = "NumeracionPuntoEmision";
+	String LSRI = "Lsri";
+	String TSRI = "Tsri";
 	
 }
