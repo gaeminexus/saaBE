@@ -114,23 +114,23 @@ public class SignatureServiceImpl implements SignatureService {
 				throw new IncomeException("Facturador no encontrado con ID: " + idFacturador);
 			}
 			
-			String pathCertificado = facturador.getFirma();
-			String passwordCertificado = facturador.getClaveFirma();
-			
-			if (pathCertificado == null || pathCertificado.isEmpty()) {
-				throw new IncomeException("El facturador no tiene certificado digital configurado");
-			}
-			
-			if (passwordCertificado == null || passwordCertificado.isEmpty()) {
-				throw new IncomeException("El facturador no tiene contraseña de certificado configurada");
-			}
-			
-			// Construir path completo del certificado
-			String baseDir = System.getProperty("user.dir");
-			String pathCompleto = baseDir + "/" + pathCertificado;
-			
-			// Firmar el XML
-			return firmarXML(xmlSinFirmar, pathCompleto, passwordCertificado);
+		String pathCertificado = facturador.getFirma();
+		String passwordCertificado = facturador.getClaveFirma();
+		
+		if (pathCertificado == null || pathCertificado.isEmpty()) {
+			throw new IncomeException("El facturador no tiene certificado digital configurado");
+		}
+		
+		if (passwordCertificado == null || passwordCertificado.isEmpty()) {
+			throw new IncomeException("El facturador no tiene contraseña de certificado configurada");
+		}
+		
+		// El path de la firma YA viene completo desde el campo del facturador
+		// FileService retorna el path absoluto completo cuando el frontend sube el archivo
+		System.out.println("Usando certificado en path: " + pathCertificado);
+		
+		// Firmar el XML usando directamente el path completo
+		return firmarXML(xmlSinFirmar, pathCertificado, passwordCertificado);
 			
 		} catch (Throwable e) {
 			System.err.println("Error al firmar XML para facturador: " + e.getMessage());
@@ -164,9 +164,10 @@ public class SignatureServiceImpl implements SignatureService {
 		Element root = doc.getDocumentElement();
 		String comprobanteId = root.getAttribute("id");
 		if (comprobanteId == null || comprobanteId.isEmpty()) {
-			comprobanteId = "comprobante";
-			root.setAttribute("id", comprobanteId);
+			throw new Exception("El documento XML no tiene atributo 'id' en el elemento raíz. El ID debe ser la clave de acceso del documento.");
 		}
+		// IMPORTANTE: Registrar el atributo id como ID del documento para que pueda ser resuelto
+		root.setIdAttribute("id", true);
 		
 		// Crear XMLSignatureFactory con proveedor DOM
 		XMLSignatureFactory fac = XMLSignatureFactory.getInstance("DOM");
@@ -269,6 +270,8 @@ public class SignatureServiceImpl implements SignatureService {
 		// SignedProperties
 		Element signedProperties = doc.createElementNS(xadesNamespace, "etsi:SignedProperties");
 		signedProperties.setAttribute("Id", signedPropertiesId);
+		// IMPORTANTE: Registrar el atributo Id como ID del documento para que pueda ser resuelto
+		signedProperties.setIdAttribute("Id", true);
 		
 		// SignedSignatureProperties
 		Element signedSignatureProperties = doc.createElementNS(xadesNamespace, "etsi:SignedSignatureProperties");

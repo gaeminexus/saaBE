@@ -44,11 +44,13 @@ public interface NombreEntidadesCobro {
 	String FACTURA = "Factura";
 	String DETALLE_FACTURA = "DetalleFactura";
 	String PATH_FACTURA = "PathFactura";
+	String FORMA_PAGO_FACTURA = "FormaPagoFactura";
 	
 	// Liquidaciones de Compras y Servicios
 	String LIQUIDACION_COMPRA = "LiquidacionCompra";
 	String DETALLE_LIQUIDACION_COMPRA = "DetalleLiquidacionCompra";
 	String PATH_LIQUIDACION_COMPRA = "PathLiquidacionCompra";
+	String FORMA_PAGO_LIQUIDACION = "FormaPagoLiquidacion";
 	
 	// Notas de Crédito
 	String NOTA_CREDITO = "NotaCredito";

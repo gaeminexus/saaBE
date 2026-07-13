@@ -9,6 +9,7 @@ package com.saa.model.cxc;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
+import com.saa.model.scp.Usuario;
 import com.saa.model.tsr.Titular;
 
 import jakarta.persistence.Basic;
@@ -146,13 +147,19 @@ public class NotaCredito implements Serializable {
 	@Column(name = "TOTAL")
 	private Double total;
 	
-	@Basic
-	@Column(name = "PTOEMISION")
-	private Long ptoEmision;
+	/**
+	 * Punto de emisión (referencia).
+	 */
+	@ManyToOne
+	@JoinColumn(name = "PTOEMISION", referencedColumnName = "ID")
+	private PuntoEmision ptoEmision;
 	
-	@Basic
-	@Column(name = "USUARIO")
-	private Long usuario;
+	/**
+	 * Usuario que generó la factura.
+	 */
+	@ManyToOne
+	@JoinColumn(name = "USUARIO", referencedColumnName = "PJRQCDGO")
+	private Usuario usuario;
 	
 	@Basic
 	@Column(name = "PATHGEN", length = 2000)
@@ -392,19 +399,19 @@ public class NotaCredito implements Serializable {
 		this.total = total;
 	}
 
-	public Long getPtoEmision() {
+	public PuntoEmision getPtoEmision() {
 		return ptoEmision;
 	}
 
-	public void setPtoEmision(Long ptoEmision) {
+	public void setPtoEmision(PuntoEmision ptoEmision) {
 		this.ptoEmision = ptoEmision;
 	}
 
-	public Long getUsuario() {
+	public Usuario getUsuario() {
 		return usuario;
 	}
 
-	public void setUsuario(Long usuario) {
+	public void setUsuario(Usuario usuario) {
 		this.usuario = usuario;
 	}
 

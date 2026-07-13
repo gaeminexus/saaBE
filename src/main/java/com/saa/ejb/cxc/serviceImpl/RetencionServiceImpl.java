@@ -76,9 +76,55 @@ public class RetencionServiceImpl implements RetencionService {
 	@Override
 	public Retencion saveSingle(Retencion entidad) throws Throwable {
 		System.out.println("saveSingle - Retencion");
+		
+		// Si es una nueva retención, generar campos automáticos
 		if (entidad.getId() == null) {
 			entidad.setEstado(Long.valueOf(Estado.ACTIVO));
+			
+			// Validar que tenga los datos necesarios
+			if (entidad.getPtoEmision() == null) {
+				throw new IncomeException("Debe especificar un punto de emisión para la retención");
+			}
+			if (entidad.getFacturador() == null || entidad.getFacturador().getId() == null) {
+				throw new IncomeException("Debe especificar un facturador para la retención");
+			}
+			
+			// Constantes según SRI
+			String tipoComprobante = "07"; // Retención
+			Long ambiente = entidad.getAmbiente() != null ? entidad.getAmbiente() : 1L;
+			String tipoEmision = "1"; // Emisión Normal
+			
+			try {
+				// 1. Obtener secuencial
+				String secuencial = obtenerSecuencial(entidad.getPtoEmision().getId(), tipoComprobante);
+				entidad.setSecuencial(secuencial);
+				
+				// 2. Generar número
+				String numero = entidad.getNumEstablecimiento() + "-" + 
+						entidad.getNumPtoEmision() + "-" + secuencial;
+				entidad.setNumero(numero);
+				System.out.println("Número de retención generado: " + numero);
+				
+				// 3. Generar clave de acceso
+				String clave = generarClaveAcceso(entidad, tipoComprobante, ambiente, tipoEmision, secuencial);
+				entidad.setClave(clave);
+				System.out.println("Clave de acceso generada: " + clave);
+				
+				// 4. Establecer tipo de comprobante
+				entidad.setTipoComprobante(tipoComprobante);
+				
+				// 5. Establecer estado de emisión inicial
+				if (entidad.getEstadoEmision() == null) {
+					entidad.setEstadoEmision(1L);
+				}
+				
+			} catch (Exception e) {
+				System.err.println("ERROR al generar campos automáticos de retención: " + e.getMessage());
+				e.printStackTrace();
+				throw new IncomeException("Error al generar datos de la retención: " + e.getMessage());
+			}
 		}
+		
 		entidad = retencionDaoService.save(entidad, entidad.getId());
 		return entidad;
 	}
@@ -111,7 +157,7 @@ public class RetencionServiceImpl implements RetencionService {
 			String sqlEstab = "SELECT e.direccion FROM PuntoEmision pe " +
 					"JOIN pe.establecimiento e WHERE pe.id = :ptoEmisionId";
 			Query queryEstab = em.createQuery(sqlEstab);
-			queryEstab.setParameter("ptoEmisionId", retencion.getPtoEmision());
+			queryEstab.setParameter("ptoEmisionId", retencion.getPtoEmision().getId());
 			String dirEstablecimiento = (String) queryEstab.getSingleResult();
 			
 			String sqlDetalle = "SELECT d FROM DetalleRetencion d WHERE d.retencion.id = :retencionId";
@@ -123,11 +169,16 @@ public class RetencionServiceImpl implements RetencionService {
 			String xmlContent = generarXMLContentRetencion(retencion, dirEstablecimiento, detalles, ambiente);
 			
 			String pathRelativo = "resources/" + idFacturador + "/rtnc/g/" + clave + ".xml";
-			String pathAbsoluto = System.getProperty("user.dir") + "/" + pathRelativo;
+			String baseUploadDir = getBaseUploadDirectory();
+			String pathAbsoluto = baseUploadDir + pathRelativo;
+			
+			System.out.println("Guardando XML Retencion en: " + pathAbsoluto);
 			
 			Path path = Paths.get(pathAbsoluto);
 			Files.createDirectories(path.getParent());
 			Files.write(path, xmlContent.getBytes("UTF-8"));
+			
+			System.out.println("✓ XML Retencion generado correctamente en: " + pathAbsoluto);
 			
 			return new String[]{"OK", pathRelativo, pathAbsoluto};
 		} catch (Exception e) {
@@ -148,7 +199,7 @@ public class RetencionServiceImpl implements RetencionService {
 		writer.writeCharacters("\n");
 		
 		writer.writeStartElement("comprobanteRetencion");
-		writer.writeAttribute("id", "comprobante");
+		writer.writeAttribute("id", retencion.getClave());  // Usar clave de acceso como ID
 		writer.writeAttribute("version", "1.0.0");
 		writer.writeCharacters("\n");
 		
@@ -278,8 +329,9 @@ public class RetencionServiceImpl implements RetencionService {
 		System.out.println("Ingresa al metodo autorizarRetencion con clave: " + clave);
 		
 		String respuesta = "";
-		String baseDir = System.getProperty("user.dir");
-		String resourcesPath = baseDir + "/resources/" + idFacturador;
+		// Usar directorio base de uploads en lugar de user.dir
+		String baseUploadDir = getBaseUploadDirectory();
+		String resourcesPath = baseUploadDir + "resources/" + idFacturador;
 		
 		try {
 			// 1. Grabar XML firmado
@@ -465,12 +517,15 @@ public class RetencionServiceImpl implements RetencionService {
 				System.out.println("PathLogo configurado automáticamente: " + pathLogo);
 			}
 			
-			// 2. Grabar la retención - USAR EL MISMO OBJETO
+			// 2. Grabar la retención - USAR EL MISMO OBJETO (genera campos automáticos)
 			System.out.println("Paso 1: Grabando retención...");
 			retencion = this.saveSingle(retencion);
 			resultado.put("retencion", retencion);
 			resultado.put("paso1_grabacion", "OK");
-			System.out.println("Retención grabada con ID: " + retencion.getId());
+			System.out.println("✓ Retención grabada con ID: " + retencion.getId());
+			System.out.println("✓ Clave generada: " + retencion.getClave());
+			System.out.println("✓ Número generado: " + retencion.getNumero());
+			System.out.println("✓ Secuencial generado: " + retencion.getSecuencial());
 			
 			// 2.5. Guardar los detalles de la retención
 			if (detalles != null && !detalles.isEmpty()) {
@@ -691,5 +746,128 @@ public class RetencionServiceImpl implements RetencionService {
 		String mensaje;
 		String informacionAdicional;
 		String respuestaCompleta;
+	}
+	
+	/**
+	 * Obtiene y actualiza el secuencial para un punto de emisión y tipo de documento
+	 */
+	private String obtenerSecuencial(Long idPtoEmision, String tipoDoc) throws Exception {
+		System.out.println(">>> OBTENER SECUENCIAL PtoEmision[" + idPtoEmision + "] TipoComprobante[" + tipoDoc + "]");
+		
+		String sql = "SELECT n FROM NumeracionPuntoEmision n WHERE n.ptoEmision.id = :ptoEmision AND n.tipoDoc = :tipoDoc";
+		Query query = em.createQuery(sql);
+		query.setParameter("ptoEmision", idPtoEmision);
+		query.setParameter("tipoDoc", tipoDoc);
+		
+		@SuppressWarnings("unchecked")
+		List<Object> resultados = query.getResultList();
+		
+		if (resultados.isEmpty()) {
+			throw new IncomeException("No existe numeración para el punto de emisión " + idPtoEmision + " y tipo de documento " + tipoDoc);
+		}
+		
+		com.saa.model.cxc.NumeracionPuntoEmision numeracion = (com.saa.model.cxc.NumeracionPuntoEmision) resultados.get(0);
+		Long numeroActual = numeracion.getNumActual();
+		Long nuevoNumero = numeroActual + 1;
+		
+		String sqlUpdate = "UPDATE NumeracionPuntoEmision n SET n.numActual = :nuevoNumero " +
+				"WHERE n.ptoEmision.id = :ptoEmision AND n.tipoDoc = :tipoDoc";
+		Query updateQuery = em.createQuery(sqlUpdate);
+		updateQuery.setParameter("nuevoNumero", nuevoNumero);
+		updateQuery.setParameter("ptoEmision", idPtoEmision);
+		updateQuery.setParameter("tipoDoc", tipoDoc);
+		updateQuery.executeUpdate();
+		
+		String secuencial = String.format("%09d", numeroActual);
+		System.out.println("Secuencial generado: " + secuencial);
+		
+		return secuencial;
+	}
+	
+	/**
+	 * Genera la clave de acceso usando el algoritmo módulo 11
+	 */
+	private String generarClaveAcceso(Retencion retencion, String tipoComprobante, Long ambiente, 
+			String tipoEmision, String secuencial) {
+		
+		DateTimeFormatter formatter = DateTimeFormatter.ofPattern("ddMMyyyy");
+		String fechaClave = retencion.getFecha().format(formatter);
+		
+		String ruc = retencion.getFacturador().getNumDoc();
+		String codClave = retencion.getFacturador().getCodClave();
+		
+		System.out.println("RUC: " + ruc);
+		System.out.println("CLAVE: " + codClave);
+		
+		String claveSinDV = fechaClave + tipoComprobante + ruc + ambiente + 
+				retencion.getNumEstablecimiento() + retencion.getNumPtoEmision() + 
+				secuencial + codClave + tipoEmision;
+		
+		System.out.println(">>> GENERADOR CLAVE cadena[" + claveSinDV + "]");
+		
+		int digitoVerificador = calcularModulo11(claveSinDV);
+		String claveCompleta = claveSinDV + digitoVerificador;
+		System.out.println(">>> CLAVE COMPLETA [" + claveCompleta + "]");
+		
+		return claveCompleta;
+	}
+	
+	/**
+	 * Calcula el dígito verificador usando módulo 11
+	 */
+	private int calcularModulo11(String cadena) {
+		String invertida = new StringBuilder(cadena).reverse().toString();
+		
+		int suma = 0;
+		int factor = 2;
+		
+		for (int i = 0; i < invertida.length(); i++) {
+			int digito = Character.getNumericValue(invertida.charAt(i));
+			suma += digito * factor;
+			
+			if (factor == 7) {
+				factor = 2;
+			} else {
+				factor++;
+			}
+		}
+		
+		int dv = 11 - (suma % 11);
+		
+		if (dv == 10) {
+			return 1;
+		} else if (dv == 11) {
+			return 0;
+		} else {
+			return dv;
+		}
+	}
+	
+	/**
+	 * Obtiene el directorio base de uploads desde la variable de sistema
+	 * (misma lógica que FileService)
+	 */
+	private String getBaseUploadDirectory() {
+		// Verificar si hay una variable de sistema configurada
+		String uploadDir = System.getProperty("saa.upload.dir");
+		if (uploadDir != null && !uploadDir.trim().isEmpty()) {
+			return uploadDir.endsWith("/") || uploadDir.endsWith("\\") ? uploadDir : uploadDir + "/";
+		}
+
+		// Verificar variable de entorno
+		uploadDir = System.getenv("SAA_UPLOAD_DIR");
+		if (uploadDir != null && !uploadDir.trim().isEmpty()) {
+			return uploadDir.endsWith("/") || uploadDir.endsWith("\\") ? uploadDir : uploadDir + "/";
+		}
+
+		// Directorio por defecto basado en el sistema operativo
+		String userHome = System.getProperty("user.home");
+		String osName = System.getProperty("os.name").toLowerCase();
+
+		if (osName.contains("windows")) {
+			return userHome + "/saa-uploads/";
+		} else {
+			return "/opt/saa-uploads/";
+		}
 	}
 }

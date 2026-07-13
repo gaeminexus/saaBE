@@ -1,5 +1,6 @@
 package com.saa.ejb.cxc.serviceImpl;
 
+import java.io.ByteArrayOutputStream;
 import java.io.FileWriter;
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -15,10 +16,13 @@ import javax.xml.stream.XMLStreamWriter;
 
 import org.w3c.dom.NodeList;
 
+import jakarta.persistence.Query;
+
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.cxc.dao.FacturaDaoService;
 import com.saa.ejb.cxc.dao.PathFacturaDaoService;
+import com.saa.ejb.cxc.service.DetalleFacturaService;
 import com.saa.ejb.cxc.service.FacturaService;
 import com.saa.ejb.signature.service.SignatureService;
 import com.saa.model.cxc.DetalleFactura;
@@ -33,7 +37,6 @@ import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
-import jakarta.persistence.Query;
 import jakarta.xml.soap.MessageFactory;
 import jakarta.xml.soap.SOAPBody;
 import jakarta.xml.soap.SOAPConnection;
@@ -51,6 +54,12 @@ public class FacturaServiceImpl implements FacturaService {
 	
 	@EJB
 	private PathFacturaDaoService pathFacturaDaoService;
+	
+	@EJB
+	private DetalleFacturaService detalleFacturaService;
+	
+	@EJB
+	private com.saa.ejb.cxc.service.FormaPagoFacturaService formaPagoFacturaService;
 	
 	@EJB
 	private SignatureService signatureService;
@@ -94,9 +103,55 @@ public class FacturaServiceImpl implements FacturaService {
 	@Override
 	public Factura saveSingle(Factura entidad) throws Throwable {
 		System.out.println("saveSingle - Factura");
+		
+		// Si es una nueva factura, generar campos automáticos
 		if (entidad.getId() == null) {
 			entidad.setEstado(Long.valueOf(Estado.ACTIVO));
+			
+			// Validar que tenga los datos necesarios
+			if (entidad.getPtoEmision() == null || entidad.getPtoEmision().getId() == null) {
+				throw new IncomeException("Debe especificar un punto de emisión para la factura");
+			}
+			if (entidad.getFacturador() == null || entidad.getFacturador().getId() == null) {
+				throw new IncomeException("Debe especificar un facturador para la factura");
+			}
+			
+			// Constantes según SRI
+			String tipoComprobante = "01"; // Factura
+			Long ambiente = entidad.getAmbiente() != null ? entidad.getAmbiente() : 1L; // 1=Pruebas, 2=Producción
+			String tipoEmision = "1"; // 1=Emisión Normal
+			
+			try {
+				// 1. Obtener y actualizar el secuencial
+				String secuencial = obtenerSecuencial(entidad.getPtoEmision().getId(), tipoComprobante);
+				entidad.setSecuencial(secuencial);
+				
+				// 2. Generar el número de factura (formato: 001-001-000000001)
+				String numero = entidad.getNumEstablecimiento() + "-" + 
+						entidad.getNumPtoEmision() + "-" + secuencial;
+				entidad.setNumero(numero);
+				System.out.println("Número de factura generado: " + numero);
+				
+				// 3. Generar la clave de acceso
+				String clave = generarClaveAcceso(entidad, tipoComprobante, ambiente, tipoEmision, secuencial);
+				entidad.setClave(clave);
+				System.out.println("Clave de acceso generada: " + clave);
+				
+				// 4. Establecer tipo de comprobante
+				entidad.setTipoComprobante(tipoComprobante);
+				
+				// 5. Establecer estado de emisión inicial (1=Pendiente)
+				if (entidad.getEstadoEmision() == null) {
+					entidad.setEstadoEmision(1L);
+				}
+				
+			} catch (Exception e) {
+				System.err.println("ERROR al generar campos automáticos de factura: " + e.getMessage());
+				e.printStackTrace();
+				throw new IncomeException("Error al generar datos de la factura: " + e.getMessage());
+			}
 		}
+		
 		entidad = facturaDaoService.save(entidad, entidad.getId());
 		return entidad;
 	}
@@ -121,16 +176,16 @@ public class FacturaServiceImpl implements FacturaService {
 		resultado.put("exito", false);
 		
 		try {
-			// PASO 1: Grabar la factura en la base de datos
+			// PASO 1: Grabar la factura en la base de datos con generación automática de campos
 			System.out.println("PASO 1: Grabando factura en base de datos...");
-			if (factura.getId() == null) {
-				factura.setEstado(Long.valueOf(Estado.ACTIVO));
-			}
-			// Usar el MISMO objeto factura - no crear nueva referencia
-			factura = facturaDaoService.save(factura, factura.getId());
+			// Usar saveSingle para que genere automáticamente secuencial, clave y número
+			factura = this.saveSingle(factura);
 			resultado.put("factura", factura);
 			resultado.put("idFactura", factura.getId());
 			System.out.println("✓ Factura grabada con ID: " + factura.getId());
+			System.out.println("✓ Clave generada: " + factura.getClave());
+			System.out.println("✓ Número generado: " + factura.getNumero());
+			System.out.println("✓ Secuencial generado: " + factura.getSecuencial());
 			
 			// PASO 1.5: Guardar los detalles de la factura
 			if (detalles != null && !detalles.isEmpty()) {
@@ -142,14 +197,33 @@ public class FacturaServiceImpl implements FacturaService {
 					if (detalle.getEstado() == null) {
 						detalle.setEstado(Long.valueOf(Estado.ACTIVO));
 					}
-					// Guardar el detalle usando el EntityManager
-					em.persist(detalle);
+					// Guardar el detalle usando el servicio
+					detalleFacturaService.saveSingle(detalle);
 				}
-				em.flush(); // Asegurar que se guarden en la BD
 				System.out.println("✓ Detalles guardados correctamente");
 			} else {
 				System.out.println("⚠ No hay detalles para guardar");
 			}
+			
+			// PASO 1.6: Guardar la forma de pago de la factura (necesaria para XML según SRI)
+			System.out.println("PASO 1.6: Guardando forma de pago de la factura...");
+			com.saa.model.cxc.FormaPagoFactura formaPago = new com.saa.model.cxc.FormaPagoFactura();
+			formaPago.setFactura(factura);
+			
+			// Forma de pago por defecto si no está especificada
+			String codigoFormaPago = factura.getFormaPago() != null ? 
+					String.valueOf(factura.getFormaPago()) : "01"; // 01 = Sin utilización del sistema financiero
+			formaPago.setFormaPago(codigoFormaPago);
+			
+			// Valor total de la factura
+			formaPago.setValor(factura.getTotal());
+			
+			// Plazo por defecto: 0 días (pago inmediato)
+			formaPago.setPlazo(0L);
+			formaPago.setUnidadTiempo("dias");
+			
+			formaPagoFacturaService.saveSingle(formaPago);
+			System.out.println("✓ Forma de pago guardada correctamente - Código: " + codigoFormaPago);
 			
 			// Obtener datos necesarios
 			String clave = factura.getClave();
@@ -255,7 +329,7 @@ public class FacturaServiceImpl implements FacturaService {
 		String sqlEstablecimiento = "SELECT e.direccion FROM PuntoEmision p JOIN p.establecimiento e " +
 				"WHERE p.id = :ptoEmisionId";
 		Query queryEstablecimiento = em.createQuery(sqlEstablecimiento);
-		queryEstablecimiento.setParameter("ptoEmisionId", factura.getPtoEmision());
+		queryEstablecimiento.setParameter("ptoEmisionId", factura.getPtoEmision().getId());
 		String dirEstablecimiento = (String) queryEstablecimiento.getSingleResult();
 		
 		// 3. Obtener detalle de la factura
@@ -270,15 +344,18 @@ public class FacturaServiceImpl implements FacturaService {
 		Query queryFormasPago = em.createQuery(sqlFormasPago);
 		queryFormasPago.setParameter("facturaId", idFactura);
 		@SuppressWarnings("unchecked")
-		List<Object[]> formasPago = queryFormasPago.getResultList();
+		List<com.saa.model.cxc.FormaPagoFactura> formasPago = queryFormasPago.getResultList();
 		
 		// 5. Generar XML
 		String xmlContent = generarXMLContent(factura, facturador, titular, dirEstablecimiento, 
 				detalles, formasPago, ambiente);
 		
-		// 6. Guardar archivo XML
+		// 6. Guardar archivo XML usando el directorio base de uploads
 		String pathRelativo = "resources/" + facturador.getId() + "/docs/g/" + clave + ".xml";
-		String pathAbsoluto = System.getProperty("user.dir") + "/" + pathRelativo;
+		String baseUploadDir = getBaseUploadDirectory();
+		String pathAbsoluto = baseUploadDir + pathRelativo;
+		
+		System.out.println("Guardando XML en: " + pathAbsoluto);
 		
 		// Crear directorios si no existen
 		Path path = Paths.get(pathAbsoluto);
@@ -287,6 +364,8 @@ public class FacturaServiceImpl implements FacturaService {
 		// Guardar archivo
 		Files.write(path, xmlContent.getBytes("UTF-8"));
 		
+		System.out.println("✓ XML generado correctamente en: " + pathAbsoluto);
+		
 		return new String[]{"OK", pathRelativo, pathAbsoluto};
 	}
 	
@@ -294,7 +373,8 @@ public class FacturaServiceImpl implements FacturaService {
 	 * Genera el contenido XML de la factura electrónica según estándares del SRI v1.1.0
 	 */
 	private String generarXMLContent(Factura factura, Facturador facturador, Titular titular,
-			String dirEstablecimiento, List<DetalleFactura> detalles, List<Object[]> formasPago,
+			String dirEstablecimiento, List<DetalleFactura> detalles, 
+			List<com.saa.model.cxc.FormaPagoFactura> formasPago,
 			Long ambiente) throws Exception {
 		
 		StringWriter stringWriter = new StringWriter();
@@ -321,7 +401,7 @@ public class FacturaServiceImpl implements FacturaService {
 		
 		// Elemento raíz: factura
 		writer.writeStartElement("factura");
-		writer.writeAttribute("id", "comprobante");
+		writer.writeAttribute("id", factura.getClave());  // Usar clave de acceso como ID
 		writer.writeAttribute("version", "1.1.0");
 		writer.writeCharacters("\n");
 		
@@ -443,14 +523,20 @@ public class FacturaServiceImpl implements FacturaService {
 		writer.writeStartElement("pagos");
 		writer.writeCharacters("\n");
 		
-		// Si no hay formas de pago, agregar una por defecto
-		if (formasPago.isEmpty()) {
-			writePago(writer, String.valueOf(factura.getFormaPago()), factura.getTotal(), null, null);
+		// Si no hay formas de pago, agregar una por defecto (01 = Sin utilización del sistema financiero)
+		if (formasPago == null || formasPago.isEmpty()) {
+			String codigoFormaPago = factura.getFormaPago() != null ? 
+					String.valueOf(factura.getFormaPago()) : "01";
+			writePago(writer, codigoFormaPago, factura.getTotal(), "0", "dias");
 		} else {
-			for (Object[] fp : formasPago) {
-				writePago(writer, String.valueOf(fp[0]), (Double) fp[1], 
-						fp[2] != null ? String.valueOf(fp[2]) : null, 
-						fp[3] != null ? String.valueOf(fp[3]) : null);
+			// Iterar sobre las formas de pago y agregarlas al XML
+			for (com.saa.model.cxc.FormaPagoFactura fp : formasPago) {
+				String plazoStr = fp.getPlazo() != null ? String.valueOf(fp.getPlazo()) : null;
+				writePago(writer, 
+						fp.getFormaPago(), 
+						fp.getValor(), 
+						plazoStr, 
+						fp.getUnidadTiempo());
 			}
 		}
 		
@@ -543,7 +629,18 @@ public class FacturaServiceImpl implements FacturaService {
 		writer.writeStartElement("detalle");
 		writer.writeCharacters("\n");
 		
-		writeElement(writer, "codigoPrincipal", nvl(String.valueOf(detalle.getProducto()), ""), 6);
+		// Incluir codigoPrincipal solo si el producto tiene código
+		if (detalle.getProducto() != null && detalle.getProducto().getCodigo() != null 
+				&& !detalle.getProducto().getCodigo().trim().isEmpty()) {
+			writeElement(writer, "codigoPrincipal", detalle.getProducto().getCodigo(), 6);
+		}
+		
+		// Incluir codigoAuxiliar solo si existe
+		if (detalle.getProducto() != null && detalle.getProducto().getCodigoAux() != null 
+				&& !detalle.getProducto().getCodigoAux().trim().isEmpty()) {
+			writeElement(writer, "codigoAuxiliar", detalle.getProducto().getCodigoAux(), 6);
+		}
+		
 		writeElement(writer, "descripcion", nvl(detalle.getDescripcion(), ""), 6);
 		writeElement(writer, "cantidad", formatDecimal(detalle.getCantidad()), 6);
 		writeElement(writer, "precioUnitario", formatDecimal(detalle.getValor()), 6);
@@ -607,13 +704,14 @@ public class FacturaServiceImpl implements FacturaService {
 	}
 	
 	@Override
-	public String autorizarFactura(Long idFacturador, Long ambiente, Long conectaSRI, String clave, 
+	public String autorizarFactura(Long idFacturador, Long ambiente, Long conectaSRI, String clave,
 			Long codigoFactura, Double subsidio, String xml, String destinatario, String pathLogo) throws Throwable {
 		System.out.println("Ingresa al metodo autorizarFactura con clave: " + clave);
 		
 		String respuesta = "";
-		String baseDir = System.getProperty("user.dir");
-		String resourcesPath = baseDir + "/resources/" + idFacturador;
+		// Usar directorio base de uploads en lugar de user.dir
+		String baseUploadDir = getBaseUploadDirectory();
+		String resourcesPath = baseUploadDir + "resources/" + idFacturador;
 		
 		try {
 			// 1. Grabar XML firmado
@@ -819,6 +917,9 @@ public class FacturaServiceImpl implements FacturaService {
 	 */
 	private String llamarRecepcionSRI(String url, String xmlContent, PrintWriter log) throws Exception {
 		try {
+			System.out.println(">>> Llamando al WS1 de RECEPCIÓN del SRI: " + url);
+			log.println(">>> Llamando al WS1 de RECEPCIÓN del SRI: " + url);
+			
 			// Crear conexión SOAP
 			SOAPConnectionFactory soapConnectionFactory = SOAPConnectionFactory.newInstance();
 			SOAPConnection soapConnection = soapConnectionFactory.createConnection();
@@ -830,44 +931,99 @@ public class FacturaServiceImpl implements FacturaService {
 			
 			// SOAP Envelope
 			SOAPEnvelope envelope = soapPart.getEnvelope();
-			envelope.addNamespaceDeclaration("ec", "http://ec.gob.sri.ws.recepcion");
 			
 			// SOAP Body
 			SOAPBody soapBody = envelope.getBody();
-			SOAPElement validarComprobante = soapBody.addChildElement("validarComprobante", "ec");
-			SOAPElement xml = validarComprobante.addChildElement("xml", "ec");
+			
+			// Crear elemento validarComprobante CON namespace
+			SOAPElement validarComprobante = soapBody.addChildElement("validarComprobante", "", "http://ec.gob.sri.ws.recepcion");
+			// Crear elemento xml SIN namespace usando createElementNS con namespace vacío
+			SOAPElement xml = validarComprobante.addChildElement(envelope.createName("xml", "", ""));
 			xml.addTextNode(xmlContent);
 			
 			soapMessage.saveChanges();
 			
+			System.out.println(">>> Mensaje SOAP Request creado correctamente");
+			log.println(">>> Mensaje SOAP Request creado correctamente");
+			
+			// Log del request completo
+			ByteArrayOutputStream requestBaos = new ByteArrayOutputStream();
+			soapMessage.writeTo(requestBaos);
+			String requestXml = requestBaos.toString("UTF-8");
+			System.out.println(">>> REQUEST SOAP enviado al SRI:");
+			System.out.println(requestXml);
+			log.println(">>> REQUEST SOAP enviado al SRI:");
+			log.println(requestXml);
+			
 			// Llamar al servicio
 			SOAPMessage soapResponse = soapConnection.call(soapMessage, url);
 			
-			// Procesar respuesta
+			System.out.println(">>> Respuesta recibida del SRI");
+			log.println(">>> Respuesta recibida del SRI");
+			
+			// Procesar respuesta - Convertir SOAP a String XML correctamente
 			SOAPBody responseBody = soapResponse.getSOAPBody();
-			log.println("Respuesta WS1: " + soapResponse.getSOAPPart().getEnvelope().toString());
+			
+			// Convertir el SOAPMessage completo a String XML
+			ByteArrayOutputStream baos = new ByteArrayOutputStream();
+			soapResponse.writeTo(baos);
+			String respuestaCompleta = baos.toString("UTF-8");
+			
+			System.out.println(">>> Respuesta WS1 completa:");
+			System.out.println(respuestaCompleta);
+			log.println(">>> Respuesta WS1 completa:");
+			log.println(respuestaCompleta);
 			
 			// Extraer estado
+			// Primero intentar buscar por getElementsByTagName (sin namespace)
 			NodeList estadoList = responseBody.getElementsByTagName("estado");
+			System.out.println(">>> Nodos <estado> encontrados (sin NS): " + estadoList.getLength());
+			log.println(">>> Nodos <estado> encontrados (sin NS): " + estadoList.getLength());
+			
+			// Si no encuentra, intentar con namespace
+			if (estadoList.getLength() == 0) {
+				estadoList = responseBody.getElementsByTagNameNS("*", "estado");
+				System.out.println(">>> Nodos <estado> encontrados (con NS): " + estadoList.getLength());
+				log.println(">>> Nodos <estado> encontrados (con NS): " + estadoList.getLength());
+			}
+			
 			if (estadoList.getLength() > 0) {
 				String estado = estadoList.item(0).getTextContent();
+				System.out.println(">>> Estado extraído: " + estado);
+				log.println(">>> Estado extraído: " + estado);
 				
 				// Verificar si hay mensaje de clave registrada
 				NodeList mensajeList = responseBody.getElementsByTagName("mensaje");
+				if (mensajeList.getLength() == 0) {
+					mensajeList = responseBody.getElementsByTagNameNS("*", "mensaje");
+				}
+				
 				if (mensajeList.getLength() > 0) {
 					String mensaje = mensajeList.item(0).getTextContent();
+					System.out.println(">>> Mensaje extraído: " + mensaje);
+					log.println(">>> Mensaje extraído: " + mensaje);
+					
 					if (mensaje != null && mensaje.contains("CLAVE ACCESO REGISTRADA")) {
+						System.out.println(">>> Clave de acceso ya registrada");
+						log.println(">>> Clave de acceso ya registrada");
+						soapConnection.close();
 						return "CLAVE ACCESO REGISTRADA";
 					}
 				}
 				
+				soapConnection.close();
 				return estado;
 			}
+			
+			System.out.println(">>> ADVERTENCIA: No se encontró nodo <estado> en la respuesta");
+			log.println(">>> ADVERTENCIA: No se encontró nodo <estado> en la respuesta");
 			
 			soapConnection.close();
 			return "SIN_RESPUESTA";
 			
 		} catch (Exception e) {
+			System.err.println(">>> ERROR en llamarRecepcionSRI: " + e.getMessage());
+			e.printStackTrace();
 			log.println("Error en llamarRecepcionSRI: " + e.getMessage());
 			e.printStackTrace(log);
 			throw e;
@@ -984,5 +1140,141 @@ public class FacturaServiceImpl implements FacturaService {
 		String mensaje;
 		String informacionAdicional;
 		String respuestaCompleta;
+	}
+	
+	/**
+	 * Obtiene y actualiza el secuencial para un punto de emisión y tipo de documento
+	 */
+	private String obtenerSecuencial(Long idPtoEmision, String tipoDoc) throws Exception {
+		System.out.println(">>> OBTENER SECUENCIAL PtoEmision[" + idPtoEmision + "] TipoComprobante[" + tipoDoc + "]");
+		
+		// Consultar numeración actual
+		String sql = "SELECT n FROM NumeracionPuntoEmision n WHERE n.ptoEmision.id = :ptoEmision AND n.tipoDoc = :tipoDoc";
+		Query query = em.createQuery(sql);
+		query.setParameter("ptoEmision", idPtoEmision);
+		query.setParameter("tipoDoc", tipoDoc);
+		
+		@SuppressWarnings("unchecked")
+		List<Object> resultados = query.getResultList();
+		
+		if (resultados.isEmpty()) {
+			throw new IncomeException("No existe numeración para el punto de emisión " + idPtoEmision + " y tipo de documento " + tipoDoc);
+		}
+		
+		com.saa.model.cxc.NumeracionPuntoEmision numeracion = (com.saa.model.cxc.NumeracionPuntoEmision) resultados.get(0);
+		Long numeroActual = numeracion.getNumActual();
+		Long nuevoNumero = numeroActual + 1;
+		
+		// Actualizar numeración
+		String sqlUpdate = "UPDATE NumeracionPuntoEmision n SET n.numActual = :nuevoNumero " +
+				"WHERE n.ptoEmision.id = :ptoEmision AND n.tipoDoc = :tipoDoc";
+		Query updateQuery = em.createQuery(sqlUpdate);
+		updateQuery.setParameter("nuevoNumero", nuevoNumero);
+		updateQuery.setParameter("ptoEmision", idPtoEmision);
+		updateQuery.setParameter("tipoDoc", tipoDoc);
+		updateQuery.executeUpdate();
+		
+		// Formatear secuencial a 9 dígitos
+		String secuencial = String.format("%09d", numeroActual);
+		System.out.println("Secuencial generado: " + secuencial);
+		
+		return secuencial;
+	}
+	
+	/**
+	 * Genera la clave de acceso usando el algoritmo módulo 11
+	 */
+	private String generarClaveAcceso(Factura factura, String tipoComprobante, Long ambiente, 
+			String tipoEmision, String secuencial) {
+		
+		// Formato de fecha ddMMyyyy
+		DateTimeFormatter formatter = DateTimeFormatter.ofPattern("ddMMyyyy");
+		String fechaClave = factura.getFecha().format(formatter);
+		
+		// Obtener datos del facturador
+		String ruc = factura.getFacturador().getNumDoc();
+		String codClave = factura.getFacturador().getCodClave();
+		
+		System.out.println("RUC: " + ruc);
+		System.out.println("CLAVE: " + codClave);
+		System.out.println("AMBIENTE: " + ambiente);
+		System.out.println("ESTABLECIMIENTO: " + factura.getNumEstablecimiento());
+		System.out.println("PTO: " + factura.getNumPtoEmision());
+		
+		// Armar clave sin dígito verificador
+		String claveSinDV = fechaClave + tipoComprobante + ruc + ambiente + 
+				factura.getNumEstablecimiento() + factura.getNumPtoEmision() + 
+				secuencial + codClave + tipoEmision;
+		
+		System.out.println(">>> GENERADOR CLAVE cadena[" + claveSinDV + "]");
+		
+		// Calcular dígito verificador con módulo 11
+		int digitoVerificador = calcularModulo11(claveSinDV);
+		
+		String claveCompleta = claveSinDV + digitoVerificador;
+		System.out.println(">>> CLAVE COMPLETA [" + claveCompleta + "]");
+		
+		return claveCompleta;
+	}
+	
+	/**
+	 * Calcula el dígito verificador usando módulo 11
+	 */
+	private int calcularModulo11(String cadena) {
+		// Invertir la cadena
+		String invertida = new StringBuilder(cadena).reverse().toString();
+		
+		int suma = 0;
+		int factor = 2;
+		
+		for (int i = 0; i < invertida.length(); i++) {
+			int digito = Character.getNumericValue(invertida.charAt(i));
+			suma += digito * factor;
+			
+			if (factor == 7) {
+				factor = 2;
+			} else {
+				factor++;
+			}
+		}
+		
+		int dv = 11 - (suma % 11);
+		
+		// Casos especiales
+		if (dv == 10) {
+			return 1;
+		} else if (dv == 11) {
+			return 0;
+		} else {
+			return dv;
+		}
+	}
+	
+	/**
+	 * Obtiene el directorio base de uploads desde la variable de sistema
+	 * (misma lógica que FileService)
+	 */
+	private String getBaseUploadDirectory() {
+		// Verificar si hay una variable de sistema configurada
+		String uploadDir = System.getProperty("saa.upload.dir");
+		if (uploadDir != null && !uploadDir.trim().isEmpty()) {
+			return uploadDir.endsWith("/") || uploadDir.endsWith("\\") ? uploadDir : uploadDir + "/";
+		}
+
+		// Verificar variable de entorno
+		uploadDir = System.getenv("SAA_UPLOAD_DIR");
+		if (uploadDir != null && !uploadDir.trim().isEmpty()) {
+			return uploadDir.endsWith("/") || uploadDir.endsWith("\\") ? uploadDir : uploadDir + "/";
+		}
+
+		// Directorio por defecto basado en el sistema operativo
+		String userHome = System.getProperty("user.home");
+		String osName = System.getProperty("os.name").toLowerCase();
+
+		if (osName.contains("windows")) {
+			return userHome + "/saa-uploads/";
+		} else {
+			return "/opt/saa-uploads/";
+		}
 	}
 }
