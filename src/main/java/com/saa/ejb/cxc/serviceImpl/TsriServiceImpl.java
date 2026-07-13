@@ -14,8 +14,8 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.cxc.dao.TsriDaoService;
 import com.saa.ejb.cxc.service.TsriService;
-import com.saa.model.cxc.Tsri;
 import com.saa.model.cxc.NombreEntidadesCobro;
+import com.saa.model.cxc.Tsri;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;

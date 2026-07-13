@@ -10,12 +10,16 @@ package com.saa.model.tsr;
 
 import java.io.Serializable;
 
+import com.saa.model.crd.Pais;
+
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
 import jakarta.persistence.SequenceGenerator;
@@ -58,7 +62,7 @@ public class Titular implements Serializable {
 	 * Nombre para le caso de personas naturales.
 	 */
 	@Basic
-	@Column(name = "TTLRNMBR", length = 50)
+	@Column(name = "TTLRNMBR", length = 2000)
 	private String nombre;
 	
 	/**
@@ -72,7 +76,7 @@ public class Titular implements Serializable {
 	 * Razon social para el caso de personas juridicas.
 	 */
 	@Basic
-	@Column(name = "TTLRRZSC", length = 100)
+	@Column(name = "TTLRRZSC", length = 2000)
 	private String razonSocial;
 	
 	/**
@@ -179,6 +183,20 @@ public class Titular implements Serializable {
 	@Basic
 	@Column(name = "TTLRDRCC", length = 2000)
 	private String direccion;
+	
+	/**
+	 * Indica si el titular es extranjero. 1 = Extranjero, 0 = Nacional
+	 */
+	@Basic
+	@Column(name = "TTLREXTR")
+	private Long extranjero;
+	
+	/**
+	 * Nombre del pais de donde es el titular
+	 */
+	@ManyToOne
+	@JoinColumn(name = "PSSSCDGO", referencedColumnName = "PSSSCDGO")
+	private Pais pais;
 	
 
 	/**
@@ -499,6 +517,38 @@ public class Titular implements Serializable {
 	 */
 	public void setDireccion(String direccion) {
 		this.direccion = direccion;
+	}
+
+	/**
+	 * Obtiene si el titular es extranjero. 1 = Extranjero, 0 = Nacional
+	 * @return extranjero
+	 */
+	public Long getExtranjero() {
+		return extranjero;
+	}
+
+	/**
+	 * Asigna si el titular es extranjero. 1 = Extranjero, 0 = Nacional
+	 * @param extranjero Nuevo valor para extranjero
+	 */
+	public void setExtranjero(Long extranjero) {
+		this.extranjero = extranjero;
+	}
+
+	/**
+	 * Obtiene el nombre del país de donde es el titular
+	 * @return pais
+	 */
+	public Pais getPais() {
+		return pais;
+	}
+
+	/**
+	 * Asigna el nombre del país de donde es el titular
+	 * @param pais Nuevo valor para pais
+	 */
+	public void setPais(Pais pais) {
+		this.pais = pais;
 	}
 
 }

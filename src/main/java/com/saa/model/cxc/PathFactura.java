@@ -1,0 +1,99 @@
+/**
+ * Copyright (c) 2010 Compuseg Cía. Ltda. 
+ * Av. Amazonas 3517 y Juan Pablo Sanz, Edif Xerox 6to. piso
+ * Quito - Ecuador
+ * Todos los derechos reservados. 
+ */
+package com.saa.model.cxc;
+
+import java.io.Serializable;
+
+import jakarta.persistence.Basic;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.NamedQueries;
+import jakarta.persistence.NamedQuery;
+import jakarta.persistence.Table;
+
+/**
+ * Entity PathFactura.
+ * Almacena las rutas de archivos relacionados a la factura (XML, PDF, etc).
+ */
+@SuppressWarnings("serial")
+@Entity
+@Table(name = "PTFC", schema = "CBR")
+@NamedQueries({
+	@NamedQuery(name = "PathFacturaAll", query = "select e from PathFactura e"),
+	@NamedQuery(name = "PathFacturaId", query = "select e from PathFactura e where e.id = :id")
+})
+public class PathFactura implements Serializable {
+
+	/**
+	 * Id de Tabla.
+	 */
+	@Basic
+	@Id
+	@Column(name = "ID", precision = 0)
+	@GeneratedValue(strategy = GenerationType.IDENTITY)
+	private Long id;
+	
+	/**
+	 * Factura a la que pertenece el path.
+	 */
+	@ManyToOne
+	@JoinColumn(name = "FACTURA", referencedColumnName = "ID")
+	private Factura factura;
+	
+	/**
+	 * Ruta del archivo (XML, PDF, etc).
+	 */
+	@Basic
+	@Column(name = "PATH", length = 1000)
+	private String path;
+	
+	/**
+	 * Indicador de archivo alterno o adicional.
+	 */
+	@Basic
+	@Column(name = "ALTERNO")
+	private Long alterno;
+
+	// Getters y Setters
+	
+	public Long getId() {
+		return id;
+	}
+
+	public void setId(Long id) {
+		this.id = id;
+	}
+
+	public Factura getFactura() {
+		return factura;
+	}
+
+	public void setFactura(Factura factura) {
+		this.factura = factura;
+	}
+
+	public String getPath() {
+		return path;
+	}
+
+	public void setPath(String path) {
+		this.path = path;
+	}
+
+	public Long getAlterno() {
+		return alterno;
+	}
+
+	public void setAlterno(Long alterno) {
+		this.alterno = alterno;
+	}
+}

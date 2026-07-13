@@ -48,7 +48,7 @@ public class GrupoProductoCobro implements Serializable {
 	@Basic
     @Id
     @Column(name = "GRPCCDGO", precision = 0)
-	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_GPCCCDGO")
+	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_GRPCCDGO")
     private Long codigo;
     
     /**

@@ -21,5 +21,5 @@ public interface TipoIdentificacion {
 	public static final int CEDULA_IDENTIDAD = 1;
 	public static final int RUC = 2;
 	public static final int PASAPORTE = 3;
-	public static final int RUC_JURIDICO = 4;
+	public static final int IDENTIFICACION_DEL_EXTERIOR = 4;
 }

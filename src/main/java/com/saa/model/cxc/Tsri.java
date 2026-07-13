@@ -54,7 +54,7 @@ public class Tsri implements Serializable {
      * Relación con la categoría LSRI.
      */
     @ManyToOne
-    @JoinColumn(name = "LSRI", referencedColumnName = "ID")
+    @JoinColumn(name = "LSRI", referencedColumnName = "TABLA")
     private Lsri lsri;
     
     /**

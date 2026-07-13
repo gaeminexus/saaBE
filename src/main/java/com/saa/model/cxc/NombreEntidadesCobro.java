@@ -41,5 +41,30 @@ public interface NombreEntidadesCobro {
 	String NUMERACION_PUNTO_EMISION = "NumeracionPuntoEmision";
 	String LSRI = "Lsri";
 	String TSRI = "Tsri";
+	String FACTURA = "Factura";
+	String DETALLE_FACTURA = "DetalleFactura";
+	String PATH_FACTURA = "PathFactura";
 	
+	// Liquidaciones de Compras y Servicios
+	String LIQUIDACION_COMPRA = "LiquidacionCompra";
+	String DETALLE_LIQUIDACION_COMPRA = "DetalleLiquidacionCompra";
+	String PATH_LIQUIDACION_COMPRA = "PathLiquidacionCompra";
+	
+	// Notas de Crédito
+	String NOTA_CREDITO = "NotaCredito";
+	String DETALLE_NOTA_CREDITO = "DetalleNotaCredito";
+	String PATH_NOTA_CREDITO = "PathNotaCredito";
+	
+	// Notas de Débito
+	String NOTA_DEBITO = "NotaDebito";
+	String DETALLE_NOTA_DEBITO = "DetalleNotaDebito";
+	String PATH_NOTA_DEBITO = "PathNotaDebito";
+	
+	// Retenciones
+	String RETENCION = "Retencion";
+	String DETALLE_RETENCION = "DetalleRetencion";
+	String PATH_RETENCION = "PathRetencion";
+	
+	// Retenciones V2
+	String RETENCION_V2 = "RetencionV2";
 }
