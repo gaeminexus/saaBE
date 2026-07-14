@@ -299,6 +299,9 @@ public class FacturaRest {
 		mapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
 		mapper.disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 		mapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+		// Zona horaria de Ecuador (UTC-5) para evitar que fechas enviadas como
+		// timestamp (medianoche UTC) se conviertan al día siguiente
+		mapper.setTimeZone(java.util.TimeZone.getTimeZone("America/Guayaquil"));
 		return mapper;
 	}
 

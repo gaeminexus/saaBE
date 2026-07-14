@@ -16,6 +16,7 @@ import com.saa.basico.util.IncomeException;
 import com.saa.ejb.cxc.dao.NotaCreditoDaoService;
 import com.saa.ejb.cxc.dao.PathNotaCreditoDaoService;
 import com.saa.ejb.cxc.service.NotaCreditoService;
+import com.saa.ejb.signature.service.SignatureService;
 import com.saa.model.cxc.NotaCredito;
 import com.saa.model.cxc.NombreEntidadesCobro;
 import com.saa.model.cxc.PathNotaCredito;
@@ -40,6 +41,9 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 	
 	@EJB
 	private PathNotaCreditoDaoService pathNotaCreditoDaoService;
+	
+	@EJB
+	private SignatureService signatureService;
 	
 	@PersistenceContext
 	private EntityManager em;
@@ -196,11 +200,10 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 		XMLStreamWriter writer = factory.createXMLStreamWriter(stringWriter);
 		DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 		
-		writer.writeStartDocument("UTF-8", "1.0");
-		writer.writeCharacters("\n");
+		// NO escribir declaración XML: el proceso de firma la agrega automáticamente
 		
 		writer.writeStartElement("notaCredito");
-		writer.writeAttribute("id", notaCredito.getClave());  // Usar clave de acceso como ID
+		writer.writeAttribute("id", "comprobante");  // SIEMPRE "comprobante" según estándar SRI
 		writer.writeAttribute("version", "1.0.0");
 		writer.writeCharacters("\n");
 		
@@ -391,11 +394,10 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 		String resourcesPath = baseUploadDir + "resources/" + idFacturador;
 		
 		try {
-			// 1. Grabar XML firmado
-			String strXML = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" + xml;
+			// 1. Grabar XML firmado TAL CUAL viene (NO modificar nada post-firma)
 			Path pathFirmado = Paths.get(resourcesPath + "/ntcr/f/" + clave + ".xml");
 			Files.createDirectories(pathFirmado.getParent());
-			Files.write(pathFirmado, strXML.getBytes("UTF-8"));
+			Files.write(pathFirmado, xml.getBytes("UTF-8"));
 			
 			// 2. Insertar path firmado en tabla ptnc (alterno=3)
 			PathNotaCredito pathF = new PathNotaCredito();
@@ -419,13 +421,15 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 					Files.createDirectories(logWS1.getParent());
 					PrintWriter logWriter1 = new PrintWriter(new FileWriter(logWS1.toFile()));
 					
-					String contenidoXML = new String(Files.readAllBytes(pathFirmado), "UTF-8");
-					String estadoRecepcion = llamarRecepcionSRI(urlWS1, contenidoXML, logWriter1);
+					// Leer bytes crudos del XML firmado (NO convertir a String, preserva la firma)
+					byte[] bytesXMLFirmado = Files.readAllBytes(pathFirmado);
+					String estadoRecepcion = llamarRecepcionSRI(urlWS1, bytesXMLFirmado, logWriter1);
 					
 					logWriter1.close();
 					
+					// Guardar copia exacta del XML enviado
 					Path pathEnviado = Paths.get(resourcesPath + "/ntcr/e/" + clave + ".xml");
-					Files.write(pathEnviado, contenidoXML.getBytes("UTF-8"));
+					Files.write(pathEnviado, bytesXMLFirmado);
 					
 					PathNotaCredito pathE = new PathNotaCredito();
 					pathE.setNotaCredito(notaCredito);
@@ -611,6 +615,10 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 			if (clave == null || clave.isEmpty()) {
 				throw new Exception("La nota de crédito no tiene clave de acceso");
 			}
+			Long idFacturador = notaCredito.getFacturador() != null ? notaCredito.getFacturador().getId() : null;
+			if (idFacturador == null) {
+				throw new Exception("La nota de crédito no tiene facturador asociado");
+			}
 			resultado.put("claveAcceso", clave);
 			System.out.println("Clave de acceso: " + clave);
 			
@@ -618,27 +626,22 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 			System.out.println("Paso 2: Generando XML...");
 			String[] resultadoXML = this.generarXMLNotaCredito(clave, ambiente);
 			resultado.put("paso2_xml", "OK");
-			resultado.put("xmlMensaje", resultadoXML[0]);
-			resultado.put("xmlPathRelativo", resultadoXML[1]);
 			resultado.put("xmlPathAbsoluto", resultadoXML[2]);
 			System.out.println("XML generado: " + resultadoXML[0]);
 			
-			// 6. Leer el contenido del XML generado
-			String xmlContent = new String(java.nio.file.Files.readAllBytes(
+			// 6. Leer XML sin firmar y firmarlo
+			System.out.println("Paso 3: Firmando XML electrónicamente...");
+			String xmlSinFirmar = new String(java.nio.file.Files.readAllBytes(
 				java.nio.file.Paths.get(resultadoXML[2])), java.nio.charset.StandardCharsets.UTF_8);
+			String xmlFirmado = signatureService.firmarXMLFacturador(xmlSinFirmar, idFacturador);
+			resultado.put("paso3_firma", "OK");
+			System.out.println("✓ XML firmado electrónicamente");
 			
 			// 7. Autorizar ante el SRI
-			System.out.println("Paso 3: Autorizando ante el SRI...");
-			Long idFacturador = notaCredito.getFacturador() != null ? 
-				notaCredito.getFacturador().getId() : null;
-			
-			if (idFacturador == null) {
-				throw new Exception("La nota de crédito no tiene facturador asociado");
-			}
-			
+			System.out.println("Paso 4: Autorizando ante el SRI...");
 			String resultadoAutorizacion = this.autorizarNotaCredito(
 				idFacturador, ambiente, conectaSRI, clave, 
-				notaCredito.getId(), xmlContent, destinatario, pathLogo);
+				notaCredito.getId(), xmlFirmado, destinatario, pathLogo);
 			
 			resultado.put("paso3_autorizacion", "OK");
 			resultado.put("autorizacionMensaje", resultadoAutorizacion);
@@ -666,7 +669,7 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 		return resultado;
 	}
 	
-	private String llamarRecepcionSRI(String url, String xmlContent, PrintWriter log) throws Exception {
+	private String llamarRecepcionSRI(String url, byte[] xmlBytes, PrintWriter log) throws Exception {
 		try {
 			SOAPConnectionFactory soapConnectionFactory = SOAPConnectionFactory.newInstance();
 			SOAPConnection soapConnection = soapConnectionFactory.createConnection();
@@ -676,32 +679,45 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 			SOAPPart soapPart = soapMessage.getSOAPPart();
 			
 			SOAPEnvelope envelope = soapPart.getEnvelope();
-			envelope.addNamespaceDeclaration("ec", "http://ec.gob.sri.ws.recepcion");
 			
 			SOAPBody soapBody = envelope.getBody();
-			SOAPElement validarComprobante = soapBody.addChildElement("validarComprobante", "ec");
-			SOAPElement xml = validarComprobante.addChildElement("xml", "ec");
-			xml.addTextNode(xmlContent);
+			SOAPElement validarComprobante = soapBody.addChildElement("validarComprobante", "", "http://ec.gob.sri.ws.recepcion");
+			SOAPElement xml = validarComprobante.addChildElement(envelope.createName("xml", "", ""));
+			
+			// Codificar bytes raw en Base64 (NO convertir a String: preserva la firma)
+			String xmlBase64 = java.util.Base64.getEncoder().encodeToString(xmlBytes);
+			xml.addTextNode(xmlBase64);
 			
 			soapMessage.saveChanges();
 			
 			SOAPMessage soapResponse = soapConnection.call(soapMessage, url);
 			
-			SOAPBody responseBody = soapResponse.getSOAPBody();
-			log.println("Respuesta WS1: " + soapResponse.getSOAPPart().getEnvelope().toString());
+			java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+			soapResponse.writeTo(baos);
+			String respuestaCompleta = baos.toString("UTF-8");
+			log.println("Respuesta WS1: " + respuestaCompleta);
 			
+			SOAPBody responseBody = soapResponse.getSOAPBody();
 			NodeList estadoList = responseBody.getElementsByTagName("estado");
+			if (estadoList.getLength() == 0) {
+				estadoList = responseBody.getElementsByTagNameNS("*", "estado");
+			}
 			if (estadoList.getLength() > 0) {
 				String estado = estadoList.item(0).getTextContent();
 				
 				NodeList mensajeList = responseBody.getElementsByTagName("mensaje");
+				if (mensajeList.getLength() == 0) {
+					mensajeList = responseBody.getElementsByTagNameNS("*", "mensaje");
+				}
 				if (mensajeList.getLength() > 0) {
 					String mensaje = mensajeList.item(0).getTextContent();
 					if (mensaje != null && mensaje.contains("CLAVE ACCESO REGISTRADA")) {
+						soapConnection.close();
 						return "CLAVE ACCESO REGISTRADA";
 					}
 				}
 				
+				soapConnection.close();
 				return estado;
 			}
 			
@@ -725,61 +741,53 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 			SOAPPart soapPart = soapMessage.getSOAPPart();
 			
 			SOAPEnvelope envelope = soapPart.getEnvelope();
-			envelope.addNamespaceDeclaration("ec", "http://ec.gob.sri.ws.autorizacion");
-			
 			SOAPBody soapBody = envelope.getBody();
-			SOAPElement autorizacionComprobante = soapBody.addChildElement("autorizacionComprobante", "ec");
-			SOAPElement claveAccesoElement = autorizacionComprobante.addChildElement("claveAccesoComprobante", "ec");
+			SOAPElement autorizacionComprobante = soapBody.addChildElement("autorizacionComprobante", "", "http://ec.gob.sri.ws.autorizacion");
+			SOAPElement claveAccesoElement = autorizacionComprobante.addChildElement(envelope.createName("claveAccesoComprobante", "", ""));
 			claveAccesoElement.addTextNode(claveAcceso);
 			
 			soapMessage.saveChanges();
 			
 			SOAPMessage soapResponse = soapConnection.call(soapMessage, url);
 			
-			SOAPBody responseBody = soapResponse.getSOAPBody();
-			String respuestaCompleta = soapResponse.getSOAPPart().getEnvelope().toString();
+			java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+			soapResponse.writeTo(baos);
+			String respuestaCompleta = baos.toString("UTF-8");
 			
+			SOAPBody responseBody = soapResponse.getSOAPBody();
 			ResultadoAutorizacion resultado = new ResultadoAutorizacion();
 			resultado.respuestaCompleta = respuestaCompleta;
 			
 			NodeList estadoList = responseBody.getElementsByTagName("estado");
-			if (estadoList.getLength() > 0) {
-				resultado.estado = estadoList.item(0).getTextContent();
-			}
+			if (estadoList.getLength() == 0) estadoList = responseBody.getElementsByTagNameNS("*", "estado");
+			if (estadoList.getLength() > 0) resultado.estado = estadoList.item(0).getTextContent();
 			
 			NodeList numAutList = responseBody.getElementsByTagName("numeroAutorizacion");
-			if (numAutList.getLength() > 0) {
-				resultado.numeroAutorizacion = numAutList.item(0).getTextContent();
-			}
+			if (numAutList.getLength() == 0) numAutList = responseBody.getElementsByTagNameNS("*", "numeroAutorizacion");
+			if (numAutList.getLength() > 0) resultado.numeroAutorizacion = numAutList.item(0).getTextContent();
 			
 			NodeList fechaAutList = responseBody.getElementsByTagName("fechaAutorizacion");
-			if (fechaAutList.getLength() > 0) {
-				resultado.fechaAutorizacion = fechaAutList.item(0).getTextContent();
-			}
+			if (fechaAutList.getLength() == 0) fechaAutList = responseBody.getElementsByTagNameNS("*", "fechaAutorizacion");
+			if (fechaAutList.getLength() > 0) resultado.fechaAutorizacion = fechaAutList.item(0).getTextContent();
 			
 			NodeList comprobanteList = responseBody.getElementsByTagName("comprobante");
-			if (comprobanteList.getLength() > 0) {
-				resultado.comprobanteXML = comprobanteList.item(0).getTextContent();
-			}
+			if (comprobanteList.getLength() == 0) comprobanteList = responseBody.getElementsByTagNameNS("*", "comprobante");
+			if (comprobanteList.getLength() > 0) resultado.comprobanteXML = comprobanteList.item(0).getTextContent();
 			
 			NodeList mensajeIdList = responseBody.getElementsByTagName("identificador");
-			if (mensajeIdList.getLength() > 0) {
-				resultado.mensajeId = mensajeIdList.item(0).getTextContent();
-			}
+			if (mensajeIdList.getLength() == 0) mensajeIdList = responseBody.getElementsByTagNameNS("*", "identificador");
+			if (mensajeIdList.getLength() > 0) resultado.mensajeId = mensajeIdList.item(0).getTextContent();
 			
 			NodeList mensajeList = responseBody.getElementsByTagName("mensaje");
-			if (mensajeList.getLength() > 0) {
-				resultado.mensaje = mensajeList.item(0).getTextContent();
-			}
+			if (mensajeList.getLength() == 0) mensajeList = responseBody.getElementsByTagNameNS("*", "mensaje");
+			if (mensajeList.getLength() > 0) resultado.mensaje = mensajeList.item(0).getTextContent();
 			
 			NodeList infoAdicionalList = responseBody.getElementsByTagName("informacionAdicional");
-			if (infoAdicionalList.getLength() > 0) {
-				resultado.informacionAdicional = infoAdicionalList.item(0).getTextContent();
-			}
+			if (infoAdicionalList.getLength() == 0) infoAdicionalList = responseBody.getElementsByTagNameNS("*", "informacionAdicional");
+			if (infoAdicionalList.getLength() > 0) resultado.informacionAdicional = infoAdicionalList.item(0).getTextContent();
 			
 			soapConnection.close();
 			return resultado;
-			
 		} catch (Exception e) {
 			throw e;
 		}

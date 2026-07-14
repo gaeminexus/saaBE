@@ -16,6 +16,7 @@ import com.saa.basico.util.IncomeException;
 import com.saa.ejb.cxc.dao.RetencionDaoService;
 import com.saa.ejb.cxc.dao.PathRetencionDaoService;
 import com.saa.ejb.cxc.service.RetencionService;
+import com.saa.ejb.signature.service.SignatureService;
 import com.saa.model.cxc.Retencion;
 import com.saa.model.cxc.NombreEntidadesCobro;
 import com.saa.model.cxc.PathRetencion;
@@ -40,6 +41,9 @@ public class RetencionServiceImpl implements RetencionService {
 	
 	@EJB
 	private PathRetencionDaoService pathRetencionDaoService;
+	
+	@EJB
+	private SignatureService signatureService;
 	
 	@PersistenceContext
 	private EntityManager em;
@@ -76,55 +80,31 @@ public class RetencionServiceImpl implements RetencionService {
 	@Override
 	public Retencion saveSingle(Retencion entidad) throws Throwable {
 		System.out.println("saveSingle - Retencion");
-		
-		// Si es una nueva retención, generar campos automáticos
 		if (entidad.getId() == null) {
 			entidad.setEstado(Long.valueOf(Estado.ACTIVO));
-			
-			// Validar que tenga los datos necesarios
 			if (entidad.getPtoEmision() == null) {
 				throw new IncomeException("Debe especificar un punto de emisión para la retención");
 			}
 			if (entidad.getFacturador() == null || entidad.getFacturador().getId() == null) {
 				throw new IncomeException("Debe especificar un facturador para la retención");
 			}
-			
-			// Constantes según SRI
 			String tipoComprobante = "07"; // Retención
 			Long ambiente = entidad.getAmbiente() != null ? entidad.getAmbiente() : 1L;
-			String tipoEmision = "1"; // Emisión Normal
-			
+			String tipoEmision = "1";
 			try {
-				// 1. Obtener secuencial
 				String secuencial = obtenerSecuencial(entidad.getPtoEmision().getId(), tipoComprobante);
 				entidad.setSecuencial(secuencial);
-				
-				// 2. Generar número
-				String numero = entidad.getNumEstablecimiento() + "-" + 
-						entidad.getNumPtoEmision() + "-" + secuencial;
+				String numero = entidad.getNumEstablecimiento() + "-" + entidad.getNumPtoEmision() + "-" + secuencial;
 				entidad.setNumero(numero);
-				System.out.println("Número de retención generado: " + numero);
-				
-				// 3. Generar clave de acceso
 				String clave = generarClaveAcceso(entidad, tipoComprobante, ambiente, tipoEmision, secuencial);
 				entidad.setClave(clave);
-				System.out.println("Clave de acceso generada: " + clave);
-				
-				// 4. Establecer tipo de comprobante
 				entidad.setTipoComprobante(tipoComprobante);
-				
-				// 5. Establecer estado de emisión inicial
-				if (entidad.getEstadoEmision() == null) {
-					entidad.setEstadoEmision(1L);
-				}
-				
+				if (entidad.getEstadoEmision() == null) entidad.setEstadoEmision(1L);
 			} catch (Exception e) {
-				System.err.println("ERROR al generar campos automáticos de retención: " + e.getMessage());
 				e.printStackTrace();
 				throw new IncomeException("Error al generar datos de la retención: " + e.getMessage());
 			}
 		}
-		
 		entidad = retencionDaoService.save(entidad, entidad.getId());
 		return entidad;
 	}
@@ -141,21 +121,16 @@ public class RetencionServiceImpl implements RetencionService {
 	@Override
 	public String[] generarXMLRetencion(String clave, Long ambiente) throws Throwable {
 		System.out.println("Ingresa al metodo generarXMLRetencion con clave: " + clave + " y ambiente: " + ambiente);
-		
 		try {
 			String sqlRetencion = "SELECT r FROM Retencion r WHERE r.clave = :clave";
 			Query query = em.createQuery(sqlRetencion);
 			query.setParameter("clave", clave);
 			Retencion retencion = (Retencion) query.getSingleResult();
-			
-			if (retencion == null) {
-				throw new IncomeException("Retencion con clave " + clave + " no encontrada");
-			}
+			if (retencion == null) throw new IncomeException("Retencion con clave " + clave + " no encontrada");
 			
 			Long idFacturador = retencion.getFacturador().getId();
 			
-			String sqlEstab = "SELECT e.direccion FROM PuntoEmision pe " +
-					"JOIN pe.establecimiento e WHERE pe.id = :ptoEmisionId";
+			String sqlEstab = "SELECT e.direccion FROM PuntoEmision pe JOIN pe.establecimiento e WHERE pe.id = :ptoEmisionId";
 			Query queryEstab = em.createQuery(sqlEstab);
 			queryEstab.setParameter("ptoEmisionId", retencion.getPtoEmision().getId());
 			String dirEstablecimiento = (String) queryEstab.getSingleResult();
@@ -172,14 +147,11 @@ public class RetencionServiceImpl implements RetencionService {
 			String baseUploadDir = getBaseUploadDirectory();
 			String pathAbsoluto = baseUploadDir + pathRelativo;
 			
-			System.out.println("Guardando XML Retencion en: " + pathAbsoluto);
-			
 			Path path = Paths.get(pathAbsoluto);
 			Files.createDirectories(path.getParent());
 			Files.write(path, xmlContent.getBytes("UTF-8"));
 			
 			System.out.println("✓ XML Retencion generado correctamente en: " + pathAbsoluto);
-			
 			return new String[]{"OK", pathRelativo, pathAbsoluto};
 		} catch (Exception e) {
 			e.printStackTrace();
@@ -189,36 +161,30 @@ public class RetencionServiceImpl implements RetencionService {
 	
 	private String generarXMLContentRetencion(Retencion retencion, String dirEstablecimiento,
 			List<Object> detalles, Long ambiente) throws Exception {
-		
 		StringWriter stringWriter = new StringWriter();
 		XMLOutputFactory factory = XMLOutputFactory.newInstance();
 		XMLStreamWriter writer = factory.createXMLStreamWriter(stringWriter);
 		DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 		
-		writer.writeStartDocument("UTF-8", "1.0");
-		writer.writeCharacters("\n");
+		// NO escribir declaración XML: el proceso de firma la agrega automáticamente
 		
 		writer.writeStartElement("comprobanteRetencion");
-		writer.writeAttribute("id", retencion.getClave());  // Usar clave de acceso como ID
+		writer.writeAttribute("id", "comprobante");  // SIEMPRE "comprobante" según estándar SRI
 		writer.writeAttribute("version", "1.0.0");
 		writer.writeCharacters("\n");
 		
-		// infoTributaria
 		writeInfoTributaria(writer, retencion, "07", ambiente);
 		
-		// infoCompRetencion
 		writer.writeCharacters("  ");
 		writer.writeStartElement("infoCompRetencion");
 		writer.writeCharacters("\n");
 		
 		writeElement(writer, "fechaEmision", retencion.getFecha().format(dateFormatter), 4);
 		writeElement(writer, "dirEstablecimiento", nvl(dirEstablecimiento, ""), 4);
-		
 		if (retencion.getFacturador().getContribuyenteEspecial() != null && 
 				!retencion.getFacturador().getContribuyenteEspecial().isEmpty()) {
 			writeElement(writer, "contribuyenteEspecial", retencion.getFacturador().getContribuyenteEspecial(), 4);
 		}
-		
 		String obligado = (retencion.getFacturador().getContabilidad() != null && 
 				retencion.getFacturador().getContabilidad() == 1) ? "SI" : "NO";
 		writeElement(writer, "obligadoContabilidad", obligado, 4);
@@ -231,10 +197,7 @@ public class RetencionServiceImpl implements RetencionService {
 		writer.writeEndElement(); // infoCompRetencion
 		writer.writeCharacters("\n");
 		
-		// impuestos
 		writeImpuestos(writer, detalles);
-		
-		// infoAdicional
 		writeInfoAdicional(writer, retencion);
 		
 		writer.writeEndElement(); // comprobanteRetencion
@@ -244,12 +207,11 @@ public class RetencionServiceImpl implements RetencionService {
 		return stringWriter.toString();
 	}
 	
-	private void writeInfoTributaria(XMLStreamWriter writer, Retencion retencion, 
+	private void writeInfoTributaria(XMLStreamWriter writer, Retencion retencion,
 			String tipoDoc, Long ambiente) throws Exception {
 		writer.writeCharacters("  ");
 		writer.writeStartElement("infoTributaria");
 		writer.writeCharacters("\n");
-		
 		writeElement(writer, "ambiente", String.valueOf(ambiente), 4);
 		writeElement(writer, "tipoEmision", "1", 4);
 		writeElement(writer, "razonSocial", nvl(retencion.getFacturador().getRazonSocial(), ""), 4);
@@ -261,7 +223,6 @@ public class RetencionServiceImpl implements RetencionService {
 		writeElement(writer, "ptoEmi", nvl(retencion.getNumPtoEmision(), ""), 4);
 		writeElement(writer, "secuencial", nvl(retencion.getSecuencial(), ""), 4);
 		writeElement(writer, "dirMatriz", nvl(retencion.getFacturador().getDireccion(), ""), 4);
-		
 		if (retencion.getFacturador().getMicroEmpresa() != null && retencion.getFacturador().getMicroEmpresa() == 1) {
 			writeElement(writer, "regimenMicroempresas", "CONTRIBUYENTE RÉGIMEN MICROEMPRESAS", 4);
 		}
@@ -274,7 +235,6 @@ public class RetencionServiceImpl implements RetencionService {
 		if (retencion.getFacturador().getPopularRimpe() != null && retencion.getFacturador().getPopularRimpe() == 1) {
 			writeElement(writer, "contribuyenteRimpe", "CONTRIBUYENTE NEGOCIO POPULAR - RÉGIMEN RIMPE", 4);
 		}
-		
 		writer.writeCharacters("  ");
 		writer.writeEndElement();
 		writer.writeCharacters("\n");
@@ -316,31 +276,25 @@ public class RetencionServiceImpl implements RetencionService {
 		return value != null ? value : defaultValue;
 	}
 	
-	/*private String formatDecimal(Double value) {
-		if (value == null) {
-			return "0.00";
-		}
-		return String.format("%.2f", value);
-	}*/
+	private String formatDecimal(Double value) {
+		if (value == null) return "0.00";
+		return String.format(java.util.Locale.US, "%.2f", value);
+	}
 	
 	@Override
 	public String autorizarRetencion(Long idFacturador, Long ambiente, Long conectaSRI, String clave,
 			Long codigoRetencion, String xml, String destinatario, String pathLogo) throws Throwable {
 		System.out.println("Ingresa al metodo autorizarRetencion con clave: " + clave);
-		
 		String respuesta = "";
-		// Usar directorio base de uploads en lugar de user.dir
 		String baseUploadDir = getBaseUploadDirectory();
 		String resourcesPath = baseUploadDir + "resources/" + idFacturador;
 		
 		try {
-			// 1. Grabar XML firmado
-			String strXML = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" + xml;
+			// 1. Grabar XML firmado TAL CUAL viene (NO modificar nada post-firma)
 			Path pathFirmado = Paths.get(resourcesPath + "/rtnc/f/" + clave + ".xml");
 			Files.createDirectories(pathFirmado.getParent());
-			Files.write(pathFirmado, strXML.getBytes("UTF-8"));
+			Files.write(pathFirmado, xml.getBytes("UTF-8"));
 			
-			// 2. Insertar path firmado en tabla ptrt (alterno=3)
 			PathRetencion pathF = new PathRetencion();
 			Retencion retencion = retencionDaoService.selectById(codigoRetencion, NombreEntidadesCobro.RETENCION);
 			pathF.setRetencion(retencion);
@@ -348,7 +302,6 @@ public class RetencionServiceImpl implements RetencionService {
 			pathF.setAlterno(3L);
 			pathRetencionDaoService.save(pathF, null);
 			
-			// 3. Actualizar estado a FIRMADA (estado=3)
 			retencion.setEstado(3L);
 			retencionDaoService.save(retencion, retencion.getId());
 			
@@ -356,19 +309,18 @@ public class RetencionServiceImpl implements RetencionService {
 				String urlWS1 = ambiente == 1 
 						? "https://celcer.sri.gob.ec/comprobantes-electronicos-ws/RecepcionComprobantesOffline?wsdl"
 						: "https://cel.sri.gob.ec/comprobantes-electronicos-ws/RecepcionComprobantesOffline?wsdl";
-				
 				try {
 					Path logWS1 = Paths.get(resourcesPath + "/rtnc/e/" + clave + ".txt");
 					Files.createDirectories(logWS1.getParent());
 					PrintWriter logWriter1 = new PrintWriter(new FileWriter(logWS1.toFile()));
 					
-					String contenidoXML = new String(Files.readAllBytes(pathFirmado), "UTF-8");
-					String estadoRecepcion = llamarRecepcionSRI(urlWS1, contenidoXML, logWriter1);
-					
+					// Leer bytes crudos del XML firmado (NO convertir a String, preserva la firma)
+					byte[] bytesXMLFirmado = Files.readAllBytes(pathFirmado);
+					String estadoRecepcion = llamarRecepcionSRI(urlWS1, bytesXMLFirmado, logWriter1);
 					logWriter1.close();
 					
 					Path pathEnviado = Paths.get(resourcesPath + "/rtnc/e/" + clave + ".xml");
-					Files.write(pathEnviado, contenidoXML.getBytes("UTF-8"));
+					Files.write(pathEnviado, bytesXMLFirmado);
 					
 					PathRetencion pathE = new PathRetencion();
 					pathE.setRetencion(retencion);
@@ -381,14 +333,11 @@ public class RetencionServiceImpl implements RetencionService {
 					
 					if ("RECIBIDA".equals(estadoRecepcion)) {
 						Thread.sleep(2000);
-						
 						String urlWS2 = ambiente == 1
 								? "https://celcer.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl"
 								: "https://cel.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl";
-						
 						try {
 							ResultadoAutorizacion resultado = llamarAutorizacionSRI(urlWS2, clave);
-							
 							if ("AUTORIZADO".equals(resultado.estado)) {
 								Path logWS2A = Paths.get(resourcesPath + "/rtnc/a/" + clave + ".txt");
 								Files.createDirectories(logWS2A.getParent());
@@ -410,7 +359,6 @@ public class RetencionServiceImpl implements RetencionService {
 								retencion.setAutorizacion(resultado.numeroAutorizacion);
 								retencion.setFechaAutorizacion(parseFechaAutorizacion(resultado.fechaAutorizacion));
 								retencionDaoService.save(retencion, retencion.getId());
-								
 								respuesta = resultado.estado;
 								
 								if (ambiente == 2) {
@@ -419,35 +367,27 @@ public class RetencionServiceImpl implements RetencionService {
 									updateQuery.setParameter("idFacturador", idFacturador);
 									updateQuery.executeUpdate();
 								}
-								
 							} else {
 								Path logWS2N = Paths.get(resourcesPath + "/rtnc/n/" + clave + ".txt");
 								Files.createDirectories(logWS2N.getParent());
 								PrintWriter logWriter2N = new PrintWriter(new FileWriter(logWS2N.toFile()));
 								logWriter2N.println("Respuesta WS2: " + resultado.respuestaCompleta);
 								logWriter2N.close();
-								
 								if (resultado.comprobanteXML != null) {
 									Path pathNoAutorizado = Paths.get(resourcesPath + "/rtnc/n/" + clave + ".xml");
 									Files.write(pathNoAutorizado, resultado.comprobanteXML.getBytes("UTF-8"));
-									
 									PathRetencion pathN = new PathRetencion();
 									pathN.setRetencion(retencion);
 									pathN.setPath("resources/" + idFacturador + "/rtnc/n/" + clave + ".xml");
 									pathN.setAlterno(6L);
 									pathRetencionDaoService.save(pathN, null);
 								}
-								
 								retencion.setEstado(6L);
 								retencion.setEstadoEmision(2L);
 								retencionDaoService.save(retencion, retencion.getId());
-								
-								respuesta = "Estado: " + resultado.estado + 
-										" Id: " + nvl(resultado.mensajeId, "") +
-										" Mensaje: " + nvl(resultado.mensaje, "") +
-										" / " + nvl(resultado.informacionAdicional, "");
+								respuesta = "Estado: " + resultado.estado + " Id: " + nvl(resultado.mensajeId, "") +
+										" Mensaje: " + nvl(resultado.mensaje, "") + " / " + nvl(resultado.informacionAdicional, "");
 							}
-							
 						} catch (Exception e) {
 							Path logWS2Error = Paths.get(resourcesPath + "/rtnc/n/" + clave + ".txt");
 							Files.createDirectories(logWS2Error.getParent());
@@ -455,19 +395,14 @@ public class RetencionServiceImpl implements RetencionService {
 							logWriter2E.println("Error al llamar SRI_2: " + e.getMessage());
 							e.printStackTrace(logWriter2E);
 							logWriter2E.close();
-							
 							Files.copy(pathFirmado, Paths.get(resourcesPath + "/rtnc/n/" + clave + ".xml"));
-							
 							retencion.setEstado(6L);
 							retencion.setEstadoEmision(2L);
 							retencionDaoService.save(retencion, retencion.getId());
-							
 							respuesta = "Error al llamar SRI_2: " + e.getMessage();
 						}
-						
 					} else {
 						respuesta = "Estado: " + estadoRecepcion;
-						
 						if (estadoRecepcion != null && estadoRecepcion.contains("CLAVE ACCESO REGISTRADA")) {
 							respuesta = "Comprobante Autorizado";
 							retencion.setAutorizacion(clave);
@@ -476,21 +411,17 @@ public class RetencionServiceImpl implements RetencionService {
 							retencionDaoService.save(retencion, retencion.getId());
 						}
 					}
-					
 				} catch (Exception e) {
 					respuesta = "Error al llamar SRI_1: " + e.getMessage();
 					e.printStackTrace();
 				}
-				
 			} else {
 				respuesta = "Retencion Generada pero no enviada";
 			}
-			
 		} catch (Exception e) {
 			e.printStackTrace();
 			throw new IncomeException("Error en autorizarRetencion: " + e.getMessage());
 		}
-		
 		return respuesta;
 	}
 	
@@ -503,154 +434,111 @@ public class RetencionServiceImpl implements RetencionService {
 		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
 		
 		try {
-			// 1. Configurar valores por defecto
-			if (ambiente == null) {
-				ambiente = 1L; // PRUEBA
-				System.out.println("Ambiente configurado automáticamente: PRUEBA (1)");
-			}
-			if (conectaSRI == null) {
-				conectaSRI = 1L; // SI
-				System.out.println("ConectaSRI configurado automáticamente: SI (1)");
-			}
-			if (pathLogo == null) {
-				pathLogo = "resources/logos/logo_aso.png";
-				System.out.println("PathLogo configurado automáticamente: " + pathLogo);
-			}
+			if (ambiente == null) ambiente = 1L;
+			if (conectaSRI == null) conectaSRI = 1L;
+			if (pathLogo == null) pathLogo = "resources/logos/logo_aso.png";
 			
-			// 2. Grabar la retención - USAR EL MISMO OBJETO (genera campos automáticos)
 			System.out.println("Paso 1: Grabando retención...");
 			retencion = this.saveSingle(retencion);
 			resultado.put("retencion", retencion);
-			resultado.put("paso1_grabacion", "OK");
 			System.out.println("✓ Retención grabada con ID: " + retencion.getId());
 			System.out.println("✓ Clave generada: " + retencion.getClave());
-			System.out.println("✓ Número generado: " + retencion.getNumero());
-			System.out.println("✓ Secuencial generado: " + retencion.getSecuencial());
 			
-			// 2.5. Guardar los detalles de la retención
 			if (detalles != null && !detalles.isEmpty()) {
-				System.out.println("Paso 1.5: Guardando " + detalles.size() + " detalles de retención...");
 				for (com.saa.model.cxc.DetalleRetencion detalle : detalles) {
 					detalle.setRetencion(retencion);
-					if (detalle.getEstado() == null) {
-						detalle.setEstado(Long.valueOf(Estado.ACTIVO));
-					}
+					if (detalle.getEstado() == null) detalle.setEstado(Long.valueOf(Estado.ACTIVO));
 					em.persist(detalle);
 				}
 				em.flush();
-				System.out.println("✓ Detalles guardados correctamente");
-			} else {
-				System.out.println("⚠ No hay detalles para guardar");
 			}
 			
-			// 3. Obtener destinatario del proveedor si no se proporcionó
 			if (destinatario == null && retencion.getProveedor() != null) {
 				destinatario = retencion.getProveedor().getEmail();
-				System.out.println("Destinatario obtenido del proveedor: " + destinatario);
 			}
 			
-			// 4. Obtener la clave de acceso
 			String clave = retencion.getClave();
-			if (clave == null || clave.isEmpty()) {
-				throw new Exception("La retención no tiene clave de acceso");
-			}
+			if (clave == null || clave.isEmpty()) throw new Exception("La retención no tiene clave de acceso");
+			Long idFacturador = retencion.getFacturador() != null ? retencion.getFacturador().getId() : null;
+			if (idFacturador == null) throw new Exception("La retención no tiene facturador asociado");
 			resultado.put("claveAcceso", clave);
-			System.out.println("Clave de acceso: " + clave);
 			
-			// 5. Generar XML
+			// Paso 2: Generar XML
 			System.out.println("Paso 2: Generando XML...");
 			String[] resultadoXML = this.generarXMLRetencion(clave, ambiente);
 			resultado.put("paso2_xml", "OK");
-			resultado.put("xmlMensaje", resultadoXML[0]);
-			resultado.put("xmlPathRelativo", resultadoXML[1]);
-			resultado.put("xmlPathAbsoluto", resultadoXML[2]);
 			System.out.println("XML generado: " + resultadoXML[0]);
 			
-			// 6. Leer el contenido del XML generado
-			String xmlContent = new String(java.nio.file.Files.readAllBytes(
+			// Paso 3: Firmar XML
+			System.out.println("Paso 3: Firmando XML electrónicamente...");
+			String xmlSinFirmar = new String(java.nio.file.Files.readAllBytes(
 				java.nio.file.Paths.get(resultadoXML[2])), java.nio.charset.StandardCharsets.UTF_8);
+			String xmlFirmado = signatureService.firmarXMLFacturador(xmlSinFirmar, idFacturador);
+			resultado.put("paso3_firma", "OK");
+			System.out.println("✓ XML firmado electrónicamente");
 			
-			// 7. Autorizar ante el SRI
-			System.out.println("Paso 3: Autorizando ante el SRI...");
-			Long idFacturador = retencion.getFacturador() != null ? 
-				retencion.getFacturador().getId() : null;
-			
-			if (idFacturador == null) {
-				throw new Exception("La retención no tiene facturador asociado");
-			}
-			
+			// Paso 4: Autorizar ante el SRI
+			System.out.println("Paso 4: Autorizando ante el SRI...");
 			String resultadoAutorizacion = this.autorizarRetencion(
-				idFacturador, ambiente, conectaSRI, clave, 
-				retencion.getId(), xmlContent, destinatario, pathLogo);
+				idFacturador, ambiente, conectaSRI, clave,
+				retencion.getId(), xmlFirmado, destinatario, pathLogo);
 			
-			resultado.put("paso3_autorizacion", "OK");
 			resultado.put("autorizacionMensaje", resultadoAutorizacion);
-			System.out.println("Autorización completada: " + resultadoAutorizacion);
-			
-			// 8. Resultado final
 			resultado.put("exito", true);
 			resultado.put("mensaje", "Retención procesada completamente");
 			resultado.put("idRetencion", retencion.getId());
-			resultado.put("ambiente", ambiente);
-			resultado.put("conectaSRI", conectaSRI);
-			resultado.put("destinatario", destinatario);
 			
 			System.out.println("=== FIN procesarRetencionCompleta - EXITOSO ===");
-			
 		} catch (Throwable e) {
 			System.err.println("ERROR en procesarRetencionCompleta: " + e.getMessage());
 			e.printStackTrace();
 			resultado.put("exito", false);
-			resultado.put("mensaje", "ERROR");
 			resultado.put("error", e.getMessage());
 			throw e;
 		}
-		
 		return resultado;
 	}
 	
-	private String llamarRecepcionSRI(String url, String xmlContent, PrintWriter log) throws Exception {
+	private String llamarRecepcionSRI(String url, byte[] xmlBytes, PrintWriter log) throws Exception {
 		try {
 			SOAPConnectionFactory soapConnectionFactory = SOAPConnectionFactory.newInstance();
 			SOAPConnection soapConnection = soapConnectionFactory.createConnection();
-			
 			MessageFactory messageFactory = MessageFactory.newInstance();
 			SOAPMessage soapMessage = messageFactory.createMessage();
 			SOAPPart soapPart = soapMessage.getSOAPPart();
-			
 			SOAPEnvelope envelope = soapPart.getEnvelope();
-			envelope.addNamespaceDeclaration("ec", "http://ec.gob.sri.ws.recepcion");
-			
 			SOAPBody soapBody = envelope.getBody();
-			SOAPElement validarComprobante = soapBody.addChildElement("validarComprobante", "ec");
-			SOAPElement xml = validarComprobante.addChildElement("xml", "ec");
-			xml.addTextNode(xmlContent);
-			
+			SOAPElement validarComprobante = soapBody.addChildElement("validarComprobante", "", "http://ec.gob.sri.ws.recepcion");
+			SOAPElement xml = validarComprobante.addChildElement(envelope.createName("xml", "", ""));
+			// Codificar bytes raw en Base64 (preserva la firma)
+			String xmlBase64 = java.util.Base64.getEncoder().encodeToString(xmlBytes);
+			xml.addTextNode(xmlBase64);
 			soapMessage.saveChanges();
 			
 			SOAPMessage soapResponse = soapConnection.call(soapMessage, url);
+			java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+			soapResponse.writeTo(baos);
+			log.println("Respuesta WS1: " + baos.toString("UTF-8"));
 			
 			SOAPBody responseBody = soapResponse.getSOAPBody();
-			log.println("Respuesta WS1: " + soapResponse.getSOAPPart().getEnvelope().toString());
-			
 			NodeList estadoList = responseBody.getElementsByTagName("estado");
+			if (estadoList.getLength() == 0) estadoList = responseBody.getElementsByTagNameNS("*", "estado");
 			if (estadoList.getLength() > 0) {
 				String estado = estadoList.item(0).getTextContent();
-				
 				NodeList mensajeList = responseBody.getElementsByTagName("mensaje");
+				if (mensajeList.getLength() == 0) mensajeList = responseBody.getElementsByTagNameNS("*", "mensaje");
 				if (mensajeList.getLength() > 0) {
 					String mensaje = mensajeList.item(0).getTextContent();
 					if (mensaje != null && mensaje.contains("CLAVE ACCESO REGISTRADA")) {
+						soapConnection.close();
 						return "CLAVE ACCESO REGISTRADA";
 					}
 				}
-				
+				soapConnection.close();
 				return estado;
 			}
-			
 			soapConnection.close();
 			return "SIN_RESPUESTA";
-			
 		} catch (Exception e) {
 			log.println("Error en llamarRecepcionSRI: " + e.getMessage());
 			e.printStackTrace(log);
@@ -659,73 +547,57 @@ public class RetencionServiceImpl implements RetencionService {
 	}
 	
 	private ResultadoAutorizacion llamarAutorizacionSRI(String url, String claveAcceso) throws Exception {
-		try {
-			SOAPConnectionFactory soapConnectionFactory = SOAPConnectionFactory.newInstance();
-			SOAPConnection soapConnection = soapConnectionFactory.createConnection();
-			
-			MessageFactory messageFactory = MessageFactory.newInstance();
-			SOAPMessage soapMessage = messageFactory.createMessage();
-			SOAPPart soapPart = soapMessage.getSOAPPart();
-			
-			SOAPEnvelope envelope = soapPart.getEnvelope();
-			envelope.addNamespaceDeclaration("ec", "http://ec.gob.sri.ws.autorizacion");
-			
-			SOAPBody soapBody = envelope.getBody();
-			SOAPElement autorizacionComprobante = soapBody.addChildElement("autorizacionComprobante", "ec");
-			SOAPElement claveAccesoElement = autorizacionComprobante.addChildElement("claveAccesoComprobante", "ec");
-			claveAccesoElement.addTextNode(claveAcceso);
-			
-			soapMessage.saveChanges();
-			
-			SOAPMessage soapResponse = soapConnection.call(soapMessage, url);
-			
-			SOAPBody responseBody = soapResponse.getSOAPBody();
-			String respuestaCompleta = soapResponse.getSOAPPart().getEnvelope().toString();
-			
-			ResultadoAutorizacion resultado = new ResultadoAutorizacion();
-			resultado.respuestaCompleta = respuestaCompleta;
-			
-			NodeList estadoList = responseBody.getElementsByTagName("estado");
-			if (estadoList.getLength() > 0) {
-				resultado.estado = estadoList.item(0).getTextContent();
-			}
-			
-			NodeList numAutList = responseBody.getElementsByTagName("numeroAutorizacion");
-			if (numAutList.getLength() > 0) {
-				resultado.numeroAutorizacion = numAutList.item(0).getTextContent();
-			}
-			
-			NodeList fechaAutList = responseBody.getElementsByTagName("fechaAutorizacion");
-			if (fechaAutList.getLength() > 0) {
-				resultado.fechaAutorizacion = fechaAutList.item(0).getTextContent();
-			}
-			
-			NodeList comprobanteList = responseBody.getElementsByTagName("comprobante");
-			if (comprobanteList.getLength() > 0) {
-				resultado.comprobanteXML = comprobanteList.item(0).getTextContent();
-			}
-			
-			NodeList mensajeIdList = responseBody.getElementsByTagName("identificador");
-			if (mensajeIdList.getLength() > 0) {
-				resultado.mensajeId = mensajeIdList.item(0).getTextContent();
-			}
-			
-			NodeList mensajeList = responseBody.getElementsByTagName("mensaje");
-			if (mensajeList.getLength() > 0) {
-				resultado.mensaje = mensajeList.item(0).getTextContent();
-			}
-			
-			NodeList infoAdicionalList = responseBody.getElementsByTagName("informacionAdicional");
-			if (infoAdicionalList.getLength() > 0) {
-				resultado.informacionAdicional = infoAdicionalList.item(0).getTextContent();
-			}
-			
-			soapConnection.close();
-			return resultado;
-			
-		} catch (Exception e) {
-			throw e;
-		}
+		SOAPConnectionFactory soapConnectionFactory = SOAPConnectionFactory.newInstance();
+		SOAPConnection soapConnection = soapConnectionFactory.createConnection();
+		MessageFactory messageFactory = MessageFactory.newInstance();
+		SOAPMessage soapMessage = messageFactory.createMessage();
+		SOAPPart soapPart = soapMessage.getSOAPPart();
+		SOAPEnvelope envelope = soapPart.getEnvelope();
+		SOAPBody soapBody = envelope.getBody();
+		SOAPElement autorizacionComprobante = soapBody.addChildElement("autorizacionComprobante", "", "http://ec.gob.sri.ws.autorizacion");
+		SOAPElement claveAccesoElement = autorizacionComprobante.addChildElement(envelope.createName("claveAccesoComprobante", "", ""));
+		claveAccesoElement.addTextNode(claveAcceso);
+		soapMessage.saveChanges();
+		
+		SOAPMessage soapResponse = soapConnection.call(soapMessage, url);
+		java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+		soapResponse.writeTo(baos);
+		String respuestaCompleta = baos.toString("UTF-8");
+		
+		SOAPBody responseBody = soapResponse.getSOAPBody();
+		ResultadoAutorizacion resultado = new ResultadoAutorizacion();
+		resultado.respuestaCompleta = respuestaCompleta;
+		
+		NodeList estadoList = responseBody.getElementsByTagName("estado");
+		if (estadoList.getLength() == 0) estadoList = responseBody.getElementsByTagNameNS("*", "estado");
+		if (estadoList.getLength() > 0) resultado.estado = estadoList.item(0).getTextContent();
+		
+		NodeList numAutList = responseBody.getElementsByTagName("numeroAutorizacion");
+		if (numAutList.getLength() == 0) numAutList = responseBody.getElementsByTagNameNS("*", "numeroAutorizacion");
+		if (numAutList.getLength() > 0) resultado.numeroAutorizacion = numAutList.item(0).getTextContent();
+		
+		NodeList fechaAutList = responseBody.getElementsByTagName("fechaAutorizacion");
+		if (fechaAutList.getLength() == 0) fechaAutList = responseBody.getElementsByTagNameNS("*", "fechaAutorizacion");
+		if (fechaAutList.getLength() > 0) resultado.fechaAutorizacion = fechaAutList.item(0).getTextContent();
+		
+		NodeList comprobanteList = responseBody.getElementsByTagName("comprobante");
+		if (comprobanteList.getLength() == 0) comprobanteList = responseBody.getElementsByTagNameNS("*", "comprobante");
+		if (comprobanteList.getLength() > 0) resultado.comprobanteXML = comprobanteList.item(0).getTextContent();
+		
+		NodeList mensajeIdList = responseBody.getElementsByTagName("identificador");
+		if (mensajeIdList.getLength() == 0) mensajeIdList = responseBody.getElementsByTagNameNS("*", "identificador");
+		if (mensajeIdList.getLength() > 0) resultado.mensajeId = mensajeIdList.item(0).getTextContent();
+		
+		NodeList mensajeList = responseBody.getElementsByTagName("mensaje");
+		if (mensajeList.getLength() == 0) mensajeList = responseBody.getElementsByTagNameNS("*", "mensaje");
+		if (mensajeList.getLength() > 0) resultado.mensaje = mensajeList.item(0).getTextContent();
+		
+		NodeList infoAdicionalList = responseBody.getElementsByTagName("informacionAdicional");
+		if (infoAdicionalList.getLength() == 0) infoAdicionalList = responseBody.getElementsByTagNameNS("*", "informacionAdicional");
+		if (infoAdicionalList.getLength() > 0) resultado.informacionAdicional = infoAdicionalList.item(0).getTextContent();
+		
+		soapConnection.close();
+		return resultado;
 	}
 	
 	private LocalDateTime parseFechaAutorizacion(String fechaStr) {
@@ -778,10 +650,7 @@ public class RetencionServiceImpl implements RetencionService {
 		updateQuery.setParameter("tipoDoc", tipoDoc);
 		updateQuery.executeUpdate();
 		
-		String secuencial = String.format("%09d", numeroActual);
-		System.out.println("Secuencial generado: " + secuencial);
-		
-		return secuencial;
+		return String.format("%09d", numeroActual);
 	}
 	
 	/**

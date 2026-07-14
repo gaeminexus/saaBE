@@ -93,6 +93,41 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 		System.out.println("saveSingle - LiquidacionCompra");
 		if (entidad.getId() == null) {
 			entidad.setEstado(Long.valueOf(Estado.ACTIVO));
+			
+			if (entidad.getPtoEmision() == null || entidad.getPtoEmision().getId() == null) {
+				throw new IncomeException("Debe especificar un punto de emisión para la liquidación de compra");
+			}
+			if (entidad.getFacturador() == null || entidad.getFacturador().getId() == null) {
+				throw new IncomeException("Debe especificar un facturador para la liquidación de compra");
+			}
+			
+			String tipoComprobante = "03"; // Liquidación de Compra
+			Long ambiente = entidad.getAmbiente() != null ? entidad.getAmbiente() : 1L;
+			String tipoEmision = "1";
+			
+			try {
+				String secuencial = obtenerSecuencial(entidad.getPtoEmision().getId(), tipoComprobante);
+				entidad.setSecuencial(secuencial);
+				
+				String numero = entidad.getNumEstablecimiento() + "-" +
+						entidad.getNumPtoEmision() + "-" + secuencial;
+				entidad.setNumero(numero);
+				System.out.println("Número de liquidación generado: " + numero);
+				
+				String clave = generarClaveAcceso(entidad, tipoComprobante, ambiente, tipoEmision, secuencial);
+				entidad.setClave(clave);
+				System.out.println("Clave de acceso generada: " + clave);
+				
+				entidad.setTipoComprobante(tipoComprobante);
+				
+				if (entidad.getEstadoEmision() == null) {
+					entidad.setEstadoEmision(1L);
+				}
+			} catch (Exception e) {
+				System.err.println("ERROR al generar campos automáticos de liquidación: " + e.getMessage());
+				e.printStackTrace();
+				throw new IncomeException("Error al generar datos de la liquidación: " + e.getMessage());
+			}
 		}
 		entidad = liquidacionCompraDaoService.save(entidad, entidad.getId());
 		return entidad;
@@ -259,7 +294,8 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 			
 			// 6. Guardar archivo XML
 			String pathRelativo = "resources/" + idFacturador + "/lqcs/g/" + clave + ".xml";
-			String pathAbsoluto = System.getProperty("user.dir") + "/" + pathRelativo;
+			String baseUploadDir = getBaseUploadDirectory();
+			String pathAbsoluto = baseUploadDir + pathRelativo;
 			
 			Path path = Paths.get(pathAbsoluto);
 			Files.createDirectories(path.getParent());
@@ -281,8 +317,7 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 		
 		DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 		
-		writer.writeStartDocument("UTF-8", "1.0");
-		writer.writeCharacters("\n");
+		// NO escribir declaración XML: el proceso de firma la agrega automáticamente
 		
 		writer.writeStartElement("liquidacionCompra");
 		writer.writeAttribute("id", "comprobante");
@@ -489,15 +524,14 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 		System.out.println("Ingresa al metodo autorizarLiquidacion con clave: " + clave);
 		
 		String respuesta = "";
-		String baseDir = System.getProperty("user.dir");
-		String resourcesPath = baseDir + "/resources/" + idFacturador;
+		String baseUploadDir = getBaseUploadDirectory();
+		String resourcesPath = baseUploadDir + "resources/" + idFacturador;
 		
 		try {
-			// 1. Grabar XML firmado
-			String strXML = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" + xml;
+			// 1. Grabar XML firmado TAL CUAL viene (NO modificar nada post-firma)
 			Path pathFirmado = Paths.get(resourcesPath + "/lqcs/f/" + clave + ".xml");
 			Files.createDirectories(pathFirmado.getParent());
-			Files.write(pathFirmado, strXML.getBytes("UTF-8"));
+			Files.write(pathFirmado, xml.getBytes("UTF-8"));
 			
 			// 2. Insertar path firmado en tabla ptlc (alterno=3)
 			PathLiquidacionCompra pathF = new PathLiquidacionCompra();
@@ -523,15 +557,15 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 					Files.createDirectories(logWS1.getParent());
 					PrintWriter logWriter1 = new PrintWriter(new FileWriter(logWS1.toFile()));
 					
-					// Llamar servicio de recepción
-					String contenidoXML = new String(Files.readAllBytes(pathFirmado), "UTF-8");
-					String estadoRecepcion = llamarRecepcionSRI(urlWS1, contenidoXML, logWriter1);
+					// Leer bytes crudos del XML firmado (NO convertir a String, preserva la firma)
+					byte[] bytesXMLFirmado = Files.readAllBytes(pathFirmado);
+					String estadoRecepcion = llamarRecepcionSRI(urlWS1, bytesXMLFirmado, logWriter1);
 					
 					logWriter1.close();
 					
-					// Guardar XML enviado
+					// Guardar copia exacta del XML enviado
 					Path pathEnviado = Paths.get(resourcesPath + "/lqcs/e/" + clave + ".xml");
-					Files.write(pathEnviado, contenidoXML.getBytes("UTF-8"));
+					Files.write(pathEnviado, bytesXMLFirmado);
 					
 					// Insertar path enviado en tabla ptlc (alterno=4)
 					PathLiquidacionCompra pathE = new PathLiquidacionCompra();
@@ -678,7 +712,7 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 	/**
 	 * Llama al servicio de recepción del SRI
 	 */
-	private String llamarRecepcionSRI(String url, String xmlContent, PrintWriter log) throws Exception {
+	private String llamarRecepcionSRI(String url, byte[] xmlBytes, PrintWriter log) throws Exception {
 		try {
 			SOAPConnectionFactory soapConnectionFactory = SOAPConnectionFactory.newInstance();
 			SOAPConnection soapConnection = soapConnectionFactory.createConnection();
@@ -688,38 +722,41 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 			SOAPPart soapPart = soapMessage.getSOAPPart();
 			
 			SOAPEnvelope envelope = soapPart.getEnvelope();
-			envelope.addNamespaceDeclaration("ec", "http://ec.gob.sri.ws.recepcion");
-			
 			SOAPBody soapBody = envelope.getBody();
-			SOAPElement validarComprobante = soapBody.addChildElement("validarComprobante", "ec");
-			SOAPElement xml = validarComprobante.addChildElement("xml", "ec");
-			xml.addTextNode(xmlContent);
+			SOAPElement validarComprobante = soapBody.addChildElement("validarComprobante", "", "http://ec.gob.sri.ws.recepcion");
+			SOAPElement xml = validarComprobante.addChildElement(envelope.createName("xml", "", ""));
 			
+			// Codificar bytes raw en Base64 (preserva la firma)
+			String xmlBase64 = java.util.Base64.getEncoder().encodeToString(xmlBytes);
+			xml.addTextNode(xmlBase64);
 			soapMessage.saveChanges();
 			
 			SOAPMessage soapResponse = soapConnection.call(soapMessage, url);
 			
-			SOAPBody responseBody = soapResponse.getSOAPBody();
-			log.println("Respuesta WS1: " + soapResponse.getSOAPPart().getEnvelope().toString());
+			java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+			soapResponse.writeTo(baos);
+			String respuestaCompleta = baos.toString("UTF-8");
+			log.println("Respuesta WS1: " + respuestaCompleta);
 			
+			SOAPBody responseBody = soapResponse.getSOAPBody();
 			NodeList estadoList = responseBody.getElementsByTagName("estado");
+			if (estadoList.getLength() == 0) estadoList = responseBody.getElementsByTagNameNS("*", "estado");
 			if (estadoList.getLength() > 0) {
 				String estado = estadoList.item(0).getTextContent();
-				
 				NodeList mensajeList = responseBody.getElementsByTagName("mensaje");
+				if (mensajeList.getLength() == 0) mensajeList = responseBody.getElementsByTagNameNS("*", "mensaje");
 				if (mensajeList.getLength() > 0) {
 					String mensaje = mensajeList.item(0).getTextContent();
 					if (mensaje != null && mensaje.contains("CLAVE ACCESO REGISTRADA")) {
+						soapConnection.close();
 						return "CLAVE ACCESO REGISTRADA";
 					}
 				}
-				
+				soapConnection.close();
 				return estado;
 			}
-			
 			soapConnection.close();
 			return "SIN_RESPUESTA";
-			
 		} catch (Exception e) {
 			log.println("Error en llamarRecepcionSRI: " + e.getMessage());
 			e.printStackTrace(log);
@@ -731,73 +768,58 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 	 * Llama al servicio de autorización del SRI
 	 */
 	private ResultadoAutorizacion llamarAutorizacionSRI(String url, String claveAcceso) throws Exception {
-		try {
-			SOAPConnectionFactory soapConnectionFactory = SOAPConnectionFactory.newInstance();
-			SOAPConnection soapConnection = soapConnectionFactory.createConnection();
-			
-			MessageFactory messageFactory = MessageFactory.newInstance();
-			SOAPMessage soapMessage = messageFactory.createMessage();
-			SOAPPart soapPart = soapMessage.getSOAPPart();
-			
-			SOAPEnvelope envelope = soapPart.getEnvelope();
-			envelope.addNamespaceDeclaration("ec", "http://ec.gob.sri.ws.autorizacion");
-			
-			SOAPBody soapBody = envelope.getBody();
-			SOAPElement autorizacionComprobante = soapBody.addChildElement("autorizacionComprobante", "ec");
-			SOAPElement claveAccesoElement = autorizacionComprobante.addChildElement("claveAccesoComprobante", "ec");
-			claveAccesoElement.addTextNode(claveAcceso);
-			
-			soapMessage.saveChanges();
-			
-			SOAPMessage soapResponse = soapConnection.call(soapMessage, url);
-			
-			SOAPBody responseBody = soapResponse.getSOAPBody();
-			String respuestaCompleta = soapResponse.getSOAPPart().getEnvelope().toString();
-			
-			ResultadoAutorizacion resultado = new ResultadoAutorizacion();
-			resultado.respuestaCompleta = respuestaCompleta;
-			
-			NodeList estadoList = responseBody.getElementsByTagName("estado");
-			if (estadoList.getLength() > 0) {
-				resultado.estado = estadoList.item(0).getTextContent();
-			}
-			
-			NodeList numAutList = responseBody.getElementsByTagName("numeroAutorizacion");
-			if (numAutList.getLength() > 0) {
-				resultado.numeroAutorizacion = numAutList.item(0).getTextContent();
-			}
-			
-			NodeList fechaAutList = responseBody.getElementsByTagName("fechaAutorizacion");
-			if (fechaAutList.getLength() > 0) {
-				resultado.fechaAutorizacion = fechaAutList.item(0).getTextContent();
-			}
-			
-			NodeList comprobanteList = responseBody.getElementsByTagName("comprobante");
-			if (comprobanteList.getLength() > 0) {
-				resultado.comprobanteXML = comprobanteList.item(0).getTextContent();
-			}
-			
-			NodeList mensajeIdList = responseBody.getElementsByTagName("identificador");
-			if (mensajeIdList.getLength() > 0) {
-				resultado.mensajeId = mensajeIdList.item(0).getTextContent();
-			}
-			
-			NodeList mensajeList = responseBody.getElementsByTagName("mensaje");
-			if (mensajeList.getLength() > 0) {
-				resultado.mensaje = mensajeList.item(0).getTextContent();
-			}
-			
-			NodeList infoAdicionalList = responseBody.getElementsByTagName("informacionAdicional");
-			if (infoAdicionalList.getLength() > 0) {
-				resultado.informacionAdicional = infoAdicionalList.item(0).getTextContent();
-			}
-			
-			soapConnection.close();
-			return resultado;
-			
-		} catch (Exception e) {
-			throw e;
-		}
+		SOAPConnectionFactory soapConnectionFactory = SOAPConnectionFactory.newInstance();
+		SOAPConnection soapConnection = soapConnectionFactory.createConnection();
+		
+		MessageFactory messageFactory = MessageFactory.newInstance();
+		SOAPMessage soapMessage = messageFactory.createMessage();
+		SOAPPart soapPart = soapMessage.getSOAPPart();
+		SOAPEnvelope envelope = soapPart.getEnvelope();
+		SOAPBody soapBody = envelope.getBody();
+		SOAPElement autorizacionComprobante = soapBody.addChildElement("autorizacionComprobante", "", "http://ec.gob.sri.ws.autorizacion");
+		SOAPElement claveAccesoElement = autorizacionComprobante.addChildElement(envelope.createName("claveAccesoComprobante", "", ""));
+		claveAccesoElement.addTextNode(claveAcceso);
+		soapMessage.saveChanges();
+		
+		SOAPMessage soapResponse = soapConnection.call(soapMessage, url);
+		java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+		soapResponse.writeTo(baos);
+		String respuestaCompleta = baos.toString("UTF-8");
+		
+		SOAPBody responseBody = soapResponse.getSOAPBody();
+		ResultadoAutorizacion resultado = new ResultadoAutorizacion();
+		resultado.respuestaCompleta = respuestaCompleta;
+		
+		NodeList estadoList = responseBody.getElementsByTagName("estado");
+		if (estadoList.getLength() == 0) estadoList = responseBody.getElementsByTagNameNS("*", "estado");
+		if (estadoList.getLength() > 0) resultado.estado = estadoList.item(0).getTextContent();
+		
+		NodeList numAutList = responseBody.getElementsByTagName("numeroAutorizacion");
+		if (numAutList.getLength() == 0) numAutList = responseBody.getElementsByTagNameNS("*", "numeroAutorizacion");
+		if (numAutList.getLength() > 0) resultado.numeroAutorizacion = numAutList.item(0).getTextContent();
+		
+		NodeList fechaAutList = responseBody.getElementsByTagName("fechaAutorizacion");
+		if (fechaAutList.getLength() == 0) fechaAutList = responseBody.getElementsByTagNameNS("*", "fechaAutorizacion");
+		if (fechaAutList.getLength() > 0) resultado.fechaAutorizacion = fechaAutList.item(0).getTextContent();
+		
+		NodeList comprobanteList = responseBody.getElementsByTagName("comprobante");
+		if (comprobanteList.getLength() == 0) comprobanteList = responseBody.getElementsByTagNameNS("*", "comprobante");
+		if (comprobanteList.getLength() > 0) resultado.comprobanteXML = comprobanteList.item(0).getTextContent();
+		
+		NodeList mensajeIdList = responseBody.getElementsByTagName("identificador");
+		if (mensajeIdList.getLength() == 0) mensajeIdList = responseBody.getElementsByTagNameNS("*", "identificador");
+		if (mensajeIdList.getLength() > 0) resultado.mensajeId = mensajeIdList.item(0).getTextContent();
+		
+		NodeList mensajeList = responseBody.getElementsByTagName("mensaje");
+		if (mensajeList.getLength() == 0) mensajeList = responseBody.getElementsByTagNameNS("*", "mensaje");
+		if (mensajeList.getLength() > 0) resultado.mensaje = mensajeList.item(0).getTextContent();
+		
+		NodeList infoAdicionalList = responseBody.getElementsByTagName("informacionAdicional");
+		if (infoAdicionalList.getLength() == 0) infoAdicionalList = responseBody.getElementsByTagNameNS("*", "informacionAdicional");
+		if (infoAdicionalList.getLength() > 0) resultado.informacionAdicional = infoAdicionalList.item(0).getTextContent();
+		
+		soapConnection.close();
+		return resultado;
 	}
 	
 	/**
@@ -824,5 +846,77 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 		String mensaje;
 		String informacionAdicional;
 		String respuestaCompleta;
+	}
+	
+	private String obtenerSecuencial(Long idPtoEmision, String tipoDoc) throws Exception {
+		String sql = "SELECT n FROM NumeracionPuntoEmision n WHERE n.ptoEmision.id = :ptoEmision AND n.tipoDoc = :tipoDoc";
+		Query query = em.createQuery(sql);
+		query.setParameter("ptoEmision", idPtoEmision);
+		query.setParameter("tipoDoc", tipoDoc);
+		@SuppressWarnings("unchecked")
+		List<Object> resultados = query.getResultList();
+		if (resultados.isEmpty()) {
+			throw new IncomeException("No existe numeración para el punto de emisión " + idPtoEmision + " y tipo " + tipoDoc);
+		}
+		com.saa.model.cxc.NumeracionPuntoEmision numeracion = (com.saa.model.cxc.NumeracionPuntoEmision) resultados.get(0);
+		Long numeroActual = numeracion.getNumActual();
+		String sqlUpdate = "UPDATE NumeracionPuntoEmision n SET n.numActual = :nuevo WHERE n.ptoEmision.id = :ptoEmision AND n.tipoDoc = :tipoDoc";
+		Query updateQuery = em.createQuery(sqlUpdate);
+		updateQuery.setParameter("nuevo", numeroActual + 1);
+		updateQuery.setParameter("ptoEmision", idPtoEmision);
+		updateQuery.setParameter("tipoDoc", tipoDoc);
+		updateQuery.executeUpdate();
+		return String.format("%09d", numeroActual);
+	}
+	
+	private String generarClaveAcceso(LiquidacionCompra lc, String tipoComprobante, Long ambiente,
+			String tipoEmision, String secuencial) {
+		DateTimeFormatter formatter = DateTimeFormatter.ofPattern("ddMMyyyy");
+		String fechaClave = lc.getFecha().format(formatter);
+		String ruc = lc.getFacturador().getNumDoc();
+		String codClave = lc.getFacturador().getCodClave();
+		String claveSinDV = fechaClave + tipoComprobante + ruc + ambiente +
+				lc.getNumEstablecimiento() + lc.getNumPtoEmision() +
+				secuencial + codClave + tipoEmision;
+		System.out.println(">>> GENERADOR CLAVE cadena[" + claveSinDV + "]");
+		int dv = calcularModulo11(claveSinDV);
+		String claveCompleta = claveSinDV + dv;
+		System.out.println(">>> CLAVE COMPLETA [" + claveCompleta + "]");
+		return claveCompleta;
+	}
+	
+	private int calcularModulo11(String cadena) {
+		String invertida = new StringBuilder(cadena).reverse().toString();
+		int suma = 0;
+		int factor = 2;
+		for (int i = 0; i < invertida.length(); i++) {
+			suma += Character.getNumericValue(invertida.charAt(i)) * factor;
+			if (factor == 7) factor = 2; else factor++;
+		}
+		int dv = 11 - (suma % 11);
+		if (dv == 10) return 1;
+		else if (dv == 11) return 0;
+		return dv;
+	}
+	
+	/**
+	 * Obtiene el directorio base de uploads desde la variable de sistema
+	 */
+	private String getBaseUploadDirectory() {
+		String uploadDir = System.getProperty("saa.upload.dir");
+		if (uploadDir != null && !uploadDir.trim().isEmpty()) {
+			return uploadDir.endsWith("/") || uploadDir.endsWith("\\") ? uploadDir : uploadDir + "/";
+		}
+		uploadDir = System.getenv("SAA_UPLOAD_DIR");
+		if (uploadDir != null && !uploadDir.trim().isEmpty()) {
+			return uploadDir.endsWith("/") || uploadDir.endsWith("\\") ? uploadDir : uploadDir + "/";
+		}
+		String userHome = System.getProperty("user.home");
+		String osName = System.getProperty("os.name").toLowerCase();
+		if (osName.contains("windows")) {
+			return userHome + "/saa-uploads/";
+		} else {
+			return "/opt/saa-uploads/";
+		}
 	}
 }

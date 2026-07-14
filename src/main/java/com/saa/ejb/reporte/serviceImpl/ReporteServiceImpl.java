@@ -88,21 +88,47 @@ public class ReporteServiceImpl implements ReporteService {
         
         Connection conn = null;
         try {
-            // Construir la ruta del reporte .jasper (precompilado)
+            JasperReport jasperReport = null;
+
+            // 1. Intentar cargar el .jasper precompilado
             String rutaJasper = String.format("/rep/%s/%s.jasper", modulo, nombreReporte);
-            
-            LOGGER.log(Level.INFO, "Cargando reporte precompilado: {0}", rutaJasper);
-            
-            // Cargar el archivo jasper precompilado
             InputStream reportStream = getClass().getResourceAsStream(rutaJasper);
-            
-            if (reportStream == null) {
-                throw new IllegalArgumentException("No se encontró el reporte precompilado: " + rutaJasper + 
-                    ". Por favor, compile el archivo .jrxml con JasperSoft Studio 7.0.3 primero.");
+            if (reportStream != null) {
+                try {
+                    jasperReport = (JasperReport) JRLoader.loadObject(reportStream);
+                    LOGGER.log(Level.INFO, "Reporte cargado desde .jasper: {0}", rutaJasper);
+                } catch (Exception e) {
+                    LOGGER.log(Level.WARNING,
+                        "No se pudo cargar .jasper (posible incompatibilidad de versión). " +
+                        "Compilando desde .jrxml en runtime. Causa: {0}", e.getMessage());
+                    jasperReport = null;
+                } finally {
+                    try { reportStream.close(); } catch (Exception ignored) {}
+                }
             }
-            
-            // Cargar el reporte precompilado (mucho más rápido que compilar en runtime)
-            JasperReport jasperReport = (JasperReport) JRLoader.loadObject(reportStream);
+
+            // 2. Si el .jasper falló o no existe, compilar el .jrxml en runtime
+            if (jasperReport == null) {
+                String rutaJrxml = String.format("/rep/%s/%s.jrxml", modulo, nombreReporte);
+                InputStream jrxmlStream = getClass().getResourceAsStream(rutaJrxml);
+                if (jrxmlStream == null) {
+                    throw new IllegalArgumentException(
+                        "No se encontró el reporte: " + rutaJrxml);
+                }
+                LOGGER.log(Level.INFO, "Compilando reporte desde .jrxml: {0}", rutaJrxml);
+
+                // CRÍTICO: fijar el classloader del deployment como ContextClassLoader
+                // antes de compilar. Sin esto, javac/JDT no encuentra las clases de
+                // JasperReports y falla con "package does not exist".
+                ClassLoader originalCL = Thread.currentThread().getContextClassLoader();
+                Thread.currentThread().setContextClassLoader(getClass().getClassLoader());
+                try {
+                    jasperReport = net.sf.jasperreports.engine.JasperCompileManager.compileReport(jrxmlStream);
+                } finally {
+                    Thread.currentThread().setContextClassLoader(originalCL);
+                    try { jrxmlStream.close(); } catch (Exception ignored) {}
+                }
+            }
             
             // Agregar ruta de imágenes a los parámetros (si el frontend no la envió o es null)
             if (!parametros.containsKey("P_IMAGEN") || parametros.get("P_IMAGEN") == null) {

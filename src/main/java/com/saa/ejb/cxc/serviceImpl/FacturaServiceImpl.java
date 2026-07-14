@@ -24,6 +24,7 @@ import com.saa.ejb.cxc.dao.FacturaDaoService;
 import com.saa.ejb.cxc.dao.PathFacturaDaoService;
 import com.saa.ejb.cxc.service.DetalleFacturaService;
 import com.saa.ejb.cxc.service.FacturaService;
+import com.saa.ejb.reporte.service.ReporteService;
 import com.saa.ejb.signature.service.SignatureService;
 import com.saa.model.cxc.DetalleFactura;
 import com.saa.model.cxc.Factura;
@@ -66,6 +67,9 @@ public class FacturaServiceImpl implements FacturaService {
 	
 	@EJB
 	private com.saa.basico.ejb.DetalleRubroService detalleRubroService;
+	
+	@EJB
+	private ReporteService reporteService;
 	
 	@PersistenceContext
 	private EntityManager em;
@@ -812,13 +816,11 @@ public class FacturaServiceImpl implements FacturaService {
 		String resourcesPath = baseUploadDir + "resources/" + idFacturador;
 		
 		try {
-			// 1. Grabar XML firmado
-			String strXML = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" + xml;
-			// Limpiar posibles declaraciones XML duplicadas
-			strXML = limpiarDeclaracionesXMLDuplicadas(strXML);
+			// 1. Grabar XML firmado TAL CUAL viene (NO modificar nada post-firma,
+			//    cualquier cambio invalida la firma electrónica)
 			Path pathFirmado = Paths.get(resourcesPath + "/docs/f/" + clave + ".xml");
 			Files.createDirectories(pathFirmado.getParent());
-			Files.write(pathFirmado, strXML.getBytes("UTF-8"));
+			Files.write(pathFirmado, xml.getBytes("UTF-8"));
 			
 			// 2. Insertar path firmado en tabla ptfc (alterno=3)
 			PathFactura pathF = new PathFactura();
@@ -844,23 +846,22 @@ public class FacturaServiceImpl implements FacturaService {
 					Files.createDirectories(logWS1.getParent());
 					PrintWriter logWriter1 = new PrintWriter(new FileWriter(logWS1.toFile()));
 					
-					// Llamar servicio de recepción
-					String contenidoXML = new String(Files.readAllBytes(pathFirmado), "UTF-8");
-					// Limpiar posibles declaraciones XML duplicadas antes de enviar al SRI
-					contenidoXML = limpiarDeclaracionesXMLDuplicadas(contenidoXML);
+					// Leer bytes crudos del XML firmado (NO convertir a String ni modificar nada)
+					byte[] bytesXMLFirmado = Files.readAllBytes(pathFirmado);
 					
-					// Log del XML limpiado (primeros 500 caracteres)
-					System.out.println(">>> XML LIMPIADO (primeros 500 caracteres):");
-					System.out.println(contenidoXML.substring(0, Math.min(500, contenidoXML.length())));
-					System.out.println(">>> FIN XML LIMPIADO");
+					// Log primeros 500 chars sólo para diagnóstico
+					String contenidoXMLLog = new String(bytesXMLFirmado, "UTF-8");
+					System.out.println(">>> XML FIRMADO a enviar (primeros 500 caracteres):");
+					System.out.println(contenidoXMLLog.substring(0, Math.min(500, contenidoXMLLog.length())));
+					System.out.println(">>> FIN XML FIRMADO");
 					
-					String estadoRecepcion = llamarRecepcionSRI(urlWS1, contenidoXML, logWriter1);
+					String estadoRecepcion = llamarRecepcionSRI(urlWS1, bytesXMLFirmado, logWriter1);
 					
 					logWriter1.close();
 					
-					// Guardar XML enviado
+					// Guardar XML enviado (copia exacta del firmado)
 					Path pathEnviado = Paths.get(resourcesPath + "/docs/e/" + clave + ".xml");
-					Files.write(pathEnviado, contenidoXML.getBytes("UTF-8"));
+					Files.write(pathEnviado, bytesXMLFirmado);
 					
 					// Insertar path enviado en tabla ptfc (alterno=4)
 					PathFactura pathE = new PathFactura();
@@ -886,25 +887,25 @@ public class FacturaServiceImpl implements FacturaService {
 							ResultadoAutorizacion resultado = llamarAutorizacionSRI(urlWS2, clave);
 							
 							if ("AUTORIZADO".equals(resultado.estado)) {
-								// Crear archivo de log WS2 autorizado
+								// 1. Guardar TXT de log WS2 (autorizado) - igual que el PHP
 								Path logWS2A = Paths.get(resourcesPath + "/docs/a/" + clave + ".txt");
 								Files.createDirectories(logWS2A.getParent());
 								PrintWriter logWriter2 = new PrintWriter(new FileWriter(logWS2A.toFile()));
 								logWriter2.println("Respuesta WS2: " + resultado.respuestaCompleta);
 								logWriter2.close();
 								
-								// Guardar XML autorizado
+								// 2. Guardar XML autorizado
 								Path pathAutorizado = Paths.get(resourcesPath + "/docs/a/" + clave + ".xml");
 								Files.write(pathAutorizado, resultado.comprobanteXML.getBytes("UTF-8"));
 								
-								// Insertar path autorizado en tabla ptfc (alterno=5)
+								// 3. Insertar path autorizado en tabla ptfc (alterno=5)
 								PathFactura pathA = new PathFactura();
 								pathA.setFactura(factura);
 								pathA.setPath("resources/" + idFacturador + "/docs/a/" + clave + ".xml");
 								pathA.setAlterno(5L); // 5 = XML autorizado
 								pathFacturaDaoService.save(pathA, null);
 								
-								// Actualizar estado a AUTORIZADA (estado=5, estadoEmision=1)
+								// 4. Actualizar estado a AUTORIZADA (estado=5, estadoEmision=1)
 								factura.setEstado(5L);
 								factura.setEstadoEmision(1L);
 								factura.setAutorizacion(resultado.numeroAutorizacion);
@@ -913,27 +914,34 @@ public class FacturaServiceImpl implements FacturaService {
 								
 								respuesta = resultado.estado;
 								
-								// Generar PDF
-								// TODO: Implementar generación de PDF según subsidio
-								// if (subsidio != null && subsidio.compareTo(BigDecimal.ZERO) > 0) {
-								//     crearPDFSubsidio(clave);
-								// } else {
-								//     crearPDF(clave);
-								// }
+								// 5. Generar PDF (RIDE) - equivalente a crearPDF($dbConn, $clave) del PHP
+								try {
+									byte[] pdfBytes = generarPDFFactura(factura, idFacturador, clave, pathLogo, ambiente);
+									if (pdfBytes != null && pdfBytes.length > 0) {
+										Path pathPdf = Paths.get(resourcesPath + "/docs/a/" + clave + ".pdf");
+										Files.write(pathPdf, pdfBytes);
+										
+										// Insertar path PDF en tabla ptfc (alterno=7)
+										PathFactura pathPdfRec = new PathFactura();
+										pathPdfRec.setFactura(factura);
+										pathPdfRec.setPath("resources/" + idFacturador + "/docs/a/" + clave + ".pdf");
+										pathPdfRec.setAlterno(7L); // 7 = PDF RIDE
+										pathFacturaDaoService.save(pathPdfRec, null);
+										System.out.println("✓ PDF RIDE generado: " + pathPdf);
+									}
+								} catch (Exception pdfEx) {
+									// El PDF no es crítico para la autorización, solo loguear
+									System.err.println("⚠ Error generando PDF (no crítico): " + pdfEx.getMessage());
+									pdfEx.printStackTrace();
+								}
 								
-								// Si es producción, actualizar contador y enviar email
+								// 6. Si es producción, actualizar contador y enviar email
 								if (ambiente == 2) {
 									// Actualizar contador de documentos emitidos
 									String sqlUpdate = "UPDATE Facturador f SET f.docEmitidos = COALESCE(f.docEmitidos, 0) + 1 WHERE f.id = :idFacturador";
 									Query updateQuery = em.createQuery(sqlUpdate);
 									updateQuery.setParameter("idFacturador", idFacturador);
 									updateQuery.executeUpdate();
-									
-									// TODO: Enviar email
-									// if (destinatario != null && !destinatario.isEmpty()) {
-									//     String resultadoMail = enviarMail(destinatario, idFacturador, clave, pathLogo);
-									//     respuesta = respuesta + " " + resultadoMail;
-									// }
 								}
 								
 							} else {
@@ -1023,7 +1031,7 @@ public class FacturaServiceImpl implements FacturaService {
 	/**
 	 * Llama al servicio de recepción del SRI
 	 */
-	private String llamarRecepcionSRI(String url, String xmlContent, PrintWriter log) throws Exception {
+	private String llamarRecepcionSRI(String url, byte[] xmlBytes, PrintWriter log) throws Exception {
 		try {
 			System.out.println(">>> Llamando al WS1 de RECEPCIÓN del SRI: " + url);
 			log.println(">>> Llamando al WS1 de RECEPCIÓN del SRI: " + url);
@@ -1045,13 +1053,11 @@ public class FacturaServiceImpl implements FacturaService {
 			
 			// Crear elemento validarComprobante CON namespace
 			SOAPElement validarComprobante = soapBody.addChildElement("validarComprobante", "", "http://ec.gob.sri.ws.recepcion");
-			// Crear elemento xml SIN namespace
 			SOAPElement xml = validarComprobante.addChildElement(envelope.createName("xml", "", ""));
-			// Eliminar \r (retorno de carro Windows) que el SRI rechaza con error "ARCHIVO NO CUMPLE ESTRUCTURA XML"
-			xmlContent = xmlContent.replace("\r", "");
-			// El WSDL del SRI define el parámetro 'xml' como xsd:base64Binary.
-			// PHP SoapClient lo codifica automáticamente; en Java debemos hacerlo manualmente.
-			String xmlBase64 = java.util.Base64.getEncoder().encodeToString(xmlContent.getBytes("UTF-8"));
+			
+			// Codificar los bytes crudos directamente a Base64 SIN ninguna modificación
+			// (cualquier cambio al contenido firmado invalida la firma)
+			String xmlBase64 = java.util.Base64.getEncoder().encodeToString(xmlBytes);
 			xml.addTextNode(xmlBase64);
 			System.out.println(">>> XML codificado en Base64 (primeros 100 chars): " + xmlBase64.substring(0, Math.min(100, xmlBase64.length())));
 			
@@ -1145,85 +1151,126 @@ public class FacturaServiceImpl implements FacturaService {
 	}
 	
 	/**
-	 * Llama al servicio de autorización del SRI
+	 * Llama al servicio de autorización del SRI (WS2)
 	 */
 	private ResultadoAutorizacion llamarAutorizacionSRI(String url, String claveAcceso) throws Exception {
+		System.out.println(">>> Llamando al WS2 de AUTORIZACIÓN del SRI: " + url);
+		System.out.println(">>> Clave de acceso para autorización: " + claveAcceso);
+
 		try {
 			// Crear conexión SOAP
 			SOAPConnectionFactory soapConnectionFactory = SOAPConnectionFactory.newInstance();
 			SOAPConnection soapConnection = soapConnectionFactory.createConnection();
-			
+
 			// Crear mensaje SOAP
 			MessageFactory messageFactory = MessageFactory.newInstance();
 			SOAPMessage soapMessage = messageFactory.createMessage();
 			SOAPPart soapPart = soapMessage.getSOAPPart();
-			
+
 			// SOAP Envelope
 			SOAPEnvelope envelope = soapPart.getEnvelope();
-			envelope.addNamespaceDeclaration("ec", "http://ec.gob.sri.ws.autorizacion");
-			
-			// SOAP Body
+
+			// SOAP Body - usar namespace igual que WS1
 			SOAPBody soapBody = envelope.getBody();
-			SOAPElement autorizacionComprobante = soapBody.addChildElement("autorizacionComprobante", "ec");
-			SOAPElement claveAccesoElement = autorizacionComprobante.addChildElement("claveAccesoComprobante", "ec");
+			SOAPElement autorizacionComprobante = soapBody.addChildElement("autorizacionComprobante", "", "http://ec.gob.sri.ws.autorizacion");
+			SOAPElement claveAccesoElement = autorizacionComprobante.addChildElement(envelope.createName("claveAccesoComprobante", "", ""));
 			claveAccesoElement.addTextNode(claveAcceso);
-			
+
 			soapMessage.saveChanges();
-			
+
+			// Log del request
+			ByteArrayOutputStream requestBaos = new ByteArrayOutputStream();
+			soapMessage.writeTo(requestBaos);
+			System.out.println(">>> REQUEST SOAP WS2 enviado al SRI:");
+			System.out.println(requestBaos.toString("UTF-8"));
+
 			// Llamar al servicio
 			SOAPMessage soapResponse = soapConnection.call(soapMessage, url);
-			
+
 			// Procesar respuesta
 			SOAPBody responseBody = soapResponse.getSOAPBody();
-			String respuestaCompleta = soapResponse.getSOAPPart().getEnvelope().toString();
-			
+
+			// Log de la respuesta completa
+			ByteArrayOutputStream baos = new ByteArrayOutputStream();
+			soapResponse.writeTo(baos);
+			String respuestaCompleta = baos.toString("UTF-8");
+			System.out.println(">>> Respuesta WS2 completa:");
+			System.out.println(respuestaCompleta);
+
 			ResultadoAutorizacion resultado = new ResultadoAutorizacion();
 			resultado.respuestaCompleta = respuestaCompleta;
-			
+
+			// Helper para extraer nodo con fallback a namespace wildcard
 			// Extraer estado
 			NodeList estadoList = responseBody.getElementsByTagName("estado");
+			if (estadoList.getLength() == 0) {
+				estadoList = responseBody.getElementsByTagNameNS("*", "estado");
+			}
 			if (estadoList.getLength() > 0) {
 				resultado.estado = estadoList.item(0).getTextContent();
+				System.out.println(">>> Estado WS2 extraído: " + resultado.estado);
+			} else {
+				System.out.println(">>> ADVERTENCIA: No se encontró nodo <estado> en respuesta WS2");
 			}
-			
+
 			// Extraer número de autorización
 			NodeList numAutList = responseBody.getElementsByTagName("numeroAutorizacion");
+			if (numAutList.getLength() == 0) {
+				numAutList = responseBody.getElementsByTagNameNS("*", "numeroAutorizacion");
+			}
 			if (numAutList.getLength() > 0) {
 				resultado.numeroAutorizacion = numAutList.item(0).getTextContent();
 			}
-			
+
 			// Extraer fecha de autorización
 			NodeList fechaAutList = responseBody.getElementsByTagName("fechaAutorizacion");
+			if (fechaAutList.getLength() == 0) {
+				fechaAutList = responseBody.getElementsByTagNameNS("*", "fechaAutorizacion");
+			}
 			if (fechaAutList.getLength() > 0) {
 				resultado.fechaAutorizacion = fechaAutList.item(0).getTextContent();
 			}
-			
+
 			// Extraer comprobante XML
 			NodeList comprobanteList = responseBody.getElementsByTagName("comprobante");
+			if (comprobanteList.getLength() == 0) {
+				comprobanteList = responseBody.getElementsByTagNameNS("*", "comprobante");
+			}
 			if (comprobanteList.getLength() > 0) {
 				resultado.comprobanteXML = comprobanteList.item(0).getTextContent();
 			}
-			
+
 			// Extraer mensajes de error si existen
 			NodeList mensajeIdList = responseBody.getElementsByTagName("identificador");
+			if (mensajeIdList.getLength() == 0) {
+				mensajeIdList = responseBody.getElementsByTagNameNS("*", "identificador");
+			}
 			if (mensajeIdList.getLength() > 0) {
 				resultado.mensajeId = mensajeIdList.item(0).getTextContent();
 			}
-			
+
 			NodeList mensajeList = responseBody.getElementsByTagName("mensaje");
+			if (mensajeList.getLength() == 0) {
+				mensajeList = responseBody.getElementsByTagNameNS("*", "mensaje");
+			}
 			if (mensajeList.getLength() > 0) {
 				resultado.mensaje = mensajeList.item(0).getTextContent();
 			}
-			
+
 			NodeList infoAdicionalList = responseBody.getElementsByTagName("informacionAdicional");
+			if (infoAdicionalList.getLength() == 0) {
+				infoAdicionalList = responseBody.getElementsByTagNameNS("*", "informacionAdicional");
+			}
 			if (infoAdicionalList.getLength() > 0) {
 				resultado.informacionAdicional = infoAdicionalList.item(0).getTextContent();
 			}
-			
+
 			soapConnection.close();
 			return resultado;
-			
+
 		} catch (Exception e) {
+			System.err.println(">>> ERROR en llamarAutorizacionSRI: " + e.getMessage());
+			e.printStackTrace();
 			throw e;
 		}
 	}
@@ -1368,6 +1415,273 @@ public class FacturaServiceImpl implements FacturaService {
 	 * Obtiene el directorio base de uploads desde la variable de sistema
 	 * (misma lógica que FileService)
 	 */
+	/**
+	 * Genera el PDF RIDE de la factura consultando directamente la BD,
+	 * replicando exactamente el flujo del PHP gn_rprt.php.
+	 */
+	@SuppressWarnings("unchecked")
+	private byte[] generarPDFFactura(Factura facturaObj, Long idFacturador, String clave,
+			String pathLogoParam, Long ambiente) {
+		try {
+			System.out.println("Generando PDF RIDE para factura: " + clave);
+
+			// ─────────────────────────────────────────────────────────────────────
+			// BLOQUE 1: Equivale al primer SELECT del PHP
+			//   select b.*, c.*, d.* from fctr b, fcdr c, cmpr d where ...
+			// Tablas: CBR.FCTR, CBR.FCDR, TSR.TTLR
+			// Columnas según @Column de cada modelo Java
+			// ─────────────────────────────────────────────────────────────────────
+			jakarta.persistence.Query q1 = em.createNativeQuery(
+				"SELECT f.ID, f.AMBIENTE, f.AUTORIZACION, f.FECHAAUTORIZACION, f.NUMERO, f.CLAVE, " +
+				"       f.FECHA, f.SUBTOTAL, f.TOTAL, f.SUBCERO, f.SUBTOTAL5, f.SUBTOTAL8, " +
+				"       f.VIVA, f.VIVA5, f.VIVA8, f.PROPINA, f.DESCUENTO, f.OBSERVACION, " +
+				"       f.PTOEMISION, " +
+				"       fc.ID, fc.NUMDOC, fc.RAZONSOCIAL, fc.NOMBRECOMERCIAL, " +
+				"       fc.MAIL, fc.TELEFONO, fc.LOGO, fc.DIRECCION, " +
+				"       fc.MICROEMPRESA, fc.RIMPE, fc.POPULARRIMPE, fc.ARTESANO, " +
+				"       fc.CONTRIBUYENTEESPECIAL, fc.CONTABILIDAD, fc.AGENTERETENCION, " +
+				"       t.TTLRNMBR, t.TTLRIDNT, t.TTLRDRCC, t.TTLRMLLL, t.TTLRTLFN " +
+				"FROM CBR.FCTR f " +
+				"JOIN CBR.FCDR fc ON f.FACTURADOR = fc.ID " +
+				"JOIN TSR.TTLR t  ON f.COMPRADOR = t.TTLRCDGO " +
+				"WHERE f.CLAVE = :clave");
+			q1.setParameter("clave", clave);
+			Object[] row = (Object[]) q1.getSingleResult();
+
+			// Posiciones del SELECT (índice → columna):
+			//  0=f.ID  1=AMBIENTE  2=AUTORIZACION  3=FECHAAUTORIZACION  4=NUMERO  5=CLAVE
+			//  6=FECHA  7=SUBTOTAL  8=TOTAL  9=SUBCERO  10=SUBTOTAL5  11=SUBTOTAL8
+			// 12=VIVA  13=VIVA5  14=VIVA8  15=PROPINA  16=DESCUENTO  17=OBSERVACION
+			// 18=PTOEMISION  19=fc.ID  20=NUMDOC  21=RAZONSOCIAL  22=NOMBRECOMERCIAL
+			// 23=MAIL  24=TELEFONO  25=LOGO  26=DIRECCION  27=MICROEMPRESA  28=RIMPE
+			// 29=POPULARRIMPE  30=ARTESANO  31=CONTRIBUYENTEESPECIAL  32=CONTABILIDAD
+			// 33=AGENTERETENCION  34=TTLRNMBR  35=TTLRIDNT  36=TTLRDRCC  37=TTLRMLLL  38=TTLRTLFN
+			Long   idFactura           = toLong(row[0]);
+			int    idAmb               = toInt(row[1]);
+			String autorizacion        = str(row[2]);
+			String fechaAutorizacion   = str(row[3]);
+			String numFactura          = str(row[4]);
+			String claveAcceso         = str(row[5]);
+			String fecha               = str(row[6]);
+			double subtotal12          = toDouble(row[7]);
+			double total               = toDouble(row[8]);
+			double subcero             = toDouble(row[9]);
+			double subtotal5           = toDouble(row[10]);
+			double subtotal8           = toDouble(row[11]);
+			double vIVA                = toDouble(row[12]);
+			double vIVA5               = toDouble(row[13]);
+			double vIVA8               = toDouble(row[14]);
+			double propina             = toDouble(row[15]);
+			double descuento           = toDouble(row[16]);
+			String observacion         = str(row[17]);
+			Long   idPtoEmision        = toLong(row[18]);
+			// fc.ID = row[19] (no se usa)
+			String ruc                 = str(row[20]);
+			String razonSocial         = str(row[21]);
+			String nombreComercial     = str(row[22]);
+			String mailFcdr            = str(row[23]);
+			String telFcdr             = str(row[24]);
+			String logo                = str(row[25]);
+			String dirFcdr             = str(row[26]);
+			int    microEmpresa        = toInt(row[27]);
+			int    rimpe               = toInt(row[28]);
+			int    rimpePopular        = toInt(row[29]);
+			// row[30] artesano (no se usa en tipo empresa)
+			String contribuyenteEspecial = str(row[31]);
+			int    contabilidad          = toInt(row[32]);
+			String agenteRetencion       = str(row[33]);
+			// comprador (cmpr en PHP = TSR.TTLR)
+			String nomCmdr             = str(row[34]);
+			String numDocCmdr          = str(row[35]);
+			String dirCmdr             = str(row[36]);
+			String mailCmdr            = str(row[37]);
+			String telCmdr             = str(row[38]); // $iaFonos en PHP = $primero['telefono'] = cmpr.telefono
+
+			// ─────────────────────────────────────────────────────────────────────
+			// BLOQUE 2: Establecimiento — CBR.PTEM, CBR.ESTB
+			// ─────────────────────────────────────────────────────────────────────
+			String estNombre = "", estDireccion = "", estTelefono = "", estMail = "";
+			boolean esMatriz = true;
+			String obsEstablecimiento = "";
+			try {
+				jakarta.persistence.Query q2 = em.createNativeQuery(
+					"SELECT b.NOMBRE, b.DIRECCION, b.TELEFONO, b.MAIL, b.MATRIZ, a.OBSERVACION " +
+					"FROM CBR.PTEM a JOIN CBR.ESTB b ON a.ESTABLECIMIENTO = b.ID " +
+					"WHERE a.ID = :id");
+				q2.setParameter("id", idPtoEmision);
+				Object[] est = (Object[]) q2.getSingleResult();
+				estNombre          = str(est[0]);
+				estDireccion       = str(est[1]);
+				estTelefono        = str(est[2]);
+				estMail            = str(est[3]);
+				esMatriz           = toInt(est[4]) == 1;
+				obsEstablecimiento = str(est[5]);
+			} catch (Exception ignored) {}
+
+			// ─────────────────────────────────────────────────────────────────────
+			// BLOQUE 3: Formas de pago (PHP: select from fpfc, tsri where lSRI=24)
+			// ─────────────────────────────────────────────────────────────────────
+			StringBuilder sbFormasPago = new StringBuilder();
+			try {
+				jakarta.persistence.Query q3 = em.createNativeQuery(
+					"SELECT c.detalle, a.valor, a.plazo, a.unidadTiempo " +
+					"FROM CBR.FPFC a " +
+					"JOIN CBR.TSRI c ON c.LSRI = 24 AND c.CODIGO = a.FORMAPAGO " +
+					"WHERE a.FACTURA = :id");
+				q3.setParameter("id", idFactura);
+				java.util.List<Object[]> fps = q3.getResultList();
+				for (Object[] fp : fps) {
+					String detalle      = str(fp[0]);
+					double valorFP      = toDouble(fp[1]);
+					int    plazoFP      = toInt(fp[2]);
+					String unidadTiempo = str(fp[3]);
+					String numDias = (plazoFP != 0) ? plazoFP + " " + unidadTiempo : "";
+					sbFormasPago.append(detalle)
+						.append("   $ ").append(String.format(java.util.Locale.US, "%.2f", valorFP))
+						.append("   ").append(numDias).append("\n");
+				}
+			} catch (Exception e) {
+				System.err.println("⚠ Formas de pago PDF: " + e.getMessage());
+			}
+
+			// ─────────────────────────────────────────────────────────────────────
+			// BLOQUE 4: IVA general vigente (PHP: select from tsri where lSRI=614)
+			// Tabla: CBR.TSRI
+			// ─────────────────────────────────────────────────────────────────────
+			int valorIvaGeneral = 15;
+			try {
+				jakarta.persistence.Query q4 = em.createNativeQuery(
+					"SELECT PORCENTAJE FROM CBR.TSRI WHERE LSRI = 614 FETCH FIRST 1 ROWS ONLY");
+				Object porcObj = q4.getSingleResult();
+				if (porcObj != null) valorIvaGeneral = ((Number) porcObj).intValue();
+			} catch (Exception ignored) {}
+
+			// ─────────────────────────────────────────────────────────────────────
+			// BLOQUE 5: Logo — ruta absoluta
+			// ─────────────────────────────────────────────────────────────────────
+			String logoPath = "";
+			if (logo != null && !logo.isEmpty()) {
+				String baseDir = getBaseUploadDirectory();
+				// El campo 'logo' puede ser ruta relativa o absoluta
+				String candidato = logo.startsWith("/") || logo.contains(":\\")
+						? logo : baseDir + logo;
+				if (java.nio.file.Files.exists(java.nio.file.Paths.get(candidato))) {
+					logoPath = candidato;
+				}
+			}
+			// fallback: logo pasado como parámetro
+			if (logoPath.isEmpty() && pathLogoParam != null && !pathLogoParam.isEmpty()) {
+				String baseDir = getBaseUploadDirectory();
+				String candidato = baseDir + pathLogoParam;
+				if (java.nio.file.Files.exists(java.nio.file.Paths.get(candidato))) {
+					logoPath = candidato;
+				}
+			}
+
+			// ─────────────────────────────────────────────────────────────────────
+			// BLOQUE 6: Construir campos calculados (equivalentes al PHP)
+			// ─────────────────────────────────────────────────────────────────────
+			String ambStr = (idAmb == 2) ? "PRODUCCIÓN" : "PRUEBAS";
+
+			// Tipo empresa
+			String tipoEmpresa = "";
+			if (microEmpresa == 1)  tipoEmpresa = "CONTRIBUYENTE RÉGIMEN MICROEMPRESAS";
+			else if (rimpe == 1)    tipoEmpresa = "CONTRIBUYENTE RÉGIMEN RIMPE";
+			else if (rimpePopular == 1) tipoEmpresa = "CONTRIBUYENTE NEGOCIO POPULAR - RÉGIMEN RIMPE";
+
+			// Leyendas opcionales
+			String leyendaAgente       = (agenteRetencion       != null && !agenteRetencion.isEmpty())       ? agenteRetencion       : "";
+			String leyendaContribuyente= (contribuyenteEspecial != null && !contribuyenteEspecial.isEmpty()) ? contribuyenteEspecial : "";
+
+			// Info del facturador: si es sucursal, agregar datos de sucursal
+			String dirFcdrCompleta = dirFcdr;
+			String telFcdrCompleta = telFcdr;
+			if (!esMatriz && !estNombre.isEmpty()) {
+				dirFcdrCompleta = dirFcdr + " | Suc: " + estNombre + " - " + estDireccion;
+				telFcdrCompleta = telFcdr + " / " + estTelefono;
+			}
+
+			// Contabilidad
+			String contabilidadStr = (contabilidad == 1) ? "SI" : "NO";
+
+			// Información adicional (PHP: $iaFonos=$primero['telefono'] = comprador.telefono, $iaObaservacion=$establecimiento['observacion'].' '.$primero['observacion'])
+			String iaFonos = telCmdr;
+			String iaObservacion = (obsEstablecimiento + " " + observacion).trim();
+			String infoAdicional = "Teléfonos: " + iaFonos + "\nObservación: " + iaObservacion;
+
+			// Totales (PHP: $subtotal_sin_impuestos)
+			double subtotalSinImp = subtotal12 + subcero + subtotal5 + subtotal8;
+
+			// Fecha de autorización formateada
+			String fechaAutoStr = fechaAutorizacion != null ? fechaAutorizacion : "";
+
+			// ─────────────────────────────────────────────────────────────────────
+			// BLOQUE 7: Construir mapa de parámetros para Jasper
+			// ─────────────────────────────────────────────────────────────────────
+			java.util.Map<String, Object> p = new java.util.HashMap<>();
+			p.put("P_CLAVE",                   claveAcceso);
+			p.put("P_PATH_LOGO",               logoPath);
+			// Facturador
+			p.put("P_RUC_FACTURADOR",          ruc);
+			p.put("P_RAZON_SOCIAL",            razonSocial);
+			p.put("P_NOMBRE_COMERCIAL",        nombreComercial != null ? nombreComercial : "");
+			p.put("P_DIRECCION_FCDR",          dirFcdrCompleta);
+			p.put("P_TELEFONO_FCDR",           telFcdrCompleta);
+			p.put("P_EMAIL_FCDR",              mailFcdr);
+			p.put("P_TIPO_EMPRESA",            tipoEmpresa);
+			p.put("P_AGENTE_RETENCION",        leyendaAgente);
+			p.put("P_CONTRIBUYENTE_ESPECIAL",  leyendaContribuyente);
+			p.put("P_OBLIGADO_CONTABILIDAD",   contabilidadStr);
+			// Factura
+			p.put("P_NUMERO_FACTURA",          numFactura);
+			p.put("P_NUMERO_AUTORIZACION",     autorizacion != null ? autorizacion : claveAcceso);
+			p.put("P_FECHA_EMISION",           fecha);
+			p.put("P_FECHA_AUTORIZACION",      fechaAutoStr);
+			p.put("P_AMBIENTE",                ambStr);
+			p.put("P_GUIA_REMISION",           "");
+			// Comprador
+			p.put("P_RAZON_SOCIAL_COMPRADOR",   nomCmdr);
+			p.put("P_IDENTIFICACION_COMPRADOR", numDocCmdr);
+			p.put("P_DIRECCION_COMPRADOR",      dirCmdr);
+			p.put("P_EMAIL_COMPRADOR",          mailCmdr);
+			// Totales (exactamente como el PHP)
+			p.put("P_PORC_IVA",               valorIvaGeneral);
+			p.put("P_SUBTOTAL_IVA",           subtotal12);
+			p.put("P_SUBTOTAL_5",             subtotal5);
+			p.put("P_SUBTOTAL_0",             subcero);
+			p.put("P_SUBTOTAL_8",             subtotal8);
+			p.put("P_SUBTOTAL_SIN_IMP",       subtotalSinImp);
+			p.put("P_DESCUENTO",              descuento);
+			p.put("P_IVA",                    vIVA);
+			p.put("P_IVA_5",                  vIVA5);
+			p.put("P_IVA_8",                  vIVA8);
+			p.put("P_PROPINA",                propina);
+			p.put("P_TOTAL",                  total);
+			// Pie
+			p.put("P_FORMAS_PAGO",            sbFormasPago.toString());
+			p.put("P_INFO_ADICIONAL",         infoAdicional);
+
+			// ─────────────────────────────────────────────────────────────────────
+			// BLOQUE 8: Generar PDF con JasperReports
+			// ─────────────────────────────────────────────────────────────────────
+			byte[] pdfBytes = reporteService.generarReporte("cxc", "RPRT_RIDE_FACTURA", p, "PDF");
+			System.out.println("✓ PDF RIDE generado correctamente ("
+					+ (pdfBytes != null ? pdfBytes.length : 0) + " bytes)");
+			return pdfBytes;
+
+		} catch (Exception e) {
+			System.err.println("Error generando PDF RIDE: " + e.getMessage());
+			e.printStackTrace();
+			return null;
+		}
+	}
+
+	// ── Helpers de conversión de tipos para resultados de native query ───────
+	private String str(Object o)       { return o != null ? o.toString() : ""; }
+	private double toDouble(Object o)  { return o != null ? ((Number) o).doubleValue() : 0.0; }
+	private int    toInt(Object o)     { return o != null ? ((Number) o).intValue()    : 0; }
+	private Long   toLong(Object o)    { return o != null ? ((Number) o).longValue()   : 0L; }
+
 	private String getBaseUploadDirectory() {
 		// Verificar si hay una variable de sistema configurada
 		String uploadDir = System.getProperty("saa.upload.dir");
