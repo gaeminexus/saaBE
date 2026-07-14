@@ -100,22 +100,10 @@ public class FacturaRest {
 	}
 
 	/**
-	 * ENDPOINT PRINCIPAL: Procesa una factura completa automáticamente.
-	 * Este endpoint ejecuta todo el flujo: graba, genera XML, firma y autoriza ante el SRI.
-	 * 
-	 * El frontend solo debe enviar:
-	 * {
-	 *   "factura": { objeto Factura con todos los datos }
-	 * }
-	 * 
-	 * Configuración automática:
-	 * - ambiente: 1 (PRUEBA)
-	 * - conectaSRI: 1 (SI)
-	 * - destinatario: se obtiene del campo mail del comprador
-	 * - pathLogo: resources/logos/logo_facturador_{id}.png
-	 * 
-	 * @param params Mapa con el objeto factura
-	 * @return JSON con el resultado del proceso completo
+	 * ENDPOINT PRINCIPAL: Procesa una factura completa.
+	 * Graba en BD, genera XML, firma electrónicamente y autoriza ante el SRI.
+	 * AMBIENTE FORZADO A 1 (PRUEBAS → celcer.sri.gob.ec) durante fase de pruebas.
+	 * Para producción cambiar 1L por 2L.
 	 */
 	@POST
 	@Path("/procesarCompleta")
@@ -124,11 +112,9 @@ public class FacturaRest {
 	public Response procesarFacturaCompleta(java.util.Map<String, Object> params) {
 		System.out.println("=== LLEGA AL SERVICIO procesarFacturaCompleta ===");
 		try {
-			// Extraer parámetros del JSON
 			@SuppressWarnings("unchecked")
 			java.util.Map<String, Object> facturaMap = (java.util.Map<String, Object>) params.get("factura");
-			
-			// Validar parámetro obligatorio
+
 			if (facturaMap == null) {
 				java.util.Map<String, String> errorResponse = new java.util.HashMap<>();
 				errorResponse.put("mensaje", "ERROR");
@@ -137,77 +123,48 @@ public class FacturaRest {
 						.entity(errorResponse)
 						.type(MediaType.APPLICATION_JSON).build();
 			}
-			
-			// Extraer los detalles ANTES de convertir a Factura
+
 			@SuppressWarnings("unchecked")
-			java.util.List<java.util.Map<String, Object>> detallesMap = 
+			java.util.List<java.util.Map<String, Object>> detallesMap =
 				(java.util.List<java.util.Map<String, Object>>) facturaMap.get("detalleFactura");
-			
-			// Convertir el Map a objeto Factura (ignora detalleFactura)
+
 			Factura factura = convertMapToFactura(facturaMap);
-			
-			// Convertir los detalles a objetos DetalleFactura
+
 			java.util.List<com.saa.model.cxc.DetalleFactura> detalles = null;
 			if (detallesMap != null && !detallesMap.isEmpty()) {
 				detalles = new java.util.ArrayList<>();
 				com.fasterxml.jackson.databind.ObjectMapper mapper = createObjectMapper();
 				for (java.util.Map<String, Object> detalleMap : detallesMap) {
-					com.saa.model.cxc.DetalleFactura detalle = 
+					com.saa.model.cxc.DetalleFactura detalle =
 						mapper.convertValue(detalleMap, com.saa.model.cxc.DetalleFactura.class);
 					detalles.add(detalle);
 				}
 			}
-			
-			// Llamar al servicio con la factura Y los detalles
+
+			// ambiente=1 → celcer.sri.gob.ec (PRUEBAS)
+			// ambiente=2 → cel.sri.gob.ec (PRODUCCION)
 			java.util.Map<String, Object> resultado = facturaService.procesarFacturaCompleta(
-				factura,
-				detalles,  // Enviar los detalles al servicio
-				null,      // ambiente se configura automáticamente en el servicio
-				null,      // conectaSRI se configura automáticamente en el servicio
-				null,      // destinatario se obtiene del titular
-				null       // pathLogo se construye automáticamente
+				factura, detalles,
+				1L,  // PRUEBAS
+				1L,  // conectaSRI = SI
+				null, null
 			);
-			
-			// Retornar resultado
+
 			return Response.status(Response.Status.OK)
 					.entity(resultado)
 					.type(MediaType.APPLICATION_JSON).build();
-					
+
 		} catch (Throwable e) {
 			System.err.println("ERROR en procesarFacturaCompleta REST: " + e.getMessage());
 			e.printStackTrace();
-			
 			java.util.Map<String, String> errorResponse = new java.util.HashMap<>();
 			errorResponse.put("mensaje", "ERROR");
 			errorResponse.put("error", e.getMessage());
 			errorResponse.put("exito", "false");
-			
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
 					.entity(errorResponse)
 					.type(MediaType.APPLICATION_JSON).build();
 		}
-	}
-	
-	/**
-	 * Convierte un Map a objeto Factura.
-	 * Ignora campos como 'detalleFactura' que no pertenecen al modelo Factura.
-	 * Los detalles se deben manejar por separado en el servicio.
-	 */
-	private Factura convertMapToFactura(java.util.Map<String, Object> map) {
-		com.fasterxml.jackson.databind.ObjectMapper mapper = createObjectMapper();
-		return mapper.convertValue(map, Factura.class);
-	}
-	
-	/**
-	 * Crea y configura un ObjectMapper con soporte para Java 8 date/time
-	 * e ignorando propiedades desconocidas.
-	 */
-	private com.fasterxml.jackson.databind.ObjectMapper createObjectMapper() {
-		com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-		mapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
-		mapper.disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-		mapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-		return mapper;
 	}
 
 	@DELETE
@@ -244,12 +201,9 @@ public class FacturaRest {
 					.type(MediaType.APPLICATION_JSON).build();
 		}
 	}
-	
+
 	/**
 	 * Genera el XML de factura electrónica según estándares del SRI v1.1.0
-	 * @param clave Clave de acceso de la factura
-	 * @param ambiente Ambiente (1=PRUEBA, 2=PRODUCCION)
-	 * @return JSON con el resultado de la generación
 	 */
 	@GET
 	@Path("/generarXML/{clave}/{ambiente}")
@@ -258,15 +212,12 @@ public class FacturaRest {
 		System.out.println("LLEGA AL SERVICIO generarXML con clave: " + clave + " y ambiente: " + ambiente);
 		try {
 			String[] resultado = facturaService.generarXMLFactura(clave, ambiente);
-			
-			// Crear objeto de respuesta con la información
 			java.util.Map<String, String> response = new java.util.HashMap<>();
 			response.put("mensaje", resultado[0]);
 			response.put("pathRelativo", resultado[1]);
 			response.put("pathAbsoluto", resultado[2]);
 			response.put("clave", clave);
 			response.put("ambiente", String.valueOf(ambiente));
-			
 			return Response.status(Response.Status.OK).entity(response).type(MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			e.printStackTrace();
@@ -274,18 +225,17 @@ public class FacturaRest {
 			errorResponse.put("mensaje", "ERROR");
 			errorResponse.put("error", e.getMessage());
 			errorResponse.put("clave", clave);
-			
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
 					.entity(errorResponse)
 					.type(MediaType.APPLICATION_JSON).build();
 		}
 	}
-	
+
 	/**
-	 * Autoriza la factura electrónica ante el SRI
-	 * Recibe un JSON con los parámetros necesarios para la autorización
-	 * @param params Mapa con los parámetros de autorización
-	 * @return JSON con el resultado de la autorización
+	 * Autoriza la factura electrónica ante el SRI.
+	 * Igual que el PHP de referencia:
+	 *   ambiente=1 → celcer.sri.gob.ec (pruebas)
+	 *   ambiente=2 → cel.sri.gob.ec (producción)
 	 */
 	@POST
 	@Path("/autorizar")
@@ -294,59 +244,64 @@ public class FacturaRest {
 	public Response autorizarFactura(java.util.Map<String, Object> params) {
 		System.out.println("LLEGA AL SERVICIO autorizarFactura");
 		try {
-			// Extraer parámetros del JSON
 			Long idFacturador = getLongParam(params, "idFacturador");
-			Long ambiente = getLongParam(params, "ambiente");
-			Long conectaSRI = getLongParam(params, "conectaSRI");
-			String clave = (String) params.get("clave");
-			Long codigoFactura = getLongParam(params, "codigoFactura");
-			Double subsidio = getDoubleParam(params, "subsidio");
-			String xml = (String) params.get("xml");
+			Long ambiente     = getLongParam(params, "ambiente");
+			Long conectaSRI   = getLongParam(params, "conectaSRI");
+			String clave      = (String) params.get("clave");
+			Long codigoFactura= getLongParam(params, "codigoFactura");
+			Double subsidio   = getDoubleParam(params, "subsidio");
+			String xml        = (String) params.get("xml");
 			String destinatario = (String) params.get("destinatario");
-			String pathLogo = (String) params.get("pathLogo");
-			
-			// Validar parámetros obligatorios
-			if (idFacturador == null || ambiente == null || conectaSRI == null || 
-					clave == null || codigoFactura == null || xml == null) {
+			String pathLogo   = (String) params.get("pathLogo");
+
+			if (idFacturador == null || ambiente == null || conectaSRI == null
+					|| clave == null || codigoFactura == null || xml == null) {
 				java.util.Map<String, String> errorResponse = new java.util.HashMap<>();
 				errorResponse.put("mensaje", "ERROR");
-				errorResponse.put("error", "Faltan parámetros obligatorios: idFacturador, ambiente, conectaSRI, clave, codigoFactura, xml");
+				errorResponse.put("error", "Faltan parámetros: idFacturador, ambiente, conectaSRI, clave, codigoFactura, xml");
 				return Response.status(Response.Status.BAD_REQUEST)
 						.entity(errorResponse)
 						.type(MediaType.APPLICATION_JSON).build();
 			}
-			
-			// Llamar al servicio de autorización
+
 			String resultado = facturaService.autorizarFactura(
-					idFacturador, ambiente, conectaSRI, clave, 
+					idFacturador, ambiente, conectaSRI, clave,
 					codigoFactura, subsidio, xml, destinatario, pathLogo);
-			
-			// Crear respuesta
+
 			java.util.Map<String, String> response = new java.util.HashMap<>();
 			response.put("mensaje", "OK");
 			response.put("resultado", resultado);
 			response.put("clave", clave);
 			response.put("idFacturador", String.valueOf(idFacturador));
 			response.put("ambiente", String.valueOf(ambiente));
-			
 			return Response.status(Response.Status.OK).entity(response).type(MediaType.APPLICATION_JSON).build();
-			
+
 		} catch (Throwable e) {
 			e.printStackTrace();
 			java.util.Map<String, String> errorResponse = new java.util.HashMap<>();
 			errorResponse.put("mensaje", "ERROR");
 			errorResponse.put("error", e.getMessage());
 			errorResponse.put("detalle", e.getClass().getName());
-			
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
 					.entity(errorResponse)
 					.type(MediaType.APPLICATION_JSON).build();
 		}
 	}
-	
-	/**
-	 * Método auxiliar para extraer Long de Map
-	 */
+
+	// ── MÉTODOS AUXILIARES ─────────────────────────────────────
+
+	private Factura convertMapToFactura(java.util.Map<String, Object> map) {
+		return createObjectMapper().convertValue(map, Factura.class);
+	}
+
+	private com.fasterxml.jackson.databind.ObjectMapper createObjectMapper() {
+		com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+		mapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
+		mapper.disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+		mapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+		return mapper;
+	}
+
 	private Long getLongParam(java.util.Map<String, Object> params, String key) {
 		Object value = params.get(key);
 		if (value == null) return null;
@@ -355,10 +310,7 @@ public class FacturaRest {
 		if (value instanceof String) return Long.parseLong((String) value);
 		return null;
 	}
-	
-	/**
-	 * Método auxiliar para extraer Double de Map
-	 */
+
 	private Double getDoubleParam(java.util.Map<String, Object> params, String key) {
 		Object value = params.get(key);
 		if (value == null) return null;

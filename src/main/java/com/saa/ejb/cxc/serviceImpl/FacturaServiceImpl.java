@@ -64,6 +64,9 @@ public class FacturaServiceImpl implements FacturaService {
 	@EJB
 	private SignatureService signatureService;
 	
+	@EJB
+	private com.saa.basico.ejb.DetalleRubroService detalleRubroService;
+	
 	@PersistenceContext
 	private EntityManager em;
 
@@ -210,9 +213,22 @@ public class FacturaServiceImpl implements FacturaService {
 			com.saa.model.cxc.FormaPagoFactura formaPago = new com.saa.model.cxc.FormaPagoFactura();
 			formaPago.setFactura(factura);
 			
-			// Forma de pago por defecto si no está especificada
-			String codigoFormaPago = factura.getFormaPago() != null ? 
-					String.valueOf(factura.getFormaPago()) : "01"; // 01 = Sin utilización del sistema financiero
+			// Obtener el código de forma de pago desde la tabla TSRI
+			String codigoFormaPago = "01"; // Por defecto: 01 = Sin utilización del sistema financiero
+			if (factura.getFormaPago() != null) {
+				// Buscar el código en la tabla TSRI usando el ID
+				try {
+					String sqlTsri = "SELECT t.codigo FROM Tsri t WHERE t.id = :idFormaPago";
+					Query queryTsri = em.createQuery(sqlTsri);
+					queryTsri.setParameter("idFormaPago", factura.getFormaPago());
+					String codigoEncontrado = (String) queryTsri.getSingleResult();
+					if (codigoEncontrado != null && !codigoEncontrado.isEmpty()) {
+						codigoFormaPago = codigoEncontrado;
+					}
+				} catch (Exception e) {
+					System.err.println("⚠ Error al obtener código de forma de pago, usando default 01: " + e.getMessage());
+				}
+			}
 			formaPago.setFormaPago(codigoFormaPago);
 			
 			// Valor total de la factura
@@ -395,83 +411,101 @@ public class FacturaServiceImpl implements FacturaService {
 		
 		DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 		
-		// Inicio del documento
-		writer.writeStartDocument("UTF-8", "1.0");
-		writer.writeCharacters("\n");
+		// NO escribir la declaración XML aquí
+		// El proceso de firma (documentToString) agregará automáticamente la declaración XML
+		// al convertir el Document firmado de vuelta a String
 		
 		// Elemento raíz: factura
 		writer.writeStartElement("factura");
-		writer.writeAttribute("id", factura.getClave());  // Usar clave de acceso como ID
+		writer.writeAttribute("id", "comprobante");  // SIEMPRE debe ser "comprobante" según estándar del SRI
 		writer.writeAttribute("version", "1.1.0");
 		writer.writeCharacters("\n");
 		
 		// infoTributaria
-		writer.writeCharacters("  ");
+		writer.writeCharacters(" ");
 		writer.writeStartElement("infoTributaria");
 		writer.writeCharacters("\n");
 		
-		writeElement(writer, "ambiente", String.valueOf(ambiente), 4);
-		writeElement(writer, "tipoEmision", TIPO_EMISION, 4);
-		writeElement(writer, "razonSocial", nvl(facturador.getRazonSocial(), ""), 4);
-		writeElement(writer, "nombreComercial", nvl(facturador.getNombre(), ""), 4);
-		writeElement(writer, "ruc", nvl(facturador.getNumDoc(), ""), 4);
-		writeElement(writer, "claveAcceso", nvl(factura.getClave(), ""), 4);
-		writeElement(writer, "codDoc", TIPO_DOC, 4);
-		writeElement(writer, "estab", nvl(factura.getNumEstablecimiento(), ""), 4);
-		writeElement(writer, "ptoEmi", nvl(factura.getNumPtoEmision(), ""), 4);
-		writeElement(writer, "secuencial", nvl(factura.getSecuencial(), ""), 4);
-		writeElement(writer, "dirMatriz", nvl(facturador.getDireccion(), ""), 4);
+		writeElement(writer, "ambiente", String.valueOf(ambiente), 2);
+		writeElement(writer, "tipoEmision", TIPO_EMISION, 2);
+		writeElement(writer, "razonSocial", nvl(facturador.getRazonSocial(), ""), 2);
+		writeElement(writer, "nombreComercial", nvl(facturador.getNombre(), ""), 2);
+		writeElement(writer, "ruc", nvl(facturador.getNumDoc(), ""), 2);
+		writeElement(writer, "claveAcceso", nvl(factura.getClave(), ""), 2);
+		writeElement(writer, "codDoc", TIPO_DOC, 2);
+		writeElement(writer, "estab", nvl(factura.getNumEstablecimiento(), ""), 2);
+		writeElement(writer, "ptoEmi", nvl(factura.getNumPtoEmision(), ""), 2);
+		writeElement(writer, "secuencial", nvl(factura.getSecuencial(), ""), 2);
+		writeElement(writer, "dirMatriz", nvl(facturador.getDireccion(), ""), 2);
 		
 		// Regímenes especiales
 		if (facturador.getMicroEmpresa() != null && facturador.getMicroEmpresa() == 1) {
-			writeElement(writer, "regimenMicroempresas", "CONTRIBUYENTE RÉGIMEN MICROEMPRESAS", 4);
+			writeElement(writer, "regimenMicroempresas", "CONTRIBUYENTE RÉGIMEN MICROEMPRESAS", 2);
 		}
 		if (facturador.getAgenteRetencion() != null && !facturador.getAgenteRetencion().isEmpty()) {
-			writeElement(writer, "agenteRetencion", facturador.getAgenteRetencion(), 4);
+			writeElement(writer, "agenteRetencion", facturador.getAgenteRetencion(), 2);
 		}
 		if (facturador.getRimpe() != null && facturador.getRimpe() == 1) {
-			writeElement(writer, "contribuyenteRimpe", "CONTRIBUYENTE RÉGIMEN RIMPE", 4);
+			writeElement(writer, "contribuyenteRimpe", "CONTRIBUYENTE RÉGIMEN RIMPE", 2);
 		}
 		if (facturador.getPopularRimpe() != null && facturador.getPopularRimpe() == 1) {
-			writeElement(writer, "contribuyenteRimpe", "CONTRIBUYENTE NEGOCIO POPULAR - RÉGIMEN RIMPE", 4);
+			writeElement(writer, "contribuyenteRimpe", "CONTRIBUYENTE NEGOCIO POPULAR - RÉGIMEN RIMPE", 2);
 		}
 		
-		writer.writeCharacters("  ");
+		writer.writeCharacters(" ");
 		writer.writeEndElement(); // infoTributaria
 		writer.writeCharacters("\n");
 		
 		// infoFactura
-		writer.writeCharacters("  ");
+		writer.writeCharacters(" ");
 		writer.writeStartElement("infoFactura");
 		writer.writeCharacters("\n");
 		
-		writeElement(writer, "fechaEmision", factura.getFecha().format(dateFormatter), 4);
-		writeElement(writer, "dirEstablecimiento", nvl(dirEstablecimiento, ""), 4);
+		writeElement(writer, "fechaEmision", factura.getFecha().format(dateFormatter), 2);
+		writeElement(writer, "dirEstablecimiento", nvl(dirEstablecimiento, ""), 2);
 		
 		if (facturador.getContribuyenteEspecial() != null && !facturador.getContribuyenteEspecial().isEmpty()) {
-			writeElement(writer, "contribuyenteEspecial", facturador.getContribuyenteEspecial(), 4);
+			writeElement(writer, "contribuyenteEspecial", facturador.getContribuyenteEspecial(), 2);
 		}
 		
 		String obligadoContabilidad = (facturador.getContabilidad() != null && facturador.getContabilidad() == 1) ? "SI" : "NO";
-		writeElement(writer, "obligadoContabilidad", obligadoContabilidad, 4);
-		writeElement(writer, "tipoIdentificacionComprador", String.valueOf(titular.getRubroTipoIdentificacionH()), 4);
-		writeElement(writer, "razonSocialComprador", nvl(titular.getNombre(), ""), 4);
-		writeElement(writer, "identificacionComprador", nvl(titular.getIdentificacion(), ""), 4);
-		writeElement(writer, "direccionComprador", nvl(titular.getDireccion(), ""), 4);
+		writeElement(writer, "obligadoContabilidad", obligadoContabilidad, 2);
+		
+		// Obtener tipoIdentificacionComprador desde DetalleRubro (debe ser siempre 2 dígitos: "04", "05", etc.)
+		String tipoIdentificacionComprador = "05"; // Valor por defecto
+		try {
+			if (titular.getRubroTipoIdentificacionP() != null && titular.getRubroTipoIdentificacionH() != null) {
+				String valorAlfa = detalleRubroService.selectValorStringByRubAltDetAlt(
+					titular.getRubroTipoIdentificacionP().intValue(), 
+					titular.getRubroTipoIdentificacionH().intValue()
+				);
+				if (valorAlfa != null && !valorAlfa.isEmpty()) {
+					tipoIdentificacionComprador = valorAlfa;
+				}
+			}
+		} catch (Throwable e) {
+			System.err.println("Error al obtener tipo identificación: " + e.getMessage());
+			// Usar valor por defecto si falla
+		}
+		writeElement(writer, "tipoIdentificacionComprador", tipoIdentificacionComprador, 2);
+		
+		writeElement(writer, "razonSocialComprador", nvl(titular.getNombre(), ""), 2);
+		writeElement(writer, "identificacionComprador", nvl(titular.getIdentificacion(), ""), 2);
+		writeElement(writer, "direccionComprador", nvl(titular.getDireccion(), ""), 2);
 		
 		// Totales
 		Double totalSinImpuestos = sumNulls(factura.getSubtotal(), factura.getSubcero(), 
 				factura.getSubtotal5(), factura.getSubtotal8());
-		writeElement(writer, "totalSinImpuestos", formatDecimal(totalSinImpuestos), 4);
+		writeElement(writer, "totalSinImpuestos", formatDecimal(totalSinImpuestos), 2);
 		
 		if (factura.getSubsidio() != null && factura.getSubsidio() > 0) {
-			writeElement(writer, "totalSubsidio", formatDecimal(factura.getSubsidio()), 4);
+			writeElement(writer, "totalSubsidio", formatDecimal(factura.getSubsidio()), 2);
 		}
 		
-		writeElement(writer, "totalDescuento", formatDecimal(nvl(factura.getDescuento(), 0.0)), 4);
+		writeElement(writer, "totalDescuento", formatDecimal(nvl(factura.getDescuento(), 0.0)), 2);
 		
 		// totalConImpuestos
-		writer.writeCharacters("    ");
+		writer.writeCharacters("  ");
 		writer.writeStartElement("totalConImpuestos");
 		writer.writeCharacters("\n");
 		
@@ -510,16 +544,16 @@ public class FacturaServiceImpl implements FacturaService {
 					nvl(factura.getSubtotal(), 0.0), factura.getvIRBPNR());
 		}
 		
-		writer.writeCharacters("    ");
+		writer.writeCharacters("  ");
 		writer.writeEndElement(); // totalConImpuestos
 		writer.writeCharacters("\n");
 		
-		writeElement(writer, "propina", formatDecimal(nvl(factura.getPropina(), 0.0)), 4);
-		writeElement(writer, "importeTotal", formatDecimal(nvl(factura.getTotal(), 0.0)), 4);
-		writeElement(writer, "moneda", MONEDA, 4);
+		writeElement(writer, "propina", formatDecimal(nvl(factura.getPropina(), 0.0)), 2);
+		writeElement(writer, "importeTotal", formatDecimal(nvl(factura.getTotal(), 0.0)), 2);
+		writeElement(writer, "moneda", MONEDA, 2);
 		
 		// Formas de pago
-		writer.writeCharacters("    ");
+		writer.writeCharacters("  ");
 		writer.writeStartElement("pagos");
 		writer.writeCharacters("\n");
 		
@@ -527,11 +561,13 @@ public class FacturaServiceImpl implements FacturaService {
 		if (formasPago == null || formasPago.isEmpty()) {
 			String codigoFormaPago = factura.getFormaPago() != null ? 
 					String.valueOf(factura.getFormaPago()) : "01";
-			writePago(writer, codigoFormaPago, factura.getTotal(), "0", "dias");
+			writePago(writer, codigoFormaPago, factura.getTotal(), "1", "dias");
 		} else {
 			// Iterar sobre las formas de pago y agregarlas al XML
 			for (com.saa.model.cxc.FormaPagoFactura fp : formasPago) {
-				String plazoStr = fp.getPlazo() != null ? String.valueOf(fp.getPlazo()) : null;
+				// El plazo siempre debe ser al menos 1, nunca 0
+				String plazoStr = (fp.getPlazo() != null && fp.getPlazo() > 0) ? 
+						String.valueOf(fp.getPlazo()) : "1";
 				writePago(writer, 
 						fp.getFormaPago(), 
 						fp.getValor(), 
@@ -540,16 +576,16 @@ public class FacturaServiceImpl implements FacturaService {
 			}
 		}
 		
-		writer.writeCharacters("    ");
+		writer.writeCharacters("  ");
 		writer.writeEndElement(); // pagos
 		writer.writeCharacters("\n");
 		
-		writer.writeCharacters("  ");
+		writer.writeCharacters(" ");
 		writer.writeEndElement(); // infoFactura
 		writer.writeCharacters("\n");
 		
 		// detalles
-		writer.writeCharacters("  ");
+		writer.writeCharacters(" ");
 		writer.writeStartElement("detalles");
 		writer.writeCharacters("\n");
 		
@@ -557,23 +593,23 @@ public class FacturaServiceImpl implements FacturaService {
 			writeDetalle(writer, detalle, COD_IVA);
 		}
 		
-		writer.writeCharacters("  ");
+		writer.writeCharacters(" ");
 		writer.writeEndElement(); // detalles
 		writer.writeCharacters("\n");
 		
 		// infoAdicional
-		writer.writeCharacters("  ");
+		writer.writeCharacters(" ");
 		writer.writeStartElement("infoAdicional");
 		writer.writeCharacters("\n");
 		
-		writer.writeCharacters("    ");
+		writer.writeCharacters("  ");
 		writer.writeStartElement("campoAdicional");
 		writer.writeAttribute("nombre", "Datos Adicionales");
 		writer.writeCharacters("Observ.[" + nvl(factura.getObservacion(), "") + "]");
 		writer.writeEndElement();
 		writer.writeCharacters("\n");
 		
-		writer.writeCharacters("  ");
+		writer.writeCharacters(" ");
 		writer.writeEndElement(); // infoAdicional
 		writer.writeCharacters("\n");
 		
@@ -585,7 +621,10 @@ public class FacturaServiceImpl implements FacturaService {
 	}
 	
 	private void writeElement(XMLStreamWriter writer, String name, String value, int indent) throws Exception {
-		writer.writeCharacters("    ".repeat(indent / 2));
+		// indent representa el nivel de indentación: 2 = 2 espacios, 3 = 3 espacios, etc.
+		for (int i = 0; i < indent; i++) {
+			writer.writeCharacters(" ");
+		}
 		writer.writeStartElement(name);
 		writer.writeCharacters(value);
 		writer.writeEndElement();
@@ -594,86 +633,86 @@ public class FacturaServiceImpl implements FacturaService {
 	
 	private void writeTotalImpuesto(XMLStreamWriter writer, String codigo, String codigoPorcentaje, 
 			Double baseImponible, Double valor) throws Exception {
-		writer.writeCharacters("      ");
+		writer.writeCharacters("   ");
 		writer.writeStartElement("totalImpuesto");
 		writer.writeCharacters("\n");
-		writeElement(writer, "codigo", codigo, 8);
-		writeElement(writer, "codigoPorcentaje", codigoPorcentaje, 8);
-		writeElement(writer, "baseImponible", formatDecimal(baseImponible), 8);
-		writeElement(writer, "valor", formatDecimal(valor), 8);
-		writer.writeCharacters("      ");
+		writeElement(writer, "codigo", codigo, 4);
+		writeElement(writer, "codigoPorcentaje", codigoPorcentaje, 4);
+		writeElement(writer, "baseImponible", formatDecimal(baseImponible), 4);
+		writeElement(writer, "valor", formatDecimal(valor), 4);
+		writer.writeCharacters("   ");
 		writer.writeEndElement();
 		writer.writeCharacters("\n");
 	}
 	
 	private void writePago(XMLStreamWriter writer, String formaPago, Double total, 
 			String plazo, String unidadTiempo) throws Exception {
-		writer.writeCharacters("      ");
+		writer.writeCharacters("   ");
 		writer.writeStartElement("pago");
 		writer.writeCharacters("\n");
-		writeElement(writer, "formaPago", formaPago, 8);
-		writeElement(writer, "total", formatDecimal(total), 8);
+		writeElement(writer, "formaPago", formaPago, 4);
+		writeElement(writer, "total", formatDecimal(total), 4);
 		if (plazo != null) {
-			writeElement(writer, "plazo", plazo, 8);
+			writeElement(writer, "plazo", plazo, 4);
 		}
 		if (unidadTiempo != null) {
-			writeElement(writer, "unidadTiempo", unidadTiempo, 8);
+			writeElement(writer, "unidadTiempo", unidadTiempo, 4);
 		}
-		writer.writeCharacters("      ");
+		writer.writeCharacters("   ");
 		writer.writeEndElement();
 		writer.writeCharacters("\n");
 	}
 	
 	private void writeDetalle(XMLStreamWriter writer, DetalleFactura detalle, String codIVA) throws Exception {
-		writer.writeCharacters("    ");
+		writer.writeCharacters("  ");
 		writer.writeStartElement("detalle");
 		writer.writeCharacters("\n");
 		
 		// Incluir codigoPrincipal solo si el producto tiene código
 		if (detalle.getProducto() != null && detalle.getProducto().getCodigo() != null 
 				&& !detalle.getProducto().getCodigo().trim().isEmpty()) {
-			writeElement(writer, "codigoPrincipal", detalle.getProducto().getCodigo(), 6);
+			writeElement(writer, "codigoPrincipal", detalle.getProducto().getCodigo(), 3);
 		}
 		
 		// Incluir codigoAuxiliar solo si existe
 		if (detalle.getProducto() != null && detalle.getProducto().getCodigoAux() != null 
 				&& !detalle.getProducto().getCodigoAux().trim().isEmpty()) {
-			writeElement(writer, "codigoAuxiliar", detalle.getProducto().getCodigoAux(), 6);
+			writeElement(writer, "codigoAuxiliar", detalle.getProducto().getCodigoAux(), 3);
 		}
 		
-		writeElement(writer, "descripcion", nvl(detalle.getDescripcion(), ""), 6);
-		writeElement(writer, "cantidad", formatDecimal(detalle.getCantidad()), 6);
-		writeElement(writer, "precioUnitario", formatDecimal(detalle.getValor()), 6);
+		writeElement(writer, "descripcion", nvl(detalle.getDescripcion(), ""), 3);
+		writeElement(writer, "cantidad", formatDecimal(detalle.getCantidad()), 3);
+		writeElement(writer, "precioUnitario", formatDecimal(detalle.getValor()), 3);
 		
 		if (detalle.getPrecioSinSub() != null && detalle.getPrecioSinSub() > 0) {
-			writeElement(writer, "precioSinSubsidio", formatDecimal(detalle.getPrecioSinSub()), 6);
+			writeElement(writer, "precioSinSubsidio", formatDecimal(detalle.getPrecioSinSub()), 3);
 		}
 		
-		writeElement(writer, "descuento", formatDecimal(nvl(detalle.getDescuento(), 0.0)), 6);
-		writeElement(writer, "precioTotalSinImpuesto", formatDecimal(detalle.getBaseImponible()), 6);
+		writeElement(writer, "descuento", formatDecimal(nvl(detalle.getDescuento(), 0.0)), 3);
+		writeElement(writer, "precioTotalSinImpuesto", formatDecimal(detalle.getBaseImponible()), 3);
 		
 		// Impuestos del detalle
-		writer.writeCharacters("      ");
+		writer.writeCharacters("   ");
 		writer.writeStartElement("impuestos");
 		writer.writeCharacters("\n");
 		
-		writer.writeCharacters("        ");
+		writer.writeCharacters("    ");
 		writer.writeStartElement("impuesto");
 		writer.writeCharacters("\n");
-		writeElement(writer, "codigo", codIVA, 10);
-		writeElement(writer, "codigoPorcentaje", String.valueOf(detalle.getCodigoIVASRI()), 10);
-		writeElement(writer, "tarifa", String.valueOf(detalle.getPorcentajeIVA()), 10);
-		writeElement(writer, "baseImponible", formatDecimal(detalle.getBaseImponible()), 10);
-		writeElement(writer, "valor", formatDecimal(nvl(detalle.getValorIVA(), 0.0)), 10);
-		writer.writeCharacters("        ");
+		writeElement(writer, "codigo", codIVA, 5);
+		writeElement(writer, "codigoPorcentaje", String.valueOf(detalle.getCodigoIVASRI()), 5);
+		writeElement(writer, "tarifa", String.valueOf(detalle.getPorcentajeIVA()), 5);
+		writeElement(writer, "baseImponible", formatDecimal(detalle.getBaseImponible()), 5);
+		writeElement(writer, "valor", formatDecimal(nvl(detalle.getValorIVA(), 0.0)), 5);
+		writer.writeCharacters("    ");
 		writer.writeEndElement();
 		writer.writeCharacters("\n");
 		
-		writer.writeCharacters("      ");
+		writer.writeCharacters("   ");
 		writer.writeEndElement(); // impuestos
 		writer.writeCharacters("\n");
 		
-		writer.writeCharacters("    ");
+		writer.writeCharacters("  ");
 		writer.writeEndElement(); // detalle
 		writer.writeCharacters("\n");
 	}
@@ -700,7 +739,66 @@ public class FacturaServiceImpl implements FacturaService {
 		if (value == null) {
 			return "0.00";
 		}
-		return String.format("%.2f", value);
+		// Usar Locale.US para asegurar que siempre use punto decimal (no coma)
+		// El SRI requiere formato estándar XML con punto decimal
+		return String.format(java.util.Locale.US, "%.2f", value);
+	}
+	
+	/**
+	 * Limpia declaraciones XML duplicadas del contenido XML.
+	 * Si encuentra múltiples declaraciones <?xml...?>, conserva solo la primera.
+	 * También normaliza los saltos de línea entre la declaración y el contenido.
+	 * @param xmlContent Contenido XML que puede tener declaraciones duplicadas
+	 * @return Contenido XML con una sola declaración
+	 */
+	private String limpiarDeclaracionesXMLDuplicadas(String xmlContent) {
+		if (xmlContent == null || xmlContent.isEmpty()) {
+			return xmlContent;
+		}
+		
+		// Patrón para encontrar declaraciones XML: <?xml version="..." encoding="..."?>
+		// Puede tener o no el atributo standalone
+		String patronDeclaracion = "<\\?xml\\s+version\\s*=\\s*[\"'][^\"']+[\"']\\s*(?:encoding\\s*=\\s*[\"'][^\"']+[\"'])?\\s*(?:standalone\\s*=\\s*[\"'][^\"']+[\"'])?\\s*\\?>";
+		
+		// Contar cuántas declaraciones hay
+		java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(patronDeclaracion);
+		java.util.regex.Matcher matcher = pattern.matcher(xmlContent);
+		
+		int count = 0;
+		while (matcher.find()) {
+			count++;
+		}
+		
+		if (count > 1) {
+			// Hay duplicados, conservar solo la primera declaración
+			System.out.println("⚠ ADVERTENCIA: Se encontraron " + count + " declaraciones XML. Limpiando duplicados...");
+			
+			// Encontrar la primera declaración
+			matcher.reset();
+			if (matcher.find()) {
+				String primeraDeclaracion = matcher.group();
+				
+				// Remover TODAS las declaraciones del contenido
+				String contenidoSinDeclaraciones = xmlContent.replaceAll(patronDeclaracion, "");
+				
+				// Limpiar espacios y saltos de línea al inicio del contenido
+				contenidoSinDeclaraciones = contenidoSinDeclaraciones.trim();
+				
+				// Agregar solo la primera declaración al inicio con UN SOLO salto de línea
+				xmlContent = primeraDeclaracion + "\n" + contenidoSinDeclaraciones;
+				
+				System.out.println("✓ XML limpiado: ahora tiene 1 sola declaración XML");
+			}
+		}
+		
+		// Normalizar saltos de línea múltiples después de la declaración XML
+		// El patrón busca: declaración XML seguida de múltiples saltos de línea
+		xmlContent = xmlContent.replaceAll("(<\\?xml[^?]+\\?>)\\s*\\n\\s*\\n+", "$1\n");
+		
+		// Eliminar espacios en blanco al final del contenido
+		xmlContent = xmlContent.trim();
+		
+		return xmlContent;
 	}
 	
 	@Override
@@ -716,6 +814,8 @@ public class FacturaServiceImpl implements FacturaService {
 		try {
 			// 1. Grabar XML firmado
 			String strXML = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" + xml;
+			// Limpiar posibles declaraciones XML duplicadas
+			strXML = limpiarDeclaracionesXMLDuplicadas(strXML);
 			Path pathFirmado = Paths.get(resourcesPath + "/docs/f/" + clave + ".xml");
 			Files.createDirectories(pathFirmado.getParent());
 			Files.write(pathFirmado, strXML.getBytes("UTF-8"));
@@ -746,6 +846,14 @@ public class FacturaServiceImpl implements FacturaService {
 					
 					// Llamar servicio de recepción
 					String contenidoXML = new String(Files.readAllBytes(pathFirmado), "UTF-8");
+					// Limpiar posibles declaraciones XML duplicadas antes de enviar al SRI
+					contenidoXML = limpiarDeclaracionesXMLDuplicadas(contenidoXML);
+					
+					// Log del XML limpiado (primeros 500 caracteres)
+					System.out.println(">>> XML LIMPIADO (primeros 500 caracteres):");
+					System.out.println(contenidoXML.substring(0, Math.min(500, contenidoXML.length())));
+					System.out.println(">>> FIN XML LIMPIADO");
+					
 					String estadoRecepcion = llamarRecepcionSRI(urlWS1, contenidoXML, logWriter1);
 					
 					logWriter1.close();
@@ -937,9 +1045,15 @@ public class FacturaServiceImpl implements FacturaService {
 			
 			// Crear elemento validarComprobante CON namespace
 			SOAPElement validarComprobante = soapBody.addChildElement("validarComprobante", "", "http://ec.gob.sri.ws.recepcion");
-			// Crear elemento xml SIN namespace usando createElementNS con namespace vacío
+			// Crear elemento xml SIN namespace
 			SOAPElement xml = validarComprobante.addChildElement(envelope.createName("xml", "", ""));
-			xml.addTextNode(xmlContent);
+			// Eliminar \r (retorno de carro Windows) que el SRI rechaza con error "ARCHIVO NO CUMPLE ESTRUCTURA XML"
+			xmlContent = xmlContent.replace("\r", "");
+			// El WSDL del SRI define el parámetro 'xml' como xsd:base64Binary.
+			// PHP SoapClient lo codifica automáticamente; en Java debemos hacerlo manualmente.
+			String xmlBase64 = java.util.Base64.getEncoder().encodeToString(xmlContent.getBytes("UTF-8"));
+			xml.addTextNode(xmlBase64);
+			System.out.println(">>> XML codificado en Base64 (primeros 100 chars): " + xmlBase64.substring(0, Math.min(100, xmlBase64.length())));
 			
 			soapMessage.saveChanges();
 			
@@ -1275,6 +1389,135 @@ public class FacturaServiceImpl implements FacturaService {
 			return userHome + "/saa-uploads/";
 		} else {
 			return "/opt/saa-uploads/";
+		}
+	}
+	
+	/**
+	 * MÉTODO DE PRUEBA: Envía un XML correcto al SRI para verificar la comunicación
+	 */
+	@Override
+	public String probarEnvioXMLCorrecto(String xmlCorrecto) throws Exception {
+		System.out.println("=== PRUEBA: Enviando XML correcto al SRI ===");
+		
+		try {
+			// Extraer ambiente del XML para seleccionar el WS correcto (igual que PHP de referencia)
+			// ambiente=1 → celcer.sri.gob.ec (certificación/pruebas)
+			// ambiente=2 → cel.sri.gob.ec (producción)
+			int ambienteXML = 1; // default certificación
+			try {
+				javax.xml.parsers.DocumentBuilder db = javax.xml.parsers.DocumentBuilderFactory.newInstance().newDocumentBuilder();
+				org.w3c.dom.Document docXML = db.parse(new java.io.ByteArrayInputStream(xmlCorrecto.getBytes("UTF-8")));
+				NodeList ambienteNodes = docXML.getElementsByTagName("ambiente");
+				if (ambienteNodes.getLength() > 0) {
+					ambienteXML = Integer.parseInt(ambienteNodes.item(0).getTextContent().trim());
+				}
+			} catch (Exception ex) {
+				System.out.println("⚠ No se pudo extraer ambiente del XML, usando certificación por defecto: " + ex.getMessage());
+			}
+			
+			String urlWS1 = ambienteXML == 1
+					? "https://celcer.sri.gob.ec/comprobantes-electronicos-ws/RecepcionComprobantesOffline?wsdl"
+					: "https://cel.sri.gob.ec/comprobantes-electronicos-ws/RecepcionComprobantesOffline?wsdl";
+			String urlWS2 = ambienteXML == 1
+					? "https://celcer.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl"
+					: "https://cel.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl";
+			
+			System.out.println(">>> PRUEBA: Ambiente detectado: " + ambienteXML + " → URL WS1: " + urlWS1);
+			
+			// Crear conexión SOAP
+			SOAPConnectionFactory soapConnectionFactory = SOAPConnectionFactory.newInstance();
+			SOAPConnection soapConnection = soapConnectionFactory.createConnection();
+			
+			// Crear mensaje SOAP
+			MessageFactory messageFactory = MessageFactory.newInstance();
+			SOAPMessage soapMessage = messageFactory.createMessage();
+			SOAPPart soapPart = soapMessage.getSOAPPart();
+			
+			// SOAP Envelope
+			SOAPEnvelope envelope = soapPart.getEnvelope();
+			
+			// SOAP Body
+			SOAPBody soapBody = envelope.getBody();
+			
+			// Crear elemento validarComprobante CON namespace
+			SOAPElement validarComprobante = soapBody.addChildElement("validarComprobante", "", "http://ec.gob.sri.ws.recepcion");
+			// Crear elemento xml SIN namespace
+			SOAPElement xml = validarComprobante.addChildElement(envelope.createName("xml", "", ""));
+			xml.addTextNode(xmlCorrecto);
+			
+			soapMessage.saveChanges();
+			
+			System.out.println(">>> PRUEBA: Mensaje SOAP Request creado");
+			
+			// Log del request
+			ByteArrayOutputStream requestBaos = new ByteArrayOutputStream();
+			soapMessage.writeTo(requestBaos);
+			String requestXml = requestBaos.toString("UTF-8");
+			System.out.println(">>> PRUEBA: REQUEST SOAP (primeros 1000 caracteres):");
+			System.out.println(requestXml.substring(0, Math.min(1000, requestXml.length())));
+			
+			// Llamar al servicio
+			SOAPMessage soapResponse = soapConnection.call(soapMessage, urlWS1);
+			
+			System.out.println(">>> PRUEBA: Respuesta recibida del SRI");
+			
+			// Convertir respuesta a String
+			ByteArrayOutputStream baos = new ByteArrayOutputStream();
+			soapResponse.writeTo(baos);
+			String respuestaCompleta = baos.toString("UTF-8");
+			
+			System.out.println(">>> PRUEBA: Respuesta WS1 completa:");
+			System.out.println(respuestaCompleta);
+			
+			// Extraer estado
+			SOAPBody responseBody = soapResponse.getSOAPBody();
+			NodeList estadoList = responseBody.getElementsByTagName("estado");
+			
+			if (estadoList.getLength() > 0) {
+				String estado = estadoList.item(0).getTextContent();
+				System.out.println(">>> PRUEBA: Estado WS1 extraído: " + estado);
+				
+				if ("RECIBIDA".equals(estado)) {
+					soapConnection.close();
+					// Esperar 2 segundos igual que el PHP de referencia
+					System.out.println(">>> PRUEBA: Comprobante RECIBIDO. Esperando 2s para llamar WS2 autorización...");
+					Thread.sleep(2000);
+					
+					// Extraer clave de acceso del XML
+					String claveAcceso = "";
+					try {
+						javax.xml.parsers.DocumentBuilder db2 = javax.xml.parsers.DocumentBuilderFactory.newInstance().newDocumentBuilder();
+						org.w3c.dom.Document docXML2 = db2.parse(new java.io.ByteArrayInputStream(xmlCorrecto.getBytes("UTF-8")));
+						NodeList claveNodes = docXML2.getElementsByTagName("claveAcceso");
+						if (claveNodes.getLength() > 0) {
+							claveAcceso = claveNodes.item(0).getTextContent().trim();
+						}
+					} catch (Exception ex) {
+						System.out.println("⚠ No se pudo extraer claveAcceso del XML: " + ex.getMessage());
+					}
+					System.out.println(">>> PRUEBA: Llamando WS2 autorización con clave: " + claveAcceso);
+					System.out.println(">>> PRUEBA: URL WS2: " + urlWS2);
+					
+					ResultadoAutorizacion resultado = llamarAutorizacionSRI(urlWS2, claveAcceso);
+					System.out.println(">>> PRUEBA: Estado WS2 autorización: " + resultado.estado);
+					System.out.println(">>> PRUEBA: Número autorización: " + resultado.numeroAutorizacion);
+					System.out.println(">>> PRUEBA: Fecha autorización: " + resultado.fechaAutorizacion);
+					return "Estado WS1: " + estado + " | Estado WS2: " + resultado.estado 
+						+ " | NumAutorizacion: " + resultado.numeroAutorizacion 
+						+ " | FechaAutorizacion: " + resultado.fechaAutorizacion;
+				}
+				
+				soapConnection.close();
+				return "Estado WS1: " + estado + " | Respuesta completa en logs";
+			}
+			
+			soapConnection.close();
+			return "NO SE ENCONTRÓ ESTADO EN LA RESPUESTA | Ver logs para detalles";
+			
+		} catch (Exception e) {
+			System.err.println(">>> PRUEBA ERROR: " + e.getMessage());
+			e.printStackTrace();
+			throw new Exception("Error en prueba de envío XML: " + e.getMessage(), e);
 		}
 	}
 }

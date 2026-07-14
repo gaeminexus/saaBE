@@ -253,6 +253,15 @@ public class SignatureServiceImpl implements SignatureService {
 		// Firmar el documento
 		signature.sign(dsc);
 		
+		// CRÍTICO: Agregar namespace xmlns:etsi al elemento ds:Signature
+		// El XMLSignatureFactory no lo agrega automáticamente aunque esté en DOMSignContext
+		// El SRI requiere que este namespace esté declarado en el elemento raíz de la firma
+		NodeList signatureNodes = doc.getElementsByTagNameNS(XMLSignature.XMLNS, "Signature");
+		if (signatureNodes.getLength() > 0) {
+			Element signatureElement = (Element) signatureNodes.item(0);
+			signatureElement.setAttributeNS("http://www.w3.org/2000/xmlns/", "xmlns:etsi", xadesNamespace);
+		}
+		
 		// Convertir el documento firmado a String
 		return documentToString(doc);
 	}
@@ -277,8 +286,10 @@ public class SignatureServiceImpl implements SignatureService {
 		Element signedSignatureProperties = doc.createElementNS(xadesNamespace, "etsi:SignedSignatureProperties");
 		
 		// SigningTime (fecha y hora actual en formato ISO 8601 con timezone)
+		// CORRECCIÓN: El formato correcto del SRI es yyyy-MM-dd'T'HH:mm:ssXXX (sin microsegundos)
 		Element signingTime = doc.createElementNS(xadesNamespace, "etsi:SigningTime");
-		String timestamp = java.time.ZonedDateTime.now().format(java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+		java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX");
+		String timestamp = java.time.ZonedDateTime.now().format(formatter);
 		signingTime.setTextContent(timestamp);
 		signedSignatureProperties.appendChild(signingTime);
 		
@@ -299,7 +310,18 @@ public class SignatureServiceImpl implements SignatureService {
 		// IssuerSerial
 		Element issuerSerial = doc.createElementNS(xadesNamespace, "etsi:IssuerSerial");
 		Element x509IssuerName = doc.createElementNS(XMLSignature.XMLNS, "ds:X509IssuerName");
-		x509IssuerName.setTextContent(cert.getIssuerX500Principal().getName());
+		// CORRECCIÓN CRÍTICA: El SRI requiere formato RFC2253 pero SIN espacios, sin prefijo OID, y SIN valores hexadecimales
+		// Obtener el DN y limpiar el formato para que coincida con el ejemplo del SRI
+		String issuerDN = cert.getIssuerX500Principal().getName(javax.security.auth.x500.X500Principal.RFC2253);
+		// Remover espacios después de las comas (RFC2253 puede agregarlos)
+		issuerDN = issuerDN.replaceAll(", ", ",");
+		// Remover prefijo "OID." que puede aparecer en algunos atributos
+		issuerDN = issuerDN.replaceAll("OID\\.", "");
+		// CRÍTICO: Decodificar valores hexadecimales a texto legible
+		// Los valores hexadecimales tienen el formato #XXXXXX donde XXXX son bytes en hex
+		// Ejemplo: #0c0f56415445532d413636373231343939 debe convertirse a VATES-A66721499
+		issuerDN = decodificarValoresHexadecimales(issuerDN);
+		x509IssuerName.setTextContent(issuerDN);
 		Element x509SerialNumber = doc.createElementNS(XMLSignature.XMLNS, "ds:X509SerialNumber");
 		x509SerialNumber.setTextContent(cert.getSerialNumber().toString());
 		issuerSerial.appendChild(x509IssuerName);
@@ -349,19 +371,180 @@ public class SignatureServiceImpl implements SignatureService {
 	}
 	
 	/**
-	 * Convierte un Document XML a String con formato adecuado
+	 * Convierte un Document XML a String preservando el formato original del SRI
 	 */
 	private String documentToString(Document doc) throws Exception {
 		TransformerFactory tf = TransformerFactory.newInstance();
 		Transformer transformer = tf.newTransformer();
+		
+		// Configuración básica del XML
 		transformer.setOutputProperty(javax.xml.transform.OutputKeys.OMIT_XML_DECLARATION, "no");
 		transformer.setOutputProperty(javax.xml.transform.OutputKeys.METHOD, "xml");
-		transformer.setOutputProperty(javax.xml.transform.OutputKeys.INDENT, "no");
 		transformer.setOutputProperty(javax.xml.transform.OutputKeys.ENCODING, "UTF-8");
+		transformer.setOutputProperty(javax.xml.transform.OutputKeys.STANDALONE, "no");
+		
+		// CRÍTICO: NO indentar para preservar el formato original del XML
+		// El XML sin firmar ya tiene su estructura con 1 espacio de indentación
+		// Si habilitamos INDENT=yes, el Transformer re-indenta todo con espacios adicionales
+		transformer.setOutputProperty(javax.xml.transform.OutputKeys.INDENT, "no");
 		
 		StringWriter writer = new StringWriter();
 		transformer.transform(new DOMSource(doc), new StreamResult(writer));
 		
-		return writer.getBuffer().toString();
+		String resultado = writer.getBuffer().toString();
+		
+		// LIMPIEZA: Remover caracteres escapados que pueden aparecer
+		resultado = resultado.replace("&#13;", "");
+		resultado = resultado.replace("&#10;", "");
+		
+		// FORMATO DE LA FIRMA: Agregar saltos de línea a los elementos principales de la firma
+		// El SRI requiere que la firma tenga saltos de línea en ciertos elementos
+		resultado = formatearFirmaXML(resultado);
+		
+		return resultado;
+	}
+	
+	/**
+	 * Formatea la firma digital replicando EXACTAMENTE el formato del código TypeScript de referencia.
+	 * Basado en xades-firma-docs.ts líneas 54-106
+	 */
+	private String formatearFirmaXML(String xml) {
+		// El código TypeScript construye el XML con saltos de línea MUY específicos
+		// Debemos replicar exactamente ese patrón
+		
+		// 1. Salto de línea después de <ds:Signature...>
+		xml = xml.replaceFirst("(<ds:Signature[^>]*>)", "$1\n");
+		
+		// 2. Formatear SignedInfo (líneas 80-99 del TypeScript)
+		xml = xml.replaceFirst("(<ds:SignedInfo[^>]*>)", "$1\n");
+		
+		// CORRECCIÓN: Salto de línea entre CanonicalizationMethod y SignatureMethod
+		xml = xml.replaceFirst("(<ds:CanonicalizationMethod[^>]*/>)", "$1\n");
+		
+		// CORRECCIÓN 1: Salto de línea después de SignatureMethod antes del primer Reference
+		xml = xml.replaceFirst("(<ds:SignatureMethod[^>]*/>)(<ds:Reference)", "$1\n$2");
+		
+		// 3. Formatear cada Reference
+		// Para el primer Reference (SignedProperties) - debe tener salto después de la apertura
+		xml = xml.replaceFirst("(<ds:Reference Id=\"SignedPropertiesID[^>]*>)(<ds:DigestMethod)", "$1\n$2");
+		
+		// CORRECCIÓN 3: DigestMethod debe tener salto antes del DigestValue en los Reference dentro de SignedInfo
+		// Aplicar a TODOS los Reference (no solo el primero)
+		xml = xml.replaceAll("(<ds:DigestMethod Algorithm=\"[^\"]*\"/>)(<ds:DigestValue>)", "$1\n$2");
+		
+		// CORRECCIÓN: Salto después de cada </ds:DigestValue> dentro de Reference
+		xml = xml.replaceAll("(</ds:DigestValue>)(</ds:Reference>)", "$1\n$2");
+		
+		// CORRECCIÓN 2: Salto de línea antes del segundo Reference (Certificate)
+		xml = xml.replaceFirst("(</ds:Reference>)(<ds:Reference URI=\"#Certificate)", "$1\n$2");
+		
+		// Para el segundo Reference (Certificate) - debe tener salto después de la apertura
+		xml = xml.replaceFirst("(<ds:Reference URI=\"#Certificate[^>]*>)(<ds:DigestMethod)", "$1\n$2");
+		
+		// CORRECCIÓN: Salto de línea antes del tercer Reference (con Transforms)
+		xml = xml.replaceFirst("(</ds:Reference>)(<ds:Reference Id=\"Reference-ID-)", "$1\n$2");
+		
+		// CORRECCIÓN: Reference con Transforms debe tener salto después de apertura antes de Transforms
+		xml = xml.replaceFirst("(<ds:Reference Id=\"Reference-ID-[^>]*>)(<ds:Transforms>)", "$1\n$2");
+		
+		// Transforms
+		xml = xml.replace("<ds:Transforms>", "<ds:Transforms>\n");
+		
+		// CORRECCIÓN: Salto entre Transform y cierre de Transforms
+		xml = xml.replaceAll("(<ds:Transform[^>]*/>)(</ds:Transforms>)", "$1\n$2");
+		xml = xml.replace("</ds:Transforms>", "</ds:Transforms>\n");
+		
+		// 4. Cierre de SignedInfo
+		xml = xml.replace("</ds:SignedInfo>", "\n</ds:SignedInfo>");
+		
+		// 5. SignatureValue
+		// CORRECCIÓN: El SignatureValue debe iniciar en nueva línea y su contenido también
+		xml = xml.replaceFirst("(<ds:SignatureValue[^>]*>)([^<]+)", "\n$1\n$2");
+		xml = xml.replace("</ds:SignatureValue>", "\n</ds:SignatureValue>");
+		
+		// 6. KeyInfo
+		xml = xml.replace("<ds:KeyInfo ", "\n<ds:KeyInfo ");
+		xml = xml.replace("<ds:X509Data>", "\n<ds:X509Data>\n");
+		xml = xml.replace("<ds:X509Certificate>", "<ds:X509Certificate>\n");
+		xml = xml.replace("</ds:X509Certificate>", "\n</ds:X509Certificate>");
+		xml = xml.replace("</ds:X509Data>", "\n</ds:X509Data>");
+		
+		// KeyValue
+		xml = xml.replace("<ds:KeyValue>", "\n<ds:KeyValue>\n");
+		xml = xml.replace("<ds:RSAKeyValue>", "<ds:RSAKeyValue>\n");
+		xml = xml.replace("<ds:Modulus>", "<ds:Modulus>\n");
+		xml = xml.replace("</ds:Modulus>", "\n</ds:Modulus>\n");
+		xml = xml.replace("<ds:Exponent>", "<ds:Exponent>");
+		xml = xml.replace("</ds:Exponent>", "</ds:Exponent>\n");
+		xml = xml.replace("</ds:RSAKeyValue>", "</ds:RSAKeyValue>\n");
+		xml = xml.replace("</ds:KeyValue>", "</ds:KeyValue>\n");
+		xml = xml.replace("</ds:KeyInfo>", "</ds:KeyInfo>");
+		
+		// 7. Object
+		xml = xml.replace("<ds:Object ", "\n<ds:Object ");
+		
+		// 8. CORRECCIÓN CRÍTICA: En los elementos XAdES (etsi:CertDigest), 
+		// NO debe haber salto de línea entre DigestMethod y DigestValue
+		// Primero eliminar salto entre </ds:DigestValue> y </etsi:CertDigest>
+		xml = xml.replaceAll("(</ds:DigestValue>)\\s+(</etsi:CertDigest>)", "$1$2");
+		
+		// CORRECCIÓN: Eliminar salto entre DigestMethod y DigestValue SOLO dentro de etsi:CertDigest
+		// Este regex busca el contexto de etsi:CertDigest y elimina saltos internos
+		xml = xml.replaceAll("(<etsi:CertDigest>\\s*<ds:DigestMethod[^>]*/>)\\s+(<ds:DigestValue>)", "$1$2");
+		
+		// Los elementos etsi quedan compactos
+		xml = xml.replace("</ds:Object>", "</ds:Object>");
+		xml = xml.replace("</ds:Signature>", "</ds:Signature>");
+		
+		return xml;
+	}
+	
+	/**
+	 * Decodifica valores hexadecimales en el Distinguished Name a texto legible.
+	 * Los valores hexadecimales tienen el formato #XXXXXX donde XXXX son bytes en hexadecimal.
+	 * Ejemplo: 2.5.4.97=#0c0f56415445532d413636373231343939 
+	 *       -> 2.5.4.97=VATES-A66721499
+	 */
+	private String decodificarValoresHexadecimales(String dn) {
+		// Patrón para encontrar valores hexadecimales en el DN: atributo=#hexvalor
+		// Ejemplo: 2.5.4.97=#0c0f56415445532d413636373231343939
+		java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("([^,=]+)=#([0-9a-fA-F]+)");
+		java.util.regex.Matcher matcher = pattern.matcher(dn);
+		
+		StringBuffer resultado = new StringBuffer();
+		while (matcher.find()) {
+			String atributo = matcher.group(1);
+			String valorHex = matcher.group(2);
+			
+			try {
+				// Los primeros 2 bytes son el tipo y longitud (ASN.1 encoding)
+				// 0c = UTF8String, siguiente byte es la longitud
+				// Saltar los primeros 4 caracteres hex (2 bytes)
+				if (valorHex.length() > 4) {
+					String datosHex = valorHex.substring(4);
+					
+					// Convertir hex a bytes
+					byte[] bytes = new byte[datosHex.length() / 2];
+					for (int i = 0; i < bytes.length; i++) {
+						bytes[i] = (byte) Integer.parseInt(datosHex.substring(i * 2, i * 2 + 2), 16);
+					}
+					
+					// Convertir bytes a String UTF-8
+					String valorLegible = new String(bytes, "UTF-8");
+					
+					// Reemplazar el valor hexadecimal con el valor legible
+					matcher.appendReplacement(resultado, atributo + "=" + valorLegible);
+				} else {
+					// Si el hex es muy corto, dejarlo como está
+					matcher.appendReplacement(resultado, matcher.group(0));
+				}
+			} catch (Exception e) {
+				// Si hay error al decodificar, dejar el valor original
+				matcher.appendReplacement(resultado, matcher.group(0));
+			}
+		}
+		matcher.appendTail(resultado);
+		
+		return resultado.toString();
 	}
 }

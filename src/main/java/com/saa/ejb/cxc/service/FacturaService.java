@@ -50,5 +50,10 @@ public interface FacturaService extends EntityService<Factura> {
 	java.util.Map<String, Object> procesarFacturaCompleta(com.saa.model.cxc.Factura factura, 
 			java.util.List<com.saa.model.cxc.DetalleFactura> detalles,
 			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable;
+	
+	/**
+	 * MÉTODO DE PRUEBA: Envía un XML correcto al SRI para probar la comunicación
+	 */
+	String probarEnvioXMLCorrecto(String xmlCorrecto) throws Exception;
 
 }
