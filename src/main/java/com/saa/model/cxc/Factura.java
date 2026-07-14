@@ -10,6 +10,8 @@ import java.io.Serializable;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
+import com.saa.model.cnt.Asiento;
+import com.saa.model.scp.Empresa;
 import com.saa.model.scp.Usuario;
 import com.saa.model.tsr.Titular;
 
@@ -305,6 +307,20 @@ public class Factura implements Serializable {
 	@Basic
 	@Column(name = "ESTADOEMISION")
 	private Long estadoEmision;
+	
+	/**
+	 * Asiento contable generado al autorizar la factura.
+	 */
+	@ManyToOne
+	@JoinColumn(name = "ASIENTO", referencedColumnName = "ASNTCDGO")
+	private Asiento asiento;
+	
+	/**
+	 * Empresa contable a la que pertenece el facturador.
+	 */
+	@ManyToOne
+	@JoinColumn(name = "EMPRESA", referencedColumnName = "PJRQCDGO")
+	private Empresa empresa;
 
 	// Getters y Setters
 	
@@ -610,5 +626,21 @@ public class Factura implements Serializable {
 
 	public void setEstadoEmision(Long estadoEmision) {
 		this.estadoEmision = estadoEmision;
+	}
+
+	public Asiento getAsiento() {
+		return asiento;
+	}
+
+	public void setAsiento(Asiento asiento) {
+		this.asiento = asiento;
+	}
+	
+	public Empresa getEmpresa() {
+		return empresa;
+	}
+
+	public void setEmpresa(Empresa empresa) {
+		this.empresa = empresa;
 	}
 }

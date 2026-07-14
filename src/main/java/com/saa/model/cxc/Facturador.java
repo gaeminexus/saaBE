@@ -3,12 +3,16 @@ package com.saa.model.cxc;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
+import com.saa.model.scp.Empresa;
+
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
 import jakarta.persistence.SequenceGenerator;
@@ -246,6 +250,29 @@ public class Facturador implements Serializable {
 	@Basic
 	@Column(name = "ESTADO")
 	private Long estado;
+	
+	/**
+	 * Empresa contable a la que pertenece el facturador.
+	 */
+	@ManyToOne
+	@JoinColumn(name = "EMPRESA", referencedColumnName = "PJRQCDGO")
+	private Empresa empresa;
+
+	/**
+	 * Ambiente del SRI en el que opera el facturador.
+	 * 1 = Pruebas, 2 = Producción.
+	 */
+	@Basic
+	@Column(name = "AMBIENTE")
+	private Long ambiente;
+
+	/**
+	 * Indica si al facturar se genera asiento contable automáticamente.
+	 * 1 = Sí, 0 o nulo = No.
+	 */
+	@Basic
+	@Column(name = "GENERACONTA")
+	private Long generaConta;
 
 	// Getters y Setters
 	
@@ -495,5 +522,30 @@ public class Facturador implements Serializable {
 
 	public void setEstado(Long estado) {
 		this.estado = estado;
+	}
+
+
+	public Empresa getEmpresa() {
+		return empresa;
+	}
+
+	public void setEmpresa(Empresa empresa) {
+		this.empresa = empresa;
+	}
+
+	public Long getAmbiente() {
+		return ambiente;
+	}
+
+	public void setAmbiente(Long ambiente) {
+		this.ambiente = ambiente;
+	}
+
+	public Long getGeneraConta() {
+		return generaConta;
+	}
+
+	public void setGeneraConta(Long generaConta) {
+		this.generaConta = generaConta;
 	}
 }

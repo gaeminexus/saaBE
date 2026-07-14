@@ -639,19 +639,49 @@ public class AsientoServiceImpl implements AsientoService {
 		
 		permiteProceso = validacionAsiento(asiento);
 		if (!permiteProceso) {
+			// Asignar período automáticamente desde fechaAsiento si no está asignado
+			if (asiento.getPeriodo() == null && asiento.getFechaAsiento() != null) {
+				Long mes = Long.valueOf(asiento.getFechaAsiento().getMonthValue());
+				Long anio = Long.valueOf(asiento.getFechaAsiento().getYear());
+				Periodo periodo = periodoService.recuperaByMesAnioEmpresa(
+						asiento.getEmpresa().getCodigo(), mes, anio);
+				if (periodo == null) {
+					throw new IncomeException("No existe período contable para "
+							+ mes + "/" + anio + " en la empresa "
+							+ asiento.getEmpresa().getCodigo()
+							+ ". Cree el período antes de generar asientos.");
+				}
+				if (Long.valueOf(EstadoPeriodos.MAYORIZADO).equals(periodo.getEstado())) {
+					throw new IncomeException("El período " + mes + "/" + anio
+							+ " está MAYORIZADO. No se pueden generar asientos.");
+				}
+				asiento.setPeriodo(periodo);
+				asiento.setNumeroMes(mes);
+				asiento.setNumeroAnio(anio);
+			}
+			// Asignar campos de rubros si no vienen
+			if (asiento.getRubroModuloClienteP() == null) {
+				asiento.setRubroModuloClienteP(Long.valueOf(Rubros.MODULO_SISTEMA));
+			}
+			if (asiento.getRubroModuloSistemaP() == null) {
+				asiento.setRubroModuloSistemaP(Long.valueOf(Rubros.MODULO_SISTEMA));
+			}
+			if (asiento.getFechaIngreso() == null) {
+				asiento.setFechaIngreso(LocalDateTime.now());
+			}
 			if (asiento.getCodigo() == null) {
 				asiento.setNumero(siguienteNumeroAsiento(asiento.getTipoAsiento().getCodigo(), asiento.getEmpresa().getCodigo()));
+				asiento = asientoDaoService.save(asiento, asiento.getCodigo());
 				asiento = asignaNumeroAlterno(asiento);
 			} else {
 				if (asiento.getNumero() == null || asiento.getNumeroAlterno() == null) {
 					asiento.setNumero(siguienteNumeroAsiento(asiento.getTipoAsiento().getCodigo(), asiento.getEmpresa().getCodigo()));
+					asiento = asientoDaoService.save(asiento, asiento.getCodigo());
 					asiento = asignaNumeroAlterno(asiento);
-				}	
+				} else {
+					asiento = asientoDaoService.save(asiento, asiento.getCodigo());
+				}
 			}
-			/* falta validar si el periodo esta abierto 
-			 * y tambien que recupere el id del periodo dependiendo de la fecha de asiento
-			 * y que se llenen los campos de rubros*/
-			asiento = asientoDaoService.save(asiento, asiento.getCodigo());
 		}
 		return asiento;
 	}

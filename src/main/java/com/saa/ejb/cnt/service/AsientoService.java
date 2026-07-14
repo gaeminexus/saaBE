@@ -149,6 +149,16 @@ public interface AsientoService extends EntityService<Asiento> {
 	 * @throws Throwable: Excepcion
 	 */
 	 boolean verificaAnulacionReversion (Asiento asiento, int proceso) throws Throwable;
+
+	/**
+	 * Graba un asiento completo asignando automáticamente el período contable
+	 * correspondiente a la fecha del asiento, el número mensual por tipo y
+	 * el número alterno. Si no existe período abierto para esa fecha lanza excepción.
+	 * @param asiento : Asiento a grabar (debe tener empresa, tipoAsiento y fechaAsiento)
+	 * @return        : Asiento grabado con todos los campos calculados
+	 * @throws Throwable : Excepción si no hay período abierto o falla el proceso
+	 */
+	 Asiento saveSingle(Asiento asiento) throws Throwable;
 	
 	/**
 	 * Genera cabecera de asiento de reversion

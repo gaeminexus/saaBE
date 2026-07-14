@@ -276,6 +276,7 @@ public class RetencionServiceImpl implements RetencionService {
 		return value != null ? value : defaultValue;
 	}
 	
+	@SuppressWarnings("unused")
 	private String formatDecimal(Double value) {
 		if (value == null) return "0.00";
 		return String.format(java.util.Locale.US, "%.2f", value);

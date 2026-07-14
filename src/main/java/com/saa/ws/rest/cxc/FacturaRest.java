@@ -116,9 +116,10 @@ public class FacturaRest {
 			java.util.Map<String, Object> facturaMap = (java.util.Map<String, Object>) params.get("factura");
 
 			if (facturaMap == null) {
-				java.util.Map<String, String> errorResponse = new java.util.HashMap<>();
-				errorResponse.put("mensaje", "ERROR");
-				errorResponse.put("error", "Parámetro 'factura' es obligatorio");
+				java.util.Map<String, Object> errorResponse = new java.util.HashMap<>();
+				errorResponse.put("exito", false);
+				errorResponse.put("etapa", "PARAMETROS");
+				errorResponse.put("mensaje", "El parámetro 'factura' es obligatorio.");
 				return Response.status(Response.Status.BAD_REQUEST)
 						.entity(errorResponse)
 						.type(MediaType.APPLICATION_JSON).build();
@@ -128,39 +129,62 @@ public class FacturaRest {
 			java.util.List<java.util.Map<String, Object>> detallesMap =
 				(java.util.List<java.util.Map<String, Object>>) facturaMap.get("detalleFactura");
 
-			Factura factura = convertMapToFactura(facturaMap);
-
-			java.util.List<com.saa.model.cxc.DetalleFactura> detalles = null;
-			if (detallesMap != null && !detallesMap.isEmpty()) {
-				detalles = new java.util.ArrayList<>();
-				com.fasterxml.jackson.databind.ObjectMapper mapper = createObjectMapper();
-				for (java.util.Map<String, Object> detalleMap : detallesMap) {
-					com.saa.model.cxc.DetalleFactura detalle =
-						mapper.convertValue(detalleMap, com.saa.model.cxc.DetalleFactura.class);
-					detalles.add(detalle);
-				}
+			if (detallesMap == null || detallesMap.isEmpty()) {
+				java.util.Map<String, Object> errorResponse = new java.util.HashMap<>();
+				errorResponse.put("exito", false);
+				errorResponse.put("etapa", "PARAMETROS");
+				errorResponse.put("mensaje", "La factura debe tener al menos un detalle (producto).");
+				return Response.status(Response.Status.BAD_REQUEST)
+						.entity(errorResponse)
+						.type(MediaType.APPLICATION_JSON).build();
 			}
 
-			// ambiente=1 → celcer.sri.gob.ec (PRUEBAS)
-			// ambiente=2 → cel.sri.gob.ec (PRODUCCION)
-			java.util.Map<String, Object> resultado = facturaService.procesarFacturaCompleta(
-				factura, detalles,
-				1L,  // PRUEBAS
-				1L,  // conectaSRI = SI
-				null, null
-			);
+			Factura factura = convertMapToFactura(facturaMap);
 
-			return Response.status(Response.Status.OK)
-					.entity(resultado)
-					.type(MediaType.APPLICATION_JSON).build();
+			java.util.List<com.saa.model.cxc.DetalleFactura> detalles = new java.util.ArrayList<>();
+			com.fasterxml.jackson.databind.ObjectMapper mapper = createObjectMapper();
+			for (java.util.Map<String, Object> detalleMap : detallesMap) {
+				com.saa.model.cxc.DetalleFactura detalle =
+					mapper.convertValue(detalleMap, com.saa.model.cxc.DetalleFactura.class);
+				detalles.add(detalle);
+			}
+
+			java.util.Map<String, Object> resultado = facturaService.procesarFacturaCompleta(
+				factura, detalles, 1L, 1L, null, null);
+
+			// Determinar el código HTTP según el resultado
+			boolean exito = Boolean.TRUE.equals(resultado.get("exito"));
+			String etapa  = (String) resultado.getOrDefault("etapa", "");
+
+			if (exito) {
+				return Response.status(Response.Status.OK)
+						.entity(resultado)
+						.type(MediaType.APPLICATION_JSON).build();
+			} else if ("VALIDACION_CONTABLE".equals(etapa) || "PARAMETROS".equals(etapa)) {
+				// Error de validación → 422 Unprocessable Entity
+				return Response.status(422)
+						.entity(resultado)
+						.type(MediaType.APPLICATION_JSON).build();
+			} else if ("AUTORIZACION_SRI".equals(etapa)) {
+				// SRI rechazó → 200 con exito=false (el documento existe pero no fue autorizado)
+				return Response.status(Response.Status.OK)
+						.entity(resultado)
+						.type(MediaType.APPLICATION_JSON).build();
+			} else {
+				// Otro error de proceso → 500
+				return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+						.entity(resultado)
+						.type(MediaType.APPLICATION_JSON).build();
+			}
 
 		} catch (Throwable e) {
 			System.err.println("ERROR en procesarFacturaCompleta REST: " + e.getMessage());
 			e.printStackTrace();
-			java.util.Map<String, String> errorResponse = new java.util.HashMap<>();
-			errorResponse.put("mensaje", "ERROR");
+			java.util.Map<String, Object> errorResponse = new java.util.HashMap<>();
+			errorResponse.put("exito", false);
+			errorResponse.put("etapa", "ERROR_INESPERADO");
+			errorResponse.put("mensaje", "Error inesperado en el servidor: " + e.getMessage());
 			errorResponse.put("error", e.getMessage());
-			errorResponse.put("exito", "false");
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
 					.entity(errorResponse)
 					.type(MediaType.APPLICATION_JSON).build();

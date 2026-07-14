@@ -27,4 +27,7 @@ public interface TipoAsientos {
 	public static final int DEPOSITO_BANCARIO = 6;
 	public static final int TRANSFERENCIAS = 7;
 
+	// Asiento de CXC - Facturas de Venta (codigoAlterno=2, sistema=1)
+	public static final int FACTURAS_VENTA = 2;
+
 }
