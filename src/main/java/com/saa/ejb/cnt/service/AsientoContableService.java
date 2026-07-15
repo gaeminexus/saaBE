@@ -5,6 +5,7 @@ import java.util.List;
 
 import com.saa.model.cnt.Asiento;
 import com.saa.model.cnt.DetalleAsiento;
+import com.saa.model.cxc.AnticipoCliente;
 import com.saa.model.cxc.DetalleFactura;
 import com.saa.model.tsr.Titular;
 
@@ -74,4 +75,23 @@ public interface AsientoContableService {
     Asiento generarAsiento(Long idEmpresa, int codigoAltTipoAsiento,
             LocalDate fechaAsiento, String observaciones, String usuario,
             List<DetalleAsiento> lineas) throws Throwable;
+
+    /**
+     * Genera el asiento contable para un anticipo de cliente confirmado.
+     *
+     * Estructura del asiento:
+     *  DEBE:  Cuenta de caja/banco (PersonaCuentaContable, tipoCuenta=3, tipoPersona=1)
+     *         → valor: total del anticipo
+     *
+     *  HABER: Cuenta de anticipos del cliente (PersonaCuentaContable, tipoCuenta=2, tipoPersona=1)
+     *         → valor: total del anticipo
+     *
+     * @param anticipo             AnticipoCliente confirmado
+     * @param codigoAltTipoAsiento Código alterno del TipoAsiento (TipoAsientos.ANTICIPOS_CLIENTE = 8)
+     * @param usuario              Nombre del usuario que confirma
+     * @return                     Asiento generado
+     * @throws Throwable           Si falta período, cuentas no configuradas, etc.
+     */
+    Asiento generarAsientoAnticipo(AnticipoCliente anticipo,
+            int codigoAltTipoAsiento, String usuario) throws Throwable;
 }

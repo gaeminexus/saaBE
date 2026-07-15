@@ -2021,4 +2021,242 @@ public class FacturaServiceImpl implements FacturaService {
 			throw new Exception("Error en prueba de envío XML: " + e.getMessage(), e);
 		}
 	}
+
+	// =========================================================================
+	// reintentarAutorizacion
+	// =========================================================================
+
+	@Override
+	public java.util.Map<String, Object> reintentarAutorizacion(Long idFactura) throws Throwable {
+		System.out.println("=== reintentarAutorizacion | idFactura=" + idFactura + " ===");
+
+		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+		resultado.put("exito", false);
+
+		// 1. Cargar la factura
+		com.saa.model.cxc.Factura factura =
+				facturaDaoService.selectById(idFactura, com.saa.model.cxc.NombreEntidadesCobro.FACTURA);
+		if (factura == null) {
+			resultado.put("mensaje", "No se encontró la factura con ID: " + idFactura);
+			return resultado;
+		}
+
+		// 2. Validar que tenga clave de acceso
+		String clave = factura.getClave();
+		if (clave == null || clave.trim().isEmpty()) {
+			resultado.put("mensaje", "La factura no tiene clave de acceso. No se puede reintentar la autorización.");
+			return resultado;
+		}
+
+		// 3. Validar estado: solo se puede reintentar si NO está ya AUTORIZADA (estado=5)
+		if (Long.valueOf(5L).equals(factura.getEstado())) {
+			resultado.put("exito", true);
+			resultado.put("estado", "YA_AUTORIZADA");
+			resultado.put("mensaje", "La factura ya está autorizada. Número de autorización: "
+					+ nvl(factura.getAutorizacion(), clave));
+			resultado.put("numeroAutorizacion", factura.getAutorizacion());
+			return resultado;
+		}
+
+		// 4. Determinar ambiente
+		Long ambiente = 1L; // default pruebas
+		if (factura.getFacturador() != null && factura.getFacturador().getAmbiente() != null) {
+			ambiente = factura.getFacturador().getAmbiente();
+		}
+
+		Long idFacturador = factura.getFacturador().getId();
+		String baseUploadDir = getBaseUploadDirectory();
+		String resourcesPath = baseUploadDir + "resources/" + idFacturador;
+
+		// 5. Llamar solo al WS2 de autorización
+		String urlWS2 = ambiente == 2
+				? "https://cel.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl"
+				: "https://celcer.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl";
+
+		System.out.println(">>> Reintentando autorización con clave: " + clave);
+		System.out.println(">>> URL WS2: " + urlWS2);
+
+		try {
+			ResultadoAutorizacion ra = llamarAutorizacionSRI(urlWS2, clave);
+
+			if ("AUTORIZADO".equals(ra.estado)) {
+				// Guardar XML autorizado
+				Path pathAutorizado = Paths.get(resourcesPath + "/docs/a/" + clave + ".xml");
+				Files.createDirectories(pathAutorizado.getParent());
+				Files.write(pathAutorizado, ra.comprobanteXML.getBytes("UTF-8"));
+
+				// Insertar path autorizado si no existe
+				PathFactura pathA = new PathFactura();
+				pathA.setFactura(factura);
+				pathA.setPath("resources/" + idFacturador + "/docs/a/" + clave + ".xml");
+				pathA.setAlterno(5L);
+				pathFacturaDaoService.save(pathA, null);
+
+				// Actualizar factura
+				factura.setEstado(5L);
+				factura.setEstadoEmision(1L);
+				factura.setAutorizacion(ra.numeroAutorizacion);
+				factura.setFechaAutorizacion(parseFechaAutorizacion(ra.fechaAutorizacion));
+				facturaDaoService.save(factura, factura.getId());
+
+				// Generar asiento si corresponde
+				if (factura.getFacturador().getEmpresa() != null
+						&& Long.valueOf(1L).equals(factura.getFacturador().getGeneraConta())
+						&& factura.getAsiento() == null) {
+					try {
+						Long idEmpresa = factura.getFacturador().getEmpresa().getCodigo();
+						String obsAsiento = "Factura N° " + nvl(factura.getNumero(), clave)
+								+ " | Cliente: " + factura.getTitular().getNombre()
+								+ " | Aut: " + nvl(ra.numeroAutorizacion, clave);
+						com.saa.model.cnt.Asiento asientoGenerado =
+								asientoContableService.generarAsientoFactura(
+										factura.getId(), idEmpresa,
+										com.saa.rubros.TipoAsientos.FACTURAS_VENTA,
+										factura.getFecha(), obsAsiento, "SISTEMA");
+						factura.setAsiento(asientoGenerado);
+						facturaDaoService.save(factura, factura.getId());
+						resultado.put("asiento", asientoGenerado.getNumeroAlterno());
+						System.out.println("✓ Asiento contable generado: " + asientoGenerado.getNumeroAlterno());
+					} catch (Exception ae) {
+						resultado.put("advertenciaAsiento",
+								"Autorizada pero error en asiento contable: " + ae.getMessage());
+						System.err.println("⚠ Error en asiento: " + ae.getMessage());
+					}
+				}
+
+				resultado.put("exito", true);
+				resultado.put("estado", "AUTORIZADO");
+				resultado.put("numeroAutorizacion", ra.numeroAutorizacion);
+				resultado.put("fechaAutorizacion", ra.fechaAutorizacion);
+				resultado.put("mensaje", "Factura autorizada correctamente.");
+				System.out.println("✓ Factura autorizada en reintento: " + ra.numeroAutorizacion);
+
+			} else {
+				resultado.put("exito", false);
+				resultado.put("estado", ra.estado != null ? ra.estado : "NO_AUTORIZADO");
+				resultado.put("mensaje", "El SRI no autorizó el comprobante. "
+						+ "Estado: " + ra.estado
+						+ " | " + nvl(ra.mensaje, "") + " " + nvl(ra.informacionAdicional, ""));
+				resultado.put("respuestaSRI", ra.respuestaCompleta);
+				System.out.println("✗ Reintento no autorizado: " + ra.estado);
+			}
+
+		} catch (Exception e) {
+			resultado.put("mensaje", "Error al comunicarse con el SRI: " + e.getMessage());
+			resultado.put("error", e.getMessage());
+			System.err.println("✗ Error en reintentarAutorizacion: " + e.getMessage());
+			e.printStackTrace();
+		}
+
+		return resultado;
+	}
+
+	// =========================================================================
+	// reenviarEmail
+	// =========================================================================
+
+	@Override
+	public java.util.Map<String, Object> reenviarEmail(Long idFactura, String destinatarios) throws Throwable {
+		System.out.println("=== reenviarEmail | idFactura=" + idFactura
+				+ " | destinatarios=" + destinatarios + " ===");
+
+		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+		resultado.put("exito", false);
+
+		// 1. Validar destinatarios
+		if (destinatarios == null || destinatarios.trim().isEmpty()) {
+			resultado.put("mensaje", "Debe especificar al menos un correo electrónico destinatario.");
+			return resultado;
+		}
+
+		// 2. Cargar la factura
+		com.saa.model.cxc.Factura factura =
+				facturaDaoService.selectById(idFactura, com.saa.model.cxc.NombreEntidadesCobro.FACTURA);
+		if (factura == null) {
+			resultado.put("mensaje", "No se encontró la factura con ID: " + idFactura);
+			return resultado;
+		}
+
+		// 3. Validar que esté autorizada
+		if (!Long.valueOf(5L).equals(factura.getEstado())) {
+			resultado.put("mensaje", "Solo se puede reenviar el email de facturas autorizadas. "
+					+ "Estado actual de la factura: " + factura.getEstado());
+			return resultado;
+		}
+
+		String clave        = factura.getClave();
+		Long idFacturador   = factura.getFacturador().getId();
+		String resourcesPath = getBaseUploadDirectory() + "resources/" + idFacturador;
+
+		// 4. Leer XML autorizado y PDF desde disco
+		String xmlAutorizado = null;
+		byte[] pdfBytes = null;
+		try {
+			Path pXml = Paths.get(resourcesPath + "/docs/a/" + clave + ".xml");
+			if (Files.exists(pXml)) {
+				xmlAutorizado = new String(Files.readAllBytes(pXml), "UTF-8");
+			} else {
+				System.err.println("⚠ XML autorizado no encontrado en: " + pXml);
+			}
+		} catch (Exception e) {
+			System.err.println("⚠ Error leyendo XML autorizado: " + e.getMessage());
+		}
+		try {
+			Path pPdf = Paths.get(resourcesPath + "/docs/a/" + clave + ".pdf");
+			if (Files.exists(pPdf)) {
+				pdfBytes = Files.readAllBytes(pPdf);
+			} else {
+				System.err.println("⚠ PDF RIDE no encontrado en: " + pPdf);
+			}
+		} catch (Exception e) {
+			System.err.println("⚠ Error leyendo PDF RIDE: " + e.getMessage());
+		}
+
+		// 5. Procesar lista de destinatarios separados por ;
+		String[] listaDestinatarios = destinatarios.split(";");
+		java.util.List<String> enviados  = new java.util.ArrayList<>();
+		java.util.List<String> fallidos  = new java.util.ArrayList<>();
+		String razonSocial = factura.getFacturador() != null
+				? nvl(factura.getFacturador().getRazonSocial(),
+					  nvl(factura.getFacturador().getNombre(), "")) : "";
+		String numeroFactura = nvl(factura.getNumero(), clave);
+
+		for (String mail : listaDestinatarios) {
+			String mailLimpio = mail.trim();
+			if (mailLimpio.isEmpty()) continue;
+			try {
+				emailFacturaService.enviarFacturaAutorizada(
+						mailLimpio, numeroFactura, clave,
+						razonSocial, xmlAutorizado, pdfBytes);
+				enviados.add(mailLimpio);
+				System.out.println("✓ Email enviado a: " + mailLimpio);
+			} catch (Exception e) {
+				fallidos.add(mailLimpio + " (error: " + e.getMessage() + ")");
+				System.err.println("✗ Error enviando a " + mailLimpio + ": " + e.getMessage());
+			}
+		}
+
+		// 6. Construir respuesta
+		resultado.put("emailsEnviados", enviados);
+		resultado.put("emailsFallidos", fallidos);
+		resultado.put("numeroFactura",  numeroFactura);
+		resultado.put("clave",          clave);
+
+		if (!enviados.isEmpty() && fallidos.isEmpty()) {
+			resultado.put("exito", true);
+			resultado.put("mensaje", "Email enviado correctamente a " + enviados.size()
+					+ " destinatario(s): " + String.join(", ", enviados));
+		} else if (!enviados.isEmpty()) {
+			resultado.put("exito", true);
+			resultado.put("mensaje", "Email enviado a " + enviados.size()
+					+ " destinatario(s). Fallaron " + fallidos.size() + ": "
+					+ String.join(", ", fallidos));
+		} else {
+			resultado.put("exito", false);
+			resultado.put("mensaje", "No se pudo enviar el email a ningún destinatario. "
+					+ "Verifique las direcciones de correo y la configuración del servidor.");
+		}
+
+		return resultado;
+	}
 }

@@ -45,6 +45,7 @@ public interface NombreEntidadesCobro {
 	String DETALLE_FACTURA = "DetalleFactura";
 	String PATH_FACTURA = "PathFactura";
 	String FORMA_PAGO_FACTURA = "FormaPagoFactura";
+	String ANTICIPO_CLIENTE   = "AnticipoCliente";
 	
 	// Liquidaciones de Compras y Servicios
 	String LIQUIDACION_COMPRA = "LiquidacionCompra";

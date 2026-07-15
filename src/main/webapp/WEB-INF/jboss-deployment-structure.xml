@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jboss-deployment-structure>
+    <deployment>
+        <exclusions>
+            <!-- Excluir módulos de WildFly que pueden entrar en conflicto con
+                 las versiones de Batik/xml-apis empaquetadas en el WAR -->
+            <module name="org.apache.batik" />
+            <module name="org.apache.xml" />
+        </exclusions>
+        <local-last value="false"/>
+    </deployment>
+</jboss-deployment-structure>

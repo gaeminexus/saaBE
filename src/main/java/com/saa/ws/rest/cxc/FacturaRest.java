@@ -314,6 +314,109 @@ public class FacturaRest {
 
 	// ── MÉTODOS AUXILIARES ─────────────────────────────────────
 
+	/**
+	 * Reintenta la autorización de una factura ante el SRI.
+	 * Solo llama al WS2 de autorización (NO reenvía el XML al WS1).
+	 * Útil cuando la factura quedó en estado pendiente porque el SRI
+	 * no procesó la autorización en el primer intento.
+	 *
+	 * Body JSON: { "idFactura": 123 }
+	 */
+	@POST
+	@Path("/reintentarAutorizacion")
+	@Consumes(MediaType.APPLICATION_JSON)
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response reintentarAutorizacion(java.util.Map<String, Object> params) {
+		System.out.println("LLEGA AL SERVICIO reintentarAutorizacion");
+		try {
+			Long idFactura = getLongParam(params, "idFactura");
+			if (idFactura == null) {
+				java.util.Map<String, Object> err = new java.util.HashMap<>();
+				err.put("exito", false);
+				err.put("mensaje", "El parámetro 'idFactura' es obligatorio.");
+				return Response.status(Response.Status.BAD_REQUEST)
+						.entity(err).type(MediaType.APPLICATION_JSON).build();
+			}
+
+			java.util.Map<String, Object> resultado = facturaService.reintentarAutorizacion(idFactura);
+
+			boolean exito = Boolean.TRUE.equals(resultado.get("exito"));
+			String estado = (String) resultado.getOrDefault("estado", "");
+
+			// Si ya estaba autorizada o se autorizó ahora → 200
+			// Si el SRI no autorizó → 200 con exito=false (no es error del servidor)
+			// Si hay error técnico → 500
+			if (exito || "YA_AUTORIZADA".equals(estado) || "NO_AUTORIZADO".equals(estado)) {
+				return Response.status(Response.Status.OK)
+						.entity(resultado).type(MediaType.APPLICATION_JSON).build();
+			} else {
+				return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+						.entity(resultado).type(MediaType.APPLICATION_JSON).build();
+			}
+
+		} catch (Throwable e) {
+			System.err.println("ERROR en reintentarAutorizacion REST: " + e.getMessage());
+			e.printStackTrace();
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", "Error inesperado al reintentar la autorización: " + e.getMessage());
+			err.put("error", e.getMessage());
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+					.entity(err).type(MediaType.APPLICATION_JSON).build();
+		}
+	}
+
+	/**
+	 * Reenvía el correo electrónico de una factura ya autorizada.
+	 * Adjunta el XML autorizado y el PDF RIDE.
+	 *
+	 * Body JSON: { "idFactura": 123, "destinatarios": "a@x.com;b@y.com;c@z.com" }
+	 */
+	@POST
+	@Path("/reenviarEmail")
+	@Consumes(MediaType.APPLICATION_JSON)
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response reenviarEmail(java.util.Map<String, Object> params) {
+		System.out.println("LLEGA AL SERVICIO reenviarEmail");
+		try {
+			Long idFactura = getLongParam(params, "idFactura");
+			String destinatarios = (String) params.get("destinatarios");
+
+			if (idFactura == null) {
+				java.util.Map<String, Object> err = new java.util.HashMap<>();
+				err.put("exito", false);
+				err.put("mensaje", "El parámetro 'idFactura' es obligatorio.");
+				return Response.status(Response.Status.BAD_REQUEST)
+						.entity(err).type(MediaType.APPLICATION_JSON).build();
+			}
+			if (destinatarios == null || destinatarios.trim().isEmpty()) {
+				java.util.Map<String, Object> err = new java.util.HashMap<>();
+				err.put("exito", false);
+				err.put("mensaje", "El parámetro 'destinatarios' es obligatorio. "
+						+ "Separe múltiples correos con punto y coma (;).");
+				return Response.status(Response.Status.BAD_REQUEST)
+						.entity(err).type(MediaType.APPLICATION_JSON).build();
+			}
+
+			java.util.Map<String, Object> resultado =
+					facturaService.reenviarEmail(idFactura, destinatarios);
+
+			boolean exito = Boolean.TRUE.equals(resultado.get("exito"));
+			return Response.status(exito ? Response.Status.OK : Response.Status.INTERNAL_SERVER_ERROR)
+					.entity(resultado).type(MediaType.APPLICATION_JSON).build();
+
+		} catch (Throwable e) {
+			System.err.println("ERROR en reenviarEmail REST: " + e.getMessage());
+			e.printStackTrace();
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", "Error inesperado al reenviar el email: " + e.getMessage());
+			err.put("error", e.getMessage());
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+					.entity(err).type(MediaType.APPLICATION_JSON).build();
+		}
+	}
+
 	private Factura convertMapToFactura(java.util.Map<String, Object> map) {
 		return createObjectMapper().convertValue(map, Factura.class);
 	}

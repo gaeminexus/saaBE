@@ -30,4 +30,7 @@ public interface TipoAsientos {
 	// Asiento de CXC - Facturas de Venta (codigoAlterno=2, sistema=1)
 	public static final int FACTURAS_VENTA = 2;
 
+	// Asiento de CXC - Anticipos de Clientes (codigoAlterno=8, sistema=1)
+	public static final int ANTICIPOS_CLIENTE = 8;
+
 }

@@ -100,6 +100,20 @@ public class PersonaRol implements Serializable {
 	@ManyToOne
 	@JoinColumn(name = "PJRQCDGO", referencedColumnName = "PJRQCDGO")
 	private Empresa empresa;	
+	
+	/**
+	 * Tipo de cuenta. 1 = Facturas, 2 = Anticipos
+	 */
+	@Basic
+	@Column(name = "PRRLSLIN")
+	private Double saldoInicial;
+	
+	/**
+	 * Tipo de cuenta. 1 = Facturas, 2 = Anticipos
+	 */
+	@Basic
+	@Column(name = "PRRLDSSC")
+	private Long diasCredito;
 
 	/**
 	 * Devuelve codigo
@@ -225,5 +239,37 @@ public class PersonaRol implements Serializable {
 	 */
 	public void setEmpresa(Empresa empresa) {
 		this.empresa = empresa;
+	}
+	
+	/**
+	 * Devuelve saldoInicial
+	 * @return saldoInicial
+	 */
+	public Double getSaldoInicial() {
+		return saldoInicial;
+	}
+
+	/**
+	 * Asigna saldoInicial
+	 * @param saldoInicial Nuevo valor para saldoInicial 
+	 */
+	public void setSaldoInicial(Double saldoInicial) {
+		this.saldoInicial = saldoInicial;
+	}
+	
+	/**
+	 * Devuelve diasCredito
+	 * @return diasCredito
+	 */
+	public Long getDiasCredito() {
+		return diasCredito;
+	}
+
+	/**
+	 * Asigna diasCredito
+	 * @param diasCredito Nuevo valor para diasCredito 
+	 */
+	public void setDiasCredito(Long diasCredito) {
+		this.diasCredito = diasCredito;
 	}
 }

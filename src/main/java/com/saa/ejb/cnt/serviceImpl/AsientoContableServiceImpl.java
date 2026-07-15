@@ -15,6 +15,7 @@ import com.saa.model.cnt.Asiento;
 import com.saa.model.cnt.DetalleAsiento;
 import com.saa.model.cnt.PlanCuenta;
 import com.saa.model.cnt.TipoAsiento;
+import com.saa.model.cxc.AnticipoCliente;
 import com.saa.model.cxc.DetalleFactura;
 import com.saa.model.cxc.Factura;
 import com.saa.model.scp.Empresa;
@@ -332,36 +333,109 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     }
 
     // ---------------------------------------------------------------
+    // generarAsientoAnticipo
+    // ---------------------------------------------------------------
+
+    @Override
+    public Asiento generarAsientoAnticipo(AnticipoCliente anticipo,
+            int codigoAltTipoAsiento, String usuario) throws Throwable {
+
+        System.out.println("=== generarAsientoAnticipo | idAnticipo=" + anticipo.getId() + " ===");
+
+        if (anticipo.getEmpresa() == null || anticipo.getEmpresa().getCodigo() == null) {
+            throw new com.saa.basico.util.IncomeException(
+                    "El anticipo no tiene empresa contable configurada.");
+        }
+
+        Long idEmpresa       = anticipo.getEmpresa().getCodigo();
+        Long codigoTitular   = anticipo.getTitular().getCodigo();
+        Double valor         = anticipo.getValor();
+        String nomCliente    = anticipo.getTitular().getNombre();
+
+        // ── DEBE: cuenta caja/banco (tipoCuenta=3, tipoPersona=1) ──────────────
+        PlanCuenta cuentaCaja = obtenerCuentaPorTipo(codigoTitular, idEmpresa, 3L);
+        if (cuentaCaja == null) {
+            throw new com.saa.basico.util.IncomeException(
+                    "El cliente '" + nomCliente + "' no tiene cuenta de caja/banco (Tipo 3) "
+                    + "configurada en Tesorería → Persona → Cuentas Contables.");
+        }
+
+        // ── HABER: cuenta de anticipos del cliente (tipoCuenta=2, tipoPersona=1) ─
+        PlanCuenta cuentaAnticipo = obtenerCuentaPorTipo(codigoTitular, idEmpresa, 2L);
+        if (cuentaAnticipo == null) {
+            throw new com.saa.basico.util.IncomeException(
+                    "El cliente '" + nomCliente + "' no tiene cuenta contable de anticipos (Tipo 2) "
+                    + "configurada en Tesorería → Persona → Cuentas Contables.");
+        }
+
+        // ── Construir líneas ───────────────────────────────────────────────────
+        List<DetalleAsiento> lineas = new ArrayList<>();
+
+        DetalleAsiento debe = new DetalleAsiento();
+        debe.setPlanCuenta(cuentaCaja);
+        debe.setNumeroCuenta(cuentaCaja.getCuentaContable());
+        debe.setNombreCuenta(cuentaCaja.getNombre());
+        debe.setDescripcion("Anticipo recibido de: " + nomCliente
+                + " | Doc: " + (anticipo.getNumeroDoc() != null ? anticipo.getNumeroDoc() : ""));
+        debe.setValorDebe(valor);
+        debe.setValorHaber(0.0);
+        lineas.add(debe);
+
+        DetalleAsiento haber = new DetalleAsiento();
+        haber.setPlanCuenta(cuentaAnticipo);
+        haber.setNumeroCuenta(cuentaAnticipo.getCuentaContable());
+        haber.setNombreCuenta(cuentaAnticipo.getNombre());
+        haber.setDescripcion("Anticipo cliente: " + nomCliente
+                + " | Doc: " + (anticipo.getNumeroDoc() != null ? anticipo.getNumeroDoc() : ""));
+        haber.setValorDebe(0.0);
+        haber.setValorHaber(valor);
+        lineas.add(haber);
+
+        // ── Generar asiento ────────────────────────────────────────────────────
+        String obs = "Anticipo cliente: " + nomCliente
+                + " | Doc: " + (anticipo.getNumeroDoc() != null ? anticipo.getNumeroDoc() : "")
+                + " | Valor: $" + String.format(java.util.Locale.US, "%.2f", valor);
+
+        return generarAsiento(idEmpresa, codigoAltTipoAsiento,
+                anticipo.getFechaAnticipo(), obs, usuario, lineas);
+    }
+
+    // ---------------------------------------------------------------
     // Helpers privados
     // ---------------------------------------------------------------
 
     /**
-     * Obtiene la cuenta contable CxC del cliente.
-     * Busca en PersonaCuentaContable (TSR.PRCC):
-     *   - titular = codigoTitular
-     *   - tipoCuenta = 1 (Facturas)
-     *   - tipoPersona = 1 (Cliente)
-     *   - empresa = idEmpresa
+     * Obtiene la cuenta contable de un cliente por tipo de cuenta.
+     * tipoCuenta: 1=Facturas, 2=Anticipos, 3=Caja/Banco
      */
-    private PlanCuenta obtenerCuentaCliente(Long codigoTitular, Long idEmpresa) {
+    private PlanCuenta obtenerCuentaPorTipo(Long codigoTitular, Long idEmpresa, Long tipoCuenta) {
         try {
             String sql = "SELECT pcc.planCuenta FROM PersonaCuentaContable pcc "
                     + "JOIN pcc.personaRol pr "
                     + "WHERE pr.titular.codigo = :titular "
-                    + "AND pcc.tipoCuenta = 1 "
+                    + "AND pcc.tipoCuenta = :tipo "
                     + "AND pcc.tipoPersona = 1 "
                     + "AND pcc.empresa.codigo = :empresa "
                     + "AND pr.estado = 1";
             Query q = em.createQuery(sql);
             q.setParameter("titular", codigoTitular);
+            q.setParameter("tipo", tipoCuenta);
             q.setParameter("empresa", idEmpresa);
             q.setMaxResults(1);
             List<?> result = q.getResultList();
             return result.isEmpty() ? null : (PlanCuenta) result.get(0);
         } catch (Exception e) {
-            System.err.println("⚠ Error buscando cuenta del cliente: " + e.getMessage());
+            System.err.println("⚠ Error buscando cuenta tipo " + tipoCuenta
+                    + " del cliente: " + e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * Obtiene la cuenta contable CxC del cliente (tipoCuenta=1).
+     */
+    private PlanCuenta obtenerCuentaCliente(Long codigoTitular, Long idEmpresa) {
+        return obtenerCuentaPorTipo(codigoTitular, idEmpresa, 1L);
     }
 
     /**

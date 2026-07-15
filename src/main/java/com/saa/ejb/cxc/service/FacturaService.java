@@ -56,4 +56,26 @@ public interface FacturaService extends EntityService<Factura> {
 	 */
 	String probarEnvioXMLCorrecto(String xmlCorrecto) throws Exception;
 
+	/**
+	 * Reintenta la autorización de una factura que ya fue enviada al SRI pero
+	 * quedó en estado pendiente. Solo llama al WS2 de autorización (NO reenvía
+	 * al WS1 de recepción). Actualiza el estado de la factura si se autoriza.
+	 *
+	 * @param idFactura ID de la factura a reintentar
+	 * @return Mapa con el resultado: exito, estado, numeroAutorizacion, mensaje
+	 * @throws Throwable Si la factura no existe o no está en estado enviado/pendiente
+	 */
+	java.util.Map<String, Object> reintentarAutorizacion(Long idFactura) throws Throwable;
+
+	/**
+	 * Reenvía el correo electrónico de una factura ya autorizada a una lista
+	 * de destinatarios separados por punto y coma (;).
+	 * Adjunta el XML autorizado y el PDF RIDE si existen en disco.
+	 *
+	 * @param idFactura    ID de la factura a reenviar
+	 * @param destinatarios Cadena con emails separados por ; (ej: "a@x.com;b@y.com")
+	 * @return Mapa con el resultado: exito, emailsEnviados, mensaje
+	 * @throws Throwable Si la factura no existe o no está autorizada
+	 */
+	java.util.Map<String, Object> reenviarEmail(Long idFactura, String destinatarios) throws Throwable;
 }
