@@ -68,7 +68,104 @@ public class ProcesoCargaDocumentosRest {
     }
 
     // =========================================================
-    // FASE 2: Subir XML de un DocumentoCxp
+    // PROCESO UNIFICADO: Subir XML + Registrar en BD en un solo paso
+    // =========================================================
+    /**
+     * Endpoint principal recomendado. Valida el XML, lo guarda en disco y
+     * registra en las tablas CXP en un único llamado.
+     *
+     * Los productos que no existan se crean automáticamente en el grupo
+     * "PENDIENTE DE CLASIFICAR". El documento queda en estado REGISTRADO_BD (3).
+     *
+     * Body JSON: { "contenidoXml": "...", "idEmpresa": 1, "idUsuario": 5 }
+     *
+     * Response 422 → XML no coincide con el documento esperado:
+     *   { "valido": false, "errores": [...], "documento": {...} }
+     *
+     * Response 200 → Registrado correctamente:
+     *   { "valido": true, "idDocumentoBD": 234, "tipoTablaDestino": "FACTURA_COMPRA",
+     *     "mensaje": "...", "productosPendientes": ["Producto A"] }
+     *
+     * Si productosPendientes no está vacío, el usuario debe ir a la pantalla
+     * de clasificación de productos antes de poder contabilizar la factura.
+     */
+    @POST
+    @Path("/procesarXml/{idDocumentoCxp}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response procesarXml(@PathParam("idDocumentoCxp") Long idDocumentoCxp,
+                                 Map<String, Object> params) {
+        System.out.println("=== REST procesarXml idDocumentoCxp=" + idDocumentoCxp);
+        try {
+            String contenidoXml = (String) params.get("contenidoXml");
+            Long idEmpresa      = Long.valueOf(params.get("idEmpresa").toString());
+            Long idUsuario      = Long.valueOf(params.get("idUsuario").toString());
+
+            if (contenidoXml == null || contenidoXml.isEmpty())
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(errorMap("El campo 'contenidoXml' es obligatorio"))
+                        .type(MediaType.APPLICATION_JSON).build();
+
+            DocumentoCxp doc = procesoCargaDocumentosService.obtenerDocumentoPorId(idDocumentoCxp);
+            if (doc == null)
+                return Response.status(Response.Status.NOT_FOUND)
+                        .entity(errorMap("DocumentoCxp con ID " + idDocumentoCxp + " no encontrado"))
+                        .type(MediaType.APPLICATION_JSON).build();
+
+            String pathDestino = params.get("pathDestino") != null
+                    ? params.get("pathDestino").toString()
+                    : calcularPathXml(doc.getClaveAcceso());
+
+            guardarXmlEnDisco(contenidoXml, pathDestino);
+
+            Map<String, Object> resultado = procesoCargaDocumentosService
+                    .cargarXmlYRegistrar(idDocumentoCxp, contenidoXml, pathDestino, idEmpresa, idUsuario);
+
+            boolean valido = Boolean.TRUE.equals(resultado.get("valido"));
+            if (!valido) {
+                // XML no coincide con el documento del TXT → 422
+                return Response.status(422)
+                        .entity(resultado).type(MediaType.APPLICATION_JSON).build();
+            }
+
+            return Response.status(Response.Status.OK)
+                    .entity(resultado).type(MediaType.APPLICATION_JSON).build();
+
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(errorMap("Error al procesar XML: " + e.getMessage()))
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Consulta si una FacturaCompra tiene productos en el grupo PENDIENTE DE CLASIFICAR.
+     * Debe usarse antes de intentar contabilizar una factura de compra.
+     *
+     * Response 200: { "pendientes": ["Producto A", "Producto B"] }
+     * Si pendientes está vacío, la factura puede contabilizarse.
+     */
+    @GET
+    @Path("/productosPendientes/{idFacturaCompra}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response productosPendientes(@PathParam("idFacturaCompra") Long idFacturaCompra) {
+        try {
+            java.util.List<String> pendientes = procesoCargaDocumentosService
+                    .obtenerProductosPendientesDeClasificar(idFacturaCompra);
+            java.util.Map<String, Object> resp = new java.util.HashMap<>();
+            resp.put("idFacturaCompra", idFacturaCompra);
+            resp.put("pendientes", pendientes);
+            resp.put("puedeContabilizar", pendientes.isEmpty());
+            return Response.ok(resp).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(errorMap("Error: " + e.getMessage()))
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    // =========================================================
+    // FASE 2: Subir XML de un DocumentoCxp (separado — se mantiene por compatibilidad)
     // =========================================================
     /**
      * Body JSON: { "contenidoXml": "...", "idUsuario": 1, "pathDestino": "..." (opcional) }
@@ -101,8 +198,15 @@ public class ProcesoCargaDocumentosRest {
 
             guardarXmlEnDisco(contenidoXml, pathDestino);
 
-            DocumentoCxp resultado = procesoCargaDocumentosService
+            Map<String, Object> resultado = procesoCargaDocumentosService
                     .cargarXmlDocumento(idDocumentoCxp, contenidoXml, pathDestino, idUsuario);
+
+            boolean valido = Boolean.TRUE.equals(resultado.get("valido"));
+            if (!valido) {
+                // HTTP 422 Unprocessable Entity: el XML no coincide con el documento esperado
+                return Response.status(422)
+                        .entity(resultado).type(MediaType.APPLICATION_JSON).build();
+            }
 
             return Response.status(Response.Status.OK)
                     .entity(resultado).type(MediaType.APPLICATION_JSON).build();

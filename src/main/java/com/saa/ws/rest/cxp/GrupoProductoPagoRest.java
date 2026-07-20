@@ -7,6 +7,7 @@ import com.saa.ejb.cxp.dao.GrupoProductoPagoDaoService;
 import com.saa.ejb.cxp.service.GrupoProductoPagoService;
 import com.saa.model.cxp.GrupoProductoPago;
 import com.saa.model.cxp.NombreEntidadesPago;
+import com.saa.rubros.TipoGrupoProductos;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;
@@ -70,6 +71,23 @@ public class GrupoProductoPagoRest {
     public Response put(GrupoProductoPago registro) {
         System.out.println("LLEGA AL SERVICIO PUT - GRUPO_PRODUCTO_PAGO");
         try {
+            if (registro.getRubroTipoGrupoH() != null
+                    && registro.getRubroTipoGrupoH() == TipoGrupoProductos.POR_CLASIFICAR) {
+                return Response.status(Response.Status.FORBIDDEN)
+                        .entity("El grupo 'POR CLASIFICAR' es de uso exclusivo del sistema y no puede ser modificado.")
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
+            // Verificar que el registro existente tampoco sea POR_CLASIFICAR
+            if (registro.getCodigo() != null) {
+                GrupoProductoPago existente = GrupoProductoPagoDaoService.selectById(
+                        registro.getCodigo(), NombreEntidadesPago.GRUPO_PRODUCTO_PAGO);
+                if (existente != null && existente.getRubroTipoGrupoH() != null
+                        && existente.getRubroTipoGrupoH() == TipoGrupoProductos.POR_CLASIFICAR) {
+                    return Response.status(Response.Status.FORBIDDEN)
+                            .entity("El grupo 'POR CLASIFICAR' es de uso exclusivo del sistema y no puede ser modificado.")
+                            .type(MediaType.APPLICATION_JSON).build();
+                }
+            }
             GrupoProductoPago actualizado = GrupoProductoPagoService.saveSingle(registro);
             return Response.status(Response.Status.OK).entity(actualizado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
@@ -83,6 +101,12 @@ public class GrupoProductoPagoRest {
     public Response post(GrupoProductoPago registro) {
         System.out.println("LLEGA AL SERVICIO POST - GRUPO_PRODUCTO_PAGO");
         try {
+            if (registro.getRubroTipoGrupoH() != null
+                    && registro.getRubroTipoGrupoH() == TipoGrupoProductos.POR_CLASIFICAR) {
+                return Response.status(Response.Status.FORBIDDEN)
+                        .entity("El tipo 'POR CLASIFICAR' es de uso exclusivo del sistema y no puede ser asignado manualmente.")
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
             GrupoProductoPago creado = GrupoProductoPagoService.saveSingle(registro);
             return Response.status(Response.Status.CREATED).entity(creado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
@@ -110,6 +134,13 @@ public class GrupoProductoPagoRest {
     public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - GRUPO_PRODUCTO_PAGO");
         try {
+            GrupoProductoPago existente = GrupoProductoPagoDaoService.selectById(id, NombreEntidadesPago.GRUPO_PRODUCTO_PAGO);
+            if (existente != null && existente.getRubroTipoGrupoH() != null
+                    && existente.getRubroTipoGrupoH() == TipoGrupoProductos.POR_CLASIFICAR) {
+                return Response.status(Response.Status.FORBIDDEN)
+                        .entity("El grupo 'POR CLASIFICAR' es de uso exclusivo del sistema y no puede ser eliminado.")
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
             GrupoProductoPago elimina = new GrupoProductoPago();
             GrupoProductoPagoDaoService.remove(elimina, id);
             return Response.status(Response.Status.NO_CONTENT).build();

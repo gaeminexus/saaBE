@@ -94,4 +94,118 @@ public interface AsientoContableService {
      */
     Asiento generarAsientoAnticipo(AnticipoCliente anticipo,
             int codigoAltTipoAsiento, String usuario) throws Throwable;
+
+    // =========================================================================
+    // CXC — Documentos de Cobro (emitidos por la empresa)
+    // =========================================================================
+    // NOTA GENERAL:
+    //   · codigoAltTipoAsiento → constante en TipoAsientos (pendiente definir en BD)
+    //   · AuxiliarUno típico   → código grupo de producto + código cliente/proveedor
+    //   Cada método lanzará UnsupportedOperationException hasta que se configure
+    //   la plantilla y los auxiliares correspondientes.
+    // =========================================================================
+
+    /**
+     * Genera el asiento contable de una Nota de Crédito emitida (CXC).
+     * <p>
+     * TODO — Plantilla:   {@code TipoAsientos.NOTAS_CREDITO_VENTA}<br>
+     * TODO — AuxiliarUno: código del grupo de producto del detalle + código del cliente (Titular)
+     */
+    Asiento generarAsientoNotaCredito(Long idNotaCredito, Long idEmpresa,
+            int codigoAltTipoAsiento, java.time.LocalDate fechaAsiento,
+            String observaciones, String usuario) throws Throwable;
+
+    /**
+     * Genera el asiento contable de una Nota de Débito emitida (CXC).
+     * <p>
+     * TODO — Plantilla:   {@code TipoAsientos.NOTAS_DEBITO_VENTA}<br>
+     * TODO — AuxiliarUno: código del grupo de producto del detalle + código del cliente (Titular)
+     */
+    Asiento generarAsientoNotaDebito(Long idNotaDebito, Long idEmpresa,
+            int codigoAltTipoAsiento, java.time.LocalDate fechaAsiento,
+            String observaciones, String usuario) throws Throwable;
+
+    /**
+     * Genera el asiento contable de una Liquidación de Compra emitida (CXC).
+     * <p>
+     * TODO — Plantilla:   {@code TipoAsientos.LIQUIDACIONES_COMPRA_EMITIDAS}<br>
+     * TODO — AuxiliarUno: código del grupo de producto del detalle + código del proveedor/prestador
+     */
+    Asiento generarAsientoLiquidacionCompra(Long idLiquidacion, Long idEmpresa,
+            int codigoAltTipoAsiento, java.time.LocalDate fechaAsiento,
+            String observaciones, String usuario) throws Throwable;
+
+    /**
+     * Genera el asiento contable de una Retención electrónica v2 emitida (CXC).
+     * <p>
+     * TODO — Plantilla:   {@code TipoAsientos.RETENCIONES_EMITIDAS_V2}<br>
+     * TODO — AuxiliarUno: código de la cuenta de retención según código SRI del impuesto
+     */
+    Asiento generarAsientoRetencionV2(Long idRetencionV2, Long idEmpresa,
+            int codigoAltTipoAsiento, java.time.LocalDate fechaAsiento,
+            String observaciones, String usuario) throws Throwable;
+
+    // =========================================================================
+    // CXP — Documentos de Compra (recibidos de proveedor vía SRI)
+    // =========================================================================
+
+    /**
+     * Genera el asiento contable de una Factura de Compra recibida (CXP).
+     * <p>
+     * TODO — Plantilla:   {@code TipoAsientos.FACTURAS_COMPRA}<br>
+     * TODO — AuxiliarUno: código del grupo de producto (ProductoPago) + código del proveedor
+     */
+    Asiento generarAsientoFacturaCompra(Long idFacturaCompra, Long idEmpresa,
+            int codigoAltTipoAsiento, java.time.LocalDate fechaAsiento,
+            String observaciones, String usuario) throws Throwable;
+
+    /**
+     * Genera el asiento contable de una Nota de Crédito de compra recibida (CXP).
+     * <p>
+     * TODO — Plantilla:   {@code TipoAsientos.NOTAS_CREDITO_COMPRA}<br>
+     * TODO — AuxiliarUno: código del grupo de producto + código del proveedor
+     */
+    Asiento generarAsientoNotaCreditoCompra(Long idNotaCreditoCompra, Long idEmpresa,
+            int codigoAltTipoAsiento, java.time.LocalDate fechaAsiento,
+            String observaciones, String usuario) throws Throwable;
+
+    /**
+     * Genera el asiento contable de una Nota de Débito de compra recibida (CXP).
+     * <p>
+     * TODO — Plantilla:   {@code TipoAsientos.NOTAS_DEBITO_COMPRA}<br>
+     * TODO — AuxiliarUno: código del grupo de producto + código del proveedor
+     */
+    Asiento generarAsientoNotaDebitoCompra(Long idNotaDebitoCompra, Long idEmpresa,
+            int codigoAltTipoAsiento, java.time.LocalDate fechaAsiento,
+            String observaciones, String usuario) throws Throwable;
+
+    /**
+     * Genera el asiento contable de una Liquidación de Compra recibida (CXP).
+     * <p>
+     * TODO — Plantilla:   {@code TipoAsientos.LIQUIDACIONES_COMPRA_RECIBIDAS}<br>
+     * TODO — AuxiliarUno: código del grupo de producto + código del prestador de servicio
+     */
+    Asiento generarAsientoLiquidacionCompraCompra(Long idLiquidacion, Long idEmpresa,
+            int codigoAltTipoAsiento, java.time.LocalDate fechaAsiento,
+            String observaciones, String usuario) throws Throwable;
+
+    /**
+     * Genera el asiento contable de una Retención v1 recibida de proveedor (CXP).
+     * <p>
+     * TODO — Plantilla:   {@code TipoAsientos.RETENCIONES_RECIBIDAS}<br>
+     * TODO — AuxiliarUno: código de la cuenta de retención según código SRI del impuesto
+     */
+    Asiento generarAsientoRetencionCompra(Long idRetencionCompra, Long idEmpresa,
+            int codigoAltTipoAsiento, java.time.LocalDate fechaAsiento,
+            String observaciones, String usuario) throws Throwable;
+
+    /**
+     * Genera el asiento contable de una Retención v2 recibida de proveedor (CXP).
+     * <p>
+     * TODO — Plantilla:   {@code TipoAsientos.RETENCIONES_RECIBIDAS_V2}<br>
+     * TODO — AuxiliarUno: código de la cuenta de retención según código SRI del impuesto
+     */
+    Asiento generarAsientoRetencionCompraV2(Long idRetencionCompraV2, Long idEmpresa,
+            int codigoAltTipoAsiento, java.time.LocalDate fechaAsiento,
+            String observaciones, String usuario) throws Throwable;
 }

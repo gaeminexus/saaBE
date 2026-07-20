@@ -41,4 +41,11 @@ public interface NombreEntidadesCompra {
 
 	// Documento único CXP (seguimiento por claveAcceso)
 	String DOCUMENTO_CXP      = "DocumentoCxp";
+
+	// Negociaciones con Proveedores
+	String NEGOCIACION_PROVEEDOR    = "NegociacionProveedor";
+	String FORMA_PAGO_NEGOCIACION   = "FormaPagoNegociacion";
+	String PAGO_NEGOCIACION         = "PagoNegociacion";
+	String ADENDUM_NEGOCIACION      = "AdendumNegociacion";
+	String PATH_NEGOCIACION         = "PathNegociacion";
 }

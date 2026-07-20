@@ -8,9 +8,12 @@ import com.saa.model.cxp.DocumentoCxp;
 import com.saa.model.cxp.NombreEntidadesCompra;
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 @Stateless
 public class DocumentoCxpServiceImpl implements DocumentoCxpService {
 	@EJB private DocumentoCxpDaoService documentoCxpDaoService;
+	@PersistenceContext private EntityManager em;
 	@Override
 	public DocumentoCxp selectById(Long id) throws Throwable {
 		return documentoCxpDaoService.selectById(id, NombreEntidadesCompra.DOCUMENTO_CXP);
@@ -39,5 +42,27 @@ public class DocumentoCxpServiceImpl implements DocumentoCxpService {
 		List<DocumentoCxp> result = documentoCxpDaoService.selectByCriteria(datos, NombreEntidadesCompra.DOCUMENTO_CXP);
 		if (result.isEmpty()) throw new IncomeException("Busqueda por criterio DocumentoCxp no devolvio ningun registro");
 		return result;
+	}
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<DocumentoCxp> selectByEmpresa(Long idEmpresa) throws Throwable {
+		return em.createNamedQuery("DocumentoCxpByEmpresa")
+				.setParameter("idEmpresa", idEmpresa)
+				.getResultList();
+	}
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<DocumentoCxp> selectByEmpresaEstado(Long idEmpresa, Long estado) throws Throwable {
+		return em.createNamedQuery("DocumentoCxpByEmpresaEstado")
+				.setParameter("idEmpresa", idEmpresa)
+				.setParameter("estado", estado)
+				.getResultList();
+	}
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<DocumentoCxp> selectNovedadesPendientes(Long idEmpresa) throws Throwable {
+		return em.createNamedQuery("DocumentoCxpNovedadesPendientes")
+				.setParameter("idEmpresa", idEmpresa)
+				.getResultList();
 	}
 }

@@ -21,5 +21,11 @@ public interface TipoGrupoProductos {
 	public static final int RAIZ = 0;
 	public static final int BIEN = 1;
 	public static final int SERVICIO = 2;
+	/**
+	 * Grupo especial de uso exclusivo del backend.
+	 * Productos auto-creados desde carga de XML que aún no tienen grupo definitivo.
+	 * No puede ser creado, modificado ni eliminado desde el frontend.
+	 */
+	public static final int POR_CLASIFICAR = 3;
 
 }

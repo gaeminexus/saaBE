@@ -33,10 +33,40 @@ public class DetalleCargaTxtRest {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
 		}
 	}
-	@GET @Path("/getByCriteria") @Produces(MediaType.APPLICATION_JSON) @Consumes(MediaType.APPLICATION_JSON)
-	public Response getByCriteria(List<DatosBusqueda> datos) {
+	@POST @Path("selectByCriteria") @Consumes(MediaType.APPLICATION_JSON) @Produces(MediaType.APPLICATION_JSON)
+	public Response selectByCriteria(List<DatosBusqueda> registros) {
+		System.out.println("selectByCriteria de DetalleCargaTxt");
 		try {
-			List<DetalleCargaTxt> lista = detalleCargaTxtDaoService.selectByCriteria(datos, NombreEntidadesCompra.DETALLE_CARGA_TXT);
+			return Response.status(Response.Status.OK)
+					.entity(detalleCargaTxtService.selectByCriteria(registros))
+					.type(MediaType.APPLICATION_JSON).build();
+		} catch (Throwable e) {
+			return Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+		}
+	}
+	/**
+	 * Obtiene todas las líneas de una carga específica.
+	 * Cada línea incluye el DocumentoCxp embebido con su estado actual.
+	 * GET /dctx/getByCarga/{idCarga}
+	 */
+	@GET @Path("/getByCarga/{idCarga}") @Produces(MediaType.APPLICATION_JSON)
+	public Response getByCarga(@PathParam("idCarga") Long idCarga) {
+		try {
+			List<DetalleCargaTxt> lista = detalleCargaTxtService.selectByCarga(idCarga);
+			return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+		} catch (Throwable e) {
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+		}
+	}
+	/**
+	 * Obtiene todas las cargas en las que apareció un documento específico.
+	 * Útil para ver el historial de cargas de un documento.
+	 * GET /dctx/getByDocumento/{idDocumento}
+	 */
+	@GET @Path("/getByDocumento/{idDocumento}") @Produces(MediaType.APPLICATION_JSON)
+	public Response getByDocumento(@PathParam("idDocumento") Long idDocumento) {
+		try {
+			List<DetalleCargaTxt> lista = detalleCargaTxtService.selectByDocumento(idDocumento);
 			return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
@@ -60,11 +90,13 @@ public class DetalleCargaTxtRest {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
 		}
 	}
-	@DELETE @Path("/delete/{id}") @Produces(MediaType.APPLICATION_JSON)
+	@DELETE @Path("/{id}") @Produces(MediaType.APPLICATION_JSON)
 	public Response delete(@PathParam("id") Long id) {
+		System.out.println("LLEGA AL SERVICIO DELETE - DetalleCargaTxt");
 		try {
-			detalleCargaTxtService.remove(java.util.Arrays.asList(id));
-			return Response.status(Response.Status.OK).entity("DetalleCargaTxt eliminado correctamente").type(MediaType.APPLICATION_JSON).build();
+			DetalleCargaTxt elimina = new DetalleCargaTxt();
+			detalleCargaTxtDaoService.remove(elimina, id);
+			return Response.status(Response.Status.NO_CONTENT).build();
 		} catch (Throwable e) {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
 		}

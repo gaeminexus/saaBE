@@ -44,7 +44,10 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 	
 	@EJB
 	private SignatureService signatureService;
-	
+
+	@EJB
+	private com.saa.ejb.cnt.service.AsientoContableService asientoContableService;
+
 	@PersistenceContext
 	private EntityManager em;
 	
@@ -646,7 +649,45 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 			resultado.put("paso3_autorizacion", "OK");
 			resultado.put("autorizacionMensaje", resultadoAutorizacion);
 			System.out.println("Autorización completada: " + resultadoAutorizacion);
-			
+
+			// ── PASO 5: Generar asiento contable ───────────────────────────────
+			// Solo si el facturador tiene generaConta=1 y empresa contable configurada.
+			if (notaCredito.getFacturador() != null
+					&& notaCredito.getFacturador().getEmpresa() != null
+					&& Long.valueOf(1L).equals(notaCredito.getFacturador().getGeneraConta())) {
+				System.out.println("PASO 5: Generando asiento contable para Nota de Crédito...");
+				try {
+					Long idEmpresa = notaCredito.getFacturador().getEmpresa().getCodigo();
+					// Recargar la nota de crédito para tener datos actualizados (autorización, etc.)
+					NotaCredito ncActualizada = notaCreditoDaoService.selectById(
+							notaCredito.getId(), NombreEntidadesCobro.NOTA_CREDITO);
+					java.time.LocalDate fechaAsiento = ncActualizada.getFecha() != null
+							? ncActualizada.getFecha().toLocalDate() : java.time.LocalDate.now();
+					String obsAsiento = "Nota de Crédito N° " + nvl(ncActualizada.getNumero(), clave)
+							+ " | Cliente: " + (ncActualizada.getTitular() != null ? ncActualizada.getTitular().getNombre() : "")
+							+ " | Aut: " + nvl(ncActualizada.getAutorizacion(), clave);
+					String usuarioAsiento = (ncActualizada.getUsuario() != null)
+							? ncActualizada.getUsuario().getNombre() : "SISTEMA";
+					// TODO: Reemplazar TipoAsientos.NOTAS_CREDITO_VENTA con el codigoAlterno
+					//       correcto una vez que se defina la plantilla en BD.
+					com.saa.model.cnt.Asiento asientoGenerado =
+							asientoContableService.generarAsientoNotaCredito(
+									ncActualizada.getId(), idEmpresa,
+									com.saa.rubros.TipoAsientos.NOTAS_CREDITO_VENTA,
+									fechaAsiento, obsAsiento, usuarioAsiento);
+					resultado.put("asiento", asientoGenerado.getNumeroAlterno());
+					System.out.println("✓ Asiento contable generado: " + asientoGenerado.getNumeroAlterno());
+				} catch (Exception e) {
+					// El asiento falla → advertir pero NO revertir la autorización
+					resultado.put("advertenciaAsiento",
+							"Nota de Crédito autorizada pero ocurrió un error al generar el asiento: "
+							+ e.getMessage()
+							+ ". Genere el asiento manualmente desde Contabilidad.");
+					System.err.println("⚠ Error en asiento contable de Nota de Crédito: " + e.getMessage());
+					e.printStackTrace();
+				}
+			}
+
 			// 8. Resultado final
 			resultado.put("exito", true);
 			resultado.put("mensaje", "Nota de crédito procesada completamente");

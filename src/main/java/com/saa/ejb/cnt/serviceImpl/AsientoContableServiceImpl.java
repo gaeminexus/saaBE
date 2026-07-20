@@ -481,4 +481,172 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     private double nvl(Double val) {
         return val != null ? val : 0.0;
     }
+
+    // =========================================================================
+    // Stubs CXC — Documentos de Cobro
+    // =========================================================================
+    // Estos métodos están listos para recibir la plantilla (codigoAltTipoAsiento)
+    // y los auxiliares correspondientes. Por ahora lanzan UnsupportedOperationException
+    // con un mensaje descriptivo de lo que se debe configurar.
+    // =========================================================================
+
+    @Override
+    public com.saa.model.cnt.Asiento generarAsientoNotaCredito(
+            Long idNotaCredito, Long idEmpresa, int codigoAltTipoAsiento,
+            java.time.LocalDate fechaAsiento, String observaciones, String usuario)
+            throws Throwable {
+        // TODO — Implementar cuando se defina:
+        //   · La plantilla de asiento: TipoAsientos.NOTAS_CREDITO_VENTA (codigoAlterno en BD)
+        //   · AuxiliarUno DEBE:  cuenta CxC del cliente (PersonaCuentaContable, tipoCuenta=1, tipoPersona=1)
+        //   · AuxiliarUno HABER: cuenta contable del grupo de producto (GrupoProductoCobro.planCuenta)
+        //                        + cuenta de IVA (Tsri.planCuenta, lsri.tabla='17')
+        throw new UnsupportedOperationException(
+                "generarAsientoNotaCredito aún no implementado. "
+                + "Defina la plantilla TipoAsientos.NOTAS_CREDITO_VENTA en BD "
+                + "y configure las cuentas auxiliares antes de activar este método.");
+    }
+
+    @Override
+    public com.saa.model.cnt.Asiento generarAsientoNotaDebito(
+            Long idNotaDebito, Long idEmpresa, int codigoAltTipoAsiento,
+            java.time.LocalDate fechaAsiento, String observaciones, String usuario)
+            throws Throwable {
+        // TODO — Implementar cuando se defina:
+        //   · La plantilla de asiento: TipoAsientos.NOTAS_DEBITO_VENTA (codigoAlterno en BD)
+        //   · AuxiliarUno DEBE:  cuenta CxC del cliente (PersonaCuentaContable, tipoCuenta=1, tipoPersona=1)
+        //   · AuxiliarUno HABER: cuenta contable del grupo de producto (GrupoProductoCobro.planCuenta)
+        //                        + cuenta de IVA (Tsri.planCuenta, lsri.tabla='17')
+        throw new UnsupportedOperationException(
+                "generarAsientoNotaDebito aún no implementado. "
+                + "Defina la plantilla TipoAsientos.NOTAS_DEBITO_VENTA en BD "
+                + "y configure las cuentas auxiliares antes de activar este método.");
+    }
+
+    @Override
+    public com.saa.model.cnt.Asiento generarAsientoLiquidacionCompra(
+            Long idLiquidacion, Long idEmpresa, int codigoAltTipoAsiento,
+            java.time.LocalDate fechaAsiento, String observaciones, String usuario)
+            throws Throwable {
+        // TODO — Implementar cuando se defina:
+        //   · La plantilla de asiento: TipoAsientos.LIQUIDACIONES_COMPRA_EMITIDAS (codigoAlterno en BD)
+        //   · AuxiliarUno DEBE:  cuenta CxP del proveedor/prestador de servicio
+        //   · AuxiliarUno HABER: cuenta contable del grupo de producto del detalle
+        //                        + cuenta de IVA (Tsri.planCuenta, lsri.tabla='17')
+        throw new UnsupportedOperationException(
+                "generarAsientoLiquidacionCompra aún no implementado. "
+                + "Defina la plantilla TipoAsientos.LIQUIDACIONES_COMPRA_EMITIDAS en BD "
+                + "y configure las cuentas auxiliares antes de activar este método.");
+    }
+
+    @Override
+    public com.saa.model.cnt.Asiento generarAsientoRetencionV2(
+            Long idRetencionV2, Long idEmpresa, int codigoAltTipoAsiento,
+            java.time.LocalDate fechaAsiento, String observaciones, String usuario)
+            throws Throwable {
+        // TODO — Implementar cuando se defina:
+        //   · La plantilla de asiento: TipoAsientos.RETENCIONES_EMITIDAS_V2 (codigoAlterno en BD)
+        //   · AuxiliarUno DEBE:  cuenta de retención por código SRI del impuesto (DetalleRetencionV2.codRetencion)
+        //   · AuxiliarUno HABER: cuenta CxP del proveedor sujeto a retención
+        throw new UnsupportedOperationException(
+                "generarAsientoRetencionV2 aún no implementado. "
+                + "Defina la plantilla TipoAsientos.RETENCIONES_EMITIDAS_V2 en BD "
+                + "y configure las cuentas auxiliares antes de activar este método.");
+    }
+
+    // =========================================================================
+    // Stubs CXP — Documentos de Compra (recibidos del proveedor)
+    // =========================================================================
+
+    @Override
+    public com.saa.model.cnt.Asiento generarAsientoFacturaCompra(
+            Long idFacturaCompra, Long idEmpresa, int codigoAltTipoAsiento,
+            java.time.LocalDate fechaAsiento, String observaciones, String usuario)
+            throws Throwable {
+        // TODO — Implementar cuando se defina:
+        //   · La plantilla de asiento: TipoAsientos.FACTURAS_COMPRA (codigoAlterno en BD)
+        //   · AuxiliarUno DEBE:  cuenta de gasto/costo del grupo de producto (GrupoProductoPago.planCuenta)
+        //                        + cuenta de IVA en compras (Tsri.planCuenta, lsri.tabla='17')
+        //   · AuxiliarUno HABER: cuenta CxP del proveedor (PersonaCuentaContable, tipoCuenta=?, tipoPersona=2)
+        throw new UnsupportedOperationException(
+                "generarAsientoFacturaCompra aún no implementado. "
+                + "Defina la plantilla TipoAsientos.FACTURAS_COMPRA en BD "
+                + "y configure las cuentas auxiliares antes de activar este método.");
+    }
+
+    @Override
+    public com.saa.model.cnt.Asiento generarAsientoNotaCreditoCompra(
+            Long idNotaCreditoCompra, Long idEmpresa, int codigoAltTipoAsiento,
+            java.time.LocalDate fechaAsiento, String observaciones, String usuario)
+            throws Throwable {
+        // TODO — Implementar cuando se defina:
+        //   · La plantilla de asiento: TipoAsientos.NOTAS_CREDITO_COMPRA (codigoAlterno en BD)
+        //   · AuxiliarUno DEBE:  cuenta CxP del proveedor
+        //   · AuxiliarUno HABER: cuenta de gasto/costo del grupo de producto
+        //                        + cuenta de IVA (Tsri.planCuenta, lsri.tabla='17')
+        throw new UnsupportedOperationException(
+                "generarAsientoNotaCreditoCompra aún no implementado. "
+                + "Defina la plantilla TipoAsientos.NOTAS_CREDITO_COMPRA en BD "
+                + "y configure las cuentas auxiliares antes de activar este método.");
+    }
+
+    @Override
+    public com.saa.model.cnt.Asiento generarAsientoNotaDebitoCompra(
+            Long idNotaDebitoCompra, Long idEmpresa, int codigoAltTipoAsiento,
+            java.time.LocalDate fechaAsiento, String observaciones, String usuario)
+            throws Throwable {
+        // TODO — Implementar cuando se defina:
+        //   · La plantilla de asiento: TipoAsientos.NOTAS_DEBITO_COMPRA (codigoAlterno en BD)
+        //   · AuxiliarUno DEBE:  cuenta de gasto/costo del detalle (motivo)
+        //   · AuxiliarUno HABER: cuenta CxP del proveedor
+        throw new UnsupportedOperationException(
+                "generarAsientoNotaDebitoCompra aún no implementado. "
+                + "Defina la plantilla TipoAsientos.NOTAS_DEBITO_COMPRA en BD "
+                + "y configure las cuentas auxiliares antes de activar este método.");
+    }
+
+    @Override
+    public com.saa.model.cnt.Asiento generarAsientoLiquidacionCompraCompra(
+            Long idLiquidacion, Long idEmpresa, int codigoAltTipoAsiento,
+            java.time.LocalDate fechaAsiento, String observaciones, String usuario)
+            throws Throwable {
+        // TODO — Implementar cuando se defina:
+        //   · La plantilla de asiento: TipoAsientos.LIQUIDACIONES_COMPRA_RECIBIDAS (codigoAlterno en BD)
+        //   · AuxiliarUno DEBE:  cuenta de gasto/costo del grupo de producto del detalle
+        //                        + cuenta de IVA en compras
+        //   · AuxiliarUno HABER: cuenta CxP del prestador de servicio (proveedor)
+        throw new UnsupportedOperationException(
+                "generarAsientoLiquidacionCompraCompra aún no implementado. "
+                + "Defina la plantilla TipoAsientos.LIQUIDACIONES_COMPRA_RECIBIDAS en BD "
+                + "y configure las cuentas auxiliares antes de activar este método.");
+    }
+
+    @Override
+    public com.saa.model.cnt.Asiento generarAsientoRetencionCompra(
+            Long idRetencionCompra, Long idEmpresa, int codigoAltTipoAsiento,
+            java.time.LocalDate fechaAsiento, String observaciones, String usuario)
+            throws Throwable {
+        // TODO — Implementar cuando se defina:
+        //   · La plantilla de asiento: TipoAsientos.RETENCIONES_RECIBIDAS (codigoAlterno en BD)
+        //   · AuxiliarUno DEBE:  cuenta CxP del proveedor (monto retenido disminuye deuda)
+        //   · AuxiliarUno HABER: cuenta de retención recibida por código SRI (DetalleRetencionCompra.codRetencion)
+        throw new UnsupportedOperationException(
+                "generarAsientoRetencionCompra aún no implementado. "
+                + "Defina la plantilla TipoAsientos.RETENCIONES_RECIBIDAS en BD "
+                + "y configure las cuentas auxiliares antes de activar este método.");
+    }
+
+    @Override
+    public com.saa.model.cnt.Asiento generarAsientoRetencionCompraV2(
+            Long idRetencionCompraV2, Long idEmpresa, int codigoAltTipoAsiento,
+            java.time.LocalDate fechaAsiento, String observaciones, String usuario)
+            throws Throwable {
+        // TODO — Implementar cuando se defina:
+        //   · La plantilla de asiento: TipoAsientos.RETENCIONES_RECIBIDAS_V2 (codigoAlterno en BD)
+        //   · AuxiliarUno DEBE:  cuenta CxP del proveedor (monto retenido disminuye deuda)
+        //   · AuxiliarUno HABER: cuenta de retención recibida por código SRI del impuesto
+        throw new UnsupportedOperationException(
+                "generarAsientoRetencionCompraV2 aún no implementado. "
+                + "Defina la plantilla TipoAsientos.RETENCIONES_RECIBIDAS_V2 en BD "
+                + "y configure las cuentas auxiliares antes de activar este método.");
+    }
 }

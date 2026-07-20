@@ -8,9 +8,12 @@ import com.saa.model.cxp.DetalleCargaTxt;
 import com.saa.model.cxp.NombreEntidadesCompra;
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 @Stateless
 public class DetalleCargaTxtServiceImpl implements DetalleCargaTxtService {
 	@EJB private DetalleCargaTxtDaoService detalleCargaTxtDaoService;
+	@PersistenceContext private EntityManager em;
 	@Override
 	public DetalleCargaTxt selectById(Long id) throws Throwable {
 		return detalleCargaTxtDaoService.selectById(id, NombreEntidadesCompra.DETALLE_CARGA_TXT);
@@ -39,5 +42,19 @@ public class DetalleCargaTxtServiceImpl implements DetalleCargaTxtService {
 		List<DetalleCargaTxt> result = detalleCargaTxtDaoService.selectByCriteria(datos, NombreEntidadesCompra.DETALLE_CARGA_TXT);
 		if (result.isEmpty()) throw new IncomeException("Busqueda por criterio DetalleCargaTxt no devolvio ningun registro");
 		return result;
+	}
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<DetalleCargaTxt> selectByCarga(Long idCarga) throws Throwable {
+		return em.createNamedQuery("DetalleCargaTxtByCarga")
+				.setParameter("idCarga", idCarga)
+				.getResultList();
+	}
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<DetalleCargaTxt> selectByDocumento(Long idDocumento) throws Throwable {
+		return em.createNamedQuery("DetalleCargaTxtByDocumento")
+				.setParameter("idDocumento", idDocumento)
+				.getResultList();
 	}
 }

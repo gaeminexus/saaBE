@@ -6,15 +6,13 @@ import com.saa.ejb.cxp.service.DocumentoCxpService;
 import com.saa.model.cxp.DocumentoCxp;
 import com.saa.model.cxp.NombreEntidadesCompra;
 import jakarta.ejb.EJB;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.*;
 @Path("dcxp")
 public class DocumentoCxpRest {
+	
 	@EJB private DocumentoCxpDaoService documentoCxpDaoService;
 	@EJB private DocumentoCxpService documentoCxpService;
-	@PersistenceContext private EntityManager em;
 	@Context private UriInfo context;
 	public DocumentoCxpRest() {}
 
@@ -39,13 +37,15 @@ public class DocumentoCxpRest {
 		}
 	}
 
-	@GET @Path("/getByCriteria") @Produces(MediaType.APPLICATION_JSON) @Consumes(MediaType.APPLICATION_JSON)
-	public Response getByCriteria(List<DatosBusqueda> datos) {
+	@POST @Path("selectByCriteria") @Consumes(MediaType.APPLICATION_JSON) @Produces(MediaType.APPLICATION_JSON)
+	public Response selectByCriteria(List<DatosBusqueda> registros) {
+		System.out.println("selectByCriteria de DocumentoCxp");
 		try {
-			List<DocumentoCxp> lista = documentoCxpDaoService.selectByCriteria(datos, NombreEntidadesCompra.DOCUMENTO_CXP);
-			return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+			return Response.status(Response.Status.OK)
+					.entity(documentoCxpService.selectByCriteria(registros))
+					.type(MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
-			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+			return Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
 		}
 	}
 
@@ -56,10 +56,7 @@ public class DocumentoCxpRest {
 	@GET @Path("/getByEmpresa/{idEmpresa}") @Produces(MediaType.APPLICATION_JSON)
 	public Response getByEmpresa(@PathParam("idEmpresa") Long idEmpresa) {
 		try {
-			@SuppressWarnings("unchecked")
-			List<DocumentoCxp> lista = em.createNamedQuery("DocumentoCxpByEmpresa")
-					.setParameter("idEmpresa", idEmpresa)
-					.getResultList();
+			List<DocumentoCxp> lista = documentoCxpService.selectByEmpresa(idEmpresa);
 			return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
@@ -75,11 +72,7 @@ public class DocumentoCxpRest {
 	public Response getByEmpresaEstado(@PathParam("idEmpresa") Long idEmpresa,
 	                                    @PathParam("estado") Long estado) {
 		try {
-			@SuppressWarnings("unchecked")
-			List<DocumentoCxp> lista = em.createNamedQuery("DocumentoCxpByEmpresaEstado")
-					.setParameter("idEmpresa", idEmpresa)
-					.setParameter("estado", estado)
-					.getResultList();
+			List<DocumentoCxp> lista = documentoCxpService.selectByEmpresaEstado(idEmpresa, estado);
 			return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
@@ -87,17 +80,14 @@ public class DocumentoCxpRest {
 	}
 
 	/**
-	 * Obtiene todos los documentos con novedad pendiente de resolución de una empresa.
+	 * Obtiene documentos con novedad pendiente de resolución de una empresa.
 	 * GET /dcxp/novedadesPendientes/{idEmpresa}
 	 * estadoDocumento=5 y estadoNovedad=1
 	 */
 	@GET @Path("/novedadesPendientes/{idEmpresa}") @Produces(MediaType.APPLICATION_JSON)
 	public Response novedadesPendientes(@PathParam("idEmpresa") Long idEmpresa) {
 		try {
-			@SuppressWarnings("unchecked")
-			List<DocumentoCxp> lista = em.createNamedQuery("DocumentoCxpNovedadesPendientes")
-					.setParameter("idEmpresa", idEmpresa)
-					.getResultList();
+			List<DocumentoCxp> lista = documentoCxpService.selectNovedadesPendientes(idEmpresa);
 			return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
@@ -124,11 +114,13 @@ public class DocumentoCxpRest {
 		}
 	}
 
-	@DELETE @Path("/delete/{id}") @Produces(MediaType.APPLICATION_JSON)
+	@DELETE @Path("/{id}") @Produces(MediaType.APPLICATION_JSON)
 	public Response delete(@PathParam("id") Long id) {
+		System.out.println("LLEGA AL SERVICIO DELETE - DocumentoCxp");
 		try {
-			documentoCxpService.remove(java.util.Arrays.asList(id));
-			return Response.status(Response.Status.OK).entity("DocumentoCxp eliminado correctamente").type(MediaType.APPLICATION_JSON).build();
+			DocumentoCxp elimina = new DocumentoCxp();
+			documentoCxpDaoService.remove(elimina, id);
+			return Response.status(Response.Status.NO_CONTENT).build();
 		} catch (Throwable e) {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
 		}

@@ -33,4 +33,52 @@ public interface TipoAsientos {
 	// Asiento de CXC - Anticipos de Clientes (codigoAlterno=8, sistema=1)
 	public static final int ANTICIPOS_CLIENTE = 8;
 
+	// ─── CXC: Documentos de Cobro ─────────────────────────────────────────────
+	// TODO: Confirmar codigoAlterno real de la plantilla en BD para cada tipo.
+	// AuxiliarUno habitual:
+	//   · Notas de Crédito / Débito → código del grupo de producto + código del cliente
+	//   · Liquidaciones de Compra   → código del grupo de producto + código del proveedor
+	//   · Retenciones emitidas      → código de la cuenta de retención (por código SRI)
+
+	/** Notas de Crédito emitidas por la empresa (ventas). Pendiente definir codigoAlterno. */
+	public static final int NOTAS_CREDITO_VENTA   = 3;  // TODO: verificar codigoAlterno en BD
+
+	/** Notas de Débito emitidas por la empresa (ventas). Pendiente definir codigoAlterno. */
+	public static final int NOTAS_DEBITO_VENTA     = 4;  // TODO: verificar codigoAlterno en BD
+
+	/** Liquidaciones de compra emitidas por la empresa. Pendiente definir codigoAlterno. */
+	public static final int LIQUIDACIONES_COMPRA_EMITIDAS = 5;  // TODO: verificar codigoAlterno en BD
+
+	/** Retenciones electrónicas v1 emitidas (CXC). Pendiente definir codigoAlterno. */
+	public static final int RETENCIONES_EMITIDAS   = 6;  // TODO: verificar codigoAlterno en BD
+
+	/** Retenciones electrónicas v2 emitidas (CXC). Pendiente definir codigoAlterno. */
+	public static final int RETENCIONES_EMITIDAS_V2 = 7; // TODO: verificar codigoAlterno en BD
+
+	// ─── CXP: Documentos de Compra (recibidos del proveedor vía SRI) ─────────
+	// TODO: Confirmar codigoAlterno real de la plantilla en BD para cada tipo.
+	// AuxiliarUno habitual:
+	//   · Facturas de compra       → código del grupo de producto + código del proveedor
+	//   · Notas de Crédito/Débito  → código del grupo de producto + código del proveedor
+	//   · Liquidaciones de compra  → código del grupo de producto + código del proveedor/prestador
+	//   · Retenciones recibidas    → código de la cuenta de retención (por código SRI)
+
+	/** Facturas de compra recibidas (CXP). Pendiente definir codigoAlterno. */
+	public static final int FACTURAS_COMPRA         = 9;  // TODO: verificar codigoAlterno en BD
+
+	/** Notas de Crédito de compra recibidas (CXP). Pendiente definir codigoAlterno. */
+	public static final int NOTAS_CREDITO_COMPRA    = 10; // TODO: verificar codigoAlterno en BD
+
+	/** Notas de Débito de compra recibidas (CXP). Pendiente definir codigoAlterno. */
+	public static final int NOTAS_DEBITO_COMPRA     = 11; // TODO: verificar codigoAlterno en BD
+
+	/** Liquidaciones de compra recibidas (CXP). Pendiente definir codigoAlterno. */
+	public static final int LIQUIDACIONES_COMPRA_RECIBIDAS = 12; // TODO: verificar codigoAlterno en BD
+
+	/** Retenciones v1 recibidas de proveedor (CXP). Pendiente definir codigoAlterno. */
+	public static final int RETENCIONES_RECIBIDAS   = 13; // TODO: verificar codigoAlterno en BD
+
+	/** Retenciones v2 recibidas de proveedor (CXP). Pendiente definir codigoAlterno. */
+	public static final int RETENCIONES_RECIBIDAS_V2 = 14; // TODO: verificar codigoAlterno en BD
+
 }

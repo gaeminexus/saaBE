@@ -44,7 +44,10 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 	
 	@EJB
 	private SignatureService signatureService;
-	
+
+	@EJB
+	private com.saa.ejb.cnt.service.AsientoContableService asientoContableService;
+
 	@PersistenceContext
 	private EntityManager em;
 	
@@ -613,11 +616,46 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 				notaDebito.getId(), xmlFirmado, destinatario, pathLogo);
 			
 			resultado.put("autorizacionMensaje", resultadoAutorizacion);
+
+			// ── PASO 5: Generar asiento contable ───────────────────────────────
+			// Solo si el facturador tiene generaConta=1 y empresa contable configurada.
+			if (notaDebito.getFacturador() != null
+					&& notaDebito.getFacturador().getEmpresa() != null
+					&& Long.valueOf(1L).equals(notaDebito.getFacturador().getGeneraConta())) {
+				System.out.println("PASO 5: Generando asiento contable para Nota de Débito...");
+				try {
+					Long idEmpresaConta = notaDebito.getFacturador().getEmpresa().getCodigo();
+					NotaDebito ndActualizada = notaDebitoDaoService.selectById(
+							notaDebito.getId(), NombreEntidadesCobro.NOTA_DEBITO);
+					java.time.LocalDate fechaAsiento = ndActualizada.getFecha() != null
+							? ndActualizada.getFecha().toLocalDate() : java.time.LocalDate.now();
+					String obsAsiento = "Nota de Débito N° " + nvl(ndActualizada.getNumero(), clave)
+							+ " | Cliente: " + (ndActualizada.getTitular() != null ? ndActualizada.getTitular().getNombre() : "")
+							+ " | Aut: " + nvl(ndActualizada.getAutorizacion(), clave);
+					String usuarioAsiento = (ndActualizada.getUsuario() != null)
+							? ndActualizada.getUsuario().getNombre() : "SISTEMA";
+					// TODO: Reemplazar TipoAsientos.NOTAS_DEBITO_VENTA con el codigoAlterno
+					//       correcto una vez que se defina la plantilla en BD.
+					com.saa.model.cnt.Asiento asientoGenerado =
+							asientoContableService.generarAsientoNotaDebito(
+									ndActualizada.getId(), idEmpresaConta,
+									com.saa.rubros.TipoAsientos.NOTAS_DEBITO_VENTA,
+									fechaAsiento, obsAsiento, usuarioAsiento);
+					resultado.put("asiento", asientoGenerado.getNumeroAlterno());
+					System.out.println("✓ Asiento contable generado: " + asientoGenerado.getNumeroAlterno());
+				} catch (Exception e) {
+					resultado.put("advertenciaAsiento",
+							"Nota de Débito autorizada pero ocurrió un error al generar el asiento: "
+							+ e.getMessage()
+							+ ". Genere el asiento manualmente desde Contabilidad.");
+					System.err.println("⚠ Error en asiento contable de Nota de Débito: " + e.getMessage());
+					e.printStackTrace();
+				}
+			}
+
 			resultado.put("exito", true);
 			resultado.put("mensaje", "Nota de débito procesada completamente");
 			resultado.put("idNotaDebito", notaDebito.getId());
-			
-			System.out.println("=== FIN procesarNotaDebitoCompleta - EXITOSO ===");
 			
 		} catch (Throwable e) {
 			System.err.println("ERROR en procesarNotaDebitoCompleta: " + e.getMessage());

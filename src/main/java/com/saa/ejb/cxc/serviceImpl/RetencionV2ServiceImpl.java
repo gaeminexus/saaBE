@@ -45,7 +45,13 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 	
 	@EJB
 	private PathRetencionV2DaoService pathRetencionV2DaoService;
-	
+
+	@EJB
+	private com.saa.ejb.signature.service.SignatureService signatureService;
+
+	@EJB
+	private com.saa.ejb.cnt.service.AsientoContableService asientoContableService;
+
 	@PersistenceContext
 	private EntityManager em;
 	@Override
@@ -760,5 +766,128 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 		String mensaje;
 		String informacionAdicional;
 		String respuestaCompleta;
+	}
+
+	@Override
+	public java.util.Map<String, Object> procesarRetencionV2Completa(RetencionV2 retencion,
+			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable {
+
+		System.out.println("=== INICIO procesarRetencionV2Completa ===");
+		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+		resultado.put("exito", false);
+
+		try {
+			if (ambiente == null)    ambiente    = 1L;
+			if (conectaSRI == null)  conectaSRI  = 1L;
+			if (pathLogo == null)    pathLogo    = "resources/logos/logo_aso.png";
+
+			// PASO 1: Grabar la retención
+			System.out.println("PASO 1: Grabando retención V2...");
+			retencion = this.saveSingle(retencion);
+			resultado.put("retencion", retencion);
+			resultado.put("idRetencion", retencion.getId());
+			System.out.println("✓ Retención V2 grabada con ID: " + retencion.getId()
+					+ " | Clave: " + retencion.getClave());
+
+			String clave = retencion.getClave();
+			if (clave == null || clave.isEmpty())
+				throw new Exception("La retención V2 no tiene clave de acceso");
+			Long idFacturador = retencion.getFacturador() != null ? retencion.getFacturador().getId() : null;
+			if (idFacturador == null)
+				throw new Exception("La retención V2 no tiene facturador asociado");
+			resultado.put("claveAcceso", clave);
+
+			if (destinatario == null && retencion.getProveedor() != null) {
+				destinatario = retencion.getProveedor().getEmail();
+			}
+			pathLogo = "resources/logos/logo_aso.png";
+			resultado.put("destinatario", destinatario);
+
+			// PASO 2: Generar XML
+			System.out.println("PASO 2: Generando XML...");
+			String[] resultadoXML = this.generarXMLRetencionV2(clave, ambiente);
+			resultado.put("paso2_xml", "OK");
+			System.out.println("XML generado: " + resultadoXML[0]);
+
+			// PASO 3: Firmar XML
+			System.out.println("PASO 3: Firmando XML electrónicamente...");
+			String xmlSinFirmar = new String(
+					java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(resultadoXML[2])),
+					java.nio.charset.StandardCharsets.UTF_8);
+			String xmlFirmado = signatureService.firmarXMLFacturador(xmlSinFirmar, idFacturador);
+			resultado.put("paso3_firma", "OK");
+			System.out.println("✓ XML firmado electrónicamente");
+
+			// PASO 4: Autorizar ante el SRI
+			System.out.println("PASO 4: Autorizando ante el SRI...");
+			String resultadoAutorizacion = this.autorizarRetencionV2(
+					idFacturador, ambiente, conectaSRI, clave,
+					retencion.getId(), xmlFirmado, destinatario, pathLogo);
+
+			resultado.put("autorizacion", resultadoAutorizacion);
+			System.out.println("✓ Resultado autorización: " + resultadoAutorizacion);
+
+			boolean autorizada = resultadoAutorizacion != null
+					&& resultadoAutorizacion.contains("AUTORIZADO");
+
+			if (!autorizada) {
+				resultado.put("exito", false);
+				resultado.put("estado", "NO_AUTORIZADO");
+				resultado.put("mensaje", "Retención V2 enviada al SRI pero no autorizada. "
+						+ "Respuesta: " + resultadoAutorizacion);
+				return resultado;
+			}
+
+			resultado.put("estado", "AUTORIZADO");
+
+			// ── PASO 5: Generar asiento contable ───────────────────────────────
+			// Solo si el facturador tiene generaConta=1 y empresa contable configurada.
+			if (retencion.getFacturador().getEmpresa() != null
+					&& Long.valueOf(1L).equals(retencion.getFacturador().getGeneraConta())) {
+				System.out.println("PASO 5: Generando asiento contable para Retención V2...");
+				try {
+					Long idEmpresaConta = retencion.getFacturador().getEmpresa().getCodigo();
+					RetencionV2 rtActualizada = retencionV2DaoService.selectById(
+							retencion.getId(), NombreEntidadesCobro.RETENCION_V2);
+					java.time.LocalDate fechaAsiento = rtActualizada.getFecha() != null
+							? rtActualizada.getFecha().toLocalDate() : java.time.LocalDate.now();
+					String obsAsiento = "Retención V2 N° " + nvl(rtActualizada.getNumero(), clave)
+							+ " | Proveedor: " + (rtActualizada.getProveedor() != null ? rtActualizada.getProveedor().getNombre() : "")
+							+ " | Aut: " + nvl(rtActualizada.getAutorizacion(), clave);
+					String usuarioAsiento = (rtActualizada.getUsuario() != null)
+							? rtActualizada.getUsuario().getNombre() : "SISTEMA";
+					// TODO: Reemplazar TipoAsientos.RETENCIONES_EMITIDAS_V2 con el codigoAlterno
+					//       correcto una vez que se defina la plantilla en BD.
+					com.saa.model.cnt.Asiento asientoGenerado =
+							asientoContableService.generarAsientoRetencionV2(
+									rtActualizada.getId(), idEmpresaConta,
+									com.saa.rubros.TipoAsientos.RETENCIONES_EMITIDAS_V2,
+									fechaAsiento, obsAsiento, usuarioAsiento);
+					resultado.put("asiento", asientoGenerado.getNumeroAlterno());
+					System.out.println("✓ Asiento contable generado: " + asientoGenerado.getNumeroAlterno());
+				} catch (Exception e) {
+					resultado.put("advertenciaAsiento",
+							"Retención V2 autorizada pero ocurrió un error al generar el asiento: "
+							+ e.getMessage()
+							+ ". Genere el asiento manualmente desde Contabilidad.");
+					System.err.println("⚠ Error en asiento contable de Retención V2: " + e.getMessage());
+					e.printStackTrace();
+				}
+			}
+
+			resultado.put("exito", true);
+			resultado.put("mensaje", "Retención V2 procesada y autorizada exitosamente.");
+			System.out.println("=== FIN procesarRetencionV2Completa - EXITOSO ===");
+
+		} catch (Exception e) {
+			System.err.println("ERROR en procesarRetencionV2Completa: " + e.getMessage());
+			e.printStackTrace();
+			resultado.put("exito", false);
+			resultado.put("error", e.getMessage());
+			resultado.put("mensaje", "Error al procesar la retención V2: " + e.getMessage());
+			throw e;
+		}
+
+		return resultado;
 	}
 }

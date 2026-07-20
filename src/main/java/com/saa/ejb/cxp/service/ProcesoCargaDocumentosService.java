@@ -34,13 +34,52 @@ public interface ProcesoCargaDocumentosService {
                                           Long idEmpresa, Long idUsuario) throws Throwable;
 
     /**
-     * FASE 2: Registra el XML de un DocumentoCxp específico. estadoDocumento=2.
+     * FASE 2+3 UNIFICADA: Valida el XML, lo guarda en disco y registra en tablas CXP en un solo paso.
+     *
+     * Los productos que no existan en el sistema se crean automáticamente en el grupo especial
+     * "PENDIENTE DE CLASIFICAR". Esto permite completar el registro sin interrupciones.
+     * La contabilización posterior bloqueará documentos que tengan productos en ese grupo.
+     *
+     * Respuesta cuando el XML no coincide con el documento (HTTP 422):
+     *   { "valido": false, "errores": ["rucEmisor: esperado=... | en XML=..."], "documento": {...} }
+     *
+     * Respuesta exitosa (HTTP 200):
+     *   { "valido": true, "idDocumentoBD": 234, "tipoTablaDestino": "FACTURA_COMPRA",
+     *     "mensaje": "...", "productosPendientes": [...] (vacío si todos clasificados) }
+     */
+    Map<String, Object> cargarXmlYRegistrar(Long idDocumentoCxp, String contenidoXml,
+                                             String pathDestino, Long idEmpresa,
+                                             Long idUsuario) throws Throwable;
+
+    /**
+     * Verifica si una FacturaCompra tiene productos en el grupo "PENDIENTE DE CLASIFICAR".
+     * Debe llamarse antes de generar el asiento contable de una factura de compra.
+     *
+     * @param idFacturaCompra ID de la FacturaCompra
+     * @return Lista de nombres de productos pendientes de clasificar (vacía = puede contabilizar)
+     */
+    List<String> obtenerProductosPendientesDeClasificar(Long idFacturaCompra) throws Throwable;
+
+    /**
+     * FASE 2: Valida y registra el XML de un DocumentoCxp específico. estadoDocumento=2.
+     *
+     * Valida que el XML corresponda al mismo proveedor y tenga los mismos valores
+     * que los registrados en el DocumentoCxp (provenientes del TXT del SRI).
+     *
+     * Si hay diferencias el documento NO se guarda y se devuelve un mapa con:
+     *   - "valido": false
+     *   - "errores": List<String> con las diferencias detectadas
+     *   - "documento": DocumentoCxp sin modificar
+     *
+     * Si es correcto devuelve:
+     *   - "valido": true
+     *   - "documento": DocumentoCxp actualizado con estadoDocumento=2
      *
      * @param idDocumentoCxp ID del DocumentoCxp
-     * @return DocumentoCxp actualizado
+     * @return Mapa con resultado de la validación
      */
-    DocumentoCxp cargarXmlDocumento(Long idDocumentoCxp, String contenidoXml,
-                                     String pathDestino, Long idUsuario) throws Throwable;
+    Map<String, Object> cargarXmlDocumento(Long idDocumentoCxp, String contenidoXml,
+                                            String pathDestino, Long idUsuario) throws Throwable;
 
     /**
      * FASE 3: Parsea el XML y registra en las tablas destino CXP. estadoDocumento=3.

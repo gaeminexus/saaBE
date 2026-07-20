@@ -69,6 +69,7 @@ import com.saa.model.scp.Empresa;
 import com.saa.model.scp.Usuario;
 import com.saa.model.tsr.Titular;
 import com.saa.rubros.Estado;
+import com.saa.rubros.TipoGrupoProductos;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -112,6 +113,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
     @EJB private ProductoPagoDaoService                   productoPagoDaoService;
     @EJB private GrupoProductoPagoDaoService              grupoProductoPagoDaoService;
+
+    @EJB private com.saa.ejb.cnt.service.AsientoContableService asientoContableService;
 
     // -------------------------------------------------------
     // Estados
@@ -311,8 +314,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     // FASE 2: Carga del XML  →  opera sobre DocumentoCxp
     // =========================================================
     @Override
-    public DocumentoCxp cargarXmlDocumento(Long idDocumentoCxp, String contenidoXml,
-                                            String pathDestino, Long idUsuario) throws Throwable {
+    public Map<String, Object> cargarXmlDocumento(Long idDocumentoCxp, String contenidoXml,
+                                                   String pathDestino, Long idUsuario) throws Throwable {
 
         System.out.println("=== cargarXmlDocumento idDocumentoCxp=" + idDocumentoCxp);
 
@@ -321,11 +324,277 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         if (doc == null)
             throw new Exception("DocumentoCxp no encontrado: " + idDocumentoCxp);
 
+        // ── Validar que el XML corresponde al documento esperado ──
+        List<String> errores = validarXmlContraDocumento(contenidoXml, doc);
+
+        Map<String, Object> resultado = new HashMap<>();
+        if (!errores.isEmpty()) {
+            resultado.put("valido", false);
+            resultado.put("errores", errores);
+            resultado.put("documento", doc);
+            System.out.println("=== cargarXmlDocumento VALIDACIÓN FALLIDA: " + errores);
+            return resultado;
+        }
+
+        // ── XML válido: guardar y cambiar estado ──
         doc.setPathXml(pathDestino);
         doc.setFechaCargaXml(LocalDateTime.now());
         doc.setUsuarioCargaXml(em.find(Usuario.class, idUsuario));
         doc.setEstadoDocumento(ESTADO_XML_CARGADO);
-        return documentoCxpDaoService.save(doc, doc.getId());
+        DocumentoCxp docActualizado = documentoCxpDaoService.save(doc, doc.getId());
+
+        resultado.put("valido", true);
+        resultado.put("documento", docActualizado);
+        return resultado;
+    }
+
+    /**
+     * Valida que el contenido del XML coincida con los datos esperados del DocumentoCxp.
+     * Compara: claveAcceso, rucEmisor, razonSocialEmisor, importeTotal, valorSinImpuestos,
+     *          iva, serieComprobante, fechaEmision.
+     *
+     * @return Lista de mensajes de error (vacía si todo es correcto)
+     */
+    private List<String> validarXmlContraDocumento(String contenidoXml, DocumentoCxp doc) {
+        List<String> errores = new ArrayList<>();
+        try {
+            Document xmlDoc = parsearXmlComprobante(contenidoXml);
+
+            // ── 1. Clave de acceso ──
+            String claveXml = getXmlValueOuter(contenidoXml, "claveAccesoConsultada");
+            if (claveXml.isEmpty()) claveXml = getXmlValueOuter(contenidoXml, "claveAcceso");
+            if (claveXml.isEmpty()) claveXml = getXmlValue(xmlDoc, "claveAcceso");
+            if (!claveXml.isEmpty() && !claveXml.equals(doc.getClaveAcceso())) {
+                errores.add("claveAcceso: esperada=" + doc.getClaveAcceso()
+                        + " | en XML=" + claveXml);
+            }
+
+            // ── 2. RUC del emisor ──
+            String rucXml = getXmlValue(xmlDoc, "ruc");
+            if (rucXml.isEmpty()) rucXml = getXmlValue(xmlDoc, "rucEmisor");
+            if (!rucXml.isEmpty() && !rucXml.equals(doc.getRucEmisor())) {
+                errores.add("rucEmisor: esperado=" + doc.getRucEmisor()
+                        + " | en XML=" + rucXml);
+            }
+
+            // ── 3. Razón social del emisor ──
+            String razonXml = getXmlValue(xmlDoc, "razonSocial");
+            if (!razonXml.isEmpty() && doc.getRazonSocialEmisor() != null
+                    && !razonXml.equalsIgnoreCase(doc.getRazonSocialEmisor())) {
+                errores.add("razonSocialEmisor: esperada=\"" + doc.getRazonSocialEmisor()
+                        + "\" | en XML=\"" + razonXml + "\"");
+            }
+
+            // ── 4. Número de serie / comprobante ──
+            String estab      = getXmlValue(xmlDoc, "estab");
+            String ptoEmi     = getXmlValue(xmlDoc, "ptoEmi");
+            String secuencial = getXmlValue(xmlDoc, "secuencial");
+            if (!estab.isEmpty() && !ptoEmi.isEmpty() && !secuencial.isEmpty()) {
+                String serieXml = estab + "-" + ptoEmi + "-" + secuencial;
+                if (doc.getSerieComprobante() != null
+                        && !serieXml.equals(doc.getSerieComprobante())) {
+                    errores.add("serieComprobante: esperada=" + doc.getSerieComprobante()
+                            + " | en XML=" + serieXml);
+                }
+            }
+
+            // ── 5. Valor sin impuestos ──
+            String totalSinImpStr = getXmlValue(xmlDoc, "totalSinImpuestos");
+            if (!totalSinImpStr.isEmpty()) {
+                double totalSinImpXml = parseDouble(totalSinImpStr);
+                if (doc.getValorSinImpuestos() != null
+                        && Math.abs(totalSinImpXml - doc.getValorSinImpuestos()) > 0.01) {
+                    errores.add("valorSinImpuestos: esperado=" + doc.getValorSinImpuestos()
+                            + " | en XML=" + totalSinImpXml);
+                }
+            }
+
+            // ── 6. Importe total ──
+            String importeTotalStr = getXmlValue(xmlDoc, "importeTotal");
+            if (!importeTotalStr.isEmpty()) {
+                double importeTotalXml = parseDouble(importeTotalStr);
+                if (doc.getImporteTotal() != null
+                        && Math.abs(importeTotalXml - doc.getImporteTotal()) > 0.01) {
+                    errores.add("importeTotal: esperado=" + doc.getImporteTotal()
+                            + " | en XML=" + importeTotalXml);
+                }
+            }
+
+            // ── 7. IVA (primer impuesto encontrado) ──
+            NodeList impuestos = xmlDoc.getElementsByTagName("totalImpuesto");
+            if (impuestos.getLength() > 0) {
+                double ivaXml = 0.0;
+                for (int i = 0; i < impuestos.getLength(); i++) {
+                    Element imp = (Element) impuestos.item(i);
+                    String codigoImp = getElementValue(imp, "codigo");
+                    // Código 2 = IVA en el formato SRI
+                    if ("2".equals(codigoImp)) {
+                        ivaXml += parseDouble(getElementValue(imp, "valor"));
+                    }
+                }
+                if (doc.getIva() != null && Math.abs(ivaXml - doc.getIva()) > 0.01) {
+                    errores.add("iva: esperado=" + doc.getIva()
+                            + " | en XML=" + ivaXml);
+                }
+            }
+
+        } catch (Exception e) {
+            errores.add("Error al parsear el XML: " + e.getMessage());
+        }
+        return errores;
+    }
+
+    // =========================================================
+    // FASE 2+3 UNIFICADA: Validar XML + Registrar en BD en un paso
+    // =========================================================
+    @Override
+    public Map<String, Object> cargarXmlYRegistrar(Long idDocumentoCxp, String contenidoXml,
+                                                    String pathDestino, Long idEmpresa,
+                                                    Long idUsuario) throws Throwable {
+
+        System.out.println("=== cargarXmlYRegistrar idDocumentoCxp=" + idDocumentoCxp);
+
+        DocumentoCxp doc = documentoCxpDaoService.selectById(idDocumentoCxp,
+                NombreEntidadesCompra.DOCUMENTO_CXP);
+        if (doc == null)
+            throw new Exception("DocumentoCxp no encontrado: " + idDocumentoCxp);
+
+        // ── 1. Validar XML contra el documento esperado ──
+        List<String> errores = validarXmlContraDocumento(contenidoXml, doc);
+        if (!errores.isEmpty()) {
+            Map<String, Object> resultado = new HashMap<>();
+            resultado.put("valido", false);
+            resultado.put("errores", errores);
+            resultado.put("documento", doc);
+            System.out.println("=== cargarXmlYRegistrar VALIDACIÓN FALLIDA: " + errores);
+            return resultado;
+        }
+
+        // ── 2. Guardar path del XML y cambiar estado a XML_CARGADO ──
+        doc.setPathXml(pathDestino);
+        doc.setFechaCargaXml(LocalDateTime.now());
+        doc.setUsuarioCargaXml(em.find(Usuario.class, idUsuario));
+        doc.setEstadoDocumento(ESTADO_XML_CARGADO);
+        doc = documentoCxpDaoService.save(doc, doc.getId());
+
+        // ── 3. Registrar en tablas CXP ──
+        String tipo = doc.getTipoComprobante();
+        Map<String, Object> resultadoBD;
+
+        try {
+            if (TIPO_FACTURA.equalsIgnoreCase(tipo)) {
+                resultadoBD = registrarFacturaCompra(doc, contenidoXml, idEmpresa, idUsuario);
+            } else if (TIPO_NOTA_CREDITO.equalsIgnoreCase(tipo)) {
+                resultadoBD = registrarNotaCreditoCompra(doc, contenidoXml, idEmpresa, idUsuario);
+            } else if (TIPO_NOTA_DEBITO.equalsIgnoreCase(tipo)) {
+                resultadoBD = registrarNotaDebitoCompra(doc, contenidoXml, idEmpresa, idUsuario);
+            } else if (TIPO_LIQUIDACION.equalsIgnoreCase(tipo)) {
+                resultadoBD = registrarLiquidacionCompraCompra(doc, contenidoXml, idEmpresa, idUsuario);
+            } else if (TIPO_RETENCION.equalsIgnoreCase(tipo)) {
+                resultadoBD = registrarRetencionCompra(doc, contenidoXml, idEmpresa, idUsuario);
+            } else if (TIPO_RETENCION_V2.equalsIgnoreCase(tipo)) {
+                resultadoBD = registrarRetencionCompraV2(doc, contenidoXml, idEmpresa, idUsuario);
+            } else {
+                throw new Exception("Tipo de comprobante no soportado: " + tipo);
+            }
+
+            // Si el proveedor no fue encontrado → marcar ERROR y retornar sin registrar
+            if (resultadoBD.containsKey("error")) {
+                doc.setEstadoDocumento(ESTADO_ERROR);
+                doc.setObservacion(resultadoBD.get("mensaje").toString());
+                documentoCxpDaoService.save(doc, doc.getId());
+                resultadoBD.put("valido", true);
+                return resultadoBD;
+            }
+
+            doc.setIdDocumentoBD((Long) resultadoBD.get("idDocumentoBD"));
+            doc.setTipoTablaDestino((String) resultadoBD.get("tipoTablaDestino"));
+            doc.setFechaRegistroBD(LocalDateTime.now());
+            doc.setUsuarioRegistroBD(em.find(Usuario.class, idUsuario));
+            doc.setEstadoDocumento(ESTADO_REGISTRADO_BD);
+            documentoCxpDaoService.save(doc, doc.getId());
+
+            // ── Generar asiento contable (CXP) ────────────────────────────────
+            // Solo si el registro fue exitoso (ESTADO_REGISTRADO_BD).
+            // Si el asiento falla NO revertimos el registro — se advierte en el resultado.
+            generarAsientoCxp(doc, resultadoBD, idEmpresa);
+
+        } catch (Exception e) {
+            doc.setEstadoDocumento(ESTADO_ERROR);
+            doc.setObservacion("Error al registrar en BD: " + e.getMessage());
+            documentoCxpDaoService.save(doc, doc.getId());
+            throw e;
+        }
+
+        resultadoBD.put("valido", true);
+        return resultadoBD;
+    }
+
+    /**
+     * Obtiene el grupo "PENDIENTE DE CLASIFICAR" de la empresa.
+     * Si no existe, lo crea automáticamente.
+     */
+    private GrupoProductoPago obtenerOCrearGrupoPendienteClasificar(Long idEmpresa) {
+        try {
+            @SuppressWarnings("unchecked")
+            List<GrupoProductoPago> lista = em.createQuery(
+                    "select g from GrupoProductoPago g " +
+                    "where g.rubroTipoGrupoH = :tipo and g.empresa.codigo = :idEmpresa")
+                    .setParameter("tipo", (long) TipoGrupoProductos.POR_CLASIFICAR)
+                    .setParameter("idEmpresa", idEmpresa)
+                    .setMaxResults(1).getResultList();
+            if (!lista.isEmpty()) return lista.get(0);
+
+            // No existe → crear automáticamente
+            GrupoProductoPago grupo = new GrupoProductoPago();
+            grupo.setNombre("POR CLASIFICAR");
+            grupo.setRubroTipoGrupoH((long) TipoGrupoProductos.POR_CLASIFICAR);
+            grupo.setEmpresa(em.find(Empresa.class, idEmpresa));
+            grupo.setEstado(1L);
+            return grupoProductoPagoDaoService.save(grupo, null);
+        } catch (Throwable e) {
+            throw new RuntimeException(
+                    "No se pudo obtener/crear el grupo POR CLASIFICAR: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Busca un producto por nombre en la empresa. Si no existe lo crea en el grupo
+     * "PENDIENTE DE CLASIFICAR" para no interrumpir el flujo de registro.
+     */
+    private ProductoPago obtenerOAutoCrearProducto(String nombre, String codigo, String codigoAux,
+                                                    double precioUnitario, Long idEmpresa) {
+        ProductoPago existente = buscarProductoPorNombre(nombre, idEmpresa);
+        if (existente != null) return existente;
+
+        GrupoProductoPago grupoPendiente = obtenerOCrearGrupoPendienteClasificar(idEmpresa);
+        ProductoPago nuevo = new ProductoPago();
+        nuevo.setEmpresa(em.find(Empresa.class, idEmpresa));
+        nuevo.setGrupoProducto(grupoPendiente);
+        nuevo.setNombre(nombre);
+        nuevo.setCodigo(codigo == null || codigo.isEmpty() ? null : codigo);
+        nuevo.setCodigoAux(codigoAux == null || codigoAux.isEmpty() ? null : codigoAux);
+        nuevo.setPrecioUnitario(precioUnitario);
+        try {
+            return productoPagoDaoService.save(nuevo, null);
+        } catch (Throwable e) {
+            throw new RuntimeException(
+                    "Error al auto-crear producto '" + nombre + "': " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public List<String> obtenerProductosPendientesDeClasificar(Long idFacturaCompra) throws Throwable {
+        @SuppressWarnings("unchecked")
+        List<String> pendientes = em.createQuery(
+                "select df.descripcion from DetalleFacturaCompra df, ProductoPago p, GrupoProductoPago g " +
+                "where p.id = df.producto and g.codigo = p.grupoProducto.codigo " +
+                "and df.factura.id = :idFactura " +
+                "and g.rubroTipoGrupoH = :tipo")
+                .setParameter("idFactura", idFacturaCompra)
+                .setParameter("tipo", (long) TipoGrupoProductos.POR_CLASIFICAR)
+                .getResultList();
+        return pendientes;
     }
 
     // =========================================================
@@ -378,6 +647,11 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             doc.setUsuarioRegistroBD(em.find(Usuario.class, idUsuario));
             doc.setEstadoDocumento(ESTADO_REGISTRADO_BD);
             documentoCxpDaoService.save(doc, doc.getId());
+
+            // ── Generar asiento contable (CXP) ────────────────────────────────
+            // Solo si el registro fue exitoso (ESTADO_REGISTRADO_BD).
+            // Si el asiento falla NO revertimos el registro — se advierte en el resultado.
+            generarAsientoCxp(doc, resultado, idEmpresa);
 
         } catch (Exception e) {
             doc.setEstadoDocumento(ESTADO_ERROR);
@@ -602,29 +876,9 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         double totalDescuento = parseDouble(getXmlValue(xmlDoc, "totalDescuento"));
         double importeTotal = parseDouble(getXmlValue(xmlDoc, "importeTotal"));
 
-        // Verificar productos faltantes
+        // Iterar detalles: auto-crear productos faltantes en grupo PENDIENTE DE CLASIFICAR
         NodeList detallesXml = xmlDoc.getElementsByTagName("detalle");
-        List<Map<String, Object>> productosFaltantes = new ArrayList<>();
-        for (int i = 0; i < detallesXml.getLength(); i++) {
-            Element el = (Element) detallesXml.item(i);
-            String descripcion = getElementValue(el, "descripcion");
-            if (buscarProductoPorNombre(descripcion, idEmpresa) == null) {
-                Map<String, Object> faltante = new HashMap<>();
-                faltante.put("nombre", descripcion);
-                faltante.put("codigo", getElementValue(el, "codigoPrincipal"));
-                faltante.put("codigoAux", getElementValue(el, "codigoAuxiliar"));
-                faltante.put("precioUnitario", parseDouble(getElementValue(el, "precioUnitario")));
-                productosFaltantes.add(faltante);
-            }
-        }
-        if (!productosFaltantes.isEmpty()) {
-            Map<String, Object> resp = new HashMap<>();
-            resp.put("requiereProductos", true);
-            resp.put("mensaje", "Productos del XML no existen. Asigne un grupo y llame /crearProductosYRegistrar");
-            resp.put("productosNuevos", productosFaltantes);
-            resp.put("idDocumentoCxp", doc.getId());
-            return resp;
-        }
+        List<String> productosPendientes = new ArrayList<>();
 
         FacturaCompra factura = new FacturaCompra();
         factura.setEmpresa(empresa);
@@ -668,7 +922,19 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 porcIVA = parseLong(getElementValue(impEl, "tarifa"));
                 valIVA  = parseDouble(getElementValue(impEl, "valor"));
             }
-            ProductoPago producto = buscarProductoPorNombre(descripcion, idEmpresa);
+            // Auto-crear en POR CLASIFICAR si no existe
+            ProductoPago producto = obtenerOAutoCrearProducto(
+                    descripcion,
+                    getElementValue(el, "codigoPrincipal"),
+                    getElementValue(el, "codigoAuxiliar"),
+                    precioUnit, idEmpresa);
+            if (producto.getGrupoProducto() != null
+                    && producto.getGrupoProducto().getRubroTipoGrupoH() != null
+                    && producto.getGrupoProducto().getRubroTipoGrupoH()
+                               == TipoGrupoProductos.POR_CLASIFICAR) {
+                productosPendientes.add(descripcion);
+            }
+
             DetalleFacturaCompra df = new DetalleFacturaCompra();
             df.setFactura(factura);
             df.setDescripcion(descripcion);
@@ -680,7 +946,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             df.setPorcentajeIVA(porcIVA);
             df.setValorIVA(valIVA);
             df.setTotal(precioTotal + valIVA);
-            df.setProducto(producto != null ? producto.getId() : null);
+            df.setProducto(producto.getId());
             df.setEstado(Long.valueOf(Estado.ACTIVO));
             detalleFacturaCompraDaoService.save(df, null);
         }
@@ -697,17 +963,26 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             formaPagoFacturaCompraDaoService.save(fp, null);
         }
 
+
         PathFacturaCompra pathFc = new PathFacturaCompra();
         pathFc.setFactura(factura);
         pathFc.setPath(doc.getPathXml());
         pathFc.setAlterno(1L);
         pathFacturaCompraDaoService.save(pathFc, null);
 
+        PathFacturaCompra pathFc2 = new PathFacturaCompra();
+        pathFc2.setFactura(factura);
+        pathFc2.setPath(doc.getPathXml());
+        pathFc2.setAlterno(1L);
+        pathFacturaCompraDaoService.save(pathFc2, null);
+
         Map<String, Object> r = new HashMap<>();
         r.put("idDocumentoBD", factura.getId());
         r.put("tipoTablaDestino", "FACTURA_COMPRA");
-        r.put("mensaje", "FacturaCompra registrada con id=" + factura.getId());
-        r.put("requiereProductos", false);
+        r.put("mensaje", "FacturaCompra registrada con id=" + factura.getId()
+                + (productosPendientes.isEmpty() ? "" : ". " + productosPendientes.size()
+                + " producto(s) creados en grupo PENDIENTE DE CLASIFICAR."));
+        r.put("productosPendientes", productosPendientes);
         return r;
     }
 
@@ -1245,5 +1520,155 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                     .setParameter("idEmpresa", idEmpresa).setMaxResults(1).getResultList();
             return lista.isEmpty() ? null : lista.get(0);
         } catch (Exception e) { return null; }
+    }
+
+    // =========================================================
+    // Generación de asiento contable para documentos CXP
+    // =========================================================
+
+    /**
+     * Intenta generar el asiento contable para un documento CXP recién registrado.
+     * <p>
+     * Se invoca automáticamente después de que el {@code DocumentoCxp} pasa a estado
+     * {@code ESTADO_REGISTRADO_BD (3)}. Si el asiento falla, el error se registra como
+     * advertencia en el mapa de resultado pero <b>NO revierte</b> el registro del documento.
+     * <p>
+     * Condición para generar asiento: la empresa receptora ({@code idEmpresa}) debe tener
+     * un {@code Facturador} con {@code generaConta = 1}.
+     * <p>
+     * TODO — Para activar cada tipo de asiento, implementar el método correspondiente en
+     *        {@code AsientoContableService} con la plantilla y auxiliares definidos en BD.
+     *
+     * @param doc       DocumentoCxp ya en estado REGISTRADO_BD
+     * @param resultado Mapa de respuesta donde se añadirán "asiento" o "advertenciaAsiento"
+     * @param idEmpresa ID de la empresa receptora (empresa contable)
+     */
+    private void generarAsientoCxp(DocumentoCxp doc,
+                                    Map<String, Object> resultado,
+                                    Long idEmpresa) {
+        try {
+            // Verificar si la empresa tiene facturador con generaConta=1
+            @SuppressWarnings("unchecked")
+            List<Long> lista = em.createQuery(
+                    "select f.generaConta from Facturador f " +
+                    "where f.empresa.codigo = :idEmpresa and f.estado = 1")
+                    .setParameter("idEmpresa", idEmpresa)
+                    .setMaxResults(1)
+                    .getResultList();
+
+            if (lista.isEmpty() || !Long.valueOf(1L).equals(lista.get(0))) {
+                // La empresa no tiene generación contable habilitada → omitir asiento
+                return;
+            }
+
+            Long idDocBD   = doc.getIdDocumentoBD();
+            String tipo    = doc.getTipoTablaDestino();
+            java.time.LocalDate fechaDoc = doc.getFechaEmision() != null
+                    ? doc.getFechaEmision() : java.time.LocalDate.now();
+            String serie   = doc.getSerieComprobante() != null ? doc.getSerieComprobante() : doc.getClaveAcceso();
+            String emisor  = doc.getRazonSocialEmisor() != null ? doc.getRazonSocialEmisor() : doc.getRucEmisor();
+
+            System.out.println("Generando asiento CXP | tipo=" + tipo
+                    + " | idDocBD=" + idDocBD + " | empresa=" + idEmpresa);
+
+            com.saa.model.cnt.Asiento asiento = null;
+            String obsBase = serie + " | Proveedor: " + emisor;
+
+            if ("FACTURA_COMPRA".equals(tipo)) {
+                // TODO: Reemplazar TipoAsientos.FACTURAS_COMPRA con el codigoAlterno
+                //       correcto una vez que se defina la plantilla en BD.
+                // TODO: AuxiliarUno DEBE:  cuenta de gasto/costo del grupo de producto (GrupoProductoPago.planCuenta)
+                //                          + cuenta de IVA en compras
+                // TODO: AuxiliarUno HABER: cuenta CxP del proveedor
+                try { asiento = asientoContableService.generarAsientoFacturaCompra(
+                        idDocBD, idEmpresa,
+                        com.saa.rubros.TipoAsientos.FACTURAS_COMPRA,
+                        fechaDoc, "Factura compra: " + obsBase, "SISTEMA"); }
+                catch (UnsupportedOperationException uoe) { throw uoe; }
+                catch (Throwable t) { throw new Exception(t.getMessage(), t); }
+
+            } else if ("NOTA_CREDITO_COMPRA".equals(tipo)) {
+                // TODO: Reemplazar TipoAsientos.NOTAS_CREDITO_COMPRA con el codigoAlterno correcto.
+                // TODO: AuxiliarUno DEBE:  cuenta CxP del proveedor
+                // TODO: AuxiliarUno HABER: cuenta de gasto/costo del grupo + cuenta IVA
+                try { asiento = asientoContableService.generarAsientoNotaCreditoCompra(
+                        idDocBD, idEmpresa,
+                        com.saa.rubros.TipoAsientos.NOTAS_CREDITO_COMPRA,
+                        fechaDoc, "NC compra: " + obsBase, "SISTEMA"); }
+                catch (UnsupportedOperationException uoe) { throw uoe; }
+                catch (Throwable t) { throw new Exception(t.getMessage(), t); }
+
+            } else if ("NOTA_DEBITO_COMPRA".equals(tipo)) {
+                // TODO: Reemplazar TipoAsientos.NOTAS_DEBITO_COMPRA con el codigoAlterno correcto.
+                // TODO: AuxiliarUno DEBE:  cuenta de gasto/motivo del débito
+                // TODO: AuxiliarUno HABER: cuenta CxP del proveedor
+                try { asiento = asientoContableService.generarAsientoNotaDebitoCompra(
+                        idDocBD, idEmpresa,
+                        com.saa.rubros.TipoAsientos.NOTAS_DEBITO_COMPRA,
+                        fechaDoc, "ND compra: " + obsBase, "SISTEMA"); }
+                catch (UnsupportedOperationException uoe) { throw uoe; }
+                catch (Throwable t) { throw new Exception(t.getMessage(), t); }
+
+            } else if ("LIQUIDACION_COMPRA_COMPRA".equals(tipo)) {
+                // TODO: Reemplazar TipoAsientos.LIQUIDACIONES_COMPRA_RECIBIDAS con el codigoAlterno correcto.
+                // TODO: AuxiliarUno DEBE:  cuenta de gasto/costo del grupo + IVA compras
+                // TODO: AuxiliarUno HABER: cuenta CxP del prestador de servicio
+                try { asiento = asientoContableService.generarAsientoLiquidacionCompraCompra(
+                        idDocBD, idEmpresa,
+                        com.saa.rubros.TipoAsientos.LIQUIDACIONES_COMPRA_RECIBIDAS,
+                        fechaDoc, "Liquidación compra: " + obsBase, "SISTEMA"); }
+                catch (UnsupportedOperationException uoe) { throw uoe; }
+                catch (Throwable t) { throw new Exception(t.getMessage(), t); }
+
+            } else if ("RETENCION_COMPRA".equals(tipo)) {
+                // TODO: Reemplazar TipoAsientos.RETENCIONES_RECIBIDAS con el codigoAlterno correcto.
+                // TODO: AuxiliarUno DEBE:  cuenta CxP del proveedor (monto retenido)
+                // TODO: AuxiliarUno HABER: cuenta de retención recibida por código SRI
+                try { asiento = asientoContableService.generarAsientoRetencionCompra(
+                        idDocBD, idEmpresa,
+                        com.saa.rubros.TipoAsientos.RETENCIONES_RECIBIDAS,
+                        fechaDoc, "Retención compra: " + obsBase, "SISTEMA"); }
+                catch (UnsupportedOperationException uoe) { throw uoe; }
+                catch (Throwable t) { throw new Exception(t.getMessage(), t); }
+
+            } else if ("RETENCION_COMPRA_V2".equals(tipo)) {
+                // TODO: Reemplazar TipoAsientos.RETENCIONES_RECIBIDAS_V2 con el codigoAlterno correcto.
+                // TODO: AuxiliarUno DEBE:  cuenta CxP del proveedor (monto retenido)
+                // TODO: AuxiliarUno HABER: cuenta de retención recibida por código SRI
+                try { asiento = asientoContableService.generarAsientoRetencionCompraV2(
+                        idDocBD, idEmpresa,
+                        com.saa.rubros.TipoAsientos.RETENCIONES_RECIBIDAS_V2,
+                        fechaDoc, "Retención compra V2: " + obsBase, "SISTEMA"); }
+                catch (UnsupportedOperationException uoe) { throw uoe; }
+                catch (Throwable t) { throw new Exception(t.getMessage(), t); }
+            }
+
+            if (asiento != null) {
+                resultado.put("asiento", asiento.getNumeroAlterno());
+                System.out.println("✓ Asiento CXP generado: " + asiento.getNumeroAlterno()
+                        + " | tipo=" + tipo);
+            }
+
+        } catch (UnsupportedOperationException uoe) {
+            // Los stubs lanzan UnsupportedOperationException hasta que se configuren las plantillas.
+            // Se registra como advertencia informativa, no como error crítico.
+            resultado.put("advertenciaAsiento",
+                    "Documento registrado. El asiento contable aún no está configurado para '"
+                    + doc.getTipoTablaDestino() + "': " + uoe.getMessage()
+                    + ". Configure la plantilla en Contabilidad → Tipos de Asiento "
+                    + "y defina las cuentas auxiliares.");
+            System.out.println("ℹ Asiento CXP pendiente de configurar para tipo="
+                    + doc.getTipoTablaDestino());
+
+        } catch (Exception e) {
+            // Cualquier otro error → advertencia sin revertir el registro
+            resultado.put("advertenciaAsiento",
+                    "Documento registrado pero ocurrió un error al generar el asiento contable: "
+                    + e.getMessage()
+                    + ". Genere el asiento manualmente desde Contabilidad.");
+            System.err.println("⚠ Error generando asiento CXP tipo=" + doc.getTipoTablaDestino()
+                    + ": " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 }

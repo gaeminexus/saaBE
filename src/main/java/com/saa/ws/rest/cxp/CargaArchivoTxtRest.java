@@ -33,10 +33,25 @@ public class CargaArchivoTxtRest {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
 		}
 	}
-	@GET @Path("/getByCriteria") @Produces(MediaType.APPLICATION_JSON) @Consumes(MediaType.APPLICATION_JSON)
-	public Response getByCriteria(List<DatosBusqueda> datos) {
+	@POST @Path("selectByCriteria") @Consumes(MediaType.APPLICATION_JSON) @Produces(MediaType.APPLICATION_JSON)
+	public Response selectByCriteria(List<DatosBusqueda> registros) {
+		System.out.println("selectByCriteria de CargaArchivoTxt");
 		try {
-			List<CargaArchivoTxt> lista = cargaArchivoTxtDaoService.selectByCriteria(datos, NombreEntidadesCompra.CARGA_ARCHIVO_TXT);
+			return Response.status(Response.Status.OK)
+					.entity(cargaArchivoTxtService.selectByCriteria(registros))
+					.type(MediaType.APPLICATION_JSON).build();
+		} catch (Throwable e) {
+			return Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+		}
+	}
+	/**
+	 * Obtiene todas las cargas de una empresa, ordenadas por id desc.
+	 * GET /crtx/getByEmpresa/{idEmpresa}
+	 */
+	@GET @Path("/getByEmpresa/{idEmpresa}") @Produces(MediaType.APPLICATION_JSON)
+	public Response getByEmpresa(@PathParam("idEmpresa") Long idEmpresa) {
+		try {
+			List<CargaArchivoTxt> lista = cargaArchivoTxtService.selectByEmpresa(idEmpresa);
 			return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
@@ -60,11 +75,13 @@ public class CargaArchivoTxtRest {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
 		}
 	}
-	@DELETE @Path("/delete/{id}") @Produces(MediaType.APPLICATION_JSON)
+	@DELETE @Path("/{id}") @Produces(MediaType.APPLICATION_JSON)
 	public Response delete(@PathParam("id") Long id) {
+		System.out.println("LLEGA AL SERVICIO DELETE - CargaArchivoTxt");
 		try {
-			cargaArchivoTxtService.remove(java.util.Arrays.asList(id));
-			return Response.status(Response.Status.OK).entity("CargaArchivoTxt eliminada correctamente").type(MediaType.APPLICATION_JSON).build();
+			CargaArchivoTxt elimina = new CargaArchivoTxt();
+			cargaArchivoTxtDaoService.remove(elimina, id);
+			return Response.status(Response.Status.NO_CONTENT).build();
 		} catch (Throwable e) {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
 		}

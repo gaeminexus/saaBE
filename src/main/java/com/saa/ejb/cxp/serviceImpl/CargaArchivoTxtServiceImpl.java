@@ -9,9 +9,12 @@ import com.saa.model.cxp.NombreEntidadesCompra;
 import com.saa.rubros.Estado;
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 @Stateless
 public class CargaArchivoTxtServiceImpl implements CargaArchivoTxtService {
 	@EJB private CargaArchivoTxtDaoService cargaArchivoTxtDaoService;
+	@PersistenceContext private EntityManager em;
 	@Override
 	public CargaArchivoTxt selectById(Long id) throws Throwable {
 		return cargaArchivoTxtDaoService.selectById(id, NombreEntidadesCompra.CARGA_ARCHIVO_TXT);
@@ -41,5 +44,12 @@ public class CargaArchivoTxtServiceImpl implements CargaArchivoTxtService {
 		List<CargaArchivoTxt> result = cargaArchivoTxtDaoService.selectByCriteria(datos, NombreEntidadesCompra.CARGA_ARCHIVO_TXT);
 		if (result.isEmpty()) throw new IncomeException("Busqueda por criterio CargaArchivoTxt no devolvio ningun registro");
 		return result;
+	}
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<CargaArchivoTxt> selectByEmpresa(Long idEmpresa) throws Throwable {
+		return em.createNamedQuery("CargaArchivoTxtByEmpresa")
+				.setParameter("idEmpresa", idEmpresa)
+				.getResultList();
 	}
 }

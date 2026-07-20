@@ -17,7 +17,9 @@ import jakarta.persistence.*;
 @Table(name = "CRTX", schema = "PGS")
 @NamedQueries({
     @NamedQuery(name = "CargaArchivoTxtAll", query = "select e from CargaArchivoTxt e"),
-    @NamedQuery(name = "CargaArchivoTxtId",  query = "select e from CargaArchivoTxt e where e.id = :id")
+    @NamedQuery(name = "CargaArchivoTxtId",  query = "select e from CargaArchivoTxt e where e.id = :id"),
+    @NamedQuery(name = "CargaArchivoTxtByEmpresa",
+                query = "select e from CargaArchivoTxt e where e.empresa.codigo = :idEmpresa order by e.id desc")
 })
 public class CargaArchivoTxt implements Serializable {
 

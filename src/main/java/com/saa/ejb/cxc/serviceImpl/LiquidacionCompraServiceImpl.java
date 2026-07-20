@@ -51,7 +51,10 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 	
 	@EJB
 	private SignatureService signatureService;
-	
+
+	@EJB
+	private com.saa.ejb.cnt.service.AsientoContableService asientoContableService;
+
 	@PersistenceContext
 	private EntityManager em;
 
@@ -225,8 +228,45 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 			resultado.put("autorizacion", resultadoAutorizacion);
 			System.out.println("✓ Resultado autorización: " + resultadoAutorizacion);
 			
-			if (resultadoAutorizacion != null && 
-				(resultadoAutorizacion.contains("AUTORIZADO") || resultadoAutorizacion.equals("AUTORIZADO"))) {
+			boolean autorizada = resultadoAutorizacion != null &&
+				(resultadoAutorizacion.contains("AUTORIZADO") || resultadoAutorizacion.equals("AUTORIZADO"));
+
+			if (autorizada) {
+				// ── PASO 5: Generar asiento contable ─────────────────────────
+				// Solo si el facturador tiene generaConta=1 y empresa contable configurada.
+				if (liquidacion.getFacturador() != null
+						&& liquidacion.getFacturador().getEmpresa() != null
+						&& Long.valueOf(1L).equals(liquidacion.getFacturador().getGeneraConta())) {
+					System.out.println("PASO 5: Generando asiento contable para Liquidación de Compra...");
+					try {
+						Long idEmpresaConta = liquidacion.getFacturador().getEmpresa().getCodigo();
+						LiquidacionCompra lqActualizada = liquidacionCompraDaoService.selectById(
+								liquidacion.getId(), NombreEntidadesCobro.LIQUIDACION_COMPRA);
+						java.time.LocalDate fechaAsiento = lqActualizada.getFecha() != null
+								? lqActualizada.getFecha().toLocalDate() : java.time.LocalDate.now();
+						String obsAsiento = "Liquidación de Compra N° " + nvl(lqActualizada.getNumero(), clave)
+								+ " | Proveedor: " + (lqActualizada.getTitular() != null ? lqActualizada.getTitular().getNombre() : "")
+								+ " | Aut: " + nvl(lqActualizada.getAutorizacion(), clave);
+						String usuarioAsiento = (lqActualizada.getUsuario() != null)
+								? lqActualizada.getUsuario().getNombre() : "SISTEMA";
+						// TODO: Reemplazar TipoAsientos.LIQUIDACIONES_COMPRA_EMITIDAS con el
+						//       codigoAlterno correcto una vez que se defina la plantilla en BD.
+						com.saa.model.cnt.Asiento asientoGenerado =
+								asientoContableService.generarAsientoLiquidacionCompra(
+										lqActualizada.getId(), idEmpresaConta,
+										com.saa.rubros.TipoAsientos.LIQUIDACIONES_COMPRA_EMITIDAS,
+										fechaAsiento, obsAsiento, usuarioAsiento);
+						resultado.put("asiento", asientoGenerado.getNumeroAlterno());
+						System.out.println("✓ Asiento contable generado: " + asientoGenerado.getNumeroAlterno());
+					} catch (Exception e) {
+						resultado.put("advertenciaAsiento",
+								"Liquidación autorizada pero ocurrió un error al generar el asiento: "
+								+ e.getMessage()
+								+ ". Genere el asiento manualmente desde Contabilidad.");
+						System.err.println("⚠ Error en asiento contable de Liquidación de Compra: " + e.getMessage());
+						e.printStackTrace();
+					}
+				}
 				resultado.put("exito", true);
 				resultado.put("mensaje", "Liquidación procesada y autorizada exitosamente");
 				resultado.put("estado", "AUTORIZADO");
