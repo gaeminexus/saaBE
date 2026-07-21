@@ -101,12 +101,6 @@ public class PersonaRol implements Serializable {
 	@JoinColumn(name = "PJRQCDGO", referencedColumnName = "PJRQCDGO")
 	private Empresa empresa;	
 	
-	/**
-	 * Tipo de cuenta. 1 = Facturas, 2 = Anticipos
-	 */
-	@Basic
-	@Column(name = "PRRLSLIN")
-	private Double saldoInicial;
 	
 	/**
 	 * Tipo de cuenta. 1 = Facturas, 2 = Anticipos
@@ -239,22 +233,6 @@ public class PersonaRol implements Serializable {
 	 */
 	public void setEmpresa(Empresa empresa) {
 		this.empresa = empresa;
-	}
-	
-	/**
-	 * Devuelve saldoInicial
-	 * @return saldoInicial
-	 */
-	public Double getSaldoInicial() {
-		return saldoInicial;
-	}
-
-	/**
-	 * Asigna saldoInicial
-	 * @param saldoInicial Nuevo valor para saldoInicial 
-	 */
-	public void setSaldoInicial(Double saldoInicial) {
-		this.saldoInicial = saldoInicial;
 	}
 	
 	/**

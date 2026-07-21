@@ -204,6 +204,31 @@ public class FacturaServiceImpl implements FacturaService {
 			Long idEmpresa = factura.getFacturador().getEmpresa().getCodigo();
 			System.out.println("PASO 0: Validando cuentas contables para empresa " + idEmpresa + "...");
 
+			// ── LOGS DE DIAGNÓSTICO: valores que se envían a validarCuentasContables ──
+			System.out.println("  [DIAG] idEmpresa       = " + idEmpresa);
+			System.out.println("  [DIAG] Titular         = " + (factura.getTitular() != null
+					? "ID=" + factura.getTitular().getCodigo() + " | Nombre=" + factura.getTitular().getNombre()
+					: "NULL"));
+			if (detalles != null) {
+				System.out.println("  [DIAG] Detalles count  = " + detalles.size());
+				for (int i = 0; i < detalles.size(); i++) {
+					DetalleFactura d = detalles.get(i);
+					String grupo = (d.getProducto() != null && d.getProducto().getGrupoProducto() != null)
+							? "GrupoID=" + d.getProducto().getGrupoProducto().getCodigo()
+							  + " | GrupoNombre=" + d.getProducto().getGrupoProducto().getNombre()
+							  + " | PlanCuenta=" + (d.getProducto().getGrupoProducto().getPlanCuenta() != null
+							      ? d.getProducto().getGrupoProducto().getPlanCuenta().getCuentaContable() : "NULL")
+							: "Sin grupo";
+					System.out.println("  [DIAG] Detalle[" + i + "] desc=" + d.getDescripcion()
+							+ " | valorIVA=" + d.getValorIVA()
+							+ " | codigoIVASRI=" + d.getCodigoIVASRI()
+							+ " | " + grupo);
+				}
+			} else {
+				System.out.println("  [DIAG] Detalles        = NULL");
+			}
+			// ── FIN LOGS DIAGNÓSTICO ──────────────────────────────────────────────
+
 			java.util.List<String> erroresContables = asientoContableService.validarCuentasContables(
 					factura.getTitular(), detalles, idEmpresa);
 
@@ -365,7 +390,7 @@ public class FacturaServiceImpl implements FacturaService {
 					factura = facturaDaoService.selectById(factura.getId(), com.saa.model.cxc.NombreEntidadesCobro.FACTURA);
 					String obsAsiento = "Factura N° " + nvl(factura.getNumero(), clave)
 							+ " | Cliente: " + factura.getTitular().getNombre()
-							+ " | Aut: " + nvl(factura.getAutorizacion(), clave);
+							+ " | " + nvl(factura.getObservacion(), clave);
 					String usuarioAsiento = factura.getUsuario() != null
 							? factura.getUsuario().getNombre() : "SISTEMA";
 					com.saa.model.cnt.Asiento asientoGenerado =
@@ -606,7 +631,10 @@ public class FacturaServiceImpl implements FacturaService {
 					titular.getRubroTipoIdentificacionH().intValue()
 				);
 				if (valorAlfa != null && !valorAlfa.isEmpty()) {
-					tipoIdentificacionComprador = valorAlfa;
+					// El SRI exige siempre 2 dígitos: "04", "05", "06", etc.
+					// Si el rubro devuelve "4" se convierte a "04"
+					tipoIdentificacionComprador = valorAlfa.length() == 1
+							? "0" + valorAlfa : valorAlfa;
 				}
 			}
 		} catch (Throwable e) {
@@ -685,20 +713,34 @@ public class FacturaServiceImpl implements FacturaService {
 		
 		// Si no hay formas de pago, agregar una por defecto (01 = Sin utilización del sistema financiero)
 		if (formasPago == null || formasPago.isEmpty()) {
-			String codigoFormaPago = factura.getFormaPago() != null ? 
-					String.valueOf(factura.getFormaPago()) : "01";
+			// factura.getFormaPago() contiene el ID de la tabla TSRI; hay que obtener el CODIGO
+			String codigoFormaPago = "01";
+			if (factura.getFormaPago() != null) {
+				try {
+					String sqlTsri = "SELECT t.codigo FROM Tsri t WHERE t.id = :idFormaPago";
+					Query queryTsri = em.createQuery(sqlTsri);
+					queryTsri.setParameter("idFormaPago", factura.getFormaPago());
+					String codigoEncontrado = (String) queryTsri.getSingleResult();
+					if (codigoEncontrado != null && !codigoEncontrado.isEmpty()) {
+						codigoFormaPago = codigoEncontrado;
+					}
+				} catch (Exception e) {
+					System.err.println("⚠ Error al obtener código de forma de pago desde TSRI en XML, usando default 01. ID=" + factura.getFormaPago());
+				}
+			}
+			// El SRI exige siempre 2 dígitos: "01", "02", etc.
+			if (codigoFormaPago.length() == 1) codigoFormaPago = "0" + codigoFormaPago;
 			writePago(writer, codigoFormaPago, factura.getTotal(), "1", "dias");
 		} else {
 			// Iterar sobre las formas de pago y agregarlas al XML
 			for (com.saa.model.cxc.FormaPagoFactura fp : formasPago) {
 				// El plazo siempre debe ser al menos 1, nunca 0
-				String plazoStr = (fp.getPlazo() != null && fp.getPlazo() > 0) ? 
+				String plazoStr = (fp.getPlazo() != null && fp.getPlazo() > 0) ?
 						String.valueOf(fp.getPlazo()) : "1";
-				writePago(writer, 
-						fp.getFormaPago(), 
-						fp.getValor(), 
-						plazoStr, 
-						fp.getUnidadTiempo());
+				// El SRI exige siempre 2 dígitos en formaPago
+				String codFP = fp.getFormaPago();
+				if (codFP != null && codFP.length() == 1) codFP = "0" + codFP;
+				writePago(writer, codFP, fp.getValor(), plazoStr, fp.getUnidadTiempo());
 			}
 		}
 		

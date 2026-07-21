@@ -409,24 +409,73 @@ public class AsientoContableServiceImpl implements AsientoContableService {
      * tipoCuenta: 1=Facturas, 2=Anticipos, 3=Caja/Banco
      */
     private PlanCuenta obtenerCuentaPorTipo(Long codigoTitular, Long idEmpresa, Long tipoCuenta) {
+        System.out.println("  [obtenerCuentaPorTipo] titular=" + codigoTitular
+                + " | empresa=" + idEmpresa + " | tipoCuenta=" + tipoCuenta
+                + " | tipoPersona=1 (Cliente)");
         try {
+            // NOTA: No se filtra por pcc.tipoPersona porque en BD ese campo es null en todos
+            // los registros — el rol (cliente/proveedor) ya queda determinado por la tabla
+            // PersonaRol (PRRL) a través del join. El criterio correcto es:
+            // titular + empresa + tipoCuenta.
             String sql = "SELECT pcc.planCuenta FROM PersonaCuentaContable pcc "
                     + "JOIN pcc.personaRol pr "
                     + "WHERE pr.titular.codigo = :titular "
                     + "AND pcc.tipoCuenta = :tipo "
-                    + "AND pcc.tipoPersona = 1 "
-                    + "AND pcc.empresa.codigo = :empresa "
-                    + "AND pr.estado = 1";
+                    + "AND pcc.empresa.codigo = :empresa";
             Query q = em.createQuery(sql);
             q.setParameter("titular", codigoTitular);
             q.setParameter("tipo", tipoCuenta);
             q.setParameter("empresa", idEmpresa);
             q.setMaxResults(1);
             List<?> result = q.getResultList();
-            return result.isEmpty() ? null : (PlanCuenta) result.get(0);
+            if (result.isEmpty()) {
+                // Log de diagnóstico: verificar cuántos PersonaRol existen para este titular
+                try {
+                    long totalPrrl = ((Number) em.createQuery(
+                            "SELECT COUNT(pr) FROM PersonaRol pr WHERE pr.titular.codigo = :t")
+                            .setParameter("t", codigoTitular)
+                            .getSingleResult()).longValue();
+                    long totalPrcc = ((Number) em.createQuery(
+                            "SELECT COUNT(pcc) FROM PersonaCuentaContable pcc "
+                            + "JOIN pcc.personaRol pr "
+                            + "WHERE pr.titular.codigo = :t")
+                            .setParameter("t", codigoTitular)
+                            .getSingleResult()).longValue();
+                    System.err.println("  [obtenerCuentaPorTipo] ✗ No encontrado."
+                            + " PersonaRol del titular: " + totalPrrl
+                            + " | PersonaCuentaContable del titular (sin filtros de empresa/tipo): " + totalPrcc);
+                    // Mostrar valores REALES almacenados en cada PersonaCuentaContable del titular
+                    @SuppressWarnings("unchecked")
+                    List<Object[]> rawRows = em.createQuery(
+                            "SELECT pcc.codigo, pcc.tipoCuenta, pcc.tipoPersona, "
+                            + "pcc.empresa.codigo, pr.estado, pcc.planCuenta.cuentaContable "
+                            + "FROM PersonaCuentaContable pcc "
+                            + "JOIN pcc.personaRol pr "
+                            + "WHERE pr.titular.codigo = :t")
+                            .setParameter("t", codigoTitular)
+                            .getResultList();
+                    for (Object[] row : rawRows) {
+                        System.err.println("  [obtenerCuentaPorTipo] PRCC registro:"
+                                + " PRCCCDGO=" + row[0]
+                                + " | tipoCuenta(PRCCTPOO)=" + row[1]
+                                + " | tipoPersona(PRCCCLPR)=" + row[2]
+                                + " | empresa(PJRQCDGO)=" + row[3]
+                                + " | pr.estado(PRRLESTD)=" + row[4]
+                                + " | cuentaContable=" + row[5]);
+                    }
+                } catch (Exception ex) {
+                    System.err.println("  [obtenerCuentaPorTipo] ✗ No encontrado (diagnóstico falló: " + ex.getMessage() + ")");
+                }
+                return null;
+            }
+            PlanCuenta pc = (PlanCuenta) result.get(0);
+            System.out.println("  [obtenerCuentaPorTipo] ✓ Cuenta encontrada: "
+                    + pc.getCuentaContable() + " - " + pc.getNombre());
+            return pc;
         } catch (Exception e) {
             System.err.println("⚠ Error buscando cuenta tipo " + tipoCuenta
-                    + " del cliente: " + e.getMessage());
+                    + " del cliente " + codigoTitular + ": " + e.getMessage());
+            e.printStackTrace();
             return null;
         }
     }

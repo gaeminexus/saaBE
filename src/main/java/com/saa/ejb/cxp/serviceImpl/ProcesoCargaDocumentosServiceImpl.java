@@ -114,6 +114,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     @EJB private ProductoPagoDaoService                   productoPagoDaoService;
     @EJB private GrupoProductoPagoDaoService              grupoProductoPagoDaoService;
 
+    @EJB private com.saa.ejb.tsr.dao.TitularDaoService    titularDaoService;
     @EJB private com.saa.ejb.cnt.service.AsientoContableService asientoContableService;
 
     // -------------------------------------------------------
@@ -843,24 +844,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         Empresa empresa = em.find(Empresa.class, idEmpresa);
         Usuario usuario = em.find(Usuario.class, idUsuario);
 
-        Titular titular = buscarTitularPorRuc(doc.getRucEmisor());
-        if (titular == null) {
-            Map<String, Object> error = new HashMap<>();
-            error.put("error", "TITULAR_NO_ENCONTRADO");
-            error.put("mensaje", "El emisor con RUC " + doc.getRucEmisor() + " ("
-                    + doc.getRazonSocialEmisor() + ") no existe en TSR. Créelo como Proveedor.");
-            error.put("rucEmisor", doc.getRucEmisor());
-            error.put("razonSocial", doc.getRazonSocialEmisor());
-            return error;
-        }
-        if (titular.getTipoProveedor() == null || titular.getTipoProveedor() != 1L) {
-            Map<String, Object> error = new HashMap<>();
-            error.put("error", "TITULAR_NO_ES_PROVEEDOR");
-            error.put("mensaje", "El titular con RUC " + doc.getRucEmisor() + " no tiene rol de Proveedor.");
-            error.put("rucEmisor", doc.getRucEmisor());
-            error.put("idTitular", titular.getCodigo());
-            return error;
-        }
+        Titular titular = obtenerOAutoCrearProveedor(doc.getRucEmisor(), doc.getRazonSocialEmisor(), xmlDoc, idUsuario);
 
         String numeroAutorizacion = getXmlValueOuter(xmlContent, "numeroAutorizacion");
         if (numeroAutorizacion.isEmpty()) numeroAutorizacion = doc.getClaveAcceso();
@@ -992,10 +976,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         Empresa empresa = em.find(Empresa.class, idEmpresa);
         Usuario usuario = em.find(Usuario.class, idUsuario);
 
-        Titular titular = buscarTitularPorRuc(doc.getRucEmisor());
-        if (titular == null) return errorTitular("TITULAR_NO_ENCONTRADO", doc.getRucEmisor(), null);
-        if (titular.getTipoProveedor() == null || titular.getTipoProveedor() != 1L)
-            return errorTitular("TITULAR_NO_ES_PROVEEDOR", doc.getRucEmisor(), titular.getCodigo());
+        Titular titular = obtenerOAutoCrearProveedor(doc.getRucEmisor(), doc.getRazonSocialEmisor(), xmlDoc, idUsuario);
 
         String numeroAutorizacion = getXmlValueOuter(xmlContent, "numeroAutorizacion");
         if (numeroAutorizacion.isEmpty()) numeroAutorizacion = doc.getClaveAcceso();
@@ -1069,10 +1050,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         Empresa empresa = em.find(Empresa.class, idEmpresa);
         Usuario usuario = em.find(Usuario.class, idUsuario);
 
-        Titular titular = buscarTitularPorRuc(doc.getRucEmisor());
-        if (titular == null) return errorTitular("TITULAR_NO_ENCONTRADO", doc.getRucEmisor(), null);
-        if (titular.getTipoProveedor() == null || titular.getTipoProveedor() != 1L)
-            return errorTitular("TITULAR_NO_ES_PROVEEDOR", doc.getRucEmisor(), titular.getCodigo());
+        Titular titular = obtenerOAutoCrearProveedor(doc.getRucEmisor(), doc.getRazonSocialEmisor(), xmlDoc, idUsuario);
 
         String numeroAutorizacion = getXmlValueOuter(xmlContent, "numeroAutorizacion");
         if (numeroAutorizacion.isEmpty()) numeroAutorizacion = doc.getClaveAcceso();
@@ -1135,10 +1113,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         Empresa empresa = em.find(Empresa.class, idEmpresa);
         Usuario usuario = em.find(Usuario.class, idUsuario);
 
-        Titular titular = buscarTitularPorRuc(doc.getRucEmisor());
-        if (titular == null) return errorTitular("TITULAR_NO_ENCONTRADO", doc.getRucEmisor(), null);
-        if (titular.getTipoProveedor() == null || titular.getTipoProveedor() != 1L)
-            return errorTitular("TITULAR_NO_ES_PROVEEDOR", doc.getRucEmisor(), titular.getCodigo());
+        Titular titular = obtenerOAutoCrearProveedor(doc.getRucEmisor(), doc.getRazonSocialEmisor(), xmlDoc, idUsuario);
 
         String numeroAutorizacion = getXmlValueOuter(xmlContent, "numeroAutorizacion");
         if (numeroAutorizacion.isEmpty()) numeroAutorizacion = doc.getClaveAcceso();
@@ -1206,10 +1181,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         Empresa empresa = em.find(Empresa.class, idEmpresa);
         Usuario usuario = em.find(Usuario.class, idUsuario);
 
-        Titular proveedor = buscarTitularPorRuc(doc.getRucEmisor());
-        if (proveedor == null) return errorTitular("TITULAR_NO_ENCONTRADO", doc.getRucEmisor(), null);
-        if (proveedor.getTipoProveedor() == null || proveedor.getTipoProveedor() != 1L)
-            return errorTitular("TITULAR_NO_ES_PROVEEDOR", doc.getRucEmisor(), proveedor.getCodigo());
+        Titular proveedor = obtenerOAutoCrearProveedor(doc.getRucEmisor(), doc.getRazonSocialEmisor(), xmlDoc, idUsuario);
 
         String numeroAutorizacion = getXmlValueOuter(xmlContent, "numeroAutorizacion");
         if (numeroAutorizacion.isEmpty()) numeroAutorizacion = doc.getClaveAcceso();
@@ -1268,10 +1240,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         Empresa empresa = em.find(Empresa.class, idEmpresa);
         Usuario usuario = em.find(Usuario.class, idUsuario);
 
-        Titular proveedor = buscarTitularPorRuc(doc.getRucEmisor());
-        if (proveedor == null) return errorTitular("TITULAR_NO_ENCONTRADO", doc.getRucEmisor(), null);
-        if (proveedor.getTipoProveedor() == null || proveedor.getTipoProveedor() != 1L)
-            return errorTitular("TITULAR_NO_ES_PROVEEDOR", doc.getRucEmisor(), proveedor.getCodigo());
+        Titular proveedor = obtenerOAutoCrearProveedor(doc.getRucEmisor(), doc.getRazonSocialEmisor(), xmlDoc, idUsuario);
 
         String numeroAutorizacion = getXmlValueOuter(xmlContent, "numeroAutorizacion");
         if (numeroAutorizacion.isEmpty()) numeroAutorizacion = doc.getClaveAcceso();
@@ -1423,6 +1392,104 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                     .setParameter("ruc", ruc).setMaxResults(1).getResultList();
             return lista.isEmpty() ? null : lista.get(0);
         } catch (Exception e) { return null; }
+    }
+
+    /**
+     * Busca un Titular con el RUC dado. Si no existe lo crea con rol de Proveedor.
+     * Si existe pero no tiene rol de Proveedor, se lo asigna y lo actualiza en BD.
+     * <p>
+     * Datos que se toman del XML para crear el Titular (en orden de preferencia):
+     * <ul>
+     *   <li>{@code razonSocial} — campo razonSocial del infoTributaria (personas jurídicas)</li>
+     *   <li>{@code nombreComercial} — si razonSocial está vacío</li>
+     *   <li>{@code razonSocialEmisor} — del DocumentoCxp (venido del TXT), como último recurso</li>
+     * </ul>
+     * El tipo de identificación se detecta por la longitud del RUC:
+     * <ul>
+     *   <li>13 dígitos → RUC (rubroTipoIdentificacionH = 2)</li>
+     *   <li>10 dígitos → Cédula (rubroTipoIdentificacionH = 1)</li>
+     *   <li>otro → Pasaporte/Exterior (rubroTipoIdentificacionH = 3)</li>
+     * </ul>
+     *
+     * @param ruc              Número de identificación del emisor
+     * @param razonSocialTxt   Razón social venida del TXT (fallback si el XML no la tiene)
+     * @param xmlDoc           Document XML ya parseado del comprobante
+     * @param idUsuario        ID del usuario que está procesando
+     * @return Titular existente o recién creado, siempre con tipoProveedor = 1
+     */
+    private Titular obtenerOAutoCrearProveedor(String ruc, String razonSocialTxt,
+                                                Document xmlDoc, Long idUsuario) {
+        // 1. Buscar titular existente por RUC/identificación
+        Titular titular = buscarTitularPorRuc(ruc);
+
+        if (titular != null) {
+            // Existe: verificar si ya tiene rol de Proveedor
+            if (!Long.valueOf(1L).equals(titular.getTipoProveedor())) {
+                // Asignar rol de Proveedor y actualizar
+                titular.setTipoProveedor(1L);
+                try {
+                    titularDaoService.save(titular, titular.getCodigo());
+                    System.out.println("✓ Rol de Proveedor asignado a Titular existente: "
+                            + ruc + " | id=" + titular.getCodigo());
+                } catch (Throwable e) {
+                    System.err.println("⚠ No se pudo asignar rol Proveedor al Titular id="
+                            + titular.getCodigo() + ": " + e.getMessage());
+                }
+            }
+            return titular;
+        }
+
+        // 2. No existe → crear automáticamente con los datos del XML/TXT
+        System.out.println("Auto-creando Titular-Proveedor para RUC: " + ruc);
+
+        // Obtener la razón social del XML (infoTributaria)
+        String razonSocial = getXmlValue(xmlDoc, "razonSocial");
+        if (razonSocial.isEmpty()) razonSocial = getXmlValue(xmlDoc, "nombreComercial");
+        if (razonSocial.isEmpty() && razonSocialTxt != null && !razonSocialTxt.isEmpty())
+            razonSocial = razonSocialTxt;
+        if (razonSocial.isEmpty()) razonSocial = ruc; // último recurso
+
+        // Datos adicionales del XML si están disponibles
+        String telefono  = getXmlValue(xmlDoc, "telefono");
+        String email     = getXmlValue(xmlDoc, "correoElectronico");
+        String direccion = getXmlValue(xmlDoc, "dirEstablecimiento");
+        if (direccion.isEmpty()) direccion = getXmlValue(xmlDoc, "dirMatriz");
+
+        // Determinar tipo de identificación por longitud
+        // rubroTipoIdentificacionH: según Rubro 36 del sistema
+        //   1 = Cédula (10 dígitos), 2 = RUC (13 dígitos), 3 = Pasaporte/Exterior
+        Long tipoIdentif;
+        if (ruc != null && ruc.length() == 13) {
+            tipoIdentif = 2L; // RUC
+        } else if (ruc != null && ruc.length() == 10) {
+            tipoIdentif = 1L; // Cédula
+        } else {
+            tipoIdentif = 3L; // Pasaporte / Exterior
+        }
+
+        Titular nuevo = new Titular();
+        nuevo.setIdentificacion(ruc);
+        nuevo.setNombre(razonSocial);
+        nuevo.setRazonSocial(razonSocial);
+        nuevo.setTipoProveedor(1L);      // rol Proveedor
+        nuevo.setTipoCliente(0L);        // no es cliente por defecto
+        nuevo.setEstado(1L);             // activo
+        nuevo.setRubroTipoIdentificacionH(tipoIdentif);
+        if (!telefono.isEmpty())  nuevo.setTelefono(telefono);
+        if (!email.isEmpty())     nuevo.setEmail(email);
+        if (!direccion.isEmpty()) nuevo.setDireccion(direccion);
+
+        try {
+            nuevo = titularDaoService.save(nuevo, null);
+            System.out.println("✓ Titular-Proveedor creado automáticamente: "
+                    + ruc + " | " + razonSocial + " | id=" + nuevo.getCodigo());
+        } catch (Throwable e) {
+            // Si falla el guardado, lanzar excepción para que el documento quede en ERROR
+            throw new RuntimeException("Error al auto-crear Titular-Proveedor para RUC "
+                    + ruc + ": " + e.getMessage(), e);
+        }
+
+        return nuevo;
     }
 
     private String leerArchivoXml(String path) throws Exception {

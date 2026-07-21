@@ -106,7 +106,24 @@ public class AdendumNegociacionRest {
     }
 
     /**
-     * Busca adendums de negociación por criterios.
+     * Busca adendums de negociación por criterios (endpoint documentado para el frontend).
+     * Uso típico: filtrar por negociacion.id para obtener todos los adendums de una negociación.
+     */
+    @GET
+    @Path("/getByCriteria")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getByCriteria(List<DatosBusqueda> datos) {
+        try {
+            List<AdendumNegociacion> lista = adendumNegociacionDaoService.selectByCriteria(datos, NombreEntidadesCompra.ADENDUM_NEGOCIACION);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al buscar adendums de negociación: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Busca adendums de negociación por criterios (estándar interno POST).
      * Uso típico: filtrar por negociacion.id para obtener todos los adendums de una negociación.
      */
     @POST
@@ -131,6 +148,24 @@ public class AdendumNegociacionRest {
     @Produces(MediaType.APPLICATION_JSON)
     public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - ADENDUM_NEGOCIACION id: " + id);
+        try {
+            AdendumNegociacion elimina = new AdendumNegociacion();
+            adendumNegociacionDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar adendum de negociación: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Elimina un adendum de negociación por su ID (endpoint documentado para el frontend).
+     * Alias de DELETE /{id} para mantener compatibilidad con la documentación.
+     */
+    @DELETE
+    @Path("/delete/{id}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response deleteByPath(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE /delete - ADENDUM_NEGOCIACION id: " + id);
         try {
             AdendumNegociacion elimina = new AdendumNegociacion();
             adendumNegociacionDaoService.remove(elimina, id);

@@ -106,7 +106,24 @@ public class NegociacionProveedorRest {
     }
 
     /**
-     * Busca negociaciones con proveedor por criterios.
+     * Busca negociaciones con proveedor por criterios (endpoint documentado para el frontend).
+     * Uso típico: filtrar por empresa.pjrqcdgo, titular.ttlrcdgo, estado, etc.
+     */
+    @GET
+    @Path("/getByCriteria")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getByCriteria(List<DatosBusqueda> datos) {
+        try {
+            List<NegociacionProveedor> lista = negociacionProveedorDaoService.selectByCriteria(datos, NombreEntidadesCompra.NEGOCIACION_PROVEEDOR);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al buscar negociaciones con proveedor: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Busca negociaciones con proveedor por criterios (estándar interno POST).
      */
     @POST
     @Path("selectByCriteria")
@@ -130,6 +147,24 @@ public class NegociacionProveedorRest {
     @Produces(MediaType.APPLICATION_JSON)
     public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - NEGOCIACION_PROVEEDOR id: " + id);
+        try {
+            NegociacionProveedor elimina = new NegociacionProveedor();
+            negociacionProveedorDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar negociación con proveedor: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Elimina una negociación con proveedor por su ID (endpoint documentado para el frontend).
+     * Alias de DELETE /{id} para mantener compatibilidad con la documentación.
+     */
+    @DELETE
+    @Path("/delete/{id}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response deleteByPath(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE /delete - NEGOCIACION_PROVEEDOR id: " + id);
         try {
             NegociacionProveedor elimina = new NegociacionProveedor();
             negociacionProveedorDaoService.remove(elimina, id);

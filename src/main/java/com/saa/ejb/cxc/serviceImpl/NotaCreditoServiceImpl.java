@@ -220,7 +220,9 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 		
 		writeElement(writer, "fechaEmision", notaCredito.getFecha().format(dateFormatter), 4);
 		writeElement(writer, "dirEstablecimiento", nvl(dirEstablecimiento, ""), 4);
-		writeElement(writer, "tipoIdentificacionComprador", String.valueOf(notaCredito.getTitular().getRubroTipoIdentificacionH()), 4);
+		String tipoIdNc = String.valueOf(notaCredito.getTitular().getRubroTipoIdentificacionH());
+		if (tipoIdNc.length() == 1) tipoIdNc = "0" + tipoIdNc;
+		writeElement(writer, "tipoIdentificacionComprador", tipoIdNc, 4);
 		writeElement(writer, "razonSocialComprador", nvl(notaCredito.getTitular().getNombre(), ""), 4);
 		writeElement(writer, "identificacionComprador", nvl(notaCredito.getTitular().getIdentificacion(), ""), 4);
 		

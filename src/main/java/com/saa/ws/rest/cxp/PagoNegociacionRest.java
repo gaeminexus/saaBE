@@ -107,7 +107,24 @@ public class PagoNegociacionRest {
     }
 
     /**
-     * Busca pagos de negociación por criterios.
+     * Busca pagos de negociación por criterios (endpoint documentado para el frontend).
+     * Uso típico: filtrar por formaPago.id para obtener todos los pagos de una cuota.
+     */
+    @GET
+    @Path("/getByCriteria")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getByCriteria(List<DatosBusqueda> datos) {
+        try {
+            List<PagoNegociacion> lista = pagoNegociacionDaoService.selectByCriteria(datos, NombreEntidadesCompra.PAGO_NEGOCIACION);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al buscar pagos de negociación: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Busca pagos de negociación por criterios (estándar interno POST).
      * Uso típico: filtrar por formaPago.id para obtener todos los pagos de una cuota.
      */
     @POST
@@ -132,6 +149,24 @@ public class PagoNegociacionRest {
     @Produces(MediaType.APPLICATION_JSON)
     public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - PAGO_NEGOCIACION id: " + id);
+        try {
+            PagoNegociacion elimina = new PagoNegociacion();
+            pagoNegociacionDaoService.remove(elimina, id);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar pago de negociación: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Anula/elimina un pago de negociación por su ID (endpoint documentado para el frontend).
+     * Alias de DELETE /{id} para mantener compatibilidad con la documentación.
+     */
+    @DELETE
+    @Path("/delete/{id}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response deleteByPath(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE /delete - PAGO_NEGOCIACION id: " + id);
         try {
             PagoNegociacion elimina = new PagoNegociacion();
             pagoNegociacionDaoService.remove(elimina, id);
