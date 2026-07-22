@@ -390,7 +390,7 @@ public class FacturaServiceImpl implements FacturaService {
 					factura = facturaDaoService.selectById(factura.getId(), com.saa.model.cxc.NombreEntidadesCobro.FACTURA);
 					String obsAsiento = "Factura N° " + nvl(factura.getNumero(), clave)
 							+ " | Cliente: " + factura.getTitular().getNombre()
-							+ " | " + nvl(factura.getObservacion(), clave);
+							+ " | " + nvl(factura.getObservacion(), "");
 					String usuarioAsiento = factura.getUsuario() != null
 							? factura.getUsuario().getNombre() : "SISTEMA";
 					com.saa.model.cnt.Asiento asientoGenerado =
@@ -398,10 +398,15 @@ public class FacturaServiceImpl implements FacturaService {
 									factura.getId(), idEmpresa,
 									com.saa.rubros.TipoAsientos.FACTURAS_VENTA,
 									factura.getFecha(), obsAsiento, usuarioAsiento);
-					factura.setAsiento(asientoGenerado);
+					// El asiento viene de una transacción distinta (REQUIRES_NEW) y puede
+					// estar detachado del contexto actual. Se hace merge para re-adjuntarlo
+					// antes de asignarlo como FK en la factura.
+					com.saa.model.cnt.Asiento asientoAttached = em.merge(asientoGenerado);
+					factura.setAsiento(asientoAttached);
 					facturaDaoService.save(factura, factura.getId());
+					em.flush();
 					resultado.put("asiento", asientoGenerado.getNumeroAlterno());
-					System.out.println("✓ Asiento contable generado: " + asientoGenerado.getNumeroAlterno());
+					System.out.println("✓ Asiento contable generado y vinculado a factura: " + asientoGenerado.getNumeroAlterno());
 				} catch (Exception e) {
 					// El asiento falla → informar pero NO revertir la autorización
 					resultado.put("advertenciaAsiento",
@@ -1100,43 +1105,6 @@ public class FacturaServiceImpl implements FacturaService {
 									// El PDF no es crítico para la autorización, solo loguear
 									System.err.println("⚠ Error generando PDF (no crítico): " + pdfEx.getMessage());
 									pdfEx.printStackTrace();
-								}
-
-								// 5.5. Generar asiento contable (solo si el facturador tiene generaConta = 1)
-								try {
-									if (factura.getFacturador() != null
-											&& factura.getFacturador().getEmpresa() != null
-											&& Long.valueOf(1L).equals(factura.getFacturador().getGeneraConta())) {
-										Long idEmpresa = factura.getFacturador().getEmpresa().getCodigo();
-										String obsAsiento = "Factura N° " + nvl(factura.getNumero(), clave)
-												+ " | Cliente: " + factura.getTitular().getNombre()
-												+ " | Aut: " + nvl(resultado.numeroAutorizacion, clave);
-										String usuarioAsiento = factura.getUsuario() != null
-												? factura.getUsuario().getNombre() : "SISTEMA";
-										com.saa.model.cnt.Asiento asientoGenerado =
-												asientoContableService.generarAsientoFactura(
-														factura.getId(),
-														idEmpresa,
-														com.saa.rubros.TipoAsientos.FACTURAS_VENTA,
-														factura.getFecha(),
-														obsAsiento,
-														usuarioAsiento);
-										// Vincular asiento a la factura y grabar
-										factura.setAsiento(asientoGenerado);
-										facturaDaoService.save(factura, factura.getId());
-										System.out.println("✓ Asiento contable generado: "
-												+ asientoGenerado.getNumeroAlterno());
-									} else if (factura.getFacturador() != null
-											&& !Long.valueOf(1L).equals(factura.getFacturador().getGeneraConta())) {
-										System.out.println("ℹ Generación de asiento omitida: GENERACONTA no está activo para este facturador.");
-									} else {
-										System.err.println("⚠ Asiento no generado: el facturador no tiene empresa contable configurada.");
-									}
-								} catch (Exception asientoEx) {
-									// El asiento no es crítico para la autorización, solo loguear
-									System.err.println("⚠ Error generando asiento contable (no crítico): "
-											+ asientoEx.getMessage());
-									asientoEx.printStackTrace();
 								}
 
 								// 6. Enviar correo electrónico con el XML autorizado (y PDF si existe)
@@ -2298,6 +2266,79 @@ public class FacturaServiceImpl implements FacturaService {
 			resultado.put("mensaje", "No se pudo enviar el email a ningún destinatario. "
 					+ "Verifique las direcciones de correo y la configuración del servidor.");
 		}
+
+		return resultado;
+	}
+
+	// =========================================================================
+	// anularFactura
+	// =========================================================================
+
+	@Override
+	public java.util.Map<String, Object> anularFactura(Long idFactura, String motivo, String usuario) throws Throwable {
+		System.out.println("=== anularFactura | idFactura=" + idFactura + " | usuario=" + usuario + " ===");
+
+		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+		resultado.put("exito", false);
+
+		// 1. Cargar la factura
+		Factura factura = facturaDaoService.selectById(idFactura, NombreEntidadesCobro.FACTURA);
+		if (factura == null) {
+			resultado.put("mensaje", "Factura con ID " + idFactura + " no encontrada.");
+			return resultado;
+		}
+
+		// 2. Validar que no esté ya anulada
+		if (Long.valueOf(com.saa.rubros.Estado.INACTIVO).equals(factura.getEstado())) {
+			resultado.put("mensaje", "La factura ya se encuentra anulada.");
+			return resultado;
+		}
+
+		// 3. Datos de anulación
+		String usuarioAnulacion = (usuario != null && !usuario.trim().isEmpty()) ? usuario.trim() : "SISTEMA";
+		String motivoFinal      = (motivo  != null && !motivo.trim().isEmpty())  ? motivo.trim()  : "Anulación manual";
+		java.time.LocalDateTime ahora = java.time.LocalDateTime.now();
+
+		// 4. Anular asiento contable vinculado (si existe)
+		if (factura.getAsiento() != null && factura.getAsiento().getCodigo() != null) {
+			try {
+				com.saa.model.cnt.Asiento asiento = em.find(
+						com.saa.model.cnt.Asiento.class, factura.getAsiento().getCodigo());
+				if (asiento != null && !Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO).equals(asiento.getEstado())) {
+					asiento.setEstado(Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO));
+					asiento.setMotivoAnulacion(motivoFinal);
+					asiento.setFechaAnulacion(ahora);
+					asiento.setUsuarioAnulacion(usuarioAnulacion);
+					em.merge(asiento);
+					em.flush();
+					System.out.println("✓ Asiento contable anulado: " + asiento.getCodigo());
+					resultado.put("asientoAnulado", asiento.getCodigo());
+				}
+			} catch (Exception e) {
+				System.err.println("⚠ Error al anular asiento contable: " + e.getMessage());
+				resultado.put("advertenciaAsiento",
+						"La factura fue anulada pero ocurrió un error al anular el asiento: " + e.getMessage());
+			}
+		}
+
+		// 5. Anular la factura y registrar datos de anulación
+		factura.setEstado(Long.valueOf(com.saa.rubros.Estado.INACTIVO));
+		factura.setMotivoAnulacion(motivoFinal);
+		factura.setFechaAnulacion(ahora);
+		factura.setUsuarioAnulacion(usuarioAnulacion);
+		facturaDaoService.save(factura, factura.getId());
+		em.flush();
+
+		System.out.println("✓ Factura anulada: " + idFactura
+				+ " | Motivo: " + motivoFinal + " | Usuario: " + usuarioAnulacion);
+
+		resultado.put("exito", true);
+		resultado.put("mensaje", "Factura N° " + nvl(factura.getNumero(), String.valueOf(idFactura))
+				+ " anulada correctamente.");
+		resultado.put("idFactura", idFactura);
+		resultado.put("motivoAnulacion", motivoFinal);
+		resultado.put("fechaAnulacion", ahora.toString());
+		resultado.put("usuarioAnulacion", usuarioAnulacion);
 
 		return resultado;
 	}

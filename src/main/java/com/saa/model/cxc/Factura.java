@@ -322,6 +322,27 @@ public class Factura implements Serializable {
 	@JoinColumn(name = "EMPRESA", referencedColumnName = "PJRQCDGO")
 	private Empresa empresa;
 
+	/**
+	 * Motivo de anulación de la factura.
+	 */
+	@Basic
+	@Column(name = "MOTIVOANULACION", length = 1000)
+	private String motivoAnulacion;
+
+	/**
+	 * Fecha en que se anuló la factura.
+	 */
+	@Basic
+	@Column(name = "FECHAANULACION")
+	private java.time.LocalDateTime fechaAnulacion;
+
+	/**
+	 * Usuario que realizó la anulación.
+	 */
+	@Basic
+	@Column(name = "USUARIOANULACION", length = 200)
+	private String usuarioAnulacion;
+
 	// Getters y Setters
 	
 	public Long getId() {
@@ -642,5 +663,29 @@ public class Factura implements Serializable {
 
 	public void setEmpresa(Empresa empresa) {
 		this.empresa = empresa;
+	}
+
+	public String getMotivoAnulacion() {
+		return motivoAnulacion;
+	}
+
+	public void setMotivoAnulacion(String motivoAnulacion) {
+		this.motivoAnulacion = motivoAnulacion;
+	}
+
+	public java.time.LocalDateTime getFechaAnulacion() {
+		return fechaAnulacion;
+	}
+
+	public void setFechaAnulacion(java.time.LocalDateTime fechaAnulacion) {
+		this.fechaAnulacion = fechaAnulacion;
+	}
+
+	public String getUsuarioAnulacion() {
+		return usuarioAnulacion;
+	}
+
+	public void setUsuarioAnulacion(String usuarioAnulacion) {
+		this.usuarioAnulacion = usuarioAnulacion;
 	}
 }

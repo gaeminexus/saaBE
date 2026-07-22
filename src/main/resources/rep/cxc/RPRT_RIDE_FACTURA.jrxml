@@ -25,10 +25,10 @@
 		    0                                                              AS propina,
 		    TO_CHAR(TRUNC(COALESCE(f.PIVA, 15)))                           AS porcIva,
 		    COALESCE(f.TOTAL,     0)                                       AS total,
-		    /* ── Facturador ────────────────────────────────────────── */
+		    COALESCE(f.OBSERVACION,            '')                         AS observacion,
 		    COALESCE(fd.NUMDOC,                '')                         AS rucFacturador,
 		    COALESCE(fd.RAZONSOCIAL,           '')                         AS razonSocial,
-		    COALESCE(fd.NOMBRE,                '')                         AS nombreComercial,
+		    COALESCE(fd.NOMBRECOMERCIAL,       '')                         AS nombreComercial,
 		    COALESCE(fd.DIRECCION,             '')                         AS direccionFcdr,
 		    COALESCE(fd.TELEFONO,              '')                         AS telefonoFcdr,
 		    COALESCE(fd.MAIL,                  '')                         AS emailFcdr,
@@ -49,7 +49,12 @@
 		    COALESCE(t.TTLRMLLL, '')                                       AS emailComprador,
 		    /* ── Formas de pago (subquery escalar) ─────────────── */
 		    (SELECT COALESCE(
-		                LISTAGG(fp2.FORMAPAGO || ': $' || TO_CHAR(fp2.VALOR,'FM999,999,990.00'), CHR(10))
+		                LISTAGG(
+		                    COALESCE(
+		                        (SELECT ts.DETALLE FROM CBR.TSRI ts WHERE ts.CODIGO = fp2.FORMAPAGO AND ROWNUM = 1),
+		                        fp2.FORMAPAGO
+		                    ) || ': $' || TO_CHAR(fp2.VALOR,'FM999,999,990.00'),
+		                    CHR(10))
 		                    WITHIN GROUP (ORDER BY fp2.ID)
 		            , '')
 		     FROM CBR.FPFC fp2
@@ -89,6 +94,7 @@
 	<field name="propina" class="java.lang.Double"/>
 	<field name="porcIva" class="java.lang.String"/>
 	<field name="total" class="java.lang.Double"/>
+	<field name="observacion" class="java.lang.String"/>
 	<field name="rucFacturador" class="java.lang.String"/>
 	<field name="razonSocial" class="java.lang.String"/>
 	<field name="nombreComercial" class="java.lang.String"/>
@@ -114,19 +120,10 @@
 	<field name="descuento" class="java.lang.Double"/>
 	<field name="baseImponible" class="java.lang.Double"/>
 	<title height="362" splitType="Prevent">
-		<element kind="image" uuid="aa000001-aaaa-aaaa-aaaa-000000000001" x="0" y="0" width="230" height="98" scaleImage="RetainShape" hImageAlign="Center" vImageAlign="Middle">
-			<printWhenExpression><![CDATA[$F{pathLogo} != null && !$F{pathLogo}.isEmpty()]]></printWhenExpression>
-			<expression><![CDATA[new java.io.FileInputStream($F{pathLogo})]]></expression>
-			<box>
-				<pen lineWidth="0.5"/>
-			</box>
-		</element>
-		<element kind="staticText" uuid="aa000001-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="0" y="0" width="230" height="98" fontSize="11.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
-			<printWhenExpression><![CDATA[$F{pathLogo} == null || $F{pathLogo}.isEmpty()]]></printWhenExpression>
-			<text><![CDATA[LOGO]]></text>
-			<box>
-				<pen lineWidth="0.5"/>
-			</box>
+		<!-- Logo cargado siempre desde classpath -->
+		<element kind="image" uuid="aa000001-aaaa-aaaa-aaaa-000000000001" x="0" y="0" width="230" height="98"
+		         scaleImage="RetainShape" hImageAlign="Center" vImageAlign="Middle" onErrorType="Blank">
+			<expression><![CDATA[getClass().getResourceAsStream("/rep/img/logo_aso.jpeg")]]></expression>
 		</element>
 		<element kind="textField" uuid="aa000002-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="0" y="100" width="230" height="26" fontSize="10.0" blankWhenNull="true" bold="true" hTextAlign="Center" vTextAlign="Bottom">
 			<printWhenExpression><![CDATA[$F{nombreComercial} != null && !$F{nombreComercial}.isEmpty()]]></printWhenExpression>
@@ -147,13 +144,13 @@
 		<element kind="staticText" uuid="aa000007-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="3" y="212" width="38" height="10" fontSize="7.0" bold="true">
 			<text><![CDATA[Teléfono:]]></text>
 		</element>
-		<element kind="textField" uuid="aa000008-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="41" y="212" width="190" height="10" fontSize="7.0" blankWhenNull="true">
+		<element kind="textField" uuid="aa000008-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="43" y="212" width="188" height="10" fontSize="7.0" blankWhenNull="true">
 			<expression><![CDATA[$F{telefonoFcdr}]]></expression>
 		</element>
 		<element kind="staticText" uuid="aa000009-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="3" y="224" width="30" height="10" fontSize="7.0" bold="true">
 			<text><![CDATA[E-mail:]]></text>
 		</element>
-		<element kind="textField" uuid="aa000010-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="33" y="224" width="198" height="10" fontSize="7.0" blankWhenNull="true">
+		<element kind="textField" uuid="aa000010-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="43" y="224" width="188" height="10" fontSize="7.0" blankWhenNull="true">
 			<expression><![CDATA[$F{emailFcdr}]]></expression>
 		</element>
 		<element kind="textField" uuid="aa000011-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="3" y="236" width="228" height="10" fontSize="7.0" textAdjust="StretchHeight" blankWhenNull="true" bold="true">
@@ -218,84 +215,122 @@
 		</element>
 		<element kind="staticText" uuid="aa000029-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="0" y="300" width="110" height="10" backcolor="#F0F0F0" fontSize="7.0" bold="true">
 			<text><![CDATA[Razón Social / Nombre:]]></text>
-			<box><pen lineWidth="0.3"/></box>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
 		</element>
 		<element kind="textField" uuid="aa000030-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="110" y="300" width="425" height="10" fontSize="7.0" textAdjust="StretchHeight">
 			<expression><![CDATA[$F{razonSocialComprador}]]></expression>
-			<box><pen lineWidth="0.3"/></box>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
 		</element>
 		<element kind="staticText" uuid="aa000031-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="0" y="312" width="60" height="10" backcolor="#F0F0F0" fontSize="7.0" bold="true">
 			<text><![CDATA[Fecha Emisión:]]></text>
-			<box><pen lineWidth="0.3"/></box>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
 		</element>
 		<element kind="textField" uuid="aa000032-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="60" y="312" width="200" height="10" fontSize="7.0">
 			<expression><![CDATA[$F{fechaEmision}]]></expression>
-			<box><pen lineWidth="0.3"/></box>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
 		</element>
 		<element kind="staticText" uuid="aa000033-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="260" y="312" width="80" height="10" backcolor="#F0F0F0" fontSize="7.0" bold="true">
 			<text><![CDATA[Guía de Remisión:]]></text>
-			<box><pen lineWidth="0.3"/></box>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
 		</element>
 		<element kind="staticText" uuid="aa000034-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="340" y="312" width="195" height="10" fontSize="7.0">
 			<text><![CDATA[ ]]></text>
-			<box><pen lineWidth="0.3"/></box>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
 		</element>
 		<element kind="staticText" uuid="aa000035-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="0" y="324" width="60" height="10" backcolor="#F0F0F0" fontSize="7.0" bold="true">
 			<text><![CDATA[RUC / CI:]]></text>
-			<box><pen lineWidth="0.3"/></box>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
 		</element>
 		<element kind="textField" uuid="aa000036-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="60" y="324" width="200" height="10" fontSize="7.0">
 			<expression><![CDATA[$F{identificacionComprador}]]></expression>
-			<box><pen lineWidth="0.3"/></box>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
 		</element>
 		<element kind="staticText" uuid="aa000037-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="260" y="324" width="40" height="10" backcolor="#F0F0F0" fontSize="7.0" bold="true">
 			<text><![CDATA[E-mail:]]></text>
-			<box><pen lineWidth="0.3"/></box>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
 		</element>
 		<element kind="textField" uuid="aa000038-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="300" y="324" width="235" height="10" fontSize="7.0" blankWhenNull="true">
 			<expression><![CDATA[$F{emailComprador}]]></expression>
-			<box><pen lineWidth="0.3"/></box>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
 		</element>
 		<element kind="staticText" uuid="aa000039-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="0" y="336" width="60" height="10" backcolor="#F0F0F0" fontSize="7.0" bold="true">
 			<text><![CDATA[Dirección:]]></text>
-			<box><pen lineWidth="0.3"/></box>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
 		</element>
 		<element kind="textField" uuid="aa000040-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="60" y="336" width="475" height="10" fontSize="7.0" textAdjust="StretchHeight">
 			<expression><![CDATA[$F{direccionComprador}]]></expression>
-			<box><pen lineWidth="0.3"/></box>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
 		</element>
 		<element kind="line" uuid="aa000041-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="0" y="350" width="535" height="1">
 			<pen lineWidth="0.5"/>
 		</element>
 	</title>
 	<columnHeader height="20" splitType="Prevent">
-		<element kind="staticText" uuid="bb000001-bbbb-bbbb-bbbb-bbbbbbbbbbbb" x="0" y="0" width="37" height="20" mode="Opaque" forecolor="#FFFFFF" backcolor="#333333" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="bb000001-bbbb-bbbb-bbbb-bbbbbbbbbbbb" mode="Opaque" x="0" y="0" width="37" height="20" forecolor="#FFFFFF" backcolor="#333333" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[Cant.]]></text>
-			<box><pen lineWidth="0.3"/></box>
+			<box>
+				<pen lineWidth="0.3"/>
+			</box>
 		</element>
-		<element kind="staticText" uuid="bb000002-bbbb-bbbb-bbbb-bbbbbbbbbbbb" x="37" y="0" width="48" height="20" mode="Opaque" forecolor="#FFFFFF" backcolor="#333333" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="bb000002-bbbb-bbbb-bbbb-bbbbbbbbbbbb" mode="Opaque" x="37" y="0" width="48" height="20" forecolor="#FFFFFF" backcolor="#333333" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[Código]]></text>
-			<box><pen lineWidth="0.3"/></box>
+			<box>
+				<pen lineWidth="0.3"/>
+			</box>
 		</element>
-		<element kind="staticText" uuid="bb000003-bbbb-bbbb-bbbb-bbbbbbbbbbbb" x="85" y="0" width="270" height="20" mode="Opaque" forecolor="#FFFFFF" backcolor="#333333" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="bb000003-bbbb-bbbb-bbbb-bbbbbbbbbbbb" mode="Opaque" x="85" y="0" width="270" height="20" forecolor="#FFFFFF" backcolor="#333333" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[Descripción]]></text>
-			<box><pen lineWidth="0.3"/></box>
+			<box>
+				<pen lineWidth="0.3"/>
+			</box>
 		</element>
-		<element kind="staticText" uuid="bb000004-bbbb-bbbb-bbbb-bbbbbbbbbbbb" x="355" y="0" width="45" height="20" mode="Opaque" forecolor="#FFFFFF" backcolor="#333333" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+		<element kind="staticText" uuid="bb000004-bbbb-bbbb-bbbb-bbbbbbbbbbbb" mode="Opaque" x="355" y="0" width="45" height="20" forecolor="#FFFFFF" backcolor="#333333" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
 			<text><![CDATA[P. Unit.]]></text>
-			<box rightPadding="3"><pen lineWidth="0.3"/></box>
+			<box rightPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
 		</element>
-		<element kind="staticText" uuid="bb000005-bbbb-bbbb-bbbb-bbbbbbbbbbbb" x="400" y="0" width="43" height="20" mode="Opaque" forecolor="#FFFFFF" backcolor="#333333" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+		<element kind="staticText" uuid="bb000005-bbbb-bbbb-bbbb-bbbbbbbbbbbb" mode="Opaque" x="400" y="0" width="43" height="20" forecolor="#FFFFFF" backcolor="#333333" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
 			<text><![CDATA[Subtotal]]></text>
-			<box rightPadding="3"><pen lineWidth="0.3"/></box>
+			<box rightPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
 		</element>
-		<element kind="staticText" uuid="bb000006-bbbb-bbbb-bbbb-bbbbbbbbbbbb" x="443" y="0" width="34" height="20" mode="Opaque" forecolor="#FFFFFF" backcolor="#333333" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+		<element kind="staticText" uuid="bb000006-bbbb-bbbb-bbbb-bbbbbbbbbbbb" mode="Opaque" x="443" y="0" width="34" height="20" forecolor="#FFFFFF" backcolor="#333333" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
 			<text><![CDATA[Dto.]]></text>
-			<box rightPadding="3"><pen lineWidth="0.3"/></box>
+			<box rightPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
 		</element>
-		<element kind="staticText" uuid="bb000007-bbbb-bbbb-bbbb-bbbbbbbbbbbb" x="477" y="0" width="58" height="20" mode="Opaque" forecolor="#FFFFFF" backcolor="#333333" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+		<element kind="staticText" uuid="bb000007-bbbb-bbbb-bbbb-bbbbbbbbbbbb" mode="Opaque" x="477" y="0" width="58" height="20" forecolor="#FFFFFF" backcolor="#333333" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
 			<text><![CDATA[P. Total]]></text>
-			<box rightPadding="3"><pen lineWidth="0.3"/></box>
+			<box rightPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
 		</element>
 	</columnHeader>
 	<detail>
@@ -314,7 +349,7 @@
 			</element>
 			<element kind="textField" uuid="cc000003-cccc-cccc-cccc-cccccccccccc" x="85" y="0" width="270" height="12" fontSize="7.0" textAdjust="StretchHeight">
 				<expression><![CDATA[$F{descripcion}]]></expression>
-				<box>
+				<box leftPadding="3">
 					<pen lineWidth="0.2"/>
 				</box>
 			</element>
@@ -360,6 +395,12 @@
 				<pen lineWidth="0.3"/>
 			</box>
 		</element>
+		<element kind="textField" uuid="dd000003-dddd-dddd-dddd-dddddddd000b" x="0" y="16" width="313" height="40" fontSize="7.0" textAdjust="StretchHeight" blankWhenNull="true">
+			<expression><![CDATA[$F{observacion}]]></expression>
+			<box topPadding="2" leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
+		</element>
 		<element kind="staticText" uuid="dd000004-dddd-dddd-dddd-dddddddddddd" x="0" y="60" width="313" height="12" backcolor="#F0F0F0" fontSize="7.0" bold="true" hTextAlign="Center">
 			<text><![CDATA[Formas de Pago]]></text>
 			<box>
@@ -368,7 +409,7 @@
 		</element>
 		<element kind="textField" uuid="dd000005-dddd-dddd-dddd-dddddddddddd" x="0" y="72" width="313" height="50" fontSize="7.0" textAdjust="StretchHeight" blankWhenNull="true">
 			<expression><![CDATA[$F{formasPago}]]></expression>
-			<box>
+			<box leftPadding="3">
 				<pen lineWidth="0.3"/>
 			</box>
 		</element>
@@ -502,6 +543,12 @@
 			<expression><![CDATA[$F{total}]]></expression>
 			<box rightPadding="3">
 				<pen lineWidth="0.5"/>
+			</box>
+		</element>
+		<element kind="staticText" uuid="a010f65a-6a56-49dd-9dbb-4601bb06d8a5" x="336" y="128" width="143" height="12" backcolor="#F0F0F0" fontSize="7.0" bold="true" hTextAlign="Right">
+			<text><![CDATA[VALOR TOTAL]]></text>
+			<box>
+				<pen lineWidth="0.3"/>
 			</box>
 		</element>
 	</summary>

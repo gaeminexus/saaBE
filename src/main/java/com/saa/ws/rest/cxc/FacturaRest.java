@@ -191,6 +191,54 @@ public class FacturaRest {
 		}
 	}
 
+	/**
+	 * Anula una factura y su asiento contable vinculado.
+	 * Body JSON: { "idFactura": 123, "motivo": "Descripción opcional" }
+	 */
+	@POST
+	@Path("/anular")
+	@Consumes(MediaType.APPLICATION_JSON)
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response anularFactura(java.util.Map<String, Object> params) {
+		System.out.println("LLEGA AL SERVICIO anularFactura");
+		try {
+			Long idFactura  = getLongParam(params, "idFactura");
+			String motivo   = (String) params.get("motivo");
+			String usuario  = (String) params.get("usuario");
+
+			if (idFactura == null) {
+				java.util.Map<String, Object> err = new java.util.HashMap<>();
+				err.put("exito", false);
+				err.put("mensaje", "El parámetro 'idFactura' es obligatorio.");
+				return Response.status(Response.Status.BAD_REQUEST)
+						.entity(err).type(MediaType.APPLICATION_JSON).build();
+			}
+			if (usuario == null || usuario.trim().isEmpty()) {
+				java.util.Map<String, Object> err = new java.util.HashMap<>();
+				err.put("exito", false);
+				err.put("mensaje", "El parámetro 'usuario' es obligatorio.");
+				return Response.status(Response.Status.BAD_REQUEST)
+						.entity(err).type(MediaType.APPLICATION_JSON).build();
+			}
+
+			java.util.Map<String, Object> resultado = facturaService.anularFactura(idFactura, motivo, usuario);
+
+			boolean exito = Boolean.TRUE.equals(resultado.get("exito"));
+			return Response.status(exito ? Response.Status.OK : Response.Status.BAD_REQUEST)
+					.entity(resultado).type(MediaType.APPLICATION_JSON).build();
+
+		} catch (Throwable e) {
+			System.err.println("ERROR en anularFactura REST: " + e.getMessage());
+			e.printStackTrace();
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", "Error inesperado al anular la factura: " + e.getMessage());
+			err.put("error", e.getMessage());
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+					.entity(err).type(MediaType.APPLICATION_JSON).build();
+		}
+	}
+
 	@DELETE
 	@Path("/{id}")
 	@Produces(MediaType.APPLICATION_JSON)

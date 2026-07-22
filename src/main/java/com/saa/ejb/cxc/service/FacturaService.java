@@ -77,5 +77,16 @@ public interface FacturaService extends EntityService<Factura> {
 	 * @return Mapa con el resultado: exito, emailsEnviados, mensaje
 	 * @throws Throwable Si la factura no existe o no está autorizada
 	 */
-	java.util.Map<String, Object> reenviarEmail(Long idFactura, String destinatarios) throws Throwable;
+        java.util.Map<String, Object> reenviarEmail(Long idFactura, String destinatarios) throws Throwable;
+
+        /**
+         * Anula una factura cambiando su estado a INACTIVO (2) y anula
+         * el asiento contable vinculado si existe.
+         *
+         * @param idFactura ID de la factura a anular
+         * @param motivo    Motivo de la anulación (opcional)
+         * @return Mapa con exito, mensaje
+         * @throws Throwable Si la factura no existe o ya está anulada
+         */
+        java.util.Map<String, Object> anularFactura(Long idFactura, String motivo, String usuario) throws Throwable;
 }

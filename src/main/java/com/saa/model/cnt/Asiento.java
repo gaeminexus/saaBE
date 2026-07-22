@@ -177,6 +177,27 @@ public class Asiento implements Serializable {
 	@Basic
 	@Column(name = "ASNTNMMS")
 	private Long numeroMesTipo;
+
+	/**
+	 * Motivo de anulación del asiento.
+	 */
+	@Basic
+	@Column(name = "ASNTMTAN", length = 1000)
+	private String motivoAnulacion;
+
+	/**
+	 * Fecha y hora en que se anuló el asiento.
+	 */
+	@Basic
+	@Column(name = "ASNTFCAN")
+	private LocalDateTime fechaAnulacion;
+
+	/**
+	 * Usuario que realizó la anulación del asiento.
+	 */
+	@Basic
+	@Column(name = "ASNTUSAN", length = 200)
+	private String usuarioAnulacion;
 	
 	/**
 	 * Devuelve codigo
@@ -512,5 +533,28 @@ public class Asiento implements Serializable {
 		this.numeroMesTipo = numeroMesTipo;
 	}
 
-   
+	public String getMotivoAnulacion() {
+		return motivoAnulacion;
+	}
+
+	public void setMotivoAnulacion(String motivoAnulacion) {
+		this.motivoAnulacion = motivoAnulacion;
+	}
+
+	public LocalDateTime getFechaAnulacion() {
+		return fechaAnulacion;
+	}
+
+	public void setFechaAnulacion(LocalDateTime fechaAnulacion) {
+		this.fechaAnulacion = fechaAnulacion;
+	}
+
+	public String getUsuarioAnulacion() {
+		return usuarioAnulacion;
+	}
+
+	public void setUsuarioAnulacion(String usuarioAnulacion) {
+		this.usuarioAnulacion = usuarioAnulacion;
+	}
+
 }
