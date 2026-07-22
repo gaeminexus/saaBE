@@ -145,7 +145,7 @@ public interface DetallePrestamoDaoService extends EntityDao<DetallePrestamo> {
 	 * @param fechaFin Fecha límite (último instante del mes de ejecución)
 	 * @return Lista de Object[]{Long codigoPrestamo, Double sumaCapital, Double sumaInteres}
 	 */
-	List<Object[]> selectSumaCapitalInteresGrupo2Batch(List<Long> codigosCuotasOrigen, LocalDateTime fechaFin) throws Throwable;
+	List<Object[]> selectSumaCapitalInteresGrupo2Batch(List<Long> codigosCuotasOrigen, LocalDateTime fechaInicio, LocalDateTime fechaFin) throws Throwable;
 
 	/**
 	 * OPTIMIZACIÓN BATCH: Calcula interés de mora para múltiples cuotas en una sola consulta.

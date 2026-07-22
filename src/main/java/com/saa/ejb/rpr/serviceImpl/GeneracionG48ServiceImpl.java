@@ -152,7 +152,7 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
         Map<Long, Object[]> mapaSumasGrupo2 = new HashMap<>();
         if (!codigosCuotasMora.isEmpty()) {
             List<Object[]> sumasGrupo2 = detallePrestamoService.selectSumaCapitalInteresGrupo2Batch(
-                codigosCuotasMora, fechaFin
+                codigosCuotasMora, fechaInicio, fechaFin
             );
             for (Object[] suma : sumasGrupo2) {
                 Long codPrest = (Long) suma[0];
@@ -190,8 +190,10 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
             for (Object[] fila : saldosDelMes) {
                 Long   codPrest        = (Long)   fila[0];
                 Double saldoInicialCap = fila[1] != null ? ((Number) fila[1]).doubleValue() : 0.0;
-                Double capitalDelMes   = fila[2] != null ? ((Number) fila[2]).doubleValue() : 0.0;
-                mapaValorPorVencerGrupo2.put(codPrest, Math.max(0.0, saldoInicialCap - capitalDelMes));
+                // CORRECCIÓN: valorPorVencer = saldoInicialCapital completo de la cuota del mes,
+                // ya que esa cuota NO va a vencido (por política del fondo no está en mora hasta
+                // que pase el último día del mes). El capital del mes queda en "por vencer".
+                mapaValorPorVencerGrupo2.put(codPrest, saldoInicialCap);
             }
             System.out.println("G48 - ValorPorVencer Grupo 2 cargados en batch: " + mapaValorPorVencerGrupo2.size());
         }

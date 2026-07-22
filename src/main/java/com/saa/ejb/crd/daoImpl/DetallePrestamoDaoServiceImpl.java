@@ -399,13 +399,15 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 
 	@Override
 	@SuppressWarnings("unchecked")
-	public List<Object[]> selectSumaCapitalInteresGrupo2Batch(List<Long> codigosCuotasOrigen, java.time.LocalDateTime fechaFin) throws Throwable {
+	public List<Object[]> selectSumaCapitalInteresGrupo2Batch(List<Long> codigosCuotasOrigen, java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable {
 		if (codigosCuotasOrigen == null || codigosCuotasOrigen.isEmpty()) {
 			return new ArrayList<>();
 		}
 		System.out.println("DetallePrestamoDaoServiceImpl.selectSumaCapitalInteresGrupo2Batch - cuotas origen: " + codigosCuotasOrigen.size());
 		// El SUM y GROUP BY ocurren en la BD: devuelve exactamente 1 fila por préstamo.
-		// La subconsulta correlacionada filtra numeroCuota >= numeroCuotaOrigen dentro del SQL.
+		// CORRECCIÓN: fechaVencimiento < fechaInicio excluye la cuota del mes de ejecución del vencido,
+		// ya que por política del fondo las cuotas vencen el último día del mes y no están en mora
+		// hasta que ese día haya pasado. La cuota del mes va a valorPorVencer, no a valorVencido.
 		Query query = em.createQuery(
 			" select d.prestamo.codigo, sum(d.capital), sum(d.interes), sum(d.desgravamen), sum(d.valorSeguroIncendio) " +
 			" from DetallePrestamo d " +
@@ -417,11 +419,11 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 			"     where d0.codigo in :codigosOrigen " +
 			"       and d0.prestamo.codigo = d.prestamo.codigo" +
 			" ) " +
-			"   and d.fechaVencimiento <= :fechaFin " +
+			"   and d.fechaVencimiento < :fechaInicio " +
 			" group by d.prestamo.codigo "
 		);
 		query.setParameter("codigosOrigen", codigosCuotasOrigen);
-		query.setParameter("fechaFin", fechaFin);
+		query.setParameter("fechaInicio", fechaInicio);
 		List<Object[]> filas = query.getResultList();
 		List<Object[]> resultado = new java.util.ArrayList<>(filas.size());
 		for (Object[] fila : filas) {

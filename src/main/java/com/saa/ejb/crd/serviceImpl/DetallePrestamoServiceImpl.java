@@ -192,8 +192,8 @@ public class DetallePrestamoServiceImpl implements DetallePrestamoService {
 	}
 
 	@Override
-	public List<Object[]> selectSumaCapitalInteresGrupo2Batch(List<Long> codigosCuotasOrigen, java.time.LocalDateTime fechaFin) throws Throwable {
-		return detallePrestamoDaoService.selectSumaCapitalInteresGrupo2Batch(codigosCuotasOrigen, fechaFin);
+	public List<Object[]> selectSumaCapitalInteresGrupo2Batch(List<Long> codigosCuotasOrigen, java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable {
+		return detallePrestamoDaoService.selectSumaCapitalInteresGrupo2Batch(codigosCuotasOrigen, fechaInicio, fechaFin);
 	}
 
 	@Override

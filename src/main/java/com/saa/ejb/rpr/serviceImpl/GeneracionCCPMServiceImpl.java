@@ -134,7 +134,7 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
         Map<Long, Object[]> mapaSumasGrupo2 = new HashMap<>();
         if (!codigosCuotasMora.isEmpty()) {
             List<Object[]> sumasGrupo2 = detallePrestamoService.selectSumaCapitalInteresGrupo2Batch(
-                codigosCuotasMora, fechaFin
+                codigosCuotasMora, fechaInicio, fechaFin
             );
             for (Object[] suma : sumasGrupo2) {
                 Long codPrest = (Long) suma[0];
@@ -173,9 +173,11 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
             for (Object[] fila : saldosDelMes) {
                 Long   codPrest          = (Long)   fila[0];
                 Double saldoInicialCap   = fila[1] != null ? ((Number) fila[1]).doubleValue() : 0.0;
-                Double capitalDelMes     = fila[2] != null ? ((Number) fila[2]).doubleValue() : 0.0;
                 Double interesDelMes     = fila[3] != null ? ((Number) fila[3]).doubleValue() : 0.0;
-                mapaValorPorVencerGrupo2.put(codPrest, Math.max(0.0, saldoInicialCap - capitalDelMes));
+                // CORRECCIÓN: valorPorVencer = saldoInicialCapital completo de la cuota del mes,
+                // ya que esa cuota NO va a vencido (por política del fondo no está en mora hasta
+                // que pase el último día del mes). El capital del mes queda en "por vencer".
+                mapaValorPorVencerGrupo2.put(codPrest, saldoInicialCap);
                 mapaInteresOrdinarioDelMesGrupo2.put(codPrest, interesDelMes);
             }
             System.out.println("CCPM - ValorPorVencer Grupo 2 cargados en batch: " + mapaValorPorVencerGrupo2.size());
@@ -211,21 +213,30 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
 
         // -------------------------------------------------------
         // 5c. Desglose de capital por vencer en 5 períodos.
-        //     Para AMBOS grupos el desglose parte de la cuota SIGUIENTE al mes de
-        //     ejecución (fechaVencimiento > fechaFin), estado != 4 y != 7.
-        //     Índice 0 = próxima cuota tras el cierre del mes = bucket 1-30 días.
-        //     Map<codigoPrestamo, List<capital>> ordenado por numeroCuota ASC.
+        //     GRUPO 1: cuotas con fechaVencimiento > fechaFin (posteriores al mes de ejecución).
+        //              Índice 0 = próxima cuota tras el cierre del mes = bucket 1-30 días.
+        //     GRUPO 2: cuotas con fechaVencimiento >= fechaInicio (desde el inicio del mes inclusive),
+        //              porque la cuota del mes NO está en mora y debe ir al bucket 1-30 días (cv30).
+        //              Índice 0 = cuota del mes de ejecución = bucket 1-30 días.
         // -------------------------------------------------------
-        List<Long> codigosPrestamosDesglose = new ArrayList<>();
+        List<Long> codsPrestamosGrupo1Desglose = new ArrayList<>();
+        List<Long> codsPrestamosGrupo2Desglose = new ArrayList<>();
         for (DetallePrestamo d : cuotasAProcesar) {
-            if (d.getPrestamo() != null) codigosPrestamosDesglose.add(d.getPrestamo().getCodigo());
+            if (d.getPrestamo() == null) continue;
+            if (prestamosEnGrupo1.contains(d.getPrestamo().getCodigo())) {
+                codsPrestamosGrupo1Desglose.add(d.getPrestamo().getCodigo());
+            } else {
+                codsPrestamosGrupo2Desglose.add(d.getPrestamo().getCodigo());
+            }
         }
+
         Map<Long, List<Double>> mapaCapitalesFuturos = new HashMap<>();
-        // saldoOtros acumulado de todas las cuotas futuras por préstamo
         Map<Long, Double> mapaSaldoOtrosFuturos = new HashMap<>();
-        if (!codigosPrestamosDesglose.isEmpty()) {
+
+        // Grupo 1: cuotas posteriores al mes de ejecución
+        if (!codsPrestamosGrupo1Desglose.isEmpty()) {
             List<Object[]> filas = detallePrestamoService.selectCapitalCuotasFuturasBatch(
-                codigosPrestamosDesglose, fechaFin
+                codsPrestamosGrupo1Desglose, fechaFin
             );
             for (Object[] fila : filas) {
                 Long   codPrest   = (Long)   fila[0];
@@ -234,7 +245,22 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
                 mapaCapitalesFuturos.computeIfAbsent(codPrest, k -> new ArrayList<>()).add(capital);
                 mapaSaldoOtrosFuturos.merge(codPrest, saldoOtros, Double::sum);
             }
-            System.out.println("CCPM - Desglose capital (ambos grupos) cargado: " + mapaCapitalesFuturos.size() + " préstamos");
+            System.out.println("CCPM - Desglose capital Grupo 1 cargado: " + codsPrestamosGrupo1Desglose.size() + " préstamos");
+        }
+
+        // Grupo 2: desde el inicio del mes inclusive (la cuota del mes cae en cv30)
+        if (!codsPrestamosGrupo2Desglose.isEmpty()) {
+            List<Object[]> filas = detallePrestamoService.selectCapitalCuotasDesdeInicioMesBatch(
+                codsPrestamosGrupo2Desglose, fechaInicio
+            );
+            for (Object[] fila : filas) {
+                Long   codPrest   = (Long)   fila[0];
+                Double capital    = fila[2] != null ? ((Number) fila[2]).doubleValue() : 0.0;
+                Double saldoOtros = fila[3] != null ? ((Number) fila[3]).doubleValue() : 0.0;
+                mapaCapitalesFuturos.computeIfAbsent(codPrest, k -> new ArrayList<>()).add(capital);
+                mapaSaldoOtrosFuturos.merge(codPrest, saldoOtros, Double::sum);
+            }
+            System.out.println("CCPM - Desglose capital Grupo 2 cargado (desde inicio mes): " + codsPrestamosGrupo2Desglose.size() + " préstamos");
         }
 
         // -------------------------------------------------------

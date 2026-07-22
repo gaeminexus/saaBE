@@ -99,9 +99,9 @@ public class GeneracionG40ServiceImpl implements GeneracionG40Service {
         cg40.setPorcentajeAportePersonalCesantia(igfn.getPorcentajeAportePersonalCesantia());
         cg40.setPorcentajeAportePatronalJubilacion(igfn.getPorcentajeAportePatronalJubilacion());
         cg40.setPorcentajeAportePersonalJubilacion(igfn.getPorcentajeAportePersonalJubilacion());
-        // Valores calculados desde los aportes del G42 (suma tipo 11 = cesantía, tipo 9 = jubilación)
-        cg40.setValorAportePersonalCesantia(0D);
-        cg40.setValorAportePersonalJubilacion(0D);
+        // Valores ingresados desde el frontend en la pantalla de Información General del Fondo
+        cg40.setValorAportePersonalCesantia(igfn.getValorAportePersonalCesantia());
+        cg40.setValorAportePersonalJubilacion(igfn.getValorAportePersonalJubilacion());
 
         // -------------------------------------------------------
         // 6. Persistir el registro en CG40
