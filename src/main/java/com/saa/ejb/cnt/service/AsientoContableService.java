@@ -165,6 +165,46 @@ public interface AsientoContableService {
             String observaciones, String usuario) throws Throwable;
 
     /**
+     * Valida ANTES de emitir una Retención que todas las cuentas contables necesarias
+     * estén configuradas:
+     *  1. Cuenta CxP del proveedor (PersonaCuentaContable, tipoCuenta=1, tipoPersona=2)
+     *  2. Cuenta contable de cada código de retención (Tsri.planCuenta, por Tsri.codigo)
+     *
+     * @param retencion Retención a emitir (debe tener proveedor)
+     * @param detalles  Lista de detalles de retención
+     * @param idEmpresa ID de la empresa contable
+     * @return Lista de mensajes de error. Si está vacía, todas las cuentas existen.
+     */
+    List<String> validarCuentasContablesRetencion(com.saa.model.cxc.Retencion retencion,
+            List<com.saa.model.cxc.DetalleRetencion> detalles, Long idEmpresa);
+
+    /**
+     * Genera el asiento contable para una Retención electrónica emitida (CXC/RTNC).
+     * <p>
+     * Estructura:
+     * <pre>
+     *   DEBE:  Cuenta CxP del proveedor sujeto a retención
+     *          → valor: sumatoria de todos los valorReten de los detalles
+     *
+     *   HABER: Una línea por cada DetalleRetencion
+     *          → cuenta: Tsri.planCuenta donde Tsri.codigo = DetalleRetencion.codRetencion
+     *          → valor:  DetalleRetencion.valorReten
+     * </pre>
+     *
+     * @param idRetencion          ID de la retención autorizada
+     * @param idEmpresa            ID de la empresa contable
+     * @param codigoAltTipoAsiento Código alterno del TipoAsiento (TipoAsientos.RETENCIONES_EMITIDAS)
+     * @param fechaAsiento         Fecha contable
+     * @param observaciones        Descripción del asiento
+     * @param usuario              Usuario que genera el asiento
+     * @return Asiento generado y grabado
+     * @throws Throwable si faltan cuentas, período cerrado, etc.
+     */
+    Asiento generarAsientoRetencion(Long idRetencion, Long idEmpresa,
+            int codigoAltTipoAsiento, java.time.LocalDate fechaAsiento,
+            String observaciones, String usuario) throws Throwable;
+
+    /**
      * Genera el asiento contable de una Retención electrónica v2 emitida (CXC).
      * <p>
      * TODO — Plantilla:   {@code TipoAsientos.RETENCIONES_EMITIDAS_V2}<br>

@@ -13,14 +13,19 @@ import javax.xml.stream.XMLStreamWriter;
 import org.w3c.dom.NodeList;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
+import com.saa.ejb.cnt.service.AsientoContableService;
 import com.saa.ejb.cxc.dao.RetencionDaoService;
 import com.saa.ejb.cxc.dao.PathRetencionDaoService;
 import com.saa.ejb.cxc.service.RetencionService;
+import com.saa.ejb.cxc.service.EmailFacturaService;
 import com.saa.ejb.signature.service.SignatureService;
+import com.saa.model.cxc.DetalleRetencion;
 import com.saa.model.cxc.Retencion;
 import com.saa.model.cxc.NombreEntidadesCobro;
 import com.saa.model.cxc.PathRetencion;
 import com.saa.rubros.Estado;
+import com.saa.rubros.EstadoAsiento;
+import com.saa.rubros.TipoAsientos;
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
@@ -44,6 +49,12 @@ public class RetencionServiceImpl implements RetencionService {
 	
 	@EJB
 	private SignatureService signatureService;
+
+	@EJB
+	private AsientoContableService asientoContableService;
+
+	@EJB
+	private EmailFacturaService emailFacturaService;
 	
 	@PersistenceContext
 	private EntityManager em;
@@ -240,23 +251,71 @@ public class RetencionServiceImpl implements RetencionService {
 		writer.writeCharacters("\n");
 	}
 	
-	private void writeImpuestos(XMLStreamWriter writer, List<Object> detalles) throws Exception {
+	@SuppressWarnings("unchecked")
+	private void writeImpuestos(XMLStreamWriter writer, List<Object> detallesRaw) throws Exception {
 		writer.writeCharacters("  ");
 		writer.writeStartElement("impuestos");
 		writer.writeCharacters("\n");
+
+		DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+
+		for (Object obj : detallesRaw) {
+			com.saa.model.cxc.DetalleRetencion det = (com.saa.model.cxc.DetalleRetencion) obj;
+
+			writer.writeCharacters("    ");
+			writer.writeStartElement("impuesto");
+			writer.writeCharacters("\n");
+
+			writeElement(writer, "codigo",           nvl(det.getCodImpuesto(),  ""), 6);
+			writeElement(writer, "codigoRetencion",  nvl(det.getCodRetencion(), ""), 6);
+			writeElement(writer, "baseImponible",    det.getBaseImponible()  != null
+					? String.format(java.util.Locale.US, "%.2f", det.getBaseImponible()) : "0.00", 6);
+			writeElement(writer, "porcentajeRetener", det.getPorcentajeReten() != null
+					? String.format(java.util.Locale.US, "%.2f", det.getPorcentajeReten()) : "0.00", 6);
+			writeElement(writer, "valorRetenido",    det.getValorReten() != null
+					? String.format(java.util.Locale.US, "%.2f", det.getValorReten()) : "0.00", 6);
+			writeElement(writer, "codDocSustento",   nvl(det.getTipoDocReten(), ""), 6);
+			writeElement(writer, "numDocSustento",   nvl(det.getNumDocReten(),  ""), 6);
+			// fechaEmiDoc puede ser null si el doc sustento no tiene fecha
+			String fechaDoc = "";
+			if (det.getFechaEmiDoc() != null) {
+				fechaDoc = det.getFechaEmiDoc().format(dateFormatter);
+			}
+			writeElement(writer, "fechaEmisionDocSustento", fechaDoc, 6);
+
+			writer.writeCharacters("    ");
+			writer.writeEndElement(); // impuesto
+			writer.writeCharacters("\n");
+		}
+
 		writer.writeCharacters("  ");
-		writer.writeEndElement();
+		writer.writeEndElement(); // impuestos
 		writer.writeCharacters("\n");
 	}
-	
+
 	private void writeInfoAdicional(XMLStreamWriter writer, Retencion retencion) throws Exception {
+		// Recuperar datos del facturador para infoAdicional (igual que el PHP de referencia)
+		String telefonoFcdr = retencion.getFacturador() != null
+				? nvl(retencion.getFacturador().getTelefono(), "") : "";
+		String mailFcdr = retencion.getFacturador() != null
+				? nvl(retencion.getFacturador().getMail(), "") : "";
+		String telefonoProveedor = retencion.getProveedor() != null
+				? nvl(retencion.getProveedor().getTelefono(), "") : "";
+		String mailProveedor = retencion.getProveedor() != null
+				? nvl(retencion.getProveedor().getEmail(), "") : "";
+		String observacion = nvl(retencion.getObservacion(), "");
+
+		String infoAdicionalTexto = "Soporte[" + telefonoFcdr + " - " + mailFcdr + "] "
+				+ "Contacto Proveedor[" + telefonoProveedor + " - " + mailProveedor + "] "
+				+ "Observacion[" + observacion + "]";
+
 		writer.writeCharacters("  ");
 		writer.writeStartElement("infoAdicional");
 		writer.writeCharacters("\n");
 		writer.writeCharacters("    ");
 		writer.writeStartElement("campoAdicional");
 		writer.writeAttribute("nombre", "Datos Adicionales");
-		writer.writeCharacters("Observ.[" + nvl(retencion.getObservacion(), "") + "]");
+		writer.writeCharacters(infoAdicionalTexto);
 		writer.writeEndElement();
 		writer.writeCharacters("\n");
 		writer.writeCharacters("  ");
@@ -430,73 +489,241 @@ public class RetencionServiceImpl implements RetencionService {
 	public java.util.Map<String, Object> procesarRetencionCompleta(Retencion retencion,
 			java.util.List<com.saa.model.cxc.DetalleRetencion> detalles,
 			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable {
-		
-		System.out.println("=== INICIO procesarRetencionCompleta ===");
+
+		System.out.println("=== INICIANDO PROCESO COMPLETO DE RETENCIÓN ===");
 		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
-		
-		try {
-			if (ambiente == null) ambiente = 1L;
-			if (conectaSRI == null) conectaSRI = 1L;
-			if (pathLogo == null) pathLogo = "resources/logos/logo_aso.png";
-			
-			System.out.println("Paso 1: Grabando retención...");
-			retencion = this.saveSingle(retencion);
-			resultado.put("retencion", retencion);
-			System.out.println("✓ Retención grabada con ID: " + retencion.getId());
-			System.out.println("✓ Clave generada: " + retencion.getClave());
-			
-			if (detalles != null && !detalles.isEmpty()) {
-				for (com.saa.model.cxc.DetalleRetencion detalle : detalles) {
-					detalle.setRetencion(retencion);
-					if (detalle.getEstado() == null) detalle.setEstado(Long.valueOf(Estado.ACTIVO));
-					em.persist(detalle);
-				}
-				em.flush();
+		resultado.put("exito", false);
+
+		// ── PASO 0: Validar configuración contable ANTES de grabar ─────────────
+		if (retencion.getFacturador() != null
+				&& Long.valueOf(1L).equals(retencion.getFacturador().getGeneraConta())) {
+
+			if (retencion.getFacturador().getEmpresa() == null) {
+				resultado.put("etapa", "VALIDACION_CONTABLE");
+				resultado.put("mensaje", "El facturador tiene habilitada la generación contable "
+						+ "pero no tiene empresa contable configurada. "
+						+ "Configure el campo EMPRESA en el facturador.");
+				return resultado;
 			}
-			
+
+			Long idEmpresa = retencion.getFacturador().getEmpresa().getCodigo();
+			System.out.println("PASO 0: Validando cuentas contables para empresa " + idEmpresa + "...");
+
+			java.util.List<String> erroresContables =
+					asientoContableService.validarCuentasContablesRetencion(retencion, detalles, idEmpresa);
+
+			if (!erroresContables.isEmpty()) {
+				resultado.put("etapa", "VALIDACION_CONTABLE");
+				resultado.put("mensaje", "No se puede emitir la retención: faltan cuentas contables. "
+						+ "Corrija los siguientes problemas antes de continuar:");
+				resultado.put("erroresContables", erroresContables);
+				StringBuilder sb = new StringBuilder("Faltan cuentas contables configuradas:\n");
+				for (int i = 0; i < erroresContables.size(); i++) {
+					sb.append("  ").append(i + 1).append(". ").append(erroresContables.get(i)).append("\n");
+				}
+				resultado.put("error", sb.toString());
+				System.err.println("✗ Validación contable fallida:\n" + sb);
+				return resultado;
+			}
+			System.out.println("✓ Validación contable OK.");
+		}
+
+		try {
+			if (ambiente  == null) ambiente  = 1L;
+			if (conectaSRI == null) conectaSRI = 1L;
+			if (pathLogo  == null) pathLogo  = "resources/logos/logo_aso.png";
+
+			// ── PASO 1: Grabar retención ───────────────────────────────────────
+			System.out.println("PASO 1: Grabando retención en base de datos...");
+			try {
+				retencion = this.saveSingle(retencion);
+			} catch (Exception e) {
+				resultado.put("etapa", "GRABADO_RETENCION");
+				resultado.put("mensaje", "Error al grabar la retención: " + e.getMessage());
+				resultado.put("error", e.getMessage());
+				return resultado;
+			}
+			resultado.put("retencion", retencion);
+			resultado.put("idRetencion", retencion.getId());
+			System.out.println("✓ Retención grabada ID: " + retencion.getId()
+					+ " | Número: " + retencion.getNumero()
+					+ " | Clave: " + retencion.getClave());
+
+			// ── PASO 1.5: Guardar detalles ─────────────────────────────────────
+			if (detalles != null && !detalles.isEmpty()) {
+				System.out.println("PASO 1.5: Guardando " + detalles.size() + " detalles de retención...");
+				try {
+					for (DetalleRetencion detalle : detalles) {
+						detalle.setRetencion(retencion);
+						if (detalle.getEstado() == null) detalle.setEstado(Long.valueOf(Estado.ACTIVO));
+						em.persist(detalle);
+					}
+					em.flush();
+					System.out.println("✓ Detalles guardados correctamente.");
+				} catch (Exception e) {
+					resultado.put("etapa", "GRABADO_DETALLES");
+					resultado.put("mensaje", "Error al grabar los detalles de la retención: " + e.getMessage());
+					resultado.put("error", e.getMessage());
+					return resultado;
+				}
+			}
+
 			if (destinatario == null && retencion.getProveedor() != null) {
 				destinatario = retencion.getProveedor().getEmail();
 			}
-			
+
 			String clave = retencion.getClave();
-			if (clave == null || clave.isEmpty()) throw new Exception("La retención no tiene clave de acceso");
+			if (clave == null || clave.isEmpty())
+				throw new Exception("La retención no tiene clave de acceso");
 			Long idFacturador = retencion.getFacturador() != null ? retencion.getFacturador().getId() : null;
 			if (idFacturador == null) throw new Exception("La retención no tiene facturador asociado");
+
 			resultado.put("claveAcceso", clave);
-			
-			// Paso 2: Generar XML
-			System.out.println("Paso 2: Generando XML...");
-			String[] resultadoXML = this.generarXMLRetencion(clave, ambiente);
-			resultado.put("paso2_xml", "OK");
-			System.out.println("XML generado: " + resultadoXML[0]);
-			
-			// Paso 3: Firmar XML
-			System.out.println("Paso 3: Firmando XML electrónicamente...");
-			String xmlSinFirmar = new String(java.nio.file.Files.readAllBytes(
-				java.nio.file.Paths.get(resultadoXML[2])), java.nio.charset.StandardCharsets.UTF_8);
-			String xmlFirmado = signatureService.firmarXMLFacturador(xmlSinFirmar, idFacturador);
-			resultado.put("paso3_firma", "OK");
-			System.out.println("✓ XML firmado electrónicamente");
-			
-			// Paso 4: Autorizar ante el SRI
-			System.out.println("Paso 4: Autorizando ante el SRI...");
-			String resultadoAutorizacion = this.autorizarRetencion(
-				idFacturador, ambiente, conectaSRI, clave,
-				retencion.getId(), xmlFirmado, destinatario, pathLogo);
-			
-			resultado.put("autorizacionMensaje", resultadoAutorizacion);
+			ambiente   = 1L;
+			conectaSRI = 1L;
+
+			// ── PASO 2 y 3: Generar y firmar XML ──────────────────────────────
+			String xmlFirmado;
+			try {
+				System.out.println("PASO 2: Generando XML de retención...");
+				String[] resultadoXML = this.generarXMLRetencion(clave, ambiente);
+				String xmlSinFirmar = new String(
+						java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(resultadoXML[2])),
+						java.nio.charset.StandardCharsets.UTF_8);
+				System.out.println("PASO 3: Firmando XML...");
+				xmlFirmado = signatureService.firmarXMLFacturador(xmlSinFirmar, idFacturador);
+				System.out.println("✓ XML generado y firmado.");
+			} catch (Exception e) {
+				resultado.put("etapa", "GENERACION_XML");
+				resultado.put("mensaje", "Error al generar o firmar el XML de la retención: " + e.getMessage());
+				resultado.put("error", e.getMessage());
+				return resultado;
+			}
+
+			// ── PASO 4: Autorizar ante el SRI ──────────────────────────────────
+			System.out.println("PASO 4: Autorizando ante el SRI...");
+			String resultadoAutorizacion;
+			try {
+				resultadoAutorizacion = this.autorizarRetencion(
+						idFacturador, ambiente, conectaSRI, clave,
+						retencion.getId(), xmlFirmado, destinatario, pathLogo);
+			} catch (Exception e) {
+				resultado.put("etapa", "AUTORIZACION_SRI");
+				resultado.put("mensaje", "Error al comunicarse con el SRI: " + e.getMessage());
+				resultado.put("error", e.getMessage());
+				return resultado;
+			}
+
+			resultado.put("autorizacion", resultadoAutorizacion);
+			boolean autorizada = resultadoAutorizacion != null
+					&& resultadoAutorizacion.contains("AUTORIZADO");
+
+			if (!autorizada) {
+				resultado.put("etapa", "AUTORIZACION_SRI");
+				resultado.put("exito", false);
+				resultado.put("mensaje", "La retención fue enviada al SRI pero no fue autorizada. "
+						+ "Respuesta del SRI: " + resultadoAutorizacion);
+				resultado.put("estado", "NO_AUTORIZADO");
+				return resultado;
+			}
+
+			System.out.println("✓ Retención AUTORIZADA por el SRI.");
+			resultado.put("estado", "AUTORIZADO");
+
+			// ── PASO 5: Generar asiento contable ──────────────────────────────
+			if (retencion.getFacturador().getEmpresa() != null
+					&& Long.valueOf(1L).equals(retencion.getFacturador().getGeneraConta())) {
+				System.out.println("PASO 5: Generando asiento contable de retención...");
+				try {
+					Long idEmpresa = retencion.getFacturador().getEmpresa().getCodigo();
+					// Recargar para obtener datos actualizados (autorización, etc.)
+					retencion = retencionDaoService.selectById(retencion.getId(), NombreEntidadesCobro.RETENCION);
+					java.time.LocalDate fechaAsiento = retencion.getFecha() != null
+							? retencion.getFecha().toLocalDate() : java.time.LocalDate.now();
+					String obsAsiento = "Retención N° " + nvl(retencion.getNumero(), clave)
+							+ " | Proveedor: " + (retencion.getProveedor() != null
+									? retencion.getProveedor().getNombre() : "")
+							+ " | " + nvl(retencion.getObservacion(), "");
+					String usuarioAsiento = retencion.getUsuario() != null
+							? retencion.getUsuario().getNombre() : "SISTEMA";
+					com.saa.model.cnt.Asiento asientoGenerado =
+							asientoContableService.generarAsientoRetencion(
+									retencion.getId(), idEmpresa,
+									TipoAsientos.RETENCIONES_EMITIDAS,
+									fechaAsiento, obsAsiento, usuarioAsiento);
+					com.saa.model.cnt.Asiento asientoAttached = em.merge(asientoGenerado);
+					// Vincular asiento a la retención si el modelo lo soporta
+					// retencion.setAsiento(asientoAttached);
+					// retencionDaoService.save(retencion, retencion.getId());
+					resultado.put("asiento", asientoAttached.getNumeroAlterno());
+					System.out.println("✓ Asiento contable generado: " + asientoAttached.getNumeroAlterno());
+				} catch (Exception e) {
+					resultado.put("advertenciaAsiento",
+							"La retención fue autorizada pero ocurrió un error al generar el asiento contable: "
+							+ e.getMessage()
+							+ ". Genere el asiento manualmente desde Contabilidad.");
+					System.err.println("⚠ Error en asiento contable de Retención: " + e.getMessage());
+					e.printStackTrace();
+				}
+			}
+
+			// ── PASO 6: Enviar correo electrónico ─────────────────────────────
+			System.out.println("PASO 6: Enviando email al proveedor...");
+			try {
+				if (destinatario != null && !destinatario.trim().isEmpty()) {
+					String resourcesPath = getBaseUploadDirectory() + "resources/" + idFacturador;
+					String xmlAutorizado = null;
+					byte[] pdfBytes = null;
+					try {
+						java.nio.file.Path pXml = java.nio.file.Paths.get(
+								resourcesPath + "/rtnc/a/" + clave + ".xml");
+						if (java.nio.file.Files.exists(pXml)) {
+							xmlAutorizado = new String(java.nio.file.Files.readAllBytes(pXml), "UTF-8");
+						}
+						java.nio.file.Path pPdf = java.nio.file.Paths.get(
+								resourcesPath + "/rtnc/a/" + clave + ".pdf");
+						if (java.nio.file.Files.exists(pPdf)) {
+							pdfBytes = java.nio.file.Files.readAllBytes(pPdf);
+						}
+					} catch (Exception ioEx) {
+						System.err.println("⚠ No se pudieron leer archivos para el email: " + ioEx.getMessage());
+					}
+					String razonSocial = retencion.getFacturador() != null
+							? nvl(retencion.getFacturador().getRazonSocial(),
+								  nvl(retencion.getFacturador().getNombre(), "")) : "";
+					emailFacturaService.enviarFacturaAutorizada(
+							destinatario, nvl(retencion.getNumero(), clave),
+							clave, razonSocial, xmlAutorizado, pdfBytes);
+					resultado.put("emailEnviado", true);
+					System.out.println("✓ Email enviado a: " + destinatario);
+				} else {
+					resultado.put("emailEnviado", false);
+					System.out.println("ℹ Email omitido: no hay dirección de correo del proveedor.");
+				}
+			} catch (Exception mailEx) {
+				resultado.put("advertenciaEmail",
+						"La retención fue autorizada pero no se pudo enviar el email: "
+						+ mailEx.getMessage()
+						+ ". Reenvíe el email manualmente.");
+				System.err.println("⚠ Error enviando email: " + mailEx.getMessage());
+			}
+
+			// ── FIN ────────────────────────────────────────────────────────────
 			resultado.put("exito", true);
-			resultado.put("mensaje", "Retención procesada completamente");
-			resultado.put("idRetencion", retencion.getId());
-			
-			System.out.println("=== FIN procesarRetencionCompleta - EXITOSO ===");
-		} catch (Throwable e) {
-			System.err.println("ERROR en procesarRetencionCompleta: " + e.getMessage());
+			resultado.put("etapa", "COMPLETADO");
+			resultado.put("mensaje", "Retención procesada y autorizada exitosamente.");
+			System.out.println("=== PROCESO COMPLETO DE RETENCIÓN FINALIZADO ===");
+
+		} catch (Exception e) {
+			System.err.println("ERROR inesperado en procesarRetencionCompleta: " + e.getMessage());
 			e.printStackTrace();
 			resultado.put("exito", false);
+			resultado.put("etapa", "ERROR_INESPERADO");
 			resultado.put("error", e.getMessage());
+			resultado.put("mensaje", "Error inesperado al procesar la retención: " + e.getMessage());
 			throw e;
 		}
+
 		return resultado;
 	}
 	
@@ -601,6 +828,67 @@ public class RetencionServiceImpl implements RetencionService {
 		return resultado;
 	}
 	
+	// =========================================================================
+	// anularRetencion
+	// =========================================================================
+
+	@Override
+	public java.util.Map<String, Object> anularRetencion(Long idRetencion, String motivo, String usuario) throws Throwable {
+		System.out.println("=== anularRetencion | id=" + idRetencion + " | usuario=" + usuario + " ===");
+		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+		resultado.put("exito", false);
+
+		Retencion rtn = retencionDaoService.selectById(idRetencion, NombreEntidadesCobro.RETENCION);
+		if (rtn == null) {
+			resultado.put("mensaje", "Retención con ID " + idRetencion + " no encontrada.");
+			return resultado;
+		}
+		if (Long.valueOf(com.saa.rubros.Estado.INACTIVO).equals(rtn.getEstado())) {
+			resultado.put("mensaje", "La Retención ya se encuentra anulada.");
+			return resultado;
+		}
+
+		String usuarioAnulacion = (usuario != null && !usuario.trim().isEmpty()) ? usuario.trim() : "SISTEMA";
+		String motivoFinal      = (motivo  != null && !motivo.trim().isEmpty())  ? motivo.trim()  : "Anulación manual";
+		LocalDateTime ahora = LocalDateTime.now();
+
+		// Anular asiento contable vinculado (si existe)
+		if (rtn.getAsiento() != null && rtn.getAsiento().getCodigo() != null) {
+			try {
+				com.saa.model.cnt.Asiento asiento = em.find(com.saa.model.cnt.Asiento.class, rtn.getAsiento().getCodigo());
+				if (asiento != null && !Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO).equals(asiento.getEstado())) {
+					asiento.setEstado(Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO));
+					asiento.setMotivoAnulacion(motivoFinal);
+					asiento.setFechaAnulacion(ahora);
+					asiento.setUsuarioAnulacion(usuarioAnulacion);
+					em.merge(asiento);
+					em.flush();
+					System.out.println("✓ Asiento contable anulado: " + asiento.getCodigo());
+					resultado.put("asientoAnulado", asiento.getCodigo());
+				}
+			} catch (Exception e) {
+				System.err.println("⚠ Error al anular asiento: " + e.getMessage());
+				resultado.put("advertenciaAsiento", "Retención anulada pero error al anular el asiento: " + e.getMessage());
+			}
+		}
+
+		rtn.setEstado(Long.valueOf(com.saa.rubros.Estado.INACTIVO));
+		rtn.setMotivoAnulacion(motivoFinal);
+		rtn.setFechaAnulacion(ahora);
+		rtn.setUsuarioAnulacion(usuarioAnulacion);
+		retencionDaoService.save(rtn, rtn.getId());
+		em.flush();
+
+		System.out.println("✓ Retención anulada: " + idRetencion);
+		resultado.put("exito", true);
+		resultado.put("mensaje", "Retención N° " + nvl(rtn.getNumero(), String.valueOf(idRetencion)) + " anulada correctamente.");
+		resultado.put("idRetencion", idRetencion);
+		resultado.put("motivoAnulacion", motivoFinal);
+		resultado.put("fechaAnulacion", ahora.toString());
+		resultado.put("usuarioAnulacion", usuarioAnulacion);
+		return resultado;
+	}
+
 	private LocalDateTime parseFechaAutorizacion(String fechaStr) {
 		try {
 			DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss");

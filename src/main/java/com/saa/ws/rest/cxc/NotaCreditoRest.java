@@ -325,4 +325,48 @@ public class NotaCreditoRest {
 		if (value instanceof String) return Long.parseLong((String) value);
 		return null;
 	}
+
+	/**
+	 * Anula una nota de crédito y su asiento contable vinculado.
+	 * Body JSON: { "idNotaCredito": 1, "motivo": "...", "usuario": "..." }
+	 */
+	@POST
+	@Path("/anular")
+	@Consumes(MediaType.APPLICATION_JSON)
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response anularNotaCredito(java.util.Map<String, Object> params) {
+		System.out.println("LLEGA AL SERVICIO anularNotaCredito");
+		try {
+			Long idNotaCredito = getLongParam(params, "idNotaCredito");
+			String motivo  = (String) params.get("motivo");
+			String usuario = (String) params.get("usuario");
+
+			if (idNotaCredito == null) {
+				java.util.Map<String, Object> err = new java.util.HashMap<>();
+				err.put("exito", false);
+				err.put("mensaje", "El parámetro 'idNotaCredito' es obligatorio.");
+				return Response.status(Response.Status.BAD_REQUEST).entity(err).type(MediaType.APPLICATION_JSON).build();
+			}
+			if (usuario == null || usuario.trim().isEmpty()) {
+				java.util.Map<String, Object> err = new java.util.HashMap<>();
+				err.put("exito", false);
+				err.put("mensaje", "El parámetro 'usuario' es obligatorio.");
+				return Response.status(Response.Status.BAD_REQUEST).entity(err).type(MediaType.APPLICATION_JSON).build();
+			}
+
+			java.util.Map<String, Object> resultado = notaCreditoService.anularNotaCredito(idNotaCredito, motivo, usuario);
+			boolean exito = Boolean.TRUE.equals(resultado.get("exito"));
+			return Response.status(exito ? Response.Status.OK : Response.Status.BAD_REQUEST)
+					.entity(resultado).type(MediaType.APPLICATION_JSON).build();
+
+		} catch (Throwable e) {
+			System.err.println("ERROR en anularNotaCredito REST: " + e.getMessage());
+			e.printStackTrace();
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", "Error inesperado al anular la nota de crédito: " + e.getMessage());
+			err.put("error", e.getMessage());
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity(err).type(MediaType.APPLICATION_JSON).build();
+		}
+	}
 }

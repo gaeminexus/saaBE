@@ -108,11 +108,22 @@ public class NotaDebitoRest {
 			
 			// Convertir el Map a objeto NotaDebito
 			NotaDebito notaDebito = convertMapToNotaDebito(notaDebitoMap);
+
+			// Extraer detalles del JSON si vienen en el request
+			java.util.List<com.saa.model.cxc.DetalleNotaDebito> detalles = null;
+			Object detObj = params.get("detalles");
+			if (detObj instanceof java.util.List) {
+				com.fasterxml.jackson.databind.ObjectMapper mapperDet = createObjectMapper();
+				detalles = mapperDet.convertValue(detObj,
+					mapperDet.getTypeFactory().constructCollectionType(
+						java.util.List.class, com.saa.model.cxc.DetalleNotaDebito.class));
+			}
+			System.out.println("=== detalles recibidos en procesarCompleta: " + (detalles == null ? 0 : detalles.size()) + " ===");
 			
 			// Llamar al servicio que ejecuta todo el proceso
 			java.util.Map<String, Object> resultado = notaDebitoService.procesarNotaDebitoCompleta(
 				notaDebito,
-				null,  // detalles (sin detalles en esta ruta)
+				detalles, // detalles extraídos del JSON
 				null,  // ambiente se configura automáticamente en el servicio
 				null,  // conectaSRI se configura automáticamente en el servicio
 				null,  // destinatario se obtiene del comprador
@@ -277,5 +288,49 @@ public class NotaDebitoRest {
 		if (value instanceof Integer) return ((Integer) value).longValue();
 		if (value instanceof String) return Long.parseLong((String) value);
 		return null;
+	}
+
+	/**
+	 * Anula una nota de débito y su asiento contable vinculado.
+	 * Body JSON: { "idNotaDebito": 1, "motivo": "...", "usuario": "..." }
+	 */
+	@POST
+	@Path("/anular")
+	@Consumes(MediaType.APPLICATION_JSON)
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response anularNotaDebito(java.util.Map<String, Object> params) {
+		System.out.println("LLEGA AL SERVICIO anularNotaDebito");
+		try {
+			Long idNotaDebito = getLongParam(params, "idNotaDebito");
+			String motivo  = (String) params.get("motivo");
+			String usuario = (String) params.get("usuario");
+
+			if (idNotaDebito == null) {
+				java.util.Map<String, Object> err = new java.util.HashMap<>();
+				err.put("exito", false);
+				err.put("mensaje", "El parámetro 'idNotaDebito' es obligatorio.");
+				return Response.status(Response.Status.BAD_REQUEST).entity(err).type(MediaType.APPLICATION_JSON).build();
+			}
+			if (usuario == null || usuario.trim().isEmpty()) {
+				java.util.Map<String, Object> err = new java.util.HashMap<>();
+				err.put("exito", false);
+				err.put("mensaje", "El parámetro 'usuario' es obligatorio.");
+				return Response.status(Response.Status.BAD_REQUEST).entity(err).type(MediaType.APPLICATION_JSON).build();
+			}
+
+			java.util.Map<String, Object> resultado = notaDebitoService.anularNotaDebito(idNotaDebito, motivo, usuario);
+			boolean exito = Boolean.TRUE.equals(resultado.get("exito"));
+			return Response.status(exito ? Response.Status.OK : Response.Status.BAD_REQUEST)
+					.entity(resultado).type(MediaType.APPLICATION_JSON).build();
+
+		} catch (Throwable e) {
+			System.err.println("ERROR en anularNotaDebito REST: " + e.getMessage());
+			e.printStackTrace();
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", "Error inesperado al anular la nota de débito: " + e.getMessage());
+			err.put("error", e.getMessage());
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity(err).type(MediaType.APPLICATION_JSON).build();
+		}
 	}
 }

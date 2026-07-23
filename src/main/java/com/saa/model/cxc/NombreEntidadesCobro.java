@@ -70,4 +70,6 @@ public interface NombreEntidadesCobro {
 	
 	// Retenciones V2
 	String RETENCION_V2 = "RetencionV2";
+	String DETALLE_RETENCION_V2 = "DetalleRetencionV2";
+	String PATH_RETENCION_V2 = "PathRetencionV2";
 }

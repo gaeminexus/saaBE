@@ -615,7 +615,7 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 			" from     Aporte a " +
 			" where    a.tipoAporte.estado = 1 " +
 			"   and    a.fechaTransaccion <= :fechaCorte " +
-			"   and    exists (select 1 from Entidad e where e.codigo = a.entidad.codigo) " +
+			"   and    exists (select 1 from Entidad e where e.codigo = a.entidad.codigo and e.numeroIdentificacion <> '0') " +
 			" group by a.entidad.codigo, a.tipoAporte.codigo, a.tipoAporte.nombre " +
 			" having   sum(a.valor) <> 0 "
 		);

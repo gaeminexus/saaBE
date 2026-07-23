@@ -964,176 +964,67 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 		return resultado;
 	}
 	
-	private String llamarRecepcionSRI(String url, byte[] xmlBytes, PrintWriter log) throws Exception {
-		try {
-			SOAPConnectionFactory soapConnectionFactory = SOAPConnectionFactory.newInstance();
-			SOAPConnection soapConnection = soapConnectionFactory.createConnection();
-			
-			MessageFactory messageFactory = MessageFactory.newInstance();
-			SOAPMessage soapMessage = messageFactory.createMessage();
-			SOAPPart soapPart = soapMessage.getSOAPPart();
-			
-			SOAPEnvelope envelope = soapPart.getEnvelope();
-			
-			SOAPBody soapBody = envelope.getBody();
-			SOAPElement validarComprobante = soapBody.addChildElement("validarComprobante", "", "http://ec.gob.sri.ws.recepcion");
-			SOAPElement xml = validarComprobante.addChildElement(envelope.createName("xml", "", ""));
-			
-			// Codificar bytes raw en Base64 (NO convertir a String: preserva la firma)
-			String xmlBase64 = java.util.Base64.getEncoder().encodeToString(xmlBytes);
-			xml.addTextNode(xmlBase64);
-			
-			soapMessage.saveChanges();
-			
-			SOAPMessage soapResponse = soapConnection.call(soapMessage, url);
-			
-			java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-			soapResponse.writeTo(baos);
-			String respuestaCompleta = baos.toString("UTF-8");
+	// =========================================================================
+	// anularNotaCredito
+	// =========================================================================
 
-			// Loguear la respuesta COMPLETA en stdout Y en archivo para diagnóstico
-			System.out.println(">>> RESPUESTA COMPLETA WS1 SRI:");
-			System.out.println(respuestaCompleta);
-			log.println("Respuesta WS1 completa: " + respuestaCompleta);
-			
-			SOAPBody responseBody = soapResponse.getSOAPBody();
-			NodeList estadoList = responseBody.getElementsByTagName("estado");
-			if (estadoList.getLength() == 0) {
-				estadoList = responseBody.getElementsByTagNameNS("*", "estado");
-			}
-			if (estadoList.getLength() > 0) {
-				String estado = estadoList.item(0).getTextContent();
-				System.out.println(">>> Estado WS1 extraído: [" + estado + "]");
+	@Override
+	public java.util.Map<String, Object> anularNotaCredito(Long idNotaCredito, String motivo, String usuario) throws Throwable {
+		System.out.println("=== anularNotaCredito | id=" + idNotaCredito + " | usuario=" + usuario + " ===");
+		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+		resultado.put("exito", false);
 
-				// Verificar si hay mensaje de clave ya registrada
-				NodeList mensajeList = responseBody.getElementsByTagName("mensaje");
-				if (mensajeList.getLength() == 0) {
-					mensajeList = responseBody.getElementsByTagNameNS("*", "mensaje");
-				}
-				if (mensajeList.getLength() > 0) {
-					String mensaje = mensajeList.item(0).getTextContent();
-					if (mensaje != null && mensaje.contains("CLAVE ACCESO REGISTRADA")) {
-						soapConnection.close();
-						return "CLAVE ACCESO REGISTRADA";
-					}
-				}
-
-				// Si es DEVUELTA, extraer y loguear TODOS los mensajeDevuelta con la razón
-				if ("DEVUELTA".equals(estado)) {
-					StringBuilder sbErrores = new StringBuilder("DEVUELTA");
-					// El SRI incluye <mensajesDevuelta><mensajeDevuelta><identificador><mensaje><informacionAdicional><tipo>
-					NodeList mensajesDevuelta = responseBody.getElementsByTagName("mensajeDevuelta");
-					if (mensajesDevuelta.getLength() == 0)
-						mensajesDevuelta = responseBody.getElementsByTagNameNS("*", "mensajeDevuelta");
-					
-					System.err.println(">>> SRI rechazó el comprobante (DEVUELTA). Errores encontrados: " + mensajesDevuelta.getLength());
-					log.println(">>> Errores DEVUELTA: " + mensajesDevuelta.getLength());
-
-					for (int i = 0; i < mensajesDevuelta.getLength(); i++) {
-						org.w3c.dom.Node nodeMD = mensajesDevuelta.item(i);
-						String identificador = extraerTextoHijo(nodeMD, "identificador");
-						String msgError      = extraerTextoHijo(nodeMD, "mensaje");
-						String infoAd        = extraerTextoHijo(nodeMD, "informacionAdicional");
-						String tipo          = extraerTextoHijo(nodeMD, "tipo");
-						String lineaError = " | [" + tipo + "] Id:" + identificador
-								+ " Msg:" + msgError + " Info:" + infoAd;
-						sbErrores.append(lineaError);
-						System.err.println("  ERROR SRI[" + i + "]: tipo=" + tipo
-								+ " | identificador=" + identificador
-								+ " | mensaje=" + msgError
-								+ " | informacionAdicional=" + infoAd);
-						log.println("  ERROR SRI[" + i + "]: " + lineaError);
-					}
-					soapConnection.close();
-					return sbErrores.toString(); // ej: "DEVUELTA | [ERROR] Id:48 Msg:El campo..."
-				}
-				
-				soapConnection.close();
-				return estado;
-			}
-			
-			System.out.println(">>> ADVERTENCIA: No se encontró <estado> en la respuesta WS1");
-			soapConnection.close();
-			return "SIN_RESPUESTA";
-			
-		} catch (Exception e) {
-			System.err.println("✗ ERROR en llamarRecepcionSRI NC: " + e.getMessage());
-			log.println("Error en llamarRecepcionSRI: " + e.getMessage());
-			e.printStackTrace(log);
-			throw e;
-		}
-	}
-
-	/** Extrae el texto de un nodo hijo por nombre de tag */
-	private String extraerTextoHijo(org.w3c.dom.Node parent, String tagName) {
-		if (parent == null) return "";
-		org.w3c.dom.NodeList hijos = ((org.w3c.dom.Element) parent).getElementsByTagName(tagName);
-		if (hijos.getLength() == 0) return "";
-		return hijos.item(0).getTextContent() != null ? hijos.item(0).getTextContent() : "";
-	}
-	
-	private ResultadoAutorizacion llamarAutorizacionSRI(String url, String claveAcceso) throws Exception {
-		try {
-			SOAPConnectionFactory soapConnectionFactory = SOAPConnectionFactory.newInstance();
-			SOAPConnection soapConnection = soapConnectionFactory.createConnection();
-			
-			MessageFactory messageFactory = MessageFactory.newInstance();
-			SOAPMessage soapMessage = messageFactory.createMessage();
-			SOAPPart soapPart = soapMessage.getSOAPPart();
-			
-			SOAPEnvelope envelope = soapPart.getEnvelope();
-			SOAPBody soapBody = envelope.getBody();
-			SOAPElement autorizacionComprobante = soapBody.addChildElement("autorizacionComprobante", "", "http://ec.gob.sri.ws.autorizacion");
-			SOAPElement claveAccesoElement = autorizacionComprobante.addChildElement(envelope.createName("claveAccesoComprobante", "", ""));
-			claveAccesoElement.addTextNode(claveAcceso);
-			
-			soapMessage.saveChanges();
-			
-			SOAPMessage soapResponse = soapConnection.call(soapMessage, url);
-			
-			java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-			soapResponse.writeTo(baos);
-			String respuestaCompleta = baos.toString("UTF-8");
-			
-			SOAPBody responseBody = soapResponse.getSOAPBody();
-			ResultadoAutorizacion resultado = new ResultadoAutorizacion();
-			resultado.respuestaCompleta = respuestaCompleta;
-			
-			NodeList estadoList = responseBody.getElementsByTagName("estado");
-			if (estadoList.getLength() == 0) estadoList = responseBody.getElementsByTagNameNS("*", "estado");
-			if (estadoList.getLength() > 0) resultado.estado = estadoList.item(0).getTextContent();
-			
-			NodeList numAutList = responseBody.getElementsByTagName("numeroAutorizacion");
-			if (numAutList.getLength() == 0) numAutList = responseBody.getElementsByTagNameNS("*", "numeroAutorizacion");
-			if (numAutList.getLength() > 0) resultado.numeroAutorizacion = numAutList.item(0).getTextContent();
-			
-			NodeList fechaAutList = responseBody.getElementsByTagName("fechaAutorizacion");
-			if (fechaAutList.getLength() == 0) fechaAutList = responseBody.getElementsByTagNameNS("*", "fechaAutorizacion");
-			if (fechaAutList.getLength() > 0) resultado.fechaAutorizacion = fechaAutList.item(0).getTextContent();
-			
-			NodeList comprobanteList = responseBody.getElementsByTagName("comprobante");
-			if (comprobanteList.getLength() == 0) comprobanteList = responseBody.getElementsByTagNameNS("*", "comprobante");
-			if (comprobanteList.getLength() > 0) resultado.comprobanteXML = comprobanteList.item(0).getTextContent();
-			
-			NodeList mensajeIdList = responseBody.getElementsByTagName("identificador");
-			if (mensajeIdList.getLength() == 0) mensajeIdList = responseBody.getElementsByTagNameNS("*", "identificador");
-			if (mensajeIdList.getLength() > 0) resultado.mensajeId = mensajeIdList.item(0).getTextContent();
-			
-			NodeList mensajeList = responseBody.getElementsByTagName("mensaje");
-			if (mensajeList.getLength() == 0) mensajeList = responseBody.getElementsByTagNameNS("*", "mensaje");
-			if (mensajeList.getLength() > 0) resultado.mensaje = mensajeList.item(0).getTextContent();
-			
-			NodeList infoAdicionalList = responseBody.getElementsByTagName("informacionAdicional");
-			if (infoAdicionalList.getLength() == 0) infoAdicionalList = responseBody.getElementsByTagNameNS("*", "informacionAdicional");
-			if (infoAdicionalList.getLength() > 0) resultado.informacionAdicional = infoAdicionalList.item(0).getTextContent();
-			
-			soapConnection.close();
+		com.saa.model.cxc.NotaCredito nc = notaCreditoDaoService.selectById(idNotaCredito, NombreEntidadesCobro.NOTA_CREDITO);
+		if (nc == null) {
+			resultado.put("mensaje", "Nota de Crédito con ID " + idNotaCredito + " no encontrada.");
 			return resultado;
-		} catch (Exception e) {
-			throw e;
 		}
+		if (Long.valueOf(com.saa.rubros.Estado.INACTIVO).equals(nc.getEstado())) {
+			resultado.put("mensaje", "La Nota de Crédito ya se encuentra anulada.");
+			return resultado;
+		}
+
+		String usuarioAnulacion = (usuario != null && !usuario.trim().isEmpty()) ? usuario.trim() : "SISTEMA";
+		String motivoFinal      = (motivo  != null && !motivo.trim().isEmpty())  ? motivo.trim()  : "Anulación manual";
+		java.time.LocalDateTime ahora = java.time.LocalDateTime.now();
+
+		// Anular asiento contable vinculado (si existe)
+		if (nc.getAsiento() != null && nc.getAsiento().getCodigo() != null) {
+			try {
+				com.saa.model.cnt.Asiento asiento = em.find(com.saa.model.cnt.Asiento.class, nc.getAsiento().getCodigo());
+				if (asiento != null && !Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO).equals(asiento.getEstado())) {
+					asiento.setEstado(Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO));
+					asiento.setMotivoAnulacion(motivoFinal);
+					asiento.setFechaAnulacion(ahora);
+					asiento.setUsuarioAnulacion(usuarioAnulacion);
+					em.merge(asiento);
+					em.flush();
+					System.out.println("✓ Asiento contable anulado: " + asiento.getCodigo());
+					resultado.put("asientoAnulado", asiento.getCodigo());
+				}
+			} catch (Exception e) {
+				System.err.println("⚠ Error al anular asiento: " + e.getMessage());
+				resultado.put("advertenciaAsiento", "NC anulada pero error al anular el asiento: " + e.getMessage());
+			}
+		}
+
+		nc.setEstado(Long.valueOf(com.saa.rubros.Estado.INACTIVO));
+		nc.setMotivoAnulacion(motivoFinal);
+		nc.setFechaAnulacion(ahora);
+		nc.setUsuarioAnulacion(usuarioAnulacion);
+		notaCreditoDaoService.save(nc, nc.getId());
+		em.flush();
+
+		System.out.println("✓ Nota de Crédito anulada: " + idNotaCredito);
+		resultado.put("exito", true);
+		resultado.put("mensaje", "Nota de Crédito N° " + nvl(nc.getNumero(), String.valueOf(idNotaCredito)) + " anulada correctamente.");
+		resultado.put("idNotaCredito", idNotaCredito);
+		resultado.put("motivoAnulacion", motivoFinal);
+		resultado.put("fechaAnulacion", ahora.toString());
+		resultado.put("usuarioAnulacion", usuarioAnulacion);
+		return resultado;
 	}
-	
+
 	private LocalDateTime parseFechaAutorizacion(String fechaStr) {
 		try {
 			DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss");
@@ -1435,8 +1326,103 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 	private Long   toLong(Object o)   { return o != null ? ((Number) o).longValue()   : 0L; }
 	private Double nvlD(Double v)     { return v != null ? v : 0.0; }
 
+	private String llamarRecepcionSRI(String url, byte[] xmlBytes, PrintWriter log) throws Exception {
+		try {
+			SOAPConnectionFactory soapConnectionFactory = SOAPConnectionFactory.newInstance();
+			SOAPConnection soapConnection = soapConnectionFactory.createConnection();
+			MessageFactory messageFactory = MessageFactory.newInstance();
+			SOAPMessage soapMessage = messageFactory.createMessage();
+			SOAPPart soapPart = soapMessage.getSOAPPart();
+			SOAPEnvelope envelope = soapPart.getEnvelope();
+			SOAPBody soapBody = envelope.getBody();
+			SOAPElement validarComprobante = soapBody.addChildElement("validarComprobante", "", "http://ec.gob.sri.ws.recepcion");
+			SOAPElement xml = validarComprobante.addChildElement(envelope.createName("xml", "", ""));
+			String xmlBase64 = java.util.Base64.getEncoder().encodeToString(xmlBytes);
+			xml.addTextNode(xmlBase64);
+			soapMessage.saveChanges();
+
+			SOAPMessage soapResponse = soapConnection.call(soapMessage, url);
+			java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+			soapResponse.writeTo(baos);
+			log.println("Respuesta WS1: " + baos.toString("UTF-8"));
+
+			SOAPBody responseBody = soapResponse.getSOAPBody();
+			NodeList estadoList = responseBody.getElementsByTagName("estado");
+			if (estadoList.getLength() == 0) estadoList = responseBody.getElementsByTagNameNS("*", "estado");
+			if (estadoList.getLength() > 0) {
+				String estado = estadoList.item(0).getTextContent();
+				NodeList mensajeList = responseBody.getElementsByTagName("mensaje");
+				if (mensajeList.getLength() == 0) mensajeList = responseBody.getElementsByTagNameNS("*", "mensaje");
+				if (mensajeList.getLength() > 0) {
+					String mensaje = mensajeList.item(0).getTextContent();
+					if (mensaje != null && mensaje.contains("CLAVE ACCESO REGISTRADA")) {
+						soapConnection.close();
+						return "CLAVE ACCESO REGISTRADA";
+					}
+				}
+				soapConnection.close();
+				return estado;
+			}
+			soapConnection.close();
+			return "SIN_RESPUESTA";
+		} catch (Exception e) {
+			log.println("Error en llamarRecepcionSRI: " + e.getMessage());
+			e.printStackTrace(log);
+			throw e;
+		}
+	}
+
+	private ResultadoAutorizacion llamarAutorizacionSRI(String url, String claveAcceso) throws Exception {
+		SOAPConnectionFactory soapConnectionFactory = SOAPConnectionFactory.newInstance();
+		SOAPConnection soapConnection = soapConnectionFactory.createConnection();
+		MessageFactory messageFactory = MessageFactory.newInstance();
+		SOAPMessage soapMessage = messageFactory.createMessage();
+		SOAPPart soapPart = soapMessage.getSOAPPart();
+		SOAPEnvelope envelope = soapPart.getEnvelope();
+		SOAPBody soapBody = envelope.getBody();
+		SOAPElement autorizacionComprobante = soapBody.addChildElement("autorizacionComprobante", "", "http://ec.gob.sri.ws.autorizacion");
+		SOAPElement claveAccesoElement = autorizacionComprobante.addChildElement(envelope.createName("claveAccesoComprobante", "", ""));
+		claveAccesoElement.addTextNode(claveAcceso);
+		soapMessage.saveChanges();
+
+		SOAPMessage soapResponse = soapConnection.call(soapMessage, url);
+		java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+		soapResponse.writeTo(baos);
+		String responseStr = baos.toString("UTF-8");
+
+		ResultadoAutorizacion resultado = new ResultadoAutorizacion();
+		resultado.respuestaCompleta = responseStr;
+
+		SOAPBody responseBody = soapResponse.getSOAPBody();
+
+		NodeList estadoList = responseBody.getElementsByTagNameNS("*", "estado");
+		if (estadoList.getLength() > 0) resultado.estado = estadoList.item(0).getTextContent();
+
+		NodeList numAuthList = responseBody.getElementsByTagNameNS("*", "numeroAutorizacion");
+		if (numAuthList.getLength() > 0) resultado.numeroAutorizacion = numAuthList.item(0).getTextContent();
+
+		NodeList fechaAuthList = responseBody.getElementsByTagNameNS("*", "fechaAutorizacion");
+		if (fechaAuthList.getLength() > 0) resultado.fechaAutorizacion = fechaAuthList.item(0).getTextContent();
+
+		NodeList comprobanteList = responseBody.getElementsByTagNameNS("*", "comprobante");
+		if (comprobanteList.getLength() > 0) resultado.comprobanteXML = comprobanteList.item(0).getTextContent();
+
+		NodeList mensajesList = responseBody.getElementsByTagNameNS("*", "mensaje");
+		if (mensajesList.getLength() > 0) {
+			org.w3c.dom.Node msgNode = mensajesList.item(0);
+			NodeList idList   = ((org.w3c.dom.Element) msgNode).getElementsByTagNameNS("*", "identificador");
+			NodeList msgList  = ((org.w3c.dom.Element) msgNode).getElementsByTagNameNS("*", "mensaje");
+			NodeList infoList = ((org.w3c.dom.Element) msgNode).getElementsByTagNameNS("*", "informacionAdicional");
+			if (idList.getLength()   > 0) resultado.mensajeId           = idList.item(0).getTextContent();
+			if (msgList.getLength()  > 0) resultado.mensaje             = msgList.item(0).getTextContent();
+			if (infoList.getLength() > 0) resultado.informacionAdicional = infoList.item(0).getTextContent();
+		}
+
+		soapConnection.close();
+		return resultado;
+	}
+
 	private String getBaseUploadDirectory() {
-		// Verificar si hay una variable de sistema configurada
 		String uploadDir = System.getProperty("saa.upload.dir");
 		if (uploadDir != null && !uploadDir.trim().isEmpty()) {
 			return uploadDir.endsWith("/") || uploadDir.endsWith("\\") ? uploadDir : uploadDir + "/";

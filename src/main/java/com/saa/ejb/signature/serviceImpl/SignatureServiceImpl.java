@@ -17,6 +17,8 @@ import com.saa.model.cxc.NombreEntidadesCobro;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
+import jakarta.ejb.TransactionAttribute;
+import jakarta.ejb.TransactionAttributeType;
 
 /**
  * Implementación del servicio de firma electrónica compatible con SRI Ecuador.
@@ -222,6 +224,7 @@ public class SignatureServiceImpl implements SignatureService {
 	}
 
 	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
 	public String firmarXMLFacturador(String xmlSinFirmar, Long idFacturador) throws Exception {
 		System.out.println("Firmando XML para facturador ID: " + idFacturador);
 

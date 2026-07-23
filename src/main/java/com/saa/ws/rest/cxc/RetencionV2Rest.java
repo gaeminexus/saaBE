@@ -95,6 +95,141 @@ public class RetencionV2Rest {
 	}
 	
 	/**
+	 * ENDPOINT PRINCIPAL: Procesa un comprobante de retención V2 completo.
+	 * Ejecuta todo el flujo: valida, graba, genera XML v2.0.0, firma y autoriza ante el SRI.
+	 * Si el facturador tiene generaConta=1, también genera el asiento contable.
+	 *
+	 * Body JSON esperado:
+	 * <pre>
+	 * {
+	 *   "retencion": {
+	 *     "facturador": { "id": 1 },
+	 *     "proveedor":  { "codigo": 10 },
+	 *     "ptoEmision": { "id": 1 },
+	 *     "numEstablecimiento": "001",
+	 *     "numPtoEmision": "001",
+	 *     "periodoFiscal": "06/2026",
+	 *     "fecha": "2026-07-23T00:00:00",
+	 *     "observacion": "...",
+	 *     "detalleRetencionV2": [
+	 *       {
+	 *         "tipoDocReten":           "01",
+	 *         "numDocReten":            "001-001-000000123",
+	 *         "fechaEmiDoc":            "2026-07-20",
+	 *         "docResAutorizacion":     "2606202301...",
+	 *         "docResTotalSinImpuestos": 1000.00,
+	 *         "docResIvaCero":           0.00,
+	 *         "docResPorIva":            15.00,
+	 *         "docResTotalIva":          150.00,
+	 *         "docResTotal":             1150.00,
+	 *         "docResForPago":           "01",
+	 *         "codImpuesto":             "1",
+	 *         "codRetencion":            "303",
+	 *         "baseImponible":           1000.00,
+	 *         "porcentajeReten":         1.00,
+	 *         "valorReten":              10.00
+	 *       }
+	 *     ]
+	 *   }
+	 * }
+	 * </pre>
+	 *
+	 * Configuración automática (forzada en fase de pruebas):
+	 * - ambiente:     1 (PRUEBA → celcer.sri.gob.ec). Cambiar a 2L para producción.
+	 * - conectaSRI:   1 (SI)
+	 * - destinatario: se obtiene del email del proveedor
+	 * - pathLogo:     resources/logos/logo_aso.png
+	 *
+	 * @param params Map con la clave "retencion"
+	 * @return JSON con el resultado completo del proceso
+	 */
+	@POST
+	@Path("/procesarCompleta")
+	@Consumes(MediaType.APPLICATION_JSON)
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response procesarRetencionV2Completa(java.util.Map<String, Object> params) {
+		System.out.println("=== LLEGA AL SERVICIO procesarRetencionV2Completa ===");
+		try {
+			@SuppressWarnings("unchecked")
+			java.util.Map<String, Object> retencionMap =
+					(java.util.Map<String, Object>) params.get("retencion");
+
+			if (retencionMap == null) {
+				java.util.Map<String, Object> err = new java.util.HashMap<>();
+				err.put("exito", false);
+				err.put("etapa", "PARAMETROS");
+				err.put("mensaje", "El parámetro 'retencion' es obligatorio.");
+				return Response.status(Response.Status.BAD_REQUEST)
+						.entity(err).type(MediaType.APPLICATION_JSON).build();
+			}
+
+			// ── Extraer detalleRetencionV2 del mapa antes de convertir ────────
+			@SuppressWarnings("unchecked")
+			java.util.List<java.util.Map<String, Object>> detallesMap =
+					(java.util.List<java.util.Map<String, Object>>) retencionMap.get("detalleRetencionV2");
+
+			if (detallesMap == null || detallesMap.isEmpty()) {
+				java.util.Map<String, Object> err = new java.util.HashMap<>();
+				err.put("exito", false);
+				err.put("etapa", "PARAMETROS");
+				err.put("mensaje", "La retención V2 debe tener al menos un detalle (detalleRetencionV2).");
+				return Response.status(Response.Status.BAD_REQUEST)
+						.entity(err).type(MediaType.APPLICATION_JSON).build();
+			}
+
+			// ── Convertir cabecera y detalles ─────────────────────────────────
+			com.fasterxml.jackson.databind.ObjectMapper mapper = createObjectMapper();
+			RetencionV2 retencion = mapper.convertValue(retencionMap, RetencionV2.class);
+
+			java.util.List<com.saa.model.cxc.DetalleRetencionV2> detalles = new java.util.ArrayList<>();
+			for (java.util.Map<String, Object> dMap : detallesMap) {
+				com.saa.model.cxc.DetalleRetencionV2 det =
+						mapper.convertValue(dMap, com.saa.model.cxc.DetalleRetencionV2.class);
+				detalles.add(det);
+			}
+
+			// ── Llamar al servicio ────────────────────────────────────────────
+			java.util.Map<String, Object> resultado = retencionV2Service.procesarRetencionV2Completa(
+					retencion, detalles,
+					1L,   // ambiente PRUEBA — cambiar a 2L para producción
+					1L,   // conectaSRI = SI
+					null, // destinatario: se toma del email del proveedor
+					null  // pathLogo: default
+			);
+
+			// ── Determinar código HTTP según resultado ────────────────────────
+			boolean exito = Boolean.TRUE.equals(resultado.get("exito"));
+			String etapa  = (String) resultado.getOrDefault("etapa", "");
+
+			if (exito) {
+				return Response.status(Response.Status.OK)
+						.entity(resultado).type(MediaType.APPLICATION_JSON).build();
+			} else if ("VALIDACION_CONTABLE".equals(etapa) || "PARAMETROS".equals(etapa)) {
+				return Response.status(422)
+						.entity(resultado).type(MediaType.APPLICATION_JSON).build();
+			} else if ("AUTORIZACION_SRI".equals(etapa)) {
+				// SRI rechazó: el doc existe pero no fue autorizado → 200 con exito=false
+				return Response.status(Response.Status.OK)
+						.entity(resultado).type(MediaType.APPLICATION_JSON).build();
+			} else {
+				return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+						.entity(resultado).type(MediaType.APPLICATION_JSON).build();
+			}
+
+		} catch (Throwable e) {
+			System.err.println("ERROR en procesarRetencionV2Completa REST: " + e.getMessage());
+			e.printStackTrace();
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("etapa", "ERROR_INESPERADO");
+			err.put("mensaje", "Error inesperado en el servidor: " + e.getMessage());
+			err.put("error", e.getMessage());
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+					.entity(err).type(MediaType.APPLICATION_JSON).build();
+		}
+	}
+
+	/**
 	 * Genera el XML de retención V2 electrónica según estándares del SRI v2.0.0
 	 * @param clave Clave de acceso de la retención
 	 * @param ambiente Ambiente (1=PRUEBA, 2=PRODUCCION)
@@ -190,5 +325,13 @@ public class RetencionV2Rest {
 		if (value instanceof Integer) return ((Integer) value).longValue();
 		if (value instanceof String) return Long.parseLong((String) value);
 		return null;
+	}
+
+	private com.fasterxml.jackson.databind.ObjectMapper createObjectMapper() {
+		com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+		mapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
+		mapper.disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+		mapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+		return mapper;
 	}
 }

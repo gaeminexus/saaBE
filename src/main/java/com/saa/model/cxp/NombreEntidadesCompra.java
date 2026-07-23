@@ -34,6 +34,7 @@ public interface NombreEntidadesCompra {
 
 	// Retención Compra V2
 	String RETENCION_COMPRA_V2 = "RetencionCompraV2";
+	String DETALLE_RETENCION_COMPRA_V2 = "DetalleRetencionCompraV2";
 
 	// Carga archivo TXT SRI
 	String CARGA_ARCHIVO_TXT  = "CargaArchivoTxt";

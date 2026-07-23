@@ -11,6 +11,7 @@ import java.time.LocalDateTime;
 
 import com.saa.model.scp.Usuario;
 import com.saa.model.tsr.Titular;
+import com.saa.model.cnt.Asiento;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
@@ -310,4 +311,36 @@ public class Retencion implements Serializable {
 	public void setEstadoEmision(Long estadoEmision) {
 		this.estadoEmision = estadoEmision;
 	}
+
+	// ── Asiento contable ─────────────────────────────────────────────────────
+
+	@ManyToOne
+	@JoinColumn(name = "ASIENTO", referencedColumnName = "ASNTCDGO")
+	private Asiento asiento;
+
+	// ── Campos de anulación ──────────────────────────────────────────────────
+
+	@Basic
+	@Column(name = "MOTIVOANULACION", length = 1000)
+	private String motivoAnulacion;
+
+	@Basic
+	@Column(name = "FECHAANULACION")
+	private java.time.LocalDateTime fechaAnulacion;
+
+	@Basic
+	@Column(name = "USUARIOANULACION", length = 200)
+	private String usuarioAnulacion;
+
+	public Asiento getAsiento() { return asiento; }
+	public void setAsiento(Asiento asiento) { this.asiento = asiento; }
+
+	public String getMotivoAnulacion() { return motivoAnulacion; }
+	public void setMotivoAnulacion(String motivoAnulacion) { this.motivoAnulacion = motivoAnulacion; }
+
+	public java.time.LocalDateTime getFechaAnulacion() { return fechaAnulacion; }
+	public void setFechaAnulacion(java.time.LocalDateTime fechaAnulacion) { this.fechaAnulacion = fechaAnulacion; }
+
+	public String getUsuarioAnulacion() { return usuarioAnulacion; }
+	public void setUsuarioAnulacion(String usuarioAnulacion) { this.usuarioAnulacion = usuarioAnulacion; }
 }

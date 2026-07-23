@@ -48,6 +48,7 @@ public interface RetencionV2Service extends EntityService<RetencionV2> {
 	 * @throws Throwable si ocurre error grave en grabado, XML, firma o autorización
 	 */
 	java.util.Map<String, Object> procesarRetencionV2Completa(RetencionV2 retencion,
+			java.util.List<com.saa.model.cxc.DetalleRetencionV2> detalles,
 			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable;
 
 }

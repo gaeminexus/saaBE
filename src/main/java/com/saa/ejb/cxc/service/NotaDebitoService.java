@@ -50,4 +50,13 @@ public interface NotaDebitoService extends EntityService<NotaDebito> {
 			java.util.List<com.saa.model.cxc.DetalleNotaDebito> detalles,
 			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable;
 
+	/**
+	 * Anula una nota de débito y su asiento contable vinculado.
+	 * @param idNotaDebito ID de la nota de débito
+	 * @param motivo Motivo de anulación
+	 * @param usuario Usuario que realiza la anulación
+	 * @return Map con resultado de la operación
+	 */
+	java.util.Map<String, Object> anularNotaDebito(Long idNotaDebito, String motivo, String usuario) throws Throwable;
+
 }

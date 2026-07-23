@@ -995,6 +995,197 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                 + "y configure las cuentas auxiliares antes de activar este método.");
     }
 
+    // ---------------------------------------------------------------
+    // validarCuentasContablesRetencion
+    // ---------------------------------------------------------------
+
+    @Override
+    public List<String> validarCuentasContablesRetencion(
+            com.saa.model.cxc.Retencion retencion,
+            List<com.saa.model.cxc.DetalleRetencion> detalles,
+            Long idEmpresa) {
+
+        List<String> errores = new ArrayList<>();
+
+        // 1. Validar cuenta CxP del proveedor (tipoCuenta=1, rol proveedor)
+        if (retencion.getProveedor() == null) {
+            errores.add("La retención no tiene proveedor asignado.");
+        } else {
+            PlanCuenta cuentaProveedor = obtenerCuentaProveedor(
+                    retencion.getProveedor().getCodigo(), idEmpresa);
+            if (cuentaProveedor == null) {
+                errores.add("El proveedor '" + retencion.getProveedor().getNombre()
+                        + "' (ID: " + retencion.getProveedor().getCodigo()
+                        + ") no tiene cuenta contable configurada. "
+                        + "Configure la cuenta en Tesorería → Persona → Cuentas Contables "
+                        + "(Tipo: Facturas, Rol: Proveedor).");
+            }
+        }
+
+        // 2. Validar cuenta contable de cada código de retención en TSRI
+        if (detalles != null) {
+            java.util.Set<String> codigosValidados = new java.util.HashSet<>();
+            for (com.saa.model.cxc.DetalleRetencion d : detalles) {
+                String cod = d.getCodRetencion();
+                if (cod != null && !cod.isEmpty() && !codigosValidados.contains(cod)) {
+                    codigosValidados.add(cod);
+                    PlanCuenta pc = obtenerCuentaPorCodigoTsri(cod);
+                    if (pc == null) {
+                        errores.add("El código de retención '" + cod
+                                + "' no tiene cuenta contable asignada en TSRI. "
+                                + "Configure la cuenta en Facturación → Tipos SRI.");
+                    }
+                }
+            }
+        }
+
+        return errores;
+    }
+
+    // ---------------------------------------------------------------
+    // generarAsientoRetencion
+    // ---------------------------------------------------------------
+
+    @Override
+    public com.saa.model.cnt.Asiento generarAsientoRetencion(
+            Long idRetencion, Long idEmpresa, int codigoAltTipoAsiento,
+            java.time.LocalDate fechaAsiento, String observaciones, String usuario)
+            throws Throwable {
+
+        System.out.println("=== generarAsientoRetencion | idRetencion=" + idRetencion
+                + " | empresa=" + idEmpresa + " ===");
+
+        // 1. Cargar la retención
+        com.saa.model.cxc.Retencion retencion =
+                em.find(com.saa.model.cxc.Retencion.class, idRetencion);
+        if (retencion == null) {
+            throw new IncomeException("No se encontró la Retención con ID: " + idRetencion);
+        }
+
+        // 2. Cargar detalles activos
+        @SuppressWarnings("unchecked")
+        List<com.saa.model.cxc.DetalleRetencion> detalles = em.createQuery(
+                "SELECT d FROM DetalleRetencion d WHERE d.retencion.id = :id AND d.estado = 1")
+                .setParameter("id", idRetencion)
+                .getResultList();
+
+        if (detalles == null || detalles.isEmpty()) {
+            throw new IncomeException("La Retención " + idRetencion + " no tiene detalles activos.");
+        }
+
+        // 3. Construir líneas del asiento
+        List<DetalleAsiento> lineas = new ArrayList<>();
+
+        // ── HABER: una línea por detalle de retención, cuenta desde TSRI.codRetencion ──
+        double totalRetenido = 0.0;
+        for (com.saa.model.cxc.DetalleRetencion det : detalles) {
+            String codRetencion = det.getCodRetencion();
+            PlanCuenta pcReten = obtenerCuentaPorCodigoTsri(codRetencion);
+            if (pcReten == null) {
+                throw new IncomeException(
+                        "No se encontró cuenta contable para el código de retención '"
+                        + codRetencion + "' en TSRI. "
+                        + "Configure la cuenta en Facturación → Tipos SRI.");
+            }
+            double valor = nvl(det.getValorReten());
+            totalRetenido += valor;
+
+            DetalleAsiento lineaHaber = new DetalleAsiento();
+            lineaHaber.setPlanCuenta(pcReten);
+            lineaHaber.setNumeroCuenta(pcReten.getCuentaContable());
+            lineaHaber.setNombreCuenta(pcReten.getNombre());
+            lineaHaber.setDescripcion("Retención código " + codRetencion
+                    + " | Base: " + String.format(java.util.Locale.US, "%.2f", nvl(det.getBaseImponible()))
+                    + " | " + nvl2(det.getPorcentajeReten()) + "%");
+            lineaHaber.setValorDebe(0.0);
+            lineaHaber.setValorHaber(valor);
+            lineas.add(lineaHaber);
+        }
+
+        // ── DEBE: cuenta CxP del proveedor por el total retenido ──────────────
+        if (retencion.getProveedor() == null) {
+            throw new IncomeException("La Retención no tiene proveedor asignado.");
+        }
+        PlanCuenta cuentaProveedor = obtenerCuentaProveedor(
+                retencion.getProveedor().getCodigo(), idEmpresa);
+        if (cuentaProveedor == null) {
+            throw new IncomeException("No se encontró cuenta contable (tipo factura) "
+                    + "para el proveedor ID: " + retencion.getProveedor().getCodigo()
+                    + " en la empresa: " + idEmpresa);
+        }
+
+        DetalleAsiento lineaDebe = new DetalleAsiento();
+        lineaDebe.setPlanCuenta(cuentaProveedor);
+        lineaDebe.setNumeroCuenta(cuentaProveedor.getCuentaContable());
+        lineaDebe.setNombreCuenta(cuentaProveedor.getNombre());
+        lineaDebe.setDescripcion("Proveedor: " + retencion.getProveedor().getNombre());
+        lineaDebe.setValorDebe(totalRetenido);
+        lineaDebe.setValorHaber(0.0);
+        // Insertar DEBE al inicio
+        lineas.add(0, lineaDebe);
+
+        // 4. Generar asiento
+        return generarAsiento(idEmpresa, codigoAltTipoAsiento, fechaAsiento,
+                observaciones, usuario, lineas);
+    }
+
+    /**
+     * Obtiene la cuenta contable CxP del proveedor (tipoCuenta=1, rol proveedor).
+     * Usa la misma tabla PersonaCuentaContable pero buscando el titular en rol proveedor.
+     */
+    private PlanCuenta obtenerCuentaProveedor(Long codigoTitular, Long idEmpresa) {
+        System.out.println("  [obtenerCuentaProveedor] titular=" + codigoTitular
+                + " | empresa=" + idEmpresa);
+        try {
+            String sql = "SELECT pcc.planCuenta FROM PersonaCuentaContable pcc "
+                    + "JOIN pcc.personaRol pr "
+                    + "WHERE pr.titular.codigo = :titular "
+                    + "AND pcc.tipoCuenta = 1 "
+                    + "AND pcc.empresa.codigo = :empresa";
+            Query q = em.createQuery(sql);
+            q.setParameter("titular", codigoTitular);
+            q.setParameter("empresa", idEmpresa);
+            q.setMaxResults(1);
+            List<?> result = q.getResultList();
+            if (result.isEmpty()) return null;
+            PlanCuenta pc = (PlanCuenta) result.get(0);
+            System.out.println("  [obtenerCuentaProveedor] ✓ " + pc.getCuentaContable());
+            return pc;
+        } catch (Exception e) {
+            System.err.println("⚠ Error buscando cuenta del proveedor " + codigoTitular + ": " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Obtiene la cuenta contable desde TSRI por su campo CODIGO.
+     * Se usa para mapear DetalleRetencion.codRetencion → PlanCuenta.
+     */
+    private PlanCuenta obtenerCuentaPorCodigoTsri(String codigoTsri) {
+        try {
+            String sql = "SELECT t.planCuenta FROM Tsri t "
+                    + "WHERE t.codigo = :codigo AND t.estado = 1";
+            Query q = em.createQuery(sql);
+            q.setParameter("codigo", codigoTsri);
+            q.setMaxResults(1);
+            List<?> result = q.getResultList();
+            return result.isEmpty() ? null : (PlanCuenta) result.get(0);
+        } catch (Exception e) {
+            System.err.println("⚠ Error buscando cuenta TSRI codigo=" + codigoTsri + ": " + e.getMessage());
+            return null;
+        }
+    }
+
+    private String nvl2(Double val) {
+        if (val == null) return "0";
+        if (val == Math.floor(val)) return String.valueOf(val.intValue());
+        return String.format(java.util.Locale.US, "%.2f", val);
+    }
+
+    // =========================================================================
+    // Stub generarAsientoRetencionV2
+    // =========================================================================
+
     @Override
     public com.saa.model.cnt.Asiento generarAsientoRetencionV2(
             Long idRetencionV2, Long idEmpresa, int codigoAltTipoAsiento,

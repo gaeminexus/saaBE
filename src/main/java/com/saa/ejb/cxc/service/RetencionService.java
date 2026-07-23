@@ -50,4 +50,13 @@ public interface RetencionService extends EntityService<Retencion> {
 			java.util.List<com.saa.model.cxc.DetalleRetencion> detalles,
 			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable;
 
+	/**
+	 * Anula una retención y su asiento contable vinculado.
+	 * @param idRetencion ID de la retención
+	 * @param motivo Motivo de anulación
+	 * @param usuario Usuario que realiza la anulación
+	 * @return Map con resultado de la operación
+	 */
+	java.util.Map<String, Object> anularRetencion(Long idRetencion, String motivo, String usuario) throws Throwable;
+
 }

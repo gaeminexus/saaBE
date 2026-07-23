@@ -23,8 +23,11 @@ import com.saa.model.cxc.NotaDebito;
 import com.saa.model.cxc.NombreEntidadesCobro;
 import com.saa.model.cxc.PathNotaDebito;
 import com.saa.rubros.Estado;
+import com.saa.rubros.EstadoAsiento;
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
+import jakarta.ejb.TransactionAttribute;
+import jakarta.ejb.TransactionAttributeType;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
@@ -58,6 +61,10 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 
 	@EJB
 	private com.saa.basico.ejb.DetalleRubroService detalleRubroService;
+
+	/** Auto-inyección para llamadas internas que requieren nueva transacción */
+	@EJB
+	private NotaDebitoService self;
 
 	@PersistenceContext
 	private EntityManager em;
@@ -183,8 +190,14 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 			queryDetalle.setParameter("notaDebitoId", notaDebito.getId());
 			@SuppressWarnings("unchecked")
 			List<Object> detalles = queryDetalle.getResultList();
+			System.out.println(">>> generarXMLNotaDebito | detalles encontrados en BD: " + detalles.size());
+			for (Object obj : detalles) {
+				DetalleNotaDebito d = (DetalleNotaDebito) obj;
+				System.out.println("    - detalle id=" + d.getId() + " desc=" + d.getDescripcion() + " valor=" + d.getValor() + " baseImponible=" + d.getBaseImponible());
+			}
 			
 			String xmlContent = generarXMLContentNotaDebito(notaDebito, dirEstablecimiento, detalles, ambiente);
+			System.out.println(">>> XML NotaDebito GENERADO (sin firmar):\n" + xmlContent);
 			
 			String pathRelativo = "resources/" + idFacturador + "/ntdb/g/" + clave + ".xml";
 			String baseUploadDir = getBaseUploadDirectory();
@@ -238,15 +251,24 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 		try {
 			if (notaDebito.getTitular().getRubroTipoIdentificacionP() != null
 					&& notaDebito.getTitular().getRubroTipoIdentificacionH() != null) {
-				String valorAlfa = detalleRubroService.selectValorStringByRubAltDetAlt(
-						notaDebito.getTitular().getRubroTipoIdentificacionP().intValue(),
-						notaDebito.getTitular().getRubroTipoIdentificacionH().intValue());
-				if (valorAlfa != null && !valorAlfa.isEmpty()) {
+				// Usar em.createQuery directo en lugar de EJB para evitar que una excepción
+				// cruce el boundary EJB y marque la transacción JTA como STATUS_MARKED_ROLLBACK.
+				@SuppressWarnings("unchecked")
+				java.util.List<String> valorAlfaList = em.createQuery(
+						"SELECT dr.valorAlfanumerico FROM DetalleRubro dr " +
+						"WHERE dr.rubro.codigoAlterno = :rubAlt " +
+						"AND dr.codigoAlterno = :detAlt")
+						.setParameter("rubAlt", notaDebito.getTitular().getRubroTipoIdentificacionP())
+						.setParameter("detAlt", notaDebito.getTitular().getRubroTipoIdentificacionH())
+						.setMaxResults(1)
+						.getResultList();
+				if (!valorAlfaList.isEmpty() && valorAlfaList.get(0) != null && !valorAlfaList.get(0).isEmpty()) {
+					String valorAlfa = valorAlfaList.get(0);
 					// SRI exige siempre 2 dígitos: "04", "05", "06", etc.
 					tipoIdNd = valorAlfa.length() == 1 ? "0" + valorAlfa : valorAlfa;
 				}
 			}
-		} catch (Throwable e) {
+		} catch (Exception e) {
 			System.err.println("⚠ Error al obtener tipoIdentificación ND, usando default 05: " + e.getMessage());
 		}
 		writeElement(writer, "tipoIdentificacionComprador", tipoIdNd, 4);
@@ -271,14 +293,21 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 		
 		// impuestos
 		writeImpuestos(writer, notaDebito);
-		
-		// motivos
-		writeMotivos(writer, detalles);
-		
+
+		// valorTotal — obligatorio por esquema SRI v1.0.0, DENTRO de infoNotaDebito
+		Double valorTotal = sumNulls(notaDebito.getSubtotal(), notaDebito.getSubcero(), notaDebito.getvIVA());
+		writeElement(writer, "valorTotal", formatDecimal(valorTotal), 4);
+
+		// pagos — DENTRO de infoNotaDebito, obligatorio según esquema SRI v1.0.0
+		writePagos(writer, notaDebito);
+
 		writer.writeCharacters("  ");
 		writer.writeEndElement(); // infoNotaDebito
 		writer.writeCharacters("\n");
-		
+
+		// motivos — FUERA de infoNotaDebito, según esquema SRI v1.0.0
+		writeMotivos(writer, detalles);
+
 		// infoAdicional
 		writeInfoAdicional(writer, notaDebito);
 		
@@ -358,22 +387,61 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 		writer.writeCharacters("\n");
 	}
 	
-	private void writeMotivos(XMLStreamWriter writer, List<Object> detalles) throws Exception {
+	private void writePagos(XMLStreamWriter writer, NotaDebito notaDebito) throws Exception {
+		// Usar siempre el total de la nota de débito con forma de pago "20" (Otros).
+		// NO se consulta ninguna tabla auxiliar de formas de pago para evitar que
+		// un error SQL marque la transacción como STATUS_MARKED_ROLLBACK y bloquee
+		// los pasos siguientes (selectById en autorizarNotaDebito).
+		Double totalND = sumNulls(notaDebito.getSubtotal(), notaDebito.getSubcero(), notaDebito.getvIVA());
+		String formaPago = "20"; // "20" = Otros
 		writer.writeCharacters("    ");
+		writer.writeStartElement("pagos");
+		writer.writeCharacters("\n");
+		writer.writeCharacters("      ");
+		writer.writeStartElement("pago");
+		writer.writeCharacters("\n");
+		writeElement(writer, "formaPago", formaPago, 8);
+		writeElement(writer, "total", formatDecimal(totalND), 8);
+		writer.writeCharacters("      ");
+		writer.writeEndElement(); // pago
+		writer.writeCharacters("\n");
+		writer.writeCharacters("    ");
+		writer.writeEndElement(); // pagos
+		writer.writeCharacters("\n");
+	}
+
+	private void writeMotivos(XMLStreamWriter writer, List<Object> detalles) throws Exception {
+		writer.writeCharacters("  ");
 		writer.writeStartElement("motivos");
 		writer.writeCharacters("\n");
-		for (Object obj : detalles) {
-			DetalleNotaDebito d = (DetalleNotaDebito) obj;
-			writer.writeCharacters("      ");
+		if (detalles == null || detalles.isEmpty()) {
+			// El SRI exige al menos un <motivo>; si no hay detalles se pone uno genérico
+			// para evitar el error: "The content of element 'motivos' is not complete"
+			System.err.println("⚠ writeMotivos: lista de detalles vacía — insertando motivo genérico");
+			writer.writeCharacters("    ");
 			writer.writeStartElement("motivo");
 			writer.writeCharacters("\n");
-			writeElement(writer, "razon", nvl(d.getDescripcion(), ""), 8);
-			writeElement(writer, "valor", formatDecimal(d.getValor()), 8);
-			writer.writeCharacters("      ");
+			writeElement(writer, "razon", "Nota de Débito", 6);
+			writeElement(writer, "valor", "0.00", 6);
+			writer.writeCharacters("    ");
 			writer.writeEndElement(); // motivo
 			writer.writeCharacters("\n");
+		} else {
+			for (Object obj : detalles) {
+				DetalleNotaDebito d = (DetalleNotaDebito) obj;
+				// El PHP de referencia usa baseImponible para <valor> del motivo
+				Double valorMotivo = d.getBaseImponible() != null ? d.getBaseImponible() : d.getValor();
+				writer.writeCharacters("    ");
+				writer.writeStartElement("motivo");
+				writer.writeCharacters("\n");
+				writeElement(writer, "razon", nvl(d.getDescripcion(), ""), 6);
+				writeElement(writer, "valor", formatDecimal(valorMotivo), 6);
+				writer.writeCharacters("    ");
+				writer.writeEndElement(); // motivo
+				writer.writeCharacters("\n");
+			}
 		}
-		writer.writeCharacters("    ");
+		writer.writeCharacters("  ");
 		writer.writeEndElement(); // motivos
 		writer.writeCharacters("\n");
 	}
@@ -832,6 +900,10 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 									ndActualizada.getId(), idEmpresaConta,
 									com.saa.rubros.TipoAsientos.FACTURAS_VENTA,
 									fechaAsiento, obsAsiento, usuarioAsiento);
+					// Vincular el asiento a la nota de débito y persistir
+					ndActualizada.setAsiento(asientoGenerado);
+					notaDebitoDaoService.save(ndActualizada, ndActualizada.getId());
+					System.out.println("✓ Asiento contable vinculado a ND: " + asientoGenerado.getNumeroAlterno());
 					resultado.put("asiento", asientoGenerado.getNumeroAlterno());
 					System.out.println("✓ Asiento contable generado: " + asientoGenerado.getNumeroAlterno());
 				} catch (Exception e) {
@@ -1013,6 +1085,67 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 		return resultado;
 	}
 	
+	// =========================================================================
+	// anularNotaDebito
+	// =========================================================================
+
+	@Override
+	public java.util.Map<String, Object> anularNotaDebito(Long idNotaDebito, String motivo, String usuario) throws Throwable {
+		System.out.println("=== anularNotaDebito | id=" + idNotaDebito + " | usuario=" + usuario + " ===");
+		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+		resultado.put("exito", false);
+
+		NotaDebito nd = notaDebitoDaoService.selectById(idNotaDebito, NombreEntidadesCobro.NOTA_DEBITO);
+		if (nd == null) {
+			resultado.put("mensaje", "Nota de Débito con ID " + idNotaDebito + " no encontrada.");
+			return resultado;
+		}
+		if (Long.valueOf(com.saa.rubros.Estado.INACTIVO).equals(nd.getEstado())) {
+			resultado.put("mensaje", "La Nota de Débito ya se encuentra anulada.");
+			return resultado;
+		}
+
+		String usuarioAnulacion = (usuario != null && !usuario.trim().isEmpty()) ? usuario.trim() : "SISTEMA";
+		String motivoFinal      = (motivo  != null && !motivo.trim().isEmpty())  ? motivo.trim()  : "Anulación manual";
+		LocalDateTime ahora = LocalDateTime.now();
+
+		// Anular asiento contable vinculado (si existe)
+		if (nd.getAsiento() != null && nd.getAsiento().getCodigo() != null) {
+			try {
+				com.saa.model.cnt.Asiento asiento = em.find(com.saa.model.cnt.Asiento.class, nd.getAsiento().getCodigo());
+				if (asiento != null && !Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO).equals(asiento.getEstado())) {
+					asiento.setEstado(Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO));
+					asiento.setMotivoAnulacion(motivoFinal);
+					asiento.setFechaAnulacion(ahora);
+					asiento.setUsuarioAnulacion(usuarioAnulacion);
+					em.merge(asiento);
+					em.flush();
+					System.out.println("✓ Asiento contable anulado: " + asiento.getCodigo());
+					resultado.put("asientoAnulado", asiento.getCodigo());
+				}
+			} catch (Exception e) {
+				System.err.println("⚠ Error al anular asiento: " + e.getMessage());
+				resultado.put("advertenciaAsiento", "ND anulada pero error al anular el asiento: " + e.getMessage());
+			}
+		}
+
+		nd.setEstado(Long.valueOf(com.saa.rubros.Estado.INACTIVO));
+		nd.setMotivoAnulacion(motivoFinal);
+		nd.setFechaAnulacion(ahora);
+		nd.setUsuarioAnulacion(usuarioAnulacion);
+		notaDebitoDaoService.save(nd, nd.getId());
+		em.flush();
+
+		System.out.println("✓ Nota de Débito anulada: " + idNotaDebito);
+		resultado.put("exito", true);
+		resultado.put("mensaje", "Nota de Débito N° " + nvl(nd.getNumero(), String.valueOf(idNotaDebito)) + " anulada correctamente.");
+		resultado.put("idNotaDebito", idNotaDebito);
+		resultado.put("motivoAnulacion", motivoFinal);
+		resultado.put("fechaAnulacion", ahora.toString());
+		resultado.put("usuarioAnulacion", usuarioAnulacion);
+		return resultado;
+	}
+
 	private LocalDateTime parseFechaAutorizacion(String fechaStr) {
 		try {
 			DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss");

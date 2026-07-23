@@ -16,10 +16,13 @@ import com.saa.basico.util.IncomeException;
 import com.saa.ejb.cxc.dao.RetencionV2DaoService;
 import com.saa.ejb.cxc.dao.PathRetencionV2DaoService;
 import com.saa.ejb.cxc.service.RetencionV2Service;
+import com.saa.ejb.cxc.service.EmailFacturaService;
+import com.saa.model.cxc.DetalleRetencionV2;
 import com.saa.model.cxc.RetencionV2;
 import com.saa.model.cxc.NombreEntidadesCobro;
 import com.saa.model.cxc.PathRetencionV2;
 import com.saa.rubros.Estado;
+import com.saa.rubros.TipoAsientos;
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
@@ -51,6 +54,9 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 
 	@EJB
 	private com.saa.ejb.cnt.service.AsientoContableService asientoContableService;
+
+	@EJB
+	private EmailFacturaService emailFacturaService;
 
 	@PersistenceContext
 	private EntityManager em;
@@ -105,364 +111,308 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 	@Override
 	public String[] generarXMLRetencionV2(String clave, Long ambiente) throws Throwable {
 		System.out.println("Ingresa al metodo generarXMLRetencionV2 con clave: " + clave + " y ambiente: " + ambiente);
-		
 		try {
-			// 1. Obtener datos principales de la retención V2
-			String sqlRetencion = "SELECT r.id, r.clave, r.fecha, r.numEstablecimiento, r.numPtoEmision, r.secuencial, " +
-					"r.periodoFiscal, r.observacion, " +
-					"f.id as facturadorId, f.numDoc as facturadorRUC, f.nombre as facturadorNombre, " +
-					"f.razonSocial as facturadorRazonSocial, f.direccion as facturadorDireccion, " +
-					"f.telefono as facturadorTelefono, f.mail as facturadorMail, f.microEmpresa, " +
-					"f.rimpe, f.popularRimpe, f.agenteRetencion, f.contribuyenteEspecial, f.contabilidad, " +
-					"p.tipoId as proveedorTipoId, p.numdoc as proveedorNumDoc, p.nombre as proveedorNombre, " +
-					"p.direccion as proveedorDireccion, p.telefono as proveedorTelefono, p.mail as proveedorMail " +
-					"FROM RetencionV2 r " +
-					"JOIN r.facturador f " +
-					"JOIN r.proveedor p " +
-					"WHERE r.clave = :clave";
+			// 1. Obtener la retención V2 por clave
+			String sqlRetencion = "SELECT r FROM RetencionV2 r WHERE r.clave = :clave";
 			Query queryRetencion = em.createQuery(sqlRetencion);
 			queryRetencion.setParameter("clave", clave);
-			Object[] retencionData = (Object[]) queryRetencion.getSingleResult();
-			
-			if (retencionData == null) {
-				throw new IncomeException("RetencionV2 con clave " + clave + " no encontrada");
-			}
-			
-			Long idRetencion = (Long) retencionData[0];
-			Long idFacturador = (Long) retencionData[8];
-			
+			RetencionV2 retencion = (RetencionV2) queryRetencion.getSingleResult();
+			if (retencion == null) throw new IncomeException("RetencionV2 con clave " + clave + " no encontrada");
+
+			Long idRetencion  = retencion.getId();
+			Long idFacturador = retencion.getFacturador().getId();
+
 			// 2. Obtener dirección del establecimiento
-			String sqlEstablecimiento = "SELECT e.direccion FROM RetencionV2 r " +
-					"JOIN PuntoEmision pe ON r.ptoEmision = pe.id " +
-					"JOIN pe.establecimiento e WHERE r.id = :id";
-			Query queryEstablecimiento = em.createQuery(sqlEstablecimiento);
-			queryEstablecimiento.setParameter("id", idRetencion);
-			String dirEstablecimiento = (String) queryEstablecimiento.getSingleResult();
-			
-			// 3. Obtener documentos sustento agrupados
-			String sqlDocumentos = "SELECT d.tipoDocReten, d.numDocReten, d.fechaEmiDoc, " +
-					"d.docResTSinImpuestos, d.docResTotal, d.docResIVACero, d.docResTotalIVA, " +
-					"d.docResPorIVA, d.docResForPago " +
+			String sqlEstab = "SELECT e.direccion FROM PuntoEmision pe JOIN pe.establecimiento e WHERE pe.id = :ptoEmisionId";
+			Query queryEstab = em.createQuery(sqlEstab);
+			queryEstab.setParameter("ptoEmisionId", retencion.getPtoEmision().getId());
+			String dirEstablecimiento = (String) queryEstab.getSingleResult();
+
+			// 3. Obtener documentos sustento agrupados (un registro por numDocReten)
+			String sqlDocumentos = "SELECT DISTINCT d.tipoDocReten, d.numDocReten, d.fechaEmiDoc, " +
+					"d.docResTotalSinImpuestos, d.docResTotal, d.docResIvaCero, d.docResTotalIva, " +
+					"d.docResPorIva, d.docResForPago " +
 					"FROM DetalleRetencionV2 d " +
-					"WHERE d.retencionv2.id = :retencionId " +
-					"GROUP BY d.tipoDocReten, d.numDocReten, d.fechaEmiDoc, " +
-					"d.docResTSinImpuestos, d.docResTotal, d.docResIVACero, d.docResTotalIVA, " +
-					"d.docResPorIVA, d.docResForPago";
+					"WHERE d.retencionV2.id = :retencionId " +
+					"ORDER BY d.numDocReten";
 			Query queryDocumentos = em.createQuery(sqlDocumentos);
 			queryDocumentos.setParameter("retencionId", idRetencion);
 			@SuppressWarnings("unchecked")
 			List<Object[]> documentos = queryDocumentos.getResultList();
-			
-			// 4. Obtener todas las retenciones del detalle
-			String sqlRetenciones = "SELECT d FROM DetalleRetencionV2 d WHERE d.retencionv2.id = :retencionId";
-			Query queryRetenciones = em.createQuery(sqlRetenciones);
-			queryRetenciones.setParameter("retencionId", idRetencion);
+
+			// 4. Obtener todos los detalles de retención
+			String sqlDetalle = "SELECT d FROM DetalleRetencionV2 d WHERE d.retencionV2.id = :retencionId ORDER BY d.id";
+			Query queryDetalle = em.createQuery(sqlDetalle);
+			queryDetalle.setParameter("retencionId", idRetencion);
 			@SuppressWarnings("unchecked")
-			List<Object> retenciones = queryRetenciones.getResultList();
-			
+			List<DetalleRetencionV2> detalles = queryDetalle.getResultList();
+
 			// 5. Generar XML
-			String xmlContent = generarXMLContentRetencionV2(retencionData, dirEstablecimiento, 
-					documentos, retenciones, ambiente);
-			
+			String xmlContent = generarXMLContentRetencionV2(retencion, dirEstablecimiento, documentos, detalles, ambiente);
+
 			// 6. Guardar archivo XML
 			String pathRelativo = "resources/" + idFacturador + "/rtv2/g/" + clave + ".xml";
-			String pathAbsoluto = System.getProperty("user.dir") + "/" + pathRelativo;
-			
-			// Crear directorios si no existen
+			String baseUploadDir = getBaseUploadDirectory();
+			String pathAbsoluto  = baseUploadDir + pathRelativo;
+
 			Path path = Paths.get(pathAbsoluto);
 			Files.createDirectories(path.getParent());
-			
-			// Guardar archivo
 			Files.write(path, xmlContent.getBytes("UTF-8"));
-			
+
+			System.out.println("✓ XML RetencionV2 generado en: " + pathAbsoluto);
 			return new String[]{"OK", pathRelativo, pathAbsoluto};
-			
+
 		} catch (Exception e) {
 			e.printStackTrace();
 			throw new IncomeException("Error al generar XML RetencionV2: " + e.getMessage());
 		}
 	}
-	
+
 	/**
-	 * Genera el contenido XML de la retención V2 electrónica según estándares del SRI v2.0.0
+	 * Genera el contenido XML de la retención V2 según estándares del SRI v2.0.0.
+	 * Basado en gn_xml_rtv2.php.
 	 */
-	private String generarXMLContentRetencionV2(Object[] retencionData, String dirEstablecimiento,
-			List<Object[]> documentos, List<Object> retenciones, Long ambiente) throws Exception {
-		
+	private String generarXMLContentRetencionV2(RetencionV2 retencion, String dirEstablecimiento,
+			List<Object[]> documentos, List<DetalleRetencionV2> detalles, Long ambiente) throws Exception {
+
 		StringWriter stringWriter = new StringWriter();
-		XMLOutputFactory factory = XMLOutputFactory.newInstance();
-		XMLStreamWriter writer = factory.createXMLStreamWriter(stringWriter);
-		
-		// Constantes
-		String TIPO_DOC = "07"; // Retención
-		String TIPO_EMISION = "1"; // Normal
-		String COD_IVA = "2";
+		XMLOutputFactory factory  = XMLOutputFactory.newInstance();
+		XMLStreamWriter writer    = factory.createXMLStreamWriter(stringWriter);
+
+		final String TIPO_DOC    = "07";
+		final String TIPO_EMISION = "1";
+		final String COD_IVA     = "2";
 		DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
-		
-		// Extraer datos de la retención
-		String claveAcceso = (String) retencionData[1];
-		java.time.LocalDate fecha = (java.time.LocalDate) retencionData[2];
-		String numEstablecimiento = (String) retencionData[3];
-		String numPtoEmision = (String) retencionData[4];
-		String secuencial = (String) retencionData[5];
-		String periodoFiscal = (String) retencionData[6];
-		String observacion = nvl((String) retencionData[7], "");
-		
-		// Datos del facturador
-		String facturadorRUC = (String) retencionData[9];
-		String facturadorNombre = (String) retencionData[10];
-		String facturadorRazonSocial = (String) retencionData[11];
-		String facturadorDireccion = (String) retencionData[12];
-		String facturadorTelefono = nvl((String) retencionData[13], "");
-		String facturadorMail = nvl((String) retencionData[14], "");
-		Integer microEmpresa = (Integer) retencionData[15];
-		Integer rimpe = (Integer) retencionData[16];
-		Integer popularRimpe = (Integer) retencionData[17];
-		String agenteRetencion = (String) retencionData[18];
-		String contribuyenteEspecial = (String) retencionData[19];
-		Integer contabilidad = (Integer) retencionData[20];
-		
-		// Datos del proveedor
-		String proveedorTipoId = (String) retencionData[21];
-		String proveedorNumDoc = (String) retencionData[22];
-		String proveedorNombre = (String) retencionData[23];
-		String proveedorTelefono = nvl((String) retencionData[25], "");
-		String proveedorMail = nvl((String) retencionData[26], "");
-		
-		String obligadoContabilidad = (contabilidad != null && contabilidad == 1) ? "SI" : "NO";
-		
-		// Inicio del documento
-		writer.writeStartDocument("UTF-8", "1.0");
-		writer.writeCharacters("\n");
-		
-		// Elemento raíz: comprobanteRetencion
+
+		com.saa.model.cxc.Facturador f  = retencion.getFacturador();
+		com.saa.model.tsr.Titular    pr = retencion.getProveedor();
+
+		String obligadoContabilidad = (f.getContabilidad() != null && f.getContabilidad() == 1) ? "SI" : "NO";
+		String facturadorTelefono   = nvl(f.getTelefono(), "");
+		String facturadorMail       = nvl(f.getMail(), "");
+		String proveedorTelefono    = pr != null ? nvl(pr.getTelefono(), "") : "";
+		String proveedorMail        = pr != null ? nvl(pr.getEmail(), "")    : "";
+
+		// ── Raíz ──────────────────────────────────────────────────────────────
 		writer.writeStartElement("comprobanteRetencion");
 		writer.writeAttribute("id", "comprobante");
 		writer.writeAttribute("version", "2.0.0");
 		writer.writeCharacters("\n");
-		
-		// infoTributaria
+
+		// ── infoTributaria ────────────────────────────────────────────────────
 		writer.writeCharacters("  ");
 		writer.writeStartElement("infoTributaria");
 		writer.writeCharacters("\n");
-		
-		writeElement(writer, "ambiente", String.valueOf(ambiente), 4);
-		writeElement(writer, "tipoEmision", TIPO_EMISION, 4);
-		writeElement(writer, "razonSocial", nvl(facturadorRazonSocial, ""), 4);
-		writeElement(writer, "nombreComercial", nvl(facturadorNombre, ""), 4);
-		writeElement(writer, "ruc", nvl(facturadorRUC, ""), 4);
-		writeElement(writer, "claveAcceso", nvl(claveAcceso, ""), 4);
-		writeElement(writer, "codDoc", TIPO_DOC, 4);
-		writeElement(writer, "estab", nvl(numEstablecimiento, ""), 4);
-		writeElement(writer, "ptoEmi", nvl(numPtoEmision, ""), 4);
-		writeElement(writer, "secuencial", nvl(secuencial, ""), 4);
-		writeElement(writer, "dirMatriz", nvl(facturadorDireccion, ""), 4);
-		
-		// Regímenes especiales
-		if (microEmpresa != null && microEmpresa == 1) {
+		writeElement(writer, "ambiente",        String.valueOf(ambiente),          4);
+		writeElement(writer, "tipoEmision",     TIPO_EMISION,                      4);
+		writeElement(writer, "razonSocial",     nvl(f.getRazonSocial(), ""),       4);
+		writeElement(writer, "nombreComercial", nvl(f.getNombre(), ""),            4);
+		writeElement(writer, "ruc",             nvl(f.getNumDoc(), ""),            4);
+		writeElement(writer, "claveAcceso",     nvl(retencion.getClave(), ""),     4);
+		writeElement(writer, "codDoc",          TIPO_DOC,                          4);
+		writeElement(writer, "estab",           nvl(retencion.getNumEstablecimiento(), ""), 4);
+		writeElement(writer, "ptoEmi",          nvl(retencion.getNumPtoEmision(), ""),      4);
+		writeElement(writer, "secuencial",      nvl(retencion.getSecuencial(), ""),         4);
+		writeElement(writer, "dirMatriz",       nvl(f.getDireccion(), ""),         4);
+		if (f.getMicroEmpresa() != null && f.getMicroEmpresa() == 1)
 			writeElement(writer, "regimenMicroempresas", "CONTRIBUYENTE RÉGIMEN MICROEMPRESAS", 4);
-		}
-		if (agenteRetencion != null && !agenteRetencion.isEmpty()) {
-			writeElement(writer, "agenteRetencion", agenteRetencion, 4);
-		}
-		if (rimpe != null && rimpe == 1) {
+		if (f.getAgenteRetencion() != null && !f.getAgenteRetencion().isEmpty())
+			writeElement(writer, "agenteRetencion", f.getAgenteRetencion(), 4);
+		if (f.getRimpe() != null && f.getRimpe() == 1)
 			writeElement(writer, "contribuyenteRimpe", "CONTRIBUYENTE RÉGIMEN RIMPE", 4);
-		}
-		if (popularRimpe != null && popularRimpe == 1) {
+		if (f.getPopularRimpe() != null && f.getPopularRimpe() == 1)
 			writeElement(writer, "contribuyenteRimpe", "CONTRIBUYENTE NEGOCIO POPULAR - RÉGIMEN RIMPE", 4);
-		}
-		
 		writer.writeCharacters("  ");
 		writer.writeEndElement(); // infoTributaria
 		writer.writeCharacters("\n");
-		
-		// infoCompRetencion
+
+		// ── infoCompRetencion ─────────────────────────────────────────────────
 		writer.writeCharacters("  ");
 		writer.writeStartElement("infoCompRetencion");
 		writer.writeCharacters("\n");
-		
-		writeElement(writer, "fechaEmision", fecha.format(dateFormatter), 4);
+		writeElement(writer, "fechaEmision", retencion.getFecha().format(dateFormatter), 4);
 		writeElement(writer, "dirEstablecimiento", nvl(dirEstablecimiento, ""), 4);
-		
-		if (contribuyenteEspecial != null && !contribuyenteEspecial.isEmpty()) {
-			writeElement(writer, "contribuyenteEspecial", contribuyenteEspecial, 4);
-		}
-		
+		if (f.getContribuyenteEspecial() != null && !f.getContribuyenteEspecial().isEmpty())
+			writeElement(writer, "contribuyenteEspecial", f.getContribuyenteEspecial(), 4);
 		writeElement(writer, "obligadoContabilidad", obligadoContabilidad, 4);
-		writeElement(writer, "tipoIdentificacionSujetoRetenido", proveedorTipoId, 4);
-		writeElement(writer, "parteRel", "NO", 4); // Valor por defecto
-		writeElement(writer, "razonSocialSujetoRetenido", nvl(proveedorNombre, ""), 4);
-		writeElement(writer, "identificacionSujetoRetenido", nvl(proveedorNumDoc, ""), 4);
-		writeElement(writer, "periodoFiscal", periodoFiscal, 4);
-		
+		writeElement(writer, "tipoIdentificacionSujetoRetenido",
+				pr != null ? String.valueOf(pr.getRubroTipoIdentificacionH()) : "", 4);
+		writeElement(writer, "parteRel", "NO", 4); // Tabla 14 ATS: NO = no vinculado
+		writeElement(writer, "razonSocialSujetoRetenido", pr != null ? nvl(pr.getNombre(), "") : "", 4);
+		writeElement(writer, "identificacionSujetoRetenido", pr != null ? nvl(pr.getIdentificacion(), "") : "", 4);
+		writeElement(writer, "periodoFiscal", nvl(retencion.getPeriodoFiscal(), ""), 4);
 		writer.writeCharacters("  ");
 		writer.writeEndElement(); // infoCompRetencion
 		writer.writeCharacters("\n");
-		
-		// docsSustento
+
+		// ── docsSustento ──────────────────────────────────────────────────────
 		writer.writeCharacters("  ");
 		writer.writeStartElement("docsSustento");
 		writer.writeCharacters("\n");
-		
+
 		for (Object[] doc : documentos) {
+			String  tipoDocReten           = (String)  doc[0];
+			String  numDocReten            = (String)  doc[1];
+			java.time.LocalDate fechaEmiDoc = (java.time.LocalDate) doc[2];
+			Double  docResTotalSinImpuestos = (Double)  doc[3];
+			Double  docResTotal            = (Double)  doc[4];
+			Double  docResIvaCero          = (Double)  doc[5];
+			Double  docResTotalIva         = (Double)  doc[6];
+			Double  docResPorIva           = (Double)  doc[7];
+			String  docResForPago          = (String)  doc[8];
+
 			writer.writeCharacters("    ");
 			writer.writeStartElement("docSustento");
 			writer.writeCharacters("\n");
-			
-			String tipoDocReten = (String) doc[0];
-			String numDocReten = (String) doc[1];
-			java.time.LocalDate fechaEmiDoc = (java.time.LocalDate) doc[2];
-			Double docResTSinImpuestos = (Double) doc[3];
-			Double docResTotal = (Double) doc[4];
-			Double docResIVACero = (Double) doc[5];
-			Double docResTotalIVA = (Double) doc[6];
-			Double docResPorIVA = (Double) doc[7];
-			String docResForPago = (String) doc[8];
-			
-			writeElement(writer, "codSustento", "02", 6); // Valor por defecto
-			writeElement(writer, "codDocSustento", tipoDocReten, 6);
-			writeElement(writer, "numDocSustento", numDocReten, 6);
-			writeElement(writer, "fechaEmisionDocSustento", fechaEmiDoc.format(dateFormatter), 6);
-			writeElement(writer, "pagoLocExt", "01", 6); // Residente
-			writeElement(writer, "totalSinImpuestos", formatDecimal(docResTSinImpuestos), 6);
-			writeElement(writer, "importeTotal", formatDecimal(docResTotal), 6);
-			
+
+			writeElement(writer, "codSustento",              "02", 6); // Tabla 5 ATS: 02=Factura
+			writeElement(writer, "codDocSustento",           nvl(tipoDocReten, ""), 6);
+			writeElement(writer, "numDocSustento",           nvl(numDocReten, ""), 6);
+			writeElement(writer, "fechaEmisionDocSustento",
+					fechaEmiDoc != null ? fechaEmiDoc.format(dateFormatter) : "", 6);
+			writeElement(writer, "pagoLocExt",               "01", 6); // Tabla 15 ATS: 01=Residente
+			writeElement(writer, "totalSinImpuestos",        fmt(docResTotalSinImpuestos), 6);
+			writeElement(writer, "importeTotal",             fmt(docResTotal), 6);
+
 			// impuestosDocSustento
 			writer.writeCharacters("      ");
 			writer.writeStartElement("impuestosDocSustento");
 			writer.writeCharacters("\n");
-			
-			if (docResIVACero != null && docResIVACero > 0) {
-				writeImpuestoDocSustento(writer, COD_IVA, "0", docResIVACero, "0", 0.0);
+			if (docResIvaCero != null && docResIvaCero > 0) {
+				writeImpuestoDocSustento(writer, COD_IVA, "0", docResIvaCero, "0", 0.0);
 			}
-			if (docResTotalIVA != null && docResTotalIVA > 0) {
-				Double baseIVA = docResTSinImpuestos - nvl(docResIVACero, 0.0);
-				writeImpuestoDocSustento(writer, COD_IVA, COD_POR_IVA_15, baseIVA,
-						formatDecimal(nvl(docResPorIVA, 0.0)), docResTotalIVA);
+			if (docResTotalIva != null && docResTotalIva > 0) {
+				double baseIva = nvl(docResTotalSinImpuestos, 0.0) - nvl(docResIvaCero, 0.0);
+				writeImpuestoDocSustento(writer, COD_IVA, COD_POR_IVA_15,
+						baseIva, fmt(nvl(docResPorIva, 0.0)), docResTotalIva);
 			}
-			
 			writer.writeCharacters("      ");
 			writer.writeEndElement(); // impuestosDocSustento
 			writer.writeCharacters("\n");
-			
-			// retenciones
+
+			// retenciones — filtradas por numDocReten del documento sustento actual
 			writer.writeCharacters("      ");
 			writer.writeStartElement("retenciones");
 			writer.writeCharacters("\n");
-			
-			for (@SuppressWarnings("unused") Object retencion : retenciones) {
-				// Aquí debes extraer los campos del detalle de retención
-				// Asumiendo que retencion es un objeto DetalleRetencionV2
-				writer.writeCharacters("        ");
-				writer.writeStartElement("retencion");
-				writer.writeCharacters("\n");
-				
-				// Los campos específicos dependerán de tu modelo DetalleRetencionV2
-				// Por ahora, dejo la estructura básica
-				writeElement(writer, "codigo", "2", 10); // Ejemplo
-				writeElement(writer, "codigoRetencion", "1", 10); // Ejemplo
-				writeElement(writer, "baseImponible", "100.00", 10); // Ejemplo
-				writeElement(writer, "porcentajeRetener", "1", 10); // Ejemplo
-				writeElement(writer, "valorRetenido", "1.00", 10); // Ejemplo
-				
-				writer.writeCharacters("        ");
-				writer.writeEndElement(); // retencion
-				writer.writeCharacters("\n");
+			for (DetalleRetencionV2 det : detalles) {
+				if (numDocReten != null && numDocReten.equals(det.getNumDocReten())) {
+					writer.writeCharacters("        ");
+					writer.writeStartElement("retencion");
+					writer.writeCharacters("\n");
+					writeElement(writer, "codigo",            nvl(det.getCodImpuesto(), ""),  10);
+					writeElement(writer, "codigoRetencion",   nvl(det.getCodRetencion(), ""), 10);
+					writeElement(writer, "baseImponible",     fmt(det.getBaseImponible()),     10);
+					writeElement(writer, "porcentajeRetener", fmt(det.getPorcentajeReten()),   10);
+					writeElement(writer, "valorRetenido",     fmt(det.getValorReten()),        10);
+					writer.writeCharacters("        ");
+					writer.writeEndElement(); // retencion
+					writer.writeCharacters("\n");
+				}
 			}
-			
 			writer.writeCharacters("      ");
 			writer.writeEndElement(); // retenciones
 			writer.writeCharacters("\n");
-			
+
 			// pagos
 			writer.writeCharacters("      ");
 			writer.writeStartElement("pagos");
 			writer.writeCharacters("\n");
-			
 			writer.writeCharacters("        ");
 			writer.writeStartElement("pago");
 			writer.writeCharacters("\n");
 			writeElement(writer, "formaPago", nvl(docResForPago, "01"), 10);
-			writeElement(writer, "total", formatDecimal(docResTotal), 10);
+			writeElement(writer, "total",     fmt(docResTotal),         10);
 			writer.writeCharacters("        ");
 			writer.writeEndElement(); // pago
 			writer.writeCharacters("\n");
-			
 			writer.writeCharacters("      ");
 			writer.writeEndElement(); // pagos
 			writer.writeCharacters("\n");
-			
+
 			writer.writeCharacters("    ");
 			writer.writeEndElement(); // docSustento
 			writer.writeCharacters("\n");
 		}
-		
+
 		writer.writeCharacters("  ");
 		writer.writeEndElement(); // docsSustento
 		writer.writeCharacters("\n");
-		
-		// infoAdicional
+
+		// ── infoAdicional ─────────────────────────────────────────────────────
 		writer.writeCharacters("  ");
 		writer.writeStartElement("infoAdicional");
 		writer.writeCharacters("\n");
-		
 		writer.writeCharacters("    ");
 		writer.writeStartElement("campoAdicional");
 		writer.writeAttribute("nombre", "Datos Adicionales");
-		String infoAdicional = "Soporte[" + facturadorTelefono + " - " + facturadorMail + "] " +
+		writer.writeCharacters("Soporte[" + facturadorTelefono + " - " + facturadorMail + "] " +
 				"Contacto Cliente[" + proveedorTelefono + " - " + proveedorMail + "] " +
-				"Observacion[" + observacion + "]";
-		writer.writeCharacters(infoAdicional);
+				"Observacion[" + nvl(retencion.getObservacion(), "") + "]");
 		writer.writeEndElement();
 		writer.writeCharacters("\n");
-		
 		writer.writeCharacters("  ");
 		writer.writeEndElement(); // infoAdicional
 		writer.writeCharacters("\n");
-		
+
 		writer.writeEndElement(); // comprobanteRetencion
 		writer.writeEndDocument();
 		writer.close();
-		
+
 		return stringWriter.toString();
 	}
 	
 	private void writeElement(XMLStreamWriter writer, String name, String value, int indent) throws Exception {
-		writer.writeCharacters("  ".repeat(indent / 2));
+		for (int i = 0; i < indent / 2; i++) writer.writeCharacters("  ");
 		writer.writeStartElement(name);
-		writer.writeCharacters(value);
+		writer.writeCharacters(value != null ? value : "");
 		writer.writeEndElement();
 		writer.writeCharacters("\n");
 	}
-	
+
 	private void writeImpuestoDocSustento(XMLStreamWriter writer, String codigo, String codigoPorcentaje,
 			Double baseImponible, String tarifa, Double valorImpuesto) throws Exception {
 		writer.writeCharacters("        ");
 		writer.writeStartElement("impuestoDocSustento");
 		writer.writeCharacters("\n");
-		writeElement(writer, "codImpuestoDocSustento", codigo, 10);
-		writeElement(writer, "codigoPorcentaje", codigoPorcentaje, 10);
-		writeElement(writer, "baseImponible", formatDecimal(baseImponible), 10);
-		writeElement(writer, "tarifa", tarifa, 10);
-		writeElement(writer, "valorImpuesto", formatDecimal(valorImpuesto), 10);
+		writeElement(writer, "codImpuestoDocSustento", codigo,               10);
+		writeElement(writer, "codigoPorcentaje",        codigoPorcentaje,     10);
+		writeElement(writer, "baseImponible",            fmt(baseImponible),   10);
+		writeElement(writer, "tarifa",                   tarifa,               10);
+		writeElement(writer, "valorImpuesto",            fmt(valorImpuesto),   10);
 		writer.writeCharacters("        ");
 		writer.writeEndElement();
 		writer.writeCharacters("\n");
 	}
-	
+
 	private String nvl(String value, String defaultValue) {
 		return value != null ? value : defaultValue;
 	}
-	
-	private Double nvl(Double value, Double defaultValue) {
+
+	private double nvl(Double value, double defaultValue) {
 		return value != null ? value : defaultValue;
 	}
-	
-	private String formatDecimal(Double value) {
-		if (value == null) {
-			return "0.00";
+
+	private String fmt(Double value) {
+		if (value == null) return "0.00";
+		return String.format(java.util.Locale.US, "%.2f", value);
+	}
+
+	private String fmt(double value) {
+		return String.format(java.util.Locale.US, "%.2f", value);
+	}
+
+	private String getBaseUploadDirectory() {
+		String uploadDir = System.getProperty("saa.upload.dir");
+		if (uploadDir != null && !uploadDir.trim().isEmpty()) {
+			return uploadDir.endsWith("/") || uploadDir.endsWith("\\") ? uploadDir : uploadDir + "/";
 		}
-		return String.format("%.2f", value);
+		uploadDir = System.getenv("SAA_UPLOAD_DIR");
+		if (uploadDir != null && !uploadDir.trim().isEmpty()) {
+			return uploadDir.endsWith("/") || uploadDir.endsWith("\\") ? uploadDir : uploadDir + "/";
+		}
+		String userHome = System.getProperty("user.home");
+		String osName   = System.getProperty("os.name").toLowerCase();
+		return osName.contains("windows") ? userHome + "/saa-uploads/" : "/opt/saa-uploads/";
 	}
 	
 	@Override
@@ -770,24 +720,99 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 
 	@Override
 	public java.util.Map<String, Object> procesarRetencionV2Completa(RetencionV2 retencion,
+			java.util.List<DetalleRetencionV2> detalles,
 			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable {
 
-		System.out.println("=== INICIO procesarRetencionV2Completa ===");
+		System.out.println("=== INICIANDO PROCESO COMPLETO DE RETENCIÓN V2 ===");
 		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
 		resultado.put("exito", false);
 
-		try {
-			if (ambiente == null)    ambiente    = 1L;
-			if (conectaSRI == null)  conectaSRI  = 1L;
-			if (pathLogo == null)    pathLogo    = "resources/logos/logo_aso.png";
+		// ── PASO 0: Validar configuración contable ANTES de grabar ─────────────
+		if (retencion.getFacturador() != null
+				&& Long.valueOf(1L).equals(retencion.getFacturador().getGeneraConta())) {
 
-			// PASO 1: Grabar la retención
-			System.out.println("PASO 1: Grabando retención V2...");
-			retencion = this.saveSingle(retencion);
-			resultado.put("retencion", retencion);
+			if (retencion.getFacturador().getEmpresa() == null) {
+				resultado.put("etapa", "VALIDACION_CONTABLE");
+				resultado.put("mensaje", "El facturador tiene habilitada la generación contable "
+						+ "pero no tiene empresa contable configurada.");
+				return resultado;
+			}
+
+			Long idEmpresa = retencion.getFacturador().getEmpresa().getCodigo();
+			System.out.println("PASO 0: Validando cuentas contables para empresa " + idEmpresa + "...");
+
+			// Convertir DetalleRetencionV2 → DetalleRetencion para reutilizar validador
+			java.util.List<com.saa.model.cxc.DetalleRetencion> detalesParaValidar = new java.util.ArrayList<>();
+			if (detalles != null) {
+				for (DetalleRetencionV2 d : detalles) {
+					com.saa.model.cxc.DetalleRetencion dr = new com.saa.model.cxc.DetalleRetencion();
+					dr.setCodRetencion(d.getCodRetencion());
+					dr.setValorReten(d.getValorReten());
+					detalesParaValidar.add(dr);
+				}
+			}
+			// Construir objeto Retencion "dummy" para reutilizar validarCuentasContablesRetencion
+			com.saa.model.cxc.Retencion retencionDummy = new com.saa.model.cxc.Retencion();
+			retencionDummy.setProveedor(retencion.getProveedor());
+
+			java.util.List<String> erroresContables =
+					asientoContableService.validarCuentasContablesRetencion(retencionDummy, detalesParaValidar, idEmpresa);
+
+			if (!erroresContables.isEmpty()) {
+				resultado.put("etapa", "VALIDACION_CONTABLE");
+				resultado.put("mensaje", "No se puede emitir la retención V2: faltan cuentas contables.");
+				resultado.put("erroresContables", erroresContables);
+				StringBuilder sb = new StringBuilder("Faltan cuentas contables configuradas:\n");
+				for (int i = 0; i < erroresContables.size(); i++)
+					sb.append("  ").append(i + 1).append(". ").append(erroresContables.get(i)).append("\n");
+				resultado.put("error", sb.toString());
+				System.err.println("✗ Validación contable fallida:\n" + sb);
+				return resultado;
+			}
+			System.out.println("✓ Validación contable OK.");
+		}
+
+		try {
+			if (ambiente  == null) ambiente  = 1L;
+			if (conectaSRI == null) conectaSRI = 1L;
+			if (pathLogo  == null) pathLogo  = "resources/logos/logo_aso.png";
+
+			// ── PASO 1: Grabar retención V2 ────────────────────────────────────
+			System.out.println("PASO 1: Grabando retención V2 en base de datos...");
+			try {
+				retencion = this.saveSingle(retencion);
+			} catch (Exception e) {
+				resultado.put("etapa", "GRABADO_RETENCION");
+				resultado.put("mensaje", "Error al grabar la retención V2: " + e.getMessage());
+				resultado.put("error", e.getMessage());
+				return resultado;
+			}
+			resultado.put("retencion",   retencion);
 			resultado.put("idRetencion", retencion.getId());
-			System.out.println("✓ Retención V2 grabada con ID: " + retencion.getId()
+			System.out.println("✓ Retención V2 grabada ID: " + retencion.getId()
 					+ " | Clave: " + retencion.getClave());
+
+			// ── PASO 1.5: Guardar detalles ─────────────────────────────────────
+			if (detalles != null && !detalles.isEmpty()) {
+				System.out.println("PASO 1.5: Guardando " + detalles.size() + " detalles de retención V2...");
+				try {
+					for (DetalleRetencionV2 detalle : detalles) {
+						detalle.setRetencionV2(retencion);
+						if (detalle.getEstado() == null) detalle.setEstado(Long.valueOf(Estado.ACTIVO));
+						em.persist(detalle);
+					}
+					em.flush();
+					System.out.println("✓ Detalles V2 guardados correctamente.");
+				} catch (Exception e) {
+					resultado.put("etapa", "GRABADO_DETALLES");
+					resultado.put("mensaje", "Error al grabar los detalles de la retención V2: " + e.getMessage());
+					resultado.put("error", e.getMessage());
+					return resultado;
+				}
+			}
+
+			if (destinatario == null && retencion.getProveedor() != null)
+				destinatario = retencion.getProveedor().getEmail();
 
 			String clave = retencion.getClave();
 			if (clave == null || clave.isEmpty())
@@ -795,56 +820,63 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 			Long idFacturador = retencion.getFacturador() != null ? retencion.getFacturador().getId() : null;
 			if (idFacturador == null)
 				throw new Exception("La retención V2 no tiene facturador asociado");
+
 			resultado.put("claveAcceso", clave);
+			ambiente   = 1L; // FORZADO PRUEBAS — cambiar a 2L para producción
+			conectaSRI = 1L;
 
-			if (destinatario == null && retencion.getProveedor() != null) {
-				destinatario = retencion.getProveedor().getEmail();
+			// ── PASO 2 y 3: Generar y firmar XML ──────────────────────────────
+			String xmlFirmado;
+			try {
+				System.out.println("PASO 2: Generando XML de retención V2...");
+				String[] resultadoXML = this.generarXMLRetencionV2(clave, ambiente);
+				String xmlSinFirmar = new String(
+						java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(resultadoXML[2])),
+						java.nio.charset.StandardCharsets.UTF_8);
+				System.out.println("PASO 3: Firmando XML...");
+				xmlFirmado = signatureService.firmarXMLFacturador(xmlSinFirmar, idFacturador);
+				System.out.println("✓ XML generado y firmado.");
+			} catch (Exception e) {
+				resultado.put("etapa", "GENERACION_XML");
+				resultado.put("mensaje", "Error al generar o firmar el XML de la retención V2: " + e.getMessage());
+				resultado.put("error", e.getMessage());
+				return resultado;
 			}
-			pathLogo = "resources/logos/logo_aso.png";
-			resultado.put("destinatario", destinatario);
 
-			// PASO 2: Generar XML
-			System.out.println("PASO 2: Generando XML...");
-			String[] resultadoXML = this.generarXMLRetencionV2(clave, ambiente);
-			resultado.put("paso2_xml", "OK");
-			System.out.println("XML generado: " + resultadoXML[0]);
-
-			// PASO 3: Firmar XML
-			System.out.println("PASO 3: Firmando XML electrónicamente...");
-			String xmlSinFirmar = new String(
-					java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(resultadoXML[2])),
-					java.nio.charset.StandardCharsets.UTF_8);
-			String xmlFirmado = signatureService.firmarXMLFacturador(xmlSinFirmar, idFacturador);
-			resultado.put("paso3_firma", "OK");
-			System.out.println("✓ XML firmado electrónicamente");
-
-			// PASO 4: Autorizar ante el SRI
+			// ── PASO 4: Autorizar ante el SRI ──────────────────────────────────
 			System.out.println("PASO 4: Autorizando ante el SRI...");
-			String resultadoAutorizacion = this.autorizarRetencionV2(
-					idFacturador, ambiente, conectaSRI, clave,
-					retencion.getId(), xmlFirmado, destinatario, pathLogo);
+			String resultadoAutorizacion;
+			try {
+				resultadoAutorizacion = this.autorizarRetencionV2(
+						idFacturador, ambiente, conectaSRI, clave,
+						retencion.getId(), xmlFirmado, destinatario, pathLogo);
+			} catch (Exception e) {
+				resultado.put("etapa", "AUTORIZACION_SRI");
+				resultado.put("mensaje", "Error al comunicarse con el SRI: " + e.getMessage());
+				resultado.put("error", e.getMessage());
+				return resultado;
+			}
 
 			resultado.put("autorizacion", resultadoAutorizacion);
-			System.out.println("✓ Resultado autorización: " + resultadoAutorizacion);
-
 			boolean autorizada = resultadoAutorizacion != null
 					&& resultadoAutorizacion.contains("AUTORIZADO");
 
 			if (!autorizada) {
-				resultado.put("exito", false);
-				resultado.put("estado", "NO_AUTORIZADO");
-				resultado.put("mensaje", "Retención V2 enviada al SRI pero no autorizada. "
+				resultado.put("etapa",   "AUTORIZACION_SRI");
+				resultado.put("exito",   false);
+				resultado.put("estado",  "NO_AUTORIZADO");
+				resultado.put("mensaje", "La retención V2 fue enviada al SRI pero no fue autorizada. "
 						+ "Respuesta: " + resultadoAutorizacion);
 				return resultado;
 			}
 
+			System.out.println("✓ Retención V2 AUTORIZADA por el SRI.");
 			resultado.put("estado", "AUTORIZADO");
 
-			// ── PASO 5: Generar asiento contable ───────────────────────────────
-			// Solo si el facturador tiene generaConta=1 y empresa contable configurada.
+			// ── PASO 5: Generar asiento contable ──────────────────────────────
 			if (retencion.getFacturador().getEmpresa() != null
 					&& Long.valueOf(1L).equals(retencion.getFacturador().getGeneraConta())) {
-				System.out.println("PASO 5: Generando asiento contable para Retención V2...");
+				System.out.println("PASO 5: Generando asiento contable de Retención V2...");
 				try {
 					Long idEmpresaConta = retencion.getFacturador().getEmpresa().getCodigo();
 					RetencionV2 rtActualizada = retencionV2DaoService.selectById(
@@ -852,42 +884,80 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 					java.time.LocalDate fechaAsiento = rtActualizada.getFecha() != null
 							? rtActualizada.getFecha().toLocalDate() : java.time.LocalDate.now();
 					String obsAsiento = "Retención V2 N° " + nvl(rtActualizada.getNumero(), clave)
-							+ " | Proveedor: " + (rtActualizada.getProveedor() != null ? rtActualizada.getProveedor().getNombre() : "")
+							+ " | Proveedor: " + (rtActualizada.getProveedor() != null
+									? rtActualizada.getProveedor().getNombre() : "")
 							+ " | Aut: " + nvl(rtActualizada.getAutorizacion(), clave);
 					String usuarioAsiento = (rtActualizada.getUsuario() != null)
 							? rtActualizada.getUsuario().getNombre() : "SISTEMA";
-					// TODO: Reemplazar TipoAsientos.RETENCIONES_EMITIDAS_V2 con el codigoAlterno
-					//       correcto una vez que se defina la plantilla en BD.
 					com.saa.model.cnt.Asiento asientoGenerado =
 							asientoContableService.generarAsientoRetencionV2(
 									rtActualizada.getId(), idEmpresaConta,
-									com.saa.rubros.TipoAsientos.RETENCIONES_EMITIDAS_V2,
+									TipoAsientos.RETENCIONES_EMITIDAS_V2,
 									fechaAsiento, obsAsiento, usuarioAsiento);
 					resultado.put("asiento", asientoGenerado.getNumeroAlterno());
 					System.out.println("✓ Asiento contable generado: " + asientoGenerado.getNumeroAlterno());
 				} catch (Exception e) {
 					resultado.put("advertenciaAsiento",
 							"Retención V2 autorizada pero ocurrió un error al generar el asiento: "
-							+ e.getMessage()
-							+ ". Genere el asiento manualmente desde Contabilidad.");
+							+ e.getMessage() + ". Genere el asiento manualmente desde Contabilidad.");
 					System.err.println("⚠ Error en asiento contable de Retención V2: " + e.getMessage());
 					e.printStackTrace();
 				}
 			}
 
-			resultado.put("exito", true);
+			// ── PASO 6: Enviar correo electrónico ─────────────────────────────
+			System.out.println("PASO 6: Enviando email al proveedor...");
+			try {
+				if (destinatario != null && !destinatario.trim().isEmpty()) {
+					String resourcesPath = getBaseUploadDirectory() + "resources/" + idFacturador;
+					String xmlAutorizado = null;
+					byte[] pdfBytes = null;
+					try {
+						java.nio.file.Path pXml = java.nio.file.Paths.get(
+								resourcesPath + "/rtv2/a/" + clave + ".xml");
+						if (java.nio.file.Files.exists(pXml))
+							xmlAutorizado = new String(java.nio.file.Files.readAllBytes(pXml), "UTF-8");
+						java.nio.file.Path pPdf = java.nio.file.Paths.get(
+								resourcesPath + "/rtv2/a/" + clave + ".pdf");
+						if (java.nio.file.Files.exists(pPdf))
+							pdfBytes = java.nio.file.Files.readAllBytes(pPdf);
+					} catch (Exception ioEx) {
+						System.err.println("⚠ No se pudieron leer archivos para el email: " + ioEx.getMessage());
+					}
+					String razonSocial = retencion.getFacturador() != null
+							? nvl(retencion.getFacturador().getRazonSocial(),
+								  nvl(retencion.getFacturador().getNombre(), "")) : "";
+					emailFacturaService.enviarFacturaAutorizada(
+							destinatario, nvl(retencion.getNumero(), clave),
+							clave, razonSocial, xmlAutorizado, pdfBytes);
+					resultado.put("emailEnviado", true);
+					System.out.println("✓ Email enviado a: " + destinatario);
+				} else {
+					resultado.put("emailEnviado", false);
+					System.out.println("ℹ Email omitido: sin dirección de correo del proveedor.");
+				}
+			} catch (Exception mailEx) {
+				resultado.put("advertenciaEmail",
+						"Retención V2 autorizada pero no se pudo enviar el email: "
+						+ mailEx.getMessage() + ". Reenvíe manualmente.");
+				System.err.println("⚠ Error enviando email: " + mailEx.getMessage());
+			}
+
+			// ── FIN ────────────────────────────────────────────────────────────
+			resultado.put("exito",   true);
+			resultado.put("etapa",   "COMPLETADO");
 			resultado.put("mensaje", "Retención V2 procesada y autorizada exitosamente.");
-			System.out.println("=== FIN procesarRetencionV2Completa - EXITOSO ===");
+			System.out.println("=== PROCESO COMPLETO DE RETENCIÓN V2 FINALIZADO ===");
 
 		} catch (Exception e) {
-			System.err.println("ERROR en procesarRetencionV2Completa: " + e.getMessage());
+			System.err.println("ERROR inesperado en procesarRetencionV2Completa: " + e.getMessage());
 			e.printStackTrace();
-			resultado.put("exito", false);
-			resultado.put("error", e.getMessage());
-			resultado.put("mensaje", "Error al procesar la retención V2: " + e.getMessage());
+			resultado.put("exito",   false);
+			resultado.put("etapa",   "ERROR_INESPERADO");
+			resultado.put("error",   e.getMessage());
+			resultado.put("mensaje", "Error inesperado al procesar la retención V2: " + e.getMessage());
 			throw e;
 		}
-
 		return resultado;
 	}
 }
