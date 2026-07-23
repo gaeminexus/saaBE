@@ -18,6 +18,8 @@ import javax.sql.DataSource;
 import com.saa.ejb.reporte.service.ReporteService;
 
 import jakarta.ejb.Stateless;
+import jakarta.ejb.TransactionAttribute;
+import jakarta.ejb.TransactionAttributeType;
 import net.sf.jasperreports.engine.JRParameter;
 import net.sf.jasperreports.engine.JasperExportManager;
 import net.sf.jasperreports.engine.JasperFillManager;
@@ -80,6 +82,7 @@ public class ReporteServiceImpl implements ReporteService {
      * @return Bytes del reporte generado
      * @throws Exception Si ocurre un error al generar el reporte
      */
+    @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
     public byte[] generarReporte(String modulo, String nombreReporte, 
                                   Map<String, Object> parametros, String formato) throws Exception {
         
@@ -123,6 +126,12 @@ public class ReporteServiceImpl implements ReporteService {
                 ClassLoader originalCL = Thread.currentThread().getContextClassLoader();
                 Thread.currentThread().setContextClassLoader(getClass().getClassLoader());
                 try {
+                    // Forzar Janino como compilador: JRJdtCompiler falla en WildFly
+                    // por aislamiento de classloaders. JRJaninoCompiler no tiene esa dependencia.
+                    System.setProperty(
+                        net.sf.jasperreports.engine.design.JRCompiler.COMPILER_PREFIX + "java",
+                        "net.sf.jasperreports.engine.design.JRJaninoCompiler"
+                    );
                     jasperReport = net.sf.jasperreports.engine.JasperCompileManager.compileReport(jrxmlStream);
                 } finally {
                     Thread.currentThread().setContextClassLoader(originalCL);

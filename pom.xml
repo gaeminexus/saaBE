@@ -87,6 +87,20 @@
       <version>3.33.0</version>
     </dependency>
 
+    <!-- Janino: compilador alternativo para JasperReports en entornos de servidor (WildFly).
+         JRJdtCompiler falla dentro de WildFly por aislamiento de classloaders;
+         JRJaninoCompiler funciona sin depender de javac ni del JDT externo. -->
+    <dependency>
+      <groupId>org.codehaus.janino</groupId>
+      <artifactId>janino</artifactId>
+      <version>3.1.12</version>
+    </dependency>
+    <dependency>
+      <groupId>org.codehaus.janino</groupId>
+      <artifactId>commons-compiler</artifactId>
+      <version>3.1.12</version>
+    </dependency>
+
     <!-- Apache POI para exportar a Excel (requerido por JasperReports) -->
     <dependency>
       <groupId>org.apache.poi</groupId>

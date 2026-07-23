@@ -585,7 +585,7 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 		// Se excluye SOLO estado 7 (cancelada anticipada).
 		// Las cuotas pagadas (estado 4) y cualquier otro estado SÍ se incluyen.
 		Query query = em.createQuery(
-			" select d.prestamo.codigo, d.numeroCuota, d.capital " +
+			" select d.prestamo.codigo, d.numeroCuota, d.capital, d.saldoOtros " +
 			" from DetallePrestamo d " +
 			" where d.prestamo.codigo IN :codigosPrestamos " +
 			"   and d.fechaVencimiento >= :fechaInicio " +

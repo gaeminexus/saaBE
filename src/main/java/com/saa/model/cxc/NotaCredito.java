@@ -181,6 +181,14 @@ public class NotaCredito implements Serializable {
 	@Column(name = "ESTADOEMISION")
 	private Long estadoEmision;
 
+	/**
+	 * Factura de CXC a la que está relacionada esta nota de crédito.
+	 * Toda nota de crédito debe estar vinculada a una factura del mismo cliente.
+	 */
+	@ManyToOne
+	@JoinColumn(name = "FACTURA", referencedColumnName = "ID")
+	private Factura factura;
+
 	// Getters y Setters
 	
 	public Long getId() {
@@ -453,5 +461,13 @@ public class NotaCredito implements Serializable {
 
 	public void setEstadoEmision(Long estadoEmision) {
 		this.estadoEmision = estadoEmision;
+	}
+
+	public Factura getFactura() {
+		return factura;
+	}
+
+	public void setFactura(Factura factura) {
+		this.factura = factura;
 	}
 }

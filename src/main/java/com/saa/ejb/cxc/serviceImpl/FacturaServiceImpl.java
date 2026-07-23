@@ -128,10 +128,13 @@ public class FacturaServiceImpl implements FacturaService {
 			if (entidad.getFacturador() == null || entidad.getFacturador().getId() == null) {
 				throw new IncomeException("Debe especificar un facturador para la factura");
 			}
-			
+			if (entidad.getTitular() == null || entidad.getTitular().getCodigo() == null) {
+				throw new IncomeException("Debe especificar un titular para la factura");
+			}
+
 			// Constantes según SRI
 			String tipoComprobante = "01"; // Factura
-			Long ambiente = entidad.getAmbiente() != null ? entidad.getAmbiente() : 1L; // 1=Pruebas, 2=Producción
+			Long ambiente = entidad.getAmbiente() != null ? entidad.getAmbiente() : 1L;
 			String tipoEmision = "1"; // 1=Emisión Normal
 			
 			try {

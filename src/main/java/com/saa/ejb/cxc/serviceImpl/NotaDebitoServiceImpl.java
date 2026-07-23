@@ -16,7 +16,9 @@ import com.saa.basico.util.IncomeException;
 import com.saa.ejb.cxc.dao.NotaDebitoDaoService;
 import com.saa.ejb.cxc.dao.PathNotaDebitoDaoService;
 import com.saa.ejb.cxc.service.NotaDebitoService;
+import com.saa.ejb.reporte.service.ReporteService;
 import com.saa.ejb.signature.service.SignatureService;
+import com.saa.model.cxc.DetalleNotaDebito;
 import com.saa.model.cxc.NotaDebito;
 import com.saa.model.cxc.NombreEntidadesCobro;
 import com.saa.model.cxc.PathNotaDebito;
@@ -47,6 +49,15 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 
 	@EJB
 	private com.saa.ejb.cnt.service.AsientoContableService asientoContableService;
+
+	@EJB
+	private ReporteService reporteService;
+
+	@EJB
+	private com.saa.ejb.cxc.service.EmailFacturaService emailFacturaService;
+
+	@EJB
+	private com.saa.basico.ejb.DetalleRubroService detalleRubroService;
 
 	@PersistenceContext
 	private EntityManager em;
@@ -220,8 +231,24 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 		
 		writeElement(writer, "fechaEmision", notaDebito.getFecha().format(dateFormatter), 4);
 		writeElement(writer, "dirEstablecimiento", nvl(dirEstablecimiento, ""), 4);
-		String tipoIdNd = String.valueOf(notaDebito.getTitular().getRubroTipoIdentificacionH());
-		if (tipoIdNd.length() == 1) tipoIdNd = "0" + tipoIdNd;
+
+		// tipoIdentificacionComprador — igual que Factura y NC: usar detalleRubroService
+		// para obtener el código SRI real del rubro (ej: "04", "05", "06")
+		String tipoIdNd = "05"; // valor por defecto (cédula)
+		try {
+			if (notaDebito.getTitular().getRubroTipoIdentificacionP() != null
+					&& notaDebito.getTitular().getRubroTipoIdentificacionH() != null) {
+				String valorAlfa = detalleRubroService.selectValorStringByRubAltDetAlt(
+						notaDebito.getTitular().getRubroTipoIdentificacionP().intValue(),
+						notaDebito.getTitular().getRubroTipoIdentificacionH().intValue());
+				if (valorAlfa != null && !valorAlfa.isEmpty()) {
+					// SRI exige siempre 2 dígitos: "04", "05", "06", etc.
+					tipoIdNd = valorAlfa.length() == 1 ? "0" + valorAlfa : valorAlfa;
+				}
+			}
+		} catch (Throwable e) {
+			System.err.println("⚠ Error al obtener tipoIdentificación ND, usando default 05: " + e.getMessage());
+		}
 		writeElement(writer, "tipoIdentificacionComprador", tipoIdNd, 4);
 		writeElement(writer, "razonSocialComprador", nvl(notaDebito.getTitular().getNombre(), ""), 4);
 		writeElement(writer, "identificacionComprador", nvl(notaDebito.getTitular().getIdentificacion(), ""), 4);
@@ -335,8 +362,19 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 		writer.writeCharacters("    ");
 		writer.writeStartElement("motivos");
 		writer.writeCharacters("\n");
+		for (Object obj : detalles) {
+			DetalleNotaDebito d = (DetalleNotaDebito) obj;
+			writer.writeCharacters("      ");
+			writer.writeStartElement("motivo");
+			writer.writeCharacters("\n");
+			writeElement(writer, "razon", nvl(d.getDescripcion(), ""), 8);
+			writeElement(writer, "valor", formatDecimal(d.getValor()), 8);
+			writer.writeCharacters("      ");
+			writer.writeEndElement(); // motivo
+			writer.writeCharacters("\n");
+		}
 		writer.writeCharacters("    ");
-		writer.writeEndElement();
+		writer.writeEndElement(); // motivos
 		writer.writeCharacters("\n");
 	}
 	
@@ -344,10 +382,20 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 		writer.writeCharacters("  ");
 		writer.writeStartElement("infoAdicional");
 		writer.writeCharacters("\n");
+		// Igual que el PHP de referencia y NC:
+		// Soporte[tel - mail] Contacto Cliente[tel - mail]
+		// Facturador: getTelefono() / getMail()
+		// Titular:    getTelefono() / getEmail()
+		String telFcdr  = nvl(notaDebito.getFacturador().getTelefono(), "");
+		String mailFcdr = nvl(notaDebito.getFacturador().getMail(), "");
+		String telCmdr  = nvl(notaDebito.getTitular().getTelefono(), "");
+		String mailCmdr = nvl(notaDebito.getTitular().getEmail(), "");
+		String infoAd   = "Soporte[" + telFcdr + " - " + mailFcdr + "] "
+				+ "Contacto Cliente[" + telCmdr + " - " + mailCmdr + "]";
 		writer.writeCharacters("    ");
 		writer.writeStartElement("campoAdicional");
 		writer.writeAttribute("nombre", "Datos Adicionales");
-		writer.writeCharacters("Observ.[" + nvl(notaDebito.getObservacion(), "") + "]");
+		writer.writeCharacters(infoAd);
 		writer.writeEndElement();
 		writer.writeCharacters("\n");
 		writer.writeCharacters("  ");
@@ -385,13 +433,16 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 		if (value == null) {
 			return "0.00";
 		}
-		return String.format("%.2f", value);
+		// Locale.US garantiza punto decimal (.) en lugar de coma (,)
+		// El SRI exige formato XML estándar: 200.00 NO 200,00
+		return String.format(java.util.Locale.US, "%.2f", value);
 	}
 	
 	@Override
 	public String autorizarNotaDebito(Long idFacturador, Long ambiente, Long conectaSRI, String clave,
 			Long codigoNotaDebito, String xml, String destinatario, String pathLogo) throws Throwable {
-		System.out.println("Ingresa al metodo autorizarNotaDebito con clave: " + clave);
+		System.out.println("=== autorizarNotaDebito | clave: " + clave + " | facturador: " + idFacturador
+				+ " | ambiente: " + ambiente + " | conectaSRI: " + conectaSRI + " ===");
 		
 		String respuesta = "";
 		String baseUploadDir = getBaseUploadDirectory();
@@ -402,6 +453,7 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 			Path pathFirmado = Paths.get(resourcesPath + "/ntdb/f/" + clave + ".xml");
 			Files.createDirectories(pathFirmado.getParent());
 			Files.write(pathFirmado, xml.getBytes("UTF-8"));
+			System.out.println("✓ XML firmado guardado en: " + pathFirmado);
 			
 			// 2. Insertar path firmado en tabla ptnd (alterno=3)
 			PathNotaDebito pathF = new PathNotaDebito();
@@ -414,24 +466,26 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 			// 3. Actualizar estado a FIRMADA (estado=3)
 			notaDebito.setEstado(3L);
 			notaDebitoDaoService.save(notaDebito, notaDebito.getId());
+			System.out.println("✓ Estado ND actualizado a FIRMADA (3)");
 			
 			if (conectaSRI == 1) {
 				String urlWS1 = ambiente == 1 
 						? "https://celcer.sri.gob.ec/comprobantes-electronicos-ws/RecepcionComprobantesOffline?wsdl"
 						: "https://cel.sri.gob.ec/comprobantes-electronicos-ws/RecepcionComprobantesOffline?wsdl";
+				System.out.println(">>> WS1 Recepción URL: " + urlWS1);
 				
 				try {
 					Path logWS1 = Paths.get(resourcesPath + "/ntdb/e/" + clave + ".txt");
 					Files.createDirectories(logWS1.getParent());
 					PrintWriter logWriter1 = new PrintWriter(new FileWriter(logWS1.toFile()));
 					
-					// Leer bytes crudos del XML firmado (NO convertir a String, preserva la firma)
 					byte[] bytesXMLFirmado = Files.readAllBytes(pathFirmado);
+					System.out.println(">>> Enviando XML al SRI (" + bytesXMLFirmado.length + " bytes)...");
 					String estadoRecepcion = llamarRecepcionSRI(urlWS1, bytesXMLFirmado, logWriter1);
+					System.out.println(">>> Estado WS1 Recepción: [" + estadoRecepcion + "]");
 					
 					logWriter1.close();
 					
-					// Guardar copia exacta del XML enviado
 					Path pathEnviado = Paths.get(resourcesPath + "/ntdb/e/" + clave + ".xml");
 					Files.write(pathEnviado, bytesXMLFirmado);
 					
@@ -443,18 +497,31 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 					
 					notaDebito.setEstado(4L);
 					notaDebitoDaoService.save(notaDebito, notaDebito.getId());
+					System.out.println("✓ Estado ND actualizado a ENVIADA (4)");
 					
 					if ("RECIBIDA".equals(estadoRecepcion)) {
+						System.out.println(">>> Comprobante RECIBIDO por SRI. Esperando 2s para autorización...");
 						Thread.sleep(2000);
 						
 						String urlWS2 = ambiente == 1
 								? "https://celcer.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl"
 								: "https://cel.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl";
+						System.out.println(">>> WS2 Autorización URL: " + urlWS2);
 						
 						try {
 							ResultadoAutorizacion resultado = llamarAutorizacionSRI(urlWS2, clave);
 							
+							System.out.println(">>> Respuesta WS2 Autorización:");
+							System.out.println("    estado              = [" + resultado.estado + "]");
+							System.out.println("    numeroAutorizacion  = [" + resultado.numeroAutorizacion + "]");
+							System.out.println("    fechaAutorizacion   = [" + resultado.fechaAutorizacion + "]");
+							System.out.println("    mensajeId           = [" + resultado.mensajeId + "]");
+							System.out.println("    mensaje             = [" + resultado.mensaje + "]");
+							System.out.println("    informacionAdicional= [" + resultado.informacionAdicional + "]");
+							System.out.println("    respuestaCompleta   = " + resultado.respuestaCompleta);
+							
 							if ("AUTORIZADO".equals(resultado.estado)) {
+								System.out.println("✓ ND AUTORIZADA por el SRI. Num.Autorización: " + resultado.numeroAutorizacion);
 								Path logWS2A = Paths.get(resourcesPath + "/ntdb/a/" + clave + ".txt");
 								Files.createDirectories(logWS2A.getParent());
 								PrintWriter logWriter2 = new PrintWriter(new FileWriter(logWS2A.toFile()));
@@ -477,7 +544,52 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 								notaDebitoDaoService.save(notaDebito, notaDebito.getId());
 								
 								respuesta = resultado.estado;
-								
+
+								// 5. Generar PDF (RIDE Nota de Débito)
+								byte[] pdfBytesParaEmail = null;
+								try {
+									byte[] pdfBytes = generarPDFNotaDebito(notaDebito, idFacturador, clave, pathLogo, ambiente);
+									if (pdfBytes != null && pdfBytes.length > 0) {
+										Path pathPdf = Paths.get(resourcesPath + "/ntdb/a/" + clave + ".pdf");
+										Files.write(pathPdf, pdfBytes);
+										PathNotaDebito pathPdfRec = new PathNotaDebito();
+										pathPdfRec.setNotaDebito(notaDebito);
+										pathPdfRec.setPath("resources/" + idFacturador + "/ntdb/a/" + clave + ".pdf");
+										pathPdfRec.setAlterno(7L);
+										pathNotaDebitoDaoService.save(pathPdfRec, null);
+										pdfBytesParaEmail = pdfBytes;
+										System.out.println("✓ PDF RIDE ND generado: " + pathPdf);
+									}
+								} catch (Exception pdfEx) {
+									System.err.println("⚠ Error generando PDF ND (no crítico): " + pdfEx.getMessage());
+									pdfEx.printStackTrace();
+								}
+
+								// 6. Enviar correo electrónico
+								try {
+									String emailDest = destinatario;
+									if ((emailDest == null || emailDest.trim().isEmpty())
+											&& notaDebito.getTitular() != null) {
+										emailDest = notaDebito.getTitular().getEmail();
+									}
+									String razonSocialEmisor = notaDebito.getFacturador() != null
+											? nvl(notaDebito.getFacturador().getRazonSocial(),
+												  nvl(notaDebito.getFacturador().getNombre(), "")) : "";
+									if (emailDest != null && !emailDest.trim().isEmpty()) {
+										emailFacturaService.enviarFacturaAutorizada(
+												emailDest,
+												nvl(notaDebito.getNumero(), clave),
+												clave,
+												razonSocialEmisor,
+												resultado.comprobanteXML,
+												pdfBytesParaEmail);
+										System.out.println("✓ Email ND enviado a: " + emailDest);
+									}
+								} catch (Exception mailEx) {
+									System.err.println("⚠ Error enviando email ND (no crítico): " + mailEx.getMessage());
+									mailEx.printStackTrace();
+								}
+
 								if (ambiente == 2) {
 									String sqlUpdate = "UPDATE Facturador f SET f.docEmitidos = COALESCE(f.docEmitidos, 0) + 1 WHERE f.id = :idFacturador";
 									Query updateQuery = em.createQuery(sqlUpdate);
@@ -486,10 +598,23 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 								}
 								
 							} else {
+								// NO AUTORIZADO — loguear TODO para diagnóstico
+								System.err.println("✗ ND NO AUTORIZADA por el SRI.");
+								System.err.println("    estado              = [" + resultado.estado + "]");
+								System.err.println("    mensajeId           = [" + resultado.mensajeId + "]");
+								System.err.println("    mensaje             = [" + resultado.mensaje + "]");
+								System.err.println("    informacionAdicional= [" + resultado.informacionAdicional + "]");
+								System.err.println("    respuestaCompleta   = " + resultado.respuestaCompleta);
+
 								Path logWS2N = Paths.get(resourcesPath + "/ntdb/n/" + clave + ".txt");
 								Files.createDirectories(logWS2N.getParent());
 								PrintWriter logWriter2N = new PrintWriter(new FileWriter(logWS2N.toFile()));
-								logWriter2N.println("Respuesta WS2: " + resultado.respuestaCompleta);
+								logWriter2N.println("=== RESPUESTA NO AUTORIZADO ===");
+								logWriter2N.println("estado              = " + resultado.estado);
+								logWriter2N.println("mensajeId           = " + resultado.mensajeId);
+								logWriter2N.println("mensaje             = " + resultado.mensaje);
+								logWriter2N.println("informacionAdicional= " + resultado.informacionAdicional);
+								logWriter2N.println("respuestaCompleta   = " + resultado.respuestaCompleta);
 								logWriter2N.close();
 								
 								if (resultado.comprobanteXML != null) {
@@ -507,13 +632,17 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 								notaDebito.setEstadoEmision(2L);
 								notaDebitoDaoService.save(notaDebito, notaDebito.getId());
 								
-								respuesta = "Estado: " + resultado.estado + 
-										" Id: " + nvl(resultado.mensajeId, "") +
-										" Mensaje: " + nvl(resultado.mensaje, "") +
-										" / " + nvl(resultado.informacionAdicional, "");
+								respuesta = "NO_AUTORIZADO"
+										+ " | Estado: " + nvl(resultado.estado, "")
+										+ " | Id: "     + nvl(resultado.mensajeId, "")
+										+ " | Mensaje: " + nvl(resultado.mensaje, "")
+										+ " | Info: "   + nvl(resultado.informacionAdicional, "");
+								System.err.println(">>> Respuesta completa para frontend: " + respuesta);
 							}
 							
 						} catch (Exception e) {
+							System.err.println("✗ ERROR en llamada WS2 autorización: " + e.getMessage());
+							e.printStackTrace();
 							Path logWS2Error = Paths.get(resourcesPath + "/ntdb/n/" + clave + ".txt");
 							Files.createDirectories(logWS2Error.getParent());
 							PrintWriter logWriter2E = new PrintWriter(new FileWriter(logWS2Error.toFile()));
@@ -531,9 +660,12 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 						}
 						
 					} else {
-						respuesta = "Estado: " + estadoRecepcion;
+						// WS1 devolvió algo distinto a RECIBIDA
+						System.err.println("⚠ WS1 devolvió estado no esperado: [" + estadoRecepcion + "]");
+						respuesta = "Estado WS1: " + estadoRecepcion;
 						
 						if (estadoRecepcion != null && estadoRecepcion.contains("CLAVE ACCESO REGISTRADA")) {
+							System.out.println(">>> Clave ya registrada en SRI — marcando como autorizada");
 							respuesta = "Comprobante Autorizado";
 							notaDebito.setAutorizacion(clave);
 							notaDebito.setFechaAutorizacion(notaDebito.getFecha().plusMinutes(1).plusSeconds(15));
@@ -543,11 +675,13 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 					}
 					
 				} catch (Exception e) {
-					respuesta = "Error al llamar SRI_1: " + e.getMessage();
+					System.err.println("✗ ERROR en llamada WS1 recepción: " + e.getMessage());
 					e.printStackTrace();
+					respuesta = "Error al llamar SRI_1: " + e.getMessage();
 				}
 				
 			} else {
+				System.out.println("ℹ conectaSRI=0 — ND generada pero NO enviada al SRI");
 				respuesta = "Nota de Debito Generada pero no enviada";
 			}
 			
@@ -571,6 +705,42 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 			if (ambiente == null) ambiente = 1L;
 			if (conectaSRI == null) conectaSRI = 1L;
 			if (pathLogo == null) pathLogo = "resources/logos/logo_aso.png";
+
+			// ── PASO 0: Validar configuración contable ANTES de grabar ─────────
+			if (notaDebito.getFacturador() != null
+					&& Long.valueOf(1L).equals(notaDebito.getFacturador().getGeneraConta())) {
+
+				if (notaDebito.getFacturador().getEmpresa() == null) {
+					resultado.put("exito", false);
+					resultado.put("etapa", "VALIDACION_CONTABLE");
+					resultado.put("mensaje", "El facturador tiene habilitada la generación contable "
+							+ "pero no tiene empresa contable configurada. "
+							+ "Configure el campo EMPRESA en el facturador.");
+					return resultado;
+				}
+
+				Long idEmpresaVal = notaDebito.getFacturador().getEmpresa().getCodigo();
+				System.out.println("PASO 0: Validando cuentas contables para ND, empresa " + idEmpresaVal + "...");
+
+				java.util.List<String> erroresContables =
+						asientoContableService.validarCuentasContablesND(notaDebito, idEmpresaVal);
+
+				if (!erroresContables.isEmpty()) {
+					resultado.put("exito", false);
+					resultado.put("etapa", "VALIDACION_CONTABLE");
+					resultado.put("mensaje", "No se puede emitir la nota de débito: faltan cuentas contables. "
+							+ "Corrija los siguientes problemas antes de continuar:");
+					resultado.put("erroresContables", erroresContables);
+					StringBuilder sb = new StringBuilder("Faltan cuentas contables configuradas:\n");
+					for (int i = 0; i < erroresContables.size(); i++) {
+						sb.append("  ").append(i + 1).append(". ").append(erroresContables.get(i)).append("\n");
+					}
+					resultado.put("error", sb.toString());
+					System.err.println("✗ Validación contable ND fallida:\n" + sb);
+					return resultado;
+				}
+				System.out.println("✓ Validación contable ND OK: todas las cuentas están configuradas.");
+			}
 			
 			System.out.println("Paso 1: Grabando nota de débito...");
 			notaDebito = this.saveSingle(notaDebito);
@@ -618,6 +788,25 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 				notaDebito.getId(), xmlFirmado, destinatario, pathLogo);
 			
 			resultado.put("autorizacionMensaje", resultadoAutorizacion);
+			System.out.println(">>> Mensaje completo de autorización ND: [" + resultadoAutorizacion + "]");
+
+			// ── Verificar que la ND fue efectivamente AUTORIZADA ──────────────
+			// Si el SRI devuelve DEVUELTA, NO_AUTORIZADO u otro estado, NO se
+			// genera el asiento contable y se retorna con exito=false.
+			boolean autorizada = resultadoAutorizacion != null
+					&& resultadoAutorizacion.contains("AUTORIZADO");
+
+			if (!autorizada) {
+				System.err.println("✗ ND no fue autorizada por el SRI. Se detiene el proceso.");
+				resultado.put("exito", false);
+				resultado.put("etapa", "AUTORIZACION_SRI");
+				resultado.put("estado", "NO_AUTORIZADO");
+				resultado.put("mensaje", "La nota de débito fue enviada al SRI pero no fue autorizada. "
+						+ "Respuesta del SRI: " + resultadoAutorizacion);
+				return resultado;
+			}
+
+			System.out.println("✓ ND AUTORIZADA. Continuando con asiento contable...");
 
 			// ── PASO 5: Generar asiento contable ───────────────────────────────
 			// Solo si el facturador tiene generaConta=1 y empresa contable configurada.
@@ -633,15 +822,15 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 							? ndActualizada.getFecha().toLocalDate() : java.time.LocalDate.now();
 					String obsAsiento = "Nota de Débito N° " + nvl(ndActualizada.getNumero(), clave)
 							+ " | Cliente: " + (ndActualizada.getTitular() != null ? ndActualizada.getTitular().getNombre() : "")
-							+ " | Aut: " + nvl(ndActualizada.getAutorizacion(), clave);
+							+ " | " + nvl(ndActualizada.getObservacion(), "");
 					String usuarioAsiento = (ndActualizada.getUsuario() != null)
 							? ndActualizada.getUsuario().getNombre() : "SISTEMA";
-					// TODO: Reemplazar TipoAsientos.NOTAS_DEBITO_VENTA con el codigoAlterno
-					//       correcto una vez que se defina la plantilla en BD.
+					// Usar el mismo tipo de asiento que Factura y NC (codigoAlterno=2 = FACTURAS_VENTA)
+					// Factura, NC y ND comparten el mismo tipo de asiento contable.
 					com.saa.model.cnt.Asiento asientoGenerado =
 							asientoContableService.generarAsientoNotaDebito(
 									ndActualizada.getId(), idEmpresaConta,
-									com.saa.rubros.TipoAsientos.NOTAS_DEBITO_VENTA,
+									com.saa.rubros.TipoAsientos.FACTURAS_VENTA,
 									fechaAsiento, obsAsiento, usuarioAsiento);
 					resultado.put("asiento", asientoGenerado.getNumeroAlterno());
 					System.out.println("✓ Asiento contable generado: " + asientoGenerado.getNumeroAlterno());
@@ -693,13 +882,20 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 			
 			java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
 			soapResponse.writeTo(baos);
-			log.println("Respuesta WS1: " + baos.toString("UTF-8"));
+			String respuestaCompleta = baos.toString("UTF-8");
+
+			// Loguear la respuesta COMPLETA en stdout Y en archivo para diagnóstico
+			System.out.println(">>> RESPUESTA COMPLETA WS1 SRI (ND):");
+			System.out.println(respuestaCompleta);
+			log.println("Respuesta WS1 completa: " + respuestaCompleta);
 			
 			SOAPBody responseBody = soapResponse.getSOAPBody();
 			NodeList estadoList = responseBody.getElementsByTagName("estado");
 			if (estadoList.getLength() == 0) estadoList = responseBody.getElementsByTagNameNS("*", "estado");
 			if (estadoList.getLength() > 0) {
 				String estado = estadoList.item(0).getTextContent();
+				System.out.println(">>> Estado WS1 extraído: [" + estado + "]");
+
 				NodeList mensajeList = responseBody.getElementsByTagName("mensaje");
 				if (mensajeList.getLength() == 0) mensajeList = responseBody.getElementsByTagNameNS("*", "mensaje");
 				if (mensajeList.getLength() > 0) {
@@ -709,16 +905,57 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 						return "CLAVE ACCESO REGISTRADA";
 					}
 				}
+
+				// Si es DEVUELTA, extraer y loguear TODOS los mensajeDevuelta con la razón exacta
+				if ("DEVUELTA".equals(estado)) {
+					StringBuilder sbErrores = new StringBuilder("DEVUELTA");
+					NodeList mensajesDevuelta = responseBody.getElementsByTagName("mensajeDevuelta");
+					if (mensajesDevuelta.getLength() == 0)
+						mensajesDevuelta = responseBody.getElementsByTagNameNS("*", "mensajeDevuelta");
+
+					System.err.println(">>> SRI rechazó la ND (DEVUELTA). Errores encontrados: " + mensajesDevuelta.getLength());
+					log.println(">>> Errores DEVUELTA: " + mensajesDevuelta.getLength());
+
+					for (int i = 0; i < mensajesDevuelta.getLength(); i++) {
+						org.w3c.dom.Node nodeMD = mensajesDevuelta.item(i);
+						String identificador = extraerTextoHijo(nodeMD, "identificador");
+						String msgError      = extraerTextoHijo(nodeMD, "mensaje");
+						String infoAd        = extraerTextoHijo(nodeMD, "informacionAdicional");
+						String tipo          = extraerTextoHijo(nodeMD, "tipo");
+						String lineaError = " | [" + tipo + "] Id:" + identificador
+								+ " Msg:" + msgError + " Info:" + infoAd;
+						sbErrores.append(lineaError);
+						System.err.println("  ERROR SRI[" + i + "]: tipo=" + tipo
+								+ " | identificador=" + identificador
+								+ " | mensaje=" + msgError
+								+ " | informacionAdicional=" + infoAd);
+						log.println("  ERROR SRI[" + i + "]: " + lineaError);
+					}
+					soapConnection.close();
+					return sbErrores.toString();
+				}
+
 				soapConnection.close();
 				return estado;
 			}
+
+			System.out.println(">>> ADVERTENCIA: No se encontró <estado> en la respuesta WS1 (ND)");
 			soapConnection.close();
 			return "SIN_RESPUESTA";
 		} catch (Exception e) {
+			System.err.println("✗ ERROR en llamarRecepcionSRI ND: " + e.getMessage());
 			log.println("Error en llamarRecepcionSRI: " + e.getMessage());
 			e.printStackTrace(log);
 			throw e;
 		}
+	}
+
+	/** Extrae el texto de un nodo hijo por nombre de tag */
+	private String extraerTextoHijo(org.w3c.dom.Node parent, String tagName) {
+		if (parent == null) return "";
+		org.w3c.dom.NodeList hijos = ((org.w3c.dom.Element) parent).getElementsByTagName(tagName);
+		if (hijos.getLength() == 0) return "";
+		return hijos.item(0).getTextContent() != null ? hijos.item(0).getTextContent() : "";
 	}
 	
 	private ResultadoAutorizacion llamarAutorizacionSRI(String url, String claveAcceso) throws Exception {
@@ -891,6 +1128,185 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 		}
 	}
 	
+	/**
+	 * Genera el PDF RIDE de la nota de débito consultando directamente la BD.
+	 * Estructura idéntica al PDF de NC, adaptada para tablas NTDB/DTND.
+	 */
+	@SuppressWarnings("unchecked")
+	private byte[] generarPDFNotaDebito(NotaDebito ndObj, Long idFacturador, String clave,
+			String pathLogoParam, Long ambiente) {
+		try {
+			System.out.println("Generando PDF RIDE ND para clave: " + clave);
+
+			// ── BLOQUE 1: Datos principales ──────────────────────────────────
+			jakarta.persistence.Query q1 = em.createNativeQuery(
+				"SELECT nd.ID, nd.AMBIENTE, nd.AUTORIZACION, nd.FECHAAUTORIZACION, nd.NUMERO, nd.CLAVE, " +
+				"       nd.FECHA, nd.SUBTOTAL, nd.TOTAL, nd.SUBCERO, nd.VIVA, nd.PIVA, nd.DESCUENTO, " +
+				"       nd.OBSERVACION, nd.TIPODOCMODIFICADO, nd.NUMDOCMODIFICADO, nd.FECHAEMISIONDM, " +
+				"       nd.PTOEMISION, " +
+				"       fc.NUMDOC, fc.RAZONSOCIAL, fc.NOMBRECOMERCIAL, " +
+				"       fc.MAIL, fc.TELEFONO, fc.LOGO, fc.DIRECCION, " +
+				"       fc.MICROEMPRESA, fc.RIMPE, fc.POPULARRIMPE, " +
+				"       fc.CONTRIBUYENTEESPECIAL, fc.CONTABILIDAD, fc.AGENTERETENCION, " +
+				"       t.TTLRNMBR, t.TTLRIDNT, t.TTLRDRCC, t.TTLRMLLL, t.TTLRTLFN " +
+				"FROM CBR.NTDB nd " +
+				"JOIN CBR.FCDR fc ON nd.FACTURADOR = fc.ID " +
+				"JOIN TSR.TTLR t  ON nd.TITULAR = t.TTLRCDGO " +
+				"WHERE nd.CLAVE = :clave");
+			q1.setParameter("clave", clave);
+			Object[] row = (Object[]) q1.getSingleResult();
+
+			Long   idND              = toLong(row[0]);
+			int    idAmb             = toInt(row[1]);
+			String autorizacion      = str(row[2]);
+			String fechaAutorizacion = str(row[3]);
+			String numND             = str(row[4]);
+			String claveAcceso       = str(row[5]);
+			String fecha             = str(row[6]);
+			double subtotal12        = toDouble(row[7]);
+			double total             = toDouble(row[8]);
+			double subcero           = toDouble(row[9]);
+			double vIVA              = toDouble(row[10]);
+			double pIVA              = toDouble(row[11]);
+			double descuento         = toDouble(row[12]);
+			String observacion       = str(row[13]);
+			String tipoDocMod        = str(row[14]);
+			String numDocMod         = str(row[15]);
+			String fechaEmisionDM    = str(row[16]);
+			Long   idPtoEmision      = toLong(row[17]);
+			String ruc               = str(row[18]);
+			String razonSocial       = str(row[19]);
+			String nombreComercial   = str(row[20]);
+			String mailFcdr          = str(row[21]);
+			String telFcdr           = str(row[22]);
+			String logo              = str(row[23]);
+			String dirFcdr           = str(row[24]);
+			int    microEmpresa      = toInt(row[25]);
+			int    rimpe             = toInt(row[26]);
+			int    rimpePopular      = toInt(row[27]);
+			String contribuyenteEspecial = str(row[28]);
+			int    contabilidad      = toInt(row[29]);
+			String agenteRetencion   = str(row[30]);
+			String nomCmdr           = str(row[31]);
+			String numDocCmdr        = str(row[32]);
+			String dirCmdr           = str(row[33]);
+			String mailCmdr          = str(row[34]);
+			String telCmdr           = str(row[35]);
+
+			// ── BLOQUE 2: Establecimiento ─────────────────────────────────────
+			String estNombre = "", estDireccion = "", estTelefono = "";
+			boolean esMatriz = true;
+			String obsEstablecimiento = "";
+			try {
+				jakarta.persistence.Query q2 = em.createNativeQuery(
+					"SELECT b.NOMBRE, b.DIRECCION, b.TELEFONO, b.MATRIZ, a.OBSERVACION " +
+					"FROM CBR.PTEM a JOIN CBR.ESTB b ON a.ESTABLECIMIENTO = b.ID " +
+					"WHERE a.ID = :id");
+				q2.setParameter("id", idPtoEmision);
+				Object[] est = (Object[]) q2.getSingleResult();
+				estNombre          = str(est[0]);
+				estDireccion       = str(est[1]);
+				estTelefono        = str(est[2]);
+				esMatriz           = toInt(est[3]) == 1;
+				obsEstablecimiento = str(est[4]);
+			} catch (Exception ignored) {}
+
+			// ── BLOQUE 3: IVA general vigente ─────────────────────────────────
+			int valorIvaGeneral = (int) pIVA;
+			if (valorIvaGeneral == 0) {
+				try {
+					jakarta.persistence.Query q3 = em.createNativeQuery(
+						"SELECT PORCENTAJE FROM CBR.TSRI WHERE LSRI = 614 FETCH FIRST 1 ROWS ONLY");
+					Object p = q3.getSingleResult();
+					if (p != null) valorIvaGeneral = ((Number) p).intValue();
+				} catch (Exception ignored) {}
+			}
+
+			// ── BLOQUE 4: Logo ────────────────────────────────────────────────
+			String logoPath = "";
+			if (logo != null && !logo.isEmpty()) {
+				String baseDir = getBaseUploadDirectory();
+				String cand = logo.startsWith("/") || logo.contains(":\\") ? logo : baseDir + logo;
+				if (java.nio.file.Files.exists(java.nio.file.Paths.get(cand))) logoPath = cand;
+			}
+			if (logoPath.isEmpty() && pathLogoParam != null && !pathLogoParam.isEmpty()) {
+				String baseDir = getBaseUploadDirectory();
+				String cand = baseDir + pathLogoParam;
+				if (java.nio.file.Files.exists(java.nio.file.Paths.get(cand))) logoPath = cand;
+			}
+
+			// ── BLOQUE 5: Campos calculados ───────────────────────────────────
+			String ambStr = (idAmb == 2) ? "PRODUCCIÓN" : "PRUEBAS";
+			String tipoEmpresa = "";
+			if (microEmpresa == 1)      tipoEmpresa = "CONTRIBUYENTE RÉGIMEN MICROEMPRESAS";
+			else if (rimpe == 1)        tipoEmpresa = "CONTRIBUYENTE RÉGIMEN RIMPE";
+			else if (rimpePopular == 1) tipoEmpresa = "CONTRIBUYENTE NEGOCIO POPULAR - RÉGIMEN RIMPE";
+			String dirFcdrCompleta = dirFcdr;
+			String telFcdrCompleta = telFcdr;
+			if (!esMatriz && !estNombre.isEmpty()) {
+				dirFcdrCompleta = dirFcdr + " | Suc: " + estNombre + " - " + estDireccion;
+				telFcdrCompleta = telFcdr + " / " + estTelefono;
+			}
+			String contabilidadStr = (contabilidad == 1) ? "SI" : "NO";
+			String iaObservacion = (obsEstablecimiento + " " + observacion).trim();
+			double subtotalSinImp = subtotal12 + subcero;
+
+			// ── BLOQUE 6: Parámetros para Jasper ─────────────────────────────
+			java.util.Map<String, Object> p = new java.util.HashMap<>();
+			p.put("P_ID_NOTA_DEBITO",          idND);
+			p.put("P_CLAVE",                   claveAcceso);
+			p.put("P_PATH_LOGO",               logoPath);
+			p.put("P_RUC_FACTURADOR",          ruc);
+			p.put("P_RAZON_SOCIAL",            razonSocial);
+			p.put("P_NOMBRE_COMERCIAL",        nombreComercial != null ? nombreComercial : "");
+			p.put("P_DIRECCION_FCDR",          dirFcdrCompleta);
+			p.put("P_TELEFONO_FCDR",           telFcdrCompleta);
+			p.put("P_EMAIL_FCDR",              mailFcdr);
+			p.put("P_TIPO_EMPRESA",            tipoEmpresa);
+			p.put("P_AGENTE_RETENCION",        agenteRetencion != null ? agenteRetencion : "");
+			p.put("P_CONTRIBUYENTE_ESPECIAL",  contribuyenteEspecial != null ? contribuyenteEspecial : "");
+			p.put("P_OBLIGADO_CONTABILIDAD",   contabilidadStr);
+			p.put("P_NUMERO_ND",               numND);
+			p.put("P_NUMERO_AUTORIZACION",     autorizacion != null ? autorizacion : claveAcceso);
+			p.put("P_FECHA_EMISION",           fecha);
+			p.put("P_FECHA_AUTORIZACION",      fechaAutorizacion != null ? fechaAutorizacion : "");
+			p.put("P_AMBIENTE",                ambStr);
+			p.put("P_TIPO_DOC_MODIFICADO",     tipoDocMod);
+			p.put("P_NUM_DOC_MODIFICADO",      numDocMod);
+			p.put("P_FECHA_EMISION_DOC_MOD",   fechaEmisionDM);
+			p.put("P_RAZON_SOCIAL_COMPRADOR",   nomCmdr);
+			p.put("P_IDENTIFICACION_COMPRADOR", numDocCmdr);
+			p.put("P_DIRECCION_COMPRADOR",      dirCmdr);
+			p.put("P_EMAIL_COMPRADOR",          mailCmdr);
+			p.put("P_PORC_IVA",               valorIvaGeneral);
+			p.put("P_SUBTOTAL_IVA",           subtotal12);
+			p.put("P_SUBTOTAL_0",             subcero);
+			p.put("P_SUBTOTAL_SIN_IMP",       subtotalSinImp);
+			p.put("P_DESCUENTO",              descuento);
+			p.put("P_IVA",                    vIVA);
+			p.put("P_TOTAL",                  total);
+			p.put("P_INFO_ADICIONAL",         "Teléfonos: " + telCmdr + "\nObservación: " + iaObservacion);
+
+			// ── BLOQUE 7: Generar PDF ─────────────────────────────────────────
+			byte[] pdfBytes = reporteService.generarReporte("cxc", "RPRT_RIDE_NOTA_DEBITO", p, "PDF");
+			System.out.println("✓ PDF RIDE ND generado correctamente ("
+					+ (pdfBytes != null ? pdfBytes.length : 0) + " bytes)");
+			return pdfBytes;
+
+		} catch (Exception e) {
+			System.err.println("Error generando PDF RIDE ND: " + e.getMessage());
+			e.printStackTrace();
+			return null;
+		}
+	}
+
+	// ── Helpers de conversión para native query ──────────────────────────────
+	private String str(Object o)      { return o != null ? o.toString() : ""; }
+	private double toDouble(Object o) { return o != null ? ((Number) o).doubleValue() : 0.0; }
+	private int    toInt(Object o)    { return o != null ? ((Number) o).intValue()    : 0; }
+	private Long   toLong(Object o)   { return o != null ? ((Number) o).longValue()   : 0L; }
+	private Double nvlD(Double v)     { return v != null ? v : 0.0; }
+
 	/**
 	 * Obtiene el directorio base de uploads desde la variable de sistema
 	 * (misma lógica que FileService)

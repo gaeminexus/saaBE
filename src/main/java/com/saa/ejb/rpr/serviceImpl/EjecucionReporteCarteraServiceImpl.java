@@ -4,6 +4,9 @@ import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
+import com.saa.ejb.rpr.dao.CreditoCuotasPrestamosMensualDaoService;
+import com.saa.ejb.rpr.dao.CreditoJubiladosMensualDaoService;
+import com.saa.ejb.rpr.dao.CreditoParticipesMensualDaoService;
 import com.saa.ejb.rpr.dao.EjecucionReporteCarteraDaoService;
 import com.saa.ejb.rpr.service.EjecucionReporteCarteraService;
 import com.saa.model.rpr.EjecucionReporteCartera;
@@ -18,6 +21,15 @@ public class EjecucionReporteCarteraServiceImpl implements EjecucionReporteCarte
     @EJB
     private EjecucionReporteCarteraDaoService ejecucionReporteCarteraDaoService;
 
+    @EJB
+    private CreditoJubiladosMensualDaoService cjbmDaoService;
+
+    @EJB
+    private CreditoCuotasPrestamosMensualDaoService ccpmDaoService;
+
+    @EJB
+    private CreditoParticipesMensualDaoService cprmDaoService;
+
     @Override
     public EjecucionReporteCartera selectById(Long id) throws Throwable {
         System.out.println("Ingresa al selectById EjecucionReporteCartera con id: " + id);
@@ -29,6 +41,12 @@ public class EjecucionReporteCarteraServiceImpl implements EjecucionReporteCarte
         System.out.println("Ingresa al metodo remove[] de EjecucionReporteCarteraService");
         EjecucionReporteCartera entidad = new EjecucionReporteCartera();
         for (Long registro : id) {
+            // Eliminar registros hijos primero para evitar violación FK
+            int cprm = cprmDaoService.deleteByEjecucion(registro);
+            int ccpm = ccpmDaoService.deleteByEjecucion(registro);
+            int cjbm = cjbmDaoService.deleteByEjecucion(registro);
+            System.out.println("Eliminados hijos de EjecucionReporteCartera " + registro
+                + " → CPRM: " + cprm + ", CCPM: " + ccpm + ", CJBM: " + cjbm);
             ejecucionReporteCarteraDaoService.remove(entidad, registro);
         }
     }

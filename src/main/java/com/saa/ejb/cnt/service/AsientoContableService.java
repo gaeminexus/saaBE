@@ -45,6 +45,35 @@ public interface AsientoContableService {
             List<DetalleFactura> detalles, Long idEmpresa);
 
     /**
+     * Valida ANTES de grabar una Nota de Crédito que todas las cuentas contables
+     * necesarias para generar el asiento estén configuradas.
+     *
+     * La lógica es idéntica a {@link #validarCuentasContables} pero adaptada para
+     * {@link com.saa.model.cxc.DetalleNotaCredito}, cuyo campo {@code producto} es
+     * un {@code Long} (ID) en lugar de una relación JPA cargada.
+     *
+     * @param titular   Titular al que se emite la nota de crédito
+     * @param detalles  Lista de detalles de la nota de crédito
+     * @param idEmpresa ID de la empresa contable
+     * @return Lista de mensajes de error. Si está vacía, todas las cuentas existen.
+     */
+    List<String> validarCuentasContablesNC(Titular titular,
+            List<com.saa.model.cxc.DetalleNotaCredito> detalles, Long idEmpresa);
+
+    /**
+     * Valida ANTES de grabar una Nota de Débito que todas las cuentas contables
+     * necesarias estén configuradas.
+     *
+     * La ND no tiene detalles con producto; obtiene las cuentas de ingreso desde
+     * los detalles de la factura relacionada ({@code notaDebito.factura}).
+     *
+     * @param notaDebito Nota de Débito a emitir (debe tener factura relacionada)
+     * @param idEmpresa  ID de la empresa contable
+     * @return Lista de mensajes de error. Si está vacía, todas las cuentas existen.
+     */
+    List<String> validarCuentasContablesND(com.saa.model.cxc.NotaDebito notaDebito, Long idEmpresa);
+
+    /**
      * Genera el asiento contable completo para una factura de venta autorizada.
      *
      * @param idFactura            ID de la factura autorizada

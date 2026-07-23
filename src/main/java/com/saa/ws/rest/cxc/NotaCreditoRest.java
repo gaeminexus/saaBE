@@ -3,6 +3,7 @@ import java.util.List;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.cxc.dao.NotaCreditoDaoService;
 import com.saa.ejb.cxc.service.NotaCreditoService;
+import com.saa.model.cxc.DetalleNotaCredito;
 import com.saa.model.cxc.NotaCredito;
 import com.saa.model.cxc.NombreEntidadesCobro;
 import jakarta.ejb.EJB;
@@ -69,21 +70,55 @@ public class NotaCreditoRest {
 	
 	/**
 	 * ENDPOINT PRINCIPAL: Procesa una nota de crédito completa automáticamente.
-	 * Este endpoint ejecuta todo el flujo: graba, genera XML, firma y autoriza ante el SRI.
-	 * 
-	 * El frontend solo debe enviar:
+	 *
+	 * El frontend debe enviar un JSON con esta estructura:
+	 *
 	 * {
-	 *   "notaCredito": { objeto NotaCredito con todos los datos }
+	 *   "notaCredito": {
+	 *     "facturador":        { "id": 1 },
+	 *     "titular":           { "codigo": 100 },
+	 *     "ptoEmision":        { "id": 2 },
+	 *     "factura":           { "id": 50 },          // factura que se modifica (obligatorio)
+	 *     "usuario":           { "codigo": 10 },       // opcional
+	 *     "fecha":             "2026-07-22T00:00:00",  // ISO-8601, fecha de emisión
+	 *     "fechaEmisionDM":    "2026-01-15T00:00:00",  // fecha de emisión del doc modificado
+	 *     "tipoDocModificado": "01",                   // "01"=Factura, "04"=NC, etc.
+	 *     "numDocModificado":  "001-001-000000050",    // número del doc que se modifica
+	 *     "numEstablecimiento":"001",
+	 *     "numPtoEmision":     "001",
+	 *     "observacion":       "Devolución parcial de mercadería",
+	 *     "subtotal":          100.00,   // base gravada IVA general (15%)
+	 *     "subcero":           0.00,     // base gravada IVA 0%
+	 *     "pIVA":              15.0,     // porcentaje IVA general (15 o el vigente)
+	 *     "vIVA":              15.00,    // valor IVA calculado (subtotal * pIVA / 100)
+	 *     "descuento":         0.00,
+	 *     "total":             115.00    // subtotal + subcero + vIVA
+	 *   },
+	 *   "detalles": [
+	 *     {
+	 *       "producto":      5,           // ID del producto (Long, FK a CBR.PRDC)
+	 *       "descripcion":  "Producto A",
+	 *       "cantidad":      2.0,
+	 *       "valor":         50.00,       // precio unitario
+	 *       "subTotal":     100.00,       // cantidad * valor
+	 *       "descuento":     0.00,
+	 *       "baseImponible": 100.00,      // subTotal - descuento
+	 *       "porcentajeIVA": 15,          // 0, 5, 8 o 15
+	 *       "valorIVA":      15.00,       // baseImponible * porcentajeIVA / 100
+	 *       "total":        115.00        // baseImponible + valorIVA
+	 *     }
+	 *   ]
 	 * }
-	 * 
-	 * Configuración automática:
-	 * - ambiente: 1 (PRUEBA)
-	 * - conectaSRI: 1 (SI)
-	 * - destinatario: se obtiene del campo mail del comprador
-	 * - pathLogo: resources/logos/logo_aso.png
-	 * 
-	 * @param params Mapa con el objeto notaCredito
-	 * @return JSON con el resultado del proceso completo
+	 *
+	 * Campos generados automáticamente por el servidor (NO enviar):
+	 *   id, numero, secuencial, clave, tipoComprobante, estado, estadoEmision,
+	 *   autorizacion, fechaAutorizacion, ambiente, pathGen
+	 *
+	 * @param params Mapa con "notaCredito" (obligatorio) y "detalles" (opcional pero recomendado)
+	 * @return JSON con resultado del proceso:
+	 *   { "exito": true/false, "etapa": "...", "mensaje": "...",
+	 *     "idNotaCredito": N, "claveAcceso": "...", "autorizacionMensaje": "...",
+	 *     "asiento": "...", "advertenciaAsiento": "..." }
 	 */
 	@POST
 	@Path("/procesarCompleta")
@@ -92,50 +127,62 @@ public class NotaCreditoRest {
 	public Response procesarNotaCreditoCompleta(java.util.Map<String, Object> params) {
 		System.out.println("=== LLEGA AL SERVICIO procesarNotaCreditoCompleta ===");
 		try {
-			// Extraer parámetros del JSON
+			com.fasterxml.jackson.databind.ObjectMapper mapper = createObjectMapper();
+
+			// ── 1. Extraer y validar notaCredito ────────────────────────────
 			@SuppressWarnings("unchecked")
-			java.util.Map<String, Object> notaCreditoMap = (java.util.Map<String, Object>) params.get("notaCredito");
-			
-			// Validar parámetro obligatorio
+			java.util.Map<String, Object> notaCreditoMap =
+					(java.util.Map<String, Object>) params.get("notaCredito");
+
 			if (notaCreditoMap == null) {
-				java.util.Map<String, String> errorResponse = new java.util.HashMap<>();
-				errorResponse.put("mensaje", "ERROR");
-				errorResponse.put("error", "Parámetro 'notaCredito' es obligatorio");
+				java.util.Map<String, Object> err = new java.util.HashMap<>();
+				err.put("exito", false);
+				err.put("etapa", "VALIDACION_REQUEST");
+				err.put("mensaje", "El campo 'notaCredito' es obligatorio en el JSON.");
+				err.put("error", "Falta el campo 'notaCredito'");
 				return Response.status(Response.Status.BAD_REQUEST)
-						.entity(errorResponse)
-						.type(MediaType.APPLICATION_JSON).build();
+						.entity(err).type(MediaType.APPLICATION_JSON).build();
 			}
-			
-			// Convertir el Map a objeto NotaCredito
-			NotaCredito notaCredito = convertMapToNotaCredito(notaCreditoMap);
-			
-			// Llamar al servicio que ejecuta todo el proceso
+
+			NotaCredito notaCredito = mapper.convertValue(notaCreditoMap, NotaCredito.class);
+
+			// ── 2. Extraer detalles (opcional pero necesario para el asiento) ─
+			java.util.List<DetalleNotaCredito> detalles = new java.util.ArrayList<>();
+			Object detallesObj = params.get("detalles");
+			if (detallesObj != null) {
+				java.util.List<?> detallesRaw = (java.util.List<?>) detallesObj;
+				for (Object d : detallesRaw) {
+					DetalleNotaCredito detalle = mapper.convertValue(d, DetalleNotaCredito.class);
+					detalles.add(detalle);
+				}
+			}
+
+			// ── 3. Llamar al servicio ────────────────────────────────────────
 			java.util.Map<String, Object> resultado = notaCreditoService.procesarNotaCreditoCompleta(
-				notaCredito,
-				null,  // detalles (sin detalles en esta ruta)
-				null,  // ambiente se configura automáticamente en el servicio
-				null,  // conectaSRI se configura automáticamente en el servicio
-				null,  // destinatario se obtiene del comprador
-				null   // pathLogo se construye automáticamente
+					notaCredito,
+					detalles.isEmpty() ? null : detalles,
+					null,   // ambiente: automático (1=PRUEBA)
+					null,   // conectaSRI: automático (1=SI)
+					null,   // destinatario: se obtiene del email del titular
+					null    // pathLogo: default
 			);
-			
-			// Retornar resultado
-			return Response.status(Response.Status.OK)
+
+			boolean exito = Boolean.TRUE.equals(resultado.get("exito"));
+			return Response
+					.status(exito ? Response.Status.OK.getStatusCode() : 422)
 					.entity(resultado)
 					.type(MediaType.APPLICATION_JSON).build();
-					
+
 		} catch (Throwable e) {
 			System.err.println("ERROR en procesarNotaCreditoCompleta REST: " + e.getMessage());
 			e.printStackTrace();
-			
-			java.util.Map<String, String> errorResponse = new java.util.HashMap<>();
-			errorResponse.put("mensaje", "ERROR");
-			errorResponse.put("error", e.getMessage());
-			errorResponse.put("exito", "false");
-			
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("etapa", "ERROR_INESPERADO");
+			err.put("mensaje", "Error inesperado en el servidor: " + e.getMessage());
+			err.put("error", e.getMessage());
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
-					.entity(errorResponse)
-					.type(MediaType.APPLICATION_JSON).build();
+					.entity(err).type(MediaType.APPLICATION_JSON).build();
 		}
 	}
 	

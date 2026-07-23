@@ -143,6 +143,164 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     }
 
     // ---------------------------------------------------------------
+    // validarCuentasContablesNC (Nota de Crédito)
+    // ---------------------------------------------------------------
+
+    @Override
+    public List<String> validarCuentasContablesNC(Titular titular,
+            List<com.saa.model.cxc.DetalleNotaCredito> detalles, Long idEmpresa) {
+
+        List<String> errores = new ArrayList<>();
+
+        // 1. Validar cuenta CxC del cliente
+        if (titular == null) {
+            errores.add("No se especificó el titular (cliente) de la nota de crédito.");
+        } else {
+            PlanCuenta cuentaCliente = obtenerCuentaCliente(titular.getCodigo(), idEmpresa);
+            if (cuentaCliente == null) {
+                errores.add("El cliente '" + titular.getNombre()
+                        + "' (ID: " + titular.getCodigo()
+                        + ") no tiene cuenta contable de facturas configurada. "
+                        + "Configure la cuenta en Tesorería → Persona → Cuentas Contables "
+                        + "(Tipo: Facturas, Rol: Cliente).");
+            }
+        }
+
+        // 2. Validar cuentas de grupos de producto e IVA por cada detalle
+        if (detalles != null) {
+            java.util.Set<Long> productosValidados = new java.util.HashSet<>();
+            java.util.Set<Long> ivaValidados       = new java.util.HashSet<>();
+
+            for (com.saa.model.cxc.DetalleNotaCredito detalle : detalles) {
+                String desc = "'" + (detalle.getDescripcion() != null
+                        ? detalle.getDescripcion() : "sin descripción") + "'";
+
+                if (detalle.getProducto() == null) {
+                    errores.add("El detalle " + desc + " no tiene producto asignado.");
+                } else {
+                    Long idProd = detalle.getProducto();
+                    if (!productosValidados.contains(idProd)) {
+                        productosValidados.add(idProd);
+                        try {
+                            @SuppressWarnings("unchecked")
+                            List<Object[]> grupoRows = em.createQuery(
+                                    "SELECT p.grupoProducto.codigo, p.grupoProducto.nombre, p.grupoProducto.planCuenta "
+                                    + "FROM ProductoCobro p WHERE p.id = :id")
+                                    .setParameter("id", idProd)
+                                    .setMaxResults(1)
+                                    .getResultList();
+                            if (grupoRows.isEmpty()) {
+                                errores.add("El producto ID " + idProd + " (" + desc
+                                        + ") no se encontró o no tiene grupo asignado.");
+                            } else {
+                                PlanCuenta pc = (PlanCuenta) grupoRows.get(0)[2];
+                                String nomGrupo = (String) grupoRows.get(0)[1];
+                                if (pc == null) {
+                                    errores.add("El grupo de producto '" + nomGrupo
+                                            + "' no tiene cuenta contable asignada. "
+                                            + "Configure la cuenta en Facturación → Grupos de Producto.");
+                                }
+                            }
+                        } catch (Exception e) {
+                            errores.add("Error consultando grupo del producto ID " + idProd + ": " + e.getMessage());
+                        }
+                    }
+                }
+
+                // 2b. Validar cuenta de IVA
+                if (detalle.getValorIVA() != null && detalle.getValorIVA() > 0
+                        && detalle.getPorcentajeIVA() != null) {
+                    Long porc = detalle.getPorcentajeIVA();
+                    if (!ivaValidados.contains(porc)) {
+                        ivaValidados.add(porc);
+                        String codigoSRI = mapPorcentajeIVAaCodigo(porc);
+                        PlanCuenta cuentaIVA = obtenerCuentaIVA(codigoSRI);
+                        if (cuentaIVA == null) {
+                            errores.add("El IVA al " + porc + "% (código SRI: " + codigoSRI
+                                    + ") no tiene cuenta contable asignada. "
+                                    + "Configure la cuenta en Facturación → Tipos SRI → IVA (categoría 17).");
+                        }
+                    }
+                }
+            }
+        }
+
+        return errores;
+    }
+
+    // ---------------------------------------------------------------
+    // validarCuentasContablesND (Nota de Débito)
+    // ---------------------------------------------------------------
+
+    @Override
+    public List<String> validarCuentasContablesND(com.saa.model.cxc.NotaDebito notaDebito, Long idEmpresa) {
+
+        List<String> errores = new ArrayList<>();
+
+        if (notaDebito == null) {
+            errores.add("No se proporcionó la nota de débito.");
+            return errores;
+        }
+
+        // 1. Validar cuenta CxC del cliente
+        if (notaDebito.getTitular() == null) {
+            errores.add("La nota de débito no tiene titular (cliente) asignado.");
+        } else {
+            PlanCuenta cuentaCliente = obtenerCuentaCliente(
+                    notaDebito.getTitular().getCodigo(), idEmpresa);
+            if (cuentaCliente == null) {
+                errores.add("El cliente '" + notaDebito.getTitular().getNombre()
+                        + "' (ID: " + notaDebito.getTitular().getCodigo()
+                        + ") no tiene cuenta contable de facturas configurada. "
+                        + "Configure la cuenta en Tesorería → Persona → Cuentas Contables "
+                        + "(Tipo: Facturas, Rol: Cliente).");
+            }
+        }
+
+        // 2. Validar cuentas de ingreso desde la factura relacionada
+        if (notaDebito.getFactura() == null) {
+            errores.add("La nota de débito no tiene factura relacionada. "
+                    + "Vincule la ND a una factura para poder generar el asiento contable.");
+        } else {
+            List<DetalleFactura> detallesFact = obtenerDetallesParaND(notaDebito);
+            if (detallesFact == null || detallesFact.isEmpty()) {
+                errores.add("La factura relacionada (ID: " + notaDebito.getFactura().getId()
+                        + ") no tiene detalles activos. Sin detalles no se puede distribuir "
+                        + "el asiento por grupo de producto.");
+            } else {
+                java.util.Set<Long> gruposValidados = new java.util.HashSet<>();
+                for (DetalleFactura d : detallesFact) {
+                    if (d.getProducto() == null || d.getProducto().getGrupoProducto() == null) continue;
+                    Long idGrupo = d.getProducto().getGrupoProducto().getCodigo();
+                    if (!gruposValidados.contains(idGrupo)) {
+                        gruposValidados.add(idGrupo);
+                        PlanCuenta pc = d.getProducto().getGrupoProducto().getPlanCuenta();
+                        if (pc == null) {
+                            errores.add("El grupo de producto '"
+                                    + d.getProducto().getGrupoProducto().getNombre()
+                                    + "' no tiene cuenta contable asignada. "
+                                    + "Configure la cuenta en Facturación → Grupos de Producto.");
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Validar cuenta de IVA si aplica
+        if (notaDebito.getvIVA() != null && notaDebito.getvIVA() > 0 && notaDebito.getpIVA() != null) {
+            String codigoSRI = mapPorcentajeNDaCodigo(notaDebito.getpIVA());
+            PlanCuenta cuentaIVA = obtenerCuentaIVA(codigoSRI);
+            if (cuentaIVA == null) {
+                errores.add("El IVA al " + notaDebito.getpIVA().intValue() + "% (código SRI: " + codigoSRI
+                        + ") no tiene cuenta contable asignada. "
+                        + "Configure la cuenta en Facturación → Tipos SRI → IVA (categoría 17).");
+            }
+        }
+
+        return errores;
+    }
+
+    // ---------------------------------------------------------------
     // generarAsientoFactura
     // ---------------------------------------------------------------
 
@@ -544,15 +702,145 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             Long idNotaCredito, Long idEmpresa, int codigoAltTipoAsiento,
             java.time.LocalDate fechaAsiento, String observaciones, String usuario)
             throws Throwable {
-        // TODO — Implementar cuando se defina:
-        //   · La plantilla de asiento: TipoAsientos.NOTAS_CREDITO_VENTA (codigoAlterno en BD)
-        //   · AuxiliarUno DEBE:  cuenta CxC del cliente (PersonaCuentaContable, tipoCuenta=1, tipoPersona=1)
-        //   · AuxiliarUno HABER: cuenta contable del grupo de producto (GrupoProductoCobro.planCuenta)
-        //                        + cuenta de IVA (Tsri.planCuenta, lsri.tabla='17')
-        throw new UnsupportedOperationException(
-                "generarAsientoNotaCredito aún no implementado. "
-                + "Defina la plantilla TipoAsientos.NOTAS_CREDITO_VENTA en BD "
-                + "y configure las cuentas auxiliares antes de activar este método.");
+
+        System.out.println("=== generarAsientoNotaCredito | idNC=" + idNotaCredito
+                + " | empresa=" + idEmpresa + " ===");
+
+        // 1. Cargar la Nota de Crédito
+        com.saa.model.cxc.NotaCredito nc =
+                em.find(com.saa.model.cxc.NotaCredito.class, idNotaCredito);
+        if (nc == null) {
+            throw new IncomeException("No se encontró la Nota de Crédito con ID: " + idNotaCredito);
+        }
+
+        // 2. Cargar detalles activos
+        @SuppressWarnings("unchecked")
+        List<com.saa.model.cxc.DetalleNotaCredito> detalles = em.createQuery(
+                "SELECT d FROM DetalleNotaCredito d WHERE d.notaCredito.id = :id AND d.estado = 1")
+                .setParameter("id", idNotaCredito)
+                .getResultList();
+
+        if (detalles == null || detalles.isEmpty()) {
+            throw new IncomeException("La Nota de Crédito " + idNotaCredito + " no tiene detalles activos.");
+        }
+
+        // 3. Construir líneas del asiento
+        // NOTA: La lógica es idéntica a la de factura pero con DEBE y HABER invertidos.
+        //   Factura:     DEBE=CxC cliente | HABER=Ingresos/IVA
+        //   Nota Crédito:HABER=CxC cliente | DEBE=Ingresos/IVA  (anulación/reducción)
+        List<DetalleAsiento> lineas = new ArrayList<>();
+
+        // ── HABER: cuenta CxC del cliente (en factura era DEBE) ──────────────
+        PlanCuenta cuentaCliente = obtenerCuentaCliente(
+                nc.getTitular().getCodigo(), idEmpresa);
+        if (cuentaCliente == null) {
+            throw new IncomeException("No se encontró cuenta contable (tipo factura) "
+                    + "para el cliente ID: " + nc.getTitular().getCodigo()
+                    + " en la empresa: " + idEmpresa);
+        }
+
+        DetalleAsiento lineaHaberCliente = new DetalleAsiento();
+        lineaHaberCliente.setPlanCuenta(cuentaCliente);
+        lineaHaberCliente.setNumeroCuenta(cuentaCliente.getCuentaContable());
+        lineaHaberCliente.setNombreCuenta(cuentaCliente.getNombre());
+        lineaHaberCliente.setDescripcion("NC cliente: " + nc.getTitular().getNombre());
+        lineaHaberCliente.setValorDebe(0.0);
+        lineaHaberCliente.setValorHaber(nvl(nc.getTotal()));
+        lineas.add(lineaHaberCliente);
+
+        // ── DEBE: una línea por grupo de producto (en factura era HABER) ──────
+        Map<Long, Double> subtotalPorGrupo = new LinkedHashMap<>();
+        Map<Long, PlanCuenta> cuentaPorGrupo = new LinkedHashMap<>();
+        Map<Long, String> nombreGrupo = new LinkedHashMap<>();
+
+        for (com.saa.model.cxc.DetalleNotaCredito detalle : detalles) {
+            if (detalle.getProducto() == null) {
+                throw new IncomeException("El detalle '" + detalle.getDescripcion()
+                        + "' no tiene producto asignado.");
+            }
+            // Obtener grupo del producto vía JPQL (producto es Long FK)
+            @SuppressWarnings("unchecked")
+            List<Object[]> grupoRows = em.createQuery(
+                    "SELECT p.grupoProducto.codigo, p.grupoProducto.nombre, p.grupoProducto.planCuenta "
+                    + "FROM ProductoCobro p WHERE p.id = :id")
+                    .setParameter("id", detalle.getProducto())
+                    .setMaxResults(1)
+                    .getResultList();
+            if (grupoRows.isEmpty()) {
+                throw new IncomeException("El producto ID " + detalle.getProducto()
+                        + " ('" + detalle.getDescripcion() + "') no se encontró o no tiene grupo asignado.");
+            }
+            Object[] gr = grupoRows.get(0);
+            Long idGrupo = (Long) gr[0];
+            String nomGrupo = (String) gr[1];
+            PlanCuenta pc = (PlanCuenta) gr[2];
+            if (pc == null) {
+                throw new IncomeException("El grupo de producto '" + nomGrupo
+                        + "' no tiene cuenta contable asignada.");
+            }
+            subtotalPorGrupo.merge(idGrupo, nvl(detalle.getBaseImponible()), Double::sum);
+            cuentaPorGrupo.putIfAbsent(idGrupo, pc);
+            nombreGrupo.putIfAbsent(idGrupo, nomGrupo);
+        }
+
+        for (Long idGrupo : subtotalPorGrupo.keySet()) {
+            PlanCuenta pc = cuentaPorGrupo.get(idGrupo);
+            DetalleAsiento lineaDebe = new DetalleAsiento();
+            lineaDebe.setPlanCuenta(pc);
+            lineaDebe.setNumeroCuenta(pc.getCuentaContable());
+            lineaDebe.setNombreCuenta(pc.getNombre());
+            lineaDebe.setDescripcion("NC Ventas: " + nombreGrupo.get(idGrupo));
+            lineaDebe.setValorDebe(subtotalPorGrupo.get(idGrupo));
+            lineaDebe.setValorHaber(0.0);
+            lineas.add(lineaDebe);
+        }
+
+        // ── DEBE: una línea por tipo de IVA (en factura era HABER) ───────────
+        // DetalleNotaCredito.porcentajeIVA es el % (0,5,8,15). Mapeamos a código SRI.
+        Map<String, Double> ivaParaTipo = new LinkedHashMap<>();
+        for (com.saa.model.cxc.DetalleNotaCredito detalle : detalles) {
+            if (detalle.getValorIVA() != null && detalle.getValorIVA() > 0
+                    && detalle.getPorcentajeIVA() != null) {
+                String codigoSRI = mapPorcentajeIVAaCodigo(detalle.getPorcentajeIVA());
+                ivaParaTipo.merge(codigoSRI, nvl(detalle.getValorIVA()), Double::sum);
+            }
+        }
+
+        for (Map.Entry<String, Double> entry : ivaParaTipo.entrySet()) {
+            String codigoIVASRI = entry.getKey();
+            Double valorIVA     = entry.getValue();
+
+            PlanCuenta cuentaIVA = obtenerCuentaIVA(codigoIVASRI);
+            if (cuentaIVA == null) {
+                throw new IncomeException(
+                        "No se encontró cuenta contable para el IVA con código SRI: " + codigoIVASRI
+                        + ". Configure la cuenta en Facturación → Tipos SRI → IVA (categoría 17).");
+            }
+            DetalleAsiento lineaIVA = new DetalleAsiento();
+            lineaIVA.setPlanCuenta(cuentaIVA);
+            lineaIVA.setNumeroCuenta(cuentaIVA.getCuentaContable());
+            lineaIVA.setNombreCuenta(cuentaIVA.getNombre());
+            lineaIVA.setDescripcion("NC IVA código SRI: " + codigoIVASRI);
+            lineaIVA.setValorDebe(valorIVA);
+            lineaIVA.setValorHaber(0.0);
+            lineas.add(lineaIVA);
+        }
+
+        // 4. Generar el asiento con las líneas construidas
+        return generarAsiento(idEmpresa, codigoAltTipoAsiento, fechaAsiento,
+                observaciones, usuario, lineas);
+    }
+
+    /** Mapea porcentaje de IVA (Long: 0,5,8,15) al código SRI de TSRI (tabla='17'). */
+    private String mapPorcentajeIVAaCodigo(Long porcentaje) {
+        if (porcentaje == null) return "0";
+        switch (porcentaje.intValue()) {
+            case 0:  return "0";   // IVA 0%
+            case 5:  return "5";   // IVA 5%
+            case 8:  return "8";   // IVA tarifa especial 8%
+            case 15: return "4";   // IVA 15% (código SRI = 4)
+            default: return String.valueOf(porcentaje);
+        }
     }
 
     @Override
@@ -560,15 +848,135 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             Long idNotaDebito, Long idEmpresa, int codigoAltTipoAsiento,
             java.time.LocalDate fechaAsiento, String observaciones, String usuario)
             throws Throwable {
-        // TODO — Implementar cuando se defina:
-        //   · La plantilla de asiento: TipoAsientos.NOTAS_DEBITO_VENTA (codigoAlterno en BD)
-        //   · AuxiliarUno DEBE:  cuenta CxC del cliente (PersonaCuentaContable, tipoCuenta=1, tipoPersona=1)
-        //   · AuxiliarUno HABER: cuenta contable del grupo de producto (GrupoProductoCobro.planCuenta)
-        //                        + cuenta de IVA (Tsri.planCuenta, lsri.tabla='17')
-        throw new UnsupportedOperationException(
-                "generarAsientoNotaDebito aún no implementado. "
-                + "Defina la plantilla TipoAsientos.NOTAS_DEBITO_VENTA en BD "
-                + "y configure las cuentas auxiliares antes de activar este método.");
+
+        System.out.println("=== generarAsientoNotaDebito | idND=" + idNotaDebito
+                + " | empresa=" + idEmpresa + " ===");
+
+        // 1. Cargar la Nota de Débito
+        com.saa.model.cxc.NotaDebito nd =
+                em.find(com.saa.model.cxc.NotaDebito.class, idNotaDebito);
+        if (nd == null) {
+            throw new IncomeException("No se encontró la Nota de Débito con ID: " + idNotaDebito);
+        }
+
+        // 2. La ND no tiene líneas de producto propias: obtener cuentas de ingreso
+        //    desde la factura relacionada.
+        List<DetalleFactura> detallesFact = obtenerDetallesParaND(nd);
+
+        List<DetalleAsiento> lineas = new ArrayList<>();
+
+        // ── DEBE: cuenta CxC del cliente (igual que Factura) ─────────────────
+        PlanCuenta cuentaCliente = obtenerCuentaCliente(
+                nd.getTitular().getCodigo(), idEmpresa);
+        if (cuentaCliente == null) {
+            throw new IncomeException("No se encontró cuenta contable (tipo factura) "
+                    + "para el cliente ID: " + nd.getTitular().getCodigo()
+                    + " en la empresa: " + idEmpresa);
+        }
+        DetalleAsiento debe = new DetalleAsiento();
+        debe.setPlanCuenta(cuentaCliente);
+        debe.setNumeroCuenta(cuentaCliente.getCuentaContable());
+        debe.setNombreCuenta(cuentaCliente.getNombre());
+        debe.setDescripcion("ND cliente: " + nd.getTitular().getNombre());
+        debe.setValorDebe(nvl(nd.getTotal()));
+        debe.setValorHaber(0.0);
+        lineas.add(debe);
+
+        // ── HABER: cuentas de ingreso por grupo de producto (factura relacionada) ─
+        Map<Long, Double> subtotalPorGrupo = new LinkedHashMap<>();
+        Map<Long, PlanCuenta> cuentaPorGrupo = new LinkedHashMap<>();
+        Map<Long, String> nombreGrupo = new LinkedHashMap<>();
+
+        if (detallesFact != null && !detallesFact.isEmpty()) {
+            // Calcular proporción total de bases imponibles de la factura
+            double totalBaseFact = 0.0;
+            for (DetalleFactura d : detallesFact) totalBaseFact += nvl(d.getBaseImponible());
+            double totalBaseND = nvl(nd.getSubtotal()) + nvl(nd.getSubcero());
+
+            for (DetalleFactura d : detallesFact) {
+                if (d.getProducto() == null || d.getProducto().getGrupoProducto() == null) continue;
+                Long idGrupo = d.getProducto().getGrupoProducto().getCodigo();
+                PlanCuenta pc = d.getProducto().getGrupoProducto().getPlanCuenta();
+                if (pc == null) continue;
+                // Distribuir el total de la ND proporcionalmente a la base de cada grupo
+                double proporcion = totalBaseFact > 0 ? nvl(d.getBaseImponible()) / totalBaseFact : 0.0;
+                double valorGrupo = totalBaseND * proporcion;
+                subtotalPorGrupo.merge(idGrupo, valorGrupo, Double::sum);
+                cuentaPorGrupo.putIfAbsent(idGrupo, pc);
+                nombreGrupo.putIfAbsent(idGrupo, d.getProducto().getGrupoProducto().getNombre());
+            }
+        }
+
+        if (subtotalPorGrupo.isEmpty()) {
+            // Sin factura relacionada: usar subcero + subtotal en una sola línea genérica
+            // Intentar obtener cuenta del primer grupo del facturador
+            throw new IncomeException(
+                    "La Nota de Débito no tiene factura relacionada con detalles de producto. "
+                    + "Vincule la ND a una factura para generar el asiento contable.");
+        }
+
+        for (Long idGrupo : subtotalPorGrupo.keySet()) {
+            PlanCuenta pc = cuentaPorGrupo.get(idGrupo);
+            DetalleAsiento lineaHaber = new DetalleAsiento();
+            lineaHaber.setPlanCuenta(pc);
+            lineaHaber.setNumeroCuenta(pc.getCuentaContable());
+            lineaHaber.setNombreCuenta(pc.getNombre());
+            lineaHaber.setDescripcion("ND Ingresos: " + nombreGrupo.get(idGrupo));
+            lineaHaber.setValorDebe(0.0);
+            lineaHaber.setValorHaber(subtotalPorGrupo.get(idGrupo));
+            lineas.add(lineaHaber);
+        }
+
+        // ── HABER: IVA (si aplica) ────────────────────────────────────────────
+        if (nd.getvIVA() != null && nd.getvIVA() > 0) {
+            // código SRI del IVA: porcentaje pIVA → mapeamos a código SRI
+            String codigoIVASRI = mapPorcentajeNDaCodigo(nd.getpIVA());
+            PlanCuenta cuentaIVA = obtenerCuentaIVA(codigoIVASRI);
+            if (cuentaIVA == null) {
+                throw new IncomeException(
+                        "No se encontró cuenta contable para el IVA código SRI: " + codigoIVASRI
+                        + ". Configure la cuenta en Facturación → Tipos SRI → IVA (categoría 17).");
+            }
+            DetalleAsiento haberIVA = new DetalleAsiento();
+            haberIVA.setPlanCuenta(cuentaIVA);
+            haberIVA.setNumeroCuenta(cuentaIVA.getCuentaContable());
+            haberIVA.setNombreCuenta(cuentaIVA.getNombre());
+            haberIVA.setDescripcion("ND IVA código SRI: " + codigoIVASRI);
+            haberIVA.setValorDebe(0.0);
+            haberIVA.setValorHaber(nd.getvIVA());
+            lineas.add(haberIVA);
+        }
+
+        return generarAsiento(idEmpresa, codigoAltTipoAsiento, fechaAsiento,
+                observaciones, usuario, lineas);
+    }
+
+    /** Mapea el porcentaje de IVA (Double: 0,5,8,15) al código SRI de TSRI. */
+    private String mapPorcentajeNDaCodigo(Double porcentaje) {
+        if (porcentaje == null) return "0";
+        int p = porcentaje.intValue();
+        switch (p) {
+            case 0:  return "0";
+            case 5:  return "5";
+            case 8:  return "8";
+            case 15: return "4";
+            default: return String.valueOf(p);
+        }
+    }
+
+    /** Carga los detalles de la factura relacionada a una ND (puede ser null). */
+    @SuppressWarnings("unchecked")
+    private List<DetalleFactura> obtenerDetallesParaND(com.saa.model.cxc.NotaDebito nd) {
+        if (nd.getFactura() == null) return null;
+        try {
+            return em.createQuery(
+                    "SELECT d FROM DetalleFactura d WHERE d.factura.id = :id AND d.estado = 1")
+                    .setParameter("id", nd.getFactura().getId())
+                    .getResultList();
+        } catch (Exception e) {
+            System.err.println("⚠ No se pudieron cargar detalles de factura para ND: " + e.getMessage());
+            return null;
+        }
     }
 
     @Override

@@ -119,10 +119,8 @@
 	<field name="subTotal" class="java.lang.Double"/>
 	<field name="descuento" class="java.lang.Double"/>
 	<field name="baseImponible" class="java.lang.Double"/>
-	<title height="362" splitType="Prevent">
-		<!-- Logo cargado siempre desde classpath -->
-		<element kind="image" uuid="aa000001-aaaa-aaaa-aaaa-000000000001" x="0" y="0" width="230" height="98"
-		         scaleImage="RetainShape" hImageAlign="Center" vImageAlign="Middle" onErrorType="Blank">
+	<title height="366" splitType="Prevent">
+		<element kind="image" uuid="aa000001-aaaa-aaaa-aaaa-000000000001" x="0" y="0" width="230" height="98" scaleImage="RetainShape" onErrorType="Blank" hImageAlign="Center" vImageAlign="Middle">
 			<expression><![CDATA[getClass().getResourceAsStream("/rep/img/logo_aso.jpeg")]]></expression>
 		</element>
 		<element kind="textField" uuid="aa000002-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="0" y="100" width="230" height="26" fontSize="10.0" blankWhenNull="true" bold="true" hTextAlign="Center" vTextAlign="Bottom">
@@ -168,124 +166,124 @@
 		<element kind="textField" uuid="aa000014-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="3" y="272" width="228" height="10" fontSize="7.0">
 			<expression><![CDATA["Obligado a llevar Contabilidad: " + $F{obligadoContabilidad}]]></expression>
 		</element>
-		<element kind="rectangle" uuid="aa000015-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="251" y="0" width="284" height="270" radius="4">
+		<element kind="rectangle" uuid="aa000015-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="251" y="0" width="284" height="292" radius="4">
 			<pen lineWidth="0.5"/>
 		</element>
-		<element kind="staticText" uuid="aa000016-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="253" y="4" width="280" height="13" backcolor="#DDDDDD" fontSize="8.0" bold="true" hTextAlign="Center">
+		<element kind="staticText" uuid="aa000016-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="253" y="4" width="280" height="13" backcolor="#DDDDDD" bold="true" hTextAlign="Center">
 			<text><![CDATA[R.U.C.]]></text>
 		</element>
-		<element kind="textField" uuid="aa000017-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="253" y="17" width="280" height="13" fontSize="8.0" hTextAlign="Center">
+		<element kind="textField" uuid="aa000017-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="253" y="17" width="280" height="13" hTextAlign="Center">
 			<expression><![CDATA[$F{rucFacturador}]]></expression>
 		</element>
-		<element kind="staticText" uuid="aa000018-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="253" y="32" width="280" height="13" backcolor="#DDDDDD" fontSize="8.0" bold="true" hTextAlign="Center">
+		<element kind="staticText" uuid="aa000018-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="253" y="50" width="280" height="13" backcolor="#DDDDDD" bold="true" hTextAlign="Center">
 			<text><![CDATA[FACTURA]]></text>
 		</element>
-		<element kind="textField" uuid="aa000019-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="253" y="45" width="280" height="13" fontSize="8.0" hTextAlign="Center">
+		<element kind="textField" uuid="aa000019-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="253" y="63" width="280" height="13" hTextAlign="Center">
 			<expression><![CDATA[$F{numeroFactura}]]></expression>
 		</element>
-		<element kind="staticText" uuid="aa000020-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="253" y="60" width="280" height="13" backcolor="#DDDDDD" fontSize="8.0" bold="true" hTextAlign="Center">
+		<element kind="staticText" uuid="aa000020-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="253" y="96" width="280" height="13" backcolor="#DDDDDD" bold="true" hTextAlign="Center">
 			<text><![CDATA[NÚMERO DE AUTORIZACIÓN]]></text>
 		</element>
-		<element kind="textField" uuid="aa000021-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="253" y="73" width="280" height="24" fontSize="7.0" textAdjust="StretchHeight" hTextAlign="Center">
+		<element kind="textField" uuid="aa000021-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="253" y="109" width="280" height="24" textAdjust="StretchHeight" hTextAlign="Center">
 			<expression><![CDATA[$F{numeroAutorizacion}]]></expression>
 		</element>
-		<element kind="staticText" uuid="aa000022-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="253" y="99" width="280" height="13" backcolor="#DDDDDD" fontSize="7.0" bold="true" hTextAlign="Center">
+		<element kind="staticText" uuid="aa000022-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="253" y="153" width="280" height="13" backcolor="#DDDDDD" bold="true" hTextAlign="Center">
 			<text><![CDATA[FECHA Y HORA DE AUTORIZACIÓN]]></text>
 		</element>
-		<element kind="textField" uuid="aa000023-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="253" y="112" width="280" height="12" fontSize="7.0" hTextAlign="Center">
+		<element kind="textField" uuid="aa000023-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="253" y="166" width="280" height="12" fontSize="9.0" hTextAlign="Center">
 			<expression><![CDATA[$F{fechaAutorizacion}]]></expression>
 		</element>
-		<element kind="textField" uuid="aa000024-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="253" y="126" width="280" height="12" fontSize="7.0" hTextAlign="Center">
+		<element kind="textField" uuid="aa000024-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="253" y="180" width="280" height="12" hTextAlign="Center">
 			<expression><![CDATA["AMBIENTE: " + $F{ambiente} + "   EMISIÓN: NORMAL"]]></expression>
 		</element>
-		<element kind="staticText" uuid="aa000025-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="253" y="140" width="280" height="13" backcolor="#DDDDDD" fontSize="8.0" bold="true" hTextAlign="Center">
+		<element kind="staticText" uuid="aa000025-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="253" y="209" width="280" height="13" backcolor="#DDDDDD" bold="true" hTextAlign="Center">
 			<text><![CDATA[CLAVE DE ACCESO]]></text>
 		</element>
-		<element kind="textField" uuid="aa000026-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="256" y="155" width="276" height="56" fontName="Courier New" fontSize="6.0" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="textField" uuid="aa000026-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="256" y="224" width="276" height="56" fontName="Courier New" fontSize="6.0" hTextAlign="Center" vTextAlign="Middle">
 			<expression><![CDATA[$F{clave}]]></expression>
 			<box>
 				<pen lineWidth="0.3"/>
 			</box>
 		</element>
-		<element kind="textField" uuid="aa000027-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="253" y="213" width="280" height="10" fontName="Courier New" fontSize="5.0" hTextAlign="Center">
+		<element kind="textField" uuid="aa000027-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="253" y="282" width="280" height="10" fontName="Courier New" fontSize="5.0" hTextAlign="Center">
 			<expression><![CDATA[$F{clave}]]></expression>
 		</element>
 		<element kind="line" uuid="aa000028-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="0" y="297" width="535" height="1">
 			<pen lineWidth="0.5"/>
 		</element>
-		<element kind="staticText" uuid="aa000029-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="0" y="300" width="110" height="10" backcolor="#F0F0F0" fontSize="7.0" bold="true">
+		<element kind="staticText" uuid="aa000029-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="0" y="300" width="110" height="13" backcolor="#F0F0F0" fontSize="8.0" bold="true">
 			<text><![CDATA[Razón Social / Nombre:]]></text>
 			<box leftPadding="3">
 				<pen lineWidth="0.3"/>
 			</box>
 		</element>
-		<element kind="textField" uuid="aa000030-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="110" y="300" width="425" height="10" fontSize="7.0" textAdjust="StretchHeight">
+		<element kind="textField" uuid="aa000030-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="110" y="300" width="425" height="13" fontSize="8.0" textAdjust="StretchHeight">
 			<expression><![CDATA[$F{razonSocialComprador}]]></expression>
 			<box leftPadding="3">
 				<pen lineWidth="0.3"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="aa000031-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="0" y="312" width="60" height="10" backcolor="#F0F0F0" fontSize="7.0" bold="true">
+		<element kind="staticText" uuid="aa000031-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="0" y="315" width="60" height="13" backcolor="#F0F0F0" fontSize="8.0" bold="true">
 			<text><![CDATA[Fecha Emisión:]]></text>
 			<box leftPadding="3">
 				<pen lineWidth="0.3"/>
 			</box>
 		</element>
-		<element kind="textField" uuid="aa000032-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="60" y="312" width="200" height="10" fontSize="7.0">
+		<element kind="textField" uuid="aa000032-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="60" y="315" width="200" height="13" fontSize="8.0">
 			<expression><![CDATA[$F{fechaEmision}]]></expression>
 			<box leftPadding="3">
 				<pen lineWidth="0.3"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="aa000033-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="260" y="312" width="80" height="10" backcolor="#F0F0F0" fontSize="7.0" bold="true">
+		<element kind="staticText" uuid="aa000033-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="260" y="315" width="80" height="13" backcolor="#F0F0F0" fontSize="8.0" bold="true">
 			<text><![CDATA[Guía de Remisión:]]></text>
 			<box leftPadding="3">
 				<pen lineWidth="0.3"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="aa000034-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="340" y="312" width="195" height="10" fontSize="7.0">
+		<element kind="staticText" uuid="aa000034-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="340" y="315" width="195" height="13" fontSize="8.0">
 			<text><![CDATA[ ]]></text>
 			<box leftPadding="3">
 				<pen lineWidth="0.3"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="aa000035-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="0" y="324" width="60" height="10" backcolor="#F0F0F0" fontSize="7.0" bold="true">
+		<element kind="staticText" uuid="aa000035-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="0" y="330" width="60" height="13" backcolor="#F0F0F0" fontSize="8.0" bold="true">
 			<text><![CDATA[RUC / CI:]]></text>
 			<box leftPadding="3">
 				<pen lineWidth="0.3"/>
 			</box>
 		</element>
-		<element kind="textField" uuid="aa000036-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="60" y="324" width="200" height="10" fontSize="7.0">
+		<element kind="textField" uuid="aa000036-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="60" y="330" width="200" height="13" fontSize="8.0">
 			<expression><![CDATA[$F{identificacionComprador}]]></expression>
 			<box leftPadding="3">
 				<pen lineWidth="0.3"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="aa000037-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="260" y="324" width="40" height="10" backcolor="#F0F0F0" fontSize="7.0" bold="true">
+		<element kind="staticText" uuid="aa000037-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="260" y="330" width="40" height="13" backcolor="#F0F0F0" fontSize="8.0" bold="true">
 			<text><![CDATA[E-mail:]]></text>
 			<box leftPadding="3">
 				<pen lineWidth="0.3"/>
 			</box>
 		</element>
-		<element kind="textField" uuid="aa000038-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="300" y="324" width="235" height="10" fontSize="7.0" blankWhenNull="true">
+		<element kind="textField" uuid="aa000038-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="300" y="330" width="235" height="13" fontSize="8.0" blankWhenNull="true">
 			<expression><![CDATA[$F{emailComprador}]]></expression>
 			<box leftPadding="3">
 				<pen lineWidth="0.3"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="aa000039-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="0" y="336" width="60" height="10" backcolor="#F0F0F0" fontSize="7.0" bold="true">
+		<element kind="staticText" uuid="aa000039-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="0" y="345" width="60" height="13" backcolor="#F0F0F0" fontSize="8.0" bold="true">
 			<text><![CDATA[Dirección:]]></text>
 			<box leftPadding="3">
 				<pen lineWidth="0.3"/>
 			</box>
 		</element>
-		<element kind="textField" uuid="aa000040-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="60" y="336" width="475" height="10" fontSize="7.0" textAdjust="StretchHeight">
+		<element kind="textField" uuid="aa000040-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="60" y="345" width="475" height="13" fontSize="8.0" textAdjust="StretchHeight">
 			<expression><![CDATA[$F{direccionComprador}]]></expression>
 			<box leftPadding="3">
 				<pen lineWidth="0.3"/>
 			</box>
 		</element>
-		<element kind="line" uuid="aa000041-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="0" y="350" width="535" height="1">
+		<element kind="line" uuid="aa000041-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="0" y="362" width="535" height="1">
 			<pen lineWidth="0.5"/>
 		</element>
 	</title>
