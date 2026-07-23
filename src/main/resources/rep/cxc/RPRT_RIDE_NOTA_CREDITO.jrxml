@@ -13,7 +13,7 @@
 		    TO_CHAR(nc.FECHAAUTORIZACION,  'DD/MM/YYYY HH24:MI:SS')             AS fechaAutorizacion,
 		    CASE WHEN nc.AMBIENTE = 2 THEN 'PRODUCCIÓN' ELSE 'PRUEBAS' END     AS ambiente,
 		    /* ── Documento modificado ──────────────────────────────── */
-		    COALESCE(nc.TIPODOCMODIFICADO, '')                                  AS tipoDocModificado,
+		    CASE WHEN COALESCE(nc.TIPODOCMODIFICADO, '01') = '01' THEN 'FACTURA' ELSE 'N/D' END AS tipoDocModificado,
 		    COALESCE(nc.NUMDOCMODIFICADO,  '')                                  AS numDocModificado,
 		    TO_CHAR(nc.FECHAEMISIONDM,     'DD/MM/YYYY')                        AS fechaEmisionDocMod,
 		    /* ── Subtotales e impuestos ─────────────────────────────── */
@@ -180,7 +180,7 @@
 		<element kind="staticText" uuid="b1b2c3d4-e5f6-7890-ab01-a1b2c3d4e5fc" x="253" y="153" width="280" height="13" backcolor="#DDDDDD" bold="true" hTextAlign="Center">
 			<text><![CDATA[FECHA Y HORA DE AUTORIZACIÓN]]></text>
 		</element>
-		<element kind="textField" uuid="b1b2c3d4-e5f6-7890-ab01-a1b2c3d4e5fd" x="253" y="166" width="280" height="12" hTextAlign="Center">
+		<element kind="textField" uuid="b1b2c3d4-e5f6-7890-ab01-a1b2c3d4e5fd" x="253" y="166" width="280" height="12" fontSize="9.0" hTextAlign="Center">
 			<expression><![CDATA[$F{fechaAutorizacion}]]></expression>
 		</element>
 		<element kind="textField" uuid="b1b2c3d4-e5f6-7890-ab01-a1b2c3d4e5fe" x="253" y="180" width="280" height="12" hTextAlign="Center">
@@ -201,59 +201,80 @@
 		<element kind="line" uuid="c1b2c3d4-e5f6-7890-ab01-a1b2c3d4e5f3" x="0" y="315" width="535" height="1">
 			<pen lineWidth="0.5"/>
 		</element>
-		<!-- ── DATOS DEL TITULAR ──────────────────────────────────── -->
 		<element kind="staticText" uuid="c1b2c3d4-e5f6-7890-ab01-a1b2c3d4e5f4" x="0" y="318" width="175" height="13" backcolor="#F0F0F0" fontSize="8.0" bold="true">
 			<text><![CDATA[Razón Social / Nombres y Apellidos:]]></text>
-			<box leftPadding="3"><pen lineWidth="0.3"/></box>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
 		</element>
-		<element kind="textField" uuid="c1b2c3d4-e5f6-7890-ab01-a1b2c3d4e5f5" x="175" y="318" width="360" height="13" fontSize="8.0" bold="true" textAdjust="StretchHeight">
+		<element kind="textField" uuid="c1b2c3d4-e5f6-7890-ab01-a1b2c3d4e5f5" x="175" y="318" width="360" height="13" fontSize="8.0" textAdjust="StretchHeight" bold="true">
 			<expression><![CDATA[$F{razonSocialComprador}]]></expression>
-			<box leftPadding="3"><pen lineWidth="0.3"/></box>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
 		</element>
 		<element kind="staticText" uuid="c1b2c3d4-e5f6-7890-ab01-a1b2c3d4e5f8" x="0" y="331" width="175" height="13" backcolor="#F0F0F0" fontSize="8.0" bold="true">
 			<text><![CDATA[Identificación:]]></text>
-			<box leftPadding="3"><pen lineWidth="0.3"/></box>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
 		</element>
 		<element kind="textField" uuid="c1b2c3d4-e5f6-7890-ab01-a1b2c3d4e5f9" x="175" y="331" width="360" height="13" fontSize="8.0">
 			<expression><![CDATA[$F{identificacionComprador}]]></expression>
-			<box leftPadding="3"><pen lineWidth="0.3"/></box>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
 		</element>
 		<element kind="staticText" uuid="c1b2c3d4-e5f6-7890-ab01-a1b2c3d4e5f6" x="0" y="344" width="175" height="13" backcolor="#F0F0F0" fontSize="8.0" bold="true">
 			<text><![CDATA[Fecha Emisión:]]></text>
-			<box leftPadding="3"><pen lineWidth="0.3"/></box>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
 		</element>
 		<element kind="textField" uuid="c1b2c3d4-e5f6-7890-ab01-a1b2c3d4e5f7" x="175" y="344" width="360" height="13" fontSize="8.0">
 			<expression><![CDATA[$F{fechaEmision}]]></expression>
-			<box leftPadding="3"><pen lineWidth="0.3"/></box>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
 		</element>
-		<!-- ── SEPARADOR ───────────────────────────────────────────── -->
 		<element kind="line" uuid="c1b2c3d4-e5f6-7890-ab01-a1b2c3d4e001" x="0" y="357" width="535" height="1">
 			<pen lineWidth="0.5"/>
 		</element>
-		<!-- ── DATOS DEL DOCUMENTO MODIFICADO ────────────────────── -->
 		<element kind="staticText" uuid="c1b2c3d4-e5f6-7890-ab01-a1b2c3d4e5fc" x="0" y="359" width="175" height="13" backcolor="#F0F0F0" fontSize="8.0" bold="true">
 			<text><![CDATA[Comprobante que se modifica:]]></text>
-			<box leftPadding="3"><pen lineWidth="0.3"/></box>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
 		</element>
 		<element kind="textField" uuid="c1b2c3d4-e5f6-7890-ab01-a1b2c3d4e5fd" x="175" y="359" width="360" height="13" fontSize="8.0">
 			<expression><![CDATA[$F{tipoDocModificado} + ": " + $F{numDocModificado}]]></expression>
-			<box leftPadding="3"><pen lineWidth="0.3"/></box>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
 		</element>
 		<element kind="staticText" uuid="c1b2c3d4-e5f6-7890-ab01-a1b2c3d4e5fe" x="0" y="372" width="175" height="13" backcolor="#F0F0F0" fontSize="8.0" bold="true">
 			<text><![CDATA[Fecha Emisión (Comprobante a modificar):]]></text>
-			<box leftPadding="3"><pen lineWidth="0.3"/></box>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
 		</element>
 		<element kind="textField" uuid="c1b2c3d4-e5f6-7890-ab01-a1b2c3d4e5ff" x="175" y="372" width="360" height="13" fontSize="8.0">
 			<expression><![CDATA[$F{fechaEmisionDocMod}]]></expression>
-			<box leftPadding="3"><pen lineWidth="0.3"/></box>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
 		</element>
 		<element kind="staticText" uuid="d1b2c3d4-e5f6-7890-ab01-a1b2c3d4e5f1" x="0" y="385" width="175" height="13" backcolor="#F0F0F0" fontSize="8.0" bold="true">
 			<text><![CDATA[Razón de Modificación:]]></text>
-			<box leftPadding="3"><pen lineWidth="0.3"/></box>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
 		</element>
 		<element kind="textField" uuid="d1b2c3d4-e5f6-7890-ab01-a1b2c3d4e5f2" x="175" y="385" width="360" height="13" fontSize="8.0" textAdjust="StretchHeight">
 			<expression><![CDATA[$F{observacion}]]></expression>
-			<box leftPadding="3"><pen lineWidth="0.3"/></box>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
 		</element>
 		<element kind="line" uuid="d1b2c3d4-e5f6-7890-ab01-a1b2c3d4e5f3" x="0" y="413" width="535" height="1">
 			<pen lineWidth="0.5"/>

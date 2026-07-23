@@ -2326,6 +2326,7 @@ public class FacturaServiceImpl implements FacturaService {
 
 		// 5. Anular la factura y registrar datos de anulación
 		factura.setEstado(Long.valueOf(com.saa.rubros.Estado.INACTIVO));
+		factura.setEstadoEmision(3L); // 3 = ANULADA (tsri lsri 603)
 		factura.setMotivoAnulacion(motivoFinal);
 		factura.setFechaAnulacion(ahora);
 		factura.setUsuarioAnulacion(usuarioAnulacion);

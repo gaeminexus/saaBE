@@ -43,7 +43,14 @@ public interface NombreEntidadesCompra {
 	// Documento único CXP (seguimiento por claveAcceso)
 	String DOCUMENTO_CXP      = "DocumentoCxp";
 
-	// Negociaciones con Proveedores
+        // Tablas SRI (CXP) - prefijo para NamedQueries (selectAll / selectById)
+        String LSRI_COMPRA        = "LsriCompra";
+        String TSRI_COMPRA        = "TsriCompra";
+        // Nombre de entidad JPA para selectByCriteria (JPQL dinámico)
+        String LSRI_COMPRA_ENTITY = "LsriCompra";
+        String TSRI_COMPRA_ENTITY = "TsriCompra";
+
+        // Negociaciones con Proveedores
 	String NEGOCIACION_PROVEEDOR    = "NegociacionProveedor";
 	String FORMA_PAGO_NEGOCIACION   = "FormaPagoNegociacion";
 	String PAGO_NEGOCIACION         = "PagoNegociacion";

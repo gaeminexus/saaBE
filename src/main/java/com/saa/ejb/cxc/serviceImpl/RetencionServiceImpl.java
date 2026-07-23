@@ -873,6 +873,7 @@ public class RetencionServiceImpl implements RetencionService {
 		}
 
 		rtn.setEstado(Long.valueOf(com.saa.rubros.Estado.INACTIVO));
+		rtn.setEstadoEmision(3L); // 3 = ANULADA (tsri lsri 603)
 		rtn.setMotivoAnulacion(motivoFinal);
 		rtn.setFechaAnulacion(ahora);
 		rtn.setUsuarioAnulacion(usuarioAnulacion);

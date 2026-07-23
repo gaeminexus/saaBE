@@ -900,8 +900,13 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 									ndActualizada.getId(), idEmpresaConta,
 									com.saa.rubros.TipoAsientos.FACTURAS_VENTA,
 									fechaAsiento, obsAsiento, usuarioAsiento);
-					// Vincular el asiento a la nota de débito y persistir
-					ndActualizada.setAsiento(asientoGenerado);
+					// Vincular el asiento a la nota de débito y persistir.
+					// El asiento viene de REQUIRES_NEW (transacción separada) → está detached.
+					// Hay que re-attacharlo con em.find() antes de asignarlo.
+					com.saa.model.cnt.Asiento asientoAttached =
+							em.find(com.saa.model.cnt.Asiento.class, asientoGenerado.getCodigo());
+					if (asientoAttached == null) asientoAttached = em.merge(asientoGenerado);
+					ndActualizada.setAsiento(asientoAttached);
 					notaDebitoDaoService.save(ndActualizada, ndActualizada.getId());
 					System.out.println("✓ Asiento contable vinculado a ND: " + asientoGenerado.getNumeroAlterno());
 					resultado.put("asiento", asientoGenerado.getNumeroAlterno());
@@ -1130,6 +1135,7 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 		}
 
 		nd.setEstado(Long.valueOf(com.saa.rubros.Estado.INACTIVO));
+		nd.setEstadoEmision(3L); // 3 = ANULADA (tsri lsri 603)
 		nd.setMotivoAnulacion(motivoFinal);
 		nd.setFechaAnulacion(ahora);
 		nd.setUsuarioAnulacion(usuarioAnulacion);

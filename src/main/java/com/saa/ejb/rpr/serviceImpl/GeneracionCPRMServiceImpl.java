@@ -111,10 +111,11 @@ public class GeneracionCPRMServiceImpl implements GeneracionCPRMService {
 
             if (codigoEntidad == null || codigoTipoAporte == null || suma == null) continue;
 
-            // Normalizar negativo a 0
-            suma = Math.max(0.0, suma);
+            // NO se normaliza a 0: los negativos deben conservarse para que cuando CCPM
+            // sume todos los totales por entidad, el resultado nete igual que G42
+            // (G42 netea dentro de cada grupo; CPRM netea al sumar todas las filas).
 
-            // Si el total es 0, no incluir el registro
+            // Si el total es exactamente 0, no incluir el registro
             if (suma == 0.0) {
                 System.out.println("CPRM SKIP entidad: " + codigoEntidad
                         + " tipoAporte: " + codigoTipoAporte + " — total es 0");

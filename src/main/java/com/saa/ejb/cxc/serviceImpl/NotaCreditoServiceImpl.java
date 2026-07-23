@@ -929,6 +929,14 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 									ncActualizada.getId(), idEmpresa,
 									com.saa.rubros.TipoAsientos.FACTURAS_VENTA,
 									fechaAsiento, obsAsiento, usuarioAsiento);
+					// El asiento viene de REQUIRES_NEW (transacción separada) → está detached.
+					// Re-adjuntarlo con em.find() antes de asignarlo a la NC.
+					com.saa.model.cnt.Asiento asientoAttached =
+							em.find(com.saa.model.cnt.Asiento.class, asientoGenerado.getCodigo());
+					if (asientoAttached == null) asientoAttached = em.merge(asientoGenerado);
+					ncActualizada.setAsiento(asientoAttached);
+					notaCreditoDaoService.save(ncActualizada, ncActualizada.getId());
+					System.out.println("✓ Asiento contable vinculado a NC: " + asientoAttached.getCodigo());
 					resultado.put("asiento", asientoGenerado.getNumeroAlterno());
 					System.out.println("✓ Asiento contable generado: " + asientoGenerado.getNumeroAlterno());
 				} catch (Exception e) {
@@ -1009,6 +1017,7 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 		}
 
 		nc.setEstado(Long.valueOf(com.saa.rubros.Estado.INACTIVO));
+		nc.setEstadoEmision(3L); // 3 = ANULADA (tsri lsri 603)
 		nc.setMotivoAnulacion(motivoFinal);
 		nc.setFechaAnulacion(ahora);
 		nc.setUsuarioAnulacion(usuarioAnulacion);
