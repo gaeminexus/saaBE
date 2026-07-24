@@ -33,6 +33,7 @@ public interface NombreEntidadesTesoreria {
 		 String COBRO_TRANSFERENCIA = "CobroTransferencia";
 		 String CONCILIACION = "Conciliacion";
 		 String CUENTA_BANCARIA = "CuentaBancaria";
+		 String CUENTA_BANCARIA_TITULAR = "CuentaBancariaTitular";
 		 String DEBITO_CREDITO = "DebitoCredito";
 		 String DEPOSITO = "Deposito";
 		 String DESGLOSE_DETALLE_DEPOSITO = "DesgloseDetalleDeposito";
