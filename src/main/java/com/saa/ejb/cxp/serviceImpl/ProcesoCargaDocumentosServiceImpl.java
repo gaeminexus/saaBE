@@ -687,7 +687,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
         if ("REEMPLAZAR".equalsIgnoreCase(accion)) {
             // Si tenía registros en BD, revertirlos
-            if (doc.getIdDocumentoBD() != null && doc.getEstadoDocumento() != null) {
+            if (doc.getIdDocumentoBD() != null) {
                 revertirRegistrosBD(doc);
             }
             doc.setPathXml(pathDestino);
@@ -953,12 +953,6 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         pathFc.setPath(doc.getPathXml());
         pathFc.setAlterno(1L);
         pathFacturaCompraDaoService.save(pathFc, null);
-
-        PathFacturaCompra pathFc2 = new PathFacturaCompra();
-        pathFc2.setFactura(factura);
-        pathFc2.setPath(doc.getPathXml());
-        pathFc2.setAlterno(1L);
-        pathFacturaCompraDaoService.save(pathFc2, null);
 
         Map<String, Object> r = new HashMap<>();
         r.put("idDocumentoBD", factura.getId());
@@ -1266,10 +1260,9 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         rc.setEstadoEmision(2L);
         rc = retencionCompraV2DaoService.save(rc, null);
 
-        PathRetencionCompra path = new PathRetencionCompra();
-        path.setPath(doc.getPathXml());
-        path.setAlterno(2L);
-        pathRetencionCompraDaoService.save(path, null);
+        // TODO: PathRetencionCompra solo tiene FK a RetencionCompra (V1).
+        // Pendiente crear entidad PathRetencionCompraV2 para guardar el path correctamente.
+        // No se persiste path aquí para evitar FK nula en tabla PRCM.
 
         Map<String, Object> r = new HashMap<>();
         r.put("idDocumentoBD", rc.getId());
@@ -1316,6 +1309,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 em.createQuery("delete from RetencionCompra r where r.id = :id").setParameter("id", idDocBD).executeUpdate();
                 break;
             case "RETENCION_COMPRA_V2":
+                // PathRetencionCompraV2 no existe aún como entidad; no hay paths que eliminar.
+                // TODO: cuando se cree PathRetencionCompraV2, agregar el delete aquí.
                 em.createQuery("delete from RetencionCompraV2 r where r.id = :id").setParameter("id", idDocBD).executeUpdate();
                 break;
             default:
