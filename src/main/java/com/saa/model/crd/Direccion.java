@@ -79,6 +79,21 @@ public class Direccion implements Serializable {
     @Column(name = "DRCCPRDF")
     private Long porDefecto;
 
+    /** Calle principal */
+    @Basic
+    @Column(name = "DRCCCLPR", length = 500)
+    private String callePrincipal;
+
+    /** Calle secundaria */
+    @Basic
+    @Column(name = "DRCCCLSC", length = 500)
+    private String calleSecundaria;
+
+    /** Número de domicilio */
+    @Basic
+    @Column(name = "DRCCNMRO", length = 50)
+    private String numero;
+
     /** Indica si es direccion de Trabajo */
     @Basic
     @Column(name = "DRCCTRBJ")
@@ -214,5 +229,14 @@ public class Direccion implements Serializable {
     public void setEstado(Long estado) {
         this.estado = estado;
     }
+
+    public String getCallePrincipal() { return callePrincipal; }
+    public void setCallePrincipal(String callePrincipal) { this.callePrincipal = callePrincipal; }
+
+    public String getCalleSecundaria() { return calleSecundaria; }
+    public void setCalleSecundaria(String calleSecundaria) { this.calleSecundaria = calleSecundaria; }
+
+    public String getNumero() { return numero; }
+    public void setNumero(String numero) { this.numero = numero; }
 }
 

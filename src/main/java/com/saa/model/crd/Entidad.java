@@ -183,6 +183,11 @@ public class Entidad implements Serializable {
     @Column(name = "ENTDRLPC")
     private Long rolPetroComercial;
 
+    /** FK - Estado Civil */
+    @ManyToOne
+    @JoinColumn(name = "ESCVCDGO", referencedColumnName = "ESCVCDGO")
+    private EstadoCivil estadoCivil;
+
 
     // ============================================================
     // GETTERS Y SETTERS
@@ -289,6 +294,9 @@ public class Entidad implements Serializable {
 	public void setRolPetroComercial(Long rolPetroComercial) {
 		this.rolPetroComercial = rolPetroComercial;
 	}
-    
+
+    public EstadoCivil getEstadoCivil() { return estadoCivil; }
+    public void setEstadoCivil(EstadoCivil estadoCivil) { this.estadoCivil = estadoCivil; }
+
 }
 

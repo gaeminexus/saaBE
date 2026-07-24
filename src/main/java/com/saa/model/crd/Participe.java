@@ -121,6 +121,11 @@ public class Participe implements Serializable {
     @Column(name = "PRTCIDST")
     private Long idEstado;
 
+    /** FK - Tipo Aporte */
+    @ManyToOne
+    @JoinColumn(name = "TPAPCDGO", referencedColumnName = "TPAPCDGO")
+    private TipoAporte tipoAporte;
+
     // ============================================================
     // GETTERS Y SETTERS
     // ============================================================
@@ -299,6 +304,14 @@ public class Participe implements Serializable {
 
     public void setIdEstado(Long idEstado) {
         this.idEstado = idEstado;
+    }
+
+    public TipoAporte getTipoAporte() {
+        return tipoAporte;
+    }
+
+    public void setTipoAporte(TipoAporte tipoAporte) {
+        this.tipoAporte = tipoAporte;
     }
 }
 
