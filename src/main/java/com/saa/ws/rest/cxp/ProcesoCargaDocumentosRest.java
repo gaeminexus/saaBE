@@ -49,6 +49,8 @@ public class ProcesoCargaDocumentosRest {
             String nombreArchivo = (String) params.get("nombreArchivo");
             Long idEmpresa       = Long.valueOf(params.get("idEmpresa").toString());
             Long idUsuario       = Long.valueOf(params.get("idUsuario").toString());
+            Long idPeriodo       = params.get("idPeriodo") != null
+                    ? Long.valueOf(params.get("idPeriodo").toString()) : null;
 
             if (contenidoTxt == null || contenidoTxt.isEmpty())
                 return Response.status(Response.Status.BAD_REQUEST)
@@ -56,7 +58,7 @@ public class ProcesoCargaDocumentosRest {
                         .type(MediaType.APPLICATION_JSON).build();
 
             Map<String, Object> resultado = procesoCargaDocumentosService
-                    .cargarArchivoTxt(contenidoTxt, nombreArchivo, idEmpresa, idUsuario);
+                    .cargarArchivoTxt(contenidoTxt, nombreArchivo, idEmpresa, idUsuario, idPeriodo);
 
             return Response.status(Response.Status.CREATED)
                     .entity(resultado).type(MediaType.APPLICATION_JSON).build();

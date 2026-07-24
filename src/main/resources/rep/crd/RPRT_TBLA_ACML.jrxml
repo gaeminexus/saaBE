@@ -371,7 +371,7 @@ ORDER BY U.DTPRNMCT;]]></query>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="textField" uuid="b4a49efb-69a7-4c9b-99a7-deddf7a0591c" x="281" y="183" width="193" height="13" fontSize="8.0" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="textField" uuid="b4a49efb-69a7-4c9b-99a7-deddf7a0591c" x="281" y="183" width="193" height="13" fontSize="8.0" pattern="¤#,##0.##;¤-#,##0.##" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
 			<expression><![CDATA[$F{MONTO_CREDITO}]]></expression>
 			<box>
 				<pen lineWidth="0.25"/>

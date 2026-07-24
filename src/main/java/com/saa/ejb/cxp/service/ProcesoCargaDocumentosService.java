@@ -27,11 +27,14 @@ public interface ProcesoCargaDocumentosService {
      *   - Si NO existe: crea DocumentoCxp (estadoDocumento=1) y línea con resultado=NUEVO.
      *   - Si existe sin diferencias: crea línea con resultado=DUPLICADO (no toca el DocumentoCxp).
      *   - Si existe CON diferencias: actualiza DocumentoCxp (estadoDocumento=5, novedad) y línea resultado=NOVEDAD.
+     * Al finalizar, detecta documentos del mismo periodo que estaban activos en cargas anteriores
+     * y NO aparecen en esta carga → los marca como NOVEDAD (DESAPARECIDO).
      *
-     * @return Mapa con: idCargaTxt, totalRegistros, nuevos, duplicados, novedades, detalles
+     * @param idPeriodo ID del período contable (CNT.PRDO) al que corresponde esta carga
+     * @return Mapa con: idCargaTxt, totalRegistros, nuevos, duplicados, novedades, desaparecidos, detalles
      */
     Map<String, Object> cargarArchivoTxt(String contenidoTxt, String nombreArchivo,
-                                          Long idEmpresa, Long idUsuario) throws Throwable;
+                                          Long idEmpresa, Long idUsuario, Long idPeriodo) throws Throwable;
 
     /**
      * FASE 2+3 UNIFICADA: Valida el XML, lo guarda en disco y registra en tablas CXP en un solo paso.

@@ -3,6 +3,7 @@ package com.saa.model.cxp;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
+import com.saa.model.cnt.Periodo;
 import com.saa.model.scp.Empresa;
 import com.saa.model.scp.Usuario;
 
@@ -56,6 +57,10 @@ public class CargaArchivoTxt implements Serializable {
     @Basic @Column(name = "OBSERVACION", length = 2000)
     private String observacion;
 
+    /** Período contable al que pertenece esta carga (CNT.PRDO) */
+    @ManyToOne @JoinColumn(name = "PERIODOCONTABLE", referencedColumnName = "PRDOCDGO")
+    private Periodo periodoContable;
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
     public Empresa getEmpresa() { return empresa; }
@@ -78,4 +83,6 @@ public class CargaArchivoTxt implements Serializable {
     public void setEstado(Long estado) { this.estado = estado; }
     public String getObservacion() { return observacion; }
     public void setObservacion(String observacion) { this.observacion = observacion; }
+    public Periodo getPeriodoContable() { return periodoContable; }
+    public void setPeriodoContable(Periodo periodoContable) { this.periodoContable = periodoContable; }
 }

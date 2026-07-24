@@ -4,6 +4,7 @@ import java.io.Serializable;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
+import com.saa.model.cnt.Periodo;
 import com.saa.model.scp.Empresa;
 import com.saa.model.scp.Usuario;
 
@@ -35,7 +36,11 @@ import jakarta.persistence.*;
     @NamedQuery(name = "DocumentoCxpByEmpresaEstado",
                 query = "select e from DocumentoCxp e where e.empresa.codigo = :idEmpresa and e.estadoDocumento = :estado order by e.id desc"),
     @NamedQuery(name = "DocumentoCxpNovedadesPendientes",
-                query = "select e from DocumentoCxp e where e.empresa.codigo = :idEmpresa and e.estadoDocumento = 5 and e.estadoNovedad = 1 order by e.id desc")
+                query = "select e from DocumentoCxp e where e.empresa.codigo = :idEmpresa and e.estadoDocumento = 5 and e.estadoNovedad = 1 order by e.id desc"),
+    @NamedQuery(name = "DocumentoCxpByEmpresaPeriodo",
+                query = "select e from DocumentoCxp e where e.empresa.codigo = :idEmpresa and e.periodoContable.codigo = :idPeriodo order by e.id desc"),
+    @NamedQuery(name = "DocumentoCxpActivosByEmpresaPeriodo",
+                query = "select e from DocumentoCxp e where e.empresa.codigo = :idEmpresa and e.periodoContable.codigo = :idPeriodo and e.estadoDocumento <> 6 order by e.id desc")
 })
 public class DocumentoCxp implements Serializable {
 
@@ -127,6 +132,10 @@ public class DocumentoCxp implements Serializable {
     @Basic @Column(name = "OBSERVACION", length = 2000)
     private String observacion;
 
+    /** Período contable al que pertenece este documento (CNT.PRDO) */
+    @ManyToOne @JoinColumn(name = "PERIODOCONTABLE", referencedColumnName = "PRDOCDGO")
+    private Periodo periodoContable;
+
     // --- Getters / Setters ---
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -182,4 +191,6 @@ public class DocumentoCxp implements Serializable {
     public void setEstadoNovedad(Long estadoNovedad) { this.estadoNovedad = estadoNovedad; }
     public String getObservacion() { return observacion; }
     public void setObservacion(String observacion) { this.observacion = observacion; }
+    public Periodo getPeriodoContable() { return periodoContable; }
+    public void setPeriodoContable(Periodo periodoContable) { this.periodoContable = periodoContable; }
 }

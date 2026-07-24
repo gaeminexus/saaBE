@@ -44,6 +44,7 @@ import com.saa.ejb.cxp.service.ProcesoCargaDocumentosService;
 import com.saa.model.cxc.Facturador;
 import com.saa.model.cxp.GrupoProductoPago;
 import com.saa.model.cxp.ProductoPago;
+import com.saa.model.cnt.Periodo;
 import com.saa.model.cxp.CargaArchivoTxt;
 import com.saa.model.cxp.DetalleCargaTxt;
 import com.saa.model.cxp.DocumentoCxp;
@@ -144,12 +145,20 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     // =========================================================
     @Override
     public Map<String, Object> cargarArchivoTxt(String contenidoTxt, String nombreArchivo,
-                                                 Long idEmpresa, Long idUsuario) throws Throwable {
+                                                 Long idEmpresa, Long idUsuario, Long idPeriodo) throws Throwable {
 
-        System.out.println("=== INICIO cargarArchivoTxt === archivo: " + nombreArchivo);
+        System.out.println("=== INICIO cargarArchivoTxt === archivo: " + nombreArchivo + " periodo=" + idPeriodo);
 
         Empresa empresa = em.find(Empresa.class, idEmpresa);
         Usuario usuario = em.find(Usuario.class, idUsuario);
+
+        // Resolver período contable
+        Periodo periodo = null;
+        if (idPeriodo != null) {
+            periodo = em.find(Periodo.class, idPeriodo);
+            if (periodo == null)
+                throw new Exception("Período contable no encontrado: " + idPeriodo);
+        }
 
         // Obtener RUC del receptor desde el facturador de la empresa
         String rucReceptor = obtenerRucReceptor(idEmpresa);
@@ -161,10 +170,13 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         cabecera.setFechaCarga(LocalDateTime.now());
         cabecera.setNombreArchivo(nombreArchivo);
         cabecera.setEstado(1L);
+        cabecera.setPeriodoContable(periodo);
         cabecera = cargaArchivoTxtDaoService.save(cabecera, null);
 
         long totalRegistros = 0, nuevos = 0, duplicados = 0, novedades = 0;
         List<Map<String, Object>> detallesResultado = new ArrayList<>();
+        // Claves de acceso procesadas en ESTA carga (para detectar desaparecidos)
+        java.util.Set<String> clavesEnEstaCarga = new java.util.HashSet<>();
 
         String[] lineas = contenidoTxt.split("\n");
 
@@ -208,6 +220,9 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 continue;
             }
 
+            // Registrar clave como procesada en esta carga
+            clavesEnEstaCarga.add(claveAcceso);
+
             // ── Buscar DocumentoCxp único por claveAcceso ──
             DocumentoCxp doc = buscarDocumentoPorClaveAcceso(claveAcceso);
 
@@ -231,6 +246,9 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 doc.setImporteTotal(importeTotal);
                 doc.setNumeroDocumentoModificado(numDocModificado);
                 doc.setEstadoDocumento(ESTADO_LEIDO);
+                // Asignar período contable
+                doc.setPeriodoContable(periodo != null ? periodo
+                        : resolverPeriodoPorFecha(fechaEmision, idEmpresa));
                 doc = documentoCxpDaoService.save(doc, null);
                 nuevos++;
                 resultadoLinea = "NUEVO";
@@ -297,6 +315,19 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         cabecera.setRegistrosNovedad(novedades);
         cargaArchivoTxtDaoService.save(cabecera, cabecera.getId());
 
+        // ── Detectar documentos desaparecidos ──────────────────────────────────────
+        // Si hay un periodo asociado: buscar documentos activos del mismo periodo que
+        // NO aparecen en esta carga y marcarlos como NOVEDAD con motivo "DESAPARECIDO".
+        long desaparecidos = 0;
+        List<Map<String, Object>> desaparecidosDetalle = new ArrayList<>();
+        if (periodo != null) {
+            desaparecidos = detectarDocumentosDesaparecidos(
+                    idEmpresa, periodo, clavesEnEstaCarga, cabecera, desaparecidosDetalle);
+            // Actualizar cabecera con conteo real de novedades (incluye desaparecidos)
+            cabecera.setRegistrosNovedad(novedades + desaparecidos);
+            cargaArchivoTxtDaoService.save(cabecera, cabecera.getId());
+        }
+
         Map<String, Object> resultado = new HashMap<>();
         resultado.put("idCargaTxt", cabecera.getId());
         resultado.put("nombreArchivo", nombreArchivo);
@@ -304,10 +335,13 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         resultado.put("nuevos", nuevos);
         resultado.put("duplicados", duplicados);
         resultado.put("novedades", novedades);
+        resultado.put("desaparecidos", desaparecidos);
         resultado.put("detalles", detallesResultado);
+        resultado.put("desaparecidosDetalle", desaparecidosDetalle);
 
         System.out.println("=== FIN cargarArchivoTxt === nuevos=" + nuevos
-                + " duplicados=" + duplicados + " novedades=" + novedades);
+                + " duplicados=" + duplicados + " novedades=" + novedades
+                + " desaparecidos=" + desaparecidos);
         return resultado;
     }
 
@@ -1350,6 +1384,100 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                     .setParameter("clave", claveAcceso).setMaxResults(1).getResultList();
             return lista.isEmpty() ? null : lista.get(0);
         } catch (Exception e) { return null; }
+    }
+
+    /**
+     * Resuelve el período contable para una fecha de emisión dada.
+     * Busca en CNT.PRDO el período cuyo mes y año coinciden con la fecha de emisión
+     * y que pertenezca a la empresa indicada.
+     * Retorna null si no encuentra un período.
+     */
+    private Periodo resolverPeriodoPorFecha(LocalDate fechaEmision, Long idEmpresa) {
+        if (fechaEmision == null || idEmpresa == null) return null;
+        try {
+            @SuppressWarnings("unchecked")
+            List<Periodo> lista = em.createNamedQuery("PeriodoByEmpresaMesAnio")
+                    .setParameter("idEmpresa", idEmpresa)
+                    .setParameter("mes", (long) fechaEmision.getMonthValue())
+                    .setParameter("anio", (long) fechaEmision.getYear())
+                    .setMaxResults(1).getResultList();
+            return lista.isEmpty() ? null : lista.get(0);
+        } catch (Exception e) {
+            System.out.println("WARN resolverPeriodoPorFecha: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Detecta documentos del mismo período que estaban activos (no REVERTIDOS) en
+     * cargas anteriores y NO aparecen en la carga actual (clavesEnEstaCarga).
+     * Los marca como NOVEDAD con motivo "DESAPARECIDO_EN_CARGA".
+     * Registra una DetalleCargaTxt con resultado "DESAPARECIDO" para cada uno.
+     *
+     * @return cantidad de documentos desaparecidos detectados
+     */
+    @SuppressWarnings("unchecked")
+    private long detectarDocumentosDesaparecidos(Long idEmpresa, Periodo periodo,
+            java.util.Set<String> clavesEnEstaCarga, CargaArchivoTxt cabecera,
+            List<Map<String, Object>> desaparecidosDetalle) {
+        long count = 0;
+        try {
+            List<DocumentoCxp> activosDelPeriodo = em.createNamedQuery("DocumentoCxpActivosByEmpresaPeriodo")
+                    .setParameter("idEmpresa", idEmpresa)
+                    .setParameter("idPeriodo", periodo.getCodigo())
+                    .getResultList();
+
+            for (DocumentoCxp doc : activosDelPeriodo) {
+                if (clavesEnEstaCarga.contains(doc.getClaveAcceso())) continue;
+
+                // El documento no apareció en esta carga → marcar como novedad DESAPARECIDO
+                String motivoAnterior = doc.getNovedad() != null ? doc.getNovedad() : "";
+                String motivo = "DESAPARECIDO_EN_CARGA: No apareció en la carga " + cabecera.getId()
+                        + " del período " + periodo.getCodigo()
+                        + (motivoAnterior.isEmpty() ? "" : " | Novedad previa: " + motivoAnterior);
+
+                if (doc.getEstadoDocumento() == ESTADO_REGISTRADO_BD) {
+                    doc.setEstadoDocumento(ESTADO_NOVEDAD);
+                    doc.setEstadoNovedad(NOVEDAD_PENDIENTE);
+                } else if (doc.getEstadoDocumento() == ESTADO_LEIDO
+                        || doc.getEstadoDocumento() == ESTADO_XML_CARGADO) {
+                    // Sigue pendiente de procesar y ya no aparece en el TXT
+                    doc.setEstadoDocumento(ESTADO_NOVEDAD);
+                    doc.setEstadoNovedad(NOVEDAD_PENDIENTE);
+                }
+                // Si ya estaba en NOVEDAD, solo actualizamos la descripción
+                doc.setNovedad(motivo);
+                try {
+                    documentoCxpDaoService.save(doc, doc.getId());
+                } catch (Throwable e) {
+                    System.out.println("WARN detectarDocumentosDesaparecidos save: " + e.getMessage());
+                }
+
+                // Registrar línea de detalle con resultado DESAPARECIDO
+                DetalleCargaTxt linea = new DetalleCargaTxt();
+                linea.setCargaTxt(cabecera);
+                linea.setDocumento(doc);
+                linea.setResultado("DESAPARECIDO");
+                linea.setObservacion(motivo);
+                try {
+                    detalleCargaTxtDaoService.save(linea, null);
+                } catch (Throwable e) {
+                    System.out.println("WARN detectarDocumentosDesaparecidos detalle: " + e.getMessage());
+                }
+
+                Map<String, Object> d = new HashMap<>();
+                d.put("idDocumentoCxp", doc.getId());
+                d.put("claveAcceso", doc.getClaveAcceso());
+                d.put("serie", doc.getSerieComprobante());
+                d.put("resultado", "DESAPARECIDO");
+                d.put("novedad", motivo);
+                desaparecidosDetalle.add(d);
+                count++;
+            }
+        } catch (Exception e) {
+            System.out.println("WARN detectarDocumentosDesaparecidos: " + e.getMessage());
+        }
+        return count;
     }
 
     private String detectarDiferencias(DocumentoCxp doc, double valorSinImpuestos,

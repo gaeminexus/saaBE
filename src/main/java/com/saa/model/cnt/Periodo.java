@@ -24,7 +24,9 @@ import jakarta.persistence.Table;
 @SequenceGenerator(name = "SQ_PRDOCDGO", sequenceName = "CNT.SQ_PRDOCDGO", allocationSize = 1)
 @NamedQueries({
 	@NamedQuery(name = "PeriodoAll", query = "select e from Periodo e"),
-	@NamedQuery(name = "PeriodoId", query = "select e from Periodo e where e.codigo = :id")
+	@NamedQuery(name = "PeriodoId", query = "select e from Periodo e where e.codigo = :id"),
+	@NamedQuery(name = "PeriodoByEmpresaMesAnio",
+	            query = "select e from Periodo e where e.empresa.codigo = :idEmpresa and e.mes = :mes and e.anio = :anio")
 })
 
 public class Periodo implements Serializable {

@@ -40,6 +40,8 @@ CRTX (CargaArchivoTxt)
 | `ProcesoCargaDocumentosRest.java` | `com.saa.ws.rest.cxp` | Endpoints REST del proceso |
 | `GrupoProductoPagoRest.java` | `com.saa.ws.rest.cxp` | CRUD de grupos de producto (con protección del tipo POR_CLASIFICAR) |
 | `DocumentoCxp.java` | `com.saa.model.cxp` | Entidad principal del ciclo de vida |
+| `CargaArchivoTxt.java` | `com.saa.model.cxp` | Cabecera de carga TXT |
+| `Periodo.java` | `com.saa.model.cnt` | Período contable del módulo CNT (tabla CNT.PRDO) |
 | `TipoGrupoProductos.java` | `com.saa.rubros` | Constantes de tipo de grupo: BIEN=1, SERVICIO=2, POR_CLASIFICAR=3 |
 
 ---
@@ -76,6 +78,7 @@ CRTX (CargaArchivoTxt)
 | `fechaReversion` | TIMESTAMP | Cuándo se revirtió |
 | `usuarioReversion` | NUMBER(11) | FK a SCP.PJRQ |
 | `observacion` | VARCHAR2(2000) | Errores o notas adicionales |
+| **`periodoContable`** | **NUMBER(11)** | **FK a CNT.PRDO — período contable del documento (nuevo)** |
 
 ### `DCTX` — DetalleCargaTxt
 
@@ -104,8 +107,9 @@ CRTX (CargaArchivoTxt)
 | `totalRegistros` | NUMBER(11) | Total de líneas procesadas |
 | `registrosNuevos` | NUMBER(11) | Documentos nuevos |
 | `registrosDuplicados` | NUMBER(11) | Documentos ya existentes sin diferencias |
-| `registrosNovedad` | NUMBER(11) | Documentos con diferencias de valores |
+| `registrosNovedad` | NUMBER(11) | Documentos con diferencias de valores + desaparecidos |
 | `estado` | NUMBER(2) | 1=PROCESADO 2=ERROR_PARCIAL |
+| **`periodoContable`** | **NUMBER(11)** | **FK a CNT.PRDO — período contable de esta carga (nuevo)** |
 
 ---
 
@@ -212,7 +216,8 @@ El identificador es `rubroTipoGrupoH = 3` en la tabla `PGS.GRPP`. **No se identi
   "contenidoTxt": "<contenido completo del archivo TXT>",
   "nombreArchivo": "1793228946001_Recibidos.txt",
   "idEmpresa": 1,
-  "idUsuario": 5
+  "idUsuario": 5,
+  "idPeriodo": 12
 }
 
 // Response 201
@@ -223,24 +228,30 @@ El identificador es `rubroTipoGrupoH = 3` en la tabla `PGS.GRPP`. **No se identi
   "nuevos": 38,
   "duplicados": 5,
   "novedades": 2,
+  "desaparecidos": 1,
   "detalles": [
-    { "linea": 1, "serie": "001-001-000000123", "claveAcceso": "2406202401...", "resultado": "NUEVO",     "idDocumentoCxp": 101 },
-    { "linea": 2, "serie": "001-001-000000050", "claveAcceso": "1506202401...", "resultado": "DUPLICADO", "idDocumentoCxp": 55  },
-    { "linea": 3, "serie": "001-001-000000099", "claveAcceso": "0106202401...", "resultado": "NOVEDAD",   "idDocumentoCxp": 72, "diferencias": "importeTotal: previo=100.00 nuevo=115.00" }
+    { "linea": 1, "serie": "001-001-000000123", "claveAcceso": "2406202401...", "resultado": "NUEVO",        "idDocumentoCxp": 101 },
+    { "linea": 2, "serie": "001-001-000000050", "claveAcceso": "1506202401...", "resultado": "DUPLICADO",    "idDocumentoCxp": 55  },
+    { "linea": 3, "serie": "001-001-000000099", "claveAcceso": "0106202401...", "resultado": "NOVEDAD",      "idDocumentoCxp": 72, "diferencias": "importeTotal: previo=100.00 nuevo=115.00" }
+  ],
+  "desaparecidosDetalle": [
+    { "idDocumentoCxp": 60, "claveAcceso": "0106202401...", "serie": "001-001-000000080", "resultado": "DESAPARECIDO", "novedad": "DESAPARECIDO_EN_CARGA: No apareció en la carga 10 del período 12" }
   ]
 }
 ```
 
-> El `idDocumentoCxp` de cada línea es el **ID permanente del documento**. Se usa en todas las fases siguientes. El `idCargaTxt` solo sirve para consultar el resumen de esa carga.
+> `idPeriodo` es el ID del período contable (`CNT.PRDO`) al que corresponde la carga. Es **obligatorio** para activar la detección de documentos desaparecidos. Si se omite, el proceso funciona como antes pero sin detección de desaparecidos.
 
 **Lógica interna:**
 1. Obtiene el RUC receptor de la empresa via `Facturador`.
-2. Crea una cabecera `CargaArchivoTxt`.
+2. Crea una cabecera `CargaArchivoTxt` (con `periodoContable` si se envió `idPeriodo`).
 3. Itera líneas del TXT (tab-delimitado, 11+ columnas, salta encabezado `RUC_EMISOR`).
 4. Valida que `identificacionReceptor` coincida con el RUC de la empresa; si no → `IGNORADO`.
 5. Por línea: **NUEVO** / **DUPLICADO** / **NOVEDAD** según si el `DocumentoCxp` existe y si hay diferencias en montos/fechas.
-6. Si es NOVEDAD y el doc estaba en `REGISTRADO_BD` → pasa a `NOVEDAD (5)`. Si estaba en `LEIDO/XML_CARGADO/REVERTIDO` → actualiza valores, vuelve a `LEIDO (1)`.
-7. Siempre registra `DetalleCargaTxt` con snapshot de valores y resultado.
+6. Al crear un documento NUEVO, se le asigna el período contable: primero usa `idPeriodo` del request; si no viene, lo resuelve automáticamente desde la `fechaEmision` del documento buscando en `CNT.PRDO` (mismo mes, año y empresa).
+7. Si es NOVEDAD y el doc estaba en `REGISTRADO_BD` → pasa a `NOVEDAD (5)`. Si estaba en `LEIDO/XML_CARGADO/REVERTIDO` → actualiza valores, vuelve a `LEIDO (1)`.
+8. Siempre registra `DetalleCargaTxt` con snapshot de valores y resultado.
+9. **Al finalizar**, si `idPeriodo` está presente: busca todos los documentos activos (no `REVERTIDO`) del mismo período que **no aparecieron** en esta carga y los marca como `NOVEDAD (5)` con motivo `DESAPARECIDO_EN_CARGA`. Genera un `DetalleCargaTxt` con resultado `DESAPARECIDO` para cada uno.
 
 ---
 
@@ -586,6 +597,13 @@ Debe llamarse **antes de generar el asiento contable** de cualquier `FacturaComp
 5. **Identificación del grupo POR_CLASIFICAR**: Se identifica por `rubroTipoGrupoH = 3`, **no por nombre**. Puede renombrarse en BD sin afectar la lógica del backend.
 
 6. **Novedades**: Si entre una carga TXT y la siguiente cambian los valores de un documento ya `REGISTRADO_BD`, el estado pasa a `NOVEDAD (5)`. El usuario decide MANTENER o REEMPLAZAR.
+
+7. **Documentos desaparecidos**: Si se envía `idPeriodo` en la carga, al finalizar el proceso de líneas se buscan todos los documentos activos del mismo período que **no aparecieron** en el TXT actual y se marcan como `NOVEDAD (5)` con motivo `DESAPARECIDO_EN_CARGA`. El campo `novedad` del documento describe en qué carga desapareció y a qué período pertenece. El resultado `DESAPARECIDO` queda registrado en `DCTX` para trazabilidad.
+
+8. **Período contable en documentos nuevos**: Al crear un `DocumentoCxp` nuevo el sistema asigna el período contable en este orden de prioridad:
+   - Si se envió `idPeriodo` en el request → usa ese período.
+   - Si no → busca automáticamente en `CNT.PRDO` el período con el mismo mes/año que la `fechaEmision` del documento y la misma empresa.
+   - Si tampoco encuentra → el campo queda `null` (el documento se crea igualmente).
 
 7. **Proveedor auto-creado**: Si el RUC emisor del XML no existe en `Titular` (TSR), se crea automáticamente con rol de Proveedor usando los datos disponibles en el XML/TXT. El documento continúa el registro normalmente. (Comportamiento anterior era marcar ERROR — fue corregido.)
 
