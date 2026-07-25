@@ -112,6 +112,17 @@ COMMENT ON COLUMN [SCHEMA].[CODIGO].[CAMPO] IS 'Descripción del campo';
 - **Campo:** 4 caracteres que describen el campo
 - **Ejemplo:** `AVPCVLCT` = AVPC (tabla) + VLCT (Valor Cuota Total)
 
+### Regla de relleno para descriptores cortos:
+Cuando el descriptor semántico del campo tiene **menos de 4 caracteres**, se repite la **última letra** hasta completar exactamente 4.
+
+| Concepto | Descriptor raw | Descriptor final (4 chars) | Nombre completo |
+|---|---|---|---|
+| IVA | `IVA` (3) | `IVAA` | `DCXPIVAA` |
+| Día | `DIA` (3) | `DIAA` | `AVPCDIAА` |
+| ID externo | `ID` (2) | `IDDD` | `AVPCIDDD` |
+
+> **Regla:** Si el descriptor tiene 3 chars → repetir el último 1 vez. Si tiene 2 → repetir 2 veces. Si tiene 1 → repetir 3 veces.
+
 ### Campos estándar:
 - `[TABLA]CDGO` - Código (PK)
 - `[TABLA]ESTD` - Estado
