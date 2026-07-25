@@ -252,7 +252,8 @@ public class ProcesoCargaDocumentosRest {
     // FASE 4: Resolver novedad
     // =========================================================
     /**
-     * Body JSON: { "accion": "REEMPLAZAR"|"MANTENER", "contenidoXml": "...", "pathDestino": "...", "idUsuario": 1 }
+     * Body JSON: { "accion": 1|2, "contenidoXml": "...", "pathDestino": "...", "idUsuario": 1 }
+     * Rubro 177 CXP_ACCION_NOVEDAD: 1=MANTENER, 2=REEMPLAZAR
      */
     @POST
     @Path("/resolverNovedad/{idDocumentoCxp}")
@@ -262,17 +263,18 @@ public class ProcesoCargaDocumentosRest {
                                      Map<String, Object> params) {
         System.out.println("=== REST resolverNovedad idDocumentoCxp=" + idDocumentoCxp);
         try {
-            String accion       = (String) params.get("accion");
+            Integer accion      = params.get("accion") != null
+                    ? Integer.valueOf(params.get("accion").toString()) : null;
             String contenidoXml = (String) params.get("contenidoXml");
             String pathDestino  = (String) params.get("pathDestino");
             Long idUsuario      = Long.valueOf(params.get("idUsuario").toString());
 
-            if (accion == null || accion.isEmpty())
+            if (accion == null)
                 return Response.status(Response.Status.BAD_REQUEST)
-                        .entity(errorMap("El campo 'accion' es obligatorio: REEMPLAZAR | MANTENER"))
+                        .entity(errorMap("El campo 'accion' es obligatorio: 1=MANTENER, 2=REEMPLAZAR (Rubro 177)"))
                         .type(MediaType.APPLICATION_JSON).build();
 
-            if ("REEMPLAZAR".equalsIgnoreCase(accion) && contenidoXml != null && !contenidoXml.isEmpty())
+            if (accion == com.saa.rubros.AccionNovedad.REEMPLAZAR && contenidoXml != null && !contenidoXml.isEmpty())
                 guardarXmlEnDisco(contenidoXml, pathDestino);
 
             Map<String, Object> resultado = procesoCargaDocumentosService

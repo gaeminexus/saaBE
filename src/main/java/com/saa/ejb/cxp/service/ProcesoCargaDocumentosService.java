@@ -95,12 +95,13 @@ public interface ProcesoCargaDocumentosService {
 
     /**
      * FASE 4: Resuelve una novedad en un DocumentoCxp.
-     * accion=REEMPLAZAR → revierte registros previos, carga nuevo XML y re-registra.
-     * accion=MANTENER   → marca estadoNovedad=3 sin cambios.
+     * accion={@link com.saa.rubros.AccionNovedad#REEMPLAZAR} (2) → revierte registros previos, carga nuevo XML y re-registra.
+     * accion={@link com.saa.rubros.AccionNovedad#MANTENER}   (1) → marca estadoNovedad=3 sin cambios.
      *
      * @param idDocumentoCxp ID del DocumentoCxp (debe tener estadoDocumento=5)
+     * @param accion         Rubro 177: 1=MANTENER, 2=REEMPLAZAR
      */
-    Map<String, Object> resolverNovedad(Long idDocumentoCxp, String accion,
+    Map<String, Object> resolverNovedad(Long idDocumentoCxp, Integer accion,
                                          String contenidoXml, String pathDestino,
                                          Long idUsuario) throws Throwable;
 

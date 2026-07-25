@@ -24,41 +24,43 @@ import jakarta.persistence.*;
 })
 public class CargaArchivoTxt implements Serializable {
 
-    @Basic @Id @Column(name = "ID", precision = 0) @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Basic @Id @Column(name = "CRTXCDGO") @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne @JoinColumn(name = "EMPRESA", referencedColumnName = "PJRQCDGO")
+    /** FK a SCP.PJRQ — empresa. CRTX tiene dos referencias a PJRQ; nombre descriptivo. */
+    @ManyToOne @JoinColumn(name = "CRTXPJRQ", referencedColumnName = "PJRQCDGO")
     private Empresa empresa;
 
-    @ManyToOne @JoinColumn(name = "USUARIO", referencedColumnName = "PJRQCDGO")
+    /** FK a SCP.PJRQ — usuario que cargó el archivo. CRTX tiene dos referencias a PJRQ; nombre descriptivo. */
+    @ManyToOne @JoinColumn(name = "CRTXUSAR", referencedColumnName = "PJRQCDGO")
     private Usuario usuario;
 
-    @Basic @Column(name = "FECHACARGA")
+    @Basic @Column(name = "CRTXFCGA")
     private LocalDateTime fechaCarga;
 
-    @Basic @Column(name = "NOMBREARCHIVO", length = 500)
+    @Basic @Column(name = "CRTXNARV", length = 500)
     private String nombreArchivo;
 
-    @Basic @Column(name = "TOTALREGISTROS")
+    @Basic @Column(name = "CRTXTTLR")
     private Long totalRegistros;
 
-    @Basic @Column(name = "REGISTROSNUEVOS")
+    @Basic @Column(name = "CRTXRGNV")
     private Long registrosNuevos;
 
-    @Basic @Column(name = "REGISTROSDUPLICADOS")
+    @Basic @Column(name = "CRTXRGDP")
     private Long registrosDuplicados;
 
-    @Basic @Column(name = "REGISTROSNOVEDAD")
+    @Basic @Column(name = "CRTXRGND")
     private Long registrosNovedad;
 
-    @Basic @Column(name = "ESTADO")
+    @Basic @Column(name = "CRTXESTD")
     private Long estado;
 
-    @Basic @Column(name = "OBSERVACION", length = 2000)
+    @Basic @Column(name = "CRTXOBSR", length = 2000)
     private String observacion;
 
-    /** Período contable al que pertenece esta carga (CNT.PRDO) */
-    @ManyToOne @JoinColumn(name = "PERIODOCONTABLE", referencedColumnName = "PRDOCDGO")
+    /** FK única a CNT.PRDO — columna toma el nombre del PK de PRDO: PRDOCDGO */
+    @ManyToOne @JoinColumn(name = "PRDOCDGO", referencedColumnName = "PRDOCDGO")
     private Periodo periodoContable;
 
     public Long getId() { return id; }

@@ -28,38 +28,39 @@ import jakarta.persistence.*;
 })
 public class DetalleCargaTxt implements Serializable {
 
-    @Basic @Id @Column(name = "ID", precision = 0) @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Basic @Id @Column(name = "DCTXCDGO") @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /** Cabecera de la carga a la que pertenece esta línea */
-    @ManyToOne @JoinColumn(name = "CARGATXT", referencedColumnName = "ID")
+    /** FK única a PGS.CRTX — columna toma el nombre del PK de CRTX: CRTXCDGO */
+    @ManyToOne @JoinColumn(name = "CRTXCDGO", referencedColumnName = "CRTXCDGO")
     private CargaArchivoTxt cargaTxt;
 
-    /** Documento único al que apunta esta línea */
-    @ManyToOne @JoinColumn(name = "DOCUMENTO", referencedColumnName = "ID")
+    /** FK única a PGS.DCXP — columna toma el nombre del PK de DCXP: DCXPCDGO */
+    @ManyToOne @JoinColumn(name = "DCXPCDGO", referencedColumnName = "DCXPCDGO")
     private DocumentoCxp documento;
 
     // --- Valores tal como venían en ESTA carga (pueden diferir del documento maestro) ---
-    @Basic @Column(name = "VALORSINIMPUESTOS_CARGA")
+    @Basic @Column(name = "DCTXVSIM")
     private Double valorSinImpuestosCarga;
 
-    @Basic @Column(name = "IVA_CARGA")
+    /** IVA = 3 chars → última letra repetida hasta completar 4: IVAA */
+    @Basic @Column(name = "DCTXIVAA")
     private Double ivaCarga;
 
-    @Basic @Column(name = "IMPORTETOTAL_CARGA")
+    @Basic @Column(name = "DCTXIMTT")
     private Double importeTotalCarga;
 
-    @Basic @Column(name = "FECHAAUTORIZACION_CARGA")
+    @Basic @Column(name = "DCTXFAUT")
     private LocalDateTime fechaAutorizacionCarga;
 
-    @Basic @Column(name = "FECHAEMISION_CARGA")
+    @Basic @Column(name = "DCTXFEMS")
     private LocalDate fechaEmisionCarga;
 
-    /** NUEVO | DUPLICADO | NOVEDAD | IGNORADO */
-    @Basic @Column(name = "RESULTADO", length = 20)
-    private String resultado;
+    /** Rubro 174 CXP_RESULTADO_CARGA_TXT: 1=NUEVO 2=DUPLICADO 3=NOVEDAD 4=IGNORADO 5=DESAPARECIDO */
+    @Basic @Column(name = "DCTXRSLT")
+    private Long resultado;
 
-    @Basic @Column(name = "OBSERVACION", length = 2000)
+    @Basic @Column(name = "DCTXOBSR", length = 2000)
     private String observacion;
 
     // --- Getters / Setters ---
@@ -79,8 +80,8 @@ public class DetalleCargaTxt implements Serializable {
     public void setFechaAutorizacionCarga(LocalDateTime fechaAutorizacionCarga) { this.fechaAutorizacionCarga = fechaAutorizacionCarga; }
     public LocalDate getFechaEmisionCarga() { return fechaEmisionCarga; }
     public void setFechaEmisionCarga(LocalDate fechaEmisionCarga) { this.fechaEmisionCarga = fechaEmisionCarga; }
-    public String getResultado() { return resultado; }
-    public void setResultado(String resultado) { this.resultado = resultado; }
+    public Long getResultado() { return resultado; }
+    public void setResultado(Long resultado) { this.resultado = resultado; }
     public String getObservacion() { return observacion; }
     public void setObservacion(String observacion) { this.observacion = observacion; }
 }

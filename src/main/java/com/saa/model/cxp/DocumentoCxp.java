@@ -44,96 +44,97 @@ import jakarta.persistence.*;
 })
 public class DocumentoCxp implements Serializable {
 
-    @Basic @Id @Column(name = "ID", precision = 0) @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Basic @Id @Column(name = "DCXPCDGO") @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne @JoinColumn(name = "EMPRESA", referencedColumnName = "PJRQCDGO")
+    @ManyToOne @JoinColumn(name = "DCXPPJRQ", referencedColumnName = "PJRQCDGO")
     private Empresa empresa;
 
     // --- Datos del documento (del TXT SRI) ---
-    @Basic @Column(name = "RUCEMISOR", length = 20)
+    @Basic @Column(name = "DCXPRCEM", length = 20)
     private String rucEmisor;
 
-    @Basic @Column(name = "RAZONSOCIALEMISOR", length = 500)
+    @Basic @Column(name = "DCXPRSEM", length = 500)
     private String razonSocialEmisor;
 
-    @Basic @Column(name = "TIPOCOMPROBANTE", length = 100)
+    @Basic @Column(name = "DCXPTPCM", length = 100)
     private String tipoComprobante;
 
-    @Basic @Column(name = "SERIECOMPROBANTE", length = 50)
+    @Basic @Column(name = "DCXPSRCM", length = 50)
     private String serieComprobante;
 
-    @Basic @Column(name = "CLAVEACCESO", length = 100, unique = true)
+    @Basic @Column(name = "DCXPCLAC", length = 100, unique = true)
     private String claveAcceso;
 
-    @Basic @Column(name = "FECHAAUTORIZACION")
+    @Basic @Column(name = "DCXPFAUT")
     private LocalDateTime fechaAutorizacion;
 
-    @Basic @Column(name = "FECHAEMISION")
+    @Basic @Column(name = "DCXPFEMS")
     private LocalDate fechaEmision;
 
-    @Basic @Column(name = "IDENTIFICACIONRECEPTOR", length = 20)
+    @Basic @Column(name = "DCXPIDRC", length = 20)
     private String identificacionReceptor;
 
-    @Basic @Column(name = "VALORSINIMPUESTOS")
+    @Basic @Column(name = "DCXPVSIM")
     private Double valorSinImpuestos;
 
-    @Basic @Column(name = "IVA")
+    /** IVA = 3 chars → última letra repetida hasta completar 4: IVAA */
+    @Basic @Column(name = "DCXPIVAA")
     private Double iva;
 
-    @Basic @Column(name = "IMPORTETOTAL")
+    @Basic @Column(name = "DCXPIMTT")
     private Double importeTotal;
 
-    @Basic @Column(name = "NUMERODOCUMENTOMODIFICADO", length = 50)
+    @Basic @Column(name = "DCXPNDMD", length = 50)
     private String numeroDocumentoModificado;
 
     // --- Estado del proceso ---
-    @Basic @Column(name = "ESTADODOCUMENTO")
+    @Basic @Column(name = "DCXPESTD")
     private Long estadoDocumento;
 
     // --- XML ---
-    @Basic @Column(name = "PATHXML", length = 2000)
+    @Basic @Column(name = "DCXPPXML", length = 2000)
     private String pathXml;
 
-    @Basic @Column(name = "FECHACARGAXML")
+    @Basic @Column(name = "DCXPFCXM")
     private LocalDateTime fechaCargaXml;
 
-    @ManyToOne @JoinColumn(name = "USUARIOCARGAXML", referencedColumnName = "PJRQCDGO")
+    @ManyToOne @JoinColumn(name = "DCXPUCXM", referencedColumnName = "PJRQCDGO")
     private Usuario usuarioCargaXml;
 
     // --- Registro en BD ---
-    @Basic @Column(name = "IDDOCUMENTOBD")
+    @Basic @Column(name = "DCXPIDBD")
     private Long idDocumentoBD;
 
-    @Basic @Column(name = "TIPOTABLADESTINO", length = 50)
+    @Basic @Column(name = "DCXPTBTD", length = 50)
     private String tipoTablaDestino;
 
-    @Basic @Column(name = "FECHAREGISTROBD")
+    @Basic @Column(name = "DCXPFRBD")
     private LocalDateTime fechaRegistroBD;
 
-    @ManyToOne @JoinColumn(name = "USUARIOREGISTROBD", referencedColumnName = "PJRQCDGO")
+    @ManyToOne @JoinColumn(name = "DCXPURBD", referencedColumnName = "PJRQCDGO")
     private Usuario usuarioRegistroBD;
 
     // --- Reversión ---
-    @Basic @Column(name = "FECHAREVERSION")
+    @Basic @Column(name = "DCXPFRVS")
     private LocalDateTime fechaReversion;
 
-    @ManyToOne @JoinColumn(name = "USUARIOREVERSION", referencedColumnName = "PJRQCDGO")
+    @ManyToOne @JoinColumn(name = "DCXPURVS", referencedColumnName = "PJRQCDGO")
     private Usuario usuarioReversion;
 
     // --- Novedad ---
-    @Basic @Column(name = "NOVEDAD", length = 2000)
+    @Basic @Column(name = "DCXPNVDD", length = 2000)
     private String novedad;
 
-    @Basic @Column(name = "ESTADONOVEDAD")
+    @Basic @Column(name = "DCXPENOV")
     private Long estadoNovedad;
 
     // --- General ---
-    @Basic @Column(name = "OBSERVACION", length = 2000)
+    @Basic @Column(name = "DCXPOBSR", length = 2000)
     private String observacion;
 
-    /** Período contable al que pertenece este documento (CNT.PRDO) */
-    @ManyToOne @JoinColumn(name = "PERIODOCONTABLE", referencedColumnName = "PRDOCDGO")
+    /** Período contable — FK única a CNT.PRDO, columna toma el nombre del PK: PRDOCDGO */
+    @ManyToOne @JoinColumn(name = "PRDOCDGO", referencedColumnName = "PRDOCDGO")
     private Periodo periodoContable;
 
     // --- Getters / Setters ---

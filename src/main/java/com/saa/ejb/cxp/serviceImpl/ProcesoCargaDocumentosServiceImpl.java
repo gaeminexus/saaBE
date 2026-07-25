@@ -69,7 +69,11 @@ import com.saa.model.cxp.RetencionCompraV2;
 import com.saa.model.scp.Empresa;
 import com.saa.model.scp.Usuario;
 import com.saa.model.tsr.Titular;
+import com.saa.rubros.AccionNovedad;
 import com.saa.rubros.Estado;
+import com.saa.rubros.EstadoDocumentoCxp;
+import com.saa.rubros.EstadoNovedad;
+import com.saa.rubros.ResultadoCargaTxt;
 import com.saa.rubros.TipoGrupoProductos;
 
 import jakarta.ejb.EJB;
@@ -119,18 +123,18 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     @EJB private com.saa.ejb.cnt.service.AsientoContableService asientoContableService;
 
     // -------------------------------------------------------
-    // Estados
+    // Estados — delegados a las interfaces de rubros (174-177)
     // -------------------------------------------------------
-    private static final long ESTADO_LEIDO         = 1L;
-    private static final long ESTADO_XML_CARGADO   = 2L;
-    private static final long ESTADO_REGISTRADO_BD = 3L;
-    private static final long ESTADO_ERROR         = 4L;
-    private static final long ESTADO_NOVEDAD       = 5L;
-    private static final long ESTADO_REVERTIDO     = 6L;
+    private static final long ESTADO_LEIDO         = EstadoDocumentoCxp.LEIDO;
+    private static final long ESTADO_XML_CARGADO   = EstadoDocumentoCxp.XML_CARGADO;
+    private static final long ESTADO_REGISTRADO_BD = EstadoDocumentoCxp.REGISTRADO_BD;
+    private static final long ESTADO_ERROR         = EstadoDocumentoCxp.ERROR;
+    private static final long ESTADO_NOVEDAD       = EstadoDocumentoCxp.NOVEDAD;
+    private static final long ESTADO_REVERTIDO     = EstadoDocumentoCxp.REVERTIDO;
 
-    private static final long NOVEDAD_PENDIENTE    = 1L;
-    private static final long NOVEDAD_REEMPLAZADO  = 2L;
-    private static final long NOVEDAD_MANTENIDO    = 3L;
+    private static final long NOVEDAD_PENDIENTE    = EstadoNovedad.PENDIENTE;
+    private static final long NOVEDAD_REEMPLAZADO  = EstadoNovedad.REEMPLAZADO;
+    private static final long NOVEDAD_MANTENIDO    = EstadoNovedad.MANTENIDO;
 
     // Tipos de comprobante
     private static final String TIPO_FACTURA       = "Factura";
@@ -214,9 +218,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
             // Validar receptor
             if (rucReceptor != null && !identificacionReceptor.equals(rucReceptor)) {
-                r.put("resultado", "IGNORADO - receptor no coincide con empresa");
-                detallesResultado.add(r);
-                totalRegistros--;
+                r.put("resultado", (long) ResultadoCargaTxt.IGNORADO);
+                detallesResultado.add(r);                totalRegistros--;
                 continue;
             }
 
@@ -226,7 +229,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             // ── Buscar DocumentoCxp único por claveAcceso ──
             DocumentoCxp doc = buscarDocumentoPorClaveAcceso(claveAcceso);
 
-            String resultadoLinea;
+            long resultadoLinea;
             String observacionLinea = null;
 
             if (doc == null) {
@@ -251,22 +254,18 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                         : resolverPeriodoPorFecha(fechaEmision, idEmpresa));
                 doc = documentoCxpDaoService.save(doc, null);
                 nuevos++;
-                resultadoLinea = "NUEVO";
+                resultadoLinea = (long) ResultadoCargaTxt.NUEVO;
             } else {
                 // Ya existe: comparar valores
                 String diferencias = detectarDiferencias(doc, valorSinImpuestos, iva, importeTotal,
                         fechaAutorizacion, fechaEmision);
 
                 if (diferencias.isEmpty()) {
-                    // Duplicado sin diferencias: solo registramos la línea, no tocamos el documento
                     duplicados++;
-                    resultadoLinea = "DUPLICADO";
+                    resultadoLinea = (long) ResultadoCargaTxt.DUPLICADO;
                     observacionLinea = "Documento ya existía sin diferencias.";
                 } else {
-                    // Novedad: el documento existe pero los valores cambiaron
-                    // Solo actualizar si el documento no fue ya procesado en BD o si fue revertido
                     if (doc.getEstadoDocumento() == ESTADO_REGISTRADO_BD) {
-                        // Marcar novedad sobre documento ya procesado
                         doc.setEstadoDocumento(ESTADO_NOVEDAD);
                         doc.setEstadoNovedad(NOVEDAD_PENDIENTE);
                         doc.setNovedad(diferencias);
@@ -274,7 +273,6 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                     } else if (doc.getEstadoDocumento() == ESTADO_LEIDO
                             || doc.getEstadoDocumento() == ESTADO_XML_CARGADO
                             || doc.getEstadoDocumento() == ESTADO_REVERTIDO) {
-                        // Actualizar los valores del documento con los nuevos
                         doc.setValorSinImpuestos(valorSinImpuestos);
                         doc.setIva(iva);
                         doc.setImporteTotal(importeTotal);
@@ -285,7 +283,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                         documentoCxpDaoService.save(doc, doc.getId());
                     }
                     novedades++;
-                    resultadoLinea = "NOVEDAD";
+                    resultadoLinea = (long) ResultadoCargaTxt.NOVEDAD;
                     r.put("diferencias", diferencias);
                 }
             }
@@ -702,7 +700,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     // FASE 4: Resolver novedad  →  opera sobre DocumentoCxp
     // =========================================================
     @Override
-    public Map<String, Object> resolverNovedad(Long idDocumentoCxp, String accion,
+    public Map<String, Object> resolverNovedad(Long idDocumentoCxp, Integer accion,
                                                 String contenidoXml, String pathDestino,
                                                 Long idUsuario) throws Throwable {
 
@@ -719,8 +717,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
         Map<String, Object> resultado = new HashMap<>();
 
-        if ("REEMPLAZAR".equalsIgnoreCase(accion)) {
-            // Si tenía registros en BD, revertirlos
+        if (AccionNovedad.REEMPLAZAR == accion) {
             if (doc.getIdDocumentoBD() != null) {
                 revertirRegistrosBD(doc);
             }
@@ -733,16 +730,18 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
             Long idEmpresa = obtenerEmpresaPorReceptor(doc.getIdentificacionReceptor());
             resultado = registrarDocumentoBD(idDocumentoCxp, idEmpresa, idUsuario);
-            resultado.put("accion", "REEMPLAZADO");
+            resultado.put("accion", AccionNovedad.REEMPLAZAR);
 
-        } else if ("MANTENER".equalsIgnoreCase(accion)) {
+        } else if (AccionNovedad.MANTENER == accion) {
             doc.setEstadoNovedad(NOVEDAD_MANTENIDO);
             doc.setObservacion("Usuario decidió mantener el documento previo.");
             documentoCxpDaoService.save(doc, doc.getId());
-            resultado.put("accion", "MANTENIDO");
+            resultado.put("accion", AccionNovedad.MANTENER);
             resultado.put("mensaje", "Se mantiene el documento sin cambios.");
         } else {
-            throw new Exception("Acción no válida. Use REEMPLAZAR o MANTENER.");
+            throw new Exception("Acción no válida. Use "
+                    + AccionNovedad.REEMPLAZAR + " (REEMPLAZAR) o "
+                    + AccionNovedad.MANTENER + " (MANTENER).");
         }
 
         return resultado;
@@ -1457,7 +1456,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 DetalleCargaTxt linea = new DetalleCargaTxt();
                 linea.setCargaTxt(cabecera);
                 linea.setDocumento(doc);
-                linea.setResultado("DESAPARECIDO");
+                linea.setResultado((long) ResultadoCargaTxt.DESAPARECIDO);
                 linea.setObservacion(motivo);
                 try {
                     detalleCargaTxtDaoService.save(linea, null);

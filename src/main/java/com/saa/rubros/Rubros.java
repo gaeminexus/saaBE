@@ -136,5 +136,15 @@ public interface Rubros {
 	int ASP_NOVEDADES_CARGA_ARCHIVO = 169;
 	int ASP_ESTADO_CUOTAS_PRESTAMO_APORTES = 170;
 	int ASP_SENSIBILIDAD_BUSQUEDA_COINCIDENCIAS = 171;
-	
+
+	// RUBROS CXP - Proceso de carga de documentos SRI
+	/** Resultado de cada línea al cargar el TXT SRI → ver {@link ResultadoCargaTxt} */
+	int CXP_RESULTADO_CARGA_TXT  = 174;
+	/** Ciclo de vida del DocumentoCxp (tabla DCXP.DCXPESTD) → ver {@link EstadoDocumentoCxp} */
+	int CXP_ESTADO_DOCUMENTO_CXP = 175;
+	/** Resolución de la novedad detectada (tabla DCXP.DCXPENVD) → ver {@link EstadoNovedad} */
+	int CXP_ESTADO_NOVEDAD       = 176;
+	/** Acción que envía el frontend para resolver una novedad → ver {@link AccionNovedad} */
+	int CXP_ACCION_NOVEDAD       = 177;
+
 }
