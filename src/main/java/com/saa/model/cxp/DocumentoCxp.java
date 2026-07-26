@@ -70,7 +70,7 @@ public class DocumentoCxp implements Serializable {
     private LocalDateTime fechaAutorizacion;
 
     @Basic @Column(name = "DCXPFEMS")
-    private LocalDate fechaEmision;
+    private LocalDateTime fechaEmision;
 
     @Basic @Column(name = "DCXPIDRC", length = 20)
     private String identificacionReceptor;
@@ -154,8 +154,8 @@ public class DocumentoCxp implements Serializable {
     public void setClaveAcceso(String claveAcceso) { this.claveAcceso = claveAcceso; }
     public LocalDateTime getFechaAutorizacion() { return fechaAutorizacion; }
     public void setFechaAutorizacion(LocalDateTime fechaAutorizacion) { this.fechaAutorizacion = fechaAutorizacion; }
-    public LocalDate getFechaEmision() { return fechaEmision; }
-    public void setFechaEmision(LocalDate fechaEmision) { this.fechaEmision = fechaEmision; }
+    public LocalDateTime getFechaEmision() { return fechaEmision; }
+    public void setFechaEmision(LocalDateTime fechaEmision) { this.fechaEmision = fechaEmision; }
     public String getIdentificacionReceptor() { return identificacionReceptor; }
     public void setIdentificacionReceptor(String identificacionReceptor) { this.identificacionReceptor = identificacionReceptor; }
     public Double getValorSinImpuestos() { return valorSinImpuestos; }

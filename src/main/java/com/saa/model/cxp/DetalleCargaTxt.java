@@ -54,7 +54,7 @@ public class DetalleCargaTxt implements Serializable {
     private LocalDateTime fechaAutorizacionCarga;
 
     @Basic @Column(name = "DCTXFEMS")
-    private LocalDate fechaEmisionCarga;
+    private LocalDateTime fechaEmisionCarga;
 
     /** Rubro 174 CXP_RESULTADO_CARGA_TXT: 1=NUEVO 2=DUPLICADO 3=NOVEDAD 4=IGNORADO 5=DESAPARECIDO */
     @Basic @Column(name = "DCTXRSLT")
@@ -78,8 +78,8 @@ public class DetalleCargaTxt implements Serializable {
     public void setImporteTotalCarga(Double importeTotalCarga) { this.importeTotalCarga = importeTotalCarga; }
     public LocalDateTime getFechaAutorizacionCarga() { return fechaAutorizacionCarga; }
     public void setFechaAutorizacionCarga(LocalDateTime fechaAutorizacionCarga) { this.fechaAutorizacionCarga = fechaAutorizacionCarga; }
-    public LocalDate getFechaEmisionCarga() { return fechaEmisionCarga; }
-    public void setFechaEmisionCarga(LocalDate fechaEmisionCarga) { this.fechaEmisionCarga = fechaEmisionCarga; }
+    public LocalDateTime getFechaEmisionCarga() { return fechaEmisionCarga; }
+    public void setFechaEmisionCarga(LocalDateTime fechaEmisionCarga) { this.fechaEmisionCarga = fechaEmisionCarga; }
     public Long getResultado() { return resultado; }
     public void setResultado(Long resultado) { this.resultado = resultado; }
     public String getObservacion() { return observacion; }

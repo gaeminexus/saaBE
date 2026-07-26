@@ -209,7 +209,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             String numDocModificado          = cols.length > 11 ? cols[11].trim() : "";
 
             LocalDateTime fechaAutorizacion = parseFechaHora(fechaAutorizacionStr);
-            LocalDate fechaEmision          = parseFecha(fechaEmisionStr);
+            LocalDateTime fechaEmision      = parseFechaHora(fechaEmisionStr);
 
             Map<String, Object> r = new HashMap<>();
             r.put("linea", i + 1);
@@ -1391,7 +1391,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
      * y que pertenezca a la empresa indicada.
      * Retorna null si no encuentra un período.
      */
-    private Periodo resolverPeriodoPorFecha(LocalDate fechaEmision, Long idEmpresa) {
+    private Periodo resolverPeriodoPorFecha(LocalDateTime fechaEmision, Long idEmpresa) {
         if (fechaEmision == null || idEmpresa == null) return null;
         try {
             @SuppressWarnings("unchecked")
@@ -1481,7 +1481,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
     private String detectarDiferencias(DocumentoCxp doc, double valorSinImpuestos,
                                         double iva, double importeTotal,
-                                        LocalDateTime fechaAutorizacion, LocalDate fechaEmision) {
+                                        LocalDateTime fechaAutorizacion, LocalDateTime fechaEmision) {
         List<String> diffs = new ArrayList<>();
         if (doc.getValorSinImpuestos() != null && Math.abs(doc.getValorSinImpuestos() - valorSinImpuestos) > 0.001)
             diffs.add("valorSinImpuestos: previo=" + doc.getValorSinImpuestos() + " nuevo=" + valorSinImpuestos);
@@ -1753,7 +1753,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             Long idDocBD   = doc.getIdDocumentoBD();
             String tipo    = doc.getTipoTablaDestino();
             java.time.LocalDate fechaDoc = doc.getFechaEmision() != null
-                    ? doc.getFechaEmision() : java.time.LocalDate.now();
+                    ? doc.getFechaEmision().toLocalDate() : java.time.LocalDate.now();
             String serie   = doc.getSerieComprobante() != null ? doc.getSerieComprobante() : doc.getClaveAcceso();
             String emisor  = doc.getRazonSocialEmisor() != null ? doc.getRazonSocialEmisor() : doc.getRucEmisor();
 

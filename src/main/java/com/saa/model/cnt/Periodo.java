@@ -308,26 +308,14 @@ public class Periodo implements Serializable {
 		return primerDia;
 	}
 
-	/**
-	 * Asigna el primer dia del mes
-	 * @param primerDia
-	 */
 	public void setPrimerDia(LocalDate primerDia) {
 		this.primerDia = primerDia;
 	}
 
-	/**
-	 * Devuelve el ultimo día del periodo
-	 * @return : ultimo dia
-	 */
 	public LocalDate getUltimoDia() {
 		return ultimoDia;
 	}
 
-	/**
-	 * Asigna el ultimo día del periodo
-	 * @param ultimoDia
-	 */
 	public void setUltimoDia(LocalDate ultimoDia) {
 		this.ultimoDia = ultimoDia;
 	}
