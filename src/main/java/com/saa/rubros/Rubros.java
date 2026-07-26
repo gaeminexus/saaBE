@@ -136,6 +136,8 @@ public interface Rubros {
 	int ASP_NOVEDADES_CARGA_ARCHIVO = 169;
 	int ASP_ESTADO_CUOTAS_PRESTAMO_APORTES = 170;
 	int ASP_SENSIBILIDAD_BUSQUEDA_COINCIDENCIAS = 171;
+	int ASP_ESTADO_CARGA_EXTRACTO = 172;
+	int ASP_ESTADO_REVISION_EXTRACTO = 173;
 
 	// RUBROS CXP - Proceso de carga de documentos SRI
 	/** Resultado de cada línea al cargar el TXT SRI → ver {@link ResultadoCargaTxt} */
