@@ -3,6 +3,7 @@ package com.saa.model.cxp;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
+import com.saa.model.cnt.Asiento;
 import com.saa.model.scp.Empresa;
 import com.saa.model.scp.Usuario;
 import com.saa.model.tsr.Titular;
@@ -118,10 +119,17 @@ public class LiquidacionCompraCompra implements Serializable {
 	@Basic @Column(name = "ESTADO")
 	private Long estado;
 
-	@Basic @Column(name = "ESTADOEMISION")
-	private Long estadoEmision;
+        @Basic @Column(name = "ESTADOEMISION")
+        private Long estadoEmision;
 
-	public Long getId() { return id; }
+        /**
+         * Asiento contable generado al contabilizar la liquidación de compra.
+         */
+        @ManyToOne
+        @JoinColumn(name = "ASIENTO", referencedColumnName = "ASNTCDGO")
+        private Asiento asiento;
+
+        public Long getId() { return id; }
 	public void setId(Long id) { this.id = id; }
 	public String getTipoComprobante() { return tipoComprobante; }
 	public void setTipoComprobante(String tipoComprobante) { this.tipoComprobante = tipoComprobante; }
@@ -185,6 +193,8 @@ public class LiquidacionCompraCompra implements Serializable {
 	public void setFechaAutorizacion(LocalDateTime fechaAutorizacion) { this.fechaAutorizacion = fechaAutorizacion; }
 	public Long getEstado() { return estado; }
 	public void setEstado(Long estado) { this.estado = estado; }
-	public Long getEstadoEmision() { return estadoEmision; }
-	public void setEstadoEmision(Long estadoEmision) { this.estadoEmision = estadoEmision; }
+        public Long getEstadoEmision() { return estadoEmision; }
+        public void setEstadoEmision(Long estadoEmision) { this.estadoEmision = estadoEmision; }
+        public Asiento getAsiento() { return asiento; }
+        public void setAsiento(Asiento asiento) { this.asiento = asiento; }
 }

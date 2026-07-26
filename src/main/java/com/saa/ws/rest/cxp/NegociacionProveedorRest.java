@@ -106,22 +106,6 @@ public class NegociacionProveedorRest {
     }
 
     /**
-     * Busca negociaciones con proveedor por criterios (endpoint documentado para el frontend).
-     * Uso típico: filtrar por empresa.pjrqcdgo, titular.ttlrcdgo, estado, etc.
-     */
-    @GET
-    @Path("/getByCriteria")
-    @Consumes(MediaType.APPLICATION_JSON)
-    @Produces(MediaType.APPLICATION_JSON)
-    public Response getByCriteria(List<DatosBusqueda> datos) {
-        try {
-            List<NegociacionProveedor> lista = negociacionProveedorDaoService.selectByCriteria(datos, NombreEntidadesCompra.NEGOCIACION_PROVEEDOR);
-            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
-        } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al buscar negociaciones con proveedor: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
-        }
-    }
-
     /**
      * Busca negociaciones con proveedor por criterios (estándar interno POST).
      */

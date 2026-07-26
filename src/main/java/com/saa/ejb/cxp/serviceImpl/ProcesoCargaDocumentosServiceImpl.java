@@ -1836,6 +1836,18 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 resultado.put("asiento", asiento.getNumeroAlterno());
                 System.out.println("✓ Asiento CXP generado: " + asiento.getNumeroAlterno()
                         + " | tipo=" + tipo);
+
+                // ── Grabar FK ASIENTO de vuelta en la tabla específica del documento ──
+                // Esto completa la trazabilidad: documento → asiento contable
+                try {
+                    grabarAsientoEnDocumento(tipo, idDocBD, asiento);
+                } catch (Exception ex) {
+                    System.err.println("⚠ Asiento generado pero no se pudo grabar FK en documento "
+                            + tipo + " id=" + idDocBD + ": " + ex.getMessage());
+                    resultado.put("advertenciaAsientoFK",
+                            "Asiento generado (" + asiento.getNumeroAlterno()
+                            + ") pero no se pudo vincular al documento: " + ex.getMessage());
+                }
             }
 
         } catch (UnsupportedOperationException uoe) {
@@ -1850,7 +1862,6 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                     + doc.getTipoTablaDestino());
 
         } catch (Exception e) {
-            // Cualquier otro error → advertencia sin revertir el registro
             resultado.put("advertenciaAsiento",
                     "Documento registrado pero ocurrió un error al generar el asiento contable: "
                     + e.getMessage()
@@ -1859,5 +1870,53 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                     + ": " + e.getMessage());
             e.printStackTrace();
         }
+    }
+
+    /**
+     * Graba el FK del asiento contable generado de vuelta en la tabla cabecera
+     * del documento CXP correspondiente (campo ASIENTO agregado en tarea 1.1).
+     * Esto completa la trazabilidad bidireccional: documento ↔ asiento contable.
+     */
+    private void grabarAsientoEnDocumento(String tipo, Long idDocBD,
+                                           com.saa.model.cnt.Asiento asiento) {
+        switch (tipo) {
+            case "FACTURA_COMPRA": {
+                FacturaCompra fc = em.find(FacturaCompra.class, idDocBD);
+                if (fc != null) { fc.setAsiento(asiento); em.merge(fc); }
+                break;
+            }
+            case "NOTA_CREDITO_COMPRA": {
+                com.saa.model.cxp.NotaCreditoCompra nc =
+                        em.find(com.saa.model.cxp.NotaCreditoCompra.class, idDocBD);
+                if (nc != null) { nc.setAsiento(asiento); em.merge(nc); }
+                break;
+            }
+            case "NOTA_DEBITO_COMPRA": {
+                com.saa.model.cxp.NotaDebitoCompra nd =
+                        em.find(com.saa.model.cxp.NotaDebitoCompra.class, idDocBD);
+                if (nd != null) { nd.setAsiento(asiento); em.merge(nd); }
+                break;
+            }
+            case "LIQUIDACION_COMPRA_COMPRA": {
+                LiquidacionCompraCompra lq =
+                        em.find(LiquidacionCompraCompra.class, idDocBD);
+                if (lq != null) { lq.setAsiento(asiento); em.merge(lq); }
+                break;
+            }
+            case "RETENCION_COMPRA": {
+                RetencionCompra rc = em.find(RetencionCompra.class, idDocBD);
+                if (rc != null) { rc.setAsiento(asiento); em.merge(rc); }
+                break;
+            }
+            case "RETENCION_COMPRA_V2": {
+                RetencionCompraV2 rc = em.find(RetencionCompraV2.class, idDocBD);
+                if (rc != null) { rc.setAsiento(asiento); em.merge(rc); }
+                break;
+            }
+            default:
+                System.out.println("WARN grabarAsientoEnDocumento: tipo desconocido=" + tipo);
+        }
+        System.out.println("✓ FK ASIENTO grabado en " + tipo + " id=" + idDocBD
+                + " → asiento id=" + asiento.getCodigo());
     }
 }

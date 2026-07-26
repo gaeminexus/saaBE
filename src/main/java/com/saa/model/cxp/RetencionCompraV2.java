@@ -3,6 +3,7 @@ package com.saa.model.cxp;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
+import com.saa.model.cnt.Asiento;
 import com.saa.model.scp.Empresa;
 import com.saa.model.scp.Usuario;
 import com.saa.model.tsr.Titular;
@@ -88,6 +89,11 @@ public class RetencionCompraV2 implements Serializable {
 	@Basic @Column(name = "ESTADOEMISION")
 	private Long estadoEmision;
 
+	/** Asiento contable generado al contabilizar la retención de compra V2. */
+	@ManyToOne
+	@JoinColumn(name = "ASIENTO", referencedColumnName = "ASNTCDGO")
+	private Asiento asiento;
+
 	public Long getId() { return id; }
 	public void setId(Long id) { this.id = id; }
 	public String getTipoComprobante() { return tipoComprobante; }
@@ -132,4 +138,6 @@ public class RetencionCompraV2 implements Serializable {
 	public void setEstado(Long estado) { this.estado = estado; }
 	public Long getEstadoEmision() { return estadoEmision; }
 	public void setEstadoEmision(Long estadoEmision) { this.estadoEmision = estadoEmision; }
+	public Asiento getAsiento() { return asiento; }
+	public void setAsiento(Asiento asiento) { this.asiento = asiento; }
 }

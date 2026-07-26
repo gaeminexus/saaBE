@@ -108,21 +108,6 @@ public class PagoNegociacionRest {
 
     /**
      * Busca pagos de negociación por criterios (endpoint documentado para el frontend).
-     * Uso típico: filtrar por formaPago.id para obtener todos los pagos de una cuota.
-     */
-    @GET
-    @Path("/getByCriteria")
-    @Consumes(MediaType.APPLICATION_JSON)
-    @Produces(MediaType.APPLICATION_JSON)
-    public Response getByCriteria(List<DatosBusqueda> datos) {
-        try {
-            List<PagoNegociacion> lista = pagoNegociacionDaoService.selectByCriteria(datos, NombreEntidadesCompra.PAGO_NEGOCIACION);
-            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
-        } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al buscar pagos de negociación: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
-        }
-    }
-
     /**
      * Busca pagos de negociación por criterios (estándar interno POST).
      * Uso típico: filtrar por formaPago.id para obtener todos los pagos de una cuota.

@@ -33,13 +33,17 @@ public class LiquidacionCompraCompraRest {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
 		}
 	}
-	@GET @Path("/getByCriteria") @Produces(MediaType.APPLICATION_JSON) @Consumes(MediaType.APPLICATION_JSON)
-	public Response getByCriteria(List<DatosBusqueda> datos) {
+	@POST
+	@Path("selectByCriteria")
+	@Consumes(MediaType.APPLICATION_JSON)
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response selectByCriteria(List<DatosBusqueda> datos) {
+		System.out.println("selectByCriteria de LiquidacionCompraCompra");
 		try {
 			List<LiquidacionCompraCompra> lista = liquidacionCompraCompraDaoService.selectByCriteria(datos, NombreEntidadesCompra.LIQUIDACION_COMPRA_COMPRA);
 			return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
-			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+			return Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
 		}
 	}
 	@PUT @Consumes(MediaType.APPLICATION_JSON) @Produces(MediaType.APPLICATION_JSON)

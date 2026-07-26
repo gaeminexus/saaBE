@@ -1202,99 +1202,508 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     }
 
     // =========================================================================
-    // Stubs CXP — Documentos de Compra (recibidos del proveedor)
+    // CXP — Documentos de Compra (recibidos del proveedor)
+    // =========================================================================
+    // ESTRUCTURA GENERAL DEL ASIENTO DE COMPRA:
+    //   DEBE:  Gasto / Costo por grupo de producto (GrupoProductoPago.planCuenta)
+    //          + IVA Crédito Tributario (Tsri/Lsri, tabla='17')
+    //   HABER: CxP Proveedor (PersonaCuentaContable tipoCuenta=1, rol proveedor)
+    //
+    // PREREQ en BD antes de activar:
+    //   1. TipoAsiento con codigoAlterno = TipoAsientos.FACTURAS_COMPRA (9) creado en CNT.TPAS
+    //   2. GrupoProductoPago.planCuenta configurado para cada grupo
+    //   3. PersonaCuentaContable (tipoCuenta=1) configurada para cada proveedor
+    //   4. Tsri (tabla='17') con planCuenta configurada para cada tarifa de IVA
     // =========================================================================
 
+    // ---------------------------------------------------------------
+    // generarAsientoFacturaCompra
+    // ---------------------------------------------------------------
     @Override
     public com.saa.model.cnt.Asiento generarAsientoFacturaCompra(
             Long idFacturaCompra, Long idEmpresa, int codigoAltTipoAsiento,
             java.time.LocalDate fechaAsiento, String observaciones, String usuario)
             throws Throwable {
-        // TODO — Implementar cuando se defina:
-        //   · La plantilla de asiento: TipoAsientos.FACTURAS_COMPRA (codigoAlterno en BD)
-        //   · AuxiliarUno DEBE:  cuenta de gasto/costo del grupo de producto (GrupoProductoPago.planCuenta)
-        //                        + cuenta de IVA en compras (Tsri.planCuenta, lsri.tabla='17')
-        //   · AuxiliarUno HABER: cuenta CxP del proveedor (PersonaCuentaContable, tipoCuenta=?, tipoPersona=2)
-        throw new UnsupportedOperationException(
-                "generarAsientoFacturaCompra aún no implementado. "
-                + "Defina la plantilla TipoAsientos.FACTURAS_COMPRA en BD "
-                + "y configure las cuentas auxiliares antes de activar este método.");
+
+        System.out.println("=== generarAsientoFacturaCompra | id=" + idFacturaCompra
+                + " | empresa=" + idEmpresa + " ===");
+
+        com.saa.model.cxp.FacturaCompra fc =
+                em.find(com.saa.model.cxp.FacturaCompra.class, idFacturaCompra);
+        if (fc == null)
+            throw new IncomeException("No se encontró FacturaCompra con ID: " + idFacturaCompra);
+
+        @SuppressWarnings("unchecked")
+        List<com.saa.model.cxp.DetalleFacturaCompra> detalles = em.createQuery(
+                "SELECT d FROM DetalleFacturaCompra d WHERE d.factura.id = :id AND d.estado = 1")
+                .setParameter("id", idFacturaCompra).getResultList();
+        if (detalles == null || detalles.isEmpty())
+            throw new IncomeException("FacturaCompra " + idFacturaCompra + " no tiene detalles activos.");
+
+        List<DetalleAsiento> lineas = new ArrayList<>();
+
+        // ── DEBE: una línea por grupo de producto (GrupoProductoPago.planCuenta) ──
+        Map<Long, Double> subtotalPorGrupo = new LinkedHashMap<>();
+        Map<Long, PlanCuenta> cuentaPorGrupo = new LinkedHashMap<>();
+        Map<Long, String> nombreGrupo = new LinkedHashMap<>();
+
+        for (com.saa.model.cxp.DetalleFacturaCompra d : detalles) {
+            if (d.getProducto() == null)
+                throw new IncomeException("El detalle '" + d.getDescripcion() + "' no tiene producto asignado.");
+            @SuppressWarnings("unchecked")
+            List<Object[]> gr = em.createQuery(
+                    "SELECT p.grupoProducto.codigo, p.grupoProducto.nombre, p.grupoProducto.planCuenta "
+                    + "FROM ProductoPago p WHERE p.id = :id")
+                    .setParameter("id", d.getProducto()).setMaxResults(1).getResultList();
+            if (gr.isEmpty())
+                throw new IncomeException("Producto ID " + d.getProducto() + " no tiene grupo asignado.");
+            Long idGrupo = (Long) gr.get(0)[0];
+            String nomGrupo = (String) gr.get(0)[1];
+            PlanCuenta pc = (PlanCuenta) gr.get(0)[2];
+            if (pc == null)
+                throw new IncomeException("GrupoProductoPago '" + nomGrupo + "' no tiene cuenta contable.");
+            subtotalPorGrupo.merge(idGrupo, nvl(d.getSubTotal()), Double::sum);
+            cuentaPorGrupo.putIfAbsent(idGrupo, pc);
+            nombreGrupo.putIfAbsent(idGrupo, nomGrupo);
+        }
+        for (Long idGrupo : subtotalPorGrupo.keySet()) {
+            PlanCuenta pc = cuentaPorGrupo.get(idGrupo);
+            DetalleAsiento ln = new DetalleAsiento();
+            ln.setPlanCuenta(pc); ln.setNumeroCuenta(pc.getCuentaContable());
+            ln.setNombreCuenta(pc.getNombre());
+            ln.setDescripcion("Gasto compra: " + nombreGrupo.get(idGrupo));
+            ln.setValorDebe(subtotalPorGrupo.get(idGrupo)); ln.setValorHaber(0.0);
+            lineas.add(ln);
+        }
+
+        // ── DEBE: IVA crédito tributario ──────────────────────────────────────
+        Map<String, Double> ivaMap = new LinkedHashMap<>();
+        for (com.saa.model.cxp.DetalleFacturaCompra d : detalles) {
+            if (d.getValorIVA() != null && d.getValorIVA() > 0 && d.getPorcentajeIVA() != null) {
+                String codSRI = mapPorcentajeIVAaCodigo(d.getPorcentajeIVA());
+                ivaMap.merge(codSRI, nvl(d.getValorIVA()), Double::sum);
+            }
+        }
+        for (Map.Entry<String, Double> e : ivaMap.entrySet()) {
+            PlanCuenta pcIVA = obtenerCuentaIVACxp(e.getKey());
+            if (pcIVA == null)
+                throw new IncomeException("No hay cuenta de IVA crédito tributario para código SRI: "
+                        + e.getKey() + ". Configure en Compras → Tipos SRI.");
+            DetalleAsiento ln = new DetalleAsiento();
+            ln.setPlanCuenta(pcIVA); ln.setNumeroCuenta(pcIVA.getCuentaContable());
+            ln.setNombreCuenta(pcIVA.getNombre());
+            ln.setDescripcion("IVA crédito tributario código SRI: " + e.getKey());
+            ln.setValorDebe(e.getValue()); ln.setValorHaber(0.0);
+            lineas.add(ln);
+        }
+
+        // ── HABER: CxP proveedor ──────────────────────────────────────────────
+        if (fc.getTitular() == null)
+            throw new IncomeException("FacturaCompra " + idFacturaCompra + " no tiene proveedor.");
+        PlanCuenta cuentaProv = obtenerCuentaProveedor(fc.getTitular().getCodigo(), idEmpresa);
+        if (cuentaProv == null)
+            throw new IncomeException("El proveedor '" + fc.getTitular().getNombre()
+                    + "' no tiene cuenta CxP configurada (Tipo 1, Rol Proveedor).");
+        DetalleAsiento haber = new DetalleAsiento();
+        haber.setPlanCuenta(cuentaProv); haber.setNumeroCuenta(cuentaProv.getCuentaContable());
+        haber.setNombreCuenta(cuentaProv.getNombre());
+        haber.setDescripcion("CxP Proveedor: " + fc.getTitular().getNombre());
+        haber.setValorDebe(0.0); haber.setValorHaber(nvl(fc.getTotal()));
+        lineas.add(haber);
+
+        return generarAsiento(idEmpresa, codigoAltTipoAsiento,
+                fechaAsiento, observaciones, usuario, lineas);
     }
 
+    // ---------------------------------------------------------------
+    // generarAsientoNotaCreditoCompra  (inverso de FacturaCompra)
+    // ---------------------------------------------------------------
     @Override
     public com.saa.model.cnt.Asiento generarAsientoNotaCreditoCompra(
             Long idNotaCreditoCompra, Long idEmpresa, int codigoAltTipoAsiento,
             java.time.LocalDate fechaAsiento, String observaciones, String usuario)
             throws Throwable {
-        // TODO — Implementar cuando se defina:
-        //   · La plantilla de asiento: TipoAsientos.NOTAS_CREDITO_COMPRA (codigoAlterno en BD)
-        //   · AuxiliarUno DEBE:  cuenta CxP del proveedor
-        //   · AuxiliarUno HABER: cuenta de gasto/costo del grupo de producto
-        //                        + cuenta de IVA (Tsri.planCuenta, lsri.tabla='17')
-        throw new UnsupportedOperationException(
-                "generarAsientoNotaCreditoCompra aún no implementado. "
-                + "Defina la plantilla TipoAsientos.NOTAS_CREDITO_COMPRA en BD "
-                + "y configure las cuentas auxiliares antes de activar este método.");
+
+        System.out.println("=== generarAsientoNotaCreditoCompra | id=" + idNotaCreditoCompra
+                + " | empresa=" + idEmpresa + " ===");
+
+        com.saa.model.cxp.NotaCreditoCompra nc =
+                em.find(com.saa.model.cxp.NotaCreditoCompra.class, idNotaCreditoCompra);
+        if (nc == null)
+            throw new IncomeException("No se encontró NotaCreditoCompra con ID: " + idNotaCreditoCompra);
+
+        @SuppressWarnings("unchecked")
+        List<com.saa.model.cxp.DetalleNotaCreditoCompra> detalles = em.createQuery(
+                "SELECT d FROM DetalleNotaCreditoCompra d WHERE d.notaCredito.id = :id AND d.estado = 1")
+                .setParameter("id", idNotaCreditoCompra).getResultList();
+        if (detalles == null || detalles.isEmpty())
+            throw new IncomeException("NotaCreditoCompra " + idNotaCreditoCompra + " no tiene detalles activos.");
+
+        List<DetalleAsiento> lineas = new ArrayList<>();
+
+        // ── DEBE: CxP Proveedor (reduce lo que le debemos) ───────────────────
+        if (nc.getTitular() == null)
+            throw new IncomeException("NotaCreditoCompra " + idNotaCreditoCompra + " no tiene proveedor.");
+        PlanCuenta cuentaProv = obtenerCuentaProveedor(nc.getTitular().getCodigo(), idEmpresa);
+        if (cuentaProv == null)
+            throw new IncomeException("El proveedor '" + nc.getTitular().getNombre()
+                    + "' no tiene cuenta CxP configurada.");
+        DetalleAsiento debe = new DetalleAsiento();
+        debe.setPlanCuenta(cuentaProv); debe.setNumeroCuenta(cuentaProv.getCuentaContable());
+        debe.setNombreCuenta(cuentaProv.getNombre());
+        debe.setDescripcion("NC Proveedor: " + nc.getTitular().getNombre());
+        debe.setValorDebe(nvl(nc.getTotal())); debe.setValorHaber(0.0);
+        lineas.add(debe);
+
+        // ── HABER: reverso gasto por grupo (sin grupo en NC compra → usar descripción) ─
+        // NC compra no trae GrupoProductoPago en el detalle; se acredita gasto genérico
+        double totalBase = 0.0;
+        for (com.saa.model.cxp.DetalleNotaCreditoCompra d : detalles)
+            totalBase += nvl(d.getSubTotal());
+        // Intentar obtener cuenta de gasto del primer grupo activo de la empresa
+        PlanCuenta cuentaGasto = obtenerCuentaGastoDefaultCxp(idEmpresa);
+        if (cuentaGasto == null)
+            throw new IncomeException("No se encontró cuenta de gasto para la NC de compra. "
+                    + "Configure un GrupoProductoPago con cuenta contable y tipo GASTOS GENERALES.");
+        if (totalBase > 0) {
+            DetalleAsiento haberGasto = new DetalleAsiento();
+            haberGasto.setPlanCuenta(cuentaGasto); haberGasto.setNumeroCuenta(cuentaGasto.getCuentaContable());
+            haberGasto.setNombreCuenta(cuentaGasto.getNombre());
+            haberGasto.setDescripcion("NC Compra reverso gasto");
+            haberGasto.setValorDebe(0.0); haberGasto.setValorHaber(totalBase);
+            lineas.add(haberGasto);
+        }
+
+        // ── HABER: IVA crédito tributario reverso ─────────────────────────────
+        Map<String, Double> ivaMap = new LinkedHashMap<>();
+        for (com.saa.model.cxp.DetalleNotaCreditoCompra d : detalles) {
+            if (d.getValorIVA() != null && d.getValorIVA() > 0 && d.getPorcentajeIVA() != null) {
+                String codSRI = mapPorcentajeIVAaCodigo(d.getPorcentajeIVA());
+                ivaMap.merge(codSRI, nvl(d.getValorIVA()), Double::sum);
+            }
+        }
+        for (Map.Entry<String, Double> e : ivaMap.entrySet()) {
+            PlanCuenta pcIVA = obtenerCuentaIVACxp(e.getKey());
+            if (pcIVA == null)
+                throw new IncomeException("No hay cuenta IVA crédito tributario para código SRI: " + e.getKey());
+            DetalleAsiento haberIVA = new DetalleAsiento();
+            haberIVA.setPlanCuenta(pcIVA); haberIVA.setNumeroCuenta(pcIVA.getCuentaContable());
+            haberIVA.setNombreCuenta(pcIVA.getNombre());
+            haberIVA.setDescripcion("NC IVA crédito tributario reverso código SRI: " + e.getKey());
+            haberIVA.setValorDebe(0.0); haberIVA.setValorHaber(e.getValue());
+            lineas.add(haberIVA);
+        }
+
+        return generarAsiento(idEmpresa, codigoAltTipoAsiento,
+                fechaAsiento, observaciones, usuario, lineas);
     }
 
+    // ---------------------------------------------------------------
+    // generarAsientoNotaDebitoCompra
+    // ---------------------------------------------------------------
     @Override
     public com.saa.model.cnt.Asiento generarAsientoNotaDebitoCompra(
             Long idNotaDebitoCompra, Long idEmpresa, int codigoAltTipoAsiento,
             java.time.LocalDate fechaAsiento, String observaciones, String usuario)
             throws Throwable {
-        // TODO — Implementar cuando se defina:
-        //   · La plantilla de asiento: TipoAsientos.NOTAS_DEBITO_COMPRA (codigoAlterno en BD)
-        //   · AuxiliarUno DEBE:  cuenta de gasto/costo del detalle (motivo)
-        //   · AuxiliarUno HABER: cuenta CxP del proveedor
-        throw new UnsupportedOperationException(
-                "generarAsientoNotaDebitoCompra aún no implementado. "
-                + "Defina la plantilla TipoAsientos.NOTAS_DEBITO_COMPRA en BD "
-                + "y configure las cuentas auxiliares antes de activar este método.");
+
+        System.out.println("=== generarAsientoNotaDebitoCompra | id=" + idNotaDebitoCompra
+                + " | empresa=" + idEmpresa + " ===");
+
+        com.saa.model.cxp.NotaDebitoCompra nd =
+                em.find(com.saa.model.cxp.NotaDebitoCompra.class, idNotaDebitoCompra);
+        if (nd == null)
+            throw new IncomeException("No se encontró NotaDebitoCompra con ID: " + idNotaDebitoCompra);
+
+        @SuppressWarnings("unchecked")
+        List<com.saa.model.cxp.DetalleNotaDebitoCompra> detalles = em.createQuery(
+                "SELECT d FROM DetalleNotaDebitoCompra d WHERE d.notaDebito.id = :id AND d.estado = 1")
+                .setParameter("id", idNotaDebitoCompra).getResultList();
+
+        List<DetalleAsiento> lineas = new ArrayList<>();
+
+        // ── DEBE: gasto adicional (cuenta default de gastos CXP) ─────────────
+        double totalND = nvl(nd.getTotal());
+        PlanCuenta cuentaGasto = obtenerCuentaGastoDefaultCxp(idEmpresa);
+        if (cuentaGasto == null)
+            throw new IncomeException("No se encontró cuenta de gasto para la ND de compra. "
+                    + "Configure un GrupoProductoPago con cuenta contable y tipo GASTOS GENERALES.");
+        DetalleAsiento debe = new DetalleAsiento();
+        debe.setPlanCuenta(cuentaGasto); debe.setNumeroCuenta(cuentaGasto.getCuentaContable());
+        debe.setNombreCuenta(cuentaGasto.getNombre());
+        String motivoND = detalles != null && !detalles.isEmpty()
+                ? detalles.get(0).getDescripcion() : "Nota de débito compra";
+        debe.setDescripcion("ND Compra: " + motivoND);
+        debe.setValorDebe(totalND); debe.setValorHaber(0.0);
+        lineas.add(debe);
+
+        // ── HABER: CxP Proveedor ──────────────────────────────────────────────
+        if (nd.getTitular() == null)
+            throw new IncomeException("NotaDebitoCompra " + idNotaDebitoCompra + " no tiene proveedor.");
+        PlanCuenta cuentaProv = obtenerCuentaProveedor(nd.getTitular().getCodigo(), idEmpresa);
+        if (cuentaProv == null)
+            throw new IncomeException("El proveedor '" + nd.getTitular().getNombre()
+                    + "' no tiene cuenta CxP configurada.");
+        DetalleAsiento haber = new DetalleAsiento();
+        haber.setPlanCuenta(cuentaProv); haber.setNumeroCuenta(cuentaProv.getCuentaContable());
+        haber.setNombreCuenta(cuentaProv.getNombre());
+        haber.setDescripcion("ND CxP Proveedor: " + nd.getTitular().getNombre());
+        haber.setValorDebe(0.0); haber.setValorHaber(totalND);
+        lineas.add(haber);
+
+        return generarAsiento(idEmpresa, codigoAltTipoAsiento,
+                fechaAsiento, observaciones, usuario, lineas);
     }
 
+    // ---------------------------------------------------------------
+    // generarAsientoLiquidacionCompraCompra  (misma lógica que FacturaCompra)
+    // ---------------------------------------------------------------
     @Override
     public com.saa.model.cnt.Asiento generarAsientoLiquidacionCompraCompra(
             Long idLiquidacion, Long idEmpresa, int codigoAltTipoAsiento,
             java.time.LocalDate fechaAsiento, String observaciones, String usuario)
             throws Throwable {
-        // TODO — Implementar cuando se defina:
-        //   · La plantilla de asiento: TipoAsientos.LIQUIDACIONES_COMPRA_RECIBIDAS (codigoAlterno en BD)
-        //   · AuxiliarUno DEBE:  cuenta de gasto/costo del grupo de producto del detalle
-        //                        + cuenta de IVA en compras
-        //   · AuxiliarUno HABER: cuenta CxP del prestador de servicio (proveedor)
-        throw new UnsupportedOperationException(
-                "generarAsientoLiquidacionCompraCompra aún no implementado. "
-                + "Defina la plantilla TipoAsientos.LIQUIDACIONES_COMPRA_RECIBIDAS en BD "
-                + "y configure las cuentas auxiliares antes de activar este método.");
+
+        System.out.println("=== generarAsientoLiquidacionCompraCompra | id=" + idLiquidacion
+                + " | empresa=" + idEmpresa + " ===");
+
+        com.saa.model.cxp.LiquidacionCompraCompra lq =
+                em.find(com.saa.model.cxp.LiquidacionCompraCompra.class, idLiquidacion);
+        if (lq == null)
+            throw new IncomeException("No se encontró LiquidacionCompraCompra con ID: " + idLiquidacion);
+
+        @SuppressWarnings("unchecked")
+        List<com.saa.model.cxp.DetalleLiquidacionCompraCompra> detalles = em.createQuery(
+                "SELECT d FROM DetalleLiquidacionCompraCompra d WHERE d.liquidacion.id = :id AND d.estado = 1")
+                .setParameter("id", idLiquidacion).getResultList();
+        if (detalles == null || detalles.isEmpty())
+            throw new IncomeException("LiquidacionCompraCompra " + idLiquidacion + " no tiene detalles activos.");
+
+        List<DetalleAsiento> lineas = new ArrayList<>();
+
+        // ── DEBE: gasto por descripción (Liquidación no tiene GrupoProductoPago) ─
+        // Agrupa por descripción única y usa cuenta de gasto default
+        double totalBase = 0.0;
+        for (com.saa.model.cxp.DetalleLiquidacionCompraCompra d : detalles)
+            totalBase += nvl(d.getSubTotal());
+        PlanCuenta cuentaGasto = obtenerCuentaGastoDefaultCxp(idEmpresa);
+        if (cuentaGasto == null)
+            throw new IncomeException("No se encontró cuenta de gasto para la Liquidación de Compra. "
+                    + "Configure un GrupoProductoPago con cuenta contable y tipo GASTOS GENERALES.");
+        DetalleAsiento debe = new DetalleAsiento();
+        debe.setPlanCuenta(cuentaGasto); debe.setNumeroCuenta(cuentaGasto.getCuentaContable());
+        debe.setNombreCuenta(cuentaGasto.getNombre());
+        debe.setDescripcion("Gasto liquidación compra: " + lq.getNumero());
+        debe.setValorDebe(totalBase); debe.setValorHaber(0.0);
+        lineas.add(debe);
+
+        // ── DEBE: IVA crédito tributario ──────────────────────────────────────
+        Map<String, Double> ivaMap = new LinkedHashMap<>();
+        for (com.saa.model.cxp.DetalleLiquidacionCompraCompra d : detalles) {
+            if (d.getValorIVA() != null && d.getValorIVA() > 0 && d.getPorcentajeIVA() != null) {
+                String codSRI = mapPorcentajeIVAaCodigo(d.getPorcentajeIVA());
+                ivaMap.merge(codSRI, nvl(d.getValorIVA()), Double::sum);
+            }
+        }
+        for (Map.Entry<String, Double> e : ivaMap.entrySet()) {
+            PlanCuenta pcIVA = obtenerCuentaIVACxp(e.getKey());
+            if (pcIVA == null)
+                throw new IncomeException("No hay cuenta IVA crédito tributario para código SRI: " + e.getKey());
+            DetalleAsiento ln = new DetalleAsiento();
+            ln.setPlanCuenta(pcIVA); ln.setNumeroCuenta(pcIVA.getCuentaContable());
+            ln.setNombreCuenta(pcIVA.getNombre());
+            ln.setDescripcion("IVA crédito tributario liquidación compra código SRI: " + e.getKey());
+            ln.setValorDebe(e.getValue()); ln.setValorHaber(0.0);
+            lineas.add(ln);
+        }
+
+        // ── HABER: CxP Proveedor / Prestador ─────────────────────────────────
+        if (lq.getTitular() == null)
+            throw new IncomeException("LiquidacionCompraCompra " + idLiquidacion + " no tiene proveedor/titular.");
+        PlanCuenta cuentaProv = obtenerCuentaProveedor(lq.getTitular().getCodigo(), idEmpresa);
+        if (cuentaProv == null)
+            throw new IncomeException("El prestador '" + lq.getTitular().getNombre()
+                    + "' no tiene cuenta CxP configurada.");
+        DetalleAsiento haber = new DetalleAsiento();
+        haber.setPlanCuenta(cuentaProv); haber.setNumeroCuenta(cuentaProv.getCuentaContable());
+        haber.setNombreCuenta(cuentaProv.getNombre());
+        haber.setDescripcion("CxP Prestador: " + lq.getTitular().getNombre());
+        haber.setValorDebe(0.0); haber.setValorHaber(nvl(lq.getTotal()));
+        lineas.add(haber);
+
+        return generarAsiento(idEmpresa, codigoAltTipoAsiento,
+                fechaAsiento, observaciones, usuario, lineas);
     }
 
+    // ---------------------------------------------------------------
+    // generarAsientoRetencionCompra
+    // Retención recibida del proveedor: reduce lo que nos deben / aumenta CxP
+    //   DEBE:  CxP Proveedor (monto retenido disminuye la deuda)
+    //   HABER: Cuenta de retención recibida por código SRI
+    // ---------------------------------------------------------------
     @Override
     public com.saa.model.cnt.Asiento generarAsientoRetencionCompra(
             Long idRetencionCompra, Long idEmpresa, int codigoAltTipoAsiento,
             java.time.LocalDate fechaAsiento, String observaciones, String usuario)
             throws Throwable {
-        // TODO — Implementar cuando se defina:
-        //   · La plantilla de asiento: TipoAsientos.RETENCIONES_RECIBIDAS (codigoAlterno en BD)
-        //   · AuxiliarUno DEBE:  cuenta CxP del proveedor (monto retenido disminuye deuda)
-        //   · AuxiliarUno HABER: cuenta de retención recibida por código SRI (DetalleRetencionCompra.codRetencion)
-        throw new UnsupportedOperationException(
-                "generarAsientoRetencionCompra aún no implementado. "
-                + "Defina la plantilla TipoAsientos.RETENCIONES_RECIBIDAS en BD "
-                + "y configure las cuentas auxiliares antes de activar este método.");
+
+        System.out.println("=== generarAsientoRetencionCompra | id=" + idRetencionCompra
+                + " | empresa=" + idEmpresa + " ===");
+
+        com.saa.model.cxp.RetencionCompra rc =
+                em.find(com.saa.model.cxp.RetencionCompra.class, idRetencionCompra);
+        if (rc == null)
+            throw new IncomeException("No se encontró RetencionCompra con ID: " + idRetencionCompra);
+
+        @SuppressWarnings("unchecked")
+        List<com.saa.model.cxp.DetalleRetencionCompra> detalles = em.createQuery(
+                "SELECT d FROM DetalleRetencionCompra d WHERE d.retencion.id = :id AND d.estado = 1")
+                .setParameter("id", idRetencionCompra).getResultList();
+        if (detalles == null || detalles.isEmpty())
+            throw new IncomeException("RetencionCompra " + idRetencionCompra + " no tiene detalles activos.");
+
+        List<DetalleAsiento> lineas = new ArrayList<>();
+        double totalRetenido = 0.0;
+
+        // ── HABER: una línea por código de retención (cuenta desde TSRI) ──────
+        for (com.saa.model.cxp.DetalleRetencionCompra d : detalles) {
+            String codReten = d.getCodRetencion();
+            PlanCuenta pcReten = obtenerCuentaPorCodigoTsri(codReten);
+            if (pcReten == null)
+                throw new IncomeException("No hay cuenta contable para código retención '" + codReten
+                        + "' en TSRI. Configure en Compras → Tipos SRI.");
+            double valor = nvl(d.getValorReten());
+            totalRetenido += valor;
+            DetalleAsiento haberReten = new DetalleAsiento();
+            haberReten.setPlanCuenta(pcReten); haberReten.setNumeroCuenta(pcReten.getCuentaContable());
+            haberReten.setNombreCuenta(pcReten.getNombre());
+            haberReten.setDescripcion("Retención recibida código " + codReten
+                    + " | Base: " + String.format(java.util.Locale.US, "%.2f", nvl(d.getBaseImponible()))
+                    + " | " + nvl2(d.getPorcentajeReten()) + "%");
+            haberReten.setValorDebe(0.0); haberReten.setValorHaber(valor);
+            lineas.add(haberReten);
+        }
+
+        // ── DEBE: CxP Proveedor (monto retenido reduce la deuda) ─────────────
+        if (rc.getProveedor() == null)
+            throw new IncomeException("RetencionCompra " + idRetencionCompra + " no tiene proveedor.");
+        PlanCuenta cuentaProv = obtenerCuentaProveedor(rc.getProveedor().getCodigo(), idEmpresa);
+        if (cuentaProv == null)
+            throw new IncomeException("El proveedor '" + rc.getProveedor().getNombre()
+                    + "' no tiene cuenta CxP configurada.");
+        DetalleAsiento debe = new DetalleAsiento();
+        debe.setPlanCuenta(cuentaProv); debe.setNumeroCuenta(cuentaProv.getCuentaContable());
+        debe.setNombreCuenta(cuentaProv.getNombre());
+        debe.setDescripcion("CxP Proveedor retención: " + rc.getProveedor().getNombre());
+        debe.setValorDebe(totalRetenido); debe.setValorHaber(0.0);
+        lineas.add(0, debe);
+
+        return generarAsiento(idEmpresa, codigoAltTipoAsiento,
+                fechaAsiento, observaciones, usuario, lineas);
     }
 
+    // ---------------------------------------------------------------
+    // generarAsientoRetencionCompraV2  (misma lógica V1, diferente entidad)
+    // ---------------------------------------------------------------
     @Override
     public com.saa.model.cnt.Asiento generarAsientoRetencionCompraV2(
             Long idRetencionCompraV2, Long idEmpresa, int codigoAltTipoAsiento,
             java.time.LocalDate fechaAsiento, String observaciones, String usuario)
             throws Throwable {
-        // TODO — Implementar cuando se defina:
-        //   · La plantilla de asiento: TipoAsientos.RETENCIONES_RECIBIDAS_V2 (codigoAlterno en BD)
-        //   · AuxiliarUno DEBE:  cuenta CxP del proveedor (monto retenido disminuye deuda)
-        //   · AuxiliarUno HABER: cuenta de retención recibida por código SRI del impuesto
-        throw new UnsupportedOperationException(
-                "generarAsientoRetencionCompraV2 aún no implementado. "
-                + "Defina la plantilla TipoAsientos.RETENCIONES_RECIBIDAS_V2 en BD "
-                + "y configure las cuentas auxiliares antes de activar este método.");
+
+        System.out.println("=== generarAsientoRetencionCompraV2 | id=" + idRetencionCompraV2
+                + " | empresa=" + idEmpresa + " ===");
+
+        com.saa.model.cxp.RetencionCompraV2 rc =
+                em.find(com.saa.model.cxp.RetencionCompraV2.class, idRetencionCompraV2);
+        if (rc == null)
+            throw new IncomeException("No se encontró RetencionCompraV2 con ID: " + idRetencionCompraV2);
+
+        @SuppressWarnings("unchecked")
+        List<com.saa.model.cxp.DetalleRetencionCompraV2> detalles = em.createQuery(
+                "SELECT d FROM DetalleRetencionCompraV2 d WHERE d.retencion.id = :id AND d.estado = 1")
+                .setParameter("id", idRetencionCompraV2).getResultList();
+        if (detalles == null || detalles.isEmpty())
+            throw new IncomeException("RetencionCompraV2 " + idRetencionCompraV2 + " no tiene detalles activos.");
+
+        List<DetalleAsiento> lineas = new ArrayList<>();
+        double totalRetenido = 0.0;
+
+        // ── HABER: por código de retención desde TSRI ─────────────────────────
+        for (com.saa.model.cxp.DetalleRetencionCompraV2 d : detalles) {
+            String codReten = d.getCodRetencion();
+            PlanCuenta pcReten = obtenerCuentaPorCodigoTsri(codReten);
+            if (pcReten == null)
+                throw new IncomeException("No hay cuenta contable para código retención '" + codReten + "' en TSRI.");
+            double valor = nvl(d.getValorReten());
+            totalRetenido += valor;
+            DetalleAsiento haberReten = new DetalleAsiento();
+            haberReten.setPlanCuenta(pcReten); haberReten.setNumeroCuenta(pcReten.getCuentaContable());
+            haberReten.setNombreCuenta(pcReten.getNombre());
+            haberReten.setDescripcion("Retención V2 recibida código " + codReten
+                    + " | Base: " + String.format(java.util.Locale.US, "%.2f", nvl(d.getBaseImponible()))
+                    + " | " + nvl2(d.getPorcentajeReten()) + "%");
+            haberReten.setValorDebe(0.0); haberReten.setValorHaber(valor);
+            lineas.add(haberReten);
+        }
+
+        // ── DEBE: CxP Proveedor ───────────────────────────────────────────────
+        if (rc.getProveedor() == null)
+            throw new IncomeException("RetencionCompraV2 " + idRetencionCompraV2 + " no tiene proveedor.");
+        PlanCuenta cuentaProv = obtenerCuentaProveedor(rc.getProveedor().getCodigo(), idEmpresa);
+        if (cuentaProv == null)
+            throw new IncomeException("El proveedor '" + rc.getProveedor().getNombre()
+                    + "' no tiene cuenta CxP configurada.");
+        DetalleAsiento debe = new DetalleAsiento();
+        debe.setPlanCuenta(cuentaProv); debe.setNumeroCuenta(cuentaProv.getCuentaContable());
+        debe.setNombreCuenta(cuentaProv.getNombre());
+        debe.setDescripcion("CxP Proveedor retención V2: " + rc.getProveedor().getNombre());
+        debe.setValorDebe(totalRetenido); debe.setValorHaber(0.0);
+        lineas.add(0, debe);
+
+        return generarAsiento(idEmpresa, codigoAltTipoAsiento,
+                fechaAsiento, observaciones, usuario, lineas);
+    }
+
+    // ---------------------------------------------------------------
+    // Helpers privados CXP
+    // ---------------------------------------------------------------
+
+    /**
+     * Obtiene la cuenta de IVA crédito tributario (compras) desde LSRI tabla='17'.
+     * Usa el mismo método que CXC pero busca en Lsri de compras (com.saa.model.cxp.Lsri).
+     * Si no encuentra en CXP, cae a la cuenta CXC como fallback.
+     */
+    private PlanCuenta obtenerCuentaIVACxp(String codigoSRI) {
+        // Intentar primero en LSRI de compras (PGS.LSRC)
+        try {
+            @SuppressWarnings("unchecked")
+            List<?> r = em.createQuery(
+                    "SELECT t.planCuenta FROM com.saa.model.cxp.Tsri t WHERE t.codigo = :cod AND t.estado = 1")
+                    .setParameter("cod", codigoSRI).setMaxResults(1).getResultList();
+            if (!r.isEmpty() && r.get(0) != null) return (PlanCuenta) r.get(0);
+        } catch (Exception e) { /* fallback */ }
+        // Fallback: usar la misma cuenta de IVA de CXC
+        return obtenerCuentaIVA(codigoSRI);
+    }
+
+    /**
+     * Obtiene la cuenta de gasto por defecto para CXP.
+     * Busca el GrupoProductoPago con tipo GASTOS_GENERALES (o el primero con cuenta configurada).
+     */
+    private PlanCuenta obtenerCuentaGastoDefaultCxp(Long idEmpresa) {
+        try {
+            // Intentar primero un grupo tipo GASTOS_GENERALES
+            @SuppressWarnings("unchecked")
+            List<?> r = em.createQuery(
+                    "SELECT g.planCuenta FROM GrupoProductoPago g "
+                    + "WHERE g.empresa.codigo = :emp AND g.planCuenta IS NOT NULL AND g.estado = 1 "
+                    + "ORDER BY g.codigo ASC")
+                    .setParameter("emp", idEmpresa).setMaxResults(1).getResultList();
+            return r.isEmpty() ? null : (PlanCuenta) r.get(0);
+        } catch (Exception e) {
+            System.err.println("⚠ obtenerCuentaGastoDefaultCxp: " + e.getMessage());
+            return null;
+        }
     }
 }

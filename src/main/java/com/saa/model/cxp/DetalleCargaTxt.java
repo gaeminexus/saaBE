@@ -11,7 +11,7 @@ import jakarta.persistence.*;
  * Representa UNA LÍNEA de un archivo TXT cargado (tabla pgs.dctx).
  * Un mismo documento (DocumentoCxp) puede aparecer en múltiples líneas/cargas.
  *
- * resultado: NUEVO | DUPLICADO | NOVEDAD | IGNORADO
+ * resultado: 1=NUEVO | 2=DUPLICADO | 3=NOVEDAD | 4=IGNORADO | 5=DESAPARECIDO
  */
 @SuppressWarnings("serial")
 @Entity

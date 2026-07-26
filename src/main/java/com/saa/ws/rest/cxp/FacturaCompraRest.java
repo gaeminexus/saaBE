@@ -33,13 +33,17 @@ public class FacturaCompraRest {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener FacturaCompra: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
 		}
 	}
-	@GET @Path("/getByCriteria") @Produces(MediaType.APPLICATION_JSON) @Consumes(MediaType.APPLICATION_JSON)
-	public Response getByCriteria(List<DatosBusqueda> datos) {
+	@POST
+	@Path("selectByCriteria")
+	@Consumes(MediaType.APPLICATION_JSON)
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response selectByCriteria(List<DatosBusqueda> datos) {
+		System.out.println("selectByCriteria de FacturaCompra");
 		try {
 			List<FacturaCompra> lista = facturaCompraDaoService.selectByCriteria(datos, NombreEntidadesCompra.FACTURA_COMPRA);
 			return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
-			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al buscar FacturaCompra: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+			return Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
 		}
 	}
 	@PUT @Consumes(MediaType.APPLICATION_JSON) @Produces(MediaType.APPLICATION_JSON)
