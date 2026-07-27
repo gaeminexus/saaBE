@@ -1250,16 +1250,19 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         for (com.saa.model.cxp.DetalleFacturaCompra d : detalles) {
             if (d.getProducto() == null)
                 throw new IncomeException("El detalle '" + d.getDescripcion() + "' no tiene producto asignado.");
-            @SuppressWarnings("unchecked")
-            List<Object[]> gr = em.createQuery(
-                    "SELECT p.grupoProducto.codigo, p.grupoProducto.nombre, p.grupoProducto.planCuenta "
-                    + "FROM ProductoPago p WHERE p.id = :id")
-                    .setParameter("id", d.getProducto()).setMaxResults(1).getResultList();
-            if (gr.isEmpty())
-                throw new IncomeException("Producto ID " + d.getProducto() + " no tiene grupo asignado.");
-            Long idGrupo = (Long) gr.get(0)[0];
-            String nomGrupo = (String) gr.get(0)[1];
-            PlanCuenta pc = (PlanCuenta) gr.get(0)[2];
+
+            com.saa.model.cxp.ProductoPago producto = em.find(com.saa.model.cxp.ProductoPago.class, d.getProducto());
+            if (producto == null)
+                throw new IncomeException("Producto ID " + d.getProducto() + " no encontrado en BD.");
+
+            if (producto.getGrupoProducto() == null)
+                throw new IncomeException("Producto ID " + d.getProducto() + " ('" + producto.getNombre()
+                        + "') no tiene grupo asignado. Clasifíquelo antes de registrar la factura.");
+
+            com.saa.model.cxp.GrupoProductoPago grupo = producto.getGrupoProducto();
+            Long idGrupo = grupo.getCodigo();
+            String nomGrupo = grupo.getNombre();
+            PlanCuenta pc = grupo.getPlanCuenta();
             if (pc == null)
                 throw new IncomeException("GrupoProductoPago '" + nomGrupo + "' no tiene cuenta contable.");
             subtotalPorGrupo.merge(idGrupo, nvl(d.getSubTotal()), Double::sum);
@@ -1693,7 +1696,6 @@ public class AsientoContableServiceImpl implements AsientoContableService {
      */
     private PlanCuenta obtenerCuentaGastoDefaultCxp(Long idEmpresa) {
         try {
-            // Intentar primero un grupo tipo GASTOS_GENERALES
             @SuppressWarnings("unchecked")
             List<?> r = em.createQuery(
                     "SELECT g.planCuenta FROM GrupoProductoPago g "
@@ -1706,4 +1708,33 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             return null;
         }
     }
+
+    /**
+     * Obtiene o crea el grupo "POR CLASIFICAR" de la empresa para productos sin grupo asignado.
+     */
+    private com.saa.model.cxp.GrupoProductoPago obtenerOCrearGrupoPorClasificar(Long idEmpresa) {
+        try {
+            @SuppressWarnings("unchecked")
+            List<com.saa.model.cxp.GrupoProductoPago> lista = em.createQuery(
+                    "SELECT g FROM GrupoProductoPago g "
+                    + "WHERE g.rubroTipoGrupoH = :tipo AND g.empresa.codigo = :idEmpresa")
+                    .setParameter("tipo", (long) com.saa.rubros.TipoGrupoProductos.POR_CLASIFICAR)
+                    .setParameter("idEmpresa", idEmpresa)
+                    .setMaxResults(1).getResultList();
+            if (!lista.isEmpty()) return lista.get(0);
+
+            // No existe → crear
+            com.saa.model.cxp.GrupoProductoPago grupo = new com.saa.model.cxp.GrupoProductoPago();
+            grupo.setNombre("POR CLASIFICAR");
+            grupo.setRubroTipoGrupoH((long) com.saa.rubros.TipoGrupoProductos.POR_CLASIFICAR);
+            grupo.setEmpresa(em.find(com.saa.model.scp.Empresa.class, idEmpresa));
+            grupo.setEstado(1L);
+            em.persist(grupo);
+            em.flush();
+            return grupo;
+        } catch (Exception e) {
+            throw new RuntimeException("No se pudo obtener/crear grupo POR CLASIFICAR: " + e.getMessage(), e);
+        }
+    }
 }
+

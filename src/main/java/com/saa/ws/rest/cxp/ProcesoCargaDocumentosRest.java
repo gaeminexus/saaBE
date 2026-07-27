@@ -3,6 +3,7 @@ package com.saa.ws.rest.cxp;
 import java.util.List;
 import java.util.Map;
 
+import com.saa.basico.ejb.FileService;
 import com.saa.ejb.cxp.dao.GrupoProductoPagoDaoService;
 import com.saa.ejb.cxp.service.ProcesoCargaDocumentosService;
 import com.saa.model.cxp.DocumentoCxp;
@@ -31,6 +32,7 @@ public class ProcesoCargaDocumentosRest {
 
     @EJB private ProcesoCargaDocumentosService procesoCargaDocumentosService;
     @EJB private GrupoProductoPagoDaoService   grupoProductoPagoDaoService;
+    @EJB private FileService                   fileService;
     @Context private UriInfo context;
 
     public ProcesoCargaDocumentosRest() {}
@@ -114,11 +116,13 @@ public class ProcesoCargaDocumentosRest {
                         .entity(errorMap("DocumentoCxp con ID " + idDocumentoCxp + " no encontrado"))
                         .type(MediaType.APPLICATION_JSON).build();
 
+            String subDir = "docs/xml/cxp";
+            String nombreArchivo = doc.getClaveAcceso() + ".xml";
             String pathDestino = params.get("pathDestino") != null
                     ? params.get("pathDestino").toString()
-                    : calcularPathXml(doc.getClaveAcceso());
-
-            guardarXmlEnDisco(contenidoXml, pathDestino);
+                    : fileService.uploadFileToPath(
+                            new java.io.ByteArrayInputStream(contenidoXml.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                            nombreArchivo, subDir);
 
             Map<String, Object> resultado = procesoCargaDocumentosService
                     .cargarXmlYRegistrar(idDocumentoCxp, contenidoXml, pathDestino, idEmpresa, idUsuario);
@@ -194,11 +198,13 @@ public class ProcesoCargaDocumentosRest {
                         .entity(errorMap("DocumentoCxp con ID " + idDocumentoCxp + " no encontrado"))
                         .type(MediaType.APPLICATION_JSON).build();
 
+            String subDir2 = "docs/xml/cxp";
+            String nombreArchivo2 = doc.getClaveAcceso() + ".xml";
             String pathDestino = params.get("pathDestino") != null
                     ? params.get("pathDestino").toString()
-                    : calcularPathXml(doc.getClaveAcceso());
-
-            guardarXmlEnDisco(contenidoXml, pathDestino);
+                    : fileService.uploadFileToPath(
+                            new java.io.ByteArrayInputStream(contenidoXml.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                            nombreArchivo2, subDir2);
 
             Map<String, Object> resultado = procesoCargaDocumentosService
                     .cargarXmlDocumento(idDocumentoCxp, contenidoXml, pathDestino, idUsuario);
@@ -274,8 +280,13 @@ public class ProcesoCargaDocumentosRest {
                         .entity(errorMap("El campo 'accion' es obligatorio: 1=MANTENER, 2=REEMPLAZAR (Rubro 177)"))
                         .type(MediaType.APPLICATION_JSON).build();
 
-            if (accion == com.saa.rubros.AccionNovedad.REEMPLAZAR && contenidoXml != null && !contenidoXml.isEmpty())
-                guardarXmlEnDisco(contenidoXml, pathDestino);
+            if (accion == com.saa.rubros.AccionNovedad.REEMPLAZAR && contenidoXml != null && !contenidoXml.isEmpty()) {
+                DocumentoCxp docNovedad = procesoCargaDocumentosService.obtenerDocumentoPorId(idDocumentoCxp);
+                String nombreArchivoNov = docNovedad.getClaveAcceso() + ".xml";
+                pathDestino = fileService.uploadFileToPath(
+                        new java.io.ByteArrayInputStream(contenidoXml.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                        nombreArchivoNov, "docs/xml/cxp");
+            }
 
             Map<String, Object> resultado = procesoCargaDocumentosService
                     .resolverNovedad(idDocumentoCxp, accion, contenidoXml, pathDestino, idUsuario);
@@ -427,17 +438,6 @@ public class ProcesoCargaDocumentosRest {
     // =========================================================
     // Utilitarios privados
     // =========================================================
-    private String calcularPathXml(String claveAcceso) {
-        return "/docs/xml/cxp/" + claveAcceso + ".xml";
-    }
-
-    private void guardarXmlEnDisco(String contenido, String path) throws Exception {
-        if (path == null || path.isEmpty()) throw new Exception("Path destino inválido.");
-        java.nio.file.Path p = java.nio.file.Paths.get(path);
-        if (p.getParent() != null) java.nio.file.Files.createDirectories(p.getParent());
-        java.nio.file.Files.write(p, contenido.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-    }
-
     private Map<String, Object> errorMap(String mensaje) {
         return java.util.Collections.singletonMap("error", mensaje);
     }

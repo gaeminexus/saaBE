@@ -64,7 +64,7 @@ public class DetalleFacturaCompra implements Serializable {
 	@Basic @Column(name = "PRODUCTO")
 	private Long producto;
 
-	@Basic @Column(name = "CODIGOIMVASRI")
+	@Basic @Column(name = "CODIGOIVASRI")
 	private Long codigoIVASRI;
 
 	@Basic @Column(name = "ESTADO")

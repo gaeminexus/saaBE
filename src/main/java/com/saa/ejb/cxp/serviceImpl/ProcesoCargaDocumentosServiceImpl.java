@@ -358,7 +358,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             throw new Exception("DocumentoCxp no encontrado: " + idDocumentoCxp);
 
         // ── Validar que el XML corresponde al documento esperado ──
-        List<String> errores = validarXmlContraDocumento(contenidoXml, doc);
+        List<Map<String, Object>> errores = validarXmlContraDocumento(contenidoXml, doc);
 
         Map<String, Object> resultado = new HashMap<>();
         if (!errores.isEmpty()) {
@@ -388,8 +388,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
      *
      * @return Lista de mensajes de error (vacía si todo es correcto)
      */
-    private List<String> validarXmlContraDocumento(String contenidoXml, DocumentoCxp doc) {
-        List<String> errores = new ArrayList<>();
+    private List<Map<String, Object>> validarXmlContraDocumento(String contenidoXml, DocumentoCxp doc) {
+        List<Map<String, Object>> errores = new ArrayList<>();
         try {
             Document xmlDoc = parsearXmlComprobante(contenidoXml);
 
@@ -398,24 +398,21 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             if (claveXml.isEmpty()) claveXml = getXmlValueOuter(contenidoXml, "claveAcceso");
             if (claveXml.isEmpty()) claveXml = getXmlValue(xmlDoc, "claveAcceso");
             if (!claveXml.isEmpty() && !claveXml.equals(doc.getClaveAcceso())) {
-                errores.add("claveAcceso: esperada=" + doc.getClaveAcceso()
-                        + " | en XML=" + claveXml);
+                errores.add(errorDiff("claveAcceso", doc.getClaveAcceso(), claveXml));
             }
 
             // ── 2. RUC del emisor ──
             String rucXml = getXmlValue(xmlDoc, "ruc");
             if (rucXml.isEmpty()) rucXml = getXmlValue(xmlDoc, "rucEmisor");
             if (!rucXml.isEmpty() && !rucXml.equals(doc.getRucEmisor())) {
-                errores.add("rucEmisor: esperado=" + doc.getRucEmisor()
-                        + " | en XML=" + rucXml);
+                errores.add(errorDiff("rucEmisor", doc.getRucEmisor(), rucXml));
             }
 
             // ── 3. Razón social del emisor ──
             String razonXml = getXmlValue(xmlDoc, "razonSocial");
             if (!razonXml.isEmpty() && doc.getRazonSocialEmisor() != null
                     && !razonXml.equalsIgnoreCase(doc.getRazonSocialEmisor())) {
-                errores.add("razonSocialEmisor: esperada=\"" + doc.getRazonSocialEmisor()
-                        + "\" | en XML=\"" + razonXml + "\"");
+                errores.add(errorDiff("razonSocialEmisor", doc.getRazonSocialEmisor(), razonXml));
             }
 
             // ── 4. Número de serie / comprobante ──
@@ -426,8 +423,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 String serieXml = estab + "-" + ptoEmi + "-" + secuencial;
                 if (doc.getSerieComprobante() != null
                         && !serieXml.equals(doc.getSerieComprobante())) {
-                    errores.add("serieComprobante: esperada=" + doc.getSerieComprobante()
-                            + " | en XML=" + serieXml);
+                    errores.add(errorDiff("serieComprobante", doc.getSerieComprobante(), serieXml));
                 }
             }
 
@@ -437,8 +433,9 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 double totalSinImpXml = parseDouble(totalSinImpStr);
                 if (doc.getValorSinImpuestos() != null
                         && Math.abs(totalSinImpXml - doc.getValorSinImpuestos()) > 0.01) {
-                    errores.add("valorSinImpuestos: esperado=" + doc.getValorSinImpuestos()
-                            + " | en XML=" + totalSinImpXml);
+                    errores.add(errorDiff("valorSinImpuestos",
+                            String.valueOf(doc.getValorSinImpuestos()),
+                            String.valueOf(totalSinImpXml)));
                 }
             }
 
@@ -448,8 +445,9 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 double importeTotalXml = parseDouble(importeTotalStr);
                 if (doc.getImporteTotal() != null
                         && Math.abs(importeTotalXml - doc.getImporteTotal()) > 0.01) {
-                    errores.add("importeTotal: esperado=" + doc.getImporteTotal()
-                            + " | en XML=" + importeTotalXml);
+                    errores.add(errorDiff("importeTotal",
+                            String.valueOf(doc.getImporteTotal()),
+                            String.valueOf(importeTotalXml)));
                 }
             }
 
@@ -460,21 +458,33 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 for (int i = 0; i < impuestos.getLength(); i++) {
                     Element imp = (Element) impuestos.item(i);
                     String codigoImp = getElementValue(imp, "codigo");
-                    // Código 2 = IVA en el formato SRI
                     if ("2".equals(codigoImp)) {
                         ivaXml += parseDouble(getElementValue(imp, "valor"));
                     }
                 }
                 if (doc.getIva() != null && Math.abs(ivaXml - doc.getIva()) > 0.01) {
-                    errores.add("iva: esperado=" + doc.getIva()
-                            + " | en XML=" + ivaXml);
+                    errores.add(errorDiff("iva",
+                            String.valueOf(doc.getIva()),
+                            String.valueOf(ivaXml)));
                 }
             }
 
         } catch (Exception e) {
-            errores.add("Error al parsear el XML: " + e.getMessage());
+            Map<String, Object> err = new HashMap<>();
+            err.put("campo", "xml");
+            err.put("esperado", "XML válido");
+            err.put("enXml", "Error al parsear: " + e.getMessage());
+            errores.add(err);
         }
         return errores;
+    }
+
+    private Map<String, Object> errorDiff(String campo, String esperado, String enXml) {
+        Map<String, Object> err = new HashMap<>();
+        err.put("campo", campo);
+        err.put("esperado", esperado);
+        err.put("enXml", enXml);
+        return err;
     }
 
     // =========================================================
@@ -493,7 +503,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             throw new Exception("DocumentoCxp no encontrado: " + idDocumentoCxp);
 
         // ── 1. Validar XML contra el documento esperado ──
-        List<String> errores = validarXmlContraDocumento(contenidoXml, doc);
+        List<Map<String, Object>> errores = validarXmlContraDocumento(contenidoXml, doc);
         if (!errores.isEmpty()) {
             Map<String, Object> resultado = new HashMap<>();
             resultado.put("valido", false);
@@ -537,6 +547,15 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 doc.setObservacion(resultadoBD.get("mensaje").toString());
                 documentoCxpDaoService.save(doc, doc.getId());
                 resultadoBD.put("valido", true);
+                return resultadoBD;
+            }
+
+            // Si hay productos pendientes de clasificación → NO grabar en BD, esperar al usuario
+            if (Boolean.TRUE.equals(resultadoBD.get("pendienteClasificacion"))) {
+                doc.setEstadoDocumento(ESTADO_XML_CARGADO); // se mantiene en XML_CARGADO, no avanza
+                doc.setObservacion("Productos pendientes de clasificación: " + resultadoBD.get("productosPendientes"));
+                documentoCxpDaoService.save(doc, doc.getId());
+                resultadoBD.put("valido", false);
                 return resultadoBD;
             }
 
@@ -598,7 +617,22 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     private ProductoPago obtenerOAutoCrearProducto(String nombre, String codigo, String codigoAux,
                                                     double precioUnitario, Long idEmpresa) {
         ProductoPago existente = buscarProductoPorNombre(nombre, idEmpresa);
-        if (existente != null) return existente;
+        if (existente != null) {
+            // Si el producto existe pero no tiene grupo asignado, asignarlo automáticamente
+            if (existente.getGrupoProducto() == null) {
+                GrupoProductoPago grupoPendiente = obtenerOCrearGrupoPendienteClasificar(idEmpresa);
+                existente.setGrupoProducto(grupoPendiente);
+                try {
+                    existente = productoPagoDaoService.save(existente, existente.getId());
+                    System.out.println("⚠ Producto '" + nombre + "' (ID=" + existente.getId()
+                            + ") no tenía grupo asignado → asignado a POR CLASIFICAR automáticamente.");
+                } catch (Throwable e) {
+                    throw new RuntimeException(
+                            "Error al asignar grupo al producto '" + nombre + "': " + e.getMessage(), e);
+                }
+            }
+            return existente;
+        }
 
         GrupoProductoPago grupoPendiente = obtenerOCrearGrupoPendienteClasificar(idEmpresa);
         ProductoPago nuevo = new ProductoPago();
@@ -669,8 +703,11 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 throw new Exception("Tipo de comprobante no soportado: " + tipo);
             }
 
-            // Si requiere productos, retornar sin actualizar estado
-            if (Boolean.TRUE.equals(resultado.get("requiereProductos"))) {
+            // Si hay productos pendientes de clasificación → NO grabar en BD, esperar al usuario
+            if (Boolean.TRUE.equals(resultado.get("pendienteClasificacion"))) {
+                doc.setEstadoDocumento(ESTADO_XML_CARGADO); // se mantiene en XML_CARGADO
+                doc.setObservacion("Productos pendientes de clasificación: " + resultado.get("productosPendientes"));
+                documentoCxpDaoService.save(doc, doc.getId());
                 return resultado;
             }
 
@@ -877,8 +914,97 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         Empresa empresa = em.find(Empresa.class, idEmpresa);
         Usuario usuario = em.find(Usuario.class, idUsuario);
 
+        // ══════════════════════════════════════════════════════════════════
+        // PASO 1 — Acciones automáticas (siempre se ejecutan)
+        //   · Crear titular si no existe y asignarle rol de proveedor
+        //   · Si existe pero no tiene rol proveedor → asignarlo
+        //   · Crear grupo POR CLASIFICAR si no existe
+        //   · Crear producto dentro de POR CLASIFICAR si no existe
+        // ══════════════════════════════════════════════════════════════════
         Titular titular = obtenerOAutoCrearProveedor(doc.getRucEmisor(), doc.getRazonSocialEmisor(), xmlDoc, idUsuario);
 
+        NodeList detallesXml = xmlDoc.getElementsByTagName("detalle");
+        List<ProductoPago> productosDetalle = new ArrayList<>();
+
+        for (int i = 0; i < detallesXml.getLength(); i++) {
+            Element el = (Element) detallesXml.item(i);
+            ProductoPago producto = obtenerOAutoCrearProducto(
+                    getElementValue(el, "descripcion"),
+                    getElementValue(el, "codigoPrincipal"),
+                    getElementValue(el, "codigoAuxiliar"),
+                    parseDouble(getElementValue(el, "precioUnitario")),
+                    idEmpresa);
+            productosDetalle.add(producto);
+        }
+
+        // ══════════════════════════════════════════════════════════════════
+        // PASO 2 — Validaciones previas al registro en BD
+        //   · Titular debe tener cuenta contable de facturación (CxP)
+        //   · Cada producto debe estar en un grupo ≠ POR_CLASIFICAR
+        //   · Ese grupo debe tener cuenta contable asignada
+        // Si alguna validación falla → retornar bloqueantes sin grabar nada.
+        // ══════════════════════════════════════════════════════════════════
+        List<Map<String, Object>> bloqueantes = new ArrayList<>();
+
+        // 2a. Cuenta contable del proveedor
+        boolean titularTieneCuenta = verificarCuentaContableProveedor(titular.getCodigo(), idEmpresa);
+        if (!titularTieneCuenta) {
+            Map<String, Object> b = new HashMap<>();
+            b.put("tipo", "PROVEEDOR_SIN_CUENTA");
+            b.put("detalle", "El proveedor '" + titular.getNombre() + "' (RUC: " + titular.getIdentificacion()
+                    + ") no tiene cuenta contable CxP asignada. Configúrela en Contabilidad → Cuentas por Titular.");
+            bloqueantes.add(b);
+        }
+
+        // 2b. Productos en POR_CLASIFICAR o sin cuenta contable en su grupo
+        List<String> productosSinClasificar = new ArrayList<>();
+        List<String> gruposSinCuenta = new ArrayList<>();
+
+        for (ProductoPago producto : productosDetalle) {
+            GrupoProductoPago grupo = producto.getGrupoProducto();
+            if (grupo == null
+                    || (grupo.getRubroTipoGrupoH() != null
+                        && grupo.getRubroTipoGrupoH() == TipoGrupoProductos.POR_CLASIFICAR)) {
+                productosSinClasificar.add(producto.getNombre());
+            } else if (grupo.getPlanCuenta() == null) {
+                gruposSinCuenta.add("Grupo '" + grupo.getNombre() + "' (producto: '" + producto.getNombre() + "')");
+            }
+        }
+
+        if (!productosSinClasificar.isEmpty()) {
+            Map<String, Object> b = new HashMap<>();
+            b.put("tipo", "PRODUCTOS_SIN_CLASIFICAR");
+            b.put("detalle", "Los siguientes productos están en el grupo POR CLASIFICAR y deben ser reclasificados: "
+                    + productosSinClasificar);
+            b.put("productos", productosSinClasificar);
+            bloqueantes.add(b);
+        }
+
+        if (!gruposSinCuenta.isEmpty()) {
+            Map<String, Object> b = new HashMap<>();
+            b.put("tipo", "GRUPOS_SIN_CUENTA_CONTABLE");
+            b.put("detalle", "Los siguientes grupos de producto no tienen cuenta contable asignada: "
+                    + gruposSinCuenta);
+            b.put("grupos", gruposSinCuenta);
+            bloqueantes.add(b);
+        }
+
+        // Si hay bloqueantes → cortar sin grabar nada
+        if (!bloqueantes.isEmpty()) {
+            System.out.println("⚠ Registro de FacturaCompra detenido. Bloqueantes: " + bloqueantes);
+            Map<String, Object> r = new HashMap<>();
+            r.put("pendienteClasificacion", true);
+            r.put("bloqueantes", bloqueantes);
+            // Mantener retrocompatibilidad con el campo productosPendientes
+            r.put("productosPendientes", productosSinClasificar);
+            r.put("mensaje", "No se puede registrar la factura. Hay " + bloqueantes.size()
+                    + " condición(es) bloqueante(s) que deben resolverse primero.");
+            return r;
+        }
+
+        // ══════════════════════════════════════════════════════════════════
+        // PASO 3 — Todas las condiciones OK → grabar en BD
+        // ══════════════════════════════════════════════════════════════════
         String numeroAutorizacion = getXmlValueOuter(xmlContent, "numeroAutorizacion");
         if (numeroAutorizacion.isEmpty()) numeroAutorizacion = doc.getClaveAcceso();
         String fechaAutorizacionStr = getXmlValueOuter(xmlContent, "fechaAutorizacion");
@@ -889,13 +1015,9 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         String secuencial  = getXmlValue(xmlDoc, "secuencial");
         String ambienteStr = getXmlValue(xmlDoc, "ambiente");
         String fechaEmisionStr = getXmlValue(xmlDoc, "fechaEmision");
-        double totalSinImp = parseDouble(getXmlValue(xmlDoc, "totalSinImpuestos"));
+        double totalSinImp    = parseDouble(getXmlValue(xmlDoc, "totalSinImpuestos"));
         double totalDescuento = parseDouble(getXmlValue(xmlDoc, "totalDescuento"));
-        double importeTotal = parseDouble(getXmlValue(xmlDoc, "importeTotal"));
-
-        // Iterar detalles: auto-crear productos faltantes en grupo PENDIENTE DE CLASIFICAR
-        NodeList detallesXml = xmlDoc.getElementsByTagName("detalle");
-        List<String> productosPendientes = new ArrayList<>();
+        double importeTotal   = parseDouble(getXmlValue(xmlDoc, "importeTotal"));
 
         FacturaCompra factura = new FacturaCompra();
         factura.setEmpresa(empresa);
@@ -927,7 +1049,6 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
         for (int i = 0; i < detallesXml.getLength(); i++) {
             Element el = (Element) detallesXml.item(i);
-            String descripcion = getElementValue(el, "descripcion");
             double cantidad    = parseDouble(getElementValue(el, "cantidad"));
             double precioUnit  = parseDouble(getElementValue(el, "precioUnitario"));
             double descuento   = parseDouble(getElementValue(el, "descuento"));
@@ -939,22 +1060,9 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 porcIVA = parseLong(getElementValue(impEl, "tarifa"));
                 valIVA  = parseDouble(getElementValue(impEl, "valor"));
             }
-            // Auto-crear en POR CLASIFICAR si no existe
-            ProductoPago producto = obtenerOAutoCrearProducto(
-                    descripcion,
-                    getElementValue(el, "codigoPrincipal"),
-                    getElementValue(el, "codigoAuxiliar"),
-                    precioUnit, idEmpresa);
-            if (producto.getGrupoProducto() != null
-                    && producto.getGrupoProducto().getRubroTipoGrupoH() != null
-                    && producto.getGrupoProducto().getRubroTipoGrupoH()
-                               == TipoGrupoProductos.POR_CLASIFICAR) {
-                productosPendientes.add(descripcion);
-            }
-
             DetalleFacturaCompra df = new DetalleFacturaCompra();
             df.setFactura(factura);
-            df.setDescripcion(descripcion);
+            df.setDescripcion(getElementValue(el, "descripcion"));
             df.setCantidad(cantidad);
             df.setValor(precioUnit);
             df.setSubTotal(precioTotal);
@@ -963,7 +1071,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             df.setPorcentajeIVA(porcIVA);
             df.setValorIVA(valIVA);
             df.setTotal(precioTotal + valIVA);
-            df.setProducto(producto.getId());
+            df.setProducto(productosDetalle.get(i).getId());
             df.setEstado(Long.valueOf(Estado.ACTIVO));
             detalleFacturaCompraDaoService.save(df, null);
         }
@@ -980,7 +1088,6 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             formaPagoFacturaCompraDaoService.save(fp, null);
         }
 
-
         PathFacturaCompra pathFc = new PathFacturaCompra();
         pathFc.setFactura(factura);
         pathFc.setPath(doc.getPathXml());
@@ -990,12 +1097,33 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         Map<String, Object> r = new HashMap<>();
         r.put("idDocumentoBD", factura.getId());
         r.put("tipoTablaDestino", "FACTURA_COMPRA");
-        r.put("mensaje", "FacturaCompra registrada con id=" + factura.getId()
-                + (productosPendientes.isEmpty() ? "" : ". " + productosPendientes.size()
-                + " producto(s) creados en grupo PENDIENTE DE CLASIFICAR."));
-        r.put("productosPendientes", productosPendientes);
+        r.put("mensaje", "FacturaCompra registrada correctamente con id=" + factura.getId() + ".");
+        r.put("productosPendientes", new ArrayList<>());
+        r.put("pendienteClasificacion", false);
         return r;
     }
+
+    /**
+     * Verifica si el titular tiene cuenta contable CxP (tipoCuenta=1) asignada para la empresa.
+     */
+    private boolean verificarCuentaContableProveedor(Long codigoTitular, Long idEmpresa) {
+        try {
+            List<?> result = em.createQuery(
+                    "SELECT pcc FROM PersonaCuentaContable pcc "
+                    + "JOIN pcc.personaRol pr "
+                    + "WHERE pr.titular.codigo = :titular "
+                    + "AND pcc.tipoCuenta = 1 "
+                    + "AND pcc.empresa.codigo = :empresa")
+                    .setParameter("titular", codigoTitular)
+                    .setParameter("empresa", idEmpresa)
+                    .setMaxResults(1).getResultList();
+            return !result.isEmpty();
+        } catch (Exception e) {
+            System.err.println("⚠ verificarCuentaContableProveedor: " + e.getMessage());
+            return false;
+        }
+    }
+
 
     private Map<String, Object> registrarNotaCreditoCompra(DocumentoCxp doc, String xmlContent,
                                                             Long idEmpresa, Long idUsuario) throws Throwable {
@@ -1557,6 +1685,9 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                     System.err.println("⚠ No se pudo asignar rol Proveedor al Titular id="
                             + titular.getCodigo() + ": " + e.getMessage());
                 }
+            } else {
+                System.out.println("ℹ Titular ya tiene rol de Proveedor: " + ruc + " | id=" + titular.getCodigo()
+                        + " | nombre=" + titular.getNombre());
             }
             return titular;
         }

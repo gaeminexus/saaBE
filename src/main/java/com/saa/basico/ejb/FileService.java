@@ -18,7 +18,7 @@ public interface FileService {
      * Extensiones de archivos permitidas
      */
     String[] EXTENSIONES_PERMITIDAS = { ".pdf", ".doc", ".docx", ".xls", ".xlsx", 
-                                       ".jpg", ".jpeg", ".png", ".gif", ".txt", ".p12" };
+                                       ".jpg", ".jpeg", ".png", ".gif", ".txt", ".p12", ".xml" };
 
     /**
      * Tamaño máximo de archivo en bytes (10MB)
