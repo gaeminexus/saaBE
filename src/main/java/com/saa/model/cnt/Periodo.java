@@ -123,8 +123,7 @@ public class Periodo implements Serializable {
 	@Basic
 	@Column(name = "PRDOFNN")
 	private LocalDate ultimoDia;
-	
-	
+
 	/**
 	 * Devuelve codigo
 	 * @return codigo

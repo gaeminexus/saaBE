@@ -141,6 +141,35 @@ public class ControlExtractoBancario implements Serializable {
     @Column(name = "CTEBESTD")
     private Long estado;
 
+    /**
+     * Indica si este período ya fue cerrado para conciliación bancaria: 1 =
+     * cerrado, 0/null = abierto. Es un cierre EXCLUSIVO de TSR - no tiene
+     * relación con el proceso de mayorización de CNT (Periodo.estado), que es
+     * independiente y sigue su propio flujo (mayorizar/desmayorizar). Cerrar
+     * aquí solo bloquea cargar extractos, conciliar y deshacer conciliaciones
+     * en TSR; no impide que se sigan creando asientos contables en CNT para
+     * este período.
+     */
+    @Basic
+    @Column(name = "CTEBCRRE")
+    private Long cerrado;
+
+    /**
+     * Usuario que cerró el período (para conciliación bancaria) por última
+     * vez - auditoría. No se limpia al reabrir, para conservar el historial.
+     */
+    @Basic
+    @Column(name = "CTEBUSCR", length = 50)
+    private String usuarioCierre;
+
+    /**
+     * Fecha y hora en que se cerró el período (para conciliación bancaria)
+     * por última vez - auditoría.
+     */
+    @Basic
+    @Column(name = "CTEBFCCR")
+    private LocalDateTime fechaCierre;
+
     // -------------------------------------------------------------------------
     // GETTERS Y SETTERS
     // -------------------------------------------------------------------------
@@ -239,5 +268,29 @@ public class ControlExtractoBancario implements Serializable {
 
     public void setEstado(Long estado) {
         this.estado = estado;
+    }
+
+    public Long getCerrado() {
+        return cerrado;
+    }
+
+    public void setCerrado(Long cerrado) {
+        this.cerrado = cerrado;
+    }
+
+    public String getUsuarioCierre() {
+        return usuarioCierre;
+    }
+
+    public void setUsuarioCierre(String usuarioCierre) {
+        this.usuarioCierre = usuarioCierre;
+    }
+
+    public LocalDateTime getFechaCierre() {
+        return fechaCierre;
+    }
+
+    public void setFechaCierre(LocalDateTime fechaCierre) {
+        this.fechaCierre = fechaCierre;
     }
 }

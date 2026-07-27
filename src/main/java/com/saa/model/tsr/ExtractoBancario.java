@@ -12,6 +12,7 @@ import java.io.Serializable;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
+import com.saa.model.cnt.Periodo;
 import com.saa.model.scp.Empresa;
 
 import jakarta.persistence.Basic;
@@ -73,6 +74,14 @@ public class ExtractoBancario implements Serializable {
     @ManyToOne
     @JoinColumn(name = "PJRQCDGO", nullable = false)
     private Empresa empresa;
+
+    /**
+     * FK al Periodo Contable (CNT.PRDO) al que el usuario asigna este extracto
+     * al momento de la carga. No se infiere de las fechas del archivo.
+     */
+    @ManyToOne
+    @JoinColumn(name = "PRDOCDGO", nullable = false)
+    private Periodo periodo;
 
     /**
      * Nombre del archivo origen.
@@ -193,6 +202,14 @@ public class ExtractoBancario implements Serializable {
 
     public void setEmpresa(Empresa empresa) {
         this.empresa = empresa;
+    }
+
+    public Periodo getPeriodo() {
+        return periodo;
+    }
+
+    public void setPeriodo(Periodo periodo) {
+        this.periodo = periodo;
     }
 
     public String getArchivoNombre() {

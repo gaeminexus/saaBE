@@ -32,11 +32,12 @@ public interface ImportacionExtractoBancarioService {
      * @param archivo         : Contenido del archivo
      * @param nombreArchivo   : Nombre original del archivo
      * @param idCuentaBancaria : Cuenta bancaria a la que pertenece el extracto
+     * @param idPeriodo       : Periodo contable elegido por el usuario para este extracto
      * @return                : Resumen de la importacion
-     * @throws Throwable      : Excepcion
+     * @throws Throwable      : Excepcion (bloqueo duro si el periodo esta CERRADO)
      */
-    ResumenImportacionExtracto validar(InputStream archivo, String nombreArchivo, Long idCuentaBancaria)
-            throws Throwable;
+    ResumenImportacionExtracto validar(InputStream archivo, String nombreArchivo, Long idCuentaBancaria,
+            Long idPeriodo) throws Throwable;
 
     /**
      * Reparsea el archivo y guarda el lote completo (ExtractoBancario +
@@ -45,12 +46,13 @@ public interface ImportacionExtractoBancarioService {
      * @param archivo          : Contenido del archivo
      * @param nombreArchivo    : Nombre original del archivo
      * @param idCuentaBancaria : Cuenta bancaria a la que pertenece el extracto
+     * @param idPeriodo        : Periodo contable elegido por el usuario para este extracto
      * @param idEmpresa        : Empresa duena de la cuenta
      * @param usuarioCreacion  : Usuario que realiza la carga (auditoria)
      * @return                 : ExtractoBancario guardado
-     * @throws Throwable       : Excepcion
+     * @throws Throwable       : Excepcion (bloqueo duro si el periodo esta CERRADO)
      */
-    ExtractoBancario confirmar(InputStream archivo, String nombreArchivo, Long idCuentaBancaria, Long idEmpresa,
-            String usuarioCreacion) throws Throwable;
+    ExtractoBancario confirmar(InputStream archivo, String nombreArchivo, Long idCuentaBancaria, Long idPeriodo,
+            Long idEmpresa, String usuarioCreacion) throws Throwable;
 
 }

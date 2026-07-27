@@ -41,6 +41,13 @@ public class PoliciaNacionalStatementParser extends AbstractExcelStatementParser
     }
 
     @Override
+    protected boolean encabezadoValido(Row filaEncabezado) {
+        return columnaContiene(filaEncabezado, COL_FECHA, "fecha")
+                && columnaContiene(filaEncabezado, COL_VALOR, "valor")
+                && columnaContiene(filaEncabezado, COL_SALDO_CONTABLE, "saldo");
+    }
+
+    @Override
     protected Double getSaldoInicialDeclarado(Sheet sheet) {
         Row fila1 = sheet.getRow(1);
         if (fila1 == null) {

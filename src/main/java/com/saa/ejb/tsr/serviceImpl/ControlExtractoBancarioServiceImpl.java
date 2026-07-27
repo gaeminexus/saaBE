@@ -7,6 +7,7 @@
 package com.saa.ejb.tsr.serviceImpl;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 import com.saa.basico.ejb.EmpresaService;
@@ -19,6 +20,8 @@ import com.saa.ejb.tsr.service.ControlExtractoBancarioService;
 import com.saa.model.cnt.Periodo;
 import com.saa.model.scp.Empresa;
 import com.saa.model.tsr.ControlExtractoBancario;
+import com.saa.model.tsr.CuentaBancaria;
+import com.saa.model.tsr.DetalleCumplimientoCuenta;
 import com.saa.model.tsr.NombreEntidadesTesoreria;
 import com.saa.rubros.Estado;
 
@@ -159,5 +162,82 @@ public class ControlExtractoBancarioServiceImpl implements ControlExtractoBancar
         control.setFechaCreacion(LocalDateTime.now());
 
         return controlExtractoBancarioDaoService.save(control, control.getCodigo());
+    }
+
+    @Override
+    public List<DetalleCumplimientoCuenta> detalleCuentas(Long idEmpresa, Long idPeriodo) throws Throwable {
+        System.out.println("Ingresa al metodo detalleCuentas con idEmpresa: " + idEmpresa
+                + ", idPeriodo: " + idPeriodo);
+        Periodo periodo = periodoService.selectById(idPeriodo);
+        if (periodo == null) {
+            throw new IncomeException("No se encontro el periodo contable con id " + idPeriodo);
+        }
+
+        List<CuentaBancaria> cuentas = controlExtractoBancarioDaoService.selectCuentasBancariasActivas(idEmpresa);
+        List<Long> idsCuenta = cuentas.stream().map(CuentaBancaria::getCodigo).toList();
+
+        List<Long> conCobertura = extractoBancarioDaoService
+                .selectCuentasConCobertura(idsCuenta, periodo.getPrimerDia(), periodo.getUltimoDia());
+        List<Long> conciliadas = controlExtractoBancarioDaoService.selectCuentasConciliadas(idsCuenta, idPeriodo);
+
+        List<DetalleCumplimientoCuenta> resultado = new ArrayList<>();
+        for (CuentaBancaria cuenta : cuentas) {
+            DetalleCumplimientoCuenta fila = new DetalleCumplimientoCuenta();
+            fila.setCuentaBancaria(cuenta);
+            fila.setCargada(conCobertura.contains(cuenta.getCodigo()));
+            fila.setConciliada(conciliadas.contains(cuenta.getCodigo()));
+            resultado.add(fila);
+        }
+        return resultado;
+    }
+
+    @Override
+    public boolean estaCerrado(Long idEmpresa, Long idPeriodo) throws Throwable {
+        Periodo periodo = periodoService.selectById(idPeriodo);
+        if (periodo == null) {
+            throw new IncomeException("No se encontro el periodo contable con id " + idPeriodo);
+        }
+        ControlExtractoBancario control = controlExtractoBancarioDaoService
+                .selectByEmpresaYPeriodo(idEmpresa, periodo.getMes(), periodo.getAnio());
+        return control != null && Long.valueOf(1L).equals(control.getCerrado());
+    }
+
+    @Override
+    public ControlExtractoBancario cerrarPeriodo(Long idEmpresa, Long idPeriodo, String usuario) throws Throwable {
+        System.out.println("Ingresa al metodo cerrarPeriodo con idEmpresa: " + idEmpresa + ", idPeriodo: " + idPeriodo
+                + ", usuario: " + usuario);
+        // generarPeriodo es idempotente: si el control ya existe lo devuelve tal
+        // cual, si no lo crea - asegura que siempre haya una fila donde guardar
+        // el estado de cierre, sin duplicar la logica de creacion aqui.
+        ControlExtractoBancario control = generarPeriodo(idEmpresa, idPeriodo);
+        if (Long.valueOf(1L).equals(control.getCerrado())) {
+            throw new IncomeException("Este periodo ya estaba cerrado para conciliacion bancaria");
+        }
+        control.setCerrado(1L);
+        control.setUsuarioCierre(usuario);
+        control.setFechaCierre(LocalDateTime.now());
+        return controlExtractoBancarioDaoService.save(control, control.getCodigo());
+    }
+
+    @Override
+    public ControlExtractoBancario reabrirPeriodo(Long idEmpresa, Long idPeriodo) throws Throwable {
+        System.out.println("Ingresa al metodo reabrirPeriodo con idEmpresa: " + idEmpresa
+                + ", idPeriodo: " + idPeriodo);
+        Periodo periodo = periodoService.selectById(idPeriodo);
+        if (periodo == null) {
+            throw new IncomeException("No se encontro el periodo contable con id " + idPeriodo);
+        }
+        ControlExtractoBancario control = controlExtractoBancarioDaoService
+                .selectByEmpresaYPeriodo(idEmpresa, periodo.getMes(), periodo.getAnio());
+        if (control == null || !Long.valueOf(1L).equals(control.getCerrado())) {
+            throw new IncomeException("Este periodo no esta cerrado para conciliacion bancaria");
+        }
+        control.setCerrado(0L);
+        return controlExtractoBancarioDaoService.save(control, control.getCodigo());
+    }
+
+    @Override
+    public List<Long> selectPeriodosCerrados(Long idEmpresa) throws Throwable {
+        return controlExtractoBancarioDaoService.selectPeriodosCerrados(idEmpresa);
     }
 }

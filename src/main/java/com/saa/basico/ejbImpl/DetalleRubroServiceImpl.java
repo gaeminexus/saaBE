@@ -128,6 +128,14 @@ public class DetalleRubroServiceImpl implements DetalleRubroService {
 		return detalleRubroDaoService.selectValorStringByRubAltDetAlt(codigoAlternoRubro, codigoAlternoDetalle);
 	}
 
+	@Override
+	public Double selectValorNumericoByRubAltDetAlt(int codigoAlternoRubro,
+			int codigoAlternoDetalle) throws Throwable {
+		System.out.println("Ingresa al selectValorNumericoByRubAltDetAlt con codigoAlternoRubro = " +
+				codigoAlternoRubro + " y codigoAlternoDetalle = " + codigoAlternoDetalle);
+		return detalleRubroDaoService.selectValorNumericoByRubAltDetAlt(codigoAlternoRubro, codigoAlternoDetalle);
+	}
+
 	/*
 	 * (non-Javadoc)
 	 * 

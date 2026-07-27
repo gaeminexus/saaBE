@@ -36,6 +36,13 @@ public class InternacionalStatementParser extends AbstractExcelStatementParser {
     }
 
     @Override
+    protected boolean encabezadoValido(Row filaEncabezado) {
+        return columnaContiene(filaEncabezado, COL_FECHA, "fecha")
+                && columnaContiene(filaEncabezado, COL_DEBITO, "bito")
+                && columnaContiene(filaEncabezado, COL_SALDO, "saldo");
+    }
+
+    @Override
     protected DetalleExtractoBancario parseRow(Row row) throws Throwable {
         String fechaTexto = getCellString(row, COL_FECHA);
         if (fechaTexto.isBlank()) {

@@ -149,4 +149,8 @@ public interface Rubros {
 	/** Acción que envía el frontend para resolver una novedad → ver {@link AccionNovedad} */
 	int CXP_ACCION_NOVEDAD       = 177;
 
+	/** Dias de tolerancia entre fecha bancaria y fecha contable al conciliar (rubro de un solo
+	 * valor configurable, mismo patron que FORMATO_FECHA - no una clasificacion de categorias). */
+	int ASP_TOLERANCIA_DIAS_CONCILIACION_CONTABLE = 178;
+
 }

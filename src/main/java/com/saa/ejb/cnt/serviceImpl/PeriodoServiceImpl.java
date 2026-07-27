@@ -425,9 +425,4 @@ public class PeriodoServiceImpl implements PeriodoService{
 	    }
 	    return resultado;
 	}
-
-	
-	
-
-	
 }

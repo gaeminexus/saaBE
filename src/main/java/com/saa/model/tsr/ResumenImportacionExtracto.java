@@ -21,6 +21,8 @@ public class ResumenImportacionExtracto implements Serializable {
     private static final long serialVersionUID = 1L;
 
     private Long idCuentaBancaria;
+    private Long idPeriodo;
+    private String nombrePeriodo;
     private String nombreBanco;
     private String numeroCuenta;
     private String archivoNombre;
@@ -33,6 +35,13 @@ public class ResumenImportacionExtracto implements Serializable {
     private Double totalDebito;
     private Double totalCredito;
     private List<String> advertencias;
+
+    // Filas cuya fecha de transaccion cae fuera del primerDia/ultimoDia del
+    // periodo elegido por el usuario (p.ej. corte de fin de mes) - advertencia
+    // informativa, nunca bloqueante.
+    private Integer totalTransaccionesFueraPeriodo;
+    private List<String> transaccionesFueraPeriodo;
+
     private boolean archivoYaCargado;
     private Long idExtractoExistente;
 
@@ -45,6 +54,22 @@ public class ResumenImportacionExtracto implements Serializable {
 
     public void setIdCuentaBancaria(Long idCuentaBancaria) {
         this.idCuentaBancaria = idCuentaBancaria;
+    }
+
+    public Long getIdPeriodo() {
+        return idPeriodo;
+    }
+
+    public void setIdPeriodo(Long idPeriodo) {
+        this.idPeriodo = idPeriodo;
+    }
+
+    public String getNombrePeriodo() {
+        return nombrePeriodo;
+    }
+
+    public void setNombrePeriodo(String nombrePeriodo) {
+        this.nombrePeriodo = nombrePeriodo;
     }
 
     public String getNombreBanco() {
@@ -141,6 +166,22 @@ public class ResumenImportacionExtracto implements Serializable {
 
     public void setAdvertencias(List<String> advertencias) {
         this.advertencias = advertencias;
+    }
+
+    public Integer getTotalTransaccionesFueraPeriodo() {
+        return totalTransaccionesFueraPeriodo;
+    }
+
+    public void setTotalTransaccionesFueraPeriodo(Integer totalTransaccionesFueraPeriodo) {
+        this.totalTransaccionesFueraPeriodo = totalTransaccionesFueraPeriodo;
+    }
+
+    public List<String> getTransaccionesFueraPeriodo() {
+        return transaccionesFueraPeriodo;
+    }
+
+    public void setTransaccionesFueraPeriodo(List<String> transaccionesFueraPeriodo) {
+        this.transaccionesFueraPeriodo = transaccionesFueraPeriodo;
     }
 
     public boolean isArchivoYaCargado() {

@@ -11,6 +11,8 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 
 import com.saa.basico.ejb.EmpresaService;
@@ -73,12 +75,13 @@ public class ImportacionExtractoBancarioServiceImpl implements ImportacionExtrac
     private ControlExtractoBancarioService controlExtractoBancarioService;
 
     @Override
-    public ResumenImportacionExtracto validar(InputStream archivo, String nombreArchivo, Long idCuentaBancaria)
-            throws Throwable {
+    public ResumenImportacionExtracto validar(InputStream archivo, String nombreArchivo, Long idCuentaBancaria,
+            Long idPeriodo) throws Throwable {
         System.out.println("Ingresa al metodo validar (importacion extracto) con idCuentaBancaria: "
-                + idCuentaBancaria + ", archivo: " + nombreArchivo);
+                + idCuentaBancaria + ", idPeriodo: " + idPeriodo + ", archivo: " + nombreArchivo);
 
         CuentaBancaria cuenta = obtenerCuenta(idCuentaBancaria);
+        Periodo periodo = obtenerPeriodoAbierto(idPeriodo);
         byte[] bytes = archivo.readAllBytes();
         String hash = calcularHashArchivo(bytes);
 
@@ -89,6 +92,8 @@ public class ImportacionExtractoBancarioServiceImpl implements ImportacionExtrac
 
         ResumenImportacionExtracto resumen = new ResumenImportacionExtracto();
         resumen.setIdCuentaBancaria(idCuentaBancaria);
+        resumen.setIdPeriodo(periodo.getCodigo());
+        resumen.setNombrePeriodo(periodo.getNombre());
         resumen.setNombreBanco(cuenta.getBanco().getNombre());
         resumen.setNumeroCuenta(cuenta.getNumeroCuenta());
         resumen.setArchivoNombre(nombreArchivo);
@@ -103,17 +108,26 @@ public class ImportacionExtractoBancarioServiceImpl implements ImportacionExtrac
         resumen.setAdvertencias(parsed.getAdvertencias());
         resumen.setArchivoYaCargado(existente != null);
         resumen.setIdExtractoExistente(existente != null ? existente.getCodigo() : null);
+
+        List<String> fueraPeriodo = calcularTransaccionesFueraPeriodo(parsed.getDetalles(), periodo);
+        resumen.setTotalTransaccionesFueraPeriodo(fueraPeriodo.size());
+        resumen.setTransaccionesFueraPeriodo(fueraPeriodo);
+
         return resumen;
     }
 
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     public ExtractoBancario confirmar(InputStream archivo, String nombreArchivo, Long idCuentaBancaria,
-            Long idEmpresa, String usuarioCreacion) throws Throwable {
+            Long idPeriodo, Long idEmpresa, String usuarioCreacion) throws Throwable {
         System.out.println("Ingresa al metodo confirmar (importacion extracto) con idCuentaBancaria: "
-                + idCuentaBancaria + ", idEmpresa: " + idEmpresa + ", archivo: " + nombreArchivo);
+                + idCuentaBancaria + ", idPeriodo: " + idPeriodo + ", idEmpresa: " + idEmpresa
+                + ", archivo: " + nombreArchivo);
 
         CuentaBancaria cuenta = obtenerCuenta(idCuentaBancaria);
+        // Se revalida el estado del periodo aqui tambien (no solo en validar):
+        // pudo haberse cerrado entre la previsualizacion y la confirmacion.
+        Periodo periodo = obtenerPeriodoAbierto(idPeriodo);
         byte[] bytes = archivo.readAllBytes();
         String hash = calcularHashArchivo(bytes);
 
@@ -133,6 +147,7 @@ public class ImportacionExtractoBancarioServiceImpl implements ImportacionExtrac
         ExtractoBancario extracto = new ExtractoBancario();
         extracto.setCuentaBancaria(cuenta);
         extracto.setEmpresa(empresa);
+        extracto.setPeriodo(periodo);
         extracto.setArchivoNombre(nombreArchivo);
         extracto.setArchivoHash(hash);
         extracto.setFormato(parsed.getFormatoDetectado());
@@ -152,6 +167,7 @@ public class ImportacionExtractoBancarioServiceImpl implements ImportacionExtrac
 
         for (DetalleExtractoBancario detalle : parsed.getDetalles()) {
             detalle.setExtractoBancario(extractoGuardado);
+            detalle.setPeriodo(periodo);
             detalle.setFechaCreacion(ahora);
             detalle.setUsuarioCreacion(usuarioCreacion);
             detalle.setEstado((long) Estado.ACTIVO);
@@ -198,6 +214,49 @@ public class ImportacionExtractoBancarioServiceImpl implements ImportacionExtrac
             throw new IncomeException("No se encontro la cuenta bancaria con id " + idCuentaBancaria);
         }
         return cuenta;
+    }
+
+    /**
+     * Recupera el periodo elegido por el usuario y rechaza la operacion (bloqueo
+     * duro, sin excepcion posible desde esta pantalla) si ya esta CERRADO -
+     * distinto de la advertencia por fecha fuera de rango, que nunca bloquea.
+     */
+    private Periodo obtenerPeriodoAbierto(Long idPeriodo) throws Throwable {
+        if (idPeriodo == null) {
+            throw new IncomeException("Debe seleccionar el periodo contable del extracto");
+        }
+        Periodo periodo = periodoService.selectById(idPeriodo);
+        if (periodo == null) {
+            throw new IncomeException("No se encontro el periodo contable con id " + idPeriodo);
+        }
+        if (controlExtractoBancarioService.estaCerrado(periodo.getEmpresa().getCodigo(), idPeriodo)) {
+            throw new IncomeException("El periodo '" + periodo.getNombre()
+                    + "' ya esta cerrado para conciliacion bancaria. No se pueden cargar nuevos extractos.");
+        }
+        return periodo;
+    }
+
+    /**
+     * Lista, para advertencia informativa (nunca bloqueante), las filas cuya
+     * fecha de transaccion cae fuera del primerDia/ultimoDia del periodo
+     * elegido - caso esperado de corte de fin de mes (movimientos del ultimo
+     * dia del mes anterior o los primeros del mes siguiente) que contabilidad
+     * puede conciliar deliberadamente bajo el periodo actual.
+     */
+    private List<String> calcularTransaccionesFueraPeriodo(List<DetalleExtractoBancario> detalles, Periodo periodo) {
+        List<String> fueraDeRango = new ArrayList<>();
+        DateTimeFormatter formato = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+        for (DetalleExtractoBancario detalle : detalles) {
+            if (detalle.getFechaTransaccion() == null) {
+                continue;
+            }
+            if (detalle.getFechaTransaccion().isBefore(periodo.getPrimerDia())
+                    || detalle.getFechaTransaccion().isAfter(periodo.getUltimoDia())) {
+                fueraDeRango.add(detalle.getFechaTransaccion().format(formato) + " - "
+                        + (detalle.getDescripcion() != null ? detalle.getDescripcion() : ""));
+            }
+        }
+        return fueraDeRango;
     }
 
     private String calcularHashArchivo(byte[] bytes) throws Throwable {

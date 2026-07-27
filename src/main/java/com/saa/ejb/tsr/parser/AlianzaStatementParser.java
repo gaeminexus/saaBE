@@ -27,6 +27,14 @@ import com.saa.rubros.ASPEstadoRevisionExtracto;
  * confirmar contra una fila real de debito. Recomendado pedir al cliente una
  * muestra mas larga antes de dar esto por cerrado. No trae saldo inicial
  * declarado - se deriva de la primera fila.</p>
+ * <p><b>Orden descendente confirmado:</b> el archivo real trae las filas mas
+ * recientes primero (igual que Manabi/Pichincha). Antes esto se declaraba con
+ * un override de <code>isOrdenDescendente()</code> especifico de esta clase,
+ * que al faltar (bug real encontrado en produccion) hacia que
+ * derivarSaldoInicial() calculara sobre la fila equivocada. La clase base
+ * ({@link AbstractExcelStatementParser}) ahora ordena siempre por fecha
+ * ascendente automaticamente para los 11 bancos, asi que esto no requiere
+ * ninguna declaracion especial de esta subclase.</p>
  */
 public class AlianzaStatementParser extends AbstractExcelStatementParser {
 
@@ -40,6 +48,13 @@ public class AlianzaStatementParser extends AbstractExcelStatementParser {
     @Override
     protected int getPrimeraFilaDatos() {
         return 7;
+    }
+
+    @Override
+    protected boolean encabezadoValido(Row filaEncabezado) {
+        return columnaContiene(filaEncabezado, COL_FECHA, "fecha")
+                && columnaContiene(filaEncabezado, COL_VALOR_EFECTIVO, "valor")
+                && columnaContiene(filaEncabezado, COL_SALDO, "saldo");
     }
 
     @Override

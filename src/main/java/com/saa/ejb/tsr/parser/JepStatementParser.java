@@ -47,6 +47,13 @@ public class JepStatementParser extends AbstractExcelStatementParser {
     }
 
     @Override
+    protected boolean encabezadoValido(Row filaEncabezado) {
+        return columnaContiene(filaEncabezado, COL_FECHA, "fecha")
+                && columnaContiene(filaEncabezado, COL_DEBITO, "bito")
+                && columnaContiene(filaEncabezado, COL_SALDOS, "saldo");
+    }
+
+    @Override
     protected Double getSaldoInicialCapturado() {
         return saldoInicialCapturado;
     }

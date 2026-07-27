@@ -58,6 +58,18 @@ public interface DetalleRubroService extends EntityService<DetalleRubro> {
 	String selectValorStringByRubAltDetAlt(int codigoAlternoRubro, int codigoAlternoDetalle) throws Throwable;
 
 	/**
+	 * Recupera el valor numerico del detalle de rubro por el codigo alterno del rubro y del
+	 * detalle de rubro (ej. un parametro configurable de un solo valor, como
+	 * {@link com.saa.rubros.Rubros#ASP_TOLERANCIA_DIAS_CONCILIACION_CONTABLE}).
+	 *
+	 * @param codigoAlternoRubro   : Codigo alterno de rubro
+	 * @param codigoAlternoDetalle : Codigo alterno de detalle de rubro
+	 * @return : Valor del campo de valor numerico del detalle de rubro
+	 * @throws Throwable : Excepcion
+	 */
+	Double selectValorNumericoByRubAltDetAlt(int codigoAlternoRubro, int codigoAlternoDetalle) throws Throwable;
+
+	/**
 	 * Recupera el listado de detalles de rubros por codigo alterno de rubro
 	 * 
 	 * @param codigoAlternoRubro : Codigo alterno de rubro

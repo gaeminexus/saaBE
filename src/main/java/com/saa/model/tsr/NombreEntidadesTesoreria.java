@@ -32,6 +32,7 @@ public interface NombreEntidadesTesoreria {
 		 String COBRO_TARJETA = "CobroTarjeta";
 		 String COBRO_TRANSFERENCIA = "CobroTransferencia";
 		 String CONCILIACION = "Conciliacion";
+		 String CONCILIACION_CONTABLE = "ConciliacionContable";
 		 String CONTROL_EXTRACTO_BANCARIO = "ControlExtractoBancario";
 		 String CUENTA_BANCARIA = "CuentaBancaria";
 		 String CUENTA_BANCARIA_TITULAR = "CuentaBancariaTitular";
@@ -46,6 +47,9 @@ public interface NombreEntidadesTesoreria {
 		 String DIRECCION_PERSONA = "DireccionPersona";
 		 String EXTRACTO_BANCARIO = "ExtractoBancario";
 		 String GRUPO_CAJA = "GrupoCaja";
+		 String GRUPO_CONCILIACION_CONTABLE = "GrupoConciliacionContable";
+		 String GRUPO_CONCILIACION_EXTRACTO = "GrupoConciliacionExtracto";
+		 String GRUPO_CONCILIACION_ASIENTO = "GrupoConciliacionAsiento";
 		 String HIST_CONCILIACION = "HistConciliacion";
 		 String HIST_DETALLE_CONCILIACION = "HistDetalleConciliacion";
 		 String MOTIVO_COBRO = "MotivoCobro";

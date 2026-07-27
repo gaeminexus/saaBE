@@ -26,8 +26,9 @@ import com.saa.rubros.ASPEstadoRevisionExtracto;
  * la primera fila.</p>
  * <p><b>Confirmado probando contra el archivo real:</b> las filas vienen en
  * orden cronologico DESCENDENTE (mas reciente primero), igual que Mutualista
- * Pichincha - sin revertir, el balance replay marcaba 3 de 4 filas como
- * inconsistentes; revirtiendo, las 4 cuadran exactas.</p>
+ * Pichincha - la clase base ({@link AbstractExcelStatementParser}) ordena
+ * siempre por fecha ascendente automaticamente, asi que esto no requiere
+ * ninguna declaracion especial de esta subclase.</p>
  */
 public class ManabiStatementParser extends AbstractExcelStatementParser {
 
@@ -44,8 +45,14 @@ public class ManabiStatementParser extends AbstractExcelStatementParser {
     }
 
     @Override
-    protected boolean isOrdenDescendente() {
-        return true;
+    protected boolean encabezadoValido(Row filaEncabezado) {
+        // Manabi y Guayaquil comparten vocabulario de encabezado
+        // ("Monto"/"Saldo Total"/"Concepto") en la misma fila 14 - solo la
+        // posicion exacta de columna distingue uno del otro (ver javadoc de
+        // AbstractExcelStatementParser.encabezadoValido()).
+        return columnaContiene(filaEncabezado, COL_FECHA_HORA, "fecha")
+                && columnaContiene(filaEncabezado, COL_MONTO, "monto")
+                && columnaContiene(filaEncabezado, COL_SALDO_TOTAL, "saldo");
     }
 
     @Override

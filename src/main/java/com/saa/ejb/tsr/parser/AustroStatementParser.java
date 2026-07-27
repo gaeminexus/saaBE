@@ -40,6 +40,13 @@ public class AustroStatementParser extends AbstractExcelStatementParser {
     }
 
     @Override
+    protected boolean encabezadoValido(Row filaEncabezado) {
+        return columnaContiene(filaEncabezado, COL_FECHA_REAL, "fecha")
+                && columnaContiene(filaEncabezado, COL_DEBITOS, "bito")
+                && columnaContiene(filaEncabezado, COL_SALDO_CONTABLE, "saldo");
+    }
+
+    @Override
     protected Double getSaldoInicialDeclarado(Sheet sheet) {
         Row fila8 = sheet.getRow(8);
         if (fila8 == null) {

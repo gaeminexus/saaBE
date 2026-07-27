@@ -190,5 +190,5 @@ public interface PeriodoService extends EntityService<Periodo> {
 	 * @throws Throwable: Excepcion
 	 */
 	String remove(Long idPeriodo) throws Throwable;
-	
+
 }

@@ -12,6 +12,8 @@ import java.io.Serializable;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
+import com.saa.model.cnt.Periodo;
+
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -66,6 +68,15 @@ public class DetalleExtractoBancario implements Serializable {
     @ManyToOne
     @JoinColumn(name = "CNBCCDGO", nullable = false)
     private CuentaBancaria cuentaBancaria;
+
+    /**
+     * FK al Periodo Contable (CNT.PRDO). Denormalizado desde el ExtractoBancario
+     * padre para poder filtrar el detalle por periodo sin pasar por el join -
+     * mismo patron que DetalleConciliacion.periodo.
+     */
+    @ManyToOne
+    @JoinColumn(name = "PRDOCDGO", nullable = false)
+    private Periodo periodo;
 
     /**
      * Fecha de la transaccion.
@@ -210,6 +221,14 @@ public class DetalleExtractoBancario implements Serializable {
 
     public void setCuentaBancaria(CuentaBancaria cuentaBancaria) {
         this.cuentaBancaria = cuentaBancaria;
+    }
+
+    public Periodo getPeriodo() {
+        return periodo;
+    }
+
+    public void setPeriodo(Periodo periodo) {
+        this.periodo = periodo;
     }
 
     public LocalDate getFechaTransaccion() {

@@ -22,8 +22,10 @@ import com.saa.rubros.ASPEstadoRevisionExtracto;
  * columna 1=Fecha, 3=Concepto, 8=Debito, 11=Credito, 16=Saldo. Debito/
  * Credito llegan como texto plano (no NUMERIC), sin separador de miles en la
  * muestra vista. Confirmado: las filas vienen en orden cronologico
- * DESCENDENTE (mas reciente primero) - se revierten en la clase base antes
- * de calcular saldo inicial y correr el balance replay.</p>
+ * DESCENDENTE (mas reciente primero) - la clase base
+ * ({@link AbstractExcelStatementParser}) ordena siempre por fecha ascendente
+ * automaticamente, asi que esto no requiere ninguna declaracion especial de
+ * esta subclase.</p>
  */
 public class PichinchaStatementParser extends AbstractExcelStatementParser {
 
@@ -39,8 +41,10 @@ public class PichinchaStatementParser extends AbstractExcelStatementParser {
     }
 
     @Override
-    protected boolean isOrdenDescendente() {
-        return true;
+    protected boolean encabezadoValido(Row filaEncabezado) {
+        return columnaContiene(filaEncabezado, COL_FECHA, "fecha")
+                && columnaContiene(filaEncabezado, COL_DEBITO, "bito")
+                && columnaContiene(filaEncabezado, COL_SALDO, "saldo");
     }
 
     @Override

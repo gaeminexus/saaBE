@@ -47,6 +47,12 @@ public class PacificoStatementParser extends AbstractExcelStatementParser {
     }
 
     @Override
+    protected boolean encabezadoValido(Row filaEncabezado) {
+        return columnaContiene(filaEncabezado, COL_TIPO_MOV, "tipomov")
+                && columnaContiene(filaEncabezado, COL_VALOR, "valor");
+    }
+
+    @Override
     protected DetalleExtractoBancario parseRow(Row row) throws Throwable {
         String fechaContableTexto = getCellString(row, COL_FECHA_CONTABLE);
         if (fechaContableTexto.isBlank()) {

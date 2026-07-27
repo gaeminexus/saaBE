@@ -12,6 +12,7 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.tsr.dao.ControlExtractoBancarioDaoService;
 import com.saa.ejb.tsr.service.ControlExtractoBancarioService;
 import com.saa.model.tsr.ControlExtractoBancario;
+import com.saa.model.tsr.DetalleCumplimientoCuenta;
 import com.saa.model.tsr.NombreEntidadesTesoreria;
 
 import jakarta.ejb.EJB;
@@ -131,6 +132,25 @@ public class ControlExtractoBancarioRest {
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al recalcular control de extractos bancarios: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Detalle por cuenta bancaria (drill-down) para un empresa/periodo: cuales
+     * cuentas ya cargaron su extracto y cuales ya estan conciliadas.
+     */
+    @GET
+    @Path("/detalleCuentas/{idEmpresa}/{idPeriodo}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response detalleCuentas(@PathParam("idEmpresa") Long idEmpresa, @PathParam("idPeriodo") Long idPeriodo) {
+        try {
+            List<DetalleCumplimientoCuenta> resultado = controlExtractoBancarioService
+                    .detalleCuentas(idEmpresa, idPeriodo);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener detalle de cuentas del tablero de cumplimiento: " + e.getMessage())
                     .type(MediaType.APPLICATION_JSON).build();
         }
     }

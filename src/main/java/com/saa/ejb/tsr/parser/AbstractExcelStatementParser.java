@@ -27,6 +27,7 @@ import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
 
+import com.saa.basico.util.IncomeException;
 import com.saa.model.tsr.CuentaBancaria;
 import com.saa.model.tsr.DetalleExtractoBancario;
 
@@ -40,6 +41,20 @@ import com.saa.model.tsr.DetalleExtractoBancario;
  * Esto es lo que permite que el Banco Amazonas funcione aunque su archivo
  * diga ".xls" y en realidad sea un XLSX.</li>
  * <li>Recorre las filas desde la fila de datos que declara cada banco.</li>
+ * <li>Deja las filas en orden ascendente por fecha de transaccion siempre,
+ * para los 11 bancos por igual, sin importar en que orden vengan en el
+ * archivo. Es deliberado: la conciliacion mensual contra contabilidad se hace
+ * en orden ascendente por estandar del proyecto. La direccion del archivo se
+ * detecta automaticamente (mayoria de pares de fechas consecutivas que suben
+ * o bajan) en vez de depender de que cada subclase declarara correctamente su
+ * propio orden - un booleano tipo "isOrdenDescendente" por banco resulto ser
+ * una fuente de bugs silenciosos (Coop. Alianza traia el archivo descendente
+ * sin declararlo, y el saldo inicial derivado se calculaba sobre la fila
+ * equivocada). Cuando se detecta descendente se invierte la lista completa en
+ * vez de hacer un sort por fecha, porque Manabi y Mutualista Pichincha
+ * confirmaron con datos reales que un archivo descendente tambien invierte el
+ * orden interno de las transacciones del mismo dia, no solo el orden entre
+ * dias.</li>
  * <li>Ejecuta el balance replay: acumula saldoInicial + credito - debito fila
  * a fila y lo compara contra el saldo que reporta el banco en esa fila,
  * señalando cualquier discrepancia como advertencia sin abortar la carga.</li>
@@ -48,9 +63,8 @@ import com.saa.model.tsr.DetalleExtractoBancario;
  * </ul>
  * <p>Cada subclase solo declara: en que fila empiezan los datos, como mapear
  * una fila a un DetalleExtractoBancario (o null si la fila debe descartarse,
- * ej. filas de "Saldo inicial" que JEP mezcla en la tabla), si el saldo
- * inicial viene declarado en el encabezado del archivo, y si las filas vienen
- * en orden descendente (Mutualista Pichincha).</p>
+ * ej. filas de "Saldo inicial" que JEP mezcla en la tabla), y si el saldo
+ * inicial viene declarado en el encabezado del archivo.</p>
  */
 public abstract class AbstractExcelStatementParser implements BankStatementParser {
 
@@ -63,8 +77,15 @@ public abstract class AbstractExcelStatementParser implements BankStatementParse
         try {
             Sheet sheet = workbook.getSheetAt(0);
 
-            List<DetalleExtractoBancario> detalles = new ArrayList<>();
             int primeraFilaDatos = getPrimeraFilaDatos();
+            Row filaEncabezado = sheet.getRow(primeraFilaDatos - 1);
+            if (filaEncabezado == null || !encabezadoValido(filaEncabezado)) {
+                throw new IncomeException("El archivo no corresponde al formato de "
+                        + cuenta.getBanco().getNombre() + ". Verifique que haya seleccionado la cuenta "
+                        + "bancaria correcta antes de subir el archivo.");
+            }
+
+            List<DetalleExtractoBancario> detalles = new ArrayList<>();
             int ultimaFila = sheet.getLastRowNum();
             for (int i = primeraFilaDatos; i <= ultimaFila; i++) {
                 Row row = sheet.getRow(i);
@@ -92,7 +113,18 @@ public abstract class AbstractExcelStatementParser implements BankStatementParse
                 detalles.add(detalle);
             }
 
-            if (isOrdenDescendente()) {
+            // Orden ascendente por fecha SIEMPRE, para los 11 bancos, sin
+            // depender de que la subclase declare el orden del archivo (ver
+            // Javadoc de la clase). Un sort estable por fecha NO sirve aqui:
+            // Manabi y Mutualista Pichincha demostraron con datos reales que
+            // cuando el banco entrega el archivo en orden descendente, tambien
+            // invierte el orden interno de las transacciones del mismo dia (no
+            // solo el orden entre dias distintos) - un sort estable dejaria
+            // esas filas del mismo dia en el orden equivocado. Por eso se
+            // detecta la direccion predominante de las fechas y, si es
+            // descendente, se invierte la lista completa (Collections.reverse),
+            // que sí revierte correctamente el orden interno de cada dia.
+            if (pareceOrdenDescendente(detalles)) {
                 Collections.reverse(detalles);
             }
 
@@ -139,6 +171,33 @@ public abstract class AbstractExcelStatementParser implements BankStatementParse
     protected abstract int getPrimeraFilaDatos();
 
     /**
+     * Verifica que la fila de encabezado (la anterior a
+     * {@link #getPrimeraFilaDatos()}) tenga las columnas esperadas para este
+     * banco, en las posiciones que la subclase ya usa para leer datos - ver
+     * {@link #columnaContiene(Row, int, String)}. Se ejecuta antes de leer
+     * cualquier fila de datos: evita que seleccionar la cuenta bancaria
+     * equivocada al subir el archivo produzca un error tecnico confuso, o
+     * peor, que el archivo "parsee" sin error pero con datos incorrectos
+     * (fechas/montos desalineados de otro banco). Debe comparar por
+     * POSICION de columna, no solo buscar la palabra en la fila entera: hay
+     * bancos con vocabulario de encabezado casi identico en la misma fila
+     * (Guayaquil y Manabi ambos usan "Monto"/"Saldo Total"/"Concepto" en la
+     * fila 14), asi que solo la posicion exacta de columna distingue uno de
+     * otro de forma confiable.
+     */
+    protected abstract boolean encabezadoValido(Row filaEncabezado);
+
+    /**
+     * Helper para encabezadoValido(): compara sin distinguir mayusculas. Los
+     * fragmentos que puedan tener tilde en el archivo real (ej. "Débito")
+     * deben pasarse sin la letra acentuada (ej. "bito") para no depender de
+     * que el archivo este en la codificacion esperada.
+     */
+    protected boolean columnaContiene(Row fila, int columna, String fragmento) {
+        return getCellString(fila, columna).toLowerCase().contains(fragmento.toLowerCase());
+    }
+
+    /**
      * Convierte una fila en un DetalleExtractoBancario. Debe devolver null si
      * la fila no es una transaccion real (fila vacia, fila de totales, etc.)
      * - en ese caso se descarta sin agregarse al resultado.
@@ -168,12 +227,29 @@ public abstract class AbstractExcelStatementParser implements BankStatementParse
     }
 
     /**
-     * true si el banco entrega las filas en orden cronologico descendente
-     * (Mutualista Pichincha) - se revierten antes de numerar, calcular saldo
-     * inicial derivado y correr el balance replay.
+     * Cuenta cuantos pares de filas consecutivas (tal como vienen en el
+     * archivo) suben o bajan de fecha, ignorando pares del mismo dia (no
+     * aportan señal), y devuelve true si la mayoria baja. Sin transiciones
+     * utiles (0 o 1 fila, o archivo con una sola fecha) se asume ascendente
+     * por ser el caso mas comun y porque no reordenar es la opcion segura
+     * cuando no hay señal.
      */
-    protected boolean isOrdenDescendente() {
-        return false;
+    private boolean pareceOrdenDescendente(List<DetalleExtractoBancario> detalles) {
+        int ascendentes = 0;
+        int descendentes = 0;
+        for (int i = 1; i < detalles.size(); i++) {
+            LocalDate anterior = detalles.get(i - 1).getFechaTransaccion();
+            LocalDate actual = detalles.get(i).getFechaTransaccion();
+            if (anterior == null || actual == null || anterior.equals(actual)) {
+                continue;
+            }
+            if (actual.isAfter(anterior)) {
+                ascendentes++;
+            } else {
+                descendentes++;
+            }
+        }
+        return descendentes > ascendentes;
     }
 
     /**

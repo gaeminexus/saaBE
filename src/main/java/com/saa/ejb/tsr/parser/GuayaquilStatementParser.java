@@ -38,6 +38,17 @@ public class GuayaquilStatementParser extends AbstractExcelStatementParser {
     }
 
     @Override
+    protected boolean encabezadoValido(Row filaEncabezado) {
+        // Guayaquil y Manabi comparten vocabulario de encabezado
+        // ("Monto"/"Saldo Total"/"Concepto") en la misma fila 14 - solo la
+        // posicion exacta de columna distingue uno del otro (ver javadoc de
+        // AbstractExcelStatementParser.encabezadoValido()).
+        return columnaContiene(filaEncabezado, COL_FECHA_TRANSACCION, "fecha")
+                && columnaContiene(filaEncabezado, COL_MONTO, "monto")
+                && columnaContiene(filaEncabezado, COL_SALDO_TOTAL, "saldo");
+    }
+
+    @Override
     protected DetalleExtractoBancario parseRow(Row row) throws Throwable {
         String fechaTexto = getCellString(row, COL_FECHA_TRANSACCION);
         if (fechaTexto.isBlank()) {

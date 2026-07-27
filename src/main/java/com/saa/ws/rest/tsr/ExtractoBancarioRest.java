@@ -7,6 +7,8 @@
 package com.saa.ws.rest.tsr;
 
 import java.io.InputStream;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
@@ -188,15 +190,27 @@ public class ExtractoBancarioRest {
     @Produces(MediaType.APPLICATION_JSON)
     public Response validarImportacion(@PathParam("idCuentaBancaria") Long idCuentaBancaria,
             @FormParam("archivo") InputStream archivoInputStream,
-            @FormParam("archivoNombre") String archivoNombre) {
-        System.out.println("LLEGA AL SERVICIO VALIDAR IMPORTACION - EXTRACTO_BANCARIO, cuenta: " + idCuentaBancaria);
+            @FormParam("archivoNombre") String archivoNombre,
+            @FormParam("idPeriodo") String idPeriodoParam) {
+        System.out.println("LLEGA AL SERVICIO VALIDAR IMPORTACION - EXTRACTO_BANCARIO, cuenta: " + idCuentaBancaria
+                + ", periodo: " + idPeriodoParam);
         try {
             if (archivoInputStream == null || archivoNombre == null || archivoNombre.trim().isEmpty()) {
                 return Response.status(Response.Status.BAD_REQUEST)
                         .entity("No se ha enviado el archivo").type(MediaType.APPLICATION_JSON).build();
             }
+            Long idPeriodo = parseIdPeriodo(idPeriodoParam);
+            if (idPeriodo == null) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity("El campo idPeriodo es obligatorio").type(MediaType.APPLICATION_JSON).build();
+            }
+            // El frontend envia el nombre con encodeURIComponent() porque el
+            // proveedor de multipart no declara charset para campos de texto
+            // planos y puede no decodificar como UTF-8 - decodificar aqui
+            // explicitamente evita que un nombre con tildes/ñ llegue corrupto.
+            archivoNombre = URLDecoder.decode(archivoNombre, StandardCharsets.UTF_8);
             ResumenImportacionExtracto resumen = importacionExtractoBancarioService
-                    .validar(archivoInputStream, archivoNombre, idCuentaBancaria);
+                    .validar(archivoInputStream, archivoNombre, idCuentaBancaria, idPeriodo);
             return Response.status(Response.Status.OK).entity(resumen).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
@@ -217,14 +231,22 @@ public class ExtractoBancarioRest {
     public Response confirmarImportacion(@PathParam("idCuentaBancaria") Long idCuentaBancaria,
             @FormParam("archivo") InputStream archivoInputStream,
             @FormParam("archivoNombre") String archivoNombre,
+            @FormParam("idPeriodo") String idPeriodoParam,
             @FormParam("idEmpresa") String idEmpresaParam,
             @FormParam("usuarioCreacion") String usuarioCreacion) {
         System.out.println("LLEGA AL SERVICIO CONFIRMAR IMPORTACION - EXTRACTO_BANCARIO, cuenta: " + idCuentaBancaria
-                + ", empresa: " + idEmpresaParam);
+                + ", periodo: " + idPeriodoParam + ", empresa: " + idEmpresaParam);
         try {
             if (archivoInputStream == null || archivoNombre == null || archivoNombre.trim().isEmpty()) {
                 return Response.status(Response.Status.BAD_REQUEST)
                         .entity("No se ha enviado el archivo").type(MediaType.APPLICATION_JSON).build();
+            }
+            // Ver comentario equivalente en validarImportacion().
+            archivoNombre = URLDecoder.decode(archivoNombre, StandardCharsets.UTF_8);
+            Long idPeriodo = parseIdPeriodo(idPeriodoParam);
+            if (idPeriodo == null) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity("El campo idPeriodo es obligatorio").type(MediaType.APPLICATION_JSON).build();
             }
             Long idEmpresa;
             try {
@@ -237,14 +259,23 @@ public class ExtractoBancarioRest {
                 return Response.status(Response.Status.BAD_REQUEST)
                         .entity("El campo idEmpresa es obligatorio").type(MediaType.APPLICATION_JSON).build();
             }
-            ExtractoBancario resultado = importacionExtractoBancarioService
-                    .confirmar(archivoInputStream, archivoNombre, idCuentaBancaria, idEmpresa, usuarioCreacion);
+            ExtractoBancario resultado = importacionExtractoBancarioService.confirmar(archivoInputStream,
+                    archivoNombre, idCuentaBancaria, idPeriodo, idEmpresa, usuarioCreacion);
             return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON)
                     .build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al confirmar importacion de extracto bancario: " + e.getMessage())
                     .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    private Long parseIdPeriodo(String idPeriodoParam) {
+        try {
+            return (idPeriodoParam == null || idPeriodoParam.trim().isEmpty())
+                    ? null : Long.valueOf(idPeriodoParam.trim());
+        } catch (NumberFormatException nfe) {
+            return null;
         }
     }
 

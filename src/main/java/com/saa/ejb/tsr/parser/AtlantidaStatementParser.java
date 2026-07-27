@@ -40,6 +40,13 @@ public class AtlantidaStatementParser extends AbstractExcelStatementParser {
     }
 
     @Override
+    protected boolean encabezadoValido(Row filaEncabezado) {
+        return columnaContiene(filaEncabezado, COL_FECHA, "fecha")
+                && columnaContiene(filaEncabezado, COL_DEBITO, "bito")
+                && columnaContiene(filaEncabezado, COL_CREDITO, "dito");
+    }
+
+    @Override
     protected Double getSaldoInicialDeclarado(Sheet sheet) {
         Row fila0 = sheet.getRow(0);
         if (fila0 == null) {

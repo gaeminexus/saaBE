@@ -12,6 +12,7 @@ import java.util.List;
 
 import com.saa.basico.util.EntityDao;
 import com.saa.model.tsr.ControlExtractoBancario;
+import com.saa.model.tsr.CuentaBancaria;
 
 import jakarta.ejb.Local;
 
@@ -53,5 +54,37 @@ public interface ControlExtractoBancarioDaoService extends EntityDao<ControlExtr
      * @throws Throwable : Excepcion
      */
     Long contarCuentasConciliadas(List<Long> idsCuenta, Long idPeriodo) throws Throwable;
+
+    /**
+     * Recupera las entidades completas (con Banco y numeroCuenta ya cargados)
+     * de las cuentas bancarias activas de una empresa - version de
+     * selectCuentasActivasPorEmpresa que trae el objeto completo en vez de
+     * solo el codigo, para mostrar nombre de banco y numero de cuenta en el
+     * drill-down del tablero de cumplimiento.
+     * @param idEmpresa : Id de la empresa
+     * @return          : Cuentas bancarias activas
+     * @throws Throwable : Excepcion
+     */
+    List<CuentaBancaria> selectCuentasBancariasActivas(Long idEmpresa) throws Throwable;
+
+    /**
+     * De una lista de cuentas, devuelve los codigos de las que ya tienen una
+     * Conciliacion concluida (rubro EstadosConciliacion.CONCILIADO) para el
+     * periodo indicado - version de contarCuentasConciliadas que devuelve el
+     * conjunto de ids en vez de solo el conteo.
+     * @param idsCuenta : Lista de codigos de cuenta bancaria a verificar
+     * @param idPeriodo : Id del periodo contable
+     * @return          : Codigos de cuenta bancaria conciliados en ese periodo
+     * @throws Throwable : Excepcion
+     */
+    List<Long> selectCuentasConciliadas(List<Long> idsCuenta, Long idPeriodo) throws Throwable;
+
+    /**
+     * Ids de Periodo ya cerrados (cerrado = 1) para una empresa.
+     * @param idEmpresa : Id de la empresa
+     * @return          : Ids de Periodo cerrados
+     * @throws Throwable : Excepcion
+     */
+    List<Long> selectPeriodosCerrados(Long idEmpresa) throws Throwable;
 
 }
