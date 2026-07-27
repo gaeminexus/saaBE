@@ -1162,6 +1162,49 @@ public class AsientoContableServiceImpl implements AsientoContableService {
      * Obtiene la cuenta contable desde TSRI por su campo CODIGO.
      * Se usa para mapear DetalleRetencion.codRetencion → PlanCuenta.
      */
+    /**
+     * Busca la cuenta contable en TSRI para un código de retención recibida (CXP).
+     * El LSRI correcto depende del tipo de impuesto que viene en el XML del SRI:
+     *   codImpuesto = "1" (Renta)  → lsri.tabla = '608'
+     *   codImpuesto = "2" (IVA)    → lsri.tabla = '20'
+     *
+     * @param codImpuesto    valor del tag <codigo> del XML ("1" o "2")
+     * @param codRetencion   valor del tag <codigoRetencion> del XML (ej. "320", "10")
+     */
+    private PlanCuenta obtenerCuentaRetencionCompra(String codImpuesto, String codRetencion) {
+        String lsriTabla;
+        if ("1".equals(codImpuesto)) {
+            lsriTabla = "608"; // Retención de Renta
+        } else if ("2".equals(codImpuesto)) {
+            lsriTabla = "20";  // Retención de IVA
+        } else {
+            System.err.println("⚠ obtenerCuentaRetencionCompra: codImpuesto desconocido='" + codImpuesto
+                    + "' para codRetencion='" + codRetencion + "'.");
+            return null;
+        }
+        try {
+            String sql = "SELECT t.planCuenta FROM TsriCompra t "
+                    + "WHERE t.lsri.tabla = :lsriTabla AND t.codigo = :codigo AND t.estado = 1";
+            Query q = em.createQuery(sql);
+            q.setParameter("lsriTabla", lsriTabla);
+            q.setParameter("codigo", codRetencion);
+            q.setMaxResults(1);
+            List<?> result = q.getResultList();
+            if (result.isEmpty()) {
+                System.err.println("⚠ No se encontró cuenta en TSRI: lsri.tabla=" + lsriTabla
+                        + " | codRetencion=" + codRetencion);
+                return null;
+            }
+            return (PlanCuenta) result.get(0);
+        } catch (Exception e) {
+            System.err.println("⚠ Error buscando cuenta TSRI lsri=" + lsriTabla
+                    + " codRetencion=" + codRetencion + ": " + e.getMessage());
+            return null;
+        }
+    }
+
+    /** @deprecated Usar {@link #obtenerCuentaRetencionCompra(String, String)} para retenciones CXP. */
+    @Deprecated
     private PlanCuenta obtenerCuentaPorCodigoTsri(String codigoTsri) {
         try {
             String sql = "SELECT t.planCuenta FROM Tsri t "
@@ -1572,11 +1615,13 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
         // ── HABER: una línea por código de retención (cuenta desde TSRI) ──────
         for (com.saa.model.cxp.DetalleRetencionCompra d : detalles) {
+            String codImpuesto = d.getCodImpuesto();
             String codReten = d.getCodRetencion();
-            PlanCuenta pcReten = obtenerCuentaPorCodigoTsri(codReten);
+            PlanCuenta pcReten = obtenerCuentaRetencionCompra(codImpuesto, codReten);
             if (pcReten == null)
-                throw new IncomeException("No hay cuenta contable para código retención '" + codReten
-                        + "' en TSRI. Configure en Compras → Tipos SRI.");
+                throw new IncomeException("No hay cuenta contable para retención "
+                        + "(codImpuesto='" + codImpuesto + "', codRetencion='" + codReten + "') en TSRI. "
+                        + "Configure en Compras → Tipos SRI.");
             double valor = nvl(d.getValorReten());
             totalRetenido += valor;
             DetalleAsiento haberReten = new DetalleAsiento();
@@ -1636,10 +1681,12 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
         // ── HABER: por código de retención desde TSRI ─────────────────────────
         for (com.saa.model.cxp.DetalleRetencionCompraV2 d : detalles) {
+            String codImpuesto = d.getCodImpuesto();
             String codReten = d.getCodRetencion();
-            PlanCuenta pcReten = obtenerCuentaPorCodigoTsri(codReten);
+            PlanCuenta pcReten = obtenerCuentaRetencionCompra(codImpuesto, codReten);
             if (pcReten == null)
-                throw new IncomeException("No hay cuenta contable para código retención '" + codReten + "' en TSRI.");
+                throw new IncomeException("No hay cuenta contable para retención V2 "
+                        + "(codImpuesto='" + codImpuesto + "', codRetencion='" + codReten + "') en TSRI.");
             double valor = nvl(d.getValorReten());
             totalRetenido += valor;
             DetalleAsiento haberReten = new DetalleAsiento();
@@ -1708,7 +1755,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         try {
             @SuppressWarnings("unchecked")
             List<?> r = em.createQuery(
-                    "SELECT t.planCuenta FROM com.saa.model.cxp.Tsri t WHERE t.codigo = :cod AND t.estado = 1")
+                    "SELECT t.planCuenta FROM TsriCompra t WHERE t.codigo = :cod AND t.estado = 1")
                     .setParameter("cod", codigoSRI).setMaxResults(1).getResultList();
             if (!r.isEmpty() && r.get(0) != null) return (PlanCuenta) r.get(0);
         } catch (Exception e) { /* fallback */ }

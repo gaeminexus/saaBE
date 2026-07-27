@@ -75,10 +75,10 @@ public interface TipoAsientos {
 	/** Liquidaciones de compra recibidas (CXP). Pendiente definir codigoAlterno. */
 	public static final int LIQUIDACIONES_COMPRA_RECIBIDAS = 12; // TODO: verificar codigoAlterno en BD
 
-	/** Retenciones v1 recibidas de proveedor (CXP). Pendiente definir codigoAlterno. */
-	public static final int RETENCIONES_RECIBIDAS   = 13; // TODO: verificar codigoAlterno en BD
+	/** Retenciones v1 recibidas de proveedor (CXP). codigoAlterno=3 en BD. */
+	public static final int RETENCIONES_RECIBIDAS   = 3;
 
-	/** Retenciones v2 recibidas de proveedor (CXP). Pendiente definir codigoAlterno. */
-	public static final int RETENCIONES_RECIBIDAS_V2 = 14; // TODO: verificar codigoAlterno en BD
+	/** Retenciones v2 recibidas de proveedor (CXP). codigoAlterno=3 en BD. */
+	public static final int RETENCIONES_RECIBIDAS_V2 = 3;
 
 }

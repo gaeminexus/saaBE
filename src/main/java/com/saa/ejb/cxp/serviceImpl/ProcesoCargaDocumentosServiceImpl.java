@@ -261,8 +261,14 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 resultadoLinea = (long) ResultadoCargaTxt.NUEVO;
             } else {
                 // Ya existe: comparar valores
-                String diferencias = detectarDiferencias(doc, valorSinImpuestos, iva, importeTotal,
-                        fechaAutorizacion, fechaEmision);
+                // Para retenciones NO se comparan valores porque el TXT del SRI no reporta
+                // totales confiables para este tipo de comprobante.
+                boolean esRetencion = TIPO_RETENCION.equalsIgnoreCase(tipoComprobante)
+                        || TIPO_RETENCION_V2.equalsIgnoreCase(tipoComprobante);
+
+                String diferencias = esRetencion ? ""
+                        : detectarDiferencias(doc, valorSinImpuestos, iva, importeTotal,
+                                fechaAutorizacion, fechaEmision);
 
                 if (diferencias.isEmpty()) {
                     duplicados++;
@@ -438,46 +444,52 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             }
 
             // ── 5. Valor sin impuestos ──
-            String totalSinImpStr = getXmlValue(xmlDoc, "totalSinImpuestos");
-            if (!totalSinImpStr.isEmpty()) {
-                double totalSinImpXml = parseDouble(totalSinImpStr);
-                if (doc.getValorSinImpuestos() != null
-                        && Math.abs(totalSinImpXml - doc.getValorSinImpuestos()) > 0.01) {
-                    errores.add(errorDiff("valorSinImpuestos",
-                            String.valueOf(doc.getValorSinImpuestos()),
-                            String.valueOf(totalSinImpXml)));
-                }
-            }
+            // Para retenciones el TXT del SRI reporta 0.0 en este campo → no comparar
+            boolean esRetencionXml = TIPO_RETENCION.equalsIgnoreCase(doc.getTipoComprobante())
+                    || TIPO_RETENCION_V2.equalsIgnoreCase(doc.getTipoComprobante());
 
-            // ── 6. Importe total ──
-            String importeTotalStr = getXmlValue(xmlDoc, "importeTotal");
-            if (!importeTotalStr.isEmpty()) {
-                double importeTotalXml = parseDouble(importeTotalStr);
-                if (doc.getImporteTotal() != null
-                        && Math.abs(importeTotalXml - doc.getImporteTotal()) > 0.01) {
-                    errores.add(errorDiff("importeTotal",
-                            String.valueOf(doc.getImporteTotal()),
-                            String.valueOf(importeTotalXml)));
-                }
-            }
-
-            // ── 7. IVA (primer impuesto encontrado) ──
-            NodeList impuestos = xmlDoc.getElementsByTagName("totalImpuesto");
-            if (impuestos.getLength() > 0) {
-                double ivaXml = 0.0;
-                for (int i = 0; i < impuestos.getLength(); i++) {
-                    Element imp = (Element) impuestos.item(i);
-                    String codigoImp = getElementValue(imp, "codigo");
-                    if ("2".equals(codigoImp)) {
-                        ivaXml += parseDouble(getElementValue(imp, "valor"));
+            if (!esRetencionXml) {
+                String totalSinImpStr = getXmlValue(xmlDoc, "totalSinImpuestos");
+                if (!totalSinImpStr.isEmpty()) {
+                    double totalSinImpXml = parseDouble(totalSinImpStr);
+                    if (doc.getValorSinImpuestos() != null
+                            && Math.abs(totalSinImpXml - doc.getValorSinImpuestos()) > 0.01) {
+                        errores.add(errorDiff("valorSinImpuestos",
+                                String.valueOf(doc.getValorSinImpuestos()),
+                                String.valueOf(totalSinImpXml)));
                     }
                 }
-                if (doc.getIva() != null && Math.abs(ivaXml - doc.getIva()) > 0.01) {
-                    errores.add(errorDiff("iva",
-                            String.valueOf(doc.getIva()),
-                            String.valueOf(ivaXml)));
+
+                // ── 6. Importe total ──
+                String importeTotalStr = getXmlValue(xmlDoc, "importeTotal");
+                if (!importeTotalStr.isEmpty()) {
+                    double importeTotalXml = parseDouble(importeTotalStr);
+                    if (doc.getImporteTotal() != null
+                            && Math.abs(importeTotalXml - doc.getImporteTotal()) > 0.01) {
+                        errores.add(errorDiff("importeTotal",
+                                String.valueOf(doc.getImporteTotal()),
+                                String.valueOf(importeTotalXml)));
+                    }
                 }
-            }
+
+                // ── 7. IVA (primer impuesto encontrado) ──
+                NodeList impuestos = xmlDoc.getElementsByTagName("totalImpuesto");
+                if (impuestos.getLength() > 0) {
+                    double ivaXml = 0.0;
+                    for (int i = 0; i < impuestos.getLength(); i++) {
+                        Element imp = (Element) impuestos.item(i);
+                        String codigoImp = getElementValue(imp, "codigo");
+                        if ("2".equals(codigoImp)) {
+                            ivaXml += parseDouble(getElementValue(imp, "valor"));
+                        }
+                    }
+                    if (doc.getIva() != null && Math.abs(ivaXml - doc.getIva()) > 0.01) {
+                        errores.add(errorDiff("iva",
+                                String.valueOf(doc.getIva()),
+                                String.valueOf(ivaXml)));
+                    }
+                }
+            } // fin if (!esRetencionXml)
 
         } catch (Exception e) {
             Map<String, Object> err = new HashMap<>();
@@ -1395,8 +1407,140 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         Empresa empresa = em.find(Empresa.class, idEmpresa);
         Usuario usuario = em.find(Usuario.class, idUsuario);
 
+        // ══════════════════════════════════════════════════════════════════
+        // PASO 1 — Obtener proveedor y leer nodos del XML para validación
+        // ══════════════════════════════════════════════════════════════════
         Titular proveedor = obtenerOAutoCrearProveedor(doc.getRucEmisor(), doc.getRazonSocialEmisor(), xmlDoc, idUsuario);
 
+        NodeList retenciones = xmlDoc.getElementsByTagName("retencion");
+
+        // Datos del documento sustento (para validación cruzada con CXC)
+        String numAutDocSustento = getXmlValue(xmlDoc, "numAutDocSustento");
+        String numDocSustento    = getXmlValue(xmlDoc, "numDocSustento");
+
+        // ══════════════════════════════════════════════════════════════════
+        // PASO 2 — Validaciones bloqueantes (sin grabar nada si alguna falla)
+        // ══════════════════════════════════════════════════════════════════
+        List<Map<String, Object>> bloqueantes = new ArrayList<>();
+
+        // 2a. Cuenta contable CxP del proveedor
+        boolean titularTieneCuenta = verificarCuentaContableProveedor(proveedor.getCodigo(), idEmpresa);
+        if (!titularTieneCuenta) {
+            Map<String, Object> b = new HashMap<>();
+            b.put("tipo", "PROVEEDOR_SIN_CUENTA");
+            b.put("detalle", "El proveedor '" + proveedor.getNombre() + "' (RUC: " + proveedor.getIdentificacion()
+                    + ") no tiene cuenta contable CxP asignada. Configúrela en Contabilidad → Cuentas por Titular.");
+            bloqueantes.add(b);
+        }
+
+        // 2b. Tipo de asiento para Retenciones de Compra configurado en BD
+        try {
+            Long idTipoAsiento = tipoAsientoService.codigoByAlterno(
+                    com.saa.rubros.TipoAsientos.RETENCIONES_RECIBIDAS, idEmpresa);
+            if (idTipoAsiento == null) {
+                Map<String, Object> b = new HashMap<>();
+                b.put("tipo", "TIPO_ASIENTO_NO_CONFIGURADO");
+                b.put("detalle", "No existe el Tipo de Asiento con código alterno "
+                        + com.saa.rubros.TipoAsientos.RETENCIONES_RECIBIDAS
+                        + " para Retenciones de Compra. Configúrelo en Contabilidad → Tipos de Asiento.");
+                bloqueantes.add(b);
+            }
+        } catch (Throwable e) {
+            Map<String, Object> b = new HashMap<>();
+            b.put("tipo", "TIPO_ASIENTO_NO_CONFIGURADO");
+            b.put("detalle", "No existe el Tipo de Asiento para Retenciones de Compra (codigoAlterno="
+                    + com.saa.rubros.TipoAsientos.RETENCIONES_RECIBIDAS
+                    + "). Configúrelo en Contabilidad → Tipos de Asiento.");
+            bloqueantes.add(b);
+        }
+
+        // 2c. Cada código de retención del XML debe tener cuenta en TSRI (PGS)
+        //     codigo=1 (Renta) → lsri.tabla='608' | codigo=2 (IVA) → lsri.tabla='20'
+        List<String> codigosSinCuenta = new ArrayList<>();
+        for (int i = 0; i < retenciones.getLength(); i++) {
+            Element el = (Element) retenciones.item(i);
+            String codImpuesto  = getElementValue(el, "codigo");
+            String codRetencion = getElementValue(el, "codigoRetencion");
+            String lsriTabla = "1".equals(codImpuesto) ? "608" : ("2".equals(codImpuesto) ? "20" : null);
+            if (lsriTabla == null) {
+                codigosSinCuenta.add("Tipo de impuesto desconocido: codigo=" + codImpuesto
+                        + " (codigoRetencion=" + codRetencion + ")");
+                continue;
+            }
+            try {
+                @SuppressWarnings("unchecked")
+                List<?> cuentas = em.createQuery(
+                        "SELECT t.planCuenta FROM TsriCompra t "
+                        + "WHERE t.lsri.tabla = :lsri AND t.codigo = :cod "
+                        + "AND t.estado = 1 AND t.planCuenta IS NOT NULL")
+                        .setParameter("lsri", lsriTabla)
+                        .setParameter("cod", codRetencion)
+                        .setMaxResults(1).getResultList();
+                if (cuentas.isEmpty() || cuentas.get(0) == null) {
+                    codigosSinCuenta.add("codigoRetencion=" + codRetencion
+                            + " (tipo=" + codImpuesto + ", lsri=" + lsriTabla + ")");
+                }
+            } catch (Exception ex) {
+                codigosSinCuenta.add("codigoRetencion=" + codRetencion
+                        + " (error al consultar TSRI: " + ex.getMessage() + ")");
+            }
+        }
+        if (!codigosSinCuenta.isEmpty()) {
+            Map<String, Object> b = new HashMap<>();
+            b.put("tipo", "CODIGOS_RETENCION_SIN_CUENTA");
+            b.put("detalle", "Los siguientes códigos de retención no tienen cuenta contable en TSRI: "
+                    + codigosSinCuenta
+                    + ". Configúrelos en Compras → Tipos SRI.");
+            b.put("codigos", codigosSinCuenta);
+            bloqueantes.add(b);
+        }
+
+        // 2d. Verificar documento sustento en CXC — SOLO ADVERTENCIA, no bloquea el proceso
+        String advertenciaDocSustento = null;
+        if (!numAutDocSustento.isEmpty() || !numDocSustento.isEmpty()) {
+            boolean docSustentoEncontrado = false;
+            try {
+                if (!numAutDocSustento.isEmpty()) {
+                    Long cnt = (Long) em.createQuery(
+                            "SELECT COUNT(f) FROM Factura f "
+                            + "WHERE f.autorizacion = :val AND f.estado = 1")
+                            .setParameter("val", numAutDocSustento)
+                            .getSingleResult();
+                    docSustentoEncontrado = cnt != null && cnt > 0;
+                }
+                if (!docSustentoEncontrado && !numDocSustento.isEmpty()) {
+                    Long cnt = (Long) em.createQuery(
+                            "SELECT COUNT(f) FROM Factura f "
+                            + "WHERE f.numero = :val AND f.estado = 1")
+                            .setParameter("val", numDocSustento)
+                            .getSingleResult();
+                    docSustentoEncontrado = cnt != null && cnt > 0;
+                }
+            } catch (Exception ex) {
+                System.err.println("⚠ Error al verificar documento sustento en CXC: " + ex.getMessage());
+                docSustentoEncontrado = true;
+            }
+            if (!docSustentoEncontrado) {
+                advertenciaDocSustento = "El documento sustento no fue encontrado en CXC. "
+                        + "Autorización: '" + numAutDocSustento + "' | Número: '" + numDocSustento + "'.";
+                System.out.println("⚠ ADVERTENCIA doc sustento: " + advertenciaDocSustento);
+            }
+        }
+
+        // Si hay bloqueantes → cortar sin grabar nada
+        if (!bloqueantes.isEmpty()) {
+            System.out.println("⚠ Registro de RetencionCompra detenido. Bloqueantes: " + bloqueantes);
+            Map<String, Object> r = new HashMap<>();
+            r.put("pendienteClasificacion", true);
+            r.put("bloqueantes", bloqueantes);
+            r.put("mensaje", "No se puede registrar la retención. Hay " + bloqueantes.size()
+                    + " condición(es) bloqueante(s) que deben resolverse primero.");
+            return r;
+        }
+
+        // ══════════════════════════════════════════════════════════════════
+        // PASO 3 — Todas las condiciones OK → grabar en BD
+        // ══════════════════════════════════════════════════════════════════
         String numeroAutorizacion = getXmlValueOuter(xmlContent, "numeroAutorizacion");
         if (numeroAutorizacion.isEmpty()) numeroAutorizacion = doc.getClaveAcceso();
         String fechaAutorizacionStr = getXmlValueOuter(xmlContent, "fechaAutorizacion");
@@ -1421,9 +1565,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         rc.setEstadoEmision(2L);
         rc = retencionCompraDaoService.save(rc, null);
 
-        NodeList impuestos = xmlDoc.getElementsByTagName("impuesto");
-        for (int i = 0; i < impuestos.getLength(); i++) {
-            Element el = (Element) impuestos.item(i);
+        for (int i = 0; i < retenciones.getLength(); i++) {
+            Element el = (Element) retenciones.item(i);
             DetalleRetencionCompra d = new DetalleRetencionCompra();
             d.setRetencion(rc);
             d.setCodImpuesto(getElementValue(el, "codigo"));
@@ -1445,6 +1588,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         r.put("idDocumentoBD", rc.getId());
         r.put("tipoTablaDestino", "RETENCION_COMPRA");
         r.put("mensaje", "RetencionCompra registrada con id=" + rc.getId());
+        if (advertenciaDocSustento != null) r.put("advertenciaDocSustento", advertenciaDocSustento);
         return r;
     }
 
@@ -1454,8 +1598,139 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         Empresa empresa = em.find(Empresa.class, idEmpresa);
         Usuario usuario = em.find(Usuario.class, idUsuario);
 
+        // ══════════════════════════════════════════════════════════════════
+        // PASO 1 — Obtener proveedor y leer nodos del XML para validación
+        // ══════════════════════════════════════════════════════════════════
         Titular proveedor = obtenerOAutoCrearProveedor(doc.getRucEmisor(), doc.getRazonSocialEmisor(), xmlDoc, idUsuario);
 
+        NodeList retenciones = xmlDoc.getElementsByTagName("retencion");
+
+        // Datos del documento sustento (para validación cruzada con CXC)
+        String numAutDocSustento = getXmlValue(xmlDoc, "numAutDocSustento");
+        String numDocSustento    = getXmlValue(xmlDoc, "numDocSustento");
+
+        // ══════════════════════════════════════════════════════════════════
+        // PASO 2 — Validaciones bloqueantes (sin grabar nada si alguna falla)
+        // ══════════════════════════════════════════════════════════════════
+        List<Map<String, Object>> bloqueantes = new ArrayList<>();
+
+        // 2a. Cuenta contable CxP del proveedor
+        boolean titularTieneCuenta = verificarCuentaContableProveedor(proveedor.getCodigo(), idEmpresa);
+        if (!titularTieneCuenta) {
+            Map<String, Object> b = new HashMap<>();
+            b.put("tipo", "PROVEEDOR_SIN_CUENTA");
+            b.put("detalle", "El proveedor '" + proveedor.getNombre() + "' (RUC: " + proveedor.getIdentificacion()
+                    + ") no tiene cuenta contable CxP asignada. Configúrela en Contabilidad → Cuentas por Titular.");
+            bloqueantes.add(b);
+        }
+
+        // 2b. Tipo de asiento para Retenciones de Compra V2 configurado en BD
+        try {
+            Long idTipoAsiento = tipoAsientoService.codigoByAlterno(
+                    com.saa.rubros.TipoAsientos.RETENCIONES_RECIBIDAS_V2, idEmpresa);
+            if (idTipoAsiento == null) {
+                Map<String, Object> b = new HashMap<>();
+                b.put("tipo", "TIPO_ASIENTO_NO_CONFIGURADO");
+                b.put("detalle", "No existe el Tipo de Asiento con código alterno "
+                        + com.saa.rubros.TipoAsientos.RETENCIONES_RECIBIDAS_V2
+                        + " para Retenciones de Compra V2. Configúrelo en Contabilidad → Tipos de Asiento.");
+                bloqueantes.add(b);
+            }
+        } catch (Throwable e) {
+            Map<String, Object> b = new HashMap<>();
+            b.put("tipo", "TIPO_ASIENTO_NO_CONFIGURADO");
+            b.put("detalle", "No existe el Tipo de Asiento para Retenciones de Compra V2 (codigoAlterno="
+                    + com.saa.rubros.TipoAsientos.RETENCIONES_RECIBIDAS_V2
+                    + "). Configúrelo en Contabilidad → Tipos de Asiento.");
+            bloqueantes.add(b);
+        }
+
+        // 2c. Cada código de retención del XML debe tener cuenta en TSRI
+        List<String> codigosSinCuenta = new ArrayList<>();
+        for (int i = 0; i < retenciones.getLength(); i++) {
+            Element el = (Element) retenciones.item(i);
+            String codImpuesto  = getElementValue(el, "codigo");
+            String codRetencion = getElementValue(el, "codigoRetencion");
+            String lsriTabla = "1".equals(codImpuesto) ? "608" : ("2".equals(codImpuesto) ? "20" : null);
+            if (lsriTabla == null) {
+                codigosSinCuenta.add("Tipo de impuesto desconocido: codigo=" + codImpuesto
+                        + " (codigoRetencion=" + codRetencion + ")");
+                continue;
+            }
+            try {
+                @SuppressWarnings("unchecked")
+                List<?> cuentas = em.createQuery(
+                        "SELECT t.planCuenta FROM TsriCompra t "
+                        + "WHERE t.lsri.tabla = :lsri AND t.codigo = :cod "
+                        + "AND t.estado = 1 AND t.planCuenta IS NOT NULL")
+                        .setParameter("lsri", lsriTabla)
+                        .setParameter("cod", codRetencion)
+                        .setMaxResults(1).getResultList();
+                if (cuentas.isEmpty() || cuentas.get(0) == null) {
+                    codigosSinCuenta.add("codigoRetencion=" + codRetencion
+                            + " (tipo=" + codImpuesto + ", lsri=" + lsriTabla + ")");
+                }
+            } catch (Exception ex) {
+                codigosSinCuenta.add("codigoRetencion=" + codRetencion
+                        + " (error al consultar TSRI: " + ex.getMessage() + ")");
+            }
+        }
+        if (!codigosSinCuenta.isEmpty()) {
+            Map<String, Object> b = new HashMap<>();
+            b.put("tipo", "CODIGOS_RETENCION_SIN_CUENTA");
+            b.put("detalle", "Los siguientes códigos de retención no tienen cuenta contable en TSRI: "
+                    + codigosSinCuenta
+                    + ". Configúrelos en Compras → Tipos SRI.");
+            b.put("codigos", codigosSinCuenta);
+            bloqueantes.add(b);
+        }
+
+        // 2d. Verificar documento sustento en CXC — SOLO ADVERTENCIA, no bloquea el proceso
+        String advertenciaDocSustento = null;
+        if (!numAutDocSustento.isEmpty() || !numDocSustento.isEmpty()) {
+            boolean docSustentoEncontrado = false;
+            try {
+                if (!numAutDocSustento.isEmpty()) {
+                    Long cnt = (Long) em.createQuery(
+                            "SELECT COUNT(f) FROM Factura f "
+                            + "WHERE f.autorizacion = :val AND f.estado = 1")
+                            .setParameter("val", numAutDocSustento)
+                            .getSingleResult();
+                    docSustentoEncontrado = cnt != null && cnt > 0;
+                }
+                if (!docSustentoEncontrado && !numDocSustento.isEmpty()) {
+                    Long cnt = (Long) em.createQuery(
+                            "SELECT COUNT(f) FROM Factura f "
+                            + "WHERE f.numero = :val AND f.estado = 1")
+                            .setParameter("val", numDocSustento)
+                            .getSingleResult();
+                    docSustentoEncontrado = cnt != null && cnt > 0;
+                }
+            } catch (Exception ex) {
+                System.err.println("⚠ Error al verificar documento sustento en CXC: " + ex.getMessage());
+                docSustentoEncontrado = true;
+            }
+            if (!docSustentoEncontrado) {
+                advertenciaDocSustento = "El documento sustento no fue encontrado en CXC. "
+                        + "Autorización: '" + numAutDocSustento + "' | Número: '" + numDocSustento + "'.";
+                System.out.println("⚠ ADVERTENCIA doc sustento V2: " + advertenciaDocSustento);
+            }
+        }
+
+        // Si hay bloqueantes → cortar sin grabar nada
+        if (!bloqueantes.isEmpty()) {
+            System.out.println("⚠ Registro de RetencionCompraV2 detenido. Bloqueantes: " + bloqueantes);
+            Map<String, Object> r = new HashMap<>();
+            r.put("pendienteClasificacion", true);
+            r.put("bloqueantes", bloqueantes);
+            r.put("mensaje", "No se puede registrar la retención V2. Hay " + bloqueantes.size()
+                    + " condición(es) bloqueante(s) que deben resolverse primero.");
+            return r;
+        }
+
+        // ══════════════════════════════════════════════════════════════════
+        // PASO 3 — Todas las condiciones OK → grabar en BD
+        // ══════════════════════════════════════════════════════════════════
         String numeroAutorizacion = getXmlValueOuter(xmlContent, "numeroAutorizacion");
         if (numeroAutorizacion.isEmpty()) numeroAutorizacion = doc.getClaveAcceso();
         String fechaAutorizacionStr = getXmlValueOuter(xmlContent, "fechaAutorizacion");
@@ -1480,14 +1755,28 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         rc.setEstadoEmision(2L);
         rc = retencionCompraV2DaoService.save(rc, null);
 
-        // TODO: PathRetencionCompra solo tiene FK a RetencionCompra (V1).
-        // Pendiente crear entidad PathRetencionCompraV2 para guardar el path correctamente.
-        // No se persiste path aquí para evitar FK nula en tabla PRCM.
+        // Grabar detalles de retención V2
+        for (int i = 0; i < retenciones.getLength(); i++) {
+            Element el = (Element) retenciones.item(i);
+            com.saa.model.cxp.DetalleRetencionCompraV2 d = new com.saa.model.cxp.DetalleRetencionCompraV2();
+            d.setRetencionCompraV2(rc);
+            d.setCodImpuesto(getElementValue(el, "codigo"));
+            d.setCodRetencion(getElementValue(el, "codigoRetencion"));
+            d.setBaseImponible(parseDouble(getElementValue(el, "baseImponible")));
+            d.setPorcentajeReten(parseDouble(getElementValue(el, "porcentajeRetener")));
+            d.setValorReten(parseDouble(getElementValue(el, "valorRetenido")));
+            d.setEstado(Long.valueOf(Estado.ACTIVO));
+            em.persist(d);
+        }
+
+        // TODO: Pendiente crear entidad PathRetencionCompraV2 para guardar el path.
+        // Por ahora no se persiste path para evitar FK nula.
 
         Map<String, Object> r = new HashMap<>();
         r.put("idDocumentoBD", rc.getId());
         r.put("tipoTablaDestino", "RETENCION_COMPRA_V2");
         r.put("mensaje", "RetencionCompraV2 registrada con id=" + rc.getId());
+        if (advertenciaDocSustento != null) r.put("advertenciaDocSustento", advertenciaDocSustento);
         return r;
     }
 
