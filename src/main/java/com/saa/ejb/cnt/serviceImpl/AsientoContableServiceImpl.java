@@ -478,11 +478,12 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             detalleAsientoService.saveDetalle(linea);
         }
 
-        // 6. Validar que debe == haber
+        // 6. Validar que debe == haber — si no cuadra, lanzar excepción para revertir todo
         boolean cuadrado = detalleAsientoService.validaDebeHaber(asiento.getCodigo());
         if (!cuadrado) {
-            System.err.println("⚠ ADVERTENCIA: El asiento " + asiento.getCodigo()
-                    + " no está cuadrado (debe ≠ haber). Revisar cuentas configuradas.");
+            throw new IncomeException("El asiento " + asiento.getCodigo()
+                    + " no está cuadrado (debe ≠ haber). Verifique las cuentas contables configuradas "
+                    + "para los grupos de producto, IVA y proveedor.");
         }
 
         System.out.println("✓ Asiento contable generado: " + asiento.getNumeroAlterno()
@@ -1280,18 +1281,19 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         }
 
         // ── DEBE: IVA crédito tributario ──────────────────────────────────────
-        Map<String, Double> ivaMap = new LinkedHashMap<>();
+        // Agrupa por codigoIVASRI del detalle y busca la cuenta en PGS.TSRI
+        // donde lsri.tabla = '17' y codigo = codigoIVASRI
+        Map<Long, Double> ivaMap = new LinkedHashMap<>();
         for (com.saa.model.cxp.DetalleFacturaCompra d : detalles) {
-            if (d.getValorIVA() != null && d.getValorIVA() > 0 && d.getPorcentajeIVA() != null) {
-                String codSRI = mapPorcentajeIVAaCodigo(d.getPorcentajeIVA());
-                ivaMap.merge(codSRI, nvl(d.getValorIVA()), Double::sum);
+            if (d.getValorIVA() != null && d.getValorIVA() > 0 && d.getCodigoIVASRI() != null) {
+                ivaMap.merge(d.getCodigoIVASRI(), nvl(d.getValorIVA()), Double::sum);
             }
         }
-        for (Map.Entry<String, Double> e : ivaMap.entrySet()) {
-            PlanCuenta pcIVA = obtenerCuentaIVACxp(e.getKey());
+        for (Map.Entry<Long, Double> e : ivaMap.entrySet()) {
+            PlanCuenta pcIVA = obtenerCuentaIVACxpPorCodigo(e.getKey());
             if (pcIVA == null)
                 throw new IncomeException("No hay cuenta de IVA crédito tributario para código SRI: "
-                        + e.getKey() + ". Configure en Compras → Tipos SRI.");
+                        + e.getKey() + " (PGS.TSRI lsri.tabla=17). Configure en Compras → Tipos SRI.");
             DetalleAsiento ln = new DetalleAsiento();
             ln.setPlanCuenta(pcIVA); ln.setNumeroCuenta(pcIVA.getCuentaContable());
             ln.setNombreCuenta(pcIVA.getNombre());
@@ -1671,6 +1673,30 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     // ---------------------------------------------------------------
     // Helpers privados CXP
     // ---------------------------------------------------------------
+
+    /**
+     * Obtiene la cuenta contable de IVA crédito tributario (compras) desde PGS.TSRI
+     * donde lsri.tabla = '17' y codigo = codigoIVASRI (código que viene directamente de la factura SRI).
+     */
+    private PlanCuenta obtenerCuentaIVACxpPorCodigo(Long codigoIVASRI) {
+        try {
+            @SuppressWarnings("unchecked")
+            List<PlanCuenta> r = em.createQuery(
+                    "SELECT t.planCuenta FROM TsriCompra t "
+                    + "WHERE t.lsri.tabla = '17' "
+                    + "AND t.codigo = :cod "
+                    + "AND t.estado = 1 "
+                    + "AND t.planCuenta IS NOT NULL")
+                    .setParameter("cod", String.valueOf(codigoIVASRI))
+                    .setMaxResults(1).getResultList();
+            if (!r.isEmpty() && r.get(0) != null) return r.get(0);
+            System.err.println("⚠ No se encontró cuenta IVA en PGS.TSRI para codigoIVASRI=" + codigoIVASRI + " (lsri.tabla=17)");
+            return null;
+        } catch (Exception e) {
+            System.err.println("⚠ obtenerCuentaIVACxpPorCodigo: " + e.getMessage());
+            return null;
+        }
+    }
 
     /**
      * Obtiene la cuenta de IVA crédito tributario (compras) desde LSRI tabla='17'.

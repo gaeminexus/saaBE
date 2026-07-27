@@ -25,4 +25,10 @@ public interface ResultadoCargaTxt {
 
     /** Documento activo del período que no apareció en esta nueva carga del TXT. */
     int DESAPARECIDO = 5;
+
+    /** Documento ya registrado en BD con asiento contable, pero aparece con diferencias de valores en el nuevo TXT. Solo informativo. */
+    int REGISTRADO_CON_DIFERENCIAS = 6;
+
+    /** Documento ya registrado en BD con asiento contable que no apareció en esta nueva carga del TXT. Solo informativo. */
+    int REGISTRADO_DESAPARECIDO = 7;
 }

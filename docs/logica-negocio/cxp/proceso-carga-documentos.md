@@ -1,652 +1,302 @@
 # Proceso de Carga de Documentos CXP
 
-> **Archivo de referencia principal** — reemplaza a `ACTUALIZACION_CARGA_DOCUMENTOS_CXP.md`.  
-> Actualizar aquí cada vez que se afina el proceso.  
-> Última revisión: 2026-07-23
+> **Archivo de referencia principal.**  
+> Última revisión: 2026-07-27
 
 **Módulo:** CXP - Cuentas por Pagar  
 **Stack:** Jakarta EE · WildFly · Oracle DB · Schema PGS
 
 ---
 
-## 1. Contexto y arquitectura
-
-### Problema original
-La tabla `DCTX` mezclaba dos responsabilidades: registrar líneas del TXT y hacer seguimiento del ciclo de vida del documento. Esto provocaba múltiples registros para un mismo documento cuando aparecía en varias cargas.
-
-### Solución implementada
-Tres tablas con responsabilidades separadas:
+## 1. Arquitectura — tres tablas
 
 | Tabla | Entidad Java | Propósito |
 |---|---|---|
 | `PGS.CRTX` | `CargaArchivoTxt` | Cabecera de cada archivo TXT cargado |
 | `PGS.DCXP` | `DocumentoCxp` | **Un solo registro por documento** (por `claveAcceso`). Ciclo de vida completo |
-| `PGS.DCTX` | `DetalleCargaTxt` | Una línea por aparición en un TXT. N líneas posibles para el mismo documento. FK a DCXP |
-
-```
-CRTX (CargaArchivoTxt)
-  └── DCTX (DetalleCargaTxt) ──FK──► DCXP (DocumentoCxp)
-         línea del archivo              documento único por empresa
-         resultado: NUEVO|DUPLICADO     estadoDocumento: 1..6
-                    NOVEDAD|IGNORADO    pathXml, idDocumentoBD, etc.
-```
+| `PGS.DCTX` | `DetalleCargaTxt` | Una línea por aparición en un TXT. FK a DCXP |
 
 ### Archivos Java clave
 
 | Archivo | Paquete | Rol |
 |---|---|---|
-| `ProcesoCargaDocumentosService.java` | `com.saa.ejb.cxp.service` | Interfaz del servicio principal |
-| `ProcesoCargaDocumentosServiceImpl.java` | `com.saa.ejb.cxp.serviceImpl` | Implementación completa de las 5 fases + flujo unificado |
-| `ProcesoCargaDocumentosRest.java` | `com.saa.ws.rest.cxp` | Endpoints REST del proceso |
-| `GrupoProductoPagoRest.java` | `com.saa.ws.rest.cxp` | CRUD de grupos de producto (con protección del tipo POR_CLASIFICAR) |
-| `DocumentoCxp.java` | `com.saa.model.cxp` | Entidad principal del ciclo de vida |
-| `CargaArchivoTxt.java` | `com.saa.model.cxp` | Cabecera de carga TXT |
-| `Periodo.java` | `com.saa.model.cnt` | Período contable del módulo CNT (tabla CNT.PRDO) |
-| `TipoGrupoProductos.java` | `com.saa.rubros` | Constantes de tipo de grupo: BIEN=1, SERVICIO=2, POR_CLASIFICAR=3 |
+| `ProcesoCargaDocumentosServiceImpl.java` | `com.saa.ejb.cxp.serviceImpl` | Implementación completa de las fases |
+| `ProcesoCargaDocumentosRest.java` | `com.saa.ws.rest.cxp` | Endpoints REST |
+| `AsientoContableServiceImpl.java` | `com.saa.ejb.cnt.serviceImpl` | Generación de asientos contables CXP |
+| `ResultadoCargaTxt.java` | `com.saa.rubros` | Constantes de resultado por línea (rubro 174) |
+| `EstadoDocumentoCxp.java` | `com.saa.rubros` | Constantes de estado del documento (rubro 175) |
+| `TipoGrupoProductos.java` | `com.saa.rubros` | BIEN=1, SERVICIO=2, POR_CLASIFICAR=3 |
+| `TipoAsientos.java` | `com.saa.rubros` | codigoAlterno de tipos de asiento CXP |
 
 ---
 
-## 2. Modelo de datos
+## 2. Estados del DocumentoCxp (rubro 175)
 
-### `DCXP` — DocumentoCxp
-
-| Campo | Tipo | Descripción |
-|---|---|---|
-| `id` | NUMBER | PK |
-| `empresa` | NUMBER(11) | FK a SCP.PJRQ — empresa receptora |
-| `claveAcceso` | VARCHAR2(100) | UNIQUE — clave SRI del documento |
-| `rucEmisor` | VARCHAR2(20) | RUC del proveedor |
-| `razonSocialEmisor` | VARCHAR2(500) | Razón social del proveedor |
-| `tipoComprobante` | VARCHAR2(100) | Factura / Nota de Crédito / etc. |
-| `serieComprobante` | VARCHAR2(50) | Ej: `001-001-000000123` |
-| `fechaAutorizacion` | TIMESTAMP | Fecha de autorización SRI |
-| `fechaEmision` | DATE | Fecha de emisión del documento |
-| `identificacionReceptor` | VARCHAR2(20) | RUC receptor (empresa) |
-| `valorSinImpuestos` | NUMBER(14,2) | Subtotal |
-| `iva` | NUMBER(12,2) | IVA |
-| `importeTotal` | NUMBER(14,2) | Total |
-| `estadoDocumento` | NUMBER(2) | Ver tabla de estados |
-| `pathXml` | VARCHAR2(2000) | Path físico del XML en el servidor |
-| `idDocumentoBD` | NUMBER(11) | ID del registro en la tabla destino (ej: FacturaCompra.id) |
-| `tipoTablaDestino` | VARCHAR2(50) | `FACTURA_COMPRA` / `NOTA_CREDITO_COMPRA` / etc. |
-| `novedad` | VARCHAR2(2000) | Descripción de diferencias detectadas entre cargas |
-| `estadoNovedad` | NUMBER(2) | 1=PENDIENTE 2=REEMPLAZADO 3=MANTENIDO |
-| `fechaCargaXml` | TIMESTAMP | Cuándo se subió el XML |
-| `usuarioCargaXml` | NUMBER(11) | FK a SCP.PJRQ |
-| `fechaRegistroBD` | TIMESTAMP | Cuándo se registró en tablas CXP |
-| `usuarioRegistroBD` | NUMBER(11) | FK a SCP.PJRQ |
-| `fechaReversion` | TIMESTAMP | Cuándo se revirtió |
-| `usuarioReversion` | NUMBER(11) | FK a SCP.PJRQ |
-| `observacion` | VARCHAR2(2000) | Errores o notas adicionales |
-| **`periodoContable`** | **NUMBER(11)** | **FK a CNT.PRDO — período contable del documento (nuevo)** |
-
-### `DCTX` — DetalleCargaTxt
-
-| Campo | Tipo | Descripción |
-|---|---|---|
-| `id` | NUMBER | PK |
-| `cargaTxt.id` | NUMBER(11) | FK a CRTX |
-| `documento.id` | NUMBER(11) | FK a DCXP |
-| `valorSinImpuestosCarga` | NUMBER(14,2) | Snapshot del valor en esta carga |
-| `ivaCarga` | NUMBER(12,2) | Snapshot del IVA en esta carga |
-| `importeTotalCarga` | NUMBER(14,2) | Snapshot del total en esta carga |
-| `fechaAutorizacionCarga` | TIMESTAMP | Snapshot fecha autorización |
-| `fechaEmisionCarga` | DATE | Snapshot fecha emisión |
-| `resultado` | VARCHAR2(20) | `NUEVO` / `DUPLICADO` / `NOVEDAD` / `IGNORADO` |
-| `observacion` | VARCHAR2(2000) | Detalle adicional |
-
-### `CRTX` — CargaArchivoTxt
-
-| Campo | Tipo | Descripción |
-|---|---|---|
-| `id` | NUMBER | PK |
-| `empresa` | NUMBER(11) | FK a SCP.PJRQ |
-| `usuario` | NUMBER(11) | FK a SCP.PJRQ |
-| `fechaCarga` | TIMESTAMP | Fecha/hora de la carga |
-| `nombreArchivo` | VARCHAR2(500) | Nombre original del archivo TXT |
-| `totalRegistros` | NUMBER(11) | Total de líneas procesadas |
-| `registrosNuevos` | NUMBER(11) | Documentos nuevos |
-| `registrosDuplicados` | NUMBER(11) | Documentos ya existentes sin diferencias |
-| `registrosNovedad` | NUMBER(11) | Documentos con diferencias de valores + desaparecidos |
-| `estado` | NUMBER(2) | 1=PROCESADO 2=ERROR_PARCIAL |
-| **`periodoContable`** | **NUMBER(11)** | **FK a CNT.PRDO — período contable de esta carga (nuevo)** |
-
----
-
-## 3. Estados del DocumentoCxp
-
-### `estadoDocumento`
-
-| Valor | Nombre | Descripción | Acción disponible en frontend |
+| Valor | Nombre | Descripción | Botón frontend |
 |---|---|---|---|
-| `1` | LEIDO | Leído del TXT, esperando XML | Botón "Cargar XML y Registrar" |
-| `2` | XML_CARGADO | XML validado y guardado *(transitorio interno)* | — |
-| `3` | REGISTRADO_BD | Registrado en tablas CXP | Botón "Revertir" |
-| `4` | ERROR | Falló algún paso (ver campo `observacion`) | Botón "Reintentar" |
-| `5` | NOVEDAD | Valores distintos detectados respecto a carga anterior | Botón "Resolver novedad" |
-| `6` | REVERTIDO | Registros de BD eliminados | Botón "Cargar XML y Registrar" nuevamente |
+| `1` | LEIDO | Leído del TXT, pendiente de XML | "Cargar XML y Registrar" |
+| `2` | XML_CARGADO | Transitorio interno — rara vez visible | — |
+| `3` | REGISTRADO_BD | Registrado en tablas CXP + asiento contable generado | "Revertir" |
+| `4` | ERROR | Falló algún paso. Ver campo `observacion` | "Reintentar" |
+| `5` | NOVEDAD | Diferencias detectadas o desaparecido en recarga | "Resolver novedad" |
+| `6` | REVERTIDO | BD revertida y asiento anulado | "Cargar XML y Registrar" |
 
-> ⚠️ El estado `2 (XML_CARGADO)` es transitorio. Con el endpoint unificado `/procesarXml` el documento pasa directamente de `1` a `3`. Solo queda en `2` si se usan los endpoints legacy separados.
-
-### `estadoNovedad`
-
-| Valor | Descripción |
-|---|---|
-| `1` | Pendiente de resolución |
-| `2` | Reemplazado |
-| `3` | Mantenido (usuario decidió no cambiar) |
+> ⚠️ El estado `2` es transitorio. El endpoint `/procesarXml/{id}` pasa directamente de `1 → 3`.
 
 ---
 
-## 4. Tablas destino por tipo de comprobante
+## 3. Tablas destino por tipo de comprobante
 
-| `tipoComprobante` (TXT/XML) | `tipoTablaDestino` | Tablas que se llenan | Maneja POR_CLASIFICAR |
+| `tipoComprobante` | `tipoTablaDestino` | Tablas que se llenan | Validaciones bloqueantes |
 |---|---|---|---|
-| `Factura` | `FACTURA_COMPRA` | `FacturaCompra` + `DetalleFacturaCompra` + `FormaPagoFacturaCompra` + `PathFacturaCompra` | ✅ Sí |
-| `Nota de Crédito` | `NOTA_CREDITO_COMPRA` | `NotaCreditoCompra` + `DetalleNotaCreditoCompra` + `PathNotaCreditoCompra` | ❌ No |
-| `Nota de Débito` | `NOTA_DEBITO_COMPRA` | `NotaDebitoCompra` + `DetalleNotaDebitoCompra` + `PathNotaDebitoCompra` | ❌ No |
-| `Liquidación de compra` | `LIQUIDACION_COMPRA_COMPRA` | `LiquidacionCompraCompra` + `DetalleLiquidacionCompraCompra` + `PathLiquidacionCompraCompra` | ❌ No* |
-| `Comprobante de Retención` | `RETENCION_COMPRA` | `RetencionCompra` + `DetalleRetencionCompra` + `PathRetencionCompra` | ❌ No |
-| `Comprobante de Retención electrónica versión 2.0` | `RETENCION_COMPRA_V2` | `RetencionCompraV2` *(sin path — ver DT-1)* | ❌ No |
-
-> (*) La liquidación de compra tiene líneas de detalle pero no usa el modelo de `ProductoPago`, por lo que no requiere clasificación.
+| `Factura` | `FACTURA_COMPRA` | `FacturaCompra` + `DetalleFacturaCompra` + `FormaPagoFacturaCompra` + `PathFacturaCompra` | ✅ Implementadas |
+| `Nota de Crédito` | `NOTA_CREDITO_COMPRA` | `NotaCreditoCompra` + `DetalleNotaCreditoCompra` + `PathNotaCreditoCompra` | ⚠️ Pendiente de pulir |
+| `Nota de Débito` | `NOTA_DEBITO_COMPRA` | `NotaDebitoCompra` + `DetalleNotaDebitoCompra` + `PathNotaDebitoCompra` | ⚠️ Pendiente de pulir |
+| `Liquidación de compra` | `LIQUIDACION_COMPRA_COMPRA` | `LiquidacionCompraCompra` + `DetalleLiquidacionCompraCompra` + `PathLiquidacionCompraCompra` | ⚠️ Pendiente de pulir |
+| `Comprobante de Retención` | `RETENCION_COMPRA` | `RetencionCompra` + `DetalleRetencionCompra` + `PathRetencionCompra` | ⚠️ Pendiente de pulir |
+| `Comprobante de Retención electrónica versión 2.0` | `RETENCION_COMPRA_V2` | `RetencionCompraV2` *(sin path aún)* | ⚠️ Pendiente de pulir |
 
 ---
 
-## 5. Grupo de productos "POR CLASIFICAR"
+## 4. FASE 1 — Carga del TXT
 
-### Concepto
-Cuando se procesa un XML de factura de compra con productos que no existen en el sistema, en lugar de interrumpir el proceso, el backend los **crea automáticamente** en un grupo especial identificado por `rubroTipoGrupoH = 3 (POR_CLASIFICAR)`.
+**Endpoint:** `POST /carga-documentos/cargarTxt`
 
-Esto permite que:
-- El documento quede registrado en BD sin interrupciones, incluso con muchos productos nuevos.
-- El usuario clasifique los productos después, desde una pantalla dedicada.
-- La contabilización quede **bloqueada** hasta que todos los productos tengan un grupo definitivo.
-
-### Constantes (`TipoGrupoProductos.java`)
-```java
-public interface TipoGrupoProductos {
-    int BIEN           = 1;  // Grupo de bienes (creado por usuario)
-    int SERVICIO       = 2;  // Grupo de servicios (creado por usuario)
-    int POR_CLASIFICAR = 3;  // Uso exclusivo del backend — protegido en el REST
+**Body:**
+```json
+{
+  "contenidoTxt": "...",
+  "nombreArchivo": "facturas-julio-2026.txt",
+  "idEmpresa": 1236,
+  "idUsuario": 5,
+  "idPeriodo": 123
 }
 ```
 
-El identificador es `rubroTipoGrupoH = 3` en la tabla `PGS.GRPP`. **No se identifica por nombre**, por lo que puede renombrarse libremente en BD sin afectar la lógica.
+### Lógica por línea del TXT
 
-### Reglas del grupo POR_CLASIFICAR
+```
+Para cada línea:
+  Si RUC receptor ≠ empresa → IGNORADO (no cuenta)
+  
+  Buscar DocumentoCxp por claveAcceso:
+  
+  NO existe → crear (estado=LEIDO) → resultado=NUEVO (1)
+  
+  Existe, sin diferencias → resultado=DUPLICADO (2)
+  
+  Existe, con diferencias, estado=3 (REGISTRADO_BD):
+    → resultado=REGISTRADO_CON_DIFERENCIAS (6)   ← NO se toca el documento
+  
+  Existe, con diferencias, estado=1/2/6 (LEIDO/XML_CARGADO/REVERTIDO):
+    → actualizar valores, estado=LEIDO → resultado=NOVEDAD (3)
+  
+  Existe, con diferencias, estado=5 (NOVEDAD):
+    → actualizar campo novedad → resultado=NOVEDAD (3)
+  
+  Siempre registrar una línea en DCTX
+```
 
-| Operación | Frontend | Backend |
+> **Regla fundamental:** Los documentos en estado `3 (REGISTRADO_BD)` **NUNCA se modifican** durante una recarga, ni si cambian los valores ni si desaparecen. Solo queda trazabilidad en `DCTX`.
+
+### Detección de documentos desaparecidos
+
+Se ejecuta solo si se envía `idPeriodo`. Filtra por los **tipos de comprobante presentes en esta carga** (si el TXT es de facturas, solo revisa facturas del período — no toca retenciones ni notas de crédito).
+
+| Estado del documento | No aparece en la carga | Resultado |
 |---|---|---|
-| **Crear** grupo con `rubroTipoGrupoH = 3` | ❌ HTTP 403 | ✅ Solo al procesar XML |
-| **Modificar** grupo con `rubroTipoGrupoH = 3` | ❌ HTTP 403 | — |
-| **Eliminar** grupo con `rubroTipoGrupoH = 3` | ❌ HTTP 403 | — |
-| **Consultar** grupo (GET) | ✅ Libre | ✅ |
-| **Mover producto** a otro grupo (PUT en ProductoPago) | ✅ Permitido | — |
+| `1, 2, 4, 5` (pendiente de procesar) | → marca NOVEDAD/DESAPARECIDO, cambia estado | `DESAPARECIDO (5)` — requiere acción |
+| `3` (ya registrado con asiento) | → solo registra en DCTX, NO modifica el documento | `REGISTRADO_DESAPARECIDO (7)` — solo informativo |
 
-> El backend crea el grupo automáticamente la primera vez que se necesita para esa empresa. Si ya existe uno con `rubroTipoGrupoH = 3`, lo reutiliza.
-
----
-
-## 6. Auto-creación de entidades
-
-### Titular-Proveedor (TSR)
-- Se busca por `identificacion = rucEmisor`.
-- Si no existe → se crea con datos del XML (`razonSocial`, `telefono`, `correoElectronico`, `dirEstablecimiento`/`dirMatriz`).
-- Tipo de identificación: 13 dígitos → RUC (2), 10 dígitos → Cédula (1), otro → Pasaporte (3).
-- Si existe pero no tiene `tipoProveedor=1` → se le asigna automáticamente.
-
-### Producto (`ProductoPago`)
-- Se busca por nombre (case-insensitive) dentro de la empresa.
-- Si no existe → se crea en el grupo **"POR CLASIFICAR"** (`rubroTipoGrupoH = 3`).
-- Si el grupo "POR CLASIFICAR" no existe para esa empresa → se crea automáticamente.
-
----
-
-## 7. Servicios REST — BASE URL: `/saaBE/rest/`
-
-### 7.1 Proceso principal — `/carga-documentos`
-
-#### FASE 1 — Cargar archivo TXT
-**`POST /carga-documentos/cargarTxt`**
+### Respuesta del TXT
 
 ```json
-// Request
 {
-  "contenidoTxt": "<contenido completo del archivo TXT>",
-  "nombreArchivo": "1793228946001_Recibidos.txt",
-  "idEmpresa": 1,
-  "idUsuario": 5,
-  "idPeriodo": 12
-}
-
-// Response 201
-{
-  "idCargaTxt": 10,
-  "nombreArchivo": "1793228946001_Recibidos.txt",
-  "totalRegistros": 45,
-  "nuevos": 38,
-  "duplicados": 5,
+  "idCargaTxt": 45,
+  "nombreArchivo": "facturas-julio-2026.txt",
+  "totalRegistros": 20,
+  "nuevos": 5,
+  "duplicados": 10,
   "novedades": 2,
+  "registradosConDiferencias": 1,
   "desaparecidos": 1,
-  "detalles": [
-    { "linea": 1, "serie": "001-001-000000123", "claveAcceso": "2406202401...", "resultado": "NUEVO",        "idDocumentoCxp": 101 },
-    { "linea": 2, "serie": "001-001-000000050", "claveAcceso": "1506202401...", "resultado": "DUPLICADO",    "idDocumentoCxp": 55  },
-    { "linea": 3, "serie": "001-001-000000099", "claveAcceso": "0106202401...", "resultado": "NOVEDAD",      "idDocumentoCxp": 72, "diferencias": "importeTotal: previo=100.00 nuevo=115.00" }
-  ],
-  "desaparecidosDetalle": [
-    { "idDocumentoCxp": 60, "claveAcceso": "0106202401...", "serie": "001-001-000000080", "resultado": "DESAPARECIDO", "novedad": "DESAPARECIDO_EN_CARGA: No apareció en la carga 10 del período 12" }
+  "detalles": [ ... ],
+  "desaparecidosDetalle": [ ... ]
+}
+```
+
+---
+
+## 5. FASE 2+3 Unificada — Procesar XML
+
+**Endpoint recomendado:** `POST /carga-documentos/procesarXml/{idDocumentoCxp}`
+
+**Body:**
+```json
+{ "contenidoXml": "<?xml ...", "idEmpresa": 1236, "idUsuario": 5 }
+```
+
+### Paso 1 — Validación XML vs documento esperado
+
+Compara: `claveAcceso`, `rucEmisor`, `razonSocialEmisor`, `serieComprobante`, `valorSinImpuestos`, `importeTotal`, `iva` (tolerancia ±0.01).
+
+Diferencias → **HTTP 422:**
+```json
+{
+  "valido": false,
+  "errores": [
+    { "campo": "rucEmisor", "esperado": "0913128088001", "enXml": "1705431771001" },
+    { "campo": "importeTotal", "esperado": "2875.0", "enXml": "437.0" }
   ]
 }
 ```
 
-> `idPeriodo` es el ID del período contable (`CNT.PRDO`) al que corresponde la carga. Es **obligatorio** para activar la detección de documentos desaparecidos. Si se omite, el proceso funciona como antes pero sin detección de desaparecidos.
+### Paso 2 — Acciones automáticas (siempre se ejecutan, no bloquean)
 
-**Lógica interna:**
-1. Obtiene el RUC receptor de la empresa via `Facturador`.
-2. Crea una cabecera `CargaArchivoTxt` (con `periodoContable` si se envió `idPeriodo`).
-3. Itera líneas del TXT (tab-delimitado, 11+ columnas, salta encabezado `RUC_EMISOR`).
-4. Valida que `identificacionReceptor` coincida con el RUC de la empresa; si no → `IGNORADO`.
-5. Por línea: **NUEVO** / **DUPLICADO** / **NOVEDAD** según si el `DocumentoCxp` existe y si hay diferencias en montos/fechas.
-6. Al crear un documento NUEVO, se le asigna el período contable: primero usa `idPeriodo` del request; si no viene, lo resuelve automáticamente desde la `fechaEmision` del documento buscando en `CNT.PRDO` (mismo mes, año y empresa).
-7. Si es NOVEDAD y el doc estaba en `REGISTRADO_BD` → pasa a `NOVEDAD (5)`. Si estaba en `LEIDO/XML_CARGADO/REVERTIDO` → actualiza valores, vuelve a `LEIDO (1)`.
-8. Siempre registra `DetalleCargaTxt` con snapshot de valores y resultado.
-9. **Al finalizar**, si `idPeriodo` está presente: busca todos los documentos activos (no `REVERTIDO`) del mismo período que **no aparecieron** en esta carga y los marca como `NOVEDAD (5)` con motivo `DESAPARECIDO_EN_CARGA`. Genera un `DetalleCargaTxt` con resultado `DESAPARECIDO` para cada uno.
+| Acción | Condición |
+|---|---|
+| Crear `Titular` con rol Proveedor | Si no existe en TSR por RUC |
+| Asignar rol Proveedor al `Titular` | Si existe pero `tipoProveedor ≠ 1` |
+| Crear grupo `POR CLASIFICAR` | Si no existe para la empresa |
+| Crear `ProductoPago` en POR CLASIFICAR | Si no existe por nombre en la empresa |
+| Asignar grupo POR CLASIFICAR al producto | Si existe pero `grupoProducto = null` |
 
----
+Logs esperados:
+```
+ℹ Titular ya tiene rol de Proveedor: 0913128088001 | id=39 | nombre=...
+✓ Rol de Proveedor asignado a Titular existente: ... | id=...
+Auto-creando Titular-Proveedor para RUC: ...
+⚠ Producto 'X' (ID=3) no tenía grupo → asignado a POR CLASIFICAR automáticamente.
+```
 
-#### FASE 2+3 UNIFICADA ⭐ — Procesar XML *(endpoint principal recomendado)*
-**`POST /carga-documentos/procesarXml/{idDocumentoCxp}`**
+### Paso 3 — Validaciones bloqueantes (HTTP 422 si alguna falla, nada se graba)
 
-Realiza en un solo paso: valida XML → guarda en disco → registra en tablas CXP → auto-crea proveedor/productos si faltan.
+| Tipo | Causa | Solución |
+|---|---|---|
+| `PROVEEDOR_SIN_CUENTA` | Proveedor sin cuenta contable CxP (`PersonaCuentaContable`, `tipoCuenta=1`) | Contabilidad → Cuentas por Titular |
+| `TIPO_ASIENTO_NO_CONFIGURADO` | No existe `TipoAsiento` con `codigoAlterno=3` para la empresa | Contabilidad → Tipos de Asiento |
+| `PRODUCTOS_SIN_CLASIFICAR` | Algún producto está en grupo POR CLASIFICAR | Clasificar productos |
+| `GRUPOS_SIN_CUENTA_CONTABLE` | El grupo del producto no tiene `planCuenta` | Contabilidad → Grupos de Producto |
 
+**HTTP 422 con bloqueantes:**
 ```json
-// Request
 {
-  "contenidoXml": "<?xml version=\"1.0\"...>",
-  "idEmpresa": 1,
-  "idUsuario": 5
-  // "pathDestino": "/docs/xml/cxp/clave.xml"  ← opcional, el backend lo calcula como /docs/xml/cxp/{claveAcceso}.xml
-}
-
-// Response 422 → El XML no coincide con el documento esperado (nada se guarda)
-{
-  "valido": false,
-  "errores": [
-    "rucEmisor: esperado=1790016919001 | en XML=0999999999001",
-    "importeTotal: esperado=100.00 | en XML=115.50",
-    "serieComprobante: esperada=001-001-000000123 | en XML=001-001-000000124"
+  "pendienteClasificacion": true,
+  "bloqueantes": [
+    { "tipo": "PRODUCTOS_SIN_CLASIFICAR", "detalle": "...", "productos": ["SERVICIOS PROFESIONALES"] },
+    { "tipo": "PROVEEDOR_SIN_CUENTA", "detalle": "..." }
   ],
-  "documento": { "id": 101, "estadoDocumento": 1, "claveAcceso": "...", "..." : "..." }
+  "productosPendientes": ["SERVICIOS PROFESIONALES"],
+  "mensaje": "No se puede registrar la factura. Hay 2 condición(es) bloqueante(s)..."
 }
+```
 
-// Response 200 → Proveedor no encontrado en TSR (documento pasa a estadoDocumento=4)
+### Paso 4 — Registro en BD y asiento (solo si todo OK)
+
+1. Graba cabecera + detalles + formas de pago + path
+2. Actualiza `DocumentoCxp`: estado=`3`, `observacion=null`
+3. Genera asiento contable
+
+**HTTP 200 éxito:**
+```json
 {
   "valido": true,
-  "error": "TITULAR_NO_ENCONTRADO",
-  "mensaje": "El emisor con RUC 1790016919001 no existe en TSR. Créelo como Proveedor.",
-  "rucEmisor": "1790016919001"
-}
-
-// Response 200 → Éxito con productos auto-creados en POR_CLASIFICAR
-{
-  "valido": true,
-  "idDocumentoBD": 234,
+  "idDocumentoBD": 11,
   "tipoTablaDestino": "FACTURA_COMPRA",
-  "mensaje": "FacturaCompra registrada con id=234. 3 producto(s) creados en grupo POR CLASIFICAR.",
-  "productosPendientes": ["Milhojas", "Pan de yema", "Empanada de viento"]
-}
-
-// Response 200 → Éxito total, todos los productos ya existían
-{
-  "valido": true,
-  "idDocumentoBD": 234,
-  "tipoTablaDestino": "FACTURA_COMPRA",
-  "mensaje": "FacturaCompra registrada con id=234.",
-  "productosPendientes": []
+  "mensaje": "FacturaCompra registrada correctamente con id=11.",
+  "productosPendientes": [],
+  "pendienteClasificacion": false,
+  "asiento": "CXP-2026-07-0002"
 }
 ```
 
-**Campos que valida el XML contra el DocumentoCxp:**
+---
 
-| Campo | Nodo XML buscado | Tolerancia |
+## 6. Generación del asiento contable — Factura de Compra
+
+**Prerequisito:** `Facturador.generaConta = 1` para la empresa.  
+**TipoAsiento:** `codigoAlterno = 3` (`TipoAsientos.FACTURAS_COMPRA`) en `CNT.TPAS`.
+
+### Estructura del asiento
+
+| Lado | Cuenta | Valor |
 |---|---|---|
-| `claveAcceso` | `claveAccesoConsultada` o `claveAcceso` | Exacta |
-| `rucEmisor` | `ruc` o `rucEmisor` | Exacta |
-| `razonSocialEmisor` | `razonSocial` | Case-insensitive |
-| `serieComprobante` | `estab`-`ptoEmi`-`secuencial` | Exacta |
-| `valorSinImpuestos` | `totalSinImpuestos` | ±0.01 |
-| `importeTotal` | `importeTotal` | ±0.01 |
-| `iva` | `totalImpuesto[codigo=2].valor` (suma) | ±0.01 |
+| **DEBE** | `GrupoProductoPago.planCuenta` | Suma de `subTotal` por grupo — una línea por grupo distinto |
+| **DEBE** | IVA crédito tributario (`PGS.TSRI` donde `lsri.tabla='17'` y `codigo=codigoIVASRI`) | Suma de `valorIVA` por código IVA |
+| **HABER** | Cuenta CxP proveedor (`PersonaCuentaContable`, `tipoCuenta=1`) | `factura.total` |
 
-**Lógica del frontend al recibir la respuesta:**
-```
-if (httpStatus == 422):
-    → Mostrar lista de errores: response.errores[]
-    → El usuario debe subir el XML correcto
+### Lectura del IVA desde el XML del SRI
 
-if (httpStatus == 200):
-    if (response.error == "TITULAR_NO_ENCONTRADO"):
-        → "El proveedor {rucEmisor} no existe. Créelo en Tesorería > Titulares."
-
-    if (response.productosPendientes.length > 0):
-        → Mostrar aviso: "{N} productos sin clasificar. No se puede contabilizar aún."
-        → Botón: "Ir a clasificar productos"
-    else:
-        → "Documento registrado correctamente. Puede contabilizarse."
+```xml
+<impuesto>
+  <codigo>2</codigo>               <!-- 2=IVA. Solo se procesa si codigo=2 -->
+  <codigoPorcentaje>4</codigoPorcentaje>  <!-- este es el código a buscar en PGS.TSRI -->
+  <tarifa>15</tarifa>
+  <valor>375.00</valor>
+</impuesto>
 ```
 
----
+- Solo se genera línea de IVA si `<codigo> = "2"`
+- El campo `DetalleFacturaCompra.codigoIVASRI` guarda el valor de `<codigoPorcentaje>`
+- Búsqueda en `PGS.TSRI`: `WHERE lsri.tabla = '17' AND codigo = :codigoIVASRI AND estado = 1`
 
-#### FASE 4 — Resolver novedad
-**`POST /carga-documentos/resolverNovedad/{idDocumentoCxp}`**
-*(Solo cuando `estadoDocumento = 5`)*
+### Reglas del asiento
 
-```json
-// Request — mantener el documento previo sin cambios
-{ "accion": "MANTENER", "idUsuario": 5 }
-
-// Request — reemplazar con nuevo XML
-{ "accion": "REEMPLAZAR", "contenidoXml": "<?xml...>", "idUsuario": 5 }
-
-// Response MANTENER
-{ "accion": "MANTENIDO", "mensaje": "Se mantiene el documento sin cambios." }
-
-// Response REEMPLAZAR → revierte registros previos y vuelve a registrar
-{ "accion": "REEMPLAZADO", "idDocumentoBD": 235, "tipoTablaDestino": "FACTURA_COMPRA", "mensaje": "FacturaCompra registrada con id=235" }
-```
-
-| Acción | Comportamiento |
-|---|---|
-| `REEMPLAZAR` | Si `idDocumentoBD != null` → revierte registros BD previos → carga nuevo XML → llama a `registrarDocumentoBD` |
-| `MANTENER` | Marca `estadoNovedad=3`, conserva registros sin cambios |
+- Si `DEBE ≠ HABER` → **excepción + rollback completo** (ni factura ni asiento quedan en BD) → HTTP 422
+- Si el TipoAsiento no existe → detectado en validaciones bloqueantes (Paso 3), nunca llega al asiento
 
 ---
 
-#### FASE 5 — Revertir documento
-**`POST /carga-documentos/revertir/{idDocumentoCxp}`**
-*(Solo cuando `estadoDocumento = 3`)*
+## 7. Almacenamiento del XML
 
-```json
-// Request
-{ "idUsuario": 5 }
+Usa `FileService` centralizado. Directorio base (por prioridad):
 
-// Response 200 → documento pasa a estadoDocumento=6 (REVERTIDO)
-{
-  "mensaje": "Documento revertido correctamente.",
-  "idDocumentoCxp": 101,
-  "idDocumentoBD": 234,
-  "tipoTablaDestino": "FACTURA_COMPRA"
-}
-```
+1. Propiedad: `-Dsaa.upload.dir=...`
+2. Variable de entorno: `SAA_UPLOAD_DIR`
+3. Default Linux: `/opt/saa-uploads/`
+4. Default Windows: `{userHome}/saa-uploads/`
 
-Elimina en cascada: detalles, formas de pago, paths y cabecera de la tabla destino.
+Subdirectorio: `docs/xml/cxp/`  
+Nombre: `{claveAcceso}.xml`  
+Extensión `.xml` está incluida en `FileService.EXTENSIONES_PERMITIDAS`.
 
 ---
 
-#### Verificar si una factura puede contabilizarse
-**`GET /carga-documentos/productosPendientes/{idFacturaCompra}`**
+## 8. Reversión
 
-Debe llamarse **antes de generar el asiento contable** de cualquier `FacturaCompra`.
+**Endpoint:** `POST /carga-documentos/revertir/{idDocumentoCxp}`  
+Solo aplica a documentos en estado `3 (REGISTRADO_BD)`.
 
-```json
-// Con productos sin clasificar → NO contabilizar
-{ "idFacturaCompra": 234, "pendientes": ["Milhojas", "Pan de yema"], "puedeContabilizar": false }
-
-// Todos clasificados → SÍ puede contabilizarse
-{ "idFacturaCompra": 234, "pendientes": [], "puedeContabilizar": true }
-```
+**Pasos:**
+1. Recuperar asiento vinculado → cambiar estado a `ANULADO (2)` en `CNT.ASNT`
+2. Eliminar registros CXP (detalles → paths → cabecera)
+3. `DocumentoCxp.estadoDocumento = 6 (REVERTIDO)`
 
 ---
 
-#### Consultas generales del proceso
+## 9. Endpoints REST
 
-| Método | URL | Descripción |
-|---|---|---|
-| `GET` | `/carga-documentos/resumen/{idCargaTxt}` | Cabecera + líneas de una carga con `DocumentoCxp` embebido |
-| `GET` | `/carga-documentos/documento/{idDocumentoCxp}` | Un `DocumentoCxp` por su ID |
-| `GET` | `/carga-documentos/novedades/{idEmpresa}` | Documentos con `estadoDocumento=5` y `estadoNovedad=1` |
-
----
-
-#### Endpoints legacy (no usar en nuevas pantallas)
-
-| Método | URL | Descripción |
-|---|---|---|
-| `POST` | `/carga-documentos/cargarXml/{id}` | Solo valida y guarda el XML sin registrar en BD |
-| `POST` | `/carga-documentos/registrarBD/{id}` | Solo registra en BD, requiere XML ya guardado en disco |
-| `POST` | `/carga-documentos/crearProductosYRegistrar/{id}` | Flujo antiguo de productos — ya no necesario con el flujo unificado |
-
----
-
-### 7.2 Cargas (CRTX) — `/crtx`
-
-| Método | URL | Descripción |
-|---|---|---|
-| `GET` | `/crtx/getAll` | Todas las cargas |
-| `GET` | `/crtx/getId/{id}` | Carga por ID |
-| `GET` | `/crtx/getByEmpresa/{idEmpresa}` | Cargas de una empresa, ordenadas por fecha desc |
-| `POST` | `/crtx/selectByCriteria` | Búsqueda por criterios |
-| `POST` | `/crtx` | Crear |
-| `PUT` | `/crtx` | Actualizar |
-| `DELETE` | `/crtx/{id}` | Eliminar |
-
----
-
-### 7.3 Líneas de carga (DCTX) — `/dctx`
-
-| Método | URL | Descripción |
-|---|---|---|
-| `GET` | `/dctx/getAll` | Todas las líneas |
-| `GET` | `/dctx/getId/{id}` | Línea por ID |
-| `GET` | `/dctx/getByCarga/{idCarga}` | Líneas de una carga (con `DocumentoCxp` embebido) |
-| `GET` | `/dctx/getByDocumento/{idDocumentoCxp}` | Historial de cargas en las que apareció un documento |
-| `POST` | `/dctx/selectByCriteria` | Búsqueda por criterios |
-| `POST` | `/dctx` | Crear |
-| `PUT` | `/dctx` | Actualizar |
-| `DELETE` | `/dctx/{id}` | Eliminar |
-
----
-
-### 7.4 Documentos únicos (DCXP) — `/dcxp`
-
-| Método | URL | Descripción |
-|---|---|---|
-| `GET` | `/dcxp/getAll` | Todos los documentos |
-| `GET` | `/dcxp/getId/{id}` | Documento por ID |
-| `GET` | `/dcxp/getByEmpresa/{idEmpresa}` | Todos los documentos de una empresa, ordenados por id desc |
-| `GET` | `/dcxp/getByEmpresaEstado/{idEmpresa}/{estado}` | Documentos filtrados por estado |
-| `GET` | `/dcxp/novedadesPendientes/{idEmpresa}` | Con `estadoDocumento=5` y `estadoNovedad=1` |
-| `POST` | `/dcxp/selectByCriteria` | Búsqueda por criterios |
-| `POST` | `/dcxp` | Crear |
-| `PUT` | `/dcxp` | Actualizar |
-| `DELETE` | `/dcxp/{id}` | Eliminar |
-
----
-
-### 7.5 Grupos de producto (GRPP) — `/grpp`
-
-| Método | URL | Frontend | Descripción |
+| Método | Path | HTTP éxito | HTTP error |
 |---|---|---|---|
-| `GET` | `/grpp/getAll` | ✅ Libre | Todos los grupos (incluye POR_CLASIFICAR) |
-| `GET` | `/grpp/getId/{id}` | ✅ Libre | Grupo por ID |
-| `POST` | `/grpp/selectByCriteria` | ✅ Libre | Búsqueda por criterios |
-| `POST` | `/grpp` | ⚠️ Bloqueado si `rubroTipoGrupoH=3` → **HTTP 403** | Crear grupo |
-| `PUT` | `/grpp` | ⚠️ Bloqueado si el grupo es o intenta ser `rubroTipoGrupoH=3` → **HTTP 403** | Actualizar grupo |
-| `DELETE` | `/grpp/{id}` | ⚠️ Bloqueado si `rubroTipoGrupoH=3` → **HTTP 403** | Eliminar grupo |
+| POST | `/cargarTxt` | 201 | 500 |
+| POST | `/procesarXml/{id}` | 200 | 422 |
+| POST | `/cargarXml/{id}` *(legacy)* | 200 | 422 |
+| POST | `/registrarBD/{id}` *(legacy)* | 200 | 422 |
+| POST | `/resolverNovedad/{id}` | 200 | 500 |
+| POST | `/revertir/{id}` | 200 | 500 |
+| GET | `/resumen/{idCargaTxt}` | 200 | 500 |
+| GET | `/documento/{id}` | 200 | 404/500 |
+| GET | `/novedades/{idEmpresa}` | 200 | 500 |
+| GET | `/productosPendientes/{idFacturaCompra}` | 200 | 500 |
 
 ---
 
-## 8. Resumen completo de endpoints
+## 10. Pendientes de pulir
 
-| Grupo | Método | URL | Descripción |
-|---|---|---|---|
-| **Proceso** | `POST` | `/carga-documentos/cargarTxt` | Fase 1: leer TXT |
-| **Proceso** ⭐ | `POST` | `/carga-documentos/procesarXml/{id}` | Fase 2+3 unificada: validar XML + registrar en BD |
-| **Proceso** | `POST` | `/carga-documentos/resolverNovedad/{id}` | Fase 4: resolver novedad |
-| **Proceso** | `POST` | `/carga-documentos/revertir/{id}` | Fase 5: revertir documento |
-| **Proceso** | `GET` | `/carga-documentos/resumen/{idCargaTxt}` | Cabecera + líneas de una carga |
-| **Proceso** | `GET` | `/carga-documentos/documento/{id}` | Un DocumentoCxp por ID |
-| **Proceso** | `GET` | `/carga-documentos/novedades/{idEmpresa}` | Novedades pendientes |
-| **Proceso** | `GET` | `/carga-documentos/productosPendientes/{idFacturaCompra}` | Pre-validación contabilización |
-| **Legacy** | `POST` | `/carga-documentos/cargarXml/{id}` | Solo valida y guarda XML |
-| **Legacy** | `POST` | `/carga-documentos/registrarBD/{id}` | Solo registra en BD |
-| **Legacy** | `POST` | `/carga-documentos/crearProductosYRegistrar/{id}` | Ya no necesario |
-| **CRTX** | `GET` | `/crtx/getByEmpresa/{idEmpresa}` | Cargas de una empresa |
-| **CRTX** | `GET` | `/crtx/getId/{id}` | Carga por ID |
-| **DCTX** | `GET` | `/dctx/getByCarga/{idCarga}` | Líneas de una carga |
-| **DCTX** | `GET` | `/dctx/getByDocumento/{idDocumentoCxp}` | Historial de cargas de un documento |
-| **DCXP** | `GET` | `/dcxp/getByEmpresa/{idEmpresa}` | Todos los documentos de una empresa |
-| **DCXP** | `GET` | `/dcxp/getByEmpresaEstado/{idEmpresa}/{estado}` | Documentos por estado |
-| **DCXP** | `GET` | `/dcxp/novedadesPendientes/{idEmpresa}` | Novedades pendientes |
-| **GRPP** | `GET` | `/grpp/getAll` | Grupos de producto (incluye POR_CLASIFICAR) |
-| **GRPP** | `POST/PUT/DELETE` | `/grpp` | Protegido: bloquea `rubroTipoGrupoH=3` → HTTP 403 |
-
----
-
-## 9. Flujo de pantallas recomendado para el frontend
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ PANTALLA 1: Historial de cargas de la empresa                   │
-│  GET /crtx/getByEmpresa/{idEmpresa}                             │
-│  Muestra: fecha, archivo, nuevos, duplicados, novedades         │
-│  → Click en fila: ir a PANTALLA 2                               │
-│  → Botón "Nueva carga": acción Cargar TXT                       │
-└─────────────────────────────────────────────────────────────────┘
-        ↓ "Nueva carga"                    ↓ click en fila
-┌──────────────────────────┐   ┌────────────────────────────────────┐
-│ ACCIÓN: Cargar TXT       │   │ PANTALLA 2: Detalle de la carga    │
-│  POST /carga-documentos/ │   │  GET /dctx/getByCarga/{idCarga}    │
-│       cargarTxt          │   │  Muestra líneas + estado actual    │
-│  Mostrar resumen         │   │  del DocumentoCxp embebido         │
-└──────────────────────────┘   └────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────┐
-│ PANTALLA 3: Lista de documentos por estado                      │
-│  GET /dcxp/getByEmpresaEstado/{idEmpresa}/{estado}              │
-│                                                                 │
-│  Estado 1 (LEIDO)      → botón "Cargar XML y Registrar"         │
-│  Estado 3 (REGISTRADO) → botón "Revertir"                       │
-│                          indicador si tiene productos           │
-│                          pendientes de clasificar               │
-│  Estado 4 (ERROR)      → mostrar campo observacion             │
-│  Estado 5 (NOVEDAD)    → botón "Resolver novedad"               │
-│  Estado 6 (REVERTIDO)  → botón "Cargar XML y Registrar"         │
-└─────────────────────────────────────────────────────────────────┘
-        ↓ "Cargar XML y Registrar"
-┌─────────────────────────────────────────────────────────────────┐
-│ ACCIÓN: Procesar XML (flujo unificado)                          │
-│  POST /carga-documentos/procesarXml/{idDocumentoCxp}            │
-│  Body: { contenidoXml, idEmpresa, idUsuario }                   │
-│                                                                 │
-│  HTTP 422 → Mostrar errores de validación                       │
-│             El usuario debe subir el XML correcto               │
-│                                                                 │
-│  HTTP 200 con error "TITULAR_NO_ENCONTRADO":                    │
-│    → "El proveedor {rucEmisor} no existe. Créelo en TSR."       │
-│                                                                 │
-│  HTTP 200 con productosPendientes no vacío:                     │
-│    → "X productos sin clasificar. No puede contabilizarse."     │
-│    → Botón: ir a PANTALLA Clasificación de Productos            │
-│                                                                 │
-│  HTTP 200 con productosPendientes vacío:                        │
-│    → "Documento registrado. Puede contabilizarse."              │
-└─────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────┐
-│ PANTALLA: Clasificación de Productos Pendientes                 │
-│                                                                 │
-│  a. Obtener el grupo POR_CLASIFICAR de la empresa:              │
-│     POST /grpp/selectByCriteria → filtrar rubroTipoGrupoH=3     │
-│  b. Listar sus productos:                                       │
-│     POST /prdp/selectByCriteria → filtrar por id del grupo      │
-│  c. Para cada producto: selector de grupo destino               │
-│     GET /grpp/getAll → mostrar grupos EXCEPTO rubroTipoGrupoH=3 │
-│  d. Guardar el cambio de grupo:                                 │
-│     PUT /prdp → actualizar campo grupoProducto                  │
-│  e. Verificar si ya puede contabilizarse:                       │
-│     GET /carga-documentos/productosPendientes/{idFacturaCompra} │
-│     → puedeContabilizar: true → habilitar botón asiento         │
-└─────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────┐
-│ PANTALLA: Resolver novedad (estadoDocumento = 5)                │
-│  POST /carga-documentos/resolverNovedad/{idDocumentoCxp}        │
-│                                                                 │
-│  Mostrar: campo novedad (diferencias detectadas)                │
-│  Opción A → MANTENER: { "accion": "MANTENER", "idUsuario": X } │
-│  Opción B → REEMPLAZAR con nuevo XML:                           │
-│    { "accion": "REEMPLAZAR", "contenidoXml": "...",             │
-│      "idUsuario": X }                                           │
-└─────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 10. Reglas de negocio clave
-
-1. **Un `DocumentoCxp` por `claveAcceso`**: Si el mismo documento aparece en múltiples cargas TXT, siempre apunta al mismo `DocumentoCxp`. Las N apariciones generan N registros en `DCTX`, pero uno solo en `DCXP`.
-
-2. **Validación del XML contra el TXT**: Al usar `/procesarXml`, si el XML no coincide con el proveedor o valores registrados → HTTP 422 con lista de diferencias. El documento **no se modifica**.
-
-3. **Productos auto-creados**: Los productos nuevos encontrados en el XML se crean en el grupo `POR_CLASIFICAR` (`rubroTipoGrupoH = 3`). El documento se registra igualmente. La contabilización queda bloqueada hasta clasificar todos los productos.
-
-4. **Bloqueo de contabilización**: Antes de generar el asiento contable de una `FacturaCompra`, llamar a `GET /carga-documentos/productosPendientes/{idFacturaCompra}`. Si `puedeContabilizar = false` → no permitir el asiento.
-
-5. **Identificación del grupo POR_CLASIFICAR**: Se identifica por `rubroTipoGrupoH = 3`, **no por nombre**. Puede renombrarse en BD sin afectar la lógica del backend.
-
-6. **Novedades**: Si entre una carga TXT y la siguiente cambian los valores de un documento ya `REGISTRADO_BD`, el estado pasa a `NOVEDAD (5)`. El usuario decide MANTENER o REEMPLAZAR.
-
-7. **Documentos desaparecidos**: Si se envía `idPeriodo` en la carga, al finalizar el proceso de líneas se buscan todos los documentos activos del mismo período que **no aparecieron** en el TXT actual y se marcan como `NOVEDAD (5)` con motivo `DESAPARECIDO_EN_CARGA`. El campo `novedad` del documento describe en qué carga desapareció y a qué período pertenece. El resultado `DESAPARECIDO` queda registrado en `DCTX` para trazabilidad.
-
-8. **Período contable en documentos nuevos**: Al crear un `DocumentoCxp` nuevo el sistema asigna el período contable en este orden de prioridad:
-   - Si se envió `idPeriodo` en el request → usa ese período.
-   - Si no → busca automáticamente en `CNT.PRDO` el período con el mismo mes/año que la `fechaEmision` del documento y la misma empresa.
-   - Si tampoco encuentra → el campo queda `null` (el documento se crea igualmente).
-
-7. **Proveedor auto-creado**: Si el RUC emisor del XML no existe en `Titular` (TSR), se crea automáticamente con rol de Proveedor usando los datos disponibles en el XML/TXT. El documento continúa el registro normalmente. (Comportamiento anterior era marcar ERROR — fue corregido.)
-
-8. **Asiento contable**: Se intenta generar automáticamente al pasar a `REGISTRADO_BD (3)` si `Facturador.generaConta = 1`. Si falla, se registra como advertencia (`advertenciaAsiento`) sin revertir el registro del documento.
-
----
-
-## 11. Asiento contable automático
-
-- Se ejecuta al final de la Fase 3 si `Facturador.generaConta = 1` para la empresa.
-- Llama a `AsientoContableService.generarAsiento*` según el tipo de documento.
-- Si falla (incluyendo `UnsupportedOperationException` de stubs no configurados) → **NO revierte** el registro; devuelve `advertenciaAsiento` en la respuesta.
-- Pendiente configurar las plantillas en BD para cada tipo de asiento (ver DT-2).
-
----
-
-## 12. Bugs corregidos
-
-| # | Método | Descripción | Estado |
-|---|---|---|---|
-| 1 | `registrarFacturaCompra` | `PathFacturaCompra` se persistía **dos veces** con los mismos datos (doble `save`). | ✅ Corregido 2026-07-23 |
-| 2 | `registrarRetencionCompraV2` | `PathRetencionCompra` se guardaba **sin FK** a `RetencionCompraV2` porque el modelo solo tiene FK a `RetencionCompra` (V1). Se eliminó el save incorrecto. | ✅ Corregido 2026-07-23 |
-| 3 | `revertirRegistrosBD` / `RETENCION_COMPRA_V2` | No existía path que eliminar (consecuencia del bug 2). Se documentó el TODO para cuando se cree `PathRetencionCompraV2`. | ✅ Corregido 2026-07-23 |
-| 4 | `resolverNovedad` / `REEMPLAZAR` | La condición usaba `doc.getEstadoDocumento() != null` (siempre `true`); corregida a `doc.getIdDocumentoBD() != null`. | ✅ Corregido 2026-07-23 |
-| 5 | Asiento contable automático | Los stubs de `AsientoContableService` aún no están configurados. Se tratan como advertencia, no bloquean el registro. | ⏳ Pendiente |
-
----
-
-## 13. Deuda técnica
-
-| # | Descripción |
+| Tipo de comprobante | Pendiente |
 |---|---|
-| DT-1 | Crear entidad `PathRetencionCompraV2` con FK a `RetencionCompraV2`, su DAO, y agregar el `save` en `registrarRetencionCompraV2` y el `delete` en `revertirRegistrosBD`. |
-| DT-2 | Configurar plantillas de asiento contable en BD para cada tipo de comprobante CXP y activar la generación automática en `AsientoContableService`. |
-| DT-3 | Crear endpoint `GET /prdp/getByGrupoPorClasificar/{idEmpresa}` para simplificar la carga de la pantalla de clasificación de productos (mientras tanto usar `POST /prdp/selectByCriteria`). |
-
----
-
-## 14. Historial de cambios
-
-| Fecha | Descripción |
-|---|---|
-| 2026-07-20 | Documento `ACTUALIZACION_CARGA_DOCUMENTOS_CXP.md` creado con arquitectura, modelo de datos, endpoints y flujo de pantallas |
-| 2026-07-23 | Documento `proceso-carga-documentos.md` creado con análisis de bugs y lógica del servicio |
-| 2026-07-23 | Ambos documentos fusionados en este archivo. `ACTUALIZACION_CARGA_DOCUMENTOS_CXP.md` queda obsoleto |
-| 2026-07-23 | Bugs #1 al #4 corregidos en `ProcesoCargaDocumentosServiceImpl` |
+| `Nota de Crédito` | Aplicar validaciones bloqueantes (cuenta proveedor, tipo asiento, cuenta grupo) + pulir asiento |
+| `Nota de Débito` | Ídem |
+| `Liquidación de Compra` | Ídem |
+| `Retención V1 y V2` | Revisar estructura XML, mapeo de campos, generación del asiento |
+| Todos | Script SQL para insertar rubros 174 con los nuevos códigos 6 y 7 en `SCP.PDTR` |

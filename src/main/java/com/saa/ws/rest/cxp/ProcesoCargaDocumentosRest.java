@@ -134,6 +134,12 @@ public class ProcesoCargaDocumentosRest {
                         .entity(resultado).type(MediaType.APPLICATION_JSON).build();
             }
 
+            // Hay bloqueantes (proveedor sin cuenta, productos sin clasificar, tipo asiento no configurado) → 422
+            if (Boolean.TRUE.equals(resultado.get("pendienteClasificacion"))) {
+                return Response.status(422)
+                        .entity(resultado).type(MediaType.APPLICATION_JSON).build();
+            }
+
             return Response.status(Response.Status.OK)
                     .entity(resultado).type(MediaType.APPLICATION_JSON).build();
 
@@ -245,12 +251,19 @@ public class ProcesoCargaDocumentosRest {
             Map<String, Object> resultado = procesoCargaDocumentosService
                     .registrarDocumentoBD(idDocumentoCxp, idEmpresa, idUsuario);
 
+            // Bloqueantes (productos sin clasificar, tipo asiento no configurado, etc.)
+            if (Boolean.TRUE.equals(resultado.get("pendienteClasificacion"))) {
+                return Response.status(422).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+            }
+
             return Response.status(Response.Status.OK)
                     .entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
-                    .entity(errorMap("Error al registrar en BD: " + e.getMessage()))
-                    .type(MediaType.APPLICATION_JSON).build();
+            java.util.Map<String, Object> error = new java.util.HashMap<>();
+            error.put("error", e.getMessage());
+            error.put("tipo", "ERROR_REGISTRO");
+            return Response.status(422)
+                    .entity(error).type(MediaType.APPLICATION_JSON).build();
         }
     }
 

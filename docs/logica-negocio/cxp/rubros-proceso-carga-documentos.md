@@ -1,47 +1,60 @@
 # Rubros — Proceso de Carga de Documentos CXP
 
 > **Documento para el frontend.**  
-> Describe los rubros que maneja el proceso de carga de documentos SRI en el módulo CXP.  
-> Última revisión: 2026-07-25
+> Última revisión: 2026-07-27
 
 ---
 
 ## Resumen de rubros
 
-| Código alterno | Nombre constante Java         | Propósito |
+| Código alterno | Nombre constante Java | Propósito |
 |---|---|---|
-| **174** | `Rubros.CXP_RESULTADO_CARGA_TXT`  | Resultado de cada línea al procesar el TXT |
-| **175** | `Rubros.CXP_ESTADO_DOCUMENTO_CXP` | Ciclo de vida del documento (campo de solo lectura) |
-| **176** | `Rubros.CXP_ESTADO_NOVEDAD`       | Estado de resolución de una novedad (campo de solo lectura) |
-| **177** | `Rubros.CXP_ACCION_NOVEDAD`       | Acción que **envía el frontend** para resolver una novedad |
+| **174** | `Rubros.CXP_RESULTADO_CARGA_TXT` | Resultado de cada línea al procesar el TXT |
+| **175** | `Rubros.CXP_ESTADO_DOCUMENTO_CXP` | Ciclo de vida del documento (solo lectura) |
+| **176** | `Rubros.CXP_ESTADO_NOVEDAD` | Estado de resolución de una novedad (solo lectura) |
+| **177** | `Rubros.CXP_ACCION_NOVEDAD` | Acción que **envía el frontend** para resolver una novedad |
 
 ---
 
 ## Rubro 174 — `CXP_RESULTADO_CARGA_TXT`
 
 **¿Dónde aparece?** En cada elemento del array `detalles[]` y `desaparecidosDetalle[]` de la respuesta de `POST /carga-documentos/cargarTxt`.  
-**Tipo en BD:** `VARCHAR2(20)` — campo `DCTX.DCTXRSLT`.  
+**Tipo en BD:** `NUMBER` — campo `DCTX.DCTXRSLT`.  
 **El frontend lo recibe, nunca lo envía.**
 
-| `PDTRVLRN` | `PDTRVLRV` (String en JSON) | Significado |
-|---|---|---|
-| 1 | `"NUEVO"` | Primera vez que el documento aparece en el sistema. Queda en estado **LEIDO**, esperando XML. |
-| 2 | `"DUPLICADO"` | El documento ya existía y los valores (montos, fechas) son idénticos. No se modifica nada. |
-| 3 | `"NOVEDAD"` | El documento ya existía pero con diferencias en montos o fechas. Ver campo `diferencias` en la respuesta. |
-| 4 | `"IGNORADO"` | El RUC receptor de la línea no coincide con el RUC de la empresa. La línea se descarta. |
-| 5 | `"DESAPARECIDO"` | Documento activo del período que **no apareció** en esta nueva carga. Solo se genera si se envía `idPeriodo`. |
+| Valor numérico | Nombre | Descripción | Requiere acción del usuario |
+|---|---|---|---|
+| `1` | `NUEVO` | Primera vez que el documento aparece. Queda en estado LEIDO, esperando XML. | Sí — cargar XML |
+| `2` | `DUPLICADO` | El documento ya existía con valores idénticos. No se modifica nada. | No |
+| `3` | `NOVEDAD` | El documento ya existía pero con diferencias en montos o fechas. Ver campo `diferencias`. | Sí — resolver novedad |
+| `4` | `IGNORADO` | El RUC receptor no coincide con la empresa. Línea descartada. | No |
+| `5` | `DESAPARECIDO` | Documento pendiente de procesar que **no apareció** en esta nueva carga. | Sí — resolver novedad |
+| `6` | `REGISTRADO_CON_DIFERENCIAS` | Ya registrado en BD con asiento contable, pero el SRI reporta valores diferentes. **Solo informativo.** | No — solo revisar |
+| `7` | `REGISTRADO_DESAPARECIDO` | Ya registrado en BD con asiento contable, pero no apareció en esta carga. **Solo informativo.** | No — solo revisar |
+
+> **Distinción clave para el frontend:**
+> - Códigos **1–5** → el documento **aún no está completamente procesado** o requiere atención
+> - Códigos **6–7** → el documento **ya tiene registro en BD y asiento contable**, no se toca, son solo informativos
 
 **Ejemplo en la respuesta del TXT:**
 ```json
 {
+  "nuevos": 5,
+  "duplicados": 8,
+  "novedades": 2,
+  "registradosConDiferencias": 1,
+  "desaparecidos": 1,
   "detalles": [
-    { "linea": 1, "serie": "001-001-000000123", "resultado": "NUEVO",      "idDocumentoCxp": 101 },
-    { "linea": 2, "serie": "001-001-000000050", "resultado": "DUPLICADO",  "idDocumentoCxp": 55  },
-    { "linea": 3, "serie": "001-001-000000099", "resultado": "NOVEDAD",    "idDocumentoCxp": 72,
-      "diferencias": "importeTotal: previo=100.00 nuevo=115.00" }
+    { "linea": 1, "serie": "001-001-000000123", "resultado": 1, "idDocumentoCxp": 101 },
+    { "linea": 2, "serie": "001-001-000000050", "resultado": 2, "idDocumentoCxp": 55  },
+    { "linea": 3, "serie": "001-001-000000099", "resultado": 3, "idDocumentoCxp": 72,
+      "diferencias": "importeTotal: previo=100.00 nuevo=115.00" },
+    { "linea": 4, "serie": "001-001-000000088", "resultado": 6, "idDocumentoCxp": 88,
+      "diferencias": "valorSinImpuestos: previo=2500.00 nuevo=2600.00" }
   ],
   "desaparecidosDetalle": [
-    { "serie": "001-001-000000080", "resultado": "DESAPARECIDO", "idDocumentoCxp": 60 }
+    { "serie": "001-001-000000080", "resultado": 5, "idDocumentoCxp": 60, "novedad": "DESAPARECIDO_EN_CARGA..." },
+    { "serie": "001-001-000000070", "resultado": 7, "idDocumentoCxp": 55, "novedad": "REGISTRADO_DESAPARECIDO..." }
   ]
 }
 ```
@@ -50,142 +63,95 @@
 
 ## Rubro 175 — `CXP_ESTADO_DOCUMENTO_CXP`
 
-**¿Dónde aparece?** En el campo `estadoDocumento` del objeto `DocumentoCxp` (tabla `DCXP`).  
+**¿Dónde aparece?** En el campo `estadoDocumento` del objeto `DocumentoCxp`.  
 **Tipo en BD:** `NUMBER(2)` — campo `DCXP.DCXPESTD`.  
 **El frontend lo recibe como número. Nunca lo envía.**
 
-| Valor numérico | Nombre | Descripción | Botón que muestra el frontend |
+| Valor | Nombre | Descripción | Botón que muestra el frontend |
 |---|---|---|---|
 | `1` | `LEIDO` | Leído del TXT. Pendiente de cargar XML. | **"Cargar XML"** |
-| `2` | `XML_CARGADO` | XML guardado. Estado transitorio — con el flujo unificado no debería verse. | — |
-| `3` | `REGISTRADO_BD` | Registrado en las tablas CXP. Puede tener productos pendientes de clasificar. | **"Revertir"** |
+| `2` | `XML_CARGADO` | XML guardado. Estado transitorio interno. | — |
+| `3` | `REGISTRADO_BD` | Registrado en tablas CXP + asiento contable generado. | **"Revertir"** |
 | `4` | `ERROR` | Falló algún paso. Ver campo `observacion`. | **"Reintentar"** |
-| `5` | `NOVEDAD` | Valores distintos detectados o el documento desapareció de la nueva carga. | **"Resolver novedad"** |
-| `6` | `REVERTIDO` | Registros de BD eliminados. | **"Cargar XML"** nuevamente |
-
-> ⚠️ El estado `2 (XML_CARGADO)` es transitorio. Usando el endpoint recomendado `POST /procesarXml/{id}` el documento pasa directamente de `1 → 3`. Solo queda en `2` si se usan los endpoints legacy separados.
+| `5` | `NOVEDAD` | Valores distintos o documento desaparecido en nueva carga. | **"Resolver novedad"** |
+| `6` | `REVERTIDO` | BD revertida y asiento anulado. | **"Cargar XML"** nuevamente |
 
 **Lógica de presentación sugerida:**
 ```
-estadoDocumento == 1 || estadoDocumento == 6  →  mostrar botón "Cargar XML"
-estadoDocumento == 3                          →  mostrar botón "Revertir" + verificar productosPendientes
-estadoDocumento == 4                          →  mostrar mensaje de error + botón "Reintentar"
-estadoDocumento == 5                          →  mostrar botón "Resolver novedad"
+estadoDocumento == 1 || estadoDocumento == 6  →  botón "Cargar XML"
+estadoDocumento == 3                          →  botón "Revertir"
+estadoDocumento == 4                          →  mostrar observacion + botón "Reintentar"
+estadoDocumento == 5                          →  botón "Resolver novedad"
 ```
 
 ---
 
 ## Rubro 176 — `CXP_ESTADO_NOVEDAD`
 
-**¿Dónde aparece?** En el campo `estadoNovedad` del objeto `DocumentoCxp`.  
-**Tipo en BD:** `NUMBER(2)` — campo `DCXP.DCXPENVD`.  
-**Solo tiene valor cuando `estadoDocumento = 5 (NOVEDAD)`. El frontend lo recibe, nunca lo envía.**
+**¿Dónde aparece?** En el campo `estadoNovedad` del objeto `DocumentoCxp`. Solo tiene valor cuando `estadoDocumento = 5`.  
+**El frontend lo recibe, nunca lo envía.**
 
-| Valor numérico | Nombre | Descripción |
+| Valor | Nombre | Descripción |
 |---|---|---|
-| `1` | `PENDIENTE` | Novedad detectada, sin resolución aún. El usuario debe actuar. |
-| `2` | `REEMPLAZADO` | El usuario eligió subir un nuevo XML y el documento fue re-registrado. |
-| `3` | `MANTENIDO` | El usuario eligió conservar el registro anterior sin cambios. |
-
-> El frontend solo debe preocuparse por `estadoNovedad == 1` para mostrar la alerta al usuario. Los valores `2` y `3` son estados finales informativos.
+| `1` | `PENDIENTE` | Novedad detectada, sin resolución. El usuario debe actuar. |
+| `2` | `REEMPLAZADO` | El usuario eligió subir un nuevo XML. |
+| `3` | `MANTENIDO` | El usuario conservó el registro anterior. |
 
 ---
 
 ## Rubro 177 — `CXP_ACCION_NOVEDAD`
 
-**¿Dónde se usa?** En el body JSON de `POST /carga-documentos/resolverNovedad/{idDocumentoCxp}`.  
-**El frontend lo envía. El backend lo recibe y ejecuta la acción.**
+**¿Dónde se usa?** En el body de `POST /carga-documentos/resolverNovedad/{id}`.  
+**El frontend lo envía como número entero.**
 
-| `PDTRVLRV` (String a enviar) | Descripción | Campos adicionales requeridos en el body |
-|---|---|---|
-| `"MANTENER"` | Conservar el documento previo sin ningún cambio. | Ninguno |
-| `"REEMPLAZAR"` | Revertir el registro anterior y procesar el nuevo XML enviado. | `"contenidoXml"` (obligatorio) |
+| Valor numérico | Nombre | Descripción | Campos adicionales requeridos |
+|---|---|---|---|
+| `1` | `MANTENER` | Conservar el documento previo sin cambios. | Ninguno |
+| `2` | `REEMPLAZAR` | Revertir el registro anterior y procesar el nuevo XML. | `"contenidoXml"` (obligatorio) |
 
-**Body JSON — acción MANTENER:**
+**Body JSON — MANTENER:**
 ```json
-{
-  "accion": "MANTENER",
-  "idUsuario": 5
-}
+{ "accion": 1, "idUsuario": 5 }
 ```
 
-**Body JSON — acción REEMPLAZAR:**
+**Body JSON — REEMPLAZAR:**
 ```json
-{
-  "accion": "REEMPLAZAR",
-  "contenidoXml": "<?xml version=\"1.0\"...>",
-  "idUsuario": 5
-}
-```
-
-**Respuesta — MANTENER:**
-```json
-{
-  "accion": "MANTENER",
-  "mensaje": "Se mantiene el documento sin cambios."
-}
-```
-
-**Respuesta — REEMPLAZAR (éxito):**
-```json
-{
-  "accion": "REEMPLAZAR",
-  "valido": true,
-  "idDocumentoBD": 235,
-  "tipoTablaDestino": "FACTURA_COMPRA",
-  "mensaje": "FacturaCompra registrada con id=235.",
-  "productosPendientes": []
-}
-```
-
-> El valor del campo `"accion"` es **case-insensitive** en el backend (`MANTENER`, `mantener`, `Mantener` son equivalentes), pero se recomienda enviarlo siempre en **MAYÚSCULAS** tal como se define aquí.
-
----
-
-## Consulta de rubros desde el backend
-
-Para cargar los rubros en el frontend (listas desplegables, etiquetas de estado, etc.) se puede usar el endpoint genérico de rubros:
-
-```
-GET /pdtr/getByRubro/{codigoAlterno}
-```
-
-| Llamada | Devuelve |
-|---|---|
-| `GET /pdtr/getByRubro/174` | Resultados posibles de la carga TXT |
-| `GET /pdtr/getByRubro/175` | Estados del documento CXP |
-| `GET /pdtr/getByRubro/176` | Estados de resolución de novedad |
-| `GET /pdtr/getByRubro/177` | Acciones disponibles para resolver novedad |
-
-Cada elemento retorna:
-```json
-{
-  "codigo": 301,
-  "descripcion": "Documento nuevo: primera vez que aparece en el sistema",
-  "valorNumerico": 1,
-  "valorAlfanumerico": "NUEVO",
-  "codigoAlterno": 1,
-  "estado": 1
-}
+{ "accion": 2, "contenidoXml": "<?xml ...", "idUsuario": 5 }
 ```
 
 ---
 
-## Cambios en los archivos Java
+## Script SQL — Insertar rubros 174 en `SCP.PDTR`
 
-### Nuevas interfaces en `com.saa.rubros`
+> ⚠️ Ejecutar este script para agregar los nuevos códigos **6** y **7** al rubro 174.  
+> Ajustar el valor de `PDTRRBRR` al `PRBRCDGO` real del rubro 174 en tu base de datos.
 
-| Archivo | Rubro | Uso |
-|---|---|---|
-| `ResultadoCargaTxt.java` | 174 | Constantes `String` para el campo `resultado` de `DetalleCargaTxt` |
-| `EstadoDocumentoCxp.java` | 175 | Constantes `long` para `estadoDocumento` de `DocumentoCxp` |
-| `EstadoNovedad.java` | 176 | Constantes `long` para `estadoNovedad` de `DocumentoCxp` |
-| `AccionNovedad.java` | 177 | Constantes `String` para la acción en `resolverNovedad` |
+```sql
+-- =============================================================================
+-- SCRIPT: Agregar valores 6 y 7 al Rubro 174 — CXP_RESULTADO_CARGA_TXT
+-- Tabla:  SCP.PDTR
+-- Fecha:  2026-07-27
+-- Nota:   Reemplazar :ID_RUBRO_174 con el PRBRCDGO real del rubro 174
+--         Reemplazar :NEXT_ID con el siguiente valor de la secuencia de PDTR
+-- =============================================================================
 
-### `Rubros.java` — constantes añadidas
-```java
-int CXP_RESULTADO_CARGA_TXT  = 174;
-int CXP_ESTADO_DOCUMENTO_CXP = 175;
-int CXP_ESTADO_NOVEDAD       = 176;
-int CXP_ACCION_NOVEDAD       = 177;
+-- Verificar el PRBRCDGO del rubro 174 antes de ejecutar:
+-- SELECT PRBRCDGO, PRBRDSCR, PRBRALTR FROM SCP.PRBR WHERE PRBRALTR = 174;
+
+-- Código 6: REGISTRADO_CON_DIFERENCIAS
+INSERT INTO SCP.PDTR (PDTRCDGO, PDTRRBRR, PDTRVLRN, PDTRVLRV, PDTRNMBR)
+VALUES (SCP.SQ_PDTRCDGO.NEXTVAL, :ID_RUBRO_174, 6, 'REGISTRADO_CON_DIFERENCIAS',
+        'Registrado - Diferencias');
+
+-- Código 7: REGISTRADO_DESAPARECIDO
+INSERT INTO SCP.PDTR (PDTRCDGO, PDTRRBRR, PDTRVLRN, PDTRVLRV, PDTRNMBR)
+VALUES (SCP.SQ_PDTRCDGO.NEXTVAL, :ID_RUBRO_174, 7, 'REGISTRADO_DESAPARECIDO',
+        'Registrado - No Aparece');
+
+COMMIT;
 ```
+
+> Si la tabla `SCP.PDTR` no tiene secuencia o usa otro mecanismo de PK, ajustar según corresponda. Si desconoces los nombres exactos de columnas, ejecuta primero:
+> ```sql
+> SELECT COLUMN_NAME, DATA_TYPE FROM ALL_TAB_COLUMNS WHERE TABLE_NAME = 'PDTR' AND OWNER = 'SCP' ORDER BY COLUMN_ID;
+> ```

@@ -121,6 +121,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
     @EJB private com.saa.ejb.tsr.dao.TitularDaoService    titularDaoService;
     @EJB private com.saa.ejb.cnt.service.AsientoContableService asientoContableService;
+    @EJB private com.saa.ejb.cnt.service.TipoAsientoService     tipoAsientoService;
 
     // -------------------------------------------------------
     // Estados — delegados a las interfaces de rubros (174-177)
@@ -177,10 +178,12 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         cabecera.setPeriodoContable(periodo);
         cabecera = cargaArchivoTxtDaoService.save(cabecera, null);
 
-        long totalRegistros = 0, nuevos = 0, duplicados = 0, novedades = 0;
+        long totalRegistros = 0, nuevos = 0, duplicados = 0, novedades = 0, registradosConDiferencias = 0;
         List<Map<String, Object>> detallesResultado = new ArrayList<>();
         // Claves de acceso procesadas en ESTA carga (para detectar desaparecidos)
         java.util.Set<String> clavesEnEstaCarga = new java.util.HashSet<>();
+        // Tipos de comprobante presentes en ESTA carga (para filtrar desaparecidos por tipo)
+        java.util.Set<String> tiposEnEstaCarga = new java.util.HashSet<>();
 
         String[] lineas = contenidoTxt.split("\n");
 
@@ -225,6 +228,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
             // Registrar clave como procesada en esta carga
             clavesEnEstaCarga.add(claveAcceso);
+            tiposEnEstaCarga.add(tipoComprobante);
 
             // ── Buscar DocumentoCxp único por claveAcceso ──
             DocumentoCxp doc = buscarDocumentoPorClaveAcceso(claveAcceso);
@@ -264,13 +268,14 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                     duplicados++;
                     resultadoLinea = (long) ResultadoCargaTxt.DUPLICADO;
                     observacionLinea = "Documento ya existía sin diferencias.";
+                } else if (doc.getEstadoDocumento() == ESTADO_REGISTRADO_BD) {
+                    // Documento ya registrado con asiento contable → NO modificar, solo reportar diferencia
+                    registradosConDiferencias++;
+                    resultadoLinea = (long) ResultadoCargaTxt.REGISTRADO_CON_DIFERENCIAS;
+                    observacionLinea = "Documento ya registrado en BD con asiento contable, pero el SRI reporta valores diferentes: " + diferencias;
+                    r.put("diferencias", diferencias);
                 } else {
-                    if (doc.getEstadoDocumento() == ESTADO_REGISTRADO_BD) {
-                        doc.setEstadoDocumento(ESTADO_NOVEDAD);
-                        doc.setEstadoNovedad(NOVEDAD_PENDIENTE);
-                        doc.setNovedad(diferencias);
-                        documentoCxpDaoService.save(doc, doc.getId());
-                    } else if (doc.getEstadoDocumento() == ESTADO_LEIDO
+                    if (doc.getEstadoDocumento() == ESTADO_LEIDO
                             || doc.getEstadoDocumento() == ESTADO_XML_CARGADO
                             || doc.getEstadoDocumento() == ESTADO_REVERTIDO) {
                         doc.setValorSinImpuestos(valorSinImpuestos);
@@ -279,6 +284,9 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                         doc.setFechaAutorizacion(fechaAutorizacion);
                         doc.setFechaEmision(fechaEmision);
                         doc.setEstadoDocumento(ESTADO_LEIDO);
+                        doc.setNovedad(diferencias);
+                        documentoCxpDaoService.save(doc, doc.getId());
+                    } else if (doc.getEstadoDocumento() == ESTADO_NOVEDAD) {
                         doc.setNovedad(diferencias);
                         documentoCxpDaoService.save(doc, doc.getId());
                     }
@@ -320,7 +328,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         List<Map<String, Object>> desaparecidosDetalle = new ArrayList<>();
         if (periodo != null) {
             desaparecidos = detectarDocumentosDesaparecidos(
-                    idEmpresa, periodo, clavesEnEstaCarga, cabecera, desaparecidosDetalle);
+                    idEmpresa, periodo, clavesEnEstaCarga, tiposEnEstaCarga, cabecera, desaparecidosDetalle);
             // Actualizar cabecera con conteo real de novedades (incluye desaparecidos)
             cabecera.setRegistrosNovedad(novedades + desaparecidos);
             cargaArchivoTxtDaoService.save(cabecera, cabecera.getId());
@@ -333,12 +341,14 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         resultado.put("nuevos", nuevos);
         resultado.put("duplicados", duplicados);
         resultado.put("novedades", novedades);
+        resultado.put("registradosConDiferencias", registradosConDiferencias);
         resultado.put("desaparecidos", desaparecidos);
         resultado.put("detalles", detallesResultado);
         resultado.put("desaparecidosDetalle", desaparecidosDetalle);
 
         System.out.println("=== FIN cargarArchivoTxt === nuevos=" + nuevos
                 + " duplicados=" + duplicados + " novedades=" + novedades
+                + " registradosConDiferencias=" + registradosConDiferencias
                 + " desaparecidos=" + desaparecidos);
         return resultado;
     }
@@ -716,6 +726,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             doc.setFechaRegistroBD(LocalDateTime.now());
             doc.setUsuarioRegistroBD(em.find(Usuario.class, idUsuario));
             doc.setEstadoDocumento(ESTADO_REGISTRADO_BD);
+            doc.setObservacion(null); // limpiar cualquier observación previa (ej: "Productos pendientes de clasificación")
             documentoCxpDaoService.save(doc, doc.getId());
 
             // ── Generar asiento contable (CXP) ────────────────────────────────
@@ -956,6 +967,30 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             bloqueantes.add(b);
         }
 
+        // 2b. Verificar que existe el TipoAsiento para FACTURA_COMPRA (generación contable)
+        boolean generaConta = verificarGeneraConta(idEmpresa);
+        if (generaConta) {
+            try {
+                Long idTipoAsiento = tipoAsientoService.codigoByAlterno(
+                        com.saa.rubros.TipoAsientos.FACTURAS_COMPRA, idEmpresa);
+                if (idTipoAsiento == null) {
+                    Map<String, Object> b = new HashMap<>();
+                    b.put("tipo", "TIPO_ASIENTO_NO_CONFIGURADO");
+                    b.put("detalle", "No existe el Tipo de Asiento con código alterno "
+                            + com.saa.rubros.TipoAsientos.FACTURAS_COMPRA
+                            + " para Facturas de Compra. Configúrelo en Contabilidad → Tipos de Asiento.");
+                    bloqueantes.add(b);
+                }
+            } catch (Throwable e) {
+                Map<String, Object> b = new HashMap<>();
+                b.put("tipo", "TIPO_ASIENTO_NO_CONFIGURADO");
+                b.put("detalle", "No existe el Tipo de Asiento para Facturas de Compra (codigoAlterno="
+                        + com.saa.rubros.TipoAsientos.FACTURAS_COMPRA
+                        + "). Configúrelo en Contabilidad → Tipos de Asiento.");
+                bloqueantes.add(b);
+            }
+        }
+
         // 2b. Productos en POR_CLASIFICAR o sin cuenta contable en su grupo
         List<String> productosSinClasificar = new ArrayList<>();
         List<String> gruposSinCuenta = new ArrayList<>();
@@ -1053,10 +1088,15 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             double precioUnit  = parseDouble(getElementValue(el, "precioUnitario"));
             double descuento   = parseDouble(getElementValue(el, "descuento"));
             double precioTotal = parseDouble(getElementValue(el, "precioTotalSinImpuesto"));
-            Long porcIVA = null; double valIVA = 0.0;
+            Long porcIVA = null; double valIVA = 0.0; Long codigoIVASRI = null;
             NodeList impDet = el.getElementsByTagName("impuesto");
             if (impDet.getLength() > 0) {
                 Element impEl = (Element) impDet.item(0);
+                String codigoTipoImp = getElementValue(impEl, "codigo");
+                // codigo=2 significa IVA → usar codigoPorcentaje para buscar en TSRI lsri=17
+                if ("2".equals(codigoTipoImp)) {
+                    codigoIVASRI = parseLong(getElementValue(impEl, "codigoPorcentaje"));
+                }
                 porcIVA = parseLong(getElementValue(impEl, "tarifa"));
                 valIVA  = parseDouble(getElementValue(impEl, "valor"));
             }
@@ -1068,6 +1108,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             df.setSubTotal(precioTotal);
             df.setDescuento(descuento);
             df.setBaseImponible(precioTotal);
+            df.setCodigoIVASRI(codigoIVASRI);
             df.setPorcentajeIVA(porcIVA);
             df.setValorIVA(valIVA);
             df.setTotal(precioTotal + valIVA);
@@ -1120,6 +1161,24 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             return !result.isEmpty();
         } catch (Exception e) {
             System.err.println("⚠ verificarCuentaContableProveedor: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Verifica si la empresa tiene generación contable habilitada (Facturador.generaConta=1).
+     */
+    private boolean verificarGeneraConta(Long idEmpresa) {
+        try {
+            @SuppressWarnings("unchecked")
+            List<Long> lista = em.createQuery(
+                    "SELECT f.generaConta FROM Facturador f "
+                    + "WHERE f.empresa.codigo = :idEmpresa AND f.estado = 1")
+                    .setParameter("idEmpresa", idEmpresa)
+                    .setMaxResults(1).getResultList();
+            return !lista.isEmpty() && Long.valueOf(1L).equals(lista.get(0));
+        } catch (Exception e) {
+            System.err.println("⚠ verificarGeneraConta: " + e.getMessage());
             return false;
         }
     }
@@ -1442,6 +1501,9 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
         System.out.println("Revirtiendo tipo=" + tipo + " idDoc=" + idDocBD);
 
+        // ── Anular asiento contable vinculado ──────────────────────────────────
+        anularAsientoDeDocumento(tipo, idDocBD);
+
         switch (tipo) {
             case "FACTURA_COMPRA":
                 em.createQuery("delete from DetalleFacturaCompra d where d.factura.id = :id").setParameter("id", idDocBD).executeUpdate();
@@ -1470,12 +1532,61 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 em.createQuery("delete from RetencionCompra r where r.id = :id").setParameter("id", idDocBD).executeUpdate();
                 break;
             case "RETENCION_COMPRA_V2":
-                // PathRetencionCompraV2 no existe aún como entidad; no hay paths que eliminar.
-                // TODO: cuando se cree PathRetencionCompraV2, agregar el delete aquí.
                 em.createQuery("delete from RetencionCompraV2 r where r.id = :id").setParameter("id", idDocBD).executeUpdate();
                 break;
             default:
                 throw new Exception("Tipo de tabla destino no reconocido para reversión: " + tipo);
+        }
+    }
+
+    /**
+     * Anula el asiento contable vinculado al documento CXP cambiando su estado a ANULADO (2).
+     * Si el documento no tiene asiento vinculado, no hace nada.
+     */
+    private void anularAsientoDeDocumento(String tipo, Long idDocBD) {
+        try {
+            com.saa.model.cnt.Asiento asiento = null;
+            switch (tipo) {
+                case "FACTURA_COMPRA": {
+                    FacturaCompra fc = em.find(FacturaCompra.class, idDocBD);
+                    if (fc != null) asiento = fc.getAsiento();
+                    break;
+                }
+                case "NOTA_CREDITO_COMPRA": {
+                    com.saa.model.cxp.NotaCreditoCompra nc = em.find(com.saa.model.cxp.NotaCreditoCompra.class, idDocBD);
+                    if (nc != null) asiento = nc.getAsiento();
+                    break;
+                }
+                case "NOTA_DEBITO_COMPRA": {
+                    com.saa.model.cxp.NotaDebitoCompra nd = em.find(com.saa.model.cxp.NotaDebitoCompra.class, idDocBD);
+                    if (nd != null) asiento = nd.getAsiento();
+                    break;
+                }
+                case "LIQUIDACION_COMPRA_COMPRA": {
+                    com.saa.model.cxp.LiquidacionCompraCompra lq = em.find(com.saa.model.cxp.LiquidacionCompraCompra.class, idDocBD);
+                    if (lq != null) asiento = lq.getAsiento();
+                    break;
+                }
+                case "RETENCION_COMPRA": {
+                    com.saa.model.cxp.RetencionCompra rc = em.find(com.saa.model.cxp.RetencionCompra.class, idDocBD);
+                    if (rc != null) asiento = rc.getAsiento();
+                    break;
+                }
+                case "RETENCION_COMPRA_V2": {
+                    com.saa.model.cxp.RetencionCompraV2 rc = em.find(com.saa.model.cxp.RetencionCompraV2.class, idDocBD);
+                    if (rc != null) asiento = rc.getAsiento();
+                    break;
+                }
+            }
+            if (asiento != null) {
+                asiento.setEstado((long) com.saa.rubros.EstadoAsiento.ANULADO);
+                em.merge(asiento);
+                System.out.println("✓ Asiento " + asiento.getNumeroAlterno() + " anulado por reversión del documento " + tipo + " id=" + idDocBD);
+            } else {
+                System.out.println("ℹ Documento " + tipo + " id=" + idDocBD + " no tiene asiento vinculado, nada que anular.");
+            }
+        } catch (Exception e) {
+            System.err.println("⚠ No se pudo anular el asiento del documento " + tipo + " id=" + idDocBD + ": " + e.getMessage());
         }
     }
 
@@ -1545,61 +1656,96 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
      */
     @SuppressWarnings("unchecked")
     private long detectarDocumentosDesaparecidos(Long idEmpresa, Periodo periodo,
-            java.util.Set<String> clavesEnEstaCarga, CargaArchivoTxt cabecera,
-            List<Map<String, Object>> desaparecidosDetalle) {
+            java.util.Set<String> clavesEnEstaCarga, java.util.Set<String> tiposEnEstaCarga,
+            CargaArchivoTxt cabecera, List<Map<String, Object>> desaparecidosDetalle) {
         long count = 0;
         try {
-            List<DocumentoCxp> activosDelPeriodo = em.createNamedQuery("DocumentoCxpActivosByEmpresaPeriodo")
+            // Buscar TODOS los documentos activos del período del mismo tipo
+            // (incluye estado 3 para reportarlos como REGISTRADO_DESAPARECIDO)
+            List<DocumentoCxp> activosDelPeriodo = em.createQuery(
+                    "SELECT e FROM DocumentoCxp e "
+                    + "WHERE e.empresa.codigo = :idEmpresa "
+                    + "AND e.periodoContable.codigo = :idPeriodo "
+                    + "AND e.tipoComprobante IN :tipos "
+                    + "AND e.estadoDocumento <> 6 "  // excluir solo REVERTIDO
+                    + "ORDER BY e.id DESC")
                     .setParameter("idEmpresa", idEmpresa)
                     .setParameter("idPeriodo", periodo.getCodigo())
+                    .setParameter("tipos", tiposEnEstaCarga)
                     .getResultList();
 
             for (DocumentoCxp doc : activosDelPeriodo) {
                 if (clavesEnEstaCarga.contains(doc.getClaveAcceso())) continue;
 
-                // El documento no apareció en esta carga → marcar como novedad DESAPARECIDO
-                String motivoAnterior = doc.getNovedad() != null ? doc.getNovedad() : "";
-                String motivo = "DESAPARECIDO_EN_CARGA: No apareció en la carga " + cabecera.getId()
-                        + " del período " + periodo.getCodigo()
-                        + (motivoAnterior.isEmpty() ? "" : " | Novedad previa: " + motivoAnterior);
+                boolean yaRegistrado = doc.getEstadoDocumento() == ESTADO_REGISTRADO_BD;
 
-                if (doc.getEstadoDocumento() == ESTADO_REGISTRADO_BD) {
-                    doc.setEstadoDocumento(ESTADO_NOVEDAD);
-                    doc.setEstadoNovedad(NOVEDAD_PENDIENTE);
-                } else if (doc.getEstadoDocumento() == ESTADO_LEIDO
-                        || doc.getEstadoDocumento() == ESTADO_XML_CARGADO) {
-                    // Sigue pendiente de procesar y ya no aparece en el TXT
-                    doc.setEstadoDocumento(ESTADO_NOVEDAD);
-                    doc.setEstadoNovedad(NOVEDAD_PENDIENTE);
-                }
-                // Si ya estaba en NOVEDAD, solo actualizamos la descripción
-                doc.setNovedad(motivo);
-                try {
-                    documentoCxpDaoService.save(doc, doc.getId());
-                } catch (Throwable e) {
-                    System.out.println("WARN detectarDocumentosDesaparecidos save: " + e.getMessage());
-                }
+                if (yaRegistrado) {
+                    // Documento ya procesado con asiento → solo reportar, NO cambiar estado
+                    String motivo = "REGISTRADO_DESAPARECIDO: Documento ya registrado en BD con asiento contable "
+                            + "pero no apareció en la carga " + cabecera.getId()
+                            + " del período " + periodo.getCodigo()
+                            + ". Verificar con el proveedor o el SRI.";
 
-                // Registrar línea de detalle con resultado DESAPARECIDO
-                DetalleCargaTxt linea = new DetalleCargaTxt();
-                linea.setCargaTxt(cabecera);
-                linea.setDocumento(doc);
-                linea.setResultado((long) ResultadoCargaTxt.DESAPARECIDO);
-                linea.setObservacion(motivo);
-                try {
-                    detalleCargaTxtDaoService.save(linea, null);
-                } catch (Throwable e) {
-                    System.out.println("WARN detectarDocumentosDesaparecidos detalle: " + e.getMessage());
-                }
+                    DetalleCargaTxt linea = new DetalleCargaTxt();
+                    linea.setCargaTxt(cabecera);
+                    linea.setDocumento(doc);
+                    linea.setResultado((long) ResultadoCargaTxt.REGISTRADO_DESAPARECIDO);
+                    linea.setObservacion(motivo);
+                    try {
+                        detalleCargaTxtDaoService.save(linea, null);
+                    } catch (Throwable e) {
+                        System.out.println("WARN detectarDesaparecidos (registrado) detalle: " + e.getMessage());
+                    }
 
-                Map<String, Object> d = new HashMap<>();
-                d.put("idDocumentoCxp", doc.getId());
-                d.put("claveAcceso", doc.getClaveAcceso());
-                d.put("serie", doc.getSerieComprobante());
-                d.put("resultado", "DESAPARECIDO");
-                d.put("novedad", motivo);
-                desaparecidosDetalle.add(d);
-                count++;
+                    Map<String, Object> d = new HashMap<>();
+                    d.put("idDocumentoCxp", doc.getId());
+                    d.put("claveAcceso", doc.getClaveAcceso());
+                    d.put("serie", doc.getSerieComprobante());
+                    d.put("resultado", "REGISTRADO_DESAPARECIDO");
+                    d.put("novedad", motivo);
+                    desaparecidosDetalle.add(d);
+                    // No se incrementa count porque no es una novedad pendiente de acción
+
+                } else {
+                    // Documento pendiente de procesar → marcar como NOVEDAD DESAPARECIDO
+                    String motivoAnterior = doc.getNovedad() != null ? doc.getNovedad() : "";
+                    String motivo = "DESAPARECIDO_EN_CARGA: No apareció en la carga " + cabecera.getId()
+                            + " del período " + periodo.getCodigo()
+                            + (motivoAnterior.isEmpty() ? "" : " | Novedad previa: " + motivoAnterior);
+
+                    if (doc.getEstadoDocumento() == ESTADO_LEIDO
+                            || doc.getEstadoDocumento() == ESTADO_XML_CARGADO
+                            || doc.getEstadoDocumento() == ESTADO_NOVEDAD) {
+                        doc.setEstadoDocumento(ESTADO_NOVEDAD);
+                        doc.setEstadoNovedad(NOVEDAD_PENDIENTE);
+                    }
+                    doc.setNovedad(motivo);
+                    try {
+                        documentoCxpDaoService.save(doc, doc.getId());
+                    } catch (Throwable e) {
+                        System.out.println("WARN detectarDocumentosDesaparecidos save: " + e.getMessage());
+                    }
+
+                    DetalleCargaTxt linea = new DetalleCargaTxt();
+                    linea.setCargaTxt(cabecera);
+                    linea.setDocumento(doc);
+                    linea.setResultado((long) ResultadoCargaTxt.DESAPARECIDO);
+                    linea.setObservacion(motivo);
+                    try {
+                        detalleCargaTxtDaoService.save(linea, null);
+                    } catch (Throwable e) {
+                        System.out.println("WARN detectarDocumentosDesaparecidos detalle: " + e.getMessage());
+                    }
+
+                    Map<String, Object> d = new HashMap<>();
+                    d.put("idDocumentoCxp", doc.getId());
+                    d.put("claveAcceso", doc.getClaveAcceso());
+                    d.put("serie", doc.getSerieComprobante());
+                    d.put("resultado", "DESAPARECIDO");
+                    d.put("novedad", motivo);
+                    desaparecidosDetalle.add(d);
+                    count++;
+                }
             }
         } catch (Exception e) {
             System.out.println("WARN detectarDocumentosDesaparecidos: " + e.getMessage());
@@ -1865,7 +2011,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
      */
     private void generarAsientoCxp(DocumentoCxp doc,
                                     Map<String, Object> resultado,
-                                    Long idEmpresa) {
+                                    Long idEmpresa) throws Exception {
         try {
             // Verificar si la empresa tiene facturador con generaConta=1
             @SuppressWarnings("unchecked")
@@ -1982,24 +2128,20 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             }
 
         } catch (UnsupportedOperationException uoe) {
-            // Los stubs lanzan UnsupportedOperationException hasta que se configuren las plantillas.
-            // Se registra como advertencia informativa, no como error crítico.
+            // Stubs aún no implementados → advertencia informativa, no bloquea
             resultado.put("advertenciaAsiento",
-                    "Documento registrado. El asiento contable aún no está configurado para '"
+                    "El asiento contable aún no está configurado para '"
                     + doc.getTipoTablaDestino() + "': " + uoe.getMessage()
-                    + ". Configure la plantilla en Contabilidad → Tipos de Asiento "
-                    + "y defina las cuentas auxiliares.");
+                    + ". Configure la plantilla en Contabilidad → Tipos de Asiento.");
             System.out.println("ℹ Asiento CXP pendiente de configurar para tipo="
                     + doc.getTipoTablaDestino());
 
         } catch (Exception e) {
-            resultado.put("advertenciaAsiento",
-                    "Documento registrado pero ocurrió un error al generar el asiento contable: "
-                    + e.getMessage()
-                    + ". Genere el asiento manualmente desde Contabilidad.");
+            // Error de negocio (asiento descuadrado, cuenta no configurada, etc.)
+            // → propagar para revertir toda la transacción (factura + asiento)
             System.err.println("⚠ Error generando asiento CXP tipo=" + doc.getTipoTablaDestino()
                     + ": " + e.getMessage());
-            e.printStackTrace();
+            throw e;
         }
     }
 
