@@ -1630,11 +1630,11 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             haberReten.setDescripcion("Retención recibida código " + codReten
                     + " | Base: " + String.format(java.util.Locale.US, "%.2f", nvl(d.getBaseImponible()))
                     + " | " + nvl2(d.getPorcentajeReten()) + "%");
-            haberReten.setValorDebe(0.0); haberReten.setValorHaber(valor);
+            haberReten.setValorDebe(valor); haberReten.setValorHaber(0.0);
             lineas.add(haberReten);
         }
 
-        // ── DEBE: CxP Proveedor (monto retenido reduce la deuda) ─────────────
+        // ── HABER: CxP Cliente (cuenta del proveedor/cliente) ────────────────
         if (rc.getProveedor() == null)
             throw new IncomeException("RetencionCompra " + idRetencionCompra + " no tiene proveedor.");
         PlanCuenta cuentaProv = obtenerCuentaProveedor(rc.getProveedor().getCodigo(), idEmpresa);
@@ -1644,8 +1644,8 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         DetalleAsiento debe = new DetalleAsiento();
         debe.setPlanCuenta(cuentaProv); debe.setNumeroCuenta(cuentaProv.getCuentaContable());
         debe.setNombreCuenta(cuentaProv.getNombre());
-        debe.setDescripcion("CxP Proveedor retención: " + rc.getProveedor().getNombre());
-        debe.setValorDebe(totalRetenido); debe.setValorHaber(0.0);
+        debe.setDescripcion("CxP Cliente retención: " + rc.getProveedor().getNombre());
+        debe.setValorDebe(0.0); debe.setValorHaber(totalRetenido);
         lineas.add(0, debe);
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento,
@@ -1695,11 +1695,11 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             haberReten.setDescripcion("Retención V2 recibida código " + codReten
                     + " | Base: " + String.format(java.util.Locale.US, "%.2f", nvl(d.getBaseImponible()))
                     + " | " + nvl2(d.getPorcentajeReten()) + "%");
-            haberReten.setValorDebe(0.0); haberReten.setValorHaber(valor);
+            haberReten.setValorDebe(valor); haberReten.setValorHaber(0.0);
             lineas.add(haberReten);
         }
 
-        // ── DEBE: CxP Proveedor ───────────────────────────────────────────────
+        // ── HABER: CxP Cliente ────────────────────────────────────────────────
         if (rc.getProveedor() == null)
             throw new IncomeException("RetencionCompraV2 " + idRetencionCompraV2 + " no tiene proveedor.");
         PlanCuenta cuentaProv = obtenerCuentaProveedor(rc.getProveedor().getCodigo(), idEmpresa);
@@ -1709,8 +1709,8 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         DetalleAsiento debe = new DetalleAsiento();
         debe.setPlanCuenta(cuentaProv); debe.setNumeroCuenta(cuentaProv.getCuentaContable());
         debe.setNombreCuenta(cuentaProv.getNombre());
-        debe.setDescripcion("CxP Proveedor retención V2: " + rc.getProveedor().getNombre());
-        debe.setValorDebe(totalRetenido); debe.setValorHaber(0.0);
+        debe.setDescripcion("CxP Cliente retención V2: " + rc.getProveedor().getNombre());
+        debe.setValorDebe(0.0); debe.setValorHaber(totalRetenido);
         lineas.add(0, debe);
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento,

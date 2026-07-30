@@ -75,6 +75,34 @@ public interface AporteDaoService extends EntityDao<Aporte>{
 	List<Object[]> selectSumaPorEntidadYTipoAporte(LocalDateTime fechaCorte) throws Throwable;
 
 
+	/**
+	 * Para G43 — Imposiciones personales: COUNT de aportes con tipoAporte.codigo IN (9, 11) y valor > 0
+	 * agrupado por entidad.
+	 * @param codigoEntidad Código de la entidad cesante
+	 * @return Long count de imposiciones personales
+	 */
+	Long selectCountImposicionesPersonalesPorEntidad(Long codigoEntidad) throws Throwable;
+
+	/**
+	 * Para G43 — Imposiciones patronales: COUNT de aportes con tipoAporte.codigo IN (13, 14) y valor > 0
+	 * agrupado por entidad.
+	 * @param codigoEntidad Código de la entidad cesante
+	 * @return Long count de imposiciones patronales
+	 */
+	Long selectCountImposicionesPatronalesPorEntidad(Long codigoEntidad) throws Throwable;
+
+	/**
+	 * Para G43 — Saldo cuenta individual: SUM de aportes con valor < 0,
+	 * tipoAporte.estado = 1, y fechaTransaccion dentro del mes de ejecucion.
+	 * Retorna Double suma (negativa), o null si no hay registros.
+	 * @param codigoEntidad Código de la entidad cesante
+	 * @param fechaInicio   Primer instante del mes de ejecucion (inclusive)
+	 * @param fechaFin      Último instante del mes de ejecucion (inclusive)
+	 */
+	Double selectSumaAportesNegativosMesPorEntidad(Long codigoEntidad,
+			java.time.LocalDateTime fechaInicio,
+			java.time.LocalDateTime fechaFin) throws Throwable;
+
 	/*filtra todos los aporte por id de entidad
 	 * @param :idEntidad
 	 * @return Lista de Aporte

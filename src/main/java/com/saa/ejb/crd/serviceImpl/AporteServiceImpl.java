@@ -138,4 +138,25 @@ public class AporteServiceImpl implements AporteService {
     public java.util.List<Object[]> selectSumaPorEntidadYTipoAporte(java.time.LocalDateTime fechaCorte) throws Throwable {
         return aporteDaoService.selectSumaPorEntidadYTipoAporte(fechaCorte);
     }
+
+    // ============================================================
+    // G43 — Imposiciones y saldo cuenta individual
+    // ============================================================
+
+    @Override
+    public Long selectCountImposicionesPersonalesPorEntidad(Long codigoEntidad) throws Throwable {
+        return aporteDaoService.selectCountImposicionesPersonalesPorEntidad(codigoEntidad);
+    }
+
+    @Override
+    public Long selectCountImposicionesPatronalesPorEntidad(Long codigoEntidad) throws Throwable {
+        return aporteDaoService.selectCountImposicionesPatronalesPorEntidad(codigoEntidad);
+    }
+
+    @Override
+    public Double selectSumaAportesNegativosMesPorEntidad(Long codigoEntidad,
+            java.time.LocalDateTime fechaInicio,
+            java.time.LocalDateTime fechaFin) throws Throwable {
+        return aporteDaoService.selectSumaAportesNegativosMesPorEntidad(codigoEntidad, fechaInicio, fechaFin);
+    }
 }

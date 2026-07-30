@@ -138,6 +138,16 @@ public class FacturaCompra implements Serializable {
         private Long estadoEmision;
 
         /**
+         * Estado de pago de la factura de compra.
+         * 1 = Pendiente (sin ningún pago aplicado)
+         * 2 = Pagada parcialmente
+         * 3 = Pagada totalmente
+         * Se recalcula automáticamente al insertar o reversar una AplicacionPagoCxp.
+         */
+        @Basic @Column(name = "FCTCEPAG")
+        private Long estadoPago;
+
+        /**
          * Asiento contable generado al contabilizar la factura de compra.
          */
         @ManyToOne
@@ -220,6 +230,8 @@ public class FacturaCompra implements Serializable {
 	public void setEstado(Long estado) { this.estado = estado; }
         public Long getEstadoEmision() { return estadoEmision; }
         public void setEstadoEmision(Long estadoEmision) { this.estadoEmision = estadoEmision; }
+        public Long getEstadoPago() { return estadoPago; }
+        public void setEstadoPago(Long estadoPago) { this.estadoPago = estadoPago; }
         public Asiento getAsiento() { return asiento; }
         public void setAsiento(Asiento asiento) { this.asiento = asiento; }
 }

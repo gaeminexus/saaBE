@@ -72,4 +72,7 @@ public interface NombreEntidadesCobro {
 	String RETENCION_V2 = "RetencionV2";
 	String DETALLE_RETENCION_V2 = "DetalleRetencionV2";
 	String PATH_RETENCION_V2 = "PathRetencionV2";
+
+	// Aplicaciones de pago a facturas / liquidaciones CXC
+	String APLICACION_PAGO_CXC = "AplicacionPagoCxc";
 }

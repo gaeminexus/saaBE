@@ -1,4 +1,4 @@
-package com.saa.model.cxc;
+package com.saa.model.cxp;
 
 import java.io.Serializable;
 import java.time.LocalDate;
@@ -23,135 +23,145 @@ import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
 
 /**
- * Entity AnticipoCliente.
- * Registra los anticipos recibidos de clientes.
- * Tabla: CBR.ANTC
+ * Entity AnticipoProveedor.
+ * Registra los anticipos entregados a proveedores.
+ * Tabla: PGS.ANTP
+ *
+ * Estados:
+ *   1 = Activo (tiene saldo disponible)
+ *   2 = Agotado (saldo = 0)
+ *   3 = Anulado
+ *
+ * Formas de pago:
+ *   1 = Efectivo
+ *   2 = Transferencia
+ *   3 = Cheque
  */
 @SuppressWarnings("serial")
 @Entity
-@Table(name = "ANTC", schema = "CBR")
-@SequenceGenerator(name = "SQ_ANTCCDGO", sequenceName = "CBR.SQ_ANTCCDGO", allocationSize = 1)
+@Table(name = "ANTP", schema = "PGS")
+@SequenceGenerator(name = "SQ_ANTPCDGO", sequenceName = "PGS.SQ_ANTPCDGO", allocationSize = 1)
 @NamedQueries({
-    @NamedQuery(name = "AnticipoClienteAll", query = "select e from AnticipoCliente e"),
-    @NamedQuery(name = "AnticipoClienteId",  query = "select e from AnticipoCliente e where e.id = :id")
+    @NamedQuery(name = "AnticipoProveedorAll", query = "select e from AnticipoProveedor e"),
+    @NamedQuery(name = "AnticipoProveedorId",  query = "select e from AnticipoProveedor e where e.id = :id")
 })
-public class AnticipoCliente implements Serializable {
+public class AnticipoProveedor implements Serializable {
 
     /**
      * Identificador único del anticipo.
      */
     @Basic
     @Id
-    @Column(name = "ID", precision = 0)
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_ANTCCDGO")
+    @Column(name = "ANTPCDGO", precision = 0)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_ANTPCDGO")
     private Long id;
 
     /**
-     * Cliente que entrega el anticipo. FK a TSR.TTLR.
+     * Proveedor al que se entrega el anticipo. FK a TSR.TTLR.
      */
     @ManyToOne
-    @JoinColumn(name = "TITULAR", referencedColumnName = "TTLRCDGO")
+    @JoinColumn(name = "ANTPTTLR", referencedColumnName = "TTLRCDGO")
     private Titular titular;
+
+    /**
+     * Empresa contable a la que pertenece el anticipo. FK a SCP.PJRQ.
+     */
+    @ManyToOne
+    @JoinColumn(name = "ANTPPJRQ", referencedColumnName = "PJRQCDGO")
+    private Empresa empresa;
 
     /**
      * Fecha del documento de anticipo.
      */
     @Basic
-    @Column(name = "FECHAANTICIPO")
+    @Column(name = "ANTPFANT")
     private LocalDate fechaAnticipo;
 
     /**
-     * Fecha en que se recibió físicamente el anticipo.
+     * Fecha en que se realizó físicamente el pago del anticipo.
      */
     @Basic
-    @Column(name = "FECHARECEPCION")
+    @Column(name = "ANTPFRCP")
     private LocalDate fechaRecepcion;
-
-    /**
-     * Usuario que registra el anticipo. FK a SCP.PJRQ.
-     */
-    @ManyToOne
-    @JoinColumn(name = "USUARIO", referencedColumnName = "PJRQCDGO")
-    private Usuario usuario;
-
-    /**
-     * Fecha y hora en que se registró en el sistema.
-     */
-    @Basic
-    @Column(name = "FECHAREGISTRO")
-    private LocalDateTime fechaRegistro;
 
     /**
      * Número de documento de referencia del anticipo.
      */
     @Basic
-    @Column(name = "NUMERODOC", length = 100)
+    @Column(name = "ANTPNDOC", length = 100)
     private String numeroDoc;
 
     /**
-     * Valor monetario del anticipo.
+     * Valor monetario total del anticipo.
      */
     @Basic
-    @Column(name = "VALOR")
+    @Column(name = "ANTPVLOR")
     private Double valor;
 
     /**
      * Saldo disponible del anticipo (valor - lo ya aplicado a facturas).
-     * 1=Activo, 2=Agotado, 3=Anulado
      */
     @Basic
-    @Column(name = "ANTCSALD")
+    @Column(name = "ANTPSALD")
     private Double saldo;
 
     /**
-     * Forma de pago con que se recibió el anticipo.
-     * 1=Efectivo, 2=Transferencia, 3=Cheque, 4=Tarjeta
+     * Forma de pago con que se realizó el anticipo.
+     * 1=Efectivo, 2=Transferencia, 3=Cheque
      */
     @Basic
-    @Column(name = "ANTCFPAG")
+    @Column(name = "ANTPFPAG")
     private Long formaPago;
 
     /**
      * Número de referencia del pago (nro. transferencia, cheque, etc.).
      */
     @Basic
-    @Column(name = "ANTCREFR", length = 200)
+    @Column(name = "ANTPREFR", length = 200)
     private String referencia;
 
     /**
-     * Banco de origen del pago.
+     * Banco de destino del pago.
      */
     @Basic
-    @Column(name = "ANTCBANC", length = 200)
+    @Column(name = "ANTPBANC", length = 200)
     private String banco;
-
-    /**
-     * Asiento contable generado. FK a CNT.ASNT.
-     */
-    @ManyToOne
-    @JoinColumn(name = "ASIENTO", referencedColumnName = "ASNTCDGO")
-    private Asiento asiento;
-
-    /**
-     * Estado: 1=Activo, 2=Anulado.
-     */
-    @Basic
-    @Column(name = "ESTADO")
-    private Long estado;
-
-    /**
-     * Empresa contable a la que pertenece el anticipo. FK a SCP.PJRQ.
-     */
-    @ManyToOne
-    @JoinColumn(name = "EMPRESA", referencedColumnName = "PJRQCDGO")
-    private Empresa empresa;
 
     /**
      * Observaciones adicionales.
      */
     @Basic
-    @Column(name = "OBSERVACION", length = 2000)
+    @Column(name = "ANTPOBSR", length = 2000)
     private String observacion;
+
+    /**
+     * Estado del anticipo.
+     * 1=Activo, 2=Agotado, 3=Anulado
+     */
+    @Basic
+    @Column(name = "ANTPESTD")
+    private Long estado;
+
+    /**
+     * Usuario que registra el anticipo. FK a SCP.PJRQ.
+     */
+    @ManyToOne
+    @JoinColumn(name = "ANTPUSAR", referencedColumnName = "PJRQCDGO")
+    private Usuario usuario;
+
+    /**
+     * Asiento contable generado. FK a CNT.ASNT.
+     */
+    @ManyToOne
+    @JoinColumn(name = "ANTPASNT", referencedColumnName = "ASNTCDGO")
+    private Asiento asiento;
+
+    /**
+     * Fecha y hora en que se registró en el sistema.
+     */
+    @Basic
+    @Column(name = "ANTPFCRG")
+    private LocalDateTime fechaRegistro;
 
     // ── Getters y Setters ────────────────────────────────────────────────────
 
@@ -161,17 +171,14 @@ public class AnticipoCliente implements Serializable {
     public Titular getTitular() { return titular; }
     public void setTitular(Titular titular) { this.titular = titular; }
 
+    public Empresa getEmpresa() { return empresa; }
+    public void setEmpresa(Empresa empresa) { this.empresa = empresa; }
+
     public LocalDate getFechaAnticipo() { return fechaAnticipo; }
     public void setFechaAnticipo(LocalDate fechaAnticipo) { this.fechaAnticipo = fechaAnticipo; }
 
     public LocalDate getFechaRecepcion() { return fechaRecepcion; }
     public void setFechaRecepcion(LocalDate fechaRecepcion) { this.fechaRecepcion = fechaRecepcion; }
-
-    public Usuario getUsuario() { return usuario; }
-    public void setUsuario(Usuario usuario) { this.usuario = usuario; }
-
-    public LocalDateTime getFechaRegistro() { return fechaRegistro; }
-    public void setFechaRegistro(LocalDateTime fechaRegistro) { this.fechaRegistro = fechaRegistro; }
 
     public String getNumeroDoc() { return numeroDoc; }
     public void setNumeroDoc(String numeroDoc) { this.numeroDoc = numeroDoc; }
@@ -191,15 +198,18 @@ public class AnticipoCliente implements Serializable {
     public String getBanco() { return banco; }
     public void setBanco(String banco) { this.banco = banco; }
 
-    public Asiento getAsiento() { return asiento; }
-    public void setAsiento(Asiento asiento) { this.asiento = asiento; }
+    public String getObservacion() { return observacion; }
+    public void setObservacion(String observacion) { this.observacion = observacion; }
 
     public Long getEstado() { return estado; }
     public void setEstado(Long estado) { this.estado = estado; }
 
-    public Empresa getEmpresa() { return empresa; }
-    public void setEmpresa(Empresa empresa) { this.empresa = empresa; }
+    public Usuario getUsuario() { return usuario; }
+    public void setUsuario(Usuario usuario) { this.usuario = usuario; }
 
-    public String getObservacion() { return observacion; }
-    public void setObservacion(String observacion) { this.observacion = observacion; }
+    public Asiento getAsiento() { return asiento; }
+    public void setAsiento(Asiento asiento) { this.asiento = asiento; }
+
+    public LocalDateTime getFechaRegistro() { return fechaRegistro; }
+    public void setFechaRegistro(LocalDateTime fechaRegistro) { this.fechaRegistro = fechaRegistro; }
 }

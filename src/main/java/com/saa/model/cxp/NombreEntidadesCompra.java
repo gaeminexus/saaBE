@@ -56,4 +56,8 @@ public interface NombreEntidadesCompra {
 	String PAGO_NEGOCIACION         = "PagoNegociacion";
 	String ADENDUM_NEGOCIACION      = "AdendumNegociacion";
 	String PATH_NEGOCIACION         = "PathNegociacion";
+
+	// Anticipos y Aplicaciones de pago CXP
+	String ANTICIPO_PROVEEDOR       = "AnticipoProveedor";
+	String APLICACION_PAGO_CXP      = "AplicacionPagoCxp";
 }

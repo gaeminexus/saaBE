@@ -300,6 +300,17 @@ public class Factura implements Serializable {
 	@Basic
 	@Column(name = "ESTADO")
 	private Long estado;
+
+	/**
+	 * Estado de pago de la factura.
+	 * 1 = Pendiente (sin ningún pago aplicado)
+	 * 2 = Pagada parcialmente
+	 * 3 = Pagada totalmente
+	 * Se recalcula automáticamente al insertar o reversar una AplicacionPagoCxc.
+	 */
+	@Basic
+	@Column(name = "FCTREPAG")
+	private Long estadoPago;
 	
 	/**
 	 * Estado de emisión (pendiente, autorizado, rechazado).
@@ -639,6 +650,14 @@ public class Factura implements Serializable {
 
 	public void setEstado(Long estado) {
 		this.estado = estado;
+	}
+
+	public Long getEstadoPago() {
+		return estadoPago;
+	}
+
+	public void setEstadoPago(Long estadoPago) {
+		this.estadoPago = estadoPago;
 	}
 
 	public Long getEstadoEmision() {

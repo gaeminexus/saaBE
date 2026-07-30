@@ -26,6 +26,61 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 	 * @param :idEntidad
 	 * @return Lista de Aporte
 	 */
+	// ---------------------------------------------------------------
+	// G43 — Imposiciones personales (tipos 9, 11 con valor > 0)
+	// ---------------------------------------------------------------
+	@Override
+	public Long selectCountImposicionesPersonalesPorEntidad(Long codigoEntidad) throws Throwable {
+		Query query = em.createQuery(
+			" select count(a) " +
+			" from   Aporte a " +
+			" where  a.entidad.codigo = :codigoEntidad " +
+			"   and  a.tipoAporte.codigo in (9, 11) " +
+			"   and  a.valor > 0 ");
+		query.setParameter("codigoEntidad", codigoEntidad);
+		Object result = query.getSingleResult();
+		return result != null ? ((Number) result).longValue() : 0L;
+	}
+
+	// ---------------------------------------------------------------
+	// G43 — Imposiciones patronales (tipos 13, 14 con valor > 0)
+	// ---------------------------------------------------------------
+	@Override
+	public Long selectCountImposicionesPatronalesPorEntidad(Long codigoEntidad) throws Throwable {
+		Query query = em.createQuery(
+			" select count(a) " +
+			" from   Aporte a " +
+			" where  a.entidad.codigo = :codigoEntidad " +
+			"   and  a.tipoAporte.codigo in (13, 14) " +
+			"   and  a.valor > 0 ");
+		query.setParameter("codigoEntidad", codigoEntidad);
+		Object result = query.getSingleResult();
+		return result != null ? ((Number) result).longValue() : 0L;
+	}
+
+	// ---------------------------------------------------------------
+	// G43 — SUM de aportes con valor < 0, tipoAporte.estado = 1,
+	//        dentro del mes de ejecucion para una entidad
+	// ---------------------------------------------------------------
+	@Override
+	public Double selectSumaAportesNegativosMesPorEntidad(Long codigoEntidad,
+			java.time.LocalDateTime fechaInicio,
+			java.time.LocalDateTime fechaFin) throws Throwable {
+		Query query = em.createQuery(
+			" select sum(a.valor) " +
+			" from   Aporte a " +
+			" where  a.entidad.codigo = :codigoEntidad " +
+			"   and  a.tipoAporte.estado = 1 " +
+			"   and  a.valor < 0 " +
+			"   and  a.fechaTransaccion >= :fechaInicio " +
+			"   and  a.fechaTransaccion <= :fechaFin ");
+		query.setParameter("codigoEntidad", codigoEntidad);
+		query.setParameter("fechaInicio", fechaInicio);
+		query.setParameter("fechaFin", fechaFin);
+		Object result = query.getSingleResult();
+		return result != null ? ((Number) result).doubleValue() : 0.0;
+	}
+
 	@SuppressWarnings("unchecked")
 	@Override
 	public List<Aporte> selectByEntidad(Long idEntidad) throws Throwable {

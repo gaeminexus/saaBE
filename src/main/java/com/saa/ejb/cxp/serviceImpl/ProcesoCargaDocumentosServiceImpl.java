@@ -449,18 +449,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                     || TIPO_RETENCION_V2.equalsIgnoreCase(doc.getTipoComprobante());
 
             if (!esRetencionXml) {
-                String totalSinImpStr = getXmlValue(xmlDoc, "totalSinImpuestos");
-                if (!totalSinImpStr.isEmpty()) {
-                    double totalSinImpXml = parseDouble(totalSinImpStr);
-                    if (doc.getValorSinImpuestos() != null
-                            && Math.abs(totalSinImpXml - doc.getValorSinImpuestos()) > 0.01) {
-                        errores.add(errorDiff("valorSinImpuestos",
-                                String.valueOf(doc.getValorSinImpuestos()),
-                                String.valueOf(totalSinImpXml)));
-                    }
-                }
-
-                // ── 6. Importe total ──
+                // ── Solo se valida importeTotal ──
                 String importeTotalStr = getXmlValue(xmlDoc, "importeTotal");
                 if (!importeTotalStr.isEmpty()) {
                     double importeTotalXml = parseDouble(importeTotalStr);
@@ -469,24 +458,6 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                         errores.add(errorDiff("importeTotal",
                                 String.valueOf(doc.getImporteTotal()),
                                 String.valueOf(importeTotalXml)));
-                    }
-                }
-
-                // ── 7. IVA (primer impuesto encontrado) ──
-                NodeList impuestos = xmlDoc.getElementsByTagName("totalImpuesto");
-                if (impuestos.getLength() > 0) {
-                    double ivaXml = 0.0;
-                    for (int i = 0; i < impuestos.getLength(); i++) {
-                        Element imp = (Element) impuestos.item(i);
-                        String codigoImp = getElementValue(imp, "codigo");
-                        if ("2".equals(codigoImp)) {
-                            ivaXml += parseDouble(getElementValue(imp, "valor"));
-                        }
-                    }
-                    if (doc.getIva() != null && Math.abs(ivaXml - doc.getIva()) > 0.01) {
-                        errores.add(errorDiff("iva",
-                                String.valueOf(doc.getIva()),
-                                String.valueOf(ivaXml)));
                     }
                 }
             } // fin if (!esRetencionXml)

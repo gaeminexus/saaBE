@@ -2495,6 +2495,7 @@ private void crearRegistroPago(DetallePrestamo cuota,
 	try {
 		PagoPrestamo pago = new PagoPrestamo();
 		pago.setDetallePrestamo(cuota);
+		pago.setPrestamo(cuota.getPrestamo());
 		pago.setFecha(java.time.LocalDateTime.now());
 		pago.setCapitalPagado(capitalPagado);
 		pago.setInteresPagado(interesPagado);

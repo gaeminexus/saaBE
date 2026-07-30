@@ -40,4 +40,19 @@ public interface AporteService extends EntityService<Aporte> {
      * Retorna Object[]{Long codigoEntidad, Long codigoTipoAporte, String nombreTipoAporte, Double suma}.
      */
     List<Object[]> selectSumaPorEntidadYTipoAporte(LocalDateTime fechaCorte) throws Throwable;
+
+    /** G43 — COUNT de aportes con tipoAporte.codigo IN (9, 11) y valor > 0 para una entidad */
+    Long selectCountImposicionesPersonalesPorEntidad(Long codigoEntidad) throws Throwable;
+
+    /** G43 — COUNT de aportes con tipoAporte.codigo IN (13, 14) y valor > 0 para una entidad */
+    Long selectCountImposicionesPatronalesPorEntidad(Long codigoEntidad) throws Throwable;
+
+    /**
+     * G43 — SUM de aportes con valor < 0, tipoAporte.estado = 1,
+     * dentro del mes de ejecucion para una entidad.
+     * Retorna Double suma (negativa), o 0.0 si no hay registros.
+     */
+    Double selectSumaAportesNegativosMesPorEntidad(Long codigoEntidad,
+            java.time.LocalDateTime fechaInicio,
+            java.time.LocalDateTime fechaFin) throws Throwable;
 }
