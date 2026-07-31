@@ -137,6 +137,10 @@ public class CuentaBancaria implements Serializable {
     @JoinColumn(name = "PLNNORGN", referencedColumnName = "PLNNCDGO")
     private PlanCuenta cuentaApertura;
     
+    @Basic
+    @Column(name = "CNBCCBCR")
+    private Long cobroCredito;
+
     public Long getCodigo() {
         return codigo;
     }
@@ -319,6 +323,14 @@ public class CuentaBancaria implements Serializable {
 
     public void setCuentaApertura(PlanCuenta cuentaApertura) {
         this.cuentaApertura = cuentaApertura;
+    }
+
+    public Long getCobroCredito() {
+        return cobroCredito;
+    }
+
+    public void setCobroCredito(Long cobroCredito) {
+        this.cobroCredito = cobroCredito;
     }
 
 }
