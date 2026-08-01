@@ -497,7 +497,8 @@ public class PrestamoServiceImpl implements PrestamoService {
         double totalInteres = 0.0;
         double valorCuotaPrimera = 0.0;
         LocalDateTime fechaFin = null;
-        // double saldoCapitalAnterior = prestamo.getMontoSolicitado(); // Para la primera cuota
+        // Saldo de capital acumulado para calcular correctamente en cuotas pagadas
+        double saldoCapitalAcumulado = prestamo.getMontoSolicitado() != null ? prestamo.getMontoSolicitado() : 0.0;
         
         try (Workbook workbook = WorkbookFactory.create(archivoExcel)) {
             Sheet sheet = workbook.getSheetAt(0); // Primera hoja
@@ -533,22 +534,24 @@ public class PrestamoServiceImpl implements PrestamoService {
                 Double pagoExtra = getCellValueAsDouble(row.getCell(2));
                 detalle.setSaldoOtros(pagoExtra != null ? pagoExtra : 0.0);
                 
-                // SALDO DE CAPITAL (columna 3) → saldoInicialCapital
-                Double saldoCapitalExcel = getCellValueAsDouble(row.getCell(3));
-                Double saldoInicialCapital = saldoCapitalExcel != null ? saldoCapitalExcel : 0.0;
+                // SALDO DE CAPITAL (columna 3) → referencia del Excel (puede venir en 0 para cuotas pagadas)
+                // Se usa saldoCapitalAcumulado como saldoInicialCapital para garantizar consistencia
+                Double saldoInicialCapital = redondear(saldoCapitalAcumulado);
                 
                 // PAGO DE CAPITAL (columna 4) → capital
                 Double pagoCapital = getCellValueAsDouble(row.getCell(4));
                 detalle.setCapital(pagoCapital != null ? pagoCapital : 0.0);
                 totalCapital += (pagoCapital != null ? pagoCapital : 0.0);
                 
-                // Calcular saldoCapital = saldoInicialCapital - capital
-                Double saldoCapitalCalculado = saldoInicialCapital - (pagoCapital != null ? pagoCapital : 0.0);
-                detalle.setSaldoCapital(redondear(saldoCapitalCalculado));
-                detalle.setSaldo(redondear(saldoCapitalCalculado));
+                // Calcular saldoCapital = saldoInicialCapital - capital - pagoExtra y actualizar acumulado
+                saldoCapitalAcumulado -= (pagoCapital != null ? pagoCapital : 0.0);
+                saldoCapitalAcumulado -= (pagoExtra != null ? pagoExtra : 0.0);
+                Double saldoCapitalCalculado = redondear(Math.max(0, saldoCapitalAcumulado));
+                detalle.setSaldoCapital(saldoCapitalCalculado);
+                detalle.setSaldo(saldoCapitalCalculado);
                 
                 // Establecer saldoInicialCapital
-                detalle.setSaldoInicialCapital(redondear(saldoInicialCapital));
+                detalle.setSaldoInicialCapital(saldoInicialCapital);
                 
                 // VALOR DEL INTERÉS (columna 5) → interes
                 Double valorInteres = getCellValueAsDouble(row.getCell(5));
@@ -595,9 +598,8 @@ public class PrestamoServiceImpl implements PrestamoService {
                 int estadoInt = estadoCodigo.intValue();
                 if (estadoInt == EstadoCuotaPrestamo.PAGADA ||
                     estadoInt == EstadoCuotaPrestamo.CANCELADA_ANTICIPADA) {
-                    // Cuota ya pagada: saldos pendientes = 0, registrar lo pagado
-                    detalle.setSaldoCapital(0.0);
-                    detalle.setSaldo(0.0);
+                    // Cuota ya pagada: saldo capital se mantiene calculado (saldoInicialCapital - capital)
+                    // saldoCapital y saldo ya fueron asignados arriba correctamente
                     detalle.setSaldoInteres(0.0);
                     detalle.setSaldoMora(0.0);
                     detalle.setSaldoInteresVencido(0.0);

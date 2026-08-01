@@ -63,6 +63,9 @@ public interface TipoAsientos {
 	//   · Liquidaciones de compra  → código del grupo de producto + código del proveedor/prestador
 	//   · Retenciones recibidas    → código de la cuenta de retención (por código SRI)
 
+	/** Anticipos entregados a proveedores (CXP). codigoAlterno=9 en BD. */
+	public static final int ANTICIPOS_PROVEEDOR     = 9; // TODO: verificar codigoAlterno en BD
+
 	/** Facturas de compra recibidas (CXP). codigoAlterno=3 en BD. */
 	public static final int FACTURAS_COMPRA         = 3;
 

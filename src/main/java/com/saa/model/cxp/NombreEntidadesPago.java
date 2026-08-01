@@ -43,6 +43,7 @@ public interface NombreEntidadesPago {
 	String USUARIO_X_APROBACION = "UsuarioXAprobacion";
 	String VALOR_IMPUESTO_DETALLE_PAGO = "ValorImpuestoDetallePago";
 	String VALOR_IMPUESTO_DOCUMENTO_PAGO = "ValorImpuestoDocumentoPago";
+	String ANTICIPO_PROVEEDOR = "AnticipoProveedor";
 	
 	
 }

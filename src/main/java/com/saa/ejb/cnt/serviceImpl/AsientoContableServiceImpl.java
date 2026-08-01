@@ -481,9 +481,25 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         // 6. Validar que debe == haber — si no cuadra, lanzar excepción para revertir todo
         boolean cuadrado = detalleAsientoService.validaDebeHaber(asiento.getCodigo());
         if (!cuadrado) {
-            throw new IncomeException("El asiento " + asiento.getCodigo()
-                    + " no está cuadrado (debe ≠ haber). Verifique las cuentas contables configuradas "
-                    + "para los grupos de producto, IVA y proveedor.");
+            double totalDebe  = 0.0;
+            double totalHaber = 0.0;
+            StringBuilder detalle = new StringBuilder();
+            detalle.append("El asiento ").append(asiento.getCodigo())
+                   .append(" no está cuadrado (debe ≠ haber). Detalle de líneas:\n");
+            for (DetalleAsiento ln : lineas) {
+                double debe  = ln.getValorDebe()  != null ? ln.getValorDebe()  : 0.0;
+                double haber = ln.getValorHaber() != null ? ln.getValorHaber() : 0.0;
+                totalDebe  += debe;
+                totalHaber += haber;
+                String cuenta = ln.getNumeroCuenta() != null ? ln.getNumeroCuenta() : "(sin cuenta)";
+                String nombre = ln.getNombreCuenta()  != null ? ln.getNombreCuenta()  : "(sin nombre)";
+                String desc   = ln.getDescripcion()   != null ? ln.getDescripcion()   : "";
+                detalle.append(String.format("  [%s] %s | %s | DEBE=%.2f | HABER=%.2f%n",
+                        cuenta, nombre, desc, debe, haber));
+            }
+            detalle.append(String.format("  TOTAL DEBE=%.2f | TOTAL HABER=%.2f | DIFERENCIA=%.2f",
+                    totalDebe, totalHaber, Math.abs(totalDebe - totalHaber)));
+            throw new IncomeException(detalle.toString());
         }
 
         System.out.println("✓ Asiento contable generado: " + asiento.getNumeroAlterno()
@@ -552,6 +568,157 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
         // ── Generar asiento ────────────────────────────────────────────────────
         String obs = "Anticipo cliente: " + nomCliente
+                + " | Doc: " + (anticipo.getNumeroDoc() != null ? anticipo.getNumeroDoc() : "")
+                + " | Valor: $" + String.format(java.util.Locale.US, "%.2f", valor);
+
+        return generarAsiento(idEmpresa, codigoAltTipoAsiento,
+                anticipo.getFechaAnticipo(), obs, usuario, lineas);
+    }
+
+    // ---------------------------------------------------------------
+    // generarAsientoAnticipoCliente (proceso unificado con cuenta bancaria)
+    // ---------------------------------------------------------------
+
+    @Override
+    public Asiento generarAsientoAnticipoCliente(AnticipoCliente anticipo,
+            Long idCuentaBancaria, int codigoAltTipoAsiento, String usuario) throws Throwable {
+
+        System.out.println("=== generarAsientoAnticipoCliente | idAnticipo=" + anticipo.getId() + " ===");
+
+        if (anticipo.getEmpresa() == null || anticipo.getEmpresa().getCodigo() == null) {
+            throw new IncomeException("El anticipo no tiene empresa contable configurada.");
+        }
+        if (idCuentaBancaria == null) {
+            throw new IncomeException("Debe indicar la cuenta bancaria en la que se recibe el anticipo.");
+        }
+
+        Long idEmpresa     = anticipo.getEmpresa().getCodigo();
+        Long codigoTitular = anticipo.getTitular().getCodigo();
+        Double valor       = anticipo.getValor();
+        String nomCliente  = anticipo.getTitular().getNombre();
+
+        // ── DEBE: planCuenta de la cuenta bancaria ──────────────────────────
+        com.saa.model.tsr.CuentaBancaria cuentaBancaria =
+                em.find(com.saa.model.tsr.CuentaBancaria.class, idCuentaBancaria);
+        if (cuentaBancaria == null) {
+            throw new IncomeException("No se encontró la cuenta bancaria con ID: " + idCuentaBancaria);
+        }
+        com.saa.model.cnt.PlanCuenta cuentaBanco = cuentaBancaria.getPlanCuenta();
+        if (cuentaBanco == null) {
+            throw new IncomeException(
+                    "La cuenta bancaria '" + cuentaBancaria.getNumeroCuenta()
+                    + "' no tiene una cuenta contable (PlanCuenta) asociada.");
+        }
+
+        // ── HABER: cuenta de anticipos del cliente (tipoCuenta=2, rol Cliente) ─
+        com.saa.model.cnt.PlanCuenta cuentaAnticipo =
+                obtenerCuentaPorTipo(codigoTitular, idEmpresa, 2L);
+        if (cuentaAnticipo == null) {
+            throw new IncomeException(
+                    "El cliente '" + nomCliente + "' no tiene cuenta contable de anticipos (Tipo 2) "
+                    + "configurada en Tesorería → Persona → Cuentas Contables (Rol: Cliente).");
+        }
+
+        // ── Construir líneas ───────────────────────────────────────────────────
+        List<DetalleAsiento> lineas = new ArrayList<>();
+
+        DetalleAsiento debe = new DetalleAsiento();
+        debe.setPlanCuenta(cuentaBanco);
+        debe.setNumeroCuenta(cuentaBanco.getCuentaContable());
+        debe.setNombreCuenta(cuentaBanco.getNombre());
+        debe.setDescripcion("Anticipo recibido de cliente: " + nomCliente
+                + " | Cta Banco: " + cuentaBancaria.getNumeroCuenta());
+        debe.setValorDebe(valor);
+        debe.setValorHaber(0.0);
+        lineas.add(debe);
+
+        DetalleAsiento haber = new DetalleAsiento();
+        haber.setPlanCuenta(cuentaAnticipo);
+        haber.setNumeroCuenta(cuentaAnticipo.getCuentaContable());
+        haber.setNombreCuenta(cuentaAnticipo.getNombre());
+        haber.setDescripcion("Anticipo cliente: " + nomCliente
+                + " | Doc: " + (anticipo.getNumeroDoc() != null ? anticipo.getNumeroDoc() : ""));
+        haber.setValorDebe(0.0);
+        haber.setValorHaber(valor);
+        lineas.add(haber);
+
+        // ── Generar asiento ────────────────────────────────────────────────────
+        String obs = "Anticipo cliente: " + nomCliente
+                + " | Doc: " + (anticipo.getNumeroDoc() != null ? anticipo.getNumeroDoc() : "")
+                + " | Valor: $" + String.format(java.util.Locale.US, "%.2f", valor);
+
+        return generarAsiento(idEmpresa, codigoAltTipoAsiento,
+                anticipo.getFechaAnticipo(), obs, usuario, lineas);
+    }
+
+    // ---------------------------------------------------------------
+    // generarAsientoAnticipoProveedor
+    // ---------------------------------------------------------------
+
+    @Override
+    public Asiento generarAsientoAnticipoProveedor(com.saa.model.cxp.AnticipoProveedor anticipo,
+            Long idCuentaBancaria, int codigoAltTipoAsiento, String usuario) throws Throwable {
+
+        System.out.println("=== generarAsientoAnticipoProveedor | idAnticipo=" + anticipo.getId() + " ===");
+
+        if (anticipo.getEmpresa() == null || anticipo.getEmpresa().getCodigo() == null) {
+            throw new IncomeException("El anticipo no tiene empresa contable configurada.");
+        }
+        if (idCuentaBancaria == null) {
+            throw new IncomeException("Debe indicar la cuenta bancaria desde la que se paga el anticipo.");
+        }
+
+        Long idEmpresa     = anticipo.getEmpresa().getCodigo();
+        Long codigoTitular = anticipo.getTitular().getCodigo();
+        Double valor       = anticipo.getValor();
+        String nomProv     = anticipo.getTitular().getNombre();
+
+        // ── DEBE: cuenta de anticipos del proveedor (tipoCuenta=2, tipoPersona=2) ──
+        PlanCuenta cuentaAnticipo = obtenerCuentaProveedorPorTipo(codigoTitular, idEmpresa, 2L);
+        if (cuentaAnticipo == null) {
+            throw new IncomeException(
+                    "El proveedor '" + nomProv + "' no tiene cuenta contable de anticipos (Tipo 2) "
+                    + "configurada en Tesorería → Persona → Cuentas Contables (Rol: Proveedor).");
+        }
+
+        // ── HABER: planCuenta de la cuenta bancaria ─────────────────────────────
+        com.saa.model.tsr.CuentaBancaria cuentaBancaria =
+                em.find(com.saa.model.tsr.CuentaBancaria.class, idCuentaBancaria);
+        if (cuentaBancaria == null) {
+            throw new IncomeException("No se encontró la cuenta bancaria con ID: " + idCuentaBancaria);
+        }
+        PlanCuenta cuentaBanco = cuentaBancaria.getPlanCuenta();
+        if (cuentaBanco == null) {
+            throw new IncomeException(
+                    "La cuenta bancaria '" + cuentaBancaria.getNumeroCuenta()
+                    + "' no tiene una cuenta contable (PlanCuenta) asociada.");
+        }
+
+        // ── Construir líneas ───────────────────────────────────────────────────
+        List<DetalleAsiento> lineas = new ArrayList<>();
+
+        DetalleAsiento debe = new DetalleAsiento();
+        debe.setPlanCuenta(cuentaAnticipo);
+        debe.setNumeroCuenta(cuentaAnticipo.getCuentaContable());
+        debe.setNombreCuenta(cuentaAnticipo.getNombre());
+        debe.setDescripcion("Anticipo a proveedor: " + nomProv
+                + " | Doc: " + (anticipo.getNumeroDoc() != null ? anticipo.getNumeroDoc() : ""));
+        debe.setValorDebe(valor);
+        debe.setValorHaber(0.0);
+        lineas.add(debe);
+
+        DetalleAsiento haber = new DetalleAsiento();
+        haber.setPlanCuenta(cuentaBanco);
+        haber.setNumeroCuenta(cuentaBanco.getCuentaContable());
+        haber.setNombreCuenta(cuentaBanco.getNombre());
+        haber.setDescripcion("Pago anticipo proveedor: " + nomProv
+                + " | Cta Banco: " + cuentaBancaria.getNumeroCuenta());
+        haber.setValorDebe(0.0);
+        haber.setValorHaber(valor);
+        lineas.add(haber);
+
+        // ── Generar asiento ────────────────────────────────────────────────────
+        String obs = "Anticipo proveedor: " + nomProv
                 + " | Doc: " + (anticipo.getNumeroDoc() != null ? anticipo.getNumeroDoc() : "")
                 + " | Valor: $" + String.format(java.util.Locale.US, "%.2f", valor);
 
@@ -644,6 +811,59 @@ public class AsientoContableServiceImpl implements AsientoContableService {
      */
     private PlanCuenta obtenerCuentaCliente(Long codigoTitular, Long idEmpresa) {
         return obtenerCuentaPorTipo(codigoTitular, idEmpresa, 1L);
+    }
+
+    /**
+     * Obtiene la cuenta contable de un proveedor por tipo de cuenta.
+     * tipoCuenta: 1=Facturas, 2=Anticipos
+     * Filtra por rubroRolPersonaP=2 (rol Proveedor) en PersonaRol.
+     */
+    private PlanCuenta obtenerCuentaProveedorPorTipo(Long codigoTitular, Long idEmpresa, Long tipoCuenta) {
+        System.out.println("  [obtenerCuentaProveedorPorTipo] titular=" + codigoTitular
+                + " | empresa=" + idEmpresa + " | tipoCuenta=" + tipoCuenta
+                + " | rol=Proveedor(2)");
+        try {
+            // Busca en PersonaCuentaContable cuya PersonaRol tenga rubroRolPersonaP=2 (Proveedor)
+            String sql = "SELECT pcc.planCuenta FROM PersonaCuentaContable pcc "
+                    + "JOIN pcc.personaRol pr "
+                    + "WHERE pr.titular.codigo = :titular "
+                    + "AND pcc.tipoCuenta = :tipo "
+                    + "AND pcc.empresa.codigo = :empresa "
+                    + "AND pr.rubroRolPersonaP = 2";
+            Query q = em.createQuery(sql);
+            q.setParameter("titular", codigoTitular);
+            q.setParameter("tipo", tipoCuenta);
+            q.setParameter("empresa", idEmpresa);
+            q.setMaxResults(1);
+            List<?> result = q.getResultList();
+            if (result.isEmpty()) {
+                // segundo intento sin filtro de rol (por compatibilidad)
+                String sql2 = "SELECT pcc.planCuenta FROM PersonaCuentaContable pcc "
+                        + "JOIN pcc.personaRol pr "
+                        + "WHERE pr.titular.codigo = :titular "
+                        + "AND pcc.tipoCuenta = :tipo "
+                        + "AND pcc.empresa.codigo = :empresa";
+                Query q2 = em.createQuery(sql2);
+                q2.setParameter("titular", codigoTitular);
+                q2.setParameter("tipo", tipoCuenta);
+                q2.setParameter("empresa", idEmpresa);
+                q2.setMaxResults(1);
+                result = q2.getResultList();
+            }
+            if (result.isEmpty()) {
+                System.err.println("  [obtenerCuentaProveedorPorTipo] ✗ No encontrado."
+                        + " titular=" + codigoTitular + " tipoCuenta=" + tipoCuenta);
+                return null;
+            }
+            PlanCuenta pc = (PlanCuenta) result.get(0);
+            System.out.println("  [obtenerCuentaProveedorPorTipo] ✓ Cuenta: "
+                    + pc.getCuentaContable() + " - " + pc.getNombre());
+            return pc;
+        } catch (Exception e) {
+            System.err.println("⚠ Error buscando cuenta proveedor tipo " + tipoCuenta
+                    + " del titular " + codigoTitular + ": " + e.getMessage());
+            return null;
+        }
     }
 
     /**
@@ -1352,11 +1572,16 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         if (cuentaProv == null)
             throw new IncomeException("El proveedor '" + fc.getTitular().getNombre()
                     + "' no tiene cuenta CxP configurada (Tipo 1, Rol Proveedor).");
+        // El HABER se calcula como la suma exacta de todas las líneas DEBE ya construidas
+        // (subtotales por grupo + IVA) para garantizar que el asiento siempre cuadre
+        // independientemente de acumulaciones en punto flotante.
+        double totalDebe = lineas.stream().mapToDouble(l -> nvl(l.getValorDebe())).sum();
+        double haberRedondeado = Math.round(totalDebe * 100.0) / 100.0;
         DetalleAsiento haber = new DetalleAsiento();
         haber.setPlanCuenta(cuentaProv); haber.setNumeroCuenta(cuentaProv.getCuentaContable());
         haber.setNombreCuenta(cuentaProv.getNombre());
         haber.setDescripcion("CxP Proveedor: " + fc.getTitular().getNombre());
-        haber.setValorDebe(0.0); haber.setValorHaber(nvl(fc.getTotal()));
+        haber.setValorDebe(0.0); haber.setValorHaber(haberRedondeado);
         lineas.add(haber);
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento,

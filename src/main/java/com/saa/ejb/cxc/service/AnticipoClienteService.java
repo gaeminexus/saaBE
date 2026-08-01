@@ -49,4 +49,27 @@ public interface AnticipoClienteService extends EntityService<AnticipoCliente> {
      * @throws Throwable Si no existe, ya está confirmado/anulado, o faltan cuentas
      */
     java.util.Map<String, Object> confirmarAnticipo(Long idAnticipo, String usuario) throws Throwable;
+
+    /**
+     * Procesa un anticipo de cliente en un único paso:
+     * graba el registro, genera el asiento contable y lo confirma (estado=2).
+     *
+     * Asiento:
+     *   DEBE:  PlanCuenta de la CuentaBancaria indicada
+     *   HABER: Cuenta anticipos del rol cliente del titular (PersonaCuentaContable tipoCuenta=2, tipoPersona=1)
+     *
+     * @param idTitular        Código del cliente (Titular)
+     * @param valor            Valor del anticipo
+     * @param idCuentaBancaria ID de la CuentaBancaria en la que se recibe el pago
+     * @param idEmpresa        ID de la empresa contable
+     * @param idUsuario        Código del usuario que registra
+     * @param fechaAnticipo    Fecha del anticipo (ISO: yyyy-MM-dd)
+     * @param numeroDoc        Número de documento de referencia (opcional)
+     * @param observacion      Observación (opcional)
+     * @return Mapa con: exito, mensaje, anticipo, asiento (numeroAlterno)
+     */
+    java.util.Map<String, Object> procesarAnticipo(
+            Long idTitular, Double valor, Long idCuentaBancaria,
+            Long idEmpresa, Long idUsuario, String fechaAnticipo,
+            String numeroDoc, String observacion) throws Throwable;
 }

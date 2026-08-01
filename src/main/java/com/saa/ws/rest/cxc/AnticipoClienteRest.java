@@ -193,6 +193,59 @@ public class AnticipoClienteRest {
         }
     }
 
+    // ── POST /antc/procesar ───────────────────────────────────────────────────
+    /**
+     * Procesa un anticipo de cliente en un único paso:
+     * graba el registro, genera el asiento contable y confirma (estado=2).
+     *
+     * Body JSON esperado:
+     * <pre>
+     * {
+     *   "idTitular":        123,
+     *   "valor":            500.00,
+     *   "idCuentaBancaria": 5,
+     *   "idEmpresa":        1,
+     *   "idUsuario":        10,
+     *   "fechaAnticipo":    "2026-07-31",
+     *   "numeroDoc":        "REF-001",     (opcional)
+     *   "observacion":      "..."          (opcional)
+     * }
+     * </pre>
+     *
+     * Asiento contable:
+     *   DEBE:  PlanCuenta asociado a la cuenta bancaria
+     *   HABER: Cuenta anticipos del rol cliente del titular
+     */
+    @POST
+    @Path("/procesar")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response procesar(java.util.Map<String, Object> params) {
+        System.out.println("POST /antc/procesar");
+        try {
+            Long idTitular        = getLongParam(params, "idTitular");
+            Double valor          = getDoubleParam(params, "valor");
+            Long idCuentaBancaria = getLongParam(params, "idCuentaBancaria");
+            Long idEmpresa        = getLongParam(params, "idEmpresa");
+            Long idUsuario        = getLongParam(params, "idUsuario");
+            String fechaAnticipo  = params.get("fechaAnticipo") != null ? params.get("fechaAnticipo").toString() : null;
+            String numeroDoc      = params.get("numeroDoc")     != null ? params.get("numeroDoc").toString()     : null;
+            String observacion    = params.get("observacion")   != null ? params.get("observacion").toString()   : null;
+
+            java.util.Map<String, Object> resultado = anticiPoClienteService.procesarAnticipo(
+                    idTitular, valor, idCuentaBancaria,
+                    idEmpresa, idUsuario, fechaAnticipo,
+                    numeroDoc, observacion);
+
+            boolean exito = Boolean.TRUE.equals(resultado.get("exito"));
+            return Response.status(exito ? Response.Status.CREATED : Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(resultado).type(MediaType.APPLICATION_JSON).build();
+
+        } catch (Throwable e) {
+            return error500("Error al procesar anticipo de cliente: " + e.getMessage());
+        }
+    }
+
     // ── POST /antc/selectByCriteria ──────────────────────────────────────────
     @POST
     @Path("/selectByCriteria")
@@ -216,6 +269,16 @@ public class AnticipoClienteRest {
         if (value instanceof Long)    return (Long) value;
         if (value instanceof Integer) return ((Integer) value).longValue();
         if (value instanceof String)  return Long.parseLong((String) value);
+        return null;
+    }
+
+    private Double getDoubleParam(java.util.Map<String, Object> params, String key) {
+        Object value = params.get(key);
+        if (value == null) return null;
+        if (value instanceof Double)  return (Double) value;
+        if (value instanceof Integer) return ((Integer) value).doubleValue();
+        if (value instanceof Long)    return ((Long) value).doubleValue();
+        if (value instanceof String)  return Double.parseDouble((String) value);
         return null;
     }
 

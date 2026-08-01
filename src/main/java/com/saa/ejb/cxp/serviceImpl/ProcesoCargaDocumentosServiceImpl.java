@@ -199,7 +199,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             totalRegistros++;
 
             String rucEmisor                 = cols[0].trim();
-            String razonSocial               = cols[1].trim();
+            String razonSocial               = cols[1].trim().toUpperCase();
             String tipoComprobante           = cols[2].trim();
             String serie                     = cols[3].trim();
             String claveAcceso               = cols[4].trim();
@@ -425,10 +425,18 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             }
 
             // ── 3. Razón social del emisor ──
-            String razonXml = getXmlValue(xmlDoc, "razonSocial");
-            if (!razonXml.isEmpty() && doc.getRazonSocialEmisor() != null
-                    && !razonXml.equalsIgnoreCase(doc.getRazonSocialEmisor())) {
-                errores.add(errorDiff("razonSocialEmisor", doc.getRazonSocialEmisor(), razonXml));
+            // Solo se registra en log como advertencia: NO bloquea el proceso.
+            // El orden de apellidos/nombres puede diferir entre el TXT del SRI y el XML (ej: persona natural).
+            // La validación de identidad se garantiza con el RUC/identificación (campo 2 arriba).
+            String razonXml = getXmlValue(xmlDoc, "razonSocial").toUpperCase();
+            if (!razonXml.isEmpty() && doc.getRazonSocialEmisor() != null) {
+                try {
+                    int similitud = titularDaoService.calcularSimilitudNombre(razonXml, doc.getRazonSocialEmisor());
+                    System.out.println("INFO razonSocial (similitud=" + similitud + "%): XML=[" + razonXml + "] DOC=[" + doc.getRazonSocialEmisor() + "]"
+                        + (similitud < 92 ? " -- ADVERTENCIA: nombres difieren pero se continúa (identidad validada por RUC)" : ""));
+                } catch (Throwable ex) {
+                    System.out.println("WARN: No se pudo calcular similitud razonSocial: " + ex.getMessage());
+                }
             }
 
             // ── 4. Número de serie / comprobante ──
@@ -2107,6 +2115,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         if (razonSocial.isEmpty() && razonSocialTxt != null && !razonSocialTxt.isEmpty())
             razonSocial = razonSocialTxt;
         if (razonSocial.isEmpty()) razonSocial = ruc; // último recurso
+        razonSocial = razonSocial.toUpperCase();
 
         // Datos adicionales del XML si están disponibles
         String telefono  = getXmlValue(xmlDoc, "telefono");
@@ -2168,6 +2177,17 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 return builder.parse(new InputSource(new StringReader(cdataContent.trim())));
         }
         return docOuter;
+    }
+
+    /**
+     * Normaliza una cadena para comparación: convierte a mayúsculas y elimina tildes/diacríticos.
+     * Ej: "CORPORACIÓN" → "CORPORACION", "Eléctrica" → "ELECTRICA"
+     */
+    private String normalizarParaComparacion(String s) {
+        if (s == null) return "";
+        String normalizado = java.text.Normalizer.normalize(s.toUpperCase(),
+                java.text.Normalizer.Form.NFD);
+        return normalizado.replaceAll("\\p{InCombiningDiacriticalMarks}", "").trim();
     }
 
     private String getXmlValueOuter(String xmlCompleto, String tag) {

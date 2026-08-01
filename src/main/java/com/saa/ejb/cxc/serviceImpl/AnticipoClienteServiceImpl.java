@@ -208,4 +208,123 @@ public class AnticipoClienteServiceImpl implements AnticipoClienteService {
 
         return resultado;
     }
+
+    // =========================================================================
+    // procesarAnticipo — graba + asiento en un solo paso
+    // =========================================================================
+
+    @Override
+    public java.util.Map<String, Object> procesarAnticipo(
+            Long idTitular, Double valor, Long idCuentaBancaria,
+            Long idEmpresa, Long idUsuario, String fechaAnticipo,
+            String numeroDoc, String observacion) throws Throwable {
+
+        System.out.println("=== procesarAnticipoCliente | titular=" + idTitular
+                + " | valor=" + valor + " | cuentaBancaria=" + idCuentaBancaria + " ===");
+
+        java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+        resultado.put("exito", false);
+
+        // ── Validaciones ───────────────────────────────────────────────────────
+        if (idTitular == null)        throw new com.saa.basico.util.IncomeException("El id del titular es obligatorio.");
+        if (valor == null || valor <= 0) throw new com.saa.basico.util.IncomeException("El valor del anticipo debe ser mayor a cero.");
+        if (idCuentaBancaria == null) throw new com.saa.basico.util.IncomeException("La cuenta bancaria es obligatoria.");
+        if (idEmpresa == null)        throw new com.saa.basico.util.IncomeException("La empresa es obligatoria.");
+        if (idUsuario == null)        throw new com.saa.basico.util.IncomeException("El usuario es obligatorio.");
+        if (fechaAnticipo == null || fechaAnticipo.isBlank())
+            throw new com.saa.basico.util.IncomeException("La fecha del anticipo es obligatoria (formato yyyy-MM-dd).");
+
+        java.time.LocalDate fecha;
+        try {
+            fecha = java.time.LocalDate.parse(fechaAnticipo);
+        } catch (Exception e) {
+            throw new com.saa.basico.util.IncomeException(
+                    "Formato de fecha inválido. Use yyyy-MM-dd. Recibido: " + fechaAnticipo);
+        }
+
+        // ── Cargar referencias JPA ─────────────────────────────────────────────
+        com.saa.model.tsr.Titular titular = em.find(com.saa.model.tsr.Titular.class, idTitular);
+        if (titular == null) throw new com.saa.basico.util.IncomeException("No se encontró el titular con ID: " + idTitular);
+
+        com.saa.model.scp.Empresa empresa = em.find(com.saa.model.scp.Empresa.class, idEmpresa);
+        if (empresa == null) throw new com.saa.basico.util.IncomeException("No se encontró la empresa con ID: " + idEmpresa);
+
+        com.saa.model.scp.Usuario usuario = em.find(com.saa.model.scp.Usuario.class, idUsuario);
+        if (usuario == null) throw new com.saa.basico.util.IncomeException("No se encontró el usuario con ID: " + idUsuario);
+
+        // ── Validar cuenta bancaria y su PlanCuenta ANTES de guardar ───────────
+        com.saa.model.tsr.CuentaBancaria cuentaBancaria =
+                em.find(com.saa.model.tsr.CuentaBancaria.class, idCuentaBancaria);
+        if (cuentaBancaria == null) {
+            throw new com.saa.basico.util.IncomeException(
+                    "No se encontró la cuenta bancaria con ID: " + idCuentaBancaria
+                    + ". Verifique la configuración en Tesorería → Cuentas Bancarias.");
+        }
+        if (cuentaBancaria.getPlanCuenta() == null) {
+            throw new com.saa.basico.util.IncomeException(
+                    "La cuenta bancaria '" + cuentaBancaria.getNumeroCuenta()
+                    + "' no tiene una cuenta contable (PlanCuenta) asociada. "
+                    + "Configure la cuenta contable en Tesorería → Cuentas Bancarias antes de continuar.");
+        }
+
+        // ── Validar cuenta de anticipos del cliente ANTES de guardar ───────────
+        // Busca: PersonaCuentaContable, tipoCuenta=2, rol Cliente
+        String sqlValida = "SELECT COUNT(pcc) FROM PersonaCuentaContable pcc "
+                + "JOIN pcc.personaRol pr "
+                + "WHERE pr.titular.codigo = :titular "
+                + "AND pcc.tipoCuenta = 2 "
+                + "AND pcc.empresa.codigo = :empresa";
+        long cuentasAnticipo = ((Number) em.createQuery(sqlValida)
+                .setParameter("titular", idTitular)
+                .setParameter("empresa", idEmpresa)
+                .getSingleResult()).longValue();
+        if (cuentasAnticipo == 0) {
+            throw new com.saa.basico.util.IncomeException(
+                    "El cliente '" + titular.getNombre() + "' (ID: " + idTitular + ") "
+                    + "no tiene cuenta contable de anticipos (Tipo 2) configurada "
+                    + "para la empresa " + idEmpresa + ". "
+                    + "Configure la cuenta en Tesorería → Persona → Cuentas Contables "
+                    + "(Tipo: Anticipos, Rol: Cliente) antes de registrar el anticipo.");
+        }
+
+        // ── Construir entidad ──────────────────────────────────────────────────
+        AnticipoCliente anticipo = new AnticipoCliente();
+        anticipo.setTitular(titular);
+        anticipo.setEmpresa(empresa);
+        anticipo.setUsuario(usuario);
+        anticipo.setFechaAnticipo(fecha);
+        anticipo.setFechaRecepcion(fecha);
+        anticipo.setValor(valor);
+        anticipo.setSaldo(valor);
+        anticipo.setNumeroDoc(numeroDoc);
+        anticipo.setObservacion(observacion);
+        anticipo.setEstado(1L); // Ingresado
+        anticipo.setFechaRegistro(LocalDateTime.now());
+
+        // ── Guardar anticipo ───────────────────────────────────────────────────
+        anticipo = anticipoDaoService.save(anticipo, anticipo.getId());
+        System.out.println("✓ AnticipoCliente guardado ID=" + anticipo.getId());
+
+        // ── Generar asiento contable ───────────────────────────────────────────
+        Asiento asiento = asientoContableService.generarAsientoAnticipoCliente(
+                anticipo, idCuentaBancaria,
+                TipoAsientos.ANTICIPOS_CLIENTE,
+                usuario.getNombre() != null ? usuario.getNombre() : usuario.getCodigo().toString());
+
+        // ── Confirmar anticipo ─────────────────────────────────────────────────
+        anticipo.setEstado(2L); // Confirmado
+        anticipo.setAsiento(asiento);
+        anticipo = anticipoDaoService.save(anticipo, anticipo.getId());
+
+        resultado.put("exito", true);
+        resultado.put("estado", "CONFIRMADO");
+        resultado.put("mensaje", "Anticipo de cliente procesado correctamente. "
+                + "Asiento generado: " + asiento.getNumeroAlterno());
+        resultado.put("asiento", asiento.getNumeroAlterno());
+        resultado.put("anticipo", anticipo);
+        System.out.println("✓ AnticipoCliente " + anticipo.getId()
+                + " confirmado | Asiento: " + asiento.getNumeroAlterno());
+
+        return resultado;
+    }
 }

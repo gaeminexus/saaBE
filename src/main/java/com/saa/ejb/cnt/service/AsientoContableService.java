@@ -124,6 +124,46 @@ public interface AsientoContableService {
     Asiento generarAsientoAnticipo(AnticipoCliente anticipo,
             int codigoAltTipoAsiento, String usuario) throws Throwable;
 
+    /**
+     * Genera el asiento contable para un anticipo a proveedor confirmado.
+     *
+     * Estructura del asiento:
+     *  DEBE:  Cuenta de anticipos del proveedor (PersonaCuentaContable, tipoCuenta=2, tipoPersona=2)
+     *         → valor: total del anticipo
+     *
+     *  HABER: Cuenta contable vinculada a la cuenta bancaria (CuentaBancaria.planCuenta)
+     *         → valor: total del anticipo
+     *
+     * @param anticipo             AnticipoProveedor confirmado
+     * @param idCuentaBancaria     ID de la CuentaBancaria desde la que se paga
+     * @param codigoAltTipoAsiento Código alterno del TipoAsiento (TipoAsientos.ANTICIPOS_PROVEEDOR = 9)
+     * @param usuario              Nombre del usuario que confirma
+     * @return                     Asiento generado
+     * @throws Throwable           Si falta período, cuentas no configuradas, etc.
+     */
+    Asiento generarAsientoAnticipoProveedor(com.saa.model.cxp.AnticipoProveedor anticipo,
+            Long idCuentaBancaria, int codigoAltTipoAsiento, String usuario) throws Throwable;
+
+    /**
+     * Genera el asiento contable para un anticipo de cliente (proceso unificado).
+     *
+     * Estructura del asiento:
+     *  DEBE:  Cuenta contable vinculada a la cuenta bancaria (CuentaBancaria.planCuenta)
+     *         → valor: total del anticipo
+     *
+     *  HABER: Cuenta de anticipos del cliente (PersonaCuentaContable, tipoCuenta=2, rol Cliente)
+     *         → valor: total del anticipo
+     *
+     * @param anticipo             AnticipoCliente confirmado
+     * @param idCuentaBancaria     ID de la CuentaBancaria en la que se recibe el pago
+     * @param codigoAltTipoAsiento Código alterno del TipoAsiento (TipoAsientos.ANTICIPOS_CLIENTE = 8)
+     * @param usuario              Nombre del usuario que confirma
+     * @return                     Asiento generado
+     * @throws Throwable           Si falta período, cuentas no configuradas, etc.
+     */
+    Asiento generarAsientoAnticipoCliente(AnticipoCliente anticipo,
+            Long idCuentaBancaria, int codigoAltTipoAsiento, String usuario) throws Throwable;
+
     // =========================================================================
     // CXC — Documentos de Cobro (emitidos por la empresa)
     // =========================================================================

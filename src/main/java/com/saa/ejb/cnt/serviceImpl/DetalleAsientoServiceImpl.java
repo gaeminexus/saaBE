@@ -245,7 +245,7 @@ public class DetalleAsientoServiceImpl implements DetalleAsientoService{
 		if(recuperados[1] != null){
 			haber = Double.valueOf(recuperados[1].toString());
 		}			
-		if(!debe.equals(haber)){
+		if(Math.abs(debe - haber) > 0.01){
 			igual = false;
 		}			
 		return igual;

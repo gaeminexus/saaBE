@@ -15,6 +15,7 @@ import com.saa.model.tsr.Titular;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import java.util.List;
 
 /**
  * @author GaemiSoft
@@ -50,6 +51,46 @@ public class TitularDaoServiceImpl extends EntityDaoImpl<Titular> implements Tit
 							"aplicaIVA",
 							"aplicaRetencion",
 							"tipoSocio"};
+	}
+	
+	@Override
+	public int calcularSimilitudNombre(String a, String b) throws Throwable {
+		if (a == null || b == null) return 0;
+		// Normalizar tildes en Java (sin depender de UTL_I18N.TRANSLITERATE que puede no estar disponible)
+		String aNorm = normalizarTildes(a);
+		String bNorm = normalizarTildes(b);
+		Object result = em.createNativeQuery(
+				"SELECT UTL_MATCH.JARO_WINKLER_SIMILARITY(UPPER(:a), UPPER(:b)) FROM DUAL")
+			.setParameter("a", aNorm)
+			.setParameter("b", bNorm)
+			.getSingleResult();
+		return result != null ? ((Number) result).intValue() : 0;
+	}
+
+	/**
+	 * Elimina tildes y diacríticos usando java.text.Normalizer (sin dependencia de Oracle UTL_I18N).
+	 */
+	private String normalizarTildes(String texto) {
+		if (texto == null) return "";
+		String normalizado = java.text.Normalizer.normalize(texto, java.text.Normalizer.Form.NFD);
+		return normalizado.replaceAll("\\p{InCombiningDiacriticalMarks}+", "");
+	}
+
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<Titular> buscarPorNombreSimilar(String nombre) throws Throwable {
+		System.out.println("Ingresa al metodo buscarPorNombreSimilar de TitularDao con nombre: " + nombre);
+		// Normalizar tildes en Java antes de enviar a Oracle (UTL_I18N.TRANSLITERATE no disponible en este servidor)
+		String nombreNorm = normalizarTildes(nombre);
+		return em.createNativeQuery(
+				"SELECT t.* FROM TSR.TSRD t " +
+				"WHERE UTL_MATCH.JARO_WINKLER_SIMILARITY(UPPER(t.TSRDNMCM), UPPER(:nombre)) > 90 " +
+				"AND t.TSRDSTDO = 1 " +
+				"ORDER BY UTL_MATCH.JARO_WINKLER_SIMILARITY(UPPER(t.TSRDNMCM), UPPER(:nombre)) DESC",
+				Titular.class)
+			.setParameter("nombre", nombreNorm)
+			.setMaxResults(10)
+			.getResultList();
 	}
 	
 }
