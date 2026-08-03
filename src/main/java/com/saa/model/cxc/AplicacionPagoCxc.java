@@ -5,7 +5,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import com.saa.model.cnt.Asiento;
-import com.saa.model.cxp.NotaCreditoCompra;
 import com.saa.model.cxp.RetencionCompra;
 import com.saa.model.scp.Empresa;
 import com.saa.model.scp.Usuario;

@@ -189,6 +189,7 @@ public class NotaCreditoRest {
 	/**
 	 * Convierte un Map a objeto NotaCredito.
 	 */
+	@SuppressWarnings("unused")
 	private NotaCredito convertMapToNotaCredito(java.util.Map<String, Object> map) {
 		com.fasterxml.jackson.databind.ObjectMapper mapper = createObjectMapper();
 		return mapper.convertValue(map, NotaCredito.class);

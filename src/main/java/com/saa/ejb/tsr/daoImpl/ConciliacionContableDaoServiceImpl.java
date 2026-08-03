@@ -21,7 +21,6 @@ import jakarta.persistence.Query;
  *
  * Implementacion ConciliacionContableDaoService.
  */
-@SuppressWarnings("unchecked")
 @Stateless
 public class ConciliacionContableDaoServiceImpl extends EntityDaoImpl<ConciliacionContable>
         implements ConciliacionContableDaoService {

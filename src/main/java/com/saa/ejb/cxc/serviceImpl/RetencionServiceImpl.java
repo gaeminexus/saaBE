@@ -24,7 +24,6 @@ import com.saa.model.cxc.Retencion;
 import com.saa.model.cxc.NombreEntidadesCobro;
 import com.saa.model.cxc.PathRetencion;
 import com.saa.rubros.Estado;
-import com.saa.rubros.EstadoAsiento;
 import com.saa.rubros.TipoAsientos;
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -251,7 +250,6 @@ public class RetencionServiceImpl implements RetencionService {
 		writer.writeCharacters("\n");
 	}
 	
-	@SuppressWarnings("unchecked")
 	private void writeImpuestos(XMLStreamWriter writer, List<Object> detallesRaw) throws Exception {
 		writer.writeCharacters("  ");
 		writer.writeStartElement("impuestos");

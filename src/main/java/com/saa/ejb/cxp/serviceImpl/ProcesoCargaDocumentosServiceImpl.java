@@ -1447,7 +1447,6 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 continue;
             }
             try {
-                @SuppressWarnings("unchecked")
                 List<?> cuentas = em.createQuery(
                         "SELECT t.planCuenta FROM TsriCompra t "
                         + "WHERE t.lsri.tabla = :lsri AND t.codigo = :cod "
@@ -1637,7 +1636,6 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 continue;
             }
             try {
-                @SuppressWarnings("unchecked")
                 List<?> cuentas = em.createQuery(
                         "SELECT t.planCuenta FROM TsriCompra t "
                         + "WHERE t.lsri.tabla = :lsri AND t.codigo = :cod "
@@ -2036,7 +2034,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         return String.join(" | ", diffs);
     }
 
-    private Map<String, Object> errorTitular(String codigoError, String ruc, Long idTitular) {
+    @SuppressWarnings("unused")
+	private Map<String, Object> errorTitular(String codigoError, String ruc, Long idTitular) {
         Map<String, Object> error = new HashMap<>();
         error.put("error", codigoError);
         if ("TITULAR_NO_ENCONTRADO".equals(codigoError))
@@ -2183,7 +2182,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
      * Normaliza una cadena para comparación: convierte a mayúsculas y elimina tildes/diacríticos.
      * Ej: "CORPORACIÓN" → "CORPORACION", "Eléctrica" → "ELECTRICA"
      */
-    private String normalizarParaComparacion(String s) {
+    @SuppressWarnings("unused")
+	private String normalizarParaComparacion(String s) {
         if (s == null) return "";
         String normalizado = java.text.Normalizer.normalize(s.toUpperCase(),
                 java.text.Normalizer.Form.NFD);
@@ -2246,7 +2246,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         return null;
     }
 
-    private LocalDate parseFecha(String val) {
+    @SuppressWarnings("unused")
+	private LocalDate parseFecha(String val) {
         if (val == null || val.isEmpty()) return null;
         for (String fmt : new String[]{"dd/MM/yyyy", "yyyy-MM-dd"}) {
             try { return LocalDate.parse(val.trim(), DateTimeFormatter.ofPattern(fmt)); }

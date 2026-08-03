@@ -30,8 +30,8 @@ public interface TipoAsientos {
 	// Asiento de CXC - Facturas de Venta (codigoAlterno=2, sistema=1)
 	public static final int FACTURAS_VENTA = 2;
 
-	// Asiento de CXC - Anticipos de Clientes (codigoAlterno=8, sistema=1)
-	public static final int ANTICIPOS_CLIENTE = 8;
+	// Asiento de CXC - Anticipos de Clientes (codigoAlterno=4, TINGRESO)
+	public static final int ANTICIPOS_CLIENTE = 4;
 
 	// ─── CXC: Documentos de Cobro ─────────────────────────────────────────────
 	// TODO: Confirmar codigoAlterno real de la plantilla en BD para cada tipo.
@@ -63,8 +63,8 @@ public interface TipoAsientos {
 	//   · Liquidaciones de compra  → código del grupo de producto + código del proveedor/prestador
 	//   · Retenciones recibidas    → código de la cuenta de retención (por código SRI)
 
-	/** Anticipos entregados a proveedores (CXP). codigoAlterno=9 en BD. */
-	public static final int ANTICIPOS_PROVEEDOR     = 9; // TODO: verificar codigoAlterno en BD
+	/** Anticipos entregados a proveedores (CXP). codigoAlterno=5 (TEGRESO). */
+	public static final int ANTICIPOS_PROVEEDOR     = 5;
 
 	/** Facturas de compra recibidas (CXP). codigoAlterno=3 en BD. */
 	public static final int FACTURAS_COMPRA         = 3;

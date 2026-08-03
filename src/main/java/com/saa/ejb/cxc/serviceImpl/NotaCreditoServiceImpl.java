@@ -1158,7 +1158,6 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 	 * Genera el PDF RIDE de la nota de crédito consultando directamente la BD.
 	 * Estructura idéntica al PDF de factura, adaptada para tablas NTCR/DTNC.
 	 */
-	@SuppressWarnings("unchecked")
 	private byte[] generarPDFNotaCredito(NotaCredito ncObj, Long idFacturador, String clave,
 			String pathLogoParam, Long ambiente) {
 		try {

@@ -16,6 +16,7 @@ import com.saa.model.cxp.AnticipoProveedor;
 import com.saa.model.cxp.NombreEntidadesPago;
 import com.saa.model.scp.Empresa;
 import com.saa.model.scp.Usuario;
+import com.saa.model.tsr.PersonaCuentaContable;
 import com.saa.model.tsr.Titular;
 import com.saa.rubros.TipoAsientos;
 
@@ -208,6 +209,26 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
         }
 
         // ── Construir entidad ──────────────────────────────────────────────────
+        // Leer saldoInicial del PRCC (tipoCuenta=2=Anticipos, tipoPersona=2=Proveedor)
+        // y sumarlo al valor del anticipo para obtener el saldo real acumulado.
+        Double saldoInicialPrcc = 0.0;
+        try {
+            Object res = em.createQuery(
+                    "SELECT pcc.saldoInicial FROM PersonaCuentaContable pcc "
+                    + "JOIN pcc.personaRol pr "
+                    + "WHERE pr.titular.codigo = :titular "
+                    + "AND pcc.empresa.codigo  = :empresa "
+                    + "AND pcc.tipoCuenta      = 2 "
+                    + "AND pcc.tipoPersona     = 2")
+                .setParameter("titular", idTitular)
+                .setParameter("empresa",  idEmpresa)
+                .setMaxResults(1)
+                .getSingleResult();
+            if (res != null) saldoInicialPrcc = ((Number) res).doubleValue();
+        } catch (Exception ex) {
+            System.err.println("⚠ No se pudo leer saldoInicial PRCC proveedor: " + ex.getMessage());
+        }
+
         AnticipoProveedor anticipo = new AnticipoProveedor();
         anticipo.setTitular(titular);
         anticipo.setEmpresa(empresa);
@@ -215,11 +236,19 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
         anticipo.setFechaAnticipo(fecha);
         anticipo.setFechaRecepcion(fecha);
         anticipo.setValor(valor);
-        anticipo.setSaldo(valor);
+        anticipo.setSaldo(saldoInicialPrcc + valor);
         anticipo.setNumeroDoc(numeroDoc);
         anticipo.setObservacion(observacion);
         anticipo.setEstado(1L); // Ingresado
         anticipo.setFechaRegistro(LocalDateTime.now());
+        // ── Datos de la cuenta bancaria de pago ────────────────────────────────
+        anticipo.setReferencia(cuentaBancaria.getNumeroCuenta());
+        anticipo.setFormaPago(2L); // 2 = Transferencia (pago bancario)
+        String nombreBanco = (cuentaBancaria.getBanco() != null
+                && cuentaBancaria.getBanco().getNombre() != null)
+                ? cuentaBancaria.getBanco().getNombre()
+                : "BANCO";
+        anticipo.setBanco(nombreBanco + " - " + cuentaBancaria.getNumeroCuenta());
 
         // ── Guardar anticipo ───────────────────────────────────────────────────
         anticipo = anticipoDaoService.save(anticipo, anticipo.getId());
@@ -236,6 +265,9 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
         anticipo.setAsiento(asiento);
         anticipo = anticipoDaoService.save(anticipo, anticipo.getId());
 
+        // ── Sumar valor al saldoInicial de PersonaCuentaContable (tipoCuenta=2, Proveedor=2) ─
+        actualizarSaldoInicialPrcc(idTitular, idEmpresa, 2L, valor);
+
         resultado.put("exito", true);
         resultado.put("estado", "CONFIRMADO");
         resultado.put("mensaje", "Anticipo a proveedor procesado correctamente. "
@@ -246,5 +278,50 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
                 + " confirmado | Asiento: " + asiento.getNumeroAlterno());
 
         return resultado;
+    }
+
+    // =========================================================================
+    // Helper: sumar valor al saldoInicial de PersonaCuentaContable (tipoCuenta=2)
+    // =========================================================================
+
+    /**
+     * Busca el registro PersonaCuentaContable (TSR.PRCC) correspondiente al titular,
+     * empresa, tipoCuenta=2 (Anticipos) y tipoPersona indicado (1=Cliente, 2=Proveedor),
+     * y suma el valor al campo saldoInicial.
+     */
+    private void actualizarSaldoInicialPrcc(Long idTitular, Long idEmpresa,
+            Long tipoPersona, Double valor) {
+        try {
+            @SuppressWarnings("unchecked")
+            java.util.List<PersonaCuentaContable> lista = em.createQuery(
+                    "SELECT pcc FROM PersonaCuentaContable pcc "
+                    + "JOIN pcc.personaRol pr "
+                    + "WHERE pr.titular.codigo = :titular "
+                    + "AND pcc.empresa.codigo  = :empresa "
+                    + "AND pcc.tipoCuenta      = 2 "
+                    + "AND pcc.tipoPersona     = :tipoPersona")
+                .setParameter("titular",     idTitular)
+                .setParameter("empresa",     idEmpresa)
+                .setParameter("tipoPersona", tipoPersona)
+                .getResultList();
+
+            if (lista.isEmpty()) {
+                System.err.println("⚠ actualizarSaldoInicialPrcc: no se encontró PRCC "
+                        + "para titular=" + idTitular + " empresa=" + idEmpresa
+                        + " tipoPersona=" + tipoPersona + " tipoCuenta=2");
+                return;
+            }
+
+            for (PersonaCuentaContable pcc : lista) {
+                double saldoActual = pcc.getSaldoInicial() != null ? pcc.getSaldoInicial() : 0.0;
+                pcc.setSaldoInicial(saldoActual + valor);
+                em.merge(pcc);
+                System.out.println("✓ PRCC id=" + pcc.getCodigo()
+                        + " saldoInicial actualizado: " + saldoActual + " → " + pcc.getSaldoInicial());
+            }
+        } catch (Exception e) {
+            System.err.println("✗ Error actualizarSaldoInicialPrcc: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 }

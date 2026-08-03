@@ -2934,6 +2934,7 @@ private void aplicarPagoAAporte(Aporte aporte, double montoPago,
  * 
  * @return Monto total utilizado en este procesamiento
  */
+@SuppressWarnings("unused")
 private double procesarAporteIndividual(Entidad entidad, Long idTipoAporte, String nombreTipo,
                                         double valorEsperado, double montoPagar,
                                         CargaArchivo cargaArchivo, ParticipeXCargaArchivo participe) throws Throwable {
@@ -3130,6 +3131,7 @@ private void crearRegistroPagoAporte(Aporte aporte, double montoPagado,
 /**
  * Crea aportes del siguiente mes cuando hay excedente
  */
+@SuppressWarnings("unused")
 private void crearAportesMesSiguiente(Entidad entidad, double montoExcedente,
                                      CargaArchivo cargaArchivo, ParticipeXCargaArchivo participe) throws Throwable {
 	

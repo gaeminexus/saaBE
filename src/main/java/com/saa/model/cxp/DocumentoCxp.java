@@ -1,7 +1,6 @@
 package com.saa.model.cxp;
 
 import java.io.Serializable;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import com.saa.model.cnt.Periodo;

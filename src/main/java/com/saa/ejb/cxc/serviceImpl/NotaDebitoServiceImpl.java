@@ -23,11 +23,8 @@ import com.saa.model.cxc.NotaDebito;
 import com.saa.model.cxc.NombreEntidadesCobro;
 import com.saa.model.cxc.PathNotaDebito;
 import com.saa.rubros.Estado;
-import com.saa.rubros.EstadoAsiento;
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
-import jakarta.ejb.TransactionAttribute;
-import jakarta.ejb.TransactionAttributeType;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
@@ -1271,7 +1268,6 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 	 * Genera el PDF RIDE de la nota de débito consultando directamente la BD.
 	 * Estructura idéntica al PDF de NC, adaptada para tablas NTDB/DTND.
 	 */
-	@SuppressWarnings("unchecked")
 	private byte[] generarPDFNotaDebito(NotaDebito ndObj, Long idFacturador, String clave,
 			String pathLogoParam, Long ambiente) {
 		try {
@@ -1444,6 +1440,7 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 	private double toDouble(Object o) { return o != null ? ((Number) o).doubleValue() : 0.0; }
 	private int    toInt(Object o)    { return o != null ? ((Number) o).intValue()    : 0; }
 	private Long   toLong(Object o)   { return o != null ? ((Number) o).longValue()   : 0L; }
+	@SuppressWarnings("unused")
 	private Double nvlD(Double v)     { return v != null ? v : 0.0; }
 
 	/**

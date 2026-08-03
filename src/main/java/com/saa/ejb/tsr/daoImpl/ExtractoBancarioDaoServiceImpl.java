@@ -86,7 +86,6 @@ public class ExtractoBancarioDaoServiceImpl extends EntityDaoImpl<ExtractoBancar
         return query.getResultList();
     }
 
-    @SuppressWarnings("unchecked")
     @Override
     public List<Long> selectCuentasConCobertura(List<Long> idsCuenta, LocalDate primerDia, LocalDate ultimoDia)
             throws Throwable {

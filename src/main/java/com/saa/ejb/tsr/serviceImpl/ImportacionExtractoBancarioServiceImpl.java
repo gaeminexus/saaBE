@@ -8,7 +8,6 @@ package com.saa.ejb.tsr.serviceImpl;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;

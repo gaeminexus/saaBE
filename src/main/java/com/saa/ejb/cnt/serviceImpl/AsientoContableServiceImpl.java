@@ -1978,7 +1978,6 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     private PlanCuenta obtenerCuentaIVACxp(String codigoSRI) {
         // Intentar primero en LSRI de compras (PGS.LSRC)
         try {
-            @SuppressWarnings("unchecked")
             List<?> r = em.createQuery(
                     "SELECT t.planCuenta FROM TsriCompra t WHERE t.codigo = :cod AND t.estado = 1")
                     .setParameter("cod", codigoSRI).setMaxResults(1).getResultList();
@@ -1994,7 +1993,6 @@ public class AsientoContableServiceImpl implements AsientoContableService {
      */
     private PlanCuenta obtenerCuentaGastoDefaultCxp(Long idEmpresa) {
         try {
-            @SuppressWarnings("unchecked")
             List<?> r = em.createQuery(
                     "SELECT g.planCuenta FROM GrupoProductoPago g "
                     + "WHERE g.empresa.codigo = :emp AND g.planCuenta IS NOT NULL AND g.estado = 1 "
@@ -2010,7 +2008,8 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     /**
      * Obtiene o crea el grupo "POR CLASIFICAR" de la empresa para productos sin grupo asignado.
      */
-    private com.saa.model.cxp.GrupoProductoPago obtenerOCrearGrupoPorClasificar(Long idEmpresa) {
+    @SuppressWarnings("unused")
+	private com.saa.model.cxp.GrupoProductoPago obtenerOCrearGrupoPorClasificar(Long idEmpresa) {
         try {
             @SuppressWarnings("unchecked")
             List<com.saa.model.cxp.GrupoProductoPago> lista = em.createQuery(
