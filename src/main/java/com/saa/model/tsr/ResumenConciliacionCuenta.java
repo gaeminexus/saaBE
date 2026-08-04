@@ -21,6 +21,11 @@ import java.time.LocalDateTime;
  * (ver ConciliacionContableService.obtenerOCrear). Por eso
  * idConciliacionContable y estadoRevision pueden venir null: significa que
  * todavía no existe cabecera para esa cuenta/período.</p>
+ * <p>extractoCargado distingue "no hay pendientes porque nunca se cargó el
+ * extracto de este período" de "no hay pendientes porque ya se concilió
+ * todo" - ambos casos daban totalPendientesExtracto=0 y eran indistinguibles
+ * en la pantalla antes de este campo (mismo chequeo de cobertura que ya usa
+ * el Tablero de Cumplimiento, ver ExtractoBancarioDaoService.selectCuentasConCobertura).</p>
  */
 public class ResumenConciliacionCuenta implements Serializable {
 
@@ -33,6 +38,7 @@ public class ResumenConciliacionCuenta implements Serializable {
     private Long totalPendientesAsiento;
     private String usuarioVerifica;
     private LocalDateTime fechaVerificacion;
+    private Boolean extractoCargado;
 
     public CuentaBancaria getCuentaBancaria() {
         return cuentaBancaria;
@@ -88,5 +94,13 @@ public class ResumenConciliacionCuenta implements Serializable {
 
     public void setFechaVerificacion(LocalDateTime fechaVerificacion) {
         this.fechaVerificacion = fechaVerificacion;
+    }
+
+    public Boolean getExtractoCargado() {
+        return extractoCargado;
+    }
+
+    public void setExtractoCargado(Boolean extractoCargado) {
+        this.extractoCargado = extractoCargado;
     }
 }

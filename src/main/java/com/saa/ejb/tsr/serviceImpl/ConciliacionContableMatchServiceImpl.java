@@ -22,6 +22,7 @@ import com.saa.ejb.cnt.service.PeriodoService;
 import com.saa.ejb.tsr.dao.ConciliacionContableDaoService;
 import com.saa.ejb.tsr.dao.ControlExtractoBancarioDaoService;
 import com.saa.ejb.tsr.dao.CuentaBancariaDaoService;
+import com.saa.ejb.tsr.dao.ExtractoBancarioDaoService;
 import com.saa.ejb.tsr.dao.GrupoConciliacionAsientoDaoService;
 import com.saa.ejb.tsr.dao.GrupoConciliacionExtractoDaoService;
 import com.saa.ejb.tsr.service.ConciliacionContableMatchService;
@@ -103,6 +104,9 @@ public class ConciliacionContableMatchServiceImpl implements ConciliacionContabl
 
     @EJB
     private ControlExtractoBancarioDaoService controlExtractoBancarioDaoService;
+
+    @EJB
+    private ExtractoBancarioDaoService extractoBancarioDaoService;
 
     @EJB
     private ControlExtractoBancarioService controlExtractoBancarioService;
@@ -486,11 +490,20 @@ public class ConciliacionContableMatchServiceImpl implements ConciliacionContabl
                 + ", idPeriodo: " + idPeriodo);
         Periodo periodo = obtenerPeriodo(idPeriodo);
         List<CuentaBancaria> cuentas = controlExtractoBancarioDaoService.selectCuentasBancariasActivas(idEmpresa);
+        List<Long> idsCuenta = cuentas.stream().map(CuentaBancaria::getCodigo).toList();
+
+        // Mismo chequeo de cobertura que usa el Tablero de Cumplimiento
+        // (ControlExtractoBancarioServiceImpl.detalleCuentas) - sin esto,
+        // "0 pendientes" es ambiguo entre "nunca se cargo el extracto" y
+        // "ya se concilio todo".
+        List<Long> conCobertura = extractoBancarioDaoService
+                .selectCuentasConCobertura(idsCuenta, periodo.getPrimerDia(), periodo.getUltimoDia());
 
         List<ResumenConciliacionCuenta> resultado = new ArrayList<>();
         for (CuentaBancaria cuenta : cuentas) {
             ResumenConciliacionCuenta fila = new ResumenConciliacionCuenta();
             fila.setCuentaBancaria(cuenta);
+            fila.setExtractoCargado(conCobertura.contains(cuenta.getCodigo()));
 
             ConciliacionContable existente = conciliacionContableDaoService
                     .selectByCuentaYPeriodo(cuenta.getCodigo(), idPeriodo);
