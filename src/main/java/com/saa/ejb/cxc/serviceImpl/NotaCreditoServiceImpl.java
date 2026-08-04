@@ -124,12 +124,10 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 				String numero = entidad.getNumEstablecimiento() + "-" + 
 						entidad.getNumPtoEmision() + "-" + secuencial;
 				entidad.setNumero(numero);
-				System.out.println("Número de nota de crédito generado: " + numero);
 				
 				// 3. Generar clave de acceso
 				String clave = generarClaveAcceso(entidad, tipoComprobante, ambiente, tipoEmision, secuencial);
 				entidad.setClave(clave);
-				System.out.println("Clave de acceso generada: " + clave);
 				
 				// 4. Establecer tipo de comprobante
 				entidad.setTipoComprobante(tipoComprobante);
@@ -823,9 +821,6 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 			resultado.put("notaCredito", notaCredito);
 			resultado.put("paso1_grabacion", "OK");
 			System.out.println("✓ Nota de crédito grabada con ID: " + notaCredito.getId());
-			System.out.println("✓ Clave generada: " + notaCredito.getClave());
-			System.out.println("✓ Número generado: " + notaCredito.getNumero());
-			System.out.println("✓ Secuencial generado: " + notaCredito.getSecuencial());
 			
 			// 2.5. Guardar los detalles de la nota de crédito
 			if (detalles != null && !detalles.isEmpty()) {
@@ -1058,8 +1053,6 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 	 * Obtiene y actualiza el secuencial para un punto de emisión y tipo de documento
 	 */
 	private String obtenerSecuencial(Long idPtoEmision, String tipoDoc) throws Exception {
-		System.out.println(">>> OBTENER SECUENCIAL PtoEmision[" + idPtoEmision + "] TipoComprobante[" + tipoDoc + "]");
-		
 		String sql = "SELECT n FROM NumeracionPuntoEmision n WHERE n.ptoEmision.id = :ptoEmision AND n.tipoDoc = :tipoDoc";
 		Query query = em.createQuery(sql);
 		query.setParameter("ptoEmision", idPtoEmision);
@@ -1102,18 +1095,12 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 		String ruc = notaCredito.getFacturador().getNumDoc();
 		String codClave = notaCredito.getFacturador().getCodClave();
 		
-		System.out.println("RUC: " + ruc);
-		System.out.println("CLAVE: " + codClave);
-		
 		String claveSinDV = fechaClave + tipoComprobante + ruc + ambiente + 
 				notaCredito.getNumEstablecimiento() + notaCredito.getNumPtoEmision() + 
 				secuencial + codClave + tipoEmision;
 		
-		System.out.println(">>> GENERADOR CLAVE cadena[" + claveSinDV + "]");
-		
 		int digitoVerificador = calcularModulo11(claveSinDV);
 		String claveCompleta = claveSinDV + digitoVerificador;
-		System.out.println(">>> CLAVE COMPLETA [" + claveCompleta + "]");
 		
 		return claveCompleta;
 	}

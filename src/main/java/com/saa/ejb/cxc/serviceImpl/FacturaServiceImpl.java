@@ -207,31 +207,6 @@ public class FacturaServiceImpl implements FacturaService {
 			Long idEmpresa = factura.getFacturador().getEmpresa().getCodigo();
 			System.out.println("PASO 0: Validando cuentas contables para empresa " + idEmpresa + "...");
 
-			// ── LOGS DE DIAGNÓSTICO: valores que se envían a validarCuentasContables ──
-			System.out.println("  [DIAG] idEmpresa       = " + idEmpresa);
-			System.out.println("  [DIAG] Titular         = " + (factura.getTitular() != null
-					? "ID=" + factura.getTitular().getCodigo() + " | Nombre=" + factura.getTitular().getNombre()
-					: "NULL"));
-			if (detalles != null) {
-				System.out.println("  [DIAG] Detalles count  = " + detalles.size());
-				for (int i = 0; i < detalles.size(); i++) {
-					DetalleFactura d = detalles.get(i);
-					String grupo = (d.getProducto() != null && d.getProducto().getGrupoProducto() != null)
-							? "GrupoID=" + d.getProducto().getGrupoProducto().getCodigo()
-							  + " | GrupoNombre=" + d.getProducto().getGrupoProducto().getNombre()
-							  + " | PlanCuenta=" + (d.getProducto().getGrupoProducto().getPlanCuenta() != null
-							      ? d.getProducto().getGrupoProducto().getPlanCuenta().getCuentaContable() : "NULL")
-							: "Sin grupo";
-					System.out.println("  [DIAG] Detalle[" + i + "] desc=" + d.getDescripcion()
-							+ " | valorIVA=" + d.getValorIVA()
-							+ " | codigoIVASRI=" + d.getCodigoIVASRI()
-							+ " | " + grupo);
-				}
-			} else {
-				System.out.println("  [DIAG] Detalles        = NULL");
-			}
-			// ── FIN LOGS DIAGNÓSTICO ──────────────────────────────────────────────
-
 			java.util.List<String> erroresContables = asientoContableService.validarCuentasContables(
 					factura.getTitular(), detalles, idEmpresa);
 
@@ -293,6 +268,7 @@ public class FacturaServiceImpl implements FacturaService {
 
 			// ── PASO 1.6: Guardar forma de pago ────────────────────────────────
 			System.out.println("PASO 1.6: Guardando forma de pago...");
+			com.saa.model.cxc.FormaPagoFactura formaPagoGuardada = null;
 			try {
 				com.saa.model.cxc.FormaPagoFactura formaPago = new com.saa.model.cxc.FormaPagoFactura();
 				formaPago.setFactura(factura);
@@ -315,6 +291,7 @@ public class FacturaServiceImpl implements FacturaService {
 				formaPago.setPlazo(0L);
 				formaPago.setUnidadTiempo("dias");
 				formaPagoFacturaService.saveSingle(formaPago);
+				formaPagoGuardada = formaPago; // retener en memoria para el XML
 				System.out.println("✓ Forma de pago guardada: " + codigoFormaPago);
 			} catch (Exception e) {
 				resultado.put("etapa", "GRABADO_FORMA_PAGO");
@@ -336,12 +313,17 @@ public class FacturaServiceImpl implements FacturaService {
 
 			resultado.put("clave", clave);
 
+			// Armar lista de formas de pago con el objeto ya en memoria
+			java.util.List<com.saa.model.cxc.FormaPagoFactura> formasPagoXML = new java.util.ArrayList<>();
+			if (formaPagoGuardada != null) formasPagoXML.add(formaPagoGuardada);
+
 			String xmlFirmado;
 			try {
 				System.out.println("PASO 2: Generando XML...");
-				String[] resultadoXML = generarXMLFactura(clave, ambiente);
-				String xmlSinFirmar = new String(
-						java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(resultadoXML[2])), "UTF-8");
+				// Pasar factura, detalles y formasPago ya en memoria → 0 queries adicionales
+				String[] resultadoXML = generarYGuardarXML(factura, detalles, formasPagoXML, ambiente);
+				// resultadoXML[3] = xmlContent ya en memoria → sin releer desde disco
+				String xmlSinFirmar = resultadoXML[3];
 				System.out.println("PASO 3: Firmando XML...");
 				xmlFirmado = signatureService.firmarXMLFacturador(xmlSinFirmar, idFacturador);
 				System.out.println("✓ XML generado y firmado.");
@@ -389,8 +371,7 @@ public class FacturaServiceImpl implements FacturaService {
 				System.out.println("PASO 5: Generando asiento contable...");
 				try {
 					Long idEmpresa = factura.getFacturador().getEmpresa().getCodigo();
-					// Recargar factura para obtener datos actualizados (autorización, etc.)
-					factura = facturaDaoService.selectById(factura.getId(), com.saa.model.cxc.NombreEntidadesCobro.FACTURA);
+					// factura ya está en memoria con los datos actualizados — no se recarga desde BD
 					String obsAsiento = "Factura N° " + nvl(factura.getNumero(), clave)
 							+ " | Cliente: " + factura.getTitular().getNombre()
 							+ " | " + nvl(factura.getObservacion(), "");
@@ -485,63 +466,70 @@ public class FacturaServiceImpl implements FacturaService {
 	@Override
 	public String[] generarXMLFactura(String clave, Long ambiente) throws Throwable {
 		System.out.println("Ingresa al metodo generarXMLFactura con clave: " + clave + " y ambiente: " + ambiente);
-		
-		// 1. Obtener datos principales de la factura
+
+		// Consultar factura desde BD (llamada externa, sin datos en memoria)
 		String sqlFactura = "SELECT f FROM Factura f WHERE f.clave = :clave";
 		Query queryFactura = em.createQuery(sqlFactura);
 		queryFactura.setParameter("clave", clave);
 		Factura factura = (Factura) queryFactura.getSingleResult();
-		
 		if (factura == null) {
 			throw new IncomeException("Factura con clave " + clave + " no encontrada");
 		}
-		
-		Long idFactura = factura.getId();
-		Facturador facturador = factura.getFacturador();
-		Titular titular = factura.getTitular();
-		
-		// 2. Obtener dirección del establecimiento
-		String sqlEstablecimiento = "SELECT e.direccion FROM PuntoEmision p JOIN p.establecimiento e " +
-				"WHERE p.id = :ptoEmisionId";
-		Query queryEstablecimiento = em.createQuery(sqlEstablecimiento);
-		queryEstablecimiento.setParameter("ptoEmisionId", factura.getPtoEmision().getId());
-		String dirEstablecimiento = (String) queryEstablecimiento.getSingleResult();
-		
-		// 3. Obtener detalle de la factura
+
 		String sqlDetalle = "SELECT d FROM DetalleFactura d WHERE d.factura.id = :facturaId";
 		Query queryDetalle = em.createQuery(sqlDetalle);
-		queryDetalle.setParameter("facturaId", idFactura);
+		queryDetalle.setParameter("facturaId", factura.getId());
 		@SuppressWarnings("unchecked")
 		List<DetalleFactura> detalles = queryDetalle.getResultList();
-		
-		// 4. Obtener formas de pago
+
 		String sqlFormasPago = "SELECT fp FROM FormaPagoFactura fp WHERE fp.factura.id = :facturaId";
 		Query queryFormasPago = em.createQuery(sqlFormasPago);
-		queryFormasPago.setParameter("facturaId", idFactura);
+		queryFormasPago.setParameter("facturaId", factura.getId());
 		@SuppressWarnings("unchecked")
 		List<com.saa.model.cxc.FormaPagoFactura> formasPago = queryFormasPago.getResultList();
-		
-		// 5. Generar XML
-		String xmlContent = generarXMLContent(factura, facturador, titular, dirEstablecimiento, 
-				detalles, formasPago, ambiente);
-		
-		// 6. Guardar archivo XML usando el directorio base de uploads
+
+		return generarYGuardarXML(factura, detalles, formasPago, ambiente);
+	}
+
+	/**
+	 * Genera y guarda el XML a disco usando datos ya cargados en memoria.
+	 * Retorna: [0]=OK, [1]=pathRelativo, [2]=pathAbsoluto, [3]=xmlContent
+	 */
+	private String[] generarYGuardarXML(Factura factura,
+			List<DetalleFactura> detalles,
+			List<com.saa.model.cxc.FormaPagoFactura> formasPago,
+			Long ambiente) throws Throwable {
+
+		Facturador facturador = factura.getFacturador();
+		Titular titular = factura.getTitular();
+		String clave = factura.getClave();
+
+		// Dirección del establecimiento (única query necesaria si no viene en la entidad)
+		String dirEstablecimiento = "";
+		try {
+			dirEstablecimiento = (String) em.createQuery(
+					"SELECT e.direccion FROM PuntoEmision p JOIN p.establecimiento e WHERE p.id = :id")
+				.setParameter("id", factura.getPtoEmision().getId())
+				.getSingleResult();
+		} catch (Exception e) {
+			System.err.println("⚠ No se pudo obtener dirección del establecimiento: " + e.getMessage());
+		}
+
+		String xmlContent = generarXMLContent(factura, facturador, titular,
+				dirEstablecimiento, detalles, formasPago, ambiente);
+
 		String pathRelativo = "resources/" + facturador.getId() + "/docs/g/" + clave + ".xml";
 		String baseUploadDir = getBaseUploadDirectory();
 		String pathAbsoluto = baseUploadDir + pathRelativo;
-		
-		System.out.println("Guardando XML en: " + pathAbsoluto);
-		
-		// Crear directorios si no existen
+
 		Path path = Paths.get(pathAbsoluto);
 		Files.createDirectories(path.getParent());
-		
-		// Guardar archivo
 		Files.write(path, xmlContent.getBytes("UTF-8"));
-		
+
 		System.out.println("✓ XML generado correctamente en: " + pathAbsoluto);
-		
-		return new String[]{"OK", pathRelativo, pathAbsoluto};
+
+		// [3] = xmlContent para evitar releer de disco en el paso de firma
+		return new String[]{"OK", pathRelativo, pathAbsoluto, xmlContent};
 	}
 	
 	/**
@@ -1021,13 +1009,7 @@ public class FacturaServiceImpl implements FacturaService {
 					
 					// Leer bytes crudos del XML firmado (NO convertir a String ni modificar nada)
 					byte[] bytesXMLFirmado = Files.readAllBytes(pathFirmado);
-					
-					// Log primeros 500 chars sólo para diagnóstico
-					String contenidoXMLLog = new String(bytesXMLFirmado, "UTF-8");
-					System.out.println(">>> XML FIRMADO a enviar (primeros 500 caracteres):");
-					System.out.println(contenidoXMLLog.substring(0, Math.min(500, contenidoXMLLog.length())));
-					System.out.println(">>> FIN XML FIRMADO");
-					
+
 					String estadoRecepcion = llamarRecepcionSRI(urlWS1, bytesXMLFirmado, logWriter1);
 					
 					logWriter1.close();
@@ -1105,36 +1087,10 @@ public class FacturaServiceImpl implements FacturaService {
 										pdfBytesParaEmail = pdfBytes;
 									}
 								} catch (Exception pdfEx) {
-									// El PDF no es crítico para la autorización, solo loguear
 									System.err.println("⚠ Error generando PDF (no crítico): " + pdfEx.getMessage());
 									pdfEx.printStackTrace();
 								}
 
-								// 6. Enviar correo electrónico con el XML autorizado (y PDF si existe)
-								try {
-									String emailDestinatario = destinatario;
-									// Si no se pasó destinatario, intentar obtenerlo del titular
-									if ((emailDestinatario == null || emailDestinatario.trim().isEmpty())
-											&& factura.getTitular() != null) {
-										emailDestinatario = factura.getTitular().getEmail();
-									}
-									String razonSocialEmisor = factura.getFacturador() != null
-											? nvl(factura.getFacturador().getRazonSocial(), nvl(factura.getFacturador().getNombre(), ""))
-											: "";
-									emailFacturaService.enviarFacturaAutorizada(
-											emailDestinatario,
-											nvl(factura.getNumero(), clave),
-											clave,
-											razonSocialEmisor,
-											resultado.comprobanteXML,
-											pdfBytesParaEmail
-									);
-								} catch (Exception mailEx) {
-									// El email no es crítico para la autorización, solo loguear
-									System.err.println("⚠ Error enviando email (no crítico): " + mailEx.getMessage());
-									mailEx.printStackTrace();
-								}
-								
 								// 7. Si es producción, actualizar contador de documentos emitidos
 								if (ambiente == 2) {
 									String sqlUpdate = "UPDATE Facturador f SET f.docEmitidos = COALESCE(f.docEmitidos, 0) + 1 WHERE f.id = :idFacturador";
@@ -1234,94 +1190,63 @@ public class FacturaServiceImpl implements FacturaService {
 		try {
 			System.out.println(">>> Llamando al WS1 de RECEPCIÓN del SRI: " + url);
 			log.println(">>> Llamando al WS1 de RECEPCIÓN del SRI: " + url);
-			
-			// Crear conexión SOAP
+
 			SOAPConnectionFactory soapConnectionFactory = SOAPConnectionFactory.newInstance();
 			SOAPConnection soapConnection = soapConnectionFactory.createConnection();
-			
-			// Crear mensaje SOAP
+
 			MessageFactory messageFactory = MessageFactory.newInstance();
 			SOAPMessage soapMessage = messageFactory.createMessage();
 			SOAPPart soapPart = soapMessage.getSOAPPart();
-			
-			// SOAP Envelope
+
 			SOAPEnvelope envelope = soapPart.getEnvelope();
-			
-			// SOAP Body
 			SOAPBody soapBody = envelope.getBody();
-			
-			// Crear elemento validarComprobante CON namespace
+
 			SOAPElement validarComprobante = soapBody.addChildElement("validarComprobante", "", "http://ec.gob.sri.ws.recepcion");
 			SOAPElement xml = validarComprobante.addChildElement(envelope.createName("xml", "", ""));
-			
-			// Codificar los bytes crudos directamente a Base64 SIN ninguna modificación
-			// (cualquier cambio al contenido firmado invalida la firma)
+
 			String xmlBase64 = java.util.Base64.getEncoder().encodeToString(xmlBytes);
 			xml.addTextNode(xmlBase64);
-			System.out.println(">>> XML codificado en Base64 (primeros 100 chars): " + xmlBase64.substring(0, Math.min(100, xmlBase64.length())));
-			
+
 			soapMessage.saveChanges();
-			
-			System.out.println(">>> Mensaje SOAP Request creado correctamente");
+
 			log.println(">>> Mensaje SOAP Request creado correctamente");
-			
-			// Log del request completo
+
+			// Log del request completo solo en archivo, no en consola
 			ByteArrayOutputStream requestBaos = new ByteArrayOutputStream();
 			soapMessage.writeTo(requestBaos);
-			String requestXml = requestBaos.toString("UTF-8");
-			System.out.println(">>> REQUEST SOAP enviado al SRI:");
-			System.out.println(requestXml);
 			log.println(">>> REQUEST SOAP enviado al SRI:");
-			log.println(requestXml);
-			
-			// Llamar al servicio
+			log.println(requestBaos.toString("UTF-8"));
+
 			SOAPMessage soapResponse = soapConnection.call(soapMessage, url);
-			
-			System.out.println(">>> Respuesta recibida del SRI");
-			log.println(">>> Respuesta recibida del SRI");
-			
-			// Procesar respuesta - Convertir SOAP a String XML correctamente
+
 			SOAPBody responseBody = soapResponse.getSOAPBody();
-			
-			// Convertir el SOAPMessage completo a String XML
+
+			// Guardar respuesta completa solo en archivo de log
 			ByteArrayOutputStream baos = new ByteArrayOutputStream();
 			soapResponse.writeTo(baos);
 			String respuestaCompleta = baos.toString("UTF-8");
-			
-			System.out.println(">>> Respuesta WS1 completa:");
-			System.out.println(respuestaCompleta);
 			log.println(">>> Respuesta WS1 completa:");
 			log.println(respuestaCompleta);
-			
-			// Extraer estado
-			// Primero intentar buscar por getElementsByTagName (sin namespace)
+
 			NodeList estadoList = responseBody.getElementsByTagName("estado");
-			System.out.println(">>> Nodos <estado> encontrados (sin NS): " + estadoList.getLength());
-			log.println(">>> Nodos <estado> encontrados (sin NS): " + estadoList.getLength());
-			
-			// Si no encuentra, intentar con namespace
 			if (estadoList.getLength() == 0) {
 				estadoList = responseBody.getElementsByTagNameNS("*", "estado");
-				System.out.println(">>> Nodos <estado> encontrados (con NS): " + estadoList.getLength());
-				log.println(">>> Nodos <estado> encontrados (con NS): " + estadoList.getLength());
 			}
-			
+
 			if (estadoList.getLength() > 0) {
 				String estado = estadoList.item(0).getTextContent();
-				System.out.println(">>> Estado extraído: " + estado);
+				System.out.println(">>> Estado WS1: " + estado);
 				log.println(">>> Estado extraído: " + estado);
-				
-				// Verificar si hay mensaje de clave registrada
+
 				NodeList mensajeList = responseBody.getElementsByTagName("mensaje");
 				if (mensajeList.getLength() == 0) {
 					mensajeList = responseBody.getElementsByTagNameNS("*", "mensaje");
 				}
-				
+
 				if (mensajeList.getLength() > 0) {
 					String mensaje = mensajeList.item(0).getTextContent();
-					System.out.println(">>> Mensaje extraído: " + mensaje);
 					log.println(">>> Mensaje extraído: " + mensaje);
-					
+
 					if (mensaje != null && mensaje.contains("CLAVE ACCESO REGISTRADA")) {
 						System.out.println(">>> Clave de acceso ya registrada");
 						log.println(">>> Clave de acceso ya registrada");
@@ -1329,17 +1254,17 @@ public class FacturaServiceImpl implements FacturaService {
 						return "CLAVE ACCESO REGISTRADA";
 					}
 				}
-				
+
 				soapConnection.close();
 				return estado;
 			}
-			
-			System.out.println(">>> ADVERTENCIA: No se encontró nodo <estado> en la respuesta");
+
+			System.err.println(">>> ADVERTENCIA: No se encontró nodo <estado> en la respuesta WS1");
 			log.println(">>> ADVERTENCIA: No se encontró nodo <estado> en la respuesta");
-			
+
 			soapConnection.close();
 			return "SIN_RESPUESTA";
-			
+
 		} catch (Exception e) {
 			System.err.println(">>> ERROR en llamarRecepcionSRI: " + e.getMessage());
 			e.printStackTrace();
@@ -1354,22 +1279,16 @@ public class FacturaServiceImpl implements FacturaService {
 	 */
 	private ResultadoAutorizacion llamarAutorizacionSRI(String url, String claveAcceso) throws Exception {
 		System.out.println(">>> Llamando al WS2 de AUTORIZACIÓN del SRI: " + url);
-		System.out.println(">>> Clave de acceso para autorización: " + claveAcceso);
 
 		try {
-			// Crear conexión SOAP
 			SOAPConnectionFactory soapConnectionFactory = SOAPConnectionFactory.newInstance();
 			SOAPConnection soapConnection = soapConnectionFactory.createConnection();
 
-			// Crear mensaje SOAP
 			MessageFactory messageFactory = MessageFactory.newInstance();
 			SOAPMessage soapMessage = messageFactory.createMessage();
 			SOAPPart soapPart = soapMessage.getSOAPPart();
 
-			// SOAP Envelope
 			SOAPEnvelope envelope = soapPart.getEnvelope();
-
-			// SOAP Body - usar namespace igual que WS1
 			SOAPBody soapBody = envelope.getBody();
 			SOAPElement autorizacionComprobante = soapBody.addChildElement("autorizacionComprobante", "", "http://ec.gob.sri.ws.autorizacion");
 			SOAPElement claveAccesoElement = autorizacionComprobante.addChildElement(envelope.createName("claveAccesoComprobante", "", ""));
@@ -1377,42 +1296,28 @@ public class FacturaServiceImpl implements FacturaService {
 
 			soapMessage.saveChanges();
 
-			// Log del request
-			ByteArrayOutputStream requestBaos = new ByteArrayOutputStream();
-			soapMessage.writeTo(requestBaos);
-			System.out.println(">>> REQUEST SOAP WS2 enviado al SRI:");
-			System.out.println(requestBaos.toString("UTF-8"));
-
-			// Llamar al servicio
 			SOAPMessage soapResponse = soapConnection.call(soapMessage, url);
-
-			// Procesar respuesta
 			SOAPBody responseBody = soapResponse.getSOAPBody();
 
-			// Log de la respuesta completa
+			// Guardar respuesta completa solo para uso interno
 			ByteArrayOutputStream baos = new ByteArrayOutputStream();
 			soapResponse.writeTo(baos);
 			String respuestaCompleta = baos.toString("UTF-8");
-			System.out.println(">>> Respuesta WS2 completa:");
-			System.out.println(respuestaCompleta);
 
 			ResultadoAutorizacion resultado = new ResultadoAutorizacion();
 			resultado.respuestaCompleta = respuestaCompleta;
 
-			// Helper para extraer nodo con fallback a namespace wildcard
-			// Extraer estado
 			NodeList estadoList = responseBody.getElementsByTagName("estado");
 			if (estadoList.getLength() == 0) {
 				estadoList = responseBody.getElementsByTagNameNS("*", "estado");
 			}
 			if (estadoList.getLength() > 0) {
 				resultado.estado = estadoList.item(0).getTextContent();
-				System.out.println(">>> Estado WS2 extraído: " + resultado.estado);
+				System.out.println(">>> Estado WS2: " + resultado.estado);
 			} else {
-				System.out.println(">>> ADVERTENCIA: No se encontró nodo <estado> en respuesta WS2");
+				System.err.println(">>> ADVERTENCIA: No se encontró nodo <estado> en respuesta WS2");
 			}
 
-			// Extraer número de autorización
 			NodeList numAutList = responseBody.getElementsByTagName("numeroAutorizacion");
 			if (numAutList.getLength() == 0) {
 				numAutList = responseBody.getElementsByTagNameNS("*", "numeroAutorizacion");
@@ -1421,7 +1326,6 @@ public class FacturaServiceImpl implements FacturaService {
 				resultado.numeroAutorizacion = numAutList.item(0).getTextContent();
 			}
 
-			// Extraer fecha de autorización
 			NodeList fechaAutList = responseBody.getElementsByTagName("fechaAutorizacion");
 			if (fechaAutList.getLength() == 0) {
 				fechaAutList = responseBody.getElementsByTagNameNS("*", "fechaAutorizacion");
@@ -1430,7 +1334,6 @@ public class FacturaServiceImpl implements FacturaService {
 				resultado.fechaAutorizacion = fechaAutList.item(0).getTextContent();
 			}
 
-			// Extraer comprobante XML
 			NodeList comprobanteList = responseBody.getElementsByTagName("comprobante");
 			if (comprobanteList.getLength() == 0) {
 				comprobanteList = responseBody.getElementsByTagNameNS("*", "comprobante");
@@ -1439,7 +1342,6 @@ public class FacturaServiceImpl implements FacturaService {
 				resultado.comprobanteXML = comprobanteList.item(0).getTextContent();
 			}
 
-			// Extraer mensajes de error si existen
 			NodeList mensajeIdList = responseBody.getElementsByTagName("identificador");
 			if (mensajeIdList.getLength() == 0) {
 				mensajeIdList = responseBody.getElementsByTagNameNS("*", "identificador");
@@ -1506,9 +1408,6 @@ public class FacturaServiceImpl implements FacturaService {
 	 * Obtiene y actualiza el secuencial para un punto de emisión y tipo de documento
 	 */
 	private String obtenerSecuencial(Long idPtoEmision, String tipoDoc) throws Exception {
-		System.out.println(">>> OBTENER SECUENCIAL PtoEmision[" + idPtoEmision + "] TipoComprobante[" + tipoDoc + "]");
-		
-		// Consultar numeración actual
 		String sql = "SELECT n FROM NumeracionPuntoEmision n WHERE n.ptoEmision.id = :ptoEmision AND n.tipoDoc = :tipoDoc";
 		Query query = em.createQuery(sql);
 		query.setParameter("ptoEmision", idPtoEmision);
@@ -1554,26 +1453,16 @@ public class FacturaServiceImpl implements FacturaService {
 		// Obtener datos del facturador
 		String ruc = factura.getFacturador().getNumDoc();
 		String codClave = factura.getFacturador().getCodClave();
-		
-		System.out.println("RUC: " + ruc);
-		System.out.println("CLAVE: " + codClave);
-		System.out.println("AMBIENTE: " + ambiente);
-		System.out.println("ESTABLECIMIENTO: " + factura.getNumEstablecimiento());
-		System.out.println("PTO: " + factura.getNumPtoEmision());
-		
+
 		// Armar clave sin dígito verificador
 		String claveSinDV = fechaClave + tipoComprobante + ruc + ambiente + 
 				factura.getNumEstablecimiento() + factura.getNumPtoEmision() + 
 				secuencial + codClave + tipoEmision;
-		
-		System.out.println(">>> GENERADOR CLAVE cadena[" + claveSinDV + "]");
-		
+
 		// Calcular dígito verificador con módulo 11
 		int digitoVerificador = calcularModulo11(claveSinDV);
-		
+
 		String claveCompleta = claveSinDV + digitoVerificador;
-		System.out.println(">>> CLAVE COMPLETA [" + claveCompleta + "]");
-		
 		return claveCompleta;
 	}
 	

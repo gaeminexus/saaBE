@@ -218,14 +218,12 @@ public class DetalleAsientoServiceImpl implements DetalleAsientoService{
 	 */
 	public Long saveDetalle(DetalleAsiento detalleAsiento) throws Throwable {
 		System.out.println("Ingresa al metodo saveDetalle");
-		Long idDetalle = 0L;
 		try {
 			detalleAsientoDaoService.save(detalleAsiento, detalleAsiento.getCodigo());
 		} catch (PersistenceException e) {
 			throw new Exception("Error en saveCabecera: " + e.getCause());
-		}		
-		idDetalle = detalleAsientoDaoService.selectByAll(detalleAsiento);
-		return idDetalle;
+		}
+		return detalleAsiento.getCodigo();
 	}
 
 	/* (non-Javadoc)

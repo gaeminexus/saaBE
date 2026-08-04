@@ -125,12 +125,10 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 				String numero = entidad.getNumEstablecimiento() + "-" + 
 						entidad.getNumPtoEmision() + "-" + secuencial;
 				entidad.setNumero(numero);
-				System.out.println("Número de nota de débito generado: " + numero);
 				
 				// 3. Generar clave de acceso
 				String clave = generarClaveAcceso(entidad, tipoComprobante, ambiente, tipoEmision, secuencial);
 				entidad.setClave(clave);
-				System.out.println("Clave de acceso generada: " + clave);
 				
 				// 4. Establecer tipo de comprobante
 				entidad.setTipoComprobante(tipoComprobante);
@@ -187,14 +185,8 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 			queryDetalle.setParameter("notaDebitoId", notaDebito.getId());
 			@SuppressWarnings("unchecked")
 			List<Object> detalles = queryDetalle.getResultList();
-			System.out.println(">>> generarXMLNotaDebito | detalles encontrados en BD: " + detalles.size());
-			for (Object obj : detalles) {
-				DetalleNotaDebito d = (DetalleNotaDebito) obj;
-				System.out.println("    - detalle id=" + d.getId() + " desc=" + d.getDescripcion() + " valor=" + d.getValor() + " baseImponible=" + d.getBaseImponible());
-			}
 			
 			String xmlContent = generarXMLContentNotaDebito(notaDebito, dirEstablecimiento, detalles, ambiente);
-			System.out.println(">>> XML NotaDebito GENERADO (sin firmar):\n" + xmlContent);
 			
 			String pathRelativo = "resources/" + idFacturador + "/ntdb/g/" + clave + ".xml";
 			String baseUploadDir = getBaseUploadDirectory();
@@ -575,15 +567,7 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 						
 						try {
 							ResultadoAutorizacion resultado = llamarAutorizacionSRI(urlWS2, clave);
-							
-							System.out.println(">>> Respuesta WS2 Autorización:");
-							System.out.println("    estado              = [" + resultado.estado + "]");
-							System.out.println("    numeroAutorizacion  = [" + resultado.numeroAutorizacion + "]");
-							System.out.println("    fechaAutorizacion   = [" + resultado.fechaAutorizacion + "]");
-							System.out.println("    mensajeId           = [" + resultado.mensajeId + "]");
-							System.out.println("    mensaje             = [" + resultado.mensaje + "]");
-							System.out.println("    informacionAdicional= [" + resultado.informacionAdicional + "]");
-							System.out.println("    respuestaCompleta   = " + resultado.respuestaCompleta);
+							System.out.println(">>> Estado WS2: [" + resultado.estado + "]");
 							
 							if ("AUTORIZADO".equals(resultado.estado)) {
 								System.out.println("✓ ND AUTORIZADA por el SRI. Num.Autorización: " + resultado.numeroAutorizacion);
@@ -881,33 +865,26 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 				System.out.println("PASO 5: Generando asiento contable para Nota de Débito...");
 				try {
 					Long idEmpresaConta = notaDebito.getFacturador().getEmpresa().getCodigo();
-					NotaDebito ndActualizada = notaDebitoDaoService.selectById(
-							notaDebito.getId(), NombreEntidadesCobro.NOTA_DEBITO);
-					java.time.LocalDate fechaAsiento = ndActualizada.getFecha() != null
-							? ndActualizada.getFecha().toLocalDate() : java.time.LocalDate.now();
-					String obsAsiento = "Nota de Débito N° " + nvl(ndActualizada.getNumero(), clave)
-							+ " | Cliente: " + (ndActualizada.getTitular() != null ? ndActualizada.getTitular().getNombre() : "")
-							+ " | " + nvl(ndActualizada.getObservacion(), "");
-					String usuarioAsiento = (ndActualizada.getUsuario() != null)
-							? ndActualizada.getUsuario().getNombre() : "SISTEMA";
-					// Usar el mismo tipo de asiento que Factura y NC (codigoAlterno=2 = FACTURAS_VENTA)
-					// Factura, NC y ND comparten el mismo tipo de asiento contable.
+					// notaDebito ya está en memoria con datos actualizados — sin recargar desde BD
+					java.time.LocalDate fechaAsiento = notaDebito.getFecha() != null
+							? notaDebito.getFecha().toLocalDate() : java.time.LocalDate.now();
+					String obsAsiento = "Nota de Débito N° " + nvl(notaDebito.getNumero(), clave)
+							+ " | Cliente: " + (notaDebito.getTitular() != null ? notaDebito.getTitular().getNombre() : "")
+							+ " | " + nvl(notaDebito.getObservacion(), "");
+					String usuarioAsiento = (notaDebito.getUsuario() != null)
+							? notaDebito.getUsuario().getNombre() : "SISTEMA";
 					com.saa.model.cnt.Asiento asientoGenerado =
 							asientoContableService.generarAsientoNotaDebito(
-									ndActualizada.getId(), idEmpresaConta,
+									notaDebito.getId(), idEmpresaConta,
 									com.saa.rubros.TipoAsientos.FACTURAS_VENTA,
 									fechaAsiento, obsAsiento, usuarioAsiento);
-					// Vincular el asiento a la nota de débito y persistir.
-					// El asiento viene de REQUIRES_NEW (transacción separada) → está detached.
-					// Hay que re-attacharlo con em.find() antes de asignarlo.
 					com.saa.model.cnt.Asiento asientoAttached =
 							em.find(com.saa.model.cnt.Asiento.class, asientoGenerado.getCodigo());
 					if (asientoAttached == null) asientoAttached = em.merge(asientoGenerado);
-					ndActualizada.setAsiento(asientoAttached);
-					notaDebitoDaoService.save(ndActualizada, ndActualizada.getId());
-					System.out.println("✓ Asiento contable vinculado a ND: " + asientoGenerado.getNumeroAlterno());
-					resultado.put("asiento", asientoGenerado.getNumeroAlterno());
+					notaDebito.setAsiento(asientoAttached);
+					notaDebitoDaoService.save(notaDebito, notaDebito.getId());
 					System.out.println("✓ Asiento contable generado: " + asientoGenerado.getNumeroAlterno());
+					resultado.put("asiento", asientoGenerado.getNumeroAlterno());
 				} catch (Exception e) {
 					resultado.put("advertenciaAsiento",
 							"Nota de Débito autorizada pero ocurrió un error al generar el asiento: "
@@ -1173,8 +1150,6 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 	 * Obtiene y actualiza el secuencial para un punto de emisión y tipo de documento
 	 */
 	private String obtenerSecuencial(Long idPtoEmision, String tipoDoc) throws Exception {
-		System.out.println(">>> OBTENER SECUENCIAL PtoEmision[" + idPtoEmision + "] TipoComprobante[" + tipoDoc + "]");
-		
 		String sql = "SELECT n FROM NumeracionPuntoEmision n WHERE n.ptoEmision.id = :ptoEmision AND n.tipoDoc = :tipoDoc";
 		Query query = em.createQuery(sql);
 		query.setParameter("ptoEmision", idPtoEmision);
@@ -1217,18 +1192,12 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 		String ruc = notaDebito.getFacturador().getNumDoc();
 		String codClave = notaDebito.getFacturador().getCodClave();
 		
-		System.out.println("RUC: " + ruc);
-		System.out.println("CLAVE: " + codClave);
-		
 		String claveSinDV = fechaClave + tipoComprobante + ruc + ambiente + 
 				notaDebito.getNumEstablecimiento() + notaDebito.getNumPtoEmision() + 
 				secuencial + codClave + tipoEmision;
 		
-		System.out.println(">>> GENERADOR CLAVE cadena[" + claveSinDV + "]");
-		
 		int digitoVerificador = calcularModulo11(claveSinDV);
 		String claveCompleta = claveSinDV + digitoVerificador;
-		System.out.println(">>> CLAVE COMPLETA [" + claveCompleta + "]");
 		
 		return claveCompleta;
 	}

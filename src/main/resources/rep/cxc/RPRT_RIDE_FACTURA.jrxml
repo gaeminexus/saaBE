@@ -199,12 +199,6 @@
 		<element kind="staticText" uuid="aa000025-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="253" y="209" width="280" height="13" backcolor="#DDDDDD" bold="true" hTextAlign="Center">
 			<text><![CDATA[CLAVE DE ACCESO]]></text>
 		</element>
-		<element kind="textField" uuid="aa000026-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="256" y="224" width="276" height="56" fontName="Courier New" fontSize="6.0" hTextAlign="Center" vTextAlign="Middle">
-			<expression><![CDATA[$F{clave}]]></expression>
-			<box>
-				<pen lineWidth="0.3"/>
-			</box>
-		</element>
 		<element kind="textField" uuid="aa000027-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="253" y="282" width="280" height="10" fontName="Courier New" fontSize="5.0" hTextAlign="Center">
 			<expression><![CDATA[$F{clave}]]></expression>
 		</element>
@@ -285,6 +279,14 @@
 		</element>
 		<element kind="line" uuid="aa000041-aaaa-aaaa-aaaa-aaaaaaaaaaaa" x="0" y="362" width="535" height="1">
 			<pen lineWidth="0.5"/>
+		</element>
+		<element kind="component" uuid="fa015c01-88cb-479b-8e63-bd243957c675" x="256" y="224" width="276" height="55">
+			<component kind="barcode4j:Code128" moduleWidth="1.2" textPosition="none" quietZone="10.0" verticalQuietZone="1.0">
+				<codeExpression><![CDATA[$F{clave}]]></codeExpression>
+			</component>
+			<property name="com.jaspersoft.studio.unit.x" value="px"/>
+			<property name="com.jaspersoft.studio.unit.width" value="px"/>
+			<property name="com.jaspersoft.studio.unit.height" value="px"/>
 		</element>
 	</title>
 	<columnHeader height="20" splitType="Prevent">
