@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.saa.thirdparty</groupId>
+  <artifactId>w3c-dom-css-shim</artifactId>
+  <version>1.0</version>
+  <packaging>jar</packaging>
+  <name>W3C DOM Level 2 Style shim (css/stylesheets/views)</name>
+  <description>
+    Subset of xml-apis:xml-apis:1.4.01 containing only org.w3c.dom.css,
+    org.w3c.dom.stylesheets and org.w3c.dom.views (the DOM Level 2 Style
+    extension packages). Extracted because Apache Batik 1.18's
+    ExtensibleDOMImplementation/SVGDOMImplementation implement
+    org.w3c.dom.css.DOMImplementationCSS, but neither the JDK (java.xml
+    module, since Java 9 removed these extension packages) nor
+    xml-apis:xml-apis-ext:1.3.04 (which only has css.sac/smil/svg) provide
+    it. The full xml-apis:xml-apis:1.4.01 jar also redefines base
+    org.w3c.dom classes (Document, Node, Element, DOMException, etc.),
+    which conflicted with WildFly's own module providing those same base
+    classes and broke unrelated deployment reflection
+    (NoClassDefFoundError: XMLStreamWriter on an unrelated EJB). This
+    shim contains none of the base DOM classes, only the three extension
+    packages, so it cannot collide with anything else on the classpath.
+  </description>
+</project>
