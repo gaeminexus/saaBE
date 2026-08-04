@@ -12,6 +12,7 @@
 
 # Package Files
 *.jar
+!libs-repo/**/*.jar
 *.war
 *.nar
 *.ear
