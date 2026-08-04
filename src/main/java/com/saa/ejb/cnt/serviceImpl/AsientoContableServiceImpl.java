@@ -1447,7 +1447,16 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     }
 
     // =========================================================================
-    // Stub generarAsientoRetencionV2
+    // generarAsientoRetencionV2
+    // Estructura idéntica a generarAsientoRetencion (V1) pero usando
+    // DetalleRetencionV2 (que tiene codImpuesto + codRetencion) y la
+    // entidad RetencionV2.
+    //
+    // DEBE:  cuenta CxP del proveedor (PersonaCuentaContable tipoCuenta=1) por
+    //        el total retenido.
+    // HABER: una línea por detalle → cuenta desde Tsri según (codImpuesto,
+    //        codRetencion). Usa obtenerCuentaPorCodigoTsri igual que V1 porque
+    //        las retenciones emitidas (CXC) usan la tabla Tsri (no TsriCompra).
     // =========================================================================
 
     @Override
@@ -1455,14 +1464,85 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             Long idRetencionV2, Long idEmpresa, int codigoAltTipoAsiento,
             java.time.LocalDate fechaAsiento, String observaciones, String usuario)
             throws Throwable {
-        // TODO — Implementar cuando se defina:
-        //   · La plantilla de asiento: TipoAsientos.RETENCIONES_EMITIDAS_V2 (codigoAlterno en BD)
-        //   · AuxiliarUno DEBE:  cuenta de retención por código SRI del impuesto (DetalleRetencionV2.codRetencion)
-        //   · AuxiliarUno HABER: cuenta CxP del proveedor sujeto a retención
-        throw new UnsupportedOperationException(
-                "generarAsientoRetencionV2 aún no implementado. "
-                + "Defina la plantilla TipoAsientos.RETENCIONES_EMITIDAS_V2 en BD "
-                + "y configure las cuentas auxiliares antes de activar este método.");
+
+        System.out.println("=== generarAsientoRetencionV2 | idRetencionV2=" + idRetencionV2
+                + " | empresa=" + idEmpresa + " ===");
+
+        // 1. Cargar la retención V2
+        com.saa.model.cxc.RetencionV2 retencion =
+                em.find(com.saa.model.cxc.RetencionV2.class, idRetencionV2);
+        if (retencion == null) {
+            throw new IncomeException("No se encontró la RetencionV2 con ID: " + idRetencionV2);
+        }
+
+        // 2. Cargar detalles activos
+        @SuppressWarnings("unchecked")
+        List<com.saa.model.cxc.DetalleRetencionV2> detalles = em.createQuery(
+                "SELECT d FROM DetalleRetencionV2 d WHERE d.retencionV2.id = :id AND d.estado = 1")
+                .setParameter("id", idRetencionV2)
+                .getResultList();
+
+        if (detalles == null || detalles.isEmpty()) {
+            throw new IncomeException("La RetencionV2 " + idRetencionV2 + " no tiene detalles activos.");
+        }
+
+        // 3. Construir líneas del asiento
+        List<DetalleAsiento> lineas = new ArrayList<>();
+
+        // ── HABER: una línea por detalle → cuenta desde Tsri por codRetencion ──
+        double totalRetenido = 0.0;
+        for (com.saa.model.cxc.DetalleRetencionV2 det : detalles) {
+            String codRetencion = det.getCodRetencion();
+            PlanCuenta pcReten = obtenerCuentaPorCodigoTsri(codRetencion);
+            if (pcReten == null) {
+                throw new IncomeException(
+                        "No se encontró cuenta contable para el código de retención '"
+                        + codRetencion + "' en TSRI. "
+                        + "Configure la cuenta en Facturación → Tipos SRI.");
+            }
+            double valor = nvl(det.getValorReten());
+            totalRetenido += valor;
+
+            DetalleAsiento lineaHaber = new DetalleAsiento();
+            lineaHaber.setPlanCuenta(pcReten);
+            lineaHaber.setNumeroCuenta(pcReten.getCuentaContable());
+            lineaHaber.setNombreCuenta(pcReten.getNombre());
+            lineaHaber.setDescripcion("Retención V2 código " + codRetencion
+                    + " | Base: " + String.format(java.util.Locale.US, "%.2f", nvl(det.getBaseImponible()))
+                    + " | " + nvl2(det.getPorcentajeReten()) + "%"
+                    + " | Doc: " + (det.getNumDocReten() != null ? det.getNumDocReten() : ""));
+            lineaHaber.setValorDebe(0.0);
+            lineaHaber.setValorHaber(valor);
+            lineas.add(lineaHaber);
+        }
+
+        // ── DEBE: cuenta CxP del proveedor por el total retenido ──────────────
+        if (retencion.getProveedor() == null) {
+            throw new IncomeException("La RetencionV2 no tiene proveedor asignado.");
+        }
+        PlanCuenta cuentaProveedor = obtenerCuentaProveedor(
+                retencion.getProveedor().getCodigo(), idEmpresa);
+        if (cuentaProveedor == null) {
+            throw new IncomeException("No se encontró cuenta contable (tipo factura) "
+                    + "para el proveedor ID: " + retencion.getProveedor().getCodigo()
+                    + " en la empresa: " + idEmpresa);
+        }
+
+        DetalleAsiento lineaDebe = new DetalleAsiento();
+        lineaDebe.setPlanCuenta(cuentaProveedor);
+        lineaDebe.setNumeroCuenta(cuentaProveedor.getCuentaContable());
+        lineaDebe.setNombreCuenta(cuentaProveedor.getNombre());
+        lineaDebe.setDescripcion("Proveedor: " + retencion.getProveedor().getNombre()
+                + " | Ret. V2: " + (retencion.getNumero() != null
+                        ? retencion.getNumero() : retencion.getClave()));
+        lineaDebe.setValorDebe(totalRetenido);
+        lineaDebe.setValorHaber(0.0);
+        // Insertar DEBE al inicio
+        lineas.add(0, lineaDebe);
+
+        // 4. Generar asiento
+        return generarAsiento(idEmpresa, codigoAltTipoAsiento, fechaAsiento,
+                observaciones, usuario, lineas);
     }
 
     // =========================================================================

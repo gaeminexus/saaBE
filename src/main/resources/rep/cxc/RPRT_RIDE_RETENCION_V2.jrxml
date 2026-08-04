@@ -1,0 +1,432 @@
+<!-- Created with Jaspersoft Studio version 7.0.3.final using JasperReports Library version 7.0.3-41034ca841d452f3305ba55b9042260aaa1ab5dd  -->
+<jasperReport name="RPRT_RIDE_RETENCION_V2" language="java" pageWidth="595" pageHeight="842" columnWidth="535" leftMargin="30" rightMargin="30" topMargin="20" bottomMargin="20" uuid="e3c4d5f6-a7b8-9012-cdef-345678901abc">
+	<parameter name="P_ID_RETENCION_V2" class="java.lang.Long">
+		<defaultValueExpression><![CDATA[0L]]></defaultValueExpression>
+	</parameter>
+	<query language="SQL"><![CDATA[
+		SELECT
+		    r.CLAVE                                                              AS clave,
+		    r.NUMERO                                                             AS numeroRetencion,
+		    COALESCE(r.AUTORIZACION, r.CLAVE)                                   AS numeroAutorizacion,
+		    TO_CHAR(r.FECHA,              'DD/MM/YYYY')                          AS fechaEmision,
+		    TO_CHAR(r.FECHAAUTORIZACION,  'DD/MM/YYYY HH24:MI:SS')               AS fechaAutorizacion,
+		    CASE WHEN r.AMBIENTE = 2 THEN 'PRODUCCIÓN' ELSE 'PRUEBAS' END       AS ambiente,
+		    COALESCE(r.PERIODOFISCAL,  '')                                       AS periodoFiscal,
+		    COALESCE(r.OBSERVACION,    '')                                       AS observacion,
+		    COALESCE(fd.NUMDOC,                '')                               AS rucFacturador,
+		    COALESCE(fd.RAZONSOCIAL,           '')                               AS razonSocial,
+		    COALESCE(fd.NOMBRECOMERCIAL,       '')                               AS nombreComercial,
+		    COALESCE(fd.DIRECCION,             '')                               AS direccionFcdr,
+		    COALESCE(fd.TELEFONO,              '')                               AS telefonoFcdr,
+		    COALESCE(fd.MAIL,                  '')                               AS emailFcdr,
+		    CASE WHEN fd.CONTABILIDAD    = 1 THEN 'SI' ELSE 'NO' END            AS obligadoContabilidad,
+		    COALESCE(fd.AGENTERETENCION,       '')                               AS agenteRetencion,
+		    COALESCE(fd.CONTRIBUYENTEESPECIAL, '')                               AS contribuyenteEspecial,
+		    CASE
+		        WHEN fd.RIMPE        = 1 THEN 'CONTRIBUYENTE RÉGIMEN RIMPE'
+		        WHEN fd.POPULARRIMPE = 1 THEN 'CONTRIBUYENTE NEGOCIO POPULAR - RÉGIMEN RIMPE'
+		        WHEN fd.MICROEMPRESA = 1 THEN 'CONTRIBUYENTE RÉGIMEN MICROEMPRESAS'
+		        ELSE ''
+		    END                                                                  AS tipoEmpresa,
+		    COALESCE(t.TTLRNMBR,  '')                                            AS nombreProveedor,
+		    COALESCE(t.TTLRIDNT,  '')                                            AS identificacionProveedor,
+		    COALESCE(t.TTLRMLLL,  '')                                            AS emailProveedor,
+		    COALESCE(t.TTLRTLFN,  '')                                            AS telefonoProveedor,
+		    COALESCE(t.TTLRDRCC,  '')                                            AS direccionProveedor,
+		    COALESCE(e.DIRECCION,  '')                                           AS dirEstablecimiento,
+		    COALESCE(d.TIPODOCRETEN,        '')                                  AS tipoDocReten,
+		    COALESCE(d.NUMDOCRETEN,         '')                                  AS numDocReten,
+		    TO_CHAR(d.FECHAEMIDOC,          'DD/MM/YYYY')                        AS fechaEmiDoc,
+		    COALESCE(d.DOCRESTSINIMPUESTOS,  0)                                  AS totalSinImpuestos,
+		    COALESCE(d.DOCRESTOTAL,          0)                                  AS importeTotal,
+		    COALESCE(d.CODIMPUESTO,    '')                                       AS codImpuesto,
+		    COALESCE(d.CODRETENCION,   '')                                       AS codRetencion,
+		    COALESCE(d.BASEIMPONIBLE,   0)                                       AS baseImponible,
+		    COALESCE(d.PORCENTAJERETEN, 0)                                       AS porcentajeReten,
+		    COALESCE(d.VALORRETEN,      0)                                       AS valorReten
+		FROM      CBR.RTV2  r
+		JOIN      CBR.FCDR  fd ON fd.ID        = r.FACTURADOR
+		LEFT JOIN TSR.TTLR  t  ON t.TTLRCDGO   = r.PROVEEDOR
+		LEFT JOIN CBR.PTEM  pt ON pt.ID         = r.PTOEMISION
+		LEFT JOIN CBR.ESTB  e  ON e.ID          = pt.ESTABLECIMIENTO
+		LEFT JOIN CBR.DRV2  d  ON d.RETENCIONV2 = r.ID AND d.ESTADO = 1
+		WHERE r.ID = $P{P_ID_RETENCION_V2}
+		ORDER BY d.NUMDOCRETEN, d.ID
+	]]></query>
+	<field name="clave" class="java.lang.String"/>
+	<field name="numeroRetencion" class="java.lang.String"/>
+	<field name="numeroAutorizacion" class="java.lang.String"/>
+	<field name="fechaEmision" class="java.lang.String"/>
+	<field name="fechaAutorizacion" class="java.lang.String"/>
+	<field name="ambiente" class="java.lang.String"/>
+	<field name="periodoFiscal" class="java.lang.String"/>
+	<field name="observacion" class="java.lang.String"/>
+	<field name="rucFacturador" class="java.lang.String"/>
+	<field name="razonSocial" class="java.lang.String"/>
+	<field name="nombreComercial" class="java.lang.String"/>
+	<field name="direccionFcdr" class="java.lang.String"/>
+	<field name="telefonoFcdr" class="java.lang.String"/>
+	<field name="emailFcdr" class="java.lang.String"/>
+	<field name="obligadoContabilidad" class="java.lang.String"/>
+	<field name="agenteRetencion" class="java.lang.String"/>
+	<field name="contribuyenteEspecial" class="java.lang.String"/>
+	<field name="tipoEmpresa" class="java.lang.String"/>
+	<field name="nombreProveedor" class="java.lang.String"/>
+	<field name="identificacionProveedor" class="java.lang.String"/>
+	<field name="emailProveedor" class="java.lang.String"/>
+	<field name="telefonoProveedor" class="java.lang.String"/>
+	<field name="direccionProveedor" class="java.lang.String"/>
+	<field name="dirEstablecimiento" class="java.lang.String"/>
+	<field name="tipoDocReten" class="java.lang.String"/>
+	<field name="numDocReten" class="java.lang.String"/>
+	<field name="fechaEmiDoc" class="java.lang.String"/>
+	<field name="totalSinImpuestos" class="java.lang.Double"/>
+	<field name="importeTotal" class="java.lang.Double"/>
+	<field name="codImpuesto" class="java.lang.String"/>
+	<field name="codRetencion" class="java.lang.String"/>
+	<field name="baseImponible" class="java.lang.Double"/>
+	<field name="porcentajeReten" class="java.lang.Double"/>
+	<field name="valorReten" class="java.lang.Double"/>
+	<variable name="V_TOTAL_RETENIDO" calculation="Sum" class="java.lang.Double">
+		<expression><![CDATA[$F{valorReten}]]></expression>
+		<initialValueExpression><![CDATA[0.0]]></initialValueExpression>
+	</variable>
+	<group name="G_DOC_SUSTENTO">
+		<expression><![CDATA[$F{numDocReten}]]></expression>
+		<groupHeader>
+			<band height="38" splitType="Prevent">
+				<element kind="rectangle" uuid="a1000001-0000-0000-0000-000000000001" mode="Opaque" x="0" y="2" width="535" height="14" backcolor="#E8E8E8">
+					<pen lineWidth="0.3"/>
+				</element>
+				<element kind="staticText" uuid="a1000002-0000-0000-0000-000000000002" mode="Opaque" x="0" y="2" width="80" height="14" backcolor="#E8E8E8" fontSize="7.0" bold="true" vTextAlign="Middle">
+					<text><![CDATA[Doc. Sustento:]]></text>
+					<box leftPadding="3">
+						<pen lineWidth="0.3"/>
+					</box>
+				</element>
+				<element kind="textField" uuid="a1000003-0000-0000-0000-000000000003" mode="Opaque" x="80" y="2" width="110" height="14" backcolor="#E8E8E8" fontSize="7.0" vTextAlign="Middle">
+					<expression><![CDATA[$F{numDocReten}]]></expression>
+					<box leftPadding="3">
+						<pen lineWidth="0.3"/>
+					</box>
+				</element>
+				<element kind="staticText" uuid="a1000004-0000-0000-0000-000000000004" mode="Opaque" x="190" y="2" width="60" height="14" backcolor="#E8E8E8" fontSize="7.0" bold="true" vTextAlign="Middle">
+					<text><![CDATA[F. Emisión:]]></text>
+					<box leftPadding="3">
+						<pen lineWidth="0.3"/>
+					</box>
+				</element>
+				<element kind="textField" uuid="a1000005-0000-0000-0000-000000000005" mode="Opaque" x="250" y="2" width="80" height="14" backcolor="#E8E8E8" fontSize="7.0" vTextAlign="Middle">
+					<expression><![CDATA[$F{fechaEmiDoc}]]></expression>
+					<box leftPadding="3">
+						<pen lineWidth="0.3"/>
+					</box>
+				</element>
+				<element kind="staticText" uuid="a1000006-0000-0000-0000-000000000006" mode="Opaque" x="330" y="2" width="75" height="14" backcolor="#E8E8E8" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+					<text><![CDATA[Total sin imp.:]]></text>
+					<box rightPadding="3">
+						<pen lineWidth="0.3"/>
+					</box>
+				</element>
+				<element kind="textField" uuid="a1000007-0000-0000-0000-000000000007" mode="Opaque" x="405" y="2" width="65" height="14" backcolor="#E8E8E8" fontSize="7.0" pattern="#,##0.00" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$F{totalSinImpuestos}]]></expression>
+					<box rightPadding="3">
+						<pen lineWidth="0.3"/>
+					</box>
+				</element>
+				<element kind="staticText" uuid="a1000008-0000-0000-0000-000000000008" mode="Opaque" x="470" y="2" width="30" height="14" backcolor="#E8E8E8" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+					<text><![CDATA[Total:]]></text>
+					<box rightPadding="3">
+						<pen lineWidth="0.3"/>
+					</box>
+				</element>
+				<element kind="textField" uuid="a1000009-0000-0000-0000-000000000009" mode="Opaque" x="500" y="2" width="35" height="14" backcolor="#E8E8E8" fontSize="7.0" pattern="#,##0.00" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$F{importeTotal}]]></expression>
+					<box rightPadding="3">
+						<pen lineWidth="0.3"/>
+					</box>
+				</element>
+				<element kind="staticText" uuid="a1000010-0000-0000-0000-000000000010" mode="Opaque" x="0" y="18" width="60" height="18" forecolor="#FFFFFF" backcolor="#555555" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+					<text><![CDATA[Cód. Imp.]]></text>
+					<box>
+						<pen lineWidth="0.3"/>
+					</box>
+				</element>
+				<element kind="staticText" uuid="a1000011-0000-0000-0000-000000000011" mode="Opaque" x="60" y="18" width="70" height="18" forecolor="#FFFFFF" backcolor="#555555" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+					<text><![CDATA[Cód. Reten.]]></text>
+					<box>
+						<pen lineWidth="0.3"/>
+					</box>
+				</element>
+				<element kind="staticText" uuid="a1000012-0000-0000-0000-000000000012" mode="Opaque" x="130" y="18" width="205" height="18" forecolor="#FFFFFF" backcolor="#555555" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+					<text><![CDATA[Descripción del Impuesto]]></text>
+					<box>
+						<pen lineWidth="0.3"/>
+					</box>
+				</element>
+				<element kind="staticText" uuid="a1000013-0000-0000-0000-000000000013" mode="Opaque" x="335" y="18" width="80" height="18" forecolor="#FFFFFF" backcolor="#555555" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+					<text><![CDATA[Base Imponible]]></text>
+					<box rightPadding="3">
+						<pen lineWidth="0.3"/>
+					</box>
+				</element>
+				<element kind="staticText" uuid="a1000014-0000-0000-0000-000000000014" mode="Opaque" x="415" y="18" width="55" height="18" forecolor="#FFFFFF" backcolor="#555555" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+					<text><![CDATA[% Reten.]]></text>
+					<box rightPadding="3">
+						<pen lineWidth="0.3"/>
+					</box>
+				</element>
+				<element kind="staticText" uuid="a1000015-0000-0000-0000-000000000015" mode="Opaque" x="470" y="18" width="65" height="18" forecolor="#FFFFFF" backcolor="#555555" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+					<text><![CDATA[Valor Retenido]]></text>
+					<box rightPadding="3">
+						<pen lineWidth="0.3"/>
+					</box>
+				</element>
+			</band>
+		</groupHeader>
+		<groupFooter>
+			<band height="4"/>
+		</groupFooter>
+	</group>
+	<title height="380" splitType="Prevent">
+		<element kind="image" uuid="b1000001-0000-0000-0000-000000000001" x="0" y="0" width="230" height="98" scaleImage="RetainShape" onErrorType="Blank" hImageAlign="Center" vImageAlign="Middle">
+			<expression><![CDATA[getClass().getResourceAsStream("/rep/img/logo_aso.jpeg")]]></expression>
+		</element>
+		<element kind="textField" uuid="b1000002-0000-0000-0000-000000000002" x="0" y="100" width="230" height="26" fontSize="10.0" blankWhenNull="true" bold="true" hTextAlign="Center" vTextAlign="Bottom">
+			<printWhenExpression><![CDATA[$F{nombreComercial} != null && !$F{nombreComercial}.isEmpty()]]></printWhenExpression>
+			<expression><![CDATA[$F{nombreComercial}]]></expression>
+		</element>
+		<element kind="rectangle" uuid="b1000003-0000-0000-0000-000000000003" x="0" y="130" width="233" height="162" radius="4">
+			<pen lineWidth="0.5"/>
+		</element>
+		<element kind="textField" uuid="b1000004-0000-0000-0000-000000000004" x="2" y="132" width="229" height="56" fontSize="9.0" textAdjust="StretchHeight" bold="true" hTextAlign="Center" vTextAlign="Top">
+			<expression><![CDATA[$F{razonSocial}]]></expression>
+		</element>
+		<element kind="staticText" uuid="b1000005-0000-0000-0000-000000000005" x="3" y="190" width="40" height="20" fontSize="7.0" bold="true" vTextAlign="Top">
+			<text><![CDATA[Dirección:]]></text>
+		</element>
+		<element kind="textField" uuid="b1000006-0000-0000-0000-000000000006" x="43" y="190" width="188" height="20" fontSize="7.0" textAdjust="StretchHeight">
+			<expression><![CDATA[$F{direccionFcdr}]]></expression>
+		</element>
+		<element kind="staticText" uuid="b1000007-0000-0000-0000-000000000007" x="3" y="212" width="38" height="10" fontSize="7.0" bold="true">
+			<text><![CDATA[Teléfono:]]></text>
+		</element>
+		<element kind="textField" uuid="b1000008-0000-0000-0000-000000000008" x="43" y="212" width="188" height="10" fontSize="7.0" blankWhenNull="true">
+			<expression><![CDATA[$F{telefonoFcdr}]]></expression>
+		</element>
+		<element kind="staticText" uuid="b1000009-0000-0000-0000-000000000009" x="3" y="224" width="30" height="10" fontSize="7.0" bold="true">
+			<text><![CDATA[E-mail:]]></text>
+		</element>
+		<element kind="textField" uuid="b1000010-0000-0000-0000-000000000010" x="43" y="224" width="188" height="10" fontSize="7.0" blankWhenNull="true">
+			<expression><![CDATA[$F{emailFcdr}]]></expression>
+		</element>
+		<element kind="textField" uuid="b1000011-0000-0000-0000-000000000011" x="3" y="236" width="228" height="10" fontSize="7.0" textAdjust="StretchHeight" blankWhenNull="true" bold="true">
+			<printWhenExpression><![CDATA[$F{tipoEmpresa} != null && !$F{tipoEmpresa}.isEmpty()]]></printWhenExpression>
+			<expression><![CDATA[$F{tipoEmpresa}]]></expression>
+		</element>
+		<element kind="textField" uuid="b1000012-0000-0000-0000-000000000012" x="3" y="248" width="228" height="10" fontSize="7.0" blankWhenNull="true">
+			<printWhenExpression><![CDATA[$F{agenteRetencion} != null && !$F{agenteRetencion}.isEmpty()]]></printWhenExpression>
+			<expression><![CDATA["Agente Retención No. " + $F{agenteRetencion}]]></expression>
+		</element>
+		<element kind="textField" uuid="b1000013-0000-0000-0000-000000000013" x="3" y="260" width="228" height="10" fontSize="7.0" blankWhenNull="true">
+			<printWhenExpression><![CDATA[$F{contribuyenteEspecial} != null && !$F{contribuyenteEspecial}.isEmpty()]]></printWhenExpression>
+			<expression><![CDATA["Contribuyente Especial No. " + $F{contribuyenteEspecial}]]></expression>
+		</element>
+		<element kind="textField" uuid="b1000014-0000-0000-0000-000000000014" x="3" y="272" width="228" height="10" fontSize="7.0">
+			<expression><![CDATA["Obligado a llevar Contabilidad: " + $F{obligadoContabilidad}]]></expression>
+		</element>
+		<element kind="rectangle" uuid="b1000015-0000-0000-0000-000000000015" x="251" y="0" width="284" height="295" radius="4">
+			<pen lineWidth="0.5"/>
+		</element>
+		<element kind="staticText" uuid="b1000016-0000-0000-0000-000000000016" x="253" y="4" width="280" height="13" backcolor="#DDDDDD" bold="true" hTextAlign="Center">
+			<text><![CDATA[R.U.C.]]></text>
+		</element>
+		<element kind="textField" uuid="b1000017-0000-0000-0000-000000000017" x="253" y="17" width="280" height="13" hTextAlign="Center">
+			<expression><![CDATA[$F{rucFacturador}]]></expression>
+		</element>
+		<element kind="staticText" uuid="b1000018-0000-0000-0000-000000000018" x="253" y="50" width="280" height="13" backcolor="#DDDDDD" bold="true" hTextAlign="Center">
+			<text><![CDATA[COMPROBANTE DE RETENCIÓN]]></text>
+		</element>
+		<element kind="textField" uuid="b1000019-0000-0000-0000-000000000019" x="253" y="63" width="280" height="13" hTextAlign="Center">
+			<expression><![CDATA[$F{numeroRetencion}]]></expression>
+		</element>
+		<element kind="staticText" uuid="b1000020-0000-0000-0000-000000000020" x="253" y="96" width="280" height="13" backcolor="#DDDDDD" bold="true" hTextAlign="Center">
+			<text><![CDATA[NÚMERO DE AUTORIZACIÓN]]></text>
+		</element>
+		<element kind="textField" uuid="b1000021-0000-0000-0000-000000000021" x="253" y="109" width="280" height="24" textAdjust="StretchHeight" hTextAlign="Center">
+			<expression><![CDATA[$F{numeroAutorizacion}]]></expression>
+		</element>
+		<element kind="staticText" uuid="b1000022-0000-0000-0000-000000000022" x="253" y="153" width="280" height="13" backcolor="#DDDDDD" bold="true" hTextAlign="Center">
+			<text><![CDATA[FECHA Y HORA DE AUTORIZACIÓN]]></text>
+		</element>
+		<element kind="textField" uuid="b1000023-0000-0000-0000-000000000023" x="253" y="166" width="280" height="12" fontSize="9.0" hTextAlign="Center">
+			<expression><![CDATA[$F{fechaAutorizacion}]]></expression>
+		</element>
+		<element kind="textField" uuid="b1000024-0000-0000-0000-000000000024" x="253" y="180" width="280" height="12" hTextAlign="Center">
+			<expression><![CDATA["AMBIENTE: " + $F{ambiente} + "   EMISIÓN: NORMAL"]]></expression>
+		</element>
+		<element kind="staticText" uuid="b1000025-0000-0000-0000-000000000025" x="253" y="209" width="280" height="13" backcolor="#DDDDDD" bold="true" hTextAlign="Center">
+			<text><![CDATA[CLAVE DE ACCESO]]></text>
+		</element>
+		<element kind="component" uuid="b1000026-0000-0000-0000-000000000026" x="256" y="224" width="276" height="55">
+			<component kind="barcode4j:Code128" moduleWidth="1.2" textPosition="none" quietZone="10.0" verticalQuietZone="1.0">
+				<codeExpression><![CDATA[$F{clave}]]></codeExpression>
+			</component>
+		</element>
+		<element kind="textField" uuid="b1000027-0000-0000-0000-000000000027" x="253" y="282" width="280" height="10" fontName="Courier New" fontSize="5.0" hTextAlign="Center">
+			<expression><![CDATA[$F{clave}]]></expression>
+		</element>
+		<element kind="line" uuid="b1000028-0000-0000-0000-000000000028" x="0" y="300" width="535" height="1">
+			<pen lineWidth="0.5"/>
+		</element>
+		<element kind="staticText" uuid="b1000029-0000-0000-0000-000000000029" x="0" y="303" width="130" height="13" backcolor="#F0F0F0" fontSize="8.0" bold="true">
+			<text><![CDATA[Razón Social / Nombre:]]></text>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
+		</element>
+		<element kind="textField" uuid="b1000030-0000-0000-0000-000000000030" x="130" y="303" width="405" height="13" fontSize="8.0" textAdjust="StretchHeight">
+			<expression><![CDATA[$F{nombreProveedor}]]></expression>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
+		</element>
+		<element kind="staticText" uuid="b1000031-0000-0000-0000-000000000031" x="0" y="318" width="70" height="13" backcolor="#F0F0F0" fontSize="8.0" bold="true">
+			<text><![CDATA[RUC / CI:]]></text>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
+		</element>
+		<element kind="textField" uuid="b1000032-0000-0000-0000-000000000032" x="70" y="318" width="200" height="13" fontSize="8.0">
+			<expression><![CDATA[$F{identificacionProveedor}]]></expression>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
+		</element>
+		<element kind="staticText" uuid="b1000033-0000-0000-0000-000000000033" x="270" y="318" width="80" height="13" backcolor="#F0F0F0" fontSize="8.0" bold="true">
+			<text><![CDATA[Fecha Emisión:]]></text>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
+		</element>
+		<element kind="textField" uuid="b1000034-0000-0000-0000-000000000034" x="350" y="318" width="185" height="13" fontSize="8.0">
+			<expression><![CDATA[$F{fechaEmision}]]></expression>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
+		</element>
+		<element kind="staticText" uuid="b1000035-0000-0000-0000-000000000035" x="0" y="333" width="70" height="13" backcolor="#F0F0F0" fontSize="8.0" bold="true">
+			<text><![CDATA[Período Fiscal:]]></text>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
+		</element>
+		<element kind="textField" uuid="b1000036-0000-0000-0000-000000000036" x="70" y="333" width="200" height="13" fontSize="8.0">
+			<expression><![CDATA[$F{periodoFiscal}]]></expression>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
+		</element>
+		<element kind="staticText" uuid="b1000037-0000-0000-0000-000000000037" x="270" y="333" width="80" height="13" backcolor="#F0F0F0" fontSize="8.0" bold="true">
+			<text><![CDATA[Dir. Establecimiento:]]></text>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
+		</element>
+		<element kind="textField" uuid="b1000038-0000-0000-0000-000000000038" x="350" y="333" width="185" height="13" fontSize="8.0" textAdjust="StretchHeight" blankWhenNull="true">
+			<expression><![CDATA[$F{dirEstablecimiento}]]></expression>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
+		</element>
+		<element kind="line" uuid="b1000039-0000-0000-0000-000000000039" x="0" y="348" width="535" height="1">
+			<pen lineWidth="0.5"/>
+		</element>
+		<element kind="staticText" uuid="b1000040-0000-0000-0000-000000000040" mode="Opaque" x="0" y="351" width="535" height="14" forecolor="#FFFFFF" backcolor="#333333" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[DETALLE DE RETENCIONES]]></text>
+		</element>
+		<element kind="staticText" uuid="b1000041-0000-0000-0000-000000000041" mode="Opaque" x="0" y="366" width="250" height="13" backcolor="#F0F0F0" fontSize="7.0" bold="true" vTextAlign="Middle">
+			<text><![CDATA[Documento Sustento / Datos del Impuesto]]></text>
+			<box leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
+		</element>
+		<element kind="staticText" uuid="b1000042-0000-0000-0000-000000000042" mode="Opaque" x="250" y="366" width="285" height="13" backcolor="#F0F0F0" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<text><![CDATA[Base Imponible / % Retención / Valor Retenido]]></text>
+			<box rightPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
+		</element>
+	</title>
+	<detail>
+		<band height="12" splitType="Stretch">
+			<element kind="textField" uuid="c1000001-0000-0000-0000-000000000001" x="0" y="0" width="60" height="12" fontSize="7.0" textAdjust="StretchHeight" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[$F{codImpuesto}]]></expression>
+				<box>
+					<pen lineWidth="0.2"/>
+				</box>
+			</element>
+			<element kind="textField" uuid="c1000002-0000-0000-0000-000000000002" x="60" y="0" width="70" height="12" fontSize="7.0" textAdjust="StretchHeight" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[$F{codRetencion}]]></expression>
+				<box>
+					<pen lineWidth="0.2"/>
+				</box>
+			</element>
+			<element kind="textField" uuid="c1000003-0000-0000-0000-000000000003" x="130" y="0" width="205" height="12" fontSize="7.0" textAdjust="StretchHeight" vTextAlign="Middle">
+				<expression><![CDATA[("1".equals($F{codImpuesto}) ? "Ret. Renta " : ("2".equals($F{codImpuesto}) ? "Ret. IVA " : "Ret. Imp. ")) + $F{porcentajeReten}.intValue() + "% - Cód. " + $F{codRetencion}]]></expression>
+				<box leftPadding="3">
+					<pen lineWidth="0.2"/>
+				</box>
+			</element>
+			<element kind="textField" uuid="c1000004-0000-0000-0000-000000000004" x="335" y="0" width="80" height="12" fontSize="7.0" pattern="#,##0.00" hTextAlign="Right" vTextAlign="Middle">
+				<expression><![CDATA[$F{baseImponible}]]></expression>
+				<box rightPadding="3">
+					<pen lineWidth="0.2"/>
+				</box>
+			</element>
+			<element kind="textField" uuid="c1000005-0000-0000-0000-000000000005" x="415" y="0" width="55" height="12" fontSize="7.0" pattern="#,##0.00" hTextAlign="Right" vTextAlign="Middle">
+				<expression><![CDATA[$F{porcentajeReten}]]></expression>
+				<box rightPadding="3">
+					<pen lineWidth="0.2"/>
+				</box>
+			</element>
+			<element kind="textField" uuid="c1000006-0000-0000-0000-000000000006" x="470" y="0" width="65" height="12" fontSize="7.0" pattern="#,##0.00" bold="true" hTextAlign="Right" vTextAlign="Middle">
+				<expression><![CDATA[$F{valorReten}]]></expression>
+				<box rightPadding="3">
+					<pen lineWidth="0.2"/>
+				</box>
+			</element>
+		</band>
+	</detail>
+	<summary height="120" splitType="Stretch">
+		<element kind="line" uuid="d1000001-0000-0000-0000-000000000001" x="0" y="0" width="535" height="1">
+			<pen lineWidth="0.5"/>
+		</element>
+		<element kind="staticText" uuid="d1000002-0000-0000-0000-000000000002" mode="Opaque" x="336" y="4" width="134" height="14" forecolor="#FFFFFF" backcolor="#333333" fontSize="9.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<text><![CDATA[TOTAL RETENIDO]]></text>
+			<box rightPadding="3">
+				<pen lineWidth="0.5"/>
+			</box>
+		</element>
+		<element kind="textField" uuid="d1000003-0000-0000-0000-000000000003" x="470" y="4" width="65" height="14" fontSize="9.0" pattern="#,##0.00" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$V{V_TOTAL_RETENIDO}]]></expression>
+			<box rightPadding="3">
+				<pen lineWidth="0.5"/>
+			</box>
+		</element>
+		<element kind="staticText" uuid="d1000004-0000-0000-0000-000000000004" mode="Opaque" x="0" y="24" width="535" height="12" backcolor="#F0F0F0" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[Información Adicional]]></text>
+			<box>
+				<pen lineWidth="0.3"/>
+			</box>
+		</element>
+		<element kind="textField" uuid="d1000005-0000-0000-0000-000000000005" x="0" y="36" width="535" height="40" fontSize="7.0" textAdjust="StretchHeight" blankWhenNull="true">
+			<expression><![CDATA["Soporte: [" + $F{telefonoFcdr} + " - " + $F{emailFcdr} + "]  " +
+"Contacto Proveedor: [" + $F{telefonoProveedor} + " - " + $F{emailProveedor} + "]" +
+($F{observacion} != null && !$F{observacion}.isEmpty() ? "  Observación: " + $F{observacion} : "")]]></expression>
+			<box topPadding="2" leftPadding="3">
+				<pen lineWidth="0.3"/>
+			</box>
+		</element>
+	</summary>
+</jasperReport>
