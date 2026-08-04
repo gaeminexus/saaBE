@@ -9,6 +9,7 @@ package com.saa.model.cxc;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
+import com.saa.model.cnt.Asiento;
 import com.saa.model.scp.Usuario;
 import com.saa.model.tsr.Titular;
 
@@ -132,6 +133,23 @@ public class RetencionV2 implements Serializable {
 	@Basic
 	@Column(name = "ESTADOEMISION")
 	private Long estadoEmision;
+
+	@Basic
+	@Column(name = "MOTIVOANULACION", length = 1000)
+	private String motivoAnulacion;
+
+	@Basic
+	@Column(name = "FECHAANULACION")
+	private LocalDateTime fechaAnulacion;
+
+	@Basic
+	@Column(name = "USUARIOANULACION", length = 200)
+	private String usuarioAnulacion;
+
+	// ── Asiento contable ─────────────────────────────────────────────────────
+	@ManyToOne
+	@JoinColumn(name = "ASIENTO", referencedColumnName = "ASNTCDGO")
+	private Asiento asiento;
 
 	// Getters y Setters
 	
@@ -310,4 +328,16 @@ public class RetencionV2 implements Serializable {
 	public void setEstadoEmision(Long estadoEmision) {
 		this.estadoEmision = estadoEmision;
 	}
+
+	public String getMotivoAnulacion() { return motivoAnulacion; }
+	public void setMotivoAnulacion(String motivoAnulacion) { this.motivoAnulacion = motivoAnulacion; }
+
+	public LocalDateTime getFechaAnulacion() { return fechaAnulacion; }
+	public void setFechaAnulacion(LocalDateTime fechaAnulacion) { this.fechaAnulacion = fechaAnulacion; }
+
+	public String getUsuarioAnulacion() { return usuarioAnulacion; }
+	public void setUsuarioAnulacion(String usuarioAnulacion) { this.usuarioAnulacion = usuarioAnulacion; }
+
+	public Asiento getAsiento() { return asiento; }
+	public void setAsiento(Asiento asiento) { this.asiento = asiento; }
 }

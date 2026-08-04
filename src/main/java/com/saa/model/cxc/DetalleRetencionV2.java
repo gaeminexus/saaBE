@@ -37,7 +37,7 @@ import jakarta.persistence.Table;
 public class DetalleRetencionV2 implements Serializable {
 
 	/**
-	 * ID de la entidad (Llave Primaria, generada por secuencia de Oracle).
+	 * ID de la entidad (Llave Primaria, generada por IDENTITY de Oracle).
 	 */
 	@Basic
 	@Id

@@ -24,7 +24,9 @@ import com.saa.model.cxc.PathRetencionV2;
 import com.saa.rubros.Estado;
 import com.saa.rubros.TipoAsientos;
 import jakarta.ejb.EJB;
+import jakarta.ejb.SessionContext;
 import jakarta.ejb.Stateless;
+import jakarta.annotation.Resource;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
@@ -44,6 +46,9 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 	private static final String COD_POR_IVA_15 = "2";
 	
 	@EJB
+	private com.saa.basico.ejb.DetalleRubroService detalleRubroService;
+
+	@EJB
 	private RetencionV2DaoService retencionV2DaoService;
 	
 	@EJB
@@ -60,14 +65,15 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 
 	@PersistenceContext
 	private EntityManager em;
+
+	@Resource
+	private SessionContext sessionContext;
 	@Override
 	public RetencionV2 selectById(Long id) throws Throwable {
-		System.out.println("Ingresa al selectById RetencionV2 con id: " + id);
 		return retencionV2DaoService.selectById(id, NombreEntidadesCobro.RETENCION_V2);
 	}
 	@Override
 	public void remove(List<Long> id) throws Throwable {
-		System.out.println("Ingresa al metodo remove[] de RetencionV2Service");
 		RetencionV2 entidad = new RetencionV2();
 		for (Long registro : id) {
 			retencionV2DaoService.remove(entidad, registro);
@@ -75,14 +81,12 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 	}
 	@Override
 	public void save(List<RetencionV2> lista) throws Throwable {
-		System.out.println("Ingresa al metodo save de RetencionV2Service");
 		for (RetencionV2 registro : lista) {
 			retencionV2DaoService.save(registro, registro.getId());
 		}
 	}
 	@Override
 	public List<RetencionV2> selectAll() throws Throwable {
-		System.out.println("Ingresa al metodo selectAll RetencionV2Service");
 		List<RetencionV2> result = retencionV2DaoService.selectAll(NombreEntidadesCobro.RETENCION_V2);
 		if (result.isEmpty()) {
 			throw new IncomeException("Busqueda total RetencionV2 no devolvio ningun registro");
@@ -94,13 +98,109 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 		System.out.println("saveSingle - RetencionV2");
 		if (entidad.getId() == null) {
 			entidad.setEstado(Long.valueOf(Estado.ACTIVO));
+
+			if (entidad.getPtoEmision() == null || entidad.getPtoEmision().getId() == null)
+				throw new IncomeException("Debe especificar un punto de emisión para la retención V2");
+			if (entidad.getFacturador() == null || entidad.getFacturador().getId() == null)
+				throw new IncomeException("Debe especificar un facturador para la retención V2");
+
+			String tipoComprobante = "07"; // Retención
+			Long ambiente = entidad.getAmbiente() != null ? entidad.getAmbiente() : 1L;
+			String tipoEmision = "1";
+
+			try {
+				com.saa.model.cxc.Facturador facturador = em.find(com.saa.model.cxc.Facturador.class, entidad.getFacturador().getId());
+				if (facturador == null)
+					throw new IncomeException("Facturador con ID " + entidad.getFacturador().getId() + " no encontrado");
+				entidad.setFacturador(facturador);
+
+				com.saa.model.cxc.PuntoEmision ptoEmision = em.find(com.saa.model.cxc.PuntoEmision.class, entidad.getPtoEmision().getId());
+				if (ptoEmision == null)
+					throw new IncomeException("Punto de emisión con ID " + entidad.getPtoEmision().getId() + " no encontrado");
+				entidad.setPtoEmision(ptoEmision);
+
+				// Cargar Proveedor (Titular) completo desde BD
+				if (entidad.getProveedor() != null && entidad.getProveedor().getCodigo() != null) {
+					com.saa.model.tsr.Titular proveedor = em.find(com.saa.model.tsr.Titular.class, entidad.getProveedor().getCodigo());
+					if (proveedor == null)
+						throw new IncomeException("Proveedor con código " + entidad.getProveedor().getCodigo() + " no encontrado");
+					entidad.setProveedor(proveedor);
+				}
+
+				// Derivar numEstablecimiento y numPtoEmision si no vienen del frontend
+				if (entidad.getNumEstablecimiento() == null || entidad.getNumEstablecimiento().isEmpty())
+					entidad.setNumEstablecimiento(ptoEmision.getEstablecimiento().getCodigo());
+				if (entidad.getNumPtoEmision() == null || entidad.getNumPtoEmision().isEmpty())
+					entidad.setNumPtoEmision(ptoEmision.getCodigo());
+
+				String secuencial = obtenerSecuencial(ptoEmision.getId(), tipoComprobante);
+				entidad.setSecuencial(secuencial);
+				String numero = entidad.getNumEstablecimiento() + "-" + entidad.getNumPtoEmision() + "-" + secuencial;
+				entidad.setNumero(numero);
+				String clave = generarClaveAcceso(entidad, tipoComprobante, ambiente, tipoEmision, secuencial);
+				entidad.setClave(clave);
+				entidad.setTipoComprobante(tipoComprobante);
+				if (entidad.getEstadoEmision() == null) entidad.setEstadoEmision(1L);
+				System.out.println("Número de retención V2 generado: " + numero);
+				System.out.println("Clave de acceso generada: " + clave);
+			} catch (Exception e) {
+				e.printStackTrace();
+				throw new IncomeException("Error al generar datos de la retención V2: " + e.getMessage());
+			}
 		}
 		entidad = retencionV2DaoService.save(entidad, entidad.getId());
 		return entidad;
 	}
+
+	private String obtenerSecuencial(Long idPtoEmision, String tipoDoc) throws Exception {
+		String sql = "SELECT n FROM NumeracionPuntoEmision n WHERE n.ptoEmision.id = :ptoEmision AND n.tipoDoc = :tipoDoc";
+		Query query = em.createQuery(sql);
+		query.setParameter("ptoEmision", idPtoEmision);
+		query.setParameter("tipoDoc", tipoDoc);
+		@SuppressWarnings("unchecked")
+		List<Object> resultados = query.getResultList();
+		if (resultados.isEmpty())
+			throw new IncomeException("No existe numeración para el punto de emisión " + idPtoEmision + " y tipo de documento " + tipoDoc);
+		com.saa.model.cxc.NumeracionPuntoEmision numeracion = (com.saa.model.cxc.NumeracionPuntoEmision) resultados.get(0);
+		Long numeroActual = numeracion.getNumActual();
+		Long nuevoNumero = numeroActual + 1;
+		em.createQuery("UPDATE NumeracionPuntoEmision n SET n.numActual = :nuevoNumero " +
+				"WHERE n.ptoEmision.id = :ptoEmision AND n.tipoDoc = :tipoDoc")
+			.setParameter("nuevoNumero", nuevoNumero)
+			.setParameter("ptoEmision", idPtoEmision)
+			.setParameter("tipoDoc", tipoDoc)
+			.executeUpdate();
+		return String.format("%09d", numeroActual);
+	}
+
+	private String generarClaveAcceso(RetencionV2 retencion, String tipoComprobante, Long ambiente,
+			String tipoEmision, String secuencial) {
+		DateTimeFormatter formatter = DateTimeFormatter.ofPattern("ddMMyyyy");
+		String fechaClave = retencion.getFecha().format(formatter);
+		String ruc      = retencion.getFacturador().getNumDoc();
+		String codClave = retencion.getFacturador().getCodClave();
+		String claveSinDV = fechaClave + tipoComprobante + ruc + ambiente +
+				retencion.getNumEstablecimiento() + retencion.getNumPtoEmision() +
+				secuencial + codClave + tipoEmision;
+		int dv = calcularModulo11(claveSinDV);
+		return claveSinDV + dv;
+	}
+
+	private int calcularModulo11(String cadena) {
+		String invertida = new StringBuilder(cadena).reverse().toString();
+		int suma = 0;
+		int factor = 2;
+		for (int i = 0; i < invertida.length(); i++) {
+			suma += Character.getNumericValue(invertida.charAt(i)) * factor;
+			factor = (factor == 7) ? 2 : factor + 1;
+		}
+		int dv = 11 - (suma % 11);
+		if (dv == 10) return 1;
+		if (dv == 11) return 0;
+		return dv;
+	}
 	@Override
 	public List<RetencionV2> selectByCriteria(List<DatosBusqueda> datos) throws Throwable {
-		System.out.println("Ingresa al metodo selectByCriteria RetencionV2Service");
 		List<RetencionV2> result = retencionV2DaoService.selectByCriteria(datos, NombreEntidadesCobro.RETENCION_V2);
 		if (result.isEmpty()) {
 			throw new IncomeException("Busqueda por criterio RetencionV2 no devolvio ningun registro");
@@ -235,8 +335,21 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 		if (f.getContribuyenteEspecial() != null && !f.getContribuyenteEspecial().isEmpty())
 			writeElement(writer, "contribuyenteEspecial", f.getContribuyenteEspecial(), 4);
 		writeElement(writer, "obligadoContabilidad", obligadoContabilidad, 4);
-		writeElement(writer, "tipoIdentificacionSujetoRetenido",
-				pr != null ? String.valueOf(pr.getRubroTipoIdentificacionH()) : "", 4);
+		// Obtener tipoIdentificacionSujetoRetenido desde DetalleRubro (debe ser siempre 2 dígitos: "04"=RUC, "05"=Cédula, "06"=Pasaporte, "07"=Consumidor Final, "08"=ID Exterior)
+		String tipoIdentificacionSujetoRetenido = "05"; // valor por defecto: cédula
+		try {
+			if (pr != null && pr.getRubroTipoIdentificacionP() != null && pr.getRubroTipoIdentificacionH() != null) {
+				String valorAlfa = detalleRubroService.selectValorStringByRubAltDetAlt(
+						pr.getRubroTipoIdentificacionP().intValue(),
+						pr.getRubroTipoIdentificacionH().intValue());
+				if (valorAlfa != null && !valorAlfa.isEmpty()) {
+					tipoIdentificacionSujetoRetenido = valorAlfa.length() == 1 ? "0" + valorAlfa : valorAlfa;
+				}
+			}
+		} catch (Throwable e) {
+			System.err.println("⚠ Error al obtener tipoIdentificacionSujetoRetenido: " + e.getMessage());
+		}
+		writeElement(writer, "tipoIdentificacionSujetoRetenido", tipoIdentificacionSujetoRetenido, 4);
 		writeElement(writer, "parteRel", "NO", 4); // Tabla 14 ATS: NO = no vinculado
 		writeElement(writer, "razonSocialSujetoRetenido", pr != null ? nvl(pr.getNombre(), "") : "", 4);
 		writeElement(writer, "identificacionSujetoRetenido", pr != null ? nvl(pr.getIdentificacion(), "") : "", 4);
@@ -267,28 +380,41 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 
 			writeElement(writer, "codSustento",              "02", 6); // Tabla 5 ATS: 02=Factura
 			writeElement(writer, "codDocSustento",           nvl(tipoDocReten, ""), 6);
-			writeElement(writer, "numDocSustento",           nvl(numDocReten, ""), 6);
+			writeElement(writer, "numDocSustento", nvl(numDocReten, "").replace("-", ""), 6);
 			writeElement(writer, "fechaEmisionDocSustento",
 					fechaEmiDoc != null ? fechaEmiDoc.format(dateFormatter) : "", 6);
 			writeElement(writer, "pagoLocExt",               "01", 6); // Tabla 15 ATS: 01=Residente
 			writeElement(writer, "totalSinImpuestos",        fmt(docResTotalSinImpuestos), 6);
 			writeElement(writer, "importeTotal",             fmt(docResTotal), 6);
 
-			// impuestosDocSustento
-			writer.writeCharacters("      ");
-			writer.writeStartElement("impuestosDocSustento");
-			writer.writeCharacters("\n");
-			if (docResIvaCero != null && docResIvaCero > 0) {
-				writeImpuestoDocSustento(writer, COD_IVA, "0", docResIvaCero, "0", 0.0);
-			}
-			if (docResTotalIva != null && docResTotalIva > 0) {
-				double baseIva = nvl(docResTotalSinImpuestos, 0.0) - nvl(docResIvaCero, 0.0);
-				writeImpuestoDocSustento(writer, COD_IVA, COD_POR_IVA_15,
-						baseIva, fmt(nvl(docResPorIva, 0.0)), docResTotalIva);
-			}
-			writer.writeCharacters("      ");
-			writer.writeEndElement(); // impuestosDocSustento
-			writer.writeCharacters("\n");
+					// impuestosDocSustento — el SRI exige al menos un impuestoDocSustento
+					writer.writeCharacters("      ");
+					writer.writeStartElement("impuestosDocSustento");
+					writer.writeCharacters("\n");
+
+					boolean tieneImpuesto = false;
+
+					if (docResIvaCero != null && docResIvaCero > 0) {
+						writeImpuestoDocSustento(writer, COD_IVA, "0", docResIvaCero, "0", 0.0);
+						tieneImpuesto = true;
+					}
+					if (docResTotalIva != null && docResTotalIva > 0) {
+						double baseIva = nvl(docResTotalSinImpuestos, 0.0) - nvl(docResIvaCero, 0.0);
+						writeImpuestoDocSustento(writer, COD_IVA, COD_POR_IVA_15,
+								baseIva, fmt(nvl(docResPorIva, 0.0)), docResTotalIva);
+						tieneImpuesto = true;
+					}
+
+					// Si no hay IVA, escribir un registro con base = totalSinImpuestos y valor = 0
+					// (obligatorio según esquema XSD del SRI para retención v2)
+					if (!tieneImpuesto) {
+						writeImpuestoDocSustento(writer, COD_IVA, "0",
+								nvl(docResTotalSinImpuestos, 0.0), "0", 0.0);
+					}
+
+					writer.writeCharacters("      ");
+					writer.writeEndElement(); // impuestosDocSustento
+					writer.writeCharacters("\n");
 
 			// retenciones — filtradas por numDocReten del documento sustento actual
 			writer.writeCharacters("      ");
@@ -604,19 +730,22 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 			
 			soapMessage.saveChanges();
 			SOAPMessage soapResponse = soapConnection.call(soapMessage, url);
-			
-			SOAPBody responseBody = soapResponse.getSOAPBody();
 
-			// Guardar respuesta completa solo en archivo de log
+			// Loguear la respuesta COMPLETA en stdout Y en archivo para diagnóstico
 			java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
 			soapResponse.writeTo(baos);
-			log.println("Respuesta WS1: " + baos.toString("UTF-8"));
-			
+			String respuestaCompleta = baos.toString("UTF-8");
+			System.out.println(">>> RESPUESTA COMPLETA WS1 SRI (RTV2):");
+			System.out.println(respuestaCompleta);
+			log.println("Respuesta WS1 completa: " + respuestaCompleta);
+
+			SOAPBody responseBody = soapResponse.getSOAPBody();
 			NodeList estadoList = responseBody.getElementsByTagName("estado");
 			if (estadoList.getLength() == 0) estadoList = responseBody.getElementsByTagNameNS("*", "estado");
 			if (estadoList.getLength() > 0) {
 				String estado = estadoList.item(0).getTextContent();
-				System.out.println(">>> Estado WS1: " + estado);
+				System.out.println(">>> Estado WS1 extraído: [" + estado + "]");
+
 				NodeList mensajeList = responseBody.getElementsByTagName("mensaje");
 				if (mensajeList.getLength() == 0) mensajeList = responseBody.getElementsByTagNameNS("*", "mensaje");
 				if (mensajeList.getLength() > 0) {
@@ -626,6 +755,36 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 						return "CLAVE ACCESO REGISTRADA";
 					}
 				}
+
+				// Si es DEVUELTA, extraer TODOS los mensajeDevuelta con la razón exacta
+				if ("DEVUELTA".equals(estado)) {
+					StringBuilder sbErrores = new StringBuilder("DEVUELTA");
+					NodeList mensajesDevuelta = responseBody.getElementsByTagName("mensajeDevuelta");
+					if (mensajesDevuelta.getLength() == 0)
+						mensajesDevuelta = responseBody.getElementsByTagNameNS("*", "mensajeDevuelta");
+
+					System.err.println(">>> SRI rechazó la RTV2 (DEVUELTA). Errores: " + mensajesDevuelta.getLength());
+					log.println(">>> Errores DEVUELTA: " + mensajesDevuelta.getLength());
+
+					for (int i = 0; i < mensajesDevuelta.getLength(); i++) {
+						org.w3c.dom.Node nodeMD = mensajesDevuelta.item(i);
+						String identificador = extraerTextoHijo(nodeMD, "identificador");
+						String msgError      = extraerTextoHijo(nodeMD, "mensaje");
+						String infoAd        = extraerTextoHijo(nodeMD, "informacionAdicional");
+						String tipo          = extraerTextoHijo(nodeMD, "tipo");
+						String lineaError = " | [" + tipo + "] Id:" + identificador
+								+ " Msg:" + msgError + " Info:" + infoAd;
+						sbErrores.append(lineaError);
+						System.err.println("  ERROR SRI[" + i + "]: tipo=" + tipo
+								+ " | identificador=" + identificador
+								+ " | mensaje=" + msgError
+								+ " | informacionAdicional=" + infoAd);
+						log.println("  ERROR SRI[" + i + "]: " + lineaError);
+					}
+					soapConnection.close();
+					return sbErrores.toString();
+				}
+
 				soapConnection.close();
 				return estado;
 			}
@@ -639,6 +798,18 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 			e.printStackTrace(log);
 			throw e;
 		}
+	}
+
+	private String extraerTextoHijo(org.w3c.dom.Node nodo, String nombreHijo) {
+		if (nodo == null) return "";
+		NodeList hijos = nodo.getChildNodes();
+		for (int i = 0; i < hijos.getLength(); i++) {
+			org.w3c.dom.Node hijo = hijos.item(i);
+			if (nombreHijo.equals(hijo.getLocalName()) || nombreHijo.equals(hijo.getNodeName())) {
+				return hijo.getTextContent() != null ? hijo.getTextContent().trim() : "";
+			}
+		}
+		return "";
 	}
 	
 	private ResultadoAutorizacion llamarAutorizacionSRI(String url, String claveAcceso) throws Exception {
@@ -798,6 +969,7 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 				resultado.put("etapa", "GRABADO_RETENCION");
 				resultado.put("mensaje", "Error al grabar la retención V2: " + e.getMessage());
 				resultado.put("error", e.getMessage());
+				sessionContext.setRollbackOnly();
 				return resultado;
 			}
 			resultado.put("retencion",   retencion);
@@ -820,6 +992,7 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 					resultado.put("etapa", "GRABADO_DETALLES");
 					resultado.put("mensaje", "Error al grabar los detalles de la retención V2: " + e.getMessage());
 					resultado.put("error", e.getMessage());
+					sessionContext.setRollbackOnly();
 					return resultado;
 				}
 			}
@@ -853,6 +1026,7 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 				resultado.put("etapa", "GENERACION_XML");
 				resultado.put("mensaje", "Error al generar o firmar el XML de la retención V2: " + e.getMessage());
 				resultado.put("error", e.getMessage());
+				sessionContext.setRollbackOnly();
 				return resultado;
 			}
 
@@ -864,19 +1038,36 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 						idFacturador, ambiente, conectaSRI, clave,
 						retencion.getId(), xmlFirmado, destinatario, pathLogo);
 			} catch (Exception e) {
-				resultado.put("etapa", "AUTORIZACION_SRI");
+				resultado.put("etapa", "ERROR_AUTORIZACION_SRI");
 				resultado.put("mensaje", "Error al comunicarse con el SRI: " + e.getMessage());
 				resultado.put("error", e.getMessage());
+				sessionContext.setRollbackOnly();
 				return resultado;
 			}
 
 			resultado.put("autorizacion", resultadoAutorizacion);
+			System.out.println(">>> Respuesta completa autorización RTV2: [" + resultadoAutorizacion + "]");
+
 			boolean autorizada = resultadoAutorizacion != null
 					&& resultadoAutorizacion.contains("AUTORIZADO");
 
 			if (!autorizada) {
-				resultado.put("etapa",   "AUTORIZACION_SRI");
+				// DEVUELTA = el SRI rechazó el XML por errores de formato/estructura.
+				// El registro NO debe quedar en BD → rollback.
+				if (resultadoAutorizacion != null && resultadoAutorizacion.contains("DEVUELTA")) {
+					System.err.println("✗ RTV2 DEVUELTA por el SRI (error de formato XML). Haciendo rollback.");
+					resultado.put("exito",   false);
+					resultado.put("etapa",   "XML_DEVUELTO");
+					resultado.put("estado",  "DEVUELTA");
+					resultado.put("mensaje", "El SRI rechazó el XML de la retención V2 por errores de formato. "
+							+ "Detalle: " + resultadoAutorizacion);
+					sessionContext.setRollbackOnly();
+					return resultado;
+				}
+				// Cualquier otro caso (NO_AUTORIZADO, etc.) → registro queda como evidencia.
+				System.err.println("✗ RTV2 no autorizada por el SRI: " + resultadoAutorizacion);
 				resultado.put("exito",   false);
+				resultado.put("etapa",   "AUTORIZACION_SRI");
 				resultado.put("estado",  "NO_AUTORIZADO");
 				resultado.put("mensaje", "La retención V2 fue enviada al SRI pero no fue autorizada. "
 						+ "Respuesta: " + resultadoAutorizacion);
@@ -901,12 +1092,18 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 							+ " | Aut: " + nvl(retencion.getAutorizacion(), clave);
 					String usuarioAsiento = (retencion.getUsuario() != null)
 							? retencion.getUsuario().getNombre() : "SISTEMA";
-					com.saa.model.cnt.Asiento asientoGenerado =
-							asientoContableService.generarAsientoRetencionV2(
-									retencion.getId(), idEmpresaConta,
-									TipoAsientos.RETENCIONES_EMITIDAS_V2,
-									fechaAsiento, obsAsiento, usuarioAsiento);
-					resultado.put("asiento", asientoGenerado.getNumeroAlterno());
+				com.saa.model.cnt.Asiento asientoGenerado =
+						asientoContableService.generarAsientoRetencionV2(
+								retencion.getId(), idEmpresaConta,
+								TipoAsientos.RETENCIONES_EMITIDAS_V2,
+								fechaAsiento, obsAsiento, usuarioAsiento);
+				// Vincular el asiento a la retención V2 (igual que Factura, NotaDebito, NotaCredito)
+				com.saa.model.cnt.Asiento asientoAttached =
+						em.find(com.saa.model.cnt.Asiento.class, asientoGenerado.getCodigo());
+				if (asientoAttached == null) asientoAttached = em.merge(asientoGenerado);
+				retencion.setAsiento(asientoAttached);
+				retencionV2DaoService.save(retencion, retencion.getId());
+				resultado.put("asiento", asientoGenerado.getNumeroAlterno());
 					System.out.println("✓ Asiento contable generado: " + asientoGenerado.getNumeroAlterno());
 				} catch (Exception e) {
 					resultado.put("advertenciaAsiento",
@@ -968,8 +1165,79 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 			resultado.put("etapa",   "ERROR_INESPERADO");
 			resultado.put("error",   e.getMessage());
 			resultado.put("mensaje", "Error inesperado al procesar la retención V2: " + e.getMessage());
-			throw e;
-		}
+		sessionContext.setRollbackOnly();
+		throw e;
+	}
+	return resultado;
+}
+
+@Override
+public java.util.Map<String, Object> anularRetencionV2(Long idRetencion, String motivo, String usuario) throws Throwable {
+	System.out.println("=== anularRetencionV2 | idRetencion=" + idRetencion + " | usuario=" + usuario + " ===");
+
+	java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+	resultado.put("exito", false);
+
+	// 1. Cargar la retención V2
+	RetencionV2 retencion = retencionV2DaoService.selectById(idRetencion, NombreEntidadesCobro.RETENCION_V2);
+	if (retencion == null) {
+		resultado.put("mensaje", "Retención V2 con ID " + idRetencion + " no encontrada.");
 		return resultado;
 	}
+
+	// 2. Validar que no esté ya anulada
+	if (Long.valueOf(com.saa.rubros.Estado.INACTIVO).equals(retencion.getEstado())) {
+		resultado.put("mensaje", "La retención V2 ya se encuentra anulada.");
+		return resultado;
+	}
+
+	// 3. Datos de anulación
+	String usuarioAnulacion = (usuario != null && !usuario.trim().isEmpty()) ? usuario.trim() : "SISTEMA";
+	String motivoFinal      = (motivo  != null && !motivo.trim().isEmpty())  ? motivo.trim()  : "Anulación manual";
+	java.time.LocalDateTime ahora = java.time.LocalDateTime.now();
+
+	// 4. Anular asiento contable vinculado (si existe)
+	if (retencion.getAsiento() != null && retencion.getAsiento().getCodigo() != null) {
+		try {
+			com.saa.model.cnt.Asiento asiento = em.find(
+					com.saa.model.cnt.Asiento.class, retencion.getAsiento().getCodigo());
+			if (asiento != null && !Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO).equals(asiento.getEstado())) {
+				asiento.setEstado(Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO));
+				asiento.setMotivoAnulacion(motivoFinal);
+				asiento.setFechaAnulacion(ahora);
+				asiento.setUsuarioAnulacion(usuarioAnulacion);
+				em.merge(asiento);
+				em.flush();
+				System.out.println("✓ Asiento contable anulado: " + asiento.getCodigo());
+				resultado.put("asientoAnulado", asiento.getCodigo());
+			}
+		} catch (Exception e) {
+			System.err.println("⚠ Error al anular asiento contable: " + e.getMessage());
+			resultado.put("advertenciaAsiento",
+					"La retención V2 fue anulada pero ocurrió un error al anular el asiento: " + e.getMessage());
+		}
+	}
+
+	// 5. Anular la retención V2 y registrar datos de anulación
+	retencion.setEstado(Long.valueOf(com.saa.rubros.Estado.INACTIVO));
+	retencion.setEstadoEmision(3L); // 3 = ANULADA
+	retencion.setMotivoAnulacion(motivoFinal);
+	retencion.setFechaAnulacion(ahora);
+	retencion.setUsuarioAnulacion(usuarioAnulacion);
+	retencionV2DaoService.save(retencion, retencion.getId());
+	em.flush();
+
+	System.out.println("✓ Retención V2 anulada: " + idRetencion
+			+ " | Motivo: " + motivoFinal + " | Usuario: " + usuarioAnulacion);
+
+	resultado.put("exito", true);
+	resultado.put("mensaje", "Retención V2 N° " + nvl(retencion.getNumero(), String.valueOf(idRetencion))
+			+ " anulada correctamente.");
+	resultado.put("idRetencion", idRetencion);
+	resultado.put("motivoAnulacion", motivoFinal);
+	resultado.put("fechaAnulacion", ahora.toString());
+	resultado.put("usuarioAnulacion", usuarioAnulacion);
+
+	return resultado;
+}
 }

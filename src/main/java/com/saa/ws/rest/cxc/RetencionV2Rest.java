@@ -148,7 +148,6 @@ public class RetencionV2Rest {
 	@Consumes(MediaType.APPLICATION_JSON)
 	@Produces(MediaType.APPLICATION_JSON)
 	public Response procesarRetencionV2Completa(java.util.Map<String, Object> params) {
-		System.out.println("=== LLEGA AL SERVICIO procesarRetencionV2Completa ===");
 		try {
 			@SuppressWarnings("unchecked")
 			java.util.Map<String, Object> retencionMap =
@@ -163,7 +162,7 @@ public class RetencionV2Rest {
 						.entity(err).type(MediaType.APPLICATION_JSON).build();
 			}
 
-			// ── Extraer detalleRetencionV2 del mapa antes de convertir ────────
+			// ── Extraer detalleRetencionV2 del mapa (dentro del objeto retencion) ─
 			@SuppressWarnings("unchecked")
 			java.util.List<java.util.Map<String, Object>> detallesMap =
 					(java.util.List<java.util.Map<String, Object>>) retencionMap.get("detalleRetencionV2");
@@ -205,13 +204,20 @@ public class RetencionV2Rest {
 				return Response.status(Response.Status.OK)
 						.entity(resultado).type(MediaType.APPLICATION_JSON).build();
 			} else if ("VALIDACION_CONTABLE".equals(etapa) || "PARAMETROS".equals(etapa)) {
+				// Error de datos del usuario → 422
 				return Response.status(422)
 						.entity(resultado).type(MediaType.APPLICATION_JSON).build();
 			} else if ("AUTORIZACION_SRI".equals(etapa)) {
-				// SRI rechazó: el doc existe pero no fue autorizado → 200 con exito=false
+				// SRI rechazó por lógica (NO_AUTORIZADO): registro queda en BD → 200 con exito=false
 				return Response.status(Response.Status.OK)
 						.entity(resultado).type(MediaType.APPLICATION_JSON).build();
+			} else if ("XML_DEVUELTO".equals(etapa)) {
+				// SRI rechazó por formato XML (DEVUELTA): rollback aplicado → 422 para que el frontend muestre el error
+				return Response.status(422)
+						.entity(resultado).type(MediaType.APPLICATION_JSON).build();
 			} else {
+				// ERROR_AUTORIZACION_SRI, GRABADO_DETALLES, GENERACION_XML, ERROR_INESPERADO
+				// → error técnico, rollback aplicado → 500
 				return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
 						.entity(resultado).type(MediaType.APPLICATION_JSON).build();
 			}
@@ -333,5 +339,48 @@ public class RetencionV2Rest {
 		mapper.disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 		mapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 		return mapper;
+	}
+
+	/**
+	 * Anula una retención V2 y su asiento contable vinculado.
+	 * Body JSON: { "idRetencion": 123, "motivo": "...", "usuario": "..." }
+	 */
+	@POST
+	@Path("/anular")
+	@Consumes(MediaType.APPLICATION_JSON)
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response anularRetencionV2(java.util.Map<String, Object> params) {
+		try {
+			Object idObj = params.get("idRetencion");
+			if (idObj == null) {
+				java.util.Map<String, Object> err = new java.util.HashMap<>();
+				err.put("exito", false);
+				err.put("mensaje", "El parámetro 'idRetencion' es obligatorio.");
+				return Response.status(Response.Status.BAD_REQUEST)
+						.entity(err).type(MediaType.APPLICATION_JSON).build();
+			}
+			Long idRetencion = null;
+			if (idObj instanceof Integer) idRetencion = ((Integer) idObj).longValue();
+			else if (idObj instanceof Long) idRetencion = (Long) idObj;
+			else idRetencion = Long.parseLong(idObj.toString());
+			String motivo  = params.get("motivo")  != null ? params.get("motivo").toString()  : null;
+			String usuario = params.get("usuario") != null ? params.get("usuario").toString() : null;
+
+			java.util.Map<String, Object> resultado = retencionV2Service.anularRetencionV2(idRetencion, motivo, usuario);
+
+			boolean exito = Boolean.TRUE.equals(resultado.get("exito"));
+			return Response.status(exito ? Response.Status.OK : Response.Status.BAD_REQUEST)
+					.entity(resultado).type(MediaType.APPLICATION_JSON).build();
+
+		} catch (Throwable e) {
+			System.err.println("ERROR en anularRetencionV2 REST: " + e.getMessage());
+			e.printStackTrace();
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", "Error inesperado al anular la retención V2: " + e.getMessage());
+			err.put("error", e.getMessage());
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+					.entity(err).type(MediaType.APPLICATION_JSON).build();
+		}
 	}
 }

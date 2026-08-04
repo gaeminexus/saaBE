@@ -52,8 +52,8 @@ public interface TipoAsientos {
 	/** Retenciones electrónicas v1 emitidas (CXC). Pendiente definir codigoAlterno. */
 	public static final int RETENCIONES_EMITIDAS   = 6;  // TODO: verificar codigoAlterno en BD
 
-	/** Retenciones electrónicas v2 emitidas (CXC). Pendiente definir codigoAlterno. */
-	public static final int RETENCIONES_EMITIDAS_V2 = 7; // TODO: verificar codigoAlterno en BD
+	/** Retenciones electrónicas v2 emitidas (CXC). codigoAlterno=3 en BD. */
+	public static final int RETENCIONES_EMITIDAS_V2 = 3;
 
 	// ─── CXP: Documentos de Compra (recibidos del proveedor vía SRI) ─────────
 	// TODO: Confirmar codigoAlterno real de la plantilla en BD para cada tipo.
