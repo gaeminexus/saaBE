@@ -112,8 +112,20 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 
 			// Constantes según SRI
 			String tipoComprobante = "04"; // Nota de Crédito
-			Long ambiente = entidad.getAmbiente() != null ? entidad.getAmbiente() : 1L;
 			String tipoEmision = "1"; // Emisión Normal
+			
+			// Obtener ambiente desde el facturador (BD) — fuente autoritativa por seguridad
+			com.saa.model.cxc.Facturador facturadorDB = em.find(com.saa.model.cxc.Facturador.class, entidad.getFacturador().getId());
+			Long ambiente;
+			if (facturadorDB != null && facturadorDB.getAmbiente() != null) {
+				ambiente = facturadorDB.getAmbiente();
+				System.out.println("Ambiente tomado del facturador (BD): " + ambiente
+						+ (ambiente == 2L ? " (PRODUCCIÓN)" : " (PRUEBAS)"));
+			} else {
+				ambiente = entidad.getAmbiente() != null ? entidad.getAmbiente() : 1L;
+				System.out.println("⚠ Facturador sin ambiente configurado en BD, usando valor recibido: " + ambiente);
+			}
+			entidad.setAmbiente(ambiente); // sincronizar el valor correcto en la entidad
 			
 			try {
 				// 1. Obtener secuencial
@@ -608,6 +620,10 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 								
 								respuesta = resultado.estado;
 
+								// flush para que reporteService (REQUIRES_NEW) vea los datos
+								try { em.flush(); } catch (Exception flushEx) {
+									System.err.println("⚠ flush antes de PDF NC: " + flushEx.getMessage());
+								}
 								// 5. Generar PDF (RIDE Nota de Crédito)
 								byte[] pdfBytesParaEmail = null;
 								try {
@@ -644,6 +660,7 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 												nvl(notaCredito.getNumero(), clave),
 												clave,
 												razonSocialEmisor,
+												"Nota de Crédito",
 												resultado.comprobanteXML,
 												pdfBytesParaEmail);
 										System.out.println("✓ Email NC enviado a: " + emailDest);
@@ -761,23 +778,14 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 			java.util.List<com.saa.model.cxc.DetalleNotaCredito> detalles,
 			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable {
 		
-		System.out.println("=== INICIO procesarNotaCreditoCompleta ===");
+		System.out.println("=== INICIO procesarNotaCreditoCompleta (nuevo flujo: BD tras RECIBIDA) ===");
 		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+		resultado.put("exito", false);
 		
 		try {
-			// 1. Configurar valores por defecto
-			if (ambiente == null) {
-				ambiente = 1L;
-				System.out.println("Ambiente configurado automáticamente: PRUEBA (1)");
-			}
-			if (conectaSRI == null) {
-				conectaSRI = 1L;
-				System.out.println("ConectaSRI configurado automáticamente: SI (1)");
-			}
-			if (pathLogo == null) {
-				pathLogo = "resources/logos/logo_aso.png";
-				System.out.println("PathLogo configurado automáticamente: " + pathLogo);
-			}
+			if (ambiente == null)   ambiente   = 1L;
+			if (conectaSRI == null) conectaSRI = 1L;
+			if (pathLogo == null)   pathLogo   = "resources/logos/logo_aso.png";
 
 			// ── PASO 0: Validar configuración contable ANTES de grabar ─────────
 			if (notaCredito.getFacturador() != null
@@ -812,143 +820,348 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 					System.err.println("✗ Validación contable NC fallida:\n" + sb);
 					return resultado;
 				}
-				System.out.println("✓ Validación contable NC OK: todas las cuentas están configuradas.");
+				System.out.println("✓ Validación contable NC OK.");
 			}
-			
-			// 2. Grabar la nota de crédito - USAR EL MISMO OBJETO (genera campos automáticos)
-			System.out.println("Paso 1: Grabando nota de crédito...");
-			notaCredito = this.saveSingle(notaCredito);
-			resultado.put("notaCredito", notaCredito);
-			resultado.put("paso1_grabacion", "OK");
-			System.out.println("✓ Nota de crédito grabada con ID: " + notaCredito.getId());
-			
-			// 2.5. Guardar los detalles de la nota de crédito
-			if (detalles != null && !detalles.isEmpty()) {
-				System.out.println("Paso 1.5: Guardando " + detalles.size() + " detalles de nota de crédito...");
-				for (com.saa.model.cxc.DetalleNotaCredito detalle : detalles) {
-					detalle.setNotaCredito(notaCredito);
-					if (detalle.getEstado() == null) {
-						detalle.setEstado(Long.valueOf(Estado.ACTIVO));
-					}
-					em.persist(detalle);
-				}
-				em.flush();
-				System.out.println("✓ Detalles guardados correctamente");
-			} else {
-				System.out.println("⚠ No hay detalles para guardar");
-			}
-			
-			// 3. Obtener destinatario del comprador si no se proporcionó
-			if (destinatario == null && notaCredito.getTitular() != null) {
-				destinatario = notaCredito.getTitular().getEmail();
-				System.out.println("Destinatario obtenido del comprador: " + destinatario);
-			}
-			
-			// 4. Obtener la clave de acceso
-			String clave = notaCredito.getClave();
-			if (clave == null || clave.isEmpty()) {
-				throw new Exception("La nota de crédito no tiene clave de acceso");
-			}
-			Long idFacturador = notaCredito.getFacturador() != null ? notaCredito.getFacturador().getId() : null;
-			if (idFacturador == null) {
-				throw new Exception("La nota de crédito no tiene facturador asociado");
-			}
-			resultado.put("claveAcceso", clave);
-			System.out.println("Clave de acceso: " + clave);
-			
-			// 5. Generar XML
-			System.out.println("Paso 2: Generando XML...");
-			String[] resultadoXML = this.generarXMLNotaCredito(clave, ambiente);
-			resultado.put("paso2_xml", "OK");
-			resultado.put("xmlPathAbsoluto", resultadoXML[2]);
-			System.out.println("XML generado: " + resultadoXML[0]);
-			
-			// 6. Leer XML sin firmar y firmarlo
-			System.out.println("Paso 3: Firmando XML electrónicamente...");
-			String xmlSinFirmar = new String(java.nio.file.Files.readAllBytes(
-				java.nio.file.Paths.get(resultadoXML[2])), java.nio.charset.StandardCharsets.UTF_8);
-			String xmlFirmado = signatureService.firmarXMLFacturador(xmlSinFirmar, idFacturador);
-			resultado.put("paso3_firma", "OK");
-			System.out.println("✓ XML firmado electrónicamente");
-			
-			// 7. Autorizar ante el SRI
-			System.out.println("Paso 4: Autorizando ante el SRI...");
-			String resultadoAutorizacion = this.autorizarNotaCredito(
-				idFacturador, ambiente, conectaSRI, clave, 
-				notaCredito.getId(), xmlFirmado, destinatario, pathLogo);
-			
-			resultado.put("paso3_autorizacion", "OK");
-			resultado.put("autorizacionMensaje", resultadoAutorizacion);
-			System.out.println(">>> Mensaje completo de autorización NC: [" + resultadoAutorizacion + "]");
 
-			// ── Verificar que la NC fue efectivamente AUTORIZADA ──────────────
-			// Si el SRI devuelve DEVUELTA, NO_AUTORIZADO u otro estado, NO se
-			// genera el asiento contable y se retorna con exito=false.
-			boolean autorizada = resultadoAutorizacion != null
-					&& resultadoAutorizacion.contains("AUTORIZADO");
+			// ── PASO 1: Preparar campos en MEMORIA (sin guardar en BD) ──────────
+			System.out.println("PASO 1: Preparando campos de la nota de crédito en memoria...");
+			if (notaCredito.getEstado() == null) notaCredito.setEstado(Long.valueOf(Estado.ACTIVO));
+			if (notaCredito.getPtoEmision() == null || notaCredito.getPtoEmision().getId() == null) {
+				resultado.put("etapa", "VALIDACION"); resultado.put("mensaje", "Debe especificar un punto de emisión.");
+				return resultado;
+			}
+			if (notaCredito.getFacturador() == null || notaCredito.getFacturador().getId() == null) {
+				resultado.put("etapa", "VALIDACION"); resultado.put("mensaje", "Debe especificar un facturador.");
+				return resultado;
+			}
+			if (notaCredito.getTitular() == null || notaCredito.getTitular().getCodigo() == null) {
+				resultado.put("etapa", "VALIDACION"); resultado.put("mensaje", "Debe especificar un titular.");
+				return resultado;
+			}
+
+			String tipoComprobante = "04";
+			String tipoEmision = "1";
+			com.saa.model.cxc.Facturador facturadorDB = em.find(com.saa.model.cxc.Facturador.class, notaCredito.getFacturador().getId());
+			Long ambienteFacturador;
+			if (facturadorDB != null && facturadorDB.getAmbiente() != null) {
+				ambienteFacturador = facturadorDB.getAmbiente();
+			} else {
+				ambienteFacturador = notaCredito.getAmbiente() != null ? notaCredito.getAmbiente() : 1L;
+			}
+			notaCredito.setAmbiente(ambienteFacturador);
+			ambiente = ambienteFacturador;
+			System.out.println(">>> AMBIENTE: " + ambiente + (ambiente == 2L ? " (PRODUCCIÓN)" : " (PRUEBAS)") + " | CONECTA_SRI: " + conectaSRI);
+
+			try {
+				String secuencial = obtenerSecuencial(notaCredito.getPtoEmision().getId(), tipoComprobante);
+				notaCredito.setSecuencial(secuencial);
+				String numero = notaCredito.getNumEstablecimiento() + "-" + notaCredito.getNumPtoEmision() + "-" + secuencial;
+				notaCredito.setNumero(numero);
+				String clave = generarClaveAcceso(notaCredito, tipoComprobante, ambienteFacturador, tipoEmision, secuencial);
+				notaCredito.setClave(clave);
+				notaCredito.setTipoComprobante(tipoComprobante);
+				if (notaCredito.getEstadoEmision() == null) notaCredito.setEstadoEmision(1L);
+				System.out.println("✓ Campos preparados en memoria. Clave: " + clave + " | Número: " + numero);
+			} catch (Exception e) {
+				resultado.put("etapa", "PREPARACION_CAMPOS");
+				resultado.put("mensaje", "Error al preparar campos de la nota de crédito: " + e.getMessage());
+				resultado.put("error", e.getMessage());
+				return resultado;
+			}
+
+			String clave = notaCredito.getClave();
+			if (clave == null || clave.isEmpty()) throw new Exception("La nota de crédito no tiene clave de acceso");
+			Long idFacturador = notaCredito.getFacturador().getId();
+			if (destinatario == null && notaCredito.getTitular() != null)
+				destinatario = notaCredito.getTitular().getEmail();
+			resultado.put("claveAcceso", clave);
+
+			// ── PASO 2-3: Generar y firmar XML con datos en memoria ─────────────
+			String xmlFirmado;
+			try {
+				System.out.println("PASO 2: Generando XML en memoria...");
+				String dirEstablecimiento = "";
+				try {
+					String sqlEstab = "SELECT e.direccion FROM PuntoEmision pe JOIN pe.establecimiento e WHERE pe.id = :ptoEmisionId";
+					dirEstablecimiento = (String) em.createQuery(sqlEstab)
+							.setParameter("ptoEmisionId", notaCredito.getPtoEmision().getId())
+							.getSingleResult();
+				} catch (Exception e) {
+					System.err.println("⚠ No se pudo obtener dirección del establecimiento: " + e.getMessage());
+				}
+				String xmlContent = generarXMLContentNotaCredito(notaCredito, dirEstablecimiento,
+						new java.util.ArrayList<>(detalles != null ? detalles : java.util.Collections.emptyList()), ambiente);
+				String pathRelativo = "resources/" + idFacturador + "/ntcr/g/" + clave + ".xml";
+				String pathAbsoluto = getBaseUploadDirectory() + pathRelativo;
+				Path path = Paths.get(pathAbsoluto);
+				Files.createDirectories(path.getParent());
+				Files.write(path, xmlContent.getBytes("UTF-8"));
+				System.out.println("PASO 3: Firmando XML...");
+				xmlFirmado = signatureService.firmarXMLFacturador(xmlContent, idFacturador);
+				System.out.println("✓ XML generado y firmado.");
+			} catch (Exception e) {
+				resultado.put("etapa", "GENERACION_XML");
+				resultado.put("mensaje", "Error al generar o firmar el XML de la nota de crédito: " + e.getMessage());
+				resultado.put("error", e.getMessage());
+				return resultado;
+			}
+
+			// ── PASO 4a: Enviar al SRI (WS1 - Recepción) ───────────────────────
+			System.out.println("PASO 4a: Enviando XML al SRI (WS1 - Recepción)...");
+			String estadoRecepcion = "NO_ENVIADO";
+			if (conectaSRI == 1) {
+				String baseUploadDir = getBaseUploadDirectory();
+				String resourcesPath = baseUploadDir + "resources/" + idFacturador;
+				try {
+					Path pathFirmado = Paths.get(resourcesPath + "/ntcr/f/" + clave + ".xml");
+					Files.createDirectories(pathFirmado.getParent());
+					Files.write(pathFirmado, xmlFirmado.getBytes("UTF-8"));
+					String urlWS1 = ambiente == 1
+							? "https://celcer.sri.gob.ec/comprobantes-electronicos-ws/RecepcionComprobantesOffline?wsdl"
+							: "https://cel.sri.gob.ec/comprobantes-electronicos-ws/RecepcionComprobantesOffline?wsdl";
+					Path logWS1 = Paths.get(resourcesPath + "/ntcr/e/" + clave + ".txt");
+					Files.createDirectories(logWS1.getParent());
+					PrintWriter logWriter1 = new PrintWriter(new FileWriter(logWS1.toFile()));
+					byte[] bytesXMLFirmado = Files.readAllBytes(pathFirmado);
+					estadoRecepcion = llamarRecepcionSRI(urlWS1, bytesXMLFirmado, logWriter1);
+					logWriter1.close();
+					System.out.println(">>> Estado WS1 Recepción: [" + estadoRecepcion + "]");
+				} catch (Exception e) {
+					resultado.put("etapa", "WS1_RECEPCION");
+					resultado.put("mensaje", "Error al comunicarse con el SRI (WS1): " + e.getMessage());
+					resultado.put("error", e.getMessage());
+					return resultado;
+				}
+			} else {
+				estadoRecepcion = "RECIBIDA";
+				System.out.println("ℹ conectaSRI=0 — simulando RECIBIDA para guardar en BD.");
+			}
+
+			if (!"RECIBIDA".equals(estadoRecepcion)
+					&& !(estadoRecepcion != null && estadoRecepcion.contains("CLAVE ACCESO REGISTRADA"))) {
+				resultado.put("etapa", "WS1_RECEPCION");
+				resultado.put("exito", false);
+				resultado.put("estado", estadoRecepcion);
+				resultado.put("mensaje", "El SRI no aceptó el comprobante. Estado WS1: " + estadoRecepcion);
+				return resultado;
+			}
+
+			// ── PASO 4b: WS1=RECIBIDA → Guardar en BD ───────────────────────────
+			System.out.println("PASO 4b: SRI respondió RECIBIDA. Guardando nota de crédito en base de datos...");
+			try {
+				notaCredito = notaCreditoDaoService.save(notaCredito, null);
+			} catch (Exception e) {
+				resultado.put("etapa", "GRABADO_NC");
+				resultado.put("mensaje", "Error al grabar la nota de crédito: " + e.getMessage());
+				resultado.put("error", e.getMessage());
+				return resultado;
+			}
+			resultado.put("notaCredito", notaCredito);
+			resultado.put("idNotaCredito", notaCredito.getId());
+			System.out.println("✓ Nota de crédito grabada ID: " + notaCredito.getId() + " | Clave: " + notaCredito.getClave());
+
+			// Guardar detalles
+			if (detalles != null && !detalles.isEmpty()) {
+				try {
+					for (com.saa.model.cxc.DetalleNotaCredito detalle : detalles) {
+						detalle.setNotaCredito(notaCredito);
+						if (detalle.getEstado() == null) detalle.setEstado(Long.valueOf(Estado.ACTIVO));
+						em.persist(detalle);
+					}
+					em.flush();
+					System.out.println("✓ Detalles guardados.");
+				} catch (Exception e) {
+					resultado.put("etapa", "GRABADO_DETALLES");
+					resultado.put("mensaje", "Error al grabar los detalles: " + e.getMessage());
+					resultado.put("error", e.getMessage());
+					return resultado;
+				}
+			}
+
+			// Registrar paths y estado FIRMADA/ENVIADA en BD
+			try {
+				String baseUploadDir = getBaseUploadDirectory();
+				String resourcesPath = baseUploadDir + "resources/" + idFacturador;
+				PathNotaCredito pathF = new PathNotaCredito();
+				pathF.setNotaCredito(notaCredito);
+				pathF.setPath("resources/" + idFacturador + "/ntcr/f/" + clave + ".xml");
+				pathF.setAlterno(3L);
+				pathNotaCreditoDaoService.save(pathF, null);
+				notaCredito.setEstado(3L);
+				notaCreditoDaoService.save(notaCredito, notaCredito.getId());
+				if (conectaSRI == 1) {
+					Path pathEnviado = Paths.get(resourcesPath + "/ntcr/e/" + clave + ".xml");
+					byte[] bytesXMLFirmado = Files.readAllBytes(Paths.get(resourcesPath + "/ntcr/f/" + clave + ".xml"));
+					Files.write(pathEnviado, bytesXMLFirmado);
+					PathNotaCredito pathE = new PathNotaCredito();
+					pathE.setNotaCredito(notaCredito);
+					pathE.setPath("resources/" + idFacturador + "/ntcr/e/" + clave + ".xml");
+					pathE.setAlterno(4L);
+					pathNotaCreditoDaoService.save(pathE, null);
+					notaCredito.setEstado(4L);
+					notaCreditoDaoService.save(notaCredito, notaCredito.getId());
+				}
+			} catch (Exception e) {
+				System.err.println("⚠ Error registrando paths (no crítico): " + e.getMessage());
+			}
+
+			// ── PASO 4c: Si era CLAVE ACCESO REGISTRADA ─────────────────────────
+			if (estadoRecepcion != null && estadoRecepcion.contains("CLAVE ACCESO REGISTRADA")) {
+				notaCredito.setAutorizacion(clave);
+				notaCredito.setFechaAutorizacion(notaCredito.getFecha().plusMinutes(1).plusSeconds(15));
+				notaCredito.setEstado(5L);
+				notaCreditoDaoService.save(notaCredito, notaCredito.getId());
+				resultado.put("estado", "AUTORIZADO"); resultado.put("exito", true);
+				resultado.put("etapa", "COMPLETADO"); resultado.put("mensaje", "Nota de crédito ya registrada en el SRI. Autorizada.");
+				return resultado;
+			}
+
+			// ── PASO 4d: WS2 - Autorización ─────────────────────────────────────
+			System.out.println("PASO 4d: Consultando autorización al SRI (WS2)...");
+			Thread.sleep(2000);
+			String resultadoAutorizacion = "";
+			boolean autorizada = false;
+			if (conectaSRI == 1) {
+				try {
+					String baseUploadDir = getBaseUploadDirectory();
+					String resourcesPath = baseUploadDir + "resources/" + idFacturador;
+					String urlWS2 = ambiente == 1
+							? "https://celcer.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl"
+							: "https://cel.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl";
+					ResultadoAutorizacion ra = llamarAutorizacionSRI(urlWS2, clave);
+					System.out.println(">>> Estado WS2: [" + ra.estado + "]");
+
+					if ("AUTORIZADO".equals(ra.estado)) {
+						Path logWS2A = Paths.get(resourcesPath + "/ntcr/a/" + clave + ".txt");
+						Files.createDirectories(logWS2A.getParent());
+						PrintWriter logWriter2 = new PrintWriter(new FileWriter(logWS2A.toFile()));
+						logWriter2.println("Respuesta WS2: " + ra.respuestaCompleta);
+						logWriter2.close();
+						Path pathAutorizado = Paths.get(resourcesPath + "/ntcr/a/" + clave + ".xml");
+						Files.write(pathAutorizado, ra.comprobanteXML.getBytes("UTF-8"));
+						PathNotaCredito pathA = new PathNotaCredito();
+						pathA.setNotaCredito(notaCredito);
+						pathA.setPath("resources/" + idFacturador + "/ntcr/a/" + clave + ".xml");
+						pathA.setAlterno(5L);
+						pathNotaCreditoDaoService.save(pathA, null);
+						notaCredito.setEstado(5L);
+						notaCredito.setEstadoEmision(1L);
+						notaCredito.setAutorizacion(ra.numeroAutorizacion);
+						notaCredito.setFechaAutorizacion(parseFechaAutorizacion(ra.fechaAutorizacion));
+						notaCreditoDaoService.save(notaCredito, notaCredito.getId());
+						resultadoAutorizacion = ra.estado;
+						autorizada = true;
+						// flush para que reporteService (REQUIRES_NEW) vea los datos
+						try { em.flush(); } catch (Exception flushEx) {
+							System.err.println("⚠ flush antes de PDF NC: " + flushEx.getMessage());
+						}
+						// Generar PDF
+						try {
+							byte[] pdfBytes = generarPDFNotaCredito(notaCredito, idFacturador, clave, pathLogo, ambiente);
+							if (pdfBytes != null && pdfBytes.length > 0) {
+								Path pathPdf = Paths.get(resourcesPath + "/ntcr/a/" + clave + ".pdf");
+								Files.write(pathPdf, pdfBytes);
+								PathNotaCredito pathPdfRec = new PathNotaCredito();
+								pathPdfRec.setNotaCredito(notaCredito);
+								pathPdfRec.setPath("resources/" + idFacturador + "/ntcr/a/" + clave + ".pdf");
+								pathPdfRec.setAlterno(7L);
+								pathNotaCreditoDaoService.save(pathPdfRec, null);
+								System.out.println("✓ PDF RIDE NC generado.");
+							}
+						} catch (Exception pdfEx) {
+							System.err.println("⚠ Error generando PDF NC (no crítico): " + pdfEx.getMessage());
+						}
+						if (ambiente == 2) {
+							em.createQuery("UPDATE Facturador f SET f.docEmitidos = COALESCE(f.docEmitidos,0)+1 WHERE f.id = :id")
+								.setParameter("id", idFacturador).executeUpdate();
+						}
+					} else {
+						Path logWS2N = Paths.get(resourcesPath + "/ntcr/n/" + clave + ".txt");
+						Files.createDirectories(logWS2N.getParent());
+						PrintWriter logWriter2N = new PrintWriter(new FileWriter(logWS2N.toFile()));
+						logWriter2N.println("Respuesta WS2: " + ra.respuestaCompleta);
+						logWriter2N.close();
+						if (ra.comprobanteXML != null) {
+							Files.write(Paths.get(resourcesPath + "/ntcr/n/" + clave + ".xml"), ra.comprobanteXML.getBytes("UTF-8"));
+							PathNotaCredito pathN = new PathNotaCredito();
+							pathN.setNotaCredito(notaCredito);
+							pathN.setPath("resources/" + idFacturador + "/ntcr/n/" + clave + ".xml");
+							pathN.setAlterno(6L);
+							pathNotaCreditoDaoService.save(pathN, null);
+						}
+						notaCredito.setEstado(6L);
+						notaCredito.setEstadoEmision(2L);
+						notaCreditoDaoService.save(notaCredito, notaCredito.getId());
+						resultadoAutorizacion = "Estado: " + ra.estado
+								+ " Id: " + nvl(ra.mensajeId, "")
+								+ " Mensaje: " + nvl(ra.mensaje, "")
+								+ " / " + nvl(ra.informacionAdicional, "");
+					}
+				} catch (Exception e) {
+					resultado.put("etapa", "WS2_AUTORIZACION");
+					resultado.put("mensaje", "Error al consultar autorización al SRI (WS2): " + e.getMessage());
+					resultado.put("error", e.getMessage());
+					return resultado;
+				}
+			} else {
+				autorizada = true;
+				resultadoAutorizacion = "AUTORIZADO";
+				notaCredito.setEstado(5L);
+				notaCreditoDaoService.save(notaCredito, notaCredito.getId());
+			}
+
+			resultado.put("autorizacionMensaje", resultadoAutorizacion);
 
 			if (!autorizada) {
-				System.err.println("✗ NC no fue autorizada por el SRI. Se detiene el proceso.");
+				System.err.println("✗ NC no fue autorizada por el SRI.");
 				resultado.put("exito", false);
-				resultado.put("etapa", "AUTORIZACION_SRI");
+				resultado.put("etapa", "WS2_AUTORIZACION");
 				resultado.put("estado", "NO_AUTORIZADO");
-				resultado.put("mensaje", "La nota de crédito fue enviada al SRI pero no fue autorizada. "
+				resultado.put("mensaje", "La nota de crédito fue recibida por el SRI pero no fue autorizada. "
 						+ "Respuesta del SRI: " + resultadoAutorizacion);
 				return resultado;
 			}
 
 			System.out.println("✓ NC AUTORIZADA. Continuando con asiento contable...");
 
-			// ── PASO 5: Generar asiento contable ───────────────────────────────
-			// Solo si el facturador tiene generaConta=1 y empresa contable configurada.
+			// ── PASO 5: Generar asiento contable (solo tras AUTORIZADO) ──────────
 			if (notaCredito.getFacturador() != null
 					&& notaCredito.getFacturador().getEmpresa() != null
 					&& Long.valueOf(1L).equals(notaCredito.getFacturador().getGeneraConta())) {
 				System.out.println("PASO 5: Generando asiento contable para Nota de Crédito...");
 				try {
 					Long idEmpresa = notaCredito.getFacturador().getEmpresa().getCodigo();
-					// Recargar la nota de crédito para tener datos actualizados (autorización, etc.)
-					NotaCredito ncActualizada = notaCreditoDaoService.selectById(
-							notaCredito.getId(), NombreEntidadesCobro.NOTA_CREDITO);
+					NotaCredito ncActualizada = notaCreditoDaoService.selectById(notaCredito.getId(), NombreEntidadesCobro.NOTA_CREDITO);
 					java.time.LocalDate fechaAsiento = ncActualizada.getFecha() != null
 							? ncActualizada.getFecha().toLocalDate() : java.time.LocalDate.now();
 					String obsAsiento = "Nota de Crédito N° " + nvl(ncActualizada.getNumero(), clave)
 							+ " | Cliente: " + (ncActualizada.getTitular() != null ? ncActualizada.getTitular().getNombre() : "")
 							+ " | " + nvl(ncActualizada.getObservacion(), "");
-					String usuarioAsiento = (ncActualizada.getUsuario() != null)
+					String usuarioAsiento = ncActualizada.getUsuario() != null
 							? ncActualizada.getUsuario().getNombre() : "SISTEMA";
-					// Usar el mismo tipo de asiento que Factura (codigoAlterno=2 = FACTURAS_VENTA)
-					// NC, ND y Factura comparten el mismo tipo de asiento contable.
 					com.saa.model.cnt.Asiento asientoGenerado =
 							asientoContableService.generarAsientoNotaCredito(
 									ncActualizada.getId(), idEmpresa,
 									com.saa.rubros.TipoAsientos.FACTURAS_VENTA,
 									fechaAsiento, obsAsiento, usuarioAsiento);
-					// El asiento viene de REQUIRES_NEW (transacción separada) → está detached.
-					// Re-adjuntarlo con em.find() antes de asignarlo a la NC.
 					com.saa.model.cnt.Asiento asientoAttached =
 							em.find(com.saa.model.cnt.Asiento.class, asientoGenerado.getCodigo());
 					if (asientoAttached == null) asientoAttached = em.merge(asientoGenerado);
 					ncActualizada.setAsiento(asientoAttached);
 					notaCreditoDaoService.save(ncActualizada, ncActualizada.getId());
-					System.out.println("✓ Asiento contable vinculado a NC: " + asientoAttached.getCodigo());
 					resultado.put("asiento", asientoGenerado.getNumeroAlterno());
 					System.out.println("✓ Asiento contable generado: " + asientoGenerado.getNumeroAlterno());
 				} catch (Exception e) {
-					// El asiento falla → advertir pero NO revertir la autorización
 					resultado.put("advertenciaAsiento",
 							"Nota de Crédito autorizada pero ocurrió un error al generar el asiento: "
-							+ e.getMessage()
-							+ ". Genere el asiento manualmente desde Contabilidad.");
+							+ e.getMessage() + ". Genere el asiento manualmente desde Contabilidad.");
 					System.err.println("⚠ Error en asiento contable de Nota de Crédito: " + e.getMessage());
 					e.printStackTrace();
 				}
 			}
 
-			// 8. Resultado final
 			resultado.put("exito", true);
 			resultado.put("mensaje", "Nota de crédito procesada completamente");
-			resultado.put("idNotaCredito", notaCredito.getId());
 			resultado.put("ambiente", ambiente);
 			resultado.put("conectaSRI", conectaSRI);
 			resultado.put("destinatario", destinatario);
@@ -1160,7 +1373,7 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 				"       fc.MAIL, fc.TELEFONO, fc.LOGO, fc.DIRECCION, " +
 				"       fc.MICROEMPRESA, fc.RIMPE, fc.POPULARRIMPE, " +
 				"       fc.CONTRIBUYENTEESPECIAL, fc.CONTABILIDAD, fc.AGENTERETENCION, " +
-				"       t.TTLRNMBR, t.TTLRIDNT, t.TTLRDRCC, t.TTLRMLLL, t.TTLRTLFN " +
+				"       COALESCE(NULLIF(t.TTLRRZSC, ''), t.TTLRNMBR), t.TTLRIDNT, t.TTLRDRCC, t.TTLRMLLL, t.TTLRTLFN " +
 				"FROM CBR.NTCR nc " +
 				"JOIN CBR.FCDR fc ON nc.FACTURADOR = fc.ID " +
 				"JOIN TSR.TTLR t  ON nc.TITULAR = t.TTLRCDGO " +
@@ -1316,6 +1529,90 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 
 	// ── Helpers de conversión para native query ──────────────────────────────
 	private String str(Object o)      { return o != null ? o.toString() : ""; }
+
+	@Override
+	public java.util.Map<String, Object> reenviarEmail(Long idNotaCredito, String destinatarios) throws Throwable {
+		System.out.println("=== reenviarEmail NC | id=" + idNotaCredito + " | destinatarios=" + destinatarios + " ===");
+		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+		resultado.put("exito", false);
+
+		if (destinatarios == null || destinatarios.trim().isEmpty()) {
+			resultado.put("mensaje", "Debe especificar al menos un correo electrónico destinatario.");
+			return resultado;
+		}
+
+		com.saa.model.cxc.NotaCredito nc =
+				notaCreditoDaoService.selectById(idNotaCredito, com.saa.model.cxc.NombreEntidadesCobro.NOTA_CREDITO);
+		if (nc == null) {
+			resultado.put("mensaje", "No se encontró la nota de crédito con ID: " + idNotaCredito);
+			return resultado;
+		}
+		if (!Long.valueOf(5L).equals(nc.getEstado())) {
+			resultado.put("mensaje", "Solo se puede reenviar el email de notas de crédito autorizadas. Estado actual: " + nc.getEstado());
+			return resultado;
+		}
+
+		String clave        = nc.getClave();
+		Long idFacturador   = nc.getFacturador().getId();
+		String resourcesPath = getBaseUploadDirectory() + "resources/" + idFacturador;
+
+		// Leer XML autorizado
+		String xmlAutorizado = null;
+		try {
+			java.nio.file.Path pXml = java.nio.file.Paths.get(resourcesPath + "/docs/nc/a/" + clave + ".xml");
+			if (java.nio.file.Files.exists(pXml))
+				xmlAutorizado = new String(java.nio.file.Files.readAllBytes(pXml), "UTF-8");
+		} catch (Exception e) { System.err.println("⚠ Error leyendo XML NC: " + e.getMessage()); }
+
+		// Leer PDF, o regenerarlo si no existe (cubre documentos anteriores al fix)
+		byte[] pdfBytes = null;
+		try {
+			java.nio.file.Path pPdf = java.nio.file.Paths.get(resourcesPath + "/docs/nc/a/" + clave + ".pdf");
+			if (java.nio.file.Files.exists(pPdf)) {
+				pdfBytes = java.nio.file.Files.readAllBytes(pPdf);
+				System.out.println("✓ PDF NC leído desde disco.");
+			} else {
+				System.out.println("ℹ PDF NC no encontrado en disco. Regenerando...");
+				try {
+					pdfBytes = generarPDFNotaCredito(nc, idFacturador, clave, null, nc.getAmbiente());
+					if (pdfBytes != null && pdfBytes.length > 0) {
+						java.nio.file.Files.createDirectories(pPdf.getParent());
+						java.nio.file.Files.write(pPdf, pdfBytes);
+						System.out.println("✓ PDF NC regenerado y guardado en disco.");
+					}
+				} catch (Exception pdfEx) {
+					System.err.println("⚠ No se pudo regenerar el PDF NC: " + pdfEx.getMessage());
+				}
+			}
+		} catch (Exception e) { System.err.println("⚠ Error leyendo/regenerando PDF NC: " + e.getMessage()); }
+
+		String razonSocial = nc.getFacturador() != null
+				? nvl(nc.getFacturador().getRazonSocial(), nvl(nc.getFacturador().getNombre(), "")) : "";
+		String numeroDoc = nvl(nc.getNumero(), clave);
+
+		String[] lista = destinatarios.split(";");
+		java.util.List<String> enviados = new java.util.ArrayList<>();
+		java.util.List<String> fallidos = new java.util.ArrayList<>();
+		for (String mail : lista) {
+			String m = mail.trim();
+			if (m.isEmpty()) continue;
+			try {
+				emailFacturaService.enviarFacturaAutorizada(m, numeroDoc, clave, razonSocial, "Nota de Crédito", xmlAutorizado, pdfBytes);
+				enviados.add(m);
+			} catch (Exception e) { fallidos.add(m + " (" + e.getMessage() + ")"); }
+		}
+
+		resultado.put("emailsEnviados", enviados);
+		resultado.put("emailsFallidos", fallidos);
+		resultado.put("clave", clave);
+		if (!enviados.isEmpty()) {
+			resultado.put("exito", true);
+			resultado.put("mensaje", "Email enviado a " + enviados.size() + " destinatario(s).");
+		} else {
+			resultado.put("mensaje", "No se pudo enviar el email a ningún destinatario.");
+		}
+		return resultado;
+	}
 	private double toDouble(Object o) { return o != null ? ((Number) o).doubleValue() : 0.0; }
 	private int    toInt(Object o)    { return o != null ? ((Number) o).intValue()    : 0; }
 	private Long   toLong(Object o)   { return o != null ? ((Number) o).longValue()   : 0L; }
@@ -1323,42 +1620,37 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 
 	private String llamarRecepcionSRI(String url, byte[] xmlBytes, PrintWriter log) throws Exception {
 		try {
-			SOAPConnectionFactory soapConnectionFactory = SOAPConnectionFactory.newInstance();
-			SOAPConnection soapConnection = soapConnectionFactory.createConnection();
-			MessageFactory messageFactory = MessageFactory.newInstance();
-			SOAPMessage soapMessage = messageFactory.createMessage();
-			SOAPPart soapPart = soapMessage.getSOAPPart();
-			SOAPEnvelope envelope = soapPart.getEnvelope();
-			SOAPBody soapBody = envelope.getBody();
-			SOAPElement validarComprobante = soapBody.addChildElement("validarComprobante", "", "http://ec.gob.sri.ws.recepcion");
-			SOAPElement xml = validarComprobante.addChildElement(envelope.createName("xml", "", ""));
 			String xmlBase64 = java.util.Base64.getEncoder().encodeToString(xmlBytes);
-			xml.addTextNode(xmlBase64);
-			soapMessage.saveChanges();
+			String soapEnvelope =
+				"<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" " +
+				"xmlns:rec=\"http://ec.gob.sri.ws.recepcion\">" +
+				"<soapenv:Header/><soapenv:Body>" +
+				"<rec:validarComprobante><xml>" + xmlBase64 + "</xml></rec:validarComprobante>" +
+				"</soapenv:Body></soapenv:Envelope>";
 
-			SOAPMessage soapResponse = soapConnection.call(soapMessage, url);
-			java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-			soapResponse.writeTo(baos);
-			log.println("Respuesta WS1: " + baos.toString("UTF-8"));
+			String respuestaCompleta = com.saa.ejb.cxc.util.SriHttpUtil.enviarSoap(url, soapEnvelope);
+			log.println("Respuesta WS1: " + respuestaCompleta);
 
-			SOAPBody responseBody = soapResponse.getSOAPBody();
-			NodeList estadoList = responseBody.getElementsByTagName("estado");
-			if (estadoList.getLength() == 0) estadoList = responseBody.getElementsByTagNameNS("*", "estado");
+			javax.xml.parsers.DocumentBuilderFactory dbf = javax.xml.parsers.DocumentBuilderFactory.newInstance();
+			dbf.setNamespaceAware(true);
+			org.w3c.dom.Element docEl = dbf.newDocumentBuilder()
+					.parse(new java.io.ByteArrayInputStream(respuestaCompleta.getBytes("UTF-8")))
+					.getDocumentElement();
+
+			NodeList estadoList = docEl.getElementsByTagNameNS("*", "estado");
+			if (estadoList.getLength() == 0) estadoList = docEl.getElementsByTagName("estado");
 			if (estadoList.getLength() > 0) {
 				String estado = estadoList.item(0).getTextContent();
-				NodeList mensajeList = responseBody.getElementsByTagName("mensaje");
-				if (mensajeList.getLength() == 0) mensajeList = responseBody.getElementsByTagNameNS("*", "mensaje");
+				NodeList mensajeList = docEl.getElementsByTagNameNS("*", "mensaje");
+				if (mensajeList.getLength() == 0) mensajeList = docEl.getElementsByTagName("mensaje");
 				if (mensajeList.getLength() > 0) {
 					String mensaje = mensajeList.item(0).getTextContent();
 					if (mensaje != null && mensaje.contains("CLAVE ACCESO REGISTRADA")) {
-						soapConnection.close();
 						return "CLAVE ACCESO REGISTRADA";
 					}
 				}
-				soapConnection.close();
 				return estado;
 			}
-			soapConnection.close();
 			return "SIN_RESPUESTA";
 		} catch (Exception e) {
 			log.println("Error en llamarRecepcionSRI: " + e.getMessage());
@@ -1368,53 +1660,55 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 	}
 
 	private ResultadoAutorizacion llamarAutorizacionSRI(String url, String claveAcceso) throws Exception {
-		SOAPConnectionFactory soapConnectionFactory = SOAPConnectionFactory.newInstance();
-		SOAPConnection soapConnection = soapConnectionFactory.createConnection();
-		MessageFactory messageFactory = MessageFactory.newInstance();
-		SOAPMessage soapMessage = messageFactory.createMessage();
-		SOAPPart soapPart = soapMessage.getSOAPPart();
-		SOAPEnvelope envelope = soapPart.getEnvelope();
-		SOAPBody soapBody = envelope.getBody();
-		SOAPElement autorizacionComprobante = soapBody.addChildElement("autorizacionComprobante", "", "http://ec.gob.sri.ws.autorizacion");
-		SOAPElement claveAccesoElement = autorizacionComprobante.addChildElement(envelope.createName("claveAccesoComprobante", "", ""));
-		claveAccesoElement.addTextNode(claveAcceso);
-		soapMessage.saveChanges();
+		try {
+			String soapEnvelope =
+				"<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" " +
+				"xmlns:aut=\"http://ec.gob.sri.ws.autorizacion\">" +
+				"<soapenv:Header/><soapenv:Body>" +
+				"<aut:autorizacionComprobante><claveAccesoComprobante>" + claveAcceso + "</claveAccesoComprobante>" +
+				"</aut:autorizacionComprobante></soapenv:Body></soapenv:Envelope>";
 
-		SOAPMessage soapResponse = soapConnection.call(soapMessage, url);
-		java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-		soapResponse.writeTo(baos);
-		String responseStr = baos.toString("UTF-8");
+			String responseStr = com.saa.ejb.cxc.util.SriHttpUtil.enviarSoap(url, soapEnvelope);
+			System.out.println(">>> XML RESPUESTA WS2 (Autorización SRI - NC):\n" + responseStr);
 
-		ResultadoAutorizacion resultado = new ResultadoAutorizacion();
-		resultado.respuestaCompleta = responseStr;
+			ResultadoAutorizacion resultado = new ResultadoAutorizacion();
+			resultado.respuestaCompleta = responseStr;
 
-		SOAPBody responseBody = soapResponse.getSOAPBody();
+			javax.xml.parsers.DocumentBuilderFactory dbf = javax.xml.parsers.DocumentBuilderFactory.newInstance();
+			dbf.setNamespaceAware(true);
+			org.w3c.dom.Element docEl = dbf.newDocumentBuilder()
+					.parse(new java.io.ByteArrayInputStream(responseStr.getBytes("UTF-8")))
+					.getDocumentElement();
 
-		NodeList estadoList = responseBody.getElementsByTagNameNS("*", "estado");
-		if (estadoList.getLength() > 0) resultado.estado = estadoList.item(0).getTextContent();
+			NodeList estadoList = docEl.getElementsByTagNameNS("*", "estado");
+			if (estadoList.getLength() > 0) resultado.estado = estadoList.item(0).getTextContent();
 
-		NodeList numAuthList = responseBody.getElementsByTagNameNS("*", "numeroAutorizacion");
-		if (numAuthList.getLength() > 0) resultado.numeroAutorizacion = numAuthList.item(0).getTextContent();
+			NodeList numAuthList = docEl.getElementsByTagNameNS("*", "numeroAutorizacion");
+			if (numAuthList.getLength() > 0) resultado.numeroAutorizacion = numAuthList.item(0).getTextContent();
 
-		NodeList fechaAuthList = responseBody.getElementsByTagNameNS("*", "fechaAutorizacion");
-		if (fechaAuthList.getLength() > 0) resultado.fechaAutorizacion = fechaAuthList.item(0).getTextContent();
+			NodeList fechaAuthList = docEl.getElementsByTagNameNS("*", "fechaAutorizacion");
+			if (fechaAuthList.getLength() > 0) resultado.fechaAutorizacion = fechaAuthList.item(0).getTextContent();
 
-		NodeList comprobanteList = responseBody.getElementsByTagNameNS("*", "comprobante");
-		if (comprobanteList.getLength() > 0) resultado.comprobanteXML = comprobanteList.item(0).getTextContent();
+			NodeList comprobanteList = docEl.getElementsByTagNameNS("*", "comprobante");
+			if (comprobanteList.getLength() > 0) resultado.comprobanteXML = comprobanteList.item(0).getTextContent();
 
-		NodeList mensajesList = responseBody.getElementsByTagNameNS("*", "mensaje");
-		if (mensajesList.getLength() > 0) {
-			org.w3c.dom.Node msgNode = mensajesList.item(0);
-			NodeList idList   = ((org.w3c.dom.Element) msgNode).getElementsByTagNameNS("*", "identificador");
-			NodeList msgList  = ((org.w3c.dom.Element) msgNode).getElementsByTagNameNS("*", "mensaje");
-			NodeList infoList = ((org.w3c.dom.Element) msgNode).getElementsByTagNameNS("*", "informacionAdicional");
-			if (idList.getLength()   > 0) resultado.mensajeId           = idList.item(0).getTextContent();
-			if (msgList.getLength()  > 0) resultado.mensaje             = msgList.item(0).getTextContent();
-			if (infoList.getLength() > 0) resultado.informacionAdicional = infoList.item(0).getTextContent();
+			NodeList mensajesList = docEl.getElementsByTagNameNS("*", "mensaje");
+			if (mensajesList.getLength() > 0) {
+				org.w3c.dom.Node msgNode = mensajesList.item(0);
+				NodeList idList   = ((org.w3c.dom.Element) msgNode).getElementsByTagNameNS("*", "identificador");
+				NodeList msgList  = ((org.w3c.dom.Element) msgNode).getElementsByTagNameNS("*", "mensaje");
+				NodeList infoList = ((org.w3c.dom.Element) msgNode).getElementsByTagNameNS("*", "informacionAdicional");
+				if (idList.getLength()   > 0) resultado.mensajeId            = idList.item(0).getTextContent();
+				if (msgList.getLength()  > 0) resultado.mensaje              = msgList.item(0).getTextContent();
+				if (infoList.getLength() > 0) resultado.informacionAdicional = infoList.item(0).getTextContent();
+			}
+
+			return resultado;
+		} catch (Exception e) {
+			System.err.println(">>> ERROR en llamarAutorizacionSRI NC: " + e.getMessage());
+			e.printStackTrace();
+			throw e;
 		}
-
-		soapConnection.close();
-		return resultado;
 	}
 
 	private String getBaseUploadDirectory() {
@@ -1438,5 +1732,189 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 		} else {
 			return "/opt/saa-uploads/";
 		}
+	}
+
+	// =========================================================================
+	// consultarYActualizarEstadoNotaCredito
+	// =========================================================================
+	@Override
+	public java.util.Map<String, Object> consultarYActualizarEstadoNotaCredito(Long idNotaCredito) throws Throwable {
+		System.out.println("=== consultarYActualizarEstadoNotaCredito | id=" + idNotaCredito + " ===");
+		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+		resultado.put("exito", false);
+
+		// 1. Cargar la nota de crédito
+		NotaCredito nc = notaCreditoDaoService.selectById(idNotaCredito, NombreEntidadesCobro.NOTA_CREDITO);
+		if (nc == null) {
+			resultado.put("mensaje", "Nota de crédito con ID " + idNotaCredito + " no encontrada.");
+			return resultado;
+		}
+		if (nc.getClave() == null || nc.getClave().isEmpty()) {
+			resultado.put("mensaje", "La nota de crédito no tiene clave de acceso registrada.");
+			return resultado;
+		}
+
+		Long ambiente = nc.getAmbiente() != null ? nc.getAmbiente() : 1L;
+		String clave = nc.getClave();
+		Long idFacturador = nc.getFacturador() != null ? nc.getFacturador().getId() : null;
+		resultado.put("clave", clave);
+		resultado.put("estadoActual", nc.getEstado());
+
+		// 2. Consultar estado al SRI
+		String urlWS2 = ambiente == 2L
+				? "https://cel.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl"
+				: "https://celcer.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl";
+		System.out.println(">>> Consultando estado al SRI: " + urlWS2);
+
+		ResultadoAutorizacion ra;
+		try {
+			ra = llamarAutorizacionSRI(urlWS2, clave);
+		} catch (Exception e) {
+			resultado.put("mensaje", "Error al consultar el estado en el SRI: " + e.getMessage());
+			resultado.put("error", e.getMessage());
+			return resultado;
+		}
+
+		resultado.put("estadoSRI", ra.estado);
+		resultado.put("numeroAutorizacion", ra.numeroAutorizacion);
+		resultado.put("fechaAutorizacion", ra.fechaAutorizacion);
+		System.out.println(">>> Estado SRI: " + ra.estado);
+
+		if (!"AUTORIZADO".equals(ra.estado)) {
+			resultado.put("mensaje", "El SRI indica que la nota de crédito NO está autorizada. Estado: " + ra.estado
+					+ " | " + nvl(ra.mensaje, "") + " " + nvl(ra.informacionAdicional, ""));
+			return resultado;
+		}
+
+		// 3. SRI devuelve AUTORIZADO → actualizar
+		boolean actualizada = false;
+		if (!Long.valueOf(5L).equals(nc.getEstado())) {
+			nc.setEstado(5L);
+			nc.setEstadoEmision(1L);
+			if (ra.numeroAutorizacion != null && !ra.numeroAutorizacion.isEmpty()) {
+				nc.setAutorizacion(ra.numeroAutorizacion);
+			}
+			if (ra.fechaAutorizacion != null && !ra.fechaAutorizacion.isEmpty()) {
+				nc.setFechaAutorizacion(parseFechaAutorizacion(ra.fechaAutorizacion));
+			}
+			// Guardar XML autorizado
+			if (ra.comprobanteXML != null && !ra.comprobanteXML.isEmpty() && idFacturador != null) {
+				try {
+					String resourcesPath = getBaseUploadDirectory() + "resources/" + idFacturador;
+					java.nio.file.Path pathAutorizado = java.nio.file.Paths.get(resourcesPath + "/docs/a/" + clave + ".xml");
+					java.nio.file.Files.createDirectories(pathAutorizado.getParent());
+					java.nio.file.Files.write(pathAutorizado, ra.comprobanteXML.getBytes("UTF-8"));
+					PathNotaCredito pathA = new PathNotaCredito();
+					pathA.setNotaCredito(nc);
+					pathA.setPath("resources/" + idFacturador + "/docs/a/" + clave + ".xml");
+					pathA.setAlterno(5L);
+					pathNotaCreditoDaoService.save(pathA, null);
+					System.out.println("✓ XML autorizado guardado.");
+				} catch (Exception xmlEx) {
+					System.err.println("⚠ Error guardando XML autorizado: " + xmlEx.getMessage());
+				}
+			}
+			notaCreditoDaoService.save(nc, nc.getId());
+			actualizada = true;
+			System.out.println("✓ Nota de crédito actualizada a estado AUTORIZADA (5). Aut: " + ra.numeroAutorizacion);
+		} else {
+			System.out.println("ℹ Nota de crédito ya estaba en estado 5.");
+		}
+		resultado.put("notaCreditoActualizada", actualizada);
+
+		// 4. Generar asiento contable si no tiene
+		boolean asientoGenerado = false;
+		if (nc.getAsiento() == null
+				&& nc.getFacturador() != null
+				&& nc.getFacturador().getEmpresa() != null
+				&& Long.valueOf(1L).equals(nc.getFacturador().getGeneraConta())) {
+			System.out.println("PASO 4: Generando asiento contable...");
+			try {
+				Long idEmpresa = nc.getFacturador().getEmpresa().getCodigo();
+				String obsAsiento = "Nota de Crédito N° " + nvl(nc.getNumero(), clave)
+						+ " | Cliente: " + (nc.getTitular() != null ? nc.getTitular().getNombre() : "")
+						+ " | Aut: " + nvl(nc.getAutorizacion(), clave);
+				String usuarioAsiento = nc.getUsuario() != null ? nc.getUsuario().getNombre() : "SISTEMA";
+				com.saa.model.cnt.Asiento asientoGeneradoObj =
+						asientoContableService.generarAsientoNotaCredito(
+								nc.getId(), idEmpresa,
+								com.saa.rubros.TipoAsientos.NOTAS_CREDITO_VENTA,
+								nc.getFecha().toLocalDate(), obsAsiento, usuarioAsiento);
+				com.saa.model.cnt.Asiento asientoAttached = em.merge(asientoGeneradoObj);
+				nc.setAsiento(asientoAttached);
+				notaCreditoDaoService.save(nc, nc.getId());
+				em.flush();
+				resultado.put("asiento", asientoGeneradoObj.getNumeroAlterno());
+				asientoGenerado = true;
+				System.out.println("✓ Asiento contable generado: " + asientoGeneradoObj.getNumeroAlterno());
+			} catch (Exception e) {
+				resultado.put("advertenciaAsiento",
+						"Nota de crédito autorizada pero error al generar asiento: " + e.getMessage());
+				System.err.println("⚠ Error en asiento contable: " + e.getMessage());
+			}
+		} else if (nc.getAsiento() != null) {
+			resultado.put("asientoExistente", nc.getAsiento().getNumeroAlterno());
+			System.out.println("ℹ La nota de crédito ya tiene asiento contable.");
+		}
+		resultado.put("asientoGenerado", asientoGenerado);
+
+		// 5. Enviar email con XML y PDF
+		System.out.println("PASO 5: Enviando email...");
+		String destinatario = null;
+		if (nc.getTitular() != null) destinatario = nc.getTitular().getEmail();
+		try {
+			if (destinatario != null && !destinatario.trim().isEmpty() && idFacturador != null) {
+				String resourcesPath = getBaseUploadDirectory() + "resources/" + idFacturador;
+				String xmlAutorizado = null;
+				byte[] pdfBytes = null;
+				try {
+					java.nio.file.Path pXml = java.nio.file.Paths.get(resourcesPath + "/docs/a/" + clave + ".xml");
+					if (java.nio.file.Files.exists(pXml))
+						xmlAutorizado = new String(java.nio.file.Files.readAllBytes(pXml), "UTF-8");
+					java.nio.file.Path pPdf = java.nio.file.Paths.get(resourcesPath + "/docs/a/" + clave + ".pdf");
+					if (java.nio.file.Files.exists(pPdf)) {
+						pdfBytes = java.nio.file.Files.readAllBytes(pPdf);
+					} else {
+						System.out.println("ℹ PDF no encontrado, regenerando...");
+						try {
+							pdfBytes = generarPDFNotaCredito(nc, idFacturador, clave, null, ambiente);
+							if (pdfBytes != null && pdfBytes.length > 0) {
+								java.nio.file.Files.createDirectories(java.nio.file.Paths.get(resourcesPath + "/docs/a/"));
+								java.nio.file.Files.write(java.nio.file.Paths.get(resourcesPath + "/docs/a/" + clave + ".pdf"), pdfBytes);
+								System.out.println("✓ PDF regenerado.");
+							}
+						} catch (Exception pdfEx) {
+							System.err.println("⚠ No se pudo regenerar el PDF: " + pdfEx.getMessage());
+						}
+					}
+				} catch (Exception ioEx) {
+					System.err.println("⚠ Error leyendo archivos para email: " + ioEx.getMessage());
+				}
+				String razonSocial = nc.getFacturador() != null
+						? nvl(nc.getFacturador().getRazonSocial(), nvl(nc.getFacturador().getNombre(), "")) : "";
+				emailFacturaService.enviarFacturaAutorizada(
+						destinatario, nvl(nc.getNumero(), clave),
+						clave, razonSocial, "Nota de Crédito", xmlAutorizado, pdfBytes);
+				resultado.put("emailEnviado", true);
+				resultado.put("emailDestinatario", destinatario);
+				System.out.println("✓ Email enviado a: " + destinatario);
+			} else {
+				resultado.put("emailEnviado", false);
+				System.out.println("ℹ Email omitido: no hay dirección de correo.");
+			}
+		} catch (Exception mailEx) {
+			resultado.put("advertenciaEmail",
+					"Nota de crédito autorizada pero no se pudo enviar el email: " + mailEx.getMessage());
+			resultado.put("emailEnviado", false);
+			System.err.println("⚠ Error enviando email: " + mailEx.getMessage());
+		}
+
+		resultado.put("exito", true);
+		resultado.put("mensaje", "Nota de crédito verificada en el SRI: AUTORIZADA."
+				+ (actualizada ? " Estado actualizado." : "")
+				+ (asientoGenerado ? " Asiento generado." : "")
+				+ (Boolean.TRUE.equals(resultado.get("emailEnviado")) ? " Email enviado a " + destinatario + "." : ""));
+		System.out.println("=== consultarYActualizarEstadoNotaCredito COMPLETADO ===");
+		return resultado;
 	}
 }

@@ -304,12 +304,16 @@ public class RetencionV2Rest {
 						.type(MediaType.APPLICATION_JSON).build();
 			}
 			
-			String resultado = retencionV2Service.autorizarRetencionV2(idFacturador, ambiente, conectaSRI, 
+			java.util.Map<String, Object> resultado = retencionV2Service.autorizarRetencionV2(idFacturador, ambiente, conectaSRI, 
 					clave, codigoRetencion, xml, destinatario, pathLogo);
 			
-			java.util.Map<String, String> response = new java.util.HashMap<>();
-			response.put("mensaje", resultado);
+			java.util.Map<String, Object> response = new java.util.HashMap<>();
+			response.put("mensaje", resultado.get("mensaje"));
 			response.put("clave", clave);
+			// Opcionalmente indicar si se generó el PDF
+			if (resultado.get("pdfBytes") != null) {
+				response.put("pdfGenerado", true);
+			}
 			
 			return Response.status(Response.Status.OK).entity(response).type(MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
@@ -378,6 +382,90 @@ public class RetencionV2Rest {
 			java.util.Map<String, Object> err = new java.util.HashMap<>();
 			err.put("exito", false);
 			err.put("mensaje", "Error inesperado al anular la retención V2: " + e.getMessage());
+			err.put("error", e.getMessage());
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+					.entity(err).type(MediaType.APPLICATION_JSON).build();
+		}
+	}
+
+	/**
+	 * Reenvía el email de una retención V2 autorizada.
+	 * Si el PDF no existe en disco lo regenera al vuelo (sirve para documentos anteriores al fix).
+	 * Body JSON: { "idRetencion": 123, "destinatarios": "a@x.com;b@x.com" }
+	 */
+	@POST
+	@Path("/reenviarEmail")
+	@Consumes(MediaType.APPLICATION_JSON)
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response reenviarEmail(java.util.Map<String, Object> params) {
+		System.out.println("LLEGA AL SERVICIO reenviarEmail RTV2");
+		try {
+			Long id = null;
+			Object idObj = params.get("idRetencion");
+			if (idObj instanceof Integer) id = ((Integer) idObj).longValue();
+			else if (idObj instanceof Long) id = (Long) idObj;
+			else if (idObj != null) id = Long.parseLong(idObj.toString());
+
+			String destinatarios = (String) params.get("destinatarios");
+			if (id == null) {
+				java.util.Map<String, Object> err = new java.util.HashMap<>();
+				err.put("exito", false);
+				err.put("mensaje", "El parámetro 'idRetencion' es obligatorio.");
+				return Response.status(Response.Status.BAD_REQUEST).entity(err).type(MediaType.APPLICATION_JSON).build();
+			}
+			java.util.Map<String, Object> resultado = retencionV2Service.reenviarEmail(id, destinatarios);
+			boolean exito = Boolean.TRUE.equals(resultado.get("exito"));
+			return Response.status(exito ? Response.Status.OK : Response.Status.BAD_REQUEST)
+					.entity(resultado).type(MediaType.APPLICATION_JSON).build();
+		} catch (Throwable e) {
+			System.err.println("ERROR en reenviarEmail RTV2 REST: " + e.getMessage());
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", "Error inesperado al reenviar el email: " + e.getMessage());
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity(err).type(MediaType.APPLICATION_JSON).build();
+		}
+	}
+
+	/**
+	 * Consulta el estado de una retención V2 ante el SRI y, si devuelve AUTORIZADO:
+	 *  - Actualiza el estado de la retención a autorizada (5) si estaba pendiente.
+	 *  - Guarda el número de autorización y fecha de autorización.
+	 *  - Si la retención no tiene asiento contable y el facturador tiene generaConta=1,
+	 *    genera el asiento contable automáticamente.
+	 *  - Envía el email con el XML autorizado y PDF RIDE adjuntos.
+	 *
+	 * POST /rtv2/consultarYActualizarEstado
+	 * Body: { "idRetencion": 123 }
+	 */
+	@POST
+	@Path("/consultarYActualizarEstado")
+	@Consumes(MediaType.APPLICATION_JSON)
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response consultarYActualizarEstado(java.util.Map<String, Object> params) {
+		System.out.println("LLEGA AL SERVICIO consultarYActualizarEstado RETENCION V2");
+		try {
+			Long idRetencion = getLongParam(params, "idRetencion");
+			if (idRetencion == null) {
+				java.util.Map<String, Object> err = new java.util.HashMap<>();
+				err.put("exito", false);
+				err.put("mensaje", "El parámetro 'idRetencion' es obligatorio.");
+				return Response.status(Response.Status.BAD_REQUEST)
+						.entity(err).type(MediaType.APPLICATION_JSON).build();
+			}
+
+			java.util.Map<String, Object> resultado =
+					retencionV2Service.consultarYActualizarEstadoRetencionV2(idRetencion);
+
+			boolean exito = Boolean.TRUE.equals(resultado.get("exito"));
+			return Response.status(exito ? Response.Status.OK : Response.Status.BAD_REQUEST)
+					.entity(resultado).type(MediaType.APPLICATION_JSON).build();
+
+		} catch (Throwable e) {
+			System.err.println("ERROR en consultarYActualizarEstado RTV2 REST: " + e.getMessage());
+			e.printStackTrace();
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", "Error inesperado al consultar estado en el SRI: " + e.getMessage());
 			err.put("error", e.getMessage());
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
 					.entity(err).type(MediaType.APPLICATION_JSON).build();

@@ -2233,14 +2233,24 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     private LocalDateTime parseFechaHora(String val) {
         if (val == null || val.isEmpty()) return null;
         String v = val.trim().replaceAll("[+-]\\d{2}:\\d{2}$", "").trim();
-        String[] formatos = {
-            "dd/MM/yyyy HH:mm:ss", "dd/MM/yyyy",
-            "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd"
+        // Intentar primero formatos con fecha Y hora
+        String[] formatosConHora = {
+            "dd/MM/yyyy HH:mm:ss",
+            "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd'T'HH:mm:ss"
         };
-        for (String fmt : formatos) {
+        for (String fmt : formatosConHora) {
             try { return LocalDateTime.parse(v, DateTimeFormatter.ofPattern(fmt)); }
             catch (Exception ignored) {}
         }
+        // Intentar formatos solo-fecha (sin hora) → convertir a medianoche
+        String[] formatosSoloFecha = {
+            "dd/MM/yyyy", "yyyy-MM-dd", "dd-MM-yyyy"
+        };
+        for (String fmt : formatosSoloFecha) {
+            try { return LocalDate.parse(v, DateTimeFormatter.ofPattern(fmt)).atStartOfDay(); }
+            catch (Exception ignored) {}
+        }
+        // Último recurso: ISO básico
         try { return LocalDate.parse(v).atStartOfDay(); }
         catch (Exception ignored) {}
         return null;

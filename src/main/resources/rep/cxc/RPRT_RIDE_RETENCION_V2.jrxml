@@ -1,5 +1,7 @@
 <!-- Created with Jaspersoft Studio version 7.0.3.final using JasperReports Library version 7.0.3-41034ca841d452f3305ba55b9042260aaa1ab5dd  -->
 <jasperReport name="RPRT_RIDE_RETENCION_V2" language="java" pageWidth="595" pageHeight="842" columnWidth="535" leftMargin="30" rightMargin="30" topMargin="20" bottomMargin="20" uuid="e3c4d5f6-a7b8-9012-cdef-345678901abc">
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="Oracle"/>
+	<property name="com.jaspersoft.studio.data.sql.tables" value=""/>
 	<parameter name="P_ID_RETENCION_V2" class="java.lang.Long">
 		<defaultValueExpression><![CDATA[0L]]></defaultValueExpression>
 	</parameter>
@@ -29,6 +31,7 @@
 		        ELSE ''
 		    END                                                                  AS tipoEmpresa,
 		    COALESCE(t.TTLRNMBR,  '')                                            AS nombreProveedor,
+		     COALESCE(t.TTLRRZSC,  '')                                            AS razonSocialProveedor,
 		    COALESCE(t.TTLRIDNT,  '')                                            AS identificacionProveedor,
 		    COALESCE(t.TTLRMLLL,  '')                                            AS emailProveedor,
 		    COALESCE(t.TTLRTLFN,  '')                                            AS telefonoProveedor,
@@ -53,59 +56,165 @@
 		WHERE r.ID = $P{P_ID_RETENCION_V2}
 		ORDER BY d.NUMDOCRETEN, d.ID
 	]]></query>
-	<field name="clave" class="java.lang.String"/>
-	<field name="numeroRetencion" class="java.lang.String"/>
-	<field name="numeroAutorizacion" class="java.lang.String"/>
-	<field name="fechaEmision" class="java.lang.String"/>
-	<field name="fechaAutorizacion" class="java.lang.String"/>
-	<field name="ambiente" class="java.lang.String"/>
-	<field name="periodoFiscal" class="java.lang.String"/>
-	<field name="observacion" class="java.lang.String"/>
-	<field name="rucFacturador" class="java.lang.String"/>
-	<field name="razonSocial" class="java.lang.String"/>
-	<field name="nombreComercial" class="java.lang.String"/>
-	<field name="direccionFcdr" class="java.lang.String"/>
-	<field name="telefonoFcdr" class="java.lang.String"/>
-	<field name="emailFcdr" class="java.lang.String"/>
-	<field name="obligadoContabilidad" class="java.lang.String"/>
-	<field name="agenteRetencion" class="java.lang.String"/>
-	<field name="contribuyenteEspecial" class="java.lang.String"/>
-	<field name="tipoEmpresa" class="java.lang.String"/>
-	<field name="nombreProveedor" class="java.lang.String"/>
-	<field name="identificacionProveedor" class="java.lang.String"/>
-	<field name="emailProveedor" class="java.lang.String"/>
-	<field name="telefonoProveedor" class="java.lang.String"/>
-	<field name="direccionProveedor" class="java.lang.String"/>
-	<field name="dirEstablecimiento" class="java.lang.String"/>
-	<field name="tipoDocReten" class="java.lang.String"/>
-	<field name="numDocReten" class="java.lang.String"/>
-	<field name="fechaEmiDoc" class="java.lang.String"/>
-	<field name="totalSinImpuestos" class="java.lang.Double"/>
-	<field name="importeTotal" class="java.lang.Double"/>
-	<field name="codImpuesto" class="java.lang.String"/>
-	<field name="codRetencion" class="java.lang.String"/>
-	<field name="baseImponible" class="java.lang.Double"/>
-	<field name="porcentajeReten" class="java.lang.Double"/>
-	<field name="valorReten" class="java.lang.Double"/>
-	<variable name="V_TOTAL_RETENIDO" calculation="Sum" class="java.lang.Double">
-		<expression><![CDATA[$F{valorReten}]]></expression>
-		<initialValueExpression><![CDATA[0.0]]></initialValueExpression>
+	<field name="CLAVE" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="CLAVE"/>
+		<property name="com.jaspersoft.studio.field.label" value="CLAVE"/>
+	</field>
+	<field name="NUMERORETENCION" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="NUMERORETENCION"/>
+		<property name="com.jaspersoft.studio.field.label" value="NUMERORETENCION"/>
+	</field>
+	<field name="NUMEROAUTORIZACION" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="NUMEROAUTORIZACION"/>
+		<property name="com.jaspersoft.studio.field.label" value="NUMEROAUTORIZACION"/>
+	</field>
+	<field name="FECHAEMISION" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="FECHAEMISION"/>
+		<property name="com.jaspersoft.studio.field.label" value="FECHAEMISION"/>
+	</field>
+	<field name="FECHAAUTORIZACION" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="FECHAAUTORIZACION"/>
+		<property name="com.jaspersoft.studio.field.label" value="FECHAAUTORIZACION"/>
+	</field>
+	<field name="AMBIENTE" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="AMBIENTE"/>
+		<property name="com.jaspersoft.studio.field.label" value="AMBIENTE"/>
+	</field>
+	<field name="PERIODOFISCAL" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="PERIODOFISCAL"/>
+		<property name="com.jaspersoft.studio.field.label" value="PERIODOFISCAL"/>
+	</field>
+	<field name="OBSERVACION" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="OBSERVACION"/>
+		<property name="com.jaspersoft.studio.field.label" value="OBSERVACION"/>
+	</field>
+	<field name="RUCFACTURADOR" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="RUCFACTURADOR"/>
+		<property name="com.jaspersoft.studio.field.label" value="RUCFACTURADOR"/>
+	</field>
+	<field name="RAZONSOCIAL" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="RAZONSOCIAL"/>
+		<property name="com.jaspersoft.studio.field.label" value="RAZONSOCIAL"/>
+	</field>
+	<field name="NOMBRECOMERCIAL" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="NOMBRECOMERCIAL"/>
+		<property name="com.jaspersoft.studio.field.label" value="NOMBRECOMERCIAL"/>
+	</field>
+	<field name="DIRECCIONFCDR" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="DIRECCIONFCDR"/>
+		<property name="com.jaspersoft.studio.field.label" value="DIRECCIONFCDR"/>
+	</field>
+	<field name="TELEFONOFCDR" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="TELEFONOFCDR"/>
+		<property name="com.jaspersoft.studio.field.label" value="TELEFONOFCDR"/>
+	</field>
+	<field name="EMAILFCDR" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="EMAILFCDR"/>
+		<property name="com.jaspersoft.studio.field.label" value="EMAILFCDR"/>
+	</field>
+	<field name="OBLIGADOCONTABILIDAD" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="OBLIGADOCONTABILIDAD"/>
+		<property name="com.jaspersoft.studio.field.label" value="OBLIGADOCONTABILIDAD"/>
+	</field>
+	<field name="AGENTERETENCION" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="AGENTERETENCION"/>
+		<property name="com.jaspersoft.studio.field.label" value="AGENTERETENCION"/>
+	</field>
+	<field name="CONTRIBUYENTEESPECIAL" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="CONTRIBUYENTEESPECIAL"/>
+		<property name="com.jaspersoft.studio.field.label" value="CONTRIBUYENTEESPECIAL"/>
+	</field>
+	<field name="TIPOEMPRESA" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="TIPOEMPRESA"/>
+		<property name="com.jaspersoft.studio.field.label" value="TIPOEMPRESA"/>
+	</field>
+	<field name="NOMBREPROVEEDOR" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="NOMBREPROVEEDOR"/>
+		<property name="com.jaspersoft.studio.field.label" value="NOMBREPROVEEDOR"/>
+	</field>
+	<field name="RAZONSOCIALPROVEEDOR" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="RAZONSOCIALPROVEEDOR"/>
+		<property name="com.jaspersoft.studio.field.label" value="RAZONSOCIALPROVEEDOR"/>
+	</field>
+	<field name="IDENTIFICACIONPROVEEDOR" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="IDENTIFICACIONPROVEEDOR"/>
+		<property name="com.jaspersoft.studio.field.label" value="IDENTIFICACIONPROVEEDOR"/>
+	</field>
+	<field name="EMAILPROVEEDOR" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="EMAILPROVEEDOR"/>
+		<property name="com.jaspersoft.studio.field.label" value="EMAILPROVEEDOR"/>
+	</field>
+	<field name="TELEFONOPROVEEDOR" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="TELEFONOPROVEEDOR"/>
+		<property name="com.jaspersoft.studio.field.label" value="TELEFONOPROVEEDOR"/>
+	</field>
+	<field name="DIRECCIONPROVEEDOR" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="DIRECCIONPROVEEDOR"/>
+		<property name="com.jaspersoft.studio.field.label" value="DIRECCIONPROVEEDOR"/>
+	</field>
+	<field name="DIRESTABLECIMIENTO" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="DIRESTABLECIMIENTO"/>
+		<property name="com.jaspersoft.studio.field.label" value="DIRESTABLECIMIENTO"/>
+	</field>
+	<field name="TIPODOCRETEN" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="TIPODOCRETEN"/>
+		<property name="com.jaspersoft.studio.field.label" value="TIPODOCRETEN"/>
+	</field>
+	<field name="NUMDOCRETEN" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="NUMDOCRETEN"/>
+		<property name="com.jaspersoft.studio.field.label" value="NUMDOCRETEN"/>
+	</field>
+	<field name="FECHAEMIDOC" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="FECHAEMIDOC"/>
+		<property name="com.jaspersoft.studio.field.label" value="FECHAEMIDOC"/>
+	</field>
+	<field name="TOTALSINIMPUESTOS" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="TOTALSINIMPUESTOS"/>
+		<property name="com.jaspersoft.studio.field.label" value="TOTALSINIMPUESTOS"/>
+	</field>
+	<field name="IMPORTETOTAL" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="IMPORTETOTAL"/>
+		<property name="com.jaspersoft.studio.field.label" value="IMPORTETOTAL"/>
+	</field>
+	<field name="CODIMPUESTO" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="CODIMPUESTO"/>
+		<property name="com.jaspersoft.studio.field.label" value="CODIMPUESTO"/>
+	</field>
+	<field name="CODRETENCION" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="CODRETENCION"/>
+		<property name="com.jaspersoft.studio.field.label" value="CODRETENCION"/>
+	</field>
+	<field name="BASEIMPONIBLE" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="BASEIMPONIBLE"/>
+		<property name="com.jaspersoft.studio.field.label" value="BASEIMPONIBLE"/>
+	</field>
+	<field name="PORCENTAJERETEN" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="PORCENTAJERETEN"/>
+		<property name="com.jaspersoft.studio.field.label" value="PORCENTAJERETEN"/>
+	</field>
+	<field name="VALORRETEN" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="VALORRETEN"/>
+		<property name="com.jaspersoft.studio.field.label" value="VALORRETEN"/>
+	</field>
+	<variable name="V_TOTAL_RETENIDO" calculation="Sum" class="java.math.BigDecimal">
+		<expression><![CDATA[$F{VALORRETEN}]]></expression>
+		<initialValueExpression><![CDATA[new java.math.BigDecimal(0)]]></initialValueExpression>
 	</variable>
 	<group name="G_DOC_SUSTENTO">
-		<expression><![CDATA[$F{numDocReten}]]></expression>
+		<expression><![CDATA[$F{NUMDOCRETEN}]]></expression>
 		<groupHeader>
 			<band height="38" splitType="Prevent">
 				<element kind="rectangle" uuid="a1000001-0000-0000-0000-000000000001" mode="Opaque" x="0" y="2" width="535" height="14" backcolor="#E8E8E8">
 					<pen lineWidth="0.3"/>
 				</element>
 				<element kind="staticText" uuid="a1000002-0000-0000-0000-000000000002" mode="Opaque" x="0" y="2" width="80" height="14" backcolor="#E8E8E8" fontSize="7.0" bold="true" vTextAlign="Middle">
-					<text><![CDATA[Doc. Sustento:]]></text>
+					<text><![CDATA[Factura:]]></text>
 					<box leftPadding="3">
 						<pen lineWidth="0.3"/>
 					</box>
 				</element>
 				<element kind="textField" uuid="a1000003-0000-0000-0000-000000000003" mode="Opaque" x="80" y="2" width="110" height="14" backcolor="#E8E8E8" fontSize="7.0" vTextAlign="Middle">
-					<expression><![CDATA[$F{numDocReten}]]></expression>
+					<expression><![CDATA[$F{NUMDOCRETEN}]]></expression>
 					<box leftPadding="3">
 						<pen lineWidth="0.3"/>
 					</box>
@@ -117,31 +226,19 @@
 					</box>
 				</element>
 				<element kind="textField" uuid="a1000005-0000-0000-0000-000000000005" mode="Opaque" x="250" y="2" width="80" height="14" backcolor="#E8E8E8" fontSize="7.0" vTextAlign="Middle">
-					<expression><![CDATA[$F{fechaEmiDoc}]]></expression>
+					<expression><![CDATA[$F{FECHAEMIDOC}]]></expression>
 					<box leftPadding="3">
 						<pen lineWidth="0.3"/>
 					</box>
 				</element>
 				<element kind="staticText" uuid="a1000006-0000-0000-0000-000000000006" mode="Opaque" x="330" y="2" width="75" height="14" backcolor="#E8E8E8" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
-					<text><![CDATA[Total sin imp.:]]></text>
-					<box rightPadding="3">
-						<pen lineWidth="0.3"/>
-					</box>
-				</element>
-				<element kind="textField" uuid="a1000007-0000-0000-0000-000000000007" mode="Opaque" x="405" y="2" width="65" height="14" backcolor="#E8E8E8" fontSize="7.0" pattern="#,##0.00" hTextAlign="Right" vTextAlign="Middle">
-					<expression><![CDATA[$F{totalSinImpuestos}]]></expression>
-					<box rightPadding="3">
-						<pen lineWidth="0.3"/>
-					</box>
-				</element>
-				<element kind="staticText" uuid="a1000008-0000-0000-0000-000000000008" mode="Opaque" x="470" y="2" width="30" height="14" backcolor="#E8E8E8" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
 					<text><![CDATA[Total:]]></text>
 					<box rightPadding="3">
 						<pen lineWidth="0.3"/>
 					</box>
 				</element>
-				<element kind="textField" uuid="a1000009-0000-0000-0000-000000000009" mode="Opaque" x="500" y="2" width="35" height="14" backcolor="#E8E8E8" fontSize="7.0" pattern="#,##0.00" hTextAlign="Right" vTextAlign="Middle">
-					<expression><![CDATA[$F{importeTotal}]]></expression>
+				<element kind="textField" uuid="a1000007-0000-0000-0000-000000000007" mode="Opaque" x="405" y="2" width="130" height="14" backcolor="#E8E8E8" fontSize="7.0" pattern="#,##0.00" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$F{TOTALSINIMPUESTOS}]]></expression>
 					<box rightPadding="3">
 						<pen lineWidth="0.3"/>
 					</box>
@@ -193,47 +290,47 @@
 			<expression><![CDATA[getClass().getResourceAsStream("/rep/img/logo_aso.jpeg")]]></expression>
 		</element>
 		<element kind="textField" uuid="b1000002-0000-0000-0000-000000000002" x="0" y="100" width="230" height="26" fontSize="10.0" blankWhenNull="true" bold="true" hTextAlign="Center" vTextAlign="Bottom">
-			<printWhenExpression><![CDATA[$F{nombreComercial} != null && !$F{nombreComercial}.isEmpty()]]></printWhenExpression>
-			<expression><![CDATA[$F{nombreComercial}]]></expression>
+			<printWhenExpression><![CDATA[$F{NOMBRECOMERCIAL} != null && !$F{NOMBRECOMERCIAL}.isEmpty()]]></printWhenExpression>
+			<expression><![CDATA[$F{NOMBRECOMERCIAL}]]></expression>
 		</element>
 		<element kind="rectangle" uuid="b1000003-0000-0000-0000-000000000003" x="0" y="130" width="233" height="162" radius="4">
 			<pen lineWidth="0.5"/>
 		</element>
 		<element kind="textField" uuid="b1000004-0000-0000-0000-000000000004" x="2" y="132" width="229" height="56" fontSize="9.0" textAdjust="StretchHeight" bold="true" hTextAlign="Center" vTextAlign="Top">
-			<expression><![CDATA[$F{razonSocial}]]></expression>
+			<expression><![CDATA[$F{RAZONSOCIAL}]]></expression>
 		</element>
 		<element kind="staticText" uuid="b1000005-0000-0000-0000-000000000005" x="3" y="190" width="40" height="20" fontSize="7.0" bold="true" vTextAlign="Top">
 			<text><![CDATA[Dirección:]]></text>
 		</element>
 		<element kind="textField" uuid="b1000006-0000-0000-0000-000000000006" x="43" y="190" width="188" height="20" fontSize="7.0" textAdjust="StretchHeight">
-			<expression><![CDATA[$F{direccionFcdr}]]></expression>
+			<expression><![CDATA[$F{DIRECCIONFCDR}]]></expression>
 		</element>
 		<element kind="staticText" uuid="b1000007-0000-0000-0000-000000000007" x="3" y="212" width="38" height="10" fontSize="7.0" bold="true">
 			<text><![CDATA[Teléfono:]]></text>
 		</element>
 		<element kind="textField" uuid="b1000008-0000-0000-0000-000000000008" x="43" y="212" width="188" height="10" fontSize="7.0" blankWhenNull="true">
-			<expression><![CDATA[$F{telefonoFcdr}]]></expression>
+			<expression><![CDATA[$F{TELEFONOFCDR}]]></expression>
 		</element>
 		<element kind="staticText" uuid="b1000009-0000-0000-0000-000000000009" x="3" y="224" width="30" height="10" fontSize="7.0" bold="true">
 			<text><![CDATA[E-mail:]]></text>
 		</element>
 		<element kind="textField" uuid="b1000010-0000-0000-0000-000000000010" x="43" y="224" width="188" height="10" fontSize="7.0" blankWhenNull="true">
-			<expression><![CDATA[$F{emailFcdr}]]></expression>
+			<expression><![CDATA[$F{EMAILFCDR}]]></expression>
 		</element>
 		<element kind="textField" uuid="b1000011-0000-0000-0000-000000000011" x="3" y="236" width="228" height="10" fontSize="7.0" textAdjust="StretchHeight" blankWhenNull="true" bold="true">
-			<printWhenExpression><![CDATA[$F{tipoEmpresa} != null && !$F{tipoEmpresa}.isEmpty()]]></printWhenExpression>
-			<expression><![CDATA[$F{tipoEmpresa}]]></expression>
+			<printWhenExpression><![CDATA[$F{TIPOEMPRESA} != null && !$F{TIPOEMPRESA}.isEmpty()]]></printWhenExpression>
+			<expression><![CDATA[$F{TIPOEMPRESA}]]></expression>
 		</element>
 		<element kind="textField" uuid="b1000012-0000-0000-0000-000000000012" x="3" y="248" width="228" height="10" fontSize="7.0" blankWhenNull="true">
-			<printWhenExpression><![CDATA[$F{agenteRetencion} != null && !$F{agenteRetencion}.isEmpty()]]></printWhenExpression>
-			<expression><![CDATA["Agente Retención No. " + $F{agenteRetencion}]]></expression>
+			<printWhenExpression><![CDATA[$F{AGENTERETENCION} != null && !$F{AGENTERETENCION}.isEmpty()]]></printWhenExpression>
+			<expression><![CDATA["Agente Retención No. " + $F{AGENTERETENCION}]]></expression>
 		</element>
 		<element kind="textField" uuid="b1000013-0000-0000-0000-000000000013" x="3" y="260" width="228" height="10" fontSize="7.0" blankWhenNull="true">
-			<printWhenExpression><![CDATA[$F{contribuyenteEspecial} != null && !$F{contribuyenteEspecial}.isEmpty()]]></printWhenExpression>
-			<expression><![CDATA["Contribuyente Especial No. " + $F{contribuyenteEspecial}]]></expression>
+			<printWhenExpression><![CDATA[$F{CONTRIBUYENTEESPECIAL} != null && !$F{CONTRIBUYENTEESPECIAL}.isEmpty()]]></printWhenExpression>
+			<expression><![CDATA["Contribuyente Especial No. " + $F{CONTRIBUYENTEESPECIAL}]]></expression>
 		</element>
 		<element kind="textField" uuid="b1000014-0000-0000-0000-000000000014" x="3" y="272" width="228" height="10" fontSize="7.0">
-			<expression><![CDATA["Obligado a llevar Contabilidad: " + $F{obligadoContabilidad}]]></expression>
+			<expression><![CDATA["Obligado a llevar Contabilidad: " + $F{OBLIGADOCONTABILIDAD}]]></expression>
 		</element>
 		<element kind="rectangle" uuid="b1000015-0000-0000-0000-000000000015" x="251" y="0" width="284" height="295" radius="4">
 			<pen lineWidth="0.5"/>
@@ -241,40 +338,40 @@
 		<element kind="staticText" uuid="b1000016-0000-0000-0000-000000000016" x="253" y="4" width="280" height="13" backcolor="#DDDDDD" bold="true" hTextAlign="Center">
 			<text><![CDATA[R.U.C.]]></text>
 		</element>
-		<element kind="textField" uuid="b1000017-0000-0000-0000-000000000017" x="253" y="17" width="280" height="13" hTextAlign="Center">
-			<expression><![CDATA[$F{rucFacturador}]]></expression>
+		<element kind="textField" uuid="b1000017-0000-0000-0000-000000000017" x="253" y="20" width="280" height="13" hTextAlign="Center">
+			<expression><![CDATA[$F{RUCFACTURADOR}]]></expression>
 		</element>
 		<element kind="staticText" uuid="b1000018-0000-0000-0000-000000000018" x="253" y="50" width="280" height="13" backcolor="#DDDDDD" bold="true" hTextAlign="Center">
 			<text><![CDATA[COMPROBANTE DE RETENCIÓN]]></text>
 		</element>
 		<element kind="textField" uuid="b1000019-0000-0000-0000-000000000019" x="253" y="63" width="280" height="13" hTextAlign="Center">
-			<expression><![CDATA[$F{numeroRetencion}]]></expression>
+			<expression><![CDATA[$F{NUMERORETENCION}]]></expression>
 		</element>
 		<element kind="staticText" uuid="b1000020-0000-0000-0000-000000000020" x="253" y="96" width="280" height="13" backcolor="#DDDDDD" bold="true" hTextAlign="Center">
 			<text><![CDATA[NÚMERO DE AUTORIZACIÓN]]></text>
 		</element>
 		<element kind="textField" uuid="b1000021-0000-0000-0000-000000000021" x="253" y="109" width="280" height="24" textAdjust="StretchHeight" hTextAlign="Center">
-			<expression><![CDATA[$F{numeroAutorizacion}]]></expression>
+			<expression><![CDATA[$F{NUMEROAUTORIZACION}]]></expression>
 		</element>
 		<element kind="staticText" uuid="b1000022-0000-0000-0000-000000000022" x="253" y="153" width="280" height="13" backcolor="#DDDDDD" bold="true" hTextAlign="Center">
 			<text><![CDATA[FECHA Y HORA DE AUTORIZACIÓN]]></text>
 		</element>
 		<element kind="textField" uuid="b1000023-0000-0000-0000-000000000023" x="253" y="166" width="280" height="12" fontSize="9.0" hTextAlign="Center">
-			<expression><![CDATA[$F{fechaAutorizacion}]]></expression>
+			<expression><![CDATA[$F{FECHAAUTORIZACION}]]></expression>
 		</element>
 		<element kind="textField" uuid="b1000024-0000-0000-0000-000000000024" x="253" y="180" width="280" height="12" hTextAlign="Center">
-			<expression><![CDATA["AMBIENTE: " + $F{ambiente} + "   EMISIÓN: NORMAL"]]></expression>
+			<expression><![CDATA["AMBIENTE: " + $F{AMBIENTE} + "   EMISIÓN: NORMAL"]]></expression>
 		</element>
 		<element kind="staticText" uuid="b1000025-0000-0000-0000-000000000025" x="253" y="209" width="280" height="13" backcolor="#DDDDDD" bold="true" hTextAlign="Center">
 			<text><![CDATA[CLAVE DE ACCESO]]></text>
 		</element>
 		<element kind="component" uuid="b1000026-0000-0000-0000-000000000026" x="256" y="224" width="276" height="55">
 			<component kind="barcode4j:Code128" moduleWidth="1.2" textPosition="none" quietZone="10.0" verticalQuietZone="1.0">
-				<codeExpression><![CDATA[$F{clave}]]></codeExpression>
+				<codeExpression><![CDATA[$F{CLAVE}]]></codeExpression>
 			</component>
 		</element>
 		<element kind="textField" uuid="b1000027-0000-0000-0000-000000000027" x="253" y="282" width="280" height="10" fontName="Courier New" fontSize="5.0" hTextAlign="Center">
-			<expression><![CDATA[$F{clave}]]></expression>
+			<expression><![CDATA[$F{CLAVE}]]></expression>
 		</element>
 		<element kind="line" uuid="b1000028-0000-0000-0000-000000000028" x="0" y="300" width="535" height="1">
 			<pen lineWidth="0.5"/>
@@ -286,7 +383,7 @@
 			</box>
 		</element>
 		<element kind="textField" uuid="b1000030-0000-0000-0000-000000000030" x="130" y="303" width="405" height="13" fontSize="8.0" textAdjust="StretchHeight">
-			<expression><![CDATA[$F{nombreProveedor}]]></expression>
+			<expression><![CDATA[$F{RAZONSOCIALPROVEEDOR} != null && !$F{RAZONSOCIALPROVEEDOR}.isEmpty() ? $F{RAZONSOCIALPROVEEDOR} : $F{NOMBREPROVEEDOR}]]></expression>
 			<box leftPadding="3">
 				<pen lineWidth="0.3"/>
 			</box>
@@ -298,7 +395,7 @@
 			</box>
 		</element>
 		<element kind="textField" uuid="b1000032-0000-0000-0000-000000000032" x="70" y="318" width="200" height="13" fontSize="8.0">
-			<expression><![CDATA[$F{identificacionProveedor}]]></expression>
+			<expression><![CDATA[$F{IDENTIFICACIONPROVEEDOR}]]></expression>
 			<box leftPadding="3">
 				<pen lineWidth="0.3"/>
 			</box>
@@ -310,7 +407,7 @@
 			</box>
 		</element>
 		<element kind="textField" uuid="b1000034-0000-0000-0000-000000000034" x="350" y="318" width="185" height="13" fontSize="8.0">
-			<expression><![CDATA[$F{fechaEmision}]]></expression>
+			<expression><![CDATA[$F{FECHAEMISION}]]></expression>
 			<box leftPadding="3">
 				<pen lineWidth="0.3"/>
 			</box>
@@ -322,7 +419,7 @@
 			</box>
 		</element>
 		<element kind="textField" uuid="b1000036-0000-0000-0000-000000000036" x="70" y="333" width="200" height="13" fontSize="8.0">
-			<expression><![CDATA[$F{periodoFiscal}]]></expression>
+			<expression><![CDATA[$F{PERIODOFISCAL}]]></expression>
 			<box leftPadding="3">
 				<pen lineWidth="0.3"/>
 			</box>
@@ -333,65 +430,53 @@
 				<pen lineWidth="0.3"/>
 			</box>
 		</element>
-		<element kind="textField" uuid="b1000038-0000-0000-0000-000000000038" x="350" y="333" width="185" height="13" fontSize="8.0" textAdjust="StretchHeight" blankWhenNull="true">
-			<expression><![CDATA[$F{dirEstablecimiento}]]></expression>
+		<element kind="textField" uuid="b1000038-0000-0000-0000-000000000038" x="350" y="333" width="185" height="29" fontSize="8.0" textAdjust="StretchHeight" blankWhenNull="true">
+			<expression><![CDATA[$F{DIRESTABLECIMIENTO}]]></expression>
 			<box leftPadding="3">
 				<pen lineWidth="0.3"/>
 			</box>
 		</element>
-		<element kind="line" uuid="b1000039-0000-0000-0000-000000000039" x="0" y="348" width="535" height="1">
+		<element kind="line" uuid="b1000039-0000-0000-0000-000000000039" x="0" y="362" width="535" height="1">
 			<pen lineWidth="0.5"/>
 		</element>
-		<element kind="staticText" uuid="b1000040-0000-0000-0000-000000000040" mode="Opaque" x="0" y="351" width="535" height="14" forecolor="#FFFFFF" backcolor="#333333" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="b1000040-0000-0000-0000-000000000040" mode="Opaque" x="0" y="365" width="535" height="14" forecolor="#FFFFFF" backcolor="#333333" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[DETALLE DE RETENCIONES]]></text>
-		</element>
-		<element kind="staticText" uuid="b1000041-0000-0000-0000-000000000041" mode="Opaque" x="0" y="366" width="250" height="13" backcolor="#F0F0F0" fontSize="7.0" bold="true" vTextAlign="Middle">
-			<text><![CDATA[Documento Sustento / Datos del Impuesto]]></text>
-			<box leftPadding="3">
-				<pen lineWidth="0.3"/>
-			</box>
-		</element>
-		<element kind="staticText" uuid="b1000042-0000-0000-0000-000000000042" mode="Opaque" x="250" y="366" width="285" height="13" backcolor="#F0F0F0" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
-			<text><![CDATA[Base Imponible / % Retención / Valor Retenido]]></text>
-			<box rightPadding="3">
-				<pen lineWidth="0.3"/>
-			</box>
 		</element>
 	</title>
 	<detail>
 		<band height="12" splitType="Stretch">
 			<element kind="textField" uuid="c1000001-0000-0000-0000-000000000001" x="0" y="0" width="60" height="12" fontSize="7.0" textAdjust="StretchHeight" hTextAlign="Center" vTextAlign="Middle">
-				<expression><![CDATA[$F{codImpuesto}]]></expression>
+				<expression><![CDATA[$F{CODIMPUESTO}]]></expression>
 				<box>
 					<pen lineWidth="0.2"/>
 				</box>
 			</element>
 			<element kind="textField" uuid="c1000002-0000-0000-0000-000000000002" x="60" y="0" width="70" height="12" fontSize="7.0" textAdjust="StretchHeight" hTextAlign="Center" vTextAlign="Middle">
-				<expression><![CDATA[$F{codRetencion}]]></expression>
+				<expression><![CDATA[$F{CODRETENCION}]]></expression>
 				<box>
 					<pen lineWidth="0.2"/>
 				</box>
 			</element>
 			<element kind="textField" uuid="c1000003-0000-0000-0000-000000000003" x="130" y="0" width="205" height="12" fontSize="7.0" textAdjust="StretchHeight" vTextAlign="Middle">
-				<expression><![CDATA[("1".equals($F{codImpuesto}) ? "Ret. Renta " : ("2".equals($F{codImpuesto}) ? "Ret. IVA " : "Ret. Imp. ")) + $F{porcentajeReten}.intValue() + "% - Cód. " + $F{codRetencion}]]></expression>
+				<expression><![CDATA[("1".equals($F{CODIMPUESTO}) ? "Ret. Renta " : ("2".equals($F{CODIMPUESTO}) ? "Ret. IVA " : "Ret. Imp. ")) + $F{PORCENTAJERETEN}.intValue() + "% - Cód. " + $F{CODRETENCION}]]></expression>
 				<box leftPadding="3">
 					<pen lineWidth="0.2"/>
 				</box>
 			</element>
 			<element kind="textField" uuid="c1000004-0000-0000-0000-000000000004" x="335" y="0" width="80" height="12" fontSize="7.0" pattern="#,##0.00" hTextAlign="Right" vTextAlign="Middle">
-				<expression><![CDATA[$F{baseImponible}]]></expression>
+				<expression><![CDATA[$F{BASEIMPONIBLE}]]></expression>
 				<box rightPadding="3">
 					<pen lineWidth="0.2"/>
 				</box>
 			</element>
 			<element kind="textField" uuid="c1000005-0000-0000-0000-000000000005" x="415" y="0" width="55" height="12" fontSize="7.0" pattern="#,##0.00" hTextAlign="Right" vTextAlign="Middle">
-				<expression><![CDATA[$F{porcentajeReten}]]></expression>
+				<expression><![CDATA[$F{PORCENTAJERETEN}]]></expression>
 				<box rightPadding="3">
 					<pen lineWidth="0.2"/>
 				</box>
 			</element>
 			<element kind="textField" uuid="c1000006-0000-0000-0000-000000000006" x="470" y="0" width="65" height="12" fontSize="7.0" pattern="#,##0.00" bold="true" hTextAlign="Right" vTextAlign="Middle">
-				<expression><![CDATA[$F{valorReten}]]></expression>
+				<expression><![CDATA[$F{VALORRETEN}]]></expression>
 				<box rightPadding="3">
 					<pen lineWidth="0.2"/>
 				</box>
@@ -421,9 +506,9 @@
 			</box>
 		</element>
 		<element kind="textField" uuid="d1000005-0000-0000-0000-000000000005" x="0" y="36" width="535" height="40" fontSize="7.0" textAdjust="StretchHeight" blankWhenNull="true">
-			<expression><![CDATA["Soporte: [" + $F{telefonoFcdr} + " - " + $F{emailFcdr} + "]  " +
-"Contacto Proveedor: [" + $F{telefonoProveedor} + " - " + $F{emailProveedor} + "]" +
-($F{observacion} != null && !$F{observacion}.isEmpty() ? "  Observación: " + $F{observacion} : "")]]></expression>
+			<expression><![CDATA["Soporte: [" + $F{TELEFONOFCDR} + " - " + $F{EMAILFCDR} + "]  " +
+"Contacto Proveedor: [" + $F{TELEFONOPROVEEDOR} + " - " + $F{EMAILPROVEEDOR} + "]" +
+($F{OBSERVACION} != null && !$F{OBSERVACION}.isEmpty() ? "  Observación: " + $F{OBSERVACION} : "")]]></expression>
 			<box topPadding="2" leftPadding="3">
 				<pen lineWidth="0.3"/>
 			</box>

@@ -1,0 +1,247 @@
+Servicios expuestos en internet para
+consultas de comprobantes electrónicos
+Los servicios expuestos en el internet por la Administración Tributaria están
+estandarizados a través de canales seguros con protocolos de seguridad y
+certificados SSL.
+8.1 Procesos que ejecutan los servicios expuestos en internet:
+8.1.1 Los procesos tienen la función de consulta comprobantes de manera
+individual.
+8.1.2 Para el intercambio de información entre el contribuyente y la Administración
+Tributaria, es requisito indispensable que el contribuyente cuente con acceso
+a la red de internet banda ancha (por definición y recomendación del MINTEL
+la conexión debe ser mayor a 256Kbps).
+8.1.3Para poder acceder al servicio de consulta de comprobantes electrónicos, el
+contribuyente deberá crear el software cliente para poder invocar a los WEB
+Service que el SRI pone a disposición.
+8.1.4Para garantizar que la conexión es segura se empleará Certificados Digitales
+SSL, es decir, el SRI emitirá un certificado válido cuando se realice la
+petición de los WEB Service.
+Sin embargo, considerando que los certificados pueden ser cambiados
+durante el periodo de su vigencia por causas técnicas o institucionales, se
+recomienda a los contribuyentes que, en la programación de sus sistemas,
+se considere los mecanismos necesarios para que no se queme en su
+código la información, ni los certificados digitales de comprobantes
+electrónicos del SRI, puesto que estos podrían cambiar sin previo aviso por
+la urgencia según sea el caso.
+8.2 Existen dos ambientes disponibles para la invocación de los WS publicados por
+la Administración Tributaria:
+22
+8.2.1 Uno es para el ambiente de pruebas, donde cada contribuyente certificará
+que su aplicación funcione correctamente con cada tipo de comprobante
+electrónico, las direcciones de los WS son las siguientes:
+https://celcer.sri.gob.ec/comprobantes-electronicos-ws/ConsultaComprobante?wsdl
+https://celcer.sri.gob.ec/comprobantes-electronicos-ws/ConsultaFactura?wsdl
+8.2.2 El segundo es para el ambiente de producción, al cual cada contribuyente
+deberá acceder una vez que ha realizado las pruebas y esté seguro de que
+su aplicación funciona correctamente, las direcciones de los WS son las
+siguientes:
+https://cel.sri.gob.ec/comprobantes-electronicos-ws/ConsultaComprobante?wsdl
+https://cel.sri.gob.ec/comprobantes-electronicos-ws/ConsultaFactura?wsdl
+8.2.3Los WS expuestos por la Administración Tributaria son los siguientes:
+Consulta de validez de comprobantes electrónicos
+@WebMethod
+@WebResult(name = " EstadoAutorizacionComprobante")
+public RespuestaConsultaComprobante consultarEstadoAutorizacionComprobante
+(@WebParam(name = "claveAcceso") String claveAcceso)
+Parámetros:
+I/O Nombre Tipo Descripción
+IN claveAcceso String Clave de acceso del comprobante electrónico
+OUT EstadoAutori
+zacionCompr
+obante
+Objeto
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+xmlns:ec="http://ec.gob.sri.ws.consultas">
+ <soapenv:Header/>
+ <soapenv:Body>
+ <ec:consultarEstadoAutorizacionComprobante>
+
+<claveAcceso>0211202401050306179800120010020000000677300995216</claveAcceso>
+ </ec:consultarEstadoAutorizacionComprobante>
+ </soapenv:Body>
+</soapenv:Envelope>
+Retorna un objeto XML con la información del estado del comprobante electrónico.
+Dependiendo del estado de autorización del comprobante electrónicos, el servicio web,
+devolverá en la etiqueta estadoAutorizacion el valor:
+“AUTORIZADO”
+“NO AUTORIZADO”
+“PENDIENTE DE ANULAR” y
+“ANULADO”
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+ <soap:Body>
+ <ns2:consultarEstadoAutorizacionComprobanteResponse
+xmlns:ns2="http://ec.gob.sri.ws.consultas">
+ <EstadoAutorizacionComprobante>
+23
+
+<claveAcceso>2111202405176001321000110010010000001241234567810</claveAcceso>
+ <mensajes/>
+ <estadoAutorizacion>AUTORIZADO</estadoAutorizacion>
+ <tipoComprobante>Nota de Débito</tipoComprobante>
+ <rucEmisor>1760013210001</rucEmisor>
+ <fechaAutorizacion>2024-12-12T10:49:37-05:00</fechaAutorizacion>
+ </EstadoAutorizacionComprobante>
+ </ns2:consultarEstadoAutorizacionComprobanteResponse>
+ </soap:Body>
+</soap:Envelope>
+Si el comprobante consultado se encuentra fuera del rango de fechas permitido por el
+SRI, devolverá en la etiqueta estadoAutorizacion el valor “RECHAZADA”, con el
+identificador 99 correspondiente a “ERROR AL CONSULTAR DATOS DEL SERVICIO WEB” y
+con el mensaje de informacionAdicional “No es posible validar la clave de acceso ya que
+la fecha de emisión está fuera del rango permitido.”
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+ <soap:Body>
+ <ns2:consultarEstadoAutorizacionComprobanteResponse
+xmlns:ns2="http://ec.gob.sri.ws.consultas">
+ <EstadoAutorizacionComprobante>
+ <estadoConsulta>RECHAZADA</estadoConsulta>
+
+<claveAcceso>1510202407099313057500110010010000103591234567816</claveAcceso>
+ <mensajes>
+ <mensaje>
+ <identificador>99</identificador>
+ <mensaje>ERROR AL CONSULTAR DATOS DEL SERVICIO WEB</mensaje>
+ <informacionAdicional>No es posible validar la clave de acceso ya que la fecha de
+emisión está fuera del rango permitido.</informacionAdicional>
+ <tipo>ERROR</tipo>
+ </mensaje>
+ </mensajes>
+ </EstadoAutorizacionComprobante>
+ </ns2:consultarEstadoAutorizacionComprobanteResponse>
+ </soap:Body>
+</soap:Envelope>
+Si el comprobante no se encuentra en las bases de datos del SRI, devolverá en la etiqueta
+estadoAutorizacion el valor “RECHAZADA”, con el identificador 99 correspondiente a
+“ERROR AL CONSULTAR DATOS DEL SERVICIO WEB”
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+ <soap:Body>
+ <ns2:consultarEstadoAutorizacionComprobanteResponse
+xmlns:ns2="http://ec.gob.sri.ws.consultas">
+ <EstadoAutorizacionComprobante>
+ <estadoConsulta>RECHAZADA</estadoConsulta>
+
+<claveAcceso>2111202401176001321000110010010000011171234567810</claveAcceso>
+ <mensajes>
+ <mensaje>
+ <identificador>99</identificador>
+ <mensaje>ERROR AL CONSULTAR DATOS DEL SERVICIO WEB</mensaje>
+ <informacionAdicional>No existen datos para los parámetros
+ingresados</informacionAdicional>
+ <tipo>ERROR</tipo>
+ </mensaje>
+ </mensajes>
+ </EstadoAutorizacionComprobante>
+24
+ </ns2:consultarEstadoAutorizacionComprobanteResponse>
+ </soap:Body>
+</soap:Envelope>
+Consulta de factura comercial negociable:
+@WebMethod
+@WebResult(name = "EstadoConfirmacionFacturaComercialNegociable")
+public RespuestaConsultaFacturaComercialNegociable
+consultarEstadoConfirmacionFacturaComercialNegociable
+(@WebParam(name = "claveAcceso") String claveAcceso)
+Parámetros:
+I/O Nombre Tipo Descripción
+IN ClaveAcceso String Clave de acceso del comprobante electrónico
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+xmlns:ec="http://ec.gob.sri.ws.consultas">
+ <soapenv:Header/>
+ <soapenv:Body>
+ <ec:consultarEstadoConfirmacionFacturaComercialNegociable>
+<claveAcceso>1211202401092554321700110021000000000790925543211</claveAcceso>
+ </ec:consultarEstadoConfirmacionFacturaComercialNegociable>
+ </soapenv:Body>
+</soapenv:Envelope>
+OUT EstadoConfir
+macionFactu
+raComercial
+Negociable
+Objeto Retorna un objeto XML con la información de la factura electrónica indicando si ha sido
+aceptada como factura comercial negociable
+Dependiendo si la factura electrónica tiene estado de confirmación, aceptado como
+factura comercial negociable, el servicio web devolverá en la etiqueta
+estadoConfirmacion el valor: “SI”
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+ <soap:Body>
+ <ns2:consultarEstadoConfirmacionFacturaComercialNegociableResponse
+xmlns:ns2="http://ec.gob.sri.ws.consultas">
+ <EstadoConfirmacionFacturaComercialNegociable>
+
+<claveAcceso>1111202401099338176200110020010000003961234567815</claveAcceso>
+ <mensajes/>
+<estadoConfirmacion>SI</estadoConfirmacion>
+ </EstadoConfirmacionFacturaComercialNegociable>
+ </ns2:consultarEstadoConfirmacionFacturaComercialNegociableResponse>
+ </soap:Body>
+</soap:Envelope>
+Si la factura consultada se encuentra fuera del rango de fechas permitido por el SRI,
+devolverá en la etiqueta estadoConsulta el valor “RECHAZADA”, con el identificador 99
+correspondiente a “ERROR AL CONSULTAR DATOS DEL SERVICIO WEB” y con el mensaje
+de informacionAdicional “No es posible validar la clave de acceso ya que la fecha de
+emisión está fuera del rango permitido.”
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+ <soap:Body>
+ <ns2:consultarEstadoConfirmacionFacturaComercialNegociableResponse
+25
+I/O Nombre Tipo Descripción
+xmlns:ns2="http://ec.gob.sri.ws.consultas">
+ <EstadoConfirmacionFacturaComercialNegociable>
+ <estadoConsulta>RECHAZADA</estadoConsulta>
+
+<claveAcceso>1111202401099338176200110020010000003961234567815</claveAcceso>
+ <mensajes>
+ <mensaje>
+ <identificador>99</identificador>
+ <mensaje>ERROR AL CONSULTAR DATOS DEL SERVICIO WEB</mensaje>
+ <informacionAdicional>No es posible validar la clave de acceso ya que la fecha de
+emisión está fuera del rango permitido.</informacionAdicional>
+ <tipo>ERROR</tipo>
+ </mensaje>
+ </mensajes>
+ </EstadoConfirmacionFacturaComercialNegociable>
+ </ns2:consultarEstadoConfirmacionFacturaComercialNegociableResponse>
+ </soap:Body>
+</soap:Envelope>
+Si la factura consultada no se encuentra en las bases de datos del SRI o no fue aceptada
+como factura comercial negociable, devolverá en la etiqueta estadoConsulta el valor
+“RECHAZADA”, con el identificador 99 correspondiente a “ERROR AL CONSULTAR DATOS
+DEL SERVICIO WEB”
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+ <soap:Body>
+ <ns2:consultarEstadoConfirmacionFacturaComercialNegociableResponse
+xmlns:ns2="http://ec.gob.sri.ws.consultas">
+ <EstadoConfirmacionFacturaComercialNegociable>
+ <estadoConsulta>RECHAZADA</estadoConsulta>
+
+<claveAcceso>1211202401092554321700110021000000000790925543211</claveAcceso>
+ <mensajes>
+ <mensaje>
+ <identificador>99</identificador>
+ <mensaje>ERROR AL CONSULTAR DATOS DEL SERVICIO WEB</mensaje>
+ <informacionAdicional>No existen datos para los parámetros
+ingresados</informacionAdicional>
+ <tipo>ERROR</tipo>
+ </mensaje>
+ </mensajes>
+ </EstadoConfirmacionFacturaComercialNegociable>
+ </ns2:consultarEstadoConfirmacionFacturaComercialNegociableResponse>
+ </soap:Body>
+</soap:Envelope>
+8.3 El Sistema de Autorización de Documentos Electrónicos soporta un proceso a
+través de un ambiente computacional seguro, que brinda alta disponibilidad y
+rendimiento, opta por utilizar la infraestructura necesaria para brindar el servicio
+a la ciudadanía que realizan transferencias de bienes o prestación de servicios.
+8.4 Una vez que el contribuyente realice la consulta con la clave de acceso del
+comprobante electrónico en el WS de consulta de validez obtendrá en
+respuesta los estados del comprobante “AUTORIZADO”, “NO AUTORIZADO”,
+“PENDIENTE DE ANULAR” o “ANULADO”.
+26
+8.5 En el caso de la consulta de si es una factura comercial negociable, cuando el
+contribuyente realice la consulta con la clave de acceso del comprobante
+electrónico en el WS obtendrá en respuesta “SI”, caso contrario obtendrá el
+valor “RECHAZADA”.
+8.6 Es fundamental señalar que solo la factura comercial negociable generará la
+respuesta “SI” una vez que haya sido notificada y aceptada a través del portal
+web, en la opción de Comprobantes Electrónicos / Ambientes de Pruebas o
+Producción / Factura Comercial Negociable

@@ -105,8 +105,20 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 			}
 			
 			String tipoComprobante = "03"; // Liquidación de Compra
-			Long ambiente = entidad.getAmbiente() != null ? entidad.getAmbiente() : 1L;
 			String tipoEmision = "1";
+			
+			// Obtener ambiente desde el facturador (BD) — fuente autoritativa por seguridad
+			com.saa.model.cxc.Facturador facturadorDB = em.find(com.saa.model.cxc.Facturador.class, entidad.getFacturador().getId());
+			Long ambiente;
+			if (facturadorDB != null && facturadorDB.getAmbiente() != null) {
+				ambiente = facturadorDB.getAmbiente();
+				System.out.println("Ambiente tomado del facturador (BD): " + ambiente
+						+ (ambiente == 2L ? " (PRODUCCIÓN)" : " (PRUEBAS)"));
+			} else {
+				ambiente = entidad.getAmbiente() != null ? entidad.getAmbiente() : 1L;
+				System.out.println("⚠ Facturador sin ambiente configurado en BD, usando valor recibido: " + ambiente);
+			}
+			entidad.setAmbiente(ambiente); // sincronizar el valor correcto en la entidad
 			
 			try {
 				String secuencial = obtenerSecuencial(entidad.getPtoEmision().getId(), tipoComprobante);
@@ -150,134 +162,329 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 	public java.util.Map<String, Object> procesarLiquidacionCompleta(LiquidacionCompra liquidacion,
 			java.util.List<com.saa.model.cxc.DetalleLiquidacionCompra> detalles,
 			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable {
-		System.out.println("=== INICIANDO PROCESO COMPLETO DE LIQUIDACION DE COMPRA ===");
+		System.out.println("=== INICIANDO PROCESO COMPLETO DE LIQUIDACION DE COMPRA (nuevo flujo: BD tras RECIBIDA) ===");
 		
 		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
 		resultado.put("exito", false);
 		
 		try {
-			// PASO 1: Grabar la liquidación
-			System.out.println("PASO 1: Grabando liquidación en base de datos...");
-			if (liquidacion.getId() == null) {
-				liquidacion.setEstado(Long.valueOf(Estado.ACTIVO));
+			if (ambiente  == null) ambiente  = 1L;
+			if (conectaSRI == null) conectaSRI = 1L;
+			if (pathLogo  == null) pathLogo  = "resources/logos/logo_aso.png";
+			if (destinatario == null && liquidacion.getTitular() != null)
+				destinatario = liquidacion.getTitular().getEmail();
+
+			// ── PASO 1: Preparar campos en MEMORIA (sin guardar en BD) ──────────
+			System.out.println("PASO 1: Preparando campos de la liquidación en memoria...");
+			if (liquidacion.getEstado() == null) liquidacion.setEstado(Long.valueOf(Estado.ACTIVO));
+			if (liquidacion.getPtoEmision() == null || liquidacion.getPtoEmision().getId() == null) {
+				resultado.put("etapa", "VALIDACION"); resultado.put("mensaje", "Debe especificar un punto de emisión.");
+				return resultado;
 			}
-			// Usar el MISMO objeto liquidacion - no crear nueva referencia
-			liquidacion = liquidacionCompraDaoService.save(liquidacion, liquidacion.getId());
-			resultado.put("liquidacion", liquidacion);
-			resultado.put("idLiquidacion", liquidacion.getId());
-			System.out.println("✓ Liquidación grabada con ID: " + liquidacion.getId());
-			
-			// PASO 1.5: Guardar los detalles de la liquidación
-			if (detalles != null && !detalles.isEmpty()) {
-				System.out.println("PASO 1.5: Guardando " + detalles.size() + " detalles de liquidación...");
-				for (com.saa.model.cxc.DetalleLiquidacionCompra detalle : detalles) {
-					detalle.setLiquidacion(liquidacion);
-					if (detalle.getEstado() == null) {
-						detalle.setEstado(Long.valueOf(Estado.ACTIVO));
-					}
-					em.persist(detalle);
-				}
-				em.flush();
-				System.out.println("✓ Detalles guardados correctamente");
+			if (liquidacion.getFacturador() == null || liquidacion.getFacturador().getId() == null) {
+				resultado.put("etapa", "VALIDACION"); resultado.put("mensaje", "Debe especificar un facturador.");
+				return resultado;
+			}
+
+			String tipoComprobante = "03";
+			String tipoEmision = "1";
+			com.saa.model.cxc.Facturador facturadorDB = em.find(com.saa.model.cxc.Facturador.class, liquidacion.getFacturador().getId());
+			Long ambienteFacturador;
+			if (facturadorDB != null && facturadorDB.getAmbiente() != null) {
+				ambienteFacturador = facturadorDB.getAmbiente();
 			} else {
-				System.out.println("⚠ No hay detalles para guardar");
+				ambienteFacturador = liquidacion.getAmbiente() != null ? liquidacion.getAmbiente() : 1L;
 			}
-			
+			liquidacion.setAmbiente(ambienteFacturador);
+			ambiente = ambienteFacturador;
+			System.out.println(">>> AMBIENTE: " + ambiente + (ambiente == 2L ? " (PRODUCCIÓN)" : " (PRUEBAS)") + " | CONECTA_SRI: " + conectaSRI);
+
+			try {
+				String secuencial = obtenerSecuencial(liquidacion.getPtoEmision().getId(), tipoComprobante);
+				liquidacion.setSecuencial(secuencial);
+				String numero = liquidacion.getNumEstablecimiento() + "-" + liquidacion.getNumPtoEmision() + "-" + secuencial;
+				liquidacion.setNumero(numero);
+				String clave = generarClaveAcceso(liquidacion, tipoComprobante, ambienteFacturador, tipoEmision, secuencial);
+				liquidacion.setClave(clave);
+				liquidacion.setTipoComprobante(tipoComprobante);
+				if (liquidacion.getEstadoEmision() == null) liquidacion.setEstadoEmision(1L);
+				System.out.println("✓ Campos preparados en memoria. Clave: " + clave + " | Número: " + numero);
+			} catch (Exception e) {
+				resultado.put("etapa", "PREPARACION_CAMPOS");
+				resultado.put("mensaje", "Error al preparar campos de la liquidación: " + e.getMessage());
+				resultado.put("error", e.getMessage());
+				return resultado;
+			}
+
 			String clave = liquidacion.getClave();
 			Long idFacturador = liquidacion.getFacturador().getId();
-			
-			// Configuración automática
-			ambiente = 1L; // PRUEBA
-			conectaSRI = 1L; // SI
-			
-			// Obtener email del proveedor
-			if (liquidacion.getTitular() != null && liquidacion.getTitular().getEmail() != null) {
-				destinatario = liquidacion.getTitular().getEmail();
-			}
-			
-			pathLogo = "resources/logos/logo_aso.png";
-			
 			resultado.put("clave", clave);
-			resultado.put("idFacturador", idFacturador);
-			resultado.put("ambiente", ambiente);
-			resultado.put("destinatario", destinatario);
-			
-			// PASO 2: Generar XML sin firmar
-			System.out.println("PASO 2: Generando XML sin firmar...");
-			String[] resultadoXML = generarXMLLiquidacion(clave, ambiente);
-			String pathXMLGenerado = resultadoXML[2];
-			resultado.put("xmlGenerado", resultadoXML[0]);
-			resultado.put("pathXMLGenerado", pathXMLGenerado);
-			System.out.println("✓ XML generado en: " + pathXMLGenerado);
-			
-			String xmlSinFirmar = new String(Files.readAllBytes(Paths.get(pathXMLGenerado)), "UTF-8");
-			
-			// PASO 3: Firmar el XML
-			System.out.println("PASO 3: Firmando XML electrónicamente...");
-			String xmlFirmado = signatureService.firmarXMLFacturador(xmlSinFirmar, idFacturador);
-			resultado.put("xmlFirmado", "XML firmado correctamente");
-			System.out.println("✓ XML firmado electrónicamente");
-			
-			// PASO 4: Autorizar ante el SRI
-			System.out.println("PASO 4: Autorizando ante el SRI...");
-			String resultadoAutorizacion = autorizarLiquidacion(
-				idFacturador, ambiente, conectaSRI, clave, 
-				liquidacion.getId(), xmlFirmado, destinatario, pathLogo
-			);
-			
-			resultado.put("autorizacion", resultadoAutorizacion);
-			System.out.println("✓ Resultado autorización: " + resultadoAutorizacion);
-			
-			boolean autorizada = resultadoAutorizacion != null &&
-				(resultadoAutorizacion.contains("AUTORIZADO") || resultadoAutorizacion.equals("AUTORIZADO"));
 
-			if (autorizada) {
-				// ── PASO 5: Generar asiento contable ─────────────────────────
-				// Solo si el facturador tiene generaConta=1 y empresa contable configurada.
-				if (liquidacion.getFacturador() != null
-						&& liquidacion.getFacturador().getEmpresa() != null
-						&& Long.valueOf(1L).equals(liquidacion.getFacturador().getGeneraConta())) {
-					System.out.println("PASO 5: Generando asiento contable para Liquidación de Compra...");
-					try {
-						Long idEmpresaConta = liquidacion.getFacturador().getEmpresa().getCodigo();
-						LiquidacionCompra lqActualizada = liquidacionCompraDaoService.selectById(
-								liquidacion.getId(), NombreEntidadesCobro.LIQUIDACION_COMPRA);
-						java.time.LocalDate fechaAsiento = lqActualizada.getFecha() != null
-								? lqActualizada.getFecha().toLocalDate() : java.time.LocalDate.now();
-						String obsAsiento = "Liquidación de Compra N° " + nvl(lqActualizada.getNumero(), clave)
-								+ " | Proveedor: " + (lqActualizada.getTitular() != null ? lqActualizada.getTitular().getNombre() : "")
-								+ " | Aut: " + nvl(lqActualizada.getAutorizacion(), clave);
-						String usuarioAsiento = (lqActualizada.getUsuario() != null)
-								? lqActualizada.getUsuario().getNombre() : "SISTEMA";
-						// TODO: Reemplazar TipoAsientos.LIQUIDACIONES_COMPRA_EMITIDAS con el
-						//       codigoAlterno correcto una vez que se defina la plantilla en BD.
-						com.saa.model.cnt.Asiento asientoGenerado =
-								asientoContableService.generarAsientoLiquidacionCompra(
-										lqActualizada.getId(), idEmpresaConta,
-										com.saa.rubros.TipoAsientos.LIQUIDACIONES_COMPRA_EMITIDAS,
-										fechaAsiento, obsAsiento, usuarioAsiento);
-						resultado.put("asiento", asientoGenerado.getNumeroAlterno());
-						System.out.println("✓ Asiento contable generado: " + asientoGenerado.getNumeroAlterno());
-					} catch (Exception e) {
-						resultado.put("advertenciaAsiento",
-								"Liquidación autorizada pero ocurrió un error al generar el asiento: "
-								+ e.getMessage()
-								+ ". Genere el asiento manualmente desde Contabilidad.");
-						System.err.println("⚠ Error en asiento contable de Liquidación de Compra: " + e.getMessage());
-						e.printStackTrace();
-					}
+			// ── PASO 2-3: Generar y firmar XML con datos en memoria ─────────────
+			System.out.println("PASO 2: Generando XML en memoria...");
+			String xmlFirmado;
+			try {
+				String dirEstablecimiento = "";
+				try {
+					String sqlEstab = "SELECT e.direccion FROM PuntoEmision pe JOIN pe.establecimiento e WHERE pe.id = :ptoEmisionId";
+					dirEstablecimiento = (String) em.createQuery(sqlEstab)
+							.setParameter("ptoEmisionId", liquidacion.getPtoEmision().getId())
+							.getSingleResult();
+				} catch (Exception e) {
+					System.err.println("⚠ No se pudo obtener dirección del establecimiento: " + e.getMessage());
 				}
-				resultado.put("exito", true);
-				resultado.put("mensaje", "Liquidación procesada y autorizada exitosamente");
-				resultado.put("estado", "AUTORIZADO");
-			} else {
-				resultado.put("exito", false);
-				resultado.put("mensaje", "Liquidación procesada pero no autorizada");
-				resultado.put("estado", "NO_AUTORIZADO");
+				// Formas de pago en memoria (vacío para XML, se guarda como default)
+				java.util.List<Object> formasPagoMem = new java.util.ArrayList<>();
+				String xmlContent = generarXMLContentLiquidacion(liquidacion, dirEstablecimiento,
+						new java.util.ArrayList<>(detalles != null ? detalles : java.util.Collections.emptyList()),
+						formasPagoMem, ambiente);
+				String pathRelativo = "resources/" + idFacturador + "/lqcs/g/" + clave + ".xml";
+				String pathAbsoluto = getBaseUploadDirectory() + pathRelativo;
+				Path path = Paths.get(pathAbsoluto);
+				Files.createDirectories(path.getParent());
+				Files.write(path, xmlContent.getBytes("UTF-8"));
+				System.out.println("PASO 3: Firmando XML...");
+				xmlFirmado = signatureService.firmarXMLFacturador(xmlContent, idFacturador);
+				System.out.println("✓ XML generado y firmado.");
+			} catch (Exception e) {
+				resultado.put("etapa", "GENERACION_XML");
+				resultado.put("mensaje", "Error al generar o firmar el XML de la liquidación: " + e.getMessage());
+				resultado.put("error", e.getMessage());
+				return resultado;
 			}
-			
-			System.out.println("=== PROCESO COMPLETO FINALIZADO ===");
-			
+
+			// ── PASO 4a: Enviar al SRI (WS1 - Recepción) ───────────────────────
+			System.out.println("PASO 4a: Enviando XML al SRI (WS1 - Recepción)...");
+			String estadoRecepcion = "NO_ENVIADO";
+			if (conectaSRI == 1) {
+				String baseUploadDir = getBaseUploadDirectory();
+				String resourcesPath = baseUploadDir + "resources/" + idFacturador;
+				try {
+					Path pathFirmado = Paths.get(resourcesPath + "/lqcs/f/" + clave + ".xml");
+					Files.createDirectories(pathFirmado.getParent());
+					Files.write(pathFirmado, xmlFirmado.getBytes("UTF-8"));
+					String urlWS1 = ambiente == 1
+							? "https://celcer.sri.gob.ec/comprobantes-electronicos-ws/RecepcionComprobantesOffline?wsdl"
+							: "https://cel.sri.gob.ec/comprobantes-electronicos-ws/RecepcionComprobantesOffline?wsdl";
+					Path logWS1 = Paths.get(resourcesPath + "/lqcs/e/" + clave + ".txt");
+					Files.createDirectories(logWS1.getParent());
+					PrintWriter logWriter1 = new PrintWriter(new FileWriter(logWS1.toFile()));
+					byte[] bytesXMLFirmado = Files.readAllBytes(pathFirmado);
+					estadoRecepcion = llamarRecepcionSRI(urlWS1, bytesXMLFirmado, logWriter1);
+					logWriter1.close();
+					System.out.println(">>> Estado WS1 Recepción: [" + estadoRecepcion + "]");
+				} catch (Exception e) {
+					resultado.put("etapa", "WS1_RECEPCION");
+					resultado.put("mensaje", "Error al comunicarse con el SRI (WS1): " + e.getMessage());
+					resultado.put("error", e.getMessage());
+					return resultado;
+				}
+			} else {
+				estadoRecepcion = "RECIBIDA";
+				System.out.println("ℹ conectaSRI=0 — simulando RECIBIDA para guardar en BD.");
+			}
+
+			if (!"RECIBIDA".equals(estadoRecepcion)
+					&& !(estadoRecepcion != null && estadoRecepcion.contains("CLAVE ACCESO REGISTRADA"))) {
+				resultado.put("etapa", "WS1_RECEPCION");
+				resultado.put("exito", false);
+				resultado.put("estado", estadoRecepcion);
+				resultado.put("mensaje", "El SRI no aceptó el comprobante. Estado WS1: " + estadoRecepcion);
+				return resultado;
+			}
+
+			// ── PASO 4b: WS1=RECIBIDA → Guardar en BD ───────────────────────────
+			System.out.println("PASO 4b: SRI respondió RECIBIDA. Guardando liquidación en base de datos...");
+			try {
+				liquidacion = liquidacionCompraDaoService.save(liquidacion, null);
+			} catch (Exception e) {
+				resultado.put("etapa", "GRABADO_LIQUIDACION");
+				resultado.put("mensaje", "Error al grabar la liquidación: " + e.getMessage());
+				resultado.put("error", e.getMessage());
+				return resultado;
+			}
+			resultado.put("liquidacion", liquidacion);
+			resultado.put("idLiquidacion", liquidacion.getId());
+			System.out.println("✓ Liquidación grabada ID: " + liquidacion.getId() + " | Clave: " + liquidacion.getClave());
+
+			// Guardar detalles
+			if (detalles != null && !detalles.isEmpty()) {
+				System.out.println("PASO 4c: Guardando " + detalles.size() + " detalles...");
+				try {
+					for (com.saa.model.cxc.DetalleLiquidacionCompra detalle : detalles) {
+						detalle.setLiquidacion(liquidacion);
+						if (detalle.getEstado() == null) detalle.setEstado(Long.valueOf(Estado.ACTIVO));
+						em.persist(detalle);
+					}
+					em.flush();
+					System.out.println("✓ Detalles guardados.");
+				} catch (Exception e) {
+					resultado.put("etapa", "GRABADO_DETALLES");
+					resultado.put("mensaje", "Error al grabar los detalles: " + e.getMessage());
+					resultado.put("error", e.getMessage());
+					return resultado;
+				}
+			}
+
+			// Registrar paths y estado FIRMADA/ENVIADA en BD
+			try {
+				String baseUploadDir = getBaseUploadDirectory();
+				String resourcesPath = baseUploadDir + "resources/" + idFacturador;
+				PathLiquidacionCompra pathF = new PathLiquidacionCompra();
+				pathF.setLiquidacion(liquidacion);
+				pathF.setPath("resources/" + idFacturador + "/lqcs/f/" + clave + ".xml");
+				pathF.setAlterno(3L);
+				pathLiquidacionCompraDaoService.save(pathF, null);
+				liquidacion.setEstado(3L);
+				liquidacionCompraDaoService.save(liquidacion, liquidacion.getId());
+				if (conectaSRI == 1) {
+					Path pathEnviado = Paths.get(resourcesPath + "/lqcs/e/" + clave + ".xml");
+					byte[] bytesXMLFirmado = Files.readAllBytes(Paths.get(resourcesPath + "/lqcs/f/" + clave + ".xml"));
+					Files.write(pathEnviado, bytesXMLFirmado);
+					PathLiquidacionCompra pathE = new PathLiquidacionCompra();
+					pathE.setLiquidacion(liquidacion);
+					pathE.setPath("resources/" + idFacturador + "/lqcs/e/" + clave + ".xml");
+					pathE.setAlterno(4L);
+					pathLiquidacionCompraDaoService.save(pathE, null);
+					liquidacion.setEstado(4L);
+					liquidacionCompraDaoService.save(liquidacion, liquidacion.getId());
+				}
+			} catch (Exception e) {
+				System.err.println("⚠ Error registrando paths (no crítico): " + e.getMessage());
+			}
+
+			// ── PASO 4c: Si era CLAVE ACCESO REGISTRADA ─────────────────────────
+			if (estadoRecepcion != null && estadoRecepcion.contains("CLAVE ACCESO REGISTRADA")) {
+				liquidacion.setAutorizacion(clave);
+				liquidacion.setFechaAutorizacion(liquidacion.getFecha().plusMinutes(1).plusSeconds(15));
+				liquidacion.setEstado(5L);
+				liquidacionCompraDaoService.save(liquidacion, liquidacion.getId());
+				resultado.put("estado", "AUTORIZADO"); resultado.put("exito", true);
+				resultado.put("etapa", "COMPLETADO"); resultado.put("mensaje", "Liquidación ya registrada en el SRI. Autorizada.");
+				return resultado;
+			}
+
+			// ── PASO 4d: WS2 - Autorización ─────────────────────────────────────
+			System.out.println("PASO 4d: Consultando autorización al SRI (WS2)...");
+			Thread.sleep(2000);
+			String resultadoAutorizacion = "";
+			boolean autorizada = false;
+			if (conectaSRI == 1) {
+				try {
+					String baseUploadDir = getBaseUploadDirectory();
+					String resourcesPath = baseUploadDir + "resources/" + idFacturador;
+					String urlWS2 = ambiente == 1
+							? "https://celcer.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl"
+							: "https://cel.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl";
+					ResultadoAutorizacion ra = llamarAutorizacionSRI(urlWS2, clave);
+					System.out.println(">>> Estado WS2: [" + ra.estado + "]");
+
+					if ("AUTORIZADO".equals(ra.estado)) {
+						Path logWS2A = Paths.get(resourcesPath + "/lqcs/a/" + clave + ".txt");
+						Files.createDirectories(logWS2A.getParent());
+						PrintWriter logWriter2 = new PrintWriter(new FileWriter(logWS2A.toFile()));
+						logWriter2.println("Respuesta WS2: " + ra.respuestaCompleta);
+						logWriter2.close();
+						Path pathAutorizado = Paths.get(resourcesPath + "/lqcs/a/" + clave + ".xml");
+						Files.write(pathAutorizado, ra.comprobanteXML.getBytes("UTF-8"));
+						PathLiquidacionCompra pathA = new PathLiquidacionCompra();
+						pathA.setLiquidacion(liquidacion);
+						pathA.setPath("resources/" + idFacturador + "/lqcs/a/" + clave + ".xml");
+						pathA.setAlterno(5L);
+						pathLiquidacionCompraDaoService.save(pathA, null);
+						liquidacion.setEstado(5L);
+						liquidacion.setEstadoEmision(1L);
+						liquidacion.setAutorizacion(ra.numeroAutorizacion);
+						liquidacion.setFechaAutorizacion(parseFechaAutorizacion(ra.fechaAutorizacion));
+						liquidacionCompraDaoService.save(liquidacion, liquidacion.getId());
+						resultadoAutorizacion = ra.estado;
+						autorizada = true;
+						if (ambiente == 2) {
+							em.createQuery("UPDATE Facturador f SET f.docEmitidos = COALESCE(f.docEmitidos,0)+1 WHERE f.id = :id")
+								.setParameter("id", idFacturador).executeUpdate();
+						}
+					} else {
+						Path logWS2N = Paths.get(resourcesPath + "/lqcs/n/" + clave + ".txt");
+						Files.createDirectories(logWS2N.getParent());
+						PrintWriter logWriter2N = new PrintWriter(new FileWriter(logWS2N.toFile()));
+						logWriter2N.println("Respuesta WS2: " + ra.respuestaCompleta);
+						logWriter2N.close();
+						if (ra.comprobanteXML != null) {
+							Files.write(Paths.get(resourcesPath + "/lqcs/n/" + clave + ".xml"), ra.comprobanteXML.getBytes("UTF-8"));
+							PathLiquidacionCompra pathN = new PathLiquidacionCompra();
+							pathN.setLiquidacion(liquidacion);
+							pathN.setPath("resources/" + idFacturador + "/lqcs/n/" + clave + ".xml");
+							pathN.setAlterno(6L);
+							pathLiquidacionCompraDaoService.save(pathN, null);
+						}
+						liquidacion.setEstado(6L);
+						liquidacion.setEstadoEmision(2L);
+						liquidacionCompraDaoService.save(liquidacion, liquidacion.getId());
+						resultadoAutorizacion = "Estado: " + ra.estado
+								+ " Id: " + nvl(ra.mensajeId, "")
+								+ " Mensaje: " + nvl(ra.mensaje, "")
+								+ " / " + nvl(ra.informacionAdicional, "");
+					}
+				} catch (Exception e) {
+					resultado.put("etapa", "WS2_AUTORIZACION");
+					resultado.put("mensaje", "Error al consultar autorización al SRI (WS2): " + e.getMessage());
+					resultado.put("error", e.getMessage());
+					return resultado;
+				}
+			} else {
+				autorizada = true;
+				resultadoAutorizacion = "AUTORIZADO";
+				liquidacion.setEstado(5L);
+				liquidacionCompraDaoService.save(liquidacion, liquidacion.getId());
+			}
+
+			resultado.put("autorizacion", resultadoAutorizacion);
+
+			if (!autorizada) {
+				resultado.put("exito", false);
+				resultado.put("estado", "NO_AUTORIZADO");
+				resultado.put("mensaje", "La liquidación fue recibida por el SRI pero no fue autorizada. "
+						+ "Respuesta del SRI: " + resultadoAutorizacion);
+				return resultado;
+			}
+
+			// ── PASO 5: Generar asiento contable (solo tras AUTORIZADO) ──────────
+			if (liquidacion.getFacturador() != null
+					&& liquidacion.getFacturador().getEmpresa() != null
+					&& Long.valueOf(1L).equals(liquidacion.getFacturador().getGeneraConta())) {
+				System.out.println("PASO 5: Generando asiento contable para Liquidación de Compra...");
+				try {
+					Long idEmpresaConta = liquidacion.getFacturador().getEmpresa().getCodigo();
+					LiquidacionCompra lqActualizada = liquidacionCompraDaoService.selectById(
+							liquidacion.getId(), NombreEntidadesCobro.LIQUIDACION_COMPRA);
+					java.time.LocalDate fechaAsiento = lqActualizada.getFecha() != null
+							? lqActualizada.getFecha().toLocalDate() : java.time.LocalDate.now();
+					String obsAsiento = "Liquidación de Compra N° " + nvl(lqActualizada.getNumero(), clave)
+							+ " | Proveedor: " + (lqActualizada.getTitular() != null ? lqActualizada.getTitular().getNombre() : "")
+							+ " | Aut: " + nvl(lqActualizada.getAutorizacion(), clave);
+					String usuarioAsiento = lqActualizada.getUsuario() != null
+							? lqActualizada.getUsuario().getNombre() : "SISTEMA";
+					com.saa.model.cnt.Asiento asientoGenerado =
+							asientoContableService.generarAsientoLiquidacionCompra(
+									lqActualizada.getId(), idEmpresaConta,
+									com.saa.rubros.TipoAsientos.LIQUIDACIONES_COMPRA_EMITIDAS,
+									fechaAsiento, obsAsiento, usuarioAsiento);
+					resultado.put("asiento", asientoGenerado.getNumeroAlterno());
+					System.out.println("✓ Asiento contable generado: " + asientoGenerado.getNumeroAlterno());
+				} catch (Exception e) {
+					resultado.put("advertenciaAsiento",
+							"Liquidación autorizada pero ocurrió un error al generar el asiento: "
+							+ e.getMessage() + ". Genere el asiento manualmente desde Contabilidad.");
+					System.err.println("⚠ Error en asiento contable de Liquidación de Compra: " + e.getMessage());
+					e.printStackTrace();
+				}
+			}
+
+			resultado.put("exito", true);
+			resultado.put("estado", "AUTORIZADO");
+			resultado.put("mensaje", "Liquidación procesada y autorizada exitosamente");
+			System.out.println("=== PROCESO COMPLETO DE LIQUIDACION FINALIZADO ===");
+
 		} catch (Exception e) {
 			System.err.println("ERROR en procesarLiquidacionCompleta: " + e.getMessage());
 			e.printStackTrace();
@@ -754,48 +961,37 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 	 */
 	private String llamarRecepcionSRI(String url, byte[] xmlBytes, PrintWriter log) throws Exception {
 		try {
-			SOAPConnectionFactory soapConnectionFactory = SOAPConnectionFactory.newInstance();
-			SOAPConnection soapConnection = soapConnectionFactory.createConnection();
-			
-			MessageFactory messageFactory = MessageFactory.newInstance();
-			SOAPMessage soapMessage = messageFactory.createMessage();
-			SOAPPart soapPart = soapMessage.getSOAPPart();
-			
-			SOAPEnvelope envelope = soapPart.getEnvelope();
-			SOAPBody soapBody = envelope.getBody();
-			SOAPElement validarComprobante = soapBody.addChildElement("validarComprobante", "", "http://ec.gob.sri.ws.recepcion");
-			SOAPElement xml = validarComprobante.addChildElement(envelope.createName("xml", "", ""));
-			
-			// Codificar bytes raw en Base64 (preserva la firma)
 			String xmlBase64 = java.util.Base64.getEncoder().encodeToString(xmlBytes);
-			xml.addTextNode(xmlBase64);
-			soapMessage.saveChanges();
-			
-			SOAPMessage soapResponse = soapConnection.call(soapMessage, url);
-			
-			java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-			soapResponse.writeTo(baos);
-			String respuestaCompleta = baos.toString("UTF-8");
+			String soapEnvelope =
+				"<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" " +
+				"xmlns:rec=\"http://ec.gob.sri.ws.recepcion\">" +
+				"<soapenv:Header/><soapenv:Body>" +
+				"<rec:validarComprobante><xml>" + xmlBase64 + "</xml></rec:validarComprobante>" +
+				"</soapenv:Body></soapenv:Envelope>";
+
+			String respuestaCompleta = com.saa.ejb.cxc.util.SriHttpUtil.enviarSoap(url, soapEnvelope);
 			log.println("Respuesta WS1: " + respuestaCompleta);
-			
-			SOAPBody responseBody = soapResponse.getSOAPBody();
-			NodeList estadoList = responseBody.getElementsByTagName("estado");
-			if (estadoList.getLength() == 0) estadoList = responseBody.getElementsByTagNameNS("*", "estado");
+
+			javax.xml.parsers.DocumentBuilderFactory dbf = javax.xml.parsers.DocumentBuilderFactory.newInstance();
+			dbf.setNamespaceAware(true);
+			org.w3c.dom.Element docEl = dbf.newDocumentBuilder()
+					.parse(new java.io.ByteArrayInputStream(respuestaCompleta.getBytes("UTF-8")))
+					.getDocumentElement();
+
+			NodeList estadoList = docEl.getElementsByTagNameNS("*", "estado");
+			if (estadoList.getLength() == 0) estadoList = docEl.getElementsByTagName("estado");
 			if (estadoList.getLength() > 0) {
 				String estado = estadoList.item(0).getTextContent();
-				NodeList mensajeList = responseBody.getElementsByTagName("mensaje");
-				if (mensajeList.getLength() == 0) mensajeList = responseBody.getElementsByTagNameNS("*", "mensaje");
+				NodeList mensajeList = docEl.getElementsByTagNameNS("*", "mensaje");
+				if (mensajeList.getLength() == 0) mensajeList = docEl.getElementsByTagName("mensaje");
 				if (mensajeList.getLength() > 0) {
 					String mensaje = mensajeList.item(0).getTextContent();
 					if (mensaje != null && mensaje.contains("CLAVE ACCESO REGISTRADA")) {
-						soapConnection.close();
 						return "CLAVE ACCESO REGISTRADA";
 					}
 				}
-				soapConnection.close();
 				return estado;
 			}
-			soapConnection.close();
 			return "SIN_RESPUESTA";
 		} catch (Exception e) {
 			log.println("Error en llamarRecepcionSRI: " + e.getMessage());
@@ -808,58 +1004,54 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 	 * Llama al servicio de autorización del SRI
 	 */
 	private ResultadoAutorizacion llamarAutorizacionSRI(String url, String claveAcceso) throws Exception {
-		SOAPConnectionFactory soapConnectionFactory = SOAPConnectionFactory.newInstance();
-		SOAPConnection soapConnection = soapConnectionFactory.createConnection();
-		
-		MessageFactory messageFactory = MessageFactory.newInstance();
-		SOAPMessage soapMessage = messageFactory.createMessage();
-		SOAPPart soapPart = soapMessage.getSOAPPart();
-		SOAPEnvelope envelope = soapPart.getEnvelope();
-		SOAPBody soapBody = envelope.getBody();
-		SOAPElement autorizacionComprobante = soapBody.addChildElement("autorizacionComprobante", "", "http://ec.gob.sri.ws.autorizacion");
-		SOAPElement claveAccesoElement = autorizacionComprobante.addChildElement(envelope.createName("claveAccesoComprobante", "", ""));
-		claveAccesoElement.addTextNode(claveAcceso);
-		soapMessage.saveChanges();
-		
-		SOAPMessage soapResponse = soapConnection.call(soapMessage, url);
-		java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-		soapResponse.writeTo(baos);
-		String respuestaCompleta = baos.toString("UTF-8");
-		
-		SOAPBody responseBody = soapResponse.getSOAPBody();
-		ResultadoAutorizacion resultado = new ResultadoAutorizacion();
-		resultado.respuestaCompleta = respuestaCompleta;
-		
-		NodeList estadoList = responseBody.getElementsByTagName("estado");
-		if (estadoList.getLength() == 0) estadoList = responseBody.getElementsByTagNameNS("*", "estado");
-		if (estadoList.getLength() > 0) resultado.estado = estadoList.item(0).getTextContent();
-		
-		NodeList numAutList = responseBody.getElementsByTagName("numeroAutorizacion");
-		if (numAutList.getLength() == 0) numAutList = responseBody.getElementsByTagNameNS("*", "numeroAutorizacion");
-		if (numAutList.getLength() > 0) resultado.numeroAutorizacion = numAutList.item(0).getTextContent();
-		
-		NodeList fechaAutList = responseBody.getElementsByTagName("fechaAutorizacion");
-		if (fechaAutList.getLength() == 0) fechaAutList = responseBody.getElementsByTagNameNS("*", "fechaAutorizacion");
-		if (fechaAutList.getLength() > 0) resultado.fechaAutorizacion = fechaAutList.item(0).getTextContent();
-		
-		NodeList comprobanteList = responseBody.getElementsByTagName("comprobante");
-		if (comprobanteList.getLength() == 0) comprobanteList = responseBody.getElementsByTagNameNS("*", "comprobante");
-		if (comprobanteList.getLength() > 0) resultado.comprobanteXML = comprobanteList.item(0).getTextContent();
-		
-		NodeList mensajeIdList = responseBody.getElementsByTagName("identificador");
-		if (mensajeIdList.getLength() == 0) mensajeIdList = responseBody.getElementsByTagNameNS("*", "identificador");
-		if (mensajeIdList.getLength() > 0) resultado.mensajeId = mensajeIdList.item(0).getTextContent();
-		
-		NodeList mensajeList = responseBody.getElementsByTagName("mensaje");
-		if (mensajeList.getLength() == 0) mensajeList = responseBody.getElementsByTagNameNS("*", "mensaje");
-		if (mensajeList.getLength() > 0) resultado.mensaje = mensajeList.item(0).getTextContent();
-		
-		NodeList infoAdicionalList = responseBody.getElementsByTagName("informacionAdicional");
-		if (infoAdicionalList.getLength() == 0) infoAdicionalList = responseBody.getElementsByTagNameNS("*", "informacionAdicional");
-		if (infoAdicionalList.getLength() > 0) resultado.informacionAdicional = infoAdicionalList.item(0).getTextContent();
-		
-		soapConnection.close();
-		return resultado;
+		try {
+			String soapEnvelope =
+				"<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" " +
+				"xmlns:aut=\"http://ec.gob.sri.ws.autorizacion\">" +
+				"<soapenv:Header/><soapenv:Body>" +
+				"<aut:autorizacionComprobante><claveAccesoComprobante>" + claveAcceso + "</claveAccesoComprobante>" +
+				"</aut:autorizacionComprobante></soapenv:Body></soapenv:Envelope>";
+
+			String respuestaCompleta = com.saa.ejb.cxc.util.SriHttpUtil.enviarSoap(url, soapEnvelope);
+			System.out.println(">>> XML RESPUESTA WS2 (Autorización SRI - LC):\n" + respuestaCompleta);
+
+			ResultadoAutorizacion resultado = new ResultadoAutorizacion();
+			resultado.respuestaCompleta = respuestaCompleta;
+
+			javax.xml.parsers.DocumentBuilderFactory dbf = javax.xml.parsers.DocumentBuilderFactory.newInstance();
+			dbf.setNamespaceAware(true);
+			org.w3c.dom.Element docEl = dbf.newDocumentBuilder()
+					.parse(new java.io.ByteArrayInputStream(respuestaCompleta.getBytes("UTF-8")))
+					.getDocumentElement();
+
+			NodeList estadoList = docEl.getElementsByTagNameNS("*", "estado");
+			if (estadoList.getLength() == 0) estadoList = docEl.getElementsByTagName("estado");
+			if (estadoList.getLength() > 0) resultado.estado = estadoList.item(0).getTextContent();
+
+			NodeList numAutList = docEl.getElementsByTagNameNS("*", "numeroAutorizacion");
+			if (numAutList.getLength() > 0) resultado.numeroAutorizacion = numAutList.item(0).getTextContent();
+
+			NodeList fechaAutList = docEl.getElementsByTagNameNS("*", "fechaAutorizacion");
+			if (fechaAutList.getLength() > 0) resultado.fechaAutorizacion = fechaAutList.item(0).getTextContent();
+
+			NodeList comprobanteList = docEl.getElementsByTagNameNS("*", "comprobante");
+			if (comprobanteList.getLength() > 0) resultado.comprobanteXML = comprobanteList.item(0).getTextContent();
+
+			NodeList mensajeIdList = docEl.getElementsByTagNameNS("*", "identificador");
+			if (mensajeIdList.getLength() > 0) resultado.mensajeId = mensajeIdList.item(0).getTextContent();
+
+			NodeList mensajeList = docEl.getElementsByTagNameNS("*", "mensaje");
+			if (mensajeList.getLength() > 0) resultado.mensaje = mensajeList.item(0).getTextContent();
+
+			NodeList infoAdicionalList = docEl.getElementsByTagNameNS("*", "informacionAdicional");
+			if (infoAdicionalList.getLength() > 0) resultado.informacionAdicional = infoAdicionalList.item(0).getTextContent();
+
+			return resultado;
+		} catch (Exception e) {
+			System.err.println(">>> ERROR en llamarAutorizacionSRI LC: " + e.getMessage());
+			e.printStackTrace();
+			throw e;
+		}
 	}
 	
 	/**

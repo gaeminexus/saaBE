@@ -117,8 +117,8 @@ public class FacturaServiceImpl implements FacturaService {
 	public Factura saveSingle(Factura entidad) throws Throwable {
 		System.out.println("saveSingle - Factura");
 		
-		// Si es una nueva factura, generar campos automáticos
-		if (entidad.getId() == null) {
+		// Si es una nueva factura y aún no tiene clave, generar campos automáticos
+		if (entidad.getId() == null && (entidad.getClave() == null || entidad.getClave().isEmpty())) {
 			entidad.setEstado(Long.valueOf(Estado.ACTIVO));
 			
 			// Validar que tenga los datos necesarios
@@ -134,8 +134,20 @@ public class FacturaServiceImpl implements FacturaService {
 
 			// Constantes según SRI
 			String tipoComprobante = "01"; // Factura
-			Long ambiente = entidad.getAmbiente() != null ? entidad.getAmbiente() : 1L;
 			String tipoEmision = "1"; // 1=Emisión Normal
+			
+			// Obtener ambiente desde el facturador (BD) — fuente autoritativa por seguridad
+			Facturador facturadorDB = em.find(Facturador.class, entidad.getFacturador().getId());
+			Long ambiente;
+			if (facturadorDB != null && facturadorDB.getAmbiente() != null) {
+				ambiente = facturadorDB.getAmbiente();
+				System.out.println("Ambiente tomado del facturador (BD): " + ambiente
+						+ (ambiente == 2L ? " (PRODUCCIÓN)" : " (PRUEBAS)"));
+			} else {
+				ambiente = entidad.getAmbiente() != null ? entidad.getAmbiente() : 1L;
+				System.out.println("⚠ Facturador sin ambiente configurado en BD, usando valor recibido: " + ambiente);
+			}
+			entidad.setAmbiente(ambiente); // sincronizar el valor correcto en la entidad
 			
 			try {
 				// 1. Obtener y actualizar el secuencial
@@ -186,10 +198,18 @@ public class FacturaServiceImpl implements FacturaService {
 	public java.util.Map<String, Object> procesarFacturaCompleta(Factura factura, 
 			java.util.List<DetalleFactura> detalles,
 			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable {
-		System.out.println("=== INICIANDO PROCESO COMPLETO DE FACTURA ===");
+		System.out.println("=== INICIANDO PROCESO COMPLETO DE FACTURA (nuevo flujo: BD tras RECIBIDA) ===");
 		
 		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
 		resultado.put("exito", false);
+		// ──────────────────────────────────────────────────────────────────────
+		// NUEVO FLUJO:
+		//  PASO 0: Validar cuentas contables
+		//  PASO 1: Preparar campos (clave, secuencial, número) en MEMORIA — sin BD
+		//  PASO 2-3: Generar XML y firmar (datos en memoria)
+		//  PASO 4a: WS1 → si RECIBIDA → grabar factura + detalles + forma de pago en BD
+		//  PASO 4b: WS2 → si AUTORIZADO → asiento contable + email
+		// ──────────────────────────────────────────────────────────────────────
 		
 		// ── PASO 0: Validar configuración contable ANTES de grabar ─────────────
 		// Solo si el facturador tiene generaConta = 1
@@ -215,9 +235,7 @@ public class FacturaServiceImpl implements FacturaService {
 				resultado.put("mensaje", "No se puede emitir la factura: faltan cuentas contables. "
 						+ "Corrija los siguientes problemas antes de continuar:");
 				resultado.put("erroresContables", erroresContables);
-				// Construir mensaje legible también en el campo "error"
-				StringBuilder sb = new StringBuilder(
-						"Faltan cuentas contables configuradas:\n");
+				StringBuilder sb = new StringBuilder("Faltan cuentas contables configuradas:\n");
 				for (int i = 0; i < erroresContables.size(); i++) {
 					sb.append("  ").append(i + 1).append(". ")
 					  .append(erroresContables.get(i)).append("\n");
@@ -230,99 +248,93 @@ public class FacturaServiceImpl implements FacturaService {
 		}
 
 		try {
-			// ── PASO 1: Grabar factura ──────────────────────────────────────────
-			System.out.println("PASO 1: Grabando factura en base de datos...");
-			try {
-				factura = this.saveSingle(factura);
-			} catch (Exception e) {
-				resultado.put("etapa", "GRABADO_FACTURA");
-				resultado.put("mensaje", "Error al grabar la factura: " + e.getMessage());
-				resultado.put("error", e.getMessage());
-				return resultado;
-			}
-			resultado.put("factura", factura);
-			resultado.put("idFactura", factura.getId());
-			System.out.println("✓ Factura grabada ID: " + factura.getId()
-					+ " | Número: " + factura.getNumero()
-					+ " | Clave: " + factura.getClave());
-
-			// ── PASO 1.5: Guardar detalles ─────────────────────────────────────
-			if (detalles != null && !detalles.isEmpty()) {
-				System.out.println("PASO 1.5: Guardando " + detalles.size() + " detalles...");
-				try {
-					for (DetalleFactura detalle : detalles) {
-						detalle.setFactura(factura);
-						if (detalle.getEstado() == null) {
-							detalle.setEstado(Long.valueOf(com.saa.rubros.Estado.ACTIVO));
-						}
-						detalleFacturaService.saveSingle(detalle);
-					}
-					System.out.println("✓ Detalles guardados correctamente.");
-				} catch (Exception e) {
-					resultado.put("etapa", "GRABADO_DETALLES");
-					resultado.put("mensaje", "Error al grabar los detalles de la factura: " + e.getMessage());
-					resultado.put("error", e.getMessage());
-					return resultado;
-				}
-			}
-
-			// ── PASO 1.6: Guardar forma de pago ────────────────────────────────
-			System.out.println("PASO 1.6: Guardando forma de pago...");
-			com.saa.model.cxc.FormaPagoFactura formaPagoGuardada = null;
-			try {
-				com.saa.model.cxc.FormaPagoFactura formaPago = new com.saa.model.cxc.FormaPagoFactura();
-				formaPago.setFactura(factura);
-				String codigoFormaPago = "01";
-				if (factura.getFormaPago() != null) {
-					try {
-						String sqlTsri = "SELECT t.codigo FROM Tsri t WHERE t.id = :idFormaPago";
-						Query queryTsri = em.createQuery(sqlTsri);
-						queryTsri.setParameter("idFormaPago", factura.getFormaPago());
-						String codigoEncontrado = (String) queryTsri.getSingleResult();
-						if (codigoEncontrado != null && !codigoEncontrado.isEmpty()) {
-							codigoFormaPago = codigoEncontrado;
-						}
-					} catch (Exception e) {
-						System.err.println("⚠ Error al obtener código de forma de pago, usando default 01.");
-					}
-				}
-				formaPago.setFormaPago(codigoFormaPago);
-				formaPago.setValor(factura.getTotal());
-				formaPago.setPlazo(0L);
-				formaPago.setUnidadTiempo("dias");
-				formaPagoFacturaService.saveSingle(formaPago);
-				formaPagoGuardada = formaPago; // retener en memoria para el XML
-				System.out.println("✓ Forma de pago guardada: " + codigoFormaPago);
-			} catch (Exception e) {
-				resultado.put("etapa", "GRABADO_FORMA_PAGO");
-				resultado.put("mensaje", "Error al grabar la forma de pago: " + e.getMessage());
-				resultado.put("error", e.getMessage());
-				return resultado;
-			}
-
-			// ── PASO 2 y 3: Generar y firmar XML ───────────────────────────────
-			String clave       = factura.getClave();
-			Long idFacturador  = factura.getFacturador().getId();
-			Double subsidio    = factura.getSubsidio();
-			ambiente           = 1L;
-			conectaSRI         = 1L;
+			if (conectaSRI == null) conectaSRI = 1L;
+			pathLogo = "resources/logos/logo_aso.png";
 			if (factura.getTitular() != null && factura.getTitular().getEmail() != null) {
 				destinatario = factura.getTitular().getEmail();
 			}
-			pathLogo = "resources/logos/logo_aso.png";
 
+			// Variable para almacenar los bytes del PDF generado y pasarlos directamente al email
+			byte[] pdfBytesParaEmail = null;
+
+			// ── PASO 1: Preparar campos en MEMORIA (sin guardar en BD) ──────────
+			System.out.println("PASO 1: Preparando campos de la factura en memoria...");
+			if (factura.getEstado() == null) {
+				factura.setEstado(Long.valueOf(com.saa.rubros.Estado.ACTIVO));
+			}
+			if (factura.getPtoEmision() == null || factura.getPtoEmision().getId() == null) {
+				resultado.put("etapa", "VALIDACION"); resultado.put("mensaje", "Debe especificar un punto de emisión.");
+				return resultado;
+			}
+			if (factura.getFacturador() == null || factura.getFacturador().getId() == null) {
+				resultado.put("etapa", "VALIDACION"); resultado.put("mensaje", "Debe especificar un facturador.");
+				return resultado;
+			}
+			if (factura.getTitular() == null || factura.getTitular().getCodigo() == null) {
+				resultado.put("etapa", "VALIDACION"); resultado.put("mensaje", "Debe especificar un titular.");
+				return resultado;
+			}
+
+			String tipoComprobante = "01";
+			String tipoEmision = "1";
+			Facturador facturadorDB = em.find(Facturador.class, factura.getFacturador().getId());
+			Long ambienteFacturador;
+			if (facturadorDB != null && facturadorDB.getAmbiente() != null) {
+				ambienteFacturador = facturadorDB.getAmbiente();
+			} else {
+				ambienteFacturador = factura.getAmbiente() != null ? factura.getAmbiente() : 1L;
+			}
+			factura.setAmbiente(ambienteFacturador);
+			ambiente = ambienteFacturador;
+			System.out.println(">>> AMBIENTE: " + ambiente + (ambiente == 2L ? " (PRODUCCIÓN)" : " (PRUEBAS)") + " | CONECTA_SRI: " + conectaSRI);
+
+			try {
+				String secuencial = obtenerSecuencial(factura.getPtoEmision().getId(), tipoComprobante);
+				factura.setSecuencial(secuencial);
+				String numero = factura.getNumEstablecimiento() + "-" + factura.getNumPtoEmision() + "-" + secuencial;
+				factura.setNumero(numero);
+				String clave = generarClaveAcceso(factura, tipoComprobante, ambienteFacturador, tipoEmision, secuencial);
+				factura.setClave(clave);
+				factura.setTipoComprobante(tipoComprobante);
+				if (factura.getEstadoEmision() == null) factura.setEstadoEmision(1L);
+				System.out.println("✓ Campos preparados en memoria. Clave: " + clave + " | Número: " + numero);
+			} catch (Exception e) {
+				resultado.put("etapa", "PREPARACION_CAMPOS");
+				resultado.put("mensaje", "Error al preparar campos de la factura: " + e.getMessage());
+				resultado.put("error", e.getMessage());
+				return resultado;
+			}
+
+			// ── PASO 2-3: Generar y firmar XML con datos en memoria ─────────────
+			String clave = factura.getClave();
+			Long idFacturador = factura.getFacturador().getId();
+			Double subsidio = factura.getSubsidio();
 			resultado.put("clave", clave);
 
-			// Armar lista de formas de pago con el objeto ya en memoria
-			java.util.List<com.saa.model.cxc.FormaPagoFactura> formasPagoXML = new java.util.ArrayList<>();
-			if (formaPagoGuardada != null) formasPagoXML.add(formaPagoGuardada);
+			// Preparar forma de pago en memoria para el XML (sin guardar aún en BD)
+			com.saa.model.cxc.FormaPagoFactura formaPagoMemoria = new com.saa.model.cxc.FormaPagoFactura();
+			String codigoFormaPago = "01";
+			if (factura.getFormaPago() != null) {
+				try {
+					String sqlTsri = "SELECT t.codigo FROM Tsri t WHERE t.id = :idFormaPago";
+					Query queryTsri = em.createQuery(sqlTsri);
+					queryTsri.setParameter("idFormaPago", factura.getFormaPago());
+					String codigoEncontrado = (String) queryTsri.getSingleResult();
+					if (codigoEncontrado != null && !codigoEncontrado.isEmpty()) codigoFormaPago = codigoEncontrado;
+				} catch (Exception e) {
+					System.err.println("⚠ Error al obtener código de forma de pago, usando default 01.");
+				}
+			}
+			formaPagoMemoria.setFormaPago(codigoFormaPago);
+			formaPagoMemoria.setValor(factura.getTotal());
+			formaPagoMemoria.setPlazo(0L);
+			formaPagoMemoria.setUnidadTiempo("dias");
+			java.util.List<com.saa.model.cxc.FormaPagoFactura> formasPagoXML = java.util.Arrays.asList(formaPagoMemoria);
 
 			String xmlFirmado;
 			try {
-				System.out.println("PASO 2: Generando XML...");
-				// Pasar factura, detalles y formasPago ya en memoria → 0 queries adicionales
+				System.out.println("PASO 2: Generando XML en memoria...");
 				String[] resultadoXML = generarYGuardarXML(factura, detalles, formasPagoXML, ambiente);
-				// resultadoXML[3] = xmlContent ya en memoria → sin releer desde disco
 				String xmlSinFirmar = resultadoXML[3];
 				System.out.println("PASO 3: Firmando XML...");
 				xmlFirmado = signatureService.firmarXMLFacturador(xmlSinFirmar, idFacturador);
@@ -334,44 +346,280 @@ public class FacturaServiceImpl implements FacturaService {
 				return resultado;
 			}
 
-			// ── PASO 4: Autorizar ante el SRI ──────────────────────────────────
-			System.out.println("PASO 4: Autorizando ante el SRI...");
-			String resultadoAutorizacion;
+			// ── PASO 4a: Enviar al SRI (WS1) ────────────────────────────────────
+			// El documento se graba en BD SOLO si el SRI responde RECIBIDA
+			System.out.println("PASO 4a: Enviando XML al SRI (WS1 - Recepción)...");
+			String estadoRecepcion = "NO_ENVIADO";
+			if (conectaSRI == 1) {
+				String baseUploadDir = getBaseUploadDirectory();
+				String resourcesPath = baseUploadDir + "resources/" + idFacturador;
+				try {
+					Path pathFirmado = Paths.get(resourcesPath + "/docs/f/" + clave + ".xml");
+					Files.createDirectories(pathFirmado.getParent());
+					Files.write(pathFirmado, xmlFirmado.getBytes("UTF-8"));
+
+					String urlWS1 = ambiente == 1
+							? "https://celcer.sri.gob.ec/comprobantes-electronicos-ws/RecepcionComprobantesOffline?wsdl"
+							: "https://cel.sri.gob.ec/comprobantes-electronicos-ws/RecepcionComprobantesOffline?wsdl";
+					Path logWS1 = Paths.get(resourcesPath + "/docs/e/" + clave + ".txt");
+					Files.createDirectories(logWS1.getParent());
+					PrintWriter logWriter1 = new PrintWriter(new FileWriter(logWS1.toFile()));
+					byte[] bytesXMLFirmado = Files.readAllBytes(pathFirmado);
+					estadoRecepcion = llamarRecepcionSRI(urlWS1, bytesXMLFirmado, logWriter1);
+					logWriter1.close();
+					System.out.println(">>> Estado WS1 Recepción: [" + estadoRecepcion + "]");
+				} catch (Exception e) {
+					resultado.put("etapa", "WS1_RECEPCION");
+					resultado.put("mensaje", "Error al comunicarse con el SRI (WS1): " + e.getMessage());
+					resultado.put("error", e.getMessage());
+					return resultado;
+				}
+			} else {
+				estadoRecepcion = "RECIBIDA"; // simulado cuando no se conecta al SRI
+				System.out.println("ℹ conectaSRI=0 — simulando RECIBIDA para guardar en BD.");
+			}
+
+			if (!"RECIBIDA".equals(estadoRecepcion)
+					&& !(estadoRecepcion != null && estadoRecepcion.contains("CLAVE ACCESO REGISTRADA"))) {
+				resultado.put("etapa", "WS1_RECEPCION");
+				resultado.put("exito", false);
+				resultado.put("estado", estadoRecepcion);
+				resultado.put("mensaje", "El SRI no aceptó el comprobante. Estado WS1: " + estadoRecepcion);
+				return resultado;
+			}
+
+			// ── PASO 4b: WS1=RECIBIDA → Guardar en BD ───────────────────────────
+			System.out.println("PASO 4b: SRI respondió RECIBIDA. Guardando factura en base de datos...");
 			try {
-				resultadoAutorizacion = autorizarFactura(
-						idFacturador, ambiente, conectaSRI,
-						clave, factura.getId(), subsidio,
-						xmlFirmado, destinatario, pathLogo);
+				factura = facturaDaoService.save(factura, null);
 			} catch (Exception e) {
-				resultado.put("etapa", "AUTORIZACION_SRI");
-				resultado.put("mensaje", "Error al comunicarse con el SRI: " + e.getMessage());
+				resultado.put("etapa", "GRABADO_FACTURA");
+				resultado.put("mensaje", "Error al grabar la factura: " + e.getMessage());
+				resultado.put("error", e.getMessage());
+				return resultado;
+			}
+			resultado.put("factura", factura);
+			resultado.put("idFactura", factura.getId());
+			System.out.println("✓ Factura grabada ID: " + factura.getId() + " | Clave: " + factura.getClave());
+
+			// Guardar detalles
+			if (detalles != null && !detalles.isEmpty()) {
+				System.out.println("PASO 4c: Guardando " + detalles.size() + " detalles...");
+				try {
+					for (DetalleFactura detalle : detalles) {
+						detalle.setFactura(factura);
+						if (detalle.getEstado() == null) detalle.setEstado(Long.valueOf(com.saa.rubros.Estado.ACTIVO));
+						detalleFacturaService.saveSingle(detalle);
+					}
+					System.out.println("✓ Detalles guardados.");
+				} catch (Exception e) {
+					resultado.put("etapa", "GRABADO_DETALLES");
+					resultado.put("mensaje", "Error al grabar los detalles: " + e.getMessage());
+					resultado.put("error", e.getMessage());
+					return resultado;
+				}
+			}
+
+			// Guardar forma de pago
+			try {
+				formaPagoMemoria.setFactura(factura);
+				formaPagoFacturaService.saveSingle(formaPagoMemoria);
+				System.out.println("✓ Forma de pago guardada: " + codigoFormaPago);
+			} catch (Exception e) {
+				resultado.put("etapa", "GRABADO_FORMA_PAGO");
+				resultado.put("mensaje", "Error al grabar la forma de pago: " + e.getMessage());
 				resultado.put("error", e.getMessage());
 				return resultado;
 			}
 
+			// Registrar paths y estado FIRMADA/ENVIADA en BD
+			try {
+				String baseUploadDir = getBaseUploadDirectory();
+				String resourcesPath = baseUploadDir + "resources/" + idFacturador;
+				PathFactura pathF = new PathFactura();
+				pathF.setFactura(factura);
+				pathF.setPath("resources/" + idFacturador + "/docs/f/" + clave + ".xml");
+				pathF.setAlterno(3L);
+				pathFacturaDaoService.save(pathF, null);
+				factura.setEstado(3L);
+				facturaDaoService.save(factura, factura.getId());
+				if (conectaSRI == 1) {
+					Path pathEnviado = Paths.get(resourcesPath + "/docs/e/" + clave + ".xml");
+					byte[] bytesXMLFirmado = Files.readAllBytes(Paths.get(resourcesPath + "/docs/f/" + clave + ".xml"));
+					Files.write(pathEnviado, bytesXMLFirmado);
+					PathFactura pathE = new PathFactura();
+					pathE.setFactura(factura);
+					pathE.setPath("resources/" + idFacturador + "/docs/e/" + clave + ".xml");
+					pathE.setAlterno(4L);
+					pathFacturaDaoService.save(pathE, null);
+					factura.setEstado(4L);
+					facturaDaoService.save(factura, factura.getId());
+				}
+			} catch (Exception e) {
+				System.err.println("⚠ Error registrando paths (no crítico): " + e.getMessage());
+			}
+
+			// ── PASO 4d: Si era CLAVE ACCESO REGISTRADA, marcar como autorizada directamente
+			if (estadoRecepcion != null && estadoRecepcion.contains("CLAVE ACCESO REGISTRADA")) {
+				factura.setAutorizacion(clave);
+				factura.setFechaAutorizacion(factura.getFecha().atStartOfDay().plusMinutes(1).plusSeconds(15));
+				factura.setEstado(5L);
+				facturaDaoService.save(factura, factura.getId());
+				resultado.put("estado", "AUTORIZADO");
+				resultado.put("exito", true);
+				resultado.put("etapa", "COMPLETADO");
+				resultado.put("mensaje", "Factura ya registrada en el SRI. Autorizada.");
+				return resultado;
+			}
+
+			// ── PASO 4e: WS2 - Autorización ─────────────────────────────────────
+			System.out.println("PASO 4e: Consultando autorización al SRI (WS2)...");
+			Thread.sleep(2000);
+			String resultadoAutorizacion = "";
+			boolean autorizada = false;
+			if (conectaSRI == 1) {
+				try {
+					String baseUploadDir = getBaseUploadDirectory();
+					String resourcesPath = baseUploadDir + "resources/" + idFacturador;
+					String urlWS2 = ambiente == 1
+							? "https://celcer.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl"
+							: "https://cel.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl";
+					ResultadoAutorizacion ra = llamarAutorizacionSRI(urlWS2, clave);
+					System.out.println(">>> Estado WS2: [" + ra.estado + "]");
+
+					if ("AUTORIZADO".equals(ra.estado)) {
+						Path logWS2A = Paths.get(resourcesPath + "/docs/a/" + clave + ".txt");
+						Files.createDirectories(logWS2A.getParent());
+						PrintWriter logWriter2 = new PrintWriter(new FileWriter(logWS2A.toFile()));
+						logWriter2.println("Respuesta WS2: " + ra.respuestaCompleta);
+						logWriter2.close();
+						Path pathAutorizado = Paths.get(resourcesPath + "/docs/a/" + clave + ".xml");
+						Files.write(pathAutorizado, ra.comprobanteXML.getBytes("UTF-8"));
+						PathFactura pathA = new PathFactura();
+						pathA.setFactura(factura);
+						pathA.setPath("resources/" + idFacturador + "/docs/a/" + clave + ".xml");
+						pathA.setAlterno(5L);
+						pathFacturaDaoService.save(pathA, null);
+						factura.setEstado(5L);
+						factura.setEstadoEmision(1L);
+						factura.setAutorizacion(ra.numeroAutorizacion);
+						factura.setFechaAutorizacion(parseFechaAutorizacion(ra.fechaAutorizacion));
+						facturaDaoService.save(factura, factura.getId());
+						resultadoAutorizacion = ra.estado;
+						autorizada = true;
+						// Generar PDF: hacer flush primero para que reporteService (REQUIRES_NEW)
+						// pueda ver los datos de la factura ya guardados en esta transacción
+						try { em.flush(); } catch (Exception flushEx) {
+							System.err.println("⚠ flush antes de PDF: " + flushEx.getMessage());
+						}
+						// Generar PDF
+						try {
+							byte[] pdfBytes = generarPDFFactura(factura, idFacturador, clave, pathLogo, ambiente);
+							if (pdfBytes != null && pdfBytes.length > 0) {
+								Path pathPdf = Paths.get(resourcesPath + "/docs/a/" + clave + ".pdf");
+								Files.write(pathPdf, pdfBytes);
+								PathFactura pathPdfRec = new PathFactura();
+								pathPdfRec.setFactura(factura);
+								pathPdfRec.setPath("resources/" + idFacturador + "/docs/a/" + clave + ".pdf");
+								pathPdfRec.setAlterno(7L);
+								pathFacturaDaoService.save(pathPdfRec, null);
+								// Guardar los bytes del PDF para enviarlos por email sin tener que leerlos del disco
+								pdfBytesParaEmail = pdfBytes;
+								System.out.println("✓ PDF RIDE generado (" + pdfBytes.length + " bytes).");
+							} else {
+								System.err.println("⚠ WARNING: generarPDFFactura retornó null o array vacío. El email se enviará sin PDF.");
+								System.err.println("   Verifique los logs anteriores para identificar el error en la generación del PDF.");
+							}
+						} catch (Exception pdfEx) {
+							System.err.println("⚠ ERROR generando PDF (no crítico - email se enviará sin PDF): " + pdfEx.getMessage());
+							pdfEx.printStackTrace();
+						}
+						if (ambiente == 2) {
+							em.createQuery("UPDATE Facturador f SET f.docEmitidos = COALESCE(f.docEmitidos,0)+1 WHERE f.id = :id")
+								.setParameter("id", idFacturador).executeUpdate();
+						}
+					} else {
+						// NO AUTORIZADO
+						Path logWS2N = Paths.get(resourcesPath + "/docs/n/" + clave + ".txt");
+						Files.createDirectories(logWS2N.getParent());
+						PrintWriter logWriter2N = new PrintWriter(new FileWriter(logWS2N.toFile()));
+						logWriter2N.println("Respuesta WS2: " + ra.respuestaCompleta);
+						logWriter2N.close();
+						if (ra.comprobanteXML != null) {
+							Files.write(Paths.get(resourcesPath + "/docs/n/" + clave + ".xml"), ra.comprobanteXML.getBytes("UTF-8"));
+							PathFactura pathN = new PathFactura();
+							pathN.setFactura(factura);
+							pathN.setPath("resources/" + idFacturador + "/docs/n/" + clave + ".xml");
+							pathN.setAlterno(6L);
+							pathFacturaDaoService.save(pathN, null);
+						}
+						factura.setEstado(6L);
+						factura.setEstadoEmision(2L);
+						facturaDaoService.save(factura, factura.getId());
+						resultadoAutorizacion = "Estado: " + ra.estado
+								+ " Id: " + nvl(ra.mensajeId, "")
+								+ " Mensaje: " + nvl(ra.mensaje, "")
+								+ " / " + nvl(ra.informacionAdicional, "");
+					}
+				} catch (Exception e) {
+					resultado.put("etapa", "WS2_AUTORIZACION");
+					resultado.put("mensaje", "Error al consultar autorización al SRI (WS2): " + e.getMessage());
+					resultado.put("error", e.getMessage());
+					return resultado;
+				}
+			} else {
+				// No conectar SRI — simular autorizado
+				autorizada = true;
+				resultadoAutorizacion = "AUTORIZADO";
+				factura.setEstado(5L);
+				facturaDaoService.save(factura, factura.getId());
+				
+				// Generar PDF también en modo simulación
+				try {
+					em.flush(); // flush para que reporteService pueda ver los datos
+					byte[] pdfBytes = generarPDFFactura(factura, idFacturador, clave, pathLogo, ambiente);
+					if (pdfBytes != null && pdfBytes.length > 0) {
+						String baseUploadDir = getBaseUploadDirectory();
+						String resourcesPath = baseUploadDir + "resources/" + idFacturador;
+						Path pathPdf = Paths.get(resourcesPath + "/docs/a/" + clave + ".pdf");
+						Files.createDirectories(pathPdf.getParent());
+						Files.write(pathPdf, pdfBytes);
+						PathFactura pathPdfRec = new PathFactura();
+						pathPdfRec.setFactura(factura);
+						pathPdfRec.setPath("resources/" + idFacturador + "/docs/a/" + clave + ".pdf");
+						pathPdfRec.setAlterno(7L);
+						pathFacturaDaoService.save(pathPdfRec, null);
+						pdfBytesParaEmail = pdfBytes;
+						System.out.println("✓ PDF RIDE generado (modo simulación) (" + pdfBytes.length + " bytes).");
+					} else {
+						System.err.println("⚠ WARNING: generarPDFFactura retornó null en modo simulación. El email se enviará sin PDF.");
+					}
+				} catch (Exception pdfEx) {
+					System.err.println("⚠ ERROR generando PDF en modo simulación (no crítico): " + pdfEx.getMessage());
+					pdfEx.printStackTrace();
+				}
+			}
+
 			resultado.put("autorizacion", resultadoAutorizacion);
-			boolean autorizada = resultadoAutorizacion != null
-					&& resultadoAutorizacion.contains("AUTORIZADO");
 
 			if (!autorizada) {
-				resultado.put("etapa", "AUTORIZACION_SRI");
+				resultado.put("etapa", "WS2_AUTORIZACION");
 				resultado.put("exito", false);
-				resultado.put("mensaje", "La factura fue enviada al SRI pero no fue autorizada. "
-						+ "Respuesta del SRI: " + resultadoAutorizacion);
 				resultado.put("estado", "NO_AUTORIZADO");
+				resultado.put("mensaje", "La factura fue recibida por el SRI pero no fue autorizada. "
+						+ "Respuesta del SRI: " + resultadoAutorizacion);
 				return resultado;
 			}
 
 			System.out.println("✓ Factura AUTORIZADA por el SRI.");
 			resultado.put("estado", "AUTORIZADO");
 
-			// ── PASO 5: Generar asiento contable ───────────────────────────────
+			// ── PASO 5: Generar asiento contable (solo tras AUTORIZADO) ──────────
 			if (factura.getFacturador().getEmpresa() != null
 					&& Long.valueOf(1L).equals(factura.getFacturador().getGeneraConta())) {
 				System.out.println("PASO 5: Generando asiento contable...");
 				try {
 					Long idEmpresa = factura.getFacturador().getEmpresa().getCodigo();
-					// factura ya está en memoria con los datos actualizados — no se recarga desde BD
 					String obsAsiento = "Factura N° " + nvl(factura.getNumero(), clave)
 							+ " | Cliente: " + factura.getTitular().getNombre()
 							+ " | " + nvl(factura.getObservacion(), "");
@@ -382,21 +630,16 @@ public class FacturaServiceImpl implements FacturaService {
 									factura.getId(), idEmpresa,
 									com.saa.rubros.TipoAsientos.FACTURAS_VENTA,
 									factura.getFecha(), obsAsiento, usuarioAsiento);
-					// El asiento viene de una transacción distinta (REQUIRES_NEW) y puede
-					// estar detachado del contexto actual. Se hace merge para re-adjuntarlo
-					// antes de asignarlo como FK en la factura.
 					com.saa.model.cnt.Asiento asientoAttached = em.merge(asientoGenerado);
 					factura.setAsiento(asientoAttached);
 					facturaDaoService.save(factura, factura.getId());
 					em.flush();
 					resultado.put("asiento", asientoGenerado.getNumeroAlterno());
-					System.out.println("✓ Asiento contable generado y vinculado a factura: " + asientoGenerado.getNumeroAlterno());
+					System.out.println("✓ Asiento contable generado: " + asientoGenerado.getNumeroAlterno());
 				} catch (Exception e) {
-					// El asiento falla → informar pero NO revertir la autorización
 					resultado.put("advertenciaAsiento",
 							"La factura fue autorizada pero ocurrió un error al generar el asiento contable: "
-							+ e.getMessage()
-							+ ". Genere el asiento manualmente desde Contabilidad.");
+							+ e.getMessage() + ". Genere el asiento manualmente desde Contabilidad.");
 					System.err.println("⚠ Error en asiento contable: " + e.getMessage());
 					e.printStackTrace();
 				}
@@ -406,30 +649,20 @@ public class FacturaServiceImpl implements FacturaService {
 			System.out.println("PASO 6: Enviando email...");
 			try {
 				if (destinatario != null && !destinatario.trim().isEmpty()) {
-					// Leer el XML autorizado y el PDF desde disco para adjuntarlos
 					String resourcesPath = getBaseUploadDirectory() + "resources/" + idFacturador;
 					String xmlAutorizado = null;
-					byte[] pdfBytes = null;
 					try {
-						java.nio.file.Path pXml = java.nio.file.Paths.get(
-								resourcesPath + "/docs/a/" + clave + ".xml");
-						if (java.nio.file.Files.exists(pXml)) {
-							xmlAutorizado = new String(java.nio.file.Files.readAllBytes(pXml), "UTF-8");
-						}
-						java.nio.file.Path pPdf = java.nio.file.Paths.get(
-								resourcesPath + "/docs/a/" + clave + ".pdf");
-						if (java.nio.file.Files.exists(pPdf)) {
-							pdfBytes = java.nio.file.Files.readAllBytes(pPdf);
-						}
+						java.nio.file.Path pXml = java.nio.file.Paths.get(resourcesPath + "/docs/a/" + clave + ".xml");
+						if (java.nio.file.Files.exists(pXml)) xmlAutorizado = new String(java.nio.file.Files.readAllBytes(pXml), "UTF-8");
 					} catch (Exception ioEx) {
-						System.err.println("⚠ No se pudieron leer los archivos para el email: " + ioEx.getMessage());
+						System.err.println("⚠ No se pudo leer el XML para el email: " + ioEx.getMessage());
 					}
+					// Usar directamente los bytes del PDF que ya generamos (pdfBytesParaEmail)
+					// en lugar de intentar leerlos del disco, evitando problemas de sincronización
 					String razonSocial = factura.getFacturador() != null
-							? nvl(factura.getFacturador().getRazonSocial(),
-								  nvl(factura.getFacturador().getNombre(), "")) : "";
-					emailFacturaService.enviarFacturaAutorizada(
-							destinatario, nvl(factura.getNumero(), clave),
-							clave, razonSocial, xmlAutorizado, pdfBytes);
+							? nvl(factura.getFacturador().getRazonSocial(), nvl(factura.getFacturador().getNombre(), "")) : "";
+					emailFacturaService.enviarFacturaAutorizada(destinatario, nvl(factura.getNumero(), clave),
+							clave, razonSocial, "Factura", xmlAutorizado, pdfBytesParaEmail);
 					resultado.put("emailEnviado", true);
 					System.out.println("✓ Email enviado a: " + destinatario);
 				} else {
@@ -437,14 +670,11 @@ public class FacturaServiceImpl implements FacturaService {
 					System.out.println("ℹ Email omitido: no hay dirección de correo del cliente.");
 				}
 			} catch (Exception mailEx) {
-				resultado.put("advertenciaEmail",
-						"La factura fue autorizada pero no se pudo enviar el email: "
-						+ mailEx.getMessage()
-						+ ". Reenvíe el email manualmente.");
+				resultado.put("advertenciaEmail", "La factura fue autorizada pero no se pudo enviar el email: "
+						+ mailEx.getMessage() + ". Reenvíe el email manualmente.");
 				System.err.println("⚠ Error enviando email: " + mailEx.getMessage());
 			}
 
-			// ── FIN: respuesta exitosa ──────────────────────────────────────────
 			resultado.put("exito", true);
 			resultado.put("etapa", "COMPLETADO");
 			resultado.put("mensaje", "Factura procesada y autorizada exitosamente.");
@@ -1069,7 +1299,11 @@ public class FacturaServiceImpl implements FacturaService {
 								
 								respuesta = resultado.estado;
 								
-								// 5. Generar PDF (RIDE) - equivalente a crearPDF($dbConn, $clave) del PHP
+								// 5. Generar PDF (RIDE) - flush primero para que reporteService
+								// (REQUIRES_NEW) vea los datos ya guardados en esta transacción
+								try { em.flush(); } catch (Exception flushEx) {
+									System.err.println("⚠ flush antes de PDF: " + flushEx.getMessage());
+								}
 								byte[] pdfBytesParaEmail = null;
 								try {
 									byte[] pdfBytes = generarPDFFactura(factura, idFacturador, clave, pathLogo, ambiente);
@@ -1191,78 +1425,47 @@ public class FacturaServiceImpl implements FacturaService {
 			System.out.println(">>> Llamando al WS1 de RECEPCIÓN del SRI: " + url);
 			log.println(">>> Llamando al WS1 de RECEPCIÓN del SRI: " + url);
 
-			SOAPConnectionFactory soapConnectionFactory = SOAPConnectionFactory.newInstance();
-			SOAPConnection soapConnection = soapConnectionFactory.createConnection();
-
-			MessageFactory messageFactory = MessageFactory.newInstance();
-			SOAPMessage soapMessage = messageFactory.createMessage();
-			SOAPPart soapPart = soapMessage.getSOAPPart();
-
-			SOAPEnvelope envelope = soapPart.getEnvelope();
-			SOAPBody soapBody = envelope.getBody();
-
-			SOAPElement validarComprobante = soapBody.addChildElement("validarComprobante", "", "http://ec.gob.sri.ws.recepcion");
-			SOAPElement xml = validarComprobante.addChildElement(envelope.createName("xml", "", ""));
-
 			String xmlBase64 = java.util.Base64.getEncoder().encodeToString(xmlBytes);
-			xml.addTextNode(xmlBase64);
+			String soapEnvelope =
+				"<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" " +
+				"xmlns:rec=\"http://ec.gob.sri.ws.recepcion\">" +
+				"<soapenv:Header/><soapenv:Body>" +
+				"<rec:validarComprobante><xml>" + xmlBase64 + "</xml></rec:validarComprobante>" +
+				"</soapenv:Body></soapenv:Envelope>";
 
-			soapMessage.saveChanges();
+			String respuestaCompleta = com.saa.ejb.cxc.util.SriHttpUtil.enviarSoap(url, soapEnvelope);
+			log.println(">>> Respuesta WS1 completa:\n" + respuestaCompleta);
+			System.out.println(">>> XML RESPUESTA WS1 (Recepción SRI):\n" + respuestaCompleta);
 
-			log.println(">>> Mensaje SOAP Request creado correctamente");
+			javax.xml.parsers.DocumentBuilderFactory dbf = javax.xml.parsers.DocumentBuilderFactory.newInstance();
+			dbf.setNamespaceAware(true);
+			org.w3c.dom.Element docEl = dbf.newDocumentBuilder()
+					.parse(new java.io.ByteArrayInputStream(respuestaCompleta.getBytes("UTF-8")))
+					.getDocumentElement();
 
-			// Log del request completo solo en archivo, no en consola
-			ByteArrayOutputStream requestBaos = new ByteArrayOutputStream();
-			soapMessage.writeTo(requestBaos);
-			log.println(">>> REQUEST SOAP enviado al SRI:");
-			log.println(requestBaos.toString("UTF-8"));
-
-			SOAPMessage soapResponse = soapConnection.call(soapMessage, url);
-
-			SOAPBody responseBody = soapResponse.getSOAPBody();
-
-			// Guardar respuesta completa solo en archivo de log
-			ByteArrayOutputStream baos = new ByteArrayOutputStream();
-			soapResponse.writeTo(baos);
-			String respuestaCompleta = baos.toString("UTF-8");
-			log.println(">>> Respuesta WS1 completa:");
-			log.println(respuestaCompleta);
-
-			NodeList estadoList = responseBody.getElementsByTagName("estado");
-			if (estadoList.getLength() == 0) {
-				estadoList = responseBody.getElementsByTagNameNS("*", "estado");
-			}
+			NodeList estadoList = docEl.getElementsByTagNameNS("*", "estado");
+			if (estadoList.getLength() == 0) estadoList = docEl.getElementsByTagName("estado");
 
 			if (estadoList.getLength() > 0) {
 				String estado = estadoList.item(0).getTextContent();
 				System.out.println(">>> Estado WS1: " + estado);
 				log.println(">>> Estado extraído: " + estado);
 
-				NodeList mensajeList = responseBody.getElementsByTagName("mensaje");
-				if (mensajeList.getLength() == 0) {
-					mensajeList = responseBody.getElementsByTagNameNS("*", "mensaje");
-				}
-
+				NodeList mensajeList = docEl.getElementsByTagNameNS("*", "mensaje");
+				if (mensajeList.getLength() == 0) mensajeList = docEl.getElementsByTagName("mensaje");
 				if (mensajeList.getLength() > 0) {
 					String mensaje = mensajeList.item(0).getTextContent();
-					log.println(">>> Mensaje extraído: " + mensaje);
-
 					if (mensaje != null && mensaje.contains("CLAVE ACCESO REGISTRADA")) {
 						System.out.println(">>> Clave de acceso ya registrada");
 						log.println(">>> Clave de acceso ya registrada");
-						soapConnection.close();
 						return "CLAVE ACCESO REGISTRADA";
 					}
 				}
-
-				soapConnection.close();
 				return estado;
 			}
 
 			System.err.println(">>> ADVERTENCIA: No se encontró nodo <estado> en la respuesta WS1");
 			log.println(">>> ADVERTENCIA: No se encontró nodo <estado> en la respuesta");
-
-			soapConnection.close();
 			return "SIN_RESPUESTA";
 
 		} catch (Exception e) {
@@ -1279,38 +1482,30 @@ public class FacturaServiceImpl implements FacturaService {
 	 */
 	private ResultadoAutorizacion llamarAutorizacionSRI(String url, String claveAcceso) throws Exception {
 		System.out.println(">>> Llamando al WS2 de AUTORIZACIÓN del SRI: " + url);
-
 		try {
-			SOAPConnectionFactory soapConnectionFactory = SOAPConnectionFactory.newInstance();
-			SOAPConnection soapConnection = soapConnectionFactory.createConnection();
+			String soapEnvelope =
+				"<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" " +
+				"xmlns:aut=\"http://ec.gob.sri.ws.autorizacion\">" +
+				"<soapenv:Header/><soapenv:Body>" +
+				"<aut:autorizacionComprobante>" +
+				"<claveAccesoComprobante>" + claveAcceso + "</claveAccesoComprobante>" +
+				"</aut:autorizacionComprobante>" +
+				"</soapenv:Body></soapenv:Envelope>";
 
-			MessageFactory messageFactory = MessageFactory.newInstance();
-			SOAPMessage soapMessage = messageFactory.createMessage();
-			SOAPPart soapPart = soapMessage.getSOAPPart();
-
-			SOAPEnvelope envelope = soapPart.getEnvelope();
-			SOAPBody soapBody = envelope.getBody();
-			SOAPElement autorizacionComprobante = soapBody.addChildElement("autorizacionComprobante", "", "http://ec.gob.sri.ws.autorizacion");
-			SOAPElement claveAccesoElement = autorizacionComprobante.addChildElement(envelope.createName("claveAccesoComprobante", "", ""));
-			claveAccesoElement.addTextNode(claveAcceso);
-
-			soapMessage.saveChanges();
-
-			SOAPMessage soapResponse = soapConnection.call(soapMessage, url);
-			SOAPBody responseBody = soapResponse.getSOAPBody();
-
-			// Guardar respuesta completa solo para uso interno
-			ByteArrayOutputStream baos = new ByteArrayOutputStream();
-			soapResponse.writeTo(baos);
-			String respuestaCompleta = baos.toString("UTF-8");
+			String respuestaCompleta = com.saa.ejb.cxc.util.SriHttpUtil.enviarSoap(url, soapEnvelope);
+			System.out.println(">>> XML RESPUESTA WS2 (Autorización SRI):\n" + respuestaCompleta);
 
 			ResultadoAutorizacion resultado = new ResultadoAutorizacion();
 			resultado.respuestaCompleta = respuestaCompleta;
 
-			NodeList estadoList = responseBody.getElementsByTagName("estado");
-			if (estadoList.getLength() == 0) {
-				estadoList = responseBody.getElementsByTagNameNS("*", "estado");
-			}
+			javax.xml.parsers.DocumentBuilderFactory dbf = javax.xml.parsers.DocumentBuilderFactory.newInstance();
+			dbf.setNamespaceAware(true);
+			org.w3c.dom.Element docEl = dbf.newDocumentBuilder()
+					.parse(new java.io.ByteArrayInputStream(respuestaCompleta.getBytes("UTF-8")))
+					.getDocumentElement();
+
+			NodeList estadoList = docEl.getElementsByTagNameNS("*", "estado");
+			if (estadoList.getLength() == 0) estadoList = docEl.getElementsByTagName("estado");
 			if (estadoList.getLength() > 0) {
 				resultado.estado = estadoList.item(0).getTextContent();
 				System.out.println(">>> Estado WS2: " + resultado.estado);
@@ -1318,64 +1513,38 @@ public class FacturaServiceImpl implements FacturaService {
 				System.err.println(">>> ADVERTENCIA: No se encontró nodo <estado> en respuesta WS2");
 			}
 
-			NodeList numAutList = responseBody.getElementsByTagName("numeroAutorizacion");
-			if (numAutList.getLength() == 0) {
-				numAutList = responseBody.getElementsByTagNameNS("*", "numeroAutorizacion");
-			}
-			if (numAutList.getLength() > 0) {
-				resultado.numeroAutorizacion = numAutList.item(0).getTextContent();
-			}
+			NodeList numAutList = docEl.getElementsByTagNameNS("*", "numeroAutorizacion");
+			if (numAutList.getLength() == 0) numAutList = docEl.getElementsByTagName("numeroAutorizacion");
+			if (numAutList.getLength() > 0) resultado.numeroAutorizacion = numAutList.item(0).getTextContent();
 
-			NodeList fechaAutList = responseBody.getElementsByTagName("fechaAutorizacion");
-			if (fechaAutList.getLength() == 0) {
-				fechaAutList = responseBody.getElementsByTagNameNS("*", "fechaAutorizacion");
-			}
-			if (fechaAutList.getLength() > 0) {
-				resultado.fechaAutorizacion = fechaAutList.item(0).getTextContent();
-			}
+			NodeList fechaAutList = docEl.getElementsByTagNameNS("*", "fechaAutorizacion");
+			if (fechaAutList.getLength() == 0) fechaAutList = docEl.getElementsByTagName("fechaAutorizacion");
+			if (fechaAutList.getLength() > 0) resultado.fechaAutorizacion = fechaAutList.item(0).getTextContent();
 
-			NodeList comprobanteList = responseBody.getElementsByTagName("comprobante");
-			if (comprobanteList.getLength() == 0) {
-				comprobanteList = responseBody.getElementsByTagNameNS("*", "comprobante");
-			}
-			if (comprobanteList.getLength() > 0) {
-				resultado.comprobanteXML = comprobanteList.item(0).getTextContent();
-			}
+			NodeList comprobanteList = docEl.getElementsByTagNameNS("*", "comprobante");
+			if (comprobanteList.getLength() == 0) comprobanteList = docEl.getElementsByTagName("comprobante");
+			if (comprobanteList.getLength() > 0) resultado.comprobanteXML = comprobanteList.item(0).getTextContent();
 
-			NodeList mensajeIdList = responseBody.getElementsByTagName("identificador");
-			if (mensajeIdList.getLength() == 0) {
-				mensajeIdList = responseBody.getElementsByTagNameNS("*", "identificador");
-			}
-			if (mensajeIdList.getLength() > 0) {
-				resultado.mensajeId = mensajeIdList.item(0).getTextContent();
-			}
+			NodeList mensajeIdList = docEl.getElementsByTagNameNS("*", "identificador");
+			if (mensajeIdList.getLength() == 0) mensajeIdList = docEl.getElementsByTagName("identificador");
+			if (mensajeIdList.getLength() > 0) resultado.mensajeId = mensajeIdList.item(0).getTextContent();
 
-			NodeList mensajeList = responseBody.getElementsByTagName("mensaje");
-			if (mensajeList.getLength() == 0) {
-				mensajeList = responseBody.getElementsByTagNameNS("*", "mensaje");
-			}
-			if (mensajeList.getLength() > 0) {
-				resultado.mensaje = mensajeList.item(0).getTextContent();
-			}
+			NodeList mensajeList = docEl.getElementsByTagNameNS("*", "mensaje");
+			if (mensajeList.getLength() == 0) mensajeList = docEl.getElementsByTagName("mensaje");
+			if (mensajeList.getLength() > 0) resultado.mensaje = mensajeList.item(0).getTextContent();
 
-			NodeList infoAdicionalList = responseBody.getElementsByTagName("informacionAdicional");
-			if (infoAdicionalList.getLength() == 0) {
-				infoAdicionalList = responseBody.getElementsByTagNameNS("*", "informacionAdicional");
-			}
-			if (infoAdicionalList.getLength() > 0) {
-				resultado.informacionAdicional = infoAdicionalList.item(0).getTextContent();
-			}
+			NodeList infoAdicionalList = docEl.getElementsByTagNameNS("*", "informacionAdicional");
+			if (infoAdicionalList.getLength() == 0) infoAdicionalList = docEl.getElementsByTagName("informacionAdicional");
+			if (infoAdicionalList.getLength() > 0) resultado.informacionAdicional = infoAdicionalList.item(0).getTextContent();
 
-			soapConnection.close();
 			return resultado;
-
 		} catch (Exception e) {
 			System.err.println(">>> ERROR en llamarAutorizacionSRI: " + e.getMessage());
 			e.printStackTrace();
 			throw e;
 		}
 	}
-	
+
 	/**
 	 * Parsea la fecha de autorización del SRI
 	 */
@@ -1528,7 +1697,7 @@ public class FacturaServiceImpl implements FacturaService {
 				"       fc.MAIL, fc.TELEFONO, fc.LOGO, fc.DIRECCION, " +
 				"       fc.MICROEMPRESA, fc.RIMPE, fc.POPULARRIMPE, fc.ARTESANO, " +
 				"       fc.CONTRIBUYENTEESPECIAL, fc.CONTABILIDAD, fc.AGENTERETENCION, " +
-				"       t.TTLRNMBR, t.TTLRIDNT, t.TTLRDRCC, t.TTLRMLLL, t.TTLRTLFN " +
+				"       COALESCE(NULLIF(t.TTLRRZSC, ''), t.TTLRNMBR), t.TTLRIDNT, t.TTLRDRCC, t.TTLRMLLL, t.TTLRTLFN " +
 				"FROM CBR.FCTR f " +
 				"JOIN CBR.FCDR fc ON f.FACTURADOR = fc.ID " +
 				"JOIN TSR.TTLR t  ON f.COMPRADOR = t.TTLRCDGO " +
@@ -1708,6 +1877,9 @@ public class FacturaServiceImpl implements FacturaService {
 			// BLOQUE 7: Construir mapa de parámetros para Jasper
 			// ─────────────────────────────────────────────────────────────────────
 			java.util.Map<String, Object> p = new java.util.HashMap<>();
+			// CRÍTICO: P_ID_FACTURA es el parámetro principal que usa el JRXML en su
+			// cláusula WHERE para obtener todos los datos. Sin este el PDF sale en blanco.
+			p.put("P_ID_FACTURA",              idFactura);
 			p.put("P_CLAVE",                   claveAcceso);
 			p.put("P_PATH_LOGO",               logoPath);
 			// Facturador
@@ -2107,11 +2279,24 @@ public class FacturaServiceImpl implements FacturaService {
 			Path pPdf = Paths.get(resourcesPath + "/docs/a/" + clave + ".pdf");
 			if (Files.exists(pPdf)) {
 				pdfBytes = Files.readAllBytes(pPdf);
+				System.out.println("✓ PDF leído desde disco: " + pPdf);
 			} else {
-				System.err.println("⚠ PDF RIDE no encontrado en: " + pPdf);
+				// PDF no existe en disco (documentos anteriores al fix) → regenerar al vuelo
+				System.out.println("ℹ PDF no encontrado en disco. Regenerando PDF para factura: " + clave);
+				try {
+					pdfBytes = generarPDFFactura(factura, idFacturador, clave, null, factura.getAmbiente());
+					if (pdfBytes != null && pdfBytes.length > 0) {
+						// Guardar en disco para futuros reenvíos
+						Files.createDirectories(pPdf.getParent());
+						Files.write(pPdf, pdfBytes);
+						System.out.println("✓ PDF regenerado y guardado en disco: " + pPdf);
+					}
+				} catch (Exception pdfEx) {
+					System.err.println("⚠ No se pudo regenerar el PDF: " + pdfEx.getMessage());
+				}
 			}
 		} catch (Exception e) {
-			System.err.println("⚠ Error leyendo PDF RIDE: " + e.getMessage());
+			System.err.println("⚠ Error leyendo/regenerando PDF RIDE: " + e.getMessage());
 		}
 
 		// 5. Procesar lista de destinatarios separados por ;
@@ -2129,7 +2314,7 @@ public class FacturaServiceImpl implements FacturaService {
 			try {
 				emailFacturaService.enviarFacturaAutorizada(
 						mailLimpio, numeroFactura, clave,
-						razonSocial, xmlAutorizado, pdfBytes);
+						razonSocial, "Factura", xmlAutorizado, pdfBytes);
 				enviados.add(mailLimpio);
 				System.out.println("✓ Email enviado a: " + mailLimpio);
 			} catch (Exception e) {
@@ -2233,6 +2418,200 @@ public class FacturaServiceImpl implements FacturaService {
 		resultado.put("fechaAnulacion", ahora.toString());
 		resultado.put("usuarioAnulacion", usuarioAnulacion);
 
+		return resultado;
+	}
+
+	// =========================================================================
+	// consultarYActualizarEstadoFactura
+	// Consulta estado al SRI y si devuelve AUTORIZADO:
+	//   - Pasa la factura a estado 5 (emitida) si estaba pendiente
+	//   - Guarda número de autorización y fecha
+	//   - Si no tiene asiento contable y el facturador tiene generaConta=1, lo genera
+	//   - Envía el email con XML autorizado y PDF (si existe en disco)
+	// =========================================================================
+	@Override
+	public java.util.Map<String, Object> consultarYActualizarEstadoFactura(Long idFactura) throws Throwable {
+		System.out.println("=== consultarYActualizarEstadoFactura | idFactura=" + idFactura + " ===");
+		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+		resultado.put("exito", false);
+
+		// 1. Cargar la factura
+		Factura factura = facturaDaoService.selectById(idFactura, NombreEntidadesCobro.FACTURA);
+		if (factura == null) {
+			resultado.put("mensaje", "Factura con ID " + idFactura + " no encontrada.");
+			return resultado;
+		}
+		if (factura.getClave() == null || factura.getClave().isEmpty()) {
+			resultado.put("mensaje", "La factura no tiene clave de acceso registrada.");
+			return resultado;
+		}
+
+		Long ambiente = factura.getAmbiente() != null ? factura.getAmbiente() : 1L;
+		String clave  = factura.getClave();
+		Long idFacturador = factura.getFacturador() != null ? factura.getFacturador().getId() : null;
+		resultado.put("clave", clave);
+		resultado.put("estadoActual", factura.getEstado());
+
+		// 2. Consultar estado al SRI (WS AutorizacionComprobante)
+		String urlWS2 = ambiente == 2L
+				? "https://cel.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl"
+				: "https://celcer.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl";
+		System.out.println(">>> Consultando estado al SRI: " + urlWS2);
+
+		ResultadoAutorizacion ra;
+		try {
+			ra = llamarAutorizacionSRI(urlWS2, clave);
+		} catch (Exception e) {
+			resultado.put("mensaje", "Error al consultar el estado en el SRI: " + e.getMessage());
+			resultado.put("error", e.getMessage());
+			return resultado;
+		}
+
+		resultado.put("estadoSRI", ra.estado);
+		resultado.put("numeroAutorizacion", ra.numeroAutorizacion);
+		resultado.put("fechaAutorizacion", ra.fechaAutorizacion);
+		System.out.println(">>> Estado SRI: " + ra.estado);
+
+		if (!"AUTORIZADO".equals(ra.estado)) {
+			resultado.put("mensaje", "El SRI indica que la factura NO está autorizada. Estado: " + ra.estado
+					+ " | " + nvl(ra.mensaje, "") + " " + nvl(ra.informacionAdicional, ""));
+			return resultado;
+		}
+
+		// 3. SRI devuelve AUTORIZADO → actualizar factura si estaba pendiente
+		boolean actualizada = false;
+		if (!Long.valueOf(5L).equals(factura.getEstado())) {
+			factura.setEstado(5L);
+			factura.setEstadoEmision(1L);
+			if (ra.numeroAutorizacion != null && !ra.numeroAutorizacion.isEmpty()) {
+				factura.setAutorizacion(ra.numeroAutorizacion);
+			}
+			if (ra.fechaAutorizacion != null && !ra.fechaAutorizacion.isEmpty()) {
+				factura.setFechaAutorizacion(parseFechaAutorizacion(ra.fechaAutorizacion));
+			}
+			// Guardar también el XML autorizado en disco si viene en la respuesta
+			if (ra.comprobanteXML != null && !ra.comprobanteXML.isEmpty() && idFacturador != null) {
+				try {
+					String resourcesPath = getBaseUploadDirectory() + "resources/" + idFacturador;
+					Path pathAutorizado = Paths.get(resourcesPath + "/docs/a/" + clave + ".xml");
+					Files.createDirectories(pathAutorizado.getParent());
+					Files.write(pathAutorizado, ra.comprobanteXML.getBytes("UTF-8"));
+					// Registrar path alterno=5 si no existe ya
+					PathFactura pathA = new PathFactura();
+					pathA.setFactura(factura);
+					pathA.setPath("resources/" + idFacturador + "/docs/a/" + clave + ".xml");
+					pathA.setAlterno(5L);
+					pathFacturaDaoService.save(pathA, null);
+					System.out.println("✓ XML autorizado guardado en disco.");
+				} catch (Exception xmlEx) {
+					System.err.println("⚠ Error guardando XML autorizado (no crítico): " + xmlEx.getMessage());
+				}
+			}
+			facturaDaoService.save(factura, factura.getId());
+			actualizada = true;
+			System.out.println("✓ Factura actualizada a estado EMITIDA (5). Aut: " + ra.numeroAutorizacion);
+		} else {
+			System.out.println("ℹ Factura ya estaba en estado 5 (emitida). Solo se verificó la autorización.");
+		}
+		resultado.put("facturaActualizada", actualizada);
+
+		// 4. Generar asiento contable si no tiene y el facturador lo requiere
+		boolean asientoGenerado = false;
+		if (factura.getAsiento() == null
+				&& factura.getFacturador() != null
+				&& factura.getFacturador().getEmpresa() != null
+				&& Long.valueOf(1L).equals(factura.getFacturador().getGeneraConta())) {
+			System.out.println("PASO 4: Generando asiento contable (factura no tenía asiento)...");
+			try {
+				Long idEmpresa = factura.getFacturador().getEmpresa().getCodigo();
+				String obsAsiento = "Factura N° " + nvl(factura.getNumero(), clave)
+						+ " | Cliente: " + (factura.getTitular() != null ? factura.getTitular().getNombre() : "")
+						+ " | Aut: " + nvl(factura.getAutorizacion(), clave);
+				String usuarioAsiento = factura.getUsuario() != null
+						? factura.getUsuario().getNombre() : "SISTEMA";
+				com.saa.model.cnt.Asiento asientoGeneradoObj =
+						asientoContableService.generarAsientoFactura(
+								factura.getId(), idEmpresa,
+								com.saa.rubros.TipoAsientos.FACTURAS_VENTA,
+								factura.getFecha(), obsAsiento, usuarioAsiento);
+				com.saa.model.cnt.Asiento asientoAttached = em.merge(asientoGeneradoObj);
+				factura.setAsiento(asientoAttached);
+				facturaDaoService.save(factura, factura.getId());
+				em.flush();
+				resultado.put("asiento", asientoGeneradoObj.getNumeroAlterno());
+				asientoGenerado = true;
+				System.out.println("✓ Asiento contable generado: " + asientoGeneradoObj.getNumeroAlterno());
+			} catch (Exception e) {
+				resultado.put("advertenciaAsiento",
+						"Factura autorizada pero error al generar asiento: "
+						+ e.getMessage() + ". Genere el asiento manualmente.");
+				System.err.println("⚠ Error en asiento contable: " + e.getMessage());
+			}
+		} else if (factura.getAsiento() != null) {
+			resultado.put("asientoExistente", factura.getAsiento().getNumeroAlterno());
+			System.out.println("ℹ La factura ya tiene asiento contable: " + factura.getAsiento().getNumeroAlterno());
+		}
+		resultado.put("asientoGenerado", asientoGenerado);
+
+		// 5. Enviar email con XML autorizado y PDF (si existen en disco)
+		System.out.println("PASO 5: Enviando email al cliente...");
+		String destinatario = null;
+		if (factura.getTitular() != null) destinatario = factura.getTitular().getEmail();
+		try {
+			if (destinatario != null && !destinatario.trim().isEmpty() && idFacturador != null) {
+				String resourcesPath = getBaseUploadDirectory() + "resources/" + idFacturador;
+				String xmlAutorizado = null;
+				byte[] pdfBytes = null;
+				try {
+					java.nio.file.Path pXml = Paths.get(resourcesPath + "/docs/a/" + clave + ".xml");
+					if (Files.exists(pXml))
+						xmlAutorizado = new String(Files.readAllBytes(pXml), "UTF-8");
+					java.nio.file.Path pPdf = Paths.get(resourcesPath + "/docs/a/" + clave + ".pdf");
+					if (Files.exists(pPdf)) {
+						pdfBytes = Files.readAllBytes(pPdf);
+					} else {
+						// PDF no en disco → intentar regenerar
+						System.out.println("ℹ PDF no encontrado, regenerando...");
+						try {
+							pdfBytes = generarPDFFactura(factura, idFacturador, clave, null, ambiente);
+							if (pdfBytes != null && pdfBytes.length > 0) {
+								Files.createDirectories(Paths.get(resourcesPath + "/docs/a/"));
+								Files.write(Paths.get(resourcesPath + "/docs/a/" + clave + ".pdf"), pdfBytes);
+								System.out.println("✓ PDF regenerado y guardado.");
+							}
+						} catch (Exception pdfEx) {
+							System.err.println("⚠ No se pudo regenerar el PDF: " + pdfEx.getMessage());
+						}
+					}
+				} catch (Exception ioEx) {
+					System.err.println("⚠ Error leyendo archivos para email: " + ioEx.getMessage());
+				}
+				String razonSocial = factura.getFacturador() != null
+						? nvl(factura.getFacturador().getRazonSocial(), nvl(factura.getFacturador().getNombre(), "")) : "";
+				emailFacturaService.enviarFacturaAutorizada(
+						destinatario, nvl(factura.getNumero(), clave),
+						clave, razonSocial, "Factura", xmlAutorizado, pdfBytes);
+				resultado.put("emailEnviado", true);
+				resultado.put("emailDestinatario", destinatario);
+				System.out.println("✓ Email enviado a: " + destinatario);
+			} else {
+				resultado.put("emailEnviado", false);
+				System.out.println("ℹ Email omitido: no hay dirección de correo del cliente.");
+			}
+		} catch (Exception mailEx) {
+			resultado.put("advertenciaEmail",
+					"Factura autorizada pero no se pudo enviar el email: "
+					+ mailEx.getMessage() + ". Reenvíe el email manualmente.");
+			resultado.put("emailEnviado", false);
+			System.err.println("⚠ Error enviando email: " + mailEx.getMessage());
+		}
+
+		resultado.put("exito", true);
+		resultado.put("mensaje", "Factura verificada en el SRI: AUTORIZADA."
+				+ (actualizada ? " Estado actualizado a emitida." : "")
+				+ (asientoGenerado ? " Asiento contable generado." : "")
+				+ (Boolean.TRUE.equals(resultado.get("emailEnviado")) ? " Email enviado a " + destinatario + "." : ""));
+		System.out.println("=== consultarYActualizarEstadoFactura COMPLETADO ===");
 		return resultado;
 	}
 }

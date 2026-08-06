@@ -63,6 +63,9 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 	@EJB
 	private EmailFacturaService emailFacturaService;
 
+	@EJB
+	private com.saa.ejb.reporte.service.ReporteService reporteService;
+
 	@PersistenceContext
 	private EntityManager em;
 
@@ -105,7 +108,6 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 				throw new IncomeException("Debe especificar un facturador para la retención V2");
 
 			String tipoComprobante = "07"; // Retención
-			Long ambiente = entidad.getAmbiente() != null ? entidad.getAmbiente() : 1L;
 			String tipoEmision = "1";
 
 			try {
@@ -113,6 +115,18 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 				if (facturador == null)
 					throw new IncomeException("Facturador con ID " + entidad.getFacturador().getId() + " no encontrado");
 				entidad.setFacturador(facturador);
+
+				// Obtener ambiente desde el facturador (BD) — fuente autoritativa por seguridad
+				Long ambiente;
+				if (facturador.getAmbiente() != null) {
+					ambiente = facturador.getAmbiente();
+					System.out.println("Ambiente tomado del facturador (BD): " + ambiente
+							+ (ambiente == 2L ? " (PRODUCCIÓN)" : " (PRUEBAS)"));
+				} else {
+					ambiente = entidad.getAmbiente() != null ? entidad.getAmbiente() : 1L;
+					System.out.println("⚠ Facturador sin ambiente configurado en BD, usando valor recibido: " + ambiente);
+				}
+				entidad.setAmbiente(ambiente); // sincronizar el valor correcto en la entidad
 
 				com.saa.model.cxc.PuntoEmision ptoEmision = em.find(com.saa.model.cxc.PuntoEmision.class, entidad.getPtoEmision().getId());
 				if (ptoEmision == null)
@@ -542,11 +556,12 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 	}
 	
 	@Override
-	public String autorizarRetencionV2(Long idFacturador, Long ambiente, Long conectaSRI, String clave,
+	public java.util.Map<String, Object> autorizarRetencionV2(Long idFacturador, Long ambiente, Long conectaSRI, String clave,
 			Long codigoRetencion, String xml, String destinatario, String pathLogo) throws Throwable {
 		System.out.println("Ingresa al metodo autorizarRetencionV2 con clave: " + clave);
 		
 		String respuesta = "";
+		byte[] pdfBytesGenerado = null; // Variable para retornar los bytes del PDF
 		String baseUploadDir = getBaseUploadDirectory();
 		String resourcesPath = baseUploadDir + "resources/" + idFacturador;
 		
@@ -629,6 +644,31 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 								
 								respuesta = resultado.estado;
 								
+							// Generar PDF RIDE de la retención V2 autorizada
+							try {
+								java.util.Map<String, Object> pdfParams = new java.util.HashMap<>();
+								// CRÍTICO: P_ID_RETENCION_V2 es el parámetro que usa el JRXML
+								// en su cláusula WHERE para obtener todos los datos.
+								pdfParams.put("P_ID_RETENCION_V2", retencion.getId());
+								byte[] pdfBytes = reporteService.generarReporte(
+										"cxc", "RPRT_RIDE_RETENCION_V2", pdfParams, "PDF");
+								if (pdfBytes != null && pdfBytes.length > 0) {
+									Path pathPdf = Paths.get(resourcesPath + "/rtv2/a/" + clave + ".pdf");
+									Files.write(pathPdf, pdfBytes);
+									PathRetencionV2 pathPdfRec = new PathRetencionV2();
+									pathPdfRec.setRetencionV2(retencion);
+									pathPdfRec.setPath("resources/" + idFacturador + "/rtv2/a/" + clave + ".pdf");
+									pathPdfRec.setAlterno(7L); // 7 = PDF RIDE
+									pathRetencionV2DaoService.save(pathPdfRec, null);
+									// Guardar los bytes del PDF para retornarlos
+									pdfBytesGenerado = pdfBytes;
+									System.out.println("✓ PDF RIDE retención V2 generado: " + pathPdf);
+								}
+							} catch (Exception pdfEx) {
+								System.err.println("⚠ Error generando PDF retención V2 (no crítico): " + pdfEx.getMessage());
+								pdfEx.printStackTrace();
+							}
+
 								if (ambiente == 2) {
 									String sqlUpdate = "UPDATE Facturador f SET f.docEmitidos = COALESCE(f.docEmitidos, 0) + 1 WHERE f.id = :idFacturador";
 									Query updateQuery = em.createQuery(sqlUpdate);
@@ -707,90 +747,70 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 			throw new IncomeException("Error en autorizarRetencionV2: " + e.getMessage());
 		}
 		
-		return respuesta;
+		// Retornar mapa con mensaje y bytes del PDF
+		java.util.Map<String, Object> resultadoFinal = new java.util.HashMap<>();
+		resultadoFinal.put("mensaje", respuesta);
+		resultadoFinal.put("pdfBytes", pdfBytesGenerado);
+		return resultadoFinal;
 	}
 	
 	private String llamarRecepcionSRI(String url, byte[] xmlBytes, PrintWriter log) throws Exception {
 		try {
-			SOAPConnectionFactory soapConnectionFactory = SOAPConnectionFactory.newInstance();
-			SOAPConnection soapConnection = soapConnectionFactory.createConnection();
-			
-			MessageFactory messageFactory = MessageFactory.newInstance();
-			SOAPMessage soapMessage = messageFactory.createMessage();
-			SOAPPart soapPart = soapMessage.getSOAPPart();
-			
-			SOAPEnvelope envelope = soapPart.getEnvelope();
-			SOAPBody soapBody = envelope.getBody();
-			SOAPElement validarComprobante = soapBody.addChildElement("validarComprobante", "", "http://ec.gob.sri.ws.recepcion");
-			SOAPElement xml = validarComprobante.addChildElement(envelope.createName("xml", "", ""));
-
-			// Codificar bytes en Base64 (preserva la firma electrónica)
 			String xmlBase64 = java.util.Base64.getEncoder().encodeToString(xmlBytes);
-			xml.addTextNode(xmlBase64);
-			
-			soapMessage.saveChanges();
-			SOAPMessage soapResponse = soapConnection.call(soapMessage, url);
+			String soapEnvelope =
+				"<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" " +
+				"xmlns:rec=\"http://ec.gob.sri.ws.recepcion\">" +
+				"<soapenv:Header/><soapenv:Body>" +
+				"<rec:validarComprobante><xml>" + xmlBase64 + "</xml></rec:validarComprobante>" +
+				"</soapenv:Body></soapenv:Envelope>";
 
-			// Loguear la respuesta COMPLETA en stdout Y en archivo para diagnóstico
-			java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-			soapResponse.writeTo(baos);
-			String respuestaCompleta = baos.toString("UTF-8");
-			System.out.println(">>> RESPUESTA COMPLETA WS1 SRI (RTV2):");
-			System.out.println(respuestaCompleta);
+			String respuestaCompleta = com.saa.ejb.cxc.util.SriHttpUtil.enviarSoap(url, soapEnvelope);
+			System.out.println(">>> RESPUESTA COMPLETA WS1 SRI (RTV2):\n" + respuestaCompleta);
 			log.println("Respuesta WS1 completa: " + respuestaCompleta);
 
-			SOAPBody responseBody = soapResponse.getSOAPBody();
-			NodeList estadoList = responseBody.getElementsByTagName("estado");
-			if (estadoList.getLength() == 0) estadoList = responseBody.getElementsByTagNameNS("*", "estado");
+			javax.xml.parsers.DocumentBuilderFactory dbf = javax.xml.parsers.DocumentBuilderFactory.newInstance();
+			dbf.setNamespaceAware(true);
+			org.w3c.dom.Element docEl = dbf.newDocumentBuilder()
+					.parse(new java.io.ByteArrayInputStream(respuestaCompleta.getBytes("UTF-8")))
+					.getDocumentElement();
+
+			NodeList estadoList = docEl.getElementsByTagNameNS("*", "estado");
+			if (estadoList.getLength() == 0) estadoList = docEl.getElementsByTagName("estado");
 			if (estadoList.getLength() > 0) {
 				String estado = estadoList.item(0).getTextContent();
 				System.out.println(">>> Estado WS1 extraído: [" + estado + "]");
 
-				NodeList mensajeList = responseBody.getElementsByTagName("mensaje");
-				if (mensajeList.getLength() == 0) mensajeList = responseBody.getElementsByTagNameNS("*", "mensaje");
+				NodeList mensajeList = docEl.getElementsByTagNameNS("*", "mensaje");
+				if (mensajeList.getLength() == 0) mensajeList = docEl.getElementsByTagName("mensaje");
 				if (mensajeList.getLength() > 0) {
 					String mensaje = mensajeList.item(0).getTextContent();
 					if (mensaje != null && mensaje.contains("CLAVE ACCESO REGISTRADA")) {
-						soapConnection.close();
 						return "CLAVE ACCESO REGISTRADA";
 					}
 				}
 
-				// Si es DEVUELTA, extraer TODOS los mensajeDevuelta con la razón exacta
 				if ("DEVUELTA".equals(estado)) {
 					StringBuilder sbErrores = new StringBuilder("DEVUELTA");
-					NodeList mensajesDevuelta = responseBody.getElementsByTagName("mensajeDevuelta");
-					if (mensajesDevuelta.getLength() == 0)
-						mensajesDevuelta = responseBody.getElementsByTagNameNS("*", "mensajeDevuelta");
-
+					NodeList mensajesDevuelta = docEl.getElementsByTagNameNS("*", "mensajeDevuelta");
+					if (mensajesDevuelta.getLength() == 0) mensajesDevuelta = docEl.getElementsByTagName("mensajeDevuelta");
 					System.err.println(">>> SRI rechazó la RTV2 (DEVUELTA). Errores: " + mensajesDevuelta.getLength());
 					log.println(">>> Errores DEVUELTA: " + mensajesDevuelta.getLength());
-
 					for (int i = 0; i < mensajesDevuelta.getLength(); i++) {
 						org.w3c.dom.Node nodeMD = mensajesDevuelta.item(i);
 						String identificador = extraerTextoHijo(nodeMD, "identificador");
 						String msgError      = extraerTextoHijo(nodeMD, "mensaje");
 						String infoAd        = extraerTextoHijo(nodeMD, "informacionAdicional");
 						String tipo          = extraerTextoHijo(nodeMD, "tipo");
-						String lineaError = " | [" + tipo + "] Id:" + identificador
-								+ " Msg:" + msgError + " Info:" + infoAd;
+						String lineaError = " | [" + tipo + "] Id:" + identificador + " Msg:" + msgError + " Info:" + infoAd;
 						sbErrores.append(lineaError);
-						System.err.println("  ERROR SRI[" + i + "]: tipo=" + tipo
-								+ " | identificador=" + identificador
-								+ " | mensaje=" + msgError
-								+ " | informacionAdicional=" + infoAd);
+						System.err.println("  ERROR SRI[" + i + "]: tipo=" + tipo + " | identificador=" + identificador + " | mensaje=" + msgError + " | informacionAdicional=" + infoAd);
 						log.println("  ERROR SRI[" + i + "]: " + lineaError);
 					}
-					soapConnection.close();
 					return sbErrores.toString();
 				}
-
-				soapConnection.close();
 				return estado;
 			}
-			
 			System.err.println(">>> ADVERTENCIA: No se encontró <estado> en la respuesta WS1 (RTV2)");
-			soapConnection.close();
 			return "SIN_RESPUESTA";
 		} catch (Exception e) {
 			System.err.println(">>> ERROR en llamarRecepcionSRI RTV2: " + e.getMessage());
@@ -814,34 +834,27 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 	
 	private ResultadoAutorizacion llamarAutorizacionSRI(String url, String claveAcceso) throws Exception {
 		try {
-			SOAPConnectionFactory soapConnectionFactory = SOAPConnectionFactory.newInstance();
-			SOAPConnection soapConnection = soapConnectionFactory.createConnection();
-			
-			MessageFactory messageFactory = MessageFactory.newInstance();
-			SOAPMessage soapMessage = messageFactory.createMessage();
-			SOAPPart soapPart = soapMessage.getSOAPPart();
-			SOAPEnvelope envelope = soapPart.getEnvelope();
-			SOAPBody soapBody = envelope.getBody();
-			SOAPElement autorizacionComprobante = soapBody.addChildElement(
-					"autorizacionComprobante", "", "http://ec.gob.sri.ws.autorizacion");
-			SOAPElement claveAccesoElement = autorizacionComprobante.addChildElement(
-					envelope.createName("claveAccesoComprobante", "", ""));
-			claveAccesoElement.addTextNode(claveAcceso);
-			soapMessage.saveChanges();
+			String soapEnvelope =
+				"<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" " +
+				"xmlns:aut=\"http://ec.gob.sri.ws.autorizacion\">" +
+				"<soapenv:Header/><soapenv:Body>" +
+				"<aut:autorizacionComprobante><claveAccesoComprobante>" + claveAcceso + "</claveAccesoComprobante>" +
+				"</aut:autorizacionComprobante></soapenv:Body></soapenv:Envelope>";
 
-			SOAPMessage soapResponse = soapConnection.call(soapMessage, url);
-			SOAPBody responseBody = soapResponse.getSOAPBody();
-
-			// Guardar respuesta solo en variable interna (no imprimirla en consola)
-			java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-			soapResponse.writeTo(baos);
-			String respuestaCompleta = baos.toString("UTF-8");
+			String respuestaCompleta = com.saa.ejb.cxc.util.SriHttpUtil.enviarSoap(url, soapEnvelope);
+			System.out.println(">>> XML RESPUESTA WS2 (Autorización SRI - RTV2):\n" + respuestaCompleta);
 
 			ResultadoAutorizacion resultado = new ResultadoAutorizacion();
 			resultado.respuestaCompleta = respuestaCompleta;
 
-			NodeList estadoList = responseBody.getElementsByTagName("estado");
-			if (estadoList.getLength() == 0) estadoList = responseBody.getElementsByTagNameNS("*", "estado");
+			javax.xml.parsers.DocumentBuilderFactory dbf = javax.xml.parsers.DocumentBuilderFactory.newInstance();
+			dbf.setNamespaceAware(true);
+			org.w3c.dom.Element docEl = dbf.newDocumentBuilder()
+					.parse(new java.io.ByteArrayInputStream(respuestaCompleta.getBytes("UTF-8")))
+					.getDocumentElement();
+
+			NodeList estadoList = docEl.getElementsByTagNameNS("*", "estado");
+			if (estadoList.getLength() == 0) estadoList = docEl.getElementsByTagName("estado");
 			if (estadoList.getLength() > 0) {
 				resultado.estado = estadoList.item(0).getTextContent();
 				System.out.println(">>> Estado WS2: " + resultado.estado);
@@ -849,31 +862,24 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 				System.err.println(">>> ADVERTENCIA: No se encontró <estado> en respuesta WS2 (RTV2)");
 			}
 
-			NodeList numAutList = responseBody.getElementsByTagName("numeroAutorizacion");
-			if (numAutList.getLength() == 0) numAutList = responseBody.getElementsByTagNameNS("*", "numeroAutorizacion");
+			NodeList numAutList = docEl.getElementsByTagNameNS("*", "numeroAutorizacion");
 			if (numAutList.getLength() > 0) resultado.numeroAutorizacion = numAutList.item(0).getTextContent();
 
-			NodeList fechaAutList = responseBody.getElementsByTagName("fechaAutorizacion");
-			if (fechaAutList.getLength() == 0) fechaAutList = responseBody.getElementsByTagNameNS("*", "fechaAutorizacion");
+			NodeList fechaAutList = docEl.getElementsByTagNameNS("*", "fechaAutorizacion");
 			if (fechaAutList.getLength() > 0) resultado.fechaAutorizacion = fechaAutList.item(0).getTextContent();
 
-			NodeList comprobanteList = responseBody.getElementsByTagName("comprobante");
-			if (comprobanteList.getLength() == 0) comprobanteList = responseBody.getElementsByTagNameNS("*", "comprobante");
+			NodeList comprobanteList = docEl.getElementsByTagNameNS("*", "comprobante");
 			if (comprobanteList.getLength() > 0) resultado.comprobanteXML = comprobanteList.item(0).getTextContent();
 
-			NodeList mensajeIdList = responseBody.getElementsByTagName("identificador");
-			if (mensajeIdList.getLength() == 0) mensajeIdList = responseBody.getElementsByTagNameNS("*", "identificador");
+			NodeList mensajeIdList = docEl.getElementsByTagNameNS("*", "identificador");
 			if (mensajeIdList.getLength() > 0) resultado.mensajeId = mensajeIdList.item(0).getTextContent();
 
-			NodeList mensajeList = responseBody.getElementsByTagName("mensaje");
-			if (mensajeList.getLength() == 0) mensajeList = responseBody.getElementsByTagNameNS("*", "mensaje");
+			NodeList mensajeList = docEl.getElementsByTagNameNS("*", "mensaje");
 			if (mensajeList.getLength() > 0) resultado.mensaje = mensajeList.item(0).getTextContent();
 
-			NodeList infoAdicionalList = responseBody.getElementsByTagName("informacionAdicional");
-			if (infoAdicionalList.getLength() == 0) infoAdicionalList = responseBody.getElementsByTagNameNS("*", "informacionAdicional");
+			NodeList infoAdicionalList = docEl.getElementsByTagNameNS("*", "informacionAdicional");
 			if (infoAdicionalList.getLength() > 0) resultado.informacionAdicional = infoAdicionalList.item(0).getTextContent();
 
-			soapConnection.close();
 			return resultado;
 		} catch (Exception e) {
 			System.err.println(">>> ERROR en llamarAutorizacionSRI RTV2: " + e.getMessage());
@@ -900,6 +906,91 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 		String mensaje;
 		String informacionAdicional;
 		String respuestaCompleta;
+	}
+
+	@Override
+	public java.util.Map<String, Object> reenviarEmail(Long idRetencion, String destinatarios) throws Throwable {
+		System.out.println("=== reenviarEmail RTV2 | id=" + idRetencion + " | destinatarios=" + destinatarios + " ===");
+		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+		resultado.put("exito", false);
+
+		if (destinatarios == null || destinatarios.trim().isEmpty()) {
+			resultado.put("mensaje", "Debe especificar al menos un correo electrónico destinatario.");
+			return resultado;
+		}
+
+		RetencionV2 retencion = retencionV2DaoService.selectById(idRetencion, com.saa.model.cxc.NombreEntidadesCobro.RETENCION_V2);
+		if (retencion == null) {
+			resultado.put("mensaje", "No se encontró la retención V2 con ID: " + idRetencion);
+			return resultado;
+		}
+		if (!Long.valueOf(5L).equals(retencion.getEstado())) {
+			resultado.put("mensaje", "Solo se puede reenviar el email de retenciones autorizadas. Estado actual: " + retencion.getEstado());
+			return resultado;
+		}
+
+		String clave       = retencion.getClave();
+		Long idFacturador  = retencion.getFacturador().getId();
+		String resourcesPath = getBaseUploadDirectory() + "resources/" + idFacturador;
+
+		// Leer XML autorizado
+		String xmlAutorizado = null;
+		try {
+			java.nio.file.Path pXml = java.nio.file.Paths.get(resourcesPath + "/rtv2/a/" + clave + ".xml");
+			if (java.nio.file.Files.exists(pXml))
+				xmlAutorizado = new String(java.nio.file.Files.readAllBytes(pXml), "UTF-8");
+		} catch (Exception e) { System.err.println("⚠ Error leyendo XML RTV2: " + e.getMessage()); }
+
+		// Leer PDF, o regenerarlo si no existe (cubre documentos anteriores al fix)
+		byte[] pdfBytes = null;
+		try {
+			java.nio.file.Path pPdf = java.nio.file.Paths.get(resourcesPath + "/rtv2/a/" + clave + ".pdf");
+			if (java.nio.file.Files.exists(pPdf)) {
+				pdfBytes = java.nio.file.Files.readAllBytes(pPdf);
+				System.out.println("✓ PDF RTV2 leído desde disco.");
+			} else {
+				System.out.println("ℹ PDF RTV2 no encontrado en disco. Regenerando...");
+				try {
+					java.util.Map<String, Object> pdfParams = new java.util.HashMap<>();
+					pdfParams.put("P_ID_RETENCION_V2", retencion.getId());
+					pdfBytes = reporteService.generarReporte("cxc", "RPRT_RIDE_RETENCION_V2", pdfParams, "PDF");
+					if (pdfBytes != null && pdfBytes.length > 0) {
+						java.nio.file.Files.createDirectories(pPdf.getParent());
+						java.nio.file.Files.write(pPdf, pdfBytes);
+						System.out.println("✓ PDF RTV2 regenerado y guardado en disco.");
+					}
+				} catch (Exception pdfEx) {
+					System.err.println("⚠ No se pudo regenerar el PDF RTV2: " + pdfEx.getMessage());
+				}
+			}
+		} catch (Exception e) { System.err.println("⚠ Error leyendo/regenerando PDF RTV2: " + e.getMessage()); }
+
+		String razonSocial = retencion.getFacturador() != null
+				? nvl(retencion.getFacturador().getRazonSocial(), nvl(retencion.getFacturador().getNombre(), "")) : "";
+		String numeroDoc = nvl(retencion.getNumero(), clave);
+
+		String[] lista = destinatarios.split(";");
+		java.util.List<String> enviados = new java.util.ArrayList<>();
+		java.util.List<String> fallidos = new java.util.ArrayList<>();
+		for (String mail : lista) {
+			String m = mail.trim();
+			if (m.isEmpty()) continue;
+			try {
+				emailFacturaService.enviarFacturaAutorizada(m, numeroDoc, clave, razonSocial, "Retención", xmlAutorizado, pdfBytes);
+				enviados.add(m);
+			} catch (Exception e) { fallidos.add(m + " (" + e.getMessage() + ")"); }
+		}
+
+		resultado.put("emailsEnviados", enviados);
+		resultado.put("emailsFallidos", fallidos);
+		resultado.put("clave", clave);
+		if (!enviados.isEmpty()) {
+			resultado.put("exito", true);
+			resultado.put("mensaje", "Email enviado a " + enviados.size() + " destinatario(s).");
+		} else {
+			resultado.put("mensaje", "No se pudo enviar el email a ningún destinatario.");
+		}
+		return resultado;
 	}
 
 	@Override
@@ -1008,8 +1099,12 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 				throw new Exception("La retención V2 no tiene facturador asociado");
 
 			resultado.put("claveAcceso", clave);
-			ambiente   = 1L; // FORZADO PRUEBAS — cambiar a 2L para producción
-			conectaSRI = 1L;
+			// Usar el ambiente del facturador (ya resuelto en saveSingle) — NO del frontend
+			ambiente = retencion.getAmbiente();
+			if (ambiente == null) ambiente = 1L;
+			if (conectaSRI == null) conectaSRI = 1L;
+			System.out.println(">>> AMBIENTE (desde facturador BD): " + ambiente
+					+ (ambiente == 2L ? " (PRODUCCIÓN)" : " (PRUEBAS)") + " | CONECTA_SRI: " + conectaSRI);
 
 			// ── PASO 2 y 3: Generar y firmar XML ──────────────────────────────
 			String xmlFirmado;
@@ -1033,10 +1128,13 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 			// ── PASO 4: Autorizar ante el SRI ──────────────────────────────────
 			System.out.println("PASO 4: Autorizando ante el SRI...");
 			String resultadoAutorizacion;
+			byte[] pdfBytesParaEmail = null; // Bytes del PDF generado en autorizarRetencionV2
 			try {
-				resultadoAutorizacion = this.autorizarRetencionV2(
+				java.util.Map<String, Object> resultadoAuth = this.autorizarRetencionV2(
 						idFacturador, ambiente, conectaSRI, clave,
 						retencion.getId(), xmlFirmado, destinatario, pathLogo);
+				resultadoAutorizacion = (String) resultadoAuth.get("mensaje");
+				pdfBytesParaEmail = (byte[]) resultadoAuth.get("pdfBytes");
 			} catch (Exception e) {
 				resultado.put("etapa", "ERROR_AUTORIZACION_SRI");
 				resultado.put("mensaje", "Error al comunicarse con el SRI: " + e.getMessage());
@@ -1114,43 +1212,40 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 				}
 			}
 
-			// ── PASO 6: Enviar correo electrónico ─────────────────────────────
-			System.out.println("PASO 6: Enviando email al proveedor...");
-			try {
-				if (destinatario != null && !destinatario.trim().isEmpty()) {
-					String resourcesPath = getBaseUploadDirectory() + "resources/" + idFacturador;
-					String xmlAutorizado = null;
-					byte[] pdfBytes = null;
-					try {
-						java.nio.file.Path pXml = java.nio.file.Paths.get(
-								resourcesPath + "/rtv2/a/" + clave + ".xml");
-						if (java.nio.file.Files.exists(pXml))
-							xmlAutorizado = new String(java.nio.file.Files.readAllBytes(pXml), "UTF-8");
-						java.nio.file.Path pPdf = java.nio.file.Paths.get(
-								resourcesPath + "/rtv2/a/" + clave + ".pdf");
-						if (java.nio.file.Files.exists(pPdf))
-							pdfBytes = java.nio.file.Files.readAllBytes(pPdf);
-					} catch (Exception ioEx) {
-						System.err.println("⚠ No se pudieron leer archivos para el email: " + ioEx.getMessage());
-					}
-					String razonSocial = retencion.getFacturador() != null
-							? nvl(retencion.getFacturador().getRazonSocial(),
-								  nvl(retencion.getFacturador().getNombre(), "")) : "";
-					emailFacturaService.enviarFacturaAutorizada(
-							destinatario, nvl(retencion.getNumero(), clave),
-							clave, razonSocial, xmlAutorizado, pdfBytes);
-					resultado.put("emailEnviado", true);
-					System.out.println("✓ Email enviado a: " + destinatario);
-				} else {
-					resultado.put("emailEnviado", false);
-					System.out.println("ℹ Email omitido: sin dirección de correo del proveedor.");
+		// ── PASO 6: Enviar correo electrónico ─────────────────────────────
+		System.out.println("PASO 6: Enviando email al proveedor...");
+		try {
+			if (destinatario != null && !destinatario.trim().isEmpty()) {
+				String resourcesPath = getBaseUploadDirectory() + "resources/" + idFacturador;
+				String xmlAutorizado = null;
+				try {
+					java.nio.file.Path pXml = java.nio.file.Paths.get(
+							resourcesPath + "/rtv2/a/" + clave + ".xml");
+					if (java.nio.file.Files.exists(pXml))
+						xmlAutorizado = new String(java.nio.file.Files.readAllBytes(pXml), "UTF-8");
+				} catch (Exception ioEx) {
+					System.err.println("⚠ No se pudo leer el XML para el email: " + ioEx.getMessage());
 				}
-			} catch (Exception mailEx) {
-				resultado.put("advertenciaEmail",
-						"Retención V2 autorizada pero no se pudo enviar el email: "
-						+ mailEx.getMessage() + ". Reenvíe manualmente.");
-				System.err.println("⚠ Error enviando email: " + mailEx.getMessage());
+				// Usar directamente los bytes del PDF que retornó autorizarRetencionV2
+				// en lugar de intentar leerlos del disco, evitando problemas de sincronización
+				String razonSocial = retencion.getFacturador() != null
+						? nvl(retencion.getFacturador().getRazonSocial(),
+							  nvl(retencion.getFacturador().getNombre(), "")) : "";
+				emailFacturaService.enviarFacturaAutorizada(
+						destinatario, nvl(retencion.getNumero(), clave),
+						clave, razonSocial, "Retención", xmlAutorizado, pdfBytesParaEmail);
+				resultado.put("emailEnviado", true);
+				System.out.println("✓ Email enviado a: " + destinatario);
+			} else {
+				resultado.put("emailEnviado", false);
+				System.out.println("ℹ Email omitido: sin dirección de correo del proveedor.");
 			}
+		} catch (Exception mailEx) {
+			resultado.put("advertenciaEmail",
+					"Retención V2 autorizada pero no se pudo enviar el email: "
+					+ mailEx.getMessage() + ". Reenvíe manualmente.");
+			System.err.println("⚠ Error enviando email: " + mailEx.getMessage());
+		}
 
 			// ── FIN ────────────────────────────────────────────────────────────
 			resultado.put("exito",   true);
@@ -1238,6 +1333,180 @@ public java.util.Map<String, Object> anularRetencionV2(Long idRetencion, String 
 	resultado.put("fechaAnulacion", ahora.toString());
 	resultado.put("usuarioAnulacion", usuarioAnulacion);
 
+	return resultado;
+}
+
+// =========================================================================
+// consultarYActualizarEstadoRetencionV2
+// =========================================================================
+@Override
+public java.util.Map<String, Object> consultarYActualizarEstadoRetencionV2(Long idRetencion) throws Throwable {
+	System.out.println("=== consultarYActualizarEstadoRetencionV2 | idRetencion=" + idRetencion + " ===");
+	java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+	resultado.put("exito", false);
+
+	// 1. Cargar la retención V2
+	RetencionV2 retencion = retencionV2DaoService.selectById(idRetencion, NombreEntidadesCobro.RETENCION_V2);
+	if (retencion == null) {
+		resultado.put("mensaje", "Retención V2 con ID " + idRetencion + " no encontrada.");
+		return resultado;
+	}
+	if (retencion.getClave() == null || retencion.getClave().isEmpty()) {
+		resultado.put("mensaje", "La retención V2 no tiene clave de acceso registrada.");
+		return resultado;
+	}
+
+	Long ambiente = retencion.getAmbiente() != null ? retencion.getAmbiente() : 1L;
+	String clave = retencion.getClave();
+	Long idFacturador = retencion.getFacturador() != null ? retencion.getFacturador().getId() : null;
+	resultado.put("clave", clave);
+	resultado.put("estadoActual", retencion.getEstado());
+
+	// 2. Consultar estado al SRI
+	String urlWS2 = ambiente == 2L
+			? "https://cel.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl"
+			: "https://celcer.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl";
+	System.out.println(">>> Consultando estado al SRI: " + urlWS2);
+
+	ResultadoAutorizacion ra;
+	try {
+		ra = llamarAutorizacionSRI(urlWS2, clave);
+	} catch (Exception e) {
+		resultado.put("mensaje", "Error al consultar el estado en el SRI: " + e.getMessage());
+		resultado.put("error", e.getMessage());
+		return resultado;
+	}
+
+	resultado.put("estadoSRI", ra.estado);
+	resultado.put("numeroAutorizacion", ra.numeroAutorizacion);
+	resultado.put("fechaAutorizacion", ra.fechaAutorizacion);
+	System.out.println(">>> Estado SRI: " + ra.estado);
+
+	if (!"AUTORIZADO".equals(ra.estado)) {
+		resultado.put("mensaje", "El SRI indica que la retención V2 NO está autorizada. Estado: " + ra.estado
+				+ " | " + nvl(ra.mensaje, "") + " " + nvl(ra.informacionAdicional, ""));
+		return resultado;
+	}
+
+	// 3. SRI devuelve AUTORIZADO → actualizar retención
+	boolean actualizada = false;
+	if (!Long.valueOf(5L).equals(retencion.getEstado())) {
+		retencion.setEstado(5L);
+		retencion.setEstadoEmision(1L);
+		if (ra.numeroAutorizacion != null && !ra.numeroAutorizacion.isEmpty()) {
+			retencion.setAutorizacion(ra.numeroAutorizacion);
+		}
+		if (ra.fechaAutorizacion != null && !ra.fechaAutorizacion.isEmpty()) {
+			retencion.setFechaAutorizacion(parseFechaAutorizacion(ra.fechaAutorizacion));
+		}
+		// Guardar XML autorizado en disco
+		if (ra.comprobanteXML != null && !ra.comprobanteXML.isEmpty() && idFacturador != null) {
+			try {
+				String resourcesPath = getBaseUploadDirectory() + "resources/" + idFacturador;
+				java.nio.file.Path pathAutorizado = java.nio.file.Paths.get(resourcesPath + "/docs/a/" + clave + ".xml");
+				java.nio.file.Files.createDirectories(pathAutorizado.getParent());
+				java.nio.file.Files.write(pathAutorizado, ra.comprobanteXML.getBytes("UTF-8"));
+				PathRetencionV2 pathA = new PathRetencionV2();
+				pathA.setRetencionV2(retencion);
+				pathA.setPath("resources/" + idFacturador + "/docs/a/" + clave + ".xml");
+				pathA.setAlterno(5L);
+				pathRetencionV2DaoService.save(pathA, null);
+				System.out.println("✓ XML autorizado guardado en disco.");
+			} catch (Exception xmlEx) {
+				System.err.println("⚠ Error guardando XML autorizado: " + xmlEx.getMessage());
+			}
+		}
+		retencionV2DaoService.save(retencion, retencion.getId());
+		actualizada = true;
+		System.out.println("✓ Retención V2 actualizada a estado AUTORIZADA (5). Aut: " + ra.numeroAutorizacion);
+	} else {
+		System.out.println("ℹ Retención V2 ya estaba en estado 5 (autorizada).");
+	}
+	resultado.put("retencionActualizada", actualizada);
+
+	// 4. Generar asiento contable si no tiene y el facturador lo requiere
+	boolean asientoGenerado = false;
+	if (retencion.getAsiento() == null
+			&& retencion.getFacturador() != null
+			&& retencion.getFacturador().getEmpresa() != null
+			&& Long.valueOf(1L).equals(retencion.getFacturador().getGeneraConta())) {
+		System.out.println("PASO 4: Generando asiento contable...");
+		try {
+			Long idEmpresa = retencion.getFacturador().getEmpresa().getCodigo();
+			String obsAsiento = "Retención V2 N° " + nvl(retencion.getNumero(), clave)
+					+ " | Proveedor: " + (retencion.getProveedor() != null ? retencion.getProveedor().getNombre() : "")
+					+ " | Aut: " + nvl(retencion.getAutorizacion(), clave);
+			String usuarioAsiento = retencion.getUsuario() != null ? retencion.getUsuario().getNombre() : "SISTEMA";
+			com.saa.model.cnt.Asiento asientoGeneradoObj =
+					asientoContableService.generarAsientoRetencionV2(
+							retencion.getId(), idEmpresa,
+							com.saa.rubros.TipoAsientos.FACTURAS_VENTA,
+							retencion.getFecha().toLocalDate(), obsAsiento, usuarioAsiento);
+			com.saa.model.cnt.Asiento asientoAttached = em.merge(asientoGeneradoObj);
+			retencion.setAsiento(asientoAttached);
+			retencionV2DaoService.save(retencion, retencion.getId());
+			em.flush();
+			resultado.put("asiento", asientoGeneradoObj.getNumeroAlterno());
+			asientoGenerado = true;
+			System.out.println("✓ Asiento contable generado: " + asientoGeneradoObj.getNumeroAlterno());
+		} catch (Exception e) {
+			resultado.put("advertenciaAsiento",
+					"Retención V2 autorizada pero error al generar asiento: " + e.getMessage());
+			System.err.println("⚠ Error en asiento contable: " + e.getMessage());
+		}
+	} else if (retencion.getAsiento() != null) {
+		resultado.put("asientoExistente", retencion.getAsiento().getNumeroAlterno());
+		System.out.println("ℹ La retención V2 ya tiene asiento contable: " + retencion.getAsiento().getNumeroAlterno());
+	}
+	resultado.put("asientoGenerado", asientoGenerado);
+
+	// 5. Enviar email con XML autorizado (y PDF si existe en disco)
+	System.out.println("PASO 5: Enviando email al proveedor...");
+	String destinatario = null;
+	if (retencion.getProveedor() != null) destinatario = retencion.getProveedor().getEmail();
+	try {
+		if (destinatario != null && !destinatario.trim().isEmpty() && idFacturador != null) {
+			String resourcesPath = getBaseUploadDirectory() + "resources/" + idFacturador;
+			String xmlAutorizado = null;
+			byte[] pdfBytes = null;
+			try {
+				java.nio.file.Path pXml = java.nio.file.Paths.get(resourcesPath + "/docs/a/" + clave + ".xml");
+				if (java.nio.file.Files.exists(pXml))
+					xmlAutorizado = new String(java.nio.file.Files.readAllBytes(pXml), "UTF-8");
+				// Intentar leer PDF si existe (las retenciones V2 pueden tener PDF generado previamente)
+				java.nio.file.Path pPdf = java.nio.file.Paths.get(resourcesPath + "/docs/a/" + clave + ".pdf");
+				if (java.nio.file.Files.exists(pPdf)) {
+					pdfBytes = java.nio.file.Files.readAllBytes(pPdf);
+					System.out.println("✓ PDF RIDE leído desde disco.");
+				}
+			} catch (Exception ioEx) {
+				System.err.println("⚠ Error leyendo archivos para email: " + ioEx.getMessage());
+			}
+			String razonSocial = retencion.getFacturador() != null
+					? nvl(retencion.getFacturador().getRazonSocial(), nvl(retencion.getFacturador().getNombre(), "")) : "";
+			emailFacturaService.enviarFacturaAutorizada(
+					destinatario, nvl(retencion.getNumero(), clave),
+					clave, razonSocial, "Retención V2", xmlAutorizado, pdfBytes);
+			resultado.put("emailEnviado", true);
+			resultado.put("emailDestinatario", destinatario);
+			System.out.println("✓ Email enviado a: " + destinatario);
+		} else {
+			resultado.put("emailEnviado", false);
+			System.out.println("ℹ Email omitido: no hay dirección de correo del proveedor.");
+		}
+	} catch (Exception mailEx) {
+		resultado.put("advertenciaEmail",
+				"Retención V2 autorizada pero no se pudo enviar el email: " + mailEx.getMessage());
+		resultado.put("emailEnviado", false);
+		System.err.println("⚠ Error enviando email: " + mailEx.getMessage());
+	}
+
+	resultado.put("exito", true);
+	resultado.put("mensaje", "Retención V2 verificada en el SRI: AUTORIZADA."
+			+ (actualizada ? " Estado actualizado." : "")
+			+ (asientoGenerado ? " Asiento contable generado." : "")
+			+ (Boolean.TRUE.equals(resultado.get("emailEnviado")) ? " Email enviado a " + destinatario + "." : ""));
+	System.out.println("=== consultarYActualizarEstadoRetencionV2 COMPLETADO ===");
 	return resultado;
 }
 }

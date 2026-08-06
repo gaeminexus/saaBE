@@ -209,7 +209,7 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
         }
 
         // ── Construir entidad ──────────────────────────────────────────────────
-        // Leer saldoInicial del PRCC (tipoCuenta=2=Anticipos, tipoPersona=2=Proveedor)
+        // Leer saldoInicial del PRCC (tipoCuenta=2=Anticipos, Proveedor)
         // y sumarlo al valor del anticipo para obtener el saldo real acumulado.
         Double saldoInicialPrcc = 0.0;
         try {
@@ -218,8 +218,7 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
                     + "JOIN pcc.personaRol pr "
                     + "WHERE pr.titular.codigo = :titular "
                     + "AND pcc.empresa.codigo  = :empresa "
-                    + "AND pcc.tipoCuenta      = 2 "
-                    + "AND pcc.tipoPersona     = 2")
+                    + "AND pcc.tipoCuenta      = 2")
                 .setParameter("titular", idTitular)
                 .setParameter("empresa",  idEmpresa)
                 .setMaxResults(1)
@@ -298,17 +297,15 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
                     + "JOIN pcc.personaRol pr "
                     + "WHERE pr.titular.codigo = :titular "
                     + "AND pcc.empresa.codigo  = :empresa "
-                    + "AND pcc.tipoCuenta      = 2 "
-                    + "AND pcc.tipoPersona     = :tipoPersona")
-                .setParameter("titular",     idTitular)
-                .setParameter("empresa",     idEmpresa)
-                .setParameter("tipoPersona", tipoPersona)
+                    + "AND pcc.tipoCuenta      = 2")
+                .setParameter("titular", idTitular)
+                .setParameter("empresa",  idEmpresa)
                 .getResultList();
 
             if (lista.isEmpty()) {
                 System.err.println("⚠ actualizarSaldoInicialPrcc: no se encontró PRCC "
                         + "para titular=" + idTitular + " empresa=" + idEmpresa
-                        + " tipoPersona=" + tipoPersona + " tipoCuenta=2");
+                        + " tipoCuenta=2");
                 return;
             }
 

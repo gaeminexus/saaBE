@@ -38,25 +38,29 @@ public class EmailFacturaServiceImpl implements EmailFacturaService {
 
     @Override
     public void enviarFacturaAutorizada(String destinatario, String numeroFactura, String clave,
-            String razonSocialEmisor, String xmlAutorizado, byte[] pdfBytes) throws Exception {
+            String razonSocialEmisor, String tipoDocumento, String xmlAutorizado, byte[] pdfBytes) throws Exception {
 
         if (destinatario == null || destinatario.trim().isEmpty()) {
-            System.out.println("⚠ Email no enviado: destinatario vacío para factura " + numeroFactura);
+            System.out.println("⚠ Email no enviado: destinatario vacío para " + tipoDocumento + " " + numeroFactura);
             return;
         }
 
-        System.out.println(">>> Enviando email de factura autorizada a: " + destinatario
-                + " | Factura: " + numeroFactura);
+        // Normalizar tipo documento
+        String tipo = (tipoDocumento != null && !tipoDocumento.trim().isEmpty())
+                ? tipoDocumento.trim() : "Factura";
+
+        System.out.println(">>> Enviando email de " + tipo + " autorizada a: " + destinatario
+                + " | Número: " + numeroFactura);
 
         MimeMessage message = new MimeMessage(mailSession);
         message.setFrom(new InternetAddress(FROM_ADDRESS, FROM_NAME, "UTF-8"));
         message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(destinatario));
-        message.setSubject("Factura Electrónica Autorizada N° " + numeroFactura, "UTF-8");
+        message.setSubject(tipo + " Electrónica Autorizada N° " + numeroFactura, "UTF-8");
         message.setSentDate(new Date());
 
         // Cuerpo HTML
         MimeBodyPart htmlPart = new MimeBodyPart();
-        htmlPart.setContent(construirCuerpoHTML(numeroFactura, clave, razonSocialEmisor),
+        htmlPart.setContent(construirCuerpoHTML(numeroFactura, clave, razonSocialEmisor, tipo),
                 "text/html; charset=UTF-8");
 
         Multipart multipart = new MimeMultipart();
@@ -85,18 +89,19 @@ public class EmailFacturaServiceImpl implements EmailFacturaService {
 
         Transport.send(message);
         System.out.println("✓ Email enviado correctamente a: " + destinatario
-                + " | Factura: " + numeroFactura);
+                + " | " + tipo + ": " + numeroFactura);
     }
 
-    private String construirCuerpoHTML(String numeroFactura, String clave, String razonSocialEmisor) {
+    private String construirCuerpoHTML(String numeroFactura, String clave,
+            String razonSocialEmisor, String tipoDocumento) {
         return "<!DOCTYPE html>" +
             "<html><head><meta charset='UTF-8'></head>" +
             "<body style='font-family:Arial,sans-serif;color:#333'>" +
             "<div style='max-width:600px;margin:0 auto;padding:20px;" +
                 "border:1px solid #ddd;border-radius:8px'>" +
-            "<h2 style='color:#2e7d32'>Factura Electrónica Autorizada</h2>" +
+            "<h2 style='color:#2e7d32'>" + tipoDocumento + " Electrónica Autorizada</h2>" +
             "<p>Estimado cliente,</p>" +
-            "<p>Le informamos que su factura electrónica ha sido " +
+            "<p>Le informamos que su " + tipoDocumento.toLowerCase() + " electrónica ha sido " +
                 "<strong>autorizada</strong> por el SRI.</p>" +
             "<table style='width:100%;border-collapse:collapse;margin:20px 0'>" +
             "<tr><td style='padding:8px;background:#f5f5f5;font-weight:bold'>Emisor:</td>" +

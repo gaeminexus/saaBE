@@ -86,6 +86,19 @@ public class ReporteServiceImpl implements ReporteService {
     public byte[] generarReporte(String modulo, String nombreReporte, 
                                   Map<String, Object> parametros, String formato) throws Exception {
         
+        // ── Alias de reportes ────────────────────────────────────────────────
+        // La retención simple no tiene JRXML propio: siempre se usa el V2.
+        // Se renombra el reporte y se adapta el parámetro de ID para que Jasper
+        // encuentre el archivo y filtre correctamente.
+        if ("RPRT_RIDE_RETENCION".equals(nombreReporte)) {
+            nombreReporte = "RPRT_RIDE_RETENCION_V2";
+            if (parametros.containsKey("P_ID_RETENCION") && !parametros.containsKey("P_ID_RETENCION_V2")) {
+                parametros.put("P_ID_RETENCION_V2", parametros.get("P_ID_RETENCION"));
+            }
+            LOGGER.log(Level.INFO, "Alias aplicado: RPRT_RIDE_RETENCION → RPRT_RIDE_RETENCION_V2");
+        }
+        // ────────────────────────────────────────────────────────────────────
+
         LOGGER.log(Level.INFO, "Generando reporte: modulo={0}, nombre={1}, formato={2}", 
                    new Object[]{modulo, nombreReporte, formato});
         

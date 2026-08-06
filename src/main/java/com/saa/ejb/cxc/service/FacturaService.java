@@ -79,6 +79,19 @@ public interface FacturaService extends EntityService<Factura> {
 	 */
         java.util.Map<String, Object> reenviarEmail(Long idFactura, String destinatarios) throws Throwable;
 
+	/**
+	 * Consulta el estado de una factura ante el SRI (WS consultarEstadoAutorizacion).
+	 * Si el SRI devuelve AUTORIZADO:
+	 *   - Actualiza el estado de la factura a 5 (emitida/autorizada) si estaba pendiente.
+	 *   - Establece el número de autorización y fecha de autorización.
+	 *   - Si la factura no tiene asiento contable y el facturador tiene generaConta=1,
+	 *     genera el asiento contable automáticamente.
+	 *
+	 * @param idFactura ID de la factura a consultar
+	 * @return Mapa con: exito, estadoSRI, numeroAutorizacion, asientoGenerado, mensaje
+	 */
+	java.util.Map<String, Object> consultarYActualizarEstadoFactura(Long idFactura) throws Throwable;
+
         /**
          * Anula una factura cambiando su estado a INACTIVO (2) y anula
          * el asiento contable vinculado si existe.

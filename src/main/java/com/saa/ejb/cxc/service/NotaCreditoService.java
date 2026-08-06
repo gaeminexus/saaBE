@@ -50,13 +50,31 @@ public interface NotaCreditoService extends EntityService<NotaCredito> {
 			java.util.List<com.saa.model.cxc.DetalleNotaCredito> detalles,
 			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable;
 
-	/**
-	 * Anula una nota de crédito y su asiento contable vinculado.
-	 * @param idNotaCredito ID de la nota de crédito
-	 * @param motivo Motivo de anulación
-	 * @param usuario Usuario que realiza la anulación
-	 * @return Map con resultado de la operación
-	 */
-	java.util.Map<String, Object> anularNotaCredito(Long idNotaCredito, String motivo, String usuario) throws Throwable;
+	/** Reenvía (o envía por primera vez) el email de una nota de crédito autorizada.
+	 *  Si el PDF no existe en disco lo regenera al vuelo. */
+	java.util.Map<String, Object> reenviarEmail(Long idNotaCredito, String destinatarios) throws Throwable;
+
+    /**
+     * Anula una nota de crédito y su asiento contable vinculado.
+     * @param idNotaCredito ID de la nota de crédito
+     * @param motivo Motivo de anulación
+     * @param usuario Usuario que realiza la anulación
+     * @return Map con resultado de la operación
+     */
+    java.util.Map<String, Object> anularNotaCredito(Long idNotaCredito, String motivo, String usuario) throws Throwable;
+
+    /**
+     * Consulta el estado de una nota de crédito ante el SRI (WS consultarEstadoAutorizacion).
+     * Si el SRI devuelve AUTORIZADO:
+     *   - Actualiza el estado de la nota de crédito a autorizada si estaba pendiente.
+     *   - Establece el número de autorización y fecha de autorización.
+     *   - Si la nota de crédito no tiene asiento contable y el facturador tiene generaConta=1,
+     *     genera el asiento contable automáticamente.
+     *   - Envía el email con el XML autorizado y PDF RIDE adjuntos.
+     *
+     * @param idNotaCredito ID de la nota de crédito a consultar
+     * @return Mapa con: exito, estadoSRI, numeroAutorizacion, asientoGenerado, emailEnviado, mensaje
+     */
+    java.util.Map<String, Object> consultarYActualizarEstadoNotaCredito(Long idNotaCredito) throws Throwable;
 
 }

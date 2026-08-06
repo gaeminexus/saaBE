@@ -50,13 +50,31 @@ public interface RetencionService extends EntityService<Retencion> {
 			java.util.List<com.saa.model.cxc.DetalleRetencion> detalles,
 			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable;
 
-	/**
-	 * Anula una retención y su asiento contable vinculado.
-	 * @param idRetencion ID de la retención
-	 * @param motivo Motivo de anulación
-	 * @param usuario Usuario que realiza la anulación
-	 * @return Map con resultado de la operación
-	 */
-	java.util.Map<String, Object> anularRetencion(Long idRetencion, String motivo, String usuario) throws Throwable;
+	/** Reenvía (o envía por primera vez) el email de una retención autorizada.
+	 *  El email irá con el XML adjunto (no hay JRXML de PDF para retención simple). */
+	java.util.Map<String, Object> reenviarEmail(Long idRetencion, String destinatarios) throws Throwable;
+
+    /**
+     * Anula una retención y su asiento contable vinculado.
+     * @param idRetencion ID de la retención
+     * @param motivo Motivo de anulación
+     * @param usuario Usuario que realiza la anulación
+     * @return Map con resultado de la operación
+     */
+    java.util.Map<String, Object> anularRetencion(Long idRetencion, String motivo, String usuario) throws Throwable;
+
+    /**
+     * Consulta el estado de una retención ante el SRI (WS consultarEstadoAutorizacion).
+     * Si el SRI devuelve AUTORIZADO:
+     *   - Actualiza el estado de la retención a autorizada si estaba pendiente.
+     *   - Establece el número de autorización y fecha de autorización.
+     *   - Si la retención no tiene asiento contable y el facturador tiene generaConta=1,
+     *     genera el asiento contable automáticamente.
+     *   - Envía el email con el XML autorizado adjunto.
+     *
+     * @param idRetencion ID de la retención a consultar
+     * @return Mapa con: exito, estadoSRI, numeroAutorizacion, asientoGenerado, emailEnviado, mensaje
+     */
+    java.util.Map<String, Object> consultarYActualizarEstadoRetencion(Long idRetencion) throws Throwable;
 
 }

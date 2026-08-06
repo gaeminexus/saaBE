@@ -305,8 +305,7 @@ public class AnticipoClienteServiceImpl implements AnticipoClienteService {
                     + "JOIN pcc.personaRol pr "
                     + "WHERE pr.titular.codigo = :titular "
                     + "AND pcc.empresa.codigo  = :empresa "
-                    + "AND pcc.tipoCuenta      = 2 "
-                    + "AND pcc.tipoPersona     = 1")
+                    + "AND pcc.tipoCuenta      = 2")
                 .setParameter("titular", idTitular)
                 .setParameter("empresa",  idEmpresa)
                 .setMaxResults(1)
@@ -385,11 +384,9 @@ public class AnticipoClienteServiceImpl implements AnticipoClienteService {
                     + "JOIN pcc.personaRol pr "
                     + "WHERE pr.titular.codigo = :titular "
                     + "AND pcc.empresa.codigo  = :empresa "
-                    + "AND pcc.tipoCuenta      = 2 "
-                    + "AND pcc.tipoPersona     = :tipoPersona")
-                .setParameter("titular",     idTitular)
-                .setParameter("empresa",     idEmpresa)
-                .setParameter("tipoPersona", tipoPersona)
+                    + "AND pcc.tipoCuenta      = 2")
+                .setParameter("titular", idTitular)
+                .setParameter("empresa",  idEmpresa)
                 .getResultList();
 
             if (lista.isEmpty()) {

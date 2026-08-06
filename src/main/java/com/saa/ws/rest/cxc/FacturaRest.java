@@ -465,6 +465,51 @@ public class FacturaRest {
 		}
 	}
 
+	/**
+	 * Consulta el estado de una factura ante el SRI y, si devuelve AUTORIZADO:
+	 *  - Actualiza el estado de la factura a emitida (5) si estaba pendiente.
+	 *  - Guarda el número de autorización y fecha de autorización.
+	 *  - Si la factura no tiene asiento contable y el facturador tiene generaConta=1,
+	 *    genera el asiento contable automáticamente.
+	 *
+	 * POST /fctr/consultarYActualizarEstado
+	 * Body: { "idFactura": 123 }
+	 */
+	@POST
+	@Path("/consultarYActualizarEstado")
+	@Consumes(MediaType.APPLICATION_JSON)
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response consultarYActualizarEstado(java.util.Map<String, Object> params) {
+		System.out.println("LLEGA AL SERVICIO consultarYActualizarEstado");
+		try {
+			Long idFactura = getLongParam(params, "idFactura");
+			if (idFactura == null) {
+				java.util.Map<String, Object> err = new java.util.HashMap<>();
+				err.put("exito", false);
+				err.put("mensaje", "El parámetro 'idFactura' es obligatorio.");
+				return Response.status(Response.Status.BAD_REQUEST)
+						.entity(err).type(MediaType.APPLICATION_JSON).build();
+			}
+
+			java.util.Map<String, Object> resultado =
+					facturaService.consultarYActualizarEstadoFactura(idFactura);
+
+			boolean exito = Boolean.TRUE.equals(resultado.get("exito"));
+			return Response.status(exito ? Response.Status.OK : Response.Status.BAD_REQUEST)
+					.entity(resultado).type(MediaType.APPLICATION_JSON).build();
+
+		} catch (Throwable e) {
+			System.err.println("ERROR en consultarYActualizarEstado REST: " + e.getMessage());
+			e.printStackTrace();
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", "Error inesperado al consultar estado en el SRI: " + e.getMessage());
+			err.put("error", e.getMessage());
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+					.entity(err).type(MediaType.APPLICATION_JSON).build();
+		}
+	}
+
 	private Factura convertMapToFactura(java.util.Map<String, Object> map) {
 		return createObjectMapper().convertValue(map, Factura.class);
 	}

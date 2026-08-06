@@ -24,10 +24,10 @@ public interface RetencionV2Service extends EntityService<RetencionV2> {
 	 * @param xml Contenido XML firmado
 	 * @param destinatario Email del destinatario
 	 * @param pathLogo Path del logo
-	 * @return Mensaje con el resultado de la autorización
+	 * @return Mapa con: mensaje (String), pdfBytes (byte[]) - los bytes del PDF generado
 	 * @throws Throwable
 	 */
-	String autorizarRetencionV2(Long idFacturador, Long ambiente, Long conectaSRI, String clave, 
+	java.util.Map<String, Object> autorizarRetencionV2(Long idFacturador, Long ambiente, Long conectaSRI, String clave,
 			Long codigoRetencion, String xml, String destinatario, String pathLogo) throws Throwable;
 
 	/**
@@ -51,6 +51,10 @@ public interface RetencionV2Service extends EntityService<RetencionV2> {
 			java.util.List<com.saa.model.cxc.DetalleRetencionV2> detalles,
 			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable;
 
+	/** Reenvía (o envía por primera vez) el email de una retención V2 autorizada.
+	 *  Si el PDF no existe en disco lo regenera al vuelo. */
+	java.util.Map<String, Object> reenviarEmail(Long idRetencion, String destinatarios) throws Throwable;
+
 	/**
 	 * Anula una retención V2 y su asiento contable vinculado.
 	 * @param idRetencion ID de la retención V2
@@ -59,5 +63,19 @@ public interface RetencionV2Service extends EntityService<RetencionV2> {
 	 * @return Mapa con: exito, mensaje, idRetencion, motivoAnulacion, fechaAnulacion, usuarioAnulacion
 	 */
 	java.util.Map<String, Object> anularRetencionV2(Long idRetencion, String motivo, String usuario) throws Throwable;
+
+	/**
+	 * Consulta el estado de una retención V2 ante el SRI (WS consultarEstadoAutorizacion).
+	 * Si el SRI devuelve AUTORIZADO:
+	 *   - Actualiza el estado de la retención a autorizada si estaba pendiente.
+	 *   - Establece el número de autorización y fecha de autorización.
+	 *   - Si la retención no tiene asiento contable y el facturador tiene generaConta=1,
+	 *     genera el asiento contable automáticamente.
+	 *   - Envía el email con el XML autorizado y PDF RIDE adjuntos.
+	 *
+	 * @param idRetencion ID de la retención V2 a consultar
+	 * @return Mapa con: exito, estadoSRI, numeroAutorizacion, asientoGenerado, emailEnviado, mensaje
+	 */
+	java.util.Map<String, Object> consultarYActualizarEstadoRetencionV2(Long idRetencion) throws Throwable;
 
 }
