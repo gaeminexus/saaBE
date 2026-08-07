@@ -489,7 +489,31 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 	private String nvl(String value, String defaultValue) {
 		return value != null ? value : defaultValue;
 	}
-	
+
+	/**
+	 * Construye el fragmento de observación con el número del documento origen
+	 * (el documento modificado por la nota de crédito) para incluirlo en la
+	 * observación del asiento contable.
+	 * Toma el número de NUMDOCMODIFICADO y, si viene vacío, el de la factura
+	 * relacionada.
+	 * @param notaCredito : Nota de crédito de la que se toma el documento origen
+	 * @return : " | Doc. origen: XXX-XXX-XXXXXXXXX" o cadena vacía si no hay dato
+	 */
+	private String observacionDocumentoOrigen(NotaCredito notaCredito) {
+		if (notaCredito == null) {
+			return "";
+		}
+		String numeroOrigen = notaCredito.getNumDocModificado();
+		if ((numeroOrigen == null || numeroOrigen.trim().isEmpty())
+				&& notaCredito.getFactura() != null) {
+			numeroOrigen = notaCredito.getFactura().getNumero();
+		}
+		if (numeroOrigen == null || numeroOrigen.trim().isEmpty()) {
+			return "";
+		}
+		return " | Doc. origen: " + numeroOrigen.trim();
+	}
+
 	/*private Double nvl(Double value, Double defaultValue) {
 		return value != null ? value : defaultValue;
 	}*/
@@ -1135,6 +1159,7 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 					java.time.LocalDate fechaAsiento = ncActualizada.getFecha() != null
 							? ncActualizada.getFecha().toLocalDate() : java.time.LocalDate.now();
 					String obsAsiento = "Nota de Crédito N° " + nvl(ncActualizada.getNumero(), clave)
+							+ observacionDocumentoOrigen(ncActualizada)
 							+ " | Cliente: " + (ncActualizada.getTitular() != null ? ncActualizada.getTitular().getNombre() : "")
 							+ " | " + nvl(ncActualizada.getObservacion(), "");
 					String usuarioAsiento = ncActualizada.getUsuario() != null
@@ -1832,6 +1857,7 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 			try {
 				Long idEmpresa = nc.getFacturador().getEmpresa().getCodigo();
 				String obsAsiento = "Nota de Crédito N° " + nvl(nc.getNumero(), clave)
+						+ observacionDocumentoOrigen(nc)
 						+ " | Cliente: " + (nc.getTitular() != null ? nc.getTitular().getNombre() : "")
 						+ " | Aut: " + nvl(nc.getAutorizacion(), clave);
 				String usuarioAsiento = nc.getUsuario() != null ? nc.getUsuario().getNombre() : "SISTEMA";

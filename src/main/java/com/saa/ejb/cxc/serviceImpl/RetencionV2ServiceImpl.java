@@ -532,6 +532,51 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 		return value != null ? value : defaultValue;
 	}
 
+	/**
+	 * Construye el fragmento de observación con el número de los documentos
+	 * origen (documentos sustento retenidos) para incluirlo en la observación
+	 * del asiento contable.
+	 * Los documentos sustento están en los detalles de la retención
+	 * (NUMDOCRETEN); si hay varios se listan separados por coma.
+	 * No interrumpe la generación del asiento: ante cualquier error devuelve
+	 * cadena vacía.
+	 * @param idRetencionV2 : Id de la retención V2
+	 * @return : " | Doc. origen: XXX-XXX-XXXXXXXXX" o cadena vacía si no hay dato
+	 */
+	@SuppressWarnings("unchecked")
+	private String observacionDocumentoOrigen(Long idRetencionV2) {
+		if (idRetencionV2 == null) {
+			return "";
+		}
+		try {
+			List<String> documentos = em.createQuery(
+					"SELECT DISTINCT d.numDocReten FROM DetalleRetencionV2 d "
+					+ "WHERE d.retencionV2.id = :idRetencion "
+					+ "AND d.numDocReten IS NOT NULL "
+					+ "ORDER BY d.numDocReten")
+					.setParameter("idRetencion", idRetencionV2)
+					.getResultList();
+			StringBuilder origen = new StringBuilder();
+			for (String documento : documentos) {
+				if (documento == null || documento.trim().isEmpty()) {
+					continue;
+				}
+				if (origen.length() > 0) {
+					origen.append(", ");
+				}
+				origen.append(documento.trim());
+			}
+			if (origen.length() == 0) {
+				return "";
+			}
+			return " | Doc. origen: " + origen;
+		} catch (Exception e) {
+			System.err.println("⚠ No se pudo obtener el documento origen de la retención V2 "
+					+ idRetencionV2 + ": " + e.getMessage());
+			return "";
+		}
+	}
+
 	private String fmt(Double value) {
 		if (value == null) return "0.00";
 		return String.format(java.util.Locale.US, "%.2f", value);
@@ -1185,6 +1230,7 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 					java.time.LocalDate fechaAsiento = retencion.getFecha() != null
 							? retencion.getFecha().toLocalDate() : java.time.LocalDate.now();
 					String obsAsiento = "Retención V2 N° " + nvl(retencion.getNumero(), clave)
+							+ observacionDocumentoOrigen(retencion.getId())
 							+ " | Proveedor: " + (retencion.getProveedor() != null
 									? retencion.getProveedor().getNombre() : "")
 							+ " | Aut: " + nvl(retencion.getAutorizacion(), clave);
@@ -1434,6 +1480,7 @@ public java.util.Map<String, Object> consultarYActualizarEstadoRetencionV2(Long 
 		try {
 			Long idEmpresa = retencion.getFacturador().getEmpresa().getCodigo();
 			String obsAsiento = "Retención V2 N° " + nvl(retencion.getNumero(), clave)
+					+ observacionDocumentoOrigen(retencion.getId())
 					+ " | Proveedor: " + (retencion.getProveedor() != null ? retencion.getProveedor().getNombre() : "")
 					+ " | Aut: " + nvl(retencion.getAutorizacion(), clave);
 			String usuarioAsiento = retencion.getUsuario() != null ? retencion.getUsuario().getNombre() : "SISTEMA";

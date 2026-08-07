@@ -483,7 +483,31 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 	private String nvl(String value, String defaultValue) {
 		return value != null ? value : defaultValue;
 	}
-	
+
+	/**
+	 * Construye el fragmento de observación con el número del documento origen
+	 * (el documento modificado por la nota de débito) para incluirlo en la
+	 * observación del asiento contable.
+	 * Toma el número de NUMDOCMODIFICADO y, si viene vacío, el de la factura
+	 * relacionada.
+	 * @param notaDebito : Nota de débito de la que se toma el documento origen
+	 * @return : " | Doc. origen: XXX-XXX-XXXXXXXXX" o cadena vacía si no hay dato
+	 */
+	private String observacionDocumentoOrigen(NotaDebito notaDebito) {
+		if (notaDebito == null) {
+			return "";
+		}
+		String numeroOrigen = notaDebito.getNumDocModificado();
+		if ((numeroOrigen == null || numeroOrigen.trim().isEmpty())
+				&& notaDebito.getFactura() != null) {
+			numeroOrigen = notaDebito.getFactura().getNumero();
+		}
+		if (numeroOrigen == null || numeroOrigen.trim().isEmpty()) {
+			return "";
+		}
+		return " | Doc. origen: " + numeroOrigen.trim();
+	}
+
 	/*private Double nvl(Double value, Double defaultValue) {
 		return value != null ? value : defaultValue;
 	}*/
@@ -1132,6 +1156,7 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 					java.time.LocalDate fechaAsiento = notaDebito.getFecha() != null
 							? notaDebito.getFecha().toLocalDate() : java.time.LocalDate.now();
 					String obsAsiento = "Nota de Débito N° " + nvl(notaDebito.getNumero(), clave)
+							+ observacionDocumentoOrigen(notaDebito)
 							+ " | Cliente: " + (notaDebito.getTitular() != null ? notaDebito.getTitular().getNombre() : "")
 							+ " | " + nvl(notaDebito.getObservacion(), "");
 					String usuarioAsiento = notaDebito.getUsuario() != null
@@ -1854,6 +1879,7 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 			try {
 				Long idEmpresa = nd.getFacturador().getEmpresa().getCodigo();
 				String obsAsiento = "Nota de Débito N° " + nvl(nd.getNumero(), clave)
+						+ observacionDocumentoOrigen(nd)
 						+ " | Cliente: " + (nd.getTitular() != null ? nd.getTitular().getNombre() : "")
 						+ " | Aut: " + nvl(nd.getAutorizacion(), clave);
 				String usuarioAsiento = nd.getUsuario() != null ? nd.getUsuario().getNombre() : "SISTEMA";
