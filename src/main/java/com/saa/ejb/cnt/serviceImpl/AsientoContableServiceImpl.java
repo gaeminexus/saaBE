@@ -434,8 +434,17 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             LocalDate fechaAsiento, String observaciones, String usuario,
             List<DetalleAsiento> lineas) throws Throwable {
 
+        return generarAsiento(idEmpresa, codigoAltTipoAsiento, fechaAsiento, observaciones,
+                usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
+    }
+
+    @Override
+    public Asiento generarAsiento(Long idEmpresa, int codigoAltTipoAsiento,
+            LocalDate fechaAsiento, String observaciones, String usuario,
+            List<DetalleAsiento> lineas, Long moduloSistema) throws Throwable {
+
         System.out.println("=== generarAsiento | empresa=" + idEmpresa
-                + " | tipoAlt=" + codigoAltTipoAsiento + " ===");
+                + " | tipoAlt=" + codigoAltTipoAsiento + " | modulo=" + moduloSistema + " ===");
 
         // 1. Obtener TipoAsiento por codigoAlterno y sistema=1
         Long idTipoAsiento = tipoAsientoService.codigoByAlterno(codigoAltTipoAsiento, idEmpresa);
@@ -463,11 +472,13 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         asiento.setNombreUsuario(usuario != null ? usuario : "SISTEMA");
         asiento.setEstado(Long.valueOf(EstadoAsiento.ACTIVO));
         asiento.setMoneda(Long.valueOf(TipoMoneda.DOLAR));
-        // Rubro módulo: CXC
+        // Rubro módulo del sistema al que se clasifica el asiento
+        Long modulo = (moduloSistema != null)
+                ? moduloSistema : Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR);
         asiento.setRubroModuloClienteP(Long.valueOf(Rubros.MODULO_SISTEMA));
-        asiento.setRubroModuloClienteH(Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
+        asiento.setRubroModuloClienteH(modulo);
         asiento.setRubroModuloSistemaP(Long.valueOf(Rubros.MODULO_SISTEMA));
-        asiento.setRubroModuloSistemaH(Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
+        asiento.setRubroModuloSistemaH(modulo);
 
         // 4. saveSingle: asigna período, número, numeroAlterno y graba
         asiento = asientoService.saveSingle(asiento);
@@ -727,8 +738,218 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     }
 
     // ---------------------------------------------------------------
+    // Tesorería: aplicación de pagos y cobros a facturas
+    // ---------------------------------------------------------------
+
+    @Override
+    public Asiento generarAsientoAplicacionAnticipoProveedor(Long idTitular, Double valor,
+            Long idEmpresa, int codigoAltTipoAsiento, LocalDate fechaAsiento,
+            String observaciones, String usuario) throws Throwable {
+
+        System.out.println("=== generarAsientoAplicacionAnticipoProveedor | titular=" + idTitular
+                + " | valor=" + valor + " | empresa=" + idEmpresa + " ===");
+
+        validaDatosAplicacion(idTitular, valor, idEmpresa);
+
+        Titular titular = em.find(Titular.class, idTitular);
+        String nomProv = (titular != null) ? titular.getNombre() : String.valueOf(idTitular);
+
+        // ── DEBE: cuenta CxP del proveedor (tipoCuenta=1) ──────────────────────
+        PlanCuenta cuentaProveedor = obtenerCuentaProveedorPorTipo(idTitular, idEmpresa, 1L);
+        if (cuentaProveedor == null) {
+            throw new IncomeException(
+                    "El proveedor '" + nomProv + "' no tiene cuenta contable de facturas (Tipo 1) "
+                    + "configurada en Tesorería → Persona → Cuentas Contables (Rol: Proveedor).");
+        }
+
+        // ── HABER: cuenta de anticipos del proveedor (tipoCuenta=2) ────────────
+        PlanCuenta cuentaAnticipo = obtenerCuentaProveedorPorTipo(idTitular, idEmpresa, 2L);
+        if (cuentaAnticipo == null) {
+            throw new IncomeException(
+                    "El proveedor '" + nomProv + "' no tiene cuenta contable de anticipos (Tipo 2) "
+                    + "configurada en Tesorería → Persona → Cuentas Contables (Rol: Proveedor).");
+        }
+
+        List<DetalleAsiento> lineas = new ArrayList<>();
+        lineas.add(creaLinea(cuentaProveedor, "Cruce anticipo proveedor: " + nomProv, valor, true));
+        lineas.add(creaLinea(cuentaAnticipo,  "Anticipo aplicado: " + nomProv,        valor, false));
+
+        return generarAsiento(idEmpresa, codigoAltTipoAsiento, fechaAsiento, observaciones,
+                usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_PAGAR));
+    }
+
+    @Override
+    public Asiento generarAsientoAplicacionAnticipoCliente(Long idTitular, Double valor,
+            Long idEmpresa, int codigoAltTipoAsiento, LocalDate fechaAsiento,
+            String observaciones, String usuario) throws Throwable {
+
+        System.out.println("=== generarAsientoAplicacionAnticipoCliente | titular=" + idTitular
+                + " | valor=" + valor + " | empresa=" + idEmpresa + " ===");
+
+        validaDatosAplicacion(idTitular, valor, idEmpresa);
+
+        Titular titular = em.find(Titular.class, idTitular);
+        String nomCliente = (titular != null) ? titular.getNombre() : String.valueOf(idTitular);
+
+        // ── DEBE: cuenta de anticipos del cliente (tipoCuenta=2) ───────────────
+        PlanCuenta cuentaAnticipo = obtenerCuentaPorTipo(idTitular, idEmpresa, 2L);
+        if (cuentaAnticipo == null) {
+            throw new IncomeException(
+                    "El cliente '" + nomCliente + "' no tiene cuenta contable de anticipos (Tipo 2) "
+                    + "configurada en Tesorería → Persona → Cuentas Contables (Rol: Cliente).");
+        }
+
+        // ── HABER: cuenta CxC del cliente (tipoCuenta=1) ───────────────────────
+        PlanCuenta cuentaCliente = obtenerCuentaCliente(idTitular, idEmpresa);
+        if (cuentaCliente == null) {
+            throw new IncomeException(
+                    "El cliente '" + nomCliente + "' no tiene cuenta contable de facturas (Tipo 1) "
+                    + "configurada en Tesorería → Persona → Cuentas Contables (Rol: Cliente).");
+        }
+
+        List<DetalleAsiento> lineas = new ArrayList<>();
+        lineas.add(creaLinea(cuentaAnticipo, "Anticipo aplicado: " + nomCliente,        valor, true));
+        lineas.add(creaLinea(cuentaCliente,  "Cruce anticipo cliente: " + nomCliente,   valor, false));
+
+        return generarAsiento(idEmpresa, codigoAltTipoAsiento, fechaAsiento, observaciones,
+                usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
+    }
+
+    @Override
+    public Asiento generarAsientoPagoTransferenciaCxp(Long idTitular, Double valor,
+            Long idCuentaBancaria, Long idEmpresa, int codigoAltTipoAsiento,
+            LocalDate fechaAsiento, String observaciones, String usuario) throws Throwable {
+
+        System.out.println("=== generarAsientoPagoTransferenciaCxp | titular=" + idTitular
+                + " | valor=" + valor + " | cuentaBancaria=" + idCuentaBancaria + " ===");
+
+        validaDatosAplicacion(idTitular, valor, idEmpresa);
+
+        Titular titular = em.find(Titular.class, idTitular);
+        String nomProv = (titular != null) ? titular.getNombre() : String.valueOf(idTitular);
+
+        // ── DEBE: cuenta CxP del proveedor (tipoCuenta=1) ──────────────────────
+        PlanCuenta cuentaProveedor = obtenerCuentaProveedorPorTipo(idTitular, idEmpresa, 1L);
+        if (cuentaProveedor == null) {
+            throw new IncomeException(
+                    "El proveedor '" + nomProv + "' no tiene cuenta contable de facturas (Tipo 1) "
+                    + "configurada en Tesorería → Persona → Cuentas Contables (Rol: Proveedor).");
+        }
+
+        // ── HABER: cuenta contable del banco ───────────────────────────────────
+        com.saa.model.tsr.CuentaBancaria cuentaBancaria = obtenerCuentaBancaria(idCuentaBancaria);
+        PlanCuenta cuentaBanco = cuentaBancaria.getPlanCuenta();
+
+        List<DetalleAsiento> lineas = new ArrayList<>();
+        lineas.add(creaLinea(cuentaProveedor, "Pago a proveedor: " + nomProv, valor, true));
+        lineas.add(creaLinea(cuentaBanco,
+                "Transferencia a proveedor: " + nomProv
+                + " | Cta Banco: " + cuentaBancaria.getNumeroCuenta(), valor, false));
+
+        return generarAsiento(idEmpresa, codigoAltTipoAsiento, fechaAsiento, observaciones,
+                usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA));
+    }
+
+    @Override
+    public Asiento generarAsientoCobroTransferenciaCxc(Long idTitular, Double valor,
+            Long idCuentaBancaria, Long idEmpresa, int codigoAltTipoAsiento,
+            LocalDate fechaAsiento, String observaciones, String usuario) throws Throwable {
+
+        System.out.println("=== generarAsientoCobroTransferenciaCxc | titular=" + idTitular
+                + " | valor=" + valor + " | cuentaBancaria=" + idCuentaBancaria + " ===");
+
+        validaDatosAplicacion(idTitular, valor, idEmpresa);
+
+        Titular titular = em.find(Titular.class, idTitular);
+        String nomCliente = (titular != null) ? titular.getNombre() : String.valueOf(idTitular);
+
+        // ── DEBE: cuenta contable del banco ────────────────────────────────────
+        com.saa.model.tsr.CuentaBancaria cuentaBancaria = obtenerCuentaBancaria(idCuentaBancaria);
+        PlanCuenta cuentaBanco = cuentaBancaria.getPlanCuenta();
+
+        // ── HABER: cuenta CxC del cliente (tipoCuenta=1) ───────────────────────
+        PlanCuenta cuentaCliente = obtenerCuentaCliente(idTitular, idEmpresa);
+        if (cuentaCliente == null) {
+            throw new IncomeException(
+                    "El cliente '" + nomCliente + "' no tiene cuenta contable de facturas (Tipo 1) "
+                    + "configurada en Tesorería → Persona → Cuentas Contables (Rol: Cliente).");
+        }
+
+        List<DetalleAsiento> lineas = new ArrayList<>();
+        lineas.add(creaLinea(cuentaBanco,
+                "Transferencia recibida de: " + nomCliente
+                + " | Cta Banco: " + cuentaBancaria.getNumeroCuenta(), valor, true));
+        lineas.add(creaLinea(cuentaCliente, "Cobro a cliente: " + nomCliente, valor, false));
+
+        return generarAsiento(idEmpresa, codigoAltTipoAsiento, fechaAsiento, observaciones,
+                usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA));
+    }
+
+    // ---------------------------------------------------------------
     // Helpers privados
     // ---------------------------------------------------------------
+
+    /**
+     * Valida los datos mínimos de un asiento de aplicación de pago/cobro.
+     * @param idTitular : Id del titular (cliente o proveedor)
+     * @param valor     : Valor a aplicar, debe ser mayor a cero
+     * @param idEmpresa : Id de la empresa contable
+     * @throws Throwable : Excepcion
+     */
+    private void validaDatosAplicacion(Long idTitular, Double valor, Long idEmpresa) throws Throwable {
+        if (idTitular == null) {
+            throw new IncomeException("Debe indicar el titular (cliente o proveedor).");
+        }
+        if (idEmpresa == null) {
+            throw new IncomeException("Debe indicar la empresa contable.");
+        }
+        if (valor == null || valor <= 0) {
+            throw new IncomeException("El valor a aplicar debe ser mayor a cero.");
+        }
+    }
+
+    /**
+     * Recupera una cuenta bancaria propia validando que tenga cuenta contable.
+     * @param idCuentaBancaria : Id de la cuenta bancaria (TSR.CNBC)
+     * @return                 : Cuenta bancaria con su PlanCuenta cargado
+     * @throws Throwable       : Excepcion
+     */
+    private com.saa.model.tsr.CuentaBancaria obtenerCuentaBancaria(Long idCuentaBancaria) throws Throwable {
+        if (idCuentaBancaria == null) {
+            throw new IncomeException("Debe indicar la cuenta bancaria.");
+        }
+        com.saa.model.tsr.CuentaBancaria cuentaBancaria =
+                em.find(com.saa.model.tsr.CuentaBancaria.class, idCuentaBancaria);
+        if (cuentaBancaria == null) {
+            throw new IncomeException("No se encontró la cuenta bancaria con ID: " + idCuentaBancaria);
+        }
+        if (cuentaBancaria.getPlanCuenta() == null) {
+            throw new IncomeException(
+                    "La cuenta bancaria '" + cuentaBancaria.getNumeroCuenta()
+                    + "' no tiene una cuenta contable (PlanCuenta) asociada.");
+        }
+        return cuentaBancaria;
+    }
+
+    /**
+     * Construye una línea de asiento al DEBE o al HABER.
+     * @param cuenta      : Cuenta contable de la línea
+     * @param descripcion : Descripción de la línea
+     * @param valor       : Valor de la línea
+     * @param esDebe      : true = DEBE, false = HABER
+     * @return            : Detalle de asiento listo para agregar a la lista
+     */
+    private DetalleAsiento creaLinea(PlanCuenta cuenta, String descripcion,
+            Double valor, boolean esDebe) {
+        DetalleAsiento linea = new DetalleAsiento();
+        linea.setPlanCuenta(cuenta);
+        linea.setNumeroCuenta(cuenta.getCuentaContable());
+        linea.setNombreCuenta(cuenta.getNombre());
+        linea.setDescripcion(descripcion);
+        linea.setValorDebe(esDebe  ? valor : 0.0);
+        linea.setValorHaber(esDebe ? 0.0   : valor);
+        return linea;
+    }
 
     /**
      * Obtiene la cuenta contable de un cliente por tipo de cuenta.

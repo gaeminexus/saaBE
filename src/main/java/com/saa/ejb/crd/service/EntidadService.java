@@ -44,4 +44,20 @@ public interface EntidadService extends EntityService<Entidad>{
 	 */
 	List<Entidad> findByCodigosIn(List<Long> codigos) throws Throwable;
 
+	/**
+	 * Genera el padrón de partícipes (habilitación de voto y elegibilidad para
+	 * miembro) a la fecha indicada. Aplica los valores por defecto de negocio
+	 * antes de delegar al DAO.
+	 *
+	 * @param fechaEjecucion: Fecha de corte; si es null se usa la fecha actual.
+	 * @param calidadId: Filtro opcional por ENTDIDST; null incluye todas las calidades.
+	 * @param minimoAportes: Mínimo de aportes para elegibilidad; null usa 90.
+	 * @return: Lista de filas del padrón.
+	 * @throws Throwable: Excepción en caso de error.
+	 */
+	java.util.List<com.saa.model.crd.dto.PadronParticipeDTO> selectPadronParticipes(
+			java.time.LocalDateTime fechaEjecucion,
+			Long calidadId,
+			Long minimoAportes) throws Throwable;
+
 }

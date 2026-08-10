@@ -26,7 +26,17 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 	
 	@EJB
 	DetalleRubroDaoService detalleRubroDaoService;
-	
+
+	/** Código en CRD.ESPR del estado que habilita voto y elegibilidad. */
+	private static final Long CODIGO_ESTADO_ACTIVO = 10L;
+
+	/** Tipos de aporte que cuentan para el padrón: 9 = JUBILACIÓN, 11 = CESANTÍA. */
+	private static final Long TIPO_APORTE_JUBILACION = 9L;
+	private static final Long TIPO_APORTE_CESANTIA   = 11L;
+
+	/** Meses hacia atrás que se revisan para determinar el estado de mora. */
+	private static final int MESES_VENTANA_MORA = 2;
+
 	@SuppressWarnings("unchecked")
 	@Override
 	public List<Entidad> selectByCodigoPetro(Long codigoPetro) throws Throwable {
@@ -295,6 +305,113 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 		);
 		query.setParameter("codigos", codigos);
 		return query.getResultList();
+	}
+
+	/**
+	 * Genera el padrón de partícipes en UNA sola consulta nativa, para evitar N+1
+	 * sobre CRD.APRT. Las fronteras de mes se calculan en Java, de modo que Oracle
+	 * siempre compara un bind contra una expresión derivada de columna.
+	 */
+	@Override
+	public java.util.List<com.saa.model.crd.dto.PadronParticipeDTO> selectPadronParticipes(
+			java.time.LocalDateTime fechaEjecucion,
+			Long calidadId,
+			Long minimoAportes) throws Throwable {
+
+		System.out.println("Ingresa al metodo selectPadronParticipes de Entidad con fechaEjecucion: " + fechaEjecucion
+				+ ", calidadId: " + calidadId + ", minimoAportes: " + minimoAportes);
+
+		java.time.LocalDateTime mesEjecucion  = fechaEjecucion.toLocalDate().withDayOfMonth(1).atStartOfDay();
+		java.time.LocalDateTime mesSiguiente  = mesEjecucion.plusMonths(1);
+		java.time.LocalDateTime mesLimiteMora = mesEjecucion.minusMonths(MESES_VENTANA_MORA);
+
+		String sql =
+			"WITH aportes AS ( " +
+			// Un mes con uno o con varios aportes positivos 9/11 cuenta como UN aporte.
+			// El corte es "< primer instante del mes siguiente" porque los aportes se
+			// graban con fecha del último día del mes a las 23:59:59.
+			"  SELECT a.ENTDCDGO                              AS entidad_id, " +
+			"         COUNT(DISTINCT TRUNC(a.APRTFCTR, 'MM')) AS numero_aportes, " +
+			"         MAX(TRUNC(a.APRTFCTR, 'MM'))            AS ultimo_mes_aporte " +
+			"  FROM   CRD.APRT a " +
+			"  WHERE  a.TPAPCDGO IN (:tiposAporte) " +
+			"    AND  a.APRTVLRR > 0 " +
+			"    AND  a.APRTFCTR <  :mesSiguiente " +
+			"  GROUP BY a.ENTDCDGO " +
+			"), " +
+			"base AS ( " +
+			"  SELECT e.ENTDCDGO       AS entidad_id, " +
+			"         e.ENTDNMID       AS cedula, " +
+			"         TRIM(e.ENTDRZNS) AS nombres_apellidos, " +
+			"         e.ENTDIDST       AS calidad_id, " +
+			"         NVL(TRIM(esp.ESPRNMBR), 'SIN ESTADO') AS calidad_nombre, " +
+			"         CASE WHEN e.ENTDIDST = :codigoEstadoActivo THEN 1 ELSE 0 END AS es_activo, " +
+			"         NVL(ap.numero_aportes, 0) AS numero_aportes, " +
+			// AL DIA si el último mes con aporte cae en la ventana [mesEjecucion - 2 .. mesEjecucion].
+			"         CASE WHEN ap.ultimo_mes_aporte IS NOT NULL " +
+			"                   AND ap.ultimo_mes_aporte >= :mesLimiteMora " +
+			"              THEN 'AL DIA' ELSE 'EN MORA' END AS estado_mora, " +
+			// NULL cuando nunca aportó: no hay último aporte desde el cual contar.
+			"         CASE WHEN ap.ultimo_mes_aporte IS NULL THEN NULL " +
+			"              WHEN ap.ultimo_mes_aporte >= :mesLimiteMora THEN 0 " +
+			"              ELSE ROUND(MONTHS_BETWEEN(:mesEjecucion, ap.ultimo_mes_aporte)) " +
+			"         END AS meses_en_mora " +
+			"  FROM   CRD.ENTD e " +
+			"  LEFT JOIN CRD.ESPR esp ON esp.ESPRCDGO  = e.ENTDIDST " +
+			"  LEFT JOIN aportes  ap  ON ap.entidad_id = e.ENTDCDGO " +
+			"  WHERE  NVL(TRIM(e.ENTDNMID), '0') <> '0' " +
+			"    AND  (:calidadId IS NULL OR e.ENTDIDST = :calidadId) " +
+			") " +
+			"SELECT ROW_NUMBER() OVER (ORDER BY UPPER(b.nombres_apellidos), b.entidad_id) AS numero, " +
+			"       b.entidad_id, " +
+			"       b.cedula, " +
+			"       b.nombres_apellidos, " +
+			"       b.calidad_id, " +
+			"       b.calidad_nombre, " +
+			"       b.numero_aportes, " +
+			"       b.estado_mora, " +
+			"       b.meses_en_mora, " +
+			"       CASE WHEN b.es_activo = 1 AND b.estado_mora = 'AL DIA' " +
+			"            THEN 'SI' ELSE 'NO' END AS habilitado_voto, " +
+			"       CASE WHEN b.es_activo = 1 AND b.numero_aportes >= :minimoAportes " +
+			"            THEN 'SI' ELSE 'NO' END AS elegible_miembro " +
+			"FROM   base b " +
+			"ORDER BY UPPER(b.nombres_apellidos), b.entidad_id";
+
+		Query query = em.createNativeQuery(sql);
+		query.setParameter("tiposAporte", Arrays.asList(TIPO_APORTE_JUBILACION, TIPO_APORTE_CESANTIA));
+		query.setParameter("mesSiguiente", mesSiguiente);
+		query.setParameter("mesLimiteMora", mesLimiteMora);
+		query.setParameter("mesEjecucion", mesEjecucion);
+		query.setParameter("codigoEstadoActivo", CODIGO_ESTADO_ACTIVO);
+		query.setParameter("calidadId", calidadId);
+		query.setParameter("minimoAportes", minimoAportes);
+
+		@SuppressWarnings("unchecked")
+		java.util.List<Object[]> results = query.getResultList();
+
+		java.util.List<com.saa.model.crd.dto.PadronParticipeDTO> dtos = new java.util.ArrayList<>();
+		for (Object[] row : results) {
+			Long   numero            = row[0]  != null ? ((Number) row[0]).longValue()  : null;
+			Long   entidadId         = row[1]  != null ? ((Number) row[1]).longValue()  : null;
+			String cedula            = row[2]  != null ? row[2].toString()              : null;
+			String nombresApellidos  = row[3]  != null ? row[3].toString()              : null;
+			Long   codigoCalidad     = row[4]  != null ? ((Number) row[4]).longValue()  : null;
+			String calidadParticipe  = row[5]  != null ? row[5].toString()              : null;
+			Long   numeroAportes     = row[6]  != null ? ((Number) row[6]).longValue()  : 0L;
+			String estadoMora        = row[7]  != null ? row[7].toString()              : null;
+			Long   mesesEnMora       = row[8]  != null ? ((Number) row[8]).longValue()  : null;
+			String habilitadoVoto    = row[9]  != null ? row[9].toString()              : null;
+			String elegibleMiembro   = row[10] != null ? row[10].toString()             : null;
+
+			dtos.add(new com.saa.model.crd.dto.PadronParticipeDTO(
+				numero, entidadId, cedula, nombresApellidos, codigoCalidad, calidadParticipe,
+				numeroAportes, estadoMora, mesesEnMora, habilitadoVoto, elegibleMiembro
+			));
+		}
+
+		System.out.println("selectPadronParticipes - filas devueltas: " + dtos.size());
+		return dtos;
 	}
 
 }

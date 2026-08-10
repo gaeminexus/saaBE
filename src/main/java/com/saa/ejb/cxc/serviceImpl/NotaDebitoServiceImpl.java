@@ -51,6 +51,9 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 	private com.saa.ejb.cnt.service.AsientoContableService asientoContableService;
 
 	@EJB
+	private com.saa.ejb.cxc.service.AplicacionPagoCxcService aplicacionPagoCxcService;
+
+	@EJB
 	private ReporteService reporteService;
 
 	@EJB
@@ -482,6 +485,32 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 	
 	private String nvl(String value, String defaultValue) {
 		return value != null ? value : defaultValue;
+	}
+
+	/**
+	 * Anula el asiento recién generado cuando falla el registro del movimiento
+	 * sobre la factura, para que nunca quede un asiento activo sin su aplicación.
+	 * @param asiento : Asiento a anular
+	 * @param causa   : Error que impidió registrar el movimiento
+	 */
+	private void anulaAsientoPorFalloAplicacion(com.saa.model.cnt.Asiento asiento, Throwable causa) {
+		if (asiento == null) {
+			return;
+		}
+		try {
+			asiento.setEstado(Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO));
+			asiento.setMotivoAnulacion("Anulado automáticamente: no se pudo registrar el movimiento "
+					+ "sobre la factura afectada. " + causa.getMessage());
+			asiento.setFechaAnulacion(java.time.LocalDateTime.now());
+			asiento.setUsuarioAnulacion("SISTEMA");
+			em.merge(asiento);
+			em.flush();
+			System.err.println("⚠ Asiento " + asiento.getCodigo()
+					+ " anulado porque falló el registro del movimiento: " + causa.getMessage());
+		} catch (Exception e) {
+			System.err.println("⚠ No se pudo anular el asiento tras el fallo de la aplicación: "
+					+ e.getMessage());
+		}
 	}
 
 	/**
@@ -1173,9 +1202,20 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 					notaDebitoDaoService.save(notaDebito, notaDebito.getId());
 					resultado.put("asiento", asientoGenerado.getNumeroAlterno());
 					System.out.println("✓ Asiento contable generado: " + asientoGenerado.getNumeroAlterno());
-				} catch (Exception e) {
+
+					// Registrar el incremento del saldo de la factura junto con el
+					// asiento: si falla, el asiento no debe quedar activo.
+					try {
+						aplicacionPagoCxcService.aplicarNotaDebito(
+								notaDebito, asientoAttached, idEmpresaConta, usuarioAsiento);
+					} catch (Throwable aplEx) {
+						anulaAsientoPorFalloAplicacion(asientoAttached, aplEx);
+						throw aplEx;
+					}
+				} catch (Throwable e) {
 					resultado.put("advertenciaAsiento",
-							"Nota de Débito autorizada pero ocurrió un error al generar el asiento: "
+							"Nota de Débito autorizada pero ocurrió un error al generar el asiento "
+							+ "o al registrar el movimiento sobre la factura: "
 							+ e.getMessage() + ". Genere el asiento manualmente desde Contabilidad.");
 					System.err.println("⚠ Error en asiento contable de Nota de Débito: " + e.getMessage());
 					e.printStackTrace();
@@ -1344,6 +1384,21 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 		String usuarioAnulacion = (usuario != null && !usuario.trim().isEmpty()) ? usuario.trim() : "SISTEMA";
 		String motivoFinal      = (motivo  != null && !motivo.trim().isEmpty())  ? motivo.trim()  : "Anulación manual";
 		LocalDateTime ahora = LocalDateTime.now();
+
+		// Reversar el movimiento que esta nota de débito hizo sobre la factura
+		try {
+			int reversadas = aplicacionPagoCxcService.revertirAplicacionesDeDocumento(
+					"NOTA_DEBITO", idNotaDebito, motivoFinal, null);
+			if (reversadas > 0) {
+				resultado.put("aplicacionesReversadas", reversadas);
+				System.out.println("✓ Aplicaciones de cobro reversadas: " + reversadas);
+			}
+		} catch (Exception e) {
+			System.err.println("⚠ Error al reversar las aplicaciones de cobro: " + e.getMessage());
+			resultado.put("advertenciaAplicacion",
+					"La Nota de Débito fue anulada pero ocurrió un error al reversar el movimiento "
+					+ "aplicado a la factura: " + e.getMessage());
+		}
 
 		// Anular asiento contable vinculado (si existe)
 		if (nd.getAsiento() != null && nd.getAsiento().getCodigo() != null) {
@@ -1895,9 +1950,19 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 				resultado.put("asiento", asientoGeneradoObj.getNumeroAlterno());
 				asientoGenerado = true;
 				System.out.println("✓ Asiento contable generado: " + asientoGeneradoObj.getNumeroAlterno());
-			} catch (Exception e) {
+
+				// Registrar el incremento del saldo de la factura junto con el asiento.
+				try {
+					aplicacionPagoCxcService.aplicarNotaDebito(
+							nd, asientoAttached, idEmpresa, usuarioAsiento);
+				} catch (Throwable aplEx) {
+					anulaAsientoPorFalloAplicacion(asientoAttached, aplEx);
+					throw aplEx;
+				}
+			} catch (Throwable e) {
 				resultado.put("advertenciaAsiento",
-						"Nota de débito autorizada pero error al generar asiento: " + e.getMessage());
+						"Nota de débito autorizada pero error al generar asiento o al registrar "
+						+ "el movimiento sobre la factura: " + e.getMessage());
 				System.err.println("⚠ Error en asiento contable: " + e.getMessage());
 			}
 		} else if (nd.getAsiento() != null) {

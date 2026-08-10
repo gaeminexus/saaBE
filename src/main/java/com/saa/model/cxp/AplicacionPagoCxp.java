@@ -6,6 +6,7 @@ import java.time.LocalDateTime;
 
 import com.saa.model.cnt.Asiento;
 import com.saa.model.cxc.Retencion;
+import com.saa.model.cxc.RetencionV2;
 import com.saa.model.scp.Empresa;
 import com.saa.model.scp.Usuario;
 
@@ -28,11 +29,15 @@ import jakarta.persistence.Table;
  * recibida de un proveedor.
  * Tabla: PGS.APLP
  *
- * Tipos de documento que paga (TIPODOCPAGO):
+ * Tipos de documento que paga (TIPODOCPAGO), ver {@link com.saa.rubros.TipoDocPagoAplicacion}:
  *   1 = Pago directo (efectivo / transferencia / cheque)
  *   2 = Nota de Crédito recibida del proveedor  (FK → PGS.NTCC)
- *   3 = Retención emitida al proveedor           (FK → CBR.RTNC)  ← cruce de módulo
- *   4 = Anticipo al proveedor                    (FK → PGS.ANTP)
+ *   3 = Retención emitida al proveedor           (FK → CBR.RTNC v1 / CBR.RTV2 v2)  ← cruce de módulo
+ *   4 = Anticipo al proveedor                    (cruce por valor contra el saldo
+ *                                                 de PersonaCuentaContable; la FK
+ *                                                 a PGS.ANTP queda nula)
+ *   5 = Nota de Débito recibida del proveedor    (FK → PGS.NTDC) con monto NEGATIVO,
+ *                                                 porque aumenta el saldo de la factura
  *
  * Formas de pago directo (FORMAPAGO, solo aplica cuando TIPODOCPAGO = 1):
  *   1 = Efectivo
@@ -51,7 +56,15 @@ import jakarta.persistence.Table;
     @NamedQuery(name = "AplicacionPagoCxpAll", query = "select e from AplicacionPagoCxp e"),
     @NamedQuery(name = "AplicacionPagoCxpId",  query = "select e from AplicacionPagoCxp e where e.id = :id"),
     @NamedQuery(name = "AplicacionPagoCxpByFactura",
-        query = "select e from AplicacionPagoCxp e where e.facturaCompra.id = :facturaId and e.estado = 1")
+        query = "select e from AplicacionPagoCxp e where e.facturaCompra.id = :facturaId and e.estado = 1"),
+    @NamedQuery(name = "AplicacionPagoCxpByRetencion",
+        query = "select e from AplicacionPagoCxp e where e.retencion.id = :documentoId and e.estado = 1"),
+    @NamedQuery(name = "AplicacionPagoCxpByRetencionV2",
+        query = "select e from AplicacionPagoCxp e where e.retencionV2.id = :documentoId and e.estado = 1"),
+    @NamedQuery(name = "AplicacionPagoCxpByNotaCredito",
+        query = "select e from AplicacionPagoCxp e where e.notaCredito.id = :documentoId and e.estado = 1"),
+    @NamedQuery(name = "AplicacionPagoCxpByNotaDebito",
+        query = "select e from AplicacionPagoCxp e where e.notaDebito.id = :documentoId and e.estado = 1")
 })
 public class AplicacionPagoCxp implements Serializable {
 
@@ -107,8 +120,26 @@ public class AplicacionPagoCxp implements Serializable {
     private Retencion retencion;
 
     /**
+     * Retención V2 emitida al proveedor. FK a CBR.RTV2.
+     * Aplica cuando APLPTDPG = 3 y la retención es de versión 2.
+     */
+    @ManyToOne
+    @JoinColumn(name = "APLPRTV2", referencedColumnName = "ID")
+    private RetencionV2 retencionV2;
+
+    /**
+     * Nota de Débito recibida del proveedor. FK a PGS.NTDC.
+     * Aplica cuando APLPTDPG = 5. El monto aplicado se guarda NEGATIVO porque
+     * la nota de débito aumenta el saldo pendiente de la factura.
+     */
+    @ManyToOne
+    @JoinColumn(name = "APLPNTDC", referencedColumnName = "ID")
+    private NotaDebitoCompra notaDebito;
+
+    /**
      * Anticipo entregado al proveedor. FK a PGS.ANTP.
-     * Aplica cuando APLPTDPG = 4.
+     * Queda nulo en el cruce por valor contra el saldo de anticipos
+     * (PersonaCuentaContable), que es el mecanismo estándar.
      */
     @ManyToOne
     @JoinColumn(name = "APLPANTP", referencedColumnName = "ANTPCDGO")
@@ -209,6 +240,12 @@ public class AplicacionPagoCxp implements Serializable {
 
     public Retencion getRetencion() { return retencion; }
     public void setRetencion(Retencion retencion) { this.retencion = retencion; }
+
+    public RetencionV2 getRetencionV2() { return retencionV2; }
+    public void setRetencionV2(RetencionV2 retencionV2) { this.retencionV2 = retencionV2; }
+
+    public NotaDebitoCompra getNotaDebito() { return notaDebito; }
+    public void setNotaDebito(NotaDebitoCompra notaDebito) { this.notaDebito = notaDebito; }
 
     public AnticipoProveedor getAnticipo() { return anticipo; }
     public void setAnticipo(AnticipoProveedor anticipo) { this.anticipo = anticipo; }

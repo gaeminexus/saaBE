@@ -117,10 +117,15 @@ public class AnticipoClienteServiceImpl implements AnticipoClienteService {
 
         boolean esNuevo = (entidad.getId() == null);
 
-        // En creación: estado=1 (Ingresado) y fechaRegistro automática
+        // En creación: estado=1 (Ingresado), fechaRegistro y saldo automáticos
         if (esNuevo) {
             entidad.setEstado(1L); // 1 = Ingresado
             entidad.setFechaRegistro(LocalDateTime.now());
+            // El saldo disponible arranca igual al valor del anticipo. Antes lo
+            // hacía un trigger de BD; ahora la lógica vive en el backend.
+            if (entidad.getSaldo() == null || entidad.getSaldo() == 0) {
+                entidad.setSaldo(entidad.getValor());
+            }
         }
 
         // No se genera asiento aquí — se genera en confirmarAnticipo

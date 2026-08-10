@@ -51,6 +51,9 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 	private com.saa.ejb.cnt.service.AsientoContableService asientoContableService;
 
 	@EJB
+	private com.saa.ejb.cxc.service.AplicacionPagoCxcService aplicacionPagoCxcService;
+
+	@EJB
 	private ReporteService reporteService;
 
 	@EJB
@@ -488,6 +491,32 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 	
 	private String nvl(String value, String defaultValue) {
 		return value != null ? value : defaultValue;
+	}
+
+	/**
+	 * Anula el asiento recién generado cuando falla el registro del abono sobre
+	 * la factura, para que nunca quede un asiento activo sin su aplicación.
+	 * @param asiento : Asiento a anular
+	 * @param causa   : Error que impidió registrar el abono
+	 */
+	private void anulaAsientoPorFalloAplicacion(com.saa.model.cnt.Asiento asiento, Throwable causa) {
+		if (asiento == null) {
+			return;
+		}
+		try {
+			asiento.setEstado(Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO));
+			asiento.setMotivoAnulacion("Anulado automáticamente: no se pudo registrar el abono "
+					+ "sobre la factura afectada. " + causa.getMessage());
+			asiento.setFechaAnulacion(java.time.LocalDateTime.now());
+			asiento.setUsuarioAnulacion("SISTEMA");
+			em.merge(asiento);
+			em.flush();
+			System.err.println("⚠ Asiento " + asiento.getCodigo()
+					+ " anulado porque falló el registro del abono: " + causa.getMessage());
+		} catch (Exception e) {
+			System.err.println("⚠ No se pudo anular el asiento tras el fallo de la aplicación: "
+					+ e.getMessage());
+		}
 	}
 
 	/**
@@ -1176,10 +1205,21 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 					notaCreditoDaoService.save(ncActualizada, ncActualizada.getId());
 					resultado.put("asiento", asientoGenerado.getNumeroAlterno());
 					System.out.println("✓ Asiento contable generado: " + asientoGenerado.getNumeroAlterno());
-				} catch (Exception e) {
+
+					// Registrar el abono a la factura junto con el asiento: si el
+					// abono falla, el asiento no debe quedar activo.
+					try {
+						aplicacionPagoCxcService.aplicarNotaCredito(
+								ncActualizada, asientoAttached, idEmpresa, usuarioAsiento);
+					} catch (Throwable aplEx) {
+						anulaAsientoPorFalloAplicacion(asientoAttached, aplEx);
+						throw aplEx;
+					}
+				} catch (Throwable e) {
 					resultado.put("advertenciaAsiento",
-							"Nota de Crédito autorizada pero ocurrió un error al generar el asiento: "
-							+ e.getMessage() + ". Genere el asiento manualmente desde Contabilidad.");
+							"Nota de Crédito autorizada pero ocurrió un error al generar el asiento "
+							+ "o al registrar el abono a la factura: " + e.getMessage()
+							+ ". Genere el asiento manualmente desde Contabilidad.");
 					System.err.println("⚠ Error en asiento contable de Nota de Crédito: " + e.getMessage());
 					e.printStackTrace();
 				}
@@ -1228,6 +1268,21 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 		String usuarioAnulacion = (usuario != null && !usuario.trim().isEmpty()) ? usuario.trim() : "SISTEMA";
 		String motivoFinal      = (motivo  != null && !motivo.trim().isEmpty())  ? motivo.trim()  : "Anulación manual";
 		java.time.LocalDateTime ahora = java.time.LocalDateTime.now();
+
+		// Reversar el abono que esta nota de crédito hizo sobre la factura
+		try {
+			int reversadas = aplicacionPagoCxcService.revertirAplicacionesDeDocumento(
+					"NOTA_CREDITO", idNotaCredito, motivoFinal, null);
+			if (reversadas > 0) {
+				resultado.put("aplicacionesReversadas", reversadas);
+				System.out.println("✓ Aplicaciones de cobro reversadas: " + reversadas);
+			}
+		} catch (Exception e) {
+			System.err.println("⚠ Error al reversar las aplicaciones de cobro: " + e.getMessage());
+			resultado.put("advertenciaAplicacion",
+					"La Nota de Crédito fue anulada pero ocurrió un error al reversar el abono "
+					+ "aplicado a la factura: " + e.getMessage());
+		}
 
 		// Anular asiento contable vinculado (si existe)
 		if (nc.getAsiento() != null && nc.getAsiento().getCodigo() != null) {
@@ -1873,9 +1928,19 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 				resultado.put("asiento", asientoGeneradoObj.getNumeroAlterno());
 				asientoGenerado = true;
 				System.out.println("✓ Asiento contable generado: " + asientoGeneradoObj.getNumeroAlterno());
-			} catch (Exception e) {
+
+				// Registrar el abono a la factura junto con el asiento.
+				try {
+					aplicacionPagoCxcService.aplicarNotaCredito(
+							nc, asientoAttached, idEmpresa, usuarioAsiento);
+				} catch (Throwable aplEx) {
+					anulaAsientoPorFalloAplicacion(asientoAttached, aplEx);
+					throw aplEx;
+				}
+			} catch (Throwable e) {
 				resultado.put("advertenciaAsiento",
-						"Nota de crédito autorizada pero error al generar asiento: " + e.getMessage());
+						"Nota de crédito autorizada pero error al generar asiento o al registrar "
+						+ "el abono a la factura: " + e.getMessage());
 				System.err.println("⚠ Error en asiento contable: " + e.getMessage());
 			}
 		} else if (nc.getAsiento() != null) {

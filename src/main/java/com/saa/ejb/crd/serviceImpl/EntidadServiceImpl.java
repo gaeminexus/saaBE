@@ -21,6 +21,9 @@ public class EntidadServiceImpl implements EntidadService {
     @EJB
     private EntidadDaoService entidadDaoService;
 
+    /** Mínimo de aportes (meses) para ser elegible como miembro. */
+    private static final Long MINIMO_APORTES_ELEGIBLE = 90L;
+
     /**
      * Recupera un registro de Entidad por su ID.
      */
@@ -130,6 +133,29 @@ public class EntidadServiceImpl implements EntidadService {
 	public List<Entidad> findByCodigosIn(List<Long> codigos) throws Throwable {
 		System.out.println("findByCodigosIn EntidadService - cantidad: " + (codigos != null ? codigos.size() : 0));
 		return entidadDaoService.findByCodigosIn(codigos);
+	}
+
+	/**
+	 * Genera el padrón de partícipes. Un padrón vacío es un resultado válido, por
+	 * eso este método no lanza IncomeException cuando no hay filas.
+	 */
+	@Override
+	public java.util.List<com.saa.model.crd.dto.PadronParticipeDTO> selectPadronParticipes(
+			java.time.LocalDateTime fechaEjecucion,
+			Long calidadId,
+			Long minimoAportes) throws Throwable {
+		System.out.println("Ingresa al metodo selectPadronParticipes EntidadService con fechaEjecucion: "
+				+ fechaEjecucion + ", calidadId: " + calidadId + ", minimoAportes: " + minimoAportes);
+
+		java.time.LocalDateTime fechaCorte = (fechaEjecucion != null)
+				? fechaEjecucion
+				: java.time.LocalDateTime.now();
+
+		Long minimo = (minimoAportes != null && minimoAportes > 0)
+				? minimoAportes
+				: MINIMO_APORTES_ELEGIBLE;
+
+		return entidadDaoService.selectPadronParticipes(fechaCorte, calidadId, minimo);
 	}
 
 }

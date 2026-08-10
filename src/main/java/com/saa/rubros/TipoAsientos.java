@@ -84,4 +84,25 @@ public interface TipoAsientos {
 	/** Retenciones v2 recibidas de proveedor (CXP). codigoAlterno=3 en BD. */
 	public static final int RETENCIONES_RECIBIDAS_V2 = 3;
 
+	// ─── Tesorería: aplicación de pagos y cobros a facturas ──────────────────
+	// Salidas de dinero a proveedores → codigoAlterno 5 (TEGRESO), el mismo que
+	// los anticipos a proveedores. Entradas de dinero de clientes → codigoAlterno
+	// 4 (TINGRESO), el mismo que los anticipos de clientes.
+
+	/** Cruce de anticipo de proveedor contra factura de compra (CXP). codigoAlterno=5 (TEGRESO).
+	 *  DEBE: cuenta CxP del proveedor (PRCC tipo 1) / HABER: cuenta de anticipos (PRCC tipo 2). */
+	public static final int APLICACION_ANTICIPO_PROVEEDOR = 5;
+
+	/** Cruce de anticipo de cliente contra factura de venta (CXC). codigoAlterno=4 (TINGRESO).
+	 *  DEBE: cuenta de anticipos (PRCC tipo 2) / HABER: cuenta CxC del cliente (PRCC tipo 1). */
+	public static final int APLICACION_ANTICIPO_CLIENTE = 4;
+
+	/** Pago a proveedor por transferencia bancaria (CXP). codigoAlterno=5 (TEGRESO).
+	 *  DEBE: cuenta CxP del proveedor (PRCC tipo 1) / HABER: cuenta contable del banco. */
+	public static final int PAGO_TRANSFERENCIA_CXP = 5;
+
+	/** Cobro de cliente por transferencia bancaria (CXC). codigoAlterno=4 (TINGRESO).
+	 *  DEBE: cuenta contable del banco / HABER: cuenta CxC del cliente (PRCC tipo 1). */
+	public static final int COBRO_TRANSFERENCIA_CXC = 4;
+
 }

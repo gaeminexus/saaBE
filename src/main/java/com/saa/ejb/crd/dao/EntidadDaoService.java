@@ -101,4 +101,27 @@ public interface EntidadDaoService extends EntityDao<Entidad> {
 	 */
 	List<Entidad> findByCodigosIn(List<Long> codigos) throws Throwable;
 
+	/**
+	 * Genera el padrón de partícipes a partir de CRD.ENTD, con el nombre de la
+	 * calidad tomado de CRD.ESPR y los indicadores de aportes y mora calculados
+	 * sobre CRD.APRT (tipos 9 = jubilación, 11 = cesantía, con valor positivo).
+	 *
+	 * Reglas aplicadas:
+	 *  - Número de aportes: meses distintos con al menos un aporte positivo 9/11.
+	 *  - Estado de mora: EN MORA si no hubo aporte en los dos meses anteriores.
+	 *  - Meses en mora: 0 si está al día; meses desde el último aporte si no.
+	 *  - Habilitado para voto: estado ACTIVO y AL DIA.
+	 *  - Elegible para miembro: estado ACTIVO y numeroAportes >= minimoAportes.
+	 *
+	 * @param fechaEjecucion: Fecha de corte del padrón (obligatoria).
+	 * @param calidadId: Filtro opcional por ENTDIDST; null incluye todas las calidades.
+	 * @param minimoAportes: Mínimo de aportes para ser elegible como miembro.
+	 * @return: Lista de filas del padrón, numeradas y ordenadas por nombre.
+	 * @throws Throwable: Excepción en caso de error.
+	 */
+	java.util.List<com.saa.model.crd.dto.PadronParticipeDTO> selectPadronParticipes(
+			java.time.LocalDateTime fechaEjecucion,
+			Long calidadId,
+			Long minimoAportes) throws Throwable;
+
 }

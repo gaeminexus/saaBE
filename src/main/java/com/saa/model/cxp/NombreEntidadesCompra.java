@@ -60,4 +60,8 @@ public interface NombreEntidadesCompra {
 	// Anticipos y Aplicaciones de pago CXP
 	String ANTICIPO_PROVEEDOR       = "AnticipoProveedor";
 	String APLICACION_PAGO_CXP      = "AplicacionPagoCxp";
+
+	// Pagos a proveedores por transferencia
+	String PAGO_PROGRAMADO          = "PagoProgramado";
+	String LOTE_PAGO                = "LotePago";
 }

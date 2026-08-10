@@ -9,6 +9,7 @@ package com.saa.model.cxc;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
+import com.saa.model.cnt.Asiento;
 import com.saa.model.scp.Usuario;
 import com.saa.model.tsr.Titular;
 
@@ -173,6 +174,22 @@ public class LiquidacionCompra implements Serializable {
 	@Basic
 	@Column(name = "ESTADOEMISION")
 	private Long estadoEmision;
+
+	/**
+	 * Estado de pago de la liquidación.
+	 * 1 = Pendiente, 2 = Pagada parcialmente, 3 = Pagada totalmente.
+	 * Lo recalcula el backend (AplicacionPagoCxcService) a partir de CBR.APLC.
+	 */
+	@Basic
+	@Column(name = "ESTADOPAGO")
+	private Long estadoPago;
+
+	/**
+	 * Asiento contable de la liquidación. FK a CNT.ASNT.
+	 */
+	@ManyToOne
+	@JoinColumn(name = "LQCSASNT", referencedColumnName = "ASNTCDGO")
+	private Asiento asiento;
 
 	// Getters y Setters
 	
@@ -438,5 +455,21 @@ public class LiquidacionCompra implements Serializable {
 
 	public void setEstadoEmision(Long estadoEmision) {
 		this.estadoEmision = estadoEmision;
+	}
+
+	public Long getEstadoPago() {
+		return estadoPago;
+	}
+
+	public void setEstadoPago(Long estadoPago) {
+		this.estadoPago = estadoPago;
+	}
+
+	public Asiento getAsiento() {
+		return asiento;
+	}
+
+	public void setAsiento(Asiento asiento) {
+		this.asiento = asiento;
 	}
 }

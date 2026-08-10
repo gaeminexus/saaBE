@@ -76,6 +76,9 @@ public class FacturaServiceImpl implements FacturaService {
 
 	@EJB
 	private com.saa.ejb.cnt.service.AsientoContableService asientoContableService;
+
+	@EJB
+	private com.saa.ejb.cxc.service.AplicacionPagoCxcService aplicacionPagoCxcService;
 	
 	@PersistenceContext
 	private EntityManager em;
@@ -2375,6 +2378,22 @@ public class FacturaServiceImpl implements FacturaService {
 		String usuarioAnulacion = (usuario != null && !usuario.trim().isEmpty()) ? usuario.trim() : "SISTEMA";
 		String motivoFinal      = (motivo  != null && !motivo.trim().isEmpty())  ? motivo.trim()  : "Anulación manual";
 		java.time.LocalDateTime ahora = java.time.LocalDateTime.now();
+
+		// 3.5. Reversar todos los cobros y abonos aplicados a esta factura
+		// (retenciones recibidas, notas, anticipos y transferencias).
+		try {
+			int reversadas = aplicacionPagoCxcService.revertirAplicacionesDeFactura(
+					idFactura, motivoFinal, null);
+			if (reversadas > 0) {
+				resultado.put("aplicacionesReversadas", reversadas);
+				System.out.println("✓ Aplicaciones de cobro reversadas: " + reversadas);
+			}
+		} catch (Exception e) {
+			System.err.println("⚠ Error al reversar las aplicaciones de cobro: " + e.getMessage());
+			resultado.put("advertenciaAplicacion",
+					"La factura fue anulada pero ocurrió un error al reversar los cobros "
+					+ "aplicados: " + e.getMessage());
+		}
 
 		// 4. Anular asiento contable vinculado (si existe)
 		if (factura.getAsiento() != null && factura.getAsiento().getCodigo() != null) {

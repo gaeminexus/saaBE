@@ -317,4 +317,82 @@ public interface AsientoContableService {
     Asiento generarAsientoRetencionCompraV2(Long idRetencionCompraV2, Long idEmpresa,
             int codigoAltTipoAsiento, java.time.LocalDate fechaAsiento,
             String observaciones, String usuario) throws Throwable;
+
+    // =====================================================================
+    // Tesorería: aplicación de pagos y cobros a facturas
+    // =====================================================================
+
+    /**
+     * Variante de {@link #generarAsiento} que permite indicar a qué módulo del
+     * sistema se clasifica el asiento (rubro {@code ModuloSistema}).
+     * La versión sin este parámetro clasifica siempre como CUENTAS_POR_COBRAR.
+     *
+     * @param moduloSistema : valor del rubro {@code ModuloSistema}
+     *                        (2=Tesorería, 3=CxP, 4=CxC)
+     */
+    Asiento generarAsiento(Long idEmpresa, int codigoAltTipoAsiento,
+            java.time.LocalDate fechaAsiento, String observaciones, String usuario,
+            java.util.List<com.saa.model.cnt.DetalleAsiento> lineas,
+            Long moduloSistema) throws Throwable;
+
+    /**
+     * Genera el asiento del cruce de un anticipo de proveedor contra una factura
+     * de compra (CXP).
+     * <p>
+     * DEBE:  cuenta CxP del proveedor  (PersonaCuentaContable tipoCuenta=1, rol Proveedor)<br>
+     * HABER: cuenta de anticipos       (PersonaCuentaContable tipoCuenta=2, rol Proveedor)
+     * <p>
+     * TODO — Plantilla: {@code TipoAsientos.APLICACION_ANTICIPO_PROVEEDOR} (codigoAlterno por definir en BD)
+     *
+     * @param idTitular   : Id del proveedor
+     * @param valor       : Valor del anticipo que se cruza
+     * @param idEmpresa   : Id de la empresa contable
+     * @return            : Asiento generado
+     * @throws Throwable  : Excepcion
+     */
+    Asiento generarAsientoAplicacionAnticipoProveedor(Long idTitular, Double valor, Long idEmpresa,
+            int codigoAltTipoAsiento, java.time.LocalDate fechaAsiento,
+            String observaciones, String usuario) throws Throwable;
+
+    /**
+     * Genera el asiento del cruce de un anticipo de cliente contra una factura
+     * de venta (CXC).
+     * <p>
+     * DEBE:  cuenta de anticipos    (PersonaCuentaContable tipoCuenta=2, rol Cliente)<br>
+     * HABER: cuenta CxC del cliente (PersonaCuentaContable tipoCuenta=1, rol Cliente)
+     * <p>
+     * TODO — Plantilla: {@code TipoAsientos.APLICACION_ANTICIPO_CLIENTE} (codigoAlterno por definir en BD)
+     */
+    Asiento generarAsientoAplicacionAnticipoCliente(Long idTitular, Double valor, Long idEmpresa,
+            int codigoAltTipoAsiento, java.time.LocalDate fechaAsiento,
+            String observaciones, String usuario) throws Throwable;
+
+    /**
+     * Genera el asiento del pago a un proveedor por transferencia bancaria (CXP).
+     * Se invoca únicamente cuando el banco confirma la transferencia.
+     * <p>
+     * DEBE:  cuenta CxP del proveedor (PersonaCuentaContable tipoCuenta=1, rol Proveedor)<br>
+     * HABER: cuenta contable de la cuenta bancaria propia (CuentaBancaria.planCuenta)
+     * <p>
+     * TODO — Plantilla: {@code TipoAsientos.PAGO_TRANSFERENCIA_CXP} (codigoAlterno por definir en BD)
+     *
+     * @param idCuentaBancaria : Id de la cuenta bancaria propia desde la que sale el dinero
+     */
+    Asiento generarAsientoPagoTransferenciaCxp(Long idTitular, Double valor, Long idCuentaBancaria,
+            Long idEmpresa, int codigoAltTipoAsiento, java.time.LocalDate fechaAsiento,
+            String observaciones, String usuario) throws Throwable;
+
+    /**
+     * Genera el asiento del cobro de un cliente por transferencia bancaria (CXC).
+     * <p>
+     * DEBE:  cuenta contable de la cuenta bancaria receptora (CuentaBancaria.planCuenta)<br>
+     * HABER: cuenta CxC del cliente (PersonaCuentaContable tipoCuenta=1, rol Cliente)
+     * <p>
+     * TODO — Plantilla: {@code TipoAsientos.COBRO_TRANSFERENCIA_CXC} (codigoAlterno por definir en BD)
+     *
+     * @param idCuentaBancaria : Id de la cuenta bancaria propia en la que se recibe el dinero
+     */
+    Asiento generarAsientoCobroTransferenciaCxc(Long idTitular, Double valor, Long idCuentaBancaria,
+            Long idEmpresa, int codigoAltTipoAsiento, java.time.LocalDate fechaAsiento,
+            String observaciones, String usuario) throws Throwable;
 }

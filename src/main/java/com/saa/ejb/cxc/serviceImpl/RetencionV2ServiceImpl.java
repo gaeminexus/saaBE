@@ -61,6 +61,9 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 	private com.saa.ejb.cnt.service.AsientoContableService asientoContableService;
 
 	@EJB
+	private com.saa.ejb.cxp.service.AplicacionPagoCxpService aplicacionPagoCxpService;
+
+	@EJB
 	private EmailFacturaService emailFacturaService;
 
 	@EJB
@@ -530,6 +533,33 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 
 	private double nvl(Double value, double defaultValue) {
 		return value != null ? value : defaultValue;
+	}
+
+	/**
+	 * Anula el asiento recién generado cuando falla el registro del pago sobre
+	 * la factura de compra, para que nunca quede un asiento activo sin su
+	 * aplicación correspondiente.
+	 * @param asiento : Asiento a anular
+	 * @param causa   : Error que impidió registrar el pago
+	 */
+	private void anulaAsientoPorFalloAplicacion(com.saa.model.cnt.Asiento asiento, Throwable causa) {
+		if (asiento == null) {
+			return;
+		}
+		try {
+			asiento.setEstado(Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO));
+			asiento.setMotivoAnulacion("Anulado automáticamente: no se pudo registrar el pago "
+					+ "sobre la factura afectada. " + causa.getMessage());
+			asiento.setFechaAnulacion(java.time.LocalDateTime.now());
+			asiento.setUsuarioAnulacion("SISTEMA");
+			em.merge(asiento);
+			em.flush();
+			System.err.println("⚠ Asiento " + asiento.getCodigo()
+					+ " anulado porque falló el registro del pago: " + causa.getMessage());
+		} catch (Exception e) {
+			System.err.println("⚠ No se pudo anular el asiento tras el fallo de la aplicación: "
+					+ e.getMessage());
+		}
 	}
 
 	/**
@@ -1092,6 +1122,46 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 			System.out.println("✓ Validación contable OK.");
 		}
 
+		// ── PASO 0.1: La factura de compra a la que afecta debe existir ────────
+		// El pago a la factura se registra junto con el asiento, así que sin
+		// factura no se puede emitir la retención: se valida ANTES de firmar y
+		// enviar al SRI, cuando todavía se puede abortar sin consecuencias.
+		if (retencion.getFacturador() != null
+				&& Long.valueOf(1L).equals(retencion.getFacturador().getGeneraConta())
+				&& retencion.getFacturador().getEmpresa() != null) {
+			try {
+				Long idEmpresaValida = retencion.getFacturador().getEmpresa().getCodigo();
+				Long idProveedorValida = (retencion.getProveedor() != null)
+						? retencion.getProveedor().getCodigo() : null;
+				java.util.Set<String> documentos = new java.util.LinkedHashSet<>();
+				if (detalles != null) {
+					for (DetalleRetencionV2 detalle : detalles) {
+						if (detalle.getNumDocReten() != null
+								&& !detalle.getNumDocReten().trim().isEmpty()) {
+							documentos.add(detalle.getNumDocReten().trim());
+						}
+					}
+				}
+				if (documentos.isEmpty()) {
+					resultado.put("etapa", "VALIDACION_FACTURA");
+					resultado.put("mensaje", "La retención no indica el número de la factura de compra "
+							+ "a la que afecta (documento sustento).");
+					return resultado;
+				}
+				for (String numeroDocumento : documentos) {
+					aplicacionPagoCxpService.resolverFacturaCompraPorNumero(
+							numeroDocumento, idProveedorValida, idEmpresaValida);
+				}
+				System.out.println("✓ Factura(s) de compra afectada(s) verificada(s): " + documentos);
+			} catch (Throwable e) {
+				resultado.put("etapa", "VALIDACION_FACTURA");
+				resultado.put("mensaje", e.getMessage());
+				resultado.put("error", e.getMessage());
+				System.err.println("✗ Validación de factura afectada fallida: " + e.getMessage());
+				return resultado;
+			}
+		}
+
 		try {
 			if (ambiente  == null) ambiente  = 1L;
 			if (conectaSRI == null) conectaSRI = 1L;
@@ -1249,10 +1319,21 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 				retencionV2DaoService.save(retencion, retencion.getId());
 				resultado.put("asiento", asientoGenerado.getNumeroAlterno());
 					System.out.println("✓ Asiento contable generado: " + asientoGenerado.getNumeroAlterno());
-				} catch (Exception e) {
+
+					// Registrar el abono a la factura de compra junto con el asiento:
+					// si el pago no se puede registrar, el asiento no debe quedar activo.
+					try {
+						aplicacionPagoCxpService.aplicarRetencionEmitida(
+								retencion, asientoAttached, idEmpresaConta, usuarioAsiento);
+					} catch (Throwable aplEx) {
+						anulaAsientoPorFalloAplicacion(asientoAttached, aplEx);
+						throw aplEx;
+					}
+				} catch (Throwable e) {
 					resultado.put("advertenciaAsiento",
-							"Retención V2 autorizada pero ocurrió un error al generar el asiento: "
-							+ e.getMessage() + ". Genere el asiento manualmente desde Contabilidad.");
+							"Retención V2 autorizada pero ocurrió un error al generar el asiento "
+							+ "o al registrar el pago de la factura: " + e.getMessage()
+							+ ". Revise la factura afectada y genere el asiento manualmente desde Contabilidad.");
 					System.err.println("⚠ Error en asiento contable de Retención V2: " + e.getMessage());
 					e.printStackTrace();
 				}
@@ -1336,6 +1417,21 @@ public java.util.Map<String, Object> anularRetencionV2(Long idRetencion, String 
 	String usuarioAnulacion = (usuario != null && !usuario.trim().isEmpty()) ? usuario.trim() : "SISTEMA";
 	String motivoFinal      = (motivo  != null && !motivo.trim().isEmpty())  ? motivo.trim()  : "Anulación manual";
 	java.time.LocalDateTime ahora = java.time.LocalDateTime.now();
+
+	// 3.5. Reversar el abono que esta retención hizo sobre la factura de compra
+	try {
+		int reversadas = aplicacionPagoCxpService.revertirAplicacionesDeDocumento(
+				"RETENCION_V2", idRetencion, motivoFinal, null);
+		if (reversadas > 0) {
+			resultado.put("aplicacionesReversadas", reversadas);
+			System.out.println("✓ Aplicaciones de pago reversadas: " + reversadas);
+		}
+	} catch (Exception e) {
+		System.err.println("⚠ Error al reversar las aplicaciones de pago: " + e.getMessage());
+		resultado.put("advertenciaAplicacion",
+				"La retención V2 fue anulada pero ocurrió un error al reversar el pago "
+				+ "aplicado a la factura: " + e.getMessage());
+	}
 
 	// 4. Anular asiento contable vinculado (si existe)
 	if (retencion.getAsiento() != null && retencion.getAsiento().getCodigo() != null) {
@@ -1496,9 +1592,19 @@ public java.util.Map<String, Object> consultarYActualizarEstadoRetencionV2(Long 
 			resultado.put("asiento", asientoGeneradoObj.getNumeroAlterno());
 			asientoGenerado = true;
 			System.out.println("✓ Asiento contable generado: " + asientoGeneradoObj.getNumeroAlterno());
-		} catch (Exception e) {
+
+			// Registrar el abono a la factura de compra junto con el asiento.
+			try {
+				aplicacionPagoCxpService.aplicarRetencionEmitida(
+						retencion, asientoAttached, idEmpresa, usuarioAsiento);
+			} catch (Throwable aplEx) {
+				anulaAsientoPorFalloAplicacion(asientoAttached, aplEx);
+				throw aplEx;
+			}
+		} catch (Throwable e) {
 			resultado.put("advertenciaAsiento",
-					"Retención V2 autorizada pero error al generar asiento: " + e.getMessage());
+					"Retención V2 autorizada pero error al generar asiento o al registrar "
+					+ "el pago de la factura: " + e.getMessage());
 			System.err.println("⚠ Error en asiento contable: " + e.getMessage());
 		}
 	} else if (retencion.getAsiento() != null) {

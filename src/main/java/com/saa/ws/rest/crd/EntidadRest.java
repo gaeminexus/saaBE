@@ -363,9 +363,9 @@ public class EntidadRest {
                 estadosPermitidos = java.util.Arrays.asList(10L, 2L, 30L, 23L, 42L);
             }
             
-            java.util.List<com.saa.model.crd.dto.EntidadResumenConsolidadoDTO> resumen = 
+            java.util.List<com.saa.model.crd.dto.EntidadResumenConsolidadoDTO> resumen =
                 entidadDaoService.selectResumenConsolidadoPorEstado(estadosPermitidos);
-            
+
             return Response.status(Response.Status.OK)
                     .entity(resumen)
                     .type(MediaType.APPLICATION_JSON)
@@ -373,6 +373,45 @@ public class EntidadRest {
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al obtener resumen consolidado: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
+    }
+
+    /**
+     * Genera el padrón de partícipes: cédula, nombres, calidad, número de aportes,
+     * estado y meses de mora, habilitación para voto y elegibilidad para miembro.
+     *
+     * @param fechaEjecucion Fecha de corte (opcional, formato yyyy-MM-dd; default: hoy)
+     * @param calidadId Filtro opcional por calidad del partícipe (ENTDIDST)
+     * @param minimoAportes Mínimo de aportes para elegibilidad (opcional, default: 90)
+     * @return JSON con la lista de filas del padrón
+     */
+    @GET
+    @Path("/padron-participes")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getPadronParticipes(
+            @jakarta.ws.rs.QueryParam("fechaEjecucion") String fechaEjecucion,
+            @jakarta.ws.rs.QueryParam("calidadId") Long calidadId,
+            @jakarta.ws.rs.QueryParam("minimoAportes") Long minimoAportes) {
+        System.out.println("LLEGA AL SERVICIO GET - PADRON DE PARTICIPES");
+        try {
+            java.time.LocalDateTime fechaEjecucionDate = null;
+
+            if (fechaEjecucion != null && !fechaEjecucion.isEmpty()) {
+                fechaEjecucionDate = java.time.LocalDate.parse(fechaEjecucion).atStartOfDay();
+            }
+
+            java.util.List<com.saa.model.crd.dto.PadronParticipeDTO> padron =
+                entidadService.selectPadronParticipes(fechaEjecucionDate, calidadId, minimoAportes);
+
+            return Response.status(Response.Status.OK)
+                    .entity(padron)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener el padrón de partícipes: " + e.getMessage())
                     .type(MediaType.APPLICATION_JSON)
                     .build();
         }

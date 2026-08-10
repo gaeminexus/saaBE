@@ -121,6 +121,10 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
     @EJB private com.saa.ejb.tsr.dao.TitularDaoService    titularDaoService;
     @EJB private com.saa.ejb.cnt.service.AsientoContableService asientoContableService;
+
+    @EJB private com.saa.ejb.cxp.service.AplicacionPagoCxpService aplicacionPagoCxpService;
+
+    @EJB private com.saa.ejb.cxc.service.AplicacionPagoCxcService aplicacionPagoCxcService;
     @EJB private com.saa.ejb.cnt.service.TipoAsientoService     tipoAsientoService;
 
     // -------------------------------------------------------
@@ -1209,6 +1213,14 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         nc.setUsuario(usuario);
         nc.setEstado(Long.valueOf(Estado.ACTIVO));
         nc.setEstadoEmision(2L);
+
+        // BLOQUEANTE: la factura de compra afectada debe existir en el sistema.
+        // Sin ella no se puede registrar el abono ni generar la contabilidad, así
+        // que se aborta antes de grabar nada.
+        aplicacionPagoCxpService.resolverFacturaCompraPorNumero(
+                nc.getNumDocModificado(),
+                (titular != null ? titular.getCodigo() : null), idEmpresa);
+
         nc = notaCreditoCompraDaoService.save(nc, null);
 
         NodeList detallesXml = xmlDoc.getElementsByTagName("detalle");
@@ -1283,6 +1295,12 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         nd.setUsuario(usuario);
         nd.setEstado(Long.valueOf(Estado.ACTIVO));
         nd.setEstadoEmision(2L);
+
+        // BLOQUEANTE: la factura de compra afectada debe existir en el sistema.
+        aplicacionPagoCxpService.resolverFacturaCompraPorNumero(
+                nd.getNumDocModificado(),
+                (titular != null ? titular.getCodigo() : null), idEmpresa);
+
         nd = notaDebitoCompraDaoService.save(nd, null);
 
         NodeList motivos = xmlDoc.getElementsByTagName("motivo");
@@ -1495,13 +1513,24 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                     docSustentoEncontrado = cnt != null && cnt > 0;
                 }
             } catch (Exception ex) {
+                // No se silencia: si no se pudo verificar, se trata como no encontrado
+                // para no registrar una retención cuyo cobro no se puede aplicar.
                 System.err.println("⚠ Error al verificar documento sustento en CXC: " + ex.getMessage());
-                docSustentoEncontrado = true;
+                docSustentoEncontrado = false;
             }
             if (!docSustentoEncontrado) {
+                // BLOQUEANTE: la retención abona una factura de venta. Sin la factura
+                // no se puede registrar el cobro ni generar la contabilidad.
                 advertenciaDocSustento = "El documento sustento no fue encontrado en CXC. "
                         + "Autorización: '" + numAutDocSustento + "' | Número: '" + numDocSustento + "'.";
-                System.out.println("⚠ ADVERTENCIA doc sustento: " + advertenciaDocSustento);
+                Map<String, Object> b = new HashMap<>();
+                b.put("tipo", "FACTURA_VENTA_NO_ENCONTRADA");
+                b.put("mensaje", "No existe en el sistema la factura de venta a la que afecta esta "
+                        + "retención. Número: '" + numDocSustento + "' | Autorización: '"
+                        + numAutDocSustento + "'. Emita o cargue primero la factura.");
+                b.put("solucion", "Verifique que la factura de venta exista y esté activa en CXC.");
+                bloqueantes.add(b);
+                System.out.println("⚠ BLOQUEANTE doc sustento: " + advertenciaDocSustento);
             }
         }
 
@@ -1766,6 +1795,30 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         if (tipo == null || idDocBD == null) return;
 
         System.out.println("Revirtiendo tipo=" + tipo + " idDoc=" + idDocBD);
+
+        // ── Eliminar las aplicaciones de pago que generó este documento ────────
+        // Se hace ANTES de borrar el documento para no chocar con las FK. El
+        // servicio marca la aplicación como reversada (para que el trigger
+        // recalcule el estado de pago de la factura) y luego la borra.
+        if ("NOTA_CREDITO_COMPRA".equals(tipo)) {
+            aplicacionPagoCxpService.eliminarAplicacionesDeDocumento("NOTA_CREDITO", idDocBD);
+        } else if ("NOTA_DEBITO_COMPRA".equals(tipo)) {
+            aplicacionPagoCxpService.eliminarAplicacionesDeDocumento("NOTA_DEBITO", idDocBD);
+        } else if ("RETENCION_COMPRA".equals(tipo)) {
+            aplicacionPagoCxcService.eliminarAplicacionesDeDocumento("RETENCION", idDocBD);
+        } else if ("RETENCION_COMPRA_V2".equals(tipo)) {
+            aplicacionPagoCxcService.eliminarAplicacionesDeDocumento("RETENCION_V2", idDocBD);
+        } else if ("FACTURA_COMPRA".equals(tipo)) {
+            // No se puede borrar una factura que ya tiene pagos o abonos aplicados.
+            java.util.List<com.saa.model.cxp.AplicacionPagoCxp> aplicaciones =
+                    aplicacionPagoCxpService.consultarPorFactura(idDocBD, true);
+            if (aplicaciones != null && !aplicaciones.isEmpty()) {
+                throw new com.saa.basico.util.IncomeException("La factura de compra tiene " + aplicaciones.size()
+                        + " pago(s) o abono(s) aplicados. Reverse primero esos pagos "
+                        + "(retenciones, notas, anticipos o transferencias) antes de revertir "
+                        + "el documento.");
+            }
+        }
 
         // ── Anular asiento contable vinculado ──────────────────────────────────
         anularAsientoDeDocumento(tipo, idDocBD);
@@ -2416,6 +2469,11 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                             "Asiento generado (" + asiento.getNumeroAlterno()
                             + ") pero no se pudo vincular al documento: " + ex.getMessage());
                 }
+
+                // ── Registrar el abono/cargo sobre la factura de compra ───────
+                // Va en la misma transacción que el asiento: si el pago no se
+                // puede registrar, se revierte todo el registro del documento.
+                registrarAplicacionPagoCxp(tipo, idDocBD, asiento, idEmpresa, resultado);
             }
 
         } catch (UnsupportedOperationException uoe) {
@@ -2441,6 +2499,60 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
      * del documento CXP correspondiente (campo ASIENTO agregado en tarea 1.1).
      * Esto completa la trazabilidad bidireccional: documento ↔ asiento contable.
      */
+    /**
+     * Registra el abono (nota de crédito) o el cargo (nota de débito) sobre la
+     * factura de compra afectada, en la misma transacción del asiento contable.
+     * Si el documento no tiene factura afectada o el monto no cuadra, propaga la
+     * excepción para que se revierta todo el registro del documento.
+     *
+     * @param tipo       : Tipo de tabla destino del documento
+     * @param idDocBD    : Id del documento en su tabla específica
+     * @param asiento    : Asiento contable recién generado
+     * @param idEmpresa  : Id de la empresa
+     * @param resultado  : Mapa de resultado del proceso, para informar al frontend
+     * @throws Exception : Si no se puede registrar la aplicación de pago
+     */
+    private void registrarAplicacionPagoCxp(String tipo, Long idDocBD,
+            com.saa.model.cnt.Asiento asiento, Long idEmpresa,
+            Map<String, Object> resultado) throws Exception {
+        try {
+            if ("NOTA_CREDITO_COMPRA".equals(tipo)) {
+                com.saa.model.cxp.NotaCreditoCompra nc =
+                        em.find(com.saa.model.cxp.NotaCreditoCompra.class, idDocBD);
+                if (nc != null) {
+                    aplicacionPagoCxpService.aplicarNotaCredito(nc, asiento, idEmpresa, "SISTEMA");
+                    resultado.put("aplicacionPago", "Nota de crédito aplicada a la factura afectada.");
+                }
+            } else if ("NOTA_DEBITO_COMPRA".equals(tipo)) {
+                com.saa.model.cxp.NotaDebitoCompra nd =
+                        em.find(com.saa.model.cxp.NotaDebitoCompra.class, idDocBD);
+                if (nd != null) {
+                    aplicacionPagoCxpService.aplicarNotaDebito(nd, asiento, idEmpresa, "SISTEMA");
+                    resultado.put("aplicacionPago", "Nota de débito aplicada a la factura afectada.");
+                }
+            } else if ("RETENCION_COMPRA".equals(tipo)) {
+                // La retención que nos emite el cliente abona una factura de VENTA.
+                com.saa.model.cxp.RetencionCompra rc =
+                        em.find(com.saa.model.cxp.RetencionCompra.class, idDocBD);
+                if (rc != null) {
+                    aplicacionPagoCxcService.aplicarRetencionRecibida(rc, asiento, idEmpresa, "SISTEMA");
+                    resultado.put("aplicacionPago", "Retención aplicada a la factura de venta afectada.");
+                }
+            } else if ("RETENCION_COMPRA_V2".equals(tipo)) {
+                com.saa.model.cxp.RetencionCompraV2 rc2 =
+                        em.find(com.saa.model.cxp.RetencionCompraV2.class, idDocBD);
+                if (rc2 != null) {
+                    aplicacionPagoCxcService.aplicarRetencionRecibidaV2(rc2, asiento, idEmpresa, "SISTEMA");
+                    resultado.put("aplicacionPago", "Retención V2 aplicada a la factura de venta afectada.");
+                }
+            }
+        } catch (Throwable t) {
+            System.err.println("⚠ Error registrando la aplicación de pago para " + tipo
+                    + " id=" + idDocBD + ": " + t.getMessage());
+            throw new Exception(t.getMessage(), t);
+        }
+    }
+
     private void grabarAsientoEnDocumento(String tipo, Long idDocBD,
                                            com.saa.model.cnt.Asiento asiento) {
         switch (tipo) {
