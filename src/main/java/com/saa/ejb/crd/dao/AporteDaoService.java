@@ -103,6 +103,24 @@ public interface AporteDaoService extends EntityDao<Aporte>{
 			java.time.LocalDateTime fechaInicio,
 			java.time.LocalDateTime fechaFin) throws Throwable;
 
+	/**
+	 * Suma los aportes positivos de una entidad, para los tipos indicados, cuya
+	 * fechaTransaccion cae dentro del mes/año dado.
+	 *
+	 * Es la misma base que usa el padrón de partícipes para decidir si un mes
+	 * cuenta como aportado (tipos 9/11 con valor &gt; 0), de modo que el proceso
+	 * de carga Petro y el padrón no puedan contradecirse.
+	 *
+	 * @param codigoEntidad Código de la entidad
+	 * @param tiposAporte   Códigos de tipo de aporte a considerar (ej: 9 y 11)
+	 * @param anio          Año de la fechaTransaccion
+	 * @param mes           Mes de la fechaTransaccion (1-12)
+	 * @return Suma de los aportes; 0.0 si no hay ninguno; null si no pudo evaluarse
+	 * @throws Throwable Si ocurre algún error
+	 */
+	Double sumaAportesPositivosPorTipoYPeriodo(Long codigoEntidad, List<Long> tiposAporte,
+			Long anio, Long mes) throws Throwable;
+
 	/*filtra todos los aporte por id de entidad
 	 * @param :idEntidad
 	 * @return Lista de Aporte

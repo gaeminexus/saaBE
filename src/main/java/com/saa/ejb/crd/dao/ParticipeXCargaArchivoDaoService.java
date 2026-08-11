@@ -31,23 +31,6 @@ public interface ParticipeXCargaArchivoDaoService extends EntityDao<ParticipeXCa
 	List<ParticipeXCargaArchivo> selectByDetalleCargaArchivo(Long codigoDetalleCargaArchivo);
 
 	/**
-	 * Suma el valor efectivamente descontado a un rol Petro, para un producto,
-	 * en el periodo de afectación indicado.
-	 *
-	 * Considera todas las cargas no anuladas de ese mes/año, porque un mismo
-	 * periodo puede tener más de una carga (una por filial).
-	 *
-	 * @param codigoPetro    Rol Petro del partícipe (PXCACDPT)
-	 * @param codigoProducto Código Petro del producto, sin espacios (ej: "AH")
-	 * @param anioAfectacion Año de afectación de la carga
-	 * @param mesAfectacion  Mes de afectación de la carga
-	 * @return Suma de totalDescontado; 0.0 si no hay registros en ese periodo
-	 * @throws Throwable Si ocurre algún error
-	 */
-	Double sumaDescontadoPorProductoYPeriodo(Long codigoPetro, String codigoProducto,
-			Long anioAfectacion, Long mesAfectacion) throws Throwable;
-
-	/**
 	 * Indica si existe alguna carga no anulada para el periodo indicado que
 	 * contenga el producto solicitado.
 	 *

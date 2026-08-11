@@ -1216,6 +1216,47 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     }
 
     /**
+     * Devuelve la fecha de emisión del documento ya registrado en su tabla
+     * específica. Esa fecha se tomó del XML (&lt;fechaEmision&gt;) al registrarlo,
+     * asi que es la fuente correcta para fechar el asiento contable — a
+     * diferencia de DocumentoCxp.fechaEmision, que viene de la columna 6 del
+     * TXT del SRI y puede faltar o no parsearse.
+     *
+     * @param tipo     : Tipo de tabla destino (DocumentoCxp.tipoTablaDestino)
+     * @param idDocBD  : Id del documento en su tabla especifica
+     * @return         : Fecha de emision, o null si no se pudo obtener
+     */
+    private java.time.LocalDate obtenerFechaDocumento(String tipo, Long idDocBD) {
+        if (tipo == null || idDocBD == null) return null;
+
+        String entidad;
+        switch (tipo) {
+            case "FACTURA_COMPRA":            entidad = "FacturaCompra";           break;
+            case "NOTA_CREDITO_COMPRA":       entidad = "NotaCreditoCompra";       break;
+            case "NOTA_DEBITO_COMPRA":        entidad = "NotaDebitoCompra";        break;
+            case "LIQUIDACION_COMPRA_COMPRA": entidad = "LiquidacionCompraCompra"; break;
+            case "RETENCION_COMPRA":          entidad = "RetencionCompra";         break;
+            case "RETENCION_COMPRA_V2":       entidad = "RetencionCompraV2";       break;
+            default: return null;
+        }
+
+        try {
+            List<?> resultado = em.createQuery(
+                    "select d.fecha from " + entidad + " d where d.id = :id")
+                    .setParameter("id", idDocBD)
+                    .setMaxResults(1)
+                    .getResultList();
+            if (!resultado.isEmpty() && resultado.get(0) != null) {
+                return ((LocalDateTime) resultado.get(0)).toLocalDate();
+            }
+        } catch (Exception e) {
+            System.err.println("⚠ obtenerFechaDocumento (" + tipo + ", id=" + idDocBD + "): "
+                    + e.getMessage());
+        }
+        return null;
+    }
+
+    /**
      * Verifica si el titular tiene cuenta contable CxP (tipoCuenta=1) asignada para la empresa.
      */
     private boolean verificarCuentaContableProveedor(Long codigoTitular, Long idEmpresa) {
@@ -1938,6 +1979,9 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 em.createQuery("delete from RetencionCompra r where r.id = :id").setParameter("id", idDocBD).executeUpdate();
                 break;
             case "RETENCION_COMPRA_V2":
+                // El detalle se borra primero por la FK DRC2.RETENCIONV2 -> RCV2.ID.
+                // (No hay PathRetencionCompraV2: la ruta del XML queda en DocumentoCxp.)
+                em.createQuery("delete from DetalleRetencionCompraV2 d where d.retencionCompraV2.id = :id").setParameter("id", idDocBD).executeUpdate();
                 em.createQuery("delete from RetencionCompraV2 r where r.id = :id").setParameter("id", idDocBD).executeUpdate();
                 break;
             default:
@@ -2563,9 +2607,28 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
             Long idDocBD   = doc.getIdDocumentoBD();
             String tipo    = doc.getTipoTablaDestino();
-            java.time.LocalDate fechaDoc = doc.getFechaEmision() != null
-                    ? doc.getFechaEmision().toLocalDate() : java.time.LocalDate.now();
             String serie   = doc.getSerieComprobante() != null ? doc.getSerieComprobante() : doc.getClaveAcceso();
+
+            // ── Fecha contable: SIEMPRE la fecha de emisión del documento ──────
+            // Se toma del documento ya registrado, cuya fecha viene del XML
+            // (<fechaEmision>), que es la fuente autoritativa. Como respaldo se
+            // usa la del TXT (DocumentoCxp.fechaEmision), que puede venir vacía
+            // o con un formato no reconocido.
+            // Si no hay ninguna de las dos NO se genera el asiento: antes se
+            // caía a la fecha de hoy en silencio, lo que contabilizaba el
+            // documento en un período equivocado sin que nadie se enterara.
+            java.time.LocalDate fechaDoc = obtenerFechaDocumento(tipo, idDocBD);
+            if (fechaDoc == null && doc.getFechaEmision() != null) {
+                fechaDoc = doc.getFechaEmision().toLocalDate();
+                System.out.println("⚠ El documento " + serie + " no tiene fecha propia; "
+                        + "se usa la fecha de emisión del TXT: " + fechaDoc);
+            }
+            if (fechaDoc == null) {
+                throw new Exception("No se pudo determinar la fecha de emisión del documento "
+                        + serie + " (tipo " + tipo + "). No se genera el asiento contable para "
+                        + "no registrarlo en un período equivocado. Verifique la fecha del "
+                        + "documento y vuelva a procesarlo.");
+            }
             String emisor  = doc.getRazonSocialEmisor() != null ? doc.getRazonSocialEmisor() : doc.getRucEmisor();
 
             System.out.println("Generando asiento CXP | tipo=" + tipo

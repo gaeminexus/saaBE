@@ -2634,8 +2634,12 @@ private void validarOrdenProcesamiento(CargaArchivo cargaArchivo) throws Throwab
  *
  * Se invoca cuando, al procesar el producto AH, un partícipe llega sin
  * descuento (valor 0 o nulo). Revisa si en el periodo inmediatamente anterior
- * ocurrió lo mismo; si es así, son dos periodos consecutivos sin aportar y la
- * entidad pasa a ACTIVO EN MORA.
+ * tampoco registró aporte; si es así son dos meses consecutivos sin aportar y
+ * la entidad pasa a ACTIVO EN MORA.
+ *
+ * El periodo anterior se evalúa contra CRD.APRT (aportes generados, tipos 9 y
+ * 11 con valor positivo), que es exactamente la base que usa el padrón de
+ * partícipes. Así el proceso y el reporte nunca se contradicen.
  *
  * Condiciones para marcar la mora:
  *  - La entidad debe estar hoy en estado ACTIVO. No se tocan cesantes,
@@ -2685,18 +2689,24 @@ private void evaluarMoraPorFaltaDeAporte(Entidad entidad, CargaArchivo cargaArch
 			return;
 		}
 
-		Double descontadoAnterior = participeXCargaArchivoDaoService
-			.sumaDescontadoPorProductoYPeriodo(entidad.getRolPetroComercial(),
-				CODIGO_PRODUCTO_APORTES, anioAnterior, mesAnterior);
+		// Se mide contra los aportes efectivamente generados (CRD.APRT), que es la
+		// misma base del padrón de partícipes. Si se midiera contra el descuento
+		// del archivo, ambos podrían contradecirse: hay casos con descuento en el
+		// archivo que no generan aporte (sin HistorialSueldo activo, o con
+		// jubilación y cesantía en $0).
+		Double aportadoAnterior = aporteDaoService.sumaAportesPositivosPorTipoYPeriodo(
+			entidad.getCodigo(),
+			java.util.Arrays.asList(TIPO_APORTE_JUBILACION, TIPO_APORTE_CESANTIA),
+			anioAnterior, mesAnterior);
 
-		if (descontadoAnterior == null) {
+		if (aportadoAnterior == null) {
 			System.out.println("   [MORA] No se pudo consultar el periodo anterior. No se marca mora.");
 			return;
 		}
 
-		if (descontadoAnterior > 0.01) {
+		if (aportadoAnterior > 0.01) {
 			System.out.println("   [MORA] El partícipe sí aportó en " + mesAnterior + "/" + anioAnterior
-				+ " ($" + descontadoAnterior + "). Solo un periodo sin aporte, no se marca mora.");
+				+ " ($" + aportadoAnterior + "). Solo un periodo sin aporte, no se marca mora.");
 			return;
 		}
 

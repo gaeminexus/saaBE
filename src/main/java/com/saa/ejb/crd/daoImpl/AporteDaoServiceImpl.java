@@ -81,6 +81,43 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 		return result != null ? ((Number) result).doubleValue() : 0.0;
 	}
 
+	@Override
+	public Double sumaAportesPositivosPorTipoYPeriodo(Long codigoEntidad, List<Long> tiposAporte,
+			Long anio, Long mes) throws Throwable {
+		System.out.println("AporteDaoServiceImpl.sumaAportesPositivosPorTipoYPeriodo - entidad: "
+			+ codigoEntidad + ", tipos: " + tiposAporte + ", periodo: " + mes + "/" + anio);
+
+		if (codigoEntidad == null || tiposAporte == null || tiposAporte.isEmpty()
+				|| anio == null || mes == null) {
+			// No se puede evaluar: null, no 0.0, para no interpretarlo como "no aportó".
+			return null;
+		}
+
+		try {
+			Query query = em.createQuery(
+				" select coalesce(sum(a.valor), 0) " +
+				" from   Aporte a " +
+				" where  a.entidad.codigo = :codigoEntidad " +
+				"   and  a.tipoAporte.codigo in :tiposAporte " +
+				"   and  a.valor > 0 " +
+				"   and  YEAR(a.fechaTransaccion)  = :anio " +
+				"   and  MONTH(a.fechaTransaccion) = :mes "
+			);
+			query.setParameter("codigoEntidad", codigoEntidad);
+			query.setParameter("tiposAporte", tiposAporte);
+			query.setParameter("anio", anio);
+			query.setParameter("mes", mes);
+
+			Object resultado = query.getSingleResult();
+			return resultado != null ? ((Number) resultado).doubleValue() : 0.0;
+
+		} catch (Exception e) {
+			System.err.println("Error al sumar aportes por tipo y periodo: " + e.getMessage());
+			e.printStackTrace();
+			return null;
+		}
+	}
+
 	@SuppressWarnings("unchecked")
 	@Override
 	public List<Aporte> selectByEntidad(Long idEntidad) throws Throwable {
