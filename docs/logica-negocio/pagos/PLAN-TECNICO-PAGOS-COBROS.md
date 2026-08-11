@@ -49,6 +49,17 @@ RetencionCompraV2).
   elimina los 4 triggers que había creado el v1 (`TRG_APLC_ESTADOPAGO`,
   `TRG_APLP_ESTADOPAGO`, `TRG_ANTC_INIT_SALDO`, `TRG_ANTP_INIT_SALDO`) y esa lógica pasa a
   `AplicacionPagoCxpService.recalcularEstadoPago(...)` y a los servicios de anticipos.
+- **D11 (2026-08-11, confirmado)**: los anticipos (a proveedores y a clientes) **NO** se
+  conectan al circuito de lote/archivo/respuesta del banco de `PagoProgramado`. Siguen
+  generando su asiento contable **de forma síncrona, en el mismo instante en que se
+  registran** (`AnticipoProveedorServiceImpl.procesarAnticipo` /
+  `AnticipoClienteServiceImpl.procesarAnticipo`), exactamente como estaban antes de que se
+  intentara (y revirtiera) la integración con Pagos. Esto aplica igual a los procesos
+  genéricos de Ingresos y Egresos de tesorería. En cambio, para los **pagos/cobros de
+  facturas por transferencia** (`PagoProgramado`, §4) el usuario indicó que debe existir
+  un asiento al **generar** el pago y otro al **confirmarlo** — hoy solo existe el de
+  confirmación; ese cambio queda **PENDIENTE de definir** (ver ítem 5 en §7: qué cuentas
+  usaría el asiento "al generar" y en qué paso exacto del flujo se dispara).
 
 ---
 
@@ -216,6 +227,7 @@ su bloqueante; 12) hooks NC/ND venta + anulaciones + anularFactura; 13) anticipo
 | 2 | **Formato oficial del TXT del banco** y del archivo/mecanismo de **respuesta** (la interfaz FormateadorArchivoBanco los aísla; la impl provisional NO es de producción) | Pagos CXP por transferencia |
 | 3 | **¿Agregar BEXTCDIF (código IFI) a TSR.BEXT?** — bloque comentado en el script; casi seguro el archivo bancario lo exige | Archivo TXT bancario |
 | 4 | **Rubros de MovimientoBanco** para "pago proveedores" / "cobro clientes" (detalles de rubro a configurar en catálogo) | Clasificación de movimientos de tesorería |
+| 5 | **Segundo asiento "al generar el pago"** para pagos/cobros de facturas por transferencia (D11, 2026-08-11): el usuario pidió que exista un asiento al generar el pago y otro al confirmarlo — falta definir en qué paso exacto (¿registrar el pago? ¿generar el lote/archivo?) y qué cuentas usa (¿una cuenta puente de "transferencias en tránsito"?) | `PagoProgramadoServiceImpl` (generarLote / procesarRespuestaBanco), `AsientoContableService` |
 
 ## Verificación
 - Usuario ejecuta script v2 en DBeaver (con SELECTs de verificación incluidos) y

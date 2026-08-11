@@ -1,169 +1,141 @@
-# Endpoints para el Frontend — Pagos (CXP) y Cobros (CXC)
+# Especificación para el Frontend — Pantallas de Pagos (CXP) y Cobros (CXC)
 
-> **Qué es este documento:** listado de los endpoints REST que el frontend debe
-> consumir para las pantallas de pagos a proveedores (CXP) y cobros a clientes
-> (CXC), con sus request/response y el flujo de pantalla sugerido. Es una
-> **fotografía del código al 2026-08-07** — verificar contra los archivos REST
-> antes de confiar en una firma si pasa el tiempo:
-> - `com.saa.ws.rest.cxp.AplicacionPagoCxpRest` (`/aplp`)
-> - `com.saa.ws.rest.cxp.PagoProgramadoRest` (`/pgtr`)
-> - `com.saa.ws.rest.cxc.AplicacionPagoCxcRest` (`/aplc`)
+> **Para quién es este documento:** para el equipo/agente que va a construir el
+> frontend de este módulo. Es una especificación **prescriptiva**: qué pantallas
+> crear, qué campos y botones tiene cada una, qué endpoint llama cada acción, qué
+> hacer con la respuesta, y el flujo completo de negocio de principio a fin. La
+> intención es que la única pregunta que quede pendiente hacia el usuario/dueño
+> del producto sea **en qué opción de menú ubicar cada pantalla** — todo lo demás
+> (campos, validaciones, estados, flujo) ya está decidido y descrito aquí.
 >
-> Contexto de negocio en `REQUERIMIENTO-PAGOS-COBROS.md`; detalle técnico del
-> backend en `PLAN-TECNICO-PAGOS-COBROS.md` (misma carpeta).
+> **No preguntes por decisiones de negocio ya tomadas** (formato de los datos,
+> qué botones existen, en qué orden va el flujo, qué pasa en cada estado): están
+> en este documento. Si algo no está claro después de leerlo completo, es
+> preferible señalar la ambigüedad puntual antes de inventar un comportamiento.
+>
+> **Fotografía del backend al 2026-08-11** — verificar contra el código si pasa
+> el tiempo: `com.saa.ws.rest.cxp.AplicacionPagoCxpRest` (`/aplp`),
+> `com.saa.ws.rest.cxp.PagoProgramadoRest` (`/pgtr`),
+> `com.saa.ws.rest.cxc.AplicacionPagoCxcRest` (`/aplc`).
+>
+> **Fuera de alcance de este documento:** el registro de Anticipos (a
+> proveedores o a clientes) tiene su **propia pantalla, ya existente y en
+> funcionamiento**, independiente de todo lo de aquí (`/antp` para proveedores,
+> `/antc` para clientes — no se documentan en detalle porque no hay que
+> construirlos). Lo único que este módulo hace con los anticipos es
+> **cruzarlos contra una factura** una vez que ya existen y tienen saldo — eso
+> sí es parte de las pantallas descritas abajo (§2.2 y §4.2).
+>
+> Contexto de negocio en `REQUERIMIENTO-PAGOS-COBROS.md`; detalle técnico
+> interno del backend en `PLAN-TECNICO-PAGOS-COBROS.md` (misma carpeta) — esos
+> dos documentos son para quien mantiene el backend, no hace falta leerlos para
+> construir el frontend.
 
 ---
 
-## Diagrama de flujo de pantallas y llamadas a endpoints
+## 0. El problema de negocio, en una frase
 
-```mermaid
-flowchart TD
-    subgraph CXP["CXP — Pagos a proveedores"]
-        A["Detalle Factura de Compra"]
-        A -->|"GET /aplp/saldo/{id}<br/>GET /aplp/factura/{id}"| A
-        A -->|"ir a"| B["Pantalla Cruce de Anticipo (proveedor)"]
-        B -->|"POST /aplp/anticipo"| A
-        A -->|"Revertir fila del historial"| ARV["POST /aplp/revertir/{id}"]
-        ARV --> A
-
-        A -->|"ir a"| C1["a) Registrar Pago"]
-        C1 -->|"POST /pgtr"| C2["b) Seleccionar pagos (listado)"]
-        C2 -->|"GET /pgtr/listar?estado=1"| C2
-        C2 -->|"marcar y generar archivo<br/>POST /pgtr/lote"| C3["Descarga archivo TXT<br/>(contenido del response)"]
-        C3 -->|"re-descargar<br/>GET /pgtr/lote/{id}/archivo"| C3
-        C3 -->|"ir a"| C4["c) Cargar respuesta del banco (Excel)"]
-        C4 -->|"POST /pgtr/lote/{id}/respuesta<br/>(octet-stream)"| C5["d) Seguimiento de pagos"]
-        C5 -->|"GET /pgtr/listar (todos los estados)"| C5
-        C5 -->|"no confirmado → anular<br/>POST /pgtr/anular/{id}"| C5
-        C5 -->|"confirmado → revertir<br/>POST /pgtr/revertirConfirmado/{id}"| C5
-        C5 -.->|"pago confirmado actualiza"| A
-    end
-
-    subgraph CXC["CXC — Cobros a clientes"]
-        D["Detalle Factura de Venta"]
-        D -->|"GET /aplc/saldo/{id}<br/>GET /aplc/factura/{id}"| D
-        D -->|"ir a"| E["Pantalla Cruce de Anticipo (cliente)"]
-        E -->|"POST /aplc/anticipo"| D
-        D -->|"ir a"| F["Pantalla Cobro por Transferencia"]
-        F -->|"POST /aplc/cobroTransferencia"| D
-        D -->|"Revertir fila del historial"| DRV["POST /aplc/revertir/{id}"]
-        DRV --> D
-    end
-```
-
-Lectura del diagrama: las cajas son pantallas/sub-vistas, las flechas son
-navegación del usuario, y cada etiqueta sobre una flecha es la llamada REST
-que dispara esa transición. Las líneas punteadas indican una actualización de
-datos en segundo plano (no necesariamente navegación). El flujo CXP es el
-único con la cadena larga registrar → seleccionar/aprobar → archivo →
-respuesta del banco → seguimiento (D6); CXC es de un solo paso (D7).
+Una factura (de compra o de venta) se puede ir abonando de varias formas —
+retenciones, notas de crédito/débito, anticipos, transferencias — y cada
+abono debe quedar visible en la factura, con su saldo actualizado en tiempo
+real. Las retenciones y NC/ND se aplican **solas**, automáticamente, cuando
+se emiten/cargan esos documentos — el frontend no hace nada para eso, solo
+las **muestra** en el historial. Lo único que el usuario opera manualmente
+desde pantallas de tesorería es: **cruzar un anticipo** o **pagar/cobrar por
+transferencia bancaria**.
 
 ---
 
-## 0. Convenciones generales
+## 1. Convenciones generales (leer antes de todo lo demás)
 
-- Base URL: `/SaaBE/rest`. Ejemplo completo: `/SaaBE/rest/aplp/saldo/123`.
-- Todos los endpoints (salvo el indicado) usan `Content-Type: application/json`
-  tanto en el request como en la respuesta.
+- **Base URL:** `/SaaBE/rest`. Ejemplo completo: `/SaaBE/rest/aplp/saldo/123`.
+- Todos los endpoints (salvo uno, marcado explícitamente) usan
+  `Content-Type: application/json` en request y response.
 - **Formato de error:** el backend NO devuelve `{ "error": "..." }`. Devuelve
-  directamente el mensaje como string JSON, con el status HTTP correspondiente:
+  el mensaje **directamente como string JSON**, con el status HTTP que
+  corresponda:
   ```
-  HTTP 400/404/500
+  HTTP 400 / 404 / 500
   Content-Type: application/json
 
   "El valor a cruzar debe ser mayor a cero."
   ```
-  El frontend debe leer el body como texto/JSON-string y mostrarlo tal cual —
-  son mensajes ya redactados para el usuario final, en español.
-- **Fechas** que el frontend envía en los bodies (`fechaAplicacion`,
-  `fechaCobro`, `fechaProgramada`) van en texto `yyyy-MM-dd`. Si se omite o
-  viene mal formada, el backend asume la fecha de hoy (no falla).
-- Los montos son `Double`. No se envían separadores de miles.
-- Las respuestas de "acción" (aplicar anticipo, cobrar, revertir, etc.) son
-  siempre un objeto `Map<String,Object>` con al menos `exito` (boolean) y
-  `mensaje` (string) — pensado para mostrarse directo en un toast/notificación.
-- Las aplicaciones por **retención, nota de crédito y nota de débito son
-  automáticas**: se generan solas cuando se emite/carga esos documentos. El
-  frontend **nunca** las crea manualmente — solo las consulta en el
-  historial de la factura (§2.1 / §3.1) para mostrarlas junto a las manuales.
+  Esos mensajes ya están redactados en español para mostrarse tal cual al
+  usuario (en un toast, un banner de error, etc.) — no hace falta
+  reinterpretarlos ni mapearlos a un catálogo de errores propio.
+- **Fechas** que el frontend envía (`fechaAplicacion`, `fechaCobro`,
+  `fechaProgramada`) van como texto `yyyy-MM-dd`. Si se omiten o vienen mal
+  formadas, el backend usa la fecha de hoy — no es necesario bloquear el
+  envío del formulario por eso, pero sí es mejor UX exigir una fecha válida
+  en el cliente.
+- **Montos**: `Double`, sin separador de miles, punto decimal (`1500.00`).
+- Las respuestas de una **acción** (cruzar anticipo, cobrar, revertir,
+  anular, etc.) son siempre un objeto con al menos `exito` (boolean) y
+  `mensaje` (string) — pensado para mostrarse directo en una notificación de
+  éxito/error.
+- **Todo dato de catálogo (empresa, usuario, cuentas bancarias, proveedor,
+  cliente) se asume ya resuelto por otras pantallas del sistema** (selects,
+  autocompletar, sesión del usuario logueado). Este documento no cubre esos
+  catálogos.
 
-### Catálogos que el frontend necesita para pintar etiquetas/badges
+### Catálogos que el frontend necesita para pintar etiquetas y badges
 
-**`tipoDocPago`** (campo de `AplicacionPagoCxp` / `AplicacionPagoCxc`):
+**`tipoDocPago`** — de cada fila del historial de abonos de una factura
+(`AplicacionPagoCxp` / `AplicacionPagoCxc`). Define qué ícono/etiqueta
+mostrar y si la fila fue creada automáticamente o desde una pantalla:
 
-| Valor | Significado | Origen |
+| Valor | Significado | ¿Quién la crea? |
 |---|---|---|
-| 1 | Pago/Cobro directo (transferencia) | Pantalla de tesorería |
-| 2 | Nota de Crédito | Automático |
-| 3 | Retención | Automático |
-| 4 | Anticipo | Pantalla de tesorería (cruce) |
-| 5 | Nota de Débito (monto **negativo**) | Automático |
+| 1 | Pago/Cobro directo por transferencia | Pantalla de transferencia (§3 / §4.3) |
+| 2 | Nota de Crédito | Automático — no se crea desde el frontend |
+| 3 | Retención | Automático — no se crea desde el frontend |
+| 4 | Anticipo (cruce) | Pantalla de cruce de anticipo (§2.2 / §4.2) |
+| 5 | Nota de Débito (**monto negativo** — aumenta el saldo) | Automático — no se crea desde el frontend |
 
-**`estado`** de una aplicación (`AplicacionPagoCxp`/`Cxc`): `1`=Activo, `2`=Reversado.
+**`estado`** de una fila de abono (`AplicacionPagoCxp`/`Cxc`): `1`=Activo,
+`2`=Reversado. Una fila reversada se muestra tachada/atenuada y ya no cuenta
+para el saldo.
 
-**`estadoPago`** de la factura (campo `estadoPago` en la factura y en la
-respuesta de `saldo`/`saldoFactura`): `1`=Pendiente, `2`=Pagada parcial,
-`3`=Pagada total.
+**`estadoPago`** de la factura (viene en la propia factura y en la respuesta
+de `saldo`): `1`=Pendiente, `2`=Pagada parcial, `3`=Pagada total. Usar para
+el badge de la cabecera de la factura:
 
-**`estado`** de `PagoProgramado` (solo CXP, ciclo del pago por transferencia):
+| estadoPago | Texto sugerido | Color sugerido |
+|---|---|---|
+| 1 | Pendiente | neutro/gris |
+| 2 | Pago parcial | amarillo/naranja |
+| 3 | Pagada | verde |
 
-| Valor | Significado |
-|---|---|
-| 1 | Registrado (recién creado, aún no en ningún archivo) |
-| 2 | En archivo (ya incluido en un lote enviado al banco) |
-| 3 | Confirmado (el banco lo ejecutó → ya tiene asiento y movimiento bancario) |
-| 4 | Rechazado (el banco no lo ejecutó, o fue reversado tras confirmarse — queda en seguimiento) |
-| 5 | Anulado (el usuario lo canceló antes de enviarlo al banco) |
+**`estado`** de un `PagoProgramado` (solo CXP — ciclo del pago por
+transferencia, ver §3):
 
-**`estado`** de `LotePago`: `1`=Generado, `2`=Respuesta procesada, `3`=Anulado.
+| Valor | Texto sugerido | Qué significa | Acciones disponibles en esa fila |
+|---|---|---|---|
+| 1 | Registrado | Recién creado, todavía no se envió al banco | Seleccionar para lote · Anular |
+| 2 | En archivo | Ya está en un archivo enviado al banco, esperando respuesta | Anular |
+| 3 | Confirmado | El banco lo ejecutó — ya generó asiento y movimiento bancario | Revertir |
+| 4 | Rechazado | El banco no lo ejecutó, o fue revertido tras confirmarse | (ninguna — solo lectura; para reintentar, registrar un pago nuevo) |
+| 5 | Anulado | El usuario lo canceló antes de enviarlo al banco | (ninguna — solo lectura) |
+
+**`estado`** de un `LotePago`: `1`=Generado, `2`=Respuesta procesada,
+`3`=Anulado.
 
 ---
 
-## 1. CXP — Pagos a proveedores
+## 2. CXP — Pantallas de Pagos a Proveedores
 
-### 1.1 `/aplp` — Aplicaciones de pago sobre facturas de compra
+### 2.1 Pantalla / Widget: **Historial y saldo de una Factura de Compra**
 
-| Método y ruta | Uso | Body / Params |
-|---|---|---|
-| `GET /aplp/factura/{idFactura}?soloActivas=true` | Historial de abonos de una factura (automáticos + manuales) | — |
-| `GET /aplp/saldo/{idFactura}` | Total / aplicado / saldo pendiente de una factura | — |
-| `POST /aplp/anticipo` | Cruza saldo de anticipos del proveedor contra una factura | body abajo |
-| `POST /aplp/revertir/{id}` | Reversa una aplicación (cualquier tipo) | `{ motivo, idUsuario }` |
-| `GET /aplp/getId/{id}` | Una aplicación puntual | — |
-| `GET /aplp/getAll` | Todas (uso administrativo, no para la pantalla) | — |
-| `POST /aplp/selectByCriteria` | Búsqueda avanzada (`List<DatosBusqueda>`, patrón estándar del sistema) | — |
+**Dónde vive:** no es una pantalla independiente — es una sección dentro del
+detalle de una factura de compra ya existente en el sistema (donde sea que
+el usuario vea "Factura N° ...").
 
-**`GET /aplp/factura/{idFactura}`** → `200 OK`, array de `AplicacionPagoCxp`:
-```json
-[
-  {
-    "id": 45,
-    "empresa": { "codigo": 1, "...": "..." },
-    "facturaCompra": { "id": 123, "numero": "001-001-000000123", "...": "..." },
-    "tipoDocPago": 3,
-    "notaCredito": null,
-    "retencion": null,
-    "retencionV2": { "id": 88, "numero": "001-001-000000045", "...": "..." },
-    "notaDebito": null,
-    "anticipo": null,
-    "formaPago": null,
-    "referencia": null,
-    "banco": null,
-    "montoAplicado": 45.00,
-    "fechaAplicacion": "2026-08-07",
-    "observacion": "Retención V2 N° 001-001-000000045",
-    "estado": 1,
-    "usuario": { "codigo": 5, "nombre": "..." },
-    "asiento": { "codigo": 990, "numeroAlterno": "AS-000990", "...": "..." },
-    "fechaRegistro": "2026-08-07T10:15:32"
-  }
-]
-```
-Solo uno de `notaCredito`/`retencion`/`retencionV2`/`notaDebito`/`anticipo` viene
-no-nulo, según `tipoDocPago`. Para `tipoDocPago=1` (pago directo) ninguno de
-esos viene lleno; en cambio sí vienen `formaPago`, `referencia` y `banco`.
+**Al abrir el detalle de la factura:**
+1. `GET /aplp/saldo/{idFactura}` → cabecera con total, aplicado, saldo
+   pendiente y el badge de `estadoPago` (tabla de §1).
+2. `GET /aplp/factura/{idFactura}?soloActivas=true` → tabla de movimientos.
 
-**`GET /aplp/saldo/{idFactura}`** → `200 OK`:
+**Response de `GET /aplp/saldo/{idFactura}`:**
 ```json
 {
   "facturaId": 123,
@@ -175,19 +147,99 @@ esos viene lleno; en cambio sí vienen `formaPago`, `referencia` y `banco`.
 }
 ```
 
-**`POST /aplp/anticipo`** — request:
+**Response de `GET /aplp/factura/{idFactura}`** (array de filas para la
+tabla):
+```json
+[
+  {
+    "id": 45,
+    "tipoDocPago": 3,
+    "notaCredito": null,
+    "retencion": null,
+    "retencionV2": { "id": 88, "numero": "001-001-000000045" },
+    "notaDebito": null,
+    "anticipo": null,
+    "formaPago": null,
+    "referencia": null,
+    "banco": null,
+    "montoAplicado": 45.00,
+    "fechaAplicacion": "2026-08-07",
+    "observacion": "Retención V2 N° 001-001-000000045",
+    "estado": 1,
+    "usuario": { "codigo": 5, "nombre": "..." },
+    "asiento": { "codigo": 990, "numeroAlterno": "AS-000990" },
+    "fechaRegistro": "2026-08-07T10:15:32"
+  }
+]
+```
+Columnas sugeridas de la tabla: fecha, tipo (mapeado con la tabla de
+`tipoDocPago` de §1), documento relacionado (el que venga no-nulo entre
+`notaCredito`/`retencion`/`retencionV2`/`notaDebito`/`anticipo` — mostrar su
+`numero`; si los cinco vienen null es un pago directo, mostrar `referencia` +
+`banco`), monto (en rojo si es negativo — nota de débito), estado, acciones.
+
+**Acción "Revertir"** (solo en filas con `estado=1`): abre un modal pidiendo
+**motivo** (texto obligatorio) →
+`POST /aplp/revertir/{id}` con body `{ "motivo": "...", "idUsuario": <id sesión> }`.
+Al volver `200 OK`, refrescar el saldo (paso 1) y la tabla (paso 2). Si
+falla, mostrar `mensaje` del error tal cual.
+
+**Botones de la cabecera** (visibles solo si `saldoPendiente > 0`):
+- **"Cruzar anticipo"** → abre la pantalla de §2.2, pre-cargada con esta
+  factura.
+- **"Ir a Pagos"** → navega a la pantalla de registrar pago (§3.1),
+  pre-cargada con esta factura. (El pago en sí no se hace desde aquí — desde
+  aquí solo se navega.)
+
+---
+
+### 2.2 Pantalla: **Cruce de Anticipo — Proveedor**
+
+Se usa cuando el proveedor tiene saldo de anticipos (ya entregado
+previamente, por la pantalla de Anticipos que está fuera de este alcance) y
+el usuario quiere aplicar parte de ese saldo contra una factura pendiente.
+
+**Cómo se llega:** desde el botón "Cruzar anticipo" del detalle de factura
+(§2.1), o desde un flujo donde el usuario elige primero el proveedor y luego
+la factura.
+
+**Campos del formulario:**
+| Campo | Tipo | Obligatorio | Notas |
+|---|---|---|---|
+| Factura de compra | selector (ya resuelto si se llega desde §2.1) | Sí | `idFacturaCompra` |
+| Valor a cruzar | numérico | Sí | debe ser > 0 |
+| Fecha de aplicación | fecha | No | default hoy |
+| Observación | texto libre | No | |
+
+**Antes de habilitar el botón "Confirmar"**, si el frontend ya tiene el dato
+del saldo de anticipos disponible del proveedor (ver nota abajo), validar en
+cliente que `valor <= saldoPendienteFactura` y `valor <= saldoAnticipos`. El
+backend igual revalida todo — esta validación en cliente es solo para dar
+feedback inmediato, no reemplaza el manejo de errores del submit.
+
+> ⚠️ **Nota para quien construya esto:** hoy no existe un endpoint aislado
+> para consultar "cuánto saldo de anticipos tiene el proveedor X" antes de
+> intentar el cruce — ese dato solo vuelve como parte de la respuesta de la
+> propia acción de cruce (`saldoAnticipos` abajo). Si la pantalla necesita
+> mostrarlo **antes** de que el usuario confirme (por ejemplo, "tienes $75
+> disponibles" al lado del campo de valor), hay que pedir ese endpoint al
+> backend antes de construir esa parte — no inventar un cálculo en el
+> frontend. El resto de la pantalla se puede construir igual mientras tanto.
+
+**Al confirmar:** `POST /aplp/anticipo`
 ```json
 {
   "idFacturaCompra": 123,
   "valor": 225.00,
-  "fechaAplicacion": "2026-08-07",
+  "fechaAplicacion": "2026-08-11",
   "idEmpresa": 1,
   "idUsuario": 5,
   "observacion": "Cruce parcial"
 }
 ```
-Requeridos: `idFacturaCompra`, `valor`, `idEmpresa` (400 si faltan). Response
-`200 OK` — incluye el saldo actualizado de la factura y de anticipos:
+Requeridos: `idFacturaCompra`, `valor`, `idEmpresa` (400 si faltan).
+
+**Response `200 OK`:**
 ```json
 {
   "exito": true,
@@ -203,48 +255,45 @@ Requeridos: `idFacturaCompra`, `valor`, `idEmpresa` (400 si faltan). Response
   "estadoPago": 2
 }
 ```
-Errores de negocio típicos (`500`, body string): factura inexistente, valor
-≤ 0, saldo de la factura insuficiente, saldo de anticipos insuficiente
-(el mensaje incluye el saldo real disponible), proveedor sin cuenta contable
-de anticipos configurada.
+Mostrar `mensaje` como confirmación, y volver al detalle de la factura
+(§2.1) con los datos ya actualizados (no hace falta volver a pedirlos, vienen
+en esta misma respuesta).
 
-**`POST /aplp/revertir/{id}`** — request: `{ "motivo": "...", "idUsuario": 5 }`
-(`motivo` obligatorio → 400 si falta). Response `200 OK`:
-```json
-{
-  "exito": true,
-  "mensaje": "Aplicación reversada correctamente.",
-  "aplicacion": 46,
-  "facturaId": 123,
-  "numeroFactura": "001-001-000000123",
-  "total": 1500.00,
-  "totalAplicado": 545.00,
-  "saldoPendiente": 955.00,
-  "estadoPago": 2
-}
-```
-La reversión funciona igual sin importar el tipo de aplicación (retención,
-NC, ND, anticipo, pago directo): devuelve saldo a la factura, devuelve saldo
-de anticipos si aplicaba, anula el movimiento bancario si lo había, y
-anula/reversa el asiento contable.
+**Errores de negocio típicos** (mostrar el `mensaje` del error tal cual):
+factura inexistente, valor ≤ 0, saldo de la factura insuficiente, saldo de
+anticipos insuficiente (el mensaje ya incluye el saldo real disponible),
+proveedor sin cuenta contable de anticipos configurada (error de
+configuración del sistema, no del usuario — igual se muestra el mensaje).
 
 ---
 
-### 1.2 `/pgtr` — Pagos a proveedores por transferencia (flujo largo)
+## 3. Pantalla: **Pagos a Proveedores por Transferencia** (el flujo largo)
 
-| Método y ruta | Uso | Body / Params |
+Esta es la pantalla más compleja de todo el módulo. Tiene **4 sub-vistas**
+secuenciales, que pueden ser 4 pestañas de una misma pantalla o 4 pasos de un
+wizard — a discreción de quien construya el frontend, siempre que respeten
+este orden y estas transiciones:
+
+```
+a) Registrar Pago  →  b) Seleccionar y Generar Archivo  →  c) Cargar Respuesta del Banco  →  d) Seguimiento
+        (crea el pago,          (aprueba + genera el TXT           (confirma o rechaza          (anular / revertir /
+         estado=1)               que se sube al banco,              cada pago del lote)           ver histórico)
+                                  estado 1→2)
+```
+
+#### 3.1 a) Registrar Pago
+
+**Campos:**
+| Campo | Tipo | Obligatorio |
 |---|---|---|
-| `POST /pgtr` | Registrar un pago sobre una factura | body abajo |
-| `GET /pgtr/listar?idEmpresa=&estado=&idTitular=` | Listado para la pantalla de selección | query params |
-| `POST /pgtr/lote` | Generar el archivo para el banco con los pagos seleccionados (= aprobarlos) | body abajo |
-| `GET /pgtr/lote/{idLote}/archivo` | Volver a descargar el archivo de un lote ya generado | — |
-| `POST /pgtr/lote/{idLote}/respuesta?idUsuario=` | Cargar el archivo de respuesta del banco | **body binario**, ver nota |
-| `POST /pgtr/anular/{id}` | Anular un pago aún no enviado/confirmado | `{ motivo, idUsuario }` |
-| `POST /pgtr/revertirConfirmado/{id}` | Revertir un pago ya confirmado por el banco | `{ motivo, idUsuario }` |
-| `GET /pgtr/getId/{id}` | Un pago puntual | — |
-| `POST /pgtr/selectByCriteria` | Búsqueda avanzada | — |
+| Factura de compra a pagar | selector (o pre-cargado desde §2.1) | Sí |
+| Cuenta bancaria propia de origen | selector (cuentas de Tesorería) | Sí |
+| Cuenta bancaria del proveedor (destino) | selector (cuentas del titular) | No |
+| Valor a pagar | numérico | Sí |
+| Fecha programada | fecha | No (default hoy) |
+| Observación | texto libre | No |
 
-**`POST /pgtr`** — request:
+**Al confirmar:** `POST /pgtr`
 ```json
 {
   "idFacturaCompra": 123,
@@ -257,13 +306,17 @@ anula/reversa el asiento contable.
   "observacion": "Pago factura agosto"
 }
 ```
-Requeridos: `idFacturaCompra`, `idCuentaBancariaOrigen`, `valor`, `idEmpresa`
-(400 si faltan). `idCuentaDestinoTitular` es opcional pero, si se envía, debe
-pertenecer al mismo proveedor de la factura (si no, error 500). El backend
-valida que `valor` no supere el saldo pendiente **descontando lo ya
-comprometido** en otros pagos vigentes (registrados o en archivo) de la misma
-factura — o sea, no dejar sobre-comprometer una factura con pagos duplicados.
-Response `201 CREATED`:
+Requeridos: `idFacturaCompra`, `idCuentaBancariaOrigen`, `valor`, `idEmpresa`.
+`idCuentaDestinoTitular` opcional, pero si se envía debe ser una cuenta del
+mismo proveedor de la factura (si no, error).
+
+El backend valida que `valor` no supere el saldo pendiente de la factura
+**descontando lo que ya está comprometido** en otros pagos vigentes de esa
+misma factura (registrados o en archivo) — así que una factura puede tener
+varios pagos parciales registrados a la vez, pero no se puede
+sobre-comprometer.
+
+**Response `201 CREATED`:**
 ```json
 {
   "exito": true,
@@ -277,40 +330,45 @@ Response `201 CREATED`:
   "estadoPago": 1
 }
 ```
-Nota: el saldo de la factura **no cambia todavía** (`totalAplicado` sigue en
-0) — el pago registrado aún no genera contabilidad ni aplicación; eso solo
-ocurre cuando el banco confirma.
+Nota importante para la UI: **el saldo de la factura no cambia todavía**
+(`totalAplicado` sigue en 0) — registrar el pago no genera contabilidad. Eso
+solo pasa cuando el banco confirma (paso c). Mostrar un mensaje de éxito
+tipo "Pago registrado, aparecerá en la pantalla de selección para el próximo
+archivo" y limpiar el formulario o navegar a §3.2.
 
-**`GET /pgtr/listar`** → `200 OK`, array de `PagoProgramado` (mismo shape que
-el body de `POST /pgtr`, más los campos de ciclo de vida):
+#### 3.2 b) Seleccionar y Generar Archivo (= aprobar)
+
+**Listado:** `GET /pgtr/listar?idEmpresa={id}&estado=1` → tabla con checkbox
+por fila. Columnas sugeridas: proveedor, factura, valor, fecha programada,
+cuenta de origen.
+
 ```json
 [
   {
     "id": 501,
-    "empresa": { "codigo": 1 },
-    "facturaCompra": { "id": 123, "numero": "001-001-000000123", "...": "..." },
+    "facturaCompra": { "id": 123, "numero": "001-001-000000123" },
     "titular": { "codigo": 9, "nombre": "Proveedor S.A." },
-    "cuentaBancaria": { "codigo": 4, "numero": "...", "banco": { "...": "..." } },
-    "cuentaDestino": { "id": 9, "numero": "...", "banco": { "...": "..." } },
+    "cuentaBancaria": { "codigo": 4, "numero": "...", "banco": { "nombre": "..." } },
+    "cuentaDestino": { "id": 9, "numero": "...", "banco": { "nombre": "..." } },
     "valor": 1500.00,
     "fechaProgramada": "2026-08-15",
-    "lote": null,
     "estado": 1,
-    "referenciaBanco": null,
-    "fechaRespuesta": null,
-    "motivo": null,
-    "aplicacion": null,
     "observacion": "Pago factura agosto",
     "usuario": { "codigo": 5, "nombre": "..." },
     "fechaRegistro": "2026-08-07T09:00:00"
   }
 ]
 ```
-Usar `estado=1` para poblar la pantalla de selección de pagos a incluir en el
-próximo archivo. `idEmpresa` es obligatorio; `estado` e `idTitular` son
-filtros opcionales.
 
-**`POST /pgtr/lote`** — request:
+**Regla de negocio clave para la UI:** el backend exige que **todos los
+pagos seleccionados compartan la misma cuenta bancaria de origen**. Lo más
+simple para el usuario es que la pantalla filtre/agrupe el listado por
+cuenta de origen (un selector de cuenta arriba de la tabla) y solo permita
+tildar filas de esa cuenta — así se evita que el usuario arme una selección
+inválida y reciba el error recién al enviar.
+
+**Al presionar "Generar archivo" (con la selección hecha):**
+`POST /pgtr/lote`
 ```json
 {
   "idsPagos": [501, 502, 503],
@@ -319,43 +377,76 @@ filtros opcionales.
   "idUsuario": 5
 }
 ```
-El backend re-valida en la transacción que todos los pagos sigan en estado
-`REGISTRADO` y sean de la **misma cuenta de origen** — si alguno ya fue
-tomado por otro lote o pertenece a otra cuenta, rechaza toda la operación
-(mensaje indica cuál). Response `200 OK`:
+**No existe un paso de "aprobación" separado**: seleccionar los pagos y
+generar el archivo **es** la aprobación. No agregar un botón ni un estado
+adicional de "aprobar" — no existe en el backend.
+
+**Response `200 OK`:**
 ```json
 {
   "exito": true,
   "mensaje": "Archivo de pagos generado con 3 transferencia(s).",
   "idLote": 77,
-  "nombreArchivo": "PAGOS_20260807_77.txt",
+  "nombreArchivo": "PAGOS_20260811_77.txt",
   "contenido": "...texto plano del archivo...",
   "valorTotal": 4200.00,
   "numeroPagos": 3
 }
 ```
-El frontend debe generar la descarga del archivo en el navegador a partir de
-`contenido` (`new Blob([contenido])` + link de descarga con `nombreArchivo`).
-**El formato de `contenido` es PROVISIONAL** (texto plano separado por `|`,
-`FormateadorArchivoBancoPlanoImpl`) — pendiente el formato oficial del banco.
-
-**`GET /pgtr/lote/{idLote}/archivo`** — mismo propósito, para volver a
-descargar un lote ya generado sin repetir el proceso. Response:
-```json
-{ "idLote": 77, "nombreArchivo": "PAGOS_20260807_77.txt", "contenido": "..." }
+**El frontend debe disparar la descarga del archivo en el navegador** a
+partir de `contenido` y `nombreArchivo`:
+```js
+const blob = new Blob([resultado.contenido], { type: "text/plain" });
+const url = URL.createObjectURL(blob);
+const a = document.createElement("a");
+a.href = url; a.download = resultado.nombreArchivo; a.click();
+URL.revokeObjectURL(url);
 ```
+Tras esto, esos pagos pasan a estado 2 (En archivo) y desaparecen del
+listado de selección (que sigue filtrando por `estado=1`). Mostrar
+confirmación con `idLote`, `valorTotal` y `numeroPagos`, y ofrecer un link
+"Ir a Seguimiento" (§3.4) o "Cargar respuesta del banco" (§3.3).
 
-**`POST /pgtr/lote/{idLote}/respuesta?idUsuario=5`** — ⚠️ **no es JSON**:
-- `Content-Type: application/octet-stream`
-- El body es el **contenido binario crudo** del archivo de respuesta (hoy se
-  espera Excel — `LectorRespuestaBancoExcelImpl`, columnas leídas por
-  posición, también PROVISIONAL).
-- El frontend debe leer el `File` seleccionado como `ArrayBuffer` y enviarlo
-  tal cual en el body del `fetch`/`XMLHttpRequest` (no `FormData`, no
-  `multipart/form-data`).
-- `idUsuario` va como **query param**, no en el body.
+**Volver a descargar un lote ya generado** (por si el usuario perdió el
+archivo): `GET /pgtr/lote/{idLote}/archivo` → mismo shape
+`{ idLote, nombreArchivo, contenido }`. Útil como botón "Descargar" en la
+pantalla de seguimiento (§3.4), por fila de lote.
 
-Response `200 OK`:
+**El formato de `contenido` es PROVISIONAL** (texto plano, no el formato
+oficial del banco todavía). Esto no cambia nada del lado del frontend: el
+contrato del endpoint (JSON con `contenido`/`nombreArchivo`) es estable, solo
+el contenido interno del archivo cambiará el día que llegue el formato
+oficial.
+
+#### 3.3 c) Cargar Respuesta del Banco
+
+**Pantalla:** selector/listado de lotes con respuesta pendiente (los que
+están en estado 1=Generado — hoy no hay un endpoint de "listar lotes"; se
+puede construir esta pantalla a partir de `idLote` conocido, ej. llegando
+desde §3.2, o pedir al backend un endpoint de listado de lotes si se
+necesita una bandeja general — ver nota de pendientes al final del
+documento) + un control de carga de archivo (`<input type="file">`, se
+espera un Excel).
+
+**Al subir el archivo:** ⚠️ **este endpoint NO es JSON**:
+```
+POST /pgtr/lote/{idLote}/respuesta?idUsuario={idUsuarioSesion}
+Content-Type: application/octet-stream
+Body: <contenido binario crudo del archivo>
+```
+El frontend debe leer el `File` seleccionado como `ArrayBuffer` y mandarlo
+tal cual en el body — **no usar `FormData` ni `multipart/form-data`**:
+```js
+const buffer = await file.arrayBuffer();
+await fetch(`/SaaBE/rest/pgtr/lote/${idLote}/respuesta?idUsuario=${idUsuario}`, {
+  method: "POST",
+  headers: { "Content-Type": "application/octet-stream" },
+  body: buffer,
+});
+```
+`idUsuario` va en la **query string**, no en el body.
+
+**Response `200 OK`:**
 ```json
 {
   "exito": true,
@@ -366,55 +457,113 @@ Response `200 OK`:
 }
 ```
 `errores` solo aparece si hubo filas del archivo que no se pudieron procesar
-(pago inexistente, no pertenece al lote, ya procesado, o falló la generación
-del asiento/aplicación de un confirmado — en ese caso ese pago individual
-queda sin cambiar de estado y debe reintentarse). Tras esta llamada, el
-frontend debe refrescar `GET /pgtr/listar` para ver los nuevos estados
-(`3`=Confirmado, `4`=Rechazado).
+(pago inexistente en el sistema, no pertenece a este lote, ya estaba
+procesado, o falló la generación del asiento de un confirmado — ese pago
+puntual queda sin cambiar de estado y hay que investigarlo). Mostrar el
+resumen (confirmados/rechazados/errores) en un panel de resultado, y
+refrescar/navegar a §3.4 para ver los nuevos estados.
 
-**`POST /pgtr/anular/{id}`** (solo pagos en estado 1/2/4 — no confirmados) y
-**`POST /pgtr/revertirConfirmado/{id}`** (solo estado 3=Confirmado, deshace
-aplicación+asiento+movimiento bancario y el pago vuelve a estado 4=Rechazado
-con el motivo anotado) — ambos con body `{ "motivo": "...", "idUsuario": 5 }`,
-`motivo` obligatorio. Responses:
+#### 3.4 d) Seguimiento de Pagos
+
+**Listado:** `GET /pgtr/listar?idEmpresa={id}` (sin filtro de `estado`, o
+con selector de estado para el usuario) — muestra pagos en cualquier estado,
+con la columna de estado usando la tabla de §1 (Registrado / En archivo /
+Confirmado / Rechazado / Anulado).
+
+**Acción "Anular"** — visible en filas con estado 1, 2 o 4 (todavía no
+confirmadas por el banco): modal pidiendo motivo →
+`POST /pgtr/anular/{id}` con `{ "motivo": "...", "idUsuario": <sesión> }`.
 ```json
 { "exito": true, "mensaje": "Pago anulado correctamente.", "pago": 501 }
 ```
+
+**Acción "Revertir"** — visible **solo** en filas con estado 3 (Confirmado);
+dale más peso visual/confirmación (ej. un segundo modal de "¿estás
+seguro?") porque esta acción sí deshace contabilidad ya generada: modal
+pidiendo motivo → `POST /pgtr/revertirConfirmado/{id}` con
+`{ "motivo": "...", "idUsuario": <sesión> }`.
 ```json
-{ "exito": true, "mensaje": "Pago reversado. Queda en seguimiento como rechazado.",
-  "pago": 501, "aplicacion": 46, "facturaId": 123, "...": "saldo actualizado de la factura" }
+{
+  "exito": true,
+  "mensaje": "Pago reversado. Queda en seguimiento como rechazado.",
+  "pago": 501,
+  "aplicacion": 46,
+  "facturaId": 123,
+  "numeroFactura": "001-001-000000123",
+  "total": 1500.00,
+  "totalAplicado": 0.00,
+  "saldoPendiente": 1500.00,
+  "estadoPago": 1
+}
 ```
+Tras revertir, el pago pasa a estado 4 (Rechazado, para seguimiento) y la
+factura recupera su saldo — si el usuario está viendo el detalle de la
+factura (§2.1) al mismo tiempo, refrescarlo.
+
+Para reintentar un pago Rechazado o Anulado, **no hay una acción de
+"reintentar"**: el usuario simplemente registra un pago nuevo desde §3.1
+sobre la misma factura.
 
 ---
 
-## 2. CXC — Cobros a clientes
+## 4. CXC — Pantallas de Cobros a Clientes
 
-### 2.1 `/aplc` — Aplicaciones de cobro sobre facturas de venta
+Mucho más simple que CXP: no hay lote, ni archivo, ni respuesta del banco —
+el cobro se registra y contabiliza **en un solo paso**.
 
-Espejo casi exacto de `/aplp`, con dos diferencias: no existe el flujo de
-lote/archivo (el cobro se registra directo y ya queda confirmado — D7), y hay
-un endpoint propio para la transferencia recibida.
+### 4.1 Pantalla / Widget: **Historial y saldo de una Factura de Venta**
 
-| Método y ruta | Uso | Body / Params |
+Igual que §2.1 pero con estos endpoints y esta entidad:
+- `GET /aplc/saldo/{idFactura}` → mismo shape que `/aplp/saldo` (§2.1).
+- `GET /aplc/factura/{idFactura}?soloActivas=true` → mismo shape que
+  `/aplp/factura`, pero el objeto es `AplicacionPagoCxc`: usa el campo
+  `factura` en vez de `facturaCompra` (y existe también un campo
+  `liquidacion`, para liquidaciones de compra recibidas — hoy sin pantalla
+  propia, se puede ignorar en la tabla si viene null, que es el caso normal).
+- Acción "Revertir": `POST /aplc/revertir/{id}` — mismo contrato que
+  `/aplp/revertir/{id}`.
+- Botones de cabecera (si `saldoPendiente > 0`): **"Cruzar anticipo"** (→
+  §4.2) y **"Registrar cobro"** (→ §4.3, no hay pantalla intermedia de
+  "seguimiento" en CXC).
+
+### 4.2 Pantalla: **Cruce de Anticipo — Cliente**
+
+Misma UX que §2.2, mismo endpoint con nombres de campo distintos:
+`POST /aplc/anticipo`
+```json
+{
+  "idFactura": 123,
+  "valor": 225.00,
+  "fechaAplicacion": "2026-08-11",
+  "idEmpresa": 1,
+  "idUsuario": 5,
+  "observacion": "Cruce parcial"
+}
+```
+Requeridos: `idFactura`, `valor`, `idEmpresa`. Response y manejo de errores
+idénticos a §2.2 (mismas claves: `exito`, `mensaje`, `aplicacion`, `asiento`,
+`saldoAnticipos`, más el saldo de la factura). Aplica la misma nota sobre no
+tener aún un endpoint de consulta aislada del saldo de anticipos.
+
+### 4.3 Pantalla: **Registrar Cobro por Transferencia**
+
+Un único formulario, sin pasos intermedios:
+
+| Campo | Tipo | Obligatorio |
 |---|---|---|
-| `GET /aplc/factura/{idFactura}?soloActivas=true` | Historial de cobros/abonos de una factura | — |
-| `GET /aplc/saldo/{idFactura}` | Total / cobrado / saldo pendiente | — |
-| `POST /aplc/cobroTransferencia` | Registra un cobro recibido por transferencia (genera asiento + movimiento bancario en el acto) | body abajo |
-| `POST /aplc/anticipo` | Cruza saldo de anticipos del cliente contra una factura | body abajo |
-| `POST /aplc/revertir/{id}` | Reversa una aplicación | `{ motivo, idUsuario }` |
-| `GET /aplc/getId/{id}` / `GET /aplc/getAll` / `POST /aplc/selectByCriteria` | Uso administrativo / búsqueda avanzada | — |
+| Factura de venta | selector (o pre-cargada desde §4.1) | Sí |
+| Valor recibido | numérico | Sí |
+| Fecha del cobro | fecha | No (default hoy) |
+| Número de transferencia | texto | **Sí** |
+| Cuenta bancaria propia (donde se recibió) | selector | Sí |
+| Observación | texto libre | No |
 
-`GET /aplc/factura/{id}` y `GET /aplc/saldo/{id}` devuelven el mismo shape
-que sus equivalentes CXP (arriba), sobre `AplicacionPagoCxc` en vez de `Cxp`
-(campo `factura` en vez de `facturaCompra`; también existe `liquidacion` para
-las liquidaciones de compra recibidas, hoy sin pantalla propia).
-
-**`POST /aplc/cobroTransferencia`** — request:
+**Al confirmar:** `POST /aplc/cobroTransferencia`
 ```json
 {
   "idFactura": 123,
   "valor": 500.00,
-  "fechaCobro": "2026-08-07",
+  "fechaCobro": "2026-08-11",
   "numeroTransferencia": "TRF-889977",
   "idCuentaBancaria": 4,
   "idEmpresa": 1,
@@ -422,11 +571,12 @@ las liquidaciones de compra recibidas, hoy sin pantalla propia).
   "observacion": "Abono parcial"
 }
 ```
-Requeridos: `idFactura`, `valor`, `idCuentaBancaria`, `idEmpresa` (400) y
-`numeroTransferencia` no vacío (400, mensaje específico). A diferencia de CXP,
-esto es **una sola llamada**: valida saldo, genera el asiento, la aplicación
-y el movimiento bancario de ingreso, todo en la misma transacción — no hay
-paso de "confirmación" posterior. Response `200 OK`:
+Requeridos: `idFactura`, `valor`, `idCuentaBancaria`, `idEmpresa`, y
+`numeroTransferencia` no vacío (mensaje de error específico si falta —
+mostrar la validación en cliente también, ya que es un campo obligatorio
+propio del negocio, no solo técnico).
+
+**Response `200 OK`:**
 ```json
 {
   "exito": true,
@@ -441,126 +591,89 @@ paso de "confirmación" posterior. Response `200 OK`:
   "estadoPago": 2
 }
 ```
-Admite múltiples cobros parciales: se puede llamar varias veces sobre la
-misma factura mientras tenga saldo.
-
-**`POST /aplc/anticipo`** y **`POST /aplc/revertir/{id}`** — mismo shape que
-sus equivalentes CXP (§1.1), cambiando `idFacturaCompra` por `idFactura`.
-
----
-
-## 3. Flujo de pantallas sugerido
-
-### 3.1 Widget "Historial de pagos/cobros" (reutilizable, CXP y CXC)
-
-Se muestra dentro del detalle de una factura de compra o de venta.
-
-1. Al abrir el detalle de la factura: `GET /aplp|aplc/saldo/{id}` para la
-   cabecera (total / aplicado / saldo / badge de estado) y
-   `GET /aplp|aplc/factura/{id}` para la tabla de movimientos.
-2. La tabla mezcla automáticos (retención, NC, ND) y manuales (anticipo,
-   transferencia) — distinguir por `tipoDocPago` (catálogo en §0) y mostrar el
-   documento relacionado (`retencionV2.numero`, `notaCredito.numero`, etc.,
-   el que venga no-nulo). Las ND se muestran con el monto en rojo/negativo.
-   Si `estado=2` (Reversado), la fila se muestra tachada/atenuada.
-3. Cada fila activa (`estado=1`) tiene una acción "Revertir" → abre modal
-   pidiendo motivo → `POST /aplp|aplc/revertir/{id}` → refrescar saldo y tabla.
-4. Si `saldoPendiente > 0`, se ofrecen los botones "Cruzar anticipo" (ambos
-   módulos) y, en CXC, "Registrar cobro" — ver flujos siguientes. En CXP el
-   pago no se registra desde aquí, sino desde la pantalla de tesorería (3.3),
-   pero puede haber un atajo que pre-llene `idFacturaCompra`.
-
-### 3.2 Pantalla "Cruce de anticipo" (CXP y CXC — misma UX)
-
-1. El usuario elige el proveedor/cliente (o llega con la factura ya elegida
-   desde el widget de 3.1).
-2. Mostrar el **saldo de anticipos disponible** del titular. Hoy no hay un
-   endpoint dedicado para consultarlo aislado — se obtiene junto con el
-   resultado de la operación (`saldoAnticipos` en la respuesta de
-   `/anticipo`) o se debe pedir que se exponga un `GET` de saldo de anticipos
-   por titular antes de construir esta pantalla (ver §4, pendiente).
-3. El usuario ingresa el **valor a cruzar** (no elige anticipos individuales
-   — el cruce es por valor contra el saldo global, D4).
-4. Validar en el cliente que `valor <= saldoPendienteFactura` y
-   `valor <= saldoAnticiposDisponible` antes de enviar (el backend igual lo
-   valida y devuelve mensaje claro si falla).
-5. `POST /aplp|aplc/anticipo` → si `exito`, refrescar el widget de 3.1 y
-   mostrar el nuevo `saldoAnticipos`.
-
-### 3.3 Pantalla "Pagos a proveedores por transferencia" (CXP — flujo largo)
-
-Tres sub-vistas dentro de la misma pantalla, o tres pestañas:
-
-**a) Registrar pago**
-1. Seleccionar factura de compra pendiente (o llegar desde 3.1).
-2. Elegir cuenta bancaria propia de origen (`idCuentaBancariaOrigen`).
-3. Opcional: cuenta bancaria del proveedor (`idCuentaDestinoTitular`) — si el
-   proveedor tiene varias, listar las suyas; si no se envía, el pago igual
-   se registra.
-4. Ingresar valor y fecha programada. `POST /pgtr`. El pago queda en estado
-   1=Registrado — **no afecta contabilidad todavía**.
-
-**b) Seleccionar y generar archivo (= aprobar)**
-1. `GET /pgtr/listar?idEmpresa=&estado=1` → tabla con checkbox por fila,
-   agrupable/filtrable por cuenta de origen (todos los seleccionados deben
-   compartir cuenta, el backend lo exige).
-2. El usuario marca los que sí se van a pagar y pulsa "Generar archivo".
-   `POST /pgtr/lote` con los ids marcados. **No hay un paso de aprobación
-   separado**: seleccionar y generar el archivo ES la aprobación.
-3. Al volver `200 OK`, descargar el archivo con `contenido`/`nombreArchivo`
-   (Blob) y mostrar confirmación con `idLote`, total y cantidad. Los pagos
-   pasan a estado 2=En archivo y desaparecen de la lista de "por seleccionar".
-4. Si se necesita volver a bajar el archivo de un lote ya generado:
-   `GET /pgtr/lote/{idLote}/archivo`.
-
-**c) Cargar respuesta del banco**
-1. Pantalla de "lotes pendientes de respuesta" (`GET /pgtr/listar` filtrando
-   por lote/estado en cliente, o listando lotes si se agrega ese endpoint —
-   hoy no existe `GET /pgtr/lote/{id}`, ver §4).
-2. El usuario adjunta el archivo Excel de respuesta del banco.
-3. Leer el `File` como `ArrayBuffer` y enviarlo con
-   `POST /pgtr/lote/{idLote}/respuesta?idUsuario={id}`,
-   `Content-Type: application/octet-stream` (⚠️ no usar FormData).
-4. Mostrar el resumen (`confirmados`, `rechazados`, `errores`) y refrescar
-   el listado — los confirmados ya generaron asiento y movimiento bancario;
-   los rechazados quedan visibles en una vista de "seguimiento" (estado 4)
-   con su `motivo`, desde donde se pueden reintentar (nuevo `POST /pgtr` +
-   nuevo lote) o simplemente dejar registrados como histórico.
-
-**d) Seguimiento / anulación / reversión**
-- Pagos en estado 1, 2 o 4 → botón "Anular" → `POST /pgtr/anular/{id}`.
-- Pagos en estado 3 (Confirmado) → botón "Revertir" (más peso visual, ya
-  afecta contabilidad) → `POST /pgtr/revertirConfirmado/{id}`.
-
-### 3.4 Pantalla "Cobros a clientes por transferencia" (CXC — simple)
-
-1. Seleccionar factura de venta (o llegar desde 3.1).
-2. Formulario único: valor, fecha, número de transferencia, cuenta bancaria
-   propia receptora.
-3. `POST /aplc/cobroTransferencia` — de un solo paso, sin lote ni respuesta
-   de banco: al confirmar el formulario ya queda contabilizado. Admite
-   repetir la operación para cobros parciales múltiples sobre la misma
-   factura mientras tenga saldo.
-4. Reversión: mismo botón "Revertir" del widget 3.1 (`POST /aplc/revertir/{id}`).
+A diferencia de CXP, esta acción **ya generó la contabilidad y el
+movimiento bancario en el momento de la llamada** — no hay paso posterior de
+confirmación. Mostrar el mensaje de éxito y volver al detalle de la factura
+(§4.1) con los datos actualizados. El formulario admite volver a usarse
+sobre la misma factura para **cobros parciales múltiples**, mientras tenga
+saldo pendiente.
 
 ---
 
-## 4. Pendientes / huecos a resolver antes o durante el desarrollo del frontend
+## 5. Flujo completo, de punta a punta (para no perder el hilo)
 
-1. **No existe un `GET` de saldo de anticipos aislado por titular** (proveedor
-   o cliente). Hoy ese dato solo se obtiene como efecto colateral de
-   `POST /aplp|aplc/anticipo` (campo `saldoAnticipos` en la respuesta). Si la
-   pantalla de cruce (3.2) necesita mostrarlo *antes* de que el usuario
-   confirme la operación, hay que pedir que se agregue un endpoint de
-   consulta — señalarlo al backend antes de maquetar esa pantalla.
-2. **No existe `GET /pgtr/lote/{id}`** (cabecera de un lote) ni
-   `GET /pgtr/lote/listar?idEmpresa=` para ver todos los lotes generados —
-   hoy solo se puede llegar a un lote sabiendo su `idLote` (recién generado)
-   o filtrando pagos por estado en el cliente. Si la pantalla 3.3-c necesita
-   una lista de lotes pendientes de respuesta, pedirlo también.
-3. **Formato del archivo TXT/Excel PROVISIONAL** (ver §1.2): el frontend
-   puede construirse igual contra el formato actual (texto plano
-   pipe-separated / Excel por posición de columna), pero cuando el usuario
-   entregue el formato oficial del banco, el `contenido` del archivo de
-   salida y las columnas esperadas en la respuesta pueden cambiar — el
-   contrato del endpoint (JSON de arriba) no cambia, solo el contenido interno.
+**CXP — pagar una factura de compra por transferencia:**
+1. Usuario abre la factura → ve saldo pendiente (§2.1).
+2. Va a "Pagos" → registra el pago (§3.1) → el pago queda "Registrado", el
+   saldo de la factura **no cambia todavía**.
+3. En algún momento (puede ser junto con otros pagos de otras facturas del
+   mismo proveedor o de otros), el usuario entra a "Seleccionar pagos"
+   (§3.2), tilda los que quiere pagar hoy, genera el archivo → se descarga
+   el TXT, los pagos pasan a "En archivo".
+4. El usuario sube el TXT al portal del banco (fuera del sistema) y, cuando
+   el banco responde (típicamente un Excel), lo carga en "Cargar respuesta"
+   (§3.3).
+5. Los confirmados generan asiento contable y movimiento bancario en ese
+   instante — recién ahí el saldo de la factura baja. Los rechazados quedan
+   visibles en "Seguimiento" (§3.4) para reintentar (un pago nuevo) o dejar
+   como histórico.
+6. Si algo estaba mal (pago duplicado, monto incorrecto confirmado por
+   error), desde "Seguimiento" se puede anular (si no confirmado) o revertir
+   (si ya confirmado) — en ambos casos, con motivo obligatorio.
+
+**CXP — cruzar un anticipo del proveedor contra una factura:** un solo paso
+(§2.2), no pasa por el flujo de arriba.
+
+**CXC — cobrar una factura de venta:** un solo paso (§4.3): el usuario
+registra valor + transferencia recibida y queda contabilizado al instante.
+Puede repetirse para cobros parciales.
+
+**CXC — cruzar un anticipo del cliente contra una factura:** un solo paso
+(§4.2), igual que su equivalente CXP.
+
+---
+
+## 6. Tabla de referencia rápida de endpoints
+
+| Pantalla | Endpoint | Método |
+|---|---|---|
+| §2.1 Historial factura compra | `/aplp/saldo/{id}`, `/aplp/factura/{id}` | GET |
+| §2.1 Revertir abono (CXP) | `/aplp/revertir/{id}` | POST |
+| §2.2 Cruzar anticipo proveedor | `/aplp/anticipo` | POST |
+| §3.1 Registrar pago | `/pgtr` | POST |
+| §3.2 Listar pagos por seleccionar | `/pgtr/listar?estado=1` | GET |
+| §3.2 Generar archivo (= aprobar) | `/pgtr/lote` | POST |
+| §3.2 Re-descargar archivo de un lote | `/pgtr/lote/{id}/archivo` | GET |
+| §3.3 Cargar respuesta del banco | `/pgtr/lote/{id}/respuesta?idUsuario=` | POST (octet-stream) |
+| §3.4 Listar seguimiento | `/pgtr/listar` | GET |
+| §3.4 Anular pago no confirmado | `/pgtr/anular/{id}` | POST |
+| §3.4 Revertir pago confirmado | `/pgtr/revertirConfirmado/{id}` | POST |
+| §4.1 Historial factura venta | `/aplc/saldo/{id}`, `/aplc/factura/{id}` | GET |
+| §4.1 Revertir abono (CXC) | `/aplc/revertir/{id}` | POST |
+| §4.2 Cruzar anticipo cliente | `/aplc/anticipo` | POST |
+| §4.3 Registrar cobro por transferencia | `/aplc/cobroTransferencia` | POST |
+
+---
+
+## 7. Pendientes que pueden bloquear una parte específica (no todo el desarrollo)
+
+Estos son huecos reales del backend — no son parte de "qué construir", son
+avisos de qué pedir si al construir alguna pantalla hace falta:
+
+1. **No hay endpoint para consultar el saldo de anticipos de un
+   proveedor/cliente de forma aislada** (§2.2 / §4.2) — hoy solo se conoce
+   como efecto colateral de la propia acción de cruce. Se puede construir la
+   pantalla igual y mostrar el saldo recién en la respuesta del cruce; si se
+   necesita mostrarlo *antes* de confirmar, pedirlo al backend.
+2. **No hay endpoint para listar lotes** (§3.3) — solo se puede llegar a un
+   lote conociendo su `idLote` (por ejemplo, justo después de generarlo en
+   §3.2). Si se necesita una bandeja de "lotes pendientes de respuesta",
+   pedirlo al backend.
+3. **El formato del archivo TXT de salida y del Excel de respuesta son
+   PROVISIONALES** — no bloquea construir la pantalla (el contrato JSON de
+   los endpoints es estable), pero el contenido interno del archivo cambiará
+   cuando llegue el formato oficial del banco.
+
+**No hay más pendientes que bloqueen la construcción de estas pantallas.**
+Todo lo demás — campos, validaciones, botones, estados, mensajes — ya está
+definido arriba.

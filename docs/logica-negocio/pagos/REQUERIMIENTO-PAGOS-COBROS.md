@@ -127,6 +127,11 @@ dinero entregado o recibido por adelantado, aún no cruzado con ninguna factura.
    reintentarse o anularse).
 - Una factura puede pagarse con **muchos pagos parciales** o uno solo.
 
+**Nota (2026-08-11):** los anticipos (a proveedores o a clientes) **no** pasan por este
+proceso de aprobación/archivo/respuesta del banco. Siguen su propio flujo, ya existente:
+se registran y contabilizan en el mismo momento. Este circuito de lote/TXT/confirmación
+es exclusivo de los pagos y cobros **de facturas** por transferencia.
+
 **CXC — cobros entrantes (más simple):**
 - Una pantalla permite registrar el pago de una factura por parte de un cliente: valor
   recibido, fecha y **número de transferencia**, y la cuenta bancaria nuestra donde se
