@@ -106,14 +106,22 @@ public interface EntidadDaoService extends EntityDao<Entidad> {
 	 * calidad tomado de CRD.ESPR y los indicadores de aportes y mora calculados
 	 * sobre CRD.APRT (tipos 9 = jubilación, 11 = cesantía, con valor positivo).
 	 *
+	 * Todo el padrón se evalúa al CIERRE DEL MES ANTERIOR al de fechaEjecucion,
+	 * no a fechaEjecucion. Los aportes se graban con fecha del último día del mes,
+	 * así que el mes en curso todavía no tiene su carga procesada. Consecuencia
+	 * deseada: el reporte devuelve lo mismo se corra el día 5 o el 28 del mes.
+	 *
 	 * Reglas aplicadas:
-	 *  - Número de aportes: meses distintos con al menos un aporte positivo 9/11.
-	 *  - Estado de mora: EN MORA si no hubo aporte en los dos meses anteriores.
-	 *  - Meses en mora: 0 si está al día; meses desde el último aporte si no.
+	 *  - Número de aportes: meses distintos con al menos un aporte positivo 9/11,
+	 *    hasta el último día del mes anterior inclusive.
+	 *  - Estado de mora: EN MORA si no hubo aporte en los dos meses previos al
+	 *    mes de referencia.
+	 *  - Meses en mora: 0 si está al día; meses desde el último aporte hasta el
+	 *    mes de referencia si no.
 	 *  - Habilitado para voto: estado ACTIVO y AL DIA.
 	 *  - Elegible para miembro: estado ACTIVO y numeroAportes >= minimoAportes.
 	 *
-	 * @param fechaEjecucion: Fecha de corte del padrón (obligatoria).
+	 * @param fechaEjecucion: Fecha de ejecución; el corte real es el fin del mes anterior.
 	 * @param calidadId: Filtro opcional por ENTDIDST; null incluye todas las calidades.
 	 * @param minimoAportes: Mínimo de aportes para ser elegible como miembro.
 	 * @return: Lista de filas del padrón, numeradas y ordenadas por nombre.

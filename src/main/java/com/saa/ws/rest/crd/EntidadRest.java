@@ -395,7 +395,10 @@ public class EntidadRest {
      * Genera el padrón de partícipes: cédula, nombres, calidad, número de aportes,
      * estado y meses de mora, habilitación para voto y elegibilidad para miembro.
      *
-     * @param fechaEjecucion Fecha de corte (opcional, formato yyyy-MM-dd; default: hoy)
+     * El corte real es el cierre del mes anterior al de fechaEjecucion: los aportes
+     * se graban el último día del mes, así que el mes en curso aún no está cargado.
+     *
+     * @param fechaEjecucion Fecha de ejecución (opcional, formato yyyy-MM-dd; default: hoy)
      * @param calidadId Filtro opcional por calidad del partícipe (ENTDIDST)
      * @param minimoAportes Mínimo de aportes para elegibilidad (opcional, default: 90)
      * @return JSON con la lista de filas del padrón

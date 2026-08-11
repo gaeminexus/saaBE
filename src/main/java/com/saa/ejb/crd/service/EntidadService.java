@@ -49,7 +49,10 @@ public interface EntidadService extends EntityService<Entidad>{
 	 * miembro) a la fecha indicada. Aplica los valores por defecto de negocio
 	 * antes de delegar al DAO.
 	 *
-	 * @param fechaEjecucion: Fecha de corte; si es null se usa la fecha actual.
+	 * El corte real es el CIERRE DEL MES ANTERIOR al de fechaEjecucion, tanto para
+	 * el conteo de aportes como para los meses de mora.
+	 *
+	 * @param fechaEjecucion: Fecha de ejecución; si es null se usa la fecha actual.
 	 * @param calidadId: Filtro opcional por ENTDIDST; null incluye todas las calidades.
 	 * @param minimoAportes: Mínimo de aportes para elegibilidad; null usa 90.
 	 * @return: Lista de filas del padrón.

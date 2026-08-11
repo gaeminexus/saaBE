@@ -332,22 +332,33 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 		System.out.println("Ingresa al metodo selectPadronParticipes de Entidad con fechaEjecucion: " + fechaEjecucion
 				+ ", calidadId: " + calidadId + ", minimoAportes: " + minimoAportes);
 
-		java.time.LocalDateTime mesEjecucion  = fechaEjecucion.toLocalDate().withDayOfMonth(1).atStartOfDay();
-		java.time.LocalDateTime mesSiguiente  = mesEjecucion.plusMonths(1);
-		java.time.LocalDateTime mesLimiteMora = mesEjecucion.minusMonths(MESES_VENTANA_MORA);
+		// El padrón se evalúa al CIERRE DEL MES ANTERIOR a la fecha de ejecución,
+		// no a la fecha de ejecución. Los aportes se graban con fecha del último
+		// día del mes, así que el mes en curso todavía no tiene su carga procesada
+		// y contarlo daría a todo el mundo como si no hubiera aportado.
+		//
+		// Efecto: el reporte devuelve lo mismo se corra el día 5 o el 28 del mes.
+		//
+		// fechaEjecucion 2026-08-11  =>  mesReferencia 2026-07-01
+		//                                corte aportes < 2026-08-01
+		//                                mesLimiteMora 2026-05-01
+		java.time.LocalDateTime mesReferencia = fechaEjecucion.toLocalDate()
+				.withDayOfMonth(1).atStartOfDay().minusMonths(1);
+		java.time.LocalDateTime corteAportes  = mesReferencia.plusMonths(1);
+		java.time.LocalDateTime mesLimiteMora = mesReferencia.minusMonths(MESES_VENTANA_MORA);
 
 		String sql =
 			"WITH aportes AS ( " +
 			// Un mes con uno o con varios aportes positivos 9/11 cuenta como UN aporte.
-			// El corte es "< primer instante del mes siguiente" porque los aportes se
-			// graban con fecha del último día del mes a las 23:59:59.
+			// El corte es "< primer instante del mes de ejecución", es decir, se
+			// consideran los aportes hasta el último día del mes anterior inclusive.
 			"  SELECT a.ENTDCDGO                              AS entidad_id, " +
 			"         COUNT(DISTINCT TRUNC(a.APRTFCTR, 'MM')) AS numero_aportes, " +
 			"         MAX(TRUNC(a.APRTFCTR, 'MM'))            AS ultimo_mes_aporte " +
 			"  FROM   CRD.APRT a " +
 			"  WHERE  a.TPAPCDGO IN (:tiposAporte) " +
 			"    AND  a.APRTVLRR > 0 " +
-			"    AND  a.APRTFCTR <  :mesSiguiente " +
+			"    AND  a.APRTFCTR <  :corteAportes " +
 			"  GROUP BY a.ENTDCDGO " +
 			"), " +
 			"base AS ( " +
@@ -358,14 +369,16 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 			"         NVL(TRIM(esp.ESPRNMBR), 'SIN ESTADO') AS calidad_nombre, " +
 			"         CASE WHEN e.ENTDIDST = :codigoEstadoActivo THEN 1 ELSE 0 END AS es_activo, " +
 			"         NVL(ap.numero_aportes, 0) AS numero_aportes, " +
-			// AL DIA si el último mes con aporte cae en la ventana [mesEjecucion - 2 .. mesEjecucion].
+			// AL DIA si el último mes con aporte cae en la ventana
+			// [mesReferencia - 2 .. mesReferencia], siendo mesReferencia el mes
+			// anterior al de ejecución.
 			"         CASE WHEN ap.ultimo_mes_aporte IS NOT NULL " +
 			"                   AND ap.ultimo_mes_aporte >= :mesLimiteMora " +
 			"              THEN 'AL DIA' ELSE 'EN MORA' END AS estado_mora, " +
 			// NULL cuando nunca aportó: no hay último aporte desde el cual contar.
 			"         CASE WHEN ap.ultimo_mes_aporte IS NULL THEN NULL " +
 			"              WHEN ap.ultimo_mes_aporte >= :mesLimiteMora THEN 0 " +
-			"              ELSE ROUND(MONTHS_BETWEEN(:mesEjecucion, ap.ultimo_mes_aporte)) " +
+			"              ELSE ROUND(MONTHS_BETWEEN(:mesReferencia, ap.ultimo_mes_aporte)) " +
 			"         END AS meses_en_mora " +
 			"  FROM   CRD.ENTD e " +
 			"  LEFT JOIN CRD.ESPR esp ON esp.ESPRCDEX  = e.ENTDIDST " +
@@ -391,9 +404,9 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 
 		Query query = em.createNativeQuery(sql);
 		query.setParameter("tiposAporte", Arrays.asList(TIPO_APORTE_JUBILACION, TIPO_APORTE_CESANTIA));
-		query.setParameter("mesSiguiente", mesSiguiente);
+		query.setParameter("corteAportes", corteAportes);
 		query.setParameter("mesLimiteMora", mesLimiteMora);
-		query.setParameter("mesEjecucion", mesEjecucion);
+		query.setParameter("mesReferencia", mesReferencia);
 		query.setParameter("codigoEstadoActivo", CODIGO_ESTADO_ACTIVO);
 		query.setParameter("calidadId", calidadId);
 		query.setParameter("minimoAportes", minimoAportes);
