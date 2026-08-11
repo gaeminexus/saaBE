@@ -107,6 +107,26 @@ public interface DetallePrestamoDaoService extends EntityDao<DetallePrestamo> {
 	List<DetallePrestamo> selectMinCuotaNoPagadaByPrestamo(Long codigoPrestamo) throws Throwable;
 
 	/**
+	 * Cuenta el total de cuotas de un préstamo.
+	 * Se usa para validar que el préstamo realmente tenga tabla de amortización
+	 * antes de decidir que "todas sus cuotas están pagadas".
+	 * @param codigoPrestamo Código del préstamo
+	 * @return Cantidad total de cuotas del préstamo
+	 * @throws Throwable Si ocurre algún error
+	 */
+	Long contarCuotasByPrestamo(Long codigoPrestamo) throws Throwable;
+
+	/**
+	 * Cuenta las cuotas de un préstamo que NO están PAGADAS ni CANCELADAS ANTICIPADAMENTE.
+	 * Incluye explícitamente las cuotas con estado NULL (en SQL, NULL NOT IN (...) es NULL
+	 * y quedarían fuera del conteo, lo que haría creer que el préstamo está totalmente pagado).
+	 * @param codigoPrestamo Código del préstamo
+	 * @return Cantidad de cuotas pendientes (0 si todas están pagadas/canceladas)
+	 * @throws Throwable Si ocurre algún error
+	 */
+	Long contarCuotasPendientesByPrestamo(Long codigoPrestamo) throws Throwable;
+
+	/**
 	 * G49 GRUPO 1: Préstamos cuya cuota con mayor numeroCuota esté dentro del mes
 	 * y sea de estado pagada (4). Indica que la última cuota del préstamo fue pagada en el mes → cancelación normal.
 	 */

@@ -1124,6 +1124,12 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	       System.out.println("⚠️ No se encontró cuota pendiente");
 	   }
 
+	   // ✅ RED DE SEGURIDAD: revisar el estado de TODOS los préstamos tocados.
+	   // buscarCuotaAPagar y calcularSaldosRealesCuota también pueden marcar cuotas
+	   // como PAGADA (por saldo insignificante o por PagoPrestamo previo), y en ese caso
+	   // la última cuota se liquida sin pasar por procesarPagoCuota.
+	   verificarYActualizarEstadoPrestamos(prestamos);
+
 	}
 	
 /**
@@ -1216,6 +1222,8 @@ private void procesarPagoCuota(ParticipeXCargaArchivo participe,
 	if (estadoActualizado != null && estadoActualizado == com.saa.rubros.EstadoCuotaPrestamo.PAGADA) {
 		System.out.println("      ℹ️ Cuota ya está PAGADA según PagoPrestamo - Pasando todo el monto a siguiente cuota");
 		procesarExcedenteASiguienteCuota(participe, cuota, montoPagado, cargaArchivo);
+		// ✅ CRÍTICO: el excedente pudo liquidar la última cuota del préstamo
+		verificarYActualizarEstadoPrestamo(cuota.getPrestamo());
 		return;
 	}
 	
@@ -1334,8 +1342,13 @@ private void procesarPagoCuota(ParticipeXCargaArchivo participe,
 		
 		// ✅ CORRECCIÓN: Procesar excedente SIEMPRE que haya, independiente del desglose
 		procesarExcedenteASiguienteCuota(participe, cuota, excedente, cargaArchivo);
+
+		// ✅ CRÍTICO: Verificar si todas las cuotas están pagadas.
+		// Este es el caso típico de la ÚLTIMA cuota: se paga completa y sobra un excedente
+		// que ya no tiene a dónde aplicarse; sin esta llamada el préstamo quedaba VIGENTE.
+		verificarYActualizarEstadoPrestamo(cuota.getPrestamo());
 		return; // Salir porque ya se guardó la cuota
-		
+
 	} else {
 		// Pago parcial - Respetar orden: Desgravamen → Interés → Capital → Seguro Incendio
 		cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PARCIAL);
@@ -1443,34 +1456,84 @@ private void procesarPagoCuota(ParticipeXCargaArchivo participe,
 /**
  * ✅ CRÍTICO: Verifica si todas las cuotas de un préstamo están pagadas
  * Si es así, actualiza el estado del préstamo a CANCELADO
- * ✅ OPTIMIZACIÓN: Usa selectCuotasNoPagadasByPrestamo en lugar de traer todas
+ * ✅ OPTIMIZACIÓN: Usa conteos en BD en lugar de traer las cuotas a memoria
+ *
+ * Debe invocarse al final de TODA ruta que pueda marcar una cuota como PAGADA
+ * (pago exacto, pago con excedente, afectación manual, recálculo por PagoPrestamo),
+ * porque cualquiera de ellas puede ser la que liquida la última cuota del préstamo.
  */
 private void verificarYActualizarEstadoPrestamo(Prestamo prestamo) throws Throwable {
-	if (prestamo == null) {
+	if (prestamo == null || prestamo.getCodigo() == null) {
 		return;
 	}
-	
+
 	try {
-		// ✅ OPTIMIZACIÓN: Solo buscar cuotas NO pagadas
-		// Si no hay ninguna, significa que todas están pagadas
-		List<DetallePrestamo> cuotasNoPagadas = 
-			detallePrestamoDaoService.selectCuotasNoPagadasByPrestamo(prestamo.getCodigo());
-		
-		// Si NO hay cuotas pendientes, todas están pagadas
-		if (cuotasNoPagadas == null || cuotasNoPagadas.isEmpty()) {
-			System.out.println("  ✅ TODAS LAS CUOTAS PAGADAS - Actualizando préstamo a CANCELADO");
-			System.out.println("     Préstamo ID: " + prestamo.getCodigo());
-			
-			prestamo.setEstadoPrestamo(Long.valueOf(com.saa.rubros.EstadoPrestamo.CANCELADO));
-			prestamo.setFechaFin(java.time.LocalDateTime.now());
-			prestamoDaoService.save(prestamo, prestamo.getCodigo());
-			
-			System.out.println("     ✅ Préstamo actualizado a estado CANCELADO");
+		Long estadoActual = prestamo.getEstadoPrestamo();
+
+		// Si ya está en un estado terminal, no hay nada que actualizar
+		if (estadoActual != null && (
+			estadoActual == com.saa.rubros.EstadoPrestamo.CANCELADO ||
+			estadoActual == com.saa.rubros.EstadoPrestamo.CANCELADO_ANTICIPADO ||
+			estadoActual == com.saa.rubros.EstadoPrestamo.CANCELADO_POR_NOVACION)) {
+			return;
 		}
-		
+
+		// ✅ Validar que el préstamo realmente tenga tabla de amortización.
+		// Sin esta validación, un préstamo sin cuotas daría "0 pendientes" y se cancelaría por error.
+		Long totalCuotas = detallePrestamoDaoService.contarCuotasByPrestamo(prestamo.getCodigo());
+		if (totalCuotas == null || totalCuotas == 0L) {
+			System.out.println("  ℹ️ Préstamo #" + prestamo.getCodigo() +
+			                   " sin cuotas registradas - No se evalúa cancelación");
+			return;
+		}
+
+		// ✅ OPTIMIZACIÓN: Solo contar cuotas NO pagadas.
+		// Si el conteo es 0, todas están PAGADAS o CANCELADAS ANTICIPADAMENTE.
+		Long cuotasPendientes = detallePrestamoDaoService.contarCuotasPendientesByPrestamo(prestamo.getCodigo());
+
+		System.out.println("  🔍 Préstamo #" + prestamo.getCodigo() +
+		                   " - Cuotas: " + totalCuotas + " / Pendientes: " + cuotasPendientes);
+
+		if (cuotasPendientes == null || cuotasPendientes > 0L) {
+			return;
+		}
+
+		System.out.println("  ✅ TODAS LAS CUOTAS PAGADAS - Actualizando préstamo a CANCELADO");
+		System.out.println("     Préstamo ID: " + prestamo.getCodigo() +
+		                   " (estado anterior: " + estadoActual + ")");
+
+		// ⚠️ NO tocar fechaFin: es la fecha de vencimiento de la última cuota (fin del plazo),
+		// no la fecha de cancelación. Sobrescribirla destruye el plazo original del préstamo.
+		prestamo.setEstadoPrestamo(Long.valueOf(com.saa.rubros.EstadoPrestamo.CANCELADO));
+		prestamo.setFechaModificacion(java.time.LocalDateTime.now());
+		prestamoDaoService.save(prestamo, prestamo.getCodigo());
+
+		System.out.println("     ✅ Préstamo actualizado a estado CANCELADO");
+
 	} catch (Throwable e) {
 		System.err.println("Error al verificar estado del préstamo: " + e.getMessage());
 		e.printStackTrace();
+	}
+}
+
+/**
+ * Verifica el estado de una lista de préstamos, evitando repetir la verificación
+ * sobre el mismo préstamo. Se usa como red de seguridad al terminar de procesar
+ * a un partícipe, cuando el pago pudo haberse aplicado por cualquiera de las rutas.
+ */
+private void verificarYActualizarEstadoPrestamos(List<Prestamo> prestamos) throws Throwable {
+	if (prestamos == null || prestamos.isEmpty()) {
+		return;
+	}
+
+	java.util.Set<Long> verificados = new java.util.HashSet<>();
+	for (Prestamo prestamo : prestamos) {
+		if (prestamo == null || prestamo.getCodigo() == null) {
+			continue;
+		}
+		if (verificados.add(prestamo.getCodigo())) {
+			verificarYActualizarEstadoPrestamo(prestamo);
+		}
 	}
 }
 
@@ -1714,24 +1777,32 @@ private boolean verificarYAplicarAfectacionesManualesTotales(
 		
 		// 5. Aplicar cada afectación
 		int aplicadas = 0;
+		List<Prestamo> prestamosAfectados = new ArrayList<>();
 		for (AfectacionValoresParticipeCarga afectacion : afectaciones) {
 			DetallePrestamo cuota = afectacion.getDetallePrestamo();
-			
+
 			if (cuota == null) {
 				System.out.println("   ⚠️ Afectación sin cuota asociada (ID: " + afectacion.getCodigo() + ") - Omitida");
 				continue;
 			}
-			
-			System.out.println("   📌 Aplicando afectación manual a cuota #" + cuota.getNumeroCuota() + 
+
+			System.out.println("   📌 Aplicando afectación manual a cuota #" + cuota.getNumeroCuota() +
 			                   " (ID: " + cuota.getCodigo() + ")");
-			
+
 			// Aplicar la afectación manual a esta cuota
 			aplicarAfectacionManualConRegistroPago(cuota, afectacion, cargaArchivo, participe);
 			aplicadas++;
+
+			if (cuota.getPrestamo() != null) {
+				prestamosAfectados.add(cuota.getPrestamo());
+			}
 		}
-		
+
 		System.out.println("   ✅ Se aplicaron " + aplicadas + " afectación(es) manual(es)");
-		
+
+		// ✅ CRÍTICO: Una afectación manual también puede liquidar la última cuota del préstamo
+		verificarYActualizarEstadoPrestamos(prestamosAfectados);
+
 		// Si se aplicó al menos una afectación, retornar true
 		return aplicadas > 0;
 		

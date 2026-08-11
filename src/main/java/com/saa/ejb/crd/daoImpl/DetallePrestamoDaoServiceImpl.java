@@ -296,6 +296,42 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 	}
 
 	@Override
+	public Long contarCuotasByPrestamo(Long codigoPrestamo) throws Throwable {
+		System.out.println("Contando cuotas del préstamo: " + codigoPrestamo);
+
+		String jpql = "SELECT COUNT(d) FROM DetallePrestamo d " +
+					 "WHERE d.prestamo.codigo = :codigoPrestamo";
+
+		Query query = em.createQuery(jpql);
+		query.setParameter("codigoPrestamo", codigoPrestamo);
+
+		Long total = (Long) query.getSingleResult();
+		System.out.println("Total de cuotas del préstamo " + codigoPrestamo + ": " + total);
+		return total;
+	}
+
+	@Override
+	public Long contarCuotasPendientesByPrestamo(Long codigoPrestamo) throws Throwable {
+		System.out.println("Contando cuotas pendientes del préstamo: " + codigoPrestamo);
+
+		// ✅ IMPORTANTE: incluir explícitamente las cuotas con estado NULL.
+		// En SQL, "NULL NOT IN (4, 7)" evalúa a NULL y la fila quedaría fuera del conteo,
+		// haciendo creer que el préstamo ya está totalmente pagado.
+		String jpql = "SELECT COUNT(d) FROM DetallePrestamo d " +
+					 "WHERE d.prestamo.codigo = :codigoPrestamo " +
+					 "AND (d.estado IS NULL OR d.estado NOT IN (:estadoPagada, :estadoCanceladaAnticipada))";
+
+		Query query = em.createQuery(jpql);
+		query.setParameter("codigoPrestamo", codigoPrestamo);
+		query.setParameter("estadoPagada", (long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+		query.setParameter("estadoCanceladaAnticipada", (long) com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
+
+		Long pendientes = (Long) query.getSingleResult();
+		System.out.println("Cuotas pendientes del préstamo " + codigoPrestamo + ": " + pendientes);
+		return pendientes;
+	}
+
+	@Override
 	@SuppressWarnings("unchecked")
 	public List<DetallePrestamo> selectMaxCuotaPagadaDelMesGlobal(java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable {
 		System.out.println("DetallePrestamoDaoServiceImpl.selectMaxCuotaPagadaDelMesGlobal rango: " + fechaInicio + " a " + fechaFin);
