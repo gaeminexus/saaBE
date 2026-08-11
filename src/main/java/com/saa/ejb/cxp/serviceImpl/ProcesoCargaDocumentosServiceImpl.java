@@ -1409,7 +1409,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         // ══════════════════════════════════════════════════════════════════
         Titular proveedor = obtenerOAutoCrearProveedor(doc.getRucEmisor(), doc.getRazonSocialEmisor(), xmlDoc, idUsuario);
 
-        NodeList retenciones = xmlDoc.getElementsByTagName("retencion");
+        NodeList retenciones = obtenerDetallesRetencion(xmlDoc);
 
         // Datos del documento sustento (para validación cruzada con CXC)
         String numAutDocSustento = getXmlValue(xmlDoc, "numAutDocSustento");
@@ -1581,6 +1581,12 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             d.setBaseImponible(parseDouble(getElementValue(el, "baseImponible")));
             d.setPorcentajeReten(parseDouble(getElementValue(el, "porcentajeRetener")));
             d.setValorReten(parseDouble(getElementValue(el, "valorRetenido")));
+            // Documento sustento: es lo que permite localizar despues la factura
+            // de venta a la que esta retencion abona. Sin esto el detalle queda
+            // huerfano y no se puede registrar el cobro.
+            d.setTipoDocReten(getValorDocSustento(el, xmlDoc, "codDocSustento"));
+            d.setNumDocReten(getValorDocSustento(el, xmlDoc, "numDocSustento"));
+            d.setFechaEmiDoc(parseFecha(getValorDocSustento(el, xmlDoc, "fechaEmisionDocSustento")));
             d.setEstado(Long.valueOf(Estado.ACTIVO));
             detalleRetencionCompraDaoService.save(d, null);
         }
@@ -1610,7 +1616,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         // ══════════════════════════════════════════════════════════════════
         Titular proveedor = obtenerOAutoCrearProveedor(doc.getRucEmisor(), doc.getRazonSocialEmisor(), xmlDoc, idUsuario);
 
-        NodeList retenciones = xmlDoc.getElementsByTagName("retencion");
+        NodeList retenciones = obtenerDetallesRetencion(xmlDoc);
 
         // Datos del documento sustento (para validación cruzada con CXC)
         String numAutDocSustento = getXmlValue(xmlDoc, "numAutDocSustento");
@@ -1771,6 +1777,11 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             d.setBaseImponible(parseDouble(getElementValue(el, "baseImponible")));
             d.setPorcentajeReten(parseDouble(getElementValue(el, "porcentajeRetener")));
             d.setValorReten(parseDouble(getElementValue(el, "valorRetenido")));
+            // Documento sustento: en el esquema v2 vive en el <docSustento> que
+            // envuelve a cada <retencion>, no dentro del propio detalle.
+            d.setTipoDocReten(getValorDocSustento(el, xmlDoc, "codDocSustento"));
+            d.setNumDocReten(getValorDocSustento(el, xmlDoc, "numDocSustento"));
+            d.setFechaEmiDoc(parseFecha(getValorDocSustento(el, xmlDoc, "fechaEmisionDocSustento")));
             d.setEstado(Long.valueOf(Estado.ACTIVO));
             em.persist(d);
         }
@@ -2271,6 +2282,61 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 return nl.item(0).getFirstChild().getNodeValue().trim();
         } catch (Exception e) { /* ignorar */ }
         return "";
+    }
+
+    /**
+     * Obtiene un dato del documento sustento correspondiente a UN detalle de
+     * retención. El SRI lo ubica en distinto lugar según la versión del
+     * comprobante de retención:
+     *
+     *   v1.x : dentro del propio &lt;impuesto&gt;
+     *          &lt;impuesto&gt;...&lt;numDocSustento&gt;001001000000123&lt;/numDocSustento&gt;&lt;/impuesto&gt;
+     *
+     *   v2.0 : en el &lt;docSustento&gt; que envuelve al &lt;retencion&gt;
+     *          &lt;docSustento&gt;&lt;numDocSustento&gt;...&lt;/numDocSustento&gt;
+     *              &lt;retenciones&gt;&lt;retencion&gt;...&lt;/retencion&gt;&lt;/retenciones&gt;&lt;/docSustento&gt;
+     *
+     * Se busca primero dentro del detalle, luego subiendo hasta el
+     * &lt;docSustento&gt; que lo contiene, y como último recurso se toma el primer
+     * valor del documento (sirve para retenciones de un solo sustento).
+     *
+     * @param detalle : Elemento del detalle (&lt;impuesto&gt; o &lt;retencion&gt;)
+     * @param xmlDoc  : Documento XML completo, para el fallback
+     * @param tag     : Nombre del tag a buscar (numDocSustento, codDocSustento, ...)
+     * @return        : Valor encontrado, o cadena vacía
+     */
+    private String getValorDocSustento(Element detalle, Document xmlDoc, String tag) {
+        // 1. Dentro del propio detalle (esquema v1)
+        String valor = getElementValue(detalle, tag);
+        if (valor != null && !valor.isEmpty()) return valor;
+
+        // 2. En el <docSustento> que lo envuelve (esquema v2)
+        org.w3c.dom.Node padre = detalle.getParentNode();
+        while (padre != null) {
+            if (padre instanceof Element && "docSustento".equals(padre.getNodeName())) {
+                valor = getElementValue((Element) padre, tag);
+                if (valor != null && !valor.isEmpty()) return valor;
+                break;
+            }
+            padre = padre.getParentNode();
+        }
+
+        // 3. Primer valor del documento (retención con un solo sustento)
+        return getXmlValue(xmlDoc, tag);
+    }
+
+    /**
+     * Devuelve los elementos de detalle de una retención recibida, tolerando
+     * las dos versiones del esquema del SRI: &lt;retencion&gt; (v2) y, si no hay
+     * ninguno, &lt;impuesto&gt; (v1). Antes solo se leía &lt;retencion&gt;, por lo que
+     * un comprobante v1 no generaba ningún detalle.
+     * @param xmlDoc : Documento XML del comprobante
+     * @return       : Lista de elementos de detalle
+     */
+    private NodeList obtenerDetallesRetencion(Document xmlDoc) {
+        NodeList nl = xmlDoc.getElementsByTagName("retencion");
+        if (nl != null && nl.getLength() > 0) return nl;
+        return xmlDoc.getElementsByTagName("impuesto");
     }
 
     private double parseDouble(String val) {
