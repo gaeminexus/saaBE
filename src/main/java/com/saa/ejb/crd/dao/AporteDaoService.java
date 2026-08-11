@@ -121,6 +121,23 @@ public interface AporteDaoService extends EntityDao<Aporte>{
 	Double sumaAportesPositivosPorTipoYPeriodo(Long codigoEntidad, List<Long> tiposAporte,
 			Long anio, Long mes) throws Throwable;
 
+	/**
+	 * Fecha del último aporte positivo de cada entidad, para los tipos indicados,
+	 * anterior a la fecha de corte.
+	 *
+	 * Se resuelve en un solo query para evitar N+1 al generar el archivo Petro,
+	 * donde hay que calcular la deuda acumulada de los partícipes en mora.
+	 *
+	 * @param codigosEntidad Entidades a consultar; si viene vacía retorna lista vacía
+	 * @param tiposAporte    Códigos de tipo de aporte a considerar (ej: 9 y 11)
+	 * @param corte          Solo se consideran aportes con fechaTransaccion &lt; corte
+	 * @return Lista de Object[]{Long codigoEntidad, LocalDateTime ultimaFechaAporte}.
+	 *         Las entidades sin ningún aporte no aparecen en el resultado.
+	 * @throws Throwable Si ocurre algún error
+	 */
+	List<Object[]> selectUltimaFechaAportePorEntidad(List<Long> codigosEntidad,
+			List<Long> tiposAporte, LocalDateTime corte) throws Throwable;
+
 	/*filtra todos los aporte por id de entidad
 	 * @param :idEntidad
 	 * @return Lista de Aporte

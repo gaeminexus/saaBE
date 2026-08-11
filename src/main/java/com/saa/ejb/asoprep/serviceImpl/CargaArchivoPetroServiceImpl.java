@@ -2630,6 +2630,47 @@ private void validarOrdenProcesamiento(CargaArchivo cargaArchivo) throws Throwab
 }
 
 /**
+ * Salida de la mora por pago recibido.
+ *
+ * Se invoca cuando, al procesar el producto AH, llega un descuento con valor.
+ * Si la entidad estaba en ACTIVO EN MORA vuelve a ACTIVO.
+ *
+ * Basta con que llegue un pago: no se exige que cubra la deuda completa. La
+ * generación del archivo ya envía a cobrar todos los meses adeudados, así que
+ * lo normal es que el pago venga completo; si viniera parcial, el partícipe
+ * queda ACTIVO y el próximo periodo sin aporte lo vuelve a evaluar.
+ *
+ * @param entidad       Entidad del partícipe con descuento en esta carga
+ * @param montoRecibido Valor descontado, solo para dejarlo en el log
+ */
+private void restaurarActivoPorPago(Entidad entidad, double montoRecibido) {
+	try {
+		if (entidad == null) {
+			return;
+		}
+
+		Long estadoActual = entidad.getIdEstado();
+		if (estadoActual == null || estadoActual != EstadoParticipeEntidad.ACTIVO_EN_MORA) {
+			return;
+		}
+
+		entidad.setIdEstado((long) EstadoParticipeEntidad.ACTIVO);
+		entidadDaoService.save(entidad, entidad.getCodigo());
+
+		System.out.println("   [MORA] Entidad " + entidad.getCodigo()
+			+ " (rol " + entidad.getRolPetroComercial() + ") vuelve a ACTIVO: "
+			+ "se recibió pago de $" + montoRecibido + ".");
+
+	} catch (Throwable e) {
+		// Igual que la marca de mora, es un efecto secundario del proceso de
+		// aportes: si falla, se registra pero no se aborta la carga.
+		System.err.println("Error al restaurar estado ACTIVO por pago para entidad "
+			+ (entidad != null ? entidad.getCodigo() : null) + ": " + e.getMessage());
+		e.printStackTrace();
+	}
+}
+
+/**
  * Regla de mora por falta de aporte.
  *
  * Se invoca cuando, al procesar el producto AH, un partícipe llega sin
@@ -2757,6 +2798,9 @@ private int aplicarAporteAH(ParticipeXCargaArchivo participe, CargaArchivo carga
 			evaluarMoraPorFaltaDeAporte(entidad, cargaArchivo);
 			return 0;
 		}
+
+		// Llegó pago: si venía en mora, se pone al día.
+		restaurarActivoPorPago(entidad, montoRecibido);
 
 		System.out.println("📥 Monto total recibido: $" + montoRecibido);
 		

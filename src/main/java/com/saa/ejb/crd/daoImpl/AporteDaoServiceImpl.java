@@ -118,6 +118,36 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 		}
 	}
 
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<Object[]> selectUltimaFechaAportePorEntidad(List<Long> codigosEntidad,
+			List<Long> tiposAporte, java.time.LocalDateTime corte) throws Throwable {
+		System.out.println("AporteDaoServiceImpl.selectUltimaFechaAportePorEntidad - entidades: "
+			+ (codigosEntidad != null ? codigosEntidad.size() : 0) + ", corte: " + corte);
+
+		if (codigosEntidad == null || codigosEntidad.isEmpty()
+				|| tiposAporte == null || tiposAporte.isEmpty() || corte == null) {
+			return new java.util.ArrayList<>();
+		}
+
+		Query query = em.createQuery(
+			" select a.entidad.codigo, max(a.fechaTransaccion) " +
+			" from   Aporte a " +
+			" where  a.entidad.codigo in :codigosEntidad " +
+			"   and  a.tipoAporte.codigo in :tiposAporte " +
+			"   and  a.valor > 0 " +
+			"   and  a.fechaTransaccion < :corte " +
+			" group by a.entidad.codigo "
+		);
+		query.setParameter("codigosEntidad", codigosEntidad);
+		query.setParameter("tiposAporte", tiposAporte);
+		query.setParameter("corte", corte);
+
+		List<Object[]> resultados = query.getResultList();
+		System.out.println("  -> Entidades con al menos un aporte: " + resultados.size());
+		return resultados;
+	}
+
 	@SuppressWarnings("unchecked")
 	@Override
 	public List<Aporte> selectByEntidad(Long idEntidad) throws Throwable {
