@@ -339,13 +339,26 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 		//
 		// Efecto: el reporte devuelve lo mismo se corra el día 5 o el 28 del mes.
 		//
-		// fechaEjecucion 2026-08-11  =>  mesReferencia 2026-07-01
-		//                                corte aportes < 2026-08-01
-		//                                mesLimiteMora 2026-05-01
+		// fechaEjecucion 2026-08-11  =>  mesReferencia   2026-07-01
+		//                                corte aportes   < 2026-08-01
+		//                                primerMesAlDia  2026-06-01
 		java.time.LocalDateTime mesReferencia = fechaEjecucion.toLocalDate()
 				.withDayOfMonth(1).atStartOfDay().minusMonths(1);
 		java.time.LocalDateTime corteAportes  = mesReferencia.plusMonths(1);
-		java.time.LocalDateTime mesLimiteMora = mesReferencia.minusMonths(MESES_VENTANA_MORA);
+
+		// Está AL DIA quien aportó en alguno de los últimos MESES_VENTANA_MORA meses
+		// contados hacia atrás desde el mes de referencia, ese mes incluido.
+		// Cae EN MORA a partir de acumular MESES_VENTANA_MORA meses sin aportar.
+		//
+		// Con ventana = 2 y referencia julio, primerMesAlDia = junio:
+		//   último aporte julio -> 0 meses sin aportar          -> AL DIA
+		//   último aporte junio -> 1 mes sin aportar (jul)      -> AL DIA
+		//   último aporte mayo  -> 2 meses sin aportar (jun,jul)-> EN MORA (2)
+		//
+		// El -1 es lo que hace que el borde caiga donde debe: sin él, mayo
+		// quedaría como AL DIA con 0 meses de mora pese a llevar dos meses sin aportar.
+		java.time.LocalDateTime primerMesAlDia = mesReferencia
+				.minusMonths(MESES_VENTANA_MORA - 1L);
 
 		String sql =
 			"WITH aportes AS ( " +
@@ -369,15 +382,13 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 			"         NVL(TRIM(esp.ESPRNMBR), 'SIN ESTADO') AS calidad_nombre, " +
 			"         CASE WHEN e.ENTDIDST = :codigoEstadoActivo THEN 1 ELSE 0 END AS es_activo, " +
 			"         NVL(ap.numero_aportes, 0) AS numero_aportes, " +
-			// AL DIA si el último mes con aporte cae en la ventana
-			// [mesReferencia - 2 .. mesReferencia], siendo mesReferencia el mes
-			// anterior al de ejecución.
+			// AL DIA si el último mes con aporte cae en [primerMesAlDia .. mesReferencia].
 			"         CASE WHEN ap.ultimo_mes_aporte IS NOT NULL " +
-			"                   AND ap.ultimo_mes_aporte >= :mesLimiteMora " +
+			"                   AND ap.ultimo_mes_aporte >= :primerMesAlDia " +
 			"              THEN 'AL DIA' ELSE 'EN MORA' END AS estado_mora, " +
 			// NULL cuando nunca aportó: no hay último aporte desde el cual contar.
 			"         CASE WHEN ap.ultimo_mes_aporte IS NULL THEN NULL " +
-			"              WHEN ap.ultimo_mes_aporte >= :mesLimiteMora THEN 0 " +
+			"              WHEN ap.ultimo_mes_aporte >= :primerMesAlDia THEN 0 " +
 			"              ELSE ROUND(MONTHS_BETWEEN(:mesReferencia, ap.ultimo_mes_aporte)) " +
 			"         END AS meses_en_mora " +
 			"  FROM   CRD.ENTD e " +
@@ -405,7 +416,7 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 		Query query = em.createNativeQuery(sql);
 		query.setParameter("tiposAporte", Arrays.asList(TIPO_APORTE_JUBILACION, TIPO_APORTE_CESANTIA));
 		query.setParameter("corteAportes", corteAportes);
-		query.setParameter("mesLimiteMora", mesLimiteMora);
+		query.setParameter("primerMesAlDia", primerMesAlDia);
 		query.setParameter("mesReferencia", mesReferencia);
 		query.setParameter("codigoEstadoActivo", CODIGO_ESTADO_ACTIVO);
 		query.setParameter("calidadId", calidadId);
