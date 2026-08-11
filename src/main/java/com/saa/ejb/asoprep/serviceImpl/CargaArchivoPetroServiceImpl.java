@@ -30,6 +30,7 @@ import com.saa.model.crd.ParticipeXCargaArchivo;
 import com.saa.model.crd.Prestamo;
 import com.saa.model.crd.Producto;
 import com.saa.rubros.ASPNovedadesCargaArchivo;
+import com.saa.rubros.EstadoParticipeEntidad;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateful;
@@ -2629,6 +2630,95 @@ private void validarOrdenProcesamiento(CargaArchivo cargaArchivo) throws Throwab
 }
 
 /**
+ * Regla de mora por falta de aporte.
+ *
+ * Se invoca cuando, al procesar el producto AH, un partícipe llega sin
+ * descuento (valor 0 o nulo). Revisa si en el periodo inmediatamente anterior
+ * ocurrió lo mismo; si es así, son dos periodos consecutivos sin aportar y la
+ * entidad pasa a ACTIVO EN MORA.
+ *
+ * Condiciones para marcar la mora:
+ *  - La entidad debe estar hoy en estado ACTIVO. No se tocan cesantes,
+ *    jubilados, desafiliados ni las que ya están en mora.
+ *  - El periodo anterior debe existir y haber sido cargado con producto AH.
+ *    Si todavía no se ha cargado, no se puede afirmar que no aportó.
+ *  - La consulta del periodo anterior debe haber podido evaluarse. Ante un
+ *    fallo de BD no se marca mora.
+ *
+ * El proceso nunca revierte el estado: si el partícipe vuelve a aportar, la
+ * salida de ACTIVO EN MORA es una decisión administrativa, no automática.
+ *
+ * @param entidad       Entidad del partícipe sin descuento en esta carga
+ * @param cargaArchivo  Carga que se está procesando
+ */
+private void evaluarMoraPorFaltaDeAporte(Entidad entidad, CargaArchivo cargaArchivo) {
+	try {
+		if (entidad == null || cargaArchivo == null) {
+			return;
+		}
+
+		// Solo aplica a partícipes activos.
+		Long estadoActual = entidad.getIdEstado();
+		if (estadoActual == null || estadoActual != EstadoParticipeEntidad.ACTIVO) {
+			System.out.println("   [MORA] Entidad " + entidad.getCodigo()
+				+ " no está en estado ACTIVO (estado=" + estadoActual + "). No se evalúa.");
+			return;
+		}
+
+		Long anioActual = cargaArchivo.getAnioAfectacion();
+		Long mesActual  = cargaArchivo.getMesAfectacion();
+		if (anioActual == null || mesActual == null) {
+			System.out.println("   [MORA] La carga no tiene periodo de afectación definido. No se evalúa.");
+			return;
+		}
+
+		// Periodo inmediatamente anterior
+		Long mesAnterior  = (mesActual == 1L) ? 12L : mesActual - 1L;
+		Long anioAnterior = (mesActual == 1L) ? anioActual - 1L : anioActual;
+
+		// Si ese periodo nunca se cargó, no se puede afirmar que no aportó.
+		boolean periodoAnteriorCargado = participeXCargaArchivoDaoService
+			.existeCargaConProductoEnPeriodo(CODIGO_PRODUCTO_APORTES, anioAnterior, mesAnterior);
+		if (!periodoAnteriorCargado) {
+			System.out.println("   [MORA] El periodo " + mesAnterior + "/" + anioAnterior
+				+ " no tiene carga de " + CODIGO_PRODUCTO_APORTES + ". No se evalúa.");
+			return;
+		}
+
+		Double descontadoAnterior = participeXCargaArchivoDaoService
+			.sumaDescontadoPorProductoYPeriodo(entidad.getRolPetroComercial(),
+				CODIGO_PRODUCTO_APORTES, anioAnterior, mesAnterior);
+
+		if (descontadoAnterior == null) {
+			System.out.println("   [MORA] No se pudo consultar el periodo anterior. No se marca mora.");
+			return;
+		}
+
+		if (descontadoAnterior > 0.01) {
+			System.out.println("   [MORA] El partícipe sí aportó en " + mesAnterior + "/" + anioAnterior
+				+ " ($" + descontadoAnterior + "). Solo un periodo sin aporte, no se marca mora.");
+			return;
+		}
+
+		// Dos periodos consecutivos sin aporte.
+		entidad.setIdEstado((long) EstadoParticipeEntidad.ACTIVO_EN_MORA);
+		entidadDaoService.save(entidad, entidad.getCodigo());
+
+		System.out.println("   [MORA] Entidad " + entidad.getCodigo()
+			+ " (rol " + entidad.getRolPetroComercial() + ") pasa a ACTIVO EN MORA: "
+			+ "sin aporte en " + mesAnterior + "/" + anioAnterior
+			+ " ni en " + mesActual + "/" + anioActual + ".");
+
+	} catch (Throwable e) {
+		// La mora es un efecto secundario del procesamiento de aportes:
+		// un fallo aquí no debe abortar la carga completa.
+		System.err.println("Error al evaluar mora por falta de aporte para entidad "
+			+ (entidad != null ? entidad.getCodigo() : null) + ": " + e.getMessage());
+		e.printStackTrace();
+	}
+}
+
+/**
  * Aplica aportes para el producto AH (aportes de jubilación y cesantía)
  * ✅ NUEVA LÓGICA: Similar a procesamiento de préstamos con estados, acumulación y excedentes
  */
@@ -2649,12 +2739,15 @@ private int aplicarAporteAH(ParticipeXCargaArchivo participe, CargaArchivo carga
 		
 		Entidad entidad = entidades.get(0);
 		double montoRecibido = nullSafe(participe.getTotalDescontado());
-		
+
 		if (montoRecibido <= 0.01) {
 			System.out.println("⚠️ Monto recibido es $0 para partícipe: " + participe.getCodigoPetro());
+			// Sin descuento este mes: revisar si tampoco lo hubo en el periodo
+			// anterior. Dos periodos seguidos sin aportar => ACTIVO EN MORA.
+			evaluarMoraPorFaltaDeAporte(entidad, cargaArchivo);
 			return 0;
 		}
-		
+
 		System.out.println("📥 Monto total recibido: $" + montoRecibido);
 		
 		// ✅ Buscar valores esperados en HistorialSueldo con estado 99

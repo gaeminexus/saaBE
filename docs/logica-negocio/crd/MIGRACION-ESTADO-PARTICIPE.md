@@ -83,6 +83,36 @@ Corriendo primero las 75 a ACTIVO EN MORA y luego el remapeo global:
 El total debe mantenerse en 7300 en todos los pasos. Cualquier desviación es
 motivo de ROLLBACK.
 
+## Asignación automática de ACTIVO EN MORA
+
+A partir de este cambio, el estado ACTIVO EN MORA (8) lo asigna el **proceso de
+carga Petro**, no un update manual.
+
+Al procesar el producto AH, cuando un partícipe llega sin descuento (valor 0 o
+nulo), `CargaArchivoPetroServiceImpl.evaluarMoraPorFaltaDeAporte()` revisa el
+periodo inmediatamente anterior. Si tampoco hubo descuento, son dos periodos
+consecutivos sin aportar y la entidad pasa a ACTIVO EN MORA.
+
+Condiciones para que se marque:
+- La entidad debe estar en ACTIVO. No se tocan cesantes, jubilados,
+  desafiliados ni las que ya están en mora.
+- El periodo anterior debe tener carga de AH. Si no se ha cargado, no se puede
+  afirmar que no aportó y no se evalúa.
+- Si la consulta falla, no se marca mora.
+
+El proceso **no revierte** el estado: si el partícipe vuelve a aportar, sacarlo
+de ACTIVO EN MORA es una decisión administrativa.
+
+### Limitación conocida
+
+La regla solo alcanza a los partícipes que **vienen en el archivo con valor 0**.
+Un partícipe activo que no aparece del todo en el detalle AH no es evaluado,
+porque el proceso itera sobre lo que trae la carga.
+
+El query de diagnóstico que se usó para detectar las 75 entidades iniciales sí
+cubre ambos casos (ausente o en cero). Conviene correrlo periódicamente como
+control de contraste.
+
 ## Alerta de regresión
 
 Los cuatro endpoints `/rest/entd/resumen-*-por-estado` usan por defecto

@@ -16,44 +16,45 @@ package com.saa.rubros;
  *         Estados del partícipe almacenados en CRD.ENTD.ENTDIDST.
  *         Catálogo respaldado por la tabla CRD.ESPR (EstadoParticipe).
  *
- *         ATENCION - MIGRACION EN CURSO:
- *         Hoy ENTDIDST guarda la PK de ESPR (ESPRCDGO). Las constantes de esta
- *         interfaz tienen por eso los valores de PK. Cuando se ejecute la
- *         migración a código alterno (ESPRCDEX), este archivo es el UNICO que
- *         cambia de valores; el resto del sistema ya referencia las constantes.
+ *         Los valores son los CODIGOS ALTERNOS (ESPRCDEX), no las PKs.
+ *         La migración de ENTDIDST se ejecutó el 2026-08-11; ver
+ *         docs/logica-negocio/crd/MIGRACION-ESTADO-PARTICIPE.md
  *
- *         Equivalencia PK -> código alterno:
- *           10 ACTIVO                   -> 1
- *            2 CESANTE                  -> 2
- *           30 JUBILADO COMPLEMENTARIO  -> 3
- *           23 CESANTE DESAFILIADO      -> 4
- *           40 CESANTE FALLECIDO        -> 5
- *           41 JUBILADO APORTANTE       -> 6
- *           42 JUBILADO PASIVO          -> 7
- *           62 ACTIVO EN MORA           -> 8
- *           63 NUEVO                    -> 9
+ *         Equivalencia con la PK de ESPR (ESPRCDGO), por si hace falta
+ *         interpretar datos históricos o el respaldo ENTDIDST_BAK:
+ *            1 ACTIVO                   <- PK 10
+ *            2 CESANTE                  <- PK 2
+ *            3 JUBILADO COMPLEMENTARIO  <- PK 30
+ *            4 CESANTE DESAFILIADO      <- PK 23
+ *            5 CESANTE FALLECIDO        <- PK 40
+ *            6 JUBILADO APORTANTE       <- PK 41
+ *            7 JUBILADO PASIVO          <- PK 42
+ *            8 ACTIVO EN MORA           <- PK 62
+ *            9 NUEVO                    <- PK 63
  */
 public interface EstadoParticipeEntidad {
 
-	// Ids de los elementos hijos (PK de CRD.ESPR mientras dure la migración)
-	public static final int ACTIVO                  = 10;
+	// Codigos alternos (CRD.ESPR.ESPRCDEX)
+	public static final int ACTIVO                  = 1;
 	public static final int CESANTE                 = 2;
-	public static final int JUBILADO_COMPLEMENTARIO = 30;
-	public static final int CESANTE_DESAFILIADO     = 23;
-	public static final int CESANTE_FALLECIDO       = 40;
-	public static final int JUBILADO_APORTANTE      = 41;
-	public static final int JUBILADO_PASIVO         = 42;
-	public static final int ACTIVO_EN_MORA          = 62;
+	public static final int JUBILADO_COMPLEMENTARIO = 3;
+	public static final int CESANTE_DESAFILIADO     = 4;
+	public static final int CESANTE_FALLECIDO       = 5;
+	public static final int JUBILADO_APORTANTE      = 6;
+	public static final int JUBILADO_PASIVO         = 7;
+
+	/**
+	 * Partícipe que sigue activo pero dejó de aportar.
+	 * Lo asigna el proceso de carga Petro cuando detecta dos periodos
+	 * consecutivos sin descuento del producto AH.
+	 */
+	public static final int ACTIVO_EN_MORA          = 8;
 
 	/**
 	 * Marcador de "entidad creada, todavía no reportada en el G41".
 	 * Lo escribe EntidadServiceImpl al crear la entidad y lo consume
 	 * GeneracionG41ServiceImpl, que al reportarla la pasa a ACTIVO.
-	 *
-	 * HISTORICO: hasta la creación de esta fila en CRD.ESPR, el sistema
-	 * escribía un 1 que no correspondía a ningún estado del catálogo. Las
-	 * entidades que quedaron con ENTDIDST = 1 deben migrarse a este valor.
 	 */
-	public static final int NUEVO = 63;
+	public static final int NUEVO                   = 9;
 
 }

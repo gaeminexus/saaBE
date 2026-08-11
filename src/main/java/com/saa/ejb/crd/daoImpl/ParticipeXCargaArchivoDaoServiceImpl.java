@@ -73,5 +73,80 @@ public class ParticipeXCargaArchivoDaoServiceImpl extends EntityDaoImpl<Particip
 			return new java.util.ArrayList<>();
 		}
 	}
-	
+
+	@Override
+	public Double sumaDescontadoPorProductoYPeriodo(Long codigoPetro, String codigoProducto,
+			Long anioAfectacion, Long mesAfectacion) throws Throwable {
+		System.out.println("ParticipeXCargaArchivoDaoService.sumaDescontadoPorProductoYPeriodo - rol: "
+			+ codigoPetro + ", producto: " + codigoProducto + ", periodo: " + mesAfectacion + "/" + anioAfectacion);
+
+		if (codigoPetro == null || anioAfectacion == null || mesAfectacion == null) {
+			// No se puede evaluar: null, no 0.0, para no interpretarlo como "no aportó".
+			return null;
+		}
+
+		try {
+			String codigoProductoTrim = (codigoProducto != null) ? codigoProducto.trim() : null;
+
+			Query query = em.createQuery(
+				"SELECT COALESCE(SUM(p.totalDescontado), 0) " +
+				"FROM ParticipeXCargaArchivo p " +
+				"WHERE p.codigoPetro = :codigoPetro " +
+				"AND TRIM(p.detalleCargaArchivo.codigoPetroProducto) = :codigoProducto " +
+				"AND p.detalleCargaArchivo.cargaArchivo.anioAfectacion = :anio " +
+				"AND p.detalleCargaArchivo.cargaArchivo.mesAfectacion = :mes " +
+				"AND p.detalleCargaArchivo.cargaArchivo.fechaAnulacion IS NULL"
+			);
+			query.setParameter("codigoPetro", codigoPetro);
+			query.setParameter("codigoProducto", codigoProductoTrim);
+			query.setParameter("anio", anioAfectacion);
+			query.setParameter("mes", mesAfectacion);
+
+			Object resultado = query.getSingleResult();
+			return resultado != null ? ((Number) resultado).doubleValue() : 0.0;
+
+		} catch (Exception e) {
+			System.err.println("Error al sumar descontado por producto y periodo: " + e.getMessage());
+			e.printStackTrace();
+			// Devolver null permite al llamador distinguir "no pudo evaluarse"
+			// de "no hubo descuento", y así no marcar mora por un fallo de BD.
+			return null;
+		}
+	}
+
+	@Override
+	public boolean existeCargaConProductoEnPeriodo(String codigoProducto,
+			Long anioAfectacion, Long mesAfectacion) throws Throwable {
+		System.out.println("ParticipeXCargaArchivoDaoService.existeCargaConProductoEnPeriodo - producto: "
+			+ codigoProducto + ", periodo: " + mesAfectacion + "/" + anioAfectacion);
+
+		if (anioAfectacion == null || mesAfectacion == null) {
+			return false;
+		}
+
+		try {
+			String codigoProductoTrim = (codigoProducto != null) ? codigoProducto.trim() : null;
+
+			Query query = em.createQuery(
+				"SELECT COUNT(d) FROM DetalleCargaArchivo d " +
+				"WHERE TRIM(d.codigoPetroProducto) = :codigoProducto " +
+				"AND d.cargaArchivo.anioAfectacion = :anio " +
+				"AND d.cargaArchivo.mesAfectacion = :mes " +
+				"AND d.cargaArchivo.fechaAnulacion IS NULL"
+			);
+			query.setParameter("codigoProducto", codigoProductoTrim);
+			query.setParameter("anio", anioAfectacion);
+			query.setParameter("mes", mesAfectacion);
+
+			Object resultado = query.getSingleResult();
+			return resultado != null && ((Number) resultado).longValue() > 0L;
+
+		} catch (Exception e) {
+			System.err.println("Error al verificar carga con producto en periodo: " + e.getMessage());
+			e.printStackTrace();
+			// Ante la duda, se asume que el periodo no existe para no generar mora.
+			return false;
+		}
+	}
+
 }

@@ -368,7 +368,7 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 			"              ELSE ROUND(MONTHS_BETWEEN(:mesEjecucion, ap.ultimo_mes_aporte)) " +
 			"         END AS meses_en_mora " +
 			"  FROM   CRD.ENTD e " +
-			"  LEFT JOIN CRD.ESPR esp ON esp.ESPRCDGO  = e.ENTDIDST " +
+			"  LEFT JOIN CRD.ESPR esp ON esp.ESPRCDEX  = e.ENTDIDST " +
 			"  LEFT JOIN aportes  ap  ON ap.entidad_id = e.ENTDCDGO " +
 			"  WHERE  NVL(TRIM(e.ENTDNMID), '0') <> '0' " +
 			"    AND  (:calidadId IS NULL OR e.ENTDIDST = :calidadId) " +
