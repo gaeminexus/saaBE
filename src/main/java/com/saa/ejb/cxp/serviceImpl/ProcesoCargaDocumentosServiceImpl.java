@@ -538,9 +538,11 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 resultadoBD = registrarNotaDebitoCompra(doc, contenidoXml, idEmpresa, idUsuario);
             } else if (TIPO_LIQUIDACION.equalsIgnoreCase(tipo)) {
                 resultadoBD = registrarLiquidacionCompraCompra(doc, contenidoXml, idEmpresa, idUsuario);
-            } else if (TIPO_RETENCION.equalsIgnoreCase(tipo)) {
-                resultadoBD = registrarRetencionCompra(doc, contenidoXml, idEmpresa, idUsuario);
-            } else if (TIPO_RETENCION_V2.equalsIgnoreCase(tipo)) {
+            } else if (TIPO_RETENCION.equalsIgnoreCase(tipo) || TIPO_RETENCION_V2.equalsIgnoreCase(tipo)) {
+                // Todas las retenciones recibidas se registran en RetencionCompraV2,
+                // sin importar la version del comprobante: el parser tolera los dos
+                // esquemas del SRI (ver obtenerDetallesRetencion / getValorDocSustento).
+                // PGS.RTCM queda solo para consultar lo cargado antes de este cambio.
                 resultadoBD = registrarRetencionCompraV2(doc, contenidoXml, idEmpresa, idUsuario);
             } else {
                 throw new Exception("Tipo de comprobante no soportado: " + tipo);
@@ -700,9 +702,9 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 resultado = registrarNotaDebitoCompra(doc, xmlContent, idEmpresa, idUsuario);
             } else if (TIPO_LIQUIDACION.equalsIgnoreCase(tipo)) {
                 resultado = registrarLiquidacionCompraCompra(doc, xmlContent, idEmpresa, idUsuario);
-            } else if (TIPO_RETENCION.equalsIgnoreCase(tipo)) {
-                resultado = registrarRetencionCompra(doc, xmlContent, idEmpresa, idUsuario);
-            } else if (TIPO_RETENCION_V2.equalsIgnoreCase(tipo)) {
+            } else if (TIPO_RETENCION.equalsIgnoreCase(tipo) || TIPO_RETENCION_V2.equalsIgnoreCase(tipo)) {
+                // Ver nota en el despacho de procesarDocumento: todas las
+                // retenciones recibidas van a RetencionCompraV2.
                 resultado = registrarRetencionCompraV2(doc, xmlContent, idEmpresa, idUsuario);
             } else {
                 throw new Exception("Tipo de comprobante no soportado: " + tipo);
