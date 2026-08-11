@@ -11,7 +11,7 @@ public interface GeneracionG44Service {
      * Genera los registros del G44 (ParticipeJubiladoG44 - RPR.CG44).
      *
      * Lógica:
-     *  - Obtiene todas las entidades con idEstado = 30 (jubilados)
+     *  - Obtiene todas las entidades en estado JUBILADO COMPLEMENTARIO
      *  - Por cada entidad:
      *      - imposicionesAcumuladas : COUNT de aportes con tipoAporte.codigo IN (9, 11)
      *      - valorPension           : valorPagar de ValorPagoPensionComplementaria por entidad

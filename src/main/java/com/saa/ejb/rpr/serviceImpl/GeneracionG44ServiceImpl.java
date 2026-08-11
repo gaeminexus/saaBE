@@ -20,6 +20,7 @@ import com.saa.model.crd.ValorPagoPensionComplementaria;
 import com.saa.model.rpr.DetalleEjecucionReporte;
 import com.saa.model.rpr.HistoricoG44;
 import com.saa.model.rpr.ParticipeJubiladoG44;
+import com.saa.rubros.EstadoParticipeEntidad;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -27,7 +28,10 @@ import jakarta.ejb.Stateless;
 @Stateless
 public class GeneracionG44ServiceImpl implements GeneracionG44Service {
 
-    private static final Long ESTADO_JUBILADO = 30L;
+    // PENDIENTE: en CRD.ESPR existen tres estados de jubilado
+    // (JUBILADO_COMPLEMENTARIO, JUBILADO_APORTANTE y JUBILADO_PASIVO).
+    // Este reporte solo considera el primero; revisar si es lo correcto.
+    private static final Long ESTADO_JUBILADO = (long) EstadoParticipeEntidad.JUBILADO_COMPLEMENTARIO;
 
     @EJB private EntidadService                       entidadService;
     @EJB private AporteService                        aporteService;
@@ -50,10 +54,10 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
         System.out.println("G44 - fechaCorte: " + fechaCorte);
 
         // -------------------------------------------------------
-        // 1. Obtener todas las entidades con idEstado = 30 (jubilados)
+        // 1. Obtener todas las entidades en estado JUBILADO COMPLEMENTARIO
         // -------------------------------------------------------
         List<Entidad> jubilados = entidadService.selectByIdEstado(ESTADO_JUBILADO);
-        System.out.println("G44 - Entidades jubiladas (idEstado=30): " + jubilados.size());
+        System.out.println("G44 - Entidades jubiladas: " + jubilados.size());
 
         if (jubilados.isEmpty()) {
             System.out.println("G44 - Sin jubilados. G44 vacio, OK.");

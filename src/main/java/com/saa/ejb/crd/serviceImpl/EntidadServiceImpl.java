@@ -10,7 +10,7 @@ import com.saa.ejb.crd.dao.EntidadDaoService;
 import com.saa.ejb.crd.service.EntidadService;
 import com.saa.model.crd.Entidad;
 import com.saa.model.crd.NombreEntidadesCredito;
-import com.saa.rubros.Estado;
+import com.saa.rubros.EstadoParticipeEntidad;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -76,7 +76,10 @@ public class EntidadServiceImpl implements EntidadService {
     public Entidad saveSingle(Entidad entidad) throws Throwable {
         System.out.println("saveSingle - Entidad");
         if(entidad.getCodigo() == null){
-        	entidad.setIdEstado(Long.valueOf(Estado.ACTIVO)); //Activo
+        	// La entidad nace pendiente de ser reportada en el G41.
+        	// Antes se usaba el rubro genérico Estado.ACTIVO (1), que no
+        	// corresponde a ninguna fila de CRD.ESPR.
+        	entidad.setIdEstado(Long.valueOf(EstadoParticipeEntidad.NUEVO));
 		}
         entidad = entidadDaoService.save(entidad, entidad.getCodigo());
         return entidad;

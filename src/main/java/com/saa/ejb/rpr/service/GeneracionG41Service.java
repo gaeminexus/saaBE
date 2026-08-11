@@ -9,11 +9,11 @@ public interface GeneracionG41Service {
 
     /**
      * Genera el reporte G41 (Partícipes Activos y Voluntarios).
-     * - Busca entidades con idEstado = 1
+     * - Busca entidades en estado NUEVO (aún no reportadas)
      * - Si no hay ninguna → retorna 0 (G41 vacío, EJRD queda OK)
      * - Por cada entidad → busca su Participe y su Exter (por cedula)
      * - Mapea los datos a ParticipeActivoG41 con el detalleEjecucion
-     * - Actualiza idEstado de la entidad a 10
+     * - Deja la entidad en estado ACTIVO
      *
      * @param detalle : DetalleEjecucionReporte (EJRD) al que pertenecerán los registros
      * @return        : Cantidad de registros insertados en CG41

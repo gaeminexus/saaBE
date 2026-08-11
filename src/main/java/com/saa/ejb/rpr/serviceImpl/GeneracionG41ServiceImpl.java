@@ -12,6 +12,7 @@ import com.saa.model.crd.Exter;
 import com.saa.model.crd.Participe;
 import com.saa.model.rpr.DetalleEjecucionReporte;
 import com.saa.model.rpr.ParticipeActivoG41;
+import com.saa.rubros.EstadoParticipeEntidad;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -19,8 +20,8 @@ import jakarta.ejb.Stateless;
 @Stateless
 public class GeneracionG41ServiceImpl implements GeneracionG41Service {
 
-    private static final Long ESTADO_NUEVO            = 1L;
-    private static final Long ESTADO_PROCESADO        = 10L;
+    private static final Long ESTADO_NUEVO            = (long) EstadoParticipeEntidad.NUEVO;
+    private static final Long ESTADO_PROCESADO        = (long) EstadoParticipeEntidad.ACTIVO;
 
     @EJB private EntidadService             entidadService;
     @EJB private ExterService               exterService;
@@ -32,10 +33,10 @@ public class GeneracionG41ServiceImpl implements GeneracionG41Service {
         System.out.println("Ingresa al metodo generar G41");
 
         // -------------------------------------------------------
-        // 1. Buscar entidades con idEstado = 1
+        // 1. Buscar entidades en estado NUEVO (no reportadas aún)
         // -------------------------------------------------------
         List<Entidad> entidades = entidadService.selectByIdEstado(ESTADO_NUEVO);
-        System.out.println("Entidades con idEstado=1 encontradas: " + entidades.size());
+        System.out.println("Entidades en estado NUEVO encontradas: " + entidades.size());
 
         // -------------------------------------------------------
         // 2. Si no hay ninguna → G41 vacío, retornar 0
@@ -103,7 +104,7 @@ public class GeneracionG41ServiceImpl implements GeneracionG41Service {
             System.out.println("Registro G41 insertado para cedula: " + entidad.getNumeroIdentificacion());
 
             // -------------------------------------------------------
-            // 4. Actualizar idEstado de la entidad a 10 (Procesado)
+            // 4. La entidad pasa a ACTIVO: ya fue reportada en el G41
             // -------------------------------------------------------
             entidad.setIdEstado(ESTADO_PROCESADO);
             entidadService.saveSingle(entidad);

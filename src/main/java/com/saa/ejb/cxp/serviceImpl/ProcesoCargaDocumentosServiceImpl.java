@@ -1114,6 +1114,69 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             detalleFacturaCompraDaoService.save(df, null);
         }
 
+        // ══════════════════════════════════════════════════════════════════
+        // Valores recaudados por cuenta de terceros (bomberos / basura)
+        // ══════════════════════════════════════════════════════════════════
+        // Las planillas electricas cobran estos rubros por cuenta de un
+        // tercero y NO los incluyen en <importeTotal>. Si no se registran,
+        // la factura queda por menos de lo que realmente se debe pagar y el
+        // saldo del modulo no coincide con el contable.
+        //
+        // Se agregan como detalles adicionales apuntando al MISMO producto
+        // del primer detalle: asi heredan su grupo y, por lo tanto, su
+        // cuenta contable (generarAsientoFacturaCompra agrupa el DEBE por
+        // GrupoProductoPago y calcula el HABER como la suma de los DEBE,
+        // de modo que el asiento sigue cuadrando solo).
+        String observacionTerceros = null;
+        List<Object[]> valoresTerceros = leerValoresTerceros(xmlDoc);
+        if (!valoresTerceros.isEmpty() && !productosDetalle.isEmpty()) {
+
+            Long idProductoBase = productosDetalle.get(0).getId();
+            double totalTerceros = 0.0;
+            StringBuilder detalleTerceros = new StringBuilder();
+
+            for (Object[] concepto : valoresTerceros) {
+                String nombreConcepto = (String) concepto[0];
+                double valorConcepto  = (Double) concepto[1];
+
+                DetalleFacturaCompra dt = new DetalleFacturaCompra();
+                dt.setFactura(factura);
+                dt.setDescripcion(nombreConcepto);
+                dt.setCantidad(1.0);
+                dt.setValor(valorConcepto);
+                dt.setSubTotal(valorConcepto);
+                dt.setDescuento(0.0);
+                dt.setBaseImponible(valorConcepto);
+                // No grava IVA: va al 0% (codigoPorcentaje 0 del SRI)
+                dt.setCodigoIVASRI(0L);
+                dt.setPorcentajeIVA(0L);
+                dt.setValorIVA(0.0);
+                dt.setTotal(valorConcepto);
+                dt.setProducto(idProductoBase);
+                dt.setEstado(Long.valueOf(Estado.ACTIVO));
+                detalleFacturaCompraDaoService.save(dt, null);
+
+                totalTerceros += valorConcepto;
+                if (detalleTerceros.length() > 0) detalleTerceros.append(", ");
+                detalleTerceros.append(nombreConcepto).append(": ")
+                               .append(String.format(java.util.Locale.US, "%.2f", valorConcepto));
+            }
+
+            // El valor no grava IVA -> suma al subtotal 0% y al total de la
+            // factura. El total DEBE crecer: es lo que realmente se le debe
+            // al proveedor y lo que el asiento va a registrar en la CxP.
+            factura.setSubtotal(nvlDouble(factura.getSubtotal()) + totalTerceros);
+            factura.setSubcero(nvlDouble(factura.getSubcero()) + totalTerceros);
+            factura.setTotal(nvlDouble(factura.getTotal()) + totalTerceros);
+            factura = facturaCompraDaoService.save(factura, factura.getId());
+
+            observacionTerceros = "Se agregaron valores recaudados por terceros no incluidos en el "
+                    + "importe total del XML (" + detalleTerceros + "). Total factura: "
+                    + String.format(java.util.Locale.US, "%.2f", importeTotal) + " -> "
+                    + String.format(java.util.Locale.US, "%.2f", factura.getTotal()) + ".";
+            System.out.println("✓ " + observacionTerceros);
+        }
+
         NodeList pagos = xmlDoc.getElementsByTagName("pago");
         for (int i = 0; i < pagos.getLength(); i++) {
             Element el = (Element) pagos.item(i);
@@ -1138,7 +1201,18 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         r.put("mensaje", "FacturaCompra registrada correctamente con id=" + factura.getId() + ".");
         r.put("productosPendientes", new ArrayList<>());
         r.put("pendienteClasificacion", false);
+        if (observacionTerceros != null) r.put("valoresTerceros", observacionTerceros);
         return r;
+    }
+
+    /**
+     * Devuelve 0.0 si el valor es nulo. Para acumular sobre campos de la
+     * factura que pueden venir sin inicializar.
+     * @param valor : Valor a evaluar
+     * @return      : El valor, o 0.0 si es nulo
+     */
+    private double nvlDouble(Double valor) {
+        return (valor != null) ? valor : 0.0;
     }
 
     /**
@@ -2245,10 +2319,58 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     }
 
     /**
+     * Lee de &lt;infoAdicional&gt; los valores que la empresa emisora cobra por
+     * cuenta de terceros y que NO estan incluidos en el importeTotal del
+     * comprobante. Caso tipico: las planillas electricas (CNEL), que
+     * recaudan la contribucion al cuerpo de bomberos y la tasa de
+     * recoleccion de basura.
+     *
+     * Ejemplo de lo que trae el XML:
+     *   &lt;campoAdicional nombre="CONTRIBUCION BOMBEROS"&gt;2.41&lt;/campoAdicional&gt;
+     *   &lt;campoAdicional nombre="TASA RECOLECCION BASURA"&gt;0.00&lt;/campoAdicional&gt;
+     *   &lt;campoAdicional nombre="FORMA DE PAGO TERCEROS BASURA Y BOMBEROS"&gt;SIN UTILIZACION...&lt;/campoAdicional&gt;
+     *   &lt;campoAdicional nombre="TOTAL FORMA DE PAGO TERCEROS BASURA Y BOMBEROS"&gt;2.41&lt;/campoAdicional&gt;
+     *
+     * Se toman SOLO los conceptos individuales (bomberos, basura). Los
+     * campos "FORMA DE PAGO..." se excluyen a proposito: uno es texto y el
+     * otro es el TOTAL de los anteriores — sumarlo duplicaria el valor.
+     *
+     * @param xmlDoc : Documento XML del comprobante
+     * @return       : Lista de [nombre, valor] con valor &gt; 0; vacia si no aplica
+     */
+    private List<Object[]> leerValoresTerceros(Document xmlDoc) {
+        List<Object[]> valores = new ArrayList<>();
+        try {
+            NodeList campos = xmlDoc.getElementsByTagName("campoAdicional");
+            for (int i = 0; i < campos.getLength(); i++) {
+                Element campo = (Element) campos.item(i);
+                String nombre = campo.getAttribute("nombre");
+                String nombreNorm = normalizarParaComparacion(nombre);
+
+                boolean esConceptoTercero = nombreNorm.contains("BOMBERO") || nombreNorm.contains("BASURA");
+                // "FORMA DE PAGO TERCEROS..." y "TOTAL FORMA DE PAGO TERCEROS..."
+                // no son conceptos, son la forma de pago y el total agregado.
+                boolean esFormaPagoOTotal = nombreNorm.contains("FORMA DE PAGO");
+
+                if (esConceptoTercero && !esFormaPagoOTotal) {
+                    String texto = (campo.getFirstChild() != null)
+                            ? campo.getFirstChild().getNodeValue() : null;
+                    double valor = parseDouble(texto != null ? texto.trim() : null);
+                    if (valor > 0) {
+                        valores.add(new Object[]{ nombre.trim(), valor });
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("⚠ leerValoresTerceros: " + e.getMessage());
+        }
+        return valores;
+    }
+
+    /**
      * Normaliza una cadena para comparación: convierte a mayúsculas y elimina tildes/diacríticos.
      * Ej: "CORPORACIÓN" → "CORPORACION", "Eléctrica" → "ELECTRICA"
      */
-    @SuppressWarnings("unused")
 	private String normalizarParaComparacion(String s) {
         if (s == null) return "";
         String normalizado = java.text.Normalizer.normalize(s.toUpperCase(),

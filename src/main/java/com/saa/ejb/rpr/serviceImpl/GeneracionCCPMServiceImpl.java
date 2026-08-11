@@ -21,6 +21,7 @@ import com.saa.model.crd.Prestamo;
 import com.saa.model.rpr.CreditoCuotasPrestamosMensual;
 import com.saa.model.rpr.CreditoParticipesMensual;
 import com.saa.model.rpr.EjecucionReporteCartera;
+import com.saa.rubros.EstadoParticipeEntidad;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -336,7 +337,9 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
                 if (prestamo.getEntidad() != null) {
                     Long estadoEntidad = prestamo.getEntidad().getIdEstado();
                     
-                    if (estadoEntidad != null && estadoEntidad == 30L) {
+                    // Jubilado complementario: el valor de cuenta individual es siempre 0
+                    if (estadoEntidad != null
+                            && estadoEntidad == EstadoParticipeEntidad.JUBILADO_COMPLEMENTARIO) {
                         valorCuentaIndividual = 0.0;
                     } else {
                         identificacionEntidad = prestamo.getEntidad().getNumeroIdentificacion();

@@ -5,6 +5,7 @@ import java.util.List;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.rpr.dao.HistoricoG44DaoService;
 import com.saa.model.rpr.HistoricoG44;
+import com.saa.rubros.EstadoParticipeEntidad;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
@@ -28,13 +29,16 @@ public class HistoricoG44DaoServiceImpl extends EntityDaoImpl<HistoricoG44> impl
 
     @Override
     public List<HistoricoG44> selectExJubilados() throws Throwable {
+        // Ex-jubilado: aparece en el histórico G44 pero su entidad ya no está
+        // en estado JUBILADO COMPLEMENTARIO.
         return em.createQuery(
             "select h from HistoricoG44 h " +
             "where exists (" +
             "  select e from Entidad e " +
             "  where e.numeroIdentificacion = h.identificacion " +
-            "  and e.idEstado <> 30 " +
+            "  and e.idEstado <> :estadoJubilado " +
             ")", HistoricoG44.class)
+            .setParameter("estadoJubilado", (long) EstadoParticipeEntidad.JUBILADO_COMPLEMENTARIO)
             .getResultList();
     }
 

@@ -17,6 +17,7 @@ import com.saa.model.rpr.DetalleEjecucionReporte;
 import com.saa.model.rpr.NuevoParticipeG45;
 import com.saa.model.rpr.NuevoPrestamoG46;
 import com.saa.model.rpr.SaldoCuentaG42;
+import com.saa.rubros.EstadoParticipeEntidad;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -95,9 +96,11 @@ public class GeneracionG45ServiceImpl implements GeneracionG45Service {
                 }
             }
 
-            // --- Tipo de participe: J si idEstado == 30, caso contrario C ---
+            // --- Tipo de participe: J si es JUBILADO COMPLEMENTARIO, caso contrario C ---
+            // PENDIENTE: no contempla JUBILADO_APORTANTE ni JUBILADO_PASIVO.
             String tipoParticipe = "C";
-            if (entidad != null && entidad.getIdEstado() != null && entidad.getIdEstado() == 30L) {
+            if (entidad != null && entidad.getIdEstado() != null
+                    && entidad.getIdEstado() == EstadoParticipeEntidad.JUBILADO_COMPLEMENTARIO) {
                 tipoParticipe = "J";
             }
 

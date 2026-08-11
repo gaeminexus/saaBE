@@ -27,6 +27,7 @@ import com.saa.model.rpr.EjecucionReporte;
 import com.saa.model.rpr.HistoricoG48;
 import com.saa.model.rpr.SaldoCuentaG42;
 import com.saa.model.rpr.SaldoOperacionG48;
+import com.saa.rubros.EstadoParticipeEntidad;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -267,8 +268,9 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
                 if (prestamo.getEntidad() != null) {
                     Long estadoEntidad = prestamo.getEntidad().getIdEstado();
                     
-                    // Si es jubilado voluntario (estado 30), el valor es siempre 0
-                    if (estadoEntidad != null && estadoEntidad == 30L) {
+                    // Si es jubilado complementario, el valor es siempre 0
+                    if (estadoEntidad != null
+                            && estadoEntidad == EstadoParticipeEntidad.JUBILADO_COMPLEMENTARIO) {
                         valorCuentaIndividual = 0.0;
                     } else {
                         // Para otros estados, aplicar la lógica de primera cuota

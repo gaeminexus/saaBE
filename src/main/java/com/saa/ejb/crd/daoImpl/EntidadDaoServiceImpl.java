@@ -9,6 +9,7 @@ import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.crd.dao.EntidadDaoService;
 import com.saa.model.crd.Entidad;
 import com.saa.rubros.ASPSensibilidadBusquedaCoincidencias;
+import com.saa.rubros.EstadoParticipeEntidad;
 import com.saa.rubros.Rubros;
 
 import jakarta.ejb.EJB;
@@ -28,7 +29,17 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 	DetalleRubroDaoService detalleRubroDaoService;
 
 	/** Código en CRD.ESPR del estado que habilita voto y elegibilidad. */
-	private static final Long CODIGO_ESTADO_ACTIVO = 10L;
+	private static final Long CODIGO_ESTADO_ACTIVO = (long) EstadoParticipeEntidad.ACTIVO;
+
+	/**
+	 * Estados considerados por defecto en los resúmenes agrupados por estado.
+	 * No incluye CESANTE_FALLECIDO, JUBILADO_APORTANTE ni ACTIVO_EN_MORA:
+	 * se mantiene el comportamiento histórico, revisar al completar la migración.
+	 */
+	private static final List<Long> ESTADOS_RESUMEN_POR_DEFECTO = Arrays.asList(
+			(long) EstadoParticipeEntidad.ACTIVO,
+			(long) EstadoParticipeEntidad.CESANTE,
+			(long) EstadoParticipeEntidad.JUBILADO_COMPLEMENTARIO);
 
 	/** Tipos de aporte que cuentan para el padrón: 9 = JUBILACIÓN, 11 = CESANTÍA. */
 	private static final Long TIPO_APORTE_JUBILACION = 9L;
@@ -99,7 +110,7 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 		
 		// Validar que la lista no esté vacía
 		if (estadosPermitidos == null || estadosPermitidos.isEmpty()) {
-			estadosPermitidos = Arrays.asList(10L, 2L, 30L); // Valores por defecto
+			estadosPermitidos = ESTADOS_RESUMEN_POR_DEFECTO; // Valores por defecto
 		}
 		
 		String sql = 
@@ -136,7 +147,7 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 			java.util.List<Long> estadosPermitidos) throws Throwable {
 		
 		if (estadosPermitidos == null || estadosPermitidos.isEmpty()) {
-			estadosPermitidos = Arrays.asList(10L, 2L, 30L);
+			estadosPermitidos = ESTADOS_RESUMEN_POR_DEFECTO;
 		}
 		
 		String sql = 
@@ -174,7 +185,7 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 			java.util.List<Long> estadosPermitidos) throws Throwable {
 		
 		if (estadosPermitidos == null || estadosPermitidos.isEmpty()) {
-			estadosPermitidos = Arrays.asList(10L, 2L, 30L);
+			estadosPermitidos = ESTADOS_RESUMEN_POR_DEFECTO;
 		}
 		
 		String sql = 
@@ -213,7 +224,7 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 			java.util.List<Long> estadosPermitidos) throws Throwable {
 		
 		if (estadosPermitidos == null || estadosPermitidos.isEmpty()) {
-			estadosPermitidos = Arrays.asList(10L, 2L, 30L);
+			estadosPermitidos = ESTADOS_RESUMEN_POR_DEFECTO;
 		}
 		
 		String sql = 

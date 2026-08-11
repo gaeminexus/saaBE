@@ -30,6 +30,7 @@ import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.model.crd.ParticipeDetalleGeneracionArchivo;
 import com.saa.model.crd.Prestamo;
 import com.saa.model.crd.TipoAporte;
+import com.saa.rubros.EstadoParticipeEntidad;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -655,16 +656,17 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
 
     private void recopilarAportes(List<LineaArchivo> listaAportes) throws Exception {
         System.out.println("Recopilando aportes personales...");
-        System.out.println("Filtros: Entidad.idEstado=10 (ACTIVO), HistorialSueldo.estado=99");
-        
+        System.out.println("Filtros: Entidad en estado ACTIVO, HistorialSueldo.estado=99");
+
         String jpql = "SELECT h FROM HistorialSueldo h " +
-                     "WHERE h.entidad.idEstado = 10 " +
+                     "WHERE h.entidad.idEstado = :estadoActivo " +
                      "AND h.estado = 99 " +
                      "AND h.entidad.rolPetroComercial IS NOT NULL " +
                      "AND h.entidad.rolPetroComercial > 0 " +
                      "ORDER BY h.entidad.codigo, h.fechaIngreso DESC";
-        
+
         Query query = em.createQuery(jpql);
+        query.setParameter("estadoActivo", (long) EstadoParticipeEntidad.ACTIVO);
         
         @SuppressWarnings("unchecked")
         List<HistorialSueldo> resultados = query.getResultList();
@@ -731,12 +733,12 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
         // 1. Comparar directamente con LocalDateTime (tipo del campo fechaVencimiento)
         // 2. Usar COALESCE (estándar JPA) para rolPetroComercial
         // 3. Usar dp.prestamo.idEstado IN (1,2) para préstamos VIGENTES/ACTIVOS
-        // 4. Usar dp.prestamo.entidad.idEstado = 10 para entidades ACTIVAS
+        // 4. Filtrar por entidad en estado ACTIVO
         String jpql = "SELECT dp FROM DetallePrestamo dp " +
                      "WHERE dp.fechaVencimiento >= :inicioMes " +
                      "AND dp.fechaVencimiento <= :finMes " +
                      "AND dp.prestamo.idEstado IN (1, 2) " +
-                     "AND dp.prestamo.entidad.idEstado = 10 " +
+                     "AND dp.prestamo.entidad.idEstado = :estadoActivo " +
                      "AND dp.prestamo.producto.codigoPetro IS NOT NULL " +
                      "AND COALESCE(dp.prestamo.entidad.rolPetroComercial, 0) > 0 " +
                      "AND dp.estado NOT IN (:estadoPagada, :estadoCanceladaAnticipada) " +
@@ -745,6 +747,7 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
         Query query = em.createQuery(jpql);
         query.setParameter("inicioMes", inicioMes);
         query.setParameter("finMes", finMes);
+        query.setParameter("estadoActivo", (long) EstadoParticipeEntidad.ACTIVO);
         query.setParameter("estadoPagada", ESTADO_PAGADA);
         query.setParameter("estadoCanceladaAnticipada", ESTADO_CANCELADA_ANTICIPADA);
         
@@ -773,7 +776,7 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
                                    "WHERE dp.prestamo.codigo = :codigoPrestamo " +
                                    "AND dp.numeroCuota < :numeroCuotaActual " +
                                    "AND dp.prestamo.idEstado IN (1, 2) " +
-                                   "AND dp.prestamo.entidad.idEstado = 10 " +
+                                   "AND dp.prestamo.entidad.idEstado = :estadoActivo " +
                                    "AND dp.prestamo.producto.codigoPetro IS NOT NULL " +
                                    "AND COALESCE(dp.prestamo.entidad.rolPetroComercial, 0) > 0 " +
                                    "AND dp.estado NOT IN (:estadoPagada, :estadoCanceladaAnticipada) " +
@@ -782,6 +785,7 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
             Query queryAnteriores = em.createQuery(jpqlAnteriores);
             queryAnteriores.setParameter("codigoPrestamo", codigoPrestamo);
             queryAnteriores.setParameter("numeroCuotaActual", cuotaDelMes.getNumeroCuota());
+            queryAnteriores.setParameter("estadoActivo", (long) EstadoParticipeEntidad.ACTIVO);
             queryAnteriores.setParameter("estadoPagada", ESTADO_PAGADA);
             queryAnteriores.setParameter("estadoCanceladaAnticipada", ESTADO_CANCELADA_ANTICIPADA);
             

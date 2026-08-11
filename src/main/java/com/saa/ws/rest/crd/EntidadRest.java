@@ -7,6 +7,7 @@ import com.saa.ejb.crd.dao.EntidadDaoService;
 import com.saa.ejb.crd.service.EntidadService;
 import com.saa.model.crd.Entidad;
 import com.saa.model.crd.NombreEntidadesCredito;
+import com.saa.rubros.EstadoParticipeEntidad;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;
@@ -24,6 +25,18 @@ import jakarta.ws.rs.core.UriInfo;
 
 @Path("entd")
 public class EntidadRest {
+
+    /**
+     * Estados usados cuando el cliente no envía el parámetro "estados".
+     * No incluye CESANTE_FALLECIDO, JUBILADO_APORTANTE, ACTIVO_EN_MORA ni NUEVO:
+     * se conserva el comportamiento histórico, revisar junto con el frontend.
+     */
+    private static final java.util.List<Long> ESTADOS_RESUMEN_POR_DEFECTO = java.util.Arrays.asList(
+            (long) EstadoParticipeEntidad.ACTIVO,
+            (long) EstadoParticipeEntidad.CESANTE,
+            (long) EstadoParticipeEntidad.JUBILADO_COMPLEMENTARIO,
+            (long) EstadoParticipeEntidad.CESANTE_DESAFILIADO,
+            (long) EstadoParticipeEntidad.JUBILADO_PASIVO);
 
     @EJB
     private EntidadDaoService entidadDaoService;
@@ -246,7 +259,7 @@ public class EntidadRest {
                 }
             } else {
                 // Valores por defecto
-                estadosPermitidos = java.util.Arrays.asList(10L, 2L, 30L, 23L, 42L);
+                estadosPermitidos = ESTADOS_RESUMEN_POR_DEFECTO;
             }
             
             java.util.List<com.saa.model.crd.dto.EntidadResumenEstadoDTO> resumen = 
@@ -284,7 +297,7 @@ public class EntidadRest {
                     estadosPermitidos.add(Long.parseLong(estado.trim()));
                 }
             } else {
-                estadosPermitidos = java.util.Arrays.asList(10L, 2L, 30L, 23L, 42L);
+                estadosPermitidos = ESTADOS_RESUMEN_POR_DEFECTO;
             }
             
             java.util.List<com.saa.model.crd.dto.EntidadResumenPrestamosDTO> resumen = 
@@ -322,7 +335,7 @@ public class EntidadRest {
                     estadosPermitidos.add(Long.parseLong(estado.trim()));
                 }
             } else {
-                estadosPermitidos = java.util.Arrays.asList(10L, 2L, 30L, 23L, 42L);
+                estadosPermitidos = ESTADOS_RESUMEN_POR_DEFECTO;
             }
             
             java.util.List<com.saa.model.crd.dto.EntidadResumenAportesDTO> resumen = 
@@ -360,7 +373,7 @@ public class EntidadRest {
                     estadosPermitidos.add(Long.parseLong(estado.trim()));
                 }
             } else {
-                estadosPermitidos = java.util.Arrays.asList(10L, 2L, 30L, 23L, 42L);
+                estadosPermitidos = ESTADOS_RESUMEN_POR_DEFECTO;
             }
             
             java.util.List<com.saa.model.crd.dto.EntidadResumenConsolidadoDTO> resumen =
