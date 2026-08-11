@@ -386,9 +386,12 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 			"         CASE WHEN ap.ultimo_mes_aporte IS NOT NULL " +
 			"                   AND ap.ultimo_mes_aporte >= :primerMesAlDia " +
 			"              THEN 'AL DIA' ELSE 'EN MORA' END AS estado_mora, " +
+			// Meses transcurridos desde el último aporte hasta el mes de referencia.
+			// Es el desfase REAL, no depende de la tolerancia: quien aportó en el mes
+			// de referencia da 0, el mes anterior da 1, y así. Por eso una fila puede
+			// estar AL DIA y aun así mostrar 1 mes.
 			// NULL cuando nunca aportó: no hay último aporte desde el cual contar.
 			"         CASE WHEN ap.ultimo_mes_aporte IS NULL THEN NULL " +
-			"              WHEN ap.ultimo_mes_aporte >= :primerMesAlDia THEN 0 " +
 			"              ELSE ROUND(MONTHS_BETWEEN(:mesReferencia, ap.ultimo_mes_aporte)) " +
 			"         END AS meses_en_mora " +
 			"  FROM   CRD.ENTD e " +

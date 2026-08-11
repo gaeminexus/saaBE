@@ -114,10 +114,12 @@ public interface EntidadDaoService extends EntityDao<Entidad> {
 	 * Reglas aplicadas:
 	 *  - Número de aportes: meses distintos con al menos un aporte positivo 9/11,
 	 *    hasta el último día del mes anterior inclusive.
-	 *  - Estado de mora: EN MORA si no hubo aporte en los dos meses previos al
-	 *    mes de referencia.
-	 *  - Meses en mora: 0 si está al día; meses desde el último aporte hasta el
-	 *    mes de referencia si no.
+	 *  - Estado de mora: EN MORA al acumular 2 meses sin aportar respecto del mes
+	 *    de referencia.
+	 *  - Meses en mora: desfase real entre el último aporte y el mes de referencia.
+	 *    0 si aportó en el mes de referencia, 1 el mes anterior, y así. Es
+	 *    independiente de la tolerancia, así que una fila AL DIA puede mostrar 1.
+	 *    NULL si nunca aportó.
 	 *  - Habilitado para voto: estado ACTIVO y AL DIA.
 	 *  - Elegible para miembro: estado ACTIVO y numeroAportes >= minimoAportes.
 	 *
