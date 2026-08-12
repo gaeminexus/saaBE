@@ -164,6 +164,22 @@ public class GeneracionArchivoPetro implements Serializable {
     @Column(name = "GNAPFCPR")
     private LocalDate fechaProcesamiento;
 
+    /**
+     * Fecha en que se descargó el archivo TXT.
+     * Mientras esté en NULL la generación se puede eliminar; una vez
+     * descargado el archivo ya salió del sistema y la generación queda fija.
+     */
+    @Basic
+    @Column(name = "GNAPFCDS")
+    private LocalDate fechaDescarga;
+
+    /**
+     * Usuario que descargó el archivo TXT.
+     */
+    @Basic
+    @Column(name = "GNAPUSDS", length = 50)
+    private String usuarioDescarga;
+
     // ============================================================
     // OBSERVACIONES
     // ============================================================
@@ -323,6 +339,22 @@ public class GeneracionArchivoPetro implements Serializable {
 
     public void setFechaProcesamiento(LocalDate fechaProcesamiento) {
         this.fechaProcesamiento = fechaProcesamiento;
+    }
+
+    public LocalDate getFechaDescarga() {
+        return fechaDescarga;
+    }
+
+    public void setFechaDescarga(LocalDate fechaDescarga) {
+        this.fechaDescarga = fechaDescarga;
+    }
+
+    public String getUsuarioDescarga() {
+        return usuarioDescarga;
+    }
+
+    public void setUsuarioDescarga(String usuarioDescarga) {
+        this.usuarioDescarga = usuarioDescarga;
     }
 
     public String getObservaciones() {

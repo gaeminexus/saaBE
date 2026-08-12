@@ -1,5 +1,8 @@
 package com.saa.ws.rest.crd;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 
@@ -18,6 +21,7 @@ import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -233,26 +237,137 @@ public class GeneracionArchivoPetroRest {
     }
 
     /**
+     * GET - Descarga el archivo TXT de una generación y la marca como descargada.
+     *
+     * Una vez descargado el archivo la generación ya NO se puede eliminar.
+     *
+     * @param codigoGeneracion ID de la generación
+     * @param usuario Usuario que descarga (opcional; por defecto el de la generación)
+     * @return Response con el archivo TXT como adjunto
+     */
+    @GET
+    @Path("/descargarArchivo/{codigoGeneracion}")
+    @Produces(MediaType.APPLICATION_OCTET_STREAM)
+    public Response descargarArchivo(@PathParam("codigoGeneracion") Long codigoGeneracion,
+                                     @QueryParam("usuario") String usuario) {
+        System.out.println("LLEGA AL SERVICIO DESCARGAR ARCHIVO PETRO: " + codigoGeneracion);
+        try {
+            if (codigoGeneracion == null || codigoGeneracion <= 0) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity("ID de generación inválido")
+                        .build();
+            }
+
+            GeneracionArchivoPetro generacion = generacionArchivoPetroService.buscarPorId(codigoGeneracion);
+            if (generacion == null) {
+                return Response.status(Response.Status.NOT_FOUND)
+                        .entity("Generación no encontrada con ID: " + codigoGeneracion)
+                        .build();
+            }
+
+            String rutaArchivo = generacion.getRutaArchivo();
+            if (rutaArchivo == null || rutaArchivo.trim().isEmpty()) {
+                return Response.status(Response.Status.CONFLICT)
+                        .entity("La generación aún no tiene archivo generado")
+                        .build();
+            }
+
+            File archivo = new File(rutaArchivo);
+            if (!archivo.exists()) {
+                return Response.status(Response.Status.NOT_FOUND)
+                        .entity("El archivo no existe en el servidor: " + rutaArchivo)
+                        .build();
+            }
+
+            // Se marca ANTES de entregar el archivo: a partir de aquí la
+            // generación queda bloqueada para eliminación.
+            String usuarioDescarga = (usuario != null && !usuario.trim().isEmpty())
+                    ? usuario
+                    : generacion.getUsuarioGeneracion();
+            generacionArchivoPetroService.marcarDescargado(codigoGeneracion, usuarioDescarga);
+
+            String nombreArchivo = generacion.getNombreArchivo() != null
+                    ? generacion.getNombreArchivo()
+                    : archivo.getName();
+
+            InputStream flujo = new FileInputStream(archivo);
+
+            return Response.ok(flujo)
+                    .header("Content-Disposition", "attachment; filename=\"" + nombreArchivo + "\"")
+                    .build();
+
+        } catch (Throwable e) {
+            e.printStackTrace();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al descargar el archivo de la generación: " + e.getMessage())
+                    .build();
+        }
+    }
+
+    /**
+     * DELETE - Elimina una generación completa (cabecera, detalles, partícipes,
+     * cuotas y archivo TXT) para poder volver a generar el periodo.
+     *
+     * Rechaza la eliminación con 409 CONFLICT si el archivo ya fue descargado
+     * o si la generación ya fue marcada como ENVIADA o PROCESADA.
+     *
+     * @param codigoGeneracion ID de la generación
+     * @param usuario Usuario que elimina
+     * @return Response con el resumen de lo eliminado
+     */
+    @DELETE
+    @Path("/eliminar/{codigoGeneracion}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response eliminarGeneracion(@PathParam("codigoGeneracion") Long codigoGeneracion,
+                                       @QueryParam("usuario") String usuario) {
+        System.out.println("LLEGA AL SERVICIO ELIMINAR GENERACION PETRO: " + codigoGeneracion);
+        try {
+            if (codigoGeneracion == null || codigoGeneracion <= 0) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(Map.of("error", "ID de generación inválido"))
+                        .build();
+            }
+
+            Map<String, Object> resultado = generacionArchivoPetroService.eliminarGeneracion(codigoGeneracion, usuario);
+            return Response.ok(resultado).build();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+
+            String mensaje = e.getMessage() != null ? e.getMessage() : "Error al eliminar la generación";
+
+            if (mensaje.contains("no encontrada")) {
+                return Response.status(Response.Status.NOT_FOUND)
+                        .entity(Map.of("error", mensaje))
+                        .build();
+            }
+
+            if (mensaje.contains("No se puede eliminar")) {
+                return Response.status(Response.Status.CONFLICT)
+                        .entity(Map.of("error", mensaje))
+                        .build();
+            }
+
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(Map.of("error", mensaje))
+                    .build();
+        }
+    }
+
+    /**
      * Elimina un registro de GeneracionArchivoPetro por ID.
-     * 
+     *
+     * Delega en el mismo proceso que /eliminar/{codigoGeneracion} para que el
+     * borrado siempre pase por las validaciones y arrastre el detalle.
+     *
      * @param id Identificador del registro
      * @return Response con resultado de la eliminación
      */
     @DELETE
     @Path("/{id}")
     @Produces(MediaType.APPLICATION_JSON)
-    public Response delete(@PathParam("id") Long id) {
+    public Response delete(@PathParam("id") Long id, @QueryParam("usuario") String usuario) {
         System.out.println("LLEGA AL SERVICIO DELETE");
-        try {
-            GeneracionArchivoPetro elimina = new GeneracionArchivoPetro();
-            generacionArchivoPetroDaoService.remove(elimina, id);
-            return Response.status(Response.Status.NO_CONTENT)
-                    .build();
-        } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
-                    .entity("Error al eliminar cantón: " + e.getMessage())
-                    .type(MediaType.APPLICATION_JSON)
-                    .build();
-        }
+        return eliminarGeneracion(id, usuario);
     }
 }

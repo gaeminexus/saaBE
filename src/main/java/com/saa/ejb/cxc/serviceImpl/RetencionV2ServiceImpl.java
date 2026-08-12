@@ -1333,11 +1333,14 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 			Long idEmpresa = retencion.getFacturador().getEmpresa().getCodigo();
 			System.out.println("PASO 0: Validando cuentas contables para empresa " + idEmpresa + "...");
 
-			// Convertir DetalleRetencionV2 → DetalleRetencion para reutilizar validador
+			// Convertir DetalleRetencionV2 → DetalleRetencion para reutilizar validador.
+			// codImpuesto es obligatorio: sin él el validador no puede resolver la
+			// categoría LSRI y buscaría la cuenta en el catálogo equivocado.
 			java.util.List<com.saa.model.cxc.DetalleRetencion> detalesParaValidar = new java.util.ArrayList<>();
 			if (detalles != null) {
 				for (DetalleRetencionV2 d : detalles) {
 					com.saa.model.cxc.DetalleRetencion dr = new com.saa.model.cxc.DetalleRetencion();
+					dr.setCodImpuesto(d.getCodImpuesto());
 					dr.setCodRetencion(d.getCodRetencion());
 					dr.setValorReten(d.getValorReten());
 					detalesParaValidar.add(dr);

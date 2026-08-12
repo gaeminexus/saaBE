@@ -1585,18 +1585,35 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         }
 
         // 2. Validar cuenta contable de cada código de retención en TSRI
+        //    La clave de deduplicación es (codImpuesto, codRetencion): el mismo
+        //    código puede existir en la categoría de Renta y en la de IVA con
+        //    cuentas distintas.
         if (detalles != null) {
             java.util.Set<String> codigosValidados = new java.util.HashSet<>();
             for (com.saa.model.cxc.DetalleRetencion d : detalles) {
                 String cod = d.getCodRetencion();
-                if (cod != null && !cod.isEmpty() && !codigosValidados.contains(cod)) {
-                    codigosValidados.add(cod);
-                    PlanCuenta pc = obtenerCuentaPorCodigoTsri(cod);
-                    if (pc == null) {
-                        errores.add("El código de retención '" + cod
-                                + "' no tiene cuenta contable asignada en TSRI. "
-                                + "Configure la cuenta en Facturación → Tipos SRI.");
-                    }
+                String codImpuesto = d.getCodImpuesto();
+                if (cod == null || cod.isEmpty()) {
+                    continue;
+                }
+                String clave = codImpuesto + "|" + cod;
+                if (codigosValidados.contains(clave)) {
+                    continue;
+                }
+                codigosValidados.add(clave);
+
+                if (lsriPorCodImpuesto(codImpuesto, cod) == null) {
+                    errores.add("El detalle con código de retención '" + cod
+                            + "' no indica el tipo de impuesto (codImpuesto): se espera "
+                            + "'1' (Renta) o '2' (IVA), y llegó '" + codImpuesto + "'.");
+                    continue;
+                }
+                PlanCuenta pc = obtenerCuentaRetencionEmitida(codImpuesto, cod);
+                if (pc == null) {
+                    errores.add("El código de retención '" + cod + "' ("
+                            + ("1".equals(codImpuesto) ? "Renta" : "IVA")
+                            + ") no tiene cuenta contable asignada en TSRI. "
+                            + "Configure la cuenta en Facturación → Tipos SRI.");
                 }
             }
         }
@@ -1642,11 +1659,12 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         double totalRetenido = 0.0;
         for (com.saa.model.cxc.DetalleRetencion det : detalles) {
             String codRetencion = det.getCodRetencion();
-            PlanCuenta pcReten = obtenerCuentaPorCodigoTsri(codRetencion);
+            String codImpuesto  = det.getCodImpuesto();
+            PlanCuenta pcReten = obtenerCuentaRetencionEmitida(codImpuesto, codRetencion);
             if (pcReten == null) {
                 throw new IncomeException(
                         "No se encontró cuenta contable para el código de retención '"
-                        + codRetencion + "' en TSRI. "
+                        + codRetencion + "' (codImpuesto=" + codImpuesto + ") en TSRI. "
                         + "Configure la cuenta en Facturación → Tipos SRI.");
             }
             double valor = nvl(det.getValorReten());
@@ -1764,21 +1782,66 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         }
     }
 
-    /** @deprecated Usar {@link #obtenerCuentaRetencionCompra(String, String)} para retenciones CXP. */
-    @Deprecated
-    private PlanCuenta obtenerCuentaPorCodigoTsri(String codigoTsri) {
-        try {
-            String sql = "SELECT t.planCuenta FROM Tsri t "
-                    + "WHERE t.codigo = :codigo AND t.estado = 1";
-            Query q = em.createQuery(sql);
-            q.setParameter("codigo", codigoTsri);
-            q.setMaxResults(1);
-            List<?> result = q.getResultList();
-            return result.isEmpty() ? null : (PlanCuenta) result.get(0);
-        } catch (Exception e) {
-            System.err.println("⚠ Error buscando cuenta TSRI codigo=" + codigoTsri + ": " + e.getMessage());
+    /**
+     * Busca la cuenta contable en CBR.TSRI para un código de retención emitida
+     * (CXC). Equivalente a {@link #obtenerCuentaRetencionCompra(String, String)}
+     * pero contra la entidad {@code Tsri} (esquema CBR) en vez de
+     * {@code TsriCompra} (esquema PGS).
+     * <p>
+     * El filtro por {@code lsri.tabla} es obligatorio: TSRI es un catálogo
+     * genérico donde CODIGO sólo es único DENTRO de su categoría LSRI. El mismo
+     * código (p. ej. '320') existe en varias categorías, así que buscar sólo por
+     * CODIGO devuelve una fila arbitraria — y con ella una cuenta contable de
+     * otro concepto.
+     *
+     * @param codImpuesto  : Tipo de impuesto retenido ("1"=Renta, "2"=IVA)
+     * @param codRetencion : Código de retención del SRI (ej. "320", "10")
+     * @return : Cuenta contable configurada, o null si no está configurada
+     */
+    private PlanCuenta obtenerCuentaRetencionEmitida(String codImpuesto, String codRetencion) {
+        String lsriTabla = lsriPorCodImpuesto(codImpuesto, codRetencion);
+        if (lsriTabla == null) {
             return null;
         }
+        try {
+            String sql = "SELECT t.planCuenta FROM Tsri t "
+                    + "WHERE t.lsri.tabla = :lsriTabla AND t.codigo = :codigo AND t.estado = 1";
+            Query q = em.createQuery(sql);
+            q.setParameter("lsriTabla", lsriTabla);
+            q.setParameter("codigo", codRetencion);
+            q.setMaxResults(1);
+            List<?> result = q.getResultList();
+            if (result.isEmpty()) {
+                System.err.println("⚠ No se encontró cuenta en CBR.TSRI: lsri.tabla=" + lsriTabla
+                        + " | codRetencion=" + codRetencion);
+                return null;
+            }
+            return (PlanCuenta) result.get(0);
+        } catch (Exception e) {
+            System.err.println("⚠ Error buscando cuenta TSRI lsri=" + lsriTabla
+                    + " codRetencion=" + codRetencion + ": " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Traduce el código de impuesto del SRI a la categoría LSRI que agrupa sus
+     * códigos de retención.
+     * @param codImpuesto  : "1"=Renta, "2"=IVA
+     * @param codRetencion : Sólo para el mensaje de log
+     * @return : "608" (Renta), "20" (IVA), o null si el código es desconocido
+     */
+    private String lsriPorCodImpuesto(String codImpuesto, String codRetencion) {
+        if ("1".equals(codImpuesto)) {
+            return "608"; // Retención de Renta
+        }
+        if ("2".equals(codImpuesto)) {
+            return "20";  // Retención de IVA
+        }
+        System.err.println("⚠ codImpuesto desconocido='" + codImpuesto
+                + "' para codRetencion='" + codRetencion
+                + "'. No se puede determinar la categoría LSRI.");
+        return null;
     }
 
     private String nvl2(Double val) {
@@ -1796,8 +1859,10 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     // DEBE:  cuenta CxP del proveedor (PersonaCuentaContable tipoCuenta=1) por
     //        el total retenido.
     // HABER: una línea por detalle → cuenta desde Tsri según (codImpuesto,
-    //        codRetencion). Usa obtenerCuentaPorCodigoTsri igual que V1 porque
-    //        las retenciones emitidas (CXC) usan la tabla Tsri (no TsriCompra).
+    //        codRetencion). Usa obtenerCuentaRetencionEmitida igual que V1:
+    //        las retenciones emitidas (CXC) leen CBR.TSRI (no PGS.TSRI), pero
+    //        el filtro por lsri.tabla es igual de obligatorio — CODIGO sólo es
+    //        único dentro de su categoría LSRI.
     // =========================================================================
 
     @Override
@@ -1834,11 +1899,12 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         double totalRetenido = 0.0;
         for (com.saa.model.cxc.DetalleRetencionV2 det : detalles) {
             String codRetencion = det.getCodRetencion();
-            PlanCuenta pcReten = obtenerCuentaPorCodigoTsri(codRetencion);
+            String codImpuesto  = det.getCodImpuesto();
+            PlanCuenta pcReten = obtenerCuentaRetencionEmitida(codImpuesto, codRetencion);
             if (pcReten == null) {
                 throw new IncomeException(
                         "No se encontró cuenta contable para el código de retención '"
-                        + codRetencion + "' en TSRI. "
+                        + codRetencion + "' (codImpuesto=" + codImpuesto + ") en TSRI. "
                         + "Configure la cuenta en Facturación → Tipos SRI.");
             }
             double valor = nvl(det.getValorReten());

@@ -34,6 +34,8 @@ import com.saa.rubros.EstadoParticipeEntidad;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
+import jakarta.ejb.TransactionAttribute;
+import jakarta.ejb.TransactionAttributeType;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
@@ -484,6 +486,174 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
         generacion.setFechaModificacion(LocalDate.now());
         
         return actualizar(generacion);
+    }
+
+    @Override
+    public GeneracionArchivoPetro marcarDescargado(Long codigoGeneracion, String usuario) throws Exception {
+        System.out.println("Service: Marcando como descargada la generación " + codigoGeneracion);
+
+        GeneracionArchivoPetro generacion = buscarPorId(codigoGeneracion);
+        if (generacion == null) {
+            throw new Exception("Generación no encontrada");
+        }
+
+        // La primera descarga es la que cuenta: si vuelven a bajar el archivo se
+        // conserva la marca original para no perder la auditoría.
+        if (generacion.getFechaDescarga() != null) {
+            System.out.println("La generación ya estaba marcada como descargada el " + generacion.getFechaDescarga()
+                + " por " + generacion.getUsuarioDescarga());
+            return generacion;
+        }
+
+        generacion.setFechaDescarga(LocalDate.now());
+        generacion.setUsuarioDescarga(usuario);
+        generacion.setUsuarioModificacion(usuario);
+        generacion.setFechaModificacion(LocalDate.now());
+
+        return actualizar(generacion);
+    }
+
+    // ========================================================================
+    // ELIMINACIÓN DE UNA GENERACIÓN
+    // ========================================================================
+
+    @Override
+    @TransactionAttribute(TransactionAttributeType.REQUIRED)
+    public Map<String, Object> eliminarGeneracion(Long codigoGeneracion, String usuario) throws Exception {
+        System.out.println("=== SERVICIO: ELIMINANDO GENERACIÓN PETROCOMERCIAL ===");
+        System.out.println("Código Generación: " + codigoGeneracion + " - Usuario: " + usuario);
+
+        if (codigoGeneracion == null) {
+            throw new Exception("Debe indicar el código de la generación a eliminar");
+        }
+
+        // selectById usa getSingleResult: si no hay fila lanza NoResultException.
+        GeneracionArchivoPetro generacion;
+        try {
+            generacion = buscarPorId(codigoGeneracion);
+        } catch (Throwable e) {
+            throw new Exception("Generación no encontrada con ID: " + codigoGeneracion);
+        }
+        if (generacion == null) {
+            throw new Exception("Generación no encontrada con ID: " + codigoGeneracion);
+        }
+
+        validarEliminacion(generacion);
+
+        String nombreArchivo = generacion.getNombreArchivo();
+        String rutaArchivo = generacion.getRutaArchivo();
+        Long mes = generacion.getMesPeriodo();
+        Long anio = generacion.getAnioPeriodo();
+
+        // Borrado de abajo hacia arriba: CXPG -> PDGA -> DTGA -> GNAP.
+        // Se usan deletes masivos con subconsulta porque las relaciones no
+        // declaran cascada y las FK impiden borrar la cabecera primero.
+        int cuotasEliminadas = em.createQuery(
+                "DELETE FROM CuotaXParticipeGeneracion c " +
+                "WHERE c.participeDetalleGeneracion IN (" +
+                "   SELECT p FROM ParticipeDetalleGeneracionArchivo p " +
+                "   WHERE p.detalleGeneracionArchivo IN (" +
+                "      SELECT d FROM DetalleGeneracionArchivo d " +
+                "      WHERE d.generacionArchivoPetro.codigo = :codigoGeneracion))")
+            .setParameter("codigoGeneracion", codigoGeneracion)
+            .executeUpdate();
+
+        int participesEliminados = em.createQuery(
+                "DELETE FROM ParticipeDetalleGeneracionArchivo p " +
+                "WHERE p.detalleGeneracionArchivo IN (" +
+                "   SELECT d FROM DetalleGeneracionArchivo d " +
+                "   WHERE d.generacionArchivoPetro.codigo = :codigoGeneracion)")
+            .setParameter("codigoGeneracion", codigoGeneracion)
+            .executeUpdate();
+
+        int detallesEliminados = em.createQuery(
+                "DELETE FROM DetalleGeneracionArchivo d " +
+                "WHERE d.generacionArchivoPetro.codigo = :codigoGeneracion")
+            .setParameter("codigoGeneracion", codigoGeneracion)
+            .executeUpdate();
+
+        System.out.println("Registros eliminados -> CXPG: " + cuotasEliminadas
+            + ", PDGA: " + participesEliminados + ", DTGA: " + detallesEliminados);
+
+        try {
+            dao.remove(generacion, codigoGeneracion);
+        } catch (Throwable e) {
+            throw new Exception("Error al eliminar la generación: " + e.getMessage(), e);
+        }
+
+        // El archivo se borra al final: si algo falla antes, la transacción hace
+        // rollback y el TXT sigue en disco junto con sus registros.
+        boolean archivoEliminado = eliminarArchivoFisico(rutaArchivo);
+
+        System.out.println("=== GENERACIÓN " + codigoGeneracion + " ELIMINADA ===");
+
+        Map<String, Object> respuesta = new HashMap<>();
+        respuesta.put("success", true);
+        respuesta.put("mensaje", "Generación eliminada exitosamente. El periodo "
+            + mes + "/" + anio + " puede volver a generarse.");
+        respuesta.put("codigoGeneracion", codigoGeneracion);
+        respuesta.put("cuotasEliminadas", cuotasEliminadas);
+        respuesta.put("participesEliminados", participesEliminados);
+        respuesta.put("detallesEliminados", detallesEliminados);
+        respuesta.put("nombreArchivo", nombreArchivo);
+        respuesta.put("archivoEliminado", archivoEliminado);
+
+        return respuesta;
+    }
+
+    /**
+     * Reglas de negocio para poder eliminar una generación.
+     *
+     * No se elimina si el archivo TXT ya fue descargado (salió del sistema y
+     * pudo entregarse a Petrocomercial), ni si la generación ya fue marcada
+     * como ENVIADA o PROCESADA.
+     */
+    private void validarEliminacion(GeneracionArchivoPetro generacion) throws Exception {
+        if (generacion.getFechaDescarga() != null) {
+            throw new Exception("No se puede eliminar la generación: el archivo ya fue descargado el "
+                + generacion.getFechaDescarga()
+                + (generacion.getUsuarioDescarga() != null ? " por " + generacion.getUsuarioDescarga() : "") + ".");
+        }
+
+        Long estado = generacion.getEstado();
+        if (estado != null && estado == 2L) {
+            throw new Exception("No se puede eliminar la generación: ya fue marcada como ENVIADA a Petrocomercial.");
+        }
+        if (estado != null && estado == 3L) {
+            throw new Exception("No se puede eliminar la generación: ya fue marcada como PROCESADA.");
+        }
+    }
+
+    /**
+     * Borra del disco el archivo TXT de la generación.
+     *
+     * Que el archivo ya no esté no es un error: la generación pudo no haber
+     * llegado a generarlo, o pudo borrarse a mano.
+     *
+     * @return true si el archivo existía y se eliminó
+     */
+    private boolean eliminarArchivoFisico(String rutaArchivo) {
+        if (rutaArchivo == null || rutaArchivo.trim().isEmpty()) {
+            return false;
+        }
+
+        try {
+            File archivo = new File(rutaArchivo);
+            if (!archivo.exists()) {
+                System.out.println("El archivo " + rutaArchivo + " ya no existe en disco");
+                return false;
+            }
+
+            boolean eliminado = archivo.delete();
+            System.out.println(eliminado
+                ? "Archivo eliminado del disco: " + rutaArchivo
+                : "ADVERTENCIA: no se pudo eliminar el archivo " + rutaArchivo);
+            return eliminado;
+        } catch (Throwable e) {
+            // El registro ya se borró; dejar el TXT huérfano no justifica tumbar la operación.
+            System.err.println("ADVERTENCIA: error al eliminar el archivo " + rutaArchivo + ": " + e.getMessage());
+            return false;
+        }
     }
 
     // ========================================================================

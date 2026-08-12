@@ -145,10 +145,38 @@ public interface GeneracionArchivoPetroService extends EntityService<GeneracionA
     
     /**
      * Regenera el archivo TXT de una generación.
-     * 
+     *
      * @param codigoGeneracion ID de la generación
      * @return Ruta del archivo regenerado
      * @throws Exception Si hay error
      */
     String regenerarArchivo(Long codigoGeneracion) throws Exception;
+
+    /**
+     * Marca la generación como descargada (fecha y usuario de descarga).
+     *
+     * A partir de este momento la generación ya no se puede eliminar: el
+     * archivo salió del sistema y pudo haber sido entregado a Petrocomercial.
+     * Si ya estaba marcada, se conserva la marca original.
+     *
+     * @param codigoGeneracion ID de la generación
+     * @param usuario Usuario que descarga
+     * @return Generación actualizada
+     * @throws Exception Si hay error
+     */
+    GeneracionArchivoPetro marcarDescargado(Long codigoGeneracion, String usuario) throws Exception;
+
+    /**
+     * Elimina físicamente una generación y todo su detalle (CXPG, PDGA, DTGA),
+     * incluido el archivo TXT del disco, para poder volver a generar el periodo.
+     *
+     * NO se puede eliminar si el archivo TXT ya fue descargado, ni si la
+     * generación está en estado ENVIADO (2) o PROCESADO (3).
+     *
+     * @param codigoGeneracion ID de la generación
+     * @param usuario Usuario que elimina
+     * @return Mapa con el resumen de lo eliminado
+     * @throws Exception Si no existe o no cumple las condiciones para eliminarse
+     */
+    Map<String, Object> eliminarGeneracion(Long codigoGeneracion, String usuario) throws Exception;
 }
