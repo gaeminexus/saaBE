@@ -267,7 +267,7 @@
 						<pen lineWidth="0.3"/>
 					</box>
 				</element>
-				<element kind="staticText" uuid="8b26c207-cade-4eae-a2b2-8f9a99f3323e" mode="Opaque" x="0" y="3" width="80" height="14" backcolor="#E8E8E8" fontSize="7.0" bold="true" vTextAlign="Middle">
+				<element kind="staticText" uuid="8b26c207-cade-4eae-a2b2-8f9a99f3323e" mode="Opaque" x="0" y="2" width="80" height="14" backcolor="#E8E8E8" fontSize="7.0" bold="true" vTextAlign="Middle">
 					<text><![CDATA[Doc Sustento:]]></text>
 					<box leftPadding="3">
 						<pen lineWidth="0.3"/>
@@ -418,14 +418,15 @@
 				<pen lineWidth="0.3"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="b1000037-0000-0000-0000-000000000037" x="270" y="333" width="80" height="13" backcolor="#F0F0F0" fontSize="8.0" bold="true">
+		<element kind="staticText" uuid="b1000037-0000-0000-0000-000000000037" x="0" y="348" width="70" height="13" backcolor="#F0F0F0" fontSize="8.0" bold="true">
 			<text><![CDATA[Dir. Establecimiento:]]></text>
 			<box leftPadding="3">
 				<pen lineWidth="0.3"/>
 			</box>
 		</element>
-		<element kind="textField" uuid="b1000038-0000-0000-0000-000000000038" x="350" y="333" width="185" height="29" fontSize="8.0" textAdjust="StretchHeight" blankWhenNull="true">
+		<element kind="textField" uuid="b1000038-0000-0000-0000-000000000038" x="70" y="348" width="465" height="13" fontSize="8.0" textAdjust="StretchHeight" blankWhenNull="true">
 			<expression><![CDATA[$F{DIRECCIONPROVEEDOR}]]></expression>
+			<property name="com.jaspersoft.studio.unit.height" value="px"/>
 			<box leftPadding="3">
 				<pen lineWidth="0.3"/>
 			</box>
