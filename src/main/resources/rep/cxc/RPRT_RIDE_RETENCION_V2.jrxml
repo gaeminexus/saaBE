@@ -207,39 +207,27 @@
 				<element kind="rectangle" uuid="a1000001-0000-0000-0000-000000000001" mode="Opaque" x="0" y="2" width="535" height="14" backcolor="#E8E8E8">
 					<pen lineWidth="0.3"/>
 				</element>
-				<element kind="staticText" uuid="a1000002-0000-0000-0000-000000000002" mode="Opaque" x="0" y="2" width="80" height="14" backcolor="#E8E8E8" fontSize="7.0" bold="true" vTextAlign="Middle">
-					<text><![CDATA[Factura:]]></text>
+				<element kind="staticText" uuid="a1000002-0000-0000-0000-000000000002" mode="Opaque" x="90" y="2" width="80" height="14" backcolor="#E8E8E8" fontSize="7.0" bold="true" vTextAlign="Middle">
+					<text><![CDATA[Factura - ]]></text>
 					<box leftPadding="3">
 						<pen lineWidth="0.3"/>
 					</box>
 				</element>
-				<element kind="textField" uuid="a1000003-0000-0000-0000-000000000003" mode="Opaque" x="80" y="2" width="110" height="14" backcolor="#E8E8E8" fontSize="7.0" vTextAlign="Middle">
+				<element kind="textField" uuid="a1000003-0000-0000-0000-000000000003" mode="Opaque" x="170" y="2" width="110" height="14" backcolor="#E8E8E8" fontSize="7.0" vTextAlign="Middle">
 					<expression><![CDATA[$F{NUMDOCRETEN}]]></expression>
 					<box leftPadding="3">
 						<pen lineWidth="0.3"/>
 					</box>
 				</element>
-				<element kind="staticText" uuid="a1000004-0000-0000-0000-000000000004" mode="Opaque" x="190" y="2" width="60" height="14" backcolor="#E8E8E8" fontSize="7.0" bold="true" vTextAlign="Middle">
+				<element kind="staticText" uuid="a1000004-0000-0000-0000-000000000004" mode="Opaque" x="393" y="3" width="60" height="14" backcolor="#E8E8E8" fontSize="7.0" bold="true" vTextAlign="Middle">
 					<text><![CDATA[F. Emisión:]]></text>
 					<box leftPadding="3">
 						<pen lineWidth="0.3"/>
 					</box>
 				</element>
-				<element kind="textField" uuid="a1000005-0000-0000-0000-000000000005" mode="Opaque" x="250" y="2" width="80" height="14" backcolor="#E8E8E8" fontSize="7.0" vTextAlign="Middle">
+				<element kind="textField" uuid="a1000005-0000-0000-0000-000000000005" mode="Opaque" x="453" y="3" width="80" height="14" backcolor="#E8E8E8" fontSize="7.0" vTextAlign="Middle">
 					<expression><![CDATA[$F{FECHAEMIDOC}]]></expression>
 					<box leftPadding="3">
-						<pen lineWidth="0.3"/>
-					</box>
-				</element>
-				<element kind="staticText" uuid="a1000006-0000-0000-0000-000000000006" mode="Opaque" x="330" y="2" width="75" height="14" backcolor="#E8E8E8" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
-					<text><![CDATA[Total:]]></text>
-					<box rightPadding="3">
-						<pen lineWidth="0.3"/>
-					</box>
-				</element>
-				<element kind="textField" uuid="a1000007-0000-0000-0000-000000000007" mode="Opaque" x="405" y="2" width="130" height="14" backcolor="#E8E8E8" fontSize="7.0" pattern="#,##0.00" hTextAlign="Right" vTextAlign="Middle">
-					<expression><![CDATA[$F{TOTALSINIMPUESTOS}]]></expression>
-					<box rightPadding="3">
 						<pen lineWidth="0.3"/>
 					</box>
 				</element>
@@ -276,6 +264,12 @@
 				<element kind="staticText" uuid="a1000015-0000-0000-0000-000000000015" mode="Opaque" x="470" y="18" width="65" height="18" forecolor="#FFFFFF" backcolor="#555555" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
 					<text><![CDATA[Valor Retenido]]></text>
 					<box rightPadding="3">
+						<pen lineWidth="0.3"/>
+					</box>
+				</element>
+				<element kind="staticText" uuid="8b26c207-cade-4eae-a2b2-8f9a99f3323e" mode="Opaque" x="0" y="3" width="80" height="14" backcolor="#E8E8E8" fontSize="7.0" bold="true" vTextAlign="Middle">
+					<text><![CDATA[Doc Sustento:]]></text>
+					<box leftPadding="3">
 						<pen lineWidth="0.3"/>
 					</box>
 				</element>
@@ -431,7 +425,7 @@
 			</box>
 		</element>
 		<element kind="textField" uuid="b1000038-0000-0000-0000-000000000038" x="350" y="333" width="185" height="29" fontSize="8.0" textAdjust="StretchHeight" blankWhenNull="true">
-			<expression><![CDATA[$F{DIRESTABLECIMIENTO}]]></expression>
+			<expression><![CDATA[$F{DIRECCIONPROVEEDOR}]]></expression>
 			<box leftPadding="3">
 				<pen lineWidth="0.3"/>
 			</box>

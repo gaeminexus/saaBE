@@ -6,7 +6,6 @@ import java.io.FileWriter;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -15,7 +14,6 @@ import java.util.Map;
 import com.saa.basico.ejb.FechaService;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
-import com.saa.ejb.crd.dao.AporteDaoService;
 import com.saa.ejb.crd.dao.GeneracionArchivoPetroDaoService;
 import com.saa.ejb.crd.service.CuotaXParticipeGeneracionService;
 import com.saa.ejb.crd.service.DetalleGeneracionArchivoService;
@@ -65,15 +63,8 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
     @EJB
     private FechaService fechaService;
 
-    @EJB
-    private AporteDaoService aporteDaoService;
-
     @PersistenceContext
     private EntityManager em;
-
-    /** Tipos de aporte que componen el aporte mensual: 9 = JUBILACIÓN, 11 = CESANTÍA. */
-    private static final Long TIPO_APORTE_JUBILACION = 9L;
-    private static final Long TIPO_APORTE_CESANTIA   = 11L;
 
     // ========================================================================
     // MÉTODOS CRUD BÁSICOS
@@ -666,13 +657,9 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
     /**
      * Recopila los aportes personales (producto AH) del periodo.
      *
-     * Incluye a los partícipes ACTIVOS y a los que están en ACTIVO EN MORA.
-     * A los primeros se les cobra un mes; a los morosos se les cobra la deuda
-     * acumulada: aporte mensual x meses transcurridos desde su último aporte
-     * hasta el periodo que se está generando, ese periodo incluido.
-     *
-     * Ejemplo: último aporte en abril, generando agosto -> 4 meses
-     * (mayo, junio, julio y agosto). No hay tope de meses.
+     * Solo se incluye a los partícipes en estado ACTIVO; los que están en
+     * ACTIVO EN MORA quedan fuera del archivo. A cada partícipe incluido se le
+     * cobra un solo mes de aporte (jubilación + cesantía).
      *
      * @param listaAportes Lista donde se acumulan las líneas del producto AH
      * @param mes          Mes del periodo que se genera
@@ -680,19 +667,17 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
      */
     private void recopilarAportes(List<LineaArchivo> listaAportes, Long mes, Long anio) throws Exception {
         System.out.println("Recopilando aportes personales...");
-        System.out.println("Filtros: Entidad en estado ACTIVO o ACTIVO EN MORA, HistorialSueldo.estado=99");
+        System.out.println("Filtros: Entidad en estado ACTIVO (se excluye ACTIVO EN MORA), HistorialSueldo.estado=99");
 
         String jpql = "SELECT h FROM HistorialSueldo h " +
-                     "WHERE h.entidad.idEstado IN :estadosIncluidos " +
+                     "WHERE h.entidad.idEstado = :estadoActivo " +
                      "AND h.estado = 99 " +
                      "AND h.entidad.rolPetroComercial IS NOT NULL " +
                      "AND h.entidad.rolPetroComercial > 0 " +
                      "ORDER BY h.entidad.codigo, h.fechaIngreso DESC";
 
         Query query = em.createQuery(jpql);
-        query.setParameter("estadosIncluidos", Arrays.asList(
-                (long) EstadoParticipeEntidad.ACTIVO,
-                (long) EstadoParticipeEntidad.ACTIVO_EN_MORA));
+        query.setParameter("estadoActivo", (long) EstadoParticipeEntidad.ACTIVO);
 
         @SuppressWarnings("unchecked")
         List<HistorialSueldo> resultados = query.getResultList();
@@ -710,24 +695,11 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
             ultimaEntidad = historial.getEntidad().getCodigo();
         }
 
-        Map<Long, Long> mesesACobrarPorEntidad = calcularMesesACobrarMorosos(historialPorEntidad, mes, anio);
-
         for (HistorialSueldo historial : historialPorEntidad) {
             Long codigoEntidad = historial.getEntidad().getCodigo();
 
             Double montoJubilacion = historial.getMontoJubilacion() != null ? historial.getMontoJubilacion() : 0.0;
             Double montoCesantia = historial.getMontoCesantia() != null ? historial.getMontoCesantia() : 0.0;
-
-            // Para los morosos se multiplica por los meses adeudados; para el
-            // resto el multiplicador es 1 y el comportamiento no cambia.
-            long mesesACobrar = mesesACobrarPorEntidad.getOrDefault(codigoEntidad, 1L);
-            if (mesesACobrar > 1L) {
-                montoJubilacion = montoJubilacion * mesesACobrar;
-                montoCesantia = montoCesantia * mesesACobrar;
-                System.out.println("   [MORA] Entidad " + codigoEntidad + " (rol "
-                    + historial.getEntidad().getRolPetroComercial() + "): se cobran "
-                    + mesesACobrar + " meses de aporte.");
-            }
 
             Double montoTotal = montoJubilacion + montoCesantia;
 
@@ -746,78 +718,6 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
         }
 
         System.out.println("Aportes recopilados: " + listaAportes.size());
-    }
-
-    /**
-     * Calcula, para los partícipes en ACTIVO EN MORA, cuántos meses de aporte hay
-     * que cobrarles en este periodo.
-     *
-     * Son los meses transcurridos entre su último aporte y el periodo que se
-     * genera, ese periodo incluido. Un partícipe que aportó el mes pasado da 1,
-     * que es el comportamiento normal.
-     *
-     * Si no se le encuentra ningún aporte previo no se puede calcular la deuda,
-     * así que se le cobra un solo mes y se deja constancia en el log.
-     *
-     * @return Mapa codigoEntidad -> meses a cobrar. Solo contiene morosos.
-     */
-    private Map<Long, Long> calcularMesesACobrarMorosos(List<HistorialSueldo> historiales,
-            Long mes, Long anio) throws Exception {
-
-        Map<Long, Long> resultado = new LinkedHashMap<>();
-
-        List<Long> codigosMorosos = new ArrayList<>();
-        for (HistorialSueldo h : historiales) {
-            Long estado = h.getEntidad().getIdEstado();
-            if (estado != null && estado == EstadoParticipeEntidad.ACTIVO_EN_MORA) {
-                codigosMorosos.add(h.getEntidad().getCodigo());
-            }
-        }
-
-        if (codigosMorosos.isEmpty()) {
-            return resultado;
-        }
-        System.out.println("Partícipes en ACTIVO EN MORA a incluir: " + codigosMorosos.size());
-
-        java.time.YearMonth periodoGeneracion = java.time.YearMonth.of(anio.intValue(), mes.intValue());
-        // Solo aportes anteriores al periodo que se genera.
-        java.time.LocalDateTime corte = periodoGeneracion.atDay(1).atStartOfDay();
-
-        List<Object[]> ultimasFechas;
-        try {
-            ultimasFechas = aporteDaoService.selectUltimaFechaAportePorEntidad(
-                codigosMorosos,
-                Arrays.asList(TIPO_APORTE_JUBILACION, TIPO_APORTE_CESANTIA),
-                corte);
-        } catch (Throwable e) {
-            throw new Exception("Error al calcular la deuda de los partícipes en mora: " + e.getMessage(), e);
-        }
-
-        Map<Long, java.time.YearMonth> ultimoMesPorEntidad = new LinkedHashMap<>();
-        for (Object[] fila : ultimasFechas) {
-            Long codigoEntidad = ((Number) fila[0]).longValue();
-            java.time.LocalDateTime ultimaFecha = (java.time.LocalDateTime) fila[1];
-            if (ultimaFecha != null) {
-                ultimoMesPorEntidad.put(codigoEntidad, java.time.YearMonth.from(ultimaFecha));
-            }
-        }
-
-        for (Long codigoEntidad : codigosMorosos) {
-            java.time.YearMonth ultimoMes = ultimoMesPorEntidad.get(codigoEntidad);
-
-            if (ultimoMes == null) {
-                System.out.println("   [MORA] Entidad " + codigoEntidad
-                    + " no registra aportes previos: no se puede calcular la deuda, se cobra 1 mes.");
-                resultado.put(codigoEntidad, 1L);
-                continue;
-            }
-
-            long meses = java.time.temporal.ChronoUnit.MONTHS.between(ultimoMes, periodoGeneracion);
-            // Nunca menos de un mes: el aporte del periodo que se genera siempre se cobra.
-            resultado.put(codigoEntidad, Math.max(1L, meses));
-        }
-
-        return resultado;
     }
 
     private void recopilarPrestamos(Long mes, Long anio, Map<String, List<LineaArchivo>> datosPorProducto) throws Exception {
