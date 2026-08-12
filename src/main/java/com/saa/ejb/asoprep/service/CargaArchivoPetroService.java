@@ -2,6 +2,7 @@ package com.saa.ejb.asoprep.service;
 
 import java.io.InputStream;
 import java.util.List;
+import java.util.Map;
 
 import com.saa.model.crd.CargaArchivo;
 import com.saa.model.crd.DetalleCargaArchivo;
@@ -61,5 +62,23 @@ public interface CargaArchivoPetroService {
      * @throws Throwable : Excepción en caso de error
      */
     String aplicarPagosArchivoPetro(Long codigoCargaArchivo) throws Throwable;
-    
+
+    /**
+     * Devuelve los registros de la carga cuyo valor descontado NO tiene definido
+     * a qué préstamo, cuota o aporte aplicarse.
+     *
+     * Son los registros con una novedad que impide determinar el destino
+     * automáticamente y para los que el usuario todavía no registró la
+     * afectación manual (AVPC), o la registró por menos de lo descontado.
+     *
+     * Mientras esta lista no esté vacía, aplicarPagosArchivoPetro se niega a
+     * procesar la carga. El frontend puede consultarla antes de procesar para
+     * mostrarle al usuario qué le falta resolver.
+     *
+     * @param codigoCargaArchivo : ID del CargaArchivo a revisar
+     * @return : Lista de registros con valores sin destino (vacía si todo está resuelto)
+     * @throws Throwable : Excepción en caso de error
+     */
+    List<Map<String, Object>> obtenerValoresSinDestino(Long codigoCargaArchivo) throws Throwable;
+
 }

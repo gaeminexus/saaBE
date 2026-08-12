@@ -8,7 +8,7 @@
 ## 1. Qué se va a hacer
 
 En los préstamos que **hoy** están en estado **CANCELADO ANTICIPADO**
-(`CRD.PRST.ESPSCDGO = 4`, `com.saa.rubros.EstadoPrestamo.CANCELADO_ANTICIPADO`),
+(`CRD.PRST.PRSTIDST = 4`, `com.saa.rubros.EstadoPrestamo.CANCELADO_ANTICIPADO`),
 se ubica la **última cuota pagada** y se le copia el saldo de capital al campo de pago extra:
 
 ```
@@ -31,10 +31,10 @@ La cuota del préstamo con el **mayor `DTPRNMCT` (numeroCuota)** entre las que t
 | Concepto | Tabla / columna | Campo Java |
 |---|---|---|
 | Préstamo | `CRD.PRST` | `Prestamo` |
-| Estado del préstamo | `PRST.ESPSCDGO` | `estadoPrestamo` |
+| **Estado del préstamo** | **`PRST.PRSTIDST`** | **`idEstado`** |
 | Cuota | `CRD.DTPR` | `DetallePrestamo` |
 | Número de cuota | `DTPR.DTPRNMCT` | `numeroCuota` |
-| Estado de la cuota | `DTPR.DTPRESTD` | `estado` |
+| **Estado de la cuota** | **`DTPR.DTPRESTD`** | **`estado`** |
 | Saldo de capital | `DTPR.DTPRSLCP` | `saldoCapital` |
 | Saldo otros (destino) | `DTPR.DTPRSLOT` | `saldoOtros` |
 | Saldo inicial de capital | `DTPR.DTPRSICP` | `saldoInicialCapital` |
@@ -47,6 +47,16 @@ Estados relevantes (`com.saa.rubros`):
 | `EstadoCuotaPrestamo.PAGADA` | 4 | Cuota pagada |
 | `EstadoCuotaPrestamo.CANCELADA_ANTICIPADA` | 7 | Cuota anulada por la cancelación anticipada |
 
+### Campos que NO se deben usar en este script
+
+| Columna | Por qué no |
+|---|---|
+| `PRST.ESPSCDGO` (`estadoPrestamo`) | Es la FK al catálogo `CRD.ESPS`, no el campo que lleva el estado operativo del préstamo. |
+| `DTPR.DTPRIDST` (`idEstado`) | En la cuota el estado vigente está en `DTPRESTD`; `DTPRIDST` se escribe como copia (`DetallePrestamoServiceImpl` línea 83) y puede quedar desfasado. |
+
+El estado del préstamo lo escribe `ProcesoCargaPetroServiceImpl.setIdEstado(...)` con los
+valores del rubro `EstadoPrestamo`, es decir **`PRSTIDST` sí contiene el 4**.
+
 ---
 
 ## 2. Bloque 1 — Controles previos (solo lectura)
@@ -54,12 +64,34 @@ Estados relevantes (`com.saa.rubros`):
 Correr los ocho en orden y anotar los resultados. Cada uno responde una pregunta
 concreta sobre qué va a pasar.
 
+### 1.0 — Contraste `PRSTIDST` vs `ESPSCDGO` (control de campo correcto)
+
+Confirma que se está filtrando por la columna correcta y muestra si ambas están o no
+alineadas en los datos actuales. Lo que importa es la fila `PRSTIDST = 4`.
+
+```sql
+SELECT p.PRSTIDST                       AS ID_ESTADO,
+       p.ESPSCDGO                       AS FK_CATALOGO_ESPS,
+       esp.ESPSNMBR                     AS NOMBRE_EN_CATALOGO,
+       esp.ESPSCDEX                     AS COD_ALTERNO,
+       COUNT(*)                         AS PRESTAMOS
+FROM   CRD.PRST p
+       LEFT JOIN CRD.ESPS esp ON esp.ESPSCDGO = p.ESPSCDGO
+GROUP BY p.PRSTIDST, p.ESPSCDGO, esp.ESPSNMBR, esp.ESPSCDEX
+ORDER BY 1, 2;
+```
+
+Sirve además para descartar el escenario que ya se dio en `CRD.ENTD`
+(ver `MIGRACION-ESTADO-PARTICIPE.md`): que la FK apunte al **PK** del catálogo mientras el
+rubro usa el **código alterno**. Aquí eso no afecta al `UPDATE` — se filtra por `PRSTIDST`,
+que guarda directamente el valor del rubro — pero conviene ver la foto.
+
 ### 1.1 — Universo: cuántos préstamos cancelados anticipados hay
 
 ```sql
 SELECT COUNT(*) AS PRESTAMOS_CANCELADOS_ANTICIPADOS
 FROM   CRD.PRST p
-WHERE  p.ESPSCDGO = 4;
+WHERE  p.PRSTIDST = 4;
 ```
 
 ### 1.2 — Préstamos cancelados anticipados SIN ninguna cuota pagada (NO se actualizan)
@@ -80,7 +112,7 @@ SELECT p.PRSTCDGO,
 FROM   CRD.PRST p
        LEFT JOIN CRD.ENTD e  ON e.ENTDCDGO = p.ENTDCDGO
        LEFT JOIN CRD.PRDC pr ON pr.PRDCCDGO = p.PRDCCDGO
-WHERE  p.ESPSCDGO = 4
+WHERE  p.PRSTIDST = 4
 AND    NOT EXISTS (SELECT 1 FROM CRD.DTPR d
                    WHERE d.PRSTCDGO = p.PRSTCDGO AND d.DTPRESTD = 4)
 ORDER BY p.PRSTCDGO;
@@ -98,7 +130,7 @@ SELECT COUNT(*)                       AS FILAS_A_ACTUALIZAR,
 FROM   CRD.DTPR d
 WHERE  d.DTPRESTD = 4
 AND    EXISTS (SELECT 1 FROM CRD.PRST p
-               WHERE p.PRSTCDGO = d.PRSTCDGO AND p.ESPSCDGO = 4)
+               WHERE p.PRSTCDGO = d.PRSTCDGO AND p.PRSTIDST = 4)
 AND    d.DTPRNMCT = (SELECT MAX(d2.DTPRNMCT) FROM CRD.DTPR d2
                      WHERE d2.PRSTCDGO = d.PRSTCDGO AND d2.DTPRESTD = 4);
 ```
@@ -118,7 +150,7 @@ SELECT d.PRSTCDGO,
 FROM   CRD.DTPR d
 WHERE  d.DTPRESTD = 4
 AND    EXISTS (SELECT 1 FROM CRD.PRST p
-               WHERE p.PRSTCDGO = d.PRSTCDGO AND p.ESPSCDGO = 4)
+               WHERE p.PRSTCDGO = d.PRSTCDGO AND p.PRSTIDST = 4)
 AND    d.DTPRNMCT = (SELECT MAX(d2.DTPRNMCT) FROM CRD.DTPR d2
                      WHERE d2.PRSTCDGO = d.PRSTCDGO AND d2.DTPRESTD = 4)
 GROUP BY d.PRSTCDGO, d.DTPRNMCT
@@ -139,7 +171,7 @@ SELECT CASE WHEN d.DTPRSLCP IS NULL THEN 'NULO'
 FROM   CRD.DTPR d
 WHERE  d.DTPRESTD = 4
 AND    EXISTS (SELECT 1 FROM CRD.PRST p
-               WHERE p.PRSTCDGO = d.PRSTCDGO AND p.ESPSCDGO = 4)
+               WHERE p.PRSTCDGO = d.PRSTCDGO AND p.PRSTIDST = 4)
 AND    d.DTPRNMCT = (SELECT MAX(d2.DTPRNMCT) FROM CRD.DTPR d2
                      WHERE d2.PRSTCDGO = d.PRSTCDGO AND d2.DTPRESTD = 4)
 GROUP BY CASE WHEN d.DTPRSLCP IS NULL THEN 'NULO'
@@ -161,7 +193,7 @@ SELECT d.DTPRCDGO,
 FROM   CRD.DTPR d
 WHERE  d.DTPRESTD = 4
 AND    EXISTS (SELECT 1 FROM CRD.PRST p
-               WHERE p.PRSTCDGO = d.PRSTCDGO AND p.ESPSCDGO = 4)
+               WHERE p.PRSTCDGO = d.PRSTCDGO AND p.PRSTIDST = 4)
 AND    d.DTPRNMCT = (SELECT MAX(d2.DTPRNMCT) FROM CRD.DTPR d2
                      WHERE d2.PRSTCDGO = d.PRSTCDGO AND d2.DTPRESTD = 4)
 AND    NVL(d.DTPRSLOT, 0) <> 0
@@ -187,7 +219,7 @@ SELECT d.DTPRCDGO,
 FROM   CRD.DTPR d
 WHERE  d.DTPRESTD = 4
 AND    EXISTS (SELECT 1 FROM CRD.PRST p
-               WHERE p.PRSTCDGO = d.PRSTCDGO AND p.ESPSCDGO = 4)
+               WHERE p.PRSTCDGO = d.PRSTCDGO AND p.PRSTIDST = 4)
 AND    d.DTPRNMCT = (SELECT MAX(d2.DTPRNMCT) FROM CRD.DTPR d2
                      WHERE d2.PRSTCDGO = d.PRSTCDGO AND d2.DTPRESTD = 4)
 AND    ABS(NVL(d.DTPRSICP,0) - NVL(d.DTPRCPTL,0) - NVL(d.DTPRSLCP,0)) > 0.01
@@ -208,7 +240,7 @@ SELECT d.PRSTCDGO,
        d.DTPRFCVN   AS FECHA_VENCIMIENTO
 FROM   CRD.DTPR d
 WHERE  EXISTS (SELECT 1 FROM CRD.PRST p
-               WHERE p.PRSTCDGO = d.PRSTCDGO AND p.ESPSCDGO = 4)
+               WHERE p.PRSTCDGO = d.PRSTCDGO AND p.PRSTIDST = 4)
 AND    d.DTPRESTD NOT IN (4, 7)
 AND    d.DTPRNMCT > (SELECT MAX(d2.DTPRNMCT) FROM CRD.DTPR d2
                      WHERE d2.PRSTCDGO = d.PRSTCDGO AND d2.DTPRESTD = 4)
@@ -249,7 +281,7 @@ FROM   CRD.DTPR d
        LEFT JOIN CRD.ENTD e  ON e.ENTDCDGO = p.ENTDCDGO
        LEFT JOIN CRD.PRDC pr ON pr.PRDCCDGO = p.PRDCCDGO
        LEFT JOIN CRD.FLLL f  ON f.FLLLCDGO = p.FLLLCDGO
-WHERE  p.ESPSCDGO = 4
+WHERE  p.PRSTIDST = 4
 AND    d.DTPRESTD = 4
 AND    d.DTPRNMCT = (SELECT MAX(d2.DTPRNMCT) FROM CRD.DTPR d2
                      WHERE d2.PRSTCDGO = d.PRSTCDGO AND d2.DTPRESTD = 4)
@@ -268,7 +300,7 @@ SELECT EXTRACT(YEAR FROM d.DTPRFCPG)  AS ANIO_PAGO,
 FROM   CRD.DTPR d
        JOIN CRD.PRST p       ON p.PRSTCDGO = d.PRSTCDGO
        LEFT JOIN CRD.PRDC pr ON pr.PRDCCDGO = p.PRDCCDGO
-WHERE  p.ESPSCDGO = 4
+WHERE  p.PRSTIDST = 4
 AND    d.DTPRESTD = 4
 AND    d.DTPRNMCT = (SELECT MAX(d2.DTPRNMCT) FROM CRD.DTPR d2
                      WHERE d2.PRSTCDGO = d.PRSTCDGO AND d2.DTPRESTD = 4)
@@ -294,7 +326,7 @@ SELECT d.DTPRCDGO,
 FROM   CRD.DTPR d
 WHERE  d.DTPRESTD = 4
 AND    EXISTS (SELECT 1 FROM CRD.PRST p
-               WHERE p.PRSTCDGO = d.PRSTCDGO AND p.ESPSCDGO = 4)
+               WHERE p.PRSTCDGO = d.PRSTCDGO AND p.PRSTIDST = 4)
 AND    d.DTPRNMCT = (SELECT MAX(d2.DTPRNMCT) FROM CRD.DTPR d2
                      WHERE d2.PRSTCDGO = d.PRSTCDGO AND d2.DTPRESTD = 4);
 
@@ -317,7 +349,7 @@ SET    d.DTPRSLOT = d.DTPRSLCP
 WHERE  d.DTPRESTD = 4
 AND    d.DTPRSLCP IS NOT NULL
 AND    EXISTS (SELECT 1 FROM CRD.PRST p
-               WHERE p.PRSTCDGO = d.PRSTCDGO AND p.ESPSCDGO = 4)
+               WHERE p.PRSTCDGO = d.PRSTCDGO AND p.PRSTIDST = 4)
 AND    d.DTPRNMCT = (SELECT MAX(d2.DTPRNMCT) FROM CRD.DTPR d2
                      WHERE d2.PRSTCDGO = d.PRSTCDGO AND d2.DTPRESTD = 4);
 
@@ -338,7 +370,7 @@ WHERE  d.DTPRESTD = 4
 AND    d.DTPRSLCP IS NOT NULL
 AND    d.DTPRSLCP > 0                      -- <<< única diferencia con 4.1
 AND    EXISTS (SELECT 1 FROM CRD.PRST p
-               WHERE p.PRSTCDGO = d.PRSTCDGO AND p.ESPSCDGO = 4)
+               WHERE p.PRSTCDGO = d.PRSTCDGO AND p.PRSTIDST = 4)
 AND    d.DTPRNMCT = (SELECT MAX(d2.DTPRNMCT) FROM CRD.DTPR d2
                      WHERE d2.PRSTCDGO = d.PRSTCDGO AND d2.DTPRESTD = 4);
 ```
@@ -359,7 +391,7 @@ FROM   CRD.DTPR d
 WHERE  d.DTPRESTD = 4
 AND    d.DTPRSLCP IS NOT NULL
 AND    EXISTS (SELECT 1 FROM CRD.PRST p
-               WHERE p.PRSTCDGO = d.PRSTCDGO AND p.ESPSCDGO = 4)
+               WHERE p.PRSTCDGO = d.PRSTCDGO AND p.PRSTIDST = 4)
 AND    d.DTPRNMCT = (SELECT MAX(d2.DTPRNMCT) FROM CRD.DTPR d2
                      WHERE d2.PRSTCDGO = d.PRSTCDGO AND d2.DTPRESTD = 4)
 AND    NVL(d.DTPRSLOT, -1) <> d.DTPRSLCP;
@@ -386,7 +418,7 @@ WHERE  d.DTPRCDGO NOT IN (SELECT DTPRCDGO FROM CRD.BKP_DTPR_SLOT_20260812)
 AND    d.DTPRESTD = 4
 AND    NVL(d.DTPRSLOT, 0) <> 0
 AND    EXISTS (SELECT 1 FROM CRD.PRST p
-               WHERE p.PRSTCDGO = d.PRSTCDGO AND p.ESPSCDGO = 4);
+               WHERE p.PRSTCDGO = d.PRSTCDGO AND p.PRSTIDST = 4);
 ```
 
 > Nota: este control solo tiene sentido corriéndolo **también antes** del `UPDATE`

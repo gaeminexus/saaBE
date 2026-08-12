@@ -6,12 +6,14 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
 import com.saa.basico.ejb.FileService;
+import com.saa.basico.util.IncomeException;
 import com.saa.ejb.asoprep.service.CargaArchivoPetroService;
 import com.saa.ejb.crd.dao.EntidadDaoService;
 import com.saa.ejb.crd.service.CargaArchivoService;
@@ -865,7 +867,15 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			// ==========================================
 			validarOrdenProcesamiento(cargaArchivo);
 			// ==========================================
-			
+
+			// ==========================================
+			// VALIDACIÓN: todo valor descontado debe tener a qué aplicarse.
+			// Si algún registro tiene una novedad que impide determinar el
+			// destino y nadie registró la afectación manual, no se procesa nada.
+			// ==========================================
+			validarValoresConDestino(cargaArchivo);
+			// ==========================================
+
 			// 2. ✅ OPTIMIZACIÓN: Obtener SOLO los detalles de esta carga específica
 			// En lugar de traer TODOS los detalles de TODAS las cargas con selectAll()
 			List<DetalleCargaArchivo> detallesCarga = detalleCargaArchivoDaoService.selectByCargaArchivo(codigoCargaArchivo);
@@ -983,7 +993,297 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		// Se procesa el monto que viene en el archivo independientemente de las novedades
 		return false;
 	}
-	
+
+	// ============================================================================
+	// VALIDACIÓN PREVIA: TODO VALOR DESCONTADO DEBE TENER DESTINO
+	// ============================================================================
+
+	/**
+	 * Novedades con las que el sistema NO puede determinar por sí solo a qué
+	 * préstamo, cuota o aporte aplicar el valor descontado.
+	 *
+	 * Un registro con una de estas novedades solo se puede procesar si el usuario
+	 * dejó registrada la afectación manual (AVPC) diciendo cómo aplicar el valor.
+	 *
+	 * NO entran aquí las novedades que no dejan dinero sin aplicar:
+	 * - SIN_DESCUENTOS, VALORES_CERO, APORTE_VALORES_CERO: no llegó valor alguno.
+	 * - DESCUENTOS_INCOMPLETOS: falta plata, pero la que llegó sí tiene destino.
+	 * - DIFERENCIA_MENOR_UN_DOLAR y su equivalente de aportes: dentro de tolerancia.
+	 * - CUOTA_FECHA_DIFERENTE: la cuota se encontró, solo cambia el mes.
+	 * - Las de resultado (OK, PRESTAMO_PROCESADO_OK, APORTE_GENERADO_OK).
+	 */
+	private static final List<Long> NOVEDADES_REQUIEREN_AFECTACION_MANUAL = Arrays.asList(
+		(long) ASPNovedadesCargaArchivo.PARTICIPE_NO_ENCONTRADO,
+		(long) ASPNovedadesCargaArchivo.CODIGO_ROL_DUPLICADO,
+		(long) ASPNovedadesCargaArchivo.NOMBRE_ENTIDAD_DUPLICADO,
+		(long) ASPNovedadesCargaArchivo.CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE,
+		(long) ASPNovedadesCargaArchivo.DESCUENTOS_ADICIONALES,
+		(long) ASPNovedadesCargaArchivo.PRODUCTO_NO_MAPEADO,
+		(long) ASPNovedadesCargaArchivo.PRESTAMO_NO_ENCONTRADO,
+		(long) ASPNovedadesCargaArchivo.MULTIPLES_PRESTAMOS_ACTIVOS,
+		(long) ASPNovedadesCargaArchivo.CUOTA_NO_ENCONTRADA,
+		(long) ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE,
+		(long) ASPNovedadesCargaArchivo.HISTORIAL_SUELDO_NO_ENCONTRADO,
+		(long) ASPNovedadesCargaArchivo.MULTIPLES_REGISTROS_HISTORIAL_SUELDO,
+		(long) ASPNovedadesCargaArchivo.VALORES_HISTORIAL_NULOS,
+		(long) ASPNovedadesCargaArchivo.APORTE_MONTO_INCONSISTENTE
+	);
+
+	/** Cuántos registros se listan en el mensaje de error antes de resumir el resto. */
+	private static final int MAXIMO_DETALLES_EN_MENSAJE = 20;
+
+	/**
+	 * Corta el procesamiento si algún valor descontado no tiene a qué aplicarse.
+	 *
+	 * Todo lo que Petrocomercial descontó al partícipe tiene que terminar en un
+	 * pago a préstamo o en un aporte. Si un registro trae una novedad que impide
+	 * saber dónde aplicarlo y el usuario no registró la afectación manual, no se
+	 * procesa NADA de la carga: se lanza la excepción antes de tocar la primera
+	 * cuota, así no queda media carga aplicada.
+	 */
+	private void validarValoresConDestino(CargaArchivo cargaArchivo) throws Throwable {
+		System.out.println("=== VALIDANDO QUE TODO VALOR DESCONTADO TENGA DESTINO ===");
+
+		List<Map<String, Object>> pendientes = buscarValoresSinDestino(cargaArchivo);
+
+		if (pendientes.isEmpty()) {
+			System.out.println("✅ Todos los valores descontados tienen destino definido");
+			return;
+		}
+
+		StringBuilder mensaje = new StringBuilder();
+		mensaje.append("No se puede procesar el archivo: hay ").append(pendientes.size())
+		       .append(" registro(s) con valores descontados sin destino definido. ")
+		       .append("Registre en las novedades cómo aplicar cada valor y vuelva a procesar.");
+
+		int listados = 0;
+		for (Map<String, Object> pendiente : pendientes) {
+			if (listados >= MAXIMO_DETALLES_EN_MENSAJE) {
+				mensaje.append("\n  ... y ").append(pendientes.size() - listados).append(" registro(s) más.");
+				break;
+			}
+			mensaje.append("\n  - Rol ").append(pendiente.get("codigoPetro"))
+			       .append(" ").append(pendiente.get("nombre"))
+			       .append(" (").append(pendiente.get("codigoProducto")).append("): $")
+			       .append(String.format("%,.2f", (Double) pendiente.get("valorSinDestino")))
+			       .append(" sin aplicar de $")
+			       .append(String.format("%,.2f", (Double) pendiente.get("totalDescontado")))
+			       .append(" descontados. Novedad: ").append(pendiente.get("novedades")).append(".");
+			listados++;
+		}
+
+		System.err.println(mensaje.toString());
+		throw new IncomeException(mensaje.toString());
+	}
+
+	@Override
+	public List<Map<String, Object>> obtenerValoresSinDestino(Long codigoCargaArchivo) throws Throwable {
+		System.out.println("Consultando valores sin destino de la carga: " + codigoCargaArchivo);
+
+		CargaArchivo cargaArchivo = cargaArchivoService.selectById(codigoCargaArchivo);
+		if (cargaArchivo == null) {
+			throw new IncomeException("No se encontró la carga con ID: " + codigoCargaArchivo);
+		}
+
+		return buscarValoresSinDestino(cargaArchivo);
+	}
+
+	/**
+	 * Recorre la carga y arma la lista de registros cuyo valor descontado se
+	 * quedaría sin aplicar.
+	 *
+	 * Un registro entra a la lista cuando:
+	 * 1. Trae valor descontado (más de un centavo),
+	 * 2. tiene alguna novedad de las que impiden determinar el destino, y
+	 * 3. la afectación manual registrada no cubre lo descontado.
+	 */
+	private List<Map<String, Object>> buscarValoresSinDestino(CargaArchivo cargaArchivo) throws Throwable {
+		List<Map<String, Object>> pendientes = new ArrayList<>();
+
+		List<DetalleCargaArchivo> detallesCarga =
+			detalleCargaArchivoDaoService.selectByCargaArchivo(cargaArchivo.getCodigo());
+
+		if (detallesCarga == null || detallesCarga.isEmpty()) {
+			return pendientes;
+		}
+
+		for (DetalleCargaArchivo detalle : detallesCarga) {
+			String codigoProducto = detalle.getCodigoPetroProducto();
+
+			List<ParticipeXCargaArchivo> participesDetalle =
+				participeXCargaArchivoDaoService.selectByDetalleCargaArchivo(detalle.getCodigo());
+
+			if (participesDetalle == null) {
+				continue;
+			}
+
+			for (ParticipeXCargaArchivo participe : participesDetalle) {
+				double totalDescontado = nullSafe(participe.getTotalDescontado());
+
+				// Sin valor descontado no hay nada que cruzar.
+				if (totalDescontado <= 0.01) {
+					continue;
+				}
+
+				List<NovedadParticipeCarga> novedades =
+					novedadParticipeCargaDaoService.selectByParticipe(participe.getCodigo());
+
+				List<Long> novedadesSinResolver = novedadesQueRequierenAfectacion(participe, novedades);
+				if (novedadesSinResolver.isEmpty()) {
+					// El proceso automático sabe qué hacer con este valor.
+					continue;
+				}
+
+				double valorConDestino = totalAfectadoManualmente(novedades);
+				double valorSinDestino = totalDescontado - valorConDestino;
+
+				// La misma tolerancia de $1 que usa el resto del módulo para redondeos.
+				if (valorSinDestino <= TOLERANCIA) {
+					continue;
+				}
+
+				Map<String, Object> pendiente = new HashMap<>();
+				pendiente.put("codigoParticipeCarga", participe.getCodigo());
+				pendiente.put("codigoPetro", participe.getCodigoPetro());
+				pendiente.put("nombre", participe.getNombre());
+				pendiente.put("codigoProducto", codigoProducto);
+				pendiente.put("totalDescontado", totalDescontado);
+				pendiente.put("valorConDestino", valorConDestino);
+				pendiente.put("valorSinDestino", valorSinDestino);
+				pendiente.put("codigosNovedad", novedadesSinResolver);
+				pendiente.put("novedades", describirNovedades(novedadesSinResolver));
+
+				pendientes.add(pendiente);
+
+				System.out.println("⛔ Valor sin destino - Rol " + participe.getCodigoPetro()
+					+ " (" + participe.getNombre() + ") - Producto " + codigoProducto
+					+ " - Sin aplicar: $" + String.format("%,.2f", valorSinDestino)
+					+ " de $" + String.format("%,.2f", totalDescontado)
+					+ " - Novedad: " + describirNovedades(novedadesSinResolver));
+			}
+		}
+
+		return pendientes;
+	}
+
+	/**
+	 * Tipos de novedad del partícipe que impiden determinar el destino del valor.
+	 *
+	 * Se miran las dos fuentes: los campos de novedad del propio registro
+	 * (novedadesCarga / novedadesFinancieras, que es lo que ve el usuario en la
+	 * grilla) y las filas de NVPC, que es el detalle sobre el que se registran
+	 * las afectaciones manuales.
+	 */
+	private List<Long> novedadesQueRequierenAfectacion(ParticipeXCargaArchivo participe,
+			List<NovedadParticipeCarga> novedades) {
+
+		List<Long> encontradas = new ArrayList<>();
+
+		agregarSiRequiereAfectacion(encontradas, participe.getNovedadesCarga());
+		agregarSiRequiereAfectacion(encontradas, participe.getNovedadesFinancieras());
+
+		if (novedades != null) {
+			for (NovedadParticipeCarga novedad : novedades) {
+				agregarSiRequiereAfectacion(encontradas, novedad.getTipoNovedad());
+			}
+		}
+
+		return encontradas;
+	}
+
+	private void agregarSiRequiereAfectacion(List<Long> acumulador, Long tipoNovedad) {
+		if (tipoNovedad != null
+				&& NOVEDADES_REQUIEREN_AFECTACION_MANUAL.contains(tipoNovedad)
+				&& !acumulador.contains(tipoNovedad)) {
+			acumulador.add(tipoNovedad);
+		}
+	}
+
+	/**
+	 * Suma el valor que el usuario dejó indicado en las afectaciones manuales.
+	 *
+	 * Solo cuentan las afectaciones que el aplicador va a usar realmente: las que
+	 * no tienen cuota asociada se omiten al procesar, así que aquí tampoco suman.
+	 */
+	private double totalAfectadoManualmente(List<NovedadParticipeCarga> novedades) throws Throwable {
+		double total = 0.0;
+
+		if (novedades == null) {
+			return total;
+		}
+
+		for (NovedadParticipeCarga novedad : novedades) {
+			List<AfectacionValoresParticipeCarga> afectaciones =
+				afectacionValoresParticipeCargaDaoService.selectByNovedad(novedad.getCodigo());
+
+			if (afectaciones == null) {
+				continue;
+			}
+
+			for (AfectacionValoresParticipeCarga afectacion : afectaciones) {
+				if (afectacion.getDetallePrestamo() == null) {
+					continue;
+				}
+
+				double valor = nullSafe(afectacion.getValorAfectar());
+				if (valor <= 0.0) {
+					// Sin total explícito, se reconstruye desde el desglose.
+					valor = nullSafe(afectacion.getCapitalAfectar())
+						  + nullSafe(afectacion.getInteresAfectar())
+						  + nullSafe(afectacion.getDesgravamenAfectar());
+				}
+
+				total += valor;
+			}
+		}
+
+		return total;
+	}
+
+	/** Nombres legibles de las novedades, para el mensaje que ve el usuario. */
+	private String describirNovedades(List<Long> codigosNovedad) {
+		List<String> nombres = new ArrayList<>();
+
+		for (Long codigo : codigosNovedad) {
+			int tipo = codigo.intValue();
+			switch (tipo) {
+				case ASPNovedadesCargaArchivo.PARTICIPE_NO_ENCONTRADO:
+					nombres.add("PARTÍCIPE NO ENCONTRADO"); break;
+				case ASPNovedadesCargaArchivo.CODIGO_ROL_DUPLICADO:
+					nombres.add("CÓDIGO DE ROL DUPLICADO"); break;
+				case ASPNovedadesCargaArchivo.NOMBRE_ENTIDAD_DUPLICADO:
+					nombres.add("NOMBRE DE ENTIDAD DUPLICADO"); break;
+				case ASPNovedadesCargaArchivo.CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE:
+					nombres.add("CÓDIGO PETRO NO COINCIDE CON EL NOMBRE"); break;
+				case ASPNovedadesCargaArchivo.DESCUENTOS_ADICIONALES:
+					nombres.add("DESCUENTOS ADICIONALES"); break;
+				case ASPNovedadesCargaArchivo.PRODUCTO_NO_MAPEADO:
+					nombres.add("PRODUCTO NO MAPEADO"); break;
+				case ASPNovedadesCargaArchivo.PRESTAMO_NO_ENCONTRADO:
+					nombres.add("PRÉSTAMO NO ENCONTRADO"); break;
+				case ASPNovedadesCargaArchivo.MULTIPLES_PRESTAMOS_ACTIVOS:
+					nombres.add("MÚLTIPLES PRÉSTAMOS ACTIVOS"); break;
+				case ASPNovedadesCargaArchivo.CUOTA_NO_ENCONTRADA:
+					nombres.add("CUOTA NO ENCONTRADA"); break;
+				case ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE:
+					nombres.add("MONTO INCONSISTENTE"); break;
+				case ASPNovedadesCargaArchivo.HISTORIAL_SUELDO_NO_ENCONTRADO:
+					nombres.add("HISTORIAL DE SUELDO NO ENCONTRADO"); break;
+				case ASPNovedadesCargaArchivo.MULTIPLES_REGISTROS_HISTORIAL_SUELDO:
+					nombres.add("MÚLTIPLES REGISTROS DE HISTORIAL DE SUELDO"); break;
+				case ASPNovedadesCargaArchivo.VALORES_HISTORIAL_NULOS:
+					nombres.add("VALORES DEL HISTORIAL DE SUELDO NULOS"); break;
+				case ASPNovedadesCargaArchivo.APORTE_MONTO_INCONSISTENTE:
+					nombres.add("MONTO DE APORTE INCONSISTENTE"); break;
+				default:
+					nombres.add("NOVEDAD " + tipo); break;
+			}
+		}
+
+		return String.join(", ", nombres);
+	}
+
+
 	/**
 	 * Aplica el pago de un partícipe individual
 	 * REGLA ESPECIAL: Para PH (Préstamo Hipotecario) y PP (Préstamo Prendario), 

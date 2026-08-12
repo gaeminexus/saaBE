@@ -3,8 +3,10 @@ package com.saa.ws.rest.asoprep;
 import java.io.InputStream;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 import com.saa.basico.ejb.FileService;
+import com.saa.basico.util.IncomeException;
 import com.saa.ejb.asoprep.service.CargaArchivoPetroService;
 import com.saa.ejb.crd.service.EstadoCivilService;
 import com.saa.ejb.crd.service.ProcesoCargaPetroService;
@@ -374,19 +376,67 @@ public class AsoprepGenerales {
             
             // Aplicar pagos con el servicio
             String resumen = cargaArchivoPetroService.aplicarPagosArchivoPetro(idCargaArchivo);
-            
+
             System.out.println("Aplicación de pagos completada exitosamente");
             System.out.println(resumen);
-            
+
             return Response.ok()
                     .entity(new FileResponse(true, resumen, null))
                     .build();
-            
+
+        } catch (IncomeException e) {
+            // Validaciones de negocio (valores sin destino, carga inexistente):
+            // no se procesó nada y el mensaje está listo para mostrarse al usuario.
+            System.err.println("Carga no procesada: " + e.getMessage());
+            return Response.status(Response.Status.CONFLICT)
+                    .entity(new FileResponse(false, e.getMessage(), null))
+                    .build();
         } catch (Throwable e) {
             System.err.println("ERROR al aplicar pagos del archivo Petro:");
             e.printStackTrace();
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(new FileResponse(false, "Error al aplicar pagos: " + e.getMessage(), null))
+                    .build();
+        }
+    }
+
+    /**
+     * Devuelve los registros de la carga cuyo valor descontado todavía no tiene
+     * definido a qué préstamo, cuota o aporte aplicarse.
+     *
+     * Mientras esta lista no venga vacía, /aplicarPagosArchivoPetro responde 409
+     * y no procesa nada. Sirve para habilitar o bloquear el botón de procesar y
+     * para mostrarle al usuario qué novedades le falta resolver.
+     *
+     * @param idCargaArchivo ID del CargaArchivo a revisar
+     * @return Response con la lista de valores sin destino (array vacío si todo está resuelto)
+     */
+    @GET
+    @Path("/valoresSinDestino/{idCargaArchivo}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response valoresSinDestino(@PathParam("idCargaArchivo") Long idCargaArchivo) {
+        System.out.println("REST: CONSULTA DE VALORES SIN DESTINO - Carga: " + idCargaArchivo);
+
+        try {
+            if (idCargaArchivo == null) {
+                return Response.status(Status.BAD_REQUEST)
+                        .entity(new FileResponse(false, "El ID de carga archivo es requerido", null))
+                        .build();
+            }
+
+            List<Map<String, Object>> pendientes = cargaArchivoPetroService.obtenerValoresSinDestino(idCargaArchivo);
+
+            return Response.ok().entity(pendientes).build();
+
+        } catch (IncomeException e) {
+            return Response.status(Status.NOT_FOUND)
+                    .entity(new FileResponse(false, e.getMessage(), null))
+                    .build();
+        } catch (Throwable e) {
+            System.err.println("ERROR al consultar valores sin destino:");
+            e.printStackTrace();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(new FileResponse(false, "Error al consultar valores sin destino: " + e.getMessage(), null))
                     .build();
         }
     }
