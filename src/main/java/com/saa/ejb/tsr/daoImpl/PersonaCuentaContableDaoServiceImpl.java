@@ -64,4 +64,51 @@ public class PersonaCuentaContableDaoServiceImpl extends EntityDaoImpl<PersonaCu
 		return personaCuentaContables;
 	}
 
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.tsr.dao.PersonaCuentaContableDaoService#selectByTitularRolTipoCuenta(java.lang.Long, java.lang.Long, int, java.lang.Long)
+	 */
+	@SuppressWarnings("unchecked")
+	public List<PersonaCuentaContable> selectByTitularRolTipoCuenta(Long idEmpresa, Long codigoTitular,
+			int rolPersona, Long tipoCuenta) throws Throwable {
+		System.out.println("Ingresa al metodo selectByTitularRolTipoCuenta con titular: " + codigoTitular
+				+ ", empresa: " + idEmpresa + ", rol: " + rolPersona + ", tipoCuenta: " + tipoCuenta);
+
+		Query query = em.createQuery(" select pcc " +
+									 " from   PersonaCuentaContable pcc " +
+									 " join   pcc.personaRol pr " +
+									 " where  pr.titular.codigo = :titular " +
+									 "        and pcc.tipoCuenta = :tipoCuenta " +
+									 "        and pcc.empresa.codigo = :idEmpresa " +
+									 "        and pr.rubroRolPersonaH = :rolPersona");
+		query.setParameter("titular", codigoTitular);
+		query.setParameter("tipoCuenta", tipoCuenta);
+		query.setParameter("idEmpresa", idEmpresa);
+		query.setParameter("rolPersona", Long.valueOf(rolPersona));
+		List<PersonaCuentaContable> personaCuentaContables = query.getResultList();
+
+		if (personaCuentaContables.isEmpty()) {
+			// Compatibilidad con datos antiguos sin rubroRolPersonaH poblado.
+			// Sólo se llega aquí si el titular NO tiene ninguna cuenta bajo el rol
+			// pedido, así que no puede devolver la cuenta del otro rol cuando ambos
+			// existen.
+			Query querySinRol = em.createQuery(" select pcc " +
+											   " from   PersonaCuentaContable pcc " +
+											   " join   pcc.personaRol pr " +
+											   " where  pr.titular.codigo = :titular " +
+											   "        and pcc.tipoCuenta = :tipoCuenta " +
+											   "        and pcc.empresa.codigo = :idEmpresa");
+			querySinRol.setParameter("titular", codigoTitular);
+			querySinRol.setParameter("tipoCuenta", tipoCuenta);
+			querySinRol.setParameter("idEmpresa", idEmpresa);
+			personaCuentaContables = querySinRol.getResultList();
+			if (!personaCuentaContables.isEmpty()) {
+				System.err.println("⚠ El titular " + codigoTitular + " no tiene cuenta contable "
+						+ "(tipoCuenta=" + tipoCuenta + ") bajo el rol " + rolPersona
+						+ "; se usa la cuenta sin filtro de rol. Revise "
+						+ "PersonaRol.rubroRolPersonaH (PRRLRZZA): debe valer 1=Cliente o 2=Proveedor.");
+			}
+		}
+		return personaCuentaContables;
+	}
+
 }

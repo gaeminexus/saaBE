@@ -74,6 +74,7 @@ import com.saa.rubros.Estado;
 import com.saa.rubros.EstadoDocumentoCxp;
 import com.saa.rubros.EstadoNovedad;
 import com.saa.rubros.ResultadoCargaTxt;
+import com.saa.rubros.RolPersona;
 import com.saa.rubros.TipoGrupoProductos;
 
 import jakarta.ejb.EJB;
@@ -91,6 +92,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     @EJB private DetalleCargaTxtDaoService   detalleCargaTxtDaoService;
     @EJB private DocumentoCxpDaoService      documentoCxpDaoService;
     @EJB private FacturadorDaoService        facturadorDaoService;
+    @EJB private com.saa.ejb.tsr.dao.PersonaCuentaContableDaoService personaCuentaContableDaoService;
 
     // Destinos DAO
     @EJB private FacturaCompraDaoService                  facturaCompraDaoService;
@@ -1257,21 +1259,16 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     }
 
     /**
-     * Verifica si el titular tiene cuenta contable CxP (tipoCuenta=1) asignada para la empresa.
+     * Verifica si el titular tiene cuenta contable CxP (tipoCuenta=1) asignada
+     * para la empresa EN SU ROL DE PROVEEDOR. Sin el filtro de rol, un titular
+     * que sólo es cliente pasaba la validación con la cuenta de cliente.
      */
     private boolean verificarCuentaContableProveedor(Long codigoTitular, Long idEmpresa) {
         try {
-            List<?> result = em.createQuery(
-                    "SELECT pcc FROM PersonaCuentaContable pcc "
-                    + "JOIN pcc.personaRol pr "
-                    + "WHERE pr.titular.codigo = :titular "
-                    + "AND pcc.tipoCuenta = 1 "
-                    + "AND pcc.empresa.codigo = :empresa")
-                    .setParameter("titular", codigoTitular)
-                    .setParameter("empresa", idEmpresa)
-                    .setMaxResults(1).getResultList();
-            return !result.isEmpty();
-        } catch (Exception e) {
+            return !personaCuentaContableDaoService
+                    .selectByTitularRolTipoCuenta(idEmpresa, codigoTitular, RolPersona.PROVEEDOR, 1L)
+                    .isEmpty();
+        } catch (Throwable e) {
             System.err.println("⚠ verificarCuentaContableProveedor: " + e.getMessage());
             return false;
         }

@@ -12,6 +12,7 @@ import com.saa.ejb.cnt.service.AsientoContableService;
 import com.saa.ejb.cnt.service.AsientoService;
 import com.saa.ejb.cxc.dao.AplicacionPagoCxcDaoService;
 import com.saa.ejb.cxc.service.AplicacionPagoCxcService;
+import com.saa.ejb.tsr.dao.PersonaCuentaContableDaoService;
 import com.saa.ejb.tsr.service.MovimientoBancoService;
 import com.saa.model.cnt.Asiento;
 import com.saa.model.cxc.AnticipoCliente;
@@ -30,6 +31,7 @@ import com.saa.model.tsr.PersonaCuentaContable;
 import com.saa.rubros.EstadoAplicacionPago;
 import com.saa.rubros.EstadoPagoFactura;
 import com.saa.rubros.OrigenMovimientoConciliacion;
+import com.saa.rubros.RolPersona;
 import com.saa.rubros.TipoAsientos;
 import com.saa.rubros.TipoDocPagoAplicacion;
 import com.saa.rubros.TipoMovimientoConciliacion;
@@ -59,6 +61,9 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 
 	@EJB
 	private MovimientoBancoService movimientoBancoService;
+
+	@EJB
+	private PersonaCuentaContableDaoService personaCuentaContableDaoService;
 
 	@PersistenceContext
 	private EntityManager em;
@@ -803,6 +808,10 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 
 	/**
 	 * Recupera la cuenta contable de anticipos del cliente (tipoCuenta = 2).
+	 * <p>
+	 * Filtra por rol Cliente: sobre esta cuenta se lee y se ESCRIBE el saldo de
+	 * anticipos, así que en un titular que también es proveedor tomar la fila
+	 * equivocada descontaría el anticipo de la cuenta del proveedor.
 	 * @param idTitular  : Id del cliente
 	 * @param idEmpresa  : Id de la empresa
 	 * @return           : Cuenta contable de anticipos
@@ -810,20 +819,12 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 	 */
 	private PersonaCuentaContable obtenerCuentaAnticipos(Long idTitular, Long idEmpresa)
 			throws Throwable {
-		@SuppressWarnings("unchecked")
-		List<PersonaCuentaContable> lista = em.createQuery(
-				" select pcc from PersonaCuentaContable pcc " +
-				" join   pcc.personaRol pr " +
-				" where  pr.titular.codigo = :titular " +
-				" and    pcc.empresa.codigo = :empresa " +
-				" and    pcc.tipoCuenta = 2 ")
-			.setParameter("titular", idTitular)
-			.setParameter("empresa", idEmpresa)
-			.getResultList();
+		List<PersonaCuentaContable> lista = personaCuentaContableDaoService
+				.selectByTitularRolTipoCuenta(idEmpresa, idTitular, RolPersona.CLIENTE, 2L);
 
 		if (lista.isEmpty()) {
 			throw new IncomeException("El cliente no tiene configurada la cuenta contable de "
-					+ "anticipos (Tipo 2) en Tesorería → Persona → Cuentas Contables. "
+					+ "anticipos (Tipo 2, Rol: Cliente) en Tesorería → Persona → Cuentas Contables. "
 					+ "Sin ella no es posible cruzar anticipos.");
 		}
 		return lista.get(0);

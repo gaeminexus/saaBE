@@ -11,6 +11,7 @@ import com.saa.basico.util.IncomeException;
 import com.saa.ejb.cnt.service.AsientoContableService;
 import com.saa.ejb.cxp.dao.AnticipoProveedorDaoService;
 import com.saa.ejb.cxp.service.AnticipoProveedorService;
+import com.saa.ejb.tsr.dao.PersonaCuentaContableDaoService;
 import com.saa.model.cnt.Asiento;
 import com.saa.model.cxp.AnticipoProveedor;
 import com.saa.model.cxp.NombreEntidadesPago;
@@ -18,6 +19,7 @@ import com.saa.model.scp.Empresa;
 import com.saa.model.scp.Usuario;
 import com.saa.model.tsr.PersonaCuentaContable;
 import com.saa.model.tsr.Titular;
+import com.saa.rubros.RolPersona;
 import com.saa.rubros.TipoAsientos;
 
 import jakarta.ejb.EJB;
@@ -42,6 +44,9 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
 
     @EJB
     private AsientoContableService asientoContableService;
+
+    @EJB
+    private PersonaCuentaContableDaoService personaCuentaContableDaoService;
 
     @PersistenceContext
     private EntityManager em;
@@ -189,44 +194,24 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
         }
 
         // ── Validar cuenta de anticipos del proveedor ANTES de guardar ─────────
-        // Busca: PersonaCuentaContable, tipoCuenta=2, rol Proveedor (rubroRolPersonaP=2)
-        String sqlValida = "SELECT COUNT(pcc) FROM PersonaCuentaContable pcc "
-                + "JOIN pcc.personaRol pr "
-                + "WHERE pr.titular.codigo = :titular "
-                + "AND pcc.tipoCuenta = 2 "
-                + "AND pcc.empresa.codigo = :empresa";
-        long cuentasAnticipo = ((Number) em.createQuery(sqlValida)
-                .setParameter("titular", idTitular)
-                .setParameter("empresa", idEmpresa)
-                .getSingleResult()).longValue();
-        if (cuentasAnticipo == 0) {
+        // Filtra por rol Proveedor: un titular que además es cliente tiene dos
+        // cuentas de anticipos (tipoCuenta=2) y hay que tomar la del proveedor.
+        java.util.List<PersonaCuentaContable> cuentasAnticipo = personaCuentaContableDaoService
+                .selectByTitularRolTipoCuenta(idEmpresa, idTitular, RolPersona.PROVEEDOR, 2L);
+        if (cuentasAnticipo.isEmpty()) {
             throw new IncomeException(
                     "El proveedor '" + titular.getNombre() + "' (ID: " + idTitular + ") "
-                    + "no tiene cuenta contable de anticipos (Tipo 2) configurada "
+                    + "no tiene cuenta contable de anticipos (Tipo 2, Rol: Proveedor) configurada "
                     + "para la empresa " + idEmpresa + ". "
                     + "Configure la cuenta en Tesorería → Persona → Cuentas Contables "
                     + "(Tipo: Anticipos, Rol: Proveedor) antes de registrar el anticipo.");
         }
 
         // ── Construir entidad ──────────────────────────────────────────────────
-        // Leer saldoInicial del PRCC (tipoCuenta=2=Anticipos, Proveedor)
+        // Leer saldoInicial del PRCC (tipoCuenta=2=Anticipos, rol Proveedor)
         // y sumarlo al valor del anticipo para obtener el saldo real acumulado.
-        Double saldoInicialPrcc = 0.0;
-        try {
-            Object res = em.createQuery(
-                    "SELECT pcc.saldoInicial FROM PersonaCuentaContable pcc "
-                    + "JOIN pcc.personaRol pr "
-                    + "WHERE pr.titular.codigo = :titular "
-                    + "AND pcc.empresa.codigo  = :empresa "
-                    + "AND pcc.tipoCuenta      = 2")
-                .setParameter("titular", idTitular)
-                .setParameter("empresa",  idEmpresa)
-                .setMaxResults(1)
-                .getSingleResult();
-            if (res != null) saldoInicialPrcc = ((Number) res).doubleValue();
-        } catch (Exception ex) {
-            System.err.println("⚠ No se pudo leer saldoInicial PRCC proveedor: " + ex.getMessage());
-        }
+        Double saldoInicialPrcc = (cuentasAnticipo.get(0).getSaldoInicial() != null)
+                ? cuentasAnticipo.get(0).getSaldoInicial() : 0.0;
 
         AnticipoProveedor anticipo = new AnticipoProveedor();
         anticipo.setTitular(titular);
@@ -264,8 +249,8 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
         anticipo.setAsiento(asiento);
         anticipo = anticipoDaoService.save(anticipo, anticipo.getId());
 
-        // ── Sumar valor al saldoInicial de PersonaCuentaContable (tipoCuenta=2, Proveedor=2) ─
-        actualizarSaldoInicialPrcc(idTitular, idEmpresa, 2L, valor);
+        // ── Sumar valor al saldoInicial de PersonaCuentaContable (tipoCuenta=2, rol Proveedor) ─
+        actualizarSaldoInicialPrcc(idTitular, idEmpresa, RolPersona.PROVEEDOR, valor);
 
         resultado.put("exito", true);
         resultado.put("estado", "CONFIRMADO");
@@ -285,38 +270,39 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
 
     /**
      * Busca el registro PersonaCuentaContable (TSR.PRCC) correspondiente al titular,
-     * empresa, tipoCuenta=2 (Anticipos) y tipoPersona indicado (1=Cliente, 2=Proveedor),
+     * empresa, tipoCuenta=2 (Anticipos) y ROL indicado (1=Cliente, 2=Proveedor),
      * y suma el valor al campo saldoInicial.
+     * <p>
+     * El filtro por rol es crítico: antes se ignoraba el parámetro y se sumaba
+     * el valor a TODAS las cuentas de anticipos del titular, así que un titular
+     * con rol cliente y proveedor veía el anticipo acreditado dos veces.
+     * @param idTitular  : Id del titular
+     * @param idEmpresa  : Id de la empresa contable
+     * @param rolPersona : {@link RolPersona#CLIENTE} o {@link RolPersona#PROVEEDOR}
+     * @param valor      : Valor a sumar (negativo para restar)
      */
     private void actualizarSaldoInicialPrcc(Long idTitular, Long idEmpresa,
-            Long tipoPersona, Double valor) {
+            int rolPersona, Double valor) {
         try {
-            @SuppressWarnings("unchecked")
-            java.util.List<PersonaCuentaContable> lista = em.createQuery(
-                    "SELECT pcc FROM PersonaCuentaContable pcc "
-                    + "JOIN pcc.personaRol pr "
-                    + "WHERE pr.titular.codigo = :titular "
-                    + "AND pcc.empresa.codigo  = :empresa "
-                    + "AND pcc.tipoCuenta      = 2")
-                .setParameter("titular", idTitular)
-                .setParameter("empresa",  idEmpresa)
-                .getResultList();
+            java.util.List<PersonaCuentaContable> lista = personaCuentaContableDaoService
+                    .selectByTitularRolTipoCuenta(idEmpresa, idTitular, rolPersona, 2L);
 
             if (lista.isEmpty()) {
                 System.err.println("⚠ actualizarSaldoInicialPrcc: no se encontró PRCC "
                         + "para titular=" + idTitular + " empresa=" + idEmpresa
-                        + " tipoCuenta=2");
+                        + " tipoCuenta=2 rol=" + rolPersona);
                 return;
             }
 
-            for (PersonaCuentaContable pcc : lista) {
-                double saldoActual = pcc.getSaldoInicial() != null ? pcc.getSaldoInicial() : 0.0;
-                pcc.setSaldoInicial(saldoActual + valor);
-                em.merge(pcc);
-                System.out.println("✓ PRCC id=" + pcc.getCodigo()
-                        + " saldoInicial actualizado: " + saldoActual + " → " + pcc.getSaldoInicial());
-            }
-        } catch (Exception e) {
+            // Sólo la cuenta del rol pedido: si hubiera más de una fila para el
+            // mismo rol se toma la primera, nunca se acumula en varias.
+            PersonaCuentaContable pcc = lista.get(0);
+            double saldoActual = pcc.getSaldoInicial() != null ? pcc.getSaldoInicial() : 0.0;
+            pcc.setSaldoInicial(saldoActual + valor);
+            em.merge(pcc);
+            System.out.println("✓ PRCC id=" + pcc.getCodigo()
+                    + " saldoInicial actualizado: " + saldoActual + " → " + pcc.getSaldoInicial());
+        } catch (Throwable e) {
             System.err.println("✗ Error actualizarSaldoInicialPrcc: " + e.getMessage());
             e.printStackTrace();
         }

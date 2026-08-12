@@ -22,6 +22,7 @@ import com.saa.model.scp.Empresa;
 import com.saa.model.tsr.Titular;
 import com.saa.rubros.EstadoAsiento;
 import com.saa.rubros.ModuloSistema;
+import com.saa.rubros.RolPersona;
 import com.saa.rubros.Rubros;
 import com.saa.rubros.TipoMoneda;
 
@@ -64,6 +65,9 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
     @EJB
     private TipoAsientoService tipoAsientoService;
+
+    @EJB
+    private com.saa.ejb.tsr.dao.PersonaCuentaContableDaoService personaCuentaContableDaoService;
 
     // ---------------------------------------------------------------
     // validarCuentasContables
@@ -1072,79 +1076,113 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     }
 
     /**
+     * Obtiene la cuenta contable de un titular para un ROL y un tipo de cuenta.
+     * <p>
+     * El rol es obligatorio: un mismo titular puede ser cliente Y proveedor a la
+     * vez, y entonces tiene dos {@code PersonaCuentaContable} con el mismo
+     * tipoCuenta y la misma empresa. Sin filtrar por rol, la consulta devuelve
+     * una fila arbitraria y el asiento sale con la cuenta del rol equivocado.
+     * <p>
+     * La resolución vive en
+     * {@code PersonaCuentaContableDaoService.selectByTitularRolTipoCuenta},
+     * compartida con los flujos de anticipos de CXP y CXC.
+     *
+     * @param codigoTitular : Código del titular
+     * @param idEmpresa     : Empresa contable
+     * @param tipoCuenta    : 1=Facturas, 2=Anticipos, 3=Caja/Banco
+     * @param rolPersona    : {@link RolPersona#CLIENTE} o {@link RolPersona#PROVEEDOR}
+     * @return : Cuenta contable, o null si no está configurada
+     */
+    private PlanCuenta obtenerCuentaPersona(Long codigoTitular, Long idEmpresa,
+            Long tipoCuenta, int rolPersona) {
+
+        String nombreRol = (rolPersona == RolPersona.PROVEEDOR) ? "Proveedor" : "Cliente";
+        System.out.println("  [obtenerCuentaPersona] titular=" + codigoTitular
+                + " | empresa=" + idEmpresa + " | tipoCuenta=" + tipoCuenta
+                + " | rol=" + nombreRol + "(" + rolPersona + ")");
+        try {
+            List<com.saa.model.tsr.PersonaCuentaContable> cuentas = personaCuentaContableDaoService
+                    .selectByTitularRolTipoCuenta(idEmpresa, codigoTitular, rolPersona, tipoCuenta);
+
+            if (cuentas.isEmpty()) {
+                diagnosticoCuentaPersona(codigoTitular, nombreRol, tipoCuenta);
+                return null;
+            }
+            PlanCuenta pc = cuentas.get(0).getPlanCuenta();
+            if (pc == null) {
+                System.err.println("  [obtenerCuentaPersona] ✗ La cuenta contable del titular "
+                        + codigoTitular + " (rol " + nombreRol + ", tipoCuenta " + tipoCuenta
+                        + ") no tiene PlanCuenta asignado.");
+                return null;
+            }
+            System.out.println("  [obtenerCuentaPersona] ✓ Cuenta " + nombreRol + ": "
+                    + pc.getCuentaContable() + " - " + pc.getNombre());
+            return pc;
+        } catch (Throwable e) {
+            System.err.println("⚠ Error buscando cuenta tipo " + tipoCuenta
+                    + " (rol " + nombreRol + ") del titular " + codigoTitular
+                    + ": " + e.getMessage());
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    /**
+     * Vuelca en el log las PersonaCuentaContable reales del titular cuando no se
+     * encontró ninguna cuenta, para poder diagnosticar qué falta configurar.
+     * @param codigoTitular : Titular consultado
+     * @param nombreRol     : Rol que se buscaba (para el mensaje)
+     * @param tipoCuenta    : Tipo de cuenta que se buscaba
+     */
+    private void diagnosticoCuentaPersona(Long codigoTitular, String nombreRol, Long tipoCuenta) {
+        try {
+            long totalPrrl = ((Number) em.createQuery(
+                    "SELECT COUNT(pr) FROM PersonaRol pr WHERE pr.titular.codigo = :t")
+                    .setParameter("t", codigoTitular)
+                    .getSingleResult()).longValue();
+            long totalPrcc = ((Number) em.createQuery(
+                    "SELECT COUNT(pcc) FROM PersonaCuentaContable pcc "
+                    + "JOIN pcc.personaRol pr "
+                    + "WHERE pr.titular.codigo = :t")
+                    .setParameter("t", codigoTitular)
+                    .getSingleResult()).longValue();
+            System.err.println("  [obtenerCuentaPersona] ✗ No encontrado."
+                    + " rol=" + nombreRol + " | tipoCuenta=" + tipoCuenta
+                    + " | PersonaRol del titular: " + totalPrrl
+                    + " | PersonaCuentaContable del titular (sin filtros de empresa/tipo): " + totalPrcc);
+            @SuppressWarnings("unchecked")
+            List<Object[]> rawRows = em.createQuery(
+                    "SELECT pcc.codigo, pcc.tipoCuenta, pcc.tipoPersona, "
+                    + "pcc.empresa.codigo, pr.estado, pcc.planCuenta.cuentaContable, "
+                    + "pr.rubroRolPersonaP, pr.rubroRolPersonaH "
+                    + "FROM PersonaCuentaContable pcc "
+                    + "JOIN pcc.personaRol pr "
+                    + "WHERE pr.titular.codigo = :t")
+                    .setParameter("t", codigoTitular)
+                    .getResultList();
+            for (Object[] row : rawRows) {
+                System.err.println("  [obtenerCuentaPersona] PRCC registro:"
+                        + " PRCCCDGO=" + row[0]
+                        + " | tipoCuenta(PRCCTPOO)=" + row[1]
+                        + " | tipoPersona(PRCCCLPR)=" + row[2]
+                        + " | empresa(PJRQCDGO)=" + row[3]
+                        + " | pr.estado(PRRLESTD)=" + row[4]
+                        + " | cuentaContable=" + row[5]
+                        + " | rubroPadre(PRRLRYYA)=" + row[6]
+                        + " | rol(PRRLRZZA)=" + row[7]);
+            }
+        } catch (Exception ex) {
+            System.err.println("  [obtenerCuentaPersona] ✗ No encontrado "
+                    + "(diagnóstico falló: " + ex.getMessage() + ")");
+        }
+    }
+
+    /**
      * Obtiene la cuenta contable de un cliente por tipo de cuenta.
      * tipoCuenta: 1=Facturas, 2=Anticipos, 3=Caja/Banco
      */
     private PlanCuenta obtenerCuentaPorTipo(Long codigoTitular, Long idEmpresa, Long tipoCuenta) {
-        System.out.println("  [obtenerCuentaPorTipo] titular=" + codigoTitular
-                + " | empresa=" + idEmpresa + " | tipoCuenta=" + tipoCuenta
-                + " | tipoPersona=1 (Cliente)");
-        try {
-            // NOTA: No se filtra por pcc.tipoPersona porque en BD ese campo es null en todos
-            // los registros — el rol (cliente/proveedor) ya queda determinado por la tabla
-            // PersonaRol (PRRL) a través del join. El criterio correcto es:
-            // titular + empresa + tipoCuenta.
-            String sql = "SELECT pcc.planCuenta FROM PersonaCuentaContable pcc "
-                    + "JOIN pcc.personaRol pr "
-                    + "WHERE pr.titular.codigo = :titular "
-                    + "AND pcc.tipoCuenta = :tipo "
-                    + "AND pcc.empresa.codigo = :empresa";
-            Query q = em.createQuery(sql);
-            q.setParameter("titular", codigoTitular);
-            q.setParameter("tipo", tipoCuenta);
-            q.setParameter("empresa", idEmpresa);
-            q.setMaxResults(1);
-            List<?> result = q.getResultList();
-            if (result.isEmpty()) {
-                // Log de diagnóstico: verificar cuántos PersonaRol existen para este titular
-                try {
-                    long totalPrrl = ((Number) em.createQuery(
-                            "SELECT COUNT(pr) FROM PersonaRol pr WHERE pr.titular.codigo = :t")
-                            .setParameter("t", codigoTitular)
-                            .getSingleResult()).longValue();
-                    long totalPrcc = ((Number) em.createQuery(
-                            "SELECT COUNT(pcc) FROM PersonaCuentaContable pcc "
-                            + "JOIN pcc.personaRol pr "
-                            + "WHERE pr.titular.codigo = :t")
-                            .setParameter("t", codigoTitular)
-                            .getSingleResult()).longValue();
-                    System.err.println("  [obtenerCuentaPorTipo] ✗ No encontrado."
-                            + " PersonaRol del titular: " + totalPrrl
-                            + " | PersonaCuentaContable del titular (sin filtros de empresa/tipo): " + totalPrcc);
-                    // Mostrar valores REALES almacenados en cada PersonaCuentaContable del titular
-                    @SuppressWarnings("unchecked")
-                    List<Object[]> rawRows = em.createQuery(
-                            "SELECT pcc.codigo, pcc.tipoCuenta, pcc.tipoPersona, "
-                            + "pcc.empresa.codigo, pr.estado, pcc.planCuenta.cuentaContable "
-                            + "FROM PersonaCuentaContable pcc "
-                            + "JOIN pcc.personaRol pr "
-                            + "WHERE pr.titular.codigo = :t")
-                            .setParameter("t", codigoTitular)
-                            .getResultList();
-                    for (Object[] row : rawRows) {
-                        System.err.println("  [obtenerCuentaPorTipo] PRCC registro:"
-                                + " PRCCCDGO=" + row[0]
-                                + " | tipoCuenta(PRCCTPOO)=" + row[1]
-                                + " | tipoPersona(PRCCCLPR)=" + row[2]
-                                + " | empresa(PJRQCDGO)=" + row[3]
-                                + " | pr.estado(PRRLESTD)=" + row[4]
-                                + " | cuentaContable=" + row[5]);
-                    }
-                } catch (Exception ex) {
-                    System.err.println("  [obtenerCuentaPorTipo] ✗ No encontrado (diagnóstico falló: " + ex.getMessage() + ")");
-                }
-                return null;
-            }
-            PlanCuenta pc = (PlanCuenta) result.get(0);
-            System.out.println("  [obtenerCuentaPorTipo] ✓ Cuenta encontrada: "
-                    + pc.getCuentaContable() + " - " + pc.getNombre());
-            return pc;
-        } catch (Exception e) {
-            System.err.println("⚠ Error buscando cuenta tipo " + tipoCuenta
-                    + " del cliente " + codigoTitular + ": " + e.getMessage());
-            e.printStackTrace();
-            return null;
-        }
+        return obtenerCuentaPersona(codigoTitular, idEmpresa, tipoCuenta, RolPersona.CLIENTE);
     }
 
     /**
@@ -1157,54 +1195,9 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     /**
      * Obtiene la cuenta contable de un proveedor por tipo de cuenta.
      * tipoCuenta: 1=Facturas, 2=Anticipos
-     * Filtra por rubroRolPersonaP=2 (rol Proveedor) en PersonaRol.
      */
     private PlanCuenta obtenerCuentaProveedorPorTipo(Long codigoTitular, Long idEmpresa, Long tipoCuenta) {
-        System.out.println("  [obtenerCuentaProveedorPorTipo] titular=" + codigoTitular
-                + " | empresa=" + idEmpresa + " | tipoCuenta=" + tipoCuenta
-                + " | rol=Proveedor(2)");
-        try {
-            // Busca en PersonaCuentaContable cuya PersonaRol tenga rubroRolPersonaP=2 (Proveedor)
-            String sql = "SELECT pcc.planCuenta FROM PersonaCuentaContable pcc "
-                    + "JOIN pcc.personaRol pr "
-                    + "WHERE pr.titular.codigo = :titular "
-                    + "AND pcc.tipoCuenta = :tipo "
-                    + "AND pcc.empresa.codigo = :empresa "
-                    + "AND pr.rubroRolPersonaP = 2";
-            Query q = em.createQuery(sql);
-            q.setParameter("titular", codigoTitular);
-            q.setParameter("tipo", tipoCuenta);
-            q.setParameter("empresa", idEmpresa);
-            q.setMaxResults(1);
-            List<?> result = q.getResultList();
-            if (result.isEmpty()) {
-                // segundo intento sin filtro de rol (por compatibilidad)
-                String sql2 = "SELECT pcc.planCuenta FROM PersonaCuentaContable pcc "
-                        + "JOIN pcc.personaRol pr "
-                        + "WHERE pr.titular.codigo = :titular "
-                        + "AND pcc.tipoCuenta = :tipo "
-                        + "AND pcc.empresa.codigo = :empresa";
-                Query q2 = em.createQuery(sql2);
-                q2.setParameter("titular", codigoTitular);
-                q2.setParameter("tipo", tipoCuenta);
-                q2.setParameter("empresa", idEmpresa);
-                q2.setMaxResults(1);
-                result = q2.getResultList();
-            }
-            if (result.isEmpty()) {
-                System.err.println("  [obtenerCuentaProveedorPorTipo] ✗ No encontrado."
-                        + " titular=" + codigoTitular + " tipoCuenta=" + tipoCuenta);
-                return null;
-            }
-            PlanCuenta pc = (PlanCuenta) result.get(0);
-            System.out.println("  [obtenerCuentaProveedorPorTipo] ✓ Cuenta: "
-                    + pc.getCuentaContable() + " - " + pc.getNombre());
-            return pc;
-        } catch (Exception e) {
-            System.err.println("⚠ Error buscando cuenta proveedor tipo " + tipoCuenta
-                    + " del titular " + codigoTitular + ": " + e.getMessage());
-            return null;
-        }
+        return obtenerCuentaPersona(codigoTitular, idEmpresa, tipoCuenta, RolPersona.PROVEEDOR);
     }
 
     /**
@@ -1710,31 +1703,13 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     }
 
     /**
-     * Obtiene la cuenta contable CxP del proveedor (tipoCuenta=1, rol proveedor).
-     * Usa la misma tabla PersonaCuentaContable pero buscando el titular en rol proveedor.
+     * Obtiene la cuenta contable CxP del proveedor (tipoCuenta=1, rol Proveedor).
+     * <p>
+     * Antes hacía su propia consulta SIN filtrar por rol, así que un titular que
+     * es cliente Y proveedor a la vez devolvía la cuenta del rol equivocado.
      */
     private PlanCuenta obtenerCuentaProveedor(Long codigoTitular, Long idEmpresa) {
-        System.out.println("  [obtenerCuentaProveedor] titular=" + codigoTitular
-                + " | empresa=" + idEmpresa);
-        try {
-            String sql = "SELECT pcc.planCuenta FROM PersonaCuentaContable pcc "
-                    + "JOIN pcc.personaRol pr "
-                    + "WHERE pr.titular.codigo = :titular "
-                    + "AND pcc.tipoCuenta = 1 "
-                    + "AND pcc.empresa.codigo = :empresa";
-            Query q = em.createQuery(sql);
-            q.setParameter("titular", codigoTitular);
-            q.setParameter("empresa", idEmpresa);
-            q.setMaxResults(1);
-            List<?> result = q.getResultList();
-            if (result.isEmpty()) return null;
-            PlanCuenta pc = (PlanCuenta) result.get(0);
-            System.out.println("  [obtenerCuentaProveedor] ✓ " + pc.getCuentaContable());
-            return pc;
-        } catch (Exception e) {
-            System.err.println("⚠ Error buscando cuenta del proveedor " + codigoTitular + ": " + e.getMessage());
-            return null;
-        }
+        return obtenerCuentaProveedorPorTipo(codigoTitular, idEmpresa, 1L);
     }
 
     /**
