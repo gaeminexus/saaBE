@@ -207,25 +207,25 @@
 				<element kind="rectangle" uuid="a1000001-0000-0000-0000-000000000001" mode="Opaque" x="0" y="2" width="535" height="14" backcolor="#E8E8E8">
 					<pen lineWidth="0.3"/>
 				</element>
-				<element kind="staticText" uuid="a1000002-0000-0000-0000-000000000002" mode="Opaque" x="90" y="2" width="80" height="14" backcolor="#E8E8E8" fontSize="7.0" bold="true" vTextAlign="Middle">
+				<element kind="staticText" uuid="a1000002-0000-0000-0000-000000000002" mode="Opaque" x="80" y="2" width="40" height="14" backcolor="#E8E8E8" fontSize="7.0" bold="true" vTextAlign="Middle">
 					<text><![CDATA[Factura - ]]></text>
 					<box leftPadding="3">
 						<pen lineWidth="0.3"/>
 					</box>
 				</element>
-				<element kind="textField" uuid="a1000003-0000-0000-0000-000000000003" mode="Opaque" x="170" y="2" width="110" height="14" backcolor="#E8E8E8" fontSize="7.0" vTextAlign="Middle">
+				<element kind="textField" uuid="a1000003-0000-0000-0000-000000000003" mode="Opaque" x="120" y="2" width="110" height="14" backcolor="#E8E8E8" fontSize="7.0" vTextAlign="Middle">
 					<expression><![CDATA[$F{NUMDOCRETEN}]]></expression>
 					<box leftPadding="3">
 						<pen lineWidth="0.3"/>
 					</box>
 				</element>
-				<element kind="staticText" uuid="a1000004-0000-0000-0000-000000000004" mode="Opaque" x="393" y="3" width="60" height="14" backcolor="#E8E8E8" fontSize="7.0" bold="true" vTextAlign="Middle">
+				<element kind="staticText" uuid="a1000004-0000-0000-0000-000000000004" mode="Opaque" x="393" y="2" width="60" height="14" backcolor="#E8E8E8" fontSize="7.0" bold="true" vTextAlign="Middle">
 					<text><![CDATA[F. Emisión:]]></text>
 					<box leftPadding="3">
 						<pen lineWidth="0.3"/>
 					</box>
 				</element>
-				<element kind="textField" uuid="a1000005-0000-0000-0000-000000000005" mode="Opaque" x="453" y="3" width="80" height="14" backcolor="#E8E8E8" fontSize="7.0" vTextAlign="Middle">
+				<element kind="textField" uuid="a1000005-0000-0000-0000-000000000005" mode="Opaque" x="453" y="2" width="82" height="14" backcolor="#E8E8E8" fontSize="7.0" vTextAlign="Middle">
 					<expression><![CDATA[$F{FECHAEMIDOC}]]></expression>
 					<box leftPadding="3">
 						<pen lineWidth="0.3"/>
