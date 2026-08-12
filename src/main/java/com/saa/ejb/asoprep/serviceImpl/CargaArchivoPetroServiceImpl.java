@@ -1188,6 +1188,7 @@ private DetallePrestamo buscarCuotaAPagar(List<Prestamo> prestamos,
 			                   " tiene saldo insignificante ($" + saldos.totalPendiente + 
 			                   ") - Marcando como PAGADA y continuando");
 			cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+			cuota.setIdEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
 			detallePrestamoDaoService.save(cuota, cuota.getCodigo());
 		}
 		
@@ -1353,6 +1354,7 @@ private void procesarPagoCuota(ParticipeXCargaArchivo participe,
 	} else {
 		// Pago parcial - Respetar orden: Desgravamen → Interés → Capital → Seguro Incendio
 		cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PARCIAL);
+		cuota.setIdEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PARCIAL);
 		
 		double montoRestante = montoPagado;
 		

@@ -79,6 +79,8 @@ public class DetallePrestamoServiceImpl implements DetallePrestamoService {
         if(detalle.getCodigo() == null){
         	detalle.setEstado(Long.valueOf(Estado.ACTIVO)); //Activo
 		}
+        // DTPRIDST se mantiene como espejo de DTPRESTD; el frontend solo maneja estado
+        detalle.setIdEstado(detalle.getEstado());
         detalle = detallePrestamoDaoService.save(detalle, detalle.getCodigo());
         return detalle;
     }

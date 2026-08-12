@@ -217,6 +217,7 @@ public class PrestamoServiceImpl implements PrestamoService {
             detalle.setDesgravamenOriginal(0.0);
             detalle.setValorDiferido(0.0);
             detalle.setEstado(Long.valueOf(Estado.ACTIVO));
+            detalle.setIdEstado(Long.valueOf(Estado.ACTIVO));
             
             detalles.add(detalle);
         }
@@ -282,6 +283,7 @@ public class PrestamoServiceImpl implements PrestamoService {
             detalle.setDesgravamenOriginal(0.0);
             detalle.setValorDiferido(0.0);
             detalle.setEstado(Long.valueOf(Estado.ACTIVO));
+            detalle.setIdEstado(Long.valueOf(Estado.ACTIVO));
             
             detalles.add(detalle);
         }
@@ -349,6 +351,7 @@ public class PrestamoServiceImpl implements PrestamoService {
             detalle.setDesgravamenOriginal(0.0);
             detalle.setValorDiferido(0.0);
             detalle.setEstado(Long.valueOf(Estado.ACTIVO));
+            detalle.setIdEstado(Long.valueOf(Estado.ACTIVO));
             
             detalles.add(detalle);
         }
@@ -416,6 +419,7 @@ public class PrestamoServiceImpl implements PrestamoService {
             detalle.setDesgravamenOriginal(0.0);
             detalle.setValorDiferido(0.0);
             detalle.setEstado(Long.valueOf(Estado.ACTIVO));
+            detalle.setIdEstado(Long.valueOf(Estado.ACTIVO));
             
             detalles.add(detalle);
         }
@@ -1054,6 +1058,7 @@ public class PrestamoServiceImpl implements PrestamoService {
 			detalle.setSaldo(redondear(Math.max(0, saldoCapital)));
 			detalle.setSaldoInteres(redondear(interes));
 			detalle.setEstado(detalleOriginal.getEstado());
+			detalle.setIdEstado(detalleOriginal.getEstado());
 			
 			// Inicializar campos en cero
 			detalle.setMora(0.0);
@@ -1150,6 +1155,7 @@ public class PrestamoServiceImpl implements PrestamoService {
 			detalle.setSaldo(redondear(Math.max(0, saldoCapital)));
 			detalle.setSaldoInteres(redondear(interes));
 			detalle.setEstado(Long.valueOf(Estado.ACTIVO));
+			detalle.setIdEstado(Long.valueOf(Estado.ACTIVO));
 			
 			// Inicializar campos en cero
 			detalle.setMora(0.0);

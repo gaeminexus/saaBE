@@ -358,6 +358,7 @@ public class ProcesoCargaPetroServiceImpl implements ProcesoCargaPetroService {
         
         // Actualizar estado
         cuota.setEstado(Long.valueOf(nuevoEstado));
+        cuota.setIdEstado(Long.valueOf(nuevoEstado));
         
         // Actualizar valores pagados (ACUMULATIVO)
         cuota.setCapitalPagado(capitalPagadoAnterior + capitalDescontado);

@@ -53,8 +53,18 @@
 | `Nota de Crédito` | `NOTA_CREDITO_COMPRA` | `NotaCreditoCompra` + `DetalleNotaCreditoCompra` + `PathNotaCreditoCompra` | ⚠️ Pendiente de pulir |
 | `Nota de Débito` | `NOTA_DEBITO_COMPRA` | `NotaDebitoCompra` + `DetalleNotaDebitoCompra` + `PathNotaDebitoCompra` | ⚠️ Pendiente de pulir |
 | `Liquidación de compra` | `LIQUIDACION_COMPRA_COMPRA` | `LiquidacionCompraCompra` + `DetalleLiquidacionCompraCompra` + `PathLiquidacionCompraCompra` | ⚠️ Pendiente de pulir |
-| `Comprobante de Retención` | `RETENCION_COMPRA` | `RetencionCompra` + `DetalleRetencionCompra` + `PathRetencionCompra` | ⚠️ Pendiente de pulir |
-| `Comprobante de Retención electrónica versión 2.0` | `RETENCION_COMPRA_V2` | `RetencionCompraV2` *(sin path aún)* | ⚠️ Pendiente de pulir |
+| `Comprobante de Retención` | `RETENCION_COMPRA_V2` | `RetencionCompraV2` + `DetalleRetencionCompraV2` *(sin path aún)* | ⚠️ Pendiente de pulir |
+| `Comprobante de Retención electrónica versión 2.0` | `RETENCION_COMPRA_V2` | `RetencionCompraV2` + `DetalleRetencionCompraV2` *(sin path aún)* | ⚠️ Pendiente de pulir |
+
+> ⚠️ **Desde el 2026-08-11 las dos versiones del comprobante de retención se
+> registran en `RetencionCompraV2` (`PGS.RCV2` + `PGS.DRC2`).** El despacho de
+> `procesarDocumento` / `procesarXml` llama a `registrarRetencionCompraV2()`
+> para ambos tipos: el parser tolera los dos esquemas del SRI
+> (`obtenerDetallesRetencion` / `getValorDocSustento`). `RetencionCompra`
+> (`PGS.RTCM`) queda solo para consultar lo cargado antes de ese cambio —
+> `docs/scripts/sql-migrar-retenciones-v1-a-v2.sql` lo mueve a las tablas v2.
+> El tipo `RETENCION_COMPRA` sigue existiendo en reversión, contabilización y
+> aplicación de pago para no romper los documentos históricos.
 
 ---
 
