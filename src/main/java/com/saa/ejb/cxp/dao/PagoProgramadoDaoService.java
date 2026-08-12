@@ -41,6 +41,16 @@ public interface PagoProgramadoDaoService extends EntityDao<PagoProgramado> {
 	List<PagoProgramado> selectVigentesByFactura(Long idFacturaCompra) throws Throwable;
 
 	/**
+	 * Recupera los pagos de un egreso de tesorería que siguen vigentes
+	 * (registrados, en archivo o confirmados). Un egreso solo admite un pago
+	 * vigente a la vez.
+	 * @param idEgreso   : Id del egreso (TSR.EGRS)
+	 * @return           : Listado de pagos vigentes del egreso
+	 * @throws Throwable : Excepcion
+	 */
+	List<PagoProgramado> selectVigentesByEgreso(Long idEgreso) throws Throwable;
+
+	/**
 	 * Recupera varios pagos por sus identificadores.
 	 * @param ids        : Identificadores de los pagos
 	 * @return           : Listado de pagos encontrados

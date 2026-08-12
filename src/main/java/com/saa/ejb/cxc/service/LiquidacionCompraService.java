@@ -47,4 +47,31 @@ public interface LiquidacionCompraService extends EntityService<LiquidacionCompr
 			java.util.List<com.saa.model.cxc.DetalleLiquidacionCompra> detalles,
 			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable;
 
+	// =========================================================================
+	// Etapas transaccionales independientes del proceso de emisión
+	// -------------------------------------------------------------------------
+	// procesarLiquidacionCompleta las invoca a través del contenedor
+	// (SessionContext.getBusinessObject) para que cada una corra en su propia
+	// transacción: un fallo tardío jamás debe reversar una liquidación ya
+	// autorizada por el SRI.
+	// =========================================================================
+
+	/**
+	 * Emite la liquidación de compra ante el SRI en una transacción propia
+	 * (REQUIRES_NEW): genera y firma el XML, envía a recepción y —sólo si el
+	 * SRI la acepta— graba el documento y persiste la autorización.
+	 * @return Mapa con clave, idLiquidacion y emitida=true si el SRI la autorizó
+	 */
+	java.util.Map<String, Object> emitirLiquidacionAnteSRI(LiquidacionCompra liquidacion,
+			java.util.List<com.saa.model.cxc.DetalleLiquidacionCompra> detalles,
+			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable;
+
+	/**
+	 * Genera y vincula el asiento contable de una liquidación de compra en
+	 * transacción propia (REQUIRES_NEW). Idempotente.
+	 * @param idLiquidacion Id de la liquidación ya autorizada
+	 * @return Mapa con aplica, generado, yaExistia, idAsiento, numeroAlterno
+	 */
+	java.util.Map<String, Object> generarContabilidadLiquidacion(Long idLiquidacion) throws Throwable;
+
 }

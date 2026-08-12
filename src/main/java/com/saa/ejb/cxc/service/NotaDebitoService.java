@@ -50,6 +50,48 @@ public interface NotaDebitoService extends EntityService<NotaDebito> {
 			java.util.List<com.saa.model.cxc.DetalleNotaDebito> detalles,
 			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable;
 
+	// =========================================================================
+	// Etapas transaccionales independientes del proceso de emisión
+	// -------------------------------------------------------------------------
+	// procesarNotaDebitoCompleta las invoca a través del contenedor
+	// (SessionContext.getBusinessObject) para que cada una corra en su propia
+	// transacción: un fallo tardío jamás debe reversar una ND ya autorizada.
+	// =========================================================================
+
+	/**
+	 * Emite la nota de débito ante el SRI en una transacción propia
+	 * (REQUIRES_NEW): valida cuentas, genera y firma el XML, envía a recepción
+	 * y —sólo si el SRI la acepta— graba el documento y persiste la autorización.
+	 * @return Mapa con clave, idNotaDebito y emitida=true si el SRI la autorizó
+	 */
+	java.util.Map<String, Object> emitirNotaDebitoAnteSRI(NotaDebito notaDebito,
+			java.util.List<com.saa.model.cxc.DetalleNotaDebito> detalles,
+			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable;
+
+	/**
+	 * Genera y vincula el asiento contable de una nota de débito en transacción
+	 * propia (REQUIRES_NEW). Idempotente.
+	 * @param idNotaDebito Id de la nota de débito ya autorizada
+	 * @return Mapa con aplica, generado, yaExistia, idAsiento, numeroAlterno
+	 */
+	java.util.Map<String, Object> generarContabilidadNotaDebito(Long idNotaDebito) throws Throwable;
+
+	/**
+	 * Registra el movimiento de la nota de débito sobre la factura afectada, en
+	 * transacción propia (REQUIRES_NEW). Idempotente.
+	 * @param idNotaDebito Id de la nota de débito (debe tener asiento)
+	 * @return Mapa con aplicado, yaExistia, idAplicacion
+	 */
+	java.util.Map<String, Object> aplicarPagoNotaDebito(Long idNotaDebito) throws Throwable;
+
+	/**
+	 * Marca la nota de débito como autorizada por el SRI en transacción propia
+	 * (REQUIRES_NEW): estado 5, autorización y XML autorizado. Idempotente.
+	 * @return true si actualizó el estado, false si ya estaba autorizada
+	 */
+	boolean marcarNotaDebitoAutorizada(Long idNotaDebito, String numeroAutorizacion,
+			String fechaAutorizacion, String comprobanteXML) throws Throwable;
+
 	/** Reenvía (o envía por primera vez) el email de una nota de débito autorizada.
 	 *  Si el PDF no existe en disco lo regenera al vuelo. */
 	java.util.Map<String, Object> reenviarEmail(Long idNotaDebito, String destinatarios) throws Throwable;

@@ -122,7 +122,7 @@ public class AplicacionPagoCxpDaoServiceImpl extends EntityDaoImpl<AplicacionPag
 
         StringBuilder jpql = new StringBuilder(
                 " select f from FacturaCompra f " +
-                " where  replace(f.numero, '-', '') = :numero ");
+                " where  FUNCTION('replace', f.numero, '-', '') = :numero ");
         if (idTitular != null) {
             jpql.append(" and f.titular.codigo = :idTitular ");
         }

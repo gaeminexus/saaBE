@@ -11,6 +11,8 @@ import java.util.Map;
 import com.saa.basico.ejb.FileService;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
+import com.saa.ejb.cnt.service.AsientoContableService;
+import com.saa.ejb.cnt.service.AsientoService;
 import com.saa.ejb.cxp.dao.LotePagoDaoService;
 import com.saa.ejb.cxp.dao.PagoProgramadoDaoService;
 import com.saa.ejb.cxp.service.AplicacionPagoCxpService;
@@ -18,6 +20,8 @@ import com.saa.ejb.cxp.service.FormateadorArchivoBanco;
 import com.saa.ejb.cxp.service.LectorRespuestaBanco;
 import com.saa.ejb.cxp.service.PagoProgramadoService;
 import com.saa.ejb.cxp.service.RespuestaPagoBanco;
+import com.saa.ejb.tsr.service.MovimientoBancoService;
+import com.saa.model.cnt.Asiento;
 import com.saa.model.cxp.AplicacionPagoCxp;
 import com.saa.model.cxp.FacturaCompra;
 import com.saa.model.cxp.LotePago;
@@ -27,8 +31,13 @@ import com.saa.model.scp.Empresa;
 import com.saa.model.scp.Usuario;
 import com.saa.model.tsr.CuentaBancaria;
 import com.saa.model.tsr.CuentaBancariaTitular;
+import com.saa.model.tsr.Egreso;
+import com.saa.rubros.EstadoEgresoTesoreria;
 import com.saa.rubros.EstadoLotePago;
 import com.saa.rubros.EstadoPagoProgramado;
+import com.saa.rubros.OrigenMovimientoConciliacion;
+import com.saa.rubros.TipoAsientos;
+import com.saa.rubros.TipoMovimientoConciliacion;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -52,6 +61,15 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 
 	@EJB
 	private AplicacionPagoCxpService aplicacionPagoCxpService;
+
+	@EJB
+	private AsientoContableService asientoContableService;
+
+	@EJB
+	private AsientoService asientoService;
+
+	@EJB
+	private MovimientoBancoService movimientoBancoService;
 
 	@EJB
 	private FileService fileService;
@@ -233,6 +251,116 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			resultado.put("asiento", aplicacion.getAsiento().getNumeroAlterno());
 		}
 		resultado.putAll(aplicacionPagoCxpService.saldoFactura(idFacturaCompra));
+		return resultado;
+	}
+
+	@Override
+	public Map<String, Object> registrarPagoDeEgreso(Long idEgreso, Long idCuentaBancariaOrigen,
+			Long idCuentaDestinoTitular, Long idUsuario, boolean debitoAutomatico,
+			String referencia) throws Throwable {
+
+		System.out.println("=== registrarPagoDeEgreso | egreso=" + idEgreso
+				+ " | cuentaOrigen=" + idCuentaBancariaOrigen
+				+ " | debitoAutomatico=" + debitoAutomatico + " ===");
+
+		Map<String, Object> resultado = new HashMap<>();
+
+		Egreso egreso = em.find(Egreso.class, idEgreso);
+		if (egreso == null) {
+			throw new IncomeException("No se encontró el egreso de tesorería con ID: " + idEgreso);
+		}
+		if (egreso.getEstado() == null
+				|| egreso.getEstado().intValue() != EstadoEgresoTesoreria.PENDIENTE_PAGO) {
+			throw new IncomeException("El egreso " + idEgreso + " no está pendiente de pago.");
+		}
+		if (egreso.getValor() == null || egreso.getValor() <= 0) {
+			throw new IncomeException("El valor del egreso debe ser mayor a cero.");
+		}
+		if (!pagoProgramadoDaoService.selectVigentesByEgreso(idEgreso).isEmpty()) {
+			throw new IncomeException("El egreso " + idEgreso
+					+ " ya tiene un pago vigente. Anúlelo o reviértalo antes de registrar otro.");
+		}
+
+		CuentaBancaria cuentaOrigen = em.find(CuentaBancaria.class, idCuentaBancariaOrigen);
+		if (cuentaOrigen == null) {
+			throw new IncomeException("No se encontró la cuenta bancaria de origen con ID: "
+					+ idCuentaBancariaOrigen);
+		}
+
+		// La transferencia viaja en el archivo del banco: exige beneficiario y
+		// cuenta de destino. El débito automático no transfiere nada.
+		CuentaBancariaTitular cuentaDestino = null;
+		if (!debitoAutomatico) {
+			if (egreso.getTitular() == null) {
+				throw new IncomeException("El egreso " + idEgreso + " no tiene beneficiario. "
+						+ "Para pagarlo por transferencia debe indicar el titular y su cuenta bancaria.");
+			}
+			if (idCuentaDestinoTitular == null) {
+				throw new IncomeException("Debe indicar la cuenta bancaria del beneficiario "
+						+ "para incluir el pago en el archivo del banco.");
+			}
+			cuentaDestino = em.find(CuentaBancariaTitular.class, idCuentaDestinoTitular);
+			if (cuentaDestino == null) {
+				throw new IncomeException("No se encontró la cuenta bancaria del beneficiario con ID: "
+						+ idCuentaDestinoTitular);
+			}
+			if (cuentaDestino.getTitular() != null
+					&& !cuentaDestino.getTitular().getCodigo().equals(egreso.getTitular().getCodigo())) {
+				throw new IncomeException("La cuenta bancaria de destino pertenece a otro titular, "
+						+ "no al beneficiario del egreso.");
+			}
+		}
+
+		PagoProgramado pago = new PagoProgramado();
+		pago.setEmpresa(egreso.getEmpresa());
+		pago.setEgreso(egreso);
+		pago.setTitular(egreso.getTitular());
+		pago.setCuentaBancaria(cuentaOrigen);
+		pago.setCuentaDestino(cuentaDestino);
+		pago.setDebitoAutomatico(Long.valueOf(debitoAutomatico ? 1 : 0));
+		pago.setValor(egreso.getValor());
+		pago.setFechaProgramada(egreso.getFecha() != null ? egreso.getFecha() : LocalDate.now());
+		pago.setObservacion(egreso.getDescripcion());
+		pago.setUsuario(em.find(Usuario.class, idUsuario));
+		pago.setFechaRegistro(LocalDateTime.now());
+
+		if (!debitoAutomatico) {
+			pago.setEstado(Long.valueOf(EstadoPagoProgramado.REGISTRADO));
+			pago = saveSingle(pago);
+
+			System.out.println("✓ Pago de egreso registrado: id=" + pago.getId());
+
+			resultado.put("exito", true);
+			resultado.put("mensaje",
+					"Pago del egreso registrado. Queda pendiente de incluirse en un archivo de pagos.");
+			resultado.put("pago", pago.getId());
+			resultado.put("egreso", idEgreso);
+			resultado.put("debitoAutomatico", false);
+			return resultado;
+		}
+
+		// Débito automático: el banco ya debitó la cuenta. Nace confirmado y se
+		// contabiliza aquí mismo.
+		pago.setEstado(Long.valueOf(EstadoPagoProgramado.CONFIRMADO));
+		pago.setReferenciaBanco((referencia != null && !referencia.trim().isEmpty())
+				? referencia.trim() : null);
+		pago.setFechaRespuesta(pago.getFechaProgramada());
+		pago = saveSingle(pago);
+		em.flush();
+
+		Asiento asiento = contabilizarPagoEgreso(pago, idUsuario);
+		em.flush();
+
+		System.out.println("✓ Pago de egreso por débito automático registrado y contabilizado: id="
+				+ pago.getId() + " | asiento=" + asiento.getNumeroAlterno());
+
+		resultado.put("exito", true);
+		resultado.put("mensaje", "Egreso pagado por débito automático. El asiento contable "
+				+ "y el movimiento bancario fueron generados.");
+		resultado.put("pago", pago.getId());
+		resultado.put("egreso", idEgreso);
+		resultado.put("debitoAutomatico", true);
+		resultado.put("asiento", asiento.getNumeroAlterno());
 		return resultado;
 	}
 
@@ -420,9 +548,15 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 				try {
 					pago.setReferenciaBanco(respuesta.getReferencia());
 					// Solo aquí se genera contabilidad y movimiento bancario.
-					AplicacionPagoCxp aplicacion =
-							aplicacionPagoCxpService.aplicarPagoTransferencia(pago, idUsuario);
-					pago.setAplicacion(aplicacion);
+					if (pago.getEgreso() != null) {
+						// Pago de un egreso de tesorería: asiento contra la
+						// cuenta del grupo del producto, sin aplicación.
+						contabilizarPagoEgreso(pago, idUsuario);
+					} else {
+						AplicacionPagoCxp aplicacion =
+								aplicacionPagoCxpService.aplicarPagoTransferencia(pago, idUsuario);
+						pago.setAplicacion(aplicacion);
+					}
 					pago.setEstado(Long.valueOf(EstadoPagoProgramado.CONFIRMADO));
 					pagoProgramadoDaoService.save(pago, pago.getId());
 					confirmados++;
@@ -524,9 +658,14 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 
 		Map<String, Object> resultado = new HashMap<>();
 
-		// Reversa la aplicación: devuelve el saldo a la factura, anula el asiento
-		// y el movimiento bancario.
-		if (pago.getAplicacion() != null) {
+		if (pago.getEgreso() != null) {
+			// Pago de un egreso de tesorería: no hay aplicación que reversar.
+			// Se anula el asiento y el movimiento bancario, y el egreso vuelve
+			// a quedar pendiente de pago.
+			revertirContabilidadEgreso(pago, motivo.trim());
+		} else if (pago.getAplicacion() != null) {
+			// Reversa la aplicación: devuelve el saldo a la factura, anula el
+			// asiento y el movimiento bancario.
 			Map<String, Object> reversion = aplicacionPagoCxpService.revertirAplicacion(
 					pago.getAplicacion().getId(), motivo.trim(), idUsuario);
 			resultado.putAll(reversion);
@@ -627,6 +766,109 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	 */
 	private boolean esDebitoAutomatico(PagoProgramado pago) {
 		return pago.getDebitoAutomatico() != null && pago.getDebitoAutomatico().intValue() == 1;
+	}
+
+	/**
+	 * Contabiliza el pago de un egreso de tesorería: genera el asiento
+	 * (DEBE cuenta del grupo del producto / HABER banco), el movimiento
+	 * bancario de egreso, y deja el egreso como Pagado con su asiento.
+	 * @param pago      : Pago del egreso ya ejecutado por el banco
+	 * @param idUsuario : Id del usuario que registra o procesa
+	 * @return          : Asiento generado
+	 * @throws Throwable : Excepcion
+	 */
+	private Asiento contabilizarPagoEgreso(PagoProgramado pago, Long idUsuario) throws Throwable {
+
+		Egreso egreso = pago.getEgreso();
+		Long idEmpresa = (pago.getEmpresa() != null) ? pago.getEmpresa().getCodigo() : null;
+		Long idCuentaBancaria = (pago.getCuentaBancaria() != null)
+				? pago.getCuentaBancaria().getCodigo() : null;
+		LocalDate fecha = (pago.getFechaRespuesta() != null)
+				? pago.getFechaRespuesta() : LocalDate.now();
+		boolean debitoAutomatico = esDebitoAutomatico(pago);
+
+		String observacionAsiento = "Pago egreso tesorería"
+				+ (debitoAutomatico ? " (débito automático)" : " (transferencia)")
+				+ " | Concepto: " + egreso.getDescripcion()
+				+ " | Ref: " + nvl(pago.getReferenciaBanco(), "")
+				+ " | Valor: $" + String.format(java.util.Locale.US, "%.2f", pago.getValor());
+
+		// 1. Asiento contable del egreso
+		Asiento asiento = asientoContableService.generarAsientoEgresoTesoreria(
+				egreso.getProducto().getId(), egreso.getDescripcion(), pago.getValor(),
+				idCuentaBancaria, idEmpresa, TipoAsientos.EGRESO_TESORERIA, fecha,
+				observacionAsiento, usuarioNombre(idUsuario));
+
+		// 2. Movimiento bancario de egreso (mismo criterio que los pagos de facturas)
+		movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
+				"Egreso tesorería: " + egreso.getDescripcion()
+				+ (debitoAutomatico ? " | Débito automático" : "")
+				+ " | Ref: " + nvl(pago.getReferenciaBanco(), ""),
+				asiento, pago.getCuentaBancaria(), pago.getValor(),
+				TipoMovimientoConciliacion.TRANSFERENCIAS_DEBITOS_EN_TRANSITO,
+				OrigenMovimientoConciliacion.PAGOS);
+
+		// 3. El egreso queda pagado, con su asiento vinculado
+		egreso.setEstado(Long.valueOf(EstadoEgresoTesoreria.PAGADO));
+		egreso.setAsiento(asiento);
+		em.merge(egreso);
+
+		System.out.println("✓ Egreso " + egreso.getId() + " pagado y contabilizado"
+				+ " | asiento=" + asiento.getNumeroAlterno());
+		return asiento;
+	}
+
+	/**
+	 * Reversa la contabilidad del pago de un egreso: anula el movimiento
+	 * bancario y el asiento, y el egreso vuelve a Pendiente de pago.
+	 * @param pago   : Pago confirmado del egreso
+	 * @param motivo : Motivo de la reversión
+	 * @throws Throwable : Excepcion
+	 */
+	private void revertirContabilidadEgreso(PagoProgramado pago, String motivo) throws Throwable {
+
+		Egreso egreso = pago.getEgreso();
+		Long idAsiento = (egreso.getAsiento() != null) ? egreso.getAsiento().getCodigo() : null;
+
+		if (idAsiento != null) {
+			try {
+				movimientoBancoService.actualizaEstadoMovimiento(idAsiento,
+						Long.valueOf(com.saa.rubros.EstadoMovimientoBanco.ANULADO));
+			} catch (Exception e) {
+				System.err.println("⚠ No se pudo anular el movimiento bancario del asiento "
+						+ idAsiento + ": " + e.getMessage());
+			}
+			try {
+				asientoService.anulaAsiento(idAsiento);
+				System.out.println("✓ Asiento " + idAsiento + " anulado / reversado.");
+			} catch (Throwable e) {
+				System.err.println("⚠ No se pudo anular el asiento " + idAsiento + ": " + e.getMessage());
+			}
+		}
+
+		egreso.setEstado(Long.valueOf(EstadoEgresoTesoreria.PENDIENTE_PAGO));
+		egreso.setAsiento(null);
+		egreso.setObservacion(nvl(egreso.getObservacion(), "") + " | PAGO REVERSADO: " + motivo);
+		em.merge(egreso);
+
+		System.out.println("✓ Egreso " + egreso.getId() + " vuelve a Pendiente de pago.");
+	}
+
+	/**
+	 * Recupera el nombre de un usuario para las trazas y observaciones.
+	 * @param idUsuario : Id del usuario
+	 * @return          : Nombre del usuario o SISTEMA
+	 */
+	private String usuarioNombre(Long idUsuario) {
+		if (idUsuario == null) {
+			return "SISTEMA";
+		}
+		Usuario usuario = em.find(Usuario.class, idUsuario);
+		return (usuario != null && usuario.getNombre() != null) ? usuario.getNombre() : "SISTEMA";
+	}
+
+	private String nvl(String valor, String porDefecto) {
+		return (valor != null) ? valor : porDefecto;
 	}
 
 	/**

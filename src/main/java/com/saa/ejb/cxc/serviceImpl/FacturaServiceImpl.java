@@ -34,8 +34,12 @@ import com.saa.model.cxc.PathFactura;
 import com.saa.model.tsr.Titular;
 import com.saa.rubros.Estado;
 
+import jakarta.annotation.Resource;
 import jakarta.ejb.EJB;
+import jakarta.ejb.SessionContext;
 import jakarta.ejb.Stateless;
+import jakarta.ejb.TransactionAttribute;
+import jakarta.ejb.TransactionAttributeType;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.xml.soap.MessageFactory;
@@ -76,6 +80,20 @@ public class FacturaServiceImpl implements FacturaService {
 
 	@EJB
 	private com.saa.ejb.cnt.service.AsientoContableService asientoContableService;
+
+	@Resource
+	private SessionContext sessionContext;
+
+	/**
+	 * Referencia al propio bean pasando por el contenedor, para que los
+	 * @TransactionAttribute de las etapas se apliquen de verdad. Una llamada
+	 * directa a this.metodo() se salta los interceptores y correría en la
+	 * transacción del llamador.
+	 * @return : Vista local de este mismo EJB
+	 */
+	private FacturaService self() {
+		return sessionContext.getBusinessObject(FacturaService.class);
+	}
 
 	@EJB
 	private com.saa.ejb.cxc.service.AplicacionPagoCxcService aplicacionPagoCxcService;
@@ -197,23 +215,121 @@ public class FacturaServiceImpl implements FacturaService {
 		return result;
 	}
 	
+	/**
+	 * Orquesta el proceso completo SIN transacción propia (NOT_SUPPORTED).
+	 * <p>
+	 * El envío al SRI es irreversible, así que la emisión se confirma en su
+	 * propia transacción y las etapas posteriores (asiento contable, email)
+	 * corren aparte: un fallo tardío NUNCA puede reversar una factura ya
+	 * autorizada por el SRI.
+	 * <p>
+	 * Antes esto corría todo en una sola transacción y el {@code catch} del
+	 * asiento no servía de nada: cuando un EJB anidado lanza una excepción de
+	 * sistema el contenedor marca la transacción del llamador como
+	 * rollback-only y el commit final reversa TODO.
+	 */
 	@Override
-	public java.util.Map<String, Object> procesarFacturaCompleta(Factura factura, 
+	@TransactionAttribute(TransactionAttributeType.NOT_SUPPORTED)
+	public java.util.Map<String, Object> procesarFacturaCompleta(Factura factura,
 			java.util.List<DetalleFactura> detalles,
 			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable {
 		System.out.println("=== INICIANDO PROCESO COMPLETO DE FACTURA (nuevo flujo: BD tras RECIBIDA) ===");
-		
+
+		// ── PASO 0: Validar cuentas contables (sin escribir en BD) ────────────
+		java.util.Map<String, Object> validacion = validarContabilidadFactura(factura, detalles);
+		if (validacion != null) {
+			return validacion;
+		}
+
+		// ── PASOS 1 a 4: emisión ante el SRI, en UNA transacción propia ───────
+		// Al volver de aquí, lo que el SRI aceptó ya está confirmado en BD.
+		java.util.Map<String, Object> resultado =
+				self().emitirFacturaAnteSRI(factura, detalles, ambiente, conectaSRI, destinatario, pathLogo);
+
+		if (!Boolean.TRUE.equals(resultado.get("emitida"))) {
+			// No se autorizó: el mapa ya trae etapa, estado y mensaje.
+			return resultado;
+		}
+
+		Long idFactura      = (Long)   resultado.get("idFactura");
+		Long idFacturador   = (Long)   resultado.get("idFacturador");
+		String clave        = (String) resultado.get("clave");
+		byte[] pdfBytesParaEmail = (byte[]) resultado.get("pdfBytes");
+		Factura facturaEmitida   = (Factura) resultado.get("factura");
+		destinatario = (String) resultado.get("destinatario");
+
+		System.out.println("✓ Factura AUTORIZADA por el SRI.");
+		resultado.put("estado", "AUTORIZADO");
+
+		// ── PASO 5: Generar asiento contable (transacción propia) ─────────────
+		System.out.println("PASO 5: Generando asiento contable...");
+		try {
+			java.util.Map<String, Object> resAsiento = self().generarContabilidadFactura(idFactura);
+			if (Boolean.TRUE.equals(resAsiento.get("aplica"))) {
+				resultado.put("asiento", resAsiento.get("numeroAlterno"));
+			}
+		} catch (Throwable e) {
+			resultado.put("contabilidadPendiente", true);
+			resultado.put("advertenciaAsiento",
+					"La factura fue autorizada pero ocurrió un error al generar el asiento contable: "
+					+ e.getMessage() + ". Genere el asiento manualmente desde Contabilidad.");
+			System.err.println("⚠ Error en asiento contable: " + e.getMessage());
+			e.printStackTrace();
+		}
+
+		// ── PASO 6: Enviar correo electrónico ─────────────────────────────────
+		System.out.println("PASO 6: Enviando email...");
+		try {
+			if (destinatario != null && !destinatario.trim().isEmpty()) {
+				String resourcesPath = getBaseUploadDirectory() + "resources/" + idFacturador;
+				String xmlAutorizado = null;
+				try {
+					java.nio.file.Path pXml = java.nio.file.Paths.get(resourcesPath + "/docs/a/" + clave + ".xml");
+					if (java.nio.file.Files.exists(pXml)) xmlAutorizado = new String(java.nio.file.Files.readAllBytes(pXml), "UTF-8");
+				} catch (Exception ioEx) {
+					System.err.println("⚠ No se pudo leer el XML para el email: " + ioEx.getMessage());
+				}
+				String razonSocial = facturaEmitida.getFacturador() != null
+						? nvl(facturaEmitida.getFacturador().getRazonSocial(), nvl(facturaEmitida.getFacturador().getNombre(), "")) : "";
+				emailFacturaService.enviarFacturaAutorizada(destinatario, nvl(facturaEmitida.getNumero(), clave),
+						clave, razonSocial, "Factura", xmlAutorizado, pdfBytesParaEmail);
+				resultado.put("emailEnviado", true);
+				System.out.println("✓ Email enviado a: " + destinatario);
+			} else {
+				resultado.put("emailEnviado", false);
+				System.out.println("ℹ Email omitido: no hay dirección de correo del cliente.");
+			}
+		} catch (Exception mailEx) {
+			resultado.put("advertenciaEmail", "La factura fue autorizada pero no se pudo enviar el email: "
+					+ mailEx.getMessage() + ". Reenvíe el email manualmente.");
+			System.err.println("⚠ Error enviando email: " + mailEx.getMessage());
+		}
+
+		// ── FIN ───────────────────────────────────────────────────────────────
+		boolean hayPendientes = Boolean.TRUE.equals(resultado.get("contabilidadPendiente"));
+		resultado.put("exito",   true);
+		resultado.put("etapa",   hayPendientes ? "COMPLETADO_CON_PENDIENTES" : "COMPLETADO");
+		resultado.put("mensaje", hayPendientes
+				? "Factura autorizada por el SRI, pero quedaron etapas pendientes. Revise las advertencias."
+				: "Factura procesada y autorizada exitosamente.");
+		System.out.println("=== PROCESO COMPLETO FINALIZADO"
+				+ (hayPendientes ? " (CON PENDIENTES)" : "") + " ===");
+		return resultado;
+	}
+
+	/**
+	 * Valida que estén configuradas las cuentas contables necesarias, antes de
+	 * grabar o enviar nada al SRI.
+	 * @param factura  : Factura a emitir
+	 * @param detalles : Detalles de la factura
+	 * @return : null si todo está OK, o el mapa de error listo para devolver
+	 */
+	private java.util.Map<String, Object> validarContabilidadFactura(Factura factura,
+			java.util.List<DetalleFactura> detalles) throws Throwable {
+
 		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
 		resultado.put("exito", false);
-		// ──────────────────────────────────────────────────────────────────────
-		// NUEVO FLUJO:
-		//  PASO 0: Validar cuentas contables
-		//  PASO 1: Preparar campos (clave, secuencial, número) en MEMORIA — sin BD
-		//  PASO 2-3: Generar XML y firmar (datos en memoria)
-		//  PASO 4a: WS1 → si RECIBIDA → grabar factura + detalles + forma de pago en BD
-		//  PASO 4b: WS2 → si AUTORIZADO → asiento contable + email
-		// ──────────────────────────────────────────────────────────────────────
-		
+
 		// ── PASO 0: Validar configuración contable ANTES de grabar ─────────────
 		// Solo si el facturador tiene generaConta = 1
 		if (factura.getFacturador() != null
@@ -249,6 +365,35 @@ public class FacturaServiceImpl implements FacturaService {
 			}
 			System.out.println("✓ Validación contable OK: todas las cuentas están configuradas.");
 		}
+		return null;
+	}
+
+	/**
+	 * Emite la factura ante el SRI en UNA transacción propia (REQUIRES_NEW):
+	 * prepara los campos en memoria, genera y firma el XML, envía a recepción
+	 * y —sólo si el SRI la acepta— graba factura, detalles, forma de pago y
+	 * paths, y persiste el resultado de la autorización.
+	 * <p>
+	 * Al confirmarse esta transacción el documento queda en BD tal como el SRI
+	 * lo conoce. Las etapas siguientes (asiento contable, email) corren fuera.
+	 * @return : Mapa con clave, idFactura, idFacturador, factura, destinatario,
+	 *           pdfBytes y emitida=true si el SRI la autorizó
+	 */
+	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+	public java.util.Map<String, Object> emitirFacturaAnteSRI(Factura factura,
+			java.util.List<DetalleFactura> detalles,
+			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable {
+
+		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+		resultado.put("exito", false);
+		// ──────────────────────────────────────────────────────────────────────
+		// FLUJO:
+		//  PASO 1: Preparar campos (clave, secuencial, número) en MEMORIA — sin BD
+		//  PASO 2-3: Generar XML y firmar (datos en memoria)
+		//  PASO 4a: WS1 → si RECIBIDA → grabar factura + detalles + forma de pago en BD
+		//  PASO 4e: WS2 → persistir el resultado de la autorización
+		// ──────────────────────────────────────────────────────────────────────
 
 		try {
 			if (conectaSRI == null) conectaSRI = 1L;
@@ -468,10 +613,16 @@ public class FacturaServiceImpl implements FacturaService {
 				factura.setFechaAutorizacion(factura.getFecha().atStartOfDay().plusMinutes(1).plusSeconds(15));
 				factura.setEstado(5L);
 				facturaDaoService.save(factura, factura.getId());
+				em.flush();
 				resultado.put("estado", "AUTORIZADO");
-				resultado.put("exito", true);
-				resultado.put("etapa", "COMPLETADO");
+				resultado.put("autorizacion", "AUTORIZADO");
 				resultado.put("mensaje", "Factura ya registrada en el SRI. Autorizada.");
+				// La factura queda autorizada: el orquestador debe generar el
+				// asiento igual que en el flujo normal.
+				resultado.put("emitida",      true);
+				resultado.put("idFacturador", idFacturador);
+				resultado.put("destinatario", destinatario);
+				resultado.put("pdfBytes",     pdfBytesParaEmail);
 				return resultado;
 			}
 
@@ -614,85 +765,153 @@ public class FacturaServiceImpl implements FacturaService {
 				return resultado;
 			}
 
-			System.out.println("✓ Factura AUTORIZADA por el SRI.");
-			resultado.put("estado", "AUTORIZADO");
-
-			// ── PASO 5: Generar asiento contable (solo tras AUTORIZADO) ──────────
-			if (factura.getFacturador().getEmpresa() != null
-					&& Long.valueOf(1L).equals(factura.getFacturador().getGeneraConta())) {
-				System.out.println("PASO 5: Generando asiento contable...");
-				try {
-					Long idEmpresa = factura.getFacturador().getEmpresa().getCodigo();
-					String obsAsiento = "Factura N° " + nvl(factura.getNumero(), clave)
-							+ " | Cliente: " + factura.getTitular().getNombre()
-							+ " | " + nvl(factura.getObservacion(), "");
-					String usuarioAsiento = factura.getUsuario() != null
-							? factura.getUsuario().getNombre() : "SISTEMA";
-					com.saa.model.cnt.Asiento asientoGenerado =
-							asientoContableService.generarAsientoFactura(
-									factura.getId(), idEmpresa,
-									com.saa.rubros.TipoAsientos.FACTURAS_VENTA,
-									factura.getFecha(), obsAsiento, usuarioAsiento);
-					com.saa.model.cnt.Asiento asientoAttached = em.merge(asientoGenerado);
-					factura.setAsiento(asientoAttached);
-					facturaDaoService.save(factura, factura.getId());
-					em.flush();
-					resultado.put("asiento", asientoGenerado.getNumeroAlterno());
-					System.out.println("✓ Asiento contable generado: " + asientoGenerado.getNumeroAlterno());
-				} catch (Exception e) {
-					resultado.put("advertenciaAsiento",
-							"La factura fue autorizada pero ocurrió un error al generar el asiento contable: "
-							+ e.getMessage() + ". Genere el asiento manualmente desde Contabilidad.");
-					System.err.println("⚠ Error en asiento contable: " + e.getMessage());
-					e.printStackTrace();
-				}
-			}
-
-			// ── PASO 6: Enviar correo electrónico ──────────────────────────────
-			System.out.println("PASO 6: Enviando email...");
-			try {
-				if (destinatario != null && !destinatario.trim().isEmpty()) {
-					String resourcesPath = getBaseUploadDirectory() + "resources/" + idFacturador;
-					String xmlAutorizado = null;
-					try {
-						java.nio.file.Path pXml = java.nio.file.Paths.get(resourcesPath + "/docs/a/" + clave + ".xml");
-						if (java.nio.file.Files.exists(pXml)) xmlAutorizado = new String(java.nio.file.Files.readAllBytes(pXml), "UTF-8");
-					} catch (Exception ioEx) {
-						System.err.println("⚠ No se pudo leer el XML para el email: " + ioEx.getMessage());
-					}
-					// Usar directamente los bytes del PDF que ya generamos (pdfBytesParaEmail)
-					// en lugar de intentar leerlos del disco, evitando problemas de sincronización
-					String razonSocial = factura.getFacturador() != null
-							? nvl(factura.getFacturador().getRazonSocial(), nvl(factura.getFacturador().getNombre(), "")) : "";
-					emailFacturaService.enviarFacturaAutorizada(destinatario, nvl(factura.getNumero(), clave),
-							clave, razonSocial, "Factura", xmlAutorizado, pdfBytesParaEmail);
-					resultado.put("emailEnviado", true);
-					System.out.println("✓ Email enviado a: " + destinatario);
-				} else {
-					resultado.put("emailEnviado", false);
-					System.out.println("ℹ Email omitido: no hay dirección de correo del cliente.");
-				}
-			} catch (Exception mailEx) {
-				resultado.put("advertenciaEmail", "La factura fue autorizada pero no se pudo enviar el email: "
-						+ mailEx.getMessage() + ". Reenvíe el email manualmente.");
-				System.err.println("⚠ Error enviando email: " + mailEx.getMessage());
-			}
-
-			resultado.put("exito", true);
-			resultado.put("etapa", "COMPLETADO");
-			resultado.put("mensaje", "Factura procesada y autorizada exitosamente.");
-			System.out.println("=== PROCESO COMPLETO FINALIZADO ===");
+			// Emisión terminada: la factura está autorizada y confirmada en BD.
+			// El asiento contable y el email los ejecuta el orquestador fuera de
+			// esta transacción.
+			resultado.put("emitida",      true);
+			resultado.put("idFacturador", idFacturador);
+			resultado.put("destinatario", destinatario);
+			resultado.put("pdfBytes",     pdfBytesParaEmail);
 
 		} catch (Exception e) {
-			System.err.println("ERROR inesperado en procesarFacturaCompleta: " + e.getMessage());
+			System.err.println("ERROR inesperado en emitirFacturaAnteSRI: " + e.getMessage());
 			e.printStackTrace();
 			resultado.put("exito", false);
 			resultado.put("etapa", "ERROR_INESPERADO");
 			resultado.put("error", e.getMessage());
 			resultado.put("mensaje", "Error inesperado al procesar la factura: " + e.getMessage());
+			sessionContext.setRollbackOnly();
 			throw e;
 		}
 
+		return resultado;
+	}
+
+	/**
+	 * Marca la factura como autorizada por el SRI en transacción propia
+	 * (REQUIRES_NEW): estado 5, número y fecha de autorización, y XML autorizado
+	 * en disco. Idempotente.
+	 * @param idFactura          : Id de la factura
+	 * @param numeroAutorizacion : Número de autorización devuelto por el SRI
+	 * @param fechaAutorizacion  : Fecha de autorización devuelta por el SRI
+	 * @param comprobanteXML     : XML autorizado (puede ser null)
+	 * @return : true si actualizó el estado, false si ya estaba autorizada
+	 */
+	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+	public boolean marcarFacturaAutorizada(Long idFactura, String numeroAutorizacion,
+			String fechaAutorizacion, String comprobanteXML) throws Throwable {
+		System.out.println("Ingresa al metodo marcarFacturaAutorizada con id: " + idFactura);
+
+		Factura factura = em.find(Factura.class, idFactura);
+		if (factura == null) {
+			throw new IncomeException("Factura con ID " + idFactura + " no encontrada.");
+		}
+		if (Long.valueOf(5L).equals(factura.getEstado())) {
+			System.out.println("ℹ Factura ya estaba en estado 5 (emitida). Solo se verificó la autorización.");
+			return false;
+		}
+
+		factura.setEstado(5L);
+		factura.setEstadoEmision(1L);
+		if (numeroAutorizacion != null && !numeroAutorizacion.isEmpty()) {
+			factura.setAutorizacion(numeroAutorizacion);
+		}
+		if (fechaAutorizacion != null && !fechaAutorizacion.isEmpty()) {
+			factura.setFechaAutorizacion(parseFechaAutorizacion(fechaAutorizacion));
+		}
+
+		Long idFacturador = factura.getFacturador() != null ? factura.getFacturador().getId() : null;
+		if (comprobanteXML != null && !comprobanteXML.isEmpty() && idFacturador != null) {
+			try {
+				String resourcesPath = getBaseUploadDirectory() + "resources/" + idFacturador;
+				Path pathAutorizado = Paths.get(resourcesPath + "/docs/a/" + factura.getClave() + ".xml");
+				Files.createDirectories(pathAutorizado.getParent());
+				Files.write(pathAutorizado, comprobanteXML.getBytes("UTF-8"));
+				PathFactura pathA = new PathFactura();
+				pathA.setFactura(factura);
+				pathA.setPath("resources/" + idFacturador + "/docs/a/" + factura.getClave() + ".xml");
+				pathA.setAlterno(5L);
+				pathFacturaDaoService.save(pathA, null);
+				System.out.println("✓ XML autorizado guardado en disco.");
+			} catch (Exception xmlEx) {
+				System.err.println("⚠ Error guardando XML autorizado (no crítico): " + xmlEx.getMessage());
+			}
+		}
+
+		facturaDaoService.save(factura, factura.getId());
+		em.flush();
+		System.out.println("✓ Factura actualizada a estado EMITIDA (5). Aut: " + numeroAutorizacion);
+		return true;
+	}
+
+	/**
+	 * Genera y vincula el asiento contable de una factura en transacción propia
+	 * (REQUIRES_NEW). Es idempotente: si la factura ya tiene asiento no genera
+	 * otro. Sólo aplica si el facturador tiene generaConta=1 y empresa contable.
+	 * @param idFactura : Id de la factura ya autorizada
+	 * @return : Mapa con aplica, generado, yaExistia, idAsiento, numeroAlterno
+	 */
+	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+	public java.util.Map<String, Object> generarContabilidadFactura(Long idFactura) throws Throwable {
+		System.out.println("Ingresa al metodo generarContabilidadFactura con id: " + idFactura);
+
+		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+		resultado.put("generado", false);
+		resultado.put("aplica", false);
+
+		Factura factura = em.find(Factura.class, idFactura);
+		if (factura == null) {
+			throw new IncomeException("Factura con ID " + idFactura + " no encontrada.");
+		}
+		if (factura.getFacturador() == null
+				|| factura.getFacturador().getEmpresa() == null
+				|| !Long.valueOf(1L).equals(factura.getFacturador().getGeneraConta())) {
+			System.out.println("ℹ El facturador no genera contabilidad: se omite el asiento.");
+			return resultado;
+		}
+		resultado.put("aplica", true);
+
+		if (factura.getAsiento() != null) {
+			resultado.put("yaExistia", true);
+			resultado.put("idAsiento", factura.getAsiento().getCodigo());
+			resultado.put("numeroAlterno", factura.getAsiento().getNumeroAlterno());
+			System.out.println("ℹ La factura ya tiene asiento: " + factura.getAsiento().getNumeroAlterno());
+			return resultado;
+		}
+
+		// Etapa atómica: se marca el rollback a mano porque IncomeException es
+		// una application exception y por sí sola no reversaría esta transacción.
+		try {
+			Long idEmpresa = factura.getFacturador().getEmpresa().getCodigo();
+			String obsAsiento = "Factura N° " + nvl(factura.getNumero(), factura.getClave())
+					+ " | Cliente: " + (factura.getTitular() != null ? factura.getTitular().getNombre() : "")
+					+ " | " + nvl(factura.getObservacion(), "");
+			String usuarioAsiento = factura.getUsuario() != null
+					? factura.getUsuario().getNombre() : "SISTEMA";
+
+			com.saa.model.cnt.Asiento asientoGenerado =
+					asientoContableService.generarAsientoFactura(
+							factura.getId(), idEmpresa,
+							com.saa.rubros.TipoAsientos.FACTURAS_VENTA,
+							factura.getFecha(), obsAsiento, usuarioAsiento);
+
+			com.saa.model.cnt.Asiento asientoAttached =
+					em.find(com.saa.model.cnt.Asiento.class, asientoGenerado.getCodigo());
+			if (asientoAttached == null) asientoAttached = em.merge(asientoGenerado);
+			factura.setAsiento(asientoAttached);
+			facturaDaoService.save(factura, factura.getId());
+			em.flush();
+
+			resultado.put("generado", true);
+			resultado.put("idAsiento", asientoAttached.getCodigo());
+			resultado.put("numeroAlterno", asientoAttached.getNumeroAlterno());
+			System.out.println("✓ Asiento contable generado: " + asientoAttached.getNumeroAlterno());
+		} catch (Throwable e) {
+			sessionContext.setRollbackOnly();
+			throw e;
+		}
 		return resultado;
 	}
 	
@@ -2448,7 +2667,13 @@ public class FacturaServiceImpl implements FacturaService {
 	//   - Si no tiene asiento contable y el facturador tiene generaConta=1, lo genera
 	//   - Envía el email con XML autorizado y PDF (si existe en disco)
 	// =========================================================================
+	/**
+	 * Punto de recuperación: consulta el estado en el SRI y completa lo que haya
+	 * quedado pendiente (estado, asiento contable). Sin transacción propia —
+	 * cada etapa se confirma por separado.
+	 */
 	@Override
+	@TransactionAttribute(TransactionAttributeType.NOT_SUPPORTED)
 	public java.util.Map<String, Object> consultarYActualizarEstadoFactura(Long idFactura) throws Throwable {
 		System.out.println("=== consultarYActualizarEstadoFactura | idFactura=" + idFactura + " ===");
 		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
@@ -2497,78 +2722,38 @@ public class FacturaServiceImpl implements FacturaService {
 			return resultado;
 		}
 
-		// 3. SRI devuelve AUTORIZADO → actualizar factura si estaba pendiente
-		boolean actualizada = false;
-		if (!Long.valueOf(5L).equals(factura.getEstado())) {
-			factura.setEstado(5L);
-			factura.setEstadoEmision(1L);
-			if (ra.numeroAutorizacion != null && !ra.numeroAutorizacion.isEmpty()) {
-				factura.setAutorizacion(ra.numeroAutorizacion);
-			}
-			if (ra.fechaAutorizacion != null && !ra.fechaAutorizacion.isEmpty()) {
-				factura.setFechaAutorizacion(parseFechaAutorizacion(ra.fechaAutorizacion));
-			}
-			// Guardar también el XML autorizado en disco si viene en la respuesta
-			if (ra.comprobanteXML != null && !ra.comprobanteXML.isEmpty() && idFacturador != null) {
-				try {
-					String resourcesPath = getBaseUploadDirectory() + "resources/" + idFacturador;
-					Path pathAutorizado = Paths.get(resourcesPath + "/docs/a/" + clave + ".xml");
-					Files.createDirectories(pathAutorizado.getParent());
-					Files.write(pathAutorizado, ra.comprobanteXML.getBytes("UTF-8"));
-					// Registrar path alterno=5 si no existe ya
-					PathFactura pathA = new PathFactura();
-					pathA.setFactura(factura);
-					pathA.setPath("resources/" + idFacturador + "/docs/a/" + clave + ".xml");
-					pathA.setAlterno(5L);
-					pathFacturaDaoService.save(pathA, null);
-					System.out.println("✓ XML autorizado guardado en disco.");
-				} catch (Exception xmlEx) {
-					System.err.println("⚠ Error guardando XML autorizado (no crítico): " + xmlEx.getMessage());
-				}
-			}
-			facturaDaoService.save(factura, factura.getId());
-			actualizada = true;
-			System.out.println("✓ Factura actualizada a estado EMITIDA (5). Aut: " + ra.numeroAutorizacion);
-		} else {
-			System.out.println("ℹ Factura ya estaba en estado 5 (emitida). Solo se verificó la autorización.");
+		// 3. SRI devuelve AUTORIZADO → actualizar factura (transacción propia)
+		boolean actualizada;
+		try {
+			actualizada = self().marcarFacturaAutorizada(
+					idFactura, ra.numeroAutorizacion, ra.fechaAutorizacion, ra.comprobanteXML);
+		} catch (Throwable e) {
+			resultado.put("mensaje", "El SRI autorizó la factura pero no se pudo actualizar su estado: "
+					+ e.getMessage());
+			resultado.put("error", e.getMessage());
+			System.err.println("⚠ Error actualizando estado de la factura: " + e.getMessage());
+			return resultado;
 		}
 		resultado.put("facturaActualizada", actualizada);
 
-		// 4. Generar asiento contable si no tiene y el facturador lo requiere
+		// 4. Generar asiento contable si no tiene (transacción propia)
 		boolean asientoGenerado = false;
-		if (factura.getAsiento() == null
-				&& factura.getFacturador() != null
-				&& factura.getFacturador().getEmpresa() != null
-				&& Long.valueOf(1L).equals(factura.getFacturador().getGeneraConta())) {
-			System.out.println("PASO 4: Generando asiento contable (factura no tenía asiento)...");
-			try {
-				Long idEmpresa = factura.getFacturador().getEmpresa().getCodigo();
-				String obsAsiento = "Factura N° " + nvl(factura.getNumero(), clave)
-						+ " | Cliente: " + (factura.getTitular() != null ? factura.getTitular().getNombre() : "")
-						+ " | Aut: " + nvl(factura.getAutorizacion(), clave);
-				String usuarioAsiento = factura.getUsuario() != null
-						? factura.getUsuario().getNombre() : "SISTEMA";
-				com.saa.model.cnt.Asiento asientoGeneradoObj =
-						asientoContableService.generarAsientoFactura(
-								factura.getId(), idEmpresa,
-								com.saa.rubros.TipoAsientos.FACTURAS_VENTA,
-								factura.getFecha(), obsAsiento, usuarioAsiento);
-				com.saa.model.cnt.Asiento asientoAttached = em.merge(asientoGeneradoObj);
-				factura.setAsiento(asientoAttached);
-				facturaDaoService.save(factura, factura.getId());
-				em.flush();
-				resultado.put("asiento", asientoGeneradoObj.getNumeroAlterno());
-				asientoGenerado = true;
-				System.out.println("✓ Asiento contable generado: " + asientoGeneradoObj.getNumeroAlterno());
-			} catch (Exception e) {
-				resultado.put("advertenciaAsiento",
-						"Factura autorizada pero error al generar asiento: "
-						+ e.getMessage() + ". Genere el asiento manualmente.");
-				System.err.println("⚠ Error en asiento contable: " + e.getMessage());
+		System.out.println("PASO 4: Generando asiento contable...");
+		try {
+			java.util.Map<String, Object> resAsiento = self().generarContabilidadFactura(idFactura);
+			asientoGenerado = Boolean.TRUE.equals(resAsiento.get("generado"));
+			if (Boolean.TRUE.equals(resAsiento.get("yaExistia"))) {
+				resultado.put("asientoExistente", resAsiento.get("numeroAlterno"));
+				System.out.println("ℹ La factura ya tiene asiento contable: " + resAsiento.get("numeroAlterno"));
+			} else if (asientoGenerado) {
+				resultado.put("asiento", resAsiento.get("numeroAlterno"));
 			}
-		} else if (factura.getAsiento() != null) {
-			resultado.put("asientoExistente", factura.getAsiento().getNumeroAlterno());
-			System.out.println("ℹ La factura ya tiene asiento contable: " + factura.getAsiento().getNumeroAlterno());
+		} catch (Throwable e) {
+			resultado.put("contabilidadPendiente", true);
+			resultado.put("advertenciaAsiento",
+					"Factura autorizada pero error al generar asiento: "
+					+ e.getMessage() + ". Genere el asiento manualmente.");
+			System.err.println("⚠ Error en asiento contable: " + e.getMessage());
 		}
 		resultado.put("asientoGenerado", asientoGenerado);
 

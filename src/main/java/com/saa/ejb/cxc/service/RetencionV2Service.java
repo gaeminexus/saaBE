@@ -51,6 +51,65 @@ public interface RetencionV2Service extends EntityService<RetencionV2> {
 			java.util.List<com.saa.model.cxc.DetalleRetencionV2> detalles,
 			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable;
 
+	// =========================================================================
+	// Etapas transaccionales independientes del proceso de emisión
+	// -------------------------------------------------------------------------
+	// Se exponen en la interfaz porque procesarRetencionV2Completa las invoca a
+	// través del contenedor (SessionContext.getBusinessObject) para que cada una
+	// corra en su propia transacción. Un fallo tardío jamás debe reversar una
+	// retención ya autorizada por el SRI.
+	// =========================================================================
+
+	/**
+	 * Graba la retención V2 junto con sus detalles en una transacción propia
+	 * (REQUIRES_NEW) que se confirma de inmediato.
+	 * @param retencion : Retención a grabar
+	 * @param detalles  : Detalles de la retención (puede ser null o vacío)
+	 * @return : La retención grabada, con id, número y clave de acceso asignados
+	 */
+	RetencionV2 grabarRetencionV2ConDetalles(RetencionV2 retencion,
+			java.util.List<com.saa.model.cxc.DetalleRetencionV2> detalles) throws Throwable;
+
+	/**
+	 * Genera y vincula el asiento contable de una retención V2 en transacción
+	 * propia (REQUIRES_NEW). Es idempotente: si la retención ya tiene asiento
+	 * no genera otro.
+	 * @param idRetencion : Id de la retención V2
+	 * @return : Mapa con aplica (el facturador genera contabilidad), generado,
+	 *           yaExistia, idAsiento, numeroAlterno
+	 */
+	java.util.Map<String, Object> generarContabilidadRetencionV2(Long idRetencion) throws Throwable;
+
+	/**
+	 * Registra el cruce (abono) de la retención V2 sobre la factura de compra
+	 * afectada, en transacción propia (REQUIRES_NEW). Es idempotente: si el
+	 * cruce ya existe no lo duplica.
+	 * @param idRetencion : Id de la retención V2 (debe tener asiento contable)
+	 * @return : Mapa con aplicado, yaExistia, idAplicacion, idFactura
+	 */
+	java.util.Map<String, Object> aplicarPagoRetencionV2(Long idRetencion) throws Throwable;
+
+	/**
+	 * Elimina la retención V2 con sus detalles y paths, en transacción propia
+	 * (REQUIRES_NEW). Sólo debe usarse cuando el comprobante NUNCA llegó a ser
+	 * aceptado por el SRI (error de XML/firma o recepción DEVUELTA).
+	 * @param idRetencion : Id de la retención V2 a eliminar
+	 */
+	void eliminarRetencionV2NoEmitida(Long idRetencion) throws Throwable;
+
+	/**
+	 * Marca la retención V2 como autorizada por el SRI en transacción propia
+	 * (REQUIRES_NEW): estado 5, número y fecha de autorización, y XML
+	 * autorizado en disco. Es idempotente.
+	 * @param idRetencion        : Id de la retención V2
+	 * @param numeroAutorizacion : Número de autorización devuelto por el SRI
+	 * @param fechaAutorizacion  : Fecha de autorización devuelta por el SRI
+	 * @param comprobanteXML     : XML autorizado (puede ser null)
+	 * @return : true si actualizó el estado, false si ya estaba autorizada
+	 */
+	boolean marcarRetencionV2Autorizada(Long idRetencion, String numeroAutorizacion,
+			String fechaAutorizacion, String comprobanteXML) throws Throwable;
+
 	/** Reenvía (o envía por primera vez) el email de una retención V2 autorizada.
 	 *  Si el PDF no existe en disco lo regenera al vuelo. */
 	java.util.Map<String, Object> reenviarEmail(Long idRetencion, String destinatarios) throws Throwable;

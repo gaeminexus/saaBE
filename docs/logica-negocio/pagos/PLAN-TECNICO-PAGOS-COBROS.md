@@ -70,6 +70,23 @@ RetencionCompraV2).
   confirmados, para no partir el criterio de conciliación). Nacen en estado
   CONFIRMADO; al revertirse quedan ANULADOS, porque un débito ya ejecutado no se
   reprograma.
+- **D13 (2026-08-12, confirmado)**: ingresos y egresos de tesorería **sin documento
+  físico** (administración de cuentas, comisiones, intereses) en tablas nuevas
+  `TSR.EGRS` / `TSR.INGR` (script `docs/scripts/sql-ingresos-egresos-tesoreria.sql`) —
+  las legadas `TSR.DBCR`/`PGSS`/`CBRO` quedan como histórico (sus métodos de negocio no
+  están expuestos por REST). La contrapartida contable sale del **grupo del producto**
+  CXP/CXC elegido (`GrupoProducto*.planCuenta`), no se configura por registro. Los
+  **egresos SÍ pasan por el circuito de pagos**: `PGS.PGTR.PGTRFCTC` pasa a nullable y
+  se agrega `PGTREGRS` (FK excluyente con la factura); registrar el egreso crea su pago
+  (`EgresoServiceImpl.procesarEgreso` → `registrarPagoDeEgreso`), y al confirmarse
+  (respuesta del banco o débito automático D12) se genera el asiento
+  (DEBE grupo del producto / HABER banco, `TipoAsientos.EGRESO_TESORERIA`=5), el
+  MovimientoBanco de egreso y el egreso queda PAGADO; la reversión lo devuelve a
+  PENDIENTE_PAGO. Los pagos de egreso no crean `AplicacionPagoCxp` (no hay factura).
+  Los **ingresos se registran ya recibidos** en un paso
+  (`IngresoServiceImpl.procesarIngreso`: asiento DEBE banco / HABER grupo,
+  `TipoAsientos.INGRESO_TESORERIA`=4, movimiento créditos en tránsito / origen Cobros).
+  REST: `/egrs`, `/ingr`. Doc frontend: `INGRESOS-EGRESOS-TESORERIA.md`.
 
 ---
 

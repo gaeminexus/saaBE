@@ -23,8 +23,12 @@ import com.saa.model.cxc.NotaDebito;
 import com.saa.model.cxc.NombreEntidadesCobro;
 import com.saa.model.cxc.PathNotaDebito;
 import com.saa.rubros.Estado;
+import jakarta.annotation.Resource;
 import jakarta.ejb.EJB;
+import jakarta.ejb.SessionContext;
 import jakarta.ejb.Stateless;
+import jakarta.ejb.TransactionAttribute;
+import jakarta.ejb.TransactionAttributeType;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
@@ -52,6 +56,23 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 
 	@EJB
 	private com.saa.ejb.cxc.service.AplicacionPagoCxcService aplicacionPagoCxcService;
+
+	@EJB
+	private com.saa.ejb.cxc.dao.AplicacionPagoCxcDaoService aplicacionPagoCxcDaoService;
+
+	@Resource
+	private SessionContext sessionContext;
+
+	/**
+	 * Referencia al propio bean pasando por el contenedor, para que los
+	 * @TransactionAttribute de las etapas se apliquen de verdad. Una llamada
+	 * directa a this.metodo() se salta los interceptores y correría en la
+	 * transacción del llamador.
+	 * @return : Vista local de este mismo EJB
+	 */
+	private NotaDebitoService self() {
+		return sessionContext.getBusinessObject(NotaDebitoService.class);
+	}
 
 	@EJB
 	private ReporteService reporteService;
@@ -487,31 +508,10 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 		return value != null ? value : defaultValue;
 	}
 
-	/**
-	 * Anula el asiento recién generado cuando falla el registro del movimiento
-	 * sobre la factura, para que nunca quede un asiento activo sin su aplicación.
-	 * @param asiento : Asiento a anular
-	 * @param causa   : Error que impidió registrar el movimiento
-	 */
-	private void anulaAsientoPorFalloAplicacion(com.saa.model.cnt.Asiento asiento, Throwable causa) {
-		if (asiento == null) {
-			return;
-		}
-		try {
-			asiento.setEstado(Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO));
-			asiento.setMotivoAnulacion("Anulado automáticamente: no se pudo registrar el movimiento "
-					+ "sobre la factura afectada. " + causa.getMessage());
-			asiento.setFechaAnulacion(java.time.LocalDateTime.now());
-			asiento.setUsuarioAnulacion("SISTEMA");
-			em.merge(asiento);
-			em.flush();
-			System.err.println("⚠ Asiento " + asiento.getCodigo()
-					+ " anulado porque falló el registro del movimiento: " + causa.getMessage());
-		} catch (Exception e) {
-			System.err.println("⚠ No se pudo anular el asiento tras el fallo de la aplicación: "
-					+ e.getMessage());
-		}
-	}
+	// El asiento ya NO se anula cuando falla el movimiento sobre la factura: la
+	// ND está autorizada por el SRI y su contabilidad es válida por sí sola.
+	// Sólo el movimiento queda pendiente, y se completa volviendo a consultar
+	// el estado.
 
 	/**
 	 * Construye el fragmento de observación con el número del documento origen
@@ -812,15 +812,95 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 		return respuesta;
 	}
 	
+	/**
+	 * Orquesta el proceso completo SIN transacción propia (NOT_SUPPORTED).
+	 * <p>
+	 * El envío al SRI es irreversible, así que la emisión se confirma en su
+	 * propia transacción y las etapas posteriores (asiento contable, movimiento
+	 * sobre la factura) corren aparte: un fallo tardío NUNCA puede reversar una
+	 * nota de débito ya autorizada por el SRI.
+	 */
 	@Override
+	@TransactionAttribute(TransactionAttributeType.NOT_SUPPORTED)
 	public java.util.Map<String, Object> procesarNotaDebitoCompleta(NotaDebito notaDebito,
 			java.util.List<com.saa.model.cxc.DetalleNotaDebito> detalles,
 			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable {
-		
-		System.out.println("=== INICIO procesarNotaDebitoCompleta (nuevo flujo: BD tras RECIBIDA) ===");
+
+		System.out.println("=== INICIO procesarNotaDebitoCompleta ===");
+
+		// ── Emisión ante el SRI, en UNA transacción propia ────────────────────
+		java.util.Map<String, Object> resultado = self().emitirNotaDebitoAnteSRI(
+				notaDebito, detalles, ambiente, conectaSRI, destinatario, pathLogo);
+
+		if (!Boolean.TRUE.equals(resultado.get("emitida"))) {
+			return resultado;
+		}
+
+		Long idNotaDebito = (Long) resultado.get("idNotaDebito");
+
+		// ── PASO 5: Generar asiento contable (transacción propia) ─────────────
+		boolean asientoOk = false;
+		System.out.println("PASO 5: Generando asiento contable para Nota de Débito...");
+		try {
+			java.util.Map<String, Object> resAsiento = self().generarContabilidadNotaDebito(idNotaDebito);
+			if (Boolean.TRUE.equals(resAsiento.get("aplica"))) {
+				asientoOk = true;
+				resultado.put("asiento", resAsiento.get("numeroAlterno"));
+			}
+		} catch (Throwable e) {
+			resultado.put("contabilidadPendiente", true);
+			resultado.put("advertenciaAsiento",
+					"Nota de Débito autorizada pero ocurrió un error al generar el asiento contable: "
+					+ e.getMessage() + ". Genere el asiento manualmente desde Contabilidad.");
+			System.err.println("⚠ Error en asiento contable de Nota de Débito: " + e.getMessage());
+			e.printStackTrace();
+		}
+
+		// ── PASO 5.1: Movimiento sobre la factura (transacción propia) ────────
+		if (asientoOk) {
+			System.out.println("PASO 5.1: Registrando el movimiento sobre la factura...");
+			try {
+				java.util.Map<String, Object> resAplicacion = self().aplicarPagoNotaDebito(idNotaDebito);
+				resultado.put("aplicacionPago", resAplicacion.get("idAplicacion"));
+			} catch (Throwable e) {
+				resultado.put("cruceFacturaPendiente", true);
+				resultado.put("advertenciaAplicacion",
+						"Nota de Débito autorizada y contabilizada, pero no se pudo registrar el "
+						+ "movimiento sobre la factura: " + e.getMessage() + ". Queda PENDIENTE.");
+				System.err.println("⚠ Error al registrar el movimiento sobre la factura: " + e.getMessage());
+				e.printStackTrace();
+			}
+		}
+
+		boolean hayPendientes = Boolean.TRUE.equals(resultado.get("contabilidadPendiente"))
+				|| Boolean.TRUE.equals(resultado.get("cruceFacturaPendiente"));
+		resultado.put("exito", true);
+		resultado.put("etapa", hayPendientes ? "COMPLETADO_CON_PENDIENTES" : "COMPLETADO");
+		resultado.put("mensaje", hayPendientes
+				? "Nota de débito autorizada por el SRI, pero quedaron etapas pendientes. Revise las advertencias."
+				: "Nota de débito procesada completamente");
+		System.out.println("=== FIN procesarNotaDebitoCompleta"
+				+ (hayPendientes ? " (CON PENDIENTES)" : " - EXITOSO") + " ===");
+		return resultado;
+	}
+
+	/**
+	 * Emite la nota de débito ante el SRI en UNA transacción propia
+	 * (REQUIRES_NEW): valida cuentas, prepara campos, genera y firma el XML,
+	 * envía a recepción y —sólo si el SRI la acepta— graba el documento y
+	 * persiste el resultado de la autorización.
+	 * @return : Mapa con clave, idNotaDebito y emitida=true si el SRI la autorizó
+	 */
+	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+	public java.util.Map<String, Object> emitirNotaDebitoAnteSRI(NotaDebito notaDebito,
+			java.util.List<com.saa.model.cxc.DetalleNotaDebito> detalles,
+			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable {
+
+		System.out.println("=== emitirNotaDebitoAnteSRI (BD tras RECIBIDA) ===");
 		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
 		resultado.put("exito", false);
-		
+
 		try {
 			if (ambiente == null)   ambiente   = 1L;
 			if (conectaSRI == null) conectaSRI = 1L;
@@ -1173,66 +1253,209 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 				return resultado;
 			}
 
-			System.out.println("✓ ND AUTORIZADA. Continuando con asiento contable...");
+			System.out.println("✓ ND AUTORIZADA por el SRI.");
 
-			// ── PASO 5: Generar asiento contable (solo tras AUTORIZADO) ──────────
-			if (notaDebito.getFacturador() != null
-					&& notaDebito.getFacturador().getEmpresa() != null
-					&& Long.valueOf(1L).equals(notaDebito.getFacturador().getGeneraConta())) {
-				System.out.println("PASO 5: Generando asiento contable para Nota de Débito...");
-				try {
-					Long idEmpresaConta = notaDebito.getFacturador().getEmpresa().getCodigo();
-					java.time.LocalDate fechaAsiento = notaDebito.getFecha() != null
-							? notaDebito.getFecha().toLocalDate() : java.time.LocalDate.now();
-					String obsAsiento = "Nota de Débito N° " + nvl(notaDebito.getNumero(), clave)
-							+ observacionDocumentoOrigen(notaDebito)
-							+ " | Cliente: " + (notaDebito.getTitular() != null ? notaDebito.getTitular().getNombre() : "")
-							+ " | " + nvl(notaDebito.getObservacion(), "");
-					String usuarioAsiento = notaDebito.getUsuario() != null
-							? notaDebito.getUsuario().getNombre() : "SISTEMA";
-					com.saa.model.cnt.Asiento asientoGenerado =
-							asientoContableService.generarAsientoNotaDebito(
-									notaDebito.getId(), idEmpresaConta,
-									com.saa.rubros.TipoAsientos.FACTURAS_VENTA,
-									fechaAsiento, obsAsiento, usuarioAsiento);
-					com.saa.model.cnt.Asiento asientoAttached =
-							em.find(com.saa.model.cnt.Asiento.class, asientoGenerado.getCodigo());
-					if (asientoAttached == null) asientoAttached = em.merge(asientoGenerado);
-					notaDebito.setAsiento(asientoAttached);
-					notaDebitoDaoService.save(notaDebito, notaDebito.getId());
-					resultado.put("asiento", asientoGenerado.getNumeroAlterno());
-					System.out.println("✓ Asiento contable generado: " + asientoGenerado.getNumeroAlterno());
-
-					// Registrar el incremento del saldo de la factura junto con el
-					// asiento: si falla, el asiento no debe quedar activo.
-					try {
-						aplicacionPagoCxcService.aplicarNotaDebito(
-								notaDebito, asientoAttached, idEmpresaConta, usuarioAsiento);
-					} catch (Throwable aplEx) {
-						anulaAsientoPorFalloAplicacion(asientoAttached, aplEx);
-						throw aplEx;
-					}
-				} catch (Throwable e) {
-					resultado.put("advertenciaAsiento",
-							"Nota de Débito autorizada pero ocurrió un error al generar el asiento "
-							+ "o al registrar el movimiento sobre la factura: "
-							+ e.getMessage() + ". Genere el asiento manualmente desde Contabilidad.");
-					System.err.println("⚠ Error en asiento contable de Nota de Débito: " + e.getMessage());
-					e.printStackTrace();
-				}
-			}
-
-			resultado.put("exito", true);
-			resultado.put("mensaje", "Nota de débito procesada completamente");
+			// Emisión terminada: la ND está autorizada y confirmada en BD. El
+			// asiento contable y el movimiento sobre la factura los ejecuta el
+			// orquestador fuera de esta transacción.
+			resultado.put("emitida", true);
+			resultado.put("estado",  "AUTORIZADO");
 
 		} catch (Throwable e) {
-			System.err.println("ERROR en procesarNotaDebitoCompleta: " + e.getMessage());
+			System.err.println("ERROR en emitirNotaDebitoAnteSRI: " + e.getMessage());
 			e.printStackTrace();
 			resultado.put("exito", false);
 			resultado.put("error", e.getMessage());
+			sessionContext.setRollbackOnly();
 			throw e;
 		}
-		
+
+		return resultado;
+	}
+
+	/**
+	 * Genera y vincula el asiento contable de una nota de débito en transacción
+	 * propia (REQUIRES_NEW). Idempotente: si ya tiene asiento no genera otro.
+	 * @param idNotaDebito : Id de la nota de débito ya autorizada
+	 * @return : Mapa con aplica, generado, yaExistia, idAsiento, numeroAlterno
+	 */
+	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+	public java.util.Map<String, Object> generarContabilidadNotaDebito(Long idNotaDebito) throws Throwable {
+		System.out.println("Ingresa al metodo generarContabilidadNotaDebito con id: " + idNotaDebito);
+
+		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+		resultado.put("generado", false);
+		resultado.put("aplica", false);
+
+		NotaDebito notaDebito = em.find(NotaDebito.class, idNotaDebito);
+		if (notaDebito == null) {
+			throw new IncomeException("Nota de Débito con ID " + idNotaDebito + " no encontrada.");
+		}
+		if (notaDebito.getFacturador() == null
+				|| notaDebito.getFacturador().getEmpresa() == null
+				|| !Long.valueOf(1L).equals(notaDebito.getFacturador().getGeneraConta())) {
+			System.out.println("ℹ El facturador no genera contabilidad: se omite el asiento.");
+			return resultado;
+		}
+		resultado.put("aplica", true);
+
+		if (notaDebito.getAsiento() != null) {
+			resultado.put("yaExistia", true);
+			resultado.put("idAsiento", notaDebito.getAsiento().getCodigo());
+			resultado.put("numeroAlterno", notaDebito.getAsiento().getNumeroAlterno());
+			System.out.println("ℹ La ND ya tiene asiento: " + notaDebito.getAsiento().getNumeroAlterno());
+			return resultado;
+		}
+
+		// Etapa atómica: se marca el rollback a mano porque IncomeException es
+		// una application exception y por sí sola no reversaría esta transacción.
+		try {
+			Long idEmpresaConta = notaDebito.getFacturador().getEmpresa().getCodigo();
+			java.time.LocalDate fechaAsiento = notaDebito.getFecha() != null
+					? notaDebito.getFecha().toLocalDate() : java.time.LocalDate.now();
+			String obsAsiento = "Nota de Débito N° " + nvl(notaDebito.getNumero(), notaDebito.getClave())
+					+ observacionDocumentoOrigen(notaDebito)
+					+ " | Cliente: " + (notaDebito.getTitular() != null ? notaDebito.getTitular().getNombre() : "")
+					+ " | " + nvl(notaDebito.getObservacion(), "");
+			String usuarioAsiento = notaDebito.getUsuario() != null
+					? notaDebito.getUsuario().getNombre() : "SISTEMA";
+
+			com.saa.model.cnt.Asiento asientoGenerado =
+					asientoContableService.generarAsientoNotaDebito(
+							notaDebito.getId(), idEmpresaConta,
+							com.saa.rubros.TipoAsientos.FACTURAS_VENTA,
+							fechaAsiento, obsAsiento, usuarioAsiento);
+
+			com.saa.model.cnt.Asiento asientoAttached =
+					em.find(com.saa.model.cnt.Asiento.class, asientoGenerado.getCodigo());
+			if (asientoAttached == null) asientoAttached = em.merge(asientoGenerado);
+			notaDebito.setAsiento(asientoAttached);
+			notaDebitoDaoService.save(notaDebito, notaDebito.getId());
+			em.flush();
+
+			resultado.put("generado", true);
+			resultado.put("idAsiento", asientoAttached.getCodigo());
+			resultado.put("numeroAlterno", asientoAttached.getNumeroAlterno());
+			System.out.println("✓ Asiento contable generado: " + asientoAttached.getNumeroAlterno());
+		} catch (Throwable e) {
+			sessionContext.setRollbackOnly();
+			throw e;
+		}
+		return resultado;
+	}
+
+	/**
+	 * Marca la nota de débito como autorizada por el SRI en transacción propia
+	 * (REQUIRES_NEW): estado 5, número y fecha de autorización, y XML autorizado
+	 * en disco. Idempotente.
+	 * @param idNotaDebito       : Id de la nota de débito
+	 * @param numeroAutorizacion : Número de autorización devuelto por el SRI
+	 * @param fechaAutorizacion  : Fecha de autorización devuelta por el SRI
+	 * @param comprobanteXML     : XML autorizado (puede ser null)
+	 * @return : true si actualizó el estado, false si ya estaba autorizada
+	 */
+	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+	public boolean marcarNotaDebitoAutorizada(Long idNotaDebito, String numeroAutorizacion,
+			String fechaAutorizacion, String comprobanteXML) throws Throwable {
+		System.out.println("Ingresa al metodo marcarNotaDebitoAutorizada con id: " + idNotaDebito);
+
+		NotaDebito nd = em.find(NotaDebito.class, idNotaDebito);
+		if (nd == null) {
+			throw new IncomeException("Nota de Débito con ID " + idNotaDebito + " no encontrada.");
+		}
+		if (Long.valueOf(5L).equals(nd.getEstado())) {
+			System.out.println("ℹ Nota de débito ya estaba en estado 5.");
+			return false;
+		}
+
+		nd.setEstado(5L);
+		nd.setEstadoEmision(1L);
+		if (numeroAutorizacion != null && !numeroAutorizacion.isEmpty()) {
+			nd.setAutorizacion(numeroAutorizacion);
+		}
+		if (fechaAutorizacion != null && !fechaAutorizacion.isEmpty()) {
+			nd.setFechaAutorizacion(parseFechaAutorizacion(fechaAutorizacion));
+		}
+
+		Long idFacturador = nd.getFacturador() != null ? nd.getFacturador().getId() : null;
+		if (comprobanteXML != null && !comprobanteXML.isEmpty() && idFacturador != null) {
+			try {
+				String resourcesPath = getBaseUploadDirectory() + "resources/" + idFacturador;
+				java.nio.file.Path pathAutorizado = java.nio.file.Paths.get(
+						resourcesPath + "/docs/a/" + nd.getClave() + ".xml");
+				java.nio.file.Files.createDirectories(pathAutorizado.getParent());
+				java.nio.file.Files.write(pathAutorizado, comprobanteXML.getBytes("UTF-8"));
+				PathNotaDebito pathA = new PathNotaDebito();
+				pathA.setNotaDebito(nd);
+				pathA.setPath("resources/" + idFacturador + "/docs/a/" + nd.getClave() + ".xml");
+				pathA.setAlterno(5L);
+				pathNotaDebitoDaoService.save(pathA, null);
+				System.out.println("✓ XML autorizado guardado.");
+			} catch (Exception xmlEx) {
+				System.err.println("⚠ Error guardando XML autorizado: " + xmlEx.getMessage());
+			}
+		}
+
+		notaDebitoDaoService.save(nd, nd.getId());
+		em.flush();
+		System.out.println("✓ Nota de débito actualizada a estado AUTORIZADA (5). Aut: " + numeroAutorizacion);
+		return true;
+	}
+
+	/**
+	 * Registra el movimiento de la nota de débito sobre la factura afectada, en
+	 * transacción propia (REQUIRES_NEW). Idempotente.
+	 * @param idNotaDebito : Id de la nota de débito (debe tener asiento)
+	 * @return : Mapa con aplicado, yaExistia, idAplicacion
+	 */
+	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+	public java.util.Map<String, Object> aplicarPagoNotaDebito(Long idNotaDebito) throws Throwable {
+		System.out.println("Ingresa al metodo aplicarPagoNotaDebito con id: " + idNotaDebito);
+
+		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+		resultado.put("aplicado", false);
+
+		NotaDebito notaDebito = em.find(NotaDebito.class, idNotaDebito);
+		if (notaDebito == null) {
+			throw new IncomeException("Nota de Débito con ID " + idNotaDebito + " no encontrada.");
+		}
+		if (notaDebito.getAsiento() == null) {
+			throw new IncomeException("La Nota de Débito " + idNotaDebito + " no tiene asiento contable: "
+					+ "no se puede registrar el movimiento sobre la factura.");
+		}
+		if (notaDebito.getFacturador() == null || notaDebito.getFacturador().getEmpresa() == null) {
+			throw new IncomeException("La Nota de Débito " + idNotaDebito
+					+ " no tiene empresa contable configurada en el facturador.");
+		}
+
+		List<com.saa.model.cxc.AplicacionPagoCxc> existentes =
+				aplicacionPagoCxcDaoService.selectActivasByDocumento("NOTA_DEBITO", idNotaDebito);
+		if (existentes != null && !existentes.isEmpty()) {
+			resultado.put("yaExistia", true);
+			resultado.put("idAplicacion", existentes.get(0).getId());
+			System.out.println("ℹ El movimiento sobre la factura ya estaba registrado: id="
+					+ existentes.get(0).getId());
+			return resultado;
+		}
+
+		Long idEmpresa = notaDebito.getFacturador().getEmpresa().getCodigo();
+		String usuario = notaDebito.getUsuario() != null
+				? notaDebito.getUsuario().getNombre() : "SISTEMA";
+
+		try {
+			com.saa.model.cxc.AplicacionPagoCxc aplicacion =
+					aplicacionPagoCxcService.aplicarNotaDebito(
+							notaDebito, notaDebito.getAsiento(), idEmpresa, usuario);
+			resultado.put("aplicado", true);
+			resultado.put("idAplicacion", aplicacion.getId());
+			System.out.println("✓ Movimiento sobre la factura registrado: id=" + aplicacion.getId());
+		} catch (Throwable e) {
+			sessionContext.setRollbackOnly();
+			throw e;
+		}
 		return resultado;
 	}
 	
@@ -1839,7 +2062,13 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 	// =========================================================================
 	// consultarYActualizarEstadoNotaDebito
 	// =========================================================================
+	/**
+	 * Punto de recuperación: consulta el estado en el SRI y completa lo que haya
+	 * quedado pendiente (estado, asiento contable, movimiento sobre la factura).
+	 * Sin transacción propia — cada etapa se confirma por separado.
+	 */
 	@Override
+	@TransactionAttribute(TransactionAttributeType.NOT_SUPPORTED)
 	public java.util.Map<String, Object> consultarYActualizarEstadoNotaDebito(Long idNotaDebito) throws Throwable {
 		System.out.println("=== consultarYActualizarEstadoNotaDebito | id=" + idNotaDebito + " ===");
 		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
@@ -1888,88 +2117,55 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 			return resultado;
 		}
 
-		// 3. SRI devuelve AUTORIZADO → actualizar
-		boolean actualizada = false;
-		if (!Long.valueOf(5L).equals(nd.getEstado())) {
-			nd.setEstado(5L);
-			nd.setEstadoEmision(1L);
-			if (ra.numeroAutorizacion != null && !ra.numeroAutorizacion.isEmpty()) {
-				nd.setAutorizacion(ra.numeroAutorizacion);
-			}
-			if (ra.fechaAutorizacion != null && !ra.fechaAutorizacion.isEmpty()) {
-				nd.setFechaAutorizacion(parseFechaAutorizacion(ra.fechaAutorizacion));
-			}
-			// Guardar XML autorizado
-			if (ra.comprobanteXML != null && !ra.comprobanteXML.isEmpty() && idFacturador != null) {
-				try {
-					String resourcesPath = getBaseUploadDirectory() + "resources/" + idFacturador;
-					java.nio.file.Path pathAutorizado = java.nio.file.Paths.get(resourcesPath + "/docs/a/" + clave + ".xml");
-					java.nio.file.Files.createDirectories(pathAutorizado.getParent());
-					java.nio.file.Files.write(pathAutorizado, ra.comprobanteXML.getBytes("UTF-8"));
-					PathNotaDebito pathA = new PathNotaDebito();
-					pathA.setNotaDebito(nd);
-					pathA.setPath("resources/" + idFacturador + "/docs/a/" + clave + ".xml");
-					pathA.setAlterno(5L);
-					pathNotaDebitoDaoService.save(pathA, null);
-					System.out.println("✓ XML autorizado guardado.");
-				} catch (Exception xmlEx) {
-					System.err.println("⚠ Error guardando XML autorizado: " + xmlEx.getMessage());
-				}
-			}
-			notaDebitoDaoService.save(nd, nd.getId());
-			actualizada = true;
-			System.out.println("✓ Nota de débito actualizada a estado AUTORIZADA (5). Aut: " + ra.numeroAutorizacion);
-		} else {
-			System.out.println("ℹ Nota de débito ya estaba en estado 5.");
+		// 3. SRI devuelve AUTORIZADO → actualizar (transacción propia)
+		boolean actualizada;
+		try {
+			actualizada = self().marcarNotaDebitoAutorizada(
+					idNotaDebito, ra.numeroAutorizacion, ra.fechaAutorizacion, ra.comprobanteXML);
+		} catch (Throwable e) {
+			resultado.put("mensaje", "El SRI autorizó la ND pero no se pudo actualizar su estado: "
+					+ e.getMessage());
+			resultado.put("error", e.getMessage());
+			System.err.println("⚠ Error actualizando estado de la ND: " + e.getMessage());
+			return resultado;
 		}
 		resultado.put("notaDebitoActualizada", actualizada);
 
-		// 4. Generar asiento contable si no tiene
+		// 4. Generar asiento contable si no tiene (transacción propia)
 		boolean asientoGenerado = false;
-		if (nd.getAsiento() == null
-				&& nd.getFacturador() != null
-				&& nd.getFacturador().getEmpresa() != null
-				&& Long.valueOf(1L).equals(nd.getFacturador().getGeneraConta())) {
-			System.out.println("PASO 4: Generando asiento contable...");
-			try {
-				Long idEmpresa = nd.getFacturador().getEmpresa().getCodigo();
-				String obsAsiento = "Nota de Débito N° " + nvl(nd.getNumero(), clave)
-						+ observacionDocumentoOrigen(nd)
-						+ " | Cliente: " + (nd.getTitular() != null ? nd.getTitular().getNombre() : "")
-						+ " | Aut: " + nvl(nd.getAutorizacion(), clave);
-				String usuarioAsiento = nd.getUsuario() != null ? nd.getUsuario().getNombre() : "SISTEMA";
-				com.saa.model.cnt.Asiento asientoGeneradoObj =
-						asientoContableService.generarAsientoNotaDebito(
-								nd.getId(), idEmpresa,
-								com.saa.rubros.TipoAsientos.NOTAS_DEBITO_VENTA,
-								nd.getFecha().toLocalDate(), obsAsiento, usuarioAsiento);
-				com.saa.model.cnt.Asiento asientoAttached = em.merge(asientoGeneradoObj);
-				nd.setAsiento(asientoAttached);
-				notaDebitoDaoService.save(nd, nd.getId());
-				em.flush();
-				resultado.put("asiento", asientoGeneradoObj.getNumeroAlterno());
-				asientoGenerado = true;
-				System.out.println("✓ Asiento contable generado: " + asientoGeneradoObj.getNumeroAlterno());
-
-				// Registrar el incremento del saldo de la factura junto con el asiento.
-				try {
-					aplicacionPagoCxcService.aplicarNotaDebito(
-							nd, asientoAttached, idEmpresa, usuarioAsiento);
-				} catch (Throwable aplEx) {
-					anulaAsientoPorFalloAplicacion(asientoAttached, aplEx);
-					throw aplEx;
-				}
-			} catch (Throwable e) {
-				resultado.put("advertenciaAsiento",
-						"Nota de débito autorizada pero error al generar asiento o al registrar "
-						+ "el movimiento sobre la factura: " + e.getMessage());
-				System.err.println("⚠ Error en asiento contable: " + e.getMessage());
+		boolean asientoDisponible = false;
+		System.out.println("PASO 4: Generando asiento contable...");
+		try {
+			java.util.Map<String, Object> resAsiento = self().generarContabilidadNotaDebito(idNotaDebito);
+			asientoGenerado   = Boolean.TRUE.equals(resAsiento.get("generado"));
+			asientoDisponible = Boolean.TRUE.equals(resAsiento.get("aplica"));
+			if (Boolean.TRUE.equals(resAsiento.get("yaExistia"))) {
+				resultado.put("asientoExistente", resAsiento.get("numeroAlterno"));
+				System.out.println("ℹ La nota de débito ya tiene asiento contable.");
+			} else if (asientoGenerado) {
+				resultado.put("asiento", resAsiento.get("numeroAlterno"));
 			}
-		} else if (nd.getAsiento() != null) {
-			resultado.put("asientoExistente", nd.getAsiento().getNumeroAlterno());
-			System.out.println("ℹ La nota de débito ya tiene asiento contable.");
+		} catch (Throwable e) {
+			resultado.put("contabilidadPendiente", true);
+			resultado.put("advertenciaAsiento",
+					"Nota de débito autorizada pero error al generar el asiento contable: " + e.getMessage());
+			System.err.println("⚠ Error en asiento contable: " + e.getMessage());
 		}
 		resultado.put("asientoGenerado", asientoGenerado);
+
+		// 4.1. Registrar el movimiento sobre la factura si aún está pendiente
+		if (asientoDisponible) {
+			try {
+				java.util.Map<String, Object> resAplicacion = self().aplicarPagoNotaDebito(idNotaDebito);
+				resultado.put("aplicacionPago", resAplicacion.get("idAplicacion"));
+			} catch (Throwable e) {
+				resultado.put("cruceFacturaPendiente", true);
+				resultado.put("advertenciaAplicacion",
+						"No se pudo registrar el movimiento sobre la factura: " + e.getMessage()
+						+ ". Sigue PENDIENTE.");
+				System.err.println("⚠ Error al registrar el movimiento sobre la factura: " + e.getMessage());
+			}
+		}
 
 		// 5. Enviar email con XML y PDF
 		System.out.println("PASO 5: Enviando email...");

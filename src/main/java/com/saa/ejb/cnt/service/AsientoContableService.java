@@ -395,4 +395,46 @@ public interface AsientoContableService {
     Asiento generarAsientoCobroTransferenciaCxc(Long idTitular, Double valor, Long idCuentaBancaria,
             Long idEmpresa, int codigoAltTipoAsiento, java.time.LocalDate fechaAsiento,
             String observaciones, String usuario) throws Throwable;
+
+    /**
+     * Genera el asiento del pago de un egreso de tesorería sin documento
+     * físico (TSR.EGRS): comisiones, administración de cuenta, etc.
+     * <p>
+     * DEBE:  cuenta del grupo del producto CXP (GrupoProductoPago.planCuenta)<br>
+     * HABER: cuenta contable de la cuenta bancaria propia (CuentaBancaria.planCuenta)
+     * <p>
+     * Plantilla: {@code TipoAsientos.EGRESO_TESORERIA} (codigoAlterno 5, TEGRESO)
+     *
+     * @param idProductoPago   : Id del producto CXP que clasifica el gasto (PGS.PRDP)
+     * @param concepto         : Concepto del egreso (va en las líneas del asiento)
+     * @param valor            : Valor del egreso
+     * @param idCuentaBancaria : Id de la cuenta bancaria propia desde la que sale el dinero
+     * @param idEmpresa        : Id de la empresa contable
+     * @return                 : Asiento generado
+     * @throws Throwable       : Excepcion (producto sin grupo o grupo sin cuenta contable)
+     */
+    Asiento generarAsientoEgresoTesoreria(Long idProductoPago, String concepto, Double valor,
+            Long idCuentaBancaria, Long idEmpresa, int codigoAltTipoAsiento,
+            java.time.LocalDate fechaAsiento, String observaciones, String usuario) throws Throwable;
+
+    /**
+     * Genera el asiento de un ingreso de tesorería sin documento físico
+     * (TSR.INGR): intereses ganados, créditos bancarios, etc.
+     * <p>
+     * DEBE:  cuenta contable de la cuenta bancaria receptora (CuentaBancaria.planCuenta)<br>
+     * HABER: cuenta del grupo del producto CXC (GrupoProductoCobro.planCuenta)
+     * <p>
+     * Plantilla: {@code TipoAsientos.INGRESO_TESORERIA} (codigoAlterno 4, TINGRESO)
+     *
+     * @param idProductoCobro  : Id del producto CXC que clasifica el ingreso (CBR.PRDC)
+     * @param concepto         : Concepto del ingreso (va en las líneas del asiento)
+     * @param valor            : Valor del ingreso
+     * @param idCuentaBancaria : Id de la cuenta bancaria propia que recibió el dinero
+     * @param idEmpresa        : Id de la empresa contable
+     * @return                 : Asiento generado
+     * @throws Throwable       : Excepcion (producto sin grupo o grupo sin cuenta contable)
+     */
+    Asiento generarAsientoIngresoTesoreria(Long idProductoCobro, String concepto, Double valor,
+            Long idCuentaBancaria, Long idEmpresa, int codigoAltTipoAsiento,
+            java.time.LocalDate fechaAsiento, String observaciones, String usuario) throws Throwable;
 }

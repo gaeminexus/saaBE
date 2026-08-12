@@ -87,10 +87,20 @@ public class PagoProgramado implements Serializable {
 
     /**
      * Factura de compra que se está pagando. FK a PGS.FCTC.
+     * Excluyente con {@link #egreso}: el pago referencia una factura O un
+     * egreso de tesorería, nunca ambos.
      */
     @ManyToOne
     @JoinColumn(name = "PGTRFCTC", referencedColumnName = "ID")
     private FacturaCompra facturaCompra;
+
+    /**
+     * Egreso de tesorería sin documento físico que se está pagando.
+     * FK a TSR.EGRS. Excluyente con {@link #facturaCompra}.
+     */
+    @ManyToOne
+    @JoinColumn(name = "PGTREGRS", referencedColumnName = "EGRSCDGO")
+    private com.saa.model.tsr.Egreso egreso;
 
     /**
      * Proveedor al que se paga. FK a TSR.TTLR.
@@ -212,6 +222,9 @@ public class PagoProgramado implements Serializable {
 
     public FacturaCompra getFacturaCompra() { return facturaCompra; }
     public void setFacturaCompra(FacturaCompra facturaCompra) { this.facturaCompra = facturaCompra; }
+
+    public com.saa.model.tsr.Egreso getEgreso() { return egreso; }
+    public void setEgreso(com.saa.model.tsr.Egreso egreso) { this.egreso = egreso; }
 
     public Titular getTitular() { return titular; }
     public void setTitular(Titular titular) { this.titular = titular; }

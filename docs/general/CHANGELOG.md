@@ -7,6 +7,55 @@ y este proyecto adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ---
 
+## [Sin publicar] - 2026-08-12
+
+### 🐛 Corregido
+
+- **Un fallo tardío ya no reversa un documento electrónico autorizado por el SRI.**
+  Todo el proceso de emisión corría en una sola transacción, así que un error al
+  generar el asiento contable o al cruzar con la factura marcaba la transacción
+  como `rollback-only` y borraba también el documento que el SRI ya había
+  autorizado. El `catch (Throwable)` que pretendía aislarlo no servía: un EJB
+  anidado con `REQUIRED` se une a la transacción del llamador, y una vez marcada
+  no se puede rescatar.
+
+  Ahora los `procesar*Completa` son `NOT_SUPPORTED` y cada etapa (emisión ante el
+  SRI, asiento contable, cruce con la factura) corre en su propia transacción
+  `REQUIRES_NEW`, invocada vía `SessionContext.getBusinessObject`. Si falla el
+  cruce, sólo ese cruce queda pendiente.
+
+  Aplicado a los seis documentos: `FacturaServiceImpl`, `NotaCreditoServiceImpl`,
+  `NotaDebitoServiceImpl`, `RetencionServiceImpl`, `RetencionV2ServiceImpl` y
+  `LiquidacionCompraServiceImpl`, y a sus endpoints de recuperación
+  `consultarYActualizarEstado*` (ahora idempotentes: reintentan lo pendiente).
+
+  Ver `docs/logica-negocio/cxc/TRANSACCIONES_DOCUMENTOS_ELECTRONICOS.md`.
+
+- **`StrictJpaComplianceViolation` al cruzar retenciones con la factura.**
+  Hibernate 7 (WildFly 38) rechaza funciones no estándar en JPQL. `replace(...)`
+  reemplazado por `FUNCTION('replace', ...)` en
+  `AplicacionPagoCxpDaoServiceImpl.selectFacturaByNumero` y su equivalente CXC.
+
+- **Retención V1 y Liquidación de Compra ahora vinculan el asiento al documento**
+  (`setAsiento`). Antes lo generaban sin enlazarlo y la anulación no encontraba
+  el asiento que debía anular.
+
+### ⚠️ Cambios de comportamiento
+
+- El asiento ya **no** se anula automáticamente cuando falla el cruce con la
+  factura (se eliminó `anulaAsientoPorFalloAplicacion`). El documento está
+  autorizado y su contabilidad es válida; el cruce queda pendiente.
+- Los `procesar*Completa` pueden devolver `etapa = "COMPLETADO_CON_PENDIENTES"`
+  con `exito = true` más `contabilidadPendiente` / `cruceFacturaPendiente` y sus
+  advertencias. No es un error: el documento está autorizado.
+- `consultarYActualizarEstadoRetencionV2` usaba `TipoAsientos.FACTURAS_VENTA`
+  para el asiento de una retención; unificado a `RETENCIONES_EMITIDAS_V2`.
+- Retención V2 `DEVUELTA`: se elimina explícitamente en vez de por rollback, así
+  que el secuencial consumido no se devuelve y puede quedar un hueco.
+- Factura con "CLAVE ACCESO REGISTRADA": ahora también genera asiento contable.
+
+---
+
 ## [1.1.0] - 2026-03-27
 
 ### 🎉 Características Nuevas

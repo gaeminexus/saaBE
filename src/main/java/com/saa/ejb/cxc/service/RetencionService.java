@@ -50,6 +50,41 @@ public interface RetencionService extends EntityService<Retencion> {
 			java.util.List<com.saa.model.cxc.DetalleRetencion> detalles,
 			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable;
 
+	// =========================================================================
+	// Etapas transaccionales independientes del proceso de emisión
+	// -------------------------------------------------------------------------
+	// procesarRetencionCompleta las invoca a través del contenedor
+	// (SessionContext.getBusinessObject) para que cada una corra en su propia
+	// transacción: un fallo tardío jamás debe reversar una retención ya
+	// autorizada por el SRI.
+	// =========================================================================
+
+	/**
+	 * Emite la retención ante el SRI en una transacción propia (REQUIRES_NEW):
+	 * valida cuentas, genera y firma el XML, envía a recepción y —sólo si el
+	 * SRI la acepta— graba el documento y persiste la autorización.
+	 * @return Mapa con clave, idRetencion y emitida=true si el SRI la autorizó
+	 */
+	java.util.Map<String, Object> emitirRetencionAnteSRI(Retencion retencion,
+			java.util.List<com.saa.model.cxc.DetalleRetencion> detalles,
+			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable;
+
+	/**
+	 * Genera y vincula el asiento contable de una retención en transacción
+	 * propia (REQUIRES_NEW). Idempotente.
+	 * @param idRetencion Id de la retención ya autorizada
+	 * @return Mapa con aplica, generado, yaExistia, idAsiento, numeroAlterno
+	 */
+	java.util.Map<String, Object> generarContabilidadRetencion(Long idRetencion) throws Throwable;
+
+	/**
+	 * Marca la retención como autorizada por el SRI en transacción propia
+	 * (REQUIRES_NEW): estado 5, autorización y XML autorizado. Idempotente.
+	 * @return true si actualizó el estado, false si ya estaba autorizada
+	 */
+	boolean marcarRetencionAutorizada(Long idRetencion, String numeroAutorizacion,
+			String fechaAutorizacion, String comprobanteXML) throws Throwable;
+
 	/** Reenvía (o envía por primera vez) el email de una retención autorizada.
 	 *  El email irá con el XML adjunto (no hay JRXML de PDF para retención simple). */
 	java.util.Map<String, Object> reenviarEmail(Long idRetencion, String destinatarios) throws Throwable;

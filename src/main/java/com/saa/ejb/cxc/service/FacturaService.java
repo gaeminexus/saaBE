@@ -47,10 +47,46 @@ public interface FacturaService extends EntityService<Factura> {
 	 * @return Mapa con el resultado del proceso completo
 	 * @throws Throwable
 	 */
-	java.util.Map<String, Object> procesarFacturaCompleta(com.saa.model.cxc.Factura factura, 
+	java.util.Map<String, Object> procesarFacturaCompleta(com.saa.model.cxc.Factura factura,
 			java.util.List<com.saa.model.cxc.DetalleFactura> detalles,
 			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable;
-	
+
+	// =========================================================================
+	// Etapas transaccionales independientes del proceso de emisión
+	// -------------------------------------------------------------------------
+	// procesarFacturaCompleta las invoca a través del contenedor
+	// (SessionContext.getBusinessObject) para que cada una corra en su propia
+	// transacción: un fallo tardío jamás debe reversar una factura ya
+	// autorizada por el SRI.
+	// =========================================================================
+
+	/**
+	 * Emite la factura ante el SRI en una transacción propia (REQUIRES_NEW):
+	 * prepara los campos, genera y firma el XML, envía a recepción y —sólo si
+	 * el SRI la acepta— graba el documento y persiste la autorización.
+	 * @return Mapa con clave, idFactura, idFacturador, factura, destinatario,
+	 *         pdfBytes y emitida=true si el SRI la autorizó
+	 */
+	java.util.Map<String, Object> emitirFacturaAnteSRI(com.saa.model.cxc.Factura factura,
+			java.util.List<com.saa.model.cxc.DetalleFactura> detalles,
+			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable;
+
+	/**
+	 * Genera y vincula el asiento contable de una factura en transacción propia
+	 * (REQUIRES_NEW). Idempotente: si ya tiene asiento no genera otro.
+	 * @param idFactura Id de la factura ya autorizada
+	 * @return Mapa con aplica, generado, yaExistia, idAsiento, numeroAlterno
+	 */
+	java.util.Map<String, Object> generarContabilidadFactura(Long idFactura) throws Throwable;
+
+	/**
+	 * Marca la factura como autorizada por el SRI en transacción propia
+	 * (REQUIRES_NEW): estado 5, autorización y XML autorizado. Idempotente.
+	 * @return true si actualizó el estado, false si ya estaba autorizada
+	 */
+	boolean marcarFacturaAutorizada(Long idFactura, String numeroAutorizacion,
+			String fechaAutorizacion, String comprobanteXML) throws Throwable;
+
 	/**
 	 * MÉTODO DE PRUEBA: Envía un XML correcto al SRI para probar la comunicación
 	 */

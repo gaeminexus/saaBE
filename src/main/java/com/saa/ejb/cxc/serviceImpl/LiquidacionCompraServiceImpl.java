@@ -26,8 +26,12 @@ import com.saa.model.cxc.NombreEntidadesCobro;
 import com.saa.model.cxc.PathLiquidacionCompra;
 import com.saa.rubros.Estado;
 
+import jakarta.annotation.Resource;
 import jakarta.ejb.EJB;
+import jakarta.ejb.SessionContext;
 import jakarta.ejb.Stateless;
+import jakarta.ejb.TransactionAttribute;
+import jakarta.ejb.TransactionAttributeType;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
@@ -45,6 +49,20 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 
 	@EJB
 	private LiquidacionCompraDaoService liquidacionCompraDaoService;
+
+	@Resource
+	private SessionContext sessionContext;
+
+	/**
+	 * Referencia al propio bean pasando por el contenedor, para que los
+	 * @TransactionAttribute de las etapas se apliquen de verdad. Una llamada
+	 * directa a this.metodo() se salta los interceptores y correría en la
+	 * transacción del llamador.
+	 * @return : Vista local de este mismo EJB
+	 */
+	private LiquidacionCompraService self() {
+		return sessionContext.getBusinessObject(LiquidacionCompraService.class);
+	}
 	
 	@EJB
 	private PathLiquidacionCompraDaoService pathLiquidacionCompraDaoService;
@@ -158,15 +176,74 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 		return result;
 	}
 	
+	/**
+	 * Orquesta el proceso completo SIN transacción propia (NOT_SUPPORTED).
+	 * <p>
+	 * El envío al SRI es irreversible, así que la emisión se confirma en su
+	 * propia transacción y el asiento contable corre aparte: un fallo tardío
+	 * NUNCA puede reversar una liquidación ya autorizada por el SRI.
+	 */
 	@Override
+	@TransactionAttribute(TransactionAttributeType.NOT_SUPPORTED)
 	public java.util.Map<String, Object> procesarLiquidacionCompleta(LiquidacionCompra liquidacion,
 			java.util.List<com.saa.model.cxc.DetalleLiquidacionCompra> detalles,
 			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable {
-		System.out.println("=== INICIANDO PROCESO COMPLETO DE LIQUIDACION DE COMPRA (nuevo flujo: BD tras RECIBIDA) ===");
-		
+		System.out.println("=== INICIANDO PROCESO COMPLETO DE LIQUIDACION DE COMPRA ===");
+
+		// ── Emisión ante el SRI, en UNA transacción propia ────────────────────
+		java.util.Map<String, Object> resultado = self().emitirLiquidacionAnteSRI(
+				liquidacion, detalles, ambiente, conectaSRI, destinatario, pathLogo);
+
+		if (!Boolean.TRUE.equals(resultado.get("emitida"))) {
+			return resultado;
+		}
+
+		Long idLiquidacion = (Long) resultado.get("idLiquidacion");
+
+		// ── PASO 5: Generar asiento contable (transacción propia) ─────────────
+		System.out.println("PASO 5: Generando asiento contable para Liquidación de Compra...");
+		try {
+			java.util.Map<String, Object> resAsiento = self().generarContabilidadLiquidacion(idLiquidacion);
+			if (Boolean.TRUE.equals(resAsiento.get("aplica"))) {
+				resultado.put("asiento", resAsiento.get("numeroAlterno"));
+			}
+		} catch (Throwable e) {
+			resultado.put("contabilidadPendiente", true);
+			resultado.put("advertenciaAsiento",
+					"Liquidación autorizada pero ocurrió un error al generar el asiento: "
+					+ e.getMessage() + ". Genere el asiento manualmente desde Contabilidad.");
+			System.err.println("⚠ Error en asiento contable de Liquidación de Compra: " + e.getMessage());
+			e.printStackTrace();
+		}
+
+		boolean hayPendientes = Boolean.TRUE.equals(resultado.get("contabilidadPendiente"));
+		resultado.put("exito",  true);
+		resultado.put("estado", "AUTORIZADO");
+		resultado.put("etapa",  hayPendientes ? "COMPLETADO_CON_PENDIENTES" : "COMPLETADO");
+		resultado.put("mensaje", hayPendientes
+				? "Liquidación autorizada por el SRI, pero quedaron etapas pendientes. Revise las advertencias."
+				: "Liquidación procesada y autorizada exitosamente");
+		System.out.println("=== PROCESO COMPLETO DE LIQUIDACION FINALIZADO"
+				+ (hayPendientes ? " (CON PENDIENTES)" : "") + " ===");
+		return resultado;
+	}
+
+	/**
+	 * Emite la liquidación de compra ante el SRI en UNA transacción propia
+	 * (REQUIRES_NEW): prepara campos, genera y firma el XML, envía a recepción
+	 * y —sólo si el SRI la acepta— graba el documento y persiste la autorización.
+	 * @return : Mapa con clave, idLiquidacion y emitida=true si el SRI la autorizó
+	 */
+	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+	public java.util.Map<String, Object> emitirLiquidacionAnteSRI(LiquidacionCompra liquidacion,
+			java.util.List<com.saa.model.cxc.DetalleLiquidacionCompra> detalles,
+			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable {
+		System.out.println("=== emitirLiquidacionAnteSRI (BD tras RECIBIDA) ===");
+
 		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
 		resultado.put("exito", false);
-		
+
 		try {
 			if (ambiente  == null) ambiente  = 1L;
 			if (conectaSRI == null) conectaSRI = 1L;
@@ -448,52 +525,97 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 				return resultado;
 			}
 
-			// ── PASO 5: Generar asiento contable (solo tras AUTORIZADO) ──────────
-			if (liquidacion.getFacturador() != null
-					&& liquidacion.getFacturador().getEmpresa() != null
-					&& Long.valueOf(1L).equals(liquidacion.getFacturador().getGeneraConta())) {
-				System.out.println("PASO 5: Generando asiento contable para Liquidación de Compra...");
-				try {
-					Long idEmpresaConta = liquidacion.getFacturador().getEmpresa().getCodigo();
-					LiquidacionCompra lqActualizada = liquidacionCompraDaoService.selectById(
-							liquidacion.getId(), NombreEntidadesCobro.LIQUIDACION_COMPRA);
-					java.time.LocalDate fechaAsiento = lqActualizada.getFecha() != null
-							? lqActualizada.getFecha().toLocalDate() : java.time.LocalDate.now();
-					String obsAsiento = "Liquidación de Compra N° " + nvl(lqActualizada.getNumero(), clave)
-							+ " | Proveedor: " + (lqActualizada.getTitular() != null ? lqActualizada.getTitular().getNombre() : "")
-							+ " | Aut: " + nvl(lqActualizada.getAutorizacion(), clave);
-					String usuarioAsiento = lqActualizada.getUsuario() != null
-							? lqActualizada.getUsuario().getNombre() : "SISTEMA";
-					com.saa.model.cnt.Asiento asientoGenerado =
-							asientoContableService.generarAsientoLiquidacionCompra(
-									lqActualizada.getId(), idEmpresaConta,
-									com.saa.rubros.TipoAsientos.LIQUIDACIONES_COMPRA_EMITIDAS,
-									fechaAsiento, obsAsiento, usuarioAsiento);
-					resultado.put("asiento", asientoGenerado.getNumeroAlterno());
-					System.out.println("✓ Asiento contable generado: " + asientoGenerado.getNumeroAlterno());
-				} catch (Exception e) {
-					resultado.put("advertenciaAsiento",
-							"Liquidación autorizada pero ocurrió un error al generar el asiento: "
-							+ e.getMessage() + ". Genere el asiento manualmente desde Contabilidad.");
-					System.err.println("⚠ Error en asiento contable de Liquidación de Compra: " + e.getMessage());
-					e.printStackTrace();
-				}
-			}
-
-			resultado.put("exito", true);
-			resultado.put("estado", "AUTORIZADO");
-			resultado.put("mensaje", "Liquidación procesada y autorizada exitosamente");
-			System.out.println("=== PROCESO COMPLETO DE LIQUIDACION FINALIZADO ===");
+			// Emisión terminada: la liquidación está autorizada y confirmada en
+			// BD. El asiento contable lo genera el orquestador fuera de esta
+			// transacción.
+			resultado.put("emitida", true);
+			resultado.put("estado",  "AUTORIZADO");
 
 		} catch (Exception e) {
-			System.err.println("ERROR en procesarLiquidacionCompleta: " + e.getMessage());
+			System.err.println("ERROR en emitirLiquidacionAnteSRI: " + e.getMessage());
 			e.printStackTrace();
 			resultado.put("exito", false);
 			resultado.put("error", e.getMessage());
 			resultado.put("mensaje", "Error al procesar liquidación: " + e.getMessage());
+			sessionContext.setRollbackOnly();
 			throw e;
 		}
-		
+
+		return resultado;
+	}
+
+	/**
+	 * Genera y vincula el asiento contable de una liquidación de compra en
+	 * transacción propia (REQUIRES_NEW). Idempotente: si ya tiene asiento no
+	 * genera otro.
+	 * @param idLiquidacion : Id de la liquidación ya autorizada
+	 * @return : Mapa con aplica, generado, yaExistia, idAsiento, numeroAlterno
+	 */
+	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+	public java.util.Map<String, Object> generarContabilidadLiquidacion(Long idLiquidacion) throws Throwable {
+		System.out.println("Ingresa al metodo generarContabilidadLiquidacion con id: " + idLiquidacion);
+
+		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+		resultado.put("generado", false);
+		resultado.put("aplica", false);
+
+		LiquidacionCompra liquidacion = em.find(LiquidacionCompra.class, idLiquidacion);
+		if (liquidacion == null) {
+			throw new IncomeException("Liquidación de Compra con ID " + idLiquidacion + " no encontrada.");
+		}
+		if (liquidacion.getFacturador() == null
+				|| liquidacion.getFacturador().getEmpresa() == null
+				|| !Long.valueOf(1L).equals(liquidacion.getFacturador().getGeneraConta())) {
+			System.out.println("ℹ El facturador no genera contabilidad: se omite el asiento.");
+			return resultado;
+		}
+		resultado.put("aplica", true);
+
+		if (liquidacion.getAsiento() != null) {
+			resultado.put("yaExistia", true);
+			resultado.put("idAsiento", liquidacion.getAsiento().getCodigo());
+			resultado.put("numeroAlterno", liquidacion.getAsiento().getNumeroAlterno());
+			System.out.println("ℹ La liquidación ya tiene asiento: "
+					+ liquidacion.getAsiento().getNumeroAlterno());
+			return resultado;
+		}
+
+		// Etapa atómica: se marca el rollback a mano porque IncomeException es
+		// una application exception y por sí sola no reversaría esta transacción.
+		try {
+			Long idEmpresaConta = liquidacion.getFacturador().getEmpresa().getCodigo();
+			java.time.LocalDate fechaAsiento = liquidacion.getFecha() != null
+					? liquidacion.getFecha().toLocalDate() : java.time.LocalDate.now();
+			String obsAsiento = "Liquidación de Compra N° " + nvl(liquidacion.getNumero(), liquidacion.getClave())
+					+ " | Proveedor: " + (liquidacion.getTitular() != null ? liquidacion.getTitular().getNombre() : "")
+					+ " | Aut: " + nvl(liquidacion.getAutorizacion(), liquidacion.getClave());
+			String usuarioAsiento = liquidacion.getUsuario() != null
+					? liquidacion.getUsuario().getNombre() : "SISTEMA";
+
+			com.saa.model.cnt.Asiento asientoGenerado =
+					asientoContableService.generarAsientoLiquidacionCompra(
+							liquidacion.getId(), idEmpresaConta,
+							com.saa.rubros.TipoAsientos.LIQUIDACIONES_COMPRA_EMITIDAS,
+							fechaAsiento, obsAsiento, usuarioAsiento);
+
+			// Vincular el asiento a la liquidación — antes no se hacía, y por
+			// eso la anulación no encontraba el asiento que debía anular.
+			com.saa.model.cnt.Asiento asientoAttached =
+					em.find(com.saa.model.cnt.Asiento.class, asientoGenerado.getCodigo());
+			if (asientoAttached == null) asientoAttached = em.merge(asientoGenerado);
+			liquidacion.setAsiento(asientoAttached);
+			liquidacionCompraDaoService.save(liquidacion, liquidacion.getId());
+			em.flush();
+
+			resultado.put("generado", true);
+			resultado.put("idAsiento", asientoAttached.getCodigo());
+			resultado.put("numeroAlterno", asientoAttached.getNumeroAlterno());
+			System.out.println("✓ Asiento contable generado: " + asientoAttached.getNumeroAlterno());
+		} catch (Throwable e) {
+			sessionContext.setRollbackOnly();
+			throw e;
+		}
 		return resultado;
 	}
 	

@@ -25,8 +25,12 @@ import com.saa.model.cxc.NombreEntidadesCobro;
 import com.saa.model.cxc.PathRetencion;
 import com.saa.rubros.Estado;
 import com.saa.rubros.TipoAsientos;
+import jakarta.annotation.Resource;
 import jakarta.ejb.EJB;
+import jakarta.ejb.SessionContext;
 import jakarta.ejb.Stateless;
+import jakarta.ejb.TransactionAttribute;
+import jakarta.ejb.TransactionAttributeType;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
@@ -42,6 +46,20 @@ import jakarta.xml.soap.SOAPPart;
 public class RetencionServiceImpl implements RetencionService {
 	@EJB
 	private RetencionDaoService retencionDaoService;
+
+	@Resource
+	private SessionContext sessionContext;
+
+	/**
+	 * Referencia al propio bean pasando por el contenedor, para que los
+	 * @TransactionAttribute de las etapas se apliquen de verdad. Una llamada
+	 * directa a this.metodo() se salta los interceptores y correría en la
+	 * transacción del llamador.
+	 * @return : Vista local de este mismo EJB
+	 */
+	private RetencionService self() {
+		return sessionContext.getBusinessObject(RetencionService.class);
+	}
 	
 	@EJB
 	private PathRetencionDaoService pathRetencionDaoService;
@@ -559,12 +577,72 @@ public class RetencionServiceImpl implements RetencionService {
 		return respuesta;
 	}
 	
+	/**
+	 * Orquesta el proceso completo SIN transacción propia (NOT_SUPPORTED).
+	 * <p>
+	 * El envío al SRI es irreversible, así que la emisión se confirma en su
+	 * propia transacción y el asiento contable corre aparte: un fallo tardío
+	 * NUNCA puede reversar una retención ya autorizada por el SRI.
+	 */
 	@Override
+	@TransactionAttribute(TransactionAttributeType.NOT_SUPPORTED)
 	public java.util.Map<String, Object> procesarRetencionCompleta(Retencion retencion,
 			java.util.List<com.saa.model.cxc.DetalleRetencion> detalles,
 			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable {
 
-		System.out.println("=== INICIANDO PROCESO COMPLETO DE RETENCIÓN (nuevo flujo: BD tras RECIBIDA) ===");
+		System.out.println("=== INICIANDO PROCESO COMPLETO DE RETENCIÓN ===");
+
+		// ── Emisión ante el SRI, en UNA transacción propia ────────────────────
+		java.util.Map<String, Object> resultado = self().emitirRetencionAnteSRI(
+				retencion, detalles, ambiente, conectaSRI, destinatario, pathLogo);
+
+		if (!Boolean.TRUE.equals(resultado.get("emitida"))) {
+			return resultado;
+		}
+
+		Long idRetencion = (Long) resultado.get("idRetencion");
+
+		// ── PASO 5: Generar asiento contable (transacción propia) ─────────────
+		System.out.println("PASO 5: Generando asiento contable de retención...");
+		try {
+			java.util.Map<String, Object> resAsiento = self().generarContabilidadRetencion(idRetencion);
+			if (Boolean.TRUE.equals(resAsiento.get("aplica"))) {
+				resultado.put("asiento", resAsiento.get("numeroAlterno"));
+			}
+		} catch (Throwable e) {
+			resultado.put("contabilidadPendiente", true);
+			resultado.put("advertenciaAsiento",
+					"La retención fue autorizada pero ocurrió un error al generar el asiento contable: "
+					+ e.getMessage() + ". Genere el asiento manualmente desde Contabilidad.");
+			System.err.println("⚠ Error en asiento contable de Retención: " + e.getMessage());
+			e.printStackTrace();
+		}
+
+		boolean hayPendientes = Boolean.TRUE.equals(resultado.get("contabilidadPendiente"));
+		resultado.put("exito", true);
+		resultado.put("etapa", hayPendientes ? "COMPLETADO_CON_PENDIENTES" : "COMPLETADO");
+		resultado.put("mensaje", hayPendientes
+				? "Retención autorizada por el SRI, pero quedaron etapas pendientes. Revise las advertencias."
+				: "Retención procesada y autorizada exitosamente.");
+		System.out.println("=== PROCESO COMPLETO DE RETENCIÓN FINALIZADO"
+				+ (hayPendientes ? " (CON PENDIENTES)" : "") + " ===");
+		return resultado;
+	}
+
+	/**
+	 * Emite la retención ante el SRI en UNA transacción propia (REQUIRES_NEW):
+	 * valida cuentas, prepara campos, genera y firma el XML, envía a recepción
+	 * y —sólo si el SRI la acepta— graba el documento, persiste la autorización
+	 * y envía el email.
+	 * @return : Mapa con clave, idRetencion y emitida=true si el SRI la autorizó
+	 */
+	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+	public java.util.Map<String, Object> emitirRetencionAnteSRI(Retencion retencion,
+			java.util.List<com.saa.model.cxc.DetalleRetencion> detalles,
+			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable {
+
+		System.out.println("=== emitirRetencionAnteSRI (BD tras RECIBIDA) ===");
 		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
 		resultado.put("exito", false);
 
@@ -893,36 +971,8 @@ public class RetencionServiceImpl implements RetencionService {
 			System.out.println("✓ Retención AUTORIZADA por el SRI.");
 			resultado.put("estado", "AUTORIZADO");
 
-			// ── PASO 5: Generar asiento contable (solo tras AUTORIZADO) ──────────
-			if (retencion.getFacturador().getEmpresa() != null
-					&& Long.valueOf(1L).equals(retencion.getFacturador().getGeneraConta())) {
-				System.out.println("PASO 5: Generando asiento contable de retención...");
-				try {
-					Long idEmpresa = retencion.getFacturador().getEmpresa().getCodigo();
-					retencion = retencionDaoService.selectById(retencion.getId(), NombreEntidadesCobro.RETENCION);
-					java.time.LocalDate fechaAsiento = retencion.getFecha() != null
-							? retencion.getFecha().toLocalDate() : java.time.LocalDate.now();
-					String obsAsiento = "Retención N° " + nvl(retencion.getNumero(), clave)
-							+ " | Proveedor: " + (retencion.getProveedor() != null ? retencion.getProveedor().getNombre() : "")
-							+ " | " + nvl(retencion.getObservacion(), "");
-					String usuarioAsiento = retencion.getUsuario() != null
-							? retencion.getUsuario().getNombre() : "SISTEMA";
-					com.saa.model.cnt.Asiento asientoGenerado =
-							asientoContableService.generarAsientoRetencion(
-									retencion.getId(), idEmpresa,
-									TipoAsientos.RETENCIONES_EMITIDAS,
-									fechaAsiento, obsAsiento, usuarioAsiento);
-					com.saa.model.cnt.Asiento asientoAttached = em.merge(asientoGenerado);
-					resultado.put("asiento", asientoAttached.getNumeroAlterno());
-					System.out.println("✓ Asiento contable generado: " + asientoAttached.getNumeroAlterno());
-				} catch (Exception e) {
-					resultado.put("advertenciaAsiento",
-							"La retención fue autorizada pero ocurrió un error al generar el asiento contable: "
-							+ e.getMessage() + ". Genere el asiento manualmente desde Contabilidad.");
-					System.err.println("⚠ Error en asiento contable de Retención: " + e.getMessage());
-					e.printStackTrace();
-				}
-			}
+			// El asiento contable lo genera el orquestador fuera de esta
+			// transacción, ya con la retención confirmada en BD.
 
 			// ── PASO 6: Enviar correo electrónico ─────────────────────────────
 			System.out.println("PASO 6: Enviando email al proveedor...");
@@ -954,24 +1004,155 @@ public class RetencionServiceImpl implements RetencionService {
 				System.err.println("⚠ Error enviando email: " + mailEx.getMessage());
 			}
 
-			resultado.put("exito", true);
-			resultado.put("etapa", "COMPLETADO");
-			resultado.put("mensaje", "Retención procesada y autorizada exitosamente.");
-			System.out.println("=== PROCESO COMPLETO DE RETENCIÓN FINALIZADO ===");
+			// Emisión terminada: la retención está autorizada y confirmada en BD.
+			resultado.put("emitida", true);
 
 		} catch (Exception e) {
-			System.err.println("ERROR inesperado en procesarRetencionCompleta: " + e.getMessage());
+			System.err.println("ERROR inesperado en emitirRetencionAnteSRI: " + e.getMessage());
 			e.printStackTrace();
 			resultado.put("exito", false);
 			resultado.put("etapa", "ERROR_INESPERADO");
 			resultado.put("error", e.getMessage());
 			resultado.put("mensaje", "Error inesperado al procesar la retención: " + e.getMessage());
+			sessionContext.setRollbackOnly();
 			throw e;
 		}
 
 		return resultado;
 	}
-	
+
+	/**
+	 * Marca la retención como autorizada por el SRI en transacción propia
+	 * (REQUIRES_NEW): estado 5, número y fecha de autorización, y XML autorizado
+	 * en disco. Idempotente.
+	 * @param idRetencion        : Id de la retención
+	 * @param numeroAutorizacion : Número de autorización devuelto por el SRI
+	 * @param fechaAutorizacion  : Fecha de autorización devuelta por el SRI
+	 * @param comprobanteXML     : XML autorizado (puede ser null)
+	 * @return : true si actualizó el estado, false si ya estaba autorizada
+	 */
+	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+	public boolean marcarRetencionAutorizada(Long idRetencion, String numeroAutorizacion,
+			String fechaAutorizacion, String comprobanteXML) throws Throwable {
+		System.out.println("Ingresa al metodo marcarRetencionAutorizada con id: " + idRetencion);
+
+		Retencion retencion = em.find(Retencion.class, idRetencion);
+		if (retencion == null) {
+			throw new IncomeException("Retención con ID " + idRetencion + " no encontrada.");
+		}
+		if (Long.valueOf(5L).equals(retencion.getEstado())) {
+			System.out.println("ℹ Retención ya estaba en estado 5 (autorizada).");
+			return false;
+		}
+
+		retencion.setEstado(5L);
+		retencion.setEstadoEmision(1L);
+		if (numeroAutorizacion != null && !numeroAutorizacion.isEmpty()) {
+			retencion.setAutorizacion(numeroAutorizacion);
+		}
+		if (fechaAutorizacion != null && !fechaAutorizacion.isEmpty()) {
+			retencion.setFechaAutorizacion(parseFechaAutorizacion(fechaAutorizacion));
+		}
+
+		Long idFacturador = retencion.getFacturador() != null ? retencion.getFacturador().getId() : null;
+		if (comprobanteXML != null && !comprobanteXML.isEmpty() && idFacturador != null) {
+			try {
+				String resourcesPath = getBaseUploadDirectory() + "resources/" + idFacturador;
+				java.nio.file.Path pathAutorizado = java.nio.file.Paths.get(
+						resourcesPath + "/docs/a/" + retencion.getClave() + ".xml");
+				java.nio.file.Files.createDirectories(pathAutorizado.getParent());
+				java.nio.file.Files.write(pathAutorizado, comprobanteXML.getBytes("UTF-8"));
+				PathRetencion pathA = new PathRetencion();
+				pathA.setRetencion(retencion);
+				pathA.setPath("resources/" + idFacturador + "/docs/a/" + retencion.getClave() + ".xml");
+				pathA.setAlterno(5L);
+				pathRetencionDaoService.save(pathA, null);
+				System.out.println("✓ XML autorizado guardado en disco.");
+			} catch (Exception xmlEx) {
+				System.err.println("⚠ Error guardando XML autorizado: " + xmlEx.getMessage());
+			}
+		}
+
+		retencionDaoService.save(retencion, retencion.getId());
+		em.flush();
+		System.out.println("✓ Retención actualizada a estado AUTORIZADA (5). Aut: " + numeroAutorizacion);
+		return true;
+	}
+
+	/**
+	 * Genera y vincula el asiento contable de una retención en transacción
+	 * propia (REQUIRES_NEW). Idempotente: si ya tiene asiento no genera otro.
+	 * @param idRetencion : Id de la retención ya autorizada
+	 * @return : Mapa con aplica, generado, yaExistia, idAsiento, numeroAlterno
+	 */
+	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+	public java.util.Map<String, Object> generarContabilidadRetencion(Long idRetencion) throws Throwable {
+		System.out.println("Ingresa al metodo generarContabilidadRetencion con id: " + idRetencion);
+
+		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+		resultado.put("generado", false);
+		resultado.put("aplica", false);
+
+		Retencion retencion = em.find(Retencion.class, idRetencion);
+		if (retencion == null) {
+			throw new IncomeException("Retención con ID " + idRetencion + " no encontrada.");
+		}
+		if (retencion.getFacturador() == null
+				|| retencion.getFacturador().getEmpresa() == null
+				|| !Long.valueOf(1L).equals(retencion.getFacturador().getGeneraConta())) {
+			System.out.println("ℹ El facturador no genera contabilidad: se omite el asiento.");
+			return resultado;
+		}
+		resultado.put("aplica", true);
+
+		if (retencion.getAsiento() != null) {
+			resultado.put("yaExistia", true);
+			resultado.put("idAsiento", retencion.getAsiento().getCodigo());
+			resultado.put("numeroAlterno", retencion.getAsiento().getNumeroAlterno());
+			System.out.println("ℹ La retención ya tiene asiento: " + retencion.getAsiento().getNumeroAlterno());
+			return resultado;
+		}
+
+		// Etapa atómica: se marca el rollback a mano porque IncomeException es
+		// una application exception y por sí sola no reversaría esta transacción.
+		try {
+			Long idEmpresa = retencion.getFacturador().getEmpresa().getCodigo();
+			java.time.LocalDate fechaAsiento = retencion.getFecha() != null
+					? retencion.getFecha().toLocalDate() : java.time.LocalDate.now();
+			String obsAsiento = "Retención N° " + nvl(retencion.getNumero(), retencion.getClave())
+					+ " | Proveedor: " + (retencion.getProveedor() != null ? retencion.getProveedor().getNombre() : "")
+					+ " | " + nvl(retencion.getObservacion(), "");
+			String usuarioAsiento = retencion.getUsuario() != null
+					? retencion.getUsuario().getNombre() : "SISTEMA";
+
+			com.saa.model.cnt.Asiento asientoGenerado =
+					asientoContableService.generarAsientoRetencion(
+							retencion.getId(), idEmpresa,
+							TipoAsientos.RETENCIONES_EMITIDAS,
+							fechaAsiento, obsAsiento, usuarioAsiento);
+
+			// Vincular el asiento a la retención — antes no se hacía, y por eso
+			// la anulación no encontraba el asiento que debía anular.
+			com.saa.model.cnt.Asiento asientoAttached =
+					em.find(com.saa.model.cnt.Asiento.class, asientoGenerado.getCodigo());
+			if (asientoAttached == null) asientoAttached = em.merge(asientoGenerado);
+			retencion.setAsiento(asientoAttached);
+			retencionDaoService.save(retencion, retencion.getId());
+			em.flush();
+
+			resultado.put("generado", true);
+			resultado.put("idAsiento", asientoAttached.getCodigo());
+			resultado.put("numeroAlterno", asientoAttached.getNumeroAlterno());
+			System.out.println("✓ Asiento contable generado: " + asientoAttached.getNumeroAlterno());
+		} catch (Throwable e) {
+			sessionContext.setRollbackOnly();
+			throw e;
+		}
+		return resultado;
+	}
+
 	private String llamarRecepcionSRI(String url, byte[] xmlBytes, PrintWriter log) throws Exception {
 		try {
 			String xmlBase64 = java.util.Base64.getEncoder().encodeToString(xmlBytes);
@@ -1274,7 +1455,13 @@ public class RetencionServiceImpl implements RetencionService {
 	//   - Si no tiene asiento contable y el facturador tiene generaConta=1, lo genera
 	//   - Envía el email con XML autorizado
 	// =========================================================================
+	/**
+	 * Punto de recuperación: consulta el estado en el SRI y completa lo que haya
+	 * quedado pendiente (estado, asiento contable). Sin transacción propia —
+	 * cada etapa se confirma por separado.
+	 */
 	@Override
+	@TransactionAttribute(TransactionAttributeType.NOT_SUPPORTED)
 	public java.util.Map<String, Object> consultarYActualizarEstadoRetencion(Long idRetencion) throws Throwable {
 		System.out.println("=== consultarYActualizarEstadoRetencion | idRetencion=" + idRetencion + " ===");
 		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
@@ -1323,75 +1510,37 @@ public class RetencionServiceImpl implements RetencionService {
 			return resultado;
 		}
 
-		// 3. SRI devuelve AUTORIZADO → actualizar retención
-		boolean actualizada = false;
-		if (!Long.valueOf(5L).equals(retencion.getEstado())) {
-			retencion.setEstado(5L);
-			retencion.setEstadoEmision(1L);
-			if (ra.numeroAutorizacion != null && !ra.numeroAutorizacion.isEmpty()) {
-				retencion.setAutorizacion(ra.numeroAutorizacion);
-			}
-			if (ra.fechaAutorizacion != null && !ra.fechaAutorizacion.isEmpty()) {
-				retencion.setFechaAutorizacion(parseFechaAutorizacion(ra.fechaAutorizacion));
-			}
-			// Guardar XML autorizado en disco
-			if (ra.comprobanteXML != null && !ra.comprobanteXML.isEmpty() && idFacturador != null) {
-				try {
-					String resourcesPath = getBaseUploadDirectory() + "resources/" + idFacturador;
-					java.nio.file.Path pathAutorizado = java.nio.file.Paths.get(resourcesPath + "/docs/a/" + clave + ".xml");
-					java.nio.file.Files.createDirectories(pathAutorizado.getParent());
-					java.nio.file.Files.write(pathAutorizado, ra.comprobanteXML.getBytes("UTF-8"));
-					PathRetencion pathA = new PathRetencion();
-					pathA.setRetencion(retencion);
-					pathA.setPath("resources/" + idFacturador + "/docs/a/" + clave + ".xml");
-					pathA.setAlterno(5L);
-					pathRetencionDaoService.save(pathA, null);
-					System.out.println("✓ XML autorizado guardado en disco.");
-				} catch (Exception xmlEx) {
-					System.err.println("⚠ Error guardando XML autorizado: " + xmlEx.getMessage());
-				}
-			}
-			retencionDaoService.save(retencion, retencion.getId());
-			actualizada = true;
-			System.out.println("✓ Retención actualizada a estado AUTORIZADA (5). Aut: " + ra.numeroAutorizacion);
-		} else {
-			System.out.println("ℹ Retención ya estaba en estado 5 (autorizada).");
+		// 3. SRI devuelve AUTORIZADO → actualizar retención (transacción propia)
+		boolean actualizada;
+		try {
+			actualizada = self().marcarRetencionAutorizada(
+					idRetencion, ra.numeroAutorizacion, ra.fechaAutorizacion, ra.comprobanteXML);
+		} catch (Throwable e) {
+			resultado.put("mensaje", "El SRI autorizó la retención pero no se pudo actualizar su estado: "
+					+ e.getMessage());
+			resultado.put("error", e.getMessage());
+			System.err.println("⚠ Error actualizando estado de la retención: " + e.getMessage());
+			return resultado;
 		}
 		resultado.put("retencionActualizada", actualizada);
 
-		// 4. Generar asiento contable si no tiene y el facturador lo requiere
+		// 4. Generar asiento contable si no tiene (transacción propia)
 		boolean asientoGenerado = false;
-		if (retencion.getAsiento() == null
-				&& retencion.getFacturador() != null
-				&& retencion.getFacturador().getEmpresa() != null
-				&& Long.valueOf(1L).equals(retencion.getFacturador().getGeneraConta())) {
-			System.out.println("PASO 4: Generando asiento contable...");
-			try {
-				Long idEmpresa = retencion.getFacturador().getEmpresa().getCodigo();
-				String obsAsiento = "Retención N° " + nvl(retencion.getNumero(), clave)
-						+ " | Proveedor: " + (retencion.getProveedor() != null ? retencion.getProveedor().getNombre() : "")
-						+ " | Aut: " + nvl(retencion.getAutorizacion(), clave);
-				String usuarioAsiento = retencion.getUsuario() != null ? retencion.getUsuario().getNombre() : "SISTEMA";
-				com.saa.model.cnt.Asiento asientoGeneradoObj =
-						asientoContableService.generarAsientoRetencion(
-								retencion.getId(), idEmpresa,
-								com.saa.rubros.TipoAsientos.FACTURAS_VENTA,
-								retencion.getFecha().toLocalDate(), obsAsiento, usuarioAsiento);
-				com.saa.model.cnt.Asiento asientoAttached = em.merge(asientoGeneradoObj);
-				retencion.setAsiento(asientoAttached);
-				retencionDaoService.save(retencion, retencion.getId());
-				em.flush();
-				resultado.put("asiento", asientoGeneradoObj.getNumeroAlterno());
-				asientoGenerado = true;
-				System.out.println("✓ Asiento contable generado: " + asientoGeneradoObj.getNumeroAlterno());
-			} catch (Exception e) {
-				resultado.put("advertenciaAsiento",
-						"Retención autorizada pero error al generar asiento: " + e.getMessage());
-				System.err.println("⚠ Error en asiento contable: " + e.getMessage());
+		System.out.println("PASO 4: Generando asiento contable...");
+		try {
+			java.util.Map<String, Object> resAsiento = self().generarContabilidadRetencion(idRetencion);
+			asientoGenerado = Boolean.TRUE.equals(resAsiento.get("generado"));
+			if (Boolean.TRUE.equals(resAsiento.get("yaExistia"))) {
+				resultado.put("asientoExistente", resAsiento.get("numeroAlterno"));
+				System.out.println("ℹ La retención ya tiene asiento contable: " + resAsiento.get("numeroAlterno"));
+			} else if (asientoGenerado) {
+				resultado.put("asiento", resAsiento.get("numeroAlterno"));
 			}
-		} else if (retencion.getAsiento() != null) {
-			resultado.put("asientoExistente", retencion.getAsiento().getNumeroAlterno());
-			System.out.println("ℹ La retención ya tiene asiento contable: " + retencion.getAsiento().getNumeroAlterno());
+		} catch (Throwable e) {
+			resultado.put("contabilidadPendiente", true);
+			resultado.put("advertenciaAsiento",
+					"Retención autorizada pero error al generar asiento: " + e.getMessage());
+			System.err.println("⚠ Error en asiento contable: " + e.getMessage());
 		}
 		resultado.put("asientoGenerado", asientoGenerado);
 

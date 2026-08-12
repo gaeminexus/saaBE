@@ -105,4 +105,14 @@ public interface TipoAsientos {
 	 *  DEBE: cuenta contable del banco / HABER: cuenta CxC del cliente (PRCC tipo 1). */
 	public static final int COBRO_TRANSFERENCIA_CXC = 4;
 
+	// ─── Tesorería: ingresos y egresos sin documento físico (TSR.INGR/EGRS) ──
+
+	/** Egreso de tesorería sin documento (comisiones, administración de cuenta). codigoAlterno=5 (TEGRESO).
+	 *  DEBE: cuenta del grupo del producto CXP / HABER: cuenta contable del banco. */
+	public static final int EGRESO_TESORERIA = 5;
+
+	/** Ingreso de tesorería sin documento (intereses ganados, créditos bancarios). codigoAlterno=4 (TINGRESO).
+	 *  DEBE: cuenta contable del banco / HABER: cuenta del grupo del producto CXC. */
+	public static final int INGRESO_TESORERIA = 4;
+
 }

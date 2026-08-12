@@ -203,8 +203,9 @@ public class RetencionV2Rest {
 			if (exito) {
 				return Response.status(Response.Status.OK)
 						.entity(resultado).type(MediaType.APPLICATION_JSON).build();
-			} else if ("VALIDACION_CONTABLE".equals(etapa) || "PARAMETROS".equals(etapa)) {
-				// Error de datos del usuario → 422
+			} else if ("VALIDACION_CONTABLE".equals(etapa) || "VALIDACION_FACTURA".equals(etapa)
+					|| "PARAMETROS".equals(etapa)) {
+				// Error de datos del usuario, nada se grabó todavía → 422
 				return Response.status(422)
 						.entity(resultado).type(MediaType.APPLICATION_JSON).build();
 			} else if ("AUTORIZACION_SRI".equals(etapa)) {
@@ -212,12 +213,15 @@ public class RetencionV2Rest {
 				return Response.status(Response.Status.OK)
 						.entity(resultado).type(MediaType.APPLICATION_JSON).build();
 			} else if ("XML_DEVUELTO".equals(etapa)) {
-				// SRI rechazó por formato XML (DEVUELTA): rollback aplicado → 422 para que el frontend muestre el error
+				// SRI rechazó por formato XML (DEVUELTA): el registro se eliminó
+				// porque el comprobante nunca quedó en el SRI → 422
 				return Response.status(422)
 						.entity(resultado).type(MediaType.APPLICATION_JSON).build();
 			} else {
-				// ERROR_AUTORIZACION_SRI, GRABADO_DETALLES, GENERACION_XML, ERROR_INESPERADO
-				// → error técnico, rollback aplicado → 500
+				// ERROR_AUTORIZACION_SRI, GRABADO_RETENCION, GENERACION_XML, ERROR_INESPERADO
+				// → error técnico → 500. Ojo: en ERROR_AUTORIZACION_SRI la retención
+				// SÍ queda grabada (el XML pudo llegar al SRI); el mensaje indica que
+				// se debe consultar el estado para completar el proceso.
 				return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
 						.entity(resultado).type(MediaType.APPLICATION_JSON).build();
 			}

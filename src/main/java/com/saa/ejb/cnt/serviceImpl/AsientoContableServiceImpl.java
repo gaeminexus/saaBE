@@ -885,9 +885,129 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                 usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA));
     }
 
+    @Override
+    public Asiento generarAsientoEgresoTesoreria(Long idProductoPago, String concepto, Double valor,
+            Long idCuentaBancaria, Long idEmpresa, int codigoAltTipoAsiento,
+            LocalDate fechaAsiento, String observaciones, String usuario) throws Throwable {
+
+        System.out.println("=== generarAsientoEgresoTesoreria | producto=" + idProductoPago
+                + " | valor=" + valor + " | cuentaBancaria=" + idCuentaBancaria + " ===");
+
+        if (idEmpresa == null) {
+            throw new IncomeException("Debe indicar la empresa contable.");
+        }
+        if (valor == null || valor <= 0) {
+            throw new IncomeException("El valor del egreso debe ser mayor a cero.");
+        }
+
+        // ── DEBE: cuenta del grupo del producto CXP ────────────────────────────
+        PlanCuenta cuentaGasto = obtenerCuentaGrupoProductoPago(idProductoPago);
+
+        // ── HABER: cuenta contable del banco ───────────────────────────────────
+        com.saa.model.tsr.CuentaBancaria cuentaBancaria = obtenerCuentaBancaria(idCuentaBancaria);
+        PlanCuenta cuentaBanco = cuentaBancaria.getPlanCuenta();
+
+        List<DetalleAsiento> lineas = new ArrayList<>();
+        lineas.add(creaLinea(cuentaGasto, "Egreso tesorería: " + concepto, valor, true));
+        lineas.add(creaLinea(cuentaBanco,
+                "Egreso tesorería: " + concepto
+                + " | Cta Banco: " + cuentaBancaria.getNumeroCuenta(), valor, false));
+
+        return generarAsiento(idEmpresa, codigoAltTipoAsiento, fechaAsiento, observaciones,
+                usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA));
+    }
+
+    @Override
+    public Asiento generarAsientoIngresoTesoreria(Long idProductoCobro, String concepto, Double valor,
+            Long idCuentaBancaria, Long idEmpresa, int codigoAltTipoAsiento,
+            LocalDate fechaAsiento, String observaciones, String usuario) throws Throwable {
+
+        System.out.println("=== generarAsientoIngresoTesoreria | producto=" + idProductoCobro
+                + " | valor=" + valor + " | cuentaBancaria=" + idCuentaBancaria + " ===");
+
+        if (idEmpresa == null) {
+            throw new IncomeException("Debe indicar la empresa contable.");
+        }
+        if (valor == null || valor <= 0) {
+            throw new IncomeException("El valor del ingreso debe ser mayor a cero.");
+        }
+
+        // ── DEBE: cuenta contable del banco ────────────────────────────────────
+        com.saa.model.tsr.CuentaBancaria cuentaBancaria = obtenerCuentaBancaria(idCuentaBancaria);
+        PlanCuenta cuentaBanco = cuentaBancaria.getPlanCuenta();
+
+        // ── HABER: cuenta del grupo del producto CXC ───────────────────────────
+        PlanCuenta cuentaIngreso = obtenerCuentaGrupoProductoCobro(idProductoCobro);
+
+        List<DetalleAsiento> lineas = new ArrayList<>();
+        lineas.add(creaLinea(cuentaBanco,
+                "Ingreso tesorería: " + concepto
+                + " | Cta Banco: " + cuentaBancaria.getNumeroCuenta(), valor, true));
+        lineas.add(creaLinea(cuentaIngreso, "Ingreso tesorería: " + concepto, valor, false));
+
+        return generarAsiento(idEmpresa, codigoAltTipoAsiento, fechaAsiento, observaciones,
+                usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA));
+    }
+
     // ---------------------------------------------------------------
     // Helpers privados
     // ---------------------------------------------------------------
+
+    /**
+     * Recupera la cuenta contable del grupo de un producto CXP, validando la
+     * cadena producto → grupo → planCuenta con mensajes accionables.
+     * @param idProductoPago : Id del producto CXP (PGS.PRDP)
+     * @return               : Cuenta contable del grupo
+     * @throws Throwable     : Excepcion si falta el producto, el grupo o la cuenta
+     */
+    private PlanCuenta obtenerCuentaGrupoProductoPago(Long idProductoPago) throws Throwable {
+        if (idProductoPago == null) {
+            throw new IncomeException("Debe indicar el producto que clasifica el egreso.");
+        }
+        com.saa.model.cxp.ProductoPago producto =
+                em.find(com.saa.model.cxp.ProductoPago.class, idProductoPago);
+        if (producto == null) {
+            throw new IncomeException("No se encontró el producto CXP con ID: " + idProductoPago);
+        }
+        if (producto.getGrupoProducto() == null) {
+            throw new IncomeException("El producto '" + producto.getNombre()
+                    + "' no tiene grupo asignado. Clasifíquelo en CXP → Productos antes de usarlo.");
+        }
+        if (producto.getGrupoProducto().getPlanCuenta() == null) {
+            throw new IncomeException("El grupo '" + producto.getGrupoProducto().getNombre()
+                    + "' del producto '" + producto.getNombre()
+                    + "' no tiene cuenta contable configurada (Contabilidad → Grupos de Producto).");
+        }
+        return producto.getGrupoProducto().getPlanCuenta();
+    }
+
+    /**
+     * Recupera la cuenta contable del grupo de un producto CXC, validando la
+     * cadena producto → grupo → planCuenta con mensajes accionables.
+     * @param idProductoCobro : Id del producto CXC (CBR.PRDC)
+     * @return                : Cuenta contable del grupo
+     * @throws Throwable      : Excepcion si falta el producto, el grupo o la cuenta
+     */
+    private PlanCuenta obtenerCuentaGrupoProductoCobro(Long idProductoCobro) throws Throwable {
+        if (idProductoCobro == null) {
+            throw new IncomeException("Debe indicar el producto que clasifica el ingreso.");
+        }
+        com.saa.model.cxc.ProductoCobro producto =
+                em.find(com.saa.model.cxc.ProductoCobro.class, idProductoCobro);
+        if (producto == null) {
+            throw new IncomeException("No se encontró el producto CXC con ID: " + idProductoCobro);
+        }
+        if (producto.getGrupoProducto() == null) {
+            throw new IncomeException("El producto '" + producto.getNombre()
+                    + "' no tiene grupo asignado. Clasifíquelo en CXC → Productos antes de usarlo.");
+        }
+        if (producto.getGrupoProducto().getPlanCuenta() == null) {
+            throw new IncomeException("El grupo '" + producto.getGrupoProducto().getNombre()
+                    + "' del producto '" + producto.getNombre()
+                    + "' no tiene cuenta contable configurada (Contabilidad → Grupos de Producto).");
+        }
+        return producto.getGrupoProducto().getPlanCuenta();
+    }
 
     /**
      * Valida los datos mínimos de un asiento de aplicación de pago/cobro.

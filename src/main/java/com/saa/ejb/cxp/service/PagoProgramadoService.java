@@ -56,6 +56,29 @@ public interface PagoProgramadoService extends EntityService<PagoProgramado> {
 			throws Throwable;
 
 	/**
+	 * Registra el pago de un egreso de tesorería sin documento físico
+	 * (TSR.EGRS). El pago toma del egreso la empresa, el titular, el valor y la
+	 * fecha, y entra al mismo circuito que los pagos de facturas: aparece en el
+	 * listado de pagos a realizar y sigue lote → archivo → confirmación. Al
+	 * confirmarse genera el asiento (DEBE cuenta del grupo del producto /
+	 * HABER banco), el movimiento bancario, y deja el egreso como Pagado.
+	 * Con débito automático todo eso ocurre en esta misma llamada.
+	 * @param idEgreso               : Id del egreso a pagar (debe estar Pendiente)
+	 * @param idCuentaBancariaOrigen : Id de la cuenta bancaria propia (TSR.CNBC)
+	 * @param idCuentaDestinoTitular : Id de la cuenta del beneficiario (TSR.CTBN);
+	 *                                 obligatoria salvo débito automático
+	 * @param idUsuario              : Id del usuario que registra
+	 * @param debitoAutomatico       : true si el banco ya debitó la cuenta
+	 * @param referencia             : Referencia del débito (opcional)
+	 * @return                       : Mapa con exito, mensaje y pago; en débito
+	 *                                 automático además asiento
+	 * @throws Throwable             : Excepcion
+	 */
+	Map<String, Object> registrarPagoDeEgreso(Long idEgreso, Long idCuentaBancariaOrigen,
+			Long idCuentaDestinoTitular, Long idUsuario, boolean debitoAutomatico,
+			String referencia) throws Throwable;
+
+	/**
 	 * Lista los pagos de una empresa para la pantalla de selección.
 	 * @param idEmpresa  : Id de la empresa
 	 * @param estado     : Estado a filtrar, null para todos
