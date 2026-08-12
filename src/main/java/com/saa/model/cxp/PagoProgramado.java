@@ -40,6 +40,17 @@ import jakarta.persistence.Table;
  * Mientras el pago no esté CONFIRMADO no se registra nada en contabilidad ni en
  * TSR.MVCB: un pago que el banco no ejecutó no debe afectar el saldo bancario
  * ni la conciliación.
+ *
+ * Excepción: los pagos por DÉBITO AUTOMÁTICO (PGTRDBAT=1). El banco los debita
+ * por convenio, sin archivo de transferencias, así que no necesitan cuenta del
+ * titular y nacen directamente en CONFIRMADO con su asiento y su movimiento
+ * bancario generados en el mismo registro.
+ *
+ *   DÉBITO AUTOMÁTICO: registro --> 3 CONFIRMADO --reversión--> 5 ANULADO
+ *
+ * No se aprueban ni se seleccionan para ningún lote: el dinero ya salió de la
+ * cuenta antes de que el pago llegue al sistema. Por eso tampoco admiten la
+ * anulación simple (que es para pagos sin contabilidad): se reversan.
  */
 @SuppressWarnings("serial")
 @Entity
@@ -101,6 +112,15 @@ public class PagoProgramado implements Serializable {
     @ManyToOne
     @JoinColumn(name = "PGTRCTBN", referencedColumnName = "CTBNCDGO")
     private CuentaBancariaTitular cuentaDestino;
+
+    /**
+     * Marca de débito automático: 0=No (transferencia normal), 1=Sí.
+     * Un pago por débito automático no necesita la cuenta del titular ni pasa
+     * por el archivo del banco: se contabiliza en el momento de registrarlo.
+     */
+    @Basic
+    @Column(name = "PGTRDBAT")
+    private Long debitoAutomatico;
 
     /**
      * Valor a transferir.
@@ -201,6 +221,9 @@ public class PagoProgramado implements Serializable {
 
     public CuentaBancariaTitular getCuentaDestino() { return cuentaDestino; }
     public void setCuentaDestino(CuentaBancariaTitular cuentaDestino) { this.cuentaDestino = cuentaDestino; }
+
+    public Long getDebitoAutomatico() { return debitoAutomatico; }
+    public void setDebitoAutomatico(Long debitoAutomatico) { this.debitoAutomatico = debitoAutomatico; }
 
     public Double getValor() { return valor; }
     public void setValor(Double valor) { this.valor = valor; }

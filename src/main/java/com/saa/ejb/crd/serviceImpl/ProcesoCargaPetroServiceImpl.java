@@ -557,15 +557,29 @@ public class ProcesoCargaPetroServiceImpl implements ProcesoCargaPetroService {
         // Actualizar saldo del préstamo
         prestamo.setSaldoTotal(saldoTotal);
         
-        // Determinar nuevo estado del préstamo
-        if (todasPagadas && saldoTotal == 0) {
-            prestamo.setEstadoPrestamo(Long.valueOf(EstadoPrestamo.CANCELADO));
+        // Determinar nuevo estado del préstamo.
+        // El estado se escribe en idEstado (PRSTIDST): es el campo con el
+        // código alterno del rubro y el único que consultan las queries del
+        // módulo y los reportes. ESPSCDGO es FK al catálogo CRD.ESPS y no
+        // admite códigos de rubro.
+        // Un préstamo ya liquidado no vuelve a cambiar de estado. Mismo criterio
+        // que CargaArchivoPetroServiceImpl.verificarYActualizarEstadoPrestamo.
+        Long estadoActual = prestamo.getIdEstado();
+        boolean estadoTerminal = estadoActual != null && (
+            estadoActual == EstadoPrestamo.CANCELADO ||
+            estadoActual == EstadoPrestamo.CANCELADO_ANTICIPADO ||
+            estadoActual == EstadoPrestamo.CANCELADO_POR_NOVACION);
+
+        if (estadoTerminal) {
+            System.out.println("Préstamo en estado terminal (" + estadoActual + ") - No se modifica el estado");
+        } else if (todasPagadas && saldoTotal == 0) {
+            prestamo.setIdEstado(Long.valueOf(EstadoPrestamo.CANCELADO));
             System.out.println("Préstamo CANCELADO (todas las cuotas pagadas)");
         } else if (tieneMora) {
-            prestamo.setEstadoPrestamo(Long.valueOf(EstadoPrestamo.EN_MORA));
+            prestamo.setIdEstado(Long.valueOf(EstadoPrestamo.EN_MORA));
             System.out.println("Préstamo EN MORA");
         } else {
-            prestamo.setEstadoPrestamo(Long.valueOf(EstadoPrestamo.VIGENTE));
+            prestamo.setIdEstado(Long.valueOf(EstadoPrestamo.VIGENTE));
             System.out.println("Préstamo VIGENTE");
         }
         

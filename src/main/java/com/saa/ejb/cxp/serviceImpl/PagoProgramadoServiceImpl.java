@@ -129,10 +129,12 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	@Override
 	public Map<String, Object> registrarPago(Long idFacturaCompra, Long idCuentaBancariaOrigen,
 			Long idCuentaDestinoTitular, Double valor, String fechaProgramada, Long idEmpresa,
-			Long idUsuario, String observacion) throws Throwable {
+			Long idUsuario, String observacion, boolean debitoAutomatico, String referencia)
+			throws Throwable {
 
 		System.out.println("=== registrarPago | factura=" + idFacturaCompra + " | valor=" + valor
-				+ " | cuentaOrigen=" + idCuentaBancariaOrigen + " ===");
+				+ " | cuentaOrigen=" + idCuentaBancariaOrigen
+				+ " | debitoAutomatico=" + debitoAutomatico + " ===");
 
 		Map<String, Object> resultado = new HashMap<>();
 
@@ -173,25 +175,63 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		// en otros pagos vigentes de la misma factura.
 		validaValorContraSaldo(factura, valor, null);
 
+		LocalDate fecha = parseFecha(fechaProgramada);
+
 		PagoProgramado pago = new PagoProgramado();
 		pago.setEmpresa(em.find(Empresa.class, idEmpresa));
 		pago.setFacturaCompra(factura);
 		pago.setTitular(factura.getTitular());
 		pago.setCuentaBancaria(cuentaOrigen);
 		pago.setCuentaDestino(cuentaDestino);
+		pago.setDebitoAutomatico(Long.valueOf(debitoAutomatico ? 1 : 0));
 		pago.setValor(valor);
-		pago.setFechaProgramada(parseFecha(fechaProgramada));
-		pago.setEstado(Long.valueOf(EstadoPagoProgramado.REGISTRADO));
+		pago.setFechaProgramada(fecha);
 		pago.setObservacion(observacion);
 		pago.setUsuario(em.find(Usuario.class, idUsuario));
 		pago.setFechaRegistro(LocalDateTime.now());
-		pago = saveSingle(pago);
 
-		System.out.println("✓ Pago registrado: id=" + pago.getId());
+		if (!debitoAutomatico) {
+			pago.setEstado(Long.valueOf(EstadoPagoProgramado.REGISTRADO));
+			pago = saveSingle(pago);
+
+			System.out.println("✓ Pago registrado: id=" + pago.getId());
+
+			resultado.put("exito", true);
+			resultado.put("mensaje",
+					"Pago registrado. Queda pendiente de incluirse en un archivo de pagos.");
+			resultado.put("pago", pago.getId());
+			resultado.put("debitoAutomatico", false);
+			resultado.putAll(aplicacionPagoCxpService.saldoFactura(idFacturaCompra));
+			return resultado;
+		}
+
+		// Débito automático: el banco ya debitó la cuenta. El pago no se aprueba
+		// ni se envía en ningún archivo, así que nace confirmado y se contabiliza
+		// aquí mismo. La fecha del débito es la fecha con la que se registra.
+		pago.setEstado(Long.valueOf(EstadoPagoProgramado.CONFIRMADO));
+		pago.setReferenciaBanco((referencia != null && !referencia.trim().isEmpty())
+				? referencia.trim() : null);
+		pago.setFechaRespuesta(fecha);
+		pago = saveSingle(pago);
+		em.flush();
+
+		AplicacionPagoCxp aplicacion = aplicacionPagoCxpService.aplicarPagoTransferencia(pago, idUsuario);
+		pago.setAplicacion(aplicacion);
+		pago = pagoProgramadoDaoService.save(pago, pago.getId());
+		em.flush();
+
+		System.out.println("✓ Pago por débito automático registrado y aplicado: id=" + pago.getId()
+				+ " | aplicacion=" + aplicacion.getId());
 
 		resultado.put("exito", true);
-		resultado.put("mensaje", "Pago registrado. Queda pendiente de incluirse en un archivo de pagos.");
+		resultado.put("mensaje", "Pago por débito automático registrado. La factura quedó abonada "
+				+ "y el asiento contable fue generado.");
 		resultado.put("pago", pago.getId());
+		resultado.put("debitoAutomatico", true);
+		resultado.put("aplicacion", aplicacion.getId());
+		if (aplicacion.getAsiento() != null) {
+			resultado.put("asiento", aplicacion.getAsiento().getNumeroAlterno());
+		}
 		resultado.putAll(aplicacionPagoCxpService.saldoFactura(idFacturaCompra));
 		return resultado;
 	}
@@ -234,6 +274,10 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 
 		double total = 0.0;
 		for (PagoProgramado pago : pagos) {
+			if (esDebitoAutomatico(pago)) {
+				throw new IncomeException("El pago " + pago.getId() + " es un débito automático: "
+						+ "el banco ya lo ejecutó y no debe enviarse en el archivo de pagos.");
+			}
 			if (pago.getEstado() == null
 					|| pago.getEstado().intValue() != EstadoPagoProgramado.REGISTRADO) {
 				throw new IncomeException("El pago " + pago.getId() + " ya no está disponible: "
@@ -436,7 +480,10 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 
 		int estado = (pago.getEstado() != null) ? pago.getEstado().intValue() : 0;
 		if (estado == EstadoPagoProgramado.CONFIRMADO) {
-			throw new IncomeException("El pago " + idPago + " ya fue confirmado por el banco y tiene "
+			throw new IncomeException("El pago " + idPago
+					+ (esDebitoAutomatico(pago)
+							? " es un débito automático ya ejecutado por el banco y tiene "
+							: " ya fue confirmado por el banco y tiene ")
 					+ "contabilidad generada. Use la reversión en lugar de la anulación.");
 		}
 		if (estado == EstadoPagoProgramado.ANULADO) {
@@ -485,15 +532,21 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			resultado.putAll(reversion);
 		}
 
-		// El pago vuelve a seguimiento como rechazado, con su motivo.
-		pago.setEstado(Long.valueOf(EstadoPagoProgramado.RECHAZADO));
+		// Una transferencia reversada vuelve a seguimiento como rechazada, por si
+		// hay que reprogramarla. El débito automático no se reprograma: si se
+		// reversa es porque se registró mal, así que queda anulado.
+		boolean debitoAutomatico = esDebitoAutomatico(pago);
+		pago.setEstado(Long.valueOf(debitoAutomatico
+				? EstadoPagoProgramado.ANULADO : EstadoPagoProgramado.RECHAZADO));
 		pago.setMotivo("REVERSADO: " + motivo.trim());
 		pago.setAplicacion(null);
 		pagoProgramadoDaoService.save(pago, pago.getId());
 		em.flush();
 
 		resultado.put("exito", true);
-		resultado.put("mensaje", "Pago reversado. Queda en seguimiento como rechazado.");
+		resultado.put("mensaje", debitoAutomatico
+				? "Débito automático reversado. El pago queda anulado."
+				: "Pago reversado. Queda en seguimiento como rechazado.");
 		resultado.put("pago", idPago);
 		return resultado;
 	}
@@ -565,6 +618,15 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 					+ " | comprometido en otros pagos: $"
 					+ String.format(java.util.Locale.US, "%.2f", comprometido) + ".");
 		}
+	}
+
+	/**
+	 * Indica si el pago se realizó por débito automático del banco.
+	 * @param pago : Pago programado
+	 * @return     : true si es débito automático
+	 */
+	private boolean esDebitoAutomatico(PagoProgramado pago) {
+		return pago.getDebitoAutomatico() != null && pago.getDebitoAutomatico().intValue() == 1;
 	}
 
 	/**

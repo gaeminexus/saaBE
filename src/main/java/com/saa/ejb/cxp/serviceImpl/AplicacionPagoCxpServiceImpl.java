@@ -46,6 +46,9 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	/** Forma de pago transferencia (rubro TipoFormaPago del sistema). */
 	private static final long FORMA_PAGO_TRANSFERENCIA = 2L;
 
+	/** Forma de pago débito automático: el banco debita la cuenta por convenio. */
+	private static final long FORMA_PAGO_DEBITO_AUTOMATICO = 4L;
+
 	@EJB
 	private AplicacionPagoCxpDaoService aplicacionPagoCxpDaoService;
 
@@ -305,8 +308,11 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	public AplicacionPagoCxp aplicarPagoTransferencia(PagoProgramado pago, Long idUsuario)
 			throws Throwable {
 
+		boolean debitoAutomatico = esDebitoAutomatico(pago);
+		String tipoTexto = debitoAutomatico ? "débito automático" : "transferencia";
+
 		System.out.println("=== aplicarPagoTransferencia | pago=" + pago.getId()
-				+ " | valor=" + pago.getValor() + " ===");
+				+ " | valor=" + pago.getValor() + " | tipo=" + tipoTexto + " ===");
 
 		FacturaCompra factura = pago.getFacturaCompra();
 		if (factura == null) {
@@ -319,12 +325,14 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 
 		LocalDate fecha = (pago.getFechaRespuesta() != null) ? pago.getFechaRespuesta() : LocalDate.now();
 		String nombreProveedor = (pago.getTitular() != null) ? pago.getTitular().getNombre() : "";
-		String observacionAsiento = "Pago por transferencia | Proveedor: " + nombreProveedor
+		String observacionAsiento = "Pago por " + tipoTexto + " | Proveedor: " + nombreProveedor
 				+ " | Factura: " + factura.getNumero()
 				+ " | Ref: " + nvl(pago.getReferenciaBanco(), "")
 				+ " | Valor: $" + String.format(java.util.Locale.US, "%.2f", pago.getValor());
 
 		// 1. Asiento contable del pago
+		// El débito automático mueve las mismas cuentas que la transferencia:
+		// DEBE cuenta CxP del proveedor / HABER cuenta contable del banco.
 		Long idCuentaBancaria = (pago.getCuentaBancaria() != null)
 				? pago.getCuentaBancaria().getCodigo() : null;
 		Asiento asiento = asientoContableService.generarAsientoPagoTransferenciaCxp(
@@ -335,11 +343,12 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 		// 2. Aplicación a la factura
 		AplicacionPagoCxp aplicacion = nuevaAplicacion(factura, idEmpresa,
 				TipoDocPagoAplicacion.COBRO_DIRECTO, pago.getValor(), fecha,
-				"Pago por transferencia | Ref: " + nvl(pago.getReferenciaBanco(), ""),
+				"Pago por " + tipoTexto + " | Ref: " + nvl(pago.getReferenciaBanco(), ""),
 				usuarioNombre(idUsuario));
-		aplicacion.setFormaPago(FORMA_PAGO_TRANSFERENCIA);
+		aplicacion.setFormaPago(debitoAutomatico
+				? FORMA_PAGO_DEBITO_AUTOMATICO : FORMA_PAGO_TRANSFERENCIA);
 		aplicacion.setReferencia(pago.getReferenciaBanco());
-		aplicacion.setBanco(nombreBancoDestino(pago));
+		aplicacion.setBanco(nombreBancoPago(pago, debitoAutomatico));
 		aplicacion.setAsiento(asiento);
 		aplicacion.setUsuario(em.find(Usuario.class, idUsuario));
 		aplicacion = saveSingle(aplicacion);
@@ -347,6 +356,7 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 		// 3. Movimiento bancario de egreso
 		movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
 				"Pago proveedor: " + nombreProveedor + " | Factura: " + factura.getNumero()
+				+ (debitoAutomatico ? " | Débito automático" : "")
 				+ " | Ref: " + nvl(pago.getReferenciaBanco(), ""),
 				asiento, pago.getCuentaBancaria(), pago.getValor(),
 				TipoMovimientoConciliacion.TRANSFERENCIAS_DEBITOS_EN_TRANSITO,
@@ -743,11 +753,30 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	}
 
 	/**
-	 * Devuelve el nombre del banco de la cuenta destino del pago.
+	 * Indica si el pago se realizó por débito automático del banco.
 	 * @param pago : Pago programado
-	 * @return     : Nombre del banco o cadena vacía
+	 * @return     : true si es débito automático
 	 */
-	private String nombreBancoDestino(PagoProgramado pago) {
+	private boolean esDebitoAutomatico(PagoProgramado pago) {
+		return pago.getDebitoAutomatico() != null && pago.getDebitoAutomatico().intValue() == 1;
+	}
+
+	/**
+	 * Devuelve el banco que queda registrado en la aplicación. En la
+	 * transferencia interesa el banco al que se envió el dinero (cuenta del
+	 * proveedor); en el débito automático no hay cuenta destino, así que se
+	 * guarda el banco de la cuenta propia que el banco debitó.
+	 * @param pago             : Pago programado
+	 * @param debitoAutomatico : true si el pago es por débito automático
+	 * @return                 : Nombre del banco o cadena vacía
+	 */
+	private String nombreBancoPago(PagoProgramado pago, boolean debitoAutomatico) {
+		if (debitoAutomatico) {
+			if (pago.getCuentaBancaria() != null && pago.getCuentaBancaria().getBanco() != null) {
+				return pago.getCuentaBancaria().getBanco().getNombre();
+			}
+			return "";
+		}
 		if (pago.getCuentaDestino() != null && pago.getCuentaDestino().getBanco() != null) {
 			return pago.getCuentaDestino().getBanco().getNombre();
 		}

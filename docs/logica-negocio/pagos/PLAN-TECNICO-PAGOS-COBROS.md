@@ -60,6 +60,16 @@ RetencionCompraV2).
   un asiento al **generar** el pago y otro al **confirmarlo** — hoy solo existe el de
   confirmación; ese cambio queda **PENDIENTE de definir** (ver ítem 5 en §7: qué cuentas
   usaría el asiento "al generar" y en qué paso exacto del flujo se dispara).
+- **D12 (2026-08-12, confirmado)**: existen pagos a proveedores que el banco **debita
+  automáticamente** por convenio. Esos pagos ya se ejecutaron antes de llegar al sistema:
+  no se aprueban ni se seleccionan para el archivo del banco. Se marcan con
+  `PGS.PGTR.PGTRDBAT=1` y al registrarlos, en la misma transacción, abonan la factura
+  (APLP tipo 1 con `formaPago=4`), generan el asiento (mismas cuentas que la
+  transferencia: DEBE CxP proveedor / HABER banco) y el MovimientoBanco de egreso
+  (`TRANSFERENCIAS_DEBITOS_EN_TRANSITO` / origen `PAGOS`, igual que los pagos
+  confirmados, para no partir el criterio de conciliación). Nacen en estado
+  CONFIRMADO; al revertirse quedan ANULADOS, porque un débito ya ejecutado no se
+  reprograma.
 
 ---
 
@@ -162,8 +172,11 @@ Métodos clave:
   >1 match ⇒ bloquear.
 
 ### PagoProgramadoService/Impl + LotePago DAO (NUEVOS)
-- `registrarPago(idFacturaCompra, idCuentaOrigen, idCuentaDestinoTitular, valor, fecha, idEmpresa, idUsuario, obs)`
+- `registrarPago(idFacturaCompra, idCuentaOrigen, idCuentaDestinoTitular, valor, fecha, idEmpresa, idUsuario, obs, debitoAutomatico, referencia)`
   — valida saldo pendiente ≥ valor + PGTR activos de la misma factura.
+  Con `debitoAutomatico=true` (2026-08-12, ver D12) el pago nace CONFIRMADO y
+  llama a `aplicarPagoTransferencia` en la misma transacción; `generarLote` lo
+  rechaza explícitamente y `revertirPagoConfirmado` lo deja ANULADO (no RECHAZADO).
 - `listar(idEmpresa, estado, idTitular)`.
 - `generarLote(idsPagos, idCuentaOrigen, idEmpresa, idUsuario)` — valida estado=1 y misma
   cuenta origen (releer estado dentro de la TX, evita doble lote); crea LTPG,

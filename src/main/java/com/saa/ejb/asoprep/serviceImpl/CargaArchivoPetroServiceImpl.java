@@ -1471,7 +1471,10 @@ private void verificarYActualizarEstadoPrestamo(Prestamo prestamo) throws Throwa
 	}
 
 	try {
-		Long estadoActual = prestamo.getEstadoPrestamo();
+		// idEstado (PRSTIDST) es el campo con el código alterno del rubro y el
+		// único que consultan las queries del módulo y los reportes. ESPSCDGO
+		// es FK al catálogo CRD.ESPS y no admite códigos de rubro.
+		Long estadoActual = prestamo.getIdEstado();
 
 		// Si ya está en un estado terminal, no hay nada que actualizar
 		if (estadoActual != null && (
@@ -1507,7 +1510,7 @@ private void verificarYActualizarEstadoPrestamo(Prestamo prestamo) throws Throwa
 
 		// ⚠️ NO tocar fechaFin: es la fecha de vencimiento de la última cuota (fin del plazo),
 		// no la fecha de cancelación. Sobrescribirla destruye el plazo original del préstamo.
-		prestamo.setEstadoPrestamo(Long.valueOf(com.saa.rubros.EstadoPrestamo.CANCELADO));
+		prestamo.setIdEstado(Long.valueOf(com.saa.rubros.EstadoPrestamo.CANCELADO));
 		prestamo.setFechaModificacion(java.time.LocalDateTime.now());
 		prestamoDaoService.save(prestamo, prestamo.getCodigo());
 

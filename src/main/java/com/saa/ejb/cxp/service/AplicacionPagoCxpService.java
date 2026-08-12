@@ -89,10 +89,15 @@ public interface AplicacionPagoCxpService extends EntityService<AplicacionPagoCx
 			Long idEmpresa, Long idUsuario, String observacion) throws Throwable;
 
 	/**
-	 * Registra el abono a la factura que produce un pago por transferencia que
-	 * el banco ya confirmó. Genera el asiento y el movimiento bancario.
-	 * @param pago       : Pago programado confirmado por el banco
-	 * @param idUsuario  : Id del usuario que procesa la respuesta del banco
+	 * Registra el abono a la factura que produce un pago ya ejecutado por el
+	 * banco. Genera el asiento y el movimiento bancario.
+	 * Sirve a los dos orígenes: la transferencia que el banco confirma en el
+	 * archivo de respuesta, y el débito automático (PGTRDBAT=1), que se aplica
+	 * en el mismo momento en que se registra el pago. La diferencia está en la
+	 * forma de pago de la aplicación (2=Transferencia / 4=Débito automático) y
+	 * en el banco que se guarda; las cuentas del asiento son las mismas.
+	 * @param pago       : Pago programado ya ejecutado por el banco
+	 * @param idUsuario  : Id del usuario que registra o procesa el pago
 	 * @return           : Aplicación creada
 	 * @throws Throwable : Excepcion
 	 */

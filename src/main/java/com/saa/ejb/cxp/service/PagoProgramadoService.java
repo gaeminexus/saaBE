@@ -22,26 +22,38 @@ import jakarta.ejb.Local;
  *
  * Mientras un pago no esté confirmado por el banco no se registra nada en
  * contabilidad ni en movimientos bancarios.
+ *
+ * Los pagos por DÉBITO AUTOMÁTICO no recorren ese circuito: el banco ya debitó
+ * la cuenta, así que no se aprueban ni se incluyen en ningún archivo. En el
+ * paso 1 quedan CONFIRMADOS y ahí mismo abonan la factura y generan su asiento
+ * y su movimiento bancario.
  */
 @Local
 public interface PagoProgramadoService extends EntityService<PagoProgramado> {
 
 	/**
 	 * Registra un pago a un proveedor sobre una factura de compra.
+	 * Si el pago es por débito automático el banco ya movió el dinero: el pago
+	 * nace CONFIRMADO y en la misma transacción se abona la factura y se generan
+	 * el asiento contable y el movimiento bancario.
 	 * @param idFacturaCompra          : Id de la factura a pagar
 	 * @param idCuentaBancariaOrigen   : Id de la cuenta bancaria propia (TSR.CNBC)
 	 * @param idCuentaDestinoTitular   : Id de la cuenta del proveedor (TSR.CTBN)
 	 * @param valor                    : Valor a transferir
-	 * @param fechaProgramada          : Fecha programada (yyyy-MM-dd, null = hoy)
+	 * @param fechaProgramada          : Fecha programada, o fecha del débito (yyyy-MM-dd, null = hoy)
 	 * @param idEmpresa                : Id de la empresa
 	 * @param idUsuario                : Id del usuario que registra
 	 * @param observacion              : Observación del pago
-	 * @return                         : Mapa con exito, mensaje, pago y saldos de la factura
+	 * @param debitoAutomatico         : true si el banco ya debitó la cuenta por convenio
+	 * @param referencia               : Referencia del débito (nota de débito, convenio, etc.)
+	 * @return                         : Mapa con exito, mensaje, pago y saldos de la factura;
+	 *                                   en el débito automático además aplicacion y asiento
 	 * @throws Throwable               : Excepcion
 	 */
 	Map<String, Object> registrarPago(Long idFacturaCompra, Long idCuentaBancariaOrigen,
 			Long idCuentaDestinoTitular, Double valor, String fechaProgramada, Long idEmpresa,
-			Long idUsuario, String observacion) throws Throwable;
+			Long idUsuario, String observacion, boolean debitoAutomatico, String referencia)
+			throws Throwable;
 
 	/**
 	 * Lista los pagos de una empresa para la pantalla de selección.

@@ -27,6 +27,10 @@ import jakarta.ws.rs.core.UriInfo;
  *
  * Flujo de la pantalla:
  *   POST /pgtr                       → registra un pago sobre una factura
+ *                                      (con "debitoAutomatico": true el pago ya
+ *                                       ejecutado por el banco se abona y se
+ *                                       contabiliza en la misma llamada, sin
+ *                                       pasar por aprobación ni por lote)
  *   GET  /pgtr/listar                → listado para seleccionar qué se paga
  *   POST /pgtr/lote                  → genera el archivo para el banco con los seleccionados
  *   GET  /pgtr/lote/{id}/archivo     → vuelve a descargar el archivo de un lote
@@ -123,6 +127,15 @@ public class PagoProgramadoRest {
      *   "idUsuario": 5,
      *   "observacion": "Pago factura agosto"
      * }
+     *
+     * Para un pago que el banco ya debitó por convenio se agregan:
+     * {
+     *   "debitoAutomatico": true,
+     *   "referencia": "DEB-AUT-0099"     (opcional)
+     * }
+     * En ese caso "fechaProgramada" es la fecha del débito, "idCuentaDestinoTitular"
+     * no hace falta, y el pago queda confirmado con la factura abonada y el
+     * asiento contable generado en la misma llamada.
      */
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
@@ -138,6 +151,8 @@ public class PagoProgramadoRest {
             Long idEmpresa      = toLong(datos.get("idEmpresa"));
             Long idUsuario      = toLong(datos.get("idUsuario"));
             String observacion  = (String) datos.get("observacion");
+            boolean debitoAut   = toBoolean(datos.get("debitoAutomatico"));
+            String referencia   = (String) datos.get("referencia");
 
             if (idFactura == null || idCuentaOrigen == null || valor == null || idEmpresa == null) {
                 return Response.status(Response.Status.BAD_REQUEST)
@@ -146,7 +161,8 @@ public class PagoProgramadoRest {
             }
 
             Map<String, Object> resultado = pagoProgramadoService.registrarPago(idFactura,
-                    idCuentaOrigen, idCuentaDest, valor, fecha, idEmpresa, idUsuario, observacion);
+                    idCuentaOrigen, idCuentaDest, valor, fecha, idEmpresa, idUsuario, observacion,
+                    debitoAut, referencia);
             return Response.status(Response.Status.CREATED).entity(resultado)
                     .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
@@ -344,6 +360,14 @@ public class PagoProgramadoRest {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private boolean toBoolean(Object valor) {
+        if (valor == null) return false;
+        if (valor instanceof Boolean) return ((Boolean) valor).booleanValue();
+        if (valor instanceof Number) return ((Number) valor).intValue() == 1;
+        String texto = valor.toString().trim();
+        return "true".equalsIgnoreCase(texto) || "1".equals(texto);
     }
 
     private List<Long> toLongList(Object valor) {

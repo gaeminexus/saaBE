@@ -43,6 +43,7 @@ import jakarta.persistence.Table;
  *   1 = Efectivo
  *   2 = Transferencia
  *   3 = Cheque
+ *   4 = Débito automático (el banco debita la cuenta por convenio con el proveedor)
  *
  * Estados (ESTADO):
  *   1 = Activo
@@ -149,7 +150,7 @@ public class AplicacionPagoCxp implements Serializable {
 
     /**
      * Forma de pago del pago directo.
-     * 1=Efectivo, 2=Transferencia, 3=Cheque
+     * 1=Efectivo, 2=Transferencia, 3=Cheque, 4=Débito automático
      */
     @Basic
     @Column(name = "APLPFPAG")

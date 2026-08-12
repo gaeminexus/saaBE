@@ -30,6 +30,7 @@ public class PagoProgramadoDaoServiceImpl extends EntityDaoImpl<PagoProgramado>
             "titular",
             "cuentaBancaria",
             "cuentaDestino",
+            "debitoAutomatico",
             "valor",
             "fechaProgramada",
             "lote",
