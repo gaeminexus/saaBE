@@ -1,13 +1,16 @@
-# Guía Frontend — Generación de Archivo Petrocomercial
+# Guía Frontend — Generación de Archivo de Descuentos (Petrocomercial y ARCH)
 
-Contrato de los endpoints del módulo GNAP tal como están hoy en el backend, incluida
-la **descarga marcada** y la **eliminación de una generación**.
+Contrato de los endpoints del módulo GNAP tal como están hoy en el backend, incluidas
+la **generación por filial**, la **descarga marcada** y la **eliminación de una generación**.
 
 Base URL: `/SaaBE/rest/gnap`
 
 > **Requisito de base de datos:** el backend ya no arranca contra un GNAP sin las
 > columnas `GNAPFCDS` / `GNAPUSDS`. Antes de probar contra un ambiente hay que
 > ejecutar `docs/scripts/sql-gnap-marca-descarga.sql`.
+>
+> **Requisito de datos:** los partícipes deben tener `CRD.ENTD.FLLLCDGO` (filial)
+> asignada. Un partícipe sin filial no entra en ninguna generación.
 
 ---
 
@@ -18,14 +21,34 @@ Base URL: `/SaaBE/rest/gnap`
 | El TXT se bajaba con `GET /rest/files/download?filePath={rutaArchivo}` | Se baja con `GET /rest/gnap/descargarArchivo/{codigo}` |
 | No se podía borrar una generación (fallaba por FK) | `DELETE /rest/gnap/eliminar/{codigo}` borra cabecera + detalle + TXT |
 | — | Una generación **descargada ya no se puede borrar** |
+| La generación tomaba a todos los partícipes | Toma **solo los de la filial** de la cabecera |
+| Un solo formato de archivo | El **formato depende de la filial** (1 Petrocomercial, 2 ARCH) |
+| La cabecera se creaba con `POST /gnap` sin validar duplicados | `POST /gnap/crearCabecera` valida periodo + filial |
 
-La regla de negocio es una sola: **mientras el TXT no haya salido del sistema, la
-generación se puede deshacer**. El backend sabe que salió porque la descarga pasa
-por su propio endpoint, que estampa `fechaDescarga` / `usuarioDescarga`.
+La regla de negocio de la eliminación es una sola: **mientras el TXT no haya salido
+del sistema, la generación se puede deshacer**. El backend sabe que salió porque la
+descarga pasa por su propio endpoint, que estampa `fechaDescarga` / `usuarioDescarga`.
 
 Por eso, **el botón de descarga debe dejar de apuntar a `/rest/files/download`**.
 Si sigue usando el genérico, nada queda marcado y el sistema permitirá borrar
-generaciones que ya se entregaron a Petrocomercial.
+generaciones que ya se entregaron.
+
+---
+
+## 1.1 La filial manda
+
+La filial de la cabecera (`filial.codigo`) decide tres cosas:
+
+| | Filial 1 — Petrocomercial | Filial 2 — ARCH |
+|---|---|---|
+| **Quién entra** | Partícipes ACTIVOS de la filial 1 **con rol** (`ENTDRLPC > 0`) | Partícipes ACTIVOS de la filial 2 **con número de identificación** |
+| **Cómo se identifica** | Rol Petrocomercial | Número de identificación (cédula/RUC) |
+| **Formato de salida** | Posicional, 55 caracteres, una línea por partícipe-producto | Plano `;`, una línea por partícipe, una columna por producto |
+| **Aportes** | Van sumados en el producto `AH` | Van separados: `AC` (cesantía) y `AJ` (jubilación) |
+| **Nombre del archivo** | `DESCUENTOS ASOPREP {MES} {AÑO}.txt` | `DESCUENTOS ARCH {MES} {AÑO}.txt` |
+
+Las dos filiales pueden tener generación del **mismo periodo** sin interferir: la
+validación de duplicado es por mes + año + filial.
 
 ---
 
@@ -105,33 +128,32 @@ GET /SaaBE/rest/gnap/getId/{codigo}
 
 Úsalo para **refrescar la fila después de descargar** y así ocultar el botón Eliminar.
 
-### 3.3 Crear la cabecera (paso 1)
+### 3.3 Crear la cabecera (paso 1) — **usar esta ruta**
 
 ```
-POST /SaaBE/rest/gnap
-Content-Type: application/json
+POST /SaaBE/rest/gnap/crearCabecera?mes=8&anio=2026&codigoFilial=2&usuario=mvaca
 ```
 
-```json
-{
-  "mesPeriodo": 8,
-  "anioPeriodo": 2026,
-  "estado": 0,
-  "usuarioGeneracion": "mvaca",
-  "usuarioIngreso": "mvaca",
-  "filial": { "codigo": 1 }
-}
-```
+Sin body; todo va por query params. Deja la generación en `estado: 0` con la
+filial asignada, y **valida que no exista ya una generación para ese periodo y
+esa filial**.
 
 **201** → la generación creada, con `codigo` asignado.
-**500** → `text/plain`.
 
-Notas:
-- `estado: 0` es obligatorio en la práctica: el paso 2 rechaza cualquier
-  generación cuyo estado no sea `0` o `null`.
-- `fechaGeneracion` la pone el backend si el `codigo` viene vacío.
-- Esta ruta **no valida periodo duplicado**. Antes de crear, verifica en la grilla
-  que no exista ya una generación para ese mes/año/filial.
+| Código | Cuerpo | Cuándo |
+|---|---|---|
+| 400 | `{"error": "Mes inválido: debe estar entre 1 y 12"}` | mes fuera de rango |
+| 400 | `{"error": "Año inválido"}` | año nulo o < 2000 |
+| 400 | `{"error": "Debe indicar la filial de la generación"}` | falta `codigoFilial` |
+| 409 | `{"error": "Ya existe una generación para el periodo 8/2026. Código: 12"}` | duplicado |
+| 500 | `{"error": "..."}` | error inesperado |
+
+El `codigoFilial` sale de `GET /SaaBE/rest/flll/getAll` (catálogo `CRD.FLLL`).
+Preséntalo como un combo **obligatorio** en la pantalla de generación.
+
+> El `POST /SaaBE/rest/gnap` genérico sigue existiendo, pero **no valida el
+> duplicado por periodo+filial** y permite crear la cabecera sin filial — con lo
+> que el paso 2 falla después. No lo uses para crear generaciones.
 
 ### 3.4 Generar el archivo (paso 2)
 
@@ -151,15 +173,21 @@ pongas un timeout corto**.
   "codigoGeneracion": 12,
   "totalRegistros": 843,
   "totalMonto": 154320.75,
-  "nombreArchivo": "DESCUENTOS ASOPREP AGOSTO 2026.txt",
-  "rutaArchivo": "C:\\Users\\wildfly\\archivos_petrocomercial\\DESCUENTOS ASOPREP AGOSTO 2026.txt"
+  "nombreArchivo": "DESCUENTOS ARCH AGOSTO 2026.txt",
+  "rutaArchivo": "C:\\Users\\wildfly\\archivos_petrocomercial\\DESCUENTOS ARCH AGOSTO 2026.txt",
+  "codigoFilial": 2
 }
 ```
 
 **400** `{"error": "ID de generación inválido"}`
 **404** `{"error": "Generación no encontrada con ID: 12"}`
 **409** `{"error": "Esta generación ya fue procesada. Estado actual: 1"}`
+**500** `{"error": "La generación 12 no tiene filial asignada. Debe indicarse la filial al crear la cabecera."}`
 **500** `{"error": "Error: ..."}`
+
+`totalRegistros` cuenta líneas partícipe-producto (las filas de PDGA), que en ARCH
+**no** coincide con la cantidad de líneas del archivo: ahí cada partícipe ocupa una
+sola línea con varias columnas.
 
 Al terminar, la generación queda en `estado: 1` y con `fechaDescarga: null`.
 
@@ -238,16 +266,64 @@ Endpoints CRUD estándar, por si la pantalla muestra el desglose:
 
 ```
 POST /SaaBE/rest/dtga/selectByCriteria    detalle por producto (AH, HS, PE, PH, PQ, PP)
-POST /SaaBE/rest/pdga/selectByCriteria    una fila por línea del TXT
+POST /SaaBE/rest/pdga/selectByCriteria    una fila por partícipe-producto
 POST /SaaBE/rest/cxpg/selectByCriteria    cuotas/aportes que componen cada línea
 ```
+
+El detalle se guarda **igual para las dos filiales**: los aportes van juntos en el
+producto `AH`, con el desglose jubilación/cesantía en CXPG (`tipoAporte` 9 y 11).
+La separación en `AC` / `AJ` ocurre solo al escribir el archivo de ARCH.
+
+### 3.8 Listar las generaciones de una filial
+
+```
+GET /SaaBE/rest/gnap/porFilial/{codigoFilial}
+```
+
+**200** → array de `GeneracionArchivoPetro` de esa filial, más reciente primero.
+**500** → `text/plain`.
+
+Úsalo si la pantalla separa las generaciones por filial en pestañas o si el combo
+de filial filtra la grilla. `getAll` sigue devolviendo todas, de todas las filiales.
+
+---
+
+## 3.9 Formato del archivo generado
+
+### Filial 1 — Petrocomercial (posicional)
+
+Una línea por partícipe y producto, agrupadas por producto en el orden
+`AH, HS, PE, PH, PQ, PP`. 55 caracteres: rol (5) + `JRNN` + 8 ceros + fecha
+`AAAAMMDD` + monto×10000 en 13 posiciones + `1` + 14 ceros + producto (2).
+
+### Filial 2 — ARCH (plano por columnas)
+
+Separador `;`, primera fila con los nombres de columna, una línea por partícipe:
+
+```
+IDENTIFICACION;RAZON SOCIAL;AC;AJ;PE;PH;HS;PQ;PP
+0923456789;GOMEZ RUIZ MARIA ELENA;25.00;35.00;95.20;0.00;0.00;0.00;0.00
+1712345678;PEREZ LOPEZ JUAN CARLOS;25.00;35.00;0.00;180.45;12.30;0.00;0.00
+```
+
+- Los valores son números normales con **dos decimales y punto decimal**, sin
+  multiplicadores ni relleno de ceros.
+- Un producto sin valor sale como `0.00`, nunca vacío.
+- `AC` = aporte cesantía, `AJ` = aporte jubilación.
+- Si un partícipe tiene dos préstamos del mismo tipo, la columna trae la **suma**.
+- Las filas van ordenadas por número de identificación.
+- El `;` y los saltos de línea se eliminan de la razón social para no romper las
+  columnas.
 
 ---
 
 ## 4. Flujo completo en la UI
 
 ```
-[Crear cabecera]  POST /gnap                      -> estado 0
+[Elegir filial]   GET  /flll/getAll                 -> combo obligatorio
+        |
+[Crear cabecera]  POST /gnap/crearCabecera          -> estado 0, con filial
+        |          ?mes&anio&codigoFilial&usuario
         |
 [Generar archivo] POST /gnap/generarArchivo/{cod} -> estado 1, fechaDescarga null
         |                                            (aquí todavía se puede Eliminar)
@@ -347,6 +423,9 @@ async function eliminarGeneracionPetro(codigo: number, usuario: string) {
 
 ## 7. Checklist de cambios en el front
 
+- [ ] Agregar el combo **Filial** (obligatorio) en la pantalla de generación, alimentado de `GET /rest/flll/getAll`.
+- [ ] Crear la cabecera con `POST /rest/gnap/crearCabecera?mes&anio&codigoFilial&usuario` en vez del `POST /rest/gnap` genérico, y mostrar el 409 de periodo duplicado.
+- [ ] Mostrar la filial en la grilla de generaciones (o separarla en pestañas con `GET /rest/gnap/porFilial/{codigoFilial}`).
 - [ ] Cambiar la descarga de `/rest/files/download?filePath=...` a `GET /rest/gnap/descargarArchivo/{codigo}?usuario=...`.
 - [ ] Refrescar la generación después de descargar.
 - [ ] Agregar botón **Eliminar**, habilitado solo con `fechaDescarga == null && estado in (0,1)`.

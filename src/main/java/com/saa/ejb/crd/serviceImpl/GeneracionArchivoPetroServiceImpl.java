@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import com.saa.basico.ejb.FechaService;
@@ -31,6 +32,7 @@ import com.saa.model.crd.ParticipeDetalleGeneracionArchivo;
 import com.saa.model.crd.Prestamo;
 import com.saa.model.crd.TipoAporte;
 import com.saa.rubros.EstadoParticipeEntidad;
+import com.saa.rubros.Filiales;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -49,6 +51,21 @@ import jakarta.persistence.Query;
  */
 @Stateless
 public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetroService {
+
+    /**
+     * Orden en que se recorren los productos al armar el archivo.
+     * Es también el orden de los bloques en el archivo de Petrocomercial.
+     */
+    private static final String[] ORDEN_PRODUCTOS = {"AH", "HS", "PE", "PH", "PQ", "PP"};
+
+    /**
+     * Orden de las columnas de préstamos/seguro en el archivo plano de ARCH.
+     * Las columnas de aportes (AC y AJ) van antes y se manejan aparte.
+     */
+    private static final String[] ORDEN_COLUMNAS_PRESTAMOS = {"PE", "PH", "HS", "PQ", "PP"};
+
+    /** Separador de columnas del archivo plano de ARCH. */
+    private static final String SEPARADOR_COLUMNAS = ";";
 
     @EJB
     private GeneracionArchivoPetroDaoService dao;
@@ -197,20 +214,21 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
         // 3. Obtener datos del periodo de la cabecera
         Long mes = generacion.getMesPeriodo();
         Long anio = generacion.getAnioPeriodo();
-        
-        System.out.println("Procesando periodo: " + mes + "/" + anio);
-        
-        // 4. Recopilar datos por tipo de producto
-        Map<String, List<LineaArchivo>> datosPorProducto = recopilarDatos(mes, anio);
+
+        // La filial define QUÉ partícipes entran y CON QUÉ FORMATO sale el archivo.
+        Long codigoFilial = obtenerCodigoFilial(generacion);
+
+        System.out.println("Procesando periodo: " + mes + "/" + anio + " - Filial: " + codigoFilial);
+
+        // 4. Recopilar datos por tipo de producto (solo partícipes de esta filial)
+        Map<String, List<LineaArchivo>> datosPorProducto = recopilarDatos(mes, anio, codigoFilial);
         
         // 5. Crear detalles por producto y registros de partícipes
         long totalRegistros = 0;
         double totalMonto = 0.0;
         long numeroLinea = 1;
-        
-        String[] ordenProductos = {"AH", "HS", "PE", "PH", "PQ", "PP"};
-        
-        for (String codigoProducto : ordenProductos) {
+
+        for (String codigoProducto : ORDEN_PRODUCTOS) {
             List<LineaArchivo> lineas = datosPorProducto.get(codigoProducto);
             if (lineas == null || lineas.isEmpty()) {
                 continue;
@@ -386,8 +404,8 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
         }
         
         // 6. Generar archivo físico TXT
-        String nombreArchivo = generarNombreArchivo(mes, anio);
-        String rutaArchivo = generarArchivoTXT(datosPorProducto, mes, anio, nombreArchivo);
+        String nombreArchivo = generarNombreArchivo(mes, anio, codigoFilial);
+        String rutaArchivo = generarArchivoTXT(datosPorProducto, mes, anio, nombreArchivo, codigoFilial);
         
         // 7. Actualizar cabecera con totales y ruta del archivo
         generacion.setEstado(1L); // 1=GENERADO
@@ -414,8 +432,24 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
         respuesta.put("totalMonto", totalMonto);
         respuesta.put("nombreArchivo", nombreArchivo);
         respuesta.put("rutaArchivo", rutaArchivo);
-        
+        respuesta.put("codigoFilial", codigoFilial);
+
         return respuesta;
+    }
+
+    /**
+     * Devuelve el código de filial de la generación.
+     *
+     * Sin filial no se puede saber a qué partícipes incluir ni con qué formato
+     * escribir el archivo, así que se corta el proceso en vez de generar un
+     * archivo con la población equivocada.
+     */
+    private Long obtenerCodigoFilial(GeneracionArchivoPetro generacion) throws Exception {
+        if (generacion.getFilial() == null || generacion.getFilial().getCodigo() == null) {
+            throw new Exception("La generación " + generacion.getCodigo()
+                + " no tiene filial asignada. Debe indicarse la filial al crear la cabecera.");
+        }
+        return generacion.getFilial().getCodigo();
     }
 
     // ========================================================================
@@ -749,6 +783,8 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
             throw new Exception("Error al listar detalles: " + e.getMessage(), e);
         }
         
+        Long codigoFilial = obtenerCodigoFilial(generacion);
+
         Map<String, List<LineaArchivo>> datosPorProducto = new LinkedHashMap<>();
         datosPorProducto.put("AH", new ArrayList<>());
         datosPorProducto.put("HS", new ArrayList<>());
@@ -756,7 +792,7 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
         datosPorProducto.put("PH", new ArrayList<>());
         datosPorProducto.put("PQ", new ArrayList<>());
         datosPorProducto.put("PP", new ArrayList<>());
-        
+
         // Reconstruir datos desde la base de datos
         for (DetalleGeneracionArchivo detalle : detalles) {
             List<ParticipeDetalleGeneracionArchivo> participes;
@@ -765,43 +801,100 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
             } catch (Throwable e) {
                 throw new Exception("Error al listar partícipes: " + e.getMessage(), e);
             }
-            
+
             List<LineaArchivo> lineasProducto = datosPorProducto.get(detalle.getCodigoProductoPetro());
             if (lineasProducto == null) continue;
-            
+
             for (ParticipeDetalleGeneracionArchivo participe : participes) {
                 LineaArchivo linea = new LineaArchivo();
                 linea.codigoEntidad = participe.getEntidad().getCodigo();
                 linea.rolPetrocomercial = participe.getRolPetrocomercial();
+                linea.numeroIdentificacion = participe.getEntidad().getNumeroIdentificacion();
+                linea.razonSocial = participe.getEntidad().getRazonSocial();
                 linea.monto = participe.getMontoEnviado();
                 linea.codigoPrestamo = participe.getPrestamo() != null ? participe.getPrestamo().getCodigo() : null;
-                
+
+                // El aporte se guarda sumado en PDGA; el desglose jubilación /
+                // cesantía que necesitan las columnas AJ y AC está en CXPG.
+                if ("AH".equals(detalle.getCodigoProductoPetro())) {
+                    recuperarDesgloseAporte(participe, linea);
+                }
+
                 lineasProducto.add(linea);
             }
         }
-        
+
+        // Mismo orden que en la generación original
+        for (List<LineaArchivo> lista : datosPorProducto.values()) {
+            lista.sort((a, b) -> compararParticipes(a, b, codigoFilial));
+        }
+
         // Generar archivo
         String nombreArchivo = generacion.getNombreArchivo();
         if (nombreArchivo == null || nombreArchivo.isEmpty()) {
-            nombreArchivo = generarNombreArchivo(generacion.getMesPeriodo(), generacion.getAnioPeriodo());
+            nombreArchivo = generarNombreArchivo(generacion.getMesPeriodo(), generacion.getAnioPeriodo(), codigoFilial);
         }
-        
-        String rutaArchivo = generarArchivoTXT(datosPorProducto, 
-            generacion.getMesPeriodo(), 
-            generacion.getAnioPeriodo(), 
-            nombreArchivo);
-        
+
+        String rutaArchivo = generarArchivoTXT(datosPorProducto,
+            generacion.getMesPeriodo(),
+            generacion.getAnioPeriodo(),
+            nombreArchivo,
+            codigoFilial);
+
         System.out.println("Archivo regenerado en: " + rutaArchivo);
         return rutaArchivo;
+    }
+
+    /**
+     * Rellena montoJubilacion y montoCesantia de una línea de aporte leyendo
+     * los CXPG del partícipe (tipo de aporte 9 = jubilación, 11 = cesantía).
+     *
+     * Si no hay CXPG se deja todo en jubilación para no perder el valor: es
+     * preferible una columna mal clasificada a un archivo con el total en cero.
+     */
+    private void recuperarDesgloseAporte(ParticipeDetalleGeneracionArchivo participe, LineaArchivo linea) {
+        final Long TIPO_APORTE_JUBILACION = 9L;
+        final Long TIPO_APORTE_CESANTIA = 11L;
+
+        try {
+            List<CuotaXParticipeGeneracion> cuotas = cuotaXParticipeService.listarPorParticipe(participe.getCodigo());
+            if (cuotas == null || cuotas.isEmpty()) {
+                linea.montoJubilacion = linea.monto;
+                linea.montoCesantia = 0.0;
+                return;
+            }
+
+            double jubilacion = 0.0;
+            double cesantia = 0.0;
+            for (CuotaXParticipeGeneracion cuota : cuotas) {
+                double valor = cuota.getValorCuota() != null ? cuota.getValorCuota() : 0.0;
+                Long tipoAporte = cuota.getTipoAporte() != null ? cuota.getTipoAporte().getCodigo() : null;
+
+                if (TIPO_APORTE_CESANTIA.equals(tipoAporte)) {
+                    cesantia += valor;
+                } else if (TIPO_APORTE_JUBILACION.equals(tipoAporte)) {
+                    jubilacion += valor;
+                }
+            }
+
+            linea.montoJubilacion = jubilacion;
+            linea.montoCesantia = cesantia;
+
+        } catch (Throwable e) {
+            System.err.println("ADVERTENCIA: no se pudo recuperar el desglose del aporte del partícipe "
+                + participe.getCodigo() + ": " + e.getMessage());
+            linea.montoJubilacion = linea.monto;
+            linea.montoCesantia = 0.0;
+        }
     }
 
     // ========================================================================
     // MÉTODOS PRIVADOS - LÓGICA INTERNA
     // ========================================================================
 
-    private Map<String, List<LineaArchivo>> recopilarDatos(Long mes, Long anio) throws Exception {
-        System.out.println("Recopilando datos para periodo: " + mes + "/" + anio);
-        
+    private Map<String, List<LineaArchivo>> recopilarDatos(Long mes, Long anio, Long codigoFilial) throws Exception {
+        System.out.println("Recopilando datos para periodo: " + mes + "/" + anio + " - Filial: " + codigoFilial);
+
         Map<String, List<LineaArchivo>> datosPorProducto = new LinkedHashMap<>();
         datosPorProducto.put("AH", new ArrayList<>());
         datosPorProducto.put("HS", new ArrayList<>());
@@ -809,45 +902,93 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
         datosPorProducto.put("PH", new ArrayList<>());
         datosPorProducto.put("PQ", new ArrayList<>());
         datosPorProducto.put("PP", new ArrayList<>());
-        
+
         // 1. Aportes personales
-        recopilarAportes(datosPorProducto.get("AH"), mes, anio);
-        
+        recopilarAportes(datosPorProducto.get("AH"), mes, anio, codigoFilial);
+
         // 2. Cuotas de préstamos
-        recopilarPrestamos(mes, anio, datosPorProducto);
-        
-        // Ordenar por rol petrocomercial
+        recopilarPrestamos(mes, anio, datosPorProducto, codigoFilial);
+
+        // Petrocomercial identifica al partícipe por el rol; ARCH por la cédula.
         for (List<LineaArchivo> lista : datosPorProducto.values()) {
-            lista.sort((a, b) -> a.rolPetrocomercial.compareTo(b.rolPetrocomercial));
+            lista.sort((a, b) -> compararParticipes(a, b, codigoFilial));
         }
-        
+
         return datosPorProducto;
+    }
+
+    /**
+     * Orden de los partícipes dentro del archivo: por rol en Petrocomercial y
+     * por número de identificación en el resto de filiales.
+     */
+    private int compararParticipes(LineaArchivo a, LineaArchivo b, Long codigoFilial) {
+        if (esFilialPetrocomercial(codigoFilial)) {
+            return nullSafeLong(a.rolPetrocomercial).compareTo(nullSafeLong(b.rolPetrocomercial));
+        }
+        return nullSafeTexto(a.numeroIdentificacion).compareTo(nullSafeTexto(b.numeroIdentificacion));
+    }
+
+    private Long nullSafeLong(Long valor) {
+        return valor != null ? valor : 0L;
+    }
+
+    private String nullSafeTexto(String valor) {
+        return valor != null ? valor : "";
+    }
+
+    /**
+     * Indica si la filial usa el formato posicional histórico de Petrocomercial.
+     */
+    private boolean esFilialPetrocomercial(Long codigoFilial) {
+        return codigoFilial == null || codigoFilial == Filiales.PETROCOMERCIAL;
+    }
+
+    /**
+     * Condición JPQL que deja fuera a los partícipes sin el identificador que
+     * exige la filial: el rol en Petrocomercial, la cédula/RUC en las demás.
+     *
+     * @param alias Ruta JPQL hasta la Entidad (ej: "h.entidad")
+     */
+    private String condicionIdentificadorFilial(String alias, Long codigoFilial) {
+        if (esFilialPetrocomercial(codigoFilial)) {
+            return "AND " + alias + ".rolPetroComercial IS NOT NULL " +
+                   "AND " + alias + ".rolPetroComercial > 0 ";
+        }
+        // En Oracle '' es NULL, así que no sirve comparar contra cadena vacía.
+        return "AND " + alias + ".numeroIdentificacion IS NOT NULL " +
+               "AND LENGTH(TRIM(" + alias + ".numeroIdentificacion)) > 0 ";
     }
 
     /**
      * Recopila los aportes personales (producto AH) del periodo.
      *
-     * Solo se incluye a los partícipes en estado ACTIVO; los que están en
-     * ACTIVO EN MORA quedan fuera del archivo. A cada partícipe incluido se le
-     * cobra un solo mes de aporte (jubilación + cesantía).
+     * Solo se incluye a los partícipes de la filial que se está generando y en
+     * estado ACTIVO; los que están en ACTIVO EN MORA quedan fuera del archivo.
+     * A cada partícipe incluido se le cobra un solo mes de aporte
+     * (jubilación + cesantía).
      *
-     * @param listaAportes Lista donde se acumulan las líneas del producto AH
-     * @param mes          Mes del periodo que se genera
-     * @param anio         Año del periodo que se genera
+     * Los montos de jubilación y cesantía se guardan por separado porque ARCH
+     * los reporta en columnas distintas (AJ y AC).
+     *
+     * @param listaAportes  Lista donde se acumulan las líneas del producto AH
+     * @param mes           Mes del periodo que se genera
+     * @param anio          Año del periodo que se genera
+     * @param codigoFilial  Filial de la generación
      */
-    private void recopilarAportes(List<LineaArchivo> listaAportes, Long mes, Long anio) throws Exception {
-        System.out.println("Recopilando aportes personales...");
+    private void recopilarAportes(List<LineaArchivo> listaAportes, Long mes, Long anio, Long codigoFilial) throws Exception {
+        System.out.println("Recopilando aportes personales de la filial " + codigoFilial + "...");
         System.out.println("Filtros: Entidad en estado ACTIVO (se excluye ACTIVO EN MORA), HistorialSueldo.estado=99");
 
         String jpql = "SELECT h FROM HistorialSueldo h " +
                      "WHERE h.entidad.idEstado = :estadoActivo " +
                      "AND h.estado = 99 " +
-                     "AND h.entidad.rolPetroComercial IS NOT NULL " +
-                     "AND h.entidad.rolPetroComercial > 0 " +
+                     "AND h.entidad.filial.codigo = :codigoFilial " +
+                     condicionIdentificadorFilial("h.entidad", codigoFilial) +
                      "ORDER BY h.entidad.codigo, h.fechaIngreso DESC";
 
         Query query = em.createQuery(jpql);
         query.setParameter("estadoActivo", (long) EstadoParticipeEntidad.ACTIVO);
+        query.setParameter("codigoFilial", codigoFilial);
 
         @SuppressWarnings("unchecked")
         List<HistorialSueldo> resultados = query.getResultList();
@@ -877,9 +1018,12 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
                 LineaArchivo linea = new LineaArchivo();
                 linea.codigoEntidad = codigoEntidad;
                 linea.rolPetrocomercial = historial.getEntidad().getRolPetroComercial();
+                linea.numeroIdentificacion = historial.getEntidad().getNumeroIdentificacion();
+                linea.razonSocial = historial.getEntidad().getRazonSocial();
                 linea.monto = montoTotal;
                 linea.codigoPrestamo = null;
                 // Almacenar montos por separado para crear registros CXPG individuales
+                // y para las columnas AJ / AC del archivo de ARCH
                 linea.montoJubilacion = montoJubilacion;
                 linea.montoCesantia = montoCesantia;
 
@@ -890,9 +1034,10 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
         System.out.println("Aportes recopilados: " + listaAportes.size());
     }
 
-    private void recopilarPrestamos(Long mes, Long anio, Map<String, List<LineaArchivo>> datosPorProducto) throws Exception {
-        System.out.println("Recopilando cuotas de préstamos...");
-        System.out.println("Filtros: Entidad.idEstado=10 (ACTIVO), Prestamo.idEstado IN (1,2) (VIGENTE/ACTIVO)");
+    private void recopilarPrestamos(Long mes, Long anio, Map<String, List<LineaArchivo>> datosPorProducto,
+                                    Long codigoFilial) throws Exception {
+        System.out.println("Recopilando cuotas de préstamos de la filial " + codigoFilial + "...");
+        System.out.println("Filtros: Entidad en estado ACTIVO, Prestamo.idEstado IN (1,2) (VIGENTE/ACTIVO)");
         System.out.println("Incluyendo cuotas en estado: PENDIENTE, ACTIVA, EMITIDA, EN_MORA, PARCIAL, VENCIDA");
         System.out.println("Excluyendo cuotas en estado: 4 (PAGADA), 7 (CANCELADA_ANTICIPADA)");
         
@@ -927,15 +1072,17 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
                      "AND dp.fechaVencimiento <= :finMes " +
                      "AND dp.prestamo.idEstado IN (1, 2) " +
                      "AND dp.prestamo.entidad.idEstado = :estadoActivo " +
+                     "AND dp.prestamo.entidad.filial.codigo = :codigoFilial " +
                      "AND dp.prestamo.producto.codigoPetro IS NOT NULL " +
-                     "AND COALESCE(dp.prestamo.entidad.rolPetroComercial, 0) > 0 " +
+                     condicionIdentificadorFilial("dp.prestamo.entidad", codigoFilial) +
                      "AND dp.estado NOT IN (:estadoPagada, :estadoCanceladaAnticipada) " +
                      "ORDER BY dp.prestamo.codigo, dp.numeroCuota";
-        
+
         Query query = em.createQuery(jpql);
         query.setParameter("inicioMes", inicioMes);
         query.setParameter("finMes", finMes);
         query.setParameter("estadoActivo", (long) EstadoParticipeEntidad.ACTIVO);
+        query.setParameter("codigoFilial", codigoFilial);
         query.setParameter("estadoPagada", ESTADO_PAGADA);
         query.setParameter("estadoCanceladaAnticipada", ESTADO_CANCELADA_ANTICIPADA);
         
@@ -965,15 +1112,17 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
                                    "AND dp.numeroCuota < :numeroCuotaActual " +
                                    "AND dp.prestamo.idEstado IN (1, 2) " +
                                    "AND dp.prestamo.entidad.idEstado = :estadoActivo " +
+                                   "AND dp.prestamo.entidad.filial.codigo = :codigoFilial " +
                                    "AND dp.prestamo.producto.codigoPetro IS NOT NULL " +
-                                   "AND COALESCE(dp.prestamo.entidad.rolPetroComercial, 0) > 0 " +
+                                   condicionIdentificadorFilial("dp.prestamo.entidad", codigoFilial) +
                                    "AND dp.estado NOT IN (:estadoPagada, :estadoCanceladaAnticipada) " +
                                    "ORDER BY dp.numeroCuota";
-            
+
             Query queryAnteriores = em.createQuery(jpqlAnteriores);
             queryAnteriores.setParameter("codigoPrestamo", codigoPrestamo);
             queryAnteriores.setParameter("numeroCuotaActual", cuotaDelMes.getNumeroCuota());
             queryAnteriores.setParameter("estadoActivo", (long) EstadoParticipeEntidad.ACTIVO);
+            queryAnteriores.setParameter("codigoFilial", codigoFilial);
             queryAnteriores.setParameter("estadoPagada", ESTADO_PAGADA);
             queryAnteriores.setParameter("estadoCanceladaAnticipada", ESTADO_CANCELADA_ANTICIPADA);
             
@@ -1011,27 +1160,27 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
             }
             
             if (montoTotal > 0) {
-                linea.codigoEntidad = cuotaDelMes.getPrestamo().getEntidad().getCodigo();
-                linea.rolPetrocomercial = cuotaDelMes.getPrestamo().getEntidad().getRolPetroComercial();
+                Entidad entidadPrestamo = cuotaDelMes.getPrestamo().getEntidad();
+                linea.codigoEntidad = entidadPrestamo.getCodigo();
+                linea.rolPetrocomercial = entidadPrestamo.getRolPetroComercial();
+                linea.numeroIdentificacion = entidadPrestamo.getNumeroIdentificacion();
+                linea.razonSocial = entidadPrestamo.getRazonSocial();
                 linea.monto = montoTotal;
                 linea.codigoPrestamo = codigoPrestamo;
-                
+
                 listaProducto.add(linea);
             }
             
             // ✅ NUEVO: Extraer y acumular seguros de incendio para productos PH y PP
             if ("PH".equals(codigoProductoPetro) || "PP".equals(codigoProductoPetro)) {
-                Long codigoEntidad = cuotaDelMes.getPrestamo().getEntidad().getCodigo();
-                Long rolPetro = cuotaDelMes.getPrestamo().getEntidad().getRolPetroComercial();
-                
+                Entidad entidadSeguro = cuotaDelMes.getPrestamo().getEntidad();
+
                 // Acumular seguro de la cuota actual
-                acumularSeguroIncendio(segurosPorEntidad, codigoEntidad, rolPetro, 
-                                      codigoPrestamo, cuotaDelMes);
-                
+                acumularSeguroIncendio(segurosPorEntidad, entidadSeguro, codigoPrestamo, cuotaDelMes);
+
                 // Acumular seguros de cuotas anteriores pendientes
                 for (DetallePrestamo cuotaAnterior : cuotasAnterioresPendientes) {
-                    acumularSeguroIncendio(segurosPorEntidad, codigoEntidad, rolPetro, 
-                                          codigoPrestamo, cuotaAnterior);
+                    acumularSeguroIncendio(segurosPorEntidad, entidadSeguro, codigoPrestamo, cuotaAnterior);
                 }
             }
         }
@@ -1078,38 +1227,149 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
         return capital + interes + mora + interesVencido + desgravamen;
     }
 
-    private String generarArchivoTXT(Map<String, List<LineaArchivo>> datosPorProducto, 
-                                     Long mes, Long anio, String nombreArchivo) throws Exception {
-        System.out.println("Generando archivo TXT: " + nombreArchivo);
-        
+    private String generarArchivoTXT(Map<String, List<LineaArchivo>> datosPorProducto,
+                                     Long mes, Long anio, String nombreArchivo, Long codigoFilial) throws Exception {
+        System.out.println("Generando archivo TXT: " + nombreArchivo + " - Filial: " + codigoFilial);
+
         String rutaBase = System.getProperty("user.home") + File.separator + "archivos_petrocomercial";
         File directorio = new File(rutaBase);
         if (!directorio.exists()) {
             directorio.mkdirs();
         }
-        
+
         String rutaCompleta = rutaBase + File.separator + nombreArchivo;
-        
+
         int ultimoDia = obtenerUltimoDiaMes(mes.intValue(), anio.intValue());
         String fechaProceso = String.format("%04d%02d%02d", anio, mes, ultimoDia);
-        
+
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(rutaCompleta))) {
-            String[] ordenProductos = {"AH", "HS", "PE", "PH", "PQ", "PP"};
-            
-            for (String codigoProducto : ordenProductos) {
-                List<LineaArchivo> lineas = datosPorProducto.get(codigoProducto);
-                if (lineas == null) continue;
-                
-                for (LineaArchivo linea : lineas) {
-                    String lineaTXT = formatearLinea(linea, fechaProceso, codigoProducto);
-                    writer.write(lineaTXT);
-                    writer.newLine();
+            if (esFilialPetrocomercial(codigoFilial)) {
+                escribirArchivoPetrocomercial(writer, datosPorProducto, fechaProceso);
+            } else {
+                escribirArchivoPlanoColumnas(writer, datosPorProducto);
+            }
+        }
+
+        System.out.println("Archivo generado en: " + rutaCompleta);
+        return rutaCompleta;
+    }
+
+    /**
+     * Formato Petrocomercial: registro posicional de 55 caracteres, una línea
+     * por partícipe y producto, agrupadas por producto.
+     */
+    private void escribirArchivoPetrocomercial(BufferedWriter writer,
+                                               Map<String, List<LineaArchivo>> datosPorProducto,
+                                               String fechaProceso) throws Exception {
+        for (String codigoProducto : ORDEN_PRODUCTOS) {
+            List<LineaArchivo> lineas = datosPorProducto.get(codigoProducto);
+            if (lineas == null) continue;
+
+            for (LineaArchivo linea : lineas) {
+                writer.write(formatearLinea(linea, fechaProceso, codigoProducto));
+                writer.newLine();
+            }
+        }
+    }
+
+    /**
+     * Formato ARCH: archivo plano separado por ';', una línea por partícipe y
+     * una columna por producto.
+     *
+     * Columnas: IDENTIFICACION;RAZON SOCIAL;AC;AJ;PE;PH;HS;PQ;PP
+     *
+     * A diferencia de Petrocomercial, el aporte NO se envía sumado en AH: la
+     * cesantía va en AC y la jubilación en AJ. Los valores salen como números
+     * normales con dos decimales (sin multiplicar ni rellenar con ceros).
+     */
+    private void escribirArchivoPlanoColumnas(BufferedWriter writer,
+                                              Map<String, List<LineaArchivo>> datosPorProducto) throws Exception {
+        // Una fila por partícipe: se consolida todo lo recopilado por entidad.
+        Map<Long, FilaColumnas> filasPorEntidad = new LinkedHashMap<>();
+
+        for (String codigoProducto : ORDEN_PRODUCTOS) {
+            List<LineaArchivo> lineas = datosPorProducto.get(codigoProducto);
+            if (lineas == null) continue;
+
+            for (LineaArchivo linea : lineas) {
+                FilaColumnas fila = filasPorEntidad.get(linea.codigoEntidad);
+                if (fila == null) {
+                    fila = new FilaColumnas();
+                    fila.numeroIdentificacion = nullSafeTexto(linea.numeroIdentificacion);
+                    fila.razonSocial = nullSafeTexto(linea.razonSocial);
+                    filasPorEntidad.put(linea.codigoEntidad, fila);
+                }
+
+                if ("AH".equals(codigoProducto)) {
+                    // El aporte se reporta separado: cesantía en AC, jubilación en AJ.
+                    fila.aporteCesantia += linea.montoCesantia != null ? linea.montoCesantia : 0.0;
+                    fila.aporteJubilacion += linea.montoJubilacion != null ? linea.montoJubilacion : 0.0;
+                } else {
+                    // Un partícipe puede tener más de un préstamo del mismo tipo:
+                    // la columna lleva la suma de todos.
+                    Double montoActual = fila.montosPorProducto.get(codigoProducto);
+                    fila.montosPorProducto.put(codigoProducto,
+                        (montoActual != null ? montoActual : 0.0) + (linea.monto != null ? linea.monto : 0.0));
                 }
             }
         }
-        
-        System.out.println("Archivo generado en: " + rutaCompleta);
-        return rutaCompleta;
+
+        // Encabezado de columnas
+        StringBuilder cabecera = new StringBuilder();
+        cabecera.append("IDENTIFICACION").append(SEPARADOR_COLUMNAS);
+        cabecera.append("RAZON SOCIAL").append(SEPARADOR_COLUMNAS);
+        cabecera.append("AC").append(SEPARADOR_COLUMNAS);
+        cabecera.append("AJ");
+        for (String codigoProducto : ORDEN_COLUMNAS_PRESTAMOS) {
+            cabecera.append(SEPARADOR_COLUMNAS).append(codigoProducto);
+        }
+        writer.write(cabecera.toString());
+        writer.newLine();
+
+        // Ordenadas por número de identificación
+        List<FilaColumnas> filas = new ArrayList<>(filasPorEntidad.values());
+        filas.sort((a, b) -> a.numeroIdentificacion.compareTo(b.numeroIdentificacion));
+
+        for (FilaColumnas fila : filas) {
+            StringBuilder linea = new StringBuilder();
+            linea.append(fila.numeroIdentificacion).append(SEPARADOR_COLUMNAS);
+            linea.append(limpiarTexto(fila.razonSocial)).append(SEPARADOR_COLUMNAS);
+            linea.append(formatearValor(fila.aporteCesantia)).append(SEPARADOR_COLUMNAS);
+            linea.append(formatearValor(fila.aporteJubilacion));
+
+            for (String codigoProducto : ORDEN_COLUMNAS_PRESTAMOS) {
+                Double monto = fila.montosPorProducto.get(codigoProducto);
+                linea.append(SEPARADOR_COLUMNAS).append(formatearValor(monto != null ? monto : 0.0));
+            }
+
+            writer.write(linea.toString());
+            writer.newLine();
+        }
+
+        System.out.println("Archivo plano por columnas: " + filas.size() + " partícipes");
+    }
+
+    /**
+     * Valor monetario con dos decimales y punto decimal.
+     * Se fuerza Locale.US para que el separador decimal no dependa de la
+     * configuración regional del servidor.
+     */
+    private String formatearValor(Double valor) {
+        return String.format(Locale.US, "%.2f", valor != null ? valor : 0.0);
+    }
+
+    /**
+     * Quita del texto el separador de columnas y los saltos de línea, que
+     * romperían la estructura del archivo plano.
+     */
+    private String limpiarTexto(String texto) {
+        if (texto == null) {
+            return "";
+        }
+        return texto.replace(SEPARADOR_COLUMNAS, " ")
+                    .replace("\r", " ")
+                    .replace("\n", " ")
+                    .trim();
     }
 
     private String formatearLinea(LineaArchivo linea, String fechaProceso, String codigoProducto) {
@@ -1129,10 +1389,25 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
                montoFormateado + codigoUno + rellenoCeros2 + tipoProducto;
     }
 
-    private String generarNombreArchivo(Long mes, Long anio) {
+    /**
+     * Nombre del archivo TXT.
+     *
+     * El nombre incluye la filial porque todas las generaciones se escriben en
+     * la misma carpeta: sin eso, generar el mismo periodo para dos filiales
+     * sobrescribiría el archivo de la primera.
+     */
+    private String generarNombreArchivo(Long mes, Long anio, Long codigoFilial) {
         String[] meses = {"", "ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
                          "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"};
-        return "DESCUENTOS ASOPREP " + meses[mes.intValue()] + " " + anio + ".txt";
+        String periodo = meses[mes.intValue()] + " " + anio + ".txt";
+
+        if (esFilialPetrocomercial(codigoFilial)) {
+            return "DESCUENTOS ASOPREP " + periodo;
+        }
+        if (codigoFilial == Filiales.ARCH) {
+            return "DESCUENTOS ARCH " + periodo;
+        }
+        return "DESCUENTOS FILIAL " + codigoFilial + " " + periodo;
     }
 
     private int obtenerUltimoDiaMes(int mes, int anio) {
@@ -1162,25 +1437,28 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
      * Solo aplica para préstamos PH (Hipotecario) y PP (Personal).
      * 
      * @param segurosPorEntidad Mapa acumulador de seguros por entidad
-     * @param codigoEntidad Código de la entidad/partícipe
-     * @param rolPetro Rol Petrocomercial de la entidad
+     * @param entidad Entidad/partícipe dueño del préstamo
      * @param codigoPrestamo Código del préstamo
      * @param cuota Cuota de la cual extraer el seguro de incendio
      */
-    private void acumularSeguroIncendio(Map<Long, LineaArchivo> segurosPorEntidad, 
-                                       Long codigoEntidad, Long rolPetro,
+    private void acumularSeguroIncendio(Map<Long, LineaArchivo> segurosPorEntidad,
+                                       Entidad entidad,
                                        Long codigoPrestamo, DetallePrestamo cuota) {
         Double valorSeguro = cuota.getValorSeguroIncendio();
         if (valorSeguro == null || valorSeguro <= 0) {
             return; // No hay seguro en esta cuota
         }
-        
+
+        Long codigoEntidad = entidad.getCodigo();
+
         // Obtener o crear la línea de seguro para esta entidad
         LineaArchivo lineaSeguro = segurosPorEntidad.get(codigoEntidad);
         if (lineaSeguro == null) {
             lineaSeguro = new LineaArchivo();
             lineaSeguro.codigoEntidad = codigoEntidad;
-            lineaSeguro.rolPetrocomercial = rolPetro;
+            lineaSeguro.rolPetrocomercial = entidad.getRolPetroComercial();
+            lineaSeguro.numeroIdentificacion = entidad.getNumeroIdentificacion();
+            lineaSeguro.razonSocial = entidad.getRazonSocial();
             lineaSeguro.monto = 0.0;
             lineaSeguro.codigoPrestamo = null; // HS no tiene un préstamo único, son múltiples
             segurosPorEntidad.put(codigoEntidad, lineaSeguro);
@@ -1255,17 +1533,40 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
     private static class LineaArchivo {
         Long codigoEntidad;
         Long rolPetrocomercial;
+        // Identificación del partícipe en las filiales que no usan el rol (ARCH)
+        String numeroIdentificacion;
+        String razonSocial;
         Double monto;
         Long codigoPrestamo;
         List<CuotaInfo> cuotasSumadas;
         // Para aportes (producto AH): almacena montos por separado
         Double montoJubilacion;
         Double montoCesantia;
-        
+
         public LineaArchivo() {
             this.cuotasSumadas = new ArrayList<>();
             this.montoJubilacion = 0.0;
             this.montoCesantia = 0.0;
+        }
+    }
+
+    /**
+     * Fila del archivo plano por columnas (ARCH): un partícipe con el valor de
+     * cada producto en su propia columna.
+     */
+    private static class FilaColumnas {
+        String numeroIdentificacion;
+        String razonSocial;
+        Double aporteCesantia;
+        Double aporteJubilacion;
+        Map<String, Double> montosPorProducto;
+
+        public FilaColumnas() {
+            this.numeroIdentificacion = "";
+            this.razonSocial = "";
+            this.aporteCesantia = 0.0;
+            this.aporteJubilacion = 0.0;
+            this.montosPorProducto = new LinkedHashMap<>();
         }
     }
     

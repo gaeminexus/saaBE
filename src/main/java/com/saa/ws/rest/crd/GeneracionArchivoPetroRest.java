@@ -134,6 +134,96 @@ public class GeneracionArchivoPetroRest {
     }
     
     /**
+     * POST - Crear la cabecera de una generación (Paso 1).
+     *
+     * La filial define qué partícipes entran y con qué formato sale el archivo:
+     * 1 = Petrocomercial (archivo posicional), 2 = ARCH (plano por columnas).
+     *
+     * A diferencia del POST genérico, este endpoint valida que no exista ya una
+     * generación para el mismo periodo y filial.
+     *
+     * @param mes Mes del periodo (1-12)
+     * @param anio Año del periodo
+     * @param codigoFilial Código de la filial (CRD.FLLL)
+     * @param usuario Usuario que crea la generación
+     * @return Response con la cabecera creada
+     */
+    @POST
+    @Path("/crearCabecera")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response crearCabecera(@QueryParam("mes") Long mes,
+                                  @QueryParam("anio") Long anio,
+                                  @QueryParam("codigoFilial") Long codigoFilial,
+                                  @QueryParam("usuario") String usuario) {
+        System.out.println("LLEGA AL SERVICIO CREAR CABECERA GENERACION: " + mes + "/" + anio
+            + " - Filial: " + codigoFilial);
+        try {
+            if (mes == null || mes < 1 || mes > 12) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(Map.of("error", "Mes inválido: debe estar entre 1 y 12"))
+                        .build();
+            }
+            if (anio == null || anio < 2000) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(Map.of("error", "Año inválido"))
+                        .build();
+            }
+            if (codigoFilial == null || codigoFilial <= 0) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(Map.of("error", "Debe indicar la filial de la generación"))
+                        .build();
+            }
+
+            GeneracionArchivoPetro cabecera = generacionArchivoPetroService.crearCabeceraGeneracion(
+                mes, anio, codigoFilial, usuario);
+
+            return Response.status(Response.Status.CREATED)
+                    .entity(cabecera)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            String mensaje = e.getMessage() != null ? e.getMessage() : "Error al crear la cabecera";
+
+            if (mensaje.contains("Ya existe")) {
+                return Response.status(Response.Status.CONFLICT)
+                        .entity(Map.of("error", mensaje))
+                        .build();
+            }
+
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(Map.of("error", mensaje))
+                    .build();
+        }
+    }
+
+    /**
+     * GET - Lista las generaciones de una filial, de la más reciente a la más antigua.
+     *
+     * @param codigoFilial Código de la filial (CRD.FLLL)
+     * @return Response con la lista de generaciones
+     */
+    @GET
+    @Path("/porFilial/{codigoFilial}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getPorFilial(@PathParam("codigoFilial") Long codigoFilial) {
+        System.out.println("LLEGA AL SERVICIO LISTAR GENERACIONES POR FILIAL: " + codigoFilial);
+        try {
+            List<GeneracionArchivoPetro> lista = generacionArchivoPetroService.listarPorFilial(codigoFilial);
+            return Response.status(Response.Status.OK)
+                    .entity(lista)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al listar generaciones de la filial: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
+    }
+
+    /**
      * POST - Generar archivo de descuentos Petrocomercial (Paso 2)
      * Recibe el ID de GeneracionArchivoPetro y procesa todo desde el servicio.
      * El usuario se obtiene de la cabecera de generación previamente creada.
