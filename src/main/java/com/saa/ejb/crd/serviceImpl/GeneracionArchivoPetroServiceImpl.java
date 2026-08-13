@@ -6,6 +6,7 @@ import java.io.FileWriter;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -15,6 +16,7 @@ import java.util.Map;
 import com.saa.basico.ejb.FechaService;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
+import com.saa.ejb.crd.dao.AporteDaoService;
 import com.saa.ejb.crd.dao.GeneracionArchivoPetroDaoService;
 import com.saa.ejb.crd.service.CuotaXParticipeGeneracionService;
 import com.saa.ejb.crd.service.DetalleGeneracionArchivoService;
@@ -31,7 +33,9 @@ import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.model.crd.ParticipeDetalleGeneracionArchivo;
 import com.saa.model.crd.Prestamo;
 import com.saa.model.crd.TipoAporte;
+import com.saa.rubros.EstadoCuotaPrestamo;
 import com.saa.rubros.EstadoParticipeEntidad;
+import com.saa.rubros.EstadoPrestamo;
 import com.saa.rubros.Filiales;
 
 import jakarta.ejb.EJB;
@@ -82,8 +86,15 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
     @EJB
     private FechaService fechaService;
 
+    @EJB
+    private AporteDaoService aporteDaoService;
+
     @PersistenceContext
     private EntityManager em;
+
+    /** Tipos de aporte que componen el aporte mensual: 9 = JUBILACIÓN, 11 = CESANTÍA. */
+    private static final Long TIPO_APORTE_JUBILACION = 9L;
+    private static final Long TIPO_APORTE_CESANTIA   = 11L;
 
     // ========================================================================
     // MÉTODOS CRUD BÁSICOS
@@ -962,10 +973,13 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
     /**
      * Recopila los aportes personales (producto AH) del periodo.
      *
-     * Solo se incluye a los partícipes de la filial que se está generando y en
-     * estado ACTIVO; los que están en ACTIVO EN MORA quedan fuera del archivo.
-     * A cada partícipe incluido se le cobra un solo mes de aporte
-     * (jubilación + cesantía).
+     * Incluye a los partícipes ACTIVOS y a los que están en ACTIVO EN MORA.
+     * A los primeros se les cobra un mes; a los morosos se les cobra la deuda
+     * acumulada: aporte mensual x meses transcurridos desde su último aporte
+     * hasta el periodo que se está generando, ese periodo incluido.
+     *
+     * Ejemplo: último aporte en abril, generando agosto -> 4 meses
+     * (mayo, junio, julio y agosto). No hay tope de meses.
      *
      * Los montos de jubilación y cesantía se guardan por separado porque ARCH
      * los reporta en columnas distintas (AJ y AC).
@@ -977,17 +991,19 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
      */
     private void recopilarAportes(List<LineaArchivo> listaAportes, Long mes, Long anio, Long codigoFilial) throws Exception {
         System.out.println("Recopilando aportes personales de la filial " + codigoFilial + "...");
-        System.out.println("Filtros: Entidad en estado ACTIVO (se excluye ACTIVO EN MORA), HistorialSueldo.estado=99");
+        System.out.println("Filtros: Entidad en estado ACTIVO o ACTIVO EN MORA, HistorialSueldo.estado=99");
 
         String jpql = "SELECT h FROM HistorialSueldo h " +
-                     "WHERE h.entidad.idEstado = :estadoActivo " +
+                     "WHERE h.entidad.idEstado IN :estadosIncluidos " +
                      "AND h.estado = 99 " +
                      "AND h.entidad.filial.codigo = :codigoFilial " +
                      condicionIdentificadorFilial("h.entidad", codigoFilial) +
                      "ORDER BY h.entidad.codigo, h.fechaIngreso DESC";
 
         Query query = em.createQuery(jpql);
-        query.setParameter("estadoActivo", (long) EstadoParticipeEntidad.ACTIVO);
+        query.setParameter("estadosIncluidos", Arrays.asList(
+                (long) EstadoParticipeEntidad.ACTIVO,
+                (long) EstadoParticipeEntidad.ACTIVO_EN_MORA));
         query.setParameter("codigoFilial", codigoFilial);
 
         @SuppressWarnings("unchecked")
@@ -1006,11 +1022,24 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
             ultimaEntidad = historial.getEntidad().getCodigo();
         }
 
+        Map<Long, Long> mesesACobrarPorEntidad = calcularMesesACobrarMorosos(historialPorEntidad, mes, anio);
+
         for (HistorialSueldo historial : historialPorEntidad) {
             Long codigoEntidad = historial.getEntidad().getCodigo();
 
             Double montoJubilacion = historial.getMontoJubilacion() != null ? historial.getMontoJubilacion() : 0.0;
             Double montoCesantia = historial.getMontoCesantia() != null ? historial.getMontoCesantia() : 0.0;
+
+            // Para los morosos se multiplica por los meses adeudados; para el
+            // resto el multiplicador es 1 y el comportamiento no cambia.
+            long mesesACobrar = mesesACobrarPorEntidad.getOrDefault(codigoEntidad, 1L);
+            if (mesesACobrar > 1L) {
+                montoJubilacion = montoJubilacion * mesesACobrar;
+                montoCesantia = montoCesantia * mesesACobrar;
+                System.out.println("   [MORA] Entidad " + codigoEntidad + " (rol "
+                    + historial.getEntidad().getRolPetroComercial() + "): se cobran "
+                    + mesesACobrar + " meses de aporte.");
+            }
 
             Double montoTotal = montoJubilacion + montoCesantia;
 
@@ -1034,197 +1063,375 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
         System.out.println("Aportes recopilados: " + listaAportes.size());
     }
 
+    /**
+     * Calcula, para los partícipes en ACTIVO EN MORA, cuántos meses de aporte hay
+     * que cobrarles en este periodo.
+     *
+     * Son los meses transcurridos entre su último aporte y el periodo que se
+     * genera, ese periodo incluido. Un partícipe que aportó el mes pasado da 1,
+     * que es el comportamiento normal.
+     *
+     * Si no se le encuentra ningún aporte previo no se puede calcular la deuda,
+     * así que se le cobra un solo mes y se deja constancia en el log.
+     *
+     * @return Mapa codigoEntidad -> meses a cobrar. Solo contiene morosos.
+     */
+    private Map<Long, Long> calcularMesesACobrarMorosos(List<HistorialSueldo> historiales,
+            Long mes, Long anio) throws Exception {
+
+        Map<Long, Long> resultado = new LinkedHashMap<>();
+
+        List<Long> codigosMorosos = new ArrayList<>();
+        for (HistorialSueldo h : historiales) {
+            Long estado = h.getEntidad().getIdEstado();
+            if (estado != null && estado == EstadoParticipeEntidad.ACTIVO_EN_MORA) {
+                codigosMorosos.add(h.getEntidad().getCodigo());
+            }
+        }
+
+        if (codigosMorosos.isEmpty()) {
+            return resultado;
+        }
+        System.out.println("Partícipes en ACTIVO EN MORA a incluir: " + codigosMorosos.size());
+
+        java.time.YearMonth periodoGeneracion = java.time.YearMonth.of(anio.intValue(), mes.intValue());
+        // Solo aportes anteriores al periodo que se genera.
+        java.time.LocalDateTime corte = periodoGeneracion.atDay(1).atStartOfDay();
+
+        List<Object[]> ultimasFechas;
+        try {
+            ultimasFechas = aporteDaoService.selectUltimaFechaAportePorEntidad(
+                codigosMorosos,
+                Arrays.asList(TIPO_APORTE_JUBILACION, TIPO_APORTE_CESANTIA),
+                corte);
+        } catch (Throwable e) {
+            throw new Exception("Error al calcular la deuda de los partícipes en mora: " + e.getMessage(), e);
+        }
+
+        Map<Long, java.time.YearMonth> ultimoMesPorEntidad = new LinkedHashMap<>();
+        for (Object[] fila : ultimasFechas) {
+            Long codigoEntidad = ((Number) fila[0]).longValue();
+            java.time.LocalDateTime ultimaFecha = (java.time.LocalDateTime) fila[1];
+            if (ultimaFecha != null) {
+                ultimoMesPorEntidad.put(codigoEntidad, java.time.YearMonth.from(ultimaFecha));
+            }
+        }
+
+        for (Long codigoEntidad : codigosMorosos) {
+            java.time.YearMonth ultimoMes = ultimoMesPorEntidad.get(codigoEntidad);
+
+            if (ultimoMes == null) {
+                System.out.println("   [MORA] Entidad " + codigoEntidad
+                    + " no registra aportes previos: no se puede calcular la deuda, se cobra 1 mes.");
+                resultado.put(codigoEntidad, 1L);
+                continue;
+            }
+
+            long meses = java.time.temporal.ChronoUnit.MONTHS.between(ultimoMes, periodoGeneracion);
+            // Nunca menos de un mes: el aporte del periodo que se genera siempre se cobra.
+            resultado.put(codigoEntidad, Math.max(1L, meses));
+        }
+
+        return resultado;
+    }
+
+    /**
+     * Recopila las cuotas de préstamo a descontar en el periodo.
+     *
+     * Se traen TODAS las cuotas no pagadas con vencimiento hasta el fin del mes
+     * que se genera —la del mes y las atrasadas— y se agrupan por préstamo en
+     * una sola línea del archivo.
+     *
+     * De cada cuota se envía el SALDO PENDIENTE, no el valor original: una
+     * cuota PARCIAL solo cobra lo que le falta. Volver a mandar el valor
+     * completo cobraría dos veces lo ya pagado.
+     */
     private void recopilarPrestamos(Long mes, Long anio, Map<String, List<LineaArchivo>> datosPorProducto,
                                     Long codigoFilial) throws Exception {
         System.out.println("Recopilando cuotas de préstamos de la filial " + codigoFilial + "...");
-        System.out.println("Filtros: Entidad en estado ACTIVO, Prestamo.idEstado IN (1,2) (VIGENTE/ACTIVO)");
-        System.out.println("Incluyendo cuotas en estado: PENDIENTE, ACTIVA, EMITIDA, EN_MORA, PARCIAL, VENCIDA");
+        System.out.println("Filtros: Entidad en estado ACTIVO, Préstamo en estado GENERADO, VIGENTE o EN MORA");
+        System.out.println("Incluyendo cuotas en estado: PENDIENTE, ACTIVA, EMITIDA, EN_MORA, PARCIAL, VENCIDA y sin estado");
         System.out.println("Excluyendo cuotas en estado: 4 (PAGADA), 7 (CANCELADA_ANTICIPADA)");
-        
+
         final Long ESTADO_PAGADA = 4L;
         final Long ESTADO_CANCELADA_ANTICIPADA = 7L;
-        
-        // ✅ Estructura para acumular seguros de incendio por entidad
-        // Clave: codigoEntidad, Valor: LineaArchivo con acumulación de seguros
+
+        // Un préstamo EN MORA sigue debiendo: sus cuotas deben seguir yendo al
+        // archivo igual que las de un préstamo vigente.
+        final List<Long> ESTADOS_PRESTAMO_A_COBRAR = Arrays.asList(
+                (long) EstadoPrestamo.GENERADO,
+                (long) EstadoPrestamo.VIGENTE,
+                (long) EstadoPrestamo.EN_MORA);
+
+        // Seguros de incendio acumulados por entidad (producto HS)
         Map<Long, LineaArchivo> segurosPorEntidad = new LinkedHashMap<>();
-        
-        // ✅ Usar fechaService para obtener el primer y último día del mes
-        LocalDate inicioMesDate;
+
         LocalDate finMesDate;
         try {
-            inicioMesDate = fechaService.primerDiaMesAnioLocal(mes, anio);
             finMesDate = fechaService.ultimoDiaMesAnioLocal(mes, anio);
         } catch (Throwable e) {
             throw new Exception("Error al calcular fechas del periodo: " + e.getMessage(), e);
         }
-        
-        // ✅ Convertir a LocalDateTime para comparar con fechaVencimiento (que es LocalDateTime)
-        LocalDateTime inicioMes = inicioMesDate.atStartOfDay();
+
         LocalDateTime finMes = finMesDate.atTime(23, 59, 59);
-        
-        // ✅ CORREGIDO: 
-        // 1. Comparar directamente con LocalDateTime (tipo del campo fechaVencimiento)
-        // 2. Usar COALESCE (estándar JPA) para rolPetroComercial
-        // 3. Usar dp.prestamo.idEstado IN (1,2) para préstamos VIGENTES/ACTIVOS
-        // 4. Filtrar por entidad en estado ACTIVO
+
+        // Todas las cuotas vencidas o que vencen en el periodo y siguen debiendo.
+        // Antes se traían solo las del mes y las anteriores se buscaban con una
+        // consulta por préstamo, lo que dejaba fuera a los préstamos que ya no
+        // tienen cuota en el mes generado pero sí saldos atrasados.
+        // dp.estado IS NULL entra: en Oracle un NOT IN contra NULL descarta la fila.
         String jpql = "SELECT dp FROM DetallePrestamo dp " +
-                     "WHERE dp.fechaVencimiento >= :inicioMes " +
-                     "AND dp.fechaVencimiento <= :finMes " +
-                     "AND dp.prestamo.idEstado IN (1, 2) " +
+                     "WHERE dp.fechaVencimiento <= :finMes " +
+                     "AND dp.prestamo.idEstado IN :estadosPrestamo " +
                      "AND dp.prestamo.entidad.idEstado = :estadoActivo " +
                      "AND dp.prestamo.entidad.filial.codigo = :codigoFilial " +
                      "AND dp.prestamo.producto.codigoPetro IS NOT NULL " +
                      condicionIdentificadorFilial("dp.prestamo.entidad", codigoFilial) +
-                     "AND dp.estado NOT IN (:estadoPagada, :estadoCanceladaAnticipada) " +
+                     "AND (dp.estado IS NULL OR dp.estado NOT IN (:estadoPagada, :estadoCanceladaAnticipada)) " +
                      "ORDER BY dp.prestamo.codigo, dp.numeroCuota";
 
         Query query = em.createQuery(jpql);
-        query.setParameter("inicioMes", inicioMes);
         query.setParameter("finMes", finMes);
         query.setParameter("estadoActivo", (long) EstadoParticipeEntidad.ACTIVO);
         query.setParameter("codigoFilial", codigoFilial);
+        query.setParameter("estadosPrestamo", ESTADOS_PRESTAMO_A_COBRAR);
         query.setParameter("estadoPagada", ESTADO_PAGADA);
         query.setParameter("estadoCanceladaAnticipada", ESTADO_CANCELADA_ANTICIPADA);
-        
+
         @SuppressWarnings("unchecked")
-        List<DetallePrestamo> cuotasDelMes = query.getResultList();
-        
-        System.out.println("Cuotas del mes encontradas: " + cuotasDelMes.size());
-        
-        for (DetallePrestamo cuotaDelMes : cuotasDelMes) {
-            Long codigoPrestamo = cuotaDelMes.getPrestamo().getCodigo();
-            String codigoProductoPetro = cuotaDelMes.getPrestamo().getProducto().getCodigoPetro();
-            
+        List<DetallePrestamo> cuotasPendientes = query.getResultList();
+
+        System.out.println("Cuotas pendientes hasta " + finMesDate + ": " + cuotasPendientes.size());
+
+        // Lo ya pagado de cada cuota, tomado de PagoPrestamo (misma fuente que
+        // usa el proceso de carga para decidir el saldo real).
+        Map<Long, PagosCuota> pagosPorCuota = obtenerPagosPorCuota(cuotasPendientes);
+
+        // Una línea por préstamo, con la suma de los saldos de sus cuotas
+        Map<Long, LineaArchivo> lineasPorPrestamo = new LinkedHashMap<>();
+        Map<Long, String> productoPorPrestamo = new LinkedHashMap<>();
+        int cuotasParcialesIncluidas = 0;
+        int cuotasSinSaldo = 0;
+
+        for (DetallePrestamo cuota : cuotasPendientes) {
+            Long codigoPrestamo = cuota.getPrestamo().getCodigo();
+            String codigoProductoPetro = cuota.getPrestamo().getProducto().getCodigoPetro();
+
             if (codigoProductoPetro == null || codigoProductoPetro.trim().isEmpty()) {
                 continue;
             }
-            
-            List<LineaArchivo> listaProducto = datosPorProducto.get(codigoProductoPetro);
-            if (listaProducto == null) {
+            if (!datosPorProducto.containsKey(codigoProductoPetro)) {
                 System.err.println("ADVERTENCIA: Código producto Petro no reconocido: " + codigoProductoPetro);
                 continue;
             }
-            
-            // ✅ CORREGIDO: Buscar cuotas anteriores pendientes usando LAS MISMAS CONDICIONES del SELECT principal
-            // Solo que filtramos por el préstamo específico y cuotas con número menor a la actual
-            String jpqlAnteriores = "SELECT dp FROM DetallePrestamo dp " +
-                                   "WHERE dp.prestamo.codigo = :codigoPrestamo " +
-                                   "AND dp.numeroCuota < :numeroCuotaActual " +
-                                   "AND dp.prestamo.idEstado IN (1, 2) " +
-                                   "AND dp.prestamo.entidad.idEstado = :estadoActivo " +
-                                   "AND dp.prestamo.entidad.filial.codigo = :codigoFilial " +
-                                   "AND dp.prestamo.producto.codigoPetro IS NOT NULL " +
-                                   condicionIdentificadorFilial("dp.prestamo.entidad", codigoFilial) +
-                                   "AND dp.estado NOT IN (:estadoPagada, :estadoCanceladaAnticipada) " +
-                                   "ORDER BY dp.numeroCuota";
 
-            Query queryAnteriores = em.createQuery(jpqlAnteriores);
-            queryAnteriores.setParameter("codigoPrestamo", codigoPrestamo);
-            queryAnteriores.setParameter("numeroCuotaActual", cuotaDelMes.getNumeroCuota());
-            queryAnteriores.setParameter("estadoActivo", (long) EstadoParticipeEntidad.ACTIVO);
-            queryAnteriores.setParameter("codigoFilial", codigoFilial);
-            queryAnteriores.setParameter("estadoPagada", ESTADO_PAGADA);
-            queryAnteriores.setParameter("estadoCanceladaAnticipada", ESTADO_CANCELADA_ANTICIPADA);
-            
-            @SuppressWarnings("unchecked")
-            List<DetallePrestamo> cuotasAnterioresPendientes = queryAnteriores.getResultList();
-            
-            double montoTotal = 0.0;
-            LineaArchivo linea = new LineaArchivo();
-            
-            // Sumar cuotas anteriores
-            for (DetallePrestamo cuotaAnterior : cuotasAnterioresPendientes) {
-                double montoCuota = calcularMontoCuota(cuotaAnterior);
-                montoTotal += montoCuota;
-                
+            PagosCuota pagos = pagosPorCuota.get(cuota.getCodigo());
+            double saldoCuota = calcularSaldoCuota(cuota, pagos);
+
+            // Cuota sin saldo: pagada aunque el estado diga otra cosa.
+            if (saldoCuota <= 0.01) {
+                cuotasSinSaldo++;
+            } else {
+                LineaArchivo linea = lineasPorPrestamo.get(codigoPrestamo);
+                if (linea == null) {
+                    Entidad entidadPrestamo = cuota.getPrestamo().getEntidad();
+                    linea = new LineaArchivo();
+                    linea.codigoEntidad = entidadPrestamo.getCodigo();
+                    linea.rolPetrocomercial = entidadPrestamo.getRolPetroComercial();
+                    linea.numeroIdentificacion = entidadPrestamo.getNumeroIdentificacion();
+                    linea.razonSocial = entidadPrestamo.getRazonSocial();
+                    linea.monto = 0.0;
+                    linea.codigoPrestamo = codigoPrestamo;
+                    lineasPorPrestamo.put(codigoPrestamo, linea);
+                    productoPorPrestamo.put(codigoPrestamo, codigoProductoPetro);
+                }
+
+                linea.monto += saldoCuota;
                 linea.cuotasSumadas.add(new CuotaInfo(
-                    cuotaAnterior.getNumeroCuota() != null ? cuotaAnterior.getNumeroCuota().intValue() : 0,
-                    montoCuota
+                    cuota.getNumeroCuota() != null ? cuota.getNumeroCuota().intValue() : 0,
+                    saldoCuota
                 ));
-            }
-            
-            // Sumar cuota actual
-            double montoCuotaActual = calcularMontoCuota(cuotaDelMes);
-            montoTotal += montoCuotaActual;
-            
-            linea.cuotasSumadas.add(new CuotaInfo(
-                cuotaDelMes.getNumeroCuota() != null ? cuotaDelMes.getNumeroCuota().intValue() : 0,
-                montoCuotaActual
-            ));
-            
-            if (cuotasAnterioresPendientes.size() > 0) {
-                System.out.println("  Préstamo " + codigoPrestamo + " - Producto " + codigoProductoPetro + 
-                                 ": Cuota del mes #" + cuotaDelMes.getNumeroCuota().intValue() + 
-                                 " + " + cuotasAnterioresPendientes.size() + " cuotas anteriores pendientes" +
-                                 " = Total: $" + String.format("%.2f", montoTotal));
-            }
-            
-            if (montoTotal > 0) {
-                Entidad entidadPrestamo = cuotaDelMes.getPrestamo().getEntidad();
-                linea.codigoEntidad = entidadPrestamo.getCodigo();
-                linea.rolPetrocomercial = entidadPrestamo.getRolPetroComercial();
-                linea.numeroIdentificacion = entidadPrestamo.getNumeroIdentificacion();
-                linea.razonSocial = entidadPrestamo.getRazonSocial();
-                linea.monto = montoTotal;
-                linea.codigoPrestamo = codigoPrestamo;
 
-                listaProducto.add(linea);
-            }
-            
-            // ✅ NUEVO: Extraer y acumular seguros de incendio para productos PH y PP
-            if ("PH".equals(codigoProductoPetro) || "PP".equals(codigoProductoPetro)) {
-                Entidad entidadSeguro = cuotaDelMes.getPrestamo().getEntidad();
-
-                // Acumular seguro de la cuota actual
-                acumularSeguroIncendio(segurosPorEntidad, entidadSeguro, codigoPrestamo, cuotaDelMes);
-
-                // Acumular seguros de cuotas anteriores pendientes
-                for (DetallePrestamo cuotaAnterior : cuotasAnterioresPendientes) {
-                    acumularSeguroIncendio(segurosPorEntidad, entidadSeguro, codigoPrestamo, cuotaAnterior);
+                if (esCuotaParcial(cuota, pagos)) {
+                    cuotasParcialesIncluidas++;
+                    System.out.println("  [PARCIAL] Préstamo " + codigoPrestamo + " cuota #"
+                        + (cuota.getNumeroCuota() != null ? cuota.getNumeroCuota().intValue() : 0)
+                        + ": se cobra el saldo $" + String.format("%.2f", saldoCuota)
+                        + " (cuota de $" + String.format("%.2f", calcularMontoCuota(cuota)) + ")");
                 }
             }
+
+            // Seguro de incendio (producto HS) para PH y PP, también por saldo
+            if ("PH".equals(codigoProductoPetro) || "PP".equals(codigoProductoPetro)) {
+                acumularSeguroIncendio(segurosPorEntidad, cuota.getPrestamo().getEntidad(),
+                    codigoPrestamo, cuota, saldoSeguroIncendio(cuota, pagos));
+            }
         }
-        
-        // ✅ Agregar los seguros de incendio acumulados al producto HS
+
+        // Volcar las líneas a su producto
+        for (Map.Entry<Long, LineaArchivo> entrada : lineasPorPrestamo.entrySet()) {
+            LineaArchivo linea = entrada.getValue();
+            if (linea.monto > 0) {
+                datosPorProducto.get(productoPorPrestamo.get(entrada.getKey())).add(linea);
+            }
+        }
+
+        System.out.println("Préstamos con saldo a cobrar: " + lineasPorPrestamo.size()
+            + " | Cuotas parciales incluidas: " + cuotasParcialesIncluidas
+            + " | Cuotas sin saldo omitidas: " + cuotasSinSaldo);
+
+        // Agregar los seguros de incendio acumulados al producto HS
         List<LineaArchivo> listaHS = datosPorProducto.get("HS");
         for (LineaArchivo seguro : segurosPorEntidad.values()) {
             if (seguro.monto > 0) {
                 listaHS.add(seguro);
             }
         }
-        
+
         if (!listaHS.isEmpty()) {
-            System.out.println("Seguros de Incendio (HS): " + listaHS.size() + " registros, Total: $" + 
+            System.out.println("Seguros de Incendio (HS): " + listaHS.size() + " registros, Total: $" +
                              String.format("%.2f", listaHS.stream().mapToDouble(l -> l.monto).sum()));
         }
-        
+
         for (Map.Entry<String, List<LineaArchivo>> entry : datosPorProducto.entrySet()) {
             if (!entry.getKey().equals("AH") && !entry.getValue().isEmpty()) {
                 System.out.println("Préstamos " + entry.getKey() + ": " + entry.getValue().size() + " registros");
             }
         }
-        
+
         System.out.println("Préstamos recopilados exitosamente");
     }
 
     /**
-     * Calcula el monto a descontar de una cuota de préstamo.
-     * 
-     * ✅ CORREGIDO: Suma capital + interés + mora + interésVencido + DESGRAVAMEN
-     * 
-     * El desgravamen es un seguro obligatorio que debe incluirse en el descuento mensual.
-     * 
-     * @param cuota DetallePrestamo con los datos de la cuota
-     * @return Monto total a descontar
+     * Lo ya pagado de cada cuota, agrupado desde PagoPrestamo (CRD.PGPR).
+     *
+     * Se hace en bloques con una consulta agregada por bloque para no disparar
+     * una consulta por cuota, y porque Oracle no admite más de 1000 elementos
+     * en un IN.
+     *
+     * @return Mapa codigoCuota -> pagos acumulados. Las cuotas sin pagos no aparecen.
+     */
+    private Map<Long, PagosCuota> obtenerPagosPorCuota(List<DetallePrestamo> cuotas) {
+        Map<Long, PagosCuota> resultado = new LinkedHashMap<>();
+
+        if (cuotas == null || cuotas.isEmpty()) {
+            return resultado;
+        }
+
+        final int TAMANIO_BLOQUE = 500;
+        List<Long> codigos = new ArrayList<>();
+        for (DetallePrestamo cuota : cuotas) {
+            codigos.add(cuota.getCodigo());
+        }
+
+        String jpql = "SELECT p.detallePrestamo.codigo, " +
+                     "SUM(p.capitalPagado), SUM(p.interesPagado), SUM(p.desgravamen), " +
+                     "SUM(p.moraPagada), SUM(p.interesVencidoPagado), SUM(p.valorSeguroIncendio) " +
+                     "FROM PagoPrestamo p " +
+                     "WHERE p.detallePrestamo.codigo IN :codigos " +
+                     "GROUP BY p.detallePrestamo.codigo";
+
+        for (int inicio = 0; inicio < codigos.size(); inicio += TAMANIO_BLOQUE) {
+            List<Long> bloque = codigos.subList(inicio, Math.min(inicio + TAMANIO_BLOQUE, codigos.size()));
+
+            try {
+                Query query = em.createQuery(jpql);
+                query.setParameter("codigos", bloque);
+
+                @SuppressWarnings("unchecked")
+                List<Object[]> filas = query.getResultList();
+
+                for (Object[] fila : filas) {
+                    PagosCuota pagos = new PagosCuota();
+                    pagos.capital = valorNumerico(fila[1]);
+                    pagos.interes = valorNumerico(fila[2]);
+                    pagos.desgravamen = valorNumerico(fila[3]);
+                    pagos.mora = valorNumerico(fila[4]);
+                    pagos.interesVencido = valorNumerico(fila[5]);
+                    pagos.seguroIncendio = valorNumerico(fila[6]);
+
+                    resultado.put(((Number) fila[0]).longValue(), pagos);
+                }
+
+            } catch (Throwable e) {
+                // Sin los pagos se cobraría la cuota completa otra vez: es mejor
+                // cortar el proceso que generar un archivo que cobre de más.
+                throw new RuntimeException("Error al obtener los pagos previos de las cuotas: " + e.getMessage(), e);
+            }
+        }
+
+        System.out.println("Cuotas con pagos previos registrados: " + resultado.size());
+        return resultado;
+    }
+
+    private double valorNumerico(Object valor) {
+        return valor != null ? ((Number) valor).doubleValue() : 0.0;
+    }
+
+    /**
+     * Saldo pendiente de una cuota: lo que falta por cobrar.
+     *
+     * Es el valor de la cuota menos lo ya pagado. Para una cuota sin pagos
+     * previos coincide con el valor original; para una PARCIAL es el resto.
+     *
+     * No incluye el seguro de incendio, que viaja aparte en el producto HS.
+     */
+    private double calcularSaldoCuota(DetallePrestamo cuota, PagosCuota pagos) {
+        double capital = nullSafeDouble(cuota.getCapital());
+        double interes = nullSafeDouble(cuota.getInteres());
+        double mora = nullSafeDouble(cuota.getMora());
+        double interesVencido = nullSafeDouble(cuota.getInteresVencido());
+        double desgravamen = nullSafeDouble(cuota.getDesgravamen());
+
+        if (pagos == null) {
+            return capital + interes + mora + interesVencido + desgravamen;
+        }
+
+        return Math.max(0, capital - pagos.capital)
+             + Math.max(0, interes - pagos.interes)
+             + Math.max(0, mora - pagos.mora)
+             + Math.max(0, interesVencido - pagos.interesVencido)
+             + Math.max(0, desgravamen - pagos.desgravamen);
+    }
+
+    /**
+     * Saldo del seguro de incendio de una cuota (producto HS).
+     */
+    private double saldoSeguroIncendio(DetallePrestamo cuota, PagosCuota pagos) {
+        double valorSeguro = nullSafeDouble(cuota.getValorSeguroIncendio());
+        if (pagos == null) {
+            return valorSeguro;
+        }
+        return Math.max(0, valorSeguro - pagos.seguroIncendio);
+    }
+
+    /**
+     * Indica si la cuota viene con un pago parcial encima, ya sea por su estado
+     * o porque tiene pagos registrados que no la cubren.
+     */
+    private boolean esCuotaParcial(DetallePrestamo cuota, PagosCuota pagos) {
+        Long estado = cuota.getEstado();
+        if (estado != null && estado == EstadoCuotaPrestamo.PARCIAL) {
+            return true;
+        }
+        return pagos != null && (pagos.capital + pagos.interes + pagos.desgravamen
+            + pagos.mora + pagos.interesVencido + pagos.seguroIncendio) > 0.01;
+    }
+
+    private double nullSafeDouble(Double valor) {
+        return valor != null ? valor : 0.0;
+    }
+
+    /**
+     * Valor original de una cuota (capital + interés + mora + interés vencido +
+     * desgravamen), sin descontar pagos. Solo se usa para los mensajes de log.
      */
     private double calcularMontoCuota(DetallePrestamo cuota) {
-        double capital = cuota.getCapital() != null ? cuota.getCapital() : 0.0;
-        double interes = cuota.getInteres() != null ? cuota.getInteres() : 0.0;
-        double mora = cuota.getMora() != null ? cuota.getMora() : 0.0;
-        double interesVencido = cuota.getInteresVencido() != null ? cuota.getInteresVencido() : 0.0;
-        double desgravamen = cuota.getDesgravamen() != null ? cuota.getDesgravamen() : 0.0;
-        
-        return capital + interes + mora + interesVencido + desgravamen;
+        return nullSafeDouble(cuota.getCapital())
+             + nullSafeDouble(cuota.getInteres())
+             + nullSafeDouble(cuota.getMora())
+             + nullSafeDouble(cuota.getInteresVencido())
+             + nullSafeDouble(cuota.getDesgravamen());
     }
 
     private String generarArchivoTXT(Map<String, List<LineaArchivo>> datosPorProducto,
@@ -1439,14 +1646,15 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
      * @param segurosPorEntidad Mapa acumulador de seguros por entidad
      * @param entidad Entidad/partícipe dueño del préstamo
      * @param codigoPrestamo Código del préstamo
-     * @param cuota Cuota de la cual extraer el seguro de incendio
+     * @param cuota Cuota de la cual proviene el seguro
+     * @param valorSeguro Saldo del seguro de incendio pendiente de cobro
      */
     private void acumularSeguroIncendio(Map<Long, LineaArchivo> segurosPorEntidad,
                                        Entidad entidad,
-                                       Long codigoPrestamo, DetallePrestamo cuota) {
-        Double valorSeguro = cuota.getValorSeguroIncendio();
-        if (valorSeguro == null || valorSeguro <= 0) {
-            return; // No hay seguro en esta cuota
+                                       Long codigoPrestamo, DetallePrestamo cuota,
+                                       double valorSeguro) {
+        if (valorSeguro <= 0.01) {
+            return; // El seguro de esta cuota ya está cubierto
         }
 
         Long codigoEntidad = entidad.getCodigo();
@@ -1548,6 +1756,18 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
             this.montoJubilacion = 0.0;
             this.montoCesantia = 0.0;
         }
+    }
+
+    /**
+     * Lo ya pagado de una cuota, acumulado desde CRD.PGPR (PagoPrestamo).
+     */
+    private static class PagosCuota {
+        double capital = 0.0;
+        double interes = 0.0;
+        double desgravamen = 0.0;
+        double mora = 0.0;
+        double interesVencido = 0.0;
+        double seguroIncendio = 0.0;
     }
 
     /**
