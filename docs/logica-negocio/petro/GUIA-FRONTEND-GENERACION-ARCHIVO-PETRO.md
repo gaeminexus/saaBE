@@ -298,18 +298,29 @@ Una línea por partícipe y producto, agrupadas por producto en el orden
 
 ### Filial 2 — ARCH (plano por columnas)
 
-Separador `;`, primera fila con los nombres de columna, una línea por partícipe:
+Separador `;`, **dos filas de cabecera**, luego los nombres de columna, una línea
+por partícipe y una **última fila con los totales globales**:
 
 ```
-IDENTIFICACION;RAZON SOCIAL;AC;AJ;PE;PH;HS;PQ;PP
-0923456789;GOMEZ RUIZ MARIA ELENA;25.00;35.00;95.20;0.00;0.00;0.00;0.00
-1712345678;PEREZ LOPEZ JUAN CARLOS;25.00;35.00;0.00;180.45;12.30;0.00;0.00
+ASOPREP
+Fecha: AGOSTO 2026
+IDENTIFICACION;RAZON SOCIAL;AC;AJ;PE;PH;HS;PQ;PP;TOTAL
+0923456789;GOMEZ RUIZ MARIA ELENA;25.00;35.00;95.20;0.00;0.00;0.00;0.00;155.20
+1712345678;PEREZ LOPEZ JUAN CARLOS;25.00;35.00;0.00;180.45;12.30;0.00;0.00;252.75
+TOTALES;2 PARTICIPES;50.00;70.00;95.20;180.45;12.30;0.00;0.00;407.95
 ```
 
+- Las **dos primeras líneas** son cabecera: el título `ASOPREP` y `Fecha: {MES} {AÑO}`
+  con el periodo de la generación. Los nombres de columna están en la **tercera** línea.
 - Los valores son números normales con **dos decimales y punto decimal**, sin
   multiplicadores ni relleno de ceros.
 - Un producto sin valor sale como `0.00`, nunca vacío.
 - `AC` = aporte cesantía, `AJ` = aporte jubilación.
+- `TOTAL` es lo que se le descuenta al partícipe en el periodo (suma de todas sus
+  columnas).
+- La **última línea** empieza con `TOTALES` y trae el total de cada columna; la
+  segunda celda dice cuántos partícipes hay. Si un proceso automático consume el
+  archivo, esa fila hay que saltarla.
 - Si un partícipe tiene dos préstamos del mismo tipo, la columna trae la **suma**.
 - Las filas van ordenadas por número de identificación.
 - El `;` y los saltos de línea se eliminan de la razón social para no romper las

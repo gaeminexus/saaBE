@@ -71,6 +71,16 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
     /** Separador de columnas del archivo plano de ARCH. */
     private static final String SEPARADOR_COLUMNAS = ";";
 
+    /** Marca de la última fila del archivo plano de ARCH, la de totales globales. */
+    private static final String ETIQUETA_FILA_TOTALES = "TOTALES";
+
+    /** Título que encabeza el archivo plano de ARCH. */
+    private static final String TITULO_ARCHIVO_PLANO = "ASOPREP";
+
+    /** Nombres de los meses. El índice es el número de mes (1 = ENERO). */
+    private static final String[] NOMBRES_MESES = {"", "ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
+                                                   "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"};
+
     @EJB
     private GeneracionArchivoPetroDaoService dao;
     
@@ -1453,7 +1463,7 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
             if (esFilialPetrocomercial(codigoFilial)) {
                 escribirArchivoPetrocomercial(writer, datosPorProducto, fechaProceso);
             } else {
-                escribirArchivoPlanoColumnas(writer, datosPorProducto);
+                escribirArchivoPlanoColumnas(writer, datosPorProducto, mes, anio);
             }
         }
 
@@ -1483,14 +1493,22 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
      * Formato ARCH: archivo plano separado por ';', una línea por partícipe y
      * una columna por producto.
      *
-     * Columnas: IDENTIFICACION;RAZON SOCIAL;AC;AJ;PE;PH;HS;PQ;PP
+     * Columnas: IDENTIFICACION;RAZON SOCIAL;AC;AJ;PE;PH;HS;PQ;PP;TOTAL
      *
      * A diferencia de Petrocomercial, el aporte NO se envía sumado en AH: la
      * cesantía va en AC y la jubilación en AJ. Los valores salen como números
      * normales con dos decimales (sin multiplicar ni rellenar con ceros).
+     *
+     * La columna TOTAL es lo que se le descuenta al partícipe en el periodo, y
+     * la última fila (marcada con TOTALES) trae los totales globales de cada
+     * columna para poder cuadrar el archivo de un vistazo.
+     *
+     * Antes de los nombres de columna van dos filas de cabecera: el título
+     * ASOPREP y el periodo que se está generando.
      */
     private void escribirArchivoPlanoColumnas(BufferedWriter writer,
-                                              Map<String, List<LineaArchivo>> datosPorProducto) throws Exception {
+                                              Map<String, List<LineaArchivo>> datosPorProducto,
+                                              Long mes, Long anio) throws Exception {
         // Una fila por partícipe: se consolida todo lo recopilado por entidad.
         Map<Long, FilaColumnas> filasPorEntidad = new LinkedHashMap<>();
 
@@ -1521,6 +1539,12 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
             }
         }
 
+        // Dos filas de cabecera antes de los nombres de columna
+        writer.write(TITULO_ARCHIVO_PLANO);
+        writer.newLine();
+        writer.write("Fecha: " + nombreMes(mes) + " " + anio);
+        writer.newLine();
+
         // Encabezado de columnas
         StringBuilder cabecera = new StringBuilder();
         cabecera.append("IDENTIFICACION").append(SEPARADOR_COLUMNAS);
@@ -1530,12 +1554,19 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
         for (String codigoProducto : ORDEN_COLUMNAS_PRESTAMOS) {
             cabecera.append(SEPARADOR_COLUMNAS).append(codigoProducto);
         }
+        cabecera.append(SEPARADOR_COLUMNAS).append("TOTAL");
         writer.write(cabecera.toString());
         writer.newLine();
 
         // Ordenadas por número de identificación
         List<FilaColumnas> filas = new ArrayList<>(filasPorEntidad.values());
         filas.sort((a, b) -> a.numeroIdentificacion.compareTo(b.numeroIdentificacion));
+
+        // Acumuladores para el registro de totales globales
+        double totalCesantia = 0.0;
+        double totalJubilacion = 0.0;
+        Map<String, Double> totalPorProducto = new LinkedHashMap<>();
+        double totalGeneral = 0.0;
 
         for (FilaColumnas fila : filas) {
             StringBuilder linea = new StringBuilder();
@@ -1544,16 +1575,46 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
             linea.append(formatearValor(fila.aporteCesantia)).append(SEPARADOR_COLUMNAS);
             linea.append(formatearValor(fila.aporteJubilacion));
 
+            // Total a descontar al partícipe: aportes + todos sus productos
+            double totalParticipe = fila.aporteCesantia + fila.aporteJubilacion;
+
+            totalCesantia += fila.aporteCesantia;
+            totalJubilacion += fila.aporteJubilacion;
+
             for (String codigoProducto : ORDEN_COLUMNAS_PRESTAMOS) {
                 Double monto = fila.montosPorProducto.get(codigoProducto);
-                linea.append(SEPARADOR_COLUMNAS).append(formatearValor(monto != null ? monto : 0.0));
+                double valor = monto != null ? monto : 0.0;
+
+                linea.append(SEPARADOR_COLUMNAS).append(formatearValor(valor));
+
+                totalParticipe += valor;
+                totalPorProducto.put(codigoProducto,
+                    (totalPorProducto.containsKey(codigoProducto) ? totalPorProducto.get(codigoProducto) : 0.0) + valor);
             }
+
+            linea.append(SEPARADOR_COLUMNAS).append(formatearValor(totalParticipe));
+            totalGeneral += totalParticipe;
 
             writer.write(linea.toString());
             writer.newLine();
         }
 
-        System.out.println("Archivo plano por columnas: " + filas.size() + " partícipes");
+        // Registro final con los totales globales
+        StringBuilder totales = new StringBuilder();
+        totales.append(ETIQUETA_FILA_TOTALES).append(SEPARADOR_COLUMNAS);
+        totales.append(filas.size()).append(" PARTICIPES").append(SEPARADOR_COLUMNAS);
+        totales.append(formatearValor(totalCesantia)).append(SEPARADOR_COLUMNAS);
+        totales.append(formatearValor(totalJubilacion));
+        for (String codigoProducto : ORDEN_COLUMNAS_PRESTAMOS) {
+            Double total = totalPorProducto.get(codigoProducto);
+            totales.append(SEPARADOR_COLUMNAS).append(formatearValor(total != null ? total : 0.0));
+        }
+        totales.append(SEPARADOR_COLUMNAS).append(formatearValor(totalGeneral));
+        writer.write(totales.toString());
+        writer.newLine();
+
+        System.out.println("Archivo plano por columnas: " + filas.size() + " partícipes, total a descontar $"
+            + formatearValor(totalGeneral));
     }
 
     /**
@@ -1604,9 +1665,7 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
      * sobrescribiría el archivo de la primera.
      */
     private String generarNombreArchivo(Long mes, Long anio, Long codigoFilial) {
-        String[] meses = {"", "ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
-                         "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"};
-        String periodo = meses[mes.intValue()] + " " + anio + ".txt";
+        String periodo = nombreMes(mes) + " " + anio + ".txt";
 
         if (esFilialPetrocomercial(codigoFilial)) {
             return "DESCUENTOS ASOPREP " + periodo;
@@ -1615,6 +1674,17 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
             return "DESCUENTOS ARCH " + periodo;
         }
         return "DESCUENTOS FILIAL " + codigoFilial + " " + periodo;
+    }
+
+    /**
+     * Nombre del mes en mayúsculas. Devuelve el número si viene fuera de rango,
+     * para que un dato malo no tumbe la generación del archivo.
+     */
+    private String nombreMes(Long mes) {
+        if (mes == null || mes < 1 || mes > 12) {
+            return String.valueOf(mes);
+        }
+        return NOMBRES_MESES[mes.intValue()];
     }
 
     private int obtenerUltimoDiaMes(int mes, int anio) {
