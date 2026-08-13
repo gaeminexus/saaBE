@@ -229,7 +229,43 @@ bloqueantes implementados:
 | `PRODUCTOS_SIN_CLASIFICAR` — algún producto está en grupo POR CLASIFICAR | ✅ | — | — | ✗ |
 | `GRUPOS_SIN_CUENTA_CONTABLE` — el grupo del producto no tiene `planCuenta` | ✅ | — | — | ✗ |
 | `CODIGOS_RETENCION_SIN_CUENTA` — un `codigoRetencion` del XML no tiene cuenta en `PGS.TSRI` | — | ✅ | ✅ | — |
-| `FACTURA_VENTA_NO_ENCONTRADA` — el documento sustento no existe en CXC | — | ⚠️ **solo advertencia** | ✅ bloquea | — |
+| `FACTURA_VENTA_NO_ENCONTRADA` — no se resuelve la factura de venta del documento sustento | — | ✅ | ✅ | — |
+| `RETENCION_MULTIDOCUMENTO` — el XML trae más de un `numDocSustento` distinto | — | ✅ | — | — |
+
+### Resolución del documento sustento (factura de venta)
+
+La retención recibida abona una factura de **venta**, así que esa factura debe
+existir antes de registrar la retención. El bloqueante llama al **mismo**
+resolutor que después usará la aplicación de pago del Paso 4:
+
+```java
+aplicacionPagoCxcService.resolverFacturaPorNumero(numDocSustento, null, idEmpresa)
+    → AplicacionPagoCxcDaoService.selectFacturaByNumero(...)
+    → " where FUNCTION('replace', f.numero, '-', '') = :numero "   // numero también sin guiones
+```
+
+**El número se compara SIN GUIONES en ambos lados.** El SRI manda
+`001001000000784` y en `CBR.FCTR` suele estar como `001-001-000000784`; antes el
+Paso 2d hacía su propio `COUNT` con `f.numero = :val` tal cual, así que reportaba
+"documento sustento no encontrado" aunque la factura sí existiera. Reutilizar el
+resolutor garantiza que el bloqueante y la aplicación de pago no puedan discrepar.
+
+Detalles del comportamiento:
+
+- Se valida **solo si `Facturador.generaConta = 1`**. Con `generaConta = 0` no se
+  genera asiento ni aplicación de pago, así que la factura de venta no hace falta.
+- Si el XML trae varios `<retencion>` con `numDocSustento` distintos, se corta con
+  `RETENCION_MULTIDOCUMENTO`: el Paso 4 (`obtenerNumeroDocSustento`) solo soporta
+  un documento sustento por retención. La comparación es del valor tal cual, sin
+  normalizar, porque así los distingue el `select distinct d.numDocReten` del
+  Paso 4.
+- `numAutDocSustento` ya no se usa para buscar la factura (solo aparece en el
+  mensaje de error): la búsqueda por autorización podía encontrar la factura pero
+  el Paso 4 resuelve por número, así que validar por autorización daba un OK
+  falso.
+- ⚠️ `selectFacturaByNumero` filtra por empresa pero **no** por `f.estado`, así
+  que una factura anulada también resuelve. Es el comportamiento del resolutor
+  de CXC (y del equivalente de CXP), no algo propio de este proceso.
 
 **NC y ND sí abortan si falta la factura de compra afectada**, pero no como
 bloqueante estructurado: `registrarNotaCreditoCompra` /
@@ -256,14 +292,14 @@ Cualquier otro valor se reporta como *"Tipo de impuesto desconocido"*.
 }
 ```
 
-> ⚠️ **Inconsistencia conocida en Retención V2.** `registrarRetencionCompraV2`
-> trata el documento sustento no encontrado como advertencia
-> (`advertenciaDocSustento`) y sigue adelante, pero el Paso 4 llama a
-> `aplicarRetencionRecibidaV2`, que resuelve la factura de venta por número y
-> **lanza excepción si no la encuentra** → rollback completo y documento en
-> estado `ERROR` con un mensaje poco claro. La versión V1 (muerta) sí lo declara
-> bloqueante (`FACTURA_VENTA_NO_ENCONTRADA`). Log típico:
-> `⚠ ADVERTENCIA doc sustento V2: El documento sustento no fue encontrado en CXC.`
+> **Corregido el 2026-08-13.** Antes, `registrarRetencionCompraV2` trataba el
+> documento sustento no encontrado como advertencia (`advertenciaDocSustento`) y
+> seguía adelante, pero el Paso 4 lanzaba excepción al no resolver la factura →
+> rollback completo y documento en `ERROR` con un mensaje poco claro. Además la
+> comparación del número no ignoraba los guiones, así que la advertencia salía
+> incluso cuando la factura existía. Ahora es bloqueante y usa el mismo resolutor
+> que el Paso 4. La clave `advertenciaDocSustento` de la respuesta **ya no
+> existe** (aplicaba a V1 y V2).
 
 ### Paso 4 — Registro en BD, asiento y aplicación de pago (solo si todo OK)
 
@@ -489,7 +525,8 @@ Application path JAX-RS: `/rest` · Base: `/SaaBE/rest/carga-documentos`
 
 | Tema | Pendiente |
 |---|---|
-| Retención V2 · doc sustento | Decidir si `FACTURA_VENTA_NO_ENCONTRADA` debe ser bloqueante (como en V1) o si la aplicación de pago debe tolerar la factura ausente. Hoy advierte y luego falla con rollback (§5) |
+| Retención V2 · doc sustento | ✅ Resuelto el 2026-08-13: `FACTURA_VENTA_NO_ENCONTRADA` es bloqueante y el número se compara sin guiones (§5) |
+| Retención · multidocumento | Soportar retenciones con varios documentos sustento: hoy se bloquean con `RETENCION_MULTIDOCUMENTO` porque la aplicación de pago solo sabe abonar a una factura |
 | Retención V2 · path | Falta la entidad `PathRetencionCompraV2`; el path solo queda en `DocumentoCxp.pathXml` |
 | `TipoAsientos` | Definir `codigoAlterno` propios en `CNT.TPAS`: hoy Factura de compra y las dos retenciones comparten el `3`, y NC/ND/Liquidación (`10/11/12`) están marcados como *TODO verificar en BD* |
 | `Nota de Crédito` / `Nota de Débito` | Agregar validaciones bloqueantes estructuradas (cuenta proveedor, tipo asiento, cuenta del grupo) y convertir el fallo de `resolverFacturaCompraPorNumero` en un `422` con `bloqueantes` en vez de un `500` |

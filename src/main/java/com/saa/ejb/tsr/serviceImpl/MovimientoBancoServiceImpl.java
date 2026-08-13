@@ -131,10 +131,11 @@ public class MovimientoBancoServiceImpl implements MovimientoBancoService {
 	public void crearMovimientoPorCobro(Cobro cobro) throws Throwable {
 		System.out.println("Ingresa al metodo crearMovimientoPorCobro con id Cobro: " + cobro.getCodigo());
 		//VALIDA DATE
-		MovimientoBanco movimientoBanco = new MovimientoBanco();
 		List<CobroTransferencia> listaCobroTransferencia = cobroTransferenciaDaoService.selectByIdCobro(cobro.getCodigo());
 		for (CobroTransferencia cobroTransferencia : listaCobroTransferencia) {
-			movimientoBanco.setCodigo(0L);
+			//Una instancia nueva por cada transferencia: reusar la misma provocaba
+			//que a partir del segundo ciclo se actualizara el movimiento anterior.
+			MovimientoBanco movimientoBanco = new MovimientoBanco();
 			movimientoBanco.setEmpresa(cobro.getEmpresa());
 			String descripcion = "INGRESO POR TRANSFERENCIA A CUENTA BANCARIA No. " + cobroTransferencia.getCuentaBancaria().getNumeroCuenta();
 			movimientoBanco.setDescripcion(descripcion);
@@ -154,7 +155,7 @@ public class MovimientoBancoServiceImpl implements MovimientoBancoService {
 			movimientoBanco.setRubroOrigenH(Long.valueOf(OrigenMovimientoConciliacion.TRANSFERENCIA_CREDITO));
 			
 			try {
-				movimientoBancoDaoService.save(movimientoBanco, movimientoBanco.getCodigo());
+				movimientoBancoDaoService.save(movimientoBanco, null);
 			} catch (PersistenceException e) {
 				throw new IncomeException("Error en el metodo crearMovimientoPorCobro: " + e.getCause());
 			}			
@@ -200,7 +201,6 @@ public class MovimientoBancoServiceImpl implements MovimientoBancoService {
 		System.out.println("Ingresa al Metodo creaMovimientoEgreso");
 		Empresa empresa = empresaService.selectById(idEmpresa);
 		MovimientoBanco movimientoBanco = new MovimientoBanco();
-		movimientoBanco.setCodigo(0L);
 		movimientoBanco.setEmpresa(empresa);
 		movimientoBanco.setDescripcion("DEPOSITO DE COBRO");
 		movimientoBanco.setAsiento(asiento);
@@ -219,7 +219,7 @@ public class MovimientoBancoServiceImpl implements MovimientoBancoService {
 		movimientoBanco.setRubroOrigenP(Long.valueOf(Rubros.ORIGEN_MOVIMIENTO_CONCILIACION));
 		movimientoBanco.setRubroOrigenH(Long.valueOf(OrigenMovimientoConciliacion.COBROS));
 		try {
-			movimientoBancoDaoService.save(movimientoBanco, movimientoBanco.getCodigo());
+			movimientoBancoDaoService.save(movimientoBanco, null);
 		} catch (PersistenceException e) {
 			throw new IncomeException("Error en el metodo creaMovimientoPorDeposito: " + e.getCause());
 		}
@@ -250,7 +250,8 @@ public class MovimientoBancoServiceImpl implements MovimientoBancoService {
 		System.out.println("Ingresa al Metodo creaMovimientoPorTeansferencia");
 		Empresa empresa = empresaService.selectById(idEmpresa);
 		MovimientoBanco movimientoBanco = new MovimientoBanco();
-		movimientoBanco.setCodigo(0L);
+		//El codigo lo genera la secuencia SQ_MVCBCDGO: se deja en null para que el DAO haga persist.
+		//Si se asigna 0L el DAO ejecuta merge sobre una fila inexistente (MovimientoBanco#0).
 		movimientoBanco.setEmpresa(empresa);
 		movimientoBanco.setDescripcion(descripcion);
 		movimientoBanco.setAsiento(asiento);
@@ -268,10 +269,10 @@ public class MovimientoBancoServiceImpl implements MovimientoBancoService {
 		movimientoBanco.setRubroOrigenP(Long.valueOf(Rubros.ORIGEN_MOVIMIENTO_CONCILIACION));
 		movimientoBanco.setRubroOrigenH(Long.valueOf(origenMovimiento));
 		try {
-			movimientoBanco = movimientoBancoDaoService.save(movimientoBanco, movimientoBanco.getCodigo());
+			movimientoBanco = movimientoBancoDaoService.save(movimientoBanco, null);
 		} catch (PersistenceException e) {
-			throw new IncomeException("Error en el metodo creaMovimientoPorDeposito: " + e.getCause());
-		}			
+			throw new IncomeException("Error en el metodo creaMovimientoPorTransferencia: " + e.getCause());
+		}
 		return movimientoBanco;
 	}
 		
@@ -280,7 +281,6 @@ public class MovimientoBancoServiceImpl implements MovimientoBancoService {
 		System.out.println("Ingresa al Metodo creaMovimientoPorCheque");
 		Empresa empresa = empresaService.selectById(idEmpresa);
 		MovimientoBanco movimientoBanco = new MovimientoBanco();
-		movimientoBanco.setCodigo(0L);
 		movimientoBanco.setEmpresa(empresa);
 		movimientoBanco.setDescripcion(descripcion);
 		movimientoBanco.setAsiento(asiento);
@@ -298,8 +298,8 @@ public class MovimientoBancoServiceImpl implements MovimientoBancoService {
 		movimientoBanco.setRubroOrigenP(Long.valueOf(Rubros.ORIGEN_MOVIMIENTO_CONCILIACION));
 		movimientoBanco.setRubroOrigenH(Long.valueOf(OrigenMovimientoConciliacion.PAGOS));
 		try {
-			movimientoBancoDaoService.save(movimientoBanco, movimientoBanco.getCodigo());
-		} catch (PersistenceException e) {			
+			movimientoBancoDaoService.save(movimientoBanco, null);
+		} catch (PersistenceException e) {
 			throw new IncomeException("Error en el metodo creaMovimientoPorCheque: " + e.getCause());
 		}		
 	}

@@ -1605,46 +1605,33 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             bloqueantes.add(b);
         }
 
-        // 2d. Verificar documento sustento en CXC — SOLO ADVERTENCIA, no bloquea el proceso
-        String advertenciaDocSustento = null;
-        if (!numAutDocSustento.isEmpty() || !numDocSustento.isEmpty()) {
-            boolean docSustentoEncontrado = false;
+        // 2d. BLOQUEANTE: la retención abona una factura de VENTA (CXC), que debe
+        //     existir. Igual que en registrarRetencionCompraV2, se resuelve con el
+        //     mismo método que usa la aplicación de pago
+        //     (AplicacionPagoCxcService.resolverFacturaPorNumero), que compara el
+        //     número sin guiones — el SRI manda '001001000000784' y en CBR.FCTR
+        //     está como '001-001-000000784'.
+        if (!numDocSustento.isEmpty() || !numAutDocSustento.isEmpty()) {
             try {
-                if (!numAutDocSustento.isEmpty()) {
-                    Long cnt = (Long) em.createQuery(
-                            "SELECT COUNT(f) FROM Factura f "
-                            + "WHERE f.autorizacion = :val AND f.estado = 1")
-                            .setParameter("val", numAutDocSustento)
-                            .getSingleResult();
-                    docSustentoEncontrado = cnt != null && cnt > 0;
-                }
-                if (!docSustentoEncontrado && !numDocSustento.isEmpty()) {
-                    Long cnt = (Long) em.createQuery(
-                            "SELECT COUNT(f) FROM Factura f "
-                            + "WHERE f.numero = :val AND f.estado = 1")
-                            .setParameter("val", numDocSustento)
-                            .getSingleResult();
-                    docSustentoEncontrado = cnt != null && cnt > 0;
-                }
-            } catch (Exception ex) {
-                // No se silencia: si no se pudo verificar, se trata como no encontrado
-                // para no registrar una retención cuyo cobro no se puede aplicar.
-                System.err.println("⚠ Error al verificar documento sustento en CXC: " + ex.getMessage());
-                docSustentoEncontrado = false;
-            }
-            if (!docSustentoEncontrado) {
-                // BLOQUEANTE: la retención abona una factura de venta. Sin la factura
-                // no se puede registrar el cobro ni generar la contabilidad.
-                advertenciaDocSustento = "El documento sustento no fue encontrado en CXC. "
-                        + "Autorización: '" + numAutDocSustento + "' | Número: '" + numDocSustento + "'.";
+                com.saa.model.cxc.Factura facturaVenta =
+                        aplicacionPagoCxcService.resolverFacturaPorNumero(numDocSustento, null, idEmpresa);
+                System.out.println("✓ Documento sustento resuelto en CXC: factura id="
+                        + facturaVenta.getId() + " | numero=" + facturaVenta.getNumero()
+                        + " | buscado='" + numDocSustento + "'");
+            } catch (Throwable ex) {
                 Map<String, Object> b = new HashMap<>();
                 b.put("tipo", "FACTURA_VENTA_NO_ENCONTRADA");
-                b.put("mensaje", "No existe en el sistema la factura de venta a la que afecta esta "
+                b.put("mensaje", ex.getMessage());
+                b.put("detalle", "No se pudo resolver la factura de venta a la que afecta esta "
                         + "retención. Número: '" + numDocSustento + "' | Autorización: '"
                         + numAutDocSustento + "'. Emita o cargue primero la factura.");
-                b.put("solucion", "Verifique que la factura de venta exista y esté activa en CXC.");
+                b.put("solucion", "Verifique que la factura de venta exista en CXC. El número se "
+                        + "compara sin guiones, así que '001001000000784' y '001-001-000000784' "
+                        + "son equivalentes.");
                 bloqueantes.add(b);
-                System.out.println("⚠ BLOQUEANTE doc sustento: " + advertenciaDocSustento);
+                System.out.println("⚠ BLOQUEANTE doc sustento: " + ex.getMessage()
+                        + " | Número: '" + numDocSustento + "' | Autorización: '"
+                        + numAutDocSustento + "'");
             }
         }
 
@@ -1715,7 +1702,6 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         r.put("idDocumentoBD", rc.getId());
         r.put("tipoTablaDestino", "RETENCION_COMPRA");
         r.put("mensaje", "RetencionCompra registrada con id=" + rc.getId());
-        if (advertenciaDocSustento != null) r.put("advertenciaDocSustento", advertenciaDocSustento);
         return r;
     }
 
@@ -1811,35 +1797,65 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             bloqueantes.add(b);
         }
 
-        // 2d. Verificar documento sustento en CXC — SOLO ADVERTENCIA, no bloquea el proceso
-        String advertenciaDocSustento = null;
-        if (!numAutDocSustento.isEmpty() || !numDocSustento.isEmpty()) {
-            boolean docSustentoEncontrado = false;
-            try {
-                if (!numAutDocSustento.isEmpty()) {
-                    Long cnt = (Long) em.createQuery(
-                            "SELECT COUNT(f) FROM Factura f "
-                            + "WHERE f.autorizacion = :val AND f.estado = 1")
-                            .setParameter("val", numAutDocSustento)
-                            .getSingleResult();
-                    docSustentoEncontrado = cnt != null && cnt > 0;
-                }
-                if (!docSustentoEncontrado && !numDocSustento.isEmpty()) {
-                    Long cnt = (Long) em.createQuery(
-                            "SELECT COUNT(f) FROM Factura f "
-                            + "WHERE f.numero = :val AND f.estado = 1")
-                            .setParameter("val", numDocSustento)
-                            .getSingleResult();
-                    docSustentoEncontrado = cnt != null && cnt > 0;
-                }
-            } catch (Exception ex) {
-                System.err.println("⚠ Error al verificar documento sustento en CXC: " + ex.getMessage());
-                docSustentoEncontrado = true;
+        // 2d. BLOQUEANTE: la retención abona una factura de VENTA (CXC), así que
+        //     esa factura debe existir antes de registrar la retención.
+        //     Se resuelve con el MISMO método que usará la aplicación de pago del
+        //     Paso 4 (AplicacionPagoCxcService.resolverFacturaPorNumero →
+        //     selectFacturaByNumero), que compara el número SIN GUIONES: el SRI
+        //     manda '001001000000784' y en CBR.FCTR está como
+        //     '001-001-000000784'. Antes se comparaba el número tal cual con un
+        //     COUNT propio, así que la validación fallaba aunque la factura
+        //     existiera. Reutilizar el resolutor garantiza que el bloqueante y la
+        //     aplicación de pago nunca discrepen.
+        //     Solo se valida si la empresa genera contabilidad: con generaConta=0
+        //     no hay asiento ni aplicación de pago, y la factura no hace falta.
+        if (verificarGeneraConta(idEmpresa)) {
+            // Números de documento sustento presentes en el XML. Se comparan tal
+            // cual (sin normalizar) porque así los distingue el Paso 4, que lee
+            // 'select distinct d.numDocReten' de los detalles ya grabados.
+            java.util.LinkedHashSet<String> numerosSustento = new java.util.LinkedHashSet<>();
+            for (int i = 0; i < retenciones.getLength(); i++) {
+                String num = getValorDocSustento((Element) retenciones.item(i), xmlDoc, "numDocSustento");
+                if (num != null && !num.trim().isEmpty()) numerosSustento.add(num.trim());
             }
-            if (!docSustentoEncontrado) {
-                advertenciaDocSustento = "El documento sustento no fue encontrado en CXC. "
-                        + "Autorización: '" + numAutDocSustento + "' | Número: '" + numDocSustento + "'.";
-                System.out.println("⚠ ADVERTENCIA doc sustento V2: " + advertenciaDocSustento);
+            if (numerosSustento.isEmpty() && !numDocSustento.isEmpty()) {
+                numerosSustento.add(numDocSustento.trim());
+            }
+
+            if (numerosSustento.size() > 1) {
+                Map<String, Object> b = new HashMap<>();
+                b.put("tipo", "RETENCION_MULTIDOCUMENTO");
+                b.put("mensaje", "La retención afecta a " + numerosSustento.size()
+                        + " documentos sustento distintos " + numerosSustento
+                        + ". El registro automático del cobro solo está soportado para "
+                        + "retenciones de un solo documento sustento.");
+                b.put("solucion", "Registre la retención manualmente o divídala por documento.");
+                b.put("numeros", new ArrayList<>(numerosSustento));
+                bloqueantes.add(b);
+                System.out.println("⚠ BLOQUEANTE doc sustento V2 (multidocumento): " + numerosSustento);
+            } else {
+                String numSustento = numerosSustento.isEmpty() ? "" : numerosSustento.iterator().next();
+                try {
+                    com.saa.model.cxc.Factura facturaVenta =
+                            aplicacionPagoCxcService.resolverFacturaPorNumero(numSustento, null, idEmpresa);
+                    System.out.println("✓ Documento sustento V2 resuelto en CXC: factura id="
+                            + facturaVenta.getId() + " | numero=" + facturaVenta.getNumero()
+                            + " | buscado='" + numSustento + "'");
+                } catch (Throwable ex) {
+                    Map<String, Object> b = new HashMap<>();
+                    b.put("tipo", "FACTURA_VENTA_NO_ENCONTRADA");
+                    b.put("mensaje", ex.getMessage());
+                    b.put("detalle", "No se pudo resolver la factura de venta a la que afecta esta "
+                            + "retención. Número: '" + numSustento + "' | Autorización: '"
+                            + numAutDocSustento + "'. Emita o cargue primero la factura.");
+                    b.put("solucion", "Verifique que la factura de venta exista en CXC. El número se "
+                            + "compara sin guiones, así que '001001000000784' y '001-001-000000784' "
+                            + "son equivalentes.");
+                    bloqueantes.add(b);
+                    System.out.println("⚠ BLOQUEANTE doc sustento V2: " + ex.getMessage()
+                            + " | Número: '" + numSustento + "' | Autorización: '"
+                            + numAutDocSustento + "'");
+                }
             }
         }
 
@@ -1907,7 +1923,6 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         r.put("idDocumentoBD", rc.getId());
         r.put("tipoTablaDestino", "RETENCION_COMPRA_V2");
         r.put("mensaje", "RetencionCompraV2 registrada con id=" + rc.getId());
-        if (advertenciaDocSustento != null) r.put("advertenciaDocSustento", advertenciaDocSustento);
         return r;
     }
 
