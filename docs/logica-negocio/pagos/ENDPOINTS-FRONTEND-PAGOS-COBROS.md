@@ -538,6 +538,104 @@ puntual queda sin cambiar de estado y hay que investigarlo). Mostrar el
 resumen (confirmados/rechazados/errores) en un panel de resultado, y
 refrescar/navegar a §3.4 para ver los nuevos estados.
 
+##### Formato del Excel de respuesta
+
+Lo lee `LectorRespuestaBancoExcelImpl`. **Formato PROVISIONAL** (ver §7.3):
+columnas **por posición**, los encabezados no se validan.
+
+- Se lee **solo la primera hoja** del libro.
+- **La fila 1 se descarta siempre** (encabezados). Los datos empiezan en la fila 2.
+- Acepta `.xlsx` y `.xls` (Apache POI 5.2.3 con `poi-ooxml`).
+
+| Col | Contenido | Oblig. | Notas |
+|---|---|---|---|
+| **A** | `idPago` — id de `PGS.PGTR` | Sí | Es el **primer campo de cada línea del TXT** que se envió al banco. Celda vacía o no numérica → la fila se ignora en silencio |
+| **B** | Resultado | Sí | Confirmado si es `OK`, `CONFIRMADO`, `EJECUTADO`, `APROBADO`, `PROCESADO`, `S` o `SI` (ignora mayúsculas y espacios). **Cualquier otro valor, incluida la celda vacía, se toma como RECHAZADO** |
+| **C** | Referencia / número de transferencia | No | Se graba en `PGTR.referenciaBanco` de los confirmados |
+| **D** | Motivo del rechazo | No | Solo se usa en los rechazados; vacío → `"Rechazado por la entidad financiera"` |
+
+Ejemplo:
+
+| | A | B | C | D |
+|---|---|---|---|---|
+| **1** | ID_PAGO | RESULTADO | REFERENCIA | MOTIVO |
+| **2** | 501 | OK | TRX-99812 | |
+| **3** | 502 | OK | TRX-99813 | |
+| **4** | 503 | RECHAZADO | | Cuenta destino inactiva |
+
+Reglas del proceso:
+
+- **No hay columna de fecha**: `fechaRespuesta` se graba con la fecha de hoy.
+- Una fila se procesa solo si el pago está en estado **2 = En archivo** y
+  pertenece a ese lote; si no, va a `errores` sin cambiar nada.
+- El archivo no necesita traer todos los pagos del lote. Una fila repetida cae
+  en `errores` por "ya fue procesado".
+- Si el archivo no tiene **ninguna** fila con id en la columna A, el endpoint
+  responde error: *"El archivo de respuesta no contiene ninguna fila con datos."*
+- El lote pasa a "respuesta procesada" **siempre**, incluso si todas las filas
+  fallaron.
+
+> ⚠️ La columna A funciona porque el TXT que generamos pone nuestro `idPago`
+> como primer campo. Un archivo real del banco difícilmente lo devuelva: cuando
+> llegue la especificación oficial, el cruce tendrá que hacerse por cuenta
+> destino + valor, o por una referencia propia que mandemos en el archivo de
+> salida. Eso solo cambia `LectorRespuestaBancoExcelImpl`; el contrato del
+> endpoint no se mueve.
+
+##### Alternativa: confirmar pagos manualmente, sin archivo
+
+Para cuando el banco no manda archivo, manda algo que el lector no entiende, o
+la transferencia se hizo por banca web y solo hay que registrarla.
+
+```
+POST /SaaBE/rest/pgtr/confirmarManual
+Content-Type: application/json
+{ "idsPagos": [12, 13], "referencia": "TRX-9981", "fechaPago": "2026-08-13",
+  "observacion": "Confirmado por banca web", "idUsuario": 5 }
+```
+
+| Campo | Oblig. | Notas |
+|---|---|---|
+| `idsPagos` | Sí | Array de ids. Vacío o ausente → `400` |
+| `referencia` | No | Se graba en `referenciaBanco` de **todos** los pagos enviados. Vacía → no toca el valor que ya tuvieran |
+| `fechaPago` | No | `yyyy-MM-dd`. Ausente o con formato inválido → hoy (no falla) |
+| `observacion` | No | Se **concatena** con `" \| "` a la observación que ya tenga el pago |
+| `idUsuario` | No | Usuario que registra |
+
+**Response `200 OK`:**
+```json
+{ "exito": true, "mensaje": "2 pago(s) confirmado(s) manualmente.", "confirmados": 2 }
+```
+
+Diferencias con la carga del archivo:
+
+- Acepta pagos en estado **1 = Registrado** y **2 = En archivo**. O sea **no
+  hace falta generar el lote**: se puede confirmar un pago recién registrado.
+  Los estados 3/4/5 se rechazan con mensaje en `errores`.
+- No exige lote ni pertenencia a un lote.
+- **Nunca marca rechazados**: solo confirma. Para rechazar se usa
+  `POST /pgtr/anular/{id}`.
+- Si los pagos venían de un lote, el lote se cierra solo cuando ya no le quedan
+  pagos pendientes.
+- Hace exactamente la misma contabilidad que el archivo: aplicación sobre la
+  factura, asiento contable y movimiento bancario (o el asiento de egreso de
+  tesorería si el pago viene de un egreso).
+
+Sirve tanto desde esta pantalla como desde §3.4 Seguimiento, sobre filas en
+estado 1 o 2.
+
+> ⚠️ **Este endpoint es todo-o-nada ante un error contable.** El backend recorre
+> los pagos uno por uno y acumula fallos en `errores`, pero las excepciones de
+> negocio de la contabilidad (`IncomeException`, marcada
+> `@ApplicationException(rollback = true)`) marcan la transacción completa para
+> rollback: el `commit` falla y el frontend recibe un **500 sin que se haya
+> grabado nada**, no un 200 con resultado parcial. Solo las validaciones que el
+> propio método detecta (pago inexistente, estado no confirmable) producen de
+> verdad un resultado parcial con `200`. Lo mismo aplica a
+> `/pgtr/lote/{id}/respuesta`. Práctica recomendada para el frontend: confirmar
+> en tandas chicas, y ante un `500` volver a consultar `/pgtr/listar` antes de
+> reintentar, porque ningún pago de esa llamada quedó confirmado.
+
 #### 3.4 d) Seguimiento de Pagos
 
 **Listado:** `GET /pgtr/listar?idEmpresa={id}` (sin filtro de `estado`, o
@@ -732,6 +830,7 @@ Puede repetirse para cobros parciales.
 | §3.2 Generar archivo (= aprobar) | `/pgtr/lote` | POST |
 | §3.2 Re-descargar archivo de un lote | `/pgtr/lote/{id}/archivo` | GET |
 | §3.3 Cargar respuesta del banco | `/pgtr/lote/{id}/respuesta?idUsuario=` | POST (octet-stream) |
+| §3.3 Confirmar pagos manualmente (sin archivo) | `/pgtr/confirmarManual` | POST |
 | §3.4 Listar seguimiento | `/pgtr/listar` | GET |
 | §3.4 Anular pago no confirmado | `/pgtr/anular/{id}` | POST |
 | §3.4 Revertir pago confirmado | `/pgtr/revertirConfirmado/{id}` | POST |
@@ -759,7 +858,16 @@ avisos de qué pedir si al construir alguna pantalla hace falta:
 3. **El formato del archivo TXT de salida y del Excel de respuesta son
    PROVISIONALES** — no bloquea construir la pantalla (el contrato JSON de
    los endpoints es estable), pero el contenido interno del archivo cambiará
-   cuando llegue el formato oficial del banco.
+   cuando llegue el formato oficial del banco. El formato que el lector espera
+   hoy está en §3.3 c). Mientras tanto, `POST /pgtr/confirmarManual` permite
+   cerrar el ciclo sin depender de ningún archivo.
+4. **Ni `/pgtr/confirmarManual` ni `/pgtr/lote/{id}/respuesta` confirman de
+   forma realmente parcial cuando falla la contabilidad de un pago**: el
+   `IncomeException` marca la transacción para rollback y se pierde toda la
+   tanda con un `500`. Para lograr resultado parcial de verdad, la confirmación
+   de cada pago tiene que ejecutarse en su propia transacción
+   (`@TransactionAttribute(REQUIRES_NEW)` en un método aparte) — pedirlo al
+   backend si el volumen de pagos por tanda lo hace necesario.
 
 **No hay más pendientes que bloqueen la construcción de estas pantallas.**
 Todo lo demás — campos, validaciones, botones, estados, mensajes — ya está
