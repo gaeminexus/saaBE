@@ -1653,6 +1653,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         if (numeroAutorizacion.isEmpty()) numeroAutorizacion = doc.getClaveAcceso();
         String fechaAutorizacionStr = getXmlValueOuter(xmlContent, "fechaAutorizacion");
 
+        double totalRetenido = calculaTotalRetenido(retenciones, doc);
+
         RetencionCompra rc = new RetencionCompra();
         rc.setEmpresa(empresa);
         rc.setTipoComprobante(getXmlValue(xmlDoc, "codDoc"));
@@ -1666,7 +1668,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         rc.setFechaAutorizacion(parseFechaHora(fechaAutorizacionStr));
         rc.setAutorizacion(numeroAutorizacion);
         rc.setPeriodoFiscal(getXmlValue(xmlDoc, "periodoFiscal"));
-        rc.setTotal(doc.getImporteTotal());
+        rc.setTotal(totalRetenido);
         rc.setProveedor(proveedor);
         rc.setUsuario(usuario);
         rc.setEstado(Long.valueOf(Estado.ACTIVO));
@@ -1877,6 +1879,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         if (numeroAutorizacion.isEmpty()) numeroAutorizacion = doc.getClaveAcceso();
         String fechaAutorizacionStr = getXmlValueOuter(xmlContent, "fechaAutorizacion");
 
+        double totalRetenido = calculaTotalRetenido(retenciones, doc);
+
         RetencionCompraV2 rc = new RetencionCompraV2();
         rc.setEmpresa(empresa);
         rc.setTipoComprobante(getXmlValue(xmlDoc, "codDoc"));
@@ -1890,7 +1894,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         rc.setFechaAutorizacion(parseFechaHora(fechaAutorizacionStr));
         rc.setAutorizacion(numeroAutorizacion);
         rc.setPeriodoFiscal(getXmlValue(xmlDoc, "periodoFiscal"));
-        rc.setTotal(doc.getImporteTotal());
+        rc.setTotal(totalRetenido);
         rc.setProveedor(proveedor);
         rc.setUsuario(usuario);
         rc.setEstado(Long.valueOf(Estado.ACTIVO));
@@ -2565,6 +2569,101 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         return null;
     }
 
+    /**
+     * Calcula el total de una retención recibida sumando los {@code <valorRetenido>}
+     * de sus detalles.
+     * <p>
+     * No se usa {@code DocumentoCxp.importeTotal} porque el comprobante de
+     * retención del SRI no trae {@code <importeTotal>} y la columna
+     * IMPORTE_TOTAL del TXT llega en {@code 0.00}: la cabecera quedaba con total
+     * cero y la aplicación de pago fallaba con "El monto a aplicar no puede ser
+     * cero". La suma de los valores retenidos es además el mismo valor que
+     * {@code generarAsientoRetencionCompra(V2)} usa para el lado HABER del
+     * asiento, así que cabecera, asiento y aplicación de pago quedan alineados.
+     *
+     * @param retenciones : Nodos {@code <retencion>} / {@code <impuesto>} del XML
+     * @param doc         : Documento CXP, solo para el respaldo de importeTotal
+     * @return            : Total retenido, redondeado a 2 decimales
+     */
+    private double calculaTotalRetenido(NodeList retenciones, DocumentoCxp doc) {
+        double total = 0.0;
+        for (int i = 0; i < retenciones.getLength(); i++) {
+            total += parseDouble(getElementValue((Element) retenciones.item(i), "valorRetenido"));
+        }
+        // La columna es NUMBER(18,2): se redondea aquí para que el valor en memoria
+        // (el que valida la aplicación de pago contra el saldo) sea el mismo que
+        // el que queda grabado.
+        total = Math.round(total * 100.0) / 100.0;
+
+        if (total == 0.0 && doc.getImporteTotal() != null && doc.getImporteTotal() != 0.0) {
+            System.out.println("⚠ La retención " + doc.getSerieComprobante()
+                    + " no tiene valores retenidos en el XML; se usa el importe total del TXT: "
+                    + doc.getImporteTotal());
+            return doc.getImporteTotal();
+        }
+        System.out.println("Total retenido calculado para " + doc.getSerieComprobante()
+                + ": " + total + " (" + retenciones.getLength() + " detalle(s))");
+        return total;
+    }
+
+    /**
+     * Número de la factura de VENTA a la que afecta una retención recibida, para
+     * ponerlo en la observación del asiento.
+     * <p>
+     * Devuelve el número tal como está en CBR.FCTR (con guiones,
+     * '001-001-000000784') porque es el que se reconoce en el sistema; el
+     * documento sustento del XML llega sin guiones. Si la factura no se puede
+     * resolver devuelve el número crudo del sustento, que es mejor que nada: la
+     * observación es informativa y no debe hacer fallar el asiento.
+     * <p>
+     * Ojo con el nombre del campo padre del detalle: es {@code retencion} en V1 y
+     * {@code retencionCompraV2} en V2 (columna DRC2.RETENCIONV2).
+     *
+     * @param tipo      : RETENCION_COMPRA o RETENCION_COMPRA_V2
+     * @param idDocBD   : Id de la retención en su tabla
+     * @param idEmpresa : Id de la empresa
+     * @return          : Número de la factura afectada, null si no se pudo determinar
+     */
+    private String obtenerFacturaAfectadaRetencion(String tipo, Long idDocBD, Long idEmpresa) {
+        String numDocSustento = null;
+        try {
+            boolean esV2 = "RETENCION_COMPRA_V2".equals(tipo);
+            String entidadDetalle = esV2 ? "DetalleRetencionCompraV2" : "DetalleRetencionCompra";
+            String campoCabecera  = esV2 ? "retencionCompraV2"        : "retencion";
+
+            @SuppressWarnings("unchecked")
+            List<String> numeros = em.createQuery(
+                    " select distinct d.numDocReten from " + entidadDetalle + " d " +
+                    " where  d." + campoCabecera + ".id = :idRetencion " +
+                    " and    d.numDocReten is not null ")
+                    .setParameter("idRetencion", idDocBD)
+                    .getResultList();
+
+            if (numeros.isEmpty()) {
+                System.out.println("ℹ La retención " + tipo + " id=" + idDocBD
+                        + " no tiene documento sustento en sus detalles; "
+                        + "la observación del asiento va sin número de factura.");
+                return null;
+            }
+            // Con más de un sustento no hay una sola factura que nombrar (el
+            // bloqueante RETENCION_MULTIDOCUMENTO lo impide en V2, pero puede
+            // haber datos históricos): se listan los números crudos.
+            if (numeros.size() > 1) {
+                return String.join(", ", numeros);
+            }
+
+            numDocSustento = numeros.get(0);
+            return aplicacionPagoCxcService
+                    .resolverFacturaPorNumero(numDocSustento, null, idEmpresa).getNumero();
+
+        } catch (Throwable e) {
+            System.err.println("⚠ No se pudo resolver la factura afectada por la retención "
+                    + tipo + " id=" + idDocBD + ": " + e.getMessage()
+                    + ". Se usa el número del documento sustento tal como vino en el XML.");
+            return numDocSustento;
+        }
+    }
+
     private ProductoPago buscarProductoPorNombre(String nombre, Long idEmpresa) {
         if (nombre == null || nombre.trim().isEmpty()) return null;
         try {
@@ -2647,7 +2746,22 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                     + " | idDocBD=" + idDocBD + " | empresa=" + idEmpresa);
 
             com.saa.model.cnt.Asiento asiento = null;
-            String obsBase = serie + " | Proveedor: " + emisor;
+
+            // ── Observación del asiento ───────────────────────────────────────
+            // En una retención recibida la contraparte NO es un proveedor: es el
+            // CLIENTE que nos retuvo sobre una factura de VENTA. El documento
+            // entra por la carga de CXP, pero contablemente afecta a CXC, así que
+            // la observación debe decir "Cliente" e indicar la factura afectada
+            // para que se pueda rastrear el asiento hasta ella.
+            boolean esRetencion = "RETENCION_COMPRA".equals(tipo)
+                    || "RETENCION_COMPRA_V2".equals(tipo);
+            String obsBase = serie + (esRetencion ? " | Cliente: " : " | Proveedor: ") + emisor;
+            if (esRetencion) {
+                String facturaAfectada = obtenerFacturaAfectadaRetencion(tipo, idDocBD, idEmpresa);
+                if (facturaAfectada != null && !facturaAfectada.isEmpty()) {
+                    obsBase += " | Factura: " + facturaAfectada;
+                }
+            }
 
             if ("FACTURA_COMPRA".equals(tipo)) {
                 // TODO: Reemplazar TipoAsientos.FACTURAS_COMPRA con el codigoAlterno

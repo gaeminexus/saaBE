@@ -92,6 +92,24 @@
 > El tipo `RETENCION_COMPRA` sigue vivo en reversión, contabilización y
 > aplicación de pago para no romper los documentos históricos.
 
+### Trampa: el total de una retención no está en `importeTotal`
+
+El comprobante de retención del SRI **no trae `<importeTotal>`**, y la columna
+IMPORTE_TOTAL del TXT llega en `0.00`. El total de una retención es la **suma de
+los `<valorRetenido>` de sus detalles**, que se calcula con
+`calculaTotalRetenido(retenciones, doc)` — el mismo valor que
+`generarAsientoRetencionCompra(V2)` usa para el lado HABER del asiento.
+
+Antes se hacía `rc.setTotal(doc.getImporteTotal())`, así que `RCV2.TOTAL` quedaba
+en cero y la aplicación de pago del Paso 4 moría con
+*"El monto a aplicar no puede ser cero"* (`nuevaAplicacion` rechaza monto null o
+cero) → rollback de todo el registro, incluido el asiento que ya se había
+generado. Corregido el 2026-08-13 en las dos versiones.
+
+El respaldo a `doc.getImporteTotal()` solo aplica si el XML no trae ningún
+`<valorRetenido>`. El valor se redondea a 2 decimales para que coincida con la
+columna `NUMBER(18,2)` y con lo que valida `validaMontoContraSaldo`.
+
 ### Nombre del atributo padre en el detalle V2
 
 `DetalleRetencionCompraV2` referencia a su cabecera con el campo
@@ -374,6 +392,32 @@ silencio y contabilizaba en el período equivocado.
 | **DEBE** | Cuenta de retención recibida por código SRI (`PGS.TSRI`) | `valorReten` de cada detalle — una línea por detalle |
 | **HABER** | Cuenta CxP del proveedor | Total retenido |
 
+### Observación del asiento
+
+```
+{tipo}: {serie} | {Cliente|Proveedor}: {razón social emisor} [| Factura: {número}]
+```
+
+Para **retenciones recibidas** la contraparte se rotula **`Cliente:`**, no
+`Proveedor:`: el documento entra por la carga de CXP, pero quien nos retuvo es el
+cliente de una factura de **venta**. Además se agrega `| Factura: {número}` con
+la factura de venta afectada, para poder rastrear el asiento hasta ella:
+
+```
+Retención compra V2: 001-001-000000123 | Cliente: COOPERATIVA DE AHORRO Y CREDITO CREDIMAS | Factura: 001-001-000000784
+```
+
+El número lo resuelve `obtenerFacturaAfectadaRetencion(tipo, idDocBD, idEmpresa)`:
+lee el `numDocReten` de los detalles y lo pasa por
+`AplicacionPagoCxcService.resolverFacturaPorNumero`, así que se muestra **con
+guiones**, como está en `CBR.FCTR` (el sustento del XML llega sin ellos). Si no se
+puede resolver, cae al número crudo del XML y, si tampoco hay sustento, el
+segmento se omite — la observación es informativa y nunca hace fallar el asiento.
+Con varios sustentos distintos (solo datos históricos: el bloqueante
+`RETENCION_MULTIDOCUMENTO` lo impide) se listan los números separados por coma.
+
+Los demás tipos conservan `Proveedor:`. `ASNT.ASNTOBSR` admite 2000 caracteres.
+
 ### Lectura del IVA desde el XML del SRI
 
 ```xml
@@ -525,7 +569,9 @@ Application path JAX-RS: `/rest` · Base: `/SaaBE/rest/carga-documentos`
 
 | Tema | Pendiente |
 |---|---|
+| Marcado de `ERROR` que no persiste | `cargarXmlYRegistrar` y `registrarDocumentoBD` hacen `doc.setEstadoDocumento(ERROR)` + `save` en el `catch` y luego re-lanzan. El bean es `@Stateless` sin `@TransactionAttribute`, así que la excepción rueda atrás **toda** la transacción, incluido ese marcado: el documento **nunca queda en estado 4** ni guarda la `observacion` del error. Se necesita un método aparte con `@TransactionAttribute(REQUIRES_NEW)` para estampar el error |
 | Retención V2 · doc sustento | ✅ Resuelto el 2026-08-13: `FACTURA_VENTA_NO_ENCONTRADA` es bloqueante y el número se compara sin guiones (§5) |
+| Retención · total | ✅ Resuelto el 2026-08-13: el total sale de la suma de `<valorRetenido>`, no de `importeTotal` (§3) |
 | Retención · multidocumento | Soportar retenciones con varios documentos sustento: hoy se bloquean con `RETENCION_MULTIDOCUMENTO` porque la aplicación de pago solo sabe abonar a una factura |
 | Retención V2 · path | Falta la entidad `PathRetencionCompraV2`; el path solo queda en `DocumentoCxp.pathXml` |
 | `TipoAsientos` | Definir `codigoAlterno` propios en `CNT.TPAS`: hoy Factura de compra y las dos retenciones comparten el `3`, y NC/ND/Liquidación (`10/11/12`) están marcados como *TODO verificar en BD* |
