@@ -627,7 +627,7 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 			// 1. Obtener datos principales de la liquidación
 			String sqlLiquidacion = "SELECT l, f, p FROM LiquidacionCompra l " +
 					"JOIN l.facturador f " +
-					"JOIN l.comprador p " +
+					"JOIN l.titular p " +
 					"WHERE l.clave = :clave";
 			Query query = em.createQuery(sqlLiquidacion);
 			query.setParameter("clave", clave);

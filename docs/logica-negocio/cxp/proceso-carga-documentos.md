@@ -1,14 +1,18 @@
 # Proceso de Carga de Documentos CXP
 
 > **Archivo de referencia principal.**  
-> Última revisión: 2026-07-27
+> Última revisión: 2026-08-13 — verificado contra
+> `ProcesoCargaDocumentosServiceImpl`, `ProcesoCargaDocumentosRest`,
+> `AplicacionPagoCxp*` (CXP) y `AplicacionPagoCxc*` (CXC).
 
 **Módulo:** CXP - Cuentas por Pagar  
 **Stack:** Jakarta EE · WildFly · Oracle DB · Schema PGS
 
 ---
 
-## 1. Arquitectura — tres tablas
+## 1. Arquitectura
+
+### Tablas de control de la carga
 
 | Tabla | Entidad Java | Propósito |
 |---|---|---|
@@ -16,17 +20,33 @@
 | `PGS.DCXP` | `DocumentoCxp` | **Un solo registro por documento** (por `claveAcceso`). Ciclo de vida completo |
 | `PGS.DCTX` | `DetalleCargaTxt` | Una línea por aparición en un TXT. FK a DCXP |
 
+### Tablas de aplicación de pago
+
+| Tabla | Entidad Java | Propósito |
+|---|---|---|
+| `PGS.APLP` | `AplicacionPagoCxp` | Abonos/cargos sobre una **factura de compra** (lo que nosotros debemos) |
+| `CBR.APLC` | `AplicacionPagoCxc` | Abonos/cargos sobre una **factura de venta** (lo que nos deben) |
+
+> Toda retención que un proveedor/cliente nos emite abona una factura de **venta**,
+> así que se registra en `AplicacionPagoCxc`, no en `AplicacionPagoCxp`. Ver §7.
+
 ### Archivos Java clave
 
 | Archivo | Paquete | Rol |
 |---|---|---|
 | `ProcesoCargaDocumentosServiceImpl.java` | `com.saa.ejb.cxp.serviceImpl` | Implementación completa de las fases |
-| `ProcesoCargaDocumentosRest.java` | `com.saa.ws.rest.cxp` | Endpoints REST |
+| `ProcesoCargaDocumentosRest.java` | `com.saa.ws.rest.cxp` | Endpoints REST del proceso |
 | `AsientoContableServiceImpl.java` | `com.saa.ejb.cnt.serviceImpl` | Generación de asientos contables CXP |
+| `AplicacionPagoCxpServiceImpl.java` | `com.saa.ejb.cxp.serviceImpl` | Aplicaciones sobre facturas de compra |
+| `AplicacionPagoCxcServiceImpl.java` | `com.saa.ejb.cxc.serviceImpl` | Aplicaciones sobre facturas de venta |
 | `ResultadoCargaTxt.java` | `com.saa.rubros` | Constantes de resultado por línea (rubro 174) |
 | `EstadoDocumentoCxp.java` | `com.saa.rubros` | Constantes de estado del documento (rubro 175) |
+| `EstadoNovedad.java` | `com.saa.rubros` | PENDIENTE=1, REEMPLAZADO=2, MANTENIDO=3 |
 | `TipoGrupoProductos.java` | `com.saa.rubros` | BIEN=1, SERVICIO=2, POR_CLASIFICAR=3 |
-| `TipoAsientos.java` | `com.saa.rubros` | codigoAlterno de tipos de asiento CXP |
+| `TipoAsientos.java` | `com.saa.rubros` | `codigoAlterno` de tipos de asiento CXP |
+| `TipoDocPagoAplicacion.java` | `com.saa.rubros` | Tipo de documento que paga (1..5) |
+| `EstadoPagoFactura.java` | `com.saa.rubros` | PENDIENTE=1, PAGADA_PARCIAL=2, PAGADA_TOTAL=3 |
+| `EstadoAplicacionPago.java` | `com.saa.rubros` | ACTIVO=1, REVERSADO=2 |
 
 ---
 
@@ -35,42 +55,57 @@
 | Valor | Nombre | Descripción | Botón frontend |
 |---|---|---|---|
 | `1` | LEIDO | Leído del TXT, pendiente de XML | "Cargar XML y Registrar" |
-| `2` | XML_CARGADO | Transitorio interno — rara vez visible | — |
-| `3` | REGISTRADO_BD | Registrado en tablas CXP + asiento contable generado | "Revertir" |
+| `2` | XML_CARGADO | Transitorio interno — **también es el estado en que queda un documento detenido por bloqueantes** | "Reintentar" |
+| `3` | REGISTRADO_BD | Registrado en tablas CXP + asiento contable + aplicación de pago | "Revertir" |
 | `4` | ERROR | Falló algún paso. Ver campo `observacion` | "Reintentar" |
 | `5` | NOVEDAD | Diferencias detectadas o desaparecido en recarga | "Resolver novedad" |
 | `6` | REVERTIDO | BD revertida y asiento anulado | "Cargar XML y Registrar" |
 
-> ⚠️ El estado `2` es transitorio. El endpoint `/procesarXml/{id}` pasa directamente de `1 → 3`.
+> ⚠️ En el flujo normal `/procesarXml/{id}` pasa de `1 → 3`. El estado `2` sí es
+> visible cuando el registro se detiene por bloqueantes (§5 Paso 3): el XML ya
+> quedó guardado y `observacion` explica qué falta. Al resolverlo se puede
+> reintentar con `/procesarXml` o con `/registrarBD/{id}` (que exige estado `2`).
 
 ---
 
 ## 3. Tablas destino por tipo de comprobante
 
-| `tipoComprobante` | `tipoTablaDestino` | Tablas que se llenan | Validaciones bloqueantes |
+| `tipoComprobante` (del TXT) | `tipoTablaDestino` | Tablas que se llenan | Estado |
 |---|---|---|---|
-| `Factura` | `FACTURA_COMPRA` | `FacturaCompra` + `DetalleFacturaCompra` + `FormaPagoFacturaCompra` + `PathFacturaCompra` | ✅ Implementadas |
-| `Nota de Crédito` | `NOTA_CREDITO_COMPRA` | `NotaCreditoCompra` + `DetalleNotaCreditoCompra` + `PathNotaCreditoCompra` | ⚠️ Pendiente de pulir |
-| `Nota de Débito` | `NOTA_DEBITO_COMPRA` | `NotaDebitoCompra` + `DetalleNotaDebitoCompra` + `PathNotaDebitoCompra` | ⚠️ Pendiente de pulir |
-| `Liquidación de compra` | `LIQUIDACION_COMPRA_COMPRA` | `LiquidacionCompraCompra` + `DetalleLiquidacionCompraCompra` + `PathLiquidacionCompraCompra` | ⚠️ Pendiente de pulir |
-| `Comprobante de Retención` | `RETENCION_COMPRA_V2` | `RetencionCompraV2` + `DetalleRetencionCompraV2` *(sin path aún)* | ⚠️ Pendiente de pulir |
-| `Comprobante de Retención electrónica versión 2.0` | `RETENCION_COMPRA_V2` | `RetencionCompraV2` + `DetalleRetencionCompraV2` *(sin path aún)* | ⚠️ Pendiente de pulir |
+| `Factura` | `FACTURA_COMPRA` | `FacturaCompra` + `DetalleFacturaCompra` + `FormaPagoFacturaCompra` + `PathFacturaCompra` | ✅ Completo |
+| `Nota de Crédito` | `NOTA_CREDITO_COMPRA` | `NotaCreditoCompra` + `DetalleNotaCreditoCompra` + `PathNotaCreditoCompra` | ✅ Registro + asiento + aplicación · ⚠️ sin bloqueantes estructurados (§5) |
+| `Nota de Débito` | `NOTA_DEBITO_COMPRA` | `NotaDebitoCompra` + `DetalleNotaDebitoCompra` + `PathNotaDebitoCompra` | ✅ Registro + asiento + aplicación · ⚠️ sin bloqueantes estructurados (§5) |
+| `Liquidación de compra` | `LIQUIDACION_COMPRA_COMPRA` | `LiquidacionCompraCompra` + `DetalleLiquidacionCompraCompra` + `PathLiquidacionCompraCompra` | ⚠️ Registro + asiento, sin validaciones bloqueantes ni aplicación de pago |
+| `Comprobante de Retención` | `RETENCION_COMPRA_V2` | `RetencionCompraV2` (`PGS.RCV2`) + `DetalleRetencionCompraV2` (`PGS.DRC2`) *(sin path)* | ✅ Completo |
+| `Comprobante de Retención electrónica versión 2.0` | `RETENCION_COMPRA_V2` | Ídem | ✅ Completo |
 
 > ⚠️ **Desde el 2026-08-11 las dos versiones del comprobante de retención se
 > registran en `RetencionCompraV2` (`PGS.RCV2` + `PGS.DRC2`).** El despacho de
-> `procesarDocumento` / `procesarXml` llama a `registrarRetencionCompraV2()`
-> para ambos tipos: el parser tolera los dos esquemas del SRI
-> (`obtenerDetallesRetencion` / `getValorDocSustento`). `RetencionCompra`
-> (`PGS.RTCM`) queda solo para consultar lo cargado antes de ese cambio —
+> `cargarXmlYRegistrar` / `registrarDocumentoBD` llama a
+> `registrarRetencionCompraV2()` para ambos tipos: el parser tolera los dos
+> esquemas del SRI (`obtenerDetallesRetencion` / `getValorDocSustento`).
+>
+> `registrarRetencionCompra()` (V1, `PGS.RTCM`) **ya no se invoca desde ningún
+> despacho** — queda como código muerto de referencia. `RetencionCompra` sirve
+> solo para consultar lo cargado antes de ese cambio;
 > `docs/scripts/sql-migrar-retenciones-v1-a-v2.sql` lo mueve a las tablas v2.
-> El tipo `RETENCION_COMPRA` sigue existiendo en reversión, contabilización y
+> El tipo `RETENCION_COMPRA` sigue vivo en reversión, contabilización y
 > aplicación de pago para no romper los documentos históricos.
+
+### Nombre del atributo padre en el detalle V2
+
+`DetalleRetencionCompraV2` referencia a su cabecera con el campo
+**`retencionCompraV2`** (columna `DRC2.RETENCIONV2`), **no** `retencion` como en
+`DetalleRetencionCompra` (V1). Toda consulta JPQL nueva debe usar
+`d.retencionCompraV2.id`; escribir `d.retencion.id` produce
+`UnknownPathException` en tiempo de ejecución (fue el bug corregido el
+2026-08-13 en `AsientoContableServiceImpl.generarAsientoRetencionCompraV2`).
 
 ---
 
 ## 4. FASE 1 — Carga del TXT
 
-**Endpoint:** `POST /carga-documentos/cargarTxt`
+**Endpoint:** `POST /rest/carga-documentos/cargarTxt`
 
 **Body:**
 ```json
@@ -88,22 +123,22 @@
 ```
 Para cada línea:
   Si RUC receptor ≠ empresa → IGNORADO (no cuenta)
-  
+
   Buscar DocumentoCxp por claveAcceso:
-  
+
   NO existe → crear (estado=LEIDO) → resultado=NUEVO (1)
-  
+
   Existe, sin diferencias → resultado=DUPLICADO (2)
-  
+
   Existe, con diferencias, estado=3 (REGISTRADO_BD):
     → resultado=REGISTRADO_CON_DIFERENCIAS (6)   ← NO se toca el documento
-  
+
   Existe, con diferencias, estado=1/2/6 (LEIDO/XML_CARGADO/REVERTIDO):
     → actualizar valores, estado=LEIDO → resultado=NOVEDAD (3)
-  
+
   Existe, con diferencias, estado=5 (NOVEDAD):
     → actualizar campo novedad → resultado=NOVEDAD (3)
-  
+
   Siempre registrar una línea en DCTX
 ```
 
@@ -139,12 +174,15 @@ Se ejecuta solo si se envía `idPeriodo`. Filtra por los **tipos de comprobante 
 
 ## 5. FASE 2+3 Unificada — Procesar XML
 
-**Endpoint recomendado:** `POST /carga-documentos/procesarXml/{idDocumentoCxp}`
+**Endpoint recomendado:** `POST /rest/carga-documentos/procesarXml/{idDocumentoCxp}`
 
 **Body:**
 ```json
-{ "contenidoXml": "<?xml ...", "idEmpresa": 1236, "idUsuario": 5 }
+{ "contenidoXml": "<?xml ...", "idEmpresa": 1236, "idUsuario": 5, "pathDestino": "opcional" }
 ```
+
+Si no se envía `pathDestino`, el REST sube el XML con `FileService` a
+`docs/xml/cxp/{claveAcceso}.xml` antes de llamar al servicio.
 
 ### Paso 1 — Validación XML vs documento esperado
 
@@ -181,12 +219,29 @@ Auto-creando Titular-Proveedor para RUC: ...
 
 ### Paso 3 — Validaciones bloqueantes (HTTP 422 si alguna falla, nada se graba)
 
-| Tipo | Causa | Solución |
-|---|---|---|
-| `PROVEEDOR_SIN_CUENTA` | Proveedor sin cuenta contable CxP (`PersonaCuentaContable`, `tipoCuenta=1`) | Contabilidad → Cuentas por Titular |
-| `TIPO_ASIENTO_NO_CONFIGURADO` | No existe `TipoAsiento` con `codigoAlterno=3` para la empresa | Contabilidad → Tipos de Asiento |
-| `PRODUCTOS_SIN_CLASIFICAR` | Algún producto está en grupo POR CLASIFICAR | Clasificar productos |
-| `GRUPOS_SIN_CUENTA_CONTABLE` | El grupo del producto no tiene `planCuenta` | Contabilidad → Grupos de Producto |
+**No todos los tipos validan lo mismo.** Solo Factura y Retención tienen
+bloqueantes implementados:
+
+| Bloqueante | Factura | Retención V2 | Retención V1 *(muerto)* | NC / ND / Liquidación |
+|---|---|---|---|---|
+| `PROVEEDOR_SIN_CUENTA` — proveedor sin cuenta contable CxP (`PersonaCuentaContable`, `tipoCuenta=1`) | ✅ | ✅ | ✅ | ✗ |
+| `TIPO_ASIENTO_NO_CONFIGURADO` — no existe `TipoAsiento` con el `codigoAlterno` del tipo, para la empresa | ✅ | ✅ | ✅ | ✗ |
+| `PRODUCTOS_SIN_CLASIFICAR` — algún producto está en grupo POR CLASIFICAR | ✅ | — | — | ✗ |
+| `GRUPOS_SIN_CUENTA_CONTABLE` — el grupo del producto no tiene `planCuenta` | ✅ | — | — | ✗ |
+| `CODIGOS_RETENCION_SIN_CUENTA` — un `codigoRetencion` del XML no tiene cuenta en `PGS.TSRI` | — | ✅ | ✅ | — |
+| `FACTURA_VENTA_NO_ENCONTRADA` — el documento sustento no existe en CXC | — | ⚠️ **solo advertencia** | ✅ bloquea | — |
+
+**NC y ND sí abortan si falta la factura de compra afectada**, pero no como
+bloqueante estructurado: `registrarNotaCreditoCompra` /
+`registrarNotaDebitoCompra` llaman a
+`AplicacionPagoCxpService.resolverFacturaCompraPorNumero(numDocModificado, idTitular, idEmpresa)`
+**antes de grabar**, y ese método lanza excepción si no hay coincidencia o si hay
+más de una. El resultado para el frontend es un `500` con mensaje de texto (y el
+documento en estado `ERROR`), no un `422` con la lista `bloqueantes`.
+
+**Cuenta del código de retención (`PGS.TSRI`):** el `lsri.tabla` depende del
+impuesto del XML — `codigo=1` (Renta) → `608`; `codigo=2` (IVA) → `20`.
+Cualquier otro valor se reporta como *"Tipo de impuesto desconocido"*.
 
 **HTTP 422 con bloqueantes:**
 ```json
@@ -201,11 +256,30 @@ Auto-creando Titular-Proveedor para RUC: ...
 }
 ```
 
-### Paso 4 — Registro en BD y asiento (solo si todo OK)
+> ⚠️ **Inconsistencia conocida en Retención V2.** `registrarRetencionCompraV2`
+> trata el documento sustento no encontrado como advertencia
+> (`advertenciaDocSustento`) y sigue adelante, pero el Paso 4 llama a
+> `aplicarRetencionRecibidaV2`, que resuelve la factura de venta por número y
+> **lanza excepción si no la encuentra** → rollback completo y documento en
+> estado `ERROR` con un mensaje poco claro. La versión V1 (muerta) sí lo declara
+> bloqueante (`FACTURA_VENTA_NO_ENCONTRADA`). Log típico:
+> `⚠ ADVERTENCIA doc sustento V2: El documento sustento no fue encontrado en CXC.`
 
-1. Graba cabecera + detalles + formas de pago + path
-2. Actualiza `DocumentoCxp`: estado=`3`, `observacion=null`
-3. Genera asiento contable
+### Paso 4 — Registro en BD, asiento y aplicación de pago (solo si todo OK)
+
+Todo dentro de la misma transacción:
+
+1. Graba cabecera + detalles (+ formas de pago + path según el tipo)
+2. Actualiza `DocumentoCxp`: `idDocumentoBD`, `tipoTablaDestino`,
+   `fechaRegistroBD`, `usuarioRegistroBD`, estado=`3`, `observacion=null`
+3. Genera el asiento contable (`generarAsientoCxp`), **solo si el `Facturador`
+   de la empresa tiene `generaConta = 1`**; si no, se omite el asiento en
+   silencio y con él la aplicación de pago
+4. Graba la FK `ASIENTO` de vuelta en la tabla del documento
+   (`grabarAsientoEnDocumento`) — si esto falla, no revierte: devuelve
+   `advertenciaAsientoFK`
+5. Registra la aplicación de pago (`registrarAplicacionPagoCxp`, §7) — si esto
+   falla **sí** revierte todo
 
 **HTTP 200 éxito:**
 ```json
@@ -216,24 +290,53 @@ Auto-creando Titular-Proveedor para RUC: ...
   "mensaje": "FacturaCompra registrada correctamente con id=11.",
   "productosPendientes": [],
   "pendienteClasificacion": false,
-  "asiento": "CXP-2026-07-0002"
+  "asiento": "CXP-2026-07-0002",
+  "aplicacionPago": "Nota de crédito aplicada a la factura afectada."
 }
 ```
 
 ---
 
-## 6. Generación del asiento contable — Factura de Compra
+## 6. Generación del asiento contable
 
-**Prerequisito:** `Facturador.generaConta = 1` para la empresa.  
-**TipoAsiento:** `codigoAlterno = 3` (`TipoAsientos.FACTURAS_COMPRA`) en `CNT.TPAS`.
+**Prerequisito:** `Facturador.generaConta = 1` para la empresa.
 
-### Estructura del asiento
+| `tipoTablaDestino` | Método de `AsientoContableService` | Constante `TipoAsientos` | `codigoAlterno` |
+|---|---|---|---|
+| `FACTURA_COMPRA` | `generarAsientoFacturaCompra` | `FACTURAS_COMPRA` | 3 |
+| `NOTA_CREDITO_COMPRA` | `generarAsientoNotaCreditoCompra` | `NOTAS_CREDITO_COMPRA` | 10 ⚠️ TODO verificar en BD |
+| `NOTA_DEBITO_COMPRA` | `generarAsientoNotaDebitoCompra` | `NOTAS_DEBITO_COMPRA` | 11 ⚠️ TODO verificar en BD |
+| `LIQUIDACION_COMPRA_COMPRA` | `generarAsientoLiquidacionCompraCompra` | `LIQUIDACIONES_COMPRA_RECIBIDAS` | 12 ⚠️ TODO verificar en BD |
+| `RETENCION_COMPRA` | `generarAsientoRetencionCompra` | `RETENCIONES_RECIBIDAS` | 3 |
+| `RETENCION_COMPRA_V2` | `generarAsientoRetencionCompraV2` | `RETENCIONES_RECIBIDAS_V2` | 3 |
+
+> ⚠️ `FACTURAS_COMPRA`, `RETENCIONES_RECIBIDAS` y `RETENCIONES_RECIBIDAS_V2`
+> valen **todas 3**, así que hoy los tres tipos de documento se contabilizan con
+> el mismo `TipoAsiento`. Está pendiente definir los `codigoAlterno` propios en
+> `CNT.TPAS`.
+
+### Fecha contable
+
+Siempre la **fecha de emisión del documento** (`obtenerFechaDocumento`, leída de
+la tabla destino, que a su vez viene del `<fechaEmision>` del XML). Respaldo:
+`DocumentoCxp.fechaEmision` (del TXT). Si no hay ninguna de las dos, **no se
+genera el asiento y se lanza excepción** — antes caía a la fecha de hoy en
+silencio y contabilizaba en el período equivocado.
+
+### Estructura — Factura de Compra
 
 | Lado | Cuenta | Valor |
 |---|---|---|
 | **DEBE** | `GrupoProductoPago.planCuenta` | Suma de `subTotal` por grupo — una línea por grupo distinto |
 | **DEBE** | IVA crédito tributario (`PGS.TSRI` donde `lsri.tabla='17'` y `codigo=codigoIVASRI`) | Suma de `valorIVA` por código IVA |
 | **HABER** | Cuenta CxP proveedor (`PersonaCuentaContable`, `tipoCuenta=1`) | `factura.total` |
+
+### Estructura — Retención recibida (V1 y V2)
+
+| Lado | Cuenta | Valor |
+|---|---|---|
+| **DEBE** | Cuenta de retención recibida por código SRI (`PGS.TSRI`) | `valorReten` de cada detalle — una línea por detalle |
+| **HABER** | Cuenta CxP del proveedor | Total retenido |
 
 ### Lectura del IVA desde el XML del SRI
 
@@ -252,12 +355,76 @@ Auto-creando Titular-Proveedor para RUC: ...
 
 ### Reglas del asiento
 
-- Si `DEBE ≠ HABER` → **excepción + rollback completo** (ni factura ni asiento quedan en BD) → HTTP 422
-- Si el TipoAsiento no existe → detectado en validaciones bloqueantes (Paso 3), nunca llega al asiento
+- Si `DEBE ≠ HABER` → **excepción + rollback completo** (ni documento ni asiento quedan en BD) → HTTP 422
+- Si el `TipoAsiento` no existe → detectado en validaciones bloqueantes (Paso 3) para Factura y Retención; para NC/ND/Liquidación revienta recién en el asiento
+- Si el método del asiento aún es un stub (`UnsupportedOperationException`) → **no bloquea**: se devuelve `advertenciaAsiento` y el documento queda registrado sin asiento
 
 ---
 
-## 7. Almacenamiento del XML
+## 7. Aplicación de pago automática
+
+Al registrar el documento, en la **misma transacción del asiento**, se registra
+el abono o cargo que ese documento produce sobre la factura afectada
+(`registrarAplicacionPagoCxp`). Si la aplicación falla, se revierte todo.
+
+| `tipoTablaDestino` | Servicio | Tabla | Factura afectada | Efecto |
+|---|---|---|---|---|
+| `NOTA_CREDITO_COMPRA` | `AplicacionPagoCxpService.aplicarNotaCredito` | `PGS.APLP` | Factura de **compra** (por `numDocModificado`) | Abona (monto positivo) |
+| `NOTA_DEBITO_COMPRA` | `AplicacionPagoCxpService.aplicarNotaDebito` | `PGS.APLP` | Factura de **compra** | Aumenta el saldo (monto **negativo**) |
+| `RETENCION_COMPRA` | `AplicacionPagoCxcService.aplicarRetencionRecibida` | `CBR.APLC` | Factura de **venta** (por el `numDocSustento` del detalle) | Abona |
+| `RETENCION_COMPRA_V2` | `AplicacionPagoCxcService.aplicarRetencionRecibidaV2` | `CBR.APLC` | Factura de **venta** | Abona |
+| `FACTURA_COMPRA` / `LIQUIDACION_COMPRA_COMPRA` | — | — | — | No genera aplicación (son el documento que se paga) |
+
+`AplicacionPagoCxp.tipoDocPago` (`TipoDocPagoAplicacion`):
+`1`=Pago directo · `2`=Nota de Crédito · `3`=Retención · `4`=Anticipo ·
+`5`=Nota de Débito (monto negativo).
+Formas de pago directo (`formaPago`, solo con `tipoDocPago=1`):
+`1`=Efectivo · `2`=Transferencia · `3`=Cheque · `4`=Débito automático.
+
+Cada vez que se crea o reversa una aplicación se recalcula y graba
+`FacturaCompra.estadoPago` (`EstadoPagoFactura`: `1`=Pendiente,
+`2`=Pagada parcial, `3`=Pagada total).
+
+### Endpoints de aplicaciones — CXP (`/rest/aplp`)
+
+| Método | Path | Uso |
+|---|---|---|
+| GET | `/aplp/getAll` | Todas las aplicaciones |
+| GET | `/aplp/getId/{id}` | Una aplicación |
+| GET | `/aplp/factura/{idFactura}?soloActivas=true` | Historial de una factura de compra |
+| GET | `/aplp/saldo/{idFactura}` | `total`, `totalAplicado`, `saldoPendiente`, `estadoPago` |
+| POST | `/aplp/anticipo` | Cruza saldo de anticipos del proveedor contra la factura |
+| POST | `/aplp/revertir/{id}` | Reversa una aplicación (body: `motivo`, `idUsuario`) |
+| POST | `/aplp/selectByCriteria` | Búsqueda por criterios |
+
+Body de `/aplp/anticipo`:
+```json
+{
+  "idFacturaCompra": 123,
+  "valor": 225.00,
+  "fechaAplicacion": "2026-08-07",
+  "idEmpresa": 1236,
+  "idUsuario": 5,
+  "observacion": "Cruce parcial"
+}
+```
+
+El cruce de anticipos es **por valor** contra el saldo global del proveedor
+(`PersonaCuentaContable` con `tipoCuenta=2`): no se seleccionan anticipos
+individuales, y la FK a `PGS.ANTP` queda nula.
+
+Además, `AplicacionPagoCxpService.aplicarPagoTransferencia(pago, idUsuario)` se
+invoca desde el flujo de pagos programados (transferencia confirmada por el
+banco y débito automático `PGTRDBAT=1`); genera el asiento y el movimiento
+bancario.
+
+### Endpoints de aplicaciones — CXC (`/rest/aplc`)
+
+Mismo juego para facturas de venta, más `POST /aplc/cobroTransferencia`.
+
+---
+
+## 8. Almacenamiento del XML
 
 Usa `FileService` centralizado. Directorio base (por prioridad):
 
@@ -272,41 +439,60 @@ Extensión `.xml` está incluida en `FileService.EXTENSIONES_PERMITIDAS`.
 
 ---
 
-## 8. Reversión
+## 9. Reversión
 
-**Endpoint:** `POST /carga-documentos/revertir/{idDocumentoCxp}`  
+**Endpoint:** `POST /rest/carga-documentos/revertir/{idDocumentoCxp}`  
 Solo aplica a documentos en estado `3 (REGISTRADO_BD)`.
 
-**Pasos:**
-1. Recuperar asiento vinculado → cambiar estado a `ANULADO (2)` en `CNT.ASNT`
-2. Eliminar registros CXP (detalles → paths → cabecera)
-3. `DocumentoCxp.estadoDocumento = 6 (REVERTIDO)`
+**Pasos (`revertirRegistrosBD`):**
+
+1. **Eliminar las aplicaciones de pago** que generó el documento — antes de
+   borrar cualquier fila, para no chocar con las FK:
+   - `NOTA_CREDITO_COMPRA` → `AplicacionPagoCxpService.eliminarAplicacionesDeDocumento("NOTA_CREDITO", id)`
+   - `NOTA_DEBITO_COMPRA` → ídem con `"NOTA_DEBITO"`
+   - `RETENCION_COMPRA` → `AplicacionPagoCxcService.eliminarAplicacionesDeDocumento("RETENCION", id)`
+   - `RETENCION_COMPRA_V2` → ídem con `"RETENCION_V2"`
+   - `FACTURA_COMPRA` → **no se borra nada**: si la factura tiene aplicaciones
+     activas se lanza `IncomeException` y hay que reversar primero esos pagos
+2. Anular el asiento vinculado → estado `ANULADO (2)` en `CNT.ASNT`
+   (`anularAsientoDeDocumento`; si falla solo advierte, no aborta)
+3. Eliminar los registros CXP (detalles → paths → cabecera).
+   En V2: `DetalleRetencionCompraV2` (FK `DRC2.RETENCIONV2`) y luego
+   `RetencionCompraV2`. No hay `PathRetencionCompraV2`: la ruta del XML queda en
+   `DocumentoCxp.pathXml`
+4. `DocumentoCxp.estadoDocumento = 6 (REVERTIDO)`
 
 ---
 
-## 9. Endpoints REST
+## 10. Endpoints REST del proceso
+
+Application path JAX-RS: `/rest` · Base: `/SaaBE/rest/carga-documentos`
 
 | Método | Path | HTTP éxito | HTTP error |
 |---|---|---|---|
 | POST | `/cargarTxt` | 201 | 500 |
-| POST | `/procesarXml/{id}` | 200 | 422 |
+| POST | `/procesarXml/{id}` | 200 | 422 / 400 / 404 / 500 |
 | POST | `/cargarXml/{id}` *(legacy)* | 200 | 422 |
-| POST | `/registrarBD/{id}` *(legacy)* | 200 | 422 |
+| POST | `/registrarBD/{id}` *(legacy — exige estado 2)* | 200 | 422 |
+| POST | `/crearProductosYRegistrar/{id}` | 200 | 422 / 500 |
 | POST | `/resolverNovedad/{id}` | 200 | 500 |
 | POST | `/revertir/{id}` | 200 | 500 |
 | GET | `/resumen/{idCargaTxt}` | 200 | 500 |
 | GET | `/documento/{id}` | 200 | 404/500 |
 | GET | `/novedades/{idEmpresa}` | 200 | 500 |
 | GET | `/productosPendientes/{idFacturaCompra}` | 200 | 500 |
+| GET | `/gruposProducto` | 200 | 500 |
 
 ---
 
-## 10. Pendientes de pulir
+## 11. Pendientes
 
-| Tipo de comprobante | Pendiente |
+| Tema | Pendiente |
 |---|---|
-| `Nota de Crédito` | Aplicar validaciones bloqueantes (cuenta proveedor, tipo asiento, cuenta grupo) + pulir asiento |
-| `Nota de Débito` | Ídem |
-| `Liquidación de Compra` | Ídem |
-| `Retención V1 y V2` | Revisar estructura XML, mapeo de campos, generación del asiento |
-| Todos | Script SQL para insertar rubros 174 con los nuevos códigos 6 y 7 en `SCP.PDTR` |
+| Retención V2 · doc sustento | Decidir si `FACTURA_VENTA_NO_ENCONTRADA` debe ser bloqueante (como en V1) o si la aplicación de pago debe tolerar la factura ausente. Hoy advierte y luego falla con rollback (§5) |
+| Retención V2 · path | Falta la entidad `PathRetencionCompraV2`; el path solo queda en `DocumentoCxp.pathXml` |
+| `TipoAsientos` | Definir `codigoAlterno` propios en `CNT.TPAS`: hoy Factura de compra y las dos retenciones comparten el `3`, y NC/ND/Liquidación (`10/11/12`) están marcados como *TODO verificar en BD* |
+| `Nota de Crédito` / `Nota de Débito` | Agregar validaciones bloqueantes estructuradas (cuenta proveedor, tipo asiento, cuenta del grupo) y convertir el fallo de `resolverFacturaCompraPorNumero` en un `422` con `bloqueantes` en vez de un `500` |
+| `Liquidación de Compra` | Ídem, más la aplicación de pago sobre el documento afectado |
+| `RetencionCompra` (V1) | Código muerto: `registrarRetencionCompra` ya no se invoca. Decidir si se elimina tras migrar los históricos |
+| Rubros | Script SQL para insertar rubro 174 con los códigos 6 y 7 en `SCP.PDTR` |

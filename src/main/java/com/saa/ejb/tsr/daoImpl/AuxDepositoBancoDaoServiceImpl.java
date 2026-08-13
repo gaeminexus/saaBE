@@ -97,7 +97,7 @@ public class AuxDepositoBancoDaoServiceImpl extends EntityDaoImpl<AuxDepositoBan
 	public List<AuxDepositoBanco> selectAuxDepositoBancoByIdUsuario( Long idUsuario) throws Throwable {
 		System.out.println("Ingresa al Metodo selectAuxDepositoBancoByIdUsuario con idUsuario: " + idUsuario);
 		Query query = em.createQuery(" select b " +
-									 " from   AuxDetalleDeposito b " +
+									 " from   AuxDepositoBanco b " +
 									 " where  b.usuarioPorCaja.codigo = :idUsuario");
 		query.setParameter("idUsuario", idUsuario);
 		return query.getResultList();

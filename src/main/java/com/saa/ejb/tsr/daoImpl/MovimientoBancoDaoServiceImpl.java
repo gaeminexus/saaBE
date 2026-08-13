@@ -189,7 +189,7 @@ public class MovimientoBancoDaoServiceImpl extends EntityDaoImpl<MovimientoBanco
 									 " where  b.empresa.codigo = :empresa" +
 									 "		  and b.cuentaBancaria = :cuentaBancaria" +
 									 "		  and b.periodo = :periodo" +
-									 "		  and b.rubroTipoMoviminetoH in (:tipoMovimiento1,:tipoMovimiento2)" +
+									 "		  and b.rubroTipoMovimientoH in (:tipoMovimiento1,:tipoMovimiento2)" +
 									 "		  and b.estado = :estado");
 		query.setParameter("empresa", empresa);
 		query.setParameter("cuentaBancaria", cuentaBancaria);

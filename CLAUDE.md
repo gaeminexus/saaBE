@@ -70,6 +70,21 @@ Los procesos de negocio que no encajan en CRUD (cargas de archivos, conciliacion
 - Las entidades/tablas `Temp*` reflejan sus contrapartes reales y almacenan documentos en progreso (CXC/CXP/TSR); `Hist*` son tablas de historial.
 - `com.saa.rubros` contiene más de 120 interfaces de constantes (`Estado`, `TipoComandosBusqueda`, `EstadoAsiento`, …) — usar estas en vez de códigos literales.
 
+### Trampa: qué columna lleva realmente el estado
+
+Muchas entidades tienen **dos** columnas que parecen de estado, y la que vale cambia según la tabla.
+Verificar en el código antes de escribir una consulta o un `UPDATE` — elegir la equivocada devuelve
+resultados vacíos o silenciosamente incorrectos.
+
+| Entidad | Estado vigente | La otra columna | Por qué no usarla |
+|---|---|---|---|
+| `Prestamo` (CRD.PRST) | **`PRSTIDST`** (`idEstado`) | `ESPSCDGO` (`estadoPrestamo`) | Es la FK al catálogo `CRD.ESPS`, no el estado operativo. `ProcesoCargaPetroServiceImpl` escribe los valores del rubro `EstadoPrestamo` en `PRSTIDST`. |
+| `DetallePrestamo` (CRD.DTPR) | **`DTPRESTD`** (`estado`) | `DTPRIDST` (`idEstado`) | Se escribe como copia de `estado` (`DetallePrestamoServiceImpl`) y puede quedar desfasada. |
+
+Precedente relacionado: en `CRD.ENTD` la FK `ENTDIDST` apuntaba al **PK** del catálogo mientras el
+rubro usaba el **código alterno** (`ESPRCDEX`) — ver `docs/logica-negocio/crd/MIGRACION-ESTADO-PARTICIPE.md`.
+Al filtrar por estado, contrastar primero la distribución de ambas columnas contra el catálogo.
+
 ## Reportes (JasperReports 7.0.3)
 
 `POST /rest/rprt/generar` con `{modulo, nombreReporte, formato, parametros}` → `ejb/reporte/serviceImpl/ReporteServiceImpl`. Las plantillas viven en `src/main/resources/rep/{modulo}/{nombre}.jrxml`, con `.jasper` precompilados junto a ellas (ambos están en el commit; se intenta primero el `.jasper`, y el `.jrxml` se compila en tiempo de ejecución como fallback).

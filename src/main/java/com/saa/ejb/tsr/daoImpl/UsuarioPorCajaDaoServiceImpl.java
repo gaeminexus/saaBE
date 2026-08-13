@@ -52,8 +52,8 @@ public class UsuarioPorCajaDaoServiceImpl extends EntityDaoImpl<UsuarioPorCaja> 
 	public List<UsuarioPorCaja> selectUsuarioById(Long idUsuario) throws Throwable {
 		System.out.println("Ingresa al Metodo selectDatosByUsuario con idUsuario: " + idUsuario);
 		Query query = em.createQuery(" select b " +
-									 " from   usuarioPorCaja b " +
-									 " where  b.usuarioPorCaja = :idUsuario");
+									 " from   UsuarioPorCaja b " +
+									 " where  b.usuario.codigo = :idUsuario");
 		query.setParameter("idUsuario", idUsuario);
 		return query.getResultList();
 	}

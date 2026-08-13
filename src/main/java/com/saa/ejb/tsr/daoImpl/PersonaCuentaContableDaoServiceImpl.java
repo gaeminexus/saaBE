@@ -37,7 +37,7 @@ public class PersonaCuentaContableDaoServiceImpl extends EntityDaoImpl<PersonaCu
 	public String[] obtieneCampos() {
 		System.out.println("Ingresa al metodo (campos) Ambito");
 		return new String[]{"codigo",
-							"persona",
+							"personaRol",
 							"empresa",
 							"tipoCuenta",
 							"tipoPersona",
@@ -52,7 +52,7 @@ public class PersonaCuentaContableDaoServiceImpl extends EntityDaoImpl<PersonaCu
 		System.out.println("Ingresa al stelectByCodigoPersona con id: " + idPersona);
 		Query query = em.createQuery(" select b " +
 									 " from   PersonaCuentaContable b " +
-									 " where  b.persona.codigo = :idPersona " +
+									 " where  b.personaRol.titular.codigo = :idPersona " +
 									 "        and b.tipoPersona = :rolPersona " +
 									 "        and b.tipoCuenta = :tipoCuenta"+
 									 "        and b.empresa.codigo = :idEmpresa");

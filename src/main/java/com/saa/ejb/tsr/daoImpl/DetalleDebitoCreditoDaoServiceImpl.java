@@ -51,7 +51,7 @@ public class DetalleDebitoCreditoDaoServiceImpl extends EntityDaoImpl<DetalleDeb
 		System.out.println("Ingresa al Metodo selectDetalleDebitoByIdDebitoBancario con idDebitoBancario: " + idDebitoBancario);
 		Query query = em.createQuery(" select b " +
 									 " from   DetalleDebitoCredito b " +
-									 " where  b.debitoBancario = :idDebitoBancario ");
+									 " where  b.debitoCredito.codigo = :idDebitoBancario ");
 		query.setParameter("idDebitoBancario", idDebitoBancario );		
 		return query.getResultList();
 	}

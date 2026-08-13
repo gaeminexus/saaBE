@@ -1,4 +1,4 @@
-package com.saa.ejb.cnt.serviceImpl;
+﻿package com.saa.ejb.cnt.serviceImpl;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -33,21 +33,21 @@ import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
 
 /**
- * Implementación del servicio genérico de generación de asientos contables.
+ * ImplementaciÃ³n del servicio genÃ©rico de generaciÃ³n de asientos contables.
  *
- * Para la factura de venta el asiento queda así:
+ * Para la factura de venta el asiento queda asÃ­:
  *
  *   DEBE:
  *     Cuenta CxC del cliente (PersonaCuentaContable, tipoCuenta=1, tipoPersona=1)
- *       → valor = total de la factura
+ *       â†’ valor = total de la factura
  *
  *   HABER:
- *     Una línea por cada grupo de producto (consolidado)
- *       → cuenta = GrupoProductoCobro.planCuenta
- *       → valor  = suma de baseImponible de los detalles de ese grupo
- *     Una línea por cada tipo de IVA con valor > 0
- *       → cuenta = Tsri.planCuenta  (lsri.tabla='17', tsri.codigo = codigoIVASRI del detalle)
- *       → valor  = suma de valorIVA de ese tipo
+ *     Una lÃ­nea por cada grupo de producto (consolidado)
+ *       â†’ cuenta = GrupoProductoCobro.planCuenta
+ *       â†’ valor  = suma de baseImponible de los detalles de ese grupo
+ *     Una lÃ­nea por cada tipo de IVA con valor > 0
+ *       â†’ cuenta = Tsri.planCuenta  (lsri.tabla='17', tsri.codigo = codigoIVASRI del detalle)
+ *       â†’ valor  = suma de valorIVA de ese tipo
  *
  *   DEBE total = HABER total  (total factura = subtotales + impuestos)
  */
@@ -81,14 +81,14 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
         // 1. Validar cuenta CxC del cliente
         if (titular == null) {
-            errores.add("No se especificó el titular (cliente) de la factura.");
+            errores.add("No se especificÃ³ el titular (cliente) de la factura.");
         } else {
             PlanCuenta cuentaCliente = obtenerCuentaCliente(titular.getCodigo(), idEmpresa);
             if (cuentaCliente == null) {
                 errores.add("El cliente '" + titular.getNombre()
                         + "' (ID: " + titular.getCodigo()
                         + ") no tiene cuenta contable de facturas configurada. "
-                        + "Configure la cuenta en Tesorería → Persona → Cuentas Contables "
+                        + "Configure la cuenta en TesorerÃ­a â†’ Persona â†’ Cuentas Contables "
                         + "(Tipo: Facturas, Rol: Cliente).");
             }
         }
@@ -101,7 +101,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
             for (DetalleFactura detalle : detalles) {
                 String desc = "'" + (detalle.getDescripcion() != null
-                        ? detalle.getDescripcion() : "sin descripción") + "'";
+                        ? detalle.getDescripcion() : "sin descripciÃ³n") + "'";
 
                 // 2a. Validar grupo de producto
                 if (detalle.getProducto() == null) {
@@ -118,7 +118,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                             errores.add("El grupo de producto '"
                                     + detalle.getProducto().getGrupoProducto().getNombre()
                                     + "' no tiene cuenta contable asignada. "
-                                    + "Configure la cuenta en Facturación → Grupos de Producto.");
+                                    + "Configure la cuenta en FacturaciÃ³n â†’ Grupos de Producto.");
                         }
                     }
                 }
@@ -134,9 +134,9 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                         if (cuentaIVA == null) {
                             String detalleIVA = obtenerDetalleIVA(String.valueOf(codigoIVA));
                             errores.add("El tipo de IVA '" + detalleIVA
-                                    + "' (código SRI: " + codigoIVA
+                                    + "' (cÃ³digo SRI: " + codigoIVA
                                     + ") no tiene cuenta contable asignada. "
-                                    + "Configure la cuenta en Facturación → Tipos SRI → IVA (categoría 17).");
+                                    + "Configure la cuenta en FacturaciÃ³n â†’ Tipos SRI â†’ IVA (categorÃ­a 17).");
                         }
                     }
                 }
@@ -147,7 +147,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     }
 
     // ---------------------------------------------------------------
-    // validarCuentasContablesNC (Nota de Crédito)
+    // validarCuentasContablesNC (Nota de CrÃ©dito)
     // ---------------------------------------------------------------
 
     @Override
@@ -158,14 +158,14 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
         // 1. Validar cuenta CxC del cliente
         if (titular == null) {
-            errores.add("No se especificó el titular (cliente) de la nota de crédito.");
+            errores.add("No se especificÃ³ el titular (cliente) de la nota de crÃ©dito.");
         } else {
             PlanCuenta cuentaCliente = obtenerCuentaCliente(titular.getCodigo(), idEmpresa);
             if (cuentaCliente == null) {
                 errores.add("El cliente '" + titular.getNombre()
                         + "' (ID: " + titular.getCodigo()
                         + ") no tiene cuenta contable de facturas configurada. "
-                        + "Configure la cuenta en Tesorería → Persona → Cuentas Contables "
+                        + "Configure la cuenta en TesorerÃ­a â†’ Persona â†’ Cuentas Contables "
                         + "(Tipo: Facturas, Rol: Cliente).");
             }
         }
@@ -177,7 +177,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
             for (com.saa.model.cxc.DetalleNotaCredito detalle : detalles) {
                 String desc = "'" + (detalle.getDescripcion() != null
-                        ? detalle.getDescripcion() : "sin descripción") + "'";
+                        ? detalle.getDescripcion() : "sin descripciÃ³n") + "'";
 
                 if (detalle.getProducto() == null) {
                     errores.add("El detalle " + desc + " no tiene producto asignado.");
@@ -195,14 +195,14 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                                     .getResultList();
                             if (grupoRows.isEmpty()) {
                                 errores.add("El producto ID " + idProd + " (" + desc
-                                        + ") no se encontró o no tiene grupo asignado.");
+                                        + ") no se encontrÃ³ o no tiene grupo asignado.");
                             } else {
                                 PlanCuenta pc = (PlanCuenta) grupoRows.get(0)[2];
                                 String nomGrupo = (String) grupoRows.get(0)[1];
                                 if (pc == null) {
                                     errores.add("El grupo de producto '" + nomGrupo
                                             + "' no tiene cuenta contable asignada. "
-                                            + "Configure la cuenta en Facturación → Grupos de Producto.");
+                                            + "Configure la cuenta en FacturaciÃ³n â†’ Grupos de Producto.");
                                 }
                             }
                         } catch (Exception e) {
@@ -220,9 +220,9 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                         String codigoSRI = mapPorcentajeIVAaCodigo(porc);
                         PlanCuenta cuentaIVA = obtenerCuentaIVA(codigoSRI);
                         if (cuentaIVA == null) {
-                            errores.add("El IVA al " + porc + "% (código SRI: " + codigoSRI
+                            errores.add("El IVA al " + porc + "% (cÃ³digo SRI: " + codigoSRI
                                     + ") no tiene cuenta contable asignada. "
-                                    + "Configure la cuenta en Facturación → Tipos SRI → IVA (categoría 17).");
+                                    + "Configure la cuenta en FacturaciÃ³n â†’ Tipos SRI â†’ IVA (categorÃ­a 17).");
                         }
                     }
                 }
@@ -233,7 +233,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     }
 
     // ---------------------------------------------------------------
-    // validarCuentasContablesND (Nota de Débito)
+    // validarCuentasContablesND (Nota de DÃ©bito)
     // ---------------------------------------------------------------
 
     @Override
@@ -242,13 +242,13 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         List<String> errores = new ArrayList<>();
 
         if (notaDebito == null) {
-            errores.add("No se proporcionó la nota de débito.");
+            errores.add("No se proporcionÃ³ la nota de dÃ©bito.");
             return errores;
         }
 
         // 1. Validar cuenta CxC del cliente
         if (notaDebito.getTitular() == null) {
-            errores.add("La nota de débito no tiene titular (cliente) asignado.");
+            errores.add("La nota de dÃ©bito no tiene titular (cliente) asignado.");
         } else {
             PlanCuenta cuentaCliente = obtenerCuentaCliente(
                     notaDebito.getTitular().getCodigo(), idEmpresa);
@@ -256,14 +256,14 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                 errores.add("El cliente '" + notaDebito.getTitular().getNombre()
                         + "' (ID: " + notaDebito.getTitular().getCodigo()
                         + ") no tiene cuenta contable de facturas configurada. "
-                        + "Configure la cuenta en Tesorería → Persona → Cuentas Contables "
+                        + "Configure la cuenta en TesorerÃ­a â†’ Persona â†’ Cuentas Contables "
                         + "(Tipo: Facturas, Rol: Cliente).");
             }
         }
 
         // 2. Validar cuentas de ingreso desde la factura relacionada
         if (notaDebito.getFactura() == null) {
-            errores.add("La nota de débito no tiene factura relacionada. "
+            errores.add("La nota de dÃ©bito no tiene factura relacionada. "
                     + "Vincule la ND a una factura para poder generar el asiento contable.");
         } else {
             List<DetalleFactura> detallesFact = obtenerDetallesParaND(notaDebito);
@@ -283,7 +283,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                             errores.add("El grupo de producto '"
                                     + d.getProducto().getGrupoProducto().getNombre()
                                     + "' no tiene cuenta contable asignada. "
-                                    + "Configure la cuenta en Facturación → Grupos de Producto.");
+                                    + "Configure la cuenta en FacturaciÃ³n â†’ Grupos de Producto.");
                         }
                     }
                 }
@@ -295,9 +295,9 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             String codigoSRI = mapPorcentajeNDaCodigo(notaDebito.getpIVA());
             PlanCuenta cuentaIVA = obtenerCuentaIVA(codigoSRI);
             if (cuentaIVA == null) {
-                errores.add("El IVA al " + notaDebito.getpIVA().intValue() + "% (código SRI: " + codigoSRI
+                errores.add("El IVA al " + notaDebito.getpIVA().intValue() + "% (cÃ³digo SRI: " + codigoSRI
                         + ") no tiene cuenta contable asignada. "
-                        + "Configure la cuenta en Facturación → Tipos SRI → IVA (categoría 17).");
+                        + "Configure la cuenta en FacturaciÃ³n â†’ Tipos SRI â†’ IVA (categorÃ­a 17).");
             }
         }
 
@@ -319,7 +319,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         // 1. Cargar la factura
         Factura factura = em.find(Factura.class, idFactura);
         if (factura == null) {
-            throw new IncomeException("No se encontró la factura con ID: " + idFactura);
+            throw new IncomeException("No se encontrÃ³ la factura con ID: " + idFactura);
         }
 
         // 2. Cargar detalles de la factura
@@ -333,14 +333,14 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             throw new IncomeException("La factura " + idFactura + " no tiene detalles activos.");
         }
 
-        // 3. Construir líneas del asiento
+        // 3. Construir lÃ­neas del asiento
         List<DetalleAsiento> lineas = new ArrayList<>();
 
-        // ── DEBE: cuenta CxC del cliente ──────────────────────────────────────
+        // â”€â”€ DEBE: cuenta CxC del cliente â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         PlanCuenta cuentaCliente = obtenerCuentaCliente(
                 factura.getTitular().getCodigo(), idEmpresa);
         if (cuentaCliente == null) {
-            throw new IncomeException("No se encontró cuenta contable (tipo factura) "
+            throw new IncomeException("No se encontrÃ³ cuenta contable (tipo factura) "
                     + "para el cliente ID: " + factura.getTitular().getCodigo()
                     + " en la empresa: " + idEmpresa);
         }
@@ -354,7 +354,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         lineaDebe.setValorHaber(0.0);
         lineas.add(lineaDebe);
 
-        // ── HABER: una línea por grupo de producto (consolidado) ──────────────
+        // â”€â”€ HABER: una lÃ­nea por grupo de producto (consolidado) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // Agrupar detalles por GrupoProductoCobro
         Map<Long, Double> subtotalPorGrupo = new LinkedHashMap<>();
         Map<Long, PlanCuenta> cuentaPorGrupo = new LinkedHashMap<>();
@@ -392,8 +392,8 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             lineas.add(lineaHaber);
         }
 
-        // ── HABER: una línea por tipo de IVA con valor > 0 ───────────────────
-        // Agrupar por codigoIVASRI (como String = campo CODIGO de TSRI) → sumar valorIVA
+        // â”€â”€ HABER: una lÃ­nea por tipo de IVA con valor > 0 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Agrupar por codigoIVASRI (como String = campo CODIGO de TSRI) â†’ sumar valorIVA
         Map<String, Double> ivaParaTipo = new LinkedHashMap<>();
         for (DetalleFactura detalle : detalles) {
             if (detalle.getValorIVA() != null && detalle.getValorIVA() > 0
@@ -410,27 +410,27 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             PlanCuenta cuentaIVA = obtenerCuentaIVA(codigoIVASRI);
             if (cuentaIVA == null) {
                 throw new IncomeException(
-                        "No se encontró cuenta contable para el IVA con código SRI: "
+                        "No se encontrÃ³ cuenta contable para el IVA con cÃ³digo SRI: "
                         + codigoIVASRI
-                        + ". Configure la cuenta en Facturación → Tipos SRI → IVA (categoría 17).");
+                        + ". Configure la cuenta en FacturaciÃ³n â†’ Tipos SRI â†’ IVA (categorÃ­a 17).");
             }
             DetalleAsiento lineaIVA = new DetalleAsiento();
             lineaIVA.setPlanCuenta(cuentaIVA);
             lineaIVA.setNumeroCuenta(cuentaIVA.getCuentaContable());
             lineaIVA.setNombreCuenta(cuentaIVA.getNombre());
-            lineaIVA.setDescripcion("IVA código SRI: " + codigoIVASRI);
+            lineaIVA.setDescripcion("IVA cÃ³digo SRI: " + codigoIVASRI);
             lineaIVA.setValorDebe(0.0);
             lineaIVA.setValorHaber(valorIVA);
             lineas.add(lineaIVA);
         }
 
-        // 4. Generar el asiento con las líneas construidas
+        // 4. Generar el asiento con las lÃ­neas construidas
         return generarAsiento(idEmpresa, codigoAltTipoAsiento, fechaAsiento,
                 observaciones, usuario, lineas);
     }
 
     // ---------------------------------------------------------------
-    // generarAsiento  (método genérico de bajo nivel)
+    // generarAsiento  (mÃ©todo genÃ©rico de bajo nivel)
     // ---------------------------------------------------------------
 
     @Override
@@ -463,7 +463,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         // 2. Obtener Empresa
         Empresa empresa = em.find(Empresa.class, idEmpresa);
         if (empresa == null) {
-            throw new IncomeException("No se encontró la empresa con ID: " + idEmpresa);
+            throw new IncomeException("No se encontrÃ³ la empresa con ID: " + idEmpresa);
         }
 
         // 3. Construir cabecera del asiento
@@ -476,7 +476,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         asiento.setNombreUsuario(usuario != null ? usuario : "SISTEMA");
         asiento.setEstado(Long.valueOf(EstadoAsiento.ACTIVO));
         asiento.setMoneda(Long.valueOf(TipoMoneda.DOLAR));
-        // Rubro módulo del sistema al que se clasifica el asiento
+        // Rubro mÃ³dulo del sistema al que se clasifica el asiento
         Long modulo = (moduloSistema != null)
                 ? moduloSistema : Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR);
         asiento.setRubroModuloClienteP(Long.valueOf(Rubros.MODULO_SISTEMA));
@@ -484,23 +484,23 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         asiento.setRubroModuloSistemaP(Long.valueOf(Rubros.MODULO_SISTEMA));
         asiento.setRubroModuloSistemaH(modulo);
 
-        // 4. saveSingle: asigna período, número, numeroAlterno y graba
+        // 4. saveSingle: asigna perÃ­odo, nÃºmero, numeroAlterno y graba
         asiento = asientoService.saveSingle(asiento);
 
-        // 5. Grabar cada línea de detalle
+        // 5. Grabar cada lÃ­nea de detalle
         for (DetalleAsiento linea : lineas) {
             linea.setAsiento(asiento);
             detalleAsientoService.saveDetalle(linea);
         }
 
-        // 6. Validar que debe == haber — si no cuadra, lanzar excepción para revertir todo
+        // 6. Validar que debe == haber â€” si no cuadra, lanzar excepciÃ³n para revertir todo
         boolean cuadrado = detalleAsientoService.validaDebeHaber(asiento.getCodigo());
         if (!cuadrado) {
             double totalDebe  = 0.0;
             double totalHaber = 0.0;
             StringBuilder detalle = new StringBuilder();
             detalle.append("El asiento ").append(asiento.getCodigo())
-                   .append(" no está cuadrado (debe ≠ haber). Detalle de líneas:\n");
+                   .append(" no estÃ¡ cuadrado (debe â‰  haber). Detalle de lÃ­neas:\n");
             for (DetalleAsiento ln : lineas) {
                 double debe  = ln.getValorDebe()  != null ? ln.getValorDebe()  : 0.0;
                 double haber = ln.getValorHaber() != null ? ln.getValorHaber() : 0.0;
@@ -517,7 +517,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             throw new IncomeException(detalle.toString());
         }
 
-        System.out.println("✓ Asiento contable generado: " + asiento.getNumeroAlterno()
+        System.out.println("âœ“ Asiento contable generado: " + asiento.getNumeroAlterno()
                 + " | ID: " + asiento.getCodigo());
         return asiento;
     }
@@ -542,23 +542,23 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         Double valor         = anticipo.getValor();
         String nomCliente    = anticipo.getTitular().getNombre();
 
-        // ── DEBE: cuenta caja/banco (tipoCuenta=3, tipoPersona=1) ──────────────
+        // â”€â”€ DEBE: cuenta caja/banco (tipoCuenta=3, tipoPersona=1) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         PlanCuenta cuentaCaja = obtenerCuentaPorTipo(codigoTitular, idEmpresa, 3L);
         if (cuentaCaja == null) {
             throw new com.saa.basico.util.IncomeException(
                     "El cliente '" + nomCliente + "' no tiene cuenta de caja/banco (Tipo 3) "
-                    + "configurada en Tesorería → Persona → Cuentas Contables.");
+                    + "configurada en TesorerÃ­a â†’ Persona â†’ Cuentas Contables.");
         }
 
-        // ── HABER: cuenta de anticipos del cliente (tipoCuenta=2, tipoPersona=1) ─
+        // â”€â”€ HABER: cuenta de anticipos del cliente (tipoCuenta=2, tipoPersona=1) â”€
         PlanCuenta cuentaAnticipo = obtenerCuentaPorTipo(codigoTitular, idEmpresa, 2L);
         if (cuentaAnticipo == null) {
             throw new com.saa.basico.util.IncomeException(
                     "El cliente '" + nomCliente + "' no tiene cuenta contable de anticipos (Tipo 2) "
-                    + "configurada en Tesorería → Persona → Cuentas Contables.");
+                    + "configurada en TesorerÃ­a â†’ Persona â†’ Cuentas Contables.");
         }
 
-        // ── Construir líneas ───────────────────────────────────────────────────
+        // â”€â”€ Construir lÃ­neas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         List<DetalleAsiento> lineas = new ArrayList<>();
 
         DetalleAsiento debe = new DetalleAsiento();
@@ -581,7 +581,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         haber.setValorHaber(valor);
         lineas.add(haber);
 
-        // ── Generar asiento ────────────────────────────────────────────────────
+        // â”€â”€ Generar asiento â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         String obs = "Anticipo cliente: " + nomCliente
                 + " | Doc: " + (anticipo.getNumeroDoc() != null ? anticipo.getNumeroDoc() : "")
                 + " | Valor: $" + String.format(java.util.Locale.US, "%.2f", valor);
@@ -612,11 +612,11 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         Double valor       = anticipo.getValor();
         String nomCliente  = anticipo.getTitular().getNombre();
 
-        // ── DEBE: planCuenta de la cuenta bancaria ──────────────────────────
+        // â”€â”€ DEBE: planCuenta de la cuenta bancaria â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         com.saa.model.tsr.CuentaBancaria cuentaBancaria =
                 em.find(com.saa.model.tsr.CuentaBancaria.class, idCuentaBancaria);
         if (cuentaBancaria == null) {
-            throw new IncomeException("No se encontró la cuenta bancaria con ID: " + idCuentaBancaria);
+            throw new IncomeException("No se encontrÃ³ la cuenta bancaria con ID: " + idCuentaBancaria);
         }
         com.saa.model.cnt.PlanCuenta cuentaBanco = cuentaBancaria.getPlanCuenta();
         if (cuentaBanco == null) {
@@ -625,16 +625,16 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                     + "' no tiene una cuenta contable (PlanCuenta) asociada.");
         }
 
-        // ── HABER: cuenta de anticipos del cliente (tipoCuenta=2, rol Cliente) ─
+        // â”€â”€ HABER: cuenta de anticipos del cliente (tipoCuenta=2, rol Cliente) â”€
         com.saa.model.cnt.PlanCuenta cuentaAnticipo =
                 obtenerCuentaPorTipo(codigoTitular, idEmpresa, 2L);
         if (cuentaAnticipo == null) {
             throw new IncomeException(
                     "El cliente '" + nomCliente + "' no tiene cuenta contable de anticipos (Tipo 2) "
-                    + "configurada en Tesorería → Persona → Cuentas Contables (Rol: Cliente).");
+                    + "configurada en TesorerÃ­a â†’ Persona â†’ Cuentas Contables (Rol: Cliente).");
         }
 
-        // ── Construir líneas ───────────────────────────────────────────────────
+        // â”€â”€ Construir lÃ­neas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         List<DetalleAsiento> lineas = new ArrayList<>();
 
         DetalleAsiento debe = new DetalleAsiento();
@@ -657,7 +657,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         haber.setValorHaber(valor);
         lineas.add(haber);
 
-        // ── Generar asiento ────────────────────────────────────────────────────
+        // â”€â”€ Generar asiento â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         String obs = "Anticipo cliente: " + nomCliente
                 + " | Doc: " + (anticipo.getNumeroDoc() != null ? anticipo.getNumeroDoc() : "")
                 + " | Valor: $" + String.format(java.util.Locale.US, "%.2f", valor);
@@ -688,19 +688,19 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         Double valor       = anticipo.getValor();
         String nomProv     = anticipo.getTitular().getNombre();
 
-        // ── DEBE: cuenta de anticipos del proveedor (tipoCuenta=2, tipoPersona=2) ──
+        // â”€â”€ DEBE: cuenta de anticipos del proveedor (tipoCuenta=2, tipoPersona=2) â”€â”€
         PlanCuenta cuentaAnticipo = obtenerCuentaProveedorPorTipo(codigoTitular, idEmpresa, 2L);
         if (cuentaAnticipo == null) {
             throw new IncomeException(
                     "El proveedor '" + nomProv + "' no tiene cuenta contable de anticipos (Tipo 2) "
-                    + "configurada en Tesorería → Persona → Cuentas Contables (Rol: Proveedor).");
+                    + "configurada en TesorerÃ­a â†’ Persona â†’ Cuentas Contables (Rol: Proveedor).");
         }
 
-        // ── HABER: planCuenta de la cuenta bancaria ─────────────────────────────
+        // â”€â”€ HABER: planCuenta de la cuenta bancaria â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         com.saa.model.tsr.CuentaBancaria cuentaBancaria =
                 em.find(com.saa.model.tsr.CuentaBancaria.class, idCuentaBancaria);
         if (cuentaBancaria == null) {
-            throw new IncomeException("No se encontró la cuenta bancaria con ID: " + idCuentaBancaria);
+            throw new IncomeException("No se encontrÃ³ la cuenta bancaria con ID: " + idCuentaBancaria);
         }
         PlanCuenta cuentaBanco = cuentaBancaria.getPlanCuenta();
         if (cuentaBanco == null) {
@@ -709,7 +709,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                     + "' no tiene una cuenta contable (PlanCuenta) asociada.");
         }
 
-        // ── Construir líneas ───────────────────────────────────────────────────
+        // â”€â”€ Construir lÃ­neas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         List<DetalleAsiento> lineas = new ArrayList<>();
 
         DetalleAsiento debe = new DetalleAsiento();
@@ -732,7 +732,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         haber.setValorHaber(valor);
         lineas.add(haber);
 
-        // ── Generar asiento ────────────────────────────────────────────────────
+        // â”€â”€ Generar asiento â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         String obs = "Anticipo proveedor: " + nomProv
                 + " | Doc: " + (anticipo.getNumeroDoc() != null ? anticipo.getNumeroDoc() : "")
                 + " | Valor: $" + String.format(java.util.Locale.US, "%.2f", valor);
@@ -742,7 +742,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     }
 
     // ---------------------------------------------------------------
-    // Tesorería: aplicación de pagos y cobros a facturas
+    // TesorerÃ­a: aplicaciÃ³n de pagos y cobros a facturas
     // ---------------------------------------------------------------
 
     @Override
@@ -758,20 +758,20 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         Titular titular = em.find(Titular.class, idTitular);
         String nomProv = (titular != null) ? titular.getNombre() : String.valueOf(idTitular);
 
-        // ── DEBE: cuenta CxP del proveedor (tipoCuenta=1) ──────────────────────
+        // â”€â”€ DEBE: cuenta CxP del proveedor (tipoCuenta=1) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         PlanCuenta cuentaProveedor = obtenerCuentaProveedorPorTipo(idTitular, idEmpresa, 1L);
         if (cuentaProveedor == null) {
             throw new IncomeException(
                     "El proveedor '" + nomProv + "' no tiene cuenta contable de facturas (Tipo 1) "
-                    + "configurada en Tesorería → Persona → Cuentas Contables (Rol: Proveedor).");
+                    + "configurada en TesorerÃ­a â†’ Persona â†’ Cuentas Contables (Rol: Proveedor).");
         }
 
-        // ── HABER: cuenta de anticipos del proveedor (tipoCuenta=2) ────────────
+        // â”€â”€ HABER: cuenta de anticipos del proveedor (tipoCuenta=2) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         PlanCuenta cuentaAnticipo = obtenerCuentaProveedorPorTipo(idTitular, idEmpresa, 2L);
         if (cuentaAnticipo == null) {
             throw new IncomeException(
                     "El proveedor '" + nomProv + "' no tiene cuenta contable de anticipos (Tipo 2) "
-                    + "configurada en Tesorería → Persona → Cuentas Contables (Rol: Proveedor).");
+                    + "configurada en TesorerÃ­a â†’ Persona â†’ Cuentas Contables (Rol: Proveedor).");
         }
 
         List<DetalleAsiento> lineas = new ArrayList<>();
@@ -795,20 +795,20 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         Titular titular = em.find(Titular.class, idTitular);
         String nomCliente = (titular != null) ? titular.getNombre() : String.valueOf(idTitular);
 
-        // ── DEBE: cuenta de anticipos del cliente (tipoCuenta=2) ───────────────
+        // â”€â”€ DEBE: cuenta de anticipos del cliente (tipoCuenta=2) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         PlanCuenta cuentaAnticipo = obtenerCuentaPorTipo(idTitular, idEmpresa, 2L);
         if (cuentaAnticipo == null) {
             throw new IncomeException(
                     "El cliente '" + nomCliente + "' no tiene cuenta contable de anticipos (Tipo 2) "
-                    + "configurada en Tesorería → Persona → Cuentas Contables (Rol: Cliente).");
+                    + "configurada en TesorerÃ­a â†’ Persona â†’ Cuentas Contables (Rol: Cliente).");
         }
 
-        // ── HABER: cuenta CxC del cliente (tipoCuenta=1) ───────────────────────
+        // â”€â”€ HABER: cuenta CxC del cliente (tipoCuenta=1) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         PlanCuenta cuentaCliente = obtenerCuentaCliente(idTitular, idEmpresa);
         if (cuentaCliente == null) {
             throw new IncomeException(
                     "El cliente '" + nomCliente + "' no tiene cuenta contable de facturas (Tipo 1) "
-                    + "configurada en Tesorería → Persona → Cuentas Contables (Rol: Cliente).");
+                    + "configurada en TesorerÃ­a â†’ Persona â†’ Cuentas Contables (Rol: Cliente).");
         }
 
         List<DetalleAsiento> lineas = new ArrayList<>();
@@ -832,15 +832,15 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         Titular titular = em.find(Titular.class, idTitular);
         String nomProv = (titular != null) ? titular.getNombre() : String.valueOf(idTitular);
 
-        // ── DEBE: cuenta CxP del proveedor (tipoCuenta=1) ──────────────────────
+        // â”€â”€ DEBE: cuenta CxP del proveedor (tipoCuenta=1) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         PlanCuenta cuentaProveedor = obtenerCuentaProveedorPorTipo(idTitular, idEmpresa, 1L);
         if (cuentaProveedor == null) {
             throw new IncomeException(
                     "El proveedor '" + nomProv + "' no tiene cuenta contable de facturas (Tipo 1) "
-                    + "configurada en Tesorería → Persona → Cuentas Contables (Rol: Proveedor).");
+                    + "configurada en TesorerÃ­a â†’ Persona â†’ Cuentas Contables (Rol: Proveedor).");
         }
 
-        // ── HABER: cuenta contable del banco ───────────────────────────────────
+        // â”€â”€ HABER: cuenta contable del banco â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         com.saa.model.tsr.CuentaBancaria cuentaBancaria = obtenerCuentaBancaria(idCuentaBancaria);
         PlanCuenta cuentaBanco = cuentaBancaria.getPlanCuenta();
 
@@ -867,16 +867,16 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         Titular titular = em.find(Titular.class, idTitular);
         String nomCliente = (titular != null) ? titular.getNombre() : String.valueOf(idTitular);
 
-        // ── DEBE: cuenta contable del banco ────────────────────────────────────
+        // â”€â”€ DEBE: cuenta contable del banco â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         com.saa.model.tsr.CuentaBancaria cuentaBancaria = obtenerCuentaBancaria(idCuentaBancaria);
         PlanCuenta cuentaBanco = cuentaBancaria.getPlanCuenta();
 
-        // ── HABER: cuenta CxC del cliente (tipoCuenta=1) ───────────────────────
+        // â”€â”€ HABER: cuenta CxC del cliente (tipoCuenta=1) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         PlanCuenta cuentaCliente = obtenerCuentaCliente(idTitular, idEmpresa);
         if (cuentaCliente == null) {
             throw new IncomeException(
                     "El cliente '" + nomCliente + "' no tiene cuenta contable de facturas (Tipo 1) "
-                    + "configurada en Tesorería → Persona → Cuentas Contables (Rol: Cliente).");
+                    + "configurada en TesorerÃ­a â†’ Persona â†’ Cuentas Contables (Rol: Cliente).");
         }
 
         List<DetalleAsiento> lineas = new ArrayList<>();
@@ -904,17 +904,17 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             throw new IncomeException("El valor del egreso debe ser mayor a cero.");
         }
 
-        // ── DEBE: cuenta del grupo del producto CXP ────────────────────────────
+        // â”€â”€ DEBE: cuenta del grupo del producto CXP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         PlanCuenta cuentaGasto = obtenerCuentaGrupoProductoPago(idProductoPago);
 
-        // ── HABER: cuenta contable del banco ───────────────────────────────────
+        // â”€â”€ HABER: cuenta contable del banco â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         com.saa.model.tsr.CuentaBancaria cuentaBancaria = obtenerCuentaBancaria(idCuentaBancaria);
         PlanCuenta cuentaBanco = cuentaBancaria.getPlanCuenta();
 
         List<DetalleAsiento> lineas = new ArrayList<>();
-        lineas.add(creaLinea(cuentaGasto, "Egreso tesorería: " + concepto, valor, true));
+        lineas.add(creaLinea(cuentaGasto, "Egreso tesorerÃ­a: " + concepto, valor, true));
         lineas.add(creaLinea(cuentaBanco,
-                "Egreso tesorería: " + concepto
+                "Egreso tesorerÃ­a: " + concepto
                 + " | Cta Banco: " + cuentaBancaria.getNumeroCuenta(), valor, false));
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento, fechaAsiento, observaciones,
@@ -936,18 +936,18 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             throw new IncomeException("El valor del ingreso debe ser mayor a cero.");
         }
 
-        // ── DEBE: cuenta contable del banco ────────────────────────────────────
+        // â”€â”€ DEBE: cuenta contable del banco â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         com.saa.model.tsr.CuentaBancaria cuentaBancaria = obtenerCuentaBancaria(idCuentaBancaria);
         PlanCuenta cuentaBanco = cuentaBancaria.getPlanCuenta();
 
-        // ── HABER: cuenta del grupo del producto CXC ───────────────────────────
+        // â”€â”€ HABER: cuenta del grupo del producto CXC â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         PlanCuenta cuentaIngreso = obtenerCuentaGrupoProductoCobro(idProductoCobro);
 
         List<DetalleAsiento> lineas = new ArrayList<>();
         lineas.add(creaLinea(cuentaBanco,
-                "Ingreso tesorería: " + concepto
+                "Ingreso tesorerÃ­a: " + concepto
                 + " | Cta Banco: " + cuentaBancaria.getNumeroCuenta(), valor, true));
-        lineas.add(creaLinea(cuentaIngreso, "Ingreso tesorería: " + concepto, valor, false));
+        lineas.add(creaLinea(cuentaIngreso, "Ingreso tesorerÃ­a: " + concepto, valor, false));
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento, fechaAsiento, observaciones,
                 usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA));
@@ -959,7 +959,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
     /**
      * Recupera la cuenta contable del grupo de un producto CXP, validando la
-     * cadena producto → grupo → planCuenta con mensajes accionables.
+     * cadena producto â†’ grupo â†’ planCuenta con mensajes accionables.
      * @param idProductoPago : Id del producto CXP (PGS.PRDP)
      * @return               : Cuenta contable del grupo
      * @throws Throwable     : Excepcion si falta el producto, el grupo o la cuenta
@@ -971,23 +971,23 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         com.saa.model.cxp.ProductoPago producto =
                 em.find(com.saa.model.cxp.ProductoPago.class, idProductoPago);
         if (producto == null) {
-            throw new IncomeException("No se encontró el producto CXP con ID: " + idProductoPago);
+            throw new IncomeException("No se encontrÃ³ el producto CXP con ID: " + idProductoPago);
         }
         if (producto.getGrupoProducto() == null) {
             throw new IncomeException("El producto '" + producto.getNombre()
-                    + "' no tiene grupo asignado. Clasifíquelo en CXP → Productos antes de usarlo.");
+                    + "' no tiene grupo asignado. ClasifÃ­quelo en CXP â†’ Productos antes de usarlo.");
         }
         if (producto.getGrupoProducto().getPlanCuenta() == null) {
             throw new IncomeException("El grupo '" + producto.getGrupoProducto().getNombre()
                     + "' del producto '" + producto.getNombre()
-                    + "' no tiene cuenta contable configurada (Contabilidad → Grupos de Producto).");
+                    + "' no tiene cuenta contable configurada (Contabilidad â†’ Grupos de Producto).");
         }
         return producto.getGrupoProducto().getPlanCuenta();
     }
 
     /**
      * Recupera la cuenta contable del grupo de un producto CXC, validando la
-     * cadena producto → grupo → planCuenta con mensajes accionables.
+     * cadena producto â†’ grupo â†’ planCuenta con mensajes accionables.
      * @param idProductoCobro : Id del producto CXC (CBR.PRDC)
      * @return                : Cuenta contable del grupo
      * @throws Throwable      : Excepcion si falta el producto, el grupo o la cuenta
@@ -999,22 +999,22 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         com.saa.model.cxc.ProductoCobro producto =
                 em.find(com.saa.model.cxc.ProductoCobro.class, idProductoCobro);
         if (producto == null) {
-            throw new IncomeException("No se encontró el producto CXC con ID: " + idProductoCobro);
+            throw new IncomeException("No se encontrÃ³ el producto CXC con ID: " + idProductoCobro);
         }
         if (producto.getGrupoProducto() == null) {
             throw new IncomeException("El producto '" + producto.getNombre()
-                    + "' no tiene grupo asignado. Clasifíquelo en CXC → Productos antes de usarlo.");
+                    + "' no tiene grupo asignado. ClasifÃ­quelo en CXC â†’ Productos antes de usarlo.");
         }
         if (producto.getGrupoProducto().getPlanCuenta() == null) {
             throw new IncomeException("El grupo '" + producto.getGrupoProducto().getNombre()
                     + "' del producto '" + producto.getNombre()
-                    + "' no tiene cuenta contable configurada (Contabilidad → Grupos de Producto).");
+                    + "' no tiene cuenta contable configurada (Contabilidad â†’ Grupos de Producto).");
         }
         return producto.getGrupoProducto().getPlanCuenta();
     }
 
     /**
-     * Valida los datos mínimos de un asiento de aplicación de pago/cobro.
+     * Valida los datos mÃ­nimos de un asiento de aplicaciÃ³n de pago/cobro.
      * @param idTitular : Id del titular (cliente o proveedor)
      * @param valor     : Valor a aplicar, debe ser mayor a cero
      * @param idEmpresa : Id de la empresa contable
@@ -1045,7 +1045,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         com.saa.model.tsr.CuentaBancaria cuentaBancaria =
                 em.find(com.saa.model.tsr.CuentaBancaria.class, idCuentaBancaria);
         if (cuentaBancaria == null) {
-            throw new IncomeException("No se encontró la cuenta bancaria con ID: " + idCuentaBancaria);
+            throw new IncomeException("No se encontrÃ³ la cuenta bancaria con ID: " + idCuentaBancaria);
         }
         if (cuentaBancaria.getPlanCuenta() == null) {
             throw new IncomeException(
@@ -1056,10 +1056,10 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     }
 
     /**
-     * Construye una línea de asiento al DEBE o al HABER.
-     * @param cuenta      : Cuenta contable de la línea
-     * @param descripcion : Descripción de la línea
-     * @param valor       : Valor de la línea
+     * Construye una lÃ­nea de asiento al DEBE o al HABER.
+     * @param cuenta      : Cuenta contable de la lÃ­nea
+     * @param descripcion : DescripciÃ³n de la lÃ­nea
+     * @param valor       : Valor de la lÃ­nea
      * @param esDebe      : true = DEBE, false = HABER
      * @return            : Detalle de asiento listo para agregar a la lista
      */
@@ -1083,15 +1083,15 @@ public class AsientoContableServiceImpl implements AsientoContableService {
      * tipoCuenta y la misma empresa. Sin filtrar por rol, la consulta devuelve
      * una fila arbitraria y el asiento sale con la cuenta del rol equivocado.
      * <p>
-     * La resolución vive en
+     * La resoluciÃ³n vive en
      * {@code PersonaCuentaContableDaoService.selectByTitularRolTipoCuenta},
      * compartida con los flujos de anticipos de CXP y CXC.
      *
-     * @param codigoTitular : Código del titular
+     * @param codigoTitular : CÃ³digo del titular
      * @param idEmpresa     : Empresa contable
      * @param tipoCuenta    : 1=Facturas, 2=Anticipos, 3=Caja/Banco
      * @param rolPersona    : {@link RolPersona#CLIENTE} o {@link RolPersona#PROVEEDOR}
-     * @return : Cuenta contable, o null si no está configurada
+     * @return : Cuenta contable, o null si no estÃ¡ configurada
      */
     private PlanCuenta obtenerCuentaPersona(Long codigoTitular, Long idEmpresa,
             Long tipoCuenta, int rolPersona) {
@@ -1110,16 +1110,16 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             }
             PlanCuenta pc = cuentas.get(0).getPlanCuenta();
             if (pc == null) {
-                System.err.println("  [obtenerCuentaPersona] ✗ La cuenta contable del titular "
+                System.err.println("  [obtenerCuentaPersona] âœ— La cuenta contable del titular "
                         + codigoTitular + " (rol " + nombreRol + ", tipoCuenta " + tipoCuenta
                         + ") no tiene PlanCuenta asignado.");
                 return null;
             }
-            System.out.println("  [obtenerCuentaPersona] ✓ Cuenta " + nombreRol + ": "
+            System.out.println("  [obtenerCuentaPersona] âœ“ Cuenta " + nombreRol + ": "
                     + pc.getCuentaContable() + " - " + pc.getNombre());
             return pc;
         } catch (Throwable e) {
-            System.err.println("⚠ Error buscando cuenta tipo " + tipoCuenta
+            System.err.println("âš  Error buscando cuenta tipo " + tipoCuenta
                     + " (rol " + nombreRol + ") del titular " + codigoTitular
                     + ": " + e.getMessage());
             e.printStackTrace();
@@ -1129,7 +1129,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
     /**
      * Vuelca en el log las PersonaCuentaContable reales del titular cuando no se
-     * encontró ninguna cuenta, para poder diagnosticar qué falta configurar.
+     * encontrÃ³ ninguna cuenta, para poder diagnosticar quÃ© falta configurar.
      * @param codigoTitular : Titular consultado
      * @param nombreRol     : Rol que se buscaba (para el mensaje)
      * @param tipoCuenta    : Tipo de cuenta que se buscaba
@@ -1146,7 +1146,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                     + "WHERE pr.titular.codigo = :t")
                     .setParameter("t", codigoTitular)
                     .getSingleResult()).longValue();
-            System.err.println("  [obtenerCuentaPersona] ✗ No encontrado."
+            System.err.println("  [obtenerCuentaPersona] âœ— No encontrado."
                     + " rol=" + nombreRol + " | tipoCuenta=" + tipoCuenta
                     + " | PersonaRol del titular: " + totalPrrl
                     + " | PersonaCuentaContable del titular (sin filtros de empresa/tipo): " + totalPrcc);
@@ -1172,8 +1172,8 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                         + " | rol(PRRLRZZA)=" + row[7]);
             }
         } catch (Exception ex) {
-            System.err.println("  [obtenerCuentaPersona] ✗ No encontrado "
-                    + "(diagnóstico falló: " + ex.getMessage() + ")");
+            System.err.println("  [obtenerCuentaPersona] âœ— No encontrado "
+                    + "(diagnÃ³stico fallÃ³: " + ex.getMessage() + ")");
         }
     }
 
@@ -1202,8 +1202,8 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
     /**
      * Obtiene la cuenta contable del IVA desde TSRI.
-     * Busca por tsri.codigo (campo String) dentro de la categoría lsri.tabla = '17' (IVA).
-     * El campo codigoIVASRI de DetalleFactura almacena el valor numérico del campo CODIGO de TSRI.
+     * Busca por tsri.codigo (campo String) dentro de la categorÃ­a lsri.tabla = '17' (IVA).
+     * El campo codigoIVASRI de DetalleFactura almacena el valor numÃ©rico del campo CODIGO de TSRI.
      */
     private PlanCuenta obtenerCuentaIVA(String codigoIVASRI) {
         try {
@@ -1217,14 +1217,14 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             List<?> result = q.getResultList();
             return result.isEmpty() ? null : (PlanCuenta) result.get(0);
         } catch (Exception e) {
-            System.err.println("⚠ Error buscando cuenta de IVA codigo=" + codigoIVASRI + ": " + e.getMessage());
+            System.err.println("âš  Error buscando cuenta de IVA codigo=" + codigoIVASRI + ": " + e.getMessage());
             return null;
         }
     }
 
     /**
      * Obtiene el texto descriptivo de un tipo de IVA desde TSRI para mensajes de error.
-     * Busca por tsri.codigo (String) dentro de la categoría lsri.tabla='17'.
+     * Busca por tsri.codigo (String) dentro de la categorÃ­a lsri.tabla='17'.
      */
     private String obtenerDetalleIVA(String codigoIVASRI) {
         try {
@@ -1245,9 +1245,9 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     }
 
     // =========================================================================
-    // Stubs CXC — Documentos de Cobro
+    // Stubs CXC â€” Documentos de Cobro
     // =========================================================================
-    // Estos métodos están listos para recibir la plantilla (codigoAltTipoAsiento)
+    // Estos mÃ©todos estÃ¡n listos para recibir la plantilla (codigoAltTipoAsiento)
     // y los auxiliares correspondientes. Por ahora lanzan UnsupportedOperationException
     // con un mensaje descriptivo de lo que se debe configurar.
     // =========================================================================
@@ -1261,11 +1261,11 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         System.out.println("=== generarAsientoNotaCredito | idNC=" + idNotaCredito
                 + " | empresa=" + idEmpresa + " ===");
 
-        // 1. Cargar la Nota de Crédito
+        // 1. Cargar la Nota de CrÃ©dito
         com.saa.model.cxc.NotaCredito nc =
                 em.find(com.saa.model.cxc.NotaCredito.class, idNotaCredito);
         if (nc == null) {
-            throw new IncomeException("No se encontró la Nota de Crédito con ID: " + idNotaCredito);
+            throw new IncomeException("No se encontrÃ³ la Nota de CrÃ©dito con ID: " + idNotaCredito);
         }
 
         // 2. Cargar detalles activos
@@ -1276,20 +1276,20 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                 .getResultList();
 
         if (detalles == null || detalles.isEmpty()) {
-            throw new IncomeException("La Nota de Crédito " + idNotaCredito + " no tiene detalles activos.");
+            throw new IncomeException("La Nota de CrÃ©dito " + idNotaCredito + " no tiene detalles activos.");
         }
 
-        // 3. Construir líneas del asiento
-        // NOTA: La lógica es idéntica a la de factura pero con DEBE y HABER invertidos.
+        // 3. Construir lÃ­neas del asiento
+        // NOTA: La lÃ³gica es idÃ©ntica a la de factura pero con DEBE y HABER invertidos.
         //   Factura:     DEBE=CxC cliente | HABER=Ingresos/IVA
-        //   Nota Crédito:HABER=CxC cliente | DEBE=Ingresos/IVA  (anulación/reducción)
+        //   Nota CrÃ©dito:HABER=CxC cliente | DEBE=Ingresos/IVA  (anulaciÃ³n/reducciÃ³n)
         List<DetalleAsiento> lineas = new ArrayList<>();
 
-        // ── HABER: cuenta CxC del cliente (en factura era DEBE) ──────────────
+        // â”€â”€ HABER: cuenta CxC del cliente (en factura era DEBE) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         PlanCuenta cuentaCliente = obtenerCuentaCliente(
                 nc.getTitular().getCodigo(), idEmpresa);
         if (cuentaCliente == null) {
-            throw new IncomeException("No se encontró cuenta contable (tipo factura) "
+            throw new IncomeException("No se encontrÃ³ cuenta contable (tipo factura) "
                     + "para el cliente ID: " + nc.getTitular().getCodigo()
                     + " en la empresa: " + idEmpresa);
         }
@@ -1303,7 +1303,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         lineaHaberCliente.setValorHaber(nvl(nc.getTotal()));
         lineas.add(lineaHaberCliente);
 
-        // ── DEBE: una línea por grupo de producto (en factura era HABER) ──────
+        // â”€â”€ DEBE: una lÃ­nea por grupo de producto (en factura era HABER) â”€â”€â”€â”€â”€â”€
         Map<Long, Double> subtotalPorGrupo = new LinkedHashMap<>();
         Map<Long, PlanCuenta> cuentaPorGrupo = new LinkedHashMap<>();
         Map<Long, String> nombreGrupo = new LinkedHashMap<>();
@@ -1313,7 +1313,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                 throw new IncomeException("El detalle '" + detalle.getDescripcion()
                         + "' no tiene producto asignado.");
             }
-            // Obtener grupo del producto vía JPQL (producto es Long FK)
+            // Obtener grupo del producto vÃ­a JPQL (producto es Long FK)
             @SuppressWarnings("unchecked")
             List<Object[]> grupoRows = em.createQuery(
                     "SELECT p.grupoProducto.codigo, p.grupoProducto.nombre, p.grupoProducto.planCuenta "
@@ -1323,7 +1323,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                     .getResultList();
             if (grupoRows.isEmpty()) {
                 throw new IncomeException("El producto ID " + detalle.getProducto()
-                        + " ('" + detalle.getDescripcion() + "') no se encontró o no tiene grupo asignado.");
+                        + " ('" + detalle.getDescripcion() + "') no se encontrÃ³ o no tiene grupo asignado.");
             }
             Object[] gr = grupoRows.get(0);
             Long idGrupo = (Long) gr[0];
@@ -1350,8 +1350,8 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             lineas.add(lineaDebe);
         }
 
-        // ── DEBE: una línea por tipo de IVA (en factura era HABER) ───────────
-        // DetalleNotaCredito.porcentajeIVA es el % (0,5,8,15). Mapeamos a código SRI.
+        // â”€â”€ DEBE: una lÃ­nea por tipo de IVA (en factura era HABER) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // DetalleNotaCredito.porcentajeIVA es el % (0,5,8,15). Mapeamos a cÃ³digo SRI.
         Map<String, Double> ivaParaTipo = new LinkedHashMap<>();
         for (com.saa.model.cxc.DetalleNotaCredito detalle : detalles) {
             if (detalle.getValorIVA() != null && detalle.getValorIVA() > 0
@@ -1368,32 +1368,32 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             PlanCuenta cuentaIVA = obtenerCuentaIVA(codigoIVASRI);
             if (cuentaIVA == null) {
                 throw new IncomeException(
-                        "No se encontró cuenta contable para el IVA con código SRI: " + codigoIVASRI
-                        + ". Configure la cuenta en Facturación → Tipos SRI → IVA (categoría 17).");
+                        "No se encontrÃ³ cuenta contable para el IVA con cÃ³digo SRI: " + codigoIVASRI
+                        + ". Configure la cuenta en FacturaciÃ³n â†’ Tipos SRI â†’ IVA (categorÃ­a 17).");
             }
             DetalleAsiento lineaIVA = new DetalleAsiento();
             lineaIVA.setPlanCuenta(cuentaIVA);
             lineaIVA.setNumeroCuenta(cuentaIVA.getCuentaContable());
             lineaIVA.setNombreCuenta(cuentaIVA.getNombre());
-            lineaIVA.setDescripcion("NC IVA código SRI: " + codigoIVASRI);
+            lineaIVA.setDescripcion("NC IVA cÃ³digo SRI: " + codigoIVASRI);
             lineaIVA.setValorDebe(valorIVA);
             lineaIVA.setValorHaber(0.0);
             lineas.add(lineaIVA);
         }
 
-        // 4. Generar el asiento con las líneas construidas
+        // 4. Generar el asiento con las lÃ­neas construidas
         return generarAsiento(idEmpresa, codigoAltTipoAsiento, fechaAsiento,
                 observaciones, usuario, lineas);
     }
 
-    /** Mapea porcentaje de IVA (Long: 0,5,8,15) al código SRI de TSRI (tabla='17'). */
+    /** Mapea porcentaje de IVA (Long: 0,5,8,15) al cÃ³digo SRI de TSRI (tabla='17'). */
     private String mapPorcentajeIVAaCodigo(Long porcentaje) {
         if (porcentaje == null) return "0";
         switch (porcentaje.intValue()) {
             case 0:  return "0";   // IVA 0%
             case 5:  return "5";   // IVA 5%
             case 8:  return "8";   // IVA tarifa especial 8%
-            case 15: return "4";   // IVA 15% (código SRI = 4)
+            case 15: return "4";   // IVA 15% (cÃ³digo SRI = 4)
             default: return String.valueOf(porcentaje);
         }
     }
@@ -1407,24 +1407,24 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         System.out.println("=== generarAsientoNotaDebito | idND=" + idNotaDebito
                 + " | empresa=" + idEmpresa + " ===");
 
-        // 1. Cargar la Nota de Débito
+        // 1. Cargar la Nota de DÃ©bito
         com.saa.model.cxc.NotaDebito nd =
                 em.find(com.saa.model.cxc.NotaDebito.class, idNotaDebito);
         if (nd == null) {
-            throw new IncomeException("No se encontró la Nota de Débito con ID: " + idNotaDebito);
+            throw new IncomeException("No se encontrÃ³ la Nota de DÃ©bito con ID: " + idNotaDebito);
         }
 
-        // 2. La ND no tiene líneas de producto propias: obtener cuentas de ingreso
+        // 2. La ND no tiene lÃ­neas de producto propias: obtener cuentas de ingreso
         //    desde la factura relacionada.
         List<DetalleFactura> detallesFact = obtenerDetallesParaND(nd);
 
         List<DetalleAsiento> lineas = new ArrayList<>();
 
-        // ── DEBE: cuenta CxC del cliente (igual que Factura) ─────────────────
+        // â”€â”€ DEBE: cuenta CxC del cliente (igual que Factura) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         PlanCuenta cuentaCliente = obtenerCuentaCliente(
                 nd.getTitular().getCodigo(), idEmpresa);
         if (cuentaCliente == null) {
-            throw new IncomeException("No se encontró cuenta contable (tipo factura) "
+            throw new IncomeException("No se encontrÃ³ cuenta contable (tipo factura) "
                     + "para el cliente ID: " + nd.getTitular().getCodigo()
                     + " en la empresa: " + idEmpresa);
         }
@@ -1437,13 +1437,13 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         debe.setValorHaber(0.0);
         lineas.add(debe);
 
-        // ── HABER: cuentas de ingreso por grupo de producto (factura relacionada) ─
+        // â”€â”€ HABER: cuentas de ingreso por grupo de producto (factura relacionada) â”€
         Map<Long, Double> subtotalPorGrupo = new LinkedHashMap<>();
         Map<Long, PlanCuenta> cuentaPorGrupo = new LinkedHashMap<>();
         Map<Long, String> nombreGrupo = new LinkedHashMap<>();
 
         if (detallesFact != null && !detallesFact.isEmpty()) {
-            // Calcular proporción total de bases imponibles de la factura
+            // Calcular proporciÃ³n total de bases imponibles de la factura
             double totalBaseFact = 0.0;
             for (DetalleFactura d : detallesFact) totalBaseFact += nvl(d.getBaseImponible());
             double totalBaseND = nvl(nd.getSubtotal()) + nvl(nd.getSubcero());
@@ -1463,10 +1463,10 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         }
 
         if (subtotalPorGrupo.isEmpty()) {
-            // Sin factura relacionada: usar subcero + subtotal en una sola línea genérica
+            // Sin factura relacionada: usar subcero + subtotal en una sola lÃ­nea genÃ©rica
             // Intentar obtener cuenta del primer grupo del facturador
             throw new IncomeException(
-                    "La Nota de Débito no tiene factura relacionada con detalles de producto. "
+                    "La Nota de DÃ©bito no tiene factura relacionada con detalles de producto. "
                     + "Vincule la ND a una factura para generar el asiento contable.");
         }
 
@@ -1482,21 +1482,21 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             lineas.add(lineaHaber);
         }
 
-        // ── HABER: IVA (si aplica) ────────────────────────────────────────────
+        // â”€â”€ HABER: IVA (si aplica) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if (nd.getvIVA() != null && nd.getvIVA() > 0) {
-            // código SRI del IVA: porcentaje pIVA → mapeamos a código SRI
+            // cÃ³digo SRI del IVA: porcentaje pIVA â†’ mapeamos a cÃ³digo SRI
             String codigoIVASRI = mapPorcentajeNDaCodigo(nd.getpIVA());
             PlanCuenta cuentaIVA = obtenerCuentaIVA(codigoIVASRI);
             if (cuentaIVA == null) {
                 throw new IncomeException(
-                        "No se encontró cuenta contable para el IVA código SRI: " + codigoIVASRI
-                        + ". Configure la cuenta en Facturación → Tipos SRI → IVA (categoría 17).");
+                        "No se encontrÃ³ cuenta contable para el IVA cÃ³digo SRI: " + codigoIVASRI
+                        + ". Configure la cuenta en FacturaciÃ³n â†’ Tipos SRI â†’ IVA (categorÃ­a 17).");
             }
             DetalleAsiento haberIVA = new DetalleAsiento();
             haberIVA.setPlanCuenta(cuentaIVA);
             haberIVA.setNumeroCuenta(cuentaIVA.getCuentaContable());
             haberIVA.setNombreCuenta(cuentaIVA.getNombre());
-            haberIVA.setDescripcion("ND IVA código SRI: " + codigoIVASRI);
+            haberIVA.setDescripcion("ND IVA cÃ³digo SRI: " + codigoIVASRI);
             haberIVA.setValorDebe(0.0);
             haberIVA.setValorHaber(nd.getvIVA());
             lineas.add(haberIVA);
@@ -1506,7 +1506,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                 observaciones, usuario, lineas);
     }
 
-    /** Mapea el porcentaje de IVA (Double: 0,5,8,15) al código SRI de TSRI. */
+    /** Mapea el porcentaje de IVA (Double: 0,5,8,15) al cÃ³digo SRI de TSRI. */
     private String mapPorcentajeNDaCodigo(Double porcentaje) {
         if (porcentaje == null) return "0";
         int p = porcentaje.intValue();
@@ -1529,7 +1529,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                     .setParameter("id", nd.getFactura().getId())
                     .getResultList();
         } catch (Exception e) {
-            System.err.println("⚠ No se pudieron cargar detalles de factura para ND: " + e.getMessage());
+            System.err.println("âš  No se pudieron cargar detalles de factura para ND: " + e.getMessage());
             return null;
         }
     }
@@ -1539,15 +1539,15 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             Long idLiquidacion, Long idEmpresa, int codigoAltTipoAsiento,
             java.time.LocalDate fechaAsiento, String observaciones, String usuario)
             throws Throwable {
-        // TODO — Implementar cuando se defina:
-        //   · La plantilla de asiento: TipoAsientos.LIQUIDACIONES_COMPRA_EMITIDAS (codigoAlterno en BD)
-        //   · AuxiliarUno DEBE:  cuenta CxP del proveedor/prestador de servicio
-        //   · AuxiliarUno HABER: cuenta contable del grupo de producto del detalle
+        // TODO â€” Implementar cuando se defina:
+        //   Â· La plantilla de asiento: TipoAsientos.LIQUIDACIONES_COMPRA_EMITIDAS (codigoAlterno en BD)
+        //   Â· AuxiliarUno DEBE:  cuenta CxP del proveedor/prestador de servicio
+        //   Â· AuxiliarUno HABER: cuenta contable del grupo de producto del detalle
         //                        + cuenta de IVA (Tsri.planCuenta, lsri.tabla='17')
         throw new UnsupportedOperationException(
-                "generarAsientoLiquidacionCompra aún no implementado. "
+                "generarAsientoLiquidacionCompra aÃºn no implementado. "
                 + "Defina la plantilla TipoAsientos.LIQUIDACIONES_COMPRA_EMITIDAS en BD "
-                + "y configure las cuentas auxiliares antes de activar este método.");
+                + "y configure las cuentas auxiliares antes de activar este mÃ©todo.");
     }
 
     // ---------------------------------------------------------------
@@ -1564,7 +1564,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
         // 1. Validar cuenta CxP del proveedor (tipoCuenta=1, rol proveedor)
         if (retencion.getProveedor() == null) {
-            errores.add("La retención no tiene proveedor asignado.");
+            errores.add("La retenciÃ³n no tiene proveedor asignado.");
         } else {
             PlanCuenta cuentaProveedor = obtenerCuentaProveedor(
                     retencion.getProveedor().getCodigo(), idEmpresa);
@@ -1572,14 +1572,14 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                 errores.add("El proveedor '" + retencion.getProveedor().getNombre()
                         + "' (ID: " + retencion.getProveedor().getCodigo()
                         + ") no tiene cuenta contable configurada. "
-                        + "Configure la cuenta en Tesorería → Persona → Cuentas Contables "
+                        + "Configure la cuenta en TesorerÃ­a â†’ Persona â†’ Cuentas Contables "
                         + "(Tipo: Facturas, Rol: Proveedor).");
             }
         }
 
-        // 2. Validar cuenta contable de cada código de retención en TSRI
-        //    La clave de deduplicación es (codImpuesto, codRetencion): el mismo
-        //    código puede existir en la categoría de Renta y en la de IVA con
+        // 2. Validar cuenta contable de cada cÃ³digo de retenciÃ³n en TSRI
+        //    La clave de deduplicaciÃ³n es (codImpuesto, codRetencion): el mismo
+        //    cÃ³digo puede existir en la categorÃ­a de Renta y en la de IVA con
         //    cuentas distintas.
         if (detalles != null) {
             java.util.Set<String> codigosValidados = new java.util.HashSet<>();
@@ -1596,17 +1596,17 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                 codigosValidados.add(clave);
 
                 if (lsriPorCodImpuesto(codImpuesto, cod) == null) {
-                    errores.add("El detalle con código de retención '" + cod
+                    errores.add("El detalle con cÃ³digo de retenciÃ³n '" + cod
                             + "' no indica el tipo de impuesto (codImpuesto): se espera "
-                            + "'1' (Renta) o '2' (IVA), y llegó '" + codImpuesto + "'.");
+                            + "'1' (Renta) o '2' (IVA), y llegÃ³ '" + codImpuesto + "'.");
                     continue;
                 }
                 PlanCuenta pc = obtenerCuentaRetencionEmitida(codImpuesto, cod);
                 if (pc == null) {
-                    errores.add("El código de retención '" + cod + "' ("
+                    errores.add("El cÃ³digo de retenciÃ³n '" + cod + "' ("
                             + ("1".equals(codImpuesto) ? "Renta" : "IVA")
                             + ") no tiene cuenta contable asignada en TSRI. "
-                            + "Configure la cuenta en Facturación → Tipos SRI.");
+                            + "Configure la cuenta en FacturaciÃ³n â†’ Tipos SRI.");
                 }
             }
         }
@@ -1627,11 +1627,11 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         System.out.println("=== generarAsientoRetencion | idRetencion=" + idRetencion
                 + " | empresa=" + idEmpresa + " ===");
 
-        // 1. Cargar la retención
+        // 1. Cargar la retenciÃ³n
         com.saa.model.cxc.Retencion retencion =
                 em.find(com.saa.model.cxc.Retencion.class, idRetencion);
         if (retencion == null) {
-            throw new IncomeException("No se encontró la Retención con ID: " + idRetencion);
+            throw new IncomeException("No se encontrÃ³ la RetenciÃ³n con ID: " + idRetencion);
         }
 
         // 2. Cargar detalles activos
@@ -1642,13 +1642,13 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                 .getResultList();
 
         if (detalles == null || detalles.isEmpty()) {
-            throw new IncomeException("La Retención " + idRetencion + " no tiene detalles activos.");
+            throw new IncomeException("La RetenciÃ³n " + idRetencion + " no tiene detalles activos.");
         }
 
-        // 3. Construir líneas del asiento
+        // 3. Construir lÃ­neas del asiento
         List<DetalleAsiento> lineas = new ArrayList<>();
 
-        // ── HABER: una línea por detalle de retención, cuenta desde TSRI.codRetencion ──
+        // â”€â”€ HABER: una lÃ­nea por detalle de retenciÃ³n, cuenta desde TSRI.codRetencion â”€â”€
         double totalRetenido = 0.0;
         for (com.saa.model.cxc.DetalleRetencion det : detalles) {
             String codRetencion = det.getCodRetencion();
@@ -1656,9 +1656,9 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             PlanCuenta pcReten = obtenerCuentaRetencionEmitida(codImpuesto, codRetencion);
             if (pcReten == null) {
                 throw new IncomeException(
-                        "No se encontró cuenta contable para el código de retención '"
+                        "No se encontrÃ³ cuenta contable para el cÃ³digo de retenciÃ³n '"
                         + codRetencion + "' (codImpuesto=" + codImpuesto + ") en TSRI. "
-                        + "Configure la cuenta en Facturación → Tipos SRI.");
+                        + "Configure la cuenta en FacturaciÃ³n â†’ Tipos SRI.");
             }
             double valor = nvl(det.getValorReten());
             totalRetenido += valor;
@@ -1667,7 +1667,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             lineaHaber.setPlanCuenta(pcReten);
             lineaHaber.setNumeroCuenta(pcReten.getCuentaContable());
             lineaHaber.setNombreCuenta(pcReten.getNombre());
-            lineaHaber.setDescripcion("Retención código " + codRetencion
+            lineaHaber.setDescripcion("RetenciÃ³n cÃ³digo " + codRetencion
                     + " | Base: " + String.format(java.util.Locale.US, "%.2f", nvl(det.getBaseImponible()))
                     + " | " + nvl2(det.getPorcentajeReten()) + "%");
             lineaHaber.setValorDebe(0.0);
@@ -1675,14 +1675,14 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             lineas.add(lineaHaber);
         }
 
-        // ── DEBE: cuenta CxP del proveedor por el total retenido ──────────────
+        // â”€â”€ DEBE: cuenta CxP del proveedor por el total retenido â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if (retencion.getProveedor() == null) {
-            throw new IncomeException("La Retención no tiene proveedor asignado.");
+            throw new IncomeException("La RetenciÃ³n no tiene proveedor asignado.");
         }
         PlanCuenta cuentaProveedor = obtenerCuentaProveedor(
                 retencion.getProveedor().getCodigo(), idEmpresa);
         if (cuentaProveedor == null) {
-            throw new IncomeException("No se encontró cuenta contable (tipo factura) "
+            throw new IncomeException("No se encontrÃ³ cuenta contable (tipo factura) "
                     + "para el proveedor ID: " + retencion.getProveedor().getCodigo()
                     + " en la empresa: " + idEmpresa);
         }
@@ -1705,8 +1705,8 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     /**
      * Obtiene la cuenta contable CxP del proveedor (tipoCuenta=1, rol Proveedor).
      * <p>
-     * Antes hacía su propia consulta SIN filtrar por rol, así que un titular que
-     * es cliente Y proveedor a la vez devolvía la cuenta del rol equivocado.
+     * Antes hacÃ­a su propia consulta SIN filtrar por rol, asÃ­ que un titular que
+     * es cliente Y proveedor a la vez devolvÃ­a la cuenta del rol equivocado.
      */
     private PlanCuenta obtenerCuentaProveedor(Long codigoTitular, Long idEmpresa) {
         return obtenerCuentaProveedorPorTipo(codigoTitular, idEmpresa, 1L);
@@ -1714,13 +1714,13 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
     /**
      * Obtiene la cuenta contable desde TSRI por su campo CODIGO.
-     * Se usa para mapear DetalleRetencion.codRetencion → PlanCuenta.
+     * Se usa para mapear DetalleRetencion.codRetencion â†’ PlanCuenta.
      */
     /**
-     * Busca la cuenta contable en TSRI para un código de retención recibida (CXP).
+     * Busca la cuenta contable en TSRI para un cÃ³digo de retenciÃ³n recibida (CXP).
      * El LSRI correcto depende del tipo de impuesto que viene en el XML del SRI:
-     *   codImpuesto = "1" (Renta)  → lsri.tabla = '608'
-     *   codImpuesto = "2" (IVA)    → lsri.tabla = '20'
+     *   codImpuesto = "1" (Renta)  â†’ lsri.tabla = '608'
+     *   codImpuesto = "2" (IVA)    â†’ lsri.tabla = '20'
      *
      * @param codImpuesto    valor del tag <codigo> del XML ("1" o "2")
      * @param codRetencion   valor del tag <codigoRetencion> del XML (ej. "320", "10")
@@ -1728,11 +1728,11 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     private PlanCuenta obtenerCuentaRetencionCompra(String codImpuesto, String codRetencion) {
         String lsriTabla;
         if ("1".equals(codImpuesto)) {
-            lsriTabla = "608"; // Retención de Renta
+            lsriTabla = "608"; // RetenciÃ³n de Renta
         } else if ("2".equals(codImpuesto)) {
-            lsriTabla = "20";  // Retención de IVA
+            lsriTabla = "20";  // RetenciÃ³n de IVA
         } else {
-            System.err.println("⚠ obtenerCuentaRetencionCompra: codImpuesto desconocido='" + codImpuesto
+            System.err.println("âš  obtenerCuentaRetencionCompra: codImpuesto desconocido='" + codImpuesto
                     + "' para codRetencion='" + codRetencion + "'.");
             return null;
         }
@@ -1745,33 +1745,33 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             q.setMaxResults(1);
             List<?> result = q.getResultList();
             if (result.isEmpty()) {
-                System.err.println("⚠ No se encontró cuenta en TSRI: lsri.tabla=" + lsriTabla
+                System.err.println("âš  No se encontrÃ³ cuenta en TSRI: lsri.tabla=" + lsriTabla
                         + " | codRetencion=" + codRetencion);
                 return null;
             }
             return (PlanCuenta) result.get(0);
         } catch (Exception e) {
-            System.err.println("⚠ Error buscando cuenta TSRI lsri=" + lsriTabla
+            System.err.println("âš  Error buscando cuenta TSRI lsri=" + lsriTabla
                     + " codRetencion=" + codRetencion + ": " + e.getMessage());
             return null;
         }
     }
 
     /**
-     * Busca la cuenta contable en CBR.TSRI para un código de retención emitida
+     * Busca la cuenta contable en CBR.TSRI para un cÃ³digo de retenciÃ³n emitida
      * (CXC). Equivalente a {@link #obtenerCuentaRetencionCompra(String, String)}
      * pero contra la entidad {@code Tsri} (esquema CBR) en vez de
      * {@code TsriCompra} (esquema PGS).
      * <p>
-     * El filtro por {@code lsri.tabla} es obligatorio: TSRI es un catálogo
-     * genérico donde CODIGO sólo es único DENTRO de su categoría LSRI. El mismo
-     * código (p. ej. '320') existe en varias categorías, así que buscar sólo por
-     * CODIGO devuelve una fila arbitraria — y con ella una cuenta contable de
+     * El filtro por {@code lsri.tabla} es obligatorio: TSRI es un catÃ¡logo
+     * genÃ©rico donde CODIGO sÃ³lo es Ãºnico DENTRO de su categorÃ­a LSRI. El mismo
+     * cÃ³digo (p. ej. '320') existe en varias categorÃ­as, asÃ­ que buscar sÃ³lo por
+     * CODIGO devuelve una fila arbitraria â€” y con ella una cuenta contable de
      * otro concepto.
      *
      * @param codImpuesto  : Tipo de impuesto retenido ("1"=Renta, "2"=IVA)
-     * @param codRetencion : Código de retención del SRI (ej. "320", "10")
-     * @return : Cuenta contable configurada, o null si no está configurada
+     * @param codRetencion : CÃ³digo de retenciÃ³n del SRI (ej. "320", "10")
+     * @return : Cuenta contable configurada, o null si no estÃ¡ configurada
      */
     private PlanCuenta obtenerCuentaRetencionEmitida(String codImpuesto, String codRetencion) {
         String lsriTabla = lsriPorCodImpuesto(codImpuesto, codRetencion);
@@ -1787,35 +1787,35 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             q.setMaxResults(1);
             List<?> result = q.getResultList();
             if (result.isEmpty()) {
-                System.err.println("⚠ No se encontró cuenta en CBR.TSRI: lsri.tabla=" + lsriTabla
+                System.err.println("âš  No se encontrÃ³ cuenta en CBR.TSRI: lsri.tabla=" + lsriTabla
                         + " | codRetencion=" + codRetencion);
                 return null;
             }
             return (PlanCuenta) result.get(0);
         } catch (Exception e) {
-            System.err.println("⚠ Error buscando cuenta TSRI lsri=" + lsriTabla
+            System.err.println("âš  Error buscando cuenta TSRI lsri=" + lsriTabla
                     + " codRetencion=" + codRetencion + ": " + e.getMessage());
             return null;
         }
     }
 
     /**
-     * Traduce el código de impuesto del SRI a la categoría LSRI que agrupa sus
-     * códigos de retención.
+     * Traduce el cÃ³digo de impuesto del SRI a la categorÃ­a LSRI que agrupa sus
+     * cÃ³digos de retenciÃ³n.
      * @param codImpuesto  : "1"=Renta, "2"=IVA
-     * @param codRetencion : Sólo para el mensaje de log
-     * @return : "608" (Renta), "20" (IVA), o null si el código es desconocido
+     * @param codRetencion : SÃ³lo para el mensaje de log
+     * @return : "608" (Renta), "20" (IVA), o null si el cÃ³digo es desconocido
      */
     private String lsriPorCodImpuesto(String codImpuesto, String codRetencion) {
         if ("1".equals(codImpuesto)) {
-            return "608"; // Retención de Renta
+            return "608"; // RetenciÃ³n de Renta
         }
         if ("2".equals(codImpuesto)) {
-            return "20";  // Retención de IVA
+            return "20";  // RetenciÃ³n de IVA
         }
-        System.err.println("⚠ codImpuesto desconocido='" + codImpuesto
+        System.err.println("âš  codImpuesto desconocido='" + codImpuesto
                 + "' para codRetencion='" + codRetencion
-                + "'. No se puede determinar la categoría LSRI.");
+                + "'. No se puede determinar la categorÃ­a LSRI.");
         return null;
     }
 
@@ -1827,17 +1827,17 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
     // =========================================================================
     // generarAsientoRetencionV2
-    // Estructura idéntica a generarAsientoRetencion (V1) pero usando
+    // Estructura idÃ©ntica a generarAsientoRetencion (V1) pero usando
     // DetalleRetencionV2 (que tiene codImpuesto + codRetencion) y la
     // entidad RetencionV2.
     //
     // DEBE:  cuenta CxP del proveedor (PersonaCuentaContable tipoCuenta=1) por
     //        el total retenido.
-    // HABER: una línea por detalle → cuenta desde Tsri según (codImpuesto,
+    // HABER: una lÃ­nea por detalle â†’ cuenta desde Tsri segÃºn (codImpuesto,
     //        codRetencion). Usa obtenerCuentaRetencionEmitida igual que V1:
     //        las retenciones emitidas (CXC) leen CBR.TSRI (no PGS.TSRI), pero
-    //        el filtro por lsri.tabla es igual de obligatorio — CODIGO sólo es
-    //        único dentro de su categoría LSRI.
+    //        el filtro por lsri.tabla es igual de obligatorio â€” CODIGO sÃ³lo es
+    //        Ãºnico dentro de su categorÃ­a LSRI.
     // =========================================================================
 
     @Override
@@ -1849,11 +1849,11 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         System.out.println("=== generarAsientoRetencionV2 | idRetencionV2=" + idRetencionV2
                 + " | empresa=" + idEmpresa + " ===");
 
-        // 1. Cargar la retención V2
+        // 1. Cargar la retenciÃ³n V2
         com.saa.model.cxc.RetencionV2 retencion =
                 em.find(com.saa.model.cxc.RetencionV2.class, idRetencionV2);
         if (retencion == null) {
-            throw new IncomeException("No se encontró la RetencionV2 con ID: " + idRetencionV2);
+            throw new IncomeException("No se encontrÃ³ la RetencionV2 con ID: " + idRetencionV2);
         }
 
         // 2. Cargar detalles activos
@@ -1867,10 +1867,10 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             throw new IncomeException("La RetencionV2 " + idRetencionV2 + " no tiene detalles activos.");
         }
 
-        // 3. Construir líneas del asiento
+        // 3. Construir lÃ­neas del asiento
         List<DetalleAsiento> lineas = new ArrayList<>();
 
-        // ── HABER: una línea por detalle → cuenta desde Tsri por codRetencion ──
+        // â”€â”€ HABER: una lÃ­nea por detalle â†’ cuenta desde Tsri por codRetencion â”€â”€
         double totalRetenido = 0.0;
         for (com.saa.model.cxc.DetalleRetencionV2 det : detalles) {
             String codRetencion = det.getCodRetencion();
@@ -1878,9 +1878,9 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             PlanCuenta pcReten = obtenerCuentaRetencionEmitida(codImpuesto, codRetencion);
             if (pcReten == null) {
                 throw new IncomeException(
-                        "No se encontró cuenta contable para el código de retención '"
+                        "No se encontrÃ³ cuenta contable para el cÃ³digo de retenciÃ³n '"
                         + codRetencion + "' (codImpuesto=" + codImpuesto + ") en TSRI. "
-                        + "Configure la cuenta en Facturación → Tipos SRI.");
+                        + "Configure la cuenta en FacturaciÃ³n â†’ Tipos SRI.");
             }
             double valor = nvl(det.getValorReten());
             totalRetenido += valor;
@@ -1889,7 +1889,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             lineaHaber.setPlanCuenta(pcReten);
             lineaHaber.setNumeroCuenta(pcReten.getCuentaContable());
             lineaHaber.setNombreCuenta(pcReten.getNombre());
-            lineaHaber.setDescripcion("Retención V2 código " + codRetencion
+            lineaHaber.setDescripcion("RetenciÃ³n V2 cÃ³digo " + codRetencion
                     + " | Base: " + String.format(java.util.Locale.US, "%.2f", nvl(det.getBaseImponible()))
                     + " | " + nvl2(det.getPorcentajeReten()) + "%"
                     + " | Doc: " + (det.getNumDocReten() != null ? det.getNumDocReten() : ""));
@@ -1898,14 +1898,14 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             lineas.add(lineaHaber);
         }
 
-        // ── DEBE: cuenta CxP del proveedor por el total retenido ──────────────
+        // â”€â”€ DEBE: cuenta CxP del proveedor por el total retenido â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if (retencion.getProveedor() == null) {
             throw new IncomeException("La RetencionV2 no tiene proveedor asignado.");
         }
         PlanCuenta cuentaProveedor = obtenerCuentaProveedor(
                 retencion.getProveedor().getCodigo(), idEmpresa);
         if (cuentaProveedor == null) {
-            throw new IncomeException("No se encontró cuenta contable (tipo factura) "
+            throw new IncomeException("No se encontrÃ³ cuenta contable (tipo factura) "
                     + "para el proveedor ID: " + retencion.getProveedor().getCodigo()
                     + " en la empresa: " + idEmpresa);
         }
@@ -1928,11 +1928,11 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     }
 
     // =========================================================================
-    // CXP — Documentos de Compra (recibidos del proveedor)
+    // CXP â€” Documentos de Compra (recibidos del proveedor)
     // =========================================================================
     // ESTRUCTURA GENERAL DEL ASIENTO DE COMPRA:
     //   DEBE:  Gasto / Costo por grupo de producto (GrupoProductoPago.planCuenta)
-    //          + IVA Crédito Tributario (Tsri/Lsri, tabla='17')
+    //          + IVA CrÃ©dito Tributario (Tsri/Lsri, tabla='17')
     //   HABER: CxP Proveedor (PersonaCuentaContable tipoCuenta=1, rol proveedor)
     //
     // PREREQ en BD antes de activar:
@@ -1957,7 +1957,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         com.saa.model.cxp.FacturaCompra fc =
                 em.find(com.saa.model.cxp.FacturaCompra.class, idFacturaCompra);
         if (fc == null)
-            throw new IncomeException("No se encontró FacturaCompra con ID: " + idFacturaCompra);
+            throw new IncomeException("No se encontrÃ³ FacturaCompra con ID: " + idFacturaCompra);
 
         @SuppressWarnings("unchecked")
         List<com.saa.model.cxp.DetalleFacturaCompra> detalles = em.createQuery(
@@ -1968,7 +1968,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
         List<DetalleAsiento> lineas = new ArrayList<>();
 
-        // ── DEBE: una línea por grupo de producto (GrupoProductoPago.planCuenta) ──
+        // â”€â”€ DEBE: una lÃ­nea por grupo de producto (GrupoProductoPago.planCuenta) â”€â”€
         Map<Long, Double> subtotalPorGrupo = new LinkedHashMap<>();
         Map<Long, PlanCuenta> cuentaPorGrupo = new LinkedHashMap<>();
         Map<Long, String> nombreGrupo = new LinkedHashMap<>();
@@ -1983,7 +1983,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
             if (producto.getGrupoProducto() == null)
                 throw new IncomeException("Producto ID " + d.getProducto() + " ('" + producto.getNombre()
-                        + "') no tiene grupo asignado. Clasifíquelo antes de registrar la factura.");
+                        + "') no tiene grupo asignado. ClasifÃ­quelo antes de registrar la factura.");
 
             com.saa.model.cxp.GrupoProductoPago grupo = producto.getGrupoProducto();
             Long idGrupo = grupo.getCodigo();
@@ -2005,7 +2005,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             lineas.add(ln);
         }
 
-        // ── DEBE: IVA crédito tributario ──────────────────────────────────────
+        // â”€â”€ DEBE: IVA crÃ©dito tributario â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // Agrupa por codigoIVASRI del detalle y busca la cuenta en PGS.TSRI
         // donde lsri.tabla = '17' y codigo = codigoIVASRI
         Map<Long, Double> ivaMap = new LinkedHashMap<>();
@@ -2017,24 +2017,24 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         for (Map.Entry<Long, Double> e : ivaMap.entrySet()) {
             PlanCuenta pcIVA = obtenerCuentaIVACxpPorCodigo(e.getKey());
             if (pcIVA == null)
-                throw new IncomeException("No hay cuenta de IVA crédito tributario para código SRI: "
-                        + e.getKey() + " (PGS.TSRI lsri.tabla=17). Configure en Compras → Tipos SRI.");
+                throw new IncomeException("No hay cuenta de IVA crÃ©dito tributario para cÃ³digo SRI: "
+                        + e.getKey() + " (PGS.TSRI lsri.tabla=17). Configure en Compras â†’ Tipos SRI.");
             DetalleAsiento ln = new DetalleAsiento();
             ln.setPlanCuenta(pcIVA); ln.setNumeroCuenta(pcIVA.getCuentaContable());
             ln.setNombreCuenta(pcIVA.getNombre());
-            ln.setDescripcion("IVA crédito tributario código SRI: " + e.getKey());
+            ln.setDescripcion("IVA crÃ©dito tributario cÃ³digo SRI: " + e.getKey());
             ln.setValorDebe(e.getValue()); ln.setValorHaber(0.0);
             lineas.add(ln);
         }
 
-        // ── HABER: CxP proveedor ──────────────────────────────────────────────
+        // â”€â”€ HABER: CxP proveedor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if (fc.getTitular() == null)
             throw new IncomeException("FacturaCompra " + idFacturaCompra + " no tiene proveedor.");
         PlanCuenta cuentaProv = obtenerCuentaProveedor(fc.getTitular().getCodigo(), idEmpresa);
         if (cuentaProv == null)
             throw new IncomeException("El proveedor '" + fc.getTitular().getNombre()
                     + "' no tiene cuenta CxP configurada (Tipo 1, Rol Proveedor).");
-        // El HABER se calcula como la suma exacta de todas las líneas DEBE ya construidas
+        // El HABER se calcula como la suma exacta de todas las lÃ­neas DEBE ya construidas
         // (subtotales por grupo + IVA) para garantizar que el asiento siempre cuadre
         // independientemente de acumulaciones en punto flotante.
         double totalDebe = lineas.stream().mapToDouble(l -> nvl(l.getValorDebe())).sum();
@@ -2065,7 +2065,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         com.saa.model.cxp.NotaCreditoCompra nc =
                 em.find(com.saa.model.cxp.NotaCreditoCompra.class, idNotaCreditoCompra);
         if (nc == null)
-            throw new IncomeException("No se encontró NotaCreditoCompra con ID: " + idNotaCreditoCompra);
+            throw new IncomeException("No se encontrÃ³ NotaCreditoCompra con ID: " + idNotaCreditoCompra);
 
         @SuppressWarnings("unchecked")
         List<com.saa.model.cxp.DetalleNotaCreditoCompra> detalles = em.createQuery(
@@ -2076,7 +2076,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
         List<DetalleAsiento> lineas = new ArrayList<>();
 
-        // ── DEBE: CxP Proveedor (reduce lo que le debemos) ───────────────────
+        // â”€â”€ DEBE: CxP Proveedor (reduce lo que le debemos) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if (nc.getTitular() == null)
             throw new IncomeException("NotaCreditoCompra " + idNotaCreditoCompra + " no tiene proveedor.");
         PlanCuenta cuentaProv = obtenerCuentaProveedor(nc.getTitular().getCodigo(), idEmpresa);
@@ -2090,15 +2090,15 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         debe.setValorDebe(nvl(nc.getTotal())); debe.setValorHaber(0.0);
         lineas.add(debe);
 
-        // ── HABER: reverso gasto por grupo (sin grupo en NC compra → usar descripción) ─
-        // NC compra no trae GrupoProductoPago en el detalle; se acredita gasto genérico
+        // â”€â”€ HABER: reverso gasto por grupo (sin grupo en NC compra â†’ usar descripciÃ³n) â”€
+        // NC compra no trae GrupoProductoPago en el detalle; se acredita gasto genÃ©rico
         double totalBase = 0.0;
         for (com.saa.model.cxp.DetalleNotaCreditoCompra d : detalles)
             totalBase += nvl(d.getSubTotal());
         // Intentar obtener cuenta de gasto del primer grupo activo de la empresa
         PlanCuenta cuentaGasto = obtenerCuentaGastoDefaultCxp(idEmpresa);
         if (cuentaGasto == null)
-            throw new IncomeException("No se encontró cuenta de gasto para la NC de compra. "
+            throw new IncomeException("No se encontrÃ³ cuenta de gasto para la NC de compra. "
                     + "Configure un GrupoProductoPago con cuenta contable y tipo GASTOS GENERALES.");
         if (totalBase > 0) {
             DetalleAsiento haberGasto = new DetalleAsiento();
@@ -2109,7 +2109,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             lineas.add(haberGasto);
         }
 
-        // ── HABER: IVA crédito tributario reverso ─────────────────────────────
+        // â”€â”€ HABER: IVA crÃ©dito tributario reverso â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         Map<String, Double> ivaMap = new LinkedHashMap<>();
         for (com.saa.model.cxp.DetalleNotaCreditoCompra d : detalles) {
             if (d.getValorIVA() != null && d.getValorIVA() > 0 && d.getPorcentajeIVA() != null) {
@@ -2120,11 +2120,11 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         for (Map.Entry<String, Double> e : ivaMap.entrySet()) {
             PlanCuenta pcIVA = obtenerCuentaIVACxp(e.getKey());
             if (pcIVA == null)
-                throw new IncomeException("No hay cuenta IVA crédito tributario para código SRI: " + e.getKey());
+                throw new IncomeException("No hay cuenta IVA crÃ©dito tributario para cÃ³digo SRI: " + e.getKey());
             DetalleAsiento haberIVA = new DetalleAsiento();
             haberIVA.setPlanCuenta(pcIVA); haberIVA.setNumeroCuenta(pcIVA.getCuentaContable());
             haberIVA.setNombreCuenta(pcIVA.getNombre());
-            haberIVA.setDescripcion("NC IVA crédito tributario reverso código SRI: " + e.getKey());
+            haberIVA.setDescripcion("NC IVA crÃ©dito tributario reverso cÃ³digo SRI: " + e.getKey());
             haberIVA.setValorDebe(0.0); haberIVA.setValorHaber(e.getValue());
             lineas.add(haberIVA);
         }
@@ -2148,7 +2148,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         com.saa.model.cxp.NotaDebitoCompra nd =
                 em.find(com.saa.model.cxp.NotaDebitoCompra.class, idNotaDebitoCompra);
         if (nd == null)
-            throw new IncomeException("No se encontró NotaDebitoCompra con ID: " + idNotaDebitoCompra);
+            throw new IncomeException("No se encontrÃ³ NotaDebitoCompra con ID: " + idNotaDebitoCompra);
 
         @SuppressWarnings("unchecked")
         List<com.saa.model.cxp.DetalleNotaDebitoCompra> detalles = em.createQuery(
@@ -2157,22 +2157,22 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
         List<DetalleAsiento> lineas = new ArrayList<>();
 
-        // ── DEBE: gasto adicional (cuenta default de gastos CXP) ─────────────
+        // â”€â”€ DEBE: gasto adicional (cuenta default de gastos CXP) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         double totalND = nvl(nd.getTotal());
         PlanCuenta cuentaGasto = obtenerCuentaGastoDefaultCxp(idEmpresa);
         if (cuentaGasto == null)
-            throw new IncomeException("No se encontró cuenta de gasto para la ND de compra. "
+            throw new IncomeException("No se encontrÃ³ cuenta de gasto para la ND de compra. "
                     + "Configure un GrupoProductoPago con cuenta contable y tipo GASTOS GENERALES.");
         DetalleAsiento debe = new DetalleAsiento();
         debe.setPlanCuenta(cuentaGasto); debe.setNumeroCuenta(cuentaGasto.getCuentaContable());
         debe.setNombreCuenta(cuentaGasto.getNombre());
         String motivoND = detalles != null && !detalles.isEmpty()
-                ? detalles.get(0).getDescripcion() : "Nota de débito compra";
+                ? detalles.get(0).getDescripcion() : "Nota de dÃ©bito compra";
         debe.setDescripcion("ND Compra: " + motivoND);
         debe.setValorDebe(totalND); debe.setValorHaber(0.0);
         lineas.add(debe);
 
-        // ── HABER: CxP Proveedor ──────────────────────────────────────────────
+        // â”€â”€ HABER: CxP Proveedor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if (nd.getTitular() == null)
             throw new IncomeException("NotaDebitoCompra " + idNotaDebitoCompra + " no tiene proveedor.");
         PlanCuenta cuentaProv = obtenerCuentaProveedor(nd.getTitular().getCodigo(), idEmpresa);
@@ -2191,7 +2191,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     }
 
     // ---------------------------------------------------------------
-    // generarAsientoLiquidacionCompraCompra  (misma lógica que FacturaCompra)
+    // generarAsientoLiquidacionCompraCompra  (misma lÃ³gica que FacturaCompra)
     // ---------------------------------------------------------------
     @Override
     public com.saa.model.cnt.Asiento generarAsientoLiquidacionCompraCompra(
@@ -2205,7 +2205,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         com.saa.model.cxp.LiquidacionCompraCompra lq =
                 em.find(com.saa.model.cxp.LiquidacionCompraCompra.class, idLiquidacion);
         if (lq == null)
-            throw new IncomeException("No se encontró LiquidacionCompraCompra con ID: " + idLiquidacion);
+            throw new IncomeException("No se encontrÃ³ LiquidacionCompraCompra con ID: " + idLiquidacion);
 
         @SuppressWarnings("unchecked")
         List<com.saa.model.cxp.DetalleLiquidacionCompraCompra> detalles = em.createQuery(
@@ -2216,23 +2216,23 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
         List<DetalleAsiento> lineas = new ArrayList<>();
 
-        // ── DEBE: gasto por descripción (Liquidación no tiene GrupoProductoPago) ─
-        // Agrupa por descripción única y usa cuenta de gasto default
+        // â”€â”€ DEBE: gasto por descripciÃ³n (LiquidaciÃ³n no tiene GrupoProductoPago) â”€
+        // Agrupa por descripciÃ³n Ãºnica y usa cuenta de gasto default
         double totalBase = 0.0;
         for (com.saa.model.cxp.DetalleLiquidacionCompraCompra d : detalles)
             totalBase += nvl(d.getSubTotal());
         PlanCuenta cuentaGasto = obtenerCuentaGastoDefaultCxp(idEmpresa);
         if (cuentaGasto == null)
-            throw new IncomeException("No se encontró cuenta de gasto para la Liquidación de Compra. "
+            throw new IncomeException("No se encontrÃ³ cuenta de gasto para la LiquidaciÃ³n de Compra. "
                     + "Configure un GrupoProductoPago con cuenta contable y tipo GASTOS GENERALES.");
         DetalleAsiento debe = new DetalleAsiento();
         debe.setPlanCuenta(cuentaGasto); debe.setNumeroCuenta(cuentaGasto.getCuentaContable());
         debe.setNombreCuenta(cuentaGasto.getNombre());
-        debe.setDescripcion("Gasto liquidación compra: " + lq.getNumero());
+        debe.setDescripcion("Gasto liquidaciÃ³n compra: " + lq.getNumero());
         debe.setValorDebe(totalBase); debe.setValorHaber(0.0);
         lineas.add(debe);
 
-        // ── DEBE: IVA crédito tributario ──────────────────────────────────────
+        // â”€â”€ DEBE: IVA crÃ©dito tributario â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         Map<String, Double> ivaMap = new LinkedHashMap<>();
         for (com.saa.model.cxp.DetalleLiquidacionCompraCompra d : detalles) {
             if (d.getValorIVA() != null && d.getValorIVA() > 0 && d.getPorcentajeIVA() != null) {
@@ -2243,16 +2243,16 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         for (Map.Entry<String, Double> e : ivaMap.entrySet()) {
             PlanCuenta pcIVA = obtenerCuentaIVACxp(e.getKey());
             if (pcIVA == null)
-                throw new IncomeException("No hay cuenta IVA crédito tributario para código SRI: " + e.getKey());
+                throw new IncomeException("No hay cuenta IVA crÃ©dito tributario para cÃ³digo SRI: " + e.getKey());
             DetalleAsiento ln = new DetalleAsiento();
             ln.setPlanCuenta(pcIVA); ln.setNumeroCuenta(pcIVA.getCuentaContable());
             ln.setNombreCuenta(pcIVA.getNombre());
-            ln.setDescripcion("IVA crédito tributario liquidación compra código SRI: " + e.getKey());
+            ln.setDescripcion("IVA crÃ©dito tributario liquidaciÃ³n compra cÃ³digo SRI: " + e.getKey());
             ln.setValorDebe(e.getValue()); ln.setValorHaber(0.0);
             lineas.add(ln);
         }
 
-        // ── HABER: CxP Proveedor / Prestador ─────────────────────────────────
+        // â”€â”€ HABER: CxP Proveedor / Prestador â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if (lq.getTitular() == null)
             throw new IncomeException("LiquidacionCompraCompra " + idLiquidacion + " no tiene proveedor/titular.");
         PlanCuenta cuentaProv = obtenerCuentaProveedor(lq.getTitular().getCodigo(), idEmpresa);
@@ -2272,9 +2272,9 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
     // ---------------------------------------------------------------
     // generarAsientoRetencionCompra
-    // Retención recibida del proveedor: reduce lo que nos deben / aumenta CxP
+    // RetenciÃ³n recibida del proveedor: reduce lo que nos deben / aumenta CxP
     //   DEBE:  CxP Proveedor (monto retenido disminuye la deuda)
-    //   HABER: Cuenta de retención recibida por código SRI
+    //   HABER: Cuenta de retenciÃ³n recibida por cÃ³digo SRI
     // ---------------------------------------------------------------
     @Override
     public com.saa.model.cnt.Asiento generarAsientoRetencionCompra(
@@ -2288,7 +2288,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         com.saa.model.cxp.RetencionCompra rc =
                 em.find(com.saa.model.cxp.RetencionCompra.class, idRetencionCompra);
         if (rc == null)
-            throw new IncomeException("No se encontró RetencionCompra con ID: " + idRetencionCompra);
+            throw new IncomeException("No se encontrÃ³ RetencionCompra con ID: " + idRetencionCompra);
 
         @SuppressWarnings("unchecked")
         List<com.saa.model.cxp.DetalleRetencionCompra> detalles = em.createQuery(
@@ -2300,28 +2300,28 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         List<DetalleAsiento> lineas = new ArrayList<>();
         double totalRetenido = 0.0;
 
-        // ── HABER: una línea por código de retención (cuenta desde TSRI) ──────
+        // â”€â”€ HABER: una lÃ­nea por cÃ³digo de retenciÃ³n (cuenta desde TSRI) â”€â”€â”€â”€â”€â”€
         for (com.saa.model.cxp.DetalleRetencionCompra d : detalles) {
             String codImpuesto = d.getCodImpuesto();
             String codReten = d.getCodRetencion();
             PlanCuenta pcReten = obtenerCuentaRetencionCompra(codImpuesto, codReten);
             if (pcReten == null)
-                throw new IncomeException("No hay cuenta contable para retención "
+                throw new IncomeException("No hay cuenta contable para retenciÃ³n "
                         + "(codImpuesto='" + codImpuesto + "', codRetencion='" + codReten + "') en TSRI. "
-                        + "Configure en Compras → Tipos SRI.");
+                        + "Configure en Compras â†’ Tipos SRI.");
             double valor = nvl(d.getValorReten());
             totalRetenido += valor;
             DetalleAsiento haberReten = new DetalleAsiento();
             haberReten.setPlanCuenta(pcReten); haberReten.setNumeroCuenta(pcReten.getCuentaContable());
             haberReten.setNombreCuenta(pcReten.getNombre());
-            haberReten.setDescripcion("Retención recibida código " + codReten
+            haberReten.setDescripcion("RetenciÃ³n recibida cÃ³digo " + codReten
                     + " | Base: " + String.format(java.util.Locale.US, "%.2f", nvl(d.getBaseImponible()))
                     + " | " + nvl2(d.getPorcentajeReten()) + "%");
             haberReten.setValorDebe(valor); haberReten.setValorHaber(0.0);
             lineas.add(haberReten);
         }
 
-        // ── HABER: CxP Cliente (cuenta del proveedor/cliente) ────────────────
+        // â”€â”€ HABER: CxP Cliente (cuenta del proveedor/cliente) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if (rc.getProveedor() == null)
             throw new IncomeException("RetencionCompra " + idRetencionCompra + " no tiene proveedor.");
         PlanCuenta cuentaProv = obtenerCuentaProveedor(rc.getProveedor().getCodigo(), idEmpresa);
@@ -2331,7 +2331,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         DetalleAsiento debe = new DetalleAsiento();
         debe.setPlanCuenta(cuentaProv); debe.setNumeroCuenta(cuentaProv.getCuentaContable());
         debe.setNombreCuenta(cuentaProv.getNombre());
-        debe.setDescripcion("CxP Cliente retención: " + rc.getProveedor().getNombre());
+        debe.setDescripcion("CxP Cliente retenciÃ³n: " + rc.getProveedor().getNombre());
         debe.setValorDebe(0.0); debe.setValorHaber(totalRetenido);
         lineas.add(0, debe);
 
@@ -2340,7 +2340,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     }
 
     // ---------------------------------------------------------------
-    // generarAsientoRetencionCompraV2  (misma lógica V1, diferente entidad)
+    // generarAsientoRetencionCompraV2  (misma lÃ³gica V1, diferente entidad)
     // ---------------------------------------------------------------
     @Override
     public com.saa.model.cnt.Asiento generarAsientoRetencionCompraV2(
@@ -2354,11 +2354,11 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         com.saa.model.cxp.RetencionCompraV2 rc =
                 em.find(com.saa.model.cxp.RetencionCompraV2.class, idRetencionCompraV2);
         if (rc == null)
-            throw new IncomeException("No se encontró RetencionCompraV2 con ID: " + idRetencionCompraV2);
+            throw new IncomeException("No se encontrÃ³ RetencionCompraV2 con ID: " + idRetencionCompraV2);
 
         @SuppressWarnings("unchecked")
         List<com.saa.model.cxp.DetalleRetencionCompraV2> detalles = em.createQuery(
-                "SELECT d FROM DetalleRetencionCompraV2 d WHERE d.retencion.id = :id AND d.estado = 1")
+                "SELECT d FROM DetalleRetencionCompraV2 d WHERE d.retencionCompraV2.id = :id AND d.estado = 1")
                 .setParameter("id", idRetencionCompraV2).getResultList();
         if (detalles == null || detalles.isEmpty())
             throw new IncomeException("RetencionCompraV2 " + idRetencionCompraV2 + " no tiene detalles activos.");
@@ -2366,27 +2366,27 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         List<DetalleAsiento> lineas = new ArrayList<>();
         double totalRetenido = 0.0;
 
-        // ── HABER: por código de retención desde TSRI ─────────────────────────
+        // â”€â”€ HABER: por cÃ³digo de retenciÃ³n desde TSRI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         for (com.saa.model.cxp.DetalleRetencionCompraV2 d : detalles) {
             String codImpuesto = d.getCodImpuesto();
             String codReten = d.getCodRetencion();
             PlanCuenta pcReten = obtenerCuentaRetencionCompra(codImpuesto, codReten);
             if (pcReten == null)
-                throw new IncomeException("No hay cuenta contable para retención V2 "
+                throw new IncomeException("No hay cuenta contable para retenciÃ³n V2 "
                         + "(codImpuesto='" + codImpuesto + "', codRetencion='" + codReten + "') en TSRI.");
             double valor = nvl(d.getValorReten());
             totalRetenido += valor;
             DetalleAsiento haberReten = new DetalleAsiento();
             haberReten.setPlanCuenta(pcReten); haberReten.setNumeroCuenta(pcReten.getCuentaContable());
             haberReten.setNombreCuenta(pcReten.getNombre());
-            haberReten.setDescripcion("Retención V2 recibida código " + codReten
+            haberReten.setDescripcion("RetenciÃ³n V2 recibida cÃ³digo " + codReten
                     + " | Base: " + String.format(java.util.Locale.US, "%.2f", nvl(d.getBaseImponible()))
                     + " | " + nvl2(d.getPorcentajeReten()) + "%");
             haberReten.setValorDebe(valor); haberReten.setValorHaber(0.0);
             lineas.add(haberReten);
         }
 
-        // ── HABER: CxP Cliente ────────────────────────────────────────────────
+        // â”€â”€ HABER: CxP Cliente â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if (rc.getProveedor() == null)
             throw new IncomeException("RetencionCompraV2 " + idRetencionCompraV2 + " no tiene proveedor.");
         PlanCuenta cuentaProv = obtenerCuentaProveedor(rc.getProveedor().getCodigo(), idEmpresa);
@@ -2396,7 +2396,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         DetalleAsiento debe = new DetalleAsiento();
         debe.setPlanCuenta(cuentaProv); debe.setNumeroCuenta(cuentaProv.getCuentaContable());
         debe.setNombreCuenta(cuentaProv.getNombre());
-        debe.setDescripcion("CxP Cliente retención V2: " + rc.getProveedor().getNombre());
+        debe.setDescripcion("CxP Cliente retenciÃ³n V2: " + rc.getProveedor().getNombre());
         debe.setValorDebe(0.0); debe.setValorHaber(totalRetenido);
         lineas.add(0, debe);
 
@@ -2409,8 +2409,8 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     // ---------------------------------------------------------------
 
     /**
-     * Obtiene la cuenta contable de IVA crédito tributario (compras) desde PGS.TSRI
-     * donde lsri.tabla = '17' y codigo = codigoIVASRI (código que viene directamente de la factura SRI).
+     * Obtiene la cuenta contable de IVA crÃ©dito tributario (compras) desde PGS.TSRI
+     * donde lsri.tabla = '17' y codigo = codigoIVASRI (cÃ³digo que viene directamente de la factura SRI).
      */
     private PlanCuenta obtenerCuentaIVACxpPorCodigo(Long codigoIVASRI) {
         try {
@@ -2424,17 +2424,17 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                     .setParameter("cod", String.valueOf(codigoIVASRI))
                     .setMaxResults(1).getResultList();
             if (!r.isEmpty() && r.get(0) != null) return r.get(0);
-            System.err.println("⚠ No se encontró cuenta IVA en PGS.TSRI para codigoIVASRI=" + codigoIVASRI + " (lsri.tabla=17)");
+            System.err.println("âš  No se encontrÃ³ cuenta IVA en PGS.TSRI para codigoIVASRI=" + codigoIVASRI + " (lsri.tabla=17)");
             return null;
         } catch (Exception e) {
-            System.err.println("⚠ obtenerCuentaIVACxpPorCodigo: " + e.getMessage());
+            System.err.println("âš  obtenerCuentaIVACxpPorCodigo: " + e.getMessage());
             return null;
         }
     }
 
     /**
-     * Obtiene la cuenta de IVA crédito tributario (compras) desde LSRI tabla='17'.
-     * Usa el mismo método que CXC pero busca en Lsri de compras (com.saa.model.cxp.Lsri).
+     * Obtiene la cuenta de IVA crÃ©dito tributario (compras) desde LSRI tabla='17'.
+     * Usa el mismo mÃ©todo que CXC pero busca en Lsri de compras (com.saa.model.cxp.Lsri).
      * Si no encuentra en CXP, cae a la cuenta CXC como fallback.
      */
     private PlanCuenta obtenerCuentaIVACxp(String codigoSRI) {
@@ -2462,7 +2462,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                     .setParameter("emp", idEmpresa).setMaxResults(1).getResultList();
             return r.isEmpty() ? null : (PlanCuenta) r.get(0);
         } catch (Exception e) {
-            System.err.println("⚠ obtenerCuentaGastoDefaultCxp: " + e.getMessage());
+            System.err.println("âš  obtenerCuentaGastoDefaultCxp: " + e.getMessage());
             return null;
         }
     }
@@ -2482,7 +2482,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                     .setMaxResults(1).getResultList();
             if (!lista.isEmpty()) return lista.get(0);
 
-            // No existe → crear
+            // No existe â†’ crear
             com.saa.model.cxp.GrupoProductoPago grupo = new com.saa.model.cxp.GrupoProductoPago();
             grupo.setNombre("POR CLASIFICAR");
             grupo.setRubroTipoGrupoH((long) com.saa.rubros.TipoGrupoProductos.POR_CLASIFICAR);

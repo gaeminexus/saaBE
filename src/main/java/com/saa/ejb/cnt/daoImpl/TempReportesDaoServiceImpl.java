@@ -227,7 +227,7 @@ public class TempReportesDaoServiceImpl extends EntityDaoImpl<TempReportes>  imp
 	public List selectByCuentaPadreNivelCentro(Long idEjecucion,
 			Long cuentaPadre, Long nivel, String numeroCentro) throws Throwable {
 		System.out.println("Ingresa al Metodo selectByCuentaPadreNivel con idEjecucion : " + idEjecucion + ", CuentaPadre " + cuentaPadre);
-		Query query = em.createQuery(" select   distinct b.idPlanCuenta, b.saldoCuenta, b.valorDebe, b.valorHaber, b.valorActual " +
+		Query query = em.createQuery(" select   distinct b.planCuenta.codigo, b.saldoCuenta, b.valorDebe, b.valorHaber, b.valorActual " +
 									 " from     TempReportes b" +
 									 " where    b.secuencia = :idEjecucion" +
 									 " 		    and   b.nivel = :nivel" +
