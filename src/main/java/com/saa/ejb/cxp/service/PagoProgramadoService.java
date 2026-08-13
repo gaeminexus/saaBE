@@ -125,6 +125,28 @@ public interface PagoProgramadoService extends EntityService<PagoProgramado> {
 			throws Throwable;
 
 	/**
+	 * Confirma manualmente uno o varios pagos, como si hubiera llegado la
+	 * respuesta del banco. Produce exactamente el mismo efecto contable que
+	 * procesarRespuestaBanco sobre un pago confirmado: aplicación de pago (o
+	 * asiento de egreso), asiento contable y movimiento bancario.
+	 *
+	 * Existe porque la entidad financiera todavía no entrega el archivo de
+	 * respuesta: mientras tanto la conciliación se hace contra el estado de
+	 * cuenta y se confirma a mano.
+	 *
+	 * @param idsPagos   : Ids de los pagos a confirmar (Registrado o En archivo)
+	 * @param referencia : Referencia o número de transacción del banco (opcional)
+	 * @param fechaPago  : Fecha real del pago en formato yyyy-MM-dd; si viene
+	 *                     vacía se usa la fecha actual. Es la fecha del asiento.
+	 * @param observacion: Nota que se agrega a la observación del pago (opcional)
+	 * @param idUsuario  : Id del usuario que confirma
+	 * @return           : Mapa con exito, confirmados y detalle de errores
+	 * @throws Throwable : Excepcion
+	 */
+	Map<String, Object> confirmarPagosManual(List<Long> idsPagos, String referencia,
+			String fechaPago, String observacion, Long idUsuario) throws Throwable;
+
+	/**
 	 * Anula un pago que aún no fue confirmado por el banco.
 	 * @param idPago     : Id del pago
 	 * @param motivo     : Motivo de la anulación

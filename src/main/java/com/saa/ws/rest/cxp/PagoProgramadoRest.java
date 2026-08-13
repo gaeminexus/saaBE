@@ -263,6 +263,44 @@ public class PagoProgramadoRest {
     }
 
     /**
+     * Confirma manualmente pagos que siguen esperando al banco, como si hubiera
+     * llegado el archivo de respuesta: genera aplicación, asiento contable y
+     * movimiento bancario.
+     * Body esperado:
+     *   { "idsPagos": [12, 13], "referencia": "TRX-9981",
+     *     "fechaPago": "2026-08-13", "observacion": "...", "idUsuario": 5 }
+     */
+    @POST
+    @Path("/confirmarManual")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response confirmarManual(Map<String, Object> datos) {
+        System.out.println("LLEGA AL SERVICIO POST /pgtr/confirmarManual");
+        try {
+            List<Long> idsPagos = toLongList((datos != null) ? datos.get("idsPagos") : null);
+            if (idsPagos.isEmpty()) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity("Debe seleccionar al menos un pago para confirmar.")
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
+
+            String referencia  = (String) datos.get("referencia");
+            String fechaPago   = (String) datos.get("fechaPago");
+            String observacion = (String) datos.get("observacion");
+            Long   idUsuario   = toLong(datos.get("idUsuario"));
+
+            Map<String, Object> resultado = pagoProgramadoService.confirmarPagosManual(
+                    idsPagos, referencia, fechaPago, observacion, idUsuario);
+            return Response.status(Response.Status.OK).entity(resultado)
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al confirmar los pagos: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
      * Anula un pago que aún no fue confirmado por el banco.
      * Body esperado: { "motivo": "...", "idUsuario": 5 }
      */

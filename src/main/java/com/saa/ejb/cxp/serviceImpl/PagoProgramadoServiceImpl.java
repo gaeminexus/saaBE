@@ -594,6 +594,126 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	}
 
 	// =====================================================================
+	// Confirmación manual
+	// =====================================================================
+
+	@Override
+	public Map<String, Object> confirmarPagosManual(List<Long> idsPagos, String referencia,
+			String fechaPago, String observacion, Long idUsuario) throws Throwable {
+
+		System.out.println("=== confirmarPagosManual | pagos=" + idsPagos + " ===");
+
+		if (idsPagos == null || idsPagos.isEmpty()) {
+			throw new IncomeException("Debe seleccionar al menos un pago para confirmar.");
+		}
+
+		LocalDate fecha = parseFecha(fechaPago);
+		String ref  = (referencia != null && !referencia.trim().isEmpty())
+				? referencia.trim() : null;
+		String nota = (observacion != null && !observacion.trim().isEmpty())
+				? observacion.trim() : null;
+
+		int confirmados = 0;
+		List<String> errores = new ArrayList<>();
+		List<Long> lotesTocados = new ArrayList<>();
+
+		for (Long idPago : idsPagos) {
+
+			PagoProgramado pago = em.find(PagoProgramado.class, idPago);
+			if (pago == null) {
+				errores.add("No se encontró el pago " + idPago + ".");
+				continue;
+			}
+
+			// Solo se confirma lo que todavía está esperando al banco. Un pago
+			// ya confirmado tiene contabilidad hecha y volver a aplicarlo la
+			// duplicaría; uno rechazado o anulado ya cerró su ciclo.
+			int estado = (pago.getEstado() != null) ? pago.getEstado().intValue() : 0;
+			if (estado != EstadoPagoProgramado.REGISTRADO
+					&& estado != EstadoPagoProgramado.EN_ARCHIVO) {
+				errores.add("El pago " + idPago + " está " + descripcionEstado(pago.getEstado())
+						+ " y no se puede confirmar.");
+				continue;
+			}
+
+			try {
+				pago.setFechaRespuesta(fecha);
+				if (ref != null) {
+					pago.setReferenciaBanco(ref);
+				}
+				if (nota != null) {
+					pago.setObservacion((pago.getObservacion() != null
+							&& !pago.getObservacion().trim().isEmpty())
+									? pago.getObservacion() + " | " + nota : nota);
+				}
+
+				// Mismo camino contable que la respuesta del banco.
+				if (pago.getEgreso() != null) {
+					contabilizarPagoEgreso(pago, idUsuario);
+				} else {
+					AplicacionPagoCxp aplicacion =
+							aplicacionPagoCxpService.aplicarPagoTransferencia(pago, idUsuario);
+					pago.setAplicacion(aplicacion);
+				}
+
+				pago.setEstado(Long.valueOf(EstadoPagoProgramado.CONFIRMADO));
+				pagoProgramadoDaoService.save(pago, pago.getId());
+				confirmados++;
+
+				if (pago.getLote() != null && !lotesTocados.contains(pago.getLote().getId())) {
+					lotesTocados.add(pago.getLote().getId());
+				}
+			} catch (Throwable t) {
+				errores.add("Pago " + idPago + ": no se pudo confirmar - " + t.getMessage());
+				System.err.println("⚠ Error confirmando manualmente el pago " + idPago + ": "
+						+ t.getMessage());
+			}
+		}
+
+		em.flush();
+
+		// Un lote sin pagos pendientes ya no espera respuesta del banco.
+		for (Long idLote : lotesTocados) {
+			cierraLoteSiNoQuedanPendientes(idLote);
+		}
+
+		System.out.println("✓ Confirmación manual | confirmados=" + confirmados
+				+ " | errores=" + errores.size());
+
+		Map<String, Object> resultado = new HashMap<>();
+		resultado.put("exito", confirmados > 0);
+		resultado.put("mensaje", confirmados + " pago(s) confirmado(s) manualmente"
+				+ (errores.isEmpty() ? "." : ", " + errores.size() + " con novedad."));
+		resultado.put("confirmados", confirmados);
+		if (!errores.isEmpty()) {
+			resultado.put("errores", errores);
+		}
+		return resultado;
+	}
+
+	/**
+	 * Cierra el lote cuando ninguno de sus pagos sigue esperando respuesta.
+	 * @param idLote     : Id del lote a revisar
+	 * @throws Throwable : Excepcion
+	 */
+	private void cierraLoteSiNoQuedanPendientes(Long idLote) throws Throwable {
+		LotePago lote = em.find(LotePago.class, idLote);
+		if (lote == null || (lote.getEstado() != null
+				&& lote.getEstado().intValue() != EstadoLotePago.GENERADO)) {
+			return;
+		}
+		for (PagoProgramado pago : pagoProgramadoDaoService.selectByLote(idLote)) {
+			if (pago.getEstado() != null
+					&& pago.getEstado().intValue() == EstadoPagoProgramado.EN_ARCHIVO) {
+				return;
+			}
+		}
+		lote.setEstado(Long.valueOf(EstadoLotePago.RESPUESTA_PROCESADA));
+		lotePagoDaoService.save(lote, lote.getId());
+		em.flush();
+	}
+
+	// =====================================================================
 	// Anulación y reversión
 	// =====================================================================
 
