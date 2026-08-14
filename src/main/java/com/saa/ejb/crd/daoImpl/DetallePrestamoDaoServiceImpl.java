@@ -689,4 +689,126 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 		return resultado;
 	}
 
+	// ========================================================================
+	// SERVICIOS DE PAGO DE PRÉSTAMOS (§5.2 ESPECIFICACION-SERVICIOS-PAGO-PRESTAMOS.md)
+	// ========================================================================
+
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<DetallePrestamo> selectCuotasPendientesByPrestamoOrdenadas(Long codigoPrestamo) throws Throwable {
+		System.out.println("DetallePrestamoDaoServiceImpl.selectCuotasPendientesByPrestamoOrdenadas - Préstamo: " + codigoPrestamo);
+
+		try {
+			// ✅ Incluir explícitamente las cuotas con estado NULL: en JPQL
+			// "NULL NOT IN (4, 7)" evalúa a NULL y la fila quedaría fuera del resultado.
+			String jpql = "SELECT d FROM DetallePrestamo d " +
+						 "WHERE d.prestamo.codigo = :codigoPrestamo " +
+						 "AND (d.estado IS NULL OR d.estado NOT IN (:estadoPagada, :estadoCanceladaAnticipada)) " +
+						 "ORDER BY d.numeroCuota ASC";
+
+			Query query = em.createQuery(jpql);
+			query.setParameter("codigoPrestamo", codigoPrestamo);
+			query.setParameter("estadoPagada", (long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+			query.setParameter("estadoCanceladaAnticipada", (long) com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
+
+			List<DetallePrestamo> resultados = query.getResultList();
+			System.out.println("  Cuotas pendientes encontradas: " + (resultados != null ? resultados.size() : 0));
+			return resultados;
+
+		} catch (Exception e) {
+			System.err.println("Error en selectCuotasPendientesByPrestamoOrdenadas: " + e.getMessage());
+			e.printStackTrace();
+			// NO lanzar excepción - retornar lista vacía para no detener el proceso
+			return new ArrayList<>();
+		}
+	}
+
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<DetallePrestamo> selectCuotasByPrestamoDesdeNumero(Long codigoPrestamo, Double numeroCuotaExclusivo) throws Throwable {
+		System.out.println("DetallePrestamoDaoServiceImpl.selectCuotasByPrestamoDesdeNumero - Préstamo: " + codigoPrestamo
+			+ " - desde (exclusivo): " + numeroCuotaExclusivo);
+
+		try {
+			String jpql = "SELECT d FROM DetallePrestamo d " +
+						 "WHERE d.prestamo.codigo = :codigoPrestamo " +
+						 "AND d.numeroCuota > :numeroCuotaExclusivo " +
+						 "ORDER BY d.numeroCuota ASC";
+
+			Query query = em.createQuery(jpql);
+			query.setParameter("codigoPrestamo", codigoPrestamo);
+			query.setParameter("numeroCuotaExclusivo", numeroCuotaExclusivo);
+
+			List<DetallePrestamo> resultados = query.getResultList();
+			System.out.println("  Cuotas encontradas: " + (resultados != null ? resultados.size() : 0));
+			return resultados;
+
+		} catch (Exception e) {
+			System.err.println("Error en selectCuotasByPrestamoDesdeNumero: " + e.getMessage());
+			e.printStackTrace();
+			// NO lanzar excepción - retornar lista vacía para no detener el proceso
+			return new ArrayList<>();
+		}
+	}
+
+	@Override
+	public DetallePrestamo selectUltimaCuotaPagada(Long codigoPrestamo) throws Throwable {
+		System.out.println("DetallePrestamoDaoServiceImpl.selectUltimaCuotaPagada - Préstamo: " + codigoPrestamo);
+
+		try {
+			String jpql = "SELECT d FROM DetallePrestamo d " +
+						 "WHERE d.prestamo.codigo = :codigoPrestamo " +
+						 "AND d.estado = :estadoPagada " +
+						 "ORDER BY d.numeroCuota DESC";
+
+			Query query = em.createQuery(jpql);
+			query.setParameter("codigoPrestamo", codigoPrestamo);
+			query.setParameter("estadoPagada", (long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+			query.setMaxResults(1);
+
+			@SuppressWarnings("unchecked")
+			List<DetallePrestamo> resultados = query.getResultList();
+			System.out.println("  Última cuota pagada: " + (resultados.isEmpty() ? "Ninguna"
+				: "Cuota #" + resultados.get(0).getNumeroCuota()));
+			return resultados.isEmpty() ? null : resultados.get(0);
+
+		} catch (Exception e) {
+			System.err.println("Error en selectUltimaCuotaPagada: " + e.getMessage());
+			e.printStackTrace();
+			// NO lanzar excepción - retornar null para no detener el proceso
+			return null;
+		}
+	}
+
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<DetallePrestamo> selectCuotasExigibles(Long codigoPrestamo, LocalDateTime fechaCorte) throws Throwable {
+		System.out.println("DetallePrestamoDaoServiceImpl.selectCuotasExigibles - Préstamo: " + codigoPrestamo
+			+ " - corte: " + fechaCorte);
+
+		try {
+			String jpql = "SELECT d FROM DetallePrestamo d " +
+						 "WHERE d.prestamo.codigo = :codigoPrestamo " +
+						 "AND (d.estado IS NULL OR d.estado NOT IN (:estadoPagada, :estadoCanceladaAnticipada)) " +
+						 "AND d.fechaVencimiento <= :fechaCorte " +
+						 "ORDER BY d.numeroCuota ASC";
+
+			Query query = em.createQuery(jpql);
+			query.setParameter("codigoPrestamo", codigoPrestamo);
+			query.setParameter("estadoPagada", (long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+			query.setParameter("estadoCanceladaAnticipada", (long) com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
+			query.setParameter("fechaCorte", fechaCorte);
+
+			List<DetallePrestamo> resultados = query.getResultList();
+			System.out.println("  Cuotas exigibles encontradas: " + (resultados != null ? resultados.size() : 0));
+			return resultados;
+
+		} catch (Exception e) {
+			System.err.println("Error en selectCuotasExigibles: " + e.getMessage());
+			e.printStackTrace();
+			// NO lanzar excepción - retornar lista vacía para no detener el proceso
+			return new ArrayList<>();
+		}
+	}
+
 }

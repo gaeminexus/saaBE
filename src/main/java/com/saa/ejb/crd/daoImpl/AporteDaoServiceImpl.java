@@ -745,4 +745,66 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 		return query.getResultList();
 	}
 
+	// ========================================================================
+	// SERVICIOS DE PAGO DE PRÉSTAMOS (§5.2 ESPECIFICACION-SERVICIOS-PAGO-PRESTAMOS.md)
+	// ========================================================================
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<Object[]> sumValorPorTipoAporteByEntidad(Long codigoEntidad) throws Throwable {
+		System.out.println("AporteDaoServiceImpl.sumValorPorTipoAporteByEntidad entidad: " + codigoEntidad);
+
+		try {
+			// El saldo disponible ES la suma neta: los pagos con aportes son filas negativas.
+			// Query agregada: la BD devuelve una fila por tipo, nunca las ~980.000 filas de APRT.
+			Query query = em.createQuery(
+				" select   a.tipoAporte.codigo, a.tipoAporte.nombre, sum(a.valor) " +
+				" from     Aporte a " +
+				" where    a.entidad.codigo = :codigoEntidad " +
+				"   and    a.tipoAporte.estado = 1 " +
+				" group by a.tipoAporte.codigo, a.tipoAporte.nombre " +
+				" order by a.tipoAporte.codigo "
+			);
+			query.setParameter("codigoEntidad", codigoEntidad);
+
+			List<Object[]> resultados = query.getResultList();
+			System.out.println("  Tipos de aporte con saldo encontrados: " + (resultados != null ? resultados.size() : 0));
+			return resultados;
+
+		} catch (Exception e) {
+			System.err.println("Error en sumValorPorTipoAporteByEntidad: " + e.getMessage());
+			e.printStackTrace();
+			// NO lanzar excepción - retornar lista vacía para no detener el proceso
+			return new java.util.ArrayList<>();
+		}
+	}
+
+	@Override
+	public Double sumValorByEntidadYTipo(Long codigoEntidad, Long codigoTipoAporte) throws Throwable {
+		System.out.println("AporteDaoServiceImpl.sumValorByEntidadYTipo entidad: " + codigoEntidad
+			+ " tipoAporte: " + codigoTipoAporte);
+
+		try {
+			Query query = em.createQuery(
+				" select sum(a.valor) " +
+				" from   Aporte a " +
+				" where  a.entidad.codigo = :codigoEntidad " +
+				"   and  a.tipoAporte.codigo = :codigoTipoAporte "
+			);
+			query.setParameter("codigoEntidad", codigoEntidad);
+			query.setParameter("codigoTipoAporte", codigoTipoAporte);
+
+			Object resultado = query.getSingleResult();
+			Double suma = resultado != null ? ((Number) resultado).doubleValue() : 0.0;
+			System.out.println("  Saldo del tipo " + codigoTipoAporte + ": " + suma);
+			return suma;
+
+		} catch (Exception e) {
+			System.err.println("Error en sumValorByEntidadYTipo: " + e.getMessage());
+			e.printStackTrace();
+			// NO lanzar excepción - retornar 0.0 para no detener el proceso
+			return 0.0;
+		}
+	}
+
 }

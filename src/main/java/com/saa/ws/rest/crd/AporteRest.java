@@ -1,10 +1,14 @@
 package com.saa.ws.rest.crd;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.crd.dao.AporteDaoService;
 import com.saa.ejb.crd.service.AporteService;
+import com.saa.ejb.crd.service.SaldoAporteService;
+import com.saa.ejb.crd.service.dto.SaldoTipoAporte;
 import com.saa.model.crd.Aporte;
 import com.saa.model.crd.NombreEntidadesCredito;
 
@@ -31,6 +35,9 @@ public class AporteRest {
     @EJB
     private AporteService aporteService;
 
+    @EJB
+    private SaldoAporteService saldoAporteService;
+
     @Context
     private UriInfo context;
 
@@ -42,8 +49,52 @@ public class AporteRest {
     }
 
     /**
+     * Saldos de aportes de una entidad, agrupados por tipo de aporte vigente.
+     *
+     * El cálculo lo hace la BD con una query agregada. El frontend debe usar ESTE endpoint
+     * para los estados de cuenta de aportes; {@code GET /aprt/getAll} queda DEPRECADO para ese
+     * uso porque descarga las ~980.000 filas de CRD.APRT y provoca OutOfMemoryError.
+     *
+     * @param idEntidad Código de la entidad (partícipe)
+     * @return 200 con la lista de saldos; una lista vacía NO es error
+     */
+    @GET
+    @Path("/saldosPorEntidad/{idEntidad}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response saldosPorEntidad(@PathParam("idEntidad") Long idEntidad) {
+        System.out.println("LLEGA AL SERVICIO SALDOS POR ENTIDAD - Entidad: " + idEntidad);
+
+        Map<String, Object> cuerpo = new LinkedHashMap<>();
+        try {
+            if (idEntidad == null || idEntidad <= 0) {
+                cuerpo.put("exito", Boolean.FALSE);
+                cuerpo.put("mensaje", "Debe indicar una entidad válida");
+                cuerpo.put("error", "PARAMETRO_INVALIDO");
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
+            }
+
+            List<SaldoTipoAporte> saldos = saldoAporteService.saldosPorEntidad(idEntidad);
+
+            cuerpo.put("exito", Boolean.TRUE);
+            cuerpo.put("resultado", saldos);
+            return Response.status(Response.Status.OK)
+                    .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
+
+        } catch (Throwable e) {
+            System.err.println("ERROR al obtener saldos de aportes: " + e.getMessage());
+            e.printStackTrace();
+            cuerpo.put("exito", Boolean.FALSE);
+            cuerpo.put("mensaje", "Error al obtener los saldos de aportes: " + e.getMessage());
+            cuerpo.put("error", "ERROR_INTERNO");
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
      * Retrieves representation of an instance of AporteRest
-     * 
+     *
      * @return an instance of String
      * @throws Throwable
      */

@@ -961,3 +961,256 @@ SELECT EVPRCDGO, DTPRNMCT, DTPRCPTL, DTPRINTR, DTPRSLCP FROM CRD.HDTP WHERE PRST
 
 Además: correr los reportes de aportes (G42 o dashboard) sobre una entidad de control antes y
 después de un pago con aportes y verificar que la diferencia sea exactamente el monto pagado.
+
+---
+
+## 12. Estado de implementación
+
+Registro de avance por fase. Se actualiza al cerrar cada fase (§10).
+
+| Fase | Estado | Fecha | Notas |
+|---|---|---|---|
+| 0 — Cimientos | **Verificada** | 2026-08-13 | DDL ejecutado; tabla de amortización generada e invariante comprobado |
+| 1 — Motor | **Verificada** | 2026-08-14 | Sin REST: se probó end-to-end en la Fase 2 |
+| 2 — Pago manual | **Entregada** | 2026-08-14 | `POST /prst/pagarCuota` + EVPR + hook no-op |
+| 3 — Aportes | **Entregada** | 2026-08-14 | `GET /aprt/saldosPorEntidad` + `POST /prst/pagarConAportes` |
+| 4 — Abono a capital | **Entregada** | 2026-08-14 | `GET /prst/simularAbonoCapital` + `POST /prst/abonarCapital` |
+| 5 — Precancelación | **Entregada** | 2026-08-14 | `GET /prst/simularPrecancelacion` + `POST /prst/precancelar` |
+| 6 — Reverso | **Entregada** | 2026-08-14 | `POST /prst/anularOperacion` para los 4 tipos |
+
+> Las fases 2 a 6 quedaron entregadas y desplegadas, pero **sin pruebas funcionales**: los casos
+> de aceptación de §10 requieren el consumo desde el frontend. La guía de integración está en
+> `docs/logica-negocio/crd/GUIA-FRONTEND-SERVICIOS-PAGO-PRESTAMOS.md`.
+
+### Fase 0 — Cimientos (2026-08-13)
+
+**Scripts de base de datos (ejecución manual, NO ejecutados aún):**
+
+- `docs/logica-negocio/crd/sql/DDL-SERVICIOS-PAGO-PRESTAMOS.sql` — §4 completo: `CRD.EVPR`,
+  `CRD.HDTP`, ALTER de `CRD.PGPR` y `CRD.PGAP`, índices de `CRD.APRT`, comentarios, grants y
+  controles posteriores.
+- `docs/logica-negocio/crd/SINCRONIZACION-DTPRIDST-DTPRESTD.md` — §3.2, documento revisable con
+  controles previos, respaldo, `UPDATE`, controles posteriores y reversa.
+
+**Entidades JPA nuevas:**
+
+- `com.saa.model.crd.EventoPrestamo` (EVPR)
+- `com.saa.model.crd.HistDetallePrestamo` (HDTP) — espejo verificado 1:1 contra
+  `DetallePrestamo` (37 columnas de datos + `PRSTCDGO`); no hubo campos de la entidad fuera de
+  la lista de §4.2.
+
+**Entidades JPA modificadas:**
+
+- `PagoPrestamo` += `eventoPrestamo` (EVPRCDGO), `asiento` (PGPRASNT), `anulado` (PGPRANUL),
+  `usuarioAnulacion` (PGPRUSAN), `fechaAnulacion` (PGPRFCAN), `motivoAnulacion` (PGPRMTAN).
+- `PagoAporte` += `pagoPrestamo` (PGPRCDGO).
+- `NombreEntidadesCredito` += `EVENTO_PRESTAMO`, `HIST_DETALLE_PRESTAMO`.
+
+**Capas nuevas (patrón de 5 archivos):**
+
+- `EventoPrestamoDaoService`/`Impl` (`selectByPrestamo`, `selectVigentesPosterioresByPrestamo`),
+  `EventoPrestamoService`/`Impl`, `EventoPrestamoRest` `@Path("evpr")` — solo lectura.
+- `HistDetallePrestamoDaoService`/`Impl` (`selectByEvento`, `selectByPrestamo`,
+  `selectMinNumeroCuotaByEvento`), `HistDetallePrestamoService`/`Impl`,
+  `HistDetallePrestamoRest` `@Path("hdtp")` — solo lectura.
+
+**Métodos DAO nuevos sobre DAOs existentes (§5.2):**
+
+- `DetallePrestamoDaoService`: `selectCuotasPendientesByPrestamoOrdenadas`,
+  `selectCuotasByPrestamoDesdeNumero`, `selectUltimaCuotaPagada`, `selectCuotasExigibles`.
+- `PagoPrestamoDaoService`: `selectVigentesByIdDetallePrestamo`, `selectByEvento`,
+  `contarVigentesByIdDetallePrestamo`.
+- `PagoAporteDaoService`: `selectByPagoPrestamo`.
+- `AporteDaoService`: `sumValorPorTipoAporteByEntidad`, `sumValorByEntidadYTipo`.
+
+**Fixes:**
+
+- §3.1 — `PrestamoServiceImpl.generarAmortizacionFrancesa` / `generarAmortizacionAlemana`
+  (incluida la cuota 0 de gracia) ahora llenan `saldoInicialCapital`, `valorSeguroIncendio`,
+  `total` y `totalConSeguro`. El saldo de capital anterior a la cuota se captura ANTES del
+  `saldoCapital -= capitalCuota`, para cumplir
+  `saldoInicialCapital = capital + saldoCapital + saldoOtros`.
+- §3.2 — revisado `PrestamoServiceImpl`: los generadores, la carga Excel y
+  `DetallePrestamoServiceImpl.saveSingle` ya escriben `estado` e `idEstado` juntos. No hubo
+  ninguna ruta de escritura que corregir; el desfase es solo de datos históricos y lo resuelve
+  el script de sincronización.
+
+**Borrados (§3.3):**
+
+- `PrestamoServiceImpl.aplicarAbonoCapital`, `recalcularMantenPlazoCuotaMenor`,
+  `recalcularReducePlazoCuotaIgual`.
+- Declaración `aplicarAbonoCapital` en `PrestamoService`.
+- Endpoint `POST /prst/aplicarAbonoCapital/{id}/{valorAbono}/{opcionRecalculo}` en `PrestamoRest`.
+- Quedan obsoletos (no actualizados): `docs/logica-negocio/crd/Abono-Capital-API.md` y
+  `docs/logica-negocio/crd/API-Abono-Capital-Prestamo.md`, que documentan el endpoint eliminado.
+
+### Fase 1 — Motor de pagos (2026-08-14)
+
+**DTOs nuevos** en `com.saa.ejb.crd.service.dto` (§5.1): `ContextoPago`, `SaldosCuota`,
+`DetalleAplicacionCuota`, `ResultadoAplicacionPago`, `DesgloseAporte`, `MovimientoAporte`,
+`SolicitudPagoCuota`, `SolicitudPagoConAportes`, `SolicitudAbonoCapital`,
+`SolicitudPrecancelacion`, `SolicitudAnulacion`. POJOs planos con getters/setters a mano.
+Los DTOs propios del abono (`SimulacionAbonoCapital`, `CuotaProyectada`,
+`ResultadoAbonoCapital`), del saldo de aportes (`SaldoTipoAporte`) y de la precancelación se
+crean en sus respectivas fases.
+
+**Servicio nuevo:**
+
+- `com.saa.ejb.crd.service.MotorPagoPrestamoService` (`@Local`) — los 6 métodos de §6.
+- `com.saa.ejb.crd.serviceImpl.MotorPagoPrestamoServiceImpl` (`@Stateless`).
+
+Implementa: `calcularSaldosRealesCuota` con los 6 componentes y la autocorrección de §6.2;
+`calcularTotalPendientePrestamo`; `aplicarPago` en cascada con tope de 100 iteraciones;
+`aplicarPagoACuota` con la prelación Desgravamen → Mora → Interés vencido → Interés → Capital
+→ Seguro de incendio; `verificarYActualizarEstadoPrestamo` (copia de la lógica petro, ahora
+devolviendo `boolean`); y `recalcularCuotaDesdePagos` para el reverso.
+
+Decisiones de implementación (sin desviarse del diseño):
+
+- Aritmética con `BigDecimal`/`HALF_UP` a 2 decimales en el helper `redondear`; `Double` solo
+  al setear entidades.
+- Los saldos se reconstruyen SIEMPRE con `selectVigentesByIdDetallePrestamo` (excluye los
+  pagos anulados). Los campos `*Pagado` de la cuota nunca se leen para decidir.
+- Estados espejo centralizados en un helper privado `aplicarEstadoCuota(cuota, estado)` que
+  escribe `estado` e `idEstado`; la persistencia va siempre por
+  `detallePrestamoService.saveSingle`.
+- Todo `PagoPrestamo` nuevo lleva `estado = 1`, `idEstado = 1` (PGPRIDST NOT NULL),
+  `anulado = 0`, `saldoOtros = 0` y su `eventoPrestamo`.
+- El préstamo se carga con `find()` (em.find) en vez de `selectById`, para que un código
+  inexistente devuelva `null` y se pueda mapear a un 404 limpio en vez de `NoResultException`.
+- El seguro de incendio no tiene campo `*Pagado` en `DTPR`: su acumulado se deriva de PGPR,
+  igual que en el proceso Petro.
+- **Blindaje añadido** para datos legacy: si `DTPRTTLL` no cuadra con la suma de los seis
+  componentes de la cuota, la prelación no puede imputar el `totalPendiente` completo. En ese
+  caso el motor imputa solo lo que los componentes absorbieron, deja traza del desfase en el
+  log y devuelve el sobrante a la cascada. Así `PGPR` sigue cumpliendo que sus componentes
+  suman su `PGPRVLRR` y no se pierde dinero.
+
+**Modificado:** `CargaArchivoPetroServiceImpl` — SOLO se agregó el comentario TODO de
+convergencia futura en el JavaDoc de la clase, como manda §1.3. La lógica de pagos del proceso
+Petro NO se tocó.
+
+### Fase 2 — Pago manual (2026-08-14)
+
+**Hooks de contabilidad (§9.1):**
+
+- `com.saa.ejb.crd.service.ContabilidadPrestamoService` (`@Local`) — los 5 métodos de §9.1.
+- `com.saa.ejb.crd.serviceImpl.ContabilidadPrestamoNoOpImpl` (`@Stateless`) — todos devuelven
+  `null` con su línea de traza.
+
+**Orquestador (§7.1):**
+
+- `com.saa.ejb.crd.service.ProcesoPagoPrestamoService` (`@Local`) — declara `pagarCuota`; las
+  demás operaciones se agregan en sus fases. Publica además las constantes de tipo de operación
+  (que deben coincidir con el CHECK `CK_EVPR_TIPO`) y los códigos de error de negocio.
+- `com.saa.ejb.crd.serviceImpl.ProcesoPagoPrestamoServiceImpl` (`@Stateless`,
+  `@TransactionAttribute(REQUIRED)`).
+
+Secuencia implementada: validaciones 1-5 → crear EVPR (PAGO_MANUAL) → `motor.aplicarPago` →
+huella en `Prestamo.observacion` + `fechaModificacion` → hook `contabilizarPagoCuota` →
+respuesta con `ResultadoAplicacionPago`.
+
+**REST (§8):** `POST /rest/prst/pagarCuota` en `PrestamoRest`, con el sobre
+`{exito, etapa, mensaje, error, resultado}` y el mapeo de status por CÓDIGO de error.
+
+**Convenio de errores adoptado.** §8 pide mapear "por tipo de excepción/contenido de mensaje
+como hace `GeneracionArchivoPetroRest`". Se formalizó así: los servicios lanzan
+`IncomeException` con el mensaje prefijado por un código (`CODIGO: descripción`) y el REST lo
+mapea con tres listas de códigos:
+
+| Código | HTTP |
+|---|---|
+| `PARAMETRO_INVALIDO` | 400 |
+| `PRESTAMO_NO_ENCONTRADO`, `EVENTO_NO_ENCONTRADO`, `CUOTA_NO_ENCONTRADA` | 404 |
+| `ESTADO_NO_PERMITE`, `EVENTO_YA_ANULADO`, `EVENTO_POSTERIOR_VIGENTE`, `PAGOS_SOBRE_TABLA_RECALCULADA` | 409 |
+| Cualquier otra `IncomeException` (`VALOR_INVALIDO`, `FECHA_INVALIDA`, `VALOR_EXCEDE_DEUDA`, `SIN_CUOTAS_PENDIENTES`, …) | 422 |
+| Resto | 500 |
+
+Las listas de 404/409 ya incluyen los códigos de las fases 4-6 para no volver a tocar el
+mapeador. 422 se escribe como literal: no existe en el enum `Response.Status` de Jakarta REST.
+
+Detalles de implementación:
+
+- La validación 5 se desdobló: primero `deudaTotal <= 0.01` → `SIN_CUOTAS_PENDIENTES` (el caso
+  borde "préstamo inconsistente sin cuotas con saldo" de §7.1, que si no caería con el mensaje
+  equivocado de "excede la deuda"), y después `valor > deudaTotal + 0.01` →
+  `VALOR_EXCEDE_DEUDA` con el mensaje textual de la especificación.
+- `fechaPago` (LocalDate en el body) se convierte a LocalDateTime: si es hoy conserva la hora
+  del reloj (igual que el proceso petro), si es pasada usa el inicio del día.
+- **La huella se trunca por BYTES en UTF-8, no por caracteres.** `PRSTOBSR` es VARCHAR2(2000) y
+  con semántica BYTE en Oracle un texto de 2000 caracteres acentuados supera los 2000 bytes:
+  daría ORA-12899 y revertiría el pago completo. Se conserva la intención de §7 (cortar por la
+  izquierda, preservando lo más reciente).
+- Los montos de los mensajes se formatean con `Locale.US` para que el separador decimal sea
+  siempre el punto, independientemente del locale del servidor.
+
+### Fase 3 — Aportes (2026-08-14)
+
+- DTO `SaldoTipoAporte`; `SaldoAporteService` (`@Local`) + `SaldoAporteServiceImpl`.
+- `GET /rest/aprt/saldosPorEntidad/{idEntidad}` en `AporteRest`. Lista vacía = 200 con `[]`.
+- `ProcesoPagoPrestamoService.pagarConAportes` + DTO `ResultadoPagoConAportes` +
+  `POST /rest/prst/pagarConAportes`.
+
+Detalle crítico: las filas negativas de `CRD.APRT` se crean con **`aporteDaoService.save(...)`
+directo, NO con `AporteService.saveSingle`**, porque este último fuerza `estado = 1` en las filas
+nuevas y la fila volvería a ser visible para el FIFO del proceso Petro
+(`selectMinAporteConSaldo`). La fila nace con `saldo = 0`, `valorPagado = 0` y estado 4.
+
+### Fase 4 — Abono a capital (2026-08-14)
+
+- DTOs `CuotaProyectada`, `SimulacionAbonoCapital`, `ResultadoAbonoCapital`.
+- `AbonoCapitalPrestamoService` (`@Local`) + `AbonoCapitalPrestamoServiceImpl` (`@Stateless`,
+  `REQUIRED`) con `simular` y `aplicar` compartiendo el mismo cálculo privado.
+- `GET /rest/prst/simularAbonoCapital/{idPrestamo}?valor&modalidad` y
+  `POST /rest/prst/abonarCapital`.
+- `PrestamoService.actualizarCamposDesdeTabla(Long)` nuevo: expone la lógica privada
+  `actualizarCamposPrestamo` para reutilizarla tras re-amortizar (§7.3 paso 7), sin duplicarla.
+
+**El supuesto de §7.3 paso 6 se aplicó tal como estaba recomendado**: el desgravamen y el seguro
+de incendio de las cuotas nuevas se copian de la ÚLTIMA cuota reemplazada. Queda pendiente de
+confirmación con negocio; si no se confirma, basta con poner ambos en 0.0 en
+`AbonoCapitalPrestamoServiceImpl.calcular` (campos `desgravamenPorCuota` y `seguroPorCuota`).
+
+Ambigüedades de §7.3 paso 6 resueltas y los criterios adoptados:
+
+1. **Primer vencimiento.** La regla escrita ("último día del mes SIGUIENTE al mes de la primera
+   cuota historizada") contradice su propio paréntesis ("equivale a conservar el calendario
+   original de vencimientos"): correrría todas las cuotas un mes. Se implementó el objetivo
+   declarado — las cuotas nuevas **reutilizan los vencimientos originales de las cuotas
+   reemplazadas** en orden, y solo si hicieran falta más se agregan meses tomando el último día.
+   Eso equivale a "el mes siguiente al de la última cuota que QUEDA en DTPR", que es coherente
+   con la regla de numeración de la misma sección.
+2. **`valorCuota` del préstamo.** `actualizarCamposPrestamo` toma el valor de cuota de la PRIMERA
+   fila de la tabla, que tras la re-amortización es una cuota vieja ya pagada. Se sobrescribe
+   explícitamente con la cuota nueva después de llamarlo, que es el resultado que §7.3 paso 7
+   describe.
+3. **Tasa 0.** Las fórmulas francesas dividen por `i`. Con `i <= 0` se amortiza linealmente.
+4. **Cuotas con pagos.** Antes de historizar se verifica que ninguna cuota a reemplazar tenga
+   PagoPrestamo (ni siquiera anulados): el DELETE violaría `FK_PGPR_DTPR`. Si los hay se responde
+   `PRESTAMO_NO_AL_DIA` con el detalle.
+
+### Fase 5 — Precancelación (2026-08-14)
+
+- DTOs `CuotaExigible`, `SimulacionPrecancelacion`, `ResultadoPrecancelacion`.
+- `simularPrecancelacion` y `precancelar` en `ProcesoPagoPrestamoService`, compartiendo el
+  cálculo canónico privado `calcularPrecancelacion`.
+- `GET /rest/prst/simularPrecancelacion/{idPrestamo}?fecha` y `POST /rest/prst/precancelar`.
+- El 422 por monto que no coincide devuelve además `valorTotalPrecancelacion`, como pide §8.
+
+### Fase 6 — Reverso (2026-08-14)
+
+- DTO `ResultadoAnulacion`; `anularOperacion` en `ProcesoPagoPrestamoService`;
+  `POST /rest/prst/anularOperacion`.
+- Bloqueo LIFO vía `EventoPrestamoDaoService.selectVigentesPosterioresByPrestamo`.
+- La reversión de `DTPRSLOT` se resolvió de forma uniforme para ABONO_CAPITAL y PRECANCELACION:
+  por cada PagoPrestamo anulado con `PGPRSLOT > 0` se descuenta ese monto del `DTPRSLOT` de su
+  cuota. No hace falta distinguir el tipo.
+- Al restaurar desde HDTP se usa **`detallePrestamoDaoService.save(cuota, null)` directo**:
+  `DetallePrestamoService.saveSingle` fuerza `estado = 1` en las filas nuevas y perdería el
+  estado original que se está restaurando. El `DTPRCDGO` cambia al restaurar; el original queda
+  registrado en `HDTP.DTPRCDGO`.
+
+### Guía de integración para el frontend
+
+`docs/logica-negocio/crd/GUIA-FRONTEND-SERVICIOS-PAGO-PRESTAMOS.md` documenta los 8 endpoints
+nuevos con sus request/response, códigos de error y flujos de pantalla recomendados.

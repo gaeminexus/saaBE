@@ -1,13 +1,30 @@
 package com.saa.ws.rest.crd;
 
 import java.io.InputStream;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.jboss.resteasy.plugins.providers.multipart.MultipartFormDataInput;
 
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.crd.dao.PrestamoDaoService;
+import com.saa.ejb.crd.service.AbonoCapitalPrestamoService;
 import com.saa.ejb.crd.service.PrestamoService;
+import com.saa.ejb.crd.service.ProcesoPagoPrestamoService;
+import com.saa.ejb.crd.service.dto.ResultadoAbonoCapital;
+import com.saa.ejb.crd.service.dto.ResultadoAnulacion;
+import com.saa.ejb.crd.service.dto.ResultadoAplicacionPago;
+import com.saa.ejb.crd.service.dto.ResultadoPagoConAportes;
+import com.saa.ejb.crd.service.dto.ResultadoPrecancelacion;
+import com.saa.ejb.crd.service.dto.SimulacionAbonoCapital;
+import com.saa.ejb.crd.service.dto.SimulacionPrecancelacion;
+import com.saa.ejb.crd.service.dto.SolicitudAbonoCapital;
+import com.saa.ejb.crd.service.dto.SolicitudAnulacion;
+import com.saa.ejb.crd.service.dto.SolicitudPagoConAportes;
+import com.saa.ejb.crd.service.dto.SolicitudPagoCuota;
+import com.saa.ejb.crd.service.dto.SolicitudPrecancelacion;
 import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.model.crd.Prestamo;
 
@@ -20,6 +37,7 @@ import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -33,7 +51,13 @@ public class PrestamoRest {
     
     @EJB
     private PrestamoService prestamoService;
-    
+
+    @EJB
+    private ProcesoPagoPrestamoService procesoPagoPrestamoService;
+
+    @EJB
+    private AbonoCapitalPrestamoService abonoCapitalPrestamoService;
+
     @Context
     private UriInfo context;
     
@@ -304,39 +328,462 @@ public class PrestamoRest {
         }
     }
     
+    // NOTA: el endpoint POST /prst/aplicarAbonoCapital/{id}/{valorAbono}/{opcionRecalculo}
+    // se eliminó en la Fase 0 de los servicios de pago de préstamos. Lo reemplazan
+    // GET /prst/simularAbonoCapital/{idPrestamo} y POST /prst/abonarCapital (montos en el
+    // body, nunca en el path). Ver ESPECIFICACION-SERVICIOS-PAGO-PRESTAMOS.md §7.3 y §8.
+
+    // ========================================================================
+    // SERVICIOS DE PAGO DE PRÉSTAMOS
+    // El REST solo valida parámetros y delega; los montos SIEMPRE viajan en el body.
+    // Ver ESPECIFICACION-SERVICIOS-PAGO-PRESTAMOS.md §8.
+    // ========================================================================
+
     /**
-     * Aplica un abono a capital al préstamo y recalcula la tabla de amortización.
-     * 
-     * @param id Identificador del préstamo
-     * @param valorAbono Valor del abono a capital
-     * @param opcionRecalculo 1=Mantener plazo/reducir cuota, 2=Reducir plazo/mantener cuota
-     * @return Response con el préstamo actualizado
+     * Pago manual de cuota(s) con valor: parcial, exacto o con excedente en cascada.
+     *
+     * @param solicitud { idPrestamo, valor, usuario, observacion, fechaPago }
+     * @return 200 con el ResultadoAplicacionPago; 404/409/422/500 según el fallo
      */
     @POST
-    @Path("/aplicarAbonoCapital/{id}/{valorAbono}/{opcionRecalculo}")
+    @Path("/pagarCuota")
+    @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response aplicarAbonoCapital(
-            @PathParam("id") Long id,
-            @PathParam("valorAbono") Double valorAbono,
-            @PathParam("opcionRecalculo") Integer opcionRecalculo) {
-        System.out.println("APLICAR ABONO A CAPITAL - Préstamo ID: " + id + 
-                         ", Abono: " + valorAbono + ", Opción: " + opcionRecalculo);
+    public Response pagarCuota(SolicitudPagoCuota solicitud) {
+        System.out.println("LLEGA AL SERVICIO PAGAR CUOTA - Préstamo: "
+            + (solicitud != null ? solicitud.getIdPrestamo() : null)
+            + " - Valor: " + (solicitud != null ? solicitud.getValor() : null));
+
+        if (solicitud == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe enviar el cuerpo de la solicitud", null);
+        }
+        if (solicitud.getIdPrestamo() == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe indicar el préstamo (idPrestamo)", null);
+        }
+        if (solicitud.getValor() == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe indicar el valor del pago", null);
+        }
+        if (solicitud.getUsuario() == null || solicitud.getUsuario().trim().isEmpty()) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe indicar el usuario que ejecuta el pago", null);
+        }
+
         try {
-            Prestamo prestamo = prestamoService.aplicarAbonoCapital(id, valorAbono, opcionRecalculo);
+            ResultadoAplicacionPago resultado = procesoPagoPrestamoService.pagarCuota(solicitud);
+
+            String mensaje = "Pago aplicado por $" + resultado.getValorAplicado()
+                + " en " + resultado.getCuotasAfectadas().size() + " cuota(s)"
+                + (resultado.isPrestamoCancelado() ? ". El préstamo quedó CANCELADO." : "");
+
+            Map<String, Object> cuerpo = new LinkedHashMap<>();
+            cuerpo.put("exito", Boolean.TRUE);
+            cuerpo.put("etapa", ETAPA_APLICACION);
+            cuerpo.put("mensaje", mensaje);
+            cuerpo.put("resultado", resultado);
+
             return Response.status(Response.Status.OK)
-                    .entity(prestamo)
+                    .entity(cuerpo)
                     .type(MediaType.APPLICATION_JSON)
                     .build();
+
         } catch (Throwable e) {
-            System.err.println("ERROR al aplicar abono a capital:");
+            System.err.println("ERROR al pagar cuota: " + e.getMessage());
             e.printStackTrace();
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
-                    .entity("Error al aplicar abono a capital: " + e.getMessage())
-                    .type(MediaType.APPLICATION_JSON)
-                    .build();
+            return respuestaErrorNegocio(e);
         }
     }
-    
+
+    /**
+     * Pago de cuota(s) consumiendo el saldo de aportes del partícipe.
+     *
+     * @param solicitud { idPrestamo, aportes[{idTipoAporte, valor}], usuario, observacion, fechaPago }
+     * @return 200 con el resultado y los movimientos de aporte generados
+     */
+    @POST
+    @Path("/pagarConAportes")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response pagarConAportes(SolicitudPagoConAportes solicitud) {
+        System.out.println("LLEGA AL SERVICIO PAGAR CON APORTES - Préstamo: "
+            + (solicitud != null ? solicitud.getIdPrestamo() : null));
+
+        if (solicitud == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe enviar el cuerpo de la solicitud", null);
+        }
+        if (solicitud.getIdPrestamo() == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe indicar el préstamo (idPrestamo)", null);
+        }
+        if (solicitud.getAportes() == null || solicitud.getAportes().isEmpty()) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe indicar el desglose de aportes", null);
+        }
+        if (solicitud.getUsuario() == null || solicitud.getUsuario().trim().isEmpty()) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe indicar el usuario que ejecuta el pago", null);
+        }
+
+        try {
+            ResultadoPagoConAportes respuesta = procesoPagoPrestamoService.pagarConAportes(solicitud);
+            ResultadoAplicacionPago resultado = respuesta.getResultado();
+
+            Map<String, Object> cuerpo = new LinkedHashMap<>();
+            cuerpo.put("exito", Boolean.TRUE);
+            cuerpo.put("etapa", ETAPA_APLICACION);
+            cuerpo.put("mensaje", "Pago con aportes aplicado por $" + resultado.getValorAplicado()
+                + " en " + resultado.getCuotasAfectadas().size() + " cuota(s)"
+                + (resultado.isPrestamoCancelado() ? ". El préstamo quedó CANCELADO." : ""));
+            cuerpo.put("resultado", resultado);
+            cuerpo.put("movimientosAporte", respuesta.getMovimientosAporte());
+
+            return Response.status(Response.Status.OK)
+                    .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
+
+        } catch (Throwable e) {
+            System.err.println("ERROR al pagar con aportes: " + e.getMessage());
+            e.printStackTrace();
+            return respuestaErrorNegocio(e);
+        }
+    }
+
+    /**
+     * Simula un abono a capital: devuelve la tabla proyectada SIN escribir nada.
+     *
+     * @param idPrestamo Préstamo
+     * @param valor      Monto del abono
+     * @param modalidad  1 = mantiene la cuota y reduce el plazo; 2 = mantiene el plazo y reduce la cuota
+     * @return 200 con la SimulacionAbonoCapital
+     */
+    @GET
+    @Path("/simularAbonoCapital/{idPrestamo}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response simularAbonoCapital(@PathParam("idPrestamo") Long idPrestamo,
+                                        @QueryParam("valor") Double valor,
+                                        @QueryParam("modalidad") Integer modalidad) {
+        System.out.println("LLEGA AL SERVICIO SIMULAR ABONO CAPITAL - Préstamo: " + idPrestamo
+            + " - Valor: " + valor + " - Modalidad: " + modalidad);
+
+        if (idPrestamo == null || idPrestamo <= 0) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe indicar un préstamo válido", null);
+        }
+        if (valor == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe indicar el valor del abono", null);
+        }
+        if (modalidad == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe indicar la modalidad (1 o 2)", null);
+        }
+
+        try {
+            SimulacionAbonoCapital simulacion =
+                abonoCapitalPrestamoService.simular(idPrestamo, valor, modalidad);
+
+            Map<String, Object> cuerpo = new LinkedHashMap<>();
+            cuerpo.put("exito", Boolean.TRUE);
+            cuerpo.put("etapa", ETAPA_SIMULACION);
+            cuerpo.put("mensaje", "Simulación calculada");
+            cuerpo.put("resultado", simulacion);
+
+            return Response.status(Response.Status.OK)
+                    .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
+
+        } catch (Throwable e) {
+            System.err.println("ERROR al simular abono a capital: " + e.getMessage());
+            e.printStackTrace();
+            return respuestaErrorNegocio(e);
+        }
+    }
+
+    /**
+     * Aplica un abono a capital con re-amortización.
+     *
+     * @param solicitud { idPrestamo, valor, modalidad, usuario, observacion, fecha }
+     * @return 201 con el ResultadoAbonoCapital
+     */
+    @POST
+    @Path("/abonarCapital")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response abonarCapital(SolicitudAbonoCapital solicitud) {
+        System.out.println("LLEGA AL SERVICIO ABONAR CAPITAL - Préstamo: "
+            + (solicitud != null ? solicitud.getIdPrestamo() : null));
+
+        if (solicitud == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe enviar el cuerpo de la solicitud", null);
+        }
+        if (solicitud.getIdPrestamo() == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe indicar el préstamo (idPrestamo)", null);
+        }
+        if (solicitud.getValor() == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe indicar el valor del abono", null);
+        }
+        if (solicitud.getModalidad() == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe indicar la modalidad (1 o 2)", null);
+        }
+        if (solicitud.getUsuario() == null || solicitud.getUsuario().trim().isEmpty()) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe indicar el usuario que ejecuta el abono", null);
+        }
+
+        try {
+            ResultadoAbonoCapital resultado = abonoCapitalPrestamoService.aplicar(solicitud);
+
+            Map<String, Object> cuerpo = new LinkedHashMap<>();
+            cuerpo.put("exito", Boolean.TRUE);
+            cuerpo.put("etapa", ETAPA_APLICACION);
+            cuerpo.put("mensaje", "Abono a capital aplicado por $" + resultado.getValorAbono()
+                + ". Plazo: " + resultado.getPlazoAnterior() + " → " + resultado.getPlazoNuevo()
+                + ". Cuota: " + resultado.getCuotaAnterior() + " → " + resultado.getCuotaNueva());
+            cuerpo.put("resultado", resultado);
+
+            return Response.status(Response.Status.CREATED)
+                    .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
+
+        } catch (Throwable e) {
+            System.err.println("ERROR al abonar a capital: " + e.getMessage());
+            e.printStackTrace();
+            return respuestaErrorNegocio(e);
+        }
+    }
+
+    /**
+     * Simula una precancelación total a una fecha de corte, SIN escribir nada.
+     *
+     * @param idPrestamo Préstamo
+     * @param fecha      Fecha de corte en formato yyyy-MM-dd; si falta se usa hoy
+     * @return 200 con la SimulacionPrecancelacion
+     */
+    @GET
+    @Path("/simularPrecancelacion/{idPrestamo}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response simularPrecancelacion(@PathParam("idPrestamo") Long idPrestamo,
+                                          @QueryParam("fecha") String fecha) {
+        System.out.println("LLEGA AL SERVICIO SIMULAR PRECANCELACION - Préstamo: " + idPrestamo
+            + " - Fecha: " + fecha);
+
+        if (idPrestamo == null || idPrestamo <= 0) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe indicar un préstamo válido", null);
+        }
+
+        java.time.LocalDate fechaCorte;
+        try {
+            fechaCorte = (fecha != null && !fecha.trim().isEmpty())
+                ? java.time.LocalDate.parse(fecha.trim())
+                : java.time.LocalDate.now();
+        } catch (Exception e) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "La fecha debe tener el formato yyyy-MM-dd", null);
+        }
+
+        try {
+            SimulacionPrecancelacion simulacion =
+                procesoPagoPrestamoService.simularPrecancelacion(idPrestamo, fechaCorte);
+
+            Map<String, Object> cuerpo = new LinkedHashMap<>();
+            cuerpo.put("exito", Boolean.TRUE);
+            cuerpo.put("etapa", ETAPA_SIMULACION);
+            cuerpo.put("mensaje", "Simulación calculada");
+            cuerpo.put("resultado", simulacion);
+
+            return Response.status(Response.Status.OK)
+                    .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
+
+        } catch (Throwable e) {
+            System.err.println("ERROR al simular precancelación: " + e.getMessage());
+            e.printStackTrace();
+            return respuestaErrorNegocio(e);
+        }
+    }
+
+    /**
+     * Ejecuta la precancelación total del préstamo (efectivo, aportes o mixto).
+     *
+     * @param solicitud { idPrestamo, valorEfectivo, aportes[], usuario, observacion, fecha }
+     * @return 200 con el ResultadoPrecancelacion; 422 con valorTotalPrecancelacion si el monto no coincide
+     */
+    @POST
+    @Path("/precancelar")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response precancelar(SolicitudPrecancelacion solicitud) {
+        System.out.println("LLEGA AL SERVICIO PRECANCELAR - Préstamo: "
+            + (solicitud != null ? solicitud.getIdPrestamo() : null));
+
+        if (solicitud == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe enviar el cuerpo de la solicitud", null);
+        }
+        if (solicitud.getIdPrestamo() == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe indicar el préstamo (idPrestamo)", null);
+        }
+        if (solicitud.getUsuario() == null || solicitud.getUsuario().trim().isEmpty()) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe indicar el usuario que ejecuta la precancelación", null);
+        }
+
+        try {
+            ResultadoPrecancelacion resultado = procesoPagoPrestamoService.precancelar(solicitud);
+
+            Map<String, Object> cuerpo = new LinkedHashMap<>();
+            cuerpo.put("exito", Boolean.TRUE);
+            cuerpo.put("etapa", ETAPA_APLICACION);
+            cuerpo.put("mensaje", "Préstamo precancelado por $" + resultado.getValorTotalPrecancelacion()
+                + ". Cuotas canceladas anticipadamente: " + resultado.getCuotasCanceladasAnticipadas());
+            cuerpo.put("resultado", resultado);
+
+            return Response.status(Response.Status.OK)
+                    .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
+
+        } catch (Throwable e) {
+            System.err.println("ERROR al precancelar: " + e.getMessage());
+            e.printStackTrace();
+
+            // Si el monto no coincide, se devuelve el valor correcto para que el frontend reintente
+            String mensaje = e.getMessage() != null ? e.getMessage() : "";
+            if (mensaje.startsWith("MONTO_NO_COINCIDE")) {
+                Map<String, Object> cuerpo = new LinkedHashMap<>();
+                cuerpo.put("exito", Boolean.FALSE);
+                cuerpo.put("etapa", ETAPA_VALIDACION);
+                cuerpo.put("mensaje", mensaje);
+                cuerpo.put("error", "MONTO_NO_COINCIDE");
+                try {
+                    SimulacionPrecancelacion simulacion = procesoPagoPrestamoService
+                        .simularPrecancelacion(solicitud.getIdPrestamo(), solicitud.getFecha());
+                    cuerpo.put("valorTotalPrecancelacion", simulacion.getValorTotalPrecancelacion());
+                } catch (Throwable ignorada) {
+                    System.err.println("No se pudo recalcular el valor de precancelación: "
+                        + ignorada.getMessage());
+                }
+                return Response.status(HTTP_REGLA_DE_NEGOCIO)
+                        .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
+            }
+
+            return respuestaErrorNegocio(e);
+        }
+    }
+
+    /**
+     * Anula (reversa) una operación de pago completa a partir de su evento.
+     *
+     * @param solicitud { idEvento, usuario, motivo }
+     * @return 200 con el ResultadoAnulacion
+     */
+    @POST
+    @Path("/anularOperacion")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response anularOperacion(SolicitudAnulacion solicitud) {
+        System.out.println("LLEGA AL SERVICIO ANULAR OPERACION - Evento: "
+            + (solicitud != null ? solicitud.getIdEvento() : null));
+
+        if (solicitud == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe enviar el cuerpo de la solicitud", null);
+        }
+        if (solicitud.getIdEvento() == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe indicar el evento (idEvento)", null);
+        }
+        if (solicitud.getUsuario() == null || solicitud.getUsuario().trim().isEmpty()) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe indicar el usuario que ejecuta la anulación", null);
+        }
+        if (solicitud.getMotivo() == null || solicitud.getMotivo().trim().isEmpty()) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe indicar el motivo de la anulación", null);
+        }
+
+        try {
+            ResultadoAnulacion resultado = procesoPagoPrestamoService.anularOperacion(solicitud);
+
+            Map<String, Object> cuerpo = new LinkedHashMap<>();
+            cuerpo.put("exito", Boolean.TRUE);
+            cuerpo.put("etapa", ETAPA_APLICACION);
+            cuerpo.put("mensaje", "Operación " + resultado.getTipoOperacion() + " anulada. Pagos anulados: "
+                + resultado.getPagosAnulados() + ", cuotas recalculadas: " + resultado.getCuotasRecalculadas());
+            cuerpo.put("resultado", resultado);
+
+            return Response.status(Response.Status.OK)
+                    .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
+
+        } catch (Throwable e) {
+            System.err.println("ERROR al anular la operación: " + e.getMessage());
+            e.printStackTrace();
+            return respuestaErrorNegocio(e);
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // Sobre de respuesta y mapeo de errores de los procesos de pago (§8)
+    // ------------------------------------------------------------------------
+
+    private static final String ETAPA_VALIDACION = "VALIDACION";
+    private static final String ETAPA_APLICACION = "APLICACION";
+    private static final String ETAPA_SIMULACION = "SIMULACION";
+
+    /** 422 UNPROCESSABLE ENTITY - no existe en el enum Response.Status de Jakarta REST */
+    private static final int HTTP_REGLA_DE_NEGOCIO = 422;
+
+    /** Códigos de negocio que se responden como 404 NOT FOUND */
+    private static final List<String> CODIGOS_404 = Arrays.asList(
+        "PRESTAMO_NO_ENCONTRADO", "EVENTO_NO_ENCONTRADO", "CUOTA_NO_ENCONTRADA");
+
+    /** Códigos de negocio que se responden como 409 CONFLICT */
+    private static final List<String> CODIGOS_409 = Arrays.asList(
+        "ESTADO_NO_PERMITE", "EVENTO_YA_ANULADO", "EVENTO_POSTERIOR_VIGENTE", "PAGOS_SOBRE_TABLA_RECALCULADA");
+
+    /** Códigos de negocio que se responden como 400 BAD REQUEST */
+    private static final List<String> CODIGOS_400 = Arrays.asList(
+        "PARAMETRO_INVALIDO");
+
+    /**
+     * Mapea la excepción de un proceso de pago al status HTTP de §8, usando el CÓDIGO con el
+     * que el servicio prefija el mensaje ({@code CODIGO: descripción}). Las reglas de negocio
+     * sin código explícito caen en 422; lo inesperado, en 500.
+     */
+    private Response respuestaErrorNegocio(Throwable e) {
+        String mensaje = e.getMessage() != null ? e.getMessage() : "Error inesperado";
+        String codigo = mensaje.contains(":") ? mensaje.substring(0, mensaje.indexOf(':')).trim() : "";
+
+        if (CODIGOS_400.contains(codigo)) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION, mensaje, codigo);
+        }
+        if (CODIGOS_404.contains(codigo)) {
+            return respuestaFallo(Response.Status.NOT_FOUND.getStatusCode(), ETAPA_VALIDACION, mensaje, codigo);
+        }
+        if (CODIGOS_409.contains(codigo)) {
+            return respuestaFallo(Response.Status.CONFLICT.getStatusCode(), ETAPA_VALIDACION, mensaje, codigo);
+        }
+        if (e instanceof com.saa.basico.util.IncomeException) {
+            return respuestaFallo(HTTP_REGLA_DE_NEGOCIO, ETAPA_VALIDACION, mensaje, codigo);
+        }
+        return respuestaFallo(Response.Status.INTERNAL_SERVER_ERROR.getStatusCode(), ETAPA_APLICACION, mensaje, codigo);
+    }
+
+    private Response respuestaFallo(int status, String etapa, String mensaje, String codigo) {
+        Map<String, Object> cuerpo = new LinkedHashMap<>();
+        cuerpo.put("exito", Boolean.FALSE);
+        cuerpo.put("etapa", etapa);
+        cuerpo.put("mensaje", mensaje);
+        cuerpo.put("error", codigo != null && !codigo.isEmpty() ? codigo : mensaje);
+        return Response.status(status)
+                .entity(cuerpo)
+                .type(MediaType.APPLICATION_JSON)
+                .build();
+    }
+
     /**
      * Clase interna para manejar la carga de archivos multipart.
      */

@@ -124,6 +124,36 @@ public class PagoPrestamo implements Serializable {
     @Column(name = "PGPRIDST", nullable = false)
     private Long idEstado;
 
+    /** FK - Evento de pago que generó este registro (NULL en pagos petro/migración) */
+    @ManyToOne
+    @JoinColumn(name = "EVPRCDGO", referencedColumnName = "EVPRCDGO")
+    private EventoPrestamo eventoPrestamo;
+
+    /** Código de asiento contable (hook futuro) */
+    @Basic
+    @Column(name = "PGPRASNT")
+    private Long asiento;
+
+    /** Marca de anulación: 0 = vigente, 1 = anulado */
+    @Basic
+    @Column(name = "PGPRANUL")
+    private Long anulado;
+
+    /** Usuario de anulación */
+    @Basic
+    @Column(name = "PGPRUSAN", length = 50)
+    private String usuarioAnulacion;
+
+    /** Fecha de anulación */
+    @Basic
+    @Column(name = "PGPRFCAN")
+    private LocalDateTime fechaAnulacion;
+
+    /** Motivo de la anulación */
+    @Basic
+    @Column(name = "PGPRMTAN", length = 500)
+    private String motivoAnulacion;
+
     // ============================================================
     // Getters y Setters
     // ============================================================
@@ -278,6 +308,54 @@ public class PagoPrestamo implements Serializable {
 
     public void setValorSeguroIncendio(Double valorSeguroIncendio) {
         this.valorSeguroIncendio = valorSeguroIncendio;
+    }
+
+    public EventoPrestamo getEventoPrestamo() {
+        return eventoPrestamo;
+    }
+
+    public void setEventoPrestamo(EventoPrestamo eventoPrestamo) {
+        this.eventoPrestamo = eventoPrestamo;
+    }
+
+    public Long getAsiento() {
+        return asiento;
+    }
+
+    public void setAsiento(Long asiento) {
+        this.asiento = asiento;
+    }
+
+    public Long getAnulado() {
+        return anulado;
+    }
+
+    public void setAnulado(Long anulado) {
+        this.anulado = anulado;
+    }
+
+    public String getUsuarioAnulacion() {
+        return usuarioAnulacion;
+    }
+
+    public void setUsuarioAnulacion(String usuarioAnulacion) {
+        this.usuarioAnulacion = usuarioAnulacion;
+    }
+
+    public LocalDateTime getFechaAnulacion() {
+        return fechaAnulacion;
+    }
+
+    public void setFechaAnulacion(LocalDateTime fechaAnulacion) {
+        this.fechaAnulacion = fechaAnulacion;
+    }
+
+    public String getMotivoAnulacion() {
+        return motivoAnulacion;
+    }
+
+    public void setMotivoAnulacion(String motivoAnulacion) {
+        this.motivoAnulacion = motivoAnulacion;
     }
 }
 

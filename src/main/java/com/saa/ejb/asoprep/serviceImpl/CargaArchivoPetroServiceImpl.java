@@ -41,6 +41,25 @@ import jakarta.ejb.TransactionAttributeType;
 
 /**
  * Implementación Stateful para procesar archivos Petro con manejo de transacciones
+ *
+ * TODO (convergencia futura, fuera del alcance actual): los métodos privados
+ * calcularSaldosRealesCuota, procesarPagoCuota, procesarExcedenteASiguienteCuota,
+ * verificarYActualizarEstadoPrestamo y crearRegistroPago de esta clase fueron la base de
+ * com.saa.ejb.crd.serviceImpl.MotorPagoPrestamoServiceImpl (motor de pagos compartido de los
+ * servicios de pago de préstamos). Hoy conviven dos implementaciones de la misma lógica:
+ *
+ *   - El motor nuevo agrega mora (DTPRMRAA) e interés vencido (DTPRINVN) a la prelación
+ *     (Desgravamen → Mora → Interés vencido → Interés → Capital → Seguro de incendio),
+ *     agrupa toda operación bajo un EventoPrestamo (CRD.EVPR) y reconstruye los saldos SOLO
+ *     desde los PagoPrestamo VIGENTES (excluye los anulados por un reverso).
+ *   - Este servicio mantiene la prelación de 4 componentes y consume TODOS los PGPR.
+ *
+ * Refactorizar este proceso para que delegue en MotorPagoPrestamoService es una fase futura
+ * y está explícitamente FUERA del alcance de la especificación
+ * docs/logica-negocio/crd/ESPECIFICACION-SERVICIOS-PAGO-PRESTAMOS.md (§1.3). Mientras tanto,
+ * NO modificar la lógica de pagos de esta clase sin replicar el cambio en el motor, y
+ * viceversa. Cualquier cambio aquí debe actualizar además
+ * docs/logica-negocio/petro/REGLAS-CARGA-PETRO.md.
  */
 @Stateful
 public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {

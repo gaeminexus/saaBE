@@ -245,10 +245,40 @@ public interface AporteDaoService extends EntityDao<Aporte>{
 	 * @return Lista de movimientos ordenados por magnitud
 	 */
 	java.util.List<com.saa.model.crd.dto.AporteTopMovimientoDTO> selectTopMovimientos(
-			java.time.LocalDateTime fechaDesde, 
-			java.time.LocalDateTime fechaHasta, 
+			java.time.LocalDateTime fechaDesde,
+			java.time.LocalDateTime fechaHasta,
 			Long estadoAporte,
 			Long tipoAporteId,
 			Integer topN) throws Throwable;
+
+	// ========================================================================
+	// SERVICIOS DE PAGO DE PRÉSTAMOS (§5.2 ESPECIFICACION-SERVICIOS-PAGO-PRESTAMOS.md)
+	// ========================================================================
+
+	/**
+	 * Saldo de aportes de una entidad agrupado por tipo de aporte vigente
+	 * (TipoAporte.estado = 1). El saldo disponible ES la suma neta de APRTVLRR: los pagos
+	 * se registran como filas negativas.
+	 *
+	 * Una sola query agregada; NUNCA traer las filas de APRT (la tabla tiene ~980.000
+	 * registros y bajarlas al frontend es la causa del OutOfMemoryError documentado).
+	 *
+	 * @param codigoEntidad Código de la entidad (partícipe)
+	 * @return Lista de Object[]{Long codigoTipoAporte, String nombreTipoAporte, Double suma};
+	 *         vacía si la entidad no tiene aportes
+	 * @throws Throwable Si ocurre algún error
+	 */
+	List<Object[]> sumValorPorTipoAporteByEntidad(Long codigoEntidad) throws Throwable;
+
+	/**
+	 * Saldo de aportes de una entidad para un tipo de aporte concreto: SUM(APRTVLRR) neto.
+	 * Devuelve 0.0 si no hay filas.
+	 *
+	 * @param codigoEntidad    Código de la entidad (partícipe)
+	 * @param codigoTipoAporte Código del tipo de aporte
+	 * @return Saldo disponible del tipo (0.0 si no hay aportes)
+	 * @throws Throwable Si ocurre algún error
+	 */
+	Double sumValorByEntidadYTipo(Long codigoEntidad, Long codigoTipoAporte) throws Throwable;
 
 }

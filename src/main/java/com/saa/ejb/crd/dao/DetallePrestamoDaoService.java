@@ -224,5 +224,49 @@ public interface DetallePrestamoDaoService extends EntityDao<DetallePrestamo> {
 	List<Object[]> calcularInteresMoraDelMesBatch(List<Long> codigosPrestamos,
 		LocalDateTime fechaInicio, LocalDateTime fechaFin) throws Throwable;
 
+	// ========================================================================
+	// SERVICIOS DE PAGO DE PRÉSTAMOS (§5.2 ESPECIFICACION-SERVICIOS-PAGO-PRESTAMOS.md)
+	// ========================================================================
+
+	/**
+	 * Cuotas pendientes de un préstamo, ordenadas por numeroCuota ASC.
+	 * Pendiente = estado IS NULL OR estado NOT IN (4 PAGADA, 7 CANCELADA_ANTICIPADA).
+	 * A diferencia de selectCuotasNoPagadasByPrestamo, incluye explícitamente las cuotas
+	 * con estado NULL (en JPQL "NULL NOT IN (...)" descarta la fila).
+	 * @param codigoPrestamo Código del préstamo
+	 * @return Lista de cuotas pendientes ordenadas; vacía si no hay o si falla la consulta
+	 * @throws Throwable Si ocurre algún error
+	 */
+	List<DetallePrestamo> selectCuotasPendientesByPrestamoOrdenadas(Long codigoPrestamo) throws Throwable;
+
+	/**
+	 * Cuotas del préstamo con numeroCuota &gt; :numeroCuotaExclusivo, de cualquier estado,
+	 * ordenadas por numeroCuota ASC. Se usa en la re-amortización del abono a capital.
+	 * @param codigoPrestamo       Código del préstamo
+	 * @param numeroCuotaExclusivo Número de cuota a partir del cual (exclusivo) se listan
+	 * @return Lista de cuotas ordenadas; vacía si no hay o si falla la consulta
+	 * @throws Throwable Si ocurre algún error
+	 */
+	List<DetallePrestamo> selectCuotasByPrestamoDesdeNumero(Long codigoPrestamo, Double numeroCuotaExclusivo) throws Throwable;
+
+	/**
+	 * Cuota PAGADA (estado = 4) con mayor numeroCuota del préstamo, o null si no hay ninguna.
+	 * Es la cuota ANCLA donde el abono a capital y la precancelación acumulan saldoOtros.
+	 * @param codigoPrestamo Código del préstamo
+	 * @return Última cuota pagada, o null
+	 * @throws Throwable Si ocurre algún error
+	 */
+	DetallePrestamo selectUltimaCuotaPagada(Long codigoPrestamo) throws Throwable;
+
+	/**
+	 * Cuotas pendientes con fechaVencimiento &lt;= :fechaCorte (deuda exigible),
+	 * ordenadas por numeroCuota ASC. Pendiente = estado IS NULL OR estado NOT IN (4, 7).
+	 * @param codigoPrestamo Código del préstamo
+	 * @param fechaCorte     Fin del día de la fecha de precancelación
+	 * @return Lista de cuotas exigibles ordenadas; vacía si no hay o si falla la consulta
+	 * @throws Throwable Si ocurre algún error
+	 */
+	List<DetallePrestamo> selectCuotasExigibles(Long codigoPrestamo, LocalDateTime fechaCorte) throws Throwable;
+
 }
 

@@ -52,4 +52,89 @@ public class PagoPrestamoDaoServiceImpl extends EntityDaoImpl<PagoPrestamo> impl
 		}
 	}
 
+	// ========================================================================
+	// SERVICIOS DE PAGO DE PRÉSTAMOS (§5.2 ESPECIFICACION-SERVICIOS-PAGO-PRESTAMOS.md)
+	// ========================================================================
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<PagoPrestamo> selectVigentesByIdDetallePrestamo(Long codigoDetallePrestamo) {
+		System.out.println("PagoPrestamoDaoService.selectVigentesByIdDetallePrestamo - DetallePrestamo: " + codigoDetallePrestamo);
+
+		try {
+			// anulado IS NULL cubre los pagos históricos anteriores al ALTER de CRD.PGPR
+			Query query = em.createQuery(
+				"SELECT p " +
+				"FROM PagoPrestamo p " +
+				"WHERE p.detallePrestamo.codigo = :codigoDetallePrestamo " +
+				"AND (p.anulado IS NULL OR p.anulado = 0) " +
+				"ORDER BY p.codigo ASC"
+			);
+			query.setParameter("codigoDetallePrestamo", codigoDetallePrestamo);
+
+			List<PagoPrestamo> resultados = query.getResultList();
+			System.out.println("  Pagos vigentes encontrados: " + resultados.size());
+
+			return resultados;
+
+		} catch (Exception e) {
+			System.err.println("ERROR en selectVigentesByIdDetallePrestamo: " + e.getMessage());
+			e.printStackTrace();
+			// Retornar lista vacía en lugar de lanzar excepción
+			return new ArrayList<>();
+		}
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<PagoPrestamo> selectByEvento(Long codigoEvento) {
+		System.out.println("PagoPrestamoDaoService.selectByEvento - Evento: " + codigoEvento);
+
+		try {
+			Query query = em.createQuery(
+				"SELECT p " +
+				"FROM PagoPrestamo p " +
+				"WHERE p.eventoPrestamo.codigo = :codigoEvento " +
+				"ORDER BY p.codigo ASC"
+			);
+			query.setParameter("codigoEvento", codigoEvento);
+
+			List<PagoPrestamo> resultados = query.getResultList();
+			System.out.println("  Pagos del evento encontrados: " + resultados.size());
+
+			return resultados;
+
+		} catch (Exception e) {
+			System.err.println("ERROR en selectByEvento: " + e.getMessage());
+			e.printStackTrace();
+			// Retornar lista vacía en lugar de lanzar excepción
+			return new ArrayList<>();
+		}
+	}
+
+	@Override
+	public Long contarVigentesByIdDetallePrestamo(Long codigoDetallePrestamo) {
+		System.out.println("PagoPrestamoDaoService.contarVigentesByIdDetallePrestamo - DetallePrestamo: " + codigoDetallePrestamo);
+
+		try {
+			Query query = em.createQuery(
+				"SELECT COUNT(p) " +
+				"FROM PagoPrestamo p " +
+				"WHERE p.detallePrestamo.codigo = :codigoDetallePrestamo " +
+				"AND (p.anulado IS NULL OR p.anulado = 0)"
+			);
+			query.setParameter("codigoDetallePrestamo", codigoDetallePrestamo);
+
+			Long total = (Long) query.getSingleResult();
+			System.out.println("  Pagos vigentes: " + total);
+			return total;
+
+		} catch (Exception e) {
+			System.err.println("ERROR en contarVigentesByIdDetallePrestamo: " + e.getMessage());
+			e.printStackTrace();
+			// Retornar 0 en lugar de lanzar excepción
+			return 0L;
+		}
+	}
+
 }

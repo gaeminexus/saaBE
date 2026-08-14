@@ -99,6 +99,14 @@ public class PagoAporte implements Serializable {
     @Column(name = "PGAPIDST")
     private Long estado;
 
+    /**
+     * FK - Pago de préstamo que consumió este aporte (pago con aportes / precancelación
+     * con aportes). NULL en los pagos de aporte del proceso Petro.
+     */
+    @ManyToOne
+    @JoinColumn(name = "PGPRCDGO", referencedColumnName = "PGPRCDGO")
+    private PagoPrestamo pagoPrestamo;
+
     // ============================================================
     // Getters y Setters
     // ============================================================
@@ -181,6 +189,14 @@ public class PagoAporte implements Serializable {
 
     public void setEstado(Long estado) {
         this.estado = estado;
+    }
+
+    public PagoPrestamo getPagoPrestamo() {
+        return pagoPrestamo;
+    }
+
+    public void setPagoPrestamo(PagoPrestamo pagoPrestamo) {
+        this.pagoPrestamo = pagoPrestamo;
     }
 }
 

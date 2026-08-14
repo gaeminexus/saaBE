@@ -27,15 +27,23 @@ public interface PrestamoService extends EntityService<Prestamo>{
 	 */
 	Prestamo cargarTablaAmortizacionDesdeExcel(Long idPrestamo, java.io.InputStream archivoExcel) throws Throwable;
 
+	// NOTA: el abono a capital vive ahora en com.saa.ejb.crd.service.AbonoCapitalPrestamoService
+	// (simular + aplicar, con re-amortización, historización en CRD.HDTP y EventoPrestamo).
+	// Ver docs/logica-negocio/crd/ESPECIFICACION-SERVICIOS-PAGO-PRESTAMOS.md §7.3.
+
 	/**
-	 * Aplica un abono a capital al préstamo y recalcula la tabla de amortización.
+	 * Recalcula los campos derivados del préstamo (valorCuota, fechaFin, totalCapital,
+	 * totalInteres, totalPrestamo, tasaNominal y tasaEfectiva) a partir de la tabla de
+	 * amortización VIVA en CRD.DTPR, y lo persiste.
+	 *
+	 * Expone la lógica que ya usaban generarTablaAmortizacion y la carga desde Excel, para que
+	 * el abono a capital y su reverso la reutilicen tras re-amortizar (§7.3 paso 7).
+	 *
 	 * @param idPrestamo ID del préstamo
-	 * @param valorAbono Valor del abono a capital
-	 * @param opcionRecalculo 1=Mantener plazo/reducir cuota, 2=Reducir plazo/mantener cuota
-	 * @return Préstamo con la tabla de amortización recalculada
-	 * @throws Throwable Si ocurre algún error durante el proceso
+	 * @return Préstamo con los campos actualizados
+	 * @throws Throwable Si ocurre algún error
 	 */
-	Prestamo aplicarAbonoCapital(Long idPrestamo, Double valorAbono, Integer opcionRecalculo) throws Throwable;
+	Prestamo actualizarCamposDesdeTabla(Long idPrestamo) throws Throwable;
 
 	/**
 	 * Busca préstamos cuya fecha esté entre fechaInicio y fechaFin.
