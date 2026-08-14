@@ -41,6 +41,7 @@
     U.DTPRSICP               AS SALDO_INICIAL,
     U.DTPRCPTL              AS CAPITAL,
     U.DTPRINTR              AS INTERES,
+    NVL(U.DTPRMRAA,0)       AS INTERES_MORA,
     U.DTPRDSGR              AS SEGURO_DESGRAVA,
     NVL(U.DTPRVLSI,0)              AS SEGURO_INCENDIO,
     U.DTPRTTLL              AS CUOTA_TOTAL,
@@ -152,6 +153,10 @@ ORDER BY U.DTPRNMCT;]]></query>
 	<field name="INTERES" class="java.math.BigDecimal">
 		<property name="com.jaspersoft.studio.field.name" value="INTERES"/>
 		<property name="com.jaspersoft.studio.field.label" value="INTERES"/>
+	</field>
+	<field name="INTERES_MORA" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="INTERES_MORA"/>
+		<property name="com.jaspersoft.studio.field.label" value="INTERES_MORA"/>
 	</field>
 	<field name="SEGURO_DESGRAVA" class="java.math.BigDecimal">
 		<property name="com.jaspersoft.studio.field.name" value="SEGURO_DESGRAVA"/>
@@ -425,7 +430,7 @@ ORDER BY U.DTPRNMCT;]]></query>
 				<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="2cab6396-fe5a-4c62-90c8-2be22a7fdb0b" x="0" y="13" width="40" height="28" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="2cab6396-fe5a-4c62-90c8-2be22a7fdb0b" x="0" y="13" width="30" height="28" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[N° CUOTA]]></text>
 			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="73be61df-46f4-4fff-99e3-4d910a2dbe36"/>
 			<property name="com.jaspersoft.studio.unit.y" value="px"/>
@@ -434,7 +439,7 @@ ORDER BY U.DTPRNMCT;]]></query>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="5e34068a-33b9-44c1-a73a-a7611d73bcf6" x="40" y="13" width="60" height="28" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="5e34068a-33b9-44c1-a73a-a7611d73bcf6" x="30" y="13" width="55" height="28" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[FECHA VENCIMIENTO]]></text>
 			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="1efe2930-9b62-435a-be72-f5d442008b3f"/>
 			<property name="com.jaspersoft.studio.unit.height" value="px"/>
@@ -442,7 +447,7 @@ ORDER BY U.DTPRNMCT;]]></query>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="2c5f055f-6b58-4f4d-81c4-f28df59350cc" x="100" y="13" width="50" height="28" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="2c5f055f-6b58-4f4d-81c4-f28df59350cc" x="85" y="13" width="45" height="28" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[PAGO 	EXTRA]]></text>
 			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="9a95a64e-8d9c-4d7f-83dd-2a9338854f63"/>
 			<property name="com.jaspersoft.studio.unit.height" value="px"/>
@@ -450,7 +455,7 @@ ORDER BY U.DTPRNMCT;]]></query>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="067e7964-4647-43d0-b8d2-6cf2f3d68349" x="150" y="13" width="60" height="28" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="067e7964-4647-43d0-b8d2-6cf2f3d68349" x="130" y="13" width="55" height="28" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[SALDO	INICIAL]]></text>
 			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="88b90731-8435-48ee-afd8-4ebd33a876b9"/>
 			<property name="com.jaspersoft.studio.unit.height" value="px"/>
@@ -458,7 +463,7 @@ ORDER BY U.DTPRNMCT;]]></query>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="d15d14b1-8bd2-45dd-930d-df3c38fa3cdb" x="270" y="13" width="50" height="28" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="d15d14b1-8bd2-45dd-930d-df3c38fa3cdb" x="240" y="13" width="45" height="28" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[INTERES]]></text>
 			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="03406852-4932-4051-9b11-32babb7e313e"/>
 			<property name="com.jaspersoft.studio.unit.height" value="px"/>
@@ -466,7 +471,14 @@ ORDER BY U.DTPRNMCT;]]></query>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="7e8ce771-2125-4f7a-821e-785adb52ed06" x="495" y="13" width="60" height="28" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="a3c1f9d2-71e4-4b8a-9c5d-2e8f6a04b713" x="285" y="13" width="45" height="28" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[INTERES MORA]]></text>
+			<property name="com.jaspersoft.studio.unit.height" value="px"/>
+			<box>
+				<pen lineWidth="0.25"/>
+			</box>
+		</element>
+		<element kind="staticText" uuid="7e8ce771-2125-4f7a-821e-785adb52ed06" x="490" y="13" width="65" height="28" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[ESTADO]]></text>
 			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="4e9216d1-cd66-4013-bd8e-df32ce52b6d2"/>
 			<property name="com.jaspersoft.studio.unit.height" value="px"/>
@@ -474,7 +486,7 @@ ORDER BY U.DTPRNMCT;]]></query>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="b81af720-fe0c-469e-83f0-8f59d1762139" x="210" y="13" width="60" height="28" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="b81af720-fe0c-469e-83f0-8f59d1762139" x="185" y="13" width="55" height="28" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[CAPITAL]]></text>
 			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="2597655d-08f1-4e64-a52d-436f62f8eaa8"/>
 			<property name="com.jaspersoft.studio.unit.height" value="px"/>
@@ -482,7 +494,7 @@ ORDER BY U.DTPRNMCT;]]></query>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="d894b928-8f45-49c8-a4f0-1d31202a1099" x="320" y="13" width="60" height="28" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="d894b928-8f45-49c8-a4f0-1d31202a1099" x="330" y="13" width="55" height="28" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[SEGURO	DESGRAVAMEN]]></text>
 			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="bd0cce9f-2f17-4384-b1d3-2f1bb1f67fd1"/>
 			<property name="com.jaspersoft.studio.unit.height" value="px"/>
@@ -490,7 +502,7 @@ ORDER BY U.DTPRNMCT;]]></query>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="d20661d4-5839-41e2-8e5b-c238d784fef2" x="380" y="13" width="60" height="28" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="d20661d4-5839-41e2-8e5b-c238d784fef2" x="385" y="13" width="50" height="28" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[SEGURO]]></text>
 			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="cfd9e0d5-8f65-4dac-b659-312e468902b8"/>
 			<property name="com.jaspersoft.studio.unit.height" value="px"/>
@@ -498,7 +510,7 @@ ORDER BY U.DTPRNMCT;]]></query>
 				<pen lineWidth="0.25"/>
 			</box>
 		</element>
-		<element kind="staticText" uuid="08ca9729-e385-480f-b614-9e1a310549cb" x="440" y="13" width="55" height="28" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="08ca9729-e385-480f-b614-9e1a310549cb" x="435" y="13" width="55" height="28" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[CUOTA	TOTAL]]></text>
 			<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="cfd9e0d5-8f65-4dac-b659-312e468902b8"/>
 			<property name="com.jaspersoft.studio.unit.height" value="px"/>
@@ -509,7 +521,7 @@ ORDER BY U.DTPRNMCT;]]></query>
 	</columnHeader>
 	<detail>
 		<band height="14" splitType="Immediate">
-			<element kind="textField" uuid="5dd2492d-6a8e-4bf7-b86e-b6db47afd0de" x="0" y="0" width="40" height="14" fontName="SansSerif" fontSize="7.0" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="textField" uuid="5dd2492d-6a8e-4bf7-b86e-b6db47afd0de" x="0" y="0" width="30" height="14" fontName="SansSerif" fontSize="7.0" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
 				<expression><![CDATA[$F{NUMERO_CUOTA}]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="6d60b9d5-8814-4326-9885-b729d652e0c6"/>
 				<property name="com.jaspersoft.studio.unit.height" value="px"/>
@@ -519,7 +531,7 @@ ORDER BY U.DTPRNMCT;]]></query>
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="d0b86b38-11d7-4efc-b3bd-d9e3ed3cdb75" x="40" y="0" width="60" height="14" fontName="SansSerif" fontSize="7.0" pattern="dd/MM/yyyy" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="textField" uuid="d0b86b38-11d7-4efc-b3bd-d9e3ed3cdb75" x="30" y="0" width="55" height="14" fontName="SansSerif" fontSize="7.0" pattern="dd/MM/yyyy" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
 				<expression><![CDATA[$F{FECHA_VENCIMIENTO}]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="1efe2930-9b62-435a-be72-f5d442008b3f"/>
 				<property name="com.jaspersoft.studio.unit.y" value="px"/>
@@ -527,7 +539,7 @@ ORDER BY U.DTPRNMCT;]]></query>
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="2780fbab-f86b-4fc6-b498-34de6db63811" x="100" y="0" width="50" height="14" fontName="SansSerif" fontSize="7.0" pattern="¤#,##0.00;¤-#,##0.00" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="textField" uuid="2780fbab-f86b-4fc6-b498-34de6db63811" x="85" y="0" width="45" height="14" fontName="SansSerif" fontSize="7.0" pattern="¤#,##0.00;¤-#,##0.00" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
 				<expression><![CDATA[$F{PAGO_EXTRA}]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="9a95a64e-8d9c-4d7f-83dd-2a9338854f63"/>
 				<property name="com.jaspersoft.studio.unit.y" value="px"/>
@@ -535,7 +547,7 @@ ORDER BY U.DTPRNMCT;]]></query>
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="797ec675-e755-4dd1-838b-e6e5c0319366" x="150" y="0" width="60" height="14" fontName="SansSerif" fontSize="7.0" pattern="¤#,##0.00;¤-#,##0.00" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="textField" uuid="797ec675-e755-4dd1-838b-e6e5c0319366" x="130" y="0" width="55" height="14" fontName="SansSerif" fontSize="7.0" pattern="¤#,##0.00;¤-#,##0.00" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
 				<expression><![CDATA[$F{SALDO_INICIAL}]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="88b90731-8435-48ee-afd8-4ebd33a876b9"/>
 				<property name="com.jaspersoft.studio.unit.y" value="px"/>
@@ -543,7 +555,7 @@ ORDER BY U.DTPRNMCT;]]></query>
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="e9b6a4be-6f88-4a18-b92b-f30a59893458" x="210" y="0" width="60" height="14" fontName="SansSerif" fontSize="7.0" pattern="¤#,##0.00;¤-#,##0.00" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="textField" uuid="e9b6a4be-6f88-4a18-b92b-f30a59893458" x="185" y="0" width="55" height="14" fontName="SansSerif" fontSize="7.0" pattern="¤#,##0.00;¤-#,##0.00" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
 				<expression><![CDATA[$F{CAPITAL}]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="2597655d-08f1-4e64-a52d-436f62f8eaa8"/>
 				<property name="com.jaspersoft.studio.unit.y" value="px"/>
@@ -551,7 +563,7 @@ ORDER BY U.DTPRNMCT;]]></query>
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="3daf373b-d573-4dcf-96a0-639dfa1f77df" x="270" y="0" width="50" height="14" fontName="SansSerif" fontSize="7.0" pattern="¤#,##0.00;¤-#,##0.00" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="textField" uuid="3daf373b-d573-4dcf-96a0-639dfa1f77df" x="240" y="0" width="45" height="14" fontName="SansSerif" fontSize="7.0" pattern="¤#,##0.00;¤-#,##0.00" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
 				<expression><![CDATA[$F{INTERES}]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="03406852-4932-4051-9b11-32babb7e313e"/>
 				<property name="com.jaspersoft.studio.unit.y" value="px"/>
@@ -559,7 +571,14 @@ ORDER BY U.DTPRNMCT;]]></query>
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="49a4978e-3606-4fd4-bc01-64917e768fe7" x="320" y="0" width="60" height="14" fontName="SansSerif" fontSize="7.0" pattern="¤#,##0.00;¤-#,##0.00" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="textField" uuid="c7e2b418-9d5f-4a36-8b1c-f4a90d7e2851" x="285" y="0" width="45" height="14" fontName="SansSerif" fontSize="7.0" pattern="¤#,##0.00;¤-#,##0.00" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[$F{INTERES_MORA}]]></expression>
+				<property name="com.jaspersoft.studio.unit.y" value="px"/>
+				<box>
+					<pen lineWidth="0.25"/>
+				</box>
+			</element>
+			<element kind="textField" uuid="49a4978e-3606-4fd4-bc01-64917e768fe7" x="330" y="0" width="55" height="14" fontName="SansSerif" fontSize="7.0" pattern="¤#,##0.00;¤-#,##0.00" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
 				<expression><![CDATA[$F{SEGURO_DESGRAVA}]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="bd0cce9f-2f17-4384-b1d3-2f1bb1f67fd1"/>
 				<property name="com.jaspersoft.studio.unit.y" value="px"/>
@@ -567,7 +586,7 @@ ORDER BY U.DTPRNMCT;]]></query>
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="2e96e524-e566-49f3-bd8c-0cd6bd99f180" x="495" y="0" width="60" height="14" fontName="SansSerif" fontSize="7.0" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="textField" uuid="2e96e524-e566-49f3-bd8c-0cd6bd99f180" x="490" y="0" width="65" height="14" fontName="SansSerif" fontSize="7.0" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
 				<expression><![CDATA[$F{ESTADO_DIVIDENDOS}]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="4e9216d1-cd66-4013-bd8e-df32ce52b6d2"/>
 				<property name="com.jaspersoft.studio.unit.y" value="px"/>
@@ -575,7 +594,7 @@ ORDER BY U.DTPRNMCT;]]></query>
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="b5d02674-ac7f-41ac-89da-07374595acd2" x="440" y="0" width="55" height="14" fontName="SansSerif" fontSize="7.0" pattern="¤#,##0.00;¤-#,##0.00" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="textField" uuid="b5d02674-ac7f-41ac-89da-07374595acd2" x="435" y="0" width="55" height="14" fontName="SansSerif" fontSize="7.0" pattern="¤#,##0.00;¤-#,##0.00" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
 				<expression><![CDATA[$F{CUOTA_TOTAL}]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="cfd9e0d5-8f65-4dac-b659-312e468902b8"/>
 				<property name="com.jaspersoft.studio.unit.y" value="px"/>
@@ -583,7 +602,7 @@ ORDER BY U.DTPRNMCT;]]></query>
 					<pen lineWidth="0.25"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="40d8f1b1-f024-43f3-9a52-2cfdd33dc7a3" x="380" y="0" width="60" height="14" fontName="SansSerif" fontSize="7.0" pattern="¤#,##0.00;¤-#,##0.00" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="textField" uuid="40d8f1b1-f024-43f3-9a52-2cfdd33dc7a3" x="385" y="0" width="50" height="14" fontName="SansSerif" fontSize="7.0" pattern="¤#,##0.00;¤-#,##0.00" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
 				<expression><![CDATA[$F{SEGURO_INCENDIO}]]></expression>
 				<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="bd0cce9f-2f17-4384-b1d3-2f1bb1f67fd1"/>
 				<box>
