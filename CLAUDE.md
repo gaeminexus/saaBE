@@ -100,6 +100,18 @@ Esta área es frágil en formas que son fáciles de romper de nuevo:
 
 `docs/` es extenso y está organizado como `estandar/` (estándares de código y DDL — autoritativo), `general/` (arquitectura, changelog, ajuste de timeouts/memoria de WildFly), `logica-negocio/{cnt,crd,cxc,cxp,petro,reportes}/` (guías de API y SQL por módulo), `pendientes/`, `referencias/`, `scripts/`. Tratarlos como notas históricas: varios están desactualizados (referencian un `web.xml`, un `MultipartConfigServlet`, y rutas `/api/...` que ya no existen). Verificar contra el código fuente antes de confiar en un doc.
 
+### Excepción: los procesos Petro tienen docs consolidados y mantenidos
+
+Para todo lo relacionado con los archivos Petrocomercial/ASOPREP (carga de descuentos, aplicación de pagos, generación del archivo), **leer PRIMERO** estos tres documentos — son el resumen vigente verificado contra el código (2026-08-13) y resuelven las contradicciones de los `CORRECCION-*`/`REVISION_*` históricos de esa carpeta:
+
+- `docs/logica-negocio/petro/REGLAS-GENERALES-PETRO.md` — ciclo completo, tablas, catálogos de rubros vigentes, endpoints, tolerancias, trampas.
+- `docs/logica-negocio/petro/REGLAS-CARGA-PETRO.md` — fases 1/2/3 de `CargaArchivoPetroServiceImpl` (asoprep).
+- `docs/logica-negocio/petro/REGLAS-GENERACION-PETRO.md` — `GeneracionArchivoPetroServiceImpl` (crd), formatos por filial, ciclo GNAP.
+
+Del mismo modo, para pagos de préstamos (pago de cuotas, abono a capital, pago con aportes, precancelación, reverso) la referencia vigente es `docs/logica-negocio/crd/ESPECIFICACION-SERVICIOS-PAGO-PRESTAMOS.md` (especificación de diseño 2026-08-13, pendiente de implementación por fases).
+
+**Regla obligatoria:** cualquier cambio en `CargaArchivoPetroServiceImpl`, `ProcesoCargaPetroServiceImpl`, `GeneracionArchivoPetroServiceImpl` o sus DAOs/REST asociados debe actualizar el documento correspondiente en el mismo cambio. Los ~29 `.md` históricos de esa carpeta (`CORRECCION-*`, `REVISION_*`, etc.) se eliminaron el 2026-08-13 al consolidarse aquí; si hace falta consultarlos están en el historial de git. Se conservan la carpeta `sql/` (DDL), los `.txt` de muestra del formato real y la guía frontend.
+
 ## Serialización
 
 Se prefiere JSON-B sobre Jackson (`resteasy.preferJacksonOverJsonB=false` en `META-INF/microprofile-config.properties`); `jackson-datatype-jsr310` es `provided` para soporte de `java.time`. Las entidades son POJOs planos con getters/setters escritos a mano — sin Lombok, sin MapStruct, sin capa de DTO: las entidades JPA se serializan directamente a JSON.
