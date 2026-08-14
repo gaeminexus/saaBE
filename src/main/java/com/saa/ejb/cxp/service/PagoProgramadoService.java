@@ -79,6 +79,31 @@ public interface PagoProgramadoService extends EntityService<PagoProgramado> {
 			String referencia) throws Throwable;
 
 	/**
+	 * Registra el pago de un anticipo a proveedor (PGS.ANTP). El pago toma del
+	 * anticipo la empresa, el proveedor, el valor y la fecha, y entra al mismo
+	 * circuito que los pagos de facturas: aparece en el listado de pagos a
+	 * realizar y sigue lote → archivo → confirmación. Al confirmarse genera el
+	 * asiento de ANTICIPO (DEBE cuenta de anticipos del proveedor / HABER
+	 * banco, TipoAsientos.ANTICIPOS_PROVEEDOR — no el de egreso), el movimiento
+	 * bancario, acredita el saldo de anticipos del proveedor y deja el anticipo
+	 * como Confirmado. Con débito automático todo eso ocurre en esta misma
+	 * llamada.
+	 * @param idAnticipo             : Id del anticipo a pagar (debe estar Ingresado)
+	 * @param idCuentaBancariaOrigen : Id de la cuenta bancaria propia (TSR.CNBC)
+	 * @param idCuentaDestinoTitular : Id de la cuenta del proveedor (TSR.CTBN);
+	 *                                 obligatoria salvo débito automático
+	 * @param idUsuario              : Id del usuario que registra
+	 * @param debitoAutomatico       : true si el banco ya debitó la cuenta
+	 * @param referencia             : Referencia del débito (opcional)
+	 * @return                       : Mapa con exito, mensaje y pago; en débito
+	 *                                 automático además asiento
+	 * @throws Throwable             : Excepcion
+	 */
+	Map<String, Object> registrarPagoDeAnticipo(Long idAnticipo, Long idCuentaBancariaOrigen,
+			Long idCuentaDestinoTitular, Long idUsuario, boolean debitoAutomatico,
+			String referencia) throws Throwable;
+
+	/**
 	 * Lista los pagos de una empresa para la pantalla de selección.
 	 * @param idEmpresa  : Id de la empresa
 	 * @param estado     : Estado a filtrar, null para todos

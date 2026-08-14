@@ -672,7 +672,8 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
     @Override
     public Asiento generarAsientoAnticipoProveedor(com.saa.model.cxp.AnticipoProveedor anticipo,
-            Long idCuentaBancaria, int codigoAltTipoAsiento, String usuario) throws Throwable {
+            Long idCuentaBancaria, int codigoAltTipoAsiento, LocalDate fechaAsiento,
+            String usuario) throws Throwable {
 
         System.out.println("=== generarAsientoAnticipoProveedor | idAnticipo=" + anticipo.getId() + " ===");
 
@@ -738,7 +739,8 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                 + " | Valor: $" + String.format(java.util.Locale.US, "%.2f", valor);
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento,
-                anticipo.getFechaAnticipo(), obs, usuario, lineas);
+                (fechaAsiento != null) ? fechaAsiento : anticipo.getFechaAnticipo(),
+                obs, usuario, lineas);
     }
 
     // ---------------------------------------------------------------

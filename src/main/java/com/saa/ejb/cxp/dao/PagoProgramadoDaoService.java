@@ -51,6 +51,16 @@ public interface PagoProgramadoDaoService extends EntityDao<PagoProgramado> {
 	List<PagoProgramado> selectVigentesByEgreso(Long idEgreso) throws Throwable;
 
 	/**
+	 * Recupera los pagos de un anticipo a proveedor que siguen vigentes
+	 * (registrados, en archivo o confirmados). Un anticipo solo admite un pago
+	 * vigente a la vez.
+	 * @param idAnticipo : Id del anticipo (PGS.ANTP)
+	 * @return           : Listado de pagos vigentes del anticipo
+	 * @throws Throwable : Excepcion
+	 */
+	List<PagoProgramado> selectVigentesByAnticipo(Long idAnticipo) throws Throwable;
+
+	/**
 	 * Recupera varios pagos por sus identificadores.
 	 * @param ids        : Identificadores de los pagos
 	 * @return           : Listado de pagos encontrados

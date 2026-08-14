@@ -304,21 +304,45 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 				idCliente, valor, idEmpresa, TipoAsientos.APLICACION_ANTICIPO_CLIENTE,
 				fecha, observacionAsiento, usuarioNombre(idUsuario));
 
-		// 4. Aplicación (sin FK a un anticipo concreto: el cruce es por valor)
+		// 4. Descontar el saldo de anticipos del cliente
+		cuentaAnticipos.setSaldoInicial(saldoAnticipos - valor);
+		em.merge(cuentaAnticipos);
+		System.out.println("✓ Saldo de anticipos del cliente " + idCliente + ": "
+				+ saldoAnticipos + " → " + cuentaAnticipos.getSaldoInicial());
+
+		// 5. Movimiento negativo en el listado de anticipos del cliente: sin él,
+		// el listado no refleja el cruce y su saldo acumulado queda
+		// desactualizado (el saldo de cada fila es el acumulado al momento
+		// del movimiento, igual que al registrar un anticipo).
+		AnticipoCliente movimiento = new AnticipoCliente();
+		movimiento.setTitular(factura.getTitular());
+		movimiento.setEmpresa(em.find(Empresa.class, idEmpresa));
+		movimiento.setUsuario(em.find(Usuario.class, idUsuario));
+		movimiento.setFechaAnticipo(fecha);
+		movimiento.setFechaRecepcion(fecha);
+		movimiento.setValor(-valor);
+		movimiento.setSaldo(cuentaAnticipos.getSaldoInicial());
+		movimiento.setNumeroDoc("Factura N° " + factura.getNumero());
+		movimiento.setObservacion("Cruce con factura N° " + factura.getNumero()
+				+ ((observacion != null && !observacion.trim().isEmpty())
+						? " | " + observacion.trim() : ""));
+		movimiento.setEstado(2L); // Confirmado
+		movimiento.setAsiento(asiento);
+		movimiento.setFechaRegistro(LocalDateTime.now());
+		em.persist(movimiento);
+		System.out.println("✓ Movimiento de anticipo registrado: valor=" + (-valor)
+				+ " | saldo=" + movimiento.getSaldo());
+
+		// 6. Aplicación, enlazada al movimiento para poder reversarlo
 		AplicacionPagoCxc aplicacion = nuevaAplicacion(factura, idEmpresa,
 				TipoDocPagoAplicacion.ANTICIPO, valor, fecha,
 				(observacion != null && !observacion.trim().isEmpty())
 						? observacion : "Cruce de saldo de anticipos",
 				usuarioNombre(idUsuario));
 		aplicacion.setAsiento(asiento);
+		aplicacion.setAnticipo(movimiento);
 		aplicacion.setUsuario(em.find(Usuario.class, idUsuario));
 		aplicacion = saveSingle(aplicacion);
-
-		// 5. Descontar el saldo de anticipos del cliente
-		cuentaAnticipos.setSaldoInicial(saldoAnticipos - valor);
-		em.merge(cuentaAnticipos);
-		System.out.println("✓ Saldo de anticipos del cliente " + idCliente + ": "
-				+ saldoAnticipos + " → " + cuentaAnticipos.getSaldoInicial());
 
 		em.flush();
 
@@ -711,8 +735,24 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 		if (aplicacion.getTipoDocPago() != null
 				&& aplicacion.getTipoDocPago().intValue() == TipoDocPagoAplicacion.ANTICIPO) {
 
-			if (aplicacion.getAnticipo() == null) {
-				// Cruce por valor contra el saldo global del cliente
+			AnticipoCliente anticipo = (aplicacion.getAnticipo() != null)
+					? em.find(AnticipoCliente.class, aplicacion.getAnticipo().getId()) : null;
+
+			if (anticipo != null && anticipo.getValor() != null && anticipo.getValor() >= 0) {
+				// Cruce contra un anticipo concreto: se devuelve su saldo
+				double saldoActual = (anticipo.getSaldo() != null) ? anticipo.getSaldo() : 0.0;
+				anticipo.setSaldo(saldoActual + aplicacion.getMontoAplicado());
+				if (anticipo.getSaldo() > 0) {
+					anticipo.setEstado(1L);
+				}
+				em.merge(anticipo);
+				System.out.println("✓ Saldo del anticipo " + anticipo.getId() + " devuelto: "
+						+ saldoActual + " → " + anticipo.getSaldo());
+			} else {
+				// Cruce por valor contra el saldo global del cliente: se
+				// devuelve el saldo global y se anula el movimiento negativo
+				// que el cruce dejó en el listado de anticipos (si existe: los
+				// cruces anteriores a ese registro no lo tienen).
 				Factura factura = aplicacion.getFactura();
 				Long idEmpresa = (aplicacion.getEmpresa() != null)
 						? aplicacion.getEmpresa().getCodigo() : null;
@@ -726,19 +766,13 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 					System.out.println("✓ Saldo de anticipos devuelto: " + saldoActual
 							+ " → " + cuentaAnticipos.getSaldoInicial());
 				}
-			} else {
-				// Cruce contra un anticipo concreto: se devuelve su saldo
-				AnticipoCliente anticipo =
-						em.find(AnticipoCliente.class, aplicacion.getAnticipo().getId());
 				if (anticipo != null) {
-					double saldoActual = (anticipo.getSaldo() != null) ? anticipo.getSaldo() : 0.0;
-					anticipo.setSaldo(saldoActual + aplicacion.getMontoAplicado());
-					if (anticipo.getSaldo() > 0) {
-						anticipo.setEstado(1L);
-					}
+					anticipo.setEstado(3L); // Anulado
+					anticipo.setObservacion(nvl(anticipo.getObservacion(), "")
+							+ " | REVERSADO: " + motivo);
 					em.merge(anticipo);
-					System.out.println("✓ Saldo del anticipo " + anticipo.getId() + " devuelto: "
-							+ saldoActual + " → " + anticipo.getSaldo());
+					System.out.println("✓ Movimiento de anticipo " + anticipo.getId()
+							+ " anulado por reversión del cruce.");
 				}
 			}
 		}

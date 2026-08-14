@@ -27,10 +27,14 @@ import jakarta.persistence.Table;
  * Registra los anticipos entregados a proveedores.
  * Tabla: PGS.ANTP
  *
- * Estados:
- *   1 = Activo (tiene saldo disponible)
- *   2 = Agotado (saldo = 0)
+ * Estados, ver {@link com.saa.rubros.EstadoAnticipoProveedor}:
+ *   1 = Ingresado  (con su pago pendiente en el circuito de PGS.PGTR)
+ *   2 = Confirmado (pago confirmado: asiento, movimiento bancario y saldo)
  *   3 = Anulado
+ *
+ * El anticipo se paga a través del circuito de PagoProgramado (PGS.PGTR con
+ * FK PGTRANTP al anticipo): mientras el pago no esté confirmado no hay
+ * asiento ni saldo de anticipos acreditado.
  *
  * Formas de pago:
  *   1 = Efectivo
@@ -136,7 +140,7 @@ public class AnticipoProveedor implements Serializable {
 
     /**
      * Estado del anticipo.
-     * 1=Activo, 2=Agotado, 3=Anulado
+     * 1=Ingresado (pago pendiente), 2=Confirmado (con asiento), 3=Anulado
      */
     @Basic
     @Column(name = "ANTPESTD")

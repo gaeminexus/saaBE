@@ -26,7 +26,11 @@ import jakarta.ws.rs.core.UriInfo;
  * Base path: /antp
  *
  * Endpoints principales:
- *   POST /antp/procesar          → registra el anticipo y genera asiento contable en un paso
+ *   POST /antp/procesar          → registra el anticipo y crea su pago en el circuito de PGTR;
+ *                                  la contabilidad se genera al confirmarse el pago (asiento
+ *                                  de ANTICIPO, no de egreso). Con débito automático todo
+ *                                  ocurre en el mismo paso.
+ *   POST /antp/anular/{id}       → anula un anticipo pendiente (requiere motivo)
  *   GET  /antp/getAll            → todos los anticipos
  *   GET  /antp/getId/{id}        → anticipo por ID
  *   GET  /antp/getByTitular/{idTitular}/{idEmpresa}
@@ -47,24 +51,29 @@ public class AnticipoProveedorRest {
 
     // ── POST /antp/procesar ───────────────────────────────────────────────────
     /**
-     * Procesa un anticipo a proveedor en un único paso:
-     * graba el registro, genera el asiento contable y confirma (estado=2).
+     * Registra un anticipo a proveedor y crea su pago en el circuito de pagos
+     * (PGS.PGTR). Sin débito automático el anticipo queda Ingresado y su pago
+     * Registrado (listado de pagos a realizar → lote → archivo → confirmación);
+     * la contabilidad se genera recién al confirmarse el pago. Con débito
+     * automático todo ocurre en este mismo paso.
      *
      * Body JSON esperado:
      * <pre>
      * {
-     *   "idTitular":        123,
-     *   "valor":            500.00,
-     *   "idCuentaBancaria": 5,
-     *   "idEmpresa":        1,
-     *   "idUsuario":        10,
-     *   "fechaAnticipo":    "2026-07-31",
-     *   "numeroDoc":        "REF-001",     (opcional)
-     *   "observacion":      "..."          (opcional)
+     *   "idTitular":              123,
+     *   "valor":                  500.00,
+     *   "idCuentaBancaria":       5,
+     *   "idEmpresa":              1,
+     *   "idUsuario":              10,
+     *   "fechaAnticipo":          "2026-07-31",
+     *   "idCuentaDestinoTitular": 8,           (cuenta del proveedor; obligatoria salvo débito automático)
+     *   "debitoAutomatico":       false,       (opcional, default false)
+     *   "numeroDoc":              "REF-001",   (opcional)
+     *   "observacion":            "..."        (opcional)
      * }
      * </pre>
      *
-     * Asiento contable:
+     * Asiento contable (al confirmarse el pago):
      *   DEBE:  Cuenta anticipos del rol proveedor del titular
      *   HABER: PlanCuenta asociado a la cuenta bancaria
      */
@@ -75,19 +84,22 @@ public class AnticipoProveedorRest {
     public Response procesar(Map<String, Object> params) {
         System.out.println("POST /antp/procesar");
         try {
-            Long idTitular        = getLong(params, "idTitular");
-            Double valor          = getDouble(params, "valor");
-            Long idCuentaBancaria = getLong(params, "idCuentaBancaria");
-            Long idEmpresa        = getLong(params, "idEmpresa");
-            Long idUsuario        = getLong(params, "idUsuario");
-            String fechaAnticipo  = getString(params, "fechaAnticipo");
-            String numeroDoc      = getString(params, "numeroDoc");
-            String observacion    = getString(params, "observacion");
+            Long idTitular              = getLong(params, "idTitular");
+            Double valor                = getDouble(params, "valor");
+            Long idCuentaBancaria       = getLong(params, "idCuentaBancaria");
+            Long idEmpresa              = getLong(params, "idEmpresa");
+            Long idUsuario              = getLong(params, "idUsuario");
+            String fechaAnticipo        = getString(params, "fechaAnticipo");
+            String numeroDoc            = getString(params, "numeroDoc");
+            String observacion          = getString(params, "observacion");
+            Long idCuentaDestinoTitular = getLong(params, "idCuentaDestinoTitular");
+            boolean debitoAutomatico    = getBoolean(params, "debitoAutomatico");
 
             Map<String, Object> resultado = anticiPoProveedorService.procesarAnticipo(
                     idTitular, valor, idCuentaBancaria,
                     idEmpresa, idUsuario, fechaAnticipo,
-                    numeroDoc, observacion);
+                    numeroDoc, observacion,
+                    idCuentaDestinoTitular, debitoAutomatico);
 
             boolean exito = Boolean.TRUE.equals(resultado.get("exito"));
             return Response.status(exito ? Response.Status.CREATED : Response.Status.INTERNAL_SERVER_ERROR)
@@ -96,6 +108,37 @@ public class AnticipoProveedorRest {
 
         } catch (Throwable e) {
             return error500("Error al procesar anticipo a proveedor: " + e.getMessage());
+        }
+    }
+
+    // ── POST /antp/anular/{id} ───────────────────────────────────────────────
+    /**
+     * Anula un anticipo pendiente de pago. Si tiene un pago Registrado lo
+     * anula también; si el pago está En archivo o Confirmado, la anulación se
+     * bloquea (procesar la respuesta del banco o revertir el pago primero).
+     * Body esperado: { "motivo": "...", "idUsuario": 5 }
+     */
+    @POST
+    @Path("/anular/{id}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response anular(@PathParam("id") Long id, Map<String, Object> params) {
+        System.out.println("POST /antp/anular/" + id);
+        try {
+            String motivo  = (params != null) ? getString(params, "motivo") : null;
+            Long idUsuario = (params != null) ? getLong(params, "idUsuario") : null;
+
+            if (motivo == null || motivo.trim().isEmpty()) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(msg("Debe indicar el motivo de la anulación."))
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
+
+            Map<String, Object> resultado =
+                    anticiPoProveedorService.anularAnticipo(id, motivo, idUsuario);
+            return Response.ok(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return error500("Error al anular anticipo: " + e.getMessage());
         }
     }
 
@@ -176,28 +219,20 @@ public class AnticipoProveedorRest {
     }
 
     // ── DELETE /antp/{id} — anulación lógica (estado=3) ─────────────────────
+    /**
+     * Anulación sin motivo explícito. Pasa por la misma validación que
+     * POST /antp/anular/{id}: anula el pago Registrado del circuito si lo hay,
+     * y se bloquea si el pago ya está En archivo o Confirmado.
+     */
     @DELETE
     @Path("/{id}")
     @Produces(MediaType.APPLICATION_JSON)
     public Response delete(@PathParam("id") Long id) {
         System.out.println("DELETE AnticipoProveedor id=" + id);
         try {
-            AnticipoProveedor entidad = anticiPoProveedorService.selectById(id);
-            if (entidad == null) {
-                return Response.status(Response.Status.NOT_FOUND)
-                        .entity(msg("Anticipo con ID " + id + " no encontrado."))
-                        .type(MediaType.APPLICATION_JSON).build();
-            }
-            if (Long.valueOf(2L).equals(entidad.getEstado())) {
-                return Response.status(422)
-                        .entity(msg("No se puede anular un anticipo CONFIRMADO. "
-                                + "Debe reversar el asiento contable primero."))
-                        .type(MediaType.APPLICATION_JSON).build();
-            }
-            entidad.setEstado(3L); // 3 = Anulado
-            anticiPoProveedorService.saveSingle(entidad);
-            return Response.ok(msg("Anticipo a proveedor anulado correctamente."))
-                    .type(MediaType.APPLICATION_JSON).build();
+            Map<String, Object> resultado = anticiPoProveedorService.anularAnticipo(
+                    id, "Anulación desde la interfaz (DELETE)", null);
+            return Response.ok(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return error500("Error al anular anticipo: " + e.getMessage());
         }
@@ -241,6 +276,13 @@ public class AnticipoProveedorRest {
     private String getString(Map<String, Object> params, String key) {
         Object v = params.get(key);
         return v != null ? v.toString() : null;
+    }
+
+    private boolean getBoolean(Map<String, Object> params, String key) {
+        Object v = params.get(key);
+        if (v == null) return false;
+        if (v instanceof Boolean) return (Boolean) v;
+        return Boolean.parseBoolean(v.toString());
     }
 
     private Response error500(String mensaje) {

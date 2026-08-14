@@ -2,8 +2,8 @@
 
 **Backend `SaaBE` · módulo CRD · 2026-08-14**
 
-Esta guía documenta los **8 endpoints nuevos** de pago de préstamos: qué hace cada uno, cuándo
-usarlo, qué enviar y qué esperar en éxito y en error.
+Esta guía documenta los **9 endpoints nuevos** de pago de préstamos y aportes: qué hace cada uno,
+cuándo usarlo, qué enviar y qué esperar en éxito y en error.
 
 Diseño e implementación de referencia: `ESPECIFICACION-SERVICIOS-PAGO-PRESTAMOS.md`.
 
@@ -14,6 +14,7 @@ Diseño e implementación de referencia: `ESPECIFICACION-SERVICIOS-PAGO-PRESTAMO
 1. [Reglas generales](#1-reglas-generales)
 2. [Catálogos de estados](#2-catálogos-de-estados)
 3. [`GET /aprt/saldosPorEntidad/{idEntidad}`](#3-get-aprtsaldosporentidadidentidad)
+3b. [`POST /aprt/registrarAporte`](#3b-post-aprtregistraraporte)
 4. [`POST /prst/pagarCuota`](#4-post-prstpagarcuota)
 5. [`POST /prst/pagarConAportes`](#5-post-prstpagarconaportes)
 6. [`GET /prst/simularAbonoCapital/{idPrestamo}`](#6-get-prstsimularabonocapitalidprestamo)
@@ -181,6 +182,104 @@ préstamo, el partícipe está en `prestamo.entidad.codigo`.
 |---|---|---|
 | 400 | `PARAMETRO_INVALIDO` | `idEntidad` nulo o ≤ 0 |
 | 500 | `ERROR_INTERNO` | Fallo inesperado |
+
+---
+
+## 3b. `POST /aprt/registrarAporte`
+
+### Cuándo usarlo
+
+**Pago de aportes en ventanilla**: el partícipe entrega dinero por un tipo de aporte y hay que
+generarle el aporte. Es la operación **espejo** del pago de préstamo con aportes (§5): aquella
+consume saldo, esta lo genera.
+
+Cada llamada registra **un tipo de aporte**. Si el socio paga varios tipos en la misma
+transacción de caja, hacé una llamada por tipo.
+
+**Qué graba el backend**, en una sola transacción:
+
+| Tabla | Fila creada |
+|---|---|
+| `CRD.APRT` | Positiva: `valor = X`, `valorPagado = X`, `saldo = 0`, `estado = 4` (PAGADA) |
+| `CRD.PGAP` | El `PagoAporte` con `valor = X`, enlazado al aporte |
+
+> El aporte nace **ya pagado**: con `saldo = 0` y estado 4 queda **fuera del FIFO del proceso
+> Petro**, así que el archivo de descuentos nunca se lo vuelve a cobrar al socio. El saldo
+> disponible sube de inmediato, porque el saldo es la suma neta de `APRTVLRR`.
+
+**No lo uses** para registrar una obligación de aporte por cobrar: este endpoint asume que el
+dinero ya se recibió. Los aportes por cobrar los genera el ciclo Petro.
+
+### Request
+
+```http
+POST /SaaBE/rest/aprt/registrarAporte
+Content-Type: application/json
+```
+```json
+{
+  "idEntidad": 456,
+  "idTipoAporte": 11,
+  "valor": 300.00,
+  "usuario": "jperez",
+  "observacion": "Aporte voluntario recibo 00456",
+  "fechaTransaccion": "2026-08-14"
+}
+```
+
+| Campo | Tipo | Obligatorio | Notas |
+|---|---|---|---|
+| `idEntidad` | number | **Sí** | Código del partícipe (`ENTD.ENTDCDGO`) |
+| `idTipoAporte` | number | **Sí** | Debe estar vigente (`TipoAporte.estado = 1`) |
+| `valor` | number | **Sí** | > 0 |
+| `usuario` | string | **Sí** | |
+| `observacion` | string | No | Se concatena a la glosa del aporte |
+| `fechaTransaccion` | string `yyyy-MM-dd` | No | Default hoy. **No puede ser futura** |
+
+⚠️ El campo de fecha se llama **`fechaTransaccion`** (no `fechaPago` ni `fecha`).
+
+### Respuesta 201
+
+```json
+{
+  "exito": true,
+  "etapa": "APLICACION",
+  "mensaje": "Aporte registrado por $300.0 en APORTE CESANTIA. Saldo del tipo: $8400.0",
+  "resultado": {
+    "idAporte": 998050,
+    "idPagoAporte": 7730,
+    "idEntidad": 456,
+    "idTipoAporte": 11,
+    "nombreTipoAporte": "APORTE CESANTIA",
+    "valor": 300.00,
+    "saldoTipoAporte": 8400.00,
+    "fechaTransaccion": "2026-08-14T10:32:15"
+  }
+}
+```
+
+Nótese el **201 Created**.
+
+`saldoTipoAporte` es el saldo del tipo **después** del registro: usalo para refrescar la pantalla
+sin volver a llamar a `saldosPorEntidad`.
+
+### Efecto en los reportes
+
+`fechaTransaccion` es el campo por el que filtran los reportes de aportes (G42, G43, G44, CJBM,
+CPRM/CCPM, dashboard, padrón de partícipes). Si el usuario carga una fecha retroactiva, el aporte
+entra en el período de esa fecha, no en el de hoy. Conviene advertirlo en pantalla cuando se
+elija una fecha de un mes ya cerrado.
+
+### Errores
+
+| HTTP | `error` | Cuándo | Qué hacer |
+|---|---|---|---|
+| 400 | `PARAMETRO_INVALIDO` | Falta `idEntidad`, `idTipoAporte`, `valor` o `usuario` | Validar antes de enviar |
+| 404 | `ENTIDAD_NO_ENCONTRADA` | El partícipe no existe | Validar el selector de partícipe |
+| 422 | `TIPO_APORTE_NO_VIGENTE` | El tipo no existe o está dado de baja | Cargar el combo solo con tipos vigentes |
+| 422 | `VALOR_INVALIDO` | `valor` ≤ 0 | Validar en el formulario |
+| 422 | `FECHA_INVALIDA` | `fechaTransaccion` futura | Limitar el datepicker a hoy |
+| 500 | *(sin código)* | Fallo inesperado | Mensaje genérico |
 
 ---
 
@@ -832,6 +931,7 @@ Sirve para mostrar "cómo era la tabla antes del abono". Los campos son los mism
 | `PARAMETRO_INVALIDO` | 400 | Falta un campo obligatorio o viene malformado | Validar en el formulario |
 | `PRESTAMO_NO_ENCONTRADO` | 404 | El préstamo no existe | Volver al listado |
 | `EVENTO_NO_ENCONTRADO` | 404 | El evento no existe | Refrescar historial |
+| `ENTIDAD_NO_ENCONTRADA` | 404 | El partícipe no existe (solo en `registrarAporte`) | Validar el selector |
 | `ESTADO_NO_PERMITE` | 409 | El préstamo está en estado terminal (3, 4 o 5) | Deshabilitar acciones de pago |
 | `EVENTO_YA_ANULADO` | 409 | El evento ya fue anulado | Refrescar historial |
 | `EVENTO_POSTERIOR_VIGENTE` | 409 | El reverso es LIFO | Anular primero el más reciente |
@@ -879,6 +979,23 @@ Ficha del préstamo
                       ├─ 200 → desglose + movimientosAporte + refrescar saldos
                       └─ 422 SALDO_APORTES_INSUFICIENTE → refrescar saldos y reintentar
 ```
+
+### B-bis. Pago de aportes en ventanilla
+
+```
+Ficha del partícipe → [Registrar aporte]
+  └─ Modal: tipo de aporte (combo solo con vigentes), valor, fecha, observación
+       └─ POST /aprt/registrarAporte
+            ├─ 201 → mostrar saldoTipoAporte actualizado; si se cargan varios tipos,
+            │        repetir la llamada una vez por tipo
+            ├─ 422 TIPO_APORTE_NO_VIGENTE → recargar el combo
+            └─ 422 FECHA_INVALIDA → limitar el datepicker a hoy
+```
+
+Si el mismo recibo cubre varios tipos, hacé las llamadas en secuencia y mostrá el resultado
+consolidado. **Cada llamada es su propia transacción**: si la segunda falla, la primera ya quedó
+grabada. Si necesitás atomicidad entre tipos, avisá y se agrega un endpoint que reciba el
+desglose completo.
 
 ### C. Precancelación (siempre en dos pasos)
 
@@ -949,10 +1066,16 @@ del cambio de forma (montos en el body, no en la URL), **la semántica de la mod
 
 ⚠️ **Los números están invertidos.** Revisá cualquier pantalla que todavía llame al endpoint viejo.
 
-### Endpoint deprecado para un uso
+### Endpoints deprecados para un uso
 
 `GET /aprt/getAll` sigue existiendo, pero **no debe usarse para calcular saldos de aportes**.
 Descarga ~980.000 filas y tumba el servidor. Usá `GET /aprt/saldosPorEntidad/{idEntidad}`.
+
+`POST /aprt` (el CRUD crudo de la entidad `Aporte`) sigue existiendo, pero **no debe usarse para
+registrar un pago de aportes**: inserta la fila tal cual la manda el frontend, forzando
+`estado = 1` y dejando `valorPagado`/`saldo` como vengan. Una fila así puede quedar visible para
+el FIFO del proceso Petro y volver a cobrarse, y no genera el `PagoAporte` de respaldo. Usá
+`POST /aprt/registrarAporte`.
 
 ### Campos nuevos en entidades existentes
 

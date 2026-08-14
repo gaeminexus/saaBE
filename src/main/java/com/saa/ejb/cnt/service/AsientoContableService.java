@@ -137,12 +137,15 @@ public interface AsientoContableService {
      * @param anticipo             AnticipoProveedor confirmado
      * @param idCuentaBancaria     ID de la CuentaBancaria desde la que se paga
      * @param codigoAltTipoAsiento Código alterno del TipoAsiento (TipoAsientos.ANTICIPOS_PROVEEDOR = 9)
+     * @param fechaAsiento         Fecha del asiento: la fecha real del pago que confirmó
+     *                             el banco. Si viene nula se usa la fecha del anticipo.
      * @param usuario              Nombre del usuario que confirma
      * @return                     Asiento generado
      * @throws Throwable           Si falta período, cuentas no configuradas, etc.
      */
     Asiento generarAsientoAnticipoProveedor(com.saa.model.cxp.AnticipoProveedor anticipo,
-            Long idCuentaBancaria, int codigoAltTipoAsiento, String usuario) throws Throwable;
+            Long idCuentaBancaria, int codigoAltTipoAsiento, java.time.LocalDate fechaAsiento,
+            String usuario) throws Throwable;
 
     /**
      * Genera el asiento contable para un anticipo de cliente (proceso unificado).

@@ -1,5 +1,6 @@
 package com.saa.ws.rest.crd;
 
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -8,7 +9,9 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.crd.dao.AporteDaoService;
 import com.saa.ejb.crd.service.AporteService;
 import com.saa.ejb.crd.service.SaldoAporteService;
+import com.saa.ejb.crd.service.dto.ResultadoRegistroAporte;
 import com.saa.ejb.crd.service.dto.SaldoTipoAporte;
+import com.saa.ejb.crd.service.dto.SolicitudRegistroAporte;
 import com.saa.model.crd.Aporte;
 import com.saa.model.crd.NombreEntidadesCredito;
 
@@ -90,6 +93,104 @@ public class AporteRest {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
         }
+    }
+
+    /**
+     * Pago de aportes en ventanilla: genera para el partícipe un aporte YA PAGADO del tipo
+     * indicado y sube su saldo disponible de inmediato.
+     *
+     * La fila nace con saldo 0 y estado PAGADA(4), de modo que el FIFO del proceso Petro
+     * nunca la toma como deuda por cobrar.
+     *
+     * @param solicitud { idEntidad, idTipoAporte, valor, usuario, observacion, fechaTransaccion }
+     * @return 201 con el ResultadoRegistroAporte; 400/404/422/500 según el fallo
+     */
+    @POST
+    @Path("/registrarAporte")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response registrarAporte(SolicitudRegistroAporte solicitud) {
+        System.out.println("LLEGA AL SERVICIO REGISTRAR APORTE - Entidad: "
+            + (solicitud != null ? solicitud.getIdEntidad() : null)
+            + " - Tipo: " + (solicitud != null ? solicitud.getIdTipoAporte() : null)
+            + " - Valor: " + (solicitud != null ? solicitud.getValor() : null));
+
+        if (solicitud == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe enviar el cuerpo de la solicitud", null);
+        }
+        if (solicitud.getIdEntidad() == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe indicar el partícipe (idEntidad)", null);
+        }
+        if (solicitud.getIdTipoAporte() == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe indicar el tipo de aporte (idTipoAporte)", null);
+        }
+        if (solicitud.getValor() == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe indicar el valor del aporte", null);
+        }
+        if (solicitud.getUsuario() == null || solicitud.getUsuario().trim().isEmpty()) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe indicar el usuario que registra el aporte", null);
+        }
+
+        try {
+            ResultadoRegistroAporte resultado = aporteService.registrarAporte(solicitud);
+
+            Map<String, Object> cuerpo = new LinkedHashMap<>();
+            cuerpo.put("exito", Boolean.TRUE);
+            cuerpo.put("etapa", "APLICACION");
+            cuerpo.put("mensaje", "Aporte registrado por $" + resultado.getValor()
+                + " en " + resultado.getNombreTipoAporte()
+                + ". Saldo del tipo: $" + resultado.getSaldoTipoAporte());
+            cuerpo.put("resultado", resultado);
+
+            return Response.status(Response.Status.CREATED)
+                    .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
+
+        } catch (Throwable e) {
+            System.err.println("ERROR al registrar el aporte: " + e.getMessage());
+            e.printStackTrace();
+
+            String mensaje = e.getMessage() != null ? e.getMessage() : "Error inesperado";
+            String codigo = mensaje.contains(":")
+                ? mensaje.substring(0, mensaje.indexOf(':')).trim() : "";
+
+            int status;
+            if (CODIGOS_400.contains(codigo)) {
+                status = Response.Status.BAD_REQUEST.getStatusCode();
+            } else if (CODIGOS_404.contains(codigo)) {
+                status = Response.Status.NOT_FOUND.getStatusCode();
+            } else if (e instanceof com.saa.basico.util.IncomeException) {
+                status = HTTP_REGLA_DE_NEGOCIO;
+            } else {
+                status = Response.Status.INTERNAL_SERVER_ERROR.getStatusCode();
+            }
+            return respuestaFallo(status, mensaje, codigo);
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // Sobre de respuesta y mapeo de errores (mismo convenio que PrestamoRest, §8)
+    // ------------------------------------------------------------------------
+
+    /** 422 UNPROCESSABLE ENTITY - no existe en el enum Response.Status de Jakarta REST */
+    private static final int HTTP_REGLA_DE_NEGOCIO = 422;
+
+    private static final List<String> CODIGOS_400 = Arrays.asList("PARAMETRO_INVALIDO");
+
+    private static final List<String> CODIGOS_404 = Arrays.asList("ENTIDAD_NO_ENCONTRADA");
+
+    private Response respuestaFallo(int status, String mensaje, String codigo) {
+        Map<String, Object> cuerpo = new LinkedHashMap<>();
+        cuerpo.put("exito", Boolean.FALSE);
+        cuerpo.put("etapa", "VALIDACION");
+        cuerpo.put("mensaje", mensaje);
+        cuerpo.put("error", codigo != null && !codigo.isEmpty() ? codigo : mensaje);
+        return Response.status(status)
+                .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
     }
 
     /**

@@ -28,6 +28,7 @@ public class PagoProgramadoDaoServiceImpl extends EntityDaoImpl<PagoProgramado>
             "empresa",
             "facturaCompra",
             "egreso",
+            "anticipo",
             "titular",
             "cuentaBancaria",
             "cuentaDestino",
@@ -109,6 +110,21 @@ public class PagoProgramadoDaoServiceImpl extends EntityDaoImpl<PagoProgramado>
                 " and    p.estado in (:registrado, :enArchivo, :confirmado) " +
                 " order by p.id");
         query.setParameter("idEgreso", idEgreso);
+        query.setParameter("registrado", Long.valueOf(EstadoPagoProgramado.REGISTRADO));
+        query.setParameter("enArchivo",  Long.valueOf(EstadoPagoProgramado.EN_ARCHIVO));
+        query.setParameter("confirmado", Long.valueOf(EstadoPagoProgramado.CONFIRMADO));
+        return query.getResultList();
+    }
+
+    @Override
+    public List<PagoProgramado> selectVigentesByAnticipo(Long idAnticipo) throws Throwable {
+        System.out.println("Ingresa al metodo selectVigentesByAnticipo con anticipo: " + idAnticipo);
+        Query query = em.createQuery(
+                " select p from PagoProgramado p " +
+                " where  p.anticipo.id = :idAnticipo " +
+                " and    p.estado in (:registrado, :enArchivo, :confirmado) " +
+                " order by p.id");
+        query.setParameter("idAnticipo", idAnticipo);
         query.setParameter("registrado", Long.valueOf(EstadoPagoProgramado.REGISTRADO));
         query.setParameter("enArchivo",  Long.valueOf(EstadoPagoProgramado.EN_ARCHIVO));
         query.setParameter("confirmado", Long.valueOf(EstadoPagoProgramado.CONFIRMADO));

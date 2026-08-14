@@ -87,8 +87,9 @@ public class PagoProgramado implements Serializable {
 
     /**
      * Factura de compra que se está pagando. FK a PGS.FCTC.
-     * Excluyente con {@link #egreso}: el pago referencia una factura O un
-     * egreso de tesorería, nunca ambos.
+     * Excluyente con {@link #egreso} y {@link #anticipo}: el pago referencia
+     * una factura O un egreso de tesorería O un anticipo a proveedor, nunca
+     * más de uno.
      */
     @ManyToOne
     @JoinColumn(name = "PGTRFCTC", referencedColumnName = "ID")
@@ -96,11 +97,21 @@ public class PagoProgramado implements Serializable {
 
     /**
      * Egreso de tesorería sin documento físico que se está pagando.
-     * FK a TSR.EGRS. Excluyente con {@link #facturaCompra}.
+     * FK a TSR.EGRS. Excluyente con {@link #facturaCompra} y {@link #anticipo}.
      */
     @ManyToOne
     @JoinColumn(name = "PGTREGRS", referencedColumnName = "EGRSCDGO")
     private com.saa.model.tsr.Egreso egreso;
+
+    /**
+     * Anticipo a proveedor que se está pagando. FK a PGS.ANTP.
+     * Excluyente con {@link #facturaCompra} y {@link #egreso}. Al confirmarse
+     * el pago se genera el asiento de anticipo (DEBE cuenta de anticipos del
+     * proveedor / HABER banco), no el de egreso ni la aplicación de factura.
+     */
+    @ManyToOne
+    @JoinColumn(name = "PGTRANTP", referencedColumnName = "ANTPCDGO")
+    private AnticipoProveedor anticipo;
 
     /**
      * Proveedor al que se paga. FK a TSR.TTLR.
@@ -225,6 +236,9 @@ public class PagoProgramado implements Serializable {
 
     public com.saa.model.tsr.Egreso getEgreso() { return egreso; }
     public void setEgreso(com.saa.model.tsr.Egreso egreso) { this.egreso = egreso; }
+
+    public AnticipoProveedor getAnticipo() { return anticipo; }
+    public void setAnticipo(AnticipoProveedor anticipo) { this.anticipo = anticipo; }
 
     public Titular getTitular() { return titular; }
     public void setTitular(Titular titular) { this.titular = titular; }

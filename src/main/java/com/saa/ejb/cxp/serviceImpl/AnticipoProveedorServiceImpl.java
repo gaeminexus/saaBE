@@ -9,16 +9,22 @@ import java.util.Map;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.cnt.service.AsientoContableService;
+import com.saa.ejb.cnt.service.AsientoService;
 import com.saa.ejb.cxp.dao.AnticipoProveedorDaoService;
+import com.saa.ejb.cxp.dao.PagoProgramadoDaoService;
 import com.saa.ejb.cxp.service.AnticipoProveedorService;
+import com.saa.ejb.cxp.service.PagoProgramadoService;
 import com.saa.ejb.tsr.dao.PersonaCuentaContableDaoService;
 import com.saa.model.cnt.Asiento;
 import com.saa.model.cxp.AnticipoProveedor;
 import com.saa.model.cxp.NombreEntidadesPago;
+import com.saa.model.cxp.PagoProgramado;
 import com.saa.model.scp.Empresa;
 import com.saa.model.scp.Usuario;
 import com.saa.model.tsr.PersonaCuentaContable;
 import com.saa.model.tsr.Titular;
+import com.saa.rubros.EstadoAnticipoProveedor;
+import com.saa.rubros.EstadoPagoProgramado;
 import com.saa.rubros.RolPersona;
 import com.saa.rubros.TipoAsientos;
 
@@ -31,10 +37,15 @@ import jakarta.persistence.TypedQuery;
 /**
  * Implementación del servicio de anticipos a proveedores.
  *
- * Estados del anticipo:
- *   1 = Ingresado  (grabado, pendiente de confirmación)
- *   2 = Confirmado (asiento contable generado)
+ * Estados del anticipo ({@link EstadoAnticipoProveedor}):
+ *   1 = Ingresado  (grabado, con su pago pendiente en el circuito)
+ *   2 = Confirmado (pago confirmado: asiento, movimiento bancario y saldo)
  *   3 = Anulado
+ *
+ * El anticipo se paga a través del circuito de PagoProgramado (PGS.PGTR),
+ * igual que los egresos de tesorería: la contabilidad se genera recién
+ * cuando el banco confirma el pago (o de inmediato con débito automático),
+ * y siempre con el asiento de ANTICIPO, no el de egreso.
  */
 @Stateless
 public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
@@ -46,7 +57,16 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
     private AsientoContableService asientoContableService;
 
     @EJB
+    private AsientoService asientoService;
+
+    @EJB
     private PersonaCuentaContableDaoService personaCuentaContableDaoService;
+
+    @EJB
+    private PagoProgramadoService pagoProgramadoService;
+
+    @EJB
+    private PagoProgramadoDaoService pagoProgramadoDaoService;
 
     @PersistenceContext
     private EntityManager em;
@@ -137,17 +157,19 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
     }
 
     // =========================================================================
-    // procesarAnticipo — graba + asiento en un solo paso
+    // procesarAnticipo — graba el anticipo y crea su pago en el circuito
     // =========================================================================
 
     @Override
     public Map<String, Object> procesarAnticipo(
             Long idTitular, Double valor, Long idCuentaBancaria,
             Long idEmpresa, Long idUsuario, String fechaAnticipo,
-            String numeroDoc, String observacion) throws Throwable {
+            String numeroDoc, String observacion,
+            Long idCuentaDestinoTitular, boolean debitoAutomatico) throws Throwable {
 
         System.out.println("=== procesarAnticipoProveedor | titular=" + idTitular
-                + " | valor=" + valor + " | cuentaBancaria=" + idCuentaBancaria + " ===");
+                + " | valor=" + valor + " | cuentaBancaria=" + idCuentaBancaria
+                + " | debitoAutomatico=" + debitoAutomatico + " ===");
 
         Map<String, Object> resultado = new HashMap<>();
         resultado.put("exito", false);
@@ -160,6 +182,11 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
         if (idUsuario == null)       throw new IncomeException("El usuario es obligatorio.");
         if (fechaAnticipo == null || fechaAnticipo.isBlank())
             throw new IncomeException("La fecha del anticipo es obligatoria (formato yyyy-MM-dd).");
+        // Se valida aquí, antes de grabar el anticipo, para no dejar un
+        // anticipo Ingresado sin pago si el circuito rechaza el registro.
+        if (!debitoAutomatico && idCuentaDestinoTitular == null)
+            throw new IncomeException("Debe indicar la cuenta bancaria del proveedor "
+                    + "para incluir el pago en el archivo del banco.");
 
         LocalDate fecha;
         try {
@@ -208,22 +235,19 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
         }
 
         // ── Construir entidad ──────────────────────────────────────────────────
-        // Leer saldoInicial del PRCC (tipoCuenta=2=Anticipos, rol Proveedor)
-        // y sumarlo al valor del anticipo para obtener el saldo real acumulado.
-        Double saldoInicialPrcc = (cuentasAnticipo.get(0).getSaldoInicial() != null)
-                ? cuentasAnticipo.get(0).getSaldoInicial() : 0.0;
-
+        // El saldo definitivo (saldoInicial del PRCC + valor) y el asiento se
+        // calculan recién al confirmarse el pago; mientras tanto el anticipo
+        // queda Ingresado con su valor nominal.
         AnticipoProveedor anticipo = new AnticipoProveedor();
         anticipo.setTitular(titular);
         anticipo.setEmpresa(empresa);
         anticipo.setUsuario(usuario);
         anticipo.setFechaAnticipo(fecha);
-        anticipo.setFechaRecepcion(fecha);
         anticipo.setValor(valor);
-        anticipo.setSaldo(saldoInicialPrcc + valor);
+        anticipo.setSaldo(valor);
         anticipo.setNumeroDoc(numeroDoc);
         anticipo.setObservacion(observacion);
-        anticipo.setEstado(1L); // Ingresado
+        anticipo.setEstado(Long.valueOf(EstadoAnticipoProveedor.INGRESADO));
         anticipo.setFechaRegistro(LocalDateTime.now());
         // ── Datos de la cuenta bancaria de pago ────────────────────────────────
         anticipo.setReferencia(cuentaBancaria.getNumeroCuenta());
@@ -236,31 +260,181 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
 
         // ── Guardar anticipo ───────────────────────────────────────────────────
         anticipo = anticipoDaoService.save(anticipo, anticipo.getId());
+        em.flush();
         System.out.println("✓ AnticipoProveedor guardado ID=" + anticipo.getId());
 
-        // ── Generar asiento contable ───────────────────────────────────────────
-        Asiento asiento = asientoContableService.generarAsientoAnticipoProveedor(
-                anticipo, idCuentaBancaria,
-                TipoAsientos.ANTICIPOS_PROVEEDOR,
-                usuario.getNombre() != null ? usuario.getNombre() : usuario.getCodigo().toString());
+        // ── Crear su pago en el circuito de PagoProgramado ─────────────────────
+        // Con débito automático el pago nace confirmado y el circuito llama de
+        // vuelta a contabilizarAnticipoConfirmado en esta misma transacción.
+        Map<String, Object> resultadoPago = pagoProgramadoService.registrarPagoDeAnticipo(
+                anticipo.getId(), idCuentaBancaria, idCuentaDestinoTitular,
+                idUsuario, debitoAutomatico, numeroDoc);
 
-        // ── Confirmar anticipo ─────────────────────────────────────────────────
-        anticipo.setEstado(2L); // Confirmado
+        resultado.putAll(resultadoPago);
+        resultado.put("anticipo", anticipo.getId());
+        return resultado;
+    }
+
+    // =========================================================================
+    // Contabilización y reversión — invocadas por el circuito de pagos
+    // =========================================================================
+
+    @Override
+    public Asiento contabilizarAnticipoConfirmado(Long idAnticipo, Long idCuentaBancaria,
+            LocalDate fechaPago, Long idUsuario) throws Throwable {
+
+        System.out.println("=== contabilizarAnticipoConfirmado | anticipo=" + idAnticipo
+                + " | fechaPago=" + fechaPago + " ===");
+
+        AnticipoProveedor anticipo = em.find(AnticipoProveedor.class, idAnticipo);
+        if (anticipo == null) {
+            throw new IncomeException("No se encontró el anticipo con ID: " + idAnticipo);
+        }
+        if (anticipo.getEstado() == null
+                || anticipo.getEstado().intValue() != EstadoAnticipoProveedor.INGRESADO) {
+            throw new IncomeException("El anticipo " + idAnticipo + " no está Ingresado: "
+                    + "no se puede contabilizar (estado actual " + anticipo.getEstado() + ").");
+        }
+
+        Long idTitular = anticipo.getTitular().getCodigo();
+        Long idEmpresa = anticipo.getEmpresa().getCodigo();
+        LocalDate fecha = (fechaPago != null) ? fechaPago : LocalDate.now();
+
+        Usuario usuario = (idUsuario != null) ? em.find(Usuario.class, idUsuario) : null;
+        String nombreUsuario = (usuario != null && usuario.getNombre() != null)
+                ? usuario.getNombre() : "SISTEMA";
+
+        // 1. Asiento de ANTICIPO: DEBE cuenta de anticipos del proveedor /
+        //    HABER banco, con la fecha real del pago.
+        Asiento asiento = asientoContableService.generarAsientoAnticipoProveedor(
+                anticipo, idCuentaBancaria, TipoAsientos.ANTICIPOS_PROVEEDOR,
+                fecha, nombreUsuario);
+
+        // 2. Saldo real acumulado: saldoInicial del PRCC (rol Proveedor,
+        //    tipoCuenta=2) + valor, igual que hacía el proceso en un paso.
+        java.util.List<PersonaCuentaContable> cuentasAnticipo = personaCuentaContableDaoService
+                .selectByTitularRolTipoCuenta(idEmpresa, idTitular, RolPersona.PROVEEDOR, 2L);
+        Double saldoInicialPrcc = (!cuentasAnticipo.isEmpty()
+                && cuentasAnticipo.get(0).getSaldoInicial() != null)
+                ? cuentasAnticipo.get(0).getSaldoInicial() : 0.0;
+
+        anticipo.setEstado(Long.valueOf(EstadoAnticipoProveedor.CONFIRMADO));
         anticipo.setAsiento(asiento);
+        anticipo.setFechaRecepcion(fecha);
+        anticipo.setSaldo(saldoInicialPrcc + anticipo.getValor());
         anticipo = anticipoDaoService.save(anticipo, anticipo.getId());
 
-        // ── Sumar valor al saldoInicial de PersonaCuentaContable (tipoCuenta=2, rol Proveedor) ─
-        actualizarSaldoInicialPrcc(idTitular, idEmpresa, RolPersona.PROVEEDOR, valor);
+        // 3. Acreditar el saldo de anticipos del proveedor (PRCC)
+        actualizarSaldoInicialPrcc(idTitular, idEmpresa, RolPersona.PROVEEDOR,
+                anticipo.getValor());
 
-        resultado.put("exito", true);
-        resultado.put("estado", "CONFIRMADO");
-        resultado.put("mensaje", "Anticipo a proveedor procesado correctamente. "
-                + "Asiento generado: " + asiento.getNumeroAlterno());
-        resultado.put("asiento", asiento.getNumeroAlterno());
-        resultado.put("anticipo", anticipo);
         System.out.println("✓ AnticipoProveedor " + anticipo.getId()
                 + " confirmado | Asiento: " + asiento.getNumeroAlterno());
+        return asiento;
+    }
 
+    @Override
+    public void revertirContabilidadAnticipo(Long idAnticipo, String motivo) throws Throwable {
+
+        System.out.println("=== revertirContabilidadAnticipo | anticipo=" + idAnticipo + " ===");
+
+        AnticipoProveedor anticipo = em.find(AnticipoProveedor.class, idAnticipo);
+        if (anticipo == null) {
+            throw new IncomeException("No se encontró el anticipo con ID: " + idAnticipo);
+        }
+        if (anticipo.getEstado() == null
+                || anticipo.getEstado().intValue() != EstadoAnticipoProveedor.CONFIRMADO) {
+            throw new IncomeException("El anticipo " + idAnticipo
+                    + " no está Confirmado: no hay contabilidad que reversar.");
+        }
+
+        Long idAsiento = (anticipo.getAsiento() != null)
+                ? anticipo.getAsiento().getCodigo() : null;
+        if (idAsiento != null) {
+            try {
+                asientoService.anulaAsiento(idAsiento);
+                System.out.println("✓ Asiento " + idAsiento + " anulado / reversado.");
+            } catch (Throwable e) {
+                System.err.println("⚠ No se pudo anular el asiento " + idAsiento
+                        + ": " + e.getMessage());
+            }
+        }
+
+        // Descontar del PRCC lo que la confirmación había acreditado.
+        actualizarSaldoInicialPrcc(anticipo.getTitular().getCodigo(),
+                anticipo.getEmpresa().getCodigo(), RolPersona.PROVEEDOR,
+                -anticipo.getValor());
+
+        anticipo.setEstado(Long.valueOf(EstadoAnticipoProveedor.INGRESADO));
+        anticipo.setAsiento(null);
+        anticipo.setFechaRecepcion(null);
+        anticipo.setSaldo(anticipo.getValor());
+        anticipo.setObservacion(((anticipo.getObservacion() != null)
+                ? anticipo.getObservacion() : "") + " | PAGO REVERSADO: " + motivo);
+        anticipoDaoService.save(anticipo, anticipo.getId());
+
+        System.out.println("✓ Anticipo " + idAnticipo + " vuelve a Ingresado.");
+    }
+
+    // =========================================================================
+    // Anulación
+    // =========================================================================
+
+    @Override
+    public Map<String, Object> anularAnticipo(Long idAnticipo, String motivo, Long idUsuario)
+            throws Throwable {
+
+        System.out.println("=== anularAnticipo | anticipo=" + idAnticipo + " ===");
+
+        if (motivo == null || motivo.trim().isEmpty()) {
+            throw new IncomeException("Debe indicar el motivo de la anulación.");
+        }
+
+        AnticipoProveedor anticipo = em.find(AnticipoProveedor.class, idAnticipo);
+        if (anticipo == null) {
+            throw new IncomeException("No se encontró el anticipo con ID: " + idAnticipo);
+        }
+
+        int estado = (anticipo.getEstado() != null) ? anticipo.getEstado().intValue() : 0;
+        if (estado == EstadoAnticipoProveedor.ANULADO) {
+            throw new IncomeException("El anticipo " + idAnticipo + " ya está anulado.");
+        }
+        if (estado == EstadoAnticipoProveedor.CONFIRMADO) {
+            throw new IncomeException("El anticipo " + idAnticipo + " ya está confirmado y tiene "
+                    + "contabilidad generada. Reverse el pago (pgtr/revertirConfirmado) primero.");
+        }
+
+        // Un pago Registrado se anula junto con el anticipo; uno En archivo está
+        // en poder del banco y bloquea la anulación hasta procesar la respuesta.
+        List<PagoProgramado> vigentes = pagoProgramadoDaoService.selectVigentesByAnticipo(idAnticipo);
+        for (PagoProgramado pago : vigentes) {
+            int estadoPago = (pago.getEstado() != null) ? pago.getEstado().intValue() : 0;
+            if (estadoPago == EstadoPagoProgramado.EN_ARCHIVO) {
+                throw new IncomeException("El pago " + pago.getId() + " del anticipo ya fue enviado "
+                        + "al banco. Procese la respuesta del banco antes de anular.");
+            }
+            if (estadoPago == EstadoPagoProgramado.CONFIRMADO) {
+                throw new IncomeException("El pago " + pago.getId() + " del anticipo ya fue "
+                        + "confirmado. Reverse el pago (pgtr/revertirConfirmado) primero.");
+            }
+            if (estadoPago == EstadoPagoProgramado.REGISTRADO) {
+                pago.setEstado(Long.valueOf(EstadoPagoProgramado.ANULADO));
+                pago.setMotivo("Anulación del anticipo " + idAnticipo + ": " + motivo.trim());
+                pagoProgramadoDaoService.save(pago, pago.getId());
+                System.out.println("✓ Pago " + pago.getId() + " anulado junto con el anticipo.");
+            }
+        }
+
+        anticipo.setEstado(Long.valueOf(EstadoAnticipoProveedor.ANULADO));
+        anticipo.setObservacion(((anticipo.getObservacion() != null)
+                ? anticipo.getObservacion() : "") + " | ANULADO: " + motivo.trim());
+        anticipoDaoService.save(anticipo, anticipo.getId());
+        em.flush();
+
+        Map<String, Object> resultado = new HashMap<>();
+        resultado.put("exito", true);
+        resultado.put("mensaje", "Anticipo anulado correctamente.");
+        resultado.put("anticipo", idAnticipo);
         return resultado;
     }
 

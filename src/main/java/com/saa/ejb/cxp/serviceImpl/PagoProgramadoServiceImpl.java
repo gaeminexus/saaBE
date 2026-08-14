@@ -15,6 +15,7 @@ import com.saa.ejb.cnt.service.AsientoContableService;
 import com.saa.ejb.cnt.service.AsientoService;
 import com.saa.ejb.cxp.dao.LotePagoDaoService;
 import com.saa.ejb.cxp.dao.PagoProgramadoDaoService;
+import com.saa.ejb.cxp.service.AnticipoProveedorService;
 import com.saa.ejb.cxp.service.AplicacionPagoCxpService;
 import com.saa.ejb.cxp.service.FormateadorArchivoBanco;
 import com.saa.ejb.cxp.service.LectorRespuestaBanco;
@@ -22,6 +23,7 @@ import com.saa.ejb.cxp.service.PagoProgramadoService;
 import com.saa.ejb.cxp.service.RespuestaPagoBanco;
 import com.saa.ejb.tsr.service.MovimientoBancoService;
 import com.saa.model.cnt.Asiento;
+import com.saa.model.cxp.AnticipoProveedor;
 import com.saa.model.cxp.AplicacionPagoCxp;
 import com.saa.model.cxp.FacturaCompra;
 import com.saa.model.cxp.LotePago;
@@ -32,6 +34,7 @@ import com.saa.model.scp.Usuario;
 import com.saa.model.tsr.CuentaBancaria;
 import com.saa.model.tsr.CuentaBancariaTitular;
 import com.saa.model.tsr.Egreso;
+import com.saa.rubros.EstadoAnticipoProveedor;
 import com.saa.rubros.EstadoEgresoTesoreria;
 import com.saa.rubros.EstadoLotePago;
 import com.saa.rubros.EstadoPagoProgramado;
@@ -61,6 +64,9 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 
 	@EJB
 	private AplicacionPagoCxpService aplicacionPagoCxpService;
+
+	@EJB
+	private AnticipoProveedorService anticipoProveedorService;
 
 	@EJB
 	private AsientoContableService asientoContableService;
@@ -365,6 +371,117 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	}
 
 	@Override
+	public Map<String, Object> registrarPagoDeAnticipo(Long idAnticipo, Long idCuentaBancariaOrigen,
+			Long idCuentaDestinoTitular, Long idUsuario, boolean debitoAutomatico,
+			String referencia) throws Throwable {
+
+		System.out.println("=== registrarPagoDeAnticipo | anticipo=" + idAnticipo
+				+ " | cuentaOrigen=" + idCuentaBancariaOrigen
+				+ " | debitoAutomatico=" + debitoAutomatico + " ===");
+
+		Map<String, Object> resultado = new HashMap<>();
+
+		AnticipoProveedor anticipo = em.find(AnticipoProveedor.class, idAnticipo);
+		if (anticipo == null) {
+			throw new IncomeException("No se encontró el anticipo a proveedor con ID: " + idAnticipo);
+		}
+		if (anticipo.getEstado() == null
+				|| anticipo.getEstado().intValue() != EstadoAnticipoProveedor.INGRESADO) {
+			throw new IncomeException("El anticipo " + idAnticipo + " no está pendiente de pago.");
+		}
+		if (anticipo.getValor() == null || anticipo.getValor() <= 0) {
+			throw new IncomeException("El valor del anticipo debe ser mayor a cero.");
+		}
+		if (anticipo.getTitular() == null) {
+			throw new IncomeException("El anticipo " + idAnticipo + " no tiene proveedor asignado.");
+		}
+		if (!pagoProgramadoDaoService.selectVigentesByAnticipo(idAnticipo).isEmpty()) {
+			throw new IncomeException("El anticipo " + idAnticipo
+					+ " ya tiene un pago vigente. Anúlelo o reviértalo antes de registrar otro.");
+		}
+
+		CuentaBancaria cuentaOrigen = em.find(CuentaBancaria.class, idCuentaBancariaOrigen);
+		if (cuentaOrigen == null) {
+			throw new IncomeException("No se encontró la cuenta bancaria de origen con ID: "
+					+ idCuentaBancariaOrigen);
+		}
+
+		// La transferencia viaja en el archivo del banco: exige la cuenta del
+		// proveedor. El débito automático no transfiere nada.
+		CuentaBancariaTitular cuentaDestino = null;
+		if (!debitoAutomatico) {
+			if (idCuentaDestinoTitular == null) {
+				throw new IncomeException("Debe indicar la cuenta bancaria del proveedor "
+						+ "para incluir el pago en el archivo del banco.");
+			}
+			cuentaDestino = em.find(CuentaBancariaTitular.class, idCuentaDestinoTitular);
+			if (cuentaDestino == null) {
+				throw new IncomeException("No se encontró la cuenta bancaria del proveedor con ID: "
+						+ idCuentaDestinoTitular);
+			}
+			if (cuentaDestino.getTitular() != null
+					&& !cuentaDestino.getTitular().getCodigo().equals(anticipo.getTitular().getCodigo())) {
+				throw new IncomeException("La cuenta bancaria de destino pertenece a otro titular, "
+						+ "no al proveedor del anticipo.");
+			}
+		}
+
+		PagoProgramado pago = new PagoProgramado();
+		pago.setEmpresa(anticipo.getEmpresa());
+		pago.setAnticipo(anticipo);
+		pago.setTitular(anticipo.getTitular());
+		pago.setCuentaBancaria(cuentaOrigen);
+		pago.setCuentaDestino(cuentaDestino);
+		pago.setDebitoAutomatico(Long.valueOf(debitoAutomatico ? 1 : 0));
+		pago.setValor(anticipo.getValor());
+		pago.setFechaProgramada(anticipo.getFechaAnticipo() != null
+				? anticipo.getFechaAnticipo() : LocalDate.now());
+		pago.setObservacion("Anticipo a proveedor: " + anticipo.getTitular().getNombre()
+				+ (anticipo.getNumeroDoc() != null ? " | Doc: " + anticipo.getNumeroDoc() : ""));
+		pago.setUsuario(em.find(Usuario.class, idUsuario));
+		pago.setFechaRegistro(LocalDateTime.now());
+
+		if (!debitoAutomatico) {
+			pago.setEstado(Long.valueOf(EstadoPagoProgramado.REGISTRADO));
+			pago = saveSingle(pago);
+
+			System.out.println("✓ Pago de anticipo registrado: id=" + pago.getId());
+
+			resultado.put("exito", true);
+			resultado.put("mensaje",
+					"Pago del anticipo registrado. Queda pendiente de incluirse en un archivo de pagos.");
+			resultado.put("pago", pago.getId());
+			resultado.put("anticipo", idAnticipo);
+			resultado.put("debitoAutomatico", false);
+			return resultado;
+		}
+
+		// Débito automático: el banco ya debitó la cuenta. Nace confirmado y se
+		// contabiliza aquí mismo con el asiento de anticipo.
+		pago.setEstado(Long.valueOf(EstadoPagoProgramado.CONFIRMADO));
+		pago.setReferenciaBanco((referencia != null && !referencia.trim().isEmpty())
+				? referencia.trim() : null);
+		pago.setFechaRespuesta(pago.getFechaProgramada());
+		pago = saveSingle(pago);
+		em.flush();
+
+		Asiento asiento = contabilizarPagoAnticipo(pago, idUsuario);
+		em.flush();
+
+		System.out.println("✓ Pago de anticipo por débito automático registrado y contabilizado: id="
+				+ pago.getId() + " | asiento=" + asiento.getNumeroAlterno());
+
+		resultado.put("exito", true);
+		resultado.put("mensaje", "Anticipo pagado por débito automático. El asiento contable "
+				+ "y el movimiento bancario fueron generados.");
+		resultado.put("pago", pago.getId());
+		resultado.put("anticipo", idAnticipo);
+		resultado.put("debitoAutomatico", true);
+		resultado.put("asiento", asiento.getNumeroAlterno());
+		return resultado;
+	}
+
+	@Override
 	public List<PagoProgramado> listar(Long idEmpresa, Long estado, Long idTitular) throws Throwable {
 		System.out.println("=== listar pagos | empresa=" + idEmpresa + " | estado=" + estado + " ===");
 		return pagoProgramadoDaoService.selectByEmpresaEstado(idEmpresa, estado, idTitular);
@@ -548,7 +665,12 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 				try {
 					pago.setReferenciaBanco(respuesta.getReferencia());
 					// Solo aquí se genera contabilidad y movimiento bancario.
-					if (pago.getEgreso() != null) {
+					// El asiento depende del proceso que originó el pago:
+					// anticipo → asiento de anticipo; egreso → asiento de
+					// egreso; factura → aplicación de pago.
+					if (pago.getAnticipo() != null) {
+						contabilizarPagoAnticipo(pago, idUsuario);
+					} else if (pago.getEgreso() != null) {
 						// Pago de un egreso de tesorería: asiento contra la
 						// cuenta del grupo del producto, sin aplicación.
 						contabilizarPagoEgreso(pago, idUsuario);
@@ -647,8 +769,11 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 									? pago.getObservacion() + " | " + nota : nota);
 				}
 
-				// Mismo camino contable que la respuesta del banco.
-				if (pago.getEgreso() != null) {
+				// Mismo camino contable que la respuesta del banco: el asiento
+				// depende del proceso que originó el pago.
+				if (pago.getAnticipo() != null) {
+					contabilizarPagoAnticipo(pago, idUsuario);
+				} else if (pago.getEgreso() != null) {
 					contabilizarPagoEgreso(pago, idUsuario);
 				} else {
 					AplicacionPagoCxp aplicacion =
@@ -778,7 +903,12 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 
 		Map<String, Object> resultado = new HashMap<>();
 
-		if (pago.getEgreso() != null) {
+		if (pago.getAnticipo() != null) {
+			// Pago de un anticipo a proveedor: se anula el movimiento bancario
+			// y el asiento de anticipo, se descuenta el saldo de anticipos del
+			// proveedor, y el anticipo vuelve a quedar Ingresado.
+			revertirContabilidadAnticipoPago(pago, motivo.trim());
+		} else if (pago.getEgreso() != null) {
 			// Pago de un egreso de tesorería: no hay aplicación que reversar.
 			// Se anula el asiento y el movimiento bancario, y el egreso vuelve
 			// a quedar pendiente de pago.
@@ -972,6 +1102,74 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		em.merge(egreso);
 
 		System.out.println("✓ Egreso " + egreso.getId() + " vuelve a Pendiente de pago.");
+	}
+
+	/**
+	 * Contabiliza el pago de un anticipo a proveedor: genera el asiento de
+	 * ANTICIPO (DEBE cuenta de anticipos del proveedor / HABER banco — no el
+	 * asiento de egreso) a través del servicio de anticipos, que además
+	 * acredita el saldo de anticipos y deja el anticipo Confirmado; aquí se
+	 * genera el movimiento bancario de egreso, igual que en los demás pagos.
+	 * @param pago      : Pago del anticipo ya ejecutado por el banco
+	 * @param idUsuario : Id del usuario que registra o procesa
+	 * @return          : Asiento generado
+	 * @throws Throwable : Excepcion
+	 */
+	private Asiento contabilizarPagoAnticipo(PagoProgramado pago, Long idUsuario) throws Throwable {
+
+		AnticipoProveedor anticipo = pago.getAnticipo();
+		Long idEmpresa = (pago.getEmpresa() != null) ? pago.getEmpresa().getCodigo() : null;
+		Long idCuentaBancaria = (pago.getCuentaBancaria() != null)
+				? pago.getCuentaBancaria().getCodigo() : null;
+		LocalDate fecha = (pago.getFechaRespuesta() != null)
+				? pago.getFechaRespuesta() : LocalDate.now();
+		boolean debitoAutomatico = esDebitoAutomatico(pago);
+
+		// 1. Asiento de anticipo + saldo de anticipos + anticipo Confirmado
+		Asiento asiento = anticipoProveedorService.contabilizarAnticipoConfirmado(
+				anticipo.getId(), idCuentaBancaria, fecha, idUsuario);
+
+		// 2. Movimiento bancario de egreso (mismo criterio que los demás pagos)
+		movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
+				"Anticipo a proveedor: " + anticipo.getTitular().getNombre()
+				+ (debitoAutomatico ? " | Débito automático" : "")
+				+ " | Ref: " + nvl(pago.getReferenciaBanco(), ""),
+				asiento, pago.getCuentaBancaria(), pago.getValor(),
+				TipoMovimientoConciliacion.TRANSFERENCIAS_DEBITOS_EN_TRANSITO,
+				OrigenMovimientoConciliacion.PAGOS);
+
+		System.out.println("✓ Anticipo " + anticipo.getId() + " pagado y contabilizado"
+				+ " | asiento=" + asiento.getNumeroAlterno());
+		return asiento;
+	}
+
+	/**
+	 * Reversa la contabilidad del pago de un anticipo: anula el movimiento
+	 * bancario y delega en el servicio de anticipos la anulación del asiento,
+	 * el descuento del saldo de anticipos y el retorno del anticipo a
+	 * Ingresado.
+	 * @param pago   : Pago confirmado del anticipo
+	 * @param motivo : Motivo de la reversión
+	 * @throws Throwable : Excepcion
+	 */
+	private void revertirContabilidadAnticipoPago(PagoProgramado pago, String motivo)
+			throws Throwable {
+
+		AnticipoProveedor anticipo = pago.getAnticipo();
+		Long idAsiento = (anticipo.getAsiento() != null)
+				? anticipo.getAsiento().getCodigo() : null;
+
+		if (idAsiento != null) {
+			try {
+				movimientoBancoService.actualizaEstadoMovimiento(idAsiento,
+						Long.valueOf(com.saa.rubros.EstadoMovimientoBanco.ANULADO));
+			} catch (Exception e) {
+				System.err.println("⚠ No se pudo anular el movimiento bancario del asiento "
+						+ idAsiento + ": " + e.getMessage());
+			}
+		}
+
+		anticipoProveedorService.revertirContabilidadAnticipo(anticipo.getId(), motivo);
 	}
 
 	/**

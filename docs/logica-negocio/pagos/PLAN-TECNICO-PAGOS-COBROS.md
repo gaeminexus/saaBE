@@ -49,13 +49,12 @@ RetencionCompraV2).
   elimina los 4 triggers que había creado el v1 (`TRG_APLC_ESTADOPAGO`,
   `TRG_APLP_ESTADOPAGO`, `TRG_ANTC_INIT_SALDO`, `TRG_ANTP_INIT_SALDO`) y esa lógica pasa a
   `AplicacionPagoCxpService.recalcularEstadoPago(...)` y a los servicios de anticipos.
-- **D11 (2026-08-11, confirmado)**: los anticipos (a proveedores y a clientes) **NO** se
-  conectan al circuito de lote/archivo/respuesta del banco de `PagoProgramado`. Siguen
-  generando su asiento contable **de forma síncrona, en el mismo instante en que se
-  registran** (`AnticipoProveedorServiceImpl.procesarAnticipo` /
-  `AnticipoClienteServiceImpl.procesarAnticipo`), exactamente como estaban antes de que se
-  intentara (y revirtiera) la integración con Pagos. Esto aplica igual a los procesos
-  genéricos de Ingresos y Egresos de tesorería. En cambio, para los **pagos/cobros de
+- **D11 (2026-08-11; SUPERADA para proveedores por D14 el 2026-08-14)**: los anticipos
+  (a proveedores y a clientes) **NO** se conectaban al circuito de lote/archivo/respuesta
+  del banco de `PagoProgramado`; generaban su asiento contable de forma síncrona al
+  registrarse. Sigue vigente **solo para anticipos de clientes**
+  (`AnticipoClienteServiceImpl.procesarAnticipo`), que son cobros (dinero que entra) y no
+  tienen nada que enviar al banco. Para los anticipos a proveedores rige D14. En cambio, para los **pagos/cobros de
   facturas por transferencia** (`PagoProgramado`, §4) el usuario indicó que debe existir
   un asiento al **generar** el pago y otro al **confirmarlo** — hoy solo existe el de
   confirmación; ese cambio queda **PENDIENTE de definir** (ver ítem 5 en §7: qué cuentas
@@ -87,6 +86,35 @@ RetencionCompraV2).
   (`IngresoServiceImpl.procesarIngreso`: asiento DEBE banco / HABER grupo,
   `TipoAsientos.INGRESO_TESORERIA`=4, movimiento créditos en tránsito / origen Cobros).
   REST: `/egrs`, `/ingr`. Doc frontend: `INGRESOS-EGRESOS-TESORERIA.md`.
+- **D14 (2026-08-14, confirmado; reemplaza a D11 para proveedores)**: los **anticipos a
+  proveedor SÍ pasan por el circuito de pagos**, igual que los egresos de tesorería:
+  se agrega `PGS.PGTR.PGTRANTP` (FK a `PGS.ANTP`, excluyente con `PGTRFCTC` y `PGTREGRS`;
+  script `docs/scripts/sql-pago-anticipo-proveedor.sql`). Registrar el anticipo
+  (`AnticipoProveedorServiceImpl.procesarAnticipo` → `registrarPagoDeAnticipo`) lo deja
+  Ingresado con su pago Registrado; **la contabilidad se genera recién al confirmarse el
+  pago** (respuesta del banco, confirmación manual o débito automático D12), y el circuito
+  despacha el asiento **según el proceso que lo originó**: anticipo → asiento de ANTICIPO
+  (DEBE cuenta de anticipos del proveedor PRCC tipo 2 / HABER banco,
+  `TipoAsientos.ANTICIPOS_PROVEEDOR`=9, con la **fecha real del pago**), egreso → asiento
+  de egreso, factura → aplicación de pago. Al confirmar también se genera el
+  MovimientoBanco (`TRANSFERENCIAS_DEBITOS_EN_TRANSITO` / origen `PAGOS` — antes el
+  anticipo no creaba movimiento bancario) y se acredita el saldo de anticipos del
+  proveedor (`TSR.PRCC.saldoInicial`), que hasta entonces **no** está disponible para
+  cruces. Estados `ANTPESTD`: 1=Ingresado, 2=Confirmado, 3=Anulado
+  (`rubros/EstadoAnticipoProveedor`); la reversión del pago
+  (`pgtr/revertirConfirmado`) anula asiento y movimiento, descuenta el PRCC y devuelve el
+  anticipo a Ingresado. Anulación: `POST /antp/anular/{id}` (anula el pago Registrado
+  junto con el anticipo; se bloquea con pago En archivo o Confirmado).
+- **D15 (2026-08-14, corrección)**: el **cruce de anticipo con una factura**
+  (`AplicacionPagoCxpServiceImpl.aplicarAnticipo` y su gemelo CXC) descontaba el saldo
+  global (`TSR.PRCC.PRCCSLIN`) pero no dejaba rastro en la tabla de anticipos: el listado
+  de movimientos no mostraba la resta. Ahora cada cruce inserta un **movimiento negativo**
+  en `PGS.ANTP` (valor = -cruce, saldo = acumulado tras el cruce, estado Confirmado,
+  asiento del cruce) y lo enlaza a la aplicación por `APLPANTP` (FK que existía y nunca se
+  usaba). La reversión del cruce anula ese movimiento (estado 3) además de devolver el
+  saldo global; las aplicaciones antiguas sin FK siguen reversando solo contra el PRCC.
+  Backfill de los cruces previos al fix:
+  `CORRECCION-MOVIMIENTO-CRUCE-ANTICIPO.md` (pendiente de ejecutar).
 
 ---
 
