@@ -45,13 +45,19 @@ public class PadronParticipeDTO implements Serializable {
     /** "SI" o "NO". */
     private String elegibleMiembro;
 
+    /**
+     * Correo de contacto: institucional (ENTDCRIN) y personal (ENTDCRPR)
+     * unidos por "; " cuando existen ambos, o el que exista; null si no hay.
+     */
+    private String correo;
+
     public PadronParticipeDTO() {
     }
 
     public PadronParticipeDTO(Long numero, Long entidadId, String cedula, String nombresApellidos,
                               Long calidadParticipeId, String calidadParticipe, Long numeroAportes,
                               String estadoMora, Long mesesEnMora, String habilitadoVoto,
-                              String elegibleMiembro) {
+                              String elegibleMiembro, String correo) {
         this.numero = numero;
         this.entidadId = entidadId;
         this.cedula = cedula;
@@ -63,6 +69,7 @@ public class PadronParticipeDTO implements Serializable {
         this.mesesEnMora = mesesEnMora;
         this.habilitadoVoto = habilitadoVoto;
         this.elegibleMiembro = elegibleMiembro;
+        this.correo = correo;
     }
 
     // Getters y Setters
@@ -152,5 +159,13 @@ public class PadronParticipeDTO implements Serializable {
 
     public void setElegibleMiembro(String elegibleMiembro) {
         this.elegibleMiembro = elegibleMiembro;
+    }
+
+    public String getCorreo() {
+        return correo;
+    }
+
+    public void setCorreo(String correo) {
+        this.correo = correo;
     }
 }

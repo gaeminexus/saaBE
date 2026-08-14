@@ -378,6 +378,14 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 			"  SELECT e.ENTDCDGO       AS entidad_id, " +
 			"         e.ENTDNMID       AS cedula, " +
 			"         TRIM(e.ENTDRZNS) AS nombres_apellidos, " +
+			// Correo de contacto: institucional y personal unidos por "; " cuando
+			// existen ambos, o el que exista. En Oracle TRIM('') es NULL, así que
+			// los vacíos quedan cubiertos por los IS NOT NULL.
+			"         CASE WHEN TRIM(e.ENTDCRIN) IS NOT NULL AND TRIM(e.ENTDCRPR) IS NOT NULL " +
+			"                   THEN TRIM(e.ENTDCRIN) || '; ' || TRIM(e.ENTDCRPR) " +
+			"              WHEN TRIM(e.ENTDCRIN) IS NOT NULL THEN TRIM(e.ENTDCRIN) " +
+			"              ELSE TRIM(e.ENTDCRPR) " +
+			"         END              AS correo, " +
 			"         e.ENTDIDST       AS calidad_id, " +
 			"         NVL(TRIM(esp.ESPRNMBR), 'SIN ESTADO') AS calidad_nombre, " +
 			"         CASE WHEN e.ENTDIDST = :codigoEstadoActivo THEN 1 ELSE 0 END AS es_activo, " +
@@ -412,7 +420,8 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 			"       CASE WHEN b.es_activo = 1 AND b.estado_mora = 'AL DIA' " +
 			"            THEN 'SI' ELSE 'NO' END AS habilitado_voto, " +
 			"       CASE WHEN b.es_activo = 1 AND b.numero_aportes >= :minimoAportes " +
-			"            THEN 'SI' ELSE 'NO' END AS elegible_miembro " +
+			"            THEN 'SI' ELSE 'NO' END AS elegible_miembro, " +
+			"       b.correo " +
 			"FROM   base b " +
 			"ORDER BY UPPER(b.nombres_apellidos), b.entidad_id";
 
@@ -441,10 +450,11 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 			Long   mesesEnMora       = row[8]  != null ? ((Number) row[8]).longValue()  : null;
 			String habilitadoVoto    = row[9]  != null ? row[9].toString()              : null;
 			String elegibleMiembro   = row[10] != null ? row[10].toString()             : null;
+			String correo            = row[11] != null ? row[11].toString()             : null;
 
 			dtos.add(new com.saa.model.crd.dto.PadronParticipeDTO(
 				numero, entidadId, cedula, nombresApellidos, codigoCalidad, calidadParticipe,
-				numeroAportes, estadoMora, mesesEnMora, habilitadoVoto, elegibleMiembro
+				numeroAportes, estadoMora, mesesEnMora, habilitadoVoto, elegibleMiembro, correo
 			));
 		}
 
