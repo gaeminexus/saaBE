@@ -268,5 +268,43 @@ public interface DetallePrestamoDaoService extends EntityDao<DetallePrestamo> {
 	 */
 	List<DetallePrestamo> selectCuotasExigibles(Long codigoPrestamo, LocalDateTime fechaCorte) throws Throwable;
 
+	// ========================================================================
+	// PROCESO DIARIO DE INTERÉS DE MORA
+	// ========================================================================
+
+	/**
+	 * Códigos de los préstamos que tienen al menos una cuota VENCIDA e impaga a la fecha.
+	 *
+	 * Mismo universo que el Grupo 2 del G48: cuota pendiente (estado IS NULL OR NOT IN (4,7))
+	 * con fechaVencimiento anterior a la fecha de corte, en préstamos con
+	 * idEstado IN (2 VIGENTE, 8 DE_PLAZO_VENCIDO, 11 EN_MORA).
+	 *
+	 * @param fechaCorte Instante de corte (para el proceso diario, hoy)
+	 * @return Códigos de préstamo, ordenados; vacía si no hay o si falla la consulta
+	 * @throws Throwable Si ocurre algún error
+	 */
+	List<Long> selectPrestamosConCuotasVencidas(LocalDateTime fechaCorte) throws Throwable;
+
+	/**
+	 * Cuotas VENCIDAS e impagas de un préstamo a la fecha de corte, ordenadas por numeroCuota.
+	 * Es el detalle del universo de {@link #selectPrestamosConCuotasVencidas(LocalDateTime)}.
+	 *
+	 * @param codigoPrestamo Código del préstamo
+	 * @param fechaCorte     Instante de corte
+	 * @return Lista de cuotas vencidas; vacía si no hay o si falla la consulta
+	 * @throws Throwable Si ocurre algún error
+	 */
+	List<DetallePrestamo> selectCuotasVencidasByPrestamo(Long codigoPrestamo, LocalDateTime fechaCorte) throws Throwable;
+
+	/**
+	 * Códigos de los préstamos marcados EN_MORA (idEstado = 11) que YA NO tienen ninguna cuota
+	 * vencida impaga a la fecha: el proceso diario los devuelve a VIGENTE (2).
+	 *
+	 * @param fechaCorte Instante de corte
+	 * @return Códigos de préstamo a regularizar; vacía si no hay o si falla la consulta
+	 * @throws Throwable Si ocurre algún error
+	 */
+	List<Long> selectPrestamosEnMoraSinCuotasVencidas(LocalDateTime fechaCorte) throws Throwable;
+
 }
 

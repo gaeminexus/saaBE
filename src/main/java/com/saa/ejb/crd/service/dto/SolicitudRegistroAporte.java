@@ -26,6 +26,9 @@ public class SolicitudRegistroAporte {
     /** Fecha del movimiento; si es null se asume hoy. No puede ser futura */
     private LocalDate fechaTransaccion;
 
+    /** Ruta del documento de respaldo digitalizado; se estampa en el PagoAporte generado */
+    private String rutaDocumentoRespaldo;
+
     public SolicitudRegistroAporte() {
     }
 
@@ -75,5 +78,13 @@ public class SolicitudRegistroAporte {
 
     public void setFechaTransaccion(LocalDate fechaTransaccion) {
         this.fechaTransaccion = fechaTransaccion;
+    }
+
+    public String getRutaDocumentoRespaldo() {
+        return rutaDocumentoRespaldo;
+    }
+
+    public void setRutaDocumentoRespaldo(String rutaDocumentoRespaldo) {
+        this.rutaDocumentoRespaldo = rutaDocumentoRespaldo;
     }
 }

@@ -243,6 +243,45 @@ usa tolerancia $1 para decidir PAGADA, y guarda el resultado/novedad/saldos en P
 Sí respeta los estados terminales del préstamo y escribe en `PRSTIDST`.
 **No es el flujo productivo**; ante discrepancias manda `aplicarPagosArchivoPetro`.
 
+## 4b. `DTPRTTLL` ya no es el monto a cobrar: usar siempre `totalBaseCuota(cuota)`
+
+**Cambio del 2026-08-14.** Desde que existe el proceso diario de interés de mora
+(`com.saa.ejb.crd.service.ProcesoMoraPrestamoService`, ver
+`docs/logica-negocio/crd/PROCESO-DIARIO-INTERES-MORA.md`), la columna `DTPRTTLL` de una **cuota
+vencida** incluye la mora acumulada, que crece todos los días a las 02:00.
+
+Este proceso **no debe verla nunca**. `CargaArchivoPetroServiceImpl` ya no lee
+`cuota.getTotal()` directamente: usa el helper privado
+
+```java
+private Double totalBaseCuota(DetallePrestamo cuota) {
+    return nullSafe(cuota.getTotal()) - nullSafe(cuota.getMora()) - nullSafe(cuota.getInteresVencido());
+}
+```
+
+que devuelve exactamente el valor que esta clase leía antes de que el proceso diario existiera.
+**El comportamiento del módulo no cambió**; el helper solo lo preserva.
+
+Por qué era obligatorio:
+
+- **Fase 2**: compara `DTPRTTLL` contra el monto del archivo con tolerancia de $1. Con la mora
+  adentro, **toda cuota vencida** generaría `MONTO_INCONSISTENTE (13)` — que está en
+  `NOVEDADES_REQUIEREN_AFECTACION_MANUAL` y **bloquearía la fase 3 completa** de la carga mensual.
+- **Fase 3**: `calcularSaldosRealesCuota` usa `DTPRTTLL` como `totalPendiente` cuando la cuota no
+  tiene pagos previos. La prelación de este proceso solo reparte entre **desgravamen, interés,
+  capital y seguro de incendio** — no tiene componente de mora, así que jamás podría agotar un
+  pendiente que la incluya y toda cuota vencida quedaría **PARCIAL en vez de PAGADA**.
+
+⚠️ **Regla permanente**: cualquier lectura nueva de `DTPRTTLL` en este servicio debe pasar por
+`totalBaseCuota(...)`. La mora de las cuotas vencidas la cobra el motor de pagos de préstamos
+(`MotorPagoPrestamoService`), que sí tiene el componente en su prelación de 6.
+
+Nota: `GeneracionArchivoPetroServiceImpl` tampoco lee `DTPRTTLL` — arma el monto en
+`calcularSaldoCuota` sumando los componentes uno a uno (`capital + interés + mora +
+interés vencido + desgravamen`, menos lo ya pagado). Por eso el archivo enviado a la empresa
+**sí cobra la mora** en cuanto el proceso diario empieza a alimentar `DTPRMRAA`, sin ningún
+cambio de código. Ver `REGLAS-GENERACION-PETRO.md`.
+
 ## 5. Reglas de implementación
 
 - Prohibido `selectAll()` en este servicio: usar los métodos específicos del DAO

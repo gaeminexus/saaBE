@@ -101,10 +101,12 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
             saldos.setSaldoCapital(capitalOriginal);
             saldos.setSaldoSeguroIncendio(seguroOriginal);
 
-            // DTPRTTLL no incluye mora ni interés vencido: nacen en 0 y los escribe el
-            // proceso nocturno después, así que se suman aparte.
+            // ⚠️ DTPRTTLL YA INCLUYE la mora: la escribe el proceso diario
+            // (ProcesoMoraPrestamoService) junto con DTPRMRAA. NO se la puede volver a sumar
+            // acá o se cobraría dos veces. Solo se agrega el interés vencido, que hoy ningún
+            // proceso alimenta y por eso vale 0.
             if (cuota.getTotal() != null) {
-                saldos.setTotalPendiente(redondear(cuota.getTotal() + moraOriginal + ivOriginal));
+                saldos.setTotalPendiente(redondear(cuota.getTotal() + ivOriginal));
             } else {
                 // Dato legacy sin DTPRTTLL: fallback a la suma de los 6 componentes
                 System.out.println("    ⚠️ Cuota #" + cuota.getNumeroCuota()
@@ -325,11 +327,24 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
 
         // ------------------------------------------------------------------
         // PRELACIÓN (imputación secuencial; cada componente toma min(restante, saldo))
-        //   1. Desgravamen  2. Mora  3. Interés vencido  4. Interés  5. Capital  6. Seguro
-        // La deuda vieja (mora e interés vencido) se cobra ANTES que el interés corriente.
+        //
+        //   1. Seguro de incendio
+        //   2. Seguro de desgravamen
+        //   3. Interés de mora
+        //   4. Interés vencido      (hoy siempre 0: ningún proceso lo alimenta)
+        //   5. Interés ordinario
+        //   6. Capital
+        //
+        // Orden confirmado por negocio el 2026-08-14: primero los seguros, después la deuda
+        // vieja (mora e interés vencido), después el interés corriente y por último el capital.
+        // El interés vencido va junto a la mora por ser también deuda vieja; como vale 0, su
+        // posición no altera hoy ningún resultado.
         // Hardcodeada por ahora; parametrizable vía CRD.OAVP en una fase futura.
         // ------------------------------------------------------------------
         double restante = montoAplicar;
+
+        double aplicadoSeguro = Math.min(restante, saldos.getSaldoSeguroIncendio());
+        restante = redondear(restante - aplicadoSeguro);
 
         double aplicadoDesgravamen = Math.min(restante, saldos.getSaldoDesgravamen());
         restante = redondear(restante - aplicadoDesgravamen);
@@ -345,9 +360,6 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
 
         double aplicadoCapital = Math.min(restante, saldos.getSaldoCapital());
         restante = redondear(restante - aplicadoCapital);
-
-        double aplicadoSeguro = Math.min(restante, saldos.getSaldoSeguroIncendio());
-        restante = redondear(restante - aplicadoSeguro);
 
         double totalAplicado = redondear(aplicadoDesgravamen + aplicadoMora + aplicadoIV
             + aplicadoInteres + aplicadoCapital + aplicadoSeguro);
@@ -467,6 +479,7 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
         pago.setObservacion(observacion + " [Evento: " + idEvento + "]");
         pago.setTipo(ctx != null ? ctx.getTipoPago() : null);
         pago.setUsuarioRegistro(ctx != null ? ctx.getUsuario() : null);
+        pago.setRutaDocumentoRespaldo(ctx != null ? ctx.getRutaDocumentoRespaldo() : null);
         pago.setFechaRegistro(LocalDateTime.now());
 
         // ✅ PGPRIDST es NOT NULL (ORA-01400 si falta)

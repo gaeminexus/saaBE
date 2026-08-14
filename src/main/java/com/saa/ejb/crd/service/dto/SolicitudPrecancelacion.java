@@ -26,6 +26,9 @@ public class SolicitudPrecancelacion {
     /** Fecha de corte de la precancelación; si es null se asume hoy */
     private LocalDate fecha;
 
+    /** Ruta del documento de respaldo digitalizado; se estampa en los pagos generados */
+    private String rutaDocumentoRespaldo;
+
     public SolicitudPrecancelacion() {
     }
 
@@ -75,5 +78,13 @@ public class SolicitudPrecancelacion {
 
     public void setFecha(LocalDate fecha) {
         this.fecha = fecha;
+    }
+
+    public String getRutaDocumentoRespaldo() {
+        return rutaDocumentoRespaldo;
+    }
+
+    public void setRutaDocumentoRespaldo(String rutaDocumentoRespaldo) {
+        this.rutaDocumentoRespaldo = rutaDocumentoRespaldo;
     }
 }

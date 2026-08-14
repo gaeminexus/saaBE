@@ -107,6 +107,13 @@ public class PagoAporte implements Serializable {
     @JoinColumn(name = "PGPRCDGO", referencedColumnName = "PGPRCDGO")
     private PagoPrestamo pagoPrestamo;
 
+    /**
+     * Ruta del documento de respaldo digitalizado (comprobante escaneado).
+     */
+    @Basic
+    @Column(name = "PGAPRTRS", length = 2000)
+    private String rutaDocumentoRespaldo;
+
     // ============================================================
     // Getters y Setters
     // ============================================================
@@ -197,6 +204,14 @@ public class PagoAporte implements Serializable {
 
     public void setPagoPrestamo(PagoPrestamo pagoPrestamo) {
         this.pagoPrestamo = pagoPrestamo;
+    }
+
+    public String getRutaDocumentoRespaldo() {
+        return rutaDocumentoRespaldo;
+    }
+
+    public void setRutaDocumentoRespaldo(String rutaDocumentoRespaldo) {
+        this.rutaDocumentoRespaldo = rutaDocumentoRespaldo;
     }
 }
 

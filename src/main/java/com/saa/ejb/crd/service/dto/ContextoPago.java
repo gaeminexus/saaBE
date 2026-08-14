@@ -25,6 +25,9 @@ public class ContextoPago {
     /** EVPRCDGO de la operación (siempre presente en los procesos nuevos) */
     private Long idEvento;
 
+    /** Ruta del documento de respaldo digitalizado; el motor la estampa en cada PagoPrestamo */
+    private String rutaDocumentoRespaldo;
+
     public ContextoPago() {
     }
 
@@ -66,5 +69,13 @@ public class ContextoPago {
 
     public void setIdEvento(Long idEvento) {
         this.idEvento = idEvento;
+    }
+
+    public String getRutaDocumentoRespaldo() {
+        return rutaDocumentoRespaldo;
+    }
+
+    public void setRutaDocumentoRespaldo(String rutaDocumentoRespaldo) {
+        this.rutaDocumentoRespaldo = rutaDocumentoRespaldo;
     }
 }

@@ -412,7 +412,11 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
                 ccpm.setProvisionConstituida(provisionConstituida);
                 ccpm.setTipoSistemaAmortizacion("FR");
                 ccpm.setCuotaCredito(cuota.getCuota() != null ? cuota.getCuota() : 0.0);
-                ccpm.setDividendo(cuota.getTotal() != null ? cuota.getTotal() : 0.0);
+                // El dividendo es la cuota a cobrar SIN mora: desde que existe el proceso diario
+                // de mora (ProcesoMoraPrestamoService) DTPRTTLL la incluye, y este reporte ya
+                // lleva la mora en su propia columna. Restarla mantiene el CCPM exactamente
+                // igual que antes y evita reportarla dos veces.
+                ccpm.setDividendo(dividendoSinMora(cuota));
 
                 if (cuota.getFechaVencimiento() != null) {
                     ccpm.setFechaExigibilidad(cuota.getFechaVencimiento().toLocalDate());
@@ -562,5 +566,27 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
             if (diasMorosidad >= 181 && diasMorosidad <= 270) return "D";
             return "E"; // más de 270 días
         }
+    }
+
+    /**
+     * Dividendo del reporte: el total de la cuota SIN el interés de mora ni el interés vencido.
+     *
+     * Desde que existe el proceso diario de mora
+     * ({@code com.saa.ejb.crd.service.ProcesoMoraPrestamoService}), DTPRTTLL de una cuota
+     * vencida incluye la mora acumulada. Este reporte ya lleva la mora en su propia columna, así
+     * que restarla del dividendo mantiene la salida idéntica a la de antes del proceso diario y
+     * evita reportar el mismo valor dos veces.
+     *
+     * @param cuota Cuota del reporte
+     * @return Total de la cuota sin mora ni interés vencido
+     */
+    private Double dividendoSinMora(com.saa.model.crd.DetallePrestamo cuota) {
+        if (cuota == null) {
+            return 0.0;
+        }
+        double total = cuota.getTotal() != null ? cuota.getTotal() : 0.0;
+        double mora = cuota.getMora() != null ? cuota.getMora() : 0.0;
+        double interesVencido = cuota.getInteresVencido() != null ? cuota.getInteresVencido() : 0.0;
+        return total - mora - interesVencido;
     }
 }

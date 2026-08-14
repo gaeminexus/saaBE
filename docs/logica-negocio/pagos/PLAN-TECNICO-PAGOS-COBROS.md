@@ -115,6 +115,11 @@ RetencionCompraV2).
   saldo global; las aplicaciones antiguas sin FK siguen reversando solo contra el PRCC.
   Backfill de los cruces previos al fix:
   `CORRECCION-MOVIMIENTO-CRUCE-ANTICIPO.md` (pendiente de ejecutar).
+- **D16 (2026-08-14, confirmado)**: en la **confirmación manual** de pagos
+  (`pgtr/confirmarManual`) el asiento se genera con la **fecha de respuesta** del pago:
+  el parámetro `fechaPago` del request (la fecha real en que el banco ejecutó el pago), o
+  la fecha actual si viene vacío. Se evaluó usar la fecha programada (`PGTRFPRG`) y se
+  descartó el mismo día: la fecha programada es una intención, no la ejecución real.
 
 ---
 

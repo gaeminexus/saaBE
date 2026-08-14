@@ -677,6 +677,39 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
         return valor != null ? valor : 0.0;
     }
 
+    /**
+     * Total BASE de la cuota: lo que el archivo de Petrocomercial viene a cobrar, SIN el
+     * interés de mora ni el interés vencido.
+     *
+     * Desde que existe el proceso diario de mora
+     * ({@code com.saa.ejb.crd.service.ProcesoMoraPrestamoService}), la columna DTPRTTLL de una
+     * cuota vencida incluye la mora acumulada. Este proceso NO debe verla:
+     *
+     * <ul>
+     *   <li>La fase 2 compara DTPRTTLL contra el monto del archivo con tolerancia de $1. Con la
+     *       mora adentro, toda cuota vencida daría MONTO_INCONSISTENTE (13), que está en
+     *       NOVEDADES_REQUIERE_AFECTACION_MANUAL y bloquearía la fase 3 completa.</li>
+     *   <li>La prelación de la fase 3 solo reparte entre desgravamen, interés, capital y seguro
+     *       de incendio: no tiene componente de mora, así que jamás podría agotar un
+     *       totalPendiente que la incluya y toda cuota vencida quedaría PARCIAL en vez de
+     *       PAGADA.</li>
+     * </ul>
+     *
+     * Restar mora e interés vencido devuelve exactamente el valor que esta clase leía antes de
+     * que existiera el proceso diario, de modo que el comportamiento del módulo Petro no cambia.
+     * La mora de las cuotas vencidas la cobra el motor de pagos de préstamos
+     * ({@code MotorPagoPrestamoService}), que sí tiene el componente en su prelación.
+     *
+     * @param cuota Cuota a evaluar
+     * @return Total de la cuota sin mora ni interés vencido
+     */
+    private Double totalBaseCuota(DetallePrestamo cuota) {
+        if (cuota == null) {
+            return 0.0;
+        }
+        return nullSafe(cuota.getTotal()) - nullSafe(cuota.getMora()) - nullSafe(cuota.getInteresVencido());
+    }
+
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public CargaArchivo validarArchivoPetro(InputStream archivoInputStream, String fileName, CargaArchivo cargaArchivo) throws Throwable {
@@ -2317,7 +2350,7 @@ private void aplicarAfectacionManualConRegistroPago(
 		                   ") pero NO se puede afectar manualmente (campo no existe en tabla AVPC)");
 	} else {
 		// Cuota sin seguro de incendio - usar valores normales
-		totalEsperado = nullSafe(cuota.getTotal());
+		totalEsperado = totalBaseCuota(cuota);
 		totalPagadoAcumulado = cuota.getCapitalPagado() + cuota.getInteresPagado() + cuota.getDesgravamenPagado();
 	}
 	
@@ -2503,7 +2536,7 @@ private void validarNovedadesFase2(ParticipeXCargaArchivo participe,
 									"Error al buscar cuota #" + cuota.getNumeroCuota() + ". La cuota pasará a mora",
 									prestamo.getProducto().getCodigo(),
 									prestamo.getCodigo(),
-									nullSafe(cuota.getTotal()),
+									totalBaseCuota(cuota),
 									0.0);
 								return;
 							}
@@ -2601,7 +2634,7 @@ private void validarNovedadesFase2(ParticipeXCargaArchivo participe,
 			
 			// Si se encontró una cuota, validar si coincide
 			if (cuotaDelPrestamo != null) {
-				double montoCuota = nullSafe(cuotaDelPrestamo.getTotal());
+				double montoCuota = totalBaseCuota(cuotaDelPrestamo);
 				double diferencia = Math.abs(montoCuota - montoArchivo);
 				
 				if (diferencia <= TOLERANCIA) {
@@ -2609,7 +2642,7 @@ private void validarNovedadesFase2(ParticipeXCargaArchivo participe,
 					cuotasEncontradas.add(cuotaDelPrestamo);
 					
 					if (diferencia > 0.01 && diferencia <= TOLERANCIA) {
-						double montoCuotaEncontrada = nullSafe(cuotaDelPrestamo.getTotal());
+						double montoCuotaEncontrada = totalBaseCuota(cuotaDelPrestamo);
 						String descripcion = String.format("Diferencia menor a $1 - Esperado: $%.2f, Archivo: $%.2f, Diferencia: $%.2f",
 							montoCuotaEncontrada, montoArchivo, diferencia);
 						registrarNovedad(participe, ASPNovedadesCargaArchivo.DIFERENCIA_MENOR_UN_DOLAR,
@@ -2620,7 +2653,7 @@ private void validarNovedadesFase2(ParticipeXCargaArchivo participe,
 					}
 					
 					if (cuotaConFechaDiferente) {
-						double montoCuotaEncontrada = nullSafe(cuotaDelPrestamo.getTotal());
+						double montoCuotaEncontrada = totalBaseCuota(cuotaDelPrestamo);
 						registrarNovedad(participe, ASPNovedadesCargaArchivo.CUOTA_FECHA_DIFERENTE,
 							"Cuota #" + cuotaDelPrestamo.getNumeroCuota() + " encontrada con fecha diferente al archivo",
 							cuotaDelPrestamo.getPrestamo().getProducto().getCodigo(), 
@@ -2647,7 +2680,7 @@ private void validarNovedadesFase2(ParticipeXCargaArchivo participe,
 		double montoEsperadoTotal = 0.0;
 		
 		for (DetallePrestamo cuota : cuotasEncontradas) {
-			montoEsperadoTotal += nullSafe(cuota.getTotal());
+			montoEsperadoTotal += totalBaseCuota(cuota);
 		}
 		
 		double diferenciaTotal = Math.abs(montoEsperadoTotal - montoArchivo);
@@ -2809,7 +2842,7 @@ private SaldosRealesCuota calcularSaldosRealesCuota(DetallePrestamo cuota) throw
 			saldos.saldoInteres = nullSafe(cuota.getInteres());
 			saldos.saldoCapital = nullSafe(cuota.getCapital());
 			saldos.saldoSeguroIncendio = nullSafe(cuota.getValorSeguroIncendio());  // ✅ AGREGADO
-			saldos.totalPendiente = nullSafe(cuota.getTotal());
+			saldos.totalPendiente = totalBaseCuota(cuota);
 			return saldos;
 		}
 		
@@ -2871,7 +2904,7 @@ private SaldosRealesCuota calcularSaldosRealesCuota(DetallePrestamo cuota) throw
 		saldos.saldoDesgravamen = nullSafe(cuota.getDesgravamen());
 		saldos.saldoInteres = nullSafe(cuota.getInteres());
 		saldos.saldoCapital = nullSafe(cuota.getCapital());
-		saldos.totalPendiente = nullSafe(cuota.getTotal());
+		saldos.totalPendiente = totalBaseCuota(cuota);
 	}
 	
 	return saldos;

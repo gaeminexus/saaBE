@@ -167,7 +167,8 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
             solicitud.getUsuario(), solicitud.getObservacion());
 
         ContextoPago ctx = crearContexto(TIPO_PAGO_MANUAL, solicitud.getUsuario(),
-            solicitud.getObservacion(), fechaPagoHora, evento.getCodigo());
+            solicitud.getObservacion(), fechaPagoHora, evento.getCodigo(),
+            solicitud.getRutaDocumentoRespaldo());
 
         ResultadoAplicacionPago resultado = motorPagoPrestamoService.aplicarPago(
             prestamo.getCodigo(), valor, ctx);
@@ -231,7 +232,8 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
             solicitud.getUsuario(), solicitud.getObservacion());
 
         ContextoPago ctx = crearContexto(TIPO_PAGO_APORTES, solicitud.getUsuario(),
-            solicitud.getObservacion(), fechaPagoHora, evento.getCodigo());
+            solicitud.getObservacion(), fechaPagoHora, evento.getCodigo(),
+            solicitud.getRutaDocumentoRespaldo());
 
         // 2. Aplicación a cuotas
         ResultadoAplicacionPago resultado = motorPagoPrestamoService.aplicarPago(
@@ -246,7 +248,8 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         PagoPrestamo primerPago = primerPagoDelResultado(resultado);
         String glosa = "PAGO PRESTAMO " + prestamo.getCodigo() + " - Evento " + evento.getCodigo();
         List<MovimientoAporte> movimientos = consumirAportes(entidad, solicitud.getAportes(),
-            fechaPagoHora, solicitud.getUsuario(), glosa, primerPago);
+            fechaPagoHora, solicitud.getUsuario(), glosa, primerPago,
+            solicitud.getRutaDocumentoRespaldo());
 
         // 4. Huella y hook
         registrarHuellaPrestamo(prestamo, TIPO_PAGO_APORTES, valorTotal, solicitud.getObservacion(),
@@ -324,7 +327,8 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
      * {@code saldo > 0.01}) nunca la devuelva.
      */
     private List<MovimientoAporte> consumirAportes(Entidad entidad, List<DesgloseAporte> aportes,
-            LocalDateTime fecha, String usuario, String glosa, PagoPrestamo pagoPrestamo) throws Throwable {
+            LocalDateTime fecha, String usuario, String glosa, PagoPrestamo pagoPrestamo,
+            String rutaDocumentoRespaldo) throws Throwable {
 
         List<MovimientoAporte> movimientos = new ArrayList<>();
 
@@ -373,6 +377,7 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
             pagoAporte.setFechaRegistro(LocalDateTime.now());
             pagoAporte.setEstado(1L);
             pagoAporte.setPagoPrestamo(pagoPrestamo);
+            pagoAporte.setRutaDocumentoRespaldo(rutaDocumentoRespaldo);
             pagoAporte = pagoAporteDaoService.save(pagoAporte, null);
 
             MovimientoAporte movimiento = new MovimientoAporte();
@@ -543,7 +548,8 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
             solicitud.getUsuario(), solicitud.getObservacion());
 
         ContextoPago ctx = crearContexto(TIPO_PRECANCELACION, solicitud.getUsuario(),
-            solicitud.getObservacion(), fechaHora, evento.getCodigo());
+            solicitud.getObservacion(), fechaHora, evento.getCodigo(),
+            solicitud.getRutaDocumentoRespaldo());
 
         // 2. Pagar la deuda exigible cuota por cuota (sin cascada)
         double valorExigiblePagado = 0.0;
@@ -597,6 +603,7 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         pagoCapitalFuturo.setIdEstado(1L);
         pagoCapitalFuturo.setAnulado(0L);
         pagoCapitalFuturo.setEventoPrestamo(evento);
+        pagoCapitalFuturo.setRutaDocumentoRespaldo(solicitud.getRutaDocumentoRespaldo());
         pagoCapitalFuturo = pagoPrestamoService.saveSingle(pagoCapitalFuturo);
 
         // 3. Cuotas futuras → CANCELADA_ANTICIPADA (7). NO se borran ni se historizan.
@@ -620,7 +627,8 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
                 ? pagoPrestamoDaoService.find(new PagoPrestamo(), primerPagoExigible)
                 : pagoCapitalFuturo;
             movimientos = consumirAportes(entidad, solicitud.getAportes(), fechaHora,
-                solicitud.getUsuario(), glosa, referencia);
+                solicitud.getUsuario(), glosa, referencia,
+                solicitud.getRutaDocumentoRespaldo());
         }
 
         // 7. Préstamo → CANCELADO_ANTICIPADO (4). NUNCA se toca ESPSCDGO ni fechaFin.
@@ -1006,13 +1014,14 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
     }
 
     private ContextoPago crearContexto(String tipoPago, String usuario, String observacion,
-            LocalDateTime fechaPago, Long idEvento) {
+            LocalDateTime fechaPago, Long idEvento, String rutaDocumentoRespaldo) {
         ContextoPago ctx = new ContextoPago();
         ctx.setTipoPago(tipoPago);
         ctx.setUsuario(usuario);
         ctx.setObservacion(observacion);
         ctx.setFechaPago(fechaPago);
         ctx.setIdEvento(idEvento);
+        ctx.setRutaDocumentoRespaldo(rutaDocumentoRespaldo);
         return ctx;
     }
 

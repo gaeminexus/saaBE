@@ -223,7 +223,8 @@ Content-Type: application/json
   "valor": 300.00,
   "usuario": "jperez",
   "observacion": "Aporte voluntario recibo 00456",
-  "fechaTransaccion": "2026-08-14"
+  "fechaTransaccion": "2026-08-14",
+  "rutaDocumentoRespaldo": "docs/respaldos/recibo-00456.pdf"
 }
 ```
 
@@ -310,7 +311,8 @@ Content-Type: application/json
   "valor": 250.00,
   "usuario": "jperez",
   "observacion": "Pago ventanilla recibo 00123",
-  "fechaPago": "2026-08-14"
+  "fechaPago": "2026-08-14",
+  "rutaDocumentoRespaldo": "docs/respaldos/recibo-00123.pdf"
 }
 ```
 
@@ -375,11 +377,15 @@ Content-Type: application/json
 ### Prelación (orden en que se imputa el dinero)
 
 ```
-1. Desgravamen → 2. Mora → 3. Interés vencido → 4. Interés → 5. Capital → 6. Seguro de incendio
+1. Seguro de incendio → 2. Seguro de desgravamen → 3. Interés de mora
+→ 4. Interés vencido → 5. Interés ordinario → 6. Capital
 ```
 
-La deuda vieja (mora e interés vencido) se cobra **antes** que el interés corriente. Si mostrás
-un preview del desglose, respetá este orden.
+Primero los seguros, después la deuda vieja (mora e interés vencido), después el interés
+corriente y por último el capital. Si mostrás un preview del desglose, respetá este orden.
+
+El **interés vencido** hoy siempre vale 0 (ningún proceso lo alimenta), así que en la práctica
+verás cuatro componentes con valor: seguro, desgravamen, mora e interés, y el capital al final.
 
 ### Errores
 
@@ -421,6 +427,7 @@ Content-Type: application/json
   "usuario": "jperez",
   "observacion": "Pago con cesantía",
   "fechaPago": "2026-08-14",
+  "rutaDocumentoRespaldo": "docs/respaldos/solicitud-cesantia-8523.pdf",
   "aportes": [
     { "idTipoAporte": 11, "valor": 300.00 },
     { "idTipoAporte": 9,  "valor": 150.00 }
@@ -572,7 +579,8 @@ Content-Type: application/json
   "modalidad": 1,
   "usuario": "jperez",
   "observacion": "Abono extraordinario",
-  "fecha": "2026-08-14"
+  "fecha": "2026-08-14",
+  "rutaDocumentoRespaldo": "docs/respaldos/comprobante-abono-8523.pdf"
 }
 ```
 
@@ -716,7 +724,8 @@ Content-Type: application/json
   ],
   "usuario": "jperez",
   "observacion": "Precancelación por retiro",
-  "fecha": "2026-08-31"
+  "fecha": "2026-08-31",
+  "rutaDocumentoRespaldo": "docs/respaldos/liquidacion-8523.pdf"
 }
 ```
 
@@ -1092,3 +1101,37 @@ el FIFO del proceso Petro y volver a cobrarse, y no genera el `PagoAporte` de re
 `saldoOtros` (`DTPRSLOT`) acumula los abonos a capital y el capital precancelado. En una cuota
 con `saldoOtros > 0` **no se cumple** `saldoInicialCapital = capital + saldoCapital`: hay que
 sumar `saldoOtros`. Si la pantalla valida ese cuadre, ajustá la fórmula.
+
+### El total de la cuota ahora incluye la mora
+
+Desde el **2026-08-14** existe un proceso que corre todos los días a las 02:00 y calcula el
+interés de mora de las cuotas vencidas (ver `PROCESO-DIARIO-INTERES-MORA.md`). En una cuota
+vencida:
+
+| Campo | Qué trae ahora |
+|---|---|
+| `mora` (`DTPRMRAA`) | Interés de mora acumulado. **Crece todos los días** |
+| `diasMora` (`DTPRDSMR`) | Días transcurridos desde el vencimiento |
+| **`total`** (`DTPRTTLL`) | **Cuota + desgravamen + seguro + MORA** ← el monto a cobrar hoy |
+| `estado` | Pasa a **5 (EN_MORA)** automáticamente |
+
+La ficha del préstamo también cambia sola: `idEstado` pasa a **11 (EN_MORA)** cuando hay cuotas
+vencidas y vuelve a **2 (VIGENTE)** cuando se regularizan.
+
+> ✅ Para mostrar "cuánto debe pagar hoy" alcanza con `total`: ya trae la mora. **No la sumes
+> aparte** o la mostrarías dos veces.
+
+### Endpoints nuevos de recuperación del proceso de mora
+
+Solo para el caso de que la corrida de las 02:00 haya fallado o el servidor haya estado apagado.
+El proceso es idempotente: relanzarlo es seguro.
+
+```
+POST /SaaBE/rest/prst/calcularMora?fecha=2026-08-14&usuario=jperez      ← todo el sistema
+POST /SaaBE/rest/prst/calcularMora/{idPrestamo}?usuario=jperez          ← un préstamo
+```
+
+Ambos parámetros son opcionales. Responden 200 con el mismo sobre `{exito, etapa, mensaje,
+resultado}`; el `resultado` trae los conteos (`cuotasActualizadas`, `prestamosMarcadosEnMora`,
+`totalMoraCalculada`, `prestamosConError`, `errores[]`). Un préstamo que falla **dentro** del
+lote no produce error HTTP: viene contado en `prestamosConError`.

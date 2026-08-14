@@ -56,8 +56,11 @@ de `saldoOtros` como capital precancelado).
 - Refactor del proceso Petro para que consuma el motor nuevo (dejar comentario TODO en
   `CargaArchivoPetroServiceImpl`).
 - Contabilidad real (solo hooks no-op; pre-requisitos contables listados en §9.3).
-- Servicio nocturno de cálculo de interés de mora diario (futuro; el motor YA cobra lo que ese
-  proceso escriba en `DTPRMRAA`/`DTPRINVN`).
+- ~~Servicio nocturno de cálculo de interés de mora diario (futuro; el motor YA cobra lo que ese
+  proceso escriba en `DTPRMRAA`/`DTPRINVN`).~~ **Implementado el 2026-08-14**, fuera del plan de
+  fases: ver `docs/logica-negocio/crd/PROCESO-DIARIO-INTERES-MORA.md`. Escribe `DTPRMRAA` y,
+  por decisión de negocio, también suma la mora dentro de `DTPRTTLL` — lo que obligó a ajustar
+  §6.2 de este documento y cuatro consumidores de esa columna.
 - Condonación de deuda y novación (identificados como tipos de pago futuros).
 - Prelación parametrizada vía `CRD.OAVP` (fase futura; hardcodeada por ahora).
 
@@ -399,9 +402,15 @@ saldoSeguroIncendio  = max(0, nvl(cuota.valorSeguroIncendio) − Σ nvl(pago.val
 totalPendiente       = Σ de los 6
 ```
 - Si la lista de pagos está vacía: los saldos son los valores originales de la cuota y
-  `totalPendiente = nvl(cuota.total) + nvl(cuota.mora) + nvl(cuota.interesVencido)`; si
+  `totalPendiente = nvl(cuota.total) + nvl(cuota.interesVencido)`; si
   `cuota.total` es null (dato legacy), fallback: suma de los 6 componentes originales.
-  (Nota: DTPRTTLL no incluye mora/IV porque nacen en 0 y los escribe el proceso nocturno después.)
+
+  > ⚠️ **Corregido el 2026-08-14.** La regla original decía
+  > `totalPendiente = total + mora + interesVencido`, con la nota de que DTPRTTLL no incluía
+  > mora porque la escribiría el proceso nocturno. Al implementarse ese proceso
+  > (`PROCESO-DIARIO-INTERES-MORA.md`) se decidió que **DTPRTTLL SÍ incluye la mora**, así que
+  > sumarla otra vez acá la cobraría dos veces. El interés vencido se sigue sumando aparte
+  > porque ningún proceso lo alimenta y vale 0.
 - **Autocorrección**: si `totalPendiente <= 0.01` y la cuota no está PAGADA(4) ni
   CANCELADA_ANTICIPADA(7): pasarla a PAGADA (ambos estados), sincronizar los `*Pagado` con las
   sumas, `saldoCapital = max(0, saldoInicialCapital − capitalPagado)`, `saldoInteres = 0`,
@@ -429,9 +438,17 @@ saldos = calcularSaldosRealesCuota(cuota); si totalPendiente <= 0.01 → retorna
 montoAplicar = min(valorDisponible, saldos.totalPendiente)
 
 PRELACIÓN (imputación secuencial, cada componente toma min(restante, saldoComponente)):
-   1. Desgravamen  2. Mora  3. Interés vencido  4. Interés  5. Capital  6. Seguro de incendio
-(la deuda vieja —mora e interés vencido— se cobra antes que el interés corriente;
- parametrizable vía CRD.OAVP en fase futura, hardcodeada por ahora)
+   1. Seguro de incendio  2. Seguro de desgravamen  3. Interés de mora
+   4. Interés vencido     5. Interés ordinario      6. Capital
+(primero los seguros, después la deuda vieja —mora e interés vencido—, después el interés
+ corriente y por último el capital; parametrizable vía CRD.OAVP en fase futura, hardcodeada
+ por ahora)
+
+⚠️ ACTUALIZADO 2026-08-14: el orden original de este documento era
+   Desgravamen → Mora → IV → Interés → Capital → Seguro de incendio.
+   Negocio confirmó el orden de arriba: el seguro de incendio pasa de último a PRIMERO.
+   El interés vencido se mantiene junto a la mora por ser deuda vieja; como hoy vale 0
+   (ningún proceso lo alimenta), su posición no altera ningún resultado.
 
 Acumular en la cuota (nunca reemplazar):
    capitalPagado += capitalAplicado; interesPagado += interesAplicado;

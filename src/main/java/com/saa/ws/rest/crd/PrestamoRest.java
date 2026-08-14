@@ -12,8 +12,10 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.crd.dao.PrestamoDaoService;
 import com.saa.ejb.crd.service.AbonoCapitalPrestamoService;
 import com.saa.ejb.crd.service.PrestamoService;
+import com.saa.ejb.crd.service.ProcesoMoraPrestamoService;
 import com.saa.ejb.crd.service.ProcesoPagoPrestamoService;
 import com.saa.ejb.crd.service.dto.ResultadoAbonoCapital;
+import com.saa.ejb.crd.service.dto.ResultadoCalculoMora;
 import com.saa.ejb.crd.service.dto.ResultadoAnulacion;
 import com.saa.ejb.crd.service.dto.ResultadoAplicacionPago;
 import com.saa.ejb.crd.service.dto.ResultadoPagoConAportes;
@@ -57,6 +59,9 @@ public class PrestamoRest {
 
     @EJB
     private AbonoCapitalPrestamoService abonoCapitalPrestamoService;
+
+    @EJB
+    private ProcesoMoraPrestamoService procesoMoraPrestamoService;
 
     @Context
     private UriInfo context;
@@ -720,6 +725,119 @@ public class PrestamoRest {
 
         } catch (Throwable e) {
             System.err.println("ERROR al anular la operación: " + e.getMessage());
+            e.printStackTrace();
+            return respuestaErrorNegocio(e);
+        }
+    }
+
+    /**
+     * Recalcula el interés de mora de TODAS las cuotas vencidas del sistema.
+     *
+     * Lo dispara automáticamente el temporizador a las 02:00; este endpoint es la vía de
+     * recuperación manual cuando la corrida nocturna falló o el servidor estuvo apagado.
+     * El proceso es idempotente: correrlo dos veces el mismo día da el mismo resultado.
+     *
+     * @param fecha   Fecha de corte en formato yyyy-MM-dd; si falta se usa hoy. No puede ser futura
+     * @param usuario Usuario que dispara la recuperación
+     * @return 200 con el ResultadoCalculoMora (conteos, total y errores por préstamo)
+     */
+    @POST
+    @Path("/calcularMora")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response calcularMora(@QueryParam("fecha") String fecha,
+                                 @QueryParam("usuario") String usuario) {
+        System.out.println("LLEGA AL SERVICIO CALCULAR MORA - Fecha: " + fecha + " - Usuario: " + usuario);
+
+        java.time.LocalDate fechaCorte;
+        try {
+            fechaCorte = (fecha != null && !fecha.trim().isEmpty())
+                ? java.time.LocalDate.parse(fecha.trim())
+                : java.time.LocalDate.now();
+        } catch (Exception e) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "La fecha debe tener el formato yyyy-MM-dd", null);
+        }
+
+        try {
+            ResultadoCalculoMora resultado = procesoMoraPrestamoService.calcularMoraDiaria(
+                fechaCorte,
+                usuario != null && !usuario.trim().isEmpty()
+                    ? usuario.trim() : ProcesoMoraPrestamoService.USUARIO_PROCESO);
+
+            Map<String, Object> cuerpo = new LinkedHashMap<>();
+            cuerpo.put("exito", Boolean.TRUE);
+            cuerpo.put("etapa", ETAPA_APLICACION);
+            cuerpo.put("mensaje", "Mora calculada al " + resultado.getFechaCorte()
+                + ": " + resultado.getCuotasActualizadas() + " cuota(s) de "
+                + resultado.getPrestamosProcesados() + " préstamo(s), total $"
+                + resultado.getTotalMoraCalculada()
+                + (resultado.getPrestamosConError() != null && resultado.getPrestamosConError() > 0
+                    ? ". " + resultado.getPrestamosConError() + " préstamo(s) con error." : ""));
+            cuerpo.put("resultado", resultado);
+
+            return Response.status(Response.Status.OK)
+                    .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
+
+        } catch (Throwable e) {
+            System.err.println("ERROR al calcular la mora: " + e.getMessage());
+            e.printStackTrace();
+            return respuestaErrorNegocio(e);
+        }
+    }
+
+    /**
+     * Recalcula el interés de mora de las cuotas vencidas de UN préstamo.
+     *
+     * Útil para regularizar un crédito puntual sin correr el lote completo.
+     *
+     * @param idPrestamo Préstamo a recalcular
+     * @param fecha      Fecha de corte en formato yyyy-MM-dd; si falta se usa hoy
+     * @param usuario    Usuario que ejecuta
+     * @return 200 con el ResultadoCalculoMora de ese préstamo
+     */
+    @POST
+    @Path("/calcularMora/{idPrestamo}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response calcularMoraPrestamo(@PathParam("idPrestamo") Long idPrestamo,
+                                         @QueryParam("fecha") String fecha,
+                                         @QueryParam("usuario") String usuario) {
+        System.out.println("LLEGA AL SERVICIO CALCULAR MORA PRESTAMO - Préstamo: " + idPrestamo
+            + " - Fecha: " + fecha);
+
+        if (idPrestamo == null || idPrestamo <= 0) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe indicar un préstamo válido", null);
+        }
+
+        java.time.LocalDate fechaCorte;
+        try {
+            fechaCorte = (fecha != null && !fecha.trim().isEmpty())
+                ? java.time.LocalDate.parse(fecha.trim())
+                : java.time.LocalDate.now();
+        } catch (Exception e) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "La fecha debe tener el formato yyyy-MM-dd", null);
+        }
+
+        try {
+            ResultadoCalculoMora resultado = procesoMoraPrestamoService.calcularMoraPrestamo(
+                idPrestamo, fechaCorte,
+                usuario != null && !usuario.trim().isEmpty()
+                    ? usuario.trim() : ProcesoMoraPrestamoService.USUARIO_PROCESO);
+
+            Map<String, Object> cuerpo = new LinkedHashMap<>();
+            cuerpo.put("exito", Boolean.TRUE);
+            cuerpo.put("etapa", ETAPA_APLICACION);
+            cuerpo.put("mensaje", "Mora del préstamo " + idPrestamo + " calculada al "
+                + resultado.getFechaCorte() + ": " + resultado.getCuotasActualizadas()
+                + " cuota(s), total $" + resultado.getTotalMoraCalculada());
+            cuerpo.put("resultado", resultado);
+
+            return Response.status(Response.Status.OK)
+                    .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
+
+        } catch (Throwable e) {
+            System.err.println("ERROR al calcular la mora del préstamo: " + e.getMessage());
             e.printStackTrace();
             return respuestaErrorNegocio(e);
         }

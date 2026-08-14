@@ -2,28 +2,31 @@ package com.saa.ejb.crd.service.dto;
 
 /**
  * Saldos reales de una cuota, reconstruidos desde los PagoPrestamo VIGENTES.
- * Los campos están en el ORDEN DE PRELACIÓN con el que el motor imputa un pago.
+ *
+ * El ORDEN DE PRELACIÓN con el que el motor imputa un pago es el que indican los comentarios
+ * de cada campo (confirmado por negocio el 2026-08-14):
+ * seguro de incendio → desgravamen → mora → interés vencido → interés ordinario → capital.
  *
  * Ver ESPECIFICACION-SERVICIOS-PAGO-PRESTAMOS.md §5.1 y §6.2.
  */
 public class SaldosCuota {
 
-    /** 1. Desgravamen pendiente */
+    /** Prelación 2. Seguro de desgravamen pendiente */
     private double saldoDesgravamen;
 
-    /** 2. Mora pendiente */
+    /** Prelación 3. Interés de mora pendiente */
     private double saldoMora;
 
-    /** 3. Interés vencido pendiente */
+    /** Prelación 4. Interés vencido pendiente (hoy siempre 0) */
     private double saldoInteresVencido;
 
-    /** 4. Interés corriente pendiente */
+    /** Prelación 5. Interés ordinario pendiente */
     private double saldoInteres;
 
-    /** 5. Capital pendiente */
+    /** Prelación 6. Capital pendiente */
     private double saldoCapital;
 
-    /** 6. Seguro de incendio pendiente */
+    /** Prelación 1. Seguro de incendio pendiente */
     private double saldoSeguroIncendio;
 
     /** Suma de los 6 componentes */

@@ -154,6 +154,11 @@ public class PagoPrestamo implements Serializable {
     @Column(name = "PGPRMTAN", length = 500)
     private String motivoAnulacion;
 
+    /** Ruta del documento de respaldo digitalizado (comprobante escaneado) */
+    @Basic
+    @Column(name = "PGPRRTRS", length = 2000)
+    private String rutaDocumentoRespaldo;
+
     // ============================================================
     // Getters y Setters
     // ============================================================
@@ -356,6 +361,14 @@ public class PagoPrestamo implements Serializable {
 
     public void setMotivoAnulacion(String motivoAnulacion) {
         this.motivoAnulacion = motivoAnulacion;
+    }
+
+    public String getRutaDocumentoRespaldo() {
+        return rutaDocumentoRespaldo;
+    }
+
+    public void setRutaDocumentoRespaldo(String rutaDocumentoRespaldo) {
+        this.rutaDocumentoRespaldo = rutaDocumentoRespaldo;
     }
 }
 

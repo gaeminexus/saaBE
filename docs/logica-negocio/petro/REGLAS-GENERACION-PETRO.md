@@ -70,6 +70,11 @@ Un partícipe sin el identificador de su filial **no entra en la generación**.
   proceso **se corta** (mejor no generar que cobrar dos veces).
   `saldoCuota = Σ max(0, componente − pagado)` sobre capital, interés, mora, interés vencido y
   desgravamen — **sin** seguro de incendio, que viaja aparte.
+  > **Desde el 2026-08-14 el archivo cobra mora de verdad.** La fórmula ya incluía el término
+  > `mora`, pero `DTPRMRAA` valía siempre 0 porque nada lo escribía. Ahora lo alimenta el proceso
+  > diario (`docs/logica-negocio/crd/PROCESO-DIARIO-INTERES-MORA.md`), que corre a las 02:00 y
+  > acumula la mora de las cuotas vencidas. **No hubo cambios de código en esta clase**: el monto
+  > enviado crece solo. `DTPRINVN` (interés vencido) sigue en 0.
 - Cuotas con saldo ≤ 0.01 se omiten (pagadas aunque el estado diga otra cosa).
 - **Una línea por préstamo**, con la suma de los saldos de sus cuotas; cada cuota queda registrada
   en `CXPG` (número y valor). Un partícipe con dos préstamos del mismo producto genera dos líneas

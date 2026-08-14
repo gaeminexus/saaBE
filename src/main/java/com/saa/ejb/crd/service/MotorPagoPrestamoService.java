@@ -18,8 +18,15 @@ import jakarta.ejb.Local;
  * interés vencido y con la prelación de 6 componentes:
  *
  * <pre>
- *   1. Desgravamen  2. Mora  3. Interés vencido  4. Interés  5. Capital  6. Seguro de incendio
+ *   1. Seguro de incendio
+ *   2. Seguro de desgravamen
+ *   3. Interés de mora
+ *   4. Interés vencido      (hoy siempre 0: ningún proceso lo alimenta)
+ *   5. Interés ordinario
+ *   6. Capital
  * </pre>
+ *
+ * Orden confirmado por negocio el 2026-08-14.
  *
  * Principios (§6.1 de ESPECIFICACION-SERVICIOS-PAGO-PRESTAMOS.md):
  * <ul>

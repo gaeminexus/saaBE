@@ -811,4 +811,111 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 		}
 	}
 
+	// ========================================================================
+	// PROCESO DIARIO DE INTERÉS DE MORA
+	// ========================================================================
+
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<Long> selectPrestamosConCuotasVencidas(LocalDateTime fechaCorte) throws Throwable {
+		System.out.println("DetallePrestamoDaoServiceImpl.selectPrestamosConCuotasVencidas - corte: " + fechaCorte);
+
+		try {
+			// Mismo universo que el Grupo 2 del G48: cuota pendiente con vencimiento anterior
+			// al corte, en préstamos VIGENTE(2), DE_PLAZO_VENCIDO(8) o EN_MORA(11).
+			String jpql = "SELECT DISTINCT d.prestamo.codigo FROM DetallePrestamo d " +
+						 "WHERE (d.estado IS NULL OR d.estado NOT IN (:estadoPagada, :estadoCanceladaAnticipada)) " +
+						 "AND d.fechaVencimiento < :fechaCorte " +
+						 "AND d.prestamo.idEstado IN (:vigente, :plazoVencido, :enMora) " +
+						 "ORDER BY d.prestamo.codigo ASC";
+
+			Query query = em.createQuery(jpql);
+			query.setParameter("estadoPagada", (long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+			query.setParameter("estadoCanceladaAnticipada", (long) com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
+			query.setParameter("fechaCorte", fechaCorte);
+			query.setParameter("vigente", (long) com.saa.rubros.EstadoPrestamo.VIGENTE);
+			query.setParameter("plazoVencido", (long) com.saa.rubros.EstadoPrestamo.DE_PLAZO_VENCIDO);
+			query.setParameter("enMora", (long) com.saa.rubros.EstadoPrestamo.EN_MORA);
+
+			List<Long> resultados = query.getResultList();
+			System.out.println("  Préstamos con cuotas vencidas: " + (resultados != null ? resultados.size() : 0));
+			return resultados;
+
+		} catch (Exception e) {
+			System.err.println("Error en selectPrestamosConCuotasVencidas: " + e.getMessage());
+			e.printStackTrace();
+			// NO lanzar excepción - retornar lista vacía para no detener el proceso
+			return new ArrayList<>();
+		}
+	}
+
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<DetallePrestamo> selectCuotasVencidasByPrestamo(Long codigoPrestamo, LocalDateTime fechaCorte)
+			throws Throwable {
+		System.out.println("DetallePrestamoDaoServiceImpl.selectCuotasVencidasByPrestamo - Préstamo: "
+			+ codigoPrestamo + " - corte: " + fechaCorte);
+
+		try {
+			String jpql = "SELECT d FROM DetallePrestamo d " +
+						 "WHERE d.prestamo.codigo = :codigoPrestamo " +
+						 "AND (d.estado IS NULL OR d.estado NOT IN (:estadoPagada, :estadoCanceladaAnticipada)) " +
+						 "AND d.fechaVencimiento < :fechaCorte " +
+						 "ORDER BY d.numeroCuota ASC";
+
+			Query query = em.createQuery(jpql);
+			query.setParameter("codigoPrestamo", codigoPrestamo);
+			query.setParameter("estadoPagada", (long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+			query.setParameter("estadoCanceladaAnticipada", (long) com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
+			query.setParameter("fechaCorte", fechaCorte);
+
+			List<DetallePrestamo> resultados = query.getResultList();
+			System.out.println("  Cuotas vencidas encontradas: " + (resultados != null ? resultados.size() : 0));
+			return resultados;
+
+		} catch (Exception e) {
+			System.err.println("Error en selectCuotasVencidasByPrestamo: " + e.getMessage());
+			e.printStackTrace();
+			// NO lanzar excepción - retornar lista vacía para no detener el proceso
+			return new ArrayList<>();
+		}
+	}
+
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<Long> selectPrestamosEnMoraSinCuotasVencidas(LocalDateTime fechaCorte) throws Throwable {
+		System.out.println("DetallePrestamoDaoServiceImpl.selectPrestamosEnMoraSinCuotasVencidas - corte: " + fechaCorte);
+
+		try {
+			// Préstamos marcados EN_MORA que ya no tienen ninguna cuota vencida impaga.
+			// Se consulta sobre DetallePrestamo (no sobre Prestamo) para reutilizar el mismo
+			// criterio de "cuota vencida" del resto del proceso.
+			String jpql = "SELECT DISTINCT d.prestamo.codigo FROM DetallePrestamo d " +
+						 "WHERE d.prestamo.idEstado = :enMora " +
+						 "AND NOT EXISTS (" +
+						 "   SELECT 1 FROM DetallePrestamo d2 " +
+						 "   WHERE d2.prestamo.codigo = d.prestamo.codigo " +
+						 "   AND (d2.estado IS NULL OR d2.estado NOT IN (:estadoPagada, :estadoCanceladaAnticipada)) " +
+						 "   AND d2.fechaVencimiento < :fechaCorte" +
+						 ") " +
+						 "ORDER BY d.prestamo.codigo ASC";
+
+			Query query = em.createQuery(jpql);
+			query.setParameter("enMora", (long) com.saa.rubros.EstadoPrestamo.EN_MORA);
+			query.setParameter("estadoPagada", (long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+			query.setParameter("estadoCanceladaAnticipada", (long) com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
+			query.setParameter("fechaCorte", fechaCorte);
+
+			List<Long> resultados = query.getResultList();
+			System.out.println("  Préstamos EN_MORA a regularizar: " + (resultados != null ? resultados.size() : 0));
+			return resultados;
+
+		} catch (Exception e) {
+			System.err.println("Error en selectPrestamosEnMoraSinCuotasVencidas: " + e.getMessage());
+			e.printStackTrace();
+			// NO lanzar excepción - retornar lista vacía para no detener el proceso
+			return new ArrayList<>();
+		}
+	}
+
 }

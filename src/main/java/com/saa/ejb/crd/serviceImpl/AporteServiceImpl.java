@@ -288,6 +288,7 @@ public class AporteServiceImpl implements AporteService {
         pagoAporte.setFechaRegistro(LocalDateTime.now());
         pagoAporte.setEstado(1L);
         pagoAporte.setPagoPrestamo(null);
+        pagoAporte.setRutaDocumentoRespaldo(solicitud.getRutaDocumentoRespaldo());
         pagoAporte = pagoAporteDaoService.save(pagoAporte, null);
 
         double saldoTipo = saldoAporteService.saldoPorEntidadYTipo(entidad.getCodigo(), tipo.getCodigo());

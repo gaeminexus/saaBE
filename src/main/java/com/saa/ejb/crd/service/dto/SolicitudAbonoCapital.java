@@ -21,6 +21,9 @@ public class SolicitudAbonoCapital {
     /** Fecha de negocio de la operación; si es null se asume hoy */
     private LocalDate fecha;
 
+    /** Ruta del documento de respaldo digitalizado; se estampa en el PagoPrestamo del abono */
+    private String rutaDocumentoRespaldo;
+
     public SolicitudAbonoCapital() {
     }
 
@@ -70,5 +73,13 @@ public class SolicitudAbonoCapital {
 
     public void setFecha(LocalDate fecha) {
         this.fecha = fecha;
+    }
+
+    public String getRutaDocumentoRespaldo() {
+        return rutaDocumentoRespaldo;
+    }
+
+    public void setRutaDocumentoRespaldo(String rutaDocumentoRespaldo) {
+        this.rutaDocumentoRespaldo = rutaDocumentoRespaldo;
     }
 }

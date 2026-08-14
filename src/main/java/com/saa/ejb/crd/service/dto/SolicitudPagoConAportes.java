@@ -22,6 +22,9 @@ public class SolicitudPagoConAportes {
     /** Fecha de negocio del pago; si es null se asume hoy */
     private LocalDate fechaPago;
 
+    /** Ruta del documento de respaldo digitalizado; se estampa en los pagos generados */
+    private String rutaDocumentoRespaldo;
+
     public SolicitudPagoConAportes() {
     }
 
@@ -63,5 +66,13 @@ public class SolicitudPagoConAportes {
 
     public void setFechaPago(LocalDate fechaPago) {
         this.fechaPago = fechaPago;
+    }
+
+    public String getRutaDocumentoRespaldo() {
+        return rutaDocumentoRespaldo;
+    }
+
+    public void setRutaDocumentoRespaldo(String rutaDocumentoRespaldo) {
+        this.rutaDocumentoRespaldo = rutaDocumentoRespaldo;
     }
 }

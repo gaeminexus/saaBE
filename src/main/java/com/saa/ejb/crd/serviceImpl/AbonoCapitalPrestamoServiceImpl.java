@@ -239,6 +239,7 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
         pago.setIdEstado(1L);
         pago.setAnulado(0L);
         pago.setEventoPrestamo(evento);
+        pago.setRutaDocumentoRespaldo(solicitud.getRutaDocumentoRespaldo());
         pago = pagoPrestamoService.saveSingle(pago);
 
         // 6. Actualizar el préstamo
