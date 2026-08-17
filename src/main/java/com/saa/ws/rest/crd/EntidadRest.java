@@ -399,10 +399,13 @@ public class EntidadRest {
      * El corte real es el cierre del mes anterior al de fechaEjecucion: los aportes
      * se graban el último día del mes, así que el mes en curso aún no está cargado.
      * Las dos columnas de préstamos son la excepción: se evalúan al día de ejecución.
+     * Más de 6 cuotas en mora quitan tanto el voto como la elegibilidad.
      *
      * @param fechaEjecucion Fecha de ejecución (opcional, formato yyyy-MM-dd; default: hoy)
      * @param calidadId Filtro opcional por calidad del partícipe (ENTDIDST)
-     * @param minimoAportes Mínimo de aportes para elegibilidad (opcional, default: 90)
+     * @param minimoAportes Mínimo de aportes para elegibilidad (opcional, default: 90).
+     *                      Cumplirlo no basta: con más de 6 cuotas en mora la
+     *                      elegibilidad se pierde igual.
      * @return JSON con la lista de filas del padrón
      */
     @GET

@@ -27,7 +27,9 @@
         ELSE 'Estado ' || TO_CHAR(d.DTPRESTD)
     END                                                              AS ESTADO_TXT,
     NVL(NVL(NULLIF(d.DTPRTTLL, 0), d.DTPRCTAA), 0)                    AS CUOTA_TOTAL,
-    GREATEST(NVL(d.DTPRSLDO, 0), 0)                                   AS SALDO_PENDIENTE,
+    -- Saldo pendiente = DTPRSLDO + pendiente de interes en mora (interes vencido, DTPRSLIV),
+    -- que DTPRSLDO no incluye. Piso en 0.
+    GREATEST(NVL(d.DTPRSLDO, 0) + NVL(d.DTPRSLIV, 0), 0)              AS SALDO_PENDIENTE,
     -- Valores PACTADOS de la cuota
     NVL(d.DTPRDSGR, 0)                                                AS PAC_DSGR,
     NVL(d.DTPRMRAA, 0)                                                AS PAC_MORA,
@@ -328,7 +330,7 @@ ORDER BY g.PGPRFCHA ASC NULLS LAST]]></query>
 			<expression><![CDATA[" " + $V{PAGE_NUMBER}]]></expression>
 		</element>
 	</pageFooter>
-	<summary height="210" splitType="Stretch">
+	<summary height="230" splitType="Stretch">
 		<!-- FILA DE TOTALES -->
 		<element kind="staticText" uuid="b7c00000-0000-0000-0000-000000000501" mode="Opaque" x="0" y="0" width="220" height="16" backcolor="#F7FAFC" forecolor="#1A202C" fontName="Tahoma" fontSize="7.5" bold="true" hTextAlign="Left" vTextAlign="Middle">
 			<text><![CDATA[TOTALES]]></text>
@@ -362,49 +364,152 @@ ORDER BY g.PGPRFCHA ASC NULLS LAST]]></query>
 			<expression><![CDATA[$F{TOTAL_PAGADO}]]></expression>
 			<box rightPadding="4"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
 		</element>
-		<!-- COMPOSICION DE LA CUOTA -->
+		<!-- COMPOSICION DE LA CUOTA (tabla) -->
 		<element kind="staticText" uuid="b7c00000-0000-0000-0000-000000000510" x="0" y="26" width="792" height="14" forecolor="#4A5568" fontName="Tahoma" fontSize="8.0" bold="true" vTextAlign="Middle">
 			<text><![CDATA[COMPOSICION DE LA CUOTA]]></text>
 		</element>
-		<element kind="textField" uuid="b7c00000-0000-0000-0000-000000000511" x="0" y="40" width="792" height="96" forecolor="#1A202C" fontName="Tahoma" fontSize="8.0" textAdjust="StretchHeight" vTextAlign="Top">
-			<expression><![CDATA[( ($F{PAC_DSGR}.doubleValue() > 0 || $F{SUM_DSGR}.doubleValue() > 0)
-   ? ("Desgravamen:   Pactado " + new java.text.DecimalFormat("$#,##0.00").format($F{PAC_DSGR}.doubleValue())
-      + "   ·   Pagado " + new java.text.DecimalFormat("$#,##0.00").format($F{SUM_DSGR}.doubleValue())
-      + "   ·   Pendiente " + new java.text.DecimalFormat("$#,##0.00").format(Math.max($F{PAC_DSGR}.doubleValue() - $F{SUM_DSGR}.doubleValue(), 0.0)) + "\n")
-   : "")
-+ ( ($F{PAC_MORA}.doubleValue() > 0 || $F{SUM_MORA}.doubleValue() > 0)
-   ? ("Mora:   Pactado " + new java.text.DecimalFormat("$#,##0.00").format($F{PAC_MORA}.doubleValue())
-      + "   ·   Pagado " + new java.text.DecimalFormat("$#,##0.00").format($F{SUM_MORA}.doubleValue())
-      + "   ·   Pendiente " + new java.text.DecimalFormat("$#,##0.00").format($F{SAL_MORA}.doubleValue()) + "\n")
-   : "")
-+ ( ($F{PAC_INVN}.doubleValue() > 0 || $F{SUM_INVN}.doubleValue() > 0)
-   ? ("Interes vencido:   Pactado " + new java.text.DecimalFormat("$#,##0.00").format($F{PAC_INVN}.doubleValue())
-      + "   ·   Pagado " + new java.text.DecimalFormat("$#,##0.00").format($F{SUM_INVN}.doubleValue())
-      + "   ·   Pendiente " + new java.text.DecimalFormat("$#,##0.00").format($F{SAL_INVN}.doubleValue()) + "\n")
-   : "")
-+ ("Interes:   Pactado " + new java.text.DecimalFormat("$#,##0.00").format($F{PAC_INTR}.doubleValue())
-   + "   ·   Pagado " + new java.text.DecimalFormat("$#,##0.00").format($F{SUM_INTR}.doubleValue())
-   + "   ·   Pendiente " + new java.text.DecimalFormat("$#,##0.00").format($F{SAL_INTR}.doubleValue()) + "\n")
-+ ("Capital:   Pactado " + new java.text.DecimalFormat("$#,##0.00").format($F{PAC_CPTL}.doubleValue())
-   + "   ·   Pagado " + new java.text.DecimalFormat("$#,##0.00").format($F{SUM_CPTL}.doubleValue())
-   + "   ·   Pendiente " + new java.text.DecimalFormat("$#,##0.00").format($F{SAL_CPTL}.doubleValue()) + "\n")
-+ ( ($F{PAC_SEGU}.doubleValue() > 0 || $F{SUM_SEGU}.doubleValue() > 0)
-   ? ("Seguro:   Pactado " + new java.text.DecimalFormat("$#,##0.00").format($F{PAC_SEGU}.doubleValue())
-      + "   ·   Pagado " + new java.text.DecimalFormat("$#,##0.00").format($F{SUM_SEGU}.doubleValue())
-      + "   ·   Pendiente " + new java.text.DecimalFormat("$#,##0.00").format(Math.max($F{PAC_SEGU}.doubleValue() - $F{SUM_SEGU}.doubleValue(), 0.0)) + "\n")
-   : "")
-+ ( ($F{PAC_EXTRA}.doubleValue() > 0 || $F{SUM_EXTRA}.doubleValue() > 0)
-   ? ("Pago extra:   Pactado " + new java.text.DecimalFormat("$#,##0.00").format($F{PAC_EXTRA}.doubleValue())
-      + "   ·   Pagado " + new java.text.DecimalFormat("$#,##0.00").format($F{SUM_EXTRA}.doubleValue())
-      + "   ·   Pendiente " + new java.text.DecimalFormat("$#,##0.00").format(Math.max($F{PAC_EXTRA}.doubleValue() - $F{SUM_EXTRA}.doubleValue(), 0.0)) + "\n")
-   : "")]]></expression>
+		<!-- Encabezado de la tabla -->
+		<element kind="staticText" uuid="b7c00000-0000-0000-0000-000000000540" mode="Opaque" x="0" y="42" width="200" height="14" backcolor="#EDF2F7" forecolor="#4A5568" fontName="Tahoma" fontSize="7.5" bold="true" hTextAlign="Left" vTextAlign="Middle">
+			<text><![CDATA[Concepto]]></text>
+			<box leftPadding="6"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="staticText" uuid="b7c00000-0000-0000-0000-000000000541" mode="Opaque" x="200" y="42" width="190" height="14" backcolor="#EDF2F7" forecolor="#4A5568" fontName="Tahoma" fontSize="7.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<text><![CDATA[Pactado]]></text>
+			<box rightPadding="8"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="staticText" uuid="b7c00000-0000-0000-0000-000000000542" mode="Opaque" x="390" y="42" width="190" height="14" backcolor="#EDF2F7" forecolor="#4A5568" fontName="Tahoma" fontSize="7.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<text><![CDATA[Pagado]]></text>
+			<box rightPadding="8"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="staticText" uuid="b7c00000-0000-0000-0000-000000000543" mode="Opaque" x="580" y="42" width="212" height="14" backcolor="#EDF2F7" forecolor="#4A5568" fontName="Tahoma" fontSize="7.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<text><![CDATA[Pendiente]]></text>
+			<box rightPadding="8"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<!-- Fila: Desgravamen (solo si pactado>0 o pagado>0) -->
+		<element kind="textField" uuid="b7c00000-0000-0000-0000-000000000544" x="0" y="56" width="200" height="13" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" removeLineWhenBlank="true" hTextAlign="Left" vTextAlign="Middle">
+			<expression><![CDATA[($F{PAC_DSGR}.doubleValue() > 0 || $F{SUM_DSGR}.doubleValue() > 0) ? "Desgravamen" : null]]></expression>
+			<box leftPadding="6"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="b7c00000-0000-0000-0000-000000000545" x="200" y="56" width="190" height="13" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" removeLineWhenBlank="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[($F{PAC_DSGR}.doubleValue() > 0 || $F{SUM_DSGR}.doubleValue() > 0) ? new java.text.DecimalFormat("$#,##0.00").format($F{PAC_DSGR}.doubleValue()) : null]]></expression>
+			<box rightPadding="8"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="b7c00000-0000-0000-0000-000000000546" x="390" y="56" width="190" height="13" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" removeLineWhenBlank="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[($F{PAC_DSGR}.doubleValue() > 0 || $F{SUM_DSGR}.doubleValue() > 0) ? new java.text.DecimalFormat("$#,##0.00").format($F{SUM_DSGR}.doubleValue()) : null]]></expression>
+			<box rightPadding="8"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="b7c00000-0000-0000-0000-000000000547" x="580" y="56" width="212" height="13" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" removeLineWhenBlank="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[($F{PAC_DSGR}.doubleValue() > 0 || $F{SUM_DSGR}.doubleValue() > 0) ? new java.text.DecimalFormat("$#,##0.00").format(Math.max($F{PAC_DSGR}.doubleValue() - $F{SUM_DSGR}.doubleValue(), 0.0)) : null]]></expression>
+			<box rightPadding="8"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<!-- Fila: Mora -->
+		<element kind="textField" uuid="b7c00000-0000-0000-0000-000000000548" x="0" y="69" width="200" height="13" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" removeLineWhenBlank="true" hTextAlign="Left" vTextAlign="Middle">
+			<expression><![CDATA[($F{PAC_MORA}.doubleValue() > 0 || $F{SUM_MORA}.doubleValue() > 0) ? "Mora" : null]]></expression>
+			<box leftPadding="6"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="b7c00000-0000-0000-0000-000000000549" x="200" y="69" width="190" height="13" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" removeLineWhenBlank="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[($F{PAC_MORA}.doubleValue() > 0 || $F{SUM_MORA}.doubleValue() > 0) ? new java.text.DecimalFormat("$#,##0.00").format($F{PAC_MORA}.doubleValue()) : null]]></expression>
+			<box rightPadding="8"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="b7c00000-0000-0000-0000-00000000054a" x="390" y="69" width="190" height="13" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" removeLineWhenBlank="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[($F{PAC_MORA}.doubleValue() > 0 || $F{SUM_MORA}.doubleValue() > 0) ? new java.text.DecimalFormat("$#,##0.00").format($F{SUM_MORA}.doubleValue()) : null]]></expression>
+			<box rightPadding="8"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="b7c00000-0000-0000-0000-00000000054b" x="580" y="69" width="212" height="13" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" removeLineWhenBlank="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[($F{PAC_MORA}.doubleValue() > 0 || $F{SUM_MORA}.doubleValue() > 0) ? new java.text.DecimalFormat("$#,##0.00").format($F{SAL_MORA}.doubleValue()) : null]]></expression>
+			<box rightPadding="8"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<!-- Fila: Interes vencido -->
+		<element kind="textField" uuid="b7c00000-0000-0000-0000-00000000054c" x="0" y="82" width="200" height="13" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" removeLineWhenBlank="true" hTextAlign="Left" vTextAlign="Middle">
+			<expression><![CDATA[($F{PAC_INVN}.doubleValue() > 0 || $F{SUM_INVN}.doubleValue() > 0) ? "Interes vencido" : null]]></expression>
+			<box leftPadding="6"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="b7c00000-0000-0000-0000-00000000054d" x="200" y="82" width="190" height="13" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" removeLineWhenBlank="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[($F{PAC_INVN}.doubleValue() > 0 || $F{SUM_INVN}.doubleValue() > 0) ? new java.text.DecimalFormat("$#,##0.00").format($F{PAC_INVN}.doubleValue()) : null]]></expression>
+			<box rightPadding="8"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="b7c00000-0000-0000-0000-00000000054e" x="390" y="82" width="190" height="13" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" removeLineWhenBlank="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[($F{PAC_INVN}.doubleValue() > 0 || $F{SUM_INVN}.doubleValue() > 0) ? new java.text.DecimalFormat("$#,##0.00").format($F{SUM_INVN}.doubleValue()) : null]]></expression>
+			<box rightPadding="8"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="b7c00000-0000-0000-0000-00000000054f" x="580" y="82" width="212" height="13" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" removeLineWhenBlank="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[($F{PAC_INVN}.doubleValue() > 0 || $F{SUM_INVN}.doubleValue() > 0) ? new java.text.DecimalFormat("$#,##0.00").format($F{SAL_INVN}.doubleValue()) : null]]></expression>
+			<box rightPadding="8"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<!-- Fila: Interes (siempre) -->
+		<element kind="textField" uuid="b7c00000-0000-0000-0000-000000000550" x="0" y="95" width="200" height="13" fontName="Tahoma" fontSize="7.5" hTextAlign="Left" vTextAlign="Middle">
+			<expression><![CDATA["Interes"]]></expression>
+			<box leftPadding="6"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="b7c00000-0000-0000-0000-000000000551" x="200" y="95" width="190" height="13" pattern="$#,##0.00" fontName="Tahoma" fontSize="7.5" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$F{PAC_INTR}]]></expression>
+			<box rightPadding="8"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="b7c00000-0000-0000-0000-000000000552" x="390" y="95" width="190" height="13" pattern="$#,##0.00" fontName="Tahoma" fontSize="7.5" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$F{SUM_INTR}]]></expression>
+			<box rightPadding="8"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="b7c00000-0000-0000-0000-000000000553" x="580" y="95" width="212" height="13" pattern="$#,##0.00" fontName="Tahoma" fontSize="7.5" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$F{SAL_INTR}]]></expression>
+			<box rightPadding="8"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<!-- Fila: Capital (siempre) — Pendiente = Pactado - Pagado de ESTA cuota -->
+		<element kind="textField" uuid="b7c00000-0000-0000-0000-000000000554" x="0" y="108" width="200" height="13" fontName="Tahoma" fontSize="7.5" hTextAlign="Left" vTextAlign="Middle">
+			<expression><![CDATA["Capital"]]></expression>
+			<box leftPadding="6"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="b7c00000-0000-0000-0000-000000000555" x="200" y="108" width="190" height="13" pattern="$#,##0.00" fontName="Tahoma" fontSize="7.5" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$F{PAC_CPTL}]]></expression>
+			<box rightPadding="8"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="b7c00000-0000-0000-0000-000000000556" x="390" y="108" width="190" height="13" pattern="$#,##0.00" fontName="Tahoma" fontSize="7.5" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$F{SUM_CPTL}]]></expression>
+			<box rightPadding="8"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="b7c00000-0000-0000-0000-000000000557" x="580" y="108" width="212" height="13" pattern="$#,##0.00" fontName="Tahoma" fontSize="7.5" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[java.math.BigDecimal.valueOf(Math.max($F{PAC_CPTL}.doubleValue() - $F{SUM_CPTL}.doubleValue(), 0.0))]]></expression>
+			<box rightPadding="8"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<!-- Fila: Seguro (solo si aplica) -->
+		<element kind="textField" uuid="b7c00000-0000-0000-0000-000000000558" x="0" y="121" width="200" height="13" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" removeLineWhenBlank="true" hTextAlign="Left" vTextAlign="Middle">
+			<expression><![CDATA[($F{PAC_SEGU}.doubleValue() > 0 || $F{SUM_SEGU}.doubleValue() > 0) ? "Seguro" : null]]></expression>
+			<box leftPadding="6"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="b7c00000-0000-0000-0000-000000000559" x="200" y="121" width="190" height="13" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" removeLineWhenBlank="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[($F{PAC_SEGU}.doubleValue() > 0 || $F{SUM_SEGU}.doubleValue() > 0) ? new java.text.DecimalFormat("$#,##0.00").format($F{PAC_SEGU}.doubleValue()) : null]]></expression>
+			<box rightPadding="8"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="b7c00000-0000-0000-0000-00000000055a" x="390" y="121" width="190" height="13" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" removeLineWhenBlank="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[($F{PAC_SEGU}.doubleValue() > 0 || $F{SUM_SEGU}.doubleValue() > 0) ? new java.text.DecimalFormat("$#,##0.00").format($F{SUM_SEGU}.doubleValue()) : null]]></expression>
+			<box rightPadding="8"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="b7c00000-0000-0000-0000-00000000055b" x="580" y="121" width="212" height="13" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" removeLineWhenBlank="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[($F{PAC_SEGU}.doubleValue() > 0 || $F{SUM_SEGU}.doubleValue() > 0) ? new java.text.DecimalFormat("$#,##0.00").format(Math.max($F{PAC_SEGU}.doubleValue() - $F{SUM_SEGU}.doubleValue(), 0.0)) : null]]></expression>
+			<box rightPadding="8"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<!-- Fila: Pago extra (solo si aplica) -->
+		<element kind="textField" uuid="b7c00000-0000-0000-0000-00000000055c" x="0" y="134" width="200" height="13" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" removeLineWhenBlank="true" hTextAlign="Left" vTextAlign="Middle">
+			<expression><![CDATA[($F{PAC_EXTRA}.doubleValue() > 0 || $F{SUM_EXTRA}.doubleValue() > 0) ? "Pago extra" : null]]></expression>
+			<box leftPadding="6"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="b7c00000-0000-0000-0000-00000000055d" x="200" y="134" width="190" height="13" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" removeLineWhenBlank="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[($F{PAC_EXTRA}.doubleValue() > 0 || $F{SUM_EXTRA}.doubleValue() > 0) ? new java.text.DecimalFormat("$#,##0.00").format($F{PAC_EXTRA}.doubleValue()) : null]]></expression>
+			<box rightPadding="8"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="b7c00000-0000-0000-0000-00000000055e" x="390" y="134" width="190" height="13" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" removeLineWhenBlank="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[($F{PAC_EXTRA}.doubleValue() > 0 || $F{SUM_EXTRA}.doubleValue() > 0) ? new java.text.DecimalFormat("$#,##0.00").format($F{SUM_EXTRA}.doubleValue()) : null]]></expression>
+			<box rightPadding="8"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="b7c00000-0000-0000-0000-00000000055f" x="580" y="134" width="212" height="13" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" removeLineWhenBlank="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[($F{PAC_EXTRA}.doubleValue() > 0 || $F{SUM_EXTRA}.doubleValue() > 0) ? new java.text.DecimalFormat("$#,##0.00").format(Math.max($F{PAC_EXTRA}.doubleValue() - $F{SUM_EXTRA}.doubleValue(), 0.0)) : null]]></expression>
+			<box rightPadding="8"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
 		</element>
 		<!-- OBSERVACIONES (se omite si no hay) -->
-		<element kind="staticText" uuid="b7c00000-0000-0000-0000-000000000520" x="0" y="144" width="792" height="14" forecolor="#4A5568" fontName="Tahoma" fontSize="8.0" bold="true" vTextAlign="Middle">
+		<element kind="staticText" uuid="b7c00000-0000-0000-0000-000000000520" x="0" y="160" width="792" height="14" forecolor="#4A5568" fontName="Tahoma" fontSize="8.0" bold="true" vTextAlign="Middle">
 			<printWhenExpression><![CDATA[$V{V_OBS} != null && $V{V_OBS}.trim().length() > 0]]></printWhenExpression>
 			<text><![CDATA[OBSERVACIONES]]></text>
 		</element>
-		<element kind="textField" uuid="b7c00000-0000-0000-0000-000000000521" x="0" y="158" width="792" height="30" forecolor="#1A202C" fontName="Tahoma" fontSize="8.0" textAdjust="StretchHeight" blankWhenNull="true" vTextAlign="Top">
+		<element kind="textField" uuid="b7c00000-0000-0000-0000-000000000521" x="0" y="174" width="792" height="30" forecolor="#1A202C" fontName="Tahoma" fontSize="8.0" textAdjust="StretchHeight" blankWhenNull="true" vTextAlign="Top">
 			<printWhenExpression><![CDATA[$V{V_OBS} != null && $V{V_OBS}.trim().length() > 0]]></printWhenExpression>
 			<expression><![CDATA[$V{V_OBS}]]></expression>
 		</element>

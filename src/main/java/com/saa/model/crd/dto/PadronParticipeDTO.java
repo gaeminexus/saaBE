@@ -24,7 +24,7 @@ public class PadronParticipeDTO implements Serializable {
     /** Nombres y apellidos (ENTDRZNS). */
     private String nombresApellidos;
 
-    /** Código de la calidad del partícipe (ENTDIDST = ESPRCDGO). */
+    /** Código de la calidad del partícipe: ENTDIDST, que es el alterno ESPRCDEX (ACTIVO = 1). */
     private Long calidadParticipeId;
 
     /** Nombre de la calidad del partícipe (ESPRNMBR): ACTIVO / CESANTE / ... */
@@ -39,10 +39,16 @@ public class PadronParticipeDTO implements Serializable {
     /** Meses en mora; 0 si está al día, null si nunca registró un aporte. */
     private Long mesesEnMora;
 
-    /** "SI" o "NO". */
+    /**
+     * "SI" o "NO". Requiere estado ACTIVO, estar AL DIA en aportes y no arrastrar más de
+     * 6 cuotas en mora: con 7 o más se pierde el voto aunque esté al día.
+     */
     private String habilitadoVoto;
 
-    /** "SI" o "NO". */
+    /**
+     * "SI" o "NO". Requiere estado ACTIVO, el mínimo de aportes y no arrastrar más de
+     * 6 cuotas en mora: con 7 o más deja de ser elegible aunque los aportes alcancen.
+     */
     private String elegibleMiembro;
 
     /**

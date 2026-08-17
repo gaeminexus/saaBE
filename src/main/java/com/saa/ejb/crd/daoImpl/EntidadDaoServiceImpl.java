@@ -68,6 +68,13 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 			(long) EstadoCuotaPrestamo.PAGADA,
 			(long) EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
 
+	/**
+	 * Tope de cuotas en mora que todavía permite votar y ser elegible como miembro. Con
+	 * MÁS de este número (7 en adelante) el partícipe pierde ambas cosas aunque cumpla
+	 * el mínimo de aportes y esté al día: se pierden por deuda, no solo por aportes.
+	 */
+	private static final Long MAXIMO_CUOTAS_MORA_ELEGIBLE = 6L;
+
 	@SuppressWarnings("unchecked")
 	@Override
 	public List<Entidad> selectByCodigoPetro(Long codigoPetro) throws Throwable {
@@ -469,9 +476,17 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 			"       b.numero_aportes, " +
 			"       b.estado_mora, " +
 			"       b.meses_en_mora, " +
+			// Habilitado para voto = ACTIVO + al día en aportes + no arrastrar más de
+			// MAXIMO_CUOTAS_MORA_ELEGIBLE cuotas en mora. Mismo tope que la elegibilidad:
+			// estar al día en aportes no alcanza si se deben 7 o más cuotas de préstamo.
 			"       CASE WHEN b.es_activo = 1 AND b.estado_mora = 'AL DIA' " +
+			"                 AND b.max_cuotas_mora <= :maxCuotasMoraElegible " +
 			"            THEN 'SI' ELSE 'NO' END AS habilitado_voto, " +
+			// Elegible = ACTIVO + mínimo de aportes + no arrastrar más de
+			// MAXIMO_CUOTAS_MORA_ELEGIBLE cuotas en mora. El tercer requisito manda sobre
+			// el segundo: quien cumple los aportes pero debe 7 o más cuotas sale 'NO'.
 			"       CASE WHEN b.es_activo = 1 AND b.numero_aportes >= :minimoAportes " +
+			"                 AND b.max_cuotas_mora <= :maxCuotasMoraElegible " +
 			"            THEN 'SI' ELSE 'NO' END AS elegible_miembro, " +
 			"       b.correo, " +
 			"       b.tiene_prestamo_mora, " +
@@ -490,6 +505,7 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 		query.setParameter("corteCuotas", corteCuotas);
 		query.setParameter("estadosCuotaNoMora", ESTADOS_CUOTA_NO_EN_MORA);
 		query.setParameter("estadosPrestamoMora", ESTADOS_PRESTAMO_MORA);
+		query.setParameter("maxCuotasMoraElegible", MAXIMO_CUOTAS_MORA_ELEGIBLE);
 
 		@SuppressWarnings("unchecked")
 		java.util.List<Object[]> results = query.getResultList();

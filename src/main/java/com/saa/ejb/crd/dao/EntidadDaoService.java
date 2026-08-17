@@ -120,8 +120,11 @@ public interface EntidadDaoService extends EntityDao<Entidad> {
 	 *    0 si aportó en el mes de referencia, 1 el mes anterior, y así. Es
 	 *    independiente de la tolerancia, así que una fila AL DIA puede mostrar 1.
 	 *    NULL si nunca aportó.
-	 *  - Habilitado para voto: estado ACTIVO y AL DIA.
-	 *  - Elegible para miembro: estado ACTIVO y numeroAportes >= minimoAportes.
+	 *  - Habilitado para voto: estado ACTIVO, AL DIA y no arrastrar más de 6 cuotas
+	 *    en mora.
+	 *  - Elegible para miembro: estado ACTIVO, numeroAportes >= minimoAportes y no
+	 *    arrastrar más de 6 cuotas en mora. Con 7 o más cuotas en mora se pierden voto
+	 *    y elegibilidad aunque los aportes alcancen.
 	 *  - Tiene préstamo en mora: SI si tiene algún CRD.PRST con PRSTIDST en
 	 *    EN MORA (11) o DE PLAZO VENCIDO (8).
 	 *  - Máximo de cuotas en mora: cuotas vencidas impagas del peor de esos

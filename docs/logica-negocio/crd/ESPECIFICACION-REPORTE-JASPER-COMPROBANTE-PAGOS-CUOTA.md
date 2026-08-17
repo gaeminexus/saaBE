@@ -316,13 +316,24 @@ secciones grises, pie con paginación y leyenda institucional).
   frase resumen, composición y fila de totales salen de campos disponibles en la primera fila.
 - La **tabla de pagos** es la banda de detalle; la fila fantasma del `LEFT JOIN` (cuota sin
   pagos vigentes) se suprime con `printWhenExpression` (`PAGO_CODIGO != null`).
-- **Composición** y **Observaciones** se arman como `textField` multilínea (`textAdjust=StretchHeight`)
-  que se autocolapsan: la composición oculta conceptos en $0 salvo Capital/Interés (§3.5), y
-  Observaciones acumula en la variable `V_OBS` solo los pagos con `PGPROBSR` no vacío (se omite
-  el bloque si queda vacío).
+- **Composición** se arma como una **tabla** (columnas `Concepto | Pactado | Pagado | Pendiente`).
+  Los conceptos en $0 (salvo Capital/Interés, §3.5) se ocultan **sin dejar hueco** con
+  `removeLineWhenBlank="true"` + `blankWhenNull="true"` (la expresión devuelve `null` cuando
+  la fila no aplica y JasperReports colapsa la línea). **Observaciones** acumula en la variable
+  `V_OBS` solo los pagos con `PGPROBSR` no vacío (se omite el bloque si queda vacío).
+- **Corrección al §3.5/§4.2 — Pendiente de Capital:** el `Pendiente` de **Capital** se calcula como
+  `Pactado − Pagado` de la cuota (`GREATEST(DTPRCPTL − SUM(PGPRCPPG), 0)`), **no** con `DTPRSLCP`.
+  `DTPRSLCP` es el **saldo de capital del préstamo completo** (saldo corriente tras la cuota), no
+  el capital pendiente de esta cuota, y mostraba un valor enorme y erróneo. Los demás conceptos
+  (Mora / Int. vencido / Interés) sí mantienen sus columnas de saldo por concepto, que son a nivel
+  de cuota.
 - Catálogos de **estado** (§5.1) y **tipo de operación** (§5.2) resueltos con `CASE` en el SQL.
 - Anulados excluidos con `NVL(PGPRANUL,0)=0` tanto en el detalle como en cada subconsulta (§4.1).
 - Regla de **Seguro** en la composición: simplificación de §4.3 (`DTPRVLSI>0` o `SUM(PGPRVLSI)>0`).
+- **Corrección al §3.2/§4.2 — Saldo pendiente:** el `Saldo pendiente` de la cabecera se calcula como
+  `GREATEST(DTPRSLDO + DTPRSLIV, 0)`, sumando el pendiente de **interés en mora / interés vencido**
+  (`DTPRSLIV`), que `DTPRSLDO` no incluía. El mismo campo alimenta la frase resumen, así que ambos
+  quedan consistentes.
 
 **Cómo generarlo:**
 
