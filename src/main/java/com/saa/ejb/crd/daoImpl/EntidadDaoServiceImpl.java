@@ -46,7 +46,7 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 	private static final Long TIPO_APORTE_CESANTIA   = 11L;
 
 	/** Meses hacia atrás que se revisan para determinar el estado de mora. */
-	private static final int MESES_VENTANA_MORA = 2;
+	private static final int MESES_VENTANA_MORA = 1;
 
 	@SuppressWarnings("unchecked")
 	@Override
@@ -350,13 +350,13 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 		// contados hacia atrás desde el mes de referencia, ese mes incluido.
 		// Cae EN MORA a partir de acumular MESES_VENTANA_MORA meses sin aportar.
 		//
-		// Con ventana = 2 y referencia julio, primerMesAlDia = junio:
+		// Con ventana = 1 y referencia julio, primerMesAlDia = julio:
 		//   último aporte julio -> 0 meses sin aportar          -> AL DIA
-		//   último aporte junio -> 1 mes sin aportar (jul)      -> AL DIA
+		//   último aporte junio -> 1 mes sin aportar (jul)      -> EN MORA (1)
 		//   último aporte mayo  -> 2 meses sin aportar (jun,jul)-> EN MORA (2)
 		//
-		// El -1 es lo que hace que el borde caiga donde debe: sin él, mayo
-		// quedaría como AL DIA con 0 meses de mora pese a llevar dos meses sin aportar.
+		// El -1 es lo que hace que el borde caiga donde debe: sin él, junio
+		// quedaría como AL DIA con 0 meses de mora pese a llevar un mes sin aportar.
 		java.time.LocalDateTime primerMesAlDia = mesReferencia
 				.minusMonths(MESES_VENTANA_MORA - 1L);
 

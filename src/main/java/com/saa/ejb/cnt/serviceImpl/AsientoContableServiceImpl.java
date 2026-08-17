@@ -1395,6 +1395,8 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             case 0:  return "0";   // IVA 0%
             case 5:  return "5";   // IVA 5%
             case 8:  return "8";   // IVA tarifa especial 8%
+            case 12: return "2";   // IVA 12% (histÃ³rico, cÃ³digo SRI = 2)
+            case 14: return "3";   // IVA 14% (histÃ³rico, cÃ³digo SRI = 3)
             case 15: return "4";   // IVA 15% (cÃ³digo SRI = 4)
             default: return String.valueOf(porcentaje);
         }
@@ -2008,14 +2010,19 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         }
 
         // â”€â”€ DEBE: IVA crÃ©dito tributario â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        // Agrupa por codigoIVASRI del detalle y busca la cuenta en PGS.TSRI
-        // donde lsri.tabla = '17' y codigo = codigoIVASRI
+        // El VALOR del IVA se toma de la CABECERA de la factura
+        // (FacturaCompra.vIVA = <totalConImpuestos> del XML), NO de la sumatoria
+        // de los detalles. Los detalles solo determinan QUE cuentas intervienen:
+        // se agrupan por codigoIVASRI y la cuenta se busca en PGS.TSRI donde
+        // lsri.tabla = '17' y codigo = codigoIVASRI.
         Map<Long, Double> ivaMap = new LinkedHashMap<>();
         for (com.saa.model.cxp.DetalleFacturaCompra d : detalles) {
             if (d.getValorIVA() != null && d.getValorIVA() > 0 && d.getCodigoIVASRI() != null) {
                 ivaMap.merge(d.getCodigoIVASRI(), nvl(d.getValorIVA()), Double::sum);
             }
         }
+        ivaMap = distribuirIvaCabecera("FacturaCompra", idFacturaCompra, fc.getvIVA(),
+                ivaMap, codigoIvaDesdeTarifa(fc.getpIVA()));
         for (Map.Entry<Long, Double> e : ivaMap.entrySet()) {
             PlanCuenta pcIVA = obtenerCuentaIVACxpPorCodigo(e.getKey());
             if (pcIVA == null)
@@ -2050,6 +2057,130 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento,
                 fechaAsiento, observaciones, usuario, lineas);
+    }
+
+    // =========================================================================
+    // IVA de los documentos de compra: SIEMPRE el de la cabecera del XML
+    // =========================================================================
+    // El asiento debe registrar el IVA que el SRI autorizo en la cabecera
+    // (<totalConImpuestos>), no la sumatoria de los detalles: cuando el emisor
+    // calcula y redondea el impuesto linea por linea ambas cifras difieren en
+    // centavos, y con la sumatoria el asiento no coincide con el <importeTotal>
+    // que realmente se le paga al proveedor.
+    //
+    // Los detalles siguen siendo la fuente de QUE cuentas intervienen. Aplica a
+    // Factura, Nota de Credito, Nota de Debito y Liquidacion de compra.
+    // =========================================================================
+
+    /**
+     * Reparte el IVA declarado en la cabecera de un documento de compra entre
+     * los codigos de IVA del SRI que aparecen en sus detalles.
+     *
+     * El total de la cabecera se reparte proporcionalmente al IVA de cada
+     * codigo y el residuo del redondeo se carga al codigo de mayor valor, de
+     * modo que lo repartido suma exactamente el IVA de la cabecera.
+     *
+     * @param documento     : Etiqueta del documento para las trazas (ej. "FacturaCompra")
+     * @param idDocumento   : Id del documento, para las trazas
+     * @param ivaCabecera   : IVA de la cabecera (vIVA). Nulo = no se registro al cargar
+     * @param ivaDetalle    : IVA acumulado por codigo SRI segun los detalles
+     * @param codigoTarifa  : Codigo SRI deducido de la tarifa de cabecera, para
+     *                        el caso en que los detalles no desglosen el IVA
+     * @return              : Mapa codigo SRI -> valor de IVA a registrar
+     */
+    private <K> Map<K, Double> distribuirIvaCabecera(
+            String documento, Long idDocumento, Double ivaCabecera,
+            Map<K, Double> ivaDetalle, K codigoTarifa) {
+
+        // Cabecera sin IVA registrado (XML sin <totalImpuesto> de IVA, o
+        // documentos cargados antes de este cambio) -> conservar los detalles.
+        if (ivaCabecera == null) {
+            System.out.println("  IVA: " + documento + " " + idDocumento + " sin IVA en cabecera; "
+                    + "se usa la sumatoria de los detalles.");
+            return ivaDetalle;
+        }
+
+        double ivaCab = redondear2(nvl(ivaCabecera));
+        double ivaDet = 0.0;
+        for (Double v : ivaDetalle.values()) ivaDet += nvl(v);
+        ivaDet = redondear2(ivaDet);
+
+        // La cabecera manda: si declara 0.00 el asiento no lleva linea de IVA.
+        if (ivaCab <= 0.0) {
+            if (ivaDet > 0.0)
+                System.out.println("  IVA: " + documento + " " + idDocumento + " cabecera 0.00 vs "
+                        + "detalles " + ivaDet + "; el asiento no registra IVA.");
+            return new LinkedHashMap<>();
+        }
+
+        // Cabecera con IVA pero ningun detalle lo desglosa -> usar el codigo
+        // deducido de la tarifa de la cabecera.
+        if (ivaDetalle.isEmpty()) {
+            System.out.println("  IVA: " + documento + " " + idDocumento + " sin desglose en los "
+                    + "detalles; se registra " + ivaCab + " en el codigo SRI " + codigoTarifa + ".");
+            Map<K, Double> unico = new LinkedHashMap<>();
+            unico.put(codigoTarifa, ivaCab);
+            return unico;
+        }
+
+        if (Math.abs(ivaCab - ivaDet) < 0.005) return ivaDetalle;
+
+        System.out.println("  IVA: " + documento + " " + idDocumento + " cabecera=" + ivaCab
+                + " vs detalles=" + ivaDet + "; se registra el de la cabecera.");
+
+        // Una sola tarifa -> todo el IVA de cabecera va a esa cuenta.
+        if (ivaDetalle.size() == 1) {
+            Map<K, Double> unico = new LinkedHashMap<>();
+            unico.put(ivaDetalle.keySet().iterator().next(), ivaCab);
+            return unico;
+        }
+
+        // Varias tarifas -> prorratear y ajustar el residuo en la de mayor valor.
+        Map<K, Double> ajustado = new LinkedHashMap<>();
+        K codigoMayor = null;
+        double valorMayor = -1.0;
+        double asignado = 0.0;
+        for (Map.Entry<K, Double> e : ivaDetalle.entrySet()) {
+            double valor = redondear2(ivaCab * (nvl(e.getValue()) / ivaDet));
+            ajustado.put(e.getKey(), valor);
+            asignado += valor;
+            if (nvl(e.getValue()) > valorMayor) {
+                valorMayor  = nvl(e.getValue());
+                codigoMayor = e.getKey();
+            }
+        }
+        double residuo = redondear2(ivaCab - asignado);
+        if (residuo != 0.0 && codigoMayor != null)
+            ajustado.put(codigoMayor, redondear2(ajustado.get(codigoMayor) + residuo));
+        return ajustado;
+    }
+
+    /**
+     * Codigo SRI de IVA (como Long) deducido de la tarifa de la cabecera.
+     * @param tarifa : Tarifa de la cabecera (pIVA)
+     * @return       : Codigo del SRI; 0 si no se puede deducir
+     */
+    private Long codigoIvaDesdeTarifa(Double tarifa) {
+        try { return Long.valueOf(codigoIvaTextoDesdeTarifa(tarifa)); }
+        catch (NumberFormatException nfe) { return 0L; }
+    }
+
+    /**
+     * Codigo SRI de IVA (como texto) deducido de la tarifa de la cabecera.
+     * @param tarifa : Tarifa de la cabecera (pIVA)
+     * @return       : Codigo del SRI
+     */
+    private String codigoIvaTextoDesdeTarifa(Double tarifa) {
+        return mapPorcentajeIVAaCodigo(tarifa != null ? Long.valueOf(Math.round(tarifa)) : null);
+    }
+
+    /**
+     * Redondea a 2 decimales para evitar arrastre de error en punto flotante.
+     * @param valor : Valor a redondear
+     * @return      : El valor con 2 decimales
+     */
+    private double redondear2(double valor) {
+        return Math.round(valor * 100.0) / 100.0;
     }
 
     // ---------------------------------------------------------------
@@ -2097,6 +2228,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         double totalBase = 0.0;
         for (com.saa.model.cxp.DetalleNotaCreditoCompra d : detalles)
             totalBase += nvl(d.getSubTotal());
+        totalBase = redondear2(totalBase);
         // Intentar obtener cuenta de gasto del primer grupo activo de la empresa
         PlanCuenta cuentaGasto = obtenerCuentaGastoDefaultCxp(idEmpresa);
         if (cuentaGasto == null)
@@ -2112,6 +2244,8 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         }
 
         // â”€â”€ HABER: IVA crÃ©dito tributario reverso â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // El VALOR sale de la cabecera de la NC (vIVA); los detalles solo
+        // definen quÃ© cuentas intervienen. Ver distribuirIvaCabecera().
         Map<String, Double> ivaMap = new LinkedHashMap<>();
         for (com.saa.model.cxp.DetalleNotaCreditoCompra d : detalles) {
             if (d.getValorIVA() != null && d.getValorIVA() > 0 && d.getPorcentajeIVA() != null) {
@@ -2119,6 +2253,8 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                 ivaMap.merge(codSRI, nvl(d.getValorIVA()), Double::sum);
             }
         }
+        ivaMap = distribuirIvaCabecera("NotaCreditoCompra", idNotaCreditoCompra, nc.getvIVA(),
+                ivaMap, codigoIvaTextoDesdeTarifa(nc.getpIVA()));
         for (Map.Entry<String, Double> e : ivaMap.entrySet()) {
             PlanCuenta pcIVA = obtenerCuentaIVACxp(e.getKey());
             if (pcIVA == null)
@@ -2130,6 +2266,12 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             haberIVA.setValorDebe(0.0); haberIVA.setValorHaber(e.getValue());
             lineas.add(haberIVA);
         }
+
+        // El DEBE (CxP proveedor) se recalcula como la suma exacta del HABER ya
+        // construido (gasto + IVA de cabecera). Con nc.getTotal() el asiento
+        // quedaba descuadrado cuando los detalles no sumaban el importeTotal.
+        double totalHaber = lineas.stream().mapToDouble(l -> nvl(l.getValorHaber())).sum();
+        debe.setValorDebe(redondear2(totalHaber));
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento,
                 fechaAsiento, observaciones, usuario, lineas);
@@ -2160,7 +2302,20 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         List<DetalleAsiento> lineas = new ArrayList<>();
 
         // â”€â”€ DEBE: gasto adicional (cuenta default de gastos CXP) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        double totalND = nvl(nd.getTotal());
+        // Los <motivo> de la ND vienen SIN impuesto, asÃ­ que el IVA se toma de
+        // la cabecera (vIVA) y se separa del gasto: antes el total entraba
+        // completo a la cuenta de gasto y el crÃ©dito tributario se perdÃ­a.
+        double totalND = redondear2(nvl(nd.getTotal()));
+        double ivaND   = redondear2(nvl(nd.getvIVA()));
+        if (ivaND < 0.0 || ivaND >= totalND) {
+            if (ivaND != 0.0)
+                System.out.println("  IVA: NotaDebitoCompra " + idNotaDebitoCompra + " cabecera "
+                        + ivaND + " incoherente con el total " + totalND
+                        + "; el asiento no separa el IVA.");
+            ivaND = 0.0;
+        }
+        double baseND = redondear2(totalND - ivaND);
+
         PlanCuenta cuentaGasto = obtenerCuentaGastoDefaultCxp(idEmpresa);
         if (cuentaGasto == null)
             throw new IncomeException("No se encontrÃ³ cuenta de gasto para la ND de compra. "
@@ -2171,8 +2326,25 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         String motivoND = detalles != null && !detalles.isEmpty()
                 ? detalles.get(0).getDescripcion() : "Nota de dÃ©bito compra";
         debe.setDescripcion("ND Compra: " + motivoND);
-        debe.setValorDebe(totalND); debe.setValorHaber(0.0);
+        debe.setValorDebe(baseND); debe.setValorHaber(0.0);
         lineas.add(debe);
+
+        // â”€â”€ DEBE: IVA crÃ©dito tributario de la cabecera â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        if (ivaND > 0.0) {
+            String codIVA = codigoIvaTextoDesdeTarifa(nd.getpIVA());
+            PlanCuenta pcIVA = obtenerCuentaIVACxp(codIVA);
+            if (pcIVA == null)
+                throw new IncomeException("No hay cuenta IVA crÃ©dito tributario para cÃ³digo SRI: "
+                        + codIVA + ", requerida por la ND de compra "
+                        + (nd.getNumero() != null ? nd.getNumero() : nd.getClave())
+                        + ". ConfigÃºrela en Compras â†’ Tipos SRI.");
+            DetalleAsiento debeIVA = new DetalleAsiento();
+            debeIVA.setPlanCuenta(pcIVA); debeIVA.setNumeroCuenta(pcIVA.getCuentaContable());
+            debeIVA.setNombreCuenta(pcIVA.getNombre());
+            debeIVA.setDescripcion("ND IVA crÃ©dito tributario cÃ³digo SRI: " + codIVA);
+            debeIVA.setValorDebe(ivaND); debeIVA.setValorHaber(0.0);
+            lineas.add(debeIVA);
+        }
 
         // â”€â”€ HABER: CxP Proveedor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if (nd.getTitular() == null)
@@ -2235,6 +2407,8 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         lineas.add(debe);
 
         // â”€â”€ DEBE: IVA crÃ©dito tributario â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // El VALOR sale de la cabecera de la liquidaciÃ³n (vIVA); los detalles
+        // solo definen quÃ© cuentas intervienen. Ver distribuirIvaCabecera().
         Map<String, Double> ivaMap = new LinkedHashMap<>();
         for (com.saa.model.cxp.DetalleLiquidacionCompraCompra d : detalles) {
             if (d.getValorIVA() != null && d.getValorIVA() > 0 && d.getPorcentajeIVA() != null) {
@@ -2242,6 +2416,8 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                 ivaMap.merge(codSRI, nvl(d.getValorIVA()), Double::sum);
             }
         }
+        ivaMap = distribuirIvaCabecera("LiquidacionCompraCompra", idLiquidacion, lq.getvIVA(),
+                ivaMap, codigoIvaTextoDesdeTarifa(lq.getpIVA()));
         for (Map.Entry<String, Double> e : ivaMap.entrySet()) {
             PlanCuenta pcIVA = obtenerCuentaIVACxp(e.getKey());
             if (pcIVA == null)
@@ -2261,11 +2437,15 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         if (cuentaProv == null)
             throw new IncomeException("El prestador '" + lq.getTitular().getNombre()
                     + "' no tiene cuenta CxP configurada.");
+        // El HABER se calcula como la suma exacta del DEBE ya construido (gasto
+        // + IVA de cabecera) para que el asiento cuadre siempre; con
+        // lq.getTotal() quedaba descuadrado si los detalles no lo sumaban.
+        double totalDebeLq = lineas.stream().mapToDouble(l -> nvl(l.getValorDebe())).sum();
         DetalleAsiento haber = new DetalleAsiento();
         haber.setPlanCuenta(cuentaProv); haber.setNumeroCuenta(cuentaProv.getCuentaContable());
         haber.setNombreCuenta(cuentaProv.getNombre());
         haber.setDescripcion("CxP Prestador: " + lq.getTitular().getNombre());
-        haber.setValorDebe(0.0); haber.setValorHaber(nvl(lq.getTotal()));
+        haber.setValorDebe(0.0); haber.setValorHaber(redondear2(totalDebeLq));
         lineas.add(haber);
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento,

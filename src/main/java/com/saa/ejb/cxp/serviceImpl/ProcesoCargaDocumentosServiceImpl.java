@@ -1073,11 +1073,11 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         factura.setEstado(Long.valueOf(Estado.ACTIVO));
         factura.setEstadoEmision(2L);
 
-        NodeList totalImpuestos = xmlDoc.getElementsByTagName("totalImpuesto");
-        if (totalImpuestos.getLength() > 0) {
-            Element impEl = (Element) totalImpuestos.item(0);
-            factura.setvIVA(parseDouble(getElementValue(impEl, "valor")));
-            factura.setpIVA(parseDouble(getElementValue(impEl, "tarifa")));
+        // ── IVA de la cabecera (<totalConImpuestos>) ──────────────────────────
+        Double[] ivaCab = leerIvaCabecera(xmlDoc, "totalImpuesto");
+        if (ivaCab != null) {
+            factura.setvIVA(ivaCab[0]);
+            factura.setpIVA(ivaCab[1]);
         }
         factura = facturaCompraDaoService.save(factura, null);
 
@@ -1218,6 +1218,82 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     }
 
     /**
+     * Lee el IVA declarado en la CABECERA del comprobante.
+     *
+     * Es el valor que se contabiliza en el asiento (ver
+     * AsientoContableServiceImpl.distribuirIvaCabecera), asi que debe quedar
+     * completo: el XML trae un bloque de impuesto por cada tarifa y hay que
+     * sumarlos todos, no quedarse con el primero. Solo cuentan los de IVA
+     * (codigo=2); ICE (3) e IRBPNR (5) van a otras cuentas.
+     *
+     * El nombre del bloque cambia segun el comprobante: la factura, la nota de
+     * credito y la liquidacion usan <totalConImpuestos><totalImpuesto>, la nota
+     * de debito usa <impuestos><impuesto>. En la ND no hay <detalle>, asi que
+     * buscar "impuesto" en todo el documento no arrastra impuestos de linea.
+     *
+     * La tarifa que se devuelve es la del bloque de mayor valor. Si el bloque no
+     * la trae (esquemas del SRI anteriores a la 1.1.0 solo llevan
+     * <codigoPorcentaje>) se deduce del codigo de porcentaje, porque de esa
+     * tarifa depende que el asiento encuentre la cuenta de IVA cuando los
+     * detalles no desglosan el impuesto.
+     *
+     * @param xmlDoc       : XML del comprobante ya parseado
+     * @param tagImpuesto  : Nombre del bloque de impuesto de la cabecera
+     * @return             : Arreglo {valorIVA, tarifa}, o null si la cabecera no
+     *                       declara IVA
+     */
+    private Double[] leerIvaCabecera(Document xmlDoc, String tagImpuesto) {
+        NodeList impuestos = xmlDoc.getElementsByTagName(tagImpuesto);
+        double valorTotal = 0.0;
+        double mayorValor = -1.0;
+        Double tarifa     = null;
+        boolean hayIva    = false;
+
+        for (int i = 0; i < impuestos.getLength(); i++) {
+            Element impEl = (Element) impuestos.item(i);
+            String codigoImp = getElementValue(impEl, "codigo");
+            // Si el XML no trae <codigo> (esquemas antiguos) se asume IVA
+            if (!codigoImp.isEmpty() && !"2".equals(codigoImp)) continue;
+
+            double valorImp = parseDouble(getElementValue(impEl, "valor"));
+            hayIva = true;
+            valorTotal += valorImp;
+
+            if (valorImp > mayorValor) {
+                mayorValor = valorImp;
+                String tarifaStr = getElementValue(impEl, "tarifa");
+                tarifa = !tarifaStr.isEmpty()
+                        ? parseDouble(tarifaStr)
+                        : tarifaDesdeCodigoPorcentaje(getElementValue(impEl, "codigoPorcentaje"));
+            }
+        }
+
+        if (!hayIva) return null;
+        return new Double[] { Math.round(valorTotal * 100.0) / 100.0, tarifa };
+    }
+
+    /**
+     * Deduce la tarifa de IVA a partir del <codigoPorcentaje> del SRI, para los
+     * XML cuya cabecera no incluye <tarifa>.
+     * @param codigoPorcentaje : Codigo de porcentaje del SRI (tabla 17)
+     * @return                 : Tarifa en porcentaje, o null si no se reconoce
+     */
+    private Double tarifaDesdeCodigoPorcentaje(String codigoPorcentaje) {
+        if (codigoPorcentaje == null || codigoPorcentaje.isEmpty()) return null;
+        switch (codigoPorcentaje.trim()) {
+            case "0": return 0.0;    // IVA 0%
+            case "2": return 12.0;   // IVA 12% (historico)
+            case "3": return 14.0;   // IVA 14% (historico)
+            case "4": return 15.0;   // IVA 15%
+            case "5": return 5.0;    // IVA 5%
+            case "6": return 0.0;    // No objeto de impuesto
+            case "7": return 0.0;    // Exento de IVA
+            case "8": return 8.0;    // IVA tarifa especial 8%
+            default:  return null;
+        }
+    }
+
+    /**
      * Devuelve la fecha de emisión del documento ya registrado en su tabla
      * específica. Esa fecha se tomó del XML (&lt;fechaEmision&gt;) al registrarlo,
      * asi que es la fuente correcta para fechar el asiento contable — a
@@ -1322,7 +1398,17 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         nc.setNumDocModificado(getXmlValue(xmlDoc, "numDocModificado"));
         nc.setFechaEmisionDM(parseFechaHora(getXmlValue(xmlDoc, "fechaEmisionDocSustento")));
         nc.setSubtotal(parseDouble(getXmlValue(xmlDoc, "totalSinImpuestos")));
-        nc.setTotal(parseDouble(getXmlValue(xmlDoc, "importeTotal")));
+        // El total de la NC es <valorModificacion>; <importeTotal> es de la
+        // factura y no existe en el esquema de nota de credito del SRI.
+        String totalNcStr = getXmlValue(xmlDoc, "valorModificacion");
+        if (totalNcStr.isEmpty()) totalNcStr = getXmlValue(xmlDoc, "importeTotal");
+        nc.setTotal(parseDouble(totalNcStr));
+        // IVA de la cabecera: es el que se contabiliza (ver leerIvaCabecera)
+        Double[] ivaCabNc = leerIvaCabecera(xmlDoc, "totalImpuesto");
+        if (ivaCabNc != null) {
+            nc.setvIVA(ivaCabNc[0]);
+            nc.setpIVA(ivaCabNc[1]);
+        }
         nc.setTitular(titular);
         nc.setUsuario(usuario);
         nc.setEstado(Long.valueOf(Estado.ACTIVO));
@@ -1404,7 +1490,18 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         nd.setNumDocModificado(getXmlValue(xmlDoc, "numDocModificado"));
         nd.setFechaEmisionDM(parseFechaHora(getXmlValue(xmlDoc, "fechaEmisionDocSustento")));
         nd.setSubtotal(parseDouble(getXmlValue(xmlDoc, "totalSinImpuestos")));
-        nd.setTotal(parseDouble(getXmlValue(xmlDoc, "importeTotal")));
+        // El total de la ND es <valorTotal>; <importeTotal> es de la factura y
+        // no existe en el esquema de nota de debito del SRI.
+        String totalNdStr = getXmlValue(xmlDoc, "valorTotal");
+        if (totalNdStr.isEmpty()) totalNdStr = getXmlValue(xmlDoc, "importeTotal");
+        nd.setTotal(parseDouble(totalNdStr));
+        // IVA de la cabecera: la ND lo declara en <impuestos><impuesto> y sus
+        // <motivo> vienen sin impuesto, asi que es la unica fuente del IVA.
+        Double[] ivaCabNd = leerIvaCabecera(xmlDoc, "impuesto");
+        if (ivaCabNd != null) {
+            nd.setvIVA(ivaCabNd[0]);
+            nd.setpIVA(ivaCabNd[1]);
+        }
         nd.setTitular(titular);
         nd.setUsuario(usuario);
         nd.setEstado(Long.valueOf(Estado.ACTIVO));
@@ -1470,6 +1567,12 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         lq.setAutorizacion(numeroAutorizacion);
         lq.setSubtotal(parseDouble(getXmlValue(xmlDoc, "totalSinImpuestos")));
         lq.setTotal(parseDouble(getXmlValue(xmlDoc, "importeTotal")));
+        // IVA de la cabecera: es el que se contabiliza (ver leerIvaCabecera)
+        Double[] ivaCabLq = leerIvaCabecera(xmlDoc, "totalImpuesto");
+        if (ivaCabLq != null) {
+            lq.setvIVA(ivaCabLq[0]);
+            lq.setpIVA(ivaCabLq[1]);
+        }
         lq.setTitular(titular);
         lq.setUsuario(usuario);
         lq.setEstado(Long.valueOf(Estado.ACTIVO));

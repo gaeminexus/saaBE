@@ -382,8 +382,36 @@ silencio y contabilizaba en el período equivocado.
 | Lado | Cuenta | Valor |
 |---|---|---|
 | **DEBE** | `GrupoProductoPago.planCuenta` | Suma de `subTotal` por grupo — una línea por grupo distinto |
-| **DEBE** | IVA crédito tributario (`PGS.TSRI` donde `lsri.tabla='17'` y `codigo=codigoIVASRI`) | Suma de `valorIVA` por código IVA |
-| **HABER** | Cuenta CxP proveedor (`PersonaCuentaContable`, `tipoCuenta=1`) | `factura.total` |
+| **DEBE** | IVA crédito tributario (`PGS.TSRI` donde `lsri.tabla='17'` y `codigo=codigoIVASRI`) | **`FacturaCompra.vIVA` (IVA de la cabecera del XML)**, repartido entre los códigos IVA de los detalles |
+| **HABER** | Cuenta CxP proveedor (`PersonaCuentaContable`, `tipoCuenta=1`) | Suma de las líneas DEBE |
+
+### Estructura — Nota de Crédito de Compra (inverso de la factura)
+
+| Lado | Cuenta | Valor |
+|---|---|---|
+| **DEBE** | Cuenta CxP proveedor | Suma de las líneas HABER |
+| **HABER** | Cuenta de gasto default CXP (la NC no trae `GrupoProductoPago`) | Suma de `subTotal` de los detalles |
+| **HABER** | IVA crédito tributario (reverso) | **`NotaCreditoCompra.vIVA` (IVA de la cabecera del XML)**, repartido entre los códigos IVA de los detalles |
+
+### Estructura — Nota de Débito de Compra
+
+| Lado | Cuenta | Valor |
+|---|---|---|
+| **DEBE** | Cuenta de gasto default CXP | `total − vIVA` |
+| **DEBE** | IVA crédito tributario (código SRI deducido de `pIVA`) | **`NotaDebitoCompra.vIVA` (IVA de la cabecera del XML)** — solo si `> 0` |
+| **HABER** | Cuenta CxP proveedor | `total` |
+
+Los `<motivo>` de la ND vienen **sin impuesto**, así que la cabecera es la única
+fuente del IVA. Antes el total entraba completo a la cuenta de gasto y el
+crédito tributario se perdía.
+
+### Estructura — Liquidación de Compra
+
+| Lado | Cuenta | Valor |
+|---|---|---|
+| **DEBE** | Cuenta de gasto default CXP (la liquidación no trae `GrupoProductoPago`) | Suma de `subTotal` de los detalles |
+| **DEBE** | IVA crédito tributario | **`LiquidacionCompraCompra.vIVA` (IVA de la cabecera del XML)**, repartido entre los códigos IVA de los detalles |
+| **HABER** | Cuenta CxP prestador | Suma de las líneas DEBE |
 
 ### Estructura — Retención recibida (V1 y V2)
 
@@ -391,6 +419,8 @@ silencio y contabilizaba en el período equivocado.
 |---|---|---|
 | **DEBE** | Cuenta de retención recibida por código SRI (`PGS.TSRI`) | `valorReten` de cada detalle — una línea por detalle |
 | **HABER** | Cuenta CxP del proveedor | Total retenido |
+
+La retención no lleva IVA, así que no le aplica la regla de la cabecera.
 
 ### Observación del asiento
 
@@ -432,6 +462,68 @@ Los demás tipos conservan `Proveedor:`. `ASNT.ASNTOBSR` admite 2000 caracteres.
 - Solo se genera línea de IVA si `<codigo> = "2"`
 - El campo `DetalleFacturaCompra.codigoIVASRI` guarda el valor de `<codigoPorcentaje>`
 - Búsqueda en `PGS.TSRI`: `WHERE lsri.tabla = '17' AND codigo = :codigoIVASRI AND estado = 1`
+
+#### El VALOR del IVA sale de la cabecera, no de los detalles
+
+Aplica a **factura, NC, ND y liquidación** de compra. El asiento contabiliza el
+IVA declarado en la cabecera del XML, que es lo que el SRI autorizó y lo que
+suma el total que se le paga al proveedor. Los detalles solo definen **qué
+cuentas** intervienen. Cuando el emisor redondea el impuesto línea por línea, la
+sumatoria de los detalles difiere en centavos de la cabecera y la CxP del asiento
+no cuadraba con el total del documento.
+
+**Al registrar** — `ProcesoCargaDocumentosServiceImpl.leerIvaCabecera(xmlDoc, tag)`
+llena `vIVA` / `pIVA` de la cabecera en los cuatro documentos:
+
+| Documento | Bloque de impuesto en la cabecera |
+|---|---|
+| Factura, NC, Liquidación | `<totalConImpuestos><totalImpuesto>` |
+| Nota de Débito | `<impuestos><impuesto>` |
+
+- `vIVA` = **suma de todos** los bloques con `<codigo>2</codigo>` — el XML trae
+  uno por tarifa y antes se leía solo el primero. ICE (`3`) e IRBPNR (`5`) se
+  excluyen; si el bloque no trae `<codigo>` (esquemas antiguos) se asume IVA.
+- `pIVA` = tarifa del bloque de mayor valor. Los esquemas del SRI anteriores a
+  la 1.1.0 no llevan `<tarifa>` en la cabecera, así que se deduce del
+  `<codigoPorcentaje>` (`tarifaDesdeCodigoPorcentaje`: `4`→15, `2`→12, `3`→14,
+  `5`→5, `8`→8, `0`/`6`/`7`→0).
+
+**Al contabilizar** — `AsientoContableServiceImpl.distribuirIvaCabecera(...)`,
+compartido por los cuatro asientos:
+
+| Caso | Qué se registra |
+|---|---|
+| `vIVA` nulo (documento previo al cambio, o XML sin bloque de IVA) | Fallback: la sumatoria de los detalles |
+| `vIVA = 0.00` | **Ninguna** línea de IVA, aunque los detalles traigan valor |
+| Una sola tarifa en los detalles | Todo el `vIVA` a esa cuenta |
+| Varias tarifas | Prorrateo del `vIVA` proporcional al IVA de cada código; el residuo del redondeo se carga al código de mayor valor |
+| `vIVA > 0` y ningún detalle con IVA | Se deduce el código SRI de `pIVA` (`mapPorcentajeIVAaCodigo`) |
+
+La ND no pasa por `distribuirIvaCabecera` porque sus `<motivo>` no traen
+impuesto: usa `vIVA` directo y solo separa el IVA si `0 < vIVA < total`.
+
+La cuenta se busca por código SRI: la factura usa `codigoIVASRI` del detalle
+(`obtenerCuentaIVACxpPorCodigo`); NC, ND y liquidación derivan el código de la
+tarifa con `mapPorcentajeIVAaCodigo` (`obtenerCuentaIVACxp`, con fallback a la
+cuenta de IVA de CXC).
+
+> **Config nueva para la ND.** Una ND con IVA ahora exige la cuenta de IVA
+> crédito tributario configurada en `PGS.TSRI`; antes no la necesitaba porque
+> mandaba todo a gasto. Si falta, el asiento falla con mensaje explícito.
+
+#### El total de NC y ND no está en `importeTotal`
+
+`<importeTotal>` es un tag del esquema de **factura**. Se leía en los cuatro
+cargadores, así que NC y ND quedaban con `total = 0.00` y su asiento salía en
+cero. El tag correcto por comprobante:
+
+| Documento | Tag del total |
+|---|---|
+| Factura, Liquidación | `<importeTotal>` |
+| Nota de Crédito | `<valorModificacion>` |
+| Nota de Débito | `<valorTotal>` |
+
+Se conserva `<importeTotal>` como respaldo por si algún emisor lo incluye.
 
 ### Reglas del asiento
 
