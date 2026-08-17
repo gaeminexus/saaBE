@@ -51,13 +51,28 @@ public class PadronParticipeDTO implements Serializable {
      */
     private String correo;
 
+    /**
+     * "SI" si el partícipe tiene al menos un préstamo (CRD.PRST) con PRSTIDST en
+     * EN MORA (11) o DE PLAZO VENCIDO (8); "NO" en caso contrario.
+     */
+    private String tienePrestamoMora;
+
+    /**
+     * Cuotas vencidas impagas del préstamo en mora que más tenga; 0 si no tiene
+     * préstamos en esos estados. Se cuentan las cuotas de CRD.DTPR con vencimiento
+     * anterior al día de ejecución que no estén PAGADAS ni CANCELADAS ANTICIPADAS,
+     * el mismo criterio del proceso diario de mora.
+     */
+    private Long maximoCuotasMora;
+
     public PadronParticipeDTO() {
     }
 
     public PadronParticipeDTO(Long numero, Long entidadId, String cedula, String nombresApellidos,
                               Long calidadParticipeId, String calidadParticipe, Long numeroAportes,
                               String estadoMora, Long mesesEnMora, String habilitadoVoto,
-                              String elegibleMiembro, String correo) {
+                              String elegibleMiembro, String correo,
+                              String tienePrestamoMora, Long maximoCuotasMora) {
         this.numero = numero;
         this.entidadId = entidadId;
         this.cedula = cedula;
@@ -70,6 +85,8 @@ public class PadronParticipeDTO implements Serializable {
         this.habilitadoVoto = habilitadoVoto;
         this.elegibleMiembro = elegibleMiembro;
         this.correo = correo;
+        this.tienePrestamoMora = tienePrestamoMora;
+        this.maximoCuotasMora = maximoCuotasMora;
     }
 
     // Getters y Setters
@@ -167,5 +184,21 @@ public class PadronParticipeDTO implements Serializable {
 
     public void setCorreo(String correo) {
         this.correo = correo;
+    }
+
+    public String getTienePrestamoMora() {
+        return tienePrestamoMora;
+    }
+
+    public void setTienePrestamoMora(String tienePrestamoMora) {
+        this.tienePrestamoMora = tienePrestamoMora;
+    }
+
+    public Long getMaximoCuotasMora() {
+        return maximoCuotasMora;
+    }
+
+    public void setMaximoCuotasMora(Long maximoCuotasMora) {
+        this.maximoCuotasMora = maximoCuotasMora;
     }
 }

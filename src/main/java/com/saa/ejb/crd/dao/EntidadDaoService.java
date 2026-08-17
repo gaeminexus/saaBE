@@ -114,14 +114,20 @@ public interface EntidadDaoService extends EntityDao<Entidad> {
 	 * Reglas aplicadas:
 	 *  - Número de aportes: meses distintos con al menos un aporte positivo 9/11,
 	 *    hasta el último día del mes anterior inclusive.
-	 *  - Estado de mora: EN MORA al acumular 2 meses sin aportar respecto del mes
-	 *    de referencia.
+	 *  - Estado de mora: EN MORA al acumular 6 meses consecutivos sin aportar
+	 *    respecto del mes de referencia.
 	 *  - Meses en mora: desfase real entre el último aporte y el mes de referencia.
 	 *    0 si aportó en el mes de referencia, 1 el mes anterior, y así. Es
 	 *    independiente de la tolerancia, así que una fila AL DIA puede mostrar 1.
 	 *    NULL si nunca aportó.
 	 *  - Habilitado para voto: estado ACTIVO y AL DIA.
 	 *  - Elegible para miembro: estado ACTIVO y numeroAportes >= minimoAportes.
+	 *  - Tiene préstamo en mora: SI si tiene algún CRD.PRST con PRSTIDST en
+	 *    EN MORA (11) o DE PLAZO VENCIDO (8).
+	 *  - Máximo de cuotas en mora: cuotas vencidas impagas del peor de esos
+	 *    préstamos; 0 si no tiene ninguno. A diferencia del resto del padrón,
+	 *    estas dos columnas se evalúan al día de ejecución, no al mes anterior:
+	 *    el estado del préstamo es un dato vivo y no se puede reconstruir al corte.
 	 *
 	 * @param fechaEjecucion: Fecha de ejecución; el corte real es el fin del mes anterior.
 	 * @param calidadId: Filtro opcional por ENTDIDST; null incluye todas las calidades.

@@ -9,7 +9,9 @@ import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.crd.dao.EntidadDaoService;
 import com.saa.model.crd.Entidad;
 import com.saa.rubros.ASPSensibilidadBusquedaCoincidencias;
+import com.saa.rubros.EstadoCuotaPrestamo;
 import com.saa.rubros.EstadoParticipeEntidad;
+import com.saa.rubros.EstadoPrestamo;
 import com.saa.rubros.Rubros;
 
 import jakarta.ejb.EJB;
@@ -46,7 +48,25 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 	private static final Long TIPO_APORTE_CESANTIA   = 11L;
 
 	/** Meses hacia atrás que se revisan para determinar el estado de mora. */
-	private static final int MESES_VENTANA_MORA = 1;
+	private static final int MESES_VENTANA_MORA = 6;
+
+	/**
+	 * Estados de CRD.PRST (PRSTIDST) que se consideran préstamo en mora para el padrón.
+	 * Ojo: es PRSTIDST, no ESPSCDGO — ver la tabla de "qué columna lleva el estado" en CLAUDE.md.
+	 */
+	private static final List<Long> ESTADOS_PRESTAMO_MORA = Arrays.asList(
+			(long) EstadoPrestamo.EN_MORA,
+			(long) EstadoPrestamo.DE_PLAZO_VENCIDO);
+
+	/**
+	 * Estados de cuota (CRD.DTPR.DTPRESTD) que NO cuentan como cuota en mora, aunque la
+	 * fecha de vencimiento ya haya pasado. Es el mismo criterio de "cuota vencida impaga"
+	 * que usa ProcesoMoraPrestamoServiceImpl / selectCuotasVencidasByPrestamo, de modo que
+	 * el conteo del padrón coincida con el del proceso diario de mora.
+	 */
+	private static final List<Long> ESTADOS_CUOTA_NO_EN_MORA = Arrays.asList(
+			(long) EstadoCuotaPrestamo.PAGADA,
+			(long) EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
 
 	@SuppressWarnings("unchecked")
 	@Override
@@ -348,17 +368,25 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 
 		// Está AL DIA quien aportó en alguno de los últimos MESES_VENTANA_MORA meses
 		// contados hacia atrás desde el mes de referencia, ese mes incluido.
-		// Cae EN MORA a partir de acumular MESES_VENTANA_MORA meses sin aportar.
+		// Cae EN MORA al acumular MESES_VENTANA_MORA meses consecutivos sin aportar.
 		//
-		// Con ventana = 1 y referencia julio, primerMesAlDia = julio:
-		//   último aporte julio -> 0 meses sin aportar          -> AL DIA
-		//   último aporte junio -> 1 mes sin aportar (jul)      -> EN MORA (1)
-		//   último aporte mayo  -> 2 meses sin aportar (jun,jul)-> EN MORA (2)
+		// Con ventana = 6 y referencia julio 2026, primerMesAlDia = febrero 2026:
+		//   último aporte julio -> 0 meses sin aportar            -> AL DIA
+		//   último aporte marzo -> 4 meses sin aportar (abr..jul) -> AL DIA
+		//   último aporte feb   -> 5 meses sin aportar (mar..jul) -> AL DIA
+		//   último aporte enero -> 6 meses sin aportar (feb..jul) -> EN MORA (6)
 		//
-		// El -1 es lo que hace que el borde caiga donde debe: sin él, junio
-		// quedaría como AL DIA con 0 meses de mora pese a llevar un mes sin aportar.
+		// El -1 es lo que hace que el borde caiga donde debe: sin él, quien lleva
+		// exactamente 5 meses sin aportar ya saldría EN MORA.
 		java.time.LocalDateTime primerMesAlDia = mesReferencia
 				.minusMonths(MESES_VENTANA_MORA - 1L);
+
+		// Las columnas de préstamos en mora NO se evalúan al cierre del mes anterior: el
+		// estado del préstamo (PRSTIDST) es un dato vivo, no hay forma de reconstruirlo al
+		// mes pasado, así que las cuotas vencidas se cuentan con el mismo corte que usa el
+		// proceso diario de mora: inicio del día de ejecución (la cuota que vence hoy aún
+		// no está vencida).
+		java.time.LocalDateTime corteCuotas = fechaEjecucion.toLocalDate().atStartOfDay();
 
 		String sql =
 			"WITH aportes AS ( " +
@@ -373,6 +401,24 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 			"    AND  a.APRTVLRR > 0 " +
 			"    AND  a.APRTFCTR <  :corteAportes " +
 			"  GROUP BY a.ENTDCDGO " +
+			"), " +
+			// Préstamos EN MORA / DE PLAZO VENCIDO por partícipe, con el número de cuotas
+			// vencidas impagas del préstamo que más tenga. El LEFT JOIN es deliberado: un
+			// préstamo marcado en mora que (por datos inconsistentes) no tenga ninguna cuota
+			// vencida igual debe marcar SI, con 0 cuotas.
+			"prestamos_mora AS ( " +
+			"  SELECT p.ENTDCDGO                    AS entidad_id, " +
+			"         MAX(NVL(cm.cuotas_mora, 0))   AS max_cuotas_mora " +
+			"  FROM   CRD.PRST p " +
+			"  LEFT JOIN ( " +
+			"           SELECT d.PRSTCDGO AS prestamo_id, COUNT(*) AS cuotas_mora " +
+			"           FROM   CRD.DTPR d " +
+			"           WHERE  (d.DTPRESTD IS NULL OR d.DTPRESTD NOT IN (:estadosCuotaNoMora)) " +
+			"             AND  d.DTPRFCVN < :corteCuotas " +
+			"           GROUP BY d.PRSTCDGO " +
+			"         ) cm ON cm.prestamo_id = p.PRSTCDGO " +
+			"  WHERE  p.PRSTIDST IN (:estadosPrestamoMora) " +
+			"  GROUP BY p.ENTDCDGO " +
 			"), " +
 			"base AS ( " +
 			"  SELECT e.ENTDCDGO       AS entidad_id, " +
@@ -401,10 +447,16 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 			// NULL cuando nunca aportó: no hay último aporte desde el cual contar.
 			"         CASE WHEN ap.ultimo_mes_aporte IS NULL THEN NULL " +
 			"              ELSE ROUND(MONTHS_BETWEEN(:mesReferencia, ap.ultimo_mes_aporte)) " +
-			"         END AS meses_en_mora " +
+			"         END AS meses_en_mora, " +
+			// Tiene o no préstamos EN MORA / DE PLAZO VENCIDO, y las cuotas en mora del
+			// peor de ellos. Sin préstamos en mora: 'NO' y 0 (no NULL: el 0 se lee mejor
+			// en el reporte y no se confunde con "no aplica").
+			"         CASE WHEN pm.entidad_id IS NOT NULL THEN 'SI' ELSE 'NO' END AS tiene_prestamo_mora, " +
+			"         NVL(pm.max_cuotas_mora, 0) AS max_cuotas_mora " +
 			"  FROM   CRD.ENTD e " +
 			"  LEFT JOIN CRD.ESPR esp ON esp.ESPRCDEX  = e.ENTDIDST " +
 			"  LEFT JOIN aportes  ap  ON ap.entidad_id = e.ENTDCDGO " +
+			"  LEFT JOIN prestamos_mora pm ON pm.entidad_id = e.ENTDCDGO " +
 			"  WHERE  NVL(TRIM(e.ENTDNMID), '0') <> '0' " +
 			"    AND  (:calidadId IS NULL OR e.ENTDIDST = :calidadId) " +
 			") " +
@@ -421,7 +473,9 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 			"            THEN 'SI' ELSE 'NO' END AS habilitado_voto, " +
 			"       CASE WHEN b.es_activo = 1 AND b.numero_aportes >= :minimoAportes " +
 			"            THEN 'SI' ELSE 'NO' END AS elegible_miembro, " +
-			"       b.correo " +
+			"       b.correo, " +
+			"       b.tiene_prestamo_mora, " +
+			"       b.max_cuotas_mora " +
 			"FROM   base b " +
 			"ORDER BY UPPER(b.nombres_apellidos), b.entidad_id";
 
@@ -433,6 +487,9 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 		query.setParameter("codigoEstadoActivo", CODIGO_ESTADO_ACTIVO);
 		query.setParameter("calidadId", calidadId);
 		query.setParameter("minimoAportes", minimoAportes);
+		query.setParameter("corteCuotas", corteCuotas);
+		query.setParameter("estadosCuotaNoMora", ESTADOS_CUOTA_NO_EN_MORA);
+		query.setParameter("estadosPrestamoMora", ESTADOS_PRESTAMO_MORA);
 
 		@SuppressWarnings("unchecked")
 		java.util.List<Object[]> results = query.getResultList();
@@ -451,10 +508,13 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 			String habilitadoVoto    = row[9]  != null ? row[9].toString()              : null;
 			String elegibleMiembro   = row[10] != null ? row[10].toString()             : null;
 			String correo            = row[11] != null ? row[11].toString()             : null;
+			String tienePrestamoMora = row[12] != null ? row[12].toString()             : "NO";
+			Long   cuotasMora        = row[13] != null ? ((Number) row[13]).longValue() : 0L;
 
 			dtos.add(new com.saa.model.crd.dto.PadronParticipeDTO(
 				numero, entidadId, cedula, nombresApellidos, codigoCalidad, calidadParticipe,
-				numeroAportes, estadoMora, mesesEnMora, habilitadoVoto, elegibleMiembro, correo
+				numeroAportes, estadoMora, mesesEnMora, habilitadoVoto, elegibleMiembro, correo,
+				tienePrestamoMora, cuotasMora
 			));
 		}
 

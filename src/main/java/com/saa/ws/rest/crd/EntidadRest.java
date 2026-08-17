@@ -393,10 +393,12 @@ public class EntidadRest {
 
     /**
      * Genera el padrón de partícipes: cédula, nombres, calidad, número de aportes,
-     * estado y meses de mora, habilitación para voto y elegibilidad para miembro.
+     * estado y meses de mora, habilitación para voto, elegibilidad para miembro y
+     * si tiene préstamos en mora / de plazo vencido con su máximo de cuotas en mora.
      *
      * El corte real es el cierre del mes anterior al de fechaEjecucion: los aportes
      * se graban el último día del mes, así que el mes en curso aún no está cargado.
+     * Las dos columnas de préstamos son la excepción: se evalúan al día de ejecución.
      *
      * @param fechaEjecucion Fecha de ejecución (opcional, formato yyyy-MM-dd; default: hoy)
      * @param calidadId Filtro opcional por calidad del partícipe (ENTDIDST)
