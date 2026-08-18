@@ -27,9 +27,16 @@
         ELSE 'Estado ' || TO_CHAR(d.DTPRESTD)
     END                                                              AS ESTADO_TXT,
     NVL(NVL(NULLIF(d.DTPRTTLL, 0), d.DTPRCTAA), 0)                    AS CUOTA_TOTAL,
-    -- Saldo pendiente = DTPRSLDO + pendiente de interes en mora (interes vencido, DTPRSLIV),
-    -- que DTPRSLDO no incluye. Piso en 0.
-    GREATEST(NVL(d.DTPRSLDO, 0) + NVL(d.DTPRSLIV, 0), 0)              AS SALDO_PENDIENTE,
+    -- Saldo pendiente = suma de la columna "Pendiente" de la composicion (§3.5), igual que en
+    -- pantalla. DTPRSLDO NO servia: no incluye la mora (interes en mora) ni otros conceptos.
+    (  GREATEST(NVL(d.DTPRDSGR, 0) - NVL((SELECT SUM(x.PGPRDSGR) FROM CRD.PGPR x WHERE x.DTPRCDGO = d.DTPRCDGO AND NVL(x.PGPRANUL, 0) = 0), 0), 0)
+     + GREATEST(NVL(d.DTPRSLMR, 0), 0)
+     + GREATEST(NVL(d.DTPRSLIV, 0), 0)
+     + GREATEST(NVL(d.DTPRSLIN, 0), 0)
+     + GREATEST(NVL(d.DTPRCPTL, 0) - NVL((SELECT SUM(x.PGPRCPPG) FROM CRD.PGPR x WHERE x.DTPRCDGO = d.DTPRCDGO AND NVL(x.PGPRANUL, 0) = 0), 0), 0)
+     + GREATEST(NVL(d.DTPRVLSI, 0) - NVL((SELECT SUM(x.PGPRVLSI) FROM CRD.PGPR x WHERE x.DTPRCDGO = d.DTPRCDGO AND NVL(x.PGPRANUL, 0) = 0), 0), 0)
+     + GREATEST(NVL(d.DTPRSLOT, 0) - NVL((SELECT SUM(x.PGPRSLOT) FROM CRD.PGPR x WHERE x.DTPRCDGO = d.DTPRCDGO AND NVL(x.PGPRANUL, 0) = 0), 0), 0)
+    )                                                                AS SALDO_PENDIENTE,
     -- Valores PACTADOS de la cuota
     NVL(d.DTPRDSGR, 0)                                                AS PAC_DSGR,
     NVL(d.DTPRMRAA, 0)                                                AS PAC_MORA,

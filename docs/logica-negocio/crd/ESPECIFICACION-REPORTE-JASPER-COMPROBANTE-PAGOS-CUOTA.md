@@ -330,10 +330,12 @@ secciones grises, pie con paginación y leyenda institucional).
 - Catálogos de **estado** (§5.1) y **tipo de operación** (§5.2) resueltos con `CASE` en el SQL.
 - Anulados excluidos con `NVL(PGPRANUL,0)=0` tanto en el detalle como en cada subconsulta (§4.1).
 - Regla de **Seguro** en la composición: simplificación de §4.3 (`DTPRVLSI>0` o `SUM(PGPRVLSI)>0`).
-- **Corrección al §3.2/§4.2 — Saldo pendiente:** el `Saldo pendiente` de la cabecera se calcula como
-  `GREATEST(DTPRSLDO + DTPRSLIV, 0)`, sumando el pendiente de **interés en mora / interés vencido**
-  (`DTPRSLIV`), que `DTPRSLDO` no incluía. El mismo campo alimenta la frase resumen, así que ambos
-  quedan consistentes.
+- **Corrección al §3.2/§4.2 — Saldo pendiente:** el `Saldo pendiente` de la cabecera **NO** se toma
+  de `DTPRSLDO` (esa columna excluía la **mora** —el "interés en mora"— y otros conceptos). Se calcula
+  como la **suma de la columna "Pendiente" de la composición** (§3.5), igual que en pantalla:
+  `desgravamen + mora (DTPRSLMR) + int. vencido (DTPRSLIV) + interés (DTPRSLIN) + capital + seguro + pago extra`,
+  donde desgravamen/capital/seguro/pago extra son `GREATEST(Pactado − Pagado, 0)`. El mismo campo
+  alimenta la frase resumen, así que la tarjeta, la frase y el total de la composición cuadran.
 
 **Cómo generarlo:**
 
