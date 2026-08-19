@@ -38,7 +38,7 @@ public interface EgresoService extends EntityService<Egreso> {
 	 * @param fecha                  : Fecha del egreso / del débito (yyyy-MM-dd, null = hoy)
 	 * @param idCuentaBancariaOrigen : Id de la cuenta bancaria propia
 	 * @param idCuentaDestinoTitular : Id de la cuenta del beneficiario (obligatoria si no es débito automático)
-	 * @param debitoAutomatico       : true si el banco ya debitó la cuenta
+	 * @param debitoAutomatico       : true si el banco ya debitó la cuenta (se guarda en EGRSDBAT y en el pago)
 	 * @param referencia             : Referencia del débito (opcional)
 	 * @param observacion            : Observaciones (opcional)
 	 * @param idUsuario              : Id del usuario que registra

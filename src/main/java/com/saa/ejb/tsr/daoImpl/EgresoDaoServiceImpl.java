@@ -26,6 +26,7 @@ public class EgresoDaoServiceImpl extends EntityDaoImpl<Egreso> implements Egres
             "titular",
             "producto",
             "descripcion",
+            "debitoAutomatico",
             "valor",
             "fecha",
             "estado",

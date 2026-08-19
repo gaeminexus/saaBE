@@ -80,6 +80,9 @@ public class EgresoServiceImpl implements EgresoService {
 			if (egreso.getEstado() == null) {
 				egreso.setEstado(Long.valueOf(EstadoEgresoTesoreria.PENDIENTE_PAGO));
 			}
+			if (egreso.getDebitoAutomatico() == null) {
+				egreso.setDebitoAutomatico(Long.valueOf(0));
+			}
 			if (egreso.getFechaRegistro() == null) {
 				egreso.setFechaRegistro(LocalDateTime.now());
 			}
@@ -148,6 +151,7 @@ public class EgresoServiceImpl implements EgresoService {
 		egreso.setTitular(titular);
 		egreso.setProducto(em.find(ProductoPago.class, idProductoPago));
 		egreso.setDescripcion(descripcion.trim());
+		egreso.setDebitoAutomatico(Long.valueOf(debitoAutomatico ? 1 : 0));
 		egreso.setValor(valor);
 		egreso.setFecha(parseFecha(fecha));
 		egreso.setEstado(Long.valueOf(EstadoEgresoTesoreria.PENDIENTE_PAGO));

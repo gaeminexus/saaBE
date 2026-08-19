@@ -38,6 +38,9 @@ import jakarta.persistence.Table;
  * si es débito automático). El asiento del pago queda vinculado aquí
  * (EGRSASNT): DEBE cuenta del grupo del producto / HABER cuenta del banco.
  *
+ * La modalidad se guarda además en el propio egreso (EGRSDBAT, espejo de
+ * PGS.PGTR.PGTRDBAT) para poder listarla y filtrarla sin cruzar con el pago.
+ *
  * Estados (ver {@link com.saa.rubros.EstadoEgresoTesoreria}):
  *   1 = Pendiente de pago
  *   2 = Pagado (asiento y movimiento bancario generados)
@@ -92,6 +95,18 @@ public class Egreso implements Serializable {
     @Basic
     @Column(name = "EGRSDSCR", length = 500)
     private String descripcion;
+
+    /**
+     * Marca de débito automático: 0=No (transferencia normal), 1=Sí.
+     * Copia de la modalidad con la que se registró el egreso, igual que
+     * PGTRDBAT en el pago: un egreso por débito automático no necesita
+     * beneficiario ni cuenta de destino y no pasa por el archivo del banco,
+     * se contabiliza al registrarlo. La marca conserva la modalidad de
+     * origen aunque después se reverse el pago.
+     */
+    @Basic
+    @Column(name = "EGRSDBAT")
+    private Long debitoAutomatico;
 
     /**
      * Valor del egreso.
@@ -160,6 +175,9 @@ public class Egreso implements Serializable {
 
     public String getDescripcion() { return descripcion; }
     public void setDescripcion(String descripcion) { this.descripcion = descripcion; }
+
+    public Long getDebitoAutomatico() { return debitoAutomatico; }
+    public void setDebitoAutomatico(Long debitoAutomatico) { this.debitoAutomatico = debitoAutomatico; }
 
     public Double getValor() { return valor; }
     public void setValor(Double valor) { this.valor = valor; }

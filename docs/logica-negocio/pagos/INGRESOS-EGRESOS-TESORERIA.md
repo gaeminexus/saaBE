@@ -4,6 +4,7 @@
 > Fecha: 2026-08-12
 > Backend: `com.saa.ws.rest.tsr.EgresoRest` (`/egrs`), `com.saa.ws.rest.tsr.IngresoRest` (`/ingr`).
 > Script SQL: `docs/scripts/sql-ingresos-egresos-tesoreria.sql` (tablas `TSR.EGRS`, `TSR.INGR`, ALTER a `PGS.PGTR`).
+> Actualización 2026-08-18: `docs/scripts/sql-alter-egrs-debito-automatico.sql` (columna `TSR.EGRS.EGRSDBAT`).
 
 ---
 
@@ -47,6 +48,18 @@ registro falla con un mensaje que dice exactamente qué configurar.
 | 2 | Pagado | El pago se confirmó: asiento + movimiento bancario generados | (revertir desde `/pgtr`) |
 | 3 | Anulado | Anulado por el usuario | — |
 
+### Modalidad (`debitoAutomatico` del egreso, columna `EGRSDBAT`)
+
+| Valor | Texto sugerido | Qué significa |
+|---|---|---|
+| 0 | Transferencia | Se paga por el circuito normal: lote y archivo al banco |
+| 1 | Débito automático | El banco ya debitó la cuenta; se contabilizó al registrarlo |
+
+Es el mismo campo que en los pagos a facturas (`PGS.PGTR.PGTRDBAT`), copiado
+en el egreso para poder mostrarlo y filtrarlo sin cruzar con el pago. Guarda
+la modalidad **con la que se registró** el egreso: si después se reversa el
+pago (el egreso vuelve a Pendiente) la marca no cambia.
+
 ### 2.1 Registrar egreso — `POST /egrs/procesar`
 
 ```json
@@ -75,7 +88,7 @@ Requeridos siempre: `idEmpresa`, `idProductoPago`, `valor`,
 |---|---|---|
 | `idTitular` + `idCuentaDestinoTitular` | **Obligatorios** (el archivo del banco necesita el destino) | No hacen falta |
 | `fecha` | Fecha programada del pago | **Fecha del débito** (fecha del asiento) |
-| Resultado | Egreso Pendiente + pago Registrado en `/pgtr` | Egreso **Pagado** + pago Confirmado + asiento + movimiento bancario |
+| Resultado | Egreso Pendiente (`debitoAutomatico: 0`) + pago Registrado en `/pgtr` | Egreso **Pagado** (`debitoAutomatico: 1`) + pago Confirmado + asiento + movimiento bancario |
 | Siguiente paso | Aparece en el listado de pagos a realizar (`/pgtr/listar?estado=1`) | Nada — ya está todo hecho |
 
 **Response 201 — transferencia:**
@@ -132,6 +145,10 @@ Body: `{ "motivo": "...", "idUsuario": 5 }`
 
 - `GET /egrs/listar?idEmpresa={id}&estado={1|2|3}` (estado opcional)
 - `GET /egrs/getAll` · `GET /egrs/getId/{id}` · `POST /egrs/selectByCriteria`
+
+El egreso devuelve `debitoAutomatico` (0/1) en todos los listados, así que la
+columna "Modalidad" no necesita cargar el pago. Para filtrar solo los débitos
+automáticos: `POST /egrs/selectByCriteria` con el campo `debitoAutomatico`.
 
 ---
 
