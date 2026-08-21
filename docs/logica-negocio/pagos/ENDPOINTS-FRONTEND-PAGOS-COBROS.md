@@ -26,6 +26,14 @@
 > **cruzarlos contra una factura** una vez que ya existen y tienen saldo — eso
 > sí es parte de las pantallas descritas abajo (§2.2 y §4.2).
 >
+> El **cruce** de un anticipo cambió el 2026-08-20: ahora se elige de qué
+> anticipo sale el dinero (`POST /aplp/anticipos` y `/aplc/anticipos`), no solo
+> el monto. Ver `CRUCE-ANTICIPOS.md` y `MIGRACION-CRUCES-ANTICIPO.md`.
+>
+> La **anulación** de un anticipo sí toca los cruces de este módulo (al anular
+> hay que eliminar los abonos que el anticipo hizo a facturas): está
+> documentada en `ANULACION-ANTICIPOS.md`, misma carpeta.
+>
 > Contexto de negocio en `REQUERIMIENTO-PAGOS-COBROS.md`; detalle técnico
 > interno del backend en `PLAN-TECNICO-PAGOS-COBROS.md` (misma carpeta) — esos
 > dos documentos son para quien mantiene el backend, no hace falta leerlos para

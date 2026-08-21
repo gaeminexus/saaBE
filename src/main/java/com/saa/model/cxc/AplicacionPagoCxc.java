@@ -159,6 +159,19 @@ public class AplicacionPagoCxc implements Serializable {
     @JoinColumn(name = "APLCANTC", referencedColumnName = "ID")
     private AnticipoCliente anticipo;
 
+    /**
+     * Anticipo del que sale el dinero de este cruce. FK a CBR.ANTC.
+     * <p>
+     * Es el anticipo REAL que se consume, no el movimiento negativo: en las
+     * aplicaciones de tipo 4 creadas desde 2026-08-20 siempre viene informado,
+     * y es lo que permite saber con exactitud qué abonos hay que deshacer al
+     * anular un anticipo. Queda nulo en los cruces anteriores que la migración
+     * no pudo atribuir.
+     */
+    @ManyToOne
+    @JoinColumn(name = "APLCANTO", referencedColumnName = "ID")
+    private AnticipoCliente anticipoOrigen;
+
     // ── Datos del cobro directo (solo cuando APLCTDPG = 1) ────────────────
 
     /**
@@ -266,6 +279,9 @@ public class AplicacionPagoCxc implements Serializable {
 
     public AnticipoCliente getAnticipo() { return anticipo; }
     public void setAnticipo(AnticipoCliente anticipo) { this.anticipo = anticipo; }
+
+    public AnticipoCliente getAnticipoOrigen() { return anticipoOrigen; }
+    public void setAnticipoOrigen(AnticipoCliente anticipoOrigen) { this.anticipoOrigen = anticipoOrigen; }
 
     public Long getFormaPago() { return formaPago; }
     public void setFormaPago(Long formaPago) { this.formaPago = formaPago; }

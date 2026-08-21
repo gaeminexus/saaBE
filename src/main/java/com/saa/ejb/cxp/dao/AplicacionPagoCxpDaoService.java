@@ -60,4 +60,37 @@ public interface AplicacionPagoCxpDaoService extends EntityDao<AplicacionPagoCxp
 	 */
 	List<FacturaCompra> selectFacturaByNumero(String numeroDocumento, Long idTitular, Long idEmpresa)
 			throws Throwable;
+
+	/**
+	 * Recupera las aplicaciones ACTIVAS de tipo ANTICIPO (cruces del saldo de
+	 * anticipos) de un proveedor en una empresa, de la más reciente a la más
+	 * antigua.
+	 * <p>
+	 * El cruce de anticipo no se enlaza al anticipo original sino al movimiento
+	 * negativo que deja en PGS.ANTP, así que para saber si un anticipo concreto
+	 * fue cruzado hay que mirar los cruces del proveedor y contrastarlos contra
+	 * el saldo global de anticipos. El orden descendente permite reversarlos en
+	 * LIFO: primero el cruce más reciente.
+	 * @param idTitular  : Id del proveedor
+	 * @param idEmpresa  : Id de la empresa; null para no filtrar
+	 * @return           : Listado de cruces activos, del más reciente al más antiguo
+	 * @throws Throwable : Excepcion
+	 */
+	List<AplicacionPagoCxp> selectCrucesAnticipoActivos(Long idTitular, Long idEmpresa)
+			throws Throwable;
+
+	/**
+	 * Cruces registrados contra un anticipo concreto (FK APLPANTO).
+	 * <p>
+	 * Es la consulta exacta que reemplaza a la heurística de
+	 * {@link #selectCrucesAnticipoActivos(Long, Long)}: desde 2026-08-20 cada
+	 * cruce sabe de qué anticipo salió, así que anular un anticipo ya no tiene
+	 * que adivinar qué abonos deshacer.
+	 * @param idAnticipo  : Id del anticipo de origen
+	 * @param soloActivas : true para excluir los cruces ya reversados
+	 * @return            : Cruces del anticipo, del más reciente al más antiguo
+	 * @throws Throwable  : Excepcion
+	 */
+	List<AplicacionPagoCxp> selectCrucesByAnticipoOrigen(Long idAnticipo, boolean soloActivas)
+			throws Throwable;
 }

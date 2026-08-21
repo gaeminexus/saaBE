@@ -8,11 +8,16 @@
  */
 package com.saa.ejb.rhh.daoImpl;
 
+import java.util.List;
+
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.rhh.dao.RolPagoDaoService;
 import com.saa.model.rhh.RolPago;
 
 import jakarta.ejb.Stateless;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.Query;
 
 /**
  * @author GaemiSoft.
@@ -21,19 +26,62 @@ import jakarta.ejb.Stateless;
 @Stateless
 public class RolPagoDaoServiceImpl extends EntityDaoImpl<RolPago>  implements RolPagoDaoService{
 
+	//Inicializa persistence context
+	@PersistenceContext
+	EntityManager em;
+
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.parametrizacion.ejb.dao.RolPagoDaoService#obtieneCampos()
+	 * @see com.saa.ejb.rhh.dao.RolPagoDaoService#obtieneCampos()
 	 */
 	public String[] obtieneCampos() {
 		System.out.println("Ingresa al metodo (campos) RolPago");
 		return new String[]{"codigo",
-							"proposicionPagoXCuota",
-							"fechaAprobacion",
-							"nivelAprobacion",
-							"usuarioAprueba",
-							"nombreUsuarioAprueba",
+							"nomina",
+							"numero",
+							"fechaEmision",
+							"rutaPdf",
 							"estado",
-							"observacion"};
+							"fechaRegistro",
+							"usuarioRegistro",
+							"totalIngresos",
+							"totalDescuentos",
+							"neto",
+							"hash",
+							"fechaEnvio",
+							"recibido"};
 	}
-	
+
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.rhh.dao.RolPagoDaoService#selectByNomina(java.lang.Long)
+	 */
+	@SuppressWarnings("unchecked")
+	@Override
+	public RolPago selectByNomina(Long idNomina) throws Throwable {
+		System.out.println("Ingresa al metodo selectByNomina de RolPago, nomina: " + idNomina);
+		Query query = em.createQuery(" select   t "
+				+ " from     RolPago t "
+				+ " where    t.nomina.codigo = :idNomina "
+				+ " order by t.codigo ");
+		query.setParameter("idNomina", idNomina);
+		List<RolPago> lista = query.getResultList();
+		// Se devuelve null en vez de lanzar: el llamador lo usa para decidir entre crear
+		// y actualizar, y "todavia no existe" no es una condicion de error.
+		return lista.isEmpty() ? null : lista.get(0);
+	}
+
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.rhh.dao.RolPagoDaoService#selectByPeriodo(java.lang.Long)
+	 */
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<RolPago> selectByPeriodo(Long idPeriodo) throws Throwable {
+		System.out.println("Ingresa al metodo selectByPeriodo de RolPago, periodo: " + idPeriodo);
+		Query query = em.createQuery(" select   t "
+				+ " from     RolPago t "
+				+ " where    t.nomina.periodoNomina.codigo = :idPeriodo "
+				+ " order by t.nomina.empleado.apellidos, t.nomina.empleado.nombres, t.codigo ");
+		query.setParameter("idPeriodo", idPeriodo);
+		return query.getResultList();
+	}
+
 }

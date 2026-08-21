@@ -38,9 +38,11 @@ import com.saa.ejb.cxp.dao.PathNotaDebitoCompraDaoService;
 import com.saa.ejb.cxp.dao.PathRetencionCompraDaoService;
 import com.saa.ejb.cxp.dao.RetencionCompraDaoService;
 import com.saa.ejb.cxp.dao.RetencionCompraV2DaoService;
+import com.saa.ejb.cxp.dao.ReembolsoFacturaCompraDaoService;
 import com.saa.ejb.cxp.dao.GrupoProductoPagoDaoService;
 import com.saa.ejb.cxp.dao.ProductoPagoDaoService;
 import com.saa.ejb.cxp.service.ProcesoCargaDocumentosService;
+import com.saa.basico.util.IncomeException;
 import com.saa.model.cxc.Facturador;
 import com.saa.model.cxp.GrupoProductoPago;
 import com.saa.model.cxp.ProductoPago;
@@ -66,6 +68,7 @@ import com.saa.model.cxp.PathNotaDebitoCompra;
 import com.saa.model.cxp.PathRetencionCompra;
 import com.saa.model.cxp.RetencionCompra;
 import com.saa.model.cxp.RetencionCompraV2;
+import com.saa.model.cxp.ReembolsoFacturaCompra;
 import com.saa.model.scp.Empresa;
 import com.saa.model.scp.Usuario;
 import com.saa.model.tsr.Titular;
@@ -73,6 +76,7 @@ import com.saa.rubros.AccionNovedad;
 import com.saa.rubros.Estado;
 import com.saa.rubros.EstadoDocumentoCxp;
 import com.saa.rubros.EstadoNovedad;
+import com.saa.rubros.OrigenReembolso;
 import com.saa.rubros.ResultadoCargaTxt;
 import com.saa.rubros.RolPersona;
 import com.saa.rubros.TipoGrupoProductos;
@@ -117,6 +121,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     @EJB private PathRetencionCompraDaoService            pathRetencionCompraDaoService;
 
     @EJB private RetencionCompraV2DaoService              retencionCompraV2DaoService;
+
+    @EJB private ReembolsoFacturaCompraDaoService         reembolsoFacturaCompraDaoService;
 
     @EJB private ProductoPagoDaoService                   productoPagoDaoService;
     @EJB private GrupoProductoPagoDaoService              grupoProductoPagoDaoService;
@@ -368,11 +374,19 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     // =========================================================
     // FASE 2: Carga del XML  →  opera sobre DocumentoCxp
     // =========================================================
-    @Override
+    // Método puente de compatibilidad — no está en la interfaz (usarlo internamente si es necesario)
     public Map<String, Object> cargarXmlDocumento(Long idDocumentoCxp, String contenidoXml,
                                                    String pathDestino, Long idUsuario) throws Throwable {
+        return cargarXmlDocumento(idDocumentoCxp, contenidoXml, pathDestino, idUsuario, null);
+    }
 
-        System.out.println("=== cargarXmlDocumento idDocumentoCxp=" + idDocumentoCxp);
+    @Override
+    public Map<String, Object> cargarXmlDocumento(Long idDocumentoCxp, String contenidoXml,
+                                                   String pathDestino, Long idUsuario,
+                                                   Boolean esReembolsoBody) throws Throwable {
+
+        System.out.println("=== cargarXmlDocumento idDocumentoCxp=" + idDocumentoCxp
+                + " esReembolsoBody=" + esReembolsoBody);
 
         DocumentoCxp doc = documentoCxpDaoService.selectById(idDocumentoCxp,
                 NombreEntidadesCompra.DOCUMENTO_CXP);
@@ -395,11 +409,29 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         doc.setPathXml(pathDestino);
         doc.setFechaCargaXml(LocalDateTime.now());
         doc.setUsuarioCargaXml(em.find(Usuario.class, idUsuario));
+
+        // §6.1 — Leer y persistir esReembolso en DCXP también en cargarXml.
+        // El frontend usa el flujo de dos pasos: cargarXml (paso 1) + registrarBD (paso 2).
+        // registrarBD lee esReembolso del documento ya persistido, no del request.
+        // Por eso es CRÍTICO persistirlo aquí para que registrarBD lo encuentre.
+        boolean marcadoBody = Boolean.TRUE.equals(esReembolsoBody);
+        boolean yaMarcado   = doc.getEsReembolso() != null && doc.getEsReembolso() == 1L;
+        boolean xmlTieneReembolsos = contenidoXml != null && contenidoXml.contains("<reembolsoDetalle>");
+        if (marcadoBody || yaMarcado || xmlTieneReembolsos) {
+            doc.setEsReembolso(1L);
+        } else if (doc.getEsReembolso() == null) {
+            doc.setEsReembolso(0L);
+        }
+        // OJO: si doc.getEsReembolso() ya era 1 (marcado antes desde la bandeja), NO pisarlo a 0.
+
         doc.setEstadoDocumento(ESTADO_XML_CARGADO);
         DocumentoCxp docActualizado = documentoCxpDaoService.save(doc, doc.getId());
 
         resultado.put("valido", true);
         resultado.put("documento", docActualizado);
+        if (Boolean.valueOf(1L == (docActualizado.getEsReembolso() != null ? docActualizado.getEsReembolso() : 0L))) {
+            resultado.put("esReembolso", true);
+        }
         return resultado;
     }
 
@@ -524,6 +556,16 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         doc.setPathXml(pathDestino);
         doc.setFechaCargaXml(LocalDateTime.now());
         doc.setUsuarioCargaXml(em.find(Usuario.class, idUsuario));
+        // Flag de reembolso: se respeta si ya fue marcado por el usuario (DCXPESRM=1),
+        // y se autodetecta desde el contenido del XML.
+        boolean marcadoReembolso = doc.getEsReembolso() != null && doc.getEsReembolso() == 1L;
+        boolean xmlTieneReembolsos = contenidoXml != null && contenidoXml.contains("<reembolsoDetalle>");
+        if (marcadoReembolso || xmlTieneReembolsos) {
+            doc.setEsReembolso(1L);
+        } else if (doc.getEsReembolso() == null) {
+            doc.setEsReembolso(0L);
+        }
+        // OJO: si doc.getEsReembolso() ya era 1 (marcado antes desde la bandeja), NO pisarlo a 0.
         doc.setEstadoDocumento(ESTADO_XML_CARGADO);
         doc = documentoCxpDaoService.save(doc, doc.getId());
 
@@ -661,6 +703,26 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
     @Override
     public List<String> obtenerProductosPendientesDeClasificar(Long idFacturaCompra) throws Throwable {
+        // Si la factura es reembolso, los pendientes se calculan desde RMBF, no desde DFCC
+        @SuppressWarnings("unchecked")
+        List<Long> esReembolsoList = em.createQuery(
+                "select f.esReembolso from FacturaCompra f where f.id = :id")
+                .setParameter("id", idFacturaCompra).setMaxResults(1).getResultList();
+        boolean esReembolso = !esReembolsoList.isEmpty()
+                && esReembolsoList.get(0) != null && esReembolsoList.get(0) == 1L;
+
+        if (esReembolso) {
+            @SuppressWarnings("unchecked")
+            List<String> pendientes = em.createQuery(
+                    "select p.nombre from ReembolsoFacturaCompra r, ProductoPago p, GrupoProductoPago g " +
+                    "where p.id = r.producto and g.codigo = p.grupoProducto.codigo " +
+                    "and r.factura.id = :idFactura and r.estado = 1 " +
+                    "and g.rubroTipoGrupoH = :tipo")
+                    .setParameter("idFactura", idFacturaCompra)
+                    .setParameter("tipo", (long) TipoGrupoProductos.POR_CLASIFICAR)
+                    .getResultList();
+            return pendientes;
+        }
         @SuppressWarnings("unchecked")
         List<String> pendientes = em.createQuery(
                 "select df.descripcion from DetalleFacturaCompra df, ProductoPago p, GrupoProductoPago g " +
@@ -746,12 +808,20 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     // =========================================================
     // FASE 4: Resolver novedad  →  opera sobre DocumentoCxp
     // =========================================================
-    @Override
+    // Método puente de compatibilidad — no está en la interfaz
     public Map<String, Object> resolverNovedad(Long idDocumentoCxp, Integer accion,
                                                 String contenidoXml, String pathDestino,
                                                 Long idUsuario) throws Throwable {
+        return resolverNovedad(idDocumentoCxp, accion, contenidoXml, pathDestino, idUsuario, null);
+    }
 
-        System.out.println("=== resolverNovedad idDocumentoCxp=" + idDocumentoCxp + " accion=" + accion);
+    @Override
+    public Map<String, Object> resolverNovedad(Long idDocumentoCxp, Integer accion,
+                                                String contenidoXml, String pathDestino,
+                                                Long idUsuario, Boolean esReembolsoBody) throws Throwable {
+
+        System.out.println("=== resolverNovedad idDocumentoCxp=" + idDocumentoCxp
+                + " accion=" + accion + " esReembolsoBody=" + esReembolsoBody);
 
         DocumentoCxp doc = documentoCxpDaoService.selectById(idDocumentoCxp,
                 NombreEntidadesCompra.DOCUMENTO_CXP);
@@ -773,6 +843,16 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             doc.setUsuarioCargaXml(em.find(Usuario.class, idUsuario));
             doc.setEstadoDocumento(ESTADO_XML_CARGADO);
             doc.setEstadoNovedad(NOVEDAD_REEMPLAZADO);
+
+            // §Novedad 2 — si el frontend envía esReembolso marcado, setearlo ANTES de re-registrar.
+            // Usar el mismo helper leerFlagReembolso; nunca pisar a 0 un flag ya en 1.
+            if (Boolean.TRUE.equals(esReembolsoBody)) {
+                doc.setEsReembolso(1L);
+            } else if (doc.getEsReembolso() == null) {
+                doc.setEsReembolso(0L);
+            }
+            // Si esReembolsoBody es null o false y el doc ya tenía 1 → no pisar
+
             documentoCxpDaoService.save(doc, doc.getId());
 
             Long idEmpresa = obtenerEmpresaPorReceptor(doc.getIdentificacionReceptor());
@@ -924,12 +1004,24 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         Empresa empresa = em.find(Empresa.class, idEmpresa);
         Usuario usuario = em.find(Usuario.class, idUsuario);
 
+        // ── Detección de reembolso de gastos (SRI ANEXO 5) ───────────────────
+        // OJO: <codDocReembolso> existe también DENTRO de cada <reembolsoDetalle>;
+        // leerlo desde <infoFactura> específicamente, NO con getXmlValue(xmlDoc, ...)
+        // que toma la primera ocurrencia del documento.
+        String codDocReembolsoCab = "";
+        NodeList infoFacturaList = xmlDoc.getElementsByTagName("infoFactura");
+        Element infoFactura = infoFacturaList.getLength() > 0 ? (Element) infoFacturaList.item(0) : null;
+        if (infoFactura != null) {
+            codDocReembolsoCab = getElementValue(infoFactura, "codDocReembolso");
+        }
+        NodeList reembolsosXml = xmlDoc.getElementsByTagName("reembolsoDetalle");
+        boolean marcadoReembolso = doc.getEsReembolso() != null && doc.getEsReembolso() == 1L;
+        boolean esReembolso = marcadoReembolso
+                || (codDocReembolsoCab != null && !codDocReembolsoCab.isEmpty())
+                || reembolsosXml.getLength() > 0;
+
         // ══════════════════════════════════════════════════════════════════
         // PASO 1 — Acciones automáticas (siempre se ejecutan)
-        //   · Crear titular si no existe y asignarle rol de proveedor
-        //   · Si existe pero no tiene rol proveedor → asignarlo
-        //   · Crear grupo POR CLASIFICAR si no existe
-        //   · Crear producto dentro de POR CLASIFICAR si no existe
         // ══════════════════════════════════════════════════════════════════
         Titular titular = obtenerOAutoCrearProveedor(doc.getRucEmisor(), doc.getRazonSocialEmisor(), xmlDoc, idUsuario);
 
@@ -945,6 +1037,19 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                     parseDouble(getElementValue(el, "precioUnitario")),
                     idEmpresa);
             productosDetalle.add(producto);
+        }
+
+        // Resolución de productos de los sustentos de reembolso (PASO 1 reembolso)
+        List<ProductoPago> productosReembolso = new ArrayList<>();
+        if (esReembolso) {
+            for (int i = 0; i < reembolsosXml.getLength(); i++) {
+                Element el = (Element) reembolsosXml.item(i);
+                String idProv = getElementValue(el, "identificacionProveedorReembolso");
+                String nombreProd = "REEMBOLSO " + idProv;
+                ProductoPago prod = obtenerOAutoCrearProducto(nombreProd, idProv, null,
+                        parseDouble(getElementValue(el, "totalDocReembolso")), idEmpresa);
+                productosReembolso.add(prod);
+            }
         }
 
         // ══════════════════════════════════════════════════════════════════
@@ -994,7 +1099,11 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         List<String> productosSinClasificar = new ArrayList<>();
         List<String> gruposSinCuenta = new ArrayList<>();
 
-        for (ProductoPago producto : productosDetalle) {
+        // Cuando es reembolso: solo los productos de sustentos bloquean;
+        // los del detalle normal NO bloquean (no participan del asiento).
+        List<ProductoPago> productosParaValidar = esReembolso ? productosReembolso : productosDetalle;
+
+        for (ProductoPago producto : productosParaValidar) {
             GrupoProductoPago grupo = producto.getGrupoProducto();
             if (grupo == null
                     || (grupo.getRubroTipoGrupoH() != null
@@ -1072,6 +1181,23 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         factura.setUsuario(usuario);
         factura.setEstado(Long.valueOf(Estado.ACTIVO));
         factura.setEstadoEmision(2L);
+
+        // ── Reembolso de gastos ──────────────────────────────────────────────
+        if (esReembolso) {
+            factura.setEsReembolso(1L);
+            factura.setCodDocReembolso(
+                    (codDocReembolsoCab == null || codDocReembolsoCab.isEmpty()) ? "41" : codDocReembolsoCab);
+            if (infoFactura != null) {
+                factura.setTotalComprobantesReembolso(
+                        parseDouble(getElementValue(infoFactura, "totalComprobantesReembolso")));
+                factura.setTotalBaseImponibleReembolso(
+                        parseDouble(getElementValue(infoFactura, "totalBaseImponibleReembolso")));
+                factura.setTotalImpuestoReembolso(
+                        parseDouble(getElementValue(infoFactura, "totalImpuestoReembolso")));
+            }
+        } else {
+            factura.setEsReembolso(0L);
+        }
 
         // ── IVA de la cabecera (<totalConImpuestos>) ──────────────────────────
         Double[] ivaCab = leerIvaCabecera(xmlDoc, "totalImpuesto");
@@ -1197,6 +1323,12 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         pathFc.setAlterno(1L);
         pathFacturaCompraDaoService.save(pathFc, null);
 
+        // ── Grabar sustentos de reembolso desde XML ──────────────────────────
+        int reembolsosLeidos = 0;
+        if (esReembolso) {
+            reembolsosLeidos = grabarReembolsosDesdeXml(xmlDoc, factura, productosReembolso);
+        }
+
         Map<String, Object> r = new HashMap<>();
         r.put("idDocumentoBD", factura.getId());
         r.put("tipoTablaDestino", "FACTURA_COMPRA");
@@ -1204,6 +1336,17 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         r.put("productosPendientes", new ArrayList<>());
         r.put("pendienteClasificacion", false);
         if (observacionTerceros != null) r.put("valoresTerceros", observacionTerceros);
+
+        if (esReembolso) {
+            r.put("esReembolso", true);
+            r.put("reembolsosLeidos", reembolsosLeidos);
+            if (reembolsosLeidos == 0) {
+                r.put("reembolsoManualPendiente", true);
+                r.put("advertenciaReembolso",
+                    "La factura fue marcada como reembolso de gastos pero el XML no contiene el bloque <reembolsos>. "
+                    + "Ingrese los documentos sustento desde Gestión de Documentos y luego contabilice.");
+            }
+        }
         return r;
     }
 
@@ -1215,6 +1358,334 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
      */
     private double nvlDouble(Double valor) {
         return (valor != null) ? valor : 0.0;
+    }
+
+    // =========================================================
+    // Reembolso de gastos — métodos privados
+    // =========================================================
+
+    /**
+     * Lee los <reembolsoDetalle> del XML y los graba en PGS.RMBF (uno por documento sustento).
+     * Los <detalleImpuesto> se aplanan: codigo=2 (IVA) con tarifa>0 suma a base gravada, con
+     * tarifa=0 a base cero; codigo=3 (ICE) suma a valor ICE; otros codigos suman su base a base
+     * cero. Si hay varias tarifas gravadas se conserva la del bloque de mayor impuesto (mismo
+     * criterio que leerIvaCabecera).
+     * @param productosReembolso productos resueltos en el PASO 1, indexados igual que los nodos
+     * @return numero de registros grabados
+     */
+    private int grabarReembolsosDesdeXml(Document xmlDoc, FacturaCompra factura,
+            List<ProductoPago> productosReembolso) throws Throwable {
+        NodeList reembolsos = xmlDoc.getElementsByTagName("reembolsoDetalle");
+        int grabados = 0;
+        for (int i = 0; i < reembolsos.getLength(); i++) {
+            Element el = (Element) reembolsos.item(i);
+            ReembolsoFacturaCompra r = new ReembolsoFacturaCompra();
+            r.setFactura(factura);
+            r.setTipoIdentificacionProveedor(getElementValue(el, "tipoIdentificacionProveedorReembolso"));
+            r.setIdentificacionProveedor(getElementValue(el, "identificacionProveedorReembolso"));
+            r.setCodPaisPago(getElementValue(el, "codPaisPagoProveedorReembolso"));
+            r.setTipoProveedor(getElementValue(el, "tipoProveedorReembolso"));
+            r.setCodDoc(getElementValue(el, "codDocReembolso"));
+            r.setEstablecimiento(getElementValue(el, "estabDocReembolso"));
+            r.setPuntoEmision(getElementValue(el, "ptoEmiDocReembolso"));
+            r.setSecuencial(getElementValue(el, "secuencialDocReembolso"));
+            // El tag oficial es "numeroautorizacionDocReemb" (minuscula, ver XSD);
+            // tolerar la variante "numeroAutorizacionDocReemb" de algunos emisores.
+            String numAut = getElementValue(el, "numeroautorizacionDocReemb");
+            if (numAut == null || numAut.isEmpty()) numAut = getElementValue(el, "numeroAutorizacionDocReemb");
+            r.setNumeroAutorizacion(numAut);
+            LocalDateTime fe = parseFechaHora(getElementValue(el, "fechaEmisionDocReembolso"));
+            r.setFechaEmision(fe != null ? fe.toLocalDate() : null);
+
+            double baseCero = 0.0, baseGravada = 0.0, valorIva = 0.0, valorIce = 0.0;
+            double tarifaIva = 0.0, mayorImpuesto = -1.0;
+            NodeList imps = el.getElementsByTagName("detalleImpuesto");
+            for (int j = 0; j < imps.getLength(); j++) {
+                Element impEl = (Element) imps.item(j);
+                String codigo = getElementValue(impEl, "codigo");
+                double base   = parseDouble(getElementValue(impEl, "baseImponibleReembolso"));
+                double imp    = parseDouble(getElementValue(impEl, "impuestoReembolso"));
+                double tarifa = parseDouble(getElementValue(impEl, "tarifa"));
+                if ("2".equals(codigo)) {           // IVA
+                    if (tarifa > 0) {
+                        baseGravada += base;
+                        valorIva    += imp;
+                        if (imp > mayorImpuesto) { mayorImpuesto = imp; tarifaIva = tarifa; }
+                    } else {
+                        baseCero += base;
+                    }
+                } else if ("3".equals(codigo)) {    // ICE
+                    valorIce += imp;
+                } else {
+                    baseCero += base;
+                }
+            }
+            r.setBaseImponibleCero(baseCero);
+            r.setBaseImponibleGravada(baseGravada);
+            r.setTarifaIva(baseGravada > 0 ? tarifaIva : null);
+            r.setValorIva(valorIva);
+            r.setValorIce(valorIce);
+            r.setTotal(baseCero + baseGravada + valorIva + valorIce);
+            if (i < productosReembolso.size()) {
+                r.setProducto(productosReembolso.get(i).getId());
+            }
+            r.setOrigen(Long.valueOf(OrigenReembolso.XML));
+            r.setEstado(Long.valueOf(Estado.ACTIVO));
+            reembolsoFacturaCompraDaoService.save(r, null);
+            grabados++;
+        }
+        return grabados;
+    }
+
+    // =========================================================
+    // Reembolso de gastos — métodos de negocio (§6.5)
+    // =========================================================
+
+    @Override
+    public Map<String, Object> marcarReembolso(Long idDocumentoCxp, boolean esReembolso, Long idUsuario) throws Throwable {
+        System.out.println("marcarReembolso idDocumentoCxp=" + idDocumentoCxp + " esReembolso=" + esReembolso);
+        DocumentoCxp doc = documentoCxpDaoService.selectById(idDocumentoCxp, NombreEntidadesCompra.DOCUMENTO_CXP);
+        if (doc == null) throw new com.saa.basico.util.IncomeException("DocumentoCxp no encontrado: " + idDocumentoCxp);
+
+        Map<String, Object> resultado = new java.util.HashMap<>();
+
+        if (esReembolso) {
+            doc.setEsReembolso(1L);
+            documentoCxpDaoService.save(doc, doc.getId());
+            // Si ya está registrado como FACTURA_COMPRA, cascadear
+            if ("FACTURA_COMPRA".equals(doc.getTipoTablaDestino()) && doc.getIdDocumentoBD() != null) {
+                FacturaCompra fc = em.find(FacturaCompra.class, doc.getIdDocumentoBD());
+                if (fc != null) {
+                    // Verificar que no tenga pagos aplicados
+                    java.util.List<com.saa.model.cxp.AplicacionPagoCxp> aplic =
+                            aplicacionPagoCxpService.consultarPorFactura(doc.getIdDocumentoBD(), true);
+                    if (aplic != null && !aplic.isEmpty())
+                        throw new com.saa.basico.util.IncomeException(
+                                "La factura de compra tiene " + aplic.size()
+                                + " pago(s) aplicados. Reverse primero esos pagos antes de marcarla como reembolso.");
+                    // Si tiene asiento activo → anularlo
+                    anularAsientoDeDocumento("FACTURA_COMPRA", doc.getIdDocumentoBD());
+                    fc.setEsReembolso(1L);
+                    if (fc.getCodDocReembolso() == null) fc.setCodDocReembolso("41");
+                    facturaCompraDaoService.save(fc, fc.getId());
+                    // Verificar si debe generar conta
+                    boolean generaConta = verificarGeneraConta(doc.getEmpresa().getCodigo());
+                    if (generaConta) {
+                        doc.setEstadoDocumento(ESTADO_XML_CARGADO);
+                        doc.setObservacion("REEMBOLSO: pendiente ingreso de documentos sustento y contabilizacion");
+                        documentoCxpDaoService.save(doc, doc.getId());
+                    }
+                    resultado.put("idFacturaCompra", fc.getId());
+                }
+            }
+            resultado.put("esReembolso", true);
+        } else {
+            // Desmarcar: verificar que no haya RMBF activos
+            if ("FACTURA_COMPRA".equals(doc.getTipoTablaDestino()) && doc.getIdDocumentoBD() != null) {
+                long countRmbf = ((Number) em.createQuery(
+                        "select count(r) from ReembolsoFacturaCompra r where r.factura.id = :id and r.estado = 1")
+                        .setParameter("id", doc.getIdDocumentoBD()).getSingleResult()).longValue();
+                if (countRmbf > 0)
+                    throw new com.saa.basico.util.IncomeException(
+                            "Elimine primero los documentos de reembolso (" + countRmbf + ") antes de desmarcar la factura.");
+                FacturaCompra fc = em.find(FacturaCompra.class, doc.getIdDocumentoBD());
+                if (fc != null) {
+                    fc.setEsReembolso(0L);
+                    fc.setCodDocReembolso(null);
+                    fc.setTotalComprobantesReembolso(null);
+                    fc.setTotalBaseImponibleReembolso(null);
+                    fc.setTotalImpuestoReembolso(null);
+                    facturaCompraDaoService.save(fc, fc.getId());
+                }
+            }
+            doc.setEsReembolso(0L);
+            documentoCxpDaoService.save(doc, doc.getId());
+            resultado.put("esReembolso", false);
+        }
+        resultado.put("idDocumentoCxp", idDocumentoCxp);
+        resultado.put("estadoDocumento", doc.getEstadoDocumento());
+        return resultado;
+    }
+
+    @Override
+    public Map<String, Object> contabilizarReembolso(Long idFacturaCompra, Long idEmpresa, Long idUsuario) throws Throwable {
+        System.out.println("contabilizarReembolso idFacturaCompra=" + idFacturaCompra + " empresa=" + idEmpresa);
+        FacturaCompra fc = em.find(FacturaCompra.class, idFacturaCompra);
+        if (fc == null) throw new com.saa.basico.util.IncomeException("FacturaCompra no encontrada: " + idFacturaCompra);
+
+        @SuppressWarnings("unchecked")
+        java.util.List<ReembolsoFacturaCompra> reembolsos = em.createNamedQuery(
+                "ReembolsoFacturaCompraByFactura", ReembolsoFacturaCompra.class)
+                .setParameter("idFactura", idFacturaCompra).getResultList();
+
+        // Precondición 1: al menos un RMBF activo
+        if (reembolsos == null || reembolsos.isEmpty()) {
+            // §Novedad 3 — usar la misma estructura de bloqueantes del PASO 2
+            java.util.List<java.util.Map<String, Object>> bloqueantes = new java.util.ArrayList<>();
+            java.util.Map<String, Object> b = new java.util.HashMap<>();
+            b.put("tipo", "SIN_DOCUMENTOS_SUSTENTO");
+            b.put("detalle", "La factura no tiene documentos sustento registrados en RMBF. "
+                    + "Ingrese los documentos sustento antes de contabilizar.");
+            b.put("productos", java.util.Collections.emptyList());
+            bloqueantes.add(b);
+            java.util.Map<String, Object> r = new java.util.HashMap<>();
+            r.put("pendienteClasificacion", true);
+            r.put("bloqueantes", bloqueantes);
+            r.put("productosPendientes", java.util.Collections.emptyList());
+            r.put("mensaje", "No se puede contabilizar. Hay 1 condición bloqueante.");
+            return r;
+        }
+
+        // Precondición 2: todos los productos clasificados y con cuenta contable
+        // §Novedad 3 — armar bloqueantes con EXACTAMENTE la misma estructura que el PASO 2
+        java.util.List<String> pendientes = new java.util.ArrayList<>();
+        java.util.List<String> sinCuenta = new java.util.ArrayList<>();
+        for (ReembolsoFacturaCompra r : reembolsos) {
+            if (r.getProducto() == null) { pendientes.add("(sin producto)"); continue; }
+            ProductoPago p = em.find(ProductoPago.class, r.getProducto());
+            if (p == null || p.getGrupoProducto() == null
+                    || (p.getGrupoProducto().getRubroTipoGrupoH() != null
+                        && p.getGrupoProducto().getRubroTipoGrupoH() == TipoGrupoProductos.POR_CLASIFICAR)) {
+                pendientes.add(p != null ? p.getNombre() : "(id=" + r.getProducto() + ")");
+            } else if (p.getGrupoProducto().getPlanCuenta() == null) {
+                sinCuenta.add("Grupo '" + p.getGrupoProducto().getNombre() + "' (producto: '" + (p.getNombre() != null ? p.getNombre() : "") + "')");
+            }
+        }
+
+        // Precondición 3: cuadratura
+        double sumRmbf = reembolsos.stream().mapToDouble(r -> r.getTotal() != null ? r.getTotal() : 0.0).sum();
+        double totalFc = fc.getTotal() != null ? fc.getTotal() : 0.0;
+        double diferencia = Math.abs(sumRmbf - totalFc);
+
+        // Armar bloqueantes (misma estructura del PASO 2)
+        java.util.List<java.util.Map<String, Object>> bloqueantes = new java.util.ArrayList<>();
+        if (!pendientes.isEmpty()) {
+            java.util.Map<String, Object> b = new java.util.HashMap<>();
+            b.put("tipo", "PRODUCTOS_SIN_CLASIFICAR");
+            b.put("detalle", "Los siguientes productos están en el grupo POR CLASIFICAR y deben ser reclasificados: " + pendientes);
+            b.put("productos", pendientes);
+            bloqueantes.add(b);
+        }
+        if (!sinCuenta.isEmpty()) {
+            java.util.Map<String, Object> b = new java.util.HashMap<>();
+            b.put("tipo", "GRUPOS_SIN_CUENTA_CONTABLE");
+            b.put("detalle", "Los siguientes grupos de producto no tienen cuenta contable asignada: " + sinCuenta);
+            b.put("grupos", sinCuenta);
+            bloqueantes.add(b);
+        }
+        if (diferencia > 0.01) {
+            java.util.Map<String, Object> b = new java.util.HashMap<>();
+            b.put("tipo", "DESCUADRE_REEMBOLSO");
+            b.put("detalle", String.format(
+                    "Descuadre de %.2f (sum RMBF=%.2f vs factura.total=%.2f). "
+                    + "Ajuste los documentos sustento antes de contabilizar.", diferencia, sumRmbf, totalFc));
+            b.put("diferencia", diferencia);
+            b.put("sumRmbf", sumRmbf);
+            b.put("totalFactura", totalFc);
+            bloqueantes.add(b);
+        }
+
+        if (!bloqueantes.isEmpty()) {
+            System.out.println("⚠ contabilizarReembolso detenido. Bloqueantes: " + bloqueantes);
+            java.util.Map<String, Object> r = new java.util.HashMap<>();
+            r.put("pendienteClasificacion", true);
+            r.put("bloqueantes", bloqueantes);
+            r.put("productosPendientes", pendientes);
+            r.put("mensaje", "No se puede contabilizar la factura de reembolso. Hay "
+                    + bloqueantes.size() + " condición(es) bloqueante(s).");
+            return r;
+        }
+        if (diferencia > 0.01)
+            throw new com.saa.basico.util.IncomeException(String.format(
+                    "REEMBOLSO: descuadre de %.2f (sum RMBF=%.2f vs factura.total=%.2f). "
+                    + "Ajuste los documentos sustento antes de contabilizar.", diferencia, sumRmbf, totalFc));
+
+        // Generar asiento
+        java.time.LocalDate fechaDoc = fc.getFecha() != null ? fc.getFecha().toLocalDate() : java.time.LocalDate.now();
+        String obs = "Factura reembolso: " + (fc.getNumero() != null ? fc.getNumero() : fc.getClave())
+                + " | Proveedor: " + (fc.getTitular() != null ? fc.getTitular().getNombre() : "");
+        com.saa.model.cnt.Asiento asiento = asientoContableService.generarAsientoFacturaCompra(
+                idFacturaCompra, idEmpresa, com.saa.rubros.TipoAsientos.FACTURAS_COMPRA,
+                fechaDoc, obs, "SISTEMA");
+
+        // Actualizar FCTC con referencia al asiento y pasar DCXP a estado 3
+        fc.setAsiento(asiento);
+        facturaCompraDaoService.save(fc, fc.getId());
+
+        // Buscar DocumentoCxp y actualizarlo
+        @SuppressWarnings("unchecked")
+        java.util.List<Long> dcxpIds = em.createQuery(
+                "select d.id from DocumentoCxp d where d.idDocumentoBD = :id and d.tipoTablaDestino = 'FACTURA_COMPRA'")
+                .setParameter("id", idFacturaCompra).getResultList();
+        if (!dcxpIds.isEmpty()) {
+            DocumentoCxp doc = documentoCxpDaoService.selectById(dcxpIds.get(0), NombreEntidadesCompra.DOCUMENTO_CXP);
+            if (doc != null) {
+                doc.setEstadoDocumento(ESTADO_REGISTRADO_BD);
+                doc.setObservacion(null);
+                if (doc.getFechaRegistroBD() == null) doc.setFechaRegistroBD(java.time.LocalDateTime.now());
+                documentoCxpDaoService.save(doc, doc.getId());
+            }
+        }
+
+        Map<String, Object> resultado = new java.util.HashMap<>();
+        resultado.put("idFacturaCompra", idFacturaCompra);
+        resultado.put("asiento", asiento != null ? asiento.getCodigo() : null);
+        resultado.put("cantidadReembolsos", reembolsos.size());
+        resultado.put("diferencia", diferencia);
+        resultado.put("cuadra", diferencia <= 0.01);
+        return resultado;
+    }
+
+    @Override
+    public Map<String, Object> recalcularTotalesReembolso(Long idFacturaCompra) throws Throwable {
+        System.out.println("recalcularTotalesReembolso idFacturaCompra=" + idFacturaCompra);
+        FacturaCompra fc = em.find(FacturaCompra.class, idFacturaCompra);
+        if (fc == null) throw new com.saa.basico.util.IncomeException("FacturaCompra no encontrada: " + idFacturaCompra);
+
+        @SuppressWarnings("unchecked")
+        java.util.List<ReembolsoFacturaCompra> reembolsos = em.createNamedQuery(
+                "ReembolsoFacturaCompraByFactura", ReembolsoFacturaCompra.class)
+                .setParameter("idFactura", idFacturaCompra).getResultList();
+
+        double totalComp = 0.0, totalBase = 0.0, totalImp = 0.0;
+        for (ReembolsoFacturaCompra r : reembolsos) {
+            totalComp += r.getTotal() != null ? r.getTotal() : 0.0;
+            totalBase += (r.getBaseImponibleCero() != null ? r.getBaseImponibleCero() : 0.0)
+                       + (r.getBaseImponibleGravada() != null ? r.getBaseImponibleGravada() : 0.0);
+            totalImp  += (r.getValorIva() != null ? r.getValorIva() : 0.0)
+                       + (r.getValorIce() != null ? r.getValorIce() : 0.0);
+        }
+        fc.setTotalComprobantesReembolso(Math.round(totalComp * 100.0) / 100.0);
+        fc.setTotalBaseImponibleReembolso(Math.round(totalBase * 100.0) / 100.0);
+        fc.setTotalImpuestoReembolso(Math.round(totalImp * 100.0) / 100.0);
+        facturaCompraDaoService.save(fc, fc.getId());
+
+        double diferencia = Math.abs(totalComp - (fc.getTotal() != null ? fc.getTotal() : 0.0));
+        Map<String, Object> resultado = new java.util.HashMap<>();
+        resultado.put("idFacturaCompra", idFacturaCompra);
+        resultado.put("cantidadReembolsos", reembolsos.size());
+        resultado.put("totalComprobantesReembolso", fc.getTotalComprobantesReembolso());
+        resultado.put("totalBaseImponibleReembolso", fc.getTotalBaseImponibleReembolso());
+        resultado.put("totalImpuestoReembolso", fc.getTotalImpuestoReembolso());
+        resultado.put("importeTotalFactura", fc.getTotal());
+        resultado.put("diferencia", Math.round(diferencia * 100.0) / 100.0);
+        resultado.put("cuadra", diferencia <= 0.01);
+        return resultado;
+    }
+
+    @Override
+    public ProductoPago crearProductoPorClasificar(String nombre, String codigo, Long idEmpresa) throws Throwable {
+        System.out.println("crearProductoPorClasificar nombre=" + nombre + " codigo=" + codigo + " empresa=" + idEmpresa);
+        // Si ya existe un producto con ese código, devolverlo sin crear
+        if (codigo != null && !codigo.isEmpty()) {
+            @SuppressWarnings("unchecked")
+            java.util.List<ProductoPago> existentes = em.createQuery(
+                    "select p from ProductoPago p where p.codigo = :codigo and p.empresa.codigo = :emp")
+                    .setParameter("codigo", codigo).setParameter("emp", idEmpresa)
+                    .setMaxResults(1).getResultList();
+            if (!existentes.isEmpty()) return existentes.get(0);
+        }
+        return obtenerOAutoCrearProducto(nombre, codigo, null, 0.0, idEmpresa);
     }
 
     /**
@@ -2072,6 +2543,9 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
         switch (tipo) {
             case "FACTURA_COMPRA":
+                // Borrar reembolsos ANTES del detalle y la cabecera (FK FK_RMBF_FACTURA)
+                em.createQuery("delete from ReembolsoFacturaCompra r where r.factura.id = :id")
+                        .setParameter("id", idDocBD).executeUpdate();
                 em.createQuery("delete from DetalleFacturaCompra d where d.factura.id = :id").setParameter("id", idDocBD).executeUpdate();
                 em.createQuery("delete from FormaPagoFacturaCompra f where f.factura.id = :id").setParameter("id", idDocBD).executeUpdate();
                 em.createQuery("delete from PathFacturaCompra p where p.factura.id = :id").setParameter("id", idDocBD).executeUpdate();
@@ -2867,11 +3341,42 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             }
 
             if ("FACTURA_COMPRA".equals(tipo)) {
-                // TODO: Reemplazar TipoAsientos.FACTURAS_COMPRA con el codigoAlterno
-                //       correcto una vez que se defina la plantilla en BD.
-                // TODO: AuxiliarUno DEBE:  cuenta de gasto/costo del grupo de producto (GrupoProductoPago.planCuenta)
-                //                          + cuenta de IVA en compras
-                // TODO: AuxiliarUno HABER: cuenta CxP del proveedor
+                // Si la factura es reembolso con contabilización pendiente (sin RMBF o descuadre),
+                // NO generar el asiento; dejar doc en estado 2 con observación descriptiva.
+                FacturaCompra fcCheck = em.find(FacturaCompra.class, idDocBD);
+                if (fcCheck != null && fcCheck.getEsReembolso() != null && fcCheck.getEsReembolso() == 1L) {
+                    @SuppressWarnings("unchecked")
+                    long countRmbf = ((Number) em.createQuery(
+                            "select count(r) from ReembolsoFacturaCompra r where r.factura.id = :id and r.estado = 1")
+                            .setParameter("id", idDocBD).getSingleResult()).longValue();
+                    if (countRmbf == 0) {
+                        // Sin sustentos → pendiente de ingreso manual
+                        resultado.put("contabilizacionPendiente", true);
+                        resultado.put("motivoContabilizacionPendiente",
+                                "REEMBOLSO: pendiente ingreso de documentos sustento y contabilizacion");
+                        doc.setEstadoDocumento(ESTADO_XML_CARGADO);
+                        doc.setObservacion("REEMBOLSO: pendiente ingreso de documentos sustento y contabilizacion");
+                        try { documentoCxpDaoService.save(doc, doc.getId()); }
+                        catch (Throwable t) { throw new Exception("Error guardando DCXP pendiente: " + t.getMessage(), t); }
+                        return;
+                    }
+                    // Hay sustentos: verificar cuadratura
+                    double sumRmbf = ((Number) em.createQuery(
+                            "select coalesce(sum(r.total),0) from ReembolsoFacturaCompra r where r.factura.id = :id and r.estado = 1")
+                            .setParameter("id", idDocBD).getSingleResult()).doubleValue();
+                    double totalFc = fcCheck.getTotal() != null ? fcCheck.getTotal() : 0.0;
+                    double dif = Math.abs(sumRmbf - totalFc);
+                    if (dif > 0.01) {
+                        String motivo = String.format("REEMBOLSO: descuadre de %.2f (sum RMBF=%.2f vs total=%.2f)", dif, sumRmbf, totalFc);
+                        resultado.put("contabilizacionPendiente", true);
+                        resultado.put("motivoContabilizacionPendiente", motivo);
+                        doc.setEstadoDocumento(ESTADO_XML_CARGADO);
+                        doc.setObservacion(motivo);
+                        try { documentoCxpDaoService.save(doc, doc.getId()); }
+                        catch (Throwable t) { throw new Exception("Error guardando DCXP descuadre: " + t.getMessage(), t); }
+                        return;
+                    }
+                }
                 try { asiento = asientoContableService.generarAsientoFacturaCompra(
                         idDocBD, idEmpresa,
                         com.saa.rubros.TipoAsientos.FACTURAS_COMPRA,

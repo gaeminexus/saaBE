@@ -18,4 +18,18 @@ public interface FacturadorDaoService extends EntityDao<Facturador> {
 	 * @throws Throwable Excepción
 	 */
 	Facturador selectByNumDoc(String numDoc) throws Throwable;
+
+	/**
+	 * Busca el facturador de una empresa.
+	 *
+	 * <p>Existe porque el RUC del empleador que exige el archivo de novedades del IESS sale
+	 * de aqui: <code>CBR.FCDR</code> es el unico sitio del sistema donde vive el RUC de la
+	 * empresa. Se filtra por la FK a <code>PJRQCDGO</code> y no se toma la primera fila de
+	 * la tabla, que en una instalacion multiempresa seria la de otra.</p>
+	 *
+	 * @param idEmpresa		: Id de la empresa
+	 * @return				: El facturador de esa empresa, o null
+	 * @throws Throwable	: Excepcion
+	 */
+	Facturador selectByEmpresa(Long idEmpresa) throws Throwable;
 }

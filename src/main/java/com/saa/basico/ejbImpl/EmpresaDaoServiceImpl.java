@@ -57,7 +57,11 @@ public class EmpresaDaoServiceImpl extends EntityDaoImpl<Empresa> implements Emp
 	@SuppressWarnings("unchecked")
 	public List<Empresa> selectArbolEmpresas() throws Throwable {
 		System.out.println("Empresa.selectArbolEmpresas");
-		Query query = em.createQuery(" from     Empresa t " +
+		// El 'select t' es obligatorio: em.createQuery es la entrada JPQL y JPQL no admite el
+		// select implicito que si permitia el HQL antiguo. Sin el, Hibernate 6 lanza
+		// StrictJpaComplianceViolation y el metodo no llega a ejecutarse nunca.
+		Query query = em.createQuery(" select   t " +
+				" from     Empresa t " +
 				" where    t.jerarquia.codigoAlterno = :alterno" +
 				" order by t.nivel, t.nombre");
 		query.setParameter("alterno", Long.valueOf(CodigoAlternoJerarquias.SIS_EMPRESA));
@@ -74,7 +78,9 @@ public class EmpresaDaoServiceImpl extends EntityDaoImpl<Empresa> implements Emp
 	@SuppressWarnings("unchecked")
 	public List<Empresa> selectEmpresaByUsuario(Long idUsuarioDebito) throws Throwable {
 		System.out.println("Ingresa al Metodo selectEmpresaByUsuario con idUsuarioDebito: " + idUsuarioDebito);
-		Query query = em.createQuery(" from   Empresa b" +
+		// Ver el comentario de selectArbolEmpresas sobre el select explicito.
+		Query query = em.createQuery(" select b " +
+				" from   Empresa b" +
 				" where  b.codigo = :idUsuarioDebito");
 		query.setParameter("idUsuarioDebito", idUsuarioDebito);
 		return query.getResultList();

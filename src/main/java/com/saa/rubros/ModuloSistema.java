@@ -23,6 +23,10 @@ public interface ModuloSistema {
 	public static final int TESORERIA = 2;
 	public static final int CUENTAS_POR_PAGAR = 3;
 	public static final int CUENTAS_POR_COBRAR = 4;
+	/** Modulo de Recursos Humanos. Ultimo argumento de generarAsiento(...) para el rol de
+	 *  pagos, las provisiones y la liquidacion. El asiento de pago se etiqueta TESORERIA.
+	 *  No confundir con TipoAsientos.RECURSOS_HUMANOS, que es el tipo de asiento contable. */
+	public static final int RECURSOS_HUMANOS = 5;
 	public static final int INGRESO = 99;
 
 }

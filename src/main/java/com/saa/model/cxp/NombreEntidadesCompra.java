@@ -57,6 +57,9 @@ public interface NombreEntidadesCompra {
 	String ADENDUM_NEGOCIACION      = "AdendumNegociacion";
 	String PATH_NEGOCIACION         = "PathNegociacion";
 
+	// Reembolso de gastos (facturas de reembolso)
+	String REEMBOLSO_FACTURA_COMPRA = "ReembolsoFacturaCompra";
+
 	// Anticipos y Aplicaciones de pago CXP
 	String ANTICIPO_PROVEEDOR       = "AnticipoProveedor";
 	String APLICACION_PAGO_CXP      = "AplicacionPagoCxp";

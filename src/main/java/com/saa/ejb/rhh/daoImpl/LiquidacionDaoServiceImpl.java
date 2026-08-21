@@ -22,18 +22,33 @@ import jakarta.ejb.Stateless;
 public class LiquidacionDaoServiceImpl extends EntityDaoImpl<Liquidacion>  implements LiquidacionDaoService{
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.parametrizacion.ejb.dao.LiquidacionDaoService#obtieneCampos()
+	 * @see com.saa.ejb.rhh.dao.LiquidacionDaoService#obtieneCampos()
 	 */
 	public String[] obtieneCampos() {
 		System.out.println("Ingresa al metodo (campos) Liquidacion");
 		return new String[]{"codigo",
-							"proposicionPagoXCuota",
-							"fechaAprobacion",
-							"nivelAprobacion",
-							"usuarioAprueba",
-							"nombreUsuarioAprueba",
+							"empleado",
+							"contratoEmpleado",
+							"fechaSalida",
+							"motivo",
+							"neto",
 							"estado",
-							"observacion"};
+							"fechaRegistro",
+							"causalTerminacion",
+							"fechaIngreso",
+							"aniosServicio",
+							"ultimaRemuneracion",
+							"totalIngresos",
+							"totalDescuentos",
+							"desahucio",
+							"despidoIntempestivo",
+							"jubilacionPatronal",
+							"actaSut",
+							"fechaSut",
+							"asiento",
+							"fechaAprobacion",
+							"usuarioAprueba",
+							"usuarioRegistro"};
 	}
 	
 }

@@ -3,6 +3,8 @@ package com.saa.model.rhh;
 import java.io.Serializable;
 import java.time.LocalDate;
 
+import com.saa.basico.util.EntidadAuditableFecha;
+
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -25,7 +27,7 @@ import jakarta.persistence.Table;
     @NamedQuery(name = "AnexoContratoId", query = "select e from AnexoContrato e where e.codigo=:id"),
     @NamedQuery(name = "AnexoContratoAll", query = "select e from AnexoContrato e"),
 })
-public class AnexoContrato implements Serializable {
+public class AnexoContrato implements Serializable, EntidadAuditableFecha {
 
     /**
      * Código único del anexo.

@@ -16,24 +16,23 @@ import jakarta.ejb.Stateless;
 
 /**
  * @author GaemiSoft.
- * Implementacion CatalogoDaoService. 
+ * Implementacion CargoDaoService. 
  */
 @Stateless
 public class CargoDaoServiceImpl extends EntityDaoImpl<Cargo>  implements CargoDaoService{
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.parametrizacion.ejb.dao.CatalogoDaoService#obtieneCampos()
+	 * @see com.saa.ejb.rhh.dao.CargoDaoService#obtieneCampos()
 	 */
 	public String[] obtieneCampos() {
-		System.out.println("Ingresa al metodo (campos) Catalogo");
+		System.out.println("Ingresa al metodo (campos) Cargo");
 		return new String[]{"codigo",
 							"nombre",
 							"descripcion",
-							"requiositos",
+							"requisitos",
 							"estado",
 							"fechaRegistro",
-							"usuarioRegistro"
-							};
+							"usuarioRegistro"};
 	}
 	
 }

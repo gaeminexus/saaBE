@@ -16,7 +16,8 @@ public class DocumentoCxpDaoServiceImpl extends EntityDaoImpl<DocumentoCxp> impl
             "valorSinImpuestos","iva","importeTotal","numeroDocumentoModificado",
             "estadoDocumento","pathXml","fechaCargaXml","usuarioCargaXml",
             "idDocumentoBD","tipoTablaDestino","fechaRegistroBD","usuarioRegistroBD",
-            "fechaReversion","usuarioReversion","novedad","estadoNovedad","observacion"
+            "fechaReversion","usuarioReversion","novedad","estadoNovedad","observacion",
+            "periodoContable","esReembolso"
         };
     }
 }

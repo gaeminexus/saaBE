@@ -1963,7 +1963,7 @@ Secuencia PK: `CBR.SQ_ANTCCDGO`
 | `fechaRegistro` | `LocalDateTime` | `FECHAREGISTRO` |  |
 | `numeroDoc` | `String` | `NUMERODOC` | length=100 |
 | `valor` | `Double` | `VALOR` |  |
-| `saldo` | `Double` | `ANTCSALD` |  |
+| `saldo` | `Double` | `ANTCSALD` | Saldo DISPONIBLE de este anticipo (valor − cruces activos) |
 | `formaPago` | `Long` | `ANTCFPAG` |  |
 | `referencia` | `String` | `ANTCREFR` | length=200 |
 | `banco` | `String` | `ANTCBANC` | length=200 |
@@ -1985,7 +1985,8 @@ Secuencia PK: `CBR.SQ_APLCCDGO`
 | `tipoDocPago` | `Long` | `APLCTDPG` |  |
 | `notaCredito` | `NotaCredito` | `APLCNTCR` | FK → `NotaCredito` (ID), ManyToOne |
 | `retencion` | `RetencionCompra` | `APLCRTCM` | FK → `RetencionCompra` (ID), ManyToOne |
-| `anticipo` | `AnticipoCliente` | `APLCANTC` | FK → `AnticipoCliente` (ID), ManyToOne |
+| `anticipo` | `AnticipoCliente` | `APLCANTC` | FK → `AnticipoCliente` (ID), ManyToOne. Movimiento negativo histórico |
+| `anticipoOrigen` | `AnticipoCliente` | `APLCANTO` | FK → `AnticipoCliente` (ID), ManyToOne. Anticipo del que sale el cruce |
 | `formaPago` | `Long` | `APLCFPAG` |  |
 | `referencia` | `String` | `APLCREFR` | length=200 |
 | `banco` | `String` | `APLCBANC` | length=200 |
@@ -2957,7 +2958,7 @@ Secuencia PK: `PGS.SQ_ANTPCDGO`
 | `fechaRecepcion` | `LocalDate` | `ANTPFRCP` |  |
 | `numeroDoc` | `String` | `ANTPNDOC` | length=100 |
 | `valor` | `Double` | `ANTPVLOR` |  |
-| `saldo` | `Double` | `ANTPSALD` |  |
+| `saldo` | `Double` | `ANTPSALD` | Saldo DISPONIBLE de este anticipo (valor − cruces activos) |
 | `formaPago` | `Long` | `ANTPFPAG` |  |
 | `referencia` | `String` | `ANTPREFR` | length=200 |
 | `banco` | `String` | `ANTPBANC` | length=200 |
@@ -2979,7 +2980,8 @@ Secuencia PK: `PGS.SQ_APLPCDGO`
 | `tipoDocPago` | `Long` | `APLPTDPG` |  |
 | `notaCredito` | `NotaCreditoCompra` | `APLPNTCC` | FK → `NotaCreditoCompra` (ID), ManyToOne |
 | `retencion` | `Retencion` | `APLPRTNC` | FK → `Retencion` (ID), ManyToOne |
-| `anticipo` | `AnticipoProveedor` | `APLPANTP` | FK → `AnticipoProveedor` (ANTPCDGO), ManyToOne |
+| `anticipo` | `AnticipoProveedor` | `APLPANTP` | FK → `AnticipoProveedor` (ANTPCDGO), ManyToOne. Movimiento negativo histórico |
+| `anticipoOrigen` | `AnticipoProveedor` | `APLPANTO` | FK → `AnticipoProveedor` (ANTPCDGO), ManyToOne. Anticipo del que sale el cruce |
 | `formaPago` | `Long` | `APLPFPAG` |  |
 | `referencia` | `String` | `APLPREFR` | length=200 |
 | `banco` | `String` | `APLPBANC` | length=200 |

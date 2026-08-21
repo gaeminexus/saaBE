@@ -114,9 +114,11 @@ public interface AnticipoProveedorService extends EntityService<AnticipoProveedo
     void revertirContabilidadAnticipo(Long idAnticipo, String motivo) throws Throwable;
 
     /**
-     * Anula un anticipo pendiente de pago. Si tiene un pago Registrado lo
-     * anula también; si el pago está En archivo o Confirmado, la anulación se
-     * bloquea (procesar la respuesta del banco o revertir el pago primero).
+     * Anula un anticipo SIN aceptar la reversión de cruces con facturas.
+     * Equivale a {@link #anularAnticipo(Long, String, Long, boolean)} con
+     * {@code confirmaReversionCruces = false}: si el anticipo ya fue cruzado
+     * con alguna factura devuelve {@code requiereConfirmacion = true} y el
+     * detalle de los cruces en lugar de anular.
      * @param idAnticipo : Id del anticipo
      * @param motivo     : Motivo de la anulación
      * @param idUsuario  : Id del usuario que anula
@@ -125,4 +127,75 @@ public interface AnticipoProveedorService extends EntityService<AnticipoProveedo
      */
     Map<String, Object> anularAnticipo(Long idAnticipo, String motivo, Long idUsuario)
             throws Throwable;
+
+    /**
+     * Analiza si un anticipo puede anularse y si su anulación arrastra cruces
+     * con facturas. NO modifica nada: es la consulta previa que la pantalla usa
+     * para avisar al usuario antes de pedirle la confirmación.
+     * <p>
+     * El cruce de anticipos descuenta el saldo GLOBAL del proveedor
+     * (TSR.PRCC.PRCCSLIN) y no se enlaza al anticipo original, así que
+     * "¿este anticipo fue cruzado?" se responde comparando el valor del
+     * anticipo contra ese saldo global: si el saldo disponible ya no alcanza
+     * para cubrirlo, la diferencia salió por cruces y hay que reversarlos
+     * (los más recientes primero) para poder anular.
+     * @param idAnticipo : Id del anticipo
+     * @return           : Mapa con puedeAnular, requiereConfirmacion, valorAnticipo,
+     *                     saldoDisponible, montoACruzar, cruces (lista de facturas
+     *                     afectadas) y mensaje
+     * @throws Throwable : Excepcion
+     */
+    Map<String, Object> verificarAnulacion(Long idAnticipo) throws Throwable;
+
+    /**
+     * Anula un anticipo en cualquier estado, revirtiendo todo lo que generó.
+     * <ul>
+     *   <li><b>Ingresado</b>: anula el pago Registrado del circuito; se bloquea
+     *       si el pago ya está En archivo (en poder del banco).</li>
+     *   <li><b>Confirmado</b>: si el anticipo ya fue cruzado con facturas exige
+     *       {@code confirmaReversionCruces}; entonces reversa esos cruces
+     *       (devolviendo el saldo a cada factura y anulando su asiento de
+     *       cruce), anula el movimiento bancario y el asiento del anticipo,
+     *       descuenta el saldo de anticipos del proveedor y anula el pago.</li>
+     * </ul>
+     * Sin la confirmación devuelve {@code exito=false} y
+     * {@code requiereConfirmacion=true} con el detalle de los cruces, igual que
+     * {@link #verificarAnulacion(Long)}.
+     * @param idAnticipo              : Id del anticipo
+     * @param motivo                  : Motivo de la anulación (obligatorio)
+     * @param idUsuario               : Id del usuario que anula
+     * @param confirmaReversionCruces : true si el usuario aceptó eliminar los
+     *                                  abonos que el anticipo hizo a facturas
+     * @return                        : Mapa con exito, mensaje y el detalle de lo reversado
+     * @throws Throwable              : Excepcion
+     */
+    Map<String, Object> anularAnticipo(Long idAnticipo, String motivo, Long idUsuario,
+            boolean confirmaReversionCruces) throws Throwable;
+
+    /**
+     * Anticipos del proveedor que todavía tienen saldo para cruzar contra una
+     * factura: Confirmados, con saldo disponible mayor a cero, del más antiguo
+     * al más nuevo. Es la lista que alimenta la pantalla de cruce.
+     * @param idTitular  : Id del proveedor
+     * @param idEmpresa  : Id de la empresa contable
+     * @return           : Anticipos con saldo disponible
+     * @throws Throwable : Excepcion
+     */
+    List<AnticipoProveedor> selectDisponibles(Long idTitular, Long idEmpresa) throws Throwable;
+
+    /**
+     * Estado de cuenta de los anticipos de un proveedor para las pantallas de
+     * consulta y seguimiento: cada anticipo con sus fechas, su documento, su
+     * asiento y el detalle de los cruces que lo consumieron (activos y
+     * reversados, para poder seguir también las anulaciones).
+     * <p>
+     * Incluye el cuadre entre la suma de los saldos por anticipo y el saldo
+     * global de la cuenta contable de anticipos: si no coinciden hay
+     * movimientos sin atribuir y la respuesta trae una advertencia.
+     * @param idTitular  : Id del proveedor
+     * @param idEmpresa  : Id de la empresa contable
+     * @return           : Mapa con anticipos, totales, saldos, diferencia y cuadra
+     * @throws Throwable : Excepcion
+     */
+    Map<String, Object> seguimiento(Long idTitular, Long idEmpresa) throws Throwable;
 }

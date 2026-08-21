@@ -29,7 +29,8 @@ import jakarta.ws.rs.core.UriInfo;
  *   GET  /aplc/factura/{id}          → historial de cobros/abonos de una factura
  *   GET  /aplc/saldo/{id}            → total, cobrado y saldo pendiente de una factura
  *   POST /aplc/cobroTransferencia    → registra un cobro recibido por transferencia
- *   POST /aplc/anticipo              → cruza saldo de anticipos del cliente con una factura
+ *   POST /aplc/anticipo              → cruza anticipos por monto total (FIFO sobre los disponibles)
+ *   POST /aplc/anticipos             → cruza anticipos ESPECÍFICOS elegidos por el usuario
  *   POST /aplc/revertir/{id}         → reversa una aplicación (requiere motivo)
  *
  * Las aplicaciones por retención recibida y por notas de crédito/débito NO se
@@ -218,6 +219,61 @@ public class AplicacionPagoCxcRest {
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al cruzar el anticipo: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Cruza anticipos ESPECÍFICOS del cliente contra una factura de venta.
+     * Cada línea dice de qué anticipo sale el dinero y cuánto, y genera su
+     * propia aplicación con su propio asiento.
+     * <p>
+     * Los anticipos elegibles se consultan con
+     * {@code GET /antp/disponibles/{idTitular}/{idEmpresa}}.
+     * <p>
+     * Body esperado:
+     * <pre>
+     * {
+     *   "idFactura": 123,
+     *   "anticipos": [ { "idAnticipo": 7, "valor": 300.00 },
+     *                  { "idAnticipo": 9, "valor": 200.00 } ],
+     *   "fechaAplicacion": "2026-08-20",
+     *   "idEmpresa": 1,
+     *   "idUsuario": 5,
+     *   "observacion": "Cruce parcial"
+     * }
+     * </pre>
+     */
+    @POST
+    @Path("/anticipos")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response aplicarAnticipos(Map<String, Object> datos) {
+        System.out.println("LLEGA AL SERVICIO POST /aplc/anticipos");
+        try {
+            Long idFactura     = toLong(datos.get("idFactura"));
+            String fecha       = (String) datos.get("fechaAplicacion");
+            Long idEmpresa     = toLong(datos.get("idEmpresa"));
+            Long idUsuario     = toLong(datos.get("idUsuario"));
+            String observacion = (String) datos.get("observacion");
+
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> anticipos =
+                    (List<Map<String, Object>>) datos.get("anticipos");
+
+            if (idFactura == null || idEmpresa == null || anticipos == null || anticipos.isEmpty()) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity("Debe enviar idFactura, idEmpresa y al menos un anticipo.")
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
+
+            Map<String, Object> resultado = aplicacionPagoCxcService.aplicarAnticipos(
+                    idFactura, anticipos, fecha, idEmpresa, idUsuario, observacion);
+            return Response.status(Response.Status.OK).entity(resultado)
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al cruzar los anticipos: " + e.getMessage())
                     .type(MediaType.APPLICATION_JSON).build();
         }
     }

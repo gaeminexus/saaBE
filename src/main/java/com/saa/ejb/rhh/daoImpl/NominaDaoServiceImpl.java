@@ -8,11 +8,16 @@
  */
 package com.saa.ejb.rhh.daoImpl;
 
+import java.util.List;
+
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.rhh.dao.NominaDaoService;
 import com.saa.model.rhh.Nomina;
 
 import jakarta.ejb.Stateless;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.Query;
 
 /**
  * @author GaemiSoft.
@@ -21,19 +26,73 @@ import jakarta.ejb.Stateless;
 @Stateless
 public class NominaDaoServiceImpl extends EntityDaoImpl<Nomina>  implements NominaDaoService{
 
+	//Inicializa persistence context
+	@PersistenceContext
+	EntityManager em;
+
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.parametrizacion.ejb.dao.NominaDaoService#obtieneCampos()
+	 * @see com.saa.ejb.rhh.dao.NominaDaoService#obtieneCampos()
 	 */
 	public String[] obtieneCampos() {
 		System.out.println("Ingresa al metodo (campos) Nomina");
 		return new String[]{"codigo",
-							"proposicionPagoXCuota",
-							"fechaAprobacion",
-							"nivelAprobacion",
-							"usuarioAprueba",
-							"nombreUsuarioAprueba",
+							"periodoNomina",
+							"empleado",
+							"contratoEmpleado",
+							"salarioBase",
+							"totalIngresos",
+							"totalDescuentos",
+							"netoPagar",
 							"estado",
+							"fechaRegistro",
+							"usuarioRegistro",
+							"diasTrabajados",
+							"horasTrabajadas",
+							"baseIess",
+							"baseImpuestoRenta",
+							"baseFondosReserva",
+							"baseDecimoTercero",
+							"baseDecimoCuarto",
+							"aportePersonal",
+							"aportePatronal",
+							"aporteIeceSecap",
+							"fondosReserva",
+							"retencionImpuestoRenta",
+							"totalPatronal",
 							"observacion"};
 	}
 	
+
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.rhh.dao.NominaDaoService#selectByPeriodo(java.lang.Long)
+	 */
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<Nomina> selectByPeriodo(Long idPeriodo) throws Throwable {
+		System.out.println("Ingresa al metodo selectByPeriodo de Nomina, periodo: " + idPeriodo);
+		Query query = em.createQuery(" select   t "
+				+ " from     Nomina t "
+				+ " where    t.periodoNomina.codigo = :idPeriodo "
+				+ " order by t.empleado.apellidos, t.empleado.nombres ");
+		query.setParameter("idPeriodo", idPeriodo);
+		return query.getResultList();
+	}
+
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.rhh.dao.NominaDaoService#selectByPeriodoYEmpleado(java.lang.Long, java.lang.Long)
+	 */
+	@SuppressWarnings("unchecked")
+	@Override
+	public Nomina selectByPeriodoYEmpleado(Long idPeriodo, Long idEmpleado) throws Throwable {
+		System.out.println("Ingresa al metodo selectByPeriodoYEmpleado de Nomina, periodo: " + idPeriodo
+				+ ", empleado: " + idEmpleado);
+		Query query = em.createQuery(" select   t "
+				+ " from     Nomina t "
+				+ " where    t.periodoNomina.codigo = :idPeriodo "
+				+ "          and t.empleado.codigo = :idEmpleado ");
+		query.setParameter("idPeriodo", idPeriodo);
+		query.setParameter("idEmpleado", idEmpleado);
+		List<Nomina> encontrados = query.getResultList();
+		return (encontrados == null || encontrados.isEmpty()) ? null : encontrados.get(0);
+	}
 }

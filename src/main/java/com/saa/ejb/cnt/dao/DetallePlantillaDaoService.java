@@ -44,5 +44,19 @@ public interface DetallePlantillaDaoService extends EntityDao<DetallePlantilla> 
 	 */
 	List<DetallePlantilla> selectByIdPlanCuenta(Long idPlanCuenta) throws Throwable;
 
+	/**
+	 * Recupera la linea de una plantilla identificada por su auxiliar1.
+	 *
+	 * <p>RHH estrena el uso de DTPLAXL1: lleva el codigo alterno del detalle del rubro 214
+	 * RHH_LINEA_ASIENTO, que dice que papel cumple esa linea dentro del asiento. Solo
+	 * considera lineas activas.</p>
+	 *
+	 * @param idPlantilla	: Id de la plantilla (CNT.PLNS)
+	 * @param auxiliar1		: Codigo alterno del detalle del rubro 214
+	 * @return				: La linea, o null si la plantilla no la define
+	 * @throws Throwable	: Excepcion
+	 */
+	DetallePlantilla selectByPlantillaYAuxiliar(Long idPlantilla, int auxiliar1) throws Throwable;
+
 	
 }

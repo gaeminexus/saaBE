@@ -3,6 +3,8 @@ package com.saa.model.rhh;
 import java.io.Serializable;
 import java.time.LocalDate;
 
+import com.saa.basico.util.EntidadAuditableFecha;
+
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -25,7 +27,7 @@ import jakarta.persistence.Table;
     @NamedQuery(name = "RolPagoId", query = "select e from RolPago e where e.codigo=:id"),
     @NamedQuery(name = "RolPagoAll", query = "select e from RolPago e")
 })
-public class RolPago implements Serializable {
+public class RolPago implements Serializable, EntidadAuditableFecha {
 
     /**
      * Código único del rol.
@@ -89,6 +91,49 @@ public class RolPago implements Serializable {
     // Getters y Setters
     // =============================
 
+
+    /**
+     * Total de ingresos del rol.
+     */
+    @Basic
+    @Column(name = "RLPGTTIN")
+    private Double totalIngresos;
+
+    /**
+     * Total de descuentos del rol.
+     */
+    @Basic
+    @Column(name = "RLPGTTDS")
+    private Double totalDescuentos;
+
+    /**
+     * Neto a pagar del rol.
+     */
+    @Basic
+    @Column(name = "RLPGNETO")
+    private Double neto;
+
+    /**
+     * Hash del contenido, para detectar alteraciones posteriores a la emision.
+     */
+    @Basic
+    @Column(name = "RLPGHASH", length = 64)
+    private String hash;
+
+    /**
+     * Fecha de envio al empleado.
+     */
+    @Basic
+    @Column(name = "RLPGFCEN")
+    private LocalDate fechaEnvio;
+
+    /**
+     * Recibido y firmado por el empleado (S/N).
+     */
+    @Basic
+    @Column(name = "RLPGRCBD", length = 1)
+    private String recibido;
+
     public Long getCodigo() {
         return codigo;
     }
@@ -151,5 +196,53 @@ public class RolPago implements Serializable {
 
     public void setUsuarioRegistro(String usuarioRegistro) {
         this.usuarioRegistro = usuarioRegistro;
+    }
+
+    public Double getTotalIngresos() {
+        return totalIngresos;
+    }
+
+    public void setTotalIngresos(Double totalIngresos) {
+        this.totalIngresos = totalIngresos;
+    }
+
+    public Double getTotalDescuentos() {
+        return totalDescuentos;
+    }
+
+    public void setTotalDescuentos(Double totalDescuentos) {
+        this.totalDescuentos = totalDescuentos;
+    }
+
+    public Double getNeto() {
+        return neto;
+    }
+
+    public void setNeto(Double neto) {
+        this.neto = neto;
+    }
+
+    public String getHash() {
+        return hash;
+    }
+
+    public void setHash(String hash) {
+        this.hash = hash;
+    }
+
+    public LocalDate getFechaEnvio() {
+        return fechaEnvio;
+    }
+
+    public void setFechaEnvio(LocalDate fechaEnvio) {
+        this.fechaEnvio = fechaEnvio;
+    }
+
+    public String getRecibido() {
+        return recibido;
+    }
+
+    public void setRecibido(String recibido) {
+        this.recibido = recibido;
     }
 }

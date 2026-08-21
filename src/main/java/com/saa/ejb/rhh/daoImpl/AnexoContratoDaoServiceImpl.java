@@ -22,18 +22,19 @@ import jakarta.ejb.Stateless;
 public class AnexoContratoDaoServiceImpl extends EntityDaoImpl<AnexoContrato>  implements AnexoContratoDaoService{
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.parametrizacion.ejb.dao.AnexoContratoDaoService#obtieneCampos()
+	 * @see com.saa.ejb.rhh.dao.AnexoContratoDaoService#obtieneCampos()
 	 */
 	public String[] obtieneCampos() {
 		System.out.println("Ingresa al metodo (campos) AnexoContrato");
 		return new String[]{"codigo",
-							"proposicionPagoXCuota",
-							"fechaAprobacion",
-							"nivelAprobacion",
-							"usuarioAprueba",
-							"nombreUsuarioAprueba",
-							"estado",
-							"observacion"};
+							"contratoEmpleado",
+							"tipo",
+							"fechaAnexo",
+							"detalle",
+							"nuevoSalario",
+							"nuevaFechaFin",
+							"fechaRegistro",
+							"usuarioRegistro"};
 	}
 	
 }

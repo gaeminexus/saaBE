@@ -3,6 +3,8 @@ package com.saa.model.rhh;
 import java.io.Serializable;
 import java.time.LocalDate;
 
+import com.saa.basico.util.EntidadAuditableFecha;
+
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -26,7 +28,7 @@ import jakarta.persistence.Table;
     @NamedQuery(name = "DetalleLiquidacionAll", query = "select e from DetalleLiquidacion e")
     
 })
-public class DetalleLiquidacion implements Serializable {
+public class DetalleLiquidacion implements Serializable, EntidadAuditableFecha {
 
     /**
      * Código único del detalle.
@@ -71,6 +73,45 @@ public class DetalleLiquidacion implements Serializable {
     @Basic
     @Column(name = "TMLQUSRR")
     private String usuarioRegistro;
+
+
+    /**
+     * Concepto del catalogo al que corresponde este rubro del finiquito.
+     *
+     * <p>Es lo que permite clasificar cada rubro en su linea del rubro 214 al contabilizar:
+     * sin el, el asiento de liquidacion no se puede armar.</p>
+     */
+    @ManyToOne
+    @JoinColumn(name = "CPNMCDGO", referencedColumnName = "CPNMCDGO")
+    private ConceptoNomina conceptoNomina;
+
+    /**
+     * Tipo de concepto congelado al calcular. Snapshot: mismo criterio que RNGL.
+     */
+    @Basic
+    @Column(name = "TMLQTPCN")
+    private Long tipoConcepto;
+
+    /**
+     * Base sobre la que se calculo el rubro. Snapshot.
+     */
+    @Basic
+    @Column(name = "TMLQBSCL")
+    private Double baseCalculo;
+
+    /**
+     * Dias considerados en el calculo del rubro.
+     */
+    @Basic
+    @Column(name = "TMLQDIAS")
+    private Double dias;
+
+    /**
+     * Orden de presentacion del rubro en el acta.
+     */
+    @Basic
+    @Column(name = "TMLQORDN")
+    private Integer orden;
 
     // =============================
     // Getters y Setters
@@ -123,5 +164,45 @@ public class DetalleLiquidacion implements Serializable {
 
     public void setUsuarioRegistro(String usuarioRegistro) {
         this.usuarioRegistro = usuarioRegistro;
+    }
+
+    public ConceptoNomina getConceptoNomina() {
+        return conceptoNomina;
+    }
+
+    public void setConceptoNomina(ConceptoNomina conceptoNomina) {
+        this.conceptoNomina = conceptoNomina;
+    }
+
+    public Long getTipoConcepto() {
+        return tipoConcepto;
+    }
+
+    public void setTipoConcepto(Long tipoConcepto) {
+        this.tipoConcepto = tipoConcepto;
+    }
+
+    public Double getBaseCalculo() {
+        return baseCalculo;
+    }
+
+    public void setBaseCalculo(Double baseCalculo) {
+        this.baseCalculo = baseCalculo;
+    }
+
+    public Double getDias() {
+        return dias;
+    }
+
+    public void setDias(Double dias) {
+        this.dias = dias;
+    }
+
+    public Integer getOrden() {
+        return orden;
+    }
+
+    public void setOrden(Integer orden) {
+        this.orden = orden;
     }
 }

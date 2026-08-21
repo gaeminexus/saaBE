@@ -3,12 +3,17 @@ package com.saa.model.rhh;
 import java.io.Serializable;
 import java.time.LocalDate;
 
+import com.saa.basico.util.EntidadAuditableFecha;
+import com.saa.model.scp.Empresa;
+
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
 import jakarta.persistence.Table;
@@ -23,7 +28,7 @@ import jakarta.persistence.Table;
     @NamedQuery(name = "CatalogoId", query = "select e from Catalogo e where e.codigo=:id"),
     @NamedQuery(name = "CatalogoAll", query = "select e from Catalogo e")
 })
-public class Catalogo implements Serializable {
+public class Catalogo implements Serializable, EntidadAuditableFecha {
 
     /**
      * Código único del tipo de permiso.
@@ -80,6 +85,35 @@ public class Catalogo implements Serializable {
     // Getters y Setters
     // =============================
 
+
+    /**
+     * Empresa propietaria del catalogo (SCP.PJRQ).
+     */
+    @ManyToOne
+    @JoinColumn(name = "PJRQCDGO", referencedColumnName = "PJRQCDGO")
+    private Empresa empresa;
+
+    /**
+     * Tipo de ausencia al que corresponde: detalle del rubro RHH_TIPO_AUSENCIA.
+     */
+    @Basic
+    @Column(name = "CTLGTPAS")
+    private Long tipoAusencia;
+
+    /**
+     * Maximo de dias permitidos para este tipo de permiso.
+     */
+    @Basic
+    @Column(name = "CTLGMXDI")
+    private Integer maximoDias;
+
+    /**
+     * El permiso se descuenta de la nomina (S/N).
+     */
+    @Basic
+    @Column(name = "CTLGDSNM", length = 1)
+    private String descuentaNomina;
+
     public Long getCodigo() {
         return codigo;
     }
@@ -134,5 +168,37 @@ public class Catalogo implements Serializable {
 
     public void setUsuarioRegistro(String usuarioRegistro) {
         this.usuarioRegistro = usuarioRegistro;
+    }
+
+    public Empresa getEmpresa() {
+        return empresa;
+    }
+
+    public void setEmpresa(Empresa empresa) {
+        this.empresa = empresa;
+    }
+
+    public Long getTipoAusencia() {
+        return tipoAusencia;
+    }
+
+    public void setTipoAusencia(Long tipoAusencia) {
+        this.tipoAusencia = tipoAusencia;
+    }
+
+    public Integer getMaximoDias() {
+        return maximoDias;
+    }
+
+    public void setMaximoDias(Integer maximoDias) {
+        this.maximoDias = maximoDias;
+    }
+
+    public String getDescuentaNomina() {
+        return descuentaNomina;
+    }
+
+    public void setDescuentaNomina(String descuentaNomina) {
+        this.descuentaNomina = descuentaNomina;
     }
 }

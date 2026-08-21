@@ -3,6 +3,8 @@ package com.saa.model.rhh;
 import java.io.Serializable;
 import java.time.LocalDate;
 
+import com.saa.basico.util.EntidadAuditableFecha;
+
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -25,7 +27,7 @@ import jakarta.persistence.Table;
     @NamedQuery(name = "DetalleTurnoId", query = "select e from DetalleTurno e where e.codigo=:id"),
     @NamedQuery(name = "DetalleTurnoAll", query = "select e from DetalleTurno e")
 })
-public class DetalleTurno implements Serializable {
+public class DetalleTurno implements Serializable, EntidadAuditableFecha {
 
     /**
      * Código único del detalle.
@@ -70,6 +72,17 @@ public class DetalleTurno implements Serializable {
     @Basic
     @Column(name = "DTLLLBRB")
     private String laborable;
+
+    /**
+     * Minutos de descanso de este dia. <b>Anula al del turno</b>; nulo = usar el del turno.
+     *
+     * <p>Existe por la misma razon que existen <code>DTLLENTR</code> y <code>DTLLSLDA</code>:
+     * el modelo ya admite que un viernes tenga otro horario, y con el descanso solo en
+     * <code>TRNO</code> no admitiria que ese viernes tuviera otro almuerzo.</p>
+     */
+    @Basic
+    @Column(name = "DTLLMNDS")
+    private Integer minutosDescanso;
 
     /**
      * Fecha de registro.
@@ -135,6 +148,14 @@ public class DetalleTurno implements Serializable {
 
     public void setLaborable(String laborable) {
         this.laborable = laborable;
+    }
+
+    public Integer getMinutosDescanso() {
+        return minutosDescanso;
+    }
+
+    public void setMinutosDescanso(Integer minutosDescanso) {
+        this.minutosDescanso = minutosDescanso;
     }
 
     public LocalDate getFechaRegistro() {

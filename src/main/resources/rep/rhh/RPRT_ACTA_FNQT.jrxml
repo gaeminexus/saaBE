@@ -1,0 +1,245 @@
+<!-- Acta de finiquito (RHH). Estilo corporativo cnt/crd + logo ASOPREP-FCPC. Ver docs/logica-negocio/reportes/REPORTE-ACTA-FINIQUITO.md -->
+<jasperReport name="RPRT_ACTA_FNQT" language="java" pageWidth="595" pageHeight="842" columnWidth="545" leftMargin="25" rightMargin="25" topMargin="20" bottomMargin="20" whenNoDataType="NoDataSection" uuid="c5000000-0000-0000-0000-000000000000">
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="Oracle"/>
+	<property name="com.jaspersoft.studio.report.description" value="Acta de finiquito del colaborador: rubros del finiquito, totales y firmas, para el registro en el SUT."/>
+	<parameter name="P_LQDC_CODIGO" class="java.lang.Long">
+		<description><![CDATA[Codigo de la liquidacion (RHH.LQDC.LQDCCDGO)]]></description>
+	</parameter>
+	<parameter name="P_IMAGEN" class="java.awt.Image">
+		<description><![CDATA[Logo del fondo. Lo inyecta ReporteServiceImpl si el frontend no lo envia.]]></description>
+	</parameter>
+	<parameter name="P_USUARIO" class="java.lang.String">
+		<description><![CDATA[Usuario que genera el reporte (opcional)]]></description>
+	</parameter>
+	<query language="SQL"><![CDATA[SELECT
+    l.LQDCCDGO                                                        AS LIQUIDACION,
+    l.LQDCFCHS                                                        AS FECHA_SALIDA,
+    l.LQDCFCIN                                                        AS FECHA_INGRESO,
+    NVL(l.LQDCANSR, 0)                                                AS ANIOS_SERVICIO,
+    NVL(l.LQDCULRM, 0)                                                AS ULTIMA_REMUNERACION,
+    NVL(l.LQDCTTIN, 0)                                                AS TOTAL_INGRESOS,
+    NVL(l.LQDCTTDS, 0)                                                AS TOTAL_DESCUENTOS,
+    NVL(l.LQDCNETO, 0)                                                AS NETO,
+    NVL(l.LQDCACSU, ' ')                                              AS ACTA_SUT,
+    e.MPLDIDNT                                                        AS IDENTIFICACION,
+    NVL(e.MPLDAPLL, ' ') || ' ' || NVL(e.MPLDNMBR, ' ')               AS EMPLEADO,
+    NVL(c.CSTRNMBR, '(sin causal registrada)')                        AS CAUSAL,
+    NVL(c.CSTRARTC, ' ')                                              AS ARTICULO,
+    NVL(g.CPNMNMBR, NVL(d.TMLQDSCR, 'Rubro'))                         AS RUBRO,
+    NVL(d.TMLQTPCN, 1)                                                AS TIPO_CONCEPTO,
+    NVL(d.TMLQBSCL, 0)                                                AS BASE_CALCULO,
+    NVL(d.TMLQDIAS, 0)                                                AS DIAS,
+    NVL(d.TMLQVLRO, 0)                                                AS VALOR,
+    NVL(d.TMLQORDN, 0)                                                AS ORDEN
+FROM RHH.LQDC l
+     JOIN RHH.MPLD e ON e.MPLDCDGO = l.MPLDCDGO
+     LEFT JOIN RHH.CSTR c ON c.CSTRCDGO = l.CSTRCDGO
+     LEFT JOIN RHH.TMLQ d ON d.LQDCCDGO = l.LQDCCDGO
+     LEFT JOIN RHH.CPNM g ON g.CPNMCDGO = d.CPNMCDGO
+WHERE l.LQDCCDGO = $P{P_LQDC_CODIGO}
+ORDER BY NVL(d.TMLQORDN, 0), d.TMLQCDGO]]></query>
+	<field name="LIQUIDACION" class="java.math.BigDecimal"/>
+	<field name="FECHA_SALIDA" class="java.sql.Timestamp"/>
+	<field name="FECHA_INGRESO" class="java.sql.Timestamp"/>
+	<field name="ANIOS_SERVICIO" class="java.math.BigDecimal"/>
+	<field name="ULTIMA_REMUNERACION" class="java.math.BigDecimal"/>
+	<field name="TOTAL_INGRESOS" class="java.math.BigDecimal"/>
+	<field name="TOTAL_DESCUENTOS" class="java.math.BigDecimal"/>
+	<field name="NETO" class="java.math.BigDecimal"/>
+	<field name="ACTA_SUT" class="java.lang.String"/>
+	<field name="IDENTIFICACION" class="java.lang.String"/>
+	<field name="EMPLEADO" class="java.lang.String"/>
+	<field name="CAUSAL" class="java.lang.String"/>
+	<field name="ARTICULO" class="java.lang.String"/>
+	<field name="RUBRO" class="java.lang.String"/>
+	<field name="TIPO_CONCEPTO" class="java.math.BigDecimal"/>
+	<field name="BASE_CALCULO" class="java.math.BigDecimal"/>
+	<field name="DIAS" class="java.math.BigDecimal"/>
+	<field name="VALOR" class="java.math.BigDecimal"/>
+	<field name="ORDEN" class="java.math.BigDecimal"/>
+	<background splitType="Stretch"/>
+	<title height="170" splitType="Stretch">
+		<element kind="image" uuid="c5000000-0000-0000-0000-000000000101" x="0" y="4" width="110" height="52" scaleImage="RetainShape" onErrorType="Blank" hImageAlign="Center" vImageAlign="Middle">
+			<expression><![CDATA[$P{P_IMAGEN}]]></expression>
+		</element>
+		<element kind="rectangle" uuid="c5000000-0000-0000-0000-000000000102" x="118" y="4" width="427" height="52">
+			<pen lineWidth="0.75" lineColor="#CBD5E0"/>
+		</element>
+		<element kind="staticText" uuid="c5000000-0000-0000-0000-000000000103" x="128" y="10" width="407" height="24" forecolor="#1A202C" fontName="Tahoma" fontSize="15.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[ACTA DE FINIQUITO]]></text>
+		</element>
+		<element kind="textField" uuid="c5000000-0000-0000-0000-000000000104" x="128" y="34" width="407" height="16" forecolor="#718096" fontName="Tahoma" fontSize="9.0" hTextAlign="Center" vTextAlign="Middle">
+			<expression><![CDATA[$F{ACTA_SUT}.trim().length() > 0 ? ("Acta SUT " + $F{ACTA_SUT}) : "Pendiente de registro en el SUT"]]></expression>
+		</element>
+		<element kind="textField" uuid="c5000000-0000-0000-0000-000000000105" x="395" y="60" width="150" height="11" forecolor="#718096" fontSize="6.5" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA["Generado: " + new java.text.SimpleDateFormat("d/M/yyyy h:mm a").format(new java.util.Date()) + ($P{P_USUARIO} != null ? ("  ·  Por: " + $P{P_USUARIO}) : "")]]></expression>
+		</element>
+		<element kind="staticText" uuid="c5000000-0000-0000-0000-000000000110" mode="Opaque" x="0" y="78" width="545" height="14" backcolor="#EDF2F7" forecolor="#4A5568" fontName="Tahoma" fontSize="8.0" bold="true" vTextAlign="Middle">
+			<text><![CDATA[DATOS DE LA RELACION LABORAL]]></text>
+			<box leftPadding="6"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="staticText" uuid="c5000000-0000-0000-0000-000000000111" mode="Opaque" x="0" y="92" width="100" height="14" backcolor="#F7FAFC" fontName="Tahoma" fontSize="7.5" bold="true" vTextAlign="Middle">
+			<text><![CDATA[Trabajador]]></text>
+			<box leftPadding="6"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="c5000000-0000-0000-0000-000000000112" x="100" y="92" width="260" height="14" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" vTextAlign="Middle">
+			<expression><![CDATA[$F{EMPLEADO}]]></expression>
+			<box leftPadding="6"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="staticText" uuid="c5000000-0000-0000-0000-000000000113" mode="Opaque" x="360" y="92" width="80" height="14" backcolor="#F7FAFC" fontName="Tahoma" fontSize="7.5" bold="true" vTextAlign="Middle">
+			<text><![CDATA[Cedula]]></text>
+			<box leftPadding="6"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="c5000000-0000-0000-0000-000000000114" x="440" y="92" width="105" height="14" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" vTextAlign="Middle">
+			<expression><![CDATA[$F{IDENTIFICACION}]]></expression>
+			<box leftPadding="6"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="staticText" uuid="c5000000-0000-0000-0000-000000000115" mode="Opaque" x="0" y="106" width="100" height="14" backcolor="#F7FAFC" fontName="Tahoma" fontSize="7.5" bold="true" vTextAlign="Middle">
+			<text><![CDATA[Ingreso / Salida]]></text>
+			<box leftPadding="6"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="c5000000-0000-0000-0000-000000000116" x="100" y="106" width="260" height="14" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" vTextAlign="Middle">
+			<expression><![CDATA[($F{FECHA_INGRESO} != null ? new java.text.SimpleDateFormat("d/M/yyyy").format($F{FECHA_INGRESO}) : "?")
++ "   al   " + new java.text.SimpleDateFormat("d/M/yyyy").format($F{FECHA_SALIDA})]]></expression>
+			<box leftPadding="6"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="staticText" uuid="c5000000-0000-0000-0000-000000000117" mode="Opaque" x="360" y="106" width="80" height="14" backcolor="#F7FAFC" fontName="Tahoma" fontSize="7.5" bold="true" vTextAlign="Middle">
+			<text><![CDATA[Anios]]></text>
+			<box leftPadding="6"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="c5000000-0000-0000-0000-000000000118" x="440" y="106" width="105" height="14" pattern="#,##0.00" fontName="Tahoma" fontSize="7.5" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$F{ANIOS_SERVICIO}]]></expression>
+			<box rightPadding="8"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="staticText" uuid="c5000000-0000-0000-0000-000000000119" mode="Opaque" x="0" y="120" width="100" height="14" backcolor="#F7FAFC" fontName="Tahoma" fontSize="7.5" bold="true" vTextAlign="Middle">
+			<text><![CDATA[Causal]]></text>
+			<box leftPadding="6"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="c5000000-0000-0000-0000-00000000011a" x="100" y="120" width="340" height="14" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" vTextAlign="Middle">
+			<expression><![CDATA[$F{CAUSAL} + ($F{ARTICULO}.trim().length() > 0 ? ("   (" + $F{ARTICULO} + ")") : "")]]></expression>
+			<box leftPadding="6"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="staticText" uuid="c5000000-0000-0000-0000-00000000011b" mode="Opaque" x="440" y="120" width="105" height="14" backcolor="#F7FAFC" fontName="Tahoma" fontSize="7.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<text><![CDATA[Ult. remuneracion]]></text>
+			<box rightPadding="6"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="c5000000-0000-0000-0000-00000000011c" x="0" y="140" width="545" height="26" forecolor="#4A5568" fontName="Tahoma" fontSize="7.5" textAdjust="StretchHeight" vTextAlign="Middle">
+			<expression><![CDATA["Ultima remuneracion mensual: " + new java.text.DecimalFormat("$#,##0.00").format($F{ULTIMA_REMUNERACION}.doubleValue())
++ ". Los rubros que siguen se calcularon sobre esa base y sobre la antiguedad indicada."]]></expression>
+		</element>
+	</title>
+	<pageHeader height="4" splitType="Stretch"/>
+	<columnHeader height="26" splitType="Stretch">
+		<element kind="staticText" uuid="c5000000-0000-0000-0000-000000000201" mode="Opaque" x="0" y="4" width="245" height="20" backcolor="#EDF2F7" forecolor="#4A5568" fontName="Tahoma" fontSize="7.0" bold="true" vTextAlign="Middle">
+			<text><![CDATA[Rubro]]></text>
+			<box leftPadding="4"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="staticText" uuid="c5000000-0000-0000-0000-000000000202" mode="Opaque" x="245" y="4" width="90" height="20" backcolor="#EDF2F7" forecolor="#4A5568" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<text><![CDATA[Base]]></text>
+			<box rightPadding="4"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="staticText" uuid="c5000000-0000-0000-0000-000000000203" mode="Opaque" x="335" y="4" width="80" height="20" backcolor="#EDF2F7" forecolor="#4A5568" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<text><![CDATA[Dias / anios]]></text>
+			<box rightPadding="4"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="staticText" uuid="c5000000-0000-0000-0000-000000000204" mode="Opaque" x="415" y="4" width="130" height="20" backcolor="#EDF2F7" forecolor="#4A5568" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<text><![CDATA[Valor]]></text>
+			<box rightPadding="4"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+	</columnHeader>
+	<detail>
+		<band height="14" splitType="Prevent">
+			<printWhenExpression><![CDATA[$F{VALOR} != null && $F{VALOR}.doubleValue() != 0]]></printWhenExpression>
+			<element kind="textField" uuid="c5000000-0000-0000-0000-000000000301" x="0" y="0" width="245" height="14" fontName="Tahoma" fontSize="7.0" blankWhenNull="true" vTextAlign="Middle">
+				<expression><![CDATA[$F{RUBRO} + ($F{TIPO_CONCEPTO}.intValue() == 2 ? "  (descuento)" : "")]]></expression>
+				<box leftPadding="4"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+			</element>
+			<element kind="textField" uuid="c5000000-0000-0000-0000-000000000302" x="245" y="0" width="90" height="14" fontName="Tahoma" fontSize="7.0" blankWhenNull="true" removeLineWhenBlank="true" hTextAlign="Right" vTextAlign="Middle">
+				<expression><![CDATA[$F{BASE_CALCULO}.doubleValue() > 0 ? new java.text.DecimalFormat("$#,##0.00").format($F{BASE_CALCULO}.doubleValue()) : null]]></expression>
+				<box rightPadding="4"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+			</element>
+			<element kind="textField" uuid="c5000000-0000-0000-0000-000000000303" x="335" y="0" width="80" height="14" fontName="Tahoma" fontSize="7.0" blankWhenNull="true" removeLineWhenBlank="true" hTextAlign="Right" vTextAlign="Middle">
+				<expression><![CDATA[$F{DIAS}.doubleValue() > 0 ? new java.text.DecimalFormat("#,##0.00").format($F{DIAS}.doubleValue()) : null]]></expression>
+				<box rightPadding="4"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+			</element>
+			<element kind="textField" uuid="c5000000-0000-0000-0000-000000000304" x="415" y="0" width="130" height="14" pattern="$#,##0.00" fontName="Tahoma" fontSize="7.0" hTextAlign="Right" vTextAlign="Middle">
+				<expression><![CDATA[$F{VALOR}]]></expression>
+				<box rightPadding="4"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+			</element>
+		</band>
+	</detail>
+	<pageFooter height="24" splitType="Stretch">
+		<element kind="line" uuid="c5000000-0000-0000-0000-000000000401" x="0" y="4" width="545" height="1">
+			<pen lineWidth="0.25" lineColor="#E2E8F0"/>
+		</element>
+		<element kind="staticText" uuid="c5000000-0000-0000-0000-000000000402" x="0" y="8" width="420" height="12" forecolor="#A0AEC0" fontName="Tahoma" fontSize="6.5" vTextAlign="Middle">
+			<text><![CDATA[ASOPREP-FCPC · Sistema de Administracion de Aportes (SAA) · Documento generado desde el sistema.]]></text>
+		</element>
+		<element kind="textField" uuid="c5000000-0000-0000-0000-000000000403" x="420" y="8" width="85" height="12" forecolor="#A0AEC0" fontSize="7.0" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA["Pagina " + $V{PAGE_NUMBER} + " de"]]></expression>
+		</element>
+		<element kind="textField" uuid="c5000000-0000-0000-0000-000000000404" x="507" y="8" width="38" height="12" forecolor="#A0AEC0" fontSize="7.0" evaluationTime="Report" hTextAlign="Left" vTextAlign="Middle">
+			<expression><![CDATA[" " + $V{PAGE_NUMBER}]]></expression>
+		</element>
+	</pageFooter>
+	<summary height="200" splitType="Stretch">
+		<element kind="staticText" uuid="c5000000-0000-0000-0000-000000000501" mode="Opaque" x="245" y="2" width="170" height="16" backcolor="#F7FAFC" forecolor="#1A202C" fontName="Tahoma" fontSize="7.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<text><![CDATA[TOTAL INGRESOS]]></text>
+			<box rightPadding="6"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="c5000000-0000-0000-0000-000000000502" x="415" y="2" width="130" height="16" pattern="$#,##0.00" fontName="Tahoma" fontSize="7.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$F{TOTAL_INGRESOS}]]></expression>
+			<box rightPadding="4"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="staticText" uuid="c5000000-0000-0000-0000-000000000503" mode="Opaque" x="245" y="18" width="170" height="16" backcolor="#F7FAFC" forecolor="#1A202C" fontName="Tahoma" fontSize="7.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<text><![CDATA[TOTAL DESCUENTOS]]></text>
+			<box rightPadding="6"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="c5000000-0000-0000-0000-000000000504" x="415" y="18" width="130" height="16" pattern="$#,##0.00" fontName="Tahoma" fontSize="7.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$F{TOTAL_DESCUENTOS}]]></expression>
+			<box rightPadding="4"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="staticText" uuid="c5000000-0000-0000-0000-000000000505" mode="Opaque" x="245" y="34" width="170" height="18" backcolor="#EDF2F7" forecolor="#1A202C" fontName="Tahoma" fontSize="8.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<text><![CDATA[NETO A RECIBIR]]></text>
+			<box rightPadding="6"><pen lineWidth="0.5" lineColor="#4A5568"/></box>
+		</element>
+		<element kind="textField" uuid="c5000000-0000-0000-0000-000000000506" x="415" y="34" width="130" height="18" pattern="$#,##0.00" fontName="Tahoma" fontSize="8.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$F{NETO}]]></expression>
+			<box rightPadding="4"><pen lineWidth="0.5" lineColor="#4A5568"/></box>
+		</element>
+		<!-- Un neto negativo se muestra, no se esconde: significa que el trabajador debe -->
+		<element kind="textField" uuid="c5000000-0000-0000-0000-000000000510" x="0" y="56" width="545" height="14" forecolor="#C05621" fontName="Tahoma" fontSize="7.0" bold="true" blankWhenNull="true" removeLineWhenBlank="true" vTextAlign="Middle">
+			<expression><![CDATA[$F{NETO}.doubleValue() < 0
+  ? "El finiquito arroja saldo a favor del empleador: el trabajador adeuda " + new java.text.DecimalFormat("$#,##0.00").format(Math.abs($F{NETO}.doubleValue())) + "."
+  : null]]></expression>
+		</element>
+		<element kind="staticText" uuid="c5000000-0000-0000-0000-000000000520" x="0" y="76" width="545" height="34" forecolor="#4A5568" fontName="Tahoma" fontSize="7.0" vTextAlign="Top">
+			<text><![CDATA[Las partes declaran que este finiquito se suscribe de manera libre y voluntaria, y que con su pago quedan canceladas todas las obligaciones derivadas de la relacion laboral. El acta debe registrarse en el Sistema Unico de Trabajo del Ministerio del Trabajo.]]></text>
+		</element>
+		<element kind="line" uuid="c5000000-0000-0000-0000-000000000530" x="20" y="150" width="200" height="1">
+			<pen lineWidth="0.5" lineColor="#4A5568"/>
+		</element>
+		<element kind="textField" uuid="c5000000-0000-0000-0000-000000000531" x="20" y="154" width="200" height="26" forecolor="#4A5568" fontName="Tahoma" fontSize="7.0" hTextAlign="Center" vTextAlign="Top">
+			<expression><![CDATA[$F{EMPLEADO} + "\n" + $F{IDENTIFICACION} + "\nTrabajador"]]></expression>
+		</element>
+		<element kind="line" uuid="c5000000-0000-0000-0000-000000000532" x="325" y="150" width="200" height="1">
+			<pen lineWidth="0.5" lineColor="#4A5568"/>
+		</element>
+		<element kind="staticText" uuid="c5000000-0000-0000-0000-000000000533" x="325" y="154" width="200" height="26" forecolor="#4A5568" fontName="Tahoma" fontSize="7.0" hTextAlign="Center" vTextAlign="Top">
+			<text><![CDATA[ASOPREP-FCPC
+Empleador]]></text>
+		</element>
+	</summary>
+	<noData height="120" splitType="Stretch">
+		<element kind="image" uuid="c5000000-0000-0000-0000-000000000601" x="0" y="4" width="110" height="52" scaleImage="RetainShape" onErrorType="Blank" hImageAlign="Center" vImageAlign="Middle">
+			<expression><![CDATA[$P{P_IMAGEN}]]></expression>
+		</element>
+		<element kind="staticText" uuid="c5000000-0000-0000-0000-000000000602" mode="Opaque" x="0" y="80" width="545" height="16" backcolor="#EDF2F7" forecolor="#4A5568" fontName="Tahoma" fontSize="9.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[SIN INFORMACION PARA PRESENTAR]]></text>
+			<box><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="c5000000-0000-0000-0000-000000000603" x="0" y="100" width="545" height="16" fontName="Tahoma" fontSize="8.0" hTextAlign="Center" vTextAlign="Middle">
+			<expression><![CDATA["No se encontro la liquidacion con codigo " + ($P{P_LQDC_CODIGO} != null ? String.valueOf($P{P_LQDC_CODIGO}) : "(nulo)") + "."]]></expression>
+		</element>
+	</noData>
+</jasperReport>

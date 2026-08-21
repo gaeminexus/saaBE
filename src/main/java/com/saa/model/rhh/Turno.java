@@ -3,6 +3,8 @@ package com.saa.model.rhh;
 import java.io.Serializable;
 import java.time.LocalDate;
 
+import com.saa.basico.util.EntidadAuditableFecha;
+
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -23,7 +25,7 @@ import jakarta.persistence.Table;
     @NamedQuery(name = "TurnoId", query = "select e from Turno e where e.codigo=:id"),
     @NamedQuery(name = "TurnoAll", query = "select e from Turno e")
 })
-public class Turno implements Serializable {
+public class Turno implements Serializable, EntidadAuditableFecha {
 
     /**
      * Código único del turno.
@@ -61,6 +63,18 @@ public class Turno implements Serializable {
     @Basic
     @Column(name = "TRNOMNTS")
     private Integer minutosTolerancia;
+
+    /**
+     * Minutos de descanso no remunerado de la jornada -- el almuerzo. Nulo = sin descanso.
+     *
+     * <p>Se resta del intervalo entre la hora de entrada y la de salida para obtener la jornada
+     * <b>efectiva</b>. Sin esta columna, un turno de 08:30 a 17:30 con una hora de almuerzo
+     * declaraba nueve horas de jornada teorica cuando el trabajador solo puede acumular ocho, y
+     * las horas suplementarias no empezaban a contar hasta las 18:30 en vez de las 17:30.</p>
+     */
+    @Basic
+    @Column(name = "TRNOMNDS")
+    private Integer minutosDescanso;
 
     /**
      * Estado del registro (A=Activo, I=Inactivo).
@@ -125,6 +139,14 @@ public class Turno implements Serializable {
 
     public void setMinutosTolerancia(Integer minutosTolerancia) {
         this.minutosTolerancia = minutosTolerancia;
+    }
+
+    public Integer getMinutosDescanso() {
+        return minutosDescanso;
+    }
+
+    public void setMinutosDescanso(Integer minutosDescanso) {
+        this.minutosDescanso = minutosDescanso;
     }
 
     public String getEstado() {

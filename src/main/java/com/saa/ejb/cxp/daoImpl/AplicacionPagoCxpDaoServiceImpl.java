@@ -8,6 +8,8 @@ import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.cxp.dao.AplicacionPagoCxpDaoService;
 import com.saa.model.cxp.AplicacionPagoCxp;
 import com.saa.model.cxp.FacturaCompra;
+import com.saa.rubros.EstadoAplicacionPago;
+import com.saa.rubros.TipoDocPagoAplicacion;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
@@ -34,6 +36,7 @@ public class AplicacionPagoCxpDaoServiceImpl extends EntityDaoImpl<AplicacionPag
             "retencion",
             "retencionV2",
             "anticipo",
+            "anticipoOrigen",
             "formaPago",
             "referencia",
             "banco",
@@ -137,6 +140,66 @@ public class AplicacionPagoCxpDaoServiceImpl extends EntityDaoImpl<AplicacionPag
         }
         if (idEmpresa != null) {
             query.setParameter("idEmpresa", idEmpresa);
+        }
+        return query.getResultList();
+    }
+
+    @Override
+    public List<AplicacionPagoCxp> selectCrucesAnticipoActivos(Long idTitular, Long idEmpresa)
+            throws Throwable {
+        System.out.println("Ingresa al metodo selectCrucesAnticipoActivos con titular: " + idTitular
+                + " | empresa: " + idEmpresa);
+
+        if (idTitular == null) {
+            return new ArrayList<>();
+        }
+
+        // LEFT JOIN explícito: con la navegación implícita (a.facturaCompra.titular)
+        // Hibernate genera INNER JOIN y se perderían las aplicaciones sin factura.
+        StringBuilder jpql = new StringBuilder(
+                " select a from AplicacionPagoCxp a " +
+                " left join a.facturaCompra f " +
+                " left join f.titular t " +
+                " where  a.tipoDocPago = :tipoAnticipo " +
+                " and    a.estado = :activo " +
+                " and    t.codigo = :idTitular ");
+        if (idEmpresa != null) {
+            jpql.append(" and a.empresa.codigo = :idEmpresa ");
+        }
+        jpql.append(" order by a.fechaAplicacion desc, a.id desc");
+
+        Query query = em.createQuery(jpql.toString());
+        query.setParameter("tipoAnticipo", Long.valueOf(TipoDocPagoAplicacion.ANTICIPO));
+        query.setParameter("activo", Long.valueOf(EstadoAplicacionPago.ACTIVO));
+        query.setParameter("idTitular", idTitular);
+        if (idEmpresa != null) {
+            query.setParameter("idEmpresa", idEmpresa);
+        }
+        return query.getResultList();
+    }
+
+    @Override
+    public List<AplicacionPagoCxp> selectCrucesByAnticipoOrigen(Long idAnticipo,
+            boolean soloActivas) throws Throwable {
+        System.out.println("Ingresa al metodo selectCrucesByAnticipoOrigen con anticipo: "
+                + idAnticipo + " | soloActivas: " + soloActivas);
+
+        if (idAnticipo == null) {
+            return new ArrayList<>();
+        }
+
+        StringBuilder jpql = new StringBuilder(
+                " select a from AplicacionPagoCxp a " +
+                " where  a.anticipoOrigen.id = :idAnticipo ");
+        if (soloActivas) {
+            jpql.append(" and a.estado = :activo ");
+        }
+        jpql.append(" order by a.fechaAplicacion desc, a.id desc");
+
+        Query query = em.createQuery(jpql.toString());
+        query.setParameter("idAnticipo", idAnticipo);
+        if (soloActivas) {
+            query.setParameter("activo", Long.valueOf(EstadoAplicacionPago.ACTIVO));
         }
         return query.getResultList();
     }

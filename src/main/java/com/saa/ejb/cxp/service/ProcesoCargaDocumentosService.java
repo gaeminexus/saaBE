@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 import com.saa.model.cxp.DetalleCargaTxt;
 import com.saa.model.cxp.DocumentoCxp;
+import com.saa.model.cxp.ProductoPago;
 import jakarta.ejb.Local;
 
 /**
@@ -81,8 +82,14 @@ public interface ProcesoCargaDocumentosService {
      * @param idDocumentoCxp ID del DocumentoCxp
      * @return Mapa con resultado de la validación
      */
+    /**
+     * @param esReembolsoBody flag enviado por el frontend (null = no viene en el body, se autodetecta solo del XML).
+     *        Si viene en true, se persiste aunque el XML no tenga reembolsoDetalle.
+     *        Si el doc ya tenia esReembolso=1 (marcado antes), NO se pisa a 0.
+     */
     Map<String, Object> cargarXmlDocumento(Long idDocumentoCxp, String contenidoXml,
-                                            String pathDestino, Long idUsuario) throws Throwable;
+                                            String pathDestino, Long idUsuario,
+                                            Boolean esReembolsoBody) throws Throwable;
 
     /**
      * FASE 3: Parsea el XML y registra en las tablas destino CXP. estadoDocumento=3.
@@ -101,9 +108,13 @@ public interface ProcesoCargaDocumentosService {
      * @param idDocumentoCxp ID del DocumentoCxp (debe tener estadoDocumento=5)
      * @param accion         Rubro 177: 1=MANTENER, 2=REEMPLAZAR
      */
+    /**
+     * @param esReembolsoBody flag esReembolso del body (null = no viene; si viene marcado se setea en DCXP antes
+     *        de re-registrar, usando la regla "nunca pisar a 0 un flag ya en 1").
+     */
     Map<String, Object> resolverNovedad(Long idDocumentoCxp, Integer accion,
                                          String contenidoXml, String pathDestino,
-                                         Long idUsuario) throws Throwable;
+                                         Long idUsuario, Boolean esReembolsoBody) throws Throwable;
 
     /**
      * FASE 5: Revierte un DocumentoCxp, eliminando registros de tablas destino. estadoDocumento=6.
@@ -138,4 +149,33 @@ public interface ProcesoCargaDocumentosService {
      */
     Map<String, Object> crearProductosYRegistrar(Long idDocumentoCxp, Long idEmpresa, Long idUsuario,
             List<Map<String, Object>> productosConGrupo) throws Throwable;
+
+    // =========================================================
+    // Reembolso de gastos (§6.5)
+    // =========================================================
+
+    /**
+     * Marca o desmarca como reembolso de gastos un documento de la bandeja (DCXP).
+     * Si el documento ya esta registrado como FACTURA_COMPRA, cascadea a la factura.
+     * Ver reglas completas en CAMBIO-REEMBOLSO-GASTOS-BACKEND.md §6.5.
+     */
+    Map<String, Object> marcarReembolso(Long idDocumentoCxp, boolean esReembolso, Long idUsuario) throws Throwable;
+
+    /**
+     * Contabiliza una factura de reembolso cuya contabilizacion quedo pendiente.
+     * Valida las 3 precondiciones del §6.3; si alguna falla lanza IncomeException.
+     */
+    Map<String, Object> contabilizarReembolso(Long idFacturaCompra, Long idEmpresa, Long idUsuario) throws Throwable;
+
+    /**
+     * Recalcula los totales de reembolso de la cabecera desde los RMBF activos.
+     * Persiste los 3 totales en FCTC y devuelve cuadratura contra factura.total.
+     */
+    Map<String, Object> recalcularTotalesReembolso(Long idFacturaCompra) throws Throwable;
+
+    /**
+     * Crea un ProductoPago en el grupo POR_CLASIFICAR para el alta manual de sustentos.
+     * Si ya existe un producto con ese codigo, lo devuelve sin crear.
+     */
+    ProductoPago crearProductoPorClasificar(String nombre, String codigo, Long idEmpresa) throws Throwable;
 }

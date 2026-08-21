@@ -85,10 +85,11 @@ public interface AplicacionPagoCxcService extends EntityService<AplicacionPagoCx
 	// ── Aplicaciones desde la pantalla de tesorería ──────────────────────────
 
 	/**
-	 * Cruza el saldo de anticipos del cliente contra una factura de venta.
-	 * El cruce es por valor contra el saldo global del cliente
-	 * (PersonaCuentaContable tipoCuenta=2): no se seleccionan anticipos
-	 * individuales. Genera el asiento y descuenta el saldo.
+	 * Cruza anticipos del cliente contra una factura de venta indicando solo el
+	 * monto total: el valor se reparte entre los anticipos con saldo del más
+	 * antiguo al más nuevo (FIFO) y se genera una aplicación por cada uno.
+	 * Para elegir a mano de qué anticipos sale el dinero, usar
+	 * {@link #aplicarAnticipos(Long, List, String, Long, Long, String)}.
 	 * @param idFactura       : Id de la factura de venta
 	 * @param valor           : Valor de anticipo a cruzar
 	 * @param fechaAplicacion : Fecha de la aplicación (yyyy-MM-dd, null = hoy)
@@ -100,6 +101,28 @@ public interface AplicacionPagoCxcService extends EntityService<AplicacionPagoCx
 	 */
 	Map<String, Object> aplicarAnticipo(Long idFactura, Double valor, String fechaAplicacion,
 			Long idEmpresa, Long idUsuario, String observacion) throws Throwable;
+
+	/**
+	 * Cruza anticipos ESPECÍFICOS del cliente contra una factura de venta.
+	 * <p>
+	 * Cada línea indica de qué anticipo sale el dinero y cuánto, y genera su
+	 * propia aplicación con su propio asiento. Es lo que permite deshacer
+	 * exactamente los abonos de un anticipo cuando se lo anula, en vez de
+	 * estimarlos contra el saldo global del cliente.
+	 * @param idFactura       : Id de la factura de venta
+	 * @param detalles        : Líneas del cruce: [{idAnticipo, valor}, ...]
+	 * @param fechaAplicacion : Fecha de la aplicación (yyyy-MM-dd, null = hoy)
+	 * @param idEmpresa       : Id de la empresa contable
+	 * @param idUsuario       : Id del usuario que registra
+	 * @param observacion     : Observación de la aplicación
+	 * @return                : Mapa con exito, mensaje, lineas (una por anticipo),
+	 *                          totalCruzado, saldoAnticipos y los saldos de la factura
+	 * @throws Throwable      : Excepcion si un anticipo no existe, no es del cliente,
+	 *                          no está confirmado o no tiene saldo suficiente
+	 */
+	Map<String, Object> aplicarAnticipos(Long idFactura,
+			List<Map<String, Object>> detalles, String fechaAplicacion, Long idEmpresa,
+			Long idUsuario, String observacion) throws Throwable;
 
 	/**
 	 * Registra un cobro recibido del cliente por transferencia bancaria.

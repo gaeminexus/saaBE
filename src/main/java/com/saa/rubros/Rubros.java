@@ -153,4 +153,111 @@ public interface Rubros {
 	 * valor configurable, mismo patron que FORMATO_FECHA - no una clasificacion de categorias). */
 	int ASP_TOLERANCIA_DIAS_CONCILIACION_CONTABLE = 178;
 
+
+	// ================= RUBROS RHH (Recursos Humanos) =================
+	// Cada constante tiene su interfaz de detalles en este mismo paquete.
+	/** Tipo de concepto de nomina (CPNMTPCN) -> ver {@link RhhTipoConceptoNomina} */
+	int RHH_TIPO_CONCEPTO_NOMINA          = 179;
+	/** Tipo de calculo del concepto (CPNMTPCL) -> ver {@link RhhTipoCalculoConcepto} */
+	int RHH_TIPO_CALCULO_CONCEPTO         = 180;
+	/** Base sobre la que se calcula el concepto (CPNMBSCL) -> ver {@link RhhBaseCalculo} */
+	int RHH_BASE_CALCULO                  = 181;
+	/** Estado del periodo de nomina (PRDNESTD) -> ver {@link RhhEstadoPeriodoNomina} */
+	int RHH_ESTADO_PERIODO_NOMINA         = 182;
+	/** Estado de la nomina del empleado (NMNAESTD) -> ver {@link RhhEstadoNomina} */
+	int RHH_ESTADO_NOMINA                 = 183;
+	/** Modo del periodo de nomina (PRDNMODO). Interruptor de contabilizacion -> ver {@link RhhModoPeriodoNomina} */
+	int RHH_MODO_PERIODO_NOMINA           = 184;
+	/** Estado del empleado (MPLDESTD) -> ver {@link RhhEstadoEmpleado} */
+	int RHH_ESTADO_EMPLEADO               = 185;
+	/** Tipo de relacion laboral del contrato (CNTETPRL) -> ver {@link RhhTipoRelacionLaboral} */
+	int RHH_TIPO_RELACION_LABORAL         = 186;
+	/** Region que define el periodo del decimo cuarto (MPLDRGNN) -> ver {@link RhhRegionDecimoCuarto} */
+	int RHH_REGION_DECIMO_CUARTO          = 187;
+	/** Modalidad de pago del decimo tercero (CNTEDCTM) -> ver {@link RhhModalidadDecimoTercero} */
+	int RHH_MODALIDAD_DECIMO_TERCERO      = 188;
+	/** Modalidad de pago del decimo cuarto (CNTEDCCM) -> ver {@link RhhModalidadDecimoCuarto} */
+	int RHH_MODALIDAD_DECIMO_CUARTO       = 189;
+	/** Modalidad de pago de los fondos de reserva (CNTEFRMD) -> ver {@link RhhModalidadFondosReserva} */
+	int RHH_MODALIDAD_FONDOS_RESERVA      = 190;
+	/** Tipo de hora extra (HREXTPHR). El PDTRVLRN lleva el porcentaje de recargo -> ver {@link RhhTipoHoraExtra} */
+	int RHH_TIPO_HORA_EXTRA               = 191;
+	/** Tipo de marcacion (MRCCTPOO) -> ver {@link RhhTipoMarcacion} */
+	int RHH_TIPO_MARCACION                = 192;
+	/** Origen de la marcacion (MRCCORGN) -> ver {@link RhhOrigenMarcacion} */
+	int RHH_ORIGEN_MARCACION              = 193;
+	/** Estado de la carga de marcaciones (CRMRESTD) -> ver {@link RhhEstadoCargaMarcaciones} */
+	int RHH_ESTADO_CARGA_MARCACIONES      = 194;
+	/** Causal de terminacion laboral (CSTRALTR) -> ver {@link RhhCausalTerminacion} */
+	int RHH_CAUSAL_TERMINACION            = 195;
+	/** Estado de la liquidacion de haberes (LQDCESTD) -> ver {@link RhhEstadoLiquidacion} */
+	int RHH_ESTADO_LIQUIDACION            = 196;
+	/** Tipo de descuento recurrente (DSRCTPDS) -> ver {@link RhhTipoDescuentoRecurrente} */
+	int RHH_TIPO_DESCUENTO_RECURRENTE     = 197;
+	/** Estado del descuento recurrente (DSRCESTD) -> ver {@link RhhEstadoDescuentoRecurrente} */
+	int RHH_ESTADO_DESCUENTO_RECURRENTE   = 198;
+	/** Tipo de cuenta bancaria del empleado (CBEMTPCT) -> ver {@link RhhTipoCuentaBancaria} */
+	int RHH_TIPO_CUENTA_BANCARIA          = 199;
+	/** Parentesco de la carga familiar (CRGFPRNT) -> ver {@link RhhParentescoCarga} */
+	int RHH_PARENTESCO_CARGA              = 200;
+	/** Tipo de gasto personal proyectado (GSPRTPGS) -> ver {@link RhhTipoGastoPersonal} */
+	int RHH_TIPO_GASTO_PERSONAL           = 201;
+	/** Tipo de acumulado de nomina (ACMNTPAC) -> ver {@link RhhTipoAcumulado} */
+	int RHH_TIPO_ACUMULADO                = 202;
+	/** Tipo de beneficio social liquidado (LQBSTPBS) -> ver {@link RhhTipoBeneficioSocial} */
+	int RHH_TIPO_BENEFICIO_SOCIAL         = 203;
+	/** Tipo de novedad IESS (NVISTPNV). El PDTRVLRN lleva el plazo legal en dias -> ver {@link RhhTipoNovedadIess} */
+	int RHH_TIPO_NOVEDAD_IESS             = 204;
+	/** Estado de la novedad IESS (NVISESTD) -> ver {@link RhhEstadoNovedadIess} */
+	int RHH_ESTADO_NOVEDAD_IESS           = 205;
+	/** Tipo de provision de nomina (PVNMTPPV) -> ver {@link RhhTipoProvision} */
+	int RHH_TIPO_PROVISION                = 206;
+	/** Tipo de ausencia del resumen de asistencia (RSMNTPAS) -> ver {@link RhhTipoAusencia} */
+	int RHH_TIPO_AUSENCIA                 = 207;
+	/** Estado de la orden de pago de nomina (RDPGESTD) -> ver {@link RhhEstadoOrdenPago} */
+	int RHH_ESTADO_ORDEN_PAGO             = 208;
+	/** Tipo de formato del archivo de marcaciones (FMRCTPFR) -> ver {@link RhhFormatoArchivoMarcacion} */
+	int RHH_FORMATO_ARCHIVO_MARCACION     = 209;
+	/** Tipo de jornada del contrato (CNTETPJR) -> ver {@link RhhTipoJornada} */
+	int RHH_TIPO_JORNADA                  = 210;
+	/** Tipo de saldo de apertura de la migracion (SLAPTPSL) -> ver {@link RhhTipoSaldoApertura} */
+	int RHH_TIPO_SALDO_APERTURA           = 211;
+	/** Tipo de periodo de nomina (PRDNTPPR) -> ver {@link RhhTipoPeriodoNomina} */
+	int RHH_TIPO_PERIODO_NOMINA           = 212;
+	/** Origen del renglon de nomina (RNGLORGN) -> ver {@link RhhOrigenRenglon} */
+	int RHH_ORIGEN_RENGLON                = 213;
+	/** Papel de la linea dentro del asiento contable. Se graba en CNT.DTPL.DTPLAXL1 -> ver {@link RhhLineaAsiento} */
+	int RHH_LINEA_ASIENTO                 = 214;
+	/** Campo logico del archivo de marcaciones (DFMRCMPO) -> ver {@link RhhCampoArchivoMarcacion} */
+	int RHH_CAMPO_ARCHIVO_MARCACION       = 215;
+	/** Entidad recaudadora del descuento (DSRCENRC) -> ver {@link RhhEntidadRecaudadora} */
+	int RHH_ENTIDAD_RECAUDADORA           = 216;
+	/** Tipo de cambio registrado en el historial (HSTRTPCM) -> ver {@link RhhTipoCambioHistorial} */
+	int RHH_TIPO_CAMBIO_HISTORIAL         = 217;
+	/** Genero del empleado (MPLDGNRO) -> ver {@link RhhGenero} */
+	int RHH_GENERO                        = 218;
+	/** Estado civil del empleado (MPLDESCV) -> ver {@link RhhEstadoCivil} */
+	int RHH_ESTADO_CIVIL                  = 219;
+	/** Nivel de instruccion del empleado (MPLDNVIN) -> ver {@link RhhNivelInstruccion} */
+	int RHH_NIVEL_INSTRUCCION             = 220;
+	/** Rol del concepto dentro del motor de calculo (CPNMROLM) -> ver {@link RhhRolConceptoMotor} */
+	int RHH_ROL_CONCEPTO_MOTOR            = 221;
+	/** Estado de la cuota de un descuento recurrente (CTDSESTD) -> ver {@link RhhEstadoCuotaDescuento} */
+	int RHH_ESTADO_CUOTA_DESCUENTO        = 222;
+	/** Tipo de salida oficial generada (SLOFTPSL) */
+	int RHH_TIPO_SALIDA_OFICIAL           = 223;
+	/** Dato que va en cada campo del archivo bancario (DFMBCMPO) -> ver {@link RhhCampoArchivoBancario} */
+	int RHH_CAMPO_ARCHIVO_BANCARIO        = 224;
+	/** Codigo de jornada del IESS para el aviso de entrada. El codigo vive en PDTRVLRV -> ver {@link RhhJornadaIess} */
+	int RHH_JORNADA_IESS                  = 225;
+	/** Codigo de relacion de trabajo del IESS, dos digitos. El codigo vive en PDTRVLRV -> ver {@link RhhRelacionTrabajoIess} */
+	int RHH_RELACION_TRABAJO_IESS         = 226;
+	/** Codigo de origen de pago del IESS para el aviso de entrada. El codigo vive en PDTRVLRV -> ver {@link RhhOrigenPagoIess} */
+	int RHH_ORIGEN_PAGO_IESS              = 227;
+	/** Codigo de causa del aviso de salida del IESS. Sus alternos coinciden 1:1 con CSTRALTR -> ver {@link RhhCausaSalidaIess} */
+	int RHH_CAUSA_SALIDA_IESS             = 228;
+	/** Codigo de causa de la variacion de sueldo por extras. El codigo vive en PDTRVLRV -> ver {@link RhhCausaVariacionIess} */
+	int RHH_CAUSA_VARIACION_IESS          = 229;
+	/** Codigo de seguro social del IESS para el aviso de entrada. El codigo vive en PDTRVLRV -> ver {@link RhhCodigoSeguroSocialIess} */
+	int RHH_CODIGO_SEGURO_SOCIAL_IESS     = 230;
 }

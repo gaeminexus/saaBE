@@ -22,18 +22,23 @@ import jakarta.ejb.Stateless;
 public class HistorialDaoServiceImpl extends EntityDaoImpl<Historial>  implements HistorialDaoService{
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.parametrizacion.ejb.dao.HistorialDaoService#obtieneCampos()
+	 * @see com.saa.ejb.rhh.dao.HistorialDaoService#obtieneCampos()
 	 */
 	public String[] obtieneCampos() {
 		System.out.println("Ingresa al metodo (campos) Historial");
 		return new String[]{"codigo",
-							"proposicionPagoXCuota",
-							"fechaAprobacion",
-							"nivelAprobacion",
-							"usuarioAprueba",
-							"nombreUsuarioAprueba",
-							"estado",
-							"observacion"};
+							"empleado",
+							"departamentoCargo",
+							"cargo",
+							"fechaInicio",
+							"fechaFin",
+							"actual",
+							"observacion",
+							"fechaRegistro",
+							"usuarioRegistro",
+							"tipoCambio",
+							"sueldoAnterior",
+							"sueldoNuevo"};
 	}
 	
 }

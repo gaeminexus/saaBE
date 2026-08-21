@@ -3,6 +3,8 @@ package com.saa.model.rhh;
 import java.io.Serializable;
 import java.time.LocalDate;
 
+import com.saa.basico.util.EntidadAuditableFecha;
+
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -23,7 +25,7 @@ import jakarta.persistence.Table;
 	@NamedQuery(name = "CargoId", query = "select e from Cargo e where e.codigo=:id"),
     @NamedQuery(name = "CargoAll", query = "select e from Cargo e")
 })
-public class Cargo implements Serializable {
+public class Cargo implements Serializable, EntidadAuditableFecha {
 
     /**
      * Código único del cargo.

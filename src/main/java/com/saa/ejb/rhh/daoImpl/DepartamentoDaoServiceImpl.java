@@ -25,7 +25,7 @@ public class DepartamentoDaoServiceImpl extends EntityDaoImpl<Departamento>  imp
 	 * @see com.compuseg.income.parametrizacion.ejb.dao.DepartamentoDaoService#obtieneCampos()
 	 */
 	public String[] obtieneCampos() {
-		System.out.println("Ingresa al metodo (campos) DepartamentoCargo");
+		System.out.println("Ingresa al metodo (campos) Departamento");
 		return new String[]{"codigo",
 							"nombre",
 							"estado",

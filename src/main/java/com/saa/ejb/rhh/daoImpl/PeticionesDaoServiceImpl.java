@@ -22,18 +22,23 @@ import jakarta.ejb.Stateless;
 public class PeticionesDaoServiceImpl extends EntityDaoImpl<Peticiones>  implements PeticionesDaoService{
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.parametrizacion.ejb.dao.PeticionesDaoService#obtieneCampos()
+	 * @see com.saa.ejb.rhh.dao.PeticionesDaoService#obtieneCampos()
 	 */
 	public String[] obtieneCampos() {
 		System.out.println("Ingresa al metodo (campos) Peticiones");
 		return new String[]{"codigo",
-							"proposicionPagoXCuota",
-							"fechaAprobacion",
-							"nivelAprobacion",
-							"usuarioAprueba",
-							"nombreUsuarioAprueba",
+							"empleado",
+							"catalogo",
+							"fechaDesde",
+							"fechaHasta",
+							"horas",
+							"motivo",
+							"documento",
 							"estado",
-							"observacion"};
+							"usuarioAprobador",
+							"observacion",
+							"fechaRegistro",
+							"usuarioRegistro"};
 	}
 	
 }

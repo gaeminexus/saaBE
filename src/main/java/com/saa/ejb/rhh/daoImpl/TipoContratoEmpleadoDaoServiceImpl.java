@@ -16,24 +16,25 @@ import jakarta.ejb.Stateless;
 
 /**
  * @author GaemiSoft.
- * Implementacion TipoContratoDaoService. 
+ * Implementacion TipoContratoEmpleadoDaoService. 
  */
 @Stateless
 public class TipoContratoEmpleadoDaoServiceImpl extends EntityDaoImpl<TipoContratoEmpleado>  implements TipoContratoEmpleadoDaoService{
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.parametrizacion.ejb.dao.TipoContratoDaoService#obtieneCampos()
+	 * @see com.saa.ejb.rhh.dao.TipoContratoEmpleadoDaoService#obtieneCampos()
 	 */
 	public String[] obtieneCampos() {
-		System.out.println("Ingresa al metodo (campos) TipoContrato");
+		System.out.println("Ingresa al metodo (campos) TipoContratoEmpleado");
 		return new String[]{"codigo",
-							"proposicionPagoXCuota",
-							"fechaAprobacion",
-							"nivelAprobacion",
-							"usuarioAprueba",
-							"nombreUsuarioAprueba",
+							"nombre",
+							"requiereFechaFin",
 							"estado",
-							"observacion"};
+							"fechaRegistro",
+							"usuarioRegistro",
+							"empresa",
+							"tipoRelacionLaboral",
+							"duracionMaximaMeses"};
 	}
 	
 }

@@ -22,18 +22,35 @@ import jakarta.ejb.Stateless;
 public class PeriodoNominaDaoServiceImpl extends EntityDaoImpl<PeriodoNomina>  implements PeriodoNominaDaoService{
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.parametrizacion.ejb.dao.PeriodoNominaDaoService#obtieneCampos()
+	 * @see com.saa.ejb.rhh.dao.PeriodoNominaDaoService#obtieneCampos()
 	 */
 	public String[] obtieneCampos() {
 		System.out.println("Ingresa al metodo (campos) PeriodoNomina");
 		return new String[]{"codigo",
-							"proposicionPagoXCuota",
-							"fechaAprobacion",
-							"nivelAprobacion",
-							"usuarioAprueba",
-							"nombreUsuarioAprueba",
+							"anio",
+							"mes",
+							"fechaInicio",
+							"fechaFin",
 							"estado",
-							"observacion"};
+							"fechaRegistro",
+							"usuarioRegistro",
+							"empresa",
+							"modo",
+							"tipoPeriodo",
+							"fechaContable",
+							"asientoRol",
+							"asientoProvisiones",
+							"asientoPago",
+							"fechaAprobacion",
+							"usuarioAprueba",
+							"fechaCierre",
+							"usuarioCierra",
+							"totalIngresos",
+							"totalDescuentos",
+							"totalNeto",
+							"totalPatronal",
+							"numeroEmpleados",
+							"observaciones"};
 	}
 	
 }

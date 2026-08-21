@@ -8,6 +8,8 @@
  */
 package com.saa.ejb.rhh.dao;
 
+import java.util.List;
+
 import com.saa.basico.util.EntityDao;
 import com.saa.model.rhh.SaldoVacaciones;
 
@@ -20,4 +22,25 @@ import jakarta.ejb.Local;
 @Local
 public interface SaldoVacacionesDaoService  extends EntityDao<SaldoVacaciones>  {
 	
+
+	/**
+	 * Recupera los saldos de vacaciones con dias disponibles de un empleado, del mas
+	 * antiguo al mas reciente, que es el orden de consumo FIFO.
+	 *
+	 * @param idEmpleado	: Id del empleado
+	 * @return				: Listado de saldos; vacio si no hay
+	 * @throws Throwable	: Excepcion
+	 */
+	List<SaldoVacaciones> selectDisponibles(Long idEmpleado) throws Throwable;
+
+	/**
+	 * Recupera el saldo de vacaciones de un empleado para un anio concreto. Se usa para
+	 * que la acreditacion anual sea idempotente.
+	 *
+	 * @param idEmpleado	: Id del empleado
+	 * @param anio			: Anio del periodo de vacaciones
+	 * @return				: El saldo, o null si aun no se acredito
+	 * @throws Throwable	: Excepcion
+	 */
+	SaldoVacaciones selectByEmpleadoYAnio(Long idEmpleado, Integer anio) throws Throwable;
 }

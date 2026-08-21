@@ -10,6 +10,6 @@ public class FacturaCompraDaoServiceImpl extends EntityDaoImpl<FacturaCompra> im
 	@PersistenceContext EntityManager em;
 	@Override
 	public String[] obtieneCampos() {
-		return new String[]{"id","tipoComprobante","empresa","titular","tipoDoc","numero","numEstablecimiento","numPtoEmision","secuencial","ambiente","clave","fecha","observacion","subtotal","subcero","subtotal5","subtotal8","pIVA","vIVA","vIVA5","vIVA8","vICE","vIRBPNR","descuento","porDescuento","propina","subsidio","totalSinSub","ahorroSub","total","ptoEmision","usuario","pathGen","autorizacion","fechaAutorizacion","formaPago","estado","estadoEmision"};
+		return new String[]{"id","tipoComprobante","empresa","titular","tipoDoc","numero","numEstablecimiento","numPtoEmision","secuencial","ambiente","clave","fecha","observacion","subtotal","subcero","subtotal5","subtotal8","pIVA","vIVA","vIVA5","vIVA8","vICE","vIRBPNR","descuento","porDescuento","propina","subsidio","totalSinSub","ahorroSub","total","ptoEmision","usuario","pathGen","autorizacion","fechaAutorizacion","formaPago","estado","estadoEmision","estadoPago","asiento","esReembolso","codDocReembolso","totalComprobantesReembolso","totalBaseImponibleReembolso","totalImpuestoReembolso"};
 	}
 }

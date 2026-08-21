@@ -23,6 +23,22 @@ import jakarta.ws.rs.core.UriInfo;
 /**
  * REST para Anticipos de Clientes.
  * Base path: /antc
+ *
+ * Endpoints principales:
+ *   POST /antc/procesar          → registra el anticipo, genera el asiento y lo confirma
+ *   POST /antc/confirmar         → confirma un anticipo Ingresado y genera su asiento
+ *   GET  /antc/verificarAnulacion/{id} → dice si el anticipo puede anularse y si ya fue
+ *                                  cruzado con facturas (consulta previa, no modifica nada)
+ *   POST /antc/anular/{id}       → anula el anticipo, su asiento y (con confirmación) los
+ *                                  abonos que hizo a facturas. Requiere motivo.
+ *   GET  /antc/getAll            → todos los anticipos
+ *   GET  /antc/getId/{id}        → anticipo por ID
+ *   GET  /antc/getByTitular/{idTitular}/{idEmpresa}
+ *   GET  /antc/disponibles/{idTitular}/{idEmpresa} → anticipos con saldo para cruzar
+ *   GET  /antc/seguimiento/{idTitular}/{idEmpresa}  → estado de cuenta: anticipos, cruces y asientos
+ *   POST /antc                   → guardar (sin asiento, estado=Ingresado)
+ *   PUT  /antc                   → actualizar
+ *   DELETE /antc/{id}            → anulación lógica sin aceptar reversión de cruces
  */
 @Path("antc")
 public class AnticipoClienteRest {
@@ -114,29 +130,102 @@ public class AnticipoClienteRest {
         }
     }
 
+    // ── GET /antc/verificarAnulacion/{id} ────────────────────────────────────
+    /**
+     * Consulta previa a la anulación: dice si el anticipo puede anularse y si
+     * ya fue cruzado con facturas, con el detalle de esos cruces. NO modifica
+     * nada — la pantalla la usa para preguntarle al usuario antes de anular.
+     *
+     * Respuesta:
+     * <pre>
+     * {
+     *   "puedeAnular":          true,
+     *   "requiereConfirmacion": true,          (true = el anticipo ya fue cruzado)
+     *   "valorAnticipo":        500.00,
+     *   "saldoDisponible":      200.00,
+     *   "montoACruzar":         300.00,
+     *   "cruces": [ { "idAplicacion":9, "idFactura":12, "numeroFactura":"001-001-000000123",
+     *                 "montoAplicado":300.00, "fechaAplicacion":"2026-08-01" } ],
+     *   "mensaje":              "..."
+     * }
+     * </pre>
+     */
+    @GET
+    @Path("/verificarAnulacion/{id}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response verificarAnulacion(@PathParam("id") Long id) {
+        System.out.println("GET /antc/verificarAnulacion/" + id);
+        try {
+            java.util.Map<String, Object> resultado =
+                    anticiPoClienteService.verificarAnulacion(id);
+            return Response.ok(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return error500("Error al verificar la anulación del anticipo: " + e.getMessage());
+        }
+    }
+
+    // ── POST /antc/anular/{id} ───────────────────────────────────────────────
+    /**
+     * Anula un anticipo de cliente y revierte todo lo que generó.
+     * <ul>
+     *   <li>Anticipo Ingresado: no tiene asiento ni saldo acreditado, solo pasa
+     *       a Anulado.</li>
+     *   <li>Anticipo Confirmado: si ya fue cruzado con facturas responde
+     *       {@code exito=false, requiereConfirmacion=true} con el detalle de los
+     *       cruces; reenviando con {@code confirmarReversionCruces=true} se
+     *       eliminan esos abonos (las facturas vuelven a quedar pendientes de
+     *       cobro), se anula el asiento del anticipo y su movimiento bancario, y
+     *       se descuenta el saldo de anticipos del cliente.</li>
+     * </ul>
+     * Body esperado:
+     * { "motivo": "...", "idUsuario": 5, "confirmarReversionCruces": false }
+     */
+    @POST
+    @Path("/anular/{id}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response anular(@PathParam("id") Long id, java.util.Map<String, Object> params) {
+        System.out.println("POST /antc/anular/" + id);
+        try {
+            String motivo  = (params != null && params.get("motivo") != null)
+                    ? params.get("motivo").toString() : null;
+            Long idUsuario = (params != null) ? getLongParam(params, "idUsuario") : null;
+            boolean confirmarCruces = (params != null)
+                    && Boolean.parseBoolean(String.valueOf(
+                            params.getOrDefault("confirmarReversionCruces", "false")));
+
+            if (motivo == null || motivo.trim().isEmpty()) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(msg("Debe indicar el motivo de la anulación."))
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
+
+            java.util.Map<String, Object> resultado = anticiPoClienteService.anularAnticipo(
+                    id, motivo, idUsuario, confirmarCruces);
+            // Cuando falta la confirmación de los cruces la respuesta sigue
+            // siendo 200: no es un error, es la pregunta al usuario.
+            return Response.ok(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return error500("Error al anular anticipo: " + e.getMessage());
+        }
+    }
+
     // ── DELETE /antc/{id} — anulación lógica (estado=3) ─────────────────────
+    /**
+     * Anulación sin motivo explícito. Pasa por la misma lógica que
+     * POST /antc/anular/{id} pero sin aceptar la reversión de cruces: si el
+     * anticipo ya fue cruzado con alguna factura, responde
+     * {@code requiereConfirmacion=true} en lugar de anular.
+     */
     @DELETE
     @Path("/{id}")
     @Produces(MediaType.APPLICATION_JSON)
     public Response delete(@PathParam("id") Long id) {
         System.out.println("DELETE AnticipoCliente id=" + id);
         try {
-            AnticipoCliente entidad = anticiPoClienteService.selectById(id);
-            if (entidad == null) {
-                return Response.status(Response.Status.NOT_FOUND)
-                        .entity(msg("Anticipo con ID " + id + " no encontrado."))
-                        .type(MediaType.APPLICATION_JSON).build();
-            }
-            if (Long.valueOf(2L).equals(entidad.getEstado())) {
-                return Response.status(422)
-                        .entity(msg("No se puede anular un anticipo CONFIRMADO. "
-                                + "Debe reversar el asiento contable primero."))
-                        .type(MediaType.APPLICATION_JSON).build();
-            }
-            entidad.setEstado(3L); // 3 = Anulado
-            anticiPoClienteService.saveSingle(entidad);
-            return Response.ok(msg("Anticipo anulado correctamente."))
-                    .type(MediaType.APPLICATION_JSON).build();
+            java.util.Map<String, Object> resultado = anticiPoClienteService.anularAnticipo(
+                    id, "Anulación desde la interfaz (DELETE)", null, false);
+            return Response.ok(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return error500("Error al anular anticipo: " + e.getMessage());
         }
@@ -243,6 +332,65 @@ public class AnticipoClienteRest {
 
         } catch (Throwable e) {
             return error500("Error al procesar anticipo de cliente: " + e.getMessage());
+        }
+    }
+
+    // ── GET /antc/disponibles/{idTitular}/{idEmpresa} ────────────────────────
+    /**
+     * Anticipos del cliente que todavía tienen saldo para cruzar. Es la
+     * lista que alimenta la pantalla de cruce: el usuario elige de aquí de qué
+     * anticipo sale el dinero de cada abono.
+     */
+    @GET
+    @Path("/disponibles/{idTitular}/{idEmpresa}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response disponibles(@PathParam("idTitular") Long idTitular,
+            @PathParam("idEmpresa") Long idEmpresa) {
+        System.out.println("GET /antc/disponibles/" + idTitular + "/" + idEmpresa);
+        try {
+            List<AnticipoCliente> lista =
+                    anticiPoClienteService.selectDisponibles(idTitular, idEmpresa);
+            return Response.ok(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return error500("Error al obtener los anticipos disponibles: " + e.getMessage());
+        }
+    }
+
+    // ── GET /antc/seguimiento/{idTitular}/{idEmpresa} ────────────────────────
+    /**
+     * Estado de cuenta de los anticipos de un cliente: cada anticipo con sus
+     * fechas, su documento, su asiento y el detalle de los cruces que lo
+     * consumieron — activos y reversados, para poder seguir también las
+     * anulaciones.
+     *
+     * Respuesta:
+     * <pre>
+     * {
+     *   "totalAnticipos": 5000.00, "totalCruzado": 4500.00,
+     *   "saldoDisponible": 500.00, "saldoGlobalAnticipos": 500.00,
+     *   "diferencia": 0.00, "cuadra": true,
+     *   "anticipos": [ { "id":7, "numeroDoc":"ANT-001", "fechaAnticipo":[2026,8,1],
+     *                    "valor":3000.00, "saldo":0.00, "estadoDescripcion":"Confirmado",
+     *                    "asiento": { "numeroAlterno":"...", "fechaAsiento":[...] },
+     *                    "totalCruzado": 3000.00,
+     *                    "cruces": [ { "idAplicacion":9, "numeroFactura":"001-001-000000123",
+     *                                  "montoAplicado":3000.00, "estadoDescripcion":"Activo",
+     *                                  "asiento": {...} } ] } ]
+     * }
+     * </pre>
+     */
+    @GET
+    @Path("/seguimiento/{idTitular}/{idEmpresa}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response seguimiento(@PathParam("idTitular") Long idTitular,
+            @PathParam("idEmpresa") Long idEmpresa) {
+        System.out.println("GET /antc/seguimiento/" + idTitular + "/" + idEmpresa);
+        try {
+            java.util.Map<String, Object> resultado =
+                    anticiPoClienteService.seguimiento(idTitular, idEmpresa);
+            return Response.ok(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return error500("Error al obtener el seguimiento de anticipos: " + e.getMessage());
         }
     }
 

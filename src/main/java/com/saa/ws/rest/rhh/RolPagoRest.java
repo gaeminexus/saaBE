@@ -4,6 +4,7 @@ import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.rhh.dao.RolPagoDaoService;
+import com.saa.ejb.rhh.service.GeneracionRolPagoService;
 import com.saa.ejb.rhh.service.RolPagoService;
 import com.saa.model.rhh.NombreEntidadesRhh;
 import com.saa.model.rhh.RolPago;
@@ -17,6 +18,7 @@ import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -30,6 +32,9 @@ public class RolPagoRest {
 
     @EJB
     private RolPagoService RolPagoService;
+
+    @EJB
+    private GeneracionRolPagoService generacionRolPagoService;
 
     @Context
     private UriInfo context;
@@ -115,6 +120,63 @@ public class RolPagoRest {
             return Response.status(Response.Status.NO_CONTENT).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+    // =====================================================================
+    // Endpoints de proceso - fase 5
+    // =====================================================================
+
+    /**
+     * Genera o regenera los roles de pago de un periodo aprobado.
+     */
+    @POST
+    @Path("/generar/{idPeriodo}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response generar(@PathParam("idPeriodo") Long idPeriodo,
+            @QueryParam("usuarioRegistro") String usuarioRegistro) {
+        System.out.println("LLEGA AL SERVICIO generar - ROL_PAGO, periodo: " + idPeriodo);
+        try {
+            int generados = generacionRolPagoService.generarRoles(idPeriodo, usuarioRegistro);
+            return Response.status(Response.Status.OK).entity(Integer.valueOf(generados)).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al generar los roles de pago: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Recalcula el hash del rol y lo compara con el grabado.
+     */
+    @GET
+    @Path("/verificar/{id}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response verificar(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO verificar - ROL_PAGO, rol: " + id);
+        try {
+            boolean integro = generacionRolPagoService.verificarIntegridad(id);
+            return Response.status(Response.Status.OK).entity(Boolean.valueOf(integro)).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al verificar el rol de pago: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Marca como entregados los roles indicados.
+     *
+     * <p>El cuerpo es la lista de ids. El servidor pone recibido en 'S' y sella la fecha
+     * de envio con la del dia solo si estaba en nulo.</p>
+     */
+    @POST
+    @Path("/registrarRecepcion")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response registrarRecepcion(List<Long> idsRolPago,
+            @QueryParam("usuarioRegistro") String usuarioRegistro) {
+        System.out.println("LLEGA AL SERVICIO registrarRecepcion - ROL_PAGO");
+        try {
+            int marcados = generacionRolPagoService.registrarRecepcion(idsRolPago, usuarioRegistro);
+            return Response.status(Response.Status.OK).entity(Integer.valueOf(marcados)).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al registrar la recepcion de los roles: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
     }
 }

@@ -110,8 +110,7 @@ public class EmpleadoRest {
     public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - EMPLEADO");
         try {
-            Empleado elimina = new Empleado();
-            EmpleadoDaoService.remove(elimina, id);
+            EmpleadoService.remove(List.of(id));
             return Response.status(Response.Status.NO_CONTENT).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();

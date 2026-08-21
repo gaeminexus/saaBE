@@ -8,11 +8,16 @@
  */
 package com.saa.ejb.rhh.daoImpl;
 
+import java.util.List;
+
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.rhh.dao.ReglonNominaDaoService;
 import com.saa.model.rhh.ReglonNomina;
 
 import jakarta.ejb.Stateless;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.Query;
 
 /**
  * @author GaemiSoft.
@@ -21,19 +26,80 @@ import jakarta.ejb.Stateless;
 @Stateless
 public class ReglonNominaDaoServiceImpl extends EntityDaoImpl<ReglonNomina>  implements ReglonNominaDaoService{
 
+	//Inicializa persistence context
+	@PersistenceContext
+	EntityManager em;
+
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.parametrizacion.ejb.dao.ReglonNominaDaoService#obtieneCampos()
+	 * @see com.saa.ejb.rhh.dao.ReglonNominaDaoService#obtieneCampos()
 	 */
 	public String[] obtieneCampos() {
 		System.out.println("Ingresa al metodo (campos) ReglonNomina");
 		return new String[]{"codigo",
-							"proposicionPagoXCuota",
-							"fechaAprobacion",
-							"nivelAprobacion",
-							"usuarioAprueba",
-							"nombreUsuarioAprueba",
-							"estado",
-							"observacion"};
+							"nomina",
+							"cantidad",
+							"valor",
+							"imponible",
+							"orden",
+							"fechaRegistro",
+							"usuarioRegistro",
+							"conceptoNomina",
+							"descripcion",
+							"tipoConcepto",
+							"baseCalculo",
+							"porcentaje",
+							"origen",
+							"manual",
+							"imponibleIess",
+							"gravadoIr",
+							"patronal",
+							"tablaReferencia",
+							"idReferencia"};
 	}
 	
+
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.rhh.dao.ReglonNominaDaoService#selectByNomina(java.lang.Long)
+	 */
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<ReglonNomina> selectByNomina(Long idNomina) throws Throwable {
+		System.out.println("Ingresa al metodo selectByNomina de ReglonNomina, nomina: " + idNomina);
+		Query query = em.createQuery(" select   t "
+				+ " from     ReglonNomina t "
+				+ " where    t.nomina.codigo = :idNomina "
+				+ " order by t.orden, t.codigo ");
+		query.setParameter("idNomina", idNomina);
+		return query.getResultList();
+	}
+
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.rhh.dao.ReglonNominaDaoService#selectManualesByNomina(java.lang.Long)
+	 */
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<ReglonNomina> selectManualesByNomina(Long idNomina) throws Throwable {
+		System.out.println("Ingresa al metodo selectManualesByNomina de ReglonNomina, nomina: " + idNomina);
+		Query query = em.createQuery(" select   t "
+				+ " from     ReglonNomina t "
+				+ " where    t.nomina.codigo = :idNomina "
+				+ "          and t.manual = 'S' "
+				+ " order by t.orden, t.codigo ");
+		query.setParameter("idNomina", idNomina);
+		return query.getResultList();
+	}
+
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.rhh.dao.ReglonNominaDaoService#eliminaGeneradosByNomina(java.lang.Long)
+	 */
+	@Override
+	public int eliminaGeneradosByNomina(Long idNomina) throws Throwable {
+		System.out.println("Ingresa al metodo eliminaGeneradosByNomina de ReglonNomina, nomina: " + idNomina);
+		// Los renglones manuales sobreviven al recalculo: es la razon de RNGLMNAL.
+		Query query = em.createQuery(" delete from ReglonNomina t "
+				+ " where  t.nomina.codigo = :idNomina "
+				+ "        and (t.manual is null or t.manual <> 'S') ");
+		query.setParameter("idNomina", idNomina);
+		return query.executeUpdate();
+	}
 }

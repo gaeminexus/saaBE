@@ -3,6 +3,8 @@ package com.saa.model.rhh;
 import java.io.Serializable;
 import java.time.LocalDate;
 
+import com.saa.basico.util.EntidadAuditableFecha;
+
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -25,7 +27,7 @@ import jakarta.persistence.Table;
     @NamedQuery(name = "HistorialId", query = "select e from Historial e where e.codigo=:id"),
     @NamedQuery(name = "HistorialAll", query = "select e from Historial e")
 })
-public class Historial implements Serializable {
+public class Historial implements Serializable, EntidadAuditableFecha {
 
     /**
      * Código único del historial.
@@ -47,8 +49,8 @@ public class Historial implements Serializable {
      * DepartamentoCargo.
      */
     @ManyToOne
-    @JoinColumn(name = "DPRTCDGO", referencedColumnName = "DPRTCDGO", nullable = false)
-    private DepartamentoCargo departamento;
+    @JoinColumn(name = "DPTCCDGO", referencedColumnName = "DPTCCDGO")
+    private DepartamentoCargo departamentoCargo;
 
     /**
      * Cargo.
@@ -103,6 +105,28 @@ public class Historial implements Serializable {
     // Getters y Setters
     // =============================
 
+
+    /**
+     * Tipo de cambio registrado: detalle del rubro RHH_TIPO_CAMBIO_HISTORIAL.
+     */
+    @Basic
+    @Column(name = "HSTRTPCM")
+    private Long tipoCambio;
+
+    /**
+     * Sueldo anterior al cambio.
+     */
+    @Basic
+    @Column(name = "HSTRSLAN")
+    private Double sueldoAnterior;
+
+    /**
+     * Sueldo posterior al cambio.
+     */
+    @Basic
+    @Column(name = "HSTRSLNW")
+    private Double sueldoNuevo;
+
     public Long getCodigo() {
         return codigo;
     }
@@ -120,11 +144,11 @@ public class Historial implements Serializable {
     }
 
     public DepartamentoCargo getDepartamentoCargo() {
-        return departamento;
+        return departamentoCargo;
     }
 
-    public void setDepartamentoCargo(DepartamentoCargo departamento) {
-        this.departamento = departamento;
+    public void setDepartamentoCargo(DepartamentoCargo departamentoCargo) {
+        this.departamentoCargo = departamentoCargo;
     }
 
     public Cargo getCargo() {
@@ -181,5 +205,29 @@ public class Historial implements Serializable {
 
     public void setUsuarioRegistro(String usuarioRegistro) {
         this.usuarioRegistro = usuarioRegistro;
+    }
+
+    public Long getTipoCambio() {
+        return tipoCambio;
+    }
+
+    public void setTipoCambio(Long tipoCambio) {
+        this.tipoCambio = tipoCambio;
+    }
+
+    public Double getSueldoAnterior() {
+        return sueldoAnterior;
+    }
+
+    public void setSueldoAnterior(Double sueldoAnterior) {
+        this.sueldoAnterior = sueldoAnterior;
+    }
+
+    public Double getSueldoNuevo() {
+        return sueldoNuevo;
+    }
+
+    public void setSueldoNuevo(Double sueldoNuevo) {
+        this.sueldoNuevo = sueldoNuevo;
     }
 }

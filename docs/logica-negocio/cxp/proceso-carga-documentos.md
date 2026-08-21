@@ -654,6 +654,152 @@ Application path JAX-RS: `/rest` · Base: `/SaaBE/rest/carga-documentos`
 | GET | `/novedades/{idEmpresa}` | 200 | 500 |
 | GET | `/productosPendientes/{idFacturaCompra}` | 200 | 500 |
 | GET | `/gruposProducto` | 200 | 500 |
+| POST | `/marcarReembolso/{idDocumentoCxp}` | 200 | 422 / 500 |
+| POST | `/contabilizarReembolso/{idFacturaCompra}` | 200 | 422 / 500 |
+| POST | `/recalcularTotalesReembolso/{idFacturaCompra}` | 200 | 500 |
+| POST | `/crearProductoPorClasificar` | 200 | 500 |
+
+Y para el CRUD de la tabla nueva `PGS.RMBF` (`/rest/rmbf`):
+
+| Método | Path | HTTP éxito |
+|---|---|---|
+| GET | `/rmbf/getAll` | 200 |
+| GET | `/rmbf/getId/{id}` | 200 |
+| GET | `/rmbf/getByFactura/{idFactura}` | 200 (solo activos, ordenados por id) |
+| POST | `/rmbf` | 201 |
+| PUT | `/rmbf` | 200 |
+| DELETE | `/rmbf/{id}` | 200 |
+| POST | `/rmbf/selectByCriteria` | 200 |
+
+---
+
+## 12. Facturas de reembolso de gastos (2026-08-19)
+
+> Spec completa: `docs/logica-negocio/cxp/CAMBIO-REEMBOLSO-GASTOS-BACKEND.md`
+
+Los proveedores intermediarios emiten **facturas de reembolso de gastos** (SRI ANEXO 5). Además del detalle normal pueden traer un bloque `<reembolsos>` con N `<reembolsoDetalle>`, uno por documento sustento del gasto del tercero.
+
+### Tabla nueva `PGS.RMBF`
+
+| Columna | Campo Java | Descripción |
+|---|---|---|
+| `RMBFCDGO` | `id` | PK identity |
+| `RMBFFCTC` | `factura` | FK → `PGS.FCTC.ID` |
+| `RMBFTIPR` | `tipoIdentificacionProveedor` | Tipo ident. del proveedor del gasto (tabla 6 SRI) |
+| `RMBFIDPR` | `identificacionProveedor` | Identificación del proveedor del gasto |
+| `RMBFCDDC` | `codDoc` | Tipo de documento sustento (tabla 3 SRI) |
+| `RMBFESTB/PTEM/SCNL` | `establecimiento/puntoEmision/secuencial` | Identificación del doc sustento |
+| `RMBFFEMS` | `fechaEmision` | Fecha del doc sustento |
+| `RMBFNAUT` | `numeroAutorizacion` | Clave de acceso / autorización del sustento |
+| `RMBFBSCR/BSGR` | `baseImponibleCero/Gravada` | Bases del sustento |
+| `RMBFTRIV/VLIV/VLIC` | `tarifaIva/valorIva/valorIce` | Impuestos del sustento |
+| `RMBFTTAL` | `total` | Total del sustento |
+| `RMBFPRDC` | `producto` | ID de `PGS.PRDP` (sin FK JPA) para contabilización por grupo |
+| `RMBFORGN` | `origen` | `1`=XML `2`=Manual (`OrigenReembolso`) |
+| `RMBFESTD` | `estado` | `1`=Activo `0`=Anulado |
+
+DDL: `docs/logica-negocio/cxp/sql/07-reembolso-gastos.sql` (ya ejecutado en BD).
+
+### Campos nuevos en tablas existentes
+
+| Tabla | Columna | Campo Java | Descripción |
+|---|---|---|---|
+| `PGS.FCTC` | `FCTCESRM` | `esReembolso` | `0`=No `1`=Sí |
+| `PGS.FCTC` | `FCTCCDRM` | `codDocReembolso` | código doc (normalmente `41`) |
+| `PGS.FCTC` | `FCTCTCRM/TBRM/TIRM` | `totalComprobantes/BaseImponible/ImpuestoReembolso` | totales recalculados desde RMBF |
+| `PGS.DCXP` | `DCXPESRM` | `esReembolso` | flag de bandeja (`0`/`1`) |
+
+Ambos campos están en `obtieneCampos()` de sus respectivos `DaoServiceImpl`.
+
+### Detección automática
+
+Al ejecutar `cargarXmlYRegistrar` / `procesarXml`, el servicio detecta reembolso si:
+- `doc.getEsReembolso() == 1` (marcado por el usuario previamente), **o**
+- el XML contiene `<reembolsoDetalle>`, **o**
+- `<infoFactura>` tiene `<codDocReembolso>` no vacío.
+
+> ⚠️ `<codDocReembolso>` también aparece **dentro** de cada `<reembolsoDetalle>`. Se lee **desde `<infoFactura>` específicamente** (buscando el primer hijo del nodo `infoFactura`), nunca con `getXmlValue(xmlDoc, "codDocReembolso")` que devuelve la primera ocurrencia del documento completo.
+
+### Productos de los sustentos
+
+Por cada `<reembolsoDetalle>`, el servicio busca un `ProductoPago` con `codigo = identificacionProveedorReembolso`. Si no existe, lo crea con `nombre = "REEMBOLSO {identificacion}"` en el grupo **POR CLASIFICAR**. Este mecanismo reutiliza `obtenerOAutoCrearProducto`.
+
+**Regla de bloqueantes cuando `esReembolso=1`:**
+- Los productos de los **sustentos** (`RMBF`) **sí bloquean** con `PRODUCTOS_SIN_CLASIFICAR`.
+- Los productos de los `<detalle>` normales **no bloquean** (no participan del asiento de reembolso).
+
+`obtenerProductosPendientesDeClasificar(idFactura)` también respeta esta regla: si la factura es reembolso, busca pendientes desde `RMBF`, no desde `DFCC`.
+
+### Contabilización
+
+El asiento de una factura de reembolso se genera igual que el de una factura normal, **excepto que las líneas de DEBE salen de los sustentos (`RMBF`), no del detalle (`DFCC`)**:
+
+| Lado | Cuenta | Valor |
+|---|---|---|
+| **DEBE** | `GrupoProductoPago.planCuenta` del producto de cada sustento | `sum(baseImponibleCero + baseImponibleGravada + valorIce)` por grupo |
+| **DEBE** | IVA crédito tributario | `sum(RMBF.valorIva)` |
+| **HABER** | Cuenta CxP proveedor | Suma exacta de los DEBE |
+
+Implementado en `AsientoContableServiceImpl.generarAsientoFacturaCompraReembolso` (método privado, invocado desde `generarAsientoFacturaCompra` cuando `fc.esReembolso == 1`).
+
+#### Precondiciones para generar el asiento (validadas en `generarAsientoCxp` y en `contabilizarReembolso`)
+
+1. Existe al menos un `RMBF` activo.
+2. Todos los productos de los `RMBF` activos están clasificados (grupo ≠ POR_CLASIFICAR) y su grupo tiene cuenta contable.
+3. `|sum(RMBF.total) − factura.total| ≤ 0.01`.
+
+Si alguna falla: **NO se aborta el registro**. La factura y sus `RMBF` quedan grabados, pero el asiento no se genera. `DocumentoCxp` queda en **estado 2** con `observacion` descriptiva y la respuesta lleva `contabilizacionPendiente: true` + `motivoContabilizacionPendiente`.
+
+Excepción: si los productos están en POR_CLASIFICAR, se usa el mecanismo habitual de bloqueantes `422` + `crearProductosYRegistrar`.
+
+**Con `Facturador.generaConta = 0`:** no se genera asiento; la factura pasa a estado 3 directamente.
+
+### Flujo XML bien formado (tiene `<reembolsos>`)
+
+```
+procesarXml → detecta esReembolso=true
+           → PASO 1: crea productos de sustentos (en POR CLASIFICAR si son nuevos)
+           → PASO 2: bloqueantes sobre productos de sustentos (no sobre detalle normal)
+           → Si hay pendientes → HTTP 422 con PRODUCTOS_SIN_CLASIFICAR
+           → PASO 3: graba FacturaCompra (esReembolso=1) + DFCC + RMBF
+           → generarAsientoCxp: verifica precondiciones
+             → Si OK → asiento desde RMBF → estado 3
+             → Si NO → estado 2, observacion, contabilizacionPendiente=true en respuesta
+```
+
+### Flujo XML mal formado (sin `<reembolsos>`, usuario marcó como reembolso)
+
+```
+procesarXml → detecta esReembolso=true (por DCXPESRM=1)
+           → reembolsosXml.getLength() == 0
+           → PASO 3: graba FacturaCompra (esReembolso=1) sin RMBF
+           → generarAsientoCxp: sin RMBF activos → estado 2
+           → respuesta: reembolsoManualPendiente=true + advertenciaReembolso
+```
+
+### Reversión
+
+`revertirRegistrosBD` borra los `RMBF` **antes** del detalle y la cabecera de `FCTC` para no violar la FK `FK_RMBF_FACTURA`:
+
+```java
+em.createQuery("delete from ReembolsoFacturaCompra r where r.factura.id = :id")
+        .setParameter("id", idDocBD).executeUpdate();
+// ...luego DFCC, FMPC, PFCC, FCTC
+```
+
+### Endpoints de negocio nuevos
+
+#### `POST /carga-documentos/marcarReembolso/{idDocumentoCxp}`
+Body: `{esReembolso: 0|1, idUsuario}`. Marca/desmarca el flag en `DCXP` (y en `FCTC` si ya está registrada). Si hay pagos aplicados → 422. Si al desmarcar hay RMBF activos → 422.
+
+#### `POST /carga-documentos/contabilizarReembolso/{idFacturaCompra}`
+Body: `{idEmpresa, idUsuario}`. Valida las 3 precondiciones y genera el asiento desde RMBF. Pasa el `DocumentoCxp` a estado 3. 422 con mensaje descriptivo si falla.
+
+#### `POST /carga-documentos/recalcularTotalesReembolso/{idFacturaCompra}`
+Sin body obligatorio. Suma los campos de los RMBF activos, persiste los 3 totales en `FCTC` y devuelve `{cantidadReembolsos, totalComprobantesReembolso, totalBaseImponibleReembolso, totalImpuestoReembolso, importeTotalFactura, diferencia, cuadra}`.
+
+#### `POST /carga-documentos/crearProductoPorClasificar`
+Body: `{nombre, codigo?, idEmpresa}`. Si ya existe un producto con ese código lo devuelve sin crear. Útil para el alta manual de sustentos desde la pantalla.
 
 ---
 
@@ -671,3 +817,5 @@ Application path JAX-RS: `/rest` · Base: `/SaaBE/rest/carga-documentos`
 | `Liquidación de Compra` | Ídem, más la aplicación de pago sobre el documento afectado |
 | `RetencionCompra` (V1) | Código muerto: `registrarRetencionCompra` ya no se invoca. Decidir si se elimina tras migrar los históricos |
 | Rubros | Script SQL para insertar rubro 174 con los códigos 6 y 7 en `SCP.PDTR` |
+| Reembolso · marcar al cargar XML | `procesarXml` acepta `esReembolso` en el body pero delega en `marcarReembolso` (que a su vez verifica pagos aplicados). Para el flujo normal (XML subido antes de marcar) esto puede causar un 422 innecesario; evaluar si el flag se debe propagar directamente al documento sin validar pagos en ese punto |
+| Reembolso · facturas mixtas | Las facturas con fee del intermediario + reembolso en el mismo documento quedan fuera de alcance. Si aparece un caso real, decidir si el fee va al detalle normal y el reembolso a RMBF, o si se crea un tipo nuevo |

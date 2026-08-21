@@ -234,4 +234,37 @@ public class FacturaCompra implements Serializable {
         public void setEstadoPago(Long estadoPago) { this.estadoPago = estadoPago; }
         public Asiento getAsiento() { return asiento; }
         public void setAsiento(Asiento asiento) { this.asiento = asiento; }
+
+        // ─── Campos de reembolso de gastos (§3 RMBF) ──────────────────────────
+
+        /** Es factura de reembolso de gastos: 0=No 1=Si (FCTCESRM). */
+        @Basic @Column(name = "FCTCESRM")
+        private Long esReembolso;
+
+        /** codDocReembolso del XML (tabla 3 SRI, normalmente 41) (FCTCCDRM). */
+        @Basic @Column(name = "FCTCCDRM", length = 2)
+        private String codDocReembolso;
+
+        /** totalComprobantesReembolso (del XML o recalculado desde PGS.RMBF) (FCTCTCRM). */
+        @Basic @Column(name = "FCTCTCRM")
+        private Double totalComprobantesReembolso;
+
+        /** totalBaseImponibleReembolso (FCTCTBRM). */
+        @Basic @Column(name = "FCTCTBRM")
+        private Double totalBaseImponibleReembolso;
+
+        /** totalImpuestoReembolso (FCTCTIRM). */
+        @Basic @Column(name = "FCTCTIRM")
+        private Double totalImpuestoReembolso;
+
+        public Long getEsReembolso() { return esReembolso; }
+        public void setEsReembolso(Long esReembolso) { this.esReembolso = esReembolso; }
+        public String getCodDocReembolso() { return codDocReembolso; }
+        public void setCodDocReembolso(String codDocReembolso) { this.codDocReembolso = codDocReembolso; }
+        public Double getTotalComprobantesReembolso() { return totalComprobantesReembolso; }
+        public void setTotalComprobantesReembolso(Double totalComprobantesReembolso) { this.totalComprobantesReembolso = totalComprobantesReembolso; }
+        public Double getTotalBaseImponibleReembolso() { return totalBaseImponibleReembolso; }
+        public void setTotalBaseImponibleReembolso(Double totalBaseImponibleReembolso) { this.totalBaseImponibleReembolso = totalBaseImponibleReembolso; }
+        public Double getTotalImpuestoReembolso() { return totalImpuestoReembolso; }
+        public void setTotalImpuestoReembolso(Double totalImpuestoReembolso) { this.totalImpuestoReembolso = totalImpuestoReembolso; }
 }

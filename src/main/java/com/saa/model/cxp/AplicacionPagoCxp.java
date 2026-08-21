@@ -146,6 +146,19 @@ public class AplicacionPagoCxp implements Serializable {
     @JoinColumn(name = "APLPANTP", referencedColumnName = "ANTPCDGO")
     private AnticipoProveedor anticipo;
 
+    /**
+     * Anticipo del que sale el dinero de este cruce. FK a PGS.ANTP.
+     * <p>
+     * Es el anticipo REAL que se consume, no el movimiento negativo: en las
+     * aplicaciones de tipo 4 creadas desde 2026-08-20 siempre viene informado,
+     * y es lo que permite saber con exactitud qué abonos hay que deshacer al
+     * anular un anticipo. Queda nulo en los cruces anteriores que la migración
+     * no pudo atribuir.
+     */
+    @ManyToOne
+    @JoinColumn(name = "APLPANTO", referencedColumnName = "ANTPCDGO")
+    private AnticipoProveedor anticipoOrigen;
+
     // ── Datos del pago directo (solo cuando APLPTDPG = 1) ─────────────────
 
     /**
@@ -250,6 +263,9 @@ public class AplicacionPagoCxp implements Serializable {
 
     public AnticipoProveedor getAnticipo() { return anticipo; }
     public void setAnticipo(AnticipoProveedor anticipo) { this.anticipo = anticipo; }
+
+    public AnticipoProveedor getAnticipoOrigen() { return anticipoOrigen; }
+    public void setAnticipoOrigen(AnticipoProveedor anticipoOrigen) { this.anticipoOrigen = anticipoOrigen; }
 
     public Long getFormaPago() { return formaPago; }
     public void setFormaPago(Long formaPago) { this.formaPago = formaPago; }

@@ -6,6 +6,7 @@ import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.cnt.dao.DetallePlantillaDaoService;
 import com.saa.model.cnt.DetallePlantilla;
 import com.saa.model.cnt.PlanCuenta;
+import com.saa.rubros.Estado;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
@@ -95,4 +96,28 @@ public class DetallePlantillaDaoServiceImpl extends EntityDaoImpl<DetallePlantil
 		return query.getResultList();
 	}
 	
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.cnt.dao.DetallePlantillaDaoService#selectByPlantillaYAuxiliar(java.lang.Long, int)
+	 */
+	@SuppressWarnings("unchecked")
+	@Override
+	public DetallePlantilla selectByPlantillaYAuxiliar(Long idPlantilla, int auxiliar1) throws Throwable {
+		System.out.println("Ingresa al metodo selectByPlantillaYAuxiliar, plantilla: " + idPlantilla
+				+ ", auxiliar1: " + auxiliar1);
+		Query query = em.createQuery(" select   b "
+				+ " from     DetallePlantilla b "
+				+ " where    b.plantilla.codigo = :idPlantilla "
+				+ "          and b.auxiliar1 = :auxiliar1 "
+				+ "          and b.estado = :activo "
+				+ " order by b.codigo ");
+		query.setParameter("idPlantilla", idPlantilla);
+		query.setParameter("auxiliar1", Long.valueOf(auxiliar1));
+		query.setParameter("activo", Long.valueOf(Estado.ACTIVO));
+		List<DetallePlantilla> lista = query.getResultList();
+		// Devuelve null en vez de lanzar: que una plantilla no defina una linea es normal
+		// --el asiento de pago no tiene linea de decimos-- y el llamador decide si le hace
+		// falta o no.
+		return lista.isEmpty() ? null : lista.get(0);
+	}
+
 }

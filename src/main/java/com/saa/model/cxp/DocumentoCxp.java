@@ -136,6 +136,10 @@ public class DocumentoCxp implements Serializable {
     @ManyToOne @JoinColumn(name = "PRDOCDGO", referencedColumnName = "PRDOCDGO")
     private Periodo periodoContable;
 
+    /** Marcado como factura de reembolso de gastos: 0=No 1=Si (DCXPESRM). */
+    @Basic @Column(name = "DCXPESRM")
+    private Long esReembolso;
+
     // --- Getters / Setters ---
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -193,4 +197,6 @@ public class DocumentoCxp implements Serializable {
     public void setObservacion(String observacion) { this.observacion = observacion; }
     public Periodo getPeriodoContable() { return periodoContable; }
     public void setPeriodoContable(Periodo periodoContable) { this.periodoContable = periodoContable; }
+    public Long getEsReembolso() { return esReembolso; }
+    public void setEsReembolso(Long esReembolso) { this.esReembolso = esReembolso; }
 }

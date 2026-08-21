@@ -8,6 +8,8 @@
  */
 package com.saa.ejb.rhh.dao;
 
+import java.util.List;
+
 import com.saa.basico.util.EntityDao;
 import com.saa.model.rhh.ContratoEmpleado;
 
@@ -20,4 +22,18 @@ import jakarta.ejb.Local;
 @Local
 public interface ContratoEmpleadoDaoService  extends EntityDao<ContratoEmpleado>  {
 	
+
+	/**
+	 * Recupera los contratos que se solapan con un periodo: iniciados antes del fin del
+	 * periodo y sin terminar, o terminados despues del inicio. Es la seleccion base del
+	 * motor de nomina.
+	 *
+	 * @param idEmpresa		: Id de la empresa
+	 * @param desde			: Fecha de inicio del periodo
+	 * @param hasta			: Fecha de fin del periodo
+	 * @return				: Listado de contratos; vacio si no hay
+	 * @throws Throwable	: Excepcion
+	 */
+	List<ContratoEmpleado> selectActivosEnPeriodo(Long idEmpresa, java.time.LocalDate desde,
+			java.time.LocalDate hasta) throws Throwable;
 }

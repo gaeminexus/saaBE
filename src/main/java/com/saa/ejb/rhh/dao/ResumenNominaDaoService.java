@@ -8,6 +8,8 @@
  */
 package com.saa.ejb.rhh.dao;
 
+import java.util.List;
+
 import com.saa.basico.util.EntityDao;
 import com.saa.model.rhh.ResumenNomina;
 
@@ -20,4 +22,18 @@ import jakarta.ejb.Local;
 @Local
 public interface ResumenNominaDaoService  extends EntityDao<ResumenNomina>  {
 	
+
+	/**
+	 * Suma los dias de ausencia no remunerada de un empleado en un rango. Son los que
+	 * se restan de los dias trabajados del periodo.
+	 *
+	 * @param idEmpleado	: Id del empleado
+	 * @param desde			: Fecha de inicio del rango
+	 * @param hasta			: Fecha de fin del rango
+	 * @param tipos			: Codigos alternos de los tipos de ausencia que descuentan
+	 * @return				: Numero de dias; cero si no hay
+	 * @throws Throwable	: Excepcion
+	 */
+	Double contarDiasAusenciaNoRemunerada(Long idEmpleado, java.time.LocalDate desde,
+			java.time.LocalDate hasta, List<Long> tipos) throws Throwable;
 }

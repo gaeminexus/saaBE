@@ -2,6 +2,7 @@ package com.saa.ejb.cxc.serviceImpl;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -10,6 +11,7 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.cnt.service.AsientoContableService;
 import com.saa.ejb.cnt.service.AsientoService;
+import com.saa.ejb.cxc.dao.AnticipoClienteDaoService;
 import com.saa.ejb.cxc.dao.AplicacionPagoCxcDaoService;
 import com.saa.ejb.cxc.service.AplicacionPagoCxcService;
 import com.saa.ejb.tsr.dao.PersonaCuentaContableDaoService;
@@ -28,6 +30,7 @@ import com.saa.model.scp.Empresa;
 import com.saa.model.scp.Usuario;
 import com.saa.model.tsr.CuentaBancaria;
 import com.saa.model.tsr.PersonaCuentaContable;
+import com.saa.rubros.EstadoAnticipoCliente;
 import com.saa.rubros.EstadoAplicacionPago;
 import com.saa.rubros.EstadoPagoFactura;
 import com.saa.rubros.OrigenMovimientoConciliacion;
@@ -52,6 +55,9 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 
 	@EJB
 	private AplicacionPagoCxcDaoService aplicacionPagoCxcDaoService;
+
+	@EJB
+	private AnticipoClienteDaoService anticipoClienteDaoService;
 
 	@EJB
 	private AsientoContableService asientoContableService;
@@ -257,102 +263,332 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 	// =====================================================================
 
 	@Override
-	public Map<String, Object> aplicarAnticipo(Long idFactura, Double valor, String fechaAplicacion,
-			Long idEmpresa, Long idUsuario, String observacion) throws Throwable {
+	public Map<String, Object> aplicarAnticipo(Long idFactura, Double valor,
+			String fechaAplicacion, Long idEmpresa, Long idUsuario, String observacion)
+			throws Throwable {
 
-		System.out.println("=== aplicarAnticipo (CXC) | factura=" + idFactura
+		System.out.println("=== aplicarAnticipo (FIFO) | factura=" + idFactura
 				+ " | valor=" + valor + " | empresa=" + idEmpresa + " ===");
-
-		Map<String, Object> resultado = new HashMap<>();
 
 		if (valor == null || valor <= 0) {
 			throw new IncomeException("El valor a cruzar debe ser mayor a cero.");
 		}
 
+		Factura factura = cargaFactura(idFactura);
+		Long idCliente = factura.getTitular().getCodigo();
+
+		// Sin selección explícita se reparte el valor entre los anticipos
+		// disponibles del más antiguo al más nuevo. Es el comportamiento que
+		// mantiene funcionando a los clientes que sólo mandan el monto.
+		List<AnticipoCliente> disponibles = anticipoClienteDaoService
+				.selectDisponiblesByTitular(idCliente, idEmpresa);
+
+		List<Object[]> reparto = repartoFifo(disponibles, valor,
+				factura.getTitular().getNombre());
+
+		return aplicaCruces(factura, reparto, fechaAplicacion, idEmpresa, idUsuario, observacion);
+	}
+
+	@Override
+	public Map<String, Object> aplicarAnticipos(Long idFactura,
+			List<Map<String, Object>> detalles, String fechaAplicacion, Long idEmpresa,
+			Long idUsuario, String observacion) throws Throwable {
+
+		System.out.println("=== aplicarAnticipos | factura=" + idFactura
+				+ " | detalles=" + ((detalles != null) ? detalles.size() : 0)
+				+ " | empresa=" + idEmpresa + " ===");
+
+		if (detalles == null || detalles.isEmpty()) {
+			throw new IncomeException("Debe indicar al menos un anticipo a cruzar.");
+		}
+
+		Factura factura = cargaFactura(idFactura);
+		Long idCliente = factura.getTitular().getCodigo();
+
+		List<Object[]> reparto = new ArrayList<>();
+		java.util.Set<Long> vistos = new java.util.HashSet<>();
+
+		for (Map<String, Object> detalle : detalles) {
+			Long idAnticipo = toLong(detalle.get("idAnticipo"));
+			Double monto = toDouble(detalle.get("valor"));
+
+			if (idAnticipo == null) {
+				throw new IncomeException("Cada línea del cruce debe indicar el anticipo "
+						+ "(idAnticipo).");
+			}
+			if (monto == null || monto <= 0) {
+				throw new IncomeException("El valor a cruzar del anticipo " + idAnticipo
+						+ " debe ser mayor a cero.");
+			}
+			// Repetir el mismo anticipo en dos líneas haría que la segunda
+			// validara contra un saldo ya comprometido por la primera.
+			if (!vistos.add(idAnticipo)) {
+				throw new IncomeException("El anticipo " + idAnticipo + " viene repetido en el "
+						+ "cruce. Indique una sola línea por anticipo, con el valor total.");
+			}
+
+			AnticipoCliente anticipo = em.find(AnticipoCliente.class, idAnticipo);
+			validaAnticipoCruzable(anticipo, idAnticipo, idCliente, idEmpresa, monto);
+			reparto.add(new Object[]{anticipo, monto});
+		}
+
+		return aplicaCruces(factura, reparto, fechaAplicacion, idEmpresa, idUsuario, observacion);
+	}
+
+	/**
+	 * Carga la factura de venta y valida que sirva para cruzar un anticipo.
+	 * @param idFactura : Id de la factura de venta
+	 * @return                : Factura de compra
+	 * @throws Throwable      : Excepcion si no existe o no tiene cliente
+	 */
+	private Factura cargaFactura(Long idFactura) throws Throwable {
 		Factura factura = em.find(Factura.class, idFactura);
 		if (factura == null) {
-			throw new IncomeException("No se encontró la factura de venta con ID: " + idFactura);
+			throw new IncomeException("No se encontró la factura de venta con ID: "
+					+ idFactura);
 		}
 		if (factura.getTitular() == null || factura.getTitular().getCodigo() == null) {
 			throw new IncomeException("La factura de venta " + idFactura
 					+ " no tiene cliente asignado.");
 		}
-		Long idCliente = factura.getTitular().getCodigo();
+		return factura;
+	}
 
-		// 1. La factura debe tener saldo suficiente
-		validaMontoContraSaldo(factura, valor);
+	/**
+	 * Valida que un anticipo elegido a mano pueda usarse para cruzar: que exista,
+	 * que sea del cliente y la empresa de la factura, que esté confirmado y
+	 * que le quede saldo suficiente.
+	 * @param anticipo   : Anticipo cargado (puede venir null)
+	 * @param idAnticipo : Id pedido, para el mensaje de error
+	 * @param idTitular  : Cliente de la factura
+	 * @param idEmpresa  : Empresa de la operación
+	 * @param monto      : Monto que se pretende cruzar de ese anticipo
+	 * @throws Throwable : Excepcion con el motivo exacto del rechazo
+	 */
+	private void validaAnticipoCruzable(AnticipoCliente anticipo, Long idAnticipo,
+			Long idTitular, Long idEmpresa, Double monto) throws Throwable {
 
-		// 2. El cliente debe tener saldo de anticipos suficiente
-		PersonaCuentaContable cuentaAnticipos = obtenerCuentaAnticipos(idCliente, idEmpresa);
-		double saldoAnticipos = (cuentaAnticipos.getSaldoInicial() != null)
-				? cuentaAnticipos.getSaldoInicial() : 0.0;
-		if (saldoAnticipos + TOLERANCIA < valor) {
-			throw new IncomeException("El cliente '" + factura.getTitular().getNombre()
-					+ "' tiene un saldo de anticipos de $"
-					+ String.format(java.util.Locale.US, "%.2f", saldoAnticipos)
+		if (anticipo == null) {
+			throw new IncomeException("No se encontró el anticipo con ID: " + idAnticipo);
+		}
+		if (anticipo.getTitular() == null
+				|| !idTitular.equals(anticipo.getTitular().getCodigo())) {
+			throw new IncomeException("El anticipo " + idAnticipo + " no pertenece al cliente "
+					+ "de la factura: no se puede cruzar.");
+		}
+		if (idEmpresa != null && anticipo.getEmpresa() != null
+				&& !idEmpresa.equals(anticipo.getEmpresa().getCodigo())) {
+			throw new IncomeException("El anticipo " + idAnticipo + " es de otra empresa "
+					+ "contable: no se puede cruzar contra esta factura.");
+		}
+		if (anticipo.getEstado() == null
+				|| anticipo.getEstado().intValue() != EstadoAnticipoCliente.CONFIRMADO) {
+			throw new IncomeException("El anticipo " + idAnticipo + " no está confirmado "
+					+ "(su pago aún no fue ejecutado por el banco): todavía no tiene saldo "
+					+ "que cruzar.");
+		}
+		double disponible = (anticipo.getSaldo() != null) ? anticipo.getSaldo() : 0.0;
+		if (monto > disponible + TOLERANCIA) {
+			throw new IncomeException("El anticipo " + idAnticipo + " ("
+					+ nvl(anticipo.getNumeroDoc(), "sin número") + ") tiene un saldo disponible de $"
+					+ String.format(java.util.Locale.US, "%.2f", disponible)
+					+ " y no alcanza para cruzar $"
+					+ String.format(java.util.Locale.US, "%.2f", monto) + ".");
+		}
+	}
+
+	/**
+	 * Reparte un valor entre los anticipos disponibles del más antiguo al más
+	 * nuevo (FIFO), para los llamadores que sólo indican el monto total.
+	 * @param disponibles   : Anticipos con saldo, ya ordenados FIFO
+	 * @param valor         : Valor total a cruzar
+	 * @param nombreTitular : Nombre del titular, para el mensaje de error
+	 * @return              : Pares {anticipo, monto a aplicar}
+	 * @throws Throwable    : Excepcion si el saldo de anticipos no alcanza
+	 */
+	private List<Object[]> repartoFifo(List<AnticipoCliente> disponibles, Double valor,
+			String nombreTitular) throws Throwable {
+
+		List<Object[]> reparto = new ArrayList<>();
+		double pendiente = valor;
+
+		for (AnticipoCliente anticipo : disponibles) {
+			if (pendiente <= TOLERANCIA) {
+				break;
+			}
+			double disponible = (anticipo.getSaldo() != null) ? anticipo.getSaldo() : 0.0;
+			if (disponible <= TOLERANCIA) {
+				continue;
+			}
+			double aplica = Math.min(disponible, pendiente);
+			reparto.add(new Object[]{anticipo, aplica});
+			pendiente -= aplica;
+		}
+
+		if (pendiente > TOLERANCIA) {
+			double cubierto = valor - pendiente;
+			throw new IncomeException("El titular '" + nvl(nombreTitular, "")
+					+ "' tiene anticipos con saldo por $"
+					+ String.format(java.util.Locale.US, "%.2f", cubierto)
 					+ " y no alcanza para cruzar $"
 					+ String.format(java.util.Locale.US, "%.2f", valor) + ".");
 		}
+		return reparto;
+	}
+
+	/**
+	 * Ejecuta el cruce: una aplicación por anticipo, cada una con su asiento.
+	 * <p>
+	 * Se genera una aplicación por anticipo (y no una sola por el total) porque
+	 * es lo que permite reversar exactamente: al anular un anticipo se deshacen
+	 * sus aplicaciones y ninguna otra.
+	 * @param factura         : Factura de compra que recibe los abonos
+	 * @param reparto         : Pares {AnticipoCliente, monto}
+	 * @param fechaAplicacion : Fecha del cruce (yyyy-MM-dd, null = hoy)
+	 * @param idEmpresa       : Id de la empresa contable
+	 * @param idUsuario       : Id del usuario que registra
+	 * @param observacion     : Observación del usuario
+	 * @return                : Mapa con exito, mensaje, aplicaciones, asientos y saldos
+	 * @throws Throwable      : Excepcion
+	 */
+	private Map<String, Object> aplicaCruces(Factura factura, List<Object[]> reparto,
+			String fechaAplicacion, Long idEmpresa, Long idUsuario, String observacion)
+			throws Throwable {
+
+		if (reparto.isEmpty()) {
+			throw new IncomeException("No hay anticipos con saldo para cruzar.");
+		}
+
+		Long idCliente = factura.getTitular().getCodigo();
+
+		double total = 0.0;
+		for (Object[] linea : reparto) {
+			total += (Double) linea[1];
+		}
+
+		// 1. La factura debe tener saldo suficiente para el total del cruce
+		validaMontoContraSaldo(factura, total);
+
+		// 2. El saldo global del cliente debe respaldar el cruce. Con el saldo
+		//    por anticipo esto es redundante, pero mientras PRCC siga siendo la
+		//    cuenta que mueve la contabilidad conviene detectar el descuadre
+		//    aquí y no a mitad del proceso.
+		PersonaCuentaContable cuentaAnticipos = obtenerCuentaAnticipos(idCliente, idEmpresa);
+		double saldoAnticipos = (cuentaAnticipos.getSaldoInicial() != null)
+				? cuentaAnticipos.getSaldoInicial() : 0.0;
+		if (saldoAnticipos + TOLERANCIA < total) {
+			throw new IncomeException("El saldo de anticipos del cliente '"
+					+ factura.getTitular().getNombre() + "' es de $"
+					+ String.format(java.util.Locale.US, "%.2f", saldoAnticipos)
+					+ " y no alcanza para cruzar $"
+					+ String.format(java.util.Locale.US, "%.2f", total)
+					+ ". Revise el cuadre entre los anticipos y la cuenta contable.");
+		}
 
 		LocalDate fecha = parseFecha(fechaAplicacion);
-		String observacionAsiento = "Cruce de anticipo | Cliente: " + factura.getTitular().getNombre()
-				+ " | Factura: " + factura.getNumero()
-				+ " | Valor: $" + String.format(java.util.Locale.US, "%.2f", valor);
+		List<Map<String, Object>> lineas = new ArrayList<>();
 
-		// 3. Asiento contable del cruce
-		Asiento asiento = asientoContableService.generarAsientoAplicacionAnticipoCliente(
-				idCliente, valor, idEmpresa, TipoAsientos.APLICACION_ANTICIPO_CLIENTE,
-				fecha, observacionAsiento, usuarioNombre(idUsuario));
+		for (Object[] linea : reparto) {
+			AnticipoCliente anticipo = (AnticipoCliente) linea[0];
+			Double monto = (Double) linea[1];
 
-		// 4. Descontar el saldo de anticipos del cliente
-		cuentaAnticipos.setSaldoInicial(saldoAnticipos - valor);
+			String observacionAsiento = "Cruce de anticipo | Cliente: "
+					+ factura.getTitular().getNombre()
+					+ " | Factura: " + factura.getNumero()
+					+ " | Anticipo: " + nvl(anticipo.getNumeroDoc(), "#" + anticipo.getId())
+					+ " | Valor: $" + String.format(java.util.Locale.US, "%.2f", monto);
+
+			// 3. Asiento contable del cruce (uno por anticipo consumido)
+			Asiento asiento = asientoContableService.generarAsientoAplicacionAnticipoCliente(
+					idCliente, monto, idEmpresa, TipoAsientos.APLICACION_ANTICIPO_CLIENTE,
+					fecha, observacionAsiento, usuarioNombre(idUsuario));
+
+			// 4. Descontar el saldo del anticipo consumido
+			double saldoAnterior = (anticipo.getSaldo() != null) ? anticipo.getSaldo() : 0.0;
+			anticipo.setSaldo(redondea(saldoAnterior - monto));
+			em.merge(anticipo);
+			System.out.println("✓ Anticipo " + anticipo.getId() + " saldo: " + saldoAnterior
+					+ " → " + anticipo.getSaldo());
+
+			// 5. Aplicación enlazada al anticipo de ORIGEN: es lo que permite
+			//    deshacer exactamente este abono si el anticipo se anula.
+			AplicacionPagoCxc aplicacion = nuevaAplicacion(factura, idEmpresa,
+					TipoDocPagoAplicacion.ANTICIPO, monto, fecha,
+					construyeObservacionCruce(anticipo, observacion),
+					usuarioNombre(idUsuario));
+			aplicacion.setAsiento(asiento);
+			aplicacion.setAnticipoOrigen(anticipo);
+			aplicacion.setUsuario(em.find(Usuario.class, idUsuario));
+			aplicacion = saveSingle(aplicacion);
+
+			Map<String, Object> detalle = new HashMap<>();
+			detalle.put("aplicacion", aplicacion.getId());
+			detalle.put("idAnticipo", anticipo.getId());
+			detalle.put("numeroDocAnticipo", anticipo.getNumeroDoc());
+			detalle.put("montoAplicado", monto);
+			detalle.put("saldoAnticipo", anticipo.getSaldo());
+			detalle.put("asiento", asiento.getNumeroAlterno());
+			lineas.add(detalle);
+		}
+
+		// 6. Descontar el saldo global del cliente una sola vez, por el total
+		cuentaAnticipos.setSaldoInicial(redondea(saldoAnticipos - total));
 		em.merge(cuentaAnticipos);
-		System.out.println("✓ Saldo de anticipos del cliente " + idCliente + ": "
+		System.out.println("✓ Saldo global de anticipos del cliente " + idCliente + ": "
 				+ saldoAnticipos + " → " + cuentaAnticipos.getSaldoInicial());
-
-		// 5. Movimiento negativo en el listado de anticipos del cliente: sin él,
-		// el listado no refleja el cruce y su saldo acumulado queda
-		// desactualizado (el saldo de cada fila es el acumulado al momento
-		// del movimiento, igual que al registrar un anticipo).
-		AnticipoCliente movimiento = new AnticipoCliente();
-		movimiento.setTitular(factura.getTitular());
-		movimiento.setEmpresa(em.find(Empresa.class, idEmpresa));
-		movimiento.setUsuario(em.find(Usuario.class, idUsuario));
-		movimiento.setFechaAnticipo(fecha);
-		movimiento.setFechaRecepcion(fecha);
-		movimiento.setValor(-valor);
-		movimiento.setSaldo(cuentaAnticipos.getSaldoInicial());
-		movimiento.setNumeroDoc("Factura N° " + factura.getNumero());
-		movimiento.setObservacion("Cruce con factura N° " + factura.getNumero()
-				+ ((observacion != null && !observacion.trim().isEmpty())
-						? " | " + observacion.trim() : ""));
-		movimiento.setEstado(2L); // Confirmado
-		movimiento.setAsiento(asiento);
-		movimiento.setFechaRegistro(LocalDateTime.now());
-		em.persist(movimiento);
-		System.out.println("✓ Movimiento de anticipo registrado: valor=" + (-valor)
-				+ " | saldo=" + movimiento.getSaldo());
-
-		// 6. Aplicación, enlazada al movimiento para poder reversarlo
-		AplicacionPagoCxc aplicacion = nuevaAplicacion(factura, idEmpresa,
-				TipoDocPagoAplicacion.ANTICIPO, valor, fecha,
-				(observacion != null && !observacion.trim().isEmpty())
-						? observacion : "Cruce de saldo de anticipos",
-				usuarioNombre(idUsuario));
-		aplicacion.setAsiento(asiento);
-		aplicacion.setAnticipo(movimiento);
-		aplicacion.setUsuario(em.find(Usuario.class, idUsuario));
-		aplicacion = saveSingle(aplicacion);
 
 		em.flush();
 
+		Map<String, Object> resultado = new HashMap<>();
 		resultado.put("exito", true);
-		resultado.put("mensaje", "Anticipo cruzado correctamente.");
-		resultado.put("aplicacion", aplicacion.getId());
-		resultado.put("asiento", asiento.getNumeroAlterno());
+		resultado.put("mensaje", (lineas.size() == 1)
+				? "Anticipo cruzado correctamente."
+				: "Se cruzaron " + lineas.size() + " anticipos correctamente.");
+		resultado.put("lineas", lineas);
+		resultado.put("totalCruzado", redondea(total));
 		resultado.put("saldoAnticipos", cuentaAnticipos.getSaldoInicial());
-		resultado.putAll(saldoFactura(idFactura));
+		// Compatibilidad con los clientes que leen un solo cruce
+		resultado.put("aplicacion", lineas.get(0).get("aplicacion"));
+		resultado.put("asiento", lineas.get(0).get("asiento"));
+		resultado.putAll(saldoFactura(factura.getId()));
 		return resultado;
+	}
+
+	/**
+	 * Observación de la aplicación de un cruce, con el anticipo de origen a la
+	 * vista para que el historial de la factura sea legible sin navegar.
+	 * @param anticipo    : Anticipo consumido
+	 * @param observacion : Observación que escribió el usuario
+	 * @return            : Texto de la observación
+	 */
+	private String construyeObservacionCruce(AnticipoCliente anticipo, String observacion) {
+		StringBuilder texto = new StringBuilder("Cruce de anticipo ")
+				.append(nvl(anticipo.getNumeroDoc(), "#" + anticipo.getId()));
+		if (anticipo.getFechaAnticipo() != null) {
+			texto.append(" del ").append(anticipo.getFechaAnticipo());
+		}
+		if (observacion != null && !observacion.trim().isEmpty()) {
+			texto.append(" | ").append(observacion.trim());
+		}
+		return texto.toString();
+	}
+
+	private Long toLong(Object valor) {
+		if (valor == null) return null;
+		if (valor instanceof Number) return ((Number) valor).longValue();
+		String texto = valor.toString().trim();
+		return texto.isEmpty() ? null : Long.valueOf(texto);
+	}
+
+	private Double toDouble(Object valor) {
+		if (valor == null) return null;
+		if (valor instanceof Number) return ((Number) valor).doubleValue();
+		String texto = valor.toString().trim();
+		return texto.isEmpty() ? null : Double.valueOf(texto);
+	}
+
+	private double redondea(double valor) {
+		return Math.round(valor * 100.0) / 100.0;
 	}
 
 	@Override
@@ -735,47 +971,56 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 		if (aplicacion.getTipoDocPago() != null
 				&& aplicacion.getTipoDocPago().intValue() == TipoDocPagoAplicacion.ANTICIPO) {
 
-			AnticipoCliente anticipo = (aplicacion.getAnticipo() != null)
-					? em.find(AnticipoCliente.class, aplicacion.getAnticipo().getId()) : null;
+			// El saldo global del cliente se devuelve siempre: es la cuenta
+			// que mueve la contabilidad del cruce, exista o no el detalle por
+			// anticipo.
+			Factura factura = aplicacion.getFactura();
+			Long idEmpresa = (aplicacion.getEmpresa() != null)
+					? aplicacion.getEmpresa().getCodigo() : null;
+			if (factura != null && factura.getTitular() != null) {
+				PersonaCuentaContable cuentaAnticipos =
+						obtenerCuentaAnticipos(factura.getTitular().getCodigo(), idEmpresa);
+				double saldoActual = (cuentaAnticipos.getSaldoInicial() != null)
+						? cuentaAnticipos.getSaldoInicial() : 0.0;
+				cuentaAnticipos.setSaldoInicial(
+						redondea(saldoActual + aplicacion.getMontoAplicado()));
+				em.merge(cuentaAnticipos);
+				System.out.println("✓ Saldo global de anticipos devuelto: " + saldoActual
+						+ " → " + cuentaAnticipos.getSaldoInicial());
+			}
 
-			if (anticipo != null && anticipo.getValor() != null && anticipo.getValor() >= 0) {
-				// Cruce contra un anticipo concreto: se devuelve su saldo
-				double saldoActual = (anticipo.getSaldo() != null) ? anticipo.getSaldo() : 0.0;
-				anticipo.setSaldo(saldoActual + aplicacion.getMontoAplicado());
-				if (anticipo.getSaldo() > 0) {
-					anticipo.setEstado(1L);
-				}
-				em.merge(anticipo);
-				System.out.println("✓ Saldo del anticipo " + anticipo.getId() + " devuelto: "
-						+ saldoActual + " → " + anticipo.getSaldo());
+			// Y el saldo del anticipo concreto que se consumió, si el cruce
+			// sabe de cuál salió (todos los posteriores al 2026-08-20).
+			AnticipoCliente origen = (aplicacion.getAnticipoOrigen() != null)
+					? em.find(AnticipoCliente.class, aplicacion.getAnticipoOrigen().getId())
+					: null;
+			if (origen != null) {
+				double saldoActual = (origen.getSaldo() != null) ? origen.getSaldo() : 0.0;
+				origen.setSaldo(redondea(saldoActual + aplicacion.getMontoAplicado()));
+				em.merge(origen);
+				System.out.println("✓ Saldo del anticipo " + origen.getId() + " devuelto: "
+						+ saldoActual + " → " + origen.getSaldo());
 			} else {
-				// Cruce por valor contra el saldo global del cliente: se
-				// devuelve el saldo global y se anula el movimiento negativo
-				// que el cruce dejó en el listado de anticipos (si existe: los
-				// cruces anteriores a ese registro no lo tienen).
-				Factura factura = aplicacion.getFactura();
-				Long idEmpresa = (aplicacion.getEmpresa() != null)
-						? aplicacion.getEmpresa().getCodigo() : null;
-				if (factura != null && factura.getTitular() != null) {
-					PersonaCuentaContable cuentaAnticipos =
-							obtenerCuentaAnticipos(factura.getTitular().getCodigo(), idEmpresa);
-					double saldoActual = (cuentaAnticipos.getSaldoInicial() != null)
-							? cuentaAnticipos.getSaldoInicial() : 0.0;
-					cuentaAnticipos.setSaldoInicial(saldoActual + aplicacion.getMontoAplicado());
-					em.merge(cuentaAnticipos);
-					System.out.println("✓ Saldo de anticipos devuelto: " + saldoActual
-							+ " → " + cuentaAnticipos.getSaldoInicial());
-				}
-				if (anticipo != null) {
-					anticipo.setEstado(3L); // Anulado
-					anticipo.setObservacion(nvl(anticipo.getObservacion(), "")
-							+ " | REVERSADO: " + motivo);
-					em.merge(anticipo);
-					System.out.println("✓ Movimiento de anticipo " + anticipo.getId()
-							+ " anulado por reversión del cruce.");
-				}
+				System.out.println("⚠ El cruce " + aplicacion.getId() + " no tiene anticipo de "
+						+ "origen (cruce anterior a la migración): sólo se devolvió el saldo global.");
+			}
+
+			// Los cruces viejos dejaban además un movimiento negativo en
+			// CBR.ANTC; si esta aplicación tiene uno, se anula para que no
+			// siga restando en los listados históricos.
+			AnticipoCliente movimiento = (aplicacion.getAnticipo() != null)
+					? em.find(AnticipoCliente.class, aplicacion.getAnticipo().getId()) : null;
+			if (movimiento != null && movimiento.getValor() != null
+					&& movimiento.getValor() < 0) {
+				movimiento.setEstado(Long.valueOf(EstadoAnticipoCliente.ANULADO));
+				movimiento.setObservacion(nvl(movimiento.getObservacion(), "")
+						+ " | REVERSADO: " + motivo);
+				em.merge(movimiento);
+				System.out.println("✓ Movimiento negativo " + movimiento.getId()
+						+ " anulado por reversión del cruce.");
 			}
 		}
+
 
 		// 3. Anular el movimiento bancario del asiento, si lo hubiera
 		if (idAsiento != null) {

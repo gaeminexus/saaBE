@@ -43,4 +43,19 @@ public class FacturadorDaoServiceImpl extends EntityDaoImpl<Facturador> implemen
 			return null;
 		}
 	}
+
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.cxc.dao.FacturadorDaoService#selectByEmpresa(java.lang.Long)
+	 */
+	@SuppressWarnings("unchecked")
+	@Override
+	public Facturador selectByEmpresa(Long idEmpresa) throws Throwable {
+		System.out.println("FacturadorDaoServiceImpl.selectByEmpresa - empresa: " + idEmpresa);
+		Query query = em.createQuery(
+			"SELECT f FROM Facturador f WHERE f.empresa.codigo = :idEmpresa ORDER BY f.id"
+		);
+		query.setParameter("idEmpresa", idEmpresa);
+		java.util.List<Facturador> encontrados = query.getResultList();
+		return (encontrados == null || encontrados.isEmpty()) ? null : encontrados.get(0);
+	}
 }

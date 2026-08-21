@@ -3,6 +3,8 @@ package com.saa.model.rhh;
 import java.io.Serializable;
 import java.time.LocalDate;
 
+import com.saa.basico.util.EntidadAuditableFecha;
+
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -25,7 +27,7 @@ import jakarta.persistence.Table;
     @NamedQuery(name = "SaldoVacacionesId", query = "select e from SaldoVacaciones e where e.codigo=:id"),
     @NamedQuery(name = "SaldoVacacionesAll", query = "select e from SaldoVacaciones e")
 })
-public class SaldoVacaciones implements Serializable {
+public class SaldoVacaciones implements Serializable, EntidadAuditableFecha {
 
     /**
      * Código único del saldo.
@@ -89,6 +91,70 @@ public class SaldoVacaciones implements Serializable {
     // Getters y Setters
     // =============================
 
+
+    /**
+     * Fecha de inicio del periodo anual de vacaciones.
+     */
+    @Basic
+    @Column(name = "SLDVFCHI")
+    private LocalDate fechaInicio;
+
+    /**
+     * Fecha de fin del periodo anual de vacaciones.
+     */
+    @Basic
+    @Column(name = "SLDVFCHF")
+    private LocalDate fechaFin;
+
+    /**
+     * Dias adicionales acreditados por antiguedad a partir del quinto anio.
+     */
+    @Basic
+    @Column(name = "SLDVDIAD")
+    private Double diasAdicionales;
+
+    /**
+     * Dias arrastrados del periodo anterior no gozados.
+     */
+    @Basic
+    @Column(name = "SLDVDIAR")
+    private Double diasArrastrados;
+
+    /**
+     * Dias del periodo que se liquidaron en dinero.
+     */
+    @Basic
+    @Column(name = "SLDVDIPG")
+    private Double diasPagados;
+
+    /**
+     * Valor del dia de vacaciones, calculado sobre la base de los ultimos doce meses.
+     */
+    @Basic
+    @Column(name = "SLDVVLDI")
+    private Double valorDia;
+
+    /**
+     * El saldo caduco por superar el plazo legal (S/N).
+     */
+    @Basic
+    @Column(name = "SLDVCDCD", length = 1)
+    private String caducado;
+
+    /**
+     * Proviene de un saldo de apertura de la migracion (S/N).
+     */
+    @Basic
+    @Column(name = "SLDVAPRT", length = 1)
+    private String aperturaMigracion;
+
+    /**
+     * Estado del registro.
+     */
+    @Basic
+    @Column(name = "SLDVESTD")
+    private Long estado;
+
     public Long getCodigo() {
         return codigo;
     }
@@ -151,5 +217,77 @@ public class SaldoVacaciones implements Serializable {
 
     public void setUsuarioRegistro(String usuarioRegistro) {
         this.usuarioRegistro = usuarioRegistro;
+    }
+
+    public LocalDate getFechaInicio() {
+        return fechaInicio;
+    }
+
+    public void setFechaInicio(LocalDate fechaInicio) {
+        this.fechaInicio = fechaInicio;
+    }
+
+    public LocalDate getFechaFin() {
+        return fechaFin;
+    }
+
+    public void setFechaFin(LocalDate fechaFin) {
+        this.fechaFin = fechaFin;
+    }
+
+    public Double getDiasAdicionales() {
+        return diasAdicionales;
+    }
+
+    public void setDiasAdicionales(Double diasAdicionales) {
+        this.diasAdicionales = diasAdicionales;
+    }
+
+    public Double getDiasArrastrados() {
+        return diasArrastrados;
+    }
+
+    public void setDiasArrastrados(Double diasArrastrados) {
+        this.diasArrastrados = diasArrastrados;
+    }
+
+    public Double getDiasPagados() {
+        return diasPagados;
+    }
+
+    public void setDiasPagados(Double diasPagados) {
+        this.diasPagados = diasPagados;
+    }
+
+    public Double getValorDia() {
+        return valorDia;
+    }
+
+    public void setValorDia(Double valorDia) {
+        this.valorDia = valorDia;
+    }
+
+    public String getCaducado() {
+        return caducado;
+    }
+
+    public void setCaducado(String caducado) {
+        this.caducado = caducado;
+    }
+
+    public String getAperturaMigracion() {
+        return aperturaMigracion;
+    }
+
+    public void setAperturaMigracion(String aperturaMigracion) {
+        this.aperturaMigracion = aperturaMigracion;
+    }
+
+    public Long getEstado() {
+        return estado;
+    }
+
+    public void setEstado(Long estado) {
+        this.estado = estado;
     }
 }

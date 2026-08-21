@@ -22,18 +22,21 @@ import jakarta.ejb.Stateless;
 public class CatalogoDaoServiceImpl extends EntityDaoImpl<Catalogo>  implements CatalogoDaoService{
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.parametrizacion.ejb.dao.CatalogoDaoService#obtieneCampos()
+	 * @see com.saa.ejb.rhh.dao.CatalogoDaoService#obtieneCampos()
 	 */
 	public String[] obtieneCampos() {
 		System.out.println("Ingresa al metodo (campos) Catalogo");
 		return new String[]{"codigo",
-							"proposicionPagoXCuota",
-							"fechaAprobacion",
-							"nivelAprobacion",
-							"usuarioAprueba",
-							"nombreUsuarioAprueba",
+							"nombre",
+							"requiereDocumento",
+							"conGoce",
 							"estado",
-							"observacion"};
+							"fechaRegistro",
+							"usuarioRegistro",
+							"empresa",
+							"tipoAusencia",
+							"maximoDias",
+							"descuentaNomina"};
 	}
 	
 }

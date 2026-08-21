@@ -114,4 +114,12 @@ Del mismo modo, para pagos de préstamos (pago de cuotas, abono a capital, pago 
 
 ## Serialización
 
-Se prefiere JSON-B sobre Jackson (`resteasy.preferJacksonOverJsonB=false` en `META-INF/microprofile-config.properties`); `jackson-datatype-jsr310` es `provided` para soporte de `java.time`. Las entidades son POJOs planos con getters/setters escritos a mano — sin Lombok, sin MapStruct, sin capa de DTO: las entidades JPA se serializan directamente a JSON.
+`META-INF/microprofile-config.properties` declara `resteasy.preferJacksonOverJsonB=false`, **pero esa propiedad no está surtiendo efecto: quien serializa es Jackson.** Verificado sobre el cable el 2026-08-20 — las respuestas traen `[2026,8,10]` y `[2026,8,20,9,36,47,579023000]`, que es el formato de arreglo de Jackson; Yasson emitiría `"2026-08-10"`. Y en la entrada el servidor acepta las dos formas, ISO y arreglo, mientras que JSON-B rechaza el arreglo. **El mecanismo exacto lo dice WildFly en el log del arranque**, `WFLYRS0018`: *«Explicit usage of Jackson annotation in a Jakarta RESTful Web Services deployment; the system will disable Jakarta JSON Binding processing»*. Basta **una anotación de Jackson en cualquier parte del código** para que WildFly desactive JSON-B en todo el despliegue. La propiedad de MicroProfile no tiene nada que hacer contra eso — y sin `web.xml` tampoco hay `context-param` donde se leería. Coherente además con que el WAR empaquete su propio Jackson 2.18.2 en `WEB-INF/lib/` y ninguna dependencia de Yasson.
+
+Consecuencia práctica: **volver a JSON-B no es cambiar una propiedad, es retirar todas las anotaciones de Jackson del proyecto** y después migrar el formato de todas las fechas en las dos direcciones.
+
+**No cambiar el proveedor sin un plan.** Pasar a JSON-B cambiaría el formato de **todas** las fechas del sistema, en todos los módulos, en las dos direcciones. Es una migración, no un ajuste de configuración.
+
+**Trampa de `LocalDateTime`, y es silenciosa:** Jackson acepta un instante con zona y **descarta el offset en vez de convertirlo** — `"2026-08-20T13:30:00.000Z"` se graba como `13:30`. Un `Date` de JavaScript de las 08:30 en Ecuador viaja como `13:30Z` y queda cinco horas adelantado sin ningún error. **Regla para los clientes: `LocalDate` va como `yyyy-MM-dd` y `LocalDateTime` como ISO local sin zona; nunca un `Date` crudo ni nada terminado en `Z`.**
+
+`jackson-datatype-jsr310` es `provided` para soporte de `java.time`. Las entidades son POJOs planos con getters/setters escritos a mano — sin Lombok, sin MapStruct, sin capa de DTO: las entidades JPA se serializan directamente a JSON.

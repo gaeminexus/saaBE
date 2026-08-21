@@ -1,18 +1,28 @@
 package com.saa.ejb.cxc.serviceImpl;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.cnt.service.AsientoContableService;
+import com.saa.ejb.cnt.service.AsientoService;
 import com.saa.ejb.cxc.dao.AnticipoClienteDaoService;
+import com.saa.ejb.cxc.dao.AplicacionPagoCxcDaoService;
 import com.saa.ejb.cxc.service.AnticipoClienteService;
+import com.saa.ejb.cxc.service.AplicacionPagoCxcService;
 import com.saa.ejb.tsr.dao.PersonaCuentaContableDaoService;
+import com.saa.ejb.tsr.service.MovimientoBancoService;
 import com.saa.model.cnt.Asiento;
 import com.saa.model.cxc.AnticipoCliente;
+import com.saa.model.cxc.AplicacionPagoCxc;
 import com.saa.model.cxc.NombreEntidadesCobro;
 import com.saa.model.tsr.PersonaCuentaContable;
+import com.saa.rubros.EstadoAnticipoCliente;
+import com.saa.rubros.EstadoAplicacionPago;
 import com.saa.rubros.RolPersona;
 import com.saa.rubros.TipoAsientos;
 
@@ -31,6 +41,15 @@ import jakarta.persistence.TypedQuery;
 @Stateless
 public class AnticipoClienteServiceImpl implements AnticipoClienteService {
 
+    /** Estado Confirmado: el anticipo tiene asiento y saldo acreditado. */
+    private static final int ESTADO_CONFIRMADO = 2;
+
+    /** Estado Anulado. */
+    private static final int ESTADO_ANULADO = 3;
+
+    /** Tolerancia de centavos al comparar el valor del anticipo contra el saldo. */
+    private static final double TOLERANCIA = 0.01;
+
     @EJB
     private AnticipoClienteDaoService anticipoDaoService;
 
@@ -39,6 +58,18 @@ public class AnticipoClienteServiceImpl implements AnticipoClienteService {
 
     @EJB
     private PersonaCuentaContableDaoService personaCuentaContableDaoService;
+
+    @EJB
+    private AsientoService asientoService;
+
+    @EJB
+    private AplicacionPagoCxcService aplicacionPagoCxcService;
+
+    @EJB
+    private AplicacionPagoCxcDaoService aplicacionPagoCxcDaoService;
+
+    @EJB
+    private MovimientoBancoService movimientoBancoService;
 
     @PersistenceContext
     private EntityManager em;
@@ -300,10 +331,9 @@ public class AnticipoClienteServiceImpl implements AnticipoClienteService {
         }
 
         // ── Construir entidad ──────────────────────────────────────────────────
-        // Leer saldoInicial del PRCC (tipoCuenta=2=Anticipos, rol Cliente)
-        // y sumarlo al valor del anticipo para obtener el saldo real acumulado.
-        Double saldoInicialPrcc = (cuentasAnticipo.get(0).getSaldoInicial() != null)
-                ? cuentasAnticipo.get(0).getSaldoInicial() : 0.0;
+        // El saldo del anticipo es su propio saldo DISPONIBLE (lo que queda por
+        // cruzar), no el saldo global del titular: nace igual al valor y lo van
+        // descontando los cruces que lo consumen.
 
         AnticipoCliente anticipo = new AnticipoCliente();
         anticipo.setTitular(titular);
@@ -312,7 +342,7 @@ public class AnticipoClienteServiceImpl implements AnticipoClienteService {
         anticipo.setFechaAnticipo(fecha);
         anticipo.setFechaRecepcion(fecha);
         anticipo.setValor(valor);
-        anticipo.setSaldo(saldoInicialPrcc + valor);
+        anticipo.setSaldo(valor);
         anticipo.setNumeroDoc(numeroDoc);
         anticipo.setObservacion(observacion);
         anticipo.setEstado(1L); // Ingresado
@@ -355,6 +385,508 @@ public class AnticipoClienteServiceImpl implements AnticipoClienteService {
 
         return resultado;
     }
+
+    // =========================================================================
+    // Anulación
+    // =========================================================================
+
+    @Override
+    public java.util.Map<String, Object> verificarAnulacion(Long idAnticipo) throws Throwable {
+
+        System.out.println("=== verificarAnulacion anticipo cliente | anticipo="
+                + idAnticipo + " ===");
+
+        Map<String, Object> resultado = new HashMap<>();
+        resultado.put("anticipo", idAnticipo);
+        resultado.put("puedeAnular", false);
+        resultado.put("requiereConfirmacion", false);
+        resultado.put("cruces", new ArrayList<Map<String, Object>>());
+
+        AnticipoCliente anticipo = em.find(AnticipoCliente.class, idAnticipo);
+        if (anticipo == null) {
+            resultado.put("mensaje", "No se encontró el anticipo con ID: " + idAnticipo);
+            return resultado;
+        }
+
+        String bloqueo = motivoBloqueo(anticipo);
+        if (bloqueo != null) {
+            resultado.put("mensaje", bloqueo);
+            return resultado;
+        }
+
+        int estado = (anticipo.getEstado() != null) ? anticipo.getEstado().intValue() : 0;
+        resultado.put("estado", estado);
+        resultado.put("valorAnticipo", anticipo.getValor());
+        resultado.put("puedeAnular", true);
+
+        if (estado != ESTADO_CONFIRMADO) {
+            // Ingresado: todavía no hay asiento ni saldo acreditado, así que
+            // tampoco pudo haberse cruzado con ninguna factura.
+            resultado.put("saldoDisponible", 0.0);
+            resultado.put("saldoGlobalAnticipos", 0.0);
+            resultado.put("montoACruzar", 0.0);
+            resultado.put("crucesEstimados", 0);
+            resultado.put("mensaje", "El anticipo aún no está confirmado: se anulará sin "
+                    + "afectar contabilidad ni facturas.");
+            return resultado;
+        }
+
+        AnalisisCruces analisis = analizarCruces(anticipo);
+        resultado.put("saldoDisponible", analisis.saldoDisponible);
+        resultado.put("saldoGlobalAnticipos", analisis.saldoGlobal);
+        resultado.put("montoACruzar", analisis.deficit);
+        resultado.put("cruces", analisis.detalleCruces());
+        resultado.put("crucesEstimados", analisis.crucesEstimados);
+        resultado.put("requiereConfirmacion", !analisis.cruces.isEmpty());
+
+        if (analisis.cruces.isEmpty()) {
+            resultado.put("mensaje", "El anticipo no fue cruzado con ninguna factura. "
+                    + "Se anulará el anticipo y su asiento contable, y se descontará el saldo "
+                    + "de anticipos del cliente.");
+        } else {
+            resultado.put("mensaje", "El anticipo ya fue cruzado con "
+                    + analisis.cruces.size() + " factura(s) por un total de $"
+                    + formato(analisis.totalCruces) + ". Para anularlo hay que eliminar esos "
+                    + "abonos: las facturas volverán a quedar pendientes de cobro.");
+        }
+        if (analisis.crucesEstimados > 0) {
+            resultado.put("estimacion", analisis.crucesEstimados + " de los cruces listados no "
+                    + "declaran de qué anticipo salieron (son anteriores a la migración) y se "
+                    + "eligieron por antigüedad. Verifíquelos antes de confirmar.");
+        }
+        if (analisis.faltante > TOLERANCIA) {
+            resultado.put("advertencia", "Los cruces registrados no alcanzan a cubrir $"
+                    + formato(analisis.faltante) + " del anticipo. El saldo de anticipos del "
+                    + "cliente quedará negativo tras la anulación; revise los movimientos "
+                    + "de anticipos antes de continuar.");
+        }
+        return resultado;
+    }
+
+    @Override
+    public java.util.Map<String, Object> anularAnticipo(Long idAnticipo, String motivo,
+            Long idUsuario, boolean confirmaReversionCruces) throws Throwable {
+
+        System.out.println("=== anularAnticipoCliente | anticipo=" + idAnticipo
+                + " | confirmaCruces=" + confirmaReversionCruces + " ===");
+
+        if (motivo == null || motivo.trim().isEmpty()) {
+            throw new IncomeException("Debe indicar el motivo de la anulación.");
+        }
+        String motivoLimpio = motivo.trim();
+
+        AnticipoCliente anticipo = em.find(AnticipoCliente.class, idAnticipo);
+        if (anticipo == null) {
+            throw new IncomeException("No se encontró el anticipo con ID: " + idAnticipo);
+        }
+
+        String bloqueo = motivoBloqueo(anticipo);
+        if (bloqueo != null) {
+            throw new IncomeException(bloqueo);
+        }
+
+        Map<String, Object> resultado = new HashMap<>();
+        int estado = (anticipo.getEstado() != null) ? anticipo.getEstado().intValue() : 0;
+        int crucesReversados = 0;
+
+        if (estado == ESTADO_CONFIRMADO) {
+            // 1. ¿El anticipo fue cruzado con facturas? Sin confirmación del
+            //    usuario no se toca ningún abono: se devuelve el detalle para
+            //    que la pantalla pregunte.
+            AnalisisCruces analisis = analizarCruces(anticipo);
+            if (!analisis.cruces.isEmpty() && !confirmaReversionCruces) {
+                resultado.put("exito", false);
+                resultado.put("requiereConfirmacion", true);
+                resultado.put("anticipo", idAnticipo);
+                resultado.put("valorAnticipo", anticipo.getValor());
+                resultado.put("saldoDisponible", analisis.saldoDisponible);
+                resultado.put("montoACruzar", analisis.deficit);
+                resultado.put("cruces", analisis.detalleCruces());
+                resultado.put("mensaje", "El anticipo ya fue cruzado con "
+                        + analisis.cruces.size() + " factura(s) por un total de $"
+                        + formato(analisis.totalCruces) + ". Confirme la eliminación de esos "
+                        + "abonos para poder anular el anticipo.");
+                return resultado;
+            }
+
+            // 2. Eliminar los abonos que el anticipo hizo a las facturas. La
+            //    reversión devuelve el saldo a cada factura, recalcula su estado
+            //    de cobro, anula el asiento del cruce y su movimiento negativo
+            //    en CBR.ANTC, y devuelve el saldo global de anticipos.
+            for (AplicacionPagoCxc cruce : analisis.cruces) {
+                aplicacionPagoCxcService.revertirAplicacion(cruce.getId(),
+                        "Anulación del anticipo " + idAnticipo + ": " + motivoLimpio, idUsuario);
+                crucesReversados++;
+            }
+            em.flush();
+
+            // 3. Anular el movimiento bancario y el asiento del anticipo.
+            Long idAsiento = (anticipo.getAsiento() != null)
+                    ? anticipo.getAsiento().getCodigo() : null;
+            if (idAsiento != null) {
+                try {
+                    movimientoBancoService.actualizaEstadoMovimiento(idAsiento,
+                            Long.valueOf(com.saa.rubros.EstadoMovimientoBanco.ANULADO));
+                } catch (Throwable e) {
+                    System.err.println("⚠ No se pudo anular el movimiento bancario del asiento "
+                            + idAsiento + ": " + e.getMessage());
+                }
+                try {
+                    asientoService.anulaAsiento(idAsiento);
+                    System.out.println("✓ Asiento " + idAsiento + " anulado / reversado.");
+                } catch (Throwable e) {
+                    System.err.println("⚠ No se pudo anular el asiento " + idAsiento
+                            + ": " + e.getMessage());
+                }
+            }
+
+            // 4. Descontar del saldo de anticipos del cliente lo que la
+            //    confirmación había acreditado.
+            actualizarSaldoInicialPrcc(anticipo.getTitular().getCodigo(),
+                    anticipo.getEmpresa().getCodigo(), RolPersona.CLIENTE,
+                    -anticipo.getValor());
+        }
+
+        anticipo.setEstado(Long.valueOf(ESTADO_ANULADO));
+        anticipo.setSaldo(0.0);
+        anticipo.setObservacion(((anticipo.getObservacion() != null)
+                ? anticipo.getObservacion() : "") + " | ANULADO: " + motivoLimpio);
+        anticipo = anticipoDaoService.save(anticipo, anticipo.getId());
+        em.flush();
+
+        resultado.put("exito", true);
+        resultado.put("requiereConfirmacion", false);
+        resultado.put("anticipo", idAnticipo);
+        resultado.put("crucesReversados", crucesReversados);
+        resultado.put("mensaje", (crucesReversados > 0)
+                ? "Anticipo anulado correctamente. Se eliminaron " + crucesReversados
+                  + " abono(s) a facturas y se anuló el asiento del anticipo."
+                : "Anticipo anulado correctamente.");
+        System.out.println("✓ AnticipoCliente " + idAnticipo + " anulado | cruces reversados: "
+                + crucesReversados);
+        return resultado;
+    }
+
+    // =========================================================================
+    // Consulta y seguimiento
+    // =========================================================================
+
+    @Override
+    public List<AnticipoCliente> selectDisponibles(Long idTitular, Long idEmpresa)
+            throws Throwable {
+        System.out.println("=== selectDisponibles anticipos cliente | titular=" + idTitular
+                + " | empresa=" + idEmpresa + " ===");
+        return anticipoDaoService.selectDisponiblesByTitular(idTitular, idEmpresa);
+    }
+
+    @Override
+    public Map<String, Object> seguimiento(Long idTitular, Long idEmpresa) throws Throwable {
+
+        System.out.println("=== seguimiento anticipos cliente | titular=" + idTitular
+                + " | empresa=" + idEmpresa + " ===");
+
+        Map<String, Object> resultado = new HashMap<>();
+        resultado.put("titular", idTitular);
+        resultado.put("empresa", idEmpresa);
+
+        List<AnticipoCliente> anticipos =
+                anticipoDaoService.selectMovimientosByTitular(idTitular, idEmpresa);
+
+        double totalAnticipos = 0.0;
+        double totalCruzado = 0.0;
+        double totalDisponible = 0.0;
+        List<Map<String, Object>> filas = new ArrayList<>();
+
+        for (AnticipoCliente anticipo : anticipos) {
+            Map<String, Object> fila = new HashMap<>();
+            fila.put("id", anticipo.getId());
+            fila.put("numeroDoc", anticipo.getNumeroDoc());
+            fila.put("fechaAnticipo", anticipo.getFechaAnticipo());
+            fila.put("fechaRecepcion", anticipo.getFechaRecepcion());
+            fila.put("fechaRegistro", anticipo.getFechaRegistro());
+            fila.put("valor", anticipo.getValor());
+            fila.put("saldo", anticipo.getSaldo());
+            fila.put("estado", anticipo.getEstado());
+            fila.put("estadoDescripcion", descripcionEstado(anticipo.getEstado()));
+            fila.put("formaPago", anticipo.getFormaPago());
+            fila.put("referencia", anticipo.getReferencia());
+            fila.put("banco", anticipo.getBanco());
+            fila.put("observacion", anticipo.getObservacion());
+            fila.put("usuario", (anticipo.getUsuario() != null)
+                    ? anticipo.getUsuario().getNombre() : null);
+            fila.put("asiento", detalleAsiento(anticipo.getAsiento()));
+
+            // Cruces del anticipo, activos y reversados: el historial completo
+            // es justamente lo que permite seguir una anulación.
+            List<Map<String, Object>> cruces = new ArrayList<>();
+            double cruzadoActivo = 0.0;
+            for (AplicacionPagoCxc cruce
+                    : aplicacionPagoCxcDaoService.selectCrucesByAnticipoOrigen(
+                            anticipo.getId(), false)) {
+
+                boolean activo = (cruce.getEstado() != null)
+                        && cruce.getEstado().intValue() == EstadoAplicacionPago.ACTIVO;
+
+                Map<String, Object> detalle = new HashMap<>();
+                detalle.put("idAplicacion", cruce.getId());
+                detalle.put("montoAplicado", cruce.getMontoAplicado());
+                detalle.put("fechaAplicacion", cruce.getFechaAplicacion());
+                detalle.put("fechaRegistro", cruce.getFechaRegistro());
+                detalle.put("estado", cruce.getEstado());
+                detalle.put("estadoDescripcion", activo ? "Activo" : "Reversado");
+                detalle.put("observacion", cruce.getObservacion());
+                detalle.put("usuario", (cruce.getUsuario() != null)
+                        ? cruce.getUsuario().getNombre() : null);
+                detalle.put("asiento", detalleAsiento(cruce.getAsiento()));
+                if (cruce.getFactura() != null) {
+                    detalle.put("idFactura", cruce.getFactura().getId());
+                    detalle.put("numeroFactura", cruce.getFactura().getNumero());
+                }
+                cruces.add(detalle);
+
+                if (activo) {
+                    cruzadoActivo += (cruce.getMontoAplicado() != null)
+                            ? cruce.getMontoAplicado() : 0.0;
+                }
+            }
+            fila.put("cruces", cruces);
+            fila.put("totalCruzado", cruzadoActivo);
+            filas.add(fila);
+
+            boolean vigente = (anticipo.getEstado() != null)
+                    && anticipo.getEstado().intValue() == EstadoAnticipoCliente.CONFIRMADO;
+            if (vigente) {
+                totalAnticipos += (anticipo.getValor() != null) ? anticipo.getValor() : 0.0;
+                totalDisponible += (anticipo.getSaldo() != null) ? anticipo.getSaldo() : 0.0;
+                totalCruzado += cruzadoActivo;
+            }
+        }
+
+        // Cuadre: la suma de los saldos por anticipo debe coincidir con el
+        // saldo global de la cuenta contable de anticipos del cliente. Si no
+        // coincide hay movimientos sin atribuir (típicamente cruces anteriores
+        // a la migración) y conviene revisarlo antes de operar.
+        List<PersonaCuentaContable> cuentas = personaCuentaContableDaoService
+                .selectByTitularRolTipoCuenta(idEmpresa, idTitular, RolPersona.CLIENTE, 2L);
+        double saldoGlobal = (!cuentas.isEmpty() && cuentas.get(0).getSaldoInicial() != null)
+                ? cuentas.get(0).getSaldoInicial() : 0.0;
+        double diferencia = saldoGlobal - totalDisponible;
+
+        resultado.put("anticipos", filas);
+        resultado.put("totalAnticipos", totalAnticipos);
+        resultado.put("totalCruzado", totalCruzado);
+        resultado.put("saldoDisponible", totalDisponible);
+        resultado.put("saldoGlobalAnticipos", saldoGlobal);
+        resultado.put("diferencia", diferencia);
+        resultado.put("cuadra", Math.abs(diferencia) <= TOLERANCIA);
+        if (Math.abs(diferencia) > TOLERANCIA) {
+            resultado.put("advertencia", "El saldo global de anticipos ($"
+                    + formato(saldoGlobal) + ") no coincide con la suma de los saldos por "
+                    + "anticipo ($" + formato(totalDisponible) + "). Diferencia: $"
+                    + formato(diferencia) + ". Revise MIGRACION-CRUCES-ANTICIPO.md.");
+        }
+        return resultado;
+    }
+
+    /**
+     * Datos del asiento contable para las pantallas de seguimiento.
+     * @param asiento : Asiento vinculado, puede ser null
+     * @return        : Mapa con codigo, numero, numeroAlterno, fecha y estado; null si no hay
+     */
+    private Map<String, Object> detalleAsiento(Asiento asiento) {
+        if (asiento == null) {
+            return null;
+        }
+        Map<String, Object> detalle = new HashMap<>();
+        detalle.put("codigo", asiento.getCodigo());
+        detalle.put("numero", asiento.getNumero());
+        detalle.put("numeroAlterno", asiento.getNumeroAlterno());
+        detalle.put("fechaAsiento", asiento.getFechaAsiento());
+        detalle.put("estado", asiento.getEstado());
+        return detalle;
+    }
+
+    /**
+     * Nombre legible del estado de un anticipo.
+     * @param estado : Estado del anticipo
+     * @return       : Descripción para la pantalla
+     */
+    private String descripcionEstado(Long estado) {
+        if (estado == null) {
+            return "Sin estado";
+        }
+        switch (estado.intValue()) {
+            case EstadoAnticipoCliente.INGRESADO:  return "Ingresado";
+            case EstadoAnticipoCliente.CONFIRMADO: return "Confirmado";
+            case EstadoAnticipoCliente.ANULADO:    return "Anulado";
+            case EstadoAnticipoCliente.MIGRADO:    return "Movimiento histórico";
+            default: return "Estado " + estado;
+        }
+    }
+
+    // =========================================================================
+    // Helpers de anulación
+    // =========================================================================
+
+    /**
+     * Devuelve el motivo por el que un anticipo NO puede anularse, o null si sí
+     * puede. Lo usan igual la verificación previa y la anulación real, para que
+     * la pantalla y el servicio nunca discrepen.
+     * @param anticipo : Anticipo a evaluar
+     * @return         : Mensaje de bloqueo, null si es anulable
+     */
+    private String motivoBloqueo(AnticipoCliente anticipo) {
+
+        // Los cruces dejan un movimiento NEGATIVO en CBR.ANTC que aparece en el
+        // mismo listado que los anticipos. Ese movimiento no se anula desde
+        // aquí: se deshace reversando el abono desde la factura.
+        if (anticipo.getValor() != null && anticipo.getValor() < 0) {
+            return "El registro " + anticipo.getId() + " no es un anticipo sino el movimiento "
+                    + "de un cruce con factura. Para deshacerlo reverse el abono desde la "
+                    + "factura correspondiente.";
+        }
+        int estado = (anticipo.getEstado() != null) ? anticipo.getEstado().intValue() : 0;
+        if (estado == ESTADO_ANULADO) {
+            return "El anticipo " + anticipo.getId() + " ya está anulado.";
+        }
+        if (estado == EstadoAnticipoCliente.MIGRADO) {
+            return "El registro " + anticipo.getId() + " es un movimiento histórico de un "
+                    + "cruce anterior a la migración, no un anticipo: no se anula desde aquí.";
+        }
+        return null;
+    }
+
+    /**
+     * Determina qué cruces con facturas hay que reversar para poder anular el
+     * anticipo.
+     * <p>
+     * Desde el 2026-08-20 cada cruce guarda de qué anticipo salió el dinero
+     * (FK APLCANTO), así que la respuesta es exacta: los cruces activos de ESTE
+     * anticipo y ninguno más.
+     * <p>
+     * Los cruces anteriores a esa fecha no tienen esa FK. Si la migración
+     * (MIGRACION-CRUCES-ANTICIPO.md) no llegó a atribuirlos, el consumo del
+     * anticipo no queda explicado por sus cruces directos; para esos casos se
+     * completa la diferencia con la heurística vieja: cruces del titular sin
+     * anticipo de origen, del más reciente al más antiguo.
+     * @param anticipo   : Anticipo confirmado a anular
+     * @return           : Analisis con el saldo, el deficit y los cruces a reversar
+     * @throws Throwable : Excepcion
+     */
+    private AnalisisCruces analizarCruces(AnticipoCliente anticipo) throws Throwable {
+
+        AnalisisCruces analisis = new AnalisisCruces();
+        double valor = (anticipo.getValor() != null) ? anticipo.getValor() : 0.0;
+
+        Long idTitular = (anticipo.getTitular() != null) ? anticipo.getTitular().getCodigo() : null;
+        Long idEmpresa = (anticipo.getEmpresa() != null) ? anticipo.getEmpresa().getCodigo() : null;
+
+        analisis.saldoDisponible = (anticipo.getSaldo() != null) ? anticipo.getSaldo() : 0.0;
+
+        List<PersonaCuentaContable> cuentas = personaCuentaContableDaoService
+                .selectByTitularRolTipoCuenta(idEmpresa, idTitular, RolPersona.CLIENTE, 2L);
+        analisis.saldoGlobal = (!cuentas.isEmpty() && cuentas.get(0).getSaldoInicial() != null)
+                ? cuentas.get(0).getSaldoInicial() : 0.0;
+
+        // 1. Cruces exactos: los que declaran a este anticipo como origen.
+        double acumulado = 0.0;
+        for (AplicacionPagoCxc cruce
+                : aplicacionPagoCxcDaoService.selectCrucesByAnticipoOrigen(anticipo.getId(), true)) {
+            analisis.cruces.add(cruce);
+            acumulado += (cruce.getMontoAplicado() != null) ? cruce.getMontoAplicado() : 0.0;
+        }
+
+        // 2. Lo que el anticipo perdió y sus cruces directos no explican: son
+        //    cruces viejos sin FK. Se completan por LIFO, como antes.
+        analisis.deficit = valor - analisis.saldoDisponible;
+        double sinAtribuir = analisis.deficit - acumulado;
+        if (sinAtribuir > TOLERANCIA) {
+            for (AplicacionPagoCxc cruce : aplicacionPagoCxcDaoService
+                    .selectCrucesAnticipoActivos(idTitular, idEmpresa)) {
+                if (acumulado + TOLERANCIA >= analisis.deficit) {
+                    break;
+                }
+                // Los que ya tienen origen pertenecen a otro anticipo (los de
+                // este ya entraron en el paso 1): tomarlos sería reversar
+                // abonos ajenos.
+                if (cruce.getAnticipoOrigen() != null) {
+                    continue;
+                }
+                analisis.cruces.add(cruce);
+                acumulado += (cruce.getMontoAplicado() != null) ? cruce.getMontoAplicado() : 0.0;
+                analisis.crucesEstimados++;
+            }
+        }
+
+        analisis.totalCruces = acumulado;
+        analisis.faltante = analisis.deficit - acumulado;
+        if (analisis.deficit < TOLERANCIA) {
+            analisis.deficit = 0.0;
+        }
+        return analisis;
+    }
+
+    /**
+     * Formatea un valor monetario para los mensajes al usuario.
+     * @param valor : Valor a formatear
+     * @return      : Valor con dos decimales
+     */
+    private String formato(double valor) {
+        return String.format(java.util.Locale.US, "%.2f", valor);
+    }
+
+    /**
+     * Resultado del análisis de cruces de un anticipo que se quiere anular.
+     */
+    private static class AnalisisCruces {
+
+        /** Saldo disponible de ESTE anticipo (ANTC.ANTCSALD). */
+        private double saldoDisponible = 0.0;
+
+        /** Saldo global de anticipos del cliente (TSR.PRCC.PRCCSLIN). */
+        private double saldoGlobal = 0.0;
+
+        /** Cruces incluidos por estimación LIFO, no por FK: datos previos a la migración. */
+        private int crucesEstimados = 0;
+
+        /** Parte del anticipo que ya no está disponible: salió por cruces. */
+        private double deficit = 0.0;
+
+        /** Suma de los cruces seleccionados para reversar. */
+        private double totalCruces = 0.0;
+
+        /** Déficit que los cruces registrados no alcanzan a cubrir. */
+        private double faltante = 0.0;
+
+        /** Cruces a reversar, del más reciente al más antiguo. */
+        private final List<AplicacionPagoCxc> cruces = new ArrayList<>();
+
+        /**
+         * Detalle serializable de los cruces, para que la pantalla muestre qué
+         * facturas se van a ver afectadas.
+         * @return : Lista de mapas con la factura, el monto y la fecha del cruce
+         */
+        private List<Map<String, Object>> detalleCruces() {
+            List<Map<String, Object>> detalle = new ArrayList<>();
+            for (AplicacionPagoCxc cruce : cruces) {
+                Map<String, Object> fila = new HashMap<>();
+                fila.put("idAplicacion", cruce.getId());
+                fila.put("montoAplicado", cruce.getMontoAplicado());
+                fila.put("fechaAplicacion", cruce.getFechaAplicacion());
+                fila.put("observacion", cruce.getObservacion());
+                if (cruce.getFactura() != null) {
+                    fila.put("idFactura", cruce.getFactura().getId());
+                    fila.put("numeroFactura", cruce.getFactura().getNumero());
+                } else if (cruce.getLiquidacion() != null) {
+                    fila.put("idFactura", cruce.getLiquidacion().getId());
+                    fila.put("numeroFactura", cruce.getLiquidacion().getNumero());
+                }
+                detalle.add(fila);
+            }
+            return detalle;
+        }
+    }
+
 
     // =========================================================================
     // Helper: sumar valor al saldoInicial de PersonaCuentaContable (tipoCuenta=2)

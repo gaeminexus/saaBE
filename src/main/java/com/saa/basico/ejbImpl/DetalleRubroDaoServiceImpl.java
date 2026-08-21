@@ -87,7 +87,10 @@ public class DetalleRubroDaoServiceImpl extends EntityDaoImpl<DetalleRubro> impl
 	public List<DetalleRubro> selectModulosNoClienteConContabilidad()
 			throws Throwable {
 		// System.out.println("DetalleRubro.selectModulosNoClienteConContabilidad");
-		Query query = em.createQuery(" from     DetalleRubro t " +
+		// Ver el comentario de selectByCodigoAlternoRubro sobre el select explicito. El de la
+		// subconsulta ya estaba: era el de fuera el que faltaba.
+		Query query = em.createQuery(" select   t " +
+				" from     DetalleRubro t " +
 				" where    t.rubro.codigoAlterno = :modulosSistema " +
 				" 			and   t.codigoAlterno NOT IN (select   b.codigoAlterno" +
 				"										  from     DetalleRubro b" +
@@ -111,7 +114,11 @@ public class DetalleRubroDaoServiceImpl extends EntityDaoImpl<DetalleRubro> impl
 			throws Throwable {
 		// System.out.println("DetalleRubro.selectByCodigoAlternoRubro con
 		// codigoAlternoRubro: " + codigoAlternoRubro);
-		Query query = em.createQuery(" from     DetalleRubro t " +
+		// El 'select t' es obligatorio: sin el, Hibernate 6 lanza
+		// StrictJpaComplianceViolation "Encountered implicit 'select' clause" y la consulta no
+		// llega a ejecutarse nunca. La forma sin select era valida en HQL antiguo.
+		Query query = em.createQuery(" select   t " +
+				" from     DetalleRubro t " +
 				" where    t.rubro.codigoAlterno = :codigoAlternoRubro " +
 				"          and   t.estado = :estado");
 		query.setParameter("codigoAlternoRubro", Long.valueOf(codigoAlternoRubro));

@@ -22,18 +22,19 @@ import jakarta.ejb.Stateless;
 public class TurnoDaoServiceImpl extends EntityDaoImpl<Turno>  implements TurnoDaoService{
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.parametrizacion.ejb.dao.TurnoDaoService#obtieneCampos()
+	 * @see com.saa.ejb.rhh.dao.TurnoDaoService#obtieneCampos()
 	 */
 	public String[] obtieneCampos() {
 		System.out.println("Ingresa al metodo (campos) Turno");
 		return new String[]{"codigo",
-							"proposicionPagoXCuota",
-							"fechaAprobacion",
-							"nivelAprobacion",
-							"usuarioAprueba",
-							"nombreUsuarioAprueba",
+							"nombre",
+							"horaEntrada",
+							"horaSalida",
+							"minutosTolerancia",
+							"minutosDescanso",
 							"estado",
-							"observacion"};
+							"fechaRegistro",
+							"usuarioRegistro"};
 	}
 	
 }

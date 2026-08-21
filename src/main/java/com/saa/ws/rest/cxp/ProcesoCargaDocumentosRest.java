@@ -116,6 +116,17 @@ public class ProcesoCargaDocumentosRest {
                         .entity(errorMap("DocumentoCxp con ID " + idDocumentoCxp + " no encontrado"))
                         .type(MediaType.APPLICATION_JSON).build();
 
+            // Propagar flag esReembolso del body (el usuario puede marcarlo antes de subir el XML)
+            if (params.containsKey("esReembolso")) {
+                Object v = params.get("esReembolso");
+                boolean flagReembolso = "1".equals(v != null ? v.toString() : "")
+                        || Boolean.TRUE.equals(v);
+                if (flagReembolso) {
+                    doc.setEsReembolso(1L);
+                    procesoCargaDocumentosService.marcarReembolso(idDocumentoCxp, true, idUsuario);
+                }
+            }
+
             String subDir = "docs/xml/cxp";
             String nombreArchivo = doc.getClaveAcceso() + ".xml";
             String pathDestino = params.get("pathDestino") != null
@@ -193,6 +204,15 @@ public class ProcesoCargaDocumentosRest {
             String contenidoXml = (String) params.get("contenidoXml");
             Long idUsuario      = Long.valueOf(params.get("idUsuario").toString());
 
+            // §6.1 — leer esReembolso del body y pasarlo al service
+            Boolean esReembolsoBody = null;
+            if (params.containsKey("esReembolso")) {
+                Object v = params.get("esReembolso");
+                esReembolsoBody = (v instanceof Boolean)
+                        ? (Boolean) v
+                        : ("1".equals(v.toString()) || "true".equalsIgnoreCase(v.toString()));
+            }
+
             if (contenidoXml == null || contenidoXml.isEmpty())
                 return Response.status(Response.Status.BAD_REQUEST)
                         .entity(errorMap("El campo 'contenidoXml' es obligatorio"))
@@ -213,7 +233,7 @@ public class ProcesoCargaDocumentosRest {
                             nombreArchivo2, subDir2);
 
             Map<String, Object> resultado = procesoCargaDocumentosService
-                    .cargarXmlDocumento(idDocumentoCxp, contenidoXml, pathDestino, idUsuario);
+                    .cargarXmlDocumento(idDocumentoCxp, contenidoXml, pathDestino, idUsuario, esReembolsoBody);
 
             boolean valido = Boolean.TRUE.equals(resultado.get("valido"));
             if (!valido) {
@@ -288,6 +308,15 @@ public class ProcesoCargaDocumentosRest {
             String pathDestino  = (String) params.get("pathDestino");
             Long idUsuario      = Long.valueOf(params.get("idUsuario").toString());
 
+            // §Novedad 2 — leer esReembolso del body para pasarlo al service en REEMPLAZAR
+            Boolean esReembolsoBody = null;
+            if (params.containsKey("esReembolso")) {
+                Object v = params.get("esReembolso");
+                esReembolsoBody = (v instanceof Boolean)
+                        ? (Boolean) v
+                        : ("1".equals(v.toString()) || "true".equalsIgnoreCase(v.toString()));
+            }
+
             if (accion == null)
                 return Response.status(Response.Status.BAD_REQUEST)
                         .entity(errorMap("El campo 'accion' es obligatorio: 1=MANTENER, 2=REEMPLAZAR (Rubro 177)"))
@@ -302,7 +331,7 @@ public class ProcesoCargaDocumentosRest {
             }
 
             Map<String, Object> resultado = procesoCargaDocumentosService
-                    .resolverNovedad(idDocumentoCxp, accion, contenidoXml, pathDestino, idUsuario);
+                    .resolverNovedad(idDocumentoCxp, accion, contenidoXml, pathDestino, idUsuario, esReembolsoBody);
 
             return Response.status(Response.Status.OK)
                     .entity(resultado).type(MediaType.APPLICATION_JSON).build();
@@ -425,6 +454,101 @@ public class ProcesoCargaDocumentosRest {
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(errorMap("Error al crear productos y registrar: " + e.getMessage()))
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    // =========================================================
+    // Reembolso de gastos (§7)
+    // =========================================================
+
+    /** POST /carga-documentos/marcarReembolso/{idDocumentoCxp}
+     *  body {esReembolso: 0|1, idUsuario} */
+    @POST @Path("/marcarReembolso/{idDocumentoCxp}")
+    @Consumes(MediaType.APPLICATION_JSON) @Produces(MediaType.APPLICATION_JSON)
+    public Response marcarReembolso(@PathParam("idDocumentoCxp") Long idDocumentoCxp,
+                                     Map<String, Object> params) {
+        System.out.println("=== REST marcarReembolso idDocumentoCxp=" + idDocumentoCxp);
+        try {
+            boolean esReembolso = params.get("esReembolso") != null
+                    && ("1".equals(params.get("esReembolso").toString())
+                        || Boolean.TRUE.equals(params.get("esReembolso")));
+            Long idUsuario = Long.valueOf(params.get("idUsuario").toString());
+            Map<String, Object> resultado = procesoCargaDocumentosService
+                    .marcarReembolso(idDocumentoCxp, esReembolso, idUsuario);
+            return Response.ok(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.IncomeException ie) {
+            return Response.status(422).entity(errorMap(ie.getMessage()))
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(errorMap("Error marcarReembolso: " + e.getMessage()))
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /** POST /carga-documentos/contabilizarReembolso/{idFacturaCompra}
+     *  body {idEmpresa, idUsuario} */
+    @POST @Path("/contabilizarReembolso/{idFacturaCompra}")
+    @Consumes(MediaType.APPLICATION_JSON) @Produces(MediaType.APPLICATION_JSON)
+    public Response contabilizarReembolso(@PathParam("idFacturaCompra") Long idFacturaCompra,
+                                           Map<String, Object> params) {
+        System.out.println("=== REST contabilizarReembolso idFacturaCompra=" + idFacturaCompra);
+        try {
+            Long idEmpresa = Long.valueOf(params.get("idEmpresa").toString());
+            Long idUsuario = Long.valueOf(params.get("idUsuario").toString());
+            Map<String, Object> resultado = procesoCargaDocumentosService
+                    .contabilizarReembolso(idFacturaCompra, idEmpresa, idUsuario);
+            // §Novedad 3 — bloqueantes con la misma estructura del PASO 2
+            if (Boolean.TRUE.equals(resultado.get("pendienteClasificacion"))) {
+                return Response.status(422).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.ok(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.IncomeException ie) {
+            // IncomeException queda como fallback para errores no bloqueantes (ej: factura no encontrada)
+            Map<String, Object> err = new java.util.HashMap<>();
+            err.put("error", ie.getMessage());
+            return Response.status(422).entity(err).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(errorMap("Error contabilizarReembolso: " + e.getMessage()))
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /** POST /carga-documentos/recalcularTotalesReembolso/{idFacturaCompra} */
+    @POST @Path("/recalcularTotalesReembolso/{idFacturaCompra}")
+    @Consumes(MediaType.APPLICATION_JSON) @Produces(MediaType.APPLICATION_JSON)
+    public Response recalcularTotalesReembolso(@PathParam("idFacturaCompra") Long idFacturaCompra,
+                                                Map<String, Object> params) {
+        System.out.println("=== REST recalcularTotalesReembolso idFacturaCompra=" + idFacturaCompra);
+        try {
+            Map<String, Object> resultado = procesoCargaDocumentosService
+                    .recalcularTotalesReembolso(idFacturaCompra);
+            return Response.ok(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(errorMap("Error recalcularTotalesReembolso: " + e.getMessage()))
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /** POST /carga-documentos/crearProductoPorClasificar
+     *  body {nombre, codigo?, idEmpresa} */
+    @POST @Path("/crearProductoPorClasificar")
+    @Consumes(MediaType.APPLICATION_JSON) @Produces(MediaType.APPLICATION_JSON)
+    public Response crearProductoPorClasificar(Map<String, Object> params) {
+        System.out.println("=== REST crearProductoPorClasificar");
+        try {
+            String nombre  = (String) params.get("nombre");
+            String codigo  = params.get("codigo") != null ? params.get("codigo").toString() : null;
+            Long idEmpresa = Long.valueOf(params.get("idEmpresa").toString());
+            com.saa.model.cxp.ProductoPago prod = procesoCargaDocumentosService
+                    .crearProductoPorClasificar(nombre, codigo, idEmpresa);
+            return Response.ok(prod).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(errorMap("Error crearProductoPorClasificar: " + e.getMessage()))
                     .type(MediaType.APPLICATION_JSON).build();
         }
     }

@@ -1,9 +1,12 @@
 package com.saa.ws.rest.rhh;
 
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.rhh.dao.ResumenNominaDaoService;
+import com.saa.ejb.rhh.service.ConsolidacionMarcacionesService;
 import com.saa.ejb.rhh.service.ResumenNominaService;
 import com.saa.model.rhh.NombreEntidadesRhh;
 import com.saa.model.rhh.ResumenNomina;
@@ -30,6 +33,9 @@ public class ResumenNominaRest {
 
     @EJB
     private ResumenNominaService ResumenNominaService;
+
+    @EJB
+    private ConsolidacionMarcacionesService consolidacionMarcacionesService;
 
     @Context
     private UriInfo context;
@@ -115,6 +121,32 @@ public class ResumenNominaRest {
             return Response.status(Response.Status.NO_CONTENT).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+    // =====================================================================
+    // Endpoint de proceso - fase 7
+    // =====================================================================
+
+    /**
+     * Consolida las marcaciones sin procesar de un rango en resumenes diarios.
+     */
+    @POST
+    @Path("/consolidar")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response consolidar(Map<String, Object> datos) {
+        System.out.println("LLEGA AL SERVICIO consolidar - RESUMEN_NOMINA");
+        try {
+            LocalDate desde = datos != null && datos.get("desde") != null
+                    ? LocalDate.parse(datos.get("desde").toString()) : null;
+            LocalDate hasta = datos != null && datos.get("hasta") != null
+                    ? LocalDate.parse(datos.get("hasta").toString()) : null;
+            String usuario = datos != null && datos.get("usuarioRegistro") != null
+                    ? datos.get("usuarioRegistro").toString() : null;
+            int generados = consolidacionMarcacionesService.consolidar(desde, hasta, usuario);
+            return Response.status(Response.Status.OK).entity(Integer.valueOf(generados)).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al consolidar las marcaciones: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
     }
 }

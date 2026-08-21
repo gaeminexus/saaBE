@@ -1,12 +1,18 @@
 package com.saa.ws.rest.rhh;
 
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.rhh.dao.LiquidacionDaoService;
+import com.saa.ejb.rhh.service.ContabilizacionNominaService;
+import com.saa.ejb.rhh.service.LiquidacionHaberesService;
 import com.saa.ejb.rhh.service.LiquidacionService;
 import com.saa.model.rhh.Liquidacion;
+import com.saa.model.cnt.Asiento;
 import com.saa.model.rhh.NombreEntidadesRhh;
+import com.saa.model.rhh.ResultadoLiquidacion;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;
@@ -17,6 +23,7 @@ import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -30,6 +37,12 @@ public class LiquidacionRest {
 
     @EJB
     private LiquidacionService LiquidacionService;
+
+    @EJB
+    private LiquidacionHaberesService liquidacionHaberesService;
+
+    @EJB
+    private ContabilizacionNominaService contabilizacionNominaService;
 
     @Context
     private UriInfo context;
@@ -116,5 +129,118 @@ public class LiquidacionRest {
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
+    }
+    // =====================================================================
+    // Endpoints de proceso - fase 8
+    // =====================================================================
+
+    /**
+     * Calcula el finiquito sin persistir nada, para que el usuario lo revise.
+     */
+    @POST
+    @Path("/simular")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response simular(Map<String, Object> datos) {
+        System.out.println("LLEGA AL SERVICIO simular - LIQUIDACION");
+        try {
+            ResultadoLiquidacion resultado = liquidacionHaberesService.simular(
+                    leeLong(datos, "idContrato"), leeFecha(datos, "fechaSalida"),
+                    leeLong(datos, "idCausal"));
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al simular la liquidacion: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Calcula el finiquito y lo persiste con sus rubros.
+     */
+    @POST
+    @Path("/calcular")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response calcular(Map<String, Object> datos) {
+        System.out.println("LLEGA AL SERVICIO calcular - LIQUIDACION");
+        try {
+            Liquidacion liquidacion = liquidacionHaberesService.calcular(
+                    leeLong(datos, "idContrato"), leeFecha(datos, "fechaSalida"),
+                    leeLong(datos, "idCausal"), leeTexto(datos, "observaciones"),
+                    leeTexto(datos, "usuarioRegistro"));
+            return Response.status(Response.Status.OK).entity(liquidacion).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al calcular la liquidacion: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Aprueba la liquidacion. Desde aqui ya no se recalcula.
+     */
+    @POST
+    @Path("/aprobar/{id}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response aprobar(@PathParam("id") Long id,
+            @QueryParam("usuarioRegistro") String usuarioRegistro) {
+        System.out.println("LLEGA AL SERVICIO aprobar - LIQUIDACION, liquidacion: " + id);
+        try {
+            liquidacionHaberesService.aprobar(id, usuarioRegistro);
+            return Response.status(Response.Status.OK).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al aprobar la liquidacion: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Ejecuta la salida: cierra el contrato, cesa al empleado, avisa al IESS, cancela los
+     * descuentos y caduca los saldos de vacaciones.
+     */
+    @POST
+    @Path("/ejecutarSalida/{id}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response ejecutarSalida(@PathParam("id") Long id,
+            @QueryParam("usuarioRegistro") String usuarioRegistro) {
+        System.out.println("LLEGA AL SERVICIO ejecutarSalida - LIQUIDACION, liquidacion: " + id);
+        try {
+            liquidacionHaberesService.ejecutarSalida(id, usuarioRegistro);
+            return Response.status(Response.Status.OK).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al ejecutar la salida: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Contabiliza la liquidacion aprobada.
+     */
+    @POST
+    @Path("/contabilizar/{id}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response contabilizar(@PathParam("id") Long id,
+            @QueryParam("usuarioRegistro") String usuarioRegistro) {
+        System.out.println("LLEGA AL SERVICIO contabilizar - LIQUIDACION, liquidacion: " + id);
+        try {
+            Asiento asiento = contabilizacionNominaService.contabilizarLiquidacion(id, usuarioRegistro);
+            return Response.status(Response.Status.OK).entity(asiento).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al contabilizar la liquidacion: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    // =====================================================================
+    // Lectura del cuerpo
+    // =====================================================================
+
+    private Long leeLong(Map<String, Object> datos, String clave) {
+        Object valor = datos != null ? datos.get(clave) : null;
+        return valor != null ? Long.valueOf(valor.toString()) : null;
+    }
+
+    private String leeTexto(Map<String, Object> datos, String clave) {
+        Object valor = datos != null ? datos.get(clave) : null;
+        return valor != null ? valor.toString() : null;
+    }
+
+    private LocalDate leeFecha(Map<String, Object> datos, String clave) {
+        Object valor = datos != null ? datos.get(clave) : null;
+        return valor != null ? LocalDate.parse(valor.toString()) : null;
     }
 }

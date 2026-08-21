@@ -3,6 +3,8 @@ package com.saa.model.rhh;
 import java.io.Serializable;
 import java.time.LocalDate;
 
+import com.saa.basico.util.EntidadAuditableFecha;
+
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -25,7 +27,7 @@ import jakarta.persistence.Table;
     @NamedQuery(name = "NominaId", query = "select e from Nomina e where e.codigo=:id"),
     @NamedQuery(name = "NominaAll", query = "select e from Nomina e")
 })
-public class Nomina implements Serializable {
+public class Nomina implements Serializable, EntidadAuditableFecha {
 
     /**
      * Código único de la nómina del empleado.
@@ -90,7 +92,7 @@ public class Nomina implements Serializable {
      */
     @Basic
     @Column(name = "NMNAESTD")
-    private String estado;
+    private Long estado;
 
     /**
      * Fecha de registro.
@@ -109,6 +111,105 @@ public class Nomina implements Serializable {
     // =============================
     // Getters y Setters
     // =============================
+
+
+    /**
+     * Dias efectivamente trabajados en el periodo.
+     */
+    @Basic
+    @Column(name = "NMNADITR")
+    private Double diasTrabajados;
+
+    /**
+     * Horas efectivamente trabajadas en el periodo.
+     */
+    @Basic
+    @Column(name = "NMNAHRTR")
+    private Double horasTrabajadas;
+
+    /**
+     * Base imponible del IESS del periodo.
+     */
+    @Basic
+    @Column(name = "NMNABSIE")
+    private Double baseIess;
+
+    /**
+     * Base gravada de impuesto a la renta del periodo.
+     */
+    @Basic
+    @Column(name = "NMNABSIR")
+    private Double baseImpuestoRenta;
+
+    /**
+     * Base sobre la que se calculan los fondos de reserva.
+     */
+    @Basic
+    @Column(name = "NMNABSFR")
+    private Double baseFondosReserva;
+
+    /**
+     * Base sobre la que se acumula el decimo tercero.
+     */
+    @Basic
+    @Column(name = "NMNABSDT")
+    private Double baseDecimoTercero;
+
+    /**
+     * Base sobre la que se acumula el decimo cuarto.
+     */
+    @Basic
+    @Column(name = "NMNABSDC")
+    private Double baseDecimoCuarto;
+
+    /**
+     * Aporte personal al IESS descontado en el periodo.
+     */
+    @Basic
+    @Column(name = "NMNAAPPR")
+    private Double aportePersonal;
+
+    /**
+     * Aporte patronal al IESS del periodo.
+     */
+    @Basic
+    @Column(name = "NMNAAPPT")
+    private Double aportePatronal;
+
+    /**
+     * Aportes al IECE y al SECAP del periodo.
+     */
+    @Basic
+    @Column(name = "NMNAIESC")
+    private Double aporteIeceSecap;
+
+    /**
+     * Fondos de reserva del mes.
+     */
+    @Basic
+    @Column(name = "NMNAFNRS")
+    private Double fondosReserva;
+
+    /**
+     * Retencion de impuesto a la renta del mes.
+     */
+    @Basic
+    @Column(name = "NMNARTIR")
+    private Double retencionImpuestoRenta;
+
+    /**
+     * Total de costo patronal del periodo.
+     */
+    @Basic
+    @Column(name = "NMNATTPT")
+    private Double totalPatronal;
+
+    /**
+     * Observaciones de la nomina.
+     */
+    @Basic
+    @Column(name = "NMNAOBSR", length = 500)
+    private String observacion;
 
     public Long getCodigo() {
         return codigo;
@@ -174,11 +275,11 @@ public class Nomina implements Serializable {
         this.netoPagar = netoPagar;
     }
 
-    public String getEstado() {
+    public Long getEstado() {
         return estado;
     }
 
-    public void setEstado(String estado) {
+    public void setEstado(Long estado) {
         this.estado = estado;
     }
 
@@ -196,5 +297,117 @@ public class Nomina implements Serializable {
 
     public void setUsuarioRegistro(String usuarioRegistro) {
         this.usuarioRegistro = usuarioRegistro;
+    }
+
+    public Double getDiasTrabajados() {
+        return diasTrabajados;
+    }
+
+    public void setDiasTrabajados(Double diasTrabajados) {
+        this.diasTrabajados = diasTrabajados;
+    }
+
+    public Double getHorasTrabajadas() {
+        return horasTrabajadas;
+    }
+
+    public void setHorasTrabajadas(Double horasTrabajadas) {
+        this.horasTrabajadas = horasTrabajadas;
+    }
+
+    public Double getBaseIess() {
+        return baseIess;
+    }
+
+    public void setBaseIess(Double baseIess) {
+        this.baseIess = baseIess;
+    }
+
+    public Double getBaseImpuestoRenta() {
+        return baseImpuestoRenta;
+    }
+
+    public void setBaseImpuestoRenta(Double baseImpuestoRenta) {
+        this.baseImpuestoRenta = baseImpuestoRenta;
+    }
+
+    public Double getBaseFondosReserva() {
+        return baseFondosReserva;
+    }
+
+    public void setBaseFondosReserva(Double baseFondosReserva) {
+        this.baseFondosReserva = baseFondosReserva;
+    }
+
+    public Double getBaseDecimoTercero() {
+        return baseDecimoTercero;
+    }
+
+    public void setBaseDecimoTercero(Double baseDecimoTercero) {
+        this.baseDecimoTercero = baseDecimoTercero;
+    }
+
+    public Double getBaseDecimoCuarto() {
+        return baseDecimoCuarto;
+    }
+
+    public void setBaseDecimoCuarto(Double baseDecimoCuarto) {
+        this.baseDecimoCuarto = baseDecimoCuarto;
+    }
+
+    public Double getAportePersonal() {
+        return aportePersonal;
+    }
+
+    public void setAportePersonal(Double aportePersonal) {
+        this.aportePersonal = aportePersonal;
+    }
+
+    public Double getAportePatronal() {
+        return aportePatronal;
+    }
+
+    public void setAportePatronal(Double aportePatronal) {
+        this.aportePatronal = aportePatronal;
+    }
+
+    public Double getAporteIeceSecap() {
+        return aporteIeceSecap;
+    }
+
+    public void setAporteIeceSecap(Double aporteIeceSecap) {
+        this.aporteIeceSecap = aporteIeceSecap;
+    }
+
+    public Double getFondosReserva() {
+        return fondosReserva;
+    }
+
+    public void setFondosReserva(Double fondosReserva) {
+        this.fondosReserva = fondosReserva;
+    }
+
+    public Double getRetencionImpuestoRenta() {
+        return retencionImpuestoRenta;
+    }
+
+    public void setRetencionImpuestoRenta(Double retencionImpuestoRenta) {
+        this.retencionImpuestoRenta = retencionImpuestoRenta;
+    }
+
+    public Double getTotalPatronal() {
+        return totalPatronal;
+    }
+
+    public void setTotalPatronal(Double totalPatronal) {
+        this.totalPatronal = totalPatronal;
+    }
+
+    public String getObservacion() {
+        return observacion;
+    }
+
+    public void setObservacion(String observacion) {
+        this.observacion = observacion;
     }
 }

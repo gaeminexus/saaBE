@@ -115,4 +115,18 @@ public interface TipoAsientos {
 	 *  DEBE: cuenta contable del banco / HABER: cuenta del grupo del producto CXC. */
 	public static final int INGRESO_TESORERIA = 4;
 
+	// ─── RRHH: nómina ────────────────────────────────────────────────────────
+
+	/**
+	 * Asientos generados por el módulo de RRHH: rol de pagos, provisiones, pago y liquidación.
+	 * codigoAlterno=6, asignado por el cliente el 2026-08-19. Los cuatro asientos comparten
+	 * tipo; lo que los distingue es la plantilla (CNT.PLNS códigos alternos 163 a 166, leídos
+	 * de RHH.CFNM: CFNMPLRL, CFNMPLPR, CFNMPLPG y CFNMPLLQ).
+	 *
+	 * <p><b>No confundir</b> con {@link ModuloSistema#RECURSOS_HUMANOS}, que vale 5 y es la
+	 * etiqueta de módulo (último argumento de {@code generarAsiento}); este es el tipo de
+	 * asiento contable (segundo argumento).
+	 */
+	public static final int RECURSOS_HUMANOS = 6;
+
 }

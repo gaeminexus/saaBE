@@ -18,6 +18,8 @@ import java.util.List;
 
 import com.saa.basico.ejb.DetalleRubroDaoService;
 import com.saa.basico.util.DatosBusqueda;
+import com.saa.basico.util.EntidadAuditableFecha;
+import com.saa.basico.util.EntidadAuditableFechaHora;
 import com.saa.basico.util.EntityDao;
 import com.saa.rubros.Estado;
 import com.saa.rubros.Rubros;
@@ -249,6 +251,19 @@ public class EntityDaoImpl<Tipo> implements EntityDao<Tipo> {
 								}
 							}
 							break;
+						case TipoDatosBusqueda.INTEGER:
+							// Sin este case la clausula se escribe en el JPQL pero el parametro nunca
+							// se enlaza, y QueryParameterBindingsImpl.validate() lanza
+							// QueryParameterException al ejecutar. Se enlaza Integer y no Long a
+							// proposito: un atributo declarado Integer rechaza un Long, y al reves
+							// tambien. El criterio debe declarar el tipo real del atributo.
+							if (TipoComandosBusqueda.IS_NULL != aBuscar.getTipoComparacion()) {
+								query.setParameter(campoBuscar, Integer.valueOf(aBuscar.getValor()));
+								if (TipoComandosBusqueda.BETWEEN == aBuscar.getTipoComparacion()) {
+									query.setParameter(campoBuscar + "1", Integer.valueOf(aBuscar.getValor1()));
+								}
+							}
+							break;
 						case TipoDatosBusqueda.DATE:
 							if (TipoComandosBusqueda.IS_NULL != aBuscar.getTipoComparacion()) {
 								query.setParameter(campoBuscar, LocalDate.parse(aBuscar.getValor(), formatterSinHora));
@@ -271,7 +286,7 @@ public class EntityDaoImpl<Tipo> implements EntityDao<Tipo> {
 							if (TipoComandosBusqueda.IS_NULL != aBuscar.getTipoComparacion()) {
 								query.setParameter(campoBuscar, Double.valueOf(aBuscar.getValor()));
 								if (TipoComandosBusqueda.BETWEEN == aBuscar.getTipoComparacion()) {
-									query.setParameter(campoBuscar + "1", Double.valueOf(aBuscar.getValor()));
+									query.setParameter(campoBuscar + "1", Double.valueOf(aBuscar.getValor1()));
 								}
 							}
 							break;
@@ -289,11 +304,44 @@ public class EntityDaoImpl<Tipo> implements EntityDao<Tipo> {
 		// System.out.println("IngresaSave - entidad: "+tipo.getClass()+ " id
 		// ["+id+"]");
 		if (id == null) {
+			selloAuditoria(tipo);
 			em.persist(tipo);
 		} else {
 			em.merge(tipo);
 		}
 		return tipo;
+	}
+
+	/**
+	 * Sella la fecha de registro de una entidad que declare ser auditable.
+	 *
+	 * <p>
+	 * Es <b>opt-in</b>: la entidad que no implemente ninguna de las dos
+	 * interfaces pasa por aqui sin que le ocurra nada, que es como se comportaba
+	 * el CRUD generico antes de existir este metodo. El sellado automatico para
+	 * todo el sistema cambiaria la conducta de los nueve modulos a la vez, sin
+	 * pruebas que lo respalden.
+	 * </p>
+	 *
+	 * <p>
+	 * Solo se llama al <b>insertar</b>, y solo escribe cuando el campo esta en
+	 * <b>nulo</b>: un valor que ya puso el servicio de proceso o que vino en la
+	 * peticion nunca se sobreescribe. El usuario no se toca — ver
+	 * {@link com.saa.basico.util.EntidadAuditable}.
+	 * </p>
+	 *
+	 * @param tipo : Entidad a punto de persistirse
+	 */
+	private void selloAuditoria(Tipo tipo) {
+		if (tipo instanceof EntidadAuditableFecha auditable) {
+			if (auditable.getFechaRegistro() == null) {
+				auditable.setFechaRegistro(LocalDate.now());
+			}
+		} else if (tipo instanceof EntidadAuditableFechaHora auditable) {
+			if (auditable.getFechaRegistro() == null) {
+				auditable.setFechaRegistro(LocalDateTime.now());
+			}
+		}
 	}
 
 	/**

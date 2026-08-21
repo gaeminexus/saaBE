@@ -1,4 +1,4 @@
-﻿package com.saa.ejb.cnt.serviceImpl;
+package com.saa.ejb.cnt.serviceImpl;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -1963,6 +1963,17 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         if (fc == null)
             throw new IncomeException("No se encontrÃ³ FacturaCompra con ID: " + idFacturaCompra);
 
+        // ── Rama reembolso de gastos (§8 CAMBIO-REEMBOLSO-GASTOS-BACKEND.md) ──
+        // Cuando la factura es reembolso, el DEBE se construye desde los sustentos
+        // (PGS.RMBF), NO desde los detalles (PGS.DFCC). Solo cambia la fuente de
+        // las líneas de DEBE; cuentas, redondeos, validaciones y HABER se reutilizan.
+        boolean esReembolso = fc.getEsReembolso() != null && fc.getEsReembolso() == 1L;
+
+        if (esReembolso) {
+            return generarAsientoFacturaCompraReembolso(fc, idEmpresa, codigoAltTipoAsiento,
+                    fechaAsiento, observaciones, usuario);
+        }
+
         @SuppressWarnings("unchecked")
         List<com.saa.model.cxp.DetalleFacturaCompra> detalles = em.createQuery(
                 "SELECT d FROM DetalleFacturaCompra d WHERE d.factura.id = :id AND d.estado = 1")
@@ -2057,6 +2068,121 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento,
                 fechaAsiento, observaciones, usuario, lineas);
+    }
+
+    /**
+     * Genera el asiento de una factura de reembolso de gastos.
+     * Las líneas de DEBE se construyen desde los sustentos (PGS.RMBF),
+     * agrupando por GrupoProductoPago igual que lo hace el método estándar con DFCC.
+     * DEBE(grupo) = sum(baseImponibleCero + baseImponibleGravada + valorIce) de las filas RMBF.
+     * IVA crédito tributario = sum(RMBF.valorIva).
+     * HABER = CxP del proveedor por el total de todas las líneas DEBE (garantiza cuadratura).
+     */
+    @SuppressWarnings("unchecked")
+    private com.saa.model.cnt.Asiento generarAsientoFacturaCompraReembolso(
+            com.saa.model.cxp.FacturaCompra fc, Long idEmpresa, int codigoAltTipoAsiento,
+            java.time.LocalDate fechaAsiento, String observaciones, String usuario) throws Throwable {
+
+        Long idFacturaCompra = fc.getId();
+        System.out.println("  [reembolso] generarAsientoFacturaCompraReembolso | id=" + idFacturaCompra);
+
+        List<com.saa.model.cxp.ReembolsoFacturaCompra> reembolsos = em.createNamedQuery(
+                "ReembolsoFacturaCompraByFactura", com.saa.model.cxp.ReembolsoFacturaCompra.class)
+                .setParameter("idFactura", idFacturaCompra).getResultList();
+
+        if (reembolsos == null || reembolsos.isEmpty())
+            throw new IncomeException("FacturaCompra " + idFacturaCompra
+                    + " es reembolso pero no tiene registros en PGS.RMBF activos.");
+
+        List<DetalleAsiento> lineas = new ArrayList<>();
+
+        // ── DEBE: una línea por grupo de producto de los sustentos ───────────
+        Map<Long, Double> subtotalPorGrupo = new LinkedHashMap<>();
+        Map<Long, PlanCuenta> cuentaPorGrupo = new LinkedHashMap<>();
+        Map<Long, String> nombreGrupo = new LinkedHashMap<>();
+        double totalValorIva = 0.0;
+
+        for (com.saa.model.cxp.ReembolsoFacturaCompra r : reembolsos) {
+            if (r.getProducto() == null)
+                throw new IncomeException("Un sustento de reembolso (RMBF id=" + r.getId()
+                        + ") no tiene producto asignado. Clasifíquelo antes de contabilizar.");
+
+            com.saa.model.cxp.ProductoPago producto =
+                    em.find(com.saa.model.cxp.ProductoPago.class, r.getProducto());
+            if (producto == null)
+                throw new IncomeException("Producto ID " + r.getProducto() + " del sustento RMBF "
+                        + r.getId() + " no encontrado en BD.");
+            if (producto.getGrupoProducto() == null)
+                throw new IncomeException("Producto '" + producto.getNombre()
+                        + "' del sustento no tiene grupo asignado.");
+            com.saa.model.cxp.GrupoProductoPago grupo = producto.getGrupoProducto();
+            if (grupo.getPlanCuenta() == null)
+                throw new IncomeException("GrupoProductoPago '" + grupo.getNombre()
+                        + "' no tiene cuenta contable asignada.");
+
+            Long idGrupo = grupo.getCodigo();
+            // DEBE del sustento = bases + ICE (el IVA va a su propia línea)
+            double baseGrupo = nvl(r.getBaseImponibleCero()) + nvl(r.getBaseImponibleGravada())
+                             + nvl(r.getValorIce());
+            subtotalPorGrupo.merge(idGrupo, baseGrupo, Double::sum);
+            cuentaPorGrupo.putIfAbsent(idGrupo, grupo.getPlanCuenta());
+            nombreGrupo.putIfAbsent(idGrupo, grupo.getNombre());
+            totalValorIva += nvl(r.getValorIva());
+        }
+
+        for (Long idGrupo : subtotalPorGrupo.keySet()) {
+            PlanCuenta pc = cuentaPorGrupo.get(idGrupo);
+            DetalleAsiento ln = new DetalleAsiento();
+            ln.setPlanCuenta(pc); ln.setNumeroCuenta(pc.getCuentaContable());
+            ln.setNombreCuenta(pc.getNombre());
+            ln.setDescripcion("Reembolso gastos: " + nombreGrupo.get(idGrupo));
+            ln.setValorDebe(subtotalPorGrupo.get(idGrupo)); ln.setValorHaber(0.0);
+            lineas.add(ln);
+        }
+
+        // ── DEBE: IVA crédito tributario (sum RMBF.valorIva) ─────────────────
+        totalValorIva = redondear2(totalValorIva);
+        if (totalValorIva > 0) {
+            // Usar el código SRI del IVA desde la tarifa de la factura
+            String codigoIvaSri = codigoIvaTextoDesdeTarifa(fc.getpIVA());
+            PlanCuenta pcIVA = obtenerCuentaIVACxpPorCodigo(
+                    parseLongSafe(codigoIvaSri));
+            if (pcIVA == null)
+                throw new IncomeException("No hay cuenta de IVA crédito tributario (código SRI: "
+                        + codigoIvaSri + ") en PGS.TSRI lsri.tabla=17.");
+            DetalleAsiento lnIva = new DetalleAsiento();
+            lnIva.setPlanCuenta(pcIVA); lnIva.setNumeroCuenta(pcIVA.getCuentaContable());
+            lnIva.setNombreCuenta(pcIVA.getNombre());
+            lnIva.setDescripcion("IVA crédito tributario reembolso código SRI: " + codigoIvaSri);
+            lnIva.setValorDebe(totalValorIva); lnIva.setValorHaber(0.0);
+            lineas.add(lnIva);
+        }
+
+        // ── HABER: CxP proveedor ──────────────────────────────────────────────
+        if (fc.getTitular() == null)
+            throw new IncomeException("FacturaCompra " + idFacturaCompra + " no tiene proveedor.");
+        PlanCuenta cuentaProv = obtenerCuentaProveedor(fc.getTitular().getCodigo(), idEmpresa);
+        if (cuentaProv == null)
+            throw new IncomeException("El proveedor '" + fc.getTitular().getNombre()
+                    + "' no tiene cuenta CxP configurada (Tipo 1, Rol Proveedor).");
+        double totalDebe = lineas.stream().mapToDouble(l -> nvl(l.getValorDebe())).sum();
+        double haberRedondeado = Math.round(totalDebe * 100.0) / 100.0;
+        DetalleAsiento haber = new DetalleAsiento();
+        haber.setPlanCuenta(cuentaProv); haber.setNumeroCuenta(cuentaProv.getCuentaContable());
+        haber.setNombreCuenta(cuentaProv.getNombre());
+        haber.setDescripcion("CxP Proveedor reembolso: " + fc.getTitular().getNombre());
+        haber.setValorDebe(0.0); haber.setValorHaber(haberRedondeado);
+        lineas.add(haber);
+
+        return generarAsiento(idEmpresa, codigoAltTipoAsiento,
+                fechaAsiento, observaciones, usuario, lineas,
+                Long.valueOf(com.saa.rubros.ModuloSistema.CUENTAS_POR_PAGAR));
+    }
+
+    /** Convierte un String a Long con fallback 0L (evita NPE en la línea de IVA del reembolso). */
+    private static Long parseLongSafe(String s) {
+        if (s == null || s.isEmpty()) return 0L;
+        try { return Long.parseLong(s); } catch (NumberFormatException e) { return 0L; }
     }
 
     // =========================================================================

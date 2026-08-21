@@ -3,12 +3,17 @@ package com.saa.model.rhh;
 import java.io.Serializable;
 import java.time.LocalDate;
 
+import com.saa.basico.util.EntidadAuditableFecha;
+import com.saa.model.scp.Empresa;
+
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
 import jakarta.persistence.Table;
@@ -23,7 +28,7 @@ import jakarta.persistence.Table;
     @NamedQuery(name = "TipoContratoEmpleadoId", query = "select e from TipoContratoEmpleado e where e.codigo=:id"),
     @NamedQuery(name = "TipoContratoEmpleadoAll", query = "select e from TipoContratoEmpleado e")
 })
-public class TipoContratoEmpleado implements Serializable {
+public class TipoContratoEmpleado implements Serializable, EntidadAuditableFecha {
 
     /**
      * Código único del tipo de contrato.
@@ -73,6 +78,28 @@ public class TipoContratoEmpleado implements Serializable {
     // Getters y Setters
     // =============================
 
+
+    /**
+     * Empresa propietaria del tipo de contrato (SCP.PJRQ).
+     */
+    @ManyToOne
+    @JoinColumn(name = "PJRQCDGO", referencedColumnName = "PJRQCDGO")
+    private Empresa empresa;
+
+    /**
+     * Tipo de relacion laboral asociado: detalle del rubro RHH_TIPO_RELACION_LABORAL.
+     */
+    @Basic
+    @Column(name = "TPCETPRL")
+    private Long tipoRelacionLaboral;
+
+    /**
+     * Duracion maxima en meses permitida para este tipo de contrato.
+     */
+    @Basic
+    @Column(name = "TPCEMXMS")
+    private Integer duracionMaximaMeses;
+
     public Long getCodigo() {
         return codigo;
     }
@@ -119,5 +146,29 @@ public class TipoContratoEmpleado implements Serializable {
 
     public void setUsuarioRegistro(String usuarioRegistro) {
         this.usuarioRegistro = usuarioRegistro;
+    }
+
+    public Empresa getEmpresa() {
+        return empresa;
+    }
+
+    public void setEmpresa(Empresa empresa) {
+        this.empresa = empresa;
+    }
+
+    public Long getTipoRelacionLaboral() {
+        return tipoRelacionLaboral;
+    }
+
+    public void setTipoRelacionLaboral(Long tipoRelacionLaboral) {
+        this.tipoRelacionLaboral = tipoRelacionLaboral;
+    }
+
+    public Integer getDuracionMaximaMeses() {
+        return duracionMaximaMeses;
+    }
+
+    public void setDuracionMaximaMeses(Integer duracionMaximaMeses) {
+        this.duracionMaximaMeses = duracionMaximaMeses;
     }
 }

@@ -22,18 +22,19 @@ import jakarta.ejb.Stateless;
 public class AportesRetencionesDaoServiceImpl extends EntityDaoImpl<AportesRetenciones>  implements AportesRetencionesDaoService{
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.parametrizacion.ejb.dao.AportesRetencionesDaoService#obtieneCampos()
+	 * @see com.saa.ejb.rhh.dao.AportesRetencionesDaoService#obtieneCampos()
 	 */
 	public String[] obtieneCampos() {
 		System.out.println("Ingresa al metodo (campos) AportesRetenciones");
 		return new String[]{"codigo",
-							"proposicionPagoXCuota",
-							"fechaAprobacion",
-							"nivelAprobacion",
-							"usuarioAprueba",
-							"nombreUsuarioAprueba",
-							"estado",
-							"observacion"};
+							"nomina",
+							"entidad",
+							"concepto",
+							"baseCalculo",
+							"porcentaje",
+							"valor",
+							"fechaRegistro",
+							"usuarioRegistro"};
 	}
 	
 }

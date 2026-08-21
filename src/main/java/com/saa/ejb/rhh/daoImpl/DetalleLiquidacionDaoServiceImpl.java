@@ -8,11 +8,16 @@
  */
 package com.saa.ejb.rhh.daoImpl;
 
+import java.util.List;
+
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.rhh.dao.DetalleLiquidacionDaoService;
 import com.saa.model.rhh.DetalleLiquidacion;
 
 import jakarta.ejb.Stateless;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.Query;
 
 /**
  * @author GaemiSoft.
@@ -21,19 +26,54 @@ import jakarta.ejb.Stateless;
 @Stateless
 public class DetalleLiquidacionDaoServiceImpl extends EntityDaoImpl<DetalleLiquidacion>  implements DetalleLiquidacionDaoService{
 
+	//Inicializa persistence context
+	@PersistenceContext
+	EntityManager em;
+
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.parametrizacion.ejb.dao.DetalleLiquidacionDaoService#obtieneCampos()
+	 * @see com.saa.ejb.rhh.dao.DetalleLiquidacionDaoService#obtieneCampos()
 	 */
 	public String[] obtieneCampos() {
 		System.out.println("Ingresa al metodo (campos) DetalleLiquidacion");
 		return new String[]{"codigo",
-							"proposicionPagoXCuota",
-							"fechaAprobacion",
-							"nivelAprobacion",
-							"usuarioAprueba",
-							"nombreUsuarioAprueba",
-							"estado",
-							"observacion"};
+							"liquidacion",
+							"valor",
+							"descripcion",
+							"fechaRegistro",
+							"conceptoNomina",
+							"tipoConcepto",
+							"baseCalculo",
+							"dias",
+							"orden",
+							"usuarioRegistro"};
 	}
 	
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.rhh.dao.DetalleLiquidacionDaoService#eliminaByLiquidacion(java.lang.Long)
+	 */
+	@Override
+	public int eliminaByLiquidacion(Long idLiquidacion) throws Throwable {
+		System.out.println("Ingresa al metodo eliminaByLiquidacion de DetalleLiquidacion, liquidacion: "
+				+ idLiquidacion);
+		Query query = em.createQuery(" delete from DetalleLiquidacion t "
+				+ " where  t.liquidacion.codigo = :idLiquidacion ");
+		query.setParameter("idLiquidacion", idLiquidacion);
+		return query.executeUpdate();
+	}
+
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.rhh.dao.DetalleLiquidacionDaoService#selectByLiquidacion(java.lang.Long)
+	 */
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<DetalleLiquidacion> selectByLiquidacion(Long idLiquidacion) throws Throwable {
+		System.out.println("Ingresa al metodo selectByLiquidacion de DetalleLiquidacion, liquidacion: "
+				+ idLiquidacion);
+		Query query = em.createQuery(" select   t "
+				+ " from     DetalleLiquidacion t "
+				+ " where    t.liquidacion.codigo = :idLiquidacion "
+				+ " order by t.orden, t.codigo ");
+		query.setParameter("idLiquidacion", idLiquidacion);
+		return query.getResultList();
+	}
 }
