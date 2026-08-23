@@ -28,6 +28,12 @@
 -- que algo esta mal. Un aviso que ya no aplica se termina ignorando, y con el
 -- se ignoran los que si aplican.
 -- .
+-- OJO AL ESCRIBIR EL TEXTO: CNTENRMT es VARCHAR2(200). La primera version de
+-- este script llevaba 418 caracteres y murio con ORA-12899 en produccion. El
+-- motivo de abajo mide 196. Si hiciera falta mas espacio, la via es ampliar la
+-- columna con un script numerado, no recortar la justificacion hasta que deje
+-- de justificar nada.
+-- .
 -- LO QUE SIGUE SIN TOCARSE, y conviene repetirlo aqui:
 --   - PYIR de Robayo se queda como esta: su proyeccion es correcta y SI causa
 --     impuesto. Agosto la necesita intacta para calcular el alcance.
@@ -45,12 +51,9 @@ SELECT m.MPLDIDNT, m.MPLDAPLL, c.CNTECDGO, c.CNTENRIR, c.CNTENRMT
 
 
 UPDATE RHH.CNTE
-   SET CNTENRMT = 'Art. 43 LRTI: el trabajador presento su proyeccion al empleador que mas le'
-                  || ' paga, y ASOPREP se abstiene de retener. RESPALDO CONFIRMADO POR EL'
-                  || ' CLIENTE EL 2026-08-22 (Steven): ASOPREP tiene la copia certificada.'
-                  || ' Verificado ene-jul contra el rol real: cero retenido. Su PYIR sigue'
-                  || ' siendo la real y SI causa impuesto; no se falsea. Revisar si Robayo'
-                  || ' deja de tener otro empleador o si ASOPREP pasa a ser el que mas le paga.'
+   SET CNTENRMT = 'Art. 43 LRTI: presento proyeccion a su otro empleador y ASOPREP se abstiene.'
+                  || ' RESPALDO CONFIRMADO POR EL CLIENTE 2026-08-22. Revisar si deja de tener'
+                  || ' otro empleador o si ASOPREP pasa a pagarle mas.'
  WHERE MPLDCDGO = (SELECT MPLDCDGO FROM RHH.MPLD
                     WHERE MPLDIDNT = '1725996498' AND PJRQCDGO = :EMPRESA);
 -- Debe tocar 1 fila. Si toca 0, comprobar la cedula y la empresa.

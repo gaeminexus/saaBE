@@ -134,6 +134,33 @@ public interface ProcesoCargaDocumentosService {
     DocumentoCxp obtenerDocumentoPorId(Long id) throws Throwable;
 
     /**
+     * ¿El documento ya tiene su fila destino creada y viva?
+     *
+     * <p>
+     * Es el predicado que ya usaba internamente {@code registrarDocumentoBD} para
+     * negarse a registrar dos veces, publicado para que el lote de la fase 3
+     * pueda consultarlo <b>antes</b> de llamar. No comprueba que
+     * {@code idDocumentoBD} esté poblado sino que la fila siga <b>existiendo</b>:
+     * un documento al que se le resolvió una novedad con REEMPLAZAR conserva el
+     * id anterior pero sus registros ya se borraron, y ese sí debe volver a
+     * registrarse.
+     * </p>
+     *
+     * <p>
+     * Con esto el lote distingue los dos casos de "estado 2 con observación": el
+     * bloqueado por productos sin clasificar no tiene fila destino y hay que
+     * reintentarlo, mientras que la factura de reembolso sin sustentos sí la
+     * tiene y lo que necesita es {@code contabilizarReembolso}, no un nuevo
+     * registro. Ver §11 decisión 17 del plan de carga automática.
+     * </p>
+     *
+     * @param idDocumentoCxp : Id del DocumentoCxp
+     * @return               : true si su tabla destino todavía tiene la fila
+     * @throws Throwable     : Excepcion
+     */
+    boolean tieneRegistroVigente(Long idDocumentoCxp) throws Throwable;
+
+    /**
      * Obtiene un DetalleCargaTxt (línea) por su ID.
      */
     DetalleCargaTxt obtenerDetallePorId(Long id) throws Throwable;

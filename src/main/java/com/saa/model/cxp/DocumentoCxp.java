@@ -140,6 +140,28 @@ public class DocumentoCxp implements Serializable {
     @Basic @Column(name = "DCXPESRM")
     private Long esReembolso;
 
+    // --- Descarga automática del XML desde el SRI (§5.1 del plan) ---
+    // Las cuatro son NULL-ables: los documentos históricos se cargaron a mano y
+    // no tienen resultado del SRI. Un origenXml nulo se lee como "manual,
+    // anterior a este cambio". Ver com.saa.rubros.OrigenXmlDocumento y
+    // com.saa.rubros.ResultadoDescargaSri.
+
+    /** Origen del XML: 1=Manual (lo subió el usuario) 2=SRI (lo bajó el servicio web). */
+    @Basic @Column(name = "DCXPORXM")
+    private Long origenXml;
+
+    /** DESCARGADO · FUERA_VENTANA · NO_ENCONTRADO · NO_AUTORIZADO · ERROR_CONEXION */
+    @Basic @Column(name = "DCXPRSRI", length = 30)
+    private String resultadoSri;
+
+    /** Mensaje devuelto por el SRI, o el motivo calculado cuando no se llegó a llamar. */
+    @Basic @Column(name = "DCXPMSRI", length = 500)
+    private String mensajeSri;
+
+    /** Fecha y hora del último intento de descarga. */
+    @Basic @Column(name = "DCXPFDSC")
+    private LocalDateTime fechaDescargaSri;
+
     // --- Getters / Setters ---
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -199,4 +221,12 @@ public class DocumentoCxp implements Serializable {
     public void setPeriodoContable(Periodo periodoContable) { this.periodoContable = periodoContable; }
     public Long getEsReembolso() { return esReembolso; }
     public void setEsReembolso(Long esReembolso) { this.esReembolso = esReembolso; }
+    public Long getOrigenXml() { return origenXml; }
+    public void setOrigenXml(Long origenXml) { this.origenXml = origenXml; }
+    public String getResultadoSri() { return resultadoSri; }
+    public void setResultadoSri(String resultadoSri) { this.resultadoSri = resultadoSri; }
+    public String getMensajeSri() { return mensajeSri; }
+    public void setMensajeSri(String mensajeSri) { this.mensajeSri = mensajeSri; }
+    public LocalDateTime getFechaDescargaSri() { return fechaDescargaSri; }
+    public void setFechaDescargaSri(LocalDateTime fechaDescargaSri) { this.fechaDescargaSri = fechaDescargaSri; }
 }

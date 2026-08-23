@@ -17,7 +17,8 @@ public class DocumentoCxpDaoServiceImpl extends EntityDaoImpl<DocumentoCxp> impl
             "estadoDocumento","pathXml","fechaCargaXml","usuarioCargaXml",
             "idDocumentoBD","tipoTablaDestino","fechaRegistroBD","usuarioRegistroBD",
             "fechaReversion","usuarioReversion","novedad","estadoNovedad","observacion",
-            "periodoContable","esReembolso"
+            "periodoContable","esReembolso",
+            "origenXml","resultadoSri","mensajeSri","fechaDescargaSri"
         };
     }
 }

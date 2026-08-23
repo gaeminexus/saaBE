@@ -56,7 +56,9 @@ public interface TipoAsientos {
 	public static final int RETENCIONES_EMITIDAS_V2 = 3;
 
 	// ─── CXP: Documentos de Compra (recibidos del proveedor vía SRI) ─────────
-	// TODO: Confirmar codigoAlterno real de la plantilla en BD para cada tipo.
+	// Los cinco comprobantes de la carga CXP —factura, NC, ND, liquidación y las
+	// dos retenciones— comparten codigoAlterno=3. Decisión del usuario del
+	// 2026-08-23; ya no queda nada por confirmar en BD para este bloque.
 	// AuxiliarUno habitual:
 	//   · Facturas de compra       → código del grupo de producto + código del proveedor
 	//   · Notas de Crédito/Débito  → código del grupo de producto + código del proveedor
@@ -69,14 +71,31 @@ public interface TipoAsientos {
 	/** Facturas de compra recibidas (CXP). codigoAlterno=3 en BD. */
 	public static final int FACTURAS_COMPRA         = 3;
 
-	/** Notas de Crédito de compra recibidas (CXP). Pendiente definir codigoAlterno. */
-	public static final int NOTAS_CREDITO_COMPRA    = 10; // TODO: verificar codigoAlterno en BD
+	/**
+	 * Notas de Crédito de compra recibidas (CXP). codigoAlterno=3, el mismo de la
+	 * factura de compra — decisión del usuario del 2026-08-23: <b>todos</b> los
+	 * comprobantes de la carga CXP comparten el tipo de asiento de la factura de
+	 * compra, igual que ya hacían las dos retenciones. No se crean tipos propios.
+	 */
+	public static final int NOTAS_CREDITO_COMPRA    = 3;
 
-	/** Notas de Débito de compra recibidas (CXP). Pendiente definir codigoAlterno. */
-	public static final int NOTAS_DEBITO_COMPRA     = 11; // TODO: verificar codigoAlterno en BD
+	/**
+	 * Notas de Débito de compra recibidas (CXP). codigoAlterno=3, el mismo de la
+	 * factura de compra — decisión del usuario del 2026-08-23, ver
+	 * {@link #NOTAS_CREDITO_COMPRA}.
+	 */
+	public static final int NOTAS_DEBITO_COMPRA     = 3;
 
-	/** Liquidaciones de compra recibidas (CXP). Pendiente definir codigoAlterno. */
-	public static final int LIQUIDACIONES_COMPRA_RECIBIDAS = 12; // TODO: verificar codigoAlterno en BD
+	/**
+	 * Liquidaciones de compra recibidas (CXP). codigoAlterno=3, el mismo de la
+	 * factura de compra — decisión del usuario del 2026-08-23, ver
+	 * {@link #NOTAS_CREDITO_COMPRA}.
+	 *
+	 * <p><b>No confundir</b> con {@link #LIQUIDACIONES_COMPRA_EMITIDAS}, que es la
+	 * de CXC: otra constante, otro flujo, y esa sigue con su codigoAlterno por
+	 * definir.</p>
+	 */
+	public static final int LIQUIDACIONES_COMPRA_RECIBIDAS = 3;
 
 	/** Retenciones v1 recibidas de proveedor (CXP). codigoAlterno=3 en BD. */
 	public static final int RETENCIONES_RECIBIDAS   = 3;

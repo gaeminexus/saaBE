@@ -110,6 +110,29 @@ COMMENT ON TABLE  RHH.CTRL IS 'Valores esperados del rol real y de la planilla d
 --   UPDATE RHH.CTRL_PARAM SET ANIO = 2026, MES = 2;  COMMIT;
 --
 -- Comprobar antes de correr nada:
+-- =====================================================
+-- CADA BLOQUE IMPRIME PERIODO_LEIDO. Anadido el 2026-08-23.
+-- =====================================================
+-- POR QUE. La cabecera del ESTADO avisaba de una sola direccion del fallo:
+-- ADELANTAR CTRL_PARAM vacia los bloques, y un vacio "parece un exito".
+-- El riesgo de verdad es el contrario y nadie lo tenia escrito: DEJARLO
+-- ATRAS no vacia nada. Con el parametro en 3 y abril ya calculado, este
+-- instrumento contrasta MARZO otra vez --CTRL y NMNA completos-- y sale
+-- VERDE AL CENTIMO. Un verde entero y plausible del mes equivocado es peor
+-- que uno vacio: el vacio al menos llama la atencion, y el verde no tiene
+-- nada que lo delate salvo mirar que periodo leyo.
+-- .
+-- Lo levanto el agente de backend el 2026-08-23, y se comprobo en el
+-- guion: CTRL_PARAM estaba en 3 cuando el ESTADO lo daba en 4.
+-- .
+-- POR ESO CADA BLOQUE SE AUTODECLARA. Ya no hace falta acordarse de mirar
+-- la consulta del preambulo: el propio resultado dice de que mes es. Si
+-- PERIODO_LEIDO no es el mes que se esta contrastando, se para; da igual
+-- lo bien que se vea todo lo demas.
+-- .
+-- Es la misma leccion que el control de asientos acotado: un control que
+-- no dice sobre que corrio no es un control.
+-- =====================================================
 SELECT ANIO, MES, SYSTIMESTAMP AS MOMENTO FROM RHH.CTRL_PARAM;
 
 
@@ -156,6 +179,7 @@ suyo AS (
      GROUP BY CTRLIDNT, CTRLALTR
 )
 SELECT NVL(a.IDENTIFICACION, b.IDENTIFICACION) AS IDENTIFICACION,
+       (SELECT q.ANIO || '-' || LPAD(q.MES, 2, '0') FROM RHH.CTRL_PARAM q) AS PERIODO_LEIDO,
        NVL(a.ALTERNO, b.ALTERNO)               AS ALTERNO,
        a.CONCEPTO,
        a.VALOR                                 AS NUESTRO,
@@ -190,6 +214,7 @@ SELECT NVL(a.IDENTIFICACION, b.IDENTIFICACION) AS IDENTIFICACION,
 -- Las provisiones viven en RHH.PVNM, no en RHH.RNGL: el motor las escribe en
 -- su propia tabla porque no son renglones del rol.
 SELECT 'PATRONAL' AS CLASE,
+       (SELECT q.ANIO || '-' || LPAD(q.MES, 2, '0') FROM RHH.CTRL_PARAM q) AS PERIODO_LEIDO,
        c.CPNMALTR AS ALTERNO,
        c.CPNMNMBR AS CONCEPTO,
        COUNT(DISTINCT n.MPLDCDGO) AS PERSONAS,
@@ -203,7 +228,9 @@ SELECT 'PATRONAL' AS CLASE,
    AND NVL(r.RNGLTPCN, c.CPNMTPCN) = 3
  GROUP BY c.CPNMALTR, c.CPNMNMBR
 UNION ALL
-SELECT 'PROVISION', c.CPNMALTR, c.CPNMNMBR,
+SELECT 'PROVISION',
+       (SELECT q.ANIO || '-' || LPAD(q.MES, 2, '0') FROM RHH.CTRL_PARAM q) AS PERIODO_LEIDO,
+       c.CPNMALTR, c.CPNMNMBR,
        COUNT(DISTINCT v.MPLDCDGO), SUM(v.PVNMVLOR)
   FROM RHH.PVNM v
   JOIN RHH.PRDN p ON p.PRDNCDGO = v.PRDNCDGO
@@ -211,7 +238,7 @@ SELECT 'PROVISION', c.CPNMALTR, c.CPNMNMBR,
  JOIN RHH.CTRL_PARAM q ON q.ANIO = p.PRDNANOO AND q.MES = p.PRDNMSEE
      WHERE 1 = 1
  GROUP BY c.CPNMALTR, c.CPNMNMBR
- ORDER BY 1, 2;
+ ORDER BY 1, 3;
 
 
 -- Y el contraste que si tienen los patronales: la cabecera de NMNA debe
@@ -219,6 +246,7 @@ SELECT 'PROVISION', c.CPNMALTR, c.CPNMNMBR,
 -- lleva el reporte de resumen de aportes, y delata una nomina calculada
 -- antes del reparto por rol. Sale vacio si esta bien.
 SELECT m.MPLDIDNT AS IDENTIFICACION,
+       (SELECT q.ANIO || '-' || LPAD(q.MES, 2, '0') FROM RHH.CTRL_PARAM q) AS PERIODO_LEIDO,
        n.NMNAAPPT AS APORTE_PATRONAL,
        n.NMNAIESC AS IECE_SECAP,
        n.NMNATTPT AS TOTAL_PATRONAL,
@@ -229,7 +257,7 @@ SELECT m.MPLDIDNT AS IDENTIFICACION,
  JOIN RHH.CTRL_PARAM q ON q.ANIO = p.PRDNANOO AND q.MES = p.PRDNMSEE
      WHERE 1 = 1
    AND NVL(n.NMNATTPT,0) <> NVL(n.NMNAAPPT,0) + NVL(n.NMNAIESC,0)
- ORDER BY 5 DESC;
+ ORDER BY 6 DESC;
 
 
 -- =====================================================
@@ -272,6 +300,7 @@ suyo AS (
        AND CTRLTOTL <> 'TOTAL_IESS'
 )
 SELECT NVL(a.IDENTIFICACION, b.IDENTIFICACION) AS IDENTIFICACION,
+       (SELECT q.ANIO || '-' || LPAD(q.MES, 2, '0') FROM RHH.CTRL_PARAM q) AS PERIODO_LEIDO,
        NVL(a.TOTAL, b.TOTAL)                   AS TOTAL,
        a.VALOR                                 AS NUESTRO,
        b.VALOR                                 AS DEL_ROL,
@@ -316,6 +345,7 @@ suyo AS (
        AND CTRLTOTL = 'TOTAL_IESS' AND CTRLFNTE = 'PLANILLA'
 )
 SELECT NVL(a.IDENTIFICACION, b.IDENTIFICACION)      AS IDENTIFICACION,
+       (SELECT q.ANIO || '-' || LPAD(q.MES, 2, '0') FROM RHH.CTRL_PARAM q) AS PERIODO_LEIDO,
        a.BASE_IMPONIBLE,
        a.PERSONAL,
        a.PATRONAL,
@@ -345,6 +375,7 @@ SELECT NVL(a.IDENTIFICACION, b.IDENTIFICACION)      AS IDENTIFICACION,
 -- veces: la ultima, diez minutos discutiendo un tipo de saldo porque una
 -- consulta era anterior a una reversion.
 SELECT SYSTIMESTAMP                                              AS MOMENTO,
+       (SELECT q.ANIO || '-' || LPAD(q.MES, 2, '0') FROM RHH.CTRL_PARAM q) AS PERIODO_LEIDO,
        (SELECT COUNT(*) FROM RHH.CTRL
          JOIN RHH.CTRL_PARAM q ON q.ANIO = CTRLANOO AND q.MES = CTRLMESS
      WHERE 1 = 1)              AS FILAS_ESPERADAS,

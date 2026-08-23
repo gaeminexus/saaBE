@@ -237,36 +237,80 @@ Auto-creando Titular-Proveedor para RUC: ...
 
 ### Paso 3 — Validaciones bloqueantes (HTTP 422 si alguna falla, nada se graba)
 
-**No todos los tipos validan lo mismo.** Solo Factura y Retención tienen
-bloqueantes implementados:
+**Todos los tipos validan ya con bloqueantes estructurados.** NC, ND y
+Liquidación se sumaron el 2026-08-23 (§9 defecto 3 del plan de carga
+automática): antes reventaban con una excepción y el frontend recibía un `500`
+con texto plano, inservible dentro de un lote de 50 documentos.
 
-| Bloqueante | Factura | Retención V2 | Retención V1 *(muerto)* | NC / ND / Liquidación |
-|---|---|---|---|---|
-| `PROVEEDOR_SIN_CUENTA` — proveedor sin cuenta contable CxP (`PersonaCuentaContable`, `tipoCuenta=1`) | ✅ | ✅ | ✅ | ✗ |
-| `TIPO_ASIENTO_NO_CONFIGURADO` — no existe `TipoAsiento` con el `codigoAlterno` del tipo, para la empresa | ✅ | ✅ | ✅ | ✗ |
-| `PRODUCTOS_SIN_CLASIFICAR` — algún producto está en grupo POR CLASIFICAR | ✅ | — | — | ✗ |
-| `GRUPOS_SIN_CUENTA_CONTABLE` — el grupo del producto no tiene `planCuenta` | ✅ | — | — | ✗ |
-| `CODIGOS_RETENCION_SIN_CUENTA` — un `codigoRetencion` del XML no tiene cuenta en `PGS.TSRI` | — | ✅ | ✅ | — |
-| `FACTURA_VENTA_NO_ENCONTRADA` — no se resuelve la factura de venta del documento sustento | — | ✅ | ✅ | — |
-| `RETENCION_MULTIDOCUMENTO` — el XML trae más de un `numDocSustento` distinto | — | ✅ | — | — |
+| Bloqueante | Factura | Retención V2 | Retención V1 *(muerto)* | NC | ND | Liquidación |
+|---|---|---|---|---|---|---|
+| `PROVEEDOR_SIN_CUENTA` — proveedor sin cuenta contable CxP (`PersonaCuentaContable`, `tipoCuenta=1`) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `TIPO_ASIENTO_NO_CONFIGURADO` — no existe `TipoAsiento` con el `codigoAlterno` del tipo, para la empresa | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `PRODUCTOS_SIN_CLASIFICAR` — algún producto está en grupo POR CLASIFICAR | ✅ | — | — | — | — | — |
+| `GRUPOS_SIN_CUENTA_CONTABLE` — el grupo del producto no tiene `planCuenta` | ✅ | — | — | — | — | — |
+| `CODIGOS_RETENCION_SIN_CUENTA` — un `codigoRetencion` del XML no tiene cuenta en `PGS.TSRI` | — | ✅ | ✅ | — | — | — |
+| `FACTURA_VENTA_NO_ENCONTRADA` — no se resuelve la factura de venta del documento sustento | — | ✅ | ✅ | — | — | — |
+| `RETENCION_MULTIDOCUMENTO` — el XML trae más de un `numDocSustento` distinto | — | ✅ | — | — | — | — |
+| `FACTURA_COMPRA_NO_ENCONTRADA` — no se resuelve la factura de compra que el documento modifica | — | — | — | ✅ | ✅ | — |
+
+NC, ND y Liquidación no llevan `PRODUCTOS_SIN_CLASIFICAR` ni
+`GRUPOS_SIN_CUENTA_CONTABLE` porque su detalle no pasa por `ProductoPago`: se
+graba como descripción libre en `DNCC` / `DNDC` / `DLCC`.
+
+Los dos bloqueantes comunes viven en un solo sitio,
+`agregarBloqueantesComunesCompra(...)`, para que los tres tipos no puedan
+divergir. El `codigoAlterno` que se exige es el mismo que después usará
+`generarAsientoCxp`: `NOTAS_CREDITO_COMPRA`, `NOTAS_DEBITO_COMPRA` y
+`LIQUIDACIONES_COMPRA_RECIBIDAS`, que desde el 2026-08-23 valen **3** — el de la
+factura de compra (§6). Con el 3 configurado en `CNT.TPAS`, que es el caso en
+ASOPREP, este bloqueante no se dispara nunca; solo protege a una empresa a la que
+le falte la plantilla.
 
 ### Resolución del documento sustento (factura de venta)
 
 La retención recibida abona una factura de **venta**, así que esa factura debe
-existir antes de registrar la retención. El bloqueante llama al **mismo**
-resolutor que después usará la aplicación de pago del Paso 4:
+existir antes de registrar la retención. El bloqueante usa la **misma consulta**
+que después usará la aplicación de pago del Paso 4:
 
 ```java
-aplicacionPagoCxcService.resolverFacturaPorNumero(numDocSustento, null, idEmpresa)
-    → AplicacionPagoCxcDaoService.selectFacturaByNumero(...)
+aplicacionPagoCxcDaoService.selectFacturaByNumero(numDocSustento, null, idEmpresa)
     → " where FUNCTION('replace', f.numero, '-', '') = :numero "   // numero también sin guiones
 ```
 
 **El número se compara SIN GUIONES en ambos lados.** El SRI manda
 `001001000000784` y en `CBR.FCTR` suele estar como `001-001-000000784`; antes el
 Paso 2d hacía su propio `COUNT` con `f.numero = :val` tal cual, así que reportaba
-"documento sustento no encontrado" aunque la factura sí existiera. Reutilizar el
-resolutor garantiza que el bloqueante y la aplicación de pago no puedan discrepar.
+"documento sustento no encontrado" aunque la factura sí existiera. Compartir la
+consulta garantiza que el bloqueante y la aplicación de pago no puedan discrepar.
+
+#### ⚠️ Corregido el 2026-08-23: entre el 13 y el 23 de agosto este bloqueante no funcionó
+
+La corrección del **2026-08-13** hizo que el Paso 2d llamara a
+`AplicacionPagoCxcService.resolverFacturaPorNumero(...)`, el resolutor **a nivel
+de servicio**, dentro de un `try/catch` que armaba el mapa de bloqueantes. Nunca
+surtió efecto, y el motivo es de EJB, no de negocio:
+
+1. `resolverFacturaPorNumero` comunica el fallo lanzando `IncomeException`.
+2. `IncomeException` está anotada `@ApplicationException(rollback = true)`
+   (`basico/util/IncomeException.java:16`).
+3. `AplicacionPagoCxcService` se invoca por `@EJB` y es `REQUIRED`, así que corre
+   **en la transacción del registro**. Al cruzar la frontera del EJB, el
+   contenedor marca esa transacción para rollback **antes** de entregar la
+   excepción — y **atraparla no la desmarca**.
+4. El método retornaba su `422` con `bloqueantes`, el contenedor encontraba la
+   marca al hacer commit, lanzaba `EJBTransactionRolledbackException`, y el REST
+   devolvía un **500 opaco**.
+
+O sea: el síntoma que la corrección venía a resolver —"documento sustento no
+encontrado que revienta con un 500 poco claro"— siguió igual diez días, solo que
+por otro motivo. Se arregló llamando al **DAO**, que devuelve lista y no lanza.
+
+> **Regla general (§11 decisión 18 del plan de carga automática).** Dentro de una
+> transacción que debe sobrevivir, **nunca invoques otro EJB que comunique el
+> fallo con `IncomeException` si piensas atrapar el error y continuar**. Usa el
+> DAO, o un método que devuelva vacío en lugar de lanzar. Atrapar no basta. Vale
+> igual para cualquier excepción de sistema (`RuntimeException`) que cruce una
+> frontera de EJB: esas también marcan la transacción para rollback.
 
 Detalles del comportamiento:
 
@@ -285,13 +329,32 @@ Detalles del comportamiento:
   que una factura anulada también resuelve. Es el comportamiento del resolutor
   de CXC (y del equivalente de CXP), no algo propio de este proceso.
 
-**NC y ND sí abortan si falta la factura de compra afectada**, pero no como
-bloqueante estructurado: `registrarNotaCreditoCompra` /
-`registrarNotaDebitoCompra` llaman a
-`AplicacionPagoCxpService.resolverFacturaCompraPorNumero(numDocModificado, idTitular, idEmpresa)`
-**antes de grabar**, y ese método lanza excepción si no hay coincidencia o si hay
-más de una. El resultado para el frontend es un `500` con mensaje de texto (y el
-documento en estado `ERROR`), no un `422` con la lista `bloqueantes`.
+### Resolución de la factura de compra afectada (NC y ND)
+
+Desde el 2026-08-23 esto **sí** es un bloqueante estructurado,
+`FACTURA_COMPRA_NO_ENCONTRADA`, con las mismas tres condiciones que aplicaba el
+resolutor: sin `numDocModificado`, sin coincidencia, o más de una.
+
+Se resuelve con `AplicacionPagoCxpDaoService.selectFacturaByNumero(...)`, que es
+**la consulta que usa después la aplicación de pago**, así que el bloqueante y el
+Paso 4 no pueden discrepar. Se llama al DAO y no a
+`AplicacionPagoCxpService.resolverFacturaCompraPorNumero(...)` por una razón
+concreta: ese comunica el fallo con `IncomeException`, anotada
+`@ApplicationException(rollback = true)`. Como el servicio es `REQUIRED` y se une
+a la transacción del registro, atrapar esa excepción para devolver un bloqueante
+dejaría la transacción marcada para rollback, y con ella se irían el retorno
+estructurado, la observación que graba `registrarDocumentoBD` y el proveedor
+recién autocreado.
+
+Las retenciones tenían el mismo problema y se corrigieron igual el 2026-08-23
+— ver el recuadro de *Resolución del documento sustento*, más abajo.
+
+⚠️ **Queda un caso vivo del mismo patrón**: `TIPO_ASIENTO_NO_CONFIGURADO`.
+`TipoAsientoService.codigoByAlterno` **lanza `IncomeException`** cuando no
+encuentra la plantilla (`TipoAsientoServiceImpl:120`), nunca devuelve `null`, así
+que el `if (idTipoAsiento == null)` de todos los bloqueantes es código muerto y
+el que se ejecuta es el `catch` — con la transacción ya condenada. Afecta a
+Factura, a las dos Retenciones y a NC/ND/Liquidación. Pendiente de decisión.
 
 **Cuenta del código de retención (`PGS.TSRI`):** el `lsri.tabla` depende del
 impuesto del XML — `codigo=1` (Renta) → `608`; `codigo=2` (IVA) → `20`.
@@ -358,16 +421,24 @@ Todo dentro de la misma transacción:
 | `tipoTablaDestino` | Método de `AsientoContableService` | Constante `TipoAsientos` | `codigoAlterno` |
 |---|---|---|---|
 | `FACTURA_COMPRA` | `generarAsientoFacturaCompra` | `FACTURAS_COMPRA` | 3 |
-| `NOTA_CREDITO_COMPRA` | `generarAsientoNotaCreditoCompra` | `NOTAS_CREDITO_COMPRA` | 10 ⚠️ TODO verificar en BD |
-| `NOTA_DEBITO_COMPRA` | `generarAsientoNotaDebitoCompra` | `NOTAS_DEBITO_COMPRA` | 11 ⚠️ TODO verificar en BD |
-| `LIQUIDACION_COMPRA_COMPRA` | `generarAsientoLiquidacionCompraCompra` | `LIQUIDACIONES_COMPRA_RECIBIDAS` | 12 ⚠️ TODO verificar en BD |
+| `NOTA_CREDITO_COMPRA` | `generarAsientoNotaCreditoCompra` | `NOTAS_CREDITO_COMPRA` | 3 |
+| `NOTA_DEBITO_COMPRA` | `generarAsientoNotaDebitoCompra` | `NOTAS_DEBITO_COMPRA` | 3 |
+| `LIQUIDACION_COMPRA_COMPRA` | `generarAsientoLiquidacionCompraCompra` | `LIQUIDACIONES_COMPRA_RECIBIDAS` | 3 |
 | `RETENCION_COMPRA` | `generarAsientoRetencionCompra` | `RETENCIONES_RECIBIDAS` | 3 |
 | `RETENCION_COMPRA_V2` | `generarAsientoRetencionCompraV2` | `RETENCIONES_RECIBIDAS_V2` | 3 |
 
-> ⚠️ `FACTURAS_COMPRA`, `RETENCIONES_RECIBIDAS` y `RETENCIONES_RECIBIDAS_V2`
-> valen **todas 3**, así que hoy los tres tipos de documento se contabilizan con
-> el mismo `TipoAsiento`. Está pendiente definir los `codigoAlterno` propios en
-> `CNT.TPAS`.
+> **Los seis valen 3, y es deliberado.** Decisión del usuario del 2026-08-23:
+> todos los comprobantes de la carga CXP se contabilizan con el **mismo tipo de
+> asiento que la factura de compra**, tal como ya hacían las dos retenciones. No
+> se crean tipos 10/11/12 y no queda nada pendiente de definir en `CNT.TPAS`
+> para este flujo. Lo que distingue el asiento de cada tipo no es la plantilla
+> sino el método de `AsientoContableService` que lo arma.
+>
+> Antes de esta decisión, NC, ND y Liquidación apuntaban a `10`, `11` y `12`, que
+> **no existen** en `CNT.TPAS`: los `codigoAlterno` configurados en ASOPREP son
+> 0, 1, 2, 3, 4, 5 y 6. No es casualidad que `NTCC`, `NTDC` y `LQCC` tengan cero
+> filas mientras `FCTC` tiene 134 y `RCV2` tiene 8 — los únicos tipos que nunca
+> llegaron a registrarse eran justo los que no tenían tipo de asiento.
 
 ### Fecha contable
 
@@ -812,9 +883,9 @@ Body: `{nombre, codigo?, idEmpresa}`. Si ya existe un producto con ese código l
 | Retención · total | ✅ Resuelto el 2026-08-13: el total sale de la suma de `<valorRetenido>`, no de `importeTotal` (§3) |
 | Retención · multidocumento | Soportar retenciones con varios documentos sustento: hoy se bloquean con `RETENCION_MULTIDOCUMENTO` porque la aplicación de pago solo sabe abonar a una factura |
 | Retención V2 · path | Falta la entidad `PathRetencionCompraV2`; el path solo queda en `DocumentoCxp.pathXml` |
-| `TipoAsientos` | Definir `codigoAlterno` propios en `CNT.TPAS`: hoy Factura de compra y las dos retenciones comparten el `3`, y NC/ND/Liquidación (`10/11/12`) están marcados como *TODO verificar en BD* |
-| `Nota de Crédito` / `Nota de Débito` | Agregar validaciones bloqueantes estructuradas (cuenta proveedor, tipo asiento, cuenta del grupo) y convertir el fallo de `resolverFacturaCompraPorNumero` en un `422` con `bloqueantes` en vez de un `500` |
-| `Liquidación de Compra` | Ídem, más la aplicación de pago sobre el documento afectado |
+| `TipoAsientos` | ✅ Cerrado el 2026-08-23: los seis tipos de la carga CXP comparten `codigoAlterno = 3`, el de la factura de compra, por decisión del usuario. No se crean tipos propios (§6) |
+| `Nota de Crédito` / `Nota de Débito` | ✅ Resuelto el 2026-08-23: bloqueantes estructurados `PROVEEDOR_SIN_CUENTA`, `TIPO_ASIENTO_NO_CONFIGURADO` y `FACTURA_COMPRA_NO_ENCONTRADA`, con `422` en vez de `500` (§5) |
+| `Liquidación de Compra` | ✅ Bloqueantes resueltos el 2026-08-23 (§5). Queda pendiente la aplicación de pago sobre el documento afectado |
 | `RetencionCompra` (V1) | Código muerto: `registrarRetencionCompra` ya no se invoca. Decidir si se elimina tras migrar los históricos |
 | Rubros | Script SQL para insertar rubro 174 con los códigos 6 y 7 en `SCP.PDTR` |
 | Reembolso · marcar al cargar XML | `procesarXml` acepta `esReembolso` en el body pero delega en `marcarReembolso` (que a su vez verifica pagos aplicados). Para el flujo normal (XML subido antes de marcar) esto puede causar un 422 innecesario; evaluar si el flag se debe propagar directamente al documento sin validar pagos en ese punto |

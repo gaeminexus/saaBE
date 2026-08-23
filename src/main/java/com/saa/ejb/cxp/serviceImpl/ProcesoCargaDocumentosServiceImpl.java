@@ -132,8 +132,33 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
     @EJB private com.saa.ejb.cxp.service.AplicacionPagoCxpService aplicacionPagoCxpService;
 
+    // El MISMO resolutor que usa la aplicación de pago, a nivel de DAO. Se llama
+    // al DAO y no a AplicacionPagoCxpService.resolverFacturaCompraPorNumero
+    // porque ese comunica el fallo con IncomeException, anotada
+    // @ApplicationException(rollback = true): corre en esta transacción, así que
+    // atraparla para devolver un bloqueante la dejaría marcada para rollback.
+    // La consulta es la misma, de modo que los dos no pueden discrepar.
+    @EJB private com.saa.ejb.cxp.dao.AplicacionPagoCxpDaoService aplicacionPagoCxpDaoService;
+
     @EJB private com.saa.ejb.cxc.service.AplicacionPagoCxcService aplicacionPagoCxcService;
-    @EJB private com.saa.ejb.cnt.service.TipoAsientoService     tipoAsientoService;
+
+    // El resolutor de la factura de VENTA, a nivel de DAO, por la misma razón que
+    // el de compra: AplicacionPagoCxcService.resolverFacturaPorNumero comunica el
+    // fallo con IncomeException y no se puede atrapar para continuar. La consulta
+    // es la misma, así que el bloqueante y la aplicación de pago del Paso 4 no
+    // pueden discrepar. Ver §11 decisión 18.
+    @EJB private com.saa.ejb.cxc.dao.AplicacionPagoCxcDaoService aplicacionPagoCxcDaoService;
+    // El DAO de tipos de asiento, no el servicio: TipoAsientoService.codigoByAlterno
+    // comunica el "no existe" lanzando IncomeException, y esa no se puede atrapar
+    // para seguir. Ver existeTipoAsiento y §11 decisión 18.
+    @EJB private com.saa.ejb.cnt.dao.TipoAsientoDaoService      tipoAsientoDaoService;
+
+    // Marcado del estado ERROR en transacción propia (REQUIRES_NEW).
+    // Tiene que ser un bean DISTINTO inyectado con @EJB: si el método viviera en
+    // esta misma clase, la llamada interna no pasaría por el proxy del contenedor,
+    // no abriría transacción nueva y el marcado se perdería en el rollback igual
+    // que antes. Ver MarcadoErrorDocumentoService.
+    @EJB private com.saa.ejb.cxp.service.MarcadoErrorDocumentoService marcadoErrorDocumentoService;
 
     // -------------------------------------------------------
     // Estados — delegados a las interfaces de rubros (174-177)
@@ -623,9 +648,23 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             generarAsientoCxp(doc, resultadoBD, idEmpresa);
 
         } catch (Exception e) {
-            doc.setEstadoDocumento(ESTADO_ERROR);
-            doc.setObservacion("Error al registrar en BD: " + e.getMessage());
-            documentoCxpDaoService.save(doc, doc.getId());
+            // El marcado NO puede hacerse sobre `doc` en esta transacción: al
+            // re-lanzar, el rollback se lleva también el estado 4 y el documento
+            // queda como si nunca hubiera fallado. Va en un bean aparte con
+            // REQUIRES_NEW, que confirma el marcado por su cuenta.
+            // Ver docs/logica-negocio/cxp/PLAN-CARGA-AUTOMATICA-SRI.md §7, fase 0.1.
+            //
+            // El try de aquí no es redundante con el que ya tiene marcarError: lo
+            // que ese bean no puede atrapar es el cierre de su propia transacción,
+            // que el contenedor hace después de que el método retorna. Lo que el
+            // usuario tiene que ver es `e`, no un fallo del marcado.
+            try {
+                marcadoErrorDocumentoService.marcarError(idDocumentoCxp,
+                        "Error al registrar en BD: " + e.getMessage());
+            } catch (Throwable t) {
+                System.err.println("⚠ Falló el marcado en ERROR del DocumentoCxp "
+                        + idDocumentoCxp + ": " + t.getMessage());
+            }
             throw e;
         }
 
@@ -806,9 +845,23 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             generarAsientoCxp(doc, resultado, idEmpresa);
 
         } catch (Exception e) {
-            doc.setEstadoDocumento(ESTADO_ERROR);
-            doc.setObservacion("Error al registrar en BD: " + e.getMessage());
-            documentoCxpDaoService.save(doc, doc.getId());
+            // El marcado NO puede hacerse sobre `doc` en esta transacción: al
+            // re-lanzar, el rollback se lleva también el estado 4 y el documento
+            // queda como si nunca hubiera fallado. Va en un bean aparte con
+            // REQUIRES_NEW, que confirma el marcado por su cuenta.
+            // Ver docs/logica-negocio/cxp/PLAN-CARGA-AUTOMATICA-SRI.md §7, fase 0.1.
+            //
+            // El try de aquí no es redundante con el que ya tiene marcarError: lo
+            // que ese bean no puede atrapar es el cierre de su propia transacción,
+            // que el contenedor hace después de que el método retorna. Lo que el
+            // usuario tiene que ver es `e`, no un fallo del marcado.
+            try {
+                marcadoErrorDocumentoService.marcarError(idDocumentoCxp,
+                        "Error al registrar en BD: " + e.getMessage());
+            } catch (Throwable t) {
+                System.err.println("⚠ Falló el marcado en ERROR del DocumentoCxp "
+                        + idDocumentoCxp + ": " + t.getMessage());
+            }
             throw e;
         }
 
@@ -940,6 +993,18 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     @Override
     public DocumentoCxp obtenerDocumentoPorId(Long id) throws Throwable {
         return documentoCxpDaoService.selectById(id, NombreEntidadesCompra.DOCUMENTO_CXP);
+    }
+
+    @Override
+    public boolean tieneRegistroVigente(Long idDocumentoCxp) throws Throwable {
+        System.out.println("=== tieneRegistroVigente idDocumentoCxp=" + idDocumentoCxp);
+        if (idDocumentoCxp == null) return false;
+        // em.find y no selectById: aquel resuelve con getSingleResult y lanza
+        // NoResultException cuando la fila no está, y aquí un documento que no
+        // existe es simplemente un "no" — este método no lanza por eso.
+        DocumentoCxp doc = em.find(DocumentoCxp.class, idDocumentoCxp);
+        if (doc == null) return false;
+        return registroBDVigente(doc);
     }
 
     @Override
@@ -1102,26 +1167,10 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
         // 2b. Verificar que existe el TipoAsiento para FACTURA_COMPRA (generación contable)
         boolean generaConta = verificarGeneraConta(idEmpresa);
-        if (generaConta) {
-            try {
-                Long idTipoAsiento = tipoAsientoService.codigoByAlterno(
-                        com.saa.rubros.TipoAsientos.FACTURAS_COMPRA, idEmpresa);
-                if (idTipoAsiento == null) {
-                    Map<String, Object> b = new HashMap<>();
-                    b.put("tipo", "TIPO_ASIENTO_NO_CONFIGURADO");
-                    b.put("detalle", "No existe el Tipo de Asiento con código alterno "
-                            + com.saa.rubros.TipoAsientos.FACTURAS_COMPRA
-                            + " para Facturas de Compra. Configúrelo en Contabilidad → Tipos de Asiento.");
-                    bloqueantes.add(b);
-                }
-            } catch (Throwable e) {
-                Map<String, Object> b = new HashMap<>();
-                b.put("tipo", "TIPO_ASIENTO_NO_CONFIGURADO");
-                b.put("detalle", "No existe el Tipo de Asiento para Facturas de Compra (codigoAlterno="
-                        + com.saa.rubros.TipoAsientos.FACTURAS_COMPRA
-                        + "). Configúrelo en Contabilidad → Tipos de Asiento.");
-                bloqueantes.add(b);
-            }
+        if (generaConta
+                && !existeTipoAsiento(com.saa.rubros.TipoAsientos.FACTURAS_COMPRA, idEmpresa)) {
+            bloqueantes.add(bloqueanteTipoAsiento(
+                    com.saa.rubros.TipoAsientos.FACTURAS_COMPRA, "Facturas de Compra"));
         }
 
         // 2b. Productos en POR_CLASIFICAR o sin cuenta contable en su grupo
@@ -1897,6 +1946,290 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         }
     }
 
+    /**
+     * ¿Existe la plantilla de asiento con ese código alterno para la empresa?
+     *
+     * <p>
+     * <b>Consulta el DAO, no {@code TipoAsientoService.codigoByAlterno}</b>, y el
+     * motivo es el de la §11 decisión 18: aquel método <b>lanza</b>
+     * {@code IncomeException} cuando no encuentra la plantilla
+     * ({@code TipoAsientoServiceImpl:120}) — nunca devuelve {@code null}—, y esa
+     * excepción está anotada {@code @ApplicationException(rollback = true)}. Al
+     * cruzar la frontera del EJB el contenedor marca <b>esta</b> transacción para
+     * rollback antes de entregárnosla, y atraparla no la desmarca: el bloqueante
+     * se armaba bien pero el commit fallaba después con
+     * {@code EJBTransactionRolledbackException} y el REST devolvía un 500 opaco.
+     * </p>
+     *
+     * <p>
+     * El DAO ejecuta exactamente la misma consulta y devuelve lista vacía, así que
+     * el veredicto es el mismo sin condenar la transacción. Un fallo real de base
+     * se registra y se responde {@code false}: con la base caída da igual, y si
+     * fuera un problema puntual el bloqueante avisa en vez de dejar pasar un
+     * documento sin plantilla.
+     * </p>
+     *
+     * @param codigoAlterno : Código alterno de la plantilla
+     * @param idEmpresa     : Id de la empresa contable
+     * @return              : true si la plantilla existe
+     */
+    private boolean existeTipoAsiento(int codigoAlterno, Long idEmpresa) {
+        try {
+            List<com.saa.model.cnt.TipoAsiento> tipos =
+                    tipoAsientoDaoService.selectByAlterno(codigoAlterno, idEmpresa);
+            return tipos != null && !tipos.isEmpty();
+        } catch (Throwable e) {
+            System.err.println("⚠ existeTipoAsiento (alterno=" + codigoAlterno
+                    + ", empresa=" + idEmpresa + "): " + e.getMessage());
+            return false;
+        }
+    }
+
+    // =========================================================
+    // Bloqueantes comunes a NC, ND y Liquidación
+    // =========================================================
+    /**
+     * Agrega los dos bloqueantes que comparten todos los documentos de compra:
+     * el proveedor tiene que tener cuenta contable CxP, y —si la empresa lleva
+     * contabilidad— tiene que existir la plantilla de asiento del tipo.
+     *
+     * <p>
+     * Son los mismos que ya aplicaba {@code registrarFacturaCompra}; aquí se
+     * extraen para que NC, ND y Liquidación no los escriban tres veces y no
+     * puedan divergir entre sí.
+     * </p>
+     *
+     * @param bloqueantes   : Lista donde se acumulan
+     * @param titular       : Proveedor emisor del documento
+     * @param idEmpresa     : Id de la empresa contable
+     * @param codigoAlterno : Código alterno del TipoAsiento que usará este documento
+     * @param etiquetaTipo  : Nombre del tipo para el mensaje ("Notas de Crédito de Compra")
+     */
+    private void agregarBloqueantesComunesCompra(List<Map<String, Object>> bloqueantes,
+            Titular titular, Long idEmpresa, int codigoAlterno, String etiquetaTipo) {
+
+        // Cuenta contable CxP del proveedor
+        if (titular == null || !verificarCuentaContableProveedor(titular.getCodigo(), idEmpresa)) {
+            Map<String, Object> b = new HashMap<>();
+            b.put("tipo", "PROVEEDOR_SIN_CUENTA");
+            b.put("detalle", "El proveedor '" + (titular != null ? titular.getNombre() : "?")
+                    + "' (RUC: " + (titular != null ? titular.getIdentificacion() : "?")
+                    + ") no tiene cuenta contable CxP asignada."
+                    + " Configúrela en Contabilidad → Cuentas por Titular.");
+            bloqueantes.add(b);
+        }
+
+        // Plantilla de asiento del tipo. Solo cuando la empresa genera
+        // contabilidad: si generaConta no es 1 no se va a emitir ningún asiento,
+        // así que exigir la plantilla bloquearía documentos que hoy se registran
+        // sin problema.
+        if (!verificarGeneraConta(idEmpresa)) return;
+
+        if (!existeTipoAsiento(codigoAlterno, idEmpresa))
+            bloqueantes.add(bloqueanteTipoAsiento(codigoAlterno, etiquetaTipo));
+    }
+
+    private Map<String, Object> bloqueanteTipoAsiento(int codigoAlterno, String etiquetaTipo) {
+        Map<String, Object> b = new HashMap<>();
+        b.put("tipo", "TIPO_ASIENTO_NO_CONFIGURADO");
+        b.put("detalle", "No existe el Tipo de Asiento con código alterno " + codigoAlterno
+                + " para " + etiquetaTipo + ". Configúrelo en Contabilidad → Tipos de Asiento.");
+        return b;
+    }
+
+    /**
+     * Bloqueante de la factura de compra que una NC o una ND afecta: tiene que
+     * existir, y tiene que ser una sola.
+     *
+     * <p>
+     * <b>Por qué se resuelve por el DAO y no por
+     * {@code AplicacionPagoCxpService.resolverFacturaCompraPorNumero}</b>, que es
+     * el método que después usa la aplicación de pago: los dos leen exactamente
+     * la misma consulta —{@code selectFacturaByNumero}, que compara el número sin
+     * guiones, de modo que '001-001-000000123' y '001001000000123' son el mismo
+     * documento—, así que no pueden discrepar. Lo que cambia es que el servicio
+     * comunica el fallo con una {@code IncomeException}, y esa está anotada
+     * {@code @ApplicationException(rollback = true)}: como corre en ESTA
+     * transacción, atraparla la dejaría marcada para rollback y el retorno
+     * estructurado se perdería junto con el proveedor recién autocreado. El
+     * criterio de las tres condiciones es el mismo que aplica aquel método.
+     * </p>
+     *
+     * @param bloqueantes      : Lista donde se acumulan
+     * @param numDocModificado : Número de la factura afectada, tal como viene en el XML
+     * @param titular          : Proveedor emisor
+     * @param idEmpresa        : Id de la empresa contable
+     * @param etiquetaDoc      : "nota de crédito" o "nota de débito", para el mensaje
+     */
+    private void agregarBloqueanteFacturaAfectada(List<Map<String, Object>> bloqueantes,
+            String numDocModificado, Titular titular, Long idEmpresa, String etiquetaDoc) {
+
+        String solucion = "Cargue primero la factura de compra afectada. El número se compara"
+                + " sin guiones, así que '001-001-000000123' y '001001000000123' son"
+                + " equivalentes.";
+
+        if (numDocModificado == null || numDocModificado.trim().isEmpty()) {
+            Map<String, Object> b = new HashMap<>();
+            b.put("tipo", "FACTURA_COMPRA_NO_ENCONTRADA");
+            b.put("detalle", "El XML de la " + etiquetaDoc + " no indica el número de la factura"
+                    + " de compra que modifica (<numDocModificado> vacío), así que no hay"
+                    + " forma de saber a qué documento afecta.");
+            b.put("solucion", "Revise el XML con el proveedor: sin ese dato no se puede"
+                    + " registrar el abono ni generar la contabilidad.");
+            bloqueantes.add(b);
+            System.out.println("⚠ BLOQUEANTE factura afectada: numDocModificado vacío");
+            return;
+        }
+
+        Long idTitular = titular != null ? titular.getCodigo() : null;
+        List<FacturaCompra> candidatas;
+        try {
+            candidatas = aplicacionPagoCxpDaoService
+                    .selectFacturaByNumero(numDocModificado, idTitular, idEmpresa);
+        } catch (Throwable e) {
+            Map<String, Object> b = new HashMap<>();
+            b.put("tipo", "FACTURA_COMPRA_NO_ENCONTRADA");
+            b.put("mensaje", e.getMessage());
+            b.put("detalle", "No se pudo buscar la factura de compra N° " + numDocModificado
+                    + " que afecta esta " + etiquetaDoc + ": " + e.getMessage());
+            b.put("solucion", solucion);
+            bloqueantes.add(b);
+            System.out.println("⚠ BLOQUEANTE factura afectada (error de consulta): " + e.getMessage());
+            return;
+        }
+
+        if (candidatas == null || candidatas.isEmpty()) {
+            Map<String, Object> b = new HashMap<>();
+            b.put("tipo", "FACTURA_COMPRA_NO_ENCONTRADA");
+            b.put("detalle", "No existe en el sistema la factura de compra N° " + numDocModificado
+                    + " del proveedor '" + (titular != null ? titular.getNombre() : "?")
+                    + "', que es la que esta " + etiquetaDoc + " modifica.");
+            b.put("solucion", solucion);
+            bloqueantes.add(b);
+            System.out.println("⚠ BLOQUEANTE factura afectada no encontrada: N° "
+                    + numDocModificado + " titular=" + idTitular);
+            return;
+        }
+
+        if (candidatas.size() > 1) {
+            List<String> ids = new ArrayList<>();
+            for (FacturaCompra fc : candidatas) ids.add(String.valueOf(fc.getId()));
+            Map<String, Object> b = new HashMap<>();
+            b.put("tipo", "FACTURA_COMPRA_NO_ENCONTRADA");
+            b.put("detalle", "Existe más de una factura de compra con el número "
+                    + numDocModificado + " para el mismo proveedor (ids " + ids + "),"
+                    + " así que no se puede saber cuál modifica esta " + etiquetaDoc + ".");
+            b.put("solucion", "Revise los documentos duplicados en Cuentas por Pagar y anule"
+                    + " o corrija el que sobre.");
+            b.put("facturas", ids);
+            bloqueantes.add(b);
+            System.out.println("⚠ BLOQUEANTE factura afectada duplicada: N° "
+                    + numDocModificado + " ids=" + ids);
+            return;
+        }
+
+        System.out.println("✓ Factura de compra afectada resuelta: id="
+                + candidatas.get(0).getId() + " | buscado='" + numDocModificado + "'");
+    }
+
+    /**
+     * Bloqueante de la factura de <b>venta</b> que una retención recibida abona:
+     * tiene que existir, y tiene que ser una sola.
+     *
+     * <p>
+     * Se resuelve con {@code AplicacionPagoCxcDaoService.selectFacturaByNumero},
+     * que es la consulta que usa después la aplicación de pago del Paso 4 —
+     * compara el número <b>sin guiones</b>, así que el SRI puede mandar
+     * '001001000000784' y encontrar el '001-001-000000784' de {@code CBR.FCTR}—,
+     * de modo que el bloqueante y el cobro no pueden discrepar.
+     * </p>
+     *
+     * <p>
+     * <b>No se llama a {@code AplicacionPagoCxcService.resolverFacturaPorNumero}</b>,
+     * que sería el equivalente a nivel de servicio, y este es el motivo: comunica
+     * el fallo con {@code IncomeException}, anotada
+     * {@code @ApplicationException(rollback = true)}. Al cruzar la frontera del
+     * EJB el contenedor marca <b>esta</b> transacción para rollback antes de
+     * entregarnos la excepción, y atraparla no la desmarca: el método retornaría
+     * su mapa de bloqueantes, el contenedor encontraría la marca al hacer commit
+     * y el REST devolvería un 500 opaco en vez del 422 con {@code bloqueantes}.
+     * Así estuvo desde el 2026-08-13 hasta el 2026-08-23. Ver §11 decisión 18.
+     * </p>
+     *
+     * @param bloqueantes       : Lista donde se acumulan
+     * @param numDocSustento    : Número de la factura de venta, tal como viene en el XML
+     * @param numAutDocSustento : Autorización del sustento, solo para el mensaje
+     * @param idEmpresa         : Id de la empresa contable
+     * @param etiquetaLog       : "doc sustento" o "doc sustento V2", para la traza
+     */
+    private void agregarBloqueanteFacturaVenta(List<Map<String, Object>> bloqueantes,
+            String numDocSustento, String numAutDocSustento, Long idEmpresa, String etiquetaLog) {
+
+        String numero = numDocSustento != null ? numDocSustento.trim() : "";
+        String motivo;
+
+        if (numero.isEmpty()) {
+            motivo = "El documento no indica el número de la factura a la que afecta. "
+                    + "No es posible registrar el cobro ni generar la contabilidad.";
+        } else {
+            List<com.saa.model.cxc.Factura> facturas;
+            try {
+                facturas = aplicacionPagoCxcDaoService.selectFacturaByNumero(numero, null, idEmpresa);
+            } catch (Throwable ex) {
+                facturas = null;
+                System.err.println("⚠ Error consultando la factura de venta N° " + numero
+                        + ": " + ex.getMessage());
+            }
+
+            if (facturas == null || facturas.isEmpty()) {
+                motivo = "No existe en el sistema la factura de venta N° " + numero
+                        + ". No se puede registrar el documento que la afecta.";
+            } else if (facturas.size() > 1) {
+                motivo = "Existe más de una factura de venta con el número " + numero
+                        + ". Revise los documentos duplicados.";
+            } else {
+                System.out.println("✓ Documento sustento resuelto en CXC (" + etiquetaLog
+                        + "): factura id=" + facturas.get(0).getId()
+                        + " | numero=" + facturas.get(0).getNumero()
+                        + " | buscado='" + numero + "'");
+                return;
+            }
+        }
+
+        Map<String, Object> b = new HashMap<>();
+        b.put("tipo", "FACTURA_VENTA_NO_ENCONTRADA");
+        b.put("mensaje", motivo);
+        b.put("detalle", "No se pudo resolver la factura de venta a la que afecta esta "
+                + "retención. Número: '" + numero + "' | Autorización: '"
+                + numAutDocSustento + "'. Emita o cargue primero la factura.");
+        b.put("solucion", "Verifique que la factura de venta exista en CXC. El número se "
+                + "compara sin guiones, así que '001001000000784' y '001-001-000000784' "
+                + "son equivalentes.");
+        bloqueantes.add(b);
+        System.out.println("⚠ BLOQUEANTE " + etiquetaLog + ": " + motivo
+                + " | Número: '" + numero + "' | Autorización: '" + numAutDocSustento + "'");
+    }
+
+    /**
+     * Arma el retorno estructurado que corta el registro sin grabar nada. Misma
+     * forma que devuelve {@code registrarFacturaCompra}, que es la que el 422 de
+     * {@code registrarBD} y el lote de la fase 3 ya saben leer.
+     *
+     * @param bloqueantes : Condiciones que impiden registrar
+     * @param etiquetaDoc : "la nota de crédito", "la liquidación de compra", …
+     * @return            : Mapa con pendienteClasificacion, bloqueantes y mensaje
+     */
+    private Map<String, Object> cortarPorBloqueantes(List<Map<String, Object>> bloqueantes,
+            String etiquetaDoc) {
+        System.out.println("⚠ Registro de " + etiquetaDoc + " detenido. Bloqueantes: " + bloqueantes);
+        Map<String, Object> r = new HashMap<>();
+        r.put("pendienteClasificacion", true);
+        r.put("bloqueantes", bloqueantes);
+        r.put("mensaje", "No se puede registrar " + etiquetaDoc + ". Hay " + bloqueantes.size()
+                + " condición(es) bloqueante(s) que deben resolverse primero.");
+        return r;
+    }
+
 
     private Map<String, Object> registrarNotaCreditoCompra(DocumentoCxp doc, String xmlContent,
                                                             Long idEmpresa, Long idUsuario) throws Throwable {
@@ -1906,6 +2239,26 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
         Titular titular = obtenerOAutoCrearProveedor(doc.getRucEmisor(), doc.getRazonSocialEmisor(), xmlDoc, idUsuario);
 
+        String numDocModificado = getXmlValue(xmlDoc, "numDocModificado");
+
+        // ══════════════════════════════════════════════════════════════════
+        // PASO 2 — Validaciones bloqueantes (sin grabar nada si alguna falla)
+        // Antes esto reventaba con una excepción y el frontend recibía un 500
+        // con texto plano; dentro de un lote de 50 eso es ruido inservible.
+        // Ver §9 defecto 3.
+        // ══════════════════════════════════════════════════════════════════
+        List<Map<String, Object>> bloqueantes = new ArrayList<>();
+        agregarBloqueantesComunesCompra(bloqueantes, titular, idEmpresa,
+                com.saa.rubros.TipoAsientos.NOTAS_CREDITO_COMPRA, "Notas de Crédito de Compra");
+        agregarBloqueanteFacturaAfectada(bloqueantes, numDocModificado, titular, idEmpresa,
+                "nota de crédito");
+
+        if (!bloqueantes.isEmpty())
+            return cortarPorBloqueantes(bloqueantes, "la nota de crédito");
+
+        // ══════════════════════════════════════════════════════════════════
+        // PASO 3 — Todas las condiciones OK → grabar en BD
+        // ══════════════════════════════════════════════════════════════════
         String numeroAutorizacion = getXmlValueOuter(xmlContent, "numeroAutorizacion");
         if (numeroAutorizacion.isEmpty()) numeroAutorizacion = doc.getClaveAcceso();
         String fechaAutorizacionStr = getXmlValueOuter(xmlContent, "fechaAutorizacion");
@@ -1924,7 +2277,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         nc.setAutorizacion(numeroAutorizacion);
         nc.setObservacion(getXmlValue(xmlDoc, "motivo"));
         nc.setTipoDocModificado(getXmlValue(xmlDoc, "codDocModificado"));
-        nc.setNumDocModificado(getXmlValue(xmlDoc, "numDocModificado"));
+        nc.setNumDocModificado(numDocModificado);
         nc.setFechaEmisionDM(parseFechaHora(getXmlValue(xmlDoc, "fechaEmisionDocSustento")));
         nc.setSubtotal(parseDouble(getXmlValue(xmlDoc, "totalSinImpuestos")));
         // El total de la NC es <valorModificacion>; <importeTotal> es de la
@@ -1943,12 +2296,9 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         nc.setEstado(Long.valueOf(Estado.ACTIVO));
         nc.setEstadoEmision(2L);
 
-        // BLOQUEANTE: la factura de compra afectada debe existir en el sistema.
-        // Sin ella no se puede registrar el abono ni generar la contabilidad, así
-        // que se aborta antes de grabar nada.
-        aplicacionPagoCxpService.resolverFacturaCompraPorNumero(
-                nc.getNumDocModificado(),
-                (titular != null ? titular.getCodigo() : null), idEmpresa);
+        // La factura de compra afectada ya se verificó en el PASO 2 como
+        // bloqueante FACTURA_COMPRA_NO_ENCONTRADA, con la misma consulta que usa
+        // después la aplicación de pago. Si llegamos aquí, existe y es una sola.
 
         nc = notaCreditoCompraDaoService.save(nc, null);
 
@@ -1998,6 +2348,24 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
         Titular titular = obtenerOAutoCrearProveedor(doc.getRucEmisor(), doc.getRazonSocialEmisor(), xmlDoc, idUsuario);
 
+        String numDocModificado = getXmlValue(xmlDoc, "numDocModificado");
+
+        // ══════════════════════════════════════════════════════════════════
+        // PASO 2 — Validaciones bloqueantes (sin grabar nada si alguna falla)
+        // Ver §9 defecto 3: antes esto reventaba con un 500 de texto plano.
+        // ══════════════════════════════════════════════════════════════════
+        List<Map<String, Object>> bloqueantes = new ArrayList<>();
+        agregarBloqueantesComunesCompra(bloqueantes, titular, idEmpresa,
+                com.saa.rubros.TipoAsientos.NOTAS_DEBITO_COMPRA, "Notas de Débito de Compra");
+        agregarBloqueanteFacturaAfectada(bloqueantes, numDocModificado, titular, idEmpresa,
+                "nota de débito");
+
+        if (!bloqueantes.isEmpty())
+            return cortarPorBloqueantes(bloqueantes, "la nota de débito");
+
+        // ══════════════════════════════════════════════════════════════════
+        // PASO 3 — Todas las condiciones OK → grabar en BD
+        // ══════════════════════════════════════════════════════════════════
         String numeroAutorizacion = getXmlValueOuter(xmlContent, "numeroAutorizacion");
         if (numeroAutorizacion.isEmpty()) numeroAutorizacion = doc.getClaveAcceso();
         String fechaAutorizacionStr = getXmlValueOuter(xmlContent, "fechaAutorizacion");
@@ -2016,7 +2384,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         nd.setAutorizacion(numeroAutorizacion);
         nd.setObservacion(getXmlValue(xmlDoc, "motivo"));
         nd.setTipoDocModificado(getXmlValue(xmlDoc, "codDocModificado"));
-        nd.setNumDocModificado(getXmlValue(xmlDoc, "numDocModificado"));
+        nd.setNumDocModificado(numDocModificado);
         nd.setFechaEmisionDM(parseFechaHora(getXmlValue(xmlDoc, "fechaEmisionDocSustento")));
         nd.setSubtotal(parseDouble(getXmlValue(xmlDoc, "totalSinImpuestos")));
         // El total de la ND es <valorTotal>; <importeTotal> es de la factura y
@@ -2036,10 +2404,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         nd.setEstado(Long.valueOf(Estado.ACTIVO));
         nd.setEstadoEmision(2L);
 
-        // BLOQUEANTE: la factura de compra afectada debe existir en el sistema.
-        aplicacionPagoCxpService.resolverFacturaCompraPorNumero(
-                nd.getNumDocModificado(),
-                (titular != null ? titular.getCodigo() : null), idEmpresa);
+        // La factura de compra afectada ya se verificó en el PASO 2 como
+        // bloqueante FACTURA_COMPRA_NO_ENCONTRADA.
 
         nd = notaDebitoCompraDaoService.save(nd, null);
 
@@ -2078,6 +2444,22 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
         Titular titular = obtenerOAutoCrearProveedor(doc.getRucEmisor(), doc.getRazonSocialEmisor(), xmlDoc, idUsuario);
 
+        // ══════════════════════════════════════════════════════════════════
+        // PASO 2 — Validaciones bloqueantes (sin grabar nada si alguna falla)
+        // Ver §9 defecto 3. La liquidación no modifica ningún documento previo,
+        // así que solo lleva los dos bloqueantes comunes.
+        // ══════════════════════════════════════════════════════════════════
+        List<Map<String, Object>> bloqueantes = new ArrayList<>();
+        agregarBloqueantesComunesCompra(bloqueantes, titular, idEmpresa,
+                com.saa.rubros.TipoAsientos.LIQUIDACIONES_COMPRA_RECIBIDAS,
+                "Liquidaciones de Compra recibidas");
+
+        if (!bloqueantes.isEmpty())
+            return cortarPorBloqueantes(bloqueantes, "la liquidación de compra");
+
+        // ══════════════════════════════════════════════════════════════════
+        // PASO 3 — Todas las condiciones OK → grabar en BD
+        // ══════════════════════════════════════════════════════════════════
         String numeroAutorizacion = getXmlValueOuter(xmlContent, "numeroAutorizacion");
         if (numeroAutorizacion.isEmpty()) numeroAutorizacion = doc.getClaveAcceso();
         String fechaAutorizacionStr = getXmlValueOuter(xmlContent, "fechaAutorizacion");
@@ -2176,25 +2558,15 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             bloqueantes.add(b);
         }
 
-        // 2b. Tipo de asiento para Retenciones de Compra configurado en BD
-        try {
-            Long idTipoAsiento = tipoAsientoService.codigoByAlterno(
-                    com.saa.rubros.TipoAsientos.RETENCIONES_RECIBIDAS, idEmpresa);
-            if (idTipoAsiento == null) {
-                Map<String, Object> b = new HashMap<>();
-                b.put("tipo", "TIPO_ASIENTO_NO_CONFIGURADO");
-                b.put("detalle", "No existe el Tipo de Asiento con código alterno "
-                        + com.saa.rubros.TipoAsientos.RETENCIONES_RECIBIDAS
-                        + " para Retenciones de Compra. Configúrelo en Contabilidad → Tipos de Asiento.");
-                bloqueantes.add(b);
-            }
-        } catch (Throwable e) {
-            Map<String, Object> b = new HashMap<>();
-            b.put("tipo", "TIPO_ASIENTO_NO_CONFIGURADO");
-            b.put("detalle", "No existe el Tipo de Asiento para Retenciones de Compra (codigoAlterno="
-                    + com.saa.rubros.TipoAsientos.RETENCIONES_RECIBIDAS
-                    + "). Configúrelo en Contabilidad → Tipos de Asiento.");
-            bloqueantes.add(b);
+        // 2b. Tipo de asiento para Retenciones de Compra configurado en BD.
+        //     Solo cuando la empresa genera contabilidad: con generaConta = 0 no se
+        //     va a emitir ningún asiento, así que exigir la plantilla impediría
+        //     registrar el documento por una razón que no aplica. Misma guarda que
+        //     usan la factura de compra y agregarBloqueantesComunesCompra.
+        if (verificarGeneraConta(idEmpresa)
+                && !existeTipoAsiento(com.saa.rubros.TipoAsientos.RETENCIONES_RECIBIDAS, idEmpresa)) {
+            bloqueantes.add(bloqueanteTipoAsiento(
+                    com.saa.rubros.TipoAsientos.RETENCIONES_RECIBIDAS, "Retenciones de Compra"));
         }
 
         // 2c. Cada código de retención del XML debe tener cuenta en TSRI (PGS)
@@ -2238,33 +2610,13 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         }
 
         // 2d. BLOQUEANTE: la retención abona una factura de VENTA (CXC), que debe
-        //     existir. Igual que en registrarRetencionCompraV2, se resuelve con el
-        //     mismo método que usa la aplicación de pago
-        //     (AplicacionPagoCxcService.resolverFacturaPorNumero), que compara el
-        //     número sin guiones — el SRI manda '001001000000784' y en CBR.FCTR
-        //     está como '001-001-000000784'.
+        //     existir. Se resuelve con la misma consulta que usa después la
+        //     aplicación de pago, pero por el DAO: ver agregarBloqueanteFacturaVenta
+        //     y §11 decisión 18 — el resolutor de servicio lanza IncomeException y
+        //     atraparla dejaba la transacción condenada.
         if (!numDocSustento.isEmpty() || !numAutDocSustento.isEmpty()) {
-            try {
-                com.saa.model.cxc.Factura facturaVenta =
-                        aplicacionPagoCxcService.resolverFacturaPorNumero(numDocSustento, null, idEmpresa);
-                System.out.println("✓ Documento sustento resuelto en CXC: factura id="
-                        + facturaVenta.getId() + " | numero=" + facturaVenta.getNumero()
-                        + " | buscado='" + numDocSustento + "'");
-            } catch (Throwable ex) {
-                Map<String, Object> b = new HashMap<>();
-                b.put("tipo", "FACTURA_VENTA_NO_ENCONTRADA");
-                b.put("mensaje", ex.getMessage());
-                b.put("detalle", "No se pudo resolver la factura de venta a la que afecta esta "
-                        + "retención. Número: '" + numDocSustento + "' | Autorización: '"
-                        + numAutDocSustento + "'. Emita o cargue primero la factura.");
-                b.put("solucion", "Verifique que la factura de venta exista en CXC. El número se "
-                        + "compara sin guiones, así que '001001000000784' y '001-001-000000784' "
-                        + "son equivalentes.");
-                bloqueantes.add(b);
-                System.out.println("⚠ BLOQUEANTE doc sustento: " + ex.getMessage()
-                        + " | Número: '" + numDocSustento + "' | Autorización: '"
-                        + numAutDocSustento + "'");
-            }
+            agregarBloqueanteFacturaVenta(bloqueantes, numDocSustento, numAutDocSustento,
+                    idEmpresa, "doc sustento");
         }
 
         // Si hay bloqueantes → cortar sin grabar nada
@@ -2371,25 +2723,14 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             bloqueantes.add(b);
         }
 
-        // 2b. Tipo de asiento para Retenciones de Compra V2 configurado en BD
-        try {
-            Long idTipoAsiento = tipoAsientoService.codigoByAlterno(
-                    com.saa.rubros.TipoAsientos.RETENCIONES_RECIBIDAS_V2, idEmpresa);
-            if (idTipoAsiento == null) {
-                Map<String, Object> b = new HashMap<>();
-                b.put("tipo", "TIPO_ASIENTO_NO_CONFIGURADO");
-                b.put("detalle", "No existe el Tipo de Asiento con código alterno "
-                        + com.saa.rubros.TipoAsientos.RETENCIONES_RECIBIDAS_V2
-                        + " para Retenciones de Compra V2. Configúrelo en Contabilidad → Tipos de Asiento.");
-                bloqueantes.add(b);
-            }
-        } catch (Throwable e) {
-            Map<String, Object> b = new HashMap<>();
-            b.put("tipo", "TIPO_ASIENTO_NO_CONFIGURADO");
-            b.put("detalle", "No existe el Tipo de Asiento para Retenciones de Compra V2 (codigoAlterno="
-                    + com.saa.rubros.TipoAsientos.RETENCIONES_RECIBIDAS_V2
-                    + "). Configúrelo en Contabilidad → Tipos de Asiento.");
-            bloqueantes.add(b);
+        // 2b. Tipo de asiento para Retenciones de Compra V2 configurado en BD.
+        //     Solo si la empresa genera contabilidad — ver la nota equivalente en
+        //     registrarRetencionCompra.
+        if (verificarGeneraConta(idEmpresa)
+                && !existeTipoAsiento(com.saa.rubros.TipoAsientos.RETENCIONES_RECIBIDAS_V2, idEmpresa)) {
+            bloqueantes.add(bloqueanteTipoAsiento(
+                    com.saa.rubros.TipoAsientos.RETENCIONES_RECIBIDAS_V2,
+                    "Retenciones de Compra V2"));
         }
 
         // 2c. Cada código de retención del XML debe tener cuenta en TSRI
@@ -2469,27 +2810,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 System.out.println("⚠ BLOQUEANTE doc sustento V2 (multidocumento): " + numerosSustento);
             } else {
                 String numSustento = numerosSustento.isEmpty() ? "" : numerosSustento.iterator().next();
-                try {
-                    com.saa.model.cxc.Factura facturaVenta =
-                            aplicacionPagoCxcService.resolverFacturaPorNumero(numSustento, null, idEmpresa);
-                    System.out.println("✓ Documento sustento V2 resuelto en CXC: factura id="
-                            + facturaVenta.getId() + " | numero=" + facturaVenta.getNumero()
-                            + " | buscado='" + numSustento + "'");
-                } catch (Throwable ex) {
-                    Map<String, Object> b = new HashMap<>();
-                    b.put("tipo", "FACTURA_VENTA_NO_ENCONTRADA");
-                    b.put("mensaje", ex.getMessage());
-                    b.put("detalle", "No se pudo resolver la factura de venta a la que afecta esta "
-                            + "retención. Número: '" + numSustento + "' | Autorización: '"
-                            + numAutDocSustento + "'. Emita o cargue primero la factura.");
-                    b.put("solucion", "Verifique que la factura de venta exista en CXC. El número se "
-                            + "compara sin guiones, así que '001001000000784' y '001-001-000000784' "
-                            + "son equivalentes.");
-                    bloqueantes.add(b);
-                    System.out.println("⚠ BLOQUEANTE doc sustento V2: " + ex.getMessage()
-                            + " | Número: '" + numSustento + "' | Autorización: '"
-                            + numAutDocSustento + "'");
-                }
+                agregarBloqueanteFacturaVenta(bloqueantes, numSustento, numAutDocSustento,
+                        idEmpresa, "doc sustento V2");
             }
         }
 
@@ -3482,7 +3804,6 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 catch (Throwable t) { throw new Exception(t.getMessage(), t); }
 
             } else if ("NOTA_CREDITO_COMPRA".equals(tipo)) {
-                // TODO: Reemplazar TipoAsientos.NOTAS_CREDITO_COMPRA con el codigoAlterno correcto.
                 // TODO: AuxiliarUno DEBE:  cuenta CxP del proveedor
                 // TODO: AuxiliarUno HABER: cuenta de gasto/costo del grupo + cuenta IVA
                 try { asiento = asientoContableService.generarAsientoNotaCreditoCompra(
@@ -3493,7 +3814,6 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 catch (Throwable t) { throw new Exception(t.getMessage(), t); }
 
             } else if ("NOTA_DEBITO_COMPRA".equals(tipo)) {
-                // TODO: Reemplazar TipoAsientos.NOTAS_DEBITO_COMPRA con el codigoAlterno correcto.
                 // TODO: AuxiliarUno DEBE:  cuenta de gasto/motivo del débito
                 // TODO: AuxiliarUno HABER: cuenta CxP del proveedor
                 try { asiento = asientoContableService.generarAsientoNotaDebitoCompra(
@@ -3504,7 +3824,6 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 catch (Throwable t) { throw new Exception(t.getMessage(), t); }
 
             } else if ("LIQUIDACION_COMPRA_COMPRA".equals(tipo)) {
-                // TODO: Reemplazar TipoAsientos.LIQUIDACIONES_COMPRA_RECIBIDAS con el codigoAlterno correcto.
                 // TODO: AuxiliarUno DEBE:  cuenta de gasto/costo del grupo + IVA compras
                 // TODO: AuxiliarUno HABER: cuenta CxP del prestador de servicio
                 try { asiento = asientoContableService.generarAsientoLiquidacionCompraCompra(
@@ -3515,7 +3834,6 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 catch (Throwable t) { throw new Exception(t.getMessage(), t); }
 
             } else if ("RETENCION_COMPRA".equals(tipo)) {
-                // TODO: Reemplazar TipoAsientos.RETENCIONES_RECIBIDAS con el codigoAlterno correcto.
                 // TODO: AuxiliarUno DEBE:  cuenta CxP del proveedor (monto retenido)
                 // TODO: AuxiliarUno HABER: cuenta de retención recibida por código SRI
                 try { asiento = asientoContableService.generarAsientoRetencionCompra(
@@ -3526,7 +3844,6 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 catch (Throwable t) { throw new Exception(t.getMessage(), t); }
 
             } else if ("RETENCION_COMPRA_V2".equals(tipo)) {
-                // TODO: Reemplazar TipoAsientos.RETENCIONES_RECIBIDAS_V2 con el codigoAlterno correcto.
                 // TODO: AuxiliarUno DEBE:  cuenta CxP del proveedor (monto retenido)
                 // TODO: AuxiliarUno HABER: cuenta de retención recibida por código SRI
                 try { asiento = asientoContableService.generarAsientoRetencionCompraV2(

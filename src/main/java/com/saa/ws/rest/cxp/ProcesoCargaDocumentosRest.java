@@ -5,7 +5,9 @@ import java.util.Map;
 
 import com.saa.basico.ejb.FileService;
 import com.saa.ejb.cxp.dao.GrupoProductoPagoDaoService;
+import com.saa.ejb.cxp.service.ClasificacionProductosLoteService;
 import com.saa.ejb.cxp.service.ProcesoCargaDocumentosService;
+import com.saa.ejb.cxp.service.ProcesoLoteCxpService;
 import com.saa.model.cxp.DocumentoCxp;
 import com.saa.model.cxp.GrupoProductoPago;
 import com.saa.model.cxp.NombreEntidadesPago;
@@ -26,11 +28,20 @@ import jakarta.ws.rs.core.*;
  *  GET  /carga-documentos/resumen/{idCargaTxt}             → Consultar resumen de una carga
  *  GET  /carga-documentos/documento/{id}                   → Consultar un DocumentoCxp
  *  GET  /carga-documentos/novedades/{idEmpresa}            → Novedades pendientes
+ *
+ * LOTE POR CARGA TXT (plan de carga automática desde el SRI, §6):
+ *  POST /carga-documentos/descargarXmlLote/{idCargaTxt}    → §6.1 Bajar del SRI el XML de toda la carga
+ *  POST /carga-documentos/registrarLote/{idCargaTxt}       → §6.2 Registrar y contabilizar toda la carga
+ *  GET  /carga-documentos/progresoLote/{idCargaTxt}        → §6.3 Progreso del lote en curso
+ *  POST /carga-documentos/clasificarProductosLote          → §6.4 Asignar grupo a varios productos
+ *  GET  /carga-documentos/productosSinClasificarLote/{idCargaTxt} → §6.5 Qué falta clasificar
  */
 @Path("carga-documentos")
 public class ProcesoCargaDocumentosRest {
 
     @EJB private ProcesoCargaDocumentosService procesoCargaDocumentosService;
+    @EJB private ProcesoLoteCxpService         procesoLoteCxpService;
+    @EJB private ClasificacionProductosLoteService clasificacionProductosLoteService;
     @EJB private GrupoProductoPagoDaoService   grupoProductoPagoDaoService;
     @EJB private FileService                   fileService;
     @Context private UriInfo context;
@@ -568,6 +579,211 @@ public class ProcesoCargaDocumentosRest {
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(errorMap("Error al obtener grupos: " + e.getMessage()))
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    // =========================================================
+    // LOTE POR CARGA TXT — §6.1 y §6.3 del plan de carga automática
+    // =========================================================
+
+    /**
+     * §6.1 — Descarga masiva del XML desde el SRI para una carga TXT.
+     *
+     * <p>
+     * Body JSON: <code>{ "idEmpresa": 1236, "idUsuario": 5 }</code>
+     * </p>
+     *
+     * <p>
+     * Responde <b>202</b> en cuanto el lote arranca, con los contadores de lo que
+     * va a procesar; el avance se sigue por {@code /progresoLote/{idCargaTxt}}.
+     * Responde <b>409</b> si ya hay un lote corriendo para esa carga.
+     * </p>
+     */
+    @POST
+    @Path("/descargarXmlLote/{idCargaTxt}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response descargarXmlLote(@PathParam("idCargaTxt") Long idCargaTxt,
+                                      Map<String, Object> params) {
+        System.out.println("=== REST descargarXmlLote idCargaTxt=" + idCargaTxt);
+        boolean reservado = false;
+        try {
+            Long idEmpresa = Long.valueOf(params.get("idEmpresa").toString());
+            Long idUsuario = Long.valueOf(params.get("idUsuario").toString());
+
+            Map<String, Object> arranque = procesoLoteCxpService.reservarDescargaLote(idCargaTxt);
+            if (Boolean.TRUE.equals(arranque.get("conflicto")))
+                return Response.status(Response.Status.CONFLICT)
+                        .entity(errorMap("Ya hay una descarga en curso para esta carga."))
+                        .type(MediaType.APPLICATION_JSON).build();
+            reservado = true;
+
+            // Va por el proxy del EJB, que es lo que hace que el método corra de
+            // verdad en segundo plano: un this.descargarXmlLote(...) dentro del
+            // propio bean se ejecutaría sincrónicamente y la petición se quedaría
+            // colgada los minutos que tarde el lote.
+            procesoLoteCxpService.descargarXmlLote(idCargaTxt, idEmpresa, idUsuario);
+
+            return Response.status(Response.Status.ACCEPTED)
+                    .entity(arranque).type(MediaType.APPLICATION_JSON).build();
+
+        } catch (Throwable e) {
+            // Si ya se había reservado, hay que soltar la carga o queda trabada
+            // para siempre: el lote que la liberaría no llegó a arrancar.
+            if (reservado) procesoLoteCxpService.liberarLote(idCargaTxt);
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(errorMap("Error al iniciar la descarga del lote: " + e.getMessage()))
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * §6.2 — Registro y contabilización de toda una carga.
+     *
+     * <p>
+     * Body JSON: <code>{ "idEmpresa": 1236, "idUsuario": 5 }</code>
+     * </p>
+     *
+     * <p>
+     * Procesa los documentos que tengan el XML cargado, en el orden obligatorio
+     * (facturas y liquidaciones → notas → retenciones) y con una transacción por
+     * documento. Responde <b>202</b> al arrancar y <b>409</b> si ya hay un lote
+     * corriendo sobre esa carga, sea de descarga o de registro.
+     * </p>
+     */
+    @POST
+    @Path("/registrarLote/{idCargaTxt}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response registrarLote(@PathParam("idCargaTxt") Long idCargaTxt,
+                                   Map<String, Object> params) {
+        System.out.println("=== REST registrarLote idCargaTxt=" + idCargaTxt);
+        boolean reservado = false;
+        try {
+            Long idEmpresa = Long.valueOf(params.get("idEmpresa").toString());
+            Long idUsuario = Long.valueOf(params.get("idUsuario").toString());
+
+            Map<String, Object> arranque = procesoLoteCxpService.reservarRegistroLote(idCargaTxt);
+            if (Boolean.TRUE.equals(arranque.get("conflicto")))
+                return Response.status(Response.Status.CONFLICT)
+                        .entity(errorMap("Ya hay un lote en curso para esta carga."))
+                        .type(MediaType.APPLICATION_JSON).build();
+            reservado = true;
+
+            // Por el proxy del EJB, que es lo que hace que corra de verdad en
+            // segundo plano. Un this.registrarLote(...) sería síncrono y la
+            // petición se quedaría colgada los minutos que tarde el lote.
+            procesoLoteCxpService.registrarLote(idCargaTxt, idEmpresa, idUsuario);
+
+            return Response.status(Response.Status.ACCEPTED)
+                    .entity(arranque).type(MediaType.APPLICATION_JSON).build();
+
+        } catch (Throwable e) {
+            // Si ya se había reservado hay que soltar la carga, o queda trabada:
+            // el lote que la liberaría no llegó a arrancar.
+            if (reservado) procesoLoteCxpService.liberarLote(idCargaTxt);
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(errorMap("Error al iniciar el registro del lote: " + e.getMessage()))
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * §6.3 — Progreso del lote de una carga. Sirve a los dos lotes (descarga y
+     * registro); {@code tipoLote} dice cuál, y es null cuando no hay ninguno.
+     * El frontend lo consulta cada 2 s mientras {@code enCurso} sea true.
+     */
+    @GET
+    @Path("/progresoLote/{idCargaTxt}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response progresoLote(@PathParam("idCargaTxt") Long idCargaTxt) {
+        System.out.println("=== REST progresoLote idCargaTxt=" + idCargaTxt);
+        try {
+            Map<String, Object> progreso = procesoLoteCxpService.progresoLote(idCargaTxt);
+            return Response.status(Response.Status.OK)
+                    .entity(progreso).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(errorMap("Error al consultar el progreso del lote: " + e.getMessage()))
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    // =========================================================
+    // CLASIFICACIÓN MASIVA DE PRODUCTOS — §6.4 y §6.5
+    // =========================================================
+
+    /**
+     * §6.5 — Productos en POR CLASIFICAR que aparecen en los documentos de una
+     * carga, con los comprobantes que los usan.
+     *
+     * <p>
+     * Devuelve <b>200 con la lista vacía</b> cuando no hay nada pendiente o
+     * cuando ningún documento de la carga llegó a registrarse todavía. No
+     * devuelve 404: "no hay nada que clasificar" es una respuesta, no un error.
+     * </p>
+     */
+    @GET
+    @Path("/productosSinClasificarLote/{idCargaTxt}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response productosSinClasificarLote(@PathParam("idCargaTxt") Long idCargaTxt) {
+        System.out.println("=== REST productosSinClasificarLote idCargaTxt=" + idCargaTxt);
+        try {
+            Map<String, Object> resultado = clasificacionProductosLoteService
+                    .productosSinClasificarLote(idCargaTxt);
+            return Response.status(Response.Status.OK)
+                    .entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(errorMap("Error al listar los productos sin clasificar: "
+                            + e.getMessage()))
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * §6.4 — Asigna grupo a productos que ya existen, todos en una transacción.
+     *
+     * <p>
+     * Body JSON:
+     * <code>{ "idEmpresa": 1236,
+     *         "asignaciones": [ {"idProducto": 88, "idGrupo": 4} ] }</code>
+     * </p>
+     *
+     * <p>
+     * <b>422</b> cuando el envío no se puede aplicar entero: grupo inexistente o
+     * de otra empresa, líneas sin idProducto/idGrupo, lista vacía. Es el mismo
+     * código que ya usa {@code registrarBD} para los errores de negocio.
+     * </p>
+     */
+    @POST
+    @Path("/clasificarProductosLote")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response clasificarProductosLote(Map<String, Object> params) {
+        System.out.println("=== REST clasificarProductosLote");
+        try {
+            Long idEmpresa = params.get("idEmpresa") != null
+                    ? Long.valueOf(params.get("idEmpresa").toString()) : null;
+
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> asignaciones =
+                    (List<Map<String, Object>>) params.get("asignaciones");
+
+            Map<String, Object> resultado = clasificacionProductosLoteService
+                    .clasificarProductosLote(idEmpresa, asignaciones);
+
+            return Response.status(Response.Status.OK)
+                    .entity(resultado).type(MediaType.APPLICATION_JSON).build();
+
+        } catch (com.saa.basico.util.IncomeException e) {
+            // Error de negocio: el usuario puede corregirlo y reenviar.
+            return Response.status(422)
+                    .entity(errorMap(e.getMessage())).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(errorMap("Error al clasificar los productos: " + e.getMessage()))
                     .type(MediaType.APPLICATION_JSON).build();
         }
     }
