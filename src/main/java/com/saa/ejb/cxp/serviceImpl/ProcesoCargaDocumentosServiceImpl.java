@@ -753,6 +753,16 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             throw new Exception("El documento debe tener estado XML_CARGADO (2). Estado actual: "
                     + doc.getEstadoDocumento());
 
+        // Una factura de reembolso sin sustentos vuelve a estado 2 con la FCTC ya
+        // creada (ver generarAsientoCxp). Sin esta guarda, volver a pulsar
+        // "registrar" grabaria una segunda factura con su detalle. El documento se
+        // completa ingresando los sustentos y contabilizando, no re-registrando.
+        if (registroBDVigente(doc))
+            throw new com.saa.basico.util.IncomeException("El documento ya esta registrado en "
+                    + doc.getTipoTablaDestino() + " con id=" + doc.getIdDocumentoBD()
+                    + ". Si es una factura de reembolso pendiente, ingrese los documentos sustento "
+                    + "y contabilicela; si desea volver a registrarla, reviertala primero.");
+
         String xmlContent = leerArchivoXml(doc.getPathXml());
         String tipo = doc.getTipoComprobante();
         Map<String, Object> resultado;
@@ -1020,6 +1030,23 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 || (codDocReembolsoCab != null && !codDocReembolsoCab.isEmpty())
                 || reembolsosXml.getLength() > 0;
 
+        // Traza de la deteccion: sin esto, "la factura quedo sin registros en RMBF"
+        // no se puede distinguir de "el XML no traia sustentos" mirando el log.
+        System.out.println("registrarFacturaCompra reembolso -> DCXPESRM=" + doc.getEsReembolso()
+                + " codDocReembolso(cab)=[" + codDocReembolsoCab + "]"
+                + " nodos <reembolsoDetalle>=" + reembolsosXml.getLength()
+                + " => esReembolso=" + esReembolso);
+
+        // El XML trae el bloque pero el DOM no lo ve: sintoma de que se esta
+        // parseando un contenido distinto al que se cree (archivo viejo en disco,
+        // <comprobante> que no corresponde). Es un error, no un caso de negocio.
+        if (reembolsosXml.getLength() == 0 && xmlContent != null
+                && xmlContent.contains("reembolsoDetalle")) {
+            System.out.println("✖ El texto del XML contiene 'reembolsoDetalle' pero el documento "
+                    + "parseado no tiene ningun nodo. Revise el archivo apuntado por DCXPPTXM: "
+                    + doc.getPathXml());
+        }
+
         // ══════════════════════════════════════════════════════════════════
         // PASO 1 — Acciones automáticas (siempre se ejecutan)
         // ══════════════════════════════════════════════════════════════════
@@ -1046,8 +1073,10 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 Element el = (Element) reembolsosXml.item(i);
                 String idProv = getElementValue(el, "identificacionProveedorReembolso");
                 String nombreProd = "REEMBOLSO " + idProv;
+                // OJO: el XSD del SRI no define <totalDocReembolso>; el total del
+                // sustento solo existe como suma de sus <detalleImpuesto>.
                 ProductoPago prod = obtenerOAutoCrearProducto(nombreProd, idProv, null,
-                        parseDouble(getElementValue(el, "totalDocReembolso")), idEmpresa);
+                        totalDocumentoReembolso(el), idEmpresa);
                 productosReembolso.add(prod);
             }
         }
@@ -1341,6 +1370,10 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             r.put("esReembolso", true);
             r.put("reembolsosLeidos", reembolsosLeidos);
             if (reembolsosLeidos == 0) {
+                System.out.println("⚠ Factura " + factura.getId() + " marcada como reembolso pero el XML "
+                        + "no trae sustentos: PGS.RMBF queda vacia y la factura NO se contabiliza. "
+                        + "Los sustentos deben ingresarse a mano (POST /rest/rmbf) y luego "
+                        + "recalcularTotalesReembolso + contabilizarReembolso.");
                 r.put("reembolsoManualPendiente", true);
                 r.put("advertenciaReembolso",
                     "La factura fue marcada como reembolso de gastos pero el XML no contiene el bloque <reembolsos>. "
@@ -1376,6 +1409,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     private int grabarReembolsosDesdeXml(Document xmlDoc, FacturaCompra factura,
             List<ProductoPago> productosReembolso) throws Throwable {
         NodeList reembolsos = xmlDoc.getElementsByTagName("reembolsoDetalle");
+        System.out.println("grabarReembolsosDesdeXml factura=" + factura.getId()
+                + " sustentos en el XML=" + reembolsos.getLength());
         int grabados = 0;
         for (int i = 0; i < reembolsos.getLength(); i++) {
             Element el = (Element) reembolsos.item(i);
@@ -1433,8 +1468,31 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             r.setEstado(Long.valueOf(Estado.ACTIVO));
             reembolsoFacturaCompraDaoService.save(r, null);
             grabados++;
+            System.out.println("  RMBF <- " + r.getIdentificacionProveedor()
+                    + " " + r.getEstablecimiento() + "-" + r.getPuntoEmision() + "-" + r.getSecuencial()
+                    + " total=" + r.getTotal() + " producto=" + r.getProducto());
         }
+        System.out.println("grabarReembolsosDesdeXml grabados=" + grabados);
         return grabados;
+    }
+
+    /**
+     * Total de un documento sustento de reembolso: la suma de las bases y los
+     * impuestos de sus &lt;detalleImpuesto&gt;. El XSD del SRI (ANEXO 5) no
+     * declara ningun elemento con el total del sustento, asi que hay que
+     * calcularlo.
+     * @param el : Elemento &lt;reembolsoDetalle&gt;
+     * @return   : Total del documento sustento
+     */
+    private double totalDocumentoReembolso(Element el) {
+        double total = 0.0;
+        NodeList imps = el.getElementsByTagName("detalleImpuesto");
+        for (int j = 0; j < imps.getLength(); j++) {
+            Element impEl = (Element) imps.item(j);
+            total += parseDouble(getElementValue(impEl, "baseImponibleReembolso"));
+            total += parseDouble(getElementValue(impEl, "impuestoReembolso"));
+        }
+        return total;
     }
 
     // =========================================================
@@ -2507,6 +2565,45 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     // =========================================================
     // Reversión de registros en tablas destino
     // =========================================================
+    /**
+     * Indica si el documento ya tiene una fila viva en su tabla destino.
+     *
+     * <p>
+     * No basta con mirar {@code idDocumentoBD}: al revertir se borra la fila
+     * pero el campo se conserva apuntando a un id muerto (ver
+     * {@link #revertirRegistrosBD}), asi que hay que preguntar por la fila.
+     * </p>
+     *
+     * @param doc : Documento de la bandeja
+     * @return    : true si la fila destino todavia existe
+     */
+    private boolean registroBDVigente(DocumentoCxp doc) {
+        String tipo  = doc.getTipoTablaDestino();
+        Long idDocBD = doc.getIdDocumentoBD();
+        if (tipo == null || idDocBD == null) return false;
+
+        String entidad;
+        switch (tipo) {
+            case "FACTURA_COMPRA":            entidad = "FacturaCompra";           break;
+            case "NOTA_CREDITO_COMPRA":       entidad = "NotaCreditoCompra";       break;
+            case "NOTA_DEBITO_COMPRA":        entidad = "NotaDebitoCompra";        break;
+            case "LIQUIDACION_COMPRA_COMPRA": entidad = "LiquidacionCompraCompra"; break;
+            case "RETENCION_COMPRA":          entidad = "RetencionCompra";         break;
+            case "RETENCION_COMPRA_V2":       entidad = "RetencionCompraV2";       break;
+            default: return false;
+        }
+        try {
+            long existe = ((Number) em.createQuery(
+                    "select count(e) from " + entidad + " e where e.id = :id")
+                    .setParameter("id", idDocBD).getSingleResult()).longValue();
+            return existe > 0;
+        } catch (Throwable e) {
+            System.out.println("Error verificando registro vigente " + entidad + " id=" + idDocBD
+                    + ": " + e.getMessage());
+            return false;
+        }
+    }
+
     private void revertirRegistrosBD(DocumentoCxp doc) throws Throwable {
         String tipo = doc.getTipoTablaDestino();
         Long idDocBD = doc.getIdDocumentoBD();

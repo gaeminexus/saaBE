@@ -824,3 +824,33 @@ precondiciones, estados (estado 2 con contabilización pendiente), endpoints nue
    reembolso, regenera el asiento normal y vuelve a estado 3.
 9. **Revertir** una factura reembolso → no falla por FK; RMBF eliminados; asiento anulado.
 10. **Empresa con generaConta=0** → reembolsos se graban, no hay asiento, estado 3 directo.
+
+---
+
+## 13. Ajustes 2026-08-21 (a raíz de "no se crearon los registros en RMBF")
+
+Reporte: al registrar una factura de CXP marcada como reembolso, el detalle (`PGS.DFCC`) se creó
+bien pero `PGS.RMBF` quedó vacía.
+
+`grabarReembolsosDesdeXml` escribe **una fila por nodo `<reembolsoDetalle>` del XML** y nada más:
+si el XML no trae el bloque `<reembolsos>`, RMBF queda vacía a propósito (criterio de aceptación 4
+del §12) y la factura queda pendiente de captura manual. Eso no se distinguía en el log de un fallo
+real de parseo, así que se agregó lo siguiente:
+
+1. **Trazas de detección** en `registrarFacturaCompra`: se imprime `DCXPESRM`, el `codDocReembolso`
+   de `<infoFactura>`, el número de nodos `<reembolsoDetalle>` encontrados y el `esReembolso`
+   resultante. `grabarReembolsosDesdeXml` traza cada fila grabada y el total.
+2. **Alerta de parseo**: si el texto del XML contiene `reembolsoDetalle` pero el DOM no ve ningún
+   nodo, se imprime un error apuntando al archivo de `DCXPPTXM` — señal de que se está leyendo un
+   archivo distinto al que se cree.
+3. **Advertencia explícita** cuando la factura queda marcada como reembolso sin sustentos, con el
+   camino a seguir (alta manual + `recalcularTotalesReembolso` + `contabilizarReembolso`).
+4. **`totalDocumentoReembolso(Element)`**: el precio del producto autocreado del sustento se leía de
+   `<totalDocReembolso>`, elemento que **no existe en el XSD del SRI** (verificado contra
+   `factura_V1.1.0.xsd` y `factura_V2.1.0.xsd`), por lo que siempre valía 0. Ahora se calcula como
+   la suma de `baseImponibleReembolso` + `impuestoReembolso` de sus `<detalleImpuesto>`.
+5. **Guarda anti-duplicado en `registrarDocumentoBD`** (`registroBDVigente`): la rama de
+   contabilización pendiente de `generarAsientoCxp` devuelve el DCXP a estado 2 con la `FCTC` ya
+   creada; volver a pulsar "registrar" grababa una **segunda factura con su detalle**. Ahora se
+   rechaza con `IncomeException` si la fila destino sigue viva. Se comprueba la existencia de la
+   fila, no `idDocumentoBD`, porque al revertir ese campo queda apuntando a un id muerto.

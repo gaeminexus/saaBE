@@ -169,3 +169,11 @@ logs/
 *.swp
 *~.nib
 local.properties
+
+# Excepcion deliberada: los .sql de docs/ NO son artefactos de build.
+# Son el procedimiento de carga a produccion --DDL, datos del cliente,
+# instrumentos de contraste-- y desde el 2026-08-21 son FUENTE UNICA: se
+# retiro el espejo de saaFE por indicacion del dueno del modelo. Sin esta
+# excepcion vivirian solo en el disco de una maquina.
+# Mismo criterio que libs-repo/**/*.jar, documentado en CLAUDE.md.
+!docs/**/*.sql

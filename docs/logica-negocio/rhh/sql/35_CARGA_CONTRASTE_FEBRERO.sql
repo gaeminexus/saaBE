@@ -1,0 +1,289 @@
+-- =====================================================
+-- MODULO: RHH - VALORES ESPERADOS DE FEBRERO 2026, DEL ROL Y DE LA PLANILLA
+-- DESCRIPCION: Carga RHH.CTRL con lo que ASOPREP pago en febrero y lo que
+--              el IESS cobro, para CONTRASTE_MES_CONTRA_ROL_REAL.sql
+--              (ANIO=2026, MES=2).
+-- ORDEN DE EJECUCION: 35
+-- FECHA: 2026-08-20
+-- =====================================================
+-- REGLA 6: ningun numero de aqui sale de un calculo nuestro. Vienen de la
+-- hoja FEBRERO del libro ROL FEBRERO 2026.xlsb (REF-02 §7 y §9) y de la
+-- planilla del IESS del periodo 2026-02 (REF-03 §1.5). Se cargan tal cual.
+--
+-- CORRECCION 2026-08-20 (noche): Munoz Santos va con 51,98 y 498,03, no 51,97 y 498,02.
+--   La celda del .xlsb guarda 51,975 / 498,025 y el cliente la MUESTRA, la firma en
+--   el rol individual y la transfiere como 51,98 / 498,03. Los 51,97 / 498,02 eran
+--   un artefacto de la transcripcion a markdown (REF-02 §7). Totales del cliente:
+--   16.476,92 (enero) y 17.525,11 (febrero).
+--   OJO: con esto Munoz NO desaparece del contraste, cambia de sitio. El cliente
+--   descuenta 51,98 y paga 498,03 (suman 550,01: Excel redondea cada celda por
+--   separado). Nosotros damos 51,98 y 498,02. Resultado esperado, todos los meses:
+--     concepto 20: cuadra · LIQUIDO: -0,01 · TOTAL_IESS: +0,01 (113,31 vs 113,30).
+--   Es la regla 4 (redondeo por renglon vs. del total) y no se ajusta.
+--
+-- LO QUE CAMBIA RESPECTO A ENERO
+--   1. 22 personas en el rol Y 22 en la planilla: ya no hay finiquitos.
+--   2. Bravo Caiza y Cevallos Montenegro, mes completo: 700,00 y 2.000,00.
+--   3. Mendez Torres sigue con 241,00 sobre 15 dias (hasta marzo).
+--   4. El par de VACACIONES es 886,80 por lado (RMU/24 de los 22). Sigue
+--      dentro de INGRESOS y DESCUENTOS, como en enero; netea en LIQUIDO.
+--   5. Prestamos del IESS del periodo 2026-02:
+--        hipotecarios 1.015,13 (Manosalvas baja a 379,84 este mes),
+--        quirografarios 186,33 (entra Castro Arce, NUT 19854526, 14,79;
+--        Calderon amortiza a 14,33).
+--   6. Anticipos: Calderon 619,52, Pardo Calle 350,00 (segunda cuota de los
+--      700 de enero), Zambrano Mieles 50,00. Total 1.019,52.
+--   7. Calderon Parraga cobra LIQUIDO 0,00: el anticipo agota el neto
+--      (700 - 66,15 - 14,33 = 619,52). El cero SI se carga, porque es un
+--      resultado del rol y no una columna vacia.
+--
+-- LAS DIFERENCIAS QUE VAN A SALIR Y NO SON DEFECTO (plan §4)
+--   - INGRESOS y DESCUENTOS: 886,80 por persona-lado, el par de vacaciones.
+--   - Robayo: 20,17 de IR que el cliente no retiene hasta agosto.
+--   - Munoz Santos: LIQUIDO -0,01 y TOTAL_IESS +0,01 (ver la correccion de arriba).
+--   - Mendez Torres: TOTAL_IESS 49,64 contra 49,65 (medio centavo).
+--   - Mendez Torres: dias 30 contra 15; el importe 241,00 cuadra.
+--   Nada del prorrateo de ingreso: en febrero nadie entra ni sale.
+-- =====================================================
+
+-- Repetible: borra lo de este mes antes de recargar.
+DELETE FROM RHH.CTRL WHERE CTRLANOO = 2026 AND CTRLMESS = 2;
+
+
+-- =====================================================
+-- EL ROL DE FEBRERO -- hoja FEBRERO, 22 trabajadores
+-- =====================================================
+-- Columnas del rol -> CPNMALTR: igual que en el script 31.
+INSERT INTO RHH.CTRL (CTRLANOO, CTRLMESS, CTRLIDNT, CTRLALTR, CTRLVLOR, CTRLFNTE, CTRLUSRR)
+SELECT 2026, 2, d.CED, d.ALTR, d.VLOR, 'ROL', 'CARGA' FROM (
+    -- Sueldo (concepto 1)
+    SELECT '1717991341' CED, 1 ALTR,  700.00 VLOR FROM DUAL UNION ALL
+    SELECT '2150051205', 1,  700.00 FROM DUAL UNION ALL   -- Bravo Caiza, cedula correcta
+    SELECT '1753528379', 1,  482.00 FROM DUAL UNION ALL
+    SELECT '1719624809', 1,  700.00 FROM DUAL UNION ALL
+    SELECT '1720245735', 1,  482.00 FROM DUAL UNION ALL
+    SELECT '1716501778', 1,  482.00 FROM DUAL UNION ALL
+    SELECT '1311981953', 1, 2000.00 FROM DUAL UNION ALL
+    SELECT '1715156574', 1,  700.00 FROM DUAL UNION ALL
+    SELECT '1750302984', 1,  700.00 FROM DUAL UNION ALL
+    SELECT '1716120769', 1, 2000.00 FROM DUAL UNION ALL
+    SELECT '1004350904', 1,  241.00 FROM DUAL UNION ALL
+    SELECT '0103179537', 1, 1546.00 FROM DUAL UNION ALL
+    SELECT '1717649873', 1,  550.00 FROM DUAL UNION ALL
+    SELECT '1723962849', 1,  900.00 FROM DUAL UNION ALL
+    SELECT '1726657164', 1,  700.00 FROM DUAL UNION ALL
+    SELECT '0909917759', 1, 1500.00 FROM DUAL UNION ALL
+    SELECT '2100192463', 1,  500.00 FROM DUAL UNION ALL
+    SELECT '1725996498', 1, 1500.00 FROM DUAL UNION ALL
+    SELECT '0801999855', 1,  700.00 FROM DUAL UNION ALL
+    SELECT '1712362720', 1, 1500.00 FROM DUAL UNION ALL
+    SELECT '1712232659', 1, 2200.00 FROM DUAL UNION ALL
+    SELECT '1307779064', 1,  500.00 FROM DUAL UNION ALL
+    -- Decimo tercero mensualizado (concepto 5) - los tres MENSUAL
+    SELECT '1715156574', 5,   58.33 FROM DUAL UNION ALL
+    SELECT '1716120769', 5,  166.67 FROM DUAL UNION ALL
+    SELECT '0103179537', 5,  128.83 FROM DUAL UNION ALL
+    -- Decimo cuarto mensualizado (concepto 6) - los mismos tres
+    SELECT '1715156574', 6,   40.17 FROM DUAL UNION ALL
+    SELECT '1716120769', 6,   40.17 FROM DUAL UNION ALL
+    SELECT '0103179537', 6,   40.17 FROM DUAL UNION ALL
+    -- Aporte personal IESS 9,45% (concepto 20) - los 22
+    SELECT '1717991341', 20,  66.15 FROM DUAL UNION ALL
+    SELECT '2150051205', 20,  66.15 FROM DUAL UNION ALL
+    SELECT '1753528379', 20,  45.55 FROM DUAL UNION ALL
+    SELECT '1719624809', 20,  66.15 FROM DUAL UNION ALL
+    SELECT '1720245735', 20,  45.55 FROM DUAL UNION ALL
+    SELECT '1716501778', 20,  45.55 FROM DUAL UNION ALL
+    SELECT '1311981953', 20, 189.00 FROM DUAL UNION ALL
+    SELECT '1715156574', 20,  66.15 FROM DUAL UNION ALL
+    SELECT '1750302984', 20,  66.15 FROM DUAL UNION ALL
+    SELECT '1716120769', 20, 189.00 FROM DUAL UNION ALL
+    SELECT '1004350904', 20,  22.77 FROM DUAL UNION ALL
+    SELECT '0103179537', 20, 146.10 FROM DUAL UNION ALL
+    SELECT '1717649873', 20,  51.98 FROM DUAL UNION ALL
+    SELECT '1723962849', 20,  85.05 FROM DUAL UNION ALL
+    SELECT '1726657164', 20,  66.15 FROM DUAL UNION ALL
+    SELECT '0909917759', 20, 141.75 FROM DUAL UNION ALL
+    SELECT '2100192463', 20,  47.25 FROM DUAL UNION ALL
+    SELECT '1725996498', 20, 141.75 FROM DUAL UNION ALL
+    SELECT '0801999855', 20,  66.15 FROM DUAL UNION ALL
+    SELECT '1712362720', 20, 141.75 FROM DUAL UNION ALL
+    SELECT '1712232659', 20, 207.90 FROM DUAL UNION ALL
+    SELECT '1307779064', 20,  47.25 FROM DUAL UNION ALL
+    -- Prestamo quirografario IESS (concepto 23) - detalle 2026-02
+    SELECT '1719624809', 23,  14.33 FROM DUAL UNION ALL   -- NUT 19368191
+    SELECT '1720245735', 23,  14.79 FROM DUAL UNION ALL   -- NUT 19854526, Castro Arce
+    SELECT '1716120769', 23, 157.21 FROM DUAL UNION ALL   -- NUT 13795529
+    -- Prestamo hipotecario IESS (concepto 24) - detalle 2026-02
+    SELECT '1715156574', 24, 490.00 FROM DUAL UNION ALL   -- NUT 311404
+    SELECT '1716120769', 24, 379.84 FROM DUAL UNION ALL   -- NUT 7946837, 379,84 este mes
+    SELECT '0909917759', 24, 145.29 FROM DUAL UNION ALL   -- NUT 591589
+    -- Anticipo de sueldo (concepto 25)
+    SELECT '1719624809', 25, 619.52 FROM DUAL UNION ALL
+    SELECT '1726657164', 25, 350.00 FROM DUAL UNION ALL
+    SELECT '1307779064', 25,  50.00 FROM DUAL
+) d;
+
+
+-- =====================================================
+-- LOS TOTALES DE CABECERA, DEL ROL
+-- =====================================================
+-- INGRESOS y DESCUENTOS llevan las vacaciones dentro (886,80 por lado).
+INSERT INTO RHH.CTRL (CTRLANOO, CTRLMESS, CTRLIDNT, CTRLTOTL, CTRLVLOR, CTRLFNTE, CTRLUSRR)
+SELECT 2026, 2, d.CED, d.TOTL, d.VLOR, 'ROL', 'CARGA' FROM (
+    SELECT '1717991341' CED, 'INGRESOS' TOTL,  729.17 VLOR FROM DUAL UNION ALL
+    SELECT '1717991341', 'DESCUENTOS',   95.32 FROM DUAL UNION ALL
+    SELECT '1717991341', 'LIQUIDO',     633.85 FROM DUAL UNION ALL
+    SELECT '2150051205', 'INGRESOS',    729.17 FROM DUAL UNION ALL
+    SELECT '2150051205', 'DESCUENTOS',   95.32 FROM DUAL UNION ALL
+    SELECT '2150051205', 'LIQUIDO',     633.85 FROM DUAL UNION ALL
+    SELECT '1753528379', 'INGRESOS',    502.08 FROM DUAL UNION ALL
+    SELECT '1753528379', 'DESCUENTOS',   65.63 FROM DUAL UNION ALL
+    SELECT '1753528379', 'LIQUIDO',     436.45 FROM DUAL UNION ALL
+    SELECT '1719624809', 'INGRESOS',    729.17 FROM DUAL UNION ALL
+    SELECT '1719624809', 'DESCUENTOS',  729.17 FROM DUAL UNION ALL
+    SELECT '1719624809', 'LIQUIDO',       0.00 FROM DUAL UNION ALL   -- Calderon: el anticipo agota el neto
+    SELECT '1720245735', 'INGRESOS',    502.08 FROM DUAL UNION ALL
+    SELECT '1720245735', 'DESCUENTOS',   80.42 FROM DUAL UNION ALL
+    SELECT '1720245735', 'LIQUIDO',     421.66 FROM DUAL UNION ALL
+    SELECT '1716501778', 'INGRESOS',    502.08 FROM DUAL UNION ALL
+    SELECT '1716501778', 'DESCUENTOS',   65.63 FROM DUAL UNION ALL
+    SELECT '1716501778', 'LIQUIDO',     436.45 FROM DUAL UNION ALL
+    SELECT '1311981953', 'INGRESOS',   2083.33 FROM DUAL UNION ALL
+    SELECT '1311981953', 'DESCUENTOS',  272.33 FROM DUAL UNION ALL
+    SELECT '1311981953', 'LIQUIDO',    1811.00 FROM DUAL UNION ALL
+    SELECT '1715156574', 'INGRESOS',    827.67 FROM DUAL UNION ALL
+    SELECT '1715156574', 'DESCUENTOS',  585.32 FROM DUAL UNION ALL
+    SELECT '1715156574', 'LIQUIDO',     242.35 FROM DUAL UNION ALL
+    SELECT '1750302984', 'INGRESOS',    729.17 FROM DUAL UNION ALL
+    SELECT '1750302984', 'DESCUENTOS',   95.32 FROM DUAL UNION ALL
+    SELECT '1750302984', 'LIQUIDO',     633.85 FROM DUAL UNION ALL
+    SELECT '1716120769', 'INGRESOS',   2290.17 FROM DUAL UNION ALL
+    SELECT '1716120769', 'DESCUENTOS',  809.38 FROM DUAL UNION ALL
+    SELECT '1716120769', 'LIQUIDO',    1480.78 FROM DUAL UNION ALL
+    SELECT '1004350904', 'INGRESOS',    251.04 FROM DUAL UNION ALL
+    SELECT '1004350904', 'DESCUENTOS',   32.82 FROM DUAL UNION ALL
+    SELECT '1004350904', 'LIQUIDO',     218.23 FROM DUAL UNION ALL
+    SELECT '0103179537', 'INGRESOS',   1779.42 FROM DUAL UNION ALL
+    SELECT '0103179537', 'DESCUENTOS',  210.51 FROM DUAL UNION ALL
+    SELECT '0103179537', 'LIQUIDO',    1568.90 FROM DUAL UNION ALL
+    SELECT '1717649873', 'INGRESOS',    572.92 FROM DUAL UNION ALL
+    SELECT '1717649873', 'DESCUENTOS',   74.89 FROM DUAL UNION ALL
+    SELECT '1717649873', 'LIQUIDO',     498.03 FROM DUAL UNION ALL
+    SELECT '1723962849', 'INGRESOS',    937.50 FROM DUAL UNION ALL
+    SELECT '1723962849', 'DESCUENTOS',  122.55 FROM DUAL UNION ALL
+    SELECT '1723962849', 'LIQUIDO',     814.95 FROM DUAL UNION ALL
+    SELECT '1726657164', 'INGRESOS',    729.17 FROM DUAL UNION ALL
+    SELECT '1726657164', 'DESCUENTOS',  445.32 FROM DUAL UNION ALL
+    SELECT '1726657164', 'LIQUIDO',     283.85 FROM DUAL UNION ALL
+    SELECT '0909917759', 'INGRESOS',   1562.50 FROM DUAL UNION ALL
+    SELECT '0909917759', 'DESCUENTOS',  349.54 FROM DUAL UNION ALL
+    SELECT '0909917759', 'LIQUIDO',    1212.96 FROM DUAL UNION ALL
+    SELECT '2100192463', 'INGRESOS',    520.83 FROM DUAL UNION ALL
+    SELECT '2100192463', 'DESCUENTOS',   68.08 FROM DUAL UNION ALL
+    SELECT '2100192463', 'LIQUIDO',     452.75 FROM DUAL UNION ALL
+    SELECT '1725996498', 'INGRESOS',   1562.50 FROM DUAL UNION ALL
+    SELECT '1725996498', 'DESCUENTOS',  204.25 FROM DUAL UNION ALL
+    SELECT '1725996498', 'LIQUIDO',    1358.25 FROM DUAL UNION ALL
+    SELECT '0801999855', 'INGRESOS',    729.17 FROM DUAL UNION ALL
+    SELECT '0801999855', 'DESCUENTOS',   95.32 FROM DUAL UNION ALL
+    SELECT '0801999855', 'LIQUIDO',     633.85 FROM DUAL UNION ALL
+    SELECT '1712362720', 'INGRESOS',   1562.50 FROM DUAL UNION ALL
+    SELECT '1712362720', 'DESCUENTOS',  204.25 FROM DUAL UNION ALL
+    SELECT '1712362720', 'LIQUIDO',    1358.25 FROM DUAL UNION ALL
+    SELECT '1712232659', 'INGRESOS',   2291.67 FROM DUAL UNION ALL
+    SELECT '1712232659', 'DESCUENTOS',  299.57 FROM DUAL UNION ALL
+    SELECT '1712232659', 'LIQUIDO',    1992.10 FROM DUAL UNION ALL
+    SELECT '1307779064', 'INGRESOS',    520.83 FROM DUAL UNION ALL
+    SELECT '1307779064', 'DESCUENTOS',  118.08 FROM DUAL UNION ALL
+    SELECT '1307779064', 'LIQUIDO',     402.75 FROM DUAL
+) d;
+
+
+-- =====================================================
+-- EL CONTROL 2: LA PLANILLA DEL IESS DEL PERIODO 2026-02
+-- =====================================================
+-- 22 afiliados, 30 dias salvo Mendez Torres (15). TOTAL_IESS = SUELDO x 20,60 %.
+-- Coincide fila a fila con el bloque APORTES IESS de la hoja FEBRERO (REF-02 §9).
+INSERT INTO RHH.CTRL (CTRLANOO, CTRLMESS, CTRLIDNT, CTRLTOTL, CTRLVLOR, CTRLFNTE, CTRLUSRR)
+SELECT 2026, 2, d.CED, 'TOTAL_IESS', ROUND(d.SLDO * 0.206, 2), 'PLANILLA', 'CARGA' FROM (
+    SELECT '1717991341' CED,  700.00 SLDO FROM DUAL UNION ALL
+    SELECT '2150051205',      700.00 FROM DUAL UNION ALL   -- Bravo Caiza
+    SELECT '1753528379',      482.00 FROM DUAL UNION ALL
+    SELECT '1719624809',      700.00 FROM DUAL UNION ALL
+    SELECT '1720245735',      482.00 FROM DUAL UNION ALL
+    SELECT '1716501778',      482.00 FROM DUAL UNION ALL
+    SELECT '1311981953',     2000.00 FROM DUAL UNION ALL   -- Cevallos Montenegro
+    SELECT '1715156574',      700.00 FROM DUAL UNION ALL
+    SELECT '1750302984',      700.00 FROM DUAL UNION ALL
+    SELECT '1716120769',     2000.00 FROM DUAL UNION ALL
+    SELECT '1004350904',      241.00 FROM DUAL UNION ALL   -- Mendez Torres, 15 dias
+    SELECT '0103179537',     1546.00 FROM DUAL UNION ALL
+    SELECT '1717649873',      550.00 FROM DUAL UNION ALL
+    SELECT '1723962849',      900.00 FROM DUAL UNION ALL
+    SELECT '1726657164',      700.00 FROM DUAL UNION ALL
+    SELECT '0909917759',     1500.00 FROM DUAL UNION ALL
+    SELECT '2100192463',      500.00 FROM DUAL UNION ALL
+    SELECT '1725996498',     1500.00 FROM DUAL UNION ALL
+    SELECT '0801999855',      700.00 FROM DUAL UNION ALL
+    SELECT '1712362720',     1500.00 FROM DUAL UNION ALL
+    SELECT '1712232659',     2200.00 FROM DUAL UNION ALL
+    SELECT '1307779064',      500.00 FROM DUAL
+) d;
+
+COMMIT;
+
+
+-- =====================================================
+-- COMPROBACION DE LA CARGA -- contra los totales del cliente
+-- =====================================================
+SELECT CTRLFNTE, COUNT(*) AS FILAS, COUNT(DISTINCT CTRLIDNT) AS PERSONAS
+  FROM RHH.CTRL WHERE CTRLANOO = 2026 AND CTRLMESS = 2
+ GROUP BY CTRLFNTE ORDER BY CTRLFNTE;
+-- Esperado: PLANILLA 22 / 22 · ROL 125 / 22
+--   (125 = 59 conceptos + 66 totales; conceptos: 22 sueldos, 3 y 3 decimos,
+--    22 aportes, 3 quirografarios, 3 hipotecarios y 3 anticipos)
+
+SELECT CTRLTOTL, ROUND(SUM(CTRLVLOR), 2) AS TOTAL
+  FROM RHH.CTRL WHERE CTRLANOO = 2026 AND CTRLMESS = 2 AND CTRLFNTE = 'ROL'
+   AND CTRLTOTL IS NOT NULL
+ GROUP BY CTRLTOTL ORDER BY CTRLTOTL;
+-- Esperado: DESCUENTOS 5.119,02 · INGRESOS 22.644,14 · LIQUIDO 17.525,11
+
+SELECT CTRLALTR, ROUND(SUM(CTRLVLOR), 2) AS TOTAL, COUNT(*) AS PERSONAS
+  FROM RHH.CTRL WHERE CTRLANOO = 2026 AND CTRLMESS = 2 AND CTRLALTR IS NOT NULL
+ GROUP BY CTRLALTR ORDER BY CTRLALTR;
+-- Esperado:  1 -> 21.283,00 / 22
+--            5 ->    353,83 /  3
+--            6 ->    120,51 /  3
+--           20 ->  2.011,25 / 22
+--           23 ->    186,33 /  3   (cuadra con el detalle del IESS 2026-02)
+--           24 ->  1.015,13 /  3   (idem)
+--           25 ->  1.019,52 /  3
+
+SELECT ROUND(SUM(CTRLVLOR), 2) AS TOTAL_IESS_PLANILLA
+  FROM RHH.CTRL WHERE CTRLANOO = 2026 AND CTRLMESS = 2 AND CTRLTOTL = 'TOTAL_IESS';
+-- Esperado: 4.384,30
+
+
+-- =====================================================
+-- LO QUE FALTA PARA CONTRASTAR (por pantalla, frontend)
+-- =====================================================
+-- 1. Crear el periodo 2026-02 con PRDNMODO = 1 (historico).
+-- 2. Novedades del mes:
+--    a) Cuotas IESS del detalle 2026-02, como novedad del mes (igual que enero):
+--         Hipotecario   Cossio             490,00   NUT 311404
+--         Hipotecario   Manosalvas         379,84   NUT 7946837   (no 379,85)
+--         Hipotecario   Pazmino Jaramillo  145,29   NUT 591589
+--         Quirografario Calderon            14,33   NUT 19368191
+--         Quirografario Castro Arce         14,79   NUT 19854526  (nuevo)
+--         Quirografario Manosalvas         157,21   NUT 13795529
+--    b) Anticipos: el rol descuenta Calderon 619,52, Pardo 350,00, Zambrano 50,00.
+--       ANTES de registrar nada, calcular una vez y mirar que genera el motor
+--       por si solo: la segunda cuota de 350 del anticipo de Calderon de la
+--       apertura (SLAP dic-2025) y la segunda de Pardo si se registro con dos
+--       cuotas en enero. Solo se registra como novedad la diferencia contra el
+--       rol (Calderon 269,52 si salen los 350; Zambrano 50,00 siempre).
+-- 3. Calcular. Liquido esperado del motor: 17.525,11 - 20,17 (Robayo) +/- 0,02
+--    = 17.504,94 aprox. El del cliente es 17.525,11 y no se toca.
+-- 4. CONTRASTE_MES_CONTRA_ROL_REAL.sql con ANIO=2026, MES=2. Bloque 4 primero.
