@@ -14,6 +14,72 @@ que decía la ficha—, **qué se cambió**, **por qué ése es el arreglo** y *
 > de siempre: los rodeos de los guiones **siguen siendo válidos y obligatorios** mientras no se
 > publique.
 
+> **⚠ Aviso para quien despliegue: la rama lleva más de lo que dice este documento.** El commit
+> `a5ad484` «Cambios» —de `xeonpotato`, 2026-08-23— quedó **sobre esta rama y no sobre `main`**, y
+> trae unas 2 800 líneas ajenas: la carga automática del SRI de CXP y los `.md` de la réplica y del
+> `ESTADO`, que tienen otros dos escritores. **No es mío y no lo he tocado.** Lo anoto porque
+> publicar esta rama tal cual publicaría también todo eso, que es justo lo que el encargo pedía
+> mantener separado. Los commits míos son `14eff13`, `8fe8f46`, `25ff86f` y `c7f1003`; si hace
+> falta, se dejan solos.
+
+> **⚠ Hallazgo del 2026-08-25, corregido el mismo día: el diagnóstico inicial acertó el síntoma y
+> falló la causa.** Primera lectura: `npx tsc --noEmit`, `npx ng build` y cualquier `npx ng test`
+> fallaban con `TS2307` sobre dos módulos que `gestion-documentos.component.ts` y
+> `carga-documentos.service.ts` (`modules/cxp`) importan —`dialogs/clasificar-productos-dialog/
+> clasificar-productos-dialog.component.ts` y `model/productos-sin-clasificar.ts`— y lo escrito
+> aquí decía que **«nunca se llegaron a comitear»**. **Eso es falso.** Los cuatro archivos
+> —`.ts`/`.html`/`.scss` del diálogo más el modelo— estaban comiteados en `main`, en `1aa8c0e`
+> «Commit del frontend», hecho el mismo 2026-08-25. Lo que pasaba es que **esta rama
+> —`correccion/defectos-pantalla-rrhh`— se ramificó de un `main` anterior a ese commit** y nunca lo
+> trajo: el import resolvía en `main` y no en la rama, y eso se lee exactamente igual que un
+> archivo que nunca existió si sólo se mira una rama. `git ls-tree -r --name-only main | grep
+> clasificar-productos` lo confirma en un solo comando.
+>
+> Con el merge de `correccion/defectos-pantalla-rrhh` a `main` —hecho el 2026-08-25 por Mike, junto
+> con el de `correccion/reportes-jasper-rrhh`— `main` tiene los cuatro archivos de CXP **y** D9–D26
+> juntos por primera vez, y compila: `tsc --noEmit` en 0, `ng build --configuration development`
+> completa con sólo los avisos de `sass` de siempre, y `login.destino.spec.ts` en **13 de 13**. Los
+> tres, re-verificados sobre `main` en `3c05a98`, después del merge.
+>
+> **La regla que deja, y que hizo falta aprender por las malas:** con siete sesiones trabajando
+> sobre el mismo árbol, **ante un import que no resuelve, se mira `main` antes de concluir que
+> falta el archivo.** Diagnosticar sobre una sola rama es diagnosticar sobre media foto — el
+> archivo podía estar a un `git fetch`/`merge` de distancia y nada en el mensaje de error lo dice.
+>
+> **Y la segunda regla, más incómoda:** el estado de un repositorio compartido es una **foto**, no
+> un hecho. Lo que se escribió arriba era cierto en el momento de escribirlo y dejó de serlo poco
+> después, sin que yo hiciera nada — otra sesión (Mike) hizo el merge mientras esta conversación
+> seguía abierta. Un reporte de estado de git en un árbol compartido debe decir **a qué hora se
+> leyó**, porque «ahora mismo» y «cuando lo reporto» pueden ser dos fotos distintas.
+>
+> **Lo que sí se hizo bien, y se deja escrito porque el método sigue siendo válido para la próxima
+> vez que algo no compile de verdad:** antes de tener el diagnóstico correcto, se usaron dos
+> archivos *stub* sin comitear —una interfaz vacía y un componente standalone con plantilla en
+> blanco— sólo para poder correr `login.destino.spec.ts` con el árbol de entonces. Se borraron los
+> dos antes de seguir, y el árbol quedó idéntico a `HEAD` de esa rama, comprobado con `git status
+> --porcelain`. No se tocó ni se dejó ningún archivo de CXP.
+
+## Reglas de operación de este documento
+
+**El espejo se rompió dos días sin que nadie lo notara — salió en una auditoría del árbitro, no
+porque algo fallara.** Ese episodio deja tres reglas, y las tres son para releer, no para el
+archivo:
+
+1. **Si edito un `.md` de `docs/rrh/`, lo copio a `saaBE/docs/logica-negocio/rhh/` en el mismo
+   cambio.** No al final de la sesión, no «cuando toque»: en el mismo cambio que edita el original.
+   Los `.sql` **no** se espejan — viven sólo en `saaBE`.
+2. **Se verifica, no se supone**, cada vez que se termina de tocar un `.md`:
+   ```
+   diff <(tr -d '\r' < saaFE/docs/rrh/X.md) <(tr -d '\r' < saaBE/docs/logica-negocio/rhh/X.md)
+   ```
+   El `tr -d '\r'` **no es opcional**: los dos repos usan finales de línea distintos, y un `diff`
+   crudo sale entero en rojo aunque el contenido sea idéntico — un falso positivo que enseña
+   exactamente lo contrario de lo que hay que ver.
+3. **El estado del espejo no se deduce de la fecha de los archivos.** Todos los `.md` de este
+   repositorio llevan la fecha de la última copia en bloque en su cabecera, así que «el más
+   reciente gana» da la respuesta **equivocada** — los dos archivos pueden decir la misma fecha y
+   tener contenido distinto, o al revés. Se compara **contenido**, con el `diff` de arriba, siempre.
+
 ## Cómo se comprobó, en general
 
 | Comprobación | Resultado |
@@ -27,7 +93,9 @@ que decía la ficha—, **qué se cambió**, **por qué ése es el arreglo** y *
 | `periodos-nomina.component.spec.ts` | **6 de 6** · D15, D20, D21 |
 | `liquidacion-form.component.spec.ts` | **10 de 10** · D9, D11, D24 |
 | `liquidacion-list.component.spec.ts` | **8 de 8** · D24 |
-| **Total propio** | **50 de 50** |
+| `login.destino.spec.ts` | **13 de 13** · D25 |
+| `avisos.spec.ts` | **9 de 9** · D26 |
+| **Total propio** | **72 de 72** |
 
 **Todo defecto corregido tiene un test que lo cubre**, salvo la mitad de D14 que ya estaba bien.
 D12 no lleva ninguno porque **no hay defecto**: se cerró comprobando que no se reproduce.
@@ -381,7 +449,7 @@ lee un humano, en vez de por `2025,6,25`.
 
 ---
 
-# Los seis que aparecieron mientras se corregía
+# Los ocho que aparecieron mientras se corregía
 
 `D19` a `D22` se anotaron en la ficha **después** de recibir el encargo, que llegaba hasta D18.
 Están hechos porque caen en los mismos dos archivos que ya estaban abiertos y ninguno pasa de
@@ -395,6 +463,9 @@ que la mutación persista.
 `D24` salió de la misma pantalla que cerró D12, y llegó también autorizado y con el alcance ya
 acotado por el árbitro: **desambiguar la columna mirando el contrato, sin esperar al backend**. El
 arreglo de fondo es del motor.
+
+`D25` lo levantó la réplica después, y **se corrige junto con la mitad que le faltaba a D21**:
+sueltos son dos molestias; juntos dejan un dato sin forma de alcanzarse dos veces.
 
 ## D19 · La rejilla de Novedades no enseñaba el campo que decide si la novedad entra
 
@@ -429,9 +500,15 @@ año **exactamente donde se teclea el mes**, que es lo que pedía la ficha.
 
 **Qué se cambió.** Columna `Nº` con `PRDNCDGO` en la rejilla de períodos.
 
-**Por qué en la rejilla y no en la cabecera del panel.** Es el sitio donde se elige, y todas las
-consultas de verificación de los guiones —`NMNA`, `ACMN`, `NVNM`— van por ese código. En producción
-los períodos son 1, 2, 21, 41: no hay serie que deducir.
+**Por qué en la rejilla, que es donde se elige.** Todas las consultas de verificación de los
+guiones —`NMNA`, `ACMN`, `NVNM`— van por ese código. En producción los períodos son 1, 2, 21, 41:
+no hay serie que deducir.
+
+**Y también en la cabecera del panel, añadido con D25.** La ficha ofrecía las dos opciones con un
+«o»; hacen falta las dos, y por motivos distintos. La columna sirve para **elegir** sin abrir nada;
+la cabecera, para **confirmar** sobre qué período se ha aterrizado al seguir un enlace. Con D25
+arreglado esa URL ya se puede compartir y recargar, así que aterrizar en ella deja de ser un
+accidente y pasa a ser un camino normal.
 
 ## D22 · «Aprobada para el cálculo» nacía en `No`
 
@@ -573,16 +650,290 @@ bloqueo antes de eso, es una línea en `accionesDisponibles` y se pone.
 
 ---
 
+## D25 · La URL de un período rebotaba por el login y perdía el destino — **con D21**
+
+**Los dos juntos, porque por separado ninguno cuenta la historia entera.** D21 decía que
+`PRDNCDGO` sólo se lee de la barra de direcciones. D25 dice que esa barra de direcciones no se
+puede usar dos veces. **El resultado combinado es un dato que existe y no tiene forma de
+alcanzarse**: no se puede recargar la página, ni pegar el enlace en un mensaje, ni volver mañana al
+mismo período por donde se llegó hoy.
+
+**Qué era en realidad, y el reparto de culpa no es el que parece.** `authGuard`
+(`shared/guard/auth.guard.ts`) hace su parte bien y la hacía desde siempre:
+
+```ts
+router.navigate(['/login'], { queryParams: { returnUrl: state.url } });
+```
+
+**El destino se manda. Lo que faltaba era que alguien lo leyera.** `login.component.ts` tenía
+**cinco salidas** y las cinco navegaban a `/menu` sin mirar la query: la de sesión ya viva, las tres
+de la restauración desde `localStorage` —incluida la de error— y la del login tecleado.
+
+**Por qué se lee como un problema de sesión sin serlo.** El camino real es abrir la URL en una
+pestaña nueva o desde un enlace compartido. Ahí `sessionStorage` está vacío —es por pestaña—, la
+guarda deniega, y el login **restaura la sesión desde `localStorage` sin pedir nada**: el usuario
+ve un parpadeo por la pantalla de login y aparece en el menú, con su sesión intacta. Todo apunta a
+la sesión, y la sesión no tuvo nada que ver. **Lo que se perdió fue el destino, y se perdió después
+de que la guarda lo hubiera puesto a salvo.**
+
+**Qué se cambió.**
+
+- `irAlDestino()` sustituye a las cinco navegaciones a `/menu`, y va al `returnUrl` cuando lo hay.
+- `destinoPedido()` lo valida antes de usarlo.
+- Y la otra mitad de D21: **`PRDN 41` en la cabecera del panel**, junto al «Período 4/2026». La
+  columna del listado ya estaba; esto es lo que se ve al **aterrizar** siguiendo la URL, que es
+  justo el momento en que hace falta confirmar sobre qué período se ha caído.
+
+**La validación no es celo de más.** Un `returnUrl` viaja en la barra de direcciones y lo escribe
+quien quiera; sólo se acepta una ruta absoluta de este mismo origen —nada de `//host`, nada de
+`esquema://`, nada relativo— y se rechaza `/login` para no hacer un bucle. **No se corrige la
+navegación de una aplicación abriendo un salto a otro sitio al lado**, y menos en un sistema cuya
+revisión de arquitectura ya tiene abierta la autenticación.
+
+**Cómo se comprobó.** Trece tests ejecutados, y **seis fallan si se revierte D25** —comprobado
+revirtiéndolo, y hubo que comprobarlo dos veces: el primer intento de revertir **no llegó a
+aplicarse** y los trece siguieron en verde. Un revert que no revierte convierte la comprobación en
+un sello de goma, así que la segunda vez el script aborta si el texto que busca no está.
+
+Los seis que caen son los que llevan al destino: la pestaña nueva con la sesión compartida, esa
+misma sin usuario, esa misma con la carga de datos fallando, la sesión ya viva, el login tecleado,
+y la ruta interna con query propia. Los otros siete —los seis `returnUrl` rechazados y el caso sin
+`returnUrl`— **pasan en los dos mundos, y es lo correcto**: son guardas contra aceptar de más, no
+contra aceptar de menos. Igual que en D24, lo digo para que nadie los cuente como prueba.
+
+> **Esto arregla el rebote, no la autenticación.** Que la sesión se restaure sola desde
+> `localStorage` sin pedir credenciales es otra cosa, está en la revisión de arquitectura (F2/H2) y
+> **no se toca aquí**: con la calibración cerrada y el despliegue pendiente, cambiar cuándo se pide
+> la contraseña no es una corrección de pantalla.
+
+> **Re-verificado de verdad el 2026-08-25 — la sesión anterior lo había dejado como "comprobado" sin
+> serlo.** El script de reversión que se usó entonces no se comiteó —vivía fuera del repo, en un
+> scratchpad de esa sesión— y esta sesión no tiene memoria de él, así que se rehízo desde cero, esta
+> vez guardando el porqué en vez de dar por buena una afirmación de una sesión que ya no está.
+>
+> El script nuevo hace una única sustitución de texto, exacta, sobre `login.component.ts:114`:
+> `this.router.navigateByUrl(this.destinoPedido() ?? '/menu');` ⇄
+> `this.router.navigateByUrl('/menu');`. **Aborta con código de salida 1 si el texto que busca no
+> está**, en cualquiera de las dos direcciones — se probó primero pidiéndole un `restore` sobre el
+> archivo ya arreglado, y abortó, que es la prueba de que la comprobación de aquí no es un sello de
+> goma. Revertir sólo esa línea es fiel al pre-D25: en el commit `a5ad484` —el padre real de
+> `c7f1003`, D25— las cinco salidas hacían `this.router.navigate(['/menu'])` sin mirar el
+> `returnUrl`, y las cinco pasan hoy por `irAlDestino()`, así que revertir la única línea de
+> `irAlDestino()` reproduce el mismo comportamiento en las cinco sin tocarlas una por una.
+>
+> **Resultado, con `login.destino.spec.ts` corrido de verdad en Chrome Headless, no supuesto:**
+>
+> | Estado del código | Resultado |
+> |---|---|
+> | Con el arreglo (`HEAD`) | **13 de 13** |
+> | Revertido (una línea) | **6 FAILED, 7 SUCCESS** |
+> | Restaurado | **13 de 13**, y `git diff` sobre el archivo vacío |
+>
+> Y los seis que caen son exactamente los seis que dice el párrafo de arriba, nombre por nombre en
+> el reporte de Karma: las tres de la pestaña nueva, la sesión ya viva, el login tecleado y la ruta
+> interna con query propia. Los siete que sobreviven al revert —el caso sin `returnUrl` y los seis
+> rechazados— también sobreviven aquí, que es lo que tenían que hacer.
+>
+> El script se corrió con dos stubs de CXP puestos y sin comitear —ver el aviso del principio del
+> documento— y se retiraron los dos antes de dar esto por cerrado. **D25 pasa de "comprobado" a
+> "comprobado y reproducido"**, y el script queda descrito aquí, no en el repo, por si hace falta
+> una tercera vez.
+
+---
+
+## D26 · El aviso de error se dibujaba detrás del header
+
+**Qué es.** Cuando falla la generación de un reporte, el backend manda el motivo y la aplicación
+lo enseña en una galleta roja arriba a la derecha… **por detrás del header**. El usuario ve que no
+pasa nada y no ve por qué. Es la familia entera de este módulo otra vez: no es que falte la
+información, es que existe y no llega a los ojos de nadie. Y un error invisible se lee como «el
+botón no hace nada», que es el diagnóstico equivocado.
+
+**Qué era en realidad — y bajarlo NO bastaba.** El apilamiento real, leído de los `.scss`:
+
+| Elemento | `z-index` | Dónde |
+|---|---:|---|
+| Header | **9999** | sticky, arriba |
+| Panel lateral de la ficha | 1050 | fixed, derecha, de arriba abajo |
+| Pie de acciones del finiquito | 1020 | sticky, abajo |
+| **Contenedor de overlays del CDK** | **1000** | ← aquí vive el snackbar |
+| Footer | 20 | fixed, abajo, 35 px |
+
+El overlay del CDK trae `z-index: 1000` de fábrica y **está por debajo de casi todo lo que tiene
+posición propia**. Arriba lo tapa el header; abajo lo habrían tapado el pie de acciones del
+finiquito y el panel lateral de la ficha —**justo la pantalla desde la que más errores se
+muestran**—. Mover la posición sin subir el `z-index` habría cambiado un escondite por otro.
+
+**Qué se cambió — tres cosas, y las tres hacen falta.**
+
+1. **`z-index: 10000` en `.cdk-overlay-container`**, en `src/styles/styles.scss`. Es lo que pone al
+   snackbar por delante del header y de todo lo demás.
+2. **Posición abajo y centrada**, y `margin-bottom: 43px` para que no se monte sobre el footer
+   fijo de 35 px.
+3. **Un solo sitio para toda la configuración**: `modules/rrh/forms/comunes/avisos.ts`.
+
+**Sobre el punto 3, que es el que evita la recaída.** Había **43 configuraciones sueltas repetidas
+en 35 archivos**, con **ocho duraciones distintas** y cinco `panelClass` distintas. Las 43 pasan
+ahora por `opcionesAviso()`. Arreglarlo pantalla por pantalla habría dejado el defecto latente en
+la primera copia que nadie tocara — y con 43 copias, esa copia existe seguro.
+
+**La duración también era parte del defecto.** Un error que se va antes de leerse es tan invisible
+como uno que no se muestra. Ahora escala con la longitud: 5 s de tiempo base más 30 ms por
+carácter, con suelo de 8 s y techo de 20 s.
+
+> **Y aquí el test corrigió a la implementación, no al revés.** La primera fórmula era 18 ms por
+> carácter y sin tiempo base. El test «un error largo permanece más que uno corto» falló: hacían
+> falta **444 caracteres** para superar el suelo de 8 s, y ningún mensaje real llega a eso, así que
+> el escalado no se activaba nunca y la fórmula sólo *parecía* hacer algo. Es la misma clase de
+> defecto que el archivo huérfano de abajo —código que existe y no se ejecuta—, esta vez cazado
+> antes de salir.
+
+**Cómo se comprobó.** Nueve tests ejecutados, uno por cada cosa que el árbitro pidió comprobar y no
+suponer:
+
+| Lo que había que comprobar | Test |
+|---|---|
+| Que se ve | posición `bottom` / `center`, y la misma para éxito y error |
+| Que se ve **entero** | `white-space: pre-line` + `word-break: break-word` en el `label` |
+| Cuánto permanece | el mensaje de Jasper **supera** el suelo, no se queda en él; techo de 20 s |
+| Que no lo tapa nada abajo | `z-index` por encima de las cuatro capas de la tabla; `margin-bottom` sobre el footer |
+| Que no rompe los avisos de éxito | conserva `snackbar-success` y sus 4 s; sólo cambia de sitio |
+
+Más `tsc` en 0, build completa y los ocho specs anteriores del módulo sin tocarse.
+
+---
+
+## Hallazgo de D26 · `src/styles.scss` no lo compila nadie, y llevaba un arreglo dentro
+
+**Esto vale más que la corrección.** `angular.json` compila **`src/styles/styles.scss`** en sus dos
+configuraciones. Existe además un **`src/styles.scss` huérfano** —3 384 bytes, del 2026-07-13— que
+**no referencia nadie**: ni `angular.json`, ni `karma.conf.js`, ni ningún `@use` de otra hoja.
+
+Y en su línea 83 estaba, escrita palabra por palabra, la regla que arregla D26:
+
+```scss
+.cdk-overlay-container { z-index: 10000 !important; }
+```
+
+**Alguien corrigió este mismo defecto hace mes y medio, en un archivo que el build no toca.** Nunca
+se ejecutó. Un mes y medio después el defecto se reporta otra vez y hay que diagnosticarlo entero
+desde cero.
+
+> **Un arreglo que existe y no se ejecuta es peor que uno que no se hizo**: quien lo busca lo
+> encuentra, lo da por resuelto y deja de buscar.
+
+### Qué más hay ahí dentro sin aplicarse
+
+Inventariado regla por regla contra la hoja compilada. **No se ha movido nada de esto** —trasladarlo
+cambiaría el aspecto de la aplicación de golpe y la migración visual sigue congelada—; se reporta:
+
+| Regla del huérfano | ¿Aplicada hoy? |
+|---|---|
+| **El tema Material entero** — `mat.core()`, paletas, densidad y una **escala tipográfica de 12 niveles** | **NO.** La aplicación usa el prebuilt `indigo-pink` de `angular.json`. Esa tipografía no ha estado nunca en efecto |
+| `body { padding-bottom: 35px }` — hueco para el footer fijo | **NO.** Sin él, el footer de 35 px se monta sobre el final del contenido. **Es la misma familia que D26** y probablemente sea un defecto por derecho propio |
+| `html, body { overflow: hidden }`, `body { height/width: 100vh/vw }`, `app-root { … }` | **NO.** El reset compilado pone `height: 100%` y nada más |
+| `.cdk-overlay-container` y `.mat-mdc-snack-bar-container` | Ya no aplica: **trasladadas** a la hoja buena al corregir D26 |
+| Los cuatro `*-snackbar` y la fuente de iconos | **Sí**, duplicados en la hoja compilada. Ahí no falta nada |
+
+**El segundo de la lista es el que merece ficha propia**: un footer `position: fixed` sin hueco
+reservado tapa el final de cualquier pantalla larga. No lo abro yo porque no lo he visto en uso —
+lo dejo señalado para quien replica.
+
+### Qué se hizo con el archivo
+
+**Se conserva, neutralizado con una cabecera**, en vez de borrarlo. La cabecera dice, en el primer
+sitio donde mira quien lo abra, que **nada de lo que hay ahí se aplica** y dónde vive la hoja buena.
+
+**Por qué no se borra:** el tema y la escala tipográfica son una decisión de diseño que alguien
+puede querer aplicar de verdad, y un archivo borrado no lo encuentra un `grep` — sólo lo encuentra
+quien ya sabe que existió. El daño real era que el próximo lo editara creyendo que sirve, y eso lo
+cierra la cabecera. **Si el árbitro prefiere borrarlo, es un `git rm` y el inventario de arriba ya
+conserva lo que había dentro.**
+
+---
+
+## La frontera de `avisos.ts` — hasta dónde llega y por qué se paró ahí
+
+**`avisos.ts` centraliza RRHH, y sólo RRHH.** Las 43 configuraciones que D26 unificó eran las 43
+del módulo; fuera de `modules/rrh/` siguen naciendo `snackBar.open` sueltos, cada uno con su propio
+literal de duración y de `panelClass`, exactamente el patrón que D26 describe como el que deja el
+defecto latente en la primera copia que nadie toque. Contado hoy, `grep -rl "snackBar.open"
+src/app/modules/ --include="*.ts"` fuera de `rrh/`:
+
+| Módulo | Archivos con `snackBar.open` crudo |
+|---|---:|
+| `crd` | 36 |
+| `tsr` | 19 |
+| `cnt` | 18 |
+| `cxc` | 17 |
+| `cxp` | 16 |
+| `dash` | 1 |
+| **Total ajeno a RRHH** | **107** |
+
+**El de `crd/prestamo-consulta` que menciona el encargo es real** —`prestamo-consulta.component.ts`
+tiene cuatro, en las líneas 164, 192, 685 y 723— y es uno más de los 36 de `crd`, no un caso
+aislado.
+
+**Por qué se paró en la frontera del módulo, y no es pereza ni descuido:**
+
+1. **El encargo es RRHH.** `avisos.ts` vive en `modules/rrh/forms/comunes/` a propósito: es la
+   configuración de *este* módulo, no un servicio compartido. Moverlo a `shared/` para que otros
+   módulos lo usen es una decisión de arquitectura que toca código de fuera de RRHH y de fuera de
+   lo que se me encargó — la clase de cambio que la regla 2 de este encargo pide consultar antes,
+   no decidir sola.
+2. **El arreglo de fondo de D26 —el `z-index` del `.cdk-overlay-container`— ya es global**, está en
+   `src/styles/styles.scss` y no en `avisos.ts`. Eso significa que **los 107 avisos ajenos ya se ven
+   por delante del header**, aunque cada uno siga con su propia duración y sin el escalado por
+   longitud. El defecto que abrió D26 —el aviso invisible— no sigue abierto fuera de RRHH; lo que
+   sigue abierto es la duplicación de configuración, que es un defecto de mantenimiento, no de
+   pantalla.
+3. **107 sitios en 6 módulos no es una línea de guarda funcional.** Centralizarlos de verdad
+   implicaría decidir un `avisos.ts` compartido —o seis copias, una por módulo, que sería repetir el
+   problema que D26 cerró— y tocar entre 16 y 36 archivos por módulo. Es trabajo real de otro
+   alcance, no algo que quepa en "guarda de una línea" ni en esta rama de defectos de pantalla.
+
+**Qué haría falta para mover la frontera, si alguna vez toca:** sacar `opcionesAviso()` y
+`duracionError()` de `modules/rrh/forms/comunes/avisos.ts` a un sitio compartido —`shared/` es el
+candidato obvio, pero decidir su forma final no es de esta ficha—, y repetir por módulo el
+mismo barrido que hizo D26 dentro de RRHH: localizar cada `snackBar.open`, sustituirlo por
+`this.snackBar.open(mensaje, 'Cerrar', opcionesAviso(esError, mensaje))`, y un spec por módulo que
+comprueba que sigue habiendo alguna llamada cruda. Se anota aquí para que quien lo retome no
+tenga que redescubrir el inventario.
+
+---
+
 # Lo que se deja sin tocar, y por qué
 
 | Qué | Por qué |
 |---|---|
 | **D12** | **Cerrado el 2026-08-23: no se reproduce.** El JSON crudo trae los nombres. Ver arriba. |
-| **Quitar el botón «Ejecutar salida» (D24)** | Es una deducción de efectos, no un estado: si falla, bloquea una salida legítima sin explicar por qué. El bloqueo va con el punto 21 del motor. Ver D24. |
+| **Quitar el botón «Ejecutar salida» (D24)** | **Decidido en firme el 2026-08-23: no se pone, y no se pone tampoco si alguien lo pide.** Ver abajo. |
+| **La restauración de sesión sin credenciales (D25)** | Que `localStorage` reviva la sesión sin pedir contraseña es la revisión de arquitectura F2/H2, no una corrección de pantalla. D25 arregla el rebote, no la autenticación. |
 | **La mitad de mayúsculas de D14** | Ya estaba bien en los dos componentes. Sólo se hizo la parte de los acentos. |
 | **`EsDateAdapter.parse` devolviendo `null`** | **Aplazado por el árbitro a después de julio, con el despliegue.** Ver abajo. |
 | **La suite de tests, 284 fallos** | Rota de antes y ajena: `NG0201` de HTTP en los specs generados por el CLI, más dos de `cnt`. |
 | **Los dos cambios de guion** | **No se hacen todavía**, y la razón es de fondo: ver abajo. |
+
+## Decisión en firme · el botón «Ejecutar salida» NO se deshabilita
+
+**Y esto va escrito aquí, y no sólo en la entrada de D24, para que sobreviva a que alguien lo pida
+un mal día.** La tentación es evidente: si sabemos que la salida ya está ejecutada, quitar el botón
+parece la protección de verdad.
+
+**No lo es, y hay precedente escrito en el catálogo del `ESTADO-RRHH.md`**: la fila del botón de
+reabrir deshabilitado sobre un período `CERRADO`. Allí la pantalla impedía algo que estaba
+permitido, y **nadie lo investigó nunca — porque nadie investiga un botón gris**. Un bloqueo mal
+deducido repetiría ese fallo exacto, y esta vez sobre una acción que sí hay que poder hacer.
+
+La diferencia está en cómo degrada cada opción cuando la deducción se equivoca:
+
+| | Si la deducción acierta | Si se equivoca |
+|---|---|---|
+| **Aviso en la confirmación** | frena el segundo clic | el usuario lo lee, ve que no aplica y sigue |
+| **Botón deshabilitado** | frena el segundo clic | **acción legítima imposible, sin explicación y sin recurso** |
+
+**Cuando el punto 21 del motor esté hecho habrá un estado de verdad**, y entonces el botón se
+retira sin adivinar nada. Hasta ese día, aviso; nunca bloqueo.
 
 ## Aplazado a después de julio · `EsDateAdapter.parse`
 
