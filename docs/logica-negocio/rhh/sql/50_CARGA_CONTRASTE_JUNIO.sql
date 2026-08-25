@@ -3,6 +3,24 @@
 -- ORDEN DE EJECUCION: 50
 -- FECHA: 2026-08-21
 -- =====================================================
+-- ⚠ AVISO ANADIDO EL 2026-08-25 - LEER ANTES QUE EL RESTO DE ESTA CABECERA
+-- ==
+-- LOS DATOS DE ESTE SCRIPT SIGUEN VIGENTES. LO QUE CADUCO ES SU PRONOSTICO.
+-- ==
+-- Mas abajo esta cabecera anuncia una DIFERENCIA ESPERADA DE +155,36 y llama
+-- "defecto nuevo" a que la rama MENSUALIZADO pague el mes completo. Las dos
+-- frases se escribieron el 21-08, ANTES de la correccion 22 del motor.
+-- ==
+-- El 24-08 se corrigio: fondos de reserva se devenga desde el aniversario,
+-- prorrateado, en las dos modalidades. El WAR nuevo ya lo hace.
+-- ==
+-- EL ESPERADO VIGENTE DE JUNIO ES -44,60, NO +155,36. Manda el guion,
+-- GUION-MES-2026-06.md, paragrafo 5. Descomposicion verificada contra la
+-- aritmetica de RedondeoNomina el 25-08:
+--   Barcenas 1,95 . Munoz 1,53 . Nieto 2,50 . Pardo 1,95 = 7,93
+--   Viteri 36,67 (el cliente se lo paga en el rol; nosotros lo provisionamos)
+--   TOTAL 44,60, que julio devuelve entero en sus D:OTROS.
+-- =====================================================
 -- REGLA 6: hoja ROL JUNIO (layout C) del libro ROL JUNIO 2026.xlsb (REF-02 §7)
 -- y planilla del IESS 2026-06 (REF-03 §1.4 y §3.2).
 --

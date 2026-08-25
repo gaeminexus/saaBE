@@ -104,10 +104,13 @@ instrumento mide. **El motor sigue congelado sin coste.**
 |---|---|
 | **WAR con el 22 y el 10** | **Publicado en LOCAL y verificado con `javap`** —salen `fechaAniversarioFondosReserva` y `baseFondosReservaProrrateada`, y `superaUnAnio` ya no está—. **PENDIENTE de subir a producción** |
 | **Los siete `.jasper` de `rhh`** | ✅ **Compilados y probados.** Eran el fallo de los reportes: `rhh` tenía 7 `.jrxml` y **0** `.jasper`, y el respaldo de compilar en runtime **está muerto en JR 7.0.3**. Ver `CLAUDE.md` y `jasperreports.properties` |
-| **Correcciones de pantalla D9–D26** | En la rama `correccion/defectos-pantalla-rrhh` de saaFE, **sin desplegar**. Los cinco guiones **ya están actualizados** para la aplicación nueva |
+| **Correcciones de pantalla D9–D26** | ✅ **Mergeadas a `main` de saaFE el 2026-08-25**, junto con el fix del blob URL de la descarga de reportes (`correccion/reportes-jasper-rrhh`). **Siguen sin desplegar**: van en el mismo build que la devolución de aportes. Los cinco guiones **ya están actualizados** para la aplicación nueva |
+| **El build de saaFE ya NO está roto** | Lo estaba en la rama `correccion/defectos-pantalla-rrhh`, que importaba cuatro archivos de CXP —`clasificar-productos-dialog` y `productos-sin-clasificar`— sin tenerlos. **No estaban «sin comitear»: estaban en `main`**, en `1aa8c0e`. Con el merge del 2026-08-25 `main` los tiene y compila. La lección, porque volverá a pasar con siete sesiones sobre un solo árbol: **ante un import que no resuelve, mirar `main` ANTES de acusar a un working tree ajeno** |
 | **Los cinco guiones** | ✅ Actualizados el 2026-08-25 con la convención de fecha única `dd/mm/aaaa`. **Si el frontend NO se despliega, los guiones van por delante de la aplicación** — cada uno lleva el aviso de qué hacer en ese caso |
-| **Junio** | Guion escrito, `sql/50` y `sql/57` cargados. **No arranca hasta que el WAR esté en producción** |
+| **Junio** | Guion escrito, `sql/50` cargado en las dos bases. **`sql/57` sólo en PRODUCCIÓN** — ver la fila de abajo. **No arranca hasta que el WAR esté en producción** |
 | **Línea base de producción, tomada antes de subir** | Provisiones de FR: **cinco meses, 1 persona, 183,26 cada uno**. Después de subir tiene que dar lo mismo |
+| ⚠ **`sql/57` NO corrió en LOCAL** | Medido el 2026-08-25: `CTRL` de junio trae **141** filas en local y **142** en producción, y la que falta es exactamente la de `sql/57` —concepto **31**, Calderón **0,10**, cargada en producción el 23-08—. **No bloquea nada**, porque junio se calcula en producción; pero **un ensayo de junio en local daría 0,10 de diferencia** y parecería un hallazgo del motor |
+| ⚠ **`CTRL_PARAM` de producción está en `2026 · 4`, NO en 5** | Leído en la base el 2026-08-25. Esta cabecera decía «quedó en **5**» tras cerrar mayo y **es falso**. **Es la avería en la dirección peor** —el instrumento atrasado no vacía nada: contrastaría **abril**, con su `CTRL` y su `NMNA` completos, y saldría **verde al céntimo del mes equivocado**. No bloquea junio porque el paso 1 del §5 del guion lo mueve a 6 y lo comprueba; lo que estaba roto era el documento, que invitaba a saltarse ese paso. **Local está en 5** |
 
 **Las dos comprobaciones después de subir, y ninguna es opcional:**
 
@@ -115,6 +118,99 @@ instrumento mide. **El motor sigue congelado sin coste.**
 2. **La consulta de provisiones**, que tiene que seguir dando las cinco filas de 183,26. Es la única
    que ve un recálculo de un mes cerrado, porque con el WAR nuevo eso **cambia el bloque 1B sin
    tocar el neto**.
+
+**Las dos están escritas y corridas.** La 1 vive en este documento; la 2 en
+[`sql/58_CHECK_PUNTO_DE_CORTE.sql`](sql/58_CHECK_PUNTO_DE_CORTE.sql), que además trae las
+precondiciones de junio y el `CTRL_PARAM`.
+
+> **⚠ La consulta del §7 del guion de junio NO servía para lo que decía medir, y el `58` la
+> sustituye.** Llevaba un `GROUP BY p.PRDNMSEE` a secas. Pero el fallo que busca **no cambia el
+> importe de la fila: la borra** —`calcularPeriodo` llama a `eliminaByPeriodo` antes de reescribir
+> (`ProcesoNominaServiceImpl:342`) y `generaProvision` no escribe nada con valor 0 (línea 1618)—, y
+> un `GROUP BY` **omite el mes entero en silencio**. Habrías visto cuatro filas correctas y ninguna
+> alarma. El `58` levanta los cinco meses desde `DUAL` con `LEFT JOIN`, así que un mes recalculado
+> sale como `FILAS = 0`.
+
+### ✅ RESULTADO DE LAS DOS COMPROBACIONES — 2026-08-25
+
+| Comprobación | Local | Producción |
+|---|---|---|
+| **1 · `javap`** | ✅ salen `fechaAniversarioFondosReserva` y `baseFondosReservaProrrateada`; `superaUnAnio` **no está**. `.class` del 25-08 00:03, cuatro minutos posterior al `.java`, y `target/classes` con la misma marca. Los **7 `.jasper` de `rhh`** están en el WAR desplegado | ⏳ **WAR subido el 2026-08-25**, comprobación pendiente de correr allí con [`verifica-war-desplegado.ps1`](verifica-war-desplegado.ps1) |
+| **2 · Provisiones de FR** | ✅ cinco meses · Viteri López · base 2 200 · **183,26** cada uno | ✅ **antes y DESPUÉS de subir el WAR**: los cinco `INTACTO`, mismos importes |
+
+**Ningún mes cerrado se ha recalculado en ninguna de las dos bases, ni siquiera al subir el WAR
+nuevo.** La precondición «enero a mayo intactos» de junio está cumplida y medida dos veces.
+
+> **La comprobación del WAR desplegado ya no depende de tener JDK en el servidor.**
+> `verifica-war-desplegado.ps1` sirve las dos formas de despliegue —carpeta explotada y `.war`
+> empaquetado— y, si no encuentra `javap`, **busca los nombres de método en los bytes del `.class`**:
+> viven en el pool de constantes como UTF-8 plano. Mismo veredicto, sin JDK. Comprueba además que
+> los siete `.jasper` viajaron dentro, que es el otro fallo posible del mismo artefacto.
+
+### 🔎 LA PREVIA DE JUNIO — `sql/59` corrido el 2026-08-25, y lo que encontró
+
+**Los cinco del fondo de reserva están exactos.** Fechas de ingreso, días del motor, modalidad y
+sueldo, los cinco como el guion los supone:
+
+| | Ingreso | Aniversario | Días motor | Modalidad | Sueldo |
+|---|---|---|---:|---|---:|
+| Bárcenas Bermeo | 26-06-2025 | 26-06-2026 | **4** | 1 mensualizado | 700 |
+| Muñoz Santos | 25-06-2025 | 25-06-2026 | **5** | 1 mensualizado | 550 |
+| Nieto Conde | 25-06-2025 | 25-06-2026 | **5** | 1 mensualizado | 900 |
+| Pardo Calle | 25-06-2025 | 25-06-2026 | **5** | 1 mensualizado | 700 |
+| Viteri López | 25-06-2025 | 25-06-2026 | **5** | **2 acumulado** | 2 200 |
+
+**El esperado de −44,60 se sostiene sobre datos observados**, no sobre supuestos. Y los conceptos
+están: rol **5** (Fondos de reserva) y rol **20** (Provisión) los dos activos con 8,33, y la
+parametría de 2026 en 8,33 con 30 días.
+
+**⚠ Pero apareció una SEXTA que cumple el año en junio y que el guion no nombra: `TORRES CHAVEZ`**
+—ingreso 25-06-2025, modalidad 1, contrato **CERRADO**—. No entra, y el motivo está en el selector,
+no en el estado: `selectActivosEnPeriodo` admite un contrato con fecha de terminación **sólo si
+`CNTEFCTR > :hasta`**, y la suya es del 15-01-2026. Se confirma ejecutando el filtro del motor tal
+cual, que es el [`sql/60`](sql/60_PREVIA_JUNIO_SELECTOR_MOTOR.sql): **debe dar 20 colaboradores y
+Torres en `NO ENTRA`**.
+
+### ⚠ EL HUECO QUE EL `sql/59` NO VEÍA — lo levantó la auditoría del backend
+
+**La base del fondo de reserva no sale del contrato: sale de la bandera `CPNMAPFR` del concepto de
+SUELDO.** `baseFr = sumaPorBandera(renglones, "APFR")` (línea 898) → `getAportaFondosReserva()`
+(1421) → `RHH.CPNM.CPNMAPFR`. Y **el concepto de sueldo no tiene `CPNMROLM` 5 ni 20**, así que el
+filtro `WHERE CPNMROLM IN (5,20)` del `59` **nunca lo traía**.
+
+**Si esa bandera estuviera en `'N'` en producción, el fondo de reserva de los cinco saldría CERO sin
+un solo error** —ni excepción, ni aviso, ni renglón raro— y junio saldría 82,23 por debajo del
+cliente en vez de 44,60. El `sql/60` lo comprueba en su bloque 4, junto con dos huecos más de la
+misma auditoría: las **ausencias no remuneradas de junio** en `RHH.RSMN` (restan días trabajados, y
+`diasTrabajados` entra **dos veces** en el cálculo: en la base y en el factor) y las **fechas de
+corte del contrato** más `CNTETPRL`.
+
+**Y una respuesta que hacía falta antes de calcular:** una divergencia entre `CPNMPRCN` del concepto
+y `PRNMFNRS` de la parametría **no impide calcular junio** —`validarPeriodo` sólo añade
+`"Aviso: …"`— pero **sí impide aprobarlo**: `aprobarPeriodo` lanza `IncomeException` con la misma
+comparación. Junio es el primer mes en que ese rol produce un renglón, así que es la primera vez que
+esa comparación tiene algo real que comparar. Con los dos en 8,33 —medido— no hay divergencia.
+
+### ✅ `sql/60` CORRIDO EN PRODUCCIÓN — 2026-08-25 · junio DESBLOQUEADO
+
+| Bloque | Resultado |
+|---|---|
+| **1 y 2 · el filtro del motor** | **20 colaboradores**, los mismos de abril y mayo, todos `ACTIVO` |
+| **3 · los seis del aniversario** | Bárcenas, Muñoz, Nieto, Pardo y Viteri en **`ENTRA`**; **Torres Chávez en `NO ENTRA`**, con estado de empleado **4 CESANTE** y terminación **15-01-2026**. Las dos ramas del filtro la descartan, no sólo una |
+| **4 · la bandera `CPNMAPFR`** | ✅ concepto **1 · Sueldo en `'S'`**, que era el riesgo. **Y son SIETE los conceptos que aportan a la base**, no uno: 1 Sueldo · 2 y 3 horas extra · 4 recargo nocturno · 8 Bono de responsabilidad · 11 Comisiones · **12 Vacaciones pagadas**. Comprobado que el `CTRL` de junio sólo trae los conceptos 1, 5, 6, 7, 20, 23, 24, 25 y 31: **ninguno de los otros seis entra en junio**, así que `baseFr` de los cinco es el sueldo limpio |
+| **5 · ausencias no remuneradas** | ✅ **cero filas**. `diasTrabajados` = 30 para los cinco, que es el supuesto del que cuelgan el factor y la base |
+| **6 · los contratos de los cinco** | ✅ `CNTEFCHF` y `CNTEFCTR` **nulas** en los cinco, `CNTETPRL` = **1** en los cinco. Ninguna ventana recortada, ninguna fórmula alternativa de sueldo |
+
+> **⚠ El `javap` en producción NO se corrió, por decisión del 2026-08-25.** El sistema se despliega
+> allí **como EAR**, no como WAR suelto en `deployments/`, y la consola de administración lo da por
+> desplegado. Mike lo dio por bueno.
+>
+> **Eso deja el motor desplegado sin verificar directamente — pero no sin verificar.** El primer
+> cálculo de junio es la prueba, y es falsable al primer vistazo: con el WAR **viejo** los cuatro
+> mensualizados cobran el **mes entero** —Bárcenas 58,33 · Muñoz 45,83 · Nieto 75,00 · Pardo 58,33,
+> **237,49**— y Viteri **no** genera provisión prorrateada. Con el WAR **nuevo** cobran **37,63**
+> entre los cuatro. **No hay forma de confundir 237,49 con 37,63**, así que el contraste de junio
+> hace de `javap` sin coste. Está escrito en el prompt de arranque como condición de parada.
 
 ### ⚖️ LA REGLA QUE GOBIERNA TODO LO DEMÁS — fijada el 2026-08-24
 

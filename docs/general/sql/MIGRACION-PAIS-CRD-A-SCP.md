@@ -4,8 +4,10 @@
 >
 > **Se intentó en producción el 2026-08-24 y falló.**
 >
-> **Decisión del usuario: la tabla de países SE QUEDA en `CRD.PSSS`.** No se migra, y no se
-> reintenta por ahora.
+> **Decisión del usuario: la tabla de países SE QUEDA en `CRD.PSSS`, de forma PERMANENTE.**
+> No se migra. La migración está **descartada, no diferida** — no se reintenta, y ningún
+> agente futuro debe proponerla de nuevo. Ver la regla permanente en
+> `docs/logica-negocio/crd/ESTADO-TRABAJO-EN-CURSO.md` §5.2.
 >
 > ### Lo que SÍ quedó aplicado, y se conserva
 >
