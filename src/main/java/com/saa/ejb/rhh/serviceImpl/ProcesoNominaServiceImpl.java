@@ -920,25 +920,51 @@ public class ProcesoNominaServiceImpl implements ProcesoNominaService {
 		}
 
 		// --- Paso 8: fondos de reserva ------------------------------------------------
+		//
+		// EL PRIMER MES NO SE PAGA ENTERO: SE PRORRATEA DESDE EL ANIVERSARIO.
+		//
+		// El derecho al fondo de reserva nace a partir del mes trece, y el mes doce se
+		// completa el dia del aniversario. Antes esta rama pagaba el mes completo en
+		// cuanto superaUnAnio decia que si, lo que en junio de 2026 daba 237,49 a los
+		// cuatro mensualizados contra los 45,56 que corresponden.
+		//
+		// LAS DOS MODALIDADES COMPARTEN LA MISMA CUENTA --guarda de aniversario y
+		// prorrateo del primer mes-- y por eso se escribe UNA sola vez, aqui arriba, y
+		// las dos ramas consumen el resultado. Escrita dos veces, arreglar una de las
+		// dos dejaria a la otra con el mismo defecto y con aspecto de resuelta: la rama
+		// ACUMULADO_EN_EL_IESS no tenia siquiera la guarda del aniversario --provisionaba
+		// desde el primer mes-- y anadirsela sin el prorrateo la habria dejado dando el
+		// mes entero en el mes del aniversario.
 		Double fondosReserva = Double.valueOf(0D);
-		if (Long.valueOf(RhhModalidadFondosReserva.MENSUALIZADO).equals(contrato.getModalidadFondosReserva())
-				&& superaUnAnio(empleado, contrato, hasta)) {
-			ConceptoNomina conceptoFr = conceptoPorRol(conceptos, RhhRolConceptoMotor.FONDOS_DE_RESERVA);
-			if (conceptoFr != null && !yaTieneRenglon(renglones, conceptoFr)) {
-				fondosReserva = RedondeoNomina.porcentaje(baseFr, porcentajeVigente(conceptoFr, prnm));
-				renglones.add(nuevoRenglon(nomina, conceptoFr, null, fondosReserva, baseFr,
-						porcentajeVigente(conceptoFr, prnm),
-						RhhOrigenRenglon.CALCULO_AUTOMATICO, null, null));
-			}
-		} else if (Long.valueOf(RhhModalidadFondosReserva.ACUMULADO_EN_EL_IESS)
+		LocalDate aniversarioFr = fechaAniversarioFondosReserva(empleado, contrato);
+		boolean tieneDerechoFr = aniversarioFr != null && !aniversarioFr.isAfter(hasta);
+		Double baseFrPeriodo = tieneDerechoFr
+				? baseFondosReservaProrrateada(contrato, periodo, prnm, aniversarioFr, baseFr, diasTrabajados)
+				: Double.valueOf(0D);
+
+		if (tieneDerechoFr && Long.valueOf(RhhModalidadFondosReserva.MENSUALIZADO)
 				.equals(contrato.getModalidadFondosReserva())) {
 			ConceptoNomina conceptoFr = conceptoPorRol(conceptos, RhhRolConceptoMotor.FONDOS_DE_RESERVA);
-			Double provision = RedondeoNomina.porcentaje(baseFr,
+			if (conceptoFr != null && !yaTieneRenglon(renglones, conceptoFr)) {
+				Double porcentajeFr = porcentajeVigente(conceptoFr, prnm);
+				fondosReserva = RedondeoNomina.porcentaje(baseFrPeriodo, porcentajeFr);
+				// La base que se graba es la PRORRATEADA, no el sueldo entero: es la que
+				// la planilla de fondos de reserva del IESS declara --Viteri, 366,67-- y
+				// la que la planilla de control lee de RNGL. Con el sueldo entero el
+				// importe seria correcto y su base incuadrable.
+				renglones.add(nuevoRenglon(nomina, conceptoFr, null, fondosReserva, baseFrPeriodo,
+						porcentajeFr,
+						RhhOrigenRenglon.CALCULO_AUTOMATICO, null, null));
+			}
+		} else if (tieneDerechoFr && Long.valueOf(RhhModalidadFondosReserva.ACUMULADO_EN_EL_IESS)
+				.equals(contrato.getModalidadFondosReserva())) {
+			ConceptoNomina conceptoFr = conceptoPorRol(conceptos, RhhRolConceptoMotor.FONDOS_DE_RESERVA);
+			Double provision = RedondeoNomina.porcentaje(baseFrPeriodo,
 					conceptoFr != null ? porcentajeVigente(conceptoFr, prnm) : prnm.getFondosReserva());
 			generaProvision(periodo, empleado,
 					conceptoPorRol(conceptos, RhhRolConceptoMotor.PROVISION_FONDOS_DE_RESERVA),
 					RhhTipoProvision.FONDOS_DE_RESERVA,
-					baseFr, provision, usuario, persistir);
+					baseFrPeriodo, provision, usuario, persistir);
 		}
 
 		// --- Paso 9: decimo tercero ---------------------------------------------------
@@ -1644,21 +1670,98 @@ public class ProcesoNominaServiceImpl implements ProcesoNominaService {
 	}
 
 	/**
-	 * Indica si el empleado supera el anio de servicio a la fecha indicada, que es la
-	 * condicion para que los fondos de reserva se paguen.
+	 * Fecha en que el trabajador cumple el anio de servicio: el dia en que se completa
+	 * el mes doce y, por tanto, el ultimo dia SIN derecho a fondo de reserva.
+	 *
+	 * <p>Antes esto era <code>superaUnAnio</code>, que devolvia un booleano y tiraba la
+	 * fecha. El prorrateo del primer mes la necesita, asi que se devuelve la fecha y la
+	 * comparacion queda en el llamador. La fuente no cambia: la de ingreso del empleado,
+	 * con la de inicio del contrato como respaldo.</p>
 	 *
 	 * @param empleado	: Empleado
 	 * @param contrato	: Contrato
-	 * @param fecha		: Fecha de corte
-	 * @return			: true si supera el anio
+	 * @return			: La fecha del aniversario, o null si no hay fecha de ingreso
 	 */
-	private boolean superaUnAnio(Empleado empleado, ContratoEmpleado contrato, LocalDate fecha) {
+	private LocalDate fechaAniversarioFondosReserva(Empleado empleado, ContratoEmpleado contrato) {
 		LocalDate ingreso = empleado.getFechaIngreso() != null
 				? empleado.getFechaIngreso() : contrato.getFechaInicio();
-		if (ingreso == null) {
-			return false;
+		return ingreso == null ? null : ingreso.plusYears(1);
+	}
+
+	/**
+	 * Base de fondos de reserva del periodo, prorrateada desde el aniversario.
+	 *
+	 * <p><b>LA CONVENCION DE DIAS ES EXCLUSIVA, Y NO ES LA DE
+	 * {@link #calculaDiasTrabajados}.</b> Alli el dia de ingreso SI se trabaja y entra en
+	 * la cuenta, que por eso es <code>30 - d + 1</code>. Aqui el mes doce se completa EL
+	 * DIA DEL ANIVERSARIO y el derecho nace a partir del mes trece, asi que ese dia NO
+	 * cuenta y la cuenta es <code>30 - d</code>. Las dos se parecen lo bastante como para
+	 * que reutilizar la primera parezca coherencia: seria un dia de mas en cada mes de
+	 * aniversario, con aspecto de estar bien.</p>
+	 *
+	 * <p>Verificado contra la planilla de fondos de reserva del IESS: Viteri, aniversario
+	 * el 25-06, declarado con <b>5 dias y base 366,67</b> = 2200 x 5/30. Del 25 al 30 hay
+	 * seis dias; del 26 al 30, cinco. El rol del cliente usa la otra convencion y le paga
+	 * seis: cuando las dos fuentes se contradicen, la planilla manda sobre lo que se
+	 * declara al IESS.</p>
+	 *
+	 * <p>El prorrateo se aplica a la BASE y no al importe. Antes de redondear son lo
+	 * mismo, pero la base viaja a <code>RNGL</code> y de ahi a la planilla; con el sueldo
+	 * entero el importe saldria bien y su base no cuadraria con nada.</p>
+	 *
+	 * <p>El factor se calcula contra los dias TRABAJADOS, no contra los del mes: asi
+	 * quien cumple el anio y sale el mismo mes no se prorratea dos veces --su base ya
+	 * viene reducida por {@link #calculaDiasTrabajados}-- y la ventana queda acotada por
+	 * los dos extremos. Es el borde que obliga a que este calculo sea uno solo y no una
+	 * copia por rama.</p>
+	 *
+	 * @param contrato		: Contrato a calcular
+	 * @param periodo		: Periodo de nomina
+	 * @param prnm			: Parametros normativos del anio
+	 * @param aniversario	: Fecha del aniversario, ya comprobada dentro del periodo
+	 * @param baseFr		: Base de fondos de reserva del periodo, sin prorratear
+	 * @param diasTrabajados: Dias trabajados del periodo
+	 * @return				: La base prorrateada, o cero si no hay ventana
+	 */
+	private Double baseFondosReservaProrrateada(ContratoEmpleado contrato, PeriodoNomina periodo,
+			ParametroNomina prnm, LocalDate aniversario, Double baseFr, Double diasTrabajados) {
+		if (baseFr == null || diasTrabajados == null || diasTrabajados.doubleValue() <= 0D) {
+			return Double.valueOf(0D);
 		}
-		return !ingreso.plusYears(1).isAfter(fecha);
+		double diasBase = prnm.getDiasMes().doubleValue();
+		LocalDate desde = periodo.getFechaInicio();
+		LocalDate hasta = periodo.getFechaFin();
+
+		LocalDate inicioReal = contrato.getFechaInicio() != null
+				&& contrato.getFechaInicio().isAfter(desde) ? contrato.getFechaInicio() : desde;
+		// EL DIA DEL ANIVERSARIO NO CUENTA: el derecho nace al dia siguiente.
+		LocalDate inicioFr = aniversario.plusDays(1);
+		if (inicioFr.isAfter(inicioReal)) {
+			inicioReal = inicioFr;
+		}
+		LocalDate finReal = hasta;
+		if (contrato.getFechaTerminacion() != null && contrato.getFechaTerminacion().isBefore(hasta)) {
+			finReal = contrato.getFechaTerminacion();
+		} else if (contrato.getFechaFin() != null && contrato.getFechaFin().isBefore(hasta)) {
+			finReal = contrato.getFechaFin();
+		}
+		if (inicioReal.isAfter(finReal)) {
+			return Double.valueOf(0D);
+		}
+
+		double diaInicio = inicioReal.isAfter(desde) ? inicioReal.getDayOfMonth() : 1D;
+		double diaFin = finReal.isBefore(hasta) ? finReal.getDayOfMonth() : diasBase;
+		double dias = Math.min(diaFin, diasBase) - Math.min(diaInicio, diasBase) + 1D;
+		if (dias < 0D) {
+			dias = 0D;
+		}
+		if (dias > diasBase) {
+			dias = diasBase;
+		}
+
+		double trabajados = diasTrabajados.doubleValue();
+		double factor = Math.min(dias, trabajados) / trabajados;
+		return Double.valueOf(baseFr.doubleValue() * factor);
 	}
 
 	/**
