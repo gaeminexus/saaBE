@@ -67,4 +67,7 @@ public interface NombreEntidadesCompra {
 	// Pagos a proveedores por transferencia
 	String PAGO_PROGRAMADO          = "PagoProgramado";
 	String LOTE_PAGO                = "LotePago";
+
+	// Desglose contable de un pago cuyo documento de origen vive en otro modulo
+	String DETALLE_PAGO_ORIGEN_EXTERNO = "DetallePagoOrigenExterno";
 }

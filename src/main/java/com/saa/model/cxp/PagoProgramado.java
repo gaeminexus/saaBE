@@ -4,8 +4,10 @@ import java.io.Serializable;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
+import com.saa.model.cnt.Asiento;
 import com.saa.model.scp.Empresa;
 import com.saa.model.scp.Usuario;
+import com.saa.model.tsr.BancoExterno;
 import com.saa.model.tsr.CuentaBancaria;
 import com.saa.model.tsr.CuentaBancariaTitular;
 import com.saa.model.tsr.Titular;
@@ -51,6 +53,14 @@ import jakarta.persistence.Table;
  * No se aprueban ni se seleccionan para ningún lote: el dinero ya salió de la
  * cuenta antes de que el pago llegue al sistema. Por eso tampoco admiten la
  * anulación simple (que es para pagos sin contabilidad): se reversan.
+ *
+ * ORIGEN EXTERNO: además de factura de compra, egreso de tesorería y anticipo a
+ * proveedor, un pago puede tener su documento de origen en OTRO módulo del sistema
+ * (PGTRORGN + PGTRIDOR). CXP guarda esa pareja como dato opaco y nunca la resuelve:
+ * es lo que permite que otros módulos disparen órdenes de pago sin que CXP tenga
+ * que conocerlos. Estos pagos llevan su desglose contable en PGS.DPGT, el asiento
+ * colgado del propio PGTR (PGTRASNT) y, cuando el beneficiario no existe en el
+ * maestro de titulares, sus datos denormalizados en los campos PGTRBF*.
  */
 @SuppressWarnings("serial")
 @Entity
@@ -112,6 +122,79 @@ public class PagoProgramado implements Serializable {
     @ManyToOne
     @JoinColumn(name = "PGTRANTP", referencedColumnName = "ANTPCDGO")
     private AnticipoProveedor anticipo;
+
+    /**
+     * Etiqueta del proceso EXTERNO a CXP que originó el pago, cuando el documento de
+     * origen no vive en este módulo. Ver {@link com.saa.rubros.OrigenPagoExterno}.
+     * Nulo en los pagos propios de CXP (factura, egreso, anticipo).
+     * <p>
+     * Para CXP es una cadena OPACA: se guarda y se devuelve, nunca se resuelve. Junto con
+     * {@link #idOrigen} identifica el documento en el módulo que lo generó, sin que CXP
+     * tenga que conocer ese módulo.
+     * <p>
+     * Excluyente con {@link #facturaCompra}, {@link #egreso} y {@link #anticipo}.
+     */
+    @Basic
+    @Column(name = "PGTRORGN", length = 30)
+    private String origenExterno;
+
+    /**
+     * Id del documento en el módulo que originó el pago. <b>Sin FK a propósito</b>: CXP no
+     * puede depender de ningún otro módulo del sistema. CXP lo guarda y lo devuelve, pero
+     * nunca lo resuelve.
+     */
+    @Basic
+    @Column(name = "PGTRIDOR")
+    private Long idOrigen;
+
+    /**
+     * Asiento contable generado al confirmarse un pago de ORIGEN EXTERNO. FK a CNT.ASNT.
+     * <p>
+     * Los demás orígenes cuelgan el asiento de su propio documento (la aplicación de pago,
+     * el egreso o el anticipo); el de origen externo no tiene documento CXP donde colgarlo,
+     * así que se guarda aquí. Nulo en los pagos propios de CXP.
+     */
+    @ManyToOne
+    @JoinColumn(name = "PGTRASNT", referencedColumnName = "ASNTCDGO")
+    private Asiento asiento;
+
+    /**
+     * Beneficiario ocasional: nombre. Se usa cuando {@link #cuentaDestino} es null, es
+     * decir cuando hay que pagarle a alguien que NO está en el maestro de titulares de
+     * tesorería. Es una capacidad genérica de CXP, no ligada a ningún módulo concreto.
+     */
+    @Basic
+    @Column(name = "PGTRBFNM", length = 2000)
+    private String beneficiarioNombre;
+
+    /**
+     * Beneficiario ocasional: número de identificación (cédula o RUC).
+     */
+    @Basic
+    @Column(name = "PGTRBFID", length = 20)
+    private String beneficiarioIdentificacion;
+
+    /**
+     * Beneficiario ocasional: banco externo al que se transfiere. FK a TSR.BEXT.
+     */
+    @ManyToOne
+    @JoinColumn(name = "PGTRBFBC", referencedColumnName = "BEXTCDGO")
+    private BancoExterno beneficiarioBanco;
+
+    /**
+     * Beneficiario ocasional: tipo de cuenta (codigoAlterno del DetalleRubro del rubro de
+     * tipo de cuenta bancaria).
+     */
+    @Basic
+    @Column(name = "PGTRBFTP")
+    private Long beneficiarioTipoCuenta;
+
+    /**
+     * Beneficiario ocasional: número de cuenta destino.
+     */
+    @Basic
+    @Column(name = "PGTRBFCT", length = 50)
+    private String beneficiarioCuenta;
 
     /**
      * Proveedor al que se paga. FK a TSR.TTLR.
@@ -239,6 +322,34 @@ public class PagoProgramado implements Serializable {
 
     public AnticipoProveedor getAnticipo() { return anticipo; }
     public void setAnticipo(AnticipoProveedor anticipo) { this.anticipo = anticipo; }
+
+    public String getOrigenExterno() { return origenExterno; }
+    public void setOrigenExterno(String origenExterno) { this.origenExterno = origenExterno; }
+
+    public Long getIdOrigen() { return idOrigen; }
+    public void setIdOrigen(Long idOrigen) { this.idOrigen = idOrigen; }
+
+    public Asiento getAsiento() { return asiento; }
+    public void setAsiento(Asiento asiento) { this.asiento = asiento; }
+
+    public String getBeneficiarioNombre() { return beneficiarioNombre; }
+    public void setBeneficiarioNombre(String beneficiarioNombre) { this.beneficiarioNombre = beneficiarioNombre; }
+
+    public String getBeneficiarioIdentificacion() { return beneficiarioIdentificacion; }
+    public void setBeneficiarioIdentificacion(String beneficiarioIdentificacion) {
+        this.beneficiarioIdentificacion = beneficiarioIdentificacion;
+    }
+
+    public BancoExterno getBeneficiarioBanco() { return beneficiarioBanco; }
+    public void setBeneficiarioBanco(BancoExterno beneficiarioBanco) { this.beneficiarioBanco = beneficiarioBanco; }
+
+    public Long getBeneficiarioTipoCuenta() { return beneficiarioTipoCuenta; }
+    public void setBeneficiarioTipoCuenta(Long beneficiarioTipoCuenta) {
+        this.beneficiarioTipoCuenta = beneficiarioTipoCuenta;
+    }
+
+    public String getBeneficiarioCuenta() { return beneficiarioCuenta; }
+    public void setBeneficiarioCuenta(String beneficiarioCuenta) { this.beneficiarioCuenta = beneficiarioCuenta; }
 
     public Titular getTitular() { return titular; }
     public void setTitular(Titular titular) { this.titular = titular; }

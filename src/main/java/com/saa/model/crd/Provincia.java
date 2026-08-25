@@ -2,6 +2,8 @@ package com.saa.model.crd;
 
 import java.io.Serializable;
 
+import com.saa.model.scp.Pais;
+
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

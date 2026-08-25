@@ -24,5 +24,12 @@ public interface NombreEntidadesSistema {
 	String RUBRO = "Rubro";
 	String DETALLE_RUBRO = "DetalleRubro";
 	String JERARQUIA = "Jerarquia";
+	/** Catalogo de paises. Estuvo en NombreEntidadesCredito hasta el 2026-08-24:
+	 *  se movio junto con la entidad, porque TSR.Titular la referencia y el sistema
+	 *  se comercializa sin el modulo crd. El VALOR no cambio ("Pais"), asi que los
+	 *  @NamedQuery PaisAll / PaisId siguen resolviendo igual.
+	 *  OJO: se movio el PAQUETE JAVA, no la tabla. com.saa.model.scp.Pais sigue mapeando
+	 *  CRD.PSSS; la migracion de esquema se intento en produccion y no se aplico. */
+	String PAIS = "Pais";
 
 }

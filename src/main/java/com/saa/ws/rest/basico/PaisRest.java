@@ -1,12 +1,12 @@
-package com.saa.ws.rest.crd;
+package com.saa.ws.rest.basico;
 
 import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
-import com.saa.ejb.crd.dao.PaisDaoService;
-import com.saa.ejb.crd.service.PaisService;
-import com.saa.model.crd.NombreEntidadesCredito;
-import com.saa.model.crd.Pais;
+import com.saa.basico.ejb.PaisDaoService;
+import com.saa.basico.ejb.PaisService;
+import com.saa.model.scp.NombreEntidadesSistema;
+import com.saa.model.scp.Pais;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;
@@ -41,7 +41,7 @@ public class PaisRest {
     @Produces(MediaType.APPLICATION_JSON)
     public Response getAll() {
         try {
-            List<Pais> lista = paisDaoService.selectAll(NombreEntidadesCredito.PAIS);
+            List<Pais> lista = paisDaoService.selectAll(NombreEntidadesSistema.PAIS);
             return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener países: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
@@ -53,7 +53,7 @@ public class PaisRest {
     @Produces(MediaType.APPLICATION_JSON)
     public Response getId(@PathParam("id") Long id) {
         try {
-            Pais pais = paisDaoService.selectById(id, NombreEntidadesCredito.PAIS);
+            Pais pais = paisDaoService.selectById(id, NombreEntidadesSistema.PAIS);
             if (pais == null) {
                 return Response.status(Response.Status.NOT_FOUND).entity("País con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
             }

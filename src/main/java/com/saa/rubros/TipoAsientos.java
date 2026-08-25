@@ -134,6 +134,22 @@ public interface TipoAsientos {
 	 *  DEBE: cuenta contable del banco / HABER: cuenta del grupo del producto CXC. */
 	public static final int INGRESO_TESORERIA = 4;
 
+	// ─── CXP: pagos cuyo documento de origen vive en otro módulo ─────────────
+
+	/**
+	 * Pago de un documento originado FUERA de CXP (PGS.PGTR.PGTRORGN no nulo).
+	 * codigoAlterno=5 (TEGRESO), el mismo que ya usan {@link #EGRESO_TESORERIA},
+	 * {@link #ANTICIPOS_PROVEEDOR} y {@link #PAGO_TRANSFERENCIA_CXP}: no hace falta
+	 * una fila nueva de TipoAsiento en BD.
+	 * <p>
+	 * DEBE: una línea por cada detalle de PGS.DPGT, con la cuenta del grupo de su
+	 * producto de pago / HABER: cuenta contable del banco, por el total.
+	 * <p>
+	 * El asiento lo genera CXP, así que se etiqueta {@code ModuloSistema.CUENTAS_POR_PAGAR}.
+	 * No existe un ModuloSistema por cada módulo que pueda originar el pago.
+	 */
+	public static final int PAGO_ORIGEN_EXTERNO = 5;
+
 	// ─── RRHH: nómina ────────────────────────────────────────────────────────
 
 	/**

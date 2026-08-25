@@ -28,7 +28,15 @@ import jakarta.ejb.Local;
  *
  * <b>Universo</b>: cuotas pendientes ({@code estado IS NULL OR estado NOT IN (4,7)}) con
  * {@code fechaVencimiento} anterior a la fecha de corte, de préstamos en estado
- * VIGENTE(2), DE_PLAZO_VENCIDO(8) o EN_MORA(11) — el mismo Grupo 2 del G48.
+ * <b>VIGENTE(2) o EN_MORA(11)</b>.
+ *
+ * <p><b>DE_PLAZO_VENCIDO(8) NO entra</b> (corregido el 2026-08-24). El universo original
+ * copiaba el del Grupo 2 del G48, que sí incluye el 8, y eso era un defecto: el G48 solo
+ * <i>lee</i> la mora, mientras que este proceso <i>escribe</i> el estado del préstamo. El
+ * resultado fue que todos los préstamos en DE PLAZO VENCIDO quedaron reclasificados a
+ * EN_MORA(11) en producción. La exclusión está en dos niveles: en la consulta del universo y
+ * en una guarda dentro de {@code calcularMoraPrestamo}, porque el endpoint por préstamo no
+ * pasa por la consulta.</p>
  *
  * <b>Qué escribe en cada cuota vencida</b>: {@code DTPRMRAA} (mora), {@code DTPRMRCL}
  * (mora calculada), {@code DTPRDSMR} (días de mora), {@code DTPRTTLL} (total, con la mora
@@ -72,10 +80,18 @@ public interface ProcesoMoraPrestamoService {
      * transacción. Es la unidad de trabajo del lote y también sirve para recalcular un préstamo
      * puntual desde el frontend.
      *
+     * <p><b>Un préstamo en DE_PLAZO_VENCIDO(8) se saltea</b>: devuelve el resumen en cero sin
+     * calcular mora y <b>sin tocar ningún estado</b>, ni el del préstamo ni el de sus cuotas.
+     * La guarda está acá y no solo en el universo del lote porque el endpoint por préstamo
+     * entra directamente a este método, salteándose la consulta que arma ese universo.</p>
+     *
+     * <p>Los estados terminales (3, 4, 5) tampoco se tocan, pero eso ya lo resolvía la lógica
+     * de estado del préstamo.</p>
+     *
      * @param idPrestamo Código del préstamo
      * @param fechaCorte Fecha con la que se calcula la mora; si es null se usa hoy
      * @param usuario    Usuario que ejecuta
-     * @return Resumen de la corrida para ese préstamo
+     * @return Resumen de la corrida para ese préstamo; en cero si el préstamo está en 8
      * @throws Throwable Si ocurre un error
      */
     ResultadoCalculoMora calcularMoraPrestamo(Long idPrestamo, LocalDate fechaCorte, String usuario) throws Throwable;

@@ -194,6 +194,24 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
             throw new IncomeException(ERR_PRESTAMO_NO_ENCONTRADO + ": no existe el préstamo " + idPrestamo);
         }
 
+        // GUARDA: DE_PLAZO_VENCIDO(8) queda fuera de este proceso (corregido el 2026-08-24).
+        //
+        // El universo del lote ya lo excluye (selectPrestamosConCuotasVencidas), pero el
+        // endpoint POST /prst/calcularMora/{idPrestamo} entra directamente acá salteándose esa
+        // consulta. Sin esta guarda, un préstamo en 8 invocado a mano se seguiría
+        // reclasificando a EN_MORA(11) más abajo. Defensa en los dos niveles.
+        //
+        // Se sale SIN calcular mora y SIN TOCAR NINGÚN ESTADO: ni el del préstamo ni el de sus
+        // cuotas. El resumen vuelve en cero, que es exactamente lo que ocurrió.
+        if (prestamo.getIdEstado() != null
+                && prestamo.getIdEstado().intValue() == EstadoPrestamo.DE_PLAZO_VENCIDO) {
+            System.out.println("      Préstamo " + idPrestamo + " en estado 8 (DE PLAZO VENCIDO):"
+                + " fuera del proceso de mora. No se calcula mora y no se toca ningún estado.");
+            resumen.setPrestamosProcesados(0);
+            resumen.setFechaFin(LocalDateTime.now());
+            return resumen;
+        }
+
         LocalDateTime corte = corteDelDia(fecha);
 
         // Tasa de mora = tasa nominal del préstamo; mismo default que el G48 cuando falta

@@ -126,6 +126,52 @@ public class PrestamoDaoServiceImpl extends EntityDaoImpl<Prestamo> implements P
     }
 
     @Override
+    @SuppressWarnings("unchecked")
+    public List<Prestamo> selectVigentesByEntidad(Long codigoEntidad) throws Throwable {
+        System.out.println("PrestamoDaoServiceImpl.selectVigentesByEntidad - Entidad: "
+            + codigoEntidad);
+
+        if (codigoEntidad == null) {
+            return new java.util.ArrayList<>();
+        }
+
+        try {
+            // idEstado (PRSTIDST) es el estado operativo. NUNCA estadoPrestamo (ESPSCDGO),
+            // que es la FK al catálogo CRD.ESPS.
+            // Los tres terminales quedan fuera: 3 CANCELADO, 4 CANCELADO_ANTICIPADO,
+            // 5 CANCELADO_POR_NOVACION. El idEstado nulo entra: no es un estado terminal, y
+            // en un aviso subreportar deuda es peor que sobrereportarla.
+            String jpql = "SELECT p FROM Prestamo p " +
+                         "WHERE p.entidad.codigo = :codigoEntidad " +
+                         "AND (p.idEstado IS NULL OR p.idEstado NOT IN " +
+                         "     (:cancelado, :canceladoAnticipado, :canceladoPorNovacion)) " +
+                         "ORDER BY p.codigo ASC";
+
+            Query query = em.createQuery(jpql);
+            query.setParameter("codigoEntidad", codigoEntidad);
+            query.setParameter("cancelado",
+                (long) com.saa.rubros.EstadoPrestamo.CANCELADO);
+            query.setParameter("canceladoAnticipado",
+                (long) com.saa.rubros.EstadoPrestamo.CANCELADO_ANTICIPADO);
+            query.setParameter("canceladoPorNovacion",
+                (long) com.saa.rubros.EstadoPrestamo.CANCELADO_POR_NOVACION);
+
+            List<Prestamo> resultados = query.getResultList();
+            System.out.println("  Préstamos vigentes encontrados: "
+                + (resultados != null ? resultados.size() : 0));
+            return resultados;
+
+        } catch (Exception e) {
+            System.err.println("Error en selectVigentesByEntidad: " + e.getMessage());
+            e.printStackTrace();
+            // NO lanzar excepción - retornar lista vacía para no detener el proceso.
+            // Este método alimenta un aviso informativo: un fallo de consulta no debe
+            // romper la pantalla de devolución.
+            return new java.util.ArrayList<>();
+        }
+    }
+
+    @Override
     public long countVigentesMoraVencidosByEntidad(Long codigoEntidad) throws Throwable {
         Query query = em.createQuery(
             "select count(p) from Prestamo p " +

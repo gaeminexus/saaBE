@@ -802,7 +802,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                     + ". Si es una factura de reembolso pendiente, ingrese los documentos sustento "
                     + "y contabilicela; si desea volver a registrarla, reviertala primero.");
 
-        String xmlContent = leerArchivoXml(doc.getPathXml());
+        String xmlContent = leerArchivoXml(doc);
         String tipo = doc.getTipoComprobante();
         Map<String, Object> resultado;
 
@@ -3355,9 +3355,76 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         return nuevo;
     }
 
-    private String leerArchivoXml(String path) throws Exception {
-        if (path == null || path.isEmpty()) throw new Exception("El path del XML es nulo o vacío.");
-        return new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(path)));
+    /**
+     * Lee del disco el XML al que apunta el documento.
+     *
+     * <p>
+     * Comprueba que el archivo esté <b>antes</b> de leerlo, y no por prolijidad.
+     * Si se deja que falle {@code Files.readAllBytes}, la
+     * {@code NoSuchFileException} llega con la ruta a secas como {@code getMessage()}
+     * —sin verbo y sin sujeto—, y eso es exactamente lo que termina copiado en la
+     * {@code observacion} del documento: <i>"Error al registrar en BD:
+     * C:\Users\...\xxx.xml"</i>. Uno por uno se tolera porque el usuario tiene el
+     * contexto delante; en un lote de cincuenta, cincuenta observaciones que solo
+     * traen una ruta no le dicen nada a nadie.
+     * </p>
+     *
+     * <p>
+     * El caso que lo destapó: documentos cargados a mano en otra máquina, con
+     * {@code pathXml} <b>absoluto</b> apuntando a una raíz de subidas que en este
+     * servidor no existe. Se reconocen por {@code origenXml} nulo.
+     * </p>
+     *
+     * @param doc        : Documento cuyo XML se quiere leer
+     * @return           : Contenido del archivo
+     * @throws Exception : Con un mensaje que se explica solo y dice qué hacer
+     */
+    private String leerArchivoXml(DocumentoCxp doc) throws Exception {
+
+        String referencia = referenciaDocumento(doc);
+        String path = doc != null ? doc.getPathXml() : null;
+
+        if (path == null || path.trim().isEmpty())
+            throw new Exception("El documento " + referencia + " no tiene registrada la ruta de "
+                    + "su XML. Vuelva a subir el archivo desde la pantalla de carga.");
+
+        java.nio.file.Path archivo = java.nio.file.Paths.get(path.trim());
+
+        if (!java.nio.file.Files.exists(archivo))
+            throw new Exception("No se encuentra el archivo XML del documento " + referencia
+                    + ". La ruta registrada es [" + path + "] y ahí no hay nada: el archivo se "
+                    + "guardó en otra ubicación o en otro servidor. Vuelva a subir el XML desde "
+                    + "la pantalla de carga para que quede en la raíz de subidas de este servidor.");
+
+        if (!java.nio.file.Files.isReadable(archivo))
+            throw new Exception("El archivo XML del documento " + referencia + " existe pero no "
+                    + "se puede leer: [" + path + "]. Revise los permisos del archivo, o vuelva "
+                    + "a subirlo desde la pantalla de carga.");
+
+        try {
+            return new String(java.nio.file.Files.readAllBytes(archivo));
+        } catch (java.io.IOException e) {
+            throw new Exception("No se pudo leer el archivo XML del documento " + referencia
+                    + " [" + path + "]: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Cómo se nombra un documento en un mensaje de error para que el usuario lo
+     * reconozca en la grilla: la serie es lo que ve en pantalla, y el id es lo
+     * que sirve para buscarlo en la base.
+     *
+     * @param doc : Documento, puede ser nulo
+     * @return    : Texto como {@code "001-002-000012345 (id=901)"}
+     */
+    private String referenciaDocumento(DocumentoCxp doc) {
+        if (doc == null) return "(desconocido)";
+
+        String nombre = doc.getSerieComprobante() != null && !doc.getSerieComprobante().isEmpty()
+                ? doc.getSerieComprobante()
+                : doc.getClaveAcceso();
+
+        return (nombre != null ? nombre : "sin serie") + " (id=" + doc.getId() + ")";
     }
 
     private Document parsearXmlComprobante(String xmlCompleto) throws Exception {

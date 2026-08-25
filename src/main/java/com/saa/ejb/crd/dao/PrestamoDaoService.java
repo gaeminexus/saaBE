@@ -47,6 +47,29 @@ public interface PrestamoDaoService extends EntityDao<Prestamo> {
     List<Prestamo> selectByEstado(Long estado) throws Throwable;
 
     /**
+     * Préstamos VIGENTES de una entidad: todos los que NO están en uno de los tres estados
+     * terminales — 3 CANCELADO, 4 CANCELADO_ANTICIPADO, 5 CANCELADO_POR_NOVACION.
+     *
+     * <p>Filtra por <b>{@code PRSTIDST}</b> ({@code idEstado}), que es el estado operativo del
+     * préstamo. <b>Nunca por {@code ESPSCDGO}</b> ({@code estadoPrestamo}): esa columna es la FK
+     * al catálogo {@code CRD.ESPS} y filtrar por ella devuelve resultados vacíos o
+     * silenciosamente incorrectos.</p>
+     *
+     * <p>Los préstamos con {@code idEstado} nulo SÍ entran: un estado sin poblar no es un estado
+     * terminal, y este método alimenta un aviso informativo donde subreportar deuda es peor que
+     * sobrereportarla.</p>
+     *
+     * <p>Usado por {@code GET /rest/dvap/deudaVigente/{idEntidad}} para avisar al operador de la
+     * deuda del partícipe antes de devolverle sus aportes. Es un AVISO: no bloquea nada.</p>
+     *
+     * @param codigoEntidad ID numérico de la entidad (partícipe)
+     * @return Listado de préstamos no terminales de la entidad; lista VACÍA si no tiene ninguno
+     *         o si falla la consulta (el aviso nunca debe romper la pantalla)
+     * @throws Throwable Si ocurre algún error
+     */
+    List<Prestamo> selectVigentesByEntidad(Long codigoEntidad) throws Throwable;
+
+    /**
      * Cuenta los préstamos de una entidad que estén en estado vigente (2), en mora (8) o plazo vencido (11).
      * Usado en la generación del G45 para determinar si una entidad tiene más de un préstamo activo.
      * @param codigoEntidad ID numérico de la entidad

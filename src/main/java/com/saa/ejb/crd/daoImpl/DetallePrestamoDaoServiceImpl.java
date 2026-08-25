@@ -821,12 +821,19 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 		System.out.println("DetallePrestamoDaoServiceImpl.selectPrestamosConCuotasVencidas - corte: " + fechaCorte);
 
 		try {
-			// Mismo universo que el Grupo 2 del G48: cuota pendiente con vencimiento anterior
-			// al corte, en préstamos VIGENTE(2), DE_PLAZO_VENCIDO(8) o EN_MORA(11).
+			// Cuota pendiente con vencimiento anterior al corte, en préstamos
+			// VIGENTE(2) o EN_MORA(11).
+			//
+			// DE_PLAZO_VENCIDO(8) queda FUERA a propósito (corregido el 2026-08-24). Estuvo
+			// incluido desde el 2026-08-14 por copiar el universo del Grupo 2 del G48, y fue
+			// un defecto: el proceso reclasificaba a EN_MORA(11) TODOS los préstamos que
+			// estaban en DE PLAZO VENCIDO, perdiendo ese estado en producción.
+			// El G48 solo LEE; este proceso ESCRIBE el estado del préstamo, así que compartir
+			// el universo con un reporte no era correcto.
 			String jpql = "SELECT DISTINCT d.prestamo.codigo FROM DetallePrestamo d " +
 						 "WHERE (d.estado IS NULL OR d.estado NOT IN (:estadoPagada, :estadoCanceladaAnticipada)) " +
 						 "AND d.fechaVencimiento < :fechaCorte " +
-						 "AND d.prestamo.idEstado IN (:vigente, :plazoVencido, :enMora) " +
+						 "AND d.prestamo.idEstado IN (:vigente, :enMora) " +
 						 "ORDER BY d.prestamo.codigo ASC";
 
 			Query query = em.createQuery(jpql);
@@ -834,7 +841,6 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 			query.setParameter("estadoCanceladaAnticipada", (long) com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
 			query.setParameter("fechaCorte", fechaCorte);
 			query.setParameter("vigente", (long) com.saa.rubros.EstadoPrestamo.VIGENTE);
-			query.setParameter("plazoVencido", (long) com.saa.rubros.EstadoPrestamo.DE_PLAZO_VENCIDO);
 			query.setParameter("enMora", (long) com.saa.rubros.EstadoPrestamo.EN_MORA);
 
 			List<Long> resultados = query.getResultList();

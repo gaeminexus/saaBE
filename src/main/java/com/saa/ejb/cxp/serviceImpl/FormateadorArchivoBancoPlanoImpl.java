@@ -23,7 +23,12 @@ import com.saa.model.cxp.PagoProgramado;
  * de pagos no cambia.
  *
  * Estructura provisional (una línea por pago):
- *   idPago|rucProveedor|nombreProveedor|codigoBanco|tipoCuenta|numeroCuenta|valor|referencia
+ *   idPago|identificacion|nombre|codigoBanco|tipoCuenta|numeroCuenta|valor|referencia
+ *
+ * Los datos del destino salen de la cuenta bancaria del titular (TSR.CTBN). Cuando el pago
+ * no la tiene —porque el beneficiario no existe en el maestro de titulares de tesorería—
+ * se usan los campos del BENEFICIARIO OCASIONAL denormalizados en el propio pago
+ * (PGTRBF*). Solo si no hay ninguno de los dos se rechaza la generación del archivo.
  */
 public class FormateadorArchivoBancoPlanoImpl implements FormateadorArchivoBanco {
 
@@ -43,23 +48,45 @@ public class FormateadorArchivoBancoPlanoImpl implements FormateadorArchivoBanco
 
 		for (PagoProgramado pago : pagos) {
 
-			if (pago.getCuentaDestino() == null) {
+			// El destino sale de la cuenta del titular; si el pago no la tiene (porque el
+			// beneficiario no está en el maestro de titulares de tesorería) se cae a los
+			// datos del BENEFICIARIO OCASIONAL denormalizados en el propio pago.
+			boolean tieneCuentaTitular = (pago.getCuentaDestino() != null);
+			boolean tieneBeneficiarioOcasional = (pago.getBeneficiarioCuenta() != null
+					&& !pago.getBeneficiarioCuenta().trim().isEmpty());
+
+			if (!tieneCuentaTitular && !tieneBeneficiarioOcasional) {
 				throw new IncomeException("El pago " + pago.getId() + " (proveedor "
-						+ nombreTitular(pago) + ") no tiene cuenta bancaria de destino registrada. "
+						+ nombreBeneficiario(pago) + ") no tiene cuenta bancaria de destino registrada. "
 						+ "Registre la cuenta del proveedor antes de generar el archivo.");
 			}
 
-			String rucProveedor = (pago.getTitular() != null)
-					? nvl(pago.getTitular().getIdentificacion()) : "";
-			String codigoBanco = (pago.getCuentaDestino().getBanco() != null)
-					? nvl(pago.getCuentaDestino().getBanco().getNombre()) : "";
+			String identificacion;
+			String nombreBanco;
+			String tipoCuenta;
+			String numeroCuenta;
+
+			if (tieneCuentaTitular) {
+				identificacion = (pago.getTitular() != null)
+						? nvl(pago.getTitular().getIdentificacion()) : "";
+				nombreBanco = (pago.getCuentaDestino().getBanco() != null)
+						? nvl(pago.getCuentaDestino().getBanco().getNombre()) : "";
+				tipoCuenta   = nvlLong(pago.getCuentaDestino().getTipoCuenta());
+				numeroCuenta = nvl(pago.getCuentaDestino().getNumeroCuenta());
+			} else {
+				identificacion = nvl(pago.getBeneficiarioIdentificacion());
+				nombreBanco = (pago.getBeneficiarioBanco() != null)
+						? nvl(pago.getBeneficiarioBanco().getNombre()) : "";
+				tipoCuenta   = nvlLong(pago.getBeneficiarioTipoCuenta());
+				numeroCuenta = nvl(pago.getBeneficiarioCuenta());
+			}
 
 			contenido.append(pago.getId()).append(SEPARADOR)
-			         .append(rucProveedor).append(SEPARADOR)
-			         .append(nombreTitular(pago)).append(SEPARADOR)
-			         .append(codigoBanco).append(SEPARADOR)
-			         .append(nvlLong(pago.getCuentaDestino().getTipoCuenta())).append(SEPARADOR)
-			         .append(nvl(pago.getCuentaDestino().getNumeroCuenta())).append(SEPARADOR)
+			         .append(identificacion).append(SEPARADOR)
+			         .append(nombreBeneficiario(pago)).append(SEPARADOR)
+			         .append(nombreBanco).append(SEPARADOR)
+			         .append(tipoCuenta).append(SEPARADOR)
+			         .append(numeroCuenta).append(SEPARADOR)
 			         .append(String.format(Locale.US, "%.2f", nvlDouble(pago.getValor()))).append(SEPARADOR)
 			         .append(nvl(pago.getObservacion()))
 			         .append("\r\n");
@@ -78,8 +105,17 @@ public class FormateadorArchivoBancoPlanoImpl implements FormateadorArchivoBanco
 
 	// ── Helpers ──────────────────────────────────────────────────────────────
 
-	private String nombreTitular(PagoProgramado pago) {
-		return (pago.getTitular() != null) ? nvl(pago.getTitular().getNombre()) : "";
+	/**
+	 * Nombre a imprimir en el archivo: el del titular si el pago lo tiene, y si no
+	 * el del beneficiario ocasional denormalizado en el propio pago.
+	 * @param pago : Pago programado
+	 * @return     : Nombre del beneficiario, o cadena vacía
+	 */
+	private String nombreBeneficiario(PagoProgramado pago) {
+		if (pago.getTitular() != null) {
+			return nvl(pago.getTitular().getNombre());
+		}
+		return nvl(pago.getBeneficiarioNombre());
 	}
 
 	private String nvl(String valor) {

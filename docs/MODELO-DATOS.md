@@ -24,13 +24,13 @@
 | Paquete | Módulo | Schemas | Entidades |
 |---|---|---|---|
 | `com.saa.model.cnt` | Contabilidad | CNT, AOT | 29 |
-| `com.saa.model.crd` | Créditos | CRD | 81 |
+| `com.saa.model.crd` | Créditos | CRD | 80 |
 | `com.saa.model.cxc` | Cuentas por Cobrar | CBR | 49 |
 | `com.saa.model.cxp` | Cuentas por Pagar | PGS | 60 |
 | `com.saa.model.reporte` | Motor de reportes (DTOs) | — | 0 |
 | `com.saa.model.rhh` | Recursos Humanos | RHH | 23 |
 | `com.saa.model.rpr` | Reportes regulatorios/cartera | RPR | 33 |
-| `com.saa.model.scp` | Sistema / Core | SCP | 5 |
+| `com.saa.model.scp` | Sistema / Core | SCP, **CRD** (solo `Pais` → `CRD.PSSS`, ver su ficha) | 6 |
 | `com.saa.model.tsr` | Tesorería | TSR | 59 |
 
 ---
@@ -1413,17 +1413,11 @@ Secuencia PK: `CRD.SQ_OAVPCDGO`
 | `usuarioRegistro` | `String` | `PGPRUSRG` | length=200 |
 | `idEstado` | `Long` | `PGPRIDST` | NOT NULL |
 
-### `Pais` → tabla **`CRD.PSSS`**
-
-| Campo Java | Tipo | Columna | Notas |
-|---|---|---|---|
-| `codigo` | `Long` | `PSSSCDGO` | **PK**, IDENTITY |
-| `codigoAlterno` | `String` | `PSSSCDAL` | length=10 |
-| `nombre` | `String` | `PSSSNMBR` | length=2000 |
-| `nacionalidad` | `String` | `PSSSNCNL` | length=2000 |
-| `codigoNacionalidad` | `String` | `PSSSCDNC` | length=10 |
-| `codigoExterno` | `String` | `PSSSCDEX` | length=50 |
-| `estado` | `Long` | `PSSSIDST` |  |
+> **La tabla `CRD.PSSS` (países) sigue en este esquema, pero su clase Java ya no está en este
+> paquete**: se movió a `com.saa.model.scp.Pais` el 2026-08-24, porque `TSR.Titular` la
+> importaba y el sistema se comercializa sin `crd`. **La tabla no se migró.**
+> La ficha está en la sección SCP, junto a la clase. Ver también
+> `docs/general/sql/MIGRACION-PAIS-CRD-A-SCP.md`, marcada NO APLICADA.
 
 ### `Parroquia` → tabla **`CRD.PRRQ`**
 
@@ -5065,6 +5059,50 @@ Secuencia PK: `SCP.SQ_PGSPCDGO`
 | `codigoAlterno` | `Long` | `PGSPCDAL` |  |
 | `rubroNivelCaracteristicaP` | `Long` | `PGSPRYYB` |  |
 | `rubroNivelCaracteristicaH` | `Long` | `PGSPRZZB` |  |
+
+### `Pais` → tabla **`CRD.PSSS`**  ⚠️ paquete `scp`, esquema `CRD`
+
+> **La clase está en `com.saa.model.scp.Pais` pero la tabla es `CRD.PSSS`. NO coinciden, y es
+> a propósito. No lo "arregles".**
+
+Es la única entidad del sistema donde el paquete Java y el esquema de base no se corresponden.
+Las dos decisiones son independientes y se tomaron por separado:
+
+| | Qué pasó | Estado |
+|---|---|---|
+| **Paquete Java** | Se movió de `com.saa.model.crd` a `com.saa.model.scp` el 2026-08-24 | **Aplicado, vigente** |
+| **Esquema de base** | Se intentó migrar `CRD.PSSS` → `SCP.PSSS` el 2026-08-24 | **Falló en producción. NO aplicado** |
+
+**Por qué se movió el paquete:** `com.saa.model.tsr.Titular` importaba
+`com.saa.model.crd.Pais`. Era la única dependencia `tsr → crd` del backend y dejaba a `tsr`
+sin compilar si se retiraba el módulo `crd`. El país no es un concepto de créditos: es un
+catálogo de núcleo, como `Empresa`, `Usuario`, `Rubro` y `DetalleRubro`.
+
+**Por qué la tabla se quedó donde estaba:** la migración de datos se corrió en producción, no
+salió bien, y se decidió no reintentarla por ahora. El arreglo de compilación **no depende**
+del esquema, así que revertir solo el `@Table` alcanzó para dejar todo consistente sin
+deshacer el refactor de Java. Ver `docs/general/sql/MIGRACION-PAIS-CRD-A-SCP.md`, marcada
+**NO APLICADA**.
+
+**Lo que sigue pendiente:** la FK `TSR.TTLR.PSSSCDGO → CRD.PSSS`. Es lo único que falta para
+poder extraer `crd`: la fuga de *compilación* ya está resuelta, la de *integridad
+referencial* no.
+
+El `@Path("psss")` del REST no cambió en ningún momento, así que la URL sigue siendo
+`/SaaBE/rest/psss/...`.
+
+Capas: `com.saa.basico.ejb/ejbImpl.PaisDaoService*` y `PaisService*`,
+`com.saa.ws.rest.basico.PaisRest`, constante en `NombreEntidadesSistema.PAIS`.
+
+| Campo Java | Tipo | Columna | Notas |
+|---|---|---|---|
+| `codigo` | `Long` | `PSSSCDGO` | **PK**, IDENTITY |
+| `codigoAlterno` | `String` | `PSSSCDAL` | length=10 |
+| `nombre` | `String` | `PSSSNMBR` | length=2000 |
+| `nacionalidad` | `String` | `PSSSNCNL` | length=2000 |
+| `codigoNacionalidad` | `String` | `PSSSCDNC` | length=10 |
+| `codigoExterno` | `String` | `PSSSCDEX` | length=50 |
+| `estado` | `Long` | `PSSSIDST` |  |
 
 ### `Rubro` → tabla **`SCP.PRBR`**
 

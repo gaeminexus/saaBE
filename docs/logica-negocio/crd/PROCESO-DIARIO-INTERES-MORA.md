@@ -48,15 +48,31 @@ Es la misma sumatoria, escrita fila por fila en vez de agregada.
 
 ## 3. Universo: a qué cuotas aplica
 
-Idéntico al **Grupo 2 del G48**:
-
 | Condición | Detalle |
 |---|---|
 | Cuota pendiente | `DTPRESTD IS NULL OR DTPRESTD NOT IN (4 PAGADA, 7 CANCELADA_ANTICIPADA)` |
 | Cuota vencida | `DTPRFCVN < fechaCorte` (inicio del día: **la cuota que vence hoy todavía no está en mora**) |
-| Préstamo operable | `PRSTIDST IN (2 VIGENTE, 8 DE_PLAZO_VENCIDO, 11 EN_MORA)` |
+| Préstamo operable | **`PRSTIDST IN (2 VIGENTE, 11 EN_MORA)`** |
 
 Los préstamos en estado terminal (3, 4, 5) quedan fuera y el proceso **nunca** les toca el estado.
+
+### ⚠️ `DE_PLAZO_VENCIDO(8)` NO entra — corregido el 2026-08-24
+
+**Este universo NO es el del Grupo 2 del G48**, aunque nació copiándolo. El G48 incluye el 8 y
+está bien que lo haga: **el G48 solo LEE la mora**. Este proceso **ESCRIBE el estado del
+préstamo**, y por eso no puede compartir universo con un reporte.
+
+Mientras el 8 estuvo incluido (del 2026-08-14 al 2026-08-24), el proceso reclasificó a
+`EN_MORA(11)` todos los préstamos que estaban en DE PLAZO VENCIDO. Ver §11.
+
+La exclusión está en **dos niveles**, a propósito:
+
+1. **En el universo del lote** — `DetallePrestamoDaoServiceImpl.selectPrestamosConCuotasVencidas`
+   filtra `idEstado IN (2, 11)`.
+2. **En una guarda dentro de `calcularMoraPrestamo`** — porque el endpoint
+   `POST /prst/calcularMora/{idPrestamo}` entra directamente a ese método y **se saltea la
+   consulta del universo**. Sin la guarda, un préstamo en 8 invocado a mano se seguiría
+   rompiendo.
 
 ---
 
@@ -79,13 +95,22 @@ Los préstamos en estado terminal (3, 4, 5) quedan fuera y el proceso **nunca** 
 
 ### Por cada préstamo
 
-| Situación | Efecto |
-|---|---|
-| Tiene cuotas vencidas y no está en 11 | `PRSTIDST → 11 (EN_MORA)` + `PRSTFCMD = now` |
-| Está en 11 y ya no tiene cuotas vencidas | `PRSTIDST → 2 (VIGENTE)` + `PRSTFCMD = now` |
-| Está en estado terminal (3, 4, 5) | **No se toca** |
+| `PRSTIDST` de entrada | Situación | Efecto |
+|---|---|---|
+| **8 DE_PLAZO_VENCIDO** | cualquiera | **No se toca NADA**: ni el estado del préstamo, ni el de sus cuotas, ni la mora. Sale antes de calcular |
+| 2 VIGENTE | tiene cuotas vencidas | `PRSTIDST → 11 (EN_MORA)` + `PRSTFCMD = now` |
+| 2 VIGENTE | sin cuotas vencidas | No se toca |
+| 11 EN_MORA | tiene cuotas vencidas | Se recalcula la mora; el estado ya es 11 y no cambia |
+| 11 EN_MORA | sin cuotas vencidas | `PRSTIDST → 2 (VIGENTE)` + `PRSTFCMD = now` |
+| 3, 4, 5 (terminales) | cualquiera | **No se toca el estado** |
 
 Nunca se escribe `ESPSCDGO` (es la FK al catálogo `CRD.ESPS`, no el estado operativo).
+
+> ⚠️ **La regularización siempre manda a 2 VIGENTE, nunca a 8.** El proceso no guarda el
+> estado anterior, así que no puede saber si un préstamo llegó a 11 porque de verdad se
+> atrasó o porque lo reclasificó mal el defecto de la §11. Un préstamo que estaba en 8, fue
+> mal reclasificado y después se regulariza, **termina en 2**. Restituirlos es corrección de
+> datos; el proceso no lo puede deshacer solo.
 
 ---
 
@@ -293,3 +318,72 @@ SELECT DTPRCDGO FROM CRD.DTPR WHERE NVL(DTPRIDST,-1) <> NVL(DTPRESTD,-1);
    PARCIAL.
 7. **Timer**: confirmar en el log de WildFly la línea `TIMER MORA - Disparo automático` a las
    02:00 del día siguiente.
+8. **Préstamo en DE_PLAZO_VENCIDO(8)** (regresión del defecto de la §11): tomar un préstamo en
+   8 **con cuotas vencidas** y correr `POST /prst/calcularMora/{id}`. Verificar que:
+   - `PRSTIDST` sigue en **8** (no pasó a 11);
+   - ninguna de sus cuotas cambió de estado ni tiene `DTPRMRAA` / `DTPRDSMR` nuevos;
+   - `DTPRTTLL` de esas cuotas no cambió;
+   - el log trae la línea `Préstamo N en estado 8 (DE PLAZO VENCIDO): fuera del proceso de mora`.
+
+   Después correr el lote completo (`POST /prst/calcularMora`) y verificar lo mismo: el préstamo
+   ni siquiera debe aparecer en el conteo de evaluados.
+
+---
+
+## 11. Historial de defectos
+
+### 2026-08-24 — Los préstamos en DE PLAZO VENCIDO fueron reclasificados a EN MORA
+
+| | |
+|---|---|
+| **Severidad** | Alta. Pérdida de un estado operativo en toda la cartera afectada |
+| **Activo desde** | **2026-08-14**, la implementación original del proceso |
+| **Detectado** | 2026-08-24, en producción |
+| **Corregido** | 2026-08-24 |
+
+#### Qué pasó
+
+El universo del proceso se definió copiando el del **Grupo 2 del G48**, que incluye
+`PRSTIDST IN (2, 8, 11)`. Para un reporte eso es correcto: el G48 informa la mora de los
+préstamos de plazo vencido y **no escribe nada**.
+
+Este proceso, en cambio, **escribe el estado del préstamo**: todo préstamo del universo con
+cuotas vencidas y estado distinto de 11 pasa a `EN_MORA(11)`. Como los préstamos en
+`DE_PLAZO_VENCIDO(8)` por definición tienen cuotas vencidas, **todos** entraron por esa rama.
+
+Resultado observado en producción: **todos los préstamos que estaban en DE PLAZO VENCIDO
+quedaron en EN MORA.** El estado 8 desapareció de la cartera.
+
+Agravante: el proceso corre **todas las noches a las 02:00**, así que el daño se repetía en
+cada corrida. Y como la regularización solo devuelve a `2 VIGENTE` (§4), los préstamos mal
+reclasificados que se pusieran al día tampoco volvían a 8 por sí solos.
+
+#### Por qué no se notó antes
+
+El defecto no rompe ninguna cuenta: la mora calculada era correcta, `DTPRTTLL` cuadraba y el
+contraste contra el G48 daba bien. Lo único que cambiaba era la **clasificación** del préstamo,
+que ninguna de las pruebas de la §10 miraba. La prueba 8 se agregó justamente por eso.
+
+#### Qué lo corrige
+
+| Nivel | Archivo | Cambio |
+|---|---|---|
+| Universo del lote | `DetallePrestamoDaoServiceImpl.selectPrestamosConCuotasVencidas` | El JPQL pasa de `idEstado IN (2, 8, 11)` a `idEstado IN (2, 11)`. Se quitó el parámetro `:plazoVencido` |
+| Guarda por préstamo | `ProcesoMoraPrestamoServiceImpl.calcularMoraPrestamo` | Sale temprano si `PRSTIDST = 8`, **sin calcular mora y sin tocar ningún estado**, con traza |
+| Documentación | `DetallePrestamoDaoService` (JavaDoc de los dos métodos), `ProcesoMoraPrestamoService` (JavaDoc de clase y del método) | Dejan dicho que el 8 queda fuera y por qué |
+
+**Los dos niveles son necesarios.** Sacar el 8 del universo cierra la puerta del lote, pero el
+endpoint `POST /prst/calcularMora/{idPrestamo}` llama a `calcularMoraPrestamo` **salteándose la
+consulta del universo**: desde ahí un préstamo en 8 se habría seguido reclasificando.
+
+#### Corrección de datos
+
+**Fuera del alcance del código.** La restitución de los préstamos afectados a su estado 8 la
+resuelve el usuario contra su respaldo. El código corregido garantiza que, una vez restituidos,
+el proceso no los vuelva a romper — ni en la corrida de las 02:00 ni desde el endpoint manual.
+
+#### Lección
+
+**Un universo compartido entre un reporte y un proceso que escribe no es reutilización, es un
+acoplamiento peligroso.** Un reporte puede permitirse mirar de más; un proceso que persiste
+estados, no. Si algún día un reporte necesita este método, que escriba su propia consulta.

@@ -1,8 +1,8 @@
-package com.saa.ejb.crd.daoImpl;
+package com.saa.basico.ejbImpl;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
-import com.saa.ejb.crd.dao.PaisDaoService;
-import com.saa.model.crd.Pais;
+import com.saa.basico.ejb.PaisDaoService;
+import com.saa.model.scp.Pais;
 
 import jakarta.ejb.Stateless;
 

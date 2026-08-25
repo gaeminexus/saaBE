@@ -104,6 +104,51 @@ public interface PagoProgramadoService extends EntityService<PagoProgramado> {
 			String referencia) throws Throwable;
 
 	/**
+	 * Registra un pago cuyo documento de ORIGEN vive en otro módulo del sistema.
+	 *
+	 * CXP guarda la etiqueta del origen y el id del documento, pero <b>nunca los
+	 * resuelve</b>: para este servicio son datos opacos. Es lo que permite que otros
+	 * módulos disparen órdenes de pago sin que CXP tenga que conocerlos, y que retirar
+	 * cualquiera de esos módulos no rompa la compilación de CXP.
+	 *
+	 * El beneficiario va DENORMALIZADO porque puede no existir en el maestro de titulares
+	 * de tesorería; se usa en el archivo del banco cuando no hay cuenta de destino.
+	 *
+	 * El desglose clasifica contablemente el pago: al confirmarse se genera <b>una línea
+	 * DEBE por producto</b> (cuenta del grupo del producto) y <b>una línea HABER</b> a la
+	 * cuenta contable del banco por el total. Así una sola transferencia puede cubrir
+	 * varios conceptos con cuentas contables distintas.
+	 *
+	 * El pago entra al mismo circuito que los demás: aparece en el listado, se selecciona
+	 * para un lote, viaja en el archivo y se confirma. Con débito automático nace
+	 * CONFIRMADO y se contabiliza en esta misma llamada.
+	 *
+	 * @param origen                 : Etiqueta opaca del proceso origen, obligatoria
+	 *                                 (ver {@link com.saa.rubros.OrigenPagoExterno})
+	 * @param idOrigen               : Id del documento en el módulo origen, obligatorio
+	 * @param idEmpresa              : Id de la empresa contable
+	 * @param idCuentaBancariaOrigen : Id de la cuenta bancaria propia (TSR.CNBC) de la que
+	 *                                 sale el dinero
+	 * @param valor                  : Valor a transferir; debe ser mayor a cero
+	 * @param fechaProgramada        : Fecha programada en formato yyyy-MM-dd (null = hoy)
+	 * @param beneficiario           : Datos del beneficiario, obligatorio
+	 * @param desglose               : Desglose contable, al menos una línea; la suma de sus
+	 *                                 valores debe igualar {@code valor} con tolerancia 0.01
+	 * @param observacion            : Observación del pago
+	 * @param idUsuario              : Id del usuario que registra
+	 * @param debitoAutomatico       : true si el banco ya debitó la cuenta por convenio
+	 * @param referencia             : Referencia del débito (opcional)
+	 * @return                       : Mapa con exito, mensaje, pago, origen e idOrigen; en
+	 *                                 débito automático además asiento
+	 * @throws Throwable             : Excepcion
+	 */
+	Map<String, Object> registrarPagoDeOrigenExterno(String origen, Long idOrigen, Long idEmpresa,
+			Long idCuentaBancariaOrigen, Double valor, String fechaProgramada,
+			com.saa.ejb.cxp.service.dto.BeneficiarioOcasional beneficiario,
+			List<com.saa.ejb.cxp.service.dto.LineaContablePago> desglose, String observacion,
+			Long idUsuario, boolean debitoAutomatico, String referencia) throws Throwable;
+
+	/**
 	 * Lista los pagos de una empresa para la pantalla de selección.
 	 * @param idEmpresa  : Id de la empresa
 	 * @param estado     : Estado a filtrar, null para todos

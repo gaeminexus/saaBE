@@ -1,13 +1,13 @@
-package com.saa.ejb.crd.serviceImpl;
+package com.saa.basico.ejbImpl;
 
 import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
-import com.saa.ejb.crd.dao.PaisDaoService;
-import com.saa.ejb.crd.service.PaisService;
-import com.saa.model.crd.NombreEntidadesCredito;
-import com.saa.model.crd.Pais;
+import com.saa.basico.ejb.PaisDaoService;
+import com.saa.basico.ejb.PaisService;
+import com.saa.model.scp.NombreEntidadesSistema;
+import com.saa.model.scp.Pais;
 import com.saa.rubros.Estado;
 
 import jakarta.ejb.EJB;
@@ -25,7 +25,7 @@ public class PaisServiceImpl implements PaisService {
     @Override
     public Pais selectById(Long id) throws Throwable {
         System.out.println("Ingresa al selectById Pais con id: " + id);
-        return paisDaoService.selectById(id, NombreEntidadesCredito.PAIS);
+        return paisDaoService.selectById(id, NombreEntidadesSistema.PAIS);
     }
 
     /**
@@ -57,7 +57,7 @@ public class PaisServiceImpl implements PaisService {
     @Override
     public List<Pais> selectAll() throws Throwable {
         System.out.println("Ingresa al metodo selectAll PaisService");
-        List<Pais> result = paisDaoService.selectAll(NombreEntidadesCredito.PAIS);
+        List<Pais> result = paisDaoService.selectAll(NombreEntidadesSistema.PAIS);
         if (result.isEmpty()) {
             throw new IncomeException("Busqueda total Pais no devolvio ningun registro");
         }
@@ -83,7 +83,7 @@ public class PaisServiceImpl implements PaisService {
     @Override
     public List<Pais> selectByCriteria(List<DatosBusqueda> datos) throws Throwable {
         System.out.println("Ingresa al metodo selectByCriteria PaisService");
-        List<Pais> result = paisDaoService.selectByCriteria(datos, NombreEntidadesCredito.PAIS);
+        List<Pais> result = paisDaoService.selectByCriteria(datos, NombreEntidadesSistema.PAIS);
         if (result.isEmpty()) {
             throw new IncomeException("Busqueda por criterio Pais no devolvio ningun registro");
         }

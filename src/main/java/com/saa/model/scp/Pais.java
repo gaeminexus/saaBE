@@ -1,4 +1,4 @@
-package com.saa.model.crd;
+package com.saa.model.scp;
 
 import java.io.Serializable;
 
@@ -13,7 +13,28 @@ import jakarta.persistence.NamedQuery;
 import jakarta.persistence.Table;
 
 /**
- * Representa la tabla PSSS (Catálogo de países).
+ * Representa la tabla CRD.PSSS (Catálogo de países).
+ *
+ * <h3>⚠️ El paquete Java y el esquema de base NO coinciden, y es a propósito</h3>
+ *
+ * La clase vive en <b>{@code com.saa.model.scp}</b> pero la tabla sigue siendo
+ * <b>{@code CRD.PSSS}</b>. No es un error: no lo "arregles" moviendo la clase de vuelta a
+ * {@code com.saa.model.crd} ni cambiando el {@code schema} del {@code @Table}.
+ *
+ * <ul>
+ *   <li><b>El paquete se movió a {@code scp} el 2026-08-24</b> porque
+ *       {@code com.saa.model.tsr.Titular} importaba {@code com.saa.model.crd.Pais}. Esa era
+ *       la única dependencia {@code tsr → crd} del backend, y dejaba a {@code tsr} sin
+ *       compilar si se retiraba el módulo {@code crd}. El país no es un concepto de
+ *       créditos: es un catálogo de núcleo, como Empresa, Usuario, Rubro y DetalleRubro.</li>
+ *   <li><b>La tabla se quedó en {@code CRD}</b>: la migración de datos a {@code SCP.PSSS} se
+ *       intentó en producción el 2026-08-24 y falló, y se decidió no reintentarla por ahora.
+ *       Ver {@code docs/general/sql/MIGRACION-PAIS-CRD-A-SCP.md}, marcada NO APLICADA.</li>
+ * </ul>
+ *
+ * El arreglo de compilación <b>no depende</b> del esquema donde viva la tabla, así que las
+ * dos decisiones son independientes. Lo que queda pendiente para poder extraer {@code crd}
+ * es la FK {@code TSR.TTLR.PSSSCDGO → CRD.PSSS}, que sigue vigente.
  */
 @SuppressWarnings("serial")
 @Entity

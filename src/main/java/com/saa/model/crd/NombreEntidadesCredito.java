@@ -25,7 +25,9 @@ public interface NombreEntidadesCredito {
 	String METODO_PAGO = "MetodoPago";
 	String NIVEL_ESTUDIO = "NivelEstudio";
 	String PROFESION = "Profesion";
-	String PAIS = "Pais";
+	// PAIS se movio a com.saa.model.scp.NombreEntidadesSistema el 2026-08-24, junto con la
+	// entidad Pais, porque TSR.Titular la referenciaba y el sistema se comercializa sin el
+	// modulo crd. Se movio el PAQUETE JAVA, no la tabla: sigue siendo CRD.PSSS.
 	String TIPO_APORTE = "TipoAporte";
 	String TIPO_CALIFICACION_CREDITO = "TipoCalificacionCredito";
 	String TIPO_CONTRATO = "TipoContrato";
@@ -84,5 +86,7 @@ public interface NombreEntidadesCredito {
 	String INFORMACION_GENERAL_FONDO = "InformacionGeneralFondo";
 	String EVENTO_PRESTAMO = "EventoPrestamo";
 	String HIST_DETALLE_PRESTAMO = "HistDetallePrestamo";
+	String DEVOLUCION_APORTE = "DevolucionAporte";
+	String DETALLE_DEVOLUCION_APORTE = "DetalleDevolucionAporte";
 
 }

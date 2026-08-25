@@ -275,9 +275,18 @@ public interface DetallePrestamoDaoService extends EntityDao<DetallePrestamo> {
 	/**
 	 * Códigos de los préstamos que tienen al menos una cuota VENCIDA e impaga a la fecha.
 	 *
-	 * Mismo universo que el Grupo 2 del G48: cuota pendiente (estado IS NULL OR NOT IN (4,7))
-	 * con fechaVencimiento anterior a la fecha de corte, en préstamos con
-	 * idEstado IN (2 VIGENTE, 8 DE_PLAZO_VENCIDO, 11 EN_MORA).
+	 * Cuota pendiente (estado IS NULL OR NOT IN (4, 7)) con fechaVencimiento anterior a la
+	 * fecha de corte, en préstamos con <b>idEstado IN (2 VIGENTE, 11 EN_MORA)</b>.
+	 *
+	 * <p><b>DE_PLAZO_VENCIDO(8) queda FUERA a propósito</b> (corregido el 2026-08-24). Estuvo
+	 * incluido desde el 2026-08-14, copiando el universo del Grupo 2 del G48, y fue un
+	 * defecto: el proceso diario reclasificaba a EN_MORA(11) todos los préstamos que estaban
+	 * en DE PLAZO VENCIDO. <b>El G48 solo LEE; este proceso ESCRIBE el estado del préstamo</b>,
+	 * así que no pueden compartir universo.</p>
+	 *
+	 * <p>Este método lo usa ÚNICAMENTE {@code ProcesoMoraPrestamoServiceImpl}. Si algún día lo
+	 * necesita un reporte, que no lo reutilice: un reporte que quiera incluir el 8 necesita su
+	 * propia consulta.</p>
 	 *
 	 * @param fechaCorte Instante de corte (para el proceso diario, hoy)
 	 * @return Códigos de préstamo, ordenados; vacía si no hay o si falla la consulta
@@ -299,6 +308,16 @@ public interface DetallePrestamoDaoService extends EntityDao<DetallePrestamo> {
 	/**
 	 * Códigos de los préstamos marcados EN_MORA (idEstado = 11) que YA NO tienen ninguna cuota
 	 * vencida impaga a la fecha: el proceso diario los devuelve a VIGENTE (2).
+	 *
+	 * <p><b>Asume que el 11 es legítimo.</b> Este método no puede saber si un préstamo llegó a
+	 * EN_MORA porque de verdad se atrasó o porque lo reclasificó mal el defecto del universo
+	 * (ver {@link #selectPrestamosConCuotasVencidas(LocalDateTime)}): el estado anterior no se
+	 * guarda en ningún lado.</p>
+	 *
+	 * <p><b>Consecuencia: la regularización SIEMPRE manda a 2 VIGENTE, nunca a
+	 * 8 DE_PLAZO_VENCIDO.</b> Un préstamo que estaba en 8, fue mal reclasificado a 11 y
+	 * después se regulariza, termina en 2 — no vuelve a 8. Restituir esos préstamos es
+	 * corrección de datos, no algo que este proceso pueda deshacer solo.</p>
 	 *
 	 * @param fechaCorte Instante de corte
 	 * @return Códigos de préstamo a regularizar; vacía si no hay o si falla la consulta

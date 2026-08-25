@@ -54,6 +54,21 @@ public class TipoAporte implements Serializable {
     @Column(name = "TPAPIDST")
     private Long estado;
 
+    /**
+     * Producto de pago de CXP (PGS.PRDP.ID) que clasifica contablemente la DEVOLUCIÓN de
+     * este tipo de aporte: de él sale la cuenta del asiento
+     * ({@code producto.grupoProducto.planCuenta}).
+     *
+     * Es un {@code Long} suelto, <b>sin FK ni relación JPA a propósito</b>: CRD no ata el
+     * esquema PGS. Ver §1 de docs/logica-negocio/crd/PLAN-DEVOLUCION-APORTES.md.
+     *
+     * Es parametrización previa que carga el usuario. Sin este dato la devolución de este
+     * tipo de aporte NO se puede registrar (error {@code TIPO_APORTE_SIN_PRODUCTO}).
+     */
+    @Basic
+    @Column(name = "TPAPPRDP")
+    private Long productoPago;
+
     // ============================================================
     // Getters y Setters
     // ============================================================
@@ -120,6 +135,22 @@ public class TipoAporte implements Serializable {
      */
     public void setEstado(Long estado) {
         this.estado = estado;
+    }
+
+    /**
+     * Devuelve productoPago.
+     * @return productoPago.
+     */
+    public Long getProductoPago() {
+        return productoPago;
+    }
+
+    /**
+     * Asigna productoPago.
+     * @param productoPago nuevo valor para productoPago.
+     */
+    public void setProductoPago(Long productoPago) {
+        this.productoPago = productoPago;
     }
 }
 

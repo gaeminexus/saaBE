@@ -1,7 +1,7 @@
-package com.saa.ejb.crd.dao;
+package com.saa.basico.ejb;
 
 import com.saa.basico.util.EntityDao;
-import com.saa.model.crd.Pais;
+import com.saa.model.scp.Pais;
 
 import jakarta.ejb.Local;
 

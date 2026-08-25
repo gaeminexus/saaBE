@@ -29,6 +29,14 @@ public class PagoProgramadoDaoServiceImpl extends EntityDaoImpl<PagoProgramado>
             "facturaCompra",
             "egreso",
             "anticipo",
+            "origenExterno",
+            "idOrigen",
+            "asiento",
+            "beneficiarioNombre",
+            "beneficiarioIdentificacion",
+            "beneficiarioBanco",
+            "beneficiarioTipoCuenta",
+            "beneficiarioCuenta",
             "titular",
             "cuentaBancaria",
             "cuentaDestino",
@@ -125,6 +133,28 @@ public class PagoProgramadoDaoServiceImpl extends EntityDaoImpl<PagoProgramado>
                 " and    p.estado in (:registrado, :enArchivo, :confirmado) " +
                 " order by p.id");
         query.setParameter("idAnticipo", idAnticipo);
+        query.setParameter("registrado", Long.valueOf(EstadoPagoProgramado.REGISTRADO));
+        query.setParameter("enArchivo",  Long.valueOf(EstadoPagoProgramado.EN_ARCHIVO));
+        query.setParameter("confirmado", Long.valueOf(EstadoPagoProgramado.CONFIRMADO));
+        return query.getResultList();
+    }
+
+    @Override
+    public List<PagoProgramado> selectVigentesByOrigen(String origen, Long idOrigen)
+            throws Throwable {
+        System.out.println("Ingresa al metodo selectVigentesByOrigen con origen: " + origen
+                + " | idOrigen: " + idOrigen);
+        if (origen == null || idOrigen == null) {
+            return new ArrayList<>();
+        }
+        Query query = em.createQuery(
+                " select p from PagoProgramado p " +
+                " where  p.origenExterno = :origen " +
+                " and    p.idOrigen = :idOrigen " +
+                " and    p.estado in (:registrado, :enArchivo, :confirmado) " +
+                " order by p.id");
+        query.setParameter("origen", origen);
+        query.setParameter("idOrigen", idOrigen);
         query.setParameter("registrado", Long.valueOf(EstadoPagoProgramado.REGISTRADO));
         query.setParameter("enArchivo",  Long.valueOf(EstadoPagoProgramado.EN_ARCHIVO));
         query.setParameter("confirmado", Long.valueOf(EstadoPagoProgramado.CONFIRMADO));

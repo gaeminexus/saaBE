@@ -10,7 +10,7 @@ package com.saa.model.tsr;
 
 import java.io.Serializable;
 
-import com.saa.model.crd.Pais;
+import com.saa.model.scp.Pais;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
