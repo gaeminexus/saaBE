@@ -794,3 +794,55 @@ rompa nada es exactamente lo que lo hace el peor de los tres.**
 > vale por lo que costaría descubrirlo mal, no por lo que rompe hoy**. Los que no rompen nada son
 > los que hay que mirar con más cuidado, porque son los únicos que ningún control posterior va a
 > corregir.
+
+---
+
+## ⚠ TRES COSAS ABIERTAS AL PUNTO DE CORTE DEL 2026-08-25
+
+Anotadas por el árbitro antes de reiniciar las sesiones, para que no vivan sólo en la memoria de un
+agente. Las tres salieron del cierre de **D26** y ninguna es de pantalla.
+
+### 1 · D25 NO ESTÁ VERIFICADO, y lo levantó el propio corrector
+
+El script con el que se revierte un arreglo para comprobar que sus tests fallan **no se aplicó en
+D25 y no protestó**: siguió adelante sin encontrar el texto que iba a sustituir, y **trece tests
+quedaron en verde fingiendo que probaban algo**.
+
+**Un test que pasa con el arreglo y sin él no prueba nada**, y trece de ellos dan una sensación de
+cobertura que es exactamente al revés de la realidad. **D25 hay que volver a verificarlo revirtiendo
+de verdad**, y el script tiene que **abortar** si no encuentra el texto en vez de seguir.
+
+> Es la enfermedad de esta semana otra vez, y esta vez sobre el instrumento de verificación: **algo
+> que existe y no se ejecuta.** Igual que la regla del `z-index` en el `styles.scss` huérfano, y que
+> `CPNMROLM` fuera del cotejo de catálogos.
+
+### 2 · Un defecto probable escondido en el archivo muerto: el footer se monta sobre el contenido
+
+`src/styles.scss` —el que **`angular.json` no compila**— lleva `body { padding-bottom: 35px }`, que
+es el hueco para el footer `fixed` de 35 px. **Si esa regla nunca se ha aplicado, el footer se monta
+sobre el final de cualquier pantalla larga.**
+
+**No se abre ficha todavía, y el corrector hizo bien en no abrirla: no lo ha observado.** Pero es
+comprobable en un minuto y **le toca a quien replica**: bajar del todo en una pantalla larga —el
+listado de novedades con las once de junio sirve— y mirar si el footer tapa la última fila. **Si la
+tapa, es defecto con número; si no, se anota que se miró.**
+
+### 3 · La frontera de `avisos.ts`, y por qué no se cruzó
+
+`comunes/avisos.ts` centralizó las **43** configuraciones de aviso de RRHH que estaban sueltas en 35
+archivos con ocho duraciones distintas. **Fuera de RRHH siguen naciendo `snackBar.open` crudos** —
+hay uno entrando ahora mismo en `crd/prestamo-consulta`, en trabajo de otro proyecto.
+
+**Se paró en el borde de RRHH a propósito**: la migración visual está congelada fuera del módulo, y
+cruzar la frontera habría metido 84 archivos de tres proyectos en un mismo cambio. **Queda escrito
+para que quien la cruce sepa que la cruza**, y para que nadie lea «centralizado» como si valiera
+para toda la aplicación: un módulo centralizado rodeado de módulos que no lo están vuelve a
+divergir.
+
+### Y una corrección que el corrector se hizo a sí mismo, que conviene no perder
+
+El primer arreglo del error de reportes cambiaba `JRJdtCompiler` por **`JRJaninoCompiler`**, y **las
+dos clases son inexistentes en JasperReports 7.0.3**: por eso el error volvió idéntico cambiando
+sólo el nombre. **Lo que sí acertó era el diagnóstico** —`compiler.class` cortocircuita a
+`compiler.java`—; lo que falló fue la conclusión. **La respuesta no estaba en la propiedad: estaba
+en que el `.jasper` existiera.** Ver `CLAUDE.md` y la cabecera de `jasperreports.properties`.
