@@ -1,6 +1,8 @@
 package com.saa.ws.rest.crd;
 
 import java.io.InputStream;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -14,12 +16,17 @@ import com.saa.ejb.crd.service.AbonoCapitalPrestamoService;
 import com.saa.ejb.crd.service.PrestamoService;
 import com.saa.ejb.crd.service.ProcesoMoraPrestamoService;
 import com.saa.ejb.crd.service.ProcesoPagoPrestamoService;
+import com.saa.ejb.crd.service.SimulacionPrestamoService;
+import com.saa.ejb.crd.service.dto.CuotaProyectada;
+import com.saa.ejb.crd.service.dto.ParametrosAmortizacion;
 import com.saa.ejb.crd.service.dto.ResultadoAbonoCapital;
 import com.saa.ejb.crd.service.dto.ResultadoCalculoMora;
 import com.saa.ejb.crd.service.dto.ResultadoAnulacion;
 import com.saa.ejb.crd.service.dto.ResultadoAplicacionPago;
 import com.saa.ejb.crd.service.dto.ResultadoPagoConAportes;
 import com.saa.ejb.crd.service.dto.ResultadoPrecancelacion;
+import com.saa.ejb.crd.service.dto.ResultadoSimulacionCreditoNuevo;
+import com.saa.ejb.crd.service.dto.ResultadoSimulacionReestructuracion;
 import com.saa.ejb.crd.service.dto.SimulacionAbonoCapital;
 import com.saa.ejb.crd.service.dto.SimulacionPrecancelacion;
 import com.saa.ejb.crd.service.dto.SolicitudAbonoCapital;
@@ -27,6 +34,9 @@ import com.saa.ejb.crd.service.dto.SolicitudAnulacion;
 import com.saa.ejb.crd.service.dto.SolicitudPagoConAportes;
 import com.saa.ejb.crd.service.dto.SolicitudPagoCuota;
 import com.saa.ejb.crd.service.dto.SolicitudPrecancelacion;
+import com.saa.ejb.crd.service.dto.SolicitudReestructuracion;
+import com.saa.ejb.crd.service.dto.SolicitudReporteSimulacion;
+import com.saa.ejb.reporte.service.ReporteService;
 import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.model.crd.Prestamo;
 
@@ -62,6 +72,12 @@ public class PrestamoRest {
 
     @EJB
     private ProcesoMoraPrestamoService procesoMoraPrestamoService;
+
+    @EJB
+    private SimulacionPrestamoService simulacionPrestamoService;
+
+    @EJB
+    private ReporteService reporteService;
 
     @Context
     private UriInfo context;
@@ -503,6 +519,205 @@ public class PrestamoRest {
             e.printStackTrace();
             return respuestaErrorNegocio(e);
         }
+    }
+
+    /**
+     * Simula la tabla de amortización de un préstamo que todavía NO existe. No escribe nada
+     * (decisión 8 del plan): ni {@code CRD.PRST} ni {@code CRD.DTPR}.
+     *
+     * @param params Monto, tasa, plazo, tipo de amortización, fecha de inicio, cuota 0 y seguros
+     * @return 200 con el {@code ResultadoSimulacionCreditoNuevo}
+     */
+    @POST
+    @Path("/simularCreditoNuevo")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response simularCreditoNuevo(ParametrosAmortizacion params) {
+        System.out.println("LLEGA AL SERVICIO SIMULAR CREDITO NUEVO");
+        try {
+            ResultadoSimulacionCreditoNuevo resultado = simulacionPrestamoService.simularCreditoNuevo(params);
+
+            Map<String, Object> cuerpo = new LinkedHashMap<>();
+            cuerpo.put("exito", Boolean.TRUE);
+            cuerpo.put("etapa", ETAPA_SIMULACION);
+            cuerpo.put("mensaje", "Simulación calculada");
+            cuerpo.put("resultado", resultado);
+
+            return Response.status(Response.Status.OK)
+                    .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
+
+        } catch (Throwable e) {
+            System.err.println("ERROR al simular crédito nuevo: " + e.getMessage());
+            e.printStackTrace();
+            return respuestaErrorNegocio(e);
+        }
+    }
+
+    /**
+     * Simula cómo quedaría un préstamo existente si se reestructura. No escribe nada (decisión 8
+     * del plan).
+     *
+     * @param solicitud Préstamo y las cuatro palancas (capitalizarVencido, nuevaTasaAnual,
+     *                  nuevoPlazo, mesesGracia)
+     * @return 200 con el {@code ResultadoSimulacionReestructuracion}
+     */
+    @POST
+    @Path("/simularReestructuracion")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response simularReestructuracion(SolicitudReestructuracion solicitud) {
+        System.out.println("LLEGA AL SERVICIO SIMULAR REESTRUCTURACION - Préstamo: "
+            + (solicitud != null ? solicitud.getIdPrestamo() : null));
+        try {
+            ResultadoSimulacionReestructuracion resultado =
+                simulacionPrestamoService.simularReestructuracion(solicitud);
+
+            Map<String, Object> cuerpo = new LinkedHashMap<>();
+            cuerpo.put("exito", Boolean.TRUE);
+            cuerpo.put("etapa", ETAPA_SIMULACION);
+            cuerpo.put("mensaje", "Simulación calculada");
+            cuerpo.put("resultado", resultado);
+
+            return Response.status(Response.Status.OK)
+                    .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
+
+        } catch (Throwable e) {
+            System.err.println("ERROR al simular reestructuración: " + e.getMessage());
+            e.printStackTrace();
+            return respuestaErrorNegocio(e);
+        }
+    }
+
+    /**
+     * PDF de una simulación. Recalcula en el backend con los parámetros de la solicitud —
+     * NUNCA recibe las filas de la tabla del cliente— así el PDF no puede diferir de lo que se
+     * mostró en pantalla ni ser manipulado desde el cliente (§7 del plan).
+     *
+     * @param solicitud {@code tipo} (CREDITO_NUEVO | ABONO_CAPITAL | REESTRUCTURACION) + los
+     *                  mismos parámetros del simulador correspondiente
+     * @return 200 con el PDF (application/pdf)
+     */
+    @POST
+    @Path("/simulacion/reporte")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces("application/pdf")
+    public Response generarReporteSimulacion(SolicitudReporteSimulacion solicitud) {
+        System.out.println("LLEGA AL SERVICIO REPORTE DE SIMULACION - tipo: "
+            + (solicitud != null ? solicitud.getTipo() : null));
+
+        if (solicitud == null || solicitud.getTipo() == null || solicitud.getTipo().trim().isEmpty()) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe indicar el tipo de simulación (CREDITO_NUEVO, ABONO_CAPITAL o REESTRUCTURACION)", null);
+        }
+
+        try {
+            String tipo = solicitud.getTipo().trim().toUpperCase();
+            List<CuotaProyectada> tabla;
+            String nombreReporte;
+            Map<String, Object> parametros = new LinkedHashMap<>();
+
+            switch (tipo) {
+                case "CREDITO_NUEVO": {
+                    if (solicitud.getCreditoNuevo() == null) {
+                        return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                            "Falta el cuerpo 'creditoNuevo'", null);
+                    }
+                    ResultadoSimulacionCreditoNuevo resultado =
+                        simulacionPrestamoService.simularCreditoNuevo(solicitud.getCreditoNuevo());
+                    tabla = resultado.getTablaProyectada();
+                    nombreReporte = "RPRT_SMLC_NUEV";
+
+                    parametros.put("P_MONTO", solicitud.getCreditoNuevo().getMonto());
+                    parametros.put("P_TASA", solicitud.getCreditoNuevo().getTasaAnual());
+                    parametros.put("P_PLAZO", solicitud.getCreditoNuevo().getPlazo());
+                    parametros.put("P_TIPO_AMORTIZACION", solicitud.getCreditoNuevo().getTipoAmortizacion());
+                    parametros.put("P_FECHA_INICIO", formatoFecha(solicitud.getCreditoNuevo().getFechaInicio()));
+                    parametros.put("P_TOTAL_CAPITAL", resultado.getTotalCapital());
+                    parametros.put("P_TOTAL_INTERES", resultado.getTotalInteres());
+                    parametros.put("P_TOTAL_DESGRAVAMEN", resultado.getTotalDesgravamen());
+                    parametros.put("P_TOTAL_SEGURO", resultado.getTotalSeguro());
+                    parametros.put("P_TOTAL_A_PAGAR", resultado.getTotalAPagar());
+                    parametros.put("P_VALOR_CUOTA", resultado.getValorCuota());
+                    break;
+                }
+                case "ABONO_CAPITAL": {
+                    if (solicitud.getIdPrestamo() == null || solicitud.getValorAbono() == null) {
+                        return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                            "Faltan 'idPrestamo' o 'valorAbono'", null);
+                    }
+                    int modalidad = solicitud.getModalidadAbono() != null ? solicitud.getModalidadAbono() : 1;
+                    SimulacionAbonoCapital resultado = abonoCapitalPrestamoService.simular(
+                        solicitud.getIdPrestamo(), solicitud.getValorAbono(), modalidad);
+                    tabla = resultado.getTablaProyectada();
+                    nombreReporte = "RPRT_SMLC_ABON";
+
+                    parametros.put("P_ID_PRESTAMO", resultado.getIdPrestamo());
+                    parametros.put("P_SALDO_CAPITAL_ACTUAL", resultado.getSaldoCapitalActual());
+                    parametros.put("P_VALOR_ABONO", resultado.getValorAbono());
+                    parametros.put("P_MODALIDAD", resultado.getModalidad());
+                    parametros.put("P_TIPO_AMORTIZACION", resultado.getTipoAmortizacion());
+                    parametros.put("P_PLAZO_ACTUAL", resultado.getPlazoActual());
+                    parametros.put("P_PLAZO_NUEVO", resultado.getPlazoNuevo());
+                    parametros.put("P_CUOTA_ACTUAL", resultado.getCuotaActual());
+                    parametros.put("P_CUOTA_NUEVA", resultado.getCuotaNueva());
+                    parametros.put("P_AHORRO_INTERESES", resultado.getAhorroIntereses());
+                    break;
+                }
+                case "REESTRUCTURACION": {
+                    if (solicitud.getReestructuracion() == null) {
+                        return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                            "Falta el cuerpo 'reestructuracion'", null);
+                    }
+                    ResultadoSimulacionReestructuracion resultado =
+                        simulacionPrestamoService.simularReestructuracion(solicitud.getReestructuracion());
+                    tabla = resultado.getTablaProyectada();
+                    nombreReporte = "RPRT_SMLC_RSTR";
+
+                    parametros.put("P_ID_PRESTAMO", resultado.getIdPrestamo());
+                    parametros.put("P_TIPO_AMORTIZACION", resultado.getTipoAmortizacion());
+                    parametros.put("P_SALDO_CAPITAL_PENDIENTE", resultado.getSaldoCapitalPendiente());
+                    parametros.put("P_CAPITALIZAR_VENCIDO",
+                        Boolean.TRUE.equals(resultado.getCapitalizarVencido()) ? "SI" : "NO");
+                    parametros.put("P_MORA_CAPITALIZADA", resultado.getMoraCapitalizada());
+                    parametros.put("P_INTERES_VENCIDO_CAPITALIZADO", resultado.getInteresVencidoCapitalizado());
+                    parametros.put("P_CAPITAL_DE_ARRANQUE", resultado.getCapitalDeArranque());
+                    parametros.put("P_TASA_ACTUAL", resultado.getTasaActual());
+                    parametros.put("P_TASA_NUEVA", resultado.getTasaNueva());
+                    parametros.put("P_PLAZO_ACTUAL", resultado.getPlazoActual());
+                    parametros.put("P_PLAZO_NUEVO", resultado.getPlazoNuevo());
+                    parametros.put("P_CUOTA_ACTUAL", resultado.getCuotaActual());
+                    parametros.put("P_CUOTA_NUEVA", resultado.getCuotaNueva());
+                    parametros.put("P_MESES_GRACIA", resultado.getMesesGracia());
+                    parametros.put("P_TOTAL_A_PAGAR_ACTUAL", resultado.getTotalAPagarActual());
+                    parametros.put("P_TOTAL_A_PAGAR_NUEVO", resultado.getTotalAPagarNuevo());
+                    break;
+                }
+                default:
+                    return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                        "tipo debe ser CREDITO_NUEVO, ABONO_CAPITAL o REESTRUCTURACION (vino '" + tipo + "')", null);
+            }
+
+            parametros.put("P_NOMBRE_SOCIO", solicitud.getNombreSocio());
+            parametros.put("P_IDENTIFICACION_SOCIO", solicitud.getIdentificacionSocio());
+            parametros.put("P_FECHA_EMISION", formatoFecha(LocalDateTime.now()));
+
+            byte[] pdf = reporteService.generarReporteDesdeColeccion("crd", nombreReporte, parametros, tabla, "PDF");
+
+            return Response.ok(pdf)
+                    .header("Content-Disposition", "attachment; filename=\"" + nombreReporte + ".pdf\"")
+                    .header("Content-Type", "application/pdf")
+                    .build();
+
+        } catch (Throwable e) {
+            System.err.println("ERROR al generar el reporte de simulación: " + e.getMessage());
+            e.printStackTrace();
+            return respuestaErrorNegocio(e);
+        }
+    }
+
+    /** dd/MM/yyyy — convertirTiposParametros de ReporteServiceImpl no convierte fechas ni booleanos. */
+    private String formatoFecha(LocalDateTime fecha) {
+        return fecha != null ? fecha.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")) : null;
     }
 
     /**

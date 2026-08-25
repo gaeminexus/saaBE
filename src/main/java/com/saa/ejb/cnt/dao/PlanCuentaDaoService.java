@@ -200,6 +200,22 @@ public interface PlanCuentaDaoService extends EntityDao<PlanCuenta> {
 	
 	
 	/**
+	 * Recupera las cuentas de MOVIMIENTO activas de una empresa cuyo numero de cuenta o
+	 * nombre contiene el filtro. Pensado para los buscadores de cuenta de las pantallas de
+	 * parametrizacion: una cuenta de acumulacion no puede recibir saldo, asi que no se
+	 * ofrece.
+	 *
+	 * El filtro es case-insensitive y se compara con LIKE %filtro%; nulo o vacio devuelve
+	 * todas las cuentas de movimiento activas de la empresa.
+	 *
+	 * @param empresa	: Id de la empresa
+	 * @param filtro	: Texto a buscar en el numero de cuenta o en el nombre; puede ser nulo
+	 * @return			: Listado ordenado por numero de cuenta; VACIO si no hay coincidencias
+	 * @throws Throwable: Excepcion
+	 */
+	List<PlanCuenta> selectMovimientoActivasByEmpresaFiltro(Long empresa, String filtro) throws Throwable;
+
+	/**
 	 * Recupera las cuentas de un nivel y naturaleza especifica
 	 * @param idNaturaleza: Id de la naturaleza
 	 * @param nivel: Nivel de la cuenta

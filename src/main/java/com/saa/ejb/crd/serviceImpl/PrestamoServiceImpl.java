@@ -14,13 +14,15 @@ import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
 
-import com.saa.basico.ejb.FechaService;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.crd.dao.DetallePrestamoDaoService;
 import com.saa.ejb.crd.dao.PagoPrestamoDaoService;
 import com.saa.ejb.crd.dao.PrestamoDaoService;
+import com.saa.ejb.crd.service.CalculadoraAmortizacionService;
 import com.saa.ejb.crd.service.PrestamoService;
+import com.saa.ejb.crd.service.dto.CuotaProyectada;
+import com.saa.ejb.crd.service.dto.ParametrosAmortizacion;
 import com.saa.model.crd.DetallePrestamo;
 import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.model.crd.PagoPrestamo;
@@ -42,9 +44,9 @@ public class PrestamoServiceImpl implements PrestamoService {
     
     @EJB
     private PagoPrestamoDaoService pagoPrestamoDaoService;
-    
+
     @EJB
-    private FechaService fechaService;
+    private CalculadoraAmortizacionService calculadoraAmortizacionService;
 
     @Override
     public Prestamo selectById(Long id) throws Throwable {
@@ -91,6 +93,16 @@ public class PrestamoServiceImpl implements PrestamoService {
         if(prestamo.getCodigo() == null){
         	prestamo.setIdEstado(Long.valueOf(Estado.ACTIVO));
 		}
+
+        // D10 (decisión 11 del plan de simuladores): PRSTTSAA y PRSTINNM son una sola tasa.
+        // Se deriva interesNominal de tasa en cada guardado, para que el proceso de mora
+        // (ProcesoMoraPrestamoServiceImpl) deje de caer al default silencioso de 9%.
+        if (prestamo.getTasa() != null) {
+            System.out.println("saveSingle - Prestamo " + prestamo.getCodigo()
+                + ": derivando interesNominal (PRSTINNM) de tasa (PRSTTSAA=" + prestamo.getTasa() + ")");
+            prestamo.setInteresNominal(prestamo.getTasa());
+        }
+
         prestamo = prestamoDaoService.save(prestamo, prestamo.getCodigo());
         return prestamo;
     }
@@ -156,309 +168,89 @@ public class PrestamoServiceImpl implements PrestamoService {
     }
     
     private List<DetallePrestamo> generarAmortizacionFrancesa(Prestamo prestamo, Long tieneCuotaCero) throws Throwable {
-        List<DetallePrestamo> detalles = new ArrayList<>();
-        
-        double capital = prestamo.getMontoSolicitado();
-        double tasaMensual = prestamo.getTasa() / 100 / 12;
-        double tasaDiaria = prestamo.getTasa() / 100 / 360; // Tasa diaria (base 360)
-        int plazo = prestamo.getPlazo().intValue();
-        int mesesGracia = (tieneCuotaCero != null && tieneCuotaCero == 1L) ? 1 : 0;
-        
-        double cuotaFija = capital * (tasaMensual * Math.pow(1 + tasaMensual, plazo)) / 
-                          (Math.pow(1 + tasaMensual, plazo) - 1);
-        
-        double saldoCapital = capital;
-        LocalDateTime fechaInicio = prestamo.getFechaInicio();
-        LocalDateTime fechaVencimiento;
-        
-        // Calcular intereses proporcionales del mes inicial
-        LocalDate fechaInicioLocal = fechaInicio.toLocalDate();
-        LocalDate ultimoDiaMesInicio = fechaService.ultimoDiaMesAnioLocal(
-            Long.valueOf(fechaInicioLocal.getMonthValue()), 
-            Long.valueOf(fechaInicioLocal.getYear())
-        );
-        int diasMesInicial = (int) java.time.temporal.ChronoUnit.DAYS.between(fechaInicioLocal, ultimoDiaMesInicio) + 1;
-        double interesesMesInicial = capital * tasaDiaria * diasMesInicial;
-        
-        System.out.println("Intereses proporcionales mes inicial - Días: " + diasMesInicial + 
-                         ", Interés: " + redondear(interesesMesInicial));
-        
-        if (mesesGracia > 0) {
-            DetallePrestamo detalle = new DetallePrestamo();
-            double interes = saldoCapital * tasaMensual;
-
-            LocalDate fechaTemp = fechaInicio.toLocalDate().plusMonths(1);
-            LocalDate ultimoDia = fechaService.ultimoDiaMesAnioLocal(
-                Long.valueOf(fechaTemp.getMonthValue()),
-                Long.valueOf(fechaTemp.getYear())
-            );
-            fechaVencimiento = ultimoDia.atTime(fechaInicio.toLocalTime());
-
-            detalle.setPrestamo(prestamo);
-            detalle.setNumeroCuota(0.0);
-            detalle.setFechaVencimiento(fechaVencimiento);
-            detalle.setCapital(0.0);
-            detalle.setInteres(redondear(interes));
-            detalle.setCuota(redondear(interes));
-            detalle.setSaldoCapital(redondear(saldoCapital));
-            detalle.setSaldo(redondear(saldoCapital));
-            detalle.setMora(0.0);
-            detalle.setInteresVencido(0.0);
-            detalle.setSaldoInteres(redondear(interes));
-            detalle.setSaldoMora(0.0);
-            detalle.setSaldoInteresVencido(0.0);
-            detalle.setAbono(0.0);
-            detalle.setCapitalPagado(0.0);
-            detalle.setInteresPagado(0.0);
-            detalle.setDesgravamen(0.0);
-            detalle.setSaldoOtros(0.0);
-            detalle.setDesgravamenFirmado(0.0);
-            detalle.setDesgravamenDiferido(0.0);
-            detalle.setDesgravamenOriginal(0.0);
-            detalle.setValorDiferido(0.0);
-            // La cuota 0 de gracia no amortiza capital: el saldo inicial es el capital completo
-            detalle.setSaldoInicialCapital(redondear(saldoCapital));
-            detalle.setValorSeguroIncendio(0.0);
-            // total = cuota + desgravamen + valorSeguroIncendio
-            detalle.setTotal(redondear(detalle.getCuota() + detalle.getDesgravamen() + detalle.getValorSeguroIncendio()));
-            detalle.setTotalConSeguro(detalle.getTotal());
-            detalle.setEstado(Long.valueOf(Estado.ACTIVO));
-            detalle.setIdEstado(Long.valueOf(Estado.ACTIVO));
-
-            detalles.add(detalle);
-        }
-
-        for (int i = 1; i <= plazo; i++) {
-            DetallePrestamo detalle = new DetallePrestamo();
-
-            double interes = saldoCapital * tasaMensual;
-
-            // Si es la primera cuota Y NO HAY cuota 0, sumar intereses proporcionales del mes inicial
-            // Si hay cuota 0, esos intereses ya se cobraron en la cuota 0
-            if (i == 1 && mesesGracia == 0) {
-                interes += interesesMesInicial;
-                System.out.println("Cuota 1 (sin cuota 0) - Interés mensual: " + redondear(saldoCapital * tasaMensual) +
-                                 ", Interés mes inicial: " + redondear(interesesMesInicial) +
-                                 ", Total interés: " + redondear(interes));
-            }
-
-            // Capital pendiente ANTES de pagar esta cuota (= DTPRSICP). Se captura antes de
-            // restarle el capital de la cuota para cumplir el invariante de la carga Excel:
-            // saldoInicialCapital = capital + saldoCapital + saldoOtros
-            double saldoCapitalAntesDeLaCuota = saldoCapital;
-
-            double capitalCuota = cuotaFija - (saldoCapital * tasaMensual); // Capital se calcula con interés sin proporcional
-            saldoCapital -= capitalCuota;
-            
-            if (i == plazo && Math.abs(saldoCapital) > 0.01) {
-                capitalCuota += saldoCapital;
-                saldoCapital = 0;
-            }
-            
-            if (mesesGracia > 0) {
-                LocalDate fechaTemp = fechaInicio.toLocalDate().plusMonths(i + 1);
-                LocalDate ultimoDia = fechaService.ultimoDiaMesAnioLocal(
-                    Long.valueOf(fechaTemp.getMonthValue()), 
-                    Long.valueOf(fechaTemp.getYear())
-                );
-                fechaVencimiento = ultimoDia.atTime(fechaInicio.toLocalTime());
-            } else {
-                LocalDate fechaTemp = fechaInicio.toLocalDate().plusMonths(i);
-                LocalDate ultimoDia = fechaService.ultimoDiaMesAnioLocal(
-                    Long.valueOf(fechaTemp.getMonthValue()), 
-                    Long.valueOf(fechaTemp.getYear())
-                );
-                fechaVencimiento = ultimoDia.atTime(fechaInicio.toLocalTime());
-            }
-            
-            detalle.setPrestamo(prestamo);
-            detalle.setNumeroCuota(Double.valueOf(i));
-            detalle.setFechaVencimiento(fechaVencimiento);
-            detalle.setCapital(redondear(capitalCuota));
-            detalle.setInteres(redondear(interes));
-            detalle.setCuota(redondear(cuotaFija));
-            detalle.setSaldoCapital(redondear(Math.max(0, saldoCapital)));
-            detalle.setSaldo(redondear(Math.max(0, saldoCapital)));
-            detalle.setMora(0.0);
-            detalle.setInteresVencido(0.0);
-            detalle.setSaldoInteres(redondear(interes));
-            detalle.setSaldoMora(0.0);
-            detalle.setSaldoInteresVencido(0.0);
-            detalle.setAbono(0.0);
-            detalle.setCapitalPagado(0.0);
-            detalle.setInteresPagado(0.0);
-            detalle.setDesgravamen(0.0);
-            detalle.setSaldoOtros(0.0);
-            detalle.setDesgravamenFirmado(0.0);
-            detalle.setDesgravamenDiferido(0.0);
-            detalle.setDesgravamenOriginal(0.0);
-            detalle.setValorDiferido(0.0);
-            // Invariante: saldoInicialCapital = capital + saldoCapital + saldoOtros
-            detalle.setSaldoInicialCapital(redondear(saldoCapitalAntesDeLaCuota));
-            detalle.setValorSeguroIncendio(0.0);
-            // total = cuota + desgravamen + valorSeguroIncendio
-            detalle.setTotal(redondear(detalle.getCuota() + detalle.getDesgravamen() + detalle.getValorSeguroIncendio()));
-            detalle.setTotalConSeguro(detalle.getTotal());
-            detalle.setEstado(Long.valueOf(Estado.ACTIVO));
-            detalle.setIdEstado(Long.valueOf(Estado.ACTIVO));
-
-            detalles.add(detalle);
-        }
-
-        return detalles;
+        return generarAmortizacion(prestamo, tieneCuotaCero, 1L);
     }
 
     private List<DetallePrestamo> generarAmortizacionAlemana(Prestamo prestamo, Long tieneCuotaCero) throws Throwable {
+        return generarAmortizacion(prestamo, tieneCuotaCero, 2L);
+    }
+
+    /**
+     * Arma los parámetros desde el préstamo ya guardado, delega el cálculo puro en
+     * {@link CalculadoraAmortizacionService} (fase 1 de PLAN-SIMULADORES-PRESTAMOS.md — una
+     * sola fórmula para todo el sistema) y mapea el resultado a {@code DetallePrestamo},
+     * llenando los campos de bitácora que la calculadora no conoce (mora, abono, estado, ...).
+     */
+    private List<DetallePrestamo> generarAmortizacion(Prestamo prestamo, Long tieneCuotaCero, long tipoAmortizacion)
+            throws Throwable {
+
+        ParametrosAmortizacion params = new ParametrosAmortizacion();
+        params.setMonto(prestamo.getMontoSolicitado());
+        params.setTasaAnual(prestamo.getTasa());
+        params.setPlazo(prestamo.getPlazo().intValue());
+        params.setTipoAmortizacion(tipoAmortizacion);
+        params.setFechaInicio(prestamo.getFechaInicio());
+        params.setTieneCuotaCero(tieneCuotaCero != null && tieneCuotaCero == 1L);
+        // El generador de tabla nueva no calcula desgravamen ni seguro de incendio por cuota
+        // (comportamiento preexistente, sin cambios en esta fase): quedan en 0.0.
+        params.setDesgravamenPorCuota(0.0);
+        params.setSeguroIncendioPorCuota(0.0);
+
+        List<CuotaProyectada> tabla = calculadoraAmortizacionService.calcular(params);
+
         List<DetallePrestamo> detalles = new ArrayList<>();
-        
-        double capital = prestamo.getMontoSolicitado();
-        double tasaMensual = prestamo.getTasa() / 100 / 12;
-        double tasaDiaria = prestamo.getTasa() / 100 / 360; // Tasa diaria (base 360)
-        int plazo = prestamo.getPlazo().intValue();
-        int mesesGracia = (tieneCuotaCero != null && tieneCuotaCero == 1L) ? 1 : 0;
-        
-        double capitalFijo = capital / plazo;
-        double saldoCapital = capital;
-        LocalDateTime fechaInicio = prestamo.getFechaInicio();
-        LocalDateTime fechaVencimiento;
-        
-        // Calcular intereses proporcionales del mes inicial
-        LocalDate fechaInicioLocal = fechaInicio.toLocalDate();
-        LocalDate ultimoDiaMesInicio = fechaService.ultimoDiaMesAnioLocal(
-            Long.valueOf(fechaInicioLocal.getMonthValue()), 
-            Long.valueOf(fechaInicioLocal.getYear())
-        );
-        int diasMesInicial = (int) java.time.temporal.ChronoUnit.DAYS.between(fechaInicioLocal, ultimoDiaMesInicio) + 1;
-        double interesesMesInicial = capital * tasaDiaria * diasMesInicial;
-        
-        System.out.println("Intereses proporcionales mes inicial - Días: " + diasMesInicial + 
-                         ", Interés: " + redondear(interesesMesInicial));
-        
-        if (mesesGracia > 0) {
-            DetallePrestamo detalle = new DetallePrestamo();
-            double interes = saldoCapital * tasaMensual;
-            
-            LocalDate fechaTemp = fechaInicio.toLocalDate().plusMonths(1);
-            LocalDate ultimoDia = fechaService.ultimoDiaMesAnioLocal(
-                Long.valueOf(fechaTemp.getMonthValue()), 
-                Long.valueOf(fechaTemp.getYear())
-            );
-            fechaVencimiento = ultimoDia.atTime(fechaInicio.toLocalTime());
-            
-            detalle.setPrestamo(prestamo);
-            detalle.setNumeroCuota(0.0);
-            detalle.setFechaVencimiento(fechaVencimiento);
-            detalle.setCapital(0.0);
-            detalle.setInteres(redondear(interes));
-            detalle.setCuota(redondear(interes));
-            detalle.setSaldoCapital(redondear(saldoCapital));
-            detalle.setSaldo(redondear(saldoCapital));
-            detalle.setMora(0.0);
-            detalle.setInteresVencido(0.0);
-            detalle.setSaldoInteres(redondear(interes));
-            detalle.setSaldoMora(0.0);
-            detalle.setSaldoInteresVencido(0.0);
-            detalle.setAbono(0.0);
-            detalle.setCapitalPagado(0.0);
-            detalle.setInteresPagado(0.0);
-            detalle.setDesgravamen(0.0);
-            detalle.setSaldoOtros(0.0);
-            detalle.setDesgravamenFirmado(0.0);
-            detalle.setDesgravamenDiferido(0.0);
-            detalle.setDesgravamenOriginal(0.0);
-            detalle.setValorDiferido(0.0);
-            // La cuota 0 de gracia no amortiza capital: el saldo inicial es el capital completo
-            detalle.setSaldoInicialCapital(redondear(saldoCapital));
-            detalle.setValorSeguroIncendio(0.0);
-            // total = cuota + desgravamen + valorSeguroIncendio
-            detalle.setTotal(redondear(detalle.getCuota() + detalle.getDesgravamen() + detalle.getValorSeguroIncendio()));
-            detalle.setTotalConSeguro(detalle.getTotal());
-            detalle.setEstado(Long.valueOf(Estado.ACTIVO));
-            detalle.setIdEstado(Long.valueOf(Estado.ACTIVO));
-
-            detalles.add(detalle);
+        for (CuotaProyectada proyectada : tabla) {
+            detalles.add(construirDetalle(prestamo, proyectada));
         }
-
-        for (int i = 1; i <= plazo; i++) {
-            DetallePrestamo detalle = new DetallePrestamo();
-
-            double interes = saldoCapital * tasaMensual;
-
-            // Si es la primera cuota Y NO HAY cuota 0, sumar intereses proporcionales del mes inicial
-            // Si hay cuota 0, esos intereses ya se cobraron en la cuota 0
-            if (i == 1 && mesesGracia == 0) {
-                interes += interesesMesInicial;
-                System.out.println("Cuota 1 (sin cuota 0) - Interés mensual: " + redondear(saldoCapital * tasaMensual) +
-                                 ", Interés mes inicial: " + redondear(interesesMesInicial) +
-                                 ", Total interés: " + redondear(interes));
-            }
-
-            // Capital pendiente ANTES de pagar esta cuota (= DTPRSICP). Se captura antes de
-            // restarle el capital de la cuota para cumplir el invariante de la carga Excel:
-            // saldoInicialCapital = capital + saldoCapital + saldoOtros
-            double saldoCapitalAntesDeLaCuota = saldoCapital;
-
-            double capitalCuota = capitalFijo;
-            double cuota = capitalCuota + interes;
-            saldoCapital -= capitalCuota;
-            
-            if (i == plazo && Math.abs(saldoCapital) > 0.01) {
-                capitalCuota += saldoCapital;
-                cuota = capitalCuota + interes;
-                saldoCapital = 0;
-            }
-            
-            if (mesesGracia > 0) {
-                LocalDate fechaTemp = fechaInicio.toLocalDate().plusMonths(i + 1);
-                LocalDate ultimoDia = fechaService.ultimoDiaMesAnioLocal(
-                    Long.valueOf(fechaTemp.getMonthValue()), 
-                    Long.valueOf(fechaTemp.getYear())
-                );
-                fechaVencimiento = ultimoDia.atTime(fechaInicio.toLocalTime());
-            } else {
-                LocalDate fechaTemp = fechaInicio.toLocalDate().plusMonths(i);
-                LocalDate ultimoDia = fechaService.ultimoDiaMesAnioLocal(
-                    Long.valueOf(fechaTemp.getMonthValue()), 
-                    Long.valueOf(fechaTemp.getYear())
-                );
-                fechaVencimiento = ultimoDia.atTime(fechaInicio.toLocalTime());
-            }
-            
-            detalle.setPrestamo(prestamo);
-            detalle.setNumeroCuota(Double.valueOf(i));
-            detalle.setFechaVencimiento(fechaVencimiento);
-            detalle.setCapital(redondear(capitalCuota));
-            detalle.setInteres(redondear(interes));
-            detalle.setCuota(redondear(cuota));
-            detalle.setSaldoCapital(redondear(Math.max(0, saldoCapital)));
-            detalle.setSaldo(redondear(Math.max(0, saldoCapital)));
-            detalle.setMora(0.0);
-            detalle.setInteresVencido(0.0);
-            detalle.setSaldoInteres(redondear(interes));
-            detalle.setSaldoMora(0.0);
-            detalle.setSaldoInteresVencido(0.0);
-            detalle.setAbono(0.0);
-            detalle.setCapitalPagado(0.0);
-            detalle.setInteresPagado(0.0);
-            detalle.setDesgravamen(0.0);
-            detalle.setSaldoOtros(0.0);
-            detalle.setDesgravamenFirmado(0.0);
-            detalle.setDesgravamenDiferido(0.0);
-            detalle.setDesgravamenOriginal(0.0);
-            detalle.setValorDiferido(0.0);
-            // Invariante: saldoInicialCapital = capital + saldoCapital + saldoOtros
-            detalle.setSaldoInicialCapital(redondear(saldoCapitalAntesDeLaCuota));
-            detalle.setValorSeguroIncendio(0.0);
-            // total = cuota + desgravamen + valorSeguroIncendio
-            detalle.setTotal(redondear(detalle.getCuota() + detalle.getDesgravamen() + detalle.getValorSeguroIncendio()));
-            detalle.setTotalConSeguro(detalle.getTotal());
-            detalle.setEstado(Long.valueOf(Estado.ACTIVO));
-            detalle.setIdEstado(Long.valueOf(Estado.ACTIVO));
-
-            detalles.add(detalle);
-        }
-
         return detalles;
+    }
+
+    /** Mapea una fila pura de la calculadora a una entidad DTPR con TODOS los campos del invariante llenos. */
+    private DetallePrestamo construirDetalle(Prestamo prestamo, CuotaProyectada proyectada) {
+        DetallePrestamo detalle = new DetallePrestamo();
+
+        detalle.setPrestamo(prestamo);
+        detalle.setNumeroCuota(proyectada.getNumeroCuota());
+        detalle.setFechaVencimiento(proyectada.getFechaVencimiento());
+        detalle.setCapital(proyectada.getCapital());
+        detalle.setInteres(proyectada.getInteres());
+        detalle.setCuota(proyectada.getCuota());
+
+        double saldoCapital = redondear(Math.max(0.0, nvl(proyectada.getSaldoCapital())));
+        detalle.setSaldoCapital(saldoCapital);
+        detalle.setSaldo(saldoCapital);
+
+        detalle.setMora(0.0);
+        detalle.setInteresVencido(0.0);
+        detalle.setSaldoInteres(proyectada.getInteres());
+        detalle.setSaldoMora(0.0);
+        detalle.setSaldoInteresVencido(0.0);
+        detalle.setAbono(0.0);
+        detalle.setCapitalPagado(0.0);
+        detalle.setInteresPagado(0.0);
+        // La calculadora ya llena desgravamen/seguroIncendio/total con el mismo invariante que
+        // DTPRTTLL (decisión 15 del plan): se copian tal cual, sin recalcular acá.
+        double desgravamen = nvl(proyectada.getDesgravamen());
+        double seguro = nvl(proyectada.getSeguroIncendio());
+        detalle.setDesgravamen(desgravamen);
+        detalle.setSaldoOtros(0.0);
+        detalle.setDesgravamenFirmado(desgravamen);
+        detalle.setDesgravamenDiferido(0.0);
+        detalle.setDesgravamenOriginal(desgravamen);
+        detalle.setValorDiferido(0.0);
+        // Invariante: saldoInicialCapital = capital + saldoCapital + saldoOtros (saldoOtros = 0 acá)
+        detalle.setSaldoInicialCapital(redondear(nvl(proyectada.getCapital()) + saldoCapital));
+        detalle.setValorSeguroIncendio(seguro);
+        detalle.setTotal(redondear(nvl(proyectada.getTotal())));
+        detalle.setTotalConSeguro(detalle.getTotal());
+        detalle.setEstado(Long.valueOf(Estado.ACTIVO));
+        detalle.setIdEstado(Long.valueOf(Estado.ACTIVO));
+
+        return detalle;
+    }
+
+    private double nvl(Double valor) {
+        return valor != null ? valor : 0.0;
     }
 
     private void actualizarCamposPrestamo(Prestamo prestamo, List<DetallePrestamo> detalles) {

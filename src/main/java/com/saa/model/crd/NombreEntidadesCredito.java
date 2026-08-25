@@ -88,5 +88,7 @@ public interface NombreEntidadesCredito {
 	String HIST_DETALLE_PRESTAMO = "HistDetallePrestamo";
 	String DEVOLUCION_APORTE = "DevolucionAporte";
 	String DETALLE_DEVOLUCION_APORTE = "DetalleDevolucionAporte";
+	String CONFIGURACION_BANDA_PRODUCTO = "ConfiguracionBandaProducto";
+	String BANDA_PRODUCTO = "BandaProducto";
 
 }

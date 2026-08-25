@@ -342,6 +342,32 @@ public class PlanCuentaDaoServiceImpl extends EntityDaoImpl<PlanCuenta>  impleme
 	}
 
 	/* (non-Javadoc)
+	 * @see com.compuseg.income.contabilidad.ejb.dao.PlanCuentaDaoService#selectMovimientoActivasByEmpresaFiltro(java.lang.Long, java.lang.String)
+	 */
+	@SuppressWarnings("unchecked")
+	public List<PlanCuenta> selectMovimientoActivasByEmpresaFiltro(Long empresa, String filtro)
+			throws Throwable {
+		System.out.println("Dao selectMovimientoActivasByEmpresaFiltro de empresa: " + empresa
+				+ " filtro: " + filtro);
+		// El comodin se arma en Java: un LIKE '%' || :filtro || '%' con el parametro nulo
+		// no filtra, filtra a nada.
+		String patron = "%" + (filtro != null ? filtro.trim().toUpperCase() : "") + "%";
+		Query query = em.createQuery(" select b " +
+									 " from   PlanCuenta b " +
+									 " where  b.empresa.codigo = :empresa " +
+									 "        and b.estado = :estado " +
+									 "        and b.tipo   = :movimiento " +
+									 "        and (upper(b.cuentaContable) like :patron " +
+									 "             or upper(b.nombre) like :patron) " +
+									 " order by b.cuentaContable");
+		query.setParameter("empresa", empresa);
+		query.setParameter("estado", Long.valueOf(Estado.ACTIVO));
+		query.setParameter("movimiento", Long.valueOf(TipoCuentaContable.MOVIMIENTO));
+		query.setParameter("patron", patron);
+		return query.getResultList();
+	}
+
+	/* (non-Javadoc)
 	 * @see com.compuseg.income.contabilidad.ejb.dao.PlanCuentaDaoService#selectActivasByEmpresa(java.lang.Long)
 	 */
 	@SuppressWarnings("unchecked")

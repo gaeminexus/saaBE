@@ -25,6 +25,7 @@ import net.sf.jasperreports.engine.JasperExportManager;
 import net.sf.jasperreports.engine.JasperFillManager;
 import net.sf.jasperreports.engine.JasperPrint;
 import net.sf.jasperreports.engine.JasperReport;
+import net.sf.jasperreports.engine.data.JRBeanCollectionDataSource;
 import net.sf.jasperreports.engine.export.HtmlExporter;
 import net.sf.jasperreports.engine.export.ooxml.JRXlsxExporter;
 import net.sf.jasperreports.engine.util.JRLoader;
@@ -211,6 +212,65 @@ public class ReporteServiceImpl implements ReporteService {
         }
     }
     
+    /**
+     * Llena un reporte con una colección de JavaBeans (ver javadoc de la interfaz). Aditivo:
+     * método nuevo, no toca {@link #generarReporte}. A propósito NO llama a
+     * {@link #lookupDataSource()} ni pide ninguna {@code Connection} — un reporte de simulación
+     * no tiene nada que consultar en la base, y si el datasource estuviera caído no tiene que
+     * arrastrar a este camino con él.
+     */
+    @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+    public byte[] generarReporteDesdeColeccion(String modulo, String nombreReporte,
+            Map<String, Object> parametros, List<?> datos, String formato) throws Exception {
+
+        LOGGER.log(Level.INFO, "Generando reporte desde colección: modulo={0}, nombre={1}, formato={2}, filas={3}",
+                   new Object[]{modulo, nombreReporte, formato, datos != null ? datos.size() : 0});
+
+        // Solo el .jasper: en JasperReports 7.0.3 no hay compilación en tiempo de ejecución que
+        // funcione (ver CLAUDE.md), así que este camino nuevo no intenta la rama .jrxml.
+        String rutaJasper = String.format("/rep/%s/%s.jasper", modulo, nombreReporte);
+        InputStream reportStream = getClass().getResourceAsStream(rutaJasper);
+        if (reportStream == null) {
+            throw new IllegalArgumentException(
+                "No se encontró el reporte compilado: " + rutaJasper
+                + " (el .jasper es obligatorio; no hay compilación de .jrxml en tiempo de ejecución)");
+        }
+        JasperReport jasperReport;
+        try {
+            jasperReport = (JasperReport) JRLoader.loadObject(reportStream);
+            LOGGER.log(Level.INFO, "Reporte cargado desde .jasper: {0}", rutaJasper);
+        } finally {
+            try { reportStream.close(); } catch (Exception ignored) {}
+        }
+
+        // Logo: mismo criterio que generarReporte (P_IMAGEN se omite, el backend lo inyecta).
+        if (!parametros.containsKey("P_IMAGEN") || parametros.get("P_IMAGEN") == null) {
+            try {
+                InputStream imageStream = getClass().getResourceAsStream("/rep/img/logo_aso.jpeg");
+                if (imageStream != null) {
+                    Image image = ImageIO.read(imageStream);
+                    imageStream.close();
+                    if (image != null) {
+                        parametros.put("P_IMAGEN", image);
+                    }
+                }
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Error al cargar imagen: {0}", e.getMessage());
+            }
+        }
+        parametros.put("RUTA_IMAGENES", getClass().getResource("/rep/img/").toString());
+        parametros.put("SUBREPORT_DIR", getClass().getResource("/rep/" + modulo + "/").toString());
+
+        convertirTiposParametros(jasperReport, parametros);
+
+        JRBeanCollectionDataSource dataSource =
+            new JRBeanCollectionDataSource(datos != null ? datos : java.util.Collections.emptyList());
+
+        JasperPrint jasperPrint = JasperFillManager.fillReport(jasperReport, parametros, dataSource);
+
+        return exportarReporte(jasperPrint, formato);
+    }
+
     /**
      * Convierte los valores del mapa de parámetros al tipo declarado en el .jasper.
      * Jackson deserializa números JSON como Integer por defecto; si el reporte declara

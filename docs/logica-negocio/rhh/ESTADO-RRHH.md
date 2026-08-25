@@ -1,6 +1,6 @@
 # Estado del módulo RRHH
 
-**Última actualización:** 2026-08-25 · 🏁 **ENERO A MAYO CERRADOS EN PRODUCCIÓN, LOS CINCO EN DIFERENCIA CERO** · ⏳ **WAR con el 22 y el 10 publicado en local, PENDIENTE de subir a producción** · **junio es el siguiente y tiene guion propio** · julio cierra la carga histórica
+**Última actualización:** 2026-08-25 · 🏁 **ENERO A JUNIO CERRADOS EN PRODUCCIÓN** · cinco en diferencia cero y junio en −44,60 **por diseño** · ⏳ **WAR con el 22 y el 10 publicado en local, PENDIENTE de subir a producción** · **junio es el siguiente y tiene guion propio** · julio cierra la carga histórica
 
 > Este archivo existe para que una sesión nueva de cualquier agente recupere el estado sin
 > depender del historial de conversación. **Actualízalo al terminar cada fase.**
@@ -28,7 +28,8 @@ han corrido todavía**.
 | Marzo | ✅ cerrado y contrastado **en PRODUCCIÓN** | **17 591,12** | **0,00** |
 | Abril | ✅ **CERRADO, REABIERTO Y VUELTO A CERRAR** el 2026-08-24 · `PRDN 41` · 20 colaboradores. Se cerró primero en 16 089,22 con +175,00; **se reabrió por decisión del cliente** para registrar los OTROS de Calderón como concepto **31**, y cerró en cero. Ver [`GUION-REAPERTURA-ABRIL.md`](GUION-REAPERTURA-ABRIL.md) | **15 914,22** | **0,00** |
 | Mayo | ✅ **CERRADO Y CONTRASTADO en PRODUCCIÓN** el 2026-08-23 · `PRDN 42` · 20 colaboradores · contrastado en estado **3**, antes de aprobar | **16 035,21** | **0,00** |
-| Junio · Julio | datos cargados, **sin correr** | — | — |
+| Junio | ✅ **CERRADO Y CONTRASTADO en PRODUCCIÓN** el 2026-08-25 · `PRDN 61` · 20 colaboradores · contrastado en estado **3**, antes de aprobar | **15 772,84** | **−44,60**, atribuidos al céntimo antes de correrlo y **por diseño**: julio los devuelve |
+| Julio | datos cargados (`sql/51`), **sin correr y sin guion escrito** | — | — |
 
 > El neto de enero es **16 476,92**, no el 16 501,34 que dice más abajo la sección histórica:
 > aquel valor es anterior a las correcciones de décimos y vacaciones y al prorrateo de días.
@@ -211,6 +212,91 @@ esa comparación tiene algo real que comparar. Con los dos en 8,33 —medido— 
 > **237,49**— y Viteri **no** genera provisión prorrateada. Con el WAR **nuevo** cobran **37,63**
 > entre los cuatro. **No hay forma de confundir 237,49 con 37,63**, así que el contraste de junio
 > hace de `javap` sin coste. Está escrito en el prompt de arranque como condición de parada.
+>
+> **✅ RESUELTO el 2026-08-25: el EAR de producción lleva el motor corregido.** Junio calculó
+> **7,77 · 7,64 · 12,50 · 9,72**, los cuatro exactos, y Viteri con provisión prorrateada de base
+> **366,67** y valor **30,54**, única persona con esa provisión. El `javap` que no se pudo correr
+> queda sustituido por una medición mejor: no dice que el bytecode contiene un método, dice que el
+> motor **produjo el número correcto**.
+
+### 🟢 JUNIO CALCULADO — `PRDN 61`, estado 3, 2026-08-25
+
+**Primer mes que no cierra en cero por diseño, y salió clavado en lo que el guion atribuyó antes de
+correrlo.**
+
+| | Nuestro | Del cliente | Diferencia |
+|---|---:|---:|---:|
+| Ingresos | **21 071,97** | 21 116,57 | −44,60 |
+| Descuentos | **5 299,13** | 5 299,13 | **0,00** |
+| **Líquido** | **15 772,84** | 15 817,44 | **−44,60** |
+
+Los tres importes **exactos**, no aproximados —el guion los daba con `~` y no hacía falta—. Fondo de
+reserva de los cuatro mensualizados en 37,63, Viteri en `PVNM` con 366,67 / 30,54, Calderón en neto
+**0,00 exacto** sin que `recortaDescuentos` tuviera que tocar nada, y las once novedades las once en
+`aprobada = 'S'`.
+
+### ✅ JUNIO CONTRASTADO — 2026-08-25, en estado 3, antes de aprobar
+
+`CTRL_PARAM` movido a **6** con el [`sql/61`](sql/61_CONTRASTAR_JUNIO.sql) y comprobado.
+
+| Bloque | Esperado | Salió |
+|---|---|---|
+| **4** | `PERIODO_LEIDO` 2026-06 · 20/20 | ✔ `2026-06` · 142 filas · **20 / 20** · **121 renglones** · estado **3**. Los 121 son los **114 de mayo + 4** renglones de fondo de reserva **+ 3** novedades más: junio tiene once y mayo ocho |
+| **1** | cinco filas y sólo ésas | ✔ **exactamente cinco**, y suman **−44,60** al céntimo: Viteri −36,67 `EL SISTEMA NO LO GENERO` · Nieto −2,50 · **Bárcenas −1,95** · Pardo −1,95 · Muñoz −1,53. **El 31 de Calderón NO sale** → no hubo recorte |
+| **1B** | FR pasa a 1 persona con base prorrateada | ✔ **`Provision fondos de reserva · 1 · 30,54`**, contra los 183,26 de los cinco meses anteriores. **Ésta es la señal de que el punto 10 se corrigió.** Patronales y demás provisiones idénticas a abril y mayo: 2 292,44 · 102,80 · 102,80 · 1 359,49 · 682,89 · 856,68. Descuadre patronal **vacío** |
+| **2** | Calderón fuera, centavos idos | ✔ **diez filas**, las cinco personas del FR por `INGRESOS` y `LIQUIDO`. Calderón y Robayo ausentes; **los centavos de Manosalvas y Muñoz desaparecen**, como anunciaba el `sql/50`. Ninguna fila de `DESCUENTOS`: cuadran exactos |
+| **3** | 1 fila, la de Muñoz de siempre | ✔ **1 fila**, 113,31 vs 113,30 |
+
+**La descomposición coincide persona por persona con la aritmética calculada el 2026-08-25 antes de
+que junio existiera**, Bárcenas en **1,95** incluida — que era el dígito corregido esa misma mañana.
+El esperado no se confirmó por el total: se confirmó fila a fila.
+
+### 🏁 JUNIO CERRADO — `PRDN 61` en estado 7, 2026-08-25
+
+Aprobar **no lanzó `IncomeException`**: los porcentajes coincidían, como estaba medido. `PRDNOBSR` en
+`Calculado sin contabilizacion (carga historica).` carácter por carácter, los **tres asientos en
+nulo**, y **«Contabilizar provisiones» sin pulsar**. Todo verificado por REST, nada por pantalla.
+
+**Las seis provisiones de FR, que es la comprobación que importa:** enero a mayo **intactas** en
+183,26 sobre base 2 200, y junio con **30,54 sobre base 366,67**. Ningún mes cerrado se recalculó.
+
+**Los `ACMN`: 120 en junio, y es correcto.** Enero y febrero dan 132 porque tenían 22 colaboradores;
+marzo a junio, 120. **El fondo de reserva no añade ninguna fila, y eso no es un olvido:**
+`cerrarPeriodo` hace ocho llamadas a `escribeAcumulado` por persona, de las cuales **seis escriben y
+dos no**, todos los meses por igual —`escribeAcumulado` sale sin escribir cuando valor y días son
+cero—:
+
+| Se escriben (6) | No se escriben, y por qué |
+|---|---|
+| `IMPONIBLE_IESS` · `GRAVADO_IR` · `BASE_DECIMO_TERCERO` · **`BASE_FONDOS_DE_RESERVA`** · `APORTE_PERSONAL` · `DIAS_TRABAJADOS` | `BASE_DECIMO_CUARTO`: el concepto de Sueldo tiene `BSDC = 'N'`, así que esa base es cero para todos. `RETENCION_IR`: este empleador no retiene |
+
+**`BASE_FONDOS_DE_RESERVA` ya se escribía desde enero**, porque es la base `APFR` —el sueldo—, no el
+derecho al fondo. Por eso junio no cambia el conteo: 6 × 20 = **120**.
+
+**Cierre verificado con el `sql/58` reescrito:** seis meses en `INTACTO` —enero a mayo en 183,26 y
+junio en 30,54—, bloque 1 BIS **vacío**, los seis períodos en estado **7** y `CTRL_PARAM` en
+**2026 · 6**.
+
+> **⚠ `PRDNOBSR` NO es igual en los seis meses, y está bien así. NO LO «CORRIJAS».**
+> Enero (`PRDN 1`) y marzo (`PRDN 21`) dicen
+> `Cerrado con 2 novedad(es) del IESS sin declarar (periodo historico, plazo vencido).`
+> en vez del texto de la carga histórica. **Lo escribe el motor al cerrar y sobrescribe a propósito**
+> lo que hubiera —`ProcesoNominaServiceImpl:733`, con el comentario *«un cierre que ignora algo en
+> silencio es lo que la regla venía a evitar»*—. Son justamente los dos meses con salidas: enero con
+> Torres y Benítez, marzo con Castro Arce y Cevallos Alemán, **2 + 2 = las 4 `NVIS`** que el ESTADO
+> registra como prueba de los 208,22 declarados de más. **Reescribir esas dos observaciones para que
+> «cuadren» con las otras cuatro sería borrar la evidencia.** Y la instrucción de los guiones —
+> `PRDNOBSR` en `Calculado sin contabilizacion (carga historica).`— sólo aplica a los meses **sin**
+> `NVIS` pendientes.
+
+> **El clic por coordenadas no es fiable en las sesiones con navegador, y NO es un defecto de la
+> aplicación.** La réplica aterrizó dos veces en marzo (`PRDN 21`) al pulsar la fila de junio
+> (`PRDN 61`), y lo resolvió pulsando por DOM sobre el `<tr>`. La causa es el desajuste de escala
+> entre la captura (1568×753) y el viewport real (2899×1393): las coordenadas se calculan sobre una
+> imagen reducida a la mitad. **Hizo bien en no darlo de alta como defecto numerado.** Queda como
+> regla de operación: **en estas sesiones se pulsa por DOM, no por coordenadas**, y se verifica el
+> destino por la URL resultante. Aterrizar en un período equivocado y no notarlo es exactamente la
+> familia de fallos del `CTRL_PARAM` atrasado.
 
 ### ⚖️ LA REGLA QUE GOBIERNA TODO LO DEMÁS — fijada el 2026-08-24
 

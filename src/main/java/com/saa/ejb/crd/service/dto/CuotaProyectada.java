@@ -21,6 +21,15 @@ public class CuotaProyectada {
     /** Capital pendiente DESPUÉS de esta cuota */
     private Double saldoCapital;
 
+    /** Desgravamen de la cuota. Null si quien la generó no lo calcula (p.ej. simularAbonoCapital). */
+    private Double desgravamen;
+
+    /** Seguro de incendio de la cuota. Null si quien la generó no lo calcula (p.ej. simularAbonoCapital). */
+    private Double seguroIncendio;
+
+    /** cuota + desgravamen + seguroIncendio (mismo invariante que DTPRTTLL). Null si desgravamen/seguroIncendio son null. */
+    private Double total;
+
     public CuotaProyectada() {
     }
 
@@ -70,5 +79,29 @@ public class CuotaProyectada {
 
     public void setSaldoCapital(Double saldoCapital) {
         this.saldoCapital = saldoCapital;
+    }
+
+    public Double getDesgravamen() {
+        return desgravamen;
+    }
+
+    public void setDesgravamen(Double desgravamen) {
+        this.desgravamen = desgravamen;
+    }
+
+    public Double getSeguroIncendio() {
+        return seguroIncendio;
+    }
+
+    public void setSeguroIncendio(Double seguroIncendio) {
+        this.seguroIncendio = seguroIncendio;
+    }
+
+    public Double getTotal() {
+        return total;
+    }
+
+    public void setTotal(Double total) {
+        this.total = total;
     }
 }

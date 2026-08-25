@@ -218,6 +218,11 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
         double tasaNominal = prestamo.getInteresNominal() != null ? prestamo.getInteresNominal() : 0.0;
         if (tasaNominal <= 0.0) {
             tasaNominal = TASA_POR_DEFECTO;
+            // Traza del default silencioso (PLAN-SIMULADORES-PRESTAMOS.md decisión 11 / D10):
+            // desde que PrestamoServiceImpl.saveSingle deriva interesNominal de tasa en cada
+            // guardado, esto solo debería activarse en préstamos guardados ANTES del fix.
+            System.out.println("      ADVERTENCIA: préstamo " + idPrestamo + " sin interesNominal (PRSTINNM); "
+                + "se usa el default silencioso de " + TASA_POR_DEFECTO + "% (mismo default del G48).");
         }
         double tasaDiaria = tasaNominal / 100.0 / BASE_DIAS_ANIO;
 
