@@ -1,6 +1,6 @@
 # Estado del módulo RRHH
 
-**Última actualización:** 2026-08-24 · 🏁 **CALIBRACIÓN EN PRODUCCIÓN COMPLETA: ENERO A MAYO CERRADOS Y LOS CINCO EN DIFERENCIA CERO** · abril se reabrió el 24 para registrar los OTROS de Calderón y cerró en cero · **junio y julio: bloqueados por el punto 22**, no por Steven
+**Última actualización:** 2026-08-25 · 🏁 **ENERO A MAYO CERRADOS EN PRODUCCIÓN, LOS CINCO EN DIFERENCIA CERO** · ⏳ **WAR con el 22 y el 10 publicado en local, PENDIENTE de subir a producción** · **junio es el siguiente y tiene guion propio** · julio cierra la carga histórica
 
 > Este archivo existe para que una sesión nueva de cualquier agente recupere el estado sin
 > depender del historial de conversación. **Actualízalo al terminar cada fase.**
@@ -93,7 +93,28 @@ Steven y no un fallo de cálculo. **Junio y julio quedan para después de verle*
 correcciones del motor los bloquea — el punto 10 parecía candidato porque junio es cuando Viteri
 cumple el año, pero **las provisiones no se contrastan contra el cliente**, así que no toca lo que el
 instrumento mide. **El motor sigue congelado sin coste.**
-6. Junio y julio quedan para después de ver a Steven
+6. **JUNIO — el siguiente**, y ya no espera a Steven: espera a que el WAR esté en producción. Tiene guion propio, [`GUION-MES-2026-06.md`](GUION-MES-2026-06.md), escrito **antes** de correrlo
+7. Julio → **fin de la carga histórica**. Después, agosto en modo 2
+
+### 🚦 EL PUNTO DE CORTE DEL 2026-08-25 — lo primero que hay que comprobar al retomar
+
+**Se reinició la máquina y todas las sesiones son nuevas.** Esto es lo que estaba a medias:
+
+| Qué | Estado exacto |
+|---|---|
+| **WAR con el 22 y el 10** | **Publicado en LOCAL y verificado con `javap`** —salen `fechaAniversarioFondosReserva` y `baseFondosReservaProrrateada`, y `superaUnAnio` ya no está—. **PENDIENTE de subir a producción** |
+| **Los siete `.jasper` de `rhh`** | ✅ **Compilados y probados.** Eran el fallo de los reportes: `rhh` tenía 7 `.jrxml` y **0** `.jasper`, y el respaldo de compilar en runtime **está muerto en JR 7.0.3**. Ver `CLAUDE.md` y `jasperreports.properties` |
+| **Correcciones de pantalla D9–D26** | En la rama `correccion/defectos-pantalla-rrhh` de saaFE, **sin desplegar**. Los cinco guiones **ya están actualizados** para la aplicación nueva |
+| **Los cinco guiones** | ✅ Actualizados el 2026-08-25 con la convención de fecha única `dd/mm/aaaa`. **Si el frontend NO se despliega, los guiones van por delante de la aplicación** — cada uno lleva el aviso de qué hacer en ese caso |
+| **Junio** | Guion escrito, `sql/50` y `sql/57` cargados. **No arranca hasta que el WAR esté en producción** |
+| **Línea base de producción, tomada antes de subir** | Provisiones de FR: **cinco meses, 1 persona, 183,26 cada uno**. Después de subir tiene que dar lo mismo |
+
+**Las dos comprobaciones después de subir, y ninguna es opcional:**
+
+1. **`javap`** sobre el `.class` desplegado buscando **`baseFondosReservaProrrateada`**.
+2. **La consulta de provisiones**, que tiene que seguir dando las cinco filas de 183,26. Es la única
+   que ve un recálculo de un mes cerrado, porque con el WAR nuevo eso **cambia el bloque 1B sin
+   tocar el neto**.
 
 ### ⚖️ LA REGLA QUE GOBIERNA TODO LO DEMÁS — fijada el 2026-08-24
 
@@ -135,6 +156,13 @@ crear período → novedades → calcular → AJUSTE → contrastar → aprobar 
 **Y los meses ya cerrados no se recalculan.** Contienen lo que se pagó, que es lo que deben
 contener. El motor corregido rige **de junio en adelante**; corregirlo no es motivo para reabrir
 enero a mayo.
+
+> **⚠ Desde el WAR del 2026-08-24 esa regla tiene DOS motivos independientes, no uno.** Al primero
+> —el punto 14, el sueldo de Méndez— se le suma que **las provisiones de fondos de reserva de Viteri
+> de enero a mayo desaparecerían**: 183,26 cada una, porque antes de junio no tenía derecho. Y es de
+> la peor clase para detectarlo: **viven en `PVNM`, no en el rol, así que no moverían el líquido.**
+> Cambiarían el bloque 1B **sin tocar el neto** — que es exactamente la forma en que ese defecto
+> lleva cinco meses pasando desapercibido delante de cinco contrastes en verde.
 
 **Y el contraste va en estado 3 CALCULADO, ANTES de aprobar.** Verificado el 2026-08-22: el
 instrumento lee `NMNA`, `RNGL`, `PVNM` y `CTRL`, y **no lee `ACMN`**, que es lo único que escribe
@@ -1480,7 +1508,7 @@ puntos. Esto la reconstruye.
 | **19** | **`/rest/lqdc/calcular` y `/simular` reciben SÓLO `idContrato`**, así que el backend no puede validar que el contrato pertenezca al colaborador elegido en pantalla — no recibe el colaborador | `LiquidacionRest:147,167` | **Nuevo del 2026-08-21 (D9).** El registro sale internamente coherente, así que **ninguna comprobación de datos lo detecta**: la pantalla enseña un nombre y el finiquito liquida al dueño del contrato |
 | **20** | **`generarAvisoSalida` NO es idempotente**: crea una `NovedadIess` nueva sin comprobar si ya existe una para esa liquidación | `NovedadIessServiceImpl:144-153` | **Nuevo del 2026-08-22.** Asimetría con la novedad 6, que sí lo es. **Y su alcanzabilidad, añadida el 2026-08-23: no es un problema de instalaciones viejas, es un doble clic.** `ejecutarSalida` exige APROBADA de entrada y **no mueve el estado al terminar**, así que nada impide pulsar dos veces, y la pantalla tampoco puede protegerlo porque no tiene de dónde leer que ya se ejecutó. Repasados los seis pasos, **cinco aguantan la repetición** —contrato y empleado se reescriben con lo mismo, `cancelaDescuentos` y `caducaSaldosVacaciones` ya no encuentran filas vigentes, y los `ACMN` son idempotentes por clave vía `selectByClave`—. **El único que no es éste.** Arreglar el 20 cubre el daño real sin tocar la máquina de estados |
 | **21** | **La liquidación no deja constancia de que la salida se ejecutó.** `LQDCESTD` colapsa **tres hitos distintos en el mismo 3**: aprobada, salida ejecutada y contabilizada. Ni `ejecutarSalida` ni `contabilizarLiquidacion` mueven el estado | `LiquidacionHaberesServiceImpl:219` · `RhhEstadoLiquidacion` | **Nuevo del 2026-08-23.** Es el 20 por su otro lado, y **tiene precedente en casa**: `contabilizarLiquidacion` sí se protege de la doble ejecución, pero con `getAsiento() != null`, no con el estado — ésa es la forma que le falta a `ejecutarSalida`. Coste ya pagado: una casilla del registro de réplica rellenada con «estado 4» leyendo un vocabulario que no existe. Los estados **4 `REGISTRADA_EN_SUT`, 5 `PAGADA` y 6 `ANULADA` están declarados y no los escribe nadie**: `setEstado` sobre `Liquidacion` aparece **dos veces** en todo el proyecto, CALCULADA y APROBADA. **No es de la familia de 16/17/18** —no hay valor tragado en silencio— sino un campo que no responde la pregunta que se le hace |
-| **22** | **La rama MENSUALIZADO de fondos de reserva paga el MES COMPLETO el primer mes, sin prorratear desde el aniversario.** Y la rama ACUMULADO ni siquiera comprueba el aniversario, que es el **punto 10**: **son la misma cuenta escrita dos veces en el mismo bloque de veinte líneas, y se arreglan JUNTOS** | paso 8 de `calcularPeriodo` | **DESCONGELADO el 2026-08-24, el único de los 17.** No para que junio cuadre, sino porque **la norma lo dice**: el fondo de reserva se devenga desde el aniversario y nace *«a partir del mes 13»*. **La fórmula es `30 − d`, NO `30 − d + 1`** — fijada contra la planilla real del IESS de Viteri: ingresó el **25-06-2025** y el IESS le da **5 días** con base 366,67, o sea del **26** al 30. El mes 12 se completa **el día** del aniversario, así que el fondo empieza al siguiente. **No reutilizar `calculaDiasTrabajados`**: allí el día de ingreso sí se trabaja, y son dos convenciones parecidas para cosas distintas. **Enero a mayo NO se recalculan.** La prueba es falsable: junio debe salir **44,59 por debajo** del cliente y los D:OTROS de julio suman **44,60** — los dos meses se anulan |
+| **22** | **La rama MENSUALIZADO de fondos de reserva paga el MES COMPLETO el primer mes, sin prorratear desde el aniversario.** Y la rama ACUMULADO ni siquiera comprueba el aniversario, que es el **punto 10**: **son la misma cuenta escrita dos veces en el mismo bloque de veinte líneas, y se arreglan JUNTOS** | paso 8 de `calcularPeriodo` | **DESCONGELADO el 2026-08-24, el único de los 17.** No para que junio cuadre, sino porque **la norma lo dice**: el fondo de reserva se devenga desde el aniversario y nace *«a partir del mes 13»*. **La fórmula es `30 − d`, NO `30 − d + 1`** — fijada contra la planilla real del IESS de Viteri: ingresó el **25-06-2025** y el IESS le da **5 días** con base 366,67, o sea del **26** al 30. El mes 12 se completa **el día** del aniversario, así que el fondo empieza al siguiente. **No reutilizar `calculaDiasTrabajados`**: allí el día de ingreso sí se trabaja, y son dos convenciones parecidas para cosas distintas. **Enero a mayo NO se recalculan.** La prueba es falsable: junio debe salir **44,60 por debajo** del cliente —**7,93** de los cuatro días de más al 8,33 %, más **36,67** del fondo de Viteri— y los D:OTROS de julio suman **44,60**: **los dos meses se anulan EXACTOS**. El 44,59 que se calculó primero salía del doceavo y era el número equivocado |
 
 **Son 17 pendientes, no 11** —el 21 nació el 2026-08-23 y el 22 el 2026-08-24—. Cualquier documento que diga «las 11 correcciones», «las 15» o «las 16» está desactualizado.
 
