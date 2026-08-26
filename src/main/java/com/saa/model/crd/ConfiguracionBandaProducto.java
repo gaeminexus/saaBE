@@ -114,7 +114,7 @@ public class ConfiguracionBandaProducto implements Serializable, EntidadAuditabl
     @Column(name = "CBPRIPMD", length = 50)
     private String ipModificacion;
 
-    /** Estado: 1 = activo, 2 = inactivo. Ver {@link com.saa.rubros.Estado}. */
+    /** Estado: 1 = activo, 0 = inactivo. Ver {@link com.saa.rubros.Estado}. */
     @Basic
     @Column(name = "CBPRESTD")
     private Long estado;

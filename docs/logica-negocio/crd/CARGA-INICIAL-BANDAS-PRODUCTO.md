@@ -1,7 +1,7 @@
 # Carga inicial del modelo de bandas por producto (CRD.CBPR / CRD.BNDP)
 
 **Fecha:** 2026-08-25 · **Requiere:** haber ejecutado antes `sql/DDL-BANDAS-PRODUCTO.sql`
-**Estado de ejecución:** ✅ BD LOCAL de desarrollo (docker `saa-oracle-23ai`) — 2026-08-25, 28 CBPR + 143 BNDP, controles 3.1/3.2 en cero · ⬜ PRUEBAS · ⬜ PRODUCCIÓN
+**Estado de ejecución:** ✅ BD LOCAL de desarrollo (docker `saa-oracle-23ai`) — 2026-08-25, 28 CBPR + 143 BNDP, controles 3.1/3.2 en cero · ✅ PRUEBAS y ✅ PRODUCCIÓN — 2026-08-25 (ejecutados por el usuario)
 **Ejecución:** MANUAL, con revisión de los SELECT de control en cada paso. Mismo guion para BASE DE PRUEBAS y PRODUCCIÓN — solo cambian las variables del paso 0.
 **Versión ejecutable:** `sql/CARGA-INICIAL-BANDAS-PRODUCTO.sql` — el mismo contenido de este runbook (pasos 1–3) en **SQL puro** (sin comandos SQL*Plus: sirve en el plugin de VS Code / DBeaver y también en SQL*Plus), con los valores ya incrustados para producción (empresa 1236, ids idénticos a la copia local donde se validó). Correr por bloques y ejecutar el COMMIT final solo con los controles en cero.
 **Diseño:** `LEVANTAMIENTO-ALIMENTACION-CONTABLE-CREDITOS.md` §8.
@@ -19,7 +19,7 @@ SET DEFINE ON
 -- En PRODUCCIÓN verificar con el control 1.1 antes de fijarlo.
 DEFINE EMPRESA = 1236
 -- Inicio de vigencia de la configuración inicial (primer día del mes en que entra a regir)
-DEFINE FECHA_DESDE = '2026-09-01'
+DEFINE FECHA_DESDE = '2020-01-01'
 -- Usuario de auditoría
 DEFINE USUARIO = 'CARGA-INICIAL-BANDAS'
 ```

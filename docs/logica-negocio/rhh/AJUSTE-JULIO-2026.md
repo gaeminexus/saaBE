@@ -58,6 +58,12 @@ después del ajuste         +44,60      ← si no da esto, el ajuste está mal
 
 ---
 
+## Cómo se ejecuta
+
+**El ejecutable es [`sql/64_AJUSTE_JULIO.sql`](sql/64_AJUSTE_JULIO.sql).** Este documento explica **por qué**; el `.sql` es lo que se abre en DBeaver y se corre. Si los dos discreparan, **gana este documento** y hay que corregir el `.sql`.
+
+---
+
 ## 1 · SELECT de control ANTES — sin esto no se toca nada
 
 **Guarda esta salida.** Es la única forma de saber después qué había antes.

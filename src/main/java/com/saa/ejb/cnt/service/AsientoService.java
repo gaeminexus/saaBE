@@ -206,11 +206,32 @@ public interface AsientoService extends EntityService<Asiento> {
 	 void anulaAsientoCierre(Long empresa, Long periodo) throws Throwable;
 	
 	/**
-	 * Anula un asiento contable por el id
+	 * Anula un asiento contable por el id, SIN registrar quien lo anulo ni por que.
+	 *
+	 * <p><b>Preferir la sobrecarga de tres argumentos.</b> Esta deja
+	 * {@code ASNTUSAN}/{@code ASNTMTAN}/{@code ASNTFCAN} en nulo, y entonces el asiento
+	 * queda anulado sin rastro de auditoria. Se conserva por los llamadores que todavia
+	 * no tienen a mano el usuario ni el motivo.</p>
+	 *
 	 * @param idAsiento	: Id del asiento a anular
 	 * @throws Throwable: Excepcion
 	 */
 	 void anulaAsiento(Long idAsiento) throws Throwable;
+
+	/**
+	 * Anula un asiento contable dejando rastro de auditoria: quien, cuando y por que.
+	 *
+	 * <p>Llena {@code ASNTUSAN} (usuario), {@code ASNTMTAN} (motivo) y {@code ASNTFCAN}
+	 * (fecha y hora, del servidor). Si el periodo esta MAYORIZADO el asiento no se puede
+	 * anular y el metodo reversa —genera el asiento de contrapartida—, igual que la
+	 * sobrecarga de un argumento; en ese caso el motivo queda en el asiento original.</p>
+	 *
+	 * @param idAsiento	: Id del asiento a anular
+	 * @param usuario	: Usuario que anula. Nulo o vacio se graba como "SISTEMA"
+	 * @param motivo	: Motivo de la anulacion. Se trunca a 1000 caracteres (ASNTMTAN)
+	 * @throws Throwable: Excepcion
+	 */
+	 void anulaAsiento(Long idAsiento, String usuario, String motivo) throws Throwable;
 	
 	
 	/**

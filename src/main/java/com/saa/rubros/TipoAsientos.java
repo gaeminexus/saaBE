@@ -164,4 +164,15 @@ public interface TipoAsientos {
 	 */
 	public static final int RECURSOS_HUMANOS = 6;
 
+	/**
+	 * Asientos del modulo de Creditos. codigoAlterno = 1 en CNT.PLNT ("CREDITOS"),
+	 * verificado contra la BD el 2026-08-25. Lo usa el cierre mensual de cartera
+	 * ({@code CierreCarteraService}) para los seis sub-asientos.
+	 *
+	 * <p><b>Coincide en valor con {@link #ASIENTO_CIERRE}</b>, que es el alterno 1 de los
+	 * tipos genericos sin empresa. No es un conflicto —la resolucion es por (alterno,
+	 * empresa)— pero conviene saberlo antes de reutilizar la constante en otro modulo.</p>
+	 */
+	public static final int CREDITOS = 1;
+
 }

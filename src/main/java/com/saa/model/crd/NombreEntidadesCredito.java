@@ -90,5 +90,8 @@ public interface NombreEntidadesCredito {
 	String DETALLE_DEVOLUCION_APORTE = "DetalleDevolucionAporte";
 	String CONFIGURACION_BANDA_PRODUCTO = "ConfiguracionBandaProducto";
 	String BANDA_PRODUCTO = "BandaProducto";
+	String CORRIDA_CIERRE_CARTERA = "CorridaCierreCartera";
+	String BANDA_CIERRE_CARTERA = "BandaCierreCartera";
+	String ASIENTO_CIERRE_CARTERA = "AsientoCierreCartera";
 
 }

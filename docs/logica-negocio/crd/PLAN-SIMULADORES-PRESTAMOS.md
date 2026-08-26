@@ -391,14 +391,23 @@ Requisitos de las tres:
 | **1** | BE | Correcciones D1-D10 según decisiones 9-13 + `CalculadoraAmortizacionService` + `PrestamoServiceImpl` delegando | ✅ **Cerrada 2026-08-25** — sin compilar, ver §11 |
 | **2** | BE | `SimulacionPrestamoService` + los 2 endpoints de simulación | ✅ **Cerrada 2026-08-25** — sin compilar, ver §11 |
 | **3** | BE | Llenado Jasper por colección en `ReporteServiceImpl` + endpoint de reporte + los 3 `.jrxml` | ✅ **Cerrada 2026-08-25** — sin compilar, ver §11.11. ⚠️ **Faltan los 3 `.jasper`, ver 3b** |
-| **3b** | Usuario | Compilar los 3 `.jasper` en Jaspersoft Studio 7.0.3 y commitear ambos | ⬜ **BLOQUEANTE: sin esto el endpoint de PDF revienta al primer uso** |
+| **3b** | Usuario | Compilar los 3 `.jasper` en Jaspersoft Studio 7.0.3 y commitear ambos | ✅ **Cerrada 2026-08-25** — los tres con md5 distinto, verificado que no cayeron en el defecto del clon (§10.1) |
 | **4** | FE | Menú, rutas y pantalla del simulador de crédito nuevo | ✅ **Entregada 2026-08-25** |
 | **5** | FE | Pantalla del simulador sobre préstamo existente (abono + reestructuración) | ✅ **Entregada 2026-08-25** |
 | **5b** | FE | Realineación al contrato canónico de la §7.1 | ✅ **Entregada 2026-08-25** — ver §12 |
 | **6** | FE | Botón de exportar PDF en los dos simuladores y en el `abono-capital-dialog` | ✅ **Entregada 2026-08-25**, **deshabilitados** hasta la 3b |
 | **6b** | FE | Fix de las fechas `Invalid Date` en `abono-capital-dialog` y `precancelacion-dialog` (§10.4) | ✅ **Entregada 2026-08-25** |
-| **6c** | FE | Corregir `valorAbono`/`modalidadAbono` en `SolicitudReporteSimulacion` (§7.2) | ⬜ |
-| **T** | FE | **Limpieza transversal**: helpers de descarga a `shared/`, deduplicación del blob en `crd` | ✅ **Entregada 2026-08-25** |
+| **6c** | FE | Corregir `valorAbono`/`modalidadAbono` en `SolicitudReporteSimulacion` (§7.2) | ✅ **Entregada 2026-08-25** |
+| **T** | FE | **Limpieza transversal**: helpers de descarga a `shared/`, deduplicación del blob en `crd` | ✅ **Entregada 2026-08-25** — cinco lugares, cero `revokeObjectURL` a mano en `crd` |
+| **D** | Usuario | **Desplegar el WAR**, compilar el FE y habilitar los 3 `exportarPdfHabilitado` | ⬜ **Único paso que falta** |
+
+**Estado: el proyecto está completo en código.** Todo lo que queda es despliegue.
+
+⚠️ **Los botones de PDF salen deshabilitados a propósito.** Hay una sola bandera
+`exportarPdfHabilitado = false` por pantalla (`simulador-credito`, `simulador-prestamo`,
+`abono-capital-dialog`). **Habilitarlas antes de que el WAR esté arriba da 500.** Esa precaución ya
+sirvió una vez: cuando se descubrió el desajuste de `valorAbono`/`modalidadAbono` (§7.2), los
+botones deshabilitados evitaron que llegara a un usuario.
 
 **Paralelización:** la 4 puede arrancar contra el contrato de la §7 apenas cierre la 2. La 5 depende
 de la 2. La 6 depende de la 3b. **Nada se puede *probar* hasta que el WAR con las fases 1-3 esté

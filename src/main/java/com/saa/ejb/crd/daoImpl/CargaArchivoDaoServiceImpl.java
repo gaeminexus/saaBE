@@ -59,4 +59,26 @@ public class CargaArchivoDaoServiceImpl extends EntityDaoImpl<CargaArchivo> impl
 		
 		return resultados.isEmpty() ? null : resultados.get(0);
 	}
+
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.crd.dao.CargaArchivoDaoService#selectByPeriodoAfectacionYEstado(java.lang.Long, java.lang.Long, java.lang.Long)
+	 */
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<CargaArchivo> selectByPeriodoAfectacionYEstado(Long anio, Long mes, Long estado)
+			throws Throwable {
+		System.out.println("Ingresa al metodo selectByPeriodoAfectacionYEstado de CargaArchivo"
+				+ " - periodo de afectacion: " + anio + "-" + mes + " estado: " + estado);
+		Query query = em.createQuery(
+			" select b " +
+			" from   CargaArchivo b " +
+			" where  b.anioAfectacion = :anio " +
+			" and    b.mesAfectacion  = :mes " +
+			" and    b.estado         = :estado " +
+			" order by b.codigo desc");
+		query.setParameter("anio", anio);
+		query.setParameter("mes", mes);
+		query.setParameter("estado", estado);
+		return query.getResultList();
+	}
 }

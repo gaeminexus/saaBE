@@ -6,9 +6,20 @@
 --
 -- SQL PURO: sin comandos SQL*Plus (WHENEVER / SET / DEFINE), apto para el plugin de
 --   VS Code / DBeaver / cualquier cliente JDBC, y tambien para SQL*Plus.
--- Valores ya incrustados: EMPRESA = 1236 (ASOPREP), FECHA_DESDE = 2026-09-01,
+-- Valores ya incrustados: EMPRESA = 1236 (ASOPREP), FECHA_DESDE = 2020-01-01,
 --   USUARIO = CARGA-INICIAL-BANDAS. Si cambia la fecha de vigencia, editar el
---   TO_DATE('2026-09-01','YYYY-MM-DD') del INSERT de CBPR (unica aparicion).
+--   TO_DATE('2020-01-01','YYYY-MM-DD') del INSERT de CBPR (unica aparicion).
+--
+-- ⚠ POR QUE LA VIGENCIA ARRANCA EN 2020 Y NO EN LA FECHA DE LA CARGA:
+--   La primera version usaba 2026-09-01 (futuro) y eso dejaba TODO invisible: el
+--   proceso resuelve "configuracion vigente a la fecha", asi que el listado devolvia
+--   los productos sin configuracion y la clasificacion fallaba. Ademas el cierre
+--   mensual clasifica a la FECHA DE CORTE, y no podria cerrar ni reprocesar ningun
+--   mes anterior al inicio de vigencia. Las bandas cargadas no son un cambio
+--   normativo nuevo, son las que el fondo ya venia usando: la vigencia historica
+--   esta para los cambios FUTUROS. Por eso la fecha de inicio va antes de cualquier
+--   mes reprocesable. Detectado el 2026-08-25 llamando a los endpoints desplegados;
+--   correccion para ambientes ya cargados: sql/FIX-VIGENCIA-BANDAS.sql
 --
 -- REQUIERE: sql/DDL-BANDAS-PRODUCTO.sql ejecutado antes.
 -- VALIDADO: en la BD local (copia de la real) el 2026-08-25 → 28 CBPR, 143 BNDP,
@@ -45,7 +56,7 @@ ORDER BY PLNNCNTA;
 -- =====================================================================================
 
 INSERT INTO CRD.CBPR (PRDCCDGO, PJRQCDGO, CBPRTPCR, CBPRFCIN, CBPRUSRG, CBPRESTD)
-SELECT m.producto, 1236, m.tpcr, TO_DATE('2026-09-01','YYYY-MM-DD'), 'CARGA-INICIAL-BANDAS', 1
+SELECT m.producto, 1236, m.tpcr, TO_DATE('2020-01-01','YYYY-MM-DD'), 'CARGA-INICIAL-BANDAS', 1
 FROM (
     -- ===== POR VENCER (tpcr = 1) =====
     SELECT  2 producto, 1 tpcr FROM dual UNION ALL

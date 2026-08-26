@@ -79,12 +79,17 @@ para cuadrarlo.** Queda como pregunta abierta — ver el final del guion.
 | Precondición | Cómo se comprueba | Verificado 2026-08-25 |
 |---|---|---|
 | `sql/51` ejecutado | `SELECT CTRLFNTE, COUNT(*), COUNT(DISTINCT CTRLIDNT) FROM RHH.CTRL WHERE CTRLANOO=2026 AND CTRLMESS=7 GROUP BY CTRLFNTE;` | **Pendiente** — lo ejecuta Mike. Esperado: `ROL 125 / 20`, **ninguna fila `PLANILLA`** (julio no tiene planilla del IESS, `REF-06 §11`) |
-| `sql/57` para el OTROS de julio | **Sí aplica, y hay que comprobarlo, no darlo por hecho.** `57_CTRL_OTROS_ABRIL_JUNIO_JULIO.sql` inserta en un solo `INSERT` las siete filas de concepto 31 de los tres meses —abril 175,00, junio 0,10, julio sus cinco (44,60)— con una guarda `WHERE NOT EXISTS (SELECT 1 FROM RHH.CTRL WHERE CTRLALTR = 31)` **todo-o-nada**: si al correrlo ya existía una sola fila de concepto 31, no insertó **ninguna** de las siete. La de junio (0,10, Calderón) ya se vio al correr junio; **las cinco de julio nadie las ha comprobado todavía**. Sin ellas, 44,60 de los 31,43 atribuidos en §6 no existen |
+| `sql/57` para el OTROS de julio | **Sí aplica, y hay que comprobarlo, no darlo por hecho.** `57_CTRL_OTROS_ABRIL_JUNIO_JULIO.sql` inserta en un solo `INSERT` las siete filas de concepto 31 de los tres meses —abril 175,00, junio 0,10, julio sus cinco (44,60)— con una guarda `WHERE NOT EXISTS (SELECT 1 FROM RHH.CTRL WHERE CTRLALTR = 31)` **todo-o-nada**: si al correrlo ya existía una sola fila de concepto 31, no insertó **ninguna** de las siete. La de junio (0,10, Calderón) ya se vio al correr junio; **las cinco de julio nadie las ha comprobado todavía**. Sin ellas, 44,60 de los 31,43 atribuidos en §6.1 no existen |
 | Las cinco filas de concepto 31 de julio existen en `CTRL` | `SELECT CTRLIDNT, CTRLVLOR FROM RHH.CTRL WHERE CTRLANOO=2026 AND CTRLMESS=7 AND CTRLALTR=31 ORDER BY CTRLIDNT;` | **Pendiente de comprobar.** Esperado: 5 filas — Bárcenas 1,95 · Muñoz 1,53 · Nieto 2,50 · Pardo 1,95 · Viteri 36,67, suma 44,60 |
 | `CTRL_PARAM` en el mes 7 | `SELECT ANIO, MES FROM RHH.CTRL_PARAM;` | Hoy en **2026 · 6** (se dejó así al cerrar junio, correcto). **Mike lo mueve a 7 justo antes de contrastar**, no antes — con `CTRL_PARAM` en 6 el instrumento contrastaría junio otra vez con datos completos y saldría verde del mes equivocado, igual que advertía el guion de junio |
 | Enero a junio intactos | `SELECT p.PRDNMSEE, COUNT(*), COUNT(DISTINCT v.MPLDCDGO), SUM(v.PVNMVLOR) FROM RHH.PVNM v JOIN RHH.PRDN p ON p.PRDNCDGO=v.PRDNCDGO WHERE p.PRDNANOO=2026 AND v.PVNMTPPR=4 GROUP BY p.PRDNMSEE ORDER BY 1;` (patrón `sql/58`) | **Verificado por REST el 2026-08-25** (endpoint `/pvnm`, concepto alterno 53 «Provisión fondos de reserva»): enero a mayo **183,26 con 1 persona (Viteri López) cada uno**; junio **30,54 sobre base 366,67, también 1 persona**. Los seis `PRDN` de enero a junio en `estado=7`. Ninguno se movió |
 | Aniversario de Rodríguez Valencia | `SELECT MPLDFCIN FROM RHH.MPLD WHERE MPLDIDNT='0801999855';` | **Verificado por REST**: `fechaIngreso [2025,7,16]` → cumple el año el **16-07-2026**. Es el dato del que cuelga su prorrateo de FR (14 días de 30, base 326,67) |
 | Colaboradores de julio | `SELECT COUNT(*) FROM RHH.CTRL WHERE CTRLANOO=2026 AND CTRLMESS=7 AND CTRLALTR=1;` | Esperado **20**, contando las filas de sueldo (concepto 1) que carga `sql/51`. Mismas 20 personas que junio |
+| `sql/62_PREVIA_JULIO.sql`, bloque 1 — Rodríguez Valencia | Bloque 1 del script, sólo lectura | **Ya corrido en producción, salió en verde.** Se deja igual porque si julio hay que rehacerlo, se vuelve a comprobar. Esperado: ingreso **16-07-2025**, `DIAS_MOTOR` **14**, modalidad **1**, sueldo **700**, contrato **ACTIVO**. Sus 27,21 de fondo de reserva dependen de esto |
+| `sql/62`, bloque 2 — que no haya un séptimo | Bloque 2 del script | Esperado: **una sola persona** entra —Rodríguez Valencia—, de todo el que ingresó en julio de 2025. Un segundo sería un séptimo fondo de reserva que el esperado no contempla |
+| `sql/62`, bloque 3 — filtro del motor | Bloque 3 del script | Esperado **20 colaboradores**, los mismos de junio |
+| `sql/62`, bloque 4 — ausencias no remuneradas | Bloque 4 del script | Esperado **CERO filas**. De esto cuelga que el sueldo entero cuadre con «sueldo por días + vacaciones» del cliente (§3 bis) — una ausencia no remunerada real rompería esa igualdad y bajaría también la base del fondo de reserva |
+| `sql/62`, bloque 5 — los seis contratos de FR | Bloque 5 del script | Esperado: `CNTEFCHF` y `CNTEFCTR` **nulas** en los seis, `CNTETPRL = 1` en los seis. Una fecha de corte dentro de julio recortaría la ventana del prorrateo |
 
 ---
 
@@ -247,7 +252,9 @@ se esperaba.
 **Efecto en los totales del período, y por qué no mueve el líquido:** por este solo caso, nuestros
 INGRESOS y DESCUENTOS del período quedan cada uno **0,10 por debajo** de los del cliente (700,00
 contra 700,10 en las dos columnas). Como baja lo mismo en las dos columnas, **el líquido no se
-mueve**: sigue sumando cero a la diferencia total del §6, que permanece en **+31,43**.
+mueve**: sigue sumando cero a la diferencia del primer contraste (§6.1, antes del ajuste), que
+permanece en **+31,43**. Calderón no está entre lo que el ajuste toca (§6.2): sigue en composición
+en los dos contrastes, antes y después.
 
 ---
 
@@ -303,17 +310,37 @@ con sus 17 filas, está en §6.
 
 ## 6. Calcular y contrastar
 
-**El orden no se invierte** (§4 ter del PLAN): `CTRL_PARAM` a 7 va **justo antes** de contrastar,
-nunca antes de calcular — y **contabilizarRol antes de cerrarPeriodo**, nunca al revés, porque
-`contabilizarRol` pisa `PRDNOBSR` y si se cierra primero el aviso de novedades sin declarar se
-pierde en silencio.
+**El orden de julio, y no es el de los seis meses anteriores — cambió el 2026-08-25, reafirmado por
+Mike: se prueba primero que el motor calcula según la norma, y DESPUÉS se llevan los datos a lo que
+se pagó.** Dentro de él siguen valiendo las dos reglas de siempre (§4 ter del PLAN): `CTRL_PARAM` a
+7 va **justo antes** de contrastar, nunca antes de calcular; y **contabilizarRol antes de
+cerrarPeriodo**, nunca al revés, porque `contabilizarRol` pisa `PRDNOBSR` y si se cierra primero el
+aviso de novedades sin declarar se pierde en silencio.
+
+```
+calcular → CONTRASTAR → AJUSTE → CONTRASTAR OTRA VEZ → aprobar → contabilizar → cerrar
+```
+
+**Hay DOS contrastes, y prueban cosas distintas.** El de antes del ajuste prueba **el motor**: que
+calcula según la norma, sin tocar nada por los datos del cliente. El de después prueba **los
+datos**: que lo que queda en la base es lo que la gente realmente recibió. Hasta ahora se venían
+mezclando en un solo número; julio es el primer mes que los separa.
 
 1. Calcular el período. Verificar por REST (`GET /rest/prdn/getId/{codigo}`), nunca por pantalla
    (D11): `estado = 3`.
 2. **CTRL_PARAM a 7**, y comprobarlo leyendo de vuelta (`SELECT ANIO, MES FROM RHH.CTRL_PARAM;`).
    Lo hace Mike.
-3. `CONTRASTE_MES_CONTRA_ROL_REAL.sql`, bloque 4 primero, luego 3, luego 1 y 2, y el 1B con sus
-   dos consultas. `PERIODO_LEIDO = 2026-07` en cada bloque antes de mirar ninguna cifra.
+3. **Primer contraste** — `CONTRASTE_MES_CONTRA_ROL_REAL.sql`, bloque 4 primero, luego 3, luego 1 y
+   2, y el 1B con sus dos consultas. `PERIODO_LEIDO = 2026-07` en cada bloque antes de mirar
+   ninguna cifra. Esto prueba el motor — ver §6.1.
+4. **El ajuste.** Lo corre **Mike, en DBeaver, no la réplica** — va entre los dos contrastes, con
+   el período todavía en estado 3. Este guion **apunta** a `docs/rrh/AJUSTE-JULIO-2026.md`, **no
+   lo copia**: ahí están los `SELECT` de control de antes, los `UPDATE`, y los `SELECT` de control
+   de después. Qué contiene, resumido — ver §6.2.
+5. **Segundo contraste** — el mismo script, otra vez, con `CTRL_PARAM` todavía en 7. Esto prueba
+   los datos — ver §6.3.
+
+### 6.1 · Primer contraste — prueba el motor, +31,43
 
 **Qué esperar en cada bloque — y qué NO es hallazgo:**
 
@@ -328,7 +355,7 @@ pierde en silencio.
   | 1 · Sueldo | 3 | Caiza, Nieto, Pardo — nuestro importe **mayor** (§3 bis: el motor no reduce los días) |
   | 7 · Fondos de reserva | 2 | Muñoz (+0,01, §5.b) · Viteri («el sistema no lo generó» — va a provisión, no a rol) |
   | 12 · Vacaciones pagadas | 3 | Caiza, Nieto, Pardo — «el sistema no lo generó» (§3 bis) |
-  | 20 · Aporte personal | 3 | Caiza, Nieto, Pardo — nuestro importe **mayor** (§6 de la cabecera: aporte sin vacaciones) |
+  | 20 · Aporte personal | 3 | Caiza, Nieto, Pardo — nuestro importe **mayor** (punto 6 de la cabecera: aporte sin vacaciones) |
   | 25 · Anticipo | 1 | Calderón — 620,00 nuestro contra 620,10 cliente (§4, el recorte) |
   | 31 · Otros descuentos | 5 | Bárcenas, Muñoz, Nieto, Pardo, Viteri — «el sistema no lo generó» (punto 4 de la cabecera; cargados por `sql/57`, no por nosotros) |
   | | **17** | |
@@ -343,15 +370,42 @@ pierde en silencio.
     Verlas ausentes es la confirmación de que cuadran, no un hallazgo.
 
   Si aparece cualquier fila fuera de estas 17, o si falta alguna de las 17, **eso sí es hallazgo**.
-- **Bloque 1B:** la provisión de FR pasa a **2 personas** — Viteri (30,54 sobre 366,67, como
-  junio) y ahora también **Rodríguez Valencia** (su primer mes con provisión). Si sale sólo una o
-  ninguna, es hallazgo.
+- **Bloque 1B: 1 SOLA persona — Viteri, y su provisión vuelve a `183,26` sobre base `2 200,00`.**
+
+  > **⚠ Corregido por el árbitro el 2026-08-25: aquí decía «30,54 sobre 366,67, exacto igual que
+  > junio», y es el único valor que julio NO puede dar.** El prorrateo es **del mes del
+  > aniversario**, no de todos los meses siguientes. Viteri cumplió el 25-06, así que junio le dio
+  > 5 días —base 366,67— y **julio le da el mes entero**:
+  >
+  > ```
+  > inicioFr = 26-06, que ya quedó ANTES del 01-07
+  > dias = 30 − 1 + 1 = 30 → factor 1 → base 2 200,00 → 183,26
+  > ```
+  >
+  > El propio reporte que introdujo esta línea decía **183,26** tres párrafos más arriba, en su
+  > tabla de fondos de reserva. La causa más probable es haber consultado `PVNM` sin filtrar por
+  > período y haber leído la fila de junio. **La parte de Rodríguez Valencia sí era correcta y se
+  > conserva**: modalidad 1, su fondo va al rol, el 1B es de una sola persona.
+  >
+  > **Si al correr el instrumento el 1B diera 30,54, eso NO es este guion desactualizado: es un
+  > defecto del motor** —el prorrateo arrastrándose a un mes que no toca— y julio no se aprueba.
+  > Lo resuelve el bloque 1 del [`sql/63`](sql/63_CONTRASTAR_JULIO.sql), que se corre antes que
+  > nada.
+  Corrección sobre la primera versión de este guion, que esperaba aquí también a Rodríguez
+  Valencia: era un error mío, no de julio. La provisión de `PVNM` concepto 53 sólo existe para
+  la modalidad **ACUMULADO** (sólo Viteri la tiene). Rodríguez Valencia es modalidad **1 ·
+  normal** —verificado por REST, `CNTE.modalidadFondosReserva = 1`— así que su fondo de reserva se
+  le **paga en el rol**, igual que a Bárcenas, Muñoz, Nieto y Pardo: aparece en `NMNA.fondosReserva`
+  (27,21, el detector del punto 4), no en `PVNM`. Si sale una segunda fila en `PVNM` concepto 53,
+  o si la de Viteri no está, eso sí es hallazgo.
 - **Bloque 2:** revisar fila por fila contra `RHH.CTRL` (la consulta del §0), no contra un total.
-  Esperar diferencias en Caiza/Nieto/Pardo (aporte sin vacaciones, §6 de la cabecera — no se
-  ajusta) y en Calderón: **ingresos y descuentos los dos 0,10 por debajo del cliente** (§4 —
-  no generamos el 0,10 sin explicar, y el recorte deja el descuento en 700,00 en vez de 700,10).
-  El líquido de Calderón no difiere; sus dos totales sí.
-- **Bloque 3: en julio sale VACÍO, y NO porque cuadre.** Corrección del árbitro sobre el guion de
+  Esperar diferencias en Caiza/Nieto/Pardo (aporte sin vacaciones, punto 6 de la cabecera —
+  **el motor no se ajusta, pero el dato sí: es exactamente lo que corrige el ajuste de §6.2**, así
+  que esta diferencia desaparece del segundo contraste, §6.3) y en Calderón: **ingresos y
+  descuentos los dos 0,10 por debajo del cliente** (§4 — no generamos el 0,10 sin explicar, y el
+  recorte deja el descuento en 700,00 en vez de 700,10; esta sí queda igual en los dos contrastes,
+  Calderón es composición). El líquido de Calderón no difiere; sus dos totales sí.
+- **Bloque 3: en julio NO ES UN CONTROL, está apagado.** Corrección del árbitro sobre el guion de
   junio, que no aplica aquí: la fila de Muñoz que salía todos los meses **este mes no sale**, y no
   por ausencia de diferencia — por ausencia de datos. `sql/51` no carga ni una sola fila
   `PLANILLA`: **«JULIO NO TIENE PLANILLA DEL IESS. `REF-06 §11`: falta la del periodo 2026-07. Así
@@ -360,6 +414,13 @@ pierde en silencio.
   que parece un éxito es exactamente el fallo contra el que existe el bloque 4, y aquí se da en el
   bloque 3 por una razón que ningún control detecta — hay que saberlo de antemano porque nada en
   la pantalla lo va a decir.
+
+  > **⚠ Observado el 2026-08-25, y el instrumento se porta mejor de lo que este guion decía: NO
+  > sale vacío.** Devuelve **20 filas, una por persona, todas con el veredicto
+  > `CON NOMINA Y SIN PLANILLA`.** El fondo es el mismo —el bloque está apagado por falta de
+  > planilla— pero **lo dice en vez de callárselo**, que es justo lo que evita que un vacío se lea
+  > como un éxito. Las 20 filas son la confirmación de la ausencia, no un hallazgo. Lo que **sí**
+  > sería hallazgo es una fila con un veredicto distinto, o que faltara alguien.
 
   **Consecuencia que se sigue de esto, y que hay que nombrar en vez de dejar como hueco:** julio
   **no tiene forma de contrastar el lado del IESS.** La comprobación cruzada de aportes que en los
@@ -376,11 +437,12 @@ pierde en silencio.
 > sin vacaciones, el centavo de Muñoz, y los 44,60 de OTROS sin clasificar— y se cruzan entre sí,
 > más la séptima cosa sin explicar de Calderón. **No hay un total esperado que escribir aquí.**
 >
-> **El criterio de aceptación de julio es este, y no otro:** se contrasta, **se atribuye
-> diferencia por diferencia** —cada una a su causa conocida, o marcada explícitamente como sin
-> explicar—, **y se cierra con lo atribuido documentado**, no con un total en verde. Un esperado
-> inventado para que julio se parezca a los otros seis guiones es peor que no tener esperado:
-> convierte el contraste en un trámite de confirmación en vez de en la comprobación que es.
+> **El criterio de aceptación de ESTE primer contraste es este, y no otro:** se contrasta, **se
+> atribuye diferencia por diferencia** —cada una a su causa conocida, o marcada explícitamente
+> como sin explicar—, **y no se toca nada todavía**. Un esperado inventado para que julio se
+> parezca a los otros seis guiones es peor que no tener esperado: convierte el contraste en un
+> trámite de confirmación en vez de en la comprobación que es. **El criterio final, el que decide
+> si julio queda bien, es otro y viene después del ajuste — §6.3.**
 >
 > Este guion no apunta a `ESPERADO-CONTRASTE-JULIO.md` porque **ese archivo no existe y no se
 > escribe antes de correr** — a diferencia de enero a mayo. Se escribe **después**, con lo que el
@@ -436,6 +498,57 @@ que hay que ver si las condiciones de las que depende se cumplen, y dónde mirar
 > consigo mismos. `21.482,32 − 5.198,61 = 16.283,71`, pero su rol imprime **16.283,70**. Ese
 > céntimo es del cliente, va en la misma familia que el de Muñoz, y no se ajusta el motor para
 > perseguirlo.
+
+### 6.2 · El ajuste — lo corre Mike, no la réplica
+
+**Este guion apunta, no copia.** Todo el SQL de esta parte —los `SELECT` de control de antes, los
+tres `UPDATE`, y los `SELECT` de control de después— vive en `docs/rrh/AJUSTE-JULIO-2026.md`. Aquí
+va sólo lo que hace falta para reconocer qué está pasando y no confundirlo con un hallazgo:
+
+**Por qué existe.** El primer contraste (§6.1) prueba que el motor calcula según la norma. El
+ajuste lleva la base a lo que la gente **realmente recibió**, que es lo que el régimen histórico
+tiene que contener — la misma regla que gobierna todo lo demás, aplicada después del contraste en
+vez de dentro del motor.
+
+**Qué se ajusta y qué no — sólo se toca lo que cambia lo que la persona recibió:**
+
+| Se ajusta | No se ajusta — es composición, mismo dinero |
+|---|---|
+| Aporte personal de Caiza, Nieto y Pardo → **13,18** | Los 183,26 de Viteri (cobrado y retenido — neto cero) |
+| Fondo de reserva de Muñoz → **45,81**, lo que su rol pagó | La composición de las vacaciones (sueldo por días + vacaciones = sueldo entero) |
+| | Los 700,10 / 620,10 de Calderón (líquido 0,00 de cualquier forma) |
+
+**Los 44,60 NO se registran — decisión de Mike, no un olvido.** Son la otra mitad de junio: junio
+cerró sin ajustarlos, y registrarlos sólo en julio dejaría el año 44,60 corto. Es fidelidad por el
+**par** junio+julio, no mes a mes — junio queda en −44,60, julio en +44,60, y se anulan exactos
+fuera de los dos meses. El coste aceptado, para que nadie lo descubra por su cuenta: junio y julio,
+**por separado**, no van a coincidir con su rol pagado. El par sí.
+
+**Dónde entra en el orden, y por qué ahí y no en otro sitio:** después de calcular y del primer
+contraste, **antes de cerrar** — `cerrarPeriodo` escribe los `ACMN` a partir de `NMNA`; si el
+ajuste entrara después del cierre, quedarían acumulados que no corresponden a la nómina y nada lo
+avisaría. Con el período todavía en **estado 3**. Si al llegar aquí el período ya está aprobado o
+cerrado, se para: el ajuste no se aplica fuera de estado 3.
+
+### 6.3 · Segundo contraste — prueba los datos, criterio final: +44,60 exacto
+
+Se corre `CONTRASTE_MES_CONTRA_ROL_REAL.sql` otra vez, `CTRL_PARAM` todavía en 7. Lo que cambia
+respecto al §6.1:
+
+- **Bloque 1 pasa de 17 filas a 13.** Desaparecen las **tres del concepto 20** (Caiza, Nieto,
+  Pardo) y **la del concepto 7 de Muñoz** — son justo las cuatro que el ajuste tocó. Las otras
+  trece siguen ahí, sin moverse: las seis de vacaciones (concepto 1 y 12), la de Viteri, la del
+  anticipo de Calderón y las cinco de OTROS.
+- **Bloque 2: el líquido del período queda en +44,60 sobre el del cliente.** Ni 31,43 ni 0,00.
+
+> **CRITERIO DE ACEPTACIÓN FINAL DE JULIO: tras el ajuste, el líquido queda en +44,60 EXACTO sobre
+> el cliente.** Es el espejo del −44,60 de junio, y los dos se anulan. **Si da otra cosa, el ajuste
+> está mal**, y se deshace con los valores del `SELECT` de control de antes (`AJUSTE-JULIO-2026.md`
+> §1) antes de seguir — no se reintenta a ciegas ni se sigue adelante con un número que no es éste.
+
+> ⚠ **JULIO NO CIERRA EN CERO, Y NO DEBE — ni antes ni después del ajuste.** Cerrar en cero sería la
+> señal de que alguien tocó algo que no debía. El +31,43 de antes y el +44,60 de después son los
+> dos números correctos de julio, en sus dos momentos; cero no es ninguno de los dos.
 
 ---
 

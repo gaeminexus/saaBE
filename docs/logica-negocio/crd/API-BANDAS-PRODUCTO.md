@@ -30,12 +30,40 @@ el offset en vez de convertirlo y la hora queda corrida cinco horas sin ningún 
 
 Los **query params** de fecha (`?fecha=`) van siempre como `yyyy-MM-dd`.
 
-### 0.2 Estilo de error
+### 0.2 Estilo de error — CORREGIDO el 2026-08-25 contra el servidor desplegado
 
-El estilo de la casa: `500 INTERNAL_SERVER_ERROR` con el cuerpo en **texto plano**
-`"Error <qué se intentaba>: " + mensaje`. Las validaciones de negocio lanzan
-`IncomeException` y su mensaje llega dentro de ese texto — es apto para mostrárselo al
-usuario. `selectByCriteria` es la excepción: devuelve `400` con el mensaje pelado.
+**El cuerpo del error NO es texto plano: es JSON `{"mensaje": "..."}`.** Verificado con
+`curl` contra el WAR desplegado:
+
+```
+GET /rest/cbpr/clasificar?idProducto=21&idEmpresa=1236&tipoCartera=1&dias=45
+HTTP/1.1 500 Internal Server Error
+Content-Type: application/json
+{"mensaje":"Error al clasificar la banda: No hay configuracion de bandas vigente al 2026-08-25 para el producto 21, empresa 1236, tipo de cartera POR VENCER"}
+```
+
+El código REST sí pasa un `String` como entity (`"Error ...: " + e.getMessage()`, el estilo
+de la casa), pero lo marca con `.type(MediaType.APPLICATION_JSON)` y entonces actúa
+**`com.saa.ws.rest.MensajeErrorJsonFilter`**, un `@Provider ContainerResponseFilter`
+transversal del proyecto: cuando el status es `>= 400` y la entity es un `String` con media
+type JSON, lo envuelve en `{"mensaje": ...}`. Si la entity ya empieza por `{` o `[` no la
+toca (para no esconder el mensaje un nivel más abajo).
+
+**Esto es de TODO el sistema, no de bandas.** Comprobado el mismo día contra endpoints
+preexistentes que nadie tocó: `GET /rest/prst/getId/999999999` y
+`GET /rest/prdc/getId/999999999` devuelven exactamente la misma forma. La descripción
+anterior de esta sección ("texto plano") era incorrecta.
+
+Consecuencias para el cliente:
+- Leer el mensaje de negocio de la propiedad **`mensaje`** del JSON, no del cuerpo crudo.
+  Conviene tolerar también texto plano: un endpoint que no marque `APPLICATION_JSON` en el
+  error no pasa por el filtro y sí llega como texto.
+- Las validaciones de negocio (`IncomeException`) llegan dentro de ese `mensaje` y son
+  aptas para mostrárselas al usuario. Ejemplos reales de `guardarConfiguracion`:
+  `"Error al guardar la configuracion de bandas: Los numeros de banda deben ser
+  consecutivos desde 1; en la posicion 2 se recibio 3"`.
+- Los errores de infraestructura llegan con la excepción Java dentro del texto
+  (`jakarta.persistence.NoResultException: ...`); no son aptos para mostrar tal cual.
 
 ### 0.3 Procedencia de los JSON de ejemplo
 
@@ -629,7 +657,15 @@ La pantalla trabaja con **una** empresa. En local y pruebas ASOPREP es el nodo
 
 ---
 
-## 5. Lo que esta fase NO incluye
+## 5. Documento hermano — Fase 2
+
+El **proceso mensual de apertura / cierre de cartera** (§3.2 del levantamiento), que consume
+esta parametrización, tiene su propio contrato en
+**[`API-CIERRE-CARTERA.md`](API-CIERRE-CARTERA.md)**: `/rest/cierrecartera/previsualizar`,
+`/ejecutar`, `/consultar`, `/reversar/{id}` y `/corridas`. Las convenciones de fecha (§0.1) y
+de error (§0.2) de ESTE documento valen igual allá y no se repiten.
+
+## 6. Lo que esta fase NO incluye
 
 Fuera de alcance de la Fase 1, no lo pidas al backend todavía: apertura/cierre contable
 mensual, asiento de vencidos, asiento de cambio de bandas, integración con pagos, y el

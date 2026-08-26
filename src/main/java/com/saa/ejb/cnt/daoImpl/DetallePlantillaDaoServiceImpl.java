@@ -120,4 +120,29 @@ public class DetallePlantillaDaoServiceImpl extends EntityDaoImpl<DetallePlantil
 		return lista.isEmpty() ? null : lista.get(0);
 	}
 
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.cnt.dao.DetallePlantillaDaoService#selectByPlantillaYAuxiliares(java.lang.Long, int, int)
+	 */
+	@SuppressWarnings("unchecked")
+	@Override
+	public DetallePlantilla selectByPlantillaYAuxiliares(Long idPlantilla, int auxiliar1,
+			int auxiliar2) throws Throwable {
+		System.out.println("Ingresa al metodo selectByPlantillaYAuxiliares, plantilla: " + idPlantilla
+				+ ", auxiliar1: " + auxiliar1 + ", auxiliar2: " + auxiliar2);
+		Query query = em.createQuery(" select   b "
+				+ " from     DetallePlantilla b "
+				+ " where    b.plantilla.codigo = :idPlantilla "
+				+ "          and b.auxiliar1 = :auxiliar1 "
+				+ "          and b.auxiliar2 = :auxiliar2 "
+				+ "          and b.estado = :activo "
+				+ " order by b.codigo ");
+		query.setParameter("idPlantilla", idPlantilla);
+		query.setParameter("auxiliar1", Long.valueOf(auxiliar1));
+		query.setParameter("auxiliar2", Long.valueOf(auxiliar2));
+		query.setParameter("activo", Long.valueOf(Estado.ACTIVO));
+		List<DetallePlantilla> lista = query.getResultList();
+		// Mismo criterio que selectByPlantillaYAuxiliar: devuelve null en vez de lanzar.
+		return lista.isEmpty() ? null : lista.get(0);
+	}
+
 }

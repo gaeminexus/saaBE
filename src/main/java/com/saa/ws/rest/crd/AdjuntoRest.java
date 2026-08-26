@@ -4,9 +4,13 @@ import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.crd.dao.AdjuntoDaoService;
+import com.saa.ejb.crd.dao.CuentaBancariaParticipeDaoService;
 import com.saa.ejb.crd.service.AdjuntoService;
+import com.saa.ejb.crd.service.CuentaBancariaParticipeService;
 import com.saa.model.crd.Adjunto;
+import com.saa.model.crd.CuentaBancariaParticipe;
 import com.saa.model.crd.NombreEntidadesCredito;
+import com.saa.rubros.Estado;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;
@@ -30,6 +34,9 @@ public class AdjuntoRest {
 
     @EJB
     private AdjuntoService adjuntoService;
+
+    @EJB
+    private CuentaBancariaParticipeDaoService cuentaBancariaParticipeDaoService;
 
     @Context
     private UriInfo context;
@@ -111,12 +118,37 @@ public class AdjuntoRest {
         return respuesta;
     }
 
+    /**
+     * ⚠️ Guarda de negocio: si el adjunto es un CERTIFICADO BANCARIO ACTIVO todavía referenciado
+     * por una CuentaBancariaParticipe ACTIVA, se rechaza. Sin esto, este DELETE genérico sería
+     * exactamente el mismo tipo de bypass que se cerró en
+     * {@code CuentaBancariaParticipeRest.post}: la regla "toda cuenta bancaria de partícipe tiene
+     * su certificado" se puede saltear borrando el adjunto en vez de la cuenta.
+     */
     @DELETE
     @Path("/{id}")
     @Produces(MediaType.APPLICATION_JSON)
     public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - ADJUNTO");
         try {
+            Adjunto existente = adjuntoDaoService.find(new Adjunto(), id);
+            if (existente != null
+                    && existente.getEstado() != null && existente.getEstado() == Estado.ACTIVO
+                    && existente.getTipoAdjunto() != null
+                    && CuentaBancariaParticipeService.CERTIFICADO_BANCARIO
+                        .equalsIgnoreCase(existente.getTipoAdjunto().getNombre())
+                    && existente.getIdReferencia() != null) {
+
+                CuentaBancariaParticipe cuenta = cuentaBancariaParticipeDaoService.find(
+                    new CuentaBancariaParticipe(), existente.getIdReferencia());
+                if (cuenta != null && cuenta.getEstado() != null && cuenta.getEstado() == Estado.ACTIVO) {
+                    return Response.status(409)
+                            .entity("No se puede eliminar el certificado bancario de la cuenta " + cuenta.getCodigo()
+                                + " porque sigue activa. Anule o elimine la cuenta bancaria primero.")
+                            .type(MediaType.APPLICATION_JSON).build();
+                }
+            }
+
             Adjunto elimina = new Adjunto();
             adjuntoDaoService.remove(elimina, id);
             return Response.status(Response.Status.NO_CONTENT).build();

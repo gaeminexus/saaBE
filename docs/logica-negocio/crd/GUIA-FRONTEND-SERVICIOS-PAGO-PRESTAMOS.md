@@ -87,9 +87,29 @@ los pagos, ni los movimientos de aporte. No hace falta que el frontend "limpie" 
 ### Formatos
 
 - **Montos**: `number` con hasta 2 decimales. El backend redondea HALF_UP a 2 decimales.
-- **Fechas de entrada**: `string` `"yyyy-MM-dd"` (ej. `"2026-08-14"`). Si se omite, el backend
-  usa **hoy**. **Nunca** se acepta una fecha futura.
-- **Fechas de salida**: `"yyyy-MM-ddTHH:mm:ss"` (LocalDateTime serializado por JSON-B).
+- **Fechas de entrada**: el formato **lo decide el tipo Java del campo, no una regla única para
+  toda la guía** — mirá el DTO antes de asumir:
+  - `LocalDate` → `string` `"yyyy-MM-dd"` (ej. `"2026-08-14"`). Es el caso de los endpoints de
+    esta guía (p. ej. `simularPrecancelacion`). Si se omite, el backend usa **hoy**. **Nunca** se
+    acepta una fecha futura.
+  - `LocalDateTime` → `string` ISO local sin zona, `"yyyy-MM-ddTHH:mm:ss"` (ej.
+    `"2026-08-25T00:00:00"`). Mandar `"yyyy-MM-dd"` a un campo `LocalDateTime` **no** funciona:
+    Jackson lo rechaza con `Cannot deserialize LocalDateTime from String "2026-08-25"`. Pasó en
+    producción con `ParametrosAmortizacion.fechaInicio` (`LocalDateTime`, del simulador de
+    préstamos) — esta guía es sobre otros endpoints, pero la regla de "fechas de entrada
+    yyyy-MM-dd" se leyó como general y se aplicó ahí también. **Nunca** un `Date` crudo de
+    JavaScript ni nada terminado en `Z`: ver CLAUDE.md §Serialización sobre por qué eso corre el
+    dato cinco horas.
+- **Fechas de salida: NO son `"yyyy-MM-ddTHH:mm:ss"` de JSON-B.** Esa afirmación es falsa y ya
+  causó un bug real: el serializador de este despliegue es **Jackson**, no JSON-B — WildFly
+  desactiva JSON-B en todo el WAR apenas encuentra una sola anotación de Jackson en cualquier
+  parte del código (log de arranque `WFLYRS0018`; detalle completo en CLAUDE.md §Serialización).
+  Jackson serializa `LocalDate`/`LocalDateTime` como **arreglo**, no como texto:
+  `[2026,8,25]` / `[2026,8,25,0,0]`. Un `new Date([2026,8,25,0,0])` en el cliente da
+  `Invalid Date` — pasó en `abono-capital-dialog` y `precancelacion-dialog`, y hubo que
+  arreglarlo. **Del lado del cliente hay que pasar toda fecha de respuesta por el helper que
+  convierte el arreglo** (`FuncionesDatosService.convertirFechaDesdeBackend()` /
+  `formatoFecha()`), nunca asumir un string ni construir `new Date(...)` directo sobre el campo.
 - **`usuario`**: obligatorio en todos los POST. Es el usuario de la sesión, máx. 50 caracteres.
 - **Los montos SIEMPRE viajan en el body**, nunca en la URL.
 

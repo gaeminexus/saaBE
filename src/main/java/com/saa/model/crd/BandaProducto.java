@@ -112,7 +112,7 @@ public class BandaProducto implements Serializable, EntidadAuditableFechaHora {
     @Column(name = "BNDPIPMD", length = 50)
     private String ipModificacion;
 
-    /** Estado: 1 = activo, 2 = inactivo. Ver {@link com.saa.rubros.Estado}. */
+    /** Estado: 1 = activo, 0 = inactivo. Ver {@link com.saa.rubros.Estado}. */
     @Basic
     @Column(name = "BNDPESTD")
     private Long estado;

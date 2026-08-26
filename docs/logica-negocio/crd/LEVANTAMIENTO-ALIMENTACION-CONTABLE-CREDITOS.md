@@ -421,6 +421,15 @@ Las pizarras no desarrollaron asientos específicos para estos tres procesos, pe
 7. **Solo el CAPITAL se distribuye por bandas** (confirmado por el usuario 2026-08-25). Intereses, mora y seguros van a cuentas propias por producto, sin bandas.
 8. **Abonos a capital afectan cuota y plazo** y obligan a re-bandear el saldo.
 9. Los aportes cesantía/jubilación se manejan **agregados** en `1.4.05.05`/`2.3.02.05` (por cobrar/por aplicar) y **diferenciados** en `2.1.01.05.01`/`2.1.02.05.01` (pasivo real) y en las liquidaciones `2.3.01.05.01`/`2.3.01.10.01`.
+10. **NO SE CIERRA UN MES SIN SU ARCHIVO PETRO CARGADO.** Regla de orden, decidida el 2026-08-25 (decisión D13) y de cumplimiento obligatorio — el propio usuario la calificó de *"extremadamente necesaria"*.
+
+    **Por qué.** El lado aportes de ③ y ⑥ no se apoya en un documento de planilla emitida (no existe), sino en un cálculo: **esperado** = suma del aporte mensual de los partícipes activos (último `HistorialSueldo` en estado 99 de cada entidad en estado ACTIVO o ACTIVO_EN_MORA), **registrado** = filas de `CRD.APRT` tipos 9 y 11 del mes, y el neteo reversa la diferencia con piso en cero. Si el mes se cierra **antes** de cargar su archivo Petro, el registrado sale casi vacío y el sistema reversa como "no cobrado" algo que sí se va a cobrar.
+
+    **La magnitud del error, medida en producción el 2026-08-25:** esperado mensual 121.160,97 (46.539,35 jubilación + 74.621,62 cesantía, 1.647 partícipes) contra 5.499,75 registrados en agosto — un mes cuyo archivo **aún no estaba cargado**. Cerrar agosto en ese momento habría reversado 115.661,22 de más. Los meses ya cargados registran ~121 mil, coherentes con el esperado.
+
+    **Cómo se comprueba:** `CRD.CRAR` (CargaArchivo) lleva `CRARANAF` (año de afectación) y `CRARMSAF` (mes de afectación). Al 2026-08-25 estaban cargados los meses 1 a 7 de 2026, todos con `CRARESTD = 3`, y el 8 no existía.
+
+    **Dos limitaciones que esta regla NO resuelve** y conviene tener presentes: el piso en cero **esconde el exceso de cobro** (en julio se registraron 156.797 contra 121.161 esperados; la diferencia negativa se convierte en cero y ese exceso lo tiene que resolver el proceso de cobro en exceso, §3.7); y al ser un **agregado**, un partícipe que paga de más compensa a otro que no paga, así que la cifra es un neto y no la suma de lo adeudado. El arreglo de fondo de ambas es crear una planilla de aportes emitida de verdad — evaluado y pospuesto (opción C de la decisión D13).
 
 ---
 
@@ -452,11 +461,28 @@ Para cada transición de mes hay dos bloques:
 
 **Bloque Debe/Haber** (filas ~22-31): convierte cada diferencia en línea de asiento con su cuenta (etiquetadas en la hoja "Vencido" del Autoguardado: `130405, 130405, 130410, 130415, 130420, 130425`): diferencia con un signo → Debe (la banda crece), con el otro → Haber (decrece). Los pares D/H de cada mes cuadran; en el ejemplo: 85.000/85.000, 104.000/104.000, 99.000/99.000, 81.000/81.000 (x vencer) y equivalentes en Vencido (104.000/104.000, −18.000/120.000 en la hoja vieja corregido en el Autoguardado, etc.).
 
-**Regla implementable** (equivalente y más simple que replicar las fórmulas):
-1. Al corte, para cada préstamo y cada cuota impaga/por vencer, calcular días (por vencer: hasta el vencimiento; vencido: desde el vencimiento).
-2. Asignar cada cuota a su banda según la parametrización (§8) y sumar capital por banda → distribución nueva.
-3. Comparar con la distribución contabilizada (saldo actual de cada cuenta de banda).
-4. Por cada banda: si crece → Debe por la diferencia; si decrece → Haber. El asiento cuadra por construcción (el total de cartera no cambia; lo que cambia el total lo hacen otros asientos: vencidos, pagos, entregas).
+**Regla implementable — CORREGIDA el 2026-08-25 al implementar la Fase 2.** La versión
+anterior de esta regla decía "comparar con la distribución contabilizada (saldo actual de
+cada cuenta de banda)" y **era incorrecta**: entre un cierre y el siguiente, las cuentas de
+banda las mueven además los pagos y las entregas, que ya generan sus propios asientos. Un
+asiento de reclasificación calculado contra ese saldo volvería a registrar esos movimientos
+— los contaría dos veces — y no cuadraría.
+
+La reclasificación se calcula **a cartera constante**: el *mismo juego de cuotas* medido en
+dos fechas. Así la diferencia es puro envejecimiento, el total no cambia por construcción y
+el asiento cuadra siempre. Es además la única lectura bajo la que la frase del Excel "el
+total de cartera no cambia" es cierta.
+
+1. Fijar el juego de cuotas: las pendientes al corte (según §5.1).
+2. Clasificar ese mismo juego **dos veces**: a la fecha del corte anterior y a la del corte
+   actual (por vencer: días del corte al vencimiento; vencido: del vencimiento al corte,
+   contando el día del corte como día 1). Sumar capital por banda en cada medición.
+3. Por cada banda, la diferencia entre las dos mediciones: si crece → Debe; si decrece →
+   Haber. Suma cero garantizada.
+4. **El snapshot (`CRD.BDCC`) no entra en el cálculo: es control.** Su diferencia contra lo
+   recalculado es exactamente lo que movieron pagos y entregas durante el mes, y se reporta
+   como desviación. Si esa desviación no se explica, hay un proceso escribiendo en cuentas
+   de banda sin pasar por su asiento.
 
 ### 6.4 Diferencias entre las dos versiones del archivo
 
@@ -570,6 +596,8 @@ Cuando las bandas pasen al modelo nuevo, las plantillas quedan solo con las lín
 | D9 | **Prelación oficial de pagos:** seguro incendio → seguro desgravamen → interés mora → interés ordinario → capital vencido → capital por vencer (§5.6) |
 | — | **Re-bandeo tras abono a capital (C2):** diferencias netas por banda (como el cambio de bandas mensual). Matiz del usuario: durante el mes basta con mover los saldos de las bandas **de ese préstamo**; el cierre/apertura de fin de mes es el que garantiza los saldos correctos globales |
 | — | **Devengo de mora (C5):** el asiento se ejecuta **con el cierre**. Existe un proceso diario a las 02:00 que calcula la mora, pero contabilidad solo necesita, a fin de mes: lo generado global en el mes, lo cobrado y lo pendiente |
+| D12 | **Deriva de calendario: las bandas se cortan por DÍAS, y así se queda. ⚠ ORDEN EXPRESA DE LA SUPERINTENDENCIA DE BANCOS, validada con ellos** (usuario, 2026-08-25). **No "arreglar" esto nunca**: parece un defecto y no lo es. Como el mes calendario dura 30,44 días de media, doce cuotas mensuales se reparten **1, 1, 3, 6, 1** entre las cinco bandas y no 1, 2, 3, 6, 0: la cuota a tres meses cae en 91 días y se pasa por un día del límite de 90, y la duodécima cae en 365 y se va a la banda abierta. Verificado contra el clasificador en vivo. Clasificar por meses queda descartado, y además no sería expresable en la parametrización, que guarda períodos de 30 días |
+| D13 | **⑥ lado aportes: se mantiene `esperado − registrado` (opción A), CON el control bloqueante** (usuario, 2026-08-25: *"ese control es extremadamente necesario"*). Ver §5.10 |
 | — | Modelo de bandas: dos tablas `CRD.CBPR`/`CRD.BNDP` (nombres aprobados), por **producto + empresa**, cuenta como **FK a CNT.PLNN**, última banda **períodos NULL**, **con vigencia histórica** (§8.2) |
 
 ### 9.2 Dudas restantes (menores, no bloquean el DDL)
@@ -590,5 +618,17 @@ Cuando las bandas pasen al modelo nuevo, las plantillas quedan solo con las lín
 3. **Orden sugerido de fases:** (1) tablas de bandas + carga inicial + servicio de clasificación; (2) proceso mensual apertura/cierre (vencidos → cambio bandas → apertura → intereses → neteo) consumiendo bandas nuevas + plantillas para lo no-banda (patrón RHH: `selectByAlterno` + `selectByPlantillaYAuxiliar`); (3) integración de pagos (Petro/manuales) y demás procesos; (4) saneamiento de registros de plantillas (§8.3, como MD revisable).
 
    **Estado Fase 1 (2026-08-25):** DDL en `sql/DDL-BANDAS-PRODUCTO.sql` y carga inicial en `CARGA-INICIAL-BANDAS-PRODUCTO.md` — **ejecutados y validados en la BD local de desarrollo** (28 CBPR + 143 BNDP; pendientes pruebas y producción, los corre el usuario). Hallazgo de la carga: `1.3.06` y `1.3.10` (familias "renovados" prendario/hipotecario) no tienen subcuentas de bandas en `CNT.PLNN`, así que los productos 22 PRENDARIO NOVACION y 21 HIPOTECARIO NOVACION quedaron sin configuración de por vencer (bloque de regularización listo en §4 del runbook de carga). Prompts de implementación: `prompts/PROMPT-BACKEND-BANDAS-FASE1.md` (mapeo + servicios + REST + llena el contrato `API-BANDAS-PRODUCTO.md`) y `prompts/PROMPT-FRONTEND-BANDAS-FASE1.md` (pantalla de parametrización, acceso temporal solo USUARIO 1).
+
+   **Fase 1 CERRADA (2026-08-25):** backend, pantalla y verificación de integración contra el WAR desplegado. Dos defectos encontrados y corregidos en esa verificación: la carga inicial tenía vigencia futura (`2026-09-01`) y dejaba toda la parametrización invisible — corregido a `2020-01-01`, ver `sql/FIX-VIGENCIA-BANDAS.sql`; y el contrato describía mal la forma del error (§0.2 de `API-BANDAS-PRODUCTO.md`).
+
+   **Estado Fase 2 (2026-08-25):** implementada. Tablas `CRD.CRCT` (corrida), `CRD.BDCC` (snapshot por banda) y `CRD.ANCC` (asiento por sub-proceso) — DDL en `sql/DDL-CIERRE-CARTERA.sql`, revisado y con `FK_ANCC_ASNT` añadida en la revisión. Renumeración de auxiliares de plantillas en `ACTUALIZACION-PLANTILLAS-CIERRE-CARTERA.md` (alternos 1, 17 y 33; verificado idempotente). Endpoints `previsualizar / ejecutar / consultar / reversar / corridas`, contrato en `API-CIERRE-CARTERA.md`. Prueba con datos reales de agosto 2026 (empresa 1236): los seis sub-asientos cuadran D = H. **Hallazgo que cambió el diseño:** `DTPRCPPG` no sirve para saber qué se pagó (resto de la migración: vale igual que `DTPRCPTL` en 50.853 de 59.147 cuotas pendientes sin fecha de pago, y 0 en 10.593 pagadas; `DTPRFCPG` nulo en 11.163 pagadas) — el saldo se reconstruye desde `CRD.PGPR`, como ya hacen el motor de pagos y la generación Petro. Ver también la corrección de la regla de reclasificación en §6.3.
+
+   **Fase 2 CERRADA (2026-08-25)** en backend, base de datos y pantalla. Scripts ejecutados en local, pruebas y producción. La pantalla (`/menucreditos/cierre-cartera`, acceso temporal solo USUARIO 1) se verificó con round-trip completo contra el WAR desplegado: previsualizar → ejecutar (asientos 8071–8076) → consultar → reversar, todo con capturas HTTP reales. **Control de archivo Petro (D13): IMPLEMENTADO el 2026-08-25** (`prompts/PROMPT-BACKEND-CONTROL-ARCHIVO-PETRO-FASE2.md`) — `previsualizar` avisa y `ejecutar` bloquea si no hay carga de `CRD.CRAR` con ese mes de afectación en estado PROCESADO; se puede omitir con `omitirControlArchivoPetro` + motivo obligatorio, que queda escrito en la observación de la corrida. Se añadió al resultado el desglose `esperado / registrado / diferencia / noCobrado / excesoCobro`, que además saca a la luz el exceso de cobro que el piso en cero escondía (julio 2026: 35.636,56). Verificado contra la BD: agosto 2026 bloquea (0 cargas del mes 8), julio 2026 pasa (carga 448). **Hallazgo:** `CRD.CRAR.CRARESTD` **no usa** el rubro 166 `ASPEstadoCargaArchivoPetro` —interfaz que ninguna clase referencia y cuyo 3 significa otra cosa—; los valores reales quedaron en `com.saa.rubros.CrdEstadoCargaArchivo` (1 CARGADO, 3 PROCESADO). Hallazgo colateral, **preexistente y ajeno a esta fase, ya CORREGIDO (2026-08-25)**: `AsientoServiceImpl.anulaAsiento` marcaba el asiento como ANULADO sin llenar `ASNTFCAN`/`ASNTUSAN`/`ASNTMTAN`, y su firma ni siquiera recibía usuario ni motivo, así que el motivo del reverso quedaba en `CRD.CRCT`/`CRD.ANCC` pero nunca llegaba al asiento — el que mira el auditor. Afectaba a todos los módulos que anulan por esa vía (13 llamadores en tsr, cxp, cxc y crd).
+
+   **Cómo se corrigió:** se añadió la **sobrecarga** `anulaAsiento(idAsiento, usuario, motivo)` en `AsientoService`/`Impl`, que llena los tres campos (fecha del servidor; usuario vacío se graba como `SISTEMA`, mismo criterio que `generarAsiento` para `ASNTUSRO`; motivo truncado a los 1000 caracteres de `ASNTMTAN` para que un mensaje largo no aborte el grabado). La firma de un argumento **se conservó** delegando con nulos: cambiarla habría obligado a tocar los 13 llamadores de una vez. También se cubre la rama de período MAYORIZADO, donde el asiento no se anula sino que se reversa: el rastro queda igual en el asiento original. El único llamador migrado es el reverso del cierre de cartera, que es el que tiene el motivo a mano; los otros 12 siguen usando la sobrecarga vieja y **quedan pendientes de migrar** cuando cada módulo tenga usuario y motivo disponibles.
+   **Estado Fase 2 (2026-08-25): IMPLEMENTADA.** Los seis sub-procesos de §3.2 (①, ②, ①.1, ③, ④, ⑥) en `CierreCarteraService`, con previsualización, ejecución transaccional, consulta y reverso. Tablas nuevas `CRD.CRCT` (corrida), `CRD.BDCC` (snapshot de capital por banda) y `CRD.ANCC` (asiento por sub-proceso) — DDL en `sql/DDL-CIERRE-CARTERA.sql`, **ejecutado en la BD local**. Contrato de API en `API-CIERRE-CARTERA.md`; ajuste de los `DTPLAXL1`/`DTPLAXL2` de las plantillas 1, 17 y 33 al catálogo semántico `com.saa.rubros.CrdLineaAsiento`, como MD revisable, en `ACTUALIZACION-PLANTILLAS-CIERRE-CARTERA.md` (**aplicado solo en la BD local**; pruebas y producción los corre el usuario).
+
+   **Decisión de diseño de la Fase 2, que aclara este §6.3:** la reclasificación se calcula **a cartera constante** — el MISMO juego de cuotas clasificado dos veces, con los días medidos al corte anterior y al corte actual. Es la única lectura bajo la que "el total de cartera no cambia" es literalmente cierto y el asiento cuadra por construcción; comparar contra el saldo de las cuentas arrastraría los pagos y las entregas del mes, que tienen sus propios asientos. El snapshot de `CRD.BDCC` **no es la base contable** sino el CONTROL: su diferencia contra la distribución recalculada es exactamente lo que movieron los otros procesos, y se reporta como `desviaciones`. Verificado sobre la BD local (agosto 2026): ① 220.927,29 · ② 445.336,12 · ①.1 71.511,80 · ③ 5.153.615,93 · ④ 2.230.420,44 · ⑥ 4.797.836,62, todos con D = H.
+
 4. **No cablear cuentas ni bandas en código.** Toda cuenta sale de `CRD.BNDP` (capital por banda) o de `CNT.DTPL` (resto). Todo asiento debe cuadrar D=H y los procesos por lotes siguen la convención de absorber errores por fila (ver CLAUDE.md).
 5. El módulo de asientos es `CNT` (`AsientoContable`/`DetalleAsiento`); RHH (`ContabilizacionNominaServiceImpl`) es el ejemplo de referencia de extremo a extremo para generar asientos desde otro módulo.

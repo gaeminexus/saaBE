@@ -58,5 +58,25 @@ public interface DetallePlantillaDaoService extends EntityDao<DetallePlantilla> 
 	 */
 	DetallePlantilla selectByPlantillaYAuxiliar(Long idPlantilla, int auxiliar1) throws Throwable;
 
-	
+	/**
+	 * Recupera la linea de una plantilla identificada por su auxiliar1 MAS una segunda
+	 * dimension en auxiliar2.
+	 *
+	 * <p>Lo estrena el cierre de cartera de CRD: el papel de la linea (auxiliar1, el rubro
+	 * CRD_LINEA_ASIENTO) no basta cuando la cuenta cambia ademas por familia de producto
+	 * --el interes ordinario va a 1.4.02.05 en quirografario, .10 en prendario y .15 en
+	 * hipotecario--. En ese caso auxiliar2 lleva el CRD.TPPR.TPPRCDGO y la plantilla define
+	 * una linea por combinacion. Asi la parametrizacion queda en la base y no en el codigo.</p>
+	 *
+	 * <p>Solo considera lineas activas.</p>
+	 *
+	 * @param idPlantilla	: Id de la plantilla (CNT.PLNS)
+	 * @param auxiliar1		: Codigo del papel de la linea
+	 * @param auxiliar2		: Segunda dimension; en CRD, el tipo de prestamo
+	 * @return				: La linea, o null si la plantilla no define esa combinacion
+	 * @throws Throwable	: Excepcion
+	 */
+	DetallePlantilla selectByPlantillaYAuxiliares(Long idPlantilla, int auxiliar1, int auxiliar2)
+			throws Throwable;
+
 }

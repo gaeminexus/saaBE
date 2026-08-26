@@ -506,19 +506,54 @@ public class AsientoServiceImpl implements AsientoService {
 	 * @see com.compuseg.income.contabilidad.ejb.service.AsientoService#anulaAsiento(java.lang.Long)
 	 */
 	public void anulaAsiento(Long idAsiento) throws Throwable {
-		System.out.println("Ingresa al Metodo anulaAsientoCierre con idAsiento : " + idAsiento);
+		anulaAsiento(idAsiento, null, null);
+	}
+
+	/* (non-Javadoc)
+	 * @see com.compuseg.income.contabilidad.ejb.service.AsientoService#anulaAsiento(java.lang.Long, java.lang.String, java.lang.String)
+	 */
+	public void anulaAsiento(Long idAsiento, String usuario, String motivo) throws Throwable {
+		System.out.println("Ingresa al Metodo anulaAsiento con idAsiento : " + idAsiento
+				+ ", usuario : " + usuario + ", motivo : " + motivo);
 		//Verificar si se va a anular o reversar el asiento
 		boolean permiteProceso = true;
 		Asiento asiento = asientoDaoService.selectById(idAsiento, NombreEntidadesContabilidad.ASIENTO);
 		if(Long.valueOf(EstadoPeriodos.MAYORIZADO).equals(asiento.getPeriodo().getEstado())){
+			// El periodo esta mayorizado: no se anula, se reversa. El rastro se deja igual
+			// en el asiento original, que es el que queda marcado como REVERSADO.
+			marcaAuditoriaAnulacion(asiento, usuario, motivo);
+			asientoDaoService.save(asiento, asiento.getCodigo());
 			reversionAsiento(idAsiento);
 		}else{
 			permiteProceso = verificaAnulacionReversion(asiento, ProcesosAsiento.ANULAR);
 			if(permiteProceso == true){
 				asiento.setEstado(Long.valueOf(EstadoAsiento.ANULADO));
+				marcaAuditoriaAnulacion(asiento, usuario, motivo);
 				asientoDaoService.save(asiento, asiento.getCodigo());
-			}			
-		}		
+			}
+		}
+	}
+
+	/**
+	 * Deja en el asiento el rastro de quien lo anulo, cuando y por que.
+	 *
+	 * <p>La fecha la pone el servidor. El usuario nulo o vacio se graba como "SISTEMA",
+	 * mismo criterio que usa {@code AsientoContableServiceImpl.generarAsiento} para
+	 * {@code ASNTUSRO}. El motivo se trunca a 1000 caracteres, que es el largo de
+	 * {@code ASNTMTAN}: sin el truncado, un mensaje largo aborta el grabado.</p>
+	 *
+	 * @param asiento	: Asiento que se esta anulando
+	 * @param usuario	: Usuario que anula
+	 * @param motivo	: Motivo de la anulacion
+	 */
+	private void marcaAuditoriaAnulacion(Asiento asiento, String usuario, String motivo) {
+		asiento.setFechaAnulacion(LocalDateTime.now());
+		asiento.setUsuarioAnulacion(usuario != null && !usuario.trim().isEmpty()
+				? usuario.trim() : "SISTEMA");
+		if (motivo != null && !motivo.trim().isEmpty()) {
+			String limpio = motivo.trim();
+			asiento.setMotivoAnulacion(limpio.length() > 1000 ? limpio.substring(0, 1000) : limpio);
+		}
 	}
 
 	/* (non-Javadoc)

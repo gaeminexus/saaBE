@@ -30,6 +30,7 @@
 --   enero a mayo   1 persona   183,26   sobre base 2 200,00  (mes completo)
 --   junio          1 persona    30,54   sobre base   366,67  (5 dias desde el
 --                                                             aniversario)
+--   julio          1 persona   183,26   sobre base 2 200,00  (mes completo ya)
 -- La base de junio es distinta porque el fondo de reserva se devenga desde el
 -- aniversario: Viteri cumplio el ano el 25-06 y le corresponden 5 dias.
 -- ============================================================================
@@ -39,7 +40,8 @@ WITH ESPERADO (MES, PERSONAS, VALOR) AS (
     SELECT 3, 1, 183.26 FROM DUAL UNION ALL
     SELECT 4, 1, 183.26 FROM DUAL UNION ALL
     SELECT 5, 1, 183.26 FROM DUAL UNION ALL
-    SELECT 6, 1,  30.54 FROM DUAL
+    SELECT 6, 1,  30.54 FROM DUAL UNION ALL
+    SELECT 7, 1, 183.26 FROM DUAL
 )
 SELECT e.MES,
        COUNT(x.PVNMCDGO)                     AS FILAS,
@@ -70,9 +72,9 @@ SELECT e.MES,
 -- mes con provision de fondo de reserva que NO este en ella no saldria por
 -- ningun lado: el control seria ciego justo donde deja de estar mantenido.
 -- ==
--- ESPERADO: vacio, hasta que julio cierre. Cuando julio cierre, esta consulta
--- devolvera julio, y eso es el AVISO de que hay que anadir su linea al
--- bloque 1, no una alarma.
+-- ESPERADO: vacio. Julio ya esta contemplado. La proxima vez que esta
+-- consulta devuelva algo sera agosto, y eso es un AVISO de que hay que anadir
+-- su linea al bloque 1, no una alarma.
 -- ============================================================================
 SELECT p.PRDNMSEE AS MES_NO_CONTEMPLADO,
        COUNT(*) AS FILAS, COUNT(DISTINCT v.MPLDCDGO) AS PERSONAS,
@@ -81,7 +83,7 @@ SELECT p.PRDNMSEE AS MES_NO_CONTEMPLADO,
   JOIN RHH.PRDN p ON p.PRDNCDGO = v.PRDNCDGO
  WHERE p.PRDNANOO = 2026
    AND v.PVNMTPPR = 4
-   AND p.PRDNMSEE NOT IN (1, 2, 3, 4, 5, 6)
+   AND p.PRDNMSEE NOT IN (1, 2, 3, 4, 5, 6, 7)
  GROUP BY p.PRDNMSEE
  ORDER BY 1;
 
@@ -101,7 +103,7 @@ SELECT p.PRDNMSEE AS MES, e.MPLDIDNT AS CEDULA, e.MPLDAPLL AS APELLIDOS,
 
 -- ============================================================================
 -- BLOQUE 3 - Estado de los periodos del ano, para situar la lectura.
--- ESPERADO: enero a junio en estado 7 CERRADO. Julio aun no existe.
+-- ESPERADO: enero a julio en estado 7 CERRADO.
 -- ============================================================================
 SELECT PRDNCDGO AS PRDN, PRDNMSEE AS MES, PRDNESTD AS ESTADO, PRDNOBSR
   FROM RHH.PRDN
@@ -110,6 +112,6 @@ SELECT PRDNCDGO AS PRDN, PRDNMSEE AS MES, PRDNESTD AS ESTADO, PRDNOBSR
 
 -- ============================================================================
 -- BLOQUE 4 - Sobre que mes apunta el instrumento de contraste.
--- Tras cerrar junio debe quedar en 2026 . 6, y no se toca hasta julio.
+-- Tras cerrar julio debe quedar en 2026 . 7. Con eso acaba la carga historica.
 -- ============================================================================
 SELECT ANIO, MES FROM RHH.CTRL_PARAM;

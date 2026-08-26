@@ -125,17 +125,20 @@ public class SimulacionPrestamoServiceImpl implements SimulacionPrestamoService 
                 + ": el préstamo " + solicitud.getIdPrestamo() + " no tiene cuotas pendientes que reestructurar");
         }
 
-        double saldoCapitalPendiente = 0.0;
+        // ⚠️ moraPendiente/interesVencidoPendiente/totalAPagarActualSchedule se siguen sumando
+        // sobre TODA la lista `pendientes` tal como viene de selectCuotasNoPagadasByPrestamo.
+        // Tienen el mismo problema de origen que el capital (abajo): si esa lista incluye una
+        // cuota que en realidad ya está pagada (DTPRESTD no confiable en cartera migrada), sus
+        // DTPRSLMR/DTPRSLIV/DTPRTTLL entran igual a la suma. NO se corrige acá — reportado, no
+        // arreglado, a pedido explícito.
         double moraPendiente = 0.0;
         double interesVencidoPendiente = 0.0;
         double totalAPagarActualSchedule = 0.0;
         for (DetallePrestamo cuota : pendientes) {
-            saldoCapitalPendiente += nvl(cuota.getCapital()) - nvl(cuota.getCapitalPagado());
             moraPendiente += nvl(cuota.getSaldoMora());
             interesVencidoPendiente += nvl(cuota.getSaldoInteresVencido());
             totalAPagarActualSchedule += nvl(cuota.getTotal());
         }
-        saldoCapitalPendiente = redondear(saldoCapitalPendiente);
         moraPendiente = redondear(moraPendiente);
         interesVencidoPendiente = redondear(interesVencidoPendiente);
 
@@ -145,9 +148,39 @@ public class SimulacionPrestamoServiceImpl implements SimulacionPrestamoService 
         // que capitalizarVencido sea true).
         double totalAPagarActual = redondear(totalAPagarActualSchedule + moraPendiente + interesVencidoPendiente);
 
+        // Regla de negocio literal: la primera pendiente es la MENOR cuota (numeroCuota) cuyo
+        // estado no sea PAGADA(4) ni CANCELADA_ANTICIPADA(7) — exactamente lo que ya filtra
+        // selectCuotasNoPagadasByPrestamo, ordenado ASC. Sin heurística de evidencia de pago:
+        // una cuota PARCIAL tiene PagoPrestamo vigente y capitalPagado > 0 y sigue siendo
+        // pendiente, así que descartarla por "evidencia de pago" (como hacía la versión anterior
+        // de este método) caía en una cuota posterior con un DTPRSICP menor — el saldo
+        // subestimado que reportó el usuario. Ver también el fix de estado NULL en
+        // DetallePrestamoDaoServiceImpl.selectCuotasNoPagadasByPrestamo.
+        DetallePrestamo primeraPendiente = pendientes.get(0);
+
+        // Capital de arranque = DTPRSICP de esa cuota: por definición, el capital pendiente
+        // justo antes de ella (o sea, justo después de la última cuota pagada de verdad). UNA
+        // sola lectura, sin sumar nada — decisión del usuario, reemplaza la suma capital-
+        // capitalPagado que en cartera migrada da 0 porque esos campos no vienen poblados como
+        // los llenaría el generador propio.
+        double saldoCapitalPendiente = nvl(primeraPendiente.getSaldoInicialCapital());
+        if (saldoCapitalPendiente <= 0.0) {
+            System.out.println("  ⚠️ DTPRSICP de la cuota " + primeraPendiente.getCodigo()
+                + " (#" + primeraPendiente.getNumeroCuota() + ") del préstamo " + solicitud.getIdPrestamo()
+                + " vino nulo o en cero; se usa el fallback Prestamo.saldoCapital (PRSTSLCP)");
+            saldoCapitalPendiente = nvl(prestamo.getSaldoCapital());
+        }
+        if (saldoCapitalPendiente <= 0.0) {
+            throw new IncomeException(ProcesoPagoPrestamoService.ERR_VALOR_INVALIDO
+                + ": no se pudo determinar el capital pendiente del préstamo " + solicitud.getIdPrestamo()
+                + " — DTPRSICP de la cuota " + primeraPendiente.getCodigo() + " y PRSTSLCP del préstamo"
+                + " están ambos nulos o en cero; revise los datos antes de reestructurar");
+        }
+        saldoCapitalPendiente = redondear(saldoCapitalPendiente);
+
         double cuotaActual = nvl(prestamo.getValorCuota());
         if (cuotaActual <= 0.0) {
-            cuotaActual = nvl(pendientes.get(0).getCuota());
+            cuotaActual = nvl(primeraPendiente.getCuota());
         }
         cuotaActual = redondear(cuotaActual);
 

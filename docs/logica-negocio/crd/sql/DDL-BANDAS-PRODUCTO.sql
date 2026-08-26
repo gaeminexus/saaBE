@@ -67,7 +67,7 @@ COMMENT ON COLUMN CRD.CBPR.PJRQCDGO IS 'FK al nodo de empresa (SCP.PJRQ, nivel e
 COMMENT ON COLUMN CRD.CBPR.CBPRTPCR IS 'Tipo de cartera: 1 = por vencer, 2 = vencido.';
 COMMENT ON COLUMN CRD.CBPR.CBPRFCIN IS 'Inicio de vigencia de esta configuracion.';
 COMMENT ON COLUMN CRD.CBPR.CBPRFCFN IS 'Fin de vigencia. NULL = configuracion vigente. Un cambio normativo cierra esta fecha y crea una configuracion nueva; la anterior queda para reprocesos/auditoria.';
-COMMENT ON COLUMN CRD.CBPR.CBPRESTD IS 'Estado: 1 = activo, 2 = inactivo.';
+COMMENT ON COLUMN CRD.CBPR.CBPRESTD IS 'Estado: 1 = activo, 0 = inactivo (rubro Estado de la casa).';
 
 
 -- =====================================================================================
@@ -110,7 +110,7 @@ COMMENT ON COLUMN CRD.BNDP.CBPRCDGO IS 'FK a la configuracion (CRD.CBPR).';
 COMMENT ON COLUMN CRD.BNDP.BNDPNMRO IS 'Numero de banda, 1..N consecutivo dentro de la configuracion.';
 COMMENT ON COLUMN CRD.BNDP.BNDPCNTD IS 'Periodos de 30 dias que abarca. NULL = banda abierta (el resto); solo puede serlo la ultima banda.';
 COMMENT ON COLUMN CRD.BNDP.PLNNCDGO IS 'FK a CNT.PLNN: cuenta contable del capital de esta banda para este producto. Nunca guardar el codigo como texto.';
-COMMENT ON COLUMN CRD.BNDP.BNDPESTD IS 'Estado: 1 = activo, 2 = inactivo.';
+COMMENT ON COLUMN CRD.BNDP.BNDPESTD IS 'Estado: 1 = activo, 0 = inactivo (rubro Estado de la casa).';
 
 
 -- =====================================================================================

@@ -40,6 +40,12 @@ COMMENT ON COLUMN CRD.CBPR.CBPRFCIN IS 'Inicio de vigencia de esta configuracion
 COMMENT ON COLUMN CRD.CBPR.CBPRFCFN IS 'Fin de vigencia. NULL = configuracion vigente. Un cambio normativo cierra esta fecha y crea una configuracion nueva; la anterior queda para reprocesos/auditoria.';
 COMMENT ON COLUMN CRD.BNDP.BNDPCNTD IS 'Periodos de 30 dias que abarca. NULL = banda abierta (el resto); solo puede serlo la ultima banda.';
 
+-- Correccion adicional de comentario (el DDL original decia "2 = inactivo"; el rubro
+-- Estado de la casa es 1 = activo, 0 = inactivo — com.saa.rubros.Estado). Solo texto:
+-- no hay CHECK sobre estas columnas y los datos cargados usan 1.
+COMMENT ON COLUMN CRD.CBPR.CBPRESTD IS 'Estado: 1 = activo, 0 = inactivo (rubro Estado de la casa).';
+COMMENT ON COLUMN CRD.BNDP.BNDPESTD IS 'Estado: 1 = activo, 0 = inactivo (rubro Estado de la casa).';
+
 -- Control posterior: columnas nuevas presentes (esperado: 3 filas) y viejas ausentes.
 SELECT table_name, column_name FROM all_tab_columns
 WHERE owner = 'CRD'
