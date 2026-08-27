@@ -237,9 +237,14 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 		
 		try {
 			// ✅ OPTIMIZACIÓN: Filtrar en BD en lugar de traer todas las cuotas
+			// ✅ IMPORTANTE: incluir explícitamente las cuotas con estado NULL.
+			// En SQL, "NULL NOT IN (4, 7)" evalúa a NULL y la fila quedaría fuera de las
+			// pendientes, aunque en cartera migrada un estado nulo sea justamente el caso
+			// probable — mismo patrón que contarCuotasPendientesByPrestamo (~línea 322) y las
+			// otras cinco consultas de este archivo que ya hacen esta guarda.
 			String jpql = "SELECT d FROM DetallePrestamo d " +
 						 "WHERE d.prestamo.codigo = :codigoPrestamo " +
-						 "AND d.estado NOT IN (:estadoPagada, :estadoCanceladaAnticipada) " +
+						 "AND (d.estado IS NULL OR d.estado NOT IN (:estadoPagada, :estadoCanceladaAnticipada)) " +
 						 "ORDER BY d.numeroCuota";
 			
 			Query query = em.createQuery(jpql);
