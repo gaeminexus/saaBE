@@ -14,6 +14,11 @@ import jakarta.ejb.Timer;
  * Corre cada 30 minutos y pone al día el estado de las devoluciones que están esperando
  * que su orden de pago se resuelva en Cuentas por Pagar.
  *
+ * <p><b>DESACTIVADO TEMPORALMENTE (2026-08-27, hasta nueva orden)</b>: el desarrollo de
+ * devolución de aportes sigue en curso, así que el {@code @Schedule} de
+ * {@link #ejecutarSincronizacion(Timer)} está comentado y el timer no se registra. Ver ese
+ * método para cómo reactivarlo.</p>
+ *
  * <p><b>Por qué existe</b>: el sistema se comercializa después SIN el módulo {@code crd},
  * así que nada en CXP puede nombrar a CRD — no hay callback posible cuando el pago se
  * confirma o se rechaza. El aviso de vuelta va al revés: <b>CRD consulta</b>. Este timer es
@@ -50,10 +55,16 @@ public class ProcesoDevolucionAporteTimer {
      * del proceso ya registra las devoluciones con error y la recuperación es manual por el
      * endpoint.
      *
+     * <p><b>DESACTIVADO TEMPORALMENTE (2026-08-27)</b>: el desarrollo de devolución de
+     * aportes sigue en curso. Se comenta el {@code @Schedule} en vez de dejarlo activo con
+     * una bandera para que el timer no se registre en absoluto y no genere ruido en el log.
+     * La reconciliación manual vía {@code POST /rest/dvap/sincronizar} y la que corre el GET
+     * del listado siguen intactas. Para reactivar: descomentar la anotación de abajo.</p>
+     *
      * @param timer Timer que disparó la ejecución (lo inyecta el contenedor)
      */
-    @Schedule(hour = "*", minute = "*/30", second = "0", persistent = false,
-              info = "Reconciliación de devoluciones de aportes contra su orden de pago")
+    // @Schedule(hour = "*", minute = "*/30", second = "0", persistent = false,
+    //           info = "Reconciliación de devoluciones de aportes contra su orden de pago")
     public void ejecutarSincronizacion(Timer timer) {
         System.out.println("TIMER DEVOLUCION APORTES - Disparo automático: "
             + (timer != null ? timer.getInfo() : ""));
