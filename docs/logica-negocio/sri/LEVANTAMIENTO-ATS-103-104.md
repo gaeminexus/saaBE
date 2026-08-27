@@ -243,7 +243,7 @@ retenciones que le practicaron.
 `<RECAPS>` tarjetas de crédito · fideicomisos · rendimientos financieros.
 Las tres últimas **no aplican** a esta empresa.
 
-### 3.6 Tablas de referencia (documento «Catálogo ATS» del SRI)
+### 3.6 Tablas de referencia
 
 A tipos de transacción · 1 mes · 2 tipo de identificación · **3.x conceptos de retención de renta**
 · **4 tipos de comprobante** · **5 sustento del comprobante** · 6 distritos aduaneros ·
@@ -251,6 +251,49 @@ A tipos de transacción · 1 mes · 2 tipo de identificación · **3.x conceptos
 **11 porcentajes de retención de IVA** · **12 porcentajes de IVA** · **13 formas de pago** ·
 14 tipo de identificación proveedor · 15 tipo de pago · 16 país · 17 paraísos fiscales ·
 18 ingresos del exterior · 19 régimen fiscal del exterior · 20 tipo de emisión · 21 compensaciones.
+
+La ficha técnica trae las tablas embebidas al final, **pero varias están desactualizadas**: la
+Tabla 12 (porcentaje de IVA) sigue diciendo **12% desde 2017**, cuando la tarifa vigente es **15%**,
+y la Tabla 13 (formas de pago) viene con las columnas descuadradas en el PDF. **Para poblar los
+catálogos hay que descargar el documento «Catálogo ATS» aparte**, en sri.gob.ec →
+*Anexos y guías* → *Anexo Transaccional Simplificado (ATS)* → *Catálogo ATS*.
+
+#### Tabla 5 — Sustento del comprobante (sí es fiable y es la que bloquea)
+
+Extraída de la ficha técnica; sus vigencias no se han movido (la última incorporación es de 2020).
+
+| Código | Tipo de sustento |
+|---|---|
+| **01** | Crédito tributario para declaración de **IVA** (servicios y bienes distintos de inventarios y activos fijos) |
+| **02** | Costo o gasto para declaración de **IR** (servicios y bienes distintos de inventarios y activos fijos) |
+| 03 | **Activo fijo** — crédito tributario para declaración de IVA |
+| 04 | **Activo fijo** — costo o gasto para declaración de IR |
+| 05 | Liquidación de gastos de viaje, hospedaje y alimentación (a nombre de empleados) |
+| 06 | **Inventario** — crédito tributario para declaración de IVA |
+| 07 | **Inventario** — costo o gasto para declaración de IR |
+| 08 | Valor pagado para solicitar **reembolso de gasto** (intermediario) |
+| 09 | Reembolso por siniestros |
+| 10 | Distribución de dividendos, beneficios o utilidades |
+| 11 | Convenios de débito o recaudación para IFI's |
+| 12 | Impuestos y retenciones presuntivos |
+| 13 | Valores reconocidos por entidades del sector público a favor de sujetos pasivos |
+| 14 | Valores facturados por socios a operadoras de transporte |
+| 15 | Pagos por consumos propios y de terceros de **servicios digitales** |
+| 00 | Casos especiales (vigente solo hasta el 28/02/2015) |
+
+Para esta empresa el grueso caerá en **01, 02, 06, 07 y 08**; el 08 conecta directamente con el
+trabajo de reembolsos de gastos ya implementado en CxP.
+
+#### Tabla 11 — Porcentajes de retención de IVA
+
+| Código | % | Casilla del 104 |
+|---|---|---|
+| 9 | 10% | 721 |
+| 10 | 20% | 723 |
+| 1 | 30% | 725 |
+| 11 | 50% | 727 |
+| 2 | 70% | 729 |
+| 3 | 100% | 731 |
 
 ---
 
@@ -306,12 +349,17 @@ replicar el formulario.
 
 ---
 
-## 5. Lo que hay que confirmar con contabilidad antes de programar
+## 5. Confirmaciones del usuario (2026-08-27)
 
-1. **¿La empresa está obligada al ATS?** Por el perfil (sociedad obligada a llevar contabilidad y
-   emisor electrónico) casi seguro sí, pero conviene confirmarlo antes de invertir en la fase 4.
-2. **¿Aplica la casilla 621?** (retención de IVA de Petrocomercial y comercializadoras de
-   combustibles). El módulo Petro sugiere que hay que mirarlo.
-3. **Una declaración 103 y una 104 reales y recientes**, para contrastar el mapeo de casillas
-   contra lo que efectivamente se declara. Es lo que más reduce el riesgo de este punto.
-4. **El «Catálogo ATS» vigente** descargado del SRI, para poblar la fase 1 con los códigos exactos.
+| Pregunta | Respuesta |
+|---|---|
+| ¿La empresa está obligada a presentar el ATS? | **Sí.** La fase 4 se justifica. |
+| ¿Aplica la casilla 621 (retención de IVA de Petrocomercial)? | **No.** Queda fuera del alcance; no modelar nada para ella. |
+
+Sigue pendiente de contabilidad, y es lo que más riesgo quita:
+
+1. **Una declaración 103 y una 104 reales y recientes**, para contrastar el mapeo de casillas
+   contra lo que efectivamente se declara.
+2. **El «Catálogo ATS» vigente** descargado del SRI, porque las tablas embebidas en la ficha
+   técnica están desactualizadas (ver §3.6). Sin él, la fase 1 no se puede cerrar con códigos
+   exactos — salvo las Tablas 5 y 11, que sí quedaron verificadas aquí.
