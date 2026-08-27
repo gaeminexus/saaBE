@@ -74,4 +74,17 @@ public class CierreCajaChicaDaoServiceImpl extends EntityDaoImpl<CierreCajaChica
 		return total != null && total > 0;
 	}
 
+	@SuppressWarnings("unchecked")
+	public CierreCajaChica selectBorrador(Long idCaja) throws Throwable {
+		Query query = em.createQuery(
+				" select c from CierreCajaChica c "
+				+ " where c.cajaChica.codigo = :idCaja and c.estado = :borrador "
+				+ " order by c.codigo desc");
+		query.setParameter("idCaja", idCaja);
+		query.setParameter("borrador", Long.valueOf(EstadoCierreCajaChica.BORRADOR));
+		query.setMaxResults(1);
+		List<CierreCajaChica> resultado = query.getResultList();
+		return resultado.isEmpty() ? null : resultado.get(0);
+	}
+
 }

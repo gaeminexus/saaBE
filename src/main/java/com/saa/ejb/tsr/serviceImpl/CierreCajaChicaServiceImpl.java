@@ -193,7 +193,21 @@ public class CierreCajaChicaServiceImpl implements CierreCajaChicaService {
 		}
 
 		CajaChica caja = cierre.getCajaChica();
-		double saldoLibros = (cierre.getSaldoLibros() != null) ? cierre.getSaldoLibros() : 0.0;
+
+		// Recalcula en vez de confiar en lo que congeló prepararCierre: entre
+		// preparar y confirmar se pueden registrar o anular gastos dentro del
+		// periodo (el gasto sólo se bloquea contra un cierre CERRADO, no
+		// contra este BORRADOR — ver rechazaSiEnBorrador en
+		// MovimientoCajaChicaServiceImpl), y esos movimientos igual se marcan
+		// con este cierre más abajo. Sin recalcular, la diferencia contra el
+		// saldo físico —y el ajuste que de ahí sale— quedarían mal.
+		double saldoLibros = calcularSaldoHasta(caja.getCodigo(), cierre.getFechaFin());
+		double[] totales = calcularTotalesPeriodo(caja.getCodigo(), cierre.getFechaInicio(), cierre.getFechaFin());
+		cierre.setTotalGastos(totales[0]);
+		cierre.setTotalReposiciones(totales[1]);
+		cierre.setTotalAjustes(totales[2]);
+		cierre.setSaldoLibros(saldoLibros);
+
 		double diferencia = redondea(saldoFisico - saldoLibros);
 
 		if (Math.abs(diferencia) > TOLERANCIA) {

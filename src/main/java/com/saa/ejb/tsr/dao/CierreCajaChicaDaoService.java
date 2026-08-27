@@ -38,4 +38,13 @@ public interface CierreCajaChicaDaoService extends EntityDao<CierreCajaChica> {
 	 */
 	boolean existeBorrador(Long idCaja) throws Throwable;
 
+	/**
+	 * El cierre en estado BORRADOR de la caja, si tiene uno (a lo sumo uno,
+	 * garantizado por {@code CierreCajaChicaServiceImpl.prepararCierre}).
+	 * @param idCaja : Id de la caja chica
+	 * @return       : Cierre BORRADOR, o null si no tiene ninguno
+	 * @throws Throwable : Excepcion
+	 */
+	CierreCajaChica selectBorrador(Long idCaja) throws Throwable;
+
 }

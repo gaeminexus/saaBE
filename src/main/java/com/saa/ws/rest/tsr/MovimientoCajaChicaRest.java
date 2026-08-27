@@ -185,7 +185,10 @@ public class MovimientoCajaChicaRest {
      *   "fecha": "2026-08-27", "descripcion": "Apertura fondo caja Matriz",
      *   "idUsuario": 5
      * }
-     * `formaPago`: 1=Efectivo (no soportado), 2=Transferencia, 3=Cheque, 4=Débito automático.
+     * `formaPago`: **sólo 3 (Cheque) o 4 (Débito automático)**. La caja chica no tiene
+     * cuenta bancaria externa de destino, así que transferencia (2) y efectivo (1) se
+     * rechazan explícitamente — de paso, cheque y débito automático contabilizan en el
+     * acto, así que el saldo nunca sube antes de que el dinero realmente entre.
      */
     @POST
     @Path("/apertura")

@@ -169,6 +169,7 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 			throw new IncomeException("La fecha del gasto (" + fechaGasto + ") debe ser posterior al "
 					+ "último cierre de la caja (" + ultimoCierre.getFechaFin() + ").");
 		}
+		rechazaSiEnBorrador(idCaja, fechaGasto, "el gasto");
 
 		MovimientoCajaChica movimiento = new MovimientoCajaChica();
 		movimiento.setCajaChica(caja);
@@ -202,6 +203,34 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 		System.out.println("✓ Gasto de caja chica registrado: id=" + movimiento.getCodigo()
 				+ " | asiento=" + asientoGenerado.getNumeroAlterno());
 		return movimiento;
+	}
+
+	/**
+	 * Rechaza si la caja tiene un cierre en BORRADOR cuyo periodo
+	 * [fechaInicio, fechaFin] contiene la fecha indicada. Un BORRADOR ya
+	 * congeló sus totales en {@code prepararCierre}; registrar o anular un
+	 * movimiento dentro de su rango los desactualiza en silencio hasta que
+	 * {@code confirmarCierre} los recalcula — pero mientras tanto el arqueo
+	 * en pantalla estaría mostrando números que ya no son ciertos.
+	 * @param idCaja      : Id de la caja chica
+	 * @param fecha       : Fecha del movimiento a registrar/anular
+	 * @param descripcion : Qué se está intentando hacer, para el mensaje ("el gasto", "el movimiento N")
+	 * @throws Throwable  : IncomeException si hay un BORRADOR que cubre esa fecha
+	 */
+	private void rechazaSiEnBorrador(Long idCaja, LocalDate fecha, String descripcion) throws Throwable {
+		if (fecha == null) {
+			return;
+		}
+		CierreCajaChica borrador = cierreCajaChicaDaoService.selectBorrador(idCaja);
+		if (borrador == null || borrador.getFechaInicio() == null || borrador.getFechaFin() == null) {
+			return;
+		}
+		if (!fecha.isBefore(borrador.getFechaInicio()) && !fecha.isAfter(borrador.getFechaFin())) {
+			throw new IncomeException("Hay un cierre en preparación (BORRADOR N° " + borrador.getCodigo()
+					+ ") que cubre del " + borrador.getFechaInicio() + " al " + borrador.getFechaFin()
+					+ ": no se puede registrar ni anular " + descripcion + " en ese rango hasta "
+					+ "confirmar o anular el cierre.");
+		}
 	}
 
 	private ProductoPago validaProducto(Long idProducto) throws Throwable {
@@ -249,6 +278,8 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 			throw new IncomeException("El movimiento " + idMovimiento + " ya quedó incluido en el "
 					+ "cierre N° " + movimiento.getCierre().getCodigo() + ": no se puede anular.");
 		}
+		rechazaSiEnBorrador(movimiento.getCajaChica().getCodigo(), movimiento.getFecha(),
+				"el movimiento " + idMovimiento);
 
 		Long idAsiento = (movimiento.getAsiento() != null) ? movimiento.getAsiento().getCodigo() : null;
 		if (idAsiento != null) {
@@ -293,13 +324,26 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 
 		String etiqueta = (tipo == TipoMovimientoCajaChica.APERTURA) ? "apertura" : "reposición";
 		System.out.println("=== registrar " + etiqueta + " caja chica | caja=" + idCaja
-				+ " | valor=" + valor + " ===");
+				+ " | valor=" + valor + " | formaPago=" + formaPago + " ===");
 
 		if (valor == null || valor <= 0) {
 			throw new IncomeException("El valor de la " + etiqueta + " debe ser mayor a cero.");
 		}
 		if (idCuentaBancariaOrigen == null) {
 			throw new IncomeException("Debe indicar la cuenta bancaria de origen.");
+		}
+		// La caja chica no tiene cuenta bancaria externa de destino: la
+		// transferencia (formaPago=2) la exige y falla con un mensaje que
+		// habla del archivo del banco, sin decir nada de caja chica. Cheque y
+		// débito automático además contabilizan en el acto, así que el saldo
+		// nunca sube antes de que el dinero realmente entre.
+		long fp = (formaPago != null) ? formaPago.longValue()
+				: (debitoAutomatico ? com.saa.rubros.FormaPagoProgramado.DEBITO_AUTOMATICO
+						: com.saa.rubros.FormaPagoProgramado.TRANSFERENCIA);
+		if (fp != com.saa.rubros.FormaPagoProgramado.CHEQUE
+				&& fp != com.saa.rubros.FormaPagoProgramado.DEBITO_AUTOMATICO) {
+			throw new IncomeException("La reposición de caja chica debe pagarse con cheque o "
+					+ "débito automático: la caja no tiene cuenta bancaria de destino.");
 		}
 
 		CajaChica caja = cajaChicaService.selectById(idCaja);
@@ -326,6 +370,13 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 		}
 
 		LocalDate fechaMovimiento = (fecha != null) ? fecha : LocalDate.now();
+		CierreCajaChica ultimoCierre = cierreCajaChicaDaoService.selectUltimoCerrado(idCaja);
+		if (ultimoCierre != null && ultimoCierre.getFechaFin() != null
+				&& !fechaMovimiento.isAfter(ultimoCierre.getFechaFin())) {
+			throw new IncomeException("La fecha de la " + etiqueta + " (" + fechaMovimiento
+					+ ") debe ser posterior al último cierre de la caja (" + ultimoCierre.getFechaFin() + ").");
+		}
+		rechazaSiEnBorrador(idCaja, fechaMovimiento, "la " + etiqueta);
 
 		MovimientoCajaChica movimiento = new MovimientoCajaChica();
 		movimiento.setCajaChica(caja);

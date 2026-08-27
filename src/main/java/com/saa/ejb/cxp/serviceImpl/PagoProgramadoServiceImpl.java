@@ -1081,6 +1081,17 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 				pago.setEstado(Long.valueOf(EstadoPagoProgramado.RECHAZADO));
 				pago.setMotivo(respuesta.getMotivo() != null
 						? respuesta.getMotivo() : "Rechazado por la entidad financiera");
+				try {
+					anularMovimientoCajaChicaSiAplica(pago, "PAGO RECHAZADO POR EL BANCO: "
+							+ nvl(respuesta.getMotivo(), "sin motivo informado"));
+				} catch (RuntimeException e) {
+					// No abortar el procesamiento del resto del archivo por un
+					// movimiento de caja chica que no se pudo anular (p.ej. ya
+					// quedó en un cierre confirmado); el pago igual se marca
+					// RECHAZADO, sólo queda el movimiento sin anular.
+					System.err.println("⚠ No se pudo anular el movimiento de caja chica del pago "
+							+ pago.getId() + ": " + e.getMessage());
+				}
 				pagoProgramadoDaoService.save(pago, pago.getId());
 				rechazados++;
 			}
@@ -1264,6 +1275,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 
 		pago.setEstado(Long.valueOf(EstadoPagoProgramado.ANULADO));
 		pago.setMotivo(motivo.trim());
+		anularMovimientoCajaChicaSiAplica(pago, "PAGO ANULADO: " + motivo.trim());
 		pagoProgramadoDaoService.save(pago, pago.getId());
 		em.flush();
 
@@ -1956,21 +1968,56 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		// La caja chica además anula su propio movimiento: no queda como "activo
 		// sin asiento" (no existe ese estado para ella, a diferencia del origen
 		// externo genérico donde un pago sin desglose es un caso previsto).
-		if (com.saa.rubros.OrigenPagoExterno.TSR_CAJA_CHICA.equals(pago.getOrigenExterno())) {
-			com.saa.model.tsr.MovimientoCajaChica movimiento =
-					em.find(com.saa.model.tsr.MovimientoCajaChica.class, pago.getIdOrigen());
-			if (movimiento != null) {
-				movimiento.setEstado(Long.valueOf(com.saa.rubros.EstadoMovimientoCajaChica.ANULADO));
-				movimiento.setMotivoAnulacion("PAGO REVERSADO: " + motivo);
-				movimiento.setAsiento(null);
-				em.merge(movimiento);
-				System.out.println("✓ Movimiento de caja chica " + movimiento.getCodigo()
-						+ " anulado por reverso del pago.");
-			}
-		}
+		anularMovimientoCajaChicaSiAplica(pago, "PAGO REVERSADO: " + motivo);
 
 		System.out.println("✓ Contabilidad del pago de origen externo " + pago.getId()
 				+ " reversada. Motivo: " + motivo);
+	}
+
+	/**
+	 * Anula el {@code MovimientoCajaChica} asociado a un pago, si el pago es
+	 * de origen {@code TSR_CAJA_CHICA} y el movimiento no está ya anulado.
+	 * Único punto que lo hace: lo llaman la reversión de un pago confirmado
+	 * ({@code revertirContabilidadOrigenExterno}), la anulación de un pago
+	 * todavía no confirmado ({@code anularPago}) y el rechazo del banco
+	 * ({@code procesarRespuestaBanco}). Defensivo: hoy inalcanzable en la
+	 * práctica porque el pago de caja chica nace CONFIRMADO (sólo admite
+	 * cheque o débito automático, nunca transferencia), así que nunca llega
+	 * a pasar por {@code anularPago} ni por {@code EN_ARCHIVO}/rechazo de
+	 * banco — se deja por si esa restricción cambia a futuro.
+	 * <p>Rechaza si el movimiento ya quedó incluido en un cierre confirmado
+	 * ({@code movimiento.getCierre() != null}): anularlo alteraría en
+	 * silencio un periodo ya cerrado. El llamador debe propagar esta
+	 * excepción salvo en el rechazo por lote, donde se captura para no
+	 * abortar el procesamiento del archivo completo.
+	 * @param pago   : Pago que se está anulando/reversando/rechazando
+	 * @param motivo : Motivo a grabar en el movimiento
+	 * @throws IncomeException : Si el movimiento pertenece a un cierre confirmado
+	 */
+	private void anularMovimientoCajaChicaSiAplica(PagoProgramado pago, String motivo) {
+		if (!com.saa.rubros.OrigenPagoExterno.TSR_CAJA_CHICA.equals(pago.getOrigenExterno())) {
+			return;
+		}
+		com.saa.model.tsr.MovimientoCajaChica movimiento =
+				em.find(com.saa.model.tsr.MovimientoCajaChica.class, pago.getIdOrigen());
+		if (movimiento == null) {
+			return;
+		}
+		if (movimiento.getEstado() != null
+				&& movimiento.getEstado().intValue() == com.saa.rubros.EstadoMovimientoCajaChica.ANULADO) {
+			return;
+		}
+		if (movimiento.getCierre() != null) {
+			throw new IncomeException("El movimiento de caja chica " + movimiento.getCodigo()
+					+ " pertenece a un cierre confirmado (N° " + movimiento.getCierre().getCodigo()
+					+ "): primero hay que anular ese cierre.");
+		}
+		movimiento.setEstado(Long.valueOf(com.saa.rubros.EstadoMovimientoCajaChica.ANULADO));
+		movimiento.setMotivoAnulacion(motivo);
+		movimiento.setAsiento(null);
+		em.merge(movimiento);
+		System.out.println("✓ Movimiento de caja chica " + movimiento.getCodigo()
+				+ " anulado. Motivo: " + motivo);
 	}
 
 	/**

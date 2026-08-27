@@ -86,8 +86,8 @@ denormalizado es la propia caja (`nombre` + identificación sintética `CAJACHIC
 - **Apertura**: rechaza si la caja ya tiene saldo (`saldo > 0`) — para eso está la apertura
   MIGRADA de `CajaChicaService.registrar` (ver §7), que no pasa por el banco.
 
-El pago se confirma igual que cualquier otro (transferencia queda REGISTRADO a la espera del
-lote/archivo; cheque y débito automático nacen CONFIRMADOS). Al confirmarse,
+El pago se confirma igual que cualquier otro (cheque y débito automático nacen CONFIRMADOS,
+por eso son las únicas formas admitidas — ver nota más abajo). Al confirmarse,
 `PagoProgramadoServiceImpl.contabilizarPagoCajaChica` (rama especial de
 `contabilizarPagoOrigenExterno`, **no usa el desglose de PGS.DPGT**) genera el asiento con
 `AsientoContableServiceImpl.generarAsientoReposicionCajaChica`:
@@ -100,15 +100,33 @@ lote/archivo; cheque y débito automático nacen CONFIRMADOS). Al confirmarse,
   `CHEQUES_GIRADOS_Y_NO_COBRADOS` si hay cheque, `TRANSFERENCIAS_DEBITOS_EN_TRANSITO` si no.
 - El asiento se guarda tanto en `pago.asiento` como en `movimiento.asiento`.
 
-**Reversión**: `POST /pgtr/revertirConfirmado/{id}` anula el asiento y el movimiento bancario
-como en cualquier origen externo, y además dobla el `MovimientoCajaChica` a ANULADO con
-`motivoAnulacion = "PAGO REVERSADO: {motivo}"` y `asiento = null`.
+**Reversión / cancelación**: el `MovimientoCajaChica` de una apertura/reposición se anula
+(estado ANULADO, `asiento = null`) en los tres puntos donde el `PagoProgramado` asociado puede
+dejar de ser válido — vía el método privado
+`PagoProgramadoServiceImpl.anularMovimientoCajaChicaSiAplica` (idempotente, no hace nada si ya
+estaba ANULADO):
 
-**Nota sobre formas de pago**: transferencia (`formaPago=2`) exige una cuenta bancaria externa
-de destino que una caja chica no tiene — en la práctica una apertura/reposición se paga con
-**cheque** o **débito automático**, no con transferencia pura. Si se intenta con transferencia
-sin datos de banco externo, el circuito de pagos lo rechaza con el mismo mensaje que cualquier
-otro pago de origen externo mal parametrizado.
+- `POST /pgtr/revertirConfirmado/{id}` (pago ya CONFIRMADO): `motivoAnulacion = "PAGO REVERSADO: {motivo}"`. Si falla, propaga.
+- `POST /pgtr/anular/{id}` (pago aún no confirmado, p.ej. REGISTRADO): `motivoAnulacion = "PAGO ANULADO: {motivo}"`. Si falla, propaga.
+- Rechazo del banco al procesar el lote/archivo: `motivoAnulacion = "PAGO RECHAZADO POR EL BANCO: {motivo}"`. Si falla, se captura y sólo se registra en log — no aborta el resto del archivo.
+
+Las dos últimas vías son **defensivas, hoy inalcanzables en la práctica**: el pago de caja
+chica nace CONFIRMADO (sólo admite cheque o débito automático — ver nota más abajo), así que
+nunca llega a `anularPago` ni al rechazo de un lote. Se dejan por si esa restricción cambia a
+futuro.
+
+El método rechaza (`IncomeException`) si el movimiento ya quedó incluido en un cierre
+confirmado (`movimiento.getCierre() != null`): anularlo alteraría en silencio un periodo ya
+cerrado; primero hay que anular ese cierre (`POST /crch/anular/{id}`).
+
+**Nota sobre formas de pago**: `registrarPagoBanco` valida al inicio que `formaPago` sea
+**3 (Cheque) o 4 (Débito automático)** — si no, rechaza con
+`"La reposición de caja chica debe pagarse con cheque o débito automático: la caja no tiene
+cuenta bancaria de destino."` Transferencia (`formaPago=2`) y efectivo (`formaPago=1`) se
+descartan de forma explícita y temprana, no como efecto indirecto del circuito de pagos: una
+caja chica no tiene cuenta bancaria externa de destino que una transferencia pudiera usar, y
+de paso cheque/débito automático contabilizan de inmediato (nacen CONFIRMADOS), así que el
+saldo nunca sube antes de que el dinero realmente entre a la caja.
 
 ## 4. Adjuntos
 
@@ -126,8 +144,13 @@ inicio del periodo), `totalGastos`, `totalReposiciones` (apertura + reposición)
 `totalAjustes` (positivos − negativos) del periodo, y `saldoLibros` (saldo hasta la fecha de
 corte). Rechaza si la caja ya tiene un BORRADOR pendiente.
 
-**Confirmar** (`POST /crch/confirmar/{id}`): recibe el saldo físico contado.
-`diferencia = saldoFisico − saldoLibros`. Si `|diferencia| > 0.01`:
+**Confirmar** (`POST /crch/confirmar/{id}`): recibe el saldo físico contado. Antes de comparar,
+**recalcula** `saldoLibros`, `totalGastos`, `totalReposiciones` y `totalAjustes` desde los
+movimientos vigentes a la fecha de corte (no usa los valores congelados en `preparar`) y los
+regraba en el cierre — un gasto puede haberse registrado o anulado entre `preparar` y
+`confirmar`, y usar el valor congelado habría comparado el saldo físico contra un `saldoLibros`
+desactualizado. `diferencia = saldoFisico − saldoLibros` (con el valor recalculado). Si
+`|diferencia| > 0.01`:
 
 - Exige `idPlanCuentaDiferencia` (la cuenta de faltantes/sobrantes la elige el usuario en la
   pantalla del cierre; no se parametriza en la caja).
@@ -144,6 +167,13 @@ recién creado (su fecha cae dentro del periodo). Estado pasa a CERRADO.
 **Anular** (`POST /crch/anular/{id}`): sólo el **último** cierre CERRADO de la caja. Desmarca
 el cierre de todos sus movimientos; si hubo ajuste, anula su asiento y el propio movimiento de
 ajuste (queda ANULADO). El cierre pasa a ANULADO con el motivo anexado a su observación.
+
+**Mientras hay un BORRADOR pendiente**: registrar un gasto (`POST /mvch/gasto`), anular un
+movimiento (`POST /mvch/anular/{id}`) o registrar una apertura/reposición
+(`POST /mvch/apertura`, `POST /mvch/reposicion`) con fecha dentro del rango
+`[fechaInicio, fechaFin]` del BORRADOR se rechaza — de lo contrario el `saldoLibros` congelado
+en `preparar` quedaría desfasado frente a lo que el usuario ve en pantalla mientras cuenta el
+efectivo. El bloqueo se libera al confirmar o anular el BORRADOR.
 
 **Regla derivada**: mientras un movimiento tenga `cierre != null`, no se puede anular
 (`POST /mvch/anular/{id}` lo rechaza) — hay que anular el cierre primero.

@@ -134,6 +134,36 @@ public class CajaChicaServiceImpl implements CajaChicaService {
 					+ "' en esta empresa. Elija otro nombre.");
 		}
 
+		// El REST arma empresa/planCuenta/custodio como instancias nuevas con
+		// sólo el código (no tiene forma de cargar la entidad completa desde
+		// un Map plano). Se resuelven aquí con em.find: un id inexistente da
+		// un IncomeException legible en vez de reventar como ORA-02291 al
+		// grabar la FK, y la respuesta JSON queda con las entidades completas
+		// en lugar de objetos huecos.
+		com.saa.model.scp.Empresa empresa = em.find(com.saa.model.scp.Empresa.class, caja.getEmpresa().getCodigo());
+		if (empresa == null) {
+			throw new IncomeException("No se encontró la empresa con ID: " + caja.getEmpresa().getCodigo());
+		}
+		caja.setEmpresa(empresa);
+
+		com.saa.model.cnt.PlanCuenta planCuenta =
+				em.find(com.saa.model.cnt.PlanCuenta.class, caja.getPlanCuenta().getCodigo());
+		if (planCuenta == null) {
+			throw new IncomeException("No se encontró la cuenta contable con ID: "
+					+ caja.getPlanCuenta().getCodigo());
+		}
+		caja.setPlanCuenta(planCuenta);
+
+		if (caja.getCustodio() != null && caja.getCustodio().getCodigo() != null) {
+			com.saa.model.scp.Usuario custodio = em.find(com.saa.model.scp.Usuario.class,
+					caja.getCustodio().getCodigo());
+			if (custodio == null) {
+				throw new IncomeException("No se encontró el usuario custodio con ID: "
+						+ caja.getCustodio().getCodigo());
+			}
+			caja.setCustodio(custodio);
+		}
+
 		caja.setNombre(caja.getNombre().trim());
 		if (caja.getPorcentajeAlerta() == null) {
 			caja.setPorcentajeAlerta(20.0);
