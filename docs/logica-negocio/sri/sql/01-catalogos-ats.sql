@@ -47,21 +47,46 @@
 --   del SRI ("Nota de debito operadora transporte / socio"). Se cargan tal
 --   como vienen: corregir un catalogo a ojo es peor que el error.
 --
+--
+-- ESTE SCRIPT SE PUEDE VOLVER A EJECUTAR SIN MIEDO
+--   PGS.LSRI y PGS.TSRI NO tienen clave primaria, ni indice unico, ni
+--   ningun indice: nada impide insertar la misma fila dos veces. Ejecutar
+--   este script dos veces DUPLICABA el catalogo en silencio (comprobado:
+--   cuatro pasadas dejaron 76 filas donde debia haber 19). Por eso el
+--   BLOQUE 1 empieza borrando el rango propio antes de insertar.
+--   El DELETE toca UNICAMENTE ID >= 475 en TSRI e ID >= 25 en LSRI, que es
+--   territorio exclusivo del ATS; las 474 + 24 filas preexistentes no se
+--   tocan. Verificado ademas que esos ID preexistentes SI son unicos.
+--
 -- Ojo: PGS.LSRI.ID y PGS.TSRI.ID NO son identity, van explicitos.
 -- SQL puro. Ejecutar por bloques revisando los SELECT de control.
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
 -- BLOQUE 0: control previo
---   Debe dar MAX_LSRI = 24, MAX_TSRI = 474 y la ultima consulta vacia.
---   Si no coinciden, DETENERSE: los ID de abajo chocarian.
+--   En una base limpia debe dar MAX_LSRI = 24 y MAX_TSRI = 474.
+--   Si dan MAS y el excedente NO son filas del ATS (TABLA 701..707), hay
+--   otro catalogo ocupando ese rango: DETENERSE y avisar, porque el
+--   BLOQUE 1 borra por rango de ID. Si el excedente es del ATS, es una
+--   reejecucion y se puede seguir: el BLOQUE 1 lo limpia.
 -- ---------------------------------------------------------------------
 SELECT MAX(ID) AS MAX_LSRI FROM PGS.LSRI;
 SELECT MAX(ID) AS MAX_TSRI FROM PGS.TSRI;
 SELECT TABLA, DETALLE FROM PGS.LSRI WHERE TABLA IN ('701','702','703','704','705','706','707');
 
 -- ---------------------------------------------------------------------
--- BLOQUE 1: declaracion de los siete catalogos (PGS.LSRI, ID 25..31)
+-- BLOQUE 1: limpieza del rango propio (hace el script repetible)
+--   Sin esto, una segunda pasada duplica el catalogo sin avisar.
+--   Si las dos consultas de control devuelven 0, es la primera ejecucion.
+-- ---------------------------------------------------------------------
+SELECT COUNT(*) AS TSRI_ATS_PREVIAS FROM PGS.TSRI WHERE ID >= 475;
+SELECT COUNT(*) AS LSRI_ATS_PREVIAS FROM PGS.LSRI WHERE ID >= 25;
+
+DELETE FROM PGS.TSRI WHERE ID >= 475;
+DELETE FROM PGS.LSRI WHERE ID >= 25;
+
+-- ---------------------------------------------------------------------
+-- BLOQUE 2: declaracion de los siete catalogos (PGS.LSRI, ID 25..31)
 -- ---------------------------------------------------------------------
 INSERT INTO PGS.LSRI (ID, TABLA, DETALLE, ESTADO) VALUES (25, '701', 'Cat ATS - T2 - Tipo de identificacion por transaccion', 1);
 INSERT INTO PGS.LSRI (ID, TABLA, DETALLE, ESTADO) VALUES (26, '702', 'Cat ATS - T4 - Tipos de comprobante autorizados', 1);
@@ -72,7 +97,7 @@ INSERT INTO PGS.LSRI (ID, TABLA, DETALLE, ESTADO) VALUES (30, '706', 'Cat ATS - 
 INSERT INTO PGS.LSRI (ID, TABLA, DETALLE, ESTADO) VALUES (31, '707', 'Cat ATS - T15 - Tipo de pago residente/no residente', 1);
 
 -- ---------------------------------------------------------------------
--- BLOQUE 2: valores vigentes (PGS.TSRI, ID 475..565)
+-- BLOQUE 3: valores vigentes (PGS.TSRI, ID 475..565)
 -- ---------------------------------------------------------------------
 -- Cat ATS - T2 - Tipo de identificacion por transaccion  (LSRI.ID=25, TABLA=701) -- 19 valores vigentes
 INSERT INTO PGS.TSRI (ID, LSRI, CODIGO, DETALLE, PORCENTAJE, ESTADO) VALUES (475, 25, '01', 'COMPRA - RUC', NULL, 1);
@@ -180,7 +205,7 @@ INSERT INTO PGS.TSRI (ID, LSRI, CODIGO, DETALLE, PORCENTAJE, ESTADO) VALUES (564
 INSERT INTO PGS.TSRI (ID, LSRI, CODIGO, DETALLE, PORCENTAJE, ESTADO) VALUES (565, 31, '02', 'PAGO A NO RESIDENTE', NULL, 1);
 
 -- ---------------------------------------------------------------------
--- BLOQUE 3: control final
+-- BLOQUE 4: control final
 --   Esperado: 701=19, 702=39, 703=15, 704=6, 705=8, 706=2, 707=2  (91 filas)
 -- ---------------------------------------------------------------------
 SELECT L.TABLA, L.DETALLE, COUNT(T.ID) AS VALORES
