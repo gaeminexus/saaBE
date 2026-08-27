@@ -43,6 +43,6 @@ Tampoco aparecian antes de la correccion, y por la misma causa: un anticipo **co
 
 En el ejemplo, el cliente tiene dos anticipos disponibles de $30,00 y $100,00: la tarjeta suma **$130,00** y las dos fichas aparecen en el detalle.
 
-## Nota conocida
+## Nota
 
-El aviso amarillo *"El estado de cuenta se muestra incompleto"* aparece cuando el titular **no tiene** notas de crédito, notas de débito o anticipos. No indica una falla: el sistema informa "sin registros" de una forma que la pantalla todavía no distingue de un error. Los documentos que sí existen se muestran correctamente. Corrección pendiente en el frontend.
+Durante las pruebas aparecía un aviso amarillo *"El estado de cuenta se muestra incompleto"* cuando el titular no tenía notas de crédito, notas de débito o anticipos. No era una falla: el sistema informa "sin registros" con un mensaje que la pantalla no distinguía de un error. **Ya está corregido**, y el aviso solo aparece ante un problema real.
