@@ -21,6 +21,7 @@ import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 
 /**
  * Entity Egreso.
@@ -159,6 +160,25 @@ public class Egreso implements Serializable {
     @Column(name = "EGRSFCRG")
     private LocalDateTime fechaRegistro;
 
+    /**
+     * Forma de pago del PagoProgramado más reciente no anulado del egreso
+     * (ver {@link com.saa.rubros.FormaPagoProgramado}). No es una columna de
+     * TSR.EGRS: el egreso solo guarda debitoAutomatico como espejo; la forma
+     * de pago real (incluido cheque) vive en PGS.PGTR. Lo puebla
+     * {@code EgresoServiceImpl.listar} en una sola consulta por página, no se
+     * persiste.
+     */
+    @Transient
+    private Long formaPago;
+
+    /**
+     * Número del cheque con el que se pagó el egreso, si lo hubo. Igual que
+     * {@link #formaPago}, se resuelve desde el PagoProgramado asociado y no
+     * se persiste.
+     */
+    @Transient
+    private Long numeroCheque;
+
     // ── Getters y Setters ────────────────────────────────────────────────────
 
     public Long getId() { return id; }
@@ -199,4 +219,10 @@ public class Egreso implements Serializable {
 
     public LocalDateTime getFechaRegistro() { return fechaRegistro; }
     public void setFechaRegistro(LocalDateTime fechaRegistro) { this.fechaRegistro = fechaRegistro; }
+
+    public Long getFormaPago() { return formaPago; }
+    public void setFormaPago(Long formaPago) { this.formaPago = formaPago; }
+
+    public Long getNumeroCheque() { return numeroCheque; }
+    public void setNumeroCheque(Long numeroCheque) { this.numeroCheque = numeroCheque; }
 }

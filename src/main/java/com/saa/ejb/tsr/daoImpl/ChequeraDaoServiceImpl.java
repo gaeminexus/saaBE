@@ -8,13 +8,17 @@
  */
 package com.saa.ejb.tsr.daoImpl;
 
+import java.util.List;
+
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tsr.dao.ChequeraDaoService;
 import com.saa.model.tsr.Chequera;
+import com.saa.rubros.EstadoChequera;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.Query;
 
 /**
  * @author GaemiSoft
@@ -43,5 +47,42 @@ public class ChequeraDaoServiceImpl extends EntityDaoImpl<Chequera> implements C
 							"rubroEstadoChequeraP",
 							"rubroEstadoChequeraH"};
 	}
-	
+
+	@SuppressWarnings("unchecked")
+	public Long selectMaxFinalizaByCuenta(Long idCuentaBancaria) throws Throwable {
+		System.out.println("Ingresa al Metodo selectMaxFinalizaByCuenta con cuenta: " + idCuentaBancaria);
+		Query query = em.createQuery(
+				" select max(c.finaliza) from Chequera c " +
+				" where c.cuentaBancaria.codigo = :idCuenta " +
+				" and (c.rubroEstadoChequeraH is null or c.rubroEstadoChequeraH <> :anulada)");
+		query.setParameter("idCuenta", idCuentaBancaria);
+		query.setParameter("anulada", Long.valueOf(EstadoChequera.ANULADA));
+		return (Long) query.getSingleResult();
+	}
+
+	public boolean existeSolape(Long idCuentaBancaria, Long comienza, Long finaliza) throws Throwable {
+		System.out.println("Ingresa al Metodo existeSolape con cuenta: " + idCuentaBancaria
+				+ " | rango: " + comienza + "-" + finaliza);
+		Query query = em.createQuery(
+				" select count(c) from Chequera c " +
+				" where c.cuentaBancaria.codigo = :idCuenta " +
+				" and (c.rubroEstadoChequeraH is null or c.rubroEstadoChequeraH <> :anulada) " +
+				" and c.comienza <= :finaliza and c.finaliza >= :comienza");
+		query.setParameter("idCuenta", idCuentaBancaria);
+		query.setParameter("anulada", Long.valueOf(EstadoChequera.ANULADA));
+		query.setParameter("comienza", comienza);
+		query.setParameter("finaliza", finaliza);
+		Long total = (Long) query.getSingleResult();
+		return total != null && total > 0;
+	}
+
+	@SuppressWarnings("unchecked")
+	public List<Chequera> selectByCuentaBancaria(Long idCuentaBancaria) throws Throwable {
+		System.out.println("Ingresa al Metodo selectByCuentaBancaria con cuenta: " + idCuentaBancaria);
+		Query query = em.createQuery(
+				" select c from Chequera c where c.cuentaBancaria.codigo = :idCuenta order by c.comienza");
+		query.setParameter("idCuenta", idCuentaBancaria);
+		return query.getResultList();
+	}
+
 }

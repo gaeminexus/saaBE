@@ -8,6 +8,8 @@
  */
 package com.saa.ejb.tsr.dao;
 
+import java.util.List;
+
 import com.saa.basico.util.EntityDao;
 import com.saa.model.tsr.Chequera;
 
@@ -16,9 +18,36 @@ import jakarta.ejb.Local;
 /**
  * @author GaemiSoft.
  *
- * Dao Sevice Chequera.  
+ * Dao Sevice Chequera.
  */
 @Local
 public interface ChequeraDaoService extends EntityDao<Chequera> {
+
+	/**
+	 * Mayor número final entre las chequeras no anuladas de la cuenta.
+	 * @param idCuentaBancaria	: Id de la cuenta bancaria
+	 * @return					: Mayor finaliza, o null si la cuenta no tiene chequeras
+	 * @throws Throwable		: Excepcion
+	 */
+	Long selectMaxFinalizaByCuenta(Long idCuentaBancaria) throws Throwable;
+
+	/**
+	 * Indica si el rango [comienza, finaliza] se solapa con alguna chequera no
+	 * anulada de la misma cuenta.
+	 * @param idCuentaBancaria	: Id de la cuenta bancaria
+	 * @param comienza			: Número inicial del rango a validar
+	 * @param finaliza			: Número final del rango a validar
+	 * @return					: true si hay solape
+	 * @throws Throwable		: Excepcion
+	 */
+	boolean existeSolape(Long idCuentaBancaria, Long comienza, Long finaliza) throws Throwable;
+
+	/**
+	 * Chequeras de una cuenta bancaria, ordenadas por su número inicial.
+	 * @param idCuentaBancaria	: Id de la cuenta bancaria
+	 * @return					: Chequeras de la cuenta
+	 * @throws Throwable		: Excepcion
+	 */
+	List<Chequera> selectByCuentaBancaria(Long idCuentaBancaria) throws Throwable;
 
 }

@@ -74,7 +74,9 @@ public class AnticipoProveedorRest {
      *   "idCuentaDestinoTitular": 8,           (cuenta del proveedor; obligatoria salvo débito automático)
      *   "debitoAutomatico":       false,       (opcional, default false)
      *   "numeroDoc":              "REF-001",   (opcional)
-     *   "observacion":            "..."        (opcional)
+     *   "observacion":            "...",       (opcional)
+     *   "formaPago":              3            (opcional: 1=Efectivo 2=Transferencia 3=Cheque
+     *                                            4=Débito automático; default 2 o 4 según debitoAutomatico)
      * }
      * </pre>
      *
@@ -99,12 +101,13 @@ public class AnticipoProveedorRest {
             String observacion          = getString(params, "observacion");
             Long idCuentaDestinoTitular = getLong(params, "idCuentaDestinoTitular");
             boolean debitoAutomatico    = getBoolean(params, "debitoAutomatico");
+            Long formaPago              = getLong(params, "formaPago");
 
             Map<String, Object> resultado = anticiPoProveedorService.procesarAnticipo(
                     idTitular, valor, idCuentaBancaria,
                     idEmpresa, idUsuario, fechaAnticipo,
                     numeroDoc, observacion,
-                    idCuentaDestinoTitular, debitoAutomatico);
+                    idCuentaDestinoTitular, debitoAutomatico, formaPago);
 
             boolean exito = Boolean.TRUE.equals(resultado.get("exito"));
             return Response.status(exito ? Response.Status.CREATED : Response.Status.INTERNAL_SERVER_ERROR)
@@ -392,8 +395,10 @@ public class AnticipoProveedorRest {
     private boolean getBoolean(Map<String, Object> params, String key) {
         Object v = params.get(key);
         if (v == null) return false;
-        if (v instanceof Boolean) return (Boolean) v;
-        return Boolean.parseBoolean(v.toString());
+        if (v instanceof Boolean) return ((Boolean) v).booleanValue();
+        if (v instanceof Number) return ((Number) v).intValue() == 1;
+        String texto = v.toString().trim();
+        return "true".equalsIgnoreCase(texto) || "1".equals(texto);
     }
 
     private Response error500(String mensaje) {

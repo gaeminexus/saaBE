@@ -141,6 +141,15 @@ public class CuentaBancaria implements Serializable {
     @Column(name = "CNBCCBCR")
     private Long cobroCredito;
 
+    /**
+     * Maneja chequera: 0=No, 1=Si. Habilita la forma de pago CHEQUE en los
+     * pagos que salen de esta cuenta (no excluye transferencia ni debito
+     * automatico).
+     */
+    @Basic
+    @Column(name = "CNBCCHQR")
+    private Long manejaChequera;
+
     public Long getCodigo() {
         return codigo;
     }
@@ -331,6 +340,14 @@ public class CuentaBancaria implements Serializable {
 
     public void setCobroCredito(Long cobroCredito) {
         this.cobroCredito = cobroCredito;
+    }
+
+    public Long getManejaChequera() {
+        return manejaChequera;
+    }
+
+    public void setManejaChequera(Long manejaChequera) {
+        this.manejaChequera = manejaChequera;
     }
 
 }

@@ -8,6 +8,7 @@
  */
 package com.saa.ejb.tsr.dao;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.util.EntityDao;
@@ -18,25 +19,68 @@ import jakarta.ejb.Local;
 /**
  * @author GaemiSoft.
  *
- * Dao Sevice Cheque.  
+ * Dao Sevice Cheque.
  */
 @Local
 public interface ChequeDaoService extends EntityDao<Cheque> {
-	
+
 	/**
 	 * Recupera el Maximo Cheqhe se la chequera segun la cuenta
-	 * @param cuenta		: Numero de la cuenta 
+	 * @param cuenta		: Numero de la cuenta
 	 * @return
 	 * @throws Throwable	: Excepcion
 	 */
 	List<Cheque> selectMaxCheque (Long cuenta)throws Throwable;
-	 
+
 	 /**
 	  * Recupera el Maximo Cheqhe se la chequera segun la cuenta
-	  * @param cuenta		: Id de la cuenta 
-	  * @return				: Id de primer cheque activo de una cuenta 
+	  * @param cuenta		: Id de la cuenta
+	  * @return				: Id de primer cheque activo de una cuenta
 	  * @throws Throwable	: Excepcion
 	  */
 	Long selectMinChequeActivo (Long idCuenta)throws Throwable;
-	
+
+	/**
+	 * Recupera todos los cheques de una chequera, ordenados por número.
+	 * @param idChequera	: Id de la chequera
+	 * @return				: Cheques de la chequera
+	 * @throws Throwable	: Excepcion
+	 */
+	List<Cheque> selectByChequera(Long idChequera) throws Throwable;
+
+	/**
+	 * Id del cheque ACTIVO de menor número entre las chequeras ACTIVAS de la
+	 * cuenta bancaria indicada.
+	 * @param idCuentaBancaria	: Id de la cuenta bancaria
+	 * @return					: Id del cheque, o null si no hay disponibles
+	 * @throws Throwable		: Excepcion
+	 */
+	Long selectMinChequeActivoPorCuenta(Long idCuentaBancaria) throws Throwable;
+
+	/**
+	 * Id del PagoProgramado asociado al cheque, si existe.
+	 * @param idCheque		: Id del cheque
+	 * @return				: Id del pago, o null si el cheque no está asociado a ningún pago
+	 * @throws Throwable	: Excepcion
+	 */
+	Long selectIdPagoByCheque(Long idCheque) throws Throwable;
+
+	/**
+	 * Listado de cheques con los datos del pago que los usó (si lo hay), para
+	 * la pantalla de consulta de cheques.
+	 * @param idCuentaBancaria	: Id de la cuenta bancaria, null para todas
+	 * @param estado			: Estado del cheque (rubro EstadoCheque), null para todos
+	 * @param desde				: Fecha de uso desde, null sin límite inferior
+	 * @param hasta				: Fecha de uso hasta, null sin límite superior
+	 * @param idEmpresa			: Id de la empresa; sólo filtra los cheques que ya tienen
+	 * 							  pago asociado (un cheque sin pago no tiene empresa que filtrar)
+	 * @return					: Filas [idCheque, numero, estado, valor, beneficiario, fechaUso,
+	 * 							  fechaImpresion, fechaEntrega, numeroCuenta, banco, idPago,
+	 * 							  idFactura, numeroFactura, idEgreso, descripcionEgreso,
+	 * 							  idAnticipo, numeroDocAnticipo, origenExterno, idOrigen]
+	 * @throws Throwable		: Excepcion
+	 */
+	List<Object[]> selectListado(Long idCuentaBancaria, Long estado, LocalDate desde, LocalDate hasta,
+			Long idEmpresa) throws Throwable;
+
 }

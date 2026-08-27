@@ -27,6 +27,7 @@ import com.saa.ejb.cxp.service.PagoProgramadoService;
 import com.saa.ejb.cxp.service.RespuestaPagoBanco;
 import com.saa.ejb.cxp.service.dto.BeneficiarioOcasional;
 import com.saa.ejb.cxp.service.dto.LineaContablePago;
+import com.saa.ejb.tsr.service.ChequeService;
 import com.saa.ejb.tsr.service.MovimientoBancoService;
 import com.saa.model.cnt.Asiento;
 import com.saa.model.cnt.DetalleAsiento;
@@ -42,6 +43,7 @@ import com.saa.model.cxp.ProductoPago;
 import com.saa.model.scp.Empresa;
 import com.saa.model.scp.Usuario;
 import com.saa.model.tsr.BancoExterno;
+import com.saa.model.tsr.Cheque;
 import com.saa.model.tsr.CuentaBancaria;
 import com.saa.model.tsr.CuentaBancariaTitular;
 import com.saa.model.tsr.Egreso;
@@ -49,6 +51,7 @@ import com.saa.rubros.EstadoAnticipoProveedor;
 import com.saa.rubros.EstadoEgresoTesoreria;
 import com.saa.rubros.EstadoLotePago;
 import com.saa.rubros.EstadoPagoProgramado;
+import com.saa.rubros.FormaPagoProgramado;
 import com.saa.rubros.ModuloSistema;
 import com.saa.rubros.OrigenMovimientoConciliacion;
 import com.saa.rubros.TipoAsientos;
@@ -91,6 +94,9 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 
 	@EJB
 	private MovimientoBancoService movimientoBancoService;
+
+	@EJB
+	private ChequeService chequeService;
 
 	@EJB
 	private FileService fileService;
@@ -170,10 +176,21 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			Long idCuentaDestinoTitular, Double valor, String fechaProgramada, Long idEmpresa,
 			Long idUsuario, String observacion, boolean debitoAutomatico, String referencia)
 			throws Throwable {
+		return registrarPago(idFacturaCompra, idCuentaBancariaOrigen, idCuentaDestinoTitular, valor,
+				fechaProgramada, idEmpresa, idUsuario, observacion, debitoAutomatico, referencia,
+				Long.valueOf(debitoAutomatico ? FormaPagoProgramado.DEBITO_AUTOMATICO
+						: FormaPagoProgramado.TRANSFERENCIA));
+	}
+
+	@Override
+	public Map<String, Object> registrarPago(Long idFacturaCompra, Long idCuentaBancariaOrigen,
+			Long idCuentaDestinoTitular, Double valor, String fechaProgramada, Long idEmpresa,
+			Long idUsuario, String observacion, boolean debitoAutomatico, String referencia,
+			Long formaPago) throws Throwable {
 
 		System.out.println("=== registrarPago | factura=" + idFacturaCompra + " | valor=" + valor
 				+ " | cuentaOrigen=" + idCuentaBancariaOrigen
-				+ " | debitoAutomatico=" + debitoAutomatico + " ===");
+				+ " | debitoAutomatico=" + debitoAutomatico + " | formaPago=" + formaPago + " ===");
 
 		Map<String, Object> resultado = new HashMap<>();
 
@@ -195,6 +212,9 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			throw new IncomeException("No se encontró la cuenta bancaria de origen con ID: "
 					+ idCuentaBancariaOrigen);
 		}
+
+		long fp = validarFormaPago(cuentaOrigen, formaPago, debitoAutomatico);
+		boolean esDebitoAutomatico = (fp == FormaPagoProgramado.DEBITO_AUTOMATICO);
 
 		CuentaBancariaTitular cuentaDestino = null;
 		if (idCuentaDestinoTitular != null) {
@@ -222,14 +242,48 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		pago.setTitular(factura.getTitular());
 		pago.setCuentaBancaria(cuentaOrigen);
 		pago.setCuentaDestino(cuentaDestino);
-		pago.setDebitoAutomatico(Long.valueOf(debitoAutomatico ? 1 : 0));
+		pago.setDebitoAutomatico(Long.valueOf(esDebitoAutomatico ? 1 : 0));
+		pago.setFormaPago(Long.valueOf(fp));
 		pago.setValor(valor);
 		pago.setFechaProgramada(fecha);
 		pago.setObservacion(observacion);
 		pago.setUsuario(em.find(Usuario.class, idUsuario));
 		pago.setFechaRegistro(LocalDateTime.now());
 
-		if (!debitoAutomatico) {
+		if (fp == FormaPagoProgramado.CHEQUE) {
+			Cheque cheque = chequeService.asignarAPago(idCuentaBancariaOrigen, valor,
+					factura.getTitular(), factura.getTitular().getNombre(), idUsuario);
+			pago.setCheque(cheque);
+			pago.setEstado(Long.valueOf(EstadoPagoProgramado.CONFIRMADO));
+			pago.setReferenciaBanco("CHQ-" + cheque.getNumero());
+			pago.setFechaRespuesta(fecha);
+			pago = guardaPagoConCheque(pago, cheque);
+
+			Asiento asiento = contabilizarSegunOrigen(pago, idUsuario);
+			pago = pagoProgramadoDaoService.save(pago, pago.getId());
+			em.flush();
+
+			System.out.println("✓ Pago con cheque N° " + cheque.getNumero()
+					+ " registrado y aplicado: id=" + pago.getId());
+
+			resultado.put("exito", true);
+			resultado.put("mensaje", "Pago con cheque N° " + cheque.getNumero()
+					+ " registrado. La factura quedó abonada y el asiento contable fue generado.");
+			resultado.put("pago", pago.getId());
+			resultado.put("debitoAutomatico", false);
+			resultado.put("formaPago", fp);
+			resultado.put("numeroCheque", cheque.getNumero());
+			if (pago.getAplicacion() != null) {
+				resultado.put("aplicacion", pago.getAplicacion().getId());
+			}
+			if (asiento != null) {
+				resultado.put("asiento", asiento.getNumeroAlterno());
+			}
+			resultado.putAll(aplicacionPagoCxpService.saldoFactura(idFacturaCompra));
+			return resultado;
+		}
+
+		if (!esDebitoAutomatico) {
 			pago.setEstado(Long.valueOf(EstadoPagoProgramado.REGISTRADO));
 			pago = saveSingle(pago);
 
@@ -240,6 +294,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 					"Pago registrado. Queda pendiente de incluirse en un archivo de pagos.");
 			resultado.put("pago", pago.getId());
 			resultado.put("debitoAutomatico", false);
+			resultado.put("formaPago", fp);
 			resultado.putAll(aplicacionPagoCxpService.saldoFactura(idFacturaCompra));
 			return resultado;
 		}
@@ -254,22 +309,23 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		pago = saveSingle(pago);
 		em.flush();
 
-		AplicacionPagoCxp aplicacion = aplicacionPagoCxpService.aplicarPagoTransferencia(pago, idUsuario);
-		pago.setAplicacion(aplicacion);
+		Asiento asiento = contabilizarSegunOrigen(pago, idUsuario);
 		pago = pagoProgramadoDaoService.save(pago, pago.getId());
 		em.flush();
 
-		System.out.println("✓ Pago por débito automático registrado y aplicado: id=" + pago.getId()
-				+ " | aplicacion=" + aplicacion.getId());
+		System.out.println("✓ Pago por débito automático registrado y aplicado: id=" + pago.getId());
 
 		resultado.put("exito", true);
 		resultado.put("mensaje", "Pago por débito automático registrado. La factura quedó abonada "
 				+ "y el asiento contable fue generado.");
 		resultado.put("pago", pago.getId());
 		resultado.put("debitoAutomatico", true);
-		resultado.put("aplicacion", aplicacion.getId());
-		if (aplicacion.getAsiento() != null) {
-			resultado.put("asiento", aplicacion.getAsiento().getNumeroAlterno());
+		resultado.put("formaPago", fp);
+		if (pago.getAplicacion() != null) {
+			resultado.put("aplicacion", pago.getAplicacion().getId());
+		}
+		if (asiento != null) {
+			resultado.put("asiento", asiento.getNumeroAlterno());
 		}
 		resultado.putAll(aplicacionPagoCxpService.saldoFactura(idFacturaCompra));
 		return resultado;
@@ -279,10 +335,20 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	public Map<String, Object> registrarPagoDeEgreso(Long idEgreso, Long idCuentaBancariaOrigen,
 			Long idCuentaDestinoTitular, Long idUsuario, boolean debitoAutomatico,
 			String referencia) throws Throwable {
+		return registrarPagoDeEgreso(idEgreso, idCuentaBancariaOrigen, idCuentaDestinoTitular,
+				idUsuario, debitoAutomatico, referencia,
+				Long.valueOf(debitoAutomatico ? FormaPagoProgramado.DEBITO_AUTOMATICO
+						: FormaPagoProgramado.TRANSFERENCIA));
+	}
+
+	@Override
+	public Map<String, Object> registrarPagoDeEgreso(Long idEgreso, Long idCuentaBancariaOrigen,
+			Long idCuentaDestinoTitular, Long idUsuario, boolean debitoAutomatico,
+			String referencia, Long formaPago) throws Throwable {
 
 		System.out.println("=== registrarPagoDeEgreso | egreso=" + idEgreso
 				+ " | cuentaOrigen=" + idCuentaBancariaOrigen
-				+ " | debitoAutomatico=" + debitoAutomatico + " ===");
+				+ " | debitoAutomatico=" + debitoAutomatico + " | formaPago=" + formaPago + " ===");
 
 		Map<String, Object> resultado = new HashMap<>();
 
@@ -308,10 +374,13 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 					+ idCuentaBancariaOrigen);
 		}
 
+		long fp = validarFormaPago(cuentaOrigen, formaPago, debitoAutomatico);
+		boolean esDebitoAutomatico = (fp == FormaPagoProgramado.DEBITO_AUTOMATICO);
+
 		// La transferencia viaja en el archivo del banco: exige beneficiario y
-		// cuenta de destino. El débito automático no transfiere nada.
+		// cuenta de destino. El débito automático y el cheque no transfieren nada.
 		CuentaBancariaTitular cuentaDestino = null;
-		if (!debitoAutomatico) {
+		if (fp == FormaPagoProgramado.TRANSFERENCIA) {
 			if (egreso.getTitular() == null) {
 				throw new IncomeException("El egreso " + idEgreso + " no tiene beneficiario. "
 						+ "Para pagarlo por transferencia debe indicar el titular y su cuenta bancaria.");
@@ -338,14 +407,48 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		pago.setTitular(egreso.getTitular());
 		pago.setCuentaBancaria(cuentaOrigen);
 		pago.setCuentaDestino(cuentaDestino);
-		pago.setDebitoAutomatico(Long.valueOf(debitoAutomatico ? 1 : 0));
+		pago.setDebitoAutomatico(Long.valueOf(esDebitoAutomatico ? 1 : 0));
+		pago.setFormaPago(Long.valueOf(fp));
 		pago.setValor(egreso.getValor());
 		pago.setFechaProgramada(egreso.getFecha() != null ? egreso.getFecha() : LocalDate.now());
 		pago.setObservacion(egreso.getDescripcion());
 		pago.setUsuario(em.find(Usuario.class, idUsuario));
 		pago.setFechaRegistro(LocalDateTime.now());
 
-		if (!debitoAutomatico) {
+		if (fp == FormaPagoProgramado.CHEQUE) {
+			String nombreBeneficiario = (egreso.getTitular() != null)
+					? egreso.getTitular().getNombre() : nvl(pago.getBeneficiarioNombre(), "");
+			if (nombreBeneficiario == null || nombreBeneficiario.trim().isEmpty()) {
+				throw new IncomeException("Para pagar el egreso con cheque debe indicar el beneficiario "
+						+ "(titular del egreso): el cheque se gira a su nombre.");
+			}
+			Cheque cheque = chequeService.asignarAPago(idCuentaBancariaOrigen, pago.getValor(),
+					egreso.getTitular(), nombreBeneficiario, idUsuario);
+			pago.setCheque(cheque);
+			pago.setEstado(Long.valueOf(EstadoPagoProgramado.CONFIRMADO));
+			pago.setReferenciaBanco("CHQ-" + cheque.getNumero());
+			pago.setFechaRespuesta(pago.getFechaProgramada());
+			pago = guardaPagoConCheque(pago, cheque);
+
+			Asiento asiento = contabilizarSegunOrigen(pago, idUsuario);
+			em.flush();
+
+			System.out.println("✓ Pago de egreso con cheque N° " + cheque.getNumero()
+					+ " registrado y contabilizado: id=" + pago.getId());
+
+			resultado.put("exito", true);
+			resultado.put("mensaje", "Egreso pagado con cheque N° " + cheque.getNumero()
+					+ ". El asiento contable y el movimiento bancario fueron generados.");
+			resultado.put("pago", pago.getId());
+			resultado.put("egreso", idEgreso);
+			resultado.put("debitoAutomatico", false);
+			resultado.put("formaPago", fp);
+			resultado.put("numeroCheque", cheque.getNumero());
+			resultado.put("asiento", asiento.getNumeroAlterno());
+			return resultado;
+		}
+
+		if (fp != FormaPagoProgramado.DEBITO_AUTOMATICO) {
 			pago.setEstado(Long.valueOf(EstadoPagoProgramado.REGISTRADO));
 			pago = saveSingle(pago);
 
@@ -357,6 +460,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			resultado.put("pago", pago.getId());
 			resultado.put("egreso", idEgreso);
 			resultado.put("debitoAutomatico", false);
+			resultado.put("formaPago", fp);
 			return resultado;
 		}
 
@@ -369,7 +473,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		pago = saveSingle(pago);
 		em.flush();
 
-		Asiento asiento = contabilizarPagoEgreso(pago, idUsuario);
+		Asiento asiento = contabilizarSegunOrigen(pago, idUsuario);
 		em.flush();
 
 		System.out.println("✓ Pago de egreso por débito automático registrado y contabilizado: id="
@@ -381,6 +485,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		resultado.put("pago", pago.getId());
 		resultado.put("egreso", idEgreso);
 		resultado.put("debitoAutomatico", true);
+		resultado.put("formaPago", fp);
 		resultado.put("asiento", asiento.getNumeroAlterno());
 		return resultado;
 	}
@@ -389,10 +494,20 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	public Map<String, Object> registrarPagoDeAnticipo(Long idAnticipo, Long idCuentaBancariaOrigen,
 			Long idCuentaDestinoTitular, Long idUsuario, boolean debitoAutomatico,
 			String referencia) throws Throwable {
+		return registrarPagoDeAnticipo(idAnticipo, idCuentaBancariaOrigen, idCuentaDestinoTitular,
+				idUsuario, debitoAutomatico, referencia,
+				Long.valueOf(debitoAutomatico ? FormaPagoProgramado.DEBITO_AUTOMATICO
+						: FormaPagoProgramado.TRANSFERENCIA));
+	}
+
+	@Override
+	public Map<String, Object> registrarPagoDeAnticipo(Long idAnticipo, Long idCuentaBancariaOrigen,
+			Long idCuentaDestinoTitular, Long idUsuario, boolean debitoAutomatico,
+			String referencia, Long formaPago) throws Throwable {
 
 		System.out.println("=== registrarPagoDeAnticipo | anticipo=" + idAnticipo
 				+ " | cuentaOrigen=" + idCuentaBancariaOrigen
-				+ " | debitoAutomatico=" + debitoAutomatico + " ===");
+				+ " | debitoAutomatico=" + debitoAutomatico + " | formaPago=" + formaPago + " ===");
 
 		Map<String, Object> resultado = new HashMap<>();
 
@@ -421,10 +536,13 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 					+ idCuentaBancariaOrigen);
 		}
 
+		long fp = validarFormaPago(cuentaOrigen, formaPago, debitoAutomatico);
+		boolean esDebitoAutomatico = (fp == FormaPagoProgramado.DEBITO_AUTOMATICO);
+
 		// La transferencia viaja en el archivo del banco: exige la cuenta del
-		// proveedor. El débito automático no transfiere nada.
+		// proveedor. El débito automático y el cheque no transfieren nada.
 		CuentaBancariaTitular cuentaDestino = null;
-		if (!debitoAutomatico) {
+		if (fp == FormaPagoProgramado.TRANSFERENCIA) {
 			if (idCuentaDestinoTitular == null) {
 				throw new IncomeException("Debe indicar la cuenta bancaria del proveedor "
 						+ "para incluir el pago en el archivo del banco.");
@@ -447,7 +565,8 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		pago.setTitular(anticipo.getTitular());
 		pago.setCuentaBancaria(cuentaOrigen);
 		pago.setCuentaDestino(cuentaDestino);
-		pago.setDebitoAutomatico(Long.valueOf(debitoAutomatico ? 1 : 0));
+		pago.setDebitoAutomatico(Long.valueOf(esDebitoAutomatico ? 1 : 0));
+		pago.setFormaPago(Long.valueOf(fp));
 		pago.setValor(anticipo.getValor());
 		pago.setFechaProgramada(anticipo.getFechaAnticipo() != null
 				? anticipo.getFechaAnticipo() : LocalDate.now());
@@ -456,7 +575,34 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		pago.setUsuario(em.find(Usuario.class, idUsuario));
 		pago.setFechaRegistro(LocalDateTime.now());
 
-		if (!debitoAutomatico) {
+		if (fp == FormaPagoProgramado.CHEQUE) {
+			Cheque cheque = chequeService.asignarAPago(idCuentaBancariaOrigen, pago.getValor(),
+					anticipo.getTitular(), anticipo.getTitular().getNombre(), idUsuario);
+			pago.setCheque(cheque);
+			pago.setEstado(Long.valueOf(EstadoPagoProgramado.CONFIRMADO));
+			pago.setReferenciaBanco("CHQ-" + cheque.getNumero());
+			pago.setFechaRespuesta(pago.getFechaProgramada());
+			pago = guardaPagoConCheque(pago, cheque);
+
+			Asiento asiento = contabilizarSegunOrigen(pago, idUsuario);
+			em.flush();
+
+			System.out.println("✓ Anticipo pagado con cheque N° " + cheque.getNumero()
+					+ " y contabilizado: id=" + pago.getId());
+
+			resultado.put("exito", true);
+			resultado.put("mensaje", "Anticipo pagado con cheque N° " + cheque.getNumero()
+					+ ". El asiento contable y el movimiento bancario fueron generados.");
+			resultado.put("pago", pago.getId());
+			resultado.put("anticipo", idAnticipo);
+			resultado.put("debitoAutomatico", false);
+			resultado.put("formaPago", fp);
+			resultado.put("numeroCheque", cheque.getNumero());
+			resultado.put("asiento", asiento.getNumeroAlterno());
+			return resultado;
+		}
+
+		if (fp != FormaPagoProgramado.DEBITO_AUTOMATICO) {
 			pago.setEstado(Long.valueOf(EstadoPagoProgramado.REGISTRADO));
 			pago = saveSingle(pago);
 
@@ -468,6 +614,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			resultado.put("pago", pago.getId());
 			resultado.put("anticipo", idAnticipo);
 			resultado.put("debitoAutomatico", false);
+			resultado.put("formaPago", fp);
 			return resultado;
 		}
 
@@ -480,7 +627,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		pago = saveSingle(pago);
 		em.flush();
 
-		Asiento asiento = contabilizarPagoAnticipo(pago, idUsuario);
+		Asiento asiento = contabilizarSegunOrigen(pago, idUsuario);
 		em.flush();
 
 		System.out.println("✓ Pago de anticipo por débito automático registrado y contabilizado: id="
@@ -492,6 +639,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		resultado.put("pago", pago.getId());
 		resultado.put("anticipo", idAnticipo);
 		resultado.put("debitoAutomatico", true);
+		resultado.put("formaPago", fp);
 		resultado.put("asiento", asiento.getNumeroAlterno());
 		return resultado;
 	}
@@ -502,11 +650,24 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			BeneficiarioOcasional beneficiario, List<LineaContablePago> desglose,
 			String observacion, Long idUsuario, boolean debitoAutomatico, String referencia)
 			throws Throwable {
+		return registrarPagoDeOrigenExterno(origen, idOrigen, idEmpresa, idCuentaBancariaOrigen,
+				valor, fechaProgramada, beneficiario, desglose, observacion, idUsuario,
+				debitoAutomatico, referencia,
+				Long.valueOf(debitoAutomatico ? FormaPagoProgramado.DEBITO_AUTOMATICO
+						: FormaPagoProgramado.TRANSFERENCIA));
+	}
+
+	@Override
+	public Map<String, Object> registrarPagoDeOrigenExterno(String origen, Long idOrigen,
+			Long idEmpresa, Long idCuentaBancariaOrigen, Double valor, String fechaProgramada,
+			BeneficiarioOcasional beneficiario, List<LineaContablePago> desglose,
+			String observacion, Long idUsuario, boolean debitoAutomatico, String referencia,
+			Long formaPago) throws Throwable {
 
 		System.out.println("=== registrarPagoDeOrigenExterno | origen=" + origen
 				+ " | idOrigen=" + idOrigen + " | valor=" + valor
 				+ " | cuentaOrigen=" + idCuentaBancariaOrigen
-				+ " | debitoAutomatico=" + debitoAutomatico + " ===");
+				+ " | debitoAutomatico=" + debitoAutomatico + " | formaPago=" + formaPago + " ===");
 
 		Map<String, Object> resultado = new HashMap<>();
 
@@ -536,10 +697,13 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 					+ idCuentaBancariaOrigen);
 		}
 
+		long fp = validarFormaPago(cuentaOrigen, formaPago, debitoAutomatico);
+		boolean esDebitoAutomatico = (fp == FormaPagoProgramado.DEBITO_AUTOMATICO);
+
 		// ── Beneficiario ocasional ────────────────────────────────────────────────
 		// No pasa por TSR.TTLR: el beneficiario puede no existir en el maestro de
 		// titulares. La transferencia viaja en el archivo del banco, así que exige
-		// banco y cuenta; el débito automático no transfiere nada.
+		// banco y cuenta; el débito automático y el cheque no transfieren nada.
 		if (beneficiario == null) {
 			throw new IncomeException("Debe indicar el beneficiario del pago.");
 		}
@@ -551,7 +715,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			throw new IncomeException("Debe indicar la identificación del beneficiario del pago.");
 		}
 		BancoExterno bancoBeneficiario = null;
-		if (!debitoAutomatico) {
+		if (fp == FormaPagoProgramado.TRANSFERENCIA) {
 			if (beneficiario.getNumeroCuenta() == null
 					|| beneficiario.getNumeroCuenta().trim().isEmpty()) {
 				throw new IncomeException("Debe indicar la cuenta bancaria del beneficiario "
@@ -609,6 +773,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		}
 
 		LocalDate fecha = parseFecha(fechaProgramada);
+		boolean confirmaDeInmediato = esDebitoAutomatico || fp == FormaPagoProgramado.CHEQUE;
 
 		// ── Cabecera del pago ─────────────────────────────────────────────────────
 		PagoProgramado pago = new PagoProgramado();
@@ -623,21 +788,33 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		pago.setBeneficiarioTipoCuenta(beneficiario.getTipoCuenta());
 		pago.setBeneficiarioCuenta((beneficiario.getNumeroCuenta() != null)
 				? beneficiario.getNumeroCuenta().trim() : null);
-		pago.setDebitoAutomatico(Long.valueOf(debitoAutomatico ? 1 : 0));
+		pago.setDebitoAutomatico(Long.valueOf(esDebitoAutomatico ? 1 : 0));
+		pago.setFormaPago(Long.valueOf(fp));
 		pago.setValor(total);
 		pago.setFechaProgramada(fecha);
 		pago.setObservacion(observacion);
 		pago.setUsuario(em.find(Usuario.class, idUsuario));
 		pago.setFechaRegistro(LocalDateTime.now());
-		pago.setEstado(Long.valueOf(debitoAutomatico
+		pago.setEstado(Long.valueOf(confirmaDeInmediato
 				? EstadoPagoProgramado.CONFIRMADO : EstadoPagoProgramado.REGISTRADO));
-		if (debitoAutomatico) {
-			pago.setReferenciaBanco((referencia != null && !referencia.trim().isEmpty())
-					? referencia.trim() : null);
+
+		Cheque cheque = null;
+		if (fp == FormaPagoProgramado.CHEQUE) {
+			cheque = chequeService.asignarAPago(idCuentaBancariaOrigen, total, null,
+					beneficiario.getNombre().trim(), idUsuario);
+			pago.setCheque(cheque);
+			pago.setReferenciaBanco("CHQ-" + cheque.getNumero());
 			pago.setFechaRespuesta(fecha);
+			pago = guardaPagoConCheque(pago, cheque);
+		} else {
+			if (esDebitoAutomatico) {
+				pago.setReferenciaBanco((referencia != null && !referencia.trim().isEmpty())
+						? referencia.trim() : null);
+				pago.setFechaRespuesta(fecha);
+			}
+			pago = saveSingle(pago);
+			em.flush();
 		}
-		pago = saveSingle(pago);
-		em.flush();
 
 		// ── Desglose contable persistido, si vino ─────────────────────────────────
 		if (tieneDesglose) {
@@ -661,9 +838,13 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		resultado.put("pago", pago.getId());
 		resultado.put("origen", etiquetaOrigen);
 		resultado.put("idOrigen", idOrigen);
-		resultado.put("debitoAutomatico", debitoAutomatico);
+		resultado.put("debitoAutomatico", esDebitoAutomatico);
+		resultado.put("formaPago", fp);
+		if (cheque != null) {
+			resultado.put("numeroCheque", cheque.getNumero());
+		}
 
-		if (!debitoAutomatico) {
+		if (!confirmaDeInmediato) {
 			System.out.println("✓ Pago de origen externo registrado: id=" + pago.getId()
 					+ " | origen=" + etiquetaOrigen + " | idOrigen=" + idOrigen);
 			resultado.put("mensaje", "Pago registrado. Queda pendiente de incluirse "
@@ -671,24 +852,26 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			return resultado;
 		}
 
-		// Débito automático: el banco ya debitó la cuenta. Nace confirmado y se
-		// contabiliza aquí mismo — salvo que no tenga desglose, en cuyo caso
-		// contabilizarPagoOrigenExterno devuelve null y el pago queda confirmado sin asiento.
-		Asiento asiento = contabilizarPagoOrigenExterno(pago, idUsuario);
+		// Débito automático o cheque: nace confirmado y se contabiliza aquí mismo —
+		// salvo que no tenga desglose, en cuyo caso contabilizarSegunOrigen devuelve
+		// null y el pago queda confirmado sin asiento.
+		Asiento asiento = contabilizarSegunOrigen(pago, idUsuario);
 		pagoProgramadoDaoService.save(pago, pago.getId());
 		em.flush();
 
 		if (asiento != null) {
-			System.out.println("✓ Pago de origen externo por débito automático registrado y "
-					+ "contabilizado: id=" + pago.getId()
+			System.out.println("✓ Pago de origen externo registrado y contabilizado: id=" + pago.getId()
 					+ " | asiento=" + asiento.getNumeroAlterno());
-			resultado.put("mensaje", "Pago por débito automático registrado. El asiento contable "
-					+ "y el movimiento bancario fueron generados.");
+			resultado.put("mensaje", (fp == FormaPagoProgramado.CHEQUE)
+					? "Pago con cheque N° " + cheque.getNumero() + " registrado. El asiento contable "
+							+ "y el movimiento bancario fueron generados."
+					: "Pago por débito automático registrado. El asiento contable "
+							+ "y el movimiento bancario fueron generados.");
 			resultado.put("asiento", asiento.getNumeroAlterno());
 		} else {
-			System.out.println("✓ Pago de origen externo por débito automático registrado SIN "
-					+ "contabilidad: id=" + pago.getId() + " (no tiene desglose contable)");
-			resultado.put("mensaje", "Pago por débito automático registrado. No se generó asiento "
+			System.out.println("✓ Pago de origen externo registrado SIN contabilidad: id=" + pago.getId()
+					+ " (no tiene desglose contable)");
+			resultado.put("mensaje", "Pago registrado. No se generó asiento "
 					+ "contable ni movimiento bancario porque el pago no tiene desglose contable.");
 			resultado.put("sinContabilidad", true);
 		}
@@ -736,6 +919,10 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			if (esDebitoAutomatico(pago)) {
 				throw new IncomeException("El pago " + pago.getId() + " es un débito automático: "
 						+ "el banco ya lo ejecutó y no debe enviarse en el archivo de pagos.");
+			}
+			if (pago.getCheque() != null) {
+				throw new IncomeException("El pago " + pago.getId() + " se pagó con cheque: "
+						+ "el cheque ya se giró y no debe enviarse en el archivo de pagos.");
 			}
 			if (pago.getEstado() == null
 					|| pago.getEstado().intValue() != EstadoPagoProgramado.REGISTRADO) {
@@ -878,28 +1065,10 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			if (respuesta.isConfirmado()) {
 				try {
 					pago.setReferenciaBanco(respuesta.getReferencia());
-					// Solo aquí se genera contabilidad y movimiento bancario.
-					// El asiento depende del proceso que originó el pago:
-					// origen externo → asiento por desglose; anticipo → asiento
-					// de anticipo; egreso → asiento de egreso; factura →
-					// aplicación de pago.
-					if (pago.getOrigenExterno() != null) {
-						// Documento de origen en otro módulo: el asiento se arma
-						// con el desglose de PGS.DPGT y cuelga del propio pago.
-						// Devuelve null si el pago no tiene desglose; el retorno se
-						// descarta a propósito, la confirmación no depende del asiento.
-						contabilizarPagoOrigenExterno(pago, idUsuario);
-					} else if (pago.getAnticipo() != null) {
-						contabilizarPagoAnticipo(pago, idUsuario);
-					} else if (pago.getEgreso() != null) {
-						// Pago de un egreso de tesorería: asiento contra la
-						// cuenta del grupo del producto, sin aplicación.
-						contabilizarPagoEgreso(pago, idUsuario);
-					} else {
-						AplicacionPagoCxp aplicacion =
-								aplicacionPagoCxpService.aplicarPagoTransferencia(pago, idUsuario);
-						pago.setAplicacion(aplicacion);
-					}
+					// Solo aquí se genera contabilidad y movimiento bancario. El
+					// asiento depende del proceso que originó el pago; el retorno
+					// se descarta a propósito, la confirmación no depende de él.
+					contabilizarSegunOrigen(pago, idUsuario);
 					pago.setEstado(Long.valueOf(EstadoPagoProgramado.CONFIRMADO));
 					pagoProgramadoDaoService.save(pago, pago.getId());
 					confirmados++;
@@ -991,20 +1160,9 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 				}
 
 				// Mismo camino contable que la respuesta del banco: el asiento
-				// depende del proceso que originó el pago.
-				if (pago.getOrigenExterno() != null) {
-					// Devuelve null si el pago no tiene desglose contable; el retorno se
-					// descarta a propósito, la confirmación no depende del asiento.
-					contabilizarPagoOrigenExterno(pago, idUsuario);
-				} else if (pago.getAnticipo() != null) {
-					contabilizarPagoAnticipo(pago, idUsuario);
-				} else if (pago.getEgreso() != null) {
-					contabilizarPagoEgreso(pago, idUsuario);
-				} else {
-					AplicacionPagoCxp aplicacion =
-							aplicacionPagoCxpService.aplicarPagoTransferencia(pago, idUsuario);
-					pago.setAplicacion(aplicacion);
-				}
+				// depende del proceso que originó el pago; el retorno se
+				// descarta a propósito, la confirmación no depende de él.
+				contabilizarSegunOrigen(pago, idUsuario);
 
 				pago.setEstado(Long.valueOf(EstadoPagoProgramado.CONFIRMADO));
 				pagoProgramadoDaoService.save(pago, pago.getId());
@@ -1083,15 +1241,25 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		}
 
 		int estado = (pago.getEstado() != null) ? pago.getEstado().intValue() : 0;
+		if (estado == EstadoPagoProgramado.ANULADO) {
+			throw new IncomeException("El pago " + idPago + " ya está anulado.");
+		}
+		// Defensivo: un pago con cheque nace CONFIRMADO, así que nunca debería
+		// llegar aquí en estado REGISTRADO; el check de estado de abajo ya lo
+		// bloquearía, pero el mensaje específico es más claro para el usuario.
+		// Va después del check de ANULADO para que un pago ya reversado (cuyo
+		// cheque quedó anulado, pero el pago sigue con la referencia al cheque)
+		// responda "ya está anulado" y no el mensaje de cheque.
+		if (pago.getCheque() != null) {
+			throw new IncomeException("El pago " + idPago + " se pagó con cheque y nace confirmado: "
+					+ "use la reversión (pgtr/revertirConfirmado) en lugar de la anulación.");
+		}
 		if (estado == EstadoPagoProgramado.CONFIRMADO) {
 			throw new IncomeException("El pago " + idPago
 					+ (esDebitoAutomatico(pago)
 							? " es un débito automático ya ejecutado por el banco y tiene "
 							: " ya fue confirmado por el banco y tiene ")
 					+ "contabilidad generada. Use la reversión en lugar de la anulación.");
-		}
-		if (estado == EstadoPagoProgramado.ANULADO) {
-			throw new IncomeException("El pago " + idPago + " ya está anulado.");
 		}
 
 		pago.setEstado(Long.valueOf(EstadoPagoProgramado.ANULADO));
@@ -1152,11 +1320,18 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			resultado.putAll(reversion);
 		}
 
+		// El cheque girado se anula por el reverso: no se reutiliza.
+		if (pago.getCheque() != null) {
+			chequeService.anularPorReverso(pago.getCheque().getCodigo());
+		}
+
 		// Una transferencia reversada vuelve a seguimiento como rechazada, por si
-		// hay que reprogramarla. El débito automático no se reprograma: si se
-		// reversa es porque se registró mal, así que queda anulado.
+		// hay que reprogramarla. El débito automático y el cheque no se
+		// reprograman: si se reversan es porque se registraron mal, así que
+		// quedan anulados.
 		boolean debitoAutomatico = esDebitoAutomatico(pago);
-		pago.setEstado(Long.valueOf(debitoAutomatico
+		boolean pagoConCheque = pago.getCheque() != null;
+		pago.setEstado(Long.valueOf((debitoAutomatico || pagoConCheque)
 				? EstadoPagoProgramado.ANULADO : EstadoPagoProgramado.RECHAZADO));
 		pago.setMotivo("REVERSADO: " + motivo.trim());
 		pago.setAplicacion(null);
@@ -1164,9 +1339,11 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		em.flush();
 
 		resultado.put("exito", true);
-		resultado.put("mensaje", debitoAutomatico
-				? "Débito automático reversado. El pago queda anulado."
-				: "Pago reversado. Queda en seguimiento como rechazado.");
+		resultado.put("mensaje", pagoConCheque
+				? "Pago con cheque reversado. El cheque queda anulado y el pago anulado."
+				: debitoAutomatico
+						? "Débito automático reversado. El pago queda anulado."
+						: "Pago reversado. Queda en seguimiento como rechazado.");
 		resultado.put("pago", idPago);
 		return resultado;
 	}
@@ -1250,6 +1427,180 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	}
 
 	/**
+	 * Valida la forma de pago contra la cuenta de origen y normaliza su
+	 * coherencia con el flag de débito automático — son la misma información
+	 * contada dos veces, así que si vienen en desacuerdo se ajusta la forma de
+	 * pago en vez de rechazar el registro (un formulario que mande el combo
+	 * con su valor por defecto junto al check de débito automático no debe
+	 * romper un flujo que hoy funciona). El llamador debe usar SIEMPRE el
+	 * valor devuelto — no el parámetro {@code debitoAutomatico} de entrada —
+	 * para decidir el resto del flujo (estado del pago, campos a exigir, etc.).
+	 * @param cuentaOrigen     : Cuenta bancaria de origen
+	 * @param formaPago        : Forma de pago indicada (puede ser null)
+	 * @param debitoAutomatico : true si el banco ya debitó la cuenta
+	 * @return                 : Forma de pago efectiva y normalizada (ver FormaPagoProgramado)
+	 * @throws Throwable       : Excepcion si la forma de pago es inválida o realmente incompatible
+	 */
+	private long validarFormaPago(CuentaBancaria cuentaOrigen, Long formaPago,
+			boolean debitoAutomatico) throws Throwable {
+
+		long fp = (formaPago != null) ? formaPago.longValue()
+				: (debitoAutomatico ? FormaPagoProgramado.DEBITO_AUTOMATICO
+						: FormaPagoProgramado.TRANSFERENCIA);
+
+		if (fp != FormaPagoProgramado.EFECTIVO && fp != FormaPagoProgramado.TRANSFERENCIA
+				&& fp != FormaPagoProgramado.CHEQUE && fp != FormaPagoProgramado.DEBITO_AUTOMATICO) {
+			throw new IncomeException("Forma de pago inválida: " + fp
+					+ ". Use 2=Transferencia, 3=Cheque o 4=Débito automático.");
+		}
+		if (fp == FormaPagoProgramado.EFECTIVO) {
+			throw new IncomeException("La forma de pago Efectivo aún no está soportada.");
+		}
+		// Cheque y débito automático sí son incompatibles de verdad: un pago no
+		// puede a la vez requerir chequera (formaPago=3) y no transferir nada
+		// porque el banco ya lo debitó por convenio (debitoAutomatico=true).
+		if (fp == FormaPagoProgramado.CHEQUE && debitoAutomatico) {
+			throw new IncomeException("Un pago con cheque no puede ser además débito automático.");
+		}
+		if (debitoAutomatico && fp != FormaPagoProgramado.DEBITO_AUTOMATICO) {
+			System.out.println("⚠ formaPago=" + fp + " normalizado a Débito automático (4): "
+					+ "debitoAutomatico=true.");
+			fp = FormaPagoProgramado.DEBITO_AUTOMATICO;
+		} else if (!debitoAutomatico && fp == FormaPagoProgramado.DEBITO_AUTOMATICO) {
+			System.out.println("⚠ formaPago=4 (Débito automático) recibido con debitoAutomatico=false: "
+					+ "se trata como débito automático.");
+		}
+		if (fp == FormaPagoProgramado.CHEQUE
+				&& (cuentaOrigen.getManejaChequera() == null
+						|| cuentaOrigen.getManejaChequera().intValue() != 1)) {
+			throw new IncomeException("La cuenta bancaria '" + cuentaOrigen.getNumeroCuenta()
+					+ "' no maneja chequeras. Actívela en Tesorería → Cuentas bancarias "
+					+ "para pagar con cheque.");
+		}
+		return fp;
+	}
+
+	/**
+	 * Guarda el pago ya asignado a un cheque y hace flush de inmediato para
+	 * forzar la validación del índice único {@code UQ_PGTR_DTCH} (PGS.PGTR.PGTRDTCH).
+	 * Es la red de seguridad final contra la condición de carrera de dos
+	 * usuarios tomando el mismo cheque a la vez: el lock pesimista de
+	 * {@code ChequeDaoServiceImpl.selectMinChequeActivoPorCuenta} ya debería
+	 * evitarlo, pero si dos transacciones lo pasan igual (por ejemplo, aislamiento
+	 * READ_COMMITTED sin ver el lock a tiempo) la constraint es quien lo detiene.
+	 * @param pago   : Pago con el cheque ya asignado (PGTRDTCH seteado)
+	 * @param cheque : Cheque asignado, para el mensaje de error
+	 * @return       : Pago guardado
+	 * @throws Throwable : IncomeException con mensaje accionable si el cheque ya fue tomado
+	 */
+	private PagoProgramado guardaPagoConCheque(PagoProgramado pago, Cheque cheque) throws Throwable {
+		try {
+			pago = saveSingle(pago);
+			em.flush();
+		} catch (jakarta.persistence.PersistenceException e) {
+			// No toda PersistenceException es la carrera del cheque: una columna
+			// que falta porque no se corrió el DDL, una FK rota, cualquier otro
+			// ORA, todo caía aquí con el mismo mensaje engañoso. Se imprime el
+			// stack y solo se traduce cuando el texto de la causa apunta
+			// específicamente al índice único o a un ORA-00001.
+			e.printStackTrace();
+			String txt = String.valueOf(e.getMessage())
+					+ String.valueOf((e.getCause() != null) ? e.getCause().getMessage() : "");
+			if (txt.toUpperCase().contains("UQ_PGTR_DTCH") || txt.contains("ORA-00001")) {
+				throw new IncomeException("El cheque N° " + cheque.getNumero()
+						+ " fue tomado por otro usuario, intente nuevamente.");
+			}
+			throw e;
+		}
+		return pago;
+	}
+
+	/**
+	 * Genera la contabilidad y el movimiento bancario del pago según el
+	 * documento que lo originó: es el único punto que decide el switch entre
+	 * factura, egreso, anticipo y origen externo. Lo llaman el registro con
+	 * débito automático, el registro con cheque, procesarRespuestaBanco y
+	 * confirmarPagosManual. Si el pago se pagó con cheque, además anexa la
+	 * nota del cheque a la línea HABER (banco) del asiento generado.
+	 * @param pago      : Pago confirmado (o a punto de confirmarse)
+	 * @param idUsuario : Id del usuario que registra o procesa
+	 * @return          : Asiento generado, o null si el pago de origen externo no tiene desglose
+	 * @throws Throwable: Excepcion
+	 */
+	private Asiento contabilizarSegunOrigen(PagoProgramado pago, Long idUsuario) throws Throwable {
+		Asiento asiento;
+		if (pago.getOrigenExterno() != null) {
+			// Documento de origen en otro módulo: el asiento se arma con el
+			// desglose de PGS.DPGT y cuelga del propio pago. Devuelve null si
+			// el pago no tiene desglose.
+			asiento = contabilizarPagoOrigenExterno(pago, idUsuario);
+		} else if (pago.getAnticipo() != null) {
+			asiento = contabilizarPagoAnticipo(pago, idUsuario);
+		} else if (pago.getEgreso() != null) {
+			// Pago de un egreso de tesorería: asiento contra la cuenta del
+			// grupo del producto, sin aplicación.
+			asiento = contabilizarPagoEgreso(pago, idUsuario);
+		} else {
+			AplicacionPagoCxp aplicacion =
+					aplicacionPagoCxpService.aplicarPagoTransferencia(pago, idUsuario);
+			pago.setAplicacion(aplicacion);
+			asiento = aplicacion.getAsiento();
+		}
+		if (pago.getCheque() != null && asiento != null) {
+			anexaNotaChequeEnHaber(asiento, pago);
+		}
+		return asiento;
+	}
+
+	/**
+	 * Anexa " | Cheque N° {numero}" a la descripción de la línea HABER del
+	 * banco (no a cualquier línea con valorHaber &gt; 0: los cuatro caminos
+	 * contables de cheque generan una sola línea HABER hoy, pero acotar por la
+	 * cuenta contable de la cuenta bancaria del pago evita que un asiento con
+	 * más de un HABER termine anotando una línea que no es la del banco). No
+	 * interrumpe el flujo si algo falla: es una mejora de la glosa, no una
+	 * condición del asiento.
+	 * @param asiento : Asiento ya generado
+	 * @param pago    : Pago con el cheque y la cuenta bancaria de origen
+	 */
+	private void anexaNotaChequeEnHaber(Asiento asiento, PagoProgramado pago) {
+		try {
+			PlanCuenta planCuentaBanco = (pago.getCuentaBancaria() != null)
+					? pago.getCuentaBancaria().getPlanCuenta() : null;
+			if (planCuentaBanco == null) {
+				return;
+			}
+			@SuppressWarnings("unchecked")
+			List<DetalleAsiento> lineas = em.createQuery(
+					"select d from DetalleAsiento d where d.asiento.codigo = :idAsiento "
+					+ "and d.valorHaber > 0 and d.planCuenta.codigo = :idCuentaBanco")
+					.setParameter("idAsiento", asiento.getCodigo())
+					.setParameter("idCuentaBanco", planCuentaBanco.getCodigo())
+					.getResultList();
+			String nota = " | Cheque N° " + pago.getCheque().getNumero();
+			for (DetalleAsiento linea : lineas) {
+				// AsientoContableServiceImpl.generarAsientoPagoTransferenciaCxp arma la
+				// línea HABER como "Transferencia a proveedor: ..." sin distinguir cheque;
+				// se corrige aquí en vez de tocar ese método (lo usan otros orígenes).
+				String descripcion = nvl(linea.getDescripcion(), "")
+						.replace("Transferencia a proveedor:", "Cheque a proveedor:")
+						+ nota;
+				// CNT.DTAS.DTASDSCR es VARCHAR2(200): sin truncar, una razón social
+				// larga produce ORA-12899 recién en el flush posterior, donde este
+				// catch ya no está para atraparlo y tumba la transacción del pago.
+				if (descripcion.length() > 200) {
+					descripcion = descripcion.substring(0, 200);
+				}
+				linea.setDescripcion(descripcion);
+				em.merge(linea);
+			}
+		} catch (Exception e) {
+			System.err.println("⚠ No se pudo anexar la nota de cheque a la línea HABER del asiento "
+					+ asiento.getCodigo() + ": " + e.getMessage());
+		}
+	}
+
+	/**
 	 * Contabiliza el pago de un egreso de tesorería: genera el asiento
 	 * (DEBE cuenta del grupo del producto / HABER banco), el movimiento
 	 * bancario de egreso, y deja el egreso como Pagado con su asiento.
@@ -1267,12 +1618,17 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		LocalDate fecha = (pago.getFechaRespuesta() != null)
 				? pago.getFechaRespuesta() : LocalDate.now();
 		boolean debitoAutomatico = esDebitoAutomatico(pago);
+		Cheque cheque = pago.getCheque();
+		String notaCheque = (cheque != null)
+				? " | Cheque N° " + cheque.getNumero() + " Cta " + pago.getCuentaBancaria().getNumeroCuenta()
+				: "";
 
 		String observacionAsiento = "Pago egreso tesorería"
-				+ (debitoAutomatico ? " (débito automático)" : " (transferencia)")
+				+ (cheque != null ? " (cheque)" : debitoAutomatico ? " (débito automático)" : " (transferencia)")
 				+ " | Concepto: " + egreso.getDescripcion()
 				+ " | Ref: " + nvl(pago.getReferenciaBanco(), "")
-				+ " | Valor: $" + String.format(java.util.Locale.US, "%.2f", pago.getValor());
+				+ " | Valor: $" + String.format(java.util.Locale.US, "%.2f", pago.getValor())
+				+ notaCheque;
 
 		// 1. Asiento contable del egreso
 		Asiento asiento = asientoContableService.generarAsientoEgresoTesoreria(
@@ -1281,13 +1637,20 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 				observacionAsiento, usuarioNombre(idUsuario));
 
 		// 2. Movimiento bancario de egreso (mismo criterio que los pagos de facturas)
-		movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
+		int tipoMovimiento = (cheque != null)
+				? TipoMovimientoConciliacion.CHEQUES_GIRADOS_Y_NO_COBRADOS
+				: TipoMovimientoConciliacion.TRANSFERENCIAS_DEBITOS_EN_TRANSITO;
+		com.saa.model.tsr.MovimientoBanco mov = movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
 				"Egreso tesorería: " + egreso.getDescripcion()
 				+ (debitoAutomatico ? " | Débito automático" : "")
-				+ " | Ref: " + nvl(pago.getReferenciaBanco(), ""),
+				+ (cheque != null ? " | Cheque N° " + cheque.getNumero() : " | Ref: " + nvl(pago.getReferenciaBanco(), "")),
 				asiento, pago.getCuentaBancaria(), pago.getValor(),
-				TipoMovimientoConciliacion.TRANSFERENCIAS_DEBITOS_EN_TRANSITO,
-				OrigenMovimientoConciliacion.PAGOS);
+				tipoMovimiento, OrigenMovimientoConciliacion.PAGOS);
+		if (cheque != null) {
+			mov.setCheque(cheque);
+			mov.setNumeroCheque(cheque.getNumero());
+			movimientoBancoService.saveSingle(mov);
+		}
 
 		// 3. El egreso queda pagado, con su asiento vinculado
 		egreso.setEstado(Long.valueOf(EstadoEgresoTesoreria.PAGADO));
@@ -1370,6 +1733,13 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	private Asiento contabilizarPagoOrigenExterno(PagoProgramado pago, Long idUsuario)
 			throws Throwable {
 
+		// La caja chica no usa el desglose de PGS.DPGT: el DEBE es siempre la
+		// cuenta contable de la caja, no un producto por línea. Se resuelve
+		// aparte con su propia plantilla de asiento.
+		if (com.saa.rubros.OrigenPagoExterno.TSR_CAJA_CHICA.equals(pago.getOrigenExterno())) {
+			return contabilizarPagoCajaChica(pago, idUsuario);
+		}
+
 		Long idEmpresa = (pago.getEmpresa() != null) ? pago.getEmpresa().getCodigo() : null;
 		LocalDate fecha = (pago.getFechaRespuesta() != null)
 				? pago.getFechaRespuesta() : LocalDate.now();
@@ -1418,34 +1788,123 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 					+ " y el pago es de $" + String.format(Locale.US, "%.2f", totalPago)
 					+ ". No se genera un asiento descuadrado.");
 		}
+		Cheque cheque = pago.getCheque();
+		String notaCheque = (cheque != null)
+				? " | Cheque N° " + cheque.getNumero() + " Cta " + pago.getCuentaBancaria().getNumeroCuenta()
+				: "";
+
 		lineas.add(creaLineaAsiento(pago.getCuentaBancaria().getPlanCuenta(),
 				descripcionBase + " | Cta Banco: " + pago.getCuentaBancaria().getNumeroCuenta(),
 				totalPago, false));
 
 		String observacionAsiento = descripcionBase
-				+ (debitoAutomatico ? " (débito automático)" : " (transferencia)")
+				+ (cheque != null ? " (cheque)" : debitoAutomatico ? " (débito automático)" : " (transferencia)")
 				+ " | Beneficiario: " + nvl(pago.getBeneficiarioNombre(), "")
 				+ " | Ref: " + nvl(pago.getReferenciaBanco(), "")
-				+ " | Valor: $" + String.format(Locale.US, "%.2f", totalPago);
+				+ " | Valor: $" + String.format(Locale.US, "%.2f", totalPago)
+				+ notaCheque;
 
 		Asiento asiento = asientoContableService.generarAsiento(idEmpresa,
 				TipoAsientos.PAGO_ORIGEN_EXTERNO, fecha, observacionAsiento,
 				usuarioNombre(idUsuario), lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_PAGAR));
 
 		// Movimiento bancario de egreso (mismo criterio que los demás pagos)
-		movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
+		int tipoMovimiento = (cheque != null)
+				? TipoMovimientoConciliacion.CHEQUES_GIRADOS_Y_NO_COBRADOS
+				: TipoMovimientoConciliacion.TRANSFERENCIAS_DEBITOS_EN_TRANSITO;
+		com.saa.model.tsr.MovimientoBanco mov = movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
 				descripcionBase + " | Beneficiario: " + nvl(pago.getBeneficiarioNombre(), "")
 				+ (debitoAutomatico ? " | Débito automático" : "")
-				+ " | Ref: " + nvl(pago.getReferenciaBanco(), ""),
+				+ (cheque != null ? " | Cheque N° " + cheque.getNumero() : " | Ref: " + nvl(pago.getReferenciaBanco(), "")),
 				asiento, pago.getCuentaBancaria(), pago.getValor(),
-				TipoMovimientoConciliacion.TRANSFERENCIAS_DEBITOS_EN_TRANSITO,
-				OrigenMovimientoConciliacion.PAGOS);
+				tipoMovimiento, OrigenMovimientoConciliacion.PAGOS);
+		if (cheque != null) {
+			mov.setCheque(cheque);
+			mov.setNumeroCheque(cheque.getNumero());
+			movimientoBancoService.saveSingle(mov);
+		}
 
 		// El asiento cuelga del pago: no hay documento de CXP donde colgarlo.
 		pago.setAsiento(asiento);
 
 		System.out.println("✓ Pago de origen externo " + pago.getId() + " contabilizado"
 				+ " | lineas=" + lineas.size() + " | asiento=" + asiento.getNumeroAlterno());
+		return asiento;
+	}
+
+	/**
+	 * Contabiliza la apertura o reposición de una caja chica pagada desde una
+	 * cuenta bancaria: DEBE cuenta contable de la caja / HABER cuenta contable
+	 * del banco (no el desglose de PGS.DPGT — la caja no tiene productos por
+	 * línea, es una sola cuenta). El movimiento de caja chica se ubica por
+	 * {@code pago.getIdOrigen()} (es su MVCHCDGO) y recibe el mismo asiento que
+	 * el pago.
+	 * @param pago      : Pago de origen externo TSR_CAJA_CHICA
+	 * @param idUsuario : Id del usuario que registra o procesa
+	 * @return          : Asiento generado
+	 * @throws Throwable : Excepcion
+	 */
+	private Asiento contabilizarPagoCajaChica(PagoProgramado pago, Long idUsuario) throws Throwable {
+
+		Long idEmpresa = (pago.getEmpresa() != null) ? pago.getEmpresa().getCodigo() : null;
+		LocalDate fecha = (pago.getFechaRespuesta() != null) ? pago.getFechaRespuesta() : LocalDate.now();
+		boolean debitoAutomatico = esDebitoAutomatico(pago);
+
+		com.saa.model.tsr.MovimientoCajaChica movimiento =
+				em.find(com.saa.model.tsr.MovimientoCajaChica.class, pago.getIdOrigen());
+		if (movimiento == null) {
+			throw new IncomeException("No se encontró el movimiento de caja chica con ID: "
+					+ pago.getIdOrigen());
+		}
+		com.saa.model.tsr.CajaChica caja = movimiento.getCajaChica();
+		if (caja == null || caja.getPlanCuenta() == null) {
+			throw new IncomeException("La caja chica del movimiento " + movimiento.getCodigo()
+					+ " no tiene cuenta contable configurada.");
+		}
+		if (pago.getCuentaBancaria() == null || pago.getCuentaBancaria().getPlanCuenta() == null) {
+			throw new IncomeException("La cuenta bancaria del pago " + pago.getId()
+					+ " no tiene cuenta contable configurada (Tesorería → Cuentas bancarias).");
+		}
+
+		boolean esApertura = movimiento.getTipo() != null
+				&& movimiento.getTipo().intValue() == com.saa.rubros.TipoMovimientoCajaChica.APERTURA;
+		String etiqueta = esApertura ? "Apertura" : "Reposición";
+		Cheque cheque = pago.getCheque();
+		String notaCheque = (cheque != null)
+				? " | Cheque N° " + cheque.getNumero() + " Cta " + pago.getCuentaBancaria().getNumeroCuenta()
+				: "";
+
+		String observacionAsiento = etiqueta + " caja chica " + caja.getNombre()
+				+ " | " + nvl(movimiento.getDescripcion(), "")
+				+ " | Ref: " + nvl(pago.getReferenciaBanco(), "")
+				+ " | Valor: $" + String.format(Locale.US, "%.2f", pago.getValor())
+				+ notaCheque;
+
+		Asiento asiento = asientoContableService.generarAsientoReposicionCajaChica(
+				caja.getPlanCuenta().getCodigo(), pago.getCuentaBancaria().getCodigo(), pago.getValor(),
+				idEmpresa, fecha, observacionAsiento, usuarioNombre(idUsuario));
+
+		int tipoMovimiento = (cheque != null)
+				? TipoMovimientoConciliacion.CHEQUES_GIRADOS_Y_NO_COBRADOS
+				: TipoMovimientoConciliacion.TRANSFERENCIAS_DEBITOS_EN_TRANSITO;
+		com.saa.model.tsr.MovimientoBanco mov = movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
+				etiqueta + " caja chica " + caja.getNombre()
+				+ (debitoAutomatico ? " | Débito automático" : "")
+				+ (cheque != null ? " | Cheque N° " + cheque.getNumero() : " | Ref: " + nvl(pago.getReferenciaBanco(), "")),
+				asiento, pago.getCuentaBancaria(), pago.getValor(),
+				tipoMovimiento, OrigenMovimientoConciliacion.PAGOS);
+		if (cheque != null) {
+			mov.setCheque(cheque);
+			mov.setNumeroCheque(cheque.getNumero());
+			movimientoBancoService.saveSingle(mov);
+		}
+
+		pago.setAsiento(asiento);
+		movimiento.setAsiento(asiento);
+		em.merge(movimiento);
+
+		System.out.println("✓ " + etiqueta + " de caja chica " + caja.getNombre() + " contabilizada"
+				+ " | movimiento=" + movimiento.getCodigo() + " | asiento=" + asiento.getNumeroAlterno());
 		return asiento;
 	}
 
@@ -1493,6 +1952,22 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		}
 
 		pago.setAsiento(null);
+
+		// La caja chica además anula su propio movimiento: no queda como "activo
+		// sin asiento" (no existe ese estado para ella, a diferencia del origen
+		// externo genérico donde un pago sin desglose es un caso previsto).
+		if (com.saa.rubros.OrigenPagoExterno.TSR_CAJA_CHICA.equals(pago.getOrigenExterno())) {
+			com.saa.model.tsr.MovimientoCajaChica movimiento =
+					em.find(com.saa.model.tsr.MovimientoCajaChica.class, pago.getIdOrigen());
+			if (movimiento != null) {
+				movimiento.setEstado(Long.valueOf(com.saa.rubros.EstadoMovimientoCajaChica.ANULADO));
+				movimiento.setMotivoAnulacion("PAGO REVERSADO: " + motivo);
+				movimiento.setAsiento(null);
+				em.merge(movimiento);
+				System.out.println("✓ Movimiento de caja chica " + movimiento.getCodigo()
+						+ " anulado por reverso del pago.");
+			}
+		}
 
 		System.out.println("✓ Contabilidad del pago de origen externo " + pago.getId()
 				+ " reversada. Motivo: " + motivo);
@@ -1591,19 +2066,30 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		LocalDate fecha = (pago.getFechaRespuesta() != null)
 				? pago.getFechaRespuesta() : LocalDate.now();
 		boolean debitoAutomatico = esDebitoAutomatico(pago);
+		Cheque cheque = pago.getCheque();
+		String notaCheque = (cheque != null)
+				? "Cheque N° " + cheque.getNumero() + " Cta " + pago.getCuentaBancaria().getNumeroCuenta()
+				: null;
 
 		// 1. Asiento de anticipo + saldo de anticipos + anticipo Confirmado
 		Asiento asiento = anticipoProveedorService.contabilizarAnticipoConfirmado(
-				anticipo.getId(), idCuentaBancaria, fecha, idUsuario);
+				anticipo.getId(), idCuentaBancaria, fecha, idUsuario, notaCheque);
 
 		// 2. Movimiento bancario de egreso (mismo criterio que los demás pagos)
-		movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
+		int tipoMovimiento = (cheque != null)
+				? TipoMovimientoConciliacion.CHEQUES_GIRADOS_Y_NO_COBRADOS
+				: TipoMovimientoConciliacion.TRANSFERENCIAS_DEBITOS_EN_TRANSITO;
+		com.saa.model.tsr.MovimientoBanco mov = movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
 				"Anticipo a proveedor: " + anticipo.getTitular().getNombre()
 				+ (debitoAutomatico ? " | Débito automático" : "")
-				+ " | Ref: " + nvl(pago.getReferenciaBanco(), ""),
+				+ (cheque != null ? " | Cheque N° " + cheque.getNumero() : " | Ref: " + nvl(pago.getReferenciaBanco(), "")),
 				asiento, pago.getCuentaBancaria(), pago.getValor(),
-				TipoMovimientoConciliacion.TRANSFERENCIAS_DEBITOS_EN_TRANSITO,
-				OrigenMovimientoConciliacion.PAGOS);
+				tipoMovimiento, OrigenMovimientoConciliacion.PAGOS);
+		if (cheque != null) {
+			mov.setCheque(cheque);
+			mov.setNumeroCheque(cheque.getNumero());
+			movimientoBancoService.saveSingle(mov);
+		}
 
 		System.out.println("✓ Anticipo " + anticipo.getId() + " pagado y contabilizado"
 				+ " | asiento=" + asiento.getNumeroAlterno());

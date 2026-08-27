@@ -31,6 +31,7 @@ import com.saa.model.tsr.Titular;
 import com.saa.rubros.EstadoAnticipoProveedor;
 import com.saa.rubros.EstadoAplicacionPago;
 import com.saa.rubros.EstadoPagoProgramado;
+import com.saa.rubros.FormaPagoProgramado;
 import com.saa.rubros.RolPersona;
 import com.saa.rubros.TipoAsientos;
 
@@ -184,10 +185,20 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
             Long idEmpresa, Long idUsuario, String fechaAnticipo,
             String numeroDoc, String observacion,
             Long idCuentaDestinoTitular, boolean debitoAutomatico) throws Throwable {
+        return procesarAnticipo(idTitular, valor, idCuentaBancaria, idEmpresa, idUsuario,
+                fechaAnticipo, numeroDoc, observacion, idCuentaDestinoTitular, debitoAutomatico, null);
+    }
+
+    @Override
+    public Map<String, Object> procesarAnticipo(
+            Long idTitular, Double valor, Long idCuentaBancaria,
+            Long idEmpresa, Long idUsuario, String fechaAnticipo,
+            String numeroDoc, String observacion,
+            Long idCuentaDestinoTitular, boolean debitoAutomatico, Long formaPago) throws Throwable {
 
         System.out.println("=== procesarAnticipoProveedor | titular=" + idTitular
                 + " | valor=" + valor + " | cuentaBancaria=" + idCuentaBancaria
-                + " | debitoAutomatico=" + debitoAutomatico + " ===");
+                + " | debitoAutomatico=" + debitoAutomatico + " | formaPago=" + formaPago + " ===");
 
         Map<String, Object> resultado = new HashMap<>();
         resultado.put("exito", false);
@@ -202,7 +213,9 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
             throw new IncomeException("La fecha del anticipo es obligatoria (formato yyyy-MM-dd).");
         // Se valida aquí, antes de grabar el anticipo, para no dejar un
         // anticipo Ingresado sin pago si el circuito rechaza el registro.
-        if (!debitoAutomatico && idCuentaDestinoTitular == null)
+        // El cheque, igual que el débito automático, no exige cuenta destino.
+        boolean esCheque = formaPago != null && formaPago.longValue() == FormaPagoProgramado.CHEQUE;
+        if (!debitoAutomatico && !esCheque && idCuentaDestinoTitular == null)
             throw new IncomeException("Debe indicar la cuenta bancaria del proveedor "
                     + "para incluir el pago en el archivo del banco.");
 
@@ -269,7 +282,10 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
         anticipo.setFechaRegistro(LocalDateTime.now());
         // ── Datos de la cuenta bancaria de pago ────────────────────────────────
         anticipo.setReferencia(cuentaBancaria.getNumeroCuenta());
-        anticipo.setFormaPago(2L); // 2 = Transferencia (pago bancario)
+        // La forma real (incluido cheque=3) la decide el circuito de pagos; aquí
+        // se deja la indicada (o Transferencia por defecto) y se corrige la
+        // referencia más abajo si el pago terminó asignando un cheque.
+        anticipo.setFormaPago(formaPago != null ? formaPago : 2L);
         String nombreBanco = (cuentaBancaria.getBanco() != null
                 && cuentaBancaria.getBanco().getNombre() != null)
                 ? cuentaBancaria.getBanco().getNombre()
@@ -286,7 +302,28 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
         // vuelta a contabilizarAnticipoConfirmado en esta misma transacción.
         Map<String, Object> resultadoPago = pagoProgramadoService.registrarPagoDeAnticipo(
                 anticipo.getId(), idCuentaBancaria, idCuentaDestinoTitular,
-                idUsuario, debitoAutomatico, numeroDoc);
+                idUsuario, debitoAutomatico, numeroDoc, formaPago);
+
+        // La forma de pago que manda como autoridad es la que devuelve el circuito
+        // (ya normalizada por PagoProgramadoServiceImpl.validarFormaPago, que puede
+        // ajustarla si vino en desacuerdo con debitoAutomatico), no la que se
+        // recibió cruda aquí. Con cheque, además PGS.ANTP.ANTPFPAG no debe seguir
+        // diciendo "transferencia": se corrige la referencia con el número real
+        // (el banco ya quedó grabado como banco + cuenta de origen).
+        Object formaPagoEfectiva = resultadoPago.get("formaPago");
+        Object numeroCheque = resultadoPago.get("numeroCheque");
+        boolean cambia = false;
+        if (formaPagoEfectiva instanceof Number) {
+            anticipo.setFormaPago(((Number) formaPagoEfectiva).longValue());
+            cambia = true;
+        }
+        if (numeroCheque != null) {
+            anticipo.setReferencia("CHQ-" + numeroCheque);
+            cambia = true;
+        }
+        if (cambia) {
+            anticipo = anticipoDaoService.save(anticipo, anticipo.getId());
+        }
 
         resultado.putAll(resultadoPago);
         resultado.put("anticipo", anticipo.getId());
@@ -300,6 +337,12 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
     @Override
     public Asiento contabilizarAnticipoConfirmado(Long idAnticipo, Long idCuentaBancaria,
             LocalDate fechaPago, Long idUsuario) throws Throwable {
+        return contabilizarAnticipoConfirmado(idAnticipo, idCuentaBancaria, fechaPago, idUsuario, null);
+    }
+
+    @Override
+    public Asiento contabilizarAnticipoConfirmado(Long idAnticipo, Long idCuentaBancaria,
+            LocalDate fechaPago, Long idUsuario, String observaciones) throws Throwable {
 
         System.out.println("=== contabilizarAnticipoConfirmado | anticipo=" + idAnticipo
                 + " | fechaPago=" + fechaPago + " ===");
@@ -326,7 +369,7 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
         //    HABER banco, con la fecha real del pago.
         Asiento asiento = asientoContableService.generarAsientoAnticipoProveedor(
                 anticipo, idCuentaBancaria, TipoAsientos.ANTICIPOS_PROVEEDOR,
-                fecha, nombreUsuario);
+                fecha, nombreUsuario, observaciones);
 
         // 2. El saldo del anticipo es su propio saldo DISPONIBLE (lo que queda
         //    por cruzar): nace igual al valor y lo van descontando los cruces

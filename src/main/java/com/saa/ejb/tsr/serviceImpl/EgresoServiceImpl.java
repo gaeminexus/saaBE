@@ -116,9 +116,20 @@ public class EgresoServiceImpl implements EgresoService {
 			String descripcion, Double valor, String fecha, Long idCuentaBancariaOrigen,
 			Long idCuentaDestinoTitular, boolean debitoAutomatico, String referencia,
 			String observacion, Long idUsuario) throws Throwable {
+		return procesarEgreso(idEmpresa, idTitular, idProductoPago, descripcion, valor, fecha,
+				idCuentaBancariaOrigen, idCuentaDestinoTitular, debitoAutomatico, referencia,
+				observacion, idUsuario, null);
+	}
+
+	@Override
+	public Map<String, Object> procesarEgreso(Long idEmpresa, Long idTitular, Long idProductoPago,
+			String descripcion, Double valor, String fecha, Long idCuentaBancariaOrigen,
+			Long idCuentaDestinoTitular, boolean debitoAutomatico, String referencia,
+			String observacion, Long idUsuario, Long formaPago) throws Throwable {
 
 		System.out.println("=== procesarEgreso | empresa=" + idEmpresa + " | producto=" + idProductoPago
-				+ " | valor=" + valor + " | debitoAutomatico=" + debitoAutomatico + " ===");
+				+ " | valor=" + valor + " | debitoAutomatico=" + debitoAutomatico
+				+ " | formaPago=" + formaPago + " ===");
 
 		if (idEmpresa == null) {
 			throw new IncomeException("Debe indicar la empresa.");
@@ -167,7 +178,7 @@ public class EgresoServiceImpl implements EgresoService {
 		// automático el pago nace confirmado y contabiliza aquí mismo).
 		Map<String, Object> resultado = pagoProgramadoService.registrarPagoDeEgreso(
 				egreso.getId(), idCuentaBancariaOrigen, idCuentaDestinoTitular,
-				idUsuario, debitoAutomatico, referencia);
+				idUsuario, debitoAutomatico, referencia, formaPago);
 
 		resultado.put("egreso", egreso.getId());
 		return resultado;
@@ -230,7 +241,54 @@ public class EgresoServiceImpl implements EgresoService {
 		if (idEmpresa == null) {
 			throw new IncomeException("Debe indicar la empresa.");
 		}
-		return egresoDaoService.selectByEmpresaEstado(idEmpresa, estado);
+		List<Egreso> egresos = egresoDaoService.selectByEmpresaEstado(idEmpresa, estado);
+		completaFormaPago(egresos);
+		return egresos;
+	}
+
+	/**
+	 * Puebla los campos transitorios {@code formaPago} y {@code numeroCheque}
+	 * de cada egreso con los del PagoProgramado más reciente no anulado
+	 * asociado (TSR.EGRS no guarda la forma de pago real, sólo el espejo
+	 * {@code debitoAutomatico}; el cheque vive únicamente en PGS.PGTR). Una
+	 * sola consulta para toda la página, no una por fila.
+	 * @param egresos : Egresos ya cargados (se modifican en el sitio)
+	 * @throws Throwable : Excepcion
+	 */
+	private void completaFormaPago(List<Egreso> egresos) throws Throwable {
+		if (egresos == null || egresos.isEmpty()) {
+			return;
+		}
+		List<Long> ids = new java.util.ArrayList<>();
+		for (Egreso egreso : egresos) {
+			ids.add(egreso.getId());
+		}
+
+		@SuppressWarnings("unchecked")
+		List<PagoProgramado> pagos = em.createQuery(
+				"select p from PagoProgramado p where p.egreso.id in :ids "
+				+ "and p.estado <> :anulado order by p.fechaRegistro desc")
+				.setParameter("ids", ids)
+				.setParameter("anulado", Long.valueOf(EstadoPagoProgramado.ANULADO))
+				.getResultList();
+
+		// El primer pago que aparece por egreso es el más reciente (la
+		// consulta ya viene ordenada desc); los siguientes para el mismo
+		// egreso se descartan.
+		Map<Long, PagoProgramado> pagoPorEgreso = new HashMap<>();
+		for (PagoProgramado pago : pagos) {
+			if (pago.getEgreso() != null) {
+				pagoPorEgreso.putIfAbsent(pago.getEgreso().getId(), pago);
+			}
+		}
+
+		for (Egreso egreso : egresos) {
+			PagoProgramado pago = pagoPorEgreso.get(egreso.getId());
+			if (pago != null) {
+				egreso.setFormaPago(pago.getFormaPago());
+				egreso.setNumeroCheque((pago.getCheque() != null) ? pago.getCheque().getNumero() : null);
+			}
+		}
 	}
 
 	// =====================================================================

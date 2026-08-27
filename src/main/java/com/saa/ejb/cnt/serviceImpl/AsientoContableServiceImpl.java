@@ -24,6 +24,7 @@ import com.saa.rubros.EstadoAsiento;
 import com.saa.rubros.ModuloSistema;
 import com.saa.rubros.RolPersona;
 import com.saa.rubros.Rubros;
+import com.saa.rubros.TipoAsientos;
 import com.saa.rubros.TipoMoneda;
 
 import jakarta.ejb.EJB;
@@ -674,6 +675,14 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     public Asiento generarAsientoAnticipoProveedor(com.saa.model.cxp.AnticipoProveedor anticipo,
             Long idCuentaBancaria, int codigoAltTipoAsiento, LocalDate fechaAsiento,
             String usuario) throws Throwable {
+        return generarAsientoAnticipoProveedor(anticipo, idCuentaBancaria, codigoAltTipoAsiento,
+                fechaAsiento, usuario, null);
+    }
+
+    @Override
+    public Asiento generarAsientoAnticipoProveedor(com.saa.model.cxp.AnticipoProveedor anticipo,
+            Long idCuentaBancaria, int codigoAltTipoAsiento, LocalDate fechaAsiento,
+            String usuario, String observaciones) throws Throwable {
 
         System.out.println("=== generarAsientoAnticipoProveedor | idAnticipo=" + anticipo.getId() + " ===");
 
@@ -737,6 +746,9 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         String obs = "Anticipo proveedor: " + nomProv
                 + " | Doc: " + (anticipo.getNumeroDoc() != null ? anticipo.getNumeroDoc() : "")
                 + " | Valor: $" + String.format(java.util.Locale.US, "%.2f", valor);
+        if (observaciones != null && !observaciones.trim().isEmpty()) {
+            obs += " | " + observaciones.trim();
+        }
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento,
                 (fechaAsiento != null) ? fechaAsiento : anticipo.getFechaAnticipo(),
@@ -953,6 +965,124 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento, fechaAsiento, observaciones,
                 usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA));
+    }
+
+    // ---------------------------------------------------------------
+    // Caja chica
+    // ---------------------------------------------------------------
+
+    @Override
+    public Asiento generarAsientoGastoCajaChica(Long idProductoPago, String nombreCaja, String descripcion,
+            Double valor, Long idPlanCuentaCaja, Long idEmpresa, LocalDate fechaAsiento,
+            String observaciones, String usuario) throws Throwable {
+
+        System.out.println("=== generarAsientoGastoCajaChica | producto=" + idProductoPago
+                + " | valor=" + valor + " | caja=" + nombreCaja + " ===");
+
+        if (idEmpresa == null) {
+            throw new IncomeException("Debe indicar la empresa contable.");
+        }
+        if (valor == null || valor <= 0) {
+            throw new IncomeException("El valor del gasto debe ser mayor a cero.");
+        }
+
+        // ── DEBE: cuenta del grupo del producto CXP ──────────────────────────────
+        PlanCuenta cuentaGasto = obtenerCuentaGrupoProductoPago(idProductoPago);
+
+        // ── HABER: cuenta contable de la caja chica ──────────────────────────────
+        PlanCuenta cuentaCaja = obtenerPlanCuenta(idPlanCuentaCaja,
+                "La caja chica no tiene cuenta contable configurada.");
+
+        List<DetalleAsiento> lineas = new ArrayList<>();
+        lineas.add(creaLinea(cuentaGasto, "Gasto caja chica: " + descripcion, valor, true));
+        lineas.add(creaLinea(cuentaCaja, "Caja chica " + nombreCaja + ": " + descripcion, valor, false));
+
+        return generarAsiento(idEmpresa, TipoAsientos.EGRESO_TESORERIA, fechaAsiento, observaciones,
+                usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA));
+    }
+
+    @Override
+    public Asiento generarAsientoReposicionCajaChica(Long idPlanCuentaCaja, Long idCuentaBancaria,
+            Double valor, Long idEmpresa, LocalDate fechaAsiento, String observaciones, String usuario)
+            throws Throwable {
+
+        System.out.println("=== generarAsientoReposicionCajaChica | caja=" + idPlanCuentaCaja
+                + " | valor=" + valor + " | cuentaBancaria=" + idCuentaBancaria + " ===");
+
+        if (idEmpresa == null) {
+            throw new IncomeException("Debe indicar la empresa contable.");
+        }
+        if (valor == null || valor <= 0) {
+            throw new IncomeException("El valor de la reposición debe ser mayor a cero.");
+        }
+
+        // ── DEBE: cuenta contable de la caja chica ───────────────────────────────
+        PlanCuenta cuentaCaja = obtenerPlanCuenta(idPlanCuentaCaja,
+                "La caja chica no tiene cuenta contable configurada.");
+
+        // ── HABER: cuenta contable del banco ──────────────────────────────────────
+        com.saa.model.tsr.CuentaBancaria cuentaBancaria = obtenerCuentaBancaria(idCuentaBancaria);
+        PlanCuenta cuentaBanco = cuentaBancaria.getPlanCuenta();
+
+        List<DetalleAsiento> lineas = new ArrayList<>();
+        lineas.add(creaLinea(cuentaCaja, "Reposición caja chica", valor, true));
+        lineas.add(creaLinea(cuentaBanco,
+                "Reposición caja chica | Cta Banco: " + cuentaBancaria.getNumeroCuenta(), valor, false));
+
+        return generarAsiento(idEmpresa, TipoAsientos.EGRESO_TESORERIA, fechaAsiento, observaciones,
+                usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA));
+    }
+
+    @Override
+    public Asiento generarAsientoAjusteCajaChica(Long idPlanCuentaCaja, Long idPlanCuentaDiferencia,
+            Double valor, boolean sobrante, Long idEmpresa, LocalDate fechaAsiento,
+            String observaciones, String usuario) throws Throwable {
+
+        System.out.println("=== generarAsientoAjusteCajaChica | caja=" + idPlanCuentaCaja
+                + " | valor=" + valor + " | sobrante=" + sobrante + " ===");
+
+        if (idEmpresa == null) {
+            throw new IncomeException("Debe indicar la empresa contable.");
+        }
+        if (valor == null || valor <= 0) {
+            throw new IncomeException("El valor del ajuste debe ser mayor a cero.");
+        }
+
+        PlanCuenta cuentaCaja = obtenerPlanCuenta(idPlanCuentaCaja,
+                "La caja chica no tiene cuenta contable configurada.");
+        PlanCuenta cuentaDiferencia = obtenerPlanCuenta(idPlanCuentaDiferencia,
+                "Debe indicar la cuenta de faltantes/sobrantes de caja para el ajuste.");
+
+        String tipoTexto = sobrante ? "Sobrante" : "Faltante";
+        List<DetalleAsiento> lineas = new ArrayList<>();
+        if (sobrante) {
+            lineas.add(creaLinea(cuentaCaja, "Ajuste caja chica - " + tipoTexto, valor, true));
+            lineas.add(creaLinea(cuentaDiferencia, "Ajuste caja chica - " + tipoTexto, valor, false));
+        } else {
+            lineas.add(creaLinea(cuentaDiferencia, "Ajuste caja chica - " + tipoTexto, valor, true));
+            lineas.add(creaLinea(cuentaCaja, "Ajuste caja chica - " + tipoTexto, valor, false));
+        }
+
+        return generarAsiento(idEmpresa, TipoAsientos.EGRESO_TESORERIA, fechaAsiento, observaciones,
+                usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA));
+    }
+
+    /**
+     * Recupera una cuenta contable (PlanCuenta) por id, con mensaje accionable.
+     * @param idPlanCuenta : Id de la cuenta contable
+     * @param mensajeError : Mensaje a lanzar si no se encuentra
+     * @return             : Cuenta contable
+     * @throws Throwable   : IncomeException si no existe
+     */
+    private PlanCuenta obtenerPlanCuenta(Long idPlanCuenta, String mensajeError) throws Throwable {
+        if (idPlanCuenta == null) {
+            throw new IncomeException(mensajeError);
+        }
+        PlanCuenta cuenta = em.find(PlanCuenta.class, idPlanCuenta);
+        if (cuenta == null) {
+            throw new IncomeException("No se encontró la cuenta contable con ID: " + idPlanCuenta);
+        }
+        return cuenta;
     }
 
     // ---------------------------------------------------------------

@@ -22,4 +22,10 @@ public interface OrigenPagoExterno {
 	 */
 	public static final String CRD_DEVOLUCION_APORTE = "CRD_DEVOLUCION_APORTE";
 
+	/**
+	 * Apertura o reposicion de una caja chica pagada desde una cuenta bancaria,
+	 * originada en TSR.MVCH. PGTRIDOR lleva el TSR.MVCH.MVCHCDGO correspondiente.
+	 */
+	public static final String TSR_CAJA_CHICA = "TSR_CAJA_CHICA";
+
 }

@@ -136,6 +136,12 @@ public class PagoProgramadoRest {
      * En ese caso "fechaProgramada" es la fecha del débito, "idCuentaDestinoTitular"
      * no hace falta, y el pago queda confirmado con la factura abonada y el
      * asiento contable generado en la misma llamada.
+     *
+     * "formaPago" (opcional): 1=Efectivo, 2=Transferencia, 3=Cheque, 4=Débito automático.
+     * Si se omite se infiere de "debitoAutomatico" (2 o 4). Con formaPago=3 la cuenta de
+     * origen debe manejar chequera ("manejaChequera"=1); no hace falta cuentaDestinoTitular,
+     * el sistema asigna el siguiente cheque disponible y el pago queda confirmado con la
+     * respuesta incluyendo "numeroCheque".
      */
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
@@ -153,6 +159,7 @@ public class PagoProgramadoRest {
             String observacion  = (String) datos.get("observacion");
             boolean debitoAut   = toBoolean(datos.get("debitoAutomatico"));
             String referencia   = (String) datos.get("referencia");
+            Long formaPago      = toLong(datos.get("formaPago"));
 
             if (idFactura == null || idCuentaOrigen == null || valor == null || idEmpresa == null) {
                 return Response.status(Response.Status.BAD_REQUEST)
@@ -162,7 +169,7 @@ public class PagoProgramadoRest {
 
             Map<String, Object> resultado = pagoProgramadoService.registrarPago(idFactura,
                     idCuentaOrigen, idCuentaDest, valor, fecha, idEmpresa, idUsuario, observacion,
-                    debitoAut, referencia);
+                    debitoAut, referencia, formaPago);
             return Response.status(Response.Status.CREATED).entity(resultado)
                     .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {

@@ -51,6 +51,17 @@ public interface EgresoService extends EntityService<Egreso> {
 			String observacion, Long idUsuario) throws Throwable;
 
 	/**
+	 * Igual que {@link #procesarEgreso(Long, Long, Long, String, Double, String, Long, Long,
+	 * boolean, String, String, Long)}, con la forma de pago explícita. Ver
+	 * {@link com.saa.rubros.FormaPagoProgramado}.
+	 * @param formaPago : Forma de pago; null equivale a la forma inferida de debitoAutomatico
+	 */
+	Map<String, Object> procesarEgreso(Long idEmpresa, Long idTitular, Long idProductoPago,
+			String descripcion, Double valor, String fecha, Long idCuentaBancariaOrigen,
+			Long idCuentaDestinoTitular, boolean debitoAutomatico, String referencia,
+			String observacion, Long idUsuario, Long formaPago) throws Throwable;
+
+	/**
 	 * Anula un egreso pendiente de pago. Si tiene un pago Registrado lo anula
 	 * también; si el pago está En archivo o Confirmado, la anulación se
 	 * bloquea (procesar la respuesta del banco o revertir el pago primero).

@@ -31,6 +31,7 @@ import com.saa.model.tsr.PersonaCuentaContable;
 import com.saa.rubros.EstadoAnticipoProveedor;
 import com.saa.rubros.EstadoAplicacionPago;
 import com.saa.rubros.EstadoPagoFactura;
+import com.saa.rubros.FormaPagoProgramado;
 import com.saa.rubros.OrigenMovimientoConciliacion;
 import com.saa.rubros.RolPersona;
 import com.saa.rubros.TipoAsientos;
@@ -47,12 +48,6 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 
 	/** Tolerancia para comparar valores monetarios. */
 	private static final double TOLERANCIA = 0.01;
-
-	/** Forma de pago transferencia (rubro TipoFormaPago del sistema). */
-	private static final long FORMA_PAGO_TRANSFERENCIA = 2L;
-
-	/** Forma de pago débito automático: el banco debita la cuenta por convenio. */
-	private static final long FORMA_PAGO_DEBITO_AUTOMATICO = 4L;
 
 	@EJB
 	private AplicacionPagoCxpDaoService aplicacionPagoCxpDaoService;
@@ -574,7 +569,8 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 			throws Throwable {
 
 		boolean debitoAutomatico = esDebitoAutomatico(pago);
-		String tipoTexto = debitoAutomatico ? "débito automático" : "transferencia";
+		com.saa.model.tsr.Cheque cheque = pago.getCheque();
+		String tipoTexto = (cheque != null) ? "cheque" : debitoAutomatico ? "débito automático" : "transferencia";
 
 		System.out.println("=== aplicarPagoTransferencia | pago=" + pago.getId()
 				+ " | valor=" + pago.getValor() + " | tipo=" + tipoTexto + " ===");
@@ -590,14 +586,18 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 
 		LocalDate fecha = (pago.getFechaRespuesta() != null) ? pago.getFechaRespuesta() : LocalDate.now();
 		String nombreProveedor = (pago.getTitular() != null) ? pago.getTitular().getNombre() : "";
+		String notaCheque = (cheque != null)
+				? " | Cheque N° " + cheque.getNumero() + " Cta " + pago.getCuentaBancaria().getNumeroCuenta()
+				: "";
 		String observacionAsiento = "Pago por " + tipoTexto + " | Proveedor: " + nombreProveedor
 				+ " | Factura: " + factura.getNumero()
 				+ " | Ref: " + nvl(pago.getReferenciaBanco(), "")
-				+ " | Valor: $" + String.format(java.util.Locale.US, "%.2f", pago.getValor());
+				+ " | Valor: $" + String.format(java.util.Locale.US, "%.2f", pago.getValor())
+				+ notaCheque;
 
 		// 1. Asiento contable del pago
-		// El débito automático mueve las mismas cuentas que la transferencia:
-		// DEBE cuenta CxP del proveedor / HABER cuenta contable del banco.
+		// El débito automático y el cheque mueven las mismas cuentas que la
+		// transferencia: DEBE cuenta CxP del proveedor / HABER cuenta contable del banco.
 		Long idCuentaBancaria = (pago.getCuentaBancaria() != null)
 				? pago.getCuentaBancaria().getCodigo() : null;
 		Asiento asiento = asientoContableService.generarAsientoPagoTransferenciaCxp(
@@ -610,8 +610,9 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 				TipoDocPagoAplicacion.COBRO_DIRECTO, pago.getValor(), fecha,
 				"Pago por " + tipoTexto + " | Ref: " + nvl(pago.getReferenciaBanco(), ""),
 				usuarioNombre(idUsuario));
-		aplicacion.setFormaPago(debitoAutomatico
-				? FORMA_PAGO_DEBITO_AUTOMATICO : FORMA_PAGO_TRANSFERENCIA);
+		aplicacion.setFormaPago((pago.getFormaPago() != null) ? pago.getFormaPago()
+				: (debitoAutomatico ? Long.valueOf(FormaPagoProgramado.DEBITO_AUTOMATICO)
+						: Long.valueOf(FormaPagoProgramado.TRANSFERENCIA)));
 		aplicacion.setReferencia(pago.getReferenciaBanco());
 		aplicacion.setBanco(nombreBancoPago(pago, debitoAutomatico));
 		aplicacion.setAsiento(asiento);
@@ -619,13 +620,20 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 		aplicacion = saveSingle(aplicacion);
 
 		// 3. Movimiento bancario de egreso
-		movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
+		int tipoMovimiento = (cheque != null)
+				? TipoMovimientoConciliacion.CHEQUES_GIRADOS_Y_NO_COBRADOS
+				: TipoMovimientoConciliacion.TRANSFERENCIAS_DEBITOS_EN_TRANSITO;
+		com.saa.model.tsr.MovimientoBanco mov = movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
 				"Pago proveedor: " + nombreProveedor + " | Factura: " + factura.getNumero()
 				+ (debitoAutomatico ? " | Débito automático" : "")
-				+ " | Ref: " + nvl(pago.getReferenciaBanco(), ""),
+				+ (cheque != null ? " | Cheque N° " + cheque.getNumero() : " | Ref: " + nvl(pago.getReferenciaBanco(), "")),
 				asiento, pago.getCuentaBancaria(), pago.getValor(),
-				TipoMovimientoConciliacion.TRANSFERENCIAS_DEBITOS_EN_TRANSITO,
-				OrigenMovimientoConciliacion.PAGOS);
+				tipoMovimiento, OrigenMovimientoConciliacion.PAGOS);
+		if (cheque != null) {
+			mov.setCheque(cheque);
+			mov.setNumeroCheque(cheque.getNumero());
+			movimientoBancoService.saveSingle(mov);
+		}
 
 		System.out.println("✓ Pago aplicado: aplicacion=" + aplicacion.getId()
 				+ " | asiento=" + asiento.getNumeroAlterno());
@@ -1044,14 +1052,14 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	/**
 	 * Devuelve el banco que queda registrado en la aplicación. En la
 	 * transferencia interesa el banco al que se envió el dinero (cuenta del
-	 * proveedor); en el débito automático no hay cuenta destino, así que se
-	 * guarda el banco de la cuenta propia que el banco debitó.
+	 * proveedor); en el débito automático y en el cheque no hay cuenta
+	 * destino, así que se guarda el banco de la cuenta propia de origen.
 	 * @param pago             : Pago programado
 	 * @param debitoAutomatico : true si el pago es por débito automático
 	 * @return                 : Nombre del banco o cadena vacía
 	 */
 	private String nombreBancoPago(PagoProgramado pago, boolean debitoAutomatico) {
-		if (debitoAutomatico) {
+		if (debitoAutomatico || pago.getCheque() != null) {
 			if (pago.getCuentaBancaria() != null && pago.getCuentaBancaria().getBanco() != null) {
 				return pago.getCuentaBancaria().getBanco().getNombre();
 			}

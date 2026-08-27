@@ -8,6 +8,7 @@ import com.saa.model.cnt.Asiento;
 import com.saa.model.scp.Empresa;
 import com.saa.model.scp.Usuario;
 import com.saa.model.tsr.BancoExterno;
+import com.saa.model.tsr.Cheque;
 import com.saa.model.tsr.CuentaBancaria;
 import com.saa.model.tsr.CuentaBancariaTitular;
 import com.saa.model.tsr.Titular;
@@ -227,6 +228,23 @@ public class PagoProgramado implements Serializable {
     private Long debitoAutomatico;
 
     /**
+     * Forma de pago explícita: 1=Efectivo, 2=Transferencia, 3=Cheque,
+     * 4=Débito automático. Ver {@link com.saa.rubros.FormaPagoProgramado}.
+     */
+    @Basic
+    @Column(name = "PGTRFPAG")
+    private Long formaPago;
+
+    /**
+     * Cheque girado para este pago. FK a TSR.DTCH. Sólo cuando
+     * {@link #formaPago} es CHEQUE (3): el sistema asigna el menor cheque
+     * ACTIVO de la cuenta de origen y lo deja GENERADO.
+     */
+    @ManyToOne
+    @JoinColumn(name = "PGTRDTCH", referencedColumnName = "DTCHCDGO")
+    private Cheque cheque;
+
+    /**
      * Valor a transferir.
      */
     @Basic
@@ -362,6 +380,12 @@ public class PagoProgramado implements Serializable {
 
     public Long getDebitoAutomatico() { return debitoAutomatico; }
     public void setDebitoAutomatico(Long debitoAutomatico) { this.debitoAutomatico = debitoAutomatico; }
+
+    public Long getFormaPago() { return formaPago; }
+    public void setFormaPago(Long formaPago) { this.formaPago = formaPago; }
+
+    public Cheque getCheque() { return cheque; }
+    public void setCheque(Cheque cheque) { this.cheque = cheque; }
 
     public Double getValor() { return valor; }
     public void setValor(Double valor) { this.valor = valor; }

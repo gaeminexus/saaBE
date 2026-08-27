@@ -18,6 +18,16 @@
 > `com.saa.ws.rest.cxp.PagoProgramadoRest` (`/pgtr`),
 > `com.saa.ws.rest.cxc.AplicacionPagoCxcRest` (`/aplc`).
 >
+> **Actualización 2026-08-26 — pago con cheque.** Los `registrar*` de `/pgtr`
+> (y `/egrs/procesar`, `/antp/procesar`) aceptan `formaPago` (1=Efectivo,
+> 2=Transferencia, 3=Cheque, 4=Débito automático; opcional, se infiere de
+> `debitoAutomatico` si se omite). Con `formaPago=3` no hace falta
+> `idCuentaDestinoTitular`, la cuenta de origen debe manejar chequera
+> (`CuentaBancaria.manejaChequera=1`), y el pago nace Confirmado igual que el
+> débito automático, con el cheque asignado devuelto en `numeroCheque`. Ver
+> `docs/logica-negocio/tsr/CHEQUES.md` para el ciclo completo de chequeras y
+> cheques (`/chqr`, `/dtch`) — pantallas fuera de alcance de este documento.
+>
 > **Fuera de alcance de este documento:** el registro de Anticipos (a
 > proveedores o a clientes) tiene su **propia pantalla, ya existente y en
 > funcionamiento**, independiente de todo lo de aquí (`/antp` para proveedores,
@@ -356,6 +366,25 @@ interpreta como la **fecha del débito** y es la fecha del asiento;
 `idCuentaDestinoTitular` no hace falta (el dinero no se transfiere, el banco
 debita la cuenta propia).
 
+**Variante cheque** — mismo body de la variante normal, sin `debitoAutomatico`
+ni `idCuentaDestinoTitular`, agregando `formaPago`:
+```json
+{
+  "idFacturaCompra": 123,
+  "idCuentaBancariaOrigen": 4,
+  "valor": 1500.00,
+  "fechaProgramada": "2026-08-26",
+  "idEmpresa": 1,
+  "idUsuario": 5,
+  "observacion": "Pago factura agosto",
+  "formaPago": 3
+}
+```
+Requiere que la cuenta de origen tenga `manejaChequera=1` (error explícito si
+no); el sistema asigna el siguiente cheque disponible de la cuenta, lo deja
+Generado y el pago nace Confirmado — igual que el débito automático. La
+respuesta agrega `"numeroCheque": <n>` y `"formaPago": 3`.
+
 El backend valida que `valor` no supere el saldo pendiente de la factura
 **descontando lo que ya está comprometido** en otros pagos vigentes de esa
 misma factura (registrados o en archivo) — así que una factura puede tener
@@ -439,9 +468,10 @@ cuenta de origen.
 ```
 
 `debitoAutomatico` (`0` = transferencia normal, `1` = débito automático) viene
-en todos los pagos. En esta pantalla nunca vas a ver un `1`: los débitos
-automáticos nacen en estado 3 y este listado filtra por `estado=1`. Si igual
-llegara uno seleccionado, `POST /pgtr/lote` lo rechaza con un mensaje explícito.
+en todos los pagos, igual que `formaPago` (1/2/3/4) y `numeroCheque` si aplica.
+En esta pantalla nunca vas a ver un débito automático ni un cheque: los dos
+nacen en estado 3 y este listado filtra por `estado=1`. Si igual llegara uno
+seleccionado, `POST /pgtr/lote` lo rechaza con un mensaje explícito.
 
 **Regla de negocio clave para la UI:** el backend exige que **todos los
 pagos seleccionados compartan la misma cuenta bancaria de origen**. Lo más

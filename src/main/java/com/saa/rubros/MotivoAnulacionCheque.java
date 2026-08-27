@@ -22,5 +22,6 @@ public interface MotivoAnulacionCheque {
 	public static final int ERROR_DE_TIPEO = 1;
 	public static final int ERROR_DE_USUARIO = 2;
 	public static final int CHEQUERA_ANULADA = 3;
+	public static final int PAGO_REVERSADO = 4;
 
 }

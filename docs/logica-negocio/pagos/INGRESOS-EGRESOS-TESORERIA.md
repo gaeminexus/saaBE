@@ -5,6 +5,9 @@
 > Backend: `com.saa.ws.rest.tsr.EgresoRest` (`/egrs`), `com.saa.ws.rest.tsr.IngresoRest` (`/ingr`).
 > Script SQL: `docs/scripts/sql-ingresos-egresos-tesoreria.sql` (tablas `TSR.EGRS`, `TSR.INGR`, ALTER a `PGS.PGTR`).
 > Actualización 2026-08-18: `docs/scripts/sql-alter-egrs-debito-automatico.sql` (columna `TSR.EGRS.EGRSDBAT`).
+> Actualización 2026-08-26: pago con cheque. Ver `docs/logica-negocio/tsr/CHEQUES.md` — `/egrs/procesar` acepta
+> `formaPago` (1=Efectivo, 2=Transferencia, 3=Cheque, 4=Débito automático); con `formaPago=3` no hace falta
+> `idCuentaDestinoTitular` y la cuenta de origen debe manejar chequera.
 
 ---
 
@@ -75,21 +78,26 @@ pago (el egreso vuelve a Pendiente) la marca no cambia.
   "debitoAutomatico": false,
   "referencia": "DEB-ADM-0812",
   "observacion": "...",
-  "idUsuario": 5
+  "idUsuario": 5,
+  "formaPago": 3
 }
 ```
 
 Requeridos siempre: `idEmpresa`, `idProductoPago`, `valor`,
 `idCuentaBancariaOrigen`, `descripcion`.
 
-**Dos variantes, según `debitoAutomatico`:**
+`formaPago` es opcional: 1=Efectivo, 2=Transferencia, 3=Cheque, 4=Débito
+automático. Si se omite se infiere de `debitoAutomatico` (2 o 4).
 
-| | `false` (transferencia) | `true` (débito automático) |
-|---|---|---|
-| `idTitular` + `idCuentaDestinoTitular` | **Obligatorios** (el archivo del banco necesita el destino) | No hacen falta |
-| `fecha` | Fecha programada del pago | **Fecha del débito** (fecha del asiento) |
-| Resultado | Egreso Pendiente (`debitoAutomatico: 0`) + pago Registrado en `/pgtr` | Egreso **Pagado** (`debitoAutomatico: 1`) + pago Confirmado + asiento + movimiento bancario |
-| Siguiente paso | Aparece en el listado de pagos a realizar (`/pgtr/listar?estado=1`) | Nada — ya está todo hecho |
+**Tres variantes, según `formaPago`:**
+
+| | Transferencia (2) | Cheque (3) | Débito automático (4) |
+|---|---|---|---|
+| `idTitular` + `idCuentaDestinoTitular` | **Obligatorios** (el archivo del banco necesita el destino) | No hacen falta | No hacen falta |
+| Requisito de la cuenta de origen | — | Debe tener `manejaChequera=1` | — |
+| `fecha` | Fecha programada del pago | Fecha del giro (fecha del asiento) | **Fecha del débito** (fecha del asiento) |
+| Resultado | Egreso Pendiente + pago Registrado en `/pgtr` | Egreso **Pagado** + pago Confirmado + cheque Generado + asiento + movimiento bancario | Egreso **Pagado** + pago Confirmado + asiento + movimiento bancario |
+| Siguiente paso | Aparece en el listado de pagos a realizar (`/pgtr/listar?estado=1`) | Nada — ya está todo hecho | Nada — ya está todo hecho |
 
 **Response 201 — transferencia:**
 ```json
@@ -149,6 +157,26 @@ Body: `{ "motivo": "...", "idUsuario": 5 }`
 El egreso devuelve `debitoAutomatico` (0/1) en todos los listados, así que la
 columna "Modalidad" no necesita cargar el pago. Para filtrar solo los débitos
 automáticos: `POST /egrs/selectByCriteria` con el campo `debitoAutomatico`.
+
+**Actualización 2026-08-27 — `formaPago` y `numeroCheque` en `/egrs/listar`.**
+`TSR.EGRS` sólo guarda `debitoAutomatico` como espejo; la forma de pago real —
+incluido **cheque**, que no existía cuando se escribió `EGRSDBAT` — vive
+exclusivamente en el `PagoProgramado` asociado (`PGS.PGTR`, FK `PGTREGRS`). Antes
+de este cambio, un egreso pagado con cheque se mostraba en pantalla como
+"Transferencia" porque el frontend sólo tenía `debitoAutomatico` para decidir la
+columna "Modalidad".
+
+Por eso `Egreso` ganó dos campos **`@Transient`** (no son columnas de `TSR.EGRS`,
+no se persisten): `formaPago` (ver `com.saa.rubros.FormaPagoProgramado`: 1=Efectivo,
+2=Transferencia, 3=Cheque, 4=Débito automático) y `numeroCheque` (sólo si se pagó
+con cheque). `EgresoServiceImpl.listar` los puebla con **una sola consulta** para
+toda la página (`PagoProgramado` por `egreso.id in (...)`, el más reciente no
+anulado de cada egreso — no una consulta por fila), así que `GET /egrs/listar`
+devuelve además `formaPago` y `numeroCheque` junto a `debitoAutomatico`. Si el
+egreso todavía no tiene ningún pago (o todos están anulados), ambos vienen `null`.
+`GET /egrs/getAll` y `/egrs/getId/{id}` usan `selectAll`/`selectById` directamente,
+no pasan por `listar`, así que **no** llevan estos dos campos poblados (quedan en
+`null`) — sólo `/egrs/listar` los resuelve.
 
 ---
 
@@ -211,7 +239,7 @@ movimiento bancario y deja el ingreso Anulado.
 
 | Operación | Asiento | Tipo asiento | Movimiento bancario |
 |---|---|---|---|
-| Pago de egreso (confirmado o débito automático) | DEBE grupo del producto CXP / HABER banco | codigoAlterno 5 (TEGRESO) | Transferencias débitos en tránsito, origen Pagos |
+| Pago de egreso (confirmado, débito automático o cheque) | DEBE grupo del producto CXP / HABER banco | codigoAlterno 5 (TEGRESO) | Transferencia/débito automático: transferencias débitos en tránsito; cheque: cheques girados y no cobrados. Origen Pagos |
 | Ingreso | DEBE banco / HABER grupo del producto CXC | codigoAlterno 4 (TINGRESO) | Transferencias créditos en tránsito, origen Cobros |
 
 Mismo criterio de conciliación que los pagos de facturas y los cobros por

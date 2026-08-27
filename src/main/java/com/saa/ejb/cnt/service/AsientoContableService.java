@@ -148,6 +148,17 @@ public interface AsientoContableService {
             String usuario) throws Throwable;
 
     /**
+     * Igual que {@link #generarAsientoAnticipoProveedor(com.saa.model.cxp.AnticipoProveedor,
+     * Long, int, java.time.LocalDate, String)}, agregando una nota que se anexa a la
+     * observación de cabecera del asiento (por ejemplo, el número de cheque cuando el
+     * anticipo se paga con cheque). {@code null} o vacío no agrega nada.
+     * @param observaciones : Nota a anexar a la observación del asiento, puede ser null
+     */
+    Asiento generarAsientoAnticipoProveedor(com.saa.model.cxp.AnticipoProveedor anticipo,
+            Long idCuentaBancaria, int codigoAltTipoAsiento, java.time.LocalDate fechaAsiento,
+            String usuario, String observaciones) throws Throwable;
+
+    /**
      * Genera el asiento contable para un anticipo de cliente (proceso unificado).
      *
      * Estructura del asiento:
@@ -440,4 +451,79 @@ public interface AsientoContableService {
     Asiento generarAsientoIngresoTesoreria(Long idProductoCobro, String concepto, Double valor,
             Long idCuentaBancaria, Long idEmpresa, int codigoAltTipoAsiento,
             java.time.LocalDate fechaAsiento, String observaciones, String usuario) throws Throwable;
+
+    // ---------------------------------------------------------------
+    // Caja chica
+    // ---------------------------------------------------------------
+
+    /**
+     * Genera el asiento de un gasto de caja chica.
+     * <p>
+     * DEBE:  cuenta del grupo del producto CXP que clasifica el gasto<br>
+     * HABER: cuenta contable de la caja chica (CajaChica.planCuenta)
+     * <p>
+     * Plantilla: {@code TipoAsientos.EGRESO_TESORERIA} (codigoAlterno 5, T-EGRESOS).
+     *
+     * @param idProductoPago  : Id del producto CXP que clasifica el gasto (PGS.PRDP)
+     * @param nombreCaja      : Nombre de la caja chica, para la glosa de la línea HABER
+     * @param descripcion     : Concepto del gasto (va en las líneas del asiento)
+     * @param valor           : Valor del gasto
+     * @param idPlanCuentaCaja: Id de la cuenta contable de la caja (CajaChica.planCuenta)
+     * @param idEmpresa       : Id de la empresa contable
+     * @param fechaAsiento    : Fecha del asiento
+     * @param observaciones   : Observación de cabecera del asiento
+     * @param usuario         : Nombre del usuario que registra
+     * @return                : Asiento generado
+     * @throws Throwable      : Excepcion (producto sin grupo o grupo sin cuenta contable)
+     */
+    Asiento generarAsientoGastoCajaChica(Long idProductoPago, String nombreCaja, String descripcion,
+            Double valor, Long idPlanCuentaCaja, Long idEmpresa, java.time.LocalDate fechaAsiento,
+            String observaciones, String usuario) throws Throwable;
+
+    /**
+     * Genera el asiento de una apertura o reposición de caja chica pagada desde
+     * una cuenta bancaria.
+     * <p>
+     * DEBE:  cuenta contable de la caja chica (CajaChica.planCuenta)<br>
+     * HABER: cuenta contable de la cuenta bancaria de origen (CuentaBancaria.planCuenta)
+     * <p>
+     * Plantilla: {@code TipoAsientos.EGRESO_TESORERIA} (codigoAlterno 5, T-EGRESOS).
+     *
+     * @param idPlanCuentaCaja : Id de la cuenta contable de la caja
+     * @param idCuentaBancaria : Id de la cuenta bancaria propia de origen
+     * @param valor            : Valor de la apertura o reposición
+     * @param idEmpresa        : Id de la empresa contable
+     * @param fechaAsiento     : Fecha del asiento
+     * @param observaciones    : Observación de cabecera del asiento
+     * @param usuario          : Nombre del usuario que registra
+     * @return                 : Asiento generado
+     * @throws Throwable       : Excepcion
+     */
+    Asiento generarAsientoReposicionCajaChica(Long idPlanCuentaCaja, Long idCuentaBancaria, Double valor,
+            Long idEmpresa, java.time.LocalDate fechaAsiento, String observaciones, String usuario)
+            throws Throwable;
+
+    /**
+     * Genera el asiento de ajuste de un cierre de caja chica con diferencia
+     * entre el saldo según libros y el saldo físico contado.
+     * <p>
+     * Sobrante (saldo físico &gt; libros): DEBE caja / HABER cuenta de diferencia.<br>
+     * Faltante (saldo físico &lt; libros): DEBE cuenta de diferencia / HABER caja.
+     * <p>
+     * Plantilla: {@code TipoAsientos.EGRESO_TESORERIA} (codigoAlterno 5, T-EGRESOS).
+     *
+     * @param idPlanCuentaCaja       : Id de la cuenta contable de la caja
+     * @param idPlanCuentaDiferencia : Id de la cuenta de faltantes/sobrantes elegida por el usuario
+     * @param valor                  : Valor absoluto de la diferencia (siempre positivo)
+     * @param sobrante               : true si es sobrante, false si es faltante
+     * @param idEmpresa              : Id de la empresa contable
+     * @param fechaAsiento           : Fecha del asiento
+     * @param observaciones          : Observación de cabecera del asiento
+     * @param usuario                : Nombre del usuario que registra
+     * @return                       : Asiento generado
+     * @throws Throwable             : Excepcion
+     */
+    Asiento generarAsientoAjusteCajaChica(Long idPlanCuentaCaja, Long idPlanCuentaDiferencia,
+            Double valor, boolean sobrante, Long idEmpresa, java.time.LocalDate fechaAsiento,
+            String observaciones, String usuario) throws Throwable;
 }

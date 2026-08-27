@@ -1,7 +1,11 @@
 package com.saa.ejb.tsr.serviceImpl;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
@@ -36,6 +40,9 @@ import com.saa.rubros.TipoMovimientoConciliacion;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.PersistenceException;
 
 /**
@@ -79,7 +86,10 @@ public class ChequeServiceImpl implements ChequeService {
 	@EJB
 	private ConciliacionService conciliacionService;
 
-	
+	@PersistenceContext
+	private EntityManager em;
+
+
 
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.tesoreria.ejb.service.ChequeService#remove(java.util.List)
@@ -165,23 +175,26 @@ public class ChequeServiceImpl implements ChequeService {
 	public void crearChequesDeChequera(Long idChequera, Long totalCheques, Long chequeInicial) throws Throwable {
 		System.out.println("Ingresa al metodo crearChequesDeChequera con id de chequera: " + idChequera + ", numero cheques: " + totalCheques + " y cheque inicial: " + chequeInicial);
 		int numeroCheque = chequeInicial.intValue();
-		Cheque cheque = new Cheque();		
 		Chequera chequera = chequeraService.selectById(idChequera);
 		for (int j = 0; j < totalCheques.intValue(); j++) {
 			try {
-				cheque.setCodigo(Long.valueOf(0));
+				// Instancia nueva en cada vuelta y codigo null: EntityDaoImpl.save
+				// solo hace persist cuando el id es null. Reutilizar la instancia
+				// o pasar 0L hace que save() ejecute merge sobre una fila
+				// inexistente (Cheque#0) y pise el registro anterior.
+				Cheque cheque = new Cheque();
 				cheque.setChequera(chequera);
 				cheque.setNumero(Long.valueOf(numeroCheque));
 				cheque.setRubroEstadoChequeP(Long.valueOf(Rubros.ESTADO_CHEQUE));
 				cheque.setRubroEstadoChequeH(Long.valueOf(EstadoCheque.ACTIVO));
 				cheque.setRubroMotivoAnulacionP(Long.valueOf(Rubros.MOTIVO_ANULACION_CHEQUE));
-				chequeDaoService.save(cheque, cheque.getCodigo());
+				chequeDaoService.save(cheque, null);
 				numeroCheque++;
 			} catch (PersistenceException e) {
 				throw new IncomeException("ERROR AL INSERTAR LOS CHEQUES DE LA CHEQUERA: " + e.getMessage());
 			}
 		}
-	}	
+	}
 
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.tesoreria.ejb.service.ChequeService#recuperaPrimerCheque(java.lang.Long)
@@ -412,6 +425,228 @@ public class ChequeServiceImpl implements ChequeService {
 		System.out.println("saveSingle - Cheque");
 		cheque = chequeDaoService.save(cheque, cheque.getCodigo());
 		return cheque;
+	}
+
+	// =====================================================================
+	// Integración con el circuito moderno de pagos (PGS.PGTR)
+	// =====================================================================
+
+	@Override
+	public Cheque siguienteDisponible(Long idCuentaBancaria) throws Throwable {
+		System.out.println("=== siguienteDisponible | cuenta=" + idCuentaBancaria + " ===");
+		Long idCheque = chequeDaoService.selectMinChequeActivoPorCuenta(idCuentaBancaria);
+		if (idCheque == null) {
+			throw new IncomeException("La cuenta no tiene cheques disponibles");
+		}
+		return selectById(idCheque);
+	}
+
+	/**
+	 * Igual que {@link #siguienteDisponible(Long)}, pero tomando un lock
+	 * pesimista sobre el cheque candidato y re-verificando su estado antes de
+	 * devolverlo. Uso exclusivo de {@link #asignarAPago}: es quien de verdad
+	 * consume el cheque, no la consulta de preview del formulario
+	 * ({@code GET /dtch/siguiente}), que debe seguir siendo de solo lectura
+	 * para no colgarse esperando un lock si hay otro pago con cheque en vuelo.
+	 * @param idCuentaBancaria : Id de la cuenta bancaria
+	 * @return                 : Cheque bloqueado y todavía ACTIVO
+	 * @throws Throwable       : IncomeException si no hay cheques o si otro
+	 *                           usuario lo tomó entre la lectura y el lock
+	 */
+	private Cheque tomarSiguienteConLock(Long idCuentaBancaria) throws Throwable {
+		Cheque cheque = siguienteDisponible(idCuentaBancaria);
+		em.refresh(cheque, LockModeType.PESSIMISTIC_WRITE);
+		if (cheque.getRubroEstadoChequeH() == null
+				|| cheque.getRubroEstadoChequeH().intValue() != EstadoCheque.ACTIVO) {
+			throw new IncomeException("El cheque N° " + cheque.getNumero()
+					+ " fue tomado por otro usuario, intente nuevamente.");
+		}
+		return cheque;
+	}
+
+	@Override
+	public Cheque asignarAPago(Long idCuentaBancaria, Double valor, Titular titular, String beneficiario,
+			Long idUsuario) throws Throwable {
+
+		System.out.println("=== asignarAPago | cuenta=" + idCuentaBancaria + " | valor=" + valor + " ===");
+
+		Cheque cheque = tomarSiguienteConLock(idCuentaBancaria);
+		cheque.setValor(valor);
+		cheque.setTitular(titular);
+		// Pantallas legadas leen DTCHIDBN (idBeneficiario), no solo PRSNCDGO.
+		cheque.setIdBeneficiario(titular);
+		cheque.setBeneficiario(beneficiario);
+		cheque.setFechaUso(LocalDateTime.now());
+		cheque.setRubroEstadoChequeH(Long.valueOf(EstadoCheque.GENERADO));
+		cheque = chequeDaoService.save(cheque, cheque.getCodigo());
+
+		chequeraService.cerrarSiTerminada(cheque.getChequera().getCodigo());
+
+		System.out.println("✓ Cheque N° " + cheque.getNumero() + " asignado a pago | valor=" + valor);
+		return cheque;
+	}
+
+	@Override
+	public void anularChequeSuelto(Long idCheque, Long motivo, Long idUsuario) throws Throwable {
+		System.out.println("=== anularChequeSuelto | cheque=" + idCheque + " ===");
+
+		if (motivo == null || motivo.longValue() < com.saa.rubros.MotivoAnulacionCheque.ERROR_DE_TIPEO
+				|| motivo.longValue() > com.saa.rubros.MotivoAnulacionCheque.CHEQUERA_ANULADA) {
+			throw new IncomeException("Motivo de anulación inválido: " + motivo
+					+ ". Use 1=Error de tipeo, 2=Error de usuario o 3=Chequera anulada.");
+		}
+
+		Cheque cheque = selectById(idCheque);
+		if (cheque.getRubroEstadoChequeH() == null
+				|| cheque.getRubroEstadoChequeH().intValue() != EstadoCheque.ACTIVO) {
+			throw new IncomeException("El cheque N° " + cheque.getNumero()
+					+ " no está activo: no se puede anular directamente.");
+		}
+		Long idPago = chequeDaoService.selectIdPagoByCheque(idCheque);
+		if (idPago != null) {
+			throw new IncomeException("El cheque está asociado al pago " + idPago
+					+ "; reverse el pago.");
+		}
+
+		cheque.setRubroEstadoChequeH(Long.valueOf(EstadoCheque.ANULADO));
+		cheque.setRubroMotivoAnulacionH(motivo);
+		cheque.setFechaAnulacion(LocalDateTime.now());
+		chequeDaoService.save(cheque, cheque.getCodigo());
+
+		chequeraService.cerrarSiTerminada(cheque.getChequera().getCodigo());
+
+		System.out.println("✓ Cheque N° " + cheque.getNumero() + " anulado. Motivo: " + motivo);
+	}
+
+	@Override
+	public void anularPorReverso(Long idCheque) throws Throwable {
+		System.out.println("=== anularPorReverso | cheque=" + idCheque + " ===");
+
+		Cheque cheque = selectById(idCheque);
+		cheque.setRubroEstadoChequeH(Long.valueOf(EstadoCheque.ANULADO));
+		cheque.setRubroMotivoAnulacionH(Long.valueOf(com.saa.rubros.MotivoAnulacionCheque.PAGO_REVERSADO));
+		cheque.setFechaAnulacion(LocalDateTime.now());
+		chequeDaoService.save(cheque, cheque.getCodigo());
+
+		System.out.println("✓ Cheque N° " + cheque.getNumero() + " anulado por reverso de pago.");
+	}
+
+	@Override
+	public void marcarImpresos(List<Long> ids, Long idUsuario) throws Throwable {
+		System.out.println("=== marcarImpresos | ids=" + ids + " ===");
+
+		if (ids == null || ids.isEmpty()) {
+			throw new IncomeException("Debe indicar al menos un cheque.");
+		}
+		List<Cheque> cheques = new ArrayList<>();
+		for (Long id : ids) {
+			Cheque cheque = selectById(id);
+			if (cheque.getRubroEstadoChequeH() == null
+					|| cheque.getRubroEstadoChequeH().intValue() != EstadoCheque.GENERADO) {
+				throw new IncomeException("El cheque N° " + cheque.getNumero()
+						+ " no está en estado Generado.");
+			}
+			cheques.add(cheque);
+		}
+		for (Cheque cheque : cheques) {
+			cheque.setRubroEstadoChequeH(Long.valueOf(EstadoCheque.IMPRESO));
+			cheque.setFechaImpresion(LocalDateTime.now());
+			chequeDaoService.save(cheque, cheque.getCodigo());
+		}
+		System.out.println("✓ " + cheques.size() + " cheque(s) marcado(s) como Impreso.");
+	}
+
+	@Override
+	public void marcarEntregados(List<Long> ids, Long idUsuario) throws Throwable {
+		System.out.println("=== marcarEntregados | ids=" + ids + " ===");
+
+		if (ids == null || ids.isEmpty()) {
+			throw new IncomeException("Debe indicar al menos un cheque.");
+		}
+		List<Cheque> cheques = new ArrayList<>();
+		for (Long id : ids) {
+			Cheque cheque = selectById(id);
+			if (cheque.getRubroEstadoChequeH() == null
+					|| cheque.getRubroEstadoChequeH().intValue() != EstadoCheque.IMPRESO) {
+				throw new IncomeException("El cheque N° " + cheque.getNumero()
+						+ " no está en estado Impreso.");
+			}
+			cheques.add(cheque);
+		}
+		for (Cheque cheque : cheques) {
+			cheque.setRubroEstadoChequeH(Long.valueOf(EstadoCheque.ENTREGADO));
+			cheque.setFechaEntrega(LocalDateTime.now());
+			chequeDaoService.save(cheque, cheque.getCodigo());
+		}
+		System.out.println("✓ " + cheques.size() + " cheque(s) marcado(s) como Entregado.");
+	}
+
+	@Override
+	public List<Map<String, Object>> listar(Long idEmpresa, Long idCuentaBancaria, Long estado,
+			LocalDate desde, LocalDate hasta) throws Throwable {
+
+		System.out.println("=== listar cheques | empresa=" + idEmpresa + " | cuenta=" + idCuentaBancaria
+				+ " | estado=" + estado + " ===");
+
+		List<Object[]> filas = chequeDaoService.selectListado(idCuentaBancaria, estado, desde, hasta, idEmpresa);
+		List<Map<String, Object>> resultado = new ArrayList<>();
+
+		for (Object[] fila : filas) {
+			Map<String, Object> item = new HashMap<>();
+			item.put("idCheque", fila[0]);
+			item.put("numero", fila[1]);
+			item.put("estado", fila[2]);
+			item.put("valor", fila[3]);
+			item.put("beneficiario", fila[4]);
+			item.put("fechaUso", fila[5]);
+			item.put("fechaImpresion", fila[6]);
+			item.put("fechaEntrega", fila[7]);
+			item.put("numeroCuenta", fila[8]);
+			item.put("banco", fila[9]);
+
+			Long idPago = (Long) fila[10];
+			item.put("idPago", idPago);
+
+			Long idFactura = (Long) fila[11];
+			String numFactura = (String) fila[12];
+			Long idEgreso = (Long) fila[13];
+			String descEgreso = (String) fila[14];
+			Long idAnticipo = (Long) fila[15];
+			String numAnticipo = (String) fila[16];
+			String origenExterno = (String) fila[17];
+			Long idOrigen = (Long) fila[18];
+
+			String tipoPago = null;
+			String referenciaPago = null;
+			Long idDocumento = null;
+			if (idFactura != null) {
+				tipoPago = "FACTURA";
+				referenciaPago = numFactura;
+				idDocumento = idFactura;
+			} else if (idEgreso != null) {
+				tipoPago = "EGRESO";
+				referenciaPago = descEgreso;
+				idDocumento = idEgreso;
+			} else if (idAnticipo != null) {
+				tipoPago = "ANTICIPO";
+				referenciaPago = numAnticipo;
+				idDocumento = idAnticipo;
+			} else if (origenExterno != null) {
+				tipoPago = "EXTERNO";
+				referenciaPago = origenExterno + " N° " + idOrigen;
+				// El origen externo no tiene un id de documento CXP que navegar
+				// directamente: se exponen origenExterno/idOrigen para que el
+				// frontend resuelva la navegación según el módulo que lo generó.
+				item.put("origenExterno", origenExterno);
+				item.put("idOrigen", idOrigen);
+			}
+			item.put("tipoPago", tipoPago);
+			item.put("referenciaPago", referenciaPago);
+			item.put("idDocumento", idDocumento);
+
+			resultado.add(item);
+		}
+		return resultado;
 	}
 
 }

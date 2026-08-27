@@ -86,6 +86,18 @@ public interface AnticipoProveedorService extends EntityService<AnticipoProveedo
             Long idCuentaDestinoTitular, boolean debitoAutomatico) throws Throwable;
 
     /**
+     * Igual que {@link #procesarAnticipo(Long, Double, Long, Long, Long, String, String, String,
+     * Long, boolean)}, con la forma de pago explícita. Ver
+     * {@link com.saa.rubros.FormaPagoProgramado}.
+     * @param formaPago : Forma de pago; null equivale a la forma inferida de debitoAutomatico
+     */
+    Map<String, Object> procesarAnticipo(
+            Long idTitular, Double valor, Long idCuentaBancaria,
+            Long idEmpresa, Long idUsuario, String fechaAnticipo,
+            String numeroDoc, String observacion,
+            Long idCuentaDestinoTitular, boolean debitoAutomatico, Long formaPago) throws Throwable;
+
+    /**
      * Contabiliza un anticipo cuyo pago acaba de ser confirmado por el banco
      * (o nació confirmado por débito automático): genera el asiento de
      * anticipo, acredita el saldo de anticipos del proveedor (PRCC) y deja el
@@ -101,6 +113,15 @@ public interface AnticipoProveedorService extends EntityService<AnticipoProveedo
      */
     Asiento contabilizarAnticipoConfirmado(Long idAnticipo, Long idCuentaBancaria,
             LocalDate fechaPago, Long idUsuario) throws Throwable;
+
+    /**
+     * Igual que {@link #contabilizarAnticipoConfirmado(Long, Long, LocalDate, Long)},
+     * agregando una nota (por ejemplo el número de cheque) que se anexa a la
+     * observación de cabecera del asiento del anticipo.
+     * @param observaciones : Nota a anexar a la observación del asiento, puede ser null
+     */
+    Asiento contabilizarAnticipoConfirmado(Long idAnticipo, Long idCuentaBancaria,
+            LocalDate fechaPago, Long idUsuario, String observaciones) throws Throwable;
 
     /**
      * Reversa la contabilidad de un anticipo Confirmado: anula el asiento,

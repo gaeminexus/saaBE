@@ -56,6 +56,22 @@ public interface PagoProgramadoService extends EntityService<PagoProgramado> {
 			throws Throwable;
 
 	/**
+	 * Igual que {@link #registrarPago(Long, Long, Long, Double, String, Long, Long, String,
+	 * boolean, String)}, con la forma de pago explícita (ver
+	 * {@link com.saa.rubros.FormaPagoProgramado}). Con formaPago=CHEQUE (3) la cuenta de
+	 * origen debe manejar chequera; el sistema asigna el siguiente cheque disponible, el
+	 * pago nace CONFIRMADO y se contabiliza en la misma llamada, igual que el débito
+	 * automático.
+	 * @param formaPago : Forma de pago (1=Efectivo, 2=Transferencia, 3=Cheque,
+	 *                    4=Débito automático); null equivale a la forma inferida de
+	 *                    debitoAutomatico
+	 */
+	Map<String, Object> registrarPago(Long idFacturaCompra, Long idCuentaBancariaOrigen,
+			Long idCuentaDestinoTitular, Double valor, String fechaProgramada, Long idEmpresa,
+			Long idUsuario, String observacion, boolean debitoAutomatico, String referencia,
+			Long formaPago) throws Throwable;
+
+	/**
 	 * Registra el pago de un egreso de tesorería sin documento físico
 	 * (TSR.EGRS). El pago toma del egreso la empresa, el titular, el valor y la
 	 * fecha, y entra al mismo circuito que los pagos de facturas: aparece en el
@@ -77,6 +93,15 @@ public interface PagoProgramadoService extends EntityService<PagoProgramado> {
 	Map<String, Object> registrarPagoDeEgreso(Long idEgreso, Long idCuentaBancariaOrigen,
 			Long idCuentaDestinoTitular, Long idUsuario, boolean debitoAutomatico,
 			String referencia) throws Throwable;
+
+	/**
+	 * Igual que {@link #registrarPagoDeEgreso(Long, Long, Long, Long, boolean, String)},
+	 * con la forma de pago explícita. Ver {@link com.saa.rubros.FormaPagoProgramado}.
+	 * @param formaPago : Forma de pago; null equivale a la forma inferida de debitoAutomatico
+	 */
+	Map<String, Object> registrarPagoDeEgreso(Long idEgreso, Long idCuentaBancariaOrigen,
+			Long idCuentaDestinoTitular, Long idUsuario, boolean debitoAutomatico,
+			String referencia, Long formaPago) throws Throwable;
 
 	/**
 	 * Registra el pago de un anticipo a proveedor (PGS.ANTP). El pago toma del
@@ -102,6 +127,15 @@ public interface PagoProgramadoService extends EntityService<PagoProgramado> {
 	Map<String, Object> registrarPagoDeAnticipo(Long idAnticipo, Long idCuentaBancariaOrigen,
 			Long idCuentaDestinoTitular, Long idUsuario, boolean debitoAutomatico,
 			String referencia) throws Throwable;
+
+	/**
+	 * Igual que {@link #registrarPagoDeAnticipo(Long, Long, Long, Long, boolean, String)},
+	 * con la forma de pago explícita. Ver {@link com.saa.rubros.FormaPagoProgramado}.
+	 * @param formaPago : Forma de pago; null equivale a la forma inferida de debitoAutomatico
+	 */
+	Map<String, Object> registrarPagoDeAnticipo(Long idAnticipo, Long idCuentaBancariaOrigen,
+			Long idCuentaDestinoTitular, Long idUsuario, boolean debitoAutomatico,
+			String referencia, Long formaPago) throws Throwable;
 
 	/**
 	 * Registra un pago cuyo documento de ORIGEN vive en otro módulo del sistema.
@@ -147,6 +181,18 @@ public interface PagoProgramadoService extends EntityService<PagoProgramado> {
 			com.saa.ejb.cxp.service.dto.BeneficiarioOcasional beneficiario,
 			List<com.saa.ejb.cxp.service.dto.LineaContablePago> desglose, String observacion,
 			Long idUsuario, boolean debitoAutomatico, String referencia) throws Throwable;
+
+	/**
+	 * Igual que el método sin {@code formaPago}, con la forma de pago explícita. Ver
+	 * {@link com.saa.rubros.FormaPagoProgramado}. Con formaPago=CHEQUE (3) no se exige
+	 * cuenta ni banco del beneficiario (el cheque se gira desde la cuenta de origen).
+	 * @param formaPago : Forma de pago; null equivale a la forma inferida de debitoAutomatico
+	 */
+	Map<String, Object> registrarPagoDeOrigenExterno(String origen, Long idOrigen, Long idEmpresa,
+			Long idCuentaBancariaOrigen, Double valor, String fechaProgramada,
+			com.saa.ejb.cxp.service.dto.BeneficiarioOcasional beneficiario,
+			List<com.saa.ejb.cxp.service.dto.LineaContablePago> desglose, String observacion,
+			Long idUsuario, boolean debitoAutomatico, String referencia, Long formaPago) throws Throwable;
 
 	/**
 	 * Lista los pagos de una empresa para la pantalla de selección.

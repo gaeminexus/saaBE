@@ -1,9 +1,12 @@
 package com.saa.ejb.tsr.service;
 
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 import com.saa.basico.util.EntityService;
 import com.saa.model.tsr.Cheque;
+import com.saa.model.tsr.Titular;
 
 import jakarta.ejb.Local;
 
@@ -124,6 +127,86 @@ public interface ChequeService extends EntityService<Cheque>{
 	 * @param idCheque			:Id del Cheque
 	 * @throws Throwable		:Excepcion
 	 */
-	void reversarChequeEntregado(Long idCheque) throws Throwable;	
-	
+	void reversarChequeEntregado(Long idCheque) throws Throwable;
+
+	// =====================================================================
+	// Integración con el circuito moderno de pagos (PGS.PGTR)
+	// =====================================================================
+
+	/**
+	 * Cheque ACTIVO de menor número entre las chequeras ACTIVAS de la cuenta.
+	 * @param idCuentaBancaria	: Id de la cuenta bancaria
+	 * @return					: Cheque disponible
+	 * @throws Throwable		: IncomeException si la cuenta no tiene cheques disponibles
+	 */
+	Cheque siguienteDisponible(Long idCuentaBancaria) throws Throwable;
+
+	/**
+	 * Toma el siguiente cheque disponible de la cuenta y lo asigna a un pago:
+	 * lo deja GENERADO con el valor, el titular, el beneficiario y la fecha de
+	 * uso. Pasa la chequera a TERMINADA si era el último cheque disponible.
+	 * @param idCuentaBancaria	: Id de la cuenta bancaria
+	 * @param valor				: Valor del cheque
+	 * @param titular			: Titular al que se le paga (puede ser null)
+	 * @param beneficiario		: Nombre del beneficiario que se imprime en el cheque
+	 * @param idUsuario			: Id del usuario que registra
+	 * @return					: Cheque asignado, en estado GENERADO
+	 * @throws Throwable		: Excepcion
+	 */
+	Cheque asignarAPago(Long idCuentaBancaria, Double valor, Titular titular, String beneficiario,
+			Long idUsuario) throws Throwable;
+
+	/**
+	 * Anula un cheque suelto que todavía está ACTIVO (no asignado a ningún
+	 * pago). Si el cheque tiene un PagoProgramado asociado se rechaza: hay que
+	 * reversar el pago, no anular el cheque directamente.
+	 * @param idCheque	: Id del cheque
+	 * @param motivo	: Código del motivo (rubro MotivoAnulacionCheque)
+	 * @param idUsuario	: Id del usuario que anula
+	 * @throws Throwable: Excepcion
+	 */
+	void anularChequeSuelto(Long idCheque, Long motivo, Long idUsuario) throws Throwable;
+
+	/**
+	 * Anula un cheque por la reversión de su pago (motivo PAGO_REVERSADO). El
+	 * cheque anulado no se reutiliza.
+	 * @param idCheque	: Id del cheque
+	 * @throws Throwable: Excepcion
+	 */
+	void anularPorReverso(Long idCheque) throws Throwable;
+
+	/**
+	 * Marca como IMPRESOS los cheques indicados (deben estar GENERADO). Si
+	 * alguno no está en ese estado, aborta toda la operación.
+	 * @param ids		: Ids de los cheques
+	 * @param idUsuario	: Id del usuario que imprime
+	 * @throws Throwable: Excepcion
+	 */
+	void marcarImpresos(List<Long> ids, Long idUsuario) throws Throwable;
+
+	/**
+	 * Marca como ENTREGADOS los cheques indicados (deben estar IMPRESO). Si
+	 * alguno no está en ese estado, aborta toda la operación.
+	 * @param ids		: Ids de los cheques
+	 * @param idUsuario	: Id del usuario que entrega
+	 * @throws Throwable: Excepcion
+	 */
+	void marcarEntregados(List<Long> ids, Long idUsuario) throws Throwable;
+
+	/**
+	 * Listado de cheques con los datos del pago que los usó, para la pantalla
+	 * de consulta de cheques.
+	 * @param idEmpresa			: Id de la empresa (sólo filtra los cheques con pago asociado)
+	 * @param idCuentaBancaria	: Id de la cuenta bancaria, null para todas
+	 * @param estado			: Estado del cheque (rubro EstadoCheque), null para todos
+	 * @param desde				: Fecha de uso desde, null sin límite inferior
+	 * @param hasta				: Fecha de uso hasta, null sin límite superior
+	 * @return					: Listado con idCheque, numero, estado, valor, beneficiario,
+	 * 							  fechaUso, fechaImpresion, fechaEntrega, idPago, tipoPago,
+	 * 							  referenciaPago, numeroCuenta, banco
+	 * @throws Throwable		: Excepcion
+	 */
+	List<Map<String, Object>> listar(Long idEmpresa, Long idCuentaBancaria, Long estado,
+			LocalDate desde, LocalDate hasta) throws Throwable;
+
 }

@@ -19,12 +19,14 @@ public interface NombreEntidadesTesoreria {
 		 String AUX_DEPOSITO_DESGLOSE = "AuxDepositoDesglose";
 		 String BANCO = "Banco";
 		 String BANCO_EXTERNO = "BancoExterno";
+		 String CAJA_CHICA = "CajaChica";
 		 String CAJA_FISICA = "CajaFisica";
 		 String CAJA_LOGICA = "CajaLogica";
 		 String CAJA_LOGICA_POR_CAJA_FISICA  = "CajaLogicaPorCajaFisica";
 		 String CHEQUE = "Cheque";
 		 String CHEQUERA = "Chequera";
 		 String CIERRE_CAJA = "CierreCaja";
+		 String CIERRE_CAJA_CHICA = "CierreCajaChica";
 		 String COBRO = "Cobro";
 		 String COBRO_CHEQUE = "CobroCheque";
 		 String COBRO_EFECTIVO = "CobroEfectivo";
@@ -57,8 +59,10 @@ public interface NombreEntidadesTesoreria {
 		 String MOTIVO_COBRO = "MotivoCobro";
 		 String MOTIVO_PAGO = "MotivoPago";
 		 String MOVIMIENTO_BANCO = "MovimientoBanco";
+		 String MOVIMIENTO_CAJA_CHICA = "MovimientoCajaChica";
 		 String PAGO = "Pago";
 		 String TITULAR = "Titular";
+		 String PATH_CAJA_CHICA = "PathCajaChica";
 		 String PERSONA_CUENTA_CONTABLE = "PersonaCuentaContable";
 		 String PERSONA_ROL = "PersonaRol";
 		 String SALDO_BANCO = "SaldoBanco";
