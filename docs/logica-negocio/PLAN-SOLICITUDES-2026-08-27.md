@@ -20,7 +20,7 @@
 | 7 | Probar carga automática de documentos CxP | **Implementada y probada en vivo el 2026-08-23** (11/11 documentos). Quedan 5 caminos sin ejercitar, listados en `cxp/PRODUCCION-CARGA-AUTOMATICA-SRI.md §7` | S (prueba guiada) | 2 |
 | 8 | Reembolsos de gastos: XML con `<reembolsos>` o carga manual | **Implementado**: BE detecta `<reembolsoDetalle>`, tabla `PGS.RMBF` existe, `OrigenReembolso.MANUAL=2`, pantalla `cxp/procesos/reembolsos-factura`. Falta **probar los dos caminos** | S (prueba) | 2 |
 | 10b | Novedades del período: recuperar campos | La pantalla hoy captura `cantidad`, `descripcion` y `valor` (rediseño en commit `47b5d06`). La entidad `NVNM` solo tiene esas columnas — **nunca hubo "días"** como columna. *(por verificar qué campo concreto echan de menos)* | S | 2 |
-| 12 | Conciliación bancaria completa | Modelo N:M ya existe (`GCEX`/`GCAS`: varios extractos ↔ varios detalles de asiento), `cerrarMes`/`reabrirMes`, sugerencias, 3 pantallas. **Depósitos en tránsito: no encontré soporte explícito** *(por verificar)* | M (prueba + huecos) | 3 |
+| 12 | Conciliación bancaria completa | **N:M ya funciona completo** (BE y FE) — era el corazón del pedido. Pero **el mes no puede cerrarse si hay una partida en tránsito**: candado estructural verificado. Dos pantallas del menú son maquetas con datos falsos | **L** | 3 |
 | 10a | Vacaciones: registro, cálculo de días, novedad automática, provisión | `SolicitudVacaciones` y `SaldoVacaciones` existen, pero **el servicio es CRUD puro**: no hay aprobación, no descuenta saldo, no crea la novedad, no baja la provisión. El FE tiene el diálogo de aprobación **contra un endpoint que no existe** | L | 3 |
 | 11 | Anticipos a trabajadores: entrega + descuento en cuotas + pago | **No existe la entrega**. Solo el descuento vía `DescuentoRecurrente` y el concepto `ANTICIPO_DE_SUELDO=14`. RRHH no genera pagos programados | L | 3 |
 | 14 | Rediseño de pagos: solicitud sin cuenta, aprobación con cuenta + saldo + lote multi-módulo + cheque | Hoy la cuenta es obligatoria al registrar (`PGTRCNBC NOT NULL`), el lote es por cuenta, `obtieneSaldoFecha` existe, solo CRD y caja chica generan pagos externos. Es un **rediseño del circuito** | XL | 4 |
@@ -68,10 +68,25 @@ La pantalla hoy captura **cantidad, descripción y valor**; la entidad `NVNM` no
 
 ## 3. BLOQUE 3 — Funcionalidad nueva de tamaño medio/grande
 
-### 3.1 Conciliación bancaria (12) — prueba y huecos
-**Existe más de lo que parece:** grupos N:M (`GrupoConciliacionContable` con `GrupoConciliacionExtracto` y `GrupoConciliacionAsiento`: varios movimientos del extracto contra varios detalles de asiento), sugerencias automáticas, deshacer grupo, cierre y reapertura de mes, y tres pantallas (`conciliacion`, `conciliacion-contable`, `consulta-conciliacion`). Los cheques girados ya se marcan como *no cobrados* (fase A).
-**Hueco probable:** depósitos en tránsito como concepto explícito (no encontré arrastre de pendientes entre periodos; *por verificar* si lo cubre el "pendiente" implícito de lo no conciliado).
-Plan: sesión de prueba con un extracto real → lista de huecos → prompts. Tamaño M si solo faltan tránsitos; más si el N:M no está expuesto en la pantalla.
+### 3.1 Conciliación bancaria (12) — VERIFICADO A FONDO 2026-08-27
+
+**Lo que YA funciona y no hay que construir:**
+- **N:M completo**, backend y frontend. `conciliarGrupo(idCuenta, idPeriodo, List<Long> idsExtracto, List<Long> idsAsiento, usuario)` acepta N contra M, valida el cuadre por suma agregada con tolerancia 0,01 y crea N filas `GCEX` + M filas `GCAS` sobre el mismo grupo. La pantalla permite marcar varios de cada lado con checkbox y muestra suma extracto / suma asiento / diferencia en vivo. **Era el corazon del pedido y ya esta.**
+- Importacion de extracto con 11 parsers por banco, deteccion de archivo duplicado por hash, sugerencias automaticas 1:1, N:1 y 1:N, deshacer grupo, cerrar y reabrir mes.
+- La pantalla viva es `conciliacion-contable`.
+
+**El bloqueante real — las partidas en transito no se pueden conciliar NI dejar pendientes:**
+- `GrupoConciliacionExtractoDaoServiceImpl.selectPendientes` filtra `d.periodo.codigo = :idPeriodo` y el de asientos filtra `fechaAsiento between primerDia and ultimoDia`. Un deposito registrado en libros el 30/abr y acreditado por el banco el 02/may **nunca puede conciliarse**: cada lado aparece en un periodo distinto y no hay pantalla donde coexistan.
+- Y `verificar` exige **cero** pendientes de ambos lados, y `cerrarMes` exige todas las cuentas verificadas: con una sola partida en transito **el mes no cierra nunca**. Candado duro.
+- `TipoMovimientoConciliacion` (DEPOSITO_EN_TRANSITO, CHEQUES_GIRADOS_Y_NO_COBRADOS, …) se sigue escribiendo al originar los movimientos, pero **quien lo consumia era el motor legado**, que no tiene REST desde hace tiempo. `TSR.MVCB` acumula movimientos en transito que nunca se cierran.
+- El cuadre clasico completo (saldo libros vs saldo banco, con deposito en transito, cheques girados, ND/NC no registradas) **ya esta modelado** en la entidad legado `Conciliacion` y calculado en `ConciliacionServiceImpl.insertaConciliacion`. Sin REST ni pantalla. El diseno correcto se penso una vez y quedo huerfano.
+- `resumenPorPeriodo` devuelve solo contadores: ningun importe, ningun saldo, ninguna diferencia.
+
+**Riesgo inmediato:** las pantallas `conciliacion` y `consulta-conciliacion` son **maquetas con datos inventados** (`Banco A`, `MOV-001`) y siguen en el menu y en las rutas. Un usuario de produccion entra y ve datos falsos. Quitarlas del menu es XS y urgente.
+
+**Huecos por tamano:** arrastre de pendientes entre periodos (L, bloqueante) · marcar partida en transito y excluirla del bloqueo de verificar (M) · `verificar` que solo exija cero pendientes *sin clasificar* (XS) · cuadre real con saldos e importes en `resumenPorPeriodo` (M) · desglose de la diferencia, portando la formula del motor legado (M) · acta de conciliacion imprimible (M) · sugerencias por referencia y numero de cheque, hoy solo monto y fecha (S) · `estadoRevision` del detalle nunca se actualiza (XS) · `CON_DIFERENCIAS` se pinta pero nunca se asigna (XS) · `deshacerGrupo` sin auditoria (XS) · decidir que hacer con `MovimientoBanco` en transito (L, decidir antes de lo demas).
+
+**Tamano revisado: L** (no M). Orden: decidir MovimientoBanco -> arrastre -> marcar transito -> verificar -> cuadre -> desglose -> acta.
 
 ### 3.2 Vacaciones (10a) — L
 **Diagnóstico:** `SolicitudVacacionesServiceImpl` es CRUD (`save/remove/select`), sin lógica. `SaldoVacaciones` tiene lo necesario (`asignados, usados, pendientes, díasDerecho, díasRestantes, díasPagados, valorDía`). El FE tiene `vacaciones-form` (guarda por `POST /slct`, CRUD) y `vacaciones-aprobacion-dialog`, pero no hay endpoint de aprobación. *(por verificar)* la causa exacta del "no funciona el registro": probablemente un campo del payload que el CRUD no acepta o la ausencia del saldo del año.
