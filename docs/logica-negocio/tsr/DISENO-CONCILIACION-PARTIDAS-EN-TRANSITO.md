@@ -137,6 +137,63 @@ Es el corazón del cambio, y es pequeño:
 - El equivalente de asientos, que filtra `fechaAsiento between primerDia and ultimoDia`: mismo tratamiento.
 - `verificar`: deja de exigir cero pendientes y pasa a exigir que **todo pendiente esté declarado en tránsito** y que la ecuación cuadre.
 
+## 7bis. CORRECCIÓN DEL 2026-08-27 — `MovimientoBanco` no es el mayor auxiliar
+
+> **Este apartado corrige un supuesto del §5 que era falso, detectado al probar la fase 1 en el
+> navegador.** Afecta al modelo, no solo a la redacción.
+
+El §5 exige `MVCBCDGO` para las partidas de tipo 1 y 2 (`CK_DTCN_TIPO_ORIGEN`), dando por
+sentado que todo movimiento de banco registrado en libros tiene su fila en `TSR.MVCB`.
+**No es así.** Medido sobre la base local:
+
+| | |
+|---|---|
+| Detalles de asiento sobre cuentas bancarias (`1.1.02%`) | **1.448** |
+| de esos, con `MovimientoBanco` asociado | **122 (8 %)** |
+| sin `MovimientoBanco` | **1.326 (92 %)** |
+
+Y comparando el saldo contable contra el que arma `MovimientoBanco`:
+
+| Cuenta | Saldo contable | Según `MVCB` | Cobertura |
+|---|---|---|---|
+| BANCO INTERNACIONAL `1.1.02.05.80` | 2.714.031,22 | 125.452,02 | **4,6 %** |
+| BANCO PACIFICO `1.1.02.05.65` | 2.016.302,36 | 22.802,11 | **1,1 %** |
+| BANCO AMAZONAS `1.1.02.05.40` | 2.188,75 | 775,50 | 35 % |
+
+`TSR.MVCB` solo lo alimentan ciertos procesos —pagos, cheques, caja chica—. Un asiento hecho
+desde contabilidad toca la cuenta del banco **sin** crear movimiento. Ocho de cada cien.
+
+### Consecuencia 1 — el cierre seguía sin poder cerrar
+
+Probado sobre BANCO AMAZONAS / julio 2026: `prepararCierre` devuelve **4 pendientes de asiento y
+los 4 con `idMovimientoBanco: null`**, o sea **ninguno declarable**. Como `verificar` exige que
+todo pendiente esté declarado, el mes sigue sin cerrar. **El diseño movía el candado en vez de
+quitarlo:** antes era «cero pendientes», ahora es «todo pendiente declarado», y una partida que
+no se puede declarar reproduce exactamente el mismo bloqueo.
+
+**Corrección del modelo:** una partida en tránsito de tipo 1 o 2 debe colgar del
+**`DetalleAsiento`**, que es lo que siempre existe, y `MVCBCDGO` pasa a ser **información
+adicional opcional**. `DTCN` necesita entonces una columna `DTCNDTAS` (FK a `CNT.DTAS`), y
+`CK_DTCN_TIPO_ORIGEN` pasa a exigir `DTCNDTAS` para los tipos 1 y 2, no `MVCBCDGO`.
+
+### Consecuencia 2 — y esta pega en el punto 14
+
+`CuentaBancariaServiceImpl.obtieneSaldoFecha` arma el saldo desde `MovimientoBanco`. Con esa
+cobertura, **el «saldo disponible» de cada cuenta es una fracción del real** — para BANCO
+PACIFICO, el 1 %.
+
+El rediseño de pagos (punto 14) iba a **validar la disponibilidad contra ese número**. De
+haberlo construido sobre este supuesto, el sistema habría rechazado pagos legítimos por «saldo
+insuficiente» teniendo la cuenta dos millones. Ver
+[`../pagos/PLAN-REDISENO-APROBACION-PAGOS.md`](../pagos/PLAN-REDISENO-APROBACION-PAGOS.md) §5,
+riesgo 4: decía que el saldo sería «optimista» por los movimientos en tránsito sin cerrar. Era
+al revés y por otro motivo: es **pesimista**, porque casi nada llega a `MVCB`.
+
+**Antes de tocar el punto 14 hay que decidir de dónde sale el saldo de una cuenta bancaria:**
+de la contabilidad (`DetalleAsiento` sobre la cuenta del plan) o de `MovimientoBanco`. Hoy el
+sistema tiene dos respuestas distintas para la misma pregunta y difieren en dos órdenes de
+magnitud. Esa decisión es previa a cualquier validación de disponibilidad.
+
 ## 8. Riesgos
 
 1. **Una partida en tránsito que nunca se salda es un síntoma, no un dato.** Un cheque girado hace ocho meses y no cobrado casi siempre significa que se perdió, se anuló por fuera, o el asiento estaba mal. **Hace falta un aviso por antigüedad** — 60 días es el umbral habitual — o el tránsito se convierte en el basurero donde se esconden los errores. Sin eso, este diseño empeora las cosas en vez de mejorarlas.
@@ -148,7 +205,7 @@ Es el corazón del cambio, y es pequeño:
 | Fase | Qué | Tamaño | Estado |
 |---|---|---|---|
 | **1** | DDL (`TSR.DTCN` + columnas de estado en `TSR.CNCL` + rubro de tipos) y modelo JPA | S | **Hecho** (2026-08-27) — aplicado en local. Ver §10. |
-| **2** | Servicio de cierre: declarar partidas, calcular la ecuación, cerrar, anular; y el arrastre en las dos consultas de pendientes | M | **Hecho** (2026-08-27), con una pieza pendiente de confirmación — ver §10.2. |
+| **2** | Servicio de cierre: declarar partidas, calcular la ecuación, cerrar, anular; y el arrastre en las dos consultas de pendientes | M | **Hecho** (2026-08-27) — ver §10.2. |
 | **3** | Pantalla de cierre con los tres bloques y la ecuación en vivo | M | Pendiente (frontend) |
 | **4** | Aviso de partidas en tránsito con más de 60 días, en el tablero de Tesorería | S | Backend hecho (`partidasEnTransitoAntiguas`/`GET /cnct/transito/antiguas/{idEmpresa}`); falta engancharlo al tablero (frontend) |
 
@@ -175,31 +232,22 @@ DDL aplicado en la base local (no en producción — lo escribe el usuario a par
   "original" de una partida arrastrada no necesitó campo nuevo: ya está en
   `fechaTransaccion`/`asiento.getFechaAsiento()`.
 
-### 10.2 T2 — Servicio de cierre — ⚠️ una pieza pendiente de tu confirmación
+### 10.2 T2 — Servicio de cierre
 
 `ConciliacionCierreService`/`Impl` implementa `prepararCierre`, `cerrar`, `anularCierre`,
-`partidasEnTransitoAntiguas` tal como se especificó. **Con una excepción**: la ecuación de §3,
-tal como está escrita ahí (`saldo_libros + tipo3&4 − tipo1&2 = saldo_extracto`), no coincide con
-la fórmula estándar de conciliación bancaria. Verificado con dos ejemplos numéricos durante la
-implementación:
+`partidasEnTransitoAntiguas` tal como se especificó.
 
-> Depósito en tránsito $100 (tipo 1) + cheque girado no cobrado $50 (tipo 2), sin NC/ND, libros
-> = 1000: el banco no tiene el depósito (−100) pero todavía tiene el dinero del cheque no
-> cobrado (+50) → banco = 1000 − 100 + 50 = **950**. Eso es coeficiente **−1 para tipo 1** y
-> **+1 para tipo 2** — signos opuestos dentro del mismo par, no el mismo signo como agrupa §3.
-
-La fórmula **implementada** (`ConciliacionCierreServiceImpl.saldoExtractoEsperado`, con el
-razonamiento completo en el javadoc del método):
+**La ecuación quedó confirmada el 2026-08-27** (el usuario la verificó partida por partida y
+corrigió §3 con el mismo ejemplo numérico usado durante la implementación — el punto que se
+había señalado ahí sigue siendo válido como registro de por qué el signo de cada tipo es el que
+es, no como algo pendiente):
 
 ```
 saldoExtracto = saldoLibros − sumaTipo1 + sumaTipo2 + sumaTipo3 − sumaTipo4
 ```
 
-Se preguntó por esto durante la sesión y la respuesta fue que el usuario entregaría la fórmula
-exacta aparte; a la fecha de este documento **no ha llegado todavía**, así que se implementó la
-versión verificada arriba para no dejar el servicio de cierre sin poder cerrar nada. **Cambiar
-este único método si la fórmula definitiva es otra** — está aislado a propósito para que sea un
-cambio de una línea, y de él dependen tanto `cerrar()` como la vista previa de `prepararCierre()`.
+Implementada en `ConciliacionCierreServiceImpl.saldoExtractoEsperado`, aislada a propósito en un
+único método — de él dependen tanto `cerrar()` como la vista previa de `prepararCierre()`.
 
 Otras decisiones tomadas para poder implementar sin más preguntas, documentadas en el código:
 
@@ -280,12 +328,16 @@ Solicitud:
       "observacion": "NC del banco, revisar con contabilidad" }
   ],
   "saldoExtracto": 12300.00,
-  "usuario": "jperez"
+  "idUsuario": 5
 }
 ```
 Nota: `valor` **no** se envía por partida — lo calcula el backend del `MovimientoBanco`/
 `DetalleExtractoBancario` referenciado, para que un número mal copiado en el frontend no pueda
-descuadrar la ecuación.
+descuadrar la ecuación. `idUsuario` es numérico (SCP.PJRQ), igual que el resto del sistema —
+corregido 2026-08-27, la primera versión de este endpoint recibía `usuario` como texto, distinto
+del resto de la API; se resuelve internamente a su nombre sólo para guardarlo en los campos de
+texto de `TSR.CNCL` (`CNCLUSCR`), que sí son `VARCHAR2` (mismo criterio que
+`ControlExtractoBancario.usuarioCierre`).
 
 Respuesta 201:
 ```json
@@ -312,10 +364,16 @@ La ecuacion no cuadra: saldo segun libros 12345.67, saldo segun extracto 12200.0
 
 Solicitud:
 ```json
-{ "motivo": "Se declaro con el tipo equivocado", "usuario": "jperez" }
+{ "motivo": "Se declaro con el tipo equivocado", "idUsuario": 5 }
 ```
-Respuesta 200: la `Conciliacion` (CNCL) actualizada (entidad completa — igual que el resto de
-endpoints de este controlador que devuelven una entidad, no una proyección).
+`idUsuario` numérico, mismo criterio que en `cerrar` (ver nota arriba). `TSR.CNCL` no tiene una
+columna dedicada a "quién anuló" (no estaba en el modelo del §5) — el nombre resuelto se anexa al
+texto de `motivoAnulacion` (`"{motivo} (anulado por {nombre})"`), mismo patrón que `ANTEMTAN` en
+`AnticipoEmpleado` reutilizando un solo campo de texto para motivo + autor.
+
+Respuesta 200: la `Conciliacion` (CNCL) actualizada — **entidad completa, sin proyección**. Es
+una sola fila (no el problema de payload de 536 KB de una lista), pero es el mismo patrón
+estructural: incluido en el barrido de endpoints pesados de la sección siguiente.
 
 Respuesta 400 si no es el último cierre, o si alguna partida que declaró ya está Saldada — texto
 plano con el motivo exacto.
