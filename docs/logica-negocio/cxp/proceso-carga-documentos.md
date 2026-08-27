@@ -75,7 +75,7 @@
 | `Factura` | `FACTURA_COMPRA` | `FacturaCompra` + `DetalleFacturaCompra` + `FormaPagoFacturaCompra` + `PathFacturaCompra` | ✅ Completo |
 | `Nota de Crédito` | `NOTA_CREDITO_COMPRA` | `NotaCreditoCompra` + `DetalleNotaCreditoCompra` + `PathNotaCreditoCompra` | ✅ Registro + asiento + aplicación · ⚠️ sin bloqueantes estructurados (§5) |
 | `Nota de Débito` | `NOTA_DEBITO_COMPRA` | `NotaDebitoCompra` + `DetalleNotaDebitoCompra` + `PathNotaDebitoCompra` | ✅ Registro + asiento + aplicación · ⚠️ sin bloqueantes estructurados (§5) |
-| `Liquidación de compra` | `LIQUIDACION_COMPRA_COMPRA` | `LiquidacionCompraCompra` + `DetalleLiquidacionCompraCompra` + `PathLiquidacionCompraCompra` | ⚠️ Registro + asiento, sin validaciones bloqueantes ni aplicación de pago |
+| `Liquidación de compra` | `LIQUIDACION_COMPRA_COMPRA` | `LiquidacionCompraCompra` + `DetalleLiquidacionCompraCompra` + `PathLiquidacionCompraCompra` | ⚠️ Registro + asiento, sin validaciones bloqueantes ni aplicación de pago. `DetalleLiquidacionCompraCompra.producto` (`ProductoPago` desde 2026-08-27) siempre queda **null** en esta carga automática — el XML del SRI no trae clasificación por producto propia — así que el asiento agrupa todo contra la cuenta de gasto default (ver §6) y advierte `PRODUCTOS_SIN_CLASIFICAR` en el log. Distinto de la liquidación **emitida** desde CXC, que sí exige producto clasificado antes de emitir — ver `docs/logica-negocio/cxc/LIQUIDACION-COMPRA-EMISION.md`. |
 | `Comprobante de Retención` | `RETENCION_COMPRA_V2` | `RetencionCompraV2` (`PGS.RCV2`) + `DetalleRetencionCompraV2` (`PGS.DRC2`) *(sin path)* | ✅ Completo |
 | `Comprobante de Retención electrónica versión 2.0` | `RETENCION_COMPRA_V2` | Ídem | ✅ Completo |
 
@@ -478,11 +478,23 @@ crédito tributario se perdía.
 
 ### Estructura — Liquidación de Compra
 
+**Reescrito 2026-08-27** (antes agrupaba todo contra la cuenta de gasto
+default; ahora agrupa por producto, igual que la factura de compra):
+
 | Lado | Cuenta | Valor |
 |---|---|---|
-| **DEBE** | Cuenta de gasto default CXP (la liquidación no trae `GrupoProductoPago`) | Suma de `subTotal` de los detalles |
+| **DEBE** | `producto.grupoProducto.planCuenta` — una línea por grupo distinto | Suma de `subTotal` por grupo, de los detalles con producto clasificado |
+| **DEBE** | Cuenta de gasto default CXP — sólo si hay detalles **sin** producto clasificado | Suma de `subTotal` de esos detalles; se advierte `PRODUCTOS_SIN_CLASIFICAR` en el log (no bloquea) |
 | **DEBE** | IVA crédito tributario | **`LiquidacionCompraCompra.vIVA` (IVA de la cabecera del XML)**, repartido entre los códigos IVA de los detalles |
 | **HABER** | Cuenta CxP prestador | Suma de las líneas DEBE |
+
+En la carga automática desde el SRI, `producto` siempre llega null (el XML no
+trae esa clasificación), así que hoy esta liquidación siempre cae en la línea
+de gasto default. La liquidación **emitida** desde CXC sí clasifica cada
+detalle antes de emitir (`validarCuentasContablesLiquidacion`), así que su
+documento CXP (creado por `LiquidacionCompraServiceImpl.crearDocumentoCxp`)
+normalmente usa la primera línea, por grupo — ver
+`docs/logica-negocio/cxc/LIQUIDACION-COMPRA-EMISION.md`.
 
 ### Estructura — Retención recibida (V1 y V2)
 

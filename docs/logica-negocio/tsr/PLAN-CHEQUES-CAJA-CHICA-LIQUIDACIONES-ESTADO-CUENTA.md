@@ -137,7 +137,7 @@ Fila `CBR.NXPE` para tipo `03` y columna `CBR.LQCS.LQCSLQCC` (FK a `PGS.LQCC`).
 |---|---|---|---|---|
 | D estado de cuenta | n/a | n/a | HECHO (01 + 01b) | PROBADO 2026-08-27 en navegador; manual en manuales/ESTADO-CUENTA-TITULAR.md; queda aviso falso de "incompleto" |
 | A cheques | 01 + 03 ejecutados en local (UQ_PGTR_DTCH OK) | 02 y 02b hechos y revisados; PENDIENTE 02c (3 importantes) | prompt 03 en curso | pendiente |
-| B caja chica | 02 EJECUTADO en local 2026-08-27 (4 tablas + 12 FK + rubros 232/233) | prompt 04 listo para lanzar | prompt 05 listo | pendiente |
+| B caja chica | 02 + 05 + 06 ejecutados | HECHO y revisado | HECHO | PROBADO 2026-08-27 de punta a punta; manual en manuales/CAJA-CHICA.md |
 | C liquidaciones | ⬜ cxc entregado | ⬜ prompt 06 entregado | ⬜ prompt 07 entregado | ⬜ |
 
 ---

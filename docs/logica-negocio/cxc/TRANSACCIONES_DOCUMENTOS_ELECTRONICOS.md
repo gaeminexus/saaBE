@@ -106,7 +106,7 @@ procesarXxxCompleta            @TransactionAttribute(NOT_SUPPORTED)   ← orques
 | Nota de Débito | `NotaDebitoServiceImpl` | `emitirNotaDebitoAnteSRI` | `generarContabilidadNotaDebito` | `aplicarPagoNotaDebito` |
 | Retención (V1) | `RetencionServiceImpl` | `emitirRetencionAnteSRI` | `generarContabilidadRetencion` | — |
 | Retención V2 | `RetencionV2ServiceImpl` | ver nota | `generarContabilidadRetencionV2` | `aplicarPagoRetencionV2` |
-| Liquidación de Compra | `LiquidacionCompraServiceImpl` | `emitirLiquidacionAnteSRI` | `generarContabilidadLiquidacion` | — |
+| Liquidación de Compra | `LiquidacionCompraServiceImpl` | `emitirLiquidacionAnteSRI` | ver nota | — |
 
 **Nota sobre Retención V2:** su flujo es distinto — graba en BD *antes* de enviar
 al SRI (no "BD tras RECIBIDA"), así que su emisión está partida más fino:
@@ -114,6 +114,21 @@ al SRI (no "BD tras RECIBIDA"), así que su emisión está partida más fino:
 → `generarContabilidadRetencionV2` → `aplicarPagoRetencionV2`, más
 `eliminarRetencionV2NoEmitida` para descartar el registro cuando nunca llegó al
 SRI.
+
+**Nota sobre Liquidación de Compra:** también es distinta — no tiene un
+`generarContabilidadXxx` propio porque la liquidación emitida (CBR.LQCS) no
+genera su propia cuenta por pagar. En su lugar, `crearDocumentoCxp(idLiquidacion)`
+(REQUIRES_NEW, idempotente vía `liquidacion.documentoCxp`) crea el documento CXP
+equivalente (PGS.LQCC + detalles + path) y lo contabiliza con
+`AsientoContableServiceImpl.generarAsientoLiquidacionCompraCompra`
+(`TipoAsientos.LIQUIDACIONES_COMPRA_RECIBIDAS`), exactamente como si el SRI
+hubiera "recibido" la liquidación del lado de compras. Ver
+`docs/logica-negocio/cxc/LIQUIDACION-COMPRA-EMISION.md` para el flujo completo.
+Sus endpoints de recuperación tienen nombre propio, no genérico:
+`reintentarAutorizacionLiquidacion`, `reenviarEmailLiquidacion`,
+`anularLiquidacion`, `consultarYActualizarEstadoLiquidacion`, y además
+`crearDocumentoCxp` expuesto directo (`POST /lqcs/crearDocumentoCxp/{id}`) para
+reintentar sólo esa etapa si quedó pendiente.
 
 ## Idempotencia y recuperación
 
@@ -161,9 +176,14 @@ como error.
   se eliminó). Ahora el asiento se conserva: el documento está autorizado y su
   contabilidad es válida por sí sola. La contrapartida es que el saldo de la
   factura afectada no refleja el cruce hasta que se complete.
-- **Retención V1 y Liquidación de Compra ahora vinculan el asiento al documento**
-  (`setAsiento`). Antes lo generaban sin enlazarlo, y por eso la anulación no
-  encontraba el asiento que debía anular.
+- **Retención V1 ahora vincula el asiento al documento** (`setAsiento`). Antes
+  lo generaba sin enlazarlo, y por eso la anulación no encontraba el asiento
+  que debía anular.
+- **Liquidación de Compra ya no vincula asiento propio** (`LQCS.LQCSASNT` se
+  deja sin usar): desde la reescritura de emisión (2026-08-27), la liquidación
+  emitida no genera cuenta por pagar ni asiento propios — crea un documento CXP
+  (`LQCS.LQCSLQCC` → `PGS.LQCC`) y ES ESE el que lleva el asiento. Ver la nota
+  de la tabla de arriba.
 - **`consultarYActualizarEstadoRetencionV2`** usaba
   `TipoAsientos.FACTURAS_VENTA` para el asiento de una retención — inconsistente
   con el flujo principal. Unificado a `TipoAsientos.RETENCIONES_EMITIDAS_V2`.
