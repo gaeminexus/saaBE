@@ -66,12 +66,18 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 	
 	@EJB
 	private PathLiquidacionCompraDaoService pathLiquidacionCompraDaoService;
-	
+
 	@EJB
 	private SignatureService signatureService;
 
 	@EJB
 	private com.saa.ejb.cnt.service.AsientoContableService asientoContableService;
+
+	@EJB
+	private com.saa.ejb.reporte.service.ReporteService reporteService;
+
+	@EJB
+	private com.saa.ejb.cxc.service.EmailFacturaService emailFacturaService;
 
 	@PersistenceContext
 	private EntityManager em;
@@ -187,33 +193,102 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 	@TransactionAttribute(TransactionAttributeType.NOT_SUPPORTED)
 	public java.util.Map<String, Object> procesarLiquidacionCompleta(LiquidacionCompra liquidacion,
 			java.util.List<com.saa.model.cxc.DetalleLiquidacionCompra> detalles,
+			java.util.List<com.saa.model.cxc.FormaPagoLiquidacion> formasPago,
 			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable {
 		System.out.println("=== INICIANDO PROCESO COMPLETO DE LIQUIDACION DE COMPRA ===");
 
+		// ── PASO 0: Validar cuentas contables (sin escribir en BD) ────────────
+		// La liquidación emitida no genera su propia cuenta por pagar: al
+		// autorizarse crea un documento CXP (crearDocumentoCxp) que se
+		// contabiliza como liquidación recibida. Validar ANTES de emitir para
+		// no descubrir una cuenta faltante después de que el SRI ya autorizó
+		// el comprobante, momento en el que ya no se puede revertir.
+		if (liquidacion.getFacturador() != null
+				&& Long.valueOf(1L).equals(liquidacion.getFacturador().getGeneraConta())) {
+			if (liquidacion.getFacturador().getEmpresa() == null) {
+				java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+				resultado.put("exito", false);
+				resultado.put("etapa", "VALIDACION_CONTABLE");
+				resultado.put("mensaje", "El facturador tiene habilitada la generación contable "
+						+ "pero no tiene empresa contable configurada. "
+						+ "Configure el campo EMPRESA en el facturador.");
+				return resultado;
+			}
+			Long idEmpresa = liquidacion.getFacturador().getEmpresa().getCodigo();
+			System.out.println("PASO 0: Validando cuentas contables para empresa " + idEmpresa + "...");
+			java.util.List<String> erroresContables = asientoContableService
+					.validarCuentasContablesLiquidacion(liquidacion, detalles, idEmpresa);
+			if (!erroresContables.isEmpty()) {
+				java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+				resultado.put("exito", false);
+				resultado.put("etapa", "VALIDACION_CONTABLE");
+				resultado.put("mensaje", "No se puede emitir la liquidación: faltan cuentas contables. "
+						+ "Corrija los siguientes problemas antes de continuar:");
+				resultado.put("erroresContables", erroresContables);
+				System.err.println("✗ Validación contable fallida: " + erroresContables);
+				return resultado;
+			}
+			System.out.println("✓ Validación contable OK: todas las cuentas están configuradas.");
+		}
+
 		// ── Emisión ante el SRI, en UNA transacción propia ────────────────────
 		java.util.Map<String, Object> resultado = self().emitirLiquidacionAnteSRI(
-				liquidacion, detalles, ambiente, conectaSRI, destinatario, pathLogo);
+				liquidacion, detalles, formasPago, ambiente, conectaSRI, destinatario, pathLogo);
 
 		if (!Boolean.TRUE.equals(resultado.get("emitida"))) {
 			return resultado;
 		}
 
 		Long idLiquidacion = (Long) resultado.get("idLiquidacion");
+		Long idFacturador  = (Long) resultado.get("idFacturador");
+		String clave       = (String) resultado.get("clave");
+		byte[] pdfBytesParaEmail = (byte[]) resultado.get("pdfBytes");
+		destinatario = (String) resultado.get("destinatario");
 
-		// ── PASO 5: Generar asiento contable (transacción propia) ─────────────
-		System.out.println("PASO 5: Generando asiento contable para Liquidación de Compra...");
+		// ── PASO 5: Crear el documento CXP y contabilizarlo (transacción propia) ──
+		System.out.println("PASO 5: Creando documento CXP para la Liquidación de Compra...");
 		try {
-			java.util.Map<String, Object> resAsiento = self().generarContabilidadLiquidacion(idLiquidacion);
-			if (Boolean.TRUE.equals(resAsiento.get("aplica"))) {
-				resultado.put("asiento", resAsiento.get("numeroAlterno"));
+			java.util.Map<String, Object> resCxp = self().crearDocumentoCxp(idLiquidacion);
+			if (Boolean.TRUE.equals(resCxp.get("aplica"))) {
+				resultado.put("documentoCxp", resCxp.get("idDocumentoCxp"));
+				resultado.put("asiento", resCxp.get("numeroAlterno"));
 			}
 		} catch (Throwable e) {
 			resultado.put("contabilidadPendiente", true);
 			resultado.put("advertenciaAsiento",
-					"Liquidación autorizada pero ocurrió un error al generar el asiento: "
-					+ e.getMessage() + ". Genere el asiento manualmente desde Contabilidad.");
-			System.err.println("⚠ Error en asiento contable de Liquidación de Compra: " + e.getMessage());
+					"Liquidación autorizada pero ocurrió un error al crear el documento CXP / asiento: "
+					+ e.getMessage() + ". Use POST /lqcs/crearDocumentoCxp/" + idLiquidacion + " para reintentar.");
+			System.err.println("⚠ Error creando documento CXP de Liquidación de Compra: " + e.getMessage());
 			e.printStackTrace();
+		}
+
+		// ── PASO 6: Enviar correo electrónico ─────────────────────────────────
+		System.out.println("PASO 6: Enviando email...");
+		try {
+			if (destinatario != null && !destinatario.trim().isEmpty()) {
+				String resourcesPath = getBaseUploadDirectory() + "resources/" + idFacturador;
+				String xmlAutorizado = null;
+				try {
+					java.nio.file.Path pXml = Paths.get(resourcesPath + "/lqcs/a/" + clave + ".xml");
+					if (Files.exists(pXml)) xmlAutorizado = new String(Files.readAllBytes(pXml), "UTF-8");
+				} catch (Exception ioEx) {
+					System.err.println("⚠ No se pudo leer el XML para el email: " + ioEx.getMessage());
+				}
+				String razonSocial = liquidacion.getFacturador() != null
+						? nvl(liquidacion.getFacturador().getRazonSocial(),
+							  nvl(liquidacion.getFacturador().getNombre(), "")) : "";
+				emailFacturaService.enviarFacturaAutorizada(destinatario, nvl(liquidacion.getNumero(), clave),
+						clave, razonSocial, "Liquidación de Compra", xmlAutorizado, pdfBytesParaEmail);
+				resultado.put("emailEnviado", true);
+				System.out.println("✓ Email enviado a: " + destinatario);
+			} else {
+				resultado.put("emailEnviado", false);
+				System.out.println("ℹ Email omitido: no hay dirección de correo del proveedor.");
+			}
+		} catch (Exception mailEx) {
+			resultado.put("advertenciaEmail", "La liquidación fue autorizada pero no se pudo enviar el email: "
+					+ mailEx.getMessage() + ". Reenvíe el email manualmente.");
+			System.err.println("⚠ Error enviando email: " + mailEx.getMessage());
 		}
 
 		boolean hayPendientes = Boolean.TRUE.equals(resultado.get("contabilidadPendiente"));
@@ -238,8 +313,10 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 	@TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
 	public java.util.Map<String, Object> emitirLiquidacionAnteSRI(LiquidacionCompra liquidacion,
 			java.util.List<com.saa.model.cxc.DetalleLiquidacionCompra> detalles,
+			java.util.List<com.saa.model.cxc.FormaPagoLiquidacion> formasPago,
 			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable {
 		System.out.println("=== emitirLiquidacionAnteSRI (BD tras RECIBIDA) ===");
+		byte[] pdfBytesParaEmail = null;
 
 		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
 		resultado.put("exito", false);
@@ -310,11 +387,38 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 				} catch (Exception e) {
 					System.err.println("⚠ No se pudo obtener dirección del establecimiento: " + e.getMessage());
 				}
-				// Formas de pago en memoria (vacío para XML, se guarda como default)
-				java.util.List<Object> formasPagoMem = new java.util.ArrayList<>();
+				// El XSD declara dirEstablecimiento con minLength>=1: un comprobante
+				// con este campo vacío el SRI lo devuelve. Mejor abortar la emisión
+				// aquí, con un mensaje claro, que gastar clave de acceso y XML
+				// firmado en un envío que sabemos que va a ser rechazado.
+				if (dirEstablecimiento == null || dirEstablecimiento.trim().isEmpty()) {
+					resultado.put("etapa", "VALIDACION");
+					resultado.put("mensaje", "No se pudo obtener la dirección del establecimiento del punto de "
+							+ "emisión (ID " + liquidacion.getPtoEmision().getId() + "). El SRI exige este campo "
+							+ "y rechazaría el comprobante. Configure la dirección del establecimiento antes de emitir.");
+					return resultado;
+				}
+				// Si vienen formas de pago explícitas, su suma debe cuadrar con el
+				// total de la liquidación — si no, el <pagos> del XML queda
+				// descuadrado contra <importeTotal> sin que nadie lo note hasta
+				// que el SRI (o un tercero leyendo el comprobante) lo detecte.
+				if (formasPago != null && !formasPago.isEmpty()) {
+					double sumaPagos = 0.0;
+					for (com.saa.model.cxc.FormaPagoLiquidacion fp : formasPago) {
+						sumaPagos += fp.getValor() != null ? fp.getValor() : 0.0;
+					}
+					double totalLiquidacion = liquidacion.getTotal() != null ? liquidacion.getTotal() : 0.0;
+					if (Math.abs(sumaPagos - totalLiquidacion) > 0.01) {
+						resultado.put("etapa", "VALIDACION");
+						resultado.put("mensaje", String.format(java.util.Locale.US,
+								"La suma de las formas de pago (%.2f) no coincide con el total de la "
+								+ "liquidación (%.2f).", sumaPagos, totalLiquidacion));
+						return resultado;
+					}
+				}
 				String xmlContent = generarXMLContentLiquidacion(liquidacion, dirEstablecimiento,
-						new java.util.ArrayList<>(detalles != null ? detalles : java.util.Collections.emptyList()),
-						formasPagoMem, ambiente);
+						detalles != null ? detalles : java.util.Collections.emptyList(),
+						formasPago != null ? formasPago : java.util.Collections.emptyList(), ambiente);
 				String pathRelativo = "resources/" + idFacturador + "/lqcs/g/" + clave + ".xml";
 				String pathAbsoluto = getBaseUploadDirectory() + pathRelativo;
 				Path path = Paths.get(pathAbsoluto);
@@ -403,6 +507,26 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 				}
 			}
 
+			// Guardar formas de pago (si no viene ninguna, se registra "01" —
+			// Sin utilización del sistema financiero— para que quede trazable
+			// aunque el XML ya haya usado el mismo default al construirse)
+			try {
+				java.util.List<com.saa.model.cxc.FormaPagoLiquidacion> formasPagoAGuardar =
+						(formasPago != null && !formasPago.isEmpty()) ? formasPago
+								: java.util.Arrays.asList(nuevaFormaPagoDefault(liquidacion.getTotal()));
+				for (com.saa.model.cxc.FormaPagoLiquidacion fp : formasPagoAGuardar) {
+					fp.setLiquidacion(liquidacion);
+					em.persist(fp);
+				}
+				em.flush();
+				System.out.println("✓ Formas de pago guardadas: " + formasPagoAGuardar.size());
+			} catch (Exception e) {
+				resultado.put("etapa", "GRABADO_FORMA_PAGO");
+				resultado.put("mensaje", "Error al grabar la forma de pago: " + e.getMessage());
+				resultado.put("error", e.getMessage());
+				return resultado;
+			}
+
 			// Registrar paths y estado FIRMADA/ENVIADA en BD
 			try {
 				String baseUploadDir = getBaseUploadDirectory();
@@ -435,9 +559,16 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 				liquidacion.setAutorizacion(clave);
 				liquidacion.setFechaAutorizacion(liquidacion.getFecha().plusMinutes(1).plusSeconds(15));
 				liquidacion.setEstado(5L);
+				liquidacion.setEstadoEmision(1L);
 				liquidacionCompraDaoService.save(liquidacion, liquidacion.getId());
-				resultado.put("estado", "AUTORIZADO"); resultado.put("exito", true);
+				try { em.flush(); } catch (Exception flushEx) { /* no crítico */ }
+				pdfBytesParaEmail = generarPDFLiquidacion(liquidacion, idFacturador, clave, pathLogo, ambiente);
+				resultado.put("estado", "AUTORIZADO"); resultado.put("autorizacion", "AUTORIZADO");
 				resultado.put("etapa", "COMPLETADO"); resultado.put("mensaje", "Liquidación ya registrada en el SRI. Autorizada.");
+				resultado.put("emitida",      true);
+				resultado.put("idFacturador", idFacturador);
+				resultado.put("destinatario", destinatario);
+				resultado.put("pdfBytes",     pdfBytesParaEmail);
 				return resultado;
 			}
 
@@ -476,6 +607,29 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 						liquidacionCompraDaoService.save(liquidacion, liquidacion.getId());
 						resultadoAutorizacion = ra.estado;
 						autorizada = true;
+						// Generar PDF: flush primero para que reporteService (REQUIRES_NEW)
+						// vea los datos ya guardados en esta transacción.
+						try { em.flush(); } catch (Exception flushEx) {
+							System.err.println("⚠ flush antes de PDF: " + flushEx.getMessage());
+						}
+						try {
+							pdfBytesParaEmail = generarPDFLiquidacion(liquidacion, idFacturador, clave, pathLogo, ambiente);
+							if (pdfBytesParaEmail != null && pdfBytesParaEmail.length > 0) {
+								Path pathPdf = Paths.get(resourcesPath + "/lqcs/a/" + clave + ".pdf");
+								Files.write(pathPdf, pdfBytesParaEmail);
+								PathLiquidacionCompra pathPdfRec = new PathLiquidacionCompra();
+								pathPdfRec.setLiquidacion(liquidacion);
+								pathPdfRec.setPath("resources/" + idFacturador + "/lqcs/a/" + clave + ".pdf");
+								pathPdfRec.setAlterno(7L);
+								pathLiquidacionCompraDaoService.save(pathPdfRec, null);
+								System.out.println("✓ PDF RIDE generado (" + pdfBytesParaEmail.length + " bytes).");
+							} else {
+								System.err.println("⚠ generarPDFLiquidacion retornó null o vacío. "
+										+ "El email se enviará sin PDF (¿falta compilar el .jasper?).");
+							}
+						} catch (Exception pdfEx) {
+							System.err.println("⚠ Error generando PDF RIDE (no crítico): " + pdfEx.getMessage());
+						}
 						if (ambiente == 2) {
 							em.createQuery("UPDATE Facturador f SET f.docEmitidos = COALESCE(f.docEmitidos,0)+1 WHERE f.id = :id")
 								.setParameter("id", idFacturador).executeUpdate();
@@ -512,7 +666,28 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 				autorizada = true;
 				resultadoAutorizacion = "AUTORIZADO";
 				liquidacion.setEstado(5L);
+				liquidacion.setEstadoEmision(1L);
 				liquidacionCompraDaoService.save(liquidacion, liquidacion.getId());
+				// Generar PDF también en modo simulación (conectaSRI=0)
+				try {
+					em.flush();
+					pdfBytesParaEmail = generarPDFLiquidacion(liquidacion, idFacturador, clave, pathLogo, ambiente);
+					if (pdfBytesParaEmail != null && pdfBytesParaEmail.length > 0) {
+						String baseUploadDir = getBaseUploadDirectory();
+						String resourcesPath = baseUploadDir + "resources/" + idFacturador;
+						Path pathPdf = Paths.get(resourcesPath + "/lqcs/a/" + clave + ".pdf");
+						Files.createDirectories(pathPdf.getParent());
+						Files.write(pathPdf, pdfBytesParaEmail);
+						PathLiquidacionCompra pathPdfRec = new PathLiquidacionCompra();
+						pathPdfRec.setLiquidacion(liquidacion);
+						pathPdfRec.setPath("resources/" + idFacturador + "/lqcs/a/" + clave + ".pdf");
+						pathPdfRec.setAlterno(7L);
+						pathLiquidacionCompraDaoService.save(pathPdfRec, null);
+						System.out.println("✓ PDF RIDE generado (modo simulación) (" + pdfBytesParaEmail.length + " bytes).");
+					}
+				} catch (Exception pdfEx) {
+					System.err.println("⚠ Error generando PDF en modo simulación (no crítico): " + pdfEx.getMessage());
+				}
 			}
 
 			resultado.put("autorizacion", resultadoAutorizacion);
@@ -526,10 +701,13 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 			}
 
 			// Emisión terminada: la liquidación está autorizada y confirmada en
-			// BD. El asiento contable lo genera el orquestador fuera de esta
-			// transacción.
-			resultado.put("emitida", true);
-			resultado.put("estado",  "AUTORIZADO");
+			// BD. El documento CXP / asiento contable y el email los ejecuta el
+			// orquestador fuera de esta transacción.
+			resultado.put("emitida",      true);
+			resultado.put("estado",       "AUTORIZADO");
+			resultado.put("idFacturador", idFacturador);
+			resultado.put("destinatario", destinatario);
+			resultado.put("pdfBytes",     pdfBytesParaEmail);
 
 		} catch (Exception e) {
 			System.err.println("ERROR en emitirLiquidacionAnteSRI: " + e.getMessage());
@@ -545,16 +723,18 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 	}
 
 	/**
-	 * Genera y vincula el asiento contable de una liquidación de compra en
-	 * transacción propia (REQUIRES_NEW). Idempotente: si ya tiene asiento no
-	 * genera otro.
-	 * @param idLiquidacion : Id de la liquidación ya autorizada
-	 * @return : Mapa con aplica, generado, yaExistia, idAsiento, numeroAlterno
+	 * Crea el documento CXP (PGS.LQCC) a partir de una liquidación (CXC) ya
+	 * autorizada por el SRI, copia sus detalles (con producto, ya clasificado
+	 * por {@code validarCuentasContablesLiquidacion}) y el path del XML
+	 * autorizado, y lo contabiliza como liquidación de compra recibida.
+	 * Transacción propia (REQUIRES_NEW). Idempotente.
+	 * @param idLiquidacion : Id de la liquidación (CXC) ya autorizada
+	 * @return : Mapa con aplica, generado, yaExistia, idDocumentoCxp, idAsiento, numeroAlterno
 	 */
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
-	public java.util.Map<String, Object> generarContabilidadLiquidacion(Long idLiquidacion) throws Throwable {
-		System.out.println("Ingresa al metodo generarContabilidadLiquidacion con id: " + idLiquidacion);
+	public java.util.Map<String, Object> crearDocumentoCxp(Long idLiquidacion) throws Throwable {
+		System.out.println("Ingresa al metodo crearDocumentoCxp con id: " + idLiquidacion);
 
 		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
 		resultado.put("generado", false);
@@ -564,20 +744,21 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 		if (liquidacion == null) {
 			throw new IncomeException("Liquidación de Compra con ID " + idLiquidacion + " no encontrada.");
 		}
-		if (liquidacion.getFacturador() == null
-				|| liquidacion.getFacturador().getEmpresa() == null
-				|| !Long.valueOf(1L).equals(liquidacion.getFacturador().getGeneraConta())) {
-			System.out.println("ℹ El facturador no genera contabilidad: se omite el asiento.");
+		if (liquidacion.getFacturador() == null || liquidacion.getFacturador().getEmpresa() == null) {
+			System.out.println("ℹ El facturador no tiene empresa contable: se omite el documento CXP.");
 			return resultado;
 		}
 		resultado.put("aplica", true);
 
-		if (liquidacion.getAsiento() != null) {
+		if (liquidacion.getDocumentoCxp() != null) {
+			com.saa.model.cxp.LiquidacionCompraCompra lqccExistente = liquidacion.getDocumentoCxp();
 			resultado.put("yaExistia", true);
-			resultado.put("idAsiento", liquidacion.getAsiento().getCodigo());
-			resultado.put("numeroAlterno", liquidacion.getAsiento().getNumeroAlterno());
-			System.out.println("ℹ La liquidación ya tiene asiento: "
-					+ liquidacion.getAsiento().getNumeroAlterno());
+			resultado.put("idDocumentoCxp", lqccExistente.getId());
+			if (lqccExistente.getAsiento() != null) {
+				resultado.put("idAsiento", lqccExistente.getAsiento().getCodigo());
+				resultado.put("numeroAlterno", lqccExistente.getAsiento().getNumeroAlterno());
+			}
+			System.out.println("ℹ La liquidación ya tiene documento CXP: " + lqccExistente.getId());
 			return resultado;
 		}
 
@@ -585,40 +766,145 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 		// una application exception y por sí sola no reversaría esta transacción.
 		try {
 			Long idEmpresaConta = liquidacion.getFacturador().getEmpresa().getCodigo();
-			java.time.LocalDate fechaAsiento = liquidacion.getFecha() != null
-					? liquidacion.getFecha().toLocalDate() : java.time.LocalDate.now();
-			String obsAsiento = "Liquidación de Compra N° " + nvl(liquidacion.getNumero(), liquidacion.getClave())
-					+ " | Proveedor: " + (liquidacion.getTitular() != null ? liquidacion.getTitular().getNombre() : "")
-					+ " | Aut: " + nvl(liquidacion.getAutorizacion(), liquidacion.getClave());
-			String usuarioAsiento = liquidacion.getUsuario() != null
-					? liquidacion.getUsuario().getNombre() : "SISTEMA";
 
-			com.saa.model.cnt.Asiento asientoGenerado =
-					asientoContableService.generarAsientoLiquidacionCompra(
-							liquidacion.getId(), idEmpresaConta,
-							com.saa.rubros.TipoAsientos.LIQUIDACIONES_COMPRA_EMITIDAS,
-							fechaAsiento, obsAsiento, usuarioAsiento);
+			@SuppressWarnings("unchecked")
+			java.util.List<com.saa.model.cxc.DetalleLiquidacionCompra> detalles = em.createQuery(
+					"SELECT d FROM DetalleLiquidacionCompra d WHERE d.liquidacion.id = :id AND d.estado = 1")
+					.setParameter("id", idLiquidacion).getResultList();
+			if (detalles.isEmpty()) {
+				throw new IncomeException("La liquidación " + idLiquidacion + " no tiene detalles activos: "
+						+ "no se puede crear el documento CXP.");
+			}
 
-			// Vincular el asiento a la liquidación — antes no se hacía, y por
-			// eso la anulación no encontraba el asiento que debía anular.
-			com.saa.model.cnt.Asiento asientoAttached =
-					em.find(com.saa.model.cnt.Asiento.class, asientoGenerado.getCodigo());
-			if (asientoAttached == null) asientoAttached = em.merge(asientoGenerado);
-			liquidacion.setAsiento(asientoAttached);
+			com.saa.model.cxp.LiquidacionCompraCompra lqcc = new com.saa.model.cxp.LiquidacionCompraCompra();
+			lqcc.setEmpresa(em.find(com.saa.model.scp.Empresa.class, idEmpresaConta));
+			lqcc.setTipoComprobante(liquidacion.getTipoComprobante());
+			lqcc.setTitular(liquidacion.getTitular());
+			lqcc.setNumero(liquidacion.getNumero());
+			lqcc.setNumEstablecimiento(liquidacion.getNumEstablecimiento());
+			lqcc.setNumPtoEmision(liquidacion.getNumPtoEmision());
+			lqcc.setSecuencial(liquidacion.getSecuencial());
+			lqcc.setAmbiente(liquidacion.getAmbiente());
+			lqcc.setClave(liquidacion.getClave());
+			lqcc.setFecha(liquidacion.getFecha());
+			lqcc.setObservacion(liquidacion.getObservacion());
+			lqcc.setSubtotal(liquidacion.getSubtotal());
+			lqcc.setSubcero(liquidacion.getSubcero());
+			lqcc.setpIVA(liquidacion.getpIVA());
+			lqcc.setvIVA(liquidacion.getvIVA());
+			lqcc.setvICE(liquidacion.getvICE());
+			lqcc.setvIRBPNR(liquidacion.getvIRBPNR());
+			lqcc.setDescuento(liquidacion.getDescuento());
+			lqcc.setPorDescuento(liquidacion.getPorDescuento());
+			lqcc.setPropina(liquidacion.getPropina());
+			lqcc.setSubsidio(liquidacion.getSubsidio());
+			lqcc.setTotalSinSub(liquidacion.getTotalSinSub());
+			lqcc.setAhorroSub(liquidacion.getAhorroSub());
+			lqcc.setTotal(liquidacion.getTotal());
+			lqcc.setPtoEmision(liquidacion.getPtoEmision() != null ? liquidacion.getPtoEmision().getId() : null);
+			lqcc.setUsuario(liquidacion.getUsuario());
+			lqcc.setPathGen(liquidacion.getPathGen());
+			lqcc.setAutorizacion(liquidacion.getAutorizacion());
+			lqcc.setFechaAutorizacion(liquidacion.getFechaAutorizacion());
+			lqcc.setEstado(Long.valueOf(Estado.ACTIVO));
+			lqcc.setEstadoEmision(1L); // 1 = autorizado (mismo esquema que LQCS)
+			em.persist(lqcc);
+			em.flush();
+
+			for (com.saa.model.cxc.DetalleLiquidacionCompra d : detalles) {
+				com.saa.model.cxp.DetalleLiquidacionCompraCompra dc = new com.saa.model.cxp.DetalleLiquidacionCompraCompra();
+				dc.setLiquidacion(lqcc);
+				dc.setDescripcion(d.getDescripcion());
+				dc.setCantidad(d.getCantidad());
+				dc.setValor(d.getValor());
+				dc.setSubTotal(d.getSubTotal());
+				dc.setPorcentajeIVA(d.getPorcentajeIVA());
+				dc.setValorIVA(d.getValorIVA());
+				dc.setPorcentajeICE(d.getPorcentajeICE());
+				dc.setValorICE(d.getValorICE());
+				dc.setSubsidio(d.getSubsidio());
+				dc.setPrecioSinSub(d.getPrecioSinSub());
+				dc.setDescuento(d.getDescuento());
+				dc.setTotal(d.getTotal());
+				dc.setProducto(d.getProducto());
+				dc.setEstado(Long.valueOf(Estado.ACTIVO));
+				em.persist(dc);
+			}
+
+			// Formas de pago: la pantalla CxP → Consulta de documentos las lee
+			// (consulta-documentos.component.ts) directo del documento CXP, no
+			// de la liquidación de CXC — sin esta copia el documento se vería
+			// sin ninguna forma de pago.
+			@SuppressWarnings("unchecked")
+			java.util.List<com.saa.model.cxc.FormaPagoLiquidacion> formasPago = em.createQuery(
+					"SELECT fp FROM FormaPagoLiquidacion fp WHERE fp.liquidacion.id = :id")
+					.setParameter("id", idLiquidacion).getResultList();
+			for (com.saa.model.cxc.FormaPagoLiquidacion fp : formasPago) {
+				com.saa.model.cxp.FormaPagoLiquidacionCompraCompra fpc = new com.saa.model.cxp.FormaPagoLiquidacionCompraCompra();
+				fpc.setLiquidacion(lqcc);
+				fpc.setFormaPago(fp.getFormaPago());
+				fpc.setValor(fp.getValor());
+				fpc.setPlazo(fp.getPlazo());
+				fpc.setUnidadTiempo(fp.getUnidadTiempo());
+				em.persist(fpc);
+			}
+
+			// Path del XML autorizado: mismo archivo físico que ya quedó
+			// grabado por la emisión (resources/{facturador}/lqcs/a/{clave}.xml),
+			// registrado ahora también del lado CXP (alterno=1, igual que
+			// ProcesoCargaDocumentosServiceImpl.registrarLiquidacionCompraCompra).
+			com.saa.model.cxp.PathLiquidacionCompraCompra pathCxp = new com.saa.model.cxp.PathLiquidacionCompraCompra();
+			pathCxp.setLiquidacion(lqcc);
+			pathCxp.setPath("resources/" + liquidacion.getFacturador().getId() + "/lqcs/a/" + liquidacion.getClave() + ".xml");
+			pathCxp.setAlterno(1L);
+			em.persist(pathCxp);
+			em.flush();
+
+			resultado.put("idDocumentoCxp", lqcc.getId());
+
+			if (Long.valueOf(1L).equals(liquidacion.getFacturador().getGeneraConta())) {
+				java.time.LocalDate fechaAsiento = liquidacion.getFecha() != null
+						? liquidacion.getFecha().toLocalDate() : java.time.LocalDate.now();
+				String obsAsiento = "Liquidación de Compra N° " + nvl(liquidacion.getNumero(), liquidacion.getClave())
+						+ " | Proveedor: " + (liquidacion.getTitular() != null ? liquidacion.getTitular().getNombre() : "")
+						+ " | Aut: " + nvl(liquidacion.getAutorizacion(), liquidacion.getClave());
+				String usuarioAsiento = liquidacion.getUsuario() != null
+						? liquidacion.getUsuario().getNombre() : "SISTEMA";
+
+				com.saa.model.cnt.Asiento asientoGenerado =
+						asientoContableService.generarAsientoLiquidacionCompraCompra(
+								lqcc.getId(), idEmpresaConta,
+								com.saa.rubros.TipoAsientos.LIQUIDACIONES_COMPRA_RECIBIDAS,
+								fechaAsiento, obsAsiento, usuarioAsiento);
+
+				com.saa.model.cnt.Asiento asientoAttached =
+						em.find(com.saa.model.cnt.Asiento.class, asientoGenerado.getCodigo());
+				if (asientoAttached == null) asientoAttached = em.merge(asientoGenerado);
+				lqcc.setAsiento(asientoAttached);
+				em.merge(lqcc);
+
+				resultado.put("generado", true);
+				resultado.put("idAsiento", asientoAttached.getCodigo());
+				resultado.put("numeroAlterno", asientoAttached.getNumeroAlterno());
+				System.out.println("✓ Asiento contable generado: " + asientoAttached.getNumeroAlterno());
+			} else {
+				System.out.println("ℹ El facturador no genera contabilidad: documento CXP creado sin asiento.");
+			}
+
+			// Enlazar LQCS → LQCC (CBR.LQCS.LQCSLQCC)
+			liquidacion.setDocumentoCxp(lqcc);
 			liquidacionCompraDaoService.save(liquidacion, liquidacion.getId());
 			em.flush();
 
-			resultado.put("generado", true);
-			resultado.put("idAsiento", asientoAttached.getCodigo());
-			resultado.put("numeroAlterno", asientoAttached.getNumeroAlterno());
-			System.out.println("✓ Asiento contable generado: " + asientoAttached.getNumeroAlterno());
+			System.out.println("✓ Documento CXP creado: LQCC id=" + lqcc.getId()
+					+ " para LQCS id=" + idLiquidacion);
 		} catch (Throwable e) {
 			sessionContext.setRollbackOnly();
 			throw e;
 		}
 		return resultado;
 	}
-	
+
 	@Override
 	public String[] generarXMLLiquidacion(String clave, Long ambiente) throws Throwable {
 		System.out.println("Ingresa al metodo generarXMLLiquidacion con clave: " + clave + " y ambiente: " + ambiente);
@@ -648,14 +934,14 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 			Query queryDetalle = em.createQuery(sqlDetalle);
 			queryDetalle.setParameter("liquidacionId", liquidacion.getId());
 			@SuppressWarnings("unchecked")
-			List<Object> detalles = queryDetalle.getResultList();
-			
+			List<com.saa.model.cxc.DetalleLiquidacionCompra> detalles = queryDetalle.getResultList();
+
 			// 4. Obtener formas de pago
 			String sqlFormasPago = "SELECT fp FROM FormaPagoLiquidacion fp WHERE fp.liquidacion.id = :liquidacionId";
 			Query queryFormasPago = em.createQuery(sqlFormasPago);
 			queryFormasPago.setParameter("liquidacionId", liquidacion.getId());
 			@SuppressWarnings("unchecked")
-			List<Object> formasPago = queryFormasPago.getResultList();
+			List<com.saa.model.cxc.FormaPagoLiquidacion> formasPago = queryFormasPago.getResultList();
 			
 			// 5. Generar XML
 			String xmlContent = generarXMLContentLiquidacion(liquidacion, dirEstablecimiento, 
@@ -678,7 +964,8 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 	}
 	
 	private String generarXMLContentLiquidacion(LiquidacionCompra liquidacion, String dirEstablecimiento,
-			List<Object> detalles, List<Object> formasPago, Long ambiente) throws Exception {
+			List<com.saa.model.cxc.DetalleLiquidacionCompra> detalles,
+			List<com.saa.model.cxc.FormaPagoLiquidacion> formasPago, Long ambiente) throws Exception {
 		
 		StringWriter stringWriter = new StringWriter();
 		XMLOutputFactory factory = XMLOutputFactory.newInstance();
@@ -809,12 +1096,13 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 		writer.writeCharacters("\n");
 	}
 	
-	private void writePagos(XMLStreamWriter writer, List<Object> formasPago, Double total) throws Exception {
+	private void writePagos(XMLStreamWriter writer, List<com.saa.model.cxc.FormaPagoLiquidacion> formasPago,
+			Double total) throws Exception {
 		writer.writeCharacters("    ");
 		writer.writeStartElement("pagos");
 		writer.writeCharacters("\n");
-		
-		if (formasPago.isEmpty()) {
+
+		if (formasPago == null || formasPago.isEmpty()) {
 			writer.writeCharacters("      ");
 			writer.writeStartElement("pago");
 			writer.writeCharacters("\n");
@@ -823,22 +1111,117 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 			writer.writeCharacters("      ");
 			writer.writeEndElement();
 			writer.writeCharacters("\n");
+		} else {
+			for (com.saa.model.cxc.FormaPagoLiquidacion fp : formasPago) {
+				// El SRI exige siempre 2 dígitos en formaPago
+				String codFP = fp.getFormaPago();
+				if (codFP != null && codFP.length() == 1) codFP = "0" + codFP;
+				// El XSD admite plazo=0 (minInclusive="0"): no forzar a "1" cuando
+				// el pago viene explícitamente al contado.
+				String plazoStr = fp.getPlazo() != null ? String.valueOf(fp.getPlazo()) : "0";
+				writer.writeCharacters("      ");
+				writer.writeStartElement("pago");
+				writer.writeCharacters("\n");
+				writeElement(writer, "formaPago", nvl(codFP, "01"), 8);
+				writeElement(writer, "total", formatDecimal(fp.getValor()), 8);
+				writeElement(writer, "plazo", plazoStr, 8);
+				writeElement(writer, "unidadTiempo", nvl(fp.getUnidadTiempo(), "dias"), 8);
+				writer.writeCharacters("      ");
+				writer.writeEndElement();
+				writer.writeCharacters("\n");
+			}
 		}
-		
+
 		writer.writeCharacters("    ");
 		writer.writeEndElement();
 		writer.writeCharacters("\n");
 	}
-	
-	private void writeDetalles(XMLStreamWriter writer, List<Object> detalles) throws Exception {
+
+	/**
+	 * Código de IVA del SRI (impuesto) usado en el detalle. La liquidación
+	 * no guarda el código directamente (a diferencia de Factura), sólo el
+	 * porcentaje (12, 15, 5, 8, 0…): se mapea con la MISMA tabla que usa
+	 * {@code AsientoContableServiceImpl.mapPorcentajeIVAaCodigo} — a propósito
+	 * duplicada (métodos privados de otra clase no son reutilizables) — para
+	 * que el código emitido en el XML sea el mismo que usaría la
+	 * contabilización si tuviera que resolverlo desde este código en vez del
+	 * porcentaje crudo.
+	 */
+	private String codigoPorcentajeIVA(Long porcentajeIVA) {
+		if (porcentajeIVA == null) return "0";
+		switch (porcentajeIVA.intValue()) {
+			case 0:  return "0";
+			case 5:  return "5";
+			case 8:  return "8";
+			case 12: return "2";
+			case 14: return "3";
+			case 15: return "4";
+			default: return String.valueOf(porcentajeIVA);
+		}
+	}
+
+	private void writeDetalles(XMLStreamWriter writer, List<com.saa.model.cxc.DetalleLiquidacionCompra> detalles) throws Exception {
 		writer.writeCharacters("  ");
 		writer.writeStartElement("detalles");
 		writer.writeCharacters("\n");
+		if (detalles != null) {
+			for (com.saa.model.cxc.DetalleLiquidacionCompra detalle : detalles) {
+				writeDetalleLiquidacion(writer, detalle);
+			}
+		}
 		writer.writeCharacters("  ");
 		writer.writeEndElement();
 		writer.writeCharacters("\n");
 	}
-	
+
+	private void writeDetalleLiquidacion(XMLStreamWriter writer, com.saa.model.cxc.DetalleLiquidacionCompra detalle) throws Exception {
+		writer.writeCharacters("  ");
+		writer.writeStartElement("detalle");
+		writer.writeCharacters("\n");
+
+		if (detalle.getProducto() != null && detalle.getProducto().getCodigo() != null
+				&& !detalle.getProducto().getCodigo().trim().isEmpty()) {
+			writeElement(writer, "codigoPrincipal", detalle.getProducto().getCodigo(), 3);
+		}
+		if (detalle.getProducto() != null && detalle.getProducto().getCodigoAux() != null
+				&& !detalle.getProducto().getCodigoAux().trim().isEmpty()) {
+			writeElement(writer, "codigoAuxiliar", detalle.getProducto().getCodigoAux(), 3);
+		}
+
+		writeElement(writer, "descripcion", nvl(detalle.getDescripcion(), ""), 3);
+		writeElement(writer, "cantidad", formatDecimal(detalle.getCantidad()), 3);
+		writeElement(writer, "precioUnitario", formatDecimal(detalle.getValor()), 3);
+		if (detalle.getPrecioSinSub() != null && detalle.getPrecioSinSub() > 0) {
+			writeElement(writer, "precioSinSubsidio", formatDecimal(detalle.getPrecioSinSub()), 3);
+		}
+		writeElement(writer, "descuento", formatDecimal(nvl(detalle.getDescuento(), 0.0)), 3);
+		writeElement(writer, "precioTotalSinImpuesto", formatDecimal(detalle.getSubTotal()), 3);
+
+		writer.writeCharacters("   ");
+		writer.writeStartElement("impuestos");
+		writer.writeCharacters("\n");
+		writer.writeCharacters("    ");
+		writer.writeStartElement("impuesto");
+		writer.writeCharacters("\n");
+		String codPorcentaje = codigoPorcentajeIVA(detalle.getPorcentajeIVA());
+		writeElement(writer, "codigo", "2", 5);
+		writeElement(writer, "codigoPorcentaje", codPorcentaje, 5);
+		writeElement(writer, "tarifa", formatDecimal(detalle.getPorcentajeIVA() != null
+				? detalle.getPorcentajeIVA().doubleValue() : 0.0), 5);
+		writeElement(writer, "baseImponible", formatDecimal(detalle.getSubTotal()), 5);
+		writeElement(writer, "valor", formatDecimal(nvl(detalle.getValorIVA(), 0.0)), 5);
+		writer.writeCharacters("    ");
+		writer.writeEndElement();
+		writer.writeCharacters("\n");
+		writer.writeCharacters("   ");
+		writer.writeEndElement(); // impuestos
+		writer.writeCharacters("\n");
+
+		writer.writeCharacters("  ");
+		writer.writeEndElement(); // detalle
+		writer.writeCharacters("\n");
+	}
+
 	private void writeInfoAdicional(XMLStreamWriter writer, LiquidacionCompra liquidacion) throws Exception {
 		writer.writeCharacters("  ");
 		writer.writeStartElement("infoAdicional");
@@ -884,7 +1267,56 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 		if (value == null) {
 			return "0.00";
 		}
-		return String.format("%.2f", value);
+		// Locale.US explícito: con la JVM en es_EC "%.2f" imprime "15,00" con
+		// coma decimal, y el SRI rechaza el comprobante. Mismo criterio que
+		// FacturaServiceImpl.formatDecimal.
+		return String.format(java.util.Locale.US, "%.2f", value);
+	}
+
+	/**
+	 * Forma de pago por defecto cuando el frontend no envía ninguna: "01" —
+	 * Sin utilización del sistema financiero, por el total de la liquidación,
+	 * plazo 0 días. Se guarda igual que la que ya usa el XML por defecto
+	 * (writePagos), para que quede trazada en BD.
+	 */
+	private com.saa.model.cxc.FormaPagoLiquidacion nuevaFormaPagoDefault(Double total) {
+		com.saa.model.cxc.FormaPagoLiquidacion fp = new com.saa.model.cxc.FormaPagoLiquidacion();
+		fp.setFormaPago("01");
+		fp.setValor(total);
+		fp.setPlazo(0L);
+		fp.setUnidadTiempo("dias");
+		return fp;
+	}
+
+	/**
+	 * Genera el PDF RIDE de la liquidación con JasperReports. A diferencia de
+	 * {@code FacturaServiceImpl.generarPDFFactura}, el reporte
+	 * {@code RPRT_RIDE_LIQUIDACION.jrxml} trae su propia consulta SQL
+	 * (parametrizada sólo por {@code P_ID_LIQUIDACION}): no hace falta
+	 * replicar aquí los datos, sólo pasar el id.
+	 * <p>
+	 * El {@code .jasper} de este reporte no está compilado (no hay
+	 * compilación en tiempo de ejecución en JasperReports 7.0.3 — ver
+	 * CLAUDE.md): si no existe, {@code reporteService.generarReporte} falla y
+	 * este método captura el error, devuelve {@code null} y deja la
+	 * liquidación sin RIDE, SIN abortar la emisión.
+	 * @return : bytes del PDF, o null si no se pudo generar (no crítico)
+	 */
+	private byte[] generarPDFLiquidacion(LiquidacionCompra liquidacionObj, Long idFacturador, String clave,
+			String pathLogoParam, Long ambiente) {
+		try {
+			System.out.println("Generando PDF RIDE para liquidación de compra: " + clave);
+			java.util.Map<String, Object> p = new java.util.HashMap<>();
+			p.put("P_ID_LIQUIDACION", liquidacionObj.getId());
+			byte[] pdfBytes = reporteService.generarReporte("cxc", "RPRT_RIDE_LIQUIDACION", p, "PDF");
+			System.out.println("✓ PDF RIDE generado correctamente ("
+					+ (pdfBytes != null ? pdfBytes.length : 0) + " bytes)");
+			return pdfBytes;
+		} catch (Exception e) {
+			System.err.println("⚠ Error generando PDF RIDE de liquidación (no crítico — ¿falta compilar "
+					+ "RPRT_RIDE_LIQUIDACION.jasper con Jaspersoft Studio 7.0.3?): " + e.getMessage());
+			return null;
+		}
 	}
 
 	@Override
@@ -1272,5 +1704,467 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 		} else {
 			return "/opt/saa-uploads/";
 		}
+	}
+
+	// =========================================================================
+	// marcarLiquidacionAutorizada
+	// =========================================================================
+
+	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+	public boolean marcarLiquidacionAutorizada(Long idLiquidacion, String numeroAutorizacion,
+			String fechaAutorizacion, String comprobanteXML) throws Throwable {
+		System.out.println("Ingresa al metodo marcarLiquidacionAutorizada con id: " + idLiquidacion);
+
+		LiquidacionCompra liquidacion = em.find(LiquidacionCompra.class, idLiquidacion);
+		if (liquidacion == null) {
+			throw new IncomeException("Liquidación de Compra con ID " + idLiquidacion + " no encontrada.");
+		}
+		if (Long.valueOf(5L).equals(liquidacion.getEstado())) {
+			System.out.println("ℹ Liquidación ya estaba en estado 5 (autorizada). Solo se verificó la autorización.");
+			return false;
+		}
+
+		liquidacion.setEstado(5L);
+		liquidacion.setEstadoEmision(1L);
+		if (numeroAutorizacion != null && !numeroAutorizacion.isEmpty()) {
+			liquidacion.setAutorizacion(numeroAutorizacion);
+		}
+		if (fechaAutorizacion != null && !fechaAutorizacion.isEmpty()) {
+			liquidacion.setFechaAutorizacion(parseFechaAutorizacion(fechaAutorizacion));
+		}
+
+		Long idFacturador = liquidacion.getFacturador() != null ? liquidacion.getFacturador().getId() : null;
+		if (comprobanteXML != null && !comprobanteXML.isEmpty() && idFacturador != null) {
+			try {
+				String resourcesPath = getBaseUploadDirectory() + "resources/" + idFacturador;
+				Path pathAutorizado = Paths.get(resourcesPath + "/lqcs/a/" + liquidacion.getClave() + ".xml");
+				Files.createDirectories(pathAutorizado.getParent());
+				Files.write(pathAutorizado, comprobanteXML.getBytes("UTF-8"));
+				PathLiquidacionCompra pathA = new PathLiquidacionCompra();
+				pathA.setLiquidacion(liquidacion);
+				pathA.setPath("resources/" + idFacturador + "/lqcs/a/" + liquidacion.getClave() + ".xml");
+				pathA.setAlterno(5L);
+				pathLiquidacionCompraDaoService.save(pathA, null);
+				System.out.println("✓ XML autorizado guardado en disco.");
+			} catch (Exception xmlEx) {
+				System.err.println("⚠ Error guardando XML autorizado (no crítico): " + xmlEx.getMessage());
+			}
+		}
+
+		liquidacionCompraDaoService.save(liquidacion, liquidacion.getId());
+		em.flush();
+		System.out.println("✓ Liquidación actualizada a estado AUTORIZADA (5). Aut: " + numeroAutorizacion);
+		return true;
+	}
+
+	// =========================================================================
+	// reintentarAutorizacionLiquidacion
+	// =========================================================================
+
+	@Override
+	public java.util.Map<String, Object> reintentarAutorizacionLiquidacion(Long idLiquidacion) throws Throwable {
+		System.out.println("=== reintentarAutorizacionLiquidacion | idLiquidacion=" + idLiquidacion + " ===");
+
+		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+		resultado.put("exito", false);
+
+		LiquidacionCompra liquidacion =
+				liquidacionCompraDaoService.selectById(idLiquidacion, NombreEntidadesCobro.LIQUIDACION_COMPRA);
+		if (liquidacion == null) {
+			resultado.put("mensaje", "No se encontró la liquidación con ID: " + idLiquidacion);
+			return resultado;
+		}
+
+		String clave = liquidacion.getClave();
+		if (clave == null || clave.trim().isEmpty()) {
+			resultado.put("mensaje", "La liquidación no tiene clave de acceso. No se puede reintentar la autorización.");
+			return resultado;
+		}
+
+		if (Long.valueOf(5L).equals(liquidacion.getEstado())) {
+			resultado.put("exito", true);
+			resultado.put("estado", "YA_AUTORIZADA");
+			resultado.put("mensaje", "La liquidación ya está autorizada. Número de autorización: "
+					+ nvl(liquidacion.getAutorizacion(), clave));
+			resultado.put("numeroAutorizacion", liquidacion.getAutorizacion());
+			return resultado;
+		}
+
+		Long ambiente = 1L;
+		if (liquidacion.getFacturador() != null && liquidacion.getFacturador().getAmbiente() != null) {
+			ambiente = liquidacion.getFacturador().getAmbiente();
+		}
+		Long idFacturador = liquidacion.getFacturador().getId();
+
+		String urlWS2 = ambiente == 2
+				? "https://cel.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl"
+				: "https://celcer.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl";
+
+		System.out.println(">>> Reintentando autorización con clave: " + clave);
+		try {
+			ResultadoAutorizacion ra = llamarAutorizacionSRI(urlWS2, clave);
+
+			if ("AUTORIZADO".equals(ra.estado)) {
+				boolean actualizada = self().marcarLiquidacionAutorizada(
+						idLiquidacion, ra.numeroAutorizacion, ra.fechaAutorizacion, ra.comprobanteXML);
+				resultado.put("liquidacionActualizada", actualizada);
+
+				try {
+					java.util.Map<String, Object> resCxp = self().crearDocumentoCxp(idLiquidacion);
+					if (Boolean.TRUE.equals(resCxp.get("aplica"))) {
+						resultado.put("documentoCxp", resCxp.get("idDocumentoCxp"));
+						resultado.put("asiento", resCxp.get("numeroAlterno"));
+					}
+				} catch (Exception ae) {
+					resultado.put("advertenciaAsiento",
+							"Autorizada pero error al crear el documento CXP / asiento: " + ae.getMessage());
+					System.err.println("⚠ Error creando documento CXP: " + ae.getMessage());
+				}
+
+				resultado.put("exito", true);
+				resultado.put("estado", "AUTORIZADO");
+				resultado.put("numeroAutorizacion", ra.numeroAutorizacion);
+				resultado.put("fechaAutorizacion", ra.fechaAutorizacion);
+				resultado.put("mensaje", "Liquidación autorizada correctamente.");
+				System.out.println("✓ Liquidación autorizada en reintento: " + ra.numeroAutorizacion);
+
+			} else {
+				resultado.put("exito", false);
+				resultado.put("estado", ra.estado != null ? ra.estado : "NO_AUTORIZADO");
+				resultado.put("mensaje", "El SRI no autorizó el comprobante. Estado: " + ra.estado
+						+ " | " + nvl(ra.mensaje, "") + " " + nvl(ra.informacionAdicional, ""));
+				resultado.put("respuestaSRI", ra.respuestaCompleta);
+				System.out.println("✗ Reintento no autorizado: " + ra.estado);
+			}
+		} catch (Exception e) {
+			resultado.put("mensaje", "Error al comunicarse con el SRI: " + e.getMessage());
+			resultado.put("error", e.getMessage());
+			System.err.println("✗ Error en reintentarAutorizacionLiquidacion: " + e.getMessage());
+			e.printStackTrace();
+		}
+
+		return resultado;
+	}
+
+	// =========================================================================
+	// reenviarEmailLiquidacion
+	// =========================================================================
+
+	@Override
+	public java.util.Map<String, Object> reenviarEmailLiquidacion(Long idLiquidacion, String destinatarios) throws Throwable {
+		System.out.println("=== reenviarEmailLiquidacion | idLiquidacion=" + idLiquidacion
+				+ " | destinatarios=" + destinatarios + " ===");
+
+		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+		resultado.put("exito", false);
+
+		if (destinatarios == null || destinatarios.trim().isEmpty()) {
+			resultado.put("mensaje", "Debe especificar al menos un correo electrónico destinatario.");
+			return resultado;
+		}
+
+		LiquidacionCompra liquidacion =
+				liquidacionCompraDaoService.selectById(idLiquidacion, NombreEntidadesCobro.LIQUIDACION_COMPRA);
+		if (liquidacion == null) {
+			resultado.put("mensaje", "No se encontró la liquidación con ID: " + idLiquidacion);
+			return resultado;
+		}
+
+		if (!Long.valueOf(5L).equals(liquidacion.getEstado())) {
+			resultado.put("mensaje", "Solo se puede reenviar el email de liquidaciones autorizadas. "
+					+ "Estado actual: " + liquidacion.getEstado());
+			return resultado;
+		}
+
+		String clave = liquidacion.getClave();
+		Long idFacturador = liquidacion.getFacturador().getId();
+		String resourcesPath = getBaseUploadDirectory() + "resources/" + idFacturador;
+
+		String xmlAutorizado = null;
+		byte[] pdfBytes = null;
+		try {
+			Path pXml = Paths.get(resourcesPath + "/lqcs/a/" + clave + ".xml");
+			if (Files.exists(pXml)) {
+				xmlAutorizado = new String(Files.readAllBytes(pXml), "UTF-8");
+			}
+		} catch (Exception e) {
+			System.err.println("⚠ Error leyendo XML autorizado: " + e.getMessage());
+		}
+		try {
+			Path pPdf = Paths.get(resourcesPath + "/lqcs/a/" + clave + ".pdf");
+			if (Files.exists(pPdf)) {
+				pdfBytes = Files.readAllBytes(pPdf);
+			} else {
+				System.out.println("ℹ PDF no encontrado en disco. Regenerando PDF para liquidación: " + clave);
+				pdfBytes = generarPDFLiquidacion(liquidacion, idFacturador, clave, null, liquidacion.getAmbiente());
+				if (pdfBytes != null && pdfBytes.length > 0) {
+					Files.createDirectories(pPdf.getParent());
+					Files.write(pPdf, pdfBytes);
+				}
+			}
+		} catch (Exception e) {
+			System.err.println("⚠ Error leyendo/regenerando PDF RIDE: " + e.getMessage());
+		}
+
+		String[] listaDestinatarios = destinatarios.split(";");
+		java.util.List<String> enviados = new java.util.ArrayList<>();
+		java.util.List<String> fallidos = new java.util.ArrayList<>();
+		String razonSocial = liquidacion.getFacturador() != null
+				? nvl(liquidacion.getFacturador().getRazonSocial(),
+					  nvl(liquidacion.getFacturador().getNombre(), "")) : "";
+		String numeroLiquidacion = nvl(liquidacion.getNumero(), clave);
+
+		for (String mail : listaDestinatarios) {
+			String mailLimpio = mail.trim();
+			if (mailLimpio.isEmpty()) continue;
+			try {
+				emailFacturaService.enviarFacturaAutorizada(
+						mailLimpio, numeroLiquidacion, clave,
+						razonSocial, "Liquidación de Compra", xmlAutorizado, pdfBytes);
+				enviados.add(mailLimpio);
+			} catch (Exception e) {
+				fallidos.add(mailLimpio + " (error: " + e.getMessage() + ")");
+			}
+		}
+
+		resultado.put("emailsEnviados", enviados);
+		resultado.put("emailsFallidos", fallidos);
+		resultado.put("numeroLiquidacion", numeroLiquidacion);
+		resultado.put("clave", clave);
+
+		if (!enviados.isEmpty() && fallidos.isEmpty()) {
+			resultado.put("exito", true);
+			resultado.put("mensaje", "Email enviado correctamente a " + enviados.size()
+					+ " destinatario(s): " + String.join(", ", enviados));
+		} else if (!enviados.isEmpty()) {
+			resultado.put("exito", true);
+			resultado.put("mensaje", "Email enviado a " + enviados.size()
+					+ " destinatario(s). Fallaron " + fallidos.size() + ": " + String.join(", ", fallidos));
+		} else {
+			resultado.put("exito", false);
+			resultado.put("mensaje", "No se pudo enviar el email a ningún destinatario.");
+		}
+
+		return resultado;
+	}
+
+	// =========================================================================
+	// anularLiquidacion
+	// =========================================================================
+
+	/**
+	 * Anula una liquidación de compra emitida.
+	 * <p>
+	 * <b>Pendiente conocido:</b> el pedido original de este endpoint incluía
+	 * verificar en {@code AplicacionPagoCxp} que el documento CXP (LQCC) no
+	 * tenga aplicaciones de pago. Hoy eso no es verificable: a diferencia de
+	 * {@code FacturaCompra}, {@code AplicacionPagoCxp} no tiene FK a
+	 * {@code LiquidacionCompraCompra} (su única FK de "documento pagado" es
+	 * {@code facturaCompra}, tipada a esa entidad) — y tampoco existe en
+	 * {@code PagoProgramado}. En otras palabras: hoy no hay ningún mecanismo
+	 * para pagar/aplicar contra un LQCC todavía. Por eso este método sólo
+	 * valida estados (no repetir anulación) y anula lo que sí existe (asiento
+	 * del LQCC); si en el futuro se implementa el pago de liquidaciones
+	 * recibidas, agregar aquí el bloqueo real antes de anular.
+	 */
+	@Override
+	public java.util.Map<String, Object> anularLiquidacion(Long idLiquidacion, String motivo, String usuario) throws Throwable {
+		System.out.println("=== anularLiquidacion | idLiquidacion=" + idLiquidacion + " | usuario=" + usuario + " ===");
+
+		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+		resultado.put("exito", false);
+
+		LiquidacionCompra liquidacion =
+				liquidacionCompraDaoService.selectById(idLiquidacion, NombreEntidadesCobro.LIQUIDACION_COMPRA);
+		if (liquidacion == null) {
+			resultado.put("mensaje", "Liquidación con ID " + idLiquidacion + " no encontrada.");
+			return resultado;
+		}
+		if (Long.valueOf(Estado.INACTIVO).equals(liquidacion.getEstado())) {
+			resultado.put("mensaje", "La liquidación ya se encuentra anulada.");
+			return resultado;
+		}
+
+		String usuarioAnulacion = (usuario != null && !usuario.trim().isEmpty()) ? usuario.trim() : "SISTEMA";
+		String motivoFinal      = (motivo  != null && !motivo.trim().isEmpty())  ? motivo.trim()  : "Anulación manual";
+		java.time.LocalDateTime ahora = java.time.LocalDateTime.now();
+
+		com.saa.model.cxp.LiquidacionCompraCompra lqcc = liquidacion.getDocumentoCxp();
+		if (lqcc != null) {
+			com.saa.model.cxp.LiquidacionCompraCompra lqccManaged =
+					em.find(com.saa.model.cxp.LiquidacionCompraCompra.class, lqcc.getId());
+			if (lqccManaged != null) {
+				if (lqccManaged.getAsiento() != null && lqccManaged.getAsiento().getCodigo() != null) {
+					try {
+						com.saa.model.cnt.Asiento asiento = em.find(
+								com.saa.model.cnt.Asiento.class, lqccManaged.getAsiento().getCodigo());
+						if (asiento != null && !Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO).equals(asiento.getEstado())) {
+							asiento.setEstado(Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO));
+							asiento.setMotivoAnulacion(motivoFinal);
+							asiento.setFechaAnulacion(ahora);
+							asiento.setUsuarioAnulacion(usuarioAnulacion);
+							em.merge(asiento);
+							resultado.put("asientoAnulado", asiento.getCodigo());
+							System.out.println("✓ Asiento del documento CXP anulado: " + asiento.getCodigo());
+						}
+					} catch (Exception e) {
+						resultado.put("advertenciaAsiento",
+								"La liquidación fue anulada pero ocurrió un error al anular el asiento: " + e.getMessage());
+						System.err.println("⚠ Error al anular asiento: " + e.getMessage());
+					}
+				}
+				lqccManaged.setEstado(Long.valueOf(Estado.INACTIVO));
+				em.merge(lqccManaged);
+				resultado.put("documentoCxpAnulado", lqccManaged.getId());
+			}
+		}
+
+		liquidacion.setEstado(Long.valueOf(Estado.INACTIVO));
+		liquidacion.setEstadoEmision(3L); // 3 = ANULADA, mismo esquema que Factura
+		liquidacionCompraDaoService.save(liquidacion, liquidacion.getId());
+		em.flush();
+
+		System.out.println("✓ Liquidación anulada: " + idLiquidacion + " | Motivo: " + motivoFinal);
+
+		resultado.put("exito", true);
+		resultado.put("mensaje", "Liquidación N° " + nvl(liquidacion.getNumero(), String.valueOf(idLiquidacion))
+				+ " anulada correctamente.");
+		resultado.put("idLiquidacion", idLiquidacion);
+		resultado.put("motivoAnulacion", motivoFinal);
+		resultado.put("usuarioAnulacion", usuarioAnulacion);
+		return resultado;
+	}
+
+	// =========================================================================
+	// consultarYActualizarEstadoLiquidacion
+	// =========================================================================
+
+	@Override
+	@TransactionAttribute(TransactionAttributeType.NOT_SUPPORTED)
+	public java.util.Map<String, Object> consultarYActualizarEstadoLiquidacion(Long idLiquidacion) throws Throwable {
+		System.out.println("=== consultarYActualizarEstadoLiquidacion | idLiquidacion=" + idLiquidacion + " ===");
+		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+		resultado.put("exito", false);
+
+		LiquidacionCompra liquidacion =
+				liquidacionCompraDaoService.selectById(idLiquidacion, NombreEntidadesCobro.LIQUIDACION_COMPRA);
+		if (liquidacion == null) {
+			resultado.put("mensaje", "Liquidación con ID " + idLiquidacion + " no encontrada.");
+			return resultado;
+		}
+		if (liquidacion.getClave() == null || liquidacion.getClave().isEmpty()) {
+			resultado.put("mensaje", "La liquidación no tiene clave de acceso registrada.");
+			return resultado;
+		}
+
+		Long ambiente = liquidacion.getAmbiente() != null ? liquidacion.getAmbiente() : 1L;
+		String clave  = liquidacion.getClave();
+		Long idFacturador = liquidacion.getFacturador() != null ? liquidacion.getFacturador().getId() : null;
+		resultado.put("clave", clave);
+		resultado.put("estadoActual", liquidacion.getEstado());
+
+		String urlWS2 = ambiente == 2L
+				? "https://cel.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl"
+				: "https://celcer.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl";
+
+		ResultadoAutorizacion ra;
+		try {
+			ra = llamarAutorizacionSRI(urlWS2, clave);
+		} catch (Exception e) {
+			resultado.put("mensaje", "Error al consultar el estado en el SRI: " + e.getMessage());
+			resultado.put("error", e.getMessage());
+			return resultado;
+		}
+
+		resultado.put("estadoSRI", ra.estado);
+		resultado.put("numeroAutorizacion", ra.numeroAutorizacion);
+		resultado.put("fechaAutorizacion", ra.fechaAutorizacion);
+
+		if (!"AUTORIZADO".equals(ra.estado)) {
+			resultado.put("mensaje", "El SRI indica que la liquidación NO está autorizada. Estado: " + ra.estado
+					+ " | " + nvl(ra.mensaje, "") + " " + nvl(ra.informacionAdicional, ""));
+			return resultado;
+		}
+
+		boolean actualizada;
+		try {
+			actualizada = self().marcarLiquidacionAutorizada(
+					idLiquidacion, ra.numeroAutorizacion, ra.fechaAutorizacion, ra.comprobanteXML);
+		} catch (Throwable e) {
+			resultado.put("mensaje", "El SRI autorizó la liquidación pero no se pudo actualizar su estado: "
+					+ e.getMessage());
+			resultado.put("error", e.getMessage());
+			return resultado;
+		}
+		resultado.put("liquidacionActualizada", actualizada);
+
+		boolean documentoCxpCreado = false;
+		System.out.println("PASO 4: Creando documento CXP...");
+		try {
+			java.util.Map<String, Object> resCxp = self().crearDocumentoCxp(idLiquidacion);
+			documentoCxpCreado = Boolean.TRUE.equals(resCxp.get("generado"));
+			if (Boolean.TRUE.equals(resCxp.get("yaExistia"))) {
+				resultado.put("documentoCxpExistente", resCxp.get("idDocumentoCxp"));
+			} else if (documentoCxpCreado) {
+				resultado.put("documentoCxp", resCxp.get("idDocumentoCxp"));
+				resultado.put("asiento", resCxp.get("numeroAlterno"));
+			}
+		} catch (Throwable e) {
+			resultado.put("contabilidadPendiente", true);
+			resultado.put("advertenciaAsiento",
+					"Liquidación autorizada pero error al crear el documento CXP: " + e.getMessage());
+			System.err.println("⚠ Error creando documento CXP: " + e.getMessage());
+		}
+		resultado.put("documentoCxpCreado", documentoCxpCreado);
+
+		System.out.println("PASO 5: Enviando email al proveedor...");
+		String destinatario = null;
+		if (liquidacion.getTitular() != null) destinatario = liquidacion.getTitular().getEmail();
+		try {
+			if (destinatario != null && !destinatario.trim().isEmpty() && idFacturador != null) {
+				String resourcesPath = getBaseUploadDirectory() + "resources/" + idFacturador;
+				String xmlAutorizado = null;
+				byte[] pdfBytes = null;
+				try {
+					java.nio.file.Path pXml = Paths.get(resourcesPath + "/lqcs/a/" + clave + ".xml");
+					if (Files.exists(pXml)) xmlAutorizado = new String(Files.readAllBytes(pXml), "UTF-8");
+					java.nio.file.Path pPdf = Paths.get(resourcesPath + "/lqcs/a/" + clave + ".pdf");
+					if (Files.exists(pPdf)) {
+						pdfBytes = Files.readAllBytes(pPdf);
+					} else {
+						pdfBytes = generarPDFLiquidacion(liquidacion, idFacturador, clave, null, ambiente);
+						if (pdfBytes != null && pdfBytes.length > 0) {
+							Files.createDirectories(Paths.get(resourcesPath + "/lqcs/a/"));
+							Files.write(Paths.get(resourcesPath + "/lqcs/a/" + clave + ".pdf"), pdfBytes);
+						}
+					}
+				} catch (Exception ioEx) {
+					System.err.println("⚠ Error leyendo archivos para email: " + ioEx.getMessage());
+				}
+				String razonSocial = liquidacion.getFacturador() != null
+						? nvl(liquidacion.getFacturador().getRazonSocial(), nvl(liquidacion.getFacturador().getNombre(), "")) : "";
+				emailFacturaService.enviarFacturaAutorizada(
+						destinatario, nvl(liquidacion.getNumero(), clave),
+						clave, razonSocial, "Liquidación de Compra", xmlAutorizado, pdfBytes);
+				resultado.put("emailEnviado", true);
+				resultado.put("emailDestinatario", destinatario);
+			} else {
+				resultado.put("emailEnviado", false);
+			}
+		} catch (Exception mailEx) {
+			resultado.put("advertenciaEmail",
+					"Liquidación autorizada pero no se pudo enviar el email: " + mailEx.getMessage());
+			resultado.put("emailEnviado", false);
+			System.err.println("⚠ Error enviando email: " + mailEx.getMessage());
+		}
+
+		resultado.put("exito", true);
+		resultado.put("mensaje", "Liquidación verificada en el SRI: AUTORIZADA."
+				+ (actualizada ? " Estado actualizado a autorizada." : "")
+				+ (documentoCxpCreado ? " Documento CXP y asiento creados." : "")
+				+ (Boolean.TRUE.equals(resultado.get("emailEnviado")) ? " Email enviado a " + destinatario + "." : ""));
+		System.out.println("=== consultarYActualizarEstadoLiquidacion COMPLETADO ===");
+		return resultado;
 	}
 }

@@ -78,6 +78,19 @@ public class TitularDaoServiceImpl extends EntityDaoImpl<Titular> implements Tit
 
 	@SuppressWarnings("unchecked")
 	@Override
+	public Titular selectByIdentificacion(String identificacion, Long estado) throws Throwable {
+		if (identificacion == null || identificacion.trim().isEmpty()) return null;
+		List<Titular> resultado = em.createQuery(
+				"SELECT t FROM Titular t WHERE t.identificacion = :identificacion AND t.estado = :estado")
+				.setParameter("identificacion", identificacion.trim())
+				.setParameter("estado", estado)
+				.setMaxResults(1)
+				.getResultList();
+		return resultado.isEmpty() ? null : resultado.get(0);
+	}
+
+	@SuppressWarnings("unchecked")
+	@Override
 	public List<Titular> buscarPorNombreSimilar(String nombre) throws Throwable {
 		System.out.println("Ingresa al metodo buscarPorNombreSimilar de TitularDao con nombre: " + nombre);
 		// Normalizar tildes en Java antes de enviar a Oracle (UTL_I18N.TRANSLITERATE no disponible en este servidor)

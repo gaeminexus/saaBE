@@ -20,6 +20,8 @@ import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
 import jakarta.persistence.Table;
 
+import com.saa.model.cxp.ProductoPago;
+
 /**
  * Entity DetalleLiquidacionCompra.
  * Almacena el detalle de items de la liquidación de compras.
@@ -91,9 +93,18 @@ public class DetalleLiquidacionCompra implements Serializable {
 	@Column(name = "TOTAL")
 	private Double total;
 	
-	@Basic
-	@Column(name = "PRODUCTO")
-	private Long producto;
+	/**
+	 * Producto de clasificación contable (PGS.PRDP). Determina la cuenta de
+	 * gasto contra la que se contabiliza el detalle en CXP
+	 * ({@code AsientoContableServiceImpl.generarAsientoLiquidacionCompraCompra}
+	 * agrupa por {@code producto.grupoProducto.planCuenta}). Puede quedar null
+	 * en detalles cargados automáticamente por el SRI, pero no en los que
+	 * emite este sistema: {@code validarCuentasContablesLiquidacion} lo exige
+	 * antes de emitir.
+	 */
+	@ManyToOne
+	@JoinColumn(name = "PRODUCTO", referencedColumnName = "ID")
+	private ProductoPago producto;
 	
 	@Basic
 	@Column(name = "ESTADO")
@@ -213,11 +224,11 @@ public class DetalleLiquidacionCompra implements Serializable {
 		this.total = total;
 	}
 
-	public Long getProducto() {
+	public ProductoPago getProducto() {
 		return producto;
 	}
 
-	public void setProducto(Long producto) {
+	public void setProducto(ProductoPago producto) {
 		this.producto = producto;
 	}
 

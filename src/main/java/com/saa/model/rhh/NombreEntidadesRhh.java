@@ -77,4 +77,7 @@ public interface NombreEntidadesRhh {
     String DETALLE_UTILIDAD              = "DetalleUtilidad";
     String SALIDA_OFICIAL                = "SalidaOficial";
 
+    // ================= ANTICIPOS A TRABAJADORES =================
+    String ANTICIPO_EMPLEADO             = "AnticipoEmpleado";
+
 }

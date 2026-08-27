@@ -1193,4 +1193,69 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 	private String nvl(String valor, String porDefecto) {
 		return (valor != null) ? valor : porDefecto;
 	}
+
+	@Override
+	public List<Map<String, Object>> listar(Long idEmpresa, Long idTitular, LocalDate desde,
+			LocalDate hasta, Long formaPago, Long estado) throws Throwable {
+		System.out.println("=== listar (CXC) | idEmpresa=" + idEmpresa + " | idTitular=" + idTitular
+				+ " | desde=" + desde + " | hasta=" + hasta + " | formaPago=" + formaPago
+				+ " | estado=" + estado + " ===");
+
+		List<Object[]> filas = aplicacionPagoCxcDaoService.selectListado(
+				idEmpresa, idTitular, desde, hasta, formaPago, estado);
+
+		List<Map<String, Object>> resultado = new ArrayList<>();
+		for (Object[] fila : filas) {
+			// Columnas: 0 id, 1 fechaAplicacion, 2 idTitularFactura, 3 nombreTitularFactura,
+			// 4 idTitularLiquidacion, 5 nombreTitularLiquidacion, 6 idFactura, 7 numeroFactura,
+			// 8 idLiquidacion, 9 numeroLiquidacion, 10 tipoDocPago, 11 formaPago,
+			// 12 montoAplicado, 13 idAsiento, 14 numeroAlternoAsiento, 15 estado.
+			Long idFactura = (Long) fila[6];
+			Long idLiquidacion = (Long) fila[8];
+
+			Map<String, Object> titular = new HashMap<>();
+			if (idFactura != null) {
+				titular.put("codigo", fila[2]);
+				titular.put("nombre", fila[3]);
+			} else {
+				titular.put("codigo", fila[4]);
+				titular.put("nombre", fila[5]);
+			}
+
+			// Factura y liquidación son mutuamente excluyentes por fila (ver
+			// javadoc de AplicacionPagoCxc): se expone cuál de las dos es,
+			// en vez de asumir siempre "factura" — hoy en la práctica casi
+			// todas las filas son de factura, pero el modelo admite ambas.
+			Map<String, Object> documentoAfectado = new HashMap<>();
+			if (idFactura != null) {
+				documentoAfectado.put("tipo", "FACTURA");
+				documentoAfectado.put("id", idFactura);
+				documentoAfectado.put("numero", fila[7]);
+			} else if (idLiquidacion != null) {
+				documentoAfectado.put("tipo", "LIQUIDACION_COMPRA");
+				documentoAfectado.put("id", idLiquidacion);
+				documentoAfectado.put("numero", fila[9]);
+			}
+
+			Map<String, Object> item = new HashMap<>();
+			item.put("id", fila[0]);
+			item.put("fecha", fila[1]);
+			item.put("titular", titular);
+			item.put("documentoAfectado", documentoAfectado);
+			item.put("tipoDocPago", fila[10]);
+			item.put("formaPago", fila[11]);
+			item.put("valor", fila[12]);
+			if (fila[13] != null) {
+				Map<String, Object> asiento = new HashMap<>();
+				asiento.put("id", fila[13]);
+				asiento.put("numeroAlterno", fila[14]);
+				item.put("asiento", asiento);
+			} else {
+				item.put("asiento", null);
+			}
+			item.put("estado", fila[15]);
+			resultado.add(item);
+		}
+		return resultado;
+	}
 }

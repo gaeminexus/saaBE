@@ -191,6 +191,17 @@ public class LiquidacionCompra implements Serializable {
 	@JoinColumn(name = "LQCSASNT", referencedColumnName = "ASNTCDGO")
 	private Asiento asiento;
 
+	/**
+	 * Documento CXP (PGS.LQCC) creado al autorizar la liquidación por el SRI:
+	 * ahí viven la cuenta por pagar al proveedor y el asiento de recepción
+	 * (tipo CXP, {@code LIQUIDACIONES_COMPRA_RECIBIDAS}). Esta liquidación
+	 * (CXC) es sólo el trámite de emisión ante el SRI; no genera su propia
+	 * cuenta por pagar. Lo crea {@code LiquidacionCompraServiceImpl.crearDocumentoCxp}.
+	 */
+	@ManyToOne
+	@JoinColumn(name = "LQCSLQCC", referencedColumnName = "ID")
+	private com.saa.model.cxp.LiquidacionCompraCompra documentoCxp;
+
 	// Getters y Setters
 	
 	public Long getId() {
@@ -471,5 +482,13 @@ public class LiquidacionCompra implements Serializable {
 
 	public void setAsiento(Asiento asiento) {
 		this.asiento = asiento;
+	}
+
+	public com.saa.model.cxp.LiquidacionCompraCompra getDocumentoCxp() {
+		return documentoCxp;
+	}
+
+	public void setDocumentoCxp(com.saa.model.cxp.LiquidacionCompraCompra documentoCxp) {
+		this.documentoCxp = documentoCxp;
 	}
 }

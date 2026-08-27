@@ -25,6 +25,7 @@ import com.saa.ejb.tsr.dao.CuentaBancariaDaoService;
 import com.saa.ejb.tsr.dao.ExtractoBancarioDaoService;
 import com.saa.ejb.tsr.dao.GrupoConciliacionAsientoDaoService;
 import com.saa.ejb.tsr.dao.GrupoConciliacionExtractoDaoService;
+import com.saa.ejb.tsr.dao.MovimientoBancoDaoService;
 import com.saa.ejb.tsr.service.ConciliacionContableMatchService;
 import com.saa.ejb.tsr.service.ConciliacionContableService;
 import com.saa.ejb.tsr.service.ControlExtractoBancarioService;
@@ -40,11 +41,14 @@ import com.saa.model.tsr.DetalleExtractoBancario;
 import com.saa.model.tsr.GrupoConciliacionAsiento;
 import com.saa.model.tsr.GrupoConciliacionContable;
 import com.saa.model.tsr.GrupoConciliacionExtracto;
+import com.saa.model.tsr.MovimientoBanco;
 import com.saa.model.tsr.ResumenConciliacionCuenta;
 import com.saa.model.tsr.SugerenciaConciliacionContable;
+import com.saa.rubros.ASPEstadoRevisionExtracto;
 import com.saa.rubros.Estado;
 import com.saa.rubros.EstadoConciliacionContable;
 import com.saa.rubros.Rubros;
+import com.saa.rubros.TipoMovimientoConciliacion;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -98,6 +102,9 @@ public class ConciliacionContableMatchServiceImpl implements ConciliacionContabl
 
     @EJB
     private DetalleAsientoService detalleAsientoService;
+
+    @EJB
+    private MovimientoBancoDaoService movimientoBancoDaoService;
 
     @EJB
     private CuentaBancariaDaoService cuentaBancariaDaoService;
@@ -239,6 +246,12 @@ public class ConciliacionContableMatchServiceImpl implements ConciliacionContabl
             enlace.setGrupo(grupoGuardado);
             enlace.setDetalleExtractoBancario(detalle);
             grupoConciliacionExtractoService.saveSingle(enlace);
+
+            // Rubro 173 (ASPEstadoRevisionExtracto): la fila deja de estar
+            // "Pendiente de revision" ahora que quedo conciliada. Sin esto la
+            // pantalla la sigue mostrando pendiente aunque ya tenga grupo.
+            detalle.setEstadoRevision(Long.valueOf(ASPEstadoRevisionExtracto.CONCILIADA));
+            detalleExtractoBancarioService.saveSingle(detalle);
         }
         for (DetalleAsiento detalle : detallesAsiento) {
             GrupoConciliacionAsiento enlace = new GrupoConciliacionAsiento();
@@ -247,8 +260,126 @@ public class ConciliacionContableMatchServiceImpl implements ConciliacionContabl
             grupoConciliacionAsientoService.saveSingle(enlace);
         }
 
+        // Cerrar los MovimientoBanco de los asientos involucrados: pasan de
+        // "en transito" a "definitivo" y quedan marcados conciliados. No hay
+        // FK directo grupo->MovimientoBanco: se llega por el asiento, que si
+        // tiene FK en MovimientoBanco (ver cerrarMovimientosBanco).
+        Set<Long> idsAsiento = detallesAsiento.stream()
+                .map(d -> d.getAsiento().getCodigo())
+                .collect(Collectors.toSet());
+        cerrarMovimientosBanco(idsAsiento, grupoGuardado.getFechaConciliacion());
+
         conciliacionContableService.recalcularContadores(conciliacion.getCodigo());
         return grupoGuardado;
+    }
+
+    /**
+     * Cierra los MovimientoBanco (TSR.MVCB) de los asientos indicados: pasa
+     * su tipo de "en transito" a "definitivo" (mapeo de
+     * {@link TipoMovimientoConciliacion}, rubro 37) y los marca conciliados.
+     * <p>
+     * Un movimiento cuyo tipo actual no está en el mapeo (porque ya es
+     * definitivo, o porque no se reconoce) se deja completamente intacto —
+     * ni tipo, ni conciliado, ni fecha — para no pisar el cierre de un grupo
+     * anterior cuando dos DetalleAsiento del mismo asiento se concilian en
+     * grupos distintos. Un asiento sin ningún MovimientoBanco asociado no es
+     * error: simplemente no hay nada que cerrar (p.ej. asientos manuales que
+     * no pasaron por el circuito de pagos/cobros).
+     */
+    private void cerrarMovimientosBanco(Set<Long> idsAsiento, LocalDateTime fechaConciliacion) throws Throwable {
+        for (Long idAsiento : idsAsiento) {
+            List<MovimientoBanco> movimientos = movimientoBancoDaoService.selectByAsiento(idAsiento);
+            for (MovimientoBanco movimiento : movimientos) {
+                Long tipoDefinitivo = tipoDefinitivo(movimiento.getRubroTipoMovimientoH());
+                if (tipoDefinitivo == null) {
+                    continue;
+                }
+                movimiento.setRubroTipoMovimientoH(tipoDefinitivo);
+                movimiento.setConciliado(1L);
+                movimiento.setFechaConciliacion(fechaConciliacion);
+                movimientoBancoDaoService.save(movimiento, movimiento.getCodigo());
+            }
+        }
+    }
+
+    /**
+     * Revierte {@link #cerrarMovimientosBanco}: pasa el tipo "definitivo" de
+     * vuelta a "en transito" y desmarca conciliado/fechaConciliacion. Mismo
+     * criterio de dejar intacto lo que no está en el mapeo esperado (aquí,
+     * lo que ya no está en un tipo definitivo).
+     */
+    private void reabrirMovimientosBanco(Set<Long> idsAsiento) throws Throwable {
+        for (Long idAsiento : idsAsiento) {
+            List<MovimientoBanco> movimientos = movimientoBancoDaoService.selectByAsiento(idAsiento);
+            for (MovimientoBanco movimiento : movimientos) {
+                Long tipoTransito = tipoTransito(movimiento.getRubroTipoMovimientoH());
+                if (tipoTransito == null) {
+                    continue;
+                }
+                movimiento.setRubroTipoMovimientoH(tipoTransito);
+                movimiento.setConciliado(0L);
+                movimiento.setFechaConciliacion(null);
+                movimientoBancoDaoService.save(movimiento, movimiento.getCodigo());
+            }
+        }
+    }
+
+    /**
+     * Tránsito -> definitivo, tabla completa del rubro 37
+     * (TipoMovimientoConciliacion). El motor legado
+     * (MovimientoBancoServiceImpl.actualizaEstadoMovimiento) tenía esta misma
+     * tabla pero con un bug: el UPDATE grababa siempre Estado.ACTIVO en la
+     * columna del tipo en vez del tipo calculado. No se reutiliza ese método.
+     * @return : el tipo definitivo correspondiente, o null si tipoActual no
+     *           es uno de los seis tipos "en transito" del rubro (ya es
+     *           definitivo, o es un valor no reconocido) — el llamador debe
+     *           dejarlo tal cual.
+     */
+    private Long tipoDefinitivo(Long tipoActual) {
+        if (tipoActual == null) {
+            return null;
+        }
+        switch (tipoActual.intValue()) {
+            case TipoMovimientoConciliacion.DEPOSITO_EN_TRANSITO:
+                return (long) TipoMovimientoConciliacion.DEPOSITO;
+            case TipoMovimientoConciliacion.CHEQUES_GIRADOS_Y_NO_COBRADOS:
+                return (long) TipoMovimientoConciliacion.CHEQUE_COBRADO;
+            case TipoMovimientoConciliacion.DEBITO_BANCARIO_EN_TRANSITO:
+                return (long) TipoMovimientoConciliacion.DEBITO_BANCARIO;
+            case TipoMovimientoConciliacion.CREDITO_BANCARIO_EN_TRANSITO:
+                return (long) TipoMovimientoConciliacion.CREDITO_BANCARIO;
+            case TipoMovimientoConciliacion.TRANSFERENCIAS_DEBITOS_EN_TRANSITO:
+                return (long) TipoMovimientoConciliacion.TRANSFERENCIAS_DEBITOS;
+            case TipoMovimientoConciliacion.TRANSFERENCIAS_CREDITOS_EN_TRANSITO:
+                return (long) TipoMovimientoConciliacion.TRANSFERENCIAS_CREDITOS;
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * Inverso de {@link #tipoDefinitivo(Long)}: definitivo -> en transito.
+     */
+    private Long tipoTransito(Long tipoActual) {
+        if (tipoActual == null) {
+            return null;
+        }
+        switch (tipoActual.intValue()) {
+            case TipoMovimientoConciliacion.DEPOSITO:
+                return (long) TipoMovimientoConciliacion.DEPOSITO_EN_TRANSITO;
+            case TipoMovimientoConciliacion.CHEQUE_COBRADO:
+                return (long) TipoMovimientoConciliacion.CHEQUES_GIRADOS_Y_NO_COBRADOS;
+            case TipoMovimientoConciliacion.DEBITO_BANCARIO:
+                return (long) TipoMovimientoConciliacion.DEBITO_BANCARIO_EN_TRANSITO;
+            case TipoMovimientoConciliacion.CREDITO_BANCARIO:
+                return (long) TipoMovimientoConciliacion.CREDITO_BANCARIO_EN_TRANSITO;
+            case TipoMovimientoConciliacion.TRANSFERENCIAS_DEBITOS:
+                return (long) TipoMovimientoConciliacion.TRANSFERENCIAS_DEBITOS_EN_TRANSITO;
+            case TipoMovimientoConciliacion.TRANSFERENCIAS_CREDITOS:
+                return (long) TipoMovimientoConciliacion.TRANSFERENCIAS_CREDITOS_EN_TRANSITO;
+            default:
+                return null;
+        }
     }
 
     @Override
@@ -267,6 +398,23 @@ public class ConciliacionContableMatchServiceImpl implements ConciliacionContabl
             throw new IncomeException("El periodo '" + periodo.getNombre()
                     + "' ya esta cerrado para conciliacion bancaria. No se pueden deshacer conciliaciones.");
         }
+        // Revertir el cierre de los MovimientoBanco (simétrico de conciliarGrupo)
+        // antes de desactivar el grupo, mientras todavía se puede resolver
+        // qué asientos y qué filas de extracto participaban en él.
+        List<GrupoConciliacionAsiento> enlacesAsiento = grupoConciliacionAsientoDaoService.selectByGrupo(idGrupo);
+        Set<Long> idsAsiento = enlacesAsiento.stream()
+                .map(e -> e.getDetalleAsiento().getAsiento().getCodigo())
+                .collect(Collectors.toSet());
+        reabrirMovimientosBanco(idsAsiento);
+
+        // Rubro 173: de vuelta a "Pendiente de revision".
+        List<GrupoConciliacionExtracto> enlacesExtracto = grupoConciliacionExtractoDaoService.selectByGrupo(idGrupo);
+        for (GrupoConciliacionExtracto enlace : enlacesExtracto) {
+            DetalleExtractoBancario detalle = enlace.getDetalleExtractoBancario();
+            detalle.setEstadoRevision(Long.valueOf(ASPEstadoRevisionExtracto.PENDIENTE_REVISION));
+            detalleExtractoBancarioService.saveSingle(detalle);
+        }
+
         grupo.setEstado((long) Estado.INACTIVO);
         grupoConciliacionContableService.saveSingle(grupo);
         conciliacionContableService.recalcularContadores(grupo.getConciliacionContable().getCodigo());

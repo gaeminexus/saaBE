@@ -21,7 +21,7 @@ public class LiquidacionCompraDaoServiceImpl extends EntityDaoImpl<LiquidacionCo
 			"fecha", "observacion", "subtotal", "subcero", "pIVA", "vIVA", "vICE",
 			"vIRBPNR", "descuento", "porDescuento", "propina", "subsidio",
 			"totalSinSub", "ahorroSub", "total", "ptoEmision", "usuario", "pathGen",
-			"autorizacion", "fechaAutorizacion", "estado", "estadoEmision"
+			"autorizacion", "fechaAutorizacion", "estado", "estadoEmision", "documentoCxp"
 		};
 	}
 }

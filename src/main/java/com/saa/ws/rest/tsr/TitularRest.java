@@ -86,6 +86,9 @@ public class TitularRest {
             Titular resultado = titularService.saveSingle(registro);
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
+            if (esViolacionUnicidadIdentificacion(e)) {
+                return respuestaTitularDuplicado(registro, e);
+            }
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar persona: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
     }
@@ -102,8 +105,72 @@ public class TitularRest {
         	Titular resultado = titularService.saveSingle(registro);
             return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
+            if (esViolacionUnicidadIdentificacion(e)) {
+                return respuestaTitularDuplicado(registro, e);
+            }
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear persona: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
+    }
+
+    /**
+     * Detecta si una excepción (o alguna en su cadena de causas) señala la
+     * violación del índice único UK_TTLR_IDNT_ESTD (TTLRIDNT, TTLRESTD).
+     * <p>
+     * Cubre dos casos: el {@code IncomeException} con mensaje amigable que ya
+     * lanza {@code TitularServiceImpl.saveSingle} al validar antes de grabar,
+     * y —como red de seguridad— el {@code ORA-00001}/nombre del índice crudo
+     * de una {@code PersistenceException}, por si alguien graba un titular
+     * por una vía que se saltó esa validación.
+     */
+    private boolean esViolacionUnicidadIdentificacion(Throwable e) {
+        Throwable actual = e;
+        int vueltas = 0;
+        while (actual != null && vueltas < 10) {
+            String msg = actual.getMessage();
+            if (msg != null && (msg.contains("Ya existe un titular activo con la identificación")
+                    || msg.contains("ORA-00001") || msg.contains("UK_TTLR_IDNT_ESTD"))) {
+                return true;
+            }
+            actual = actual.getCause();
+            vueltas++;
+        }
+        return false;
+    }
+
+    /**
+     * Construye la respuesta 409 para un titular duplicado: mensaje amigable
+     * (el mismo texto tanto si lo detectó la validación previa como la red de
+     * seguridad) + el titular existente (código, identificación, nombre) para
+     * que el frontend pueda ofrecer "usar el existente" en vez de crear otro
+     * — en este modelo no hay tabla de proveedores separada: lo normal es
+     * reutilizar el titular y agregarle el rol de cliente/proveedor que falte.
+     */
+    private Response respuestaTitularDuplicado(Titular intentado, Throwable causaOriginal) {
+        String identificacion = intentado != null ? intentado.getIdentificacion() : null;
+        Long estado = (intentado != null && intentado.getEstado() != null)
+                ? intentado.getEstado() : Long.valueOf(com.saa.rubros.Estado.ACTIVO);
+        java.util.Map<String, Object> respuesta = new java.util.HashMap<>();
+        try {
+            Titular existente = titularDaoService.selectByIdentificacion(identificacion, estado);
+            if (existente != null) {
+                String nombreExistente = (existente.getRazonSocial() != null && !existente.getRazonSocial().trim().isEmpty())
+                        ? existente.getRazonSocial() : existente.getNombre();
+                respuesta.put("mensaje", "Ya existe un titular activo con la identificación "
+                        + identificacion + ": " + nombreExistente + " (código " + existente.getCodigo() + ")");
+                java.util.Map<String, Object> titularExistente = new java.util.HashMap<>();
+                titularExistente.put("codigo", existente.getCodigo());
+                titularExistente.put("identificacion", existente.getIdentificacion());
+                titularExistente.put("nombre", nombreExistente);
+                respuesta.put("titularExistente", titularExistente);
+            } else {
+                // No se pudo re-consultar (p.ej. otro estado); se devuelve el
+                // mensaje original tal cual, sin el detalle del existente.
+                respuesta.put("mensaje", causaOriginal.getMessage());
+            }
+        } catch (Throwable lookupEx) {
+            respuesta.put("mensaje", causaOriginal.getMessage());
+        }
+        return Response.status(Response.Status.CONFLICT).entity(respuesta).type(MediaType.APPLICATION_JSON).build();
     }
 
     /**

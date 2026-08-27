@@ -209,14 +209,22 @@ public interface AsientoContableService {
             String observaciones, String usuario) throws Throwable;
 
     /**
-     * Genera el asiento contable de una Liquidación de Compra emitida (CXC).
-     * <p>
-     * TODO — Plantilla:   {@code TipoAsientos.LIQUIDACIONES_COMPRA_EMITIDAS}<br>
-     * TODO — AuxiliarUno: código del grupo de producto del detalle + código del proveedor/prestador
+     * Valida ANTES de emitir una Liquidación de Compra (CXC) que todas las
+     * cuentas contables necesarias para su recepción en CXP estén
+     * configuradas — la liquidación emitida no genera su propia cuenta por
+     * pagar; al autorizarse crea un documento CXP y se contabiliza como tal
+     * (ver {@link com.saa.rubros.TipoAsientos#LIQUIDACIONES_COMPRA_RECIBIDAS}),
+     * así que valida con los mismos criterios que esa recepción:
+     *  1. Cuenta CxP del proveedor/prestador (obtenerCuentaProveedor)
+     *  2. Cuenta de IVA crédito tributario (obtenerCuentaIVACxp)
+     *  3. Cuenta del grupo de cada producto de los detalles (producto.grupoProducto.planCuenta)
+     * @param liquidacion : Liquidación a emitir (con titular ya asignado)
+     * @param detalles    : Detalles de la liquidación (cada uno con producto asignado)
+     * @param idEmpresa   : Empresa contable
+     * @return : Lista de mensajes de error. Si está vacía, todas las cuentas existen.
      */
-    Asiento generarAsientoLiquidacionCompra(Long idLiquidacion, Long idEmpresa,
-            int codigoAltTipoAsiento, java.time.LocalDate fechaAsiento,
-            String observaciones, String usuario) throws Throwable;
+    List<String> validarCuentasContablesLiquidacion(com.saa.model.cxc.LiquidacionCompra liquidacion,
+            List<com.saa.model.cxc.DetalleLiquidacionCompra> detalles, Long idEmpresa) throws Throwable;
 
     /**
      * Valida ANTES de emitir una Retención que todas las cuentas contables necesarias
@@ -526,4 +534,53 @@ public interface AsientoContableService {
     Asiento generarAsientoAjusteCajaChica(Long idPlanCuentaCaja, Long idPlanCuentaDiferencia,
             Double valor, boolean sobrante, Long idEmpresa, java.time.LocalDate fechaAsiento,
             String observaciones, String usuario) throws Throwable;
+
+    /**
+     * Genera el asiento de la entrega de un anticipo de sueldo a un
+     * colaborador (RHH.ANTE, vía {@code PagoProgramado} de origen externo
+     * {@code RHH_ANTICIPO_EMPLEADO}).
+     * <p>
+     * DEBE: la cuenta que resuelve {@code RhhLineaAsiento.CUENTAS_POR_COBRAR_EMPLEADOS}
+     * (línea 14 del rubro 214) contra la plantilla de rol
+     * ({@code ConfiguracionNomina.plantillaRol}) de la empresa — la MISMA
+     * cuenta que ya usa {@code ContabilizacionNominaServiceImpl} para el
+     * descuento del rol, resuelta con el mismo mecanismo (plantilla +
+     * cuenta marcadora), no hardcodeada. Así el ciclo cuadra solo: la
+     * entrega la debita, el descuento del rol la acredita.<br>
+     * HABER: cuenta contable de la cuenta bancaria de origen.
+     * <p>
+     * Plantilla de asiento: {@code TipoAsientos.EGRESO_TESORERIA}, módulo
+     * {@code ModuloSistema.TESORERIA}.
+     * @param idEmpleado    : Id del empleado que recibe el anticipo
+     * @param valor         : Valor entregado
+     * @param idCuentaBancaria : Id de la cuenta bancaria de origen
+     * @param idEmpresa     : Id de la empresa contable
+     * @param fechaAsiento  : Fecha del asiento
+     * @param observaciones : Observación de cabecera del asiento
+     * @param usuario       : Nombre del usuario que registra
+     * @return              : Asiento generado
+     * @throws Throwable    : Excepcion
+     */
+    Asiento generarAsientoAnticipoEmpleado(Long idEmpleado, Double valor, Long idCuentaBancaria,
+            Long idEmpresa, java.time.LocalDate fechaAsiento, String observaciones, String usuario)
+            throws Throwable;
+
+    /**
+     * Verifica ESTRICTAMENTE que un titular tenga una
+     * {@code PersonaCuentaContable} configurada bajo un rol exacto —sin el
+     * fallback "sin filtro de rol" de
+     * {@code PersonaCuentaContableDaoService.selectByTitularRolTipoCuenta}
+     * (pensado para datos antiguos sin {@code rubroRolPersonaH} poblado),
+     * que puede devolver la cuenta del rol contrario. Medido contra la
+     * base: de 87 titulares con cuenta, 61 sólo tienen Proveedor, 24 sólo
+     * Cliente y 2 ambos — el fallback se dispara para 85 de 87 en cuanto se
+     * usa el titular en el rol contrario, y contabiliza contra la cuenta
+     * equivocada en silencio.
+     * @param codigoTitular : Código del titular
+     * @param idEmpresa     : Empresa contable
+     * @param tipoCuenta    : 1=Facturas, 2=Anticipos, 3=Caja/Banco
+     * @param rolPersona    : {@link com.saa.rubros.RolPersona#CLIENTE} o {@link com.saa.rubros.RolPersona#PROVEEDOR}
+     * @return : true si existe al menos una fila con el rol pedido, sin fallback
+     */
+    boolean existeCuentaConRolEstricto(Long codigoTitular, Long idEmpresa, Long tipoCuenta, int rolPersona);
 }

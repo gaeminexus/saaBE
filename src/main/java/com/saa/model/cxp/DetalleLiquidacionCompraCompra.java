@@ -58,8 +58,17 @@ public class DetalleLiquidacionCompraCompra implements Serializable {
 	@Basic @Column(name = "TOTAL")
 	private Double total;
 
-	@Basic @Column(name = "PRODUCTO")
-	private Long producto;
+	/**
+	 * Producto de clasificación contable (PGS.PRDP). Determina la cuenta de
+	 * gasto contra la que se contabiliza el detalle
+	 * ({@code AsientoContableServiceImpl.generarAsientoLiquidacionCompraCompra}
+	 * agrupa por {@code producto.grupoProducto.planCuenta}). Queda null en los
+	 * detalles cargados automáticamente desde el XML del SRI
+	 * ({@code ProcesoCargaDocumentosServiceImpl.registrarLiquidacionCompraCompra});
+	 * en ese caso el asiento cae a la cuenta de gasto default y advierte.
+	 */
+	@ManyToOne @JoinColumn(name = "PRODUCTO", referencedColumnName = "ID")
+	private ProductoPago producto;
 
 	@Basic @Column(name = "ESTADO")
 	private Long estado;
@@ -92,8 +101,8 @@ public class DetalleLiquidacionCompraCompra implements Serializable {
 	public void setDescuento(Double descuento) { this.descuento = descuento; }
 	public Double getTotal() { return total; }
 	public void setTotal(Double total) { this.total = total; }
-	public Long getProducto() { return producto; }
-	public void setProducto(Long producto) { this.producto = producto; }
+	public ProductoPago getProducto() { return producto; }
+	public void setProducto(ProductoPago producto) { this.producto = producto; }
 	public Long getEstado() { return estado; }
 	public void setEstado(Long estado) { this.estado = estado; }
 }

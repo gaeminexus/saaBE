@@ -820,6 +820,55 @@ confirmación. Mostrar el mensaje de éxito y volver al detalle de la factura
 sobre la misma factura para **cobros parciales múltiples**, mientras tenga
 saldo pendiente.
 
+### 4.4 Pantalla: **Consulta de Cobros** (nuevo, 2026-08-28)
+
+Bandeja con todos los cobros/aplicaciones registrados, con filtros — hasta
+ahora solo se podía llegar a una aplicación conociendo la factura (§4.1); no
+había forma de listarlas todas.
+
+`GET /aplc/listar` con estos query params, todos **opcionales** (ausente =
+sin filtrar por ese criterio):
+
+| Param | Tipo | Significado |
+|---|---|---|
+| `idEmpresa` | Long | Empresa contable |
+| `idTitular` | Long | Cliente (o proveedor, ver nota abajo) |
+| `desde` | `yyyy-MM-dd` | Fecha de aplicación desde (inclusive) |
+| `hasta` | `yyyy-MM-dd` | Fecha de aplicación hasta (inclusive) |
+| `formaPago` | Long | 1 Efectivo · 2 Transferencia · 3 Cheque · 4 Tarjeta (solo aplica a cobros directos, `tipoDocPago=1`) |
+| `estado` | Long | 1 Activo · 2 Reversado |
+
+**Response `200 OK`** — arreglo de:
+```json
+{
+  "id": 90,
+  "fecha": "2026-08-11",
+  "titular": { "codigo": 45, "nombre": "Distribuidora XYZ" },
+  "documentoAfectado": { "tipo": "FACTURA", "id": 123, "numero": "001-001-000000123" },
+  "tipoDocPago": 1,
+  "formaPago": 2,
+  "valor": 500.00,
+  "asiento": { "id": 5501, "numeroAlterno": "AS-001002" },
+  "estado": 1
+}
+```
+`tipoDocPago` (tabla `TipoDocPagoAplicacion`): 1 Cobro directo, 2 Nota de
+Crédito, 3 Retención recibida, 4 Anticipo, 5 Nota de Débito. `formaPago`
+sólo tiene sentido cuando `tipoDocPago=1` — en los demás casos viene null.
+
+`documentoAfectado.tipo` casi siempre es `"FACTURA"` — el modelo también
+admite `"LIQUIDACION_COMPRA"` (una liquidación de compra recibida, vía el
+campo `AplicacionPagoCxc.liquidacion`), pero hoy no hay pantalla que genere
+esas filas; tratarlo igual (mostrar tipo + número) por si aparece.
+
+**Acción "Anular"** en cada fila con `estado=1`: `POST /aplc/revertir/{id}`
+con `{ "motivo": "...", "idUsuario": 5 }` (mismo contrato que §4.1) — al
+volver, refrescar la fila o recargar el listado.
+
+Sugerencia de filtros en pantalla: rango de fechas (default el mes en
+curso), selector de cliente, forma de pago, y un toggle "incluir
+reversados" que en `false` mande `estado=1`.
+
 ---
 
 ## 5. Flujo completo, de punta a punta (para no perder el hilo)
@@ -876,6 +925,7 @@ Puede repetirse para cobros parciales.
 | §4.1 Revertir abono (CXC) | `/aplc/revertir/{id}` | POST |
 | §4.2 Cruzar anticipo cliente | `/aplc/anticipo` | POST |
 | §4.3 Registrar cobro por transferencia | `/aplc/cobroTransferencia` | POST |
+| §4.4 Consulta de cobros (listado con filtros) | `/aplc/listar` | GET |
 
 ---
 

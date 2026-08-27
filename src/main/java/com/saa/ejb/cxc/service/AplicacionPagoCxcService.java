@@ -241,4 +241,21 @@ public interface AplicacionPagoCxcService extends EntityService<AplicacionPagoCx
 	 */
 	Factura resolverFacturaPorNumero(String numeroDocumento, Long idTitular, Long idEmpresa)
 			throws Throwable;
+
+	/**
+	 * Listado de aplicaciones de cobro para pantalla de consulta, con
+	 * filtros opcionales (null = sin filtrar por ese criterio).
+	 * @param idEmpresa : Empresa contable
+	 * @param idTitular : Cliente/proveedor
+	 * @param desde     : Fecha de aplicación desde (inclusive)
+	 * @param hasta     : Fecha de aplicación hasta (inclusive)
+	 * @param formaPago : 1 Efectivo, 2 Transferencia, 3 Cheque, 4 Tarjeta
+	 * @param estado    : 1 Activo, 2 Reversado
+	 * @return          : Filas listas para pantalla (ver
+	 *                    AplicacionPagoCxcDaoService.selectListado para el
+	 *                    detalle de columnas de origen)
+	 * @throws Throwable : Excepcion
+	 */
+	List<Map<String, Object>> listar(Long idEmpresa, Long idTitular, java.time.LocalDate desde,
+			java.time.LocalDate hasta, Long formaPago, Long estado) throws Throwable;
 }

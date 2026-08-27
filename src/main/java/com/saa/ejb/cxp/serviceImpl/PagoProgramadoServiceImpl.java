@@ -101,6 +101,18 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	@EJB
 	private FileService fileService;
 
+	@EJB
+	private com.saa.ejb.rhh.dao.AnticipoEmpleadoDaoService anticipoEmpleadoDaoService;
+
+	@EJB
+	private com.saa.ejb.rhh.dao.DescuentoRecurrenteDaoService descuentoRecurrenteDaoService;
+
+	@EJB
+	private com.saa.ejb.rhh.dao.CuotaDescuentoDaoService cuotaDescuentoDaoService;
+
+	@EJB
+	private com.saa.ejb.rhh.dao.ConceptoNominaDaoService conceptoNominaDaoService;
+
 	@PersistenceContext
 	private EntityManager em;
 
@@ -1751,6 +1763,9 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		if (com.saa.rubros.OrigenPagoExterno.TSR_CAJA_CHICA.equals(pago.getOrigenExterno())) {
 			return contabilizarPagoCajaChica(pago, idUsuario);
 		}
+		if (com.saa.rubros.OrigenPagoExterno.RHH_ANTICIPO_EMPLEADO.equals(pago.getOrigenExterno())) {
+			return contabilizarPagoAnticipoEmpleado(pago, idUsuario);
+		}
 
 		Long idEmpresa = (pago.getEmpresa() != null) ? pago.getEmpresa().getCodigo() : null;
 		LocalDate fecha = (pago.getFechaRespuesta() != null)
@@ -1921,6 +1936,178 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	}
 
 	/**
+	 * Contabiliza la entrega de un anticipo a un colaborador: DEBE la cuenta
+	 * que resuelve {@code RhhLineaAsiento.CUENTAS_POR_COBRAR_EMPLEADOS} por la
+	 * plantilla de nómina de la empresa (la misma que ya usa el descuento del
+	 * rol — {@code AsientoContableService.generarAsientoAnticipoEmpleado})
+	 * / HABER la cuenta contable de la cuenta bancaria del pago.
+	 * <p>
+	 * Al confirmarse aquí también nace el {@code DescuentoRecurrente} (con su
+	 * calendario de {@code CuotaDescuento}, igual que hace la migración de
+	 * saldos de apertura — es el único mecanismo que el motor de rol
+	 * realmente lee, ver {@code ProcesoNominaServiceImpl}, paso 12): sin esto
+	 * el anticipo quedaría entregado pero nunca se descontaría.
+	 * @param pago      : Pago de origen externo RHH_ANTICIPO_EMPLEADO
+	 * @param idUsuario : Id del usuario que registra o procesa
+	 * @return          : Asiento generado
+	 * @throws Throwable : Excepcion
+	 */
+	private Asiento contabilizarPagoAnticipoEmpleado(PagoProgramado pago, Long idUsuario) throws Throwable {
+
+		Long idEmpresa = (pago.getEmpresa() != null) ? pago.getEmpresa().getCodigo() : null;
+		LocalDate fecha = (pago.getFechaRespuesta() != null) ? pago.getFechaRespuesta() : LocalDate.now();
+		boolean debitoAutomatico = esDebitoAutomatico(pago);
+
+		com.saa.model.rhh.AnticipoEmpleado anticipo =
+				em.find(com.saa.model.rhh.AnticipoEmpleado.class, pago.getIdOrigen());
+		if (anticipo == null) {
+			throw new IncomeException("No se encontró el anticipo a empleado con ID: " + pago.getIdOrigen());
+		}
+		com.saa.model.rhh.Empleado empleado = anticipo.getEmpleado();
+		if (empleado == null) {
+			throw new IncomeException("El anticipo " + anticipo.getCodigo() + " no tiene empleado asociado.");
+		}
+		if (pago.getCuentaBancaria() == null || pago.getCuentaBancaria().getPlanCuenta() == null) {
+			throw new IncomeException("La cuenta bancaria del pago " + pago.getId()
+					+ " no tiene cuenta contable configurada (Tesorería → Cuentas bancarias).");
+		}
+		String nombreEmpleado = nvl(empleado.getNombres(), "") + " " + nvl(empleado.getApellidos(), "");
+		nombreEmpleado = nombreEmpleado.trim();
+
+		Cheque cheque = pago.getCheque();
+		String notaCheque = (cheque != null)
+				? " | Cheque N° " + cheque.getNumero() + " Cta " + pago.getCuentaBancaria().getNumeroCuenta()
+				: "";
+		String observacionAsiento = "Anticipo a colaborador " + nombreEmpleado
+				+ " | " + anticipo.getNumeroCuotas() + " cuotas"
+				+ " | Ref: " + nvl(pago.getReferenciaBanco(), "")
+				+ " | Valor: $" + String.format(Locale.US, "%.2f", pago.getValor())
+				+ notaCheque;
+
+		Asiento asiento = asientoContableService.generarAsientoAnticipoEmpleado(
+				empleado.getCodigo(), pago.getValor(), pago.getCuentaBancaria().getCodigo(),
+				idEmpresa, fecha, observacionAsiento, usuarioNombre(idUsuario));
+
+		int tipoMovimiento = (cheque != null)
+				? TipoMovimientoConciliacion.CHEQUES_GIRADOS_Y_NO_COBRADOS
+				: TipoMovimientoConciliacion.TRANSFERENCIAS_DEBITOS_EN_TRANSITO;
+		com.saa.model.tsr.MovimientoBanco mov = movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
+				"Anticipo a colaborador " + nombreEmpleado
+				+ (debitoAutomatico ? " | Débito automático" : "")
+				+ (cheque != null ? " | Cheque N° " + cheque.getNumero() : " | Ref: " + nvl(pago.getReferenciaBanco(), "")),
+				asiento, pago.getCuentaBancaria(), pago.getValor(),
+				tipoMovimiento, OrigenMovimientoConciliacion.PAGOS);
+		if (cheque != null) {
+			mov.setCheque(cheque);
+			mov.setNumeroCheque(cheque.getNumero());
+			movimientoBancoService.saveSingle(mov);
+		}
+
+		pago.setAsiento(asiento);
+
+		// ── Estado PAGADO y creación del DescuentoRecurrente ─────────────────
+		anticipo.setEstado(Long.valueOf(com.saa.rubros.EstadoAnticipoEmpleado.PAGADO));
+		anticipoEmpleadoDaoService.save(anticipo, anticipo.getCodigo());
+		em.flush();
+
+		com.saa.model.rhh.ConceptoNomina conceptoAnticipo = conceptoNominaDaoService.selectByRolMotor(
+				com.saa.rubros.RhhRolConceptoMotor.ANTICIPO_DE_SUELDO, idEmpresa);
+		if (conceptoAnticipo == null) {
+			throw new IncomeException("Ningún concepto de RHH.CPNM tiene asignado el rol "
+					+ com.saa.rubros.RhhRolConceptoMotor.ANTICIPO_DE_SUELDO
+					+ " (ANTICIPO_DE_SUELDO) del rubro RHH_ROL_CONCEPTO_MOTOR para la empresa "
+					+ idEmpresa + ". El anticipo quedó pagado y contabilizado (asiento "
+					+ asiento.getNumeroAlterno() + "), pero no se pudo crear el descuento recurrente:"
+					+ " asígnelo y reintente creando el descuento manualmente.");
+		}
+
+		int numeroCuotas = anticipo.getNumeroCuotas() != null ? anticipo.getNumeroCuotas().intValue() : 1;
+		com.saa.model.rhh.DescuentoRecurrente descuento = new com.saa.model.rhh.DescuentoRecurrente();
+		descuento.setEmpleado(empleado);
+		descuento.setConceptoNomina(conceptoAnticipo);
+		descuento.setTipoDescuento(Long.valueOf(com.saa.rubros.RhhTipoDescuentoRecurrente.ANTICIPO_DE_SUELDO));
+		descuento.setNumero("ANTE-" + anticipo.getCodigo());
+		descuento.setValor(anticipo.getValor());
+		descuento.setSaldo(anticipo.getValor());
+		descuento.setNumeroCuotas(Integer.valueOf(numeroCuotas));
+		descuento.setCuotasPagadas(Integer.valueOf(0));
+		descuento.setValorCuota(anticipo.getValorCuota());
+		descuento.setFechaInicio(anticipo.getFechaInicioDescuento() != null
+				? anticipo.getFechaInicioDescuento() : fecha);
+		descuento.setBeneficiario(nombreEmpleado);
+		descuento.setEstado(Long.valueOf(com.saa.rubros.RhhEstadoDescuentoRecurrente.VIGENTE));
+		descuento.setFechaRegistro(LocalDateTime.now());
+		descuento.setUsuarioRegistro(usuarioNombre(idUsuario));
+		descuento = descuentoRecurrenteDaoService.save(descuento, descuento.getCodigo());
+		em.flush();
+
+		generaCuotasAnticipo(descuento, fecha);
+
+		anticipo.setDescuentoRecurrente(descuento);
+		anticipo.setEstado(Long.valueOf(com.saa.rubros.EstadoAnticipoEmpleado.EN_DESCUENTO));
+		anticipoEmpleadoDaoService.save(anticipo, anticipo.getCodigo());
+
+		System.out.println("✓ Anticipo a colaborador " + nombreEmpleado + " contabilizado"
+				+ " | anticipo=" + anticipo.getCodigo() + " | descuento=" + descuento.getCodigo()
+				+ " | asiento=" + asiento.getNumeroAlterno());
+		return asiento;
+	}
+
+	/**
+	 * Genera el calendario de cuotas ({@code RHH.CTDS}) de un descuento
+	 * recurrente recién creado — mismo criterio que
+	 * {@code MigracionRhhServiceImpl.generaCuotas}: cuotas iguales salvo la
+	 * última, que absorbe el residuo de redondeo para que la suma cuadre
+	 * exacto con el saldo. Sin estas filas el motor de rol
+	 * (ProcesoNominaServiceImpl, paso 12,
+	 * {@code cuotaDescuentoDaoService.selectPendientesPorVencer}) nunca
+	 * encuentra nada que cobrar: es el mecanismo real de consumo, no
+	 * {@code DescuentoRecurrente.saldo} directamente.
+	 * @param descuento     : Descuento recién guardado (con id)
+	 * @param fechaEntrega  : Fecha de la entrega del anticipo, base del calendario
+	 * @throws Throwable : Excepcion
+	 */
+	private void generaCuotasAnticipo(com.saa.model.rhh.DescuentoRecurrente descuento,
+			LocalDate fechaEntrega) throws Throwable {
+		Integer numeroCuotas = descuento.getNumeroCuotas();
+		if (numeroCuotas == null || numeroCuotas.intValue() <= 0) {
+			return;
+		}
+		int total = numeroCuotas.intValue();
+		double valorCuota = descuento.getValorCuota() != null ? descuento.getValorCuota().doubleValue() : 0.0;
+		double acumulado = 0.0;
+		LocalDate vencimiento = descuento.getFechaInicio() != null ? descuento.getFechaInicio() : fechaEntrega;
+
+		for (int numero = 1; numero <= total; numero++) {
+			double valor;
+			if (numero < total) {
+				valor = Math.round(valorCuota * 100.0) / 100.0;
+				acumulado += valor;
+			} else {
+				// Cuota de cierre: lo que falte para completar el saldo exacto.
+				valor = Math.round((descuento.getSaldo().doubleValue() - acumulado) * 100.0) / 100.0;
+				acumulado += valor;
+			}
+
+			com.saa.model.rhh.CuotaDescuento cuota = new com.saa.model.rhh.CuotaDescuento();
+			cuota.setDescuentoRecurrente(descuento);
+			cuota.setNumeroCuota(Integer.valueOf(numero));
+			cuota.setFechaVencimiento(vencimiento);
+			cuota.setTotal(Double.valueOf(valor));
+			cuota.setCapital(Double.valueOf(valor));
+			cuota.setInteres(Double.valueOf(0D));
+			cuota.setValorDescontado(Double.valueOf(0D));
+			cuota.setSaldo(Double.valueOf(Math.round((descuento.getSaldo().doubleValue() - acumulado) * 100.0) / 100.0));
+			cuota.setPeriodoNomina(null);
+			cuota.setEstado(Long.valueOf(com.saa.rubros.RhhEstadoCuotaDescuento.PENDIENTE));
+			cuota.setFechaRegistro(LocalDateTime.now());
+			cuota.setUsuarioRegistro(descuento.getUsuarioRegistro());
+			cuotaDescuentoDaoService.save(cuota, cuota.getCodigo());
+			vencimiento = vencimiento.plusMonths(1);
+		}
+	}
+
+	/**
 	 * Reversa la contabilidad de un pago de origen externo: anula el movimiento
 	 * bancario y el asiento, y desvincula el asiento del pago.
 	 * <p>
@@ -1969,9 +2156,68 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		// sin asiento" (no existe ese estado para ella, a diferencia del origen
 		// externo genérico donde un pago sin desglose es un caso previsto).
 		anularMovimientoCajaChicaSiAplica(pago, "PAGO REVERSADO: " + motivo);
+		anularAnticipoEmpleadoSiAplica(pago, motivo);
 
 		System.out.println("✓ Contabilidad del pago de origen externo " + pago.getId()
 				+ " reversada. Motivo: " + motivo);
+	}
+
+	/**
+	 * Reversa la entrega de un anticipo a empleado, si el pago es de origen
+	 * {@code RHH_ANTICIPO_EMPLEADO}: anula el {@code DescuentoRecurrente} (y
+	 * sus {@code CuotaDescuento}) si ya se había creado, y devuelve el
+	 * anticipo a APROBADO con el motivo. Rechaza si el descuento ya cobró
+	 * alguna cuota — no se puede deshacer una entrega cuyo descuento ya
+	 * empezó a correr sin dejar el saldo del empleado inconsistente; en ese
+	 * caso hay que resolverlo a mano (ajuste manual del descuento) antes de
+	 * reversar.
+	 * <p>Igual que {@code anularMovimientoCajaChicaSiAplica}: no hace nada si
+	 * el pago no es de este origen o si ya está anulado.
+	 * @param pago   : Pago que se está reversando
+	 * @param motivo : Motivo de la reversión
+	 * @throws Throwable : Excepcion (incluye IncomeException si ya cobró cuotas)
+	 */
+	private void anularAnticipoEmpleadoSiAplica(PagoProgramado pago, String motivo) throws Throwable {
+		if (!com.saa.rubros.OrigenPagoExterno.RHH_ANTICIPO_EMPLEADO.equals(pago.getOrigenExterno())) {
+			return;
+		}
+		com.saa.model.rhh.AnticipoEmpleado anticipo =
+				em.find(com.saa.model.rhh.AnticipoEmpleado.class, pago.getIdOrigen());
+		if (anticipo == null) {
+			return;
+		}
+		if (Long.valueOf(com.saa.rubros.EstadoAnticipoEmpleado.APROBADO).equals(anticipo.getEstado())
+				|| Long.valueOf(com.saa.rubros.EstadoAnticipoEmpleado.ANULADO).equals(anticipo.getEstado())) {
+			return;
+		}
+
+		com.saa.model.rhh.DescuentoRecurrente descuento = anticipo.getDescuentoRecurrente();
+		if (descuento != null) {
+			if (descuento.getCuotasPagadas() != null && descuento.getCuotasPagadas().intValue() > 0) {
+				throw new IncomeException("El anticipo " + anticipo.getCodigo() + " ya tiene "
+						+ descuento.getCuotasPagadas() + " cuota(s) cobrada(s) en el rol: no se puede"
+						+ " revertir el pago sin dejar inconsistente el descuento. Resuelva el ajuste"
+						+ " del descuento manualmente antes de reversar.");
+			}
+			@SuppressWarnings("unchecked")
+			java.util.List<com.saa.model.rhh.CuotaDescuento> cuotas = em.createQuery(
+					"select c from CuotaDescuento c where c.descuentoRecurrente.codigo = :id")
+					.setParameter("id", descuento.getCodigo())
+					.getResultList();
+			for (com.saa.model.rhh.CuotaDescuento cuota : cuotas) {
+				em.remove(cuota);
+			}
+			descuento.setEstado(Long.valueOf(com.saa.rubros.RhhEstadoDescuentoRecurrente.ANULADO));
+			descuentoRecurrenteDaoService.save(descuento, descuento.getCodigo());
+			anticipo.setDescuentoRecurrente(null);
+			System.out.println("✓ Descuento recurrente " + descuento.getCodigo()
+					+ " del anticipo " + anticipo.getCodigo() + " anulado (sin cuotas cobradas).");
+		}
+
+		anticipo.setEstado(Long.valueOf(com.saa.rubros.EstadoAnticipoEmpleado.APROBADO));
+		anticipo.setMotivoAnulacion(motivo);
+		anticipoEmpleadoDaoService.save(anticipo, anticipo.getCodigo());
+		System.out.println("✓ Anticipo " + anticipo.getCodigo() + " devuelto a APROBADO. Motivo: " + motivo);
 	}
 
 	/**

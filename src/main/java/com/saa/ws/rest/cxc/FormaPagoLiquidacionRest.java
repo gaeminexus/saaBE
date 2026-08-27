@@ -20,8 +20,12 @@ import jakarta.ws.rs.core.Response;
 
 /**
  * Servicio REST para gestionar las formas de pago de liquidaciones de compra.
+ * <p>
+ * Path renombrado de "/formas-pago-liquidacion" a "fplc" (código de tabla
+ * CBR.FPLC, siguiendo la convención del resto de RESTs del módulo) — el
+ * frontend debe actualizarse al nuevo path.
  */
-@Path("/formas-pago-liquidacion")
+@Path("fplc")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 public class FormaPagoLiquidacionRest {

@@ -101,20 +101,25 @@ public class LiquidacionCompraRest {
 
 	/**
 	 * ENDPOINT PRINCIPAL: Procesa una liquidación de compra completa automáticamente.
-	 * Este endpoint ejecuta todo el flujo: graba, genera XML, firma y autoriza ante el SRI.
-	 * 
-	 * El frontend solo debe enviar:
+	 * Este endpoint ejecuta todo el flujo: valida cuentas contables, graba,
+	 * genera XML (con detalles y formas de pago reales), firma y autoriza
+	 * ante el SRI; al autorizarse crea el documento CXP (cuenta por pagar) y
+	 * envía el email con el RIDE.
+	 *
+	 * Body esperado:
 	 * {
-	 *   "liquidacionCompra": { objeto LiquidacionCompra con todos los datos }
+	 *   "liquidacionCompra": { objeto LiquidacionCompra, con ptoEmision, facturador, titular, subtotal, subcero, pIVA, vIVA, total, ... },
+	 *   "detalles": [ { descripcion, cantidad, valor, subTotal, porcentajeIVA, valorIVA, descuento, total, producto: {id: n} }, ... ],
+	 *   "formasPago": [ { formaPago: "01"..."21" (tabla SRI 24), valor, plazo, unidadTiempo }, ... ]   // opcional
 	 * }
-	 * 
+	 *
 	 * Configuración automática:
 	 * - ambiente: 1 (PRUEBA)
 	 * - conectaSRI: 1 (SI)
 	 * - destinatario: se obtiene del campo mail del proveedor
 	 * - pathLogo: resources/logos/logo_aso.png
-	 * 
-	 * @param params Mapa con el objeto liquidacionCompra
+	 *
+	 * @param params Mapa con liquidacionCompra, detalles y formasPago
 	 * @return JSON con el resultado del proceso completo
 	 */
 	@POST
@@ -124,53 +129,235 @@ public class LiquidacionCompraRest {
 	public Response procesarLiquidacionCompleta(java.util.Map<String, Object> params) {
 		System.out.println("=== LLEGA AL SERVICIO procesarLiquidacionCompleta ===");
 		try {
-			// Extraer parámetros del JSON
 			@SuppressWarnings("unchecked")
 			java.util.Map<String, Object> liquidacionMap = (java.util.Map<String, Object>) params.get("liquidacionCompra");
-			
-			// Validar parámetro obligatorio
+
 			if (liquidacionMap == null) {
-				java.util.Map<String, String> errorResponse = new java.util.HashMap<>();
-				errorResponse.put("mensaje", "ERROR");
-				errorResponse.put("error", "Parámetro 'liquidacionCompra' es obligatorio");
+				java.util.Map<String, Object> errorResponse = new java.util.HashMap<>();
+				errorResponse.put("exito", false);
+				errorResponse.put("etapa", "PARAMETROS");
+				errorResponse.put("mensaje", "Parámetro 'liquidacionCompra' es obligatorio");
 				return Response.status(Response.Status.BAD_REQUEST)
 						.entity(errorResponse)
 						.type(MediaType.APPLICATION_JSON).build();
 			}
-			
-			// Convertir el Map a objeto LiquidacionCompra
+
+			@SuppressWarnings("unchecked")
+			java.util.List<java.util.Map<String, Object>> detallesMap =
+				(java.util.List<java.util.Map<String, Object>>) params.get("detalles");
+
+			if (detallesMap == null || detallesMap.isEmpty()) {
+				java.util.Map<String, Object> errorResponse = new java.util.HashMap<>();
+				errorResponse.put("exito", false);
+				errorResponse.put("etapa", "PARAMETROS");
+				errorResponse.put("mensaje", "La liquidación debe tener al menos un detalle (producto).");
+				return Response.status(Response.Status.BAD_REQUEST)
+						.entity(errorResponse)
+						.type(MediaType.APPLICATION_JSON).build();
+			}
+
+			@SuppressWarnings("unchecked")
+			java.util.List<java.util.Map<String, Object>> formasPagoMap =
+				(java.util.List<java.util.Map<String, Object>>) params.get("formasPago");
+
+			com.fasterxml.jackson.databind.ObjectMapper mapper = createObjectMapper();
+
 			LiquidacionCompra liquidacion = convertMapToLiquidacionCompra(liquidacionMap);
-			
-			// Llamar al servicio que ejecuta todo el proceso
+
+			java.util.List<com.saa.model.cxc.DetalleLiquidacionCompra> detalles = new java.util.ArrayList<>();
+			for (java.util.Map<String, Object> detalleMap : detallesMap) {
+				detalles.add(mapper.convertValue(detalleMap, com.saa.model.cxc.DetalleLiquidacionCompra.class));
+			}
+
+			java.util.List<com.saa.model.cxc.FormaPagoLiquidacion> formasPago = new java.util.ArrayList<>();
+			if (formasPagoMap != null) {
+				for (java.util.Map<String, Object> fpMap : formasPagoMap) {
+					formasPago.add(mapper.convertValue(fpMap, com.saa.model.cxc.FormaPagoLiquidacion.class));
+				}
+			}
+
 			java.util.Map<String, Object> resultado = liquidacionCompraService.procesarLiquidacionCompleta(
-				liquidacion,
-				null,  // detalles (sin detalles en esta ruta)
-				null,  // ambiente se configura automáticamente en el servicio
-				null,  // conectaSRI se configura automáticamente en el servicio
+				liquidacion, detalles, formasPago,
+				1L,    // ambiente: 1=PRUEBAS mientras dure la fase de pruebas
+				1L,    // conectaSRI: 1=SI
 				null,  // destinatario se obtiene del proveedor
 				null   // pathLogo se construye automáticamente
 			);
-			
-			// Retornar resultado
-			return Response.status(Response.Status.OK)
-					.entity(resultado)
-					.type(MediaType.APPLICATION_JSON).build();
-					
+
+			boolean exito = Boolean.TRUE.equals(resultado.get("exito"));
+			String etapa  = (String) resultado.getOrDefault("etapa", "");
+
+			if (exito) {
+				return Response.status(Response.Status.OK)
+						.entity(resultado).type(MediaType.APPLICATION_JSON).build();
+			} else if ("VALIDACION_CONTABLE".equals(etapa) || "PARAMETROS".equals(etapa)) {
+				return Response.status(422)
+						.entity(resultado).type(MediaType.APPLICATION_JSON).build();
+			} else if ("AUTORIZACION_SRI".equals(etapa) || "WS2_AUTORIZACION".equals(etapa)) {
+				return Response.status(Response.Status.OK)
+						.entity(resultado).type(MediaType.APPLICATION_JSON).build();
+			} else {
+				return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+						.entity(resultado).type(MediaType.APPLICATION_JSON).build();
+			}
+
 		} catch (Throwable e) {
 			System.err.println("ERROR en procesarLiquidacionCompleta REST: " + e.getMessage());
 			e.printStackTrace();
-			
-			java.util.Map<String, String> errorResponse = new java.util.HashMap<>();
-			errorResponse.put("mensaje", "ERROR");
+
+			java.util.Map<String, Object> errorResponse = new java.util.HashMap<>();
+			errorResponse.put("exito", false);
+			errorResponse.put("etapa", "ERROR_INESPERADO");
+			errorResponse.put("mensaje", "Error inesperado en el servidor: " + e.getMessage());
 			errorResponse.put("error", e.getMessage());
-			errorResponse.put("exito", "false");
-			
+
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
 					.entity(errorResponse)
 					.type(MediaType.APPLICATION_JSON).build();
 		}
 	}
-	
+
+	/**
+	 * Anula una liquidación de compra y su documento CXP (LQCC) asociado,
+	 * si lo tiene. Body JSON: { "idLiquidacion": 123, "motivo": "...", "usuario": "..." }
+	 */
+	@POST
+	@Path("/anular")
+	@Consumes(MediaType.APPLICATION_JSON)
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response anularLiquidacion(java.util.Map<String, Object> params) {
+		System.out.println("LLEGA AL SERVICIO anularLiquidacion (lqcs)");
+		try {
+			Long idLiquidacion = getLongParam(params, "idLiquidacion");
+			String motivo  = (String) params.get("motivo");
+			String usuario = (String) params.get("usuario");
+
+			if (idLiquidacion == null) {
+				java.util.Map<String, Object> err = new java.util.HashMap<>();
+				err.put("exito", false);
+				err.put("mensaje", "El parámetro 'idLiquidacion' es obligatorio.");
+				return Response.status(Response.Status.BAD_REQUEST).entity(err).type(MediaType.APPLICATION_JSON).build();
+			}
+			if (usuario == null || usuario.trim().isEmpty()) {
+				java.util.Map<String, Object> err = new java.util.HashMap<>();
+				err.put("exito", false);
+				err.put("mensaje", "El parámetro 'usuario' es obligatorio.");
+				return Response.status(Response.Status.BAD_REQUEST).entity(err).type(MediaType.APPLICATION_JSON).build();
+			}
+
+			java.util.Map<String, Object> resultado = liquidacionCompraService.anularLiquidacion(idLiquidacion, motivo, usuario);
+			boolean exito = Boolean.TRUE.equals(resultado.get("exito"));
+			return Response.status(exito ? Response.Status.OK : Response.Status.BAD_REQUEST)
+					.entity(resultado).type(MediaType.APPLICATION_JSON).build();
+		} catch (Throwable e) {
+			System.err.println("ERROR en anularLiquidacion REST: " + e.getMessage());
+			e.printStackTrace();
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", "Error inesperado al anular la liquidación: " + e.getMessage());
+			err.put("error", e.getMessage());
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity(err).type(MediaType.APPLICATION_JSON).build();
+		}
+	}
+
+	/**
+	 * Punto de recuperación: reintenta sólo la consulta de autorización (WS2)
+	 * de una liquidación que quedó RECIBIDA/ENVIADA pero sin autorizar.
+	 */
+	@POST
+	@Path("/reintentarAutorizacion/{id}")
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response reintentarAutorizacion(@PathParam("id") Long id) {
+		System.out.println("LLEGA AL SERVICIO reintentarAutorizacion (lqcs) id=" + id);
+		try {
+			java.util.Map<String, Object> resultado = liquidacionCompraService.reintentarAutorizacionLiquidacion(id);
+			boolean exito = Boolean.TRUE.equals(resultado.get("exito"));
+			return Response.status(exito ? Response.Status.OK : Response.Status.OK)
+					.entity(resultado).type(MediaType.APPLICATION_JSON).build();
+		} catch (Throwable e) {
+			e.printStackTrace();
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", "Error al reintentar la autorización: " + e.getMessage());
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity(err).type(MediaType.APPLICATION_JSON).build();
+		}
+	}
+
+	/**
+	 * Consulta el estado en el SRI y completa lo que haya quedado pendiente
+	 * (estado, documento CXP + asiento, email).
+	 */
+	@GET
+	@Path("/consultarYActualizarEstado/{id}")
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response consultarYActualizarEstado(@PathParam("id") Long id) {
+		System.out.println("LLEGA AL SERVICIO consultarYActualizarEstado (lqcs) id=" + id);
+		try {
+			java.util.Map<String, Object> resultado = liquidacionCompraService.consultarYActualizarEstadoLiquidacion(id);
+			return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+		} catch (Throwable e) {
+			e.printStackTrace();
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", "Error al consultar el estado: " + e.getMessage());
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity(err).type(MediaType.APPLICATION_JSON).build();
+		}
+	}
+
+	/**
+	 * Reenvía el email de una liquidación ya autorizada.
+	 * Body JSON: { "idLiquidacion": 123, "destinatarios": "correo1@x.com;correo2@x.com" }
+	 */
+	@POST
+	@Path("/reenviarEmail")
+	@Consumes(MediaType.APPLICATION_JSON)
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response reenviarEmail(java.util.Map<String, Object> params) {
+		System.out.println("LLEGA AL SERVICIO reenviarEmail (lqcs)");
+		try {
+			Long idLiquidacion = getLongParam(params, "idLiquidacion");
+			String destinatarios = (String) params.get("destinatarios");
+			if (idLiquidacion == null) {
+				java.util.Map<String, Object> err = new java.util.HashMap<>();
+				err.put("exito", false);
+				err.put("mensaje", "El parámetro 'idLiquidacion' es obligatorio.");
+				return Response.status(Response.Status.BAD_REQUEST).entity(err).type(MediaType.APPLICATION_JSON).build();
+			}
+			java.util.Map<String, Object> resultado = liquidacionCompraService.reenviarEmailLiquidacion(idLiquidacion, destinatarios);
+			boolean exito = Boolean.TRUE.equals(resultado.get("exito"));
+			return Response.status(exito ? Response.Status.OK : Response.Status.BAD_REQUEST)
+					.entity(resultado).type(MediaType.APPLICATION_JSON).build();
+		} catch (Throwable e) {
+			e.printStackTrace();
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", "Error al reenviar el email: " + e.getMessage());
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity(err).type(MediaType.APPLICATION_JSON).build();
+		}
+	}
+
+	/**
+	 * Crea el documento CXP (PGS.LQCC) de una liquidación ya autorizada que
+	 * quedó sin él (p.ej. porque el paso falló durante procesarCompleta).
+	 * Idempotente.
+	 */
+	@POST
+	@Path("/crearDocumentoCxp/{id}")
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response crearDocumentoCxp(@PathParam("id") Long id) {
+		System.out.println("LLEGA AL SERVICIO crearDocumentoCxp (lqcs) id=" + id);
+		try {
+			java.util.Map<String, Object> resultado = liquidacionCompraService.crearDocumentoCxp(id);
+			return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+		} catch (Throwable e) {
+			e.printStackTrace();
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", "Error al crear el documento CXP: " + e.getMessage());
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity(err).type(MediaType.APPLICATION_JSON).build();
+		}
+	}
+
 	/**
 	 * Convierte un Map a objeto LiquidacionCompra.
 	 */
@@ -178,7 +365,7 @@ public class LiquidacionCompraRest {
 		com.fasterxml.jackson.databind.ObjectMapper mapper = createObjectMapper();
 		return mapper.convertValue(map, LiquidacionCompra.class);
 	}
-	
+
 	/**
 	 * Crea y configura un ObjectMapper con soporte para Java 8 date/time
 	 * e ignorando propiedades desconocidas.

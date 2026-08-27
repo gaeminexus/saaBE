@@ -251,8 +251,30 @@ public class TitularServiceImpl implements TitularService {
 	@Override
 	public Titular saveSingle(Titular titular) throws Throwable {
 		System.out.println("saveSingle - Persona");
+		if (titular.getCodigo() == null) {
+			// Alta: TSR.TTLR tiene el índice único UK_TTLR_IDNT_ESTD sobre
+			// (identificacion, estado). Validar antes de grabar para no dejar
+			// que un ORA-00001 crudo llegue al usuario. No hay tabla de
+			// proveedores en este modelo: un titular acumula rol de cliente
+			// y/o proveedor, así que lo normal al toparse con un duplicado es
+			// reutilizarlo y agregarle el rol que falte, no crear uno nuevo.
+			Long estadoNuevo = titular.getEstado() != null
+					? titular.getEstado() : Long.valueOf(com.saa.rubros.Estado.ACTIVO);
+			Titular existente = titularDaoService.selectByIdentificacion(
+					titular.getIdentificacion(), estadoNuevo);
+			if (existente != null) {
+				String nombreExistente = nvl(existente.getRazonSocial(), existente.getNombre());
+				throw new IncomeException("Ya existe un titular activo con la identificación "
+						+ titular.getIdentificacion() + ": " + nombreExistente
+						+ " (código " + existente.getCodigo() + ")");
+			}
+		}
 		titular = titularDaoService.save(titular, titular.getCodigo());
 		return titular;
+	}
+
+	private String nvl(String preferido, String alternativo) {
+		return (preferido != null && !preferido.trim().isEmpty()) ? preferido : alternativo;
 	}
 
 }

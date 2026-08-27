@@ -70,6 +70,15 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     @EJB
     private com.saa.ejb.tsr.dao.PersonaCuentaContableDaoService personaCuentaContableDaoService;
 
+    @EJB
+    private com.saa.ejb.cnt.service.PlantillaService plantillaService;
+
+    @EJB
+    private com.saa.ejb.cnt.dao.DetallePlantillaDaoService detallePlantillaDaoService;
+
+    @EJB
+    private com.saa.ejb.rhh.dao.ConfiguracionNominaDaoService configuracionNominaDaoService;
+
     // ---------------------------------------------------------------
     // validarCuentasContables
     // ---------------------------------------------------------------
@@ -80,18 +89,17 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
         List<String> errores = new ArrayList<>();
 
-        // 1. Validar cuenta CxC del cliente
+        // 1. Validar cuenta CxC del cliente — ESTRICTO, sin el fallback "sin
+        // filtro de rol" de PersonaCuentaContableDaoServiceImpl
+        // .selectByTitularRolTipoCuenta (ver existeCuentaConRolEstricto):
+        // medido contra la base, 61 de 87 titulares con cuenta sólo la
+        // tienen bajo rol Proveedor, así que facturar a uno de esos clientes
+        // tomaba en silencio su cuenta de proveedor.
         if (titular == null) {
             errores.add("No se especificÃ³ el titular (cliente) de la factura.");
-        } else {
-            PlanCuenta cuentaCliente = obtenerCuentaCliente(titular.getCodigo(), idEmpresa);
-            if (cuentaCliente == null) {
-                errores.add("El cliente '" + titular.getNombre()
-                        + "' (ID: " + titular.getCodigo()
-                        + ") no tiene cuenta contable de facturas configurada. "
-                        + "Configure la cuenta en TesorerÃ­a â†’ Persona â†’ Cuentas Contables "
-                        + "(Tipo: Facturas, Rol: Cliente).");
-            }
+        } else if (!existeCuentaConRolEstricto(titular.getCodigo(), idEmpresa, 1L, RolPersona.CLIENTE)) {
+            errores.add("El titular " + titular.getCodigo()
+                    + " no tiene cuenta contable bajo el rol 1 (Cliente); parametrícela antes de emitir.");
         }
 
         // 2. Validar cuentas de grupos de producto e IVA por cada detalle
@@ -1067,6 +1075,86 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                 usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA));
     }
 
+    @Override
+    public Asiento generarAsientoAnticipoEmpleado(Long idEmpleado, Double valor, Long idCuentaBancaria,
+            Long idEmpresa, LocalDate fechaAsiento, String observaciones, String usuario) throws Throwable {
+
+        System.out.println("=== generarAsientoAnticipoEmpleado | empleado=" + idEmpleado
+                + " | valor=" + valor + " | cuentaBancaria=" + idCuentaBancaria + " ===");
+
+        if (idEmpresa == null) {
+            throw new IncomeException("Debe indicar la empresa contable.");
+        }
+        if (valor == null || valor <= 0) {
+            throw new IncomeException("El valor del anticipo debe ser mayor a cero.");
+        }
+
+        // ── DEBE: cuenta "Cuentas por Cobrar Empleados" (línea 14 del rubro 214,
+        // plantilla de ROL) — la misma que usa ContabilizacionNominaServiceImpl
+        // para el descuento del rol, resuelta con el mismo mecanismo.
+        PlanCuenta cuentaAnticipos = obtenerCuentaCuentasPorCobrarEmpleados(idEmpresa);
+
+        // ── HABER: cuenta contable del banco ──────────────────────────────────────
+        com.saa.model.tsr.CuentaBancaria cuentaBancaria = obtenerCuentaBancaria(idCuentaBancaria);
+        PlanCuenta cuentaBanco = cuentaBancaria.getPlanCuenta();
+
+        List<DetalleAsiento> lineas = new ArrayList<>();
+        lineas.add(creaLinea(cuentaAnticipos, "Anticipo a empleado", valor, true));
+        lineas.add(creaLinea(cuentaBanco,
+                "Anticipo a empleado | Cta Banco: " + cuentaBancaria.getNumeroCuenta(), valor, false));
+
+        return generarAsiento(idEmpresa, TipoAsientos.EGRESO_TESORERIA, fechaAsiento, observaciones,
+                usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA));
+    }
+
+    /**
+     * Resuelve la cuenta contable de {@code RhhLineaAsiento.CUENTAS_POR_COBRAR_EMPLEADOS}
+     * (línea 14 del rubro 214) contra la plantilla de ROL de la empresa
+     * ({@code ConfiguracionNomina.plantillaRol}) — el mismo mecanismo de
+     * resolución que usa {@code ContabilizacionNominaServiceImpl} para el
+     * descuento del rol (plantilla → línea por auxiliar1 → cuenta real,
+     * rechazando la cuenta marcadora), sin duplicarlo como una cuenta
+     * hardcodeada aquí.
+     * @param idEmpresa  : Id de la empresa contable
+     * @return           : Cuenta contable real de "Cuentas por Cobrar Empleados"
+     * @throws Throwable : IncomeException si la configuración de nómina, la
+     *                     plantilla, la línea o la cuenta real no existen
+     */
+    private PlanCuenta obtenerCuentaCuentasPorCobrarEmpleados(Long idEmpresa) throws Throwable {
+        com.saa.model.rhh.ConfiguracionNomina configuracion =
+                configuracionNominaDaoService.selectByEmpresa(idEmpresa);
+        if (configuracion == null) {
+            throw new IncomeException("No existe configuración de nómina (RHH.CFNM) para la empresa "
+                    + idEmpresa + ": sin ella no se puede resolver la cuenta de anticipos a empleados.");
+        }
+        Long codigoAlternoPlantilla = configuracion.getPlantillaRol();
+        if (codigoAlternoPlantilla == null) {
+            throw new IncomeException("La configuración de nómina (RHH.CFNM) no tiene la plantilla de"
+                    + " ROL asignada para la empresa " + idEmpresa + ".");
+        }
+        Long idPlantilla = plantillaService.codigoByAlterno(codigoAlternoPlantilla.intValue(), idEmpresa);
+        if (idPlantilla == null || idPlantilla.longValue() == 0L) {
+            throw new IncomeException("No existe la plantilla contable con código alterno "
+                    + codigoAlternoPlantilla + " (rol) para la empresa " + idEmpresa + ".");
+        }
+        com.saa.model.cnt.DetallePlantilla linea = detallePlantillaDaoService.selectByPlantillaYAuxiliar(
+                idPlantilla, com.saa.rubros.RhhLineaAsiento.CUENTAS_POR_COBRAR_EMPLEADOS);
+        if (linea == null) {
+            throw new IncomeException("La plantilla de rol no define la línea "
+                    + com.saa.rubros.RhhLineaAsiento.CUENTAS_POR_COBRAR_EMPLEADOS
+                    + " (Cuentas por Cobrar Empleados) del rubro 214.");
+        }
+        Long marcadora = configuracion.getCuentaMarcadora();
+        if (linea.getPlanCuenta() == null
+                || (marcadora != null && marcadora.equals(linea.getPlanCuenta().getCodigo()))) {
+            throw new IncomeException("La línea " + com.saa.rubros.RhhLineaAsiento.CUENTAS_POR_COBRAR_EMPLEADOS
+                    + " (Cuentas por Cobrar Empleados) de la plantilla de rol sigue apuntando a la cuenta"
+                    + " marcadora o no tiene cuenta: asigne su cuenta contable real en Nómina → Plantillas"
+                    + " Contables antes de entregar anticipos.");
+        }
+        return linea.getPlanCuenta();
+    }
+
     /**
      * Recupera una cuenta contable (PlanCuenta) por id, con mensaje accionable.
      * @param idPlanCuenta : Id de la cuenta contable
@@ -1668,20 +1756,96 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         }
     }
 
+    // ---------------------------------------------------------------
+    // validarCuentasContablesLiquidacion
+    // La liquidación de compra emitida (CXC) no tiene asiento propio: al
+    // autorizarse crea un documento CXP (PGS.LQCC) y se contabiliza como
+    // liquidación recibida (LIQUIDACIONES_COMPRA_RECIBIDAS). Esta validación
+    // corre ANTES de emitir, con los mismos criterios que esa recepción,
+    // para no descubrir una cuenta faltante después de que el SRI ya
+    // autorizó el comprobante (momento en el que ya no se puede revertir).
+    // ---------------------------------------------------------------
+
     @Override
-    public com.saa.model.cnt.Asiento generarAsientoLiquidacionCompra(
-            Long idLiquidacion, Long idEmpresa, int codigoAltTipoAsiento,
-            java.time.LocalDate fechaAsiento, String observaciones, String usuario)
-            throws Throwable {
-        // TODO â€” Implementar cuando se defina:
-        //   Â· La plantilla de asiento: TipoAsientos.LIQUIDACIONES_COMPRA_EMITIDAS (codigoAlterno en BD)
-        //   Â· AuxiliarUno DEBE:  cuenta CxP del proveedor/prestador de servicio
-        //   Â· AuxiliarUno HABER: cuenta contable del grupo de producto del detalle
-        //                        + cuenta de IVA (Tsri.planCuenta, lsri.tabla='17')
-        throw new UnsupportedOperationException(
-                "generarAsientoLiquidacionCompra aÃºn no implementado. "
-                + "Defina la plantilla TipoAsientos.LIQUIDACIONES_COMPRA_EMITIDAS en BD "
-                + "y configure las cuentas auxiliares antes de activar este mÃ©todo.");
+    public List<String> validarCuentasContablesLiquidacion(
+            com.saa.model.cxc.LiquidacionCompra liquidacion,
+            List<com.saa.model.cxc.DetalleLiquidacionCompra> detalles,
+            Long idEmpresa) throws Throwable {
+
+        List<String> errores = new ArrayList<>();
+
+        // 1. Validar cuenta CxP del proveedor/prestador — ESTRICTO, sin el
+        // fallback "sin filtro de rol" de PersonaCuentaContableDaoServiceImpl
+        // .selectByTitularRolTipoCuenta. Ese fallback (pensado para datos
+        // antiguos sin rubroRolPersonaH poblado) puede devolver una cuenta
+        // de CLIENTE cuando se pide la de PROVEEDOR: verificado en un caso
+        // real donde tomó "1.4.90.10 - ARRIENDOS CUENTAS POR COBRAR" (una
+        // cuenta de ingreso) como si fuera la CxP del proveedor — el asiento
+        // cuadra igual, pero contra la cuenta equivocada, y nadie se entera
+        // porque la validación decía "OK". Aquí NO se tolera: si no hay una
+        // fila con el rol PROVEEDOR explícito, se bloquea la emisión.
+        if (liquidacion.getTitular() == null) {
+            errores.add("La liquidación de compra no tiene proveedor/prestador asignado.");
+        } else if (!existeCuentaConRolEstricto(liquidacion.getTitular().getCodigo(), idEmpresa,
+                Long.valueOf(1L), RolPersona.PROVEEDOR)) {
+            String identificacion = liquidacion.getTitular().getIdentificacion();
+            errores.add("El titular " + liquidacion.getTitular().getNombre()
+                    + " (" + (identificacion != null ? identificacion : "sin identificación")
+                    + ") no tiene cuenta contable de proveedor configurada. Parametrícela en"
+                    + " Titular → Cuentas contables antes de emitir.");
+        }
+
+        // 2. Validar cuenta de IVA crédito tributario por cada porcentaje usado
+        if (detalles != null) {
+            java.util.Set<String> ivaValidados = new java.util.HashSet<>();
+            for (com.saa.model.cxc.DetalleLiquidacionCompra d : detalles) {
+                if (d.getValorIVA() != null && d.getValorIVA() > 0 && d.getPorcentajeIVA() != null) {
+                    String codSRI = mapPorcentajeIVAaCodigo(d.getPorcentajeIVA());
+                    if (!ivaValidados.contains(codSRI)) {
+                        ivaValidados.add(codSRI);
+                        PlanCuenta cuentaIVA = obtenerCuentaIVACxp(codSRI);
+                        if (cuentaIVA == null) {
+                            errores.add("El IVA " + d.getPorcentajeIVA() + "% (código SRI: " + codSRI
+                                    + ") no tiene cuenta de crédito tributario configurada. "
+                                    + "Configure la cuenta en Compras → Tipos SRI.");
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Validar producto y cuenta del grupo de cada detalle — sin
+        //    clasificar, PRODUCTOS_SIN_CLASIFICAR es bloqueante en emisión
+        //    (a diferencia de la recepción por SRI, donde puede quedar null).
+        List<String> productosSinClasificar = new ArrayList<>();
+        if (detalles != null) {
+            java.util.Set<Long> gruposValidados = new java.util.HashSet<>();
+            for (com.saa.model.cxc.DetalleLiquidacionCompra d : detalles) {
+                String desc = "'" + (d.getDescripcion() != null ? d.getDescripcion() : "sin descripción") + "'";
+                if (d.getProducto() == null) {
+                    productosSinClasificar.add(desc);
+                } else if (d.getProducto().getGrupoProducto() == null) {
+                    productosSinClasificar.add("'" + d.getProducto().getNombre() + "' (sin grupo)");
+                } else {
+                    Long idGrupo = d.getProducto().getGrupoProducto().getCodigo();
+                    if (!gruposValidados.contains(idGrupo)) {
+                        gruposValidados.add(idGrupo);
+                        if (d.getProducto().getGrupoProducto().getPlanCuenta() == null) {
+                            errores.add("El grupo de producto '" + d.getProducto().getGrupoProducto().getNombre()
+                                    + "' no tiene cuenta contable asignada. "
+                                    + "Configure la cuenta en Compras → Grupos de Producto.");
+                        }
+                    }
+                }
+            }
+        }
+        if (!productosSinClasificar.isEmpty()) {
+            errores.add("PRODUCTOS_SIN_CLASIFICAR: los siguientes detalles no tienen producto "
+                    + "clasificado, y la liquidación de compra emitida no admite productos "
+                    + "sin clasificar: " + productosSinClasificar);
+        }
+
+        return errores;
     }
 
     // ---------------------------------------------------------------
@@ -1844,6 +2008,58 @@ public class AsientoContableServiceImpl implements AsientoContableService {
      */
     private PlanCuenta obtenerCuentaProveedor(Long codigoTitular, Long idEmpresa) {
         return obtenerCuentaProveedorPorTipo(codigoTitular, idEmpresa, 1L);
+    }
+
+    /**
+     * Verifica ESTRICTAMENTE que el titular tenga una
+     * {@code PersonaCuentaContable} con el rol pedido — a propósito NO usa
+     * {@code obtenerCuentaPersona}/{@code PersonaCuentaContableDaoService
+     * .selectByTitularRolTipoCuenta}, que cuando no encuentra el rol exacto
+     * cae a un fallback "sin filtro de rol" (pensado para datos antiguos sin
+     * {@code rubroRolPersonaH} poblado) y puede devolver una cuenta de otro
+     * rol — verificado en un caso real: le dio a una liquidación de compra
+     * la cuenta de CLIENTE del titular ("ARRIENDOS CUENTAS POR COBRAR") como
+     * si fuera su CxP de proveedor. El asiento cuadra igual, pero contra la
+     * cuenta equivocada, y sin este chequeo nadie se entera.
+     * <p>
+     * Medido contra la base: de 87 titulares con cuenta contable, 61 la
+     * tienen sólo bajo rol Proveedor, 24 sólo bajo Cliente y 2 bajo ambos —
+     * el fallback se dispara para 85 de 87 en cuanto se usa el titular en
+     * el rol contrario. Público (no {@code private}) para que
+     * {@code ProcesoCargaDocumentosServiceImpl} (que ya inyecta
+     * {@code AsientoContableService}) lo reutilice sin duplicar la consulta
+     * ni tocar {@code PersonaCuentaContableDaoService} — el fallback sigue
+     * sirviendo, sin cambios, a cualquier llamador que no pase por aquí.
+     * Usado hoy por {@link #validarCuentasContablesLiquidacion},
+     * {@link #validarCuentasContables} (Factura) y
+     * {@code ProcesoCargaDocumentosServiceImpl.verificarCuentaContableProveedor}
+     * (carga automática de CxP).
+     * @param codigoTitular : Código del titular
+     * @param idEmpresa     : Empresa contable
+     * @param tipoCuenta    : 1=Facturas, 2=Anticipos, 3=Caja/Banco
+     * @param rolPersona    : {@link RolPersona#CLIENTE} o {@link RolPersona#PROVEEDOR}
+     * @return : true si existe al menos una fila con el rol pedido (rubroRolPersonaH), sin fallback
+     */
+    @Override
+    public boolean existeCuentaConRolEstricto(Long codigoTitular, Long idEmpresa,
+            Long tipoCuenta, int rolPersona) {
+        try {
+            Long total = (Long) em.createQuery(
+                    "select count(pcc) from PersonaCuentaContable pcc "
+                    + "join pcc.personaRol pr "
+                    + "where pr.titular.codigo = :titular and pcc.tipoCuenta = :tipoCuenta "
+                    + "and pcc.empresa.codigo = :idEmpresa and pr.rubroRolPersonaH = :rolPersona "
+                    + "and pcc.planCuenta is not null")
+                    .setParameter("titular", codigoTitular)
+                    .setParameter("tipoCuenta", tipoCuenta)
+                    .setParameter("idEmpresa", idEmpresa)
+                    .setParameter("rolPersona", Long.valueOf(rolPersona))
+                    .getSingleResult();
+            return total != null && total.longValue() > 0;
+        } catch (Exception e) {
+            System.err.println("⚠ existeCuentaConRolEstricto: " + e.getMessage());
+            return false;
+        }
     }
 
     /**
@@ -2646,21 +2862,58 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
         List<DetalleAsiento> lineas = new ArrayList<>();
 
-        // â”€â”€ DEBE: gasto por descripciÃ³n (LiquidaciÃ³n no tiene GrupoProductoPago) â”€
-        // Agrupa por descripciÃ³n Ãºnica y usa cuenta de gasto default
-        double totalBase = 0.0;
-        for (com.saa.model.cxp.DetalleLiquidacionCompraCompra d : detalles)
-            totalBase += nvl(d.getSubTotal());
-        PlanCuenta cuentaGasto = obtenerCuentaGastoDefaultCxp(idEmpresa);
-        if (cuentaGasto == null)
-            throw new IncomeException("No se encontrÃ³ cuenta de gasto para la LiquidaciÃ³n de Compra. "
-                    + "Configure un GrupoProductoPago con cuenta contable y tipo GASTOS GENERALES.");
-        DetalleAsiento debe = new DetalleAsiento();
-        debe.setPlanCuenta(cuentaGasto); debe.setNumeroCuenta(cuentaGasto.getCuentaContable());
-        debe.setNombreCuenta(cuentaGasto.getNombre());
-        debe.setDescripcion("Gasto liquidaciÃ³n compra: " + lq.getNumero());
-        debe.setValorDebe(totalBase); debe.setValorHaber(0.0);
-        lineas.add(debe);
+        // â”€â”€ DEBE: una lÃ­nea por grupo de producto (GrupoProductoPago.planCuenta),
+        // igual que generarAsientoFacturaCompra. Los detalles sin producto
+        // clasificado (la carga automÃ¡tica del SRI puede dejarlo null; la
+        // emisiÃ³n propia lo exige vÃ­a validarCuentasContablesLiquidacion, asÃ­
+        // que aquÃ­ NO deberÃ­a pasar) no bloquean el asiento: se agrupan aparte
+        // contra la cuenta de gasto default y se advierte, para no dejar un
+        // documento ya autorizado por el SRI sin contabilizar.
+        Map<Long, Double> subtotalPorGrupo = new LinkedHashMap<>();
+        Map<Long, PlanCuenta> cuentaPorGrupo = new LinkedHashMap<>();
+        Map<Long, String> nombreGrupo = new LinkedHashMap<>();
+        double totalSinClasificar = 0.0;
+        List<String> detallesSinClasificar = new ArrayList<>();
+
+        for (com.saa.model.cxp.DetalleLiquidacionCompraCompra d : detalles) {
+            com.saa.model.cxp.ProductoPago producto = d.getProducto();
+            com.saa.model.cxp.GrupoProductoPago grupo = producto != null ? producto.getGrupoProducto() : null;
+            PlanCuenta pc = grupo != null ? grupo.getPlanCuenta() : null;
+            if (producto == null || grupo == null || pc == null) {
+                totalSinClasificar += nvl(d.getSubTotal());
+                detallesSinClasificar.add(d.getDescripcion() != null ? d.getDescripcion() : "Detalle ID " + d.getId());
+                continue;
+            }
+            Long idGrupo = grupo.getCodigo();
+            subtotalPorGrupo.merge(idGrupo, nvl(d.getSubTotal()), Double::sum);
+            cuentaPorGrupo.putIfAbsent(idGrupo, pc);
+            nombreGrupo.putIfAbsent(idGrupo, grupo.getNombre());
+        }
+        for (Long idGrupo : subtotalPorGrupo.keySet()) {
+            PlanCuenta pc = cuentaPorGrupo.get(idGrupo);
+            DetalleAsiento ln = new DetalleAsiento();
+            ln.setPlanCuenta(pc); ln.setNumeroCuenta(pc.getCuentaContable());
+            ln.setNombreCuenta(pc.getNombre());
+            ln.setDescripcion("Gasto liquidaciÃ³n compra: " + nombreGrupo.get(idGrupo));
+            ln.setValorDebe(subtotalPorGrupo.get(idGrupo)); ln.setValorHaber(0.0);
+            lineas.add(ln);
+        }
+        if (totalSinClasificar > 0) {
+            PlanCuenta cuentaGasto = obtenerCuentaGastoDefaultCxp(idEmpresa);
+            if (cuentaGasto == null)
+                throw new IncomeException("Hay detalles de la LiquidaciÃ³n de Compra sin producto "
+                        + "clasificado y no se encontrÃ³ cuenta de gasto default para la empresa. "
+                        + "Configure un GrupoProductoPago con cuenta contable y tipo GASTOS GENERALES, "
+                        + "o clasifique los productos: " + detallesSinClasificar);
+            DetalleAsiento ln = new DetalleAsiento();
+            ln.setPlanCuenta(cuentaGasto); ln.setNumeroCuenta(cuentaGasto.getCuentaContable());
+            ln.setNombreCuenta(cuentaGasto.getNombre());
+            ln.setDescripcion("Gasto liquidaciÃ³n compra (SIN CLASIFICAR): " + lq.getNumero());
+            ln.setValorDebe(totalSinClasificar); ln.setValorHaber(0.0);
+            lineas.add(ln);
+            System.err.println("âš  PRODUCTOS_SIN_CLASIFICAR en LiquidacionCompraCompra " + idLiquidacion
+                    + ": " + detallesSinClasificar + " â€” contabilizados contra la cuenta de gasto default.");
+        }
 
         // â”€â”€ DEBE: IVA crÃ©dito tributario â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // El VALOR sale de la cabecera de la liquidaciÃ³n (vIVA); los detalles

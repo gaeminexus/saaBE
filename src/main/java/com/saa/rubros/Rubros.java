@@ -262,4 +262,6 @@ public interface Rubros {
 	int RHH_CAUSA_VARIACION_IESS          = 229;
 	/** Codigo de seguro social del IESS para el aviso de entrada. El codigo vive en PDTRVLRV -> ver {@link RhhCodigoSeguroSocialIess} */
 	int RHH_CODIGO_SEGURO_SOCIAL_IESS     = 230;
+	/** Estado del anticipo entregado a un colaborador (ANTEESTD) -> ver {@link EstadoAnticipoEmpleado} */
+	int RHH_ESTADO_ANTICIPO_EMPLEADO      = 234;
 }

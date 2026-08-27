@@ -34,4 +34,16 @@ public interface TitularDaoService extends EntityDao<Titular> {
      */
     int calcularSimilitudNombre(String a, String b) throws Throwable;
 
+    /**
+     * Busca un titular por identificación y estado exactos. En este modelo no
+     * hay tabla de proveedores: un mismo titular acumula el rol de cliente y/o
+     * proveedor, así que el índice único de BD (UK_TTLR_IDNT_ESTD) es sobre
+     * (identificacion, estado) — puede existir a la vez un titular ACTIVO y
+     * otro INACTIVO con la misma identificación, pero no dos ACTIVOS.
+     * @param identificacion : Cédula/RUC/pasaporte a buscar
+     * @param estado         : Estado exacto (normalmente Estado.ACTIVO)
+     * @return : El titular encontrado, o null si no existe
+     */
+    Titular selectByIdentificacion(String identificacion, Long estado) throws Throwable;
+
 }

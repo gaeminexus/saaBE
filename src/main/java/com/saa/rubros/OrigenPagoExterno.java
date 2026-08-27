@@ -28,4 +28,10 @@ public interface OrigenPagoExterno {
 	 */
 	public static final String TSR_CAJA_CHICA = "TSR_CAJA_CHICA";
 
+	/**
+	 * Anticipo de sueldo entregado a un colaborador, originado en RHH.ANTE.
+	 * PGTRIDOR lleva el RHH.ANTE.ANTECDGO correspondiente.
+	 */
+	public static final String RHH_ANTICIPO_EMPLEADO = "RHH_ANTICIPO_EMPLEADO";
+
 }

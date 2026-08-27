@@ -28,6 +28,7 @@ import jakarta.ws.rs.core.UriInfo;
  * Endpoints principales:
  *   GET  /aplc/factura/{id}          → historial de cobros/abonos de una factura
  *   GET  /aplc/saldo/{id}            → total, cobrado y saldo pendiente de una factura
+ *   GET  /aplc/listar                → listado de aplicaciones con filtros (pantalla de consulta)
  *   POST /aplc/cobroTransferencia    → registra un cobro recibido por transferencia
  *   POST /aplc/anticipo              → cruza anticipos por monto total (FIFO sobre los disponibles)
  *   POST /aplc/anticipos             → cruza anticipos ESPECÍFICOS elegidos por el usuario
@@ -274,6 +275,49 @@ public class AplicacionPagoCxcRest {
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al cruzar los anticipos: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Listado de aplicaciones de cobro para pantalla de consulta.
+     * Todos los filtros son opcionales — ausente o vacío = sin filtrar por
+     * ese criterio.
+     * @param idEmpresa : Empresa contable
+     * @param idTitular : Cliente/proveedor
+     * @param desde     : Fecha de aplicación desde (yyyy-MM-dd, inclusive)
+     * @param hasta     : Fecha de aplicación hasta (yyyy-MM-dd, inclusive)
+     * @param formaPago : 1 Efectivo, 2 Transferencia, 3 Cheque, 4 Tarjeta
+     * @param estado    : 1 Activo, 2 Reversado
+     */
+    @GET
+    @Path("/listar")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response listar(
+            @QueryParam("idEmpresa") Long idEmpresa,
+            @QueryParam("idTitular") Long idTitular,
+            @QueryParam("desde") String desde,
+            @QueryParam("hasta") String hasta,
+            @QueryParam("formaPago") Long formaPago,
+            @QueryParam("estado") Long estado) {
+        System.out.println("LLEGA AL SERVICIO GET /aplc/listar");
+        try {
+            java.time.LocalDate fechaDesde = (desde != null && !desde.trim().isEmpty())
+                    ? java.time.LocalDate.parse(desde.trim()) : null;
+            java.time.LocalDate fechaHasta = (hasta != null && !hasta.trim().isEmpty())
+                    ? java.time.LocalDate.parse(hasta.trim()) : null;
+
+            List<Map<String, Object>> resultado = aplicacionPagoCxcService.listar(
+                    idEmpresa, idTitular, fechaDesde, fechaHasta, formaPago, estado);
+            return Response.status(Response.Status.OK).entity(resultado)
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (java.time.format.DateTimeParseException e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("Fecha inválida, use el formato yyyy-MM-dd: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al listar las aplicaciones de cobro: " + e.getMessage())
                     .type(MediaType.APPLICATION_JSON).build();
         }
     }

@@ -46,8 +46,13 @@ public interface TipoAsientos {
 	/** Notas de Débito emitidas por la empresa (ventas). Pendiente definir codigoAlterno. */
 	public static final int NOTAS_DEBITO_VENTA     = 4;  // TODO: verificar codigoAlterno en BD
 
-	/** Liquidaciones de compra emitidas por la empresa. Pendiente definir codigoAlterno. */
-	public static final int LIQUIDACIONES_COMPRA_EMITIDAS = 5;  // TODO: verificar codigoAlterno en BD
+	// No existe un tipo de asiento propio para "Liquidaciones de compra
+	// emitidas": la liquidación (CBR.LQCS) es sólo el trámite de emisión
+	// ante el SRI, no genera cuenta por pagar propia. Al autorizarse,
+	// LiquidacionCompraServiceImpl.crearDocumentoCxp crea el documento CXP
+	// (PGS.LQCC, puntero en LQCS.LQCSLQCC) y ese es el que se contabiliza,
+	// con LIQUIDACIONES_COMPRA_RECIBIDAS (codigoAlterno=3), igual que
+	// cualquier liquidación recibida del SRI.
 
 	/** Retenciones electrónicas v1 emitidas (CXC). Pendiente definir codigoAlterno. */
 	public static final int RETENCIONES_EMITIDAS   = 6;  // TODO: verificar codigoAlterno en BD
@@ -91,9 +96,12 @@ public interface TipoAsientos {
 	 * factura de compra — decisión del usuario del 2026-08-23, ver
 	 * {@link #NOTAS_CREDITO_COMPRA}.
 	 *
-	 * <p><b>No confundir</b> con {@link #LIQUIDACIONES_COMPRA_EMITIDAS}, que es la
-	 * de CXC: otra constante, otro flujo, y esa sigue con su codigoAlterno por
-	 * definir.</p>
+	 * <p>También es el tipo que se usa para la liquidación de compra
+	 * <b>emitida</b> (CXC, CBR.LQCS): al autorizarse por el SRI se crea el
+	 * documento CXP equivalente (PGS.LQCC) y se contabiliza con este mismo
+	 * tipo, como si se hubiera recibido — ver
+	 * {@code LiquidacionCompraServiceImpl.crearDocumentoCxp}. No existe una
+	 * constante separada para la emisión.</p>
 	 */
 	public static final int LIQUIDACIONES_COMPRA_RECIBIDAS = 3;
 

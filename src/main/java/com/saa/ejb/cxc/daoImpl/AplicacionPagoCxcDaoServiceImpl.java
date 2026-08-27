@@ -233,4 +233,73 @@ public class AplicacionPagoCxcDaoServiceImpl extends EntityDaoImpl<AplicacionPag
         }
         return query.getResultList();
     }
+
+    @Override
+    public List<Object[]> selectListado(Long idEmpresa, Long idTitular, java.time.LocalDate desde,
+            java.time.LocalDate hasta, Long formaPago, Long estado) throws Throwable {
+        System.out.println("Ingresa al metodo selectListado de AplicacionPagoCxc | idEmpresa: " + idEmpresa
+                + " | idTitular: " + idTitular + " | desde: " + desde + " | hasta: " + hasta
+                + " | formaPago: " + formaPago + " | estado: " + estado);
+
+        // f/lc y sus respectivos titulares van con LEFT JOIN explicito en
+        // cada paso: factura y liquidacion son mutuamente excluyentes (solo
+        // una tiene valor por fila), y encadenar una navegacion implicita
+        // sobre un alias ya left-joined (f.titular sin "left join" propio)
+        // Hibernate la renderiza como INNER JOIN - las filas del lado que
+        // esta en null desaparecerian del resultado. Mismo bug que tuvo el
+        // listado de cheques (ver ChequeDaoServiceImpl.selectListado).
+        StringBuilder jpql = new StringBuilder(
+                " select a.id, a.fechaAplicacion, " +
+                "        ft.codigo, ft.nombre, lt.codigo, lt.nombre, " +
+                "        f.id, f.numero, lc.id, lc.numero, " +
+                "        a.tipoDocPago, a.formaPago, a.montoAplicado, " +
+                "        asn.codigo, asn.numeroAlterno, a.estado " +
+                " from   AplicacionPagoCxc a " +
+                " left join a.factura f " +
+                " left join f.titular ft " +
+                " left join a.liquidacion lc " +
+                " left join lc.titular lt " +
+                " left join a.asiento asn " +
+                " where  1 = 1 ");
+        if (idEmpresa != null) {
+            jpql.append(" and a.empresa.codigo = :idEmpresa ");
+        }
+        if (idTitular != null) {
+            jpql.append(" and (ft.codigo = :idTitular or lt.codigo = :idTitular) ");
+        }
+        if (desde != null) {
+            jpql.append(" and a.fechaAplicacion >= :desde ");
+        }
+        if (hasta != null) {
+            jpql.append(" and a.fechaAplicacion <= :hasta ");
+        }
+        if (formaPago != null) {
+            jpql.append(" and a.formaPago = :formaPago ");
+        }
+        if (estado != null) {
+            jpql.append(" and a.estado = :estado ");
+        }
+        jpql.append(" order by a.fechaAplicacion desc, a.id desc ");
+
+        Query query = em.createQuery(jpql.toString());
+        if (idEmpresa != null) {
+            query.setParameter("idEmpresa", idEmpresa);
+        }
+        if (idTitular != null) {
+            query.setParameter("idTitular", idTitular);
+        }
+        if (desde != null) {
+            query.setParameter("desde", desde);
+        }
+        if (hasta != null) {
+            query.setParameter("hasta", hasta);
+        }
+        if (formaPago != null) {
+            query.setParameter("formaPago", formaPago);
+        }
+        if (estado != null) {
+            query.setParameter("estado", estado);
+        }
+        return query.getResultList();
+    }
 }
