@@ -39,8 +39,8 @@
 -- ---------------------------------------------------------------------
 GRANT REFERENCES ON PGS.PGTR TO RHH;
 
-SELECT GRANTEE, OWNER, TABLE_NAME, PRIVILEGE FROM ALL_TAB_PRIVS
- WHERE PRIVILEGE = 'REFERENCES' AND GRANTEE = 'RHH' AND OWNER = 'PGS';
+SELECT GRANTEE, TABLE_SCHEMA, TABLE_NAME, PRIVILEGE FROM ALL_TAB_PRIVS
+ WHERE PRIVILEGE = 'REFERENCES' AND GRANTEE = 'RHH' AND TABLE_SCHEMA = 'PGS';
 
 -- ---------------------------------------------------------------------
 -- BLOQUE 1: RHH.ANTE — Anticipo entregado a un colaborador
