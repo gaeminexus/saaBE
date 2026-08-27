@@ -32,9 +32,15 @@
 --   Con 'R' en esa columna, TODOS fallan igual. Es decir: mientras ese
 --   valor este ahi, la contabilizacion de la nomina no puede correr.
 --
---   >>> COMPROBAR EN PRODUCCION ANTES QUE NADA (bloque 0). Si produccion
---   >>> tambien tiene una letra, la nomina esta rota alli y no se ha
---   >>> notado porque no se ha vuelto a contabilizar desde entonces.
+--   CONFIRMADO EN PRODUCCION EL 2026-08-27: la fila unica (CFNMCDGO=1,
+--   PJRQCDGO=1236) tiene CFNMSGSC = 'R'  (DUMP: Typ=1 Len=1: 82).
+--   Es decir, la nomina de esa empresa NO PUEDE CONTABILIZAR hoy. No se
+--   ha notado porque no se ha vuelto a contabilizar desde que se escribio
+--   ese valor.
+--
+--   El valor 'R' es dato real de produccion, no basura de pruebas. Se deja
+--   constancia aqui porque el UPDATE lo destruye y es la unica huella de
+--   lo que alguien quiso poner.
 --
 -- QUE VALOR PONER
 --   Es una decision de RRHH, no tecnica. El codigo mismo, cuando el campo
