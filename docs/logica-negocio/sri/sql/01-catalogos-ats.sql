@@ -54,9 +54,12 @@
 --   este script dos veces DUPLICABA el catalogo en silencio (comprobado:
 --   cuatro pasadas dejaron 76 filas donde debia haber 19). Por eso el
 --   BLOQUE 1 empieza borrando el rango propio antes de insertar.
---   El DELETE toca UNICAMENTE ID >= 475 en TSRI e ID >= 25 en LSRI, que es
---   territorio exclusivo del ATS; las 474 + 24 filas preexistentes no se
---   tocan. Verificado ademas que esos ID preexistentes SI son unicos.
+--   El DELETE borra por CATALOGO (TABLA 701..707), no por rango de ID, asi
+--   que no puede llevarse por delante ninguna fila ajena aunque produccion
+--   tenga filas que la base local no tiene. Antes de insertar, el BLOQUE 1
+--   comprueba ademas que los ID 25..31 y 475..565 no esten ocupados por
+--   otro catalogo: si lo estuvieran, hay que parar, porque sin PK los ID
+--   duplicados entran en silencio.
 --
 -- Ojo: PGS.LSRI.ID y PGS.TSRI.ID NO son identity, van explicitos.
 -- SQL puro. Ejecutar por bloques revisando los SELECT de control.
@@ -77,13 +80,25 @@ SELECT TABLA, DETALLE FROM PGS.LSRI WHERE TABLA IN ('701','702','703','704','705
 -- ---------------------------------------------------------------------
 -- BLOQUE 1: limpieza del rango propio (hace el script repetible)
 --   Sin esto, una segunda pasada duplica el catalogo sin avisar.
---   Si las dos consultas de control devuelven 0, es la primera ejecucion.
+--   La primera consulta dice si ya hubo una ejecucion previa (0 = primera).
+--   La segunda es una puerta de seguridad y DEBE devolver 0 filas.
 -- ---------------------------------------------------------------------
-SELECT COUNT(*) AS TSRI_ATS_PREVIAS FROM PGS.TSRI WHERE ID >= 475;
-SELECT COUNT(*) AS LSRI_ATS_PREVIAS FROM PGS.LSRI WHERE ID >= 25;
+-- Cuantas filas del ATS hay ya (0 = primera ejecucion; >0 = reejecucion).
+SELECT COUNT(*) AS LSRI_ATS_PREVIAS FROM PGS.LSRI WHERE TABLA IN ('701','702','703','704','705','706','707');
 
-DELETE FROM PGS.TSRI WHERE ID >= 475;
-DELETE FROM PGS.LSRI WHERE ID >= 25;
+-- PUERTA DE SEGURIDAD: debe devolver 0 filas.
+-- Si devuelve algo, los ID que este script va a usar YA estan ocupados por
+-- otro catalogo que no es el ATS. DETENERSE y avisar: insertar encima
+-- crearia ID duplicados en silencio, porque estas tablas no tienen PK.
+SELECT 'LSRI' AS TABLA, ID FROM PGS.LSRI WHERE ID BETWEEN 25 AND 31 AND TABLA NOT IN ('701','702','703','704','705','706','707')
+UNION ALL
+SELECT 'TSRI', T.ID FROM PGS.TSRI T WHERE T.ID BETWEEN 475 AND 565
+   AND T.LSRI NOT IN (SELECT ID FROM PGS.LSRI WHERE TABLA IN ('701','702','703','704','705','706','707'));
+
+-- El borrado va por CATALOGO, no por rango de ID: asi no puede llevarse
+-- por delante ninguna fila que no sea del ATS, pase lo que pase.
+DELETE FROM PGS.TSRI WHERE LSRI IN (SELECT ID FROM PGS.LSRI WHERE TABLA IN ('701','702','703','704','705','706','707'));
+DELETE FROM PGS.LSRI WHERE TABLA IN ('701','702','703','704','705','706','707');
 
 -- ---------------------------------------------------------------------
 -- BLOQUE 2: declaracion de los siete catalogos (PGS.LSRI, ID 25..31)
