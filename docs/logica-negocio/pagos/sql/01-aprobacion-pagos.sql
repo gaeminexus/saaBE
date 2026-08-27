@@ -52,7 +52,8 @@ COMMENT ON COLUMN PGS.PGTR.PGTRCNBC IS 'Cuenta bancaria de la que sale el dinero
 
 -- ---------------------------------------------------------------------
 -- BLOQUE 2: control final
---   NULLABLE debe pasar a 'Y' y la FK a TSR.CNBC debe seguir viva
+--   NULLABLE debe pasar a 'Y' y FK_PGTR_CTAORIGEN (PGTRCNBC -> TSR.CNBC)
+--   debe seguir ENABLED. Ojo: se llama CTAORIGEN, no CNBC.
 -- ---------------------------------------------------------------------
 SELECT COLUMN_NAME, NULLABLE
   FROM ALL_TAB_COLUMNS
@@ -61,6 +62,6 @@ SELECT COLUMN_NAME, NULLABLE
 SELECT CONSTRAINT_NAME, STATUS, VALIDATED
   FROM ALL_CONSTRAINTS
  WHERE OWNER = 'PGS' AND TABLE_NAME = 'PGTR' AND CONSTRAINT_TYPE = 'R'
-   AND CONSTRAINT_NAME LIKE '%CNBC%';
+   AND CONSTRAINT_NAME = 'FK_PGTR_CTAORIGEN';
 
 COMMIT;
