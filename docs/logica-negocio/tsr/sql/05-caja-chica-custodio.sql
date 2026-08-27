@@ -1,4 +1,11 @@
 -- =====================================================================
+-- HISTORICO — NO EJECUTAR EN PRODUCCION
+-- El script 02-caja-chica.sql ya crea el custodio apuntando a RHH.MPLD.
+-- Este archivo solo reparo la base LOCAL, donde el 02 se corrio en una
+-- version anterior que apuntaba a SCP.PJRQ. Ver README-ORDEN-PRODUCCION.md
+-- =====================================================================
+
+-- =====================================================================
 -- CAJA CHICA: el custodio es un colaborador, no un usuario del sistema
 -- Módulo: TSR
 -- Fecha:  2026-08-27

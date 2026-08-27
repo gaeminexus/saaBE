@@ -18,6 +18,22 @@
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
+-- ---------------------------------------------------------------------
+-- BLOQUE 0: privilegios REFERENCES para las FK cross-schema
+--   Oracle NO considera los privilegios heredados por ROL al crear un
+--   constraint: hace falta el GRANT REFERENCES directo, aunque TSR tenga
+--   rol DBA. SCP.PJRQ, CNT.PLNN y CNT.ASNT ya lo tienen concedido a
+--   PUBLIC, por eso esas FK no fallan; PGS.PGTR, PGS.PRDP y RHH.MPLD no.
+--   VA PRIMERO: los CREATE TABLE de abajo dependen de estos permisos.
+--   Ejecutar conectado como DBA (o cada GRANT como el owner de la tabla).
+-- ---------------------------------------------------------------------
+GRANT REFERENCES ON PGS.PGTR TO TSR;
+GRANT REFERENCES ON PGS.PRDP TO TSR;
+GRANT REFERENCES ON RHH.MPLD TO TSR;
+-- Control: deben aparecer las tres filas
+SELECT GRANTEE, OWNER, TABLE_NAME, PRIVILEGE FROM ALL_TAB_PRIVS
+ WHERE PRIVILEGE = 'REFERENCES' AND GRANTEE = 'TSR';
+
 -- BLOQUE 1: TSR.CJCH — Caja chica (cabecera / fondo)
 -- ---------------------------------------------------------------------
 CREATE TABLE TSR.CJCH (
@@ -37,7 +53,7 @@ CREATE TABLE TSR.CJCH (
     CONSTRAINT PK_CJCH PRIMARY KEY (CJCHCDGO),
     CONSTRAINT FK_CJCH_PJRQ FOREIGN KEY (PJRQCDGO) REFERENCES SCP.PJRQ(PJRQCDGO),
     CONSTRAINT FK_CJCH_PLNN FOREIGN KEY (PLNNCDGO) REFERENCES CNT.PLNN(PLNNCDGO),
-    CONSTRAINT FK_CJCH_USCS FOREIGN KEY (CJCHUSCS) REFERENCES SCP.PJRQ(PJRQCDGO)
+    CONSTRAINT FK_CJCH_MPLD FOREIGN KEY (CJCHUSCS) REFERENCES RHH.MPLD(MPLDCDGO)
 );
 CREATE INDEX TSR.IDX_CJCH_PJRQ ON TSR.CJCH(PJRQCDGO);
 CREATE INDEX TSR.IDX_CJCH_PLNN ON TSR.CJCH(PLNNCDGO);
@@ -50,7 +66,7 @@ COMMENT ON COLUMN TSR.CJCH.CJCHMNTO IS 'Monto del fondo fijo (limite de la caja)
 COMMENT ON COLUMN TSR.CJCH.CJCHMXGS IS 'Monto maximo permitido por gasto individual; NULL = sin tope';
 COMMENT ON COLUMN TSR.CJCH.CJCHPRAL IS 'Porcentaje del fondo bajo el cual se alerta que hay que reponer (default 20)';
 COMMENT ON COLUMN TSR.CJCH.CJCHRSPN IS 'Nombre del responsable o custodio';
-COMMENT ON COLUMN TSR.CJCH.CJCHUSCS IS 'Usuario custodio (SCP.PJRQ), opcional';
+COMMENT ON COLUMN TSR.CJCH.CJCHUSCS IS 'Colaborador custodio de la caja (RHH.MPLD), opcional';
 COMMENT ON COLUMN TSR.CJCH.CJCHOBSR IS 'Observaciones';
 COMMENT ON COLUMN TSR.CJCH.CJCHESTD IS 'Estado: 1=Activa, 2=Inactiva';
 COMMENT ON COLUMN TSR.CJCH.CJCHFCRG IS 'Fecha de registro';
@@ -104,19 +120,6 @@ COMMENT ON COLUMN TSR.CRCH.CRCHUSAR IS 'Usuario que registra';
 
 -- ---------------------------------------------------------------------
 -- ---------------------------------------------------------------------
--- BLOQUE 2b: privilegio REFERENCES para la FK cross-schema TSR -> PGS.PGTR
---   Oracle NO considera los privilegios heredados por ROL al crear un
---   constraint: hace falta el GRANT REFERENCES directo, aunque TSR tenga
---   rol DBA. SCP.PJRQ, CNT.PLNN y CNT.ASNT ya lo tienen concedido a
---   PUBLIC, por eso esas FKs no fallan; PGS.PGTR y PGS.PRDP no.
---   Ejecutar conectado como PGS (o como DBA).
--- ---------------------------------------------------------------------
-GRANT REFERENCES ON PGS.PGTR TO TSR;
-GRANT REFERENCES ON PGS.PRDP TO TSR;
--- Control: deben aparecer las dos filas
-SELECT GRANTEE, OWNER, TABLE_NAME, PRIVILEGE FROM ALL_TAB_PRIVS
- WHERE PRIVILEGE = 'REFERENCES' AND GRANTEE = 'TSR' AND OWNER = 'PGS';
-
 -- BLOQUE 3: TSR.MVCH — Movimiento de caja chica
 -- ---------------------------------------------------------------------
 CREATE TABLE TSR.MVCH (
