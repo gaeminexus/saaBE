@@ -19,3 +19,36 @@
 - No inventar endpoints; los no listados se anotan como pendientes para el backend.
 - No cambiar el flujo de facturas.
 - Entregar: archivos modificados, payload final de ejemplo, pendientes, y descripción de una prueba manual (emitir una liquidación con dos líneas clasificadas → ver autorización → ver que aparece en CXP consulta-documentos/proposición de pago → emitir retención desde el botón).
+
+## Contrato y decisiones verificados contra el codigo (2026-08-27)
+
+**DECISION DE NEGOCIO — el producto sale del catalogo de CxP, no del de CxC.**
+La liquidacion de compra se EMITE desde CxC, pero registra una COMPRA: su asiento es
+DEBE gasto + DEBE IVA credito / HABER cuenta por pagar al proveedor. Verificado en la
+base: los grupos de producto de CxC (`CBR.GRPC`) apuntan a cuentas de **ingreso**
+(ARRIENDO -> 5.3.01) y los de CxP (`PGS.GRPP`) a cuentas de **gasto** (4.x). Si el
+producto saliera del catalogo de CxC, el DEBE iria contra una cuenta de ingresos.
+
+Por eso, en la grilla de detalle **hay que cambiar el selector de producto**: hoy
+`modules/cxc/model/detalle-liquidacion-emitir.ts:19` declara `producto: ProductoCobro`
+y el componente manda el objeto del selector de CxC. Debe pasar a `ProductoPago` y usar
+`shared/components/grupo-producto-selector-dialog` (el de CxP, el mismo de registro-egreso).
+Es la unica pantalla de CxC que usa el catalogo de CxP, y es a proposito.
+
+**Rutas REST reales** (difieren de las que anticipaba este prompt; usar estas):
+- `POST /lqcs/procesarCompleta` con `{liquidacionCompra, detalles[], formasPago[]}`
+- `POST /lqcs/anular` con body `{idLiquidacion, motivo, usuario}` (NO `/anular/{id}`)
+- `POST /lqcs/reenviarEmail` con body `{idLiquidacion, destinatarios}` (NO `/{id}`)
+- `POST /lqcs/reintentarAutorizacion/{id}`
+- `GET  /lqcs/consultarYActualizarEstado/{id}`
+- `POST /lqcs/crearDocumentoCxp/{id}`
+- CRUD estandar en `/dtlc`, `/ptlc` y `/fplc` (este ultimo antes era
+  `/formas-pago-liquidacion`, que no lo usaba nadie).
+
+**Ojo con los detalles duplicados:** la pantalla hoy graba los detalles por `/dtlc` Y
+ademas los manda dentro de `procesarCompleta`. Elegir una sola via — la correcta es
+mandarlos en `procesarCompleta`, como hace facturas — o quedaran duplicados en `CBR.DTLC`.
+
+**Falta el caso LIQUIDACION** en el `switch` de
+`modules/cxc/forms/.../consulta-documentos-electronicos.component.ts` (~l.314, 342, 416):
+sin el, las liquidaciones emitidas no aparecen en esa consulta.
