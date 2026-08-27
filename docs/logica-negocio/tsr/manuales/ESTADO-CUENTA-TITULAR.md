@@ -33,6 +33,16 @@ En el ejemplo, el cliente tiene cinco facturas en el sistema: **una autorizada y
 
 Para revisar al mismo titular como proveedor, se usa la pestaña **Proveedor** de la esquina superior derecha.
 
+## Anticipos (saldo a favor)
+
+Los anticipos del titular se muestran en dos lugares: la tarjeta **SALDO A FAVOR (ANTICIPOS)**, con el total disponible, y la seccion **Saldo a favor - Anticipos** al final de la pantalla, con una ficha por anticipo (valor, usado y disponible).
+
+Tampoco aparecian antes de la correccion, y por la misma causa: un anticipo **confirmado** se guarda con estado `2`, y el filtro anterior solo dejaba pasar el `1`. Es decir, se ocultaban justamente los anticipos que ya son dinero disponible y solo se habrian visto los ingresados sin confirmar. Ahora en anticipos se oculta unicamente el estado `3` (anulado).
+
+![Anticipos en el estado de cuenta](img/estado-cuenta-anticipos.jpg)
+
+En el ejemplo, el cliente tiene dos anticipos disponibles de $30,00 y $100,00: la tarjeta suma **$130,00** y las dos fichas aparecen en el detalle.
+
 ## Nota conocida
 
 El aviso amarillo *"El estado de cuenta se muestra incompleto"* aparece cuando el titular **no tiene** notas de crédito, notas de débito o anticipos. No indica una falla: el sistema informa "sin registros" de una forma que la pantalla todavía no distingue de un error. Los documentos que sí existen se muestran correctamente. Corrección pendiente en el frontend.
