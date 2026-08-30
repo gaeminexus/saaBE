@@ -44,14 +44,16 @@ public interface AnticipoEmpleadoService extends EntityService<AnticipoEmpleado>
 			throws Throwable;
 
 	/**
-	 * Aprueba un anticipo SOLICITADO y registra su pago (transferencia
-	 * hereda: cheque, débito automático — la caja no tiene datos bancarios
-	 * del empleado capturados en el sistema, así que {@code formaPago} debe
-	 * ser CHEQUE o DÉBITO AUTOMÁTICO; la cuenta destino se resuelve a mano
-	 * al pagar, igual que caja chica).
+	 * Aprueba un anticipo SOLICITADO y registra su pago. {@code idCuentaBancariaOrigen}
+	 * y {@code formaPago} son OPCIONALES (decisión 2026-08-30): si se omite la cuenta,
+	 * el pago nace POR_APROBAR y tesorería asigna cuenta y forma de pago después desde
+	 * la bandeja de aprobación ({@code PagoProgramadoServiceImpl.aprobar}), que rechaza
+	 * ahí la Transferencia para este origen. Si se envía la cuenta, {@code formaPago}
+	 * debe ser CHEQUE o DÉBITO AUTOMÁTICO — la caja no tiene datos bancarios del
+	 * empleado capturados en el sistema, así que no hay forma de armar una transferencia.
 	 * @param idAnticipo            : Id del anticipo
-	 * @param idCuentaBancariaOrigen : Cuenta bancaria propia de la que sale el dinero
-	 * @param formaPago             : {@code FormaPagoProgramado.CHEQUE} o {@code DEBITO_AUTOMATICO}
+	 * @param idCuentaBancariaOrigen : Cuenta bancaria propia de la que sale el dinero; null = queda POR_APROBAR
+	 * @param formaPago             : {@code FormaPagoProgramado.CHEQUE} o {@code DEBITO_AUTOMATICO}; ignorado si la cuenta es null
 	 * @param debitoAutomatico      : true si es débito automático (consistente con formaPago)
 	 * @param referencia            : Referencia del pago
 	 * @param idUsuario             : Id del usuario que aprueba

@@ -65,8 +65,10 @@ public class DocumentoPago implements Serializable {
 	/**
 	 * Persona o proveedor de la que se recibe el documento.
 	 */
+	// La columna fisica de PGS.DCMP se llama PRSNCDGO: el renombrado Persona -> Titular
+	// (e8df43f) cambio la clase Java, no el DDL. Mismo patron que Cheque.java:128.
 	@ManyToOne
-	@JoinColumn(name = "TTLRCDGO", referencedColumnName = "TTLRCDGO")
+	@JoinColumn(name = "PRSNCDGO", referencedColumnName = "TTLRCDGO")
 	private Titular titular;
 	
 	/**

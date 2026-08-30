@@ -170,16 +170,24 @@ public class AnticipoEmpleadoServiceImpl implements AnticipoEmpleadoService {
 					+ anticipo.getEstado());
 		}
 
-		// El beneficiario se arma desde Empleado (identificación + nombres): no
-		// hay datos bancarios del empleado capturados en este circuito (esa es
-		// la decisión tomada — ver ANTICIPOS-TRABAJADORES.md), así que no hay
-		// forma de armar una transferencia. Cheque o débito automático, igual
-		// que caja chica.
-		long fp = (formaPago != null) ? formaPago.longValue()
-				: (debitoAutomatico ? FormaPagoProgramado.DEBITO_AUTOMATICO : FormaPagoProgramado.TRANSFERENCIA);
-		if (fp != FormaPagoProgramado.CHEQUE && fp != FormaPagoProgramado.DEBITO_AUTOMATICO) {
-			throw new IncomeException("El anticipo a empleado debe pagarse con cheque o débito automático:"
-					+ " no hay datos bancarios del empleado capturados para generar una transferencia.");
+		// idCuentaBancariaOrigen es OPCIONAL (2026-08-30): con cuenta nula el pago nace
+		// POR_APROBAR y tesorería elige cheque o débito automático al aprobar, así que
+		// aquí ya no se valida forma de pago — la restricción se trasladó a
+		// PagoProgramadoServiceImpl.aprobar (rechaza Transferencia para este origen).
+		Long fp = null;
+		if (idCuentaBancariaOrigen != null) {
+			// El beneficiario se arma desde Empleado (identificación + nombres): no
+			// hay datos bancarios del empleado capturados en este circuito (esa es
+			// la decisión tomada — ver ANTICIPOS-TRABAJADORES.md), así que no hay
+			// forma de armar una transferencia. Cheque o débito automático, igual
+			// que caja chica.
+			long fpVal = (formaPago != null) ? formaPago.longValue()
+					: (debitoAutomatico ? FormaPagoProgramado.DEBITO_AUTOMATICO : FormaPagoProgramado.TRANSFERENCIA);
+			if (fpVal != FormaPagoProgramado.CHEQUE && fpVal != FormaPagoProgramado.DEBITO_AUTOMATICO) {
+				throw new IncomeException("El anticipo a empleado debe pagarse con cheque o débito automático:"
+						+ " no hay datos bancarios del empleado capturados para generar una transferencia.");
+			}
+			fp = Long.valueOf(fpVal);
 		}
 
 		Empleado empleado = anticipo.getEmpleado();
@@ -203,7 +211,8 @@ public class AnticipoEmpleadoServiceImpl implements AnticipoEmpleadoService {
 				OrigenPagoExterno.RHH_ANTICIPO_EMPLEADO, anticipo.getCodigo(), idEmpresa,
 				idCuentaBancariaOrigen, anticipo.getValor(), anticipo.getFecha().toString(),
 				beneficiario, null, "Anticipo a colaborador " + nombreCompleto(empleado),
-				idUsuario, (fp == FormaPagoProgramado.DEBITO_AUTOMATICO), referencia, Long.valueOf(fp));
+				idUsuario, (idCuentaBancariaOrigen != null && fp.longValue() == FormaPagoProgramado.DEBITO_AUTOMATICO),
+				referencia, fp);
 
 		Long idPago = (Long) resultadoPago.get("pago");
 		if (idPago != null) {

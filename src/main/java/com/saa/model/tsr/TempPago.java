@@ -155,9 +155,11 @@ public class TempPago implements Serializable {
 	/**
 	 * Persona a la que se realiza el pago
 	 */
+	// La columna fisica de TSR.TPGS se llama PRSNCDGO: el renombrado Persona -> Titular
+	// (e8df43f) cambio la clase Java, no el DDL. Mismo patron que Cheque.java:128.
 	@ManyToOne
-	@JoinColumn(name = "TTLRCDGO", referencedColumnName = "TTLRCDGO")
-	private Titular titular;	
+	@JoinColumn(name = "PRSNCDGO", referencedColumnName = "TTLRCDGO")
+	private Titular titular;
 	
 	/**
 	 * Asiento contable ligado a la emision del cheque

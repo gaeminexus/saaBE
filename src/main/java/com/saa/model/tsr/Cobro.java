@@ -180,9 +180,11 @@ public class Cobro implements Serializable {
 	/**
 	* Persona a la que se realiza el cobro
 	*/
+	// La columna fisica de TSR.CBRO se llama PRSNCDGO: el renombrado Persona -> Titular
+	// (e8df43f) cambio la clase Java, no el DDL. Mismo patron que Cheque.java:128.
 	@ManyToOne
-	@JoinColumn(name = "TTLRCDGO", referencedColumnName = "TTLRCDGO")
-	private Titular titular;		
+	@JoinColumn(name = "PRSNCDGO", referencedColumnName = "TTLRCDGO")
+	private Titular titular;
 
 	/**
 	 * Tipo de cobro. 1 = Factura, 2 = Anticipo.

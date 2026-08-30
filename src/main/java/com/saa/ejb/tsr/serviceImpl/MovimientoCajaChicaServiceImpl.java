@@ -329,21 +329,24 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 		if (valor == null || valor <= 0) {
 			throw new IncomeException("El valor de la " + etiqueta + " debe ser mayor a cero.");
 		}
-		if (idCuentaBancariaOrigen == null) {
-			throw new IncomeException("Debe indicar la cuenta bancaria de origen.");
-		}
-		// La caja chica no tiene cuenta bancaria externa de destino: la
-		// transferencia (formaPago=2) la exige y falla con un mensaje que
-		// habla del archivo del banco, sin decir nada de caja chica. Cheque y
-		// débito automático además contabilizan en el acto, así que el saldo
-		// nunca sube antes de que el dinero realmente entre.
-		long fp = (formaPago != null) ? formaPago.longValue()
-				: (debitoAutomatico ? com.saa.rubros.FormaPagoProgramado.DEBITO_AUTOMATICO
-						: com.saa.rubros.FormaPagoProgramado.TRANSFERENCIA);
-		if (fp != com.saa.rubros.FormaPagoProgramado.CHEQUE
-				&& fp != com.saa.rubros.FormaPagoProgramado.DEBITO_AUTOMATICO) {
-			throw new IncomeException("La reposición de caja chica debe pagarse con cheque o "
-					+ "débito automático: la caja no tiene cuenta bancaria de destino.");
+		// idCuentaBancariaOrigen es OPCIONAL (2026-08-30): con cuenta nula el pago nace
+		// POR_APROBAR y tesorería elige cheque o débito automático al aprobar, así que
+		// aquí ya no se valida forma de pago — la restricción se trasladó a
+		// PagoProgramadoServiceImpl.aprobar (rechaza Transferencia para este origen).
+		if (idCuentaBancariaOrigen != null) {
+			// La caja chica no tiene cuenta bancaria externa de destino: la
+			// transferencia (formaPago=2) la exige y falla con un mensaje que
+			// habla del archivo del banco, sin decir nada de caja chica. Cheque y
+			// débito automático además contabilizan en el acto, así que el saldo
+			// nunca sube antes de que el dinero realmente entre.
+			long fp = (formaPago != null) ? formaPago.longValue()
+					: (debitoAutomatico ? com.saa.rubros.FormaPagoProgramado.DEBITO_AUTOMATICO
+							: com.saa.rubros.FormaPagoProgramado.TRANSFERENCIA);
+			if (fp != com.saa.rubros.FormaPagoProgramado.CHEQUE
+					&& fp != com.saa.rubros.FormaPagoProgramado.DEBITO_AUTOMATICO) {
+				throw new IncomeException("La reposición de caja chica debe pagarse con cheque o "
+						+ "débito automático: la caja no tiene cuenta bancaria de destino.");
+			}
 		}
 
 		CajaChica caja = cajaChicaService.selectById(idCaja);
@@ -397,7 +400,9 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 		Map<String, Object> resultadoPago = pagoProgramadoService.registrarPagoDeOrigenExterno(
 				OrigenPagoExterno.TSR_CAJA_CHICA, movimiento.getCodigo(), caja.getEmpresa().getCodigo(),
 				idCuentaBancariaOrigen, valor, fechaMovimiento.toString(), beneficiario, null,
-				movimiento.getDescripcion(), idUsuario, debitoAutomatico, referencia, formaPago);
+				movimiento.getDescripcion(), idUsuario,
+				idCuentaBancariaOrigen != null && debitoAutomatico, referencia,
+				idCuentaBancariaOrigen != null ? formaPago : null);
 
 		Long idPago = (Long) resultadoPago.get("pago");
 		if (idPago != null) {

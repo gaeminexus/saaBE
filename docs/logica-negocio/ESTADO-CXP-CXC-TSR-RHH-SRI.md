@@ -480,3 +480,33 @@ verificarlas contra la base y las dejó sin tocar, que fue lo correcto.
 entidad-vs-esquema de §7.2 con `TTLRCDGO` en su lista de columnas, y **ninguna apareció** en el
 informe de faltantes. O sea: esa columna existe en la base con ese nombre. Son tablas creadas
 *después* del renombrado, así que nacieron con la nomenclatura nueva.
+
+*Que una verificación corrida el 29-08 respondiera sin ejecutar nada una pregunta surgida el 30-08
+es el mejor argumento para volver a pasarla después de cada tanda.*
+
+### 8.4 Frontend — entregado y verificado con `ng build` limpio
+
+Las dos pantallas de solicitud dejaron de elegir cuenta y forma de pago:
+
+- **`aprobar-anticipo-dialog`** (rhh): fuera el selector de cuenta, el de forma de pago, el campo
+  `referencia` y `onCambioCuentaOrigen()`. El diálogo es ahora lo que de verdad es —RRHH autoriza
+  el anticipo, tesorería paga después—, y el aviso lo dice: *«Anticipo aprobado. Queda pendiente de
+  pago en tesorería»*. Antes decía «Anticipo aprobado y pagado», que había dejado de ser cierto.
+- **`reposicion-caja-chica`** (tsr): mismo cambio para apertura y reposición.
+
+**Ampliación de alcance del agente, justificada y reportada:** al quitar la forma de pago de la
+pantalla de caja chica, toda la lógica de cheque (`chequeS`, `regChequeSiguiente/Error`,
+`cuentaOrigenManejaChequera`) quedaba sin nada que la disparara, y la retiró. Verificado: no queda
+ninguna referencia a cheque en ese componente. **Consecuencia visible para el usuario final:** esa
+pantalla ya no muestra el número de cheque al registrar, porque el cheque lo asigna tesorería al
+aprobar. Es coherente con la decisión, pero es un cambio que se va a notar.
+
+La bandeja (`aprobacion-pagos.component.ts`) **no se tocó**: ya armaba el filtro desde
+`ORIGEN_PAGO_LABELS` con los siete orígenes y mostraba la etiqueta en español, nunca el código.
+
+`titulares-v2` ahora lee `err.error.titularExistente.codigo` y **conserva el regex como fallback**
+para la rama de `TitularRest:165-172` que devuelve solo `mensaje`. El comentario falso que motivó
+el hallazgo (§6) quedó corregido explicando que el campo lo agrega el REST, no el Service.
+
+**Huérfanos declarados, no borrados:** `tsr/service/temp-cobro.service.ts` y su `.spec.ts`, tras
+retirarse la pantalla «Cobros - Ingresar». El endpoint del backend sigue existiendo.

@@ -190,8 +190,11 @@ public class AnticipoEmpleadoRest {
 	 *   "idCuentaBancariaOrigen": 4, "formaPago": 3, "debitoAutomatico": false,
 	 *   "referencia": "CHQ-001234", "idUsuario": 5
 	 * }
-	 * formaPago: sólo 3 (Cheque) o 4 (Débito automático) — no hay datos
-	 * bancarios del empleado capturados para transferencia.
+	 * idCuentaBancariaOrigen y formaPago son OPCIONALES (decisión 2026-08-30): si se
+	 * omiten, el pago nace POR_APROBAR y tesorería asigna la cuenta y la forma de pago
+	 * después con POST /pgtr/aprobar (bandeja de aprobación de pagos). Si se envía
+	 * idCuentaBancariaOrigen, formaPago sólo admite 3 (Cheque) o 4 (Débito automático)
+	 * — no hay datos bancarios del empleado capturados para transferencia.
 	 */
 	@POST
 	@Path("/aprobar/{id}")
@@ -206,12 +209,6 @@ public class AnticipoEmpleadoRest {
 					? (Boolean) datos.get("debitoAutomatico") : Boolean.FALSE;
 			String referencia = (String) datos.get("referencia");
 			Long idUsuario = toLong(datos.get("idUsuario"));
-
-			if (idCuentaBancariaOrigen == null) {
-				return Response.status(Response.Status.BAD_REQUEST)
-						.entity("Debe indicar la cuenta bancaria de origen.")
-						.type(MediaType.APPLICATION_JSON).build();
-			}
 
 			Map<String, Object> resultado = anticipoEmpleadoService.aprobar(
 					id, idCuentaBancariaOrigen, formaPago, Boolean.TRUE.equals(debitoAutomatico),

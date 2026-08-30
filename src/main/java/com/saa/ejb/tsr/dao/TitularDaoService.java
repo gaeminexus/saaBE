@@ -18,14 +18,6 @@ import java.util.List;
 public interface TitularDaoService extends EntityDao<Titular> {
 
     /**
-     * Busca titulares cuyo nombre sea similar al dado usando UTL_MATCH.JARO_WINKLER_SIMILARITY.
-     * Tolerancia fija de 90% para cubrir variaciones menores (tildes, abreviaciones, etc.).
-     * @param nombre Nombre a buscar (se recomienda pasar normalizado/sin tildes)
-     * @return Lista de Titulares con similitud > 90
-     */
-    List<Titular> buscarPorNombreSimilar(String nombre) throws Throwable;
-
-    /**
      * Calcula la similitud Jaro-Winkler entre dos cadenas usando Oracle UTL_MATCH y
      * UTL_I18N.TRANSLITERATE para eliminar tildes antes de comparar.
      * @param a Primer nombre
