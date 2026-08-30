@@ -8,7 +8,7 @@ import com.saa.ejb.crd.dao.ContratoDaoService;
 import com.saa.ejb.crd.service.ContratoService;
 import com.saa.model.crd.Contrato;
 import com.saa.model.crd.NombreEntidadesCredito;
-import com.saa.rubros.Estado;
+import com.saa.rubros.EstadoContrato;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -71,7 +71,7 @@ public class ContratoServiceImpl implements ContratoService {
     public Contrato saveSingle(Contrato contrato) throws Throwable {
         System.out.println("saveSingle - Contrato");
         if(contrato.getCodigo() == null){
-        	contrato.setEstado(Long.valueOf(Estado.ACTIVO)); //Activo
+        	contrato.setEstado(Long.valueOf(EstadoContrato.ACTIVO)); //Activo
 		}
         contrato = contratoDaoService.save(contrato, contrato.getCodigo());
         return contrato;

@@ -86,5 +86,19 @@ public interface PrestamoDaoService extends EntityDao<Prestamo> {
      * @return cantidad de préstamos cancelados/cancelados anticipados con última cuota >= fechaInicio
      */
     long countPrestamosConUltimaCuotaEnPeriodoByEntidad(Long codigoEntidad, java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable;
+
+    /**
+     * TODOS los préstamos de una entidad, en cualquier estado (a diferencia de
+     * {@link #selectVigentesByEntidad}), ordenados por código. Mismo criterio que ya usaba
+     * el frontend por {@code selectByCriteria} (entidad.codigo = idEntidad, orderBy codigo)
+     * para la pestaña de préstamos de participe-dash — pedido 1 del plan de devengo de
+     * aportes: reemplaza ese {@code selectByCriteria} compartido por 12 pantallas, que
+     * lanzaba excepción con lista vacía.
+     *
+     * @param codigoEntidad ID numérico de la entidad (partícipe)
+     * @return Préstamos de la entidad; lista VACÍA si no tiene ninguno (no es un error)
+     * @throws Throwable Si ocurre algún error
+     */
+    List<Prestamo> selectByEntidad(Long codigoEntidad) throws Throwable;
 }
 

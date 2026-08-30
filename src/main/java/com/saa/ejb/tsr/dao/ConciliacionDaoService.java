@@ -83,9 +83,23 @@ public interface ConciliacionDaoService extends EntityDao<Conciliacion>{
 	
 	/**
 	 * Eliminar todos los registros filtrados por idConciliacion
-	 * @param idConciliacion: Id de la conciliacion 
+	 * @param idConciliacion: Id de la conciliacion
 	 * @throws Throwable: Excepcions
 	 */
 	void deleteByIdConciliacion(Long idConciliacion) throws Throwable;
+
+	/**
+	 * El cierre (TSR.CNCL, CNCLESTD=Cerrado) más reciente de una cuenta/período - ver
+	 * docs/logica-negocio/tsr/DISENO-CONCILIACION-PARTIDAS-EN-TRANSITO.md. Filtra por
+	 * {@code estadoCierre} (CNCLESTD, rubro 241), NO por {@code rubroEstadoH} (CNCLRZZA, rubro
+	 * 43 EstadosConciliacion) que usa el mecanismo viejo ({@link #selectByPeriodoCuentaEstado}) -
+	 * son dos columnas de estado distintas en la misma tabla, no confundirlas.
+	 *
+	 * @param idCuentaBancaria	: Id de la cuenta bancaria
+	 * @param idPeriodo			: Id del período contable
+	 * @return					: El cierre vigente más reciente, o null si nunca se cerró esta cuenta/período
+	 * @throws Throwable		: Excepcion
+	 */
+	Conciliacion selectCierreVigente(Long idCuentaBancaria, Long idPeriodo) throws Throwable;
 
 }

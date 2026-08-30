@@ -373,13 +373,25 @@ public class RetencionV2Rest {
 			else idRetencion = Long.parseLong(idObj.toString());
 			String motivo  = params.get("motivo")  != null ? params.get("motivo").toString()  : null;
 			String usuario = params.get("usuario") != null ? params.get("usuario").toString() : null;
+			Object idUsuarioObj = params.get("idUsuario");
+			Long idUsuario = null;
+			if (idUsuarioObj instanceof Integer) idUsuario = ((Integer) idUsuarioObj).longValue();
+			else if (idUsuarioObj instanceof Long) idUsuario = (Long) idUsuarioObj;
+			else if (idUsuarioObj != null) idUsuario = Long.parseLong(idUsuarioObj.toString());
+			boolean anularEnCascada = Boolean.TRUE.equals(params.get("anularEnCascada"));
 
-			java.util.Map<String, Object> resultado = retencionV2Service.anularRetencionV2(idRetencion, motivo, usuario);
+			java.util.Map<String, Object> resultado = retencionV2Service.anularRetencionV2(
+					idRetencion, motivo, usuario, idUsuario, anularEnCascada);
 
 			boolean exito = Boolean.TRUE.equals(resultado.get("exito"));
 			return Response.status(exito ? Response.Status.OK : Response.Status.BAD_REQUEST)
 					.entity(resultado).type(MediaType.APPLICATION_JSON).build();
 
+		} catch (com.saa.basico.util.IncomeException e) {
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", e.getMessage());
+			return Response.status(Response.Status.CONFLICT).entity(err).type(MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			System.err.println("ERROR en anularRetencionV2 REST: " + e.getMessage());
 			e.printStackTrace();
@@ -389,6 +401,21 @@ public class RetencionV2Rest {
 			err.put("error", e.getMessage());
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
 					.entity(err).type(MediaType.APPLICATION_JSON).build();
+		}
+	}
+
+	@GET
+	@Path("/movimientosRelacionados/{id}")
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response movimientosRelacionadosRetencionV2(@PathParam("id") Long idRetencion) {
+		try {
+			return Response.ok(retencionV2Service.movimientosRelacionadosRetencionV2(idRetencion))
+					.type(MediaType.APPLICATION_JSON).build();
+		} catch (Throwable e) {
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", "Error al consultar movimientos relacionados: " + e.getMessage());
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity(err).type(MediaType.APPLICATION_JSON).build();
 		}
 	}
 

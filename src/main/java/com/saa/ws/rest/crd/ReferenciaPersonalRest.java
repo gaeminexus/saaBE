@@ -17,6 +17,7 @@ import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -86,10 +87,10 @@ public class ReferenciaPersonalRest {
     @PUT
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response put(ReferenciaPersonal registro) {
+    public Response put(ReferenciaPersonal registro, @QueryParam("usuario") String usuario) {
         System.out.println("LLEGA AL SERVICIO PUT - RRPP");
         try {
-            ReferenciaPersonal resultado = referenciaPersonalService.saveSingle(registro);
+            ReferenciaPersonal resultado = referenciaPersonalService.saveSingle(registro, usuario);
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
@@ -101,10 +102,10 @@ public class ReferenciaPersonalRest {
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response post(ReferenciaPersonal registro) {
+    public Response post(ReferenciaPersonal registro, @QueryParam("usuario") String usuario) {
         System.out.println("LLEGA AL SERVICIO POST - RRPP");
         try {
-            ReferenciaPersonal resultado = referenciaPersonalService.saveSingle(registro);
+            ReferenciaPersonal resultado = referenciaPersonalService.saveSingle(registro, usuario);
             return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)

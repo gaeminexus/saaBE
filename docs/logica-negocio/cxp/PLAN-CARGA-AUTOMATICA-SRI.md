@@ -313,15 +313,18 @@ La subida manual de XML **se conserva tal cual**.
 
 ## 7. Fases y asignación
 
-| Fase | Qué | Agente | Bloquea a |
-|---|---|---|---|
-| **0.1** | Estampar el error en el documento con `REQUIRES_NEW` | BE | 1, 3 |
-| **0.2** | Commit del fix de reembolso ya escrito (sin compilar) | usuario | — |
-| **0.3** | Clasificación masiva de productos (§6.4, §6.5) | BE + FE | 3 |
-| **1** | `SriAutorizacionService` + descarga por lote (§6.1, §6.3) | BE | 2 |
-| **2** | Pantalla: botones, progreso, marcado de reembolso | FE | 3 |
-| **3** | Registro y contabilización por lote (§6.2) | BE | 4 |
-| **4** | Bandeja de atención + ingreso manual de sustentos | FE | — |
+> **Las 7 fases están cerradas en código (2026-08-28).** Ver el tablero de §10 para el detalle,
+> incluidas las dos que resultaron no tener trabajo real pendiente (0.2 y 4).
+
+| Fase | Qué | Agente | Bloquea a | Estado |
+|---|---|---|---|---|
+| **0.1** | Estampar el error en el documento con `REQUIRES_NEW` | BE | 1, 3 | ✅ verificado |
+| **0.2** | Commit del fix de reembolso ya escrito (sin compilar) | usuario | — | ✅ no había nada que commitear |
+| **0.3** | Clasificación masiva de productos (§6.4, §6.5) | BE + FE | 3 | ✅ entregado |
+| **1** | `SriAutorizacionService` + descarga por lote (§6.1, §6.3) | BE | 2 | ✅ verificado |
+| **2** | Pantalla: botones, progreso, marcado de reembolso | FE | 3 | ✅ entregado |
+| **3** | Registro y contabilización por lote (§6.2) | BE | 4 | ✅ entregado |
+| **4** | Bandeja de atención + ingreso manual de sustentos | FE | — | ✅ ya estaba construida |
 
 ### Fase 0.1 — por qué es prerequisito y no un pendiente cosmético
 
@@ -421,17 +424,30 @@ Se listan porque el lote los vuelve visibles, no porque haya que arreglarlos tod
 
 ## 10. Tablero de control
 
+> **Actualizado el 2026-08-28 — el frente está CERRADO en código.** Las dos filas que quedaban
+> pendientes resultaron no serlo (ver notas). Falta desplegar y probar contra datos reales, que es
+> lo que el propio `PRODUCCION-CARGA-AUTOMATICA-SRI.md` cubre.
+
 | Fase | Estado | Agente | Notas |
 |---|---|---|---|
 | 0.1 Error persistente | 🔵 verificado | BE | Desplegado. Cubre todo salvo el fallo del asiento — §11 decisión 3 |
-| 0.2 Commit fix reembolso | ⬜ pendiente | usuario | 99 líneas sin compilar |
+| 0.2 Commit fix reembolso | ✅ **sin trabajo** | usuario | **Verificado 2026-08-28: no había nada uncommitted.** La entrega ya estaba en el historial (`8e173fd`); las "99 líneas sin compilar" eran una nota desactualizada. Nada que commitear |
 | 0.3 Clasificación masiva | ✅ entregado | BE + FE | Sin desplegar ni probar |
 | 1 Descarga SRI | 🔵 verificado | BE | **Descarga real probada el 2026-08-23 sobre la carga 204: 11/11 DESCARGADO en 10 s, 0 errores.** Sobre `<autorizacion>` bien formado en disco. Barra cerró 52/52. Detalle en §12 |
 | 2 Pantalla y marcado | ✅ entregado | FE | Compila limpio. Chip sincronizado con §11 decisión 11, rótulo Pendientes, cabecera y rama 404 cerradas. **Sin probar contra datos reales.** |
 | 3 Registro por lote | ✅ entregado | BE | Incluye decisiones 16 y 17. Sin desplegar ni probar |
-| 4 Bandeja de atención | ⬜ pendiente | FE | |
+| 4 Bandeja de atención | ✅ **entregado** | FE | **Verificado 2026-08-28: ya estaba construida** — filtros y chips de bandeja, botón de bloqueantes, diálogo de reembolsos para sustentos manuales, clasificación de productos y subida de XML, todo wireado. El tablero la marcaba pendiente por desactualización |
 
 Leyenda: ⬜ pendiente · 🟡 en curso · ✅ entregado · 🔵 verificado por el usuario
+
+### 10.1 `REGISTRO_LOTE_DISPONIBLE` — activado (2026-08-28)
+
+`gestion-documentos.component.ts` tenía el flag en `false` con un comentario que decía que
+`/registrarLote` no existía. **Sí existe, entregado el 2026-08-23** (fase 3) — el comentario quedó
+desactualizado. El agente de frontend no lo activó por su cuenta, correctamente: habilita
+registro y contabilización reales contra un endpoint que el propio plan marcaba "sin desplegar ni
+probar", y eso es una decisión de riesgo de producción. **El usuario lo aprobó explícitamente y el
+flag quedó en `true`.**
 
 ---
 

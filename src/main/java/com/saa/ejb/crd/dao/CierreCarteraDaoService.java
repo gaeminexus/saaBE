@@ -88,8 +88,12 @@ public interface CierreCarteraDaoService {
     List<Object[]> selectCobrablePrestamosHasta(LocalDate hasta) throws Throwable;
 
     /**
-     * Aporte mensual esperado de los partícipes activos: el último {@code HistorialSueldo}
-     * en estado 99 de cada entidad en estado ACTIVO (1) o ACTIVO_EN_MORA (8).
+     * Aporte mensual esperado de los partícipes activos: la vigencia ABIERTA de CRD.VGCN del
+     * contrato ACTIVO de cada entidad en estado ACTIVO (1) o ACTIVO_EN_MORA (8), por tipo de
+     * aporte (9 jubilación, 11 cesantía). Migrado de {@code CRD.HSTR} a {@code CRD.VGCN} en
+     * la Fase 3 (docs/logica-negocio/crd/PLAN-APORTES-DEVENGO-CONTRATOS.md §3.5): si no se
+     * migraba, este esperado contable y el que usa la carga Petro para el cobro quedaban
+     * leyendo fuentes distintas y podían divergir en silencio.
      *
      * Es el mismo universo que usa {@code GeneracionArchivoPetroServiceImpl.recopilarAportes}
      * para el producto AH, sin el recargo por meses de mora: aquí se devenga el aporte del
@@ -99,6 +103,17 @@ public interface CierreCarteraDaoService {
      * @throws Throwable : Excepcion
      */
     Object[] selectAporteMensualEsperado() throws Throwable;
+
+    /**
+     * Consulta de control (§3.5 del plan): compara, para el mismo universo de entidades
+     * ACTIVO/ACTIVO_EN_MORA, el esperado que salía de {@code CRD.HSTR} (estado 99) contra el
+     * que sale ahora de {@code CRD.VGCN} (vigencia abierta del contrato activo). Sólo lectura,
+     * no la usa ningún proceso — es para reportar la diferencia tras la migración de 3.3.
+     *
+     * @return : {@code [jubilacionHstr (Double), cesantiaHstr (Double), jubilacionVgcn (Double), cesantiaVgcn (Double)]}
+     * @throws Throwable : Excepcion
+     */
+    Object[] selectControlEsperadoHstrVsVgcn() throws Throwable;
 
     /**
      * Aportes personales de jubilación (tipo 9) y cesantía (tipo 11) efectivamente

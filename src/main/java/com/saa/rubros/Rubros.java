@@ -264,4 +264,35 @@ public interface Rubros {
 	int RHH_CODIGO_SEGURO_SOCIAL_IESS     = 230;
 	/** Estado del anticipo entregado a un colaborador (ANTEESTD) -> ver {@link EstadoAnticipoEmpleado} */
 	int RHH_ESTADO_ANTICIPO_EMPLEADO      = 234;
+
+	// ================= RUBROS CRD (Creditos) =================
+	/** Naturaleza del movimiento de aporte (APRTTPMV) -> ver {@link CrdTipoMovimientoAporte} */
+	int CRD_TIPO_MOVIMIENTO_APORTE = 235;
+	/** Modo de calculo de una vigencia de contrato (VGCNMODO) -> ver {@link CrdModoVigenciaContrato} */
+	int CRD_MODO_VIGENCIA_CONTRATO = 236;
+	/** Parametros globales de contabilidad de CRD (detalle unico) -> ver {@link CrdParametroContabilidad} */
+	int CRD_PARAMETROS_CONTABILIDAD = 237;
+	/**
+	 * Bandera del camino nuevo de generacion de aportes por faltante (Fase 4, detalle unico)
+	 * -> ver {@link CrdGeneracionPorFaltante}. Verificado contra SCP.PRBR el 2026-08-27:
+	 * 238-241 ya estan reservados por otras olas en curso (SRI/particiones en transito)
+	 * aunque aun no tengan fila en la base; 242 es el primero realmente libre.
+	 */
+	int CRD_GENERACION_POR_FALTANTE = 242;
+	/** Parametros de los certificados de participe: firmante, cargo, ciudad -> ver {@link CrdParametroCertificado} */
+	int CRD_PARAMETROS_CERTIFICADOS = 243;
+	/** Tipo de certificado de participe (CRTFTPCR) -> ver {@link CrdTipoCertificado} */
+	int CRD_TIPO_CERTIFICADO = 244;
+
+	// ================= RUBROS SRI / ATS =================
+	/** Sustento tributario del comprobante, Tabla 5 del ATS (GRPPCSUS/FCTCCSUS/...) -> ver {@link SustentoTributarioSri}. El catalogo real vive en PGS.LSRI/PGS.TSRI (LSRI.TABLA='703'), no en Java; los codigos son strings de dos digitos, no este rubro int -> ver el javadoc de la interfaz. */
+	int SUSTENTO_TRIBUTARIO_SRI = 238;
+
+	// ================= RUBROS TSR (Conciliacion bancaria: partidas en transito) =================
+	/** Tipo de partida en transito (DTCNTPOO) -> ver {@link TipoPartidaTransito} */
+	int TIPO_PARTIDA_TRANSITO = 239;
+	/** Estado de una partida en transito (DTCNESTD) -> ver {@link EstadoPartidaTransito} */
+	int ESTADO_PARTIDA_TRANSITO = 240;
+	/** Estado del cierre de conciliacion bancaria (CNCLESTD) -> ver {@link EstadoCierreConciliacion} */
+	int ESTADO_CIERRE_CONCILIACION = 241;
 }

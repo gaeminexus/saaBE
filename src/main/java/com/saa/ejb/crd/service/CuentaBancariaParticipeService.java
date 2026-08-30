@@ -46,6 +46,19 @@ public interface CuentaBancariaParticipeService extends EntityService<CuentaBanc
     List<CuentaBancariaParticipe> selectByParent(Long idEntidad) throws Throwable;
 
     /**
+     * Igual que {@link #saveSingle(CuentaBancariaParticipe)}, pero además sella
+     * {@code EntidadService.sellarActualizacion} sobre ENTD en la misma transacción
+     * (pedido 9, pantalla de actualización de datos del partícipe). Sólo aplica al camino
+     * de edición (PUT); la creación pasa siempre por {@link #crearConCertificado}, que
+     * sella aparte.
+     *
+     * @param cuenta  : CuentaBancariaParticipe a guardar
+     * @param usuario : Usuario que hace el cambio (puede ser null)
+     * @throws Throwable : Excepcion
+     */
+    CuentaBancariaParticipe saveSingle(CuentaBancariaParticipe cuenta, String usuario) throws Throwable;
+
+    /**
      * Registra una cuenta bancaria de partícipe JUNTO con su certificado bancario, en una sola
      * transacción: si algo falla, no queda ni cuenta huérfana en CRD.CNBP ni archivo colgado en
      * disco. Es el ÚNICO camino soportado para crear una cuenta bancaria de partícipe — el

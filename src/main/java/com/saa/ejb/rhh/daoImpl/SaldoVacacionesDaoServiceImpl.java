@@ -90,4 +90,22 @@ public class SaldoVacacionesDaoServiceImpl extends EntityDaoImpl<SaldoVacaciones
 		List<SaldoVacaciones> encontrados = query.getResultList();
 		return (encontrados == null || encontrados.isEmpty()) ? null : encontrados.get(0);
 	}
+
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.rhh.dao.SaldoVacacionesDaoService#selectByEmpresaYAnio(java.lang.Long, java.lang.Integer)
+	 */
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<SaldoVacaciones> selectByEmpresaYAnio(Long idEmpresa, Integer anio) throws Throwable {
+		System.out.println("Ingresa al metodo selectByEmpresaYAnio de SaldoVacaciones, empresa: "
+				+ idEmpresa + ", anio: " + anio);
+		Query query = em.createQuery(" select   t "
+				+ " from     SaldoVacaciones t "
+				+ " where    t.empleado.empresa.codigo = :idEmpresa "
+				+ "          and t.anio = :anio "
+				+ " order by t.empleado.codigo ");
+		query.setParameter("idEmpresa", idEmpresa);
+		query.setParameter("anio", anio);
+		return query.getResultList();
+	}
 }

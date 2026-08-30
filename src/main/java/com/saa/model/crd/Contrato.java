@@ -54,20 +54,37 @@ public class Contrato implements Serializable {
     @Column(name = "CNTRFCIN")
     private LocalDateTime fechaInicio;
 
-    /** % Aporte Individual */
+    /**
+     * % Aporte Individual (CESANTÍA, pese al nombre de la columna). Cambiado de Long a
+     * Double: CNTRPRAI es NUMBER sin precisión en Oracle (ya admite decimales), y el mapeo
+     * Long truncaba los centavos al leer y al escribir.
+     */
     @Basic
     @Column(name = "CNTRPRAI")
-    private Long porcentajeAporteIndividual;
+    private Double porcentajeAporteIndividual;
 
-    /** % Aporte Jubilación */
+    /**
+     * % Aporte JUBILACIÓN. Mismo cambio Long -> Double que porcentajeAporteIndividual, y
+     * por el mismo motivo (CNTRPRAJ es NUMBER sin precisión).
+     */
     @Basic
     @Column(name = "CNTRPRAJ")
-    private Long porcentajeAporteJubilacion;
+    private Double porcentajeAporteJubilacion;
 
     /** Monto aporte adicional */
     @Basic
     @Column(name = "CNTRMNAA")
     private Double montoAporteAdicional;
+
+    /** Monto mensual de aporte por jubilación: espejo de la vigencia abierta en CRD.VGCN (tipo 9). Sólo lo escribe VigenciaContratoServiceImpl. */
+    @Basic
+    @Column(name = "CNTRMNAJ")
+    private Double montoAporteJubilacion;
+
+    /** Monto mensual de aporte por cesantía: espejo de la vigencia abierta en CRD.VGCN (tipo 11). Sólo lo escribe VigenciaContratoServiceImpl. */
+    @Basic
+    @Column(name = "CNTRMNAC")
+    private Double montoAporteCesantia;
 
     /** Fecha de terminación */
     @Basic
@@ -163,19 +180,19 @@ public class Contrato implements Serializable {
         this.fechaInicio = fechaInicio;
     }
 
-    public Long getPorcentajeAporteIndividual() {
+    public Double getPorcentajeAporteIndividual() {
         return porcentajeAporteIndividual;
     }
 
-    public void setPorcentajeAporteIndividual(Long porcentajeAporteIndividual) {
+    public void setPorcentajeAporteIndividual(Double porcentajeAporteIndividual) {
         this.porcentajeAporteIndividual = porcentajeAporteIndividual;
     }
 
-    public Long getPorcentajeAporteJubilacion() {
+    public Double getPorcentajeAporteJubilacion() {
         return porcentajeAporteJubilacion;
     }
 
-    public void setPorcentajeAporteJubilacion(Long porcentajeAporteJubilacion) {
+    public void setPorcentajeAporteJubilacion(Double porcentajeAporteJubilacion) {
         this.porcentajeAporteJubilacion = porcentajeAporteJubilacion;
     }
 
@@ -185,6 +202,22 @@ public class Contrato implements Serializable {
 
     public void setMontoAporteAdicional(Double montoAporteAdicional) {
         this.montoAporteAdicional = montoAporteAdicional;
+    }
+
+    public Double getMontoAporteJubilacion() {
+        return montoAporteJubilacion;
+    }
+
+    public void setMontoAporteJubilacion(Double montoAporteJubilacion) {
+        this.montoAporteJubilacion = montoAporteJubilacion;
+    }
+
+    public Double getMontoAporteCesantia() {
+        return montoAporteCesantia;
+    }
+
+    public void setMontoAporteCesantia(Double montoAporteCesantia) {
+        this.montoAporteCesantia = montoAporteCesantia;
     }
 
     public LocalDateTime getFechaTerminacion() {

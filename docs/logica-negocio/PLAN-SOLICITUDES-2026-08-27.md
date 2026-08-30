@@ -1,5 +1,22 @@
 # PLAN DE SOLUCIÓN — Listado de solicitudes del 2026-08-27
 
+> ## ✅ ESTADO AL 2026-08-29 — 12 de 15 cerrados
+>
+> **Cerrados** (detalle en `ESTADO-CXP-CXC-TSR-RHH-SRI.md`): 3, 4, 5, 6, 7, 8, 9, 10a, 11, 12,
+> 13 y 14. Los tres grandes —el rediseño de pagos (14), el ATS con sus formularios (13) y la
+> conciliación con partidas en tránsito (12)— quedaron completos.
+>
+> **Siguen pendientes, sin empezar:**
+>
+> | # | Solicitud | Por qué sigue abierta |
+> |---|---|---|
+> | **1** | Consulta de cobros CxC con anulación | El reverso (`/aplc/revertir/{id}`) existe desde antes; falta el endpoint de listado y la pantalla de consulta |
+> | **2** | Mensaje "el titular ya existe" | Sigue reventando con `ORA-00001` crudo. El plan de §1.4 sigue siendo válido tal cual |
+> | **10b** | Novedades del período: campos | Sigue esperando que el usuario aclare **qué campo concreto** echan de menos — `NVNM` nunca tuvo columna de días |
+>
+> Nada de lo cerrado está desplegado todavía. Lo de abajo es el plan original del 27, conservado
+> como referencia de por qué se decidió cada cosa.
+
 **Rol:** análisis de impacto y plan de trabajo por el orquestador. Esquema: orquestador (analiza, DDL, prompts) → agente BACKEND → agente FRONTEND → usuario (DDL, compila, despliega, prueba).
 **Complementa a:** `tsr/PLAN-CHEQUES-CAJA-CHICA-LIQUIDACIONES-ESTADO-CUENTA.md` (fases D, A, B, C ya en curso).
 **Base de la verificación:** código de `saaBE`/`saaFE` y la BD local, que es copia de producción. Lo marcado *(por verificar)* necesita una revisión más profunda que no pude hacer hoy.

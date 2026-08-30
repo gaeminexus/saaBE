@@ -143,4 +143,51 @@ public interface AnticipoClienteService extends EntityService<AnticipoCliente> {
      * @throws Throwable : Excepcion
      */
     java.util.Map<String, Object> seguimiento(Long idTitular, Long idEmpresa) throws Throwable;
+
+    /**
+     * Solicita la devolución del saldo a favor de un cliente: entra al circuito único de
+     * aprobación de pagos (punto 14) como origen externo
+     * {@code OrigenPagoExterno.CXC_DEVOLUCION_CLIENTE}, igual que ya lo hacen
+     * {@code CRD_DEVOLUCION_APORTE}, {@code TSR_CAJA_CHICA} y {@code RHH_ANTICIPO_EMPLEADO}
+     * — ver docs/logica-negocio/pagos/PLAN-REDISENO-APROBACION-PAGOS.md.
+     * <p>
+     * El pago nace POR_APROBAR, sin cuenta bancaria: tesorería la asigna después con
+     * {@code POST /pgtr/aprobar}. <b>No descuenta el saldo del anticipo todavía</b> — no hay
+     * un hook de confirmación de {@code PagoProgramado} que este módulo pueda escuchar; el
+     * descuento del saldo queda pendiente, explícito, hasta que exista ese enganche.
+     *
+     * @param idAnticipo : Id del anticipo de cliente (CXC.AnticipoCliente), debe estar CONFIRMADO
+     * @param valor      : Valor a devolver; mayor a cero y no mayor al saldo disponible
+     * @param idUsuario  : Id del usuario (SCP.PJRQ) que solicita la devolución
+     * @return           : Mapa con exito, mensaje, idAnticipo e idPago (el PagoProgramado creado)
+     * @throws Throwable : IncomeException si el anticipo no existe, no está CONFIRMADO,
+     *                     el valor es inválido o el saldo no alcanza
+     */
+    java.util.Map<String, Object> solicitarDevolucion(Long idAnticipo, Double valor, Long idUsuario)
+            throws Throwable;
+
+    /**
+     * Reconcilia la devolución de saldo pendiente de UN anticipo (ítem 5, mismo patrón que
+     * {@code CRD.DevolucionAporteServiceImpl.sincronizarDevolucion}): si el pago asociado
+     * ({@code ANTCIDPG}) llegó a CONFIRMADO y todavía no se aplicó ({@code ANTCAPLC=0}),
+     * descuenta el saldo del anticipo y marca {@code ANTCAPLC=1}. Si el pago fue RECHAZADO o
+     * ANULADO, no descuenta nada pero libera el "en curso" para una nueva solicitud.
+     * Idempotente: correrlo dos veces sobre el mismo pago ya aplicado no hace nada.
+     *
+     * @param idAnticipo : Id del anticipo a reconciliar
+     * @return           : Mapa con idAnticipo, aplicado (boolean) y mensaje
+     * @throws Throwable : IncomeException si el anticipo no existe
+     */
+    java.util.Map<String, Object> sincronizarDevolucion(Long idAnticipo) throws Throwable;
+
+    /**
+     * Reconcilia en lote todos los anticipos con una devolución pendiente de aplicar
+     * ({@code ANTCIDPG} no nulo, {@code ANTCAPLC=0}). Cada anticipo se reconcilia en su
+     * propia transacción vía {@link #sincronizarDevolucion(Long)}; un fallo en uno no
+     * aborta el resto.
+     *
+     * @return           : Mapa con evaluadas, aplicadas, conError y errores
+     * @throws Throwable : Excepcion
+     */
+    java.util.Map<String, Object> sincronizarDevoluciones() throws Throwable;
 }

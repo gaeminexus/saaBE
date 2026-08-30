@@ -44,6 +44,17 @@ public class PagoPrestamo implements Serializable {
     @JoinColumn(name = "DTPRCDGO", referencedColumnName = "DTPRCDGO")
     private DetallePrestamo detallePrestamo;
 
+    /**
+     * FK - Carga Petro que generó este pago (CRD.CRAR). NULL si no vino de una carga (pago
+     * manual, abono a capital, cruce de valores) o si es anterior al 2026-08-28 — no se hizo
+     * backfill de lo histórico. Agregada para poder armar el asiento de APLICACION del cobro
+     * de Petro en dos pasos sin acumular en el bucle de aplicarPagosArchivoPetro. Ver
+     * docs/logica-negocio/crd/sql/DDL-TRAZABILIDAD-CARGA-PETRO.sql.
+     */
+    @ManyToOne
+    @JoinColumn(name = "CRARCDGO", referencedColumnName = "CRARCDGO")
+    private CargaArchivo cargaArchivo;
+
     /** Fecha */
     @Basic
     @Column(name = "PGPRFCHA")
@@ -369,6 +380,14 @@ public class PagoPrestamo implements Serializable {
 
     public void setRutaDocumentoRespaldo(String rutaDocumentoRespaldo) {
         this.rutaDocumentoRespaldo = rutaDocumentoRespaldo;
+    }
+
+    public CargaArchivo getCargaArchivo() {
+        return cargaArchivo;
+    }
+
+    public void setCargaArchivo(CargaArchivo cargaArchivo) {
+        this.cargaArchivo = cargaArchivo;
     }
 }
 

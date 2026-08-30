@@ -1,11 +1,14 @@
 package com.saa.ejb.crd.serviceImpl;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.crd.dao.PagoPrestamoDaoService;
 import com.saa.ejb.crd.service.PagoPrestamoService;
+import com.saa.model.crd.DetallePrestamo;
 import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.model.crd.PagoPrestamo;
 import com.saa.rubros.Estado;
@@ -88,5 +91,24 @@ public class PagoPrestamoServiceImpl implements PagoPrestamoService {
             throw new IncomeException("Busqueda por criterio PagoPrestamo no devolvio ningun registro");
         }
         return result;
+    }
+
+    @Override
+    public double calcularSaldoCapitalPendiente(List<DetallePrestamo> cuotas) throws Throwable {
+        double saldo = 0.0;
+        if (cuotas != null) {
+            for (DetallePrestamo cuota : cuotas) {
+                double capitalOriginal = cuota.getCapital() != null ? cuota.getCapital() : 0.0;
+                double capitalPagadoVigente = 0.0;
+                List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectVigentesByIdDetallePrestamo(cuota.getCodigo());
+                if (pagos != null) {
+                    for (PagoPrestamo pago : pagos) {
+                        capitalPagadoVigente += pago.getCapitalPagado() != null ? pago.getCapitalPagado() : 0.0;
+                    }
+                }
+                saldo += Math.max(0.0, capitalOriginal - capitalPagadoVigente);
+            }
+        }
+        return BigDecimal.valueOf(saldo).setScale(2, RoundingMode.HALF_UP).doubleValue();
     }
 }

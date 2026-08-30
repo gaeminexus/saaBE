@@ -257,6 +257,39 @@ public class FacturaCompra implements Serializable {
         @Basic @Column(name = "FCTCTIRM")
         private Double totalImpuestoReembolso;
 
+        /**
+         * Sustento tributario SRI (Tabla 5 del ATS) resuelto para esta factura de compra
+         * (FCTCCSUS). Cadena de dos digitos, con cero a la izquierda ("01".."15","00") -
+         * ver {@link com.saa.rubros.SustentoTributarioSri}. Es el valor RESUELTO y guardado:
+         * no se recalcula al generar el ATS, porque el grupo de producto de sus lineas pudo
+         * cambiar despues. Nulo mientras no se pueda resolver (factura sin lineas, o lineas
+         * cuyos grupos de producto no tienen sustento por defecto configurado).
+         */
+        @Basic @Column(name = "FCTCCSUS", length = 2)
+        private String sustentoTributario;
+
+        /**
+         * ATS (campo {@code fechaRegistro}), fecha de REGISTRO CONTABLE de la factura,
+         * distinta de {@link #fecha} (fecha de emisión del comprobante). Nula mientras no se
+         * capture; ver docs/logica-negocio/sri/LEVANTAMIENTO-ATS-103-104.md §3.3/§4.3 fase 3.
+         */
+        @Basic @Column(name = "FCTCFCRG")
+        private java.time.LocalDate fechaRegistroContable;
+
+        /**
+         * Auditoría de anulación (2026-08-28) — mismo patrón que {@code Factura.motivoAnulacion}
+         * del lado venta. Nulo = nunca anulada (o anulada antes de este cambio, sin auditoría).
+         * Ver docs/logica-negocio/sri/LEVANTAMIENTO-ATS-103-104.md §10.3.
+         */
+        @Basic @Column(name = "FCTCMTAN", length = 1000)
+        private String motivoAnulacion;
+
+        @Basic @Column(name = "FCTCFCAN")
+        private java.time.LocalDateTime fechaAnulacion;
+
+        @Basic @Column(name = "FCTCUSAN", length = 200)
+        private String usuarioAnulacion;
+
         public Long getEsReembolso() { return esReembolso; }
         public void setEsReembolso(Long esReembolso) { this.esReembolso = esReembolso; }
         public String getCodDocReembolso() { return codDocReembolso; }
@@ -267,4 +300,14 @@ public class FacturaCompra implements Serializable {
         public void setTotalBaseImponibleReembolso(Double totalBaseImponibleReembolso) { this.totalBaseImponibleReembolso = totalBaseImponibleReembolso; }
         public Double getTotalImpuestoReembolso() { return totalImpuestoReembolso; }
         public void setTotalImpuestoReembolso(Double totalImpuestoReembolso) { this.totalImpuestoReembolso = totalImpuestoReembolso; }
+        public String getSustentoTributario() { return sustentoTributario; }
+        public void setSustentoTributario(String sustentoTributario) { this.sustentoTributario = sustentoTributario; }
+        public java.time.LocalDate getFechaRegistroContable() { return fechaRegistroContable; }
+        public void setFechaRegistroContable(java.time.LocalDate fechaRegistroContable) { this.fechaRegistroContable = fechaRegistroContable; }
+        public String getMotivoAnulacion() { return motivoAnulacion; }
+        public void setMotivoAnulacion(String motivoAnulacion) { this.motivoAnulacion = motivoAnulacion; }
+        public java.time.LocalDateTime getFechaAnulacion() { return fechaAnulacion; }
+        public void setFechaAnulacion(java.time.LocalDateTime fechaAnulacion) { this.fechaAnulacion = fechaAnulacion; }
+        public String getUsuarioAnulacion() { return usuarioAnulacion; }
+        public void setUsuarioAnulacion(String usuarioAnulacion) { this.usuarioAnulacion = usuarioAnulacion; }
 }

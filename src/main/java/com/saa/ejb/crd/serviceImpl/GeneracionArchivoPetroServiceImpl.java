@@ -17,11 +17,14 @@ import com.saa.basico.ejb.FechaService;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.crd.dao.AporteDaoService;
+import com.saa.ejb.crd.dao.AportadoGeneracionDaoService;
 import com.saa.ejb.crd.dao.GeneracionArchivoPetroDaoService;
+import com.saa.ejb.crd.service.ConfiguracionGeneracionAportesService;
 import com.saa.ejb.crd.service.CuotaXParticipeGeneracionService;
 import com.saa.ejb.crd.service.DetalleGeneracionArchivoService;
 import com.saa.ejb.crd.service.GeneracionArchivoPetroService;
 import com.saa.ejb.crd.service.ParticipeDetalleGeneracionArchivoService;
+import com.saa.ejb.crd.service.VigenciaContratoService;
 import com.saa.model.crd.CuotaXParticipeGeneracion;
 import com.saa.model.crd.DetalleGeneracionArchivo;
 import com.saa.model.crd.DetallePrestamo;
@@ -99,12 +102,36 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
     @EJB
     private AporteDaoService aporteDaoService;
 
+    /** Fase 4: esperado(entidad,tipo,mes) desde CRD.VGCN, en bloque para toda la filial — {@link VigenciaContratoService#esperadoEnLotePorFilial}. */
+    @EJB
+    private VigenciaContratoService vigenciaContratoService;
+
+    /** Fase 4: bandera del camino nuevo (rubro 242), apagada por defecto. */
+    @EJB
+    private ConfiguracionGeneracionAportesService configuracionGeneracionAportesService;
+
+    /** Fase 4: aportado(entidad,mes,tipo) de TODA la filial en una sola consulta. */
+    @EJB
+    private AportadoGeneracionDaoService aportadoGeneracionDaoService;
+
     @PersistenceContext
     private EntityManager em;
 
     /** Tipos de aporte que componen el aporte mensual: 9 = JUBILACIÓN, 11 = CESANTÍA. */
     private static final Long TIPO_APORTE_JUBILACION = 9L;
     private static final Long TIPO_APORTE_CESANTIA   = 11L;
+
+    /**
+     * Piso de devengo (D11 del plan de devengo de aportes): mismo valor que la constante
+     * homónima de {@code CargaArchivoPetroServiceImpl} (privada allá, en otro paquete — se
+     * replica el valor, no la referencia). Todo lo anterior a esta fecha quedó con devengo
+     * NULL a propósito y el backfill nunca lo va a llenar; sin este piso, el camino nuevo le
+     * cobraría a todo el mundo meses de 2024 y anteriores.
+     */
+    private static final java.time.LocalDate ALCANCE_MINIMO_DEVENGO_GENERACION = java.time.LocalDate.of(2025, 6, 1);
+
+    /** Tope de seguridad de meses a recorrer por entidad en recopilarAportesPorFaltante. */
+    private static final int TOPE_MESES_GENERACION_POR_FALTANTE = 60;
 
     // ========================================================================
     // MÉTODOS CRUD BÁSICOS
@@ -983,16 +1010,13 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
     /**
      * Recopila los aportes personales (producto AH) del periodo.
      *
-     * Incluye a los partícipes ACTIVOS y a los que están en ACTIVO EN MORA.
-     * A los primeros se les cobra un mes; a los morosos se les cobra la deuda
-     * acumulada: aporte mensual x meses transcurridos desde su último aporte
-     * hasta el periodo que se está generando, ese periodo incluido.
+     * Fase 4 del plan de devengo de aportes: despachador detrás del flag
+     * {@link ConfiguracionGeneracionAportesService#porFaltanteActiva()} (rubro 242, apagado
+     * por defecto). Ver {@link #recopilarAportesPorHistorialSueldo} (camino viejo, intacto)
+     * y {@link #recopilarAportesPorFaltante} (camino nuevo) para el detalle de cada uno.
      *
-     * Ejemplo: último aporte en abril, generando agosto -> 4 meses
-     * (mayo, junio, julio y agosto). No hay tope de meses.
-     *
-     * Los montos de jubilación y cesantía se guardan por separado porque ARCH
-     * los reporta en columnas distintas (AJ y AC).
+     * Los montos de jubilación y cesantía se guardan por separado en {@code LineaArchivo}
+     * porque ARCH los reporta en columnas distintas (AJ y AC), en ambos caminos.
      *
      * @param listaAportes  Lista donde se acumulan las líneas del producto AH
      * @param mes           Mes del periodo que se genera
@@ -1000,6 +1024,25 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
      * @param codigoFilial  Filial de la generación
      */
     private void recopilarAportes(List<LineaArchivo> listaAportes, Long mes, Long anio, Long codigoFilial) throws Exception {
+        // Fase 4 del plan de devengo de aportes: camino nuevo detrás del flag (rubro 242),
+        // apagado por defecto. El camino viejo queda intacto en
+        // recopilarAportesPorHistorialSueldo mientras no se valide y encienda el nuevo.
+        if (configuracionGeneracionAportesService.porFaltanteActiva()) {
+            recopilarAportesPorFaltante(listaAportes, mes, anio, codigoFilial);
+        } else {
+            recopilarAportesPorHistorialSueldo(listaAportes, mes, anio, codigoFilial);
+        }
+    }
+
+    /**
+     * CAMINO VIEJO (el de siempre): monto fijo de {@code HistorialSueldo} x meses adeudados
+     * para los morosos. Se mantiene intacto detrás del flag {@link #recopilarAportes} —
+     * ver {@code docs/logica-negocio/petro/REGLAS-GENERACION-PETRO.md} §2.1 para el porqué
+     * de reemplazarlo (el mes de devengo más antiguo incompleto y el mes que se genera no
+     * siempre coinciden, así que este cálculo puede cobrar un mes ya cubierto y dejar sin
+     * cobrar el hueco real).
+     */
+    private void recopilarAportesPorHistorialSueldo(List<LineaArchivo> listaAportes, Long mes, Long anio, Long codigoFilial) throws Exception {
         System.out.println("Recopilando aportes personales de la filial " + codigoFilial + "...");
         System.out.println("Filtros: Entidad en estado ACTIVO o ACTIVO EN MORA, HistorialSueldo.estado=99");
 
@@ -1074,6 +1117,155 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
     }
 
     /**
+     * CAMINO NUEVO (Fase 4, detrás del flag {@link #recopilarAportes}): cobra el faltante
+     * mes a mes, no un monto fijo ni una multiplicación de meses.
+     *
+     * <pre>
+     * a cobrar = Σ, para cada mes m desde ALCANCE_MINIMO_DEVENGO_GENERACION hasta el
+     *              periodo generado:  max(0, esperado(m,tipo) − aportado(m,tipo))
+     * </pre>
+     *
+     * - {@code esperado(m,tipo)}: la MISMA regla de {@link VigenciaContratoService#esperado}
+     *   (vigencia con {@code idEstado = ACTIVO} cuyo rango cubre el último día de {@code m},
+     *   {@code 0.0} si no hay ninguna) — pero cargada EN BLOQUE (ver nota de rendimiento) en
+     *   vez de invocar el servicio una vez por entidad × mes × tipo.
+     * - {@code aportado(m,tipo)}: {@link AportadoGeneracionDaoService}, una sola consulta
+     *   para toda la filial (PERIODO EFECTIVO, no devengo a secas — ver
+     *   {@code PeriodoEfectivoAporteSql}).
+     * - Cubre morosos, anticipos y devoluciones sin casos especiales: un moroso con huecos
+     *   simplemente acumula faltante en cada mes sin aporte; un anticipo hace que
+     *   {@code aportado(m)} ya cubra {@code esperado(m)} y ese mes no vuelve a cobrarse.
+     *
+     * <p><b>Por qué se carga en bloque, y no solo "aportado"</b>: la primera versión llamaba
+     * a {@code esperadoPorEntidad} dentro del doble bucle (entidad × mes × tipo), dos
+     * consultas por llamada (contrato activo + vigencia vigente). Con los números reales de
+     * esta base (~1.650 partícipes × ~15 meses desde {@link #ALCANCE_MINIMO_DEVENGO_GENERACION}
+     * × 2 tipos) eso son decenas de miles de consultas pequeñas en una sola generación —
+     * contra un timeout de WildFly de 15 minutos para este proceso. No es un problema de
+     * "si algún día se activa a escala real": revienta la primera vez que alguien encienda el
+     * flag del rubro 242. <b>No "simplificar" esto de vuelta a llamar al servicio partícipe
+     * por partícipe</b>: es la diferencia entre un proceso que corre en segundos y uno que
+     * no termina.</p>
+     *
+     * <p>{@code esperado} se resuelve con {@link VigenciaContratoService#esperadoEnLotePorFilial},
+     * la versión en bloque de {@link VigenciaContratoService#esperadoPorEntidad} — MISMA
+     * regla de selección de vigencia (contrato activo con desempate por mayor código,
+     * vigencia con {@code idEstado} ACTIVO cuyo rango cubre el último día del mes), una sola
+     * implementación en {@code VigenciaContratoService}/{@code VigenciaContratoDaoService}
+     * (que este agente sí puede tocar: la restricción de archivos prohibidos de esta fase es
+     * sobre {@code Aporte*}, no sobre {@code VigenciaContrato*}). Corregido el 2026-08-27
+     * tras una primera versión que reimplementaba la regla en JPQL local — dos
+     * implementaciones de la misma regla divergen en silencio el día que alguien cambie
+     * sólo una.</p>
+     */
+    private void recopilarAportesPorFaltante(List<LineaArchivo> listaAportes, Long mes, Long anio, Long codigoFilial) throws Exception {
+        System.out.println("Recopilando aportes personales (CAMINO NUEVO: por faltante) de la filial " + codigoFilial + "...");
+
+        String jpql = "SELECT e FROM Entidad e " +
+                     "WHERE e.idEstado IN :estadosIncluidos " +
+                     "AND e.filial.codigo = :codigoFilial " +
+                     condicionIdentificadorFilial("e", codigoFilial);
+
+        Query queryEntidades = em.createQuery(jpql);
+        queryEntidades.setParameter("estadosIncluidos", Arrays.asList(
+                (long) EstadoParticipeEntidad.ACTIVO,
+                (long) EstadoParticipeEntidad.ACTIVO_EN_MORA));
+        queryEntidades.setParameter("codigoFilial", codigoFilial);
+
+        @SuppressWarnings("unchecked")
+        List<Entidad> entidades = queryEntidades.getResultList();
+        System.out.println("Entidades encontradas: " + entidades.size());
+
+        java.time.LocalDate periodoGenerado = java.time.LocalDate.of(anio.intValue(), mes.intValue(), 1);
+
+        // aportado(entidad,mes,tipo) de TODA la filial, en una sola consulta.
+        Map<String, Double> aportadoPorEntidadMesTipo = new HashMap<>();
+        List<Object[]> filasAportado;
+        try {
+            filasAportado = aportadoGeneracionDaoService.sumAportadoPorEntidadPeriodoTipo(
+                codigoFilial, ALCANCE_MINIMO_DEVENGO_GENERACION, periodoGenerado);
+        } catch (Throwable e) {
+            throw new Exception("Error al calcular lo aportado por entidad/mes/tipo: " + e.getMessage(), e);
+        }
+        for (Object[] fila : filasAportado) {
+            Long idEntidad = (Long) fila[0];
+            java.time.LocalDate periodo = (java.time.LocalDate) fila[1];
+            Long idTipo = (Long) fila[2];
+            Double suma = (Double) fila[3];
+            if (idEntidad != null && periodo != null && idTipo != null) {
+                aportadoPorEntidadMesTipo.put(claveAportadoFaltante(idEntidad, periodo, idTipo), suma);
+            }
+        }
+
+        // esperado(entidad,tipo,mes): TODAS las vigencias vigentes de la filial, en una sola
+        // consulta (VigenciaContratoService.esperadoEnLotePorFilial — misma regla que
+        // esperadoPorEntidad, una sola implementación). Ver el JavaDoc del método sobre por qué.
+        Map<String, Double> esperadoPorEntidadMesTipo;
+        try {
+            esperadoPorEntidadMesTipo = vigenciaContratoService.esperadoEnLotePorFilial(
+                codigoFilial, ALCANCE_MINIMO_DEVENGO_GENERACION, periodoGenerado);
+        } catch (Throwable e) {
+            throw new Exception("Error al calcular el esperado por entidad/mes/tipo: " + e.getMessage(), e);
+        }
+
+        for (Entidad entidad : entidades) {
+            double totalJubilacion = 0.0;
+            double totalCesantia = 0.0;
+
+            java.time.LocalDate mesCursor = ALCANCE_MINIMO_DEVENGO_GENERACION;
+            int guard = 0;
+            try {
+                while (!mesCursor.isAfter(periodoGenerado) && guard < TOPE_MESES_GENERACION_POR_FALTANTE) {
+                    guard++;
+                    for (Long idTipo : Arrays.asList(TIPO_APORTE_JUBILACION, TIPO_APORTE_CESANTIA)) {
+                        double esperado = esperadoPorEntidadMesTipo.getOrDefault(
+                            entidad.getCodigo() + "|" + idTipo + "|" + mesCursor, 0.0);
+                        double aportado = aportadoPorEntidadMesTipo.getOrDefault(
+                            claveAportadoFaltante(entidad.getCodigo(), mesCursor, idTipo), 0.0);
+                        double faltante = Math.max(0.0, esperado - aportado);
+                        if (TIPO_APORTE_JUBILACION.equals(idTipo)) {
+                            totalJubilacion += faltante;
+                        } else {
+                            totalCesantia += faltante;
+                        }
+                    }
+                    mesCursor = mesCursor.plusMonths(1);
+                }
+            } catch (Throwable e) {
+                throw new Exception("Error al calcular el faltante de la entidad " + entidad.getCodigo()
+                    + ": " + e.getMessage(), e);
+            }
+
+            if (guard >= TOPE_MESES_GENERACION_POR_FALTANTE) {
+                System.err.println("⚠️ ADVERTENCIA: recopilarAportesPorFaltante alcanzó el tope de "
+                    + TOPE_MESES_GENERACION_POR_FALTANTE + " meses para la entidad " + entidad.getCodigo());
+            }
+
+            double montoTotal = totalJubilacion + totalCesantia;
+            if (montoTotal > 0.01) {
+                LineaArchivo linea = new LineaArchivo();
+                linea.codigoEntidad = entidad.getCodigo();
+                linea.rolPetrocomercial = entidad.getRolPetroComercial();
+                linea.numeroIdentificacion = entidad.getNumeroIdentificacion();
+                linea.razonSocial = entidad.getRazonSocial();
+                linea.monto = montoTotal;
+                linea.codigoPrestamo = null;
+                linea.montoJubilacion = totalJubilacion;
+                linea.montoCesantia = totalCesantia;
+
+                listaAportes.add(linea);
+            }
+        }
+
+        System.out.println("Aportes recopilados (por faltante): " + listaAportes.size());
+    }
+
+    /** Clave del mapa aportadoPorEntidadMesTipo de {@link #recopilarAportesPorFaltante}. */
+    private String claveAportadoFaltante(Long idEntidad, java.time.LocalDate periodo, Long idTipoAporte) {
+        return idEntidad + "|" + periodo + "|" + idTipoAporte;
+    }
+
+    /**
      * Calcula, para los partícipes en ACTIVO EN MORA, cuántos meses de aporte hay
      * que cobrarles en este periodo.
      *
@@ -1085,7 +1277,14 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
      * así que se le cobra un solo mes y se deja constancia en el log.
      *
      * @return Mapa codigoEntidad -> meses a cobrar. Solo contiene morosos.
+     *
+     * @deprecated Fase 4 del plan de devengo de aportes: con el camino nuevo
+     * ({@link #recopilarAportesPorFaltante}), cobrar el faltante mes a mes ya cubre a los
+     * morosos sin este caso especial (un mes sin aporte simplemente acumula faltante). Sigue
+     * en uso desde {@link #recopilarAportesPorHistorialSueldo} mientras el flag del rubro 242
+     * esté apagado; se retira cuando el camino viejo se elimine.
      */
+    @Deprecated
     private Map<Long, Long> calcularMesesACobrarMorosos(List<HistorialSueldo> historiales,
             Long mes, Long anio) throws Exception {
 

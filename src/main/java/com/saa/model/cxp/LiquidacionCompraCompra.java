@@ -129,6 +129,38 @@ public class LiquidacionCompraCompra implements Serializable {
         @JoinColumn(name = "ASIENTO", referencedColumnName = "ASNTCDGO")
         private Asiento asiento;
 
+        /**
+         * Sustento tributario SRI (Tabla 5 del ATS) de esta liquidación de compra (LQCCCSUS).
+         * Cadena de dos dígitos, con cero a la izquierda ("01".."15","00") - ver
+         * {@link com.saa.rubros.SustentoTributarioSri}. Columna preparada para el ATS; la
+         * resolución automática (igual que en FacturaCompra) todavía no está implementada
+         * para este tipo de documento.
+         */
+        @Basic @Column(name = "LQCCCSUS", length = 2)
+        private String sustentoTributario;
+
+        /**
+         * ATS (campo {@code fechaRegistro}), fecha de REGISTRO CONTABLE, distinta de la fecha
+         * de emisión del comprobante. Nula mientras no se capture; ver
+         * docs/logica-negocio/sri/LEVANTAMIENTO-ATS-103-104.md §3.3/§4.3 fase 3.
+         */
+        @Basic @Column(name = "LQCCFCRG")
+        private java.time.LocalDate fechaRegistroContable;
+
+        /**
+         * Auditoría de anulación (2026-08-28) — mismo patrón que {@code Factura.motivoAnulacion}
+         * del lado venta. Nulo = nunca anulada. Ver
+         * docs/logica-negocio/sri/LEVANTAMIENTO-ATS-103-104.md §10.3.
+         */
+        @Basic @Column(name = "LQCCMTAN", length = 1000)
+        private String motivoAnulacion;
+
+        @Basic @Column(name = "LQCCFCAN")
+        private java.time.LocalDateTime fechaAnulacion;
+
+        @Basic @Column(name = "LQCCUSAN", length = 200)
+        private String usuarioAnulacion;
+
         public Long getId() { return id; }
 	public void setId(Long id) { this.id = id; }
 	public String getTipoComprobante() { return tipoComprobante; }
@@ -197,4 +229,14 @@ public class LiquidacionCompraCompra implements Serializable {
         public void setEstadoEmision(Long estadoEmision) { this.estadoEmision = estadoEmision; }
         public Asiento getAsiento() { return asiento; }
         public void setAsiento(Asiento asiento) { this.asiento = asiento; }
+        public String getSustentoTributario() { return sustentoTributario; }
+        public void setSustentoTributario(String sustentoTributario) { this.sustentoTributario = sustentoTributario; }
+        public java.time.LocalDate getFechaRegistroContable() { return fechaRegistroContable; }
+        public void setFechaRegistroContable(java.time.LocalDate fechaRegistroContable) { this.fechaRegistroContable = fechaRegistroContable; }
+        public String getMotivoAnulacion() { return motivoAnulacion; }
+        public void setMotivoAnulacion(String motivoAnulacion) { this.motivoAnulacion = motivoAnulacion; }
+        public java.time.LocalDateTime getFechaAnulacion() { return fechaAnulacion; }
+        public void setFechaAnulacion(java.time.LocalDateTime fechaAnulacion) { this.fechaAnulacion = fechaAnulacion; }
+        public String getUsuarioAnulacion() { return usuarioAnulacion; }
+        public void setUsuarioAnulacion(String usuarioAnulacion) { this.usuarioAnulacion = usuarioAnulacion; }
 }

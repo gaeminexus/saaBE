@@ -20,6 +20,17 @@ public class SimulacionPrecancelacion {
     /** Cuotas pendientes con vencimiento &lt;= fecha */
     private List<CuotaExigible> exigibles = new ArrayList<>();
 
+    /**
+     * Saldo de capital pendiente del préstamo COMPLETO (exigibles + futuras), reconstruido desde
+     * CRD.PGPR con {@code PagoPrestamoService.calcularSaldoCapitalPendiente} — mismo cálculo que
+     * usa la reestructuración (pedido 8). Es el dato que debe mostrar la cabecera del diálogo de
+     * precancelación; NUNCA {@code Prestamo.saldoCapital} (PRSTSLCP), que
+     * {@code ProcesoCargaPetroServiceImpl} escribe una sola vez y nadie vuelve a actualizar.
+     * No confundir con {@link #capitalFuturo}, que es solo la porción de este total que
+     * corresponde a las cuotas NO exigibles.
+     */
+    private Double saldoCapitalPendiente;
+
     /** Suma del pendiente real de las cuotas exigibles */
     private Double valorExigible;
 
@@ -60,6 +71,14 @@ public class SimulacionPrecancelacion {
 
     public void setExigibles(List<CuotaExigible> exigibles) {
         this.exigibles = exigibles;
+    }
+
+    public Double getSaldoCapitalPendiente() {
+        return saldoCapitalPendiente;
+    }
+
+    public void setSaldoCapitalPendiente(Double saldoCapitalPendiente) {
+        this.saldoCapitalPendiente = saldoCapitalPendiente;
     }
 
     public Double getValorExigible() {

@@ -284,7 +284,19 @@ Título pizarra: "Alimentación Contable de Proceso Petro — Petro Ecuador y AR
 
 > Los apodos de pizarra "1a3" y "3a9" confirman la nomenclatura de bandas por decenas de días (1-30, 31-90).
 > Mecánica completa del mes: la **apertura** (§3.2-③) crea el par 1.4.05.xx (D) / 2.3.02.xx (H); el **cobro** cancela el por cobrar; la **aplicación** debita el por aplicar y reparte; el **cierre/neteo** reversa lo no cobrado.
-> Plantillas actuales relacionadas: alternos 19/20 (cobro con `2.3.01.15.01` cuenta transitoria — la pizarra ya no la usa, va directo contra `1.4.05.xx`), 21 (aplicación/cierre cartera, 44 líneas), 22–25 (cobros individuales).
+> Plantillas actuales relacionadas: alternos 19/20 (cobro con `2.3.01.15.01` cuenta transitoria), 21 (aplicación/cierre cartera, 44 líneas), 22–25 (cobros individuales).
+>
+> ⚠️ **CORRECCIÓN (2026-08-28, decisión del usuario): la cuenta transitoria `2.3.01.15.01` SÍ se usa, y el cobro va en DOS PASOS.** La versión anterior de este párrafo decía que "la pizarra ya no la usa, va directo contra `1.4.05.xx`" — **es falso, y las plantillas 19/20 son correctas, no diseño viejo.** El orden real, confirmado por el usuario, es **primero el dinero, después la aplicación**:
+>
+> 1. **Contabilidad confirma que el dinero llegó al banco** → asiento **transitorio**, plantilla 19:
+>    **D Banco(s) → H `2.3.01.15.01`**. *"Entró plata de Petro, todavía no sé de qué partícipes es."*
+>    **El dato bancario (banco, cuenta, número de transferencia, monto) pertenece a ESTE paso.**
+>    Puede haber **N transferencias** — la pizarra lo dice explícito y el ejemplo de §3.3 muestra dos bancos al Debe.
+> 2. **Se procesa el archivo Petro** → se reparte de la transitoria al resto, plantilla 20:
+>    **D `2.3.01.15.01` → H `1.4.05.05` / `1.4.05.10`**, cancelando las cuentas por cobrar que creó la apertura;
+>    y a continuación la **aplicación** (plantilla 21): D `2.3.02.05`/`2.3.02.10` → H cuentas reales.
+>
+> Ver la regla §5.11 para el detalle de qué existe hoy y qué falta construir.
 
 ### 3.4 Pagos manuales (foto IMG_0916/0917)
 
@@ -421,6 +433,21 @@ Las pizarras no desarrollaron asientos específicos para estos tres procesos, pe
 7. **Solo el CAPITAL se distribuye por bandas** (confirmado por el usuario 2026-08-25). Intereses, mora y seguros van a cuentas propias por producto, sin bandas.
 8. **Abonos a capital afectan cuota y plazo** y obligan a re-bandear el saldo.
 9. Los aportes cesantía/jubilación se manejan **agregados** en `1.4.05.05`/`2.3.02.05` (por cobrar/por aplicar) y **diferenciados** en `2.1.01.05.01`/`2.1.02.05.01` (pasivo real) y en las liquidaciones `2.3.01.05.01`/`2.3.01.10.01`.
+11. **El cobro de Petro se contabiliza en DOS PASOS, con cuenta transitoria** (decisión del usuario, 2026-08-28 — corrige lo que decía §3.3). Aplica al archivo Petro, que trae **aportes y cuotas de préstamo juntos** en un mismo descuento de rol y una misma transferencia.
+
+    | Paso | Cuándo | Asiento | Plantilla |
+    |---|---|---|---|
+    | 1 | **Contabilidad confirma que el dinero llegó al banco** | D Banco(s) → H `2.3.01.15.01` | alterno 19 |
+    | 2 | **Se procesa el archivo Petro** | D `2.3.01.15.01` → H `1.4.05.05`/`1.4.05.10`, y luego la aplicación a cuentas reales | alternos 20 y 21 |
+
+    Las plantillas 19/20 **son correctas y no se tocan**. El **dato bancario pertenece al paso 1**, y admite **N transferencias** por carga (la pizarra: *"Petro puede pagar con más de 1 transferencia"*; el ejemplo de §3.3 muestra dos bancos al Debe).
+
+    **Qué existe hoy y qué falta (verificado el 2026-08-28):**
+    - El acto del paso 1 **estaba diseñado desde el origen y nunca se conectó**: el rubro 166 `ASPEstadoCargaArchivoPetro` define `1 CARGADO, 2 VALIDADO, 3 APROBADO_CONTABILIDAD, 4 PROCESADO`, pero **ninguna clase lo usa** — el código real solo escribe `1` y `3`, y ese `3` significa "procesado" (los valores vivos están en `com.saa.rubros.CrdEstadoCargaArchivo`).
+    - `CRD.CRAR` tiene mapeadas `CRARUSCC` (usuario contabilidad que confirma), `CRARFCAC` (fecha de autorización de contabilidad) y `CRARNMTF` (número de transferencia), y **ninguna línea de código las escribe**. Son el andamiaje del "visto de contabilidad" de la pizarra, a medio construir. **Decisión (usuario, 2026-08-28): se reactivan** — el paso 1 es un acto explícito de contabilidad sobre la carga, no automático.
+    - `CRARNMTF` es **una sola** transferencia y no hay FK a cuenta bancaria: para soportar las N transferencias hace falta **una tabla hija de `CRAR`** con banco, cuenta, número y monto por transferencia.
+    - **`TSR.CobroTransferencia` (`TSR.CTRN`) quedó DESCARTADA como fuente.** Tiene los campos correctos, pero su javadoc dice *"es detalle de la entidad cobro"*: cuelga de `TSR.CBRO`, que arrastra `CierreCaja`, `CajaLogica`, `UsuarioPorCaja`, `Deposito` **y su propio `Asiento`**. Es el modelo de un cobro en ventanilla con cierre de caja, no el de una transferencia institucional mensual; usarlo obligaría a inventar una caja falsa y su `asiento` competiría con el de este flujo.
+
 10. **NO SE CIERRA UN MES SIN SU ARCHIVO PETRO CARGADO.** Regla de orden, decidida el 2026-08-25 (decisión D13) y de cumplimiento obligatorio — el propio usuario la calificó de *"extremadamente necesaria"*.
 
     **Por qué.** El lado aportes de ③ y ⑥ no se apoya en un documento de planilla emitida (no existe), sino en un cálculo: **esperado** = suma del aporte mensual de los partícipes activos (último `HistorialSueldo` en estado 99 de cada entidad en estado ACTIVO o ACTIVO_EN_MORA), **registrado** = filas de `CRD.APRT` tipos 9 y 11 del mes, y el neteo reversa la diferencia con piso en cero. Si el mes se cierra **antes** de cargar su archivo Petro, el registrado sale casi vacío y el sistema reversa como "no cobrado" algo que sí se va a cobrar.

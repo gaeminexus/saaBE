@@ -133,23 +133,52 @@ Fila `CBR.NXPE` para tipo `03` y columna `CBR.LQCS.LQCSLQCC` (FK a `PGS.LQCC`).
 
 ## 5. Avance
 
+> **Cerrado el 2026-08-28.** Las cuatro fases están completas en código (BE + FE) y los tres
+> scripts SQL corrieron en local y producción. Lo único que queda es probar en navegador lo que
+> todavía no se probó, y los opcionales de §6.
+
 | Fase | DDL | BACKEND | FRONTEND | Verificado por usuario |
 |---|---|---|---|---|
 | D estado de cuenta | n/a | n/a | HECHO (01 + 01b) | PROBADO 2026-08-27 en navegador; manual en manuales/ESTADO-CUENTA-TITULAR.md; queda aviso falso de "incompleto" |
-| A cheques | 01 + 03 ejecutados en local (UQ_PGTR_DTCH OK) | 02 y 02b hechos y revisados; PENDIENTE 02c (3 importantes) | prompt 03 en curso | pendiente |
-| B caja chica | 02 + 05 + 06 ejecutados | HECHO y revisado | HECHO | PROBADO 2026-08-27 de punta a punta; manual en manuales/CAJA-CHICA.md |
-| C liquidaciones | ⬜ cxc entregado | ⬜ prompt 06 entregado | ⬜ prompt 07 entregado | ⬜ |
+| A cheques | ✅ ejecutado en local y producción | ✅ **CERRADO 2026-08-28** — auditoría archivo por archivo confirmó 02 y 02b **100 % aplicados** (T1-T6, los 2 bloqueantes, 5 importantes y 8 menores). Ver nota sobre "02c" abajo | ✅ **CERRADO** — prompt 03 verificado punto por punto contra el código | Pendiente probar en navegador |
+| B caja chica | ✅ ejecutado en local y producción | HECHO y revisado | HECHO | PROBADO 2026-08-27 de punta a punta; manual en manuales/CAJA-CHICA.md |
+| C liquidaciones | ✅ `add-liquidacion-compra-emision.sql` ejecutado en local y producción | ✅ **CERRADO 2026-08-28** — auditoría confirmó los 9 hallazgos de §4.1 (4 bloqueantes, 4 importantes, 1 menor) y T1-T3 **todos resueltos** | ✅ **CERRADO** — prompt 07, las 7 tareas implementadas contra los contratos reales | Pendiente probar en navegador |
+
+### 5.1 La nota "PENDIENTE 02c (3 importantes)" era huérfana
+
+Este tablero arrastraba una nota que decía que faltaba un prompt `02c` con "3 importantes".
+**Verificado el 2026-08-28 y dado de baja:** se revisaron `git log`, los `TODO`/`FIXME` de los
+cuatro archivos núcleo de cheques, y la §7 de `CHEQUES.md` (cuyos pendientes son impresión Jasper y
+pantallas, ya fuera de alcance desde el diseño original). **No hay rastro de esos "3 importantes"
+en código, git ni documentación** — fue una intención de otra sesión que nunca se escribió, o una
+ronda de revisión ya resuelta sin actualizar el tablero. No bloquea nada.
+
+### 5.2 Un desvío del prompt 02b que quedó mejor que lo pedido
+
+**B2 (condición de carrera al tomar un cheque) se resolvió distinto a como pedía el prompt**, con
+razón técnica: Oracle no admite `FETCH FIRST` junto con `FOR UPDATE`, así que no se pudo usar
+`setLockMode` en el SELECT. En su lugar `ChequeServiceImpl.tomarSiguienteConLock` (~456-465) usa
+`em.refresh(cheque, LockModeType.PESSIMISTIC_WRITE)`, más la captura de la violación del índice
+único `UQ_PGTR_DTCH` en `PagoProgramadoServiceImpl.guardaPagoConCheque`. Mismo objetivo, mecanismo
+correcto — no es un desvío sin resolver.
+
+### 5.3 Nota sobre la validación de cuenta contable en liquidaciones
+
+`validarCuentasContablesLiquidacion` quedó **más estricta de lo que pedía el prompt**: bloquea con
+`PRODUCTOS_SIN_CLASIFICAR` y valida la cuenta del proveedor **sin** el fallback débil "sin filtro
+de rol" que `../cxp/ANALISIS-FALLBACK-CUENTA-CONTABLE-ROL.md` señalaba como riesgoso. Es
+deliberado y correcto.
 
 ---
 
 ## 6. Pendientes del usuario
 
-**Bloqueantes (sin esto los agentes no pueden avanzar):**
-1. Ejecutar en **local** `tsr/sql/01-cheques-pago-programado.sql` antes de lanzar el prompt 02 (BE cheques).
-2. Ejecutar en **local** `tsr/sql/02-caja-chica.sql` (bloques 1-5; el 6 NO) antes del prompt 04.
-3. Ejecutar en **local** `cxc/sql/add-liquidacion-compra-emision.sql` antes del prompt 06. En producción, confirmar antes cuál es el `PTOEMISION` correcto para la fila `03`.
+**Bloqueantes — ✅ los tres RESUELTOS (2026-08-28), ya corrieron en local y producción:**
+1. ~~`tsr/sql/01-cheques-pago-programado.sql`~~ — ejecutado.
+2. ~~`tsr/sql/02-caja-chica.sql` (bloques 1-5)~~ — ejecutado. El bloque 6 sigue aparte, ver ítem 10.
+3. ~~`cxc/sql/add-liquidacion-compra-emision.sql`~~ — ejecutado.
 
-**Decidibles (hay una recomendación tomada; si no se objeta, se sigue):**
+**Decidibles (hay una recomendación tomada; si no se objeta, se sigue) — SIGUEN ABIERTOS:**
 4. Caja chica contabiliza **cada gasto en el acto** (no al reponer). Es lo que ya ocurre hoy con las cuentas 428/429 y mantiene saldo contable = saldo de caja.
 5. La cuenta por pagar de la liquidación emitida nace en **CXP** (no en CXC). Alternativa descartada: contabilizar y pagar desde CXC sin documento CXP.
 6. Pago con cheque contabiliza **al girar** (no al entregar). Alternativa: contabilizar en la entrega — implicaría que un cheque impreso no esté en libros.

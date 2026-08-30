@@ -7,6 +7,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import com.saa.basico.ejb.DetalleRubroDaoService;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.crd.dao.AporteDaoService;
@@ -15,6 +16,10 @@ import com.saa.ejb.crd.dao.PagoAporteDaoService;
 import com.saa.ejb.crd.dao.TipoAporteDaoService;
 import com.saa.ejb.crd.service.AporteService;
 import com.saa.ejb.crd.service.SaldoAporteService;
+import com.saa.ejb.crd.service.VigenciaContratoService;
+import com.saa.ejb.crd.service.dto.EstadoCuentaAportesDTO;
+import com.saa.ejb.crd.service.dto.MovimientoEstadoCuentaDTO;
+import com.saa.ejb.crd.service.dto.PeriodoEstadoCuentaDTO;
 import com.saa.ejb.crd.service.dto.ResultadoRegistroAporte;
 import com.saa.ejb.crd.service.dto.SolicitudRegistroAporte;
 import com.saa.model.crd.Aporte;
@@ -22,8 +27,11 @@ import com.saa.model.crd.Entidad;
 import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.model.crd.PagoAporte;
 import com.saa.model.crd.TipoAporte;
+import com.saa.model.scp.DetalleRubro;
+import com.saa.rubros.CrdTipoMovimientoAporte;
 import com.saa.rubros.Estado;
 import com.saa.rubros.EstadoCuotaPrestamo;
+import com.saa.rubros.Rubros;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -50,6 +58,12 @@ public class AporteServiceImpl implements AporteService {
 
     @EJB
     private SaldoAporteService saldoAporteService;
+
+    @EJB
+    private VigenciaContratoService vigenciaContratoService;
+
+    @EJB
+    private DetalleRubroDaoService detalleRubroDaoService;
 
     /**
      * Recupera un registro de Aporte por su ID.
@@ -258,8 +272,9 @@ public class AporteServiceImpl implements AporteService {
             + (solicitud.getObservacion() != null && !solicitud.getObservacion().trim().isEmpty()
                 ? " - " + solicitud.getObservacion().trim() : ""), MAX_BYTES_GLOSA);
 
-        // Fila POSITIVA y YA PAGADA: sube el saldo disponible y queda fuera del FIFO petro
-        // (selectMinAporteConSaldo exige saldo > 0.01 y estado PARCIAL).
+        // Fila POSITIVA y YA PAGADA: en el modelo vigente (Fase 1 del plan de devengo de
+        // aportes, D1) el saldo del partícipe es SUM(valor) y toda fila nace pagada, así que
+        // esta fila suma directo al saldo sin ningún abono posterior.
         Aporte aporte = new Aporte();
         aporte.setEntidad(entidad);
         aporte.setFilial(entidad.getFilial());
@@ -270,6 +285,9 @@ public class AporteServiceImpl implements AporteService {
         aporte.setEstado((long) EstadoCuotaPrestamo.PAGADA);
         aporte.setIdAsoprep(null);
         aporte.setFechaTransaccion(fechaHora);
+        aporte.setPeriodoDevengo(solicitud.getPeriodoDevengo() != null
+            ? solicitud.getPeriodoDevengo().withDayOfMonth(1) : fecha.withDayOfMonth(1));
+        aporte.setTipoMovimiento((long) CrdTipoMovimientoAporte.AJUSTE_MANUAL);
         aporte.setGlosa(glosa);
         aporte.setUsuarioRegistro(solicitud.getUsuario());
         aporte.setFechaRegistro(LocalDateTime.now());
@@ -306,6 +324,185 @@ public class AporteServiceImpl implements AporteService {
         System.out.println("  ✅ Aporte registrado - APRT " + aporte.getCodigo()
             + ", PGAP " + pagoAporte.getCodigo() + " - Valor: $" + valor
             + " - Nuevo saldo del tipo " + tipo.getCodigo() + ": $" + saldoTipo);
+
+        return resultado;
+    }
+
+    /** Tipos de aporte que cubre el estado de cuenta: 9 jubilación, 11 cesantía. */
+    private static final List<Long> TIPOS_APORTE_ESTADO_CUENTA = java.util.Arrays.asList(9L, 11L);
+
+    @Override
+    public EstadoCuentaAportesDTO estadoCuenta(Long idEntidad, LocalDate desde, LocalDate hasta) throws Throwable {
+        System.out.println("AporteService.estadoCuenta - Entidad: " + idEntidad
+            + " - Desde: " + desde + " - Hasta: " + hasta);
+
+        if (idEntidad == null) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": idEntidad es obligatorio");
+        }
+        if (desde == null || hasta == null) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": desde y hasta son obligatorios");
+        }
+        if (hasta.isBefore(desde)) {
+            throw new IncomeException(ERR_FECHA_INVALIDA + ": hasta no puede ser anterior a desde");
+        }
+
+        Entidad entidad = entidadDaoService.find(new Entidad(), idEntidad);
+        if (entidad == null) {
+            throw new IncomeException(ERR_ENTIDAD_NO_ENCONTRADA + ": no existe el partícipe " + idEntidad);
+        }
+
+        LocalDate desdeMes = desde.withDayOfMonth(1);
+        LocalDate hastaMes = hasta.withDayOfMonth(1);
+        LocalDate mesActual = LocalDate.now().withDayOfMonth(1);
+
+        // aportado(m,tipo) agregado — UNA sola consulta para todo el rango (sin selectAll()).
+        java.util.Map<java.util.AbstractMap.SimpleEntry<LocalDate, Long>, Double> aportadoPorClave =
+            new java.util.HashMap<>();
+        List<Object[]> agregados = aporteDaoService.sumValorPorEntidadTipoYRangoDevengo(idEntidad, desdeMes, hastaMes);
+        if (agregados != null) {
+            for (Object[] fila : agregados) {
+                LocalDate periodo = (LocalDate) fila[0];
+                Long idTipo = (Long) fila[1];
+                Double suma = (Double) fila[2];
+                if (periodo != null && idTipo != null) {
+                    aportadoPorClave.put(new java.util.AbstractMap.SimpleEntry<>(periodo, idTipo),
+                        suma != null ? suma : 0.0);
+                }
+            }
+        }
+
+        // tipoMovimientoTexto sale del rubro 235, no de un switch: una sola consulta para
+        // sus (a lo sumo) seis detalles.
+        java.util.Map<Long, String> textoTipoMovimiento = new java.util.HashMap<>();
+        List<DetalleRubro> detallesTipoMovimiento =
+            detalleRubroDaoService.selectByCodigoAlternoRubro(Rubros.CRD_TIPO_MOVIMIENTO_APORTE, 1L);
+        if (detallesTipoMovimiento != null) {
+            for (DetalleRubro detalle : detallesTipoMovimiento) {
+                if (detalle.getCodigoAlterno() != null) {
+                    textoTipoMovimiento.put(detalle.getCodigoAlterno(), detalle.getDescripcion());
+                }
+            }
+        }
+
+        // Movimientos crudos — la segunda y última consulta. Incluye los de periodo NULL
+        // (histórico sin backfillear / retiros de saldo): esos nunca se esconden.
+        java.util.Map<Long, String> nombreTipoAporte = new java.util.HashMap<>();
+        java.util.Map<java.util.AbstractMap.SimpleEntry<LocalDate, Long>, List<MovimientoEstadoCuentaDTO>>
+            movimientosPorClave = new java.util.LinkedHashMap<>();
+
+        List<Object[]> movimientosCrudos =
+            aporteDaoService.selectMovimientosPorEntidadYRangoDevengo(idEntidad, desdeMes, hastaMes);
+        if (movimientosCrudos != null) {
+            for (Object[] fila : movimientosCrudos) {
+                LocalDate periodo = (LocalDate) fila[0];
+                Long idTipo = (Long) fila[1];
+                Long idAporte = (Long) fila[2];
+                LocalDateTime fechaTransaccion = (LocalDateTime) fila[3];
+                Double valor = (Double) fila[4];
+                Long tipoMovimiento = (Long) fila[5];
+                String glosa = (String) fila[6];
+
+                if (idTipo != null && !nombreTipoAporte.containsKey(idTipo)) {
+                    TipoAporte tipo = tipoAporteDaoService.find(new TipoAporte(), idTipo);
+                    nombreTipoAporte.put(idTipo, tipo != null ? tipo.getNombre() : null);
+                }
+
+                MovimientoEstadoCuentaDTO movimiento = new MovimientoEstadoCuentaDTO();
+                movimiento.setIdAporte(idAporte);
+                movimiento.setFechaTransaccion(fechaTransaccion);
+                movimiento.setValor(valor);
+                movimiento.setTipoMovimiento(tipoMovimiento);
+                movimiento.setTipoMovimientoTexto(
+                    tipoMovimiento != null ? textoTipoMovimiento.get(tipoMovimiento) : null);
+                movimiento.setGlosa(glosa);
+
+                java.util.AbstractMap.SimpleEntry<LocalDate, Long> clave =
+                    new java.util.AbstractMap.SimpleEntry<>(periodo, idTipo);
+                movimientosPorClave.computeIfAbsent(clave, k -> new java.util.ArrayList<>()).add(movimiento);
+            }
+        }
+
+        java.time.format.DateTimeFormatter formatoPeriodo = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM");
+        List<PeriodoEstadoCuentaDTO> periodos = new java.util.ArrayList<>();
+        double totalFaltante = 0.0;
+
+        // Recorrido del CALENDARIO (todo mes en [desdeMes,hastaMes] x {9,11}), no sólo los
+        // meses con movimientos: si nada se aportó ese mes, igual hay que poder mostrar
+        // "SIN APORTE" cuando algo se esperaba. Sólo se descarta el mes cuando ni se esperó
+        // ni se aportó nada.
+        for (LocalDate mes = desdeMes; !mes.isAfter(hastaMes); mes = mes.plusMonths(1)) {
+            for (Long idTipo : TIPOS_APORTE_ESTADO_CUENTA) {
+                java.util.AbstractMap.SimpleEntry<LocalDate, Long> clave =
+                    new java.util.AbstractMap.SimpleEntry<>(mes, idTipo);
+
+                double esperado = vigenciaContratoService.esperadoPorEntidad(idEntidad, idTipo, mes);
+                double aportado = aportadoPorClave.getOrDefault(clave, 0.0);
+                if (esperado <= 0.01 && aportado <= 0.01) {
+                    continue;
+                }
+                double faltante = Math.max(0.0, esperado - aportado);
+
+                String estado;
+                if (mes.isAfter(mesActual) && aportado > 0.01) {
+                    estado = "ANTICIPADO";
+                } else if (faltante <= 0.01) {
+                    estado = "COMPLETO";
+                } else if (aportado > 0.01) {
+                    estado = "PARCIAL";
+                } else {
+                    estado = "SIN APORTE";
+                }
+
+                PeriodoEstadoCuentaDTO periodoDto = new PeriodoEstadoCuentaDTO();
+                periodoDto.setPeriodo(mes.format(formatoPeriodo));
+                periodoDto.setIdTipoAporte(idTipo);
+                periodoDto.setNombreTipoAporte(nombreTipoAporte.get(idTipo));
+                periodoDto.setEsperado(redondear(esperado));
+                periodoDto.setAportado(redondear(aportado));
+                periodoDto.setFaltante(redondear(faltante));
+                periodoDto.setEstado(estado);
+                periodoDto.setMovimientos(
+                    movimientosPorClave.getOrDefault(clave, java.util.Collections.emptyList()));
+
+                totalFaltante += faltante;
+                periodos.add(periodoDto);
+            }
+        }
+
+        // Grupo(s) "SIN PERIODO" — uno por tipo que tenga movimientos sin devengo. Nunca se
+        // esconden, aunque no exista ningún mes del calendario que los reclame.
+        for (java.util.Map.Entry<java.util.AbstractMap.SimpleEntry<LocalDate, Long>,
+                List<MovimientoEstadoCuentaDTO>> entrada : movimientosPorClave.entrySet()) {
+            if (entrada.getKey().getKey() != null) {
+                continue;
+            }
+            Long idTipo = entrada.getKey().getValue();
+            double aportadoSinPeriodo = 0.0;
+            for (MovimientoEstadoCuentaDTO movimiento : entrada.getValue()) {
+                aportadoSinPeriodo += movimiento.getValor() != null ? movimiento.getValor() : 0.0;
+            }
+
+            PeriodoEstadoCuentaDTO periodoDto = new PeriodoEstadoCuentaDTO();
+            periodoDto.setPeriodo(null);
+            periodoDto.setIdTipoAporte(idTipo);
+            periodoDto.setNombreTipoAporte(nombreTipoAporte.get(idTipo));
+            periodoDto.setEsperado(0.0);
+            periodoDto.setAportado(redondear(aportadoSinPeriodo));
+            periodoDto.setFaltante(0.0);
+            periodoDto.setEstado("SIN PERIODO");
+            periodoDto.setMovimientos(entrada.getValue());
+            periodos.add(periodoDto);
+        }
+
+        EstadoCuentaAportesDTO resultado = new EstadoCuentaAportesDTO();
+        resultado.setIdEntidad(entidad.getCodigo());
+        resultado.setIdentificacion(entidad.getNumeroIdentificacion());
+        resultado.setRazonSocial(entidad.getRazonSocial());
+        resultado.setPeriodos(periodos);
+        resultado.setTotalFaltante(redondear(totalFaltante));
+
+        System.out.println("  Estado de cuenta - Entidad: " + idEntidad + " - Periodos: " + periodos.size()
+            + " - Total faltante: $" + resultado.getTotalFaltante());
 
         return resultado;
     }

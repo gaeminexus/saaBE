@@ -22,6 +22,7 @@ import com.saa.ejb.cnt.service.PeriodoService;
 import com.saa.ejb.tsr.dao.ConciliacionContableDaoService;
 import com.saa.ejb.tsr.dao.ControlExtractoBancarioDaoService;
 import com.saa.ejb.tsr.dao.CuentaBancariaDaoService;
+import com.saa.ejb.tsr.dao.DetalleTransitoDaoService;
 import com.saa.ejb.tsr.dao.ExtractoBancarioDaoService;
 import com.saa.ejb.tsr.dao.GrupoConciliacionAsientoDaoService;
 import com.saa.ejb.tsr.dao.GrupoConciliacionExtractoDaoService;
@@ -38,6 +39,7 @@ import com.saa.model.cnt.Periodo;
 import com.saa.model.tsr.ConciliacionContable;
 import com.saa.model.tsr.CuentaBancaria;
 import com.saa.model.tsr.DetalleExtractoBancario;
+import com.saa.model.tsr.DetalleTransito;
 import com.saa.model.tsr.GrupoConciliacionAsiento;
 import com.saa.model.tsr.GrupoConciliacionContable;
 import com.saa.model.tsr.GrupoConciliacionExtracto;
@@ -47,6 +49,7 @@ import com.saa.model.tsr.SugerenciaConciliacionContable;
 import com.saa.rubros.ASPEstadoRevisionExtracto;
 import com.saa.rubros.Estado;
 import com.saa.rubros.EstadoConciliacionContable;
+import com.saa.rubros.EstadoPartidaTransito;
 import com.saa.rubros.Rubros;
 import com.saa.rubros.TipoMovimientoConciliacion;
 
@@ -126,6 +129,9 @@ public class ConciliacionContableMatchServiceImpl implements ConciliacionContabl
 
     @EJB
     private DetalleRubroService detalleRubroService;
+
+    @EJB
+    private DetalleTransitoDaoService detalleTransitoDaoService;
 
     @Override
     public List<DetalleExtractoBancario> obtenerPendientesExtracto(Long idCuentaBancaria, Long idPeriodo)
@@ -269,8 +275,46 @@ public class ConciliacionContableMatchServiceImpl implements ConciliacionContabl
                 .collect(Collectors.toSet());
         cerrarMovimientosBanco(idsAsiento, grupoGuardado.getFechaConciliacion());
 
+        // Partidas en tránsito (TSR.DTCN, ver DISENO-CONCILIACION-PARTIDAS-EN-TRANSITO.md §7):
+        // si alguna de las filas que se acaban de conciliar era una partida arrastrada de un
+        // cierre anterior, queda Saldada. No es parte del matching (montos/fechas/tolerancia,
+        // que no se tocan): es solo el registro de que esa partida ya encontró su contraparte.
+        saldarPartidasTransitoDeclaradas(detallesExtracto, idsAsiento);
+
         conciliacionContableService.recalcularContadores(conciliacion.getCodigo());
         return grupoGuardado;
+    }
+
+    /**
+     * Marca como Saldada cualquier TSR.DTCN Pendiente cuyo origen (MVCB o DEXB) acaba de
+     * conciliarse en este grupo.
+     *
+     * <p><b>DTCNCNSL (el cierre que saldó) queda deliberadamente en null aquí.</b> Ese campo
+     * referencia TSR.CNCL, y este método corre desde el matching N:M ordinario
+     * (GrupoConciliacionContable), que no crea ni conoce ningún TSR.CNCL - el único lugar que sí
+     * crea un TSR.CNCL es el nuevo servicio de cierre (T2). No hay ningún "cierre en curso" que
+     * asignarle en este punto: <code>DTCNESTD=Saldada</code> por sí solo ya dice que la partida
+     * encontró su contraparte, que es lo único que <code>verificar</code> necesita para no
+     * volver a exigirla como pendiente sin declarar.</p>
+     */
+    private void saldarPartidasTransitoDeclaradas(List<DetalleExtractoBancario> detallesExtracto,
+            Set<Long> idsAsiento) throws Throwable {
+        for (DetalleExtractoBancario detalle : detallesExtracto) {
+            DetalleTransito partida = detalleTransitoDaoService.selectPendientePorDetalleExtracto(detalle.getCodigo());
+            if (partida != null) {
+                partida.setEstado(Long.valueOf(EstadoPartidaTransito.SALDADA));
+                detalleTransitoDaoService.save(partida, partida.getCodigo());
+            }
+        }
+        // Ancla en DetalleAsiento desde el 2026-08-27 (§7bis): se busca por asiento, no por
+        // MovimientoBanco - ver la nota en la entidad DetalleTransito.
+        for (Long idAsiento : idsAsiento) {
+            DetalleTransito partida = detalleTransitoDaoService.selectPendientePorAsiento(idAsiento);
+            if (partida != null) {
+                partida.setEstado(Long.valueOf(EstadoPartidaTransito.SALDADA));
+                detalleTransitoDaoService.save(partida, partida.getCodigo());
+            }
+        }
     }
 
     /**
@@ -415,9 +459,39 @@ public class ConciliacionContableMatchServiceImpl implements ConciliacionContabl
             detalleExtractoBancarioService.saveSingle(detalle);
         }
 
+        // Simétrico de saldarPartidasTransitoDeclaradas: si deshacer este grupo implica
+        // deshacer el saldo de una partida en tránsito, esta vuelve a Pendiente - reaparece en
+        // selectPendientes como arrastrada, igual que antes de conciliarse.
+        reabrirPartidasTransitoDeclaradas(enlacesExtracto, idsAsiento);
+
         grupo.setEstado((long) Estado.INACTIVO);
         grupoConciliacionContableService.saveSingle(grupo);
         conciliacionContableService.recalcularContadores(grupo.getConciliacionContable().getCodigo());
+    }
+
+    /**
+     * Inverso de {@link #saldarPartidasTransitoDeclaradas}: cualquier TSR.DTCN Saldada cuyo
+     * origen (MVCB o DEXB) pertenecía a este grupo vuelve a Pendiente.
+     */
+    private void reabrirPartidasTransitoDeclaradas(List<GrupoConciliacionExtracto> enlacesExtracto,
+            Set<Long> idsAsiento) throws Throwable {
+        for (GrupoConciliacionExtracto enlace : enlacesExtracto) {
+            DetalleTransito partida = detalleTransitoDaoService
+                    .selectPorDetalleExtracto(enlace.getDetalleExtractoBancario().getCodigo());
+            if (partida != null && Long.valueOf(EstadoPartidaTransito.SALDADA).equals(partida.getEstado())) {
+                partida.setEstado(Long.valueOf(EstadoPartidaTransito.PENDIENTE));
+                detalleTransitoDaoService.save(partida, partida.getCodigo());
+            }
+        }
+        // Ancla en DetalleAsiento desde el 2026-08-27 (§7bis): se busca por asiento, no por
+        // MovimientoBanco - ver la nota en la entidad DetalleTransito.
+        for (Long idAsiento : idsAsiento) {
+            DetalleTransito partida = detalleTransitoDaoService.selectPorAsiento(idAsiento);
+            if (partida != null && Long.valueOf(EstadoPartidaTransito.SALDADA).equals(partida.getEstado())) {
+                partida.setEstado(Long.valueOf(EstadoPartidaTransito.PENDIENTE));
+                detalleTransitoDaoService.save(partida, partida.getCodigo());
+            }
+        }
     }
 
     @Override

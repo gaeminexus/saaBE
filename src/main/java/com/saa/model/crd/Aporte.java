@@ -1,6 +1,7 @@
 package com.saa.model.crd;
 
 import java.io.Serializable;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import jakarta.persistence.Basic;
@@ -67,6 +68,36 @@ public class Aporte implements Serializable {
     private TipoAporte tipoAporte;
 
     /**
+     * FK - Carga Petro que generó este aporte (CRD.CRAR). NULL si no vino de una carga
+     * (ajuste manual, devolución, reverso) o si es anterior al 2026-08-28 — no se hizo
+     * backfill de lo histórico. Distinta pregunta de {@link #tipoMovimiento} (APRTTPMV,
+     * rubro 235): esta dice DE QUÉ ARCHIVO salió, esa dice la NATURALEZA del movimiento — no
+     * mezclar los dos al filtrar. Ver docs/logica-negocio/crd/sql/DDL-TRAZABILIDAD-CARGA-PETRO.sql.
+     *
+     * <p>⚠️ ES LA COLUMNA GOBERNADA (FK + índice), pero al 2026-08-29 TODAVÍA NO ES LA
+     * FUENTE que leen los servicios: {@link #idAsoprep} (APRTIDAS) es la trazabilidad de
+     * carga preexistente y sigue siendo la que se consulta en vivo. Esta columna se llena
+     * en cargas nuevas desde ahora, en paralelo, para poder migrar el LECTOR más adelante
+     * sin tener que reprocesar nada — ver el javadoc de {@link #idAsoprep} para el detalle
+     * de la transición y qué la habilita.</p>
+     */
+    @ManyToOne
+    @JoinColumn(name = "CRARCDGO", referencedColumnName = "CRARCDGO")
+    private CargaArchivo cargaArchivo;
+
+    /**
+     * FK - Devolución de aportes que generó esta fila NEGATIVA (CRD.DVAP). NULL en cualquier
+     * fila que no sea de una devolución (tipoMovimiento distinto de DEVOLUCION). Se setea en
+     * TODAS las filas que crea {@code DevolucionAporteServiceImpl.crearFilaNegativaDevolucion}
+     * — cuando el reparto por período de devengo genera varias filas para el mismo (devolución,
+     * tipo), CADA UNA lleva esta FK, a diferencia de {@code CRD.DDVA.DDVAAPRT} que solo
+     * referencia la primera. Ver DevolucionAporteService#obtenerIdDevolucionPorAporte.
+     */
+    @ManyToOne
+    @JoinColumn(name = "APRTIDDV", referencedColumnName = "DVAPCDGO")
+    private DevolucionAporte devolucion;
+
+    /**
      * Fecha de transacción.
      */
     @Basic
@@ -102,7 +133,19 @@ public class Aporte implements Serializable {
     private Double saldo;
 
     /**
-     * ID Sistema ASOPREP.
+     * Código de la {@code CargaArchivo} (CRD.CRAR) que generó este aporte. Verificado
+     * 2026-08-29: es la trazabilidad de carga que YA EXISTÍA antes de {@link #cargaArchivo}/
+     * {@code CRARCDGO}, y hoy SIGUE SIENDO LA FUENTE VIVA — la usan
+     * {@code AporteDaoServiceImpl.selectByEntidadTipoYCarga} (busca por
+     * {@code idAsoprep = :idAsoprep}) y {@code selectAporteAdelantado}
+     * ({@code idAsoprep <> :idAsoprep}), y se pone explícitamente en {@code NULL} para
+     * aportes que no vienen de una carga ({@code AporteServiceImpl}, {@code DevolucionAporteServiceImpl},
+     * {@code ProcesoPagoPrestamoServiceImpl}) — misma semántica que {@link #cargaArchivo}.
+     * <b>NO CONFUNDIR con {@code Prestamo.idAsoprep}</b> (PRSTIDAS): mismo nombre, tabla y
+     * significado totalmente distintos — ese es el número de operación del préstamo en
+     * ASOPREP (G46-G49, CCPM), sin relación con este campo.
+     *
+     * @see #cargaArchivo
      */
     @Basic
     @Column(name = "APRTIDAS")
@@ -128,6 +171,28 @@ public class Aporte implements Serializable {
     @Basic
     @Column(name = "APRTIDST")
     private Long estado;
+
+    /**
+     * Mes al que pertenece el aporte (siempre el primer día del mes).
+     *
+     * NO es la fecha contable: esa sigue siendo {@link #fechaTransaccion} (APRTFCTR), la
+     * fecha de CAJA, que no cambia de significado con el devengo y es la que sigue leyendo
+     * contabilidad. {@code NULL} = no aplica (movimiento que no es aporte mensual) o dato
+     * anterior a la Fase 2 del plan de devengo de aportes (2026-08-27): las consultas de
+     * cartera deben leer siempre {@code NVL(APRTPRDV, TRUNC(APRTFCTR,'MM'))}, nunca la
+     * columna sola.
+     */
+    @Basic
+    @Column(name = "APRTPRDV")
+    private LocalDate periodoDevengo;
+
+    /**
+     * Naturaleza del movimiento. Rubro 235 ({@code CRD_TIPO_MOVIMIENTO_APORTE}) — ver
+     * {@link com.saa.rubros.CrdTipoMovimientoAporte}.
+     */
+    @Basic
+    @Column(name = "APRTTPMV")
+    private Long tipoMovimiento;
 
     // ============================================================
     // Getters y Setters
@@ -243,6 +308,38 @@ public class Aporte implements Serializable {
 
     public void setEstado(Long estado) {
         this.estado = estado;
+    }
+
+    public LocalDate getPeriodoDevengo() {
+        return periodoDevengo;
+    }
+
+    public void setPeriodoDevengo(LocalDate periodoDevengo) {
+        this.periodoDevengo = periodoDevengo;
+    }
+
+    public Long getTipoMovimiento() {
+        return tipoMovimiento;
+    }
+
+    public void setTipoMovimiento(Long tipoMovimiento) {
+        this.tipoMovimiento = tipoMovimiento;
+    }
+
+    public CargaArchivo getCargaArchivo() {
+        return cargaArchivo;
+    }
+
+    public void setCargaArchivo(CargaArchivo cargaArchivo) {
+        this.cargaArchivo = cargaArchivo;
+    }
+
+    public DevolucionAporte getDevolucion() {
+        return devolucion;
+    }
+
+    public void setDevolucion(DevolucionAporte devolucion) {
+        this.devolucion = devolucion;
     }
 }
 

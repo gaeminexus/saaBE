@@ -128,6 +128,13 @@ public class PagoProgramadoRest {
      *   "observacion": "Pago factura agosto"
      * }
      *
+     * <b>"idCuentaBancariaOrigen" es opcional desde el 2026-08-27</b> (punto 14, ver
+     * docs/logica-negocio/pagos/PLAN-REDISENO-APROBACION-PAGOS.md): si se omite (o viene
+     * null), el pago nace en estado POR_APROBAR (0), sin cuenta ni forma de pago — aparece
+     * en {@code GET /pgtr/porAprobar} hasta que tesorería lo apruebe con
+     * {@code POST /pgtr/aprobar}. Con cuenta, el comportamiento no cambió: nace REGISTRADO
+     * (o CONFIRMADO con cheque/débito automático), como siempre.
+     *
      * Para un pago que el banco ya debitó por convenio se agregan:
      * {
      *   "debitoAutomatico": true,
@@ -161,9 +168,9 @@ public class PagoProgramadoRest {
             String referencia   = (String) datos.get("referencia");
             Long formaPago      = toLong(datos.get("formaPago"));
 
-            if (idFactura == null || idCuentaOrigen == null || valor == null || idEmpresa == null) {
+            if (idFactura == null || valor == null || idEmpresa == null) {
                 return Response.status(Response.Status.BAD_REQUEST)
-                        .entity("Debe enviar idFacturaCompra, idCuentaBancariaOrigen, valor e idEmpresa.")
+                        .entity("Debe enviar idFacturaCompra, valor e idEmpresa.")
                         .type(MediaType.APPLICATION_JSON).build();
             }
 
@@ -175,6 +182,118 @@ public class PagoProgramadoRest {
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al registrar el pago: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Bandeja de pagos POR_APROBAR (punto 14). Proyección, no la entidad — ver
+     * docs/estandar/ESTANDAR-PROYECCIONES-EN-LISTADOS.md.
+     * @param idEmpresa : Id de la empresa (obligatorio)
+     * @param origen    : OrigenPagoCxp (FACTURA_COMPRA, EGRESO_TESORERIA, ANTICIPO_PROVEEDOR)
+     *                    u OrigenPagoExterno (CRD_DEVOLUCION_APORTE, TSR_CAJA_CHICA,
+     *                    RHH_ANTICIPO_EMPLEADO); opcional, sin filtro si se omite
+     * @param desde     : Fecha solicitada desde, yyyy-MM-dd (opcional)
+     * @param hasta     : Fecha solicitada hasta, yyyy-MM-dd (opcional)
+     */
+    @GET
+    @Path("/porAprobar")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response porAprobar(@QueryParam("idEmpresa") Long idEmpresa,
+            @QueryParam("origen") String origen,
+            @QueryParam("desde") String desde,
+            @QueryParam("hasta") String hasta) {
+        System.out.println("LLEGA AL SERVICIO GET /pgtr/porAprobar");
+        try {
+            if (idEmpresa == null) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity("Debe enviar idEmpresa.")
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
+            List<com.saa.model.cxp.PagoPorAprobar> lista =
+                    pagoProgramadoService.porAprobar(idEmpresa, origen, desde, hasta);
+            return Response.status(Response.Status.OK).entity(lista)
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener la bandeja de pagos por aprobar: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Disponibilidad real de una cuenta bancaria a una fecha (punto 14, fase 3): saldo
+     * contable, comprometido (pagos REGISTRADO/EN_ARCHIVO de esa cuenta) y disponible = saldo
+     * − comprometido. Ver docs/logica-negocio/pagos/PLAN-REDISENO-APROBACION-PAGOS.md §7.
+     *
+     * GET /rest/pgtr/disponibilidad/4?fecha=2026-08-28
+     *
+     * @param idCuenta : Id de la cuenta bancaria
+     * @param fecha    : Fecha de corte, yyyy-MM-dd (opcional, vacío = hoy)
+     */
+    @GET
+    @Path("/disponibilidad/{idCuenta}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response disponibilidad(@PathParam("idCuenta") Long idCuenta,
+            @QueryParam("fecha") String fecha) {
+        System.out.println("LLEGA AL SERVICIO GET /pgtr/disponibilidad/" + idCuenta);
+        try {
+            Map<String, Object> resultado = pagoProgramadoService.disponibilidad(idCuenta, fecha);
+            return Response.status(Response.Status.OK).entity(resultado)
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("Error al calcular la disponibilidad: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Aprueba en bloque los pagos POR_APROBAR indicados: asigna cuenta bancaria y forma de
+     * pago, gira el cheque si formaPago=3 y deja cada pago REGISTRADO (transferencia) o
+     * CONFIRMADO (cheque o débito automático, contabilizando en el acto). Punto 14, ver
+     * docs/logica-negocio/pagos/PLAN-REDISENO-APROBACION-PAGOS.md.
+     *
+     * <b>No valida disponibilidad de saldo todavía</b> (fase 3, pendiente de decidir de
+     * dónde sale el saldo bancario confiable — ver
+     * docs/logica-negocio/tsr/DISENO-CONCILIACION-PARTIDAS-EN-TRANSITO.md §7bis).
+     *
+     * Body esperado:
+     * {
+     *   "idsPagos": [21, 22, 23],
+     *   "idCuentaBancaria": 4,
+     *   "formaPago": 2,
+     *   "fechaPago": "2026-08-27",
+     *   "idUsuario": 5
+     * }
+     * "formaPago": 2=Transferencia, 3=Cheque, 4=Débito automático (1=Efectivo no soportado).
+     */
+    @POST
+    @Path("/aprobar")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response aprobar(Map<String, Object> datos) {
+        System.out.println("LLEGA AL SERVICIO POST /pgtr/aprobar");
+        try {
+            List<Long> idsPagos = toLongList((datos != null) ? datos.get("idsPagos") : null);
+            Long idCuentaBancaria = (datos != null) ? toLong(datos.get("idCuentaBancaria")) : null;
+            Long formaPago = (datos != null) ? toLong(datos.get("formaPago")) : null;
+            String fechaPago = (datos != null) ? (String) datos.get("fechaPago") : null;
+            Long idUsuario = (datos != null) ? toLong(datos.get("idUsuario")) : null;
+
+            if (idsPagos.isEmpty() || idCuentaBancaria == null || formaPago == null) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity("Debe enviar idsPagos, idCuentaBancaria y formaPago.")
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
+
+            Map<String, Object> resultado = pagoProgramadoService.aprobar(idsPagos, idCuentaBancaria,
+                    formaPago, fechaPago, idUsuario);
+            return Response.status(Response.Status.OK).entity(resultado)
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("Error al aprobar los pagos: " + e.getMessage())
                     .type(MediaType.APPLICATION_JSON).build();
         }
     }

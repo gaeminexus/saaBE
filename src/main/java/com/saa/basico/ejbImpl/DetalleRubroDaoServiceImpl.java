@@ -237,4 +237,37 @@ public class DetalleRubroDaoServiceImpl extends EntityDaoImpl<DetalleRubro> impl
 		return (Double) query.getSingleResult();
 	}
 
+	@Override
+	public int actualizarValorNumericoByRubAltDetAlt(int codigoAlternoRubro, int codigoAlternoDetalle,
+			Double valorNumerico) throws Throwable {
+		System.out.println("actualizarValorNumericoByRubAltDetAlt con codigoAlternoRubro: " + codigoAlternoRubro
+				+ " y codigoAlternoDetalle: " + codigoAlternoDetalle + " - nuevo valor: " + valorNumerico);
+		Query query = em.createQuery(" update   DetalleRubro t " +
+				" set      t.valorNumerico = :valorNumerico " +
+				" where    t.rubro.codigoAlterno = :codigoAlternoRubro " +
+				" 			and   t.codigoAlterno = :codigoAlternoDetalle ");
+		query.setParameter("valorNumerico", valorNumerico);
+		query.setParameter("codigoAlternoRubro", Long.valueOf(codigoAlternoRubro));
+		query.setParameter("codigoAlternoDetalle", Long.valueOf(codigoAlternoDetalle));
+		return query.executeUpdate();
+	}
+
+	@Override
+	public int actualizarValorNumericoYAlfanumericoByRubAltDetAlt(int codigoAlternoRubro, int codigoAlternoDetalle,
+			Double valorNumerico, String valorAlfanumerico) throws Throwable {
+		System.out.println("actualizarValorNumericoYAlfanumericoByRubAltDetAlt con codigoAlternoRubro: "
+				+ codigoAlternoRubro + " y codigoAlternoDetalle: " + codigoAlternoDetalle
+				+ " - nuevo valor: " + valorNumerico);
+		Query query = em.createQuery(" update   DetalleRubro t " +
+				" set      t.valorNumerico = :valorNumerico, " +
+				" 			t.valorAlfanumerico = :valorAlfanumerico " +
+				" where    t.rubro.codigoAlterno = :codigoAlternoRubro " +
+				" 			and   t.codigoAlterno = :codigoAlternoDetalle ");
+		query.setParameter("valorNumerico", valorNumerico);
+		query.setParameter("valorAlfanumerico", valorAlfanumerico);
+		query.setParameter("codigoAlternoRubro", Long.valueOf(codigoAlternoRubro));
+		query.setParameter("codigoAlternoDetalle", Long.valueOf(codigoAlternoDetalle));
+		return query.executeUpdate();
+	}
+
 }

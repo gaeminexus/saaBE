@@ -70,13 +70,29 @@ public interface CuentaBancariaService extends EntityService<CuentaBancaria>{
 	List<CuentaBancaria> selectByEmpresaSinCuenta(Long empresa, String numeroCuenta, Long estado, Object[] campos) throws Throwable;
 	
 	/**
-	 * Obtiene el saldo de una cuenta bancaria a una fecha dad
+	 * Saldo de una cuenta bancaria a una fecha, armado desde {@code TSR.MVCB}
+	 * (último cierre de {@code SaldoBanco} más los movimientos del rango).
+	 *
+	 * <p><b>NO es el saldo disponible de la cuenta — renombrado el 2026-08-27 desde
+	 * {@code obtieneSaldoFecha}, que invitaba a usarlo para eso.</b> Solo lo alimentan
+	 * ciertos procesos (pagos, cheques, caja chica); un asiento contable directo sobre
+	 * la cuenta del banco no genera {@code MovimientoBanco}. Medido contra la
+	 * contabilidad (ver docs/logica-negocio/tsr/DISENO-CONCILIACION-PARTIDAS-EN-TRANSITO.md
+	 * §7bis): BANCO PACIFICO tenía $2.016.302,36 en contabilidad y $22.802,11 aquí
+	 * (1,1%); BANCO INTERNACIONAL, $2.714.031,22 contra $125.452,02 (4,6%).</p>
+	 *
+	 * <p>Para el saldo real de una cuenta (disponibilidad, ecuación de conciliación)
+	 * usar {@code PlanCuentaService.saldoCuentaFechaEmpresa(idEmpresa,
+	 * cuenta.getPlanCuenta().getCodigo(), fecha)}, que lee la contabilidad. Este método
+	 * queda para lo que sí mide bien: el propio circuito de {@code MovimientoBanco}
+	 * (conciliación banco↔libros, no banco↔"cuánto hay").</p>
+	 *
 	 * @param idCuenta	: Id de la cuenta bancaria
-	 * @param fecha		: Fecha a la que se desea obtener el saldo
-	 * @return			: Saldo de la cuenta bancaria
+	 * @param fecha		: Fecha a la que se desea el saldo
+	 * @return			: Saldo según TSR.MVCB, no el saldo contable
 	 * @throws Throwable: Excepcion
 	 */
-	Double obtieneSaldoFecha(Long idCuenta, LocalDate fecha) throws Throwable;	
+	Double saldoSegunMovimientosBanco(Long idCuenta, LocalDate fecha) throws Throwable;
 	
 	/**
 	 * Recupera los saldos de las cuentas de una empresa en un rango de fechas

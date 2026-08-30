@@ -1,9 +1,11 @@
 package com.saa.ejb.crd.service;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
 import com.saa.basico.util.EntityService;
+import com.saa.ejb.crd.service.dto.EstadoCuentaAportesDTO;
 import com.saa.ejb.crd.service.dto.ResultadoRegistroAporte;
 import com.saa.ejb.crd.service.dto.SolicitudRegistroAporte;
 import com.saa.model.crd.Aporte;
@@ -33,9 +35,9 @@ public interface AporteService extends EntityService<Aporte> {
      * YA PAGADO del tipo indicado, en UNA transacción.
      *
      * Crea una fila POSITIVA en CRD.APRT con {@code valor = valorPagado = X} y
-     * {@code saldo = 0}, estado PAGADA(4), más su {@code PagoAporte}. Con saldo 0 y ese estado
-     * la fila queda fuera del FIFO del proceso Petro ({@code selectMinAporteConSaldo} filtra
-     * {@code saldo > 0.01} y estado PARCIAL), de modo que el aporte nunca se vuelve a cobrar.
+     * {@code saldo = 0}, estado PAGADA(4), más su {@code PagoAporte}. En el modelo vigente
+     * (Fase 1 del plan de devengo de aportes, D1) toda fila nace pagada por construcción: no
+     * hay abono posterior ni saldo pendiente que un proceso distinto pueda volver a tocar.
      *
      * El saldo disponible del partícipe sube de inmediato, porque el saldo ES la suma neta de
      * {@code APRTVLRR} (los consumos son filas negativas). Es la operación espejo del pago de
@@ -78,10 +80,26 @@ public interface AporteService extends EntityService<Aporte> {
      */
     List<Object[]> selectSumaPorEntidadYTipoAporte(LocalDateTime fechaCorte) throws Throwable;
 
-    /** G43 — COUNT de aportes con tipoAporte.codigo IN (9, 11) y valor > 0 para una entidad */
+    /**
+     * G43 — Imposiciones personales: tipoAporte.codigo IN (9, 11), valor &gt; 0, para una
+     * entidad.
+     *
+     * <p><b>Cambio del 2026-08-27 (decisión del usuario, mismo criterio que G44):</b> cuenta
+     * MESES DE DEVENGO distintos ({@code COUNT(DISTINCT} periodo efectivo{@code )}), no
+     * filas. "Imposiciones" significa meses aportados — bajo el modelo de devengo filas ≠
+     * meses: un partícipe puede tener varias filas del mismo mes (pago parcial completado
+     * después, anticipos, ajustes) y una sola fila puede cubrir un mes distinto al de su
+     * fecha de caja. Ver {@code PeriodoEfectivoAporteSql}.</p>
+     */
     Long selectCountImposicionesPersonalesPorEntidad(Long codigoEntidad) throws Throwable;
 
-    /** G43 — COUNT de aportes con tipoAporte.codigo IN (13, 14) y valor > 0 para una entidad */
+    /**
+     * G43 — Imposiciones patronales: tipoAporte.codigo IN (13, 14), valor &gt; 0, para una
+     * entidad.
+     *
+     * <p>Mismo cambio del 2026-08-27 que {@link #selectCountImposicionesPersonalesPorEntidad}:
+     * cuenta meses de devengo distintos, no filas.</p>
+     */
     Long selectCountImposicionesPatronalesPorEntidad(Long codigoEntidad) throws Throwable;
 
     /**
@@ -92,4 +110,24 @@ public interface AporteService extends EntityService<Aporte> {
     Double selectSumaAportesNegativosMesPorEntidad(Long codigoEntidad,
             java.time.LocalDateTime fechaInicio,
             java.time.LocalDateTime fechaFin) throws Throwable;
+
+    /**
+     * Estado de cuenta de aportes por devengo (§4.2 del plan de devengo de aportes).
+     * Agrupa por PERIODO EFECTIVO (ver {@code PeriodoEfectivoAporteSql}) y tipo de aporte;
+     * "esperado" sale de {@link VigenciaContratoService#esperadoPorEntidad}. Los movimientos
+     * sin periodo efectivo (histórico sin backfillear, retiros de saldo) van en un grupo con
+     * {@code periodo = null} y {@code estado = "SIN PERIODO"} — nunca se esconden.
+     *
+     * <p>Una entidad sin ningún movimiento en el rango devuelve {@code periodos} vacío, NO
+     * lanza (pedido 1: "sin aportes" no es un error).</p>
+     *
+     * @param idEntidad Código de la entidad (partícipe)
+     * @param desde     Primer día del mes de devengo, inclusive
+     * @param hasta     Primer día del mes de devengo, inclusive
+     * @return Estado de cuenta
+     * @throws Throwable                          Si ocurre un error
+     * @throws com.saa.basico.util.IncomeException {@link #ERR_ENTIDAD_NO_ENCONTRADA} si la
+     *                                             entidad no existe
+     */
+    EstadoCuentaAportesDTO estadoCuenta(Long idEntidad, LocalDate desde, LocalDate hasta) throws Throwable;
 }

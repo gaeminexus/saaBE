@@ -37,6 +37,7 @@ public class GrupoProductoPagoDaoServiceImpl extends EntityDaoImpl<GrupoProducto
 							"rubroTipoGrupoP",
 							"rubroTipoGrupoH",
 							"planCuenta",
+							"sustentoTributarioDefecto",
 							"estado",
 							"empresa",
 							"productoPagos"};

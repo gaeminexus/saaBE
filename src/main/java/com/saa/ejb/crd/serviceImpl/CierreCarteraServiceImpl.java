@@ -56,6 +56,7 @@ import com.saa.rubros.EstadoAsiento;
 import com.saa.rubros.EstadoCorridaCierreCartera;
 import com.saa.rubros.ModuloSistema;
 import com.saa.rubros.PlantillasCredito;
+import com.saa.rubros.Rubros;
 import com.saa.rubros.SubProcesoCierreCartera;
 import com.saa.rubros.TipoAsientos;
 import com.saa.rubros.TipoCarteraBanda;
@@ -134,6 +135,10 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
     /** Solo para el reverso: {@code anulaAsiento} decide entre anular y reversar. */
     @EJB
     private AsientoService asientoService;
+
+    /** Flag global de contabilidad de CRD (D10 del plan de devengo de aportes). */
+    @EJB
+    private com.saa.ejb.crd.service.ConfiguracionContabilidadService configuracionContabilidadService;
 
     // =====================================================================
     // API
@@ -1242,6 +1247,18 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
      */
     private void generaAsiento(CorridaCierreCartera corrida, SubProcesoCierre sub,
             SolicitudCierreCartera solicitud, LocalDateTime ahora) throws Throwable {
+
+        // Flag global de contabilidad de CRD (D10): apagado, el cierre corre y calcula
+        // igual pero no toca CNT. No es un error: se deja dicho en el resultado y el log.
+        if (!configuracionContabilidadService.contabilidadActiva()) {
+            System.out.println("CierreCarteraServiceImpl.generaAsiento - contabilidad de CRD "
+                    + "INACTIVA (rubro " + Rubros.CRD_PARAMETROS_CONTABILIDAD + "): no se genera "
+                    + "el asiento de " + sub.getNombre());
+            sub.setOmitido(Boolean.TRUE);
+            sub.setMotivoOmision(concatena(sub.getMotivoOmision(),
+                    "Contabilidad de CRD desactivada: no se genero el asiento."));
+            return;
+        }
 
         // Ultima comprobacion antes de tocar contabilidad: generarAsiento tambien valida el
         // cuadre, pero su mensaje enumera lineas sin decir de que sub-proceso salieron.

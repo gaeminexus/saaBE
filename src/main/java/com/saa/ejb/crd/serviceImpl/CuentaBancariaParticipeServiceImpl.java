@@ -12,6 +12,7 @@ import com.saa.ejb.crd.dao.CuentaBancariaParticipeDaoService;
 import com.saa.ejb.crd.dao.EntidadDaoService;
 import com.saa.ejb.crd.dao.TipoAdjuntoDaoService;
 import com.saa.ejb.crd.service.CuentaBancariaParticipeService;
+import com.saa.ejb.crd.service.EntidadService;
 import com.saa.ejb.crd.service.dto.ResultadoCuentaBancariaConCertificado;
 import com.saa.ejb.crd.service.dto.SolicitudCuentaBancariaConCertificado;
 import com.saa.ejb.tsr.dao.BancoExternoDaoService;
@@ -42,6 +43,9 @@ public class CuentaBancariaParticipeServiceImpl implements CuentaBancariaPartici
 
     @EJB
     private EntidadDaoService entidadDaoService;
+
+    @EJB
+    private EntidadService entidadService;
 
     @EJB
     private BancoExternoDaoService bancoExternoDaoService;
@@ -108,6 +112,14 @@ public class CuentaBancariaParticipeServiceImpl implements CuentaBancariaPartici
     public List<CuentaBancariaParticipe> selectByParent(Long idEntidad) throws Throwable {
         System.out.println("selectByParent CuentaBancariaParticipeService idEntidad: " + idEntidad);
         return cuentaBancariaParticipeDaoService.selectByParent(idEntidad);
+    }
+
+    @Override
+    public CuentaBancariaParticipe saveSingle(CuentaBancariaParticipe cuenta, String usuario) throws Throwable {
+        System.out.println("saveSingle(CuentaBancariaParticipe, usuario) - usuario: " + usuario);
+        cuenta = saveSingle(cuenta);
+        entidadService.sellarActualizacion(cuenta.getEntidad().getCodigo(), usuario);
+        return cuenta;
     }
 
     // ========================================================================
@@ -198,6 +210,8 @@ public class CuentaBancariaParticipeServiceImpl implements CuentaBancariaPartici
             certificado = adjuntoDaoService.save(certificado, null);
             System.out.println("  📎 Adjunto (certificado bancario) creado: " + certificado.getCodigo()
                 + " -> CNBP " + cuenta.getCodigo());
+
+            entidadService.sellarActualizacion(entidad.getCodigo(), solicitud.getUsuarioRegistro());
 
             return new ResultadoCuentaBancariaConCertificado(cuenta, certificado);
 

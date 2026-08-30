@@ -215,16 +215,7 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
         LocalDateTime corte = corteDelDia(fecha);
 
         // Tasa de mora = tasa nominal del préstamo; mismo default que el G48 cuando falta
-        double tasaNominal = prestamo.getInteresNominal() != null ? prestamo.getInteresNominal() : 0.0;
-        if (tasaNominal <= 0.0) {
-            tasaNominal = TASA_POR_DEFECTO;
-            // Traza del default silencioso (PLAN-SIMULADORES-PRESTAMOS.md decisión 11 / D10):
-            // desde que PrestamoServiceImpl.saveSingle deriva interesNominal de tasa en cada
-            // guardado, esto solo debería activarse en préstamos guardados ANTES del fix.
-            System.out.println("      ADVERTENCIA: préstamo " + idPrestamo + " sin interesNominal (PRSTINNM); "
-                + "se usa el default silencioso de " + TASA_POR_DEFECTO + "% (mismo default del G48).");
-        }
-        double tasaDiaria = tasaNominal / 100.0 / BASE_DIAS_ANIO;
+        double tasaDiaria = tasaDiariaDelPrestamo(prestamo, true);
 
         List<DetallePrestamo> vencidas =
             detallePrestamoDaoService.selectCuotasVencidasByPrestamo(idPrestamo, corte);
@@ -241,8 +232,11 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
                     continue;
                 }
 
-                double capital = nvl(cuota.getCapital());
-                double moraNueva = capital > 0.0 ? redondear(capital * tasaDiaria * diasMora) : 0.0;
+                // Bug corregido 2026-08-28: la fórmula de mora se extrajo a calcularMoraCuota
+                // (pura, sin persistir) para que la precancelación pueda reusarla con la fecha
+                // que elija el usuario. Acá diasMora se recalcula arriba (sin cambios) porque
+                // DTPRDSMR se persiste con ese valor más abajo, aparte de moraNueva.
+                double moraNueva = calcularMoraCuota(cuota, tasaDiaria, fecha);
 
                 // IDEMPOTENCIA: el total se recompone quitando la mora anterior y sumando la
                 // nueva. Así el proceso puede correrse N veces el mismo día sin acumular, y se
@@ -299,13 +293,8 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
                 System.out.println("      Préstamo " + idPrestamo + ": " + estadoPrestamo
                     + " → 11 (EN_MORA)");
 
-            } else if (!tieneVencidas
-                    && estadoPrestamo != null && estadoPrestamo == EstadoPrestamo.EN_MORA) {
-                prestamo.setIdEstado(Long.valueOf(EstadoPrestamo.VIGENTE));
-                prestamo.setFechaModificacion(LocalDateTime.now());
-                prestamoDaoService.save(prestamo, prestamo.getCodigo());
+            } else if (regularizarSiSinCuotasVencidas(prestamo, tieneVencidas)) {
                 resumen.setPrestamosRegularizados(1);
-                System.out.println("      Préstamo " + idPrestamo + ": 11 → 2 (VIGENTE, sin cuotas vencidas)");
             }
         }
 
@@ -314,9 +303,84 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
         return resumen;
     }
 
+    @Override
+    public boolean regularizarPrestamoSiSinMora(Long idPrestamo) throws Throwable {
+        if (idPrestamo == null) {
+            return false;
+        }
+        Prestamo prestamo = prestamoDaoService.find(new Prestamo(), idPrestamo);
+        if (prestamo == null || esEstadoTerminalPrestamo(prestamo.getIdEstado())
+                || prestamo.getIdEstado() == null
+                || prestamo.getIdEstado() != EstadoPrestamo.EN_MORA) {
+            return false;
+        }
+        List<DetallePrestamo> vencidas = detallePrestamoDaoService.selectCuotasVencidasByPrestamo(
+            idPrestamo, corteDelDia(LocalDate.now()));
+        boolean tieneVencidas = vencidas != null && !vencidas.isEmpty();
+        return regularizarSiSinCuotasVencidas(prestamo, tieneVencidas);
+    }
+
+    // ========================================================================
+    // Fórmula de mora — PURA, sin persistir (extraída 2026-08-28)
+    // ========================================================================
+
+    @Override
+    public double tasaDiariaDelPrestamo(Prestamo prestamo, boolean loguearDefault) {
+        double tasaNominal = prestamo != null && prestamo.getInteresNominal() != null
+            ? prestamo.getInteresNominal() : 0.0;
+        if (tasaNominal <= 0.0) {
+            tasaNominal = TASA_POR_DEFECTO;
+            if (loguearDefault) {
+                // Traza del default silencioso (PLAN-SIMULADORES-PRESTAMOS.md decisión 11 / D10):
+                // desde que PrestamoServiceImpl.saveSingle deriva interesNominal de tasa en cada
+                // guardado, esto solo debería activarse en préstamos guardados ANTES del fix.
+                System.out.println("      ADVERTENCIA: préstamo " + (prestamo != null ? prestamo.getCodigo() : null)
+                    + " sin interesNominal (PRSTINNM); se usa el default silencioso de "
+                    + TASA_POR_DEFECTO + "% (mismo default del G48).");
+            }
+        }
+        return tasaNominal / 100.0 / BASE_DIAS_ANIO;
+    }
+
+    @Override
+    public double calcularMoraCuota(DetallePrestamo cuota, double tasaDiaria, LocalDate fecha) {
+        if (cuota == null || cuota.getFechaVencimiento() == null || fecha == null) {
+            return 0.0;
+        }
+        long diasMora = ChronoUnit.DAYS.between(cuota.getFechaVencimiento().toLocalDate(), fecha);
+        if (diasMora <= 0) {
+            return 0.0;
+        }
+        double capital = nvl(cuota.getCapital());
+        return capital > 0.0 ? redondear(capital * tasaDiaria * diasMora) : 0.0;
+    }
+
     // ========================================================================
     // Helpers
     // ========================================================================
+
+    /**
+     * Núcleo compartido de la regularización EN_MORA → VIGENTE. Ver
+     * {@link ProcesoMoraPrestamoService#regularizarPrestamoSiSinMora}.
+     *
+     * @param prestamo      Préstamo YA CARGADO (se usa tal cual, no se vuelve a leer de BD)
+     * @param tieneVencidas Si el préstamo tiene cuotas vencidas, ya calculado por el llamador
+     *                      con el mismo criterio del proceso diario
+     * @return true si se regularizó
+     */
+    private boolean regularizarSiSinCuotasVencidas(Prestamo prestamo, boolean tieneVencidas) throws Throwable {
+        if (tieneVencidas || prestamo == null || esEstadoTerminalPrestamo(prestamo.getIdEstado())) {
+            return false;
+        }
+        if (prestamo.getIdEstado() == null || prestamo.getIdEstado() != EstadoPrestamo.EN_MORA) {
+            return false;
+        }
+        prestamo.setIdEstado(Long.valueOf(EstadoPrestamo.VIGENTE));
+        prestamo.setFechaModificacion(LocalDateTime.now());
+        prestamoDaoService.save(prestamo, prestamo.getCodigo());
+        System.out.println("      Préstamo " + prestamo.getCodigo() + ": 11 → 2 (VIGENTE, sin cuotas vencidas)");
+        return true;
+    }
 
     private void acumular(ResultadoCalculoMora resumen, ResultadoCalculoMora parcial) {
         if (parcial == null) {

@@ -43,4 +43,16 @@ public interface SaldoVacacionesDaoService  extends EntityDao<SaldoVacaciones>  
 	 * @throws Throwable	: Excepcion
 	 */
 	SaldoVacaciones selectByEmpleadoYAnio(Long idEmpleado, Integer anio) throws Throwable;
+
+	/**
+	 * Recupera todos los saldos de un anio, de empleados de una empresa. Es la base de
+	 * revertirAcreditacion: los saldos que una corrida de acreditar creo o toco para ese
+	 * anio.
+	 *
+	 * @param idEmpresa	: Id de la empresa (empleado.empresa.codigo)
+	 * @param anio		: Anio del periodo de vacaciones
+	 * @return			: Listado de saldos; vacio si no hay
+	 * @throws Throwable	: Excepcion
+	 */
+	List<SaldoVacaciones> selectByEmpresaYAnio(Long idEmpresa, Integer anio) throws Throwable;
 }

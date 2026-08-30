@@ -106,12 +106,40 @@ public interface LiquidacionCompraService extends EntityService<LiquidacionCompr
 	java.util.Map<String, Object> reenviarEmailLiquidacion(Long idLiquidacion, String destinatarios) throws Throwable;
 
 	/**
-	 * Anula una liquidación de compra emitida: sólo si su documento CXP
-	 * (PGS.LQCC) no tiene aplicaciones de pago registradas. Anula el asiento
-	 * del documento CXP, y pasa LQCC y LQCS a estado {@code Estado.INACTIVO} (0)
-	 * + LQCS.estadoEmision.
+	 * Anula una liquidación de compra emitida. Anula el asiento del documento CXP, y pasa
+	 * LQCC y LQCS a estado {@code Estado.INACTIVO} (0) + LQCS.estadoEmision.
+	 * <p>
+	 * <b>Corregido (ítem 14, 2026-08-28) — este javadoc ya decía "sólo si no tiene
+	 * aplicaciones de pago registradas", pero la implementación nunca lo verificaba: el
+	 * comentario preexistente en {@code LiquidacionCompraServiceImpl} decía que "hoy no hay
+	 * ningún mecanismo para pagar/aplicar contra un LQCC", cierto solo para
+	 * {@code AplicacionPagoCxp} (que no tiene FK a liquidación) pero no para
+	 * {@code AplicacionPagoCxc.liquidacion}, que sí existe y sí se usa
+	 * ({@code AplicacionPagoCxcServiceImpl.recalcularEstadoPagoLiquidacion}).</b> Ahora sí se
+	 * verifica: si tiene movimientos activos y {@code anularEnCascada} es {@code false}
+	 * (default), se rechaza con {@code IncomeException} listándolos; con {@code true} se
+	 * reversa cada uno primero.
+	 * @param idLiquidacion		: Id de la liquidación de compra emitida
+	 * @param motivo			: Motivo de la anulación
+	 * @param usuario			: Usuario que anula
+	 * @param idUsuario			: Id del usuario (SCP.PJRQ), para reversar movimientos si aplica
+	 * @param anularEnCascada	: true = reversar los cobros/pagos cruzados y anular igual
+	 * @return					: Map con resultado de la operación
+	 * @throws Throwable		: Si tiene movimientos activos sin reversar y no viene cascada
 	 */
-	java.util.Map<String, Object> anularLiquidacion(Long idLiquidacion, String motivo, String usuario) throws Throwable;
+	java.util.Map<String, Object> anularLiquidacion(Long idLiquidacion, String motivo, String usuario,
+			Long idUsuario, boolean anularEnCascada) throws Throwable;
+
+	/**
+	 * Movimientos (cobros/pagos) activos aplicados contra esta liquidación de compra emitida
+	 * vía {@code AplicacionPagoCxc.liquidacion}. Ver {@link #anularLiquidacion}.
+	 * @param idLiquidacion	: Id de la liquidación de compra
+	 * @return				: Lista de mapas con idAplicacion, tipoDocPago, tipoDocPagoTexto,
+	 *						  montoAplicado, fechaAplicacion; vacía si no tiene movimientos
+	 * @throws Throwable	: Excepcion
+	 */
+	java.util.List<java.util.Map<String, Object>> movimientosRelacionadosLiquidacion(Long idLiquidacion)
+			throws Throwable;
 
 	/**
 	 * Consulta el estado en el SRI y completa lo que haya quedado pendiente

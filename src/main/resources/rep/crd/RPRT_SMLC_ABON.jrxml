@@ -1,8 +1,10 @@
 <!-- Created for Jaspersoft Studio 7.0.3 — sin <query>: el detalle viene por JRBeanCollectionDataSource sobre CuotaProyectada (ver PLAN-SIMULADORES-PRESTAMOS.md §3 y §8). Compilar el .jasper con esta MISMA versión y commitear ambos.
-     A diferencia de RPRT_SMLC_NUEV/RSTR, esta tabla NO trae desgravamen/seguroIncendio/total: la
-     devuelve AbonoCapitalPrestamoServiceImpl.simular (sin tocar, tal como pedía el encargo), que
-     no llena esos tres campos — quedan null. Por eso el detalle acá tiene 6 columnas, no 8. -->
-<jasperReport name="RPRT_SMLC_ABON" language="java" pageWidth="595" pageHeight="842" columnWidth="555" leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20" uuid="b2e1a003-3000-4a00-9000-a30000000001">
+     Corregido 2026-08-29: ahora SÍ trae desgravamen/seguroIncendio/total — AbonoCapitalPrestamoServiceImpl.construirTablaProyectada
+     los llena por fila desde ese día (antes quedaban null: el desgravamen era un valor fijo sin
+     calcular y el seguro de incendio tenía el mismo bug de propagación que se corrigió acá). Página
+     pasada a Landscape (842x595, columnWidth=802) para que las 9 columnas quepan con el mismo ancho
+     que ya usa RPRT_SMLC_NUEV — antes era Portrait (595) con solo 6 columnas. -->
+<jasperReport name="RPRT_SMLC_ABON" language="java" columnCount="1" printOrder="Horizontal" pageWidth="842" pageHeight="595" orientation="Landscape" columnWidth="802" leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20" uuid="b2e1a003-3000-4a00-9000-a30000000001">
 	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="One Empty Record"/>
 	<property name="com.jaspersoft.studio.report.description" value="Simulacion de abono a capital (efimera, no se persiste). Detalle por JavaBean, sin query."/>
 	<parameter name="P_IMAGEN" class="java.awt.Image">
@@ -31,30 +33,33 @@
 	<field name="fechaVencimiento" class="java.time.LocalDateTime"/>
 	<field name="capital" class="java.lang.Double"/>
 	<field name="interes" class="java.lang.Double"/>
+	<field name="desgravamen" class="java.lang.Double"/>
+	<field name="seguroIncendio" class="java.lang.Double"/>
 	<field name="cuota" class="java.lang.Double"/>
 	<field name="saldoCapital" class="java.lang.Double"/>
+	<field name="total" class="java.lang.Double"/>
 	<background splitType="Stretch"/>
 	<title height="195" splitType="Stretch">
 		<element kind="image" uuid="b2e1a003-3000-4a00-9000-a30000000010" x="0" y="8" width="85" height="55" scaleImage="RetainShape" onErrorType="Blank" evaluationTime="Report" linkType="None" linkTarget="Self" lazy="true" hImageAlign="Center" vImageAlign="Middle">
 			<expression><![CDATA[$P{P_IMAGEN}]]></expression>
 		</element>
-		<element kind="rectangle" uuid="b2e1a003-3000-4a00-9000-a30000000011" x="95" y="8" width="460" height="55">
+		<element kind="rectangle" uuid="b2e1a003-3000-4a00-9000-a30000000011" x="95" y="8" width="707" height="55">
 			<pen lineWidth="0.75"/>
 		</element>
-		<element kind="staticText" uuid="b2e1a003-3000-4a00-9000-a30000000012" x="105" y="16" width="440" height="18" fontName="Tahoma" fontSize="12.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="b2e1a003-3000-4a00-9000-a30000000012" x="105" y="16" width="687" height="18" fontName="Tahoma" fontSize="12.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[SIMULACIÓN DE ABONO A CAPITAL]]></text>
 		</element>
-		<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000013" x="105" y="36" width="440" height="13" fontName="Tahoma" fontSize="7.5" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000013" x="105" y="36" width="687" height="13" fontName="Tahoma" fontSize="7.5" hTextAlign="Center" vTextAlign="Middle">
 			<expression><![CDATA["Préstamo #" + ($P{P_ID_PRESTAMO} != null ? String.valueOf($P{P_ID_PRESTAMO}) : "") + " — Emitido: " + ($P{P_FECHA_EMISION} != null ? $P{P_FECHA_EMISION} : "")]]></expression>
 		</element>
-		<element kind="staticText" uuid="b2e1a003-3000-4a00-9000-a30000000014" mode="Opaque" x="0" y="66" width="555" height="16" backcolor="#B10000" forecolor="#FFFFFF" fontName="Tahoma" fontSize="8.5" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="b2e1a003-3000-4a00-9000-a30000000014" mode="Opaque" x="0" y="66" width="802" height="16" backcolor="#B10000" forecolor="#FFFFFF" fontName="Tahoma" fontSize="8.5" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[SIMULACIÓN REFERENCIAL — SIN VALOR CONTRACTUAL. NO CONSTITUYE APROBACIÓN DE CRÉDITO.]]></text>
 		</element>
 		<element kind="staticText" uuid="b2e1a003-3000-4a00-9000-a30000000015" mode="Opaque" x="0" y="86" width="150" height="13" backcolor="#EFEFEF" fontName="Tahoma" fontSize="7.5" bold="true" hTextAlign="Left" vTextAlign="Middle">
 			<text><![CDATA[SOCIO]]></text>
 			<box leftPadding="5"/>
 		</element>
-		<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000016" x="150" y="86" width="405" height="13" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle">
+		<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000016" x="150" y="86" width="652" height="13" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle">
 			<expression><![CDATA[($P{P_NOMBRE_SOCIO} != null ? $P{P_NOMBRE_SOCIO} : "") + ($P{P_IDENTIFICACION_SOCIO} != null ? " (" + $P{P_IDENTIFICACION_SOCIO} + ")" : "")]]></expression>
 			<box leftPadding="5"/>
 		</element>
@@ -62,7 +67,7 @@
 			<text><![CDATA[SALDO CAPITAL ACTUAL]]></text>
 			<box leftPadding="5"/>
 		</element>
-		<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000018" x="150" y="99" width="130" height="13" fontName="Tahoma" fontSize="7.5" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+		<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000018" x="150" y="99" width="130" height="13" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
 			<expression><![CDATA[$P{P_SALDO_CAPITAL_ACTUAL}]]></expression>
 			<box rightPadding="6"/>
 		</element>
@@ -70,7 +75,7 @@
 			<text><![CDATA[VALOR DEL ABONO]]></text>
 			<box leftPadding="5"/>
 		</element>
-		<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a3000000001a" x="420" y="99" width="135" height="13" fontName="Tahoma" fontSize="7.5" pattern="#,##0.00" bold="true" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+		<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a3000000001a" x="420" y="99" width="382" height="13" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" bold="true" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
 			<expression><![CDATA[$P{P_VALOR_ABONO}]]></expression>
 			<box rightPadding="6"/>
 		</element>
@@ -78,11 +83,11 @@
 			<text><![CDATA[MODALIDAD]]></text>
 			<box leftPadding="5"/>
 		</element>
-		<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a3000000001c" x="150" y="112" width="405" height="13" fontName="Tahoma" fontSize="7.5" hTextAlign="Left" vTextAlign="Middle">
+		<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a3000000001c" x="150" y="112" width="652" height="13" fontName="Tahoma" fontSize="7.5" hTextAlign="Left" vTextAlign="Middle">
 			<expression><![CDATA[$P{P_MODALIDAD} != null && $P{P_MODALIDAD} == 2 ? "2 - Mantiene el plazo y reduce la cuota" : "1 - Mantiene la cuota y reduce el plazo"]]></expression>
 			<box leftPadding="5"/>
 		</element>
-		<element kind="staticText" uuid="b2e1a003-3000-4a00-9000-a3000000001d" mode="Opaque" x="0" y="135" width="555" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="b2e1a003-3000-4a00-9000-a3000000001d" mode="Opaque" x="0" y="135" width="802" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[COMPARATIVA ANTES / DESPUÉS]]></text>
 		</element>
 		<element kind="staticText" uuid="b2e1a003-3000-4a00-9000-a3000000001e" mode="Opaque" x="0" y="148" width="185" height="14" backcolor="#EFEFEF" fontName="Tahoma" fontSize="7.5" bold="true" hTextAlign="Left" vTextAlign="Middle">
@@ -93,18 +98,18 @@
 			<expression><![CDATA[($P{P_PLAZO_ACTUAL} != null ? String.valueOf($P{P_PLAZO_ACTUAL}) : "?") + "  →  " + ($P{P_PLAZO_NUEVO} != null ? String.valueOf($P{P_PLAZO_NUEVO}) : "?")]]></expression>
 			<box><pen lineWidth="0.25"/></box>
 		</element>
-		<element kind="staticText" uuid="b2e1a003-3000-4a00-9000-a30000000020" mode="Opaque" x="370" y="148" width="185" height="14" backcolor="#EFEFEF" fontName="Tahoma" fontSize="7.5" bold="true" hTextAlign="Left" vTextAlign="Middle">
+		<element kind="staticText" uuid="b2e1a003-3000-4a00-9000-a30000000020" mode="Opaque" x="370" y="148" width="432" height="14" backcolor="#EFEFEF" fontName="Tahoma" fontSize="7.5" bold="true" hTextAlign="Left" vTextAlign="Middle">
 			<text><![CDATA[Cuota: actual → nueva]]></text>
 			<box leftPadding="5"><pen lineWidth="0.25"/></box>
 		</element>
-		<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000021" x="0" y="162" width="185" height="16" fontName="Tahoma" fontSize="7.5" pattern="#,##0.00" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000021" x="0" y="162" width="185" height="16" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" hTextAlign="Center" vTextAlign="Middle">
 			<expression><![CDATA[$P{P_CUOTA_ACTUAL}]]></expression>
 			<box><pen lineWidth="0.25"/></box>
 		</element>
 		<element kind="staticText" uuid="b2e1a003-3000-4a00-9000-a30000000022" x="185" y="162" width="185" height="16" fontSize="8.0" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[→]]></text>
 		</element>
-		<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000023" x="370" y="162" width="185" height="16" fontName="Tahoma" fontSize="7.5" pattern="#,##0.00" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000023" x="370" y="162" width="432" height="16" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<expression><![CDATA[$P{P_CUOTA_NUEVA}]]></expression>
 			<box><pen lineWidth="0.25"/></box>
 		</element>
@@ -112,80 +117,104 @@
 			<text><![CDATA[AHORRO DE INTERESES]]></text>
 			<box leftPadding="5"/>
 		</element>
-		<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000025" x="310" y="180" width="245" height="14" fontName="Tahoma" fontSize="7.5" pattern="#,##0.00" bold="true" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+		<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000025" x="310" y="180" width="492" height="14" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" bold="true" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
 			<expression><![CDATA[$P{P_AHORRO_INTERESES}]]></expression>
 			<box rightPadding="6"/>
 		</element>
 	</title>
 	<pageHeader height="8" splitType="Stretch"/>
 	<columnHeader height="24" splitType="Stretch">
-		<element kind="staticText" uuid="b2e1a003-3000-4a00-9000-a30000000030" mode="Opaque" x="0" y="0" width="40" height="24" backcolor="#D1D1D1" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="b2e1a003-3000-4a00-9000-a30000000030" mode="Opaque" x="0" y="0" width="50" height="24" backcolor="#D1D1D1" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[N°]]></text>
 			<box><pen lineWidth="0.25"/></box>
 		</element>
-		<element kind="staticText" uuid="b2e1a003-3000-4a00-9000-a30000000031" mode="Opaque" x="40" y="0" width="85" height="24" backcolor="#D1D1D1" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="b2e1a003-3000-4a00-9000-a30000000031" mode="Opaque" x="50" y="0" width="85" height="24" backcolor="#D1D1D1" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[VENCIMIENTO]]></text>
 			<box><pen lineWidth="0.25"/></box>
 		</element>
-		<element kind="staticText" uuid="b2e1a003-3000-4a00-9000-a30000000032" mode="Opaque" x="125" y="0" width="105" height="24" backcolor="#D1D1D1" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="b2e1a003-3000-4a00-9000-a30000000032" mode="Opaque" x="135" y="0" width="95" height="24" backcolor="#D1D1D1" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[CAPITAL]]></text>
 			<box><pen lineWidth="0.25"/></box>
 		</element>
-		<element kind="staticText" uuid="b2e1a003-3000-4a00-9000-a30000000033" mode="Opaque" x="230" y="0" width="105" height="24" backcolor="#D1D1D1" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="b2e1a003-3000-4a00-9000-a30000000033" mode="Opaque" x="230" y="0" width="95" height="24" backcolor="#D1D1D1" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[INTERÉS]]></text>
 			<box><pen lineWidth="0.25"/></box>
 		</element>
-		<element kind="staticText" uuid="b2e1a003-3000-4a00-9000-a30000000034" mode="Opaque" x="335" y="0" width="105" height="24" backcolor="#D1D1D1" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="b2e1a003-3000-4a00-9000-a30000000036" mode="Opaque" x="325" y="0" width="90" height="24" backcolor="#D1D1D1" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[DESGRAVAMEN]]></text>
+			<box><pen lineWidth="0.25"/></box>
+		</element>
+		<element kind="staticText" uuid="b2e1a003-3000-4a00-9000-a30000000037" mode="Opaque" x="415" y="0" width="90" height="24" backcolor="#D1D1D1" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[SEGURO INCENDIO]]></text>
+			<box><pen lineWidth="0.25"/></box>
+		</element>
+		<element kind="staticText" uuid="b2e1a003-3000-4a00-9000-a30000000034" mode="Opaque" x="505" y="0" width="95" height="24" backcolor="#D1D1D1" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[CUOTA]]></text>
 			<box><pen lineWidth="0.25"/></box>
 		</element>
-		<element kind="staticText" uuid="b2e1a003-3000-4a00-9000-a30000000035" mode="Opaque" x="440" y="0" width="115" height="24" backcolor="#D1D1D1" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="b2e1a003-3000-4a00-9000-a30000000035" mode="Opaque" x="600" y="0" width="95" height="24" backcolor="#D1D1D1" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[SALDO CAPITAL]]></text>
+			<box><pen lineWidth="0.25"/></box>
+		</element>
+		<element kind="staticText" uuid="b2e1a003-3000-4a00-9000-a30000000038" mode="Opaque" x="695" y="0" width="107" height="24" backcolor="#D1D1D1" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[TOTAL]]></text>
 			<box><pen lineWidth="0.25"/></box>
 		</element>
 	</columnHeader>
 	<detail>
 		<band height="15" splitType="Stretch">
-			<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000040" x="0" y="0" width="40" height="15" fontName="Tahoma" fontSize="7.5" pattern="0" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000040" x="0" y="0" width="50" height="15" fontName="Tahoma" fontSize="7.5" pattern="0" hTextAlign="Center" vTextAlign="Middle">
 				<expression><![CDATA[$F{numeroCuota}]]></expression>
 				<box><pen lineWidth="0.25"/></box>
 			</element>
-			<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000041" x="40" y="0" width="85" height="15" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000041" x="50" y="0" width="85" height="15" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
 				<expression><![CDATA[$F{fechaVencimiento} != null ? $F{fechaVencimiento}.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")) : ""]]></expression>
 				<box><pen lineWidth="0.25"/></box>
 			</element>
-			<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000042" x="125" y="0" width="105" height="15" fontName="Tahoma" fontSize="7.5" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+			<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000042" x="135" y="0" width="95" height="15" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
 				<expression><![CDATA[$F{capital}]]></expression>
 				<box rightPadding="6"><pen lineWidth="0.25"/></box>
 			</element>
-			<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000043" x="230" y="0" width="105" height="15" fontName="Tahoma" fontSize="7.5" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+			<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000043" x="230" y="0" width="95" height="15" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
 				<expression><![CDATA[$F{interes}]]></expression>
 				<box rightPadding="6"><pen lineWidth="0.25"/></box>
 			</element>
-			<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000044" x="335" y="0" width="105" height="15" fontName="Tahoma" fontSize="7.5" pattern="#,##0.00" bold="true" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+			<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000046" x="325" y="0" width="90" height="15" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+				<expression><![CDATA[$F{desgravamen}]]></expression>
+				<box rightPadding="6"><pen lineWidth="0.25"/></box>
+			</element>
+			<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000047" x="415" y="0" width="90" height="15" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+				<expression><![CDATA[$F{seguroIncendio}]]></expression>
+				<box rightPadding="6"><pen lineWidth="0.25"/></box>
+			</element>
+			<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000044" x="505" y="0" width="95" height="15" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" bold="true" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
 				<expression><![CDATA[$F{cuota}]]></expression>
 				<box rightPadding="6"><pen lineWidth="0.25"/></box>
 			</element>
-			<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000045" x="440" y="0" width="115" height="15" fontName="Tahoma" fontSize="7.5" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+			<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000045" x="600" y="0" width="95" height="15" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
 				<expression><![CDATA[$F{saldoCapital}]]></expression>
+				<box rightPadding="6"><pen lineWidth="0.25"/></box>
+			</element>
+			<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000048" x="695" y="0" width="107" height="15" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" bold="true" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+				<expression><![CDATA[$F{total}]]></expression>
 				<box rightPadding="6"><pen lineWidth="0.25"/></box>
 			</element>
 		</band>
 	</detail>
 	<pageFooter height="30" splitType="Stretch">
-		<element kind="line" uuid="b2e1a003-3000-4a00-9000-a30000000050" x="0" y="2" width="555" height="1">
+		<element kind="line" uuid="b2e1a003-3000-4a00-9000-a30000000050" x="0" y="2" width="802" height="1">
 			<pen lineWidth="0.25"/>
 		</element>
-		<element kind="staticText" uuid="b2e1a003-3000-4a00-9000-a30000000051" mode="Opaque" x="0" y="6" width="555" height="13" backcolor="#B10000" forecolor="#FFFFFF" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="b2e1a003-3000-4a00-9000-a30000000051" mode="Opaque" x="0" y="6" width="802" height="13" backcolor="#B10000" forecolor="#FFFFFF" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[SIMULACIÓN REFERENCIAL — SIN VALOR CONTRACTUAL. NO CONSTITUYE APROBACIÓN DE CRÉDITO.]]></text>
 		</element>
-		<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000052" x="0" y="20" width="455" height="10" fontSize="6.0" vTextAlign="Middle">
+		<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000052" x="0" y="20" width="702" height="10" fontSize="6.0" vTextAlign="Middle">
 			<expression><![CDATA["RPRT_SMLC_ABON - Simulación de abono a capital - Documento generado automáticamente por el Sistema SAA"]]></expression>
 		</element>
-		<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000053" x="455" y="20" width="60" height="10" fontSize="7.0" hTextAlign="Right" vTextAlign="Middle">
+		<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000053" x="702" y="20" width="60" height="10" fontSize="7.0" hTextAlign="Right" vTextAlign="Middle">
 			<expression><![CDATA["Página " + $V{PAGE_NUMBER} + " de"]]></expression>
 		</element>
-		<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000054" x="515" y="20" width="40" height="10" fontSize="7.0" evaluationTime="Report" hTextAlign="Left" vTextAlign="Middle">
+		<element kind="textField" uuid="b2e1a003-3000-4a00-9000-a30000000054" x="762" y="20" width="40" height="10" fontSize="7.0" evaluationTime="Report" hTextAlign="Left" vTextAlign="Middle">
 			<expression><![CDATA[" " + $V{PAGE_NUMBER}]]></expression>
 		</element>
 	</pageFooter>

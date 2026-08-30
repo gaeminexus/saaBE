@@ -153,6 +153,29 @@ public class AnticipoCliente implements Serializable {
     @Column(name = "OBSERVACION", length = 2000)
     private String observacion;
 
+    /**
+     * FK a PGS.PGTR.PGTRCDGO: el pago de devolución de saldo (origen externo
+     * CXC_DEVOLUCION_CLIENTE) vigente/más reciente asociado a este anticipo.
+     * <p>
+     * <b>Solo trackea LA ÚLTIMA devolución, sin historial</b> (opción A del análisis de
+     * idempotencia, 2026-08-28 — ver docs/logica-negocio/cxc/sql/add-anticipo-cliente-devolucion.sql).
+     * Si se necesita auditoría de devoluciones pasadas, hace falta una tabla propia
+     * (CBR.DVCL, opción B, no elegida).
+     */
+    @Basic
+    @Column(name = "ANTCIDPG")
+    private Long idPagoDevolucion;
+
+    /**
+     * 0/1: si el descuento de {@link #saldo} por el pago {@link #idPagoDevolucion} ya se
+     * aplicó. Lo pone en 1 el reconciliador ({@code AnticipoClienteServiceImpl.sincronizarDevolucion})
+     * al ver el pago en estado CONFIRMADO — es el guardián de idempotencia: una segunda
+     * corrida sobre el mismo pago ya CONFIRMADO ve este campo en 1 y no descuenta de nuevo.
+     */
+    @Basic
+    @Column(name = "ANTCAPLC")
+    private Long aplicado;
+
     // ── Getters y Setters ────────────────────────────────────────────────────
 
     public Long getId() { return id; }
@@ -202,4 +225,10 @@ public class AnticipoCliente implements Serializable {
 
     public String getObservacion() { return observacion; }
     public void setObservacion(String observacion) { this.observacion = observacion; }
+
+    public Long getIdPagoDevolucion() { return idPagoDevolucion; }
+    public void setIdPagoDevolucion(Long idPagoDevolucion) { this.idPagoDevolucion = idPagoDevolucion; }
+
+    public Long getAplicado() { return aplicado; }
+    public void setAplicado(Long aplicado) { this.aplicado = aplicado; }
 }

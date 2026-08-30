@@ -6,6 +6,7 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.crd.dao.ConyugeDaoService;
 import com.saa.ejb.crd.service.ConyugeService;
+import com.saa.ejb.crd.service.EntidadService;
 import com.saa.model.crd.Conyuge;
 import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.rubros.Estado;
@@ -18,6 +19,9 @@ public class ConyugeServiceImpl implements ConyugeService {
 
     @EJB
     private ConyugeDaoService conyugeDaoService;
+
+    @EJB
+    private EntidadService entidadService;
 
     @Override
     public Conyuge selectById(Long id) throws Throwable {
@@ -75,5 +79,13 @@ public class ConyugeServiceImpl implements ConyugeService {
     public List<Conyuge> selectByParent(Long idEntidad) throws Throwable {
         System.out.println("selectByParent ConyugeService idEntidad: " + idEntidad);
         return conyugeDaoService.selectByParent(idEntidad);
+    }
+
+    @Override
+    public Conyuge saveSingle(Conyuge conyuge, String usuario) throws Throwable {
+        System.out.println("saveSingle(Conyuge, usuario) - usuario: " + usuario);
+        conyuge = saveSingle(conyuge);
+        entidadService.sellarActualizacion(conyuge.getEntidad().getCodigo(), usuario);
+        return conyuge;
     }
 }

@@ -197,7 +197,26 @@ public class Titular implements Serializable {
 	@ManyToOne
 	@JoinColumn(name = "PSSSCDGO", referencedColumnName = "PSSSCDGO")
 	private Pais pais;
-	
+
+	/**
+	 * ATS (sección &lt;compras&gt;/&lt;ventas&gt;, campo {@code parteRel}): si el titular es
+	 * una parte relacionada, "SI"/"NO". Se declara una sola vez por titular, no por documento
+	 * (a diferencia de {@code codSustento}, que es por comprobante). Nulo = sin capturar todavía.
+	 * Ver docs/logica-negocio/sri/LEVANTAMIENTO-ATS-103-104.md §3.3/§4.3 fase 3.
+	 */
+	@Basic
+	@Column(name = "TTLRPREL", length = 2)
+	private String parteRelacionada;
+
+	/**
+	 * ATS (campo {@code tipoProv}, Tabla 14 del catálogo SRI): "01" Persona natural, "02"
+	 * Sociedad — catálogo ya cargado en {@code PGS.LSRI.TABLA='706'}/{@code PGS.TSRI}. Distinto
+	 * de {@link #tipoProveedor} (TTLRPRVD), que es un flag "es proveedor sí/no", no una
+	 * clasificación del SRI. Nulo = sin capturar todavía.
+	 */
+	@Basic
+	@Column(name = "TTLRTPAT", length = 2)
+	private String tipoProveedorAts;
 
 	/**
 	 * Devuelve codigo
@@ -549,6 +568,38 @@ public class Titular implements Serializable {
 	 */
 	public void setPais(Pais pais) {
 		this.pais = pais;
+	}
+
+	/**
+	 * Obtiene si el titular es parte relacionada para el ATS ("SI"/"NO")
+	 * @return parteRelacionada
+	 */
+	public String getParteRelacionada() {
+		return parteRelacionada;
+	}
+
+	/**
+	 * Asigna si el titular es parte relacionada para el ATS ("SI"/"NO")
+	 * @param parteRelacionada Nuevo valor para parteRelacionada
+	 */
+	public void setParteRelacionada(String parteRelacionada) {
+		this.parteRelacionada = parteRelacionada;
+	}
+
+	/**
+	 * Obtiene el tipo de proveedor del ATS (Tabla 14: "01" Persona natural, "02" Sociedad)
+	 * @return tipoProveedorAts
+	 */
+	public String getTipoProveedorAts() {
+		return tipoProveedorAts;
+	}
+
+	/**
+	 * Asigna el tipo de proveedor del ATS (Tabla 14: "01" Persona natural, "02" Sociedad)
+	 * @param tipoProveedorAts Nuevo valor para tipoProveedorAts
+	 */
+	public void setTipoProveedorAts(String tipoProveedorAts) {
+		this.tipoProveedorAts = tipoProveedorAts;
 	}
 
 }

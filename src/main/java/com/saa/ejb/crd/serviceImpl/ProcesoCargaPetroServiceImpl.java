@@ -514,7 +514,10 @@ public class ProcesoCargaPetroServiceImpl implements ProcesoCargaPetroService {
         pago.setIdEstado(Long.valueOf(Estado.ACTIVO));
         pago.setFechaRegistro(LocalDateTime.now());
         pago.setUsuarioRegistro("SISTEMA_PETRO");
-        
+        // Trazabilidad (2026-08-28): de qué carga salió este pago, para el asiento de
+        // APLICACION del cobro de Petro en dos pasos. Ver DDL-TRAZABILIDAD-CARGA-PETRO.sql.
+        pago.setCargaArchivo(cargaArchivo);
+
         System.out.println("✅ PagoPrestamo creado correctamente");
         
         return pago;
@@ -554,9 +557,19 @@ public class ProcesoCargaPetroServiceImpl implements ProcesoCargaPetroService {
             }
         }
         
-        // Actualizar saldo del préstamo
-        prestamo.setSaldoTotal(saldoTotal);
-        
+        // Prestamo.saldoTotal (PRSTSLTT) queda DELIBERADAMENTE sin escritor desde 2026-08-29.
+        // Este método (y esta vía alterna, "no es el flujo productivo" — ver
+        // REGLAS-CARGA-PETRO.md §4) era el ÚNICO punto de todo el backend que lo escribía, y lo
+        // hacía con un criterio equivocado pese al nombre: sumaba solo capital de las cuotas no
+        // pagadas (el `saldoTotal` local de arriba), no el saldo total real. El saldo vigente del
+        // préstamo se reconstruye en vivo desde CRD.DTPR + CRD.PGPR — ver
+        // `docs/logica-negocio/crd/PENDIENTES-SEGUNDA-OLA.md` (pedido 6) y, del lado del
+        // frontend, `saldo-prestamo.service.ts` (`saldoTotalDe`). Volver a escribir este campo
+        // reintroduciría la contradicción "dos pantallas/reportes con números distintos" que se
+        // acaba de corregir en los 9 reportes RPRT_TBLA_* — un valor recién escrito con el
+        // criterio viejo inspira MÁS confianza que uno obviamente congelado, así que es peor, no
+        // mejor. Si hace falta el saldo total de un préstamo, reconstruirlo, no leer PRSTSLTT.
+
         // Determinar nuevo estado del préstamo.
         // El estado se escribe en idEstado (PRSTIDST): es el campo con el
         // código alterno del rubro y el único que consultan las queries del

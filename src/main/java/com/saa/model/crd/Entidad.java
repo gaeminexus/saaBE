@@ -13,6 +13,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 
 /**
  * Representa la tabla ENTD (Entidad).
@@ -168,6 +169,17 @@ public class Entidad implements Serializable {
     @Column(name = "ENTDUSMD", length = 50)
     private String usuarioModificacion;
 
+    /**
+     * Fecha de modificación. Verificado contra ALL_TAB_COLUMNS el 2026-08-27:
+     * ENTDFCMD es VARCHAR2(2000), igual que ENTDFCIN — NO es DATE/TIMESTAMP, así que se
+     * mapea como String (texto libre, no siempre en el mismo formato entre escritores
+     * históricos). {@link #sellarActualizacion} en EntidadService es el único punto que la
+     * escribe hacia adelante, siempre en formato "yyyy-MM-dd HH:mm:ss".
+     */
+    @Basic
+    @Column(name = "ENTDFCMD", length = 2000)
+    private String fechaModificacion;
+
     /** ID Estado */
     @Basic
     @Column(name = "ENTDIDST")
@@ -279,8 +291,35 @@ public class Entidad implements Serializable {
     public String getUsuarioModificacion() { return usuarioModificacion; }
     public void setUsuarioModificacion(String usuarioModificacion) { this.usuarioModificacion = usuarioModificacion; }
 
-//    public String getFechaModificacion() { return fechaModificacion; }
-//    public void setFechaModificacion(String fechaModificacion) { this.fechaModificacion = fechaModificacion; }
+    public String getFechaModificacion() { return fechaModificacion; }
+    public void setFechaModificacion(String fechaModificacion) { this.fechaModificacion = fechaModificacion; }
+
+    /**
+     * Alias de sólo lectura para la pantalla de actualización de datos del partícipe
+     * (pedido 9): el frontend espera el campo con este nombre exacto. No es una columna
+     * propia, es el mismo valor de {@link #fechaModificacion}.
+     */
+    @Transient
+    public String getUltimaActualizacion() { return fechaModificacion; }
+
+    /**
+     * Setter no-operativo: existe solo para que Jackson pueda deserializar un Entidad anidado
+     * que reenvíe este campo (lo trae cualquier respuesta que serialice el getter de arriba).
+     * Bug corregido 2026-08-28: sin este setter, cualquier PUT con un Entidad anidado que
+     * incluya "ultimaActualizacion" fallaba con UnrecognizedPropertyException (400). No hay
+     * nada que guardar — es un alias derivado de {@link #fechaModificacion}.
+     */
+    public void setUltimaActualizacion(String ultimaActualizacion) { /* solo lectura: ver getUltimaActualizacion */ }
+
+    /**
+     * Alias de sólo lectura, mismo motivo que {@link #getUltimaActualizacion()}: el
+     * frontend espera este nombre exacto para la pantalla de actualización de datos.
+     */
+    @Transient
+    public String getUsuarioUltimaActualizacion() { return usuarioModificacion; }
+
+    /** Setter no-operativo, mismo motivo que {@link #setUltimaActualizacion(String)}. */
+    public void setUsuarioUltimaActualizacion(String usuarioUltimaActualizacion) { /* solo lectura: ver getUsuarioUltimaActualizacion */ }
 
     public Long getIdEstado() { return idEstado; }
     public void setIdEstado(Long idEstado) { this.idEstado = idEstado; }

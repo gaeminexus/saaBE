@@ -17,6 +17,7 @@ import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -103,10 +104,10 @@ public class ParticipeRest {
     @PUT
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response put(Participe registro) {
+    public Response put(Participe registro, @QueryParam("usuario") String usuario) {
         System.out.println("LLEGA AL SERVICIO PUT - PARTICIPE");
         try {
-            Participe resultado = participeService.saveSingle(registro);
+            Participe resultado = participeService.saveSingle(registro, usuario);
             return Response.status(Response.Status.OK)
                     .entity(resultado)
                     .type(MediaType.APPLICATION_JSON)
@@ -128,10 +129,10 @@ public class ParticipeRest {
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response post(Participe registro) {
+    public Response post(Participe registro, @QueryParam("usuario") String usuario) {
         System.out.println("LLEGA AL SERVICIO POST - PARTICIPE");
         try {
-            Participe resultado = participeService.saveSingle(registro);
+            Participe resultado = participeService.saveSingle(registro, usuario);
             return Response.status(Response.Status.CREATED)
                     .entity(resultado)
                     .type(MediaType.APPLICATION_JSON)

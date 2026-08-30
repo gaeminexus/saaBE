@@ -13,6 +13,7 @@ import java.util.List;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tsr.dao.ConciliacionDaoService;
 import com.saa.model.tsr.Conciliacion;
+import com.saa.rubros.EstadoCierreConciliacion;
 import com.saa.rubros.EstadosConciliacion;
 
 import jakarta.ejb.Stateless;
@@ -175,5 +176,24 @@ public class ConciliacionDaoServiceImpl extends EntityDaoImpl<Conciliacion> impl
 		query.setParameter("idConciliacion", idConciliacion);
 		query.executeUpdate();
 	}
-	
+
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.tsr.dao.ConciliacionDaoService#selectCierreVigente(java.lang.Long, java.lang.Long)
+	 */
+	public Conciliacion selectCierreVigente(Long idCuentaBancaria, Long idPeriodo) throws Throwable {
+		System.out.println("Ingresa al metodo selectCierreVigente de idCuentaBancaria: " + idCuentaBancaria
+				+ " y idPeriodo: " + idPeriodo);
+		Query query = em.createQuery(" select b from Conciliacion b "
+				+ " where b.cuentaBancaria.codigo = :idCuentaBancaria "
+				+ " and b.idPeriodo = :idPeriodo "
+				+ " and b.estadoCierre = :cerrado "
+				+ " order by b.fechaCierre desc ");
+		query.setParameter("idCuentaBancaria", idCuentaBancaria);
+		query.setParameter("idPeriodo", idPeriodo);
+		query.setParameter("cerrado", Long.valueOf(EstadoCierreConciliacion.CERRADO));
+		query.setMaxResults(1);
+		List<Conciliacion> resultado = query.getResultList();
+		return resultado.isEmpty() ? null : resultado.get(0);
+	}
+
 }

@@ -792,8 +792,18 @@ archivo del frontend**, para que borrarlo sea trivial.
 
 ### 8.1 Validaciones de `registrarDevolucion`, en orden
 
-1. Cuerpo presente; `idEntidad`, `idCuentaBancariaOrigen`, `idEmpresa`, `usuario` y `detalle`
-   no nulos → `PARAMETRO_INVALIDO` (400).
+> ⚠️ **CORRECCIÓN 2026-08-29**: `idCuentaBancariaOrigen` DEJÓ de ser obligatorio y DEJÓ de
+> usarse. El servicio ahora pasa siempre `null` como cuenta de origen a
+> `registrarPagoDeOrigenExterno` (CXP): con cuenta nula el pago nace `POR_APROBAR` y
+> tesorería asigna cuenta y forma de pago al aprobar — el mismo criterio que ya usan rhh y
+> tsr con este método. Antes, crd era el ÚNICO módulo que mandaba este dato, y eso hacía que
+> el pago naciera `REGISTRADO`/`CONFIRMADO` y **nunca llegara a la bandeja de aprobación de
+> tesorería**. El campo se conserva en `SolicitudDevolucionAporte` por compatibilidad, pero
+> el backend lo ignora. Todo lo que sigue en esta sección refleja el diseño ORIGINAL (antes
+> de la corrección) — leer con esa salvedad.
+
+1. Cuerpo presente; `idEntidad`, `idEmpresa`, `usuario` y `detalle`
+   no nulos → `PARAMETRO_INVALIDO` (400). (`idCuentaBancariaOrigen` ya no se valida — ver arriba.)
 2. Partícipe existe (`entidadDaoService.find`, que devuelve null, no `NoResultException`) → 404.
 3. `detalle` no vacío, sin tipos repetidos → `TIPO_DUPLICADO` (422).
 4. Cada `idTipoAporte` existe y `TipoAporte.estado = 1` → `TIPO_APORTE_NO_VIGENTE` (422).

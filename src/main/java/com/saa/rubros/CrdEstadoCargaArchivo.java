@@ -52,6 +52,34 @@ public interface CrdEstadoCargaArchivo {
 	public static final int CARGADO = 1;
 
 	/**
+	 * Contabilidad confirmó que el dinero de esta carga entró al banco — paso 1 del cobro
+	 * en dos pasos (regla 11 de §5 de
+	 * {@code LEVANTAMIENTO-ALIMENTACION-CONTABLE-CREDITOS.md}). Agregado 2026-08-28.
+	 *
+	 * <p>
+	 * <b>NO es el {@code 3 APROBADO_CONTABILIDAD} del rubro 166.</b> Ese número ya estaba
+	 * ocupado por {@link #PROCESADO} en el código vivo — reusarlo aquí habría hecho que una
+	 * carga confirmada (paso 1) se confundiera con una procesada (paso 2) en
+	 * {@code validarOrdenProcesamiento} y en el control de archivo del cierre de cartera.
+	 * Se eligió {@code 2} porque ni el rubro muerto en su uso real ni este catálogo lo
+	 * ocupaban. Secuencia completa: {@code 1 CARGADO → 2 CONFIRMADO_CONTABILIDAD →
+	 * 3 PROCESADO}. <b>No renumerar sin migrar los datos</b>, mismo motivo que ya aplica al
+	 * {@code 3}.
+	 * </p>
+	 *
+	 * <p>
+	 * <b>⚠ Este valor es TRANSITORIO, no el rastro permanente de "confirmada".</b> Una carga
+	 * avanza de {@code 2} a {@code 3} en cuanto se procesa (paso 2), así que leer
+	 * {@code CRARESTD == 2} para decidir si el paso 1 ya se hizo da un falso negativo sobre
+	 * cualquier carga ya procesada. El marcador DURADERO es
+	 * {@code CargaArchivo.fechaAutorizacionContabilidad} (CRARFCAC) {@code != null}, junto
+	 * con {@code usuarioContabilidadConfirma} (CRARUSCC) — nunca este estado. Ver
+	 * {@code CobroPetroContableService}.
+	 * </p>
+	 */
+	public static final int CONFIRMADO_CONTABILIDAD = 2;
+
+	/**
 	 * Pagos aplicados (la fase 3 terminó). Es el estado en el que la carga ya generó los
 	 * aportes y los pagos de cuotas, y por tanto el ÚNICO que permite cerrar contablemente
 	 * ese mes.

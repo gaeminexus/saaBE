@@ -36,6 +36,13 @@ public class Prestamo implements Serializable {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long codigo;
 
+    /**
+     * Número de operación del préstamo en ASOPREP (PRSTIDAS). Lo usan G46/G47/G48/G49 y
+     * CCPM; se valida único. ⚠️ NO CONFUNDIR con {@code Aporte.idAsoprep} (APRTIDAS,
+     * verificado 2026-08-29): mismo nombre de campo, tabla y significado completamente
+     * distintos — aquel es la trazabilidad de qué CargaArchivo generó el aporte, este es un
+     * número de operación del préstamo. No tienen relación entre sí.
+     */
     @Basic
     @Column(name = "PRSTIDAS")
     private Long idAsoprep;

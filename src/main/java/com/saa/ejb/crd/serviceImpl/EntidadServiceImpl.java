@@ -1,6 +1,8 @@
 package com.saa.ejb.crd.serviceImpl;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -23,6 +25,10 @@ public class EntidadServiceImpl implements EntidadService {
 
     /** Mínimo de aportes (meses) para ser elegible como miembro. */
     private static final Long MINIMO_APORTES_ELEGIBLE = 90L;
+
+    /** Formato con el que sellarActualizacion escribe ENTDFCMD de aquí en adelante. */
+    private static final DateTimeFormatter FORMATO_FECHA_MODIFICACION =
+        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     /**
      * Recupera un registro de Entidad por su ID.
@@ -159,6 +165,31 @@ public class EntidadServiceImpl implements EntidadService {
 				: MINIMO_APORTES_ELEGIBLE;
 
 		return entidadDaoService.selectPadronParticipes(fechaCorte, calidadId, minimo);
+	}
+
+	@Override
+	public Entidad saveSingle(Entidad entidad, String usuario) throws Throwable {
+		System.out.println("saveSingle(Entidad, usuario) - usuario: " + usuario);
+		entidad = saveSingle(entidad);
+		sellarActualizacion(entidad.getCodigo(), usuario);
+		return entidad;
+	}
+
+	@Override
+	public void sellarActualizacion(Long idEntidad, String usuario) throws Throwable {
+		System.out.println("sellarActualizacion EntidadService - idEntidad: " + idEntidad + " - usuario: " + usuario);
+		if (usuario == null || usuario.trim().isEmpty()) {
+			// Sin usuario no es una edicion de pantalla (p.ej. un batch): no se sella,
+			// para no mentir sobre quien hizo el cambio. Ver CLAUDE.md / feedback del usuario
+			// del 2026-08-27.
+			System.out.println("sellarActualizacion EntidadService - usuario vacio/nulo, no se sella"
+				+ " (idEntidad: " + idEntidad + ")");
+			return;
+		}
+		Entidad entidad = entidadDaoService.selectById(idEntidad, NombreEntidadesCredito.ENTIDAD);
+		entidad.setFechaModificacion(LocalDateTime.now().format(FORMATO_FECHA_MODIFICACION));
+		entidad.setUsuarioModificacion(usuario);
+		entidadDaoService.save(entidad, entidad.getCodigo());
 	}
 
 }

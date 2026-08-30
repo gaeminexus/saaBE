@@ -17,4 +17,15 @@ public interface ParticipeService extends EntityService<Participe> {
      * @throws Throwable : Excepcion
      */
     List<Participe> selectByEntidad(Long codigoEntidad) throws Throwable;
+
+    /**
+     * Igual que {@link #saveSingle(Participe)}, pero además sella
+     * {@code EntidadService.sellarActualizacion} sobre ENTD en la misma transacción
+     * (pedido 9, pantalla de actualización de datos del partícipe).
+     *
+     * @param participe : Participe a guardar
+     * @param usuario   : Usuario que hace el cambio (puede ser null)
+     * @throws Throwable : Excepcion
+     */
+    Participe saveSingle(Participe participe, String usuario) throws Throwable;
 }

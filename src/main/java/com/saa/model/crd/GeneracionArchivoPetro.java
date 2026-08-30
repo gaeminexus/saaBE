@@ -14,6 +14,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 
 /**
  * Representa la tabla GNAP (GeneracionArchivoPetro).
@@ -368,6 +369,27 @@ public class GeneracionArchivoPetro implements Serializable {
     public Filial getFilial() {
         return filial;
     }
+
+    /**
+     * Nombre de la filial, plano (pedido 4 de la Fase 4 del plan de devengo de aportes):
+     * el frontend de la consulta de generaciones esperaba {@code nombreFilial} y solo
+     * tenía {@code FLLLCDGO} disponible. No hace falta un JOIN nuevo: {@code filial} ya se
+     * trae EAGER (ManyToOne por defecto), así que esto no agrega ninguna consulta.
+     */
+    @Transient
+    public String getNombreFilial() {
+        return filial != null ? filial.getNombre() : null;
+    }
+
+    /**
+     * Setter no-operativo: existe solo para que Jackson pueda deserializar un
+     * GeneracionArchivoPetro (directo o anidado) que reenvíe este campo. Mismo patrón y mismo
+     * bug que Entidad.getUltimaActualizacion()/getUsuarioUltimaActualizacion (corregido
+     * 2026-08-28) — sin este setter, un PUT que reenvíe "nombreFilial" falla con
+     * UnrecognizedPropertyException. No hay nada que guardar: es un alias derivado de
+     * {@link #filial}.
+     */
+    public void setNombreFilial(String nombreFilial) { /* solo lectura: ver getNombreFilial */ }
 
     public void setFilial(Filial filial) {
         this.filial = filial;

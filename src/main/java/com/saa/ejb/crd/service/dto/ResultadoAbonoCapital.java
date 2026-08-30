@@ -31,6 +31,14 @@ public class ResultadoAbonoCapital {
     /** Cuotas nuevas insertadas en CRD.DTPR */
     private Integer cuotasGeneradas;
 
+    /**
+     * Seguro de incendio TOTAL de las cuotas historizadas que no tuvieron cuota nueva
+     * correspondiente (modalidad 1, plazo acortado) — 0 en cualquier otro caso. Ver
+     * {@link SimulacionAbonoCapital#getSeguroIncendioLiberado()}: mismo dato, futuro insumo
+     * de reembolso a la aseguradora, proceso no implementado.
+     */
+    private Double seguroIncendioLiberado;
+
     public ResultadoAbonoCapital() {
     }
 
@@ -128,5 +136,13 @@ public class ResultadoAbonoCapital {
 
     public void setCuotasGeneradas(Integer cuotasGeneradas) {
         this.cuotasGeneradas = cuotasGeneradas;
+    }
+
+    public Double getSeguroIncendioLiberado() {
+        return seguroIncendioLiberado;
+    }
+
+    public void setSeguroIncendioLiberado(Double seguroIncendioLiberado) {
+        this.seguroIncendioLiberado = seguroIncendioLiberado;
     }
 }

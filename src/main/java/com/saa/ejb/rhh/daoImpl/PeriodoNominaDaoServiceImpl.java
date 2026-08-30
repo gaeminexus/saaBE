@@ -8,18 +8,27 @@
  */
 package com.saa.ejb.rhh.daoImpl;
 
+import java.time.LocalDate;
+import java.util.List;
+
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.rhh.dao.PeriodoNominaDaoService;
 import com.saa.model.rhh.PeriodoNomina;
 
 import jakarta.ejb.Stateless;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.Query;
 
 /**
  * @author GaemiSoft.
- * Implementacion PeriodoNominaDaoService. 
+ * Implementacion PeriodoNominaDaoService.
  */
 @Stateless
 public class PeriodoNominaDaoServiceImpl extends EntityDaoImpl<PeriodoNomina>  implements PeriodoNominaDaoService{
+
+	@PersistenceContext
+	EntityManager em;
 
 	/* (non-Javadoc)
 	 * @see com.saa.ejb.rhh.dao.PeriodoNominaDaoService#obtieneCampos()
@@ -52,5 +61,21 @@ public class PeriodoNominaDaoServiceImpl extends EntityDaoImpl<PeriodoNomina>  i
 							"numeroEmpleados",
 							"observaciones"};
 	}
-	
+
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.rhh.dao.PeriodoNominaDaoService#selectByFechaEmpresa(java.lang.Long, java.time.LocalDate)
+	 */
+	@SuppressWarnings("unchecked")
+	public PeriodoNomina selectByFechaEmpresa(Long idEmpresa, LocalDate fecha) throws Throwable {
+		Query query = em.createQuery(" select   t "
+				+ " from     PeriodoNomina t "
+				+ " where    t.empresa.codigo = :idEmpresa "
+				+ "          and t.fechaInicio <= :fecha "
+				+ "          and t.fechaFin >= :fecha ");
+		query.setParameter("idEmpresa", idEmpresa);
+		query.setParameter("fecha", fecha);
+		List<PeriodoNomina> encontrados = query.getResultList();
+		return (encontrados == null || encontrados.isEmpty()) ? null : encontrados.get(0);
+	}
+
 }

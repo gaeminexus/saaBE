@@ -63,4 +63,35 @@ public interface EntidadService extends EntityService<Entidad>{
 			Long calidadId,
 			Long minimoAportes) throws Throwable;
 
+	/**
+	 * Sella ENTD.fechaModificacion = ahora y ENTD.usuarioModificacion = usuario. Es el
+	 * único punto que escribe esas dos columnas (pedido 9): cada service que guarda una
+	 * tabla de la pantalla de actualización de datos del partícipe (ENTD, PRTC,
+	 * direcciones, referencias, cónyuge, perfil económico, cuentas bancarias) lo invoca al
+	 * final de su propio guardado, en la misma transacción.
+	 *
+	 * <b>Si {@code usuario} viene null o vacío, NO hace nada</b> (sólo lo deja dicho en el
+	 * log): sin usuario no es una edición de pantalla — es lo que permite que el sellado
+	 * esté enganchado a las 8 tablas sin que un guardado de batch/proceso interno (que no
+	 * trae usuario) mienta sobre quién tocó el registro.
+	 *
+	 * @param idEntidad : Código de la entidad (partícipe) a sellar
+	 * @param usuario   : Usuario que hizo el cambio; si es null/vacío, el método es un no-op
+	 * @throws Throwable : Excepcion (propagada de selectById/save si idEntidad no existe)
+	 */
+	void sellarActualizacion(Long idEntidad, String usuario) throws Throwable;
+
+	/**
+	 * Igual que {@link #saveSingle(Entidad)}, pero además sella
+	 * {@link #sellarActualizacion} en la misma transacción con el usuario dado. Es el que
+	 * usa la pantalla de actualización de datos; el {@code saveSingle(Entidad)} heredado
+	 * sigue sin sellar, para no marcar "modificado" en flujos de carga/batch que no son
+	 * esa pantalla.
+	 *
+	 * @param entidad : Entidad a guardar
+	 * @param usuario : Usuario que hace el cambio (puede ser null)
+	 * @throws Throwable : Excepcion
+	 */
+	Entidad saveSingle(Entidad entidad, String usuario) throws Throwable;
+
 }

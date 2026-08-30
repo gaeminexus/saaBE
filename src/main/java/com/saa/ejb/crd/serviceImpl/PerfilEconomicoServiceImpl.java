@@ -5,6 +5,7 @@ import java.util.List;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.crd.dao.PerfilEconomicoDaoService;
+import com.saa.ejb.crd.service.EntidadService;
 import com.saa.ejb.crd.service.PerfilEconomicoService;
 import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.model.crd.PerfilEconomico;
@@ -18,6 +19,9 @@ public class PerfilEconomicoServiceImpl implements PerfilEconomicoService {
 
     @EJB
     private PerfilEconomicoDaoService perfilEconomicoDaoService;
+
+    @EJB
+    private EntidadService entidadService;
 
     @Override
     public PerfilEconomico selectById(Long id) throws Throwable {
@@ -76,5 +80,13 @@ public class PerfilEconomicoServiceImpl implements PerfilEconomicoService {
     public List<PerfilEconomico> selectByEntidad(Long codigoEntidad) throws Throwable {
         System.out.println("selectByEntidad PerfilEconomicoService codigoEntidad: " + codigoEntidad);
         return perfilEconomicoDaoService.selectByEntidad(codigoEntidad);
+    }
+
+    @Override
+    public PerfilEconomico saveSingle(PerfilEconomico perfil, String usuario) throws Throwable {
+        System.out.println("saveSingle(PerfilEconomico, usuario) - usuario: " + usuario);
+        perfil = saveSingle(perfil);
+        entidadService.sellarActualizacion(perfil.getEntidad().getCodigo(), usuario);
+        return perfil;
     }
 }

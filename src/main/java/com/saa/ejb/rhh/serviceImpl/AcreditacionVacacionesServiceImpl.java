@@ -141,9 +141,17 @@ public class AcreditacionVacacionesServiceImpl implements AcreditacionVacaciones
 			saldo.setFechaFin(ingreso.withYear(anio.intValue()).plusYears(1).minusDays(1));
 			saldo.setDiasAsignados(RedondeoNomina.redondeaCantidad(dias));
 			saldo.setDiasAdicionales(diasAdicionales);
+			// CORREGIDO 2026-08-27: diasPendientes NO suma el arrastre. Los dias no
+			// gozados del anio anterior siguen viviendo en SU PROPIO saldo (el de ese
+			// anio), que sigue apareciendo en selectDisponibles hasta que se consuma o
+			// caduque. Sumarlos aqui los duplicaba: diasDisponibles recorre TODOS los
+			// anios no caducados y sumaba el mismo dia una vez en el anio de origen y
+			// otra vez arrastrado al nuevo. diasArrastrados queda como dato informativo
+			// -cuanto viene de atras-, no como parte del saldo de este anio. Ver
+			// docs/logica-negocio/rhh/CICLO-ACREDITACION-VACACIONES.md.
 			saldo.setDiasArrastrados(RedondeoNomina.redondeaCantidad(arrastre));
 			saldo.setDiasPendientes(RedondeoNomina.redondeaCantidad(Double.valueOf(
-					dias.doubleValue() + arrastre.doubleValue() - usados.doubleValue())));
+					dias.doubleValue() - usados.doubleValue())));
 			saldo.setValorDia(valorDiaVacaciones(empleado.getCodigo(), fechaCorte));
 			saldo.setUsuarioRegistro(usuario);
 			saldoVacacionesDaoService.save(saldo, saldo.getCodigo());
@@ -152,6 +160,90 @@ public class AcreditacionVacacionesServiceImpl implements AcreditacionVacaciones
 
 		System.out.println("acreditar termino: " + acreditados + " periodo(s) acreditados.");
 		return acreditados;
+	}
+
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.rhh.service.AcreditacionVacacionesService#revertirAcreditacion(java.lang.Long, java.lang.Integer, java.lang.String)
+	 */
+	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRED)
+	public int revertirAcreditacion(Long idEmpresa, Integer anio, String usuario) throws Throwable {
+		System.out.println("Ingresa al metodo revertirAcreditacion de acreditacionVacaciones service, empresa: "
+				+ idEmpresa + ", anio: " + anio);
+
+		if (idEmpresa == null || anio == null) {
+			throw new IncomeException("Debe indicar la empresa y el anio a revertir.");
+		}
+
+		List<SaldoVacaciones> saldosDelAnio = saldoVacacionesDaoService.selectByEmpresaYAnio(idEmpresa, anio);
+		if (saldosDelAnio.isEmpty()) {
+			throw new IncomeException("No hay saldos de vacaciones acreditados para la empresa " + idEmpresa
+					+ " en el anio " + anio + ": no hay nada que revertir.");
+		}
+
+		// Todo o nada: si un solo empleado ya consumio o le pagaron de ese saldo, o el
+		// saldo viene de una apertura de migracion (no lo creo esta acreditacion, no es
+		// suyo revertirlo), se rechaza la reversion COMPLETA nombrandolos. Nunca un
+		// reverso parcial que deje saldos inconsistentes.
+		List<String> bloqueados = new ArrayList<String>();
+		for (SaldoVacaciones saldo : saldosDelAnio) {
+			double usados = saldo.getDiasUsados() != null ? saldo.getDiasUsados().doubleValue() : 0D;
+			double pagados = saldo.getDiasPagados() != null ? saldo.getDiasPagados().doubleValue() : 0D;
+			Empleado empleado = saldo.getEmpleado();
+			String nombre = empleado != null ? (empleado.getApellidos() + " " + empleado.getNombres()) : "?";
+			if (usados > 0D || pagados > 0D) {
+				bloqueados.add(nombre + " (usados=" + saldo.getDiasUsados() + ", pagados="
+						+ saldo.getDiasPagados() + ")");
+			} else if (SI.equals(saldo.getAperturaMigracion())) {
+				bloqueados.add(nombre + " (saldo de apertura de migracion, no lo creo esta acreditacion)");
+			}
+		}
+		if (!bloqueados.isEmpty()) {
+			throw new IncomeException("No se puede revertir la acreditacion " + anio + " de la empresa "
+					+ idEmpresa + ": " + bloqueados.size() + " saldo(s) ya tienen movimiento y no se pueden"
+					+ " borrar sin perder informacion: " + bloqueados + ". No se revirtio ningun saldo.");
+		}
+
+		// Desmarca la caducidad que ESTA acreditacion provoco. acreditar llama a
+		// caducarSaldos(fechaCorte del anio que se acredita) antes de acreditar, con
+		// anioLimite = anio - PRNMCDVC: es el unico anio que cruza el umbral por primera
+		// vez en esta corrida (los anios anteriores a anioLimite ya estaban caducados de
+		// corridas previas, y caducarSaldos es idempotente sobre ellos). Revertir sin
+		// desmarcar dejaria caducados unos dias que nadie decidio caducar.
+		//
+		// No hay columna que diga "que corrida caduco este saldo" (a proposito, no se
+		// crea sin el DDL del usuario) asi que esto es una inferencia, no un registro
+		// exacto: si alguien llamo a POST /sldv/caducar suelto, por fuera de acreditar,
+		// con fechaCorte del mismo anio, tambien se desmarca -- son indistinguibles
+		// porque ambos calculan el mismo anioLimite con los mismos parametros, y revertir
+		// "lo que esta corrida caduco" es correcto para los dos casos por igual.
+		ParametroNomina prnm = parametroNominaDaoService.selectByAnio(idEmpresa, anio);
+		int caducidadesDesmarcadas = 0;
+		if (prnm != null && prnm.getAniosCaducidadVacaciones() != null) {
+			int anioLimite = anio.intValue() - prnm.getAniosCaducidadVacaciones().intValue();
+			for (SaldoVacaciones saldo : saldoVacacionesDaoService.selectByEmpresaYAnio(idEmpresa,
+					Integer.valueOf(anioLimite))) {
+				if (SI.equals(saldo.getCaducado())) {
+					saldo.setCaducado(NO);
+					saldo.setUsuarioRegistro(usuario);
+					saldoVacacionesDaoService.save(saldo, saldo.getCodigo());
+					caducidadesDesmarcadas++;
+				}
+			}
+		}
+
+		int borrados = 0;
+		for (SaldoVacaciones saldo : saldosDelAnio) {
+			saldoVacacionesDaoService.remove(saldo, saldo.getCodigo());
+			borrados++;
+		}
+
+		System.out.println("revertirAcreditacion termino: " + borrados + " saldo(s) del anio " + anio
+				+ " borrados, " + caducidadesDesmarcadas + " caducidad(es) desmarcada(s) del anio "
+				+ (prnm != null && prnm.getAniosCaducidadVacaciones() != null
+						? Integer.valueOf(anio.intValue() - prnm.getAniosCaducidadVacaciones().intValue())
+						: "N/A") + ".");
+		return borrados;
 	}
 
 	/* (non-Javadoc)

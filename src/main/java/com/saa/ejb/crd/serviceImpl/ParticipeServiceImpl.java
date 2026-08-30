@@ -5,6 +5,7 @@ import java.util.List;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.crd.dao.ParticipeDaoService;
+import com.saa.ejb.crd.service.EntidadService;
 import com.saa.ejb.crd.service.ParticipeService;
 import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.model.crd.Participe;
@@ -18,6 +19,9 @@ public class ParticipeServiceImpl implements ParticipeService {
 
     @EJB
     private ParticipeDaoService participeDaoService;
+
+    @EJB
+    private EntidadService entidadService;
 
     /**
      * Recupera un registro de Participe por su ID.
@@ -94,5 +98,13 @@ public class ParticipeServiceImpl implements ParticipeService {
     public List<Participe> selectByEntidad(Long codigoEntidad) throws Throwable {
         System.out.println("Ingresa al metodo selectByEntidad ParticipeService con codigoEntidad: " + codigoEntidad);
         return participeDaoService.selectByEntidad(codigoEntidad);
+    }
+
+    @Override
+    public Participe saveSingle(Participe participe, String usuario) throws Throwable {
+        System.out.println("saveSingle(Participe, usuario) - usuario: " + usuario);
+        participe = saveSingle(participe);
+        entidadService.sellarActualizacion(participe.getEntidad().getCodigo(), usuario);
+        return participe;
     }
 }

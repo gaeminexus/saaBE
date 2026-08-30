@@ -329,7 +329,10 @@ public class NotaCreditoRest {
 
 	/**
 	 * Anula una nota de crédito y su asiento contable vinculado.
-	 * Body JSON: { "idNotaCredito": 1, "motivo": "...", "usuario": "..." }
+	 * Body JSON: { "idNotaCredito": 1, "motivo": "...", "usuario": "...", "idUsuario": 5,
+	 *              "anularEnCascada": false }
+	 * Cambio de comportamiento (ítem 14, 2026-08-28): 409 Conflict si tiene un cruce activo
+	 * sin reversar y no viene {@code anularEnCascada=true} — antes reversaba en silencio.
 	 */
 	@POST
 	@Path("/anular")
@@ -341,6 +344,8 @@ public class NotaCreditoRest {
 			Long idNotaCredito = getLongParam(params, "idNotaCredito");
 			String motivo  = (String) params.get("motivo");
 			String usuario = (String) params.get("usuario");
+			Long idUsuario = getLongParam(params, "idUsuario");
+			boolean anularEnCascada = params != null && Boolean.TRUE.equals(params.get("anularEnCascada"));
 
 			if (idNotaCredito == null) {
 				java.util.Map<String, Object> err = new java.util.HashMap<>();
@@ -355,11 +360,17 @@ public class NotaCreditoRest {
 				return Response.status(Response.Status.BAD_REQUEST).entity(err).type(MediaType.APPLICATION_JSON).build();
 			}
 
-			java.util.Map<String, Object> resultado = notaCreditoService.anularNotaCredito(idNotaCredito, motivo, usuario);
+			java.util.Map<String, Object> resultado = notaCreditoService.anularNotaCredito(
+					idNotaCredito, motivo, usuario, idUsuario, anularEnCascada);
 			boolean exito = Boolean.TRUE.equals(resultado.get("exito"));
 			return Response.status(exito ? Response.Status.OK : Response.Status.BAD_REQUEST)
 					.entity(resultado).type(MediaType.APPLICATION_JSON).build();
 
+		} catch (com.saa.basico.util.IncomeException e) {
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", e.getMessage());
+			return Response.status(Response.Status.CONFLICT).entity(err).type(MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			System.err.println("ERROR en anularNotaCredito REST: " + e.getMessage());
 			e.printStackTrace();
@@ -368,6 +379,24 @@ public class NotaCreditoRest {
 			err.put("mensaje", "Error inesperado al anular la nota de crédito: " + e.getMessage());
 			err.put("error", e.getMessage());
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity(err).type(MediaType.APPLICATION_JSON).build();
+		}
+	}
+
+	/**
+	 * Facturas de venta que esta nota de crédito está pagando actualmente (ítem 14).
+	 */
+	@GET
+	@Path("/movimientosRelacionados/{id}")
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response movimientosRelacionados(@PathParam("id") Long id) {
+		System.out.println("LLEGA AL SERVICIO GET NotaCredito/movimientosRelacionados id: " + id);
+		try {
+			java.util.List<java.util.Map<String, Object>> lista = notaCreditoService.movimientosRelacionadosNotaCredito(id);
+			return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+		} catch (Throwable e) {
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+					.entity("Error al consultar movimientos relacionados: " + e.getMessage())
+					.type(MediaType.APPLICATION_JSON).build();
 		}
 	}
 

@@ -9,6 +9,7 @@ import com.saa.model.crd.DetalleDevolucionAporte;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.NoResultException;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
 
@@ -58,5 +59,19 @@ public class DetalleDevolucionAporteDaoServiceImpl extends EntityDaoImpl<Detalle
                 " order by d.devolucion.codigo, d.codigo");
         query.setParameter("idsDevolucion", idsDevolucion);
         return query.getResultList();
+    }
+
+    @Override
+    public DetalleDevolucionAporte selectByIdAporte(Long idAporte) throws Throwable {
+        System.out.println("Ingresa al metodo selectByIdAporte con aporte: " + idAporte);
+        try {
+            Query query = em.createQuery(
+                    " select d from DetalleDevolucionAporte d " +
+                    " where  d.idAporte = :idAporte");
+            query.setParameter("idAporte", idAporte);
+            return (DetalleDevolucionAporte) query.getSingleResult();
+        } catch (NoResultException e) {
+            return null;
+        }
     }
 }

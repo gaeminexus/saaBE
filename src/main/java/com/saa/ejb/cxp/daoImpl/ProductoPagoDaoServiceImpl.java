@@ -134,8 +134,59 @@ public class ProductoPagoDaoServiceImpl extends EntityDaoImpl<ProductoPago>  imp
 		System.out.println("Dao selectByIdPadre de idPadre: " + idPadre);
 		Query query = em.createQuery(" from   ProductoPago b " +
 								     " where  b.idPadre = :idPadre ");
-		query.setParameter("idPadre", idPadre);	
+		query.setParameter("idPadre", idPadre);
 		return query.getResultList();
-	}	
-	
+	}
+
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.cxp.dao.ProductoPagoDaoService#selectDocumentosQueUsanProducto(java.lang.Long)
+	 */
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<String> selectDocumentosQueUsanProducto(Long idProducto) throws Throwable {
+		System.out.println("Ingresa al metodo selectDocumentosQueUsanProducto con idProducto: " + idProducto);
+		List<String> resultado = new java.util.ArrayList<String>();
+		if (idProducto == null) {
+			return resultado;
+		}
+
+		List<Object[]> facturas = em.createQuery(
+				"select distinct f.id, f.numero from DetalleFacturaCompra d join d.factura f "
+						+ "where d.producto = :idProducto")
+				.setParameter("idProducto", idProducto)
+				.getResultList();
+		for (Object[] fila : facturas) {
+			resultado.add("Factura de compra N° " + descripcionDocumentoUso(fila));
+		}
+
+		List<Object[]> notas = em.createQuery(
+				"select distinct n.id, n.numero from DetalleNotaCreditoCompra d join d.notaCredito n "
+						+ "where d.producto = :idProducto")
+				.setParameter("idProducto", idProducto)
+				.getResultList();
+		for (Object[] fila : notas) {
+			resultado.add("Nota de crédito de compra N° " + descripcionDocumentoUso(fila));
+		}
+
+		List<Object[]> liquidaciones = em.createQuery(
+				"select distinct l.id, l.numero from DetalleLiquidacionCompraCompra d join d.liquidacion l "
+						+ "where d.producto.id = :idProducto")
+				.setParameter("idProducto", idProducto)
+				.getResultList();
+		for (Object[] fila : liquidaciones) {
+			resultado.add("Liquidación de compra N° " + descripcionDocumentoUso(fila));
+		}
+
+		return resultado;
+	}
+
+	/**
+	 * Arma "numero (id X)", o solo "(id X)" si el documento no tiene número grabado.
+	 */
+	private String descripcionDocumentoUso(Object[] fila) {
+		Long id = (Long) fila[0];
+		String numero = (String) fila[1];
+		return (numero != null && !numero.trim().isEmpty() ? numero + " " : "") + "(id " + id + ")";
+	}
+
 }

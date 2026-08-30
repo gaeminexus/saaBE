@@ -34,4 +34,10 @@ public interface OrigenPagoExterno {
 	 */
 	public static final String RHH_ANTICIPO_EMPLEADO = "RHH_ANTICIPO_EMPLEADO";
 
+	/**
+	 * Devolucion de saldo a favor de un cliente, originada en CXC.AnticipoCliente.
+	 * PGTRIDOR lleva el CXC.AnticipoCliente.id correspondiente.
+	 */
+	public static final String CXC_DEVOLUCION_CLIENTE = "CXC_DEVOLUCION_CLIENTE";
+
 }

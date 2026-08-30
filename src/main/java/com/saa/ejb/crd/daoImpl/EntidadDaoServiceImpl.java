@@ -400,9 +400,16 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 			// Un mes con uno o con varios aportes positivos 9/11 cuenta como UN aporte.
 			// El corte es "< primer instante del mes de ejecución", es decir, se
 			// consideran los aportes hasta el último día del mes anterior inclusive.
-			"  SELECT a.ENTDCDGO                              AS entidad_id, " +
-			"         COUNT(DISTINCT TRUNC(a.APRTFCTR, 'MM')) AS numero_aportes, " +
-			"         MAX(TRUNC(a.APRTFCTR, 'MM'))            AS ultimo_mes_aporte " +
+			//
+			// Se agrupa por PERIODO EFECTIVO (D3, 2026-08-27), no por TRUNC(APRTFCTR,'MM'):
+			// la fecha de caja (APRTFCTR) siempre es el mes de la CARGA, nunca el del
+			// devengo. Sin este cambio, un partícipe que se pone al día pagando 6 meses
+			// atrasados en una sola carga contaba 1 aporte (todas las filas caen en el
+			// mismo mes de caja) en vez de 6. Con solo filas positivas en este WHERE, el
+			// periodo efectivo equivale a NVL(APRTPRDV, TRUNC(APRTFCTR,'MM')).
+			"  SELECT a.ENTDCDGO                        AS entidad_id, " +
+			"         COUNT(DISTINCT " + PeriodoEfectivoAporteSql.PERIODO_EFECTIVO_SQL + ") AS numero_aportes, " +
+			"         MAX(" + PeriodoEfectivoAporteSql.PERIODO_EFECTIVO_SQL + ")            AS ultimo_mes_aporte " +
 			"  FROM   CRD.APRT a " +
 			"  WHERE  a.TPAPCDGO IN (:tiposAporte) " +
 			"    AND  a.APRTVLRR > 0 " +

@@ -25,6 +25,7 @@ import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -100,10 +101,10 @@ public class CuentaBancariaParticipeRest {
     @PUT
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response put(CuentaBancariaParticipe registro) {
+    public Response put(CuentaBancariaParticipe registro, @QueryParam("usuario") String usuario) {
         System.out.println("LLEGA AL SERVICIO PUT - CNBP");
         try {
-            CuentaBancariaParticipe resultado = cuentaBancariaParticipeService.saveSingle(registro);
+            CuentaBancariaParticipe resultado = cuentaBancariaParticipeService.saveSingle(registro, usuario);
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)

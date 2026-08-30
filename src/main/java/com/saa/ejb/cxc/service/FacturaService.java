@@ -132,10 +132,44 @@ public interface FacturaService extends EntityService<Factura> {
          * Anula una factura cambiando su estado a INACTIVO (2) y anula
          * el asiento contable vinculado si existe.
          *
-         * @param idFactura ID de la factura a anular
-         * @param motivo    Motivo de la anulación (opcional)
-         * @return Mapa con exito, mensaje
-         * @throws Throwable Si la factura no existe o ya está anulada
+         * <p><b>Cambio de comportamiento (2026-08-28, ítem 14 — decisión del usuario, no
+         * suavizada por compatibilidad):</b> hasta ahora este método reversaba SIEMPRE, en
+         * silencio, todos los cobros/abonos aplicados a la factura antes de anularla. Eso
+         * dejó de ser así: si hay movimientos relacionados activos (pagos, notas de crédito/
+         * débito, retenciones o anticipos cruzados vía {@code AplicacionPagoCxc}) y
+         * {@code anularEnCascada} es {@code false} (el default para cualquier llamador que no
+         * mande ese campo — incluidas las pantallas actuales), se rechaza con
+         * {@code IncomeException} listando qué se encontró, y la factura NO se anula. Solo con
+         * {@code anularEnCascada=true} se reversa todo primero (mismo mecanismo de antes,
+         * {@code AplicacionPagoCxcService.revertirAplicacionesDeFactura}) y luego se anula.
+         * Ver {@link #movimientosRelacionadosFactura(Long)} para la lista previa.</p>
+         *
+         * @param idFactura			: ID de la factura a anular
+         * @param motivo			: Motivo de la anulación (opcional)
+         * @param usuario			: Usuario que anula (obligatorio, ya lo exige el REST)
+         * @param idUsuario			: Id del usuario (SCP.PJRQ), lo pide
+         *							  {@code revertirAplicacionesDeFactura}; puede ser null si
+         *							  no hay movimientos que reversar
+         * @param anularEnCascada	: true = reversar todos los movimientos relacionados y
+         *							  anular igual; false (default) = rechazar si hay alguno
+         * @return					: Mapa con exito, mensaje, y aplicacionesReversadas si hubo cascada
+         * @throws Throwable		: Si la factura no existe, ya está anulada, o tiene
+         *							  movimientos relacionados sin reversar y no viene cascada
          */
-        java.util.Map<String, Object> anularFactura(Long idFactura, String motivo, String usuario) throws Throwable;
+        java.util.Map<String, Object> anularFactura(Long idFactura, String motivo, String usuario,
+                        Long idUsuario, boolean anularEnCascada) throws Throwable;
+
+        /**
+         * Movimientos relacionados a una factura de venta: cobros directos, notas de crédito/
+         * débito, retenciones y anticipos cruzados, todos vía {@code AplicacionPagoCxc} activa.
+         * Es la lista que el frontend muestra antes de preguntar "¿anular con todos los
+         * movimientos?" (ítem 14).
+         *
+         * @param idFactura	: Id de la factura de venta
+         * @return			: Lista de mapas con idAplicacion, tipoDocPago, tipoDocPagoTexto,
+         *					  montoAplicado, fechaAplicacion; vacía si no tiene movimientos
+         * @throws Throwable: Excepcion
+         */
+        java.util.List<java.util.Map<String, Object>> movimientosRelacionadosFactura(Long idFactura)
+                        throws Throwable;
 }

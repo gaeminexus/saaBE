@@ -22,8 +22,10 @@ import com.saa.ejb.crd.service.dto.ParametrosAmortizacion;
 import com.saa.ejb.crd.service.dto.ResultadoAbonoCapital;
 import com.saa.ejb.crd.service.dto.ResultadoCalculoMora;
 import com.saa.ejb.crd.service.dto.ResultadoAnulacion;
+import com.saa.ejb.crd.service.dto.ComprobantePagoMultipleDatos;
 import com.saa.ejb.crd.service.dto.ResultadoAplicacionPago;
 import com.saa.ejb.crd.service.dto.ResultadoPagoConAportes;
+import com.saa.ejb.crd.service.dto.ResultadoPagoMultiple;
 import com.saa.ejb.crd.service.dto.ResultadoPrecancelacion;
 import com.saa.ejb.crd.service.dto.ResultadoSimulacionCreditoNuevo;
 import com.saa.ejb.crd.service.dto.ResultadoSimulacionReestructuracion;
@@ -31,8 +33,10 @@ import com.saa.ejb.crd.service.dto.SimulacionAbonoCapital;
 import com.saa.ejb.crd.service.dto.SimulacionPrecancelacion;
 import com.saa.ejb.crd.service.dto.SolicitudAbonoCapital;
 import com.saa.ejb.crd.service.dto.SolicitudAnulacion;
+import com.saa.ejb.crd.service.dto.SolicitudComprobantePagoMultiple;
 import com.saa.ejb.crd.service.dto.SolicitudPagoConAportes;
 import com.saa.ejb.crd.service.dto.SolicitudPagoCuota;
+import com.saa.ejb.crd.service.dto.SolicitudPagoMultiple;
 import com.saa.ejb.crd.service.dto.SolicitudPrecancelacion;
 import com.saa.ejb.crd.service.dto.SolicitudReestructuracion;
 import com.saa.ejb.crd.service.dto.SolicitudReporteSimulacion;
@@ -143,8 +147,48 @@ public class PrestamoRest {
     }
     
     /**
+     * TODOS los préstamos de una entidad (partícipe), en cualquier estado, ordenados por
+     * código. Mismo criterio que ya usaba el frontend por {@code selectByCriteria}
+     * (entidad.codigo = idEntidad, orderBy codigo) para la pestaña de préstamos de
+     * participe-dash.
+     *
+     * Reemplazo dedicado de {@code POST /rest/prst/selectByCriteria} para esa pantalla
+     * (pedido 1 del plan de devengo de aportes): ese endpoint es compartido por otras 12
+     * pantallas del frontend y lanza excepción cuando la búsqueda no devuelve filas, así que
+     * no se pudo corregir ahí sin arriesgar a los demás consumidores. Una entidad sin
+     * préstamos devuelve 200 con {@code []}: NO es un error.
+     *
+     * @param idEntidad Código de la entidad (partícipe)
+     * @return 200 con la lista de préstamos (vacía si no tiene ninguno)
+     */
+    @GET
+    @Path("/porEntidad/{idEntidad}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response porEntidad(@PathParam("idEntidad") Long idEntidad) {
+        System.out.println("LLEGA AL SERVICIO PRESTAMOS POR ENTIDAD - Entidad: " + idEntidad);
+        try {
+            if (idEntidad == null || idEntidad <= 0) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity("Debe indicar una entidad válida")
+                        .type(MediaType.APPLICATION_JSON)
+                        .build();
+            }
+            List<Prestamo> prestamos = prestamoDaoService.selectByEntidad(idEntidad);
+            return Response.status(Response.Status.OK)
+                    .entity(prestamos)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener los préstamos de la entidad: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
+    }
+
+    /**
      * Crea o actualiza un registro de Prestamo (PUT).
-     * 
+     *
      * @param registro Objeto Prestamo
      * @return Response con registro actualizado o creado
      */
@@ -412,6 +456,114 @@ public class PrestamoRest {
 
         } catch (Throwable e) {
             System.err.println("ERROR al pagar cuota: " + e.getMessage());
+            e.printStackTrace();
+            return respuestaErrorNegocio(e);
+        }
+    }
+
+    /**
+     * Cobra VARIOS préstamos del MISMO partícipe en una sola operación: una sola confirmación,
+     * un solo comprobante. TODO O NADA: si un préstamo falla, no queda aplicado ninguno.
+     *
+     * @param solicitud { pagos: [ { idPrestamo, valor, usuario, observacion, fechaPago }, ... ] }
+     * @return 200 con el ResultadoPagoMultiple (desglose por préstamo + total + partícipe);
+     *         404/409/422/500 según el fallo
+     */
+    @POST
+    @Path("/pagarMultiplesCuotas")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response pagarMultiplesCuotas(SolicitudPagoMultiple solicitud) {
+        System.out.println("LLEGA AL SERVICIO PAGAR MULTIPLES CUOTAS - Préstamos: "
+            + (solicitud != null && solicitud.getPagos() != null ? solicitud.getPagos().size() : null));
+
+        if (solicitud == null || solicitud.getPagos() == null || solicitud.getPagos().isEmpty()) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe indicar al menos un préstamo a pagar (pagos)", null);
+        }
+        for (SolicitudPagoCuota pago : solicitud.getPagos()) {
+            if (pago == null || pago.getIdPrestamo() == null) {
+                return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                    "Cada renglón debe indicar el préstamo (idPrestamo)", null);
+            }
+            if (pago.getValor() == null) {
+                return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                    "El préstamo " + pago.getIdPrestamo() + " no indica el valor del pago", null);
+            }
+            if (pago.getUsuario() == null || pago.getUsuario().trim().isEmpty()) {
+                return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                    "El préstamo " + pago.getIdPrestamo() + " no indica el usuario que ejecuta el pago", null);
+            }
+        }
+
+        try {
+            ResultadoPagoMultiple resultado = procesoPagoPrestamoService.pagarMultiplesCuotas(solicitud);
+
+            String mensaje = "Pago aplicado por $" + resultado.getValorTotalAplicado()
+                + " en " + resultado.getResultados().size() + " préstamo(s) de "
+                + resultado.getNombreEntidad();
+
+            Map<String, Object> cuerpo = new LinkedHashMap<>();
+            cuerpo.put("exito", Boolean.TRUE);
+            cuerpo.put("etapa", ETAPA_APLICACION);
+            cuerpo.put("mensaje", mensaje);
+            cuerpo.put("resultado", resultado);
+
+            return Response.status(Response.Status.OK)
+                    .entity(cuerpo)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+
+        } catch (Throwable e) {
+            System.err.println("ERROR al pagar múltiples cuotas: " + e.getMessage());
+            e.printStackTrace();
+            return respuestaErrorNegocio(e);
+        }
+    }
+
+    /**
+     * Comprobante PDF de un cobro múltiple ya aplicado. Reconstruye TODO desde
+     * CRD.EVPR/CRD.PGPR a partir de los códigos de evento — nunca recibe montos del cliente.
+     *
+     * @param solicitud { idsEvento: [...] } — los {@code idEvento} que devolvió
+     *                  {@code pagarMultiplesCuotas} en cada {@code resultado}
+     * @return 200 con el PDF (application/pdf); 404/409/422/500 según el fallo
+     */
+    @POST
+    @Path("/comprobantePagoMultiple")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces("application/pdf")
+    public Response comprobantePagoMultiple(SolicitudComprobantePagoMultiple solicitud) {
+        System.out.println("LLEGA AL SERVICIO COMPROBANTE PAGO MULTIPLE - Eventos: "
+            + (solicitud != null ? solicitud.getIdsEvento() : null));
+
+        if (solicitud == null || solicitud.getIdsEvento() == null || solicitud.getIdsEvento().isEmpty()) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe indicar al menos un evento (idsEvento)", null);
+        }
+
+        try {
+            ComprobantePagoMultipleDatos datos =
+                procesoPagoPrestamoService.prepararComprobantePagoMultiple(solicitud.getIdsEvento());
+
+            Map<String, Object> parametros = new LinkedHashMap<>();
+            parametros.put("P_NOMBRE_SOCIO", datos.getNombreSocio());
+            parametros.put("P_IDENTIFICACION_SOCIO", datos.getIdentificacionSocio());
+            parametros.put("P_FECHA", formatoFecha(datos.getFecha()));
+            parametros.put("P_USUARIO", datos.getUsuario());
+            parametros.put("P_TOTAL_GENERAL", datos.getTotalGeneral());
+            parametros.put("P_CANTIDAD_PRESTAMOS", datos.getLineas().size());
+
+            byte[] pdf = reporteService.generarReporteDesdeColeccion(
+                "crd", "RPRT_CMPB_PGML", parametros, datos.getLineas(), "PDF");
+
+            return Response.ok(pdf)
+                    .header("Content-Disposition", "attachment; filename=\"RPRT_CMPB_PGML.pdf\"")
+                    .header("Content-Type", "application/pdf")
+                    .build();
+
+        } catch (Throwable e) {
+            System.err.println("ERROR al generar el comprobante de pago múltiple: " + e.getMessage());
             e.printStackTrace();
             return respuestaErrorNegocio(e);
         }

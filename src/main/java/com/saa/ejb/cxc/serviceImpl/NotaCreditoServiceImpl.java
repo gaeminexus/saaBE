@@ -1473,8 +1473,31 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 	// =========================================================================
 
 	@Override
-	public java.util.Map<String, Object> anularNotaCredito(Long idNotaCredito, String motivo, String usuario) throws Throwable {
-		System.out.println("=== anularNotaCredito | id=" + idNotaCredito + " | usuario=" + usuario + " ===");
+	public java.util.List<java.util.Map<String, Object>> movimientosRelacionadosNotaCredito(Long idNotaCredito)
+			throws Throwable {
+		System.out.println("=== movimientosRelacionadosNotaCredito | id=" + idNotaCredito + " ===");
+		java.util.List<java.util.Map<String, Object>> lista = new java.util.ArrayList<>();
+		if (idNotaCredito == null) {
+			return lista;
+		}
+		for (com.saa.model.cxc.AplicacionPagoCxc aplicacion
+				: aplicacionPagoCxcDaoService.selectActivasByDocumento("NOTA_CREDITO", idNotaCredito)) {
+			java.util.Map<String, Object> fila = new java.util.HashMap<>();
+			fila.put("idAplicacion", aplicacion.getId());
+			fila.put("idFactura", aplicacion.getFactura() != null ? aplicacion.getFactura().getId() : null);
+			fila.put("montoAplicado", aplicacion.getMontoAplicado());
+			fila.put("fechaAplicacion", aplicacion.getFechaAplicacion() != null
+					? aplicacion.getFechaAplicacion().toString() : null);
+			lista.add(fila);
+		}
+		return lista;
+	}
+
+	@Override
+	public java.util.Map<String, Object> anularNotaCredito(Long idNotaCredito, String motivo, String usuario,
+			Long idUsuario, boolean anularEnCascada) throws Throwable {
+		System.out.println("=== anularNotaCredito | id=" + idNotaCredito + " | usuario=" + usuario
+				+ " | anularEnCascada=" + anularEnCascada + " ===");
 		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
 		resultado.put("exito", false);
 
@@ -1492,19 +1515,28 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 		String motivoFinal      = (motivo  != null && !motivo.trim().isEmpty())  ? motivo.trim()  : "Anulación manual";
 		java.time.LocalDateTime ahora = java.time.LocalDateTime.now();
 
-		// Reversar el abono que esta nota de crédito hizo sobre la factura
-		try {
+		// Movimientos relacionados (ítem 14): esta nota puede estar pagando una o más facturas.
+		java.util.List<com.saa.model.cxc.AplicacionPagoCxc> movimientos =
+				aplicacionPagoCxcDaoService.selectActivasByDocumento("NOTA_CREDITO", idNotaCredito);
+		if (!movimientos.isEmpty()) {
+			if (!anularEnCascada) {
+				StringBuilder detalle = new StringBuilder();
+				for (com.saa.model.cxc.AplicacionPagoCxc m : movimientos) {
+					if (detalle.length() > 0) detalle.append("; ");
+					detalle.append("factura ").append(m.getFactura() != null ? m.getFactura().getId() : "?")
+							.append(" por $").append(m.getMontoAplicado()).append(" (id aplicación ").append(m.getId()).append(")");
+				}
+				throw new IncomeException("No se puede anular la nota de crédito " + idNotaCredito
+						+ ": está pagando " + movimientos.size() + " factura(s) sin reversar: " + detalle
+						+ ". Reenvíe la anulación con anularEnCascada=true para reversar esos cruces junto con la nota.");
+			}
 			int reversadas = aplicacionPagoCxcService.revertirAplicacionesDeDocumento(
-					"NOTA_CREDITO", idNotaCredito, motivoFinal, null);
+					"NOTA_CREDITO", idNotaCredito,
+					"Anulación en cascada de la nota de crédito " + idNotaCredito + ": " + motivoFinal, idUsuario);
 			if (reversadas > 0) {
 				resultado.put("aplicacionesReversadas", reversadas);
 				System.out.println("✓ Aplicaciones de cobro reversadas: " + reversadas);
 			}
-		} catch (Exception e) {
-			System.err.println("⚠ Error al reversar las aplicaciones de cobro: " + e.getMessage());
-			resultado.put("advertenciaAplicacion",
-					"La Nota de Crédito fue anulada pero ocurrió un error al reversar el abono "
-					+ "aplicado a la factura: " + e.getMessage());
 		}
 
 		// Anular asiento contable vinculado (si existe)

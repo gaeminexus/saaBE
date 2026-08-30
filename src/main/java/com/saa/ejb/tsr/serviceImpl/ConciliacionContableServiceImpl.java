@@ -7,21 +7,28 @@
 package com.saa.ejb.tsr.serviceImpl;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.cnt.service.PeriodoService;
 import com.saa.ejb.tsr.dao.ConciliacionContableDaoService;
+import com.saa.ejb.tsr.dao.ConciliacionDaoService;
 import com.saa.ejb.tsr.dao.CuentaBancariaDaoService;
+import com.saa.ejb.tsr.dao.DetalleTransitoDaoService;
 import com.saa.ejb.tsr.dao.GrupoConciliacionAsientoDaoService;
 import com.saa.ejb.tsr.dao.GrupoConciliacionContableDaoService;
 import com.saa.ejb.tsr.dao.GrupoConciliacionExtractoDaoService;
 import com.saa.ejb.tsr.service.ConciliacionContableService;
 import com.saa.ejb.tsr.service.ControlExtractoBancarioService;
+import com.saa.model.cnt.DetalleAsiento;
 import com.saa.model.cnt.Periodo;
+import com.saa.model.tsr.Conciliacion;
 import com.saa.model.tsr.ConciliacionContable;
 import com.saa.model.tsr.CuentaBancaria;
+import com.saa.model.tsr.DetalleExtractoBancario;
+import com.saa.model.tsr.DetalleTransito;
 import com.saa.model.tsr.NombreEntidadesTesoreria;
 import com.saa.rubros.Estado;
 import com.saa.rubros.EstadoConciliacionContable;
@@ -56,6 +63,12 @@ public class ConciliacionContableServiceImpl implements ConciliacionContableServ
 
     @EJB
     private ControlExtractoBancarioService controlExtractoBancarioService;
+
+    @EJB
+    private DetalleTransitoDaoService detalleTransitoDaoService;
+
+    @EJB
+    private ConciliacionDaoService conciliacionDaoService;
 
     @Override
     public ConciliacionContable obtenerOCrear(Long idCuentaBancaria, Long idPeriodo) throws Throwable {
@@ -134,11 +147,51 @@ public class ConciliacionContableServiceImpl implements ConciliacionContableServ
             throw new IncomeException("El periodo '" + periodo.getNombre()
                     + "' ya esta cerrado para conciliacion bancaria. No se puede verificar una cuenta.");
         }
-        if ((conciliacion.getTotalPendientesExtracto() != null && conciliacion.getTotalPendientesExtracto() > 0)
-                || (conciliacion.getTotalPendientesAsiento() != null
-                        && conciliacion.getTotalPendientesAsiento() > 0)) {
-            throw new IncomeException("No se puede verificar: aun quedan movimientos sin conciliar en esta cuenta/periodo");
+
+        // Corregido 2026-08-27 (ver docs/logica-negocio/tsr/DISENO-CONCILIACION-PARTIDAS-EN-TRANSITO.md):
+        // ya NO exige cero pendientes -eso es lo que impedia cerrar un mes para siempre por una
+        // sola partida en transito-. Exige dos cosas en su lugar:
+        //   1) Que todo pendiente actual (incluidos los arrastrados de periodos anteriores, ver
+        //      selectPendientes) este cubierto por una TSR.DTCN Pendiente -es decir, declarado,
+        //      no simplemente ignorado-.
+        //   2) Que exista un cierre (TSR.CNCL, CNCLESTD=Cerrado) vigente para esta cuenta/periodo
+        //      -la ecuacion del §3 solo se valida una vez, en ConciliacionCierreService.cerrar();
+        //      no se re-deriva aqui para no duplicar esa formula en dos sitios. Que el cierre
+        //      exista YA es la garantia de que cuadro cuando se creo.
+        CuentaBancaria cuenta = conciliacion.getCuentaBancaria();
+        List<DetalleExtractoBancario> pendientesExtracto = grupoConciliacionExtractoDaoService
+                .selectPendientes(cuenta.getCodigo(), periodo.getCodigo());
+        List<DetalleAsiento> pendientesAsiento = grupoConciliacionAsientoDaoService.selectPendientes(
+                cuenta.getPlanCuenta().getCodigo(), periodo.getEmpresa().getCodigo(),
+                periodo.getPrimerDia(), periodo.getUltimoDia());
+
+        List<String> sinDeclarar = new ArrayList<>();
+        for (DetalleExtractoBancario detalle : pendientesExtracto) {
+            if (detalleTransitoDaoService.selectPendientePorDetalleExtracto(detalle.getCodigo()) == null) {
+                sinDeclarar.add("Extracto #" + detalle.getCodigo() + " (" + detalle.getDescripcion() + ")");
+            }
         }
+        // Ancla en DetalleAsiento desde el 2026-08-27 (§7bis): se verifica la linea exacta, no
+        // hace falta pasar por MovimientoBanco - ver la nota en la entidad DetalleTransito.
+        for (DetalleAsiento detalle : pendientesAsiento) {
+            if (detalleTransitoDaoService.selectPendientePorDetalleAsiento(detalle.getCodigo()) == null) {
+                sinDeclarar.add("Asiento #" + detalle.getAsiento().getCodigo() + ", linea " + detalle.getCodigo());
+            }
+        }
+        if (!sinDeclarar.isEmpty()) {
+            throw new IncomeException("No se puede verificar: hay " + sinDeclarar.size()
+                    + " movimiento(s) pendiente(s) sin conciliar NI declarar como partida en transito: "
+                    + sinDeclarar + ". Use el cierre de partidas en transito (POST /cnct/transito/cerrar) "
+                    + "para declararlos, o concilielos primero.");
+        }
+
+        Conciliacion cierreVigente = conciliacionDaoService.selectCierreVigente(cuenta.getCodigo(), periodo.getCodigo());
+        if (cierreVigente == null) {
+            throw new IncomeException("No se puede verificar: todavia no se ha ejecutado el cierre de partidas "
+                    + "en transito para esta cuenta/periodo (POST /cnct/transito/cerrar), que es donde se "
+                    + "valida que la ecuacion de conciliacion cuadre.");
+        }
+
         conciliacion.setEstadoRevision((long) EstadoConciliacionContable.VERIFICADO);
         conciliacion.setUsuarioVerifica(usuario);
         conciliacion.setFechaVerificacion(LocalDateTime.now());

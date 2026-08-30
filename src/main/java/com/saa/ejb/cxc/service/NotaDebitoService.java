@@ -98,12 +98,32 @@ public interface NotaDebitoService extends EntityService<NotaDebito> {
 
     /**
      * Anula una nota de débito y su asiento contable vinculado.
-     * @param idNotaDebito ID de la nota de débito
-     * @param motivo Motivo de anulación
-     * @param usuario Usuario que realiza la anulación
-     * @return Map con resultado de la operación
+     * <p>
+     * <b>Cambio de comportamiento (ítem 14, 2026-08-28):</b> mismo criterio que
+     * {@code NotaCreditoService.anularNotaCredito} — si esta nota está afectando una factura
+     * de venta ({@code AplicacionPagoCxc.notaDebito}) y {@code anularEnCascada} es
+     * {@code false} (default), se rechaza; con {@code true} se reversa el cruce primero.
+     * @param idNotaDebito		: ID de la nota de débito
+     * @param motivo			: Motivo de anulación
+     * @param usuario			: Usuario que realiza la anulación
+     * @param idUsuario			: Id del usuario (SCP.PJRQ), para reversar el cruce si aplica
+     * @param anularEnCascada	: true = reversar el cruce contra la factura y anular igual
+     * @return					: Map con resultado de la operación
+     * @throws Throwable		: Si tiene un cruce activo sin reversar y no viene cascada
      */
-    java.util.Map<String, Object> anularNotaDebito(Long idNotaDebito, String motivo, String usuario) throws Throwable;
+    java.util.Map<String, Object> anularNotaDebito(Long idNotaDebito, String motivo, String usuario,
+            Long idUsuario, boolean anularEnCascada) throws Throwable;
+
+    /**
+     * Facturas de venta que esta nota de débito está afectando actualmente. Ver
+     * {@link #anularNotaDebito}.
+     * @param idNotaDebito	: Id de la nota de débito
+     * @return				: Lista de mapas con idAplicacion, idFactura, montoAplicado,
+     *						  fechaAplicacion; vacía si no afecta ninguna factura
+     * @throws Throwable	: Excepcion
+     */
+    java.util.List<java.util.Map<String, Object>> movimientosRelacionadosNotaDebito(Long idNotaDebito)
+            throws Throwable;
 
     /**
      * Consulta el estado de una nota de débito ante el SRI (WS consultarEstadoAutorizacion).

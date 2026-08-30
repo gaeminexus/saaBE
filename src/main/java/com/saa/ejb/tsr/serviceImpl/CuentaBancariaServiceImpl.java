@@ -184,10 +184,10 @@ public class CuentaBancariaServiceImpl implements CuentaBancariaService{
 	}
 
 	/* (non-Javadoc)
-	 * @see com.compuseg.income.tesoreria.ejb.service.CuentaBancariaService#obtieneSaldoFecha(java.lang.Long, java.util.LocalDate)
+	 * @see com.saa.ejb.tsr.service.CuentaBancariaService#saldoSegunMovimientosBanco(java.lang.Long, java.time.LocalDate)
 	 */
-	public Double obtieneSaldoFecha(Long idCuenta, LocalDate fecha) throws Throwable {
-		System.out.println("Ingresa al metodo obtieneSaldoFecha con idCuenta: " + idCuenta
+	public Double saldoSegunMovimientosBanco(Long idCuenta, LocalDate fecha) throws Throwable {
+		System.out.println("Ingresa al metodo saldoSegunMovimientosBanco con idCuenta: " + idCuenta
 				 + ", fecha: " + fecha);
 		Double ultimoSaldo = 0D;
 		Double sumaMovimientos = 0D;

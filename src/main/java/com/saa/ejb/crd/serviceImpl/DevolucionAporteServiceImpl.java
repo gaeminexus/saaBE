@@ -25,6 +25,7 @@ import com.saa.ejb.crd.service.DevolucionAporteService;
 import com.saa.ejb.crd.service.SaldoAporteService;
 import com.saa.ejb.crd.service.dto.DetalleResultadoDevolucion;
 import com.saa.ejb.crd.service.dto.DetalleSolicitudDevolucion;
+import com.saa.ejb.crd.service.dto.ResultadoConsultaPagoDevolucion;
 import com.saa.ejb.crd.service.dto.ResultadoDevolucionAporte;
 import com.saa.ejb.crd.service.dto.ResultadoSincronizacion;
 import com.saa.ejb.crd.service.dto.SolicitudDevolucionAporte;
@@ -41,6 +42,7 @@ import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.model.crd.PagoAporte;
 import com.saa.model.crd.TipoAporte;
 import com.saa.model.cxp.PagoProgramado;
+import com.saa.rubros.CrdTipoMovimientoAporte;
 import com.saa.rubros.Estado;
 import com.saa.rubros.EstadoCuotaPrestamo;
 import com.saa.rubros.EstadoDevolucionAporte;
@@ -51,6 +53,7 @@ import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.ejb.TransactionAttribute;
 import jakarta.ejb.TransactionAttributeType;
+import jakarta.persistence.NoResultException;
 
 /**
  * Implementación de la devolución de aportes a partícipes.
@@ -207,10 +210,10 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
         if (solicitud.getIdEntidad() == null) {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": idEntidad es obligatorio");
         }
-        if (solicitud.getIdCuentaBancariaOrigen() == null) {
-            throw new IncomeException(ERR_PARAMETRO_INVALIDO
-                + ": idCuentaBancariaOrigen es obligatorio");
-        }
+        // idCuentaBancariaOrigen YA NO se valida ni se usa (corrección 2026-08-29): mandarla
+        // hacía que el pago naciera REGISTRADO en vez de POR_APROBAR y la devolución nunca
+        // llegaba a la bandeja de aprobación de tesorería. Ver el javadoc del campo en
+        // SolicitudDevolucionAporte.
         if (solicitud.getIdEmpresa() == null) {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": idEmpresa es obligatorio");
         }
@@ -400,43 +403,75 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
             detalle.setValor(valor);
             detalle = detalleDevolucionAporteDaoService.save(detalle, null);
 
-            String glosa = truncarPorBytes("DEVOLUCION APORTES " + tipo.getNombre()
-                + " - Devolucion " + devolucion.getCodigo(), MAX_BYTES_GLOSA);
+            String glosaBase = "DEVOLUCION APORTES " + tipo.getNombre()
+                + " - Devolucion " + devolucion.getCodigo();
 
-            // Fila NEGATIVA y YA PAGADA: baja el saldo disponible y queda fuera del FIFO
-            // petro (selectMinAporteConSaldo exige saldo > 0.01 y estado PARCIAL).
-            Aporte aporte = new Aporte();
-            aporte.setEntidad(entidad);
-            aporte.setFilial(entidad.getFilial());
-            aporte.setTipoAporte(tipo);
-            aporte.setValor(-valor);
-            aporte.setValorPagado(0.0);
-            aporte.setSaldo(0.0);
-            aporte.setEstado((long) EstadoCuotaPrestamo.PAGADA);
-            aporte.setIdAsoprep(null);
-            aporte.setFechaTransaccion(fechaHora);
-            aporte.setGlosa(glosa);
-            aporte.setUsuarioRegistro(solicitud.getUsuario().trim());
-            aporte.setFechaRegistro(LocalDateTime.now());
-            // DAO directo: saveSingle forzaría estado = 1 y la fila volvería a ser visible
-            // para el FIFO del proceso Petro, que se la cobraría de nuevo al socio.
-            aporte = aporteDaoService.save(aporte, null);
+            // D5 (§2.4 del plan de devengo de aportes): consume primero los periodos de
+            // devengo FUTUROS (anticipos no vencidos) de este tipo, del más futuro al más
+            // cercano — LIFO. El remanente que no corresponda a ningún anticipo va con
+            // periodoDevengo = NULL: es retiro de saldo y no altera ningún mes. Si el valor
+            // cabe en un solo periodo se crea una única fila; si abarca varios, una fila
+            // negativa POR PERIODO. Nunca se marca devengo de un mes ya vencido: eso volvería
+            // a ver ese mes como impago y la generación se lo cobraría de nuevo.
+            //
+            // LIMITACIÓN DE ESQUEMA: CRD.DDVA (este detalle) sólo tiene UN idAporte/idPagoAporte
+            // por (devolución, tipo) — no hay columna para N filas. Cuando el reparto crea más
+            // de una fila, DDVAAPRT/DDVAPGAP apuntan a la PRIMERA (la del periodo más futuro, o
+            // la del remanente si no hubo anticipos); el resto sólo es trazable por la glosa
+            // (incluye el número de devolución) y por entidad+tipo+fecha. No se cambia el DDL
+            // en esta fase.
+            java.time.LocalDate mesActual = java.time.LocalDate.now().withDayOfMonth(1);
+            List<Object[]> anticipos = aporteDaoService.selectPeriodosAnticipadosConSaldo(
+                entidad.getCodigo(), tipo.getCodigo(), mesActual);
 
-            PagoAporte pagoAporte = new PagoAporte();
-            pagoAporte.setAporte(aporte);
-            pagoAporte.setFilial(entidad.getFilial());
-            pagoAporte.setValor(valor);
-            pagoAporte.setFechaContable(fechaHora);
-            pagoAporte.setNumeroAsiento(null);
-            pagoAporte.setConcepto(glosa);
-            pagoAporte.setUsuarioRegistro(solicitud.getUsuario().trim());
-            pagoAporte.setFechaRegistro(LocalDateTime.now());
-            pagoAporte.setEstado(Long.valueOf(Estado.ACTIVO));
-            pagoAporte.setPagoPrestamo(null);
-            pagoAporte = pagoAporteDaoService.save(pagoAporte, null);
+            double remanente = valor;
+            Long primerIdAporte = null;
+            Long primerIdPagoAporte = null;
 
-            detalle.setIdAporte(aporte.getCodigo());
-            detalle.setIdPagoAporte(pagoAporte.getCodigo());
+            if (anticipos != null) {
+                for (Object[] anticipo : anticipos) {
+                    if (remanente <= 0.01) {
+                        break;
+                    }
+                    java.time.LocalDate periodo = (java.time.LocalDate) anticipo[0];
+                    double disponibleEnPeriodo = anticipo[1] != null ? ((Number) anticipo[1]).doubleValue() : 0.0;
+                    if (disponibleEnPeriodo <= 0.01) {
+                        continue;
+                    }
+                    double consumir = Math.min(remanente, disponibleEnPeriodo);
+                    String glosaPeriodo = truncarPorBytes(glosaBase + " (devengo " + periodo + ")",
+                        MAX_BYTES_GLOSA);
+                    Aporte fila = crearFilaNegativaDevolucion(entidad, tipo, consumir, periodo,
+                        glosaPeriodo, fechaHora, solicitud.getUsuario(), devolucion);
+                    PagoAporte pagoFila = crearPagoAporteDevolucion(entidad, fila, consumir,
+                        glosaPeriodo, fechaHora, solicitud.getUsuario());
+                    if (primerIdAporte == null) {
+                        primerIdAporte = fila.getCodigo();
+                        primerIdPagoAporte = pagoFila.getCodigo();
+                    }
+                    remanente -= consumir;
+                    System.out.println("  APRT " + fila.getCodigo() + " (negativo $" + consumir
+                        + ", devengo " + periodo + "), PGAP " + pagoFila.getCodigo()
+                        + " - Tipo " + tipo.getCodigo());
+                }
+            }
+
+            if (remanente > 0.01) {
+                String glosaRemanente = truncarPorBytes(glosaBase, MAX_BYTES_GLOSA);
+                Aporte fila = crearFilaNegativaDevolucion(entidad, tipo, remanente, null,
+                    glosaRemanente, fechaHora, solicitud.getUsuario(), devolucion);
+                PagoAporte pagoFila = crearPagoAporteDevolucion(entidad, fila, remanente,
+                    glosaRemanente, fechaHora, solicitud.getUsuario());
+                if (primerIdAporte == null) {
+                    primerIdAporte = fila.getCodigo();
+                    primerIdPagoAporte = pagoFila.getCodigo();
+                }
+                System.out.println("  APRT " + fila.getCodigo() + " (negativo $" + remanente
+                    + ", sin devengo), PGAP " + pagoFila.getCodigo() + " - Tipo " + tipo.getCodigo());
+            }
+
+            detalle.setIdAporte(primerIdAporte);
+            detalle.setIdPagoAporte(primerIdPagoAporte);
             detalleDevolucionAporteDaoService.save(detalle, detalle.getCodigo());
 
             // Línea del desglose contable que viaja a CXP. Solo cuando TODOS los tipos
@@ -455,12 +490,9 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
             detalleResultado.setIdTipoAporte(tipo.getCodigo());
             detalleResultado.setNombreTipoAporte(tipo.getNombre());
             detalleResultado.setValor(valor);
-            detalleResultado.setIdAporteGenerado(aporte.getCodigo());
-            detalleResultado.setIdPagoAporteGenerado(pagoAporte.getCodigo());
+            detalleResultado.setIdAporteGenerado(primerIdAporte);
+            detalleResultado.setIdPagoAporteGenerado(primerIdPagoAporte);
             resultado.getDetalle().add(detalleResultado);
-
-            System.out.println("  APRT " + aporte.getCodigo() + " (negativo $" + valor + ")"
-                + ", PGAP " + pagoAporte.getCodigo() + " - Tipo " + tipo.getCodigo());
         }
 
         if (!contabiliza) {
@@ -480,9 +512,13 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
                 + (solicitud.getMotivo() != null && !solicitud.getMotivo().trim().isEmpty()
                     ? " | " + solicitud.getMotivo().trim() : "");
 
+            // idCuentaBancariaOrigen SIEMPRE null (corrección 2026-08-29): con cuenta nula el
+            // pago nace POR_APROBAR y tesorería asigna cuenta/forma de pago al aprobar (mismo
+            // criterio que rhh/tsr con este método — ver el comentario "punto 14, 2026-08-27"
+            // en PagoProgramadoServiceImpl.registrarPagoDeOrigenExterno).
             Map<String, Object> respuesta = pagoProgramadoService.registrarPagoDeOrigenExterno(
                 OrigenPagoExterno.CRD_DEVOLUCION_APORTE, devolucion.getCodigo(),
-                solicitud.getIdEmpresa(), solicitud.getIdCuentaBancariaOrigen(), valorTotal,
+                solicitud.getIdEmpresa(), null, valorTotal,
                 fecha.toString(), beneficiario,
                 // null, no lista vacía: es la forma en que este servicio dice "sin desglose".
                 contabiliza ? desglose : null,
@@ -795,6 +831,153 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
     }
 
     // ========================================================================
+    // Consulta bajo demanda de fecha/referencia del pago (botón "Consultar a contabilidad")
+    // ========================================================================
+
+    @Override
+    @TransactionAttribute(TransactionAttributeType.REQUIRED)
+    public ResultadoConsultaPagoDevolucion consultarPagoDevolucion(Long idDevolucion) throws Throwable {
+        System.out.println("DevolucionAporteService.consultarPagoDevolucion - Devolucion: " + idDevolucion);
+
+        if (idDevolucion == null) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": idDevolucion es obligatorio");
+        }
+        DevolucionAporte devolucion = devolucionAporteDaoService.find(new DevolucionAporte(), idDevolucion);
+        if (devolucion == null) {
+            throw new IncomeException(ERR_DEVOLUCION_NO_ENCONTRADA + ": no existe la devolución "
+                + idDevolucion);
+        }
+
+        ResultadoConsultaPagoDevolucion resultado = new ResultadoConsultaPagoDevolucion();
+
+        if (devolucion.getIdPagoProgramado() == null) {
+            resultado.setConfirmado(false);
+            resultado.setMensaje("La devolución no tiene una orden de pago asociada todavía.");
+            return resultado;
+        }
+
+        // crd → cxp: se LEE, no se espera aviso — mismo criterio que sincronizarDevolucion.
+        PagoProgramado pago = pagoProgramadoDaoService.find(new PagoProgramado(),
+            devolucion.getIdPagoProgramado());
+        if (pago == null) {
+            resultado.setConfirmado(false);
+            resultado.setMensaje("La orden de pago " + devolucion.getIdPagoProgramado()
+                + " ya no existe en Cuentas por Pagar.");
+            return resultado;
+        }
+
+        int estadoPago = (pago.getEstado() != null) ? pago.getEstado().intValue() : 0;
+        if (estadoPago != EstadoPagoProgramado.CONFIRMADO) {
+            resultado.setConfirmado(false);
+            resultado.setMensaje("El pago aún no ha sido confirmado por tesorería.");
+            return resultado;
+        }
+
+        // Confirmado: copiar fecha/referencia a TODOS los PagoAporte de esta devolución. NO se
+        // toca devolucion.estado ni se generan contra-movimientos acá — eso es
+        // responsabilidad exclusiva de sincronizarDevolucion/sincronizarPagos.
+        LocalDate fecha = pago.getFechaRespuesta();
+        String referencia = pago.getReferenciaBanco();
+
+        // Vía directa: APRTIDDV trae TODAS las filas de la devolución en una sola consulta,
+        // sin la limitación de DDVA (que solo referencia la primera de cada tipo).
+        List<Aporte> filasDeLaDevolucion = aporteDaoService.selectByDevolucion(idDevolucion);
+
+        if (filasDeLaDevolucion != null && !filasDeLaDevolucion.isEmpty()) {
+            for (Aporte fila : filasDeLaDevolucion) {
+                for (PagoAporte pagoAporte : pagoAporteDaoService.selectByAporte(fila.getCodigo())) {
+                    pagoAporte.setFechaPagoDevolucion(fecha);
+                    pagoAporte.setReferenciaPagoDevolucion(referencia);
+                    pagoAporteDaoService.save(pagoAporte, pagoAporte.getCodigo());
+                }
+            }
+        } else {
+            // FALLBACK histórico: devolución anterior a APRTIDDV (fila sin la FK). Reconstruye
+            // por correlación entidad+tipo+instante, como antes.
+            List<DetalleDevolucionAporte> detalles =
+                detalleDevolucionAporteDaoService.selectByDevolucion(idDevolucion);
+            if (detalles != null) {
+                for (DetalleDevolucionAporte detalle : detalles) {
+                    if (detalle.getIdAporte() == null || detalle.getTipoAporte() == null) {
+                        continue;
+                    }
+                    Aporte primeraFila = aporteDaoService.selectById(detalle.getIdAporte(),
+                        NombreEntidadesCredito.APORTE);
+                    List<Aporte> todasLasFilas = aporteDaoService.selectByEntidadTipoYFechaTransaccion(
+                        devolucion.getEntidad().getCodigo(), detalle.getTipoAporte().getCodigo(),
+                        primeraFila.getFechaTransaccion());
+                    for (Aporte fila : todasLasFilas) {
+                        for (PagoAporte pagoAporte : pagoAporteDaoService.selectByAporte(fila.getCodigo())) {
+                            pagoAporte.setFechaPagoDevolucion(fecha);
+                            pagoAporte.setReferenciaPagoDevolucion(referencia);
+                            pagoAporteDaoService.save(pagoAporte, pagoAporte.getCodigo());
+                        }
+                    }
+                }
+            }
+        }
+
+        resultado.setConfirmado(true);
+        resultado.setFecha(fecha);
+        resultado.setReferencia(referencia);
+        resultado.setMensaje("Pago confirmado" + (referencia == null
+            ? " (sin referencia bancaria registrada)." : "."));
+
+        System.out.println("  ✅ Devolución " + idDevolucion + " - PagoAporte actualizados"
+            + " - Fecha: " + fecha + " - Referencia: " + (referencia != null ? referencia : "(ninguna)"));
+        return resultado;
+    }
+
+    @Override
+    public Long obtenerIdDevolucionPorAporte(Long idAporte) throws Throwable {
+        System.out.println("DevolucionAporteService.obtenerIdDevolucionPorAporte - Aporte: " + idAporte);
+        if (idAporte == null) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": idAporte es obligatorio");
+        }
+        Aporte aporte;
+        try {
+            aporte = aporteDaoService.selectById(idAporte, NombreEntidadesCredito.APORTE);
+        } catch (NoResultException e) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": no existe el aporte " + idAporte);
+        }
+        if (aporte.getTipoMovimiento() == null
+                || aporte.getTipoMovimiento() != CrdTipoMovimientoAporte.DEVOLUCION) {
+            return null;
+        }
+
+        // Vía directa: CRD.APRT.APRTIDDV, seteada en TODAS las filas desde el 2026-08-29
+        // (ver crearFilaNegativaDevolucion). Enlace confiable, sin la limitación de DDVA.
+        if (aporte.getDevolucion() != null) {
+            return aporte.getDevolucion().getCodigo();
+        }
+
+        // FALLBACK para lo histórico (filas creadas antes de que existiera APRTIDDV): probar
+        // la vía directa de DDVA (solo alcanza la primera fila de cada (devolución, tipo))...
+        DetalleDevolucionAporte detalle = detalleDevolucionAporteDaoService.selectByIdAporte(idAporte);
+        if (detalle != null) {
+            return detalle.getDevolucion().getCodigo();
+        }
+
+        // ...y si tampoco, buscar entre el resto de filas del mismo registro (mismo
+        // entidad+tipo+instante) hasta encontrar la que sí está referenciada en DDVA.
+        List<Aporte> filasDelMismoRegistro = aporteDaoService.selectByEntidadTipoYFechaTransaccion(
+                aporte.getEntidad().getCodigo(), aporte.getTipoAporte().getCodigo(),
+                aporte.getFechaTransaccion());
+        for (Aporte fila : filasDelMismoRegistro) {
+            DetalleDevolucionAporte detalleFila =
+                    detalleDevolucionAporteDaoService.selectByIdAporte(fila.getCodigo());
+            if (detalleFila != null) {
+                return detalleFila.getDevolucion().getCodigo();
+            }
+        }
+
+        System.err.println("  ⚠ Aporte " + idAporte + " es de tipo DEVOLUCION pero no se pudo"
+                + " enlazar con ninguna devolución (ni por APRTIDDV, ni por DDVA, ni por"
+                + " correlación) — dato inconsistente.");
+        return null;
+    }
+
+    // ========================================================================
     // Helpers privados
     // ========================================================================
 
@@ -861,6 +1044,21 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
             String glosa = truncarPorBytes("REVERSO DEVOLUCION " + devolucion.getCodigo()
                 + " - " + causa, MAX_BYTES_GLOSA);
 
+            // §2.2: el reverso lleva el mismo devengo de la fila que reversa. Sólo es exacto
+            // cuando D5 (§2.4) NO dividió el detalle en varias filas — es decir, la fila
+            // original de detalle.getIdAporte() ya cubre todo detalle.getValor() ella sola.
+            // Si D5 sí lo dividió (varios periodos anticipados), un solo reverso no puede
+            // representar varios meses a la vez: queda con periodoDevengo = NULL, igual que
+            // el remanente sin anticipo de D5 (retiro de saldo, no altera ningún mes).
+            LocalDate periodoReverso = null;
+            if (detalle.getIdAporte() != null) {
+                Aporte original = aporteDaoService.find(new Aporte(), detalle.getIdAporte());
+                if (original != null && original.getValor() != null
+                        && Math.abs(Math.abs(original.getValor()) - valor) <= 0.01) {
+                    periodoReverso = original.getPeriodoDevengo();
+                }
+            }
+
             Aporte reverso = new Aporte();
             reverso.setEntidad(devolucion.getEntidad());
             reverso.setFilial(devolucion.getFilial());
@@ -871,10 +1069,13 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
             reverso.setEstado((long) EstadoCuotaPrestamo.PAGADA);
             reverso.setIdAsoprep(null);
             reverso.setFechaTransaccion(ahora);
+            reverso.setPeriodoDevengo(periodoReverso);
+            reverso.setTipoMovimiento((long) CrdTipoMovimientoAporte.REVERSO);
             reverso.setGlosa(glosa);
             reverso.setUsuarioRegistro(devolucion.getUsuarioRegistro());
             reverso.setFechaRegistro(ahora);
-            // DAO directo, igual que la fila negativa: saveSingle la devolvería al FIFO.
+            // DAO directo: AporteServiceImpl.saveSingle fuerza estado = 1 (Estado.ACTIVO) en
+            // todo INSERT, pisando el PAGADA(4) recién asignado.
             reverso = aporteDaoService.save(reverso, null);
 
             detalle.setIdAporteReverso(reverso.getCodigo());
@@ -1005,6 +1206,56 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
             case EstadoDevolucionAporte.ANULADA:    return "ANULADA";
             default: return String.valueOf(estado);
         }
+    }
+
+    /**
+     * Crea una fila NEGATIVA y YA PAGADA en CRD.APRT para un tramo de la devolución (D5,
+     * §2.4 del plan de devengo de aportes). En el modelo vigente (Fase 1, D1) el saldo del
+     * partícipe es {@code SUM(valor)} y toda fila nace pagada, así que esta fila resta
+     * directo del saldo sin dejar ningún abono pendiente.
+     */
+    private Aporte crearFilaNegativaDevolucion(Entidad entidad, TipoAporte tipo, double monto,
+            LocalDate periodoDevengo, String glosa, LocalDateTime fechaHora, String usuario,
+            DevolucionAporte devolucion) throws Throwable {
+        Aporte aporte = new Aporte();
+        aporte.setEntidad(entidad);
+        aporte.setFilial(entidad.getFilial());
+        aporte.setTipoAporte(tipo);
+        aporte.setValor(-monto);
+        aporte.setValorPagado(0.0);
+        aporte.setSaldo(0.0);
+        aporte.setEstado((long) EstadoCuotaPrestamo.PAGADA);
+        aporte.setIdAsoprep(null);
+        aporte.setFechaTransaccion(fechaHora);
+        aporte.setPeriodoDevengo(periodoDevengo);
+        aporte.setTipoMovimiento((long) CrdTipoMovimientoAporte.DEVOLUCION);
+        // Se setea en TODAS las filas, no solo en la que CRD.DDVA.DDVAAPRT termina apuntando
+        // (esa referencia solo alcanza a la primera cuando el reparto genera varias) — este
+        // es el enlace confiable, sin la limitación de DDVA.
+        aporte.setDevolucion(devolucion);
+        aporte.setGlosa(glosa);
+        aporte.setUsuarioRegistro(usuario.trim());
+        aporte.setFechaRegistro(LocalDateTime.now());
+        // DAO directo: AporteServiceImpl.saveSingle fuerza estado = 1 (Estado.ACTIVO) en todo
+        // INSERT, pisando el PAGADA(4) recién asignado.
+        return aporteDaoService.save(aporte, null);
+    }
+
+    /** PagoAporte asociado a una fila creada por {@link #crearFilaNegativaDevolucion}. */
+    private PagoAporte crearPagoAporteDevolucion(Entidad entidad, Aporte aporte, double monto,
+            String glosa, LocalDateTime fechaHora, String usuario) throws Throwable {
+        PagoAporte pagoAporte = new PagoAporte();
+        pagoAporte.setAporte(aporte);
+        pagoAporte.setFilial(entidad.getFilial());
+        pagoAporte.setValor(monto);
+        pagoAporte.setFechaContable(fechaHora);
+        pagoAporte.setNumeroAsiento(null);
+        pagoAporte.setConcepto(glosa);
+        pagoAporte.setUsuarioRegistro(usuario.trim());
+        pagoAporte.setFechaRegistro(LocalDateTime.now());
+        pagoAporte.setEstado(Long.valueOf(Estado.ACTIVO));
+        pagoAporte.setPagoPrestamo(null);
+        return pagoAporteDaoService.save(pagoAporte, null);
     }
 
     /** Recorta el texto para que su representación UTF-8 quepa en la columna. */

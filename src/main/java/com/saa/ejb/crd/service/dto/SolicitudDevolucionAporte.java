@@ -23,7 +23,15 @@ public class SolicitudDevolucionAporte {
      */
     private Long idCuentaBancariaParticipe;
 
-    /** Cuenta bancaria propia de la que sale el dinero — TSR.CNBC. Obligatoria. */
+    /**
+     * NO SE USA desde el 2026-08-29 — corrección de tesorería (ver DevolucionAporteServiceImpl).
+     * Antes se enviaba como cuenta de origen a registrarPagoDeOrigenExterno, y eso hacía que el
+     * pago naciera REGISTRADO en vez de POR_APROBAR: la devolución nunca llegaba a la bandeja
+     * de aprobación de tesorería. crd era el único de los cuatro módulos que mandaba este dato;
+     * los otros tres lo dejan nulo a propósito. Se conserva el campo por compatibilidad de API,
+     * pero el servicio lo ignora y siempre pasa null. La cuenta de origen la decide tesorería
+     * al aprobar, no crédito al registrar.
+     */
     private Long idCuentaBancariaOrigen;
 
     /** Empresa contable con la que se genera la orden de pago. Obligatoria. */

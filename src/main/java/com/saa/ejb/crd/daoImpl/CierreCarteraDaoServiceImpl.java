@@ -7,6 +7,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.saa.ejb.crd.dao.CierreCarteraDaoService;
+import com.saa.rubros.Estado;
+import com.saa.rubros.EstadoContrato;
 import com.saa.rubros.EstadoCuotaPrestamo;
 import com.saa.rubros.EstadoParticipeEntidad;
 import com.saa.rubros.EstadoPrestamo;
@@ -142,18 +144,55 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
     @Override
     public Object[] selectAporteMensualEsperado() throws Throwable {
         System.out.println("Ingresa al metodo selectAporteMensualEsperado");
+        // Fase 3 (docs/logica-negocio/crd/PLAN-APORTES-DEVENGO-CONTRATOS.md §3.5): la fuente
+        // pasa de CRD.HSTR (estado 99) a CRD.VGCN (vigencia ABIERTA del contrato ACTIVO de
+        // cada entidad). El ROW_NUMBER por ENTDCDGO evita doble conteo si una entidad
+        // quedara con más de un contrato ACTIVO (no debería, pero no hay UNIQUE que lo
+        // impida en CNTR).
         Query query = em.createNativeQuery(
-                " SELECT NVL(SUM(NVL(h.HSTRMNAJ,0)),0), NVL(SUM(NVL(h.HSTRMNAC,0)),0), COUNT(*) "
-                + " FROM ( SELECT ENTDCDGO, HSTRMNAJ, HSTRMNAC, "
-                + "               ROW_NUMBER() OVER (PARTITION BY ENTDCDGO "
-                + "                        ORDER BY HSTRFCIN DESC, HSTRCDGO DESC) rn "
-                + "        FROM CRD.HSTR WHERE HSTRESTD = 99 ) h "
-                + " JOIN CRD.ENTD e ON e.ENTDCDGO = h.ENTDCDGO "
-                + " WHERE h.rn = 1 "
+                " SELECT NVL(SUM(NVL(vj.VGCNMNTO,0)),0), NVL(SUM(NVL(vc.VGCNMNTO,0)),0), COUNT(*) "
+                + " FROM ( SELECT CNTRCDGO, ENTDCDGO, "
+                + "               ROW_NUMBER() OVER (PARTITION BY ENTDCDGO ORDER BY CNTRCDGO DESC) rn "
+                + "        FROM CRD.CNTR WHERE CNTRESTD = " + EstadoContrato.ACTIVO + " ) ca "
+                + " JOIN CRD.ENTD e ON e.ENTDCDGO = ca.ENTDCDGO "
+                + " LEFT JOIN CRD.VGCN vj ON vj.CNTRCDGO = ca.CNTRCDGO AND vj.TPAPCDGO = 9  "
+                + "        AND vj.VGCNFCFN IS NULL AND vj.VGCNIDST = " + Estado.ACTIVO
+                + " LEFT JOIN CRD.VGCN vc ON vc.CNTRCDGO = ca.CNTRCDGO AND vc.TPAPCDGO = 11 "
+                + "        AND vc.VGCNFCFN IS NULL AND vc.VGCNIDST = " + Estado.ACTIVO
+                + " WHERE ca.rn = 1 "
                 + " AND   e.ENTDIDST IN (" + EstadoParticipeEntidad.ACTIVO + ", "
                 + EstadoParticipeEntidad.ACTIVO_EN_MORA + ")");
         Object[] fila = (Object[]) query.getSingleResult();
         return new Object[]{ aDouble(fila[0]), aDouble(fila[1]), aLong(fila[2]) };
+    }
+
+    @Override
+    public Object[] selectControlEsperadoHstrVsVgcn() throws Throwable {
+        System.out.println("Ingresa al metodo selectControlEsperadoHstrVsVgcn");
+        // Consulta de control pedida en §3.5: compara el HSTR viejo contra el VGCN nuevo
+        // para el mismo universo de entidades (ACTIVO/ACTIVO_EN_MORA), sin tocar la
+        // consulta operativa. Es de sólo lectura, para reportar la diferencia.
+        Query query = em.createNativeQuery(
+                " SELECT NVL(SUM(NVL(h.HSTRMNAJ,0)),0), NVL(SUM(NVL(h.HSTRMNAC,0)),0), "
+                + "        NVL(SUM(NVL(vj.VGCNMNTO,0)),0), NVL(SUM(NVL(vc.VGCNMNTO,0)),0) "
+                + " FROM CRD.ENTD e "
+                + " LEFT JOIN ( SELECT ENTDCDGO, HSTRMNAJ, HSTRMNAC, "
+                + "                    ROW_NUMBER() OVER (PARTITION BY ENTDCDGO "
+                + "                             ORDER BY HSTRFCIN DESC, HSTRCDGO DESC) rn "
+                + "             FROM CRD.HSTR WHERE HSTRESTD = 99 ) h "
+                + "        ON h.ENTDCDGO = e.ENTDCDGO AND h.rn = 1 "
+                + " LEFT JOIN ( SELECT CNTRCDGO, ENTDCDGO, "
+                + "                    ROW_NUMBER() OVER (PARTITION BY ENTDCDGO ORDER BY CNTRCDGO DESC) rn "
+                + "             FROM CRD.CNTR WHERE CNTRESTD = " + EstadoContrato.ACTIVO + " ) ca "
+                + "        ON ca.ENTDCDGO = e.ENTDCDGO AND ca.rn = 1 "
+                + " LEFT JOIN CRD.VGCN vj ON vj.CNTRCDGO = ca.CNTRCDGO AND vj.TPAPCDGO = 9  "
+                + "        AND vj.VGCNFCFN IS NULL AND vj.VGCNIDST = " + Estado.ACTIVO
+                + " LEFT JOIN CRD.VGCN vc ON vc.CNTRCDGO = ca.CNTRCDGO AND vc.TPAPCDGO = 11 "
+                + "        AND vc.VGCNFCFN IS NULL AND vc.VGCNIDST = " + Estado.ACTIVO
+                + " WHERE e.ENTDIDST IN (" + EstadoParticipeEntidad.ACTIVO + ", "
+                + EstadoParticipeEntidad.ACTIVO_EN_MORA + ")");
+        Object[] fila = (Object[]) query.getSingleResult();
+        return new Object[]{ aDouble(fila[0]), aDouble(fila[1]), aDouble(fila[2]), aDouble(fila[3]) };
     }
 
     @Override

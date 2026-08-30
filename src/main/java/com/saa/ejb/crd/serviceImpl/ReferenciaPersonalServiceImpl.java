@@ -5,6 +5,7 @@ import java.util.List;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.crd.dao.ReferenciaPersonalDaoService;
+import com.saa.ejb.crd.service.EntidadService;
 import com.saa.ejb.crd.service.ReferenciaPersonalService;
 import com.saa.model.crd.ReferenciaPersonal;
 import com.saa.model.crd.NombreEntidadesCredito;
@@ -18,6 +19,9 @@ public class ReferenciaPersonalServiceImpl implements ReferenciaPersonalService 
 
     @EJB
     private ReferenciaPersonalDaoService referenciaPersonalDaoService;
+
+    @EJB
+    private EntidadService entidadService;
 
     @Override
     public ReferenciaPersonal selectById(Long id) throws Throwable {
@@ -75,5 +79,13 @@ public class ReferenciaPersonalServiceImpl implements ReferenciaPersonalService 
     public List<ReferenciaPersonal> selectByParent(Long idEntidad) throws Throwable {
         System.out.println("selectByParent ReferenciaPersonalService idEntidad: " + idEntidad);
         return referenciaPersonalDaoService.selectByParent(idEntidad);
+    }
+
+    @Override
+    public ReferenciaPersonal saveSingle(ReferenciaPersonal referencia, String usuario) throws Throwable {
+        System.out.println("saveSingle(ReferenciaPersonal, usuario) - usuario: " + usuario);
+        referencia = saveSingle(referencia);
+        entidadService.sellarActualizacion(referencia.getEntidad().getCodigo(), usuario);
+        return referencia;
     }
 }

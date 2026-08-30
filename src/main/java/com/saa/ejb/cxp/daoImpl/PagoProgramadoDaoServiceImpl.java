@@ -1,5 +1,6 @@
 package com.saa.ejb.cxp.daoImpl;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -7,6 +8,7 @@ import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.cxp.dao.PagoProgramadoDaoService;
 import com.saa.model.cxp.PagoProgramado;
 import com.saa.rubros.EstadoPagoProgramado;
+import com.saa.rubros.OrigenPagoCxp;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
@@ -175,5 +177,85 @@ public class PagoProgramadoDaoServiceImpl extends EntityDaoImpl<PagoProgramado>
                 " order by p.id");
         query.setParameter("ids", ids);
         return query.getResultList();
+    }
+
+    @Override
+    public List<PagoProgramado> selectPorAprobar(Long idEmpresa, String origen,
+            LocalDate desde, LocalDate hasta) throws Throwable {
+        System.out.println("Ingresa al metodo selectPorAprobar con empresa: " + idEmpresa
+                + " | origen: " + origen + " | desde: " + desde + " | hasta: " + hasta);
+
+        StringBuilder jpql = new StringBuilder(
+                " select p from PagoProgramado p " +
+                " where  p.empresa.codigo = :idEmpresa " +
+                " and    p.estado = :estado ");
+        if (origen != null && !origen.trim().isEmpty()) {
+            if (OrigenPagoCxp.FACTURA_COMPRA.equals(origen)) {
+                jpql.append(" and p.facturaCompra is not null ");
+            } else if (OrigenPagoCxp.EGRESO_TESORERIA.equals(origen)) {
+                jpql.append(" and p.egreso is not null ");
+            } else if (OrigenPagoCxp.ANTICIPO_PROVEEDOR.equals(origen)) {
+                jpql.append(" and p.anticipo is not null ");
+            } else {
+                // No es uno de los tres propios de CXP: se compara como etiqueta opaca
+                // de OrigenPagoExterno, sin resolverla.
+                jpql.append(" and p.origenExterno = :origen ");
+            }
+        }
+        if (desde != null) {
+            jpql.append(" and p.fechaProgramada >= :desde ");
+        }
+        if (hasta != null) {
+            jpql.append(" and p.fechaProgramada <= :hasta ");
+        }
+        jpql.append(" order by p.fechaProgramada, p.id ");
+
+        Query query = em.createQuery(jpql.toString());
+        query.setParameter("idEmpresa", idEmpresa);
+        query.setParameter("estado", Long.valueOf(EstadoPagoProgramado.POR_APROBAR));
+        if (origen != null && !origen.trim().isEmpty()
+                && !OrigenPagoCxp.FACTURA_COMPRA.equals(origen)
+                && !OrigenPagoCxp.EGRESO_TESORERIA.equals(origen)
+                && !OrigenPagoCxp.ANTICIPO_PROVEEDOR.equals(origen)) {
+            query.setParameter("origen", origen);
+        }
+        if (desde != null) {
+            query.setParameter("desde", desde);
+        }
+        if (hasta != null) {
+            query.setParameter("hasta", hasta);
+        }
+        return query.getResultList();
+    }
+
+    @Override
+    public PagoProgramado selectByAplicacion(Long idAplicacion) throws Throwable {
+        System.out.println("Ingresa al metodo selectByAplicacion con idAplicacion: " + idAplicacion);
+        if (idAplicacion == null) {
+            return null;
+        }
+        Query query = em.createQuery(
+                " select p from PagoProgramado p " +
+                " where  p.aplicacion.id = :idAplicacion ");
+        query.setParameter("idAplicacion", idAplicacion);
+        List<PagoProgramado> resultado = query.getResultList();
+        return resultado.isEmpty() ? null : resultado.get(0);
+    }
+
+    @Override
+    public Double sumaPagosComprometidos(Long idCuentaBancaria, LocalDate fecha) throws Throwable {
+        System.out.println("Ingresa al metodo sumaPagosComprometidos con cuenta: " + idCuentaBancaria
+                + " | fecha: " + fecha);
+        Query query = em.createQuery(
+                " select coalesce(sum(p.valor), 0.0) from PagoProgramado p " +
+                " where  p.cuentaBancaria.codigo = :idCuentaBancaria " +
+                " and    p.estado in (:registrado, :enArchivo) " +
+                " and    p.fechaProgramada <= :fecha ");
+        query.setParameter("idCuentaBancaria", idCuentaBancaria);
+        query.setParameter("registrado", Long.valueOf(EstadoPagoProgramado.REGISTRADO));
+        query.setParameter("enArchivo",  Long.valueOf(EstadoPagoProgramado.EN_ARCHIVO));
+        query.setParameter("fecha", fecha);
+        Object resultado = query.getSingleResult();
+        return resultado != null ? ((Number) resultado).doubleValue() : Double.valueOf(0.0);
     }
 }

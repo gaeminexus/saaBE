@@ -93,5 +93,14 @@ public interface NombreEntidadesCredito {
 	String CORRIDA_CIERRE_CARTERA = "CorridaCierreCartera";
 	String BANDA_CIERRE_CARTERA = "BandaCierreCartera";
 	String ASIENTO_CIERRE_CARTERA = "AsientoCierreCartera";
+	String VIGENCIA_CONTRATO = "VigenciaContrato";
+	String TRANSFERENCIA_CARGA_PETRO = "TransferenciaCargaPetro";
+	String ASIENTO_CARGA_PETRO = "AsientoCargaPetro";
+	String CERTIFICADO = "Certificado";
+	String HISTORICO_PAGO_CUENTA_INDIVIDUAL = "HistoricoPagoCuentaIndividual";
+	String COBRO_CREDITO = "CobroCredito";
+	String DETALLE_COBRO_CREDITO = "DetalleCobroCredito";
+	String ACUERDO_CONDONACION = "AcuerdoCondonacion";
+	String DETALLE_ACUERDO_CONDONACION = "DetalleAcuerdoCondonacion";
 
 }

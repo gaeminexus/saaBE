@@ -3,15 +3,23 @@ package com.saa.ejb.crd.service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
+import java.util.List;
+
+import com.saa.ejb.crd.service.dto.ComprobantePagoMultipleDatos;
+import com.saa.ejb.crd.service.dto.DesgloseConceptosPrestamo;
 import com.saa.ejb.crd.service.dto.ResultadoAnulacion;
+import com.saa.ejb.crd.service.dto.SaldosCuota;
 import com.saa.ejb.crd.service.dto.ResultadoAplicacionPago;
 import com.saa.ejb.crd.service.dto.ResultadoPagoConAportes;
+import com.saa.ejb.crd.service.dto.ResultadoPagoMultiple;
 import com.saa.ejb.crd.service.dto.ResultadoPrecancelacion;
 import com.saa.ejb.crd.service.dto.SimulacionPrecancelacion;
 import com.saa.ejb.crd.service.dto.SolicitudAnulacion;
 import com.saa.ejb.crd.service.dto.SolicitudPagoConAportes;
 import com.saa.ejb.crd.service.dto.SolicitudPagoCuota;
+import com.saa.ejb.crd.service.dto.SolicitudPagoMultiple;
 import com.saa.ejb.crd.service.dto.SolicitudPrecancelacion;
+import com.saa.model.crd.DetallePrestamo;
 import com.saa.model.crd.Prestamo;
 
 import jakarta.ejb.Local;
@@ -78,6 +86,10 @@ public interface ProcesoPagoPrestamoService {
     String ERR_SIN_CUOTAS_FUTURAS = "SIN_CUOTAS_FUTURAS";
     /** 422 - El valor enviado no coincide con el valor de precancelación calculado */
     String ERR_MONTO_NO_COINCIDE = "MONTO_NO_COINCIDE";
+    /** 422 - Un cobro múltiple mezcla préstamos de partícipes distintos */
+    String ERR_PARTICIPES_DISTINTOS = "PARTICIPES_DISTINTOS";
+    /** 422 - Un cobro múltiple trae el mismo préstamo repetido */
+    String ERR_PRESTAMO_REPETIDO = "PRESTAMO_REPETIDO";
 
     // ========================================================================
     // Procesos
@@ -94,6 +106,32 @@ public interface ProcesoPagoPrestamoService {
      * @throws Throwable Si ocurre un error
      */
     ResultadoAplicacionPago pagarCuota(SolicitudPagoCuota solicitud) throws Throwable;
+
+    /**
+     * Cobra VARIOS préstamos del MISMO partícipe en una sola operación: una sola confirmación,
+     * un solo comprobante. Reutiliza {@link #pagarCuota(SolicitudPagoCuota)} tal cual, una vez
+     * por préstamo — NO duplica el motor de aplicación en cascada.
+     *
+     * TODO O NADA: los N pagos corren en la MISMA transacción (llamado directo, sin pasar por el
+     * proxy del bean — ver el comentario en la implementación sobre por qué no se auto-inyecta
+     * el servicio). Si el préstamo N falla, el contenedor revierte los N-1 anteriores también.
+     *
+     * @param solicitud Lista de pagos, uno por préstamo (mismo objeto que {@code pagarCuota})
+     * @return Resultado por préstamo, en el mismo orden, más el total y el partícipe común
+     * @throws Throwable Si ocurre un error (nada queda aplicado)
+     */
+    ResultadoPagoMultiple pagarMultiplesCuotas(SolicitudPagoMultiple solicitud) throws Throwable;
+
+    /**
+     * Reconstruye desde CRD.EVPR/CRD.PGPR los datos para imprimir el comprobante de un cobro
+     * múltiple ya aplicado (no recalcula ni recibe montos del cliente — un comprobante
+     * financiero no se imprime con datos que el cliente pueda alterar antes de pedirlo).
+     *
+     * @param idsEvento Códigos de EventoPrestamo devueltos por {@link #pagarMultiplesCuotas}
+     * @return Socio, fecha, usuario, total general y el desglose por préstamo
+     * @throws Throwable Si algún evento no existe o los eventos no son del mismo partícipe
+     */
+    ComprobantePagoMultipleDatos prepararComprobantePagoMultiple(List<Long> idsEvento) throws Throwable;
 
     /**
      * Pago de cuota(s) consumiendo el saldo de aportes del partícipe (§7.4).
@@ -159,4 +197,39 @@ public interface ProcesoPagoPrestamoService {
      */
     void registrarHuellaPrestamo(Prestamo prestamo, String tipoOperacion, double valor,
             String observacion, LocalDateTime fecha, String usuario) throws Throwable;
+
+    /**
+     * Sobreescribe el componente de mora de {@code saldos} (y recompone
+     * {@code totalPendiente}) con la fórmula PURA de
+     * {@code ProcesoMoraPrestamoService.calcularMoraCuota}, evaluada a {@code fecha}, en vez
+     * de dejar el {@code saldoMora} que ya trae {@code saldos} (el del último proceso de las
+     * 02:00). El resto del desglose (desgravamen, interés, capital, seguro) no se toca.
+     *
+     * Compartido entre {@link #simularPrecancelacion} y el acuerdo de pago con condonación
+     * (Frente K) — extraído a público el 2026-08-29 para que ninguno de los dos duplique la
+     * fórmula de mora.
+     *
+     * @param saldos     : Saldos de la cuota a corregir IN PLACE
+     * @param cuota      : Cuota a evaluar
+     * @param tasaDiaria : Ver {@code ProcesoMoraPrestamoService.tasaDiariaDelPrestamo}
+     * @param fecha      : Fecha de corte
+     */
+    void recalcularMoraALaFecha(SaldosCuota saldos, DetallePrestamo cuota, double tasaDiaria, LocalDate fecha);
+
+    /**
+     * Desglose de TODO lo pendiente del préstamo a una fecha, por los 5 conceptos de
+     * {@link com.saa.rubros.CrdConceptoPrestamo} — capital, interés, mora (recalculada
+     * fresca), desgravamen y seguro de incendio. SIEMPRE de solo lectura
+     * ({@code calcularSaldosCuota}, la variante PURA) — nunca autocorrige ni persiste nada.
+     *
+     * A diferencia de {@link #simularPrecancelacion}, no separa exigibles de futuras: un
+     * acuerdo de condonación liquida el préstamo completo en el acto (K1), no hay componente
+     * "futuro" que tratar distinto.
+     *
+     * @param idPrestamo : Código del préstamo
+     * @param fecha      : Fecha de corte; si es null se usa hoy
+     * @return           : El desglose por concepto
+     * @throws Throwable : Si el préstamo no existe
+     */
+    DesgloseConceptosPrestamo calcularDesgloseConceptos(Long idPrestamo, LocalDate fecha) throws Throwable;
 }

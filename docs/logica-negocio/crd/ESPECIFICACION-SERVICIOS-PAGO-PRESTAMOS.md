@@ -479,7 +479,18 @@ Idéntico al vigente de petro (copiar la lógica):
 - Cancelar (**CANCELADO = 3**) solo si `contarCuotasPendientesByPrestamo == 0`
   (pendiente = `estado IS NULL OR estado NOT IN (4,7)`).
 - Escribir `fechaModificacion = now`; **NUNCA** tocar `fechaFin`.
-- Capturar `Throwable` internamente: un fallo aquí no aborta el pago.
+- **Aborta todo el pago si falla** (corregido 2026-08-29, TODO O NADA — mismo criterio y mismo
+  defecto que su gemelo conceptual `CargaArchivoPetroServiceImpl.verificarYActualizarEstadoPrestamo`,
+  ya corregido esta semana). Antes decía "capturar `Throwable` internamente: un fallo aquí no
+  aborta el pago" — eso quedó FALSO. El dinero ya se había aplicado en `PagoPrestamo`/cuotas
+  ANTES de llegar a este paso (no hay riesgo de perder ni duplicar plata), pero si el `save`
+  final que marca `CANCELADO` fallaba en silencio, el préstamo quedaba con sus cuotas en $0 y
+  seguía visible como VIGENTE para el padrón, los reportes de cartera y el gate de jubilación —
+  un préstamo fantasma que nadie sabe de dónde salió. Las ausencias de dato (préstamo sin tabla
+  de amortización, cuotas pendientes > 0) siguen manejadas con `if` explícitos, sin cambios;
+  `contarCuotasByPrestamo`/`contarCuotasPendientesByPrestamo` son `COUNT` — nunca lanzan por
+  ausencia, siempre devuelven una fila (0 incluido) — así que lo único que puede abortar ahora es
+  un fallo real de consulta o de guardado.
 
 ### 6.5 `recalcularCuotaDesdePagos` (para el reverso)
 
@@ -769,7 +780,30 @@ Por tipo:
 7. Contra-movimientos de aportes si los hubo. EVPRESTD = 0, huella, hook.
 ```
 
-### 7.7 Punto 5 del pedido — tipos de pago analizados
+#### Limitación conocida (2026-08-27): reverso de una DEVOLUCIÓN de aportes con anticipos consumidos
+
+No es `anularOperacion` de arriba, pero es el mismo tipo de reverso (contra-movimiento
+positivo en `CRD.APRT`) y la limitación es real, no cosmética — se documenta aquí junto al
+resto de anulaciones del módulo.
+
+`DevolucionAporteServiceImpl.generarContraMovimientos` revierte una devolución de aportes
+creando **un solo** contra-movimiento positivo por `DetalleDevolucionAporte` (esquema de
+`CRD.DDVA`: un único `idAporte`/`idPagoAporte` por detalle, sin columna para varias filas).
+Desde la regla D5 (Fase 2 del plan de devengo de aportes), una devolución puede haber
+consumido varios periodos de devengo **anticipados** (varias filas negativas, una por
+periodo). Al reversar, el contra-movimiento único sólo puede llevar el devengo de la fila
+original **cuando no hubo split** (una sola fila cubría todo el detalle); cuando sí lo hubo,
+el reverso queda con `periodoDevengo = NULL`.
+
+**Esto no es sólo una limitación de trazabilidad: es una incorrección real.** Los periodos
+que la devolución había consumido (adelantándolos) **no recuperan su devengo** al reversar
+la devolución — el reverso les devuelve el dinero al saldo del partícipe, pero no vuelve a
+marcar esos meses como "aportados". Como consecuencia, al partícipe se le puede volver a
+cobrar (o contar como faltante) un mes que ya tenía anticipado antes de la devolución que
+ahora se está deshaciendo. Es un caso raro (requiere que existan anticipos futuros Y que
+esa devolución específica se reverse) y de bajo monto, pero es un defecto pendiente, no un
+detalle cosmético. Corregirlo de raíz requiere que `CRD.DDVA` pueda enlazar N filas por
+detalle (cambio de DDL, fuera del alcance de esta fase).
 
 Cubiertos: pago de cuota, abono a capital (2 modalidades), pago con aportes, precancelación
 (valor/aportes/mixto), reverso. Identificados y dejados FUERA de alcance (futuros): condonación
@@ -885,12 +919,26 @@ comportamiento correcto para operaciones online (a diferencia del lote petro).
 
 ### 9.3 Pre-requisitos contables futuros (NO implementar ahora; dejar listados)
 
+**⚠️ CORREGIDO 2026-08-29 — el párrafo original de este documento decía que `idEmpresa` no tenía
+forma de resolverse desde crd. Verificado contra el código y es FALSO desde que existe el trabajo
+de bandas/cierre de cartera; no tomar la versión anterior como estado actual.**
+
 - La impl real usará `com.saa.ejb.cnt.service.AsientoContableService.generarAsiento(idEmpresa,
   codigoAltTipoAsiento, fecha, obs, usuario, List<DetalleAsiento>, moduloSistema)`.
-- Falta: constante de módulo crédito en `com.saa.rubros.ModuloSistema`; constantes nuevas en
-  `com.saa.rubros.TipoAsientos` (+ filas `TipoAsiento` con `codigoAlterno` y `sistema=1` en BD
-  por empresa); resolver `idEmpresa` desde crd (ninguna entidad crd referencia
-  `com.saa.model.scp.Empresa`; camino candidato: configuración por `Filial`).
+- **`idEmpresa` se resuelve por PARÁMETRO, no hace falta derivarlo de ninguna entidad crd.**
+  Precedente ya en producción: `CierreCarteraService.consultar(Long idEmpresa, Long anio, Long
+  mes)` / `.listarCorridas(Long idEmpresa)` — la pantalla lo manda, igual que el período. Además,
+  hoy SÍ hay entidades crd con `@ManyToOne Empresa` (`com.saa.model.scp.Empresa`):
+  `ConfiguracionBandaProducto` (CRD.CBPR) y `CorridaCierreCartera` (CRD.CRCT), ambas del trabajo
+  de bandas/cierre de cartera. La vía "configuración por `Filial`" que proponía la versión vieja
+  de este párrafo NO existe: `Filial` solo tiene código, nombre, código alterno y estado — sin
+  ningún vínculo a Empresa. No usar esa vía.
+- Lo que sigue realmente pendiente, acotado: constante de módulo crédito en
+  `com.saa.rubros.ModuloSistema`; constantes nuevas en `com.saa.rubros.TipoAsientos` (+ filas
+  `TipoAsiento` con `codigoAlterno` y `sistema=1` en BD por empresa); y, para cada operación
+  nueva que necesite contabilidad real, su propia plantilla (`CNT.PLNS`) con las cuentas
+  parametrizadas — no hay ninguna plantilla `PlantillasCredito` hoy para operaciones de préstamo
+  individual (pago de cuota, abono, precancelación, acuerdos), solo para Petro y cierre mensual.
 
 ---
 
@@ -1187,6 +1235,23 @@ nuevas y la fila volvería a ser visible para el FIFO del proceso Petro
 de incendio de las cuotas nuevas se copian de la ÚLTIMA cuota reemplazada. Queda pendiente de
 confirmación con negocio; si no se confirma, basta con poner ambos en 0.0 en
 `AbonoCapitalPrestamoServiceImpl.calcular` (campos `desgravamenPorCuota` y `seguroPorCuota`).
+
+**⚠️ SUPUESTO CORREGIDO — 2026-08-29, era un defecto, no quedó pendiente de confirmación.** El
+párrafo de arriba describe el estado de 2026-08-14 y ya no es el comportamiento actual:
+- El **desgravamen** ya no usa ningún valor fijo copiado de una cuota: se calcula por cuota como
+  `saldoDeCapitalAntesDeAmortizar × 1.12/1000`, mismo motor y misma constante que
+  `CalculadoraAmortizacionServiceImpl.FACTOR_DESGRAVAMEN_SOBRE_SALDO` (compartida, no duplicada).
+- El **seguro de incendio** sigue siendo fijo por cuota (eso sí era correcto), pero ya NO se copia
+  de una sola fila (la última reemplazada) hacia toda la tabla nueva: se preserva por NÚMERO DE
+  CUOTA — el valor de la cuota N vieja va a la cuota N nueva, vía un mapa
+  `numeroCuota → seguroIncendio` armado desde las cuotas historizadas.
+- Los campos citados arriba, `desgravamenPorCuota` y `seguroPorCuota` en el `CalculoAbono` interno
+  de `AbonoCapitalPrestamoServiceImpl`, ya no existen — se reemplazaron por
+  `seguroPorNumeroCuota` (`Map<Long, Double>`) y `seguroUltimaHistorizadaFallback` (respaldo
+  defensivo si una cuota nueva no tiene correspondencia en el mapa).
+- La reestructuración (`SimulacionPrestamoServiceImpl.simularReestructuracion`) tenía el mismo
+  defecto en ambos campos y se corrigió con el mismo criterio el mismo día — ver
+  `ParametrosAmortizacion.calcularDesgravamenSobreSaldo` y `.seguroPorNumeroCuota`.
 
 Ambigüedades de §7.3 paso 6 resueltas y los criterios adoptados:
 

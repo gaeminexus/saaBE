@@ -3,6 +3,7 @@ package com.saa.ejb.crd.service;
 import java.util.List;
 
 import com.saa.basico.util.EntityService;
+import com.saa.ejb.crd.service.dto.ResultadoConsultaPagoDevolucion;
 import com.saa.ejb.crd.service.dto.ResultadoDevolucionAporte;
 import com.saa.ejb.crd.service.dto.ResultadoSincronizacion;
 import com.saa.ejb.crd.service.dto.SolicitudDevolucionAporte;
@@ -33,10 +34,11 @@ import jakarta.ejb.Local;
  * <h3>Trampas del módulo que este servicio respeta</h3>
  * <ul>
  *   <li>Las filas de CRD.APRT se graban con {@code aporteDaoService.save(aporte, null)}
- *       DIRECTO, nunca con {@code AporteService.saveSingle}: eso forzaría {@code estado = 1}
- *       y la fila volvería a ser visible para el FIFO del proceso Petro
- *       ({@code selectMinAporteConSaldo}), que se la cobraría de nuevo al socio.
- *       Nacen con {@code saldo = 0.0}, {@code valorPagado = 0.0}, {@code estado = 4}.</li>
+ *       DIRECTO, nunca con {@code AporteServiceImpl.saveSingle}: eso forzaría
+ *       {@code estado = 1} (Estado.ACTIVO) en todo INSERT, pisando el PAGADA(4) recién
+ *       asignado. Nacen con {@code saldo = 0.0}, {@code valorPagado = 0.0}, {@code estado = 4}:
+ *       en el modelo vigente (Fase 1 del plan de devengo de aportes, D1) toda fila nace
+ *       pagada por construcción.</li>
  *   <li>CRD.APRT es <b>append-only</b> para los reportes (G42, G43, G44, CJBM, CPRM/CCPM,
  *       dashboard, padrón). Un reverso NUNCA borra ni edita la fila negativa: inserta una
  *       positiva.</li>
@@ -172,4 +174,44 @@ public interface DevolucionAporteService extends EntityService<DevolucionAporte>
      */
     ResultadoDevolucionAporte anularDevolucion(Long idDevolucion, String motivo, String usuario)
             throws Throwable;
+
+    /**
+     * Consulta BAJO DEMANDA si el pago de una devolución ya se confirmó en Cuentas por Pagar,
+     * y si es así copia {@code fechaRespuesta}/{@code referenciaBanco} a los {@code PagoAporte}
+     * de esa devolución (uno por tipo de aporte; todos llevan la misma fecha y referencia).
+     *
+     * ⚠️ Es DISTINTO de {@link #sincronizarDevolucion}: no toca {@code DevolucionAporte.estado}
+     * ni genera contra-movimientos — eso ya lo hacen los otros disparadores (el GET del
+     * listado, y el timer si algún día se reactiva). Este método SOLO alimenta las dos
+     * columnas de {@code PagoAporte} para la pantalla, y por eso funciona igual sin importar
+     * en qué estado esté la devolución: sirve tanto para el backlog de devoluciones que ya
+     * están PAGADA pero nunca recibieron el backfill, como para una consulta anticipada de
+     * una que todavía no se confirmó.
+     *
+     * Idempotente: se puede llamar tantas veces como haga falta, re-copia los mismos valores.
+     *
+     * @param idDevolucion Código de la devolución
+     * @return {@code confirmado = false} con un mensaje NO es un error: significa que
+     *         tesorería todavía no confirmó el pago
+     * @throws Throwable Si la devolución no existe
+     */
+    ResultadoConsultaPagoDevolucion consultarPagoDevolucion(Long idDevolucion) throws Throwable;
+
+    /**
+     * A qué devolución pertenece un aporte negativo — para que el diálogo del "ojo" pueda
+     * llamar a {@link #consultarPagoDevolucion} sin que el frontend arme la relación por su
+     * cuenta.
+     *
+     * ⚠️ NO es un simple {@code DDVA where DDVAAPRT = idAporte}: esa columna solo referencia
+     * la PRIMERA fila cuando el reparto por período de devengo generó varias (ver el
+     * comentario de {@code crearFilaNegativaDevolucion}). Este método prueba esa vía directa
+     * primero y, si no encuentra nada, cae a buscar entre las demás filas que generó el mismo
+     * registro (mismo entidad+tipo+instante+tipoMovimiento=DEVOLUCION).
+     *
+     * @param idAporte : Código del aporte (CRD.APRT)
+     * @return         : Código de la devolución, o {@code null} si el aporte no es de tipo
+     *                   DEVOLUCION o no se pudo enlazar (dato inconsistente)
+     * @throws Throwable : Si el aporte no existe
+     */
+    Long obtenerIdDevolucionPorAporte(Long idAporte) throws Throwable;
 }

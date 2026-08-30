@@ -14,20 +14,28 @@ import com.saa.ejb.cxc.dao.AnticipoClienteDaoService;
 import com.saa.ejb.cxc.dao.AplicacionPagoCxcDaoService;
 import com.saa.ejb.cxc.service.AnticipoClienteService;
 import com.saa.ejb.cxc.service.AplicacionPagoCxcService;
+import com.saa.ejb.cxp.service.PagoProgramadoService;
+import com.saa.ejb.cxp.service.dto.BeneficiarioOcasional;
 import com.saa.ejb.tsr.dao.PersonaCuentaContableDaoService;
 import com.saa.ejb.tsr.service.MovimientoBancoService;
 import com.saa.model.cnt.Asiento;
 import com.saa.model.cxc.AnticipoCliente;
 import com.saa.model.cxc.AplicacionPagoCxc;
 import com.saa.model.cxc.NombreEntidadesCobro;
+import com.saa.model.cxp.PagoProgramado;
 import com.saa.model.tsr.PersonaCuentaContable;
+import com.saa.model.tsr.Titular;
 import com.saa.rubros.EstadoAnticipoCliente;
 import com.saa.rubros.EstadoAplicacionPago;
+import com.saa.rubros.EstadoPagoProgramado;
+import com.saa.rubros.OrigenPagoExterno;
 import com.saa.rubros.RolPersona;
 import com.saa.rubros.TipoAsientos;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
+import jakarta.ejb.TransactionAttribute;
+import jakarta.ejb.TransactionAttributeType;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.TypedQuery;
@@ -70,6 +78,20 @@ public class AnticipoClienteServiceImpl implements AnticipoClienteService {
 
     @EJB
     private MovimientoBancoService movimientoBancoService;
+
+    @EJB
+    private PagoProgramadoService pagoProgramadoService;
+
+    /**
+     * Auto-inyección: permite que el bucle de {@link #sincronizarDevoluciones} invoque
+     * {@link #sincronizarDevolucion(Long)} a TRAVÉS del proxy EJB, para que cada anticipo
+     * corra en su propia transacción (REQUIRES_NEW) — mismo patrón que
+     * {@code DevolucionAporteServiceImpl.self} en CRD. Una llamada directa
+     * {@code this.sincronizarDevolucion(...)} se saltaría el interceptor y todo el lote
+     * quedaría en una sola transacción.
+     */
+    @EJB
+    private AnticipoClienteService self;
 
     @PersistenceContext
     private EntityManager em;
@@ -124,6 +146,7 @@ public class AnticipoClienteServiceImpl implements AnticipoClienteService {
             throws Throwable {
         System.out.println("selectByTitularEmpresa titular=" + codigoTitular
                 + " empresa=" + idEmpresa);
+        reconciliarDevolucionesPendientes(codigoTitular, idEmpresa);
         TypedQuery<AnticipoCliente> q = em.createQuery(
                 "SELECT a FROM AnticipoCliente a "
                 + "WHERE a.titular.codigo = :titular "
@@ -589,6 +612,8 @@ public class AnticipoClienteServiceImpl implements AnticipoClienteService {
         resultado.put("titular", idTitular);
         resultado.put("empresa", idEmpresa);
 
+        reconciliarDevolucionesPendientes(idTitular, idEmpresa);
+
         List<AnticipoCliente> anticipos =
                 anticipoDaoService.selectMovimientosByTitular(idTitular, idEmpresa);
 
@@ -930,5 +955,244 @@ public class AnticipoClienteServiceImpl implements AnticipoClienteService {
             System.err.println("✗ Error actualizarSaldoInicialPrcc: " + e.getMessage());
             e.printStackTrace();
         }
+    }
+
+    @Override
+    public java.util.Map<String, Object> solicitarDevolucion(Long idAnticipo, Double valor, Long idUsuario)
+            throws Throwable {
+        System.out.println("=== solicitarDevolucion (anticipo cliente) | idAnticipo=" + idAnticipo
+                + " | valor=" + valor + " ===");
+
+        if (idAnticipo == null) {
+            throw new IncomeException("Debe indicar el anticipo a devolver.");
+        }
+        AnticipoCliente anticipo = anticipoDaoService.selectById(idAnticipo, NombreEntidadesCobro.ANTICIPO_CLIENTE);
+        if (anticipo == null) {
+            throw new IncomeException("No se encontró el anticipo con ID: " + idAnticipo);
+        }
+        if (anticipo.getEstado() == null
+                || anticipo.getEstado().intValue() != EstadoAnticipoCliente.CONFIRMADO) {
+            throw new IncomeException("Sólo se puede devolver un anticipo CONFIRMADO. Estado actual: "
+                    + anticipo.getEstado());
+        }
+        if (valor == null || valor <= 0) {
+            throw new IncomeException("El valor a devolver debe ser mayor a cero.");
+        }
+        double saldo = anticipo.getSaldo() != null ? anticipo.getSaldo().doubleValue() : 0.0;
+        if (valor.doubleValue() > saldo + TOLERANCIA) {
+            throw new IncomeException("El valor a devolver ($" + valor + ") supera el saldo disponible "
+                    + "del anticipo ($" + saldo + ").");
+        }
+        // Idempotencia (ANTCIDPG/ANTCAPLC, ver docs/logica-negocio/cxc/sql/
+        // add-anticipo-cliente-devolucion.sql): con aplicado==0 hay una devolución previa
+        // todavía sin confirmar/aplicar -- selectVigentesByOrigen no la cubre mientras el
+        // pago sigue POR_APROBAR, así que el guardián real es este.
+        if (anticipo.getIdPagoDevolucion() != null
+                && Long.valueOf(0L).equals(anticipo.getAplicado())) {
+            throw new IncomeException("El anticipo " + idAnticipo + " ya tiene una devolución en curso "
+                    + "(pago " + anticipo.getIdPagoDevolucion() + ", todavía sin confirmar/aplicar). "
+                    + "Debe resolverse antes de solicitar otra.");
+        }
+
+        Titular titular = anticipo.getTitular();
+        if (titular == null) {
+            throw new IncomeException("El anticipo " + idAnticipo + " no tiene titular asociado.");
+        }
+        Long idEmpresa = anticipo.getEmpresa() != null ? anticipo.getEmpresa().getCodigo() : null;
+        if (idEmpresa == null) {
+            throw new IncomeException("El anticipo " + idAnticipo + " no tiene empresa asignada.");
+        }
+
+        BeneficiarioOcasional beneficiario = new BeneficiarioOcasional();
+        beneficiario.setNombre(titular.getRazonSocial() != null && !titular.getRazonSocial().trim().isEmpty()
+                ? titular.getRazonSocial() : titular.getNombre());
+        beneficiario.setIdentificacion(titular.getIdentificacion());
+
+        // Cuenta de origen nula (punto 14): la solicitud nace POR_APROBAR, sin cuenta ni
+        // forma de pago -- tesorería las asigna después con POST /pgtr/aprobar. Sin desglose
+        // contable a propósito: no hay parametrización todavía para este origen (mismo
+        // criterio que CRD_DEVOLUCION_APORTE antes de su fase 7).
+        Map<String, Object> resultadoPago = pagoProgramadoService.registrarPagoDeOrigenExterno(
+                OrigenPagoExterno.CXC_DEVOLUCION_CLIENTE, anticipo.getId(), idEmpresa,
+                null, valor, java.time.LocalDate.now().toString(), beneficiario, null,
+                "Devolución anticipo cliente #" + idAnticipo, idUsuario, false, null);
+
+        Long idPago = (Long) resultadoPago.get("pago");
+
+        anticipo.setIdPagoDevolucion(idPago);
+        anticipo.setAplicado(Long.valueOf(0L));
+        anticipoDaoService.save(anticipo, anticipo.getId());
+
+        Map<String, Object> resultado = new HashMap<>();
+        resultado.put("exito", true);
+        resultado.put("idAnticipo", idAnticipo);
+        resultado.put("idPago", idPago);
+        resultado.put("mensaje", "Devolución solicitada por $" + valor + ". Queda pendiente de "
+                + "aprobación en el circuito único de pagos.");
+        System.out.println("✓ Devolución solicitada para anticipo " + idAnticipo + " | idPago=" + idPago);
+        return resultado;
+    }
+
+    // ========================================================================
+    // Reconciliador de la devolución (ítem 5, 2026-08-28) — mismo patrón que
+    // CRD.DevolucionAporteServiceImpl.sincronizarDevolucion/sincronizarPagos.
+    // ========================================================================
+
+    /**
+     * Reconcilia ANTES de listar/consultar, para que la pantalla nunca dependa de un timer
+     * (mismo criterio que {@code DevolucionAporteServiceImpl.listarPorEntidad} en CRD — que
+     * de hecho tiene su propio timer con el {@code @Schedule} comentado a propósito: el
+     * mecanismo vivo es este, no un timer). No hay timer nuevo para CXC por ahora.
+     * <p>
+     * Cada anticipo se reconcilia en su propia transacción vía {@link #self}; un fallo no
+     * impide devolver el listado.
+     */
+    private void reconciliarDevolucionesPendientes(Long idTitular, Long idEmpresa) {
+        try {
+            List<AnticipoCliente> pendientes = anticipoDaoService.selectConDevolucionPendiente();
+            if (pendientes == null) {
+                return;
+            }
+            for (AnticipoCliente pendiente : pendientes) {
+                boolean mismoTitular = pendiente.getTitular() != null
+                        && pendiente.getTitular().getCodigo() != null
+                        && pendiente.getTitular().getCodigo().equals(idTitular);
+                boolean mismaEmpresa = pendiente.getEmpresa() != null
+                        && pendiente.getEmpresa().getCodigo() != null
+                        && pendiente.getEmpresa().getCodigo().equals(idEmpresa);
+                if (!mismoTitular || !mismaEmpresa) {
+                    continue;
+                }
+                try {
+                    self.sincronizarDevolucion(pendiente.getId());
+                } catch (Throwable e) {
+                    System.err.println("Error al reconciliar la devolución del anticipo "
+                            + pendiente.getId() + " antes de listar: " + e.getMessage());
+                }
+            }
+        } catch (Throwable e) {
+            System.err.println("Error al buscar devoluciones pendientes antes de listar: "
+                    + e.getMessage());
+        }
+    }
+
+    @Override
+    @TransactionAttribute(TransactionAttributeType.NOT_SUPPORTED)
+    public Map<String, Object> sincronizarDevoluciones() throws Throwable {
+        System.out.println("========================================");
+        System.out.println("SINCRONIZACIÓN DE DEVOLUCIONES DE ANTICIPOS DE CLIENTE");
+        System.out.println("========================================");
+
+        Map<String, Object> resumen = new HashMap<>();
+        int evaluadas = 0, aplicadas = 0, conError = 0;
+        List<String> errores = new ArrayList<>();
+
+        List<AnticipoCliente> pendientes = anticipoDaoService.selectConDevolucionPendiente();
+        int universo = (pendientes != null) ? pendientes.size() : 0;
+        System.out.println("Anticipos con devolución pendiente a evaluar: " + universo);
+
+        if (pendientes != null) {
+            for (AnticipoCliente pendiente : pendientes) {
+                try {
+                    // A través del proxy: cada anticipo commitea por separado.
+                    Map<String, Object> parcial = self.sincronizarDevolucion(pendiente.getId());
+                    evaluadas++;
+                    if (Boolean.TRUE.equals(parcial.get("aplicado"))) {
+                        aplicadas++;
+                    }
+                } catch (Throwable e) {
+                    // Un anticipo con datos malos no aborta el lote.
+                    evaluadas++;
+                    conError++;
+                    errores.add("Anticipo " + pendiente.getId() + ": " + e.getMessage());
+                    System.err.println("Error al reconciliar la devolución del anticipo "
+                            + pendiente.getId() + ": " + e.getMessage());
+                    e.printStackTrace();
+                }
+            }
+        }
+
+        resumen.put("evaluadas", evaluadas);
+        resumen.put("aplicadas", aplicadas);
+        resumen.put("conError", conError);
+        resumen.put("errores", errores);
+        System.out.println("SINCRONIZACIÓN TERMINADA - Evaluadas: " + evaluadas
+                + " - Aplicadas: " + aplicadas + " - Con error: " + conError);
+        return resumen;
+    }
+
+    @Override
+    @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+    public Map<String, Object> sincronizarDevolucion(Long idAnticipo) throws Throwable {
+        System.out.println("=== sincronizarDevolucion (anticipo cliente) | idAnticipo=" + idAnticipo + " ===");
+
+        if (idAnticipo == null) {
+            throw new IncomeException("Debe indicar el anticipo a sincronizar.");
+        }
+        AnticipoCliente anticipo = anticipoDaoService.selectById(idAnticipo, NombreEntidadesCobro.ANTICIPO_CLIENTE);
+        if (anticipo == null) {
+            throw new IncomeException("No se encontró el anticipo con ID: " + idAnticipo);
+        }
+
+        Map<String, Object> resultado = new HashMap<>();
+        resultado.put("idAnticipo", idAnticipo);
+        resultado.put("aplicado", false);
+
+        // Idempotencia (ANTCIDPG/ANTCAPLC): sin pago en curso, o ya aplicado, no hay nada
+        // que hacer. Este es el guardián: una segunda corrida sobre el mismo pago ya
+        // CONFIRMADO ve aplicado==1 y no vuelve a descontar.
+        if (anticipo.getIdPagoDevolucion() == null) {
+            resultado.put("mensaje", "El anticipo no tiene ninguna devolución en curso.");
+            return resultado;
+        }
+        if (Long.valueOf(1L).equals(anticipo.getAplicado())) {
+            resultado.put("mensaje", "La devolución del anticipo ya fue aplicada.");
+            return resultado;
+        }
+
+        // cxc → cxp: se LEE el estado real del pago. CXP no avisa: no puede nombrar a CXC.
+        PagoProgramado pago = em.find(PagoProgramado.class, anticipo.getIdPagoDevolucion());
+        if (pago == null) {
+            // La orden de pago ya no existe. Se deja el anticipo como está y se registra:
+            // es un dato para investigar, no un error que aborte la corrida.
+            resultado.put("mensaje", "El pago " + anticipo.getIdPagoDevolucion()
+                    + " de la devolución ya no existe en Cuentas por Pagar.");
+            System.err.println("  ⚠ Devolución del anticipo " + idAnticipo + " huérfana: el pago "
+                    + anticipo.getIdPagoDevolucion() + " no existe.");
+            return resultado;
+        }
+
+        int estadoPago = (pago.getEstado() != null) ? pago.getEstado().intValue() : 0;
+
+        if (estadoPago == EstadoPagoProgramado.CONFIRMADO) {
+            double saldo = anticipo.getSaldo() != null ? anticipo.getSaldo().doubleValue() : 0.0;
+            double valorPago = pago.getValor() != null ? pago.getValor().doubleValue() : 0.0;
+            anticipo.setSaldo(saldo - valorPago);
+            anticipo.setAplicado(Long.valueOf(1L));
+            anticipoDaoService.save(anticipo, anticipo.getId());
+            resultado.put("aplicado", true);
+            resultado.put("mensaje", "Devolución aplicada: saldo descontado por $" + valorPago + ".");
+            System.out.println("  ✅ Devolución del anticipo " + idAnticipo + " APLICADA - Pago: "
+                    + pago.getId() + " - Nuevo saldo: " + anticipo.getSaldo());
+
+        } else if (estadoPago == EstadoPagoProgramado.RECHAZADO
+                || estadoPago == EstadoPagoProgramado.ANULADO) {
+            // Nada que descontar: el pago no llegó a confirmarse. Se marca aplicado igual
+            // para liberar el "en curso" y permitir una nueva solicitud sobre este anticipo.
+            anticipo.setAplicado(Long.valueOf(1L));
+            anticipoDaoService.save(anticipo, anticipo.getId());
+            resultado.put("mensaje", "El pago quedó " + (estadoPago == EstadoPagoProgramado.RECHAZADO
+                    ? "RECHAZADO" : "ANULADO") + ": no se descuenta saldo. Queda libre para "
+                    + "una nueva solicitud.");
+            System.out.println("  ↩ Devolución del anticipo " + idAnticipo + " no aplicada "
+                    + "(pago en estado " + estadoPago + ").");
+
+        } else {
+            resultado.put("mensaje", "El pago sigue en curso (estado " + estadoPago + "). Sin cambios.");
+            System.out.println("  Devolución del anticipo " + idAnticipo + ": el pago sigue en curso "
+                    + "(estado " + estadoPago + "). Sin cambios.");
+        }
+
+        return resultado;
     }
 }

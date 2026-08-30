@@ -62,4 +62,24 @@ public class NovedadNominaDaoServiceImpl extends EntityDaoImpl<NovedadNomina> im
 		query.setParameter("idEmpleado", idEmpleado);
 		return query.getResultList();
 	}
+
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.rhh.dao.NovedadNominaDaoService#selectPorDescripcion(java.lang.Long, java.lang.Long, java.lang.String)
+	 */
+	@SuppressWarnings("unchecked")
+	@Override
+	public NovedadNomina selectPorDescripcion(Long idEmpleado, Long idConcepto, String descripcion) throws Throwable {
+		Query query = em.createQuery(" select   t "
+				+ " from     NovedadNomina t "
+				+ " where    t.empleado.codigo = :idEmpleado "
+				+ "          and t.conceptoNomina.codigo = :idConcepto "
+				+ "          and t.descripcion = :descripcion "
+				+ " order by t.codigo desc ");
+		query.setParameter("idEmpleado", idEmpleado);
+		query.setParameter("idConcepto", idConcepto);
+		query.setParameter("descripcion", descripcion);
+		query.setMaxResults(1);
+		List<NovedadNomina> encontradas = query.getResultList();
+		return (encontradas == null || encontradas.isEmpty()) ? null : encontradas.get(0);
+	}
 }

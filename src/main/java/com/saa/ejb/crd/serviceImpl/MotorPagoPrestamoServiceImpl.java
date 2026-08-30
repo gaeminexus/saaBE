@@ -13,6 +13,7 @@ import com.saa.ejb.crd.dao.PrestamoDaoService;
 import com.saa.ejb.crd.service.DetallePrestamoService;
 import com.saa.ejb.crd.service.MotorPagoPrestamoService;
 import com.saa.ejb.crd.service.PagoPrestamoService;
+import com.saa.ejb.crd.service.ProcesoMoraPrestamoService;
 import com.saa.ejb.crd.service.dto.ContextoPago;
 import com.saa.ejb.crd.service.dto.DetalleAplicacionCuota;
 import com.saa.ejb.crd.service.dto.ResultadoAplicacionPago;
@@ -67,13 +68,17 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
     @EJB
     private EventoPrestamoDaoService eventoPrestamoDaoService;
 
+    /** Pedido 10: para que un préstamo sin cuotas vencidas vuelva a VIGENTE en cuanto se paga. */
+    @EJB
+    private ProcesoMoraPrestamoService procesoMoraPrestamoService;
+
     // ========================================================================
     // §6.2 — Saldos reales de una cuota (con autocorrección)
     // ========================================================================
 
     @Override
-    public SaldosCuota calcularSaldosRealesCuota(DetallePrestamo cuota) throws Throwable {
-        System.out.println("MotorPagoPrestamoService.calcularSaldosRealesCuota - Cuota: "
+    public SaldosCuota calcularSaldosCuota(DetallePrestamo cuota) throws Throwable {
+        System.out.println("MotorPagoPrestamoService.calcularSaldosCuota (solo lectura) - Cuota: "
             + (cuota != null ? cuota.getCodigo() : null));
 
         SaldosCuota saldos = new SaldosCuota();
@@ -148,10 +153,43 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
             + saldos.getSaldoCapital()
             + saldos.getSaldoSeguroIncendio()));
 
+        return saldos;
+    }
+
+    @Override
+    public SaldosCuota calcularSaldosRealesCuota(DetallePrestamo cuota) throws Throwable {
+        System.out.println("MotorPagoPrestamoService.calcularSaldosRealesCuota - Cuota: "
+            + (cuota != null ? cuota.getCodigo() : null));
+
+        SaldosCuota saldos = calcularSaldosCuota(cuota);
+        if (cuota == null) {
+            return saldos;
+        }
+
         // ✅ AUTOCORRECCIÓN: la cuota está liquidada según PGPR pero su estado dice otra cosa
         if (saldos.getTotalPendiente() <= TOLERANCIA && !esEstadoLiquidado(cuota.getEstado())) {
             System.out.println("    ⚠️ Cuota #" + cuota.getNumeroCuota()
                 + " liquidada según PagoPrestamo - Actualizando estado a PAGADA");
+
+            // Recompone los acumulados "Pagado" desde PGPR para persistirlos en la cuota (los
+            // mismos pagos vigentes que calcularSaldosCuota ya usó arriba para el desglose).
+            double desgravamenPagado = 0.0;
+            double moraPagada        = 0.0;
+            double ivPagado          = 0.0;
+            double interesPagado     = 0.0;
+            double capitalPagado     = 0.0;
+            double seguroPagado      = 0.0;
+            List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectVigentesByIdDetallePrestamo(cuota.getCodigo());
+            if (pagos != null) {
+                for (PagoPrestamo pago : pagos) {
+                    desgravamenPagado += nullSafe(pago.getDesgravamen());
+                    moraPagada        += nullSafe(pago.getMoraPagada());
+                    ivPagado          += nullSafe(pago.getInteresVencidoPagado());
+                    interesPagado     += nullSafe(pago.getInteresPagado());
+                    capitalPagado     += nullSafe(pago.getCapitalPagado());
+                    seguroPagado      += nullSafe(pago.getValorSeguroIncendio());
+                }
+            }
 
             aplicarEstadoCuota(cuota, (long) EstadoCuotaPrestamo.PAGADA);
 
@@ -513,9 +551,22 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
             + (prestamo != null ? prestamo.getCodigo() : null));
 
         if (prestamo == null || prestamo.getCodigo() == null) {
+            // Ausencia de dato legítima: nada que verificar sin un préstamo.
             return false;
         }
 
+        // TODO O NADA (2026-08-29): mismo defecto que el gemelo conceptual de este método,
+        // CargaArchivoPetroServiceImpl.verificarYActualizarEstadoPrestamo (ya corregido esta
+        // semana) — antes, si el save final fallaba, se tragaba el error y se devolvía `false`
+        // ("un fallo aquí no debe abortar el pago"). El dinero ya había quedado bien aplicado en
+        // PagoPrestamo/cuotas ANTES de llegar acá, así que esto no duplica ni pierde plata — pero
+        // un préstamo que en los hechos ya no debe nada y se queda VIGENTE en silencio no es solo
+        // un dato raro en el comprobante: el padrón, los reportes de cartera y el gate de
+        // jubilación lo siguen viendo como préstamo activo. Las ausencias de dato ya están
+        // manejadas con `if` explícitos (préstamo sin tabla de amortización, cuotas pendientes >
+        // 0) y no cambian; `contarCuotasByPrestamo`/`contarCuotasPendientesByPrestamo` son
+        // COUNT — nunca lanzan por ausencia, siempre devuelven una fila (0 incluido) — así que lo
+        // único que puede llegar a un catch acá es un fallo real de consulta o de guardado.
         try {
             // El estado operativo vive en idEstado (PRSTIDST). ESPSCDGO es FK al catálogo
             // CRD.ESPS y NUNCA se toca desde aquí.
@@ -524,6 +575,10 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
             if (esEstadoTerminalPrestamo(estadoActual)) {
                 return false;
             }
+
+            // Pedido 10: si este pago dejó al préstamo sin cuotas vencidas y estaba EN_MORA(11),
+            // vuelve a VIGENTE(2) de inmediato, en vez de esperar al proceso diario de las 02:00.
+            procesoMoraPrestamoService.regularizarPrestamoSiSinMora(prestamo.getCodigo());
 
             // Un préstamo sin tabla de amortización daría "0 pendientes" y se cancelaría por error
             Long totalCuotas = detallePrestamoDaoService.contarCuotasByPrestamo(prestamo.getCodigo());
@@ -552,10 +607,10 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
             return true;
 
         } catch (Throwable e) {
-            // Un fallo aquí NO debe abortar el pago
-            System.err.println("Error al verificar estado del préstamo: " + e.getMessage());
-            e.printStackTrace();
-            return false;
+            throw new RuntimeException("Falló al verificar/actualizar el estado del préstamo "
+                + prestamo.getCodigo() + " tras el pago — la cuota pudo haber quedado marcada "
+                + "como pagada sin que el préstamo reflejara el cambio de estado. Causa: "
+                + e.getMessage(), e);
         }
     }
 

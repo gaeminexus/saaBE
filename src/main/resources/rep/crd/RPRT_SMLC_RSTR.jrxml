@@ -71,7 +71,7 @@
 			<text><![CDATA[SALDO CAPITAL PENDIENTE]]></text>
 			<box leftPadding="5"/>
 		</element>
-		<element kind="textField" uuid="b2e1a002-2000-4a00-9000-a20000000019" x="530" y="99" width="120" height="13" fontName="Tahoma" fontSize="7.5" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+		<element kind="textField" uuid="b2e1a002-2000-4a00-9000-a20000000019" x="530" y="99" width="120" height="13" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
 			<expression><![CDATA[$P{P_SALDO_CAPITAL_PENDIENTE}]]></expression>
 			<box rightPadding="6"/>
 		</element>
@@ -95,7 +95,7 @@
 			<text><![CDATA[MORA CAPITALIZADA]]></text>
 			<box leftPadding="5"/>
 		</element>
-		<element kind="textField" uuid="b2e1a002-2000-4a00-9000-a2000000001f" x="330" y="112" width="90" height="13" fontName="Tahoma" fontSize="7.5" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+		<element kind="textField" uuid="b2e1a002-2000-4a00-9000-a2000000001f" x="330" y="112" width="90" height="13" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
 			<expression><![CDATA[$P{P_MORA_CAPITALIZADA}]]></expression>
 			<box rightPadding="6"/>
 		</element>
@@ -103,7 +103,7 @@
 			<text><![CDATA[INT. VENCIDO CAPITALIZADO]]></text>
 			<box leftPadding="5"/>
 		</element>
-		<element kind="textField" uuid="b2e1a002-2000-4a00-9000-a20000000021" x="560" y="112" width="90" height="13" fontName="Tahoma" fontSize="7.5" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+		<element kind="textField" uuid="b2e1a002-2000-4a00-9000-a20000000021" x="560" y="112" width="90" height="13" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
 			<expression><![CDATA[$P{P_INTERES_VENCIDO_CAPITALIZADO}]]></expression>
 			<box rightPadding="6"/>
 		</element>
@@ -111,7 +111,7 @@
 			<text><![CDATA[CAPITAL NUEVO]]></text>
 			<box leftPadding="5"/>
 		</element>
-		<element kind="textField" uuid="b2e1a002-2000-4a00-9000-a20000000023" x="730" y="112" width="72" height="13" fontName="Tahoma" fontSize="7.5" pattern="#,##0.00" bold="true" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+		<element kind="textField" uuid="b2e1a002-2000-4a00-9000-a20000000023" x="730" y="112" width="72" height="13" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" bold="true" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
 			<expression><![CDATA[$P{P_CAPITAL_DE_ARRANQUE}]]></expression>
 			<box rightPadding="6"/>
 		</element>
@@ -158,11 +158,11 @@
 			<text><![CDATA[Cuota]]></text>
 			<box leftPadding="5"><pen lineWidth="0.25"/></box>
 		</element>
-		<element kind="textField" uuid="b2e1a002-2000-4a00-9000-a2000000002f" x="260" y="190" width="271" height="14" fontName="Tahoma" fontSize="7.5" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="textField" uuid="b2e1a002-2000-4a00-9000-a2000000002f" x="260" y="190" width="271" height="14" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
 			<expression><![CDATA[$P{P_CUOTA_ACTUAL}]]></expression>
 			<box><pen lineWidth="0.25"/></box>
 		</element>
-		<element kind="textField" uuid="b2e1a002-2000-4a00-9000-a20000000030" x="531" y="190" width="271" height="14" fontName="Tahoma" fontSize="7.5" pattern="#,##0.00" bold="true" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="textField" uuid="b2e1a002-2000-4a00-9000-a20000000030" x="531" y="190" width="271" height="14" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" bold="true" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
 			<expression><![CDATA[$P{P_CUOTA_NUEVA}]]></expression>
 			<box><pen lineWidth="0.25"/></box>
 		</element>
@@ -170,11 +170,11 @@
 			<text><![CDATA[Total a pagar de acá en adelante]]></text>
 			<box leftPadding="5"><pen lineWidth="0.25"/></box>
 		</element>
-		<element kind="textField" uuid="b2e1a002-2000-4a00-9000-a20000000032" mode="Opaque" x="260" y="204" width="271" height="16" backcolor="#EFEFEF" fontName="Tahoma" fontSize="8.0" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="textField" uuid="b2e1a002-2000-4a00-9000-a20000000032" mode="Opaque" x="260" y="204" width="271" height="16" backcolor="#EFEFEF" fontName="Tahoma" fontSize="8.0" pattern="$#,##0.00" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
 			<expression><![CDATA[$P{P_TOTAL_A_PAGAR_ACTUAL}]]></expression>
 			<box><pen lineWidth="0.25"/></box>
 		</element>
-		<element kind="textField" uuid="b2e1a002-2000-4a00-9000-a20000000033" mode="Opaque" x="531" y="204" width="271" height="16" backcolor="#EFEFEF" fontName="Tahoma" fontSize="8.5" pattern="#,##0.00" bold="true" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="textField" uuid="b2e1a002-2000-4a00-9000-a20000000033" mode="Opaque" x="531" y="204" width="271" height="16" backcolor="#EFEFEF" fontName="Tahoma" fontSize="8.5" pattern="$#,##0.00" bold="true" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
 			<expression><![CDATA[$P{P_TOTAL_A_PAGAR_NUEVO}]]></expression>
 			<box><pen lineWidth="0.25"/></box>
 		</element>
@@ -232,31 +232,31 @@
 				<expression><![CDATA[$F{fechaVencimiento} != null ? $F{fechaVencimiento}.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")) : ""]]></expression>
 				<box><pen lineWidth="0.25"/></box>
 			</element>
-			<element kind="textField" uuid="b2e1a002-2000-4a00-9000-a20000000052" x="135" y="0" width="95" height="15" fontName="Tahoma" fontSize="7.5" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+			<element kind="textField" uuid="b2e1a002-2000-4a00-9000-a20000000052" x="135" y="0" width="95" height="15" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
 				<expression><![CDATA[$F{capital}]]></expression>
 				<box rightPadding="6"><pen lineWidth="0.25"/></box>
 			</element>
-			<element kind="textField" uuid="b2e1a002-2000-4a00-9000-a20000000053" x="230" y="0" width="95" height="15" fontName="Tahoma" fontSize="7.5" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+			<element kind="textField" uuid="b2e1a002-2000-4a00-9000-a20000000053" x="230" y="0" width="95" height="15" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
 				<expression><![CDATA[$F{interes}]]></expression>
 				<box rightPadding="6"><pen lineWidth="0.25"/></box>
 			</element>
-			<element kind="textField" uuid="b2e1a002-2000-4a00-9000-a20000000054" x="325" y="0" width="90" height="15" fontName="Tahoma" fontSize="7.5" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+			<element kind="textField" uuid="b2e1a002-2000-4a00-9000-a20000000054" x="325" y="0" width="90" height="15" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
 				<expression><![CDATA[$F{desgravamen}]]></expression>
 				<box rightPadding="6"><pen lineWidth="0.25"/></box>
 			</element>
-			<element kind="textField" uuid="b2e1a002-2000-4a00-9000-a20000000055" x="415" y="0" width="90" height="15" fontName="Tahoma" fontSize="7.5" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+			<element kind="textField" uuid="b2e1a002-2000-4a00-9000-a20000000055" x="415" y="0" width="90" height="15" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
 				<expression><![CDATA[$F{seguroIncendio}]]></expression>
 				<box rightPadding="6"><pen lineWidth="0.25"/></box>
 			</element>
-			<element kind="textField" uuid="b2e1a002-2000-4a00-9000-a20000000056" x="505" y="0" width="95" height="15" fontName="Tahoma" fontSize="7.5" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+			<element kind="textField" uuid="b2e1a002-2000-4a00-9000-a20000000056" x="505" y="0" width="95" height="15" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
 				<expression><![CDATA[$F{cuota}]]></expression>
 				<box rightPadding="6"><pen lineWidth="0.25"/></box>
 			</element>
-			<element kind="textField" uuid="b2e1a002-2000-4a00-9000-a20000000057" x="600" y="0" width="95" height="15" fontName="Tahoma" fontSize="7.5" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+			<element kind="textField" uuid="b2e1a002-2000-4a00-9000-a20000000057" x="600" y="0" width="95" height="15" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
 				<expression><![CDATA[$F{saldoCapital}]]></expression>
 				<box rightPadding="6"><pen lineWidth="0.25"/></box>
 			</element>
-			<element kind="textField" uuid="b2e1a002-2000-4a00-9000-a20000000058" x="695" y="0" width="107" height="15" fontName="Tahoma" fontSize="7.5" pattern="#,##0.00" bold="true" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+			<element kind="textField" uuid="b2e1a002-2000-4a00-9000-a20000000058" x="695" y="0" width="107" height="15" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" bold="true" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
 				<expression><![CDATA[$F{total}]]></expression>
 				<box rightPadding="6"><pen lineWidth="0.25"/></box>
 			</element>

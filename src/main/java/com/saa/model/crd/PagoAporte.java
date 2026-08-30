@@ -114,6 +114,24 @@ public class PagoAporte implements Serializable {
     @Column(name = "PGAPRTRS", length = 2000)
     private String rutaDocumentoRespaldo;
 
+    /**
+     * Fecha real del pago (solo devolución de aportes): copiada de
+     * {@code PagoProgramado.fechaRespuesta} al reconciliar. Siempre se llena cuando el pago
+     * queda CONFIRMADO en Cuentas por Pagar.
+     */
+    @Basic
+    @Column(name = "PGAPFCPG")
+    private java.time.LocalDate fechaPagoDevolucion;
+
+    /**
+     * Referencia bancaria del pago (solo devolución de aportes): copiada de
+     * {@code PagoProgramado.referenciaBanco}. NULLABLE a propósito: en la confirmación manual
+     * de Cuentas por Pagar la referencia es opcional, puede quedar sin dato legítimamente.
+     */
+    @Basic
+    @Column(name = "PGAPRFPG", length = 100)
+    private String referenciaPagoDevolucion;
+
     // ============================================================
     // Getters y Setters
     // ============================================================
@@ -212,6 +230,22 @@ public class PagoAporte implements Serializable {
 
     public void setRutaDocumentoRespaldo(String rutaDocumentoRespaldo) {
         this.rutaDocumentoRespaldo = rutaDocumentoRespaldo;
+    }
+
+    public java.time.LocalDate getFechaPagoDevolucion() {
+        return fechaPagoDevolucion;
+    }
+
+    public void setFechaPagoDevolucion(java.time.LocalDate fechaPagoDevolucion) {
+        this.fechaPagoDevolucion = fechaPagoDevolucion;
+    }
+
+    public String getReferenciaPagoDevolucion() {
+        return referenciaPagoDevolucion;
+    }
+
+    public void setReferenciaPagoDevolucion(String referenciaPagoDevolucion) {
+        this.referenciaPagoDevolucion = referenciaPagoDevolucion;
     }
 }
 

@@ -21,7 +21,37 @@
     TRUNC(P.PRSTFCFN)       AS FECHA_ULTIMO_DIVIDENDO,
     P.PRSTUSMD              AS USUARIO,
     P.PRSTVLCT              AS VALOR_CUOTA,
-    P.PRSTSLTT              AS SALDO_TOTAL,
+    (SELECT NVL(SUM(
+                CASE WHEN pg.DTPRCDGO IS NULL THEN
+                    CASE WHEN d.DTPRTTLL IS NOT NULL
+                         THEN d.DTPRTTLL + NVL(d.DTPRINVN,0)
+                         ELSE NVL(d.DTPRDSGR,0) + NVL(d.DTPRMRAA,0) + NVL(d.DTPRINVN,0)
+                              + NVL(d.DTPRINTR,0) + NVL(d.DTPRCPTL,0) + NVL(d.DTPRVLSI,0)
+                    END
+                ELSE
+                      GREATEST(NVL(d.DTPRDSGR,0) - NVL(pg.DESGRAVAMEN_PAGADO,0), 0)
+                    + GREATEST(NVL(d.DTPRMRAA,0) - NVL(pg.MORA_PAGADA,0), 0)
+                    + GREATEST(NVL(d.DTPRINVN,0) - NVL(pg.INTERES_VENCIDO_PAGADO,0), 0)
+                    + GREATEST(NVL(d.DTPRINTR,0) - NVL(pg.INTERES_PAGADO,0), 0)
+                    + GREATEST(NVL(d.DTPRCPTL,0) - NVL(pg.CAPITAL_PAGADO,0), 0)
+                    + GREATEST(NVL(d.DTPRVLSI,0) - NVL(pg.SEGURO_PAGADO,0), 0)
+                END
+            ), 0)
+       FROM CRD.DTPR d
+       LEFT JOIN (SELECT g.DTPRCDGO,
+                         SUM(g.PGPRCPPG) AS CAPITAL_PAGADO,
+                         SUM(g.PGPRINPG) AS INTERES_PAGADO,
+                         SUM(g.PGPRDSGR) AS DESGRAVAMEN_PAGADO,
+                         SUM(g.PGPRMRPG) AS MORA_PAGADA,
+                         SUM(g.PGPRINVP) AS INTERES_VENCIDO_PAGADO,
+                         SUM(g.PGPRVLSI) AS SEGURO_PAGADO
+                    FROM CRD.PGPR g
+                   WHERE NVL(g.PGPRANUL,0) = 0
+                   GROUP BY g.DTPRCDGO) pg
+              ON pg.DTPRCDGO = d.DTPRCDGO
+      WHERE d.PRSTCDGO = P.PRSTCDGO
+        AND (d.DTPRESTD IS NULL OR d.DTPRESTD NOT IN (4,7))
+    )                       AS SALDO_TOTAL,
 
     U.DTPRNMCT              AS NUMERO_CUOTA,
     TRUNC(U.DTPRFCVN)       AS FECHA_VENCIMIENTO,

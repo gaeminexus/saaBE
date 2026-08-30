@@ -140,7 +140,8 @@ Es el corazón del cambio, y es pequeño:
 ## 7bis. CORRECCIÓN DEL 2026-08-27 — `MovimientoBanco` no es el mayor auxiliar
 
 > **Este apartado corrige un supuesto del §5 que era falso, detectado al probar la fase 1 en el
-> navegador.** Afecta al modelo, no solo a la redacción.
+> navegador.** Afecta al modelo, no solo a la redacción. **Implementado el 2026-08-27** — ver
+> §10.4 para el estado del código y el modelo exacto para el script de producción pendiente.
 
 El §5 exige `MVCBCDGO` para las partidas de tipo 1 y 2 (`CK_DTCN_TIPO_ORIGEN`), dando por
 sentado que todo movimiento de banco registrado en libros tiene su fila en `TSR.MVCB`.
@@ -194,6 +195,76 @@ de la contabilidad (`DetalleAsiento` sobre la cuenta del plan) o de `MovimientoB
 sistema tiene dos respuestas distintas para la misma pregunta y difieren en dos órdenes de
 magnitud. Esa decisión es previa a cualquier validación de disponibilidad.
 
+### Decisión tomada el 2026-08-27: el saldo real sale de la contabilidad
+
+**El saldo bancario se lee de `PlanCuentaService.saldoCuentaFechaEmpresa(idEmpresa, idCuenta,
+fecha)`, no de `MovimientoBanco`.** Tres razones, en orden de peso — la que decide es la
+tercera: es el número correcto (cobertura 100% contra 1-5%); ya existe, ya lo usa
+`MayorAnaliticoServiceImpl` para el mayor auxiliar; y ya está probado contra la contabilidad,
+así que no hay que construir ni mantener una fórmula nueva. Verificado: las 15 cuentas
+bancarias de la base local tienen `planCuenta` asignado — el método aplica a todas sin
+excepción.
+
+`MovimientoBanco`/`obtieneSaldoFecha` no se fusiona ni se borra: sigue siendo la fuente
+correcta para lo que sí mide bien —el propio circuito de conciliación banco↔libros—, solo deja
+de usarse para "cuánto hay disponible". Por eso, para que el nombre no siga invitando al
+próximo desarrollador a usarlo para eso, **se renombró a
+`CuentaBancariaService.saldoSegunMovimientosBanco`** (antes `obtieneSaldoFecha`), con el
+javadoc explicando la limitación y remitiendo a `saldoCuentaFechaEmpresa` para el saldo real.
+Su único consumidor era esta misma clase (`ConciliacionCierreServiceImpl`), así que el
+renombre no rompió nada más.
+
+**Alcanzaba a un sitio más de los que señalaba este documento, y era el propio motor de
+partidas en tránsito:** `ConciliacionCierreServiceImpl.prepararCierre` y `.cerrar` armaban el
+`saldoLibros` de la ecuación del §3 con `obtieneSaldoFecha` — es decir, con `MovimientoBanco`,
+no con contabilidad. En una conciliación bancaria "libros" significa contabilidad por
+definición: usar `MovimientoBanco` ahí era el mismo error que el punto 14 estuvo a punto de
+cometer, ya construido. Probado: `prepararCierre` sobre la cuenta 413 devolvía `saldoLibros: 0`
+cuando la contabilidad de esa cuenta decía $2.188,75 — la ecuación nunca habría cuadrado, y
+quien la operara habría salido a buscar partidas en tránsito faltantes cuando el error estaba
+en el propio minuendo de la ecuación, no en las partidas.
+
+**Corregido el 2026-08-27**, en los dos puntos donde se leía: `saldoLibros` ahora sale de
+`planCuentaService.saldoCuentaFechaEmpresa(periodo.getEmpresa().getCodigo(),
+cuenta.getPlanCuenta().getCodigo(), periodo.getUltimoDia())`, misma fuente y mismo criterio que
+el punto 14. `ConciliacionCierreServiceImpl` dejó de inyectar `CuentaBancariaService` (quedó
+sin otro uso en la clase) y pasó a inyectar `PlanCuentaService`.
+
+### `MovimientoBancoRest`: API abierta que se salta las reglas de creación (investigado, sin cambiar)
+
+Los cuatro `crea*` de `MovimientoBancoServiceImpl` (`crearMovimientoPorCobro`,
+`creaMovimientoPorDeposito`, `creaMovimientoPorCheque`, `creaMovimientoPorTransferencia`) son
+el único camino con reglas de negocio para que nazca un `MovimientoBanco` — resuelven la
+cuenta, el asiento, el tipo (`TipoMovimientoConciliacion`) y en algunos casos el `Cheque`
+asociado. Pero `MovimientoBancoRest` expone además `PUT /mvcb`, `POST /mvcb` y
+`DELETE /mvcb/{id}` sin pasar por ninguno de los cuatro: llaman directo a
+`movimientoBancoService.saveSingle(registro)` / `movimientoBancoDaoService.remove` sobre lo
+que el cliente HTTP envíe, sin resolver cuenta, sin asiento, sin tipo — cualquiera con acceso a
+la API puede crear, editar o borrar un movimiento bancario saltándose las cuatro reglas.
+
+**¿Algún cliente la usa hoy?** Verificado contra `saaFE` (`C:/work/saaFE/v1/saaFE`):
+`MovimientoBancoService` (Angular, en `tsr/service/movimiento-banco.service.ts`) expone
+`add`/`update`/`delete` sobre `/mvcb`, pero **ningún componente la inyecta** — el único archivo
+que la referencia fuera de sí misma es su propio `.spec.ts` autogenerado. Mismo patrón que
+`pgtr/getAll`/`aplp/getAll` del barrido de endpoints pesados de esta sesión: el servicio
+Angular existe (scaffolding), la pantalla que lo use no. No hay forma de verificar desde este
+lado si algún cliente externo a `saaFE` (Postman, otro sistema) la usa; no hay nada en el
+código ni en la documentación de este proyecto que indique que exista uno.
+
+**Qué haría falta para cerrarla**, si se decide hacerlo (no hecho, es investigación):
+
+1. Quitar `PUT`, `POST` y `DELETE /mvcb/{id}` de `MovimientoBancoRest`, dejando solo
+   `GET /getAll`, `GET /getId/{id}` y `POST /selectByCriteria` (lectura). `saveSingle` y
+   `remove` en el DAO/Service quedan intactos — los siguen llamando internamente los cuatro
+   `crea*` (`saveSingle`, después de construir la entidad) y `ConciliacionContableMatchServiceImpl`
+   (actualiza estado, no crea).
+2. En el frontend, quitar `add`/`update`/`delete` de `MovimientoBancoService` (o dejarlos y que
+   queden muertos del todo, como ya están — no rompe nada tocarlos porque nadie los inyecta,
+   verificado arriba).
+3. Si en algún momento hiciera falta un ajuste manual real (una corrección puntual que ningún
+   `crea*` cubre), la vía sería un método de servicio nuevo y acotado —con motivo, usuario y
+   auditoría, como el resto de las excepciones de este módulo— no reabrir el CRUD genérico.
+
 ## 8. Riesgos
 
 1. **Una partida en tránsito que nunca se salda es un síntoma, no un dato.** Un cheque girado hace ocho meses y no cobrado casi siempre significa que se perdió, se anuló por fuera, o el asiento estaba mal. **Hace falta un aviso por antigüedad** — 60 días es el umbral habitual — o el tránsito se convierte en el basurero donde se esconden los errores. Sin eso, este diseño empeora las cosas en vez de mejorarlas.
@@ -202,12 +273,30 @@ magnitud. Esa decisión es previa a cualquier validación de disponibilidad.
 
 ## 9. Fases
 
+> **Las cuatro fases están cerradas (2026-08-28).**
+
 | Fase | Qué | Tamaño | Estado |
 |---|---|---|---|
 | **1** | DDL (`TSR.DTCN` + columnas de estado en `TSR.CNCL` + rubro de tipos) y modelo JPA | S | **Hecho** (2026-08-27) — aplicado en local. Ver §10. |
 | **2** | Servicio de cierre: declarar partidas, calcular la ecuación, cerrar, anular; y el arrastre en las dos consultas de pendientes | M | **Hecho** (2026-08-27) — ver §10.2. |
-| **3** | Pantalla de cierre con los tres bloques y la ecuación en vivo | M | Pendiente (frontend) |
-| **4** | Aviso de partidas en tránsito con más de 60 días, en el tablero de Tesorería | S | Backend hecho (`partidasEnTransitoAntiguas`/`GET /cnct/transito/antiguas/{idEmpresa}`); falta engancharlo al tablero (frontend) |
+| **3** | Pantalla de cierre con los tres bloques y la ecuación en vivo | M | ✅ **Cerrada** (2026-08-28) — existía, pero construida contra el contrato **viejo**; corregida. Ver §9.1 |
+| **4** | Aviso de partidas en tránsito con más de 60 días, en el tablero de Tesorería | S | ✅ **Cerrada** (2026-08-28) — enganchada en `tablero-cumplimiento-extractos` como card de advertencia independiente del período seleccionado. Ubicación aprobada por el usuario (no existía un tablero de Tesorería genérico donde encajara mejor) |
+
+### 9.1 La pantalla de cierre estaba construida contra el contrato viejo — bug real
+
+`tsr/forms/generales/conciliacion-cierre/` **ya existía**, pero contra el contrato de §10.3, es
+decir **antes de la corrección de §10.4 del mismo día**. Tres defectos concretos, corregidos el
+2026-08-28:
+
+1. **Anclaba las partidas de libros en `idMovimientoBanco`** en vez de `idDetalleAsiento`. Como
+   documenta §7bis, `MovimientoBanco` está presente en apenas ~8 % de las líneas de asiento sobre
+   cuentas bancarias — la pantalla habría dejado sin declarar el 92 % restante.
+2. **Trataba como "no declarable"** cualquier línea sin `MovimientoBanco`, un caso que tras §10.4
+   ya no existe. Se eliminó esa lógica junto con el ícono y tooltip de bloqueo que la acompañaban.
+3. **Mandaba `usuario` como string** donde `cerrar`/`anularCierre` esperan `idUsuario` numérico.
+
+La ruta y la entrada de menú (*Conciliación — Cierre*, dentro de Extractos Bancarios) ya existían;
+no hizo falta agregarlas. La ecuación y el resto de la UI no se tocaron.
 
 ---
 
@@ -231,6 +320,10 @@ DDL aplicado en la base local (no en producción — lo escribe el usuario a par
   (no persistido) — lo pone `selectPendientes` cuando la fila viene del arrastre. La fecha
   "original" de una partida arrastrada no necesitó campo nuevo: ya está en
   `fechaTransaccion`/`asiento.getFechaAsiento()`.
+
+**Corregido el 2026-08-27, ver §10.4:** `DTCN` ganó `DTCNDTAS` (FK a `CNT.DTAS`), que reemplaza a
+`MVCBCDGO` como ancla de los tipos 1 y 2. `MVCBCDGO` sigue existiendo en la tabla pero pasó a ser
+información opcional.
 
 ### 10.2 T2 — Servicio de cierre
 
@@ -302,15 +395,17 @@ Respuesta 200:
       "esArrastrada": false, "tipoSugerido": 2 },
     { "idDetalleAsiento": 551, "idAsiento": 9002, "idMovimientoBanco": null,
       "fecha": "2026-04-28", "descripcion": "Ajuste manual", "valor": 15.00,
-      "esArrastrada": false, "tipoSugerido": null }
+      "esArrastrada": false, "tipoSugerido": 1 }
   ],
   "saldoLibros": 12345.67,
   "saldoExtractoSugerido": 12300.00,
   "diferenciaSugerida": 45.67
 }
 ```
-`idMovimientoBanco`/`tipoSugerido` en `null` (segunda fila de `pendientesAsiento` arriba) =
-esa línea no se puede declarar en tránsito, ver §10.2. `saldoExtractoSugerido`/
+**Corregido el 2026-08-27 (§7bis, §10.4):** `tipoSugerido` ya **no** viene `null` — toda línea de
+`pendientesAsiento` es declarable via `idDetalleAsiento`, y el tipo se deduce siempre del signo
+del detalle (debe → 1, haber → 2). `idMovimientoBanco` sigue pudiendo venir `null`: sigue siendo
+solo información adicional, nunca una condición para declarar. `saldoExtractoSugerido`/
 `diferenciaSugerida` pueden venir `null` si no hay ninguna fila de extracto en el período (nada
 de qué tomar el último saldo).
 
@@ -322,16 +417,22 @@ Solicitud:
   "idCuentaBancaria": 4,
   "idPeriodo": 87,
   "partidas": [
-    { "idMovimientoBanco": 771, "idDetalleExtracto": null, "tipo": 2,
+    { "idDetalleAsiento": 550, "idMovimientoBanco": 771, "idDetalleExtracto": null, "tipo": 2,
       "observacion": "Cheque #123, proveedor todavia no lo cobra" },
-    { "idMovimientoBanco": null, "idDetalleExtracto": 201, "tipo": 3,
+    { "idDetalleAsiento": null, "idMovimientoBanco": null, "idDetalleExtracto": 201, "tipo": 3,
       "observacion": "NC del banco, revisar con contabilidad" }
   ],
   "saldoExtracto": 12300.00,
   "idUsuario": 5
 }
 ```
-Nota: `valor` **no** se envía por partida — lo calcula el backend del `MovimientoBanco`/
+**Corregido el 2026-08-27 (§7bis, §10.4):** el ancla de tipo 1/2 pasó de `idMovimientoBanco` a
+`idDetalleAsiento` — es lo que **siempre** existe para una línea de asiento sobre una cuenta
+bancaria; `idMovimientoBanco` solo lo tiene el 8% de los casos. `idMovimientoBanco` se conserva en
+el body como dato informativo opcional: si se envía, no se valida contra nada, solo se guarda si
+el backend igual encuentra un `MovimientoBanco` del mismo asiento y cuenta.
+
+Nota: `valor` **no** se envía por partida — lo calcula el backend del `DetalleAsiento`/
 `DetalleExtractoBancario` referenciado, para que un número mal copiado en el frontend no pueda
 descuadrar la ecuación. `idUsuario` es numérico (SCP.PJRQ), igual que el resto del sistema —
 corregido 2026-08-27, la primera versión de este endpoint recibía `usuario` como texto, distinto
@@ -388,3 +489,59 @@ plano con el motivo exacto.
     "declaradaEn": "2026-06-13T09:00:00", "observacion": "Cheque #123..." }
 ]
 ```
+
+### 10.4 CORRECCIÓN DEL 2026-08-27 — modelo y código de §7bis, implementados
+
+Aplicado en la base **local** (`docker exec saa-oracle-23ai`, usuario `SCP`), verificado sin
+errores. **No se escribió ningún script de producción** — ya hay un `02-...sql` de conciliación
+pendiente de escribir; lo que sigue es el modelo exacto para incorporar ahí, no un archivo nuevo.
+
+```sql
+ALTER TABLE TSR.DTCN ADD DTCNDTAS NUMBER;
+ALTER TABLE TSR.DTCN ADD CONSTRAINT FK_DTCN_DTAS FOREIGN KEY (DTCNDTAS) REFERENCES CNT.DTAS(DTASCDGO);
+
+ALTER TABLE TSR.DTCN DROP CONSTRAINT CK_DTCN_ORIGEN;
+ALTER TABLE TSR.DTCN DROP CONSTRAINT CK_DTCN_TIPO_ORIGEN;
+
+ALTER TABLE TSR.DTCN ADD CONSTRAINT CK_DTCN_ORIGEN
+  CHECK ((DTCNDTAS IS NULL) <> (DTCNIDEX IS NULL));
+
+ALTER TABLE TSR.DTCN ADD CONSTRAINT CK_DTCN_TIPO_ORIGEN
+  CHECK (
+    (DTCNTPOO IN (1,2) AND DTCNDTAS IS NOT NULL AND DTCNIDEX IS NULL)
+    OR
+    (DTCNTPOO IN (3,4) AND DTCNIDEX IS NOT NULL AND DTCNDTAS IS NULL)
+  );
+```
+
+`MVCBCDGO` **no se toca** — sigue en la tabla, nullable como ya estaba, sin ningún CHECK que lo
+exija. Es exactamente la columna informativa opcional que pide §7bis.
+
+**Código actualizado, todo en local, sin tocar el motor de nómina ni ningún otro módulo:**
+
+- `DetalleTransito` (entidad): campo nuevo `detalleAsiento` (`@ManyToOne` a `CNT.DTAS` vía
+  `DTCNDTAS`). `movimientoBanco` se conserva, redocumentado como informativo.
+- `PartidaTransitoSolicitud` (request DTO de `cerrar`): campo nuevo `idDetalleAsiento`, ahora el
+  ancla real de tipo 1/2. `idMovimientoBanco` se conserva, ya no exclusivo con nada.
+- `PendienteAsientoTransito` (response DTO de `prepararCierre`): sin cambio de campos —
+  `idDetalleAsiento` ya existía. Solo cambió la lógica: `tipoSugerido` deja de venir `null`.
+- `DetalleTransitoDaoService`/`Impl`: `selectPendientePorMovimientoBanco` →
+  `selectPendientePorDetalleAsiento`; `selectPorMovimientoBanco` → `selectPorAsiento` +
+  `selectPendientePorAsiento` (granularidad de asiento, no de línea, porque el matching N:M solo
+  conoce el id del asiento en ese punto del flujo — ver `ConciliacionContableMatchServiceImpl`).
+  `selectPendientesPorCuenta`/`selectPendientesAntiguas` cambiaron el filtro del lado libros de
+  `movimientoBanco.cuentaBancaria`/`.banco.empresa` a `detalleAsiento.planCuenta` (subconsulta
+  contra `CuentaBancaria.planCuenta`) / `detalleAsiento.asiento.empresa` respectivamente.
+- `ConciliacionCierreServiceImpl`: `prepararCierre` calcula `tipoSugerido` siempre del signo del
+  detalle (ya no depende de encontrar un `MovimientoBanco`); `resolverPartidaNueva` ancla tipo 1/2
+  en `idDetalleAsiento`, resuelve `MovimientoBanco` aparte solo como dato opcional;
+  `pendientesSinCubrir` verifica cobertura por `DetalleAsiento.codigo` directo — ya no hay caso de
+  "línea sin movimiento, no declarable".
+- `ConciliacionContableMatchServiceImpl` (`saldarPartidasTransitoDeclaradas`/
+  `reabrirPartidasTransitoDeclaradas`) y `ConciliacionContableServiceImpl.verificar`: mismo cambio
+  de ancla. `MovimientoBancoDaoService` quedó sin uso en `ConciliacionContableServiceImpl` tras el
+  cambio — se quitó la inyección y el import.
+
+No se tocó la ecuación del §3/§10.2 ni la tolerancia. El riesgo que motivó esta corrección (probado
+con BANCO AMAZONAS, ver §7bis) queda resuelto: toda línea pendiente de asiento sobre una cuenta
+bancaria es declarable ahora, tenga o no `MovimientoBanco`.

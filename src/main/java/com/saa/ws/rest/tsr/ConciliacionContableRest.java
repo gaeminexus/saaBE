@@ -8,13 +8,20 @@ package com.saa.ws.rest.tsr;
 
 import java.util.List;
 
+import com.saa.ejb.tsr.service.ConciliacionCierreService;
 import com.saa.ejb.tsr.service.ConciliacionContableMatchService;
 import com.saa.ejb.tsr.service.ConciliacionContableService;
 import com.saa.ejb.tsr.service.ControlExtractoBancarioService;
 import com.saa.ejb.tsr.service.GrupoConciliacionContableService;
+import com.saa.model.tsr.Conciliacion;
 import com.saa.model.tsr.ConciliacionContable;
 import com.saa.model.tsr.GrupoConciliacionContable;
+import com.saa.model.tsr.PartidaTransitoAntigua;
+import com.saa.model.tsr.PreparacionCierreTransito;
+import com.saa.model.tsr.ResultadoCierreTransito;
 import com.saa.model.tsr.ResumenConciliacionCuenta;
+import com.saa.model.tsr.SolicitudAnularCierre;
+import com.saa.model.tsr.SolicitudCierreTransito;
 import com.saa.model.tsr.SolicitudConciliarGrupo;
 import com.saa.model.tsr.SolicitudUsuario;
 import com.saa.model.tsr.SugerenciaConciliacionContable;
@@ -26,6 +33,7 @@ import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
@@ -48,6 +56,9 @@ public class ConciliacionContableRest {
 
     @EJB
     private ControlExtractoBancarioService controlExtractoBancarioService;
+
+    @EJB
+    private ConciliacionCierreService conciliacionCierreService;
 
     /**
      * Recupera (o crea si es la primera vez) la cabecera de conciliación
@@ -291,6 +302,94 @@ public class ConciliacionContableRest {
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al consultar los periodos cerrados: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    // ── Partidas en tránsito (ver DISENO-CONCILIACION-PARTIDAS-EN-TRANSITO.md) ──────────────
+
+    /**
+     * Arma la pantalla de cierre: conciliados del mes, pendientes de ambos lados (incluidas
+     * las partidas arrastradas de períodos anteriores, marcadas con esArrastrada) con su tipo
+     * de tránsito sugerido, y los tres números de la ecuación (vista previa).
+     */
+    @GET
+    @Path("/transito/preparar/{idCuentaBancaria}/{idPeriodo}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response prepararCierreTransito(@PathParam("idCuentaBancaria") Long idCuentaBancaria,
+            @PathParam("idPeriodo") Long idPeriodo) {
+        try {
+            PreparacionCierreTransito resultado = conciliacionCierreService.prepararCierre(idCuentaBancaria, idPeriodo);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al preparar el cierre de partidas en transito: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Declara las partidas indicadas en tránsito, valida la ecuación (tolerancia 0.01, no
+     * configurable) y si cuadra crea el cierre y verifica la cuenta/período. Si no cuadra, o si
+     * queda algún pendiente sin cubrir, rechaza con el detalle en el mensaje.
+     */
+    @POST
+    @Path("/transito/cerrar")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response cerrarTransito(SolicitudCierreTransito solicitud) {
+        try {
+            if (solicitud == null) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity("Solicitud vacia").type(MediaType.APPLICATION_JSON).build();
+            }
+            ResultadoCierreTransito resultado = conciliacionCierreService.cerrar(solicitud.getIdCuentaBancaria(),
+                    solicitud.getIdPeriodo(), solicitud.getPartidas(), solicitud.getSaldoExtracto(),
+                    solicitud.getIdUsuario());
+            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Anula un cierre - solo el último de su cuenta/período. Libera las partidas Pendientes que
+     * declaró (rechaza si alguna ya está Saldada).
+     */
+    @POST
+    @Path("/transito/anular/{idCierre}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response anularCierreTransito(@PathParam("idCierre") Long idCierre, SolicitudAnularCierre solicitud) {
+        try {
+            String motivo = solicitud != null ? solicitud.getMotivo() : null;
+            Long idUsuario = solicitud != null ? solicitud.getIdUsuario() : null;
+            Conciliacion resultado = conciliacionCierreService.anularCierre(idCierre, motivo, idUsuario);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Partidas en tránsito Pendientes declaradas hace más de {@code dias} días (default 60) -
+     * aviso de antigüedad, riesgo #1 del diseño.
+     */
+    @GET
+    @Path("/transito/antiguas/{idEmpresa}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response partidasEnTransitoAntiguas(@PathParam("idEmpresa") Long idEmpresa,
+            @QueryParam("dias") Integer dias) {
+        try {
+            List<PartidaTransitoAntigua> resultado = conciliacionCierreService.partidasEnTransitoAntiguas(idEmpresa, dias);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al consultar partidas en transito antiguas: " + e.getMessage())
                     .type(MediaType.APPLICATION_JSON).build();
         }
     }

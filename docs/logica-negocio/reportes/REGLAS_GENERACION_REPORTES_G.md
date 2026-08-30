@@ -151,7 +151,13 @@
 - Se compara el universo de entidades que tenían saldo en **G42 del mes anterior** contra las que tienen saldo en el **G42 del mes actual**.
 - Toda entidad que **estaba en el mes anterior** pero **ya no aparece en el mes actual** → es un partícipe cesante → se inserta en CG43.
 - **Si no existe EJRC del mes anterior** (primera ejecución histórica) → se usa `RPR.HM42` (HistoricoG42) como universo anterior en lugar del CG42 previo.
-- Los campos de liquidación (`fechaTerminoRelacionLaboral`, `fechaLiquidacion`, `saldoCuentaIndividual`, `valoresCompensados`, `valoresPagados`, `numeroImposicionesPersonales`, `numeroImposicionesPatronales`) quedan en `null` — provienen de procesos operativos de liquidación externos a esta generación.
+- Los campos de liquidación (`fechaTerminoRelacionLaboral`, `fechaLiquidacion`, `saldoCuentaIndividual`, `valoresCompensados`, `valoresPagados`) quedan en `null` — provienen de procesos operativos de liquidación externos a esta generación.
+- `numeroImposicionesPersonales` (tipoAporte IN 9,11) y `numeroImposicionesPatronales`
+  (tipoAporte IN 13,14) **sí se calculan** (nota desactualizada del párrafo anterior,
+  corregida 2026-08-27): `AporteDaoServiceImpl.selectCountImposicionesPersonalesPorEntidad`
+  / `PatronalesPorEntidad`. Ambos cuentan **MESES DE DEVENGO** (`COUNT(DISTINCT` periodo
+  efectivo`)`), no filas — ver la regla general más abajo, "CRD.APRT bajo el modelo de
+  devengo — filas ≠ meses".
 
 **Lógica paso a paso:**
 1. Obtener el EJRC actual + calcular `mesPrevio/anioPrevio`.
@@ -515,6 +521,66 @@ GeneracionReportesServiceImpl.java
 ```
 
 ### 4. Actualizar este documento con las reglas del G implementado
+
+---
+
+## ⚠ REGLA OBLIGATORIA: contar `CRD.APRT` bajo el modelo de devengo — FILAS ≠ MESES
+
+**Aplica a cualquier G, nuevo o existente, que cuente "número de aportes", "imposiciones
+acumuladas/personales/patronales", "meses aportados" o cualquier variante de esa idea sobre
+`CRD.APRT` / la entidad `Aporte`.**
+
+Desde el plan de devengo de aportes (`docs/logica-negocio/crd/PLAN-APORTES-DEVENGO-CONTRATOS.md`),
+**una fila de `CRD.APRT` ya no equivale a un mes aportado**:
+
+- Un partícipe puede tener **varias filas del mismo mes**: un pago parcial completado
+  después, un anticipo, un ajuste manual.
+- Una **sola fila** puede cubrir un mes de devengo **distinto** al de su fecha de caja
+  (`APRTFCTR`): un partícipe que se pone al día pagando 6 meses atrasados en una sola carga
+  genera varias filas con la misma fecha de caja pero devengo repartido en 6 meses
+  distintos; un anticipo genera una fila cuyo devengo es un mes *futuro* respecto de su
+  fecha de caja.
+
+**Consecuencia práctica:** `COUNT(*)` (o `COUNT(a)`, `COUNT(a.codigo)`, `.size()` de una
+lista de `Aporte`) sobre filas de `CRD.APRT` **no es lo mismo** que "cuántos meses aportó el
+partícipe". Si la cifra que se está calculando significa **meses aportados**, hay que contar
+`COUNT(DISTINCT` periodo efectivo`)`, usando la expresión ya centralizada en
+`com.saa.ejb.crd.daoImpl.PeriodoEfectivoAporteSql.PERIODO_EFECTIVO_SQL`:
+
+```sql
+(CASE WHEN APRTPRDV IS NOT NULL THEN APRTPRDV
+      WHEN APRTVLRR > 0         THEN TRUNC(APRTFCTR, 'MM')
+      ELSE NULL END)
+```
+
+**No la redefinas.** Si la necesitas fuera de `com.saa.ejb.crd.daoImpl`, extráela a un sitio
+compartido y haz que el original la use — nunca dupliques la expresión con otra lógica.
+
+**Si la cifra significa cuántos MOVIMIENTOS hubo** (filas, no meses — por ejemplo un
+dashboard de actividad, o un detalle de transacciones), `COUNT(*)` sigue siendo correcto:
+**pero decilo explícitamente en el JavaDoc del método**, para que el siguiente que lo lea no
+tenga que adivinar cuál de los dos significados es. No dejes un `COUNT` ambiguo.
+
+**Métodos ya corregidos con este criterio** (2026-08-27): `AporteDaoServiceImpl.selectCountImposicionesJubilacionPorEntidad`
+(G44), `selectCountImposicionesPersonalesPorEntidad` y `selectCountImposicionesPatronalesPorEntidad`
+(G43), `EntidadDaoServiceImpl.selectPadronParticipes` (padrón), `AporteDaoServiceImpl.sumaAportesPositivosPorTipoYPeriodo`
+(mora del partícipe en la carga). Comparación antes/después de los tres primeros:
+`docs/logica-negocio/crd/sql/68_COMPARACION_REPORTES_G_IMPOSICIONES.sql`.
+
+**Casos ya revisados y correctos tal cual** (NO tocar): `AporteDaoServiceImpl.selectKpisGlobales`,
+`selectResumenPorTipo`, `selectTopEntidades` cuentan **movimientos**, están etiquetados como
+tales (`AS movimientos`) y así deben quedarse. `RPRT_ESCT_APRT.jrxml` (reporte "estado de
+cuenta de aportes") trae en su SQL nativo un campo `NUMERO_MOVIMIENTOS` con `COUNT(A.APRTCDGO)`
+— está bien etiquetado (cuenta movimientos, no meses) y además **el campo no se imprime en
+ningún lado del layout del reporte**: no se modificó porque cualquier cambio ahí obliga a
+recompilar el `.jasper` a mano en Jaspersoft Studio y no lo amerita.
+
+**Código muerto retirado por este mismo motivo** (2026-08-27): `AporteDaoService.selectCountByEntidad`
+(`COUNT(a)` genérico sobre `Aporte`, sin usar `PERIODO_EFECTIVO_SQL`) y su único llamador,
+`CargaArchivoServiceImpl.melyTest` / `GET /crd/cargaArchivo/melyTest/{idEntidad}` — código de
+depuración expuesto como endpoint público sin autenticación real, cuyo nombre ("cantidad de
+aportes por entidad") invitaba a reusarlo como "meses aportados". Se eliminaron ambos en vez
+de corregirlos: no tenían ningún consumidor real.
 
 ---
 

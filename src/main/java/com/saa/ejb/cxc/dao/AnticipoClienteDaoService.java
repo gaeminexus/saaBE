@@ -47,4 +47,12 @@ public interface AnticipoClienteDaoService extends EntityDao<AnticipoCliente> {
 	 * @throws Throwable : Excepcion
 	 */
 	Double sumaSaldoDisponible(Long idTitular, Long idEmpresa) throws Throwable;
+
+	/**
+	 * Anticipos con una devolución de saldo en curso todavía sin aplicar (ANTCIDPG no nulo,
+	 * ANTCAPLC=0). Alimenta el reconciliador {@code AnticipoClienteServiceImpl.sincronizarDevoluciones}.
+	 * @return           : Anticipos con devolución pendiente de aplicar
+	 * @throws Throwable : Excepcion
+	 */
+	List<AnticipoCliente> selectConDevolucionPendiente() throws Throwable;
 }

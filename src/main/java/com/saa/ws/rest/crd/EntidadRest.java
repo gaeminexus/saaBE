@@ -163,11 +163,11 @@ public class EntidadRest {
      */
     @PUT
     @Consumes("application/json")
-    public Response put(Entidad registro) throws Throwable {
+    public Response put(Entidad registro, @jakarta.ws.rs.QueryParam("usuario") String usuario) throws Throwable {
         System.out.println("LLEGA AL SERVICIO PUT");
         Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(entidadService.saveSingle(registro)).type(MediaType.APPLICATION_JSON).build();
+            respuesta = Response.status(Response.Status.OK).entity(entidadService.saveSingle(registro, usuario)).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
@@ -176,17 +176,17 @@ public class EntidadRest {
 
     /**
      * POST method for updating or creating an instance of EntidadRest
-     * 
+     *
      * @param content representation for the resource
      * @return an HTTP response with content of the updated or created resource.
      */
     @POST
     @Consumes("application/json")
-    public Response post(Entidad registro) throws Throwable {
+    public Response post(Entidad registro, @jakarta.ws.rs.QueryParam("usuario") String usuario) throws Throwable {
         System.out.println("LLEGA AL POST");
         Response respuesta = null;
         try {
-            respuesta = Response.status(Response.Status.OK).entity(entidadService.saveSingle(registro)).type(MediaType.APPLICATION_JSON).build();
+            respuesta = Response.status(Response.Status.OK).entity(entidadService.saveSingle(registro, usuario)).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }

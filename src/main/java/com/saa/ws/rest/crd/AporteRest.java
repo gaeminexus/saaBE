@@ -96,6 +96,72 @@ public class AporteRest {
     }
 
     /**
+     * Estado de cuenta de aportes por devengo (§4.2 del plan de devengo de aportes). Contrato
+     * CONGELADO — el frontend ya está construido contra él.
+     *
+     * Una entidad sin movimientos en el rango devuelve 200 con {@code periodos} vacío: NO es
+     * un error (pedido 1, "sin aportes" es un resultado válido).
+     *
+     * @param idEntidad Código de la entidad (partícipe)
+     * @param desde     Mes de inicio, formato {@code yyyy-MM} (inclusive)
+     * @param hasta     Mes de fin, formato {@code yyyy-MM} (inclusive)
+     * @return 200 con el estado de cuenta; 400 si los parámetros son inválidos; 404 si la
+     *         entidad no existe; 500 ante cualquier otro error
+     */
+    @GET
+    @Path("/estadoCuenta/{idEntidad}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response estadoCuenta(
+            @PathParam("idEntidad") Long idEntidad,
+            @jakarta.ws.rs.QueryParam("desde") String desde,
+            @jakarta.ws.rs.QueryParam("hasta") String hasta) {
+        System.out.println("LLEGA AL SERVICIO ESTADO DE CUENTA APORTES - Entidad: " + idEntidad
+            + " - Desde: " + desde + " - Hasta: " + hasta);
+        try {
+            if (idEntidad == null || idEntidad <= 0) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("Debe indicar una entidad válida").type(MediaType.APPLICATION_JSON).build();
+            }
+            if (desde == null || desde.trim().isEmpty() || hasta == null || hasta.trim().isEmpty()) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("Debe indicar desde y hasta (formato yyyy-MM)")
+                    .type(MediaType.APPLICATION_JSON).build();
+            }
+
+            java.time.LocalDate fechaDesde;
+            java.time.LocalDate fechaHasta;
+            try {
+                fechaDesde = java.time.YearMonth.parse(desde.trim()).atDay(1);
+                fechaHasta = java.time.YearMonth.parse(hasta.trim()).atDay(1);
+            } catch (java.time.format.DateTimeParseException e) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("desde/hasta deben tener formato yyyy-MM")
+                    .type(MediaType.APPLICATION_JSON).build();
+            }
+
+            com.saa.ejb.crd.service.dto.EstadoCuentaAportesDTO resultado =
+                aporteService.estadoCuenta(idEntidad, fechaDesde, fechaHasta);
+            return Response.status(Response.Status.OK)
+                .entity(resultado).type(MediaType.APPLICATION_JSON).build();
+
+        } catch (Throwable e) {
+            String mensaje = e.getMessage() != null ? e.getMessage() : "Error inesperado";
+            if (e instanceof com.saa.basico.util.IncomeException
+                    && mensaje.startsWith(AporteService.ERR_ENTIDAD_NO_ENCONTRADA)) {
+                return Response.status(Response.Status.NOT_FOUND)
+                    .entity(mensaje).type(MediaType.APPLICATION_JSON).build();
+            }
+            if (e instanceof com.saa.basico.util.IncomeException) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(mensaje).type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                .entity("Error al obtener el estado de cuenta: " + mensaje)
+                .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
      * Pago de aportes en ventanilla: genera para el partícipe un aporte YA PAGADO del tipo
      * indicado y sube su saldo disponible de inmediato.
      *

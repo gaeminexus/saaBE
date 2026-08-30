@@ -93,4 +93,15 @@ public class AnticipoClienteDaoServiceImpl extends EntityDaoImpl<AnticipoCliente
         Object resultado = query.getSingleResult();
         return (resultado != null) ? ((Number) resultado).doubleValue() : 0.0;
     }
+
+    @Override
+    public List<AnticipoCliente> selectConDevolucionPendiente() throws Throwable {
+        System.out.println("Ingresa al metodo selectConDevolucionPendiente");
+        Query query = em.createQuery(
+                " select a from AnticipoCliente a " +
+                " where  a.idPagoDevolucion is not null " +
+                " and    a.aplicado = 0 " +
+                " order by a.id");
+        return query.getResultList();
+    }
 }

@@ -16,6 +16,7 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.cnt.service.AsientoContableService;
 import com.saa.ejb.cnt.service.AsientoService;
+import com.saa.ejb.cnt.service.PlanCuentaService;
 import com.saa.ejb.cxp.dao.DetallePagoOrigenExternoDaoService;
 import com.saa.ejb.cxp.dao.LotePagoDaoService;
 import com.saa.ejb.cxp.dao.PagoProgramadoDaoService;
@@ -38,6 +39,7 @@ import com.saa.model.cxp.DetallePagoOrigenExterno;
 import com.saa.model.cxp.FacturaCompra;
 import com.saa.model.cxp.LotePago;
 import com.saa.model.cxp.NombreEntidadesCompra;
+import com.saa.model.cxp.PagoPorAprobar;
 import com.saa.model.cxp.PagoProgramado;
 import com.saa.model.cxp.ProductoPago;
 import com.saa.model.scp.Empresa;
@@ -54,11 +56,15 @@ import com.saa.rubros.EstadoPagoProgramado;
 import com.saa.rubros.FormaPagoProgramado;
 import com.saa.rubros.ModuloSistema;
 import com.saa.rubros.OrigenMovimientoConciliacion;
+import com.saa.rubros.OrigenPagoCxp;
+import com.saa.rubros.OrigenPagoExterno;
 import com.saa.rubros.TipoAsientos;
 import com.saa.rubros.TipoMovimientoConciliacion;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
+import jakarta.ejb.TransactionAttribute;
+import jakarta.ejb.TransactionAttributeType;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 
@@ -91,6 +97,9 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 
 	@EJB
 	private AsientoService asientoService;
+
+	@EJB
+	private PlanCuentaService planCuentaService;
 
 	@EJB
 	private MovimientoBancoService movimientoBancoService;
@@ -219,6 +228,55 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 					+ " no tiene proveedor asignado.");
 		}
 
+		// El valor no puede superar el saldo pendiente menos lo ya comprometido
+		// en otros pagos vigentes de la misma factura. Se valida aqui, tenga o no
+		// cuenta: es una regla del documento, no de la cuenta bancaria.
+		validaValorContraSaldo(factura, valor, null);
+
+		// Cuenta nula (punto 14, 2026-08-27): la solicitud nace POR_APROBAR, sin cuenta
+		// ni forma de pago -- tesoreria los asigna despues con POST /pgtr/aprobar. Ver
+		// docs/logica-negocio/pagos/PLAN-REDISENO-APROBACION-PAGOS.md.
+		if (idCuentaBancariaOrigen == null) {
+			// La cuenta de destino (del proveedor) no depende de la cuenta de origen ni de
+			// la forma de pago: si ya se sabe, se guarda igual para que aprobar() no tenga
+			// que volver a pedirla.
+			CuentaBancariaTitular cuentaDestinoPorAprobar = null;
+			if (idCuentaDestinoTitular != null) {
+				cuentaDestinoPorAprobar = em.find(CuentaBancariaTitular.class, idCuentaDestinoTitular);
+				if (cuentaDestinoPorAprobar == null) {
+					throw new IncomeException("No se encontró la cuenta bancaria del proveedor con ID: "
+							+ idCuentaDestinoTitular);
+				}
+				if (cuentaDestinoPorAprobar.getTitular() != null && !cuentaDestinoPorAprobar.getTitular()
+						.getCodigo().equals(factura.getTitular().getCodigo())) {
+					throw new IncomeException("La cuenta bancaria de destino pertenece a otro titular, "
+							+ "no al proveedor de la factura.");
+				}
+			}
+			PagoProgramado pago = new PagoProgramado();
+			pago.setEmpresa(em.find(Empresa.class, idEmpresa));
+			pago.setFacturaCompra(factura);
+			pago.setTitular(factura.getTitular());
+			pago.setCuentaDestino(cuentaDestinoPorAprobar);
+			pago.setValor(redondea(valor));
+			pago.setFechaProgramada(parseFecha(fechaProgramada));
+			pago.setObservacion(observacion);
+			pago.setUsuario(em.find(Usuario.class, idUsuario));
+			pago.setFechaRegistro(LocalDateTime.now());
+			pago.setEstado(Long.valueOf(EstadoPagoProgramado.POR_APROBAR));
+			pago = saveSingle(pago);
+
+			System.out.println("✓ Pago por aprobar registrado (sin cuenta): id=" + pago.getId());
+
+			resultado.put("exito", true);
+			resultado.put("mensaje", "Pago registrado, pendiente de aprobación: "
+					+ "tesorería debe asignar cuenta y forma de pago.");
+			resultado.put("pago", pago.getId());
+			resultado.put("estado", pago.getEstado());
+			resultado.putAll(aplicacionPagoCxpService.saldoFactura(idFacturaCompra));
+			return resultado;
+		}
+
 		CuentaBancaria cuentaOrigen = em.find(CuentaBancaria.class, idCuentaBancariaOrigen);
 		if (cuentaOrigen == null) {
 			throw new IncomeException("No se encontró la cuenta bancaria de origen con ID: "
@@ -241,10 +299,6 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 						+ "no al proveedor de la factura.");
 			}
 		}
-
-		// El valor no puede superar el saldo pendiente menos lo ya comprometido
-		// en otros pagos vigentes de la misma factura.
-		validaValorContraSaldo(factura, valor, null);
 
 		LocalDate fecha = parseFecha(fechaProgramada);
 
@@ -378,6 +432,47 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		if (!pagoProgramadoDaoService.selectVigentesByEgreso(idEgreso).isEmpty()) {
 			throw new IncomeException("El egreso " + idEgreso
 					+ " ya tiene un pago vigente. Anúlelo o reviértalo antes de registrar otro.");
+		}
+
+		// Cuenta nula (punto 14, 2026-08-27): nace POR_APROBAR. Ver
+		// docs/logica-negocio/pagos/PLAN-REDISENO-APROBACION-PAGOS.md.
+		if (idCuentaBancariaOrigen == null) {
+			CuentaBancariaTitular cuentaDestinoPorAprobar = null;
+			if (idCuentaDestinoTitular != null) {
+				cuentaDestinoPorAprobar = em.find(CuentaBancariaTitular.class, idCuentaDestinoTitular);
+				if (cuentaDestinoPorAprobar == null) {
+					throw new IncomeException("No se encontró la cuenta bancaria del beneficiario con ID: "
+							+ idCuentaDestinoTitular);
+				}
+				if (cuentaDestinoPorAprobar.getTitular() != null && egreso.getTitular() != null
+						&& !cuentaDestinoPorAprobar.getTitular().getCodigo()
+								.equals(egreso.getTitular().getCodigo())) {
+					throw new IncomeException("La cuenta bancaria de destino pertenece a otro titular, "
+							+ "no al beneficiario del egreso.");
+				}
+			}
+			PagoProgramado pago = new PagoProgramado();
+			pago.setEmpresa(egreso.getEmpresa());
+			pago.setEgreso(egreso);
+			pago.setTitular(egreso.getTitular());
+			pago.setCuentaDestino(cuentaDestinoPorAprobar);
+			pago.setValor(redondea(egreso.getValor()));
+			pago.setFechaProgramada(egreso.getFecha() != null ? egreso.getFecha() : LocalDate.now());
+			pago.setObservacion(egreso.getDescripcion());
+			pago.setUsuario(em.find(Usuario.class, idUsuario));
+			pago.setFechaRegistro(LocalDateTime.now());
+			pago.setEstado(Long.valueOf(EstadoPagoProgramado.POR_APROBAR));
+			pago = saveSingle(pago);
+
+			System.out.println("✓ Pago de egreso por aprobar registrado (sin cuenta): id=" + pago.getId());
+
+			resultado.put("exito", true);
+			resultado.put("mensaje", "Pago del egreso registrado, pendiente de aprobación: "
+					+ "tesorería debe asignar cuenta y forma de pago.");
+			resultado.put("pago", pago.getId());
+			resultado.put("egreso", idEgreso);
+			resultado.put("estado", pago.getEstado());
+			return resultado;
 		}
 
 		CuentaBancaria cuentaOrigen = em.find(CuentaBancaria.class, idCuentaBancariaOrigen);
@@ -542,6 +637,48 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 					+ " ya tiene un pago vigente. Anúlelo o reviértalo antes de registrar otro.");
 		}
 
+		// Cuenta nula (punto 14, 2026-08-27): nace POR_APROBAR. Ver
+		// docs/logica-negocio/pagos/PLAN-REDISENO-APROBACION-PAGOS.md.
+		if (idCuentaBancariaOrigen == null) {
+			CuentaBancariaTitular cuentaDestinoPorAprobar = null;
+			if (idCuentaDestinoTitular != null) {
+				cuentaDestinoPorAprobar = em.find(CuentaBancariaTitular.class, idCuentaDestinoTitular);
+				if (cuentaDestinoPorAprobar == null) {
+					throw new IncomeException("No se encontró la cuenta bancaria del proveedor con ID: "
+							+ idCuentaDestinoTitular);
+				}
+				if (cuentaDestinoPorAprobar.getTitular() != null && !cuentaDestinoPorAprobar.getTitular()
+						.getCodigo().equals(anticipo.getTitular().getCodigo())) {
+					throw new IncomeException("La cuenta bancaria de destino pertenece a otro titular, "
+							+ "no al proveedor del anticipo.");
+				}
+			}
+			PagoProgramado pago = new PagoProgramado();
+			pago.setEmpresa(anticipo.getEmpresa());
+			pago.setAnticipo(anticipo);
+			pago.setTitular(anticipo.getTitular());
+			pago.setCuentaDestino(cuentaDestinoPorAprobar);
+			pago.setValor(redondea(anticipo.getValor()));
+			pago.setFechaProgramada(anticipo.getFechaAnticipo() != null
+					? anticipo.getFechaAnticipo() : LocalDate.now());
+			pago.setObservacion("Anticipo a proveedor: " + anticipo.getTitular().getNombre()
+					+ (anticipo.getNumeroDoc() != null ? " | Doc: " + anticipo.getNumeroDoc() : ""));
+			pago.setUsuario(em.find(Usuario.class, idUsuario));
+			pago.setFechaRegistro(LocalDateTime.now());
+			pago.setEstado(Long.valueOf(EstadoPagoProgramado.POR_APROBAR));
+			pago = saveSingle(pago);
+
+			System.out.println("✓ Pago de anticipo por aprobar registrado (sin cuenta): id=" + pago.getId());
+
+			resultado.put("exito", true);
+			resultado.put("mensaje", "Pago del anticipo registrado, pendiente de aprobación: "
+					+ "tesorería debe asignar cuenta y forma de pago.");
+			resultado.put("pago", pago.getId());
+			resultado.put("anticipo", idAnticipo);
+			resultado.put("estado", pago.getEstado());
+			return resultado;
+		}
+
 		CuentaBancaria cuentaOrigen = em.find(CuentaBancaria.class, idCuentaBancariaOrigen);
 		if (cuentaOrigen == null) {
 			throw new IncomeException("No se encontró la cuenta bancaria de origen con ID: "
@@ -703,14 +840,23 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 					+ " ya tiene un pago vigente. Anúlelo o reviértalo antes de registrar otro.");
 		}
 
-		CuentaBancaria cuentaOrigen = em.find(CuentaBancaria.class, idCuentaBancariaOrigen);
-		if (cuentaOrigen == null) {
-			throw new IncomeException("No se encontró la cuenta bancaria de origen con ID: "
-					+ idCuentaBancariaOrigen);
+		// Cuenta nula (punto 14, 2026-08-27): la solicitud nace POR_APROBAR, sin cuenta
+		// ni forma de pago -- tesoreria los asigna despues con POST /pgtr/aprobar. Ver
+		// docs/logica-negocio/pagos/PLAN-REDISENO-APROBACION-PAGOS.md. fp queda null y
+		// las secciones de abajo que dependen de la forma de pago (cuenta del
+		// beneficiario, cheque, contabilizacion) se saltan solas.
+		CuentaBancaria cuentaOrigen = null;
+		Long fp = null;
+		boolean esDebitoAutomatico = false;
+		if (idCuentaBancariaOrigen != null) {
+			cuentaOrigen = em.find(CuentaBancaria.class, idCuentaBancariaOrigen);
+			if (cuentaOrigen == null) {
+				throw new IncomeException("No se encontró la cuenta bancaria de origen con ID: "
+						+ idCuentaBancariaOrigen);
+			}
+			fp = Long.valueOf(validarFormaPago(cuentaOrigen, formaPago, debitoAutomatico));
+			esDebitoAutomatico = (fp.longValue() == FormaPagoProgramado.DEBITO_AUTOMATICO);
 		}
-
-		long fp = validarFormaPago(cuentaOrigen, formaPago, debitoAutomatico);
-		boolean esDebitoAutomatico = (fp == FormaPagoProgramado.DEBITO_AUTOMATICO);
 
 		// ── Beneficiario ocasional ────────────────────────────────────────────────
 		// No pasa por TSR.TTLR: el beneficiario puede no existir en el maestro de
@@ -727,7 +873,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			throw new IncomeException("Debe indicar la identificación del beneficiario del pago.");
 		}
 		BancoExterno bancoBeneficiario = null;
-		if (fp == FormaPagoProgramado.TRANSFERENCIA) {
+		if (fp != null && fp.longValue() == FormaPagoProgramado.TRANSFERENCIA) {
 			if (beneficiario.getNumeroCuenta() == null
 					|| beneficiario.getNumeroCuenta().trim().isEmpty()) {
 				throw new IncomeException("Debe indicar la cuenta bancaria del beneficiario "
@@ -785,7 +931,8 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		}
 
 		LocalDate fecha = parseFecha(fechaProgramada);
-		boolean confirmaDeInmediato = esDebitoAutomatico || fp == FormaPagoProgramado.CHEQUE;
+		boolean confirmaDeInmediato = esDebitoAutomatico
+				|| (fp != null && fp.longValue() == FormaPagoProgramado.CHEQUE);
 
 		// ── Cabecera del pago ─────────────────────────────────────────────────────
 		PagoProgramado pago = new PagoProgramado();
@@ -800,18 +947,19 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		pago.setBeneficiarioTipoCuenta(beneficiario.getTipoCuenta());
 		pago.setBeneficiarioCuenta((beneficiario.getNumeroCuenta() != null)
 				? beneficiario.getNumeroCuenta().trim() : null);
-		pago.setDebitoAutomatico(Long.valueOf(esDebitoAutomatico ? 1 : 0));
-		pago.setFormaPago(Long.valueOf(fp));
+		pago.setDebitoAutomatico(idCuentaBancariaOrigen != null
+				? Long.valueOf(esDebitoAutomatico ? 1 : 0) : null);
+		pago.setFormaPago(fp);
 		pago.setValor(total);
 		pago.setFechaProgramada(fecha);
 		pago.setObservacion(observacion);
 		pago.setUsuario(em.find(Usuario.class, idUsuario));
 		pago.setFechaRegistro(LocalDateTime.now());
-		pago.setEstado(Long.valueOf(confirmaDeInmediato
-				? EstadoPagoProgramado.CONFIRMADO : EstadoPagoProgramado.REGISTRADO));
+		pago.setEstado(Long.valueOf(idCuentaBancariaOrigen == null ? EstadoPagoProgramado.POR_APROBAR
+				: (confirmaDeInmediato ? EstadoPagoProgramado.CONFIRMADO : EstadoPagoProgramado.REGISTRADO)));
 
 		Cheque cheque = null;
-		if (fp == FormaPagoProgramado.CHEQUE) {
+		if (fp != null && fp.longValue() == FormaPagoProgramado.CHEQUE) {
 			cheque = chequeService.asignarAPago(idCuentaBancariaOrigen, total, null,
 					beneficiario.getNombre().trim(), idUsuario);
 			pago.setCheque(cheque);
@@ -856,11 +1004,16 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			resultado.put("numeroCheque", cheque.getNumero());
 		}
 
+		resultado.put("estado", pago.getEstado());
+
 		if (!confirmaDeInmediato) {
 			System.out.println("✓ Pago de origen externo registrado: id=" + pago.getId()
-					+ " | origen=" + etiquetaOrigen + " | idOrigen=" + idOrigen);
-			resultado.put("mensaje", "Pago registrado. Queda pendiente de incluirse "
-					+ "en un archivo de pagos.");
+					+ " | origen=" + etiquetaOrigen + " | idOrigen=" + idOrigen
+					+ " | estado=" + pago.getEstado());
+			resultado.put("mensaje", idCuentaBancariaOrigen == null
+					? "Pago registrado, pendiente de aprobación: tesorería debe asignar cuenta "
+							+ "y forma de pago."
+					: "Pago registrado. Queda pendiente de incluirse en un archivo de pagos.");
 			return resultado;
 		}
 
@@ -874,7 +1027,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		if (asiento != null) {
 			System.out.println("✓ Pago de origen externo registrado y contabilizado: id=" + pago.getId()
 					+ " | asiento=" + asiento.getNumeroAlterno());
-			resultado.put("mensaje", (fp == FormaPagoProgramado.CHEQUE)
+			resultado.put("mensaje", (fp != null && fp.longValue() == FormaPagoProgramado.CHEQUE)
 					? "Pago con cheque N° " + cheque.getNumero() + " registrado. El asiento contable "
 							+ "y el movimiento bancario fueron generados."
 					: "Pago por débito automático registrado. El asiento contable "
@@ -894,6 +1047,292 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	public List<PagoProgramado> listar(Long idEmpresa, Long estado, Long idTitular) throws Throwable {
 		System.out.println("=== listar pagos | empresa=" + idEmpresa + " | estado=" + estado + " ===");
 		return pagoProgramadoDaoService.selectByEmpresaEstado(idEmpresa, estado, idTitular);
+	}
+
+	// =====================================================================
+	// Bandeja y aprobación en bloque (punto 14)
+	// =====================================================================
+
+	@Override
+	public List<PagoPorAprobar> porAprobar(Long idEmpresa, String origen, String desde, String hasta)
+			throws Throwable {
+		System.out.println("=== porAprobar | empresa=" + idEmpresa + " | origen=" + origen
+				+ " | desde=" + desde + " | hasta=" + hasta + " ===");
+		if (idEmpresa == null) {
+			throw new IncomeException("Debe indicar la empresa.");
+		}
+		LocalDate fechaDesde = (desde != null && !desde.trim().isEmpty())
+				? LocalDate.parse(desde.trim()) : null;
+		LocalDate fechaHasta = (hasta != null && !hasta.trim().isEmpty())
+				? LocalDate.parse(hasta.trim()) : null;
+
+		List<PagoProgramado> pagos = pagoProgramadoDaoService.selectPorAprobar(idEmpresa,
+				(origen != null && !origen.trim().isEmpty()) ? origen.trim() : null, fechaDesde, fechaHasta);
+
+		List<PagoPorAprobar> resultado = new ArrayList<>();
+		for (PagoProgramado pago : pagos) {
+			PagoPorAprobar dto = new PagoPorAprobar();
+			dto.setId(pago.getId());
+			dto.setOrigen(origenDe(pago));
+			dto.setBeneficiario(pago.getTitular() != null ? pago.getTitular().getNombre()
+					: pago.getBeneficiarioNombre());
+			dto.setConcepto(conceptoDe(pago));
+			dto.setValor(pago.getValor());
+			dto.setFechaSolicitada(pago.getFechaProgramada());
+			resultado.add(dto);
+		}
+		return resultado;
+	}
+
+	/**
+	 * Etiqueta de origen de un pago para {@link PagoPorAprobar}: uno de
+	 * {@link OrigenPagoCxp} si el documento es propio de CXP, o la etiqueta opaca de
+	 * {@link com.saa.rubros.OrigenPagoExterno} tal cual viene en PGTRORGN.
+	 */
+	private String origenDe(PagoProgramado pago) {
+		if (pago.getFacturaCompra() != null) {
+			return OrigenPagoCxp.FACTURA_COMPRA;
+		}
+		if (pago.getEgreso() != null) {
+			return OrigenPagoCxp.EGRESO_TESORERIA;
+		}
+		if (pago.getAnticipo() != null) {
+			return OrigenPagoCxp.ANTICIPO_PROVEEDOR;
+		}
+		return pago.getOrigenExterno();
+	}
+
+	/**
+	 * Concepto del pago para {@link PagoPorAprobar}. Para factura arma "Factura {numero}";
+	 * los demás orígenes ya guardan una descripción legible en PGTROBSR al registrarse
+	 * (descripción del egreso, "Anticipo a proveedor: ...", o la observación libre del
+	 * proceso externo).
+	 */
+	private String conceptoDe(PagoProgramado pago) {
+		if (pago.getFacturaCompra() != null) {
+			return "Factura " + nvl(pago.getFacturaCompra().getNumero(),
+					String.valueOf(pago.getFacturaCompra().getId()));
+		}
+		return pago.getObservacion();
+	}
+
+	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRED)
+	public Map<String, Object> aprobar(List<Long> idsPagos, Long idCuentaBancaria, Long formaPago,
+			String fechaPago, Long idUsuario) throws Throwable {
+		System.out.println("=== aprobar (pagos) | ids=" + idsPagos + " | cuenta=" + idCuentaBancaria
+				+ " | formaPago=" + formaPago + " ===");
+
+		if (idsPagos == null || idsPagos.isEmpty()) {
+			throw new IncomeException("Debe indicar al menos un pago a aprobar.");
+		}
+		if (idCuentaBancaria == null) {
+			throw new IncomeException("Debe indicar la cuenta bancaria de la que saldrá el dinero.");
+		}
+		CuentaBancaria cuenta = em.find(CuentaBancaria.class, idCuentaBancaria);
+		if (cuenta == null) {
+			throw new IncomeException("No se encontró la cuenta bancaria con ID: " + idCuentaBancaria);
+		}
+
+		List<PagoProgramado> pagos = pagoProgramadoDaoService.selectByIds(idsPagos);
+		if (pagos.size() != idsPagos.size()) {
+			throw new IncomeException("No se encontraron todos los pagos indicados: se pidieron "
+					+ idsPagos.size() + " y se encontraron " + pagos.size() + ".");
+		}
+		List<String> noAprobables = new ArrayList<>();
+		double total = 0.0;
+		for (PagoProgramado pago : pagos) {
+			if (pago.getEstado() == null
+					|| pago.getEstado().intValue() != EstadoPagoProgramado.POR_APROBAR) {
+				noAprobables.add("Pago " + pago.getId() + " está en estado " + pago.getEstado()
+						+ ", no POR_APROBAR.");
+			}
+			total += (pago.getValor() != null ? pago.getValor().doubleValue() : 0.0);
+		}
+		if (!noAprobables.isEmpty()) {
+			throw new IncomeException("No se puede aprobar: " + noAprobables.size()
+					+ " de " + pagos.size() + " pago(s) no están POR_APROBAR. " + noAprobables);
+		}
+		total = redondea(total);
+
+		long fp = validarFormaPago(cuenta, formaPago,
+				formaPago != null && formaPago.longValue() == FormaPagoProgramado.DEBITO_AUTOMATICO);
+		LocalDate fecha = parseFecha(fechaPago);
+
+		// Regla trasladada desde AnticipoEmpleadoServiceImpl y MovimientoCajaChicaServiceImpl
+		// (2026-08-30): antes se validaba al registrar; ahora la forma de pago la elige tesoreria
+		// al aprobar, asi que la restriccion tiene que vivir aqui o se vuelve un fallo silencioso.
+		if (fp == FormaPagoProgramado.TRANSFERENCIA) {
+			List<Long> sinCuentaDestino = new ArrayList<>();
+			for (PagoProgramado pago : pagos) {
+				String origenExterno = pago.getOrigenExterno();
+				if (OrigenPagoExterno.RHH_ANTICIPO_EMPLEADO.equals(origenExterno)
+						|| OrigenPagoExterno.TSR_CAJA_CHICA.equals(origenExterno)) {
+					sinCuentaDestino.add(pago.getId());
+				}
+			}
+			if (!sinCuentaDestino.isEmpty()) {
+				throw new IncomeException("No se puede aprobar por transferencia: los pagos "
+						+ sinCuentaDestino + " son de anticipo a trabajador o caja chica y no tienen "
+						+ "cuenta bancaria de destino. Use cheque o débito automático.");
+			}
+		}
+
+		// FASE 3, no implementado todavía — ver el javadoc de validaDisponibilidad.
+		validaDisponibilidad(idCuentaBancaria, total, fecha);
+
+		List<Long> registrados = new ArrayList<>();
+		List<Long> confirmados = new ArrayList<>();
+		List<Map<String, Object>> cheques = new ArrayList<>();
+
+		for (PagoProgramado pago : pagos) {
+			pago.setCuentaBancaria(cuenta);
+			pago.setFormaPago(Long.valueOf(fp));
+			pago.setFechaProgramada(fecha);
+
+			if (fp == FormaPagoProgramado.CHEQUE) {
+				pago.setDebitoAutomatico(Long.valueOf(0));
+				String nombreBeneficiario = pago.getTitular() != null
+						? pago.getTitular().getNombre() : nvl(pago.getBeneficiarioNombre(), "Beneficiario");
+				Cheque cheque = chequeService.asignarAPago(idCuentaBancaria, pago.getValor(),
+						pago.getTitular(), nombreBeneficiario, idUsuario);
+				pago.setCheque(cheque);
+				pago.setReferenciaBanco("CHQ-" + cheque.getNumero());
+				pago.setFechaRespuesta(fecha);
+				pago.setEstado(Long.valueOf(EstadoPagoProgramado.CONFIRMADO));
+				pago = guardaPagoConCheque(pago, cheque);
+
+				Asiento asiento = contabilizarSegunOrigen(pago, idUsuario);
+				pagoProgramadoDaoService.save(pago, pago.getId());
+				confirmados.add(pago.getId());
+
+				Map<String, Object> detalleCheque = new HashMap<>();
+				detalleCheque.put("pago", pago.getId());
+				detalleCheque.put("numeroCheque", cheque.getNumero());
+				if (asiento != null) {
+					detalleCheque.put("asiento", asiento.getNumeroAlterno());
+				}
+				cheques.add(detalleCheque);
+
+			} else if (fp == FormaPagoProgramado.DEBITO_AUTOMATICO) {
+				pago.setDebitoAutomatico(Long.valueOf(1));
+				pago.setFechaRespuesta(fecha);
+				pago.setEstado(Long.valueOf(EstadoPagoProgramado.CONFIRMADO));
+				pago = saveSingle(pago);
+				em.flush();
+
+				contabilizarSegunOrigen(pago, idUsuario);
+				pagoProgramadoDaoService.save(pago, pago.getId());
+				confirmados.add(pago.getId());
+
+			} else {
+				// Transferencia: sigue el circuito normal (lote -> archivo -> respuesta
+				// del banco). No se contabiliza todavía.
+				pago.setDebitoAutomatico(Long.valueOf(0));
+				pago.setEstado(Long.valueOf(EstadoPagoProgramado.REGISTRADO));
+				pago = saveSingle(pago);
+				registrados.add(pago.getId());
+			}
+		}
+		em.flush();
+
+		System.out.println("✓ Aprobados " + idsPagos.size() + " pago(s): " + registrados.size()
+				+ " registrado(s), " + confirmados.size() + " confirmado(s). Total: " + total);
+
+		Map<String, Object> resultado = new HashMap<>();
+		resultado.put("exito", true);
+		resultado.put("idCuentaBancaria", idCuentaBancaria);
+		resultado.put("formaPago", fp);
+		resultado.put("totalAprobado", total);
+		resultado.put("pagosAprobados", idsPagos.size());
+		resultado.put("registrados", registrados);
+		resultado.put("confirmados", confirmados);
+		if (!cheques.isEmpty()) {
+			resultado.put("cheques", cheques);
+		}
+		resultado.put("mensaje", "Se aprobaron " + idsPagos.size() + " pago(s) por un total de $"
+				+ String.format(Locale.US, "%.2f", total) + ".");
+		return resultado;
+	}
+
+	/**
+	 * Valida que el total aprobado no supere el disponible real de la cuenta.
+	 *
+	 * <p>Implementado el 2026-08-28 (fase 3 del plan). El saldo real sale de la contabilidad
+	 * (2026-08-27, ver docs/logica-negocio/tsr/DISENO-CONCILIACION-PARTIDAS-EN-TRANSITO.md
+	 * §7bis): {@code CuentaBancariaServiceImpl.saldoSegunMovimientosBanco} (antes
+	 * {@code obtieneSaldoFecha}) arma el saldo desde {@code MovimientoBanco}, que hoy cubre
+	 * entre el 1% y el 5% del movimiento real sobre cuentas bancarias, así que NO se usa aquí
+	 * — se usa {@link #calcularDisponibilidad}, que lee
+	 * {@code PlanCuentaService.saldoCuentaFechaEmpresa}, misma fuente que ya usa
+	 * {@code ConciliacionCierreServiceImpl} para el saldoLibros de la ecuación de cierre.
+	 *
+	 * @param idCuentaBancaria : Id de la cuenta bancaria
+	 * @param totalAprobado    : Suma de los pagos que se están aprobando
+	 * @param fecha            : Fecha del pago
+	 * @throws Throwable       : IncomeException si el total supera el disponible real
+	 */
+	private void validaDisponibilidad(Long idCuentaBancaria, double totalAprobado, LocalDate fecha)
+			throws Throwable {
+		CuentaBancaria cuenta = em.find(CuentaBancaria.class, idCuentaBancaria);
+		if (cuenta == null) {
+			throw new IncomeException("No se encontró la cuenta bancaria con ID: " + idCuentaBancaria);
+		}
+		double[] disponibilidad = calcularDisponibilidad(cuenta, fecha);
+		double saldo = disponibilidad[0];
+		double comprometido = disponibilidad[1];
+		double disponibleReal = disponibilidad[2];
+		if (totalAprobado > disponibleReal + 0.01) {
+			throw new IncomeException(String.format(Locale.US,
+					"Saldo insuficiente. Disponible: %.2f (saldo %.2f - comprometido %.2f). "
+					+ "Total a aprobar: %.2f.",
+					disponibleReal, saldo, comprometido, totalAprobado));
+		}
+	}
+
+	/**
+	 * Disponibilidad real de una cuenta bancaria a una fecha: saldo contable, comprometido
+	 * (pagos ya aprobados de esa cuenta que aún no se confirman) y disponible = saldo −
+	 * comprometido. Fórmula única, compartida por {@link #validaDisponibilidad} y por
+	 * {@link #disponibilidad(Long, String)} (GET /pgtr/disponibilidad/{idCuenta}) para no
+	 * duplicarla.
+	 *
+	 * @param cuenta : Cuenta bancaria ya cargada, con {@code planCuenta} no nulo
+	 * @param fecha  : Fecha de corte
+	 * @return       : {@code [ saldo, comprometido, disponible ]}
+	 * @throws Throwable : IncomeException si la cuenta no tiene plan de cuenta asociado
+	 */
+	private double[] calcularDisponibilidad(CuentaBancaria cuenta, LocalDate fecha) throws Throwable {
+		if (cuenta.getPlanCuenta() == null) {
+			throw new IncomeException("La cuenta bancaria " + cuenta.getCodigo()
+					+ " no tiene plan de cuenta asociado; no se puede validar disponibilidad.");
+		}
+		Long idEmpresa = cuenta.getPlanCuenta().getEmpresa() != null
+				? cuenta.getPlanCuenta().getEmpresa().getCodigo() : null;
+		Double saldoContable = planCuentaService.saldoCuentaFechaEmpresa(
+				idEmpresa, cuenta.getPlanCuenta().getCodigo(), fecha);
+		double saldo = saldoContable != null ? saldoContable.doubleValue() : 0.0;
+		double comprometido = pagoProgramadoDaoService.sumaPagosComprometidos(cuenta.getCodigo(), fecha);
+		return new double[] { saldo, comprometido, redondea(saldo - comprometido) };
+	}
+
+	@Override
+	public Map<String, Object> disponibilidad(Long idCuentaBancaria, String fecha) throws Throwable {
+		System.out.println("=== disponibilidad | cuenta=" + idCuentaBancaria + " | fecha=" + fecha + " ===");
+		if (idCuentaBancaria == null) {
+			throw new IncomeException("Debe indicar la cuenta bancaria.");
+		}
+		CuentaBancaria cuenta = em.find(CuentaBancaria.class, idCuentaBancaria);
+		if (cuenta == null) {
+			throw new IncomeException("No se encontró la cuenta bancaria con ID: " + idCuentaBancaria);
+		}
+		double[] valores = calcularDisponibilidad(cuenta, parseFecha(fecha));
+		Map<String, Object> resultado = new HashMap<>();
+		resultado.put("idCuentaBancaria", idCuentaBancaria);
+		resultado.put("saldo", valores[0]);
+		resultado.put("comprometido", valores[1]);
+		resultado.put("disponible", valores[2]);
+		return resultado;
 	}
 
 	// =====================================================================

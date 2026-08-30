@@ -42,6 +42,28 @@ public interface AcreditacionVacacionesService {
 	int acreditar(Long idEmpresa, LocalDate fechaCorte, String usuario) throws Throwable;
 
 	/**
+	 * Deshace una acreditacion anual completa: borra los saldos de ese anio y desmarca
+	 * la caducidad que esa misma corrida provoco (acreditar caduca antes de acreditar).
+	 * Existe porque hasta el 2026-08-27 no habia forma de deshacer una acreditacion
+	 * corrida con un calculo equivocado salvo un UPDATE a mano sobre produccion -- ver
+	 * docs/logica-negocio/rhh/CICLO-ACREDITACION-VACACIONES.md.
+	 *
+	 * <p><b>Todo o nada.</b> Si algun empleado de esa empresa/anio ya tiene dias usados
+	 * o pagados de ese saldo, o el saldo viene de una apertura de migracion, se rechaza
+	 * la reversion COMPLETA nombrando a los empleados -- nunca un reverso parcial que
+	 * deje saldos inconsistentes.</p>
+	 *
+	 * @param idEmpresa	: Id de la empresa
+	 * @param anio		: Anio de la acreditacion a deshacer
+	 * @param usuario	: Usuario que ejecuta
+	 * @return			: Numero de saldos borrados
+	 * @throws Throwable	: IncomeException si algun saldo ya se consumio, con los
+	 *						  empleados nombrados, o si no hay nada que revertir
+	 */
+	@TransactionAttribute(TransactionAttributeType.REQUIRED)
+	int revertirAcreditacion(Long idEmpresa, Integer anio, String usuario) throws Throwable;
+
+	/**
 	 * Dias de vacaciones disponibles de un empleado, sumando todos los periodos no
 	 * caducados.
 	 *

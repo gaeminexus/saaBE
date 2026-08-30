@@ -29,22 +29,28 @@ import com.saa.ejb.crd.service.EventoPrestamoService;
 import com.saa.ejb.crd.service.MotorPagoPrestamoService;
 import com.saa.ejb.crd.service.PagoPrestamoService;
 import com.saa.ejb.crd.service.PrestamoService;
+import com.saa.ejb.crd.service.ProcesoMoraPrestamoService;
 import com.saa.ejb.crd.service.ProcesoPagoPrestamoService;
 import com.saa.ejb.crd.service.SaldoAporteService;
 import com.saa.ejb.crd.service.dto.ContextoPago;
 import com.saa.ejb.crd.service.dto.CuotaExigible;
 import com.saa.ejb.crd.service.dto.DesgloseAporte;
+import com.saa.ejb.crd.service.dto.DesgloseConceptosPrestamo;
 import com.saa.ejb.crd.service.dto.DetalleAplicacionCuota;
 import com.saa.ejb.crd.service.dto.MovimientoAporte;
+import com.saa.ejb.crd.service.dto.ComprobantePagoMultipleDatos;
+import com.saa.ejb.crd.service.dto.LineaComprobantePagoMultiple;
 import com.saa.ejb.crd.service.dto.ResultadoAnulacion;
 import com.saa.ejb.crd.service.dto.ResultadoAplicacionPago;
 import com.saa.ejb.crd.service.dto.ResultadoPagoConAportes;
+import com.saa.ejb.crd.service.dto.ResultadoPagoMultiple;
 import com.saa.ejb.crd.service.dto.ResultadoPrecancelacion;
 import com.saa.ejb.crd.service.dto.SaldosCuota;
 import com.saa.ejb.crd.service.dto.SimulacionPrecancelacion;
 import com.saa.ejb.crd.service.dto.SolicitudAnulacion;
 import com.saa.ejb.crd.service.dto.SolicitudPagoConAportes;
 import com.saa.ejb.crd.service.dto.SolicitudPagoCuota;
+import com.saa.ejb.crd.service.dto.SolicitudPagoMultiple;
 import com.saa.ejb.crd.service.dto.SolicitudPrecancelacion;
 import com.saa.model.crd.Aporte;
 import com.saa.model.crd.DetallePrestamo;
@@ -55,6 +61,7 @@ import com.saa.model.crd.PagoAporte;
 import com.saa.model.crd.PagoPrestamo;
 import com.saa.model.crd.Prestamo;
 import com.saa.model.crd.TipoAporte;
+import com.saa.rubros.CrdTipoMovimientoAporte;
 import com.saa.rubros.EstadoCuotaPrestamo;
 import com.saa.rubros.EstadoPrestamo;
 
@@ -129,6 +136,11 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
     @EJB
     private TipoAporteDaoService tipoAporteDaoService;
 
+    /** Bug corregido 2026-08-28: la fórmula pura de mora, para que la precancelación la recalcule
+     *  a la fecha elegida en vez de leer el DTPRMRAA/DTPRSLMR ya guardado. */
+    @EJB
+    private ProcesoMoraPrestamoService procesoMoraPrestamoService;
+
     // ========================================================================
     // §7.1 — Pago de cuota
     // ========================================================================
@@ -190,6 +202,200 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
             + " - Préstamo cancelado: " + resultado.isPrestamoCancelado());
 
         return resultado;
+    }
+
+    // ========================================================================
+    // Cobro múltiple — N préstamos del mismo partícipe en una sola operación
+    // ========================================================================
+
+    @Override
+    @TransactionAttribute(TransactionAttributeType.REQUIRED)
+    public ResultadoPagoMultiple pagarMultiplesCuotas(SolicitudPagoMultiple solicitud) throws Throwable {
+        System.out.println("ProcesoPagoPrestamoService.pagarMultiplesCuotas - Préstamos: "
+            + (solicitud != null && solicitud.getPagos() != null ? solicitud.getPagos().size() : null));
+
+        if (solicitud == null || solicitud.getPagos() == null || solicitud.getPagos().isEmpty()) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO
+                + ": debe indicar al menos un préstamo a pagar");
+        }
+
+        // Validaciones básicas de TODOS los renglones ANTES de aplicar el primer pago: si algo
+        // acá falla, no hace falta revertir nada porque todavía no se tocó ni un préstamo.
+        Long idEntidadComun = null;
+        String nombreEntidadComun = null;
+        Set<Long> idsPrestamoVistos = new HashSet<>();
+
+        for (SolicitudPagoCuota pago : solicitud.getPagos()) {
+            if (pago == null || pago.getIdPrestamo() == null) {
+                throw new IncomeException(ERR_PARAMETRO_INVALIDO
+                    + ": hay un renglón sin idPrestamo en el cobro múltiple");
+            }
+            if (!idsPrestamoVistos.add(pago.getIdPrestamo())) {
+                throw new IncomeException(ERR_PRESTAMO_REPETIDO
+                    + ": el préstamo " + pago.getIdPrestamo() + " está repetido en el cobro múltiple");
+            }
+
+            Prestamo prestamo = prestamoDaoService.find(new Prestamo(), pago.getIdPrestamo());
+            if (prestamo == null) {
+                throw new IncomeException(ERR_PRESTAMO_NO_ENCONTRADO
+                    + ": no existe el préstamo " + pago.getIdPrestamo());
+            }
+            Entidad entidad = prestamo.getEntidad();
+            if (entidad == null || entidad.getCodigo() == null) {
+                throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": el préstamo " + prestamo.getCodigo()
+                    + " no tiene partícipe asociado; no se puede incluir en un cobro múltiple");
+            }
+            if (idEntidadComun == null) {
+                idEntidadComun = entidad.getCodigo();
+                nombreEntidadComun = entidad.getRazonSocial();
+            } else if (!idEntidadComun.equals(entidad.getCodigo())) {
+                // La más importante de las validaciones: un comprobante que mezcle socios es un
+                // problema serio, no un detalle — se corta ACÁ, antes de aplicar nada.
+                throw new IncomeException(ERR_PARTICIPES_DISTINTOS
+                    + ": el préstamo " + prestamo.getCodigo() + " (partícipe " + entidad.getCodigo()
+                    + ") no es del mismo partícipe que los anteriores (" + idEntidadComun
+                    + "); un cobro múltiple no puede mezclar socios");
+            }
+        }
+
+        // TODO O NADA: los N pagos corren en la MISMA transacción porque este `pagarCuota(...)`
+        // es un LLAMADO DIRECTO (this, dentro del mismo bean) — NO pasa por el proxy del EJB, así
+        // que no abre una transacción nueva por préstamo: se une a la REQUIRED que ya abrió este
+        // método. Si el préstamo N falla, el contenedor revierte los N-1 anteriores también.
+        //
+        // ⚠️ A PROPÓSITO no se auto-inyecta el servicio (patrón `@EJB private
+        // ProcesoPagoPrestamoService self`) para llamar `self.pagarCuota(...)`. Ese patrón SÍ
+        // existe en este proyecto (`ProcesoMoraPrestamoServiceImpl`), pero ahí es DELIBERADO:
+        // pasar por el proxy es justamente cómo consiguen REQUIRES_NEW por préstamo, para que un
+        // préstamo con error no le poison-ee la transacción a los demás. Acá se quiere el
+        // resultado CONTRARIO — todo o nada — así que el llamado tiene que ser directo. Si algún
+        // día `pagarCuota` cambia a REQUIRES_NEW, una versión por proxy rompería esta atomicidad
+        // EN SILENCIO; la directa no. No "mejorar" esto inyectando el self.
+        List<ResultadoAplicacionPago> resultados = new ArrayList<>();
+        double totalAplicado = 0.0;
+        for (SolicitudPagoCuota pago : solicitud.getPagos()) {
+            ResultadoAplicacionPago resultado = pagarCuota(pago);
+            resultados.add(resultado);
+            totalAplicado += resultado.getValorAplicado();
+        }
+
+        ResultadoPagoMultiple respuesta = new ResultadoPagoMultiple();
+        respuesta.setResultados(resultados);
+        respuesta.setValorTotalAplicado(redondear(totalAplicado));
+        respuesta.setIdEntidad(idEntidadComun);
+        respuesta.setNombreEntidad(nombreEntidadComun);
+
+        System.out.println("  ✅ pagarMultiplesCuotas OK - Partícipe: " + idEntidadComun
+            + " - Préstamos pagados: " + resultados.size()
+            + " - Total aplicado: $" + respuesta.getValorTotalAplicado());
+
+        return respuesta;
+    }
+
+    @Override
+    public ComprobantePagoMultipleDatos prepararComprobantePagoMultiple(List<Long> idsEvento) throws Throwable {
+        System.out.println("ProcesoPagoPrestamoService.prepararComprobantePagoMultiple - Eventos: " + idsEvento);
+
+        if (idsEvento == null || idsEvento.isEmpty()) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO
+                + ": debe indicar al menos un evento para el comprobante");
+        }
+
+        List<LineaComprobantePagoMultiple> lineas = new ArrayList<>();
+        String nombreSocioComun = null;
+        Long idEntidadComun = null;
+        String identificacionSocioComun = null;
+        String usuarioComun = null;
+        LocalDateTime fechaOperacion = null;
+        double totalGeneral = 0.0;
+
+        for (Long idEvento : idsEvento) {
+            if (idEvento == null) {
+                throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": hay un idEvento nulo en la solicitud");
+            }
+            EventoPrestamo evento = eventoPrestamoDaoService.find(new EventoPrestamo(), idEvento);
+            if (evento == null) {
+                throw new IncomeException(ERR_EVENTO_NO_ENCONTRADO + ": no existe el evento " + idEvento);
+            }
+            Prestamo prestamo = evento.getPrestamo();
+            if (prestamo == null) {
+                throw new IncomeException(ERR_PRESTAMO_NO_ENCONTRADO + ": el evento " + idEvento
+                    + " no tiene préstamo asociado");
+            }
+            Entidad entidad = prestamo.getEntidad();
+            if (entidad == null || entidad.getCodigo() == null) {
+                throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": el préstamo " + prestamo.getCodigo()
+                    + " no tiene partícipe asociado");
+            }
+
+            if (idEntidadComun == null) {
+                idEntidadComun = entidad.getCodigo();
+                nombreSocioComun = entidad.getRazonSocial();
+                identificacionSocioComun = entidad.getNumeroIdentificacion();
+                usuarioComun = evento.getUsuario();
+            } else if (!idEntidadComun.equals(entidad.getCodigo())) {
+                // Re-validación server-side: aunque pagarMultiplesCuotas ya lo garantizó al
+                // aplicar, este método puede invocarse por separado con cualquier lista de
+                // eventos — no confiar en que el llamador mandó los correctos.
+                throw new IncomeException(ERR_PARTICIPES_DISTINTOS + ": el evento " + idEvento
+                    + " (préstamo " + prestamo.getCodigo() + ", partícipe " + entidad.getCodigo()
+                    + ") no es del mismo partícipe que los anteriores (" + idEntidadComun + ")");
+            }
+            if (fechaOperacion == null || (evento.getFecha() != null && evento.getFecha().isAfter(fechaOperacion))) {
+                fechaOperacion = evento.getFecha();
+            }
+
+            // Reconstruido desde CRD.PGPR (pagos vigentes del evento) — la fuente de verdad,
+            // nunca un valor que hubiera mandado el cliente.
+            List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectByEvento(idEvento);
+            double capital = 0.0;
+            double interes = 0.0;
+            double mora = 0.0;
+            double desgravamen = 0.0;
+            double seguro = 0.0;
+            if (pagos != null) {
+                for (PagoPrestamo pago : pagos) {
+                    if (pago.getAnulado() != null && pago.getAnulado() == 1L) {
+                        continue;
+                    }
+                    capital += nvl(pago.getCapitalPagado());
+                    // Mismo criterio de esta semana: interés vencido se suma dentro de "interés",
+                    // no es un concepto aparte para quien lee el comprobante.
+                    interes += nvl(pago.getInteresPagado()) + nvl(pago.getInteresVencidoPagado());
+                    mora += nvl(pago.getMoraPagada());
+                    desgravamen += nvl(pago.getDesgravamen());
+                    seguro += nvl(pago.getValorSeguroIncendio());
+                }
+            }
+
+            LineaComprobantePagoMultiple linea = new LineaComprobantePagoMultiple();
+            linea.setIdPrestamo(prestamo.getCodigo());
+            linea.setNumeroPrestamo(prestamo.getIdAsoprep() != null ? prestamo.getIdAsoprep() : prestamo.getCodigo());
+            linea.setNombreProducto(prestamo.getProducto() != null ? prestamo.getProducto().getNombre() : null);
+            linea.setCapital(redondear(capital));
+            linea.setInteres(redondear(interes));
+            linea.setMora(redondear(mora));
+            linea.setDesgravamen(redondear(desgravamen));
+            linea.setSeguroIncendio(redondear(seguro));
+            double totalLinea = redondear(capital + interes + mora + desgravamen + seguro);
+            linea.setTotal(totalLinea);
+            lineas.add(linea);
+
+            totalGeneral += totalLinea;
+        }
+
+        ComprobantePagoMultipleDatos datos = new ComprobantePagoMultipleDatos();
+        datos.setNombreSocio(nombreSocioComun);
+        datos.setIdentificacionSocio(identificacionSocioComun);
+        datos.setFecha(fechaOperacion);
+        datos.setUsuario(usuarioComun);
+        datos.setTotalGeneral(redondear(totalGeneral));
+        datos.setLineas(lineas);
+
+        System.out.println("  ✅ prepararComprobantePagoMultiple OK - Partícipe: " + idEntidadComun
+            + " - Préstamos: " + lineas.size() + " - Total: $" + datos.getTotalGeneral());
+
+        return datos;
     }
 
     // ========================================================================
@@ -322,9 +528,10 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
     /**
      * Crea la fila NEGATIVA en CRD.APRT y su PagoAporte por cada renglón del desglose (§7.4 3a-3c).
      *
-     * La fila negativa nace con {@code saldo = 0}, {@code valorPagado = 0} y estado 4 (PAGADA)
-     * para que el FIFO del proceso Petro ({@code selectMinAporteConSaldo}, que filtra
-     * {@code saldo > 0.01}) nunca la devuelva.
+     * La fila negativa nace con {@code saldo = 0}, {@code valorPagado = 0} y estado 4 (PAGADA):
+     * en el modelo vigente (Fase 1 del plan de devengo de aportes, D1) el saldo del partícipe
+     * es {@code SUM(valor)} y toda fila nace pagada, así que esta fila resta directo del saldo
+     * sin dejar ningún abono pendiente.
      */
     private List<MovimientoAporte> consumirAportes(Entidad entidad, List<DesgloseAporte> aportes,
             LocalDateTime fecha, String usuario, String glosa, PagoPrestamo pagoPrestamo,
@@ -358,11 +565,13 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
             aporte.setEstado(ESTADO_APORTE_CONSUMIDO);
             aporte.setIdAsoprep(null);
             aporte.setFechaTransaccion(fecha);
+            aporte.setPeriodoDevengo(null); // §2.2: pago de préstamo con aportes, sin devengo
+            aporte.setTipoMovimiento((long) CrdTipoMovimientoAporte.PAGO_PRESTAMO);
             aporte.setGlosa(glosa);
             aporte.setUsuarioRegistro(usuario);
             aporte.setFechaRegistro(LocalDateTime.now());
-            // save() directo del DAO: AporteService.saveSingle forzaría estado = 1 y la fila
-            // volvería a ser visible para el FIFO del proceso Petro.
+            // save() directo del DAO: AporteServiceImpl.saveSingle fuerza estado = 1
+            // (Estado.ACTIVO) en todo INSERT, pisando el PAGADA(4) recién asignado.
             aporte = aporteDaoService.save(aporte, null);
 
             // c. PagoAporte
@@ -408,7 +617,9 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         if (prestamo == null) {
             throw new IncomeException(ERR_PRESTAMO_NO_ENCONTRADO + ": no existe el préstamo " + idPrestamo);
         }
-        return calcularPrecancelacion(prestamo, fecha != null ? fecha : LocalDate.now()).simulacion;
+        // Bug corregido 2026-08-28: simularPrecancelacion es de solo lectura y NO debe
+        // autocorregir/persistir cuotas (ver javadoc de MotorPagoPrestamoService.calcularSaldosCuota).
+        return calcularPrecancelacion(prestamo, fecha != null ? fecha : LocalDate.now(), true).simulacion;
     }
 
     /** Cálculo canónico compartido por la simulación y la validación del POST (§7.5). */
@@ -418,9 +629,22 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         private List<DetallePrestamo> futuras = new ArrayList<>();
     }
 
-    private CalculoPrecancelacion calcularPrecancelacion(Prestamo prestamo, LocalDate fecha) throws Throwable {
+    /**
+     * @param soloLectura {@code true} desde {@code simularPrecancelacion()}: usa la variante
+     *                    pura de los saldos, sin autocorregir ni persistir cuotas. {@code false}
+     *                    desde {@code precancelar()}: puede autocorregir cuotas liquidadas según
+     *                    PGPR pero mal etiquetadas (bug corregido 2026-08-28).
+     */
+    private CalculoPrecancelacion calcularPrecancelacion(Prestamo prestamo, LocalDate fecha, boolean soloLectura)
+            throws Throwable {
         CalculoPrecancelacion calculo = new CalculoPrecancelacion();
         LocalDateTime finDelDia = fecha.atTime(23, 59, 59);
+
+        // Bug corregido 2026-08-28: la mora que trae `saldos` es la persistida por el último
+        // proceso de las 02:00 (o el último POST /calcularMora manual), sin importar `fecha`.
+        // Se recalcula acá, por cuota, con la fórmula pura de ProcesoMoraPrestamoService a la
+        // fecha exacta que eligió el usuario en el simulador.
+        double tasaDiaria = procesoMoraPrestamoService.tasaDiariaDelPrestamo(prestamo, true);
 
         List<DetallePrestamo> exigibles =
             detallePrestamoDaoService.selectCuotasExigibles(prestamo.getCodigo(), finDelDia);
@@ -433,7 +657,10 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         Set<Long> codigosExigibles = new HashSet<>();
 
         for (DetallePrestamo cuota : exigibles) {
-            SaldosCuota saldos = motorPagoPrestamoService.calcularSaldosRealesCuota(cuota);
+            SaldosCuota saldos = soloLectura
+                ? motorPagoPrestamoService.calcularSaldosCuota(cuota)
+                : motorPagoPrestamoService.calcularSaldosRealesCuota(cuota);
+            recalcularMoraALaFecha(saldos, cuota, tasaDiaria, fecha);
             if (saldos.getTotalPendiente() <= TOLERANCIA) {
                 // La autocorrección la dejó PAGADA: ya no forma parte de la deuda exigible
                 continue;
@@ -461,7 +688,12 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
                 if (codigosExigibles.contains(cuota.getCodigo())) {
                     continue;
                 }
-                SaldosCuota saldos = motorPagoPrestamoService.calcularSaldosRealesCuota(cuota);
+                SaldosCuota saldos = soloLectura
+                    ? motorPagoPrestamoService.calcularSaldosCuota(cuota)
+                    : motorPagoPrestamoService.calcularSaldosRealesCuota(cuota);
+                // Una cuota "futura" (no exigible a `fecha`) recalcula a 0 de mora — todavía no
+                // está vencida a esa fecha — pero se llama igual para no asumirlo dos veces.
+                recalcularMoraALaFecha(saldos, cuota, tasaDiaria, fecha);
                 if (saldos.getTotalPendiente() <= TOLERANCIA) {
                     continue;
                 }
@@ -474,10 +706,23 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         valorExigible = redondear(valorExigible);
         capitalFuturo = redondear(capitalFuturo);
 
+        // Pedido 8, tercera aparición (2026-08-27): el saldo de capital que muestra la CABECERA
+        // del diálogo es el del préstamo COMPLETO (exigibles + futuras) — no solo capitalFuturo,
+        // que a propósito excluye las exigibles porque valorExigible ya las paga por su cuenta al
+        // ejecutar la precancelación. Para cancelar el préstamo hay que pagar las dos partes, así
+        // que el saldo de capital "de cartera" que el usuario espera ver es la suma de ambas.
+        // Mismo cálculo que la reestructuración (pedido 8, segunda ola) — ver
+        // PagoPrestamoService.calcularSaldoCapitalPendiente; NUNCA Prestamo.getSaldoCapital()
+        // (PRSTSLCP), que está congelada desde que la escribió ProcesoCargaPetroServiceImpl.
+        double saldoCapitalPendiente = pendientes != null
+            ? pagoPrestamoService.calcularSaldoCapitalPendiente(pendientes)
+            : 0.0;
+
         SimulacionPrecancelacion simulacion = calculo.simulacion;
         simulacion.setIdPrestamo(prestamo.getCodigo());
         simulacion.setFecha(fecha);
         simulacion.setExigibles(detalleExigibles);
+        simulacion.setSaldoCapitalPendiente(saldoCapitalPendiente);
         simulacion.setValorExigible(valorExigible);
         simulacion.setCapitalFuturo(capitalFuturo);
         simulacion.setValorTotalPrecancelacion(redondear(valorExigible + capitalFuturo));
@@ -490,6 +735,85 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
             + " - Cuotas a anular: " + calculo.futuras.size());
 
         return calculo;
+    }
+
+    /**
+     * Bug corregido 2026-08-28: sobreescribe el componente de mora de {@code saldos} (y
+     * recompone {@code totalPendiente}) con la fórmula pura de
+     * {@code ProcesoMoraPrestamoService.calcularMoraCuota}, evaluada a {@code fecha} — la que
+     * eligió el usuario en el simulador — en vez de dejar el {@code saldoMora} que ya trae
+     * {@code saldos} (el que dejó el último proceso de las 02:00). El resto del desglose
+     * (desgravamen, interés, capital, seguro) no se toca.
+     *
+     * Extraído a público el 2026-08-29 (antes privado, solo lo usaba {@code calcularPrecancelacion})
+     * para que el acuerdo de pago con condonación (Frente K) recalcule la mora fresca con la
+     * MISMA fórmula, en vez de duplicarla — ver {@link #calcularDesgloseConceptos}.
+     */
+    @Override
+    public void recalcularMoraALaFecha(SaldosCuota saldos, DetallePrestamo cuota, double tasaDiaria,
+            LocalDate fecha) {
+        double moraALaFecha = procesoMoraPrestamoService.calcularMoraCuota(cuota, tasaDiaria, fecha);
+        double saldoMoraALaFecha = Math.max(0, redondear(moraALaFecha - nvl(cuota.getMoraPagado())));
+        double totalAjustado = redondear(saldos.getTotalPendiente() - saldos.getSaldoMora() + saldoMoraALaFecha);
+        saldos.setSaldoMora(saldoMoraALaFecha);
+        saldos.setTotalPendiente(totalAjustado);
+    }
+
+    @Override
+    public DesgloseConceptosPrestamo calcularDesgloseConceptos(Long idPrestamo, LocalDate fecha) throws Throwable {
+        System.out.println("ProcesoPagoPrestamoService.calcularDesgloseConceptos - Préstamo: " + idPrestamo
+            + " - Fecha: " + fecha);
+
+        Prestamo prestamo = prestamoDaoService.find(new Prestamo(), idPrestamo);
+        if (prestamo == null) {
+            throw new IncomeException(ERR_PRESTAMO_NO_ENCONTRADO + ": no existe el préstamo " + idPrestamo);
+        }
+        LocalDate fechaCorte = fecha != null ? fecha : LocalDate.now();
+
+        double tasaDiaria = procesoMoraPrestamoService.tasaDiariaDelPrestamo(prestamo, true);
+        List<DetallePrestamo> pendientes =
+            detallePrestamoDaoService.selectCuotasPendientesByPrestamoOrdenadas(prestamo.getCodigo());
+
+        DesgloseConceptosPrestamo desglose = new DesgloseConceptosPrestamo();
+        desglose.setIdPrestamo(idPrestamo);
+        desglose.setFecha(fechaCorte);
+
+        double capital = 0.0;
+        double interes = 0.0;
+        double mora = 0.0;
+        double desgravamen = 0.0;
+        double seguroIncendio = 0.0;
+
+        if (pendientes != null) {
+            for (DetallePrestamo cuota : pendientes) {
+                // Solo lectura: calcularSaldosCuota (la variante PURA), nunca
+                // calcularSaldosRealesCuota, que autocorrige y persiste.
+                SaldosCuota saldos = motorPagoPrestamoService.calcularSaldosCuota(cuota);
+                recalcularMoraALaFecha(saldos, cuota, tasaDiaria, fechaCorte);
+
+                capital += saldos.getSaldoCapital();
+                // Interés = ordinario + vencido, una sola línea (ver el javadoc de
+                // CrdConceptoPrestamo: DTPRINVN no lo alimenta ningún proceso, vale 0 siempre,
+                // pero se suma igual por completitud si algún día empieza a poblarse).
+                interes += saldos.getSaldoInteres() + saldos.getSaldoInteresVencido();
+                mora += saldos.getSaldoMora();
+                desgravamen += saldos.getSaldoDesgravamen();
+                seguroIncendio += saldos.getSaldoSeguroIncendio();
+            }
+        }
+
+        desglose.setCapitalPendiente(redondear(capital));
+        desglose.setInteresPendiente(redondear(interes));
+        desglose.setMoraPendiente(redondear(mora));
+        desglose.setDesgravamenPendiente(redondear(desgravamen));
+        desglose.setSeguroIncendioPendiente(redondear(seguroIncendio));
+
+        System.out.println("  Desglose al " + fechaCorte + " - Capital: $" + desglose.getCapitalPendiente()
+            + " - Interés: $" + desglose.getInteresPendiente() + " - Mora: $" + desglose.getMoraPendiente()
+            + " - Desgravamen: $" + desglose.getDesgravamenPendiente()
+            + " - Seguro incendio: $" + desglose.getSeguroIncendioPendiente());
+
+        return desglose;
     }
 
     @Override
@@ -509,7 +833,7 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         }
         LocalDateTime fechaHora = fecha.isEqual(LocalDate.now()) ? LocalDateTime.now() : fecha.atStartOfDay();
 
-        CalculoPrecancelacion calculo = calcularPrecancelacion(prestamo, fecha);
+        CalculoPrecancelacion calculo = calcularPrecancelacion(prestamo, fecha, false);
         SimulacionPrecancelacion simulacion = calculo.simulacion;
 
         if (calculo.futuras.isEmpty()) {
@@ -920,6 +1244,8 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
                 contra.setEstado(ESTADO_APORTE_CONSUMIDO);
                 contra.setIdAsoprep(null);
                 contra.setFechaTransaccion(ahora);
+                contra.setPeriodoDevengo(original.getPeriodoDevengo()); // mismo devengo de la fila que reversa
+                contra.setTipoMovimiento((long) CrdTipoMovimientoAporte.REVERSO);
                 contra.setGlosa(glosa);
                 contra.setUsuarioRegistro(usuario);
                 contra.setFechaRegistro(ahora);

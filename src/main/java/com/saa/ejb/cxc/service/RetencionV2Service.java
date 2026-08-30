@@ -116,12 +116,36 @@ public interface RetencionV2Service extends EntityService<RetencionV2> {
 
 	/**
 	 * Anula una retención V2 y su asiento contable vinculado.
-	 * @param idRetencion ID de la retención V2
-	 * @param motivo      Motivo de la anulación
-	 * @param usuario     Usuario que realiza la anulación
-	 * @return Mapa con: exito, mensaje, idRetencion, motivoAnulacion, fechaAnulacion, usuarioAnulacion
+	 * <p>
+	 * <b>Cambio de comportamiento (ítem 15, 2026-08-28):</b> mismo criterio que
+	 * {@code FacturaService.anularFactura} y los demás documentos del ítem 14. Esta
+	 * retención V2, aunque vive en el paquete {@code cxc} (es un documento electrónico
+	 * emitido por la empresa), es en realidad un instrumento de pago del lado
+	 * <b>compra</b>: reduce facturas de compra vía {@code AplicacionPagoCxp}
+	 * (tipoDocPago RETENCION), no {@code AplicacionPagoCxc}. Si tiene aplicaciones
+	 * activas y {@code anularEnCascada} es {@code false} (default), se rechaza con
+	 * {@code IncomeException}; con {@code true} se reversan primero.
+	 * @param idRetencion		: ID de la retención V2
+	 * @param motivo			: Motivo de la anulación
+	 * @param usuario			: Usuario que realiza la anulación
+	 * @param idUsuario			: Id del usuario (SCP.PJRQ), para reversar aplicaciones si aplica
+	 * @param anularEnCascada	: true = reversar las aplicaciones sobre facturas de compra y anular igual
+	 * @return					: Mapa con: exito, mensaje, idRetencion, motivoAnulacion, fechaAnulacion, usuarioAnulacion
+	 * @throws Throwable		: Si tiene aplicaciones activas sin reversar y no viene cascada
 	 */
-	java.util.Map<String, Object> anularRetencionV2(Long idRetencion, String motivo, String usuario) throws Throwable;
+	java.util.Map<String, Object> anularRetencionV2(Long idRetencion, String motivo, String usuario,
+			Long idUsuario, boolean anularEnCascada) throws Throwable;
+
+	/**
+	 * Aplicaciones de pago (AplicacionPagoCxp) activas donde esta retención V2 es el
+	 * instrumento usado para reducir una factura de compra. Ver {@link #anularRetencionV2}.
+	 * @param idRetencion	: Id de la retención V2
+	 * @return				: Lista de mapas con idAplicacion, idFacturaCompra, montoAplicado,
+	 *						  fechaAplicacion; vacía si no afecta ninguna factura de compra
+	 * @throws Throwable	: Excepcion
+	 */
+	java.util.List<java.util.Map<String, Object>> movimientosRelacionadosRetencionV2(Long idRetencion)
+			throws Throwable;
 
 	/**
 	 * Consulta el estado de una retención V2 ante el SRI (WS consultarEstadoAutorizacion).

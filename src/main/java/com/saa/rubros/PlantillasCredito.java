@@ -50,4 +50,38 @@ public interface PlantillasCredito {
 	 */
 	public static final int NETEO_PLANILLAS = 33;
 
+	/**
+	 * "CRD COBRO DE PETROECUADOR Y ARCH ASIENTO CORRELACIONADO". Paso 1 del cobro de Petro
+	 * en dos pasos (§3.3 y regla 11 de §5 del levantamiento): asiento TRANSITORIO,
+	 * H {@code 2.3.01.15.01}. El Debe (Banco(s)) no sale de esta plantilla — lo arma
+	 * {@code CobroPetroContableService} con la cuenta contable de cada
+	 * {@code CRD.TRCR.cuentaBancaria}. Decisión del usuario 2026-08-28: esta plantilla y la
+	 * 20 SON CORRECTAS tal como están, no se tocan (la versión anterior del levantamiento
+	 * decía lo contrario y era falsa).
+	 */
+	public static final int COBRO_TRANSITORIO_PETRO = 19;
+
+	/**
+	 * "CRD COBRO DE PETROECUADOR Y ARCH ASIENTO CORRELACIONADO (1)". Paso 2a: asiento de
+	 * REPARTO, D {@code 2.3.01.15.01} → H {@code 1.4.05.05}/{@code 1.4.05.10}.
+	 */
+	public static final int REPARTO_PETRO = 20;
+
+	/**
+	 * "CRD COBRO PETRO ASIENTO CONTABLE CORRELACIONADO CIERRE CARTERA". Paso 2b: asiento de
+	 * APLICACION a las cuentas reales (44 líneas hoy; las de banda se ignoran, salen de
+	 * {@code CRD.BNDP}). Auxiliares renumerados en
+	 * {@code ACTUALIZACION-PLANTILLA-21-PETRO-APLICACION.md} — sin ejecutar todavía.
+	 */
+	public static final int APLICACION_PETRO = 21;
+
+	/**
+	 * "CRD COBRO INDIVIDUAL DE PRESTAMO DEPOSITADO POR PARTICIPE ASIENTO CORRELACIONADO (1)".
+	 * Usada por el asiento de condonación de un acuerdo de pago con condonación (Frente K,
+	 * §4 de PLAN-ACUERDOS-PAGO-CONDONACION.md): D línea de gasto (nueva, {@link CrdLineaAsiento#GASTO_CONDONACION_PRESTAMOS},
+	 * aún sin cuenta asignada al 2026-08-30) → H cuentas por cobrar de capital (por banda,
+	 * aux1 2-14 ya existentes) e interés (por tipo de préstamo, aux1 15-20 ya existentes).
+	 */
+	public static final int COBRO_INDIVIDUAL_PRESTAMO = 25;
+
 }

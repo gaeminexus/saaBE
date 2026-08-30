@@ -137,4 +137,30 @@ public class PagoPrestamoDaoServiceImpl extends EntityDaoImpl<PagoPrestamo> impl
 		}
 	}
 
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<PagoPrestamo> selectVigentesByCargaArchivo(Long idCarga) throws Throwable {
+		System.out.println("PagoPrestamoDaoService.selectVigentesByCargaArchivo - Carga: " + idCarga);
+
+		try {
+			Query query = em.createQuery(
+				"SELECT p " +
+				"FROM PagoPrestamo p " +
+				"WHERE p.cargaArchivo.codigo = :idCarga " +
+				"AND (p.anulado IS NULL OR p.anulado = 0) " +
+				"ORDER BY p.codigo ASC"
+			);
+			query.setParameter("idCarga", idCarga);
+
+			List<PagoPrestamo> resultados = query.getResultList();
+			System.out.println("  Pagos vigentes de la carga: " + resultados.size());
+			return resultados;
+
+		} catch (Exception e) {
+			System.err.println("ERROR en selectVigentesByCargaArchivo: " + e.getMessage());
+			e.printStackTrace();
+			return new ArrayList<>();
+		}
+	}
+
 }

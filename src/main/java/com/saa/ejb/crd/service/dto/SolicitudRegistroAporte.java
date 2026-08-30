@@ -29,6 +29,12 @@ public class SolicitudRegistroAporte {
     /** Ruta del documento de respaldo digitalizado; se estampa en el PagoAporte generado */
     private String rutaDocumentoRespaldo;
 
+    /**
+     * Mes al que pertenece el aporte (primer día del mes). Opcional: si no se indica, se usa
+     * {@code TRUNC(fechaTransaccion, 'MM')}. Fase 2 del plan de devengo de aportes.
+     */
+    private LocalDate periodoDevengo;
+
     public SolicitudRegistroAporte() {
     }
 
@@ -86,5 +92,13 @@ public class SolicitudRegistroAporte {
 
     public void setRutaDocumentoRespaldo(String rutaDocumentoRespaldo) {
         this.rutaDocumentoRespaldo = rutaDocumentoRespaldo;
+    }
+
+    public LocalDate getPeriodoDevengo() {
+        return periodoDevengo;
+    }
+
+    public void setPeriodoDevengo(LocalDate periodoDevengo) {
+        this.periodoDevengo = periodoDevengo;
     }
 }

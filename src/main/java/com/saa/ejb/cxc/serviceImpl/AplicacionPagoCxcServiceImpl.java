@@ -698,7 +698,7 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 			throw new IncomeException("La aplicación " + idAplicacion + " ya está reversada.");
 		}
 
-		revierteUnaAplicacion(aplicacion, motivo);
+		revierteUnaAplicacion(aplicacion, motivo, idUsuario);
 		em.flush();
 
 		resultado.put("exito", true);
@@ -724,7 +724,8 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 		for (AplicacionPagoCxc aplicacion : aplicaciones) {
 			revierteUnaAplicacion(aplicacion,
 					(motivo != null && !motivo.trim().isEmpty())
-							? motivo : "Anulación del documento de origen");
+							? motivo : "Anulación del documento de origen",
+					idUsuario);
 			reversadas++;
 		}
 		System.out.println("✓ Aplicaciones reversadas: " + reversadas);
@@ -744,7 +745,8 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 		for (AplicacionPagoCxc aplicacion : aplicaciones) {
 			revierteUnaAplicacion(aplicacion,
 					(motivo != null && !motivo.trim().isEmpty())
-							? motivo : "Anulación de la factura");
+							? motivo : "Anulación de la factura",
+					idUsuario);
 			reversadas++;
 		}
 		System.out.println("✓ Aplicaciones de la factura reversadas: " + reversadas);
@@ -781,7 +783,7 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 				recalcularEstadoPagoLiquidacion(idLiquidacion);
 			}
 			if (idAsiento != null) {
-				anulaAsientoSeguro(idAsiento);
+				anulaAsientoSeguro(idAsiento, null, "Eliminación de la aplicación de pago");
 			}
 			eliminadas++;
 		}
@@ -953,10 +955,11 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 	 * @param motivo     : Motivo de la reversión
 	 * @throws Throwable : Excepcion
 	 */
-	private void revierteUnaAplicacion(AplicacionPagoCxc aplicacion, String motivo) throws Throwable {
+	private void revierteUnaAplicacion(AplicacionPagoCxc aplicacion, String motivo, Long idUsuario) throws Throwable {
 
 		Long idAsiento = (aplicacion.getAsiento() != null)
 				? aplicacion.getAsiento().getCodigo() : null;
+		String usuario = usuarioNombre(idUsuario);
 
 		// 1. Marcar reversada y recalcular el estado de pago del documento
 		aplicacion.setEstado(Long.valueOf(EstadoAplicacionPago.REVERSADO));
@@ -1035,7 +1038,7 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 
 		// 4. Anular / reversar el asiento contable
 		if (idAsiento != null) {
-			anulaAsientoSeguro(idAsiento);
+			anulaAsientoSeguro(idAsiento, usuario, motivo);
 		}
 	}
 
@@ -1075,10 +1078,12 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 	 * Anula el asiento delegando en AsientoService, que decide entre anular o
 	 * generar la reversión según el estado del período. No interrumpe el flujo.
 	 * @param idAsiento : Id del asiento a anular
+	 * @param usuario   : Usuario que anula, para el rastro de auditoría del asiento
+	 * @param motivo    : Motivo de la anulación
 	 */
-	private void anulaAsientoSeguro(Long idAsiento) {
+	private void anulaAsientoSeguro(Long idAsiento, String usuario, String motivo) {
 		try {
-			asientoService.anulaAsiento(idAsiento);
+			asientoService.anulaAsiento(idAsiento, usuario, motivo);
 			System.out.println("✓ Asiento " + idAsiento + " anulado / reversado.");
 		} catch (Throwable e) {
 			System.err.println("⚠ No se pudo anular el asiento " + idAsiento + ": " + e.getMessage());

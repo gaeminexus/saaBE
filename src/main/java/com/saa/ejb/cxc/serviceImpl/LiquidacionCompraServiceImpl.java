@@ -79,6 +79,15 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 	@EJB
 	private com.saa.ejb.cxc.service.EmailFacturaService emailFacturaService;
 
+	@EJB
+	private com.saa.ejb.cxp.service.SustentoTributarioService sustentoTributarioService;
+
+	@EJB
+	private com.saa.ejb.cxc.service.AplicacionPagoCxcService aplicacionPagoCxcService;
+
+	@EJB
+	private com.saa.ejb.cxc.dao.AplicacionPagoCxcDaoService aplicacionPagoCxcDaoService;
+
 	@PersistenceContext
 	private EntityManager em;
 
@@ -861,6 +870,17 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 			em.flush();
 
 			resultado.put("idDocumentoCxp", lqcc.getId());
+
+			// codSustento (ATS, Tabla 5) extendido a LQCC (2026-08-28): todas las lineas ya
+			// estan persistidas con su producto (copiado de CXC arriba), asi que este es el
+			// primer momento en que la excepcion por grupo tiene sentido. No bloquea la
+			// creacion del documento CXP si falla -mismo criterio que FacturaCompra-.
+			try {
+				sustentoTributarioService.resolverSiFaltaLiquidacion(lqcc);
+			} catch (Throwable e) {
+				System.out.println("ATENCION: fallo la resolucion de codSustento de la liquidacion "
+						+ lqcc.getId() + ": " + e.getMessage());
+			}
 
 			if (Long.valueOf(1L).equals(liquidacion.getFacturador().getGeneraConta())) {
 				java.time.LocalDate fechaAsiento = liquidacion.getFecha() != null
@@ -1954,23 +1974,37 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 	// =========================================================================
 
 	/**
-	 * Anula una liquidación de compra emitida.
-	 * <p>
-	 * <b>Pendiente conocido:</b> el pedido original de este endpoint incluía
-	 * verificar en {@code AplicacionPagoCxp} que el documento CXP (LQCC) no
-	 * tenga aplicaciones de pago. Hoy eso no es verificable: a diferencia de
-	 * {@code FacturaCompra}, {@code AplicacionPagoCxp} no tiene FK a
-	 * {@code LiquidacionCompraCompra} (su única FK de "documento pagado" es
-	 * {@code facturaCompra}, tipada a esa entidad) — y tampoco existe en
-	 * {@code PagoProgramado}. En otras palabras: hoy no hay ningún mecanismo
-	 * para pagar/aplicar contra un LQCC todavía. Por eso este método sólo
-	 * valida estados (no repetir anulación) y anula lo que sí existe (asiento
-	 * del LQCC); si en el futuro se implementa el pago de liquidaciones
-	 * recibidas, agregar aquí el bloqueo real antes de anular.
+	 * Corregido el 2026-08-28 (ítem 14) — ver el javadoc de la interfaz para el gap que tenía
+	 * esto: {@code AplicacionPagoCxc.liquidacion} existe y se usa activamente, a diferencia de
+	 * {@code AplicacionPagoCxp} (que no tiene FK a {@code LiquidacionCompraCompra}, confirmado
+	 * en el ítem 13 para el lado compra puro). Ahora sí se verifica antes de anular.
 	 */
 	@Override
-	public java.util.Map<String, Object> anularLiquidacion(Long idLiquidacion, String motivo, String usuario) throws Throwable {
-		System.out.println("=== anularLiquidacion | idLiquidacion=" + idLiquidacion + " | usuario=" + usuario + " ===");
+	public java.util.List<java.util.Map<String, Object>> movimientosRelacionadosLiquidacion(Long idLiquidacion)
+			throws Throwable {
+		System.out.println("=== movimientosRelacionadosLiquidacion | id=" + idLiquidacion + " ===");
+		java.util.List<java.util.Map<String, Object>> lista = new java.util.ArrayList<>();
+		if (idLiquidacion == null) {
+			return lista;
+		}
+		for (com.saa.model.cxc.AplicacionPagoCxc aplicacion
+				: aplicacionPagoCxcDaoService.selectActivasByLiquidacion(idLiquidacion)) {
+			java.util.Map<String, Object> fila = new java.util.HashMap<>();
+			fila.put("idAplicacion", aplicacion.getId());
+			fila.put("tipoDocPago", aplicacion.getTipoDocPago());
+			fila.put("montoAplicado", aplicacion.getMontoAplicado());
+			fila.put("fechaAplicacion", aplicacion.getFechaAplicacion() != null
+					? aplicacion.getFechaAplicacion().toString() : null);
+			lista.add(fila);
+		}
+		return lista;
+	}
+
+	@Override
+	public java.util.Map<String, Object> anularLiquidacion(Long idLiquidacion, String motivo, String usuario,
+			Long idUsuario, boolean anularEnCascada) throws Throwable {
+		System.out.println("=== anularLiquidacion | idLiquidacion=" + idLiquidacion + " | usuario=" + usuario
+				+ " | anularEnCascada=" + anularEnCascada + " ===");
 
 		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
 		resultado.put("exito", false);
@@ -1989,6 +2023,34 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 		String usuarioAnulacion = (usuario != null && !usuario.trim().isEmpty()) ? usuario.trim() : "SISTEMA";
 		String motivoFinal      = (motivo  != null && !motivo.trim().isEmpty())  ? motivo.trim()  : "Anulación manual";
 		java.time.LocalDateTime ahora = java.time.LocalDateTime.now();
+
+		// Movimientos relacionados (ítem 14): cobros/pagos cruzados contra esta liquidación.
+		// No hay un revertirAplicacionesDeLiquidacion bulk -- se loopea con revertirAplicacion,
+		// mismo criterio que se usó para FacturaCompra en el ítem 13.
+		java.util.List<com.saa.model.cxc.AplicacionPagoCxc> movimientos =
+				aplicacionPagoCxcDaoService.selectActivasByLiquidacion(idLiquidacion);
+		if (!movimientos.isEmpty()) {
+			if (!anularEnCascada) {
+				StringBuilder detalle = new StringBuilder();
+				for (com.saa.model.cxc.AplicacionPagoCxc m : movimientos) {
+					if (detalle.length() > 0) detalle.append("; ");
+					detalle.append("tipo ").append(m.getTipoDocPago()).append(" $")
+							.append(m.getMontoAplicado()).append(" (id ").append(m.getId()).append(")");
+				}
+				throw new IncomeException("No se puede anular la liquidación " + idLiquidacion
+						+ ": tiene " + movimientos.size() + " movimiento(s) relacionado(s) sin reversar: "
+						+ detalle + ". Reenvíe la anulación con anularEnCascada=true para reversarlos "
+						+ "todos junto con la liquidación.");
+			}
+			int reversados = 0;
+			for (com.saa.model.cxc.AplicacionPagoCxc m : movimientos) {
+				aplicacionPagoCxcService.revertirAplicacion(m.getId(),
+						"Anulación en cascada de la liquidación " + idLiquidacion + ": " + motivoFinal, idUsuario);
+				reversados++;
+			}
+			resultado.put("movimientosReversados", reversados);
+			System.out.println("✓ " + reversados + " movimiento(s) relacionado(s) reversados antes de anular la liquidación.");
+		}
 
 		com.saa.model.cxp.LiquidacionCompraCompra lqcc = liquidacion.getDocumentoCxp();
 		if (lqcc != null) {

@@ -1,12 +1,20 @@
 package com.saa.ws.rest.crd;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.crd.dao.ContratoDaoService;
+import com.saa.ejb.crd.dao.EntidadDaoService;
+import com.saa.ejb.crd.dao.ParticipeDaoService;
 import com.saa.ejb.crd.service.ContratoService;
+import com.saa.ejb.crd.service.VigenciaContratoService;
+import com.saa.ejb.crd.service.dto.ContratoConVigenciasDTO;
 import com.saa.model.crd.Contrato;
+import com.saa.model.crd.Entidad;
 import com.saa.model.crd.NombreEntidadesCredito;
+import com.saa.model.crd.Participe;
+import com.saa.rubros.EstadoContrato;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;
@@ -30,6 +38,15 @@ public class ContratoRest {
 
     @EJB
     private ContratoService contratoService;
+
+    @EJB
+    private VigenciaContratoService vigenciaContratoService;
+
+    @EJB
+    private ParticipeDaoService participeDaoService;
+
+    @EJB
+    private EntidadDaoService entidadDaoService;
 
     @Context
     private UriInfo context;
@@ -118,6 +135,72 @@ public class ContratoRest {
             respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
         return respuesta;
+    }
+
+    /**
+     * GET /rest/cntr/porEntidad/{idEntidad} — contrato ACTIVO más reciente de la entidad,
+     * con el espejo de la vigencia abierta y su historial completo de vigencias. Contrato
+     * de API congelado en docs/logica-negocio/crd/PLAN-APORTES-DEVENGO-CONTRATOS.md §4.1,
+     * actualizado el 2026-08-27: una entidad SIN contrato activo ya no es 404 — es un estado
+     * válido (aún no se le creó un contrato) y se devuelve 200 con la cabecera poblada y el
+     * contrato en blanco. El 404 queda solo para cuando la ENTIDAD no existe.
+     */
+    @GET
+    @Path("/porEntidad/{idEntidad}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response porEntidad(@PathParam("idEntidad") Long idEntidad) {
+        System.out.println("LLEGA AL SERVICIO GET porEntidad - CONTRATO - idEntidad: " + idEntidad);
+        try {
+            Entidad entidad = entidadDaoService.findById(idEntidad);
+            if (entidad == null) {
+                return Response.status(Response.Status.NOT_FOUND)
+                        .entity("La entidad " + idEntidad + " no existe")
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
+
+            ContratoConVigenciasDTO dto = new ContratoConVigenciasDTO();
+            dto.setIdEntidad(entidad.getCodigo());
+            dto.setIdentificacion(entidad.getNumeroIdentificacion());
+            dto.setRazonSocial(entidad.getRazonSocial());
+            dto.setVigencias(new ArrayList<>());
+
+            List<Participe> participes = participeDaoService.selectByEntidad(idEntidad);
+            dto.setRemuneracionUnificada(!participes.isEmpty() ? participes.get(0).getRemuneracionUnificada() : null);
+
+            Contrato contrato = contratoDaoService.selectActivoPorEntidad(idEntidad);
+            if (contrato != null) {
+                dto.setIdContrato(contrato.getCodigo());
+                dto.setEstado(contrato.getEstado());
+                dto.setEstadoTexto(textoEstadoContrato(contrato.getEstado()));
+                dto.setMontoJubilacion(contrato.getMontoAporteJubilacion());
+                dto.setMontoCesantia(contrato.getMontoAporteCesantia());
+                dto.setPorcentajeJubilacion(contrato.getPorcentajeAporteJubilacion());
+                dto.setPorcentajeCesantia(contrato.getPorcentajeAporteIndividual());
+                dto.setVigencias(vigenciaContratoService.selectByContrato(contrato.getCodigo()));
+            }
+            // Sin contrato activo: idContrato/estado/estadoTexto/montos/porcentajes quedan
+            // null y vigencias queda vacía — no es un error, ver el javadoc de arriba.
+
+            return Response.status(Response.Status.OK).entity(dto).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener el contrato de la entidad: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /** Mismo criterio que modoTexto/tipoMovimientoTexto: el backend resuelve el catálogo, no el cliente. */
+    private String textoEstadoContrato(Long estado) {
+        if (estado == null) {
+            return null;
+        }
+        if (estado == EstadoContrato.ACTIVO) {
+            return "ACTIVO";
+        }
+        if (estado == EstadoContrato.INACTIVO) {
+            return "INACTIVO";
+        }
+        return String.valueOf(estado);
     }
 
     /**

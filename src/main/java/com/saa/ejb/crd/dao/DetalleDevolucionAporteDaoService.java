@@ -26,4 +26,18 @@ public interface DetalleDevolucionAporteDaoService extends EntityDao<DetalleDevo
      * @throws Throwable    : Excepcion
      */
     List<DetalleDevolucionAporte> selectByDevoluciones(List<Long> idsDevolucion) throws Throwable;
+
+    /**
+     * El detalle cuya PRIMERA fila de Aporte es la indicada — {@code DDVAAPRT = idAporte}.
+     * Solo encuentra el detalle cuando {@code idAporte} es esa primera fila; un aporte
+     * generado por el reparto de un período adicional del MISMO registro no tiene fila propia
+     * en CRD.DDVA (ver el comentario de
+     * {@code DevolucionAporteServiceImpl.crearFilaNegativaDevolucion}) y esta consulta
+     * devuelve {@code null} para él aunque sí pertenezca a una devolución.
+     *
+     * @param idAporte : Código del aporte (CRD.APRT)
+     * @return         : El detalle, o {@code null} si ningún detalle lo referencia como primera fila
+     * @throws Throwable : Excepcion
+     */
+    DetalleDevolucionAporte selectByIdAporte(Long idAporte) throws Throwable;
 }

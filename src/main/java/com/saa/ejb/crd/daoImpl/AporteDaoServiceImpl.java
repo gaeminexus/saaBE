@@ -1,11 +1,13 @@
 package com.saa.ejb.crd.daoImpl;
 
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.crd.dao.AporteDaoService;
 import com.saa.model.crd.Aporte;
+import com.saa.rubros.CrdTipoMovimientoAporte;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
@@ -31,12 +33,15 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 	// ---------------------------------------------------------------
 	@Override
 	public Long selectCountImposicionesPersonalesPorEntidad(Long codigoEntidad) throws Throwable {
-		Query query = em.createQuery(
-			" select count(a) " +
-			" from   Aporte a " +
-			" where  a.entidad.codigo = :codigoEntidad " +
-			"   and  a.tipoAporte.codigo in (9, 11) " +
-			"   and  a.valor > 0 ");
+		// Decisión del usuario (2026-08-27, mismo criterio que G44): cuenta MESES DE DEVENGO
+		// (periodo efectivo), no filas. SQL nativo porque el periodo efectivo usa TRUNC, que
+		// no es JPQL estándar.
+		Query query = em.createNativeQuery(
+			" select count(distinct " + PERIODO_EFECTIVO_SQL + ") " +
+			" from   CRD.APRT a " +
+			" where  a.ENTDCDGO = :codigoEntidad " +
+			"   and  a.TPAPCDGO in (9, 11) " +
+			"   and  a.APRTVLRR > 0 ");
 		query.setParameter("codigoEntidad", codigoEntidad);
 		Object result = query.getSingleResult();
 		return result != null ? ((Number) result).longValue() : 0L;
@@ -47,12 +52,14 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 	// ---------------------------------------------------------------
 	@Override
 	public Long selectCountImposicionesPatronalesPorEntidad(Long codigoEntidad) throws Throwable {
-		Query query = em.createQuery(
-			" select count(a) " +
-			" from   Aporte a " +
-			" where  a.entidad.codigo = :codigoEntidad " +
-			"   and  a.tipoAporte.codigo in (13, 14) " +
-			"   and  a.valor > 0 ");
+		// Decisión del usuario (2026-08-27, mismo criterio que G44): cuenta MESES DE DEVENGO
+		// (periodo efectivo), no filas.
+		Query query = em.createNativeQuery(
+			" select count(distinct " + PERIODO_EFECTIVO_SQL + ") " +
+			" from   CRD.APRT a " +
+			" where  a.ENTDCDGO = :codigoEntidad " +
+			"   and  a.TPAPCDGO in (13, 14) " +
+			"   and  a.APRTVLRR > 0 ");
 		query.setParameter("codigoEntidad", codigoEntidad);
 		Object result = query.getSingleResult();
 		return result != null ? ((Number) result).longValue() : 0L;
@@ -94,19 +101,21 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 		}
 
 		try {
-			Query query = em.createQuery(
-				" select coalesce(sum(a.valor), 0) " +
-				" from   Aporte a " +
-				" where  a.entidad.codigo = :codigoEntidad " +
-				"   and  a.tipoAporte.codigo in :tiposAporte " +
-				"   and  a.valor > 0 " +
-				"   and  YEAR(a.fechaTransaccion)  = :anio " +
-				"   and  MONTH(a.fechaTransaccion) = :mes "
+			// Periodo efectivo (D3, 2026-08-27), no YEAR/MONTH(APRTFCTR): la fecha de caja
+			// es siempre el mes de la CARGA, nunca el del devengo. Con solo filas positivas
+			// en el WHERE, el periodo efectivo equivale a NVL(APRTPRDV, TRUNC(APRTFCTR,'MM')).
+			Query query = em.createNativeQuery(
+				" select coalesce(sum(a.APRTVLRR), 0) " +
+				" from   CRD.APRT a " +
+				" where  a.ENTDCDGO = :codigoEntidad " +
+				"   and  a.TPAPCDGO in (:tiposAporte) " +
+				"   and  a.APRTVLRR > 0 " +
+				"   and  " + PERIODO_EFECTIVO_SQL + " = :periodo "
 			);
 			query.setParameter("codigoEntidad", codigoEntidad);
 			query.setParameter("tiposAporte", tiposAporte);
-			query.setParameter("anio", anio);
-			query.setParameter("mes", mes);
+			query.setParameter("periodo",
+				java.sql.Date.valueOf(java.time.LocalDate.of(anio.intValue(), mes.intValue(), 1)));
 
 			Object resultado = query.getSingleResult();
 			return resultado != null ? ((Number) resultado).doubleValue() : 0.0;
@@ -159,17 +168,35 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 		return  query.getResultList();
 	}
 
-	/**
-	 * Cuenta la cantidad de aportes por entidad
-	 */
+	@SuppressWarnings("unchecked")
 	@Override
-	public Long selectCountByEntidad(Long idEntidad) throws Throwable {
-	    System.out.println("metodo selectCountByEntidad de AporteDaoServiceImpl");
-	    Query query = em.createQuery( " select   count(b) " + 
-	    							  " from     Aporte b " +
-	    							  " where    b.entidad.codigo = :idEntidad ");
-	    query.setParameter("idEntidad", idEntidad);
-	    return (Long) query.getSingleResult();
+	public List<Aporte> selectByEntidadTipoYFechaTransaccion(Long idEntidad, Long idTipoAporte,
+			LocalDateTime fechaTransaccion) throws Throwable {
+		System.out.println("metodo selectByEntidadTipoYFechaTransaccion de AporteDaoServiceImpl"
+				+ " - entidad: " + idEntidad + " - tipoAporte: " + idTipoAporte
+				+ " - fechaTransaccion: " + fechaTransaccion);
+		Query query = em.createQuery(
+				" select a from Aporte a " +
+				" where  a.entidad.codigo    = :idEntidad " +
+				" and    a.tipoAporte.codigo = :idTipoAporte " +
+				" and    a.fechaTransaccion  = :fechaTransaccion " +
+				" and    a.tipoMovimiento    = :tipoMovimiento ");
+		query.setParameter("idEntidad", idEntidad);
+		query.setParameter("idTipoAporte", idTipoAporte);
+		query.setParameter("fechaTransaccion", fechaTransaccion);
+		query.setParameter("tipoMovimiento", (long) CrdTipoMovimientoAporte.DEVOLUCION);
+		return query.getResultList();
+	}
+
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<Aporte> selectByDevolucion(Long idDevolucion) throws Throwable {
+		System.out.println("metodo selectByDevolucion de AporteDaoServiceImpl - devolucion: " + idDevolucion);
+		Query query = em.createQuery(
+				" select a from Aporte a " +
+				" where  a.devolucion.codigo = :idDevolucion ");
+		query.setParameter("idDevolucion", idDevolucion);
+		return query.getResultList();
 	}
 
 	/**
@@ -229,8 +256,11 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 	/**
 	 * SUPER OPTIMIZADO: Busca el aporte más antiguo (MIN codigo) con estado PARCIAL
 	 * Usuario SAA_AH = Aportes creados automáticamente por el sistema
+	 *
+	 * @deprecated Ver {@link com.saa.ejb.crd.dao.AporteDaoService#selectMinAporteParcialSistema}.
 	 */
 	@Override
+	@Deprecated
 	public Aporte selectMinAporteParcialSistema(Long idEntidad, Long idTipoAporte) throws Throwable {
 		Query query = em.createQuery(
 			" select   b " +
@@ -257,8 +287,11 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 	 * Busca el aporte más antiguo (MIN codigo) con saldo pendiente, SIN restricción de usuario
 	 * ✅ CORREGIDO: Busca CUALQUIER aporte con saldo > 0 (PENDIENTE o PARCIAL)
 	 * Esto asegura que los pagos se apliquen primero a deudas anteriores
+	 *
+	 * @deprecated Ver {@link com.saa.ejb.crd.dao.AporteDaoService#selectMinAporteConSaldo}.
 	 */
 	@Override
+	@Deprecated
 	public Aporte selectMinAporteConSaldo(Long idEntidad, Long idTipoAporte) throws Throwable {
 		Query query = em.createQuery(
 			" select   b " +
@@ -278,6 +311,142 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 		List<Aporte> resultados = query.getResultList();
 		
 		return resultados.isEmpty() ? null : resultados.get(0);
+	}
+
+	/**
+	 * Expresión SQL del "periodo efectivo" de un aporte (D3). Ver
+	 * {@link PeriodoEfectivoAporteSql} — fuente ÚNICA, no redefinir aquí ni en otra clase.
+	 */
+	private static final String PERIODO_EFECTIVO_SQL = PeriodoEfectivoAporteSql.PERIODO_EFECTIVO_SQL;
+
+	@Override
+	public Double sumValorPorEntidadTipoYDevengo(Long idEntidad, Long idTipoAporte,
+			java.time.LocalDate periodo) throws Throwable {
+		Query query = em.createNativeQuery(
+			" select   sum(a.APRTVLRR) " +
+			" from     CRD.APRT a " +
+			" where    a.ENTDCDGO = :idEntidad " +
+			"   and    a.TPAPCDGO = :idTipoAporte " +
+			"   and  " + PERIODO_EFECTIVO_SQL + " = :periodo ");
+		query.setParameter("idEntidad", idEntidad);
+		query.setParameter("idTipoAporte", idTipoAporte);
+		query.setParameter("periodo", java.sql.Date.valueOf(periodo));
+		Object resultado = query.getSingleResult();
+		return resultado != null ? ((Number) resultado).doubleValue() : 0.0;
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<Object[]> sumValorPorEntidadTipoYRangoDevengo(Long idEntidad, java.time.LocalDate desde,
+			java.time.LocalDate hasta) throws Throwable {
+		Query query = em.createNativeQuery(
+			" select   " + PERIODO_EFECTIVO_SQL + " as PERIODO_EFECTIVO, " +
+			"          a.TPAPCDGO, sum(a.APRTVLRR) " +
+			" from     CRD.APRT a " +
+			" where    a.ENTDCDGO = :idEntidad " +
+			" group by " + PERIODO_EFECTIVO_SQL + ", a.TPAPCDGO " +
+			" having   " + PERIODO_EFECTIVO_SQL + " between :desde and :hasta ");
+		query.setParameter("idEntidad", idEntidad);
+		query.setParameter("desde", java.sql.Date.valueOf(desde));
+		query.setParameter("hasta", java.sql.Date.valueOf(hasta));
+
+		List<Object[]> crudas = query.getResultList();
+		List<Object[]> resultado = new java.util.ArrayList<>();
+		for (Object[] fila : crudas) {
+			resultado.add(new Object[]{
+				aFecha(fila[0]),
+				fila[1] != null ? ((Number) fila[1]).longValue() : null,
+				fila[2] != null ? ((Number) fila[2]).doubleValue() : 0.0
+			});
+		}
+		return resultado;
+	}
+
+	/**
+	 * Convierte a {@code LocalDate} lo que devuelva el driver para una columna DATE, igual
+	 * que {@code CierreCarteraDaoServiceImpl.aFecha}: según la versión, Oracle/Hibernate
+	 * puede devolver {@code java.sql.Timestamp} o {@code java.sql.Date}.
+	 */
+	private java.time.LocalDate aFecha(Object valor) {
+		if (valor == null) {
+			return null;
+		}
+		if (valor instanceof java.sql.Timestamp) {
+			return ((java.sql.Timestamp) valor).toLocalDateTime().toLocalDate();
+		}
+		if (valor instanceof java.sql.Date) {
+			return ((java.sql.Date) valor).toLocalDate();
+		}
+		if (valor instanceof java.util.Date) {
+			return new java.sql.Timestamp(((java.util.Date) valor).getTime())
+				.toLocalDateTime().toLocalDate();
+		}
+		return java.time.LocalDate.parse(valor.toString().substring(0, 10));
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<Object[]> selectMovimientosPorEntidadYRangoDevengo(Long idEntidad, java.time.LocalDate desde,
+			java.time.LocalDate hasta) throws Throwable {
+		Query query = em.createNativeQuery(
+			" select   " + PERIODO_EFECTIVO_SQL + " as PERIODO_EFECTIVO, " +
+			"          a.TPAPCDGO, a.APRTCDGO, a.APRTFCTR, a.APRTVLRR, a.APRTTPMV, a.APRTGLSA " +
+			" from     CRD.APRT a " +
+			" where    a.ENTDCDGO = :idEntidad " +
+			"   and    ( " + PERIODO_EFECTIVO_SQL + " between :desde and :hasta " +
+			"            or " + PERIODO_EFECTIVO_SQL + " is null ) " +
+			" order by " + PERIODO_EFECTIVO_SQL + " nulls last, a.TPAPCDGO, a.APRTFCTR, a.APRTCDGO ");
+		query.setParameter("idEntidad", idEntidad);
+		query.setParameter("desde", java.sql.Date.valueOf(desde));
+		query.setParameter("hasta", java.sql.Date.valueOf(hasta));
+
+		List<Object[]> crudas = query.getResultList();
+		List<Object[]> resultado = new java.util.ArrayList<>();
+		for (Object[] fila : crudas) {
+			resultado.add(new Object[]{
+				aFecha(fila[0]),
+				fila[1] != null ? ((Number) fila[1]).longValue() : null,
+				fila[2] != null ? ((Number) fila[2]).longValue() : null,
+				aFechaHora(fila[3]),
+				fila[4] != null ? ((Number) fila[4]).doubleValue() : 0.0,
+				fila[5] != null ? ((Number) fila[5]).longValue() : null,
+				fila[6] != null ? fila[6].toString() : null
+			});
+		}
+		return resultado;
+	}
+
+	/** Convierte a {@code LocalDateTime} lo que devuelva el driver para una columna TIMESTAMP. */
+	private java.time.LocalDateTime aFechaHora(Object valor) {
+		if (valor == null) {
+			return null;
+		}
+		if (valor instanceof java.sql.Timestamp) {
+			return ((java.sql.Timestamp) valor).toLocalDateTime();
+		}
+		if (valor instanceof java.util.Date) {
+			return new java.sql.Timestamp(((java.util.Date) valor).getTime()).toLocalDateTime();
+		}
+		return java.time.LocalDateTime.parse(valor.toString());
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<Object[]> selectPeriodosAnticipadosConSaldo(Long idEntidad, Long idTipoAporte,
+			java.time.LocalDate mesActual) throws Throwable {
+		Query query = em.createQuery(
+			" select   a.periodoDevengo, sum(a.valor) " +
+			" from     Aporte a " +
+			" where    a.entidad.codigo = :idEntidad " +
+			"   and    a.tipoAporte.codigo = :idTipoAporte " +
+			"   and    a.periodoDevengo > :mesActual " +
+			" group by a.periodoDevengo " +
+			" having   sum(a.valor) > 0.01 " +
+			" order by a.periodoDevengo desc ");
+		query.setParameter("idEntidad", idEntidad);
+		query.setParameter("idTipoAporte", idTipoAporte);
+		query.setParameter("mesActual", mesActual);
+		return query.getResultList();
 	}
 
 	/**
@@ -643,16 +812,18 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 	@SuppressWarnings("unchecked")
 	public List<Object[]> selectCountImposicionesJubilacionPorEntidad(java.time.LocalDateTime fechaCorte) throws Throwable {
 		System.out.println("AporteDaoServiceImpl.selectCountImposicionesJubilacionPorEntidad fechaCorte: " + fechaCorte);
-		Query query = em.createQuery(
-			" select   a.entidad.codigo, count(a.codigo) " +
-			" from     Aporte a " +
-			" join     a.tipoAporte ta " +
-			" where    ta.estado = 1 " +
-			"   and    a.valor > 0 " +
-			"   and    a.fechaTransaccion <= :fechaCorte " +
-			" group by a.entidad.codigo "
+		// Decisión del usuario (2026-08-27): cuenta MESES DE DEVENGO (periodo efectivo), no
+		// filas. SQL nativo porque el periodo efectivo usa TRUNC, que no es JPQL estándar.
+		Query query = em.createNativeQuery(
+			" select   a.ENTDCDGO, count(distinct " + PERIODO_EFECTIVO_SQL + ") " +
+			" from     CRD.APRT a " +
+			" join     CRD.TPAP ta on ta.TPAPCDGO = a.TPAPCDGO " +
+			" where    ta.TPAPIDST = 1 " +
+			"   and    a.APRTVLRR > 0 " +
+			"   and    a.APRTFCTR <= :fechaCorte " +
+			" group by a.ENTDCDGO "
 		);
-		query.setParameter("fechaCorte", fechaCorte);
+		query.setParameter("fechaCorte", java.sql.Timestamp.valueOf(fechaCorte));
 		return query.getResultList();
 	}
 
@@ -804,6 +975,42 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 			e.printStackTrace();
 			// NO lanzar excepción - retornar 0.0 para no detener el proceso
 			return 0.0;
+		}
+	}
+
+	@Override
+	public List<Object[]> sumValorPorTipoAporteByCarga(Long idCarga) throws Throwable {
+		System.out.println("AporteDaoServiceImpl.sumValorPorTipoAporteByCarga - Carga: " + idCarga);
+
+		try {
+			// ⚠️ TRANSITORIO (2026-08-28/29) — filtra por a.idAsoprep, NO por a.cargaArchivo,
+			// a propósito. CRARCDGO es la columna gobernada (FK + índice, DDL-TRAZABILIDAD-
+			// CARGA-PETRO.sql) y es la que se sigue llenando en cargas nuevas, pero idAsoprep
+			// es la trazabilidad de carga que YA EXISTÍA desde antes (usada en vivo por
+			// AporteDaoServiceImpl.selectByEntidadTipoYCarga/selectAporteAdelantado) y es lo
+			// único poblado en el histórico. Cambiar este filtro a a.cargaArchivo.codigo antes
+			// de correr y verificar en producción 78_BACKFILL_CRARCDGO_APORTES.sql dejaría el
+			// asiento leyendo una columna a medio llenar y saldría corto en silencio — el
+			// mismo error que la trazabilidad se creó para evitar.
+			// Migrar cuando: (a) el backfill corrió en producción, y (b) su control 3.1 (aportes
+			// con idAsoprep sin CRARCDGO) da 0. Ahí este WHERE cambia a a.cargaArchivo.codigo.
+			Query query = em.createQuery(
+				" select   a.tipoAporte.codigo, sum(a.valor) " +
+				" from     Aporte a " +
+				" where    a.idAsoprep = :idCarga " +
+				" group by a.tipoAporte.codigo " +
+				" order by a.tipoAporte.codigo "
+			);
+			query.setParameter("idCarga", idCarga);
+
+			List<Object[]> resultados = query.getResultList();
+			System.out.println("  Tipos de aporte de la carga: " + (resultados != null ? resultados.size() : 0));
+			return resultados;
+
+		} catch (Exception e) {
+			System.err.println("Error en sumValorPorTipoAporteByCarga: " + e.getMessage());
+			e.printStackTrace();
+			return new java.util.ArrayList<>();
 		}
 	}
 

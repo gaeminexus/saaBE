@@ -1656,8 +1656,32 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 }
 
 @Override
-public java.util.Map<String, Object> anularRetencionV2(Long idRetencion, String motivo, String usuario) throws Throwable {
-	System.out.println("=== anularRetencionV2 | idRetencion=" + idRetencion + " | usuario=" + usuario + " ===");
+public java.util.List<java.util.Map<String, Object>> movimientosRelacionadosRetencionV2(Long idRetencion)
+		throws Throwable {
+	System.out.println("=== movimientosRelacionadosRetencionV2 | idRetencion=" + idRetencion + " ===");
+	java.util.List<java.util.Map<String, Object>> lista = new java.util.ArrayList<>();
+	if (idRetencion == null) {
+		return lista;
+	}
+	for (com.saa.model.cxp.AplicacionPagoCxp aplicacion :
+			aplicacionPagoCxpDaoService.selectActivasByDocumento("RETENCION_V2", idRetencion)) {
+		java.util.Map<String, Object> fila = new java.util.HashMap<>();
+		fila.put("idAplicacion", aplicacion.getId());
+		fila.put("idFacturaCompra", aplicacion.getFacturaCompra() != null
+				? aplicacion.getFacturaCompra().getId() : null);
+		fila.put("montoAplicado", aplicacion.getMontoAplicado());
+		fila.put("fechaAplicacion", aplicacion.getFechaAplicacion() != null
+				? aplicacion.getFechaAplicacion().toString() : null);
+		lista.add(fila);
+	}
+	return lista;
+}
+
+@Override
+public java.util.Map<String, Object> anularRetencionV2(Long idRetencion, String motivo, String usuario,
+		Long idUsuario, boolean anularEnCascada) throws Throwable {
+	System.out.println("=== anularRetencionV2 | idRetencion=" + idRetencion + " | usuario=" + usuario
+			+ " | anularEnCascada=" + anularEnCascada + " ===");
 
 	java.util.Map<String, Object> resultado = new java.util.HashMap<>();
 	resultado.put("exito", false);
@@ -1680,19 +1704,34 @@ public java.util.Map<String, Object> anularRetencionV2(Long idRetencion, String 
 	String motivoFinal      = (motivo  != null && !motivo.trim().isEmpty())  ? motivo.trim()  : "Anulación manual";
 	java.time.LocalDateTime ahora = java.time.LocalDateTime.now();
 
-	// 3.5. Reversar el abono que esta retención hizo sobre la factura de compra
-	try {
-		int reversadas = aplicacionPagoCxpService.revertirAplicacionesDeDocumento(
-				"RETENCION_V2", idRetencion, motivoFinal, null);
-		if (reversadas > 0) {
-			resultado.put("aplicacionesReversadas", reversadas);
-			System.out.println("✓ Aplicaciones de pago reversadas: " + reversadas);
+	// 3.5. Movimientos relacionados (ítem 15, 2026-08-28): esta retención V2 reduce
+	// facturas de compra vía AplicacionPagoCxp; no se anula en silencio si tiene
+	// aplicaciones activas, salvo que se pida cascada explícitamente.
+	java.util.List<com.saa.model.cxp.AplicacionPagoCxp> movimientos =
+			aplicacionPagoCxpDaoService.selectActivasByDocumento("RETENCION_V2", idRetencion);
+	if (!movimientos.isEmpty()) {
+		if (!anularEnCascada) {
+			StringBuilder detalle = new StringBuilder();
+			for (com.saa.model.cxp.AplicacionPagoCxp m : movimientos) {
+				if (detalle.length() > 0) detalle.append("; ");
+				detalle.append("factura compra ")
+						.append(m.getFacturaCompra() != null ? m.getFacturaCompra().getId() : "?")
+						.append(" por $").append(m.getMontoAplicado())
+						.append(" (id aplicación ").append(m.getId()).append(")");
+			}
+			throw new IncomeException("No se puede anular la retención V2 " + idRetencion
+					+ ": tiene " + movimientos.size() + " movimiento(s) relacionado(s) sin reversar: "
+					+ detalle + ". Reenvíe la anulación con anularEnCascada=true para reversarlos "
+					+ "todos junto con la retención.");
 		}
-	} catch (Exception e) {
-		System.err.println("⚠ Error al reversar las aplicaciones de pago: " + e.getMessage());
-		resultado.put("advertenciaAplicacion",
-				"La retención V2 fue anulada pero ocurrió un error al reversar el pago "
-				+ "aplicado a la factura: " + e.getMessage());
+		int reversadas = 0;
+		for (com.saa.model.cxp.AplicacionPagoCxp m : movimientos) {
+			aplicacionPagoCxpService.revertirAplicacion(m.getId(),
+					"Anulación en cascada de la retención V2 " + idRetencion + ": " + motivoFinal, idUsuario);
+			reversadas++;
+		}
+		resultado.put("aplicacionesReversadas", reversadas);
+		System.out.println("✓ Aplicaciones de pago reversadas: " + reversadas);
 	}
 
 	// 4. Anular asiento contable vinculado (si existe)

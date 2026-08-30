@@ -44,6 +44,20 @@ public class CalculadoraAmortizacionServiceImpl implements CalculadoraAmortizaci
      */
     private static final int MAX_CUOTAS = 600;
 
+    /**
+     * Segunda ola, pedido 2 (2026-08-27): factor del seguro de desgravamen sobre el saldo de
+     * capital de cada cuota, confirmado por el usuario ({@code saldo * 1.12 / 1000}, NO el
+     * capital amortizado en la cuota). Solo se aplica cuando
+     * {@code ParametrosAmortizacion.calcularDesgravamenSobreSaldo} es {@code true} — ver su
+     * javadoc.
+     *
+     * <p>Paquete-privada (no {@code private}) a propósito desde 2026-08-29:
+     * {@code AbonoCapitalPrestamoServiceImpl} (mismo paquete) la reutiliza para el mismo
+     * cálculo en su propio bucle de amortización — mismo motivo, una sola cifra, dos motores
+     * que la comparten en vez de cada uno con su copia (lo que ya se desincronizó una vez).</p>
+     */
+    static final double FACTOR_DESGRAVAMEN_SOBRE_SALDO = 1.12 / 1000.0;
+
     @EJB
     private FechaService fechaService;
 
@@ -64,6 +78,11 @@ public class CalculadoraAmortizacionServiceImpl implements CalculadoraAmortizaci
 
         double desgravamenPorCuota = nvl(params.getDesgravamenPorCuota());
         double seguroIncendioPorCuota = nvl(params.getSeguroIncendioPorCuota());
+        boolean calcularDesgravamenSobreSaldo = Boolean.TRUE.equals(params.getCalcularDesgravamenSobreSaldo());
+        // 2026-08-29: mapa opcional numeroCuota-nuevo → seguro de incendio, ver javadoc de
+        // ParametrosAmortizacion.seguroPorNumeroCuota. Null-safe: si no viene, cada fila cae al
+        // valor fijo seguroIncendioPorCuota, comportamiento idéntico al de antes de este cambio.
+        java.util.Map<Long, Double> seguroPorNumeroCuota = params.getSeguroPorNumeroCuota();
 
         // D8: días reales del mes inicial, SIN el +1 que contaba ambos extremos.
         LocalDate ultimoDiaMesInicio = fechaService.ultimoDiaMesAnioLocal(
@@ -76,15 +95,17 @@ public class CalculadoraAmortizacionServiceImpl implements CalculadoraAmortizaci
 
         if (tieneCuotaCero) {
             saldoCapital = agregarCuotaCero(tabla, capital, tasaDiaria, fechaInicio, fechaInicioLocal,
-                desgravamenPorCuota, seguroIncendioPorCuota);
+                desgravamenPorCuota, seguroIncendioPorCuota, calcularDesgravamenSobreSaldo);
         }
 
         if (tipoAmortizacion == 2L) {
             calcularAlemana(tabla, capital, saldoCapital, tasaMensual, plazo, mesesGracia,
-                interesesMesInicial, fechaInicio, desgravamenPorCuota, seguroIncendioPorCuota);
+                interesesMesInicial, fechaInicio, desgravamenPorCuota, seguroIncendioPorCuota,
+                calcularDesgravamenSobreSaldo, seguroPorNumeroCuota);
         } else {
             calcularFrancesa(tabla, capital, saldoCapital, tasaMensual, plazo, mesesGracia,
-                interesesMesInicial, fechaInicio, desgravamenPorCuota, seguroIncendioPorCuota);
+                interesesMesInicial, fechaInicio, desgravamenPorCuota, seguroIncendioPorCuota,
+                calcularDesgravamenSobreSaldo, seguroPorNumeroCuota);
         }
 
         validarNingunaCuotaEnCero(tabla, plazo);
@@ -154,7 +175,7 @@ public class CalculadoraAmortizacionServiceImpl implements CalculadoraAmortizaci
      */
     private double agregarCuotaCero(List<CuotaProyectada> tabla, double capital, double tasaDiaria,
             LocalDateTime fechaInicio, LocalDate fechaInicioLocal, double desgravamenPorCuota,
-            double seguroIncendioPorCuota) throws Throwable {
+            double seguroIncendioPorCuota, boolean calcularDesgravamenSobreSaldo) throws Throwable {
 
         LocalDate finDelMesSiguiente = fechaInicioLocal.plusMonths(1);
         LocalDate ultimoDia = fechaService.ultimoDiaMesAnioLocal(
@@ -164,7 +185,12 @@ public class CalculadoraAmortizacionServiceImpl implements CalculadoraAmortizaci
         long diasReales = ChronoUnit.DAYS.between(fechaInicioLocal, ultimoDia);
         double interes = redondear(capital * tasaDiaria * diasReales);
         double cuota = interes; // cuota 0: no amortiza capital, cuota = interés
-        double desgravamen = redondear(desgravamenPorCuota);
+        // La cuota 0 no amortiza nada: su "saldo de capital" es el capital completo, sea antes
+        // o después (los dos coinciden). Pedido 2: si el flag está activo, el desgravamen sale
+        // de ese saldo (= capital), no del valor fijo.
+        double desgravamen = calcularDesgravamenSobreSaldo
+            ? redondear(capital * FACTOR_DESGRAVAMEN_SOBRE_SALDO)
+            : redondear(desgravamenPorCuota);
         double seguro = redondear(seguroIncendioPorCuota);
         double total = redondear(cuota + desgravamen + seguro);
 
@@ -191,7 +217,8 @@ public class CalculadoraAmortizacionServiceImpl implements CalculadoraAmortizaci
      */
     private void calcularFrancesa(List<CuotaProyectada> tabla, double capital, double saldoCapital,
             double tasaMensual, int plazo, int mesesGracia, double interesesMesInicial,
-            LocalDateTime fechaInicio, double desgravamenPorCuota, double seguroIncendioPorCuota)
+            LocalDateTime fechaInicio, double desgravamenPorCuota, double seguroIncendioPorCuota,
+            boolean calcularDesgravamenSobreSaldo, java.util.Map<Long, Double> seguroPorNumeroCuota)
             throws Throwable {
 
         double cuotaFija = redondear(capital * (tasaMensual * Math.pow(1 + tasaMensual, plazo))
@@ -226,10 +253,19 @@ public class CalculadoraAmortizacionServiceImpl implements CalculadoraAmortizaci
             // D1: cuota = capital + interés, igual que ya hacía la alemana.
             double cuota = redondear(capitalCuota + interes);
 
+            // Pedido 2: el desgravamen se calcula sobre el saldo de capital ANTES de amortizar
+            // esta cuota (saldoAntes) — no sobre saldoCapital (después). Usar el de después
+            // correría todo el cuadro un periodo: la prima de la cuota i pasaría a reflejar la
+            // exposición de la cuota i+1.
+            double desgravamenCuota = calcularDesgravamenSobreSaldo
+                ? redondear(saldoAntes * FACTOR_DESGRAVAMEN_SOBRE_SALDO)
+                : redondear(desgravamenPorCuota);
+
             LocalDateTime fechaVencimiento = fechaVencimientoCuota(fechaInicio, i, mesesGracia);
 
+            double seguroCuota = resolverSeguroCuota(i, seguroPorNumeroCuota, seguroIncendioPorCuota);
             tabla.add(fila(i, fechaVencimiento, capitalCuota, interes, cuota, saldoCapital,
-                desgravamenPorCuota, seguroIncendioPorCuota));
+                desgravamenCuota, seguroCuota));
         }
     }
 
@@ -239,7 +275,8 @@ public class CalculadoraAmortizacionServiceImpl implements CalculadoraAmortizaci
      */
     private void calcularAlemana(List<CuotaProyectada> tabla, double capital, double saldoCapital,
             double tasaMensual, int plazo, int mesesGracia, double interesesMesInicial,
-            LocalDateTime fechaInicio, double desgravamenPorCuota, double seguroIncendioPorCuota)
+            LocalDateTime fechaInicio, double desgravamenPorCuota, double seguroIncendioPorCuota,
+            boolean calcularDesgravamenSobreSaldo, java.util.Map<Long, Double> seguroPorNumeroCuota)
             throws Throwable {
 
         double capitalFijo = redondear(capital / plazo);
@@ -265,11 +302,33 @@ public class CalculadoraAmortizacionServiceImpl implements CalculadoraAmortizaci
 
             double cuota = redondear(capitalCuota + interes);
 
+            // Pedido 2: mismo criterio que la francesa — saldo ANTES de amortizar esta cuota.
+            double desgravamenCuota = calcularDesgravamenSobreSaldo
+                ? redondear(saldoAntes * FACTOR_DESGRAVAMEN_SOBRE_SALDO)
+                : redondear(desgravamenPorCuota);
+
             LocalDateTime fechaVencimiento = fechaVencimientoCuota(fechaInicio, i, mesesGracia);
 
+            double seguroCuota = resolverSeguroCuota(i, seguroPorNumeroCuota, seguroIncendioPorCuota);
             tabla.add(fila(i, fechaVencimiento, capitalCuota, interes, cuota, saldoCapital,
-                desgravamenPorCuota, seguroIncendioPorCuota));
+                desgravamenCuota, seguroCuota));
         }
+    }
+
+    /**
+     * Seguro de incendio de la cuota nueva número {@code numeroCuota}: el del mapa si tiene una
+     * entrada para ese número, si no el valor fijo de respaldo. Ver javadoc de
+     * {@code ParametrosAmortizacion.seguroPorNumeroCuota}.
+     */
+    private double resolverSeguroCuota(int numeroCuota, java.util.Map<Long, Double> seguroPorNumeroCuota,
+            double seguroIncendioPorCuotaFijo) {
+        if (seguroPorNumeroCuota != null) {
+            Double seguro = seguroPorNumeroCuota.get((long) numeroCuota);
+            if (seguro != null) {
+                return seguro;
+            }
+        }
+        return seguroIncendioPorCuotaFijo;
     }
 
     private LocalDateTime fechaVencimientoCuota(LocalDateTime fechaInicio, int numeroCuota, int mesesGracia)
@@ -282,10 +341,12 @@ public class CalculadoraAmortizacionServiceImpl implements CalculadoraAmortizaci
     }
 
     private CuotaProyectada fila(int numeroCuota, LocalDateTime fechaVencimiento, double capital,
-            double interes, double cuota, double saldoCapital, double desgravamenPorCuota,
-            double seguroIncendioPorCuota) {
-        double desgravamen = redondear(desgravamenPorCuota);
-        double seguro = redondear(seguroIncendioPorCuota);
+            double interes, double cuota, double saldoCapital, double desgravamenCuota,
+            double seguroCuota) {
+        // desgravamenCuota y seguroCuota ya vienen resueltos por el llamador (fijo, sobre saldo,
+        // o por el mapa de preservación por cuota); acá solo se redondea, no se decide de nuevo.
+        double desgravamen = redondear(desgravamenCuota);
+        double seguro = redondear(seguroCuota);
 
         CuotaProyectada fila = new CuotaProyectada();
         fila.setNumeroCuota(Double.valueOf(numeroCuota));

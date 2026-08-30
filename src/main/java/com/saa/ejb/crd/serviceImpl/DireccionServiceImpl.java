@@ -6,6 +6,7 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.crd.dao.DireccionDaoService;
 import com.saa.ejb.crd.service.DireccionService;
+import com.saa.ejb.crd.service.EntidadService;
 import com.saa.model.crd.Direccion;
 import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.rubros.Estado;
@@ -18,6 +19,9 @@ public class DireccionServiceImpl implements DireccionService {
 
     @EJB
     private DireccionDaoService direccionDaoService;
+
+    @EJB
+    private EntidadService entidadService;
 
     @Override
     public Direccion selectById(Long id) throws Throwable {
@@ -78,5 +82,13 @@ public class DireccionServiceImpl implements DireccionService {
     public List<Direccion> selectByParent(Long codigoEntidad) throws Throwable {
         System.out.println("selectByParent DireccionService codigoEntidad: " + codigoEntidad);
         return direccionDaoService.selectByParent(codigoEntidad);
+    }
+
+    @Override
+    public Direccion saveSingle(Direccion direccion, String usuario) throws Throwable {
+        System.out.println("saveSingle(Direccion, usuario) - usuario: " + usuario);
+        direccion = saveSingle(direccion);
+        entidadService.sellarActualizacion(direccion.getEntidad().getCodigo(), usuario);
+        return direccion;
     }
 }

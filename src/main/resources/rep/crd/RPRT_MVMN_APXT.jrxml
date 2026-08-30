@@ -11,10 +11,17 @@
 	<parameter name="P_TPAPCDGO" class="java.lang.Long"/>
 	<parameter name="P_IMAGEN" class="java.awt.Image"/>
 	<parameter name="P_USUARIO" class="java.lang.String"/>
-	<query language="SQL"><![CDATA[SELECT   *
-FROM	 crd.APRT a, crd.TPAP t, crd.ENTD e 
-WHERE	 a.TPAPCDGO  = t.TPAPCDGO 
-		 AND   a.ENTDCDGO = e.ENTDCDGO 
+	<query language="SQL"><![CDATA[SELECT   a.APRTCDGO, a.FLLLCDGO, a.ENTDCDGO, a.CNTRCDGO, a.TPAPCDGO, a.APRTFCTR, a.APRTGLSA,
+         a.APRTVLRR, a.APRTVLPG, a.APRTSLDO, a.APRTIDAS, a.APRTFCRG, a.APRTUSRG, a.APRTIDST,
+         t.TPAPCDGO AS TPAP_TPAPCDGO, t.TPAPNMBR, t.TPAPCSBC, t.TPAPIDST,
+         e.ENTDCDGO AS ENTD_ENTDCDGO, e.FLLLCDGO AS ENTD_FLLLCDGO, e.TPHDCDGO, e.TPDNCDGO,
+         e.ENTDNMID, e.ENTDRZNS, e.ENTDNMCF, e.ENTDNMCM, e.ENTDFCNC, e.TPVVCDGO, e.ENTDSCPB,
+         e.ENTDCRPR, e.ENTDCRIN, e.ENTDTLFN, e.ENTDCPVR, e.ENTDCIVR, e.ENTDTLVR, e.ENTDMGRD,
+         e.ENTDMVLI, e.ENTDIDCD, e.ENTDPRSM, e.ENTDBSQD, e.ENTDIPIN, e.ENTDUSIN, e.ENTDFCIN,
+         e.ENTDIPMD, e.ENTDUSMD, e.ENTDFCMD, e.ENTDIDST, e.ENTDURFL, e.ENTDRLPC
+FROM	 crd.APRT a, crd.TPAP t, crd.ENTD e
+WHERE	 a.TPAPCDGO  = t.TPAPCDGO
+		 AND   a.ENTDCDGO = e.ENTDCDGO
 		 AND   a.ENTDCDGO = $P{P_ENTDCDGO}
 	     AND   a.TPAPCDGO =  $P{P_TPAPCDGO}
 	     ORDER BY a.APRTFCTR ASC]]></query>
@@ -74,9 +81,9 @@ WHERE	 a.TPAPCDGO  = t.TPAPCDGO
 		<property name="com.jaspersoft.studio.field.name" value="APRTIDST"/>
 		<property name="com.jaspersoft.studio.field.label" value="APRTIDST"/>
 	</field>
-	<field name="COLUMN_15" class="java.math.BigDecimal">
-		<property name="com.jaspersoft.studio.field.name" value="TPAPCDGO"/>
-		<property name="com.jaspersoft.studio.field.label" value="TPAPCDGO"/>
+	<field name="TPAP_TPAPCDGO" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="TPAP_TPAPCDGO"/>
+		<property name="com.jaspersoft.studio.field.label" value="TPAP_TPAPCDGO"/>
 	</field>
 	<field name="TPAPNMBR" class="java.lang.String">
 		<property name="com.jaspersoft.studio.field.name" value="TPAPNMBR"/>
@@ -90,13 +97,13 @@ WHERE	 a.TPAPCDGO  = t.TPAPCDGO
 		<property name="com.jaspersoft.studio.field.name" value="TPAPIDST"/>
 		<property name="com.jaspersoft.studio.field.label" value="TPAPIDST"/>
 	</field>
-	<field name="COLUMN_19" class="java.math.BigDecimal">
-		<property name="com.jaspersoft.studio.field.name" value="ENTDCDGO"/>
-		<property name="com.jaspersoft.studio.field.label" value="ENTDCDGO"/>
+	<field name="ENTD_ENTDCDGO" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="ENTD_ENTDCDGO"/>
+		<property name="com.jaspersoft.studio.field.label" value="ENTD_ENTDCDGO"/>
 	</field>
-	<field name="COLUMN_20" class="java.math.BigDecimal">
-		<property name="com.jaspersoft.studio.field.name" value="FLLLCDGO"/>
-		<property name="com.jaspersoft.studio.field.label" value="FLLLCDGO"/>
+	<field name="ENTD_FLLLCDGO" class="java.math.BigDecimal">
+		<property name="com.jaspersoft.studio.field.name" value="ENTD_FLLLCDGO"/>
+		<property name="com.jaspersoft.studio.field.label" value="ENTD_FLLLCDGO"/>
 	</field>
 	<field name="TPHDCDGO" class="java.math.BigDecimal">
 		<property name="com.jaspersoft.studio.field.name" value="TPHDCDGO"/>

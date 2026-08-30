@@ -193,7 +193,14 @@ public class FacturaRest {
 
 	/**
 	 * Anula una factura y su asiento contable vinculado.
-	 * Body JSON: { "idFactura": 123, "motivo": "Descripción opcional" }
+	 * Body JSON: { "idFactura": 123, "motivo": "Descripción opcional", "usuario": "jperez",
+	 *              "idUsuario": 5, "anularEnCascada": false }
+	 * <p>
+	 * <b>Cambio de comportamiento (ítem 14, 2026-08-28):</b> si la factura tiene movimientos
+	 * relacionados (cobros, notas, retenciones, anticipos cruzados) y no viene
+	 * {@code anularEnCascada=true}, responde <b>409 Conflict</b> en vez de anular — antes
+	 * reversaba todo en silencio. Es un cambio deliberado, no una regresión; ver el javadoc de
+	 * {@code FacturaService.anularFactura}.
 	 */
 	@POST
 	@Path("/anular")
@@ -205,6 +212,8 @@ public class FacturaRest {
 			Long idFactura  = getLongParam(params, "idFactura");
 			String motivo   = (String) params.get("motivo");
 			String usuario  = (String) params.get("usuario");
+			Long idUsuario  = getLongParam(params, "idUsuario");
+			boolean anularEnCascada = params != null && Boolean.TRUE.equals(params.get("anularEnCascada"));
 
 			if (idFactura == null) {
 				java.util.Map<String, Object> err = new java.util.HashMap<>();
@@ -221,12 +230,19 @@ public class FacturaRest {
 						.entity(err).type(MediaType.APPLICATION_JSON).build();
 			}
 
-			java.util.Map<String, Object> resultado = facturaService.anularFactura(idFactura, motivo, usuario);
+			java.util.Map<String, Object> resultado =
+					facturaService.anularFactura(idFactura, motivo, usuario, idUsuario, anularEnCascada);
 
 			boolean exito = Boolean.TRUE.equals(resultado.get("exito"));
 			return Response.status(exito ? Response.Status.OK : Response.Status.BAD_REQUEST)
 					.entity(resultado).type(MediaType.APPLICATION_JSON).build();
 
+		} catch (com.saa.basico.util.IncomeException e) {
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", e.getMessage());
+			return Response.status(Response.Status.CONFLICT)
+					.entity(err).type(MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			System.err.println("ERROR en anularFactura REST: " + e.getMessage());
 			e.printStackTrace();
@@ -236,6 +252,26 @@ public class FacturaRest {
 			err.put("error", e.getMessage());
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
 					.entity(err).type(MediaType.APPLICATION_JSON).build();
+		}
+	}
+
+	/**
+	 * Movimientos relacionados a una factura de venta (cobros, notas, retenciones, anticipos
+	 * cruzados) — para que el frontend muestre la lista antes de preguntar "¿anular con todos
+	 * los movimientos?" (ítem 14).
+	 */
+	@GET
+	@Path("/movimientosRelacionados/{id}")
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response movimientosRelacionados(@PathParam("id") Long id) {
+		System.out.println("LLEGA AL SERVICIO GET Factura/movimientosRelacionados id: " + id);
+		try {
+			java.util.List<java.util.Map<String, Object>> lista = facturaService.movimientosRelacionadosFactura(id);
+			return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+		} catch (Throwable e) {
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+					.entity("Error al consultar movimientos relacionados: " + e.getMessage())
+					.type(MediaType.APPLICATION_JSON).build();
 		}
 	}
 

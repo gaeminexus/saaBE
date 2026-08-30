@@ -132,6 +132,11 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
     @EJB private com.saa.ejb.cxp.service.AplicacionPagoCxpService aplicacionPagoCxpService;
 
+    // T3 (ATS): resuelve FCTCCSUS al registrar una factura de compra. No debe poder abortar el
+    // registro del documento ni bloquear el lote -ver el uso en registrarFacturaCompra y el
+    // marcado de "sustentoTributarioPendiente" en los dos call-sites de PASO 3-.
+    @EJB private com.saa.ejb.cxp.service.SustentoTributarioService sustentoTributarioService;
+
     // El MISMO resolutor que usa la aplicación de pago, a nivel de DAO. Se llama
     // al DAO y no a AplicacionPagoCxpService.resolverFacturaCompraPorNumero
     // porque ese comunica el fallo con IncomeException, anotada
@@ -640,6 +645,13 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             doc.setFechaRegistroBD(LocalDateTime.now());
             doc.setUsuarioRegistroBD(em.find(Usuario.class, idUsuario));
             doc.setEstadoDocumento(ESTADO_REGISTRADO_BD);
+            // T3 (ATS): no bloquea el registro, solo lo anota en la observación del documento
+            // -mismo mecanismo de "pendiente por documento" que ya usa este proceso, pero sin
+            // frenar el registro como sí hace pendienteClasificacion arriba-.
+            if (Boolean.TRUE.equals(resultadoBD.get("sustentoTributarioPendiente"))) {
+                doc.setObservacion("Sustento tributario (codSustento) sin resolver: "
+                        + resultadoBD.get("advertenciaSustentoTributario"));
+            }
             documentoCxpDaoService.save(doc, doc.getId());
 
             // ── Generar asiento contable (CXP) ────────────────────────────────
@@ -837,6 +849,11 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             doc.setUsuarioRegistroBD(em.find(Usuario.class, idUsuario));
             doc.setEstadoDocumento(ESTADO_REGISTRADO_BD);
             doc.setObservacion(null); // limpiar cualquier observación previa (ej: "Productos pendientes de clasificación")
+            // T3 (ATS): igual que en procesarDocumento, no bloquea, solo anota.
+            if (Boolean.TRUE.equals(resultado.get("sustentoTributarioPendiente"))) {
+                doc.setObservacion("Sustento tributario (codSustento) sin resolver: "
+                        + resultado.get("advertenciaSustentoTributario"));
+            }
             documentoCxpDaoService.save(doc, doc.getId());
 
             // ── Generar asiento contable (CXP) ────────────────────────────────
@@ -1407,6 +1424,21 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             reembolsosLeidos = grabarReembolsosDesdeXml(xmlDoc, factura, productosReembolso);
         }
 
+        // ── T3 (ATS): resolver codSustento (FCTCCSUS) ────────────────────────
+        // Todas las lineas ya estan grabadas (incluidas las de valores de terceros), asi que
+        // este es el primer momento en que "el grupo con mayor base imponible" tiene sentido.
+        // NO bloquea el lote si no se puede resolver -decision explicita, distinta del
+        // bloqueante PROVEEDOR_SIN_CUENTA del PASO 2-: se deja nulo y se marca como pendiente,
+        // siguiendo el mismo mecanismo no bloqueante que ya usa "advertenciaReembolso" arriba.
+        boolean sustentoPendiente = false;
+        try {
+            sustentoPendiente = sustentoTributarioService.resolverSiFalta(factura) == null;
+        } catch (Throwable e) {
+            System.out.println("ATENCION: fallo la resolucion de codSustento de la factura "
+                    + factura.getId() + ": " + e.getMessage());
+            sustentoPendiente = true;
+        }
+
         Map<String, Object> r = new HashMap<>();
         r.put("idDocumentoBD", factura.getId());
         r.put("tipoTablaDestino", "FACTURA_COMPRA");
@@ -1414,6 +1446,14 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         r.put("productosPendientes", new ArrayList<>());
         r.put("pendienteClasificacion", false);
         if (observacionTerceros != null) r.put("valoresTerceros", observacionTerceros);
+        if (sustentoPendiente) {
+            r.put("sustentoTributarioPendiente", true);
+            r.put("advertenciaSustentoTributario", "La factura " + factura.getId() + " quedo sin"
+                    + " codSustento (Tabla 5 del ATS) resuelto: ninguna de sus lineas pertenece a"
+                    + " un grupo de producto con sustento por defecto configurado, o hubo un error"
+                    + " al resolverlo. Corrijalo con PUT /rest/fctc/sustento/" + factura.getId()
+                    + " antes de generar el ATS.");
+        }
 
         if (esReembolso) {
             r.put("esReembolso", true);
@@ -1914,14 +1954,34 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
     /**
      * Verifica si el titular tiene cuenta contable CxP (tipoCuenta=1) asignada
-     * para la empresa EN SU ROL DE PROVEEDOR. Sin el filtro de rol, un titular
-     * que sólo es cliente pasaba la validación con la cuenta de cliente.
+     * para la empresa EN SU ROL DE PROVEEDOR.
+     * <p>
+     * Usa {@code AsientoContableService.existeCuentaConRolEstricto} en vez de
+     * llamar directo a {@code PersonaCuentaContableDaoService
+     * .selectByTitularRolTipoCuenta}: ese DAO tiene un fallback "sin filtro
+     * de rol" (compatibilidad con datos antiguos) que devolvía la cuenta de
+     * CLIENTE del titular cuando no encontraba la de PROVEEDOR — el
+     * comentario original de este método ya advertía el síntoma
+     * ("un titular que sólo es cliente pasaba la validación con la cuenta
+     * de cliente"), pero la implementación de entonces seguía llamando al
+     * DAO tolerante, así que el fallback igual se disparaba por debajo.
+     * Medido contra la base: 61 de 87 titulares con cuenta sólo la tienen
+     * bajo rol Proveedor y 24 sólo bajo Cliente — el hueco era real y
+     * frecuente, no un caso de borde.
+     * <p>
+     * No aborta la carga completa si falla: es un bloqueante MÁS del
+     * documento (PROVEEDOR_SIN_CUENTA, ver el llamador), que deja ese
+     * documento en XML_CARGADO con el motivo y sigue con el resto del lote
+     * — mismo patrón que docs/general/CORRECCION_MANEJO_EXCEPCIONES_DAO.md.
+     * {@code existeCuentaConRolEstricto} ya captura sus propios errores de
+     * BD y devuelve {@code false} sin propagar, así que un timeout aquí
+     * tampoco tumba el lote: sólo bloquea este documento con el mismo
+     * mensaje que "no tiene cuenta".
      */
     private boolean verificarCuentaContableProveedor(Long codigoTitular, Long idEmpresa) {
         try {
-            return !personaCuentaContableDaoService
-                    .selectByTitularRolTipoCuenta(idEmpresa, codigoTitular, RolPersona.PROVEEDOR, 1L)
-                    .isEmpty();
+            return asientoContableService.existeCuentaConRolEstricto(
+                    codigoTitular, idEmpresa, 1L, RolPersona.PROVEEDOR);
         } catch (Throwable e) {
             System.err.println("⚠ verificarCuentaContableProveedor: " + e.getMessage());
             return false;
@@ -2333,10 +2393,27 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         path.setAlterno(1L);
         pathNotaCreditoCompraDaoService.save(path, null);
 
+        // ── codSustento (ATS, Tabla 5) extendido a NTCC (2026-08-28) ──────────
+        // No bloquea el registro si falla -mismo criterio que FacturaCompra-.
+        boolean sustentoPendienteNc = false;
+        try {
+            sustentoPendienteNc = sustentoTributarioService.resolverSiFaltaNotaCredito(nc) == null;
+        } catch (Throwable e) {
+            System.out.println("ATENCION: fallo la resolucion de codSustento de la nota de credito "
+                    + nc.getId() + ": " + e.getMessage());
+            sustentoPendienteNc = true;
+        }
+
         Map<String, Object> r = new HashMap<>();
         r.put("idDocumentoBD", nc.getId());
         r.put("tipoTablaDestino", "NOTA_CREDITO_COMPRA");
         r.put("mensaje", "NotaCreditoCompra registrada con id=" + nc.getId());
+        if (sustentoPendienteNc) {
+            r.put("sustentoTributarioPendiente", true);
+            r.put("advertenciaSustentoTributario", "La nota de credito " + nc.getId() + " quedo sin"
+                    + " codSustento (Tabla 5 del ATS) resuelto. Corrijalo con PUT"
+                    + " /rest/ntcc/sustento/" + nc.getId() + " antes de generar el ATS.");
+        }
         return r;
     }
 
@@ -2429,10 +2506,28 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         path.setAlterno(1L);
         pathNotaDebitoCompraDaoService.save(path, null);
 
+        // ── codSustento (ATS, Tabla 5) extendido a NTDC (2026-08-28) ──────────
+        // Sin excepcion por grupo -DetalleNotaDebitoCompra no tiene columna de
+        // producto-, siempre regla base del IVA. No bloquea el registro si falla.
+        boolean sustentoPendienteNd = false;
+        try {
+            sustentoPendienteNd = sustentoTributarioService.resolverSiFaltaNotaDebito(nd) == null;
+        } catch (Throwable e) {
+            System.out.println("ATENCION: fallo la resolucion de codSustento de la nota de debito "
+                    + nd.getId() + ": " + e.getMessage());
+            sustentoPendienteNd = true;
+        }
+
         Map<String, Object> r = new HashMap<>();
         r.put("idDocumentoBD", nd.getId());
         r.put("tipoTablaDestino", "NOTA_DEBITO_COMPRA");
         r.put("mensaje", "NotaDebitoCompra registrada con id=" + nd.getId());
+        if (sustentoPendienteNd) {
+            r.put("sustentoTributarioPendiente", true);
+            r.put("advertenciaSustentoTributario", "La nota de debito " + nd.getId() + " quedo sin"
+                    + " codSustento (Tabla 5 del ATS) resuelto. Corrijalo con PUT"
+                    + " /rest/ntdc/sustento/" + nd.getId() + " antes de generar el ATS.");
+        }
         return r;
     }
 
@@ -2519,10 +2614,29 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         path.setAlterno(1L);
         pathLiquidacionCompraCompraDaoService.save(path, null);
 
+        // ── codSustento (ATS, Tabla 5) extendido a LQCC (2026-08-28) ──────────
+        // Las lineas de esta carga automatica no traen producto (el XML del SRI no lo
+        // declara), asi que la excepcion por grupo no aplica aqui y siempre resuelve por
+        // la regla base del IVA -consistente, no es un error-. No bloquea el registro.
+        boolean sustentoPendienteLq = false;
+        try {
+            sustentoPendienteLq = sustentoTributarioService.resolverSiFaltaLiquidacion(lq) == null;
+        } catch (Throwable e) {
+            System.out.println("ATENCION: fallo la resolucion de codSustento de la liquidacion "
+                    + lq.getId() + ": " + e.getMessage());
+            sustentoPendienteLq = true;
+        }
+
         Map<String, Object> r = new HashMap<>();
         r.put("idDocumentoBD", lq.getId());
         r.put("tipoTablaDestino", "LIQUIDACION_COMPRA_COMPRA");
         r.put("mensaje", "LiquidacionCompraCompra registrada con id=" + lq.getId());
+        if (sustentoPendienteLq) {
+            r.put("sustentoTributarioPendiente", true);
+            r.put("advertenciaSustentoTributario", "La liquidacion " + lq.getId() + " quedo sin"
+                    + " codSustento (Tabla 5 del ATS) resuelto. Corrijalo con PUT"
+                    + " /rest/lqcc/sustento/" + lq.getId() + " antes de generar el ATS.");
+        }
         return r;
     }
 

@@ -98,12 +98,34 @@ public interface NotaCreditoService extends EntityService<NotaCredito> {
 
     /**
      * Anula una nota de crédito y su asiento contable vinculado.
-     * @param idNotaCredito ID de la nota de crédito
-     * @param motivo Motivo de anulación
-     * @param usuario Usuario que realiza la anulación
-     * @return Map con resultado de la operación
+     * <p>
+     * <b>Cambio de comportamiento (ítem 14, 2026-08-28):</b> esta nota puede haber sido usada
+     * como instrumento para pagar una factura de venta ({@code AplicacionPagoCxc.notaCredito}).
+     * Antes se reversaba ese cruce SIEMPRE, en silencio. Ahora, si existe y
+     * {@code anularEnCascada} es {@code false} (default), se rechaza con
+     * {@code IncomeException} listando qué factura(s) pagó; con {@code true} se reversa
+     * primero y luego se anula.
+     * @param idNotaCredito		: ID de la nota de crédito
+     * @param motivo			: Motivo de anulación
+     * @param usuario			: Usuario que realiza la anulación
+     * @param idUsuario			: Id del usuario (SCP.PJRQ), para reversar el cruce si aplica
+     * @param anularEnCascada	: true = reversar el cruce contra la factura y anular igual
+     * @return					: Map con resultado de la operación
+     * @throws Throwable		: Si tiene un cruce activo sin reversar y no viene cascada
      */
-    java.util.Map<String, Object> anularNotaCredito(Long idNotaCredito, String motivo, String usuario) throws Throwable;
+    java.util.Map<String, Object> anularNotaCredito(Long idNotaCredito, String motivo, String usuario,
+            Long idUsuario, boolean anularEnCascada) throws Throwable;
+
+    /**
+     * Facturas de venta que esta nota de crédito está pagando actualmente. Ver
+     * {@link #anularNotaCredito}.
+     * @param idNotaCredito	: Id de la nota de crédito
+     * @return				: Lista de mapas con idAplicacion, idFactura, montoAplicado,
+     *						  fechaAplicacion; vacía si no está pagando ninguna factura
+     * @throws Throwable	: Excepcion
+     */
+    java.util.List<java.util.Map<String, Object>> movimientosRelacionadosNotaCredito(Long idNotaCredito)
+            throws Throwable;
 
     /**
      * Consulta el estado de una nota de crédito ante el SRI (WS consultarEstadoAutorizacion).

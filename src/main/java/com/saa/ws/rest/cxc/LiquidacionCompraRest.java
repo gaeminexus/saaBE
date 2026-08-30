@@ -231,6 +231,8 @@ public class LiquidacionCompraRest {
 			Long idLiquidacion = getLongParam(params, "idLiquidacion");
 			String motivo  = (String) params.get("motivo");
 			String usuario = (String) params.get("usuario");
+			Long idUsuario = getLongParam(params, "idUsuario");
+			boolean anularEnCascada = Boolean.TRUE.equals(params.get("anularEnCascada"));
 
 			if (idLiquidacion == null) {
 				java.util.Map<String, Object> err = new java.util.HashMap<>();
@@ -245,10 +247,15 @@ public class LiquidacionCompraRest {
 				return Response.status(Response.Status.BAD_REQUEST).entity(err).type(MediaType.APPLICATION_JSON).build();
 			}
 
-			java.util.Map<String, Object> resultado = liquidacionCompraService.anularLiquidacion(idLiquidacion, motivo, usuario);
+			java.util.Map<String, Object> resultado = liquidacionCompraService.anularLiquidacion(idLiquidacion, motivo, usuario, idUsuario, anularEnCascada);
 			boolean exito = Boolean.TRUE.equals(resultado.get("exito"));
 			return Response.status(exito ? Response.Status.OK : Response.Status.BAD_REQUEST)
 					.entity(resultado).type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.IncomeException e) {
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", e.getMessage());
+			return Response.status(Response.Status.CONFLICT).entity(err).type(MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			System.err.println("ERROR en anularLiquidacion REST: " + e.getMessage());
 			e.printStackTrace();
@@ -256,6 +263,21 @@ public class LiquidacionCompraRest {
 			err.put("exito", false);
 			err.put("mensaje", "Error inesperado al anular la liquidación: " + e.getMessage());
 			err.put("error", e.getMessage());
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity(err).type(MediaType.APPLICATION_JSON).build();
+		}
+	}
+
+	@GET
+	@Path("/movimientosRelacionados/{id}")
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response movimientosRelacionadosLiquidacion(@PathParam("id") Long idLiquidacion) {
+		try {
+			return Response.ok(liquidacionCompraService.movimientosRelacionadosLiquidacion(idLiquidacion))
+					.type(MediaType.APPLICATION_JSON).build();
+		} catch (Throwable e) {
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", "Error al consultar movimientos relacionados: " + e.getMessage());
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity(err).type(MediaType.APPLICATION_JSON).build();
 		}
 	}

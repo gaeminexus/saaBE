@@ -205,6 +205,60 @@ public interface PagoProgramadoService extends EntityService<PagoProgramado> {
 	List<PagoProgramado> listar(Long idEmpresa, Long estado, Long idTitular) throws Throwable;
 
 	/**
+	 * Bandeja de pagos POR_APROBAR para la pantalla de aprobación (punto 14). Proyección,
+	 * no la entidad — ver {@link com.saa.model.cxp.PagoPorAprobar} y
+	 * docs/estandar/ESTANDAR-PROYECCIONES-EN-LISTADOS.md.
+	 *
+	 * @param idEmpresa : Id de la empresa
+	 * @param origen    : {@link com.saa.rubros.OrigenPagoCxp} o
+	 *                    {@link com.saa.rubros.OrigenPagoExterno}; null para todos
+	 * @param desde     : Fecha solicitada desde, yyyy-MM-dd (opcional)
+	 * @param hasta     : Fecha solicitada hasta, yyyy-MM-dd (opcional)
+	 * @return           : Pagos por aprobar, más antiguos primero
+	 * @throws Throwable : Excepcion
+	 */
+	List<com.saa.model.cxp.PagoPorAprobar> porAprobar(Long idEmpresa, String origen, String desde,
+			String hasta) throws Throwable;
+
+	/**
+	 * Aprueba en bloque los pagos indicados: asigna la cuenta bancaria y la forma de pago
+	 * elegidas por tesorería, gira el cheque si corresponde y deja cada pago en
+	 * REGISTRADO (transferencia) o CONFIRMADO (cheque o débito automático, contabilizando
+	 * en el acto). Todos los pagos deben estar POR_APROBAR — si alguno no lo está, no se
+	 * aprueba ninguno.
+	 *
+	 * <p><b>No valida disponibilidad de saldo todavía</b> (fase 3 del plan): la validación
+	 * está aislada en {@code validaDisponibilidad}, que hoy no hace nada. Ver
+	 * docs/logica-negocio/pagos/PLAN-REDISENO-APROBACION-PAGOS.md §3.3 y
+	 * docs/logica-negocio/tsr/DISENO-CONCILIACION-PARTIDAS-EN-TRANSITO.md §7bis.
+	 *
+	 * @param idsPagos        : Ids de los pagos a aprobar, todos POR_APROBAR
+	 * @param idCuentaBancaria: Id de la cuenta bancaria de la que sale el dinero
+	 * @param formaPago       : Forma de pago (2=Transferencia, 3=Cheque, 4=Débito automático)
+	 * @param fechaPago       : Fecha del pago, yyyy-MM-dd (null = hoy)
+	 * @param idUsuario       : Id del usuario que aprueba
+	 * @return                : Mapa con exito, mensaje, totalAprobado, registrados,
+	 *                          confirmados y, con cheque, el detalle de cada cheque girado
+	 * @throws Throwable      : Excepcion
+	 */
+	Map<String, Object> aprobar(List<Long> idsPagos, Long idCuentaBancaria, Long formaPago,
+			String fechaPago, Long idUsuario) throws Throwable;
+
+	/**
+	 * Disponibilidad real de una cuenta bancaria a una fecha, para la pantalla de aprobación
+	 * (punto 14): saldo contable (`PlanCuentaService.saldoCuentaFechaEmpresa`, no
+	 * `MovimientoBanco` — ver docs/logica-negocio/tsr/DISENO-CONCILIACION-PARTIDAS-EN-TRANSITO.md
+	 * §7bis), comprometido (pagos REGISTRADO/EN_ARCHIVO de esa cuenta) y disponible = saldo −
+	 * comprometido. Misma fórmula que usa {@link #aprobar} para rechazar por saldo insuficiente.
+	 *
+	 * @param idCuentaBancaria : Id de la cuenta bancaria
+	 * @param fecha            : Fecha de corte, yyyy-MM-dd (null = hoy)
+	 * @return                 : Mapa con idCuentaBancaria, saldo, comprometido y disponible
+	 * @throws Throwable       : IncomeException si la cuenta no existe o no tiene plan de cuenta
+	 */
+	Map<String, Object> disponibilidad(Long idCuentaBancaria, String fecha) throws Throwable;
+
+	/**
 	 * Agrupa los pagos seleccionados en un lote y genera el archivo para el banco.
 	 * Seleccionar un pago aquí equivale a aprobarlo: queda registrado el usuario
 	 * que generó el lote.

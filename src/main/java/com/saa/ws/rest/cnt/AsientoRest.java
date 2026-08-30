@@ -6,6 +6,7 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.cnt.dao.AsientoDaoService;
 import com.saa.ejb.cnt.service.AsientoService;
 import com.saa.model.cnt.Asiento;
+import com.saa.model.cnt.AsientoResumen;
 import com.saa.model.cnt.NombreEntidadesContabilidad;
 
 import jakarta.ejb.EJB;
@@ -56,6 +57,28 @@ public class AsientoRest {
             return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener asientos: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Listado de asientos de una empresa y período, en proyección (código, número, fecha,
+     * glosa, estado, total debe, total haber) — reemplaza el fallback de getAll que usaba
+     * listado-asientos.component.ts cuando el filtro por criterios fallaba (bajaba los 1.784
+     * asientos de todas las empresas, ~4 MB, para filtrar en el cliente). Ver
+     * docs/estandar/ESTANDAR-PROYECCIONES-EN-LISTADOS.md.
+     */
+    @GET
+    @Path("/resumen/{idEmpresa}/{idPeriodo}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response resumenPorEmpresaPeriodo(@PathParam("idEmpresa") Long idEmpresa,
+            @PathParam("idPeriodo") Long idPeriodo) {
+        try {
+            List<AsientoResumen> lista = asientoDaoService.selectResumenPorEmpresaPeriodo(idEmpresa, idPeriodo);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener el resumen de asientos: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
         }
     }
 

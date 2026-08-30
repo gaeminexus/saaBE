@@ -16,4 +16,15 @@ public interface ReferenciaFamiliarService extends EntityService<ReferenciaFamil
      * @return lista de referencias familiares
      */
     List<ReferenciaFamiliar> selectByParent(Long idEntidad) throws Throwable;
+
+    /**
+     * Igual que {@link #saveSingle(ReferenciaFamiliar)}, pero además sella
+     * {@code EntidadService.sellarActualizacion} sobre ENTD en la misma transacción
+     * (pedido 9, pantalla de actualización de datos del partícipe).
+     *
+     * @param referencia : ReferenciaFamiliar a guardar
+     * @param usuario    : Usuario que hace el cambio (puede ser null)
+     * @throws Throwable : Excepcion
+     */
+    ReferenciaFamiliar saveSingle(ReferenciaFamiliar referencia, String usuario) throws Throwable;
 }

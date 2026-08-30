@@ -2574,8 +2574,45 @@ public class FacturaServiceImpl implements FacturaService {
 	// =========================================================================
 
 	@Override
-	public java.util.Map<String, Object> anularFactura(Long idFactura, String motivo, String usuario) throws Throwable {
-		System.out.println("=== anularFactura | idFactura=" + idFactura + " | usuario=" + usuario + " ===");
+	public java.util.List<java.util.Map<String, Object>> movimientosRelacionadosFactura(Long idFactura)
+			throws Throwable {
+		System.out.println("=== movimientosRelacionadosFactura | idFactura=" + idFactura + " ===");
+		java.util.List<java.util.Map<String, Object>> lista = new java.util.ArrayList<>();
+		if (idFactura == null) {
+			return lista;
+		}
+		for (com.saa.model.cxc.AplicacionPagoCxc aplicacion
+				: aplicacionPagoCxcService.consultarPorFactura(idFactura, true)) {
+			java.util.Map<String, Object> fila = new java.util.HashMap<>();
+			fila.put("idAplicacion", aplicacion.getId());
+			fila.put("tipoDocPago", aplicacion.getTipoDocPago());
+			fila.put("tipoDocPagoTexto", textoTipoDocPagoCxc(aplicacion.getTipoDocPago()));
+			fila.put("montoAplicado", aplicacion.getMontoAplicado());
+			fila.put("fechaAplicacion", aplicacion.getFechaAplicacion() != null
+					? aplicacion.getFechaAplicacion().toString() : null);
+			lista.add(fila);
+		}
+		return lista;
+	}
+
+	private String textoTipoDocPagoCxc(Long tipoDocPago) {
+		if (tipoDocPago == null) {
+			return "Desconocido";
+		}
+		int tipo = tipoDocPago.intValue();
+		if (tipo == com.saa.rubros.TipoDocPagoAplicacion.COBRO_DIRECTO) return "Cobro directo";
+		if (tipo == com.saa.rubros.TipoDocPagoAplicacion.NOTA_CREDITO) return "Nota de crédito";
+		if (tipo == com.saa.rubros.TipoDocPagoAplicacion.RETENCION) return "Retención";
+		if (tipo == com.saa.rubros.TipoDocPagoAplicacion.ANTICIPO) return "Anticipo";
+		if (tipo == com.saa.rubros.TipoDocPagoAplicacion.NOTA_DEBITO) return "Nota de débito";
+		return "Tipo " + tipoDocPago;
+	}
+
+	@Override
+	public java.util.Map<String, Object> anularFactura(Long idFactura, String motivo, String usuario,
+			Long idUsuario, boolean anularEnCascada) throws Throwable {
+		System.out.println("=== anularFactura | idFactura=" + idFactura + " | usuario=" + usuario
+				+ " | anularEnCascada=" + anularEnCascada + " ===");
 
 		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
 		resultado.put("exito", false);
@@ -2598,20 +2635,29 @@ public class FacturaServiceImpl implements FacturaService {
 		String motivoFinal      = (motivo  != null && !motivo.trim().isEmpty())  ? motivo.trim()  : "Anulación manual";
 		java.time.LocalDateTime ahora = java.time.LocalDateTime.now();
 
-		// 3.5. Reversar todos los cobros y abonos aplicados a esta factura
-		// (retenciones recibidas, notas, anticipos y transferencias).
-		try {
+		// 3.5. Movimientos relacionados (ítem 14, 2026-08-28): decisión del usuario, ya no se
+		// reversa en silencio. Sin cascada expresa, se rechaza si hay algo sin reversar.
+		java.util.List<com.saa.model.cxc.AplicacionPagoCxc> movimientos =
+				aplicacionPagoCxcService.consultarPorFactura(idFactura, true);
+		if (!movimientos.isEmpty()) {
+			if (!anularEnCascada) {
+				StringBuilder detalle = new StringBuilder();
+				for (com.saa.model.cxc.AplicacionPagoCxc m : movimientos) {
+					if (detalle.length() > 0) detalle.append("; ");
+					detalle.append(textoTipoDocPagoCxc(m.getTipoDocPago())).append(" $")
+							.append(m.getMontoAplicado()).append(" (id ").append(m.getId()).append(")");
+				}
+				throw new IncomeException("No se puede anular la factura " + idFactura
+						+ ": tiene " + movimientos.size() + " movimiento(s) relacionado(s) sin reversar: "
+						+ detalle + ". Reenvíe la anulación con anularEnCascada=true para reversarlos "
+						+ "todos junto con la factura.");
+			}
 			int reversadas = aplicacionPagoCxcService.revertirAplicacionesDeFactura(
-					idFactura, motivoFinal, null);
+					idFactura, "Anulación en cascada de la factura " + idFactura + ": " + motivoFinal, idUsuario);
 			if (reversadas > 0) {
 				resultado.put("aplicacionesReversadas", reversadas);
 				System.out.println("✓ Aplicaciones de cobro reversadas: " + reversadas);
 			}
-		} catch (Exception e) {
-			System.err.println("⚠ Error al reversar las aplicaciones de cobro: " + e.getMessage());
-			resultado.put("advertenciaAplicacion",
-					"La factura fue anulada pero ocurrió un error al reversar los cobros "
-					+ "aplicados: " + e.getMessage());
 		}
 
 		// 4. Anular asiento contable vinculado (si existe)

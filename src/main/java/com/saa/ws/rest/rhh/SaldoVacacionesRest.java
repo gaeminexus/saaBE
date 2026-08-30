@@ -215,6 +215,33 @@ public class SaldoVacacionesRest {
         }
     }
 
+    /**
+     * Deshace una acreditacion anual completa: borra los saldos de ese anio y desmarca
+     * la caducidad que esa corrida provoco. Todo o nada -- rechaza nombrando a los
+     * empleados si alguno ya tiene dias usados o pagados. Ver
+     * docs/logica-negocio/rhh/CICLO-ACREDITACION-VACACIONES.md.
+     * Body esperado: { "idEmpresa": 1, "anio": 2026, "usuarioRegistro": "jperez" }
+     */
+    @POST
+    @Path("/revertirAcreditacion")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response revertirAcreditacion(Map<String, Object> datos) {
+        System.out.println("LLEGA AL SERVICIO REVERTIR ACREDITACION - SALDOVACACIONES");
+        try {
+            Long idEmpresa = leeLong(datos, "idEmpresa");
+            Long anioLong = leeLong(datos, "anio");
+            Integer anio = anioLong != null ? Integer.valueOf(anioLong.intValue()) : null;
+            String usuario = leeTexto(datos, "usuarioRegistro");
+            int borrados = acreditacionVacacionesService.revertirAcreditacion(idEmpresa, anio, usuario);
+            return Response.status(Response.Status.OK).entity(borrados).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al revertir la acreditacion: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
     private Long leeLong(Map<String, Object> datos, String clave) {
         Object valor = datos != null ? datos.get(clave) : null;
         return valor == null ? null : Long.valueOf(valor.toString());

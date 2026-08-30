@@ -45,4 +45,16 @@ public class PagoAporteDaoServiceImpl extends EntityDaoImpl<PagoAporte> implemen
 		}
 	}
 
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<PagoAporte> selectByAporte(Long idAporte) throws Throwable {
+		System.out.println("PagoAporteDaoService.selectByAporte - Aporte: " + idAporte);
+		Query query = em.createQuery(
+				" select p from PagoAporte p " +
+				" where  p.aporte.codigo = :idAporte " +
+				" order by p.codigo asc");
+		query.setParameter("idAporte", idAporte);
+		return query.getResultList();
+	}
+
 }

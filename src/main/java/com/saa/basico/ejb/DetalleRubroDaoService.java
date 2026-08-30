@@ -85,4 +85,35 @@ public interface DetalleRubroDaoService extends EntityDao<DetalleRubro> {
 	 */
 	DetalleRubro save(DetalleRubro tipo) throws Throwable;
 
+	/**
+	 * Actualiza en sitio (UPDATE masivo, sin merge de entidad) el valor numerico del detalle
+	 * de rubro identificado por codigo alterno de rubro y de detalle. Pensado para flags de
+	 * configuracion de un solo detalle (ej. {@link com.saa.rubros.Rubros#CRD_PARAMETROS_CONTABILIDAD}).
+	 *
+	 * @param codigoAlternoRubro   : Codigo alterno de rubro
+	 * @param codigoAlternoDetalle : Codigo alterno de detalle de rubro
+	 * @param valorNumerico        : Nuevo valor numerico
+	 * @return : Numero de filas actualizadas
+	 * @throws Throwable : Excepcion
+	 */
+	int actualizarValorNumericoByRubAltDetAlt(int codigoAlternoRubro, int codigoAlternoDetalle,
+			Double valorNumerico) throws Throwable;
+
+	/**
+	 * Igual que {@link #actualizarValorNumericoByRubAltDetAlt}, pero además escribe el valor
+	 * alfanumerico (PDTRVLRV) en la misma sentencia, para un flag de configuracion que
+	 * necesita dejar una huella de texto (ej. "usuario | fecha | motivo" en
+	 * {@link com.saa.rubros.Rubros#CRD_PARAMETROS_CONTABILIDAD}, que no tiene columnas de
+	 * auditoria propias).
+	 *
+	 * @param codigoAlternoRubro   : Codigo alterno de rubro
+	 * @param codigoAlternoDetalle : Codigo alterno de detalle de rubro
+	 * @param valorNumerico        : Nuevo valor numerico
+	 * @param valorAlfanumerico    : Nuevo valor alfanumerico (PDTRVLRV)
+	 * @return : Numero de filas actualizadas
+	 * @throws Throwable : Excepcion
+	 */
+	int actualizarValorNumericoYAlfanumericoByRubAltDetAlt(int codigoAlternoRubro, int codigoAlternoDetalle,
+			Double valorNumerico, String valorAlfanumerico) throws Throwable;
+
 }

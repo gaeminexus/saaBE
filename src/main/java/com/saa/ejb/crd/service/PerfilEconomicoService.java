@@ -15,5 +15,16 @@ public interface PerfilEconomicoService extends EntityService<PerfilEconomico> {
      * De aquí se obtiene patrimonioNeto → patrimonio y origenOtrosIngresos → origenIngresos.
      */
     List<PerfilEconomico> selectByEntidad(Long codigoEntidad) throws Throwable;
+
+    /**
+     * Igual que {@link #saveSingle(PerfilEconomico)}, pero además sella
+     * {@code EntidadService.sellarActualizacion} sobre ENTD en la misma transacción
+     * (pedido 9, pantalla de actualización de datos del partícipe).
+     *
+     * @param perfil  : PerfilEconomico a guardar
+     * @param usuario : Usuario que hace el cambio (puede ser null)
+     * @throws Throwable : Excepcion
+     */
+    PerfilEconomico saveSingle(PerfilEconomico perfil, String usuario) throws Throwable;
 }
 

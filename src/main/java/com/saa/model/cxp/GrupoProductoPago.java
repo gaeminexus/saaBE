@@ -72,12 +72,23 @@ public class GrupoProductoPago implements Serializable {
 	private Long rubroTipoGrupoH;
 		
 	/**
-	 * Cuenta contable asignada al grupo de producto. 
+	 * Cuenta contable asignada al grupo de producto.
 	 */
 	@ManyToOne
 	@JoinColumn(name = "PLNNCDGO", referencedColumnName = "PLNNCDGO")
-	private PlanCuenta planCuenta;	
-	
+	private PlanCuenta planCuenta;
+
+	/**
+	 * Sustento tributario SRI (Tabla 5 del ATS) por defecto para las facturas de compra
+	 * cuyas lineas pertenecen a este grupo de producto (GRPPCSUS). Cadena de dos digitos,
+	 * con cero a la izquierda ("01".."15","00") - ver {@link com.saa.rubros.SustentoTributarioSri}.
+	 * Parametrizacion que se hace una vez por grupo (ej. "SUMINISTROS" -> 02, un grupo de
+	 * inventario -> 07).
+	 */
+	@Basic
+	@Column(name = "GRPPCSUS", length = 2)
+	private String sustentoTributarioDefecto;
+
 	/**
 	 * Estado 1 = activo, 2 = inactivo.
 	 */
@@ -175,7 +186,23 @@ public class GrupoProductoPago implements Serializable {
 	}
 
 	/**
-	 * Obtiene el estado 1 = activo, 2 = inactivo. 
+	 * Obtiene el sustento tributario SRI por defecto para este grupo de producto.
+	 * @return : Sustento tributario SRI por defecto (Tabla 5 del ATS), o null si no esta parametrizado.
+	 */
+	public String getSustentoTributarioDefecto() {
+		return sustentoTributarioDefecto;
+	}
+
+	/**
+	 * Asigna el sustento tributario SRI por defecto para este grupo de producto.
+	 * @param sustentoTributarioDefecto : Sustento tributario SRI por defecto (Tabla 5 del ATS).
+	 */
+	public void setSustentoTributarioDefecto(String sustentoTributarioDefecto) {
+		this.sustentoTributarioDefecto = sustentoTributarioDefecto;
+	}
+
+	/**
+	 * Obtiene el estado 1 = activo, 2 = inactivo.
 	 * @return : Estado 1 = activo, 2 = inactivo.
 	 */
 	@Basic

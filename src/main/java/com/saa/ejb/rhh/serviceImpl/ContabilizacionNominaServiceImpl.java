@@ -18,6 +18,7 @@ import com.saa.ejb.rhh.dao.OrdenPagoNominaDaoService;
 import com.saa.ejb.rhh.dao.PeriodoNominaDaoService;
 import com.saa.ejb.rhh.dao.ProvisionNominaDaoService;
 import com.saa.ejb.rhh.dao.ReglonNominaDaoService;
+import com.saa.ejb.rhh.service.CierreCuotasDescuentoService;
 import com.saa.ejb.rhh.service.ContabilizacionNominaService;
 import com.saa.ejb.rhh.util.RedondeoNomina;
 import com.saa.model.cnt.Asiento;
@@ -122,6 +123,9 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
 
     @EJB
     private AsientoContableService asientoContableService;
+
+    @EJB
+    private CierreCuotasDescuentoService cierreCuotasDescuentoService;
 
     /* (non-Javadoc)
      * @see com.saa.ejb.rhh.service.ContabilizacionNominaService#validarCuentasContables(java.lang.Long)
@@ -350,6 +354,28 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
         periodo.setAsientoPago(asiento.getCodigo());
         periodo.setEstado(Long.valueOf(RhhEstadoPeriodoNomina.PAGADO));
         periodoNominaDaoService.save(periodo, periodo.getCodigo());
+
+        // T4: cierre del ciclo de descuentos recurrentes (incluye anticipos a empleados) en el
+        // rol. Ver docs/logica-negocio/rhh/ANTICIPOS-TRABAJADORES.md #6. A partir de este punto
+        // el pago YA esta contabilizado y el periodo YA quedo PAGADO -irreversible, reabrirPeriodo
+        // lo rechaza-, asi que esta llamada no puede impedir que contabilizarPago termine con
+        // exito. cierreCuotasDescuentoService es un EJB APARTE que corre en su propia transaccion
+        // (REQUIRES_NEW): si algo falla adentro, esa transaccion nueva se pierde ella sola sin
+        // tocar la de este metodo, que ya comiteo el asiento y el estado del periodo. No cambiar
+        // esto a una llamada interna (this.metodo()): un metodo privado comparte la transaccion
+        // de este bean, y un fallo ahi marcaria TODA la transaccion del pago como rollback-only
+        // -eso es exactamente lo que este diseno evita. Se envuelve igual en un try/catch como
+        // ultima red: la implementacion ya no deberia lanzar nada, pero si el propio arranque de
+        // la transaccion nueva fallara, tampoco debe tumbar el pago.
+        try {
+            cierreCuotasDescuentoService.descuentaCuotasDelPeriodo(periodo.getCodigo(), idOrdenPago, usuario);
+        } catch (Throwable e) {
+            System.out.println("ATENCION: fallo la llamada al cierre de cuotas de descuentos"
+                    + " recurrentes del periodo " + periodo.getCodigo() + " (orden " + idOrdenPago
+                    + "), incluso antes de entrar a su transaccion aislada. El pago de nomina ya se"
+                    + " contabilizo y sigue en pie; revise a mano el saldo de"
+                    + " CuotaDescuento/DescuentoRecurrente/AnticipoEmpleado. Motivo: " + e.getMessage());
+        }
 
         System.out.println("Orden " + idOrdenPago + " contabilizada con el asiento "
                 + asiento.getCodigo());

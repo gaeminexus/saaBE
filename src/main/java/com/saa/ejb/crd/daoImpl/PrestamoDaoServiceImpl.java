@@ -172,6 +172,23 @@ public class PrestamoDaoServiceImpl extends EntityDaoImpl<Prestamo> implements P
     }
 
     @Override
+    public List<Prestamo> selectByEntidad(Long codigoEntidad) throws Throwable {
+        System.out.println("PrestamoDaoServiceImpl.selectByEntidad - Entidad: " + codigoEntidad);
+
+        if (codigoEntidad == null) {
+            return new java.util.ArrayList<>();
+        }
+
+        Query query = em.createQuery(
+            "SELECT p FROM Prestamo p WHERE p.entidad.codigo = :codigoEntidad ORDER BY p.codigo");
+        query.setParameter("codigoEntidad", codigoEntidad);
+
+        List<Prestamo> resultados = query.getResultList();
+        System.out.println("  Préstamos encontrados: " + (resultados != null ? resultados.size() : 0));
+        return resultados;
+    }
+
+    @Override
     public long countVigentesMoraVencidosByEntidad(Long codigoEntidad) throws Throwable {
         Query query = em.createQuery(
             "select count(p) from Prestamo p " +

@@ -212,9 +212,39 @@ public class Conciliacion implements Serializable {
 	 */
 	@Basic
 	@Column(name = "CNCLTRCR")
-	
-	
+
+
 	private Double transferenciaCreditoSistema;
+
+	/**
+	 * Estado del cierre - ver {@link com.saa.rubros.EstadoCierreConciliacion}.
+	 * 1 Borrador, 2 Cerrado, 3 Anulado. Nulo en las filas del mecanismo viejo (insertaConciliacion),
+	 * que nunca llegó a producción - ver docs/logica-negocio/tsr/DISENO-CONCILIACION-PARTIDAS-EN-TRANSITO.md.
+	 */
+	@Basic
+	@Column(name = "CNCLESTD")
+	private Long estadoCierre;
+
+	/**
+	 * Fecha en que se cerró (distinta de {@link #fecha}, que es la fecha de registro de la cabecera).
+	 */
+	@Basic
+	@Column(name = "CNCLFCCR")
+	private LocalDateTime fechaCierre;
+
+	/**
+	 * Usuario que cerró (texto, igual que el resto del módulo de conciliación - no FK).
+	 */
+	@Basic
+	@Column(name = "CNCLUSCR", length = 60)
+	private String usuarioCierre;
+
+	/**
+	 * Motivo de anulación del cierre; nulo mientras no se anule.
+	 */
+	@Basic
+	@Column(name = "CNCLMTAN", length = 500)
+	private String motivoAnulacion;
 
 	public Long getCodigo() {
 		return codigo;
@@ -407,5 +437,37 @@ public class Conciliacion implements Serializable {
 	public void setTransferenciaCreditoSistema(Double transferenciaCreditoSistema) {
 		this.transferenciaCreditoSistema = transferenciaCreditoSistema;
 	}
-	
+
+	public Long getEstadoCierre() {
+		return estadoCierre;
+	}
+
+	public void setEstadoCierre(Long estadoCierre) {
+		this.estadoCierre = estadoCierre;
+	}
+
+	public LocalDateTime getFechaCierre() {
+		return fechaCierre;
+	}
+
+	public void setFechaCierre(LocalDateTime fechaCierre) {
+		this.fechaCierre = fechaCierre;
+	}
+
+	public String getUsuarioCierre() {
+		return usuarioCierre;
+	}
+
+	public void setUsuarioCierre(String usuarioCierre) {
+		this.usuarioCierre = usuarioCierre;
+	}
+
+	public String getMotivoAnulacion() {
+		return motivoAnulacion;
+	}
+
+	public void setMotivoAnulacion(String motivoAnulacion) {
+		this.motivoAnulacion = motivoAnulacion;
+	}
+
 }

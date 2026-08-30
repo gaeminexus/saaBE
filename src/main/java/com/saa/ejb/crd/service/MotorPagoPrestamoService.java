@@ -54,11 +54,34 @@ public interface MotorPagoPrestamoService {
      * (totalPendiente &lt;= 0.01) y no está PAGADA(4) ni CANCELADA_ANTICIPADA(7), la pasa a
      * PAGADA, sincroniza sus campos {@code *Pagado} y la persiste.
      *
+     * ⚠️ NO usar desde un camino de solo lectura (una simulación): escribe en {@code CRD.DTPR}.
+     * Para eso existe {@link #calcularSaldosCuota(DetallePrestamo)}, el mismo cálculo sin el
+     * efecto secundario. Bug corregido 2026-08-28: {@code simularAbonoCapital} y
+     * {@code simularPrecancelacion} llamaban a este método sin tener {@code @TransactionAttribute}
+     * propio, así que la autocorrección se confirmaba al retornar — una simulación reescribía
+     * {@code CRD.DTPR} sin que el usuario confirmara nada.
+     *
      * @param cuota Cuota a evaluar
      * @return Saldos por componente y total pendiente
      * @throws Throwable Si ocurre un error
      */
     SaldosCuota calcularSaldosRealesCuota(DetallePrestamo cuota) throws Throwable;
+
+    /**
+     * Mismo cálculo que {@link #calcularSaldosRealesCuota(DetallePrestamo)} — saldos por
+     * componente reconstruidos desde los PagoPrestamo VIGENTES de la cuota — pero **puro**: no
+     * autocorrige el estado ni persiste nada, aunque la cuota esté liquidada según PGPR.
+     *
+     * Es lo que debe usar cualquier camino de solo lectura (simulaciones): abono a capital,
+     * precancelación. Si el llamador necesita distinguir una cuota "de verdad pendiente" de una
+     * "liquidada pero aún no autocorregida en BD", compare {@code totalPendiente} contra la
+     * tolerancia — el patrón ya usado en {@code ProcesoPagoPrestamoServiceImpl.calcularPrecancelacion}.
+     *
+     * @param cuota Cuota a evaluar
+     * @return Saldos por componente y total pendiente; nunca modifica ni persiste {@code cuota}
+     * @throws Throwable Si ocurre un error
+     */
+    SaldosCuota calcularSaldosCuota(DetallePrestamo cuota) throws Throwable;
 
     /**
      * Deuda total pendiente del préstamo: suma del totalPendiente de todas sus cuotas

@@ -335,6 +335,75 @@ public class AnticipoClienteRest {
         }
     }
 
+    // ── POST /antc/solicitarDevolucion ────────────────────────────────────────
+    /**
+     * Solicita la devolución del saldo a favor de un cliente (punto 14, origen externo
+     * CXC_DEVOLUCION_CLIENTE): registra el pago POR_APROBAR en el circuito único de
+     * aprobación de pagos. Tesorería asigna después la cuenta bancaria con
+     * {@code POST /pgtr/aprobar}. Ver docs/logica-negocio/pagos/PLAN-REDISENO-APROBACION-PAGOS.md.
+     *
+     * Body JSON: { "idAnticipo": 123, "valor": 150.00, "idUsuario": 5 }
+     */
+    @POST
+    @Path("/solicitarDevolucion")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response solicitarDevolucion(java.util.Map<String, Object> params) {
+        System.out.println("LLEGA AL SERVICIO POST /antc/solicitarDevolucion");
+        try {
+            Long idAnticipo = getLongParam(params, "idAnticipo");
+            Double valor    = getDoubleParam(params, "valor");
+            Long idUsuario  = getLongParam(params, "idUsuario");
+
+            java.util.Map<String, Object> resultado =
+                    anticiPoClienteService.solicitarDevolucion(idAnticipo, valor, idUsuario);
+            return Response.status(Response.Status.CREATED)
+                    .entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return error500("Error al solicitar la devolución del anticipo: " + e.getMessage());
+        }
+    }
+
+    // ── POST /antc/sincronizar/{idAnticipo} ───────────────────────────────────
+    /**
+     * Reconcilia manualmente la devolución de saldo pendiente de un anticipo (ítem 5):
+     * si el pago asociado ya está CONFIRMADO, descuenta el saldo; si fue RECHAZADO o
+     * ANULADO, libera el anticipo para una nueva solicitud. Idempotente. Es el mismo
+     * reconciliador que corre automáticamente antes de listar/consultar — este endpoint es
+     * para forzarlo desde pantalla sin esperar a la siguiente consulta.
+     */
+    @POST
+    @Path("/sincronizar/{idAnticipo}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response sincronizarDevolucion(@PathParam("idAnticipo") Long idAnticipo) {
+        System.out.println("LLEGA AL SERVICIO POST /antc/sincronizar/" + idAnticipo);
+        try {
+            java.util.Map<String, Object> resultado =
+                    anticiPoClienteService.sincronizarDevolucion(idAnticipo);
+            return Response.ok(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return error500("Error al sincronizar la devolución del anticipo: " + e.getMessage());
+        }
+    }
+
+    // ── POST /antc/sincronizarDevoluciones ────────────────────────────────────
+    /**
+     * Reconcilia en lote todas las devoluciones de anticipos de cliente pendientes de
+     * aplicar. Sin timer todavía (ítem 5): se llama a mano o desde una tarea externa.
+     */
+    @POST
+    @Path("/sincronizarDevoluciones")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response sincronizarDevoluciones() {
+        System.out.println("LLEGA AL SERVICIO POST /antc/sincronizarDevoluciones");
+        try {
+            java.util.Map<String, Object> resultado = anticiPoClienteService.sincronizarDevoluciones();
+            return Response.ok(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return error500("Error al sincronizar las devoluciones pendientes: " + e.getMessage());
+        }
+    }
+
     // ── GET /antc/disponibles/{idTitular}/{idEmpresa} ────────────────────────
     /**
      * Anticipos del cliente que todavía tienen saldo para cruzar. Es la

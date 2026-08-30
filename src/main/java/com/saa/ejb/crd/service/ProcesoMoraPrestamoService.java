@@ -3,6 +3,8 @@ package com.saa.ejb.crd.service;
 import java.time.LocalDate;
 
 import com.saa.ejb.crd.service.dto.ResultadoCalculoMora;
+import com.saa.model.crd.DetallePrestamo;
+import com.saa.model.crd.Prestamo;
 
 import jakarta.ejb.Local;
 
@@ -95,4 +97,54 @@ public interface ProcesoMoraPrestamoService {
      * @throws Throwable Si ocurre un error
      */
     ResultadoCalculoMora calcularMoraPrestamo(Long idPrestamo, LocalDate fechaCorte, String usuario) throws Throwable;
+
+    /**
+     * Si el préstamo está EN_MORA(11) y HOY ya no tiene cuotas vencidas, lo regresa a
+     * VIGENTE(2). No hace nada si el préstamo no está en 11, si todavía tiene cuotas
+     * vencidas, o si está en un estado terminal (3, 4, 5): esos nunca se reabren
+     * automáticamente. Escribe únicamente en {@code PRSTIDST}, nunca en {@code ESPSCDGO}.
+     *
+     * <p>Es la misma lógica que ya corría dentro de {@link #calcularMoraPrestamo} (extraída
+     * el 2026-08-27, pedido 10 del plan de devengo de aportes) para que un préstamo no se
+     * quede en mora hasta el proceso de las 02:00 cuando el partícipe se pone al día con un
+     * cruce o un abono inmediato. "Cuota vencida" se decide con el mismo criterio del
+     * proceso diario ({@code DetallePrestamoDaoService.selectCuotasVencidasByPrestamo}, corte
+     * de HOY), no con uno nuevo.</p>
+     *
+     * @param idPrestamo Código del préstamo
+     * @return true si se regularizó (pasó de EN_MORA a VIGENTE); false si no había nada que hacer
+     * @throws Throwable Si ocurre un error
+     */
+    boolean regularizarPrestamoSiSinMora(Long idPrestamo) throws Throwable;
+
+    /**
+     * Tasa diaria de mora del préstamo: {@code interesNominal / 100 / 360}, con el mismo
+     * default silencioso de {@code TASA_POR_DEFECTO} (9%) que usa {@link #calcularMoraPrestamo}
+     * cuando el préstamo no tiene {@code interesNominal} (PRSTINNM). No lee de BD ni persiste
+     * nada — usa el {@code prestamo} tal cual se lo pasen.
+     *
+     * @param prestamo        Préstamo a evaluar
+     * @param loguearDefault  Si es {@code true} y se activa el default, imprime la misma
+     *                        advertencia que el proceso diario. Pasar {@code false} cuando se
+     *                        va a llamar una vez por cuota (p. ej. desde un simulador que
+     *                        recorre varias cuotas del mismo préstamo) para no repetir el log.
+     * @return La tasa diaria ya resuelta
+     */
+    double tasaDiariaDelPrestamo(Prestamo prestamo, boolean loguearDefault);
+
+    /**
+     * Fórmula PURA de mora — {@code capital × tasaDiaria × díasMora} — sin persistir nada ni
+     * marcar la cuota o el préstamo EN_MORA. Es el mismo cálculo que
+     * {@link #calcularMoraPrestamo} aplica y guarda para el proceso diario, extraído el
+     * 2026-08-28 para que un simulador (p. ej. la precancelación) pueda recalcular la mora a la
+     * fecha que elija el usuario, en vez de leer el {@code DTPRMRAA}/{@code DTPRSLMR} que dejó
+     * el último proceso de las 02:00.
+     *
+     * @param cuota      Cuota a evaluar (usa {@code capital} y {@code fechaVencimiento})
+     * @param tasaDiaria Tasa diaria ya resuelta — ver {@link #tasaDiariaDelPrestamo}
+     * @param fecha      Fecha de corte
+     * @return La mora que correspondería a esa fecha; {@code 0.0} si la cuota no está vencida a
+     *         esa fecha, si {@code fechaVencimiento} es nula, o si el capital es 0/nulo
+     */
+    double calcularMoraCuota(DetallePrestamo cuota, double tasaDiaria, LocalDate fecha);
 }

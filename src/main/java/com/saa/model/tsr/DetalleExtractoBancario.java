@@ -365,4 +365,22 @@ public class DetalleExtractoBancario implements Serializable {
     public void setEstado(Long estado) {
         this.estado = estado;
     }
+
+    /**
+     * NO persistido. Lo pone GrupoConciliacionExtractoDaoServiceImpl.selectPendientes cuando
+     * esta fila se trajo por el arrastre de una partida en tránsito de un período anterior (ver
+     * docs/logica-negocio/tsr/DISENO-CONCILIACION-PARTIDAS-EN-TRANSITO.md §7), no porque
+     * pertenezca al período consultado. La fecha "original" ya está en
+     * {@code getFechaTransaccion()} - no hace falta un campo aparte para eso.
+     */
+    @jakarta.persistence.Transient
+    private boolean esArrastrada;
+
+    public boolean isEsArrastrada() {
+        return esArrastrada;
+    }
+
+    public void setEsArrastrada(boolean esArrastrada) {
+        this.esArrastrada = esArrastrada;
+    }
 }

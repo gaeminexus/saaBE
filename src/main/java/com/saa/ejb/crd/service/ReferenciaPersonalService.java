@@ -16,4 +16,15 @@ public interface ReferenciaPersonalService extends EntityService<ReferenciaPerso
      * @return lista de referencias personales
      */
     List<ReferenciaPersonal> selectByParent(Long idEntidad) throws Throwable;
+
+    /**
+     * Igual que {@link #saveSingle(ReferenciaPersonal)}, pero además sella
+     * {@code EntidadService.sellarActualizacion} sobre ENTD en la misma transacción
+     * (pedido 9, pantalla de actualización de datos del partícipe).
+     *
+     * @param referencia : ReferenciaPersonal a guardar
+     * @param usuario    : Usuario que hace el cambio (puede ser null)
+     * @throws Throwable : Excepcion
+     */
+    ReferenciaPersonal saveSingle(ReferenciaPersonal referencia, String usuario) throws Throwable;
 }

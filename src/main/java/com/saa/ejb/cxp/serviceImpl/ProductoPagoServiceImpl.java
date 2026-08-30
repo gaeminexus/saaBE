@@ -50,6 +50,17 @@ public class ProductoPagoServiceImpl implements ProductoPagoService {
 		ProductoPago productoPago = new ProductoPago();
 		//ELIMINA UNO A UNO LOS REGISTROS DEL ARREGLO
 		for (Long registro : id) {
+			// Control "no borrar un producto en uso" (2026-08-28): antes de que el DELETE
+			// choque con la FK real de PGS.DFCC/DTCC (docs/logica-negocio/cxp/sql/
+			// add-fk-producto-detalle-compras.sql) y salga un ORA-02292 sin contexto, se
+			// valida aquí y se avisa qué documento(s) lo usan. Cubre también PGS.DLCM, que
+			// ya tenía la FK real, para dar el mismo mensaje claro en los tres casos.
+			List<String> documentos = productoPagoDaoService.selectDocumentosQueUsanProducto(registro);
+			if (!documentos.isEmpty()) {
+				throw new IncomeException("No se puede eliminar el producto " + registro
+						+ ": está en uso en " + documentos.size() + " documento(s) de compra: "
+						+ String.join("; ", documentos) + ".");
+			}
 			productoPagoDaoService.remove(productoPago, registro);
 		}
 	}

@@ -10,6 +10,7 @@ import java.util.List;
 
 import com.saa.basico.util.EntityDao;
 import com.saa.model.cnt.Asiento;
+import com.saa.model.cnt.AsientoResumen;
 
 import jakarta.ejb.Local;
 
@@ -136,6 +137,20 @@ public interface AsientoDaoService extends EntityDao<Asiento> {
 	 * @throws Throwable: Excepcion
 	 */
 	Long selectMaxNumeroMesTipo(Long tipo, Long empresa, Long mes, Long anio) throws Throwable;
-	
-	
+
+	/**
+	 * Listado de asientos de una empresa y período, en proyección (código, número, fecha,
+	 * glosa, estado, total debe, total haber) — sin arrastrar empresa/tipoAsiento/mayorización.
+	 * Reemplaza el fallback de {@code GET /asnt/getAll} de
+	 * {@code listado-asientos.component.ts} cuando el filtro por criterios falla. Ver
+	 * {@link AsientoResumen} y docs/estandar/ESTANDAR-PROYECCIONES-EN-LISTADOS.md.
+	 *
+	 * @param idEmpresa	: Id de la empresa
+	 * @param idPeriodo	: Id del período contable
+	 * @return			: Un AsientoResumen por asiento con al menos una línea de detalle, más
+	 *					  recientes primero
+	 * @throws Throwable	: Excepcion
+	 */
+	List<AsientoResumen> selectResumenPorEmpresaPeriodo(Long idEmpresa, Long idPeriodo) throws Throwable;
+
 }

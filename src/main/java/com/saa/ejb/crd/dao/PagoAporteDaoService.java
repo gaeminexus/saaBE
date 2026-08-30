@@ -24,4 +24,15 @@ public interface PagoAporteDaoService extends EntityDao<PagoAporte> {
 	 */
 	List<PagoAporte> selectByPagoPrestamo(Long codigoPagoPrestamo) throws Throwable;
 
+	/**
+	 * El o los PagoAporte generados para UN Aporte puntual (1:1 en la práctica —
+	 * {@code DevolucionAporteServiceImpl.crearPagoAporteDevolucion} genera exactamente uno por
+	 * fila de Aporte, pero la relación en el modelo no lo garantiza como UNIQUE).
+	 *
+	 * @param idAporte : Código del aporte (CRD.APRT)
+	 * @return         : Listado; normalmente una sola fila
+	 * @throws Throwable : Excepcion
+	 */
+	List<PagoAporte> selectByAporte(Long idAporte) throws Throwable;
+
 }

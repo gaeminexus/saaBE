@@ -110,9 +110,12 @@ public class ProductoPagoRest {
     public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - PRODUCTO_PAGO");
         try {
-            ProductoPago elimina = new ProductoPago();
-            ProductoPagoDaoService.remove(elimina, id);
+            // Por el Service, no el DAO directo: es donde vive el control de "no borrar un
+            // producto en uso" (2026-08-28) -llamar al DAO se lo saltaría por completo.
+            ProductoPagoService.remove(java.util.Collections.singletonList(id));
             return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (com.saa.basico.util.IncomeException e) {
+            return Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }

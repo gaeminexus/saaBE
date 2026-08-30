@@ -17,6 +17,7 @@ import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -78,10 +79,10 @@ public class DireccionRest {
     @PUT
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response put(Direccion registro) {
+    public Response put(Direccion registro, @QueryParam("usuario") String usuario) {
         System.out.println("LLEGA AL SERVICIO PUT - DRCC");
         try {
-            Direccion resultado = direccionService.saveSingle(registro);
+            Direccion resultado = direccionService.saveSingle(registro, usuario);
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar dirección: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
@@ -91,10 +92,10 @@ public class DireccionRest {
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response post(Direccion registro) {
+    public Response post(Direccion registro, @QueryParam("usuario") String usuario) {
         System.out.println("LLEGA AL SERVICIO POST - DRCC");
         try {
-            Direccion resultado = direccionService.saveSingle(registro);
+            Direccion resultado = direccionService.saveSingle(registro, usuario);
             return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear dirección: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();

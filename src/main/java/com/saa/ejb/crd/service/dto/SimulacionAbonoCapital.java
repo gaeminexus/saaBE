@@ -35,6 +35,15 @@ public class SimulacionAbonoCapital {
     /** Cantidad de cuotas que serían reemplazadas (historizadas en CRD.HDTP) */
     private Integer cuotasAHistorizar;
 
+    /**
+     * Seguro de incendio TOTAL de las cuotas historizadas que NO tendrían cuota nueva
+     * correspondiente (solo aplica en modalidad 1, cuando el plazo se acorta) — 0 si el plazo
+     * no se acorta o si todas las historizadas tienen su cuota nueva. Insumo calculado para un
+     * futuro proceso de reembolso a la aseguradora; ese proceso NO está implementado, esto solo
+     * deja el dato disponible sin tener que recalcularlo.
+     */
+    private Double seguroIncendioLiberado;
+
     private List<CuotaProyectada> tablaProyectada = new ArrayList<>();
 
     public SimulacionAbonoCapital() {
@@ -126,6 +135,14 @@ public class SimulacionAbonoCapital {
 
     public void setCuotasAHistorizar(Integer cuotasAHistorizar) {
         this.cuotasAHistorizar = cuotasAHistorizar;
+    }
+
+    public Double getSeguroIncendioLiberado() {
+        return seguroIncendioLiberado;
+    }
+
+    public void setSeguroIncendioLiberado(Double seguroIncendioLiberado) {
+        this.seguroIncendioLiberado = seguroIncendioLiberado;
     }
 
     public List<CuotaProyectada> getTablaProyectada() {

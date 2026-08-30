@@ -53,9 +53,14 @@ public class Participe implements Serializable {
     @Column(name = "PRTCCDAL")
     private Long codigoAlterno;
 
+    /**
+     * Remuneración unificada. Cambiado de Long a Double: PRTCRMUN es NUMBER sin precisión
+     * en Oracle (ya admite decimales), y el mapeo Long truncaba los centavos al leer y al
+     * escribir.
+     */
     @Basic
     @Column(name = "PRTCRMUN")
-    private Long remuneracionUnificada;
+    private Double remuneracionUnificada;
 
     @Basic
     @Column(name = "PRTCFCIT")
@@ -170,11 +175,11 @@ public class Participe implements Serializable {
         this.codigoAlterno = codigoAlterno;
     }
 
-    public Long getRemuneracionUnificada() {
+    public Double getRemuneracionUnificada() {
         return remuneracionUnificada;
     }
 
-    public void setRemuneracionUnificada(Long remuneracionUnificada) {
+    public void setRemuneracionUnificada(Double remuneracionUnificada) {
         this.remuneracionUnificada = remuneracionUnificada;
     }
 

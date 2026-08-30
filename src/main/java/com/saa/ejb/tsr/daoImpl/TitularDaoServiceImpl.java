@@ -50,7 +50,9 @@ public class TitularDaoServiceImpl extends EntityDaoImpl<Titular> implements Tit
 							"tipoEmpleado",
 							"aplicaIVA",
 							"aplicaRetencion",
-							"tipoSocio"};
+							"tipoSocio",
+							"parteRelacionada",
+							"tipoProveedorAts"};
 	}
 	
 	@Override
@@ -89,21 +91,4 @@ public class TitularDaoServiceImpl extends EntityDaoImpl<Titular> implements Tit
 		return resultado.isEmpty() ? null : resultado.get(0);
 	}
 
-	@SuppressWarnings("unchecked")
-	@Override
-	public List<Titular> buscarPorNombreSimilar(String nombre) throws Throwable {
-		System.out.println("Ingresa al metodo buscarPorNombreSimilar de TitularDao con nombre: " + nombre);
-		// Normalizar tildes en Java antes de enviar a Oracle (UTL_I18N.TRANSLITERATE no disponible en este servidor)
-		String nombreNorm = normalizarTildes(nombre);
-		return em.createNativeQuery(
-				"SELECT t.* FROM TSR.TSRD t " +
-				"WHERE UTL_MATCH.JARO_WINKLER_SIMILARITY(UPPER(t.TSRDNMCM), UPPER(:nombre)) > 90 " +
-				"AND t.TSRDSTDO = 1 " +
-				"ORDER BY UTL_MATCH.JARO_WINKLER_SIMILARITY(UPPER(t.TSRDNMCM), UPPER(:nombre)) DESC",
-				Titular.class)
-			.setParameter("nombre", nombreNorm)
-			.setMaxResults(10)
-			.getResultList();
-	}
-	
 }

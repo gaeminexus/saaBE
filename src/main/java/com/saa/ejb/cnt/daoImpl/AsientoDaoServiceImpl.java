@@ -12,6 +12,7 @@ import java.util.List;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.cnt.dao.AsientoDaoService;
 import com.saa.model.cnt.Asiento;
+import com.saa.model.cnt.AsientoResumen;
 import com.saa.rubros.EstadoAsiento;
 
 import jakarta.ejb.Stateless;
@@ -322,5 +323,30 @@ public class AsientoDaoServiceImpl extends EntityDaoImpl<Asiento> implements Asi
 			query.setParameter("mes", mes);
 			query.setParameter("anio", anio);
 			return (Long) query.getSingleResult();
+		}
+
+		@SuppressWarnings("unchecked")
+		@Override
+		public List<AsientoResumen> selectResumenPorEmpresaPeriodo(Long idEmpresa, Long idPeriodo) throws Throwable {
+			System.out.println("Ingresa al metodo selectResumenPorEmpresaPeriodo con idEmpresa: " + idEmpresa
+					+ ", idPeriodo: " + idPeriodo);
+			// Se parte de DetalleAsiento (no de Asiento) porque Asiento no tiene mapeada la
+			// coleccion inversa de sus lineas -DetalleAsiento.asiento es la unica direccion del
+			// vinculo-; agrupar desde aqui da el mismo resultado y permite sumar debe/haber en
+			// la misma consulta, sin una segunda vuelta a la base por asiento.
+			Query query = em.createQuery(
+					" select new com.saa.model.cnt.AsientoResumen( " +
+					"     d.asiento.codigo, d.asiento.numeroAlterno, d.asiento.fechaAsiento, " +
+					"     d.asiento.observaciones, d.asiento.estado, sum(d.valorDebe), sum(d.valorHaber) " +
+					" ) " +
+					" from   DetalleAsiento d " +
+					" where  d.asiento.empresa.codigo = :idEmpresa " +
+					" and    d.asiento.periodo.codigo = :idPeriodo " +
+					" group by d.asiento.codigo, d.asiento.numeroAlterno, d.asiento.fechaAsiento, " +
+					"          d.asiento.observaciones, d.asiento.estado " +
+					" order by d.asiento.fechaAsiento desc, d.asiento.codigo desc ");
+			query.setParameter("idEmpresa", idEmpresa);
+			query.setParameter("idPeriodo", idPeriodo);
+			return query.getResultList();
 		}
 }

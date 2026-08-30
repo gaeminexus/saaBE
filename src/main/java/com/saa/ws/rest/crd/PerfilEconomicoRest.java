@@ -17,6 +17,7 @@ import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -67,10 +68,10 @@ public class PerfilEconomicoRest {
     @PUT
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response put(PerfilEconomico registro) {
+    public Response put(PerfilEconomico registro, @QueryParam("usuario") String usuario) {
         System.out.println("LLEGA AL SERVICIO PUT - PERFIL ECONOMICO");
         try {
-            PerfilEconomico resultado = perfilEconomicoService.saveSingle(registro);
+            PerfilEconomico resultado = perfilEconomicoService.saveSingle(registro, usuario);
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar perfil económico: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
@@ -80,10 +81,10 @@ public class PerfilEconomicoRest {
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response post(PerfilEconomico registro) {
+    public Response post(PerfilEconomico registro, @QueryParam("usuario") String usuario) {
         System.out.println("LLEGA AL SERVICIO POST - PERFIL ECONOMICO");
         try {
-            PerfilEconomico resultado = perfilEconomicoService.saveSingle(registro);
+            PerfilEconomico resultado = perfilEconomicoService.saveSingle(registro, usuario);
             return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear perfil económico: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();

@@ -48,6 +48,7 @@ public interface NombreEntidadesTesoreria {
 		 String DETALLE_DEBITO_CREDITO = "DetalleDebitoCredito";
 		 String DETALLE_DEPOSITO = "DetalleDeposito";
 		 String DETALLE_EXTRACTO_BANCARIO = "DetalleExtractoBancario";
+		 String DETALLE_TRANSITO = "DetalleTransito";
 		 String DIRECCION_PERSONA = "DireccionPersona";
 		 String EXTRACTO_BANCARIO = "ExtractoBancario";
 		 String GRUPO_CAJA = "GrupoCaja";

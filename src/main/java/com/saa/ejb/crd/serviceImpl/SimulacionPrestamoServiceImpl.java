@@ -2,20 +2,28 @@ package com.saa.ejb.crd.serviceImpl;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.crd.dao.DetallePrestamoDaoService;
 import com.saa.ejb.crd.dao.PrestamoDaoService;
 import com.saa.ejb.crd.service.AbonoCapitalPrestamoService;
 import com.saa.ejb.crd.service.CalculadoraAmortizacionService;
+import com.saa.ejb.crd.service.MotorPagoPrestamoService;
+import com.saa.ejb.crd.service.PagoPrestamoService;
 import com.saa.ejb.crd.service.ProcesoPagoPrestamoService;
 import com.saa.ejb.crd.service.SimulacionPrestamoService;
 import com.saa.ejb.crd.service.dto.CuotaProyectada;
 import com.saa.ejb.crd.service.dto.ParametrosAmortizacion;
 import com.saa.ejb.crd.service.dto.ResultadoSimulacionCreditoNuevo;
 import com.saa.ejb.crd.service.dto.ResultadoSimulacionReestructuracion;
+import com.saa.ejb.crd.service.dto.SaldosCuota;
 import com.saa.ejb.crd.service.dto.SolicitudReestructuracion;
 import com.saa.model.crd.DetallePrestamo;
 import com.saa.model.crd.Prestamo;
@@ -47,9 +55,30 @@ public class SimulacionPrestamoServiceImpl implements SimulacionPrestamoService 
     @EJB
     private DetallePrestamoDaoService detallePrestamoDaoService;
 
+    /** Segunda ola, pedido 8: reconstruir el saldo de capital desde CRD.PGPR, no leer DTPRCPPG/DTPRSICP.
+     *  Cálculo compartido con la precancelación — ver PagoPrestamoService.calcularSaldoCapitalPendiente. */
+    @EJB
+    private PagoPrestamoService pagoPrestamoService;
+
+    /**
+     * Corrección urgente 2026-08-29: para reconstruir el interés ordinario pendiente de las
+     * cuotas vencidas (ver {@link #simularReestructuracion}). SOLO la variante PURA
+     * {@code calcularSaldosCuota} — {@code calcularSaldosRealesCuota} autocorrige y persiste,
+     * lo que rompería la garantía "no escribe nada" de esta clase (ver javadoc de arriba).
+     */
+    @EJB
+    private MotorPagoPrestamoService motorPagoPrestamoService;
+
     @Override
     public ResultadoSimulacionCreditoNuevo simularCreditoNuevo(ParametrosAmortizacion params) throws Throwable {
         System.out.println("SimulacionPrestamoServiceImpl.simularCreditoNuevo");
+
+        // Segunda ola, pedido 2 (2026-08-27): el desgravamen de la simulación de crédito nuevo
+        // SIEMPRE sale del saldo de capital de cada cuota (saldo * 1.12 / 1000), no de un valor
+        // fijo — se fuerza acá, sin importar lo que traiga el request, porque es un requisito
+        // de este simulador puntual (la reestructuración y el generador real NO cambian: siguen
+        // con el valor fijo de ParametrosAmortizacion.desgravamenPorCuota).
+        params.setCalcularDesgravamenSobreSaldo(true);
 
         List<CuotaProyectada> tabla = calculadoraAmortizacionService.calcular(params);
 
@@ -125,19 +154,65 @@ public class SimulacionPrestamoServiceImpl implements SimulacionPrestamoService 
                 + ": el préstamo " + solicitud.getIdPrestamo() + " no tiene cuotas pendientes que reestructurar");
         }
 
-        // ⚠️ moraPendiente/interesVencidoPendiente/totalAPagarActualSchedule se siguen sumando
-        // sobre TODA la lista `pendientes` tal como viene de selectCuotasNoPagadasByPrestamo.
-        // Tienen el mismo problema de origen que el capital (abajo): si esa lista incluye una
-        // cuota que en realidad ya está pagada (DTPRESTD no confiable en cartera migrada), sus
-        // DTPRSLMR/DTPRSLIV/DTPRTTLL entran igual a la suma. NO se corrige acá — reportado, no
-        // arreglado, a pedido explícito.
+        // ⚠️ moraPendiente/totalAPagarActualSchedule se siguen sumando sobre TODA la lista
+        // `pendientes` tal como viene de selectCuotasNoPagadasByPrestamo. Tienen el mismo
+        // problema de origen que el capital (abajo): si esa lista incluye una cuota que en
+        // realidad ya está pagada (DTPRESTD no confiable en cartera migrada), sus
+        // DTPRSLMR/DTPRTTLL entran igual a la suma. NO se corrige acá — reportado, no arreglado,
+        // a pedido explícito.
+        //
+        // Bug urgente corregido 2026-08-29 (reportado por el usuario probando en producción):
+        // interesVencidoPendiente salía SIEMPRE $0.00. Leía `cuota.getSaldoInteresVencido()`
+        // (DTPRIVNC), una columna que NINGÚN proceso llena — ver el javadoc de
+        // MotorPagoPrestamoServiceImpl.calcularSaldosCuota: "el interés vencido... hoy ningún
+        // proceso lo alimenta y por eso vale 0". Y filtrar por DTPRESTD = EN_MORA(5) tampoco
+        // sirve: verificado que en la cartera migrada la mora vive en la cabecera del préstamo,
+        // casi ninguna cuota individual tiene ese estado puesto.
+        //
+        // Regla de negocio correcta (usuario, 2026-08-29): el interés vencido es la SUMA DEL
+        // INTERÉS ORDINARIO PENDIENTE de las cuotas que están en mora — no un campo propio, se
+        // deriva. "En mora" usa el MISMO criterio que el proceso diario de mora
+        // (ProcesoMoraPrestamoServiceImpl.calcularMoraPrestamo): selectCuotasVencidasByPrestamo
+        // (no pagada/no cancelada anticipada, fechaVencimiento < corte del día — el mismo
+        // "corteDelDia" de ese proceso: inicio del día de hoy, una cuota que vence HOY todavía
+        // no está vencida). Y "interés ordinario pendiente" es el SALDO neto de lo ya pagado,
+        // reconstruido desde CRD.PGPR con motorPagoPrestamoService.calcularSaldosCuota — la
+        // variante PURA (no calcularSaldosRealesCuota, que persiste y rompería la garantía de
+        // esta clase), la misma que ya usa el punto de mora/interés vencido en
+        // AbonoCapitalPrestamoServiceImpl. Leer el bruto de DTPR cobraría de más si la cuota ya
+        // tuvo un pago parcial.
+        LocalDateTime corteMora = LocalDate.now().atStartOfDay();
+        List<DetallePrestamo> vencidas =
+            detallePrestamoDaoService.selectCuotasVencidasByPrestamo(solicitud.getIdPrestamo(), corteMora);
+        Set<Long> codigosVencidas = new HashSet<>();
+        if (vencidas != null) {
+            for (DetallePrestamo v : vencidas) {
+                codigosVencidas.add(v.getCodigo());
+            }
+        }
+
         double moraPendiente = 0.0;
         double interesVencidoPendiente = 0.0;
         double totalAPagarActualSchedule = 0.0;
         for (DetallePrestamo cuota : pendientes) {
-            moraPendiente += nvl(cuota.getSaldoMora());
-            interesVencidoPendiente += nvl(cuota.getSaldoInteresVencido());
-            totalAPagarActualSchedule += nvl(cuota.getTotal());
+            if (codigosVencidas.contains(cuota.getCodigo())) {
+                // Doble cuenta evitada (pedido explícito de verificarlo): DTPRTTLL de una cuota
+                // vencida YA incluye su propio interés ordinario (y su mora, ver el mismo
+                // javadoc de calcularSaldosCuota) — si acá se sumara cuota.getTotal() completo Y
+                // ADEMÁS interesVencidoPendiente/moraPendiente por separado, ese interés y esa
+                // mora se contarían dos veces y el socio terminaría capitalizando de más. Por
+                // eso, para las VENCIDAS, totalAPagarActualSchedule suma el saldo reconstruido
+                // SIN el interés ordinario ni la mora (los dos ya van aparte); para las que no
+                // están vencidas se sigue sumando su DTPRTTLL completo, sin cambios.
+                SaldosCuota saldos = motorPagoPrestamoService.calcularSaldosCuota(cuota);
+                interesVencidoPendiente += nvl(saldos.getSaldoInteres());
+                moraPendiente += nvl(saldos.getSaldoMora());
+                totalAPagarActualSchedule += redondear(nvl(saldos.getSaldoCapital())
+                    + nvl(saldos.getSaldoDesgravamen()) + nvl(saldos.getSaldoSeguroIncendio()));
+            } else {
+                moraPendiente += nvl(cuota.getSaldoMora());
+                totalAPagarActualSchedule += nvl(cuota.getTotal());
+            }
         }
         moraPendiente = redondear(moraPendiente);
         interesVencidoPendiente = redondear(interesVencidoPendiente);
@@ -158,25 +233,24 @@ public class SimulacionPrestamoServiceImpl implements SimulacionPrestamoService 
         // DetallePrestamoDaoServiceImpl.selectCuotasNoPagadasByPrestamo.
         DetallePrestamo primeraPendiente = pendientes.get(0);
 
-        // Capital de arranque = DTPRSICP de esa cuota: por definición, el capital pendiente
-        // justo antes de ella (o sea, justo después de la última cuota pagada de verdad). UNA
-        // sola lectura, sin sumar nada — decisión del usuario, reemplaza la suma capital-
-        // capitalPagado que en cartera migrada da 0 porque esos campos no vienen poblados como
-        // los llenaría el generador propio.
-        double saldoCapitalPendiente = nvl(primeraPendiente.getSaldoInicialCapital());
-        if (saldoCapitalPendiente <= 0.0) {
-            System.out.println("  ⚠️ DTPRSICP de la cuota " + primeraPendiente.getCodigo()
-                + " (#" + primeraPendiente.getNumeroCuota() + ") del préstamo " + solicitud.getIdPrestamo()
-                + " vino nulo o en cero; se usa el fallback Prestamo.saldoCapital (PRSTSLCP)");
-            saldoCapitalPendiente = nvl(prestamo.getSaldoCapital());
-        }
+        // Segunda ola, pedido 8 (2026-08-27) — CORREGIDO: la versión anterior leía DTPRSICP de
+        // la mínima cuota pendiente (con fallback a PRSTSLCP), ninguna de las dos reconstruida
+        // desde pagos reales. DTPRSICP es una FOTO fija del momento en que se generó la tabla:
+        // a diferencia de DTPRSLCP, ningún proceso la vuelve a tocar después (ni siquiera la
+        // autocorrección de MotorPagoPrestamoServiceImpl.calcularSaldosRealesCuota), así que en
+        // cartera migrada no refleja los pagos que en realidad se aplicaron. Ahora se reconstruye
+        // desde CRD.PGPR con pagos VIGENTES (PGPRANUL = 0), igual que
+        // MotorPagoPrestamoServiceImpl.calcularSaldosRealesCuota y
+        // CierreCarteraDaoServiceImpl.PAGOS_VIGENTES — NUNCA DTPRCPPG (resto de la migración,
+        // no confiable: vale igual que DTPRCPTL en 50.853 de 59.147 cuotas, ver
+        // PENDIENTES-SEGUNDA-OLA.md §1).
+        double saldoCapitalPendiente = pagoPrestamoService.calcularSaldoCapitalPendiente(pendientes);
         if (saldoCapitalPendiente <= 0.0) {
             throw new IncomeException(ProcesoPagoPrestamoService.ERR_VALOR_INVALIDO
                 + ": no se pudo determinar el capital pendiente del préstamo " + solicitud.getIdPrestamo()
-                + " — DTPRSICP de la cuota " + primeraPendiente.getCodigo() + " y PRSTSLCP del préstamo"
-                + " están ambos nulos o en cero; revise los datos antes de reestructurar");
+                + " — el saldo reconstruido desde CRD.PGPR dio " + saldoCapitalPendiente
+                + "; revise los datos antes de reestructurar");
         }
-        saldoCapitalPendiente = redondear(saldoCapitalPendiente);
 
         double cuotaActual = nvl(prestamo.getValorCuota());
         if (cuotaActual <= 0.0) {
@@ -200,8 +274,8 @@ public class SimulacionPrestamoServiceImpl implements SimulacionPrestamoService 
         double tasaActual = nvl(prestamo.getTasa());
         double tasaNueva = solicitud.getNuevaTasaAnual() != null ? solicitud.getNuevaTasaAnual() : tasaActual;
 
-        // Desgravamen/seguro por cuota: se copian de la última cuota pendiente, mismo supuesto
-        // que AbonoCapitalPrestamoServiceImpl (§7.3 paso 6 de ESPECIFICACION-SERVICIOS-PAGO-PRESTAMOS.md).
+        // Última cuota pendiente: queda como respaldo del seguro de incendio (ver más abajo;
+        // el desgravamen fijo que se leía de acá quedó sin uso — ver comentario junto al flag).
         DetallePrestamo ultimaPendiente = pendientes.get(pendientes.size() - 1);
 
         ParametrosAmortizacion params = new ParametrosAmortizacion();
@@ -211,8 +285,43 @@ public class SimulacionPrestamoServiceImpl implements SimulacionPrestamoService 
         params.setTipoAmortizacion(prestamo.getTipoAmortizacion());
         params.setFechaInicio(LocalDateTime.now());
         params.setTieneCuotaCero(mesesGracia == 1);
-        params.setDesgravamenPorCuota(nvl(ultimaPendiente.getDesgravamen()));
+
+        // Bug corregido 2026-08-29: la reestructuración calculaba el desgravamen con un valor
+        // FIJO copiado de ultimaPendiente, igual que abono a capital antes de su propio fix.
+        // Mismo criterio que simularCreditoNuevo: el desgravamen SIEMPRE sale del saldo de
+        // capital de cada cuota (saldo * 1.12/1000), nunca de un valor fijo. Verificado que el
+        // flag alcanza TODAS las filas de este motor, incluida la cuota 0 de gracia si la hay
+        // (CalculadoraAmortizacionServiceImpl.agregarCuotaCero respeta el mismo flag) — con el
+        // flag en true, params.getDesgravamenPorCuota() no se lee en ningún punto del cálculo,
+        // así que no se setea (dejarlo seteado sería un valor fijo muerto sin ningún lector).
+        params.setCalcularDesgravamenSobreSaldo(true);
+
+        // Bug corregido 2026-08-29: el seguro de incendio SÍ es fijo por cuota (no depende del
+        // saldo, a diferencia del desgravamen), pero se copiaba de una SOLA cuota (la última
+        // pendiente) hacia TODA la tabla nueva — mismo defecto que tenía
+        // AbonoCapitalPrestamoServiceImpl. La corrección ahí preserva por NÚMERO DE CUOTA
+        // porque la numeración nueva continúa la vieja; acá NO se puede usar el mismo número:
+        // CalculadoraAmortizacionServiceImpl siempre numera sus filas regulares 1..plazoNuevo
+        // desde cero (fila(): numeroCuota = i, el índice del bucle, sin ningún offset — no
+        // conoce la numeración histórica del préstamo). La correspondencia correcta es por
+        // POSICIÓN dentro de `pendientes` (ya ordenada ascendente, la misma lista que se usa
+        // para todo lo demás en este método): la cuota nueva #k toma el seguro de
+        // pendientes.get(k-1). Si el plazo nuevo pide más cuotas que las historizadas, las que
+        // sobran no tienen correspondencia — criterio defensivo: usan el seguro de la última
+        // pendiente como respaldo, con log explícito, nunca NPE ni 0 silencioso.
+        Map<Long, Double> seguroPorNumeroCuota = new HashMap<>();
+        for (int idx = 0; idx < pendientes.size() && idx < plazoNuevo; idx++) {
+            seguroPorNumeroCuota.put((long) (idx + 1), redondear(nvl(pendientes.get(idx).getValorSeguroIncendio())));
+        }
+        if (plazoNuevo > pendientes.size()) {
+            System.out.println("SimulacionPrestamoServiceImpl.simularReestructuracion: el plazo nuevo ("
+                + plazoNuevo + ") pide más cuotas que las historizadas (" + pendientes.size()
+                + "); las cuotas #" + (pendientes.size() + 1) + " a #" + plazoNuevo
+                + " usan el seguro de incendio de respaldo (última cuota pendiente, $"
+                + redondear(nvl(ultimaPendiente.getValorSeguroIncendio())) + ").");
+        }
         params.setSeguroIncendioPorCuota(nvl(ultimaPendiente.getValorSeguroIncendio()));
+        params.setSeguroPorNumeroCuota(seguroPorNumeroCuota);
 
         List<CuotaProyectada> tabla = calculadoraAmortizacionService.calcular(params);
 

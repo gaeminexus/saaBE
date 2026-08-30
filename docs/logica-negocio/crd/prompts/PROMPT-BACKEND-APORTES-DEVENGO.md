@@ -50,6 +50,21 @@ Los tres van con **`PRBRCDGO` = `PRBRALTR`** a propósito. La aplicación resuel
 
 ---
 
+## Orden de trabajo
+
+Las fases van 1 → 5 y **ese orden no se negocia**: la 1 es urgente (es lo único que bloquea que la
+alimentación contable salga correcta) y las demás tienen dependencias reales — la 2 necesita la 1, la
+4 necesita la 2 y la 3, la 5 necesita la 2.
+
+Lo que sí está ordenado **de lo más rápido a lo más complejo es el interior de la Fase 1**, para que
+haya entregas pequeñas desde el principio: 1.1 barrido → 1.2 flag → 1.3 cerrar reproceso →
+1.4 estado a VIGENTE → 1.5 la carga escribe lo recibido → 1.6 script de corrección.
+
+> **Reporta cada sub-ítem apenas lo termines, no esperes a cerrar la fase.** El usuario despacha por
+> pieza, no por fase.
+
+---
+
 ## FASE 1 — Flag contable y `valor = lo recibido` · **URGENTE, va primero y sola**
 
 ### 1.1 Barrido previo (reporta antes de tocar nada)
@@ -73,23 +88,7 @@ calcula algo que se rompería al poner `saldo = 0`, dilo y **espera** antes de s
   Cuando está apagado: el proceso corre y calcula igual, **pero no crea el asiento**, y lo deja
   dicho en el resultado y en el log. No lances excepción.
 
-### 1.3 La carga escribe lo recibido
-
-En `CargaArchivoPetroServiceImpl`:
-
-- `crearNuevoAporte` deja de recibir `valorEsperado`: recibe **el monto que se le va a aplicar**, y
-  graba `valor = monto`, `valorPagado = monto`, `saldo = 0`, `estado = 4 (PAGADA)`.
-- `aplicarPagoAAporte` desaparece como concepto de "abonar a un aporte": ya no se abona nada, se
-  crea la fila por lo recibido.
-- Elimina el FIFO: `buscarAporteConSaldoPendiente` y las llamadas a
-  `AporteDaoService.selectMinAporteConSaldo`. Deja el método del DAO marcado `@Deprecated` con la
-  razón, no lo borres todavía.
-- Elimina el código muerto ya marcado `@SuppressWarnings("unused")`: `crearAportesMesSiguiente`,
-  `crearAporteExcedenteMesSiguiente`, `procesarAporteIndividual`.
-- **La prelación nueva se implementa en la Fase 2**, no aquí. En esta fase, `procesarAporteUnicoTipo`
-  y `procesarAportesAlternados` conservan su reparto actual, sólo cambia cómo se graba la fila.
-
-### 1.4 Cerrar el reproceso de una carga
+### 1.3 Cerrar el reproceso de una carga · *(rápido)*
 
 `aplicarPagosArchivoPetro` **no verifica que la carga ya esté procesada**, y `validarOrdenProcesamiento`
 (`:2951`) **excluye explícitamente a la propia carga** de la comparación (`:2958-2960`, *"No validar
@@ -97,7 +96,7 @@ contra sí misma"*): por eso la última carga procesada se puede volver a correr
 pagos. Agrega al inicio: si `cargaArchivo.getEstado() == 3` → `IncomeException` con mensaje claro.
 Documenta el cambio en `REGLAS-CARGA-PETRO.md` §3.1 en el mismo commit.
 
-### 1.5 El crédito sin cuotas en mora vuelve a VIGENTE (pedido 10)
+### 1.4 El crédito sin cuotas en mora vuelve a VIGENTE (pedido 10) · *(rápido, la lógica ya existe)*
 
 Hoy un préstamo marcado `EN_MORA (11)` sólo vuelve a `VIGENTE (2)` cuando corre el proceso diario de
 las 02:00. Si el partícipe se pone al día con un cruce o un abono, el crédito **se queda en mora
@@ -115,7 +114,23 @@ Reglas que **no** puedes romper: se escribe en `PRSTIDST`, nunca en `ESPSCDGO`; 
 automáticamente los estados 3, 4 ni 5**; y "cuota vencida" se decide con el mismo criterio del
 proceso diario, no con uno nuevo.
 
-### 1.6 Corrección de datos — **como documento, no como endpoint**
+### 1.5 La carga escribe lo recibido · *(el grueso de la fase)*
+
+En `CargaArchivoPetroServiceImpl`:
+
+- `crearNuevoAporte` deja de recibir `valorEsperado`: recibe **el monto que se le va a aplicar**, y
+  graba `valor = monto`, `valorPagado = monto`, `saldo = 0`, `estado = 4 (PAGADA)`.
+- `aplicarPagoAAporte` desaparece como concepto de "abonar a un aporte": ya no se abona nada, se
+  crea la fila por lo recibido.
+- Elimina el FIFO: `buscarAporteConSaldoPendiente` y las llamadas a
+  `AporteDaoService.selectMinAporteConSaldo`. Deja el método del DAO marcado `@Deprecated` con la
+  razón, no lo borres todavía.
+- Elimina el código muerto ya marcado `@SuppressWarnings("unused")`: `crearAportesMesSiguiente`,
+  `crearAporteExcedenteMesSiguiente`, `procesarAporteIndividual`.
+- **La prelación nueva se implementa en la Fase 2**, no aquí. En esta fase, `procesarAporteUnicoTipo`
+  y `procesarAportesAlternados` conservan su reparto actual, sólo cambia cómo se graba la fila.
+
+### 1.6 Corrección de datos — **como documento, no como endpoint** · *(lo más largo)*
 
 Entrega `docs/logica-negocio/crd/sql/62_CORRECCION_VALOR_APORTES_CARGA.sql`, SQL puro (sin
 `SET`/`DEFINE`/`WHENEVER`; el usuario lo corre en un plugin JDBC de VS Code), con esta estructura:

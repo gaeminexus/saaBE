@@ -8,8 +8,17 @@ import java.util.Map;
 import com.saa.basico.ejb.FileService;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.asoprep.service.CargaArchivoPetroService;
+import com.saa.ejb.crd.service.CobroPetroContableService;
 import com.saa.ejb.crd.service.EstadoCivilService;
 import com.saa.ejb.crd.service.ProcesoCargaPetroService;
+import com.saa.ejb.crd.service.dto.EstadoContablePetro;
+import com.saa.ejb.crd.service.dto.ResultadoConfirmarRecepcion;
+import com.saa.ejb.crd.service.dto.ResultadoReversarRecepcion;
+import com.saa.ejb.crd.service.dto.ResumenTransferenciasCarga;
+import com.saa.ejb.crd.service.dto.SolicitudConfirmarRecepcion;
+import com.saa.ejb.crd.service.dto.SolicitudReversarRecepcion;
+import com.saa.ejb.crd.service.dto.SolicitudTransferenciaCargaPetro;
+import com.saa.ejb.crd.service.dto.TransferenciaCargaPetroDTO;
 import com.saa.model.crd.CargaArchivo;
 import com.saa.model.crd.DetalleCargaArchivo;
 import com.saa.model.crd.ParticipeXCargaArchivo;
@@ -20,6 +29,7 @@ import jakarta.json.bind.Jsonb;
 import jakarta.json.bind.JsonbBuilder;
 import jakarta.json.bind.JsonbConfig;
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.FormParam;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
@@ -36,19 +46,22 @@ import jakarta.ws.rs.core.UriInfo;
 
 @Path("asgn")
 public class AsoprepGenerales {
-	
+
 	@EJB
     private FileService fileService;
-	
+
 	@EJB
     private EstadoCivilService estadoCivilService;
-	
+
 	@EJB
     private CargaArchivoPetroService cargaArchivoPetroService;
-	
+
 	@EJB
     private ProcesoCargaPetroService procesoCargaPetroService;
-	
+
+	@EJB
+    private CobroPetroContableService cobroPetroContableService;
+
 	@GET
     @Path("/actualizaCodigoPetroEntidad/{codigoPetro}/{idParticipeXCarga}/{idEntidad}") 
     @Produces("application/json")
@@ -441,6 +454,108 @@ public class AsoprepGenerales {
         }
     }
     
+    // =====================================================================================
+    // Cobro de Petro en dos pasos (regla 11 de §5 de
+    // LEVANTAMIENTO-ALIMENTACION-CONTABLE-CREDITOS.md). CONTRATO CONGELADO con el frontend:
+    // docs/logica-negocio/crd/API-COBRO-PETRO-DOS-PASOS.md. Errores: 500 con JSON
+    // {"mensaje": "..."} — lo envuelve MensajeErrorJsonFilter sobre el String de e.getMessage().
+    // =====================================================================================
+
+    @GET
+    @Path("/transferencias/{idCarga}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response transferenciasDeCarga(@PathParam("idCarga") Long idCarga) {
+        try {
+            ResumenTransferenciasCarga resumen = cobroPetroContableService.resumenTransferencias(idCarga);
+            return Response.ok(resumen).build();
+        } catch (Throwable e) {
+            return Response.status(Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener las transferencias de la carga: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    @POST
+    @Path("/transferencias")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response registrarTransferencia(SolicitudTransferenciaCargaPetro solicitud) {
+        try {
+            TransferenciaCargaPetroDTO transferencia =
+                    cobroPetroContableService.registrarTransferencia(solicitud);
+            return Response.status(Status.CREATED).entity(transferencia)
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al registrar la transferencia: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    @DELETE
+    @Path("/transferencias/{idTransferencia}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response anularTransferencia(@PathParam("idTransferencia") Long idTransferencia,
+            @QueryParam("usuario") String usuario) {
+        try {
+            cobroPetroContableService.anularTransferencia(idTransferencia, usuario);
+            return Response.ok(java.util.Collections.singletonMap("anulada", Boolean.TRUE))
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al anular la transferencia: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    @POST
+    @Path("/confirmarRecepcion/{idCarga}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response confirmarRecepcion(@PathParam("idCarga") Long idCarga,
+            SolicitudConfirmarRecepcion solicitud) {
+        try {
+            ResultadoConfirmarRecepcion resultado =
+                    cobroPetroContableService.confirmarRecepcion(idCarga, solicitud);
+            return Response.ok(resultado).build();
+        } catch (Throwable e) {
+            return Response.status(Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al confirmar la recepción: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    @POST
+    @Path("/reversarRecepcion/{idCarga}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response reversarRecepcion(@PathParam("idCarga") Long idCarga,
+            SolicitudReversarRecepcion solicitud) {
+        try {
+            ResultadoReversarRecepcion resultado =
+                    cobroPetroContableService.reversarRecepcion(idCarga, solicitud);
+            return Response.ok(resultado).build();
+        } catch (Throwable e) {
+            return Response.status(Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al reversar la recepción: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    @GET
+    @Path("/estadoContable/{idCarga}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response estadoContable(@PathParam("idCarga") Long idCarga) {
+        try {
+            EstadoContablePetro estado = cobroPetroContableService.estadoContable(idCarga);
+            return Response.ok(estado).build();
+        } catch (Throwable e) {
+            return Response.status(Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al consultar el estado contable: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
     /**
      * Crea un Jsonb configurado específicamente para UTF-8
      */

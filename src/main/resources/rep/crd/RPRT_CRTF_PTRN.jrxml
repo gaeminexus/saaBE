@@ -1,0 +1,124 @@
+<!-- Certificado de haber recibido aportes patronales y no recibir jubilacion mensual (CRD). Certificado de participe: documento de texto corrido, una pagina, vertical. Copia el estilo de RPRT_CMPB_PGCT (logo ASOPREP-FCPC, Tahoma). Contrato: docs/logica-negocio/crd/API-CERTIFICADOS-PARTICIPE.md. -->
+<!-- REGLAS: (1) el .jasper es obligatorio, lo compila el usuario con Jaspersoft Studio 7.0.3; (2) la query es MINIMA y con columnas explicitas: solo la entidad por P_ENTD_CODIGO. Todo lo variable llega por parametros; este reporte NUNCA consulta CRD.CRTF (la conexion JDBC del reporte no ve la transaccion que esta emitiendo el certificado). -->
+<jasperReport name="RPRT_CRTF_PTRN" language="java" pageWidth="595" pageHeight="842" columnWidth="475" leftMargin="60" rightMargin="60" topMargin="50" bottomMargin="40" whenNoDataType="NoDataSection" uuid="c7f00006-0000-0000-0000-000000000000">
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="Oracle"/>
+	<property name="com.jaspersoft.studio.report.description" value="Certificado de haber recibido aportes patronales y no recibir jubilacion mensual"/>
+	<parameter name="P_ENTD_CODIGO" class="java.lang.Long">
+		<description><![CDATA[Codigo del participe (CRD.ENTD.ENTDCDGO). Lo unico que el reporte consulta en la base.]]></description>
+	</parameter>
+	<parameter name="P_IMAGEN" class="java.awt.Image">
+		<description><![CDATA[Logo del fondo. Lo inyecta ReporteServiceImpl.]]></description>
+	</parameter>
+	<parameter name="P_NUMERO" class="java.lang.String">
+		<description><![CDATA[Numero impreso: ASOPREP-FCPC-PARTICIPE-099-2026. Lo asigna CertificadoServiceImpl.]]></description>
+	</parameter>
+	<parameter name="P_CIUDAD" class="java.lang.String"/>
+	<parameter name="P_FECHA_TEXTO" class="java.lang.String">
+		<description><![CDATA[Fecha de emision en letras: "02 de julio de 2026"]]></description>
+	</parameter>
+	<parameter name="P_NOMBRE" class="java.lang.String"/>
+	<parameter name="P_CEDULA" class="java.lang.String"/>
+	<parameter name="P_CALIDAD_TEXTO" class="java.lang.String">
+		<description><![CDATA["participe" | "participe cesante" | "participe jubilado" (la calidad efectivamente impresa)]]></description>
+	</parameter>
+	<parameter name="P_FIRMANTE" class="java.lang.String"/>
+	<parameter name="P_CARGO" class="java.lang.String"/>
+	<parameter name="P_FUENTE" class="java.lang.String">
+		<description><![CDATA[Siempre "sistema S.A.A."]]></description>
+	</parameter>
+	<parameter name="P_USUARIO" class="java.lang.String"/>
+	<parameter name="P_RECIBIO_CESANTIA" class="java.lang.Boolean">
+		<description><![CDATA[true = "sí recibió", false = "no recibió"]]></description>
+	</parameter>
+	<parameter name="P_JUB_SIN_MOVIMIENTOS" class="java.lang.Boolean">
+		<description><![CDATA[true = agrega " y la cuenta jubilación patronal no registra movimientos"; false = no imprime nada (sin espacio sobrante)]]></description>
+	</parameter>
+	<parameter name="P_FECHA_CORTE" class="java.lang.String">
+		<description><![CDATA[Fecha de corte de la cuenta de pension complementaria, en letras]]></description>
+	</parameter>
+	<query language="SQL"><![CDATA[SELECT
+    e.ENTDCDGO AS ENTIDAD_CODIGO,
+    e.ENTDRZNS AS RAZON_SOCIAL,
+    e.ENTDNMID AS CEDULA
+FROM CRD.ENTD e
+WHERE e.ENTDCDGO = $P{P_ENTD_CODIGO}]]></query>
+	<field name="ENTIDAD_CODIGO" class="java.math.BigDecimal"/>
+	<field name="RAZON_SOCIAL" class="java.lang.String"/>
+	<field name="CEDULA" class="java.lang.String"/>
+	<variable name="V_NOMBRE" class="java.lang.String" calculation="Nothing" resetType="Report">
+		<expression><![CDATA[($P{P_NOMBRE} != null && $P{P_NOMBRE}.trim().length() > 0) ? $P{P_NOMBRE}.trim() : $F{RAZON_SOCIAL}]]></expression>
+	</variable>
+	<variable name="V_CEDULA" class="java.lang.String" calculation="Nothing" resetType="Report">
+		<expression><![CDATA[($P{P_CEDULA} != null && $P{P_CEDULA}.trim().length() > 0) ? $P{P_CEDULA}.trim() : $F{CEDULA}]]></expression>
+	</variable>
+	<background splitType="Stretch"/>
+	<title height="150" splitType="Stretch">
+		<element kind="image" uuid="c7f00006-0000-0000-0000-000000000101" x="0" y="0" width="130" height="65" scaleImage="RetainShape" onErrorType="Blank" hImageAlign="Left" vImageAlign="Middle">
+			<expression><![CDATA[$P{P_IMAGEN}]]></expression>
+		</element>
+		<element kind="textField" uuid="c7f00006-0000-0000-0000-000000000102" x="175" y="6" width="300" height="16" fontName="Tahoma" fontSize="10.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA["CERTIFICADO No. " + $P{P_NUMERO}]]></expression>
+		</element>
+		<element kind="textField" uuid="c7f00006-0000-0000-0000-000000000103" x="175" y="26" width="300" height="16" fontName="Tahoma" fontSize="10.0" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$P{P_CIUDAD} + ", " + $P{P_FECHA_TEXTO}]]></expression>
+		</element>
+		<element kind="staticText" uuid="c7f00006-0000-0000-0000-000000000104" x="0" y="100" width="475" height="22" fontName="Tahoma" fontSize="14.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[CERTIFICADO]]></text>
+		</element>
+	</title>
+	<pageHeader height="0" splitType="Stretch"/>
+	<detail>
+		<!-- Texto corrido: cada parrafo es un textField que estira (StretchHeight) y el siguiente flota (Float) debajo. Un nombre o concepto largo empuja lo que viene despues; nada se superpone. -->
+		<band height="420" splitType="Stretch">
+			<element kind="textField" uuid="c7f00006-0000-0000-0000-000000000201" positionType="Float" x="0" y="0" width="475" height="90" fontName="Tahoma" fontSize="10.5" textAdjust="StretchHeight" hTextAlign="Justified" vTextAlign="Top">
+				<expression><![CDATA["LA ASOCIACIÓN DEL FONDO COMPLEMENTARIO PREVISIONAL CERRADO ASOPREP-FCPC DE JUBILACIÓN Y CESANTÍA, DE LAS EMPRESAS PÚBLICAS DEL SECTOR HIDROCARBURÍFERO, entidad de derecho privado, a petición escrita presentada por el interesado, certifica que "
++ $V{V_NOMBRE} + ", con CC No. " + $V{V_CEDULA} + ", es " + $P{P_CALIDAD_TEXTO} + " del Fondo"
++ "."]]></expression>
+				<paragraph lineSpacing="1_1_2" spacingAfter="12"/>
+			</element>
+			<element kind="textField" uuid="c7f00006-0000-0000-0000-000000000202" positionType="Float" x="0" y="100" width="475" height="70" fontName="Tahoma" fontSize="10.5" textAdjust="StretchHeight" hTextAlign="Justified" vTextAlign="Top">
+				<expression><![CDATA["De la revisión de los archivos institucionales de ASOPREP-FCPC, se ha verificado que " + $V{V_NOMBRE} + ", " + (Boolean.TRUE.equals($P{P_RECIBIO_CESANTIA}) ? "sí recibió" : "no recibió") + " aportes patronales correspondientes a cesantía patronal" + (Boolean.TRUE.equals($P{P_JUB_SIN_MOVIMIENTOS}) ? " y la cuenta jubilación patronal no registra movimientos" : "") + ". No obstante, no registra pagos mensuales por concepto de jubilación, debido a que no mantiene valores en su cuenta de pensión complementaria, la cual consta con corte al " + $P{P_FECHA_CORTE} + "."]]></expression>
+				<paragraph lineSpacing="1_1_2" spacingAfter="12"/>
+			</element>
+			<element kind="textField" uuid="c7f00006-0000-0000-0000-000000000203" positionType="Float" x="0" y="180" width="475" height="48" fontName="Tahoma" fontSize="10.5" textAdjust="StretchHeight" hTextAlign="Justified" vTextAlign="Top">
+				<expression><![CDATA["El presente certificado se expide con base en la información que reposa en los archivos y registros del " + $P{P_FUENTE} + " hasta la fecha de su emisión, a los cuales me remito en caso de ser pertinente."]]></expression>
+				<paragraph lineSpacing="1_1_2" spacingAfter="12"/>
+			</element>
+			<!-- textField (no staticText): un staticText no admite textAdjust y este parrafo justificado debe poder crecer -->
+			<element kind="textField" uuid="c7f00006-0000-0000-0000-000000000204" positionType="Float" x="0" y="240" width="475" height="48" fontName="Tahoma" fontSize="10.5" textAdjust="StretchHeight" hTextAlign="Justified" vTextAlign="Top">
+				<expression><![CDATA["Es todo cuanto puedo certificar en honor a la verdad, el interesado puede hacer uso del mismo como a bien tuviere, siempre y cuando esté dentro del marco legal vigente."]]></expression>
+				<paragraph lineSpacing="1_1_2" spacingAfter="12"/>
+			</element>
+			<element kind="staticText" uuid="c7f00006-0000-0000-0000-000000000205" positionType="Float" x="0" y="300" width="475" height="16" fontName="Tahoma" fontSize="10.5" vTextAlign="Top">
+				<text><![CDATA[Atentamente,]]></text>
+				<paragraph spacingAfter="48"/>
+			</element>
+			<!-- Firma: el espacio en blanco es para la rubrica -->
+			<element kind="textField" uuid="c7f00006-0000-0000-0000-000000000206" positionType="Float" x="0" y="370" width="475" height="16" fontName="Tahoma" fontSize="10.5" bold="true" vTextAlign="Top">
+				<expression><![CDATA[$P{P_FIRMANTE}]]></expression>
+			</element>
+			<element kind="textField" uuid="c7f00006-0000-0000-0000-000000000207" positionType="Float" x="0" y="386" width="475" height="16" fontName="Tahoma" fontSize="10.5" vTextAlign="Top">
+				<expression><![CDATA[$P{P_CARGO}]]></expression>
+			</element>
+			<element kind="staticText" uuid="c7f00006-0000-0000-0000-000000000208" positionType="Float" x="0" y="402" width="475" height="18" fontName="Tahoma" fontSize="7.5" hTextAlign="Left" vTextAlign="Top">
+				<text><![CDATA[ASOCIACIÓN DEL FONDO COMPLEMENTARIO PREVISIONAL CERRADO ASOPREP-FCPC DE JUBILACIÓN Y CESANTÍA, DE LAS EMPRESAS PÚBLICAS DEL SECTOR HIDROCARBURÍFERO]]></text>
+			</element>
+		</band>
+	</detail>
+	<pageFooter height="24" splitType="Stretch">
+		<element kind="line" uuid="c7f00006-0000-0000-0000-000000000401" x="0" y="4" width="475" height="1">
+			<pen lineWidth="0.25" lineColor="#E2E8F0"/>
+		</element>
+		<element kind="textField" uuid="c7f00006-0000-0000-0000-000000000402" x="0" y="8" width="475" height="12" forecolor="#A0AEC0" fontName="Tahoma" fontSize="6.5" vTextAlign="Middle">
+			<expression><![CDATA["ASOPREP-FCPC · Sistema de Administración de Aportes (SAA) · " + $P{P_NUMERO} + ($P{P_USUARIO} != null ? (" · Emitido por " + $P{P_USUARIO}) : "")]]></expression>
+		</element>
+	</pageFooter>
+	<noData height="100" splitType="Stretch">
+		<element kind="image" uuid="c7f00006-0000-0000-0000-000000000601" x="0" y="0" width="130" height="65" scaleImage="RetainShape" onErrorType="Blank" hImageAlign="Left" vImageAlign="Middle">
+			<expression><![CDATA[$P{P_IMAGEN}]]></expression>
+		</element>
+		<element kind="textField" uuid="c7f00006-0000-0000-0000-000000000602" x="0" y="80" width="475" height="16" fontName="Tahoma" fontSize="9.0" hTextAlign="Center" vTextAlign="Middle">
+			<expression><![CDATA["No se encontró el partícipe con código " + ($P{P_ENTD_CODIGO} != null ? String.valueOf($P{P_ENTD_CODIGO}) : "(nulo)") + "."]]></expression>
+		</element>
+	</noData>
+</jasperReport>

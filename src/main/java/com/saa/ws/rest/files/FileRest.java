@@ -161,6 +161,71 @@ public class FileRest {
     }
 
     /**
+     * Ver archivo en el navegador (PDF/imagen embebido en un visor, un iframe, etc.), a
+     * diferencia de {@link #downloadFile} que siempre fuerza la descarga. Content-Type real
+     * según la extensión (no octet-stream) y {@code Content-Disposition: inline}: sin esto
+     * el navegador descarga el archivo en vez de mostrarlo, y una pantalla de aprobación
+     * (contabilidad revisando un respaldo antes de aprobar un cobro, por ejemplo) necesita
+     * mostrarlo, no obligar una descarga por cada comprobante.
+     *
+     * @param filePath : Ruta del archivo a mostrar
+     * @return Response con el archivo y su Content-Type real
+     */
+    @GET
+    @Path("view")
+    public Response viewFile(@QueryParam("filePath") String filePath) {
+        try {
+            if (filePath == null || filePath.trim().isEmpty()) {
+                return Response.status(Status.BAD_REQUEST)
+                        .entity("La ruta del archivo es requerida")
+                        .build();
+            }
+            if (!fileService.fileExists(filePath)) {
+                return Response.status(Status.NOT_FOUND)
+                        .entity("El archivo no existe")
+                        .build();
+            }
+
+            InputStream fileStream = fileService.downloadFile(filePath);
+            String fileName = filePath.substring(filePath.lastIndexOf("/") + 1);
+
+            return Response.ok(fileStream)
+                    .type(contentTypePorExtension(fileName))
+                    .header("Content-Disposition", "inline; filename=\"" + fileName + "\"")
+                    .build();
+
+        } catch (Throwable e) {
+            return Response.status(Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al mostrar archivo: " + e.getMessage())
+                    .build();
+        }
+    }
+
+    /** Content-Type real por extensión. Los formatos que no se reconocen caen a octet-stream. */
+    private String contentTypePorExtension(String fileName) {
+        String nombre = fileName != null ? fileName.toLowerCase() : "";
+        if (nombre.endsWith(".pdf")) {
+            return "application/pdf";
+        }
+        if (nombre.endsWith(".jpg") || nombre.endsWith(".jpeg")) {
+            return "image/jpeg";
+        }
+        if (nombre.endsWith(".png")) {
+            return "image/png";
+        }
+        if (nombre.endsWith(".gif")) {
+            return "image/gif";
+        }
+        if (nombre.endsWith(".webp")) {
+            return "image/webp";
+        }
+        if (nombre.endsWith(".tif") || nombre.endsWith(".tiff")) {
+            return "image/tiff";
+        }
+        return MediaType.APPLICATION_OCTET_STREAM;
+    }
+
+    /**
      * Eliminar archivo
      * 
      * @param filePath : Ruta del archivo a eliminar

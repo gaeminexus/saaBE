@@ -71,15 +71,29 @@ un `ROW_NUMBER()` sobre ese mismo orden: es el número de fila del padrón, **no
 
 ## 4. Número de aportes
 
+**Cambio del 2026-08-27 (Fase 5 del plan de devengo de aportes).** Se agrupa por **periodo
+efectivo** (`PeriodoEfectivoAporteSql.PERIODO_EFECTIVO_SQL`), no por `TRUNC(APRTFCTR, 'MM')`:
+
 ```sql
-COUNT(DISTINCT TRUNC(APRTFCTR, 'MM'))
+COUNT(DISTINCT (CASE WHEN APRTPRDV IS NOT NULL THEN APRTPRDV
+                     WHEN APRTVLRR > 0         THEN TRUNC(APRTFCTR, 'MM')
+                     ELSE NULL END))
 FROM CRD.APRT
 WHERE TPAPCDGO IN (9, 11) AND APRTVLRR > 0 AND APRTFCTR < corteAportes
 ```
 
+`APRTFCTR` (fecha de caja) es siempre el mes de la CARGA, nunca el del devengo. Antes de este
+cambio, un partícipe que se ponía al día pagando **6 meses atrasados en una sola carga**
+contaba como **1 aporte** — todas esas filas caen en el mismo mes de caja — en vez de 6. Con
+solo filas positivas en el `WHERE`, el periodo efectivo equivale a
+`NVL(APRTPRDV, TRUNC(APRTFCTR,'MM'))`: una fila positiva sin backfillear sigue contando por su
+mes de caja, así que el histórico sin devengo no cambia de comportamiento.
+
 - Tipos de aporte: **9 = JUBILACIÓN, 11 = CESANTÍA**. Ningún otro tipo cuenta.
 - Solo aportes con valor **positivo**.
-- Se cuentan **meses distintos**, no filas: un mes con tres aportes cuenta como uno.
+- Se cuentan **meses de devengo distintos**, no filas ni meses de caja: un mes con tres
+  aportes cuenta como uno, y varios meses atrasados pagados en una sola carga cuentan cada
+  uno por separado.
 - Sin aportes: `0` (no null).
 
 ---
@@ -90,6 +104,13 @@ WHERE TPAPCDGO IN (9, 11) AND APRTVLRR > 0 AND APRTFCTR < corteAportes
 mesesEnMora = MONTHS_BETWEEN(mesReferencia, último mes con aporte)
 estadoMora  = 'EN MORA' si el último aporte es anterior a primerMesAlDia
 ```
+
+**"Último mes con aporte" también es el periodo efectivo de §4** (mismo cambio del
+2026-08-27), no el mes de caja: si el último pago que llegó fue una carga que puso al día
+varios meses atrasados, el mes que cuenta es el más reciente de los **cubiertos**, no el mes
+en que se procesó la carga. Esto NO cambia la regla de mora en sí — sigue siendo "aportó algo
+ese mes" (`SUM(valor) > 0`), nunca "cubrió lo esperado" — sólo corrige a qué mes se le
+atribuye ese aporte.
 
 La ventana es de **6 meses** (`MESES_VENTANA_MORA = 6`): se cae EN MORA al acumular **6 meses
 consecutivos sin aportar** respecto del mes de referencia.

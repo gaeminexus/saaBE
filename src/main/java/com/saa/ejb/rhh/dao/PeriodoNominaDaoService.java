@@ -8,6 +8,8 @@
  */
 package com.saa.ejb.rhh.dao;
 
+import java.time.LocalDate;
+
 import com.saa.basico.util.EntityDao;
 import com.saa.model.rhh.PeriodoNomina;
 
@@ -15,9 +17,20 @@ import jakarta.ejb.Local;
 
 /**
  * @author GaemiSoft.
- * DaoService PeriodoNomina. 
+ * DaoService PeriodoNomina.
  */
 @Local
 public interface PeriodoNominaDaoService  extends EntityDao<PeriodoNomina>  {
-	
+
+	/**
+	 * Recupera el periodo de nomina de una empresa que contiene una fecha, es decir
+	 * fechaInicio &lt;= fecha &lt;= fechaFin.
+	 *
+	 * @param idEmpresa	: Id de la empresa
+	 * @param fecha		: Fecha a ubicar
+	 * @return			: El periodo, o null si ninguno la contiene
+	 * @throws Throwable	: Excepcion
+	 */
+	PeriodoNomina selectByFechaEmpresa(Long idEmpresa, LocalDate fecha) throws Throwable;
+
 }

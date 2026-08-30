@@ -71,5 +71,20 @@ public interface ProductoPagoDaoService  extends EntityDao<ProductoPago>  {
 	 * @throws Throwable	: Excepcion
 	 */
 	List<ProductoPago> selectByIdPadre(Long idPadre) throws Throwable;
-	
+
+	/**
+	 * Documentos de compra (factura, nota de crédito, liquidación) que tienen al menos una
+	 * línea apuntando a este producto — el control de "no borrar un producto en uso"
+	 * (ver docs/logica-negocio/sri/LEVANTAMIENTO-ATS-103-104.md §6.7 y
+	 * docs/logica-negocio/cxp/sql/add-fk-producto-detalle-compras.sql, que agrega la FK real
+	 * en base para PGS.DFCC/DTCC; PGS.DLCM ya la tenía). Cubre las tres tablas aunque solo dos
+	 * tengan FK nueva, para dar el mismo mensaje claro en los tres casos.
+	 *
+	 * @param idProducto	: Id del producto (PGS.PRDP.ID)
+	 * @return				: Descripciones "Tipo N° numero (id X)" de los documentos que lo
+	 *						  usan; vacío si el producto no está en uso
+	 * @throws Throwable	: Excepcion
+	 */
+	List<String> selectDocumentosQueUsanProducto(Long idProducto) throws Throwable;
+
 }

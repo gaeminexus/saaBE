@@ -20,6 +20,7 @@ import com.saa.ejb.crd.service.MotorPagoPrestamoService;
 import com.saa.ejb.crd.service.dto.DetalleResumenDevolucion;
 import com.saa.ejb.crd.service.dto.DeudaPrestamo;
 import com.saa.ejb.crd.service.dto.DeudaVigenteParticipe;
+import com.saa.ejb.crd.service.dto.ResultadoConsultaPagoDevolucion;
 import com.saa.ejb.crd.service.dto.ResultadoDevolucionAporte;
 import com.saa.ejb.crd.service.dto.ResultadoSincronizacion;
 import com.saa.ejb.crd.service.dto.ResumenDevolucionAporte;
@@ -104,9 +105,9 @@ public class DevolucionAporteRest {
      * El saldo del partícipe baja EN EL MOMENTO DEL REGISTRO, antes de que el dinero salga
      * del banco. Si el pago se rechaza, el reconciliador genera los contra-movimientos.
      *
-     * @param solicitud { idEntidad, idCuentaBancariaParticipe, idCuentaBancariaOrigen,
-     *                    idEmpresa, idUsuario, usuario, fecha, motivo, debitoAutomatico,
-     *                    referencia, detalle:[{ idTipoAporte, valor }] }
+     * @param solicitud { idEntidad, idCuentaBancariaParticipe, idEmpresa, idUsuario, usuario,
+     *                    fecha, motivo, debitoAutomatico, referencia,
+     *                    detalle:[{ idTipoAporte, valor }] }
      * @return 201 con el ResultadoDevolucionAporte; 400/404/409/422/500 según el fallo
      */
     @POST
@@ -126,11 +127,6 @@ public class DevolucionAporteRest {
         if (solicitud.getIdEntidad() == null) {
             return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
                 "Debe indicar el partícipe (idEntidad)", DevolucionAporteService.ERR_PARAMETRO_INVALIDO);
-        }
-        if (solicitud.getIdCuentaBancariaOrigen() == null) {
-            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
-                "Debe indicar la cuenta bancaria de la que sale el dinero (idCuentaBancariaOrigen)",
-                DevolucionAporteService.ERR_PARAMETRO_INVALIDO);
         }
         if (solicitud.getIdEmpresa() == null) {
             return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
@@ -308,6 +304,64 @@ public class DevolucionAporteRest {
 
         } catch (Throwable e) {
             return respuestaError("sincronizar las devoluciones de aportes", e);
+        }
+    }
+
+    /**
+     * Consulta BAJO DEMANDA si el pago de una devolución ya se confirmó en Cuentas por
+     * Pagar — botón "Consultar a contabilidad" del diálogo de un aporte negativo que todavía
+     * no tiene fecha/referencia. Si se confirmó, copia esos dos datos a los PagoAporte de la
+     * devolución (uno por tipo de aporte) y los devuelve.
+     *
+     * {@code confirmado: false} es una respuesta 200 normal, no un error: significa que
+     * tesorería todavía no confirmó el pago — el frontend deja el botón visible. Con
+     * {@code confirmado: true}, el frontend oculta el botón mirando {@code fecha} (siempre
+     * viene con dato); {@code referencia} puede venir en {@code null} legítimamente, cuando
+     * tesorería confirmó manualmente sin escribir una referencia — mostrar algo como
+     * "no registrada" en ese caso, nunca un espacio en blanco.
+     *
+     * @param idDevolucion Código de la devolución (CRD.DVAP)
+     * @return 200 con { confirmado, fecha, referencia, mensaje }
+     */
+    @POST
+    @Path("/{idDevolucion}/consultarPago")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response consultarPago(@PathParam("idDevolucion") Long idDevolucion) {
+        System.out.println("LLEGA AL SERVICIO CONSULTAR PAGO DEVOLUCION - idDevolucion: " + idDevolucion);
+        try {
+            ResultadoConsultaPagoDevolucion resultado =
+                devolucionAporteService.consultarPagoDevolucion(idDevolucion);
+            return Response.status(Response.Status.OK)
+                    .entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return respuestaError("consultar el pago de la devolución " + idDevolucion, e);
+        }
+    }
+
+    /**
+     * A qué devolución pertenece un aporte negativo — para que el diálogo del "ojo" pueda
+     * armar el botón "Consultar a contabilidad" (que llama a
+     * {@code POST /dvap/{idDevolucion}/consultarPago}) sin tener que resolver la relación en
+     * el cliente.
+     *
+     * @param idAporte Código del aporte (CRD.APRT)
+     * @return 200 con {@code { idDevolucion }} ({@code null} si el aporte no es de una
+     *         devolución o no se pudo enlazar), o 404 si el aporte no existe
+     */
+    @GET
+    @Path("/porAporte/{idAporte}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response porAporte(@PathParam("idAporte") Long idAporte) {
+        System.out.println("LLEGA AL SERVICIO GET porAporte DEVOLUCION - idAporte: " + idAporte);
+        try {
+            Long idDevolucion = devolucionAporteService.obtenerIdDevolucionPorAporte(idAporte);
+            Map<String, Object> cuerpo = new LinkedHashMap<>();
+            cuerpo.put("idAporte", idAporte);
+            cuerpo.put("idDevolucion", idDevolucion);
+            return Response.status(Response.Status.OK)
+                    .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return respuestaError("obtener la devolución del aporte " + idAporte, e);
         }
     }
 

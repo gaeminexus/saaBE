@@ -87,6 +87,41 @@ public interface CrdLineaAsiento {
 	/** Ingreso por interés de MORA. {@code 5.1.02.xx}, cuenta compartida. Dimensión: tipo de préstamo. */
 	public static final int INGRESO_INTERES_MORA = 40;
 
+	// ── Aplicación de pagos y liquidaciones (Fase 3, 2026-08-28) ─────────────
+	// Añadidos para el asiento 2 de Petro (§3.3), pagos manuales (§3.4), cruce de valores
+	// (§3.5) y jubilación (§3.1) — todos reparten el mismo par de cuentas de pasivo.
+
+	/** Aportes personales CESANTÍA. Pasivo, {@code 2.1.01.05.01}. */
+	public static final int APORTES_CESANTIA = 50;
+
+	/** Aportes personales JUBILACIÓN. Pasivo, {@code 2.1.02.05.01}. */
+	public static final int APORTES_JUBILACION = 51;
+
+	/**
+	 * Seguro de desgravamen, tanto por cobrar como al aplicar un pago (el rol es el mismo;
+	 * la plantilla que se consulte decide el movimiento). Activo, {@code 1.4.90.90.10}.
+	 */
+	public static final int SEGURO_DESGRAVAMEN = 60;
+
+	/**
+	 * Aporte adicional personal. Pasivo, {@code 2.1.02.15}. Existe hoy en la plantilla 21
+	 * (posición 4) sin relación con cesantía/jubilación; se le da código propio para que no
+	 * choque con {@link #PRESTAMOS_POR_APLICAR} al renumerar. Fuera del alcance de la Fase
+	 * 3a (Petro): §3.3 del levantamiento no lo menciona.
+	 */
+	public static final int APORTE_ADICIONAL_PERSONAL = 52;
+
+	// ── Condonación (plantilla alterno 25, Frente K) ─────────────────────────
+
+	/**
+	 * Gasto por condonación de capital/interés en un acuerdo de pago con condonación.
+	 * Cuenta AÚN SIN DEFINIR al 2026-08-30 (§6.2 de PLAN-ACUERDOS-PAGO-CONDONACION.md): el
+	 * usuario la va a dar de alta antes de encender el flag de contabilidad de CRD. Hasta
+	 * entonces, resolver esta línea en la plantilla 25 devuelve {@code null} — es lo
+	 * esperado, no un error de este catálogo.
+	 */
+	public static final int GASTO_CONDONACION_PRESTAMOS = 70;
+
 	// ── Cuadre ──────────────────────────────────────────────────────────────
 
 	/**

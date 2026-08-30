@@ -51,4 +51,17 @@ public interface PagoPrestamoDaoService extends EntityDao<PagoPrestamo> {
 	 */
 	Long contarVigentesByIdDetallePrestamo(Long codigoDetallePrestamo);
 
+	/**
+	 * Pagos VIGENTES (anulado IS NULL OR anulado = 0) generados por una carga Petro
+	 * (CRD.CRAR), ordenados por código ASC. Base del asiento de APLICACION del cobro de
+	 * Petro en dos pasos — ver {@code CobroPetroContableService.contabilizarAplicacion} y
+	 * {@code docs/logica-negocio/crd/sql/DDL-TRAZABILIDAD-CARGA-PETRO.sql}.
+	 *
+	 * @param idCarga Código de la carga (CRD.CRAR)
+	 * @return Lista de PagoPrestamo vigentes; VACÍA si la carga no generó pagos o es anterior
+	 *         al 2026-08-28 (CRARCDGO sin backfill)
+	 * @throws Throwable Si ocurre algún error
+	 */
+	List<PagoPrestamo> selectVigentesByCargaArchivo(Long idCarga) throws Throwable;
+
 }
