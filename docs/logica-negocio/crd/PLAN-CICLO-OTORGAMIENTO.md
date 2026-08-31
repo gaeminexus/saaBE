@@ -215,6 +215,42 @@ arranque del ciclo nuevo).
 
 ---
 
+## 5.c Estado al cierre del 2026-08-31
+
+**Todo commiteado y pusheado. NADA desplegado ni probado contra el servidor.** Lo único verificado es
+compilación (`mvn -q clean compile` y `npm run build`, los dos exit 0) y lectura de código.
+
+| | Entregado | Dónde |
+|---|---|---|
+| Estado inicial `PENDIENTE_DE_APROBACION` al crear | ✅ | `PrestamoServiceImpl.saveSingle` |
+| Transición a `GENERADO` al generar tabla | ✅ | `generarTablaAmortizacion` |
+| Guarda de estado en la regeneración (U4) | ✅ | ídem, arriba de la de pagos |
+| Guarda de pagos, contando anulados y sin fallar abierto | ✅ | `countByIdDetallePrestamo` (equipo A) |
+| `aprobar` / `rechazar` + sus dos endpoints | ✅ | `PrestamoServiceImpl`, `PrestamoRest` |
+| Pantalla: botones, confirmación, badge, habilitación por estado | ✅ | `prestamo-edit` |
+| Arreglo del `guardar()` que duplicaba préstamos | ✅ | `prestamo-edit`, leer-y-sobrescribir |
+| **Gate de la §5.b** | ⛔ **sin correr** | `sql/151` |
+| Desembolso y asiento de entrega | ⬜ | pendiente, §6 |
+
+### Lo que hay que hacer al retomar, en este orden
+
+1. **Correr `sql/151` en producción** y leer el bloque 1. Es solo `SELECT`.
+2. Si el estado 1 sale vacío o con basura sin tabla ni pagos → **desplegar y probar** el ciclo
+   completo: alta, generar, regenerar, aprobar, rechazar, y que la cartera migrada siga
+   funcionando igual.
+3. Si el estado 1 tiene cartera viva → **no desplegar**; decidir cómo separarla antes.
+4. Con el bloque 2 del `151`, escribir la plantilla **34** (alterno reservado) y probarla en local
+   antes que en producción.
+
+### Tres preguntas de negocio abiertas
+
+- ¿El diálogo de aprobar captura una observación? Hoy se manda vacía.
+- ¿Cambiar el monto de un préstamo `PENDIENTE`/`GENERADO` re-deriva `totalPrestamo`/`saldoCapital`?
+  El alta los deriva, la edición no.
+- ¿Qué campos son "no financieros" y quedan editables en un préstamo `VIGENTE`? Hoy quedaron todos.
+
+---
+
 ## 6. Pendientes abiertos
 
 1. **El asiento de entrega del préstamo** — §3.8 del levantamiento contable, plantillas **9**
@@ -227,3 +263,12 @@ arranque del ciclo nuevo).
 3. **El camino de Excel puede pisar la tabla de un préstamo aprobado** (§3). Preexistente.
 4. **`estadoOperacion` (`PRSTESOP`)** — existe en `PRST` y no se sabe qué significa. No se toca
    hasta saberlo.
+5. **`fechaFin` se calcula desde HOY + plazo, no desde `fechaInicio` + plazo**
+   (`prestamo-edit.component.ts`, tanto en el alta como en la edición). En un préstamo con fecha de
+   inicio retroactiva —que es el caso de **toda** la carga migrada— da una fecha de fin equivocada.
+   Preexistente, señalado por el agente de FE y **no corregido a propósito**: es ajeno al ciclo y
+   tocarlo movería `PRSTFCFN` en cartera existente.
+6. **⛔ Transversal, y el más grande de la lista: `EntityDaoImpl.save()` hace `em.merge()` desnudo.**
+   Un `PUT` con payload parcial **graba `NULL`** en las columnas que no vengan, en cualquier módulo
+   del sistema. Documentado en `docs/general/MERGE-DESNUDO-EN-ENTITYDAOIMPL.md`. Es lo que obligó a
+   que `guardarEdicion()` lea antes de escribir. **Sin dueño.**

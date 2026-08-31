@@ -82,10 +82,69 @@
 >    ninguna pantalla que lo muestre**. No bloquea operar; sí bloquea soporte.
 > 4. **Jubilados** — tercer frente del equipo A, sin empezar.
 >
-> ## 7. El EQUIPO B sigue sin levantar
+> ## 7. EQUIPO B — levantado el 2026-08-31 en la HP OMEN (`omen-saa-1`)
 >
 > Otorgamiento, reestructuración y seguros. Alcance en `crd/ALCANCE-EQUIPOS-CRD.md`; rangos
-> PRBR 270-289, PDTR 1300-1399. Va a la HP OMEN.
+> PRBR 270-289, PDTR 1300-1399, **scripts SQL 150-199** (ver §2b del registro de reservas).
+>
+> **Estado al cierre del 2026-08-31 — todo commiteado y pusheado, NADA desplegado ni probado
+> contra el servidor.** El detalle está en dos documentos; esto es solo el índice:
+>
+> - `crd/REVISION-MOTOR-ANTES-DE-OTORGAMIENTO.md` — el gate del motor de amortización, cerrado.
+> - `crd/PLAN-CICLO-OTORGAMIENTO.md` — el ciclo, con las decisiones del usuario y **el riesgo
+>   abierto de la §5.b**.
+>
+> ### Lo que se cerró
+>
+> 1. **Revisión de los 10 defectos de la auditoría del motor**, verificados contra el código y no
+>    contra el documento: **8 estaban corregidos, 2 no** (D5 y la mitad de atrás de D10), pese a
+>    que `PLAN-SIMULADORES-PRESTAMOS.md` §11.2 los daba los 10 por cerrados. Y aparecieron **5
+>    defectos nuevos** que esa auditoría no podía ver porque solo miró la aritmética, no el camino
+>    de la calculadora a `CRD.DTPR`.
+> 2. **N1, el peor de todos: `generarTablaAmortizacion` no era idempotente.** No borraba la tabla
+>    anterior ni verificaba que existiera, y el botón está a un clic sin confirmación. Dos clics =
+>    tabla duplicada, y la cabecera se recalculaba sobre la lista nueva, así que **no lo delataba**.
+>    Medido: cero duplicados en 362.762 cuotas, nadie lo disparó todavía.
+> 3. **El ciclo de otorgamiento**: estados sobre `PRSTIDST`, `aprobar`/`rechazar` con validación en
+>    el servicio, y la pantalla con botones, confirmación y habilitación por estado.
+> 4. **El `guardar()` de `prestamo-edit` creaba un préstamo nuevo al editar uno existente** —
+>    duplicaba cartera en producción. Preexistente, encontrado por el agente de FE.
+>
+> ### ⛔ Lo que bloquea, y es del usuario
+>
+> **`crd/sql/151_DIAGNOSTICO_PRODUCCION_OTORGAMIENTO.sql`, sin correr.** Solo `SELECT`, seguro en
+> horario laboral. Sin su salida no se despliega el ciclo ni se puede escribir la plantilla 34.
+>
+> El motivo es el riesgo de la §5.b del plan: **`PRSTIDST = 1` está sobrecargado** entre
+> `Estado.ACTIVO` y `EstadoPrestamo.GENERADO`. Si hay cartera viva sentada en el estado 1, la
+> pantalla le va a ofrecer *Aprobar* y *Rechazar* a créditos vigentes — y **las dos transiciones lo
+> mueven dentro o fuera del filtro `PRSTIDST IN (2,8,10,11)` del proceso de mora, en silencio**.
+> Rechazar un crédito vivo lo saca del devengo y nadie se entera. Esa distribución por estado nunca
+> se midió: la medición de D10 solo contó los cuatro estados vivos, y los otros ~4.353 préstamos
+> jamás se miraron.
+>
+> ### Decisiones del usuario del 2026-08-31 — no volver a preguntarlas
+>
+> - **Sin niveles de aprobación.** Se aprueba en la misma pantalla. **`CRD.CRDT`
+>   (`CreditoMontoAprobacion`) queda existiendo y sin cablear** — no asumir que hay que llenarla.
+> - **La tabla se regenera hasta aprobar y se congela al aprobar**, aunque no tenga pagos.
+> - **El desembolso es un paso aparte**, posterior. Es lo único que mantiene separado a quien
+>   aprueba de quien paga, ahora que no hay niveles.
+> - **El desgravamen se calcula con la fórmula del simulador; el seguro de incendio queda en 0.00**
+>   hasta que exista el modelo de pólizas. Es decisión explícita, no un pendiente olvidado.
+>
+> ### Pendientes de negocio
+>
+> ¿El diálogo de aprobar captura observación? ¿Cambiar el monto de un préstamo `PENDIENTE`/
+> `GENERADO` re-deriva `totalPrestamo`/`saldoCapital`? ¿Qué campos quedan editables en `VIGENTE`?
+>
+> ### ⚠️ Advertencia de entorno
+>
+> El 2026-08-31 se levantó un **tercer equipo (`omen-saa-2`) que comparte el MISMO working tree en
+> disco** con el equipo B, no solo la máquina. Un `git checkout`, `stash`, `clean` o `add -A` de
+> cualquiera **borra o se lleva el trabajo sin commitear del otro**, sin conflicto y sin aviso. La
+> propiedad de archivos del §4 del registro de reservas **no protege contra esto**. Hasta que se
+> separen con `git worktree`, la regla es commitear seguido y no usar esos cuatro comandos.
 >
 > ---
 
