@@ -12,7 +12,42 @@ Este archivo proporciona guía a Claude Code (claude.ai/code) al trabajar con c�
 mvn clean package          # -> target/SaaBE.war  (context root /SaaBE)
 ```
 
-Nota: `mvn` **no está en el PATH** en este entorno. La compilación y el despliegue del día a día ocurren a través de Eclipse (m2e + WTP → adaptador de servidor WildFly); `recompilar-proyecto.bat` y `refresh-project.bat` existen para forzar recompilaciones/copias de recursos de Eclipse. No asumas que puedes compilar para verificar un cambio — dilo explícitamente en vez de adivinar.
+> ## ⚠️ Si `mvn` está disponible **depende de la máquina**. Verificalo, no lo asumas.
+>
+> Este repositorio se trabaja desde **varias máquinas a la vez**, y no todas tienen Maven. La nota
+> que estuvo acá hasta el 2026-08-31 afirmaba en absoluto que `mvn` **no** estaba en el PATH; eso es
+> cierto en unas máquinas y falso en otras, y las dos formas de equivocarse cuestan:
+>
+> - Creer que **no** se puede compilar donde sí se puede → se entrega código Java sin verificar.
+> - Creer que **sí** se puede donde no se puede → el agente corre `mvn`, le falla el **comando**, y
+>   reporta un problema de código que no existe.
+>
+> **Primero corré `mvn -v`.** Es una línea y resuelve la duda.
+>
+> | Verificado | Máquina | Resultado |
+> |---|---|---|
+> | 2026-08-31 | OMEN (equipo B de crd) | Maven **3.9.8** en `C:\Program Files\maven`, JDK **21.0.8** — `mvn -q compile` corre bien |
+> | 2026-08-31 | máquina del equipo A de crd | `mvn` no se reconoce; `C:\Program Files\maven` no existe |
+
+**Donde haya Maven, `mvn -q compile` se corre antes de dar por entregado cualquier cambio de Java.**
+No hay suite de tests, así que la compilación es la única verificación automática que existe.
+
+**Donde no lo haya**, decilo explícitamente en el reporte en vez de adivinar — y que el árbitro
+verifique el cambio leyendo el código, que es lo que se venía haciendo.
+
+Dos cosas más al leer un error, y las dos salen de haberse equivocado el 2026-08-31:
+
+- **Un `mvn` que no existe no es un error del código.** Si el comando falla con *«'mvn' no se
+  reconoce como cmdlet»* o similar, eso es el entorno, no el proyecto: no hay nada que arreglar en
+  el código. Reportá que no pudiste compilar y seguí.
+- **Un fallo puede no ser tuyo.** Varios equipos trabajan sobre el mismo repo. Antes de "arreglar"
+  algo, mirá si el archivo aparece en tu `git status`: si no lo modificaste vos, el defecto viene de
+  un commit ajeno — avisá a su dueño (`docs/logica-negocio/REGISTRO-RESERVAS-EQUIPOS.md` §4) en vez
+  de tocarlo. **Y antes de eso, `git fetch`**: puede estar ya arreglado en `origin/main` y vos
+  mirando un checkout viejo. Pasó el 2026-08-31.
+- **Compilar no es desplegar.** El despliegue del día a día es por Eclipse (m2e + WTP → adaptador de
+  servidor WildFly); `recompilar-proyecto.bat` y `refresh-project.bat` fuerzan recompilaciones y
+  copias de recursos. `mvn` sirve para verificar, no reemplaza ese ciclo.
 
 - `pom.xml` también configura `wildfly-maven-plugin` (`saa-wildfly:9990`) para `mvn wildfly:deploy`.
 - `docker-compose.yml` levanta Oracle 23ai Free (`saa-oracle-23ai`, puertos 1521/5500, `FREEPDB1`, contraseña `saa123`) para desarrollo local. La aplicación en sí accede a la BD a través del datasource de WildFly `java:/jdbc/SaaDS` (unidad de persistencia `SaaPU`, JTA, Hibernate `OracleDialect`).
