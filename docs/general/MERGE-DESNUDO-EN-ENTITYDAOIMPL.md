@@ -114,6 +114,11 @@ directo al DAO — que es el patrón estándar de la casa, así que son casi tod
 **Dueño: nadie todavía.** Se documenta acá para que no se pierda. Avisado a los árbitros de los
 equipos activos el 2026-08-31.
 
-**No es teórico fuera de `crd`:** el árbitro del equipo 2 lo trazó hasta un `@PUT` real de su
-alcance, `FacturaCompraRest:52-57` → `saveSingle` → el mismo DAO genérico. El camino es idéntico en
-`cxp`, y por construcción en cualquier módulo que siga el patrón de la casa — que son casi todos.
+**No es teórico fuera de `crd`, y está trazado punta a punta.** `FacturaCompraRest:52-61` (`cxp`)
+recibe la entidad entera del JSON y la pasa a `facturaCompraService.saveSingle(registro)`;
+`FacturaCompraDaoServiceImpl` **no sobreescribe `save`**, así que cae en el genérico de arriba. No
+hay una sola línea de protección en el camino. Lo levantó el árbitro del equipo 2, lo completó el
+del equipo 3 con el eslabón del DAO, y se verificó acá por tercera vez.
+
+Ese es el patrón estándar de la casa —`Rest` → `saveSingle` → DAO genérico—, así que **la pregunta
+correcta no es "¿me afecta?" sino "¿qué pantalla mía manda un payload parcial?"**.

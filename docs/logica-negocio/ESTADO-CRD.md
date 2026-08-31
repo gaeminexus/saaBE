@@ -140,11 +140,23 @@
 >
 > ### ⚠️ Advertencia de entorno
 >
-> El 2026-08-31 se levantó un **tercer equipo (`omen-saa-2`) que comparte el MISMO working tree en
-> disco** con el equipo B, no solo la máquina. Un `git checkout`, `stash`, `clean` o `add -A` de
-> cualquiera **borra o se lleva el trabajo sin commitear del otro**, sin conflicto y sin aviso. La
-> propiedad de archivos del §4 del registro de reservas **no protege contra esto**. Hasta que se
-> separen con `git worktree`, la regla es commitear seguido y no usar esos cuatro comandos.
+> El 2026-08-31 se levantaron **dos equipos más en la misma OMEN (`omen-saa-2` y `omen-saa-3`) que
+> apuntaban al MISMO working tree en disco** que el equipo B, no solo a la misma máquina. Un `git
+> checkout`, `stash`, `clean` o `add -A` de cualquiera **borra o se lleva el trabajo sin commitear
+> del otro**, sin conflicto y sin aviso. La propiedad de archivos del §4 del registro de reservas
+> **no protege contra esto**: esa tabla evita que dos equipos editen el mismo archivo, pero un `git
+> clean` se lleva el árbol entero.
+>
+> **La salida es un clon aparte, NO `git worktree`.** Verificado con el árbitro del equipo 3:
+> `worktree` no permite tener la misma rama en dos árboles (`fatal: 'main' is already checked out`),
+> y los tres equipos trabajan sobre `main`. Usarlo obligaría a ramas separadas y a mergear entre
+> equipos — más ceremonia de la que el problema pide. El equipo 2 se salió clonando en
+> `F:\work\equipo2\{saaBE,saaFE}`, que es el patrón correcto.
+>
+> **Mientras se comparta árbol:** commitear seguido, no usar esos cuatro comandos, y si `git status`
+> muestra archivos que no reconocés, **preguntar en vez de limpiar**. Hay un costo extra que no se
+> arregla con disciplina: **el árbol se mueve mientras uno lee**, así que una conclusión verificada
+> contra el código puede quedar vieja en minutos.
 >
 > ---
 
