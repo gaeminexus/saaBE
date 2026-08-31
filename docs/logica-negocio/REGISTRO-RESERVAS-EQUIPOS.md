@@ -15,11 +15,8 @@
 ## 1. Las tres reglas
 
 0. **`git fetch` ANTES de reservar.** Reservar contra un checkout viejo no reserva nada: el número
-   que ves libre puede estar tomado en `origin` desde hace horas. **Regla agregada el 2026-08-31
-   después de que pasara** — el equipo B reservó el script `88`, lo escribió y lo commiteó, y el
-   equipo A ya tenía un `88_` distinto en `origin`. Quedaron dos archivos `88_` en la misma carpeta.
-   Renumerado a `96`. La reserva se hizo *bien* según las reglas 1 y 2, y aun así colisionó, porque
-   ninguna de las dos mira el remoto.
+   que ves libre puede estar tomado en `origin` desde hace horas. Necesaria, **pero no suficiente**
+   — ver §2b.
 1. **Antes de usar un código, reservalo acá** — editá este archivo primero, después escribí el script.
 2. **Volvé a correr el control de `MAX` justo antes de ejecutar.** El rango reservado dice qué te
    corresponde; el `MAX` real dice qué hay. Si no coinciden, **parar y avisar**, nunca forzar.
@@ -82,6 +79,58 @@ eso ya pasó dos veces.
 
 ⚠️ **El bloque del otro equipo se reservó sin consultarlo.** Si ya venían usando otros números,
 avisen y se ajusta — pero **no lo pisen**: es el mismo error que este archivo existe para evitar.
+
+---
+
+## 2b. ⛔ Números de script SQL — rangos por equipo
+
+**Acordado entre los árbitros de los equipos A y B el 2026-08-31, después de chocar dos veces
+seguidas** en `docs/logica-negocio/crd/sql/`.
+
+| Rango | Equipo |
+|---|---|
+| ≤ 95 | histórico (todos) — ocupado |
+| **96–149** | **CRD · EQUIPO A** — cobros, contabilidad y jubilados |
+| **150–199** | **CRD · EQUIPO B** — ciclo del crédito y seguros |
+| ≥ 200 | sin asignar |
+
+### Por qué hizo falta un rango, y no alcanzaba con avisar
+
+El equipo B reservó el script `88` **siguiendo las reglas al pie de la letra** —lo anotó acá antes
+de escribirlo— y colisionó con un `88_` del equipo A que ya estaba en `origin`. Se agregó la regla 0
+(`git fetch` primero) y se renumeró a `96`. **El `96` también chocó**, esta vez contra un archivo
+del equipo A que existía **sin commitear**.
+
+Dos choques seguidos haciendo todo bien. La causa no es descuido:
+
+> **Los números de script se reservan por *existencia de archivo*, y un archivo sin commitear no
+> existe para el otro equipo.** No hay `fetch` que lo arregle: lo que todavía no se pusheó es
+> invisible por definición. La regla 0 es necesaria y **no es suficiente**.
+
+Con rangos separados deja de importar quién pushea primero, que es la única propiedad que hace
+robusto un recurso compartido entre sesiones que no se ven entre sí. Es el mismo remedio que ya se
+había aplicado a `PRBR`/`PDTR` en el §2 — solo que a los números de script nadie los había pensado
+como catálogo compartido, y lo son.
+
+**Criterio de desempate, si aun así pasa:** el que ya está en `origin` se queda; renumera el otro.
+`origin` es el único árbitro no ambiguo.
+
+---
+
+## 2c. Plantillas contables (`CNT.PLNS`, código alterno `PLNSCDAL`)
+
+**Las 33 vigentes están descritas en `crd/LEVANTAMIENTO-ALIMENTACION-CONTABLE-CREDITOS.md` §7.**
+Alternos 1–33 ocupados. **Reservar acá antes de crear una nueva.**
+
+| Alterno | Nombre | Equipo | Estado |
+|---|---|---|---|
+| 34 | `ENTREGA DE PRESTAMO QUIROGRAFARIO` | **CRD · EQUIPO B** | reservado 2026-08-31, aprobado por el árbitro del equipo A (verificó que él solo consulta las plantillas 21, 25, 27, 28 y 29, sin crear ninguna) |
+
+⚠️ **Trampa al escribir los `DTPLAXL1` de una plantilla nueva** (avisada por el equipo A, ya les costó
+un bug en la condonación): de las plantillas de CRD **solo la 21 está renumerada al catálogo
+semántico**; la 25, la 27 y la 29 usan auxiliares **posicionales**. **No copies la numeración de otra
+plantilla asumiendo que el mismo número significa lo mismo** — verificá qué es cada línea. Un
+auxiliar mal mapeado deja el asiento mal clasificado **y cuadrado igual**, o sea que no se detecta.
 
 ---
 
@@ -148,6 +197,6 @@ Agregá una línea cada vez que reserves algo. Fecha, equipo, qué, para qué.
 |---|---|---|---|
 | 2026-08-30 | CRD (árbitro `saabe-4b`) | PDTR 1178 | `JUBILACION` en el rubro 235 (tipo de movimiento de aporte) — script `crd/sql/81` |
 | 2026-08-30 | CRD (árbitro `saabe-4b`) | PDTR **1179** — del colchón, no del rango del equipo 4 | `COBRO_MIXTO` en el rubro 245 (tipo de operación de cobro) — script `crd/sql/83`. Un depósito que se reparte entre aportes y varios préstamos: **un depósito = un cobro = una aprobación = un reverso** |
-| 2026-08-31 | CRD · EQUIPO B (`omen-saa-1`) | **Número de script `crd/sql/96`** — ningún `PRBR`/`PDTR` | `96_BACKFILL_PRSTINNM_DESDE_PRSTTSAA.sql` (defecto D10). ⚠️ **Nació como `88_` y colisionó** — ver la fila de abajo. ~~Cambia la mora nocturna~~ — **medido contra la base el 2026-08-31: el `UPDATE` no toca ninguna fila** (5.657 de 5.664 préstamos ya tienen `PRSTINNM` correcto). Aviso al equipo A **rebajado**. Y **el frente de otorgamiento NO va a necesitar tabla nueva de 4 letras**: `CRD.PRST` ya trae todo el ciclo (aprobación, rechazo, legalización, acreditación) y `CRD.CRDT` los rangos de aprobación — ver `crd/REVISION-MOTOR-ANTES-DE-OTORGAMIENTO.md` §4. El rango 270-289 / 1300-1399 **queda libre** para el frente de seguros |
+| 2026-08-31 | CRD · EQUIPO B (`omen-saa-1`) | **Número de script `crd/sql/150`** — ningún `PRBR`/`PDTR` | `150_BACKFILL_PRSTINNM_DESDE_PRSTTSAA.sql` (defecto D10). ⚠️ **Nació como `88_` y colisionó** — ver la fila de abajo. ~~Cambia la mora nocturna~~ — **medido contra la base el 2026-08-31: el `UPDATE` no toca ninguna fila** (5.657 de 5.664 préstamos ya tienen `PRSTINNM` correcto). Aviso al equipo A **rebajado**. Y **el frente de otorgamiento NO va a necesitar tabla nueva de 4 letras**: `CRD.PRST` ya trae todo el ciclo (aprobación, rechazo, legalización, acreditación) y `CRD.CRDT` los rangos de aprobación — ver `crd/REVISION-MOTOR-ANTES-DE-OTORGAMIENTO.md` §4. El rango 270-289 / 1300-1399 **queda libre** para el frente de seguros |
 | 2026-08-31 | CRD · EQUIPO A (`saabe-4b`) | PDTR **1180**, rubro 235 **alterno 8** | `EXCEDENTE_PETRO` — script `crd/sql/87`. ⚠️ **Va en el alterno 8 porque el 7 ya está tomado por `JUBILACION`** (script 81, PDTR 1178, escrito y **sin correr**). El agente lo propuso en el 7 sin saberlo: el 81 no está en la base todavía, así que consultarla no alcanzaba — **este registro es la única fuente que lo evitaba** |
 | 2026-08-31 | CRD · EQUIPO A (`saabe-25`) | Tabla **`CTAP`** — cuentas contables por tipo de aporte | Devolución de aportes, opción C. Verificado libre en `src/main/java/com/saa/model/`; **falta confirmarlo contra `ALL_TABLES`** antes de ejecutar. DDL en `crd/sql/94` |

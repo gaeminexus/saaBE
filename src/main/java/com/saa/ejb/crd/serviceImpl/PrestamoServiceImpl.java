@@ -29,6 +29,7 @@ import com.saa.model.crd.PagoPrestamo;
 import com.saa.model.crd.Prestamo;
 import com.saa.rubros.Estado;
 import com.saa.rubros.EstadoCuotaPrestamo;
+import com.saa.rubros.EstadoPrestamo;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -99,7 +100,11 @@ public class PrestamoServiceImpl implements PrestamoService {
         }
         
         if(prestamo.getCodigo() == null){
-        	prestamo.setIdEstado(Long.valueOf(Estado.ACTIVO));
+        	// N5/ciclo de otorgamiento: Estado.ACTIVO era del catálogo equivocado (mismo defecto
+        	// N5 de las cuotas). Un préstamo nuevo nace PENDIENTE_DE_APROBACION (6), no en la
+        	// pantalla del alta le corresponde tabla ni aprobación todavía. Solo aplica al alta
+        	// (codigo == null): no se toca el estado de un préstamo existente en cada edición.
+        	prestamo.setIdEstado(Long.valueOf(EstadoPrestamo.PENDIENTE_DE_APROBACION));
 		}
 
         // D10 (decisión 11 del plan de simuladores): PRSTTSAA y PRSTINNM son una sola tasa.
@@ -157,6 +162,19 @@ public class PrestamoServiceImpl implements PrestamoService {
         // la duplicación.
         List<DetallePrestamo> cuotasExistentes = detallePrestamoDaoService.selectByPrestamo(idPrestamo);
         if (cuotasExistentes != null && !cuotasExistentes.isEmpty()) {
+            // U4 (PLAN-CICLO-OTORGAMIENTO.md): la tabla se congela al aprobar. Se verifica el
+            // estado ANTES que los pagos, por más barato (un campo ya cargado en memoria, no
+            // una consulta por cuota). VIGENTE y RECHAZADO bloquean la regeneración SIEMPRE,
+            // aunque la tabla no tenga ningún pago. Las dos guardas conviven: esta no reemplaza
+            // la de pagos, que sigue haciendo falta para la cartera migrada (entra en VIGENTE
+            // con pagos aplicados por otro camino).
+            Long idEstadoActual = prestamo.getIdEstado();
+            if (idEstadoActual != null
+                && (idEstadoActual == EstadoPrestamo.VIGENTE || idEstadoActual == EstadoPrestamo.RECHAZADO)) {
+                throw new IncomeException("El préstamo " + idPrestamo + " está en estado "
+                    + nombreEstadoPrestamo(idEstadoActual)
+                    + "; la tabla de amortización está congelada y no se puede regenerar.");
+            }
             if (!regenerar) {
                 throw new IncomeException("El préstamo " + idPrestamo + " ya tiene " + cuotasExistentes.size()
                     + " cuota(s) generadas. Para reemplazar la tabla, pedir la regeneración explícita.");
@@ -201,10 +219,119 @@ public class PrestamoServiceImpl implements PrestamoService {
         }
 
         actualizarCamposPrestamo(prestamo, detalles, tipoAmortizacion);
+
+        // Ciclo de otorgamiento (PLAN-CICLO-OTORGAMIENTO.md §3, regla 2): generar la tabla lleva
+        // de PENDIENTE_DE_APROBACION (6) o GENERADO (1, al regenerar) a GENERADO (1). Un préstamo
+        // en otro estado (p.ej. cartera migrada ya VIGENTE) no cambia de estado por regenerarle
+        // la tabla — ya lo impide la guarda de arriba, pero se deja explícito acá también.
+        Long idEstadoPrevio = prestamo.getIdEstado();
+        if (idEstadoPrevio != null
+            && (idEstadoPrevio == EstadoPrestamo.PENDIENTE_DE_APROBACION || idEstadoPrevio == EstadoPrestamo.GENERADO)) {
+            prestamo.setIdEstado(Long.valueOf(EstadoPrestamo.GENERADO));
+        }
+
         prestamo = prestamoDaoService.save(prestamo, prestamo.getCodigo());
 
         System.out.println("Tabla de amortización generada exitosamente con " + detalles.size() + " cuotas");
         return prestamo;
+    }
+
+    /** Nombre legible de un código de EstadoPrestamo, para mensajes de error que lo nombren. */
+    private String nombreEstadoPrestamo(Long idEstado) {
+        if (idEstado == null) {
+            return "SIN ESTADO";
+        }
+        int codigo = idEstado.intValue();
+        switch (codigo) {
+            case EstadoPrestamo.GENERADO: return "GENERADO (1)";
+            case EstadoPrestamo.VIGENTE: return "VIGENTE (2)";
+            case EstadoPrestamo.CANCELADO: return "CANCELADO (3)";
+            case EstadoPrestamo.CANCELADO_ANTICIPADO: return "CANCELADO_ANTICIPADO (4)";
+            case EstadoPrestamo.CANCELADO_POR_NOVACION: return "CANCELADO_POR_NOVACION (5)";
+            case EstadoPrestamo.PENDIENTE_DE_APROBACION: return "PENDIENTE_DE_APROBACION (6)";
+            case EstadoPrestamo.RECHAZADO: return "RECHAZADO (7)";
+            case EstadoPrestamo.DE_PLAZO_VENCIDO: return "DE_PLAZO_VENCIDO (8)";
+            case EstadoPrestamo.CANCELADO_POR_REVISAR: return "CANCELADO_POR_REVISAR (9)";
+            case EstadoPrestamo.VIGENTE_POR_REVISAR: return "VIGENTE_POR_REVISAR (10)";
+            case EstadoPrestamo.EN_MORA: return "EN_MORA (11)";
+            default: return "estado " + codigo;
+        }
+    }
+
+    @Override
+    public Prestamo aprobar(Long idPrestamo, String usuario, String observacion) throws Throwable {
+        System.out.println("Aprobando préstamo ID: " + idPrestamo + " - Usuario: " + usuario);
+
+        Prestamo prestamo = prestamoDaoService.selectById(idPrestamo, NombreEntidadesCredito.PRESTAMO);
+        if (prestamo == null) {
+            throw new IncomeException("Préstamo con ID " + idPrestamo + " no encontrado");
+        }
+
+        Long idEstadoActual = prestamo.getIdEstado();
+        if (idEstadoActual == null || idEstadoActual != EstadoPrestamo.GENERADO) {
+            throw new IncomeException("El préstamo " + idPrestamo + " está en estado "
+                + nombreEstadoPrestamo(idEstadoActual) + "; solo se puede aprobar desde GENERADO (1).");
+        }
+
+        // Sin tabla no hay nada que aprobar. El estado dice GENERADO; si por algún motivo no
+        // tiene cuotas, algo quedó inconsistente y hay que frenar, no aprobar.
+        List<DetallePrestamo> cuotas = detallePrestamoDaoService.selectByPrestamo(idPrestamo);
+        if (cuotas == null || cuotas.isEmpty()) {
+            throw new IncomeException("El préstamo " + idPrestamo
+                + " está en estado GENERADO pero no tiene tabla de amortización; no se puede aprobar.");
+        }
+
+        prestamo.setIdEstado(Long.valueOf(EstadoPrestamo.VIGENTE));
+        prestamo.setUsuarioAprobacion(usuario);
+        prestamo.setFechaAprobacion(LocalDateTime.now());
+        if (observacion != null && !observacion.trim().isEmpty()) {
+            prestamo.setObservacion(concatenarObservacion(prestamo.getObservacion(), observacion));
+        }
+
+        prestamo = prestamoDaoService.save(prestamo, prestamo.getCodigo());
+        System.out.println("Préstamo " + idPrestamo + " aprobado por " + usuario);
+        return prestamo;
+    }
+
+    @Override
+    public Prestamo rechazar(Long idPrestamo, String usuario, String observacion) throws Throwable {
+        System.out.println("Rechazando préstamo ID: " + idPrestamo + " - Usuario: " + usuario);
+
+        Prestamo prestamo = prestamoDaoService.selectById(idPrestamo, NombreEntidadesCredito.PRESTAMO);
+        if (prestamo == null) {
+            throw new IncomeException("Préstamo con ID " + idPrestamo + " no encontrado");
+        }
+
+        Long idEstadoActual = prestamo.getIdEstado();
+        boolean estadoValido = idEstadoActual != null
+            && (idEstadoActual == EstadoPrestamo.PENDIENTE_DE_APROBACION || idEstadoActual == EstadoPrestamo.GENERADO);
+        if (!estadoValido) {
+            throw new IncomeException("El préstamo " + idPrestamo + " está en estado "
+                + nombreEstadoPrestamo(idEstadoActual)
+                + "; solo se puede rechazar desde PENDIENTE_DE_APROBACION (6) o GENERADO (1).");
+        }
+
+        // La tabla de amortización NO se borra: queda como evidencia de qué se le ofreció al
+        // socio. Es inerte para el proceso de mora, que filtra PRSTIDST IN (2,8,10,11) — el 7
+        // no está en esa lista.
+        prestamo.setIdEstado(Long.valueOf(EstadoPrestamo.RECHAZADO));
+        prestamo.setUsuarioRechazo(usuario);
+        prestamo.setFechaRechazo(LocalDateTime.now());
+        if (observacion != null && !observacion.trim().isEmpty()) {
+            prestamo.setObservacion(concatenarObservacion(prestamo.getObservacion(), observacion));
+        }
+
+        prestamo = prestamoDaoService.save(prestamo, prestamo.getCodigo());
+        System.out.println("Préstamo " + idPrestamo + " rechazado por " + usuario);
+        return prestamo;
+    }
+
+    /** Concatena en vez de pisar: hay observaciones previas de la migración que no hay que perder. */
+    private String concatenarObservacion(String observacionPrevia, String observacionNueva) {
+        if (observacionPrevia == null || observacionPrevia.trim().isEmpty()) {
+            return observacionNueva;
+        }
+        return observacionPrevia + " | " + observacionNueva;
     }
     
     private List<DetallePrestamo> generarAmortizacionFrancesa(Prestamo prestamo, Long tieneCuotaCero) throws Throwable {

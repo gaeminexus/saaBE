@@ -34,6 +34,7 @@ import com.saa.ejb.crd.service.dto.SimulacionPrecancelacion;
 import com.saa.ejb.crd.service.dto.SolicitudAbonoCapital;
 import com.saa.ejb.crd.service.dto.SolicitudAnulacion;
 import com.saa.ejb.crd.service.dto.SolicitudComprobantePagoMultiple;
+import com.saa.ejb.crd.service.dto.SolicitudDecisionPrestamo;
 import com.saa.ejb.crd.service.dto.SolicitudPagoConAportes;
 import com.saa.ejb.crd.service.dto.SolicitudPagoCuota;
 import com.saa.ejb.crd.service.dto.SolicitudPagoMultiple;
@@ -346,6 +347,65 @@ public class PrestamoRest {
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al generar tabla de amortización: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
+    }
+
+    /**
+     * Aprueba un préstamo: GENERADO (1) → VIGENTE (2). Ver PLAN-CICLO-OTORGAMIENTO.md §3/§4.
+     *
+     * @param id Identificador del préstamo
+     * @param solicitud { usuario, observacion }
+     * @return Response con el préstamo actualizado
+     */
+    @POST
+    @Path("/aprobar/{id}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response aprobar(@PathParam("id") Long id, SolicitudDecisionPrestamo solicitud) {
+        String usuario = solicitud != null ? solicitud.getUsuario() : null;
+        String observacion = solicitud != null ? solicitud.getObservacion() : null;
+        System.out.println("APROBAR PRÉSTAMO - ID: " + id + ", Usuario: " + usuario);
+        try {
+            Prestamo prestamo = prestamoService.aprobar(id, usuario, observacion);
+            return Response.status(Response.Status.OK)
+                    .entity(prestamo)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al aprobar el préstamo: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
+    }
+
+    /**
+     * Rechaza un préstamo: PENDIENTE_DE_APROBACION (6) o GENERADO (1) → RECHAZADO (7). No borra
+     * la tabla de amortización. Ver PLAN-CICLO-OTORGAMIENTO.md §3/§4.
+     *
+     * @param id Identificador del préstamo
+     * @param solicitud { usuario, observacion }
+     * @return Response con el préstamo actualizado
+     */
+    @POST
+    @Path("/rechazar/{id}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response rechazar(@PathParam("id") Long id, SolicitudDecisionPrestamo solicitud) {
+        String usuario = solicitud != null ? solicitud.getUsuario() : null;
+        String observacion = solicitud != null ? solicitud.getObservacion() : null;
+        System.out.println("RECHAZAR PRÉSTAMO - ID: " + id + ", Usuario: " + usuario);
+        try {
+            Prestamo prestamo = prestamoService.rechazar(id, usuario, observacion);
+            return Response.status(Response.Status.OK)
+                    .entity(prestamo)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al rechazar el préstamo: " + e.getMessage())
                     .type(MediaType.APPLICATION_JSON)
                     .build();
         }

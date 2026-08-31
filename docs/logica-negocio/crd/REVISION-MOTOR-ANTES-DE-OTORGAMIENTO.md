@@ -98,11 +98,11 @@ se desplegó y porque nada vuelve a guardar un préstamo migrado que nadie edita
 que es útil, y se dejó el número equivocado.
 
 No hay ningún script de backfill en `docs/logica-negocio/crd/sql/`. Se escribió acá:
-**`sql/96_BACKFILL_PRSTINNM_DESDE_PRSTTSAA.sql`**.
+**`sql/150_BACKFILL_PRSTINNM_DESDE_PRSTTSAA.sql`**.
 
 #### ⚠️ Medido contra la base — y el resultado cambia la conclusión
 
-El bloque de diagnóstico de `sql/96` se corrió contra la base local el **2026-08-31** (5.664
+El bloque de diagnóstico de `sql/150` se corrió contra la base local el **2026-08-31** (5.664
 préstamos, 362.762 cuotas — la cartera migrada completa). **Lo que se esperaba encontrar no estaba:**
 
 | Medición | Resultado |
@@ -115,7 +115,7 @@ préstamos, 362.762 cuotas — la cartera migrada completa). **Lo que se esperab
 
 **Tres conclusiones, y las tres corrigen lo que este documento decía antes:**
 
-1. **El `UPDATE` de `sql/96` no toca ni una fila.** Exige `PRSTTSAA > 0` y los 7 candidatos tienen la
+1. **El `UPDATE` de `sql/150` no toca ni una fila.** Exige `PRSTTSAA > 0` y los 7 candidatos tienen la
    tasa en 0. El script queda como red de seguridad —**producción puede tener otros números y el
    bloque 0 hay que volver a correrlo allá**— pero acá es un no-op. No es urgente.
 2. **La migración sí llenó `PRSTINNM`.** El supuesto de que "todos los préstamos fueron guardados
@@ -176,7 +176,7 @@ préstamo pasa a deber el doble y `actualizarCamposPrestamo` recalcula `PRSTTTCP
 lista recién generada, así que la cabecera **no delata** la duplicación.
 
 **Medido contra la base el 2026-08-31: cero cuotas duplicadas** en 362.762 filas de `CRD.DTPR` (el
-bloque `0.b` de `sql/96` no devolvió ninguna fila). O sea, **nadie apretó todavía el botón dos
+bloque `0.b` de `sql/150` no devolvió ninguna fila). O sea, **nadie apretó todavía el botón dos
 veces** — la premisa de la decisión 14 del plan de simuladores queda confirmada por medición, no por
 suposición. El defecto es riesgo futuro, no daño acumulado, y sigue siendo el más peligroso de los
 revisados porque **la primera vez que pase no se va a notar**.
@@ -320,13 +320,13 @@ por probable para este frente. No consumo rango `PRBR`/`PDTR` todavía.
 decisión 14 del plan de simuladores —*"ninguna tabla de `CRD.DTPR` en producción salió de ese
 generador"*— se sostiene únicamente sobre que **nadie ha usado ese botón todavía**, no sobre que el
 camino no exista. Con N1 abierto, el primer uso puede duplicar una tabla. Confirmar contra la base
-antes de dar por buena la premisa (`sql/96`, bloque de diagnóstico 3).
+antes de dar por buena la premisa (`sql/150`, bloque de diagnóstico 3).
 
 ---
 
 ## 5. Aviso al árbitro del EQUIPO A
 
-**Rebajado el 2026-08-31 después de medir contra la base.** El aviso original decía que `sql/96`
+**Rebajado el 2026-08-31 después de medir contra la base.** El aviso original decía que `sql/150`
 cambiaba la mora nocturna de la cartera migrada. **No es así: el `UPDATE` no toca ninguna fila en
 local** (§2). Queda una sola cosa que sí les afecta, y es menor:
 
@@ -336,7 +336,7 @@ local** (§2). Queda una sola cosa que sí les afecta, y es menor:
   cambia nada, porque las dos columnas ya coinciden en las 5.664 filas donde ambas existen— pero
   conviene que lo sepan.
 
-Si en producción el bloque 0 de `sql/96` diera números distintos a los de local, el aviso vuelve a
+Si en producción el bloque 0 de `sql/150` diera números distintos a los de local, el aviso vuelve a
 subir de tono y hay que coordinarlo con ellos antes de ejecutar.
 
 ---
@@ -348,7 +348,7 @@ subir de tono y hay que coordinarlo con ellos antes de ejecutar.
 | 1 | **N1 caso A** — idempotencia de `generarTablaAmortizacion` (BE + guarda en el FE) | BE, luego FE | todo el frente |
 | 2 | **D5** + **N2** + **N5** — mapeo de `construirDetalle` y `actualizarCamposPrestamo` | BE | la primera tabla real |
 | 2b | **N3** — desgravamen por fórmula, incendio en 0 (decisión U1) | BE, mismo cambio que el 2 | la primera tabla real |
-| 3 | **`sql/96`** — correr el **bloque 0** en producción. El `UPDATE` es no-op en local; ejecutarlo solo si allá los números difieren | usuario | nada |
+| 3 | **`sql/150`** — correr el **bloque 0** en producción. El `UPDATE` es no-op en local; ejecutarlo solo si allá los números difieren | usuario | nada |
 | 3b | **Los 4 préstamos vivos sin tasa** (§2): decidir tasa o baja. Exposición ~8.700 de mora al 9 % | usuario / negocio | nada |
 | 5 | Ciclo de otorgamiento sobre `PRST` + `EstadoPrestamo` + `CRDT` | BE + FE | — |
 | 6 | Desembolso a tesorería y asiento de entrega (§3.8 del levantamiento contable, plantillas 9/13 + quirografario, decisión D7) | BE + FE | — |

@@ -73,4 +73,30 @@ public interface PrestamoService extends EntityService<Prestamo>{
 	 */
 	long countPrestamosConUltimaCuotaEnPeriodoByEntidad(Long codigoEntidad, java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable;
 
+	/**
+	 * Aprueba un préstamo (PLAN-CICLO-OTORGAMIENTO.md §3, regla 4): GENERADO (1) → VIGENTE (2).
+	 * Exige que el préstamo tenga tabla de amortización generada — sin tabla no hay nada que
+	 * aprobar. A partir de esta transición la tabla queda congelada (U4): no se regenera más.
+	 *
+	 * @param idPrestamo ID del préstamo
+	 * @param usuario Usuario que aprueba, se estampa en usuarioAprobacion
+	 * @param observacion Si viene, se concatena a la observación existente (no la pisa)
+	 * @return Préstamo actualizado, ya VIGENTE
+	 * @throws Throwable Si el préstamo no existe, no está en GENERADO, o no tiene cuotas
+	 */
+	Prestamo aprobar(Long idPrestamo, String usuario, String observacion) throws Throwable;
+
+	/**
+	 * Rechaza un préstamo (PLAN-CICLO-OTORGAMIENTO.md §3, regla 5): PENDIENTE_DE_APROBACION (6)
+	 * o GENERADO (1) → RECHAZADO (7). NO borra la tabla de amortización: queda como evidencia de
+	 * qué se le ofreció al socio, y es inerte para el proceso de mora.
+	 *
+	 * @param idPrestamo ID del préstamo
+	 * @param usuario Usuario que rechaza, se estampa en usuarioRechazo
+	 * @param observacion Si viene, se concatena a la observación existente (no la pisa)
+	 * @return Préstamo actualizado, ya RECHAZADO
+	 * @throws Throwable Si el préstamo no existe o no está en 6 ni en 1
+	 */
+	Prestamo rechazar(Long idPrestamo, String usuario, String observacion) throws Throwable;
+
 }
