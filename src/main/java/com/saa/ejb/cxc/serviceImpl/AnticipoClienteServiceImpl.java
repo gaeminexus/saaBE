@@ -187,6 +187,16 @@ public class AnticipoClienteServiceImpl implements AnticipoClienteService {
             }
         }
 
+        // Red de seguridad del alta. El campo ya nace en 0 por el inicializador de la entidad,
+        // pero eso sólo cubre la clave AUSENTE en el JSON: un cliente que mande
+        // "aplicado": null explícito hace que Jackson lo ponga en null y vuelve el ORA-01400,
+        // porque la columna es NUMBER(1) DEFAULT 0 NOT NULL e Hibernate la nombra siempre en el
+        // INSERT. Hoy ningún cliente lo manda (el modelo del frontend ni lo declara), pero eso
+        // depende de un archivo que este servicio no controla.
+        if (entidad.getAplicado() == null) {
+            entidad.setAplicado(Long.valueOf(0L));
+        }
+
         // ── Guarda de los campos de devolución en la edición ────────────────────
         // El DAO genérico hace em.merge() con el objeto tal cual llegó del JSON: un campo que el
         // cliente no manda NO queda como estaba, se graba null (ver
