@@ -89,6 +89,31 @@ Un partícipe que ingresó en octubre de 2025 **no debe nada** de junio a septie
 aportes hacia el piso le inventaría cuatro meses de historia y —peor— dejaría vacíos los meses
 recientes, que **sí** debe: la próxima generación se los cobraría.
 
+### ✅ Regla de negocio confirmada por el usuario (2026-08-31)
+
+> *«Un mes nunca puede quedar hueco. Aunque un mes al partícipe no se le haya descontado, el
+> siguiente mes que se le descuenta ese aporte **debe pertenecer al mes no descontado**, y solo a
+> nivel contable registrarse en el mes en que efectivamente se le descontó.»*
+
+Esto **confirma el diseño de §1** y le da nombre: la secuencia de devengo de un partícipe es
+**contigua, sin huecos**, y la fecha de caja es otra cosa.
+
+- **`APRTPRDV`** = el mes al que pertenece → **contiguo desde el primer mes esperado**.
+- **`APRTFCTR`** = el mes en que Petro descontó → **es el que ve contabilidad, y no se toca**.
+
+También confirma que **el código vigente ya hace esto hacia adelante**:
+`distribuirAportePorDevengo` reparte lo recibido «entre los meses de devengo incompletos, **del más
+antiguo al más nuevo**». El problema es solo **histórico**: las filas creadas antes de la fase de
+devengo llevan como periodo el mes de la carga, no el mes adeudado más viejo.
+
+Y por eso **la compactación es exactamente la regla del usuario aplicada al pasado.**
+
+### El único matiz que sigue en pie
+
+La regla dice «un mes nunca queda hueco» **dentro del período en que el partícipe aporta**. Quien
+ingresó en octubre de 2025 no debe junio-septiembre: ahí no hay hueco que tapar, no hay secuencia
+todavía. **El piso de cada partícipe es el mayor entre 2025-06 y el inicio de su vigencia.**
+
 **Un mes es hueco solo si ese mes se esperaba un aporte.** La fuente es la vigencia del contrato
 (`VigenciaContratoServiceImpl.esperadoPorEntidad:221-229`):
 

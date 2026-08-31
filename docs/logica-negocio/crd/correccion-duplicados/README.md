@@ -207,6 +207,92 @@ corrección:
 
 ---
 
+## 9. ▶ RESULTADOS MEDIDOS — `01` corrido en producción el 2026-08-31
+
+### 9.1 Los tres semáforos: verde
+
+| Control | Resultado |
+|---|---|
+| `CRD.APRT.CRARCDGO` existe | ✅ sí — no hay riesgo de ORA-00904 |
+| ¿Corrió el `74`? | ✅ **sí** — 0 filas pendientes de restaurar. **El `69` ya es válido** |
+| Flag contable (rubro 237) | ✅ **apagado (0)** — corregir ahora es solo corregir datos |
+
+**Pendiente que apareció de paso:** el backfill `78` **no corrió**. De 981.377 filas con `APRTIDAS`,
+solo **29.677** tienen `CRARCDGO`.
+
+### 9.2 ⛔ El hallazgo que invalida parte del `69`: `APRTIDAS` tiene DOS significados
+
+El bloque 4 devolvió **393.869 filas** de tipos 9/11 con `APRTIDAS` lleno y fechas **desde
+1990-01-28**. La primera carga Petro afecta a 2025-06: **esas filas no pueden venir de una carga.**
+
+- **En el código:** el único punto que le escribe un valor es
+  `CargaArchivoPetroServiceImpl.crearNuevoAporte:3751`. Todos los demás (`AporteServiceImpl`,
+  `DevolucionAporteServiceImpl`, `ProcesoPagoPrestamoServiceImpl`,
+  `PagoPensionComplementariaServiceImpl`) le ponen **NULL explícito**. Lo que hay de 1990 a 2025 no
+  lo escribió esta aplicación: **lo puso la migración**, con el id del aporte en el sistema viejo.
+  Después el código reusó la misma columna para el id de `CargaArchivo`.
+- **En los datos:** filas con glosa V3 = **29.674**; filas con `CRARCDGO` lleno = **29.677**.
+  Coinciden. Las 393.869 sobran por completo.
+
+> **`APRTIDAS IS NOT NULL` no identifica una fila de carga.** El universo correcto es **la glosa**
+> (los tres patrones) **o `CRARCDGO`**, que es la columna gobernada y solo la escribe la carga.
+>
+> **El `69` sigue usando `APRTIDAS` en su universo** (§3, «exceso por partícipe»). Esas cifras están
+> infladas por 393.869 filas históricas. El `03` de esta carpeta ya está corregido; el `69`, no.
+
+**Dos alarmas del `01` que este hallazgo desactiva:**
+
+- **8.439 filas de carga en valor 0** (bloque 2c), fechas **1994-10-28 → 2025-06-09**: todas
+  **anteriores a la primera carga**. Son filas históricas migradas, no daño de la carga.
+- **El único jubilado con exceso** (bloque 5) tiene `DESCONTADO = 0` y 236 filas: es un falso
+  positivo del mismo universo contaminado. De **188** jubilados complementarios, ninguno queda con
+  exposición demostrada. **La urgencia de D4 baja** — pero se vuelve a medir con el universo bueno.
+
+### 9.3 El frente es mucho más chico de lo que decía el análisis
+
+Sumando las 14 cargas procesadas (bloque 4b):
+
+| | |
+|---|---|
+| Descontado por Petro | **$1.819.785,81** |
+| Registrado en `CRD.APRT` | **$1.808.673,72** |
+| **Neto** | **−$11.112,09** |
+
+**Globalmente no sobra plata: falta.** Y no es un goteo parejo — son **dos eventos localizados**:
+
+| Carga | Periodo | Descontado | Registrado | Diferencia | Filas |
+|---|---|---|---|---|---|
+| **354** | 2025-08 | 143.084,04 | 184.145,57 | **+41.061,53** | **3.107** (las demás: 2.100-2.300) |
+| **448** | 2026-07 | 120.657,06 | 86.299,57 | **−34.357,49** | 2.155 |
+| otras 12 | — | — | — | entre −387 y −4.530 | normales |
+
+- **354 es el único exceso real de todo el frente.** Se procesó el **2026-04-08 14:30**, el día
+  *anterior* al cambio de generador del 2026-04-09: es el perfil exacto de **M3** (filas V1
+  conviviendo con V3 de la misma carga) o **M1** (doble ejecución).
+- **448 es un problema distinto y probablemente más urgente:** $34.357,49 descontados a la gente en
+  julio de 2026 que **no figuran en ninguna cuenta**. No es duplicación, es dinero sin registrar.
+
+**Consecuencia de alcance:** la depuración del exceso (R1-R6) se reduce prácticamente a **una carga**.
+`04_ANALISIS_CARGA_354_Y_448.sql` disecciona las dos.
+
+### 9.4 La trampa del regex, confirmada contra la base
+
+Bloque 6b, sobre 25.242 filas de `CRD.PGPR` con texto de carga:
+
+| Patrón | Filas que ve |
+|---|---|
+| El anclado que usa el `69` (`'CargaArchivo: ([0-9]+)\s*$'`) | **0** |
+| Sin ancla | **25.242** |
+
+No es un riesgo teórico: **el patrón del `69` no ve ni una sola fila de `PGPR`.**
+
+**Dos limitaciones del bloque 6 que hay que saber al leerlo:** `CUOTAS_DISTINTAS` cuenta
+`PGPRNMCT` (número de cuota, un entero chico), no cuotas distintas — la columna no sirve; y
+`PGPRFCRG` viene **NULL** en estas filas, así que **no se puede detectar una doble ejecución en
+`PGPR` por fecha de registro**, como sí se hace en `APRT`.
+
+---
+
 ## 8. Documentos relacionados
 
 - `../ANALISIS-APORTES-DUPLICADOS-PETRO.md` — el marco: versiones del generador, mecanismos M1-M8,

@@ -35,6 +35,33 @@
 --      participe es su vigencia de contrato, no junio 2025.
 --
 -- -----------------------------------------------------------------------------
+-- ⛔ CORREGIDO EL 2026-08-31, DESPUES DE MEDIR: "APRTIDAS IS NOT NULL" NO SIRVE
+--    PARA IDENTIFICAR UNA FILA DE CARGA. LEER ANTES DE COMPARAR CON EL 69.
+-- -----------------------------------------------------------------------------
+--   El bloque 4 del 01 devolvio 393.869 filas de tipos 9/11 con APRTIDAS lleno y
+--   fechas desde 1990-01-28. La primera carga Petro afecta a 2025-06: esas filas
+--   NO pueden venir de una carga. APRTIDAS (Aporte.idAsoprep) fue rellenado por la
+--   MIGRACION con el id del aporte en el sistema viejo, y despues el codigo reuso
+--   la misma columna para el id de CargaArchivo. Dos significados, una columna.
+--
+--   Verificado en el codigo: el UNICO punto que le escribe un valor es
+--   CargaArchivoPetroServiceImpl.crearNuevoAporte (:3751); todos los demas
+--   (AporteServiceImpl, DevolucionAporteServiceImpl, ProcesoPagoPrestamoServiceImpl,
+--   PagoPensionComplementariaServiceImpl) le ponen NULL explicito. O sea: lo que
+--   hay de 1990 a 2025 no lo escribio esta aplicacion.
+--
+--   Verificado en los datos: filas con glosa V3 = 29.674; filas con CRARCDGO
+--   lleno = 29.677. Coinciden. Las 393.869 sobran por completo.
+--
+--   POR ESO el universo de este script YA NO usa APRTIDAS. Una fila es de la carga
+--   por su GLOSA (los tres patrones conocidos) o por CRARCDGO, que es la columna
+--   gobernada y solo la escribe la carga. Sin esto, la reubicacion habria tratado
+--   como movibles 393.869 filas historicas.
+--
+--   ⚠ EL 69 SIGUE USANDO APRTIDAS EN SU UNIVERSO. Sus cifras de exceso por
+--     participe (§3) estan infladas por esas filas. Corregirlo antes de usarlas.
+--
+-- -----------------------------------------------------------------------------
 -- INDICE
 -- -----------------------------------------------------------------------------
 --   0  Parametros efectivos (piso y techo del rango)
@@ -87,9 +114,9 @@ VALOR_CARGA AS (
         FROM    CRD.APRT a
         WHERE   a.TPAPCDGO IN (9, 11)
         AND     a.APRTVLRR > 0
-        AND     (   a.APRTIDAS IS NOT NULL
-                 OR a.APRTGLSA LIKE 'Aporte %CargaArchivo: %'
-                 OR a.APRTGLSA LIKE 'Abono al aporte%')
+        AND     (   a.APRTGLSA LIKE 'Aporte %CargaArchivo: %'
+                 OR a.APRTGLSA LIKE 'Abono al aporte%'
+                 OR a.CRARCDGO IS NOT NULL)
         GROUP BY a.ENTDCDGO
 )
 SELECT  CASE WHEN ABS(v.VALOR - NVL(d.DESCONTADO, 0)) <= 0.02
@@ -146,9 +173,9 @@ APORTES AS (
                 a.APRTPRDV, a.APRTFCTR, a.APRTIDAS, a.APRTTPMV,
                 CASE WHEN a.APRTPRDV IS NOT NULL THEN a.APRTPRDV
                      ELSE TRUNC(a.APRTFCTR, 'MM') END               AS PERIODO_EFECTIVO,
-                CASE WHEN (   a.APRTIDAS IS NOT NULL
-                           OR a.APRTGLSA LIKE 'Aporte %CargaArchivo: %'
-                           OR a.APRTGLSA LIKE 'Abono al aporte%')
+                CASE WHEN (   a.APRTGLSA LIKE 'Aporte %CargaArchivo: %'
+                           OR a.APRTGLSA LIKE 'Abono al aporte%'
+                           OR a.CRARCDGO IS NOT NULL)
                      THEN 'MOVIL' ELSE 'FIJA' END                    AS CLASE
         FROM    CRD.APRT a
         WHERE   a.TPAPCDGO IN (9, 11)
@@ -284,9 +311,9 @@ APORTES AS (
         SELECT  a.APRTCDGO, a.ENTDCDGO, a.TPAPCDGO, a.APRTVLRR, a.APRTGLSA, a.APRTPRDV,
                 CASE WHEN a.APRTPRDV IS NOT NULL THEN a.APRTPRDV
                      ELSE TRUNC(a.APRTFCTR, 'MM') END               AS PERIODO_EFECTIVO,
-                CASE WHEN (   a.APRTIDAS IS NOT NULL
-                           OR a.APRTGLSA LIKE 'Aporte %CargaArchivo: %'
-                           OR a.APRTGLSA LIKE 'Abono al aporte%')
+                CASE WHEN (   a.APRTGLSA LIKE 'Aporte %CargaArchivo: %'
+                           OR a.APRTGLSA LIKE 'Abono al aporte%'
+                           OR a.CRARCDGO IS NOT NULL)
                      THEN 'MOVIL' ELSE 'FIJA' END                    AS CLASE
         FROM    CRD.APRT a
         WHERE   a.TPAPCDGO IN (9, 11)
@@ -387,9 +414,9 @@ APORTES AS (
         SELECT  a.APRTCDGO, a.ENTDCDGO, a.TPAPCDGO, a.APRTVLRR,
                 CASE WHEN a.APRTPRDV IS NOT NULL THEN a.APRTPRDV
                      ELSE TRUNC(a.APRTFCTR, 'MM') END           AS PERIODO_EFECTIVO,
-                CASE WHEN (   a.APRTIDAS IS NOT NULL
-                           OR a.APRTGLSA LIKE 'Aporte %CargaArchivo: %'
-                           OR a.APRTGLSA LIKE 'Abono al aporte%')
+                CASE WHEN (   a.APRTGLSA LIKE 'Aporte %CargaArchivo: %'
+                           OR a.APRTGLSA LIKE 'Abono al aporte%'
+                           OR a.CRARCDGO IS NOT NULL)
                      THEN 'MOVIL' ELSE 'FIJA' END                AS CLASE
         FROM    CRD.APRT a
         WHERE   a.TPAPCDGO IN (9, 11) AND a.APRTVLRR > 0
