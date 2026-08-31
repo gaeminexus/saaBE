@@ -126,6 +126,8 @@ Un archivo que dos equipos editan a la vez es un conflicto silencioso. Estos tie
 | FE: `forms/cobros-personales/*`, `forms/cruce-de-valores/*`, `dialog/pagos/*`, `forms/entidad-participe/jubilados/*` | **EQUIPO A** | solo lectura |
 | `CalculadoraAmortizacionServiceImpl`, `SimulacionPrestamoServiceImpl`, `PrestamoServiceImpl` | **EQUIPO B** | solo lectura |
 | FE: `forms/simulador-*`, `forms/asignacion-seguros/*` | **EQUIPO B** | solo lectura |
+| FE: `forms/prestamo/*` | **EQUIPO B** (desde 2026-08-31) | solo lectura. Es la pantalla del otorgamiento: alta del préstamo y generación de la tabla de amortización |
+| FE: `service/prestamo.service.ts` | **compartido** | lo usan las pantallas de los dos equipos. `git status` antes de tocar, y **modificar solo el método propio**, nunca el archivo entero |
 | `com.saa.ejb.cnt`, `com.saa.model.cnt`, `docs/logica-negocio/cnt/` | **compartido, también con el equipo cxp/tsr** | `git status` antes de tocar, y avisar |
 
 **Si necesitás un cambio en un archivo ajeno: pedíselo a su dueño.** No lo edites y avises después.
@@ -140,5 +142,6 @@ Agregá una línea cada vez que reserves algo. Fecha, equipo, qué, para qué.
 |---|---|---|---|
 | 2026-08-30 | CRD (árbitro `saabe-4b`) | PDTR 1178 | `JUBILACION` en el rubro 235 (tipo de movimiento de aporte) — script `crd/sql/81` |
 | 2026-08-30 | CRD (árbitro `saabe-4b`) | PDTR **1179** — del colchón, no del rango del equipo 4 | `COBRO_MIXTO` en el rubro 245 (tipo de operación de cobro) — script `crd/sql/83`. Un depósito que se reparte entre aportes y varios préstamos: **un depósito = un cobro = una aprobación = un reverso** |
+| 2026-08-31 | CRD · EQUIPO B (`omen-saa-1`) | **Número de script `crd/sql/88`** — ningún `PRBR`/`PDTR` | `88_BACKFILL_PRSTINNM_DESDE_PRSTTSAA.sql` (defecto D10). ~~Cambia la mora nocturna~~ — **medido contra la base el 2026-08-31: el `UPDATE` no toca ninguna fila** (5.657 de 5.664 préstamos ya tienen `PRSTINNM` correcto). Aviso al equipo A **rebajado**. Y **el frente de otorgamiento NO va a necesitar tabla nueva de 4 letras**: `CRD.PRST` ya trae todo el ciclo (aprobación, rechazo, legalización, acreditación) y `CRD.CRDT` los rangos de aprobación — ver `crd/REVISION-MOTOR-ANTES-DE-OTORGAMIENTO.md` §4. El rango 270-289 / 1300-1399 **queda libre** para el frente de seguros |
 | 2026-08-31 | CRD · EQUIPO A (`saabe-4b`) | PDTR **1180**, rubro 235 **alterno 8** | `EXCEDENTE_PETRO` — script `crd/sql/87`. ⚠️ **Va en el alterno 8 porque el 7 ya está tomado por `JUBILACION`** (script 81, PDTR 1178, escrito y **sin correr**). El agente lo propuso en el 7 sin saberlo: el 81 no está en la base todavía, así que consultarla no alcanzaba — **este registro es la única fuente que lo evitaba** |
 | 2026-08-31 | CRD · EQUIPO A (`saabe-25`) | Tabla **`CTAP`** — cuentas contables por tipo de aporte | Devolución de aportes, opción C. Verificado libre en `src/main/java/com/saa/model/`; **falta confirmarlo contra `ALL_TABLES`** antes de ejecutar. DDL en `crd/sql/94` |
