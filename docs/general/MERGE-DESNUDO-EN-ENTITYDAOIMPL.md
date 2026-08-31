@@ -26,11 +26,34 @@ public Tipo save(Tipo tipo, Long id) throws Throwable {
 `em.merge(tipo)` con el objeto **tal cual llegó del JSON**: sin re-leer la fila existente, sin
 comparar, sin saltar nulos.
 
-Y las entidades del proyecto **no tienen ni un campo primitivo**: todo es `Long`, `Double`,
-`String`, `LocalDateTime`. Una clave ausente en el JSON no queda "sin valor": deserializa a `null`.
+Y las entidades del proyecto **no tienen ni un campo primitivo persistido**: todo es `Long`,
+`Double`, `String`, `LocalDateTime`. Una clave ausente en el JSON no queda "sin valor": deserializa
+a `null`.
 
 **Conclusión:** en una actualización, un campo que el cliente no manda **no queda como estaba — se
 graba `NULL`**. Incluidas las FKs.
+
+### Que no haya primitivos persistidos no es un detalle: es lo que hace visible el daño
+
+Verificado el 2026-08-31 por dos árbitros por separado, y vale la pena decir **por qué se verificó**.
+
+Un `boolean` primitivo persistido sería **peor** que un nulo: una clave ausente deserializa a
+`false`, escribe `0` en la columna, y **no hay forma de distinguirlo de un "no" explícito del
+usuario**. Con un tipo boxed el daño al menos queda como `NULL`, que se ve raro y se puede detectar.
+
+En todo `com.saa.model` hay **nueve** campos primitivos:
+
+| Dónde | Situación |
+|---|---|
+| `DetalleAsiento:240`, `DetalleExtractoBancario:377` (`esArrastrada`) | están en clases `@Entity` pero son **`@Transient`** — no se persisten |
+| `ReporteResponse`, `DetalleCumplimientoCuenta`, `PendienteAsientoTransito`, `PendienteExtractoTransito`, `ResumenImportacionExtracto`, `ArchivoBatchIess` | POJOs de transporte, **sin `@Entity`** |
+
+**Cero primitivos persistidos.** La regla no tiene excepción — y si alguien agrega un primitivo a una
+entidad, introduce una clase de daño peor que la que este documento describe.
+
+> ⚠️ **Detalle de método, por si alguien repite el grep:** `ArchivoBatchIess` da falso positivo si se
+> cuenta `@Entity` con `grep -c`, porque su javadoc dice literalmente *"POJO de transporte, sin
+> @Entity"*. Contar la anotación por texto engaña; hay que mirar el archivo.
 
 ## Por qué nadie lo había notado
 
@@ -88,5 +111,9 @@ directo al DAO — que es el patrón estándar de la casa, así que son casi tod
 
 ---
 
-**Dueño: nadie todavía.** Se documenta acá para que no se pierda. Avisado a los árbitros de los tres
+**Dueño: nadie todavía.** Se documenta acá para que no se pierda. Avisado a los árbitros de los
 equipos activos el 2026-08-31.
+
+**No es teórico fuera de `crd`:** el árbitro del equipo 2 lo trazó hasta un `@PUT` real de su
+alcance, `FacturaCompraRest:52-57` → `saveSingle` → el mismo DAO genérico. El camino es idéntico en
+`cxp`, y por construcción en cualquier módulo que siga el patrón de la casa — que son casi todos.
