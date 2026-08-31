@@ -30,6 +30,8 @@ public class AcuerdoCondonacionDaoServiceImpl extends EntityDaoImpl<AcuerdoCondo
             "estado",
             "valorPagar",
             "valorCondonar",
+            "valorPagarAportes",
+            "valorPagarDeposito",
             "fecha",
             "observacion",
             "usuarioRegistro",

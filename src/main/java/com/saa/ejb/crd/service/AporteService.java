@@ -29,6 +29,8 @@ public interface AporteService extends EntityService<Aporte> {
     String ERR_VALOR_INVALIDO = "VALOR_INVALIDO";
     /** 422 - La fecha recibida no es válida */
     String ERR_FECHA_INVALIDA = "FECHA_INVALIDA";
+    /** 404 - El aporte a reversar no existe */
+    String ERR_APORTE_NO_ENCONTRADO = "APORTE_NO_ENCONTRADO";
 
     /**
      * Registra un pago de aportes recibido en ventanilla: genera para el partícipe un aporte
@@ -49,6 +51,27 @@ public interface AporteService extends EntityService<Aporte> {
      * @throws com.saa.basico.util.IncomeException Ante cualquier fallo de validación (revierte todo)
      */
     ResultadoRegistroAporte registrarAporte(SolicitudRegistroAporte solicitud) throws Throwable;
+
+    /**
+     * Reversa un aporte registrado por error — genera una fila NEGATIVA (mismo mecanismo que
+     * {@code DevolucionAporteServiceImpl#crearFilaNegativaDevolucion}, pero con
+     * {@code tipoMovimiento = REVERSO(5)} en vez de {@code DEVOLUCION(3)}: no es plata que
+     * vuelve al partícipe, es la corrección de un cobro que se anuló). El aporte original NO
+     * se borra ni se marca: queda como evidencia de que se cobró y luego se corrigió, y el
+     * saldo neto del partícipe (suma de {@code APRTVLRR}) vuelve solo al valor previo.
+     *
+     * Usado por {@code CobroCreditoService#anularCobro} para reversar las líneas de aporte de
+     * un cobro {@code COBRO_MIXTO} ya PROCESADO — ver
+     * {@code docs/logica-negocio/crd/API-COBROS-APROBACION-CONTABILIDAD.md}.
+     *
+     * @param idAporte  : Código del aporte original a reversar
+     * @param usuario   : Usuario que ejecuta la reversa
+     * @param motivo    : Motivo de la reversa (obligatorio, queda en la glosa)
+     * @return          : Código del Aporte negativo generado
+     * @throws Throwable : {@link #ERR_APORTE_NO_ENCONTRADO} si no existe;
+     *                     {@link #ERR_PARAMETRO_INVALIDO} si ya es una fila de reverso (valor &lt; 0)
+     */
+    Long reversarAporte(Long idAporte, String usuario, String motivo) throws Throwable;
 
     /** G42 Grupo 1 — Rendimiento: SUM por entidad donde tipoAporte.estado=1 y codigoSBS='RE', fechaTransaccion <= fechaCorte */
     List<Object[]> selectSumaRendimientoPorEntidad(LocalDateTime fechaCorte) throws Throwable;

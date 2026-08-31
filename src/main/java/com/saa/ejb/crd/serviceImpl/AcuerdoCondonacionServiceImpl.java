@@ -19,6 +19,7 @@ import com.saa.ejb.cnt.service.PlantillaService;
 import com.saa.ejb.crd.dao.AcuerdoCondonacionDaoService;
 import com.saa.ejb.crd.dao.CobroCreditoDaoService;
 import com.saa.ejb.crd.dao.DetalleAcuerdoCondonacionDaoService;
+import com.saa.ejb.crd.dao.DetalleAporteAcuerdoCondonacionDaoService;
 import com.saa.ejb.crd.dao.DetallePrestamoDaoService;
 import com.saa.ejb.crd.dao.PrestamoDaoService;
 import com.saa.ejb.crd.service.AcuerdoCondonacionService;
@@ -31,6 +32,7 @@ import com.saa.ejb.crd.service.PagoPrestamoService;
 
 import com.saa.ejb.crd.service.ProcesoPagoPrestamoService;
 import com.saa.ejb.crd.service.dto.BandaProductoDetalle;
+import com.saa.ejb.crd.service.dto.DesgloseAporte;
 import com.saa.ejb.crd.service.dto.DesgloseConceptosPrestamo;
 import com.saa.ejb.crd.service.dto.DetalleConceptoAcuerdoDTO;
 import com.saa.ejb.crd.service.dto.DetalleRegistroCobroDTO;
@@ -45,12 +47,15 @@ import com.saa.model.cnt.DetallePlantilla;
 import com.saa.model.crd.AcuerdoCondonacion;
 import com.saa.model.crd.CobroCredito;
 import com.saa.model.crd.DetalleAcuerdoCondonacion;
+import com.saa.model.crd.DetalleAporteAcuerdoCondonacion;
 import com.saa.model.crd.DetallePrestamo;
+import com.saa.model.crd.Entidad;
 import com.saa.model.crd.EventoPrestamo;
 import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.model.crd.PagoPrestamo;
 import com.saa.model.crd.Prestamo;
 import com.saa.model.crd.Producto;
+import com.saa.model.crd.TipoAporte;
 import com.saa.rubros.CrdConceptoPrestamo;
 import com.saa.rubros.CrdEstadoAcuerdoCondonacion;
 import com.saa.rubros.CrdLineaAsiento;
@@ -81,6 +86,12 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
 
     @EJB
     private DetalleAcuerdoCondonacionDaoService detalleAcuerdoCondonacionDaoService;
+
+    @EJB
+    private DetalleAporteAcuerdoCondonacionDaoService detalleAporteAcuerdoCondonacionDaoService;
+
+    @EJB
+    private com.saa.ejb.crd.dao.TipoAporteDaoService tipoAporteDaoService;
 
     @EJB
     private PrestamoDaoService prestamoDaoService;
@@ -155,8 +166,19 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
             totalPagar += linea.getValorPagado();
             totalCondonar += linea.getValorCondonado();
         }
-        acuerdo.setValorPagar(redondear(totalPagar));
+        totalPagar = redondear(totalPagar);
+
+        // Split aportes/depósito (requerimiento del usuario, 2026-08-30): valida ANTES de
+        // persistir nada — ver validarSplitAportesDeposito.
+        double valorPagarAportes = redondear(nvl(solicitud.getValorPagarAportes()));
+        double valorPagarDeposito = redondear(nvl(solicitud.getValorPagarDeposito()));
+        validarSplitAportesDeposito(solicitud, prestamo.getEntidad(), totalPagar, valorPagarAportes,
+                valorPagarDeposito);
+
+        acuerdo.setValorPagar(totalPagar);
         acuerdo.setValorCondonar(redondear(totalCondonar));
+        acuerdo.setValorPagarAportes(valorPagarAportes);
+        acuerdo.setValorPagarDeposito(valorPagarDeposito);
         acuerdo = acuerdoCondonacionDaoService.save(acuerdo, null);
 
         for (DetalleConceptoAcuerdoDTO lineaSolicitud : solicitud.getDetalles()) {
@@ -169,22 +191,47 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
             detalleAcuerdoCondonacionDaoService.save(linea, null);
         }
 
-        // El cobro por la parte NO condonada, en el MISMO acto — nace con el monto ya fijo
-        // porque el acuerdo ya está decidido (no hay ventana de aprobación de por medio).
+        // Desglose por tipo de aporte (CRD.DAAP): se persiste YA, sin importar si el cruce se
+        // ejecuta en este mismo acto (sin depósito) o recién cuando contabilidad apruebe el
+        // CBCR — consumirAportes revalida el saldo en ese momento, no ahora.
+        if (valorPagarAportes > TOLERANCIA) {
+            for (DesgloseAporte renglon : solicitud.getAportes()) {
+                TipoAporte tipoAporte = tipoAporteDaoService.find(new TipoAporte(), renglon.getIdTipoAporte());
+                DetalleAporteAcuerdoCondonacion lineaAporte = new DetalleAporteAcuerdoCondonacion();
+                lineaAporte.setAcuerdo(acuerdo);
+                lineaAporte.setTipoAporte(tipoAporte);
+                lineaAporte.setValor(redondear(renglon.getValor()));
+                detalleAporteAcuerdoCondonacionDaoService.save(lineaAporte, null);
+            }
+        }
+
+        if (valorPagarDeposito <= TOLERANCIA) {
+            // 100% aportes: no hay depósito que verificar, así que no hay nada que esperar
+            // (K11 hace esperar la aprobación para protegerse de que el depósito nunca
+            // llegue — un saldo que ya está en el sistema no tiene ese riesgo). Se aplica en
+            // la MISMA transacción de este registro: self-call directo, no por el proxy del
+            // EJB, para que quede en la misma unidad atómica que el registro.
+            aplicarAcuerdo(acuerdo.getCodigo(), solicitud.getUsuario());
+            return acuerdoCondonacionDaoService.selectById(acuerdo.getCodigo(),
+                    NombreEntidadesCredito.ACUERDO_CONDONACION);
+        }
+
+        // El cobro por la parte cubierta con depósito, en el MISMO acto — nace con el monto ya
+        // fijo porque el acuerdo ya está decidido (no hay ventana de aprobación de por medio).
         SolicitudRegistroCobro solicitudCobro = new SolicitudRegistroCobro();
         solicitudCobro.setIdEntidad(prestamo.getEntidad().getCodigo());
         solicitudCobro.setTipoOperacion(CrdTipoOperacionCobro.ACUERDO_CONDONACION);
         solicitudCobro.setIdCuentaBancaria(solicitud.getIdCuentaBancaria());
         solicitudCobro.setReferencia(solicitud.getReferencia());
         solicitudCobro.setRutaRespaldo(solicitud.getRutaRespaldo());
-        solicitudCobro.setValor(acuerdo.getValorPagar());
+        solicitudCobro.setValor(valorPagarDeposito);
         solicitudCobro.setFecha(solicitud.getFecha());
         solicitudCobro.setObservacion(solicitud.getObservacion());
         solicitudCobro.setUsuario(solicitud.getUsuario());
         DetalleRegistroCobroDTO lineaCobro = new DetalleRegistroCobroDTO();
         lineaCobro.setIdPrestamo(prestamo.getCodigo());
         lineaCobro.setIdAcuerdo(acuerdo.getCodigo());
-        lineaCobro.setValor(acuerdo.getValorPagar());
+        lineaCobro.setValor(valorPagarDeposito);
         solicitudCobro.setDetalles(Collections.singletonList(lineaCobro));
 
         ResultadoRegistroCobro resultadoCobro = cobroCreditoService.registrarCobro(solicitudCobro);
@@ -196,6 +243,64 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
                 NombreEntidadesCredito.COBRO_CREDITO);
         acuerdoConCobro.setCobroCredito(cobro);
         return acuerdoCondonacionDaoService.save(acuerdoConCobro, acuerdoConCobro.getCodigo());
+    }
+
+    /**
+     * Valida el split aportes/depósito de un acuerdo (requerimiento del usuario, 2026-08-30).
+     * No persiste nada — se llama ANTES de guardar el acuerdo.
+     */
+    private void validarSplitAportesDeposito(SolicitudRegistroAcuerdo solicitud, Entidad entidad,
+            double totalPagar, double valorPagarAportes, double valorPagarDeposito) throws Throwable {
+        if (valorPagarAportes < 0 || valorPagarDeposito < 0) {
+            throw new IncomeException("valorPagarAportes/valorPagarDeposito no pueden ser negativos");
+        }
+        double diferenciaSplit = Math.abs((valorPagarAportes + valorPagarDeposito) - totalPagar);
+        if (diferenciaSplit > TOLERANCIA) {
+            throw new IncomeException("valorPagarAportes ($" + valorPagarAportes
+                    + ") + valorPagarDeposito ($" + valorPagarDeposito
+                    + ") no cuadra con el valor a pagar del acuerdo ($" + totalPagar + ")");
+        }
+
+        boolean traeAportes = solicitud.getAportes() != null && !solicitud.getAportes().isEmpty();
+        if (valorPagarAportes > TOLERANCIA) {
+            if (!traeAportes) {
+                throw new IncomeException("aportes es obligatorio: valorPagarAportes ($"
+                        + valorPagarAportes + ") es mayor a cero");
+            }
+            // Reuso de ProcesoPagoPrestamoService.validarDesgloseAportes (promovido de privado
+            // a público el 2026-08-30 para esto): valida tipo vigente y saldo suficiente AL
+            // REGISTRAR — no consume nada, es la misma garantía "mejor que falle acá que
+            // dejarlo pasar y reventar al procesar" que ya aplica REGISTRO_APORTE en CBCR.
+            double totalDesglose = procesoPagoPrestamoService.validarDesgloseAportes(solicitud.getAportes(), entidad);
+            if (Math.abs(totalDesglose - valorPagarAportes) > TOLERANCIA) {
+                throw new IncomeException("El desglose de aportes suma $" + totalDesglose
+                        + " pero valorPagarAportes es $" + valorPagarAportes);
+            }
+        } else if (traeAportes) {
+            throw new IncomeException("aportes solo aplica si valorPagarAportes > 0");
+        }
+
+        if (valorPagarDeposito > TOLERANCIA) {
+            if (solicitud.getIdCuentaBancaria() == null) {
+                throw new IncomeException("idCuentaBancaria es obligatoria: valorPagarDeposito ($"
+                        + valorPagarDeposito + ") es mayor a cero");
+            }
+            if (solicitud.getRutaRespaldo() == null || solicitud.getRutaRespaldo().trim().isEmpty()) {
+                throw new IncomeException("rutaRespaldo es obligatoria: valorPagarDeposito ($"
+                        + valorPagarDeposito + ") es mayor a cero");
+            }
+        } else {
+            // Un respaldo bancario en una operación sin depósito solo puede confundir a quien
+            // lo lea después (decisión explícita del árbitro) — se rechaza si viene, no se
+            // ignora en silencio.
+            if (solicitud.getIdCuentaBancaria() != null
+                    || (solicitud.getReferencia() != null && !solicitud.getReferencia().trim().isEmpty())
+                    || (solicitud.getRutaRespaldo() != null && !solicitud.getRutaRespaldo().trim().isEmpty())) {
+                throw new IncomeException("idCuentaBancaria/referencia/rutaRespaldo no aplican si"
+                        + " valorPagarDeposito = 0: el acuerdo se cubre entero con aportes, no hay"
+                        + " depósito que respaldar");
+            }
+        }
     }
 
     /**
@@ -389,6 +494,35 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
         pago.setRutaDocumentoRespaldo(acuerdo.getCobroCredito() != null
                 ? acuerdo.getCobroCredito().getRutaRespaldo() : null);
         pagoPrestamoService.saveSingle(pago);
+
+        // 3b. Cruce con aportes (requerimiento del usuario, 2026-08-30): mismo patrón que
+        // ProcesoPagoPrestamoServiceImpl.precancelar con su propio desglose de aportes —
+        // reusa consumirAportes tal cual, enlazando cada PagoAporte generado a ESTE
+        // PagoPrestamo (K9: es el único que existe, y ya lleva solo lo efectivamente cobrado).
+        if (nvl(acuerdo.getValorPagarAportes()) > TOLERANCIA) {
+            List<DetalleAporteAcuerdoCondonacion> desgloseAportes =
+                    detalleAporteAcuerdoCondonacionDaoService.selectByAcuerdo(idAcuerdo);
+            List<DesgloseAporte> aportes = new ArrayList<>();
+            for (DetalleAporteAcuerdoCondonacion linea : desgloseAportes) {
+                DesgloseAporte renglon = new DesgloseAporte();
+                renglon.setIdTipoAporte(linea.getTipoAporte().getCodigo());
+                renglon.setValor(linea.getValor());
+                aportes.add(renglon);
+            }
+            String glosaAportes = "Acuerdo " + idAcuerdo + " - Evento " + evento.getCodigo();
+            try {
+                procesoPagoPrestamoService.consumirAportes(acuerdo.getEntidad(), aportes, fechaHora, usuario,
+                        glosaAportes, pago, acuerdo.getCobroCredito() != null
+                                ? acuerdo.getCobroCredito().getRutaRespaldo() : null);
+            } catch (IncomeException e) {
+                // Entre el registro y el proceso pueden pasar días si hay parte en depósito —
+                // tiempo de sobra para que el socio gaste el saldo por otra vía. El mensaje de
+                // consumirAportes ya nombra el tipo de aporte y el monto que faltó; acá se le
+                // agrega el acuerdo para que no quede como un error genérico del cobro.
+                throw new IncomeException("No se pudo aplicar el acuerdo " + idAcuerdo
+                        + ": el cruce de aportes lo rechazó: " + e.getMessage());
+            }
+        }
 
         int canceladas = 0;
         for (DetallePrestamo cuota : pendientes) {

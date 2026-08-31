@@ -28,4 +28,14 @@ public interface CrdTipoOperacionCobro {
 	 */
 	String ACUERDO_CONDONACION = "ACUERDO_CONDONACION";
 
+	/**
+	 * Cobro con líneas de detalle MEZCLADAS — algunas de préstamo (cuota/abono/precancelación
+	 * de uno o varios préstamos) y otras de aporte — en un solo depósito. Nace del defecto de
+	 * producción del 2026-08-30: "un depósito = un cobro = una aprobación = un reverso". NO es
+	 * una relajación de {@link #PAGO_MULTIPLE} (ese sigue siendo solo-préstamos); cada línea
+	 * se valida con las reglas de su propia clase (préstamo o aporte) y {@code modalidad}
+	 * (abono a capital) sigue prohibida acá.
+	 */
+	String COBRO_MIXTO = "COBRO_MIXTO";
+
 }

@@ -11,6 +11,19 @@ package com.saa.ejb.crd.service.dto;
  */
 public class LineaComprobantePagoMultiple {
 
+    /**
+     * "PRESTAMO" (default, compatibilidad con el flujo por {@code idsEvento}), "APORTE_FAVOR"
+     * (saldo del socio SUBE — COBRO_MIXTO/REGISTRO_APORTE), "APORTE_CONSUMIDO" (saldo BAJA —
+     * precancelación mixta), "HEADER_FAVOR"/"HEADER_CONSUMIDO" (encabezado de sección, fila
+     * sintética sin monto). Nunca mezclar ni sumar APORTE_FAVOR con APORTE_CONSUMIDO: son
+     * direcciones opuestas del dinero.
+     */
+    private String tipoLinea = "PRESTAMO";
+
+    /** Descripción ya armada en Java (tipo de aporte, período, o el texto del encabezado de
+     * sección) — solo se usa cuando {@link #tipoLinea} no es "PRESTAMO". */
+    private String descripcionAporte;
+
     private Long idPrestamo;
 
     /** PRSTIDAS (número visible al socio); si es null, el código interno como respaldo */
@@ -28,6 +41,22 @@ public class LineaComprobantePagoMultiple {
     private double total;
 
     public LineaComprobantePagoMultiple() {
+    }
+
+    public String getTipoLinea() {
+        return tipoLinea;
+    }
+
+    public void setTipoLinea(String tipoLinea) {
+        this.tipoLinea = tipoLinea;
+    }
+
+    public String getDescripcionAporte() {
+        return descripcionAporte;
+    }
+
+    public void setDescripcionAporte(String descripcionAporte) {
+        this.descripcionAporte = descripcionAporte;
     }
 
     public Long getIdPrestamo() {

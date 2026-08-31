@@ -127,9 +127,27 @@ public interface CobroCreditoService {
      * reenviar": no hubo cobro. Reversa el asiento transitorio si existía (con motivo, vía
      * {@code AsientoService.anulaAsiento}), porque el DEBE al banco nunca debió registrarse.
      *
-     * Válido desde REGISTRADO, APROBADO o RECHAZADO. Nunca desde PROCESADO: ahí ya se
-     * afectaron préstamos y aportes, y deshacerlo es {@code anularOperacion}, un camino
-     * distinto que ya existe.
+     * Válido desde REGISTRADO, APROBADO o RECHAZADO. Nunca desde PROCESADO en
+     * {@code PAGO_CUOTA}, {@code ABONO_CAPITAL} o {@code PRECANCELACION}: ahí un evento es un
+     * préstamo, y deshacerlo es {@code anularOperacion}, un camino distinto que ya existe y no
+     * hace falta duplicar.
+     *
+     * ⚠️ EXCEPCIÓN — {@code PAGO_MULTIPLE}, {@code REGISTRO_APORTE} y {@code COBRO_MIXTO} SÍ
+     * admiten anular un cobro PROCESADO (defecto de producción del 2026-08-30: "un depósito =
+     * un cobro = una aprobación = un reverso"). El criterio no es "una línea o varias" sino si
+     * el tipo tiene una única herramienta externa de un-solo-evento que le sirva:
+     * {@code PAGO_MULTIPLE}/{@code COBRO_MIXTO} generan VARIOS {@code EventoPrestamo}
+     * (y COBRO_MIXTO además aportes) y {@code anularOperacion} solo toma uno;
+     * {@code REGISTRO_APORTE} no genera NINGÚN {@code EventoPrestamo} — no hay a dónde
+     * redirigir. Este método revierte TODAS las líneas del detalle en la MISMA transacción:
+     * préstamos vía {@code ProcesoPagoPrestamoService#anularOperacion} (una llamada por línea,
+     * ese método NO se toca) y aportes vía {@link AporteService#reversarAporte} (fila
+     * negativa con {@code tipoMovimiento = REVERSO(5)} — ese valor del rubro 235 existía sin
+     * ningún consumidor; ahora lo tiene, no darlo de nuevo por muerto). Todo o nada: si
+     * cualquier línea falla, el contenedor revierte el resto — y el mensaje de error identifica
+     * la línea/préstamo/aporte que lo bloqueó (típico: {@code ERR_EVENTO_POSTERIOR_VIGENTE},
+     * porque ESE préstamo recibió otra operación después de este cobro y hay que anular esa
+     * primero), no un error genérico sobre el cobro completo.
      *
      * Lo ejecuta CRÉDITO (decisión del usuario 2026-08-29): contabilidad detecta el problema
      * y lo dice por escrito rechazando con el motivo correspondiente; crédito, al ver que no
@@ -140,8 +158,9 @@ public interface CobroCreditoService {
      * @param usuario    : Usuario de crédito que anula
      * @param motivo     : Motivo de la anulación. Obligatorio.
      * @return           : El cobro actualizado, en estado ANULADO
-     * @throws Throwable : Si el cobro no existe, el motivo viene vacío, o el estado es
-     *                     PROCESADO (o ya ANULADO)
+     * @throws Throwable : Si el cobro no existe, el motivo viene vacío, si el estado es
+     *                     PROCESADO en PAGO_CUOTA/ABONO_CAPITAL/PRECANCELACION (o ya ANULADO),
+     *                     o si alguna línea rechaza su reverso (mensaje identifica cuál)
      */
     CobroCredito anularCobro(Long idCobro, String usuario, String motivo) throws Throwable;
 

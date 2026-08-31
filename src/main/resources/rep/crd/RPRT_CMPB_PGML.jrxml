@@ -21,6 +21,14 @@
 	<parameter name="P_CANTIDAD_PRESTAMOS" class="java.lang.Integer">
 		<description><![CDATA[Cantidad de prestamos incluidos — pasado por Java (datos.getLineas().size()), no evaluado en tiempo de reporte para no depender del orden de evaluacion de bandas.]]></description>
 	</parameter>
+	<parameter name="P_TOTAL_APORTES_FAVOR" class="java.lang.Double">
+		<description><![CDATA[Informativo, igual criterio que P_TOTAL_GENERAL: el total que se muestra es la suma de las filas APORTE_FAVOR del detalle, no este parametro.]]></description>
+	</parameter>
+	<parameter name="P_TOTAL_APORTES_CONSUMIDOS" class="java.lang.Double">
+		<description><![CDATA[Informativo, igual criterio que P_TOTAL_GENERAL: el total que se muestra es la suma de las filas APORTE_CONSUMIDO del detalle, no este parametro.]]></description>
+	</parameter>
+	<field name="tipoLinea" class="java.lang.String"/>
+	<field name="descripcionAporte" class="java.lang.String"/>
 	<field name="idPrestamo" class="java.lang.Long"/>
 	<field name="numeroPrestamo" class="java.lang.Long"/>
 	<field name="nombreProducto" class="java.lang.String"/>
@@ -45,8 +53,19 @@
 	<variable name="V_TOTAL_SEGURO" class="java.lang.Double" calculation="Sum">
 		<expression><![CDATA[$F{seguroIncendio} != null ? $F{seguroIncendio} : 0.0]]></expression>
 	</variable>
+	<!-- Solo lineas PRESTAMO: nunca sumar con aportes (2026-08-30) — son otra direccion del
+	     dinero, o directamente otra cosa (bajar deuda vs. registrar/consumir un aporte). -->
 	<variable name="V_TOTAL_GENERAL" class="java.lang.Double" calculation="Sum">
-		<expression><![CDATA[$F{total} != null ? $F{total} : 0.0]]></expression>
+		<expression><![CDATA["PRESTAMO".equals($F{tipoLinea}) && $F{total} != null ? $F{total} : 0.0]]></expression>
+	</variable>
+	<variable name="V_TOTAL_APORTES_FAVOR" class="java.lang.Double" calculation="Sum">
+		<expression><![CDATA["APORTE_FAVOR".equals($F{tipoLinea}) && $F{total} != null ? $F{total} : 0.0]]></expression>
+	</variable>
+	<variable name="V_TOTAL_APORTES_CONSUMIDO" class="java.lang.Double" calculation="Sum">
+		<expression><![CDATA["APORTE_CONSUMIDO".equals($F{tipoLinea}) && $F{total} != null ? $F{total} : 0.0]]></expression>
+	</variable>
+	<variable name="V_COUNT_PRESTAMO" class="java.lang.Integer" calculation="Sum">
+		<expression><![CDATA["PRESTAMO".equals($F{tipoLinea}) ? 1 : 0]]></expression>
 	</variable>
 	<background splitType="Stretch"/>
 	<title height="150" splitType="Stretch">
@@ -130,35 +149,69 @@
 	</columnHeader>
 	<detail>
 		<band height="16" splitType="Stretch">
+			<!-- Encabezados de seccion (filas sinteticas HEADER_FAVOR/HEADER_CONSUMIDO): ocupan
+			     el ancho completo y suprimen las columnas de prestamo/aporte de esa fila.
+			     Nunca aparecen mezclados con lineas de la otra direccion del dinero. -->
+			<element kind="staticText" uuid="c9d00000-0000-0000-0000-000000000048" mode="Opaque" x="0" y="0" width="802" height="16" backcolor="#276749" forecolor="#FFFFFF" fontName="Tahoma" fontSize="7.5" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<printWhenExpression><![CDATA["HEADER_FAVOR".equals($F{tipoLinea})]]></printWhenExpression>
+				<text><![CDATA[APORTES A SU FAVOR — su saldo AUMENTA]]></text>
+				<box leftPadding="6"/>
+			</element>
+			<element kind="staticText" uuid="c9d00000-0000-0000-0000-000000000049" mode="Opaque" x="0" y="0" width="802" height="16" backcolor="#C05621" forecolor="#FFFFFF" fontName="Tahoma" fontSize="7.5" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<printWhenExpression><![CDATA["HEADER_CONSUMIDO".equals($F{tipoLinea})]]></printWhenExpression>
+				<text><![CDATA[APORTES QUE SE CONSUMEN — su saldo DISMINUYE]]></text>
+				<box leftPadding="6"/>
+			</element>
+			<!-- Fila de aporte (a favor o consumido): descripcion en las columnas de
+			     prestamo/producto, monto en TOTAL APLICADO. Nunca junto con columnas de prestamo. -->
+			<element kind="textField" uuid="c9d00000-0000-0000-0000-00000000004a" x="0" y="0" width="660" height="16" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle">
+				<printWhenExpression><![CDATA["APORTE_FAVOR".equals($F{tipoLinea}) || "APORTE_CONSUMIDO".equals($F{tipoLinea})]]></printWhenExpression>
+				<expression><![CDATA[$F{descripcionAporte}]]></expression>
+				<box leftPadding="4"><pen lineWidth="0.25"/></box>
+			</element>
+			<element kind="textField" uuid="c9d00000-0000-0000-0000-00000000004b" x="660" y="0" width="142" height="16" pattern="$#,##0.00" fontName="Tahoma" fontSize="7.5" bold="true" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+				<printWhenExpression><![CDATA["APORTE_FAVOR".equals($F{tipoLinea}) || "APORTE_CONSUMIDO".equals($F{tipoLinea})]]></printWhenExpression>
+				<expression><![CDATA[$F{total}]]></expression>
+				<box rightPadding="6"><pen lineWidth="0.25"/></box>
+			</element>
+			<!-- Fila de prestamo (comportamiento original, sin cambios). -->
 			<element kind="textField" uuid="c9d00000-0000-0000-0000-000000000040" x="0" y="0" width="70" height="16" fontName="Tahoma" fontSize="7.5" pattern="0" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+				<printWhenExpression><![CDATA["PRESTAMO".equals($F{tipoLinea})]]></printWhenExpression>
 				<expression><![CDATA[$F{numeroPrestamo} != null ? $F{numeroPrestamo} : $F{idPrestamo}]]></expression>
 				<box><pen lineWidth="0.25"/></box>
 			</element>
 			<element kind="textField" uuid="c9d00000-0000-0000-0000-000000000041" x="70" y="0" width="140" height="16" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle">
+				<printWhenExpression><![CDATA["PRESTAMO".equals($F{tipoLinea})]]></printWhenExpression>
 				<expression><![CDATA[$F{nombreProducto}]]></expression>
 				<box leftPadding="4"><pen lineWidth="0.25"/></box>
 			</element>
 			<element kind="textField" uuid="c9d00000-0000-0000-0000-000000000042" x="210" y="0" width="90" height="16" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+				<printWhenExpression><![CDATA["PRESTAMO".equals($F{tipoLinea})]]></printWhenExpression>
 				<expression><![CDATA[$F{capital}]]></expression>
 				<box rightPadding="6"><pen lineWidth="0.25"/></box>
 			</element>
 			<element kind="textField" uuid="c9d00000-0000-0000-0000-000000000043" x="300" y="0" width="90" height="16" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+				<printWhenExpression><![CDATA["PRESTAMO".equals($F{tipoLinea})]]></printWhenExpression>
 				<expression><![CDATA[$F{interes}]]></expression>
 				<box rightPadding="6"><pen lineWidth="0.25"/></box>
 			</element>
 			<element kind="textField" uuid="c9d00000-0000-0000-0000-000000000044" x="390" y="0" width="90" height="16" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+				<printWhenExpression><![CDATA["PRESTAMO".equals($F{tipoLinea})]]></printWhenExpression>
 				<expression><![CDATA[$F{mora}]]></expression>
 				<box rightPadding="6"><pen lineWidth="0.25"/></box>
 			</element>
 			<element kind="textField" uuid="c9d00000-0000-0000-0000-000000000045" x="480" y="0" width="90" height="16" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+				<printWhenExpression><![CDATA["PRESTAMO".equals($F{tipoLinea})]]></printWhenExpression>
 				<expression><![CDATA[$F{desgravamen}]]></expression>
 				<box rightPadding="6"><pen lineWidth="0.25"/></box>
 			</element>
 			<element kind="textField" uuid="c9d00000-0000-0000-0000-000000000046" x="570" y="0" width="90" height="16" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+				<printWhenExpression><![CDATA["PRESTAMO".equals($F{tipoLinea})]]></printWhenExpression>
 				<expression><![CDATA[$F{seguroIncendio}]]></expression>
 				<box rightPadding="6"><pen lineWidth="0.25"/></box>
 			</element>
 			<element kind="textField" uuid="c9d00000-0000-0000-0000-000000000047" x="660" y="0" width="142" height="16" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" bold="true" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+				<printWhenExpression><![CDATA["PRESTAMO".equals($F{tipoLinea})]]></printWhenExpression>
 				<expression><![CDATA[$F{total}]]></expression>
 				<box rightPadding="6"><pen lineWidth="0.25"/></box>
 			</element>
@@ -178,9 +231,9 @@
 			<expression><![CDATA[" " + $V{PAGE_NUMBER}]]></expression>
 		</element>
 	</pageFooter>
-	<summary height="40" splitType="Stretch">
+	<summary height="76" splitType="Stretch">
 		<element kind="staticText" uuid="c9d00000-0000-0000-0000-000000000060" mode="Opaque" x="0" y="0" width="210" height="18" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
-			<text><![CDATA[TOTAL GENERAL]]></text>
+			<text><![CDATA[TOTAL GENERAL (préstamos)]]></text>
 			<box rightPadding="8"/>
 		</element>
 		<element kind="textField" uuid="c9d00000-0000-0000-0000-000000000061" mode="Opaque" x="210" y="0" width="90" height="18" backcolor="#D1D1D1" fontName="Tahoma" fontSize="7.5" pattern="$#,##0.00" bold="true" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
@@ -208,7 +261,29 @@
 			<box rightPadding="6"/>
 		</element>
 		<element kind="textField" uuid="c9d00000-0000-0000-0000-000000000067" x="0" y="22" width="802" height="10" fontSize="6.0" hTextAlign="Center" vTextAlign="Middle">
-			<expression><![CDATA["El total general es la suma de los " + $V{REPORT_COUNT} + " crédito(s) detallados arriba."]]></expression>
+			<expression><![CDATA["El total general de préstamos es la suma de los " + $V{V_COUNT_PRESTAMO} + " crédito(s) detallados arriba."]]></expression>
+		</element>
+		<!-- Aportes a favor / consumidos: SIEMPRE aparte, nunca sumados con el total de
+		     prestamos ni entre si — son direcciones opuestas del dinero (2026-08-30). -->
+		<element kind="staticText" uuid="c9d00000-0000-0000-0000-000000000068" mode="Opaque" x="0" y="36" width="660" height="16" backcolor="#276749" forecolor="#FFFFFF" fontName="Tahoma" fontSize="7.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<printWhenExpression><![CDATA[$V{V_TOTAL_APORTES_FAVOR}.doubleValue() > 0.0]]></printWhenExpression>
+			<text><![CDATA[TOTAL APORTES A SU FAVOR (saldo AUMENTA)]]></text>
+			<box rightPadding="8"/>
+		</element>
+		<element kind="textField" uuid="c9d00000-0000-0000-0000-000000000069" mode="Opaque" x="660" y="36" width="142" height="16" backcolor="#276749" forecolor="#FFFFFF" pattern="$#,##0.00" fontName="Tahoma" fontSize="7.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<printWhenExpression><![CDATA[$V{V_TOTAL_APORTES_FAVOR}.doubleValue() > 0.0]]></printWhenExpression>
+			<expression><![CDATA[$V{V_TOTAL_APORTES_FAVOR}]]></expression>
+			<box rightPadding="6"/>
+		</element>
+		<element kind="staticText" uuid="c9d00000-0000-0000-0000-00000000006a" mode="Opaque" x="0" y="54" width="660" height="16" backcolor="#C05621" forecolor="#FFFFFF" fontName="Tahoma" fontSize="7.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<printWhenExpression><![CDATA[$V{V_TOTAL_APORTES_CONSUMIDO}.doubleValue() > 0.0]]></printWhenExpression>
+			<text><![CDATA[TOTAL APORTES CONSUMIDOS (saldo DISMINUYE)]]></text>
+			<box rightPadding="8"/>
+		</element>
+		<element kind="textField" uuid="c9d00000-0000-0000-0000-00000000006b" mode="Opaque" x="660" y="54" width="142" height="16" backcolor="#C05621" forecolor="#FFFFFF" pattern="$#,##0.00" fontName="Tahoma" fontSize="7.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<printWhenExpression><![CDATA[$V{V_TOTAL_APORTES_CONSUMIDO}.doubleValue() > 0.0]]></printWhenExpression>
+			<expression><![CDATA[$V{V_TOTAL_APORTES_CONSUMIDO}]]></expression>
+			<box rightPadding="6"/>
 		</element>
 	</summary>
 </jasperReport>

@@ -33,25 +33,46 @@ public interface AcuerdoCondonacionService {
      * exactamente lo adeudado (tolerancia $0.01) — el acuerdo liquida el préstamo en el acto
      * (K1), no deja remanente.
      *
-     * NO afecta el préstamo ni genera ningún movimiento sobre él: eso ocurre recién al
-     * procesar el cobro (K11, ver {@link #aplicarAcuerdo}). Sí crea el {@code CobroCredito}
-     * (tipo {@code ACUERDO_CONDONACION}, valor = la parte no condonada) con el respaldo,
-     * cuenta bancaria y referencia que trae la solicitud, y enlaza
-     * {@code AcuerdoCondonacion.cobroCredito} desde el nacimiento — nunca queda una ventana
-     * donde el acuerdo exista sin su cobro.
+     * La parte NO condonada (K1) se cubre con DOS FUENTES posibles (requerimiento del usuario,
+     * 2026-08-30): {@code valorPagarAportes} (cruce con saldos de aportes del socio,
+     * desglosado por tipo en {@code CRD.DAAP}) y {@code valorPagarDeposito} (depósito o
+     * transferencia). Solo la parte de depósito genera cobro — es la única donde entra dinero
+     * al banco y por lo tanto la única que contabilidad puede verificar:
+     * <ul>
+     *   <li>{@code valorPagarDeposito > 0}: crea el {@code CobroCredito} (tipo
+     *       {@code ACUERDO_CONDONACION}, valor = {@code valorPagarDeposito}, NO el total) con
+     *       el respaldo, cuenta bancaria y referencia de la solicitud, enlazado desde el
+     *       nacimiento. El préstamo NO se afecta todavía — eso ocurre recién al procesar el
+     *       cobro (K11, ver {@link #aplicarAcuerdo}).</li>
+     *   <li>{@code valorPagarDeposito = 0} (acuerdo 100% aportes): NO hay {@code CobroCredito}
+     *       ni aprobación de contabilidad — no hay depósito que verificar. Este método llama a
+     *       {@link #aplicarAcuerdo} en la MISMA transacción del registro: K11 hace esperar la
+     *       aprobación para protegerse de que el depósito nunca llegue (cancelar antes dejaría
+     *       un préstamo condonado contra dinero inexistente); un saldo de aportes que ya está
+     *       en el sistema no tiene ese riesgo, así que esperar no protegería de nada. El nivel
+     *       de control sobre la condonación no cambia entre los dos caminos — K4 derogada
+     *       significa que NUNCA hay aprobación de la condonación en sí, con o sin depósito.</li>
+     * </ul>
+     * {@code idCuentaBancaria}/{@code referencia}/{@code rutaRespaldo} son obligatorios SOLO
+     * si {@code valorPagarDeposito > 0}; si es 0 se RECHAZAN si vienen (un respaldo bancario
+     * en una operación sin depósito solo puede confundir a quien lo lea después).
      *
      * ⚠️ INVARIANTE: {@code ACCNVLPG}/{@code ACCNVLCN} de la cabecera SIEMPRE son la suma del
      * detalle — nunca un dato de entrada independiente. No hay ningún camino donde la
      * cabecera diga una cosa y el detalle sume otra, porque la cabecera no se recibe por
      * separado. Cualquier código futuro que actualice un acuerdo tiene que sostener esto de
      * la misma forma: producir el detalle y derivar la cabecera de él, nunca dos
-     * actualizaciones paralelas.
+     * actualizaciones paralelas. Mismo criterio para el split: {@code valorPagarAportes +
+     * valorPagarDeposito = valorPagar} (tolerancia $0.01).
      *
      * @param solicitud  : Préstamo, fecha, observación, usuario, el detalle de los 5
-     *                     conceptos, y los datos del cobro (cuenta bancaria, referencia,
-     *                     respaldo obligatorio)
-     * @return           : El acuerdo creado, en estado VIGENTE, con su {@code cobroCredito} ya enlazado
-     * @throws Throwable : Si alguna validación falla (la del acuerdo o la del cobro en CBCR)
+     *                     conceptos, el split aportes/depósito (y el desglose de aportes si
+     *                     corresponde), y los datos del cobro (obligatorios solo si hay parte
+     *                     de depósito)
+     * @return           : El acuerdo creado — VIGENTE con su {@code cobroCredito} enlazado si
+     *                     hay parte de depósito, o ya APLICADO si es 100% aportes
+     * @throws Throwable : Si alguna validación falla (la del acuerdo, el split, el desglose de
+     *                     aportes, o la del cobro en CBCR)
      */
     AcuerdoCondonacion registrarAcuerdo(SolicitudRegistroAcuerdo solicitud) throws Throwable;
 
@@ -73,10 +94,20 @@ public interface AcuerdoCondonacionService {
 
     /**
      * Aplica el acuerdo — pago + condonación + préstamo a CANCELADO (K11) — en una sola
-     * operación. Invocado por {@code CobroCreditoService#procesarCobro} cuando
-     * {@code CBCRTPOO = ACUERDO_CONDONACION} y el staleness (§3 del plan, reubicado al
-     * PROCESO tras derogarse K4) ya confirmó que el desglose sigue vigente. Solo una vez: un
-     * acuerdo con {@code eventoPrestamo} ya asignado no se vuelve a aplicar.
+     * operación. Invocado desde DOS lugares, según si el acuerdo tiene parte de depósito
+     * (requerimiento del usuario, 2026-08-30): {@code CobroCreditoService#procesarCobro}
+     * cuando {@code CBCRTPOO = ACUERDO_CONDONACION} y el staleness (§3 del plan, reubicado al
+     * PROCESO tras derogarse K4) ya confirmó que el desglose sigue vigente; o
+     * {@code registrarAcuerdo} mismo, en la MISMA transacción, cuando el acuerdo es 100%
+     * aportes (no hay CBCR que procesar). Solo una vez: un acuerdo con {@code eventoPrestamo}
+     * ya asignado no se vuelve a aplicar.
+     *
+     * Si {@code valorPagarAportes > 0}, cruza el desglose de {@code CRD.DAAP} reusando
+     * {@code ProcesoPagoPrestamoService#consumirAportes} (mismo mecanismo que
+     * {@code precancelar} con su propio desglose de aportes) contra el ÚNICO
+     * {@code PagoPrestamo} que este método genera — el saldo se revalida DENTRO de la
+     * transacción, porque entre el registro y el proceso (cuando también hay parte de
+     * depósito) pueden pasar días.
      *
      * Este método NO valida el estado de {@code ACCN} ni de su {@code CBCR} — esa
      * comprobación (que el cobro esté APROBADO) ya la hace {@code procesarCobro} antes de

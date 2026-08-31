@@ -102,5 +102,7 @@ public interface NombreEntidadesCredito {
 	String DETALLE_COBRO_CREDITO = "DetalleCobroCredito";
 	String ACUERDO_CONDONACION = "AcuerdoCondonacion";
 	String DETALLE_ACUERDO_CONDONACION = "DetalleAcuerdoCondonacion";
+	String DETALLE_APORTE_ACUERDO_CONDONACION = "DetalleAporteAcuerdoCondonacion";
+	String DETALLE_APORTE_PRECANCELACION = "DetalleAportePrecancelacion";
 
 }

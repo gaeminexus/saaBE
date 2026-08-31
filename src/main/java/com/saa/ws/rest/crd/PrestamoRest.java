@@ -570,6 +570,56 @@ public class PrestamoRest {
     }
 
     /**
+     * Comprobante PDF final de UN cobro procesado por CBCR (PAGO_MULTIPLE o COBRO_MIXTO).
+     * Reconstruye desde CRD.CBCR/CRD.DCBC — a diferencia de {@link #comprobantePagoMultiple},
+     * que reconstruye desde idsEvento y no puede representar líneas de aporte (nunca generan
+     * EventoPrestamo). Usar este endpoint para cobros nacidos en el flujo de CBCR; el de
+     * idsEvento sigue disponible para lo que todavía dependa del flujo directo.
+     *
+     * @param idCobro Código del cobro (CRD.CBCR), ya PROCESADO
+     * @return 200 con el PDF (application/pdf); 404/409/422/500 según el fallo
+     */
+    @GET
+    @Path("/comprobantePagoMultiple/porCobro/{idCobro}")
+    @Produces("application/pdf")
+    public Response comprobantePagoMultiplePorCobro(@PathParam("idCobro") Long idCobro) {
+        System.out.println("LLEGA AL SERVICIO COMPROBANTE PAGO MULTIPLE POR COBRO - Cobro: " + idCobro);
+
+        if (idCobro == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe indicar el código del cobro (idCobro)", null);
+        }
+
+        try {
+            ComprobantePagoMultipleDatos datos =
+                procesoPagoPrestamoService.prepararComprobantePagoMultiplePorCobro(idCobro);
+
+            Map<String, Object> parametros = new LinkedHashMap<>();
+            parametros.put("P_NOMBRE_SOCIO", datos.getNombreSocio());
+            parametros.put("P_IDENTIFICACION_SOCIO", datos.getIdentificacionSocio());
+            parametros.put("P_FECHA", formatoFecha(datos.getFecha()));
+            parametros.put("P_USUARIO", datos.getUsuario());
+            parametros.put("P_TOTAL_GENERAL", datos.getTotalGeneral());
+            parametros.put("P_TOTAL_APORTES_FAVOR", datos.getTotalAportesFavor());
+            parametros.put("P_TOTAL_APORTES_CONSUMIDOS", datos.getTotalAportesConsumidos());
+            parametros.put("P_CANTIDAD_PRESTAMOS", datos.getLineas().size());
+
+            byte[] pdf = reporteService.generarReporteDesdeColeccion(
+                "crd", "RPRT_CMPB_PGML", parametros, datos.getLineas(), "PDF");
+
+            return Response.ok(pdf)
+                    .header("Content-Disposition", "attachment; filename=\"RPRT_CMPB_PGML.pdf\"")
+                    .header("Content-Type", "application/pdf")
+                    .build();
+
+        } catch (Throwable e) {
+            System.err.println("ERROR al generar el comprobante del cobro " + idCobro + ": " + e.getMessage());
+            e.printStackTrace();
+            return respuestaErrorNegocio(e);
+        }
+    }
+
+    /**
      * Pago de cuota(s) consumiendo el saldo de aportes del partícipe.
      *
      * @param solicitud { idPrestamo, aportes[{idTipoAporte, valor}], usuario, observacion, fechaPago }

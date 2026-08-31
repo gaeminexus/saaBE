@@ -1,0 +1,320 @@
+<!-- Borrador de un cobro RECIEN REGISTRADO (CRD.CBCR), impreso ANTES de la aprobacion de
+     contabilidad y del proceso — decision del usuario (2026-08-30): el comprobante real se
+     imprime recien cuando el cobro se procesa (RPRT_CMPB_PGML/RPRT_CMPB_PGCT), porque hasta
+     ese momento no es cierto: el prestamo NO se ha modificado todavia. Este reporte por eso
+     NO proyecta como se repartira el pago entre capital/interes/mora/seguros — esa reparticion
+     puede cambiar (la mora sigue corriendo) entre el registro y el proceso; mostrar un reparto
+     que despues cambia es peor que no mostrar ninguno.
+     Query directa contra CRD.CBCR/CRD.DCBC (nunca datos que mande el cliente: el cobro ya
+     existe en el servidor, registrarlo es lo que lo crea). Compilar el .jasper con Jaspersoft
+     Studio 7.0.3 y commitear ambos. -->
+<jasperReport name="RPRT_BORRADOR_CBCR" language="java" pageWidth="595" pageHeight="842" columnWidth="535" leftMargin="30" rightMargin="30" topMargin="20" bottomMargin="20" uuid="d0000000-0000-0000-0000-000000000001">
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="Oracle"/>
+	<property name="com.jaspersoft.studio.report.description" value="Borrador de un cobro CBCR recien registrado: detalle de lineas (prestamos y aportes), sin proyeccion de reparto por concepto. Pendiente de aprobacion de contabilidad."/>
+	<parameter name="P_CBCR_CODIGO" class="java.lang.Long">
+		<description><![CDATA[Codigo del cobro (CRD.CBCR.CBCRCDGO)]]></description>
+	</parameter>
+	<parameter name="P_IMAGEN" class="java.awt.Image">
+		<description><![CDATA[Logo. Lo inyecta ReporteServiceImpl si el frontend no lo envia.]]></description>
+	</parameter>
+	<query language="SQL"><![CDATA[WITH cobro AS (
+    SELECT
+        c.CBCRCDGO                                                        AS CBCR_CODIGO,
+        CASE c.CBCRTPOO
+            WHEN 'PAGO_CUOTA'          THEN 'Pago de cuota'
+            WHEN 'PAGO_MULTIPLE'       THEN 'Pago multiple'
+            WHEN 'ABONO_CAPITAL'       THEN 'Abono a capital'
+            WHEN 'PRECANCELACION'      THEN 'Precancelacion'
+            WHEN 'REGISTRO_APORTE'     THEN 'Registro de aporte'
+            WHEN 'ACUERDO_CONDONACION' THEN 'Acuerdo de pago con condonacion'
+            WHEN 'COBRO_MIXTO'         THEN 'Cobro mixto (prestamos y aportes)'
+            ELSE LOWER(REPLACE(c.CBCRTPOO, '_', ' '))
+        END                                                                AS TIPO_OPERACION_TXT,
+        c.CBCRFCHA                                                        AS FECHA,
+        c.CBCRRFRN                                                        AS REFERENCIA,
+        c.CBCRVLRR                                                        AS VALOR_TOTAL,
+        c.CBCROBSR                                                        AS OBSERVACION,
+        c.CBCRUSRG                                                        AS USUARIO_REGISTRO,
+        c.CBCRFCRG                                                        AS FECHA_REGISTRO,
+        e.ENTDRZNS                                                        AS PARTICIPE,
+        e.ENTDNMID                                                        AS PARTICIPE_ID,
+        bn.BNCONMBR                                                       AS BANCO_NOMBRE,
+        cb.CNBCNMRO                                                       AS CUENTA_NUMERO
+    FROM CRD.CBCR c
+         JOIN CRD.ENTD e       ON e.ENTDCDGO = c.ENTDCDGO
+         LEFT JOIN TSR.CNBC cb ON cb.CNBCCDGO = c.CNBCCDGO
+         LEFT JOIN TSR.BNCO bn ON bn.BNCOCDGO = cb.BNCOCDGO
+    WHERE c.CBCRCDGO = $P{P_CBCR_CODIGO}
+)
+-- Rama 1: lineas reales de CRD.DCBC — prestamo (baja deuda) o aporte A FAVOR del socio
+-- (saldo SUBE: COBRO_MIXTO/REGISTRO_APORTE). ORDEN_LINEA 1=prestamo, 3=aporte a favor.
+SELECT
+    cobro.CBCR_CODIGO, cobro.TIPO_OPERACION_TXT, cobro.FECHA, cobro.REFERENCIA, cobro.VALOR_TOTAL,
+    cobro.OBSERVACION, cobro.USUARIO_REGISTRO, cobro.FECHA_REGISTRO, cobro.PARTICIPE, cobro.PARTICIPE_ID,
+    cobro.BANCO_NOMBRE, cobro.CUENTA_NUMERO,
+    d.DCBCCDGO                                                        AS LINEA_CODIGO,
+    d.DCBCVLRR                                                        AS LINEA_VALOR,
+    d.DCBCOBSR                                                        AS LINEA_OBSERVACION,
+    p.PRSTIDAS                                                        AS PRESTAMO_NUMERO,
+    p.PRSTCDGO                                                        AS PRESTAMO_CODIGO,
+    pr.PRDCNMBR                                                       AS PRODUCTO_NOMBRE,
+    ta.TPAPNMBR                                                       AS TIPO_APORTE_NOMBRE,
+    d.DCBCPRDV                                                        AS PERIODO_DEVENGO,
+    CASE WHEN d.PRSTCDGO IS NOT NULL THEN 'PRESTAMO' ELSE 'APORTE' END AS TIPO_LINEA,
+    CASE WHEN d.PRSTCDGO IS NOT NULL THEN 1 ELSE 3 END                 AS ORDEN_LINEA
+FROM cobro
+     JOIN CRD.DCBC d       ON d.CBCRCDGO = cobro.CBCR_CODIGO
+     LEFT JOIN CRD.PRST p  ON p.PRSTCDGO = d.PRSTCDGO
+     LEFT JOIN CRD.PRDC pr ON pr.PRDCCDGO = p.PRDCCDGO
+     LEFT JOIN CRD.TPAP ta ON ta.TPAPCDGO = d.TPAPCDGO
+
+UNION ALL
+
+-- Rama 2: aportes que se CONSUMEN (CRD.DAPR, precancelacion mixta) — saldo BAJA. Nunca
+-- coexiste con la rama de aporte a favor: son tipos de operacion distintos. ORDEN_LINEA 5.
+SELECT
+    cobro.CBCR_CODIGO, cobro.TIPO_OPERACION_TXT, cobro.FECHA, cobro.REFERENCIA, cobro.VALOR_TOTAL,
+    cobro.OBSERVACION, cobro.USUARIO_REGISTRO, cobro.FECHA_REGISTRO, cobro.PARTICIPE, cobro.PARTICIPE_ID,
+    cobro.BANCO_NOMBRE, cobro.CUENTA_NUMERO,
+    dp.DAPRCDGO                                                        AS LINEA_CODIGO,
+    dp.DAPRVLOR                                                        AS LINEA_VALOR,
+    NULL                                                               AS LINEA_OBSERVACION,
+    NULL                                                               AS PRESTAMO_NUMERO,
+    NULL                                                               AS PRESTAMO_CODIGO,
+    NULL                                                               AS PRODUCTO_NOMBRE,
+    tap.TPAPNMBR                                                       AS TIPO_APORTE_NOMBRE,
+    NULL                                                               AS PERIODO_DEVENGO,
+    'APORTE_CONSUMIDO'                                                 AS TIPO_LINEA,
+    5                                                                  AS ORDEN_LINEA
+FROM cobro
+     JOIN CRD.DCBC d   ON d.CBCRCDGO = cobro.CBCR_CODIGO
+     JOIN CRD.DAPR dp  ON dp.DCBCCDGO = d.DCBCCDGO
+     JOIN CRD.TPAP tap ON tap.TPAPCDGO = dp.TPAPCDGO
+
+UNION ALL
+
+-- Rama 3: encabezado de seccion "aportes a favor", solo si el cobro trae alguno. ORDEN_LINEA 2.
+SELECT
+    cobro.CBCR_CODIGO, cobro.TIPO_OPERACION_TXT, cobro.FECHA, cobro.REFERENCIA, cobro.VALOR_TOTAL,
+    cobro.OBSERVACION, cobro.USUARIO_REGISTRO, cobro.FECHA_REGISTRO, cobro.PARTICIPE, cobro.PARTICIPE_ID,
+    cobro.BANCO_NOMBRE, cobro.CUENTA_NUMERO,
+    -1 AS LINEA_CODIGO, NULL AS LINEA_VALOR, NULL AS LINEA_OBSERVACION,
+    NULL AS PRESTAMO_NUMERO, NULL AS PRESTAMO_CODIGO, NULL AS PRODUCTO_NOMBRE,
+    NULL AS TIPO_APORTE_NOMBRE, NULL AS PERIODO_DEVENGO,
+    'HEADER_FAVOR' AS TIPO_LINEA, 2 AS ORDEN_LINEA
+FROM cobro
+WHERE EXISTS (SELECT 1 FROM CRD.DCBC d2 WHERE d2.CBCRCDGO = cobro.CBCR_CODIGO AND d2.TPAPCDGO IS NOT NULL)
+
+UNION ALL
+
+-- Rama 4: encabezado de seccion "aportes que se consumen", solo si el cobro trae alguno. ORDEN_LINEA 4.
+SELECT
+    cobro.CBCR_CODIGO, cobro.TIPO_OPERACION_TXT, cobro.FECHA, cobro.REFERENCIA, cobro.VALOR_TOTAL,
+    cobro.OBSERVACION, cobro.USUARIO_REGISTRO, cobro.FECHA_REGISTRO, cobro.PARTICIPE, cobro.PARTICIPE_ID,
+    cobro.BANCO_NOMBRE, cobro.CUENTA_NUMERO,
+    -1 AS LINEA_CODIGO, NULL AS LINEA_VALOR, NULL AS LINEA_OBSERVACION,
+    NULL AS PRESTAMO_NUMERO, NULL AS PRESTAMO_CODIGO, NULL AS PRODUCTO_NOMBRE,
+    NULL AS TIPO_APORTE_NOMBRE, NULL AS PERIODO_DEVENGO,
+    'HEADER_CONSUMIDO' AS TIPO_LINEA, 4 AS ORDEN_LINEA
+FROM cobro
+WHERE EXISTS (
+    SELECT 1 FROM CRD.DCBC d2 JOIN CRD.DAPR dp2 ON dp2.DCBCCDGO = d2.DCBCCDGO
+    WHERE d2.CBCRCDGO = cobro.CBCR_CODIGO
+)
+
+ORDER BY ORDEN_LINEA, LINEA_CODIGO]]></query>
+	<field name="CBCR_CODIGO" class="java.math.BigDecimal"/>
+	<field name="TIPO_OPERACION_TXT" class="java.lang.String"/>
+	<field name="FECHA" class="java.sql.Timestamp"/>
+	<field name="REFERENCIA" class="java.lang.String"/>
+	<field name="VALOR_TOTAL" class="java.math.BigDecimal"/>
+	<field name="OBSERVACION" class="java.lang.String"/>
+	<field name="USUARIO_REGISTRO" class="java.lang.String"/>
+	<field name="FECHA_REGISTRO" class="java.sql.Timestamp"/>
+	<field name="PARTICIPE" class="java.lang.String"/>
+	<field name="PARTICIPE_ID" class="java.lang.String"/>
+	<field name="BANCO_NOMBRE" class="java.lang.String"/>
+	<field name="CUENTA_NUMERO" class="java.lang.String"/>
+	<field name="LINEA_CODIGO" class="java.math.BigDecimal"/>
+	<field name="LINEA_VALOR" class="java.math.BigDecimal"/>
+	<field name="LINEA_OBSERVACION" class="java.lang.String"/>
+	<field name="PRESTAMO_NUMERO" class="java.math.BigDecimal"/>
+	<field name="PRESTAMO_CODIGO" class="java.math.BigDecimal"/>
+	<field name="PRODUCTO_NOMBRE" class="java.lang.String"/>
+	<field name="TIPO_APORTE_NOMBRE" class="java.lang.String"/>
+	<field name="PERIODO_DEVENGO" class="java.sql.Timestamp"/>
+	<field name="TIPO_LINEA" class="java.lang.String"/>
+	<field name="ORDEN_LINEA" class="java.math.BigDecimal"/>
+	<variable name="V_TOTAL_PRESTAMO" class="java.math.BigDecimal" calculation="Sum">
+		<expression><![CDATA["PRESTAMO".equals($F{TIPO_LINEA}) && $F{LINEA_VALOR} != null ? $F{LINEA_VALOR} : java.math.BigDecimal.ZERO]]></expression>
+	</variable>
+	<variable name="V_TOTAL_FAVOR" class="java.math.BigDecimal" calculation="Sum">
+		<expression><![CDATA["APORTE".equals($F{TIPO_LINEA}) && $F{LINEA_VALOR} != null ? $F{LINEA_VALOR} : java.math.BigDecimal.ZERO]]></expression>
+	</variable>
+	<variable name="V_TOTAL_CONSUMIDO" class="java.math.BigDecimal" calculation="Sum">
+		<expression><![CDATA["APORTE_CONSUMIDO".equals($F{TIPO_LINEA}) && $F{LINEA_VALOR} != null ? $F{LINEA_VALOR} : java.math.BigDecimal.ZERO]]></expression>
+	</variable>
+	<background splitType="Stretch"/>
+	<title height="196" splitType="Stretch">
+		<element kind="image" uuid="d0000000-0000-0000-0000-000000000101" x="0" y="0" width="80" height="45" scaleImage="RetainShape" onErrorType="Blank" hImageAlign="Center" vImageAlign="Middle">
+			<expression><![CDATA[$P{P_IMAGEN}]]></expression>
+		</element>
+		<element kind="staticText" uuid="d0000000-0000-0000-0000-000000000102" x="90" y="0" width="445" height="20" fontName="Tahoma" fontSize="14.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+			<text><![CDATA[BORRADOR DE COBRO]]></text>
+		</element>
+		<element kind="textField" uuid="d0000000-0000-0000-0000-000000000103" x="90" y="20" width="445" height="14" fontName="Tahoma" fontSize="8.5" forecolor="#4A5568" hTextAlign="Left" vTextAlign="Middle">
+			<expression><![CDATA["Cobro N° " + $F{CBCR_CODIGO}.toBigInteger() + " — " + $F{TIPO_OPERACION_TXT}]]></expression>
+		</element>
+		<element kind="staticText" uuid="d0000000-0000-0000-0000-000000000110" mode="Opaque" x="0" y="40" width="535" height="30" backcolor="#B10000" forecolor="#FFFFFF" fontName="Tahoma" fontSize="10.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[BORRADOR — NO ES UN COMPROBANTE DE PAGO
+Pendiente de aprobación de contabilidad. El préstamo NO se ha modificado.]]></text>
+		</element>
+		<element kind="staticText" uuid="d0000000-0000-0000-0000-000000000120" mode="Opaque" x="0" y="76" width="535" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[DATOS DE LA OPERACIÓN]]></text>
+		</element>
+		<element kind="staticText" uuid="d0000000-0000-0000-0000-000000000121" mode="Opaque" x="0" y="89" width="90" height="13" backcolor="#EFEFEF" fontName="Tahoma" fontSize="7.5" bold="true" vTextAlign="Middle">
+			<text><![CDATA[SOCIO]]></text>
+			<box leftPadding="5"/>
+		</element>
+		<element kind="textField" uuid="d0000000-0000-0000-0000-000000000122" x="90" y="89" width="445" height="13" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" vTextAlign="Middle">
+			<expression><![CDATA[$F{PARTICIPE} + ($F{PARTICIPE_ID} != null ? (" (" + $F{PARTICIPE_ID} + ")") : "")]]></expression>
+			<box leftPadding="5"/>
+		</element>
+		<element kind="staticText" uuid="d0000000-0000-0000-0000-000000000123" mode="Opaque" x="0" y="102" width="90" height="13" backcolor="#EFEFEF" fontName="Tahoma" fontSize="7.5" bold="true" vTextAlign="Middle">
+			<text><![CDATA[FECHA]]></text>
+			<box leftPadding="5"/>
+		</element>
+		<element kind="textField" uuid="d0000000-0000-0000-0000-000000000124" x="90" y="102" width="150" height="13" pattern="d/M/yyyy" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" vTextAlign="Middle">
+			<expression><![CDATA[$F{FECHA}]]></expression>
+			<box leftPadding="5"/>
+		</element>
+		<element kind="staticText" uuid="d0000000-0000-0000-0000-000000000125" mode="Opaque" x="240" y="102" width="90" height="13" backcolor="#EFEFEF" fontName="Tahoma" fontSize="7.5" bold="true" vTextAlign="Middle">
+			<text><![CDATA[REGISTRADO POR]]></text>
+			<box leftPadding="5"/>
+		</element>
+		<element kind="textField" uuid="d0000000-0000-0000-0000-000000000126" x="330" y="102" width="205" height="13" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" vTextAlign="Middle">
+			<expression><![CDATA[$F{USUARIO_REGISTRO}]]></expression>
+			<box leftPadding="5"/>
+		</element>
+		<element kind="staticText" uuid="d0000000-0000-0000-0000-000000000127" mode="Opaque" x="0" y="115" width="90" height="13" backcolor="#EFEFEF" fontName="Tahoma" fontSize="7.5" bold="true" vTextAlign="Middle">
+			<text><![CDATA[CUENTA DESTINO]]></text>
+			<box leftPadding="5"/>
+		</element>
+		<element kind="textField" uuid="d0000000-0000-0000-0000-000000000128" x="90" y="115" width="445" height="13" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" vTextAlign="Middle">
+			<expression><![CDATA[($F{BANCO_NOMBRE} != null ? $F{BANCO_NOMBRE} : "") + ($F{CUENTA_NUMERO} != null ? (" — Cta. " + $F{CUENTA_NUMERO}) : "")
++ ($F{REFERENCIA} != null && $F{REFERENCIA}.trim().length() > 0 ? ("  ·  Ref: " + $F{REFERENCIA}) : "")]]></expression>
+			<box leftPadding="5"/>
+		</element>
+		<element kind="staticText" uuid="d0000000-0000-0000-0000-000000000129" mode="Opaque" x="0" y="128" width="90" height="13" backcolor="#EFEFEF" fontName="Tahoma" fontSize="7.5" bold="true" vTextAlign="Middle">
+			<text><![CDATA[OBSERVACIÓN]]></text>
+			<box leftPadding="5"/>
+		</element>
+		<element kind="textField" uuid="d0000000-0000-0000-0000-00000000012a" x="90" y="128" width="445" height="13" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" vTextAlign="Middle">
+			<expression><![CDATA[$F{OBSERVACION}]]></expression>
+			<box leftPadding="5"/>
+		</element>
+		<element kind="line" uuid="d0000000-0000-0000-0000-000000000130" x="0" y="150" width="535" height="1">
+			<pen lineWidth="0.5"/>
+		</element>
+		<element kind="staticText" uuid="d0000000-0000-0000-0000-000000000131" x="0" y="156" width="535" height="30" fontName="Tahoma" fontSize="7.0" forecolor="#4A5568">
+			<text><![CDATA[Este documento muestra únicamente lo recibido en cada línea. No incluye una proyección de cómo se aplicará el pago (capital, interés, mora, seguros): entre el registro y la aprobación de contabilidad la mora sigue corriendo, así que ese reparto solo se conoce con certeza al procesar el cobro.]]></text>
+		</element>
+	</title>
+	<pageHeader height="4" splitType="Stretch"/>
+	<columnHeader height="16" splitType="Stretch">
+		<element kind="staticText" uuid="d0000000-0000-0000-0000-000000000200" mode="Opaque" x="0" y="0" width="395" height="16" backcolor="#EDF2F7" forecolor="#4A5568" fontName="Tahoma" fontSize="7.5" bold="true" hTextAlign="Left" vTextAlign="Middle">
+			<text><![CDATA[CONCEPTO]]></text>
+			<box leftPadding="6"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="staticText" uuid="d0000000-0000-0000-0000-000000000201" mode="Opaque" x="395" y="0" width="140" height="16" backcolor="#EDF2F7" forecolor="#4A5568" fontName="Tahoma" fontSize="7.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<text><![CDATA[MONTO RECIBIDO]]></text>
+			<box rightPadding="8"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+	</columnHeader>
+	<detail>
+		<band height="18" splitType="Stretch">
+			<!-- Encabezados de seccion (filas sinteticas, LINEA_CODIGO = -1): ocupan las DOS
+			     columnas y suprimen las columnas normales de esa fila. Nunca aparecen mezclados
+			     con las lineas reales de la otra direccion del dinero. -->
+			<element kind="staticText" uuid="d0000000-0000-0000-0000-000000000310" mode="Opaque" x="0" y="0" width="535" height="18" backcolor="#276749" forecolor="#FFFFFF" fontName="Tahoma" fontSize="7.5" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<printWhenExpression><![CDATA["HEADER_FAVOR".equals($F{TIPO_LINEA})]]></printWhenExpression>
+				<text><![CDATA[APORTES A SU FAVOR — su saldo AUMENTA]]></text>
+				<box leftPadding="6"/>
+			</element>
+			<element kind="staticText" uuid="d0000000-0000-0000-0000-000000000311" mode="Opaque" x="0" y="0" width="535" height="18" backcolor="#C05621" forecolor="#FFFFFF" fontName="Tahoma" fontSize="7.5" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<printWhenExpression><![CDATA["HEADER_CONSUMIDO".equals($F{TIPO_LINEA})]]></printWhenExpression>
+				<text><![CDATA[APORTES QUE SE CONSUMEN — su saldo DISMINUYE]]></text>
+				<box leftPadding="6"/>
+			</element>
+			<!-- Filas de datos: prestamo, aporte a favor, o aporte consumido. -->
+			<element kind="textField" uuid="d0000000-0000-0000-0000-000000000300" x="0" y="0" width="395" height="18" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" vTextAlign="Middle">
+				<printWhenExpression><![CDATA[!$F{TIPO_LINEA}.startsWith("HEADER")]]></printWhenExpression>
+				<expression><![CDATA["PRESTAMO".equals($F{TIPO_LINEA})
+    ? ("Préstamo #" + ($F{PRESTAMO_NUMERO} != null ? $F{PRESTAMO_NUMERO}.toBigInteger().toString() : $F{PRESTAMO_CODIGO}.toBigInteger().toString())
+        + ($F{PRODUCTO_NOMBRE} != null ? (" — " + $F{PRODUCTO_NOMBRE}) : ""))
+    : ("APORTE_CONSUMIDO".equals($F{TIPO_LINEA})
+        ? ("Aporte consumido — " + $F{TIPO_APORTE_NOMBRE})
+        : ("Aporte — " + $F{TIPO_APORTE_NOMBRE}
+            + ($F{PERIODO_DEVENGO} != null ? ("  ·  Período " + new java.text.SimpleDateFormat("MM/yyyy").format($F{PERIODO_DEVENGO})) : "")))]]></expression>
+				<box leftPadding="6"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+			</element>
+			<element kind="textField" uuid="d0000000-0000-0000-0000-000000000301" x="395" y="0" width="140" height="18" pattern="$#,##0.00" fontName="Tahoma" fontSize="7.5" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+				<printWhenExpression><![CDATA[!$F{TIPO_LINEA}.startsWith("HEADER")]]></printWhenExpression>
+				<expression><![CDATA[$F{LINEA_VALOR}]]></expression>
+				<box rightPadding="8"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+			</element>
+		</band>
+	</detail>
+	<pageFooter height="26" splitType="Stretch">
+		<element kind="line" uuid="d0000000-0000-0000-0000-000000000400" x="0" y="2" width="535" height="1">
+			<pen lineWidth="0.25"/>
+		</element>
+		<element kind="staticText" uuid="d0000000-0000-0000-0000-000000000401" mode="Opaque" x="0" y="6" width="535" height="12" backcolor="#B10000" forecolor="#FFFFFF" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[BORRADOR — DOCUMENTO PRELIMINAR, NO CONSTITUYE COMPROBANTE DE PAGO]]></text>
+		</element>
+		<element kind="textField" uuid="d0000000-0000-0000-0000-000000000402" x="450" y="20" width="85" height="6" fontSize="6.0" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA["Página " + $V{PAGE_NUMBER}]]></expression>
+		</element>
+	</pageFooter>
+	<summary height="56" splitType="Stretch">
+		<!-- Cubierto con deposito: prestamo + aporte a favor (todo lo que SI entro al banco). -->
+		<element kind="staticText" uuid="d0000000-0000-0000-0000-000000000502" x="0" y="0" width="395" height="16" fontName="Tahoma" fontSize="7.5" hTextAlign="Right" vTextAlign="Middle">
+			<text><![CDATA[Cubierto con depósito]]></text>
+			<box rightPadding="8"/>
+		</element>
+		<element kind="textField" uuid="d0000000-0000-0000-0000-000000000503" x="395" y="0" width="140" height="16" pattern="$#,##0.00" fontName="Tahoma" fontSize="7.5" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$V{V_TOTAL_PRESTAMO}.add($V{V_TOTAL_FAVOR})]]></expression>
+			<box rightPadding="8"/>
+		</element>
+		<!-- Cubierto consumiendo aportes: solo aparece si hubo parte de precancelacion mixta. -->
+		<element kind="staticText" uuid="d0000000-0000-0000-0000-000000000504" x="0" y="16" width="395" height="16" fontName="Tahoma" fontSize="7.5" forecolor="#C05621" hTextAlign="Right" vTextAlign="Middle">
+			<printWhenExpression><![CDATA[$V{V_TOTAL_CONSUMIDO}.doubleValue() > 0.0]]></printWhenExpression>
+			<text><![CDATA[Cubierto consumiendo aportes]]></text>
+			<box rightPadding="8"/>
+		</element>
+		<element kind="textField" uuid="d0000000-0000-0000-0000-000000000505" x="395" y="16" width="140" height="16" pattern="$#,##0.00" fontName="Tahoma" fontSize="7.5" forecolor="#C05621" hTextAlign="Right" vTextAlign="Middle">
+			<printWhenExpression><![CDATA[$V{V_TOTAL_CONSUMIDO}.doubleValue() > 0.0]]></printWhenExpression>
+			<expression><![CDATA[$V{V_TOTAL_CONSUMIDO}]]></expression>
+			<box rightPadding="8"/>
+		</element>
+		<!-- Total general: deposito + consumido (nunca sumados en la misma linea que el detalle,
+		     pero el total SI necesita mostrar cuanto es en conjunto). -->
+		<element kind="staticText" uuid="d0000000-0000-0000-0000-000000000500" mode="Opaque" x="0" y="36" width="395" height="18" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<text><![CDATA[TOTAL DEL COBRO]]></text>
+			<box rightPadding="8"/>
+		</element>
+		<element kind="textField" uuid="d0000000-0000-0000-0000-000000000501" mode="Opaque" x="395" y="36" width="140" height="18" backcolor="#D1D1D1" pattern="$#,##0.00" fontName="Tahoma" fontSize="8.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$V{V_TOTAL_PRESTAMO}.add($V{V_TOTAL_FAVOR}).add($V{V_TOTAL_CONSUMIDO})]]></expression>
+			<box rightPadding="8"/>
+		</element>
+	</summary>
+	<noData height="80" splitType="Stretch">
+		<element kind="staticText" uuid="d0000000-0000-0000-0000-000000000600" mode="Opaque" x="0" y="0" width="535" height="16" backcolor="#EDF2F7" forecolor="#4A5568" fontName="Tahoma" fontSize="9.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[SIN INFORMACIÓN PARA PRESENTAR]]></text>
+			<box><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="d0000000-0000-0000-0000-000000000601" x="0" y="20" width="535" height="16" fontName="Tahoma" fontSize="8.0" hTextAlign="Center" vTextAlign="Middle">
+			<expression><![CDATA["No se encontró el cobro con código " + ($P{P_CBCR_CODIGO} != null ? String.valueOf($P{P_CBCR_CODIGO}) : "(nulo)") + "."]]></expression>
+		</element>
+	</noData>
+</jasperReport>

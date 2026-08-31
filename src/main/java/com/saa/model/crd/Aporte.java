@@ -206,7 +206,7 @@ public class Aporte implements Serializable {
         this.codigo = codigo;
     }
 
-    public Filial getFilia() {
+    public Filial getFilial() {
         return filial;
     }
 

@@ -13,6 +13,7 @@ import com.saa.ejb.cnt.service.PlantillaService;
 import com.saa.ejb.crd.dao.AcuerdoCondonacionDaoService;
 import com.saa.ejb.crd.dao.CargaArchivoDaoService;
 import com.saa.ejb.crd.dao.CobroCreditoDaoService;
+import com.saa.ejb.crd.dao.DetalleAportePrecancelacionDaoService;
 import com.saa.ejb.crd.dao.DetalleCobroCreditoDaoService;
 import com.saa.ejb.crd.dao.EntidadDaoService;
 import com.saa.ejb.crd.dao.EventoPrestamoDaoService;
@@ -25,9 +26,11 @@ import com.saa.ejb.crd.service.AporteService;
 import com.saa.ejb.crd.service.CobroCreditoService;
 import com.saa.ejb.crd.service.ConfiguracionContabilidadService;
 import com.saa.ejb.crd.service.ProcesoPagoPrestamoService;
+import com.saa.ejb.crd.service.dto.DesgloseAporte;
 import com.saa.ejb.crd.service.dto.DetalleRegistroCobroDTO;
 import com.saa.ejb.crd.service.dto.FilaBandejaAprobacion;
 import com.saa.ejb.crd.service.dto.ResultadoAbonoCapital;
+import com.saa.ejb.crd.service.dto.ResultadoAnulacion;
 import com.saa.ejb.crd.service.dto.ResultadoAplicacionAcuerdo;
 import com.saa.ejb.crd.service.dto.ResultadoAplicacionPago;
 import com.saa.ejb.crd.service.dto.ResultadoPagoMultiple;
@@ -37,6 +40,7 @@ import com.saa.ejb.crd.service.dto.ResultadoRegistroAporte;
 import com.saa.ejb.crd.service.dto.ResultadoRegistroCobro;
 import com.saa.ejb.crd.service.dto.SimulacionPrecancelacion;
 import com.saa.ejb.crd.service.dto.SolicitudAbonoCapital;
+import com.saa.ejb.crd.service.dto.SolicitudAnulacion;
 import com.saa.ejb.crd.service.dto.SolicitudEdicionCobro;
 import com.saa.ejb.crd.service.dto.SolicitudPagoCuota;
 import com.saa.ejb.crd.service.dto.SolicitudPagoMultiple;
@@ -51,6 +55,7 @@ import com.saa.model.cnt.PlanCuenta;
 import com.saa.model.crd.AcuerdoCondonacion;
 import com.saa.model.crd.CargaArchivo;
 import com.saa.model.crd.CobroCredito;
+import com.saa.model.crd.DetalleAportePrecancelacion;
 import com.saa.model.crd.DetalleCobroCredito;
 import com.saa.model.crd.Entidad;
 import com.saa.model.crd.EventoPrestamo;
@@ -97,6 +102,9 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
 
     @EJB
     private DetalleCobroCreditoDaoService detalleCobroCreditoDaoService;
+
+    @EJB
+    private DetalleAportePrecancelacionDaoService detalleAportePrecancelacionDaoService;
 
     @EJB
     private EntidadDaoService entidadDaoService;
@@ -188,7 +196,20 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                 linea.setAcuerdoCondonacion(acuerdoCondonacionDaoService.selectById(lineaSolicitud.getIdAcuerdo(),
                         NombreEntidadesCredito.ACUERDO_CONDONACION));
             }
-            detalleCobroCreditoDaoService.save(linea, null);
+            linea = detalleCobroCreditoDaoService.save(linea, null);
+
+            // Precancelación mixta (2026-08-30): el desglose de aportes CONSUMIDOS se persiste
+            // ya, aunque recién se consuma al procesar — entre el registro y la aprobación de
+            // contabilidad no puede perderse de qué cuentas sale el dinero.
+            if (lineaSolicitud.getAportes() != null && !lineaSolicitud.getAportes().isEmpty()) {
+                for (DesgloseAporte renglon : lineaSolicitud.getAportes()) {
+                    DetalleAportePrecancelacion lineaAporte = new DetalleAportePrecancelacion();
+                    lineaAporte.setDetalleCobroCredito(linea);
+                    lineaAporte.setTipoAporte(buscarTipoAporte(renglon.getIdTipoAporte()));
+                    lineaAporte.setValor(redondear(renglon.getValor()));
+                    detalleAportePrecancelacionDaoService.save(lineaAporte, null);
+                }
+            }
         }
 
         ResultadoRegistroCobro resultado = new ResultadoRegistroCobro();
@@ -369,13 +390,76 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         }
         CobroCredito cobro = buscarCobro(idCobro);
         long estado = cobro.getEstado() != null ? cobro.getEstado() : -1L;
-        if (estado == CrdEstadoCobro.PROCESADO) {
+        // Criterio (2026-08-30, extendido tras revisión del árbitro): el reverso lo maneja
+        // ESTE método cuando el tipo de operación no tiene una única herramienta externa de
+        // un-solo-evento que le sirva — PAGO_MULTIPLE y COBRO_MIXTO porque generan VARIOS
+        // EventoPrestamo (anularOperacion solo toma uno), REGISTRO_APORTE porque NO genera
+        // ningún EventoPrestamo — no hay redirección posible, el único reverso de un aporte es
+        // el que se construye acá (ver AporteService#reversarAporte). Se delega al reverso por
+        // préstamo (anularOperacion) solo cuando la operación es de una sola línea Y esa línea
+        // es de préstamo: PAGO_CUOTA, ABONO_CAPITAL, PRECANCELACION — ahí un evento, un
+        // préstamo, es exactamente lo correcto y no hay nada que arreglar.
+        boolean reversoPorLineas = CrdTipoOperacionCobro.COBRO_MIXTO.equals(cobro.getTipoOperacion())
+                || CrdTipoOperacionCobro.PAGO_MULTIPLE.equals(cobro.getTipoOperacion())
+                || CrdTipoOperacionCobro.REGISTRO_APORTE.equals(cobro.getTipoOperacion());
+        if (estado == CrdEstadoCobro.PROCESADO && !reversoPorLineas) {
             throw new IncomeException("El cobro " + idCobro + " ya fue PROCESADO; para"
                     + " deshacerlo use la anulación de la operación sobre el préstamo/aporte"
                     + " correspondiente (anularOperacion), no la anulación del cobro");
         }
         if (estado == CrdEstadoCobro.ANULADO) {
             throw new IncomeException("El cobro " + idCobro + " ya está ANULADO");
+        }
+
+        // Cobro PROCESADO de un tipo con reverso por líneas: "un depósito = un cobro = una
+        // aprobación = un reverso" (defecto de producción del 2026-08-30 — un cobro múltiple
+        // bypaseó la bandeja y, al anularlo por fuera con un solo idEvento, revirtió un
+        // préstamo y dejó el otro y los aportes intactos). Acá se revierten TODAS las líneas
+        // del detalle, en la MISMA transacción que este método: si cualquier línea falla, el
+        // contenedor revierte todo y ninguna queda a medias.
+        if (estado == CrdEstadoCobro.PROCESADO) {
+            List<DetalleCobroCredito> detalles = detalleCobroCreditoDaoService.selectByCobro(idCobro);
+            String motivoLinea = "Anulación del cobro " + idCobro + ": " + motivo.trim();
+            for (DetalleCobroCredito linea : detalles) {
+                if (linea.getPagoAporte() != null) {
+                    Long idAporte = linea.getPagoAporte().getAporte() != null
+                            ? linea.getPagoAporte().getAporte().getCodigo() : null;
+                    if (idAporte != null) {
+                        try {
+                            aporteService.reversarAporte(idAporte, usuario, motivoLinea);
+                        } catch (IncomeException e) {
+                            throw new IncomeException("No se pudo anular el cobro " + idCobro
+                                    + ": el aporte " + idAporte + " (línea " + linea.getCodigo()
+                                    + ") lo rechazó: " + e.getMessage());
+                        }
+                    }
+                } else if (linea.getEventoPrestamo() != null) {
+                    SolicitudAnulacion solicitudAnulacion = new SolicitudAnulacion();
+                    solicitudAnulacion.setIdEvento(linea.getEventoPrestamo().getCodigo());
+                    solicitudAnulacion.setUsuario(usuario);
+                    solicitudAnulacion.setMotivo(motivoLinea);
+                    Long idPrestamoLinea = linea.getPrestamo() != null
+                            ? linea.getPrestamo().getCodigo() : null;
+                    ResultadoAnulacion resultadoAnulacion;
+                    try {
+                        resultadoAnulacion = procesoPagoPrestamoService.anularOperacion(solicitudAnulacion);
+                    } catch (IncomeException e) {
+                        // Todo-o-nada es correcto (si un préstamo no se puede reversar, no se
+                        // reversa nada) — pero sin este contexto, un cobro de 3+ líneas deja al
+                        // usuario con un error genérico sin saber cuál de los préstamos lo
+                        // bloqueó ni por qué (típicamente ERR_EVENTO_POSTERIOR_VIGENTE: hay una
+                        // operación más nueva sobre ESE préstamo específico que hay que anular
+                        // primero).
+                        throw new IncomeException("No se pudo anular el cobro " + idCobro
+                                + ": el préstamo " + idPrestamoLinea + " (línea " + linea.getCodigo()
+                                + ", evento " + linea.getEventoPrestamo().getCodigo() + ") lo rechazó: "
+                                + e.getMessage());
+                    }
+                    System.out.println("  ↩️ Cobro " + idCobro + " - préstamo "
+                            + resultadoAnulacion.getIdPrestamo() + " revertido (evento "
+                            + resultadoAnulacion.getIdEvento() + ")");
+                }
+            }
         }
 
         // No hubo cobro: el DEBE al banco nunca debió registrarse, a diferencia de un rechazo
@@ -462,6 +546,16 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
     // cesantía(11) — cualquier otro tipo de aporte quedaría fuera del asiento. Reusar esa
     // lógica a ciegas produciría un asiento contable INCORRECTO, así que no lo hice. Falta
     // una decisión del árbitro sobre qué plantilla/líneas usar antes de construirlo.
+    //
+    // ⚠️ MISMO RIESGO EN PRECANCELACIÓN (verificado 2026-08-30, pedido del usuario): el
+    // capital futuro de una precancelación (ProcesoPagoPrestamoServiceImpl.precancelar, línea
+    // ~897 en adelante) YA se registra en DetallePrestamo.saldoOtros de la ÚLTIMA CUOTA
+    // PAGADA (detallePrestamoDaoService.selectUltimaCuotaPagada — mayor numeroCuota con
+    // estado PAGADA(4); si no hay ninguna, la primera cuota futura) Y en un PagoPrestamo
+    // propio (pagoCapitalFuturo) con saldoOtros = capitalFuturo, capitalPagado = 0 — mismo
+    // patrón exacto que el abono a capital, ya implementado, no hace falta tocarlo. Pero por
+    // eso mismo hereda el mismo hueco: cualquier CBCRASN2 que lea capitalPagado se comerá en
+    // silencio el capital futuro de toda precancelación, igual que se comería el abono.
     // =====================================================================
 
     private static final double TOLERANCIA_STALENESS_PRECANCELACION = 0.01;
@@ -493,46 +587,80 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
 
         if (CrdTipoOperacionCobro.PRECANCELACION.equals(tipoOperacion)) {
             DetalleCobroCredito linea = detalles.get(0);
-            // Pre-chequeo de staleness con el método de SOLO LECTURA, ANTES de llamar al
-            // motor: si se llamara a precancelar() directo y este lanzara por el monto, el
+
+            // Precancelación mixta (2026-08-30): el desglose de aportes CONSUMIDOS, si lo hay
+            // — linea.getValor() es SOLO la parte de depósito, nunca el total.
+            List<DetalleAportePrecancelacion> desgloseAportesGuardado =
+                    detalleAportePrecancelacionDaoService.selectByDetalleCobro(linea.getCodigo());
+            double totalAportesGuardado = 0.0;
+            List<DesgloseAporte> aportesParaPrecancelar = new ArrayList<>();
+            for (DetalleAportePrecancelacion lineaAporte : desgloseAportesGuardado) {
+                totalAportesGuardado += nvl(lineaAporte.getValor());
+                DesgloseAporte renglon = new DesgloseAporte();
+                renglon.setIdTipoAporte(lineaAporte.getTipoAporte().getCodigo());
+                renglon.setValor(lineaAporte.getValor());
+                aportesParaPrecancelar.add(renglon);
+            }
+            totalAportesGuardado = redondear(totalAportesGuardado);
+
+            // Pre-chequeos de SOLO LECTURA, ANTES de llamar al motor: si se llamara a
+            // precancelar() directo y este (o consumirAportes dentro de él) lanzara, el
             // contenedor marca la transacción rollback-only apenas se lanza la IncomeException
             // (@ApplicationException(rollback=true)) — atraparla acá NO alcanza para salvar la
             // transacción (mismo defecto que documenta el comentario de
             // ConfiguracionContabilidadServiceImpl.contabilidadActiva). Por eso el rechazo
             // automático se decide ANTES de tocar nada mutable, nunca atrapando el fallo del
-            // motor después.
+            // motor después. Dos cosas pueden haber cambiado desde el registro: el préstamo
+            // (staleness de siempre) y el saldo de aportes (puede haberse gastado en el medio,
+            // sobre todo si hubo parte de depósito y pasaron días hasta la aprobación).
             SimulacionPrecancelacion simulacion = procesoPagoPrestamoService.simularPrecancelacion(
                     linea.getPrestamo().getCodigo(), cobro.getFecha());
             double valorActual = simulacion.getValorTotalPrecancelacion() != null
                     ? simulacion.getValorTotalPrecancelacion() : 0.0;
-            double diferencia = Math.abs(valorActual - linea.getValor());
+            double valorEnviado = redondear(nvl(linea.getValor()) + totalAportesGuardado);
+            double diferencia = Math.abs(valorActual - valorEnviado);
+            String motivoRechazo = null;
             if (diferencia > TOLERANCIA_STALENESS_PRECANCELACION) {
-                String motivo = "Rechazado automáticamente por el sistema: el monto registrado"
-                        + " ($" + linea.getValor() + ") ya no coincide con el valor de"
+                motivoRechazo = "Rechazado automáticamente por el sistema: el depósito ($"
+                        + linea.getValor() + ") más los aportes ($" + totalAportesGuardado
+                        + ") suman $" + valorEnviado + ", que ya no coincide con el valor de"
                         + " precancelación recalculado al procesar ($" + valorActual
                         + "); el préstamo cambió entre el registro y el proceso. Verifique y"
                         + " vuelva a registrar.";
+            } else if (!aportesParaPrecancelar.isEmpty()) {
+                try {
+                    procesoPagoPrestamoService.validarDesgloseAportes(aportesParaPrecancelar,
+                            cobro.getEntidad());
+                } catch (IncomeException e) {
+                    motivoRechazo = "Rechazado automáticamente por el sistema: el saldo de aportes"
+                            + " cambió entre el registro y el proceso — " + e.getMessage();
+                }
+            }
+            if (motivoRechazo != null) {
                 cobro.setEstado(Long.valueOf(CrdEstadoCobro.RECHAZADO));
                 cobro.setUsuarioRechazo("SISTEMA");
                 cobro.setFechaRechazo(LocalDateTime.now());
-                cobro.setMotivoRechazo(motivo);
+                cobro.setMotivoRechazo(motivoRechazo);
                 cobroCreditoDaoService.save(cobro, cobro.getCodigo());
 
                 ResultadoProcesoCobro resultado = new ResultadoProcesoCobro();
                 resultado.setIdCobro(idCobro);
                 resultado.setEstado(cobro.getEstado());
                 resultado.setProcesado(false);
-                resultado.setMensaje(motivo);
+                resultado.setMensaje(motivoRechazo);
                 return resultado;
             }
 
             SolicitudPrecancelacion solicitud = new SolicitudPrecancelacion();
             solicitud.setIdPrestamo(linea.getPrestamo().getCodigo());
             solicitud.setValorEfectivo(linea.getValor());
+            solicitud.setAportes(aportesParaPrecancelar.isEmpty() ? null : aportesParaPrecancelar);
             solicitud.setUsuario(usuario);
             solicitud.setObservacion(observacionLinea(cobro, linea));
             solicitud.setFecha(cobro.getFecha());
             solicitud.setRutaDocumentoRespaldo(cobro.getRutaRespaldo());
+            // precancelar() no se toca: ya sabía sumar valorEfectivo + aportes y consumirlos
+            // con consumirAportes desde antes de este cambio.
             ResultadoPrecancelacion resultado = procesoPagoPrestamoService.precancelar(solicitud);
             enlazarEvento(linea, resultado.getIdEvento());
 
@@ -614,6 +742,39 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
 
             ResultadoAplicacionAcuerdo resultado = acuerdoCondonacionService.aplicarAcuerdo(idAcuerdo, usuario);
             enlazarEvento(linea, resultado.getIdEvento());
+
+        } else if (CrdTipoOperacionCobro.COBRO_MIXTO.equals(tipoOperacion)) {
+            // Un depósito = un cobro = una aprobación = un reverso (defecto de producción del
+            // 2026-08-30): las líneas de préstamo y de aporte se aplican TODAS acá, en la
+            // misma transacción que este método — si cualquiera falla, el contenedor revierte
+            // TODO (ninguna línea queda aplicada a medias). Cada línea de préstamo se paga
+            // individualmente (como PAGO_CUOTA) en vez de agruparlas en pagarMultiplesCuotas:
+            // así cada línea guarda su propio EventoPrestamo sin depender del orden de un
+            // resultado agregado.
+            for (DetalleCobroCredito linea : detalles) {
+                if (linea.getTipoAporte() != null) {
+                    SolicitudRegistroAporte solicitud = new SolicitudRegistroAporte();
+                    solicitud.setIdEntidad(cobro.getEntidad().getCodigo());
+                    solicitud.setIdTipoAporte(linea.getTipoAporte().getCodigo());
+                    solicitud.setValor(linea.getValor());
+                    solicitud.setUsuario(usuario);
+                    solicitud.setObservacion(observacionLinea(cobro, linea));
+                    solicitud.setFechaTransaccion(cobro.getFecha());
+                    solicitud.setRutaDocumentoRespaldo(cobro.getRutaRespaldo());
+                    solicitud.setPeriodoDevengo(linea.getPeriodoDevengo());
+                    ResultadoRegistroAporte resultadoAporte = aporteService.registrarAporte(solicitud);
+                    if (resultadoAporte.getIdPagoAporte() != null) {
+                        PagoAporte pagoAporte = pagoAporteDaoService.selectById(
+                                resultadoAporte.getIdPagoAporte(), NombreEntidadesCredito.PAGO_APORTE);
+                        linea.setPagoAporte(pagoAporte);
+                        detalleCobroCreditoDaoService.save(linea, linea.getCodigo());
+                    }
+                } else {
+                    ResultadoAplicacionPago resultadoPago = procesoPagoPrestamoService.pagarCuota(
+                            aSolicitudPagoCuota(cobro, linea, usuario));
+                    enlazarEvento(linea, resultadoPago.getIdEvento());
+                }
+            }
 
         } else {
             throw new IncomeException("Tipo de operación desconocido: " + tipoOperacion);
@@ -712,7 +873,7 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         if (!esTipoOperacionValido(solicitud.getTipoOperacion())) {
             throw new IncomeException("tipoOperacion inválido: " + solicitud.getTipoOperacion()
                     + "; debe ser uno de PAGO_CUOTA, PAGO_MULTIPLE, ABONO_CAPITAL, PRECANCELACION,"
-                    + " REGISTRO_APORTE, ACUERDO_CONDONACION");
+                    + " REGISTRO_APORTE, ACUERDO_CONDONACION, COBRO_MIXTO");
         }
 
         if (solicitud.getIdCuentaBancaria() == null) {
@@ -743,15 +904,17 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             throw new IncomeException("El cobro debe tener al menos una línea de detalle");
         }
         boolean esMultiple = CrdTipoOperacionCobro.PAGO_MULTIPLE.equals(solicitud.getTipoOperacion());
-        if (!esMultiple && solicitud.getDetalles().size() != 1) {
+        boolean esMixto = CrdTipoOperacionCobro.COBRO_MIXTO.equals(solicitud.getTipoOperacion());
+        if (!esMultiple && !esMixto && solicitud.getDetalles().size() != 1) {
             throw new IncomeException("El tipo de operación " + solicitud.getTipoOperacion()
                     + " admite exactamente una línea de detalle; use PAGO_MULTIPLE para varios"
-                    + " préstamos en un mismo cobro");
+                    + " préstamos o COBRO_MIXTO para préstamos y aportes en un mismo cobro");
         }
 
         boolean esAporte = CrdTipoOperacionCobro.REGISTRO_APORTE.equals(solicitud.getTipoOperacion());
         boolean esAbono = CrdTipoOperacionCobro.ABONO_CAPITAL.equals(solicitud.getTipoOperacion());
         boolean esAcuerdo = CrdTipoOperacionCobro.ACUERDO_CONDONACION.equals(solicitud.getTipoOperacion());
+        boolean esPrecancelacion = CrdTipoOperacionCobro.PRECANCELACION.equals(solicitud.getTipoOperacion());
         double sumaDetalles = 0.0;
         for (DetalleRegistroCobroDTO linea : solicitud.getDetalles()) {
             if (linea.getValor() == null || linea.getValor() <= 0.0) {
@@ -759,7 +922,27 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             }
             sumaDetalles += linea.getValor();
 
-            if (esAporte) {
+            // COBRO_MIXTO: cada línea decide su propia clase (préstamo o aporte) — a
+            // diferencia de los demás tipos, donde la clase la fija el tipoOperacion entero.
+            if (esMixto) {
+                boolean traeAporte = linea.getIdTipoAporte() != null;
+                boolean traePrestamo = linea.getIdPrestamo() != null;
+                if (traeAporte == traePrestamo) {
+                    throw new IncomeException("En COBRO_MIXTO cada línea debe traer exactamente"
+                            + " uno de idPrestamo o idTipoAporte, nunca ambos ni ninguno");
+                }
+                if (linea.getIdAcuerdo() != null) {
+                    throw new IncomeException("idAcuerdo solo aplica a ACUERDO_CONDONACION;"
+                            + " no aplica dentro de COBRO_MIXTO");
+                }
+                if (linea.getModalidad() != null) {
+                    throw new IncomeException("modalidad solo aplica a ABONO_CAPITAL;"
+                            + " COBRO_MIXTO no admite abono a capital");
+                }
+            }
+            boolean lineaEsAporte = esAporte || (esMixto && linea.getIdTipoAporte() != null);
+
+            if (lineaEsAporte) {
                 if (linea.getIdPrestamo() != null) {
                     throw new IncomeException("REGISTRO_APORTE no lleva préstamo: el aporte es de"
                             + " la entidad, no de un préstamo");
@@ -831,12 +1014,14 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                                 + " no corresponde a la entidad " + solicitud.getIdEntidad());
                     }
                     // El monto nace fijo del acuerdo (§5 del plan): el cobro no puede pedir un
-                    // valor distinto del que el acuerdo ya decidió.
-                    double diferencia = Math.abs(nvl(acuerdo.getValorPagar()) - linea.getValor());
+                    // valor distinto del que el acuerdo ya decidió. ⚠️ Contra valorPagarDeposito,
+                    // NO valorPagar (2026-08-30, cruce con aportes): el CBCR solo cubre la parte
+                    // de depósito — la de aportes ni siquiera genera este cobro.
+                    double diferencia = Math.abs(nvl(acuerdo.getValorPagarDeposito()) - linea.getValor());
                     if (diferencia > TOLERANCIA_CUADRE) {
                         throw new IncomeException("El valor de la línea ($" + linea.getValor()
-                                + ") no coincide con el valor a pagar del acuerdo " + linea.getIdAcuerdo()
-                                + " ($" + acuerdo.getValorPagar() + ")");
+                                + ") no coincide con el valor a cubrir con depósito del acuerdo "
+                                + linea.getIdAcuerdo() + " ($" + acuerdo.getValorPagarDeposito() + ")");
                     }
                 } else if (linea.getIdAcuerdo() != null) {
                     throw new IncomeException("idAcuerdo solo aplica a ACUERDO_CONDONACION");
@@ -850,6 +1035,26 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                 }
             } else if (linea.getModalidad() != null) {
                 throw new IncomeException("modalidad solo aplica a ABONO_CAPITAL");
+            }
+
+            // Consumo de aportes (precancelación mixta, 2026-08-30): SOLO en PRECANCELACION —
+            // en cualquier otro tipo se rechaza, sobre todo COBRO_MIXTO, donde una línea con
+            // aportes significa exactamente lo OPUESTO (el socio ENTREGA plata, su saldo SUBE;
+            // acá se CONSUME saldo del socio, su saldo BAJA). Reusar el mismo campo para los
+            // dos sentidos del dinero es la clase de ambigüedad que corrompe saldos sin dar
+            // ningún error.
+            if (esPrecancelacion) {
+                if (linea.getAportes() != null && !linea.getAportes().isEmpty()) {
+                    // Solo valida que el desglose sea sano y financiable AHORA (tipo vigente +
+                    // saldo suficiente) — no se compara contra el total de la precancelación:
+                    // ese total nunca se guarda, se recalcula fresco con simularPrecancelacion
+                    // recién al procesar (mismo criterio que ya rige linea.getValor() hoy, que
+                    // tampoco se valida contra el total al registrar).
+                    procesoPagoPrestamoService.validarDesgloseAportes(linea.getAportes(), entidad);
+                }
+            } else if (linea.getAportes() != null && !linea.getAportes().isEmpty()) {
+                throw new IncomeException("aportes solo aplica a PRECANCELACION; en "
+                        + solicitud.getTipoOperacion() + " no se admite");
             }
         }
 
@@ -874,7 +1079,8 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                 || CrdTipoOperacionCobro.ABONO_CAPITAL.equals(tipoOperacion)
                 || CrdTipoOperacionCobro.PRECANCELACION.equals(tipoOperacion)
                 || CrdTipoOperacionCobro.REGISTRO_APORTE.equals(tipoOperacion)
-                || CrdTipoOperacionCobro.ACUERDO_CONDONACION.equals(tipoOperacion);
+                || CrdTipoOperacionCobro.ACUERDO_CONDONACION.equals(tipoOperacion)
+                || CrdTipoOperacionCobro.COBRO_MIXTO.equals(tipoOperacion);
     }
 
     private Prestamo buscarPrestamo(Long idPrestamo) throws Throwable {

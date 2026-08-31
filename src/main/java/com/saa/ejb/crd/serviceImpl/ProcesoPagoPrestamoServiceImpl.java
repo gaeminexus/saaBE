@@ -16,6 +16,9 @@ import java.util.Set;
 
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.crd.dao.AporteDaoService;
+import com.saa.ejb.crd.dao.CobroCreditoDaoService;
+import com.saa.ejb.crd.dao.DetalleAportePrecancelacionDaoService;
+import com.saa.ejb.crd.dao.DetalleCobroCreditoDaoService;
 import com.saa.ejb.crd.dao.DetallePrestamoDaoService;
 import com.saa.ejb.crd.dao.EventoPrestamoDaoService;
 import com.saa.ejb.crd.dao.HistDetallePrestamoDaoService;
@@ -53,6 +56,9 @@ import com.saa.ejb.crd.service.dto.SolicitudPagoCuota;
 import com.saa.ejb.crd.service.dto.SolicitudPagoMultiple;
 import com.saa.ejb.crd.service.dto.SolicitudPrecancelacion;
 import com.saa.model.crd.Aporte;
+import com.saa.model.crd.CobroCredito;
+import com.saa.model.crd.DetalleAportePrecancelacion;
+import com.saa.model.crd.DetalleCobroCredito;
 import com.saa.model.crd.DetallePrestamo;
 import com.saa.model.crd.Entidad;
 import com.saa.model.crd.EventoPrestamo;
@@ -135,6 +141,15 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
 
     @EJB
     private TipoAporteDaoService tipoAporteDaoService;
+
+    @EJB
+    private CobroCreditoDaoService cobroCreditoDaoService;
+
+    @EJB
+    private DetalleCobroCreditoDaoService detalleCobroCreditoDaoService;
+
+    @EJB
+    private DetalleAportePrecancelacionDaoService detalleAportePrecancelacionDaoService;
 
     /** Bug corregido 2026-08-28: la fórmula pura de mora, para que la precancelación la recalcule
      *  a la fecha elegida en vez de leer el DTPRMRAA/DTPRSLMR ya guardado. */
@@ -347,26 +362,12 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
 
             // Reconstruido desde CRD.PGPR (pagos vigentes del evento) — la fuente de verdad,
             // nunca un valor que hubiera mandado el cliente.
-            List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectByEvento(idEvento);
-            double capital = 0.0;
-            double interes = 0.0;
-            double mora = 0.0;
-            double desgravamen = 0.0;
-            double seguro = 0.0;
-            if (pagos != null) {
-                for (PagoPrestamo pago : pagos) {
-                    if (pago.getAnulado() != null && pago.getAnulado() == 1L) {
-                        continue;
-                    }
-                    capital += nvl(pago.getCapitalPagado());
-                    // Mismo criterio de esta semana: interés vencido se suma dentro de "interés",
-                    // no es un concepto aparte para quien lee el comprobante.
-                    interes += nvl(pago.getInteresPagado()) + nvl(pago.getInteresVencidoPagado());
-                    mora += nvl(pago.getMoraPagada());
-                    desgravamen += nvl(pago.getDesgravamen());
-                    seguro += nvl(pago.getValorSeguroIncendio());
-                }
-            }
+            double[] agregado = agregarPagosDeEvento(idEvento);
+            double capital = agregado[0];
+            double interes = agregado[1];
+            double mora = agregado[2];
+            double desgravamen = agregado[3];
+            double seguro = agregado[4];
 
             LineaComprobantePagoMultiple linea = new LineaComprobantePagoMultiple();
             linea.setIdPrestamo(prestamo.getCodigo());
@@ -394,6 +395,164 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
 
         System.out.println("  ✅ prepararComprobantePagoMultiple OK - Partícipe: " + idEntidadComun
             + " - Préstamos: " + lineas.size() + " - Total: $" + datos.getTotalGeneral());
+
+        return datos;
+    }
+
+    /** Suma capital/interés/mora/desgravamen/seguro de los PagoPrestamo VIGENTES de un evento.
+     * Compartido por {@link #prepararComprobantePagoMultiple} y
+     * {@link #prepararComprobantePagoMultiplePorCobro} — misma reconstrucción, dos puntos de
+     * entrada, para no arriesgar que diverjan. */
+    private double[] agregarPagosDeEvento(Long idEvento) throws Throwable {
+        double capital = 0.0, interes = 0.0, mora = 0.0, desgravamen = 0.0, seguro = 0.0;
+        List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectByEvento(idEvento);
+        if (pagos != null) {
+            for (PagoPrestamo pago : pagos) {
+                if (pago.getAnulado() != null && pago.getAnulado() == 1L) {
+                    continue;
+                }
+                capital += nvl(pago.getCapitalPagado());
+                // Mismo criterio de esta semana: interés vencido se suma dentro de "interés",
+                // no es un concepto aparte para quien lee el comprobante.
+                interes += nvl(pago.getInteresPagado()) + nvl(pago.getInteresVencidoPagado());
+                mora += nvl(pago.getMoraPagada());
+                desgravamen += nvl(pago.getDesgravamen());
+                seguro += nvl(pago.getValorSeguroIncendio());
+            }
+        }
+        return new double[]{capital, interes, mora, desgravamen, seguro};
+    }
+
+    /**
+     * Comprobante final de UN cobro procesado por CBCR (PAGO_MULTIPLE o COBRO_MIXTO),
+     * reconstruido desde {@code CRD.CBCR}/{@code CRD.DCBC} — no desde {@code idsEvento} como
+     * {@link #prepararComprobantePagoMultiple}, que es estructuralmente incapaz de representar
+     * una línea de aporte (nunca genera {@code EventoPrestamo}). Después del cutover la unidad
+     * de la operación es el cobro, no el conjunto de eventos.
+     *
+     * Tres tipos de línea, NUNCA mezclados ni sumados en un mismo total (2026-08-30):
+     * <ul>
+     *   <li>PRESTAMO — baja la deuda. Reconstruido desde {@code CRD.PGPR} del
+     *       {@code eventoPrestamo} de cada línea, igual que el flujo por eventos.</li>
+     *   <li>APORTE_FAVOR — el socio ENTREGA dinero, su saldo SUBE (líneas de {@code CRD.DCBC}
+     *       con {@code tipoAporte}: COBRO_MIXTO, REGISTRO_APORTE).</li>
+     *   <li>APORTE_CONSUMIDO — se CONSUME saldo del socio, su saldo BAJA ({@code CRD.DAPR} de
+     *       una precancelación mixta). Dirección opuesta a APORTE_FAVOR — nunca en la misma
+     *       sección ni sumado con ella.</li>
+     * </ul>
+     *
+     * @param idCobro Código del cobro (CRD.CBCR), ya PROCESADO
+     * @throws Throwable Si el cobro no existe
+     */
+    @Override
+    public ComprobantePagoMultipleDatos prepararComprobantePagoMultiplePorCobro(Long idCobro) throws Throwable {
+        System.out.println("ProcesoPagoPrestamoService.prepararComprobantePagoMultiplePorCobro - Cobro: " + idCobro);
+
+        if (idCobro == null) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": idCobro es obligatorio");
+        }
+        CobroCredito cobro = cobroCreditoDaoService.find(new CobroCredito(), idCobro);
+        if (cobro == null) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": no existe el cobro " + idCobro);
+        }
+        Entidad entidad = cobro.getEntidad();
+
+        List<DetalleCobroCredito> detalles = detalleCobroCreditoDaoService.selectByCobro(idCobro);
+
+        List<LineaComprobantePagoMultiple> lineasPrestamo = new ArrayList<>();
+        List<LineaComprobantePagoMultiple> lineasFavor = new ArrayList<>();
+        List<LineaComprobantePagoMultiple> lineasConsumido = new ArrayList<>();
+        double totalPrestamos = 0.0;
+        double totalFavor = 0.0;
+        double totalConsumido = 0.0;
+
+        for (DetalleCobroCredito detalle : detalles) {
+            if (detalle.getPrestamo() != null) {
+                Prestamo prestamo = detalle.getPrestamo();
+                Long idEvento = detalle.getEventoPrestamo() != null ? detalle.getEventoPrestamo().getCodigo() : null;
+                double[] agregado = idEvento != null ? agregarPagosDeEvento(idEvento) : new double[]{0, 0, 0, 0, 0};
+
+                LineaComprobantePagoMultiple linea = new LineaComprobantePagoMultiple();
+                linea.setTipoLinea("PRESTAMO");
+                linea.setIdPrestamo(prestamo.getCodigo());
+                linea.setNumeroPrestamo(prestamo.getIdAsoprep() != null ? prestamo.getIdAsoprep() : prestamo.getCodigo());
+                linea.setNombreProducto(prestamo.getProducto() != null ? prestamo.getProducto().getNombre() : null);
+                linea.setCapital(redondear(agregado[0]));
+                linea.setInteres(redondear(agregado[1]));
+                linea.setMora(redondear(agregado[2]));
+                linea.setDesgravamen(redondear(agregado[3]));
+                linea.setSeguroIncendio(redondear(agregado[4]));
+                double totalLinea = redondear(agregado[0] + agregado[1] + agregado[2] + agregado[3] + agregado[4]);
+                linea.setTotal(totalLinea);
+                lineasPrestamo.add(linea);
+                totalPrestamos += totalLinea;
+
+            } else if (detalle.getTipoAporte() != null) {
+                // APORTE_FAVOR: el socio ENTREGA dinero, su saldo SUBE. El monto real cobrado
+                // viene del PagoAporte que generó el proceso — más autoritativo que la línea
+                // registrada, mismo criterio que el lado préstamo lee de PGPR y no de DCBC.
+                double valorAporte = detalle.getPagoAporte() != null && detalle.getPagoAporte().getValor() != null
+                        ? detalle.getPagoAporte().getValor() : nvl(detalle.getValor());
+                LineaComprobantePagoMultiple linea = new LineaComprobantePagoMultiple();
+                linea.setTipoLinea("APORTE_FAVOR");
+                linea.setDescripcionAporte("Aporte — " + detalle.getTipoAporte().getNombre()
+                        + (detalle.getPeriodoDevengo() != null
+                                ? ("  ·  Período " + String.format("%02d/%d", detalle.getPeriodoDevengo().getMonthValue(),
+                                        detalle.getPeriodoDevengo().getYear()))
+                                : ""));
+                linea.setTotal(redondear(valorAporte));
+                lineasFavor.add(linea);
+                totalFavor += redondear(valorAporte);
+
+                // APORTE_CONSUMIDO: solo puede coexistir con una línea de PRECANCELACION —
+                // consulta igual, no hace daño si no hay ninguna (lista vacía).
+            }
+
+            List<DetalleAportePrecancelacion> consumidos =
+                    detalleAportePrecancelacionDaoService.selectByDetalleCobro(detalle.getCodigo());
+            for (DetalleAportePrecancelacion consumido : consumidos) {
+                LineaComprobantePagoMultiple linea = new LineaComprobantePagoMultiple();
+                linea.setTipoLinea("APORTE_CONSUMIDO");
+                linea.setDescripcionAporte("Aporte consumido — "
+                        + (consumido.getTipoAporte() != null ? consumido.getTipoAporte().getNombre() : ""));
+                double valorConsumido = nvl(consumido.getValor());
+                linea.setTotal(redondear(valorConsumido));
+                lineasConsumido.add(linea);
+                totalConsumido += redondear(valorConsumido);
+            }
+        }
+
+        List<LineaComprobantePagoMultiple> lineas = new ArrayList<>(lineasPrestamo);
+        if (!lineasFavor.isEmpty()) {
+            LineaComprobantePagoMultiple header = new LineaComprobantePagoMultiple();
+            header.setTipoLinea("HEADER_FAVOR");
+            header.setDescripcionAporte("APORTES A SU FAVOR — su saldo AUMENTA");
+            lineas.add(header);
+            lineas.addAll(lineasFavor);
+        }
+        if (!lineasConsumido.isEmpty()) {
+            LineaComprobantePagoMultiple header = new LineaComprobantePagoMultiple();
+            header.setTipoLinea("HEADER_CONSUMIDO");
+            header.setDescripcionAporte("APORTES QUE SE CONSUMEN — su saldo DISMINUYE");
+            lineas.add(header);
+            lineas.addAll(lineasConsumido);
+        }
+
+        ComprobantePagoMultipleDatos datos = new ComprobantePagoMultipleDatos();
+        datos.setNombreSocio(entidad != null ? entidad.getRazonSocial() : null);
+        datos.setIdentificacionSocio(entidad != null ? entidad.getNumeroIdentificacion() : null);
+        datos.setFecha(cobro.getFechaProceso() != null
+                ? cobro.getFechaProceso()
+                : (cobro.getFecha() != null ? cobro.getFecha().atStartOfDay() : null));
+        datos.setUsuario(cobro.getUsuarioProceso());
+        datos.setTotalGeneral(redondear(totalPrestamos));
+        datos.setTotalAportesFavor(redondear(totalFavor));
+        datos.setTotalAportesConsumidos(redondear(totalConsumido));
+        datos.setLineas(lineas);
+
+        System.out.println("  ✅ prepararComprobantePagoMultiplePorCobro OK - Cobro: " + idCobro
+            + " - Préstamos: " + lineasPrestamo.size() + " - Aportes a favor: " + lineasFavor.size()
+            + " - Aportes consumidos: " + lineasConsumido.size());
 
         return datos;
     }
@@ -480,7 +639,8 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
      * Reglas: no vacío, cada valor &gt; 0, sin tipos repetidos, cada tipo vigente
      * (TipoAporte.estado = 1) y con saldo suficiente en la entidad.
      */
-    private double validarDesgloseAportes(List<DesgloseAporte> aportes, Entidad entidad) throws Throwable {
+    @Override
+    public double validarDesgloseAportes(List<DesgloseAporte> aportes, Entidad entidad) throws Throwable {
         if (aportes == null || aportes.isEmpty()) {
             throw new IncomeException(ERR_DESGLOSE_INVALIDO + ": debe indicar al menos un tipo de aporte");
         }
@@ -533,7 +693,8 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
      * es {@code SUM(valor)} y toda fila nace pagada, así que esta fila resta directo del saldo
      * sin dejar ningún abono pendiente.
      */
-    private List<MovimientoAporte> consumirAportes(Entidad entidad, List<DesgloseAporte> aportes,
+    @Override
+    public List<MovimientoAporte> consumirAportes(Entidad entidad, List<DesgloseAporte> aportes,
             LocalDateTime fecha, String usuario, String glosa, PagoPrestamo pagoPrestamo,
             String rutaDocumentoRespaldo) throws Throwable {
 
@@ -892,11 +1053,19 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         }
         valorExigiblePagado = redondear(valorExigiblePagado);
 
-        // 3-4. Cuota donde se registra el capital futuro (DTPRSLOT)
+        // 3-4. Cuota donde se registra el capital futuro (DTPRSLOT). Requisito del usuario
+        // (2026-08-30): el SLOT SIEMPRE debe quedar en una cuota en estado PAGADA(4) — nunca
+        // en un fallback que el paso 3 (más abajo) termine sobrescribiendo a
+        // CANCELADA_ANTICIPADA(7).
         double capitalFuturo = simulacion.getCapitalFuturo();
         DetallePrestamo ancla = detallePrestamoDaoService.selectUltimaCuotaPagada(prestamo.getCodigo());
-        if (ancla == null) {
-            // Caso extremo: precancelar un préstamo sin ninguna cuota pagada
+        boolean anclaEsFutura = ancla == null;
+        if (anclaEsFutura) {
+            // Caso extremo: precancelar un préstamo sin ninguna cuota pagada. La cuota elegida
+            // es una de calculo.futuras — el paso 3 la excluye explícitamente del cierre a
+            // CANCELADA_ANTICIPADA y la deja PAGADA (ver más abajo), porque es la que carga el
+            // registro del capital futuro; dejarla CANCELADA_ANTICIPADA contradiría el
+            // requisito de que el SLOT viva en una cuota PAGADA.
             ancla = calculo.futuras.get(0);
         }
         ancla.setSaldoOtros(redondear(nvl(ancla.getSaldoOtros()) + capitalFuturo));
@@ -931,13 +1100,30 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         pagoCapitalFuturo = pagoPrestamoService.saveSingle(pagoCapitalFuturo);
 
         // 3. Cuotas futuras → CANCELADA_ANTICIPADA (7). NO se borran ni se historizan.
+        // EXCEPTO la ancla, cuando salió del fallback (anclaEsFutura): esa se deja PAGADA(4)
+        // más abajo — ver el comentario del paso 3-4.
         int canceladas = 0;
         for (DetallePrestamo cuota : calculo.futuras) {
+            if (anclaEsFutura && cuota.getCodigo().equals(ancla.getCodigo())) {
+                continue;
+            }
             cuota.setEstado((long) EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
             cuota.setIdEstado((long) EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
             cuota.setFechaPagado(null);
             detallePrestamoService.saveSingle(cuota);
             canceladas++;
+        }
+        if (anclaEsFutura) {
+            // La ancla del fallback nunca fue una cuota exigible que se "pagó" en el sentido
+            // normal — pero es la que carga el registro del capital futuro (§3-4), y el
+            // requisito del usuario es que esa cuota quede PAGADA, no CANCELADA_ANTICIPADA.
+            ancla.setEstado((long) EstadoCuotaPrestamo.PAGADA);
+            ancla.setIdEstado((long) EstadoCuotaPrestamo.PAGADA);
+            ancla.setFechaPagado(fechaHora);
+            ancla = detallePrestamoService.saveSingle(ancla);
+            System.out.println("  ⚓ Cuota #" + ancla.getNumeroCuota() + " (" + ancla.getCodigo()
+                + ") marcada PAGADA: es la ancla del capital futuro y no tenía ninguna cuota"
+                + " previa PAGADA de dónde salir (préstamo sin pagos previos)");
         }
         System.out.println("  🚫 Cuotas futuras canceladas anticipadamente: " + canceladas);
 
@@ -1236,7 +1422,7 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
 
                 Aporte contra = new Aporte();
                 contra.setEntidad(original.getEntidad());
-                contra.setFilial(original.getFilia());
+                contra.setFilial(original.getFilial());
                 contra.setTipoAporte(original.getTipoAporte());
                 contra.setValor(redondear(Math.abs(nvl(pagoAporte.getValor()))));
                 contra.setValorPagado(0.0);

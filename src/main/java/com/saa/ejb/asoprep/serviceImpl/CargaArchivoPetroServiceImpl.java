@@ -3588,7 +3588,7 @@ private void crearRegistroPagoAporte(Aporte aporte, double montoPagado,
 	// siempre un fallo real, debe propagar.
 	try {
 		com.saa.model.crd.PagoAporte pago = new com.saa.model.crd.PagoAporte();
-		pago.setFilial(aporte.getFilia()); // ✅ Obtener filial desde el aporte (método es getFilia())
+		pago.setFilial(aporte.getFilial()); // Obtener filial desde el aporte
 		pago.setAporte(aporte);
 		pago.setValor(montoPagado);
 		pago.setFechaContable(java.time.LocalDateTime.now());

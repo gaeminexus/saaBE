@@ -17,6 +17,15 @@ public class ComprobantePagoMultipleDatos {
     private LocalDateTime fecha;
     private String usuario;
     private double totalGeneral;
+
+    /** Suma de las líneas APORTE_FAVOR (saldo del socio SUBE). 0 en el flujo por idsEvento. */
+    private double totalAportesFavor;
+
+    /** Suma de las líneas APORTE_CONSUMIDO (saldo del socio BAJA). 0 en el flujo por idsEvento.
+     * NUNCA se suma con {@link #totalGeneral} ni con {@link #totalAportesFavor} — son
+     * direcciones opuestas del dinero. */
+    private double totalAportesConsumidos;
+
     private List<LineaComprobantePagoMultiple> lineas = new ArrayList<>();
 
     public ComprobantePagoMultipleDatos() {
@@ -60,6 +69,22 @@ public class ComprobantePagoMultipleDatos {
 
     public void setTotalGeneral(double totalGeneral) {
         this.totalGeneral = totalGeneral;
+    }
+
+    public double getTotalAportesFavor() {
+        return totalAportesFavor;
+    }
+
+    public void setTotalAportesFavor(double totalAportesFavor) {
+        this.totalAportesFavor = totalAportesFavor;
+    }
+
+    public double getTotalAportesConsumidos() {
+        return totalAportesConsumidos;
+    }
+
+    public void setTotalAportesConsumidos(double totalAportesConsumidos) {
+        this.totalAportesConsumidos = totalAportesConsumidos;
     }
 
     public List<LineaComprobantePagoMultiple> getLineas() {

@@ -328,6 +328,69 @@ public class AporteServiceImpl implements AporteService {
         return resultado;
     }
 
+    @Override
+    public Long reversarAporte(Long idAporte, String usuario, String motivo) throws Throwable {
+        System.out.println("AporteService.reversarAporte - Aporte: " + idAporte);
+        if (idAporte == null) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": idAporte es obligatorio");
+        }
+        if (usuario == null || usuario.trim().isEmpty()) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": usuario es obligatorio");
+        }
+        if (motivo == null || motivo.trim().isEmpty()) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": el motivo de la reversa es obligatorio");
+        }
+
+        Aporte original = aporteDaoService.find(new Aporte(), idAporte);
+        if (original == null) {
+            throw new IncomeException(ERR_APORTE_NO_ENCONTRADO + ": no existe el aporte " + idAporte);
+        }
+        double valorOriginal = original.getValor() != null ? original.getValor() : 0.0;
+        if (valorOriginal < 0) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": el aporte " + idAporte
+                + " ya es una fila de reverso (valor negativo); no se puede reversar de nuevo");
+        }
+
+        String glosa = truncarPorBytes("REVERSO APORTE " + idAporte + " - " + motivo.trim(), MAX_BYTES_GLOSA);
+        LocalDateTime ahora = LocalDateTime.now();
+
+        Aporte reverso = new Aporte();
+        reverso.setEntidad(original.getEntidad());
+        reverso.setFilial(original.getFilial());
+        reverso.setTipoAporte(original.getTipoAporte());
+        reverso.setValor(-valorOriginal);
+        reverso.setValorPagado(0.0);
+        reverso.setSaldo(0.0);
+        reverso.setEstado((long) EstadoCuotaPrestamo.PAGADA);
+        reverso.setIdAsoprep(null);
+        reverso.setFechaTransaccion(ahora);
+        reverso.setPeriodoDevengo(original.getPeriodoDevengo());
+        reverso.setTipoMovimiento((long) CrdTipoMovimientoAporte.REVERSO);
+        reverso.setGlosa(glosa);
+        reverso.setUsuarioRegistro(usuario.trim());
+        reverso.setFechaRegistro(ahora);
+        // DAO directo: saveSingle forzaría estado = 1 y la fila volvería a ser visible para
+        // el FIFO del proceso Petro.
+        reverso = aporteDaoService.save(reverso, null);
+
+        PagoAporte pagoReverso = new PagoAporte();
+        pagoReverso.setAporte(reverso);
+        pagoReverso.setFilial(original.getFilial());
+        pagoReverso.setValor(valorOriginal);
+        pagoReverso.setFechaContable(ahora);
+        pagoReverso.setNumeroAsiento(null);
+        pagoReverso.setConcepto(glosa);
+        pagoReverso.setUsuarioRegistro(usuario.trim());
+        pagoReverso.setFechaRegistro(ahora);
+        pagoReverso.setEstado(1L);
+        pagoReverso.setPagoPrestamo(null);
+        pagoAporteDaoService.save(pagoReverso, null);
+
+        System.out.println("  ↩️ Aporte " + idAporte + " reversado con APRT " + reverso.getCodigo()
+            + " (valor -$" + valorOriginal + ")");
+        return reverso.getCodigo();
+    }
+
     /** Tipos de aporte que cubre el estado de cuenta: 9 jubilación, 11 cesantía. */
     private static final List<Long> TIPOS_APORTE_ESTADO_CUENTA = java.util.Arrays.asList(9L, 11L);
 

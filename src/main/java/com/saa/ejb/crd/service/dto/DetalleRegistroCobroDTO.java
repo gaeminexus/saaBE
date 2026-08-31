@@ -1,6 +1,7 @@
 package com.saa.ejb.crd.service.dto;
 
 import java.time.LocalDate;
+import java.util.List;
 
 /**
  * Una línea del detalle de {@link SolicitudRegistroCobro}: un préstamo dentro del cobro
@@ -28,6 +29,15 @@ public class DetalleRegistroCobroDTO {
 
     /** Acuerdo de pago con condonación. Solo para ACUERDO_CONDONACION (junto con idPrestamo). */
     private Long idAcuerdo;
+
+    /**
+     * Aportes que se CONSUMEN (saldo baja) para cubrir parte de la precancelación, junto con
+     * {@code valor} (la parte de depósito). Solo para PRECANCELACION — en cualquier otro tipo
+     * se rechaza si viene, para no confundirlo con las líneas de aporte de COBRO_MIXTO donde
+     * el significado es el opuesto (el socio ENTREGA plata, su saldo SUBE). Mismo formato que
+     * {@code SolicitudPrecancelacion.aportes}.
+     */
+    private List<DesgloseAporte> aportes;
 
     public Long getIdPrestamo() {
         return idPrestamo;
@@ -83,5 +93,13 @@ public class DetalleRegistroCobroDTO {
 
     public void setIdAcuerdo(Long idAcuerdo) {
         this.idAcuerdo = idAcuerdo;
+    }
+
+    public List<DesgloseAporte> getAportes() {
+        return aportes;
+    }
+
+    public void setAportes(List<DesgloseAporte> aportes) {
+        this.aportes = aportes;
     }
 }

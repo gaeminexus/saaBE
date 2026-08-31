@@ -83,6 +83,32 @@ public class AcuerdoCondonacion implements Serializable {
     @Column(name = "ACCNVLCN")
     private Double valorCondonar;
 
+    /**
+     * Parte de {@link #valorPagar} cubierta cruzando saldos de aportes del propio socio.
+     * Su composición por tipo de aporte está en {@code CRD.DAAP}
+     * ({@link DetalleAporteAcuerdoCondonacion}). NO genera cobro en {@code CRD.CBCR}: ahí no
+     * entra dinero al banco, y por lo tanto no hay nada que contabilidad pueda verificar.
+     *
+     * INVARIANTE: {@code valorPagarAportes + valorPagarDeposito = valorPagar} (tolerancia
+     * $0.01, validada en {@code AcuerdoCondonacionService#registrarAcuerdo}).
+     */
+    @Basic
+    @Column(name = "ACCNVLAP")
+    private Double valorPagarAportes;
+
+    /**
+     * Parte de {@link #valorPagar} cubierta con depósito o transferencia. ES LA ÚNICA que
+     * genera cobro en {@code CRD.CBCR} y aprobación de contabilidad — la única donde entra
+     * dinero al banco. Si vale 0, el acuerdo se aplica en el mismo acto del registro, sin
+     * pasar por la bandeja (ver {@code AcuerdoCondonacionService#registrarAcuerdo}: K11 hace
+     * esperar la aprobación para protegerse de que el depósito nunca llegue — cancelar antes
+     * de verificarlo dejaría un préstamo condonado contra dinero inexistente. Un saldo de
+     * aportes que ya está en el sistema no tiene ese riesgo: no hay nada que esperar).
+     */
+    @Basic
+    @Column(name = "ACCNVLDP")
+    private Double valorPagarDeposito;
+
     /** Fecha de negocio del acuerdo. */
     @Basic
     @Column(name = "ACCNFCHA")
@@ -207,6 +233,22 @@ public class AcuerdoCondonacion implements Serializable {
 
     public void setValorCondonar(Double valorCondonar) {
         this.valorCondonar = valorCondonar;
+    }
+
+    public Double getValorPagarAportes() {
+        return valorPagarAportes;
+    }
+
+    public void setValorPagarAportes(Double valorPagarAportes) {
+        this.valorPagarAportes = valorPagarAportes;
+    }
+
+    public Double getValorPagarDeposito() {
+        return valorPagarDeposito;
+    }
+
+    public void setValorPagarDeposito(Double valorPagarDeposito) {
+        this.valorPagarDeposito = valorPagarDeposito;
     }
 
     public LocalDate getFecha() {

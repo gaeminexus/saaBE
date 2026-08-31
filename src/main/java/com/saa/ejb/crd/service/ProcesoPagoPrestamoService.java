@@ -134,6 +134,26 @@ public interface ProcesoPagoPrestamoService {
     ComprobantePagoMultipleDatos prepararComprobantePagoMultiple(List<Long> idsEvento) throws Throwable;
 
     /**
+     * Comprobante final de UN cobro procesado por CBCR (PAGO_MULTIPLE o COBRO_MIXTO),
+     * reconstruido desde {@code CRD.CBCR}/{@code CRD.DCBC} — no desde {@code idsEvento} como
+     * {@link #prepararComprobantePagoMultiple}, que no puede representar una línea de aporte
+     * (nunca genera {@code EventoPrestamo}). Método nuevo, agregado el 2026-08-30; el de
+     * {@code idsEvento} queda intacto para lo que todavía lo use.
+     *
+     * Tres tipos de línea en el resultado, NUNCA mezclados ni sumados en el mismo total:
+     * préstamo (baja deuda), aporte a favor (saldo del socio SUBE — COBRO_MIXTO/
+     * REGISTRO_APORTE) y aporte consumido (saldo del socio BAJA — precancelación mixta,
+     * {@code CRD.DAPR}). Ver {@code ComprobantePagoMultipleDatos.totalAportesFavor}/
+     * {@code totalAportesConsumidos}.
+     *
+     * @param idCobro Código del cobro (CRD.CBCR), ya PROCESADO
+     * @return Socio, fecha, usuario, y las líneas de las tres clases (con sus encabezados de
+     *         sección sintéticos cuando corresponde)
+     * @throws Throwable Si el cobro no existe
+     */
+    ComprobantePagoMultipleDatos prepararComprobantePagoMultiplePorCobro(Long idCobro) throws Throwable;
+
+    /**
      * Pago de cuota(s) consumiendo el saldo de aportes del partícipe (§7.4).
      *
      * Cada tipo del desglose genera una fila NEGATIVA en CRD.APRT (invisible para el FIFO del
@@ -144,6 +164,52 @@ public interface ProcesoPagoPrestamoService {
      * @throws Throwable Si ocurre un error
      */
     ResultadoPagoConAportes pagarConAportes(SolicitudPagoConAportes solicitud) throws Throwable;
+
+    /**
+     * Valida un desglose de aportes (§7.4): no vacío, cada valor &gt; 0, sin tipos repetidos,
+     * cada tipo vigente ({@code TipoAporte.estado = 1}) y con saldo suficiente en la entidad.
+     * Promovido de privado a público el 2026-08-30 para que
+     * {@code AcuerdoCondonacionService#registrarAcuerdo} lo reuse tal cual al validar la parte
+     * {@code valorPagarAportes} de un acuerdo de condonación — CERO cambio de comportamiento,
+     * las llamadas internas de {@code pagarConAportes}/{@code precancelar} siguen siendo
+     * self-call directas ({@code this.validarDesgloseAportes(...)}, sin pasar por el proxy del
+     * EJB), igual que antes.
+     *
+     * @param aportes Desglose por tipo de aporte
+     * @param entidad Partícipe dueño de los saldos
+     * @return El valor total del desglose
+     * @throws Throwable {@code ERR_DESGLOSE_INVALIDO}, {@code ERR_TIPO_APORTE_NO_VIGENTE} o
+     *                    {@code ERR_SALDO_APORTES_INSUFICIENTE} según cuál falle
+     */
+    double validarDesgloseAportes(List<com.saa.ejb.crd.service.dto.DesgloseAporte> aportes,
+            com.saa.model.crd.Entidad entidad) throws Throwable;
+
+    /**
+     * Consume un desglose de aportes contra un {@code PagoPrestamo} ya existente (§7.4): por
+     * cada renglón, revalida el saldo DENTRO de la transacción (guardarraíl anti-carrera —
+     * entre el registro y el proceso de un acuerdo de condonación con parte en depósito pueden
+     * pasar días, tiempo de sobra para que el socio gaste ese saldo por otra vía) y crea la
+     * fila NEGATIVA en {@code CRD.APRT} (tipoMovimiento PAGO_PRESTAMO) más su
+     * {@code PagoAporte} enlazado al {@code pagoPrestamo} recibido. Promovido de privado a
+     * público el 2026-08-30 para que {@code AcuerdoCondonacionService#aplicarAcuerdo} lo reuse
+     * tal cual — mismo criterio y misma garantía de self-call directa que
+     * {@link #validarDesgloseAportes}.
+     *
+     * @param entidad              Partícipe dueño de los saldos
+     * @param aportes              Desglose por tipo de aporte
+     * @param fecha                Fecha/hora del movimiento
+     * @param usuario              Usuario que ejecuta
+     * @param glosa                Glosa del movimiento
+     * @param pagoPrestamo         PagoPrestamo al que se enlaza cada PagoAporte generado
+     * @param rutaDocumentoRespaldo Respaldo digitalizado
+     * @return Los movimientos de aporte generados
+     * @throws Throwable {@code ERR_SALDO_APORTES_INSUFICIENTE} — con el tipo de aporte y el
+     *                    monto que faltó — si el saldo cambió entre el registro y el proceso
+     */
+    List<com.saa.ejb.crd.service.dto.MovimientoAporte> consumirAportes(com.saa.model.crd.Entidad entidad,
+            List<com.saa.ejb.crd.service.dto.DesgloseAporte> aportes, LocalDateTime fecha, String usuario,
+            String glosa, com.saa.model.crd.PagoPrestamo pagoPrestamo, String rutaDocumentoRespaldo)
+            throws Throwable;
 
     /**
      * Calcula cuánto cuesta precancelar el préstamo a una fecha, SIN escribir nada (§7.5).
@@ -163,6 +229,24 @@ public interface ProcesoPagoPrestamoService {
      * Ejecuta la precancelación total del préstamo con efectivo, aportes o ambos (§7.5).
      *
      * El backend SIEMPRE re-verifica el monto: {@code |valorEnviado − valorTotal| <= 0.01}.
+     *
+     * ⚠️ Requisito del usuario (2026-08-30): el capital futuro (DTPRSLOT) SIEMPRE debe quedar
+     * en una cuota en estado PAGADA(4) — nunca en una que termine CANCELADA_ANTICIPADA(7).
+     * La ancla es {@code selectUltimaCuotaPagada} (mayor {@code numeroCuota} con
+     * {@code estado = PAGADA}), evaluada DESPUÉS de pagar las exigibles (paso 2) y ANTES de
+     * cerrar las futuras (paso 3) — si hay exigibles, la de mayor número queda PAGADA por esa
+     * misma llamada y es la que se elige (el flush automático de JPA antes de la consulta lo
+     * garantiza, sin flush explícito). Verificado: no hay ningún {@code FlushModeType.COMMIT}
+     * en el proyecto que pudiera romper esa garantía.
+     * <p>
+     * Caso extremo — préstamo SIN ninguna cuota PAGADA (nunca tuvo un pago): la única cuota
+     * disponible para cargar el SLOT es una futura, y el paso 3 la habría sobrescrito a
+     * CANCELADA_ANTICIPADA de no ser por una excepción explícita — esa cuota se EXCLUYE del
+     * cierre de futuras y se deja PAGADA en su lugar (con {@code fechaPagado}), precisamente
+     * para sostener este requisito también en ese caso. Al reversar (anularOperacion), esa
+     * cuota SÍ está en {@code cuotasAfectadas} (tiene el {@code PagoPrestamo} del capital
+     * futuro) y {@code recalcularCuotaDesdePagos} la recalcula igual que a cualquier otra — no
+     * hace falta ninguna rama nueva en el reverso.
      *
      * @param solicitud Préstamo, valor en efectivo, desglose de aportes, usuario, obs y fecha
      * @return Resultado con el detalle de lo pagado y el estado final del préstamo (4)
