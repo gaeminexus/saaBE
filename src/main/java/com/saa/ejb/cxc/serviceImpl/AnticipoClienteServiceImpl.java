@@ -187,6 +187,33 @@ public class AnticipoClienteServiceImpl implements AnticipoClienteService {
             }
         }
 
+        // ── Guarda de los campos de devolución en la edición ────────────────────
+        // El DAO genérico hace em.merge() con el objeto tal cual llegó del JSON: un campo que el
+        // cliente no manda NO queda como estaba, se graba null (ver
+        // docs/general/MERGE-DESNUDO-EN-ENTITYDAOIMPL.md). Y el modelo del frontend
+        // (cxc/model/anticipo-cliente.ts) NO declara idPagoDevolucion ni aplicado, así que una
+        // simple edición de observación o de fecha borraría el vínculo con el pago de devolución
+        // y reiniciaría el guardián de idempotencia — sin error visible, y dejando a
+        // sincronizarDevolucion sin forma de saber que ese pago ya se aplicó.
+        //
+        // Se resuelve del lado del servidor, releyendo los dos campos, y no pidiéndole al
+        // frontend que los mande: son estado interno de la reconciliación, ningún cliente tiene
+        // por qué conocerlos, y confiar en que los reenvíe es exactamente lo que falla en silencio.
+        if (!esNuevo) {
+            try {
+                Object[] previos = (Object[]) em.createQuery(
+                        "SELECT a.idPagoDevolucion, a.aplicado FROM AnticipoCliente a WHERE a.id = :id")
+                        .setParameter("id", entidad.getId())
+                        .getSingleResult();
+                entidad.setIdPagoDevolucion((Long) previos[0]);
+                entidad.setAplicado(previos[1] != null ? (Long) previos[1] : Long.valueOf(0L));
+            } catch (jakarta.persistence.NoResultException e) {
+                // Id inexistente: que siga y falle donde corresponde, no acá.
+                System.out.println("⚠ saveSingle AnticipoCliente: no existe el id " + entidad.getId()
+                        + " para preservar los campos de devolución.");
+            }
+        }
+
         // No se genera asiento aquí — se genera en confirmarAnticipo
         entidad = anticipoDaoService.save(entidad, entidad.getId());
         System.out.println("✓ Anticipo guardado con ID: " + entidad.getId()

@@ -171,10 +171,21 @@ public class AnticipoCliente implements Serializable {
      * aplicó. Lo pone en 1 el reconciliador ({@code AnticipoClienteServiceImpl.sincronizarDevolucion})
      * al ver el pago en estado CONFIRMADO — es el guardián de idempotencia: una segunda
      * corrida sobre el mismo pago ya CONFIRMADO ve este campo en 1 y no descuenta de nuevo.
+     *
+     * <p><b>⛔ No quitar el {@code = 0L}.</b> La columna es {@code NUMBER(1) DEFAULT 0 NOT NULL}, e
+     * Hibernate incluye toda columna {@code @Column} en el INSERT que genera. El {@code DEFAULT} de
+     * Oracle <b>sólo actúa si el INSERT omite la columna</b>: cuando la nombra con NULL explícito
+     * —que es lo que hace Hibernate siempre— el default no interviene y salta el NOT NULL. Sin esta
+     * inicialización, <b>toda alta de anticipo muere con ORA-01400</b> (defecto de producción del
+     * 2026-08-31, ver docs/logica-negocio/cxc/ANALISIS-DEFECTOS-PRODUCCION-2026-08-31.md §D1).
+     *
+     * <p>Y tampoco aflojar el NOT NULL de la columna: {@code AnticipoClienteServiceImpl:991}
+     * compara con {@code Long.valueOf(0L).equals(...)}, así que {@code null} y {@code 0} se
+     * comportan distinto y un null reintroduce en silencio el problema que este campo evita.
      */
     @Basic
     @Column(name = "ANTCAPLC")
-    private Long aplicado;
+    private Long aplicado = 0L;
 
     // ── Getters y Setters ────────────────────────────────────────────────────
 

@@ -88,6 +88,11 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 	@EJB
 	private com.saa.ejb.cxc.dao.AplicacionPagoCxcDaoService aplicacionPagoCxcDaoService;
 
+	/** Catálogo de rubros: traduce el tipo de identificación interno al código del SRI. Ver
+	 *  {@link #resolverTipoIdentificacionSRI(com.saa.model.tsr.Titular)}. */
+	@EJB
+	private com.saa.basico.ejb.DetalleRubroService detalleRubroService;
+
 	@PersistenceContext
 	private EntityManager em;
 
@@ -1014,7 +1019,7 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 		String obligado = (liquidacion.getFacturador().getContabilidad() != null && 
 				liquidacion.getFacturador().getContabilidad() == 1) ? "SI" : "NO";
 		writeElement(writer, "obligadoContabilidad", obligado, 4);
-		writeElement(writer, "tipoIdentificacionProveedor", String.valueOf(liquidacion.getTitular().getRubroTipoIdentificacionH()), 4);
+		writeElement(writer, "tipoIdentificacionProveedor", resolverTipoIdentificacionSRI(liquidacion.getTitular()), 4);
 		writeElement(writer, "razonSocialProveedor", nvl(liquidacion.getTitular().getNombre(), ""), 4);
 		writeElement(writer, "identificacionProveedor", nvl(liquidacion.getTitular().getIdentificacion(), ""), 4);
 		writeElement(writer, "direccionProveedor", nvl(liquidacion.getTitular().getDireccion(), ""), 4);
@@ -1654,6 +1659,79 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 		String respuestaCompleta;
 	}
 	
+	/**
+	 * Traduce el tipo de identificación <b>interno</b> del titular al código que exige el SRI.
+	 *
+	 * <p><b>Por qué existe este método.</b> El XSD del SRI declara {@code tipoIdentificacionProveedor}
+	 * con el patrón <code>[0][4-8]</code> — o sea {@code 04} RUC, {@code 05} cédula, {@code 06}
+	 * pasaporte, {@code 07} consumidor final, {@code 08} identificación del exterior. El rubro
+	 * interno usa <b>otros valores y otro orden</b>. Hasta el 2026-08-31 acá se mandaba
+	 * {@code String.valueOf(titular.getRubroTipoIdentificacionH())}, o sea el código interno crudo,
+	 * y el SRI devolvía el comprobante con:
+	 *
+	 * <pre>
+	 * identificador 35 — ARCHIVO NO CUMPLE ESTRUCTURA XML
+	 * Value '1' is not facet-valid with respect to pattern '[0][4-8]'
+	 * </pre>
+	 *
+	 * <p>Es la misma trampa que ya se había corregido en el generador del ATS y que no se buscó en
+	 * los generadores de comprobantes. El patrón de referencia es
+	 * {@code FacturaServiceImpl:1073-1092}, que sí resuelve contra el catálogo — y hay que pasarle
+	 * los <b>dos</b> rubros, el padre y el hijo, no sólo el hijo.
+	 *
+	 * <p><b>Por qué aborta en vez de asumir un valor.</b> El generador de facturas cae a {@code "05"}
+	 * cuando el catálogo no resuelve. Acá no se copia esa decisión: emitir un comprobante fiscal con
+	 * un tipo de identificación adivinado es <b>peor</b> que no emitirlo, porque el SRI lo acepta y
+	 * queda mal declarado sin ningún error visible. Mismo criterio que ya se aplicó a
+	 * {@code dirEstablecimiento} vacío en {@code emitirLiquidacionAnteSRI}.
+	 *
+	 * @param titular el proveedor de la liquidación
+	 * @return el código de dos dígitos del SRI, garantizado dentro de {@code 04..08}
+	 * @throws IncomeException si el titular no tiene tipo de identificación, si el catálogo no lo
+	 *         resuelve, o si el valor resuelto cae fuera del rango que acepta el SRI
+	 */
+	private String resolverTipoIdentificacionSRI(com.saa.model.tsr.Titular titular) throws Exception {
+		if (titular == null) {
+			throw new IncomeException("La liquidación no tiene proveedor asignado.");
+		}
+		String nombre = nvl(titular.getNombre(), "(sin nombre)");
+		if (titular.getRubroTipoIdentificacionP() == null || titular.getRubroTipoIdentificacionH() == null) {
+			throw new IncomeException("El proveedor " + nombre + " no tiene configurado el tipo de "
+					+ "identificación. El SRI lo exige para emitir la liquidación de compra.");
+		}
+
+		String valorAlfa;
+		try {
+			valorAlfa = detalleRubroService.selectValorStringByRubAltDetAlt(
+					titular.getRubroTipoIdentificacionP().intValue(),
+					titular.getRubroTipoIdentificacionH().intValue());
+		} catch (Throwable e) {
+			throw new IncomeException("No se pudo resolver el tipo de identificación del proveedor "
+					+ nombre + " contra el catálogo de rubros: " + e.getMessage());
+		}
+
+		if (valorAlfa == null || valorAlfa.trim().isEmpty()) {
+			throw new IncomeException("El tipo de identificación del proveedor " + nombre
+					+ " (rubro " + titular.getRubroTipoIdentificacionP() + "/"
+					+ titular.getRubroTipoIdentificacionH() + ") no tiene equivalencia en el catálogo "
+					+ "para el SRI. Configurar el detalle de rubro antes de emitir.");
+		}
+
+		// El SRI exige siempre dos dígitos: un catálogo que devuelva "4" se normaliza a "04".
+		String codigo = valorAlfa.trim();
+		if (codigo.length() == 1) codigo = "0" + codigo;
+
+		// Se valida acá y no en el SRI: el rechazo del WS1 no dice qué titular lo causó, y este
+		// mensaje sí. El patrón es el mismo que declara el XSD.
+		if (!codigo.matches("[0][4-8]")) {
+			throw new IncomeException("El tipo de identificación del proveedor " + nombre
+					+ " resolvió a '" + codigo + "', que el SRI no acepta para una liquidación de "
+					+ "compra (sólo admite 04 RUC, 05 cédula, 06 pasaporte, 07 consumidor final, "
+					+ "08 exterior). Revisar el catálogo de rubros.");
+		}
+		return codigo;
+	}
+
 	private String obtenerSecuencial(Long idPtoEmision, String tipoDoc) throws Exception {
 		String sql = "SELECT n FROM NumeracionPuntoEmision n WHERE n.ptoEmision.id = :ptoEmision AND n.tipoDoc = :tipoDoc";
 		Query query = em.createQuery(sql);

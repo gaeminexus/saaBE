@@ -72,7 +72,11 @@ public class RetencionServiceImpl implements RetencionService {
 
 	@EJB
 	private EmailFacturaService emailFacturaService;
-	
+
+	/** Catálogo de rubros: traduce el tipo de identificación interno al código del SRI. */
+	@EJB
+	private com.saa.basico.ejb.DetalleRubroService detalleRubroService;
+
 	@PersistenceContext
 	private EntityManager em;
 	
@@ -228,7 +232,7 @@ public class RetencionServiceImpl implements RetencionService {
 		String obligado = (retencion.getFacturador().getContabilidad() != null && 
 				retencion.getFacturador().getContabilidad() == 1) ? "SI" : "NO";
 		writeElement(writer, "obligadoContabilidad", obligado, 4);
-		writeElement(writer, "tipoIdentificacionSujetoRetenido", String.valueOf(retencion.getProveedor().getRubroTipoIdentificacionH()), 4);
+		writeElement(writer, "tipoIdentificacionSujetoRetenido", resolverTipoIdentificacionSRI(retencion.getProveedor()), 4);
 		writeElement(writer, "razonSocialSujetoRetenido", nvl(retencion.getProveedor().getNombre(), ""), 4);
 		writeElement(writer, "identificacionSujetoRetenido", nvl(retencion.getProveedor().getIdentificacion(), ""), 4);
 		writeElement(writer, "periodoFiscal", nvl(retencion.getPeriodoFiscal(), ""), 4);
@@ -359,6 +363,65 @@ public class RetencionServiceImpl implements RetencionService {
 		writer.writeCharacters("\n");
 	}
 	
+	/**
+	 * Traduce el tipo de identificación <b>interno</b> del sujeto retenido al código del SRI.
+	 *
+	 * <p>El XSD exige el patrón <code>[0][4-8]</code> ({@code 04} RUC, {@code 05} cédula, {@code 06}
+	 * pasaporte, {@code 07} consumidor final, {@code 08} exterior) y el rubro interno usa otros
+	 * valores y otro orden. Acá se mandaba el código interno crudo, que es el mismo defecto que el
+	 * 2026-08-31 hizo que el SRI devolviera una liquidación de compra con
+	 * <i>«ARCHIVO NO CUMPLE ESTRUCTURA XML»</i>.
+	 *
+	 * <p><b>Este generador es el viejo</b> — el vigente es {@code RetencionV2ServiceImpl} (ruta
+	 * {@code /rtv2}), que no tiene el defecto. Se corrigió igual en vez de dejarlo latente: hoy no
+	 * lo alcanza nadie, y ésa es exactamente la condición del {@code TSR.TSRD} del §7.4b del ESTADO,
+	 * que sigue esperando a que alguien lo conecte y se lleve el error.
+	 *
+	 * <p>Aborta en vez de asumir un valor por la misma razón que en la liquidación de compra: un
+	 * comprobante fiscal con el tipo de identificación adivinado el SRI lo acepta, y queda mal
+	 * declarado sin error visible. Ver
+	 * {@code LiquidacionCompraServiceImpl.resolverTipoIdentificacionSRI}, que es el original de
+	 * este método y lleva el razonamiento completo.
+	 */
+	private String resolverTipoIdentificacionSRI(com.saa.model.tsr.Titular titular) throws Exception {
+		if (titular == null) {
+			throw new IncomeException("La retención no tiene sujeto retenido asignado.");
+		}
+		String nombre = nvl(titular.getNombre(), "(sin nombre)");
+		if (titular.getRubroTipoIdentificacionP() == null || titular.getRubroTipoIdentificacionH() == null) {
+			throw new IncomeException("El sujeto retenido " + nombre + " no tiene configurado el "
+					+ "tipo de identificación. El SRI lo exige para emitir la retención.");
+		}
+
+		String valorAlfa;
+		try {
+			valorAlfa = detalleRubroService.selectValorStringByRubAltDetAlt(
+					titular.getRubroTipoIdentificacionP().intValue(),
+					titular.getRubroTipoIdentificacionH().intValue());
+		} catch (Throwable e) {
+			throw new IncomeException("No se pudo resolver el tipo de identificación del sujeto "
+					+ "retenido " + nombre + " contra el catálogo de rubros: " + e.getMessage());
+		}
+
+		if (valorAlfa == null || valorAlfa.trim().isEmpty()) {
+			throw new IncomeException("El tipo de identificación del sujeto retenido " + nombre
+					+ " (rubro " + titular.getRubroTipoIdentificacionP() + "/"
+					+ titular.getRubroTipoIdentificacionH() + ") no tiene equivalencia en el catálogo "
+					+ "para el SRI. Configurar el detalle de rubro antes de emitir.");
+		}
+
+		String codigo = valorAlfa.trim();
+		if (codigo.length() == 1) codigo = "0" + codigo;
+
+		if (!codigo.matches("[0][4-8]")) {
+			throw new IncomeException("El tipo de identificación del sujeto retenido " + nombre
+					+ " resolvió a '" + codigo + "', que el SRI no acepta (sólo admite 04 RUC, "
+					+ "05 cédula, 06 pasaporte, 07 consumidor final, 08 exterior). Revisar el "
+					+ "catálogo de rubros.");
+		}
+		return codigo;
+	}
+
 	private String nvl(String value, String defaultValue) {
 		return value != null ? value : defaultValue;
 	}

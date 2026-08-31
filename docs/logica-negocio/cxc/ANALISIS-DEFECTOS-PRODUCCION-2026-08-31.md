@@ -237,3 +237,49 @@ No es lo que rompe hoy, pero explica huecos en la numeración y conviene resolve
 2. **Decidir entre D2b (A) y (B)**, con el contraste de numeración hecho.
 
 D1 no necesita nada: la corrección es una línea y el razonamiento está cerrado.
+
+---
+
+## Estado de la corrección — aplicada el 2026-08-31
+
+**Autorización explícita del usuario para que el árbitro escribiera el código en esta sesión.**
+`mvn -q clean compile` → exit 0. **Sin desplegar todavía.**
+
+| # | Archivo | Cambio |
+|---|---|---|
+| D1 | `model/cxc/AnticipoCliente.java:177` | `private Long aplicado = 0L;` + javadoc que explica por qué no se puede quitar |
+| D1-bis | `cxc/serviceImpl/AnticipoClienteServiceImpl.saveSingle` | Guarda que preserva `idPagoDevolucion` y `aplicado` en la edición |
+| D2 | `cxc/serviceImpl/LiquidacionCompraServiceImpl:1017` | Usa `resolverTipoIdentificacionSRI(...)` en vez del rubro crudo |
+| D2 | `cxc/serviceImpl/LiquidacionCompraServiceImpl` | Método nuevo `resolverTipoIdentificacionSRI` + inyección de `DetalleRubroService` |
+| D2-bis | `cxc/serviceImpl/RetencionServiceImpl:231` | Mismo arreglo en el generador viejo de retenciones |
+
+### D1-bis — un defecto que apareció al corregir D1
+
+Al verificar si el frontend mandaba `aplicado`, se encontró que **`cxc/model/anticipo-cliente.ts` no
+declara `idPagoDevolucion` ni `aplicado`**. Eso resuelve el alta —la clave ausente deja actuar al
+inicializador— pero destapa la **edición**:
+
+> El DAO genérico hace `em.merge()` con el objeto tal cual llegó del JSON. Como el frontend no manda
+> esos dos campos, **una edición de la observación o de la fecha borraba el vínculo con el pago de
+> devolución y reiniciaba el guardián de idempotencia** — sin error visible, y dejando a
+> `sincronizarDevolucion` sin forma de saber que ese pago ya se había aplicado.
+
+**Se resolvió del lado del servidor**, releyendo los dos campos antes del `save`, y **no** pidiéndole
+al frontend que los reenvíe: son estado interno de la reconciliación, ningún cliente tiene por qué
+conocerlos, y confiar en que los mande de vuelta es exactamente lo que falla en silencio.
+
+Es la primera aplicación concreta de `docs/general/MERGE-DESNUDO-EN-ENTITYDAOIMPL.md` fuera de `crd`.
+**Y sugiere una regla general que conviene aplicar al resto:** cuando una columna es *estado interno
+del servidor* —contadores, banderas de idempotencia, vínculos de reconciliación—, el `saveSingle`
+debería preservarla en la edición en vez de aceptar lo que venga del cliente. Candidatos a revisar
+con el mismo criterio en estos módulos: `PGS.PGTR` (estado y cuenta asignada por tesorería), `CBR.ANTC`
+(ya hecho), y los `Temp*`.
+
+### Lo que sigue sin resolver, a propósito
+
+- **D2b — el secuencial `000000000`.** Necesita la decisión del usuario (dato vs. código) y el
+  contraste contra el último comprobante emitido de otro tipo. **Puede volver a aparecer**: el SRI
+  frenó en el error de estructura y ni llegó a validarlo.
+- **D2c — cada intento fallido quema un secuencial.** Se resuelve junto con D2b.
+- **`RetencionServiceImpl` sigue existiendo.** Se corrigió en vez de retirarlo porque nadie confirmó
+  que esté muerto. Si se confirma, borrarlo es mejor que mantenerlo.
