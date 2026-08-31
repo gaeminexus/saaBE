@@ -217,8 +217,21 @@ corrección:
 | ¿Corrió el `74`? | ✅ **sí** — 0 filas pendientes de restaurar. **El `69` ya es válido** |
 | Flag contable (rubro 237) | ✅ **apagado (0)** — corregir ahora es solo corregir datos |
 
-**Pendiente que apareció de paso:** el backfill `78` **no corrió**. De 981.377 filas con `APRTIDAS`,
-solo **29.677** tienen `CRARCDGO`.
+**~~Pendiente que apareció de paso: el backfill `78` no corrió.~~ FALSO — corregido el 2026-08-31.**
+De 981.377 filas con `APRTIDAS`, solo 29.677 tienen `CRARCDGO`… **y ese es el resultado correcto.**
+
+El `UPDATE` del `78` lleva `AND EXISTS (SELECT 1 FROM CRD.CRAR c WHERE c.CRARCDGO = a.APRTIDAS)`,
+obligatorio porque `DDL-TRAZABILIDAD-CARGA-PETRO.sql:145` crea `FK_APRT_CRAR`: una fila cuyo
+`APRTIDAS` no es una carga real **no puede** recibir el valor. Las 951.700 restantes son las de la
+migración (§10.4). **Que sigan en NULL es el script funcionando, no faltando.**
+
+La prueba está en el §10.3: los cuatro grupos con `APRTIDAS ∈ CRAR` tienen **todos** `CRARCDGO`
+lleno, y suman **29.677 exacto** — el mismo número. Cero pendientes.
+
+> **La lección, y es sobre mí:** conté filas que "deberían" tener un valor sin leer antes el `WHERE`
+> del script que se lo pone. El número era correcto y la conclusión falsa. Alcanzó para que el
+> árbitro del equipo A estuviera por desmarcar un ✅ correcto en `ESTADO-CRD.md`. **Un conteo no es
+> una conclusión hasta que se sabe qué se esperaba contar.**
 
 ### 9.2 ⛔ El hallazgo que invalida parte del `69`: `APRTIDAS` tiene DOS significados
 
