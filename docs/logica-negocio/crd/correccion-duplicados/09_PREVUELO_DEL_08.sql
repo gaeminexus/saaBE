@@ -119,25 +119,32 @@ WITH APORTES AS (
                  OR a.APRTGLSA LIKE 'Aporte %CargaArchivo: %'
                  OR a.APRTGLSA LIKE 'Abono al aporte%')
 )
-SELECT  CASE WHEN NOT EXISTS (SELECT 1 FROM CRD.CNTR c
-                              WHERE c.ENTDCDGO = ap.ENTDCDGO AND c.CNTRESTD = 1)
-             THEN '1. sin contrato ACTIVO'
-             ELSE '2. con contrato, SIN vigencia de ESE tipo' END  AS SITUACION,
-        ap.TPAPCDGO                             AS TIPO,
-        COUNT(DISTINCT ap.ENTDCDGO)             AS PARTICIPES,
+-- ⚠ CORREGIDO EL 2026-08-31: la versión anterior repetía en el GROUP BY un CASE
+--   que lleva una subconsulta correlacionada adentro. Oracle no puede emparejar
+--   las dos apariciones y lo rechaza con ORA-00979 ("ENTDCDGO debe aparecer en la
+--   cláusula GROUP BY"). Se calcula la etiqueta en una capa interna y se agrupa
+--   por la columna ya resuelta, que además se lee mejor.
+, CLASIFICADO AS (
+        SELECT  ap.ENTDCDGO, ap.TPAPCDGO, ap.APRTVLRR,
+                CASE WHEN NOT EXISTS (SELECT 1 FROM CRD.CNTR c
+                                      WHERE c.ENTDCDGO = ap.ENTDCDGO AND c.CNTRESTD = 1)
+                     THEN '1. sin contrato ACTIVO'
+                     ELSE '2. con contrato, SIN vigencia de ESE tipo' END AS SITUACION
+        FROM    APORTES ap
+        WHERE   NOT EXISTS (
+                    SELECT 1 FROM CRD.CNTR c
+                    JOIN   CRD.VGCN v ON v.CNTRCDGO = c.CNTRCDGO
+                    WHERE  c.ENTDCDGO = ap.ENTDCDGO AND c.CNTRESTD = 1
+                    AND    v.TPAPCDGO = ap.TPAPCDGO AND v.VGCNIDST = 1
+                    AND    NVL(v.VGCNMNTO, 0) > 0)
+)
+SELECT  cl.SITUACION,
+        cl.TPAPCDGO                             AS TIPO,
+        COUNT(DISTINCT cl.ENTDCDGO)             AS PARTICIPES,
         COUNT(*)                                AS FILAS,
-        ROUND(SUM(ap.APRTVLRR), 2)              AS VALOR
-FROM    APORTES ap
-WHERE   NOT EXISTS (
-            SELECT 1 FROM CRD.CNTR c
-            JOIN   CRD.VGCN v ON v.CNTRCDGO = c.CNTRCDGO
-            WHERE  c.ENTDCDGO = ap.ENTDCDGO AND c.CNTRESTD = 1
-            AND    v.TPAPCDGO = ap.TPAPCDGO AND v.VGCNIDST = 1
-            AND    NVL(v.VGCNMNTO, 0) > 0)
-GROUP BY CASE WHEN NOT EXISTS (SELECT 1 FROM CRD.CNTR c
-                               WHERE c.ENTDCDGO = ap.ENTDCDGO AND c.CNTRESTD = 1)
-              THEN '1. sin contrato ACTIVO'
-              ELSE '2. con contrato, SIN vigencia de ESE tipo' END, ap.TPAPCDGO
+        ROUND(SUM(cl.APRTVLRR), 2)              AS VALOR
+FROM    CLASIFICADO cl
+GROUP BY cl.SITUACION, cl.TPAPCDGO
 ORDER BY 1, 2;
 
 
