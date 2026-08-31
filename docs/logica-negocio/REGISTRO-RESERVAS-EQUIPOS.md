@@ -14,6 +14,12 @@
 
 ## 1. Las tres reglas
 
+0. **`git fetch` ANTES de reservar.** Reservar contra un checkout viejo no reserva nada: el número
+   que ves libre puede estar tomado en `origin` desde hace horas. **Regla agregada el 2026-08-31
+   después de que pasara** — el equipo B reservó el script `88`, lo escribió y lo commiteó, y el
+   equipo A ya tenía un `88_` distinto en `origin`. Quedaron dos archivos `88_` en la misma carpeta.
+   Renumerado a `96`. La reserva se hizo *bien* según las reglas 1 y 2, y aun así colisionó, porque
+   ninguna de las dos mira el remoto.
 1. **Antes de usar un código, reservalo acá** — editá este archivo primero, después escribí el script.
 2. **Volvé a correr el control de `MAX` justo antes de ejecutar.** El rango reservado dice qué te
    corresponde; el `MAX` real dice qué hay. Si no coinciden, **parar y avisar**, nunca forzar.
@@ -142,6 +148,6 @@ Agregá una línea cada vez que reserves algo. Fecha, equipo, qué, para qué.
 |---|---|---|---|
 | 2026-08-30 | CRD (árbitro `saabe-4b`) | PDTR 1178 | `JUBILACION` en el rubro 235 (tipo de movimiento de aporte) — script `crd/sql/81` |
 | 2026-08-30 | CRD (árbitro `saabe-4b`) | PDTR **1179** — del colchón, no del rango del equipo 4 | `COBRO_MIXTO` en el rubro 245 (tipo de operación de cobro) — script `crd/sql/83`. Un depósito que se reparte entre aportes y varios préstamos: **un depósito = un cobro = una aprobación = un reverso** |
-| 2026-08-31 | CRD · EQUIPO B (`omen-saa-1`) | **Número de script `crd/sql/88`** — ningún `PRBR`/`PDTR` | `88_BACKFILL_PRSTINNM_DESDE_PRSTTSAA.sql` (defecto D10). ~~Cambia la mora nocturna~~ — **medido contra la base el 2026-08-31: el `UPDATE` no toca ninguna fila** (5.657 de 5.664 préstamos ya tienen `PRSTINNM` correcto). Aviso al equipo A **rebajado**. Y **el frente de otorgamiento NO va a necesitar tabla nueva de 4 letras**: `CRD.PRST` ya trae todo el ciclo (aprobación, rechazo, legalización, acreditación) y `CRD.CRDT` los rangos de aprobación — ver `crd/REVISION-MOTOR-ANTES-DE-OTORGAMIENTO.md` §4. El rango 270-289 / 1300-1399 **queda libre** para el frente de seguros |
+| 2026-08-31 | CRD · EQUIPO B (`omen-saa-1`) | **Número de script `crd/sql/96`** — ningún `PRBR`/`PDTR` | `96_BACKFILL_PRSTINNM_DESDE_PRSTTSAA.sql` (defecto D10). ⚠️ **Nació como `88_` y colisionó** — ver la fila de abajo. ~~Cambia la mora nocturna~~ — **medido contra la base el 2026-08-31: el `UPDATE` no toca ninguna fila** (5.657 de 5.664 préstamos ya tienen `PRSTINNM` correcto). Aviso al equipo A **rebajado**. Y **el frente de otorgamiento NO va a necesitar tabla nueva de 4 letras**: `CRD.PRST` ya trae todo el ciclo (aprobación, rechazo, legalización, acreditación) y `CRD.CRDT` los rangos de aprobación — ver `crd/REVISION-MOTOR-ANTES-DE-OTORGAMIENTO.md` §4. El rango 270-289 / 1300-1399 **queda libre** para el frente de seguros |
 | 2026-08-31 | CRD · EQUIPO A (`saabe-4b`) | PDTR **1180**, rubro 235 **alterno 8** | `EXCEDENTE_PETRO` — script `crd/sql/87`. ⚠️ **Va en el alterno 8 porque el 7 ya está tomado por `JUBILACION`** (script 81, PDTR 1178, escrito y **sin correr**). El agente lo propuso en el 7 sin saberlo: el 81 no está en la base todavía, así que consultarla no alcanzaba — **este registro es la única fuente que lo evitaba** |
 | 2026-08-31 | CRD · EQUIPO A (`saabe-25`) | Tabla **`CTAP`** — cuentas contables por tipo de aporte | Devolución de aportes, opción C. Verificado libre en `src/main/java/com/saa/model/`; **falta confirmarlo contra `ALL_TABLES`** antes de ejecutar. DDL en `crd/sql/94` |
