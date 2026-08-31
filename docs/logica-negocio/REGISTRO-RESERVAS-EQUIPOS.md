@@ -74,11 +74,26 @@ eso ya pasó dos veces.
 | 249 | 1179–1199 | **libre — colchón**, no reservar | — |
 | 250–269 | 1200–1299 | **CRD · EQUIPO A — Cobros, contabilidad y jubilados** | reservado |
 | 270–289 | 1300–1399 | **CRD · EQUIPO B — Ciclo del crédito y seguros** | reservado |
-| 290–309 | 1400–1499 | **Equipo cxp/cxc/tsr/rhh/sri** | reservado para el otro equipo |
+| 290–309 | 1400–1499 | **Equipo cxp/cxc/pagos/tsr/rhh/sri — `omen-saa-3` (OMEN)** | reservado, **con dueño identificado el 2026-08-31** |
 | ≥ 310 | ≥ 1500 | sin asignar | — |
 
-⚠️ **El bloque del otro equipo se reservó sin consultarlo.** Si ya venían usando otros números,
-avisen y se ajusta — pero **no lo pisen**: es el mismo error que este archivo existe para evitar.
+~~⚠️ **El bloque del otro equipo se reservó sin consultarlo.**~~ **Resuelto el 2026-08-31: ese
+bloque es de `omen-saa-3`, y su árbitro lo confirmó con el usuario antes de tomarlo.** Sigue
+valiendo lo de fondo: no lo pisen.
+
+> **`saabe-bc` ya no trabaja estos módulos.** Era el equipo `cxp/cxc/pagos/tsr/rhh/sri` en otra
+> máquina, y el 2026-08-31 **`omen-saa-3` (OMEN) lo reemplazó**, confirmado por el usuario. Hereda
+> su alcance, su documento de estado (`ESTADO-CXP-CXC-TSR-RHH-SRI.md`) y este bloque de rubros.
+> **Un `saabe-bc` que aparezca activo a partir de ahora es una sesión vieja, no un equipo vigente.**
+>
+> Esto corrige una abstención razonable pero basada en información ya vencida: el equipo de
+> `F:\work\equipo2` se apartó de este bloque porque el registro lo daba de un tercero activo
+> (`ESTADO-EQUIPO-OMEN-2.md` §2). **Hizo lo correcto con lo que sabía** — el bloque no era suyo. Lo
+> que faltaba era que el rótulo dijera *quién* es el dueño y no *que es de otro*.
+>
+> **Lección para este archivo:** una fila que identifica al equipo por sus módulos y no por su
+> sesión envejece mal. Cuando el equipo se releva, el rótulo sigue igual y ya no apunta a nadie
+> localizable — y entonces el bloque no lo usa su dueño ni lo puede tomar nadie más.
 
 ---
 
@@ -203,3 +218,4 @@ Agregá una línea cada vez que reserves algo. Fecha, equipo, qué, para qué.
 | 2026-08-31 | CRD · EQUIPO A (`saabe-25`) | Tabla **`PGPC`** — pago de pensión complementaria | Frente jubilados. Bitácora mes a mes del pago de pensión; `UNIQUE (ENTDCDGO, año, mes)` para que el proceso sea idempotente **por diseño**, no por un chequeo en Java. Libre en `model/`; **confirmar contra `ALL_TABLES`** antes de crear |
 | 2026-08-31 | CRD · EQUIPO A (`saabe-25`) | PDTR **1200**, rubro 235 **alterno 9** | `PAGO_PENSION` — el descuento mensual de la pensión complementaria. **Va aparte de `JUBILACION` (alterno 7)**: ese es el traslado inicial, único e irrepetible; este es un movimiento mensual recurrente. Mezclarlos bajo el mismo tipo haría imposible distinguir el traslado de los pagos al consultar el histórico. **Primer código del rango 1200-1299 del equipo A** |
 | 2026-08-31 | CRD · EQUIPO A (`saabe-25`) | **Número de script `crd/sql/97`** | `97_PAGO_PENSION_COMPLEMENTARIA.sql` (`CRD.PGPC` + PDTR 1200). ⚠️ **Nació como `96_` y volvió a colisionar** con el `96_` del equipo B — que a su vez venía de un `88_` colisionado. **Segunda colisión seguida, y las dos partes habían cumplido las reglas 0, 1 y 2.** El mío se corrió porque el de ellos llegó primero a `origin`, que es el único árbitro no ambiguo. **La causa de fondo no la cubre ninguna regla actual: un script sin commitear es invisible, así que reservar el número no alcanza si el archivo del otro todavía no está en `origin`.** Propuesta al otro árbitro, pendiente de su ok: **rangos de numeración separados — equipo A 97-149, equipo B 150-199** — para que deje de importar quién pushea primero |
+| 2026-08-31 | cxp/cxc/pagos/tsr/rhh/sri (árbitro `omen-saa-3`) | **Bloque `PRBR` 290-309 / `PDTR` 1400-1499** — ningún código concreto todavía | **Identificación de dueño, no reserva nueva.** El bloque ya estaba reservado desde el 2026-08-30 para «el equipo cxp/cxc/tsr/rhh/sri», sin decir qué sesión era. `omen-saa-3` reemplaza a `saabe-bc` desde el 2026-08-31 (confirmado por el usuario) y hereda alcance, documento de estado y este bloque. Se anota **antes** de usar ningún número, según la regla 1 |
