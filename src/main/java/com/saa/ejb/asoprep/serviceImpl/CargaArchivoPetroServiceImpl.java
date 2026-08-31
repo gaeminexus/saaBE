@@ -973,6 +973,14 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			validarValoresConDestino(cargaArchivo);
 			// ==========================================
 
+			// ==========================================
+			// VALIDACIÓN: cada novedad CON EXCEDENTE tiene que estar repartida al 100%, ni
+			// más ni menos (PLAN-EXCEDENTE-PETRO-A-APORTES.md §5, decisión del usuario
+			// 2026-08-30). Bloqueante: si una sola no cuadra, no se procesa NADA de la carga.
+			// ==========================================
+			validarRepartoDeExcedentes(cargaArchivo);
+			// ==========================================
+
 			// 2. ✅ OPTIMIZACIÓN: Obtener SOLO los detalles de esta carga específica
 			// En lugar de traer TODOS los detalles de TODAS las cargas con selectAll()
 			List<DetalleCargaArchivo> detallesCarga = detalleCargaArchivoDaoService.selectByCargaArchivo(codigoCargaArchivo);
@@ -1303,6 +1311,98 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	}
 
 	/**
+	 * Corta el procesamiento si alguna novedad CON EXCEDENTE no está repartida exacto entre
+	 * préstamo(s) y/o aporte(s) — PLAN-EXCEDENTE-PETRO-A-APORTES.md §5, decisión del usuario
+	 * 2026-08-30: "ni más ni menos, o si no no hay cómo procesar".
+	 *
+	 * ⚠️ Tolerancia $0.01, NO la {@code TOLERANCIA} de $1 de este archivo (esa es para
+	 * redondeos de "sin destino"; esta es la regla de cuadre exacto del reparto, ya cerrada
+	 * con el usuario). La regla en sí vive en
+	 * {@code AfectacionValoresParticipeCargaService.diferenciaReparto} — un solo lugar, lo
+	 * llama también {@code AfectacionValoresParticipeCargaRest.postBatch} para avisarle al
+	 * operador al guardar. Si se escribiera acá de nuevo, el día que cambie la tolerancia
+	 * divergirían y el proceso aceptaría lo que la pantalla rechaza.
+	 */
+	private void validarRepartoDeExcedentes(CargaArchivo cargaArchivo) throws Throwable {
+		System.out.println("=== VALIDANDO REPARTO DE EXCEDENTES (100%, tolerancia $0.01) ===");
+
+		List<Map<String, Object>> descuadrados = buscarExcedentesDescuadrados(cargaArchivo);
+
+		if (descuadrados.isEmpty()) {
+			System.out.println("✅ Todos los excedentes con reparto registrado cuadran exacto");
+			return;
+		}
+
+		StringBuilder mensaje = new StringBuilder();
+		mensaje.append("No se puede procesar el archivo: hay ").append(descuadrados.size())
+		       .append(" novedad(es) con excedente cuyo reparto no cuadra exacto. ")
+		       .append("Corrija el reparto en la pantalla de novedades y vuelva a procesar.");
+
+		int listados = 0;
+		for (Map<String, Object> item : descuadrados) {
+			if (listados >= MAXIMO_DETALLES_EN_MENSAJE) {
+				mensaje.append("\n  ... y ").append(descuadrados.size() - listados).append(" más.");
+				break;
+			}
+			double diferencia = (Double) item.get("diferencia");
+			mensaje.append("\n  - Rol ").append(item.get("codigoPetro")).append(" ")
+			       .append(item.get("nombre")).append(" (novedad ").append(item.get("idNovedad"))
+			       .append("): ").append(diferencia > 0 ? "falta repartir $" : "se repartió de más $")
+			       .append(String.format("%,.2f", Math.abs(diferencia))).append(".");
+			listados++;
+		}
+
+		System.err.println(mensaje.toString());
+		throw new IncomeException(mensaje.toString());
+	}
+
+	/** Recorre la carga y arma la lista de novedades con excedente cuyo reparto no cuadra. */
+	private List<Map<String, Object>> buscarExcedentesDescuadrados(CargaArchivo cargaArchivo) throws Throwable {
+		List<Map<String, Object>> descuadrados = new ArrayList<>();
+
+		List<DetalleCargaArchivo> detallesCarga =
+			detalleCargaArchivoDaoService.selectByCargaArchivo(cargaArchivo.getCodigo());
+		if (detallesCarga == null) {
+			return descuadrados;
+		}
+
+		for (DetalleCargaArchivo detalle : detallesCarga) {
+			List<ParticipeXCargaArchivo> participesDetalle =
+				participeXCargaArchivoDaoService.selectByDetalleCargaArchivo(detalle.getCodigo());
+			if (participesDetalle == null) {
+				continue;
+			}
+
+			for (ParticipeXCargaArchivo participe : participesDetalle) {
+				List<NovedadParticipeCarga> novedades =
+					novedadParticipeCargaDaoService.selectByParticipe(participe.getCodigo());
+				if (novedades == null) {
+					continue;
+				}
+
+				for (NovedadParticipeCarga novedad : novedades) {
+					double diferencia = afectacionValoresParticipeCargaService.diferenciaReparto(novedad.getCodigo());
+					if (Math.abs(diferencia) > 0.01) {
+						Map<String, Object> item = new HashMap<>();
+						item.put("codigoPetro", participe.getCodigoPetro());
+						item.put("nombre", participe.getNombre());
+						item.put("idNovedad", novedad.getCodigo());
+						item.put("diferencia", diferencia);
+						descuadrados.add(item);
+
+						System.out.println("⛔ Reparto descuadrado - Rol " + participe.getCodigoPetro()
+							+ " (" + participe.getNombre() + ") - Novedad " + novedad.getCodigo()
+							+ " - " + (diferencia > 0 ? "falta $" : "sobra $")
+							+ String.format("%,.2f", Math.abs(diferencia)));
+					}
+				}
+			}
+		}
+
+		return descuadrados;
+	}
+
+	/**
 	 * Tipos de novedad del partícipe que impiden determinar el destino del valor.
 	 *
 	 * Se miran las dos fuentes: los campos de novedad del propio registro
@@ -1338,8 +1438,17 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	/**
 	 * Suma el valor que el usuario dejó indicado en las afectaciones manuales.
 	 *
-	 * Solo cuentan las afectaciones que el aplicador va a usar realmente: las que
-	 * no tienen cuota asociada se omiten al procesar, así que aquí tampoco suman.
+	 * Solo cuentan las afectaciones que el aplicador va a usar realmente: una fila sin cuota
+	 * Y sin tipo de aporte (rota, ninguno de los dos lados del XOR) no tiene a dónde
+	 * aplicarse y no suma — igual que en {@link #verificarYAplicarAfectacionesManualesTotales},
+	 * donde esa combinación aborta la carga en vez de omitirse en silencio.
+	 *
+	 * ⚠️ Actualizado 2026-08-31 (excedente a aporte): antes esta suma SOLO contaba filas con
+	 * cuota — una novedad repartida enteramente a un aporte quedaba invisible acá y
+	 * {@code validarValoresConDestino} la reportaba como "sin destino" aunque estuviera
+	 * completamente cubierta. Las filas de aporte no tienen desglose capital/interés/
+	 * desgravamen (DDL de {@code CRD.AVPC.TPAPCDGO}: "un aporte no tiene capital ni interés:
+	 * solo AVPCVAFA") — solo cuenta {@code valorAfectar} directo, sin reconstrucción.
 	 */
 	private double totalAfectadoManualmente(List<NovedadParticipeCarga> novedades) throws Throwable {
 		double total = 0.0;
@@ -1357,6 +1466,11 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			}
 
 			for (AfectacionValoresParticipeCarga afectacion : afectaciones) {
+				if (afectacion.getTipoAporte() != null) {
+					total += nullSafe(afectacion.getValorAfectar());
+					continue;
+				}
+
 				if (afectacion.getDetallePrestamo() == null) {
 					continue;
 				}
@@ -2258,14 +2372,42 @@ private boolean verificarYAplicarAfectacionesManualesTotales(
 	});
 
 	// 5. Aplicar cada afectación
+	//
+	// TRES ramas, no dos (2026-08-31, condición del árbitro al autorizar el excedente a
+	// aporte): el `continue` original cubría a la vez la afectación a aporte (que antes no
+	// existía, sin cuota Y sin tipo de aporte) y una fila genuinamente rota (sin cuota Y sin
+	// tipo de aporte). Colapsar las tres en un solo `if (cuota == null) continue` volvería a
+	// tragarse en silencio exactamente el defecto #1 de los diez del 29 ("devolvía 'no había
+	// afectaciones' — mentira: algunas ya se aplicaron"): una AVPC sin destino ninguno debe
+	// abortar la carga, no omitirse.
 	int aplicadas = 0;
 	List<Prestamo> prestamosAfectados = new ArrayList<>();
 	for (AfectacionValoresParticipeCarga afectacion : afectaciones) {
 		DetallePrestamo cuota = afectacion.getDetallePrestamo();
+		com.saa.model.crd.TipoAporte tipoAporte = afectacion.getTipoAporte();
+
+		if (cuota == null && tipoAporte == null) {
+			// Dato ausente, no legítimo: CK_AVPC_PRST_XOR_TPAP exige uno de los dos. Una fila
+			// sin ninguno es un registro roto (¿reparto incompleto? ¿fila corrupta?), no una
+			// ausencia de dato esperable — falla fuerte en vez de omitir en silencio.
+			throw new IncomeException("La afectación manual (AVPC " + afectacion.getCodigo()
+				+ ") del partícipe " + participe.getCodigoPetro() + " (" + participe.getNombre()
+				+ ") no tiene cuota ni tipo de aporte asignado; no hay a dónde aplicarla.");
+		}
 
 		if (cuota == null) {
-			// Ausencia de dato legítima: una AVPC sin cuota asociada no tiene a dónde aplicarse.
-			System.out.println("   ⚠️ Afectación sin cuota asociada (ID: " + afectacion.getCodigo() + ") - Omitida");
+			// Excedente redirigido a un aporte (opción ③ del §3.7, PLAN-EXCEDENTE-PETRO-A-APORTES.md).
+			System.out.println("   📌 Aplicando afectación manual (AVPC " + afectacion.getCodigo()
+				+ ") a aporte " + tipoAporte.getNombre());
+			try {
+				aplicarAfectacionAAporte(afectacion, tipoAporte, cargaArchivo, participe);
+			} catch (Throwable e) {
+				throw new RuntimeException("Falló al aplicar la afectación manual (AVPC "
+					+ afectacion.getCodigo() + ") al aporte " + tipoAporte.getNombre()
+					+ " para el partícipe " + participe.getCodigoPetro() + " (" + participe.getNombre()
+					+ "): " + e.getMessage(), e);
+			}
+			aplicadas++;
 			continue;
 		}
 
@@ -3466,7 +3608,8 @@ private int distribuirAportePorDevengo(Entidad entidad, double montoRecibido,
 				double aplicar = Math.min(disponible, faltante);
 				String nombreTipo = TIPO_APORTE_JUBILACION.equals(idTipo) ? "Jubilación" : "Cesantía";
 				System.out.println("   📍 Devengo " + mes + " - " + nombreTipo + ": $" + aplicar);
-				Aporte nuevoAporte = crearNuevoAporte(entidad, idTipo, nombreTipo, aplicar, mes, cargaArchivo);
+				Aporte nuevoAporte = crearNuevoAporte(entidad, idTipo, nombreTipo, aplicar, mes,
+						cargaArchivo, com.saa.rubros.CrdTipoMovimientoAporte.APORTE_MENSUAL);
 				crearRegistroPagoAporte(nuevoAporte, aplicar, cargaArchivo, participe);
 				disponible -= aplicar;
 				aportadoPorMesTipo.put(clave, aportado + aplicar);
@@ -3502,6 +3645,58 @@ private double esperadoMensual(Entidad entidad, Long idTipoAporte, java.time.Loc
 }
 
 /**
+ * Aplica una afectación manual cuyo destino es un tipo de aporte, no una cuota (opción ③ del
+ * §3.7 del levantamiento contable — PLAN-EXCEDENTE-PETRO-A-APORTES.md). Registra el aporte por
+ * el mismo camino que el devengo normal ({@link #crearNuevoAporte} + {@link
+ * #crearRegistroPagoAporte}), con {@code tipoMovimiento = EXCEDENTE_PETRO} para que quede
+ * distinguible de un aporte mensual normal.
+ *
+ * {@code periodoDevengo = null}: un excedente no cubre el aporte esperado de ningún mes en
+ * particular — es dinero adicional que el partícipe eligió enviar a su cuenta, no un
+ * anticipo/atraso de la regla de devengo (mismo criterio que
+ * {@code DevolucionAporteServiceImpl} usa para el remanente sin anticipo, D5 §2.4 del plan de
+ * devengo de aportes: "retiro de saldo, no altera ningún mes").
+ *
+ * ⚠️ SIN ASIENTO PROPIO A PROPÓSITO. Verificado en {@code CobroPetroContableServiceImpl
+ * .contabilizarAplicacion} (2026-08-31): esa línea suma TODOS los {@code CRD.APRT} de la carga
+ * por tipo vía {@code sumValorPorTipoAporteByCarga}, que filtra por {@code APRTIDAS}
+ * (idAsoprep) — el mismo campo que {@link #crearNuevoAporte} estampa acá. El aporte que este
+ * método crea entra en esa suma automáticamente y ya queda contabilizado en el HABER de ese
+ * asiento (aux1 50/51/52 de la plantilla 21, vía {@code ContabilizacionIndividualCreditoService
+ * .lineaAporteRegistrado}), como cualquier otro aporte de la carga. Agregar acá un asiento
+ * propio habría contabilizado la misma plata DOS VECES, con los dos asientos cuadrando D=H y
+ * ningún control atrapándolo — exactamente la trampa del §2 de PLAN-CIERRE-CONTABLE-TOTAL.md,
+ * en otra forma. Si algún día {@code contabilizarAplicacion} deja de sumar por esta vía (p.ej.
+ * al migrar el filtro de {@code idAsoprep} a {@code cargaArchivo}, ver el comentario de
+ * {@code sumValorPorTipoAporteByCarga}), este método necesita revisarse junto con ese cambio.
+ */
+private void aplicarAfectacionAAporte(AfectacionValoresParticipeCarga afectacion,
+		com.saa.model.crd.TipoAporte tipoAporte, CargaArchivo cargaArchivo,
+		ParticipeXCargaArchivo participe) throws Throwable {
+
+	double monto = nullSafe(afectacion.getValorAfectar());
+	if (monto <= 0.01) {
+		throw new IncomeException("La afectación manual (AVPC " + afectacion.getCodigo()
+			+ ") a un aporte tiene valorAfectar $" + monto + "; debe ser mayor a cero.");
+	}
+
+	List<Entidad> entidades = entidadDaoService.selectByCodigoPetro(participe.getCodigoPetro());
+	if (entidades == null || entidades.isEmpty()) {
+		throw new IncomeException("No se encontró la entidad del partícipe " + participe.getCodigoPetro()
+			+ " (" + participe.getNombre() + ") para aplicar la afectación manual (AVPC "
+			+ afectacion.getCodigo() + ") al aporte " + tipoAporte.getNombre() + ".");
+	}
+	Entidad entidad = entidades.get(0);
+
+	Aporte nuevoAporte = crearNuevoAporte(entidad, tipoAporte.getCodigo(), tipoAporte.getNombre(),
+			monto, null, cargaArchivo, com.saa.rubros.CrdTipoMovimientoAporte.EXCEDENTE_PETRO);
+	crearRegistroPagoAporte(nuevoAporte, monto, cargaArchivo, participe);
+
+	System.out.println("   ✅ Excedente aplicado a aporte " + tipoAporte.getNombre() + ": $" + monto
+		+ " (AVPC " + afectacion.getCodigo() + ", APRT " + nuevoAporte.getCodigo() + ")");
+}
+
+/**
  * Crea un nuevo registro de aporte por lo efectivamente recibido en este tramo.
  *
  * Fase 1 del plan de devengo de aportes (D1): {@code valor} ya no es "lo esperado" sino
@@ -3514,10 +3709,17 @@ private double esperadoMensual(Entidad entidad, Long idTipoAporte, java.time.Loc
  * {@link #distribuirAportePorDevengo}; {@code fechaTransaccion} (la fecha de CAJA) sigue
  * siendo el último día del mes de la CARGA — D2, no cambia de significado aunque el devengo
  * sea un mes distinto (atraso o anticipo).
+ *
+ * @param tipoMovimiento {@code com.saa.rubros.CrdTipoMovimientoAporte} — de dónde viene este
+ *                       aporte (rubro 235). {@code APORTE_MENSUAL} para el devengo normal del
+ *                       archivo; {@code EXCEDENTE_PETRO} para el excedente redirigido a un
+ *                       aporte por {@link #aplicarAfectacionAAporte}. Parámetro explícito y no
+ *                       un método hermano: un sibling que solo difiere en este valor duplica el
+ *                       camino (2026-08-31, condición del árbitro).
  */
 private Aporte crearNuevoAporte(Entidad entidad, Long idTipoAporte, String nombreTipo,
                                double monto, java.time.LocalDate periodoDevengo,
-                               CargaArchivo cargaArchivo) throws Throwable {
+                               CargaArchivo cargaArchivo, int tipoMovimiento) throws Throwable {
 
 	// selectById (EntityDaoImpl genérico) usa getSingleResult(): una fila faltante lanza
 	// NoResultException, no null. TIPO_APORTE_JUBILACION(9)/CESANTIA(11) son constantes fijas
@@ -3549,7 +3751,7 @@ private Aporte crearNuevoAporte(Entidad entidad, Long idTipoAporte, String nombr
 	nuevoAporte.setIdAsoprep(cargaArchivo.getCodigo()); // ✅ CRÍTICO: Enlazar con CargaArchivo
 	nuevoAporte.setFechaTransaccion(fechaAporte); // ✅ CORRECCIÓN: Usar último día del mes
 	nuevoAporte.setPeriodoDevengo(periodoDevengo);
-	nuevoAporte.setTipoMovimiento((long) com.saa.rubros.CrdTipoMovimientoAporte.APORTE_MENSUAL);
+	nuevoAporte.setTipoMovimiento((long) tipoMovimiento);
 	nuevoAporte.setGlosa(String.format("Aporte %s - Mes %d/%d - CargaArchivo: %d",
 	                                   nombreTipo,
 	                                   cargaArchivo.getMesAfectacion(),

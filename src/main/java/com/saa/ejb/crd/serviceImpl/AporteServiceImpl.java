@@ -230,6 +230,10 @@ public class AporteServiceImpl implements AporteService {
         if (solicitud.getIdTipoAporte() == null) {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": idTipoAporte es obligatorio");
         }
+        if (solicitud.getIdEmpresa() == null) {
+            throw new IncomeException("idEmpresa es obligatorio: es la empresa contable sobre la que"
+                + " se genera el asiento de la operación.");
+        }
         if (solicitud.getUsuario() == null || solicitud.getUsuario().trim().isEmpty()) {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": usuario es obligatorio");
         }

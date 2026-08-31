@@ -3,19 +3,26 @@ package com.saa.ejb.crd.serviceImpl;
 import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
+import com.saa.basico.util.IncomeException;
 import com.saa.ejb.crd.dao.AfectacionValoresParticipeCargaDaoService;
+import com.saa.ejb.crd.dao.NovedadParticipeCargaDaoService;
 import com.saa.ejb.crd.service.AfectacionValoresParticipeCargaService;
 import com.saa.model.crd.AfectacionValoresParticipeCarga;
 import com.saa.model.crd.NombreEntidadesCredito;
+import com.saa.model.crd.NovedadParticipeCarga;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
+import jakarta.persistence.NoResultException;
 
 @Stateless
 public class AfectacionValoresParticipeCargaServiceImpl implements AfectacionValoresParticipeCargaService {
 
     @EJB
     private AfectacionValoresParticipeCargaDaoService afectacionDaoService;
+
+    @EJB
+    private NovedadParticipeCargaDaoService novedadDaoService;
 
     @Override
     public AfectacionValoresParticipeCarga selectById(Long id) throws Throwable {
@@ -75,5 +82,38 @@ public class AfectacionValoresParticipeCargaServiceImpl implements AfectacionVal
      */
     public List<AfectacionValoresParticipeCarga> selectByCuota(Long codigoCuota) throws Throwable {
         return afectacionDaoService.selectByCuota(codigoCuota);
+    }
+
+    @Override
+    public double diferenciaReparto(Long idNovedad) throws Throwable {
+        if (idNovedad == null) {
+            throw new IncomeException("idNovedad es obligatorio");
+        }
+        NovedadParticipeCarga novedad;
+        try {
+            novedad = novedadDaoService.selectById(idNovedad, NombreEntidadesCredito.NOVEDAD_PARTICIPE_CARGA);
+        } catch (NoResultException e) {
+            throw new IncomeException("No existe la novedad " + idNovedad);
+        }
+
+        double excedente = novedad.getMontoDiferencia() != null ? novedad.getMontoDiferencia() : 0.0;
+        if (excedente <= 0.01) {
+            // Sin excedente (o con faltante, diferencia negativa): el control de reparto al
+            // 100% del §5 solo aplica a novedades CON excedente.
+            return 0.0;
+        }
+
+        double repartido = 0.0;
+        List<AfectacionValoresParticipeCarga> afectaciones = afectacionDaoService.selectByNovedad(idNovedad);
+        if (afectaciones != null) {
+            for (AfectacionValoresParticipeCarga afectacion : afectaciones) {
+                if (afectacion.getEstado() != null && afectacion.getEstado() == 1L
+                        && afectacion.getValorAfectar() != null) {
+                    repartido += afectacion.getValorAfectar();
+                }
+            }
+        }
+
+        return Math.round((excedente - repartido) * 100.0) / 100.0;
     }
 }

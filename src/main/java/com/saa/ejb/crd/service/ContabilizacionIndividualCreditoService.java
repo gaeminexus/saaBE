@@ -89,6 +89,12 @@ public interface ContabilizacionIndividualCreditoService {
      * de aportes de una operación con dos fuentes) y
      * {@code AcuerdoCondonacionServiceImpl#aplicarAcuerdo} (acuerdo 100% aportes, sin CBCR).
      *
+     * <p>
+     * <b>NO la usa {@code DevolucionAporteServiceImpl}</b> — su asiento de reclasificación
+     * cubre CUALQUIER tipo de aporte (2026-08-31), no solo los tres de la plantilla 21
+     * (aux1 50/51/52); resuelve sus cuentas contra {@code CRD.CTAP}, una tabla de
+     * configuración, no una plantilla. Ver el javadoc de {@code CuentaTipoAporte}.
+     *
      * @return Una línea por tipo de aporte del desglose, todas al Debe
      */
     List<DetalleAsiento> lineasCruceAportesConsumidos(Long idPlantillaAplicacion, List<DesgloseAporte> aportes,

@@ -149,6 +149,10 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
         if (solicitud.getModalidad() == null) {
             throw new IncomeException(ERR_MODALIDAD_INVALIDA + ": debe indicar la modalidad (1 o 2)");
         }
+        if (solicitud.getIdEmpresa() == null) {
+            throw new IncomeException("idEmpresa es obligatorio: es la empresa contable sobre la que"
+                + " se genera el asiento de la operación.");
+        }
 
         LocalDate fecha = solicitud.getFecha() != null ? solicitud.getFecha() : LocalDate.now();
         if (fecha.isAfter(LocalDate.now())) {

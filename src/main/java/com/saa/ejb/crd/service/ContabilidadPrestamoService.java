@@ -18,10 +18,13 @@ import jakarta.ejb.Local;
  * revierte el pago completo. Ese es el comportamiento correcto para operaciones online, a
  * diferencia del lote petro.
  *
- * La única implementación por ahora es {@code ContabilidadPrestamoNoOpImpl}: la contabilidad de
- * préstamos todavía no está activa y le faltan pre-requisitos (constante de módulo crédito en
- * {@code com.saa.rubros.ModuloSistema}, constantes en {@code com.saa.rubros.TipoAsientos} con
- * sus filas por empresa, y resolver el {@code idEmpresa} desde crd).
+ * La implementación es {@code ContabilidadPrestamoServiceImpl} (reemplazó a
+ * {@code ContabilidadPrestamoNoOpImpl}, borrada el 2026-08-31 — dos beans implementando este
+ * mismo {@code @Local} dejan la inyección ambigua). Fase 1 de {@code PLAN-CIERRE-CONTABLE-TOTAL.md}:
+ * solo {@link #contabilizarPagoConAportes} genera asiento; los otros cuatro siguen devolviendo
+ * {@code null} a propósito hasta que el árbitro defina el discriminador de origen que evite
+ * duplicar el asiento de los procesos que ya pasan por {@code CobroCreditoServiceImpl} (ver el
+ * javadoc de {@code generarAsientoDefinitivo} ahí).
  *
  * @author Sistema SAA
  * @since 2026-08-14

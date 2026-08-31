@@ -40,8 +40,25 @@ incompleta en silencio.
 | **4** | Re-bandeo tras abono a capital | `AbonoCapitalPrestamoServiceImpl` | con cada abono | §3.6 asiento 2 |
 | **5** | Cobro en exceso → devolución al partícipe | carga Petro / novedades | ocasional | §3.7 opción ① |
 
-**Los cinco tienen su asiento levantado con contabilidad.** No hay que diseñar ninguno: hay que
-implementarlos.
+> ## ⛔ CORRECCIÓN 2026-08-31 — «los cinco tienen su asiento levantado» es FALSO para el #2
+>
+> Lo encontró el agente de backend leyendo `DevolucionAporteServiceImpl` completo, y lo verifiqué:
+>
+> **§3.7 del levantamiento se titula «Cobro en exceso».** Es el proceso **#5**, no el #2. La cuenta
+> `2.3.01.15.04` (`230104` en la pizarra) se llama literalmente *"DEVOLUCION POR COBRO EN EXCESO
+> PARTICIPES"*, y las plantillas 27/28 aparecen ahí como *"plantillas actuales relacionadas"* al
+> cobro en exceso. **Las dos filas de la tabla de arriba apuntaban a la misma sección para dos
+> procesos distintos.**
+>
+> **El §3 del levantamiento tiene ocho subsecciones y ninguna es la devolución de aportes**
+> (jubilación, cartera, Petro, pagos manuales, cruce, abono, cobro en exceso, otorgamiento). Las
+> pizarras nunca la cubrieron. **El asiento del #2 NO está levantado: hay que diseñarlo, y eso es
+> una decisión del usuario, no una implementación.**
+>
+> Lo que sí está levantado y no cambia: #1, #3, #4 y #5.
+
+**Cuatro de los cinco tienen su asiento levantado** (#1, #3, #4, #5): esos no se diseñan, se
+implementan. **El #2 no** — ver el recuadro.
 
 ### ⚠️ La causa común de 1, 3 y 4
 
@@ -75,25 +92,110 @@ javadoc de los dos lados.
 
 ## 3. Orden de trabajo
 
-### Fase 1 — los dos cruces (no pasan por CBCR, no hay riesgo de duplicar)
+### Fase 0 — `idEmpresa` en las solicitudes del motor · **prerrequisito de todo lo demás**
 
-**#1 cruce de valores** y **#3 precancelación 100% aportes**. Los dos son el asiento del §3.5:
-**D cuentas de aporte del socio, diferenciadas por tipo → H bandas de capital, intereses y
-seguros**.
+**Decisión del usuario, 2026-08-31**, contrato congelado en `API-EMPRESA-CONTABLE-CRD.md`
+(espejado en `saaFE/docs/crd/`): el `idEmpresa` **viaja con la solicitud**, lo manda el frontend
+desde la empresa de la sesión, y es **obligatorio** en los 7 DTOs que llegan al motor de pagos y
+al registro de aportes.
+
+Ninguna de las cuatro fases de abajo puede generar un asiento sin esto: todas necesitan
+`resolverPlantillaAplicacion(idEmpresa)` y `lineaBandaCapital(..., idEmpresa, ...)`.
+
+**La regla que no se rompe:** cuando la llamada nace dentro de `CobroCreditoServiceImpl`, la
+empresa la pone **ese** servicio con la que ya derivó de la cuenta bancaria (`:1250`), **nunca la
+que mandó el cliente**. Así el asiento transitorio, el definitivo y el del hook salen los tres de
+la misma empresa, derivada una sola vez.
+
+⚠️ **Backend y frontend salen juntos.** El campo es obligatorio desde el día uno, y el circuito
+de cobros está vivo en producción: un WAR con la validación y sin las pantallas actualizadas rompe
+los cobros manuales.
+
+### Fase 1 — el cruce de valores (#1) · **el único sin riesgo de duplicar**
+
+**#1 cruce de valores**, asiento del §3.5: **D cuentas de aporte del socio, diferenciadas por
+tipo → H bandas de capital, intereses y seguros**.
 
 **El método ya existe**: `ContabilizacionIndividualCreditoService.lineasCruceAportesConsumidos`,
 escrito para `CBCRASN2` y **devolviendo líneas en vez de guardarlas**, justamente para poder
 reusarse acá. **Es enchufar dos llamadas**, no escribir un asiento.
 
-Empezar por el **#1**: es el que se usa a diario.
+> **Verificado el 2026-08-31 — el plan original juntaba #1 y #3 en esta fase, y eso era un
+> error.** `pagarConAportes` es el **único** de los cinco puntos de entrada del motor que
+> `CobroCreditoServiceImpl` **nunca** llama por dentro (0 referencias). `precancelar`, en cambio,
+> **sí** se llama desde `procesarCobro` (`:694`) — o sea que el **#3 tiene de lleno la trampa del
+> §2** y no pertenece a esta fase.
+>
+> Consecuencia práctica: en la fase 1 se implementa `ContabilidadPrestamoServiceImpl` llenando
+> **solamente** `contabilizarPagoConAportes`. Los otros cuatro hooks siguen devolviendo `null`,
+> con un comentario que diga por qué. Es la única forma de encender un hook sin necesitar todavía
+> el discriminador de origen.
 
-### Fase 2 — devolución de aportes (#2)
+### Fase 1bis — precancelación 100% aportes (#3) · **necesita el discriminador de origen**
 
-Sale dinero y hoy no queda registro contable. Asiento propio, ya decidido por el usuario el
-2026-08-30. §3.7, plantillas **27** y **28**, cuenta `2.3.01.15.04`.
+Mismo asiento del §3.5, pero **`precancelar` se llama desde `procesarCobro`**. Antes de llenar
+`contabilizarPrecancelacion` hay que resolver el §2: cómo distingue el hook una llamada directa
+del endpoint de una que viene de CBCR, que ya genera `CBCRASN2` por la misma plata.
 
-⚠️ Su reverso y su circuito de aprobación de tesorería **ya existen**: el asiento se cuelga de lo
-que hay, no se rehace el flujo.
+**Ese discriminador es una decisión de diseño del árbitro, no del agente**, y lo mismo vale para
+`contabilizarPagoCuota`, `contabilizarAbonoCapital` y `contabilizarReverso`. **Nadie llena esos
+cuatro hooks hasta que esté definido.**
+
+> ## Decisión del árbitro (2026-08-31) — `EVPR.EVPRNMAS` guarda la **PK**, no el correlativo
+>
+> `EventoPrestamo.numeroAsiento` (`EVPRNMAS`) es un `Long` suelto, y el nombre sugiere el
+> correlativo `ASNTNMRO`. **Guarda `ASNTCDGO`, la PK.** Verificado: `AsientoService.anulaAsiento`
+> recibe el **id**, no el número, y toda la mecánica de reverso del sistema está construida sobre
+> la PK. Guardar ahí el correlativo obligaría a resolver empresa + período para reversar, y el
+> período de la reversión puede no ser el del asiento original.
+>
+> **No se migra la columna ni se renombra** — sería DDL más migración sobre una tabla con historia,
+> por cero ganancia funcional. **Lo que sí se hace es dejarlo dicho en el javadoc**, para que el
+> próximo que lo lea no construya un reverso sobre la acepción equivocada.
+>
+> Queda anotado, sin agendar: `CobroCredito` referencia el asiento como **entidad**
+> (`asientoTransitorio`/`asientoDefinitivo`) mientras `EventoPrestamo` usa un `Long` suelto. Es una
+> inconsistencia real de modelado, no un defecto.
+
+### Fase 2 — devolución de aportes (#2) · ⛔ **BLOQUEADA, espera decisión del usuario**
+
+Sale dinero y hoy no queda registro contable. Pero **no es "implementar un asiento levantado"**:
+el asiento no existe en el levantamiento (ver el recuadro del §1), y además hay un mecanismo
+contable **ya construido y hoy apagado** con el que colisiona.
+
+#### El mecanismo que ya existe, y por qué colisiona
+
+Verificado en código el 2026-08-31:
+
+1. `registrarDevolucion` ya le manda a **CXP** un desglose contable (`List<LineaContablePago>`,
+   con `idProductoPago` por tipo de aporte) vía `pagoProgramadoService.registrarPagoDeOrigenExterno`.
+2. Ese envío está gobernado por **`boolean contabiliza = tiposSinProducto.isEmpty()`**
+   (`DevolucionAporteServiceImpl:307`). Cuando el desglose está completo, **CXP arma su propio
+   asiento** —D cuenta genérica del producto → H Banco— y `aplicarPagado:1003` lo copia a
+   `DevolucionAporte.numeroAsiento` (`DVAPNMAS`).
+3. Hoy está apagado porque `CRD.TPAP.TPAPPRDP` (tipo de aporte → producto de pago) **no está
+   cargado** — se dejó opcional a propósito el 2026-08-24.
+
+> ⚠️ **`TPAPPRDP` es parametrización pura: nadie necesita tocar código para encenderlo.** El día
+> que alguien lo cargue, el asiento de CXP se enciende solo. Si para entonces CRD también acredita
+> Banco por la misma transferencia, **Banco queda acreditado dos veces por un solo pago — y los dos
+> asientos cuadran**, así que nada lo detecta.
+
+#### Y `DVAPNMAS` ya está tomado
+
+Un asiento propio de CRD no tiene dónde guardarse: `aplicarPagado` sobrescribe `DVAPNMAS` con el
+asiento de CXP y la referencia se pierde, así que no se podría reversar nunca. **Hace falta una
+columna nueva**, `CRD.DVAP.DVAPNMRC NUMBER` (asiento de reclasificación), separada de `DVAPNMAS`.
+
+#### Lo que el usuario tiene que decidir
+
+**Quién contabiliza la devolución de aportes: CXP, CRD, o cada uno una mitad.** Es una decisión de
+negocio con consecuencias contables, no una elección técnica. Hasta que esté, no se escribe el
+asiento — y el DDL de `DVAPNMRC` depende de cuál gane.
+
+⚠️ Lo que **no** cambia: su reverso y su circuito de aprobación de tesorería ya existen. El punto
+único de reverso es `generarContraMovimientos` (`:1022`), el único que llaman tanto
+`anularDevolucion` como `sincronizarDevolucion`. El asiento se cuelga de ahí, no se rehace el flujo.
 
 ### Fase 3 — re-bandeo del abono (#4)
 

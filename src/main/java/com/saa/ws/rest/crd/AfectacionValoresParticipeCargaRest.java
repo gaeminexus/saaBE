@@ -7,10 +7,20 @@ import java.util.Map;
 
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.crd.dao.AfectacionValoresParticipeCargaDaoService;
+import com.saa.ejb.crd.dao.EntidadDaoService;
+import com.saa.ejb.crd.dao.NovedadParticipeCargaDaoService;
+import com.saa.ejb.crd.dao.TipoAporteDaoService;
 import com.saa.ejb.crd.service.AfectacionValoresParticipeCargaService;
+import com.saa.ejb.crd.service.SaldoAporteService;
+import com.saa.ejb.crd.service.VigenciaContratoService;
 import com.saa.ejb.crd.serviceImpl.AfectacionValoresParticipeCargaServiceImpl;
 import com.saa.model.crd.AfectacionValoresParticipeCarga;
+import com.saa.model.crd.CargaArchivo;
+import com.saa.model.crd.Entidad;
 import com.saa.model.crd.NombreEntidadesCredito;
+import com.saa.model.crd.NovedadParticipeCarga;
+import com.saa.model.crd.ParticipeXCargaArchivo;
+import com.saa.model.crd.TipoAporte;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;
@@ -58,6 +68,29 @@ public class AfectacionValoresParticipeCargaRest {
 
     @EJB
     private AfectacionValoresParticipeCargaService afectacionService;
+
+    @EJB
+    private NovedadParticipeCargaDaoService novedadDaoService;
+
+    @EJB
+    private EntidadDaoService entidadDaoService;
+
+    @EJB
+    private VigenciaContratoService vigenciaContratoService;
+
+    @EJB
+    private SaldoAporteService saldoAporteService;
+
+    @EJB
+    private TipoAporteDaoService tipoAporteDaoService;
+
+    /**
+     * CRD.TPAP.TPAPCDGO de los únicos dos tipos que este excedente puede ofrecer (§3 de
+     * PLAN-EXCEDENTE-PETRO-A-APORTES.md: jubilación y cesantía). Mismos valores que usa
+     * CargaArchivoPetroServiceImpl (TIPO_APORTE_JUBILACION/CESANTIA).
+     */
+    private static final Long TIPO_APORTE_JUBILACION = 9L;
+    private static final Long TIPO_APORTE_CESANTIA = 11L;
 
     @Context
     private UriInfo context;
@@ -280,27 +313,52 @@ public class AfectacionValoresParticipeCargaRest {
         
         try {
             List<AfectacionValoresParticipeCarga> resultados = new java.util.ArrayList<>();
-            
+            java.util.Set<Long> novedadesTocadas = new java.util.LinkedHashSet<>();
+
             for (AfectacionValoresParticipeCarga afectacion : afectaciones) {
                 // Establecer fecha si no viene
                 if (afectacion.getFechaAfectacion() == null) {
                     afectacion.setFechaAfectacion(LocalDate.now());
                 }
-                
+
                 // Calcular diferencias
                 afectacion.calcularDiferencias();
-                
+
                 // Guardar
                 AfectacionValoresParticipeCarga resultado = afectacionService.saveSingle(afectacion);
                 resultados.add(resultado);
+                if (resultado.getNovedadParticipeCarga() != null) {
+                    novedadesTocadas.add(resultado.getNovedadParticipeCarga().getCodigo());
+                }
             }
-            
+
             System.out.println("✅ " + resultados.size() + " afectaciones creadas exitosamente");
-            
+
+            // Aviso al operador (PLAN-EXCEDENTE-PETRO-A-APORTES.md §5): la regla de cuadre
+            // vive en un solo lugar (AfectacionValoresParticipeCargaService.diferenciaReparto),
+            // la misma que usa el control bloqueante del proceso del archivo. Acá NO se
+            // rechaza el lote — cada fila ya se guardó en su propia transacción EJB, así que
+            // no hay nada que revertir — se avisa para que el operador corrija antes de
+            // procesar; quien de verdad protege es ese control del proceso.
+            List<Map<String, Object>> advertenciasReparto = new java.util.ArrayList<>();
+            for (Long idNovedad : novedadesTocadas) {
+                double diferencia = afectacionService.diferenciaReparto(idNovedad);
+                if (Math.abs(diferencia) > 0.01) {
+                    Map<String, Object> advertencia = new HashMap<>();
+                    advertencia.put("idNovedad", idNovedad);
+                    advertencia.put("diferencia", diferencia);
+                    advertencia.put("mensaje", diferencia > 0
+                            ? "Falta repartir $" + String.format("%,.2f", diferencia)
+                            : "Se repartió $" + String.format("%,.2f", -diferencia) + " de más");
+                    advertenciasReparto.add(advertencia);
+                }
+            }
+
             Map<String, Object> respuesta = new HashMap<>();
             respuesta.put("totalCreados", resultados.size());
             respuesta.put("afectaciones", resultados);
-            
+            respuesta.put("advertenciasReparto", advertenciasReparto);
+
             return Response.status(Response.Status.CREATED).entity(respuesta).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             System.err.println("❌ Error al crear afectaciones en lote: " + e.getMessage());
@@ -339,6 +397,83 @@ public class AfectacionValoresParticipeCargaRest {
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al validar afectaciones: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * GET - Tipos de aporte a los que el partícipe de esta novedad puede recibir un
+     * excedente, con el saldo actual de cada uno (contrato aprobado por el árbitro,
+     * PLAN-EXCEDENTE-PETRO-A-APORTES.md ítem 5).
+     *
+     * Ofrece jubilación y/o cesantía según §3 del plan: "basta con que se lo haya incluido
+     * en el archivo Petro de ese mes" — la MISMA regla que decide a quién se incluye en el
+     * archivo, {@code VigenciaContratoService.esperadoPorEntidad}, evaluada con el mes de la
+     * CARGA de esta novedad (no el mes actual). Lista vacía = el partícipe no tiene ningún
+     * tipo vigente ese mes; no es un error, la pantalla no ofrece la opción de aporte.
+     */
+    @GET
+    @Path("/opcionesAporte/{idNovedad}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response opcionesAporte(@PathParam("idNovedad") Long idNovedad) {
+        try {
+            if (idNovedad == null) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity("idNovedad es obligatorio").type(MediaType.APPLICATION_JSON).build();
+            }
+            NovedadParticipeCarga novedad = novedadDaoService.find(new NovedadParticipeCarga(), idNovedad);
+            if (novedad == null) {
+                return Response.status(Response.Status.NOT_FOUND)
+                        .entity("No existe la novedad " + idNovedad).type(MediaType.APPLICATION_JSON).build();
+            }
+            ParticipeXCargaArchivo participe = novedad.getParticipeXCargaArchivo();
+            if (participe == null || participe.getDetalleCargaArchivo() == null
+                    || participe.getDetalleCargaArchivo().getCargaArchivo() == null) {
+                return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                        .entity("La novedad " + idNovedad + " no está enlazada a una carga de archivo")
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
+            CargaArchivo cargaArchivo = participe.getDetalleCargaArchivo().getCargaArchivo();
+            Long mes = cargaArchivo.getMesAfectacion();
+            Long anio = cargaArchivo.getAnioAfectacion();
+
+            List<Entidad> entidades = entidadDaoService.selectByCodigoPetro(participe.getCodigoPetro());
+            if (entidades == null || entidades.isEmpty()) {
+                return Response.status(Response.Status.NOT_FOUND)
+                        .entity("No se encontró la entidad del partícipe " + participe.getCodigoPetro())
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
+            Entidad entidad = entidades.get(0);
+
+            java.time.LocalDate mesVigencia = java.time.LocalDate.of(anio.intValue(), mes.intValue(), 1);
+
+            List<Map<String, Object>> opciones = new java.util.ArrayList<>();
+            for (Long idTipoAporte : new Long[] { TIPO_APORTE_CESANTIA, TIPO_APORTE_JUBILACION }) {
+                double esperado = vigenciaContratoService.esperadoPorEntidad(entidad.getCodigo(),
+                        idTipoAporte, mesVigencia);
+                if (esperado <= 0.0) {
+                    continue;
+                }
+                TipoAporte tipoAporte = tipoAporteDaoService.selectById(idTipoAporte, "TipoAporte");
+                double saldoActual = saldoAporteService.saldoPorEntidadYTipo(entidad.getCodigo(), idTipoAporte);
+
+                Map<String, Object> opcion = new HashMap<>();
+                opcion.put("idTipoAporte", idTipoAporte);
+                opcion.put("nombreTipoAporte", tipoAporte != null ? tipoAporte.getNombre() : null);
+                opcion.put("saldoActual", saldoActual);
+                opciones.add(opcion);
+            }
+
+            Map<String, Object> respuesta = new HashMap<>();
+            respuesta.put("idEntidad", entidad.getCodigo());
+            respuesta.put("mes", mes);
+            respuesta.put("anio", anio);
+            respuesta.put("opciones", opciones);
+
+            return Response.status(Response.Status.OK).entity(respuesta).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener las opciones de aporte: " + e.getMessage())
                     .type(MediaType.APPLICATION_JSON).build();
         }
     }

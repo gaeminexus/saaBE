@@ -1,5 +1,6 @@
 package com.saa.ejb.crd.serviceImpl;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -462,6 +463,10 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                     solicitudAnulacion.setIdEvento(linea.getEventoPrestamo().getCodigo());
                     solicitudAnulacion.setUsuario(usuario);
                     solicitudAnulacion.setMotivo(motivoLinea);
+                    // idEmpresa lo pone CBCR con la empresa derivada de la cuenta bancaria del
+                    // cobro, NUNCA la que vino del cliente (contrato
+                    // API-EMPRESA-CONTABLE-CRD.md §2).
+                    solicitudAnulacion.setIdEmpresa(derivarEmpresaCobro(cobro));
                     Long idPrestamoLinea = linea.getPrestamo() != null
                             ? linea.getPrestamo().getCodigo() : null;
                     ResultadoAnulacion resultadoAnulacion;
@@ -689,6 +694,9 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             solicitud.setObservacion(observacionLinea(cobro, linea));
             solicitud.setFecha(cobro.getFecha());
             solicitud.setRutaDocumentoRespaldo(cobro.getRutaRespaldo());
+            // idEmpresa lo pone CBCR con la empresa derivada de la cuenta bancaria del cobro,
+            // NUNCA la que vino del cliente (contrato API-EMPRESA-CONTABLE-CRD.md §2).
+            solicitud.setIdEmpresa(derivarEmpresaCobro(cobro));
             // precancelar() no se toca: ya sabía sumar valorEfectivo + aportes y consumirlos
             // con consumirAportes desde antes de este cambio.
             ResultadoPrecancelacion resultado = procesoPagoPrestamoService.precancelar(solicitud);
@@ -707,6 +715,9 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                 pagos.add(aSolicitudPagoCuota(cobro, linea, usuario));
             }
             solicitud.setPagos(pagos);
+            // idEmpresa lo pone CBCR con la empresa derivada de la cuenta bancaria del cobro,
+            // NUNCA la que vino del cliente (contrato API-EMPRESA-CONTABLE-CRD.md §2).
+            solicitud.setIdEmpresa(derivarEmpresaCobro(cobro));
             ResultadoPagoMultiple resultado = procesoPagoPrestamoService.pagarMultiplesCuotas(solicitud);
             // Mismo orden que 'detalles': ResultadoPagoMultiple.resultados respeta el orden de
             // 'pagos', que se armó en el mismo orden que 'detalles'.
@@ -725,6 +736,9 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             solicitud.setObservacion(observacionLinea(cobro, linea));
             solicitud.setFecha(cobro.getFecha());
             solicitud.setRutaDocumentoRespaldo(cobro.getRutaRespaldo());
+            // idEmpresa lo pone CBCR con la empresa derivada de la cuenta bancaria del cobro,
+            // NUNCA la que vino del cliente (contrato API-EMPRESA-CONTABLE-CRD.md §2).
+            solicitud.setIdEmpresa(derivarEmpresaCobro(cobro));
             ResultadoAbonoCapital resultado = abonoCapitalPrestamoService.aplicar(solicitud);
             enlazarEvento(linea, resultado.getIdEvento());
 
@@ -739,6 +753,9 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             solicitud.setFechaTransaccion(cobro.getFecha());
             solicitud.setRutaDocumentoRespaldo(cobro.getRutaRespaldo());
             solicitud.setPeriodoDevengo(linea.getPeriodoDevengo());
+            // idEmpresa lo pone CBCR con la empresa derivada de la cuenta bancaria del cobro,
+            // NUNCA la que vino del cliente (contrato API-EMPRESA-CONTABLE-CRD.md §2).
+            solicitud.setIdEmpresa(derivarEmpresaCobro(cobro));
             ResultadoRegistroAporte resultado = aporteService.registrarAporte(solicitud);
             if (resultado.getIdPagoAporte() != null) {
                 PagoAporte pagoAporte = pagoAporteDaoService.selectById(resultado.getIdPagoAporte(),
@@ -792,6 +809,10 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                     solicitud.setFechaTransaccion(cobro.getFecha());
                     solicitud.setRutaDocumentoRespaldo(cobro.getRutaRespaldo());
                     solicitud.setPeriodoDevengo(linea.getPeriodoDevengo());
+                    // idEmpresa lo pone CBCR con la empresa derivada de la cuenta bancaria del
+                    // cobro, NUNCA la que vino del cliente (contrato
+                    // API-EMPRESA-CONTABLE-CRD.md §2).
+                    solicitud.setIdEmpresa(derivarEmpresaCobro(cobro));
                     ResultadoRegistroAporte resultadoAporte = aporteService.registrarAporte(solicitud);
                     if (resultadoAporte.getIdPagoAporte() != null) {
                         PagoAporte pagoAporte = pagoAporteDaoService.selectById(
@@ -838,7 +859,7 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
     }
 
     private SolicitudPagoCuota aSolicitudPagoCuota(CobroCredito cobro, DetalleCobroCredito linea,
-            String usuario) {
+            String usuario) throws Throwable {
         SolicitudPagoCuota solicitud = new SolicitudPagoCuota();
         solicitud.setIdPrestamo(linea.getPrestamo().getCodigo());
         solicitud.setValor(linea.getValor());
@@ -846,6 +867,9 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         solicitud.setObservacion(observacionLinea(cobro, linea));
         solicitud.setFechaPago(cobro.getFecha());
         solicitud.setRutaDocumentoRespaldo(cobro.getRutaRespaldo());
+        // idEmpresa lo pone CBCR con la empresa derivada de la cuenta bancaria del cobro,
+        // NUNCA la que vino del cliente (contrato API-EMPRESA-CONTABLE-CRD.md §2).
+        solicitud.setIdEmpresa(derivarEmpresaCobro(cobro));
         return solicitud;
     }
 
@@ -1144,25 +1168,39 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
     }
 
     // =====================================================================
+    // Empresa contable del cobro — derivada UNA SOLA VEZ de la cuenta bancaria elegida, nunca
+    // de la que mande el cliente en la solicitud (contrato API-EMPRESA-CONTABLE-CRD.md §2).
+    // Único punto de derivación: lo usan ASN1 (generarAsientoTransitorio), ASN2
+    // (generarAsientoDefinitivo), aSolicitudPagoCuota y las llamadas internas a
+    // precancelar/abonarCapital/registrarAporte/anularOperacion dentro de procesarCobro y
+    // anularCobro. Antes estaba repetida entre ASN1 y ASN2 sin chequear que cobro tuviera
+    // cuenta bancaria asignada (NPE si no la tenía); acá se chequea una sola vez.
+    // =====================================================================
+
+    private Long derivarEmpresaCobro(CobroCredito cobro) throws Throwable {
+        CuentaBancaria cuentaBancaria = cobro.getCuentaBancaria();
+        if (cuentaBancaria == null) {
+            throw new IncomeException("El cobro " + cobro.getCodigo() + " no tiene cuenta"
+                    + " bancaria asignada; no se puede determinar la empresa contable de la"
+                    + " operación.");
+        }
+        if (cuentaBancaria.getPlanCuenta() == null || cuentaBancaria.getPlanCuenta().getEmpresa() == null) {
+            throw new IncomeException("La cuenta bancaria " + cuentaBancaria.getCodigo()
+                    + " no tiene cuenta contable/empresa asignada; no se puede determinar la"
+                    + " empresa contable del cobro " + cobro.getCodigo() + ".");
+        }
+        return cuentaBancaria.getPlanCuenta().getEmpresa().getCodigo();
+    }
+
+    // =====================================================================
     // Asiento transitorio (paso 1): D cuenta contable de la cuenta bancaria elegida
     // -> H 2.3.01.15.01, plantilla alterno 19 (la misma de Petro, reutilizada a propósito
     // — ver DDL-COBROS-APROBACION-CONTABILIDAD.sql).
     // =====================================================================
 
     private Asiento generarAsientoTransitorio(CobroCredito cobro) throws Throwable {
-        CuentaBancaria cuentaBancaria = cobro.getCuentaBancaria();
-        if (cuentaBancaria.getPlanCuenta() == null) {
-            throw new IncomeException("La cuenta bancaria " + cuentaBancaria.getCodigo()
-                    + " no tiene cuenta contable asignada; no se puede generar el asiento"
-                    + " transitorio del cobro " + cobro.getCodigo());
-        }
-        PlanCuenta cuentaBanco = cuentaBancaria.getPlanCuenta();
-        if (cuentaBanco.getEmpresa() == null) {
-            throw new IncomeException("La cuenta contable de la cuenta bancaria "
-                    + cuentaBancaria.getCodigo() + " no tiene empresa asignada; no se puede"
-                    + " determinar la empresa contable del cobro " + cobro.getCodigo());
-        }
-        Long idEmpresa = cuentaBanco.getEmpresa().getCodigo();
+        Long idEmpresa = derivarEmpresaCobro(cobro);
+        PlanCuenta cuentaBanco = cobro.getCuentaBancaria().getPlanCuenta();
         DetallePlantilla lineaTransitoria = resolverLineaTransitoria(idEmpresa);
 
         List<DetalleAsiento> lineas = new ArrayList<>();
@@ -1228,10 +1266,14 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
     // transitoria (resuelta por resolverLineaTransitoria, compartido con ASN1 — nunca dos
     // resoluciones independientes) → H las cuentas que la operación efectivamente liquidó.
     //
-    // ⚠️ ALTERNATIVA, NO COMPLEMENTO, a los hooks de ContabilidadPrestamoService (verificado
-    // 2026-08-30: ContabilidadPrestamoNoOpImpl tiene sus 5 hooks en no-op, nunca implementados).
+    // ⚠️ ALTERNATIVA, NO COMPLEMENTO, a los hooks de ContabilidadPrestamoService. Actualizado
+    // 2026-08-31 (Fase 1, PLAN-CIERRE-CONTABLE-TOTAL.md): ContabilidadPrestamoServiceImpl
+    // reemplazó a ContabilidadPrestamoNoOpImpl (borrada), pero SOLO llenó
+    // contabilizarPagoConAportes — es el único de los cinco que CBCR nunca llama por dentro.
+    // Los otros cuatro (contabilizarPagoCuota, contabilizarAbonoCapital,
+    // contabilizarPrecancelacion, contabilizarReverso) siguen devolviendo null a propósito.
     // Después del cutover, procesarCobro llama por dentro a precancelar()/pagarCuota()/etc.,
-    // que a su vez llaman a esos hooks. EL DÍA QUE ALGUIEN IMPLEMENTE ContabilidadPrestamoService
+    // que a su vez llaman a esos hooks. EL DÍA QUE ALGUIEN LLENE UNO DE ESOS CUATRO
     // CREYENDO QUE LLENA UN VACÍO, CADA COBRO PROCESADO POR CBCR VA A GENERAR DOS ASIENTOS POR
     // LA MISMA OPERACIÓN — y los dos van a cuadrar, así que no va a dar ningún error. Quien
     // implemente esos hooks tiene que EXCLUIR explícitamente las operaciones que vengan de
@@ -1241,13 +1283,7 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
 
     private Asiento generarAsientoDefinitivo(CobroCredito cobro, List<DetalleCobroCredito> detalles)
             throws Throwable {
-        CuentaBancaria cuentaBancaria = cobro.getCuentaBancaria();
-        if (cuentaBancaria.getPlanCuenta() == null || cuentaBancaria.getPlanCuenta().getEmpresa() == null) {
-            throw new IncomeException("La cuenta bancaria del cobro " + cobro.getCodigo()
-                    + " no tiene cuenta contable/empresa asignada; no se puede generar el"
-                    + " asiento definitivo.");
-        }
-        Long idEmpresa = cuentaBancaria.getPlanCuenta().getEmpresa().getCodigo();
+        Long idEmpresa = derivarEmpresaCobro(cobro);
         DetallePlantilla lineaTransitoria = resolverLineaTransitoria(idEmpresa);
         Long idPlantillaAplicacion = contabilizacionIndividualCreditoService.resolverPlantillaAplicacion(idEmpresa);
         LocalDate fechaCorte = cobro.getFecha();

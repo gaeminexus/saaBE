@@ -104,5 +104,6 @@ public interface NombreEntidadesCredito {
 	String DETALLE_ACUERDO_CONDONACION = "DetalleAcuerdoCondonacion";
 	String DETALLE_APORTE_ACUERDO_CONDONACION = "DetalleAporteAcuerdoCondonacion";
 	String DETALLE_APORTE_PRECANCELACION = "DetalleAportePrecancelacion";
+	String CUENTA_TIPO_APORTE = "CuentaTipoAporte";
 
 }

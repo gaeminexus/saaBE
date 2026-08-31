@@ -35,6 +35,15 @@ public class SolicitudRegistroAporte {
      */
     private LocalDate periodoDevengo;
 
+    /**
+     * Empresa contable (SCP.PJRQ) sobre la que se genera el asiento. Obligatorio.
+     *
+     * Lo manda el frontend desde la empresa de la sesión. Cuando la llamada viene de
+     * CobroCreditoServiceImpl.procesarCobro/anularCobro, lo pone ese servicio con la empresa
+     * derivada de la cuenta bancaria del cobro, NO con la que vino del cliente.
+     */
+    private Long idEmpresa;
+
     public SolicitudRegistroAporte() {
     }
 
@@ -100,5 +109,13 @@ public class SolicitudRegistroAporte {
 
     public void setPeriodoDevengo(LocalDate periodoDevengo) {
         this.periodoDevengo = periodoDevengo;
+    }
+
+    public Long getIdEmpresa() {
+        return idEmpresa;
+    }
+
+    public void setIdEmpresa(Long idEmpresa) {
+        this.idEmpresa = idEmpresa;
     }
 }

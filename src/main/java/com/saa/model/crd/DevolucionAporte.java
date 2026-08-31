@@ -99,12 +99,40 @@ public class DevolucionAporte implements Serializable {
     private Long idPagoProgramado;
 
     /**
-     * Código del asiento contable del pago, copiado por el reconciliador al confirmarse.
-     * <b>Sin FK a propósito.</b>
+     * Código del asiento contable del PAGO (D 2.3.01.05.01/2.3.01.10.01 → H Banco), copiado
+     * por el reconciliador al confirmarse. Lo genera CXP, no CRD. <b>Sin FK a propósito.</b>
+     *
+     * <b>Distinto de {@link #numeroAsientoReclasificacion}</b> — opción C, decisión del
+     * usuario 2026-08-31: son las dos mitades de un mismo movimiento contable, generadas por
+     * módulos distintos en momentos distintos. Guardar las dos acá perdería la del primero:
+     * {@code aplicarPagado} sobreescribe este campo con el asiento de CXP en cuanto el pago
+     * se confirma.
      */
     @Basic
     @Column(name = "DVAPNMAS")
     private Long numeroAsiento;
+
+    /**
+     * Código del asiento de RECLASIFICACIÓN (D 2.1.01.05.01/2.1.02.05.01 → H
+     * 2.3.01.05.01/2.3.01.10.01) que genera CRD al REGISTRAR la devolución — opción C,
+     * decisión del usuario 2026-08-31 (script crd/sql/90_DEVOLUCION_APORTES_RECLASIFICACION.sql).
+     *
+     * Es {@code CNT.ASNT.ASNTCDGO} (la PK), NO {@code ASNTNMRO} (el correlativo por
+     * empresa/período) — misma convención que {@code EventoPrestamo.numeroAsiento} y
+     * {@link #numeroAsiento}: toda la mecánica de reverso del sistema
+     * ({@code AsientoService.anulaAsiento}) recibe el id, no el número.
+     *
+     * <b>Separada de {@link #numeroAsiento} a propósito</b>: esa guarda el asiento de PAGO
+     * que genera CXP, y {@code aplicarPagado} la sobreescribe al confirmarse el pago — si la
+     * reclasificación se guardara ahí, se perdería la referencia y no se podría reversar
+     * nunca. Son dos asientos de dos módulos distintos: dos columnas.
+     *
+     * {@code NULL} en toda devolución anterior al 2026-08-31 y en toda devolución registrada
+     * con la contabilidad de CRD apagada — no es un dato faltante, es la ausencia esperada.
+     */
+    @Basic
+    @Column(name = "DVAPNMRC")
+    private Long numeroAsientoReclasificacion;
 
     /** Fecha en que el banco confirmó el pago. */
     @Basic
@@ -179,6 +207,11 @@ public class DevolucionAporte implements Serializable {
 
     public Long getNumeroAsiento() { return numeroAsiento; }
     public void setNumeroAsiento(Long numeroAsiento) { this.numeroAsiento = numeroAsiento; }
+
+    public Long getNumeroAsientoReclasificacion() { return numeroAsientoReclasificacion; }
+    public void setNumeroAsientoReclasificacion(Long numeroAsientoReclasificacion) {
+        this.numeroAsientoReclasificacion = numeroAsientoReclasificacion;
+    }
 
     public LocalDate getFechaPago() { return fechaPago; }
     public void setFechaPago(LocalDate fechaPago) { this.fechaPago = fechaPago; }

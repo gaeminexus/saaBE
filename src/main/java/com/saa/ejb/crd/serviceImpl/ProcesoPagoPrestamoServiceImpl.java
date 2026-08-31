@@ -170,6 +170,10 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         if (solicitud == null) {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": no se recibió el cuerpo de la solicitud");
         }
+        if (solicitud.getIdEmpresa() == null) {
+            throw new IncomeException("idEmpresa es obligatorio: es la empresa contable sobre la que"
+                + " se genera el asiento de la operación.");
+        }
         Prestamo prestamo = validarPrestamoOperable(solicitud.getIdPrestamo(), solicitud.getUsuario());
 
         double valor = redondear(solicitud.getValor() != null ? solicitud.getValor() : 0.0);
@@ -195,7 +199,7 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
 
         ContextoPago ctx = crearContexto(TIPO_PAGO_MANUAL, solicitud.getUsuario(),
             solicitud.getObservacion(), fechaPagoHora, evento.getCodigo(),
-            solicitud.getRutaDocumentoRespaldo());
+            solicitud.getRutaDocumentoRespaldo(), solicitud.getIdEmpresa());
 
         ResultadoAplicacionPago resultado = motorPagoPrestamoService.aplicarPago(
             prestamo.getCodigo(), valor, ctx);
@@ -232,6 +236,10 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         if (solicitud == null || solicitud.getPagos() == null || solicitud.getPagos().isEmpty()) {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO
                 + ": debe indicar al menos un préstamo a pagar");
+        }
+        if (solicitud.getIdEmpresa() == null) {
+            throw new IncomeException("idEmpresa es obligatorio: es la empresa contable sobre la que"
+                + " se genera el asiento de la operación.");
         }
 
         // Validaciones básicas de TODOS los renglones ANTES de aplicar el primer pago: si algo
@@ -570,6 +578,10 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         if (solicitud == null) {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": no se recibió el cuerpo de la solicitud");
         }
+        if (solicitud.getIdEmpresa() == null) {
+            throw new IncomeException("idEmpresa es obligatorio: es la empresa contable sobre la que"
+                + " se genera el asiento de la operación.");
+        }
         Prestamo prestamo = validarPrestamoOperable(solicitud.getIdPrestamo(), solicitud.getUsuario());
 
         Entidad entidad = prestamo.getEntidad();
@@ -598,7 +610,7 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
 
         ContextoPago ctx = crearContexto(TIPO_PAGO_APORTES, solicitud.getUsuario(),
             solicitud.getObservacion(), fechaPagoHora, evento.getCodigo(),
-            solicitud.getRutaDocumentoRespaldo());
+            solicitud.getRutaDocumentoRespaldo(), solicitud.getIdEmpresa());
 
         // 2. Aplicación a cuotas
         ResultadoAplicacionPago resultado = motorPagoPrestamoService.aplicarPago(
@@ -986,6 +998,10 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         if (solicitud == null) {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": no se recibió el cuerpo de la solicitud");
         }
+        if (solicitud.getIdEmpresa() == null) {
+            throw new IncomeException("idEmpresa es obligatorio: es la empresa contable sobre la que"
+                + " se genera el asiento de la operación.");
+        }
         Prestamo prestamo = validarPrestamoOperable(solicitud.getIdPrestamo(), solicitud.getUsuario());
 
         LocalDate fecha = solicitud.getFecha() != null ? solicitud.getFecha() : LocalDate.now();
@@ -1034,7 +1050,7 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
 
         ContextoPago ctx = crearContexto(TIPO_PRECANCELACION, solicitud.getUsuario(),
             solicitud.getObservacion(), fechaHora, evento.getCodigo(),
-            solicitud.getRutaDocumentoRespaldo());
+            solicitud.getRutaDocumentoRespaldo(), solicitud.getIdEmpresa());
 
         // 2. Pagar la deuda exigible cuota por cuota (sin cascada)
         double valorExigiblePagado = 0.0;
@@ -1189,6 +1205,10 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
 
         if (solicitud == null || solicitud.getIdEvento() == null) {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": idEvento es obligatorio");
+        }
+        if (solicitud.getIdEmpresa() == null) {
+            throw new IncomeException("idEmpresa es obligatorio: es la empresa contable sobre la que"
+                + " se genera el asiento de la operación.");
         }
         if (solicitud.getUsuario() == null || solicitud.getUsuario().trim().isEmpty()) {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": usuario es obligatorio");
@@ -1526,7 +1546,7 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
     }
 
     private ContextoPago crearContexto(String tipoPago, String usuario, String observacion,
-            LocalDateTime fechaPago, Long idEvento, String rutaDocumentoRespaldo) {
+            LocalDateTime fechaPago, Long idEvento, String rutaDocumentoRespaldo, Long idEmpresa) {
         ContextoPago ctx = new ContextoPago();
         ctx.setTipoPago(tipoPago);
         ctx.setUsuario(usuario);
@@ -1534,6 +1554,7 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         ctx.setFechaPago(fechaPago);
         ctx.setIdEvento(idEvento);
         ctx.setRutaDocumentoRespaldo(rutaDocumentoRespaldo);
+        ctx.setIdEmpresa(idEmpresa);
         return ctx;
     }
 

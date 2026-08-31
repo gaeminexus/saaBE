@@ -1,169 +1,93 @@
 # ESTADO DEL TRABAJO EN CURSO — módulo CRD
 
-**Mantenido por el árbitro de `crd`.** **Última actualización: 2026-08-31.**
+**Mantenido por el árbitro de `crd`.** **Última actualización: 2026-08-31 (sesión `saabe-25`).**
 
-> # ⏸️ TODAS LAS SESIONES COLAPSARON — 2026-08-31
+> # 🟢 PUNTO DE RETOMA — cierre de la sesión del 2026-08-31
 >
-> La máquina del usuario (16 GB, RAM soldada) se quedó sin memoria y **cayeron todas las sesiones**:
-> el árbitro y los agentes de backend y frontend. **Nada del trabajo se perdió** — se verificaron
-> los 12 archivos Java tocados ese día y **todos tienen las llaves balanceadas**: ninguno quedó
-> cortado a mitad de escritura.
+> Reemplaza al bloque "TODAS LAS SESIONES COLAPSARON". Aquella caída se retomó entera y **el
+> equipo A cerró todo lo que tenía sin bloqueos**. Los dos agentes (`saabe-c1` backend,
+> `saafe-7a` frontend) quedaron **en espera**, sin código pendiente.
 >
-> **Este bloque es el punto de retoma. Leerlo entero antes de reactivar a nadie.**
+> ## 1. ⛔ LO ÚNICO QUE BLOQUEA: dos scripts sin correr
 >
-> ## 1. Lo que está TERMINADO y en disco
+> **Todo lo de abajo está escrito y NADA desplegado.** No hay más trabajo de agentes hasta que
+> el usuario corra:
 >
-> | Frente | Estado |
-> |---|---|
-> | **Cutover de cobros** | ✅ Las 6 llamadas migradas: `PAGO_CUOTA`, `ABONO_CAPITAL`, `PRECANCELACION`, `PAGO_MULTIPLE`, `COBRO_MIXTO`. Incluye el modo efectivo abierto desde cruce de valores |
-> | **`CBCRASN2`** — asiento definitivo del cobro | ✅ Construido, detrás del gate del flag |
-> | **`COBRO_MIXTO`** | ✅ Un depósito repartido entre aportes y varios préstamos |
-> | **Reverso multilínea** | ✅ `anularCobro` reversa TODAS las líneas en `COBRO_MIXTO`, `PAGO_MULTIPLE` y `REGISTRO_APORTE` |
-> | **Acuerdo de condonación** | ✅ Completo: con depósito y 100% aportes, con `idEmpresa` propio, contabiliza en los dos caminos |
-> | **Precancelación mixta** | ✅ Depósito por CBCR + consumo de aportes vía `CRD.DAPR` |
-> | **Precancelación: ancla del `saldoOtros`** | ✅ Corregido el caso sin pagos previos |
-> | **Bug de la plantilla en la condonación** | ✅ La línea de interés usaba `aux1=10` de la plantilla 25, que ahí es una banda posicional. Ahora usa la 21 |
-> | **`ContabilizacionIndividualCreditoService`** | ✅ Helper compartido de líneas de asiento |
-> | **Dos `.jrxml`** | ✅ `RPRT_BORRADOR_CBCR` (nuevo) y `RPRT_CMPB_PGML` (con aportes) |
+> | Script | Qué hace | Control que no se puede saltear |
+> |---|---|---|
+> | `crd/sql/90_DEVOLUCION_APORTES_RECLASIFICACION.sql` | columna `CRD.DVAP.DVAPNMRC` | — |
+> | `crd/sql/94_CUENTAS_POR_TIPO_APORTE.sql` | tabla `CRD.CTAP` + carga de 11 tipos | **0.1** (`CTAP` libre en `ALL_TABLES`); **3.1** fila por fila contra `MAPEO-CUENTAS-TIPO-APORTE.md` §3; **3.2** debe dar solo las 4 reservas y el tipo 1 |
 >
-> ## 2. ⛔ LO PRIMERO AL RETOMAR — una decisión que bloquea el cierre contable
+> ⚠️ **El WAR y el build del frontend salen JUNTOS.** La Fase 0 dejó `idEmpresa` obligatorio en
+> 7 endpoints y el circuito de cobros está vivo en producción: un WAR solo rompe los cobros
+> manuales con *"idEmpresa es obligatorio"*.
 >
-> **¿De dónde sale `idEmpresa` cuando la operación NO tiene cuenta bancaria?**
+> ## 2. Lo que se cerró hoy — todo verificado por el árbitro contra el código
 >
-> Apareció **tres veces**: en el acuerdo 100% aportes (resuelto guardándola en `ACCN.PJRQCDGO`),
-> y ahora en `pagarConAportes` y en la precancelación 100% aportes directa, que **no tienen dónde
-> guardarla**.
+> | Frente | Backend | Frontend |
+> |---|---|---|
+> | **Fase 0 — `idEmpresa` en la solicitud** | 7 DTOs, 7 validaciones, `derivarEmpresaCobro` único | 7 interfaces, 6 sitios con guard |
+> | **Fase 1 — asiento del cruce de valores** | `ContabilidadPrestamoServiceImpl`, **un solo hook** (`contabilizarPagoConAportes`) | — |
+> | **Excedente Petro a un aporte** | bifurcación de 3 ramas, control de cuadre bloqueante, **sin asiento propio** (ver §4) | pendiente: `GET /rest/avpc/opcionesAporte/{idNovedad}` |
+> | **Precancelación mixta por CBCR** | ya existía (`DetalleRegistroCobroDTO.aportes`) | migrada; el corte ahora es *"¿hay depósito?"*, no *"¿hay aportes?"* |
+> | **Fase 2 — reclasificación de la devolución** | asiento + reverso, cuentas desde `CRD.CTAP` | — |
 >
-> **Verificado: no hay camino en el modelo.** `Prestamo`, `Producto`, `Entidad`, `Contrato` no
-> tienen empresa; `CRD.FLLL` (Filial) solo tiene código, nombre, alterno y estado. Los dos patrones
-> que funcionan hoy necesitan algo que estos procesos no tienen: Petro la deriva de la **cuenta
-> bancaria**, el cierre de cartera la recibe **por parámetro batch**.
+> **Decisión del usuario (2026-08-31): opción C** — CRD reclasifica (D `2.1.xx` → H `2.3.01.xx`,
+> no toca Banco), CXP paga (D `2.3.01.xx` → H Banco). Así **Banco no se puede acreditar dos
+> veces**. Contrato en `crd/API-EMPRESA-CONTABLE-CRD.md`; mapeo de cuentas en
+> `crd/MAPEO-CUENTAS-TIPO-APORTE.md`.
 >
-> **Tres salidas posibles:**
-> 1. **Que el cliente la mande** en cada solicitud (lo que se hizo en el acuerdo). Simple, pero hay
->    que tocar cada endpoint y cada pantalla, y el que se olvide falla en ejecución.
-> 2. **Agregar empresa a `Filial`.** Derivaría para todo, pero conceptualmente dudoso: la filial es
->    el empleador (Petroecuador), la empresa es la entidad contable del fondo. No es lo mismo.
-> 3. **Una configuración de módulo** — "la empresa contable de CRD" —, hermana de
->    `ConfiguracionContabilidadService`. Hoy solo existe **una** empresa con plantilla 21 (1236).
+> ## 3. Cuatro hallazgos que corrigieron documentación que estaba mal
 >
-> **Recomendación del árbitro: la 3.** El "empresa" acá es la entidad contable del fondo, que es
-> una sola por instalación; no es un atributo de la operación ni del empleador. Y es
-> multicliente-seguro: cada instalación configura la suya. **Confirmarlo con el usuario antes de
-> construir** — es una decisión de negocio, no técnica.
+> 1. **El commit `bc639f6` dejó el backend SIN COMPILAR** — `CobroCreditoServiceImpl` usaba
+>    `LocalDate` importando solo `LocalDateTime`. Corregido.
+> 2. **`SCP.SQ_PDTRCDGO` y `SQ_PRBRCDGO` NO EXISTEN**, y la aplicación **no crea rubros**
+>    (`DetalleRubroRest` solo tiene dos `@GET`). La regla 3 del registro de reservas protegía
+>    contra algo imposible: **derogada**, ver su §1bis.
+> 3. **El plan de cierre decía "los cinco tienen su asiento levantado" y era falso para la
+>    devolución de aportes**: §3.7 del levantamiento es *cobro en exceso*, y ninguna de sus ocho
+>    subsecciones cubre la devolución. Hubo que diseñarla.
+> 4. **`10 JUBILACION PERSONAL` no es duplicado del 9**: su `TPAPCSBC` es `RE`, es un
+>    **rendimiento mal nombrado**, y no tiene ni un movimiento.
 >
-> ## 3. En curso cuando cayó todo
+> ## 4. Dos cosas anotadas y NO corregidas — a propósito
 >
-> - **Backend**: fase 1 del cierre contable (`pagarConAportes`), **bloqueado** por el punto 2.
->   Ya tenía refactorizado `haberDesdePagos` al helper compartido.
-> - **Backend, en cola**: excedente Petro a aportes (diseño y DDL completos, sin empezar).
-> - **Frontend, sin hacer**: `idEmpresa` en el registro de acuerdos, búsqueda por ID de ASOPREP
->   (`GET /rest/prst/porIdAsoprep/{id}`, ya expuesto), y acortar el menú a "Condonación de Valores"
->   (hoy son 33 caracteres y se corta con puntos suspensivos).
->
-> ## 4. Scripts SQL — verificar antes de suponer
->
-> Corridos: **80** (cuenta 9743), **82** (hotfix columnas), **83** (`COBRO_MIXTO`).
-> **Pendientes: 84, 85, 86, 87.**
->
-> ⚠️ **El usuario dijo "corrí los scripts" sin detallar.** Antes de desplegar, correr
-> `crd/sql/VERIFICACION-ENTIDADES-VS-ESQUEMA-CRD.sql` **completo, las DOS consultas** — la B es la
-> que encuentra columnas mapeadas que faltan, y ya atrapó una caída de producción el 2026-08-30.
+> - **Desfase del reparto Petro.** Si un excedente nace en un producto de préstamo y se redirige
+>   a un aporte, `contabilizarReparto` ya lo clasificó del otro lado: las cuentas "por aplicar" no
+>   cierran en cero por carga. **Cada asiento cuadra D=H igual.** Documentado en
+>   `petro/REGLAS-CARGA-PETRO.md` §3.6b. **Necesita definición contable del usuario**; no molesta
+>   con el flag apagado.
+> - **El excedente a aporte no lleva asiento propio.** `contabilizarAplicacion` ya lo suma vía
+>   `sumValorPorTipoAporteByCarga` (filtra por `APRTIDAS`, que `crearNuevoAporte` estampa).
+>   Agregarle uno lo contabilizaría **dos veces, cuadrando las dos**.
 >
 > ## 5. Pendiente del usuario, no del equipo
 >
-> - **Compilar dos `.jasper`**: `RPRT_BORRADOR_CBCR` (nuevo) y `RPRT_CMPB_PGML` (regenerar).
-> - **Vaciar `C:\wildfly38\standalone\data\timer-service-data\`** con el servidor parado, en local
->   y en producción. Ahí quedaron timers persistidos de cuando no tenían `persistent = false`, y
->   **disparan el proceso de mora al arrancar**: el 2026-08-30 corrió a las 11:46 y escribió
->   $175.753,06 sobre 3.683 cuotas a mitad de las pruebas.
-> - **NO encender el flag de contabilidad** (rubro 237) hasta cerrar las 4 fases del
->   `PLAN-CIERRE-CONTABLE-TOTAL.md`.
+> - **Vaciar `C:\wildfly38\standalone\data\timer-service-data\`** con el servidor parado, local y
+>   producción. Timers persistidos que disparan el proceso de mora en cada arranque.
+> - ~~Compilar dos `.jasper`~~ ✅ **HECHO por el usuario el 2026-08-31** (`RPRT_BORRADOR_CBCR` y `RPRT_CMPB_PGML`).
+> - 🔵 **EN CURSO 2026-08-31: el usuario está compilando y desplegando el WAR + el build del frontend.** Los scripts 90 y 94 corrieron y se verificaron (las 11 filas de `CRD.CTAP` una por una). Falta correr el **95** (productos de pago + `TPAPPRDP`), que va **DESPUÉS** del despliegue.
+> - **Definir la cuenta del tipo de aporte 1** (`APORTE PERSONALES`, $140K en 5 movimientos), o
+>   confirmar que queda sin mapear — su devolución aborta con mensaje claro.
+> - **Correr el script 81** (`JUBILACION`, PDTR 1178): **no se corrió**; el 1178 está libre. Solo
+>   lo necesita el frente de jubilados.
+> - **NO encender el flag (rubro 237)** ni cargar `TPAPPRDP` hasta desplegar el WAR.
 >
-> ## 6. Lo que sigue sin empezar: el EQUIPO B
+> ## 6. Lo que sigue: en cola, en este orden
 >
-> **Otorgamiento de créditos** (no existe: sin solicitud, sin aprobación, sin desembolso — la
-> cartera es migrada), **reestructuración** (solo simula, no se puede ejecutar) y **seguros**
-> (cero backend; el sistema cobra un seguro que no tiene registrado).
+> 1. **Pantalla de mantenimiento de `CRD.CTAP`** — contrato ya acordado con el backend, sin
+>    construir. Diferida a propósito: no agranda el build que está retrasado.
+> 2. **Frontend del excedente Petro** (`opcionesAporte` + reparto en la pantalla de novedades).
+> 3. **Consulta de cobros procesados/anulados** — hoy un cobro `PROCESADO` o `ANULADO` **no tiene
+>    ninguna pantalla que lo muestre**. No bloquea operar; sí bloquea soporte.
+> 4. **Jubilados** — tercer frente del equipo A, sin empezar.
 >
-> Alcances y rangos en `crd/ALCANCE-EQUIPOS-CRD.md`; el equipo B va a una máquina distinta
-> (HP OMEN, 24 GB ampliables) porque la actual no soporta más de 3 equipos.
+> ## 7. El EQUIPO B sigue sin levantar
 >
-> ---
-
-
-> 🔵 **AHORA MISMO (2026-08-30).**
->
-> ### Condonación (Frente K) — **backend CERRADO**, falta pantalla
->
-> El diseño se rehízo el 2026-08-30 tras dos decisiones del usuario:
-> - **K4 y K10 DEROGADAS.** El acuerdo **no espera aprobación de nadie**: la **previsualización en
->   pantalla es el control**. No hay rechazo de condonación.
-> - **K11:** el préstamo queda **CANCELADO al PROCESAR el cobro**, no al confirmar la condonación.
->   Si contabilidad no aprueba, no se canceló nada y el préstamo sigue vivo y cobrable.
-> - La consulta sobre "antigüedad máxima del acuerdo" quedó **RETIRADA**: nació de una ventana que
->   ya no existe.
->
-> Flujo: crédito previsualiza y confirma (acuerdo VIGENTE + cobro en `CBCR`, mismo acto) →
-> contabilidad aprueba el cobro → crédito procesa → cuotas cerradas, condonación, CANCELADO.
->
-> **Construido:** modelo `ACCN`/`DACC` + capas + `/rest/accn`, la previsualización, el motor de
-> cierre de cuota con montos arbitrarios, el asiento de la plantilla 25 detrás del gate, el
-> disparador en `CobroCreditoServiceImpl` (`validar`/`registrarCobro`/`procesarCobro`/`anularCobro`),
-> el staleness reubicado al proceso reusando `procesado:false`, y la anulación en cascada.
-> **Contrato congelado:** `crd/API-ACUERDOS-CONDONACION.md`, espejado.
->
-> **Base de datos: ✅ EJECUTADO EN PRODUCCIÓN el 2026-08-30** —
-> `DDL-ACUERDOS-PAGO-CONDONACION.sql` y `80_PLANTILLA_25_GASTO_CONDONACION.sql` (cuenta de gasto
-> **PLNNCDGO 9743**, resuelta por `DTPLAXL1 = 70`, cambiable desde la pantalla de plantillas sin
-> redesplegar).
->
-> **Falta:** la pantalla (en construcción al 2026-08-30) y desplegar el WAR.
->
-> ⚠️ **Dos controles de esos scripts que hay que confirmar** (ver §5.4 del DDL y bloque 1 del 80):
-> que las secuencias `SCP.SQ_PRBRCDGO`/`SQ_PDTRCDGO` hayan quedado por ENCIMA de 248/1177 — si no,
-> el próximo rubro creado desde la aplicación muere por PK duplicada, en una pantalla sin relación
-> aparente; y que el INSERT de la plantilla haya devuelto **1 fila** (0 en la primera corrida
-> significa que plantilla y cuenta están en jerarquías distintas).
->
-> ### Circuito de cobros — backend EN PRODUCCIÓN sin pantallas
->
-> **`saafe-f6`** tiene hechos los modelos, `CobroCreditoService`, `ComprobanteViewer` y
-> `BandejaContabilidadComponent` (lista + panel de detalle). **`ProcesoCreditoComponent` es la
-> mayoría de lo que falta.**
-> El hueco de las filas `CARGA_PETRO` **quedó cerrado el 2026-08-30**: despachan a `/rest/asgn/*`,
-> los endpoints ya existían y solo faltaban en el contrato.
-> ⚠️ **La carga Petro no tiene "rechazar", tiene "reversar"**, y no son lo mismo: reversar deshace
-> una confirmación que ya ocurrió. Las acciones de la bandeja **difieren por tipo de fila**.
-> ⚠️ El menú de créditos es un array `navItems` **hardcodeado** en `menucreditos.component.ts` — no
-> hay INSERT que escribir. Y las pantallas van en el menú de **crd**, nunca en el de `cnt`: el
-> producto se comercializa sin créditos y una entrada de `cnt` apuntando a `crd` queda muerta.
->
-> ### Lo que quedó EN PRODUCCIÓN el 2026-08-29
->
-> Corridos por el usuario: `DDL-COBROS-APROBACION-CONTABILIDAD.sql` completo,
-> `ALTER-COBROS-ANULACION-Y-PAGO-DEVOLUCION.sql` (bloques 2 y 3), y el **WAR desplegado**. Los 9
-> `.jasper` de amortización compilados y el huérfano `RPRT_TBLA_ETDI.jasper` eliminado.
-> ⚠️ **El backend del circuito de cobros está vivo en producción SIN pantallas.** Solo responde por
-> REST. No hay riesgo (nadie puede llegar), pero tampoco sirve hasta que el frontend salga.
-> ⚠️ `DDL-ACUERDOS-PAGO-CONDONACION.sql` **NO se corrió en producción** y no debe correrse hasta que
-> exista el código — hoy crearía tablas vacías que nada usa. Su prerrequisito ya está cumplido.
->
-> ### Decisiones que siguen esperando al usuario
->
-> 1. **La cuenta de gasto de condonación (K5).** Ya no es cosmética: el asiento está escrito y
->    **falla a propósito** con `IncomeException` si la línea de gasto de la plantilla 25 no existe.
->    Es un **prerrequisito duro para encender** el flag de contabilidad de CRD (rubro 237, hoy en 0).
-> 2. **El criterio de reparto del capital condonado entre cuotas.** El operador decide por
->    *concepto*, pero la contabilidad necesita saber de qué *cuota* salió cada dólar para
->    clasificarlo por banda. El sistema reparte **proporcionalmente al capital pendiente de cada
->    cuota** — es una convención inventada, documentada en `generarAsientoCondonacion`, y cambia a
->    qué cuentas de banda va el dinero. Si el usuario no objeta, queda así.
+> Otorgamiento, reestructuración y seguros. Alcance en `crd/ALCANCE-EQUIPOS-CRD.md`; rangos
+> PRBR 270-289, PDTR 1300-1399. Va a la HP OMEN.
 >
 > ---
->
-> 🔵 **Antes de la pausa:** todos los scripts de la Fase 3a corrieron **en producción** y el WAR está
-> desplegado. El usuario estaba **probando Petro de punta a punta con una carga real**.
 
 **Alcance de este documento: solo `crd`** — aportes, préstamos, contratos, entidades/partícipes, la
 integración con `asoprep`/Petro, y la alimentación contable que `crd` genera hacia `cnt`.

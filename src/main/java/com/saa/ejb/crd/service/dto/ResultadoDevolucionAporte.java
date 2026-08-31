@@ -32,8 +32,15 @@ public class ResultadoDevolucionAporte {
 
     private LocalDate fecha;
 
-    /** Código del asiento contable del pago, cuando la devolución ya está pagada. */
+    /** Código del asiento contable del pago (lo genera CXP), cuando la devolución ya está pagada. */
     private Long numeroAsiento;
+
+    /**
+     * Código del asiento de RECLASIFICACIÓN (lo genera CRD al registrar) — opción C,
+     * 2026-08-31. Null si la contabilidad de CRD estaba apagada al registrar, o en
+     * devoluciones anteriores a esa fecha; no es un error.
+     */
+    private Long numeroAsientoReclasificacion;
 
     /** Fecha en que el banco confirmó el pago. */
     private LocalDate fechaPago;
@@ -105,6 +112,14 @@ public class ResultadoDevolucionAporte {
 
     public void setNumeroAsiento(Long numeroAsiento) {
         this.numeroAsiento = numeroAsiento;
+    }
+
+    public Long getNumeroAsientoReclasificacion() {
+        return numeroAsientoReclasificacion;
+    }
+
+    public void setNumeroAsientoReclasificacion(Long numeroAsientoReclasificacion) {
+        this.numeroAsientoReclasificacion = numeroAsientoReclasificacion;
     }
 
     public LocalDate getFechaPago() {

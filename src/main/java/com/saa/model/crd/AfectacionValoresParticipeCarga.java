@@ -80,6 +80,19 @@ public class AfectacionValoresParticipeCarga implements Serializable {
     @JoinColumn(name = "DTPRCDGO", referencedColumnName = "DTPRCDGO")
     private DetallePrestamo detallePrestamo;
 
+    /**
+     * FK - Tipo de aporte destino, cuando el excedente NO va a un préstamo (script
+     * crd/sql/87_EXCEDENTE_PETRO_A_APORTES.sql). Excluyente con {@code prestamo}/
+     * {@code detallePrestamo} — {@code CK_AVPC_PRST_XOR_TPAP} en la base garantiza que una fila
+     * es o de préstamo (prestamo + detallePrestamo, tipoAporte null) o de aporte (tipoAporte,
+     * prestamo/detallePrestamo null), nunca las dos. Qué tipos puede recibir un partícipe lo
+     * decide {@code VigenciaContratoService.esperadoPorEntidad} — la MISMA regla que decide a
+     * quién se incluye en el archivo Petro.
+     */
+    @ManyToOne
+    @JoinColumn(name = "TPAPCDGO", referencedColumnName = "TPAPCDGO")
+    private TipoAporte tipoAporte;
+
     // ============================================================
     // VALORES DE LA CUOTA ORIGINAL
     // ============================================================
@@ -228,6 +241,14 @@ public class AfectacionValoresParticipeCarga implements Serializable {
 
     public void setDetallePrestamo(DetallePrestamo detallePrestamo) {
         this.detallePrestamo = detallePrestamo;
+    }
+
+    public TipoAporte getTipoAporte() {
+        return tipoAporte;
+    }
+
+    public void setTipoAporte(TipoAporte tipoAporte) {
+        this.tipoAporte = tipoAporte;
     }
 
     public Double getValorCuotaOriginal() {

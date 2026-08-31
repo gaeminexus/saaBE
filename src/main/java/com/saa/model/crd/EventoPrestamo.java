@@ -84,7 +84,15 @@ public class EventoPrestamo implements Serializable {
     @Column(name = "EVPRFCHA")
     private LocalDateTime fecha;
 
-    /** Número de asiento contable (hook futuro; NULL por ahora) */
+    /**
+     * Guarda {@code CNT.ASNT.ASNTCDGO} — la PK del asiento (lo que devuelven los hooks de
+     * {@code ContabilidadPrestamoService}, javadoc "Código del asiento creado"), NO
+     * {@code ASNTNMRO} (el correlativo por empresa/período). El nombre de la columna
+     * ({@code EVPRNMAS}, "número de asiento") es engañoso pero es histórico: no se migra
+     * (decisión del árbitro, 2026-08-31) — reversar por la PK es directo
+     * ({@code AsientoService.anulaAsiento(Long idAsiento)} recibe el id, no el número);
+     * reversar por {@code ASNTNMRO} exigiría resolver empresa + período, que es circular.
+     */
     @Basic
     @Column(name = "EVPRNMAS")
     private Long numeroAsiento;

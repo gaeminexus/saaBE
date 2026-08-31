@@ -41,6 +41,7 @@ import com.saa.model.crd.Entidad;
 import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.model.crd.PagoAporte;
 import com.saa.model.crd.TipoAporte;
+import com.saa.model.cnt.DetalleAsiento;
 import com.saa.model.cxp.PagoProgramado;
 import com.saa.rubros.CrdTipoMovimientoAporte;
 import com.saa.rubros.Estado;
@@ -102,6 +103,18 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
 
     @EJB
     private SaldoAporteService saldoAporteService;
+
+    @EJB
+    private com.saa.ejb.crd.service.ConfiguracionContabilidadService configuracionContabilidadService;
+
+    @EJB
+    private com.saa.ejb.crd.service.CuentaTipoAporteService cuentaTipoAporteService;
+
+    @EJB
+    private com.saa.ejb.cnt.service.AsientoContableService asientoContableService;
+
+    @EJB
+    private com.saa.ejb.cnt.service.AsientoService asientoService;
 
     /** crd → cxp: dirección permitida. */
     @EJB
@@ -501,6 +514,19 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
                 + "El pago se confirmará sin asiento ni movimiento bancario (§6.5.b).");
         }
 
+        // 3b. Asiento de RECLASIFICACIÓN (decisión del usuario 2026-08-31): la mitad de CRD
+        // del asiento — D pasivo de aportes del socio -> H obligación de liquidación. NO toca
+        // Banco. Quién contabiliza el pago (D liquidación -> H Banco, la otra mitad) es una
+        // definición del usuario todavía ABIERTA al 2026-08-31 (opción B: lo hace CRD junto
+        // con este mismo asiento o uno propio; opción C: lo hace CXP con su "producto de
+        // pago" apuntando a 2.3.01.xx) — este método no la asume ni depende de ella, solo
+        // genera y persiste la reclasificación. Va ANTES de la orden de pago en CXP a
+        // propósito: si el asiento de reclasificación falla (plantilla sin configurar), no
+        // queda una orden de pago en CXP contra una obligación que CRD nunca reconoció.
+        Long idAsientoReclasificacion = generarAsientoReclasificacion(devolucion, tipos, valores);
+        devolucion.setNumeroAsientoReclasificacion(idAsientoReclasificacion);
+        devolucion = devolucionAporteDaoService.save(devolucion, devolucion.getCodigo());
+
         // 4. La orden de pago en CXP. Si esto lanza, se revierte TODO lo anterior:
         //    no quedan aportes negativos huérfanos sin orden de pago.
         Long idPago;
@@ -564,6 +590,7 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
         resultado.setEstado(devolucion.getEstado());
         resultado.setEstadoTexto(nombreEstado(devolucion.getEstado()));
         resultado.setNumeroAsiento(devolucion.getNumeroAsiento());
+        resultado.setNumeroAsientoReclasificacion(devolucion.getNumeroAsientoReclasificacion());
         resultado.setFechaPago(devolucion.getFechaPago());
 
         System.out.println("  ✅ Devolución " + devolucion.getCodigo() + " registrada por $"
@@ -720,7 +747,7 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
 
         } else if (estadoPago == EstadoPagoProgramado.RECHAZADO
                 || estadoPago == EstadoPagoProgramado.ANULADO) {
-            generarContraMovimientos(devolucion, "Pago rechazado");
+            generarContraMovimientos(devolucion, "Pago rechazado", "SISTEMA");
             devolucion.setEstado(Long.valueOf(EstadoDevolucionAporte.RECHAZADA));
             devolucionAporteDaoService.save(devolucion, devolucion.getCodigo());
             parcial.setMarcadasRechazadas(1);
@@ -816,7 +843,7 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
         }
 
         // Contra-movimientos: el saldo del partícipe vuelve a su valor previo.
-        generarContraMovimientos(devolucion, "Devolución anulada");
+        generarContraMovimientos(devolucion, "Devolución anulada", usuario);
 
         devolucion.setEstado(Long.valueOf(EstadoDevolucionAporte.ANULADA));
         devolucion.setUsuarioAnulacion(usuario.trim());
@@ -982,6 +1009,109 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
     // ========================================================================
 
     /**
+     * Asiento de RECLASIFICACIÓN — mitad de CRD, decisión del usuario 2026-08-31: D cuenta de
+     * PASIVO del aporte (baja lo que el fondo le debe al socio) → H cuenta de LIQUIDACIÓN
+     * (nace la obligación de pagarle), una por cada tipo de aporte del desglose. NO toca
+     * Banco — es la misma en las opciones B y C que el usuario todavía está definiendo (quién
+     * contabiliza el pago, la otra mitad); este método no depende de esa definición y no la
+     * asume.
+     * <p>
+     * <b>Las cuentas salen de {@code CRD.CTAP} (una fila por tipo de aporte + empresa), no de
+     * una plantilla contable.</b> El diseño anterior (plantilla 27 por aux1) solo alcanzaba a
+     * cesantía/jubilación; el usuario confirmó que se devuelve CUALQUIER tipo de aporte, y son
+     * ~16 tipos con cuenta real — la misma forma de problema que las bandas de cartera, que ya
+     * se resuelve con una tabla de configuración ({@code CRD.BNDP}), no con auxiliares de
+     * plantilla. Ver {@code docs/logica-negocio/crd/MAPEO-CUENTAS-TIPO-APORTE.md}.
+     * <p>
+     * Es el MISMO asiento en los dos caminos (transferencia y débito automático): no depende
+     * de ninguna cuenta bancaria, así que la ausencia de una en débito automático no lo
+     * afecta.
+     *
+     * @return el código (PK) del asiento generado, o {@code null} si la contabilidad de CRD
+     *         está apagada — en ese caso {@code DVAPNMRC} queda en null, ausencia esperada.
+     * @throws Throwable {@code IncomeException} clara —con el tipo de aporte que falta— si
+     *         algún tipo del desglose no tiene fila en {@code CRD.CTAP} para la empresa (nunca
+     *         adivina una cuenta), o si el cuadre contra el valor total de la devolución no da
+     *         exacto (tolerancia $0.01)
+     */
+    private Long generarAsientoReclasificacion(DevolucionAporte devolucion, List<TipoAporte> tipos,
+            List<Double> valores) throws Throwable {
+
+        if (!configuracionContabilidadService.contabilidadActiva()) {
+            System.out.println("  Contabilidad de CRD INACTIVA: devolución " + devolucion.getCodigo()
+                + " registrada sin generar el asiento de reclasificación.");
+            return null;
+        }
+
+        Long idEmpresa = devolucion.getIdEmpresa();
+        String prefijo = "Devolución de aportes " + devolucion.getCodigo();
+
+        List<DetalleAsiento> lineas = new ArrayList<>();
+        double totalDebe = 0.0;
+        double totalHaber = 0.0;
+        for (int i = 0; i < tipos.size(); i++) {
+            TipoAporte tipo = tipos.get(i);
+            double valor = valores.get(i);
+
+            com.saa.model.crd.CuentaTipoAporte config =
+                cuentaTipoAporteService.selectByTipoAporteYEmpresa(tipo.getCodigo(), idEmpresa);
+            if (config == null || config.getCuentaPasivo() == null || config.getCuentaLiquidacion() == null) {
+                throw new IncomeException("El tipo de aporte " + tipo.getCodigo() + " (" + tipo.getNombre()
+                    + ") no tiene cuentas contables configuradas en CRD.CTAP para la empresa "
+                    + idEmpresa + "; configúrelas antes de devolver este tipo de aporte.");
+            }
+
+            // DEBE: baja del pasivo de aportes del socio.
+            lineas.add(lineaDesdePlanCuenta(config.getCuentaPasivo(), valor, true,
+                prefijo + " - baja aporte " + tipo.getNombre()));
+            totalDebe += valor;
+
+            // HABER: nace la obligación de liquidación.
+            lineas.add(lineaDesdePlanCuenta(config.getCuentaLiquidacion(), valor, false,
+                prefijo + " - liquidación por pagar " + tipo.getNombre()));
+            totalHaber += valor;
+        }
+        totalDebe = redondear(totalDebe);
+        totalHaber = redondear(totalHaber);
+
+        // Cuadre contra el MONTO DE LA OPERACIÓN, no solo D=H (regla §4 de
+        // PLAN-CIERRE-CONTABLE-TOTAL.md): las dos mitades se construyen del mismo desglose,
+        // así que en construcción normal siempre coinciden — este chequeo es la red de
+        // seguridad si algún día CRD.CTAP quedara mal cargado para un tipo.
+        double valorTotal = redondear(devolucion.getValor() != null ? devolucion.getValor() : 0.0);
+        if (Math.abs(redondear(totalDebe - valorTotal)) > TOLERANCIA
+                || Math.abs(redondear(totalHaber - valorTotal)) > TOLERANCIA) {
+            throw new IncomeException("El asiento de reclasificación de la devolución "
+                + devolucion.getCodigo() + " no cuadra contra su valor total: DEBE $" + totalDebe
+                + ", HABER $" + totalHaber + ", devolución $" + valorTotal
+                + ". No se genera un asiento desbalanceado.");
+        }
+
+        com.saa.model.cnt.Asiento asiento = asientoContableService.generarAsiento(idEmpresa,
+            com.saa.rubros.TipoAsientos.CREDITOS, devolucion.getFecha(), prefijo + " - reclasificación",
+            devolucion.getUsuarioRegistro(), lineas, Long.valueOf(com.saa.rubros.ModuloSistema.CUENTAS_POR_COBRAR));
+
+        System.out.println("  ✅ Asiento de reclasificación generado - Devolución "
+            + devolucion.getCodigo() + " - Asiento " + asiento.getCodigo() + " - $" + valorTotal);
+
+        return asiento.getCodigo();
+    }
+
+    /** Arma una línea de asiento de una sola cuenta (D xor H) — sin plantilla, la cuenta ya
+     * viene resuelta desde CRD.CTAP. */
+    private DetalleAsiento lineaDesdePlanCuenta(com.saa.model.cnt.PlanCuenta cuenta, double valor,
+            boolean debe, String descripcion) {
+        DetalleAsiento detalle = new DetalleAsiento();
+        detalle.setPlanCuenta(cuenta);
+        detalle.setNumeroCuenta(cuenta.getCuentaContable());
+        detalle.setNombreCuenta(cuenta.getNombre());
+        detalle.setDescripcion(descripcion);
+        detalle.setValorDebe(debe ? redondear(valor) : 0.0);
+        detalle.setValorHaber(debe ? 0.0 : redondear(valor));
+        return detalle;
+    }
+
+    /**
      * Copia al DVAP los datos del pago confirmado. Es idempotente: aplicarlo dos veces deja
      * exactamente los mismos valores.
      * <p>
@@ -1015,11 +1145,21 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
      * del mes.
      * <p>
      * <b>Idempotente</b>: un detalle que ya tiene {@code idAporteReverso} se saltea.
+     * <p>
+     * También reversa el asiento de RECLASIFICACIÓN ({@code DVAPNMRC}) si lo hay — NUNCA el
+     * de PAGO ({@code DVAPNMAS}): ese es de CXP y lo reversa CXP. Ambos casos que llegan
+     * acá (pago rechazado, devolución anulada por el usuario) ocurren SIEMPRE antes de que
+     * el pago se confirme ({@code anularDevolucion} rechaza una devolución ya PAGADA en
+     * {@code :773}, y "Pago rechazado" es la contraparte de que nunca se confirmó) — así que
+     * el asiento de reclasificación es, en la práctica, el único que puede existir en este
+     * punto.
      * @param devolucion : Devolución cuyos aportes hay que revertir
-     * @param causa      : Texto que se estampa en la glosa del contra-movimiento
+     * @param causa      : Texto que se estampa en la glosa del contra-movimiento y del reverso
+     *                     del asiento
+     * @param usuario    : Quien dispara el reverso — "SISTEMA" cuando lo hace el reconciliador
      * @throws Throwable : Excepcion
      */
-    private void generarContraMovimientos(DevolucionAporte devolucion, String causa)
+    private void generarContraMovimientos(DevolucionAporte devolucion, String causa, String usuario)
             throws Throwable {
 
         List<DetalleDevolucionAporte> detalles =
@@ -1094,6 +1234,19 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
             System.out.println("  ↩ Contra-movimiento APRT " + reverso.getCodigo()
                 + " (+$" + valor + ") del tipo " + nombreTipo);
         }
+
+        // Reverso del asiento de RECLASIFICACIÓN — DVAPNMRC, nunca DVAPNMAS (ver el javadoc
+        // de este método). NULL es la ausencia esperada, no un error: contabilidad apagada al
+        // registrar, o devolución anterior al 2026-08-31 (script
+        // crd/sql/90_DEVOLUCION_APORTES_RECLASIFICACION.sql, sección 0.4).
+        if (devolucion.getNumeroAsientoReclasificacion() != null) {
+            // anulaAsiento trunca el motivo a los 1000 caracteres de ASNTMTAN por su cuenta
+            // (ver el comentario de su implementación); no hace falta truncar acá también.
+            asientoService.anulaAsiento(devolucion.getNumeroAsientoReclasificacion(), usuario,
+                "REVERSO DEVOLUCION " + devolucion.getCodigo() + " - " + causa);
+            System.out.println("  ↩ Asiento de reclasificación " + devolucion.getNumeroAsientoReclasificacion()
+                + " reversado - Devolución " + devolucion.getCodigo());
+        }
     }
 
     /**
@@ -1142,6 +1295,7 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
         resultado.setValorTotal(devolucion.getValor());
         resultado.setFecha(devolucion.getFecha());
         resultado.setNumeroAsiento(devolucion.getNumeroAsiento());
+        resultado.setNumeroAsientoReclasificacion(devolucion.getNumeroAsientoReclasificacion());
         resultado.setFechaPago(devolucion.getFechaPago());
 
         List<DetalleDevolucionAporte> detalles =

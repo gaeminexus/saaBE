@@ -28,6 +28,13 @@ public class ContextoPago {
     /** Ruta del documento de respaldo digitalizado; el motor la estampa en cada PagoPrestamo */
     private String rutaDocumentoRespaldo;
 
+    /**
+     * Empresa contable (SCP.PJRQ) sobre la que se genera el asiento del hook de contabilidad
+     * (Fase 1, PLAN-CIERRE-CONTABLE-TOTAL.md) — la misma que llegó validada en la solicitud
+     * desde el contrato API-EMPRESA-CONTABLE-CRD.md.
+     */
+    private Long idEmpresa;
+
     public ContextoPago() {
     }
 
@@ -77,5 +84,13 @@ public class ContextoPago {
 
     public void setRutaDocumentoRespaldo(String rutaDocumentoRespaldo) {
         this.rutaDocumentoRespaldo = rutaDocumentoRespaldo;
+    }
+
+    public Long getIdEmpresa() {
+        return idEmpresa;
+    }
+
+    public void setIdEmpresa(Long idEmpresa) {
+        this.idEmpresa = idEmpresa;
     }
 }

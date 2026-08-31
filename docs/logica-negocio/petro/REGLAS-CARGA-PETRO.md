@@ -134,14 +134,22 @@ Se excluye únicamente el producto `HS`. Las novedades de esta fase se registran
    - tiene `totalDescontado > $0.01`, y
    - tiene alguna novedad de la lista `NOVEDADES_REQUIEREN_AFECTACION_MANUAL`
      (1,2,3,4,7,9,10,11,12,13,18,19,20,22 — las que impiden saber dónde aplicar el dinero), y
-   - las afectaciones AVPC registradas (solo las que tienen cuota asociada) no cubren el total
-     descontado (faltante > $1).
+   - las afectaciones AVPC registradas (de préstamo **o de aporte**, desde el 2026-08-31 — ver
+     2b y §3.6b) no cubren el total descontado (faltante > $1).
    Si hay bloqueados se lanza `IncomeException` listando hasta 20 y **no se procesa nada** de la
    carga. Preview sin procesar: `GET /rest/asgn/valoresSinDestino/{idCarga}`.
    NO bloquean: SIN_DESCUENTOS, VALORES_CERO, APORTE_VALORES_CERO, DESCUENTOS_INCOMPLETOS,
    DIFERENCIA_MENOR_UN_DOLAR (y su par de aportes), CUOTA_FECHA_DIFERENTE, ni las de resultado.
+2b. **Excedente a aporte: reparto al 100%** (agregado 2026-08-31, `validarRepartoDeExcedentes`,
+   PLAN-EXCEDENTE-PETRO-A-APORTES.md §5, decisión del usuario: "ni más ni menos, o si no no hay
+   cómo procesar"). Para cada `NovedadParticipeCarga` con excedente (`montoDiferencia > $0.01`),
+   la suma de sus AVPC ACTIVAS (préstamo + aporte, `AfectacionValoresParticipeCargaService
+   .diferenciaReparto`) tiene que coincidir con el excedente dentro de $0.01. Si alguna no
+   cuadra, `IncomeException` listando partícipe/novedad/cuánto falta o sobra y **no se procesa
+   nada**. Misma regla la usa `POST /rest/avpc/batch` para avisar al operador al guardar —
+   un solo método, dos llamadores; no se duplica la tolerancia.
 3. `tieneNovedadesBloqueantes()` retorna **siempre false**: las novedades son informativas; el
-   control real es el punto 2.
+   control real es el punto 2 (y el 2b, para las de excedente).
 
 ### 3.1b TODO O NADA (decisión del usuario, 2026-08-29) — ausencia de dato vs. fallo real
 
@@ -215,7 +223,10 @@ abortaban el resto; ese comportamiento se eliminó. Al final, sin errores: `Carg
    NVPC), se aplican **solo** esas (§3.5) y se termina. Si falla a mitad de aplicar varias (algunas
    ya persistidas), aborta toda la carga — antes se tragaba el error y se seguía con el flujo
    normal de pago ENCIMA de lo ya aplicado manualmente, con riesgo real de pagar la misma cuota
-   dos veces.
+   dos veces. **TRES ramas por afectación (2026-08-31)**: con cuota → pago de préstamo (§3.5);
+   sin cuota y con tipo de aporte → excedente a aporte (§3.6b); sin cuota Y sin tipo de aporte →
+   `IncomeException` (fila rota, ninguno de los dos lados del `CK_AVPC_PRST_XOR_TPAP`) — antes
+   esa tercera combinación se omitía en silencio junto con la segunda, que no existía todavía.
 3. Se resuelven una sola vez: entidad (primera por rol), productos (`selectAllByCodigoPetro`),
    préstamos activos de todos esos productos. Si algo falta (ausencia de dato legítima) → se omite
    el partícipe (con log), sin abortar la carga.
@@ -281,12 +292,14 @@ saldo insignificante se van marcando PAGADA). El excedente se procesa recursivam
 `procesarPagoCuota` con seguro de incendio 0 (ya se aplicó en la cuota original). Si no hay más
 cuotas, el remanente queda sin aplicar (solo log).
 
-**Afectación manual** (`aplicarAfectacionManualConRegistroPago`): se aplican las AVPC ordenadas por
-número de cuota. Si la AVPC no tiene desglose (capital/interés/desgravamen en 0) pero sí
+**Afectación manual** (`aplicarAfectacionManualConRegistroPago`): se aplican las AVPC **con cuota**
+ordenadas por número. Si la AVPC no tiene desglose (capital/interés/desgravamen en 0) pero sí
 `valorAfectar`, se distribuye automáticamente con el mismo orden Desgravamen → Interés → Capital →
 Seguro de Incendio contra los saldos reales. Los valores se **acumulan**; estado PAGADA si
-`|totalPagadoAcumulado − totalEsperado| ≤ 0.01`, si no PARCIAL. AVPC sin cuota asociada se omite.
+`|totalPagadoAcumulado − totalEsperado| ≤ 0.01`, si no PARCIAL.
 La tabla AVPC no tiene campo para seguro de incendio (limitación conocida, queda advertencia en log).
+**Desde el 2026-08-31, una AVPC sin cuota YA NO se omite**: si tiene tipo de aporte va por
+§3.6b; si no tiene ninguno de los dos, aborta la carga (ver el punto 2 de §3.3).
 
 **Estado del préstamo** (`verificarYActualizarEstadoPrestamo`):
 - Se escribe en `idEstado` (PRSTIDST). Sale temprano si ya está en estado terminal (3/4/5).
@@ -366,6 +379,59 @@ ya cobrados. **Correr el backfill antes de la primera carga que use este código
   cargó o la consulta falla, no se marca.
 - `montoRecibido > 0.01` → `restaurarActivoPorPago`: si la entidad estaba en ACTIVO_EN_MORA vuelve a
   **ACTIVO** (basta que llegue un pago; la generación ya cobra la deuda acumulada completa).
+
+### 3.6b Excedente redirigido a un aporte (`aplicarAfectacionAAporte`, agregado 2026-08-31)
+
+Opción ③ del §3.7 del levantamiento contable (`LEVANTAMIENTO-ALIMENTACION-CONTABLE-CREDITOS.md`),
+diseñada en `PLAN-EXCEDENTE-PETRO-A-APORTES.md`. Una AVPC sin cuota pero con `tipoAporte` (rama 2
+de la bifurcación de tres del punto 2, §3.3) se aplica así, no como pago de préstamo:
+
+- Se registra por el MISMO camino que el devengo normal de §3.6: `crearNuevoAporte` +
+  `crearRegistroPagoAporte`. Ningún camino nuevo, ninguna copia.
+- `tipoMovimiento = EXCEDENTE_PETRO` (rubro 235 alterno 8, `com.saa.rubros
+  .CrdTipoMovimientoAporte.EXCEDENTE_PETRO`, PDTR 1180) — NO `APORTE_MENSUAL`, para que quede
+  distinguible de un aporte del mes. `crearNuevoAporte` ahora recibe el tipo de movimiento como
+  parámetro explícito (antes lo tenía fijo); el único llamador del devengo normal
+  (`distribuirAportePorDevengo`) pasa `APORTE_MENSUAL` explícito.
+- `periodoDevengo = null`: un excedente no cubre el aporte esperado de ningún mes en particular
+  (mismo criterio que el remanente sin anticipo de `DevolucionAporteServiceImpl`, D5 §2.4 del
+  plan de devengo de aportes — "retiro/aporte de saldo, no altera ningún mes").
+- `idAsoprep = idCarga` (vía `crearNuevoAporte`, como cualquier aporte de esta carga).
+
+**⚠️ SIN ASIENTO PROPIO, a propósito.** `CobroPetroContableServiceImpl.contabilizarAplicacion`
+suma TODOS los `CRD.APRT` de la carga por tipo vía `sumValorPorTipoAporteByCarga` (filtra por
+`APRTIDAS` = `idAsoprep`, el mismo campo que `crearNuevoAporte` estampa acá) y con eso arma el
+HABER de aportes cesantía/jubilación de ese asiento (aux1 50/51/52 de la plantilla 21, vía
+`ContabilizacionIndividualCreditoService.lineaAporteRegistrado`). El aporte del excedente entra
+en esa suma automáticamente. Agregar acá un asiento propio habría contabilizado la misma plata
+DOS VECES, con los dos asientos cuadrando D=H y ningún control atrapándolo.
+
+**⚠️ RIESGO ABIERTO, reportado al árbitro, sin resolver todavía (verificar antes de encender el
+flag de contabilidad si ya hay cargas con excedente a aporte):** `CobroPetroContableServiceImpl
+.contabilizarReparto` (paso 2a) reparte la cuenta transitoria entre aportes/préstamos leyendo
+`CRD.DTCA.DTCATTDO` por código de producto Petro (`AH` = aportes, el resto = préstamos) — el
+descuento TAL COMO LLEGÓ EN EL ARCHIVO, sin ninguna relación con el reparto manual de AVPC. Si un
+excedente se originó en un producto de préstamo (p.ej. `PQ`) y AVPC lo redirige a un aporte,
+`contabilizarAplicacion` (paso 2b) va a debitar `APORTES_POR_APLICAR` (2.3.02.05) por más de lo
+que `contabilizarReparto` le acreditó, y `PRESTAMOS_POR_APLICAR` (2.3.02.10) por menos. El
+asiento de cada paso sigue cuadrando D=H por separado — nadie lo notaría sin cruzar los dos — pero
+las cuentas "por aplicar" dejarían de quedar en cero por carga, el control que pide el §5 de
+`PLAN-CIERRE-CONTABLE-TOTAL.md` antes de encender el rubro 237. Si esto pasa en la práctica, la
+corrección es de diseño (probablemente: `contabilizarReparto` también tiene que contemplar el
+excedente), no una implementación a criterio del agente.
+
+**Control de cuadre bloqueante** (§3.1, punto 2b): antes de aplicar cualquier afectación de la
+carga, `validarRepartoDeExcedentes` exige que cada novedad con excedente esté repartida al 100%
+(tolerancia $0.01) entre sus AVPC de préstamo y de aporte. La regla (`AfectacionValoresParticipeCargaService
+.diferenciaReparto`) vive en un solo lugar; también la usa `POST /rest/avpc/batch` para avisar al
+operador al guardar, sin bloquear el guardado (cada fila se persiste en su propia transacción
+EJB — lo que de verdad protege es este control del proceso, no el aviso de la pantalla).
+
+**Frontend** (contrato congelado por el árbitro): `GET /rest/avpc/opcionesAporte/{idNovedad}` —
+jubilación y/o cesantía según `VigenciaContratoService.esperadoPorEntidad` con el mes/año de la
+CARGA de la novedad (no el mes actual), con el saldo actual de cada tipo. Lista vacía = el
+partícipe no tiene ningún tipo vigente ese mes (no es error). El guardado reusa
+`POST /rest/avpc/batch` existente, con `tipoAporte` en vez de `prestamo`/`detallePrestamo`.
 
 ## 4. Vía alterna: `ProcesoCargaPetroServiceImpl` (crd) — parcialmente implementada
 

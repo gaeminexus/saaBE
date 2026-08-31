@@ -84,4 +84,12 @@ public interface PlantillasCredito {
 	 */
 	public static final int COBRO_INDIVIDUAL_PRESTAMO = 25;
 
+	// NOTA (2026-08-31): "RECLASIFICACION APORTE O COBRO EN EXCESO" (alterno 27) se evaluó
+	// para el asiento de reclasificación de la devolución de aportes y se descartó — el
+	// usuario confirmó que se devuelve CUALQUIER tipo de aporte, no solo los tres con cuenta
+	// en esta familia de plantillas, y ~16 tipos con auxiliares posicionales reproducía la
+	// misma fragilidad del bug de la condonación. Las cuentas salen de CRD.CTAP (tabla de
+	// configuración por tipo de aporte + empresa), no de una plantilla — ver
+	// docs/logica-negocio/crd/MAPEO-CUENTAS-TIPO-APORTE.md y el javadoc de CuentaTipoAporte.
+
 }

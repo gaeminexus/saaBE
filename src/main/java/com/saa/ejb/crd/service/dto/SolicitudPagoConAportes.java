@@ -25,6 +25,15 @@ public class SolicitudPagoConAportes {
     /** Ruta del documento de respaldo digitalizado; se estampa en los pagos generados */
     private String rutaDocumentoRespaldo;
 
+    /**
+     * Empresa contable (SCP.PJRQ) sobre la que se genera el asiento. Obligatorio.
+     *
+     * Lo manda el frontend desde la empresa de la sesión. Cuando la llamada viene de
+     * CobroCreditoServiceImpl.procesarCobro/anularCobro, lo pone ese servicio con la empresa
+     * derivada de la cuenta bancaria del cobro, NO con la que vino del cliente.
+     */
+    private Long idEmpresa;
+
     public SolicitudPagoConAportes() {
     }
 
@@ -74,5 +83,13 @@ public class SolicitudPagoConAportes {
 
     public void setRutaDocumentoRespaldo(String rutaDocumentoRespaldo) {
         this.rutaDocumentoRespaldo = rutaDocumentoRespaldo;
+    }
+
+    public Long getIdEmpresa() {
+        return idEmpresa;
+    }
+
+    public void setIdEmpresa(Long idEmpresa) {
+        this.idEmpresa = idEmpresa;
     }
 }
