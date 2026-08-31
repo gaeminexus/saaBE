@@ -585,6 +585,58 @@ de su script, la corrección cae en este frente, y conviene que la revisen antes
 
 ---
 
+## 14. Estado al cierre del 2026-08-31 — el `08` está listo y en espera
+
+### 14.1 Confirmado: no hay nada que reconstruir
+
+**Ninguna carga corrió con devengo.** Cuatro vías independientes lo dicen:
+
+1. **Ni un `"Disponible sin aplicar"` en el log de WildFly** — verificado por el usuario del equipo A.
+   Es la prueba directa.
+2. El respaldo del propio `63` (`BKP_APRT_DEVENGO_20260827`) como corte temporal: ningún aporte
+   posterior trae devengo.
+3. **Cero desplazamientos positivos** en el `07` §1 — el proceso anticipa hacia adelante, el `63`
+   solo mira hacia atrás.
+4. El techo de cargas procesadas sigue en **2026-07**, 14 en estado 3.
+
+**Consecuencia: los 404 y las 854 son problemas a prevenir, no daño a reparar.**
+
+### 14.2 El orden acordado, y quién hace qué
+
+| # | Qué | Quién |
+|---|---|---|
+| 1 | Crear los **404 contratos** faltantes en `CRD.CNTR` | **Equipo A** — es su tabla. Autorizado por su usuario |
+| 2 | Correr el **`08`** sobre la grilla ya completa | **Este equipo**, con el visto bueno del usuario |
+
+El `08` está **escrito, pusheado, revisado y aprobado por el árbitro del equipo A**, y **sin
+ejecutar**. No se corre hasta que los contratos estén.
+
+### 14.3 ⚠️ El cambio que viene, y su efecto lateral
+
+El equipo A va a corregir el descarte silencioso: **la carga pasará a abortar** en vez de dejar una
+línea en `stderr` cuando no pueda distribuir todo el dinero recibido. Es lo correcto —y resulta que
+la regla ya estaba decidida en una sesión anterior; el código no la cumplía.
+
+Pero conviene tenerlo escrito, porque cambia la naturaleza de la dependencia:
+
+> **La grilla de contratos pasa de "conviene que esté completa" a "tiene que estarlo, todos los
+> meses, o la carga del mes no corre."**
+
+Y el modo de falla que hay que anticipar no son los 404 de hoy —esos se crean— sino **una vigencia
+que se cierre**: `esperadoPorEntidad` devuelve 0 cuando no hay vigencia que cubra el mes, sin
+distinguir *"falta el dato"* de *"esta persona ya no debe aportar"*. Las dos cosas dejan
+`disponible > 0` y, con la regla nueva, **las dos abortan la carga entera**.
+
+El caso concreto: **un partícipe que se jubila** y al que Petro le descuenta un mes más. Hoy es
+inofensivo — medido en el `06` §5: **todas las vigencias están abiertas**, ninguna tiene fecha de
+fin. El día que se cierre la primera, una sola persona detiene la carga de todos.
+
+**Sugerencia pasada al equipo A:** separar los dos casos antes de que la regla entre. *Falta el
+dato* debe abortar; *el partícipe ya no tiene obligación* debería tener su propio camino, o el
+proceso mensual queda rehén del mantenimiento del padrón.
+
+---
+
 ## 8. Documentos relacionados
 
 - `../ANALISIS-APORTES-DUPLICADOS-PETRO.md` — el marco: versiones del generador, mecanismos M1-M8,
