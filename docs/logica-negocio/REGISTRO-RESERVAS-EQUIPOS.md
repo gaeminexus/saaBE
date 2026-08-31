@@ -130,6 +130,44 @@ como catálogo compartido, y lo son.
 **Criterio de desempate, si aun así pasa:** el que ya está en `origin` se queda; renumera el otro.
 `origin` es el único árbitro no ambiguo.
 
+### Fuera de `crd/sql/`: prefijo por equipo, y el orden en un README
+
+**Acordado entre los árbitros de `omen-saa-2` y `omen-saa-3` el 2026-08-31.** El §2b de arriba
+reparte números **sólo** en `docs/logica-negocio/crd/sql/`. Las demás carpetas (`cxp/sql/`,
+`cxc/sql/`, `pagos/sql/`, `tsr/sql/`, `rhh/sql/`, `sri/sql/`) no tenían ningún acuerdo.
+
+**El diagnóstico está un paso más atrás que los rangos: el número hacía dos trabajos a la vez y
+falló en los dos.** Decía *de quién es el script* y decía *en qué orden se ejecuta*.
+
+| Trabajo | Mecanismo | Por qué |
+|---|---|---|
+| **De quién es** | **prefijo por equipo** — `e3-`, `e2-`, … | Un rango se agota y hay que renegociarlo; un prefijo no. Y no depende de quién pushee primero, que es lo que hizo fallar dos veces al esquema de rangos |
+| **En qué orden va** | **un `README-ORDEN.md` por carpeta** | Es lo único que sobrevive a que dos equipos escriban en la misma carpeta |
+
+**La segunda mitad ya estaba resuelta en el repositorio y nadie la había generalizado:**
+`tsr/sql/README-ORDEN-PRODUCCION.md` hace exactamente eso. No hay convención que inventar — hay que
+ascender la que ya existe.
+
+**Evidencia de que el número no alcanza, en `rhh/sql/`:** conviven **dos series paralelas** que se
+pisan en los mismos números — `01-anticipo-empleado.sql` junto a `01_DDL_TABLAS_PARAMETRIZACION.sql`,
+y lo mismo en 02, 03, 04, 05 y 06. No se sobrescribieron por casualidad (distinto separador), pero
+**el número dejó de decir en qué orden se ejecuta, que era lo único para lo que servía.**
+*(Detectado por el árbitro de `omen-saa-2`; la carpeta es de `omen-saa-3`, que lo toma.)*
+
+**Dos límites deliberados:**
+
+- **Lo histórico no se renumera.** Renumerar un `.sql` ya ejecutado rompe la trazabilidad con lo
+  que se corrió en producción. El prefijo aplica de acá en adelante. La excepción es `rhh/sql/`,
+  que necesita un `README-ORDEN.md` porque hoy no hay forma de saber el orden — pero se resuelve
+  **documentando** el orden real, no renombrando archivos ya corridos.
+- **`crd/sql/` queda como está**, con los rangos 96-149 / 150-199 que ya acordaron los equipos A y
+  B. Cambiarles el esquema ahora sería pedirles renegociar algo que recién empezó a funcionarles.
+  Si algún día se agota un rango, ahí se migra a prefijo.
+
+> **Por qué esta sección la firma `omen-saa-3`:** la propuso el árbitro de `omen-saa-2`, y la
+> escribe acá el equipo dueño de las carpetas afectadas. Un acuerdo sobre un recurso compartido lo
+> anota quien lo va a usar — si lo anota sólo quien lo propone, nadie verifica que sea aplicable.
+
 ---
 
 ## 2c. Plantillas contables (`CNT.PLNS`, código alterno `PLNSCDAL`)
@@ -146,6 +184,60 @@ un bug en la condonación): de las plantillas de CRD **solo la 21 está renumera
 semántico**; la 25, la 27 y la 29 usan auxiliares **posicionales**. **No copies la numeración de otra
 plantilla asumiendo que el mismo número significa lo mismo** — verificá qué es cada línea. Un
 auxiliar mal mapeado deja el asiento mal clasificado **y cuadrado igual**, o sea que no se detecta.
+
+---
+
+## 2d. Atribución de commits — el mensaje es lo único que distingue equipos
+
+**Acordado entre los árbitros de `omen-saa-1` y `omen-saa-3` el 2026-08-31. Rige de acá en
+adelante; nada se reescribe retroactivamente.**
+
+**En esta máquina los tres equipos commitean con la misma identidad de git.** Verificado sobre
+cuatro commits de tres equipos distintos — los cuatro dicen `xeonpotato`:
+
+```
+836ae6b  xeonpotato  crd: universo fijado con los resultados del 05...   (equipo 2)
+9b7e6f5  xeonpotato  docs: la salida del árbol compartido es un clon...  (equipo 1)
+ea29ec7  xeonpotato  registro: el bloque PRBR 290-309...                 (equipo 3)
+31cc311  xeonpotato  estado equipo 3: verificacion de arranque en OMEN   (equipo 3)
+```
+
+Así que `git log --author` **no sirve para separar equipos**, y `%an` es justo la señal que uno usa
+por instinto. El árbitro de `omen-saa-3` atribuyó `836ae6b` al equipo equivocado usándola.
+
+### La regla
+
+**Marcador de equipo en el prefijo de TODOS los commits**, no sólo en los de coordinación:
+
+```
+crd(eqB): ...      cxp(eq3): ...      registro(eq3): ...      docs(eq2): ...
+```
+
+| Equipo | Marcador |
+|---|---|
+| CRD · EQUIPO A (`saabe-25`) | `eqA` |
+| CRD · EQUIPO B (`omen-saa-1`) | `eqB` |
+| `omen-saa-2` | `eq2` |
+| cxp/cxc/pagos/tsr/rhh/sri (`omen-saa-3`) | `eq3` |
+
+### Por qué en todos, y no sólo donde hay ambigüedad
+
+La primera versión de esta regla decía que el prefijo de módulo ya atribuye solo, y que el marcador
+hacía falta únicamente en los commits transversales (`docs:`, `registro:`). **Tiene un agujero, y
+está en el módulo más caliente:** el equipo A y el equipo B trabajan los dos `crd` y los dos
+prefijan `crd:`. Sus commits son indistinguibles por prefijo **y** por autor. No es hipotético —
+los dos equipos colisionaron dos veces en `crd/sql/` el mismo día, y las dos veces la pregunta
+inmediata fue *«¿de quién es este archivo?»*, que hubo que resolver leyendo el contenido.
+
+La variante intermedia —marcador obligatorio *sólo* donde el módulo tenga más de un equipo— se
+descartó por una razón concreta: **exige saber cuántos equipos hay en un módulo hoy, y eso cambia.**
+Es el mismo defecto que hizo fallar el rótulo del bloque `PRBR 290-309` en el §2 (identificar por
+módulos en vez de por sesión envejece mal) y el mismo que hace fallar los rangos de script cuando
+un archivo todavía no está en `origin`. **Una regla que depende de un estado que se mueve, se
+rompe cuando ese estado se mueve.** Seis caracteres fijos no dependen de nada.
+
+⚠️ **El equipo A no participó de este acuerdo** y venía commiteando sin marcador. Se le avisó el
+2026-08-31. Hasta que confirme, sus commits se identifican como hasta ahora.
 
 ---
 
