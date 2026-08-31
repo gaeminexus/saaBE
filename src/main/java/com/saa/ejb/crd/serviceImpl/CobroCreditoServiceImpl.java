@@ -26,7 +26,9 @@ import com.saa.ejb.crd.service.AporteService;
 import com.saa.ejb.crd.service.CobroCreditoService;
 import com.saa.ejb.crd.service.ConfiguracionContabilidadService;
 import com.saa.ejb.crd.service.ProcesoPagoPrestamoService;
+import com.saa.ejb.crd.service.dto.BandaProductoDetalle;
 import com.saa.ejb.crd.service.dto.DesgloseAporte;
+import com.saa.ejb.crd.service.dto.ResultadoClasificacionBanda;
 import com.saa.ejb.crd.service.dto.DetalleRegistroCobroDTO;
 import com.saa.ejb.crd.service.dto.FilaBandejaAprobacion;
 import com.saa.ejb.crd.service.dto.ResultadoAbonoCapital;
@@ -51,27 +53,34 @@ import com.saa.ejb.tsr.dao.CuentaBancariaDaoService;
 import com.saa.model.cnt.Asiento;
 import com.saa.model.cnt.DetalleAsiento;
 import com.saa.model.cnt.DetallePlantilla;
+import com.saa.model.cnt.NombreEntidadesContabilidad;
 import com.saa.model.cnt.PlanCuenta;
 import com.saa.model.crd.AcuerdoCondonacion;
 import com.saa.model.crd.CargaArchivo;
 import com.saa.model.crd.CobroCredito;
+import com.saa.model.crd.DetalleAporteAcuerdoCondonacion;
 import com.saa.model.crd.DetalleAportePrecancelacion;
 import com.saa.model.crd.DetalleCobroCredito;
 import com.saa.model.crd.Entidad;
 import com.saa.model.crd.EventoPrestamo;
 import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.model.crd.PagoAporte;
+import com.saa.model.crd.DetallePrestamo;
+import com.saa.model.crd.PagoPrestamo;
 import com.saa.model.crd.Prestamo;
+import com.saa.model.crd.Producto;
 import com.saa.model.crd.TipoAporte;
 import com.saa.model.tsr.CuentaBancaria;
 import com.saa.model.tsr.NombreEntidadesTesoreria;
 import com.saa.rubros.CrdEstadoAcuerdoCondonacion;
 import com.saa.rubros.CrdEstadoCargaArchivo;
 import com.saa.rubros.CrdEstadoCobro;
+import com.saa.rubros.CrdLineaAsiento;
 import com.saa.rubros.CrdTipoOperacionCobro;
 import com.saa.rubros.ModuloSistema;
 import com.saa.rubros.PlantillasCredito;
 import com.saa.rubros.TipoAsientos;
+import com.saa.rubros.TipoCarteraBanda;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -105,6 +114,9 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
 
     @EJB
     private DetalleAportePrecancelacionDaoService detalleAportePrecancelacionDaoService;
+
+    @EJB
+    private com.saa.ejb.crd.dao.DetalleAporteAcuerdoCondonacionDaoService detalleAporteAcuerdoCondonacionDaoService;
 
     @EJB
     private EntidadDaoService entidadDaoService;
@@ -156,6 +168,18 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
 
     @EJB
     private AsientoService asientoService;
+
+    @EJB
+    private com.saa.ejb.crd.dao.PagoPrestamoDaoService pagoPrestamoDaoService;
+
+    @EJB
+    private com.saa.ejb.cnt.dao.PlanCuentaDaoService planCuentaDaoService;
+
+    @EJB
+    private com.saa.ejb.crd.service.ClasificadorBandaService clasificadorBandaService;
+
+    @EJB
+    private com.saa.ejb.crd.service.ContabilizacionIndividualCreditoService contabilizacionIndividualCreditoService;
 
     @Override
     public ResultadoRegistroCobro registrarCobro(SolicitudRegistroCobro solicitud) throws Throwable {
@@ -469,6 +493,12 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             asientoService.anulaAsiento(cobro.getAsientoTransitorio().getCodigo(), usuario,
                     "Anulación del cobro " + idCobro + ": " + motivo.trim());
         }
+        // Cobro PROCESADO (reverso por líneas, §6 de la especificación CBCRASN2): el
+        // definitivo también se reversa — mismo patrón que el transitorio, misma llamada.
+        if (cobro.getAsientoDefinitivo() != null) {
+            asientoService.anulaAsiento(cobro.getAsientoDefinitivo().getCodigo(), usuario,
+                    "Anulación del cobro " + idCobro + ": " + motivo.trim());
+        }
 
         cobro.setEstado(Long.valueOf(CrdEstadoCobro.ANULADO));
         cobro.setUsuarioAnulacion(usuario);
@@ -537,25 +567,25 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
     // PROCESO (paso 3): reconstruye la Solicitud y llama al motor existente. El motor de
     // pago NO SE TOCA — ver DDL-COBROS-APROBACION-CONTABILIDAD.sql.
     //
-    // ⚠️ PENDIENTE: el asiento definitivo (CBCRASN2) NO se genera todavía en este método.
-    // Encontré, al revisar los DTO de resultado de cada operación, que la clasificación
-    // contable que ya existe (CobroPetroContableServiceImpl.contabilizarAplicacion) NO se
-    // puede reusar tal cual: el abono a capital graba su monto en PagoPrestamo.saldoOtros,
-    // NO en capitalPagado (esa clasificación lee capitalPagado, así que se comería el abono
-    // entero en silencio), y esa clasificación solo reconoce aportes de tipo jubilación(9) o
-    // cesantía(11) — cualquier otro tipo de aporte quedaría fuera del asiento. Reusar esa
-    // lógica a ciegas produciría un asiento contable INCORRECTO, así que no lo hice. Falta
-    // una decisión del árbitro sobre qué plantilla/líneas usar antes de construirlo.
+    // El asiento definitivo (CBCRASN2, ver generarAsientoDefinitivo más abajo) SÍ se genera
+    // acá desde 2026-08-30 — docs/logica-negocio/crd/ESPECIFICACION-CBCRASN2.md. Las dos
+    // trampas que bloquearon la primera versión de este comentario (abono a capital y capital
+    // futuro de precancelación grabando en saldoOtros, no en capitalPagado; aportes de tipo
+    // distinto a 9/11 quedando fuera) están resueltas: haberDesdeEvento lee saldoOtros si es
+    // mayor a 0 y si no capitalPagado (una sola regla para las dos trampas), y las cuentas de
+    // aporte se resuelven contra la plantilla 21 por aux1 (50/51/52), no por un if/else de
+    // tipos — cualquier tipo sin cuenta falla fuerte en vez de quedar afuera en silencio.
     //
-    // ⚠️ MISMO RIESGO EN PRECANCELACIÓN (verificado 2026-08-30, pedido del usuario): el
-    // capital futuro de una precancelación (ProcesoPagoPrestamoServiceImpl.precancelar, línea
-    // ~897 en adelante) YA se registra en DetallePrestamo.saldoOtros de la ÚLTIMA CUOTA
-    // PAGADA (detallePrestamoDaoService.selectUltimaCuotaPagada — mayor numeroCuota con
-    // estado PAGADA(4); si no hay ninguna, la primera cuota futura) Y en un PagoPrestamo
-    // propio (pagoCapitalFuturo) con saldoOtros = capitalFuturo, capitalPagado = 0 — mismo
-    // patrón exacto que el abono a capital, ya implementado, no hace falta tocarlo. Pero por
-    // eso mismo hereda el mismo hueco: cualquier CBCRASN2 que lea capitalPagado se comerá en
-    // silencio el capital futuro de toda precancelación, igual que se comería el abono.
+    // ⚠️ PENDIENTE, explícitamente diferido (§4 de la especificación, decisión de no meterlo
+    // en esta entrega): el RE-BANDEO de un abono a capital — la redistribución del saldo
+    // restante entre bandas tras el abono (nueva tabla de amortización) — es un asiento
+    // APARTE del cobro, con diferencias netas por banda (mismo criterio que el cambio de
+    // bandas mensual de CierreCarteraServiceImpl, no bruto contra bruto). CBCRASN2 hoy
+    // contabiliza el COBRO del abono (baja las bandas por el monto abonado) pero NO genera
+    // ese segundo asiento de re-bandeo. Sin él, las cuentas de banda de ese préstamo quedan
+    // con la distribución VIEJA hasta el próximo cierre mensual de cartera, que sí recalcula
+    // todas las bandas de toda la cartera — así que el descuadre es transitorio, no permanente,
+    // pero existe entre un abono y el siguiente cierre.
     // =====================================================================
 
     private static final double TOLERANCIA_STALENESS_PRECANCELACION = 0.01;
@@ -780,9 +810,23 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             throw new IncomeException("Tipo de operación desconocido: " + tipoOperacion);
         }
 
-        cobro.setEstado(Long.valueOf(CrdEstadoCobro.PROCESADO));
         cobro.setUsuarioProceso(usuario);
         cobro.setFechaProceso(LocalDateTime.now());
+
+        // Asiento DEFINITIVO (CBCRASN2) — detrás del mismo gate y con el mismo criterio que
+        // registrarCobro con el transitorio: apagado, se procesa igual y se informa, no es un
+        // error. Se genera DESPUÉS de todo lo de arriba porque necesita los EventoPrestamo/
+        // PagoAporte que ese bloque acaba de crear.
+        if (configuracionContabilidadService.contabilidadActiva()) {
+            List<DetalleCobroCredito> detallesActualizados = detalleCobroCreditoDaoService.selectByCobro(idCobro);
+            Asiento asientoDefinitivo = generarAsientoDefinitivo(cobro, detallesActualizados);
+            cobro.setAsientoDefinitivo(asientoDefinitivo);
+        } else {
+            System.out.println("CobroCreditoService.procesarCobro - contabilidad de CRD INACTIVA:"
+                    + " cobro " + idCobro + " procesado sin generar asiento definitivo.");
+        }
+
+        cobro.setEstado(Long.valueOf(CrdEstadoCobro.PROCESADO));
         cobroCreditoDaoService.save(cobro, cobro.getCodigo());
 
         ResultadoProcesoCobro resultado = new ResultadoProcesoCobro();
@@ -1119,18 +1163,7 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                     + " determinar la empresa contable del cobro " + cobro.getCodigo());
         }
         Long idEmpresa = cuentaBanco.getEmpresa().getCodigo();
-
-        Long idPlantilla = plantillaService.codigoByAlterno(PlantillasCredito.COBRO_TRANSITORIO_PETRO,
-                idEmpresa);
-        if (idPlantilla == null) {
-            throw new IncomeException("No existe la plantilla contable alterno "
-                    + PlantillasCredito.COBRO_TRANSITORIO_PETRO + " para la empresa " + idEmpresa + ".");
-        }
-        DetallePlantilla lineaTransitoria = detallePlantillaDaoService.selectByPlantillaYAuxiliar(idPlantilla, 1);
-        if (lineaTransitoria == null || lineaTransitoria.getPlanCuenta() == null) {
-            throw new IncomeException("La plantilla alterno " + PlantillasCredito.COBRO_TRANSITORIO_PETRO
-                    + " no tiene la línea de la cuenta transitoria (2.3.01.15.01).");
-        }
+        DetallePlantilla lineaTransitoria = resolverLineaTransitoria(idEmpresa);
 
         List<DetalleAsiento> lineas = new ArrayList<>();
 
@@ -1158,7 +1191,184 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                 cobro.getUsuarioRegistro(), lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
     }
 
+    /**
+     * Resuelve la línea de la cuenta TRANSITORIA (2.3.01.15.01) — plantilla alterno
+     * {@link PlantillasCredito#COBRO_TRANSITORIO_PETRO} (19), auxiliar1 = 1.
+     *
+     * ⚠️ EXTRAÍDO A PROPÓSITO (2026-08-30, especificación CBCRASN2 §1): lo usan
+     * {@code generarAsientoTransitorio} (ASN1, al registrar) Y {@code generarAsientoDefinitivo}
+     * (ASN2, al procesar) — el MISMO método, nunca dos resoluciones independientes. Si la
+     * cuenta se resolviera por caminos distintos y difiriera aunque sea una vez, la transitoria
+     * quedaría abierta por ese cobro para siempre, sin que nada lo detecte (el asiento igual
+     * cuadraría). Que no puedan divergir importa más que que estén bien hoy.
+     */
+    private DetallePlantilla resolverLineaTransitoria(Long idEmpresa) throws Throwable {
+        Long idPlantilla = plantillaService.codigoByAlterno(PlantillasCredito.COBRO_TRANSITORIO_PETRO,
+                idEmpresa);
+        if (idPlantilla == null) {
+            throw new IncomeException("No existe la plantilla contable alterno "
+                    + PlantillasCredito.COBRO_TRANSITORIO_PETRO + " para la empresa " + idEmpresa + ".");
+        }
+        DetallePlantilla lineaTransitoria = detallePlantillaDaoService.selectByPlantillaYAuxiliar(idPlantilla, 1);
+        if (lineaTransitoria == null || lineaTransitoria.getPlanCuenta() == null) {
+            throw new IncomeException("La plantilla alterno " + PlantillasCredito.COBRO_TRANSITORIO_PETRO
+                    + " no tiene la línea de la cuenta transitoria (2.3.01.15.01).");
+        }
+        return lineaTransitoria;
+    }
+
     private double redondear(double valor) {
         return Math.round(valor * 100.0) / 100.0;
+    }
+
+    // =====================================================================
+    // Asiento DEFINITIVO (paso 3, CBCRASN2) — docs/logica-negocio/crd/ESPECIFICACION-CBCRASN2.md
+    //
+    // Cierra la transitoria que abrió generarAsientoTransitorio (ASN1): D la MISMA cuenta
+    // transitoria (resuelta por resolverLineaTransitoria, compartido con ASN1 — nunca dos
+    // resoluciones independientes) → H las cuentas que la operación efectivamente liquidó.
+    //
+    // ⚠️ ALTERNATIVA, NO COMPLEMENTO, a los hooks de ContabilidadPrestamoService (verificado
+    // 2026-08-30: ContabilidadPrestamoNoOpImpl tiene sus 5 hooks en no-op, nunca implementados).
+    // Después del cutover, procesarCobro llama por dentro a precancelar()/pagarCuota()/etc.,
+    // que a su vez llaman a esos hooks. EL DÍA QUE ALGUIEN IMPLEMENTE ContabilidadPrestamoService
+    // CREYENDO QUE LLENA UN VACÍO, CADA COBRO PROCESADO POR CBCR VA A GENERAR DOS ASIENTOS POR
+    // LA MISMA OPERACIÓN — y los dos van a cuadrar, así que no va a dar ningún error. Quien
+    // implemente esos hooks tiene que EXCLUIR explícitamente las operaciones que vengan de
+    // procesarCobro (p.ej. por el tipo de ContextoPago o el origen de la solicitud), o va a
+    // duplicar el asiento.
+    // =====================================================================
+
+    private Asiento generarAsientoDefinitivo(CobroCredito cobro, List<DetalleCobroCredito> detalles)
+            throws Throwable {
+        CuentaBancaria cuentaBancaria = cobro.getCuentaBancaria();
+        if (cuentaBancaria.getPlanCuenta() == null || cuentaBancaria.getPlanCuenta().getEmpresa() == null) {
+            throw new IncomeException("La cuenta bancaria del cobro " + cobro.getCodigo()
+                    + " no tiene cuenta contable/empresa asignada; no se puede generar el"
+                    + " asiento definitivo.");
+        }
+        Long idEmpresa = cuentaBancaria.getPlanCuenta().getEmpresa().getCodigo();
+        DetallePlantilla lineaTransitoria = resolverLineaTransitoria(idEmpresa);
+        Long idPlantillaAplicacion = contabilizacionIndividualCreditoService.resolverPlantillaAplicacion(idEmpresa);
+        LocalDate fechaCorte = cobro.getFecha();
+        String tipoOperacion = cobro.getTipoOperacion();
+
+        List<DetalleAsiento> haber = new ArrayList<>();
+        for (DetalleCobroCredito detalle : detalles) {
+            if (detalle.getPrestamo() != null && detalle.getEventoPrestamo() != null) {
+                haber.addAll(haberDesdeEvento(detalle.getEventoPrestamo().getCodigo(), idEmpresa,
+                        idPlantillaAplicacion, fechaCorte, "Cobro " + cobro.getCodigo()));
+            } else if (detalle.getTipoAporte() != null) {
+                double valorAporte = detalle.getPagoAporte() != null && detalle.getPagoAporte().getValor() != null
+                        ? detalle.getPagoAporte().getValor() : nvl(detalle.getValor());
+                if (valorAporte > 0.0) {
+                    haber.add(contabilizacionIndividualCreditoService.lineaAporteRegistrado(idPlantillaAplicacion,
+                            detalle.getTipoAporte().getCodigo(), valorAporte,
+                            "Cobro " + cobro.getCodigo()));
+                }
+            }
+            // La mitad de aportes CONSUMIDOS (precancelación mixta / acuerdo mixto, §5 de la
+            // especificación) se agrega más abajo, por línea, para no perder la referencia a
+            // linea.getCodigo()/getAcuerdoCondonacion() en DAPR/DAAP.
+            if (CrdTipoOperacionCobro.PRECANCELACION.equals(tipoOperacion)) {
+                List<DetalleAportePrecancelacion> consumidos =
+                        detalleAportePrecancelacionDaoService.selectByDetalleCobro(detalle.getCodigo());
+                if (!consumidos.isEmpty()) {
+                    List<DesgloseAporte> desglose = new ArrayList<>();
+                    for (DetalleAportePrecancelacion consumido : consumidos) {
+                        DesgloseAporte renglon = new DesgloseAporte();
+                        renglon.setIdTipoAporte(consumido.getTipoAporte().getCodigo());
+                        renglon.setValor(consumido.getValor());
+                        desglose.add(renglon);
+                    }
+                    haber.addAll(contabilizacionIndividualCreditoService.lineasCruceAportesConsumidos(
+                            idPlantillaAplicacion, desglose, "Cobro " + cobro.getCodigo()));
+                }
+            } else if (CrdTipoOperacionCobro.ACUERDO_CONDONACION.equals(tipoOperacion)
+                    && detalle.getAcuerdoCondonacion() != null) {
+                // Acuerdo MIXTO (depósito + aportes): el 100%-aportes nunca llega acá — no
+                // genera CBCR, su cruce lo genera aplicarAcuerdo directamente (ver su
+                // javadoc). Acá solo el caso con parte de depósito, donde SÍ hay CBCRASN2.
+                List<DetalleAporteAcuerdoCondonacion> consumidos = detalleAporteAcuerdoCondonacionDaoService
+                        .selectByAcuerdo(detalle.getAcuerdoCondonacion().getCodigo());
+                if (!consumidos.isEmpty()) {
+                    List<DesgloseAporte> desglose = new ArrayList<>();
+                    for (DetalleAporteAcuerdoCondonacion consumido : consumidos) {
+                        DesgloseAporte renglon = new DesgloseAporte();
+                        renglon.setIdTipoAporte(consumido.getTipoAporte().getCodigo());
+                        renglon.setValor(consumido.getValor());
+                        desglose.add(renglon);
+                    }
+                    haber.addAll(contabilizacionIndividualCreditoService.lineasCruceAportesConsumidos(
+                            idPlantillaAplicacion, desglose, "Cobro " + cobro.getCodigo()));
+                }
+            }
+        }
+
+        if (haber.isEmpty()) {
+            throw new IncomeException("El cobro " + cobro.getCodigo() + " no generó ninguna línea"
+                    + " de haber para el asiento definitivo; no se puede contabilizar.");
+        }
+
+        double totalHaber = 0.0;
+        for (DetalleAsiento linea : haber) {
+            totalHaber += nvl(linea.getValorHaber()) - nvl(linea.getValorDebe());
+        }
+        totalHaber = redondear(totalHaber);
+
+        List<DetalleAsiento> lineas = new ArrayList<>();
+        DetalleAsiento debe = new DetalleAsiento();
+        debe.setPlanCuenta(lineaTransitoria.getPlanCuenta());
+        debe.setNumeroCuenta(lineaTransitoria.getPlanCuenta().getCuentaContable());
+        debe.setNombreCuenta(lineaTransitoria.getPlanCuenta().getNombre());
+        debe.setDescripcion("Cobro crédito " + cobro.getCodigo() + " - cierre de la cuenta transitoria");
+        debe.setValorDebe(cobro.getValor());
+        debe.setValorHaber(0.0);
+        lineas.add(debe);
+        lineas.addAll(haber);
+
+        // Cuadre por construcción: D = cobro.getValor() (lo que ASN1 acreditó a la
+        // transitoria), H = suma de las líneas armadas arriba. Si no cuadran, algo quedó mal
+        // clasificado — fallar acá es más seguro que ajustar la diferencia con una línea de
+        // cuadre, porque "cuadra" no prueba que la clasificación sea correcta (§7 de la
+        // especificación): un ajuste de centavos escondería precisamente ese tipo de error.
+        double diferencia = redondear(nvl(cobro.getValor()) - totalHaber);
+        if (Math.abs(diferencia) > TOLERANCIA_CUADRE) {
+            throw new IncomeException("El asiento definitivo del cobro " + cobro.getCodigo()
+                    + " no cuadra: depósito $" + cobro.getValor() + " vs. clasificado $" + totalHaber
+                    + " (diferencia $" + diferencia + "). No se genera un asiento desbalanceado.");
+        }
+
+        return asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, fechaCorte,
+                "Cobro crédito " + cobro.getCodigo() + " - asiento definitivo"
+                        + (cobro.getObservacion() != null ? ": " + cobro.getObservacion() : ""),
+                cobro.getUsuarioProceso(), lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
+    }
+
+    /**
+     * Todas las líneas de haber que salen de un EventoPrestamo — cubre PAGO_CUOTA,
+     * PAGO_MULTIPLE, ABONO_CAPITAL, PRECANCELACION, COBRO_MIXTO (líneas de préstamo) y
+     * ACUERDO_CONDONACION (K9: el único PagoPrestamo que genera lleva SOLO lo pagado, nunca lo
+     * condonado — este método nunca ve lo condonado, así que "solo lo pagado" sale gratis, sin
+     * ninguna rama especial) CON UNA SOLA REGLA, EN VEZ DE UNA POR TIPO:
+     *
+     * <p>Por cada {@code PagoPrestamo} vigente del evento, el capital a bandear es
+     * {@code saldoOtros} si es &gt; 0, si no {@code capitalPagado}. Es la regla que evita las
+     * trampas 2.1 (abono a capital) y 2.2 (capital futuro de precancelación) — las dos escriben
+     * en {@code saldoOtros} con {@code capitalPagado = 0}, y un pago normal es al revés; nunca
+     * los dos a la vez, por construcción de todo el motor de pagos. La banda se resuelve con
+     * la fecha de vencimiento de la cuota DE ESE {@code PagoPrestamo} — para el capital futuro
+     * de una precancelación y para el pago de un abono, esa cuota es la ancla; para un pago
+     * normal, es la cuota real que se pagó.
+     */
+    private List<DetalleAsiento> haberDesdeEvento(Long idEvento, Long idEmpresa, Long idPlantillaAplicacion,
+            LocalDate fechaCorte, String prefijoDescripcion) throws Throwable {
+        // Delegado a ContabilizacionIndividualCreditoService.haberDesdePagos (2026-08-31,
+        // PLAN-CIERRE-CONTABLE-TOTAL): la MISMA regla la necesitaba también el cruce de
+        // valores/precancelación directa — un tercer lugar con esta lógica copiada era
+        // exactamente el riesgo de divergencia que este servicio existe para evitar.
+        List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectByEvento(idEvento);
+        return contabilizacionIndividualCreditoService.haberDesdePagos(pagos, idEmpresa, idPlantillaAplicacion,
+                fechaCorte, prefijoDescripcion);
     }
 }

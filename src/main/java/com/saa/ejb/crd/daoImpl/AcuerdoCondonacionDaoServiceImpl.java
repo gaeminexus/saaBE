@@ -42,7 +42,8 @@ public class AcuerdoCondonacionDaoServiceImpl extends EntityDaoImpl<AcuerdoCondo
             "fechaRechazo",
             "motivoRechazo",
             "eventoPrestamo",
-            "cobroCredito"
+            "cobroCredito",
+            "empresa"
         };
     }
 

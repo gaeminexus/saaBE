@@ -145,7 +145,46 @@ public class PrestamoRest {
                     .build();
         }
     }
-    
+
+    /**
+     * Busca UN préstamo por su número de operación en ASOPREP ({@code Prestamo.idAsoprep},
+     * columna {@code PRSTIDAS}) — para la búsqueda de la pantalla de acuerdos de condonación.
+     * El campo se valida único, así que la respuesta natural es un solo préstamo, no una
+     * lista — por eso este endpoint dedicado en vez de sumarlo a {@code selectByCriteria}.
+     *
+     * ⚠️ NO CONFUNDIR con {@code Aporte.idAsoprep} (APRTIDAS): mismo nombre de campo en otra
+     * tabla, significado completamente distinto — aquel es la trazabilidad de qué
+     * {@code CargaArchivo} generó el aporte; este es el número de operación del préstamo en
+     * ASOPREP. Este endpoint es SOLO para préstamos.
+     *
+     * @param idAsoprep Número de operación del préstamo en ASOPREP
+     * @return 200 con el préstamo si existe; 404 si no — nunca 500 por "no encontrado", el
+     *         usuario va a tipear el número a mano y equivocarse es lo normal
+     */
+    @GET
+    @Path("/porIdAsoprep/{idAsoprep}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response porIdAsoprep(@PathParam("idAsoprep") Long idAsoprep) {
+        try {
+            Prestamo prestamo = prestamoDaoService.selectByIdAsoprep(idAsoprep);
+            if (prestamo == null) {
+                return Response.status(Response.Status.NOT_FOUND)
+                        .entity("No existe ningún préstamo con idAsoprep " + idAsoprep)
+                        .type(MediaType.APPLICATION_JSON)
+                        .build();
+            }
+            return Response.status(Response.Status.OK)
+                    .entity(prestamo)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al buscar el préstamo por idAsoprep " + idAsoprep + ": " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
+    }
+
     /**
      * TODOS los préstamos de una entidad (partícipe), en cualquier estado, ordenados por
      * código. Mismo criterio que ya usaba el frontend por {@code selectByCriteria}

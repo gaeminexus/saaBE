@@ -17,6 +17,16 @@ public class SolicitudRegistroAcuerdo {
     /** Préstamo del acuerdo. Debe estar EN_MORA(11) o DE_PLAZO_VENCIDO(8). Obligatorio. */
     private Long idPrestamo;
 
+    /**
+     * Empresa (nodo de jerarquía SCP.PJRQ) del acuerdo. Obligatoria (2026-08-30,
+     * {@code sql/86_ACUERDO_EMPRESA.sql}): es la ÚNICA fuente de empresa para contabilizar el
+     * acuerdo en los DOS caminos (con depósito y 100% aportes) — nunca se deriva del cobro,
+     * porque un acuerdo 100% aportes no tiene. Si el acuerdo tiene parte de depósito, debe
+     * coincidir con la empresa de {@link #idCuentaBancaria}; si no coincide, se rechaza el
+     * registro.
+     */
+    private Long idEmpresa;
+
     /** Fecha de negocio del acuerdo (y del cobro). Obligatorio. */
     private LocalDate fecha;
 
@@ -75,6 +85,14 @@ public class SolicitudRegistroAcuerdo {
 
     public void setIdPrestamo(Long idPrestamo) {
         this.idPrestamo = idPrestamo;
+    }
+
+    public Long getIdEmpresa() {
+        return idEmpresa;
+    }
+
+    public void setIdEmpresa(Long idEmpresa) {
+        this.idEmpresa = idEmpresa;
     }
 
     public LocalDate getFecha() {

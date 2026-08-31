@@ -111,6 +111,30 @@ public interface CrdLineaAsiento {
 	 */
 	public static final int APORTE_ADICIONAL_PERSONAL = 52;
 
+	/**
+	 * Seguro de préstamo HIPOTECARIO. Activo, {@code 1.4.90.15.02}. Sin dimensión de tipo de
+	 * préstamo propia (a diferencia de intereses): cada tipo con seguro de incendio tiene su
+	 * propio código de línea, no un aux2.
+	 */
+	public static final int SEGURO_INCENDIO_HIPOTECARIO = 42;
+
+	/** Seguro de préstamo PRENDARIO. Activo, {@code 1.4.90.15.03}. */
+	public static final int SEGURO_INCENDIO_PRENDARIO = 43;
+
+	// ── CRD.TPPR.TPPRCDGO — catálogo de TIPO DE PRÉSTAMO, no roles de línea ──
+	// No son aux1: son el valor de dimensión (DTPLAXL2) que acompaña a los aux1 de
+	// intereses (10/20), y el que decide cuál de las dos líneas de seguro de incendio
+	// aplica. Verificado contra la BD local: 1 quirografario, 2 hipotecario, 3 prendario
+	// (mismos valores que ya usaba privadamente CobroPetroContableServiceImpl — unificados
+	// acá el 2026-08-30 para que ese servicio y ContabilizacionIndividualCreditoService no
+	// puedan divergir sobre qué número es cuál tipo).
+
+	/** CRD.TPPR — Hipotecario. */
+	public static final long TIPO_PRESTAMO_HIPOTECARIO = 2L;
+
+	/** CRD.TPPR — Prendario. */
+	public static final long TIPO_PRESTAMO_PRENDARIO = 3L;
+
 	// ── Condonación (plantilla alterno 25, Frente K) ─────────────────────────
 
 	/**

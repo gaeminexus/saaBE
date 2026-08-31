@@ -94,6 +94,15 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
     private com.saa.ejb.crd.dao.TipoAporteDaoService tipoAporteDaoService;
 
     @EJB
+    private com.saa.ejb.crd.service.ContabilizacionIndividualCreditoService contabilizacionIndividualCreditoService;
+
+    @EJB
+    private com.saa.basico.ejb.EmpresaDaoService empresaDaoService;
+
+    @EJB
+    private com.saa.ejb.tsr.dao.CuentaBancariaDaoService cuentaBancariaDaoService;
+
+    @EJB
     private PrestamoDaoService prestamoDaoService;
 
     @EJB
@@ -175,6 +184,8 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
         validarSplitAportesDeposito(solicitud, prestamo.getEntidad(), totalPagar, valorPagarAportes,
                 valorPagarDeposito);
 
+        acuerdo.setEmpresa(empresaDaoService.selectById(solicitud.getIdEmpresa(),
+                com.saa.model.scp.NombreEntidadesSistema.EMPRESA));
         acuerdo.setValorPagar(totalPagar);
         acuerdo.setValorCondonar(redondear(totalCondonar));
         acuerdo.setValorPagarAportes(valorPagarAportes);
@@ -251,6 +262,18 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
      */
     private void validarSplitAportesDeposito(SolicitudRegistroAcuerdo solicitud, Entidad entidad,
             double totalPagar, double valorPagarAportes, double valorPagarDeposito) throws Throwable {
+        // Obligatoria SIEMPRE, con o sin depósito (2026-08-30, sql/86_ACUERDO_EMPRESA.sql): es
+        // la única fuente de empresa para contabilizar el acuerdo — un acuerdo 100% aportes
+        // nunca tiene CobroCredito de dónde derivarla.
+        if (solicitud.getIdEmpresa() == null) {
+            throw new IncomeException("idEmpresa es obligatoria");
+        }
+        try {
+            empresaDaoService.selectById(solicitud.getIdEmpresa(),
+                    com.saa.model.scp.NombreEntidadesSistema.EMPRESA);
+        } catch (NoResultException e) {
+            throw new IncomeException("No existe la empresa " + solicitud.getIdEmpresa());
+        }
         if (valorPagarAportes < 0 || valorPagarDeposito < 0) {
             throw new IncomeException("valorPagarAportes/valorPagarDeposito no pueden ser negativos");
         }
@@ -288,6 +311,26 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
             if (solicitud.getRutaRespaldo() == null || solicitud.getRutaRespaldo().trim().isEmpty()) {
                 throw new IncomeException("rutaRespaldo es obligatoria: valorPagarDeposito ($"
                         + valorPagarDeposito + ") es mayor a cero");
+            }
+            // ⛔ Los dos caminos (con depósito y 100% aportes) leen la empresa DEL ACUERDO —
+            // nunca del cobro. Acá, con depósito, es el único punto donde una incoherencia
+            // entre las dos se puede detectar barato; detectarla al contabilizar es tarde.
+            com.saa.model.tsr.CuentaBancaria cuentaBancaria;
+            try {
+                cuentaBancaria = cuentaBancariaDaoService.selectById(solicitud.getIdCuentaBancaria(),
+                        com.saa.model.tsr.NombreEntidadesTesoreria.CUENTA_BANCARIA);
+            } catch (NoResultException e) {
+                throw new IncomeException("No existe la cuenta bancaria " + solicitud.getIdCuentaBancaria());
+            }
+            if (cuentaBancaria.getPlanCuenta() == null || cuentaBancaria.getPlanCuenta().getEmpresa() == null) {
+                throw new IncomeException("La cuenta bancaria " + solicitud.getIdCuentaBancaria()
+                        + " no tiene cuenta contable/empresa asignada.");
+            }
+            Long idEmpresaCuenta = cuentaBancaria.getPlanCuenta().getEmpresa().getCodigo();
+            if (!idEmpresaCuenta.equals(solicitud.getIdEmpresa())) {
+                throw new IncomeException("La empresa del acuerdo (" + solicitud.getIdEmpresa()
+                        + ") no coincide con la empresa de la cuenta bancaria " + solicitud.getIdCuentaBancaria()
+                        + " (" + idEmpresaCuenta + ")");
             }
         } else {
             // Un respaldo bancario en una operación sin depósito solo puede confundir a quien
@@ -558,6 +601,26 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
                     + " INACTIVA: acuerdo " + idAcuerdo + " aplicado sin generar asiento de condonación.");
         }
 
+        // 6b. Cruce de aportes CONSUMIDOS — SOLO para el acuerdo 100% aportes (sin CBCR).
+        // ⚠️ Cuando hay parte de depósito (acuerdo.getCobroCredito() != null), este cruce lo
+        // genera CobroCreditoServiceImpl#generarAsientoDefinitivo (CBCRASN2) más tarde, al
+        // procesar el cobro — generarlo también acá lo duplicaría. Es la MISMA regla del
+        // acuerdo (K11): con depósito, todo espera al proceso del cobro; sin depósito, no hay
+        // nada que esperar y se aplica ya, en este mismo acto.
+        if (acuerdo.getCobroCredito() == null && nvl(acuerdo.getValorPagarAportes()) > TOLERANCIA
+                && configuracionContabilidadService.contabilidadActiva()) {
+            List<DetalleAporteAcuerdoCondonacion> desgloseAportes =
+                    detalleAporteAcuerdoCondonacionDaoService.selectByAcuerdo(idAcuerdo);
+            List<DesgloseAporte> aportes = new ArrayList<>();
+            for (DetalleAporteAcuerdoCondonacion linea : desgloseAportes) {
+                DesgloseAporte renglon = new DesgloseAporte();
+                renglon.setIdTipoAporte(linea.getTipoAporte().getCodigo());
+                renglon.setValor(linea.getValor());
+                aportes.add(renglon);
+            }
+            generarAsientoCruceAportesAcuerdo(acuerdo, aportes, pago, fecha);
+        }
+
         ResultadoAplicacionAcuerdo resultado = new ResultadoAplicacionAcuerdo();
         resultado.setIdAcuerdo(idAcuerdo);
         resultado.setIdEvento(evento.getCodigo());
@@ -585,13 +648,17 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
                     + acuerdo.getCodigo() + " no condonó nada; no se genera asiento.");
             return;
         }
-        if (acuerdo.getCobroCredito() == null || acuerdo.getCobroCredito().getCuentaBancaria() == null
-                || acuerdo.getCobroCredito().getCuentaBancaria().getPlanCuenta() == null
-                || acuerdo.getCobroCredito().getCuentaBancaria().getPlanCuenta().getEmpresa() == null) {
-            throw new IncomeException("No se pudo determinar la empresa contable del acuerdo "
-                    + acuerdo.getCodigo() + ": falta la cuenta bancaria del cobro asociado.");
+        // ⚠️ CORREGIDO 2026-08-30 (sql/86_ACUERDO_EMPRESA.sql): antes se resolvía navegando
+        // acuerdo -> cobroCredito -> cuentaBancaria -> planCuenta -> empresa, y un acuerdo
+        // 100% aportes NUNCA tiene cobroCredito — esto fallaría siempre para ese caso, sin
+        // que nadie lo hubiera notado porque el flag está apagado. Ahora se lee DEL ACUERDO,
+        // la misma fuente que usa el cruce de aportes consumidos: los dos caminos (con
+        // depósito y 100% aportes) no pueden resolver distinto la misma empresa.
+        if (acuerdo.getEmpresa() == null) {
+            throw new IncomeException("El acuerdo " + acuerdo.getCodigo()
+                    + " no tiene empresa asignada; no se puede determinar la empresa contable.");
         }
-        Long idEmpresa = acuerdo.getCobroCredito().getCuentaBancaria().getPlanCuenta().getEmpresa().getCodigo();
+        Long idEmpresa = acuerdo.getEmpresa().getCodigo();
 
         Long idPlantilla = plantillaService.codigoByAlterno(PlantillasCredito.COBRO_INDIVIDUAL_PRESTAMO, idEmpresa);
         if (idPlantilla == null) {
@@ -706,29 +773,27 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
         }
 
         // H: interés condonado (ordinario + mora), por tipo de préstamo.
+        //
+        // ⚠️ CORREGIDO 2026-08-30 — bug real encontrado al construir CBCRASN2: esta línea
+        // consultaba la plantilla 25 (COBRO_INDIVIDUAL_PRESTAMO) con
+        // CrdLineaAsiento.INTERES_ORDINARIO_POR_COBRAR (aux1=10), pero la 25 NUNCA se
+        // renumeró al catálogo semántico (verificado contra CNT.DTPL: su aux1=10 es una línea
+        // de BANDA posicional, 1.3.08.10, aux2 siempre 0) — la consulta devolvía null SIEMPRE
+        // que había interés condonado, y el método fallaba fuerte apenas se encendiera el flag
+        // de contabilidad. La plantilla 21 (APLICACION_PETRO) SÍ está renumerada y es la que ya
+        // usa CobroPetroContableService con éxito — se unifica acá para que esta cuenta y la
+        // que resuelve CBCRASN2 para "lo pagado" del mismo tipo de préstamo NUNCA puedan
+        // divergir. La 25 conserva su único uso real: la línea de gasto (aux1=70) de arriba.
         if (interesCondonado > 0.0) {
             Long idTipoPrestamo = prestamo.getProducto() != null && prestamo.getProducto().getTipoPrestamo() != null
                     ? prestamo.getProducto().getTipoPrestamo().getCodigo() : null;
-            if (idTipoPrestamo == null) {
-                throw new IncomeException("El préstamo " + prestamo.getCodigo() + " no tiene tipo de préstamo"
-                        + " asignado; no se puede resolver la cuenta de interés condonado.");
-            }
-            DetallePlantilla lineaInteres = detallePlantillaDaoService.selectByPlantillaYAuxiliares(
-                    idPlantilla, CrdLineaAsiento.INTERES_ORDINARIO_POR_COBRAR, idTipoPrestamo.intValue());
-            if (lineaInteres == null || lineaInteres.getPlanCuenta() == null) {
-                throw new IncomeException("La plantilla alterno " + PlantillasCredito.COBRO_INDIVIDUAL_PRESTAMO
-                        + " no tiene la línea de interés por cobrar para el tipo de préstamo " + idTipoPrestamo);
-            }
-            double valor = redondear(interesCondonado);
-            DetalleAsiento linea = new DetalleAsiento();
-            linea.setPlanCuenta(lineaInteres.getPlanCuenta());
-            linea.setNumeroCuenta(lineaInteres.getPlanCuenta().getCuentaContable());
-            linea.setNombreCuenta(lineaInteres.getPlanCuenta().getNombre());
+            Long idPlantillaAplicacion = contabilizacionIndividualCreditoService.resolverPlantillaAplicacion(idEmpresa);
+            DetalleAsiento linea = contabilizacionIndividualCreditoService.lineaInteres(idPlantillaAplicacion,
+                    idTipoPrestamo, interesCondonado, false,
+                    "Condonación acuerdo " + acuerdo.getCodigo());
             linea.setDescripcion("Condonación acuerdo " + acuerdo.getCodigo() + " - interés (ordinario y mora)");
-            linea.setValorDebe(0.0);
-            linea.setValorHaber(valor);
             lineas.add(linea);
-            totalHaber += valor;
+            totalHaber += redondear(interesCondonado);
         }
 
         if (lineas.isEmpty()) {
@@ -757,6 +822,77 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
 
         System.out.println("  💰 Asiento de condonación generado: " + asiento.getCodigo()
                 + " - Acuerdo: " + acuerdo.getCodigo() + " - Total: $" + redondear(totalHaber));
+    }
+
+    /**
+     * Cruce de aportes CONSUMIDOS de un acuerdo 100% aportes (sin CBCR) — D cuentas de aporte
+     * por tipo (vía {@link com.saa.ejb.crd.service.ContabilizacionIndividualCreditoService},
+     * exactamente el mismo mecanismo que {@code CobroCreditoServiceImpl#generarAsientoDefinitivo}
+     * usa para la mitad de aportes de un acuerdo/precancelación MIXTOS — no puede divergir
+     * porque es el mismo servicio) → H cuentas por cobrar de capital/interés de lo PAGADO (K9:
+     * el único {@code PagoPrestamo} del acuerdo nunca lleva lo condonado, así que "solo lo
+     * pagado" sale del mismo dato sin ninguna rama especial — igual que en CBCRASN2). §3.5 del
+     * levantamiento: es el asiento del cruce de valores, no uno nuevo.
+     *
+     * ⚠️ {@code idEmpresa} sale de {@code acuerdo.getEmpresa()} (2026-08-30,
+     * sql/86_ACUERDO_EMPRESA.sql) — nunca de {@code cobroCredito}, que este caso no tiene.
+     *
+     * ⚠️ NO se banda por cuota-por-cuota como {@code generarAsientoCondonacion}: el único
+     * {@code PagoPrestamo} agrega todo lo pagado en un solo valor, así que se clasifica ENTERO
+     * en la banda de la cuota ANCLA ({@code pago.getDetallePrestamo()}) — es la misma
+     * característica que ya tiene ese modelo de datos para K9, no una simplificación nueva de
+     * este método.
+     */
+    private void generarAsientoCruceAportesAcuerdo(AcuerdoCondonacion acuerdo, List<DesgloseAporte> aportes,
+            PagoPrestamo pago, LocalDate fecha) throws Throwable {
+        if (acuerdo.getEmpresa() == null) {
+            throw new IncomeException("El acuerdo " + acuerdo.getCodigo()
+                    + " no tiene empresa asignada; no se puede generar el asiento del cruce de aportes.");
+        }
+        Long idEmpresa = acuerdo.getEmpresa().getCodigo();
+        Long idPlantillaAplicacion = contabilizacionIndividualCreditoService.resolverPlantillaAplicacion(idEmpresa);
+        String prefijo = "Acuerdo " + acuerdo.getCodigo() + " - cruce de aportes";
+
+        List<DetalleAsiento> lineas = new ArrayList<>(
+                contabilizacionIndividualCreditoService.lineasCruceAportesConsumidos(idPlantillaAplicacion,
+                        aportes, prefijo));
+
+        Prestamo prestamo = pago.getPrestamo();
+
+        // Delegado a ContabilizacionIndividualCreditoService.haberDesdePagos (2026-08-31,
+        // PLAN-CIERRE-CONTABLE-TOTAL) — antes esta lógica estaba copiada acá; ahora es la MISMA
+        // regla (saldoOtros si es > 0, si no capitalPagado) que usan CBCRASN2 y el cruce de
+        // valores, en vez de una tercera copia divergente.
+        lineas.addAll(contabilizacionIndividualCreditoService.haberDesdePagos(
+                java.util.Collections.singletonList(pago), idEmpresa, idPlantillaAplicacion, fecha, prefijo));
+
+        if (lineas.isEmpty()) {
+            System.out.println("  AcuerdoCondonacionService.generarAsientoCruceAportesAcuerdo - acuerdo "
+                    + acuerdo.getCodigo() + " sin líneas armables; no se genera asiento.");
+            return;
+        }
+
+        double totalDebe = 0.0;
+        double totalHaber = 0.0;
+        for (DetalleAsiento linea : lineas) {
+            totalDebe += nvl(linea.getValorDebe());
+            totalHaber += nvl(linea.getValorHaber());
+        }
+        double diferencia = redondear(totalDebe - totalHaber);
+        if (Math.abs(diferencia) > TOLERANCIA) {
+            throw new IncomeException("El asiento del cruce de aportes del acuerdo " + acuerdo.getCodigo()
+                    + " no cuadra: aportes consumidos $" + redondear(totalDebe) + " vs. cuentas liquidadas $"
+                    + redondear(totalHaber) + " (diferencia $" + diferencia + "). No se genera un asiento"
+                    + " desbalanceado.");
+        }
+
+        Asiento asiento = asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, fecha,
+                "Cruce de aportes - acuerdo " + acuerdo.getCodigo() + " - préstamo "
+                        + (prestamo != null ? prestamo.getCodigo() : null),
+                acuerdo.getUsuarioRegistro(), lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
+
+        System.out.println("  💰 Asiento del cruce de aportes generado: " + asiento.getCodigo()
+                + " - Acuerdo: " + acuerdo.getCodigo() + " - Total: $" + redondear(totalDebe));
     }
 
     /** Acumulador de capital condonado por banda, hasta armar la línea del asiento. */

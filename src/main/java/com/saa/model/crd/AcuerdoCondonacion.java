@@ -17,6 +17,8 @@ import jakarta.persistence.NamedQuery;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
 
+import com.saa.model.scp.Empresa;
+
 /**
  * Representa la tabla CRD.ACCN (AcuerdoCondonacion).
  *
@@ -183,6 +185,18 @@ public class AcuerdoCondonacion implements Serializable {
     @JoinColumn(name = "CBCRCDGO", referencedColumnName = "CBCRCDGO")
     private CobroCredito cobroCredito;
 
+    /**
+     * FK - Empresa (nodo de jerarquía SCP.PJRQ) del acuerdo. Agregada el 2026-08-30
+     * ({@code sql/86_ACUERDO_EMPRESA.sql}): la ÚNICA fuente de empresa para contabilizar el
+     * acuerdo, en los DOS caminos (con depósito y 100% aportes) — NUNCA derivarla de
+     * {@code cobroCredito}, porque un acuerdo 100% aportes no tiene cobro. Obligatoria en el
+     * servicio ({@code AcuerdoCondonacionService#registrarAcuerdo}), aunque la columna es
+     * nullable en la base a propósito (no se inventa un valor para una fila histórica).
+     */
+    @ManyToOne
+    @JoinColumn(name = "PJRQCDGO", referencedColumnName = "PJRQCDGO")
+    private Empresa empresa;
+
     // ============================================================
     // Getters y Setters
     // ============================================================
@@ -337,5 +351,13 @@ public class AcuerdoCondonacion implements Serializable {
 
     public void setCobroCredito(CobroCredito cobroCredito) {
         this.cobroCredito = cobroCredito;
+    }
+
+    public Empresa getEmpresa() {
+        return empresa;
+    }
+
+    public void setEmpresa(Empresa empresa) {
+        this.empresa = empresa;
     }
 }

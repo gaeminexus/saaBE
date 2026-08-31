@@ -1,7 +1,96 @@
 # ESTADO DEL TRABAJO EN CURSO — módulo CRD
 
-**Mantenido por el árbitro de `crd`** (sesión `saabe-4b`), con su equipo de backend (`saabe-00`) y
-frontend (`saafe-f6`). **Última actualización: 2026-08-29.**
+**Mantenido por el árbitro de `crd`.** **Última actualización: 2026-08-31.**
+
+> # ⏸️ TODAS LAS SESIONES COLAPSARON — 2026-08-31
+>
+> La máquina del usuario (16 GB, RAM soldada) se quedó sin memoria y **cayeron todas las sesiones**:
+> el árbitro y los agentes de backend y frontend. **Nada del trabajo se perdió** — se verificaron
+> los 12 archivos Java tocados ese día y **todos tienen las llaves balanceadas**: ninguno quedó
+> cortado a mitad de escritura.
+>
+> **Este bloque es el punto de retoma. Leerlo entero antes de reactivar a nadie.**
+>
+> ## 1. Lo que está TERMINADO y en disco
+>
+> | Frente | Estado |
+> |---|---|
+> | **Cutover de cobros** | ✅ Las 6 llamadas migradas: `PAGO_CUOTA`, `ABONO_CAPITAL`, `PRECANCELACION`, `PAGO_MULTIPLE`, `COBRO_MIXTO`. Incluye el modo efectivo abierto desde cruce de valores |
+> | **`CBCRASN2`** — asiento definitivo del cobro | ✅ Construido, detrás del gate del flag |
+> | **`COBRO_MIXTO`** | ✅ Un depósito repartido entre aportes y varios préstamos |
+> | **Reverso multilínea** | ✅ `anularCobro` reversa TODAS las líneas en `COBRO_MIXTO`, `PAGO_MULTIPLE` y `REGISTRO_APORTE` |
+> | **Acuerdo de condonación** | ✅ Completo: con depósito y 100% aportes, con `idEmpresa` propio, contabiliza en los dos caminos |
+> | **Precancelación mixta** | ✅ Depósito por CBCR + consumo de aportes vía `CRD.DAPR` |
+> | **Precancelación: ancla del `saldoOtros`** | ✅ Corregido el caso sin pagos previos |
+> | **Bug de la plantilla en la condonación** | ✅ La línea de interés usaba `aux1=10` de la plantilla 25, que ahí es una banda posicional. Ahora usa la 21 |
+> | **`ContabilizacionIndividualCreditoService`** | ✅ Helper compartido de líneas de asiento |
+> | **Dos `.jrxml`** | ✅ `RPRT_BORRADOR_CBCR` (nuevo) y `RPRT_CMPB_PGML` (con aportes) |
+>
+> ## 2. ⛔ LO PRIMERO AL RETOMAR — una decisión que bloquea el cierre contable
+>
+> **¿De dónde sale `idEmpresa` cuando la operación NO tiene cuenta bancaria?**
+>
+> Apareció **tres veces**: en el acuerdo 100% aportes (resuelto guardándola en `ACCN.PJRQCDGO`),
+> y ahora en `pagarConAportes` y en la precancelación 100% aportes directa, que **no tienen dónde
+> guardarla**.
+>
+> **Verificado: no hay camino en el modelo.** `Prestamo`, `Producto`, `Entidad`, `Contrato` no
+> tienen empresa; `CRD.FLLL` (Filial) solo tiene código, nombre, alterno y estado. Los dos patrones
+> que funcionan hoy necesitan algo que estos procesos no tienen: Petro la deriva de la **cuenta
+> bancaria**, el cierre de cartera la recibe **por parámetro batch**.
+>
+> **Tres salidas posibles:**
+> 1. **Que el cliente la mande** en cada solicitud (lo que se hizo en el acuerdo). Simple, pero hay
+>    que tocar cada endpoint y cada pantalla, y el que se olvide falla en ejecución.
+> 2. **Agregar empresa a `Filial`.** Derivaría para todo, pero conceptualmente dudoso: la filial es
+>    el empleador (Petroecuador), la empresa es la entidad contable del fondo. No es lo mismo.
+> 3. **Una configuración de módulo** — "la empresa contable de CRD" —, hermana de
+>    `ConfiguracionContabilidadService`. Hoy solo existe **una** empresa con plantilla 21 (1236).
+>
+> **Recomendación del árbitro: la 3.** El "empresa" acá es la entidad contable del fondo, que es
+> una sola por instalación; no es un atributo de la operación ni del empleador. Y es
+> multicliente-seguro: cada instalación configura la suya. **Confirmarlo con el usuario antes de
+> construir** — es una decisión de negocio, no técnica.
+>
+> ## 3. En curso cuando cayó todo
+>
+> - **Backend**: fase 1 del cierre contable (`pagarConAportes`), **bloqueado** por el punto 2.
+>   Ya tenía refactorizado `haberDesdePagos` al helper compartido.
+> - **Backend, en cola**: excedente Petro a aportes (diseño y DDL completos, sin empezar).
+> - **Frontend, sin hacer**: `idEmpresa` en el registro de acuerdos, búsqueda por ID de ASOPREP
+>   (`GET /rest/prst/porIdAsoprep/{id}`, ya expuesto), y acortar el menú a "Condonación de Valores"
+>   (hoy son 33 caracteres y se corta con puntos suspensivos).
+>
+> ## 4. Scripts SQL — verificar antes de suponer
+>
+> Corridos: **80** (cuenta 9743), **82** (hotfix columnas), **83** (`COBRO_MIXTO`).
+> **Pendientes: 84, 85, 86, 87.**
+>
+> ⚠️ **El usuario dijo "corrí los scripts" sin detallar.** Antes de desplegar, correr
+> `crd/sql/VERIFICACION-ENTIDADES-VS-ESQUEMA-CRD.sql` **completo, las DOS consultas** — la B es la
+> que encuentra columnas mapeadas que faltan, y ya atrapó una caída de producción el 2026-08-30.
+>
+> ## 5. Pendiente del usuario, no del equipo
+>
+> - **Compilar dos `.jasper`**: `RPRT_BORRADOR_CBCR` (nuevo) y `RPRT_CMPB_PGML` (regenerar).
+> - **Vaciar `C:\wildfly38\standalone\data\timer-service-data\`** con el servidor parado, en local
+>   y en producción. Ahí quedaron timers persistidos de cuando no tenían `persistent = false`, y
+>   **disparan el proceso de mora al arrancar**: el 2026-08-30 corrió a las 11:46 y escribió
+>   $175.753,06 sobre 3.683 cuotas a mitad de las pruebas.
+> - **NO encender el flag de contabilidad** (rubro 237) hasta cerrar las 4 fases del
+>   `PLAN-CIERRE-CONTABLE-TOTAL.md`.
+>
+> ## 6. Lo que sigue sin empezar: el EQUIPO B
+>
+> **Otorgamiento de créditos** (no existe: sin solicitud, sin aprobación, sin desembolso — la
+> cartera es migrada), **reestructuración** (solo simula, no se puede ejecutar) y **seguros**
+> (cero backend; el sistema cobra un seguro que no tiene registrado).
+>
+> Alcances y rangos en `crd/ALCANCE-EQUIPOS-CRD.md`; el equipo B va a una máquina distinta
+> (HP OMEN, 24 GB ampliables) porque la actual no soporta más de 3 equipos.
+>
+> ---
+
 
 > 🔵 **AHORA MISMO (2026-08-30).**
 >
