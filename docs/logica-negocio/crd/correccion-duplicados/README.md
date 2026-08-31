@@ -103,7 +103,15 @@ Los scripts de esta carpeta se intercalan con los de `crd/sql/`. **Este es el or
 | 1 | **`01_DIAGNOSTICO_PRECONDICIONES.sql`** (acá) | Responde los dos bloqueantes y mide la exposición de los otros equipos. **Solo lectura** | ▶️ **listo para correr** |
 | 2 | `crd/sql/74_RESTAURACION_VALOR_APORTES_ANULADOS.sql` | Devuelve su valor a las 2.635 filas que el 62 puso en cero | ❓ **no consta que haya corrido** |
 | 3 | `crd/sql/69_ANALISIS_DUPLICADOS_APORTES_V2.sql` | El análisis completo. **Su bloque 0.0 se niega a servir si el 74 no corrió** | ❓ no consta |
-| 4 | *(por escribir)* `02_CORRECCION_*.sql` | La corrección. **No se escribe hasta tener los resultados de 1 y 3 y cerradas D3 y D4** | ⬜ |
+| 4 | *(por escribir)* `0X_DEPURACION_EXCESO.sql` | Depuración del exceso (R1-R6). **Va ANTES de reubicar** — ver `02_ALGORITMO` §2 | ⬜ |
+| 5 | **`03_PROPUESTA_REUBICACION_DRY_RUN.sql`** (acá) | Lista de movimientos propuestos, **sin escribir nada** | ▶️ listo para correr |
+| 6 | *(por escribir)* `04_REUBICACION.sql` | El `UPDATE`, con respaldo, controles y reverso comentado | ⬜ |
+
+**Reubicación de duplicados a los meses huecos** (pedido del usuario, 2026-08-31): el algoritmo y
+su validación están en **`02_ALGORITMO_REUBICACION_MESES.md`**. Tres correcciones al enunciado
+original que salieron de verificarlo contra el código: se mueve **`APRTPRDV`**, no `APRTFCTR`;
+solo aplica a **partícipes cuyo dinero cuadra**; y un mes vacío **no es hueco** si no se esperaba
+aporte. Agrega las decisiones **D7-D10** del §6.
 
 **Contexto de referencia, no se ejecutan de nuevo:** `61` (superado por el 69), `62` (versión
 actual, ya corregida), `65`/`66` (reconstrucción de junio 2025 — el **66** es el de producción),
