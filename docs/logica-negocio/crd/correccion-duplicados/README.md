@@ -442,6 +442,78 @@ registros cuando debería ser una anomalía rara.
 
 ---
 
+## 12. ▶ LOS CUPOS — `06` corrido el 2026-08-31. Era un problema de contratos
+
+### 12.1 La sospecha del §11.4 era correcta
+
+| | Partícipes |
+|---|---|
+| Con filas móviles | **2.044** |
+| Con **contrato ACTIVO** | **1.640** |
+| Con alguna vigencia | 1.640 |
+| Con vigencia útil (`VGCNMNTO > 0`) | 1.640 |
+
+**Los tres últimos números son idénticos: el dato de vigencias está impecable.** El bloque 5 lo
+confirma — **todas** las vigencias caen en la categoría *"sirve para la grilla"*, ninguna en
+"contrato no activo", "vigencia no activa" ni "monto en cero". Arrancan todas el **2025-06-01** y
+están **abiertas**. Mi filtro `VGCNMNTO > 0` no excluye a nadie.
+
+**El problema es uno solo y es anterior: 404 partícipes no tienen contrato ACTIVO en `CRD.CNTR`.**
+
+### 12.2 Los "muchísimos sobrantes" eran eso, no aportes de más
+
+| Situación | Pares (entidad,tipo) | Filas | Cupos | Sobrantes | Valor |
+|---|---|---|---|---|---|
+| **1. Sin ningún cupo** — falta contrato | **530** | 1.972 | 0 | 1.972 | **$132.782,01** |
+| **2. Con cupos, pero cortos** — candidato real | **46** | 674 | 620 | **54** | $38.527,58 |
+| 3. Alcanzan los cupos | 2.110 | 28.812 | 29.439 | 0 | $1.581.598,23 |
+
+Y el sobrante de los candidatos reales es **de a una fila**: 39 pares con 1, 6 con 2, 1 con 3.
+**43 partícipes en total.**
+
+> **El frente de reubicación, medido de punta a punta:** ~300 pares con algo que mover, **651 meses
+> hueco**, **54 filas sobrantes reales** y **16 partícipes con saldo inflado por $2.832,99**. Eso es
+> todo. El resto de lo que parecía problema era la grilla faltante.
+
+### 12.3 ⛔ Y esto es lo grave, y no es de este frente
+
+Los 404 sin contrato **sí venían recibiendo sus aportes**: el bloque 4 los muestra con **14 y 15
+filas**, cubriendo **06/2025 → 07/2026 completo**, sin un hueco. Son aportantes activos con el
+registro de contrato faltante, no gente que dejó de aportar.
+
+Ahora seguí el camino en el código, y ahí está el problema:
+
+| Paso | Verificado |
+|---|---|
+| `esperadoPorEntidad` sin contrato ACTIVO | **devuelve `0.0`** — `VigenciaContratoServiceImpl:222-229` |
+| `distribuirAportePorDevengo`, por cada mes y tipo | `if (esperado <= 0.0) continue;` — `:3600-3602` |
+| Resultado con esperado siempre 0 | **no crea ni una fila**, `disponible` nunca baja, el bucle se va por el tope de 60 meses y sale por `System.err`: *"Disponible sin aplicar: $X"* — `:3620-3625` |
+
+> **Cuando el devengo por `CRD.VGCN` corra en producción, esos 404 partícipes dejan de recibir
+> aportes y su dinero se descarta con una advertencia en el log.** No falla la carga, no hay
+> excepción, no hay fila: solo una línea en `stderr` que nadie mira.
+>
+> Sus filas actuales (06/2025→07/2026) las creó el camino anterior, que sacaba el esperado de
+> `HistorialSueldo` y no de la vigencia. Por eso hasta hoy no se notó.
+
+**Este árbitro no puede verificar si ese código ya está desplegado** — `ESTADO-CRD.md` daba el WAR
+en despliegue el 2026-08-31. Si todavía no salió, **hay tiempo de crear los 404 contratos antes de
+la próxima carga**. Si ya salió, **la carga de agosto ya descartó ese dinero**.
+
+Avisado al árbitro del equipo A el 2026-08-31: `CRD.CNTR`, la carga Petro y el frente de
+contratos-vigencias son suyos.
+
+### 12.4 Qué significa para la reubicación
+
+- **Aplicable ya:** los **1.640 partícipes con grilla**. Ahí los cupos alcanzan (28.812 filas contra
+  29.439 cupos) y la compactación tiene contra qué compactar.
+- **En espera:** los **404 sin contrato**, con **1.972 filas y $132.782,01**. No se les puede
+  reubicar nada: sin grilla no hay mes destino. **Y no se les inventa una** — fabricar la grilla
+  desde su propio historial de aportes sería deducir el contrato de los pagos, que es exactamente
+  al revés de como debe leerse.
+
+---
+
 ## 8. Documentos relacionados
 
 - `../ANALISIS-APORTES-DUPLICADOS-PETRO.md` — el marco: versiones del generador, mecanismos M1-M8,
