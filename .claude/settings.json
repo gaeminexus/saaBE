@@ -1,0 +1,71 @@
+{
+  "$comentario": [
+    "Reglas de permiso compartidas del repositorio. Este archivo SI se versiona, asi que aplica",
+    "igual en la laptop y en la OMEN. settings.local.json es de cada maquina y se suma a este.",
+    "",
+    "Semantica que conviene tener presente al editar:",
+    "  - Un * matchea cualquier texto, INCLUIDOS los espacios. Todo lo anterior al primer * se",
+    "    matchea literal. Por eso un * dentro de una expresion regular o un sed convierte la regla",
+    "    en un comodin sin querer: 'grep -v \"^\\s*...\"' concede todo lo que empiece con 'grep -v \"^\\s'.",
+    "  - deny gana siempre sobre allow y NO admite excepciones. Un deny amplio bloquea incluso lo",
+    "    que un allow mas especifico permitiria.",
+    "  - Quitar algo de allow no es denegarlo: vuelve a preguntar, que suele ser lo que se quiere."
+  ],
+
+  "permissions": {
+    "deny": [
+      "Bash(git checkout *)",
+      "Bash(git restore *)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean *)",
+      "Bash(git push --force*)",
+      "Bash(git push -f *)",
+      "Bash(docker cp *)"
+    ],
+
+    "$comentario_deny": [
+      "git checkout, restore, reset --hard y clean DESCARTAN trabajo sin commitear, en silencio y",
+      "sin vuelta atras. Con varios equipos sobre el mismo arbol y decenas de archivos modificados,",
+      "es el unico error de esta lista que no se puede deshacer. Para cambiar de rama esta git switch,",
+      "que se niega a perder cambios en vez de tirarlos.",
+      "docker cp mueve archivos dentro y fuera de cualquier contenedor: no hay caso de uso legitimo",
+      "para un agente aca."
+    ],
+
+    "allow": [
+      "Bash(git status*)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(git branch*)",
+      "Bash(git switch *)",
+      "Bash(git stash list*)",
+
+      "Bash(mvn -v)",
+      "Bash(mvn -version)",
+      "Bash(mvn compile*)",
+      "Bash(mvn clean compile*)",
+      "Bash(mvn clean install*)",
+      "Bash(mvn dependency:tree*)",
+      "Bash(java -version)",
+      "Bash(javac -version)",
+
+      "Bash(docker exec saa-oracle-23ai *)",
+
+      "WebFetch(domain:www.sri.gob.ec)",
+      "WebSearch",
+      "Skill(sri)",
+      "Skill(sri:*)"
+    ],
+
+    "$comentario_allow": [
+      "docker exec queda acotado al contenedor de Oracle, no a cualquiera. Ojo: el comodin cubre",
+      "todo lo que siga, asi que NO distingue un select de un drop. La barrera real es conectarse",
+      "con un usuario de Oracle de solo lectura; esta regla solo limita el contenedor.",
+      "",
+      "Fuera de allow a proposito, para que vuelvan a preguntar: python -c y awk con comilla abierta",
+      "(ejecucion arbitraria), npx (descarga y corre paquetes), y las reglas cuyo * quedo dentro de",
+      "una regex o un sed."
+    ]
+  }
+}
