@@ -95,9 +95,24 @@ el otro equipo: es la lección del §2b de ese archivo, y aplica también a este
 | `SCP.PRBR` | **310-329** | el registro marca `≥310` sin asignar. **Sin escribir** |
 | `SCP.PDTR` | **1500-1599** | el registro marca `≥1500` sin asignar. **Sin escribir** |
 
-⛔ **`PRBR 290-309` / `PDTR 1400-1499` NO son de este equipo.** El registro los rotula "equipo
-cxp/cxc/tsr/rhh/sri", que es `saabe-bc` — y el usuario confirmó que **sigue activo**. Tomarlos
-porque los módulos coinciden sería exactamente el error que ese archivo existe para evitar.
+⛔ **`PRBR 290-309` / `PDTR 1400-1499` NO son de este equipo — y ahora se sabe de quién son.**
+
+- **Al 2026-08-31 por la mañana:** el registro los rotulaba "equipo cxp/cxc/tsr/rhh/sri" sin decir
+  qué sesión era, y el usuario le había dicho a este árbitro que `saabe-bc` **seguía activo**. Este
+  equipo se abstuvo de tomarlos: los módulos coincidían, pero coincidir de módulos no es ser dueño.
+- **Al 2026-08-31 por la tarde:** el árbitro de `omen-saa-3` rotuló el bloque a su nombre
+  (commit **`ea29ec7`**, verificado por este árbitro leyendo el diff, no de oído) y dejó anotado
+  que **`saabe-bc` fue reemplazado por `omen-saa-3`, confirmado por el usuario**, heredando alcance,
+  documento de estado y bloque de rubros.
+
+⚠️ **Esa confirmación del usuario le llegó a este árbitro por un par, no directamente.** No cambia
+la conducta —el bloque no es nuestro en ninguna de las dos versiones— pero sí cambia a quién hay que
+hablarle: **la contraparte de estos seis módulos es `omen-saa-3`, no `saabe-bc`.**
+
+> **La lección, que es del archivo y no de este equipo:** una fila que identifica al equipo **por sus
+> módulos** y no **por su sesión** envejece mal. Cuando el equipo se releva, el rótulo sigue igual y
+> ya no apunta a nadie localizable: el bloque no lo usa su dueño ni lo puede tomar nadie más.
+> Quedó escrita en el registro.
 
 ### Hueco encontrado en el esquema de rangos: solo cubre `crd/sql/`
 
@@ -112,8 +127,20 @@ casualidad (distinto separador y sufijo), pero **el número dejó de decir en qu
 que es lo único para lo que servía. `tsr/sql/` tiene un `README-ORDEN-PRODUCCION.md` justamente
 porque ahí el riesgo se vio venir.
 
-**Acción pendiente del árbitro:** proponerle a `saabe-bc` un reparto por carpeta, o pasar a un
-prefijo por equipo en vez de un número global.
+**Acción del árbitro (2026-08-31):** la contraparte es **`omen-saa-3`**, no `saabe-bc` (ver §2).
+Propuesta enviada, y **el `rhh/sql/` lo renumera ellos**, que es su carpeta.
+
+**La propuesta, en una línea:** el número estaba haciendo **dos trabajos a la vez** —decir de quién
+es el script y decir en qué orden se ejecuta— y falló en los dos. Se separan:
+
+| Trabajo | Mecanismo |
+|---|---|
+| **De quién es** | **prefijo por equipo**. Un rango se agota y se renegocia; un prefijo no |
+| **En qué orden va** | un **`README-ORDEN.md` por carpeta**, fuente única |
+
+`tsr/sql/` ya resolvió la segunda mitad sin que nadie lo generalizara: tiene su
+`README-ORDEN-PRODUCCION.md`. Y este frente ya aplica las dos (carpeta propia, serie propia, orden
+en el §4 de su README).
 
 ---
 
