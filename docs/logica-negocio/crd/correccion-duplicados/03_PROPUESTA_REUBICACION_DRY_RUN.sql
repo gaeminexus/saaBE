@@ -114,9 +114,11 @@ VALOR_CARGA AS (
         FROM    CRD.APRT a
         WHERE   a.TPAPCDGO IN (9, 11)
         AND     a.APRTVLRR > 0
-        AND     (   a.APRTGLSA LIKE 'Aporte %CargaArchivo: %'
-                 OR a.APRTGLSA LIKE 'Abono al aporte%'
-                 OR a.CRARCDGO IS NOT NULL)
+        AND     (   a.CRARCDGO IS NOT NULL
+                 OR (    a.APRTFCTR >= DATE '2025-06-01'
+                     AND (   EXISTS (SELECT 1 FROM CRD.CRAR cr WHERE cr.CRARCDGO = a.APRTIDAS)
+                          OR a.APRTGLSA LIKE 'Aporte %CargaArchivo: %'
+                          OR a.APRTGLSA LIKE 'Abono al aporte%')))
         GROUP BY a.ENTDCDGO
 )
 SELECT  CASE WHEN ABS(v.VALOR - NVL(d.DESCONTADO, 0)) <= 0.02
@@ -173,9 +175,11 @@ APORTES AS (
                 a.APRTPRDV, a.APRTFCTR, a.APRTIDAS, a.APRTTPMV,
                 CASE WHEN a.APRTPRDV IS NOT NULL THEN a.APRTPRDV
                      ELSE TRUNC(a.APRTFCTR, 'MM') END               AS PERIODO_EFECTIVO,
-                CASE WHEN (   a.APRTGLSA LIKE 'Aporte %CargaArchivo: %'
-                           OR a.APRTGLSA LIKE 'Abono al aporte%'
-                           OR a.CRARCDGO IS NOT NULL)
+                CASE WHEN (   a.CRARCDGO IS NOT NULL
+                           OR (    a.APRTFCTR >= DATE '2025-06-01'
+                               AND (   EXISTS (SELECT 1 FROM CRD.CRAR cr WHERE cr.CRARCDGO = a.APRTIDAS)
+                                    OR a.APRTGLSA LIKE 'Aporte %CargaArchivo: %'
+                                    OR a.APRTGLSA LIKE 'Abono al aporte%')))
                      THEN 'MOVIL' ELSE 'FIJA' END                    AS CLASE
         FROM    CRD.APRT a
         WHERE   a.TPAPCDGO IN (9, 11)
@@ -311,9 +315,11 @@ APORTES AS (
         SELECT  a.APRTCDGO, a.ENTDCDGO, a.TPAPCDGO, a.APRTVLRR, a.APRTGLSA, a.APRTPRDV,
                 CASE WHEN a.APRTPRDV IS NOT NULL THEN a.APRTPRDV
                      ELSE TRUNC(a.APRTFCTR, 'MM') END               AS PERIODO_EFECTIVO,
-                CASE WHEN (   a.APRTGLSA LIKE 'Aporte %CargaArchivo: %'
-                           OR a.APRTGLSA LIKE 'Abono al aporte%'
-                           OR a.CRARCDGO IS NOT NULL)
+                CASE WHEN (   a.CRARCDGO IS NOT NULL
+                           OR (    a.APRTFCTR >= DATE '2025-06-01'
+                               AND (   EXISTS (SELECT 1 FROM CRD.CRAR cr WHERE cr.CRARCDGO = a.APRTIDAS)
+                                    OR a.APRTGLSA LIKE 'Aporte %CargaArchivo: %'
+                                    OR a.APRTGLSA LIKE 'Abono al aporte%')))
                      THEN 'MOVIL' ELSE 'FIJA' END                    AS CLASE
         FROM    CRD.APRT a
         WHERE   a.TPAPCDGO IN (9, 11)
@@ -414,9 +420,11 @@ APORTES AS (
         SELECT  a.APRTCDGO, a.ENTDCDGO, a.TPAPCDGO, a.APRTVLRR,
                 CASE WHEN a.APRTPRDV IS NOT NULL THEN a.APRTPRDV
                      ELSE TRUNC(a.APRTFCTR, 'MM') END           AS PERIODO_EFECTIVO,
-                CASE WHEN (   a.APRTGLSA LIKE 'Aporte %CargaArchivo: %'
-                           OR a.APRTGLSA LIKE 'Abono al aporte%'
-                           OR a.CRARCDGO IS NOT NULL)
+                CASE WHEN (   a.CRARCDGO IS NOT NULL
+                           OR (    a.APRTFCTR >= DATE '2025-06-01'
+                               AND (   EXISTS (SELECT 1 FROM CRD.CRAR cr WHERE cr.CRARCDGO = a.APRTIDAS)
+                                    OR a.APRTGLSA LIKE 'Aporte %CargaArchivo: %'
+                                    OR a.APRTGLSA LIKE 'Abono al aporte%')))
                      THEN 'MOVIL' ELSE 'FIJA' END                AS CLASE
         FROM    CRD.APRT a
         WHERE   a.TPAPCDGO IN (9, 11) AND a.APRTVLRR > 0
