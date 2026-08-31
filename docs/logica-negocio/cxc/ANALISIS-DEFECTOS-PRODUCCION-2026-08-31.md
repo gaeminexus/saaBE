@@ -108,7 +108,82 @@ Por eso el log dice `>>> Estado WS1 Recepción: [DEVUELTA]` y nada más.
 
 **Corrección:** propagar los mensajes al resultado y al log de consola, no sólo al archivo.
 
-#### D2b — El secuencial es `000000000`, y es casi con certeza la causa del rechazo
+#### ✅ D2-CAUSA REAL — `tipoIdentificacionProveedor` manda el rubro interno crudo
+
+**Confirmado con la respuesta del SRI, 2026-08-31.** El archivo de log de D2a la tenía:
+
+```xml
+<identificador>35</identificador>
+<mensaje>ARCHIVO NO CUMPLE ESTRUCTURA XML</mensaje>
+<informacionAdicional>cvc-pattern-valid: Value '1' is not facet-valid with respect to
+   pattern '[0][4-8]' for type 'tipoIdentificacionProveedor'.</informacionAdicional>
+```
+
+> ⚠️ **La hipótesis del secuencial era incorrecta como causa del rechazo.** Se mantiene abajo
+> porque el defecto es real, pero **no es lo que rompió hoy**: el SRI valida el XSD antes que nada
+> y frena en el primer error de estructura. **La lección: un log que no dice el motivo no autoriza
+> a inferirlo del dato más llamativo.** El motivo estaba en disco todo el tiempo (D2a) y bastaba
+> con leerlo.
+
+**La línea:**
+
+```java
+// LiquidacionCompraServiceImpl:1017
+writeElement(writer, "tipoIdentificacionProveedor",
+        String.valueOf(liquidacion.getTitular().getRubroTipoIdentificacionH()), 4);
+```
+
+Manda el **código del rubro interno** (`1`) donde el XSD del SRI exige el patrón `[0][4-8]`, o sea
+`04` RUC · `05` cédula · `06` pasaporte · `07` consumidor final · `08` identificación del exterior.
+**Los dos catálogos no coinciden ni en valores ni en orden.**
+
+**Es exactamente la trampa #1 del frente Q**, ya encontrada y corregida *para el ATS* (`ESTADO`
+§2, «Tres correcciones encontradas antes de entregar»): *«el plan era reusar
+`Titular.rubroTipoIdentificacionH` tal cual… habría mandado RUC y Cédula invertidos»*. **Se corrigió
+en el generador del ATS y no se buscó el mismo patrón en los generadores de comprobantes.**
+
+##### El patrón correcto ya existe en el repositorio
+
+`FacturaServiceImpl:1073-1092` —el generador de facturas de venta, que sí emite bien— resuelve el
+código contra el catálogo y normaliza a dos dígitos:
+
+```java
+String valorAlfa = detalleRubroService.selectValorStringByRubAltDetAlt(
+        titular.getRubroTipoIdentificacionP().intValue(),   // rubro PADRE
+        titular.getRubroTipoIdentificacionH().intValue());  // rubro HIJO
+tipo = (valorAlfa.length() == 1) ? "0" + valorAlfa : valorAlfa;
+```
+
+**Dos diferencias con el código roto, y las dos importan:** usa **los dos** rubros (padre e hijo),
+no sólo el hijo; y **pasa por el catálogo**, que es donde vive la equivalencia con el código del SRI.
+
+##### El mismo defecto, en un segundo lugar
+
+| Archivo:línea | Campo | Estado |
+|---|---|---|
+| `LiquidacionCompraServiceImpl:1017` | `tipoIdentificacionProveedor` | 🔴 **es el que falló hoy** |
+| `RetencionServiceImpl:231` | `tipoIdentificacionSujetoRetenido` | 🟠 **mismo bug, latente** |
+
+`RetencionServiceImpl` es el generador **viejo** (el vigente es `RetencionV2ServiceImpl`, ruta
+`/rtv2`, que no aparece en el barrido y por lo tanto no tiene el defecto). Corregirlo igual, o
+confirmar que está muerto y retirarlo — pero **no dejarlo como está**: hoy no lo alcanza nadie, y
+esa es exactamente la condición del `TSR.TSRD` del §7.4b, que se dejó latente y sigue ahí.
+
+##### ⚠️ Decisión de diseño: qué hacer si el catálogo no resuelve
+
+El patrón de la factura usa `"05"` (cédula) como **valor por defecto silencioso** cuando el lookup
+falla o devuelve vacío. **Para la liquidación de compra eso no debe copiarse tal cual:** emitir un
+comprobante fiscal con un tipo de identificación adivinado es peor que no emitirlo — el SRI lo
+acepta y queda mal declarado, sin ningún error visible.
+
+**Criterio del árbitro: abortar la emisión con un mensaje claro**, igual que ya se decidió para
+`dirEstablecimiento` vacío en este mismo método (*«El XSD declara dirEstablecimiento con
+minLength>=1: un comprobante con este campo vacío el SRI lo devuelve. Mejor abortar la emisión»*).
+Un `IncomeException` que nombre al titular y su tipo de identificación sin mapear.
+
+---
+
+#### D2b — El secuencial es `000000000` — defecto real, pero NO la causa del rechazo de hoy
 
 Del log: `Número: 001-001-000000000`. Y la clave de acceso lo confirma al desglosarla:
 
