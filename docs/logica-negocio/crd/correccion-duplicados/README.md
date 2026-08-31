@@ -514,6 +514,77 @@ contratos-vigencias son suyos.
 
 ---
 
+## 13. ▶ QUÉ TIENE `APRTPRDV` — `07` corrido el 2026-08-31
+
+**Todo lo que hay en el campo lo escribió el backfill `63`.** Ninguna carga corrió con devengo
+(confirmado por el usuario), así que no hay un solo valor puesto por la aplicación.
+
+### 13.1 El reparto
+
+| Desplazamiento (devengo − mes de caja) | Filas | Valor |
+|---|---|---|
+| **0** — regla 1, copia del mes de caja | **31.343** | 1.745.671,61 |
+| **−1 a −15** — regla 2, movidas hacia atrás | **971** | ~63.163 |
+| positivo | **0** | — |
+
+Ningún desplazamiento positivo, como se esperaba: el `63` solo mira hacia atrás.
+
+### 13.2 ⛔ 854 filas quedaron con devengo ANTERIOR al piso — y eso es un doble cobro pendiente
+
+| | |
+|---|---|
+| Filas con `APRTPRDV < 2025-06-01` | **854** |
+| Partícipes | **744** |
+| Valor | **$55.765,33** |
+| Rango de devengo asignado | **2024-11-01 → 2025-05-01** |
+
+Y el cruce contra la vigencia (bloque 3) lo agrava, porque **todas las vigencias arrancan el
+2025-06-01** (medido en el `06` §5):
+
+| Situación | Filas | Partícipes | Valor |
+|---|---|---|---|
+| Devengo **fuera de toda vigencia** | **774** | 668 | **$50.238,32** |
+| Sin contrato ACTIVO — no evaluable | 2.066 | 528 | 139.072,15 |
+| Devengo dentro de la vigencia | 29.474 | — | 1.619.524,15 |
+
+> **El `63` asignó pagos a meses en los que el partícipe no tenía ninguna obligación.** No es un
+> matiz de fechas: `sumValorPorEntidadTipoYRangoDevengo` filtra
+> `HAVING periodo BETWEEN 2025-06-01 AND mesCarga`, así que **esas 854 filas son invisibles para el
+> cálculo del faltante**. El dinero está en el saldo (`SUM(APRTVLRR)` las cuenta), pero **no cubre
+> ningún mes en alcance**.
+>
+> **Consecuencia: la primera carga con devengo les vuelve a cobrar esos meses a 744 partícipes.**
+
+### 13.3 Los casos, con nombre
+
+| Partícipe | Carga | Mes de caja | Devengo asignado | Desplazamiento |
+|---|---|---|---|---|
+| AGUILAR VALENCIA VICTOR HUGO | 427 | 06/2026 | **03/2025, 04/2025, 05/2025** | −15, −14, −13 |
+| CAIZA GAVILANES BAYRUN MARCELO | 363 | 01/2026 | **11/2024, 12/2024, 01/2025, 02/2025** | −14 a −11 |
+| TORRES ERAZO MAURICIO ALEXANDER | 360 | 11/2025 | 11/2024, 12/2024 | −12, −11 |
+
+Leído en castellano: **CAIZA pagó cuatro meses atrasados en enero de 2026, y el backfill los fechó
+entre noviembre de 2024 y febrero de 2025** — meses anteriores a que existiera la obligación. Los
+meses que sí debía (2025-06 en adelante) siguen figurando impagos.
+
+Todos los casos extremos son **tipo 11 (cesantía)**.
+
+### 13.4 Qué cambia esto para el frente
+
+**La reubicación deja de ser una mejora y pasa a ser la corrección de un defecto con monto.**
+
+- **No es una primera pasada:** el `63` ya repartió, sin grilla y sin piso. Esta es la segunda, con
+  las dos restricciones que le faltaban.
+- **La compactación de este frente resuelve las 854**, porque solo asigna meses **dentro de la
+  vigencia** y **desde 2025-06**. Es exactamente lo que el `63` no podía hacer.
+- **Tiene fecha límite:** antes de la primera carga con devengo. Después, esa carga empieza a cobrar
+  de nuevo los meses que las 854 filas dejaron descubiertos.
+
+⚠️ **El `63` es del frente de devengo (equipo A).** Avisado su árbitro el 2026-08-31: el defecto es
+de su script, la corrección cae en este frente, y conviene que la revisen antes de aplicarla.
+
+---
+
 ## 8. Documentos relacionados
 
 - `../ANALISIS-APORTES-DUPLICADOS-PETRO.md` — el marco: versiones del generador, mecanismos M1-M8,
