@@ -1,20 +1,20 @@
--- =====================================================================================
--- LO QUE HAY QUE CORRER EN PRODUCCION — 2026-08-31
+﻿-- =====================================================================================
+-- LO QUE HAY QUE CORRER EN PRODUCCION â€” 2026-08-31
 --
--- ⚠️ TODO LO DE ESTE ARCHIVO YA SE EJECUTO Y SE VERIFICO EN LA BASE LOCAL.
+-- âš ï¸ TODO LO DE ESTE ARCHIVO YA SE EJECUTO Y SE VERIFICO EN LA BASE LOCAL.
 -- Corrio el arbitro (`saabe-25`) con permiso puntual del usuario. **En produccion NO se
 -- corrio nada de esto.** Este archivo es lo que falta ejecutar alla, en este orden.
 --
 -- Son dos cosas independientes:
---   BLOQUE 1 — un UPDATE urgente que CORRIGE UN ESTADO INCORRECTO que ya esta en produccion.
---   BLOQUE 2 — el DDL de CRD.PGPC y su catalogo (equivale al script 96 completo).
+--   BLOQUE 1 â€” un UPDATE urgente que CORRIGE UN ESTADO INCORRECTO que ya esta en produccion.
+--   BLOQUE 2 â€” el DDL de CRD.PGPC y su catalogo (equivale al script 97 completo).
 --
 -- Cada bloque trae sus propios controles. Si un control no da lo esperado, PARAR.
 -- =====================================================================================
 
 
 -- =====================================================================================
--- BLOQUE 1 — ⛔ URGENTE: apagar TPAPPRDP
+-- BLOQUE 1 â€” â›” URGENTE: apagar TPAPPRDP
 -- =====================================================================================
 --
 -- QUE PASO. El 2026-08-31 se corrio en produccion el script 95, que carga
@@ -34,7 +34,7 @@
 -- (D 2.3.01.xx -> H Banco) SIN que CRD haya reconocido la obligacion. La cuenta de
 -- liquidacion queda debitada contra nada.
 --
--- ⚠️ Y los dos asientos, por separado, CUADRAN. Nada lo detecta.
+-- âš ï¸ Y los dos asientos, por separado, CUADRAN. Nada lo detecta.
 --
 -- ESTO NO BORRA NADA. Los 5 grupos y los 5 productos de pago que creo el script 95 quedan
 -- creados y listos. Solo se apaga el mapeo: `contabiliza` vuelve a dar false y CXP deja de
@@ -70,17 +70,17 @@ ORDER  BY p.NOMBRE;
 
 
 -- =====================================================================================
--- BLOQUE 2 — CRD.PGPC + catalogo PAGO_PENSION (= script 96 completo)
+-- BLOQUE 2 â€” CRD.PGPC + catalogo PAGO_PENSION (= script 97 completo)
 -- =====================================================================================
 --
--- Es el script `96_PAGO_PENSION_COMPLEMENTARIA.sql` tal cual. Se replica aca para que este
--- archivo sea autosuficiente, pero **el 96 es la fuente**: si divergen, gana el 96.
+-- Es el script `97_PAGO_PENSION_COMPLEMENTARIA.sql` tal cual. Se replica aca para que este
+-- archivo sea autosuficiente, pero **el 97 es la fuente**: si divergen, gana el 97.
 --
--- ⚠️ NO desplegar el WAR con el frente de jubilados sin correr esto antes. La entidad
+-- âš ï¸ NO desplegar el WAR con el frente de jubilados sin correr esto antes. La entidad
 -- PagoPensionComplementaria mapea 19 columnas de CRD.PGPC; si la tabla no existe, cualquier
 -- lectura de esa entidad revienta.
 --
--- ⚠️ LA PK ES IDENTITY, NO SECUENCIA (la entidad declara GenerationType.IDENTITY).
+-- âš ï¸ LA PK ES IDENTITY, NO SECUENCIA (la entidad declara GenerationType.IDENTITY).
 --
 -- VERIFICADO EN LOCAL el 2026-08-31: tabla creada, 6 constraints ENABLED/VALIDATED, 4
 -- indices VALID con OWNER = CRD, 19 columnas, IDENTITY_COLUMN = YES, y el PDTR 1200
@@ -136,7 +136,7 @@ COMMENT ON COLUMN CRD.PGPC.PGPCIDPG IS 'Orden de pago en CXP (PGS.PGTR). Sin FK,
 COMMENT ON COLUMN CRD.PGPC.PGPCIDAP IS 'Aporte NEGATIVO generado en CRD.APRT por este pago. Sin FK, mismo criterio.';
 COMMENT ON COLUMN CRD.PGPC.PGPCNMAS IS 'Asiento (ASNTCDGO, la PK, no el correlativo ASNTNMRO). Hoy lo puebla el reconciliador con el asiento que genera CXP al confirmar el pago; CRD no genera uno propio para el pago mensual.';
 
--- 2.3 EL CATALOGO — rubro 235 alterno 9, PDTR 1200 (rango del equipo A).
+-- 2.3 EL CATALOGO â€” rubro 235 alterno 9, PDTR 1200 (rango del equipo A).
 INSERT INTO SCP.PDTR (PDTRCDGO, PRBRCDGO, PDTRDSCR, PDTRVLRN, PDTRVLRV, PDTRALTR, PDTRESTD)
 SELECT 1200, r.PRBRCDGO, 'PAGO PENSION', 9, 'PAGO_PENSION', 9, 1
 FROM   SCP.PRBR r
@@ -168,7 +168,7 @@ WHERE  r.PRBRALTR = 235 ORDER BY d.PDTRALTR;                                    
 
 
 -- =====================================================================================
--- 3. REVERSO — comentado a proposito.
+-- 3. REVERSO â€” comentado a proposito.
 -- =====================================================================================
 -- Del BLOQUE 1: volver a encender el mapeo es correr el BLOQUE 3 del script 95, y SOLO
 -- despues de encender el rubro 237.
@@ -178,3 +178,4 @@ WHERE  r.PRBRALTR = 235 ORDER BY d.PDTRALTR;                                    
 -- DROP TABLE CRD.PGPC CASCADE CONSTRAINTS;
 -- COMMIT;
 -- =====================================================================================
+
