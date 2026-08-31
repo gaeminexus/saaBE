@@ -179,15 +179,18 @@ public class PrestamoServiceImpl implements PrestamoService {
                 throw new IncomeException("El préstamo " + idPrestamo + " ya tiene " + cuotasExistentes.size()
                     + " cuota(s) generadas. Para reemplazar la tabla, pedir la regeneración explícita.");
             }
-            // Regla del usuario, no negociable: una cuota con pagos vigentes no se toca nunca.
-            // La regeneración parcial (preservar las pagadas y re-amortizar el resto) es la
-            // máquina de la reestructuración y no va en este cambio — ver §8 U2 caso B.
+            // Regla del usuario, no negociable: una cuota con pagos no se toca nunca. Se cuentan
+            // TODOS los pagos, anulados incluidos (countByIdDetallePrestamo, del equipo A, sin
+            // try/catch): un pago anulado sigue teniendo FK a esta cuota, así que borrarla
+            // dejaría filas colgando en CRD.PGPR. Si la consulta falla, la excepción sube y
+            // aborta la operación entera. La regeneración parcial (preservar las pagadas y
+            // re-amortizar el resto) es la máquina de la reestructuración y no va en este
+            // cambio — ver §8 U2 caso B.
             for (DetallePrestamo cuota : cuotasExistentes) {
-                List<PagoPrestamo> pagosVigentes =
-                    pagoPrestamoDaoService.selectVigentesByIdDetallePrestamo(cuota.getCodigo());
-                if (pagosVigentes != null && !pagosVigentes.isEmpty()) {
+                long totalPagos = pagoPrestamoDaoService.countByIdDetallePrestamo(cuota.getCodigo());
+                if (totalPagos > 0) {
                     throw new IncomeException("La cuota " + cuota.getNumeroCuota()
-                        + " ya tiene pagos registrados; no se puede regenerar la tabla.");
+                        + " ya tiene pagos registrados (incluidos anulados); no se puede regenerar la tabla.");
                 }
             }
             // Ninguna cuota tiene pagos: no hubo hecho financiero que historiar, así que no se

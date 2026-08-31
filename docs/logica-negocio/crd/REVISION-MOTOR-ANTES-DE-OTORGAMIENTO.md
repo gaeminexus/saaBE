@@ -191,9 +191,20 @@ de cualquier otra cosa del frente:
   la mitad, que es peor que no hacer nada.
 - El FE confirma con diálogo antes de regenerar, diciendo cuántas cuotas se van a reemplazar.
 
-#### ⚠️ Pendiente abierto en la guarda — dos agujeros conocidos, a propósito
+#### ✅ CERRADO el 2026-08-31 — la guarda tenía dos agujeros y ya no los tiene
 
-La guarda implementada usa `pagoPrestamoDaoService.selectVigentesByIdDetallePrestamo`, y ese método
+**Resuelto.** La guarda usa ahora `pagoPrestamoDaoService.countByIdDetallePrestamo(...)`, escrito por
+el **equipo A** (dueño de `CRD.PGPR`): cuenta **todos** los pagos, anulados incluidos, y **propaga la
+excepción** en vez de tragársela. Verificado con `mvn -q clean compile`.
+
+Se deja el análisis de abajo porque explica **por qué** la guarda quedó así y por qué no alcanzaba
+con el método que existía. Los dos defectos los detectó la pregunta del árbitro del equipo A —*"si
+regenerar borra y recrea cuotas, mis `PagoPrestamo` tienen FK a esas cuotas"*—, no esta revisión.
+
+<details>
+<summary>Los dos agujeros que tenía, y por qué</summary>
+
+La guarda original usaba `pagoPrestamoDaoService.selectVigentesByIdDetallePrestamo`, y ese método
 tiene dos problemas para este uso:
 
 1. **Filtra los pagos anulados** (`anulado IS NULL OR anulado = 0`). Una cuota cuyos pagos fueron
@@ -208,11 +219,13 @@ tiene dos problemas para este uso:
 tienen FK a las cuotas. La solución es un método `countByIdDetallePrestamo(Long) throws Throwable`
 que cuente **todos** los pagos, anulados incluidos, y que **no** atrape la excepción.
 
-**Lo escribe el EQUIPO A, no nosotros**: `CRD.PGPR` es su área y la guarda existe para proteger sus
-FK. Está listo en su working tree, sin commitear — o sea, todavía invisible acá. Cuando llegue a
-`origin`, el cambio de nuestro lado es una línea. **Hasta entonces la guarda queda con los dos
-agujeros, a propósito, sin TODO en el código**: nada está desplegado y un medio-arreglo es peor que
-un pendiente anotado.
+**Lo escribió el EQUIPO A, no nosotros**: `CRD.PGPR` es su área y la guarda existe para proteger sus
+FK. Mientras su método no llegó a `origin`, la guarda quedó con los dos agujeros **a propósito y sin
+TODO en el código** — nada estaba desplegado, y un medio-arreglo contra un método inexistente es peor
+que un pendiente anotado. Llegó el 2026-08-31 y el cambio de nuestro lado fue, efectivamente, una
+línea.
+
+</details>
 
 ### N2 — la corrección de D1 contaminó `PRSTVLCT` · **ALTA**
 
