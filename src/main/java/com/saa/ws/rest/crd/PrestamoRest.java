@@ -332,10 +332,13 @@ public class PrestamoRest {
     @Produces(MediaType.APPLICATION_JSON)
     public Response generarTablaAmortizacion(
             @PathParam("id") Long id,
-            @PathParam("tieneCuotaCero") Long tieneCuotaCero) {
-        System.out.println("GENERAR TABLA DE AMORTIZACIÓN - Préstamo ID: " + id + ", Cuota 0: " + tieneCuotaCero);
+            @PathParam("tieneCuotaCero") Long tieneCuotaCero,
+            @QueryParam("regenerar") Boolean regenerar) {
+        System.out.println("GENERAR TABLA DE AMORTIZACIÓN - Préstamo ID: " + id + ", Cuota 0: " + tieneCuotaCero
+            + ", Regenerar: " + regenerar);
         try {
-            Prestamo prestamo = prestamoService.generarTablaAmortizacion(id, tieneCuotaCero);
+            Prestamo prestamo = prestamoService.generarTablaAmortizacion(id, tieneCuotaCero,
+                regenerar != null && regenerar);
             return Response.status(Response.Status.OK)
                     .entity(prestamo)
                     .type(MediaType.APPLICATION_JSON)

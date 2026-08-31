@@ -81,6 +81,14 @@ public class PrestamoServiceImpl implements PrestamoService {
         return result;
     }
 
+    /**
+     * Guarda un préstamo. D10 (decisión 11 del plan de simuladores): además de persistir tal
+     * cual el préstamo recibido, este método deriva {@code interesNominal} (PRSTINNM) de
+     * {@code tasa} (PRSTTSAA) EN CADA GUARDADO, aunque el llamador no lo mande — para que
+     * {@code ProcesoMoraPrestamoServiceImpl} deje de caer al default silencioso de 9%.
+     * Cualquier flujo que guarde un {@link Prestamo} a través de este método escribe PRSTINNM
+     * como efecto secundario.
+     */
     @Override
     public Prestamo saveSingle(Prestamo prestamo) throws Throwable {
         System.out.println("saveSingle - Prestamo");
@@ -118,14 +126,15 @@ public class PrestamoServiceImpl implements PrestamoService {
     }
     
     @Override
-    public Prestamo generarTablaAmortizacion(Long idPrestamo, Long tieneCuotaCero) throws Throwable {
-        System.out.println("Generando tabla de amortización para préstamo ID: " + idPrestamo + " - Cuota 0: " + tieneCuotaCero);
-        
+    public Prestamo generarTablaAmortizacion(Long idPrestamo, Long tieneCuotaCero, boolean regenerar) throws Throwable {
+        System.out.println("Generando tabla de amortización para préstamo ID: " + idPrestamo + " - Cuota 0: "
+            + tieneCuotaCero + " - Regenerar: " + regenerar);
+
         Prestamo prestamo = prestamoDaoService.selectById(idPrestamo, NombreEntidadesCredito.PRESTAMO);
         if (prestamo == null) {
             throw new IncomeException("Préstamo con ID " + idPrestamo + " no encontrado");
         }
-        
+
         if (prestamo.getTipoAmortizacion() == null) {
             throw new IncomeException("El préstamo no tiene definido el tipo de amortización");
         }
@@ -141,28 +150,59 @@ public class PrestamoServiceImpl implements PrestamoService {
         if (prestamo.getFechaInicio() == null) {
             throw new IncomeException("El préstamo no tiene definida una fecha de inicio");
         }
-        
+
+        // N1 (BLOQUEANTE, REVISION-MOTOR-ANTES-DE-OTORGAMIENTO.md, decisión U2 caso A): el
+        // generador no era idempotente — dos llamadas duplicaban la tabla y
+        // actualizarCamposPrestamo recalculaba la cabecera sobre la lista nueva, sin delatar
+        // la duplicación.
+        List<DetallePrestamo> cuotasExistentes = detallePrestamoDaoService.selectByPrestamo(idPrestamo);
+        if (cuotasExistentes != null && !cuotasExistentes.isEmpty()) {
+            if (!regenerar) {
+                throw new IncomeException("El préstamo " + idPrestamo + " ya tiene " + cuotasExistentes.size()
+                    + " cuota(s) generadas. Para reemplazar la tabla, pedir la regeneración explícita.");
+            }
+            // Regla del usuario, no negociable: una cuota con pagos vigentes no se toca nunca.
+            // La regeneración parcial (preservar las pagadas y re-amortizar el resto) es la
+            // máquina de la reestructuración y no va en este cambio — ver §8 U2 caso B.
+            for (DetallePrestamo cuota : cuotasExistentes) {
+                List<PagoPrestamo> pagosVigentes =
+                    pagoPrestamoDaoService.selectVigentesByIdDetallePrestamo(cuota.getCodigo());
+                if (pagosVigentes != null && !pagosVigentes.isEmpty()) {
+                    throw new IncomeException("La cuota " + cuota.getNumeroCuota()
+                        + " ya tiene pagos registrados; no se puede regenerar la tabla.");
+                }
+            }
+            // Ninguna cuota tiene pagos: no hubo hecho financiero que historiar, así que no se
+            // copia a HistDetallePrestamo (copiarla ensuciaría el histórico).
+            for (DetallePrestamo cuota : cuotasExistentes) {
+                detallePrestamoDaoService.remove(cuota, cuota.getCodigo());
+            }
+            System.out.println("Regeneración de tabla de amortización: se reemplazaron "
+                + cuotasExistentes.size() + " cuota(s) sin pagos del préstamo ID " + idPrestamo);
+        }
+
         if (tieneCuotaCero == null) {
             tieneCuotaCero = 0L;
         }
-        
+
         List<DetallePrestamo> detalles = new ArrayList<>();
-        
-        if (prestamo.getTipoAmortizacion() == 1) {
+        long tipoAmortizacion = prestamo.getTipoAmortizacion();
+
+        if (tipoAmortizacion == 1L) {
             detalles = generarAmortizacionFrancesa(prestamo, tieneCuotaCero);
-        } else if (prestamo.getTipoAmortizacion() == 2) {
+        } else if (tipoAmortizacion == 2L) {
             detalles = generarAmortizacionAlemana(prestamo, tieneCuotaCero);
         } else {
             throw new IncomeException("Tipo de amortización no válido. Use 1 para Francesa o 2 para Alemana");
         }
-        
+
         for (DetallePrestamo detalle : detalles) {
             detallePrestamoDaoService.save(detalle, detalle.getCodigo());
         }
-        
-        actualizarCamposPrestamo(prestamo, detalles);
+
+        actualizarCamposPrestamo(prestamo, detalles, tipoAmortizacion);
         prestamo = prestamoDaoService.save(prestamo, prestamo.getCodigo());
-        
+
         System.out.println("Tabla de amortización generada exitosamente con " + detalles.size() + " cuotas");
         return prestamo;
     }
@@ -191,9 +231,16 @@ public class PrestamoServiceImpl implements PrestamoService {
         params.setTipoAmortizacion(tipoAmortizacion);
         params.setFechaInicio(prestamo.getFechaInicio());
         params.setTieneCuotaCero(tieneCuotaCero != null && tieneCuotaCero == 1L);
-        // El generador de tabla nueva no calcula desgravamen ni seguro de incendio por cuota
-        // (comportamiento preexistente, sin cambios en esta fase): quedan en 0.0.
-        params.setDesgravamenPorCuota(0.0);
+        // U1 (decisión del usuario, 2026-08-31 — REVISION-MOTOR-ANTES-DE-OTORGAMIENTO.md §8):
+        // el desgravamen del generador real se calcula con la misma fórmula que el simulador
+        // (saldo * 1.12/1000 antes de amortizar cada cuota), para que la tabla que el sistema
+        // genera coincida con la simulación que el socio firma. Efecto aceptado: la cuota 0 de
+        // gracia cobra desgravamen sobre el capital completo, porque durante la gracia el
+        // capital está íntegramente expuesto.
+        params.setCalcularDesgravamenSobreSaldo(true);
+        params.setDesgravamenPorCuota(0.0); // sin uso: el flag de arriba en true lo reemplaza
+        // El seguro de incendio queda en 0 DELIBERADAMENTE: no se cobra mientras no exista la
+        // póliza que lo respalde (decisión U1). No es un pendiente por implementar.
         params.setSeguroIncendioPorCuota(0.0);
 
         List<CuotaProyectada> tabla = calculadoraAmortizacionService.calcular(params);
@@ -218,7 +265,6 @@ public class PrestamoServiceImpl implements PrestamoService {
 
         double saldoCapital = redondear(Math.max(0.0, nvl(proyectada.getSaldoCapital())));
         detalle.setSaldoCapital(saldoCapital);
-        detalle.setSaldo(saldoCapital);
 
         detalle.setMora(0.0);
         detalle.setInteresVencido(0.0);
@@ -243,8 +289,16 @@ public class PrestamoServiceImpl implements PrestamoService {
         detalle.setValorSeguroIncendio(seguro);
         detalle.setTotal(redondear(nvl(proyectada.getTotal())));
         detalle.setTotalConSeguro(detalle.getTotal());
-        detalle.setEstado(Long.valueOf(Estado.ACTIVO));
-        detalle.setIdEstado(Long.valueOf(Estado.ACTIVO));
+        // D5: DTPRSLDO tenía la semántica equivocada acá (capital pendiente). Los otros seis
+        // escritores del repo (MotorPagoPrestamoServiceImpl, AbonoCapitalPrestamoServiceImpl,
+        // CargaArchivoPetroServiceImpl) escriben, sin excepción, el importe pendiente por
+        // cobrar — que es el total de la cuota en una cuota recién generada, sin pagos.
+        detalle.setSaldo(detalle.getTotal());
+        // N5: el motor de pagos razona con EstadoCuotaPrestamo (PENDIENTE=1), no con Estado.
+        // Coincidían por número; se deja de depender de la coincidencia. DTPRESTD es la fuente
+        // y DTPRIDST la espeja (SINCRONIZACION-DTPRIDST-DTPRESTD.md): mismo valor en las dos.
+        detalle.setEstado(Long.valueOf(EstadoCuotaPrestamo.PENDIENTE));
+        detalle.setIdEstado(Long.valueOf(EstadoCuotaPrestamo.PENDIENTE));
 
         return detalle;
     }
@@ -253,16 +307,15 @@ public class PrestamoServiceImpl implements PrestamoService {
         return valor != null ? valor : 0.0;
     }
 
-    private void actualizarCamposPrestamo(Prestamo prestamo, List<DetallePrestamo> detalles) {
+    private void actualizarCamposPrestamo(Prestamo prestamo, List<DetallePrestamo> detalles, long tipoAmortizacion) {
         if (detalles == null || detalles.isEmpty()) {
             return;
         }
-        
+
         double totalCapital = 0.0;
         double totalInteres = 0.0;
-        double valorCuota = 0.0;
         LocalDateTime fechaFin = null;
-        
+
         for (DetallePrestamo detalle : detalles) {
             if (detalle.getCapital() != null) {
                 totalCapital += detalle.getCapital();
@@ -270,17 +323,13 @@ public class PrestamoServiceImpl implements PrestamoService {
             if (detalle.getInteres() != null) {
                 totalInteres += detalle.getInteres();
             }
-            
-            if (valorCuota == 0.0 && detalle.getNumeroCuota() != null 
-                && detalle.getNumeroCuota() > 0 && detalle.getCuota() != null) {
-                valorCuota = detalle.getCuota();
-            }
-            
+
             if (detalle.getFechaVencimiento() != null) {
                 fechaFin = detalle.getFechaVencimiento();
             }
         }
-        
+
+        double valorCuota = calcularValorCuotaRepresentativa(detalles, tipoAmortizacion);
         prestamo.setValorCuota(redondear(valorCuota));
         prestamo.setFechaFin(fechaFin);
         prestamo.setTotalCapital(redondear(totalCapital));
@@ -303,6 +352,45 @@ public class PrestamoServiceImpl implements PrestamoService {
                          ", Tasa Efectiva: " + tasaEfectiva + "%");
     }
     
+    /**
+     * N2 (REVISION-MOTOR-ANTES-DE-OTORGAMIENTO.md): PRSTVLCT es el "valor de cuota" que leen
+     * nueve reportes de crd (RPRT_TBLA_ACML, CSPR, CSPT, ESDI, JBPR, JBPT, PNCM, RMJP, RNCP,
+     * todos {@code P.PRSTVLCT AS VALOR_CUOTA}). Tomar la primera cuota con numeroCuota > 0 lo
+     * infla en francesa, porque desde D1 esa cuota 1 incluye el interés proporcional del mes
+     * inicial.
+     * <p>
+     * Francesa: se toma la cuota 2 como representativa; si el plazo es 1 (no hay cuota 2), se
+     * usa la 1.
+     * <p>
+     * Alemana: la cuota es decreciente cuota a cuota y PRSTVLCT no representa nada — se deja
+     * la primera cuota regular, tal como hacía el código antes de este cambio, sin inventar un
+     * promedio.
+     */
+    private double calcularValorCuotaRepresentativa(List<DetallePrestamo> detalles, long tipoAmortizacion) {
+        Double cuotaUno = null;
+        Double cuotaDos = null;
+        for (DetallePrestamo detalle : detalles) {
+            if (detalle.getNumeroCuota() == null || detalle.getCuota() == null) {
+                continue;
+            }
+            double numero = detalle.getNumeroCuota();
+            if (cuotaUno == null && numero == 1.0) {
+                cuotaUno = detalle.getCuota();
+            } else if (cuotaDos == null && numero == 2.0) {
+                cuotaDos = detalle.getCuota();
+            }
+        }
+
+        if (tipoAmortizacion == 1L) { // Francesa
+            if (cuotaDos != null) {
+                return cuotaDos;
+            }
+            return cuotaUno != null ? cuotaUno : 0.0;
+        }
+        // Alemana (u otro): primera cuota regular, sin promediar.
+        return cuotaUno != null ? cuotaUno : 0.0;
+    }
+
     private double redondear(double valor) {
         return Math.round(valor * 100.0) / 100.0;
     }
@@ -717,7 +805,10 @@ public class PrestamoServiceImpl implements PrestamoService {
 		}
 
 		List<DetallePrestamo> detalles = detallePrestamoDaoService.selectByPrestamo(idPrestamo);
-		actualizarCamposPrestamo(prestamo, detalles);
+		// N2 aplica también acá: esta recalculación es la misma que reutilizan el abono a
+		// capital y su reverso sobre la tabla ya persistida (ver javadoc de la interfaz).
+		long tipoAmortizacion = prestamo.getTipoAmortizacion() != null ? prestamo.getTipoAmortizacion() : 1L;
+		actualizarCamposPrestamo(prestamo, detalles, tipoAmortizacion);
 		return prestamoDaoService.save(prestamo, prestamo.getCodigo());
 	}
 

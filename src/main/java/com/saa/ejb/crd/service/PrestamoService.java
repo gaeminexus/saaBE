@@ -11,12 +11,20 @@ public interface PrestamoService extends EntityService<Prestamo>{
 	
 	/**
 	 * Genera la tabla de amortización para un préstamo.
+	 *
+	 * N1 (REVISION-MOTOR-ANTES-DE-OTORGAMIENTO.md, decisión U2): no es idempotente por
+	 * accidente. Si el préstamo ya tiene cuotas, se rechaza salvo que {@code regenerar} sea
+	 * {@code true}, y aun regenerando, cualquier cuota con pagos vigentes bloquea la operación
+	 * entera — una cuota pagada no se toca nunca.
+	 *
 	 * @param idPrestamo ID del préstamo
 	 * @param tieneCuotaCero Indica si la tabla tiene período de gracia (1=sí, 0=no)
+	 * @param regenerar Si el préstamo ya tiene tabla, hay que pedir la regeneración explícita
+	 *                  con {@code true}; solo procede si ninguna cuota existente tiene pagos.
 	 * @return Préstamo con la tabla de amortización generada y actualizada
 	 * @throws Throwable Si ocurre algún error durante la generación
 	 */
-	Prestamo generarTablaAmortizacion(Long idPrestamo, Long tieneCuotaCero) throws Throwable;
+	Prestamo generarTablaAmortizacion(Long idPrestamo, Long tieneCuotaCero, boolean regenerar) throws Throwable;
 
 	/**
 	 * Carga la tabla de amortización desde un archivo Excel.
