@@ -183,19 +183,40 @@ ORDER BY 2 DESC;
 -- carga sin serlo. Por eso el piso de fecha no es opcional.
 --
 -- Si FILAS_ANTES_DE_JUN2025 > 0, el criterio A NECESITA el piso de fecha.
+--
+-- ⚠ CORREGIDO EL 2026-08-31: la version anterior mezclaba dos subconsultas
+--   escalares con funciones de grupo en el mismo SELECT sin GROUP BY, y Oracle
+--   la rechaza con ORA-00937 ("la funcion de grupo no es de grupo unico").
+--   Se parte en dos consultas independientes, que ademas se leen mejor.
 -- =============================================================================
-SELECT  (SELECT MIN(cr.CRARCDGO) FROM CRD.CRAR cr)                  AS MIN_ID_CARGA,
-        (SELECT MAX(cr.CRARCDGO) FROM CRD.CRAR cr)                  AS MAX_ID_CARGA,
-        COUNT(*)                                                    AS FILAS_ANTES_DE_JUN2025,
-        COUNT(DISTINCT a.ENTDCDGO)                                  AS PARTICIPES,
-        ROUND(SUM(a.APRTVLRR), 2)                                   AS VALOR,
-        MIN(a.APRTFCTR)                                             AS MIN_FECHA_CAJA,
-        MAX(a.APRTFCTR)                                             AS MAX_FECHA_CAJA
+
+-- 4a. Rango de codigos de carga que existe en la base
+SELECT  MIN(cr.CRARCDGO)    AS MIN_ID_CARGA,
+        MAX(cr.CRARCDGO)    AS MAX_ID_CARGA,
+        COUNT(*)            AS CARGAS
+FROM    CRD.CRAR cr;
+
+-- 4b. Las colisiones, FILA POR FILA (no agregadas: se espera que sean poquisimas
+--     y lo que interesa es mirarlas, no contarlas).
+--     Cada fila de aca es un aporte ANTERIOR a junio 2025 cuyo APRTIDAS coincide
+--     por casualidad con un codigo de CRD.CRAR. El criterio "idas es una carga"
+--     las tomaria por filas de carga sin serlo: es la razon de ser del piso.
+SELECT  a.APRTCDGO          AS ID_APORTE,
+        a.ENTDCDGO          AS ID_ENTIDAD,
+        a.TPAPCDGO          AS TIPO,
+        ROUND(a.APRTVLRR, 2) AS VALOR,
+        a.APRTFCTR          AS FECHA_CAJA,
+        a.APRTPRDV          AS DEVENGO,
+        NVL(a.APRTUSRG, '(null)') AS USUARIO,
+        a.APRTIDAS,
+        a.CRARCDGO,
+        SUBSTR(a.APRTGLSA, 1, 80) AS GLOSA
 FROM    CRD.APRT a
 WHERE   a.TPAPCDGO IN (9, 11)
 AND     a.APRTVLRR > 0
 AND     a.APRTFCTR < DATE '2025-06-01'
-AND     EXISTS (SELECT 1 FROM CRD.CRAR cr WHERE cr.CRARCDGO = a.APRTIDAS);
+AND     EXISTS (SELECT 1 FROM CRD.CRAR cr WHERE cr.CRARCDGO = a.APRTIDAS)
+ORDER BY a.APRTFCTR, a.APRTCDGO;
 
 
 -- =============================================================================

@@ -293,6 +293,69 @@ No es un riesgo teórico: **el patrón del `69` no ve ni una sola fila de `PGPR`
 
 ---
 
+## 10. ▶ EL UNIVERSO, FIJADO — `05` corrido en producción el 2026-08-31
+
+### 10.1 Ningún criterio suelto alcanza. Los tres fallan, y cada uno distinto
+
+| Criterio | Qué se le escapa |
+|---|---|
+| **`APRTUSRG = 'SAA_AH'`** | **2.635 filas de junio 2025 con usuario NULL** ($160.350,81, 2.001 partícipes) **y 3 filas con usuario `SAA_AH_M`** — glosa impecable (`Aporte Cesantía - Mes 9/2025 - CargaArchivo: 355`), otro usuario |
+| **`APRTIDAS` ∈ `CRD.CRAR`** | **las mismas 2.635 de junio 2025** (tienen `APRTIDAS` NULL) más 2 con `SAA_AH` |
+| **glosa** | **1 fila de carga con glosa propia**: `Aportes igualados por transferencia de ene/2026 a Jul/2026` ($103,96, carga 360) |
+
+**Los dos tenían razón, cada uno en la mitad.** Tu objeción a la glosa está probada por esa última
+fila; mi objeción al usuario, por las 2.635 de junio. **Ningún criterio se descarta: se unen.**
+
+### 10.2 El universo definitivo
+
+```sql
+APRTFCTR >= DATE '2025-06-01'
+AND (   CRARCDGO IS NOT NULL
+     OR APRTIDAS IN (SELECT CRARCDGO FROM CRD.CRAR)
+     OR APRTGLSA LIKE 'Aporte %CargaArchivo: %'
+     OR APRTGLSA LIKE 'Abono al aporte%')
+```
+
+⚠️ **El piso de fecha va ARRIBA de todo, no dentro del paréntesis.** La primera versión lo dejaba
+fuera de la rama `CRARCDGO`, y eso colaba **2 filas del 1990-07-28** que tienen `CRARCDGO` lleno
+—cosa que además hay que explicar, porque el backfill `78` no corrió—.
+
+### 10.3 La comprobación que cierra el círculo
+
+| | Filas | Valor |
+|---|---|---|
+| Carga vigente (`S S S S S`) | 29.671 | 1.647.880,51 |
+| Junio 2025, solo la glosa las ve | 2.635 | 160.350,81 |
+| `SAA_AH_M`, glosa buena | 3 | 155,94 |
+| Junio 2025 con `SAA_AH` | 2 | 181,93 |
+| Glosa propia, carga 360 | 1 | 103,96 |
+| **Universo** | **32.312** | **1.808.673,15** |
+
+El §9.3 midió, por otro camino (join a `CRD.CRAR`, carga por carga), **$1.808.673,72**. La
+diferencia es **$0,57**, que es **exactamente** el valor de las 2 filas de 1990 que el piso ahora
+excluye. **Las dos mediciones cierran al centavo.**
+
+### 10.4 Lo que queda afuera, y está bien que quede
+
+- **385.035 filas históricas** ($24.569.193,15, hasta 2025-05-31). Su `APRTIDAS` **no coincide con
+  ningún código de carga**: el criterio `APRTIDAS ∈ CRAR` ya las rechaza solo. La contaminación del
+  §9.2 era `APRTIDAS IS NOT NULL` a secas, no la idea de usar `APRTIDAS`.
+- **395 filas manuales** ($62.051,16, 78 partícipes) posteriores al piso: usuarios `SAA_UC`,
+  `SAA_UI`, `SAA_JUL_FIN`, `LCALDERON`, `GROBAYO`…, con `APRTIDAS = -99` y glosas tipo
+  `CARGA APORTE MES JUN 2025`. **No son de la carga, pero SÍ ocupan su mes**: entran como `FIJA` y
+  su mes deja de ser cupo. El algoritmo ya las trata así.
+
+### 10.5 Una pista sobre el faltante de la carga 448
+
+El bloque 3 muestra el usuario **`SAA_JUL_FIN`: 84 filas, 51 partícipes, $36.036,31, todas con
+fecha 2026-07-31**. El faltante de la carga 448 (julio 2026) medido en §9.3 es **$34.357,49**.
+
+Mismo mes, mismo orden de magnitud. **La hipótesis a probar es que ese dinero no falta: se
+registró a mano, fuera del patrón de la carga**, y por eso ninguna consulta que filtre por carga lo
+ve. Lo confirma o lo descarta el bloque B del `04`.
+
+---
+
 ## 8. Documentos relacionados
 
 - `../ANALISIS-APORTES-DUPLICADOS-PETRO.md` — el marco: versiones del generador, mecanismos M1-M8,
