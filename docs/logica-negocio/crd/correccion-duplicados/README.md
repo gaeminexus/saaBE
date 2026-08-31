@@ -356,6 +356,79 @@ ve. Lo confirma o lo descarta el bloque B del `04`.
 
 ---
 
+## 11. ▶ EL FRENTE, MEDIDO — `03` y `04` corridos el 2026-08-31
+
+### 11.1 La cifra que cambia todo: 2.018 de 2.045 partícipes cuadran EXACTO
+
+`03` §1, por **partícipe** (no por carga):
+
+| Grupo | Partícipes | Filas | Registrado | Descontado | Diferencia |
+|---|---|---|---|---|---|
+| **Cuadra exacto** | **2.018** | 32.106 | 1.792.592,92 | 1.792.592,92 | **0,00** |
+| Saldo **inflado** | **16** | 144 | 11.633,08 | 8.800,09 | **+2.832,99** |
+| Registrado de **menos** | 11 | 64 | 4.447,72 | 12.739,95 | −8.292,23 |
+
+> **El exceso real de todo el frente son 16 partícipes y $2.832,99.** No los $41.061,53 de la carga
+> 354, ni nada parecido.
+
+### 11.2 Por qué la carga 354 parecía tener $41.061,53 de más, y no los tiene
+
+`04` A.1 y A.3 descartan los dos mecanismos que se sospechaban:
+
+- **Una sola ejecución.** Todas las filas de la 354 se registraron en **una sola hora**:
+  2026-04-09 21:03 → 21:12. **M1 (fase 3 corrida dos veces) queda descartado.**
+- **Una sola versión.** Las 3.107 filas son **todas V3**, todas con devengo (`SIN_DEVENGO = 0`):
+  1.053 de tipo 9 y 2.054 de tipo 11. **M3 (V1 conviviendo con V3) queda descartado.**
+
+Lo que sí muestra: **2.054 filas de cesantía para 1.599 partícipes** — unos 455 con más de una fila.
+Es la firma de **M6**: gente en mora a la que se le cobraron varios meses de golpe, y el generador
+creó **una fila por mes de devengo**. Filas legítimas, dinero real.
+
+> ### La comparación por carga del §9.3 era una comparación inválida
+>
+> Confronta **filas atribuidas a una carga por su glosa** contra **dinero descontado en esa carga**.
+> Cuando una carga cobra atrasos, crea filas que llevan **su** id pero cubren **meses de otro
+> período**. Los dos lados de la resta no hablan del mismo hecho.
+>
+> **La comparación válida es por partícipe** (§11.1), porque el saldo le pertenece a una persona, no
+> a una carga. Y ahí el 98,7% cierra en cero.
+
+**Detalle a mirar aparte:** la 354 (agosto) escribió sus aportes a las **21:03**, *después* de que
+las cargas 355 a 366 (sept/2025 a mar/2026) se procesaran entre las 12:52 y las 16:18 **del mismo
+día**. Se procesó fuera de orden.
+
+### 11.3 La carga 448 tampoco perdió plata
+
+`04` B.1: partícipes con descuento y **sin ninguna fila** de aporte en la 448: **dos**, por **$94,14**
+en total. `04` B.3 confirma que `AH` es el único producto de aportes de esa carga ($120.657,06).
+
+Con el usuario **`SAA_JUL_FIN`** del §10.5 (84 filas, 51 partícipes, $36.036,31, todas del
+2026-07-31), la explicación se sostiene: **el dinero se registró a mano, fuera del patrón de la
+carga**. No falta; no lo ve ninguna consulta que filtre por carga.
+
+### 11.4 Los huecos, y la duda que abren
+
+`03` §5:
+
+| Tipo | Meses esperados | Con aporte | **Huecos** | Partícipes |
+|---|---|---|---|---|
+| 9 (jubilación) | 10.466 | 10.349 | **117** | 748 |
+| 11 (cesantía) | 19.842 | 19.308 | **534** | 1.418 |
+
+**651 meses hueco.** Pero los partícipes con grilla de meses (748 y 1.418) son **muchos menos que
+los 2.045 que tienen filas de carga**, y el bloque de SOBRANTES del `03` devolvió "muchísimos"
+registros cuando debería ser una anomalía rara.
+
+> ⚠️ **Eso apunta a que los CUPOS están subcontando**, no a que sobren aportes. La grilla sale de
+> `CRD.CNTR` + `CRD.VGCN`, migrados desde `CRD.HSTR`: a quien le falte el contrato ACTIVO, la
+> vigencia, o tenga `VGCNMNTO` en 0, le dan **cero cupos** y **todas** sus filas salen sobrantes.
+>
+> **Hasta resolverlo, la propuesta del `03` §2 no se puede aplicar:** estaría compactando contra una
+> grilla incompleta y dejando partícipes fuera del alcance en silencio.
+> Lo mide **`06_DIAGNOSTICO_CUPOS.sql`**, que devuelve pocas filas a propósito.
+
+---
+
 ## 8. Documentos relacionados
 
 - `../ANALISIS-APORTES-DUPLICADOS-PETRO.md` — el marco: versiones del generador, mecanismos M1-M8,
