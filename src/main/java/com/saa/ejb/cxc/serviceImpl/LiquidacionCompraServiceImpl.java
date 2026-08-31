@@ -451,6 +451,9 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 			// ── PASO 4a: Enviar al SRI (WS1 - Recepción) ───────────────────────
 			System.out.println("PASO 4a: Enviando XML al SRI (WS1 - Recepción)...");
 			String estadoRecepcion = "NO_ENVIADO";
+			// Recoge los <mensaje> del SRI para poder decir POR QUÉ rechazó, en vez de
+			// dejar el motivo sólo en el archivo de log del servidor.
+			StringBuilder detalleSRI = new StringBuilder();
 			if (conectaSRI == 1) {
 				String baseUploadDir = getBaseUploadDirectory();
 				String resourcesPath = baseUploadDir + "resources/" + idFacturador;
@@ -465,7 +468,7 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 					Files.createDirectories(logWS1.getParent());
 					PrintWriter logWriter1 = new PrintWriter(new FileWriter(logWS1.toFile()));
 					byte[] bytesXMLFirmado = Files.readAllBytes(pathFirmado);
-					estadoRecepcion = llamarRecepcionSRI(urlWS1, bytesXMLFirmado, logWriter1);
+					estadoRecepcion = llamarRecepcionSRI(urlWS1, bytesXMLFirmado, logWriter1, detalleSRI);
 					logWriter1.close();
 					System.out.println(">>> Estado WS1 Recepción: [" + estadoRecepcion + "]");
 				} catch (Exception e) {
@@ -484,7 +487,12 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 				resultado.put("etapa", "WS1_RECEPCION");
 				resultado.put("exito", false);
 				resultado.put("estado", estadoRecepcion);
-				resultado.put("mensaje", "El SRI no aceptó el comprobante. Estado WS1: " + estadoRecepcion);
+				// El motivo va en el mensaje, no sólo en el archivo de log: un "DEVUELTA" pelado
+				// obliga a buscar el .txt en el servidor para saber qué campo está mal.
+				String porQue = detalleSRI.length() > 0 ? " Motivo: " + detalleSRI : "";
+				resultado.put("detalleSRI", detalleSRI.toString());
+				resultado.put("mensaje", "El SRI no aceptó el comprobante. Estado WS1: "
+						+ estadoRecepcion + "." + porQue);
 				return resultado;
 			}
 
@@ -1385,8 +1393,12 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 					
 					// Leer bytes crudos del XML firmado (NO convertir a String, preserva la firma)
 					byte[] bytesXMLFirmado = Files.readAllBytes(pathFirmado);
-					String estadoRecepcion = llamarRecepcionSRI(urlWS1, bytesXMLFirmado, logWriter1);
-					
+					// El acumulador hace que los <mensaje> del SRI salgan por consola aunque este
+					// flujo no los propague al resultado: sin eso, un rechazo acá deja el motivo
+					// únicamente dentro del .txt del servidor.
+					String estadoRecepcion = llamarRecepcionSRI(urlWS1, bytesXMLFirmado, logWriter1,
+							new StringBuilder());
+
 					logWriter1.close();
 					
 					// Guardar copia exacta del XML enviado
@@ -1538,7 +1550,21 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 	/**
 	 * Llama al servicio de recepción del SRI
 	 */
-	private String llamarRecepcionSRI(String url, byte[] xmlBytes, PrintWriter log) throws Exception {
+	/**
+	 * Envía el comprobante al WS1 (recepción) del SRI y devuelve el estado.
+	 *
+	 * @param detalleOut acumula los {@code <mensaje>} que devuelve el SRI, para que el llamador
+	 *        pueda decir <b>por qué</b> rechazó. Puede ser {@code null}.
+	 *
+	 * <p><b>Por qué existe {@code detalleOut}.</b> Hasta el 2026-08-31 este método leía los mensajes
+	 * del SRI <b>sólo</b> para detectar el caso {@code CLAVE ACCESO REGISTRADA} y descartaba el
+	 * resto, así que un rechazo llegaba a pantalla como {@code DEVUELTA} pelado. El motivo real
+	 * quedaba únicamente en el archivo de log del servidor
+	 * ({@code {upload}/resources/{idFacturador}/lqcs/e/{clave}.txt}), que hay que ir a buscar a mano
+	 * — y eso es lo que pasó con el rechazo por {@code tipoIdentificacionProveedor}: el SRI había
+	 * explicado el error con todo detalle y nadie lo veía.
+	 */
+	private String llamarRecepcionSRI(String url, byte[] xmlBytes, PrintWriter log, StringBuilder detalleOut) throws Exception {
 		try {
 			String xmlBase64 = java.util.Base64.getEncoder().encodeToString(xmlBytes);
 			String soapEnvelope =
@@ -1556,6 +1582,33 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 			org.w3c.dom.Element docEl = dbf.newDocumentBuilder()
 					.parse(new java.io.ByteArrayInputStream(respuestaCompleta.getBytes("UTF-8")))
 					.getDocumentElement();
+
+			// Los <mensaje> del SRI se recogen SIEMPRE, no sólo para detectar
+			// CLAVE ACCESO REGISTRADA: son la única explicación de un rechazo.
+			// Se recorre el nodo <mensaje> completo (identificador + mensaje +
+			// informacionAdicional), que es donde el SRI dice qué campo está mal.
+			if (detalleOut != null) {
+				NodeList nodos = docEl.getElementsByTagNameNS("*", "mensaje");
+				if (nodos.getLength() == 0) nodos = docEl.getElementsByTagName("mensaje");
+				for (int i = 0; i < nodos.getLength(); i++) {
+					org.w3c.dom.Node n = nodos.item(i);
+					// El SRI anida <mensaje> dentro de <mensaje>: sólo interesan los
+					// contenedores, que son los que traen los hijos con el detalle.
+					if (n.getNodeType() != org.w3c.dom.Node.ELEMENT_NODE) continue;
+					org.w3c.dom.Element el = (org.w3c.dom.Element) n;
+					String ident = textoDe(el, "identificador");
+					String texto = textoDe(el, "mensaje");
+					String extra = textoDe(el, "informacionAdicional");
+					if (texto == null && ident == null && extra == null) continue;
+					if (detalleOut.length() > 0) detalleOut.append(" | ");
+					if (ident != null) detalleOut.append("[").append(ident).append("] ");
+					if (texto != null) detalleOut.append(texto);
+					if (extra != null) detalleOut.append(": ").append(extra);
+				}
+				if (detalleOut.length() > 0) {
+					System.out.println(">>> Mensajes del SRI (WS1): " + detalleOut);
+				}
+			}
 
 			NodeList estadoList = docEl.getElementsByTagNameNS("*", "estado");
 			if (estadoList.getLength() == 0) estadoList = docEl.getElementsByTagName("estado");
@@ -1659,6 +1712,24 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 		String respuestaCompleta;
 	}
 	
+	/**
+	 * Devuelve el texto del primer hijo directo con ese nombre, o {@code null}.
+	 * Sólo mira hijos directos a propósito: el SRI anida {@code <mensaje>} dentro de
+	 * {@code <mensajes>}, y una búsqueda recursiva mezclaría el texto de los hermanos.
+	 */
+	private String textoDe(org.w3c.dom.Element padre, String nombre) {
+		org.w3c.dom.NodeList hijos = padre.getChildNodes();
+		for (int i = 0; i < hijos.getLength(); i++) {
+			org.w3c.dom.Node h = hijos.item(i);
+			if (h.getNodeType() != org.w3c.dom.Node.ELEMENT_NODE) continue;
+			if (nombre.equals(h.getLocalName()) || nombre.equals(h.getNodeName())) {
+				String t = h.getTextContent();
+				return (t != null && !t.trim().isEmpty()) ? t.trim() : null;
+			}
+		}
+		return null;
+	}
+
 	/**
 	 * Traduce el tipo de identificación <b>interno</b> del titular al código que exige el SRI.
 	 *
