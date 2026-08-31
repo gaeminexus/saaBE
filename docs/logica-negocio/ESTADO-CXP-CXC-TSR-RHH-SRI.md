@@ -2,7 +2,8 @@
 
 **Este documento cubre SOLO los módulos de este equipo. `crd` tiene el suyo.**
 
-**Última actualización: 2026-08-29.** Escrito por el árbitro de este equipo, cruzando la
+**Última actualización: 2026-08-31** (§9 — verificación de arranque del árbitro en OMEN).
+**Cuerpo §1-§8 al 2026-08-29.** Escrito por el árbitro de este equipo, cruzando la
 documentación de cada módulo contra el working tree real de `saaBE` y `saaFE`, y contra lo
 reportado por las sesiones de backend y frontend.
 
@@ -16,7 +17,9 @@ equipos escribiendo sobre el mismo archivo empezaron a cruzarse los estados (un 
 como cerrado un frente del otro, referencias a frentes ajenos). **Decisión del usuario: cada equipo
 mantiene su propio archivo.** El de `crd` es `ESTADO-CRD.md`; el compartido quedó dado de baja.
 
-**Nada de lo que sigue está compilado ni desplegado.**
+~~**Nada de lo que sigue está compilado ni desplegado.**~~ **La mitad «no compilado» dejó de ser
+cierta el 2026-08-31: `mvn -q clean compile` da exit 0 sobre todo el árbol — ver §9.1.**
+Sigue sin desplegarse.
 
 ⚠️ **La frase «los DDL sí están corridos» que estuvo aquí era falsa.** El 2026-08-29 se verificó
 contra la base y **dos scripts no se habían ejecutado nunca** — ver §7. Se corrigió lo encontrado;
@@ -510,3 +513,155 @@ el hallazgo (§6) quedó corregido explicando que el campo lo agrega el REST, no
 
 **Huérfanos declarados, no borrados:** `tsr/service/temp-cobro.service.ts` y su `.spec.ts`, tras
 retirarse la pantalla «Cobros - Ingresar». El endpoint del backend sigue existiendo.
+
+---
+
+## 9. Verificación de arranque del árbitro — 2026-08-31 (OMEN)
+
+Sesión nueva del árbitro en la máquina **OMEN**, con acceso a los dos repositorios. Lo que sigue
+son **hechos verificados en esta máquina**, no lecturas de documentación. Varios contradicen lo que
+decía el cuerpo de este documento, escrito desde una máquina sin Maven.
+
+### 9.1 ✅ El backend compila — primera verificación real
+
+`mvn -q clean compile` → **exit 0, sin salida**. Maven **3.9.8**, JDK **21.0.8**.
+
+Esto cierra el pendiente 🟡 **§4.3** («compilar en Eclipse — ningún agente puede compilar backend»).
+Cubre lo que nunca se había verificado: los ~15 archivos del **frente R** (anulación con cascada) y
+todo el **frente S** (bandeja de aprobación universal), los dos entregados «sin compilar».
+
+**Se corrió `clean compile`, no `compile` a secas, y la distinción importa.** La compilación
+incremental puede saltear archivos y devolver un exit 0 que no significa nada. La primera pasada de
+esta sesión se hizo sin `clean` y se rehízo — el resultado fue el mismo, pero sólo la segunda vale
+como evidencia. *(Aviso del árbitro del equipo B de CRD, confirmado.)*
+
+> **Corolario de proceso:** la afirmación «no se puede compilar» era una propiedad **de la máquina**,
+> no del proyecto, y estuvo escrita como si fuera del proyecto durante toda una tanda de trabajo.
+> `CLAUDE.md` ya se corrigió en ese punto (`edb8407`). Este documento arrastraba la versión vieja.
+
+### 9.2 ✅ El hallazgo §7.4a está cerrado — y nadie lo había anotado
+
+§7.4a listaba 9 entidades con `@JoinColumn(name = "TTLRCDGO", referencedColumnName = "TTLRCDGO")`,
+donde la columna física real se llama `PRSNCDGO`. **Ya está corregido en las nueve**, con un
+comentario que explica el porqué. Verificado por diferencia contra el commit del renombrado:
+
+```
+e8df43f  ->  @JoinColumn(name = "TTLRCDGO", referencedColumnName = "TTLRCDGO")   (roto)
+hoy      ->  @JoinColumn(name = "PRSNCDGO", referencedColumnName = "TTLRCDGO")   (correcto)
+```
+
+Es el mismo patrón que `Cheque.java:128` y `PersonaRol.java:58`, que el commit original sí había
+resuelto bien. **§7.4a queda cerrado**; el resto de §7.4 (b y c) sigue abierto.
+
+### 9.3 🔴 La causa raíz de §7.3 nunca se corrigió — y es la que puede volver a morder
+
+§7.3 identificó, el 29-08, que `tsr/sql/07-conciliacion-transito.sql` se saltó en el despliegue
+**porque no figura en `tsr/sql/README-ORDEN-PRODUCCION.md`**, que llega hasta el `06`.
+
+**Al 31-08 ese README sigue llegando hasta el `06`.** Ni el `07` ni el `08` se agregaron. Se
+documentó la lección y no se aplicó al archivo que la lección señalaba: **el mismo despliegue
+volvería a saltárselos**.
+
+Y el impacto no es hipotético: `TSR.DTCN` está mapeada como entidad JPA
+(`model/tsr/DetalleTransito.java:29`), así que si la tabla no existe, **cualquier lectura de
+`DetalleTransito` revienta con ORA-00942** — y el frente **N** figura como «✅ Cerrado BE+FE».
+
+No hay registro de que el `07` ni el `08` se hayan ejecutado después del hallazgo: la lista de
+«scripts corridos (29-08)» de §4 sólo menciona los dos de `cxp`. **Pendiente de confirmar contra la
+base** con `VERIFICACION-DDL-EQUIPO-CXP-CXC-TSR-RHH-SRI.sql`, que ya cubre `TSR.DTCN` (líneas 56-60).
+
+*Nota sobre `tsr/sql/08` y los `PDTR` 1151-1159:* se revisó por si colisionaban y **no lo hacen**.
+`REGISTRO-RESERVAS-EQUIPOS.md` cita ese 1151 como «tomado por las partidas en tránsito del otro
+equipo» — o sea por este script — y CRD se apartó. Es uso previo al sistema de rangos, ya
+reconocido. Igual corresponde revalidar el `MAX` justo antes de ejecutar (regla 2 del registro).
+
+### 9.4 🔴 Un `PUT` con payload parcial BORRA columnas — confirmado dentro de este alcance
+
+`docs/general/MERGE-DESNUDO-EN-ENTITYDAOIMPL.md` (equipo B de CRD, commit `c776fd8`) documenta que
+`EntityDaoImpl.save()` hace `em.merge()` con el objeto tal cual llegó del JSON: sin re-leer la fila,
+sin saltar nulos. Como en `com.saa.model` **no hay un solo campo primitivo persistido**, una clave
+ausente en el JSON deserializa a `null` y **se graba `null` en la columna real, FKs incluidas**.
+
+**Verificado de este lado, no tomado de palabra** — la cadena completa en `cxp`:
+
+| Eslabón | Verificado |
+|---|---|
+| `FacturaCompraRest:52-61` | `@PUT` deserializa el body entero a la entidad y llama a `saveSingle` |
+| `FacturaCompraServiceImpl:53` | `facturaCompraDaoService.save(entidad, entidad.getId())` |
+| `FacturaCompraDaoServiceImpl` | **no sobreescribe `save`** → cae en el genérico |
+
+Ese eslabón es el que decide: sin él, «llama a `saveSingle`» no prueba nada.
+
+**La pregunta útil no es «¿me afecta?» sino «¿qué pantalla mía manda un payload parcial?».**
+`Rest -> saveSingle -> DAO genérico` es el patrón estándar de la casa, así que **afecta a todas las
+entidades de los seis módulos**; lo que varía es si el cliente manda el objeto entero o un recorte.
+
+**Regla para el frontend de este equipo — leer y sobrescribir:** `GET` de la entidad completa,
+aplicar encima sólo los campos que el formulario edita, mandar el objeto entero. Nunca armar un
+payload «sólo con lo que cambió».
+
+⛔ **No «arreglar» `EntityDaoImpl`.** Es el DAO del que hereda todo el proyecto; cambiarlo alteraría
+todas las escrituras del sistema de una vez, incluidas las que hoy ponen un campo en `null` a
+propósito. Va en el prompt inicial del agente de frontend.
+
+### 9.5 🟡 Los seis módulos de este equipo no tienen ni un contrato `API-*.md`
+
+`crd` tiene doce, espejados a `saaFE/docs/crd/`. `cxp`, `cxc`, `pagos`, `tsr`, `rhh` y `sri` tienen
+**cero**. Los contratos de los frentes **R**, **S** y **Q** viven dentro de documentos de plan y de
+las secciones de este archivo.
+
+Es deuda contra la regla de escribir el contrato **antes** de que el frontend arranque, y el frente
+R es el caso que peor tolera esa deuda: su contrato tiene tres trampas que no se deducen del código
+(§3.4) — la **asimetría deliberada** entre compra `/anular/{id}` y venta `/anular` con el id en el
+body, el **200 con `exito:false`** que no se ve mirando el status HTTP, y la **forma heterogénea**
+de `movimientosRelacionados` según el documento.
+
+### 9.6 ⚠️ El working tree está compartido con otro equipo — decisión pendiente del usuario
+
+`git worktree list` devuelve **un solo árbol** en los dos repositorios:
+`F:/work/saaBE/v1/saaBE` y `F:/work/saaFE/v1/saaFE`. El equipo B de CRD (`omen-saa-1-*`) trabaja
+sobre **los mismos directorios**. El equipo 2 ya se separó a `F:/work/equipo2/`.
+
+Dos riesgos **distintos**, y conviene no confundirlos porque tienen remedios distintos:
+
+1. **Borrado.** Un `checkout`, `stash`, `clean` o `add -A` de cualquiera se lleva el trabajo sin
+   commitear del otro, sin conflicto y sin aviso. La tabla de dueños del §4 de
+   `REGISTRO-RESERVAS-EQUIPOS.md` **no protege contra esto**: evita que dos equipos editen el mismo
+   archivo, pero un `git clean` se lleva el árbol entero. *Se mitiga con disciplina* — no correr
+   esos comandos, commitear seguido, preguntar antes de limpiar.
+   *Caso real de esta sesión:* `mvn clean` borró `target/`, que m2e usa para el despliegue de
+   Eclipse. No rompió nada porque no había despliegue montado, pero **mientras el árbol sea
+   compartido, `clean` es un comando con efectos fuera de la propia sesión**.
+2. **Conclusiones que caducan.** Entre el arranque de esta sesión y su primer reporte, el `HEAD` de
+   `saaBE` pasó de `4226e09` a `c776fd8` y el `git status` pasó de tres archivos ajenos sin
+   commitear a vacío. No se perdió nada — el otro equipo commiteó, que es la disciplina correcta.
+   Pero para un rol que **verifica contra el código**, significa que el árbol se mueve mientras se
+   lee: una conclusión puede quedar vieja en minutos. **Contra esto la disciplina no hace nada**, y
+   por eso es el argumento más fuerte para separarse.
+
+**Salida recomendada: clonar aparte** (`F:/work/equipo3/`), como hizo el equipo 2.
+⛔ **`git worktree` no sirve acá:** no admite la misma rama en dos árboles, y los tres equipos
+trabajan sobre `main`. Obligaría a ramas separadas y a mergear entre equipos — más ceremonia de la
+que el problema pide. *(Este punto se le pasó al árbitro del equipo B, que había recomendado
+`worktree`; lo corrigió en `ESTADO-CRD.md` §7, commit `9b7e6f5`.)*
+
+**La ventana es ahora:** los agentes de este equipo todavía no están levantados. Mover el
+directorio de trabajo una vez que estén escribiendo cuesta bastante más.
+
+### 9.7 Estado del equipo al 31-08
+
+`omen-saa-3-be` y `omen-saa-3-fe` **no están levantados** — no aparecen en `ListAgents`, donde las
+tres sesiones interactivas del equipo B de CRD sí se ven. Sin ellos no se puede despachar trabajo.
+
+**Sin trabajo despachado en esta sesión.** Lo anterior es diagnóstico, no cambios de código.
+
+### 9.8 Lo que este arranque enseña sobre el documento mismo
+
+Tres de los cinco hallazgos de arriba son **el documento describiendo un estado que ya no existe**:
+la imposibilidad de compilar (9.1), el §7.4a ya corregido (9.2), y la causa raíz que se dio por
+entendida y no se aplicó (9.3). Ninguno era un error de quien escribió: eran ciertos al escribirse.
+
+> **Lo que falla es dar por bueno el propio registro sin volver a contrastarlo contra el código.**
+> Es la misma forma del §7.3 —el control y lo controlado compartiendo origen— aplicada al documento
+> de estado en vez de a los scripts. **Al arrancar una sesión, verificar antes de creerle a este
+> archivo, incluido lo que este archivo dice de sí mismo.**
