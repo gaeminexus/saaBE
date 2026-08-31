@@ -84,6 +84,34 @@ public interface PlantillasCredito {
 	 */
 	public static final int COBRO_INDIVIDUAL_PRESTAMO = 25;
 
+	/**
+	 * "CRD JUBILACION DE UN PARTICIPE". Confirmado contra la base el 2026-08-31 (el usuario
+	 * consultó directamente): 5 líneas, {@code DTPLAXL2 = 0} en las cinco (sin dimensión de
+	 * auxiliar 2).
+	 *
+	 * <pre>
+	 * aux1 = 1   DEBE    2.1.01.05.01  APORTES PERSONALES CESANTIA
+	 * aux1 = 2   DEBE    2.1.02.05.01  APORTES PERSONALES JUBILACION
+	 * aux1 = 3   HABER   2.3.01.05.01  LIQUIDACION APORTES CESANTIA
+	 * aux1 = 4   HABER   2.3.01.10.01  LIQUIDACION APORTES JUBILACION
+	 * aux1 = 5   HABER   2.3.01.10.03  PENSIONES COMPLEMENTARIAS POR PAGAR
+	 * </pre>
+	 *
+	 * ⚠️ <b>Los aux1 1-5 son de ESTA plantilla y solo de ella</b> — POSICIONALES, igual que la
+	 * 27, NO del catálogo semántico {@link CrdLineaAsiento}. En la 21, el aux1 3 es
+	 * {@code 2.3.02.05} y el 4 es {@code 2.3.02.10} — nada que ver. No reusar estos números en
+	 * ninguna otra plantilla sin verificar contra {@code CNT.DTPL} de nuevo.
+	 *
+	 * <p>
+	 * <b>{@code AporteServiceImpl#procesarJubilacion} usa SOLO 1, 2 y 5</b> — el traslado de
+	 * cesantía/jubilación va ÍNTEGRO a pensión complementaria (decisión del usuario 2026-08-31,
+	 * ver el javadoc de ese método sobre los tipos de rendimiento 12/24, que NO se trasladan).
+	 * Los aux1 3 y 4 (liquidación diferenciada) quedan resueltos en el catálogo de esta
+	 * plantilla pero sin consumidor todavía — si algún proceso futuro los necesita, usarlos tal
+	 * cual, no reinterpretarlos.
+	 */
+	public static final int JUBILACION = 29;
+
 	// NOTA (2026-08-31): "RECLASIFICACION APORTE O COBRO EN EXCESO" (alterno 27) se evaluó
 	// para el asiento de reclasificación de la devolución de aportes y se descartó — el
 	// usuario confirmó que se devuelve CUALQUIER tipo de aporte, no solo los tres con cuenta

@@ -64,4 +64,26 @@ public interface PagoPrestamoDaoService extends EntityDao<PagoPrestamo> {
 	 */
 	List<PagoPrestamo> selectVigentesByCargaArchivo(Long idCarga) throws Throwable;
 
+	/**
+	 * Cuenta TODOS los pagos de una cuota, incluidos los ANULADOS — a diferencia de
+	 * {@link #contarVigentesByIdDetallePrestamo}, este método NO filtra por {@code anulado}.
+	 * Un {@code PagoPrestamo} anulado sigue siendo una fila con FK a esa cuota: si la cuota
+	 * desaparece, esa fila queda huérfana igual, aunque no cuente para saldos.
+	 *
+	 * <p><b>Guarda de borrado, no de saldos.</b> Este método existe para que
+	 * {@code generarTablaAmortizacion(..., regenerar = true)} decida si puede borrar y
+	 * recrear las cuotas de {@code CRD.DTPR}. Por eso, a propósito y al REVÉS de la
+	 * convención de sus vecinos en este archivo, <b>NO atrapa la excepción</b>: la propaga
+	 * ({@code throws Throwable}, sin {@code catch}). Una guarda de borrado que ante un error
+	 * de consulta devolviera 0 le diría a la llamadora "adelante, no hay pagos" cuando en
+	 * realidad no se pudo verificar — y borraría cuotas con pagos. No "uniformizar" este
+	 * método con {@link #contarVigentesByIdDetallePrestamo} ni con los demás de esta clase:
+	 * el catch-y-devolver-vacío es intencional en ellos y sería un bug acá.
+	 *
+	 * @param codigoDetallePrestamo Código del DetallePrestamo
+	 * @return Cantidad total de pagos (vigentes + anulados) de la cuota
+	 * @throws Throwable Si ocurre algún error en la consulta — se propaga, nunca se traga
+	 */
+	long countByIdDetallePrestamo(Long codigoDetallePrestamo) throws Throwable;
+
 }

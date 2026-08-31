@@ -40,4 +40,10 @@ public interface OrigenPagoExterno {
 	 */
 	public static final String CXC_DEVOLUCION_CLIENTE = "CXC_DEVOLUCION_CLIENTE";
 
+	/**
+	 * Pago mensual de una pension complementaria a un jubilado, originado en CRD.PGPC
+	 * (item 4 de jubilados, 2026-08-31). PGTRIDOR lleva el CRD.PGPC.PGPCCDGO correspondiente.
+	 */
+	public static final String CRD_PAGO_PENSION_COMPLEMENTARIA = "CRD_PAGO_PENSION_COMPLEMENTARIA";
+
 }

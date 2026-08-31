@@ -6,6 +6,7 @@ import java.util.List;
 
 import com.saa.basico.util.EntityService;
 import com.saa.ejb.crd.service.dto.EstadoCuentaAportesDTO;
+import com.saa.ejb.crd.service.dto.ResultadoJubilacion;
 import com.saa.ejb.crd.service.dto.ResultadoRegistroAporte;
 import com.saa.ejb.crd.service.dto.SolicitudRegistroAporte;
 import com.saa.model.crd.Aporte;
@@ -31,6 +32,8 @@ public interface AporteService extends EntityService<Aporte> {
     String ERR_FECHA_INVALIDA = "FECHA_INVALIDA";
     /** 404 - El aporte a reversar no existe */
     String ERR_APORTE_NO_ENCONTRADO = "APORTE_NO_ENCONTRADO";
+    /** 422 - El partícipe no está en un estado desde el que se pueda procesar la jubilación */
+    String ERR_ESTADO_NO_ELEGIBLE = "ESTADO_NO_ELEGIBLE";
 
     /**
      * Registra un pago de aportes recibido en ventanilla: genera para el partícipe un aporte
@@ -153,4 +156,62 @@ public interface AporteService extends EntityService<Aporte> {
      *                                             entidad no existe
      */
     EstadoCuentaAportesDTO estadoCuenta(Long idEntidad, LocalDate desde, LocalDate hasta) throws Throwable;
+
+    /**
+     * Procesa el traslado de jubilación (J2/J3 de LEVANTAMIENTO-TRES-FRENTES-2026-08-30.md
+     * §4.b): mueve TODO el saldo remanente de cesantía (11) y jubilación (9) del partícipe a
+     * pensión complementaria (23), y cambia su estado a JUBILADO COMPLEMENTARIO.
+     *
+     * <p><b>Este método es el paso 3 (traslado) + paso 5 (estado) del flujo de jubilación, NO
+     * el flujo completo.</b> El cruce contra préstamos y la devolución en efectivo (paso 2,
+     * opcionales) son decisiones previas que la pantalla ya ejecutó, ANTES de llamar acá,
+     * usando {@code ProcesoPagoPrestamoService#pagarConAportes} y
+     * {@code DevolucionAporteService#registrarDevolucion} — este método no los orquesta ni los
+     * reimplementa. Se llama sobre lo que RESTA después de esas decisiones.</p>
+     *
+     * <p><b>Mecánica (J3):</b> por cada tipo con saldo &gt; $0.01 se crea una fila NEGATIVA en
+     * CRD.APRT con glosa indicando que el partícipe se jubiló por el total de esa cuenta a la
+     * fecha; si no tiene saldo en un tipo, no se crea fila para ese tipo (no un $0). Se crea
+     * una fila POSITIVA en pensión complementaria por la suma de lo trasladado —
+     * {@code null}/omitida si el total trasladado es $0 (el partícipe ya no tenía nada en
+     * ninguna de las dos cuentas, p. ej. porque todo se cruzó/retiró en el paso 2). Las tres
+     * (o menos) filas llevan {@code tipoMovimiento = CrdTipoMovimientoAporte.JUBILACION}.</p>
+     *
+     * <p><b>Estado:</b> siempre pasa a JUBILADO_COMPLEMENTARIO al final, incluso si el total
+     * trasladado es $0 — el paso 5 del flujo no depende de que haya habido movimiento.</p>
+     *
+     * <p><b>Asiento:</b> §3.1 del levantamiento contable + plantilla alterno 29 (confirmada
+     * contra la base 2026-08-31: 5 líneas, aux1 1/2 DEBE cesantía/jubilación, aux1 3/4/5 HABER
+     * liquidación cesantía/liquidación jubilación/pensiones por pagar — posicionales, no del
+     * catálogo semántico). Este método usa SOLO aux1 1, 2 y 5: el traslado va ÍNTEGRO a
+     * pensión complementaria (decisión del usuario 2026-08-31 sobre los rendimientos 12/24,
+     * ver más abajo), así que aux1 3/4 (liquidación diferenciada) no tienen monto que
+     * registrar en este flujo. Gate de {@code contabilidadActiva()} primero.</p>
+     *
+     * <p><b>Rendimientos (tipos 12 y 24) — decisión CERRADA del usuario, 2026-08-31, NO
+     * volver a proponerla:</b> este método traslada SOLO cesantía personal (11) y jubilación
+     * personal (9), que es lo que soporta la plantilla 29 (aux1 1 y 2). Los rendimientos NO se
+     * trasladan y quedan en sus cuentas — no es un hueco: la pantalla de jubilación ya permite
+     * pedir devolución en efectivo desde CUALQUIER cuenta del partícipe (paso 2 del flujo), así
+     * que un jubilado que quiera sus rendimientos los retira por ese camino, no por el traslado
+     * a pensión complementaria. Registrado como decisión cerrada en
+     * {@code docs/logica-negocio/ESTADO-CRD.md}.</p>
+     *
+     * @param idEntidad Código de la entidad (partícipe) a jubilar
+     * @param usuario   Usuario que ejecuta el traslado (obligatorio, sella la auditoría de Entidad)
+     * @param fecha     Fecha de negocio del traslado; {@code null} = hoy. No puede ser futura
+     * @param idEmpresa Empresa contable sobre la que se genera el asiento de reclasificación.
+     *                  Obligatorio (mismo criterio que el resto del motor de pagos desde la
+     *                  Fase 0, API-EMPRESA-CONTABLE-CRD.md: nunca se infiere, viaja explícito)
+     * @return Detalle de lo trasladado, los movimientos generados y el estado nuevo
+     * @throws Throwable                          Si ocurre un error
+     * @throws com.saa.basico.util.IncomeException {@link #ERR_ENTIDAD_NO_ENCONTRADA} si no
+     *                                             existe; {@link #ERR_ESTADO_NO_ELEGIBLE} si
+     *                                             el partícipe no está ACTIVO ni ACTIVO EN
+     *                                             MORA (ya jubilado, cesante, etc.);
+     *                                             {@link #ERR_FECHA_INVALIDA} si la fecha es
+     *                                             futura
+     */
+    ResultadoJubilacion procesarJubilacion(Long idEntidad, String usuario, LocalDate fecha, Long idEmpresa)
+            throws Throwable;
 }

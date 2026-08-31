@@ -603,3 +603,9 @@ error en un proceso por lotes, verificarlo — `CRARNMTF`, `CRARUSCC`, `CRARFCAC
 9. **No se cierra un mes sin su archivo Petro cargado** (control bloqueante, ya implementado).
 10. La contabilidad de la devolución de aportes es **opcional** por ahora.
 11. `CRD.APRT` es **append-only**: rechazo o reverso van como contra-movimiento, nunca borrando.
+12. **Al jubilarse, los RENDIMIENTOS no se trasladan a pensión complementaria** (decisión del
+    usuario, 2026-08-31). Solo el remanente de **cesantía personal (11)** y **jubilación personal
+    (9)** pasa al tipo 23, que es exactamente lo que soporta la plantilla alterno 29 (aux1 1 y 2 al
+    DEBE). Los rendimientos (tipos 12 y 24 — de los saldos más grandes del sistema) **se quedan en
+    sus cuentas**, y el partícipe los saca por **devolución de aportes**, que la misma pantalla ya
+    permite desde cualquier cuenta. No es un hueco: es el diseño.

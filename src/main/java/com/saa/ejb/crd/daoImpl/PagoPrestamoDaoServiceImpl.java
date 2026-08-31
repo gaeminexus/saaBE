@@ -163,4 +163,23 @@ public class PagoPrestamoDaoServiceImpl extends EntityDaoImpl<PagoPrestamo> impl
 		}
 	}
 
+	@Override
+	public long countByIdDetallePrestamo(Long codigoDetallePrestamo) throws Throwable {
+		System.out.println("PagoPrestamoDaoService.countByIdDetallePrestamo - DetallePrestamo: " + codigoDetallePrestamo);
+
+		// Sin try/catch: a propósito. Ver el javadoc en la interfaz — es una guarda de
+		// borrado, y una guarda que ante un error de consulta dice "0 pagos" deja borrar
+		// cuotas que en realidad no se pudieron verificar.
+		Query query = em.createQuery(
+			"SELECT COUNT(p) " +
+			"FROM PagoPrestamo p " +
+			"WHERE p.detallePrestamo.codigo = :codigoDetallePrestamo"
+		);
+		query.setParameter("codigoDetallePrestamo", codigoDetallePrestamo);
+
+		long total = (Long) query.getSingleResult();
+		System.out.println("  Pagos totales (incluye anulados): " + total);
+		return total;
+	}
+
 }

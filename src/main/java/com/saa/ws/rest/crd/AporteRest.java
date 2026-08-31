@@ -9,8 +9,10 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.crd.dao.AporteDaoService;
 import com.saa.ejb.crd.service.AporteService;
 import com.saa.ejb.crd.service.SaldoAporteService;
+import com.saa.ejb.crd.service.dto.ResultadoJubilacion;
 import com.saa.ejb.crd.service.dto.ResultadoRegistroAporte;
 import com.saa.ejb.crd.service.dto.SaldoTipoAporte;
+import com.saa.ejb.crd.service.dto.SolicitudProcesarJubilacion;
 import com.saa.ejb.crd.service.dto.SolicitudRegistroAporte;
 import com.saa.model.crd.Aporte;
 import com.saa.model.crd.NombreEntidadesCredito;
@@ -218,6 +220,82 @@ public class AporteRest {
 
         } catch (Throwable e) {
             System.err.println("ERROR al registrar el aporte: " + e.getMessage());
+            e.printStackTrace();
+
+            String mensaje = e.getMessage() != null ? e.getMessage() : "Error inesperado";
+            String codigo = mensaje.contains(":")
+                ? mensaje.substring(0, mensaje.indexOf(':')).trim() : "";
+
+            int status;
+            if (CODIGOS_400.contains(codigo)) {
+                status = Response.Status.BAD_REQUEST.getStatusCode();
+            } else if (CODIGOS_404.contains(codigo)) {
+                status = Response.Status.NOT_FOUND.getStatusCode();
+            } else if (e instanceof com.saa.basico.util.IncomeException) {
+                status = HTTP_REGLA_DE_NEGOCIO;
+            } else {
+                status = Response.Status.INTERNAL_SERVER_ERROR.getStatusCode();
+            }
+            return respuestaFallo(status, mensaje, codigo);
+        }
+    }
+
+    /**
+     * Traslado de jubilación (paso 3 + paso 5 del flujo — LEVANTAMIENTO-TRES-FRENTES-2026-08-30.md
+     * §4.b, J1-J7): mueve el remanente de cesantía/jubilación a pensión complementaria (tipo 23)
+     * y cambia el estado del partícipe a JUBILADO COMPLEMENTARIO.
+     *
+     * <b>NO orquesta el cruce contra préstamos ni la devolución en efectivo</b> — esos son
+     * decisiones previas y opcionales de la pantalla, que llama por separado a
+     * {@code POST /rest/prst/pagarConAportes} y {@code POST /rest/dvap/registrar} ANTES de
+     * llamar acá con lo que resultó. Ver {@code AporteService#procesarJubilacion}.
+     *
+     * @param solicitud { idEntidad, usuario, fecha }
+     * @return 201 con el ResultadoJubilacion; 400/404/422/500 según el fallo
+     */
+    @POST
+    @Path("/procesarJubilacion")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response procesarJubilacion(SolicitudProcesarJubilacion solicitud) {
+        System.out.println("LLEGA AL SERVICIO PROCESAR JUBILACION - Entidad: "
+            + (solicitud != null ? solicitud.getIdEntidad() : null));
+
+        if (solicitud == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe enviar el cuerpo de la solicitud", null);
+        }
+        if (solicitud.getIdEntidad() == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe indicar el partícipe (idEntidad)", null);
+        }
+        if (solicitud.getUsuario() == null || solicitud.getUsuario().trim().isEmpty()) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe indicar el usuario que procesa la jubilación", null);
+        }
+        if (solicitud.getIdEmpresa() == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "idEmpresa es obligatorio: es la empresa contable sobre la que se genera el"
+                    + " asiento de la jubilación", null);
+        }
+
+        try {
+            ResultadoJubilacion resultado = aporteService.procesarJubilacion(
+                solicitud.getIdEntidad(), solicitud.getUsuario(), solicitud.getFecha(),
+                solicitud.getIdEmpresa());
+
+            Map<String, Object> cuerpo = new LinkedHashMap<>();
+            cuerpo.put("exito", Boolean.TRUE);
+            cuerpo.put("etapa", "APLICACION");
+            cuerpo.put("mensaje", "Jubilación procesada - $" + resultado.getValorTotalTrasladado()
+                + " trasladado a pensión complementaria. Estado: JUBILADO COMPLEMENTARIO.");
+            cuerpo.put("resultado", resultado);
+
+            return Response.status(Response.Status.CREATED)
+                    .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
+
+        } catch (Throwable e) {
+            System.err.println("ERROR al procesar la jubilación: " + e.getMessage());
             e.printStackTrace();
 
             String mensaje = e.getMessage() != null ? e.getMessage() : "Error inesperado";
