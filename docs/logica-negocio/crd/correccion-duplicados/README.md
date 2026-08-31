@@ -637,6 +637,52 @@ proceso mensual queda rehén del mantenimiento del padrón.
 
 ---
 
+## 15. ▶ LA SECUENCIA DE EJECUCIÓN, ACORDADA CON EL EQUIPO A
+
+Este es el orden final. **Ningún paso se saltea, y el `08` es el único que escribe.**
+
+| # | Qué | Quién | Estado |
+|---|---|---|---|
+| 1 | `crd/sql/98_CONTRATOS_FALTANTES_404.sql` — 373 contratos, 486 vigencias | Equipo A | ✅ **corrido** |
+| 2 | **`09_PREVUELO_DEL_08.sql`** — solo lectura | Este equipo | ⬜ pendiente del usuario |
+| 3 | Si el **bloque B** trae partícipes → el equipo A les crea el contrato | Equipo A | condicional |
+| 4 | Si el **bloque C** trae pares que aportan un tipo sin vigencia → el equipo A crea la vigencia | Equipo A | condicional |
+| 5 | **`08_REUBICACION_DEVENGO.sql`** — el `UPDATE` | Este equipo | ⬜ bloqueado por 2-4 |
+| 6 | Revisar controles 3.1, 3.2, 3.3, 3.3b, 3.5, 3.6 → `COMMIT` o `ROLLBACK` | Usuario | ⬜ |
+
+### Por qué los pasos 3 y 4 son condicionales y no opcionales
+
+Salieron de una aclaración que cambió la prioridad del equipo A: **el `08` usa la vigencia solo
+para saber en qué MESES se esperaba aporte, no cuánto.** El único uso del monto es
+`NVL(VGCNMNTO,0) > 0`. De ahí:
+
+- un `HSTR` desactualizado **no afecta** la reubicación — monto equivocado pero positivo, misma grilla;
+- un monto en **cero** sí saca el par de la grilla, y por eso **el pendiente abierto del equipo A
+  (207 sin vigencia de jubilación, 53 sin cesantía) es un prerrequisito de este frente**, no un
+  detalle suyo para después.
+
+**Un partícipe sin grilla no se corrige y, con el abort nuevo, detiene la carga del mes.** Por eso
+se cierra antes, no después.
+
+### 15.1 El patrón que se repitió cinco veces hoy
+
+Vale más que cualquiera de los hallazgos sueltos:
+
+> **El nombre y el JavaDoc no son evidencia del contenido.**
+
+| Caso | Decía | Era |
+|---|---|---|
+| `APRTIDAS` | trazabilidad de carga | eso **y** el id del sistema viejo — dos significados |
+| `HSTRPRJB` | *"Porcentaje Jubilación"* | un **período** (`202606`) |
+| `PGPR.PGPROBSR` | mismo formato que `PGAP` | termina en `]` — el regex anclado ve **cero** filas |
+| Backfill `78` | ✅ corrido, en `ESTADO-CRD.md` | ✅ correcto — **la falsa era mi lectura del conteo** |
+| `mvn` en `CLAUDE.md` | no está en el PATH | depende de la máquina |
+
+Cuatro de los cinco se detectaron **midiendo**, no leyendo. El de `HSTRPRJB` lo detectó Oracle al
+rechazar el valor por precisión: **en una columna `NUMBER` a secas habría entrado sin un error.**
+
+---
+
 ## 8. Documentos relacionados
 
 - `../ANALISIS-APORTES-DUPLICADOS-PETRO.md` — el marco: versiones del generador, mecanismos M1-M8,
