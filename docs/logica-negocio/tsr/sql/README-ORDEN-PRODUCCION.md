@@ -21,6 +21,8 @@ a producción cuando está probada en local.
 | 3 | `tsr/sql/06-pgtr-titular-nullable.sql` | `PGTR.PGTRTTLR` pasa a nullable | Sin esto ningún pago de origen externo (caja chica, devolución de aportes CRD) puede grabarse |
 | 4 | `tsr/sql/02-caja-chica.sql` | Bloque 0 de `GRANT REFERENCES`, las 4 tablas (`CJCH`, `CRCH`, `MVCH`, `PTCH`) y los rubros 232/233 | Ya consolidado: el custodio nace apuntando a `RHH.MPLD` y los GRANT van primero. **El bloque 6 NO se ejecuta** en esta tanda |
 | 5 | `cxc/sql/add-liquidacion-compra-emision.sql` | Fila `CBR.NXPE` para tipo `03` y `LQCS.LQCSLQCC` con su FK, incluido el `GRANT REFERENCES ON PGS.LQCC TO CBR` | El `GRANT` va **antes** del `ALTER ... ADD CONSTRAINT` |
+| 6 | `tsr/sql/07-conciliacion-transito.sql` | Secuencia `TSR.SQ_DTCNCDGO`, tabla **`TSR.DTCN`** con sus 4 índices, y `ALTER TABLE TSR.CNCL ADD` (`CNCLESTD`) | ⛔ **Agregado el 2026-08-31, ver abajo.** Sin esto **cualquier lectura de `DetalleTransito` da ORA-00942**, porque la entidad está mapeada (`model/tsr/DetalleTransito.java:29`) |
+| 7 | `tsr/sql/08-rubros-partidas-transito.sql` | Rubros **239** (tipo de partida), **240** (estado de partida) y **241** (estado de cierre) en `SCP.PRBR`, con sus 9 detalles `PDTR` 1151-1159 | Va **después** del `07`: su bloque de control consulta `TSR.DTCN`. Revalidar el `MAX` de `PRBR`/`PDTR` justo antes de ejecutar (regla 2 del registro de reservas) |
 
 ## Qué NO ejecutar
 

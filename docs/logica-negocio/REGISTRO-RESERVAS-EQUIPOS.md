@@ -236,8 +236,9 @@ módulos en vez de por sesión envejece mal) y el mismo que hace fallar los rang
 un archivo todavía no está en `origin`. **Una regla que depende de un estado que se mueve, se
 rompe cuando ese estado se mueve.** Seis caracteres fijos no dependen de nada.
 
-⚠️ **El equipo A no participó de este acuerdo** y venía commiteando sin marcador. Se le avisó el
-2026-08-31. Hasta que confirme, sus commits se identifican como hasta ahora.
+✅ **Los cuatro equipos adheridos al 2026-08-31.** El equipo A (`saabe-25`) confirmó tras verificar
+la premisa por su cuenta: los últimos 12 commits de `origin/main` son **todos** de `xeonpotato`, y
+ya hay commits con prefijo `crd:` que no son suyos. La ambigüedad no era hipotética, ya existía.
 
 ---
 
