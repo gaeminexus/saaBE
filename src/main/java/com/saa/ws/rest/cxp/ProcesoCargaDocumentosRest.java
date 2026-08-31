@@ -382,6 +382,111 @@ public class ProcesoCargaDocumentosRest {
     }
 
     // =========================================================
+    // Anular / recontabilizar
+    //
+    // Tres operaciones que NO borran nada, a diferencia de /revertir. Ver
+    // docs/logica-negocio/cxp/DISENO-ANULAR-VS-RECONTABILIZAR-FACTURA-COMPRA.md
+    //
+    // El pago se anula APARTE, desde la bandeja de pagos: estos endpoints sólo verifican que no
+    // quede ninguno vigente y devuelven 409 si lo hay.
+    // =========================================================
+
+    /**
+     * CASO B, PASO 1. Anula el asiento y deja el documento pendiente de contabilizar.
+     * Body JSON: { "motivo": "cuenta del grupo mal configurada", "idUsuario": 1 }
+     */
+    @POST
+    @Path("/anularContabilidad/{idDocumentoCxp}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response anularContabilidad(@PathParam("idDocumentoCxp") Long idDocumentoCxp,
+                                        Map<String, Object> params) {
+        System.out.println("=== REST anularContabilidad idDocumentoCxp=" + idDocumentoCxp);
+        try {
+            String motivo = params.get("motivo") != null ? params.get("motivo").toString() : null;
+            Long idUsuario = params.get("idUsuario") != null
+                    ? Long.valueOf(params.get("idUsuario").toString()) : null;
+
+            Map<String, Object> resultado = procesoCargaDocumentosService
+                    .anularContabilidadDocumento(idDocumentoCxp, motivo, idUsuario);
+
+            return Response.status(Response.Status.OK)
+                    .entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.IncomeException e) {
+            // 409 y no 500: no es un fallo del servidor, es que el documento no está en
+            // condiciones de esta operación (estado equivocado, o hay pagos vigentes).
+            return Response.status(Response.Status.CONFLICT)
+                    .entity(errorMap(e.getMessage())).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(errorMap("Error al anular la contabilidad: " + e.getMessage()))
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * CASO B, PASO 2. Genera el asiento nuevo con las cuentas ya corregidas.
+     * Body JSON: { "idUsuario": 1 }
+     */
+    @POST
+    @Path("/recontabilizar/{idDocumentoCxp}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response recontabilizar(@PathParam("idDocumentoCxp") Long idDocumentoCxp,
+                                    Map<String, Object> params) {
+        System.out.println("=== REST recontabilizar idDocumentoCxp=" + idDocumentoCxp);
+        try {
+            Long idUsuario = params != null && params.get("idUsuario") != null
+                    ? Long.valueOf(params.get("idUsuario").toString()) : null;
+
+            Map<String, Object> resultado = procesoCargaDocumentosService
+                    .recontabilizarDocumento(idDocumentoCxp, idUsuario);
+
+            return Response.status(Response.Status.OK)
+                    .entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.IncomeException e) {
+            return Response.status(Response.Status.CONFLICT)
+                    .entity(errorMap(e.getMessage())).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(errorMap("Error al recontabilizar: " + e.getMessage()))
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * CASO A, paso final. Marca el documento como ANULADO(7). <b>Terminal: no se reprocesa.</b>
+     * Se llama después de anular la factura con {@code POST /fctc/anular}.
+     * Body JSON: { "motivo": "anulada ante el SRI", "idUsuario": 1 }
+     */
+    @POST
+    @Path("/anularDocumento/{idDocumentoCxp}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response anularDocumento(@PathParam("idDocumentoCxp") Long idDocumentoCxp,
+                                     Map<String, Object> params) {
+        System.out.println("=== REST anularDocumento idDocumentoCxp=" + idDocumentoCxp);
+        try {
+            String motivo = params.get("motivo") != null ? params.get("motivo").toString() : null;
+            Long idUsuario = params.get("idUsuario") != null
+                    ? Long.valueOf(params.get("idUsuario").toString()) : null;
+
+            Map<String, Object> resultado = procesoCargaDocumentosService
+                    .marcarDocumentoAnulado(idDocumentoCxp, motivo, idUsuario);
+
+            return Response.status(Response.Status.OK)
+                    .entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.IncomeException e) {
+            return Response.status(Response.Status.CONFLICT)
+                    .entity(errorMap(e.getMessage())).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(errorMap("Error al anular el documento: " + e.getMessage()))
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    // =========================================================
     // Consultas
     // =========================================================
     @GET
