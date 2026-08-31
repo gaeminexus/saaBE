@@ -375,7 +375,13 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         resultado.setSnapshot(ordenaSnapshot(distNueva));
         resultado.setCapitalTotal(sumaCapital(distNueva));
 
-        // Los seis sub-procesos, en orden
+        // Los seis sub-procesos, en orden. Fecha del asiento: el PRIMER DIA DEL MES QUE SE
+        // ABRE (fechaProceso) en los cinco primeros; SOLO el neteo va con el ULTIMO DIA DEL
+        // MES QUE SE CIERRA (fechaCorte) — regla confirmada por el usuario 2026-08-31 (versión
+        // final; una versión anterior la tenía al revés y se revirtió el mismo día). No
+        // "emparejar" los cinco fechaProceso con el fechaCorte del neteo — es a propósito.
+        // fechaProceso tambien se usa arriba para la parametrizacion de bandas vigente
+        // (linea ~355) y para fechaCorteApertura: esos dos usos NO son fecha de asiento.
         resultado.getSubProcesos().add(armaVencidos(vencidosDelMes, bandas, productos,
                 fechaProceso, solicitud));
         resultado.getSubProcesos().add(armaCambioBandas(SubProcesoCierreCartera.CAMBIO_BANDAS_POR_VENCER,
