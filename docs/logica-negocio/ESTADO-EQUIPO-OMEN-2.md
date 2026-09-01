@@ -341,6 +341,19 @@ inventar un consenso que no existe y romper la mitad de los llamadores.
 > alterno». Es al revés, y verlo al derecho es lo que convierte el problema de «un helper mal
 > configurado» en «dos criterios incompatibles conviviendo».*
 
+#### 🔴 Y las dos funciones se llaman IGUAL
+
+`bancos.component.ts:162` define su resolución como una arrow local llamada **`extraerCodigo`** —
+el mismo nombre exacto que la de `rrh`— y con el criterio inverso.
+
+**Quien «unifique» esto borrando la local y agregando un `import` de la de `rrh` compila, no recibe
+ningún aviso, y le invierte el comportamiento a esa pantalla.** Es el peor caso posible: una
+limpieza que parece trivial, se ve idéntica en el diff, y cambia qué fila se graba.
+
+⚠️ **Si esta migración se despacha alguna vez, la sustitución de `bancos.component.ts` tiene que ir
+EXPLÍCITA en el prompt del agente, nunca dejada a su criterio.** *(Trampa señalada por
+`lap-saa-1`; el nombre idéntico verificado acá.)*
+
 **Salida: `extraerCodigo` debe dejar de adivinar y recibir del llamador cuál identificador quiere.**
 No hay default correcto — depende de la columna destino, no del módulo.
 
@@ -353,3 +366,28 @@ sin que el llamador se lo diga**. *(Formulado por `lap-saa-1`; es mejor que el q
 contexto de parametrización de `rrh`**, donde los combos se llenan del catálogo y el backend espera
 el alterno — pero generalizarla a `shared/` la aplicaría a módulos donde lo que se espera es la PK.
 **Generalizar el helper sin revisar esa línea sería generalizar el defecto.**
+
+---
+
+## 9. Nota de método — por qué los dos errores de hoy murieron igual
+
+El 2026-09-01 hubo dos errores entre árbitros, uno de cada lado:
+
+| Error | De quién | Cómo se escribió |
+|---|---|---|
+| `INSERT` con dos columnas inventadas (`PRBRNMBR`, `PRBRESTD`) que habría dado ORA-00904 | este árbitro | copiando la forma de otro script sin contrastarla contra la entidad |
+| Una preferencia de identificador leída al revés | `lap-saa-1` | por `grep`, que devolvió sólo la rama que casaba y no la que decide, tres líneas antes |
+
+**Los dos sobrevivieron a la primera lectura y murieron cuando el OTRO fue al archivo.**
+
+> **La parte que vale, y es de `lap-saa-1`:** ninguno de los dos habría muerto releyéndolo su autor,
+> porque **un autor relee con la misma hipótesis con la que escribió**. Lo que los mató no fue
+> releer: fue que los leyera alguien con otra hipótesis.
+
+Es la misma forma que el §7.3 de `ESTADO-CXP-CXC-TSR-RHH-SRI.md` («el control y lo controlado
+compartiendo origen») y la regla 11 del árbitro («la verificación que hace un agente sobre su propio
+código es confirmación de sus propias suposiciones»). **Tercera aparición del mismo principio en
+este equipo, ahora entre pares y no entre árbitro y agente.**
+
+Corolario operativo, barato: **un `grep` recorta por definición — muestra lo que casa, no lo que
+decide.** Antes de concluir sobre una rama, leer el bloque completo.
