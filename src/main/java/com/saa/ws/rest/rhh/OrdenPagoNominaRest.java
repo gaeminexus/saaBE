@@ -142,7 +142,8 @@ public class OrdenPagoNominaRest {
             Long idPeriodo = leeLong(datos, "idPeriodo");
             Long idCuentaBancaria = leeLong(datos, "idCuentaBancaria");
             String usuario = leeTexto(datos, "usuarioRegistro");
-            OrdenPagoNomina orden = generacionOrdenPagoService.generar(idPeriodo, idCuentaBancaria, usuario);
+            Long idUsuario = leeLong(datos, "idUsuario");
+            OrdenPagoNomina orden = generacionOrdenPagoService.generar(idPeriodo, idCuentaBancaria, usuario, idUsuario);
             return Response.status(Response.Status.OK).entity(orden).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al generar la orden de pago: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
@@ -179,7 +180,8 @@ public class OrdenPagoNominaRest {
         try {
             LocalDate fechaAcreditacion = leeFecha(datos, "fechaAcreditacion");
             String usuario = leeTexto(datos, "usuarioRegistro");
-            OrdenPagoNomina orden = generacionOrdenPagoService.confirmar(id, fechaAcreditacion, usuario);
+            Long idUsuario = leeLong(datos, "idUsuario");
+            OrdenPagoNomina orden = generacionOrdenPagoService.confirmar(id, fechaAcreditacion, usuario, idUsuario);
             return Response.status(Response.Status.OK).entity(orden).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al confirmar la orden de pago: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();

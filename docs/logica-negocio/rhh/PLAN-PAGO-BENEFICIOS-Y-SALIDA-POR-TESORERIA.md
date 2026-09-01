@@ -374,6 +374,25 @@ expone un getter cuyo Javadoc dice, textual, *«Id del usuario actual, listo par
 idUsuario para registrar el pago en tesorería»), **no** con un `NullPointerException` ni resolviendo
 por nombre. Es un error de integración y tiene que verse como tal.
 
+#### ⛔ Orden de despliegue: el frontend PRIMERO, el WAR después
+
+**Esto acota lo que dice más arriba sobre que el frente 2 «no tiene dependencia y se puede
+desplegar solo». Sigue sin depender de la base de datos, pero SÍ depende del frontend**, y el orden
+importa porque las dos ventanas no son simétricas:
+
+| Combinación | Qué pasa |
+|---|---|
+| **FE nuevo + WAR viejo** | ✅ El frontend manda `idUsuario` de más; el REST lee el body como `Map` y una clave desconocida se ignora. Inofensivo |
+| **FE viejo + WAR nuevo** | 🔴 No llega `idUsuario` → `exigeIdUsuario` lanza → **`generar()` de nómina falla**, y con él la orden de pago del mes |
+
+**Desplegar el frontend primero elimina la ventana rota.** Al revés, la abre — y sobre el proceso
+que se está estrenando este mes.
+
+*El guard del frontend refuerza esto por el otro lado:* `AppStateService.getIdUsuario()` devuelve
+`0` cuando no puede resolver el usuario, y `0` no es un usuario real. `ordenes-pago.component.ts`
+frena antes de llamar y avisa, en vez de mandar un número que parece válido y que reventaría en el
+`em.find` del lado del servidor.
+
 ⚠️ **Trampa conocida, del frente S §8.2:** `POST /pgtr/aprobar` aplica **una sola forma de pago a
 todo el lote** (`PagoProgramadoServiceImpl:1170`) sin mirar el origen, y tiene una lista de orígenes
 que rechazan transferencia. La nómina **sí** se paga por transferencia (archivo bancario), así que

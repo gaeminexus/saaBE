@@ -38,12 +38,19 @@ public interface GeneracionOrdenPagoService {
      *
      * @param idPeriodoNomina	: Id del periodo de nomina
      * @param idCuentaBancaria	: Cuenta de la empresa de la que sale el pago
-     * @param usuario			: Usuario que ejecuta
+     * @param usuario			: Usuario que ejecuta, para las columnas de auditoria (*USRR)
+     * @param idUsuario			: Id de SCP.PJRQ del usuario que ejecuta. Es el que viaja a la
+     *							  bandeja de aprobacion de tesoreria (PagoProgramado.usuario, FK
+     *							  real) — no se resuelve por nombre, ver
+     *							  docs/logica-negocio/rhh/PLAN-PAGO-BENEFICIOS-Y-SALIDA-POR-TESORERIA.md
+     *							  #4.2 «El idUsuario». Obligatorio salvo en un periodo HISTORICO,
+     *							  que no pasa por la bandeja.
      * @return					: La orden generada, con su detalle
      * @throws Throwable		: Excepcion
      */
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
-    OrdenPagoNomina generar(Long idPeriodoNomina, Long idCuentaBancaria, String usuario) throws Throwable;
+    OrdenPagoNomina generar(Long idPeriodoNomina, Long idCuentaBancaria, String usuario, Long idUsuario)
+            throws Throwable;
 
     /**
      * Produce el archivo bancario de la orden.
@@ -71,11 +78,14 @@ public interface GeneracionOrdenPagoService {
      *
      * @param idOrdenPago			: Id de la orden de pago
      * @param fechaAcreditacion		: Fecha en que el banco acredito
-     * @param usuario				: Usuario que ejecuta
+     * @param usuario				: Usuario que ejecuta, para las columnas de auditoria (*USRR)
+     * @param idUsuario				: Id de SCP.PJRQ del usuario que ejecuta. Ver el Javadoc de
+     *								  {@link #generar}; obligatorio salvo en un periodo HISTORICO.
      * @return						: La orden actualizada
      * @throws Throwable			: Excepcion
      */
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
-    OrdenPagoNomina confirmar(Long idOrdenPago, LocalDate fechaAcreditacion, String usuario) throws Throwable;
+    OrdenPagoNomina confirmar(Long idOrdenPago, LocalDate fechaAcreditacion, String usuario, Long idUsuario)
+            throws Throwable;
 
 }

@@ -13,6 +13,9 @@ import java.util.List;
 import java.util.Map;
 
 import com.saa.basico.util.IncomeException;
+import com.saa.ejb.cxp.dao.PagoProgramadoDaoService;
+import com.saa.ejb.cxp.service.PagoProgramadoService;
+import com.saa.ejb.cxp.service.dto.BeneficiarioOcasional;
 import com.saa.ejb.rhh.dao.CuentaBancariaEmpleadoDaoService;
 import com.saa.ejb.rhh.dao.DetalleFormatoBancarioDaoService;
 import com.saa.ejb.rhh.dao.DetalleOrdenPagoNominaDaoService;
@@ -24,6 +27,7 @@ import com.saa.ejb.tsr.dao.EgresoDaoService;
 import com.saa.ejb.rhh.service.ContabilizacionNominaService;
 import com.saa.ejb.rhh.service.GeneracionOrdenPagoService;
 import com.saa.ejb.rhh.util.RedondeoNomina;
+import com.saa.model.cxp.PagoProgramado;
 import com.saa.model.rhh.CuentaBancariaEmpleado;
 import com.saa.model.rhh.DetalleFormatoBancario;
 import com.saa.model.rhh.DetalleOrdenPagoNomina;
@@ -38,10 +42,13 @@ import com.saa.model.tsr.CuentaBancaria;
 import com.saa.model.tsr.Egreso;
 import com.saa.rubros.Estado;
 import com.saa.rubros.EstadoEgresoTesoreria;
+import com.saa.rubros.EstadoPagoProgramado;
+import com.saa.rubros.OrigenPagoExterno;
 import com.saa.rubros.RhhCampoArchivoBancario;
 import com.saa.rubros.RhhEstadoOrdenPago;
 import com.saa.rubros.RhhFormatoArchivoMarcacion;
 import com.saa.rubros.RhhEstadoPeriodoNomina;
+import com.saa.rubros.RhhModoPeriodoNomina;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -132,13 +139,19 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
     @EJB
     private EgresoDaoService egresoDaoService;
 
+    @EJB
+    private PagoProgramadoService pagoProgramadoService;
+
+    @EJB
+    private PagoProgramadoDaoService pagoProgramadoDaoService;
+
     /* (non-Javadoc)
-     * @see com.saa.ejb.rhh.service.GeneracionOrdenPagoService#generar(java.lang.Long, java.lang.Long, java.lang.String)
+     * @see com.saa.ejb.rhh.service.GeneracionOrdenPagoService#generar(java.lang.Long, java.lang.Long, java.lang.String, java.lang.Long)
      */
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
-    public OrdenPagoNomina generar(Long idPeriodoNomina, Long idCuentaBancaria, String usuario)
-            throws Throwable {
+    public OrdenPagoNomina generar(Long idPeriodoNomina, Long idCuentaBancaria, String usuario,
+            Long idUsuario) throws Throwable {
         System.out.println("Ingresa al metodo generar de generacionOrdenPago service, periodo: "
                 + idPeriodoNomina + ", cuenta: " + idCuentaBancaria);
 
@@ -211,9 +224,166 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
         orden.setNumeroEmpleados(Integer.valueOf(empleados));
         orden = ordenPagoNominaDaoService.save(orden, orden.getCodigo());
 
+        if (esHistorico(periodo)) {
+            // Mismo interruptor que ContabilizacionNominaServiceImpl: un periodo historico
+            // carga datos ya pagados fuera del sistema, no genera contabilidad nueva
+            // (contabilizarPago no-opera para el), y por lo mismo no le corresponde pasar
+            // por la bandeja de aprobacion de tesoreria: no hay ningun pago real que aprobar.
+            System.out.println("Periodo " + idPeriodoNomina + " en modo HISTORICO: la orden de pago"
+                    + " no se registra en la bandeja de tesoreria.");
+        } else {
+            registraPagoEnBandeja(orden, idUsuario);
+        }
+
         System.out.println("Orden de pago " + orden.getCodigo() + " generada por " + total
                 + " para " + empleados + " empleado(s).");
         return orden;
+    }
+
+    /**
+     * Registra el pago consolidado de la orden en la bandeja de aprobacion de tesoreria
+     * (frente 2, decision D1 del usuario, 2026-09-01).
+     *
+     * <p>Sin desglose contable y sin cuenta bancaria de origen: RRHH sigue contabilizando el
+     * pago con <code>ContabilizacionNominaService.contabilizarPago</code> y la plantilla
+     * <code>CFNMPLPG</code> (eso no se toca), y la bandeja actua solo como control y
+     * aprobacion. El pago nace <code>POR_APROBAR</code> porque
+     * <code>idCuentaBancariaOrigen</code> viaja en null -es el unico mecanismo,
+     * <code>PagoProgramadoServiceImpl</code> decide el estado inicial exclusivamente por eso.</p>
+     *
+     * <p>Idempotente por (origen, idOrigen): si <code>generar</code> se vuelve a correr sobre
+     * una orden que ya tiene un pago vivo en la bandeja (POR_APROBAR, REGISTRADO, EN_ARCHIVO o
+     * CONFIRMADO), no se registra un segundo pago para el mismo total.</p>
+     *
+     * @param orden			: Orden de pago ya guardada, con el total definitivo
+     * @param idUsuario		: Id de SCP.PJRQ del usuario que ejecuta, FK real que exige
+     *						  registrarPagoDeOrigenExterno — nunca se resuelve por nombre, ver
+     *						  el Javadoc de {@link com.saa.ejb.rhh.service.GeneracionOrdenPagoService#generar}
+     * @throws Throwable	: IncomeException si la orden no tiene empresa o falta idUsuario
+     */
+    private void registraPagoEnBandeja(OrdenPagoNomina orden, Long idUsuario) throws Throwable {
+        if (tienePagoVivoEnBandeja(orden.getCodigo())) {
+            System.out.println("La orden de pago " + orden.getCodigo()
+                    + " ya tiene un pago vivo en la bandeja de tesoreria: no se registra otro.");
+            return;
+        }
+
+        Long idEmpresa = orden.getEmpresa() != null ? orden.getEmpresa().getCodigo() : null;
+        if (idEmpresa == null) {
+            throw new IncomeException("La orden de pago " + orden.getCodigo() + " no tiene empresa:"
+                    + " sin ella no se puede registrar el pago en la bandeja de tesoreria.");
+        }
+        exigeIdUsuario(idUsuario, "generar");
+
+        // Beneficiario informativo: la orden es un pago consolidado a muchos empleados, no a
+        // una sola persona, y sin desglose este registro no genera archivo de transferencias
+        // propio (el archivo bancario real ya lo arma generarArchivoBancario() desde
+        // RHH.DRPG). El nombre y la identificacion aqui son solo lo que la bandeja muestra.
+        BeneficiarioOcasional beneficiario = new BeneficiarioOcasional();
+        beneficiario.setNombre("Nomina " + orden.getPeriodoNomina().getMes() + "/"
+                + orden.getPeriodoNomina().getAnio() + " - " + orden.getNumeroEmpleados() + " empleado(s)");
+        beneficiario.setIdentificacion(orden.getNumero());
+
+        Map<String, Object> resultado = pagoProgramadoService.registrarPagoDeOrigenExterno(
+                OrigenPagoExterno.RHH_NOMINA, orden.getCodigo(), idEmpresa,
+                null, orden.getTotal(),
+                orden.getFechaEmision() != null ? orden.getFechaEmision().toString() : null,
+                beneficiario, null,
+                "Pago de nomina " + orden.getNumero(),
+                idUsuario, false, orden.getNumero());
+
+        System.out.println("Pago de la orden " + orden.getCodigo() + " registrado en la bandeja"
+                + " de tesoreria: idPago=" + resultado.get("pago") + ", estado=" + resultado.get("estado"));
+    }
+
+    /**
+     * Indica si la orden ya tiene un pago vivo (cualquier estado salvo RECHAZADO o ANULADO) en
+     * <code>PGS.PGTR</code> para el origen <code>RHH_NOMINA</code>.
+     *
+     * <p>No se usa <code>PagoProgramadoDaoService.selectVigentesByOrigen</code> porque esa
+     * consulta excluye a proposito <code>POR_APROBAR</code> -no es "vigente" para el resto de
+     * los modulos que la usan-, y aqui hace falta detectar tambien el pago recien nacido
+     * POR_APROBAR para no duplicarlo en una regeneracion de la orden.</p>
+     *
+     * @param idOrdenPago	: Codigo de la orden de pago (RHH.RDPG.RDPGCDGO)
+     * @return				: true si ya existe un pago que no esta RECHAZADO ni ANULADO
+     * @throws Throwable	: Excepcion
+     */
+    @SuppressWarnings("unchecked")
+    private boolean tienePagoVivoEnBandeja(Long idOrdenPago) throws Throwable {
+        List<PagoProgramado> vivos = em.createQuery(" select   p "
+                + " from     PagoProgramado p "
+                + " where    p.origenExterno = :origen "
+                + "          and p.idOrigen = :idOrigen "
+                + "          and p.estado <> :rechazado "
+                + "          and p.estado <> :anulado ")
+                .setParameter("origen", OrigenPagoExterno.RHH_NOMINA)
+                .setParameter("idOrigen", idOrdenPago)
+                .setParameter("rechazado", Long.valueOf(EstadoPagoProgramado.RECHAZADO))
+                .setParameter("anulado", Long.valueOf(EstadoPagoProgramado.ANULADO))
+                .getResultList();
+        return !vivos.isEmpty();
+    }
+
+    /**
+     * Exige que la orden tenga un pago CONFIRMADO en la bandeja de tesoreria antes de dejar
+     * contabilizar. Sin esto la bandeja es decorativa: se podria contabilizar un pago que
+     * tesoreria nunca aprobo.
+     *
+     * <p>Un documento origen admite un unico pago vigente a la vez (regla de
+     * <code>PagoProgramadoDaoService</code>), asi que basta con el primero de la lista.</p>
+     *
+     * @param idOrdenPago	: Codigo de la orden de pago
+     * @throws Throwable	: IncomeException si no hay pago vigente o no esta CONFIRMADO
+     */
+    private void exigePagoConfirmadoEnTesoreria(Long idOrdenPago) throws Throwable {
+        List<PagoProgramado> vigentes = pagoProgramadoDaoService
+                .selectVigentesByOrigen(OrigenPagoExterno.RHH_NOMINA, idOrdenPago);
+        if (vigentes == null || vigentes.isEmpty()) {
+            throw new IncomeException("La orden de pago " + idOrdenPago + " no tiene ningun pago"
+                    + " vigente en la bandeja de tesoreria (PGS.PGTR): no se puede contabilizar sin"
+                    + " que tesoreria lo apruebe primero.");
+        }
+        PagoProgramado pago = vigentes.get(0);
+        if (pago.getEstado() == null
+                || pago.getEstado().intValue() != EstadoPagoProgramado.CONFIRMADO) {
+            throw new IncomeException("El pago " + pago.getId() + " de la orden " + idOrdenPago
+                    + " esta en estado " + pago.getEstado() + ", no CONFIRMADO ("
+                    + EstadoPagoProgramado.CONFIRMADO + "): tesoreria debe aprobarlo y confirmarlo"
+                    + " antes de contabilizar el pago de nomina.");
+        }
+    }
+
+    /**
+     * Indica si el periodo esta en modo historico. Mismo interruptor y misma convencion de
+     * null que <code>ContabilizacionNominaServiceImpl.esHistorico</code>: un modo nulo se
+     * trata como historico, que es el valor que tienen los periodos creados antes de que
+     * existiera la columna.
+     *
+     * @param periodo	: Periodo de nomina
+     * @return			: true si el periodo no contabiliza
+     */
+    private boolean esHistorico(PeriodoNomina periodo) {
+        return periodo.getModo() == null
+                || Long.valueOf(RhhModoPeriodoNomina.HISTORICO_SIN_CONTABILIZAR).equals(periodo.getModo());
+    }
+
+    /**
+     * Exige que <code>idUsuario</code> venga informado. NO se resuelve por nombre como
+     * respaldo: es un error de integracion del cliente REST y tiene que verse como tal (ver
+     * docs/logica-negocio/rhh/PLAN-PAGO-BENEFICIOS-Y-SALIDA-POR-TESORERIA.md #4.2 «El
+     * idUsuario» — un <code>selectByNombre</code> sobre el texto de auditoria de RRHH rompia
+     * <code>generar()</code> segun por donde se hubiera inicializado la sesion en el frontend).
+     *
+     * @param idUsuario		: Id de SCP.PJRQ recibido en el payload
+     * @param operacion		: Nombre de la operacion, para el mensaje
+     * @throws Throwable	: IncomeException si es null
+     */
+    private void exigeIdUsuario(Long idUsuario, String operacion) throws Throwable {
+        if (idUsuario == null) {
+            throw new IncomeException("Falta idUsuario para registrar el pago en tesoreria"
+                    + " (operacion: " + operacion + ").");
+        }
     }
 
     /* (non-Javadoc)
@@ -521,8 +691,8 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
      */
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
-    public OrdenPagoNomina confirmar(Long idOrdenPago, LocalDate fechaAcreditacion, String usuario)
-            throws Throwable {
+    public OrdenPagoNomina confirmar(Long idOrdenPago, LocalDate fechaAcreditacion, String usuario,
+            Long idUsuario) throws Throwable {
         System.out.println("Ingresa al metodo confirmar de generacionOrdenPago service, orden: "
                 + idOrdenPago);
 
@@ -530,6 +700,14 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
         if (orden.getFechaAcreditacion() != null) {
             throw new IncomeException("La orden de pago " + idOrdenPago + " ya se acredito el "
                     + orden.getFechaAcreditacion() + ".");
+        }
+
+        if (!esHistorico(orden.getPeriodoNomina())) {
+            // Mismo criterio que en generar(): un periodo historico nunca paso por la bandeja,
+            // asi que no hay pago que exigir confirmado ni idUsuario que pedir. contabilizarPago
+            // tampoco emite asiento para el, mas abajo.
+            exigeIdUsuario(idUsuario, "confirmar");
+            exigePagoConfirmadoEnTesoreria(idOrdenPago);
         }
 
         // El asiento y la fecha los graba contabilizarPago, que respeta el interruptor del

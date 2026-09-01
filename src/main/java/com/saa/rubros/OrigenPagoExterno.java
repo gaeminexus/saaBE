@@ -46,4 +46,14 @@ public interface OrigenPagoExterno {
 	 */
 	public static final String CRD_PAGO_PENSION_COMPLEMENTARIA = "CRD_PAGO_PENSION_COMPLEMENTARIA";
 
+	/**
+	 * Pago consolidado de una orden de nomina, originado en RHH.RDPG.
+	 * PGTRIDOR lleva el RHH.RDPG.RDPGCDGO correspondiente. A diferencia de los demas
+	 * origenes de esta interfaz, RDPG no tiene columna de enlace al pago: el vinculo se
+	 * resuelve consultando (origen, idOrigen) contra PGS.PGTR, para no acoplar el
+	 * despliegue del frente 2 a un DDL nuevo (ver
+	 * docs/logica-negocio/rhh/PLAN-PAGO-BENEFICIOS-Y-SALIDA-POR-TESORERIA.md #4.2).
+	 */
+	public static final String RHH_NOMINA = "RHH_NOMINA";
+
 }
