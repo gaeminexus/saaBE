@@ -209,6 +209,51 @@ calcular desde cuotas y pagos. La de Petro nunca se actualizó.
 > cambio en la carga Petro que no arregla nada y que hay que revertir. **Pedir explícitamente que un
 > agente pueda contestar "no está donde decís" es lo que hizo que esto se resolviera bien.**
 
+### H12 — El caso 401: el préstamo pasa los tres filtros y aun así no aparece
+
+**Medido con `sql/155`.** Partícipe `ENTDCDGO 4113` (código Petro 401), tres préstamos:
+
+| Préstamo | Estado | `PRSTSLTT` | Cuotas pendientes | |
+|---|---|---|---|---|
+| 4411 | 3 Cancelado | 3.900,85 | 0 | correcto que no salga |
+| 4412 | 3 Cancelado | 5.800,00 | 0 | correcto que no salga |
+| **7991** | **11 EN MORA** | **5.028,69** | **47** | **debería salir, y no sale** |
+
+`PASAN_FILTRO_NUEVO = 1` y **`PASAN_FILTRO_VIEJO = 1`**: el 7991 pasaba también con el filtro de
+`saldoTotal`. **Ningún filtro de los revisados explica el síntoma.** La causa está antes, en
+`cargarContextoAfectacionFinanciera`, y es algo que falla sin avisar.
+
+### H13 — ⛔ `handleError` convierte un fallo en «sin datos», en 316 servicios del frontend
+
+Detectado por el agente de FE al buscar dónde se pierde el préstamo 7991. Todos los servicios del
+frontend comparten, byte por byte:
+
+```ts
+private handleError(error: HttpErrorResponse): Observable<null> {
+  if (+error.status === 200) { return of(null); }
+  else { return throwError(() => error.error); }
+}
+```
+
+**`grep -rln "if (+error.status === 200)" src/app` → 316 archivos.**
+
+Un `HttpErrorResponse` con status 200 es un **fallo de parseo** del cuerpo. Ese caso no llega como
+error de RxJS: llega como una emisión **exitosa** con valor `null`, y en el consumidor
+`Array.isArray(x) ? x : x ? [x] : []` lo colapsa a `[]`. **Una consulta que falló y una que no
+devolvió filas terminan siendo el mismo valor.** No pasa por ningún `catchError`, no deja rastro en
+consola, y la pantalla dice «no hay préstamos».
+
+**No se toca.** Son 316 servicios y es exactamente el caso que `CLAUDE.md` pide no arreglar en un
+servicio compartido sin ver a quién más le pasa por debajo. **Se distingue en el punto de consumo**,
+y se registra acá como deuda transversal sin dueño.
+
+> **Lo que este día enseñó, y vale más que los tres hallazgos:** en esa pantalla *"la consulta
+> falló"* y *"no hay préstamos"* se ven **idénticos**. Sobre esa ambigüedad se construyeron tres
+> diagnósticos, **dos equivocados —uno de ellos mío—**, y cada uno consumió una medición contra
+> producción para descartarse. **Antes de seguir buscando la causa, la pantalla tiene que poder
+> decir cuál de las dos cosas le pasó.** Eso es lo que se implementó: no es un parche mientras se
+> busca, es el instrumento que faltaba para buscar.
+
 ### H11 — Hay DOS implementaciones de la "fase 2" de la carga Petro
 
 Detectado por el agente de BE. `CargaArchivoPetroServiceImpl` (`asoprep`,
