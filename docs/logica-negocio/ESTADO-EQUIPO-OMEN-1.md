@@ -317,14 +317,25 @@ la tasa de desgravamen es una **constante quemada en Java** (`FACTOR_DESGRAVAMEN
 
 ## 4. Pendientes que dependen del usuario
 
+**Al cierre del 2026-09-01.** Nada de lo pendiente es trabajo de agentes: los dos están libres.
+
 | # | Qué | Tipo |
 |---|---|---|
-| P1 | Correr `sql/151` en producción (solo `SELECT`) y devolver los 4 bloques | **bloqueante** del frente 1 |
-| P2 | Los 4 préstamos vivos sin tasa (8157, 8078, 8085, 8307): ¿qué tasa tienen, o se dan de baja? Exposición ~8.700 de mora calculada al 9 % por defecto | decidible |
-| P3 | ¿Un préstamo puede quedar sin póliza y seguir cobrando seguro? ¿La tasa de desgravamen sale de la póliza o sigue siendo la constante? ¿Los migrados se inscriben retroactivamente? | decidible, frente 3 |
+| ~~P1~~ | ~~Correr `sql/151`~~ | ✅ **corrido el 2026-09-01, el gate pasó** — §5.b del plan |
+| **P7** | **Desplegar el build del frontend y reabrir el diálogo de afectación de BUSTOS ALMEIDA** (código Petro 401). Decide el próximo paso del defecto del préstamo 7991: si aparece el aviso rojo nombrándolo, la consulta falla y se va al log del servidor; si no aparece y la lista sigue vacía, se pierde en otro lado | **bloqueante** — es lo único que tiene trabajo detenido |
+| **P8** | **Desplegar el WAR del otorgamiento.** El frente está completo y el gate pasó: no queda nada técnico entre esto y producción | decidible |
+| P6 | Correr `sql/152` y probar el informe de devoluciones contra el servidor | decidible |
+| P5 | Validar el **texto adaptado al singular** del informe (Anexo A). La adaptación es un supuesto del árbitro y el usuario firma el documento | decidible |
+| **P9** | ¿Se escribe ya la **plantilla contable 34**? El `153` dio todo lo que hacía falta y el usuario decidió las 8 líneas; falta su visto bueno para escribir el script | decidible |
+| **P10** | ¿Se arranca el **frente 2 (reestructuración)**, o se esperan equipos nuevos? | decidible |
+| P2 | Los 4 préstamos vivos sin tasa (8157, 8078, 8085, 8307): ¿qué tasa tienen, o se dan de baja? ~8.700 de mora calculada al 9 % por defecto | decidible |
+| P3 | Frente 3 (seguros): ¿un préstamo puede quedar sin póliza y seguir cobrando seguro? ¿La tasa de desgravamen sale de la póliza o sigue siendo la constante quemada? ¿Los migrados se inscriben retroactivamente? | sin prisa, no arranca hasta el frente 2 |
 | P4 | ¿`sql/60_ACTUALIZA_SEGURO_INCENDIO_PRESTAMOS.sql` llegó a correr en producción? Sus 131 préstamos son la primera inscripción a migrar | sin prisa |
-| P5 | **Validar el texto adaptado al singular** del informe (Anexo A de la especificación). El original es grupal; la adaptación es un supuesto del árbitro, y el usuario es quien firma el documento | decidible |
-| P6 | Correr **`sql/152`** (solo `SELECT`) y probar el informe contra el servidor. Ningún agente puede levantar navegador ni WildFly | decidible |
+| **P11** | **`handleError` de 316 servicios** (H13): un fallo de parseo se lee como «sin datos» en todo el frontend. Transversal, sin dueño, y no se decide desde un módulo | sin prisa, pero necesita plan |
+| **P12** | **578 de 1.552 partícipes** quedan sin ningún préstamo que ofrecer al afectar (bloque 5 del `155`). Es esperable —cartera cancelada— pero conviene decidir qué se le muestra al operador en vez de un mensaje que parece error | sin prisa |
+| **P13** | Los **28,5 millones de `PRSTSLCP`** en préstamos cancelados (H10). No se toca sin saber por qué están así; lo que importa es que ningún total de cartera sume esa columna sin filtrar por estado | sin prisa |
+| **P14** | Las **dos implementaciones de «fase 2»** de la carga Petro, que loguean lo mismo (H11) | sin prisa |
+| **P15** | `REGLAS_GENERACION_REPORTES_G.md:306` afirma que basta el `.jrxml` por la compilación runtime con Janino. Es falso y ya costó los siete reportes de `rhh`; corregirlo con el procedimiento del §3 de la especificación del informe | sin prisa |
 
 ---
 
