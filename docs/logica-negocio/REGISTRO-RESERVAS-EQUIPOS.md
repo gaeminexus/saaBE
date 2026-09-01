@@ -76,7 +76,21 @@ eso ya pasó dos veces.
 | 270–289 | 1300–1399 | **CRD · EQUIPO B — Ciclo del crédito y seguros** | reservado |
 | 290–309 | 1400–1499 | **Equipo cxp/cxc/pagos/tsr/rhh/sri — `omen-saa-3` (OMEN)** | reservado, **con dueño identificado el 2026-08-31** |
 | **310-329** | **1500-1599** | **rhh/cxp/pagos/cnt/tsr — `omen-saa-2` (OMEN)** | reservado 2026-09-01 |
-| ≥ 330 | ≥ 1600 | sin asignar | — |
+| **330-349** | **1600-1699** | **cxp/cxc/pagos/tsr/rhh/sri — `lap-saa-1` (laptop)** | reservado 2026-09-01, **sin ningún código usado todavía** |
+| ≥ 350 | ≥ 1700 | sin asignar | — |
+
+> ⚠️ **Los equipos paralelos NO se cerraron.** `ESTADO-EQUIPO-OMEN-2.md` §0 dice que se cerraron el
+> 2026-09-01 y que «`cxc` y `sri` quedan sin dueño, nadie los está trabajando hoy». Era cierto al
+> escribirse; dejó de serlo horas después, cuando arrancó **`lap-saa-1`** en la máquina laptop con
+> alcance `cxp/cxc/pagos/tsr/rhh/sri`. **Los dos equipos conviven a propósito, por decisión del
+> usuario**, que reparte las tareas para que no se pisen. La salvaguarda operativa está en
+> `ESTADO-EQUIPO-LAP-1.md` §0.1: **antes de tocar un archivo, `git status` + `git log -3` sobre él;
+> si lo modificó otro marcador, parar y avisar.**
+>
+> **Es la tercera vez que este archivo registra la misma forma de fallo** (el rótulo del bloque
+> 290-309, el marcador de commits, y ahora esto): *una afirmación sobre qué equipos existen envejece
+> sin que nadie la toque.* Por eso este bloque se rotula con la **sesión y la máquina**, no con los
+> módulos.
 
 ~~⚠️ **El bloque del otro equipo se reservó sin consultarlo.**~~ **Resuelto el 2026-08-31: ese
 bloque es de `omen-saa-3`, y su árbitro lo confirmó con el usuario antes de tomarlo.** Sigue
@@ -220,6 +234,12 @@ crd(eqB): ...      cxp(eq3): ...      registro(eq3): ...      docs(eq2): ...
 | CRD · EQUIPO B (`omen-saa-1`) | `eqB` |
 | `omen-saa-2` | `eq2` |
 | cxp/cxc/pagos/tsr/rhh/sri (`omen-saa-3`) | `eq3` |
+| cxp/cxc/pagos/tsr/rhh/sri (`lap-saa-1`, **laptop**) | `lap1` |
+
+**Prefijo de scripts `.sql` de `lap-saa-1`: `lap1-`**, según el §2b (prefijo por equipo fuera de
+`crd/sql/`). Se eligió `lap1` y no `eq1` a propósito: nombra la **máquina**, que es lo que de verdad
+separa a este equipo de los tres de OMEN, y no puede confundirse con el `omen-saa-1` histórico —
+que además ya usa `eqB`.
 
 ### Por qué en todos, y no sólo donde hay ambigüedad
 
@@ -315,6 +335,7 @@ Agregá una línea cada vez que reserves algo. Fecha, equipo, qué, para qué.
 | 2026-08-31 | cxp/cxc/pagos/tsr/rhh/sri (árbitro `omen-saa-3`) | **`PDTR` 1400** — rubro **175** (`CXP_ESTADO_DOCUMENTO_CXP`), valor **7** | `ANULADO` en el ciclo de vida de `PGS.DCXP`. El rubro 175 ya existe con LEIDO(1) … REVERTIDO(6); esto agrega **sólo un detalle**, no un rubro nuevo. **Primer código usado del bloque 1400-1499.** ⚠️ **No se reusó `REVERTIDO(6)`**: ese significa «los registros destino se borraron», y en la anulación la factura **sigue existiendo**, anulada. Mezclarlos haría imposible distinguir los dos casos al consultar. Script en `cxp/sql/e3-01-estado-anulado-documento-cxp.sql` |
 | 2026-08-31 | cxp/cxc/pagos/tsr/rhh/sri (árbitro `omen-saa-3`) | **Bloque `PRBR` 290-309 / `PDTR` 1400-1499** — ningún código concreto todavía | **Identificación de dueño, no reserva nueva.** El bloque ya estaba reservado desde el 2026-08-30 para «el equipo cxp/cxc/tsr/rhh/sri», sin decir qué sesión era. `omen-saa-3` reemplaza a `saabe-bc` desde el 2026-08-31 (confirmado por el usuario) y hereda alcance, documento de estado y este bloque. Se anota **antes** de usar ningún número, según la regla 1 |
 | 2026-09-01 | rhh/cxp/pagos/cnt/tsr (árbitro `omen-saa-2`) | **`PRBR` 310** + **`PDTR` 1500–1503** | Rubro nuevo `RHH_ESTADO_ORDEN_BENEFICIO` — `GENERADA(1)`, `ENVIADA_A_TESORERIA(2)`, `PAGADA(3)`, `ANULADA(4)` — para la orden de pago de beneficios sociales (`RHH.ODBS`). **Primeros códigos del bloque 310-329 / 1500-1599**, que este equipo venía proponiendo desde el 2026-08-31 **sin escribirlo**, o sea que hasta hoy no estaba reservado. Control corrido por el usuario justo antes de reservar (regla 2): `MAX(PRBRCDGO)`=**248** y `MAX(PDTRCDGO)`=**1200**, los dos por debajo del bloque, sin colisión. Script `rhh/sql/e2-03`. Se reserva también la tabla **`ODBS`**: verificada libre en `src/main/java/com/saa/model/`, en `docs/`, y **contra `ALL_TABLES` por el usuario el 2026-09-01** — cero filas |
+| 2026-09-01 | cxp/cxc/pagos/tsr/rhh/sri (árbitro `lap-saa-1-arb`, **laptop**) | **Bloque `PRBR` 330-349 / `PDTR` 1600-1699** — ningún código concreto todavía. Marcador de commit **`lap1`**, prefijo de scripts **`lap1-`** | Alta del equipo. Se anota **antes** de usar ningún número, según la regla 1. **Se aplica desde ya la §6:** cuando este equipo tome un `PRBRCDGO` va a anotar **también el `PRBRALTR`**, con la convención `PRBRALTR = PRBRCDGO`, y a correr los dos controles. El `MAX` se revalida con el usuario justo antes de ejecutar (regla 2) — el último control conocido, del mismo día, dio `MAX(PRBRCDGO)`=**248** y `MAX(PDTRCDGO)`=**1200**, los dos muy por debajo de este bloque |
 
 ---
 
