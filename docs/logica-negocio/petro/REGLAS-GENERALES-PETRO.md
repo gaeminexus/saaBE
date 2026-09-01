@@ -220,14 +220,27 @@ Los docs antiguos con rutas `/api/...`, `/api/generacion-petro`, `/api/petrocome
     backend), que es lo que ya hacía la pantalla de cobros personales
     (`cobros-personales.component.ts:292`).
 
-    **Costó un defecto en producción.** La pestaña de descuentos de `archivo-petro/carga/detalle`
-    filtraba la lista de préstamos afectables por `saldoTotal > 0`, así que **los préstamos EN MORA
-    con `PRSTSLTT` en 0 o NULL no aparecían** al afectar una novedad bloqueante — y, por el otro
-    lado, **sí aparecían préstamos ya cancelados**. Corregido el 2026-09-01 filtrando por
-    `idEstado` (VIGENTE 2 y EN_MORA 11; `DE_PLAZO_VENCIDO` 8 queda fuera por decisión del usuario).
-    Diagnóstico en `crd/sql/154_DIAGNOSTICO_PRSTSLTT_AFECTABLES.sql`.
+    **Dónde mordía.** La pestaña de descuentos de `archivo-petro/carga/detalle` filtraba la lista
+    de préstamos afectables por `saldoTotal > 0`. **Medido en producción el 2026-09-01
+    (`crd/sql/154`), el daño real es el inverso del que se supuso:**
 
-    Lo que hace difícil de ver este defecto: **el filtro no menciona el estado en ninguna parte**,
-    así que buscar "por qué no salen los que están en mora" lleva derecho a los filtros de estado
-    de la carga —que están todos bien e incluyen la mora— y no al filtro de saldo, que es el que
-    los estaba descartando.
+    | Estado | Préstamos | Los veía | No los veía |
+    |---|---|---|---|
+    | 2 VIGENTE | 866 | 866 | 0 |
+    | 8 DE PLAZO VENCIDO | 106 | 106 | 0 |
+    | 11 EN MORA | 338 | 337 | **1** |
+    | 3 + 4 CANCELADOS | 4.354 | **4.012** | 342 |
+
+    O sea: **el filtro casi no escondía préstamos vivos —uno solo en mora— y en cambio ofrecía
+    4.012 préstamos YA CANCELADOS**, con casi 30 millones de `PRSTSLTT` congelado, como candidatos
+    válidos para aplicarles un descuento del archivo Petro. Ese es el defecto grande, y no se había
+    reportado nunca.
+
+    Corregido el 2026-09-01 filtrando por `idEstado` (VIGENTE 2 y EN_MORA 11; `DE_PLAZO_VENCIDO` 8
+    queda fuera por decisión del usuario).
+
+    > ⚠️ **Este cambio NO explica el síntoma que lo originó.** Se llegó acá investigando un reporte
+    > de que los préstamos en mora no aparecían al afectar una novedad bloqueante, y la medición
+    > mostró que **337 de 338 ya aparecían**. La causa de ese síntoma sigue abierta. Lo que se
+    > corrigió es un defecto distinto y más grave que apareció de paso. **No dar por cerrado el
+    > reporte original con este cambio.**

@@ -162,22 +162,43 @@ afectar una novedad BLOQUEANTE solo aparecían los préstamos vigentes y no los 
 **Entregado:** `b3873b3` (saaFE), un solo archivo. Diagnóstico en `crd/sql/154`. Trampa documentada
 en `petro/REGLAS-GENERALES-PETRO.md` §9.10.
 
+### ⛔ EL REPORTE ORIGINAL SIGUE ABIERTO — el diagnóstico del árbitro era incorrecto
+
+**Medido con `sql/154` en producción el 2026-09-01, y los datos desmienten la explicación:**
+
+| Estado | Préstamos | Los veía el filtro viejo | No los veía |
+|---|---|---|---|
+| 2 VIGENTE | 866 | 866 | 0 |
+| 8 DE PLAZO VENCIDO | 106 | 106 | 0 |
+| 11 EN MORA | 338 | **337** | **1** |
+| 3 + 4 CANCELADOS | 4.354 | **4.012** | 342 |
+
+**337 de 338 préstamos en mora ya aparecían** con el filtro viejo. El defecto de `PRSTSLTT`
+escondía **un solo** préstamo en mora (el 4926, partícipe 4308), así que **no explica un síntoma
+descrito como "solo saca los vigentes"**. La causa real está sin encontrar.
+
+**Pedido al usuario:** un caso concreto (partícipe y carga) donde lo haya visto. Sin eso se vuelve a
+cambiar a ciegas, que es lo que ya pasó una vez acá.
+
 ### H10 — `PRSTSLTT` y `PRSTSLCP` son campos muertos, y uno de ellos filtraba una pantalla
 
-La causa **no era un filtro por estado**. El agente de BE recorrió la generación de novedades
-completa y **ninguna condición excluye `EN_MORA`**: todas las que miran estado ya lo incluyen.
+Esto **sí** es real y se corrigió, pero es un defecto **distinto** del que se estaba buscando.
 
-El filtro estaba en el frontend (`detalle-consulta-carga.component.ts:2408`) y era por
-**`saldoTotal > 0`** — o sea `PRST.PRSTSLTT`. Y esa columna **no la actualiza nadie**:
-`Prestamo.setSaldoTotal()` existe en el backend con **cero llamadas**. Un préstamo en mora cuyo
-`PRSTSLTT` quedó en 0 o `NULL` desaparecía de la lista, debiera lo que debiera.
+`Prestamo.setSaldoTotal()` existe en el backend con **cero llamadas**: `PRSTSLTT` es el valor que
+dejó la migración y nunca se movió. La pestaña de descuentos filtraba por `saldoTotal > 0`
+(`detalle-consulta-carga.component.ts:2408`), y el resultado medido es **el inverso del que se
+supuso**: casi no escondía préstamos vivos, y en cambio **ofrecía 4.012 préstamos YA CANCELADOS**
+—con casi 30 millones de saldo congelado— como candidatos válidos para aplicarles un descuento del
+archivo Petro. Nadie lo había reportado.
 
-**Por qué costaba verlo:** el filtro **no menciona el estado en ninguna parte**, así que la
-pregunta *"¿por qué no salen los que están en mora?"* lleva derecho a los filtros de estado de la
-carga —que están todos bien— y no al de saldo, que era el que los descartaba.
+Corregido filtrando por `idEstado` (2 y 11). **El cambio se sostiene por este motivo, no por el
+reporte original.**
 
-**Efecto colateral corregido de paso, que nadie había reportado:** la pantalla ofrecía préstamos
-**ya cancelados** para afectar, por el mismo campo congelado.
+> **Lección, y es sobre mí, no sobre los agentes:** encontré un mecanismo que *podía* producir el
+> síntoma, lo verifiqué contra el código —donde era correcto— y **lo di por causa antes de medirlo
+> contra los datos**. El script que lo habría desmentido lo escribí yo mismo, y despaché la
+> corrección sin esperar su resultado. **Un mecanismo plausible y verificado en el código no es una
+> causa hasta que los datos muestran que ocurre con la frecuencia del síntoma.**
 
 **Precedente que confirmó el diagnóstico:** `cobros-personales.component.ts:292` ya documentaba que
 `saldoTotal`/`saldoCapital` de `PRST` no son fiables, y esa pantalla las había abandonado a favor de
