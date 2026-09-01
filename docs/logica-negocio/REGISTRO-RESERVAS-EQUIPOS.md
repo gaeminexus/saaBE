@@ -315,3 +315,46 @@ Agregá una línea cada vez que reserves algo. Fecha, equipo, qué, para qué.
 | 2026-08-31 | cxp/cxc/pagos/tsr/rhh/sri (árbitro `omen-saa-3`) | **`PDTR` 1400** — rubro **175** (`CXP_ESTADO_DOCUMENTO_CXP`), valor **7** | `ANULADO` en el ciclo de vida de `PGS.DCXP`. El rubro 175 ya existe con LEIDO(1) … REVERTIDO(6); esto agrega **sólo un detalle**, no un rubro nuevo. **Primer código usado del bloque 1400-1499.** ⚠️ **No se reusó `REVERTIDO(6)`**: ese significa «los registros destino se borraron», y en la anulación la factura **sigue existiendo**, anulada. Mezclarlos haría imposible distinguir los dos casos al consultar. Script en `cxp/sql/e3-01-estado-anulado-documento-cxp.sql` |
 | 2026-08-31 | cxp/cxc/pagos/tsr/rhh/sri (árbitro `omen-saa-3`) | **Bloque `PRBR` 290-309 / `PDTR` 1400-1499** — ningún código concreto todavía | **Identificación de dueño, no reserva nueva.** El bloque ya estaba reservado desde el 2026-08-30 para «el equipo cxp/cxc/tsr/rhh/sri», sin decir qué sesión era. `omen-saa-3` reemplaza a `saabe-bc` desde el 2026-08-31 (confirmado por el usuario) y hereda alcance, documento de estado y este bloque. Se anota **antes** de usar ningún número, según la regla 1 |
 | 2026-09-01 | rhh/cxp/pagos/cnt/tsr (árbitro `omen-saa-2`) | **`PRBR` 310** + **`PDTR` 1500–1503** | Rubro nuevo `RHH_ESTADO_ORDEN_BENEFICIO` — `GENERADA(1)`, `ENVIADA_A_TESORERIA(2)`, `PAGADA(3)`, `ANULADA(4)` — para la orden de pago de beneficios sociales (`RHH.ODBS`). **Primeros códigos del bloque 310-329 / 1500-1599**, que este equipo venía proponiendo desde el 2026-08-31 **sin escribirlo**, o sea que hasta hoy no estaba reservado. Control corrido por el usuario justo antes de reservar (regla 2): `MAX(PRBRCDGO)`=**248** y `MAX(PDTRCDGO)`=**1200**, los dos por debajo del bloque, sin colisión. Script `rhh/sql/e2-03`. Se reserva también la tabla **`ODBS`**: verificada libre en `src/main/java/com/saa/model/`, en `docs/`, y **contra `ALL_TABLES` por el usuario el 2026-09-01** — cero filas |
+
+---
+
+## 6. ⛔ El registro reserva `PRBRCDGO`, pero el código busca por `PRBRALTR`
+
+**Encontrado el 2026-09-01 por el árbitro de `omen-saa-2`, escribiendo su primer rubro.**
+
+Este archivo lleva el control de `PRBRCDGO` y `PDTRCDGO` desde el 2026-08-30, y en ninguna de sus
+316 líneas menciona **`PRBRALTR`** — el **código alterno**. Pero es el alterno el que usa el código
+para encontrar un rubro: `DetalleRubroDaoService.selectValorStringByRubAltDetAlt` filtra por
+`t.rubro.codigoAlterno`, y es el camino por el que `selectByCriteria` del DAO genérico lee los
+operadores de búsqueda.
+
+**El agujero:** dos equipos pueden tomar `PRBRCDGO` distintos —cumpliendo este registro al pie de
+la letra— y **el mismo `PRBRALTR`**. La colisión no la ve ninguna de las reglas de arriba, y no
+falla al insertar: falla al **leer**, devolviendo el rubro del otro equipo.
+
+**Y no se puede deducir el alterno del código, porque la convención cambió:**
+
+| Ejemplo | `PRBRCDGO` | `PRBRALTR` |
+|---|---|---|
+| Rubros viejos de rhh (180-198) | 180 | **179** — alterno = código − 1 |
+| Rubros recientes (234) | 234 | **234** — alterno = código |
+
+**Regla, de acá en adelante:** al reservar un `PRBRCDGO` en la bitácora, **anotar también el
+`PRBRALTR`**, y verificar los dos antes de ejecutar:
+
+```sql
+SELECT PRBRCDGO FROM SCP.PRBR WHERE PRBRCDGO = <codigo>;   -- el que reserva este archivo
+SELECT PRBRCDGO, PRBRDSCR FROM SCP.PRBR WHERE PRBRALTR = <alterno>;  -- el que usa el codigo
+```
+
+**Convención recomendada para lo nuevo: `PRBRALTR` = `PRBRCDGO`.** Es la que siguen los rubros
+recientes, hace innecesario reservar dos números y vuelve la colisión imposible mientras todos la
+respeten. Lo histórico no se toca.
+
+> **Cómo se encontró, porque la forma se repite:** el árbitro escribió el `INSERT` copiando la
+> estructura de otro script **sin contrastarla contra la entidad `Rubro`**, e inventó dos columnas
+> (`PRBRNMBR`, `PRBRESTD`) que no existen — el script habría fallado con ORA-00904 al ejecutarse.
+> Lo detectó el agente de backend, que **no puede correr SQL**, preguntando por qué el `INSERT` no
+> llevaba `PRBRALTR` si el catálogo se consulta por ahí. Verificar el esquema antes de escribir un
+> `INSERT` es más barato que descubrirlo en producción, y **la pregunta de alguien que no puede
+> ejecutar sigue siendo verificación.**
