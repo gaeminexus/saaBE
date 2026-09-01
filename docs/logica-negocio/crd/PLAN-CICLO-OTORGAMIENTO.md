@@ -165,7 +165,51 @@ tiene.
 
 ---
 
-## 5.b ⛔ RIESGO ABIERTO — `GENERADO (1)` puede estar ocupado por la cartera migrada
+## 5.b ✅ RIESGO CERRADO — el estado 1 está vacío en producción (medido 2026-09-01)
+
+> **El gate pasó.** `sql/151` se corrió en producción el 2026-09-01 y **el estado 1 no aparece en el
+> reparto: cero préstamos.** Tampoco aparecen el 6, el 7, el 9 ni el 10. Toda la cartera está en
+> cinco estados y ninguno es de los que el ciclo nuevo usa.
+>
+> | Estado | Préstamos | Con tabla | Con pagos | Total pagado | Saldo capital | Inicio más viejo | Inicio más nuevo |
+> |---|---|---|---|---|---|---|---|
+> | **1 GENERADO** | **0** | — | — | — | — | — | — |
+> | 2 VIGENTE | 866 | 866 | 40 | 80.931,57 | 11.537.144,23 | 2012-07-23 | 2025-06-11 |
+> | 3 CANCELADO | 1.408 | 1.407 | 371 | 2.750.642,06 | 11.803.355,80 | 2005-03-02 | 2025-06-11 |
+> | 4 CANCELADO ANTICIPADO | 2.946 | 2.946 | 2.747 | 26.453.224,28 | 16.683.985,68 | 2005-09-14 | 2025-07-31 |
+> | 8 DE PLAZO VENCIDO | 106 | 106 | 9 | 8.880,15 | 2.764.006,35 | 2007-01-17 | 2023-02-01 |
+> | 11 EN MORA | 338 | 338 | 19 | 60.169,30 | 7.542.291,93 | 2005-02-22 | 2025-06-11 |
+>
+> **Total 5.664**, que es la cartera migrada completa y coincide con lo medido en local.
+> Cartera viva (2 + 8 + 11) = **1.310**.
+>
+> **Consecuencia: el ciclo de otorgamiento entra tal cual, sin separar nada y sin condición extra.**
+> No hay cartera viva mal etiquetada, así que a ningún operador le van a aparecer los botones de
+> aprobar y rechazar sobre un crédito vivo. **Este frente queda liberado para desplegar.**
+>
+> **Por qué el riesgo era real igual:** `prestamo-edit` mandaba `idEstado: 1` al dar de alta y esa es
+> la pantalla con la que se registró la cartera migrada. Que el 1 esté vacío significa que **esa ruta
+> nunca se usó para la migración** —entró por otro camino—, no que el riesgo estuviera mal planteado.
+> La medición era la única forma de saberlo.
+
+### ⚠️ Anomalía que salió en la misma consulta, y NO es de este frente
+
+**Los préstamos cancelados conservan saldo de capital:** 11,8 M en el estado 3 y 16,7 M en el 4,
+**28,5 millones en total sobre créditos que ya están cancelados**. Un préstamo cancelado debería
+tener `PRSTSLCP` en cero.
+
+Es el mismo patrón que ya se había visto en los siete préstamos sin tasa de D10, donde
+`PRSTSLCP = PRSTMNSL` en créditos de 2005 y 2012: **`PRSTSLCP` parece no actualizarse al cancelar y
+conserva un valor viejo.**
+
+**Consecuencia práctica, y por eso se anota:** cualquier consulta o reporte que sume `PRSTSLCP` sin
+filtrar por estado devuelve ~50 millones de cartera que no existe. **No lo toca este frente** —no
+hay que "arreglar" 4.354 filas sin saber por qué están así— pero hay que saberlo antes de creerle a
+un total de cartera.
+
+---
+
+## 5.b.1 El planteo original del riesgo (2026-08-31), conservado
 
 **Sin resolver al 2026-08-31. Hay que mirar la base antes de desplegar esto.**
 
