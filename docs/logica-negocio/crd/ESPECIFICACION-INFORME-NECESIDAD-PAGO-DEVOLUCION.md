@@ -208,9 +208,9 @@ Transcrito del Word. **Va literal en el `.jrxml`**, salvo Observaciones.
 
 - **Entidad:** `ASOPREP - FCPC` · **Área responsable:** `Área de Crédito`
 - **Asunto:** *Informe de justificación de pagos y devoluciones de cesantías a personas cesantes, jubilados por el IESS y desafiliados del fondo*
-- **Antecedentes, Objetivo, Justificación, Conclusiones, Recomendaciones:** los cinco bloques del
-  Word, literales. La **Justificación** cita la Resolución No. 280-2016-F de la Junta de Política y
-  Regulación Monetaria y Financiera, Capítulo II, Artículo 55, con la cita textual entre comillas.
+- **Antecedentes, Objetivo, Justificación, Conclusiones, Recomendaciones:** **el texto completo está
+  en el Anexo A de este documento.** Transcribirlo desde ahí, literal. La **Justificación** cita la
+  Resolución No. 280-2016-F, Capítulo II, Artículo 55: **esa cita no se toca ni se reescribe.**
 - **Observaciones:** `$P{P_OBSERVACIONES}`. Si viene vacío, la sección **se colapsa sin dejar hueco**
   (`removeLineWhenBlank="true"` + `blankWhenNull="true"`).
 - **Firma:** `Lic. Gabriel Robayo` / `Jefe de Crédito`, y la razón social completa:
@@ -260,3 +260,146 @@ devolviendo `blob`.
 el `.jrxml` porque hay compilación runtime con Janino. Un agente que lo lea entrega un reporte roto.
 Corregirlo con el procedimiento del §3. **No es de esta entrega**; queda anotado acá y en
 `ESTADO-EQUIPO-OMEN-1.md`.
+
+---
+
+## Anexo A — Texto literal de los bloques fijos
+
+**Transcrito del Word `INFORME DE NECESIDAD DE PAGO CESANTIAS 27.docx`** (informe
+FCPC-CRE-GR-137-2026, Quito, 22 de mayo de 2026), entregado por el usuario el 2026-09-01.
+
+> ### ⛔ El Word NO se commitea, y por eso este anexo existe
+>
+> El original lista **19 partícipes con cédula, nombre completo y monto**. Son datos personales de
+> personas reales: **no entra al repositorio**, ni como adjunto ni convertido. Este anexo transcribe
+> **solo los bloques de texto**, que son los que la plantilla necesita, y ningún dato de partícipe.
+>
+> Fue un hueco real: la primera versión de esta especificación decía «los cinco bloques del Word,
+> literales» sin transcribirlos, y el agente de backend quedó bloqueado con razón — no podía
+> inventar una cita legal, y **hizo bien en parar en vez de rellenar con un placeholder.**
+
+### ⚠️ Adaptación al singular — supuesto declarado, revisar antes de dar por bueno
+
+El Word es un informe **grupal** y está redactado en plural: «los ex partícipes», «este grupo», «el
+cronograma de pagos». En un informe de **un solo partícipe** ese plural es incorrecto.
+
+**Los textos de abajo están adaptados al singular**, con dos límites:
+
+1. **La cita textual del Artículo 55 queda EXACTA**, con su plural, sus comillas y sus puntos
+   suspensivos finales. Es una transcripción normativa: adaptarla sería falsificarla.
+2. Se conserva la redacción del original en todo lo demás — se cambia el número gramatical y las
+   referencias al cronograma grupal, nada más. No se mejora la prosa ni se corrige su puntuación.
+
+**El usuario firma este documento: la adaptación es un supuesto del árbitro y hay que validarla con
+él antes de dar el reporte por cerrado.** Si prefiere el plural literal del original, es cambiar el
+texto del `.jrxml` y recompilar el `.jasper`; no cambia nada más.
+
+### A.1 — Antecedentes
+
+> El presente informe tiene como finalidad justificar la devolución de la cuenta individual,
+> conforme a la solicitud ingresada por el ex partícipe.
+
+### A.2 — Objetivo
+
+> Dar atención al requerimiento del ex partícipe relacionado con el pago de su cuenta individual y
+> los cruces con préstamos pendientes de cancelación, posterior a las reuniones mantenidas con el
+> mismo y llegar a un acuerdo de cancelación de sus préstamos, esto con el propósito de apoyar sus
+> necesidades económicas derivadas de la situación que presenta.
+
+### A.3 — Detalle del partícipe (encabezado de la tabla)
+
+> De acuerdo a la autorización de la Gerencia General se procede a listar los datos con los que se
+> efectuará el pago correspondiente del ex partícipe que ingresó la solicitud correspondiente:
+
+*(El original terminaba con «mismas que estarán bajo el cronograma del día 15 de mayo de 2026». La
+referencia al cronograma grupal se retira: en el informe individual la fecha de compromiso de pago
+ya va en los datos del partícipe.)*
+
+### A.4 — Justificación
+
+> El presente proceso se ejecuta en cumplimiento de lo dispuesto en la Resolución No. 280-2016-F de
+> la Junta de Política y Regulación Monetaria y Financiera, Capítulo II – Liquidación de la cuenta
+> individual, Artículo 55, el cual establece:
+
+**Cita textual — EXACTA, no se modifica:**
+
+> “La liquidación de la cuenta individual de un Fondo Complementario Previsional Cerrado de Cesantía
+> se da cuando un participe termine su relación laboral con la institución pública, privada o mixta,
+> bajo la que se constituyó el ente previsional y se cumplan las condiciones previstas en la presente
+> norma, En este caso, se le entregará el saldo de su cuenta individual debiendo efectuarse
+> previamente las deducciones que correspondan (…)”
+
+**Cierre del bloque:**
+
+> En este contexto, y atendiendo a la solicitud expresa del ex partícipe, se ha establecido el pago
+> que permite la ejecución ordenada y transparente de la devolución correspondiente, por lo cual se
+> le realizará el pago del 100% de sus cuentas de cesantía y jubilación personal menos sus haberes
+> correspondientes.
+
+### A.5 — Observaciones
+
+**Este bloque es `$P{P_OBSERVACIONES}`, lo digita el operador y NO va fijo.** Los tres párrafos del
+Word se transcriben acá **solo como referencia** — el frontend los puede ofrecer como texto
+sugerido, pero la plantilla no los lleva quemados:
+
+> De acuerdo con las particularidades del caso, el pago efectuado es parcial, dado que el saldo de
+> capital pendiente de los préstamos no alcanza a ser cubierto en su totalidad con los valores de
+> cesantías.
+
+> Los rendimientos de las cuentas individuales no han sido considerados en el presente proceso,
+> debido a que la actual administración se encuentra en proceso de transición y auditoria y atado al
+> artículo 195 de la Resolución No. JPRFM-2025-005-F, de fecha 31 de octubre de 2025, emitida por la
+> Junta de Política y Regulación Financiera y Monetaria.
+
+> En este mismo contexto, los valores pendientes de pago a favor del partícipe serán cancelados una
+> vez que se cumplan los tiempos establecidos por el ente de control para cumplir la transición del
+> fondo, la conciliación de cartera y la auditoría correspondiente determinen de manera favorable los
+> saldos definitivos de su cuenta individual.
+
+### A.6 — Conclusiones
+
+> El pago avanza conforme se recibe la solicitud del partícipe y los requerimientos del ente de
+> control, encontrándonos al día en las atenciones con el presente informe.
+
+> Asimismo, se ha procurado mantener la transparencia y trazabilidad en cada etapa del proceso,
+> considerando las observaciones y verificaciones necesarias para garantizar una gestión responsable
+> de los recursos del fondo, por lo que es óptimo verificar las cuentas patronales del partícipe,
+> teniendo en cuenta que el sistema Delta 21 no es lo 100% operativo.
+
+### A.7 — Recomendaciones
+
+> Continuar con el proceso de migración y auditoría de las cuentas individuales y sus respectivos
+> rendimientos, a fin de esclarecer los saldos reales de cada partícipe.
+
+> Fortalecer los mecanismos de control interno y conciliación periódica entre las áreas contable,
+> financiera y administrativa, para evitar discrepancias en los registros y agilizar futuras
+> devoluciones.
+
+### A.8 — Cabecera y firma
+
+Ya estaban en §6; se repiten acá para que todo lo transcribible salga de un solo lugar.
+
+| Campo | Texto |
+|---|---|
+| Título | `INFORME DE NECESIDAD DE PAGO` |
+| Entidad | `ASOPREP - FCPC` |
+| Área responsable | `Área de Crédito` |
+| Elaborado por | `Gabriel Robayo` |
+| Asunto | `Informe de justificación de pagos y devoluciones de cesantías a personas cesantes, jubilados por el IESS y desafiliados del fondo` |
+| Firma | `Atentamente,` / `Lic. Gabriel Robayo` / `Jefe de Crédito` |
+| Razón social | `ASOCIACIÓN DEL FONDO COMPLEMENTARIO PREVISIONAL CERRADO ASOPREP-FCPC DE JUBILACIÓN Y CESANTÍA, DE LAS EMPRESAS PÚBLICAS DEL SECTOR HIDROCARBURÍFERO` |
+
+**El Asunto queda en plural**: describe el tipo de trámite, no a este partícipe.
+
+---
+
+## Anexo B — Decisiones sobre la query resueltas con el backend (2026-09-01)
+
+Tres desvíos que el agente de backend propuso al armar la consulta. **Los tres aprobados**, y se
+anotan porque mejoran lo que decía el §4:
+
+| Desvío | Resolución |
+|---|---|
+| **No proyectar `TPAPCDGO`** de ninguna de las dos tablas en la sección 1 — el join va por el `ON` y de `TPAP` solo se saca `TPAPNMBR` | **Mejor que aliasar.** Una columna que no se selecciona no puede convertirse en un `COLUMN_n`. El §4.1 pedía aliasar; no proyectarla elimina el problema en vez de administrarlo |
+| **`CASE` literal sobre `PRSTIDST`** para el texto del estado, en vez de unir contra `CRD.ESPS` | **Correcto.** Y usó `8 = DE_PLAZO_VENCIDO`, `11 = EN_MORA`, que es lo bueno: el JavaDoc de `PrestamoDaoService.countVigentesMoraVencidosByEntidad` tiene **esas dos etiquetas cruzadas** y el agente no cayó en la trampa |
+| **`APRTFCTR < DVAPFCHA + 1`** en vez de `<= DVAPFCHA` como tope de la sección 2 | **Acierto, y corrige el §4.3.** `APRTFCTR` es `TIMESTAMP` y `DVAPFCHA` es `DATE`: con `<=` se perderían los movimientos del mismo día de la devolución con hora distinta de medianoche |
