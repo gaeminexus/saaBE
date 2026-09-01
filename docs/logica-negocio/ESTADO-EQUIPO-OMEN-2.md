@@ -1,184 +1,185 @@
 # ESTADO — equipo `omen-saa-2`
 
 **Árbitro:** `omen-saa-2-arb` (máquina **omen**) · **Agentes:** `omen-saa-2-be`, `omen-saa-2-fe`
-**Creado:** 2026-08-31 · **Este documento lo mantiene SOLO este equipo.**
-
-> **No confundir con los otros tres documentos de estado.** Cada equipo lleva el suyo y ya se
-> cruzaron una vez por compartir archivo (ver `ESTADO-GENERAL-TRABAJO-EN-CURSO.md`, dado de baja).
->
-> | Equipo | Documento |
-> |---|---|
-> | CRD · EQUIPO A (`saabe-25`, otra máquina) | `ESTADO-CRD.md` |
-> | CRD · EQUIPO B (`omen-saa-1`, esta máquina) | `ESTADO-CRD.md` + `crd/PLAN-CICLO-OTORGAMIENTO.md` |
-> | `saabe-bc` (otra máquina) | `ESTADO-CXP-CXC-TSR-RHH-SRI.md` |
-> | **este equipo** | **este archivo** |
+**Creado:** 2026-08-31 · **Reescrito:** 2026-09-01 · **Este documento lo mantiene SOLO este equipo.**
 
 ---
 
-## 0. ⛔ DÓNDE TRABAJA ESTE EQUIPO — leer antes de tocar un archivo
+## 0. Alcance — definido por el usuario el 2026-09-01
 
-**Checkouts propios, creados el 2026-08-31:**
+**`rhh` · `cxp` · `pagos` · `cnt` · `tsr`**
 
-| Repo | Ruta de ESTE equipo | Ruta del equipo `omen-saa-1` |
-|---|---|---|
-| `saaBE` | **`F:\work\equipo2\saaBE`** | `F:\work\saaBE\v1\saaBE` |
-| `saaFE` | **`F:\work\equipo2\saaFE`** | `F:\work\saaFE\v1\saaFE` |
+⛔ **NO TOCAR: `crd`, `cxc`.**
 
-Los dos clones apuntan directo a `https://github.com/gaeminexus/{saaBE,saaFE}.git` (`fetch` y
-`push` verificados el 2026-08-31), o sea que este equipo sincroniza por `origin` como cualquier
-otra máquina. **No** por el checkout de al lado.
+**Relevo confirmado por el usuario:** este equipo **releva a `omen-saa-3`** en `cxp`, `pagos`, `tsr`
+y `rhh`. Ese equipo tenía reserva escrita sobre `cxp/cxc/pagos/tsr/rhh/sri` y ya no está activo.
+Se hereda su documento de estado como referencia histórica: `ESTADO-CXP-CXC-TSR-RHH-SRI.md`.
 
-### Por qué hizo falta, y es un hallazgo, no una preferencia
+⚠️ **`cxc` y `sri` quedan sin dueño.** Eran de `omen-saa-3`; `cxc` está vedado para este equipo y
+`sri` quedó fuera del alcance. Nadie los está trabajando hoy.
 
-`omen-saa-1` (árbitro + backend + frontend) trabaja en **esta misma máquina y en el mismo
-directorio**. Verificado el 2026-08-31: `git rev-parse --show-toplevel` daba la misma ruta para las
-dos sesiones, y el `git status` de este árbitro mostraba trabajo ajeno sin commitear —
-`PrestamoServiceImpl.java` (+129), `PrestamoRest.java` (+60), `SolicitudDecisionPrestamo.java`
-escrito a las 09:18— más cuatro archivos del frontend.
+**Los equipos paralelos se cerraron el 2026-09-01.** Las reservas de alcance por archivo del §4 de
+`REGISTRO-RESERVAS-EQUIPOS.md` dejaron de regir. Verificar qué sesiones siguen vivas antes de
+asumir que un archivo tiene dueño ajeno.
 
-**El §4 del registro de reservas (dueño por archivo) no protege contra esto.** Ese mecanismo evita
-conflictos de *merge*; no evita que un `checkout`, un `stash`, un `clean` o dos agentes con
-distinto contexto se pisen en el mismo `src/`. Los equipos A y B no comparten disco, y esa
-diferencia es justo la que hacía que la regla les alcanzara a ellos y no acá.
+### Checkout — decidido por el árbitro el 2026-09-01
 
-⚠️ **Consecuencia diaria:** el despliegue lo hace el usuario por Eclipse **desde
-`F:\work\saaBE\v1\saaBE`**. Lo que este equipo escriba se despliega recién después de
-`push` (acá) + `pull` (allá). No alcanza con que compile.
+**Este equipo trabaja en `F:\work\saaBE\v1\saaBE` y `F:\work\saaFE\v1\saaFE`.**
 
-⚠️ **Y al revés:** este clon **no ve el trabajo sin commitear del otro equipo.** Al 2026-08-31
-quedaron sin commitear en `saaFE` v1: `prestamo-edit.component.{ts,html,scss}`,
-`prestamo.service.ts` y `docs/crd/API-CICLO-OTORGAMIENTO.md`. Antes de tocar cualquiera de esos,
-`git fetch` y preguntar.
+El §0 de la versión anterior mandaba a `F:\work\equipo2\`, para no compartir working tree con
+`omen-saa-1`. Ese motivo desapareció con el cierre de los equipos paralelos, y **`v1` es el
+checkout desde el que el usuario despliega por Eclipse**, así que trabajar acá elimina el paso
+`push` + `pull` antes de cada despliegue. Los clones de `F:\work\equipo2\` siguen existiendo,
+limpios; no se usan.
 
 ---
 
-## 1. Alcance — decidido por el usuario el 2026-08-31
+## 1. Frentes activos
 
-**`crd` · `cxp` · `cxc` · `pagos` · `tsr` · `rhh` · `sri`** — alcance completo, confirmado por el
-usuario después de que el árbitro le presentara el mapa de choques de abajo.
+| # | Módulo | Frente | Estado |
+|---|---|---|---|
+| **1** | rhh/tsr | **Pago de décimos acumulados** | 🔵 diseño congelado, sin implementar |
+| **2** | rhh/tsr | **La nómina pasa por la bandeja de aprobación de TSR** | 🔵 diseño congelado, sin implementar |
+| **3-A** | rhh/cnt | **Baja de provisión de décimos y fondos de reserva al pagar** | 🔵 diseño congelado, sin implementar |
+| **3-B** | rhh | Baja de provisión de **vacaciones** | ⚪ levantamiento pendiente |
+| **3-C** | rhh | Baja de provisión de **jubilación patronal y desahucio** | ⚪ levantamiento pendiente |
+| **4** | rhh | **Reporte del Ministerio de Trabajo (SUT)** | 🔴 bloqueado — falta el CSV de ejemplo |
 
-### El mapa de choques — los siete módulos tienen otro equipo encima
-
-| Módulo | Quién más lo trabaja hoy | Naturaleza del choque |
-|---|---|---|
-| `crd` (cobros, contabilidad, jubilados) | **EQUIPO A** (`saabe-25`) | frente activo suyo |
-| `crd` (otorgamiento, reestructuración, seguros) | **EQUIPO B** (`omen-saa-1`) | frente activo + mismo disco (§0) |
-| `pagos` | **EQUIPO A** | es un frente entero suyo (`PLAN-REDISENO-APROBACION-PAGOS.md`) |
-| `cxp` `cxc` `tsr` `rhh` `sri` | **`saabe-bc`** | equipo **activo**, confirmado por el usuario el 2026-08-31 |
-
-**Regla operativa de este equipo, derivada de lo anterior:** antes de que un agente toque un
-archivo de estos módulos, el árbitro verifica `git log`/`git status` sobre él y, si tiene dueño en
-el §4 del registro de reservas, **pide permiso al árbitro dueño**. No se edita y se avisa después.
-
-### NO TOCAR — **lista vacía**, definido por el usuario el 2026-08-31
-
-**«Tienes permiso para todos los módulos.»** No hay módulo vedado para este equipo.
-
-**Modo de trabajo, también del 2026-08-31: «contigo solo voy a hacer consultas».** El árbitro
-responde preguntas y analiza; **no despacha trabajo a los agentes** salvo que el usuario lo pida
-explícitamente. Por eso la coordinación con los otros tres equipos pasa a segundo plano: sin
-escrituras no hay nada que pisar. **Vuelve a ser bloqueante en el momento en que este equipo
-escriba una sola línea** — ahí aplican de nuevo el §0 (checkouts separados) y el §4 del registro
-de reservas (dueños de archivo).
+**Documentos:**
+- Diseño: `rhh/PLAN-PAGO-BENEFICIOS-Y-SALIDA-POR-TESORERIA.md`
+- Contrato de API: `rhh/API-PAGO-BENEFICIOS-SOCIALES.md`, espejado a `saaFE/docs/rrh/`
+- Verificaciones previas: `rhh/sql/e2-01-verificacion-previa-beneficios.sql`
 
 ---
 
-## 2. Reservas de recursos compartidos — PROPUESTAS, todavía sin escribir en el registro
+## 2. Hallazgos — 2026-09-01
 
-**Nada de esto está en `REGISTRO-RESERVAS-EQUIPOS.md` al momento de escribir este documento**, y
-mientras no esté ahí **y pusheado**, no está reservado. Un cambio sin commitear es invisible para
-el otro equipo: es la lección del §2b de ese archivo, y aplica también a este equipo.
+### 2.1 🔴 El décimo acumulado se genera y nunca se paga
 
-| Recurso | Propuesta | Estado |
-|---|---|---|
-| Números de script `crd/sql/` | **200-249** | propuesto por `omen-saa-1-arb`, aceptado por este árbitro, **sin escribir** |
-| `SCP.PRBR` | **310-329** | el registro marca `≥310` sin asignar. **Sin escribir** |
-| `SCP.PDTR` | **1500-1599** | el registro marca `≥1500` sin asignar. **Sin escribir** |
+`BeneficioSocialServiceImpl:319-320` crea la liquidación con `valorPagado = 0` y `estado = 1`, y
+**nadie escribe nunca otro valor**: los únicos `setValorPagado`/`setFechaPago`/`setEstado` del
+proyecto son esos dos y los setters de la entidad. `GeneracionOrdenPagoServiceImpl` no menciona
+`LiquidacionBeneficioSocial` ni una vez. No hay origen de pago externo para beneficios sociales. Y
+el frontend no lo conoce: **cero** apariciones de `lqbs`, `generarDecimo` o `BeneficioSocial` en
+todo `saaFE/src` — los tres endpoints `generar*` sólo se alcanzan por Postman.
 
-⛔ **`PRBR 290-309` / `PDTR 1400-1499` NO son de este equipo — y ahora se sabe de quién son.**
+**Por qué costaba verlo:** las columnas `LQBSVLPG`, `LQBSFCPG` y `LQBSESTD` **existen** en la
+entidad. El modelo previó el pago, así que leyendo la entidad el ciclo parece completo. El hueco
+sólo aparece preguntando *quién escribe estas columnas*, que es una búsqueda distinta de *quién las
+declara*.
 
-- **Al 2026-08-31 por la mañana:** el registro los rotulaba "equipo cxp/cxc/tsr/rhh/sri" sin decir
-  qué sesión era, y el usuario le había dicho a este árbitro que `saabe-bc` **seguía activo**. Este
-  equipo se abstuvo de tomarlos: los módulos coincidían, pero coincidir de módulos no es ser dueño.
-- **Al 2026-08-31 por la tarde:** el árbitro de `omen-saa-3` rotuló el bloque a su nombre
-  (commit **`ea29ec7`**, verificado por este árbitro leyendo el diff, no de oído) y dejó anotado
-  que **`saabe-bc` fue reemplazado por `omen-saa-3`, confirmado por el usuario**, heredando alcance,
-  documento de estado y bloque de rubros.
+**El daño es contable y silencioso:** la provisión se acredita cada mes y nada la reversa.
+`PROVISION_DECIMO_*_POR_PAGAR` crece contra un pago que en el sistema no ocurre. No se ve como
+error: se ve como un saldo que no cuadra.
 
-⚠️ **Esa confirmación del usuario le llegó a este árbitro por un par, no directamente.** No cambia
-la conducta —el bloque no es nuestro en ninguna de las dos versiones— pero sí cambia a quién hay que
-hablarle: **la contraparte de estos seis módulos es `omen-saa-3`, no `saabe-bc`.**
+### 2.2 La nómina ya toca tesorería — corrección de una lectura propia
 
-> **La lección, que es del archivo y no de este equipo:** una fila que identifica al equipo **por sus
-> módulos** y no **por su sesión** envejece mal. Cuando el equipo se releva, el rótulo sigue igual y
-> ya no apunta a nadie localizable: el bloque no lo usa su dueño ni lo puede tomar nadie más.
-> Quedó escrita en el registro.
+Este árbitro reportó primero que la nómina no llegaba a TSR. **Es falso.**
+`GeneracionOrdenPagoServiceImpl:778` escribe `TSR.EGRS`, y `rhh/sql/15` ya creó el producto de pago
+`NOMINA` en `PGS.PRDP` para enlazarlo. `contabilizarPago` ya atribuye el asiento a
+`ModuloSistema.TESORERIA`.
 
-### Hueco encontrado en el esquema de rangos: solo cubre `crd/sql/`
+Lo que falta es sólo **la bandeja de aprobación** (`PGS.PGTR`). El frente 2 es un cambio acotado,
+no una integración.
 
-El §2b del registro reparte números **únicamente en `docs/logica-negocio/crd/sql/`**. Los otros
-módulos tienen su propia carpeta `sql/` y **ningún acuerdo de rangos**, aunque `saabe-bc` y este
-equipo van a escribir en las mismas.
+> **Lección:** "no hay conexión con X" se afirmó tras buscar una sola clase (`PagoProgramado`).
+> Tesorería tiene dos puertas — la bandeja y el egreso — y buscar por una sola dio un negativo
+> falso. Al concluir que algo no existe, verificar por más de un nombre.
 
-**Y el problema ya se materializó en `rhh/sql/`**, sin que nadie lo registrara: hay **dos series de
-numeración paralelas** que se pisan en los mismos números —`01-anticipo-empleado.sql` junto a
-`01_DDL_TABLAS_PARAMETRIZACION.sql`, y lo mismo en 02, 03, 04, 05 y 06—. No se sobrescribieron por
-casualidad (distinto separador y sufijo), pero **el número dejó de decir en qué orden se ejecuta**,
-que es lo único para lo que servía. `tsr/sql/` tiene un `README-ORDEN-PRODUCCION.md` justamente
-porque ahí el riesgo se vio venir.
+### 2.3 La provisión sólo tiene alta, nunca baja
 
-**Acción del árbitro (2026-08-31):** la contraparte es **`omen-saa-3`**, no `saabe-bc` (ver §2).
-Propuesta enviada, y **el `rhh/sql/` lo renumera ellos**, que es su carpeta.
+`ContabilizacionNominaServiceImpl.contabilizarProvisiones` (`:218-250`) genera únicamente el asiento
+de alta. **No existe ninguna baja de provisión en el sistema.** El punto 3 del usuario es código
+nuevo, no un ajuste.
 
-**La propuesta, en una línea:** el número estaba haciendo **dos trabajos a la vez** —decir de quién
-es el script y decir en qué orden se ejecuta— y falló en los dos. Se separan:
+### 2.4 El mecanismo que hace viable todo el diseño
 
-| Trabajo | Mecanismo |
+`registrarPagoDeOrigenExterno` acepta un `desglose` de `LineaContablePago` que dicta las líneas
+contables desde el módulo de origen — y, decisivo acá, **soporta explícitamente el caso sin
+desglose**: `contabilizarSegunOrigen` (`PagoProgramadoServiceImpl:1993-1999`) devuelve `null` y no
+contabiliza. Eso permite que el pago pase por la bandeja **sin** que tesorería arme un segundo
+asiento, que es la decisión D1 del usuario.
+
+### 2.5 ⚠️ El riesgo más caro del frente 1, todavía sin verificar
+
+**¿`generarDecimoTercero`/`generarDecimoCuarto` filtran por modalidad ACUMULADO?** No se verificó.
+Si generan liquidaciones también para contratos MENSUALIZADOS, pagar la orden **pagaría dos veces**
+el mismo décimo: una dentro del rol y otra por la vía nueva. El agente de backend debe verificarlo
+y detenerse si no filtra.
+
+---
+
+## 3. Decisiones del usuario — 2026-09-01
+
+| # | Decisión |
 |---|---|
-| **De quién es** | **prefijo por equipo**. Un rango se agota y se renegocia; un prefijo no |
-| **En qué orden va** | un **`README-ORDEN.md` por carpeta**, fuente única |
+| **D1** | Cuando el pago de RRHH pase por la bandeja de TSR, **RRHH sigue contabilizando** y el pago viaja **sin desglose**. La bandeja es control y aprobación, no generador de asientos |
+| **D2** | El décimo acumulado se paga **consolidado**: un pago por el total, con el detalle por empleado |
+| **D3** | Se dan de baja **todas** las provisiones: décimos, fondos de reserva, vacaciones, jubilación patronal y desahucio |
 
-`tsr/sql/` ya resolvió la segunda mitad sin que nadie lo generalizara: tiene su
-`README-ORDEN-PRODUCCION.md`. Y este frente ya aplica las dos (carpeta propia, serie propia, orden
-en el §4 de su README).
+**Consecuencia aceptada de D1:** sin desglose tampoco hay `MovimientoBanco`. Impacto acotado — el
+frente J ya estableció que esa tabla cubre el 1-5% del movimiento real y que `validaDisponibilidad`
+no la usa.
+
+**Reducción de alcance declarada:** D3 pidió cinco provisiones; el diseño congela sólo las tres del
+ciclo anual (3-A). Vacaciones (3-B) tiene ciclo propio ya cerrado y riesgo de doble descuento;
+jubilación y desahucio (3-C) se pagan en la liquidación, no en un pago anual. Los dos entran como
+levantamiento, no como implementación. **Es deliberado y está declarado, no es un olvido.**
 
 ---
 
-## 3. Verificaciones hechas por este equipo
+## 4. Verificaciones hechas por este equipo
 
 | Fecha | Qué | Resultado |
 |---|---|---|
-| 2026-08-31 | `mvn -v` en omen | **Maven 3.9.8 / JDK 21.0.8** — coincide con `CLAUDE.md`; acá **sí** se puede compilar |
-| 2026-08-31 | `mvn clean compile` sobre el árbol completo | **exit 0, limpio.** Cierra el pendiente 🟡3 de `ESTADO-CXP-CXC-TSR-RHH-SRI.md` §4: los ~15 archivos del frente R (anulación con cascada) **sí compilan**, cosa que ese equipo no había podido verificar porque en su máquina no hay Maven |
-| 2026-08-31 | Muestra de `ESTADO-CXP-CXC-TSR-RHH-SRI.md` contra el código | **el documento es fiel.** `POST /rest/ats/generar` y `/cuadresri/{103,104}` existen; `movimientosRelacionados` está en los 9 documentos que declara; `anularEnCascada` aparece 82 veces; `GET /aplc/listar` está en `AplicacionPagoCxcRest:294` (el doc dice 293) |
-| 2026-08-31 | Carpetas de docs de `saaFE` | Son `docs/{cnt,crd,cxc,cxp,pagos,rrh,transversal,tsr}`. **RRHH es `rrh`, NO `rhh`, y `sri` NO existe.** Espejar un contrato a `docs/rhh/` o `docs/sri/` lo deja donde el frontend no lo busca (regla 6 del árbitro) |
+| 2026-08-31 | `mvn -v` en omen | Maven **3.9.8** / JDK **21.0.8** — acá **sí** se puede compilar |
+| 2026-08-31 | `mvn clean compile` árbol completo | exit 0, limpio |
+| 2026-08-31 | Carpetas de docs de `saaFE` | RRHH es **`docs/rrh/`**, NO `rhh`. Existe una `docs/rhh/` **vacía**: espejar ahí deja el contrato donde el frontend no lo busca |
+| 2026-09-01 | `tsr/sql/README-ORDEN-PRODUCCION.md` | **Ya corregido**: lista el 07 y el 08. El §9.3 de `ESTADO-CXP-CXC-TSR-RHH-SRI.md` está desactualizado en ese punto. Sigue sin constancia de que se **ejecutaran** |
+| 2026-09-01 | `ODBS` libre | Sin coincidencias en `model/` ni en `docs/`. **Falta confirmarlo contra `ALL_TABLES`** (V1 del script) |
+| 2026-09-01 | Obligación del MDT | **Confirmada.** Registro en el SUT (`salarios.trabajo.gob.ec`) subiendo CSV; plazo por noveno dígito del RUC; multa de hasta 20 SBU (Art. 628) |
 
 ---
 
-## 4. Frentes de este equipo
+## 5. Deuda conocida en el alcance heredado
 
-| Frente | Documento | Estado |
-|---|---|---|
-| **Corrección de aportes duplicados — cargas Petro desde junio 2025** | `crd/correccion-duplicados/README.md` | 🔵 **diagnóstico.** Script `01` listo para correr; ningún dato corregido |
+Todo esto viene de `ESTADO-CXP-CXC-TSR-RHH-SRI.md` y ahora es responsabilidad de este equipo.
 
-Sin agentes despachados: el árbitro trabaja en modo consulta. **El código lo coordina el usuario
-con el equipo A** (decisión del 2026-08-31), porque tres de los cuatro archivos que el registro le
-asigna a ese equipo leen el saldo de aportes que este frente corrige.
+### 🔴 Riesgo de despliegue — entidades mapeadas contra tablas que pueden no existir
+- **`TSR.DTCN`** (`model/tsr/DetalleTransito.java:29`) depende de `tsr/sql/07`, que ya se saltó una
+  vez. Si falta, toda lectura de `DetalleTransito` da ORA-00942 y el frente N figura «cerrado».
+- **`PGS.DTDP`** (`cxp/DetalleDocumentoPago`) reportado como inexistente. Ojo: `TSR.DTDP` sí existe
+  y es otra entidad (`DetalleDeposito`) — mismo código de 4 letras en otro esquema.
+- **`CBR.TDCC`** y **`CBR.TFDC`** más angostas que su entidad.
+
+### 🔴 `EntityDaoImpl.save()` es un `merge` desnudo
+Un `PUT` con payload parcial **graba `null`** en las columnas ausentes, FKs incluidas. Afecta a
+todas las entidades de los cinco módulos. Regla obligatoria para el frontend: leer entero,
+sobrescribir, mandar entero. ⛔ **No "arreglar" `EntityDaoImpl`.**
+
+### 🟡 Deuda de contratos de API
+`pagos` 0 · `rhh` 1 (el de este frente) · `tsr` 0 · `cxp` 1 · `cnt` 2.
+
+### ⚪ `rhh/sql/` y `cxp/sql/` con numeración duplicada
+`rhh/sql/` tiene dos series paralelas pisándose en 01-06 y **sin `README-ORDEN.md`**. `cxp/sql/`
+igual en el 01. Convención vigente: prefijo por equipo (`e2-`) y orden en un README; **lo histórico
+no se renumera**.
 
 ---
 
-## 5. Pendientes
+## 6. Pendientes del usuario
 
-### 🔴 Bloqueante para que este equipo despache trabajo
-1. **Lista `NO TOCAR`** — sin definir por el usuario.
-2. **Arrancar `omen-saa-2-be` y `omen-saa-2-fe` en los checkouts nuevos** (§0). Si arrancan en las
-   rutas `v1`, todo lo de §0 se pierde.
-3. **Avisar a los tres árbitros** que este equipo entra en sus módulos. `omen-saa-1-arb`: avisado.
-   Equipo A y `saabe-bc`: pendiente.
+### 🔴 Bloqueante
+1. **Correr `rhh/sql/e2-01-verificacion-previa-beneficios.sql`** y devolver los resultados. Es solo
+   lectura. Sin V1 no se puede crear la tabla; sin V5 no se sabe si el frente 1 es preventivo o si
+   hay obligación vencida.
+2. **Descargar del SUT el CSV de ejemplo** del formulario de decimotercera (y decimocuarta si
+   difiere) y dejarlo en `docs/logica-negocio/rhh/muestras/`. El frente 4 está bloqueado sin él.
 
 ### 🟡 Decidible
-4. Escribir las reservas del §2 en el registro y pushearlas (hoy no están reservadas).
-5. Proponer el reparto de números de script fuera de `crd/sql/` (§2, hueco encontrado).
+3. Autorizar o no el **modo directo** (despacho por `SendMessage` a `omen-saa-2-be`/`-fe`).
+4. Qué se hace con **`cxc` y `sri`**, que quedaron sin dueño.
 
 ### ⚪ Sin prisa
-6. Renumerar o documentar el orden real de `rhh/sql/` (§2).
+5. Confirmar contra la base si `tsr/sql/07` y `08` se ejecutaron.
+6. `README-ORDEN.md` para `rhh/sql/` y `cxp/sql/`.
