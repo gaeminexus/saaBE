@@ -24,7 +24,9 @@ import jakarta.ejb.TransactionAttributeType;
 public interface BeneficioSocialService {
 
 	/**
-	 * Genera el decimo tercero de todos los empleados con contrato activo.
+	 * Genera el decimo tercero de los empleados con contrato activo y modalidad
+	 * ACUMULADO. Los MENSUALIZADO se omiten: ya lo cobran dentro del rol
+	 * (ProcesoNominaServiceImpl, paso 9).
 	 *
 	 * <p>Periodo de acumulacion: del 1 de diciembre del anio anterior al 30 de noviembre
 	 * del anio indicado (Art. 111 del Codigo del Trabajo). El valor es la base acumulada
@@ -40,7 +42,9 @@ public interface BeneficioSocialService {
 	int generarDecimoTercero(Long idEmpresa, Integer anio, String usuario) throws Throwable;
 
 	/**
-	 * Genera el decimo cuarto de los empleados de una region.
+	 * Genera el decimo cuarto de los empleados de una region, con derecho a decimo
+	 * cuarto y modalidad ACUMULADO. Los MENSUALIZADO se omiten: ya lo cobran dentro del
+	 * rol (ProcesoNominaServiceImpl, paso 10).
 	 *
 	 * <p>El periodo depende de la region (Art. 113 del Codigo del Trabajo): Sierra y
 	 * Amazonia del 1 de agosto al 31 de julio; Costa e Insular del 1 de marzo al ultimo

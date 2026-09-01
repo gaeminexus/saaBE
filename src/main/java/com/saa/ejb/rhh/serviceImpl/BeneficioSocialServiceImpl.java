@@ -15,6 +15,8 @@ import com.saa.model.rhh.ContratoEmpleado;
 import com.saa.model.rhh.Empleado;
 import com.saa.model.rhh.LiquidacionBeneficioSocial;
 import com.saa.model.rhh.ParametroNomina;
+import com.saa.rubros.RhhModalidadDecimoCuarto;
+import com.saa.rubros.RhhModalidadDecimoTercero;
 import com.saa.rubros.RhhModalidadFondosReserva;
 import com.saa.rubros.RhhRegionDecimoCuarto;
 import com.saa.rubros.RhhTipoAcumulado;
@@ -104,6 +106,16 @@ public class BeneficioSocialServiceImpl implements BeneficioSocialService {
 
 		int generados = 0;
 		for (ContratoEmpleado contrato : contratosDelAnio(idEmpresa, anio)) {
+			// Solo los acumulados: los mensualizados ya cobraron el decimo tercero en cada
+			// rol (ProcesoNominaServiceImpl, paso 9). Un contrato sin modalidad informada
+			// (null) se trata como acumulado, no como mensualizado: es el mismo criterio
+			// que ya usa ese paso del motor de nomina, donde null cae en la rama que
+			// provisiona en vez de en la que paga mensualizado. Tratarlo aqui al reves
+			// dejaria una provision que crece cada mes sin ninguna liquidacion que la pague.
+			if (Long.valueOf(RhhModalidadDecimoTercero.MENSUALIZADO)
+					.equals(contrato.getModalidadDecimoTercero())) {
+				continue;
+			}
 			Long idEmpleado = contrato.getEmpleado().getCodigo();
 			LiquidacionBeneficioSocial beneficio = calcularDecimoTercero(idEmpleado, anio);
 			persiste(beneficio, usuario);
@@ -138,6 +150,13 @@ public class BeneficioSocialServiceImpl implements BeneficioSocialService {
 				continue;
 			}
 			if (!SI_DECIMO_CUARTO.equals(contrato.getDerechoDecimoCuarto())) {
+				continue;
+			}
+			// Solo los acumulados: los mensualizados ya cobraron el decimo cuarto en cada
+			// rol (ProcesoNominaServiceImpl, paso 10). Mismo criterio que decimo tercero:
+			// null se trata como acumulado porque asi lo trata esa misma rama del motor.
+			if (Long.valueOf(RhhModalidadDecimoCuarto.MENSUALIZADO)
+					.equals(contrato.getModalidadDecimoCuarto())) {
 				continue;
 			}
 			LiquidacionBeneficioSocial beneficio = calcularDecimoCuarto(empleado.getCodigo(), anio);
