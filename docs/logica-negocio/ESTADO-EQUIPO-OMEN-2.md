@@ -308,6 +308,46 @@ y conviene tratarlo como patrón y no como dos anécdotas.
 el alterno es el que usan los catálogos y varias pantallas. Elegir el equivocado **no falla**:
 graba o lee la fila de otro, en silencio.
 
+### Medido el 2026-09-01, y el alcance cambia la salida
+
+**El riesgo es menor de lo que parecía, y la solución es distinta de la que este documento proponía.**
+
+**a) Las FK están a salvo.** `armarCuerpo` no pasa todo por `extraerCodigo`: separa los campos
+escalares de los de referencia, y `referencia()` (`cuerpo-entidad.ts:74-77`) prueba **`valor.codigo`
+primero**. Una FK nunca se lleva el alterno por ese camino. La preferencia sólo muerde en escalares.
+*(Levantado por el árbitro de `lap-saa-1`, verificado acá.)*
+
+**b) En los escalares, el alterno suele ser lo CORRECTO.** Usos de `codigoAlterno` por módulo,
+contados el 2026-09-01: **`tsr` 83 · `cnt` 60 · `rrh` 41 · `cxc` 9 · `cxp` 8** (`crd` 97, fuera de
+alcance). O sea que `tsr` y `cnt` lo usan **más que `rrh`**, y a propósito: sus columnas de rubro
+guardan el alterno, coherente con que `selectValorStringByRubAltDetAlt` busque por alterno.
+**Una versión compartida que devolviera la PK rompería `tsr` y `cnt`** — el mismo defecto con el
+signo invertido, y en módulos más grandes.
+
+**c) 🔴 Ya existen DOS helpers con preferencias OPUESTAS.** Este es el hallazgo que cierra la
+discusión. `tsr/forms/bancos/bancos.component.ts:166-174` tiene su propia resolución inline y
+prueba **`codigo` primero, el alterno después** — exactamente al revés que `extraerCodigo`:
+
+```
+extraerCodigo (rrh)        ->  codigoAlterno gana
+bancos.component.ts (tsr)  ->  codigo gana
+```
+
+**Un mismo objeto con los dos campos produce resultados distintos según por dónde pase.** No hay un
+default consensuado ni siquiera dentro del código de hoy, así que *elegir* uno para `shared/` sería
+inventar un consenso que no existe y romper la mitad de los llamadores.
+
+> *Corrección de registro: `lap-saa-1` reportó esa copia inline como «la misma preferencia por el
+> alterno». Es al revés, y verlo al derecho es lo que convierte el problema de «un helper mal
+> configurado» en «dos criterios incompatibles conviviendo».*
+
+**Salida: `extraerCodigo` debe dejar de adivinar y recibir del llamador cuál identificador quiere.**
+No hay default correcto — depende de la columna destino, no del módulo.
+
+**Criterio de búsqueda, afinado:** sospechar menos del objeto de catálogo que viaja entero —donde el
+código ya suele desarmarlo y elegir explícito— y más de **cualquier helper que elija identificador
+sin que el llamador se lo diga**. *(Formulado por `lap-saa-1`; es mejor que el que estaba acá.)*
+
 ⚠️ **Consecuencia concreta para la propuesta de subir `armarCuerpo` a `shared/`:** arrastraría
 `extraerCodigo` con su preferencia por el alterno. Esa preferencia puede ser correcta **en el
 contexto de parametrización de `rrh`**, donde los combos se llenan del catálogo y el backend espera
