@@ -987,6 +987,190 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     }
 
     // =========================================================
+    // Caso B — recontabilizar, en dos pasos
+    //
+    // Los dos pasos son deliberados (decisión del usuario, 2026-08-31): entre uno y otro es
+    // cuando se corrige la cuenta contable del grupo de producto, que es el motivo por el que
+    // se recontabiliza. Un solo botón no dejaría espacio para eso.
+    //
+    // NINGUNO DE LOS DOS BORRA NADA. La factura, sus detalles y sus paths quedan intactos: lo
+    // único que cambia es el asiento. Se puede hacer así porque DetalleFacturaCompra no guarda
+    // ninguna cuenta contable — generarAsientoFacturaCompra las resuelve del catálogo cada vez
+    // que corre. Reprocesar el XML habría recreado una factura idéntica y, de paso, exigido
+    // borrar la factura vieja: justo el ORA-02292 que originó este frente.
+    // =========================================================
+
+    /** PASO 1 del caso B. Anula el asiento y deja el documento pendiente de contabilizar. */
+    @Override
+    public Map<String, Object> anularContabilidadDocumento(Long idDocumentoCxp, String motivo,
+            Long idUsuario) throws Throwable {
+
+        System.out.println("=== anularContabilidadDocumento idDocumentoCxp=" + idDocumentoCxp);
+
+        DocumentoCxp doc = documentoCxpDaoService.selectById(idDocumentoCxp,
+                NombreEntidadesCompra.DOCUMENTO_CXP);
+        if (doc == null)
+            throw new Exception("DocumentoCxp no encontrado: " + idDocumentoCxp);
+
+        if (doc.getEstadoDocumento() == null || doc.getEstadoDocumento() != ESTADO_REGISTRADO_BD)
+            throw new com.saa.basico.util.IncomeException(
+                    "Solo se puede anular la contabilidad de documentos en estado REGISTRADO_BD (3). "
+                    + "Estado actual: " + doc.getEstadoDocumento());
+
+        // El pago se anula APARTE (decisión del usuario): acá sólo se verifica que no quede
+        // ninguno vigente. Un pago vivo contra un asiento anulado dejaría la factura pagada y
+        // sin contrapartida contable, que es un descuadre que no avisa.
+        validarSinPagosVigentes(doc, "anular la contabilidad");
+
+        anularAsientoDeDocumento(doc.getTipoTablaDestino(), doc.getIdDocumentoBD());
+
+        doc.setEstadoDocumento(ESTADO_XML_CARGADO);
+        doc.setObservacion("CONTABILIDAD ANULADA" + (motivo != null && !motivo.trim().isEmpty()
+                ? ": " + motivo.trim() : "") + " — pendiente de recontabilizar.");
+        documentoCxpDaoService.save(doc, doc.getId());
+
+        Map<String, Object> resultado = new HashMap<>();
+        resultado.put("exito", true);
+        resultado.put("idDocumentoCxp", idDocumentoCxp);
+        resultado.put("estadoDocumento", doc.getEstadoDocumento());
+        resultado.put("mensaje", "Contabilidad anulada. Corrija las cuentas del grupo de producto "
+                + "y luego use Recontabilizar para generar el asiento nuevo.");
+        return resultado;
+    }
+
+    /** PASO 2 del caso B. Genera el asiento nuevo con las cuentas ya corregidas. */
+    @Override
+    public Map<String, Object> recontabilizarDocumento(Long idDocumentoCxp, Long idUsuario)
+            throws Throwable {
+
+        System.out.println("=== recontabilizarDocumento idDocumentoCxp=" + idDocumentoCxp);
+
+        DocumentoCxp doc = documentoCxpDaoService.selectById(idDocumentoCxp,
+                NombreEntidadesCompra.DOCUMENTO_CXP);
+        if (doc == null)
+            throw new Exception("DocumentoCxp no encontrado: " + idDocumentoCxp);
+
+        if (doc.getEstadoDocumento() == null || doc.getEstadoDocumento() != ESTADO_XML_CARGADO)
+            throw new com.saa.basico.util.IncomeException(
+                    "Solo se puede recontabilizar un documento con la contabilidad anulada "
+                    + "(estado XML_CARGADO, 2). Estado actual: " + doc.getEstadoDocumento()
+                    + ". Use primero Anular contabilidad.");
+
+        if (!"FACTURA_COMPRA".equals(doc.getTipoTablaDestino()))
+            throw new com.saa.basico.util.IncomeException(
+                    "La recontabilización sólo está implementada para facturas de compra. "
+                    + "Tipo de este documento: " + doc.getTipoTablaDestino());
+
+        Long idDocBD = doc.getIdDocumentoBD();
+        FacturaCompra fc = em.find(FacturaCompra.class, idDocBD);
+        if (fc == null)
+            throw new Exception("La factura " + idDocBD + " ya no existe.");
+
+        Long idEmpresa = doc.getEmpresa() != null ? doc.getEmpresa().getCodigo() : null;
+        if (idEmpresa == null)
+            throw new com.saa.basico.util.IncomeException(
+                    "El documento no tiene empresa asignada; no se puede contabilizar.");
+
+        com.saa.model.cnt.Asiento asiento;
+        try {
+            asiento = asientoContableService.generarAsientoFacturaCompra(
+                    idDocBD, idEmpresa,
+                    com.saa.rubros.TipoAsientos.FACTURAS_COMPRA,
+                    // El asiento lleva LocalDate y la factura guarda LocalDateTime.
+                    // Mismo recorte que hace el registro original (:1933).
+                    fc.getFecha() != null ? fc.getFecha().toLocalDate() : java.time.LocalDate.now(),
+                    "Factura compra (recontabilizada): " + nvlStr(fc.getNumero(), String.valueOf(idDocBD)),
+                    "SISTEMA");
+        } catch (Throwable t) {
+            // Se deja el documento en XML_CARGADO: si la cuenta sigue mal, el usuario corrige y
+            // vuelve a intentar sin tener que rehacer el paso 1.
+            throw new com.saa.basico.util.IncomeException(
+                    "No se pudo generar el asiento: " + t.getMessage()
+                    + ". El documento queda pendiente de contabilizar; corrija y reintente.");
+        }
+
+        doc.setEstadoDocumento(ESTADO_REGISTRADO_BD);
+        doc.setObservacion("Recontabilizado" + (asiento != null && asiento.getNumeroAlterno() != null
+                ? " — asiento " + asiento.getNumeroAlterno() : "") + ".");
+        documentoCxpDaoService.save(doc, doc.getId());
+
+        Map<String, Object> resultado = new HashMap<>();
+        resultado.put("exito", true);
+        resultado.put("idDocumentoCxp", idDocumentoCxp);
+        resultado.put("estadoDocumento", doc.getEstadoDocumento());
+        resultado.put("asiento", asiento != null ? asiento.getNumeroAlterno() : null);
+        resultado.put("mensaje", "Documento recontabilizado correctamente.");
+        return resultado;
+    }
+
+    /** PASO final del caso A. Marca el documento como anulado, que es TERMINAL. */
+    @Override
+    public Map<String, Object> marcarDocumentoAnulado(Long idDocumentoCxp, String motivo,
+            Long idUsuario) throws Throwable {
+
+        System.out.println("=== marcarDocumentoAnulado idDocumentoCxp=" + idDocumentoCxp);
+
+        DocumentoCxp doc = documentoCxpDaoService.selectById(idDocumentoCxp,
+                NombreEntidadesCompra.DOCUMENTO_CXP);
+        if (doc == null)
+            throw new Exception("DocumentoCxp no encontrado: " + idDocumentoCxp);
+
+        if (doc.getEstadoDocumento() != null && doc.getEstadoDocumento() == EstadoDocumentoCxp.ANULADO)
+            throw new com.saa.basico.util.IncomeException("El documento ya está anulado.");
+
+        validarSinPagosVigentes(doc, "anular el documento");
+
+        doc.setEstadoDocumento(EstadoDocumentoCxp.ANULADO);
+        doc.setObservacion("ANULADO" + (motivo != null && !motivo.trim().isEmpty()
+                ? ": " + motivo.trim() : "") + ".");
+        documentoCxpDaoService.save(doc, doc.getId());
+
+        Map<String, Object> resultado = new HashMap<>();
+        resultado.put("exito", true);
+        resultado.put("idDocumentoCxp", idDocumentoCxp);
+        resultado.put("estadoDocumento", doc.getEstadoDocumento());
+        resultado.put("mensaje", "Documento anulado. Este estado es definitivo: no se puede reprocesar.");
+        return resultado;
+    }
+
+    /**
+     * Bloquea si la factura tiene pagos programados que no estén ANULADOS o RECHAZADOS.
+     *
+     * <p>El usuario anula el pago por su cuenta antes de estas operaciones (decisión del
+     * 2026-08-31), así que acá no se anula nada: sólo se comprueba. Un pago vigente contra un
+     * asiento anulado dejaría la factura pagada sin contrapartida contable — un descuadre que
+     * no da ningún error.
+     */
+    private void validarSinPagosVigentes(DocumentoCxp doc, String queSeIntenta) throws Throwable {
+        if (!"FACTURA_COMPRA".equals(doc.getTipoTablaDestino()) || doc.getIdDocumentoBD() == null) return;
+
+        @SuppressWarnings("unchecked")
+        java.util.List<com.saa.model.cxp.PagoProgramado> pagos = em.createQuery(
+                "select p from PagoProgramado p where p.facturaCompra.id = :id "
+                + "and (p.estado is null or p.estado not in (:anulado, :rechazado))")
+                .setParameter("id", doc.getIdDocumentoBD())
+                .setParameter("anulado", (long) com.saa.rubros.EstadoPagoProgramado.ANULADO)
+                .setParameter("rechazado", (long) com.saa.rubros.EstadoPagoProgramado.RECHAZADO)
+                .getResultList();
+
+        if (pagos != null && !pagos.isEmpty()) {
+            StringBuilder ids = new StringBuilder();
+            for (com.saa.model.cxp.PagoProgramado p : pagos) {
+                if (ids.length() > 0) ids.append(", ");
+                ids.append(p.getId()).append(" (estado ").append(p.getEstado()).append(")");
+            }
+            throw new com.saa.basico.util.IncomeException(
+                    "No se puede " + queSeIntenta + ": la factura tiene " + pagos.size()
+                    + " pago(s) programado(s) vigente(s) [" + ids + "]. Anúlelos primero desde "
+                    + "la bandeja de pagos.");
+        }
+    }
+
+    private String nvlStr(String v, String porDefecto) {
+        return (v != null && !v.trim().isEmpty()) ? v : porDefecto;
+    }
+
+    // =========================================================
     // Consultas
     // =========================================================
     @Override
@@ -3068,6 +3252,50 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                         + " pago(s) o abono(s) aplicados. Reverse primero esos pagos "
                         + "(retenciones, notas, anticipos o transferencias) antes de revertir "
                         + "el documento.");
+            }
+
+            // ── Las dos FK que faltaban, y que se tratan distinto a propósito ──────
+            //
+            // Este bloque nació de un ORA-02292 en producción (2026-08-31): la guarda de arriba
+            // cubre PGS.APLP pero no PGS.PGTR, así que el DELETE de la factura chocaba con la FK
+            // de un pago programado. Al barrer las siete entidades que referencian FacturaCompra
+            // aparecieron DOS sin cubrir, no una — PGNG habría fallado en el intento siguiente.
+            //
+            // Reciben tratamiento distinto porque su propio modelo lo dice:
+            //  · PagoProgramado declara su FK EXCLUYENTE con egreso y anticipo, así que ponerla
+            //    en null lo dejaría sin ninguna de las tres y rompería su invariante → se bloquea.
+            //  · PagoNegociacion declara la suya OPCIONAL ("se relaciona si el proveedor ya emitió
+            //    la factura") → se desvincula y el pago vuelve a ser un anticipo sin factura, que
+            //    es un estado válido para él.
+
+            @SuppressWarnings("unchecked")
+            java.util.List<com.saa.model.cxp.PagoProgramado> pagos = em.createQuery(
+                    "select p from PagoProgramado p where p.facturaCompra.id = :id")
+                    .setParameter("id", idDocBD).getResultList();
+            if (pagos != null && !pagos.isEmpty()) {
+                StringBuilder ids = new StringBuilder();
+                for (com.saa.model.cxp.PagoProgramado p : pagos) {
+                    if (ids.length() > 0) ids.append(", ");
+                    ids.append(p.getId()).append(" (estado ").append(p.getEstado()).append(")");
+                }
+                // Anular un pago NO borra su fila: queda en ANULADO(5) y la FK sigue apuntando.
+                // Por eso el mensaje distingue las dos salidas reales en vez de pedir "reverse
+                // el pago", que es lo que el usuario ya hizo cuando llega hasta acá.
+                throw new com.saa.basico.util.IncomeException(
+                        "No se puede revertir: la factura tiene " + pagos.size() + " pago(s) programado(s) "
+                        + "asociado(s) [" + ids + "]. Anular un pago no borra su registro, así que la "
+                        + "factura no se puede eliminar. Según lo que necesite hacer: para dejar la "
+                        + "factura anulada use la ANULACIÓN del documento; para rehacer el asiento con "
+                        + "las cuentas corregidas use ANULAR CONTABILIDAD y luego RECONTABILIZAR. "
+                        + "La reversión sólo aplica a documentos sin movimiento.");
+            }
+
+            int desvinculados = em.createQuery(
+                    "update PagoNegociacion p set p.facturaCompra = null where p.facturaCompra.id = :id")
+                    .setParameter("id", idDocBD).executeUpdate();
+            if (desvinculados > 0) {
+                System.out.println("Desvinculados " + desvinculados + " pago(s) de negociación de la factura "
+                        + idDocBD + " (la relación es opcional; el pago sobrevive como anticipo sin factura).");
             }
         }
 

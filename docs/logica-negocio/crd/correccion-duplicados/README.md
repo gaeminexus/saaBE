@@ -635,6 +635,27 @@ fin. El día que se cierre la primera, una sola persona detiene la carga de todo
 dato* debe abortar; *el partícipe ya no tiene obligación* debería tener su propio camino, o el
 proceso mensual queda rehén del mantenimiento del padrón.
 
+### 14.3bis Resuelto — el diseño final ya distingue los cuatro casos
+
+**Corrección a lo escrito arriba** (2026-08-31, informado por el árbitro del equipo A): el abort
+**no** es indiscriminado. El cuadro que van a implementar:
+
+| Situación | Tratamiento |
+|---|---|
+| Sin entidad en el padrón | **ABORTA** |
+| Sin contrato ACTIVO | **ABORTA** |
+| Sin `HistorialSueldo` / esperado $0 | NOVEDAD |
+| **Con contrato, vigencia que no cubre el mes** | **ADVERTENCIA — la carga sigue** |
+
+O sea: **el abort queda solo para cuando no se sabe quién es o si debe aportar**, que es
+exactamente la separación que hacía falta. Un partícipe que se jubila y al que Petro le descuenta un
+mes más **no detiene la carga**: sale como advertencia visible.
+
+⚠️ **Y eso corrige una afirmación de este documento y de un mensaje entre árbitros:** se dijo que
+los 2 partícipes con contrato y sin vigencia de jubilación *"detienen la carga todos los meses"*.
+**No la detienen.** Su dinero sigue sin aplicarse —$2.291,04 en 9 meses— que es un problema real,
+pero no de disponibilidad del proceso. La urgencia baja; el defecto no desaparece.
+
 ---
 
 ## 15. ▶ LA SECUENCIA DE EJECUCIÓN, ACORDADA CON EL EQUIPO A

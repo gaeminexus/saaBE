@@ -124,6 +124,58 @@ public interface ProcesoCargaDocumentosService {
     Map<String, Object> revertirDocumento(Long idDocumentoCxp, Long idUsuario) throws Throwable;
 
     /**
+     * CASO B, PASO 1 — anula el asiento y deja el documento pendiente de contabilizar.
+     *
+     * <p>Para cuando la factura está bien pero su contabilidad no (típicamente, la cuenta contable
+     * del grupo de producto estaba mal). <b>No borra nada</b>: la factura, sus detalles y sus paths
+     * quedan intactos; sólo se anula el asiento y el documento pasa a
+     * {@code XML_CARGADO(2)} = «registrado en BD, pendiente de contabilizar».
+     *
+     * <p>Después de esto se corrigen las cuentas del catálogo y se llama a
+     * {@link #recontabilizarDocumento}. Son dos pasos a propósito: el arreglo del catálogo va justo
+     * en el medio.
+     *
+     * <p>Exige que no haya pagos programados vigentes; los ANULADOS y RECHAZADOS no molestan.
+     *
+     * @throws com.saa.basico.util.IncomeException si el documento no está en REGISTRADO_BD(3) o si
+     *         hay pagos vigentes
+     */
+    Map<String, Object> anularContabilidadDocumento(Long idDocumentoCxp, String motivo,
+            Long idUsuario) throws Throwable;
+
+    /**
+     * CASO B, PASO 2 — genera el asiento nuevo, ya con las cuentas corregidas.
+     *
+     * <p>Vuelve a llamar a {@code generarAsientoFacturaCompra} sobre la <b>misma</b> factura y
+     * devuelve el documento a {@code REGISTRADO_BD(3)}. Funciona porque
+     * {@code DetalleFacturaCompra} no guarda ninguna cuenta contable: el asiento las resuelve del
+     * catálogo cada vez que corre.
+     *
+     * <p>Si falla la generación, el documento <b>queda</b> en {@code XML_CARGADO(2)} para poder
+     * corregir y reintentar sin rehacer el paso 1.
+     *
+     * @throws com.saa.basico.util.IncomeException si el documento no está en XML_CARGADO(2), si no
+     *         es una factura de compra, o si el asiento no se puede generar
+     */
+    Map<String, Object> recontabilizarDocumento(Long idDocumentoCxp, Long idUsuario) throws Throwable;
+
+    /**
+     * CASO A, paso final — marca el documento como {@code ANULADO(7)}.
+     *
+     * <p><b>Estado terminal: el documento no se puede volver a procesar.</b> Se usa después de
+     * anular la factura y su asiento (ver {@code FacturaCompraServiceImpl.anularFacturaCompra}),
+     * cuando la anulación es de verdad y no una recontabilización.
+     *
+     * <p>A diferencia de {@link #revertirDocumento}, <b>no borra nada</b>: los registros siguen
+     * existiendo, anulados. Esa es exactamente la diferencia entre {@code ANULADO(7)} y
+     * {@code REVERTIDO(6)}.
+     *
+     * @throws com.saa.basico.util.IncomeException si ya está anulado o si hay pagos vigentes
+     */
+    Map<String, Object> marcarDocumentoAnulado(Long idDocumentoCxp, String motivo,
+            Long idUsuario) throws Throwable;
+
+    /**
      * Obtiene el resumen de una carga (CargaArchivoTxt) con sus líneas (DetalleCargaTxt).
      */
     Map<String, Object> obtenerResumenCarga(Long idCargaTxt) throws Throwable;

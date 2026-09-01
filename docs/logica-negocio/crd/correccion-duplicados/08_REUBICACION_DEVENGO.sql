@@ -302,7 +302,18 @@ SELECT  e.ENTDNMID                                      AS IDENTIFICACION,
         TO_CHAR(a.APRTPRDV, 'MM/YYYY')                  AS DEVENGO_ACTUAL,
         CASE WHEN NOT EXISTS (SELECT 1 FROM CRD.CNTR c
                               WHERE c.ENTDCDGO = a.ENTDCDGO AND c.CNTRESTD = 1)
-             THEN 'EXCLUSION DECLARADA: sin contrato ACTIVO'
+             THEN 'EXCLUSION DECLARADA 1: sin contrato ACTIVO'
+             -- Segunda exclusión, medida en el 09 §C el 2026-08-31: 2 partícipes
+             -- con contrato pero SIN vigencia del tipo que aportan (18 filas,
+             -- $2.291,04, tipo 9). Sin vigencia de ese tipo no hay cupos, así que
+             -- el MERGE no los toca. Se declara para que el control no los
+             -- rotule "REVISAR" y esconda un caso nuevo entre los conocidos.
+             WHEN NOT EXISTS (SELECT 1 FROM CRD.CNTR c
+                              JOIN   CRD.VGCN v ON v.CNTRCDGO = c.CNTRCDGO
+                              WHERE  c.ENTDCDGO = a.ENTDCDGO AND c.CNTRESTD = 1
+                              AND    v.TPAPCDGO = a.TPAPCDGO AND v.VGCNIDST = 1
+                              AND    NVL(v.VGCNMNTO, 0) > 0)
+             THEN 'EXCLUSION DECLARADA 2: con contrato, sin vigencia de ESE tipo'
              ELSE 'REVISAR — no encaja en ninguna exclusión declarada'
         END                                             AS POR_QUE_SIGUE_ASI
 FROM    CRD.APRT a
