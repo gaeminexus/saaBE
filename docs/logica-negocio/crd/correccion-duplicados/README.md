@@ -752,6 +752,43 @@ un doble cobro pendiente sobre 744 partícipes.
 
 ---
 
+## 17. La regla que decidió tres casos: no derivar la obligación del cumplimiento
+
+En dos días, tres situaciones distintas se resolvieron con el mismo criterio, y las tres veces la
+tentación era la misma: **fabricar el dato esperado a partir del dato observado.**
+
+| Caso | La tentación | Por qué se rechazó |
+|---|---|---|
+| **404 partícipes sin contrato** | Construirles la grilla desde su propio historial de aportes | Sería deducir el contrato de los pagos. Se crearon contratos desde `CRD.HSTR`, que es la fuente de la obligación |
+| **1 partícipe, $1,80, sin vigencia de jubilación** | Crearle la vigencia por $1,80 | Su `HSTR` tiene el monto en cero; la vigencia habría salido de lo que pagó |
+| **2-3 partícipes, $2.291,04, sin vigencia de jubilación** | Crearles la vigencia con el monto que aportan | Ídem. Su `HSTRMNAJ` está en **0** |
+
+> ### La regla
+>
+> **El esperado nunca se calcula desde el recibido.** Si se hace, el control que compara los dos
+> deja de poder detectar nada para esa persona: **se vuelve un espejo** y siempre cuadra.
+>
+> Cuando el esperado está mal, se corrige **en su fuente** —`CRD.HSTR` para el monto, `CRD.CNTR`/
+> `CRD.VGCN` para la vigencia— y nunca en el lugar donde se nota.
+
+### 17.1 Estado de los 2-3 partícipes: no les falta la vigencia
+
+Verificado por el equipo A: **aportan jubilación todos los meses y su `HSTRMNAJ` está en 0.** No es
+que falte la vigencia — es que **el historial de sueldo dice que su monto de jubilación es cero**.
+
+**Consecuencia para este frente: no hay segunda pasada del `08`.** Su grilla no cambiaría por
+agregar una vigencia; cambiaría por corregir el `HSTRMNAJ`, que es un dato de RRHH y una decisión de
+negocio.
+
+Sus **18 filas y $2.291,04 quedan sin aplicarse** hasta que eso se resuelva. Es un problema real de
+aplicación de fondos, no de disponibilidad del proceso: con el diseño nuevo salen como
+**advertencia** en el resumen de la carga, no como abort (§14.3bis).
+
+**Pendiente de decisión del usuario desde el 2026-08-31**, junto con la cuenta contable de
+`APORTE PERSONALES`.
+
+---
+
 ## 8. Documentos relacionados
 
 - `../ANALISIS-APORTES-DUPLICADOS-PETRO.md` — el marco: versiones del generador, mecanismos M1-M8,
