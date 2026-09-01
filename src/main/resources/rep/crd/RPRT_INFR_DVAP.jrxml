@@ -1,0 +1,313 @@
+<!-- Informe de necesidad de pago (devolucion individual de aportes). Diseno: docs/logica-negocio/crd/ESPECIFICACION-INFORME-NECESIDAD-PAGO-DEVOLUCION.md. Textos fijos transcritos del Anexo A de ese documento (adaptados al singular, supuesto del arbitro pendiente de validar con el usuario). Contrato: docs/logica-negocio/crd/API-INFORME-NECESIDAD-PAGO.md. -->
+<!-- Query: una sola, UNION ALL con discriminador SECCION (1=lo que se devuelve, 2=aportes aplicados a prestamos, 3=deuda vigente). Nunca SELECT *: columnas explicitas. No se proyecta TPAPCDGO de CRD.DDVA ni de CRD.TPAP (el join va por el ON; el codigo no se imprime), asi que no hay colision de nombre que resolver con alias; ver Anexo B de la especificacion. Seccion 3 decodifica PRSTIDST con un CASE literal contra com.saa.rubros.EstadoPrestamo (no se usa CRD.ESPS: esa es la FK al catalogo, no el estado operativo; CLAUDE.md, "que columna lleva realmente el estado"). -->
+<jasperReport name="RPRT_INFR_DVAP" language="java" pageWidth="595" pageHeight="842" columnWidth="515" leftMargin="40" rightMargin="40" topMargin="40" bottomMargin="40" whenNoDataType="AllSectionsNoDetail" uuid="d4000000-0000-0000-0000-000000000000">
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="Oracle"/>
+	<property name="com.jaspersoft.studio.report.description" value="Informe de necesidad de pago por devolucion individual de aportes"/>
+	<parameter name="P_ID_DEVOLUCION" class="java.lang.Long">
+		<description><![CDATA[Codigo de la devolucion (CRD.DVAP.DVAPCDGO)]]></description>
+	</parameter>
+	<parameter name="P_NUMERO_INFORME" class="java.lang.String">
+		<description><![CDATA[Numero de informe, lo digita el operador. Ej: FCPC-CRE-GR-137-2026]]></description>
+	</parameter>
+	<parameter name="P_OBSERVACIONES" class="java.lang.String">
+		<description><![CDATA[Observaciones, lo digita el operador. Puede venir vacio: la seccion se colapsa sin dejar hueco.]]></description>
+	</parameter>
+	<parameter name="P_FECHA_DESDE" class="java.sql.Date">
+		<description><![CDATA[Corte del bloque de aportes aplicados a prestamos. Se precarga con el 1 de enero del anio de la devolucion.]]></description>
+	</parameter>
+	<query language="SQL"><![CDATA[SELECT
+    1 AS SECCION,
+    ROW_NUMBER() OVER (ORDER BY d.DDVACDGO) AS ORDEN,
+    t.TPAPNMBR AS CONCEPTO,
+    CAST(NULL AS VARCHAR2(300)) AS DETALLE,
+    d.DDVAVLRR AS VALOR,
+    (SELECT e.ENTDNMID FROM CRD.ENTD e JOIN CRD.DVAP v ON v.ENTDCDGO = e.ENTDCDGO WHERE v.DVAPCDGO = $P{P_ID_DEVOLUCION}) AS CEDULA,
+    (SELECT e.ENTDRZNS FROM CRD.ENTD e JOIN CRD.DVAP v ON v.ENTDCDGO = e.ENTDCDGO WHERE v.DVAPCDGO = $P{P_ID_DEVOLUCION}) AS NOMBRES,
+    (SELECT v.DVAPFCHA FROM CRD.DVAP v WHERE v.DVAPCDGO = $P{P_ID_DEVOLUCION}) AS FECHA_DEVOLUCION,
+    (SELECT NVL(v.DVAPFCPG, v.DVAPFCHA) FROM CRD.DVAP v WHERE v.DVAPCDGO = $P{P_ID_DEVOLUCION}) AS FECHA_COMPROMISO,
+    (SELECT v.DVAPVLRR FROM CRD.DVAP v WHERE v.DVAPCDGO = $P{P_ID_DEVOLUCION}) AS TOTAL_DEVUELTO
+FROM CRD.DDVA d
+JOIN CRD.TPAP t ON t.TPAPCDGO = d.TPAPCDGO
+WHERE d.DVAPCDGO = $P{P_ID_DEVOLUCION}
+
+UNION ALL
+
+SELECT
+    2 AS SECCION,
+    ROW_NUMBER() OVER (ORDER BY a.APRTFCTR) AS ORDEN,
+    ta.TPAPNMBR AS CONCEPTO,
+    TO_CHAR(a.APRTFCTR, 'DD/MM/YYYY') || ' - ' || a.APRTGLSA AS DETALLE,
+    a.APRTVLRR AS VALOR,
+    (SELECT e.ENTDNMID FROM CRD.ENTD e JOIN CRD.DVAP v ON v.ENTDCDGO = e.ENTDCDGO WHERE v.DVAPCDGO = $P{P_ID_DEVOLUCION}) AS CEDULA,
+    (SELECT e.ENTDRZNS FROM CRD.ENTD e JOIN CRD.DVAP v ON v.ENTDCDGO = e.ENTDCDGO WHERE v.DVAPCDGO = $P{P_ID_DEVOLUCION}) AS NOMBRES,
+    (SELECT v.DVAPFCHA FROM CRD.DVAP v WHERE v.DVAPCDGO = $P{P_ID_DEVOLUCION}) AS FECHA_DEVOLUCION,
+    (SELECT NVL(v.DVAPFCPG, v.DVAPFCHA) FROM CRD.DVAP v WHERE v.DVAPCDGO = $P{P_ID_DEVOLUCION}) AS FECHA_COMPROMISO,
+    (SELECT v.DVAPVLRR FROM CRD.DVAP v WHERE v.DVAPCDGO = $P{P_ID_DEVOLUCION}) AS TOTAL_DEVUELTO
+FROM CRD.APRT a
+JOIN CRD.TPAP ta ON ta.TPAPCDGO = a.TPAPCDGO
+WHERE a.ENTDCDGO = (SELECT v.ENTDCDGO FROM CRD.DVAP v WHERE v.DVAPCDGO = $P{P_ID_DEVOLUCION})
+  AND a.APRTTPMV = 4
+  AND a.APRTFCTR >= $P{P_FECHA_DESDE}
+  AND a.APRTFCTR < (SELECT v.DVAPFCHA FROM CRD.DVAP v WHERE v.DVAPCDGO = $P{P_ID_DEVOLUCION}) + 1
+
+UNION ALL
+
+SELECT
+    3 AS SECCION,
+    ROW_NUMBER() OVER (ORDER BY p.PRSTCDGO) AS ORDEN,
+    'Préstamo No. ' || TO_CHAR(p.PRSTCDGO) AS CONCEPTO,
+    CASE p.PRSTIDST
+        WHEN 1  THEN 'Generado'
+        WHEN 2  THEN 'Vigente'
+        WHEN 6  THEN 'Pendiente de aprobación'
+        WHEN 7  THEN 'Rechazado'
+        WHEN 8  THEN 'De plazo vencido'
+        WHEN 9  THEN 'Cancelado por revisar'
+        WHEN 10 THEN 'Vigente por revisar'
+        WHEN 11 THEN 'En mora'
+        ELSE 'Estado ' || NVL(TO_CHAR(p.PRSTIDST), 'no registrado')
+    END AS DETALLE,
+    NVL((SELECT SUM(dt.DTPRSLDO) FROM CRD.DTPR dt WHERE dt.PRSTCDGO = p.PRSTCDGO), 0) AS VALOR,
+    (SELECT e.ENTDNMID FROM CRD.ENTD e JOIN CRD.DVAP v ON v.ENTDCDGO = e.ENTDCDGO WHERE v.DVAPCDGO = $P{P_ID_DEVOLUCION}) AS CEDULA,
+    (SELECT e.ENTDRZNS FROM CRD.ENTD e JOIN CRD.DVAP v ON v.ENTDCDGO = e.ENTDCDGO WHERE v.DVAPCDGO = $P{P_ID_DEVOLUCION}) AS NOMBRES,
+    (SELECT v.DVAPFCHA FROM CRD.DVAP v WHERE v.DVAPCDGO = $P{P_ID_DEVOLUCION}) AS FECHA_DEVOLUCION,
+    (SELECT NVL(v.DVAPFCPG, v.DVAPFCHA) FROM CRD.DVAP v WHERE v.DVAPCDGO = $P{P_ID_DEVOLUCION}) AS FECHA_COMPROMISO,
+    (SELECT v.DVAPVLRR FROM CRD.DVAP v WHERE v.DVAPCDGO = $P{P_ID_DEVOLUCION}) AS TOTAL_DEVUELTO
+FROM CRD.PRST p
+WHERE p.ENTDCDGO = (SELECT v.ENTDCDGO FROM CRD.DVAP v WHERE v.DVAPCDGO = $P{P_ID_DEVOLUCION})
+  AND (p.PRSTIDST IS NULL OR p.PRSTIDST NOT IN (3,4,5))
+
+ORDER BY 1, 2]]></query>
+	<field name="SECCION" class="java.math.BigDecimal"/>
+	<field name="ORDEN" class="java.math.BigDecimal"/>
+	<field name="CONCEPTO" class="java.lang.String"/>
+	<field name="DETALLE" class="java.lang.String"/>
+	<field name="VALOR" class="java.math.BigDecimal"/>
+	<field name="CEDULA" class="java.lang.String"/>
+	<field name="NOMBRES" class="java.lang.String"/>
+	<field name="FECHA_DEVOLUCION" class="java.sql.Date"/>
+	<field name="FECHA_COMPROMISO" class="java.sql.Date"/>
+	<field name="TOTAL_DEVUELTO" class="java.math.BigDecimal"/>
+	<variable name="V_SUBTOTAL_SECCION" calculation="Sum" class="java.math.BigDecimal" resetType="Group" resetGroup="G_SECCION">
+		<expression><![CDATA[$F{VALOR} != null ? $F{VALOR} : java.math.BigDecimal.ZERO]]></expression>
+	</variable>
+	<group name="G_SECCION">
+		<expression><![CDATA[$F{SECCION}]]></expression>
+		<groupHeader>
+			<band height="34" splitType="Stretch">
+				<element kind="textField" uuid="d4000000-0000-0000-0000-000000000102" mode="Opaque" x="0" y="0" width="515" height="14" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.5" bold="true" hTextAlign="Left" vTextAlign="Middle">
+					<expression><![CDATA[$F{SECCION}.intValue() == 1
+    ? "1. LO QUE SE DEVUELVE (por tipo de aporte)"
+    : ($F{SECCION}.intValue() == 2
+        ? "2. APORTES YA APLICADOS A PRÉSTAMOS (histórico de cruces desde " + new java.text.SimpleDateFormat("dd/MM/yyyy").format($P{P_FECHA_DESDE}) + " — no es una deducción de esta devolución)"
+        : "3. DEUDA VIGENTE A LA FECHA DE EMISIÓN")]]></expression>
+					<box leftPadding="4"/>
+				</element>
+				<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000103" mode="Opaque" x="0" y="16" width="230" height="16" backcolor="#EEEEEE" fontName="Tahoma" fontSize="7.5" bold="true" hTextAlign="Left" vTextAlign="Middle">
+					<text><![CDATA[CONCEPTO]]></text>
+					<box leftPadding="4"><pen lineWidth="0.25"/></box>
+				</element>
+				<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000104" mode="Opaque" x="230" y="16" width="185" height="16" backcolor="#EEEEEE" fontName="Tahoma" fontSize="7.5" bold="true" hTextAlign="Left" vTextAlign="Middle">
+					<text><![CDATA[DETALLE]]></text>
+					<box leftPadding="4"><pen lineWidth="0.25"/></box>
+				</element>
+				<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000105" mode="Opaque" x="415" y="16" width="100" height="16" backcolor="#EEEEEE" fontName="Tahoma" fontSize="7.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+					<text><![CDATA[VALOR (USD)]]></text>
+					<box rightPadding="6"><pen lineWidth="0.25"/></box>
+				</element>
+			</band>
+		</groupHeader>
+		<groupFooter>
+			<band height="30" splitType="Stretch">
+				<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000111" x="0" y="0" width="415" height="14" fontName="Tahoma" fontSize="7.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+					<text><![CDATA[Subtotal de la sección]]></text>
+					<box rightPadding="6"/>
+				</element>
+				<element kind="textField" uuid="d4000000-0000-0000-0000-000000000112" x="415" y="0" width="100" height="14" fontName="Tahoma" fontSize="7.5" bold="true" pattern="#,##0.00" hTextAlign="Right" vTextAlign="Middle" blankWhenNull="true">
+					<expression><![CDATA[$V{V_SUBTOTAL_SECCION}]]></expression>
+					<box rightPadding="6"/>
+				</element>
+				<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000113" x="0" y="14" width="515" height="14" fontName="Tahoma" fontSize="7.0" italic="true" hTextAlign="Left" vTextAlign="Middle" printWhenExpression="$F{SECCION}.intValue() == 3">
+					<text><![CDATA[Saldos referenciales a la fecha de emisión.]]></text>
+				</element>
+			</band>
+		</groupFooter>
+	</group>
+	<background splitType="Stretch"/>
+	<title height="400" splitType="Stretch">
+		<element kind="textField" uuid="d4000000-0000-0000-0000-000000000201" x="0" y="0" width="515" height="16" fontName="Tahoma" fontSize="10.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA["INFORME No. " + $P{P_NUMERO_INFORME}]]></expression>
+		</element>
+		<element kind="textField" uuid="d4000000-0000-0000-0000-000000000202" x="0" y="16" width="515" height="16" fontName="Tahoma" fontSize="9.0" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA["Quito, " + new java.text.SimpleDateFormat("d 'de' MMMM 'de' yyyy", new java.util.Locale("es", "EC")).format($F{FECHA_DEVOLUCION})]]></expression>
+		</element>
+		<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000203" x="0" y="38" width="515" height="22" fontName="Tahoma" fontSize="13.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[INFORME DE NECESIDAD DE PAGO]]></text>
+		</element>
+		<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000204" x="0" y="64" width="257" height="13" fontName="Tahoma" fontSize="8.0" vTextAlign="Middle">
+			<text><![CDATA[Entidad: ASOPREP - FCPC]]></text>
+		</element>
+		<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000205" x="257" y="64" width="258" height="13" fontName="Tahoma" fontSize="8.0" hTextAlign="Right" vTextAlign="Middle">
+			<text><![CDATA[Área responsable: Área de Crédito]]></text>
+		</element>
+		<element kind="textField" uuid="d4000000-0000-0000-0000-000000000206" positionType="Float" x="0" y="80" width="515" height="26" fontName="Tahoma" fontSize="8.5" italic="true" textAdjust="StretchHeight" hTextAlign="Justified" vTextAlign="Top">
+			<expression><![CDATA["Asunto: Informe de justificación de pagos y devoluciones de cesantías a personas cesantes, jubilados por el IESS y desafiliados del fondo."]]></expression>
+			<paragraph spacingAfter="8"/>
+		</element>
+		<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000210" positionType="Float" mode="Opaque" x="0" y="110" width="515" height="14" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.5" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[DATOS DEL PARTÍCIPE]]></text>
+			<box><pen lineWidth="0.25"/></box>
+		</element>
+		<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000211" positionType="Float" mode="Opaque" x="0" y="124" width="180" height="14" backcolor="#EEEEEE" fontName="Tahoma" fontSize="8.0" bold="true" vTextAlign="Middle">
+			<text><![CDATA[Cédula]]></text>
+			<box leftPadding="5"><pen lineWidth="0.25"/></box>
+		</element>
+		<element kind="textField" uuid="d4000000-0000-0000-0000-000000000212" positionType="Float" x="180" y="124" width="335" height="14" fontName="Tahoma" fontSize="8.0" blankWhenNull="true" vTextAlign="Middle">
+			<expression><![CDATA[$F{CEDULA}]]></expression>
+			<box leftPadding="5"><pen lineWidth="0.25"/></box>
+		</element>
+		<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000213" positionType="Float" mode="Opaque" x="0" y="138" width="180" height="14" backcolor="#EEEEEE" fontName="Tahoma" fontSize="8.0" bold="true" vTextAlign="Middle">
+			<text><![CDATA[Nombres]]></text>
+			<box leftPadding="5"><pen lineWidth="0.25"/></box>
+		</element>
+		<element kind="textField" uuid="d4000000-0000-0000-0000-000000000214" positionType="Float" x="180" y="138" width="335" height="14" fontName="Tahoma" fontSize="8.0" blankWhenNull="true" vTextAlign="Middle">
+			<expression><![CDATA[$F{NOMBRES}]]></expression>
+			<box leftPadding="5"><pen lineWidth="0.25"/></box>
+		</element>
+		<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000215" positionType="Float" mode="Opaque" x="0" y="152" width="180" height="14" backcolor="#EEEEEE" fontName="Tahoma" fontSize="8.0" bold="true" vTextAlign="Middle">
+			<text><![CDATA[Fecha de la devolución]]></text>
+			<box leftPadding="5"><pen lineWidth="0.25"/></box>
+		</element>
+		<element kind="textField" uuid="d4000000-0000-0000-0000-000000000216" positionType="Float" x="180" y="152" width="335" height="14" fontName="Tahoma" fontSize="8.0" pattern="dd/MM/yyyy" blankWhenNull="true" vTextAlign="Middle">
+			<expression><![CDATA[$F{FECHA_DEVOLUCION}]]></expression>
+			<box leftPadding="5"><pen lineWidth="0.25"/></box>
+		</element>
+		<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000217" positionType="Float" mode="Opaque" x="0" y="166" width="180" height="14" backcolor="#EEEEEE" fontName="Tahoma" fontSize="8.0" bold="true" vTextAlign="Middle">
+			<text><![CDATA[Fecha de compromiso de pago]]></text>
+			<box leftPadding="5"><pen lineWidth="0.25"/></box>
+		</element>
+		<element kind="textField" uuid="d4000000-0000-0000-0000-000000000218" positionType="Float" x="180" y="166" width="335" height="14" fontName="Tahoma" fontSize="8.0" pattern="dd/MM/yyyy" blankWhenNull="true" vTextAlign="Middle">
+			<expression><![CDATA[$F{FECHA_COMPROMISO}]]></expression>
+			<box leftPadding="5"><pen lineWidth="0.25"/></box>
+		</element>
+		<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000220" positionType="Float" x="0" y="190" width="515" height="14" fontName="Tahoma" fontSize="9.5" bold="true" vTextAlign="Middle">
+			<text><![CDATA[1. ANTECEDENTES]]></text>
+		</element>
+		<element kind="textField" uuid="d4000000-0000-0000-0000-000000000221" positionType="Float" x="0" y="206" width="515" height="26" fontName="Tahoma" fontSize="9.0" textAdjust="StretchHeight" hTextAlign="Justified" vTextAlign="Top">
+			<expression><![CDATA["El presente informe tiene como finalidad justificar la devolución de la cuenta individual, conforme a la solicitud ingresada por el ex partícipe."]]></expression>
+			<paragraph lineSpacing="1_1_2" spacingAfter="10"/>
+		</element>
+		<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000222" positionType="Float" x="0" y="240" width="515" height="14" fontName="Tahoma" fontSize="9.5" bold="true" vTextAlign="Middle">
+			<text><![CDATA[2. OBJETIVO]]></text>
+		</element>
+		<element kind="textField" uuid="d4000000-0000-0000-0000-000000000223" positionType="Float" x="0" y="256" width="515" height="50" fontName="Tahoma" fontSize="9.0" textAdjust="StretchHeight" hTextAlign="Justified" vTextAlign="Top">
+			<expression><![CDATA["Dar atención al requerimiento del ex partícipe relacionado con el pago de su cuenta individual y los cruces con préstamos pendientes de cancelación, posterior a las reuniones mantenidas con el mismo y llegar a un acuerdo de cancelación de sus préstamos, esto con el propósito de apoyar sus necesidades económicas derivadas de la situación que presenta."]]></expression>
+			<paragraph lineSpacing="1_1_2" spacingAfter="10"/>
+		</element>
+		<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000224" positionType="Float" x="0" y="310" width="515" height="14" fontName="Tahoma" fontSize="9.5" bold="true" vTextAlign="Middle">
+			<text><![CDATA[3. DETALLE DEL PARTÍCIPE]]></text>
+		</element>
+		<element kind="textField" uuid="d4000000-0000-0000-0000-000000000225" positionType="Float" x="0" y="326" width="515" height="26" fontName="Tahoma" fontSize="9.0" textAdjust="StretchHeight" hTextAlign="Justified" vTextAlign="Top">
+			<expression><![CDATA["De acuerdo a la autorización de la Gerencia General se procede a listar los datos con los que se efectuará el pago correspondiente del ex partícipe que ingresó la solicitud correspondiente:"]]></expression>
+			<paragraph lineSpacing="1_1_2" spacingAfter="6"/>
+		</element>
+	</title>
+	<pageHeader height="0" splitType="Stretch"/>
+	<detail>
+		<band height="14" splitType="Stretch">
+			<element kind="textField" uuid="d4000000-0000-0000-0000-000000000301" x="0" y="0" width="230" height="14" fontName="Tahoma" fontSize="8.0" blankWhenNull="true" vTextAlign="Middle">
+				<expression><![CDATA[$F{CONCEPTO}]]></expression>
+				<box leftPadding="4"/>
+			</element>
+			<element kind="textField" uuid="d4000000-0000-0000-0000-000000000302" x="230" y="0" width="185" height="14" fontName="Tahoma" fontSize="8.0" blankWhenNull="true" vTextAlign="Middle">
+				<expression><![CDATA[$F{DETALLE}]]></expression>
+				<box leftPadding="4"/>
+			</element>
+			<element kind="textField" uuid="d4000000-0000-0000-0000-000000000303" x="415" y="0" width="100" height="14" fontName="Tahoma" fontSize="8.0" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+				<expression><![CDATA[$F{VALOR}]]></expression>
+				<box rightPadding="6"/>
+			</element>
+		</band>
+	</detail>
+	<pageFooter height="24" splitType="Stretch">
+		<element kind="line" uuid="d4000000-0000-0000-0000-000000000401" x="0" y="4" width="515" height="1">
+			<pen lineWidth="0.25" lineColor="#E2E8F0"/>
+		</element>
+		<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000402" x="0" y="8" width="300" height="12" fontSize="6.5" vTextAlign="Middle">
+			<text><![CDATA[RPRT_INFR_DVAP - Informe de necesidad de pago]]></text>
+		</element>
+		<element kind="textField" uuid="d4000000-0000-0000-0000-000000000403" x="360" y="8" width="110" height="12" fontSize="7.0" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA["Página " + $V{PAGE_NUMBER} + " de"]]></expression>
+		</element>
+		<element kind="textField" uuid="d4000000-0000-0000-0000-000000000404" x="470" y="8" width="45" height="12" fontSize="7.0" evaluationTime="Report" hTextAlign="Left" vTextAlign="Middle">
+			<expression><![CDATA[" " + $V{PAGE_NUMBER}]]></expression>
+		</element>
+	</pageFooter>
+	<summary height="560" splitType="Stretch">
+		<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000501" positionType="Float" x="0" y="0" width="515" height="14" fontName="Tahoma" fontSize="9.5" bold="true" vTextAlign="Middle">
+			<text><![CDATA[4. JUSTIFICACIÓN]]></text>
+		</element>
+		<element kind="textField" uuid="d4000000-0000-0000-0000-000000000502" positionType="Float" x="0" y="16" width="515" height="38" fontName="Tahoma" fontSize="9.0" textAdjust="StretchHeight" hTextAlign="Justified" vTextAlign="Top">
+			<expression><![CDATA["El presente proceso se ejecuta en cumplimiento de lo dispuesto en la Resolución No. 280-2016-F de la Junta de Política y Regulación Monetaria y Financiera, Capítulo II – Liquidación de la cuenta individual, Artículo 55, el cual establece:"]]></expression>
+			<paragraph lineSpacing="1_1_2" spacingAfter="8"/>
+		</element>
+		<element kind="textField" uuid="d4000000-0000-0000-0000-000000000503" positionType="Float" x="20" y="56" width="475" height="60" fontName="Tahoma" fontSize="8.5" italic="true" textAdjust="StretchHeight" hTextAlign="Justified" vTextAlign="Top">
+			<expression><![CDATA["“La liquidación de la cuenta individual de un Fondo Complementario Previsional Cerrado de Cesantía se da cuando un participe termine su relación laboral con la institución pública, privada o mixta, bajo la que se constituyó el ente previsional y se cumplan las condiciones previstas en la presente norma, En este caso, se le entregará el saldo de su cuenta individual debiendo efectuarse previamente las deducciones que correspondan (…)”"]]></expression>
+			<paragraph lineSpacing="1_1_2" spacingAfter="8"/>
+		</element>
+		<element kind="textField" uuid="d4000000-0000-0000-0000-000000000504" positionType="Float" x="0" y="120" width="515" height="50" fontName="Tahoma" fontSize="9.0" textAdjust="StretchHeight" hTextAlign="Justified" vTextAlign="Top">
+			<expression><![CDATA["En este contexto, y atendiendo a la solicitud expresa del ex partícipe, se ha establecido el pago que permite la ejecución ordenada y transparente de la devolución correspondiente, por lo cual se le realizará el pago del 100% de sus cuentas de cesantía y jubilación personal menos sus haberes correspondientes."]]></expression>
+			<paragraph lineSpacing="1_1_2" spacingAfter="10"/>
+		</element>
+		<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000505" positionType="Float" x="0" y="174" width="515" height="14" fontName="Tahoma" fontSize="9.5" bold="true" vTextAlign="Middle" printWhenExpression="$P{P_OBSERVACIONES} != null &amp;&amp; $P{P_OBSERVACIONES}.trim().length() &gt; 0">
+			<text><![CDATA[5. OBSERVACIONES]]></text>
+		</element>
+		<element kind="textField" uuid="d4000000-0000-0000-0000-000000000506" positionType="Float" x="0" y="190" width="515" height="26" fontName="Tahoma" fontSize="9.0" textAdjust="StretchHeight" hTextAlign="Justified" vTextAlign="Top" removeLineWhenBlank="true" blankWhenNull="true">
+			<expression><![CDATA[$P{P_OBSERVACIONES}]]></expression>
+			<paragraph lineSpacing="1_1_2" spacingAfter="10"/>
+		</element>
+		<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000507" positionType="Float" x="0" y="220" width="515" height="14" fontName="Tahoma" fontSize="9.5" bold="true" vTextAlign="Middle">
+			<text><![CDATA[6. CONCLUSIONES]]></text>
+		</element>
+		<element kind="textField" uuid="d4000000-0000-0000-0000-000000000508" positionType="Float" x="0" y="236" width="515" height="30" fontName="Tahoma" fontSize="9.0" textAdjust="StretchHeight" hTextAlign="Justified" vTextAlign="Top">
+			<expression><![CDATA["El pago avanza conforme se recibe la solicitud del partícipe y los requerimientos del ente de control, encontrándonos al día en las atenciones con el presente informe."]]></expression>
+			<paragraph lineSpacing="1_1_2" spacingAfter="8"/>
+		</element>
+		<element kind="textField" uuid="d4000000-0000-0000-0000-000000000509" positionType="Float" x="0" y="270" width="515" height="50" fontName="Tahoma" fontSize="9.0" textAdjust="StretchHeight" hTextAlign="Justified" vTextAlign="Top">
+			<expression><![CDATA["Asimismo, se ha procurado mantener la transparencia y trazabilidad en cada etapa del proceso, considerando las observaciones y verificaciones necesarias para garantizar una gestión responsable de los recursos del fondo, por lo que es óptimo verificar las cuentas patronales del partícipe, teniendo en cuenta que el sistema Delta 21 no es lo 100% operativo."]]></expression>
+			<paragraph lineSpacing="1_1_2" spacingAfter="10"/>
+		</element>
+		<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000510" positionType="Float" x="0" y="324" width="515" height="14" fontName="Tahoma" fontSize="9.5" bold="true" vTextAlign="Middle">
+			<text><![CDATA[7. RECOMENDACIONES]]></text>
+		</element>
+		<element kind="textField" uuid="d4000000-0000-0000-0000-000000000511" positionType="Float" x="0" y="340" width="515" height="30" fontName="Tahoma" fontSize="9.0" textAdjust="StretchHeight" hTextAlign="Justified" vTextAlign="Top">
+			<expression><![CDATA["Continuar con el proceso de migración y auditoría de las cuentas individuales y sus respectivos rendimientos, a fin de esclarecer los saldos reales de cada partícipe."]]></expression>
+			<paragraph lineSpacing="1_1_2" spacingAfter="8"/>
+		</element>
+		<element kind="textField" uuid="d4000000-0000-0000-0000-000000000512" positionType="Float" x="0" y="374" width="515" height="40" fontName="Tahoma" fontSize="9.0" textAdjust="StretchHeight" hTextAlign="Justified" vTextAlign="Top">
+			<expression><![CDATA["Fortalecer los mecanismos de control interno y conciliación periódica entre las áreas contable, financiera y administrativa, para evitar discrepancias en los registros y agilizar futuras devoluciones."]]></expression>
+			<paragraph lineSpacing="1_1_2" spacingAfter="30"/>
+		</element>
+		<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000513" positionType="Float" x="0" y="420" width="515" height="16" fontName="Tahoma" fontSize="9.5" vTextAlign="Top">
+			<text><![CDATA[Atentamente,]]></text>
+			<paragraph spacingAfter="48"/>
+		</element>
+		<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000514" positionType="Float" x="0" y="484" width="515" height="16" fontName="Tahoma" fontSize="9.5" bold="true" vTextAlign="Top">
+			<text><![CDATA[Lic. Gabriel Robayo]]></text>
+		</element>
+		<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000515" positionType="Float" x="0" y="500" width="515" height="16" fontName="Tahoma" fontSize="9.5" vTextAlign="Top">
+			<text><![CDATA[Jefe de Crédito]]></text>
+		</element>
+		<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000516" positionType="Float" x="0" y="516" width="515" height="26" fontName="Tahoma" fontSize="7.5" hTextAlign="Left" vTextAlign="Top">
+			<text><![CDATA[ASOCIACIÓN DEL FONDO COMPLEMENTARIO PREVISIONAL CERRADO ASOPREP-FCPC DE JUBILACIÓN Y CESANTÍA, DE LAS EMPRESAS PÚBLICAS DEL SECTOR HIDROCARBURÍFERO]]></text>
+		</element>
+	</summary>
+	<noData height="80" splitType="Stretch">
+		<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000601" x="0" y="0" width="515" height="16" fontName="Tahoma" fontSize="10.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[No se pudo generar el informe]]></text>
+		</element>
+		<element kind="textField" uuid="d4000000-0000-0000-0000-000000000602" x="0" y="20" width="515" height="30" fontName="Tahoma" fontSize="9.0" hTextAlign="Center" vTextAlign="Middle">
+			<expression><![CDATA["No se encontró la devolución de aportes con código " + ($P{P_ID_DEVOLUCION} != null ? String.valueOf($P{P_ID_DEVOLUCION}) : "(nulo)") + "."]]></expression>
+		</element>
+	</noData>
+</jasperReport>
