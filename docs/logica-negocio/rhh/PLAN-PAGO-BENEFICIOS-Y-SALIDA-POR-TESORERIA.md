@@ -337,6 +337,43 @@ GeneracionOrdenPagoServiceImpl.generar(idPeriodo, idCuentaBancaria, usuario)
   `CONFIRMADO` en tesorería antes de contabilizar. Ese es el punto donde la aprobación se vuelve
   obligatoria de verdad; sin eso la bandeja es decorativa.
 
+#### 🔴 El `idUsuario`: por qué `/rdpg/generar` y `/rdpg/confirmar` cambian de contrato
+
+**Levantado el 2026-09-01 cruzando los dos repositorios.** Es el tipo de defecto que ninguno de los
+dos agentes podía ver solo.
+
+`registrarPagoDeOrigenExterno` exige un **`Long idUsuario`**, y lo usa para
+`em.find(Usuario.class, idUsuario)` (`PagoProgramadoServiceImpl:264`, `:316`) — o sea, una FK real.
+Pero `GeneracionOrdenPagoServiceImpl.generar/confirmar` reciben un **`String usuario`**, que en todo
+RRHH es texto libre para las columnas de auditoría `*USRR`. No hay puente entre los dos.
+
+**Resolver el nombre contra la base NO sirve, y esto se verificó del lado del frontend:**
+`ordenes-pago.component.ts` manda `usuarioRegistro: usuarioSesion()`, y `usuarioSesion()`
+(`saaFE/src/app/shared/services/usuario-sesion.ts:11-23`) recorre siete claves de storage y **si no
+encuentra ninguna devuelve el literal `'SYSTEM'`**, que no es un usuario de la base. Su propio
+Javadoc explica por qué hay siete: `login.component.ts` y `AppStateService.inicializarApp()`
+guardan el dato con nombres distintos. Un `selectByNombre` sobre eso **haría fallar `generar()` de
+nómina entera** en cuanto la sesión se inicializara por el camino que no dejó la clave — y sería en
+el primer mes que la nómina corre desde el sistema.
+
+**La solución correcta ya existe en el frontend y sólo hay que usarla.** `AppStateService:307-314`
+expone un getter cuyo Javadoc dice, textual, *«Id del usuario actual, listo para mandar como
+`idUsuario` en un payload»*. Es lo que ya usan otras pantallas.
+
+**Cambio de contrato, en los dos lados:**
+
+| Endpoint | Body antes | Body después |
+|---|---|---|
+| `POST /rest/rdpg/generar` | `{idPeriodo, idCuentaBancaria, usuarioRegistro}` | **`{idPeriodo, idCuentaBancaria, usuarioRegistro, idUsuario}`** |
+| `POST /rest/rdpg/confirmar/{id}` | `{fechaAcreditacion, usuarioRegistro}` | **`{fechaAcreditacion, usuarioRegistro, idUsuario}`** |
+
+`usuarioRegistro` **se mantiene** — sigue alimentando las columnas de auditoría, que son texto.
+`idUsuario` se agrega y es el que viaja a tesorería. ⛔ **Nada de `selectByNombre`.**
+
+**Compatibilidad:** `idUsuario` ausente o nulo debe fallar con un mensaje explícito («falta
+idUsuario para registrar el pago en tesorería»), **no** con un `NullPointerException` ni resolviendo
+por nombre. Es un error de integración y tiene que verse como tal.
+
 ⚠️ **Trampa conocida, del frente S §8.2:** `POST /pgtr/aprobar` aplica **una sola forma de pago a
 todo el lote** (`PagoProgramadoServiceImpl:1170`) sin mirar el origen, y tiene una lista de orígenes
 que rechazan transferencia. La nómina **sí** se paga por transferencia (archivo bancario), así que
