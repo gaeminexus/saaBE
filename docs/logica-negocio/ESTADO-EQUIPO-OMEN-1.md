@@ -96,6 +96,64 @@ es por donde entró toda la cartera migrada y tocarlo sería retroactivo sobre p
 
 ---
 
+## 2b. Frente lateral — Informe de necesidad de pago (devolución individual)
+
+**Pedido por el usuario el 2026-09-01**, fuera del orden de los tres frentes. Reporte Jasper
+`RPRT_INFR_DVAP`: el informe que hoy se hace a mano en Word, para **un solo partícipe**, impreso
+desde la pantalla de devolución de aportes.
+
+**El usuario cerró el resto de equipos ese día**, así que la devolución de aportes —que era del
+equipo A— pasó a este equipo. Las reservas por archivo del `REGISTRO-RESERVAS-EQUIPOS.md` §4 ya no
+tienen a quién proteger.
+
+| Pieza | Estado |
+|---|---|
+| Especificación + contrato, espejado a `saaFE/docs/crd/` | ✅ `c895305`, `3e457ff` |
+| `.jrxml` + `.jasper` compilado | ✅ `01779ee` |
+| FE: diálogo, botón al registrar y botón en el histórico | ✅ `32587a3` (saaFE) |
+| Correcciones de la sección 2 (signo + leyenda) | despachadas al BE |
+| Prueba contra el servidor | ⛔ **pendiente del usuario** |
+
+### Hallazgos
+
+**H5 — El neto del informe no existe en el sistema.** Cruzar contra préstamos
+(`prst/pagarConAportes`) y devolver aportes (`dvap/registrar`) son operaciones **separadas y sin
+ninguna FK entre ellas**; la devolución ni siquiera valida la deuda (`deudaVigente` es un aviso, por
+decisión del 2026-08-24). `DVAPVLRR` es lo que el operador eligió devolver, no el resultado de
+restar préstamos. Se reconstruye con `APRT.APRTTPMV = 4` (`PAGO_PRESTAMO`), que marca los aportes
+consumidos en cruces. **El informe pone los tres bloques uno al lado del otro y no afirma una resta
+que el sistema no hizo.**
+
+**H6 — El `.jasper` se puede compilar en esta máquina, sin Jaspersoft Studio.** Classpath de Maven
+más el JDK 21, fuera de WildFly. Verificado compilando `RPRT_CRTF_APRT.jrxml`: 28.736 bytes contra
+28.642 del commiteado, misma cabecera serializada, misma versión 7.0.3. Procedimiento en el §3 de la
+especificación. **Levanta el mayor riesgo de cualquier entrega de reportes de este repositorio.**
+
+**H7 — `REGLAS_GENERACION_REPORTES_G.md:306-307` es falso y peligroso.** Afirma que basta el
+`.jrxml` porque hay compilación runtime con Janino. No hay Janino en 7.0.3 y sí hay Maven acá. Un
+agente que lo lea entrega un reporte que revienta al primer uso — es lo que pasó con los siete de
+`rhh`. **Sin corregir; no es de esta entrega.**
+
+**H8 — Los movimientos de cruce se graban NEGATIVOS.** `consumirAportes:735` hace
+`setValor(-valor)`, mientras `DDVAVLRR` es positivo. El reporte los imprimía con su signo crudo, o
+sea negativos junto a positivos. Corregido con `ABS()`. **No era visible sin leer `consumirAportes`:
+las dos tablas parecen simétricas y no lo son.**
+
+**H9 — Un cruce reversado se sigue listando.** El contra-movimiento se graba aparte con
+`APRTTPMV = 5` y **sin FK al aporte original** (`ProcesoPagoPrestamoServiceImpl:1444-1456`), y el
+tipo 5 lo escriben también las devoluciones y las pensiones. Filtrarlo exigiría adivinar por glosa.
+**Se resolvió con una leyenda que lo declara**, no con una heurística frágil. Limitación conocida.
+
+### Fallo de proceso propio, registrado
+
+La primera versión de la especificación decía «los cinco bloques del Word, literales» **sin
+transcribirlos**, y el Word no está ni puede estar en el repositorio (lista 19 partícipes con
+cédula, nombre y monto). El agente de BE quedó bloqueado con razón y **paró en vez de inventar una
+cita legal**. Es la regla 7 —lo que un agente va a implementar tiene que estar en disco antes— y
+«transcribir del Word» no la cumple cuando el Word no está. Corregido con el Anexo A.
+
+---
+
 ## 3. Hallazgos de la revisión de arranque (2026-09-01)
 
 ### H1 — El contrato de API del otorgamiento vivía SOLO en el espejo
@@ -153,6 +211,8 @@ la tasa de desgravamen es una **constante quemada en Java** (`FACTOR_DESGRAVAMEN
 | P2 | Los 4 préstamos vivos sin tasa (8157, 8078, 8085, 8307): ¿qué tasa tienen, o se dan de baja? Exposición ~8.700 de mora calculada al 9 % por defecto | decidible |
 | P3 | ¿Un préstamo puede quedar sin póliza y seguir cobrando seguro? ¿La tasa de desgravamen sale de la póliza o sigue siendo la constante? ¿Los migrados se inscriben retroactivamente? | decidible, frente 3 |
 | P4 | ¿`sql/60_ACTUALIZA_SEGURO_INCENDIO_PRESTAMOS.sql` llegó a correr en producción? Sus 131 préstamos son la primera inscripción a migrar | sin prisa |
+| P5 | **Validar el texto adaptado al singular** del informe (Anexo A de la especificación). El original es grupal; la adaptación es un supuesto del árbitro, y el usuario es quien firma el documento | decidible |
+| P6 | Correr **`sql/152`** (solo `SELECT`) y probar el informe contra el servidor. Ningún agente puede levantar navegador ni WildFly | decidible |
 
 ---
 
@@ -170,3 +230,4 @@ la tasa de desgravamen es una **constante quemada en Java** (`FACTOR_DESGRAVAMEN
 | Fecha | Qué |
 |---|---|
 | 2026-09-01 | Revisión de arranque del árbitro. Estado de los tres frentes verificado contra el código. Creado este documento (H2). Restaurados los dos contratos de API en el lado autoritativo (H1). `mvn -q clean compile` exit 0 sobre `80566a4` |
+| 2026-09-01 | Frente lateral del informe de necesidad de pago, entregado BE+FE en el día. Cinco hallazgos (H5–H9) y un fallo de proceso propio registrado. `sql/152` escrito para validar la query sin desplegar. Queda pendiente la prueba contra el servidor |
