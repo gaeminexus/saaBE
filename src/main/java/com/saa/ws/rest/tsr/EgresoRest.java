@@ -58,7 +58,8 @@ public class EgresoRest {
      *   "descripcion": "Administración cuenta corriente agosto",
      *   "valor": 12.50,
      *   "fecha": "2026-08-12",
-     *   "idCuentaBancariaOrigen": 4,
+     *   "idCuentaBancariaOrigen": 4,      (opcional: si no viene, el pago nace POR_APROBAR y
+     *                                       tesorería elige cuenta y forma de pago al aprobar)
      *   "idCuentaDestinoTitular": 9,      (obligatorio si no es débito automático)
      *   "debitoAutomatico": true,
      *   "referencia": "DEB-ADM-0812",     (opcional)
@@ -89,9 +90,9 @@ public class EgresoRest {
             Long idUsuario      = toLong(datos.get("idUsuario"));
             Long formaPago      = toLong(datos.get("formaPago"));
 
-            if (idEmpresa == null || idProducto == null || valor == null || idCuentaOrigen == null) {
+            if (idEmpresa == null || idProducto == null || valor == null) {
                 return Response.status(Response.Status.BAD_REQUEST)
-                        .entity("Debe enviar idEmpresa, idProductoPago, valor e idCuentaBancariaOrigen.")
+                        .entity("Debe enviar idEmpresa, idProductoPago y valor.")
                         .type(MediaType.APPLICATION_JSON).build();
             }
 
