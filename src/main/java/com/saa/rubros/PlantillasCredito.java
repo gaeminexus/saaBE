@@ -62,10 +62,18 @@ public interface PlantillasCredito {
 	public static final int COBRO_TRANSITORIO_PETRO = 19;
 
 	/**
-	 * "CRD COBRO DE PETROECUADOR Y ARCH ASIENTO CORRELACIONADO (1)". Paso 2a: asiento de
-	 * REPARTO, D {@code 2.3.01.15.01} → H {@code 1.4.05.05}/{@code 1.4.05.10}.
+	 * "CRD COBRO DE PETROECUADOR Y ARCH ASIENTO CORRELACIONADO (1)". Paso 2a de Petro / paso
+	 * 2 del circuito de cobros (CBCR): asiento de REPARTO, D {@code 2.3.01.15.01} (transitoria)
+	 * → H {@code 1.4.05.05}/{@code 1.4.05.10} (activo de aportes/préstamos).
+	 *
+	 * <p><b>Se llamaba {@code REPARTO_PETRO}</b> (renombrada 2026-08-31): dejó de ser
+	 * exclusiva de Petro el día que {@code CobroCreditoServiceImpl} empezó a usarla también
+	 * para el asiento 2 de un cobro individual (tres asientos por cobro, decisión del
+	 * usuario) — un nombre que dice "PETRO" en una constante que ya usan los dos circuitos
+	 * hace creer que el asiento de reparto de un cobro personal es cosa de Petro. El alterno
+	 * (20) no cambió, solo el nombre Java.</p>
 	 */
-	public static final int REPARTO_PETRO = 20;
+	public static final int REPARTO_TRANSITORIA = 20;
 
 	/**
 	 * "CRD COBRO PETRO ASIENTO CONTABLE CORRELACIONADO CIERRE CARTERA". Paso 2b: asiento de

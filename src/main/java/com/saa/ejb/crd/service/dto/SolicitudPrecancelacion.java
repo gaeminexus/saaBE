@@ -38,6 +38,20 @@ public class SolicitudPrecancelacion {
      */
     private Long idEmpresa;
 
+    /**
+     * Código del {@code CobroCredito} (CRD.CBCR) que originó esta llamada — el discriminador
+     * de origen del circuito de cobros con aportes (2026-08-31, decisión del usuario).
+     *
+     * <b>Nunca lo manda el cliente.</b> Lo pone {@code CobroCreditoServiceImpl.procesarCobro}
+     * en su llamada interna (mismo criterio que {@code idEmpresa}). Si viene {@code null}, la
+     * precancelación es una llamada DIRECTA (sin depósito, 100% aportes o 100% efectivo) y
+     * {@code ContabilidadPrestamoServiceImpl#contabilizarPrecancelacion} genera el asiento de
+     * cruce acá mismo; si viene con valor, la llamada nace de CBCR (hay depósito de por
+     * medio) y ese asiento lo genera {@code CobroCreditoServiceImpl#generarAsientoDefinitivo}
+     * (CBCRASN2) — este hook NO debe generar nada, para no duplicar.
+     */
+    private Long idCobroCredito;
+
     public SolicitudPrecancelacion() {
     }
 
@@ -103,5 +117,13 @@ public class SolicitudPrecancelacion {
 
     public void setIdEmpresa(Long idEmpresa) {
         this.idEmpresa = idEmpresa;
+    }
+
+    public Long getIdCobroCredito() {
+        return idCobroCredito;
+    }
+
+    public void setIdCobroCredito(Long idCobroCredito) {
+        this.idCobroCredito = idCobroCredito;
     }
 }

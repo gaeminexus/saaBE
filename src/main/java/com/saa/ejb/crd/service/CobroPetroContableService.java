@@ -117,7 +117,7 @@ public interface CobroPetroContableService {
 
     /**
      * PASO 2a: asiento de REPARTO — D {@code 2.3.01.15.01} → H {@code 1.4.05.05}/
-     * {@code 1.4.05.10}, plantilla alterno {@code PlantillasCredito.REPARTO_PETRO} (20).
+     * {@code 1.4.05.10}, plantilla alterno {@code PlantillasCredito.REPARTO_TRANSITORIA} (20).
      * Lo llama {@code CargaArchivoPetroServiceImpl.aplicarPagosArchivoPetro} (paso 2), justo
      * antes de marcar la carga PROCESADO — exige que el paso 1 ya esté hecho (lo garantiza
      * {@code CargaArchivoPetroServiceImpl.exigeConfirmacionContabilidad}, no este método).

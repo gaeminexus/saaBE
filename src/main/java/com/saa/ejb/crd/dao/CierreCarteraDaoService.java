@@ -63,16 +63,26 @@ public interface CierreCarteraDaoService {
     List<Object[]> selectCapitalPorProductoYVencimiento(Long idEmpresa) throws Throwable;
 
     /**
-     * Interés ordinario y mora pendientes de las cuotas con vencimiento hasta la fecha,
-     * agrupados por TIPO DE PRÉSTAMO (quirografario / hipotecario / prendario), que es la
-     * dimensión por la que cambia la cuenta contable del devengo.
+     * Interés ordinario y mora pendientes de las cuotas con vencimiento EN EL RANGO
+     * {@code [desde, hasta]} (ambos inclusive), agrupados por TIPO DE PRÉSTAMO (quirografario /
+     * hipotecario / prendario), que es la dimensión por la que cambia la cuenta contable del
+     * devengo.
      *
-     * @param hasta      : Último día a considerar (inclusive)
+     * <p>2026-08-31, decisión del usuario: el asiento ④ del cierre de cartera solo devenga los
+     * intereses de las cuotas del mes que se ABRE, no las acumuladas de meses anteriores — por
+     * eso es un rango, no un "hasta" abierto por abajo. Antes se llamaba
+     * {@code selectInteresPorTipoPrestamoHasta} y hacía {@code TRUNC(DTPRFCVN) <= :hasta}
+     * (acumulado); se renombró en el mismo cambio porque era su único llamador
+     * ({@code CierreCarteraServiceImpl.armaDevengoIntereses}) — un método que se llama "Hasta"
+     * y hace un {@code BETWEEN} es una trampa para el próximo que lo lea.</p>
+     *
+     * @param desde      : Primer día del rango (inclusive)
+     * @param hasta      : Último día del rango (inclusive)
      * @return           : Filas {@code [idTipoPrestamo (Long), interesPendiente (Double),
      *                     moraPendiente (Double)]}
      * @throws Throwable : Excepcion
      */
-    List<Object[]> selectInteresPorTipoPrestamoHasta(LocalDate hasta) throws Throwable;
+    List<Object[]> selectInteresPorTipoPrestamoEnRango(LocalDate desde, LocalDate hasta) throws Throwable;
 
     /**
      * Total por cobrar de préstamos de las cuotas con vencimiento hasta la fecha:
@@ -103,6 +113,13 @@ public interface CierreCarteraDaoService {
      * @throws Throwable : Excepcion
      */
     Object[] selectAporteMensualEsperado() throws Throwable;
+
+    // NOTA (2026-08-31): existió acá selectAporteDescontadoPorMes (CRD.DTCA, producto AH),
+    // segunda fuente propuesta para el asiento ③. Se descartó y se eliminó: el archivo del
+    // mes que se ABRE nunca existe todavía cuando corre la apertura (el proceso real carga
+    // Petro DESPUÉS del cierre/apertura), así que esa consulta siempre habría dado $0. La
+    // fuente final es {@code GeneracionArchivoPetroService#calcularAportesEsperados} — el
+    // mismo algoritmo que genera el archivo real, no depende de que el archivo exista.
 
     /**
      * Consulta de control (§3.5 del plan): compara, para el mismo universo de entidades

@@ -2,6 +2,8 @@ package com.saa.model.crd;
 
 import java.io.Serializable;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -13,6 +15,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 
 /**
  * Representa la tabla NVPC (NovedadParticipeCarga).
@@ -201,5 +204,21 @@ public class NovedadParticipeCarga implements Serializable {
 
     public void setEstado(Long estado) {
         this.estado = estado;
+    }
+
+    /**
+     * Familia derivada de {@code tipoNovedad} + {@code montoDiferencia} (2026-08-31) — ver
+     * {@link FamiliaNovedadCarga}. {@code @Transient}: no es columna, se recalcula siempre a
+     * partir de los otros dos campos, nunca puede quedar desincronizada por un UPDATE viejo.
+     *
+     * <p>{@code @JsonProperty(access = READ_ONLY)}: sale en cualquier GET, pero Jackson lo
+     * IGNORA si llega en el body de un PUT/POST (p.ej. un cliente que lee, modifica y reenvía
+     * el mismo JSON) — es un dato derivado, nadie puede "setearlo" desde afuera. No tiene
+     * setter a propósito: no hay campo que llenar.</p>
+     */
+    @Transient
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    public FamiliaNovedadCarga getFamilia() {
+        return FamiliaNovedadCarga.clasificar(tipoNovedad, montoDiferencia);
     }
 }

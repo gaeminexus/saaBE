@@ -751,6 +751,10 @@ public class PrestamoRest {
             return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
                 "Debe indicar el usuario que ejecuta el pago", null);
         }
+        // idCobroCredito: nunca lo manda el cliente — mismo criterio que en /precancelar.
+        // contabilizarPagoConAportes no lo usa hoy (CBCR no llama este endpoint por dentro),
+        // pero se limpia igual por si el día que lo use, ya esté cerrado por este lado.
+        solicitud.setIdCobroCredito(null);
 
         try {
             ResultadoPagoConAportes respuesta = procesoPagoPrestamoService.pagarConAportes(solicitud);
@@ -1059,25 +1063,23 @@ public class PrestamoRest {
                 "Debe indicar el usuario que ejecuta el abono", null);
         }
 
-        try {
-            ResultadoAbonoCapital resultado = abonoCapitalPrestamoService.aplicar(solicitud);
-
-            Map<String, Object> cuerpo = new LinkedHashMap<>();
-            cuerpo.put("exito", Boolean.TRUE);
-            cuerpo.put("etapa", ETAPA_APLICACION);
-            cuerpo.put("mensaje", "Abono a capital aplicado por $" + resultado.getValorAbono()
-                + ". Plazo: " + resultado.getPlazoAnterior() + " → " + resultado.getPlazoNuevo()
-                + ". Cuota: " + resultado.getCuotaAnterior() + " → " + resultado.getCuotaNueva());
-            cuerpo.put("resultado", resultado);
-
-            return Response.status(Response.Status.CREATED)
-                    .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
-
-        } catch (Throwable e) {
-            System.err.println("ERROR al abonar a capital: " + e.getMessage());
-            e.printStackTrace();
-            return respuestaErrorNegocio(e);
-        }
+        // ⛔ CERRADO A PROPÓSITO (2026-08-31, decisión del árbitro) — NO reactivar sin volver a
+        // leer esto completo. No es que "nadie lo llama": es que aplicarlo por esta puerta
+        // rompe la contabilidad. El abono a capital hoy tiene DOS asientos: el 1 (la plata
+        // saliendo de la cartera, bandeada contra las cuotas que canceló) lo genera
+        // CobroCreditoServiceImpl como parte de CBCRASN2 — y ahí no hay ningún cobro. El 2 (el
+        // re-bandeo del saldo que queda vivo) SÍ lo genera AbonoCapitalPrestamoServiceImpl.aplicar,
+        // vía ContabilidadPrestamoService#contabilizarAbonoCapital. Encender este
+        // endpoint produciría el asiento 2 SIN el asiento 1: media contabilidad, cuadrada y
+        // falsa — peor que no contabilizar nada, porque no se nota. El único camino correcto
+        // hoy es el circuito de cobros (CobroCreditoServiceImpl, tipoOperacion ABONO_CAPITAL),
+        // que genera los tres asientos del cobro en el orden correcto. simularAbonoCapital
+        // (GET, solo lectura) SIGUE ACTIVO — no tiene este problema, no escribe nada.
+        return respuestaFallo(Response.Status.CONFLICT.getStatusCode(), ETAPA_VALIDACION,
+            "Los abonos a capital se registran por el circuito de cobros (POST /rest/cbcr con"
+                + " tipoOperacion=ABONO_CAPITAL), no por este endpoint directo. Ese circuito es"
+                + " el que genera los tres asientos contables del abono; aplicarlo acá dejaría"
+                + " el asiento de re-bandeo sin el asiento del cobro que lo origina.", null);
     }
 
     /**
@@ -1156,6 +1158,12 @@ public class PrestamoRest {
             return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
                 "Debe indicar el usuario que ejecuta la precancelación", null);
         }
+        // idCobroCredito: NUNCA lo manda el cliente, a propósito distinto de idEmpresa (que sí
+        // debe mandarlo, es obligatorio en el contrato). Si un cobro directo pudiera fingir
+        // que viene de CBCR, el asiento de cruce no se generaría, en silencio. "El cliente no
+        // lo manda" en un doc no es una defensa; este set(null) sí — se limpia acá, en el
+        // ÚNICO endpoint directo, antes de que la solicitud llegue al motor.
+        solicitud.setIdCobroCredito(null);
 
         try {
             ResultadoPrecancelacion resultado = procesoPagoPrestamoService.precancelar(solicitud);

@@ -279,8 +279,8 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
         evento.setCuotaNueva(calculo.cuotaNueva);
         evento = eventoPrestamoService.saveSingle(evento);
 
-        // 8. Hook contable (no-op por ahora)
-        Long numeroAsiento = contabilidadPrestamoService.contabilizarAbonoCapital(evento);
+        // 8. Hook contable — re-bandeo (2026-08-31, Fase 3)
+        Long numeroAsiento = contabilidadPrestamoService.contabilizarAbonoCapital(evento, solicitud.getIdEmpresa());
         if (numeroAsiento != null) {
             evento.setNumeroAsiento(numeroAsiento);
             eventoPrestamoService.saveSingle(evento);

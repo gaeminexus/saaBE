@@ -1050,7 +1050,8 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
 
         ContextoPago ctx = crearContexto(TIPO_PRECANCELACION, solicitud.getUsuario(),
             solicitud.getObservacion(), fechaHora, evento.getCodigo(),
-            solicitud.getRutaDocumentoRespaldo(), solicitud.getIdEmpresa());
+            solicitud.getRutaDocumentoRespaldo(), solicitud.getIdEmpresa(),
+            solicitud.getIdCobroCredito());
 
         // 2. Pagar la deuda exigible cuota por cuota (sin cascada)
         double valorExigiblePagado = 0.0;
@@ -1166,7 +1167,7 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
             fechaHora, solicitud.getUsuario());
 
         // 8. Hook contable
-        Long numeroAsiento = contabilidadPrestamoService.contabilizarPrecancelacion(evento);
+        Long numeroAsiento = contabilidadPrestamoService.contabilizarPrecancelacion(evento, movimientos, ctx);
         if (numeroAsiento != null) {
             evento.setNumeroAsiento(numeroAsiento);
             eventoPrestamoService.saveSingle(evento);
@@ -1547,6 +1548,19 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
 
     private ContextoPago crearContexto(String tipoPago, String usuario, String observacion,
             LocalDateTime fechaPago, Long idEvento, String rutaDocumentoRespaldo, Long idEmpresa) {
+        return crearContexto(tipoPago, usuario, observacion, fechaPago, idEvento,
+                rutaDocumentoRespaldo, idEmpresa, null);
+    }
+
+    /**
+     * Sobrecarga con {@code idCobroCredito} — el discriminador de origen (2026-08-31, circuito
+     * de cobros con aportes). La de 7 parámetros sigue existiendo para los llamadores que no
+     * tienen ese dato (pagarCuota, pagarConAportes): siempre {@code null}, mismo significado
+     * que pasarlo explícito.
+     */
+    private ContextoPago crearContexto(String tipoPago, String usuario, String observacion,
+            LocalDateTime fechaPago, Long idEvento, String rutaDocumentoRespaldo, Long idEmpresa,
+            Long idCobroCredito) {
         ContextoPago ctx = new ContextoPago();
         ctx.setTipoPago(tipoPago);
         ctx.setUsuario(usuario);
@@ -1555,6 +1569,7 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         ctx.setIdEvento(idEvento);
         ctx.setRutaDocumentoRespaldo(rutaDocumentoRespaldo);
         ctx.setIdEmpresa(idEmpresa);
+        ctx.setIdCobroCredito(idCobroCredito);
         return ctx;
     }
 

@@ -86,8 +86,9 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
     }
 
     @Override
-    public List<Object[]> selectInteresPorTipoPrestamoHasta(LocalDate hasta) throws Throwable {
-        System.out.println("Ingresa al metodo selectInteresPorTipoPrestamoHasta - hasta: " + hasta);
+    public List<Object[]> selectInteresPorTipoPrestamoEnRango(LocalDate desde, LocalDate hasta) throws Throwable {
+        System.out.println("Ingresa al metodo selectInteresPorTipoPrestamoEnRango - desde: " + desde
+                + " - hasta: " + hasta);
         Query query = em.createNativeQuery(
                 " SELECT pr.TPPRCDGO, "
                 + "        SUM(GREATEST(NVL(d.DTPRINTR,0) - NVL(g.intr,0), 0)), "
@@ -98,10 +99,11 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
                 + " LEFT JOIN " + PAGOS_VIGENTES + " ON g.DTPRCDGO = d.DTPRCDGO "
                 + " WHERE  " + PRESTAMOS_VIVOS
                 + " AND    " + CUOTAS_PENDIENTES
-                + " AND    TRUNC(d.DTPRFCVN) <= :hasta "
+                + " AND    TRUNC(d.DTPRFCVN) BETWEEN :desde AND :hasta "
                 + " AND    pr.TPPRCDGO IS NOT NULL "
                 + " GROUP BY pr.TPPRCDGO "
                 + " ORDER BY pr.TPPRCDGO");
+        query.setParameter("desde", Date.valueOf(desde));
         query.setParameter("hasta", Date.valueOf(hasta));
         List<Object[]> filas = query.getResultList();
         List<Object[]> resultado = new ArrayList<Object[]>();

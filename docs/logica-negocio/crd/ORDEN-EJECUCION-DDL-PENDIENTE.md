@@ -1,7 +1,7 @@
 # Orden de ejecución del DDL pendiente de CRD — **antes del WAR**
 
 **Fecha:** 2026-08-31 · Escrito y verificado por el árbitro del equipo A (`saabe-25`)
-**Estado:** nada ejecutado. Lo corre el usuario.
+**Estado:** ⚠️ **PARCIALMENTE EJECUTADO — ver §5 antes de correr nada.** Lo corre el usuario.
 
 ---
 
@@ -126,3 +126,76 @@ juntos → prueba funcional.
   sorprenda en la salida de la verificación.
 - **El flag de contabilidad (rubro 237).** Sigue en 0 y **no se enciende** hasta cerrar las fases
   del `PLAN-CIERRE-CONTABLE-TOTAL.md`.
+
+---
+
+## 5. Lo que YA se ejecutó (actualizado 2026-08-31)
+
+**No volver a correr estos.** Registrado acá para que ningún equipo los repita.
+
+| Script | Qué hizo | Estado |
+|---|---|---|
+| `90_DEVOLUCION_APORTES_RECLASIFICACION.sql` | `CRD.DVAP.DVAPNMRC` | ✅ ejecutado |
+| `94_CUENTAS_POR_TIPO_APORTE.sql` | tabla `CRD.CTAP` + 11 filas (empresa 1236) | ✅ ejecutado |
+| `97_PAGO_PENSION_COMPLEMENTARIA.sql` | tabla `CRD.PGPC` + detalle PDTR 1200 | ✅ ejecutado |
+| `98_CONTRATOS_FALTANTES_404.sql` | 373 contratos + 486 vigencias | ✅ ejecutado |
+| `99_CONTRATOS_CERRADOS_JUNIO2025.sql` | 31 contratos con vigencia cerrada al 2025-06-30 | ✅ ejecutado |
+| `100_CBCR_ASIENTO_REPARTO.sql` | `CRD.CBCR.CBCRASRP` + FK a `CNT.ASNT` + índice | ✅ ejecutado |
+
+### Los dos controles del 100 que fallan en silencio — ✅ VERIFICADOS (2026-08-31)
+
+Ninguno de los dos da error visible si falla. **Se miraron y los dos pasaron** — resultado abajo:
+
+- **La FK es cross-schema** (`CRD.CBCR` → `CNT.ASNT`). El rol DBA no habilita `REFERENCES`; sin el
+  grant, el `ALTER` falla con `ORA-01031`. Control: bloque 2.3 del script, debe devolver una fila
+  `ENABLED` / `VALIDATED`. **Resultado: `FK_CBCR_ASRP · R · ENABLED · VALIDATED`. El grant estaba.**
+- **El índice puede haber quedado en el schema equivocado.** Un `CREATE INDEX` sin prefijo se crea
+  en el schema de la sesión y la tabla queda sin índice, **sin ningún error**. Control: bloque 2.4,
+  debe devolver `OWNER = 'CRD'`. **Resultado: `CRD · IDX_CBCR_ASRP · CBCR · VALID`. Quedó en el schema correcto.**
+
+### El flag de contabilidad ya NO está en 0
+
+§4 decía que el rubro 237 seguía apagado. **El usuario lo encendió el 2026-08-31.** Consecuencia
+operativa: todo cobro y todo proceso que corra desde ese momento genera asientos — incluidos los
+que corren con el WAR anterior, o sea con la lógica previa a las correcciones de esa fecha.
+
+---
+
+## 6. ⚠️ INCIDENTE — `CBCRASRP` desaparecio y tumbo la pantalla de cobros (2026-08-31)
+
+**Qué pasó.** El script 100 se corrió por la mañana y sus controles 2.3 y 2.4 devolvieron
+`FK_CBCR_ASRP ENABLED VALIDATED` e `IDX_CBCR_ASRP VALID`. Horas después, en la MISMA base de
+producción, `ALL_TAB_COLUMNS` devolvia solo `CBCRASN1` y `CBCRASN2`: **la columna no estaba.**
+
+**El daño.** El WAR nuevo ya estaba desplegado y `CobroCredito` mapea `CBCRASRP`. Hibernate
+incluye toda columna mapeada en el `SELECT` que genera, así que **toda lectura de `CRD.CBCR`
+fallaba con `ORA-00904`** — la pantalla de cobros entera, no solo el asiento nuevo. No se
+detectó de inmediato porque nadie abrió esa pantalla después del despliegue.
+
+**Los síntomas que despistaron, y por qué.** Se perdieron horas diagnosticando dos "defectos de
+código" que no existían:
+
+- **"El abono a capital genera 2 asientos y no 4."** El asiento de reparto no se puede guardar
+  si no existe la columna donde va. El código estaba bien.
+- **"La transitoria está en −$2.973.328,49 sobre 521 líneas."** Es el acumulado histórico: el
+  asiento 1 la viene acreditando desde siempre y el asiento 2 —el que la descarga— nunca llegó
+  a escribirse. Es exactamente el problema que los tres asientos vinieron a resolver.
+
+**Lo que hay que aprender de esto, y es lo importante:**
+
+1. **La FK y el índice NO son evidencia de que la columna existe.** Los dos controles pasaron
+   con la columna ausente. **El único control válido es preguntar por la columna**
+   (`ALL_TAB_COLUMNS`) y, mejor todavía, **abrir la pantalla que la usa.**
+2. **Verificar el esquema, no solo el código.** Se analizó la cadena de llamadas entera —
+   correctamente, y descartando bien un fallo silencioso — mientras la premisa no verificada
+   era que la base tuviera lo que el código necesita.
+3. **Un `GET` de la API dice qué WAR está corriendo.** El campo `familia` de
+   `/rest/nvpc/getId/{id}` existe solo desde el 2026-08-31: si aparece, el WAR es el nuevo.
+   Resolvió en 30 segundos una duda que llevaba dos horas.
+4. **Confirmar que el cliente SQL y el WAR miran la misma base ANTES de diagnosticar.** Se pidió
+   por SQL la fila exacta que había devuelto el `GET`; si coincide, es la misma base. Dos horas
+   de análisis se hicieron sobre datos de origen dudoso por no haber empezado por ahí.
+
+**Pendiente cuando baje la urgencia:** averiguar QUÉ eliminó la columna. Varios equipos trabajan
+sobre esta base. Si vuelve a desaparecer, la pantalla de cobros se cae de nuevo — y esta vez con
+asientos de reparto ya escritos que perderían su referencia.

@@ -34,6 +34,19 @@ public class SolicitudPagoConAportes {
      */
     private Long idEmpresa;
 
+    /**
+     * Código del {@code CobroCredito} (CRD.CBCR) que originó esta llamada — mismo
+     * discriminador que {@link SolicitudPrecancelacion#getIdCobroCredito()}, agregado acá por
+     * consistencia (2026-08-31) aunque hoy {@code CobroCreditoServiceImpl} no llame a
+     * {@code pagarConAportes} internamente (0 referencias, verificado 2026-08-31) — este
+     * endpoint es siempre una llamada directa, así que {@code contabilizarPagoConAportes}
+     * sigue generando su asiento sin condicionar por este campo. Si algún día CBCR empieza a
+     * llamarlo, el gate se agrega ahí, no se infiere de la ausencia del campo.
+     *
+     * <b>Nunca lo manda el cliente.</b>
+     */
+    private Long idCobroCredito;
+
     public SolicitudPagoConAportes() {
     }
 
@@ -91,5 +104,13 @@ public class SolicitudPagoConAportes {
 
     public void setIdEmpresa(Long idEmpresa) {
         this.idEmpresa = idEmpresa;
+    }
+
+    public Long getIdCobroCredito() {
+        return idCobroCredito;
+    }
+
+    public void setIdCobroCredito(Long idCobroCredito) {
+        this.idCobroCredito = idCobroCredito;
     }
 }

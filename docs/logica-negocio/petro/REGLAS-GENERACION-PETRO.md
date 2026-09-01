@@ -58,6 +58,21 @@ si porFaltanteActiva() -> recopilarAportesPorFaltante   (camino nuevo)
 si no                  -> recopilarAportesPorHistorialSueldo (camino viejo, intacto)
 ```
 
+**⚠️ Segundo consumidor de este cálculo (2026-08-31): `GeneracionArchivoPetroService
+.calcularAportesEsperados(mes, anio, codigoFilial)`.** Lo usa el asiento ③ (apertura del
+período) de `CierreCarteraServiceImpl` para saber cuánto se espera cobrar de aportes del mes
+que se ABRE, sumado sobre todas las filiales — SIN generar ni persistir nada. Es una ADICIÓN
+PURA: llama al mismo `recopilarAportes` privado de arriba y solo suma lo que ya devuelve en
+memoria (`LineaArchivo.montoJubilacion`/`montoCesantia`). No es una copia de la regla: pasa
+por el MISMO despachador (`porFaltanteActiva()`), así que nunca puede divergir del archivo
+real que se le manda a Petro — si el flag cambia, el asiento cambia de fuente exactamente
+igual que la generación, sin que `calcularAportesEsperados` necesite tocarse. Antes de esta
+fuente se probaron y descartaron dos: la obligación calculada desde los contratos
+(`CierreCarteraDaoService.selectAporteMensualEsperado`, no acumula mora, daba números por
+debajo de la realidad) y leer `CRD.DTCA` del archivo Petro ya cargado del mes que se abre
+(descartada porque ese archivo nunca existe todavía cuando corre la apertura — el proceso
+real carga Petro DESPUÉS del cierre/apertura del mes).
+
 #### Camino viejo — `recopilarAportesPorHistorialSueldo` (el de siempre, sigue activo por defecto)
 - Universo: `HistorialSueldo` con **estado 99** de entidades de la filial en estado
   **ACTIVO (1)** o **ACTIVO_EN_MORA (8)**; se toma el historial más reciente por entidad

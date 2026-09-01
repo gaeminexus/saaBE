@@ -44,14 +44,39 @@ public interface ContabilidadPrestamoService {
             ContextoPago ctx) throws Throwable;
 
     /**
-     * @return Código del asiento creado, o null si la contabilidad no está activa.
+     * Asiento de re-bandeo (2026-08-31, Fase 3 — ver {@code ContabilizacionIndividualCreditoService
+     * #lineasReclasificacionAbonoCapital}): reclasifica entre bandas el capital que sigue vivo
+     * tras la re-amortización. NO lleva la plata del abono — esa la lleva CBCRASN2, el asiento
+     * definitivo del cobro que originó este evento (único camino de aplicación hoy: el abono se
+     * aplica siempre vía {@code CobroCreditoServiceImpl}, nunca directo — ver {@code
+     * PrestamoRest#abonarCapital}). Que este método reciba {@code idEmpresa} y no un
+     * {@code ContextoPago} completo es a propósito: este asiento no tiene el discriminador
+     * {@code idCobroCredito} porque no lo necesita, no es la misma plata que CBCRASN2.
+     *
+     * @param idEmpresa Empresa contable — SIEMPRE derivada del lado del servidor (la cuenta
+     *                  bancaria del cobro, vía {@code derivarEmpresaCobro}), nunca la que
+     *                  mandaría un cliente (contrato API-EMPRESA-CONTABLE-CRD.md §2).
+     * @return Código del asiento creado, o null si la contabilidad no está activa o si el
+     *         abono no generó ninguna diferencia de banda que reclasificar.
      */
-    Long contabilizarAbonoCapital(EventoPrestamo evento) throws Throwable;
+    Long contabilizarAbonoCapital(EventoPrestamo evento, Long idEmpresa) throws Throwable;
 
     /**
-     * @return Código del asiento creado, o null si la contabilidad no está activa.
+     * Cruce de valores de una precancelación con aportes CONSUMIDOS — SOLO cuando la llamada
+     * es directa (2026-08-31, circuito de cobros con aportes, decisión del usuario). Si
+     * {@code ctx.getIdCobroCredito()} viene con valor, la operación nació de
+     * {@code CobroCreditoServiceImpl.procesarCobro}, que ya genera su propio asiento
+     * (CBCRASN2) por la misma plata — este método debe devolver {@code null} sin generar nada.
+     *
+     * @param movimientos Aportes consumidos por la operación (puede venir vacío/null si la
+     *                     precancelación fue 100% efectivo — ahí tampoco hay nada que cruzar)
+     * @param ctx          Contexto de la operación; trae {@code idEmpresa} e
+     *                     {@code idCobroCredito}
+     * @return Código del asiento creado, o null si la contabilidad no está activa, si no hubo
+     *         aportes consumidos, o si la llamada vino de CBCR.
      */
-    Long contabilizarPrecancelacion(EventoPrestamo evento) throws Throwable;
+    Long contabilizarPrecancelacion(EventoPrestamo evento, List<MovimientoAporte> movimientos,
+            ContextoPago ctx) throws Throwable;
 
     /**
      * @return Código del asiento creado, o null si la contabilidad no está activa.

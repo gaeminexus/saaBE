@@ -45,6 +45,7 @@ import com.saa.model.crd.BandaCierreCartera;
 import com.saa.model.crd.CargaArchivo;
 import com.saa.model.crd.ConfiguracionBandaProducto;
 import com.saa.model.crd.CorridaCierreCartera;
+import com.saa.model.crd.Filial;
 import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.model.crd.Producto;
 import com.saa.model.scp.Empresa;
@@ -124,6 +125,18 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
 
     @EJB
     private DetallePlantillaDaoService detallePlantillaDaoService;
+
+    /**
+     * Fuente del esperado de aportes del asiento ③ (2026-08-31) — MISMA rama de cálculo que
+     * usa la generación real del archivo Petro, nunca puede divergir de lo que efectivamente
+     * se le manda a Petro. Ver el javadoc de {@code calcularAportesEsperados}.
+     */
+    @EJB
+    private com.saa.ejb.crd.service.GeneracionArchivoPetroService generacionArchivoPetroService;
+
+    /** Todas las filiales (CRD.FLLL), sin filtrar por estado — ver el javadoc de armaApertura. */
+    @EJB
+    private com.saa.ejb.crd.dao.FilialDaoService filialDaoService;
 
     /** Solo lectura: recupera la cuenta de cada línea antes de grabar el asiento. */
     @EJB
@@ -366,11 +379,36 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
                 fechaCorte, bandas, productos, avisosDistribucion);
         resultado.getAdvertencias().addAll(avisosDistribucion);
 
+        // SOLO para el asiento ② (cambio de bandas POR VENCER): "los valores del mes que se
+        // abre" (pedido del usuario 2026-08-31) = el CIERRE del mes que se abre
+        // (fechaCorteApertura, 31-ago si se cierra jul/abre ago), no su primer dia —
+        // interpretacion mia: la comparacion siempre fue entre dos fotos de FIN DE MES
+        // separadas por un mes, y fechaCorteApertura ya se usa con esa semantica en
+        // armaApertura (selectCobrablePrestamosHasta(fechaCorteApertura)). Si el usuario la
+        // corrige en la primera corrida, es una linea. NO reemplaza a distNueva: distNueva
+        // sigue siendo el snapshot de fechaCorte que usan el asiento ①.1 (VENCIDO), el
+        // snapshot guardado en el resultado y calculaVencidosDelMes — los tres SIN CAMBIOS.
+        List<String> avisosApertura = new ArrayList<String>();
+        Map<String, BandaSnapshotCierre> distApertura = distribuye(capitalPorVencimiento,
+                fechaCorteApertura, bandas, productos, avisosApertura);
+        resultado.getAdvertencias().addAll(avisosApertura);
+
         // Capital que cruzo la frontera durante el mes: por vencer al corte anterior y
         // vencido al corte actual. Es exactamente el "capital no pagado del mes" del
         // sub-proceso 1.
         Map<Long, Double> vencidosDelMes = calculaVencidosDelMes(capitalPorVencimiento,
                 fechaCorteAnterior, fechaCorte);
+
+        // SOLO para el asiento ② (POR VENCER): el mismo cruce pero sobre el par de fechas que
+        // ahora diferencia ese asiento (31-jul -> 31-ago), no el de ①/①.1 (30-jun -> 31-jul).
+        // La correccion de armaCambioBandas separa capital que cambio de banda POR ENVEJECER
+        // (reclasificacion, lo que el asiento debe medir) de capital que salio de la banda 1
+        // POR VENCER (eso no es reclasificacion dentro de por-vencer) — esa separacion tiene
+        // que medirse sobre el MISMO PAR DE FECHAS que el diff, o le resta a ② un movimiento
+        // de un mes que no es el que esta midiendo. vencidosDelMes original NO se toca: lo
+        // siguen usando ① y ①.1, que no cambiaron de fechas.
+        Map<Long, Double> vencidosDelMesApertura = calculaVencidosDelMes(capitalPorVencimiento,
+                fechaCorte, fechaCorteApertura);
 
         resultado.setSnapshot(ordenaSnapshot(distNueva));
         resultado.setCapitalTotal(sumaCapital(distNueva));
@@ -384,14 +422,19 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         // (linea ~355) y para fechaCorteApertura: esos dos usos NO son fecha de asiento.
         resultado.getSubProcesos().add(armaVencidos(vencidosDelMes, bandas, productos,
                 fechaProceso, solicitud));
+        // ② POR VENCER: valores del mes que se abre (31-jul -> 31-ago), par corrido un mes.
         resultado.getSubProcesos().add(armaCambioBandas(SubProcesoCierreCartera.CAMBIO_BANDAS_POR_VENCER,
-                Long.valueOf(TipoCarteraBanda.POR_VENCER), distAnterior, distNueva,
-                vencidosDelMes, productos, fechaProceso, solicitud));
+                Long.valueOf(TipoCarteraBanda.POR_VENCER), distNueva, distApertura,
+                vencidosDelMesApertura, productos, fechaProceso, solicitud));
+        // ①.1 VENCIDO: sin cambios (30-jun -> 31-jul).
         resultado.getSubProcesos().add(armaCambioBandas(SubProcesoCierreCartera.CAMBIO_BANDAS_VENCIDO,
                 Long.valueOf(TipoCarteraBanda.VENCIDO), distAnterior, distNueva,
                 vencidosDelMes, productos, fechaProceso, solicitud));
         resultado.getSubProcesos().add(armaApertura(solicitud, fechaProceso, fechaCorteApertura));
-        resultado.getSubProcesos().add(armaDevengoIntereses(solicitud, fechaProceso, fechaCorte));
+        // ④ Devengo: fecha del asiento = fechaProceso (sin cambios); rango de cuotas = SOLO el
+        // mes que se abre (fechaProceso -> fechaCorteApertura), no acumulado desde siempre.
+        resultado.getSubProcesos().add(armaDevengoIntereses(solicitud, fechaProceso,
+                fechaProceso, fechaCorteApertura));
 
         // El desglose de aportes se calcula ANTES del neteo, porque el neteo consume su
         // noCobrado. Y el control del archivo Petro se evalua con el desglose ya hecho, para
@@ -603,6 +646,15 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
      * cero</b>, y el asiento cuadra sin ajustes.
      * </p>
      *
+     * <p><b>Desde 2026-08-31, {@code distAnterior}/{@code distNueva} NO son siempre el mismo
+     * par de fechas para las dos llamadas, y {@code vencidos} viaja emparejado con ellas.</b>
+     * VENCIDO (①.1) sigue comparando el corte anterior contra el corte del mes que se cierra
+     * (30-jun → 31-jul) con {@code vencidosDelMes} sobre ese mismo par; POR VENCER (②) compara
+     * el corte del mes que se cierra contra el cierre del mes que se abre (31-jul → 31-ago,
+     * pedido del usuario) con {@code vencidosDelMesApertura}, calculado sobre ESE par — nunca
+     * el {@code vencidosDelMes} de ①.1. Ver el comentario de la corrección de banda 1 más
+     * abajo para la razón (separa envejecimiento de vencimiento, no evita un doble asiento).</p>
+     *
      * @param subProceso   : Código del sub-proceso
      * @param tipoCartera  : Tipo de cartera que se reclasifica
      * @param distAnterior : Distribución medida al corte anterior
@@ -642,7 +694,14 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
             double nueva = capitalDe(distNueva, entrada.getKey());
             double diferencia = nueva - anterior;
 
-            // Correccion por el sub-proceso 1, que solo toca la banda 1.
+            // Separa, en la banda 1, capital que cambio de banda POR ENVEJECER (eso es
+            // reclasificacion, lo que este asiento mide) de capital que salio de la banda 1
+            // POR VENCER porque se vencio (eso NO es reclasificacion dentro de por-vencer).
+            // Sin esta separacion, el diff bruto le atribuiria a "cambio de banda" un capital
+            // que en realidad se vencio. `vencidos` tiene que venir calculado sobre el MISMO
+            // PAR DE FECHAS que distAnterior/distNueva de ESTA llamada — si se cambian las
+            // fechas del diff, este parametro se mueve junto, no queda fijo (2026-08-31: es
+            // exactamente el error que casi se comete al mover ② a 31-jul->31-ago).
             if (referencia.getNumeroBanda() != null && referencia.getNumeroBanda().longValue() == 1L) {
                 double movido = redondeaDouble(vencidos.get(referencia.getIdProducto()));
                 diferencia = diferencia + (porVencer ? movido : -movido);
@@ -681,9 +740,44 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
      * ③ Apertura: genera las cuentas por cobrar del mes que se ABRE contra las cuentas por
      * aplicar. Factura hasta el último día del mes que se abre, no hasta el corte.
      *
+     * <p><b>Aportes (2026-08-31, decisión FINAL del usuario, tercera fuente — resuelve la
+     * contradicción de las dos anteriores).</b> No espera a que exista el archivo Petro del
+     * mes que se abre (nunca existe todavía cuando corre esta apertura — el proceso real es
+     * "se cierra el mes pasado / se abre el presente, y luego se carga Petro") y no usa la
+     * obligación calculada desde los contratos ({@code selectAporteMensualEsperado}, que no
+     * acumula mora y daba números por debajo de la realidad). Usa el MISMO ALGORITMO con el
+     * que se genera el archivo real —
+     * {@link com.saa.ejb.crd.service.GeneracionArchivoPetroService#calcularAportesEsperados}—,
+     * sumado sobre TODAS las filiales, para el mes que se abre. Por construcción no puede
+     * divergir del archivo que efectivamente se le manda a Petro: es el mismo cálculo, no una
+     * copia — respeta por dentro el flag del rubro 242
+     * ({@code ConfiguracionGeneracionAportesService#porFaltanteActiva()}, hoy apagado ⇒ usa
+     * {@code HistorialSueldo} × meses adeudados; si se enciende, usa {@code CRD.VGCN} con el
+     * faltante acumulado) sin que este método tenga que cambiar en ninguno de los dos casos.
+     * Descartadas dos fuentes antes de esta: (1) {@code selectAporteMensualEsperado} filtra
+     * {@code ENTDIDST}, pero se verificó que las tres fuentes filtran IGUAL — el problema real
+     * era que esa no acumula mora; (2) leer directo {@code CRD.DTCA} del archivo cargado —
+     * descartada porque el archivo del mes que se abre nunca existe todavía en ese momento.
+     * {@code selectAporteMensualEsperado} sigue existiendo sin cambios para
+     * {@code calculaDesgloseAportes} (de ahí a {@code armaNeteo}, {@code controlaArchivoPetro},
+     * {@code avisaExcesoCobro}) — ese uso es sobre el MES QUE SE CIERRA y es un desglose
+     * distinto, no se toca.</p>
+     *
+     * <p><b>Todas las filiales, SIN filtrar por estado</b> (decisión del usuario): una filial
+     * inactiva con partícipes que todavía aportan no debe quedar afuera — sería reproducir el
+     * mismo problema que se está arreglando. Una filial sin partícipes simplemente suma cero.</p>
+     *
+     * <p><b>Sensibilidad a la fecha de corrida (verificado, no es un riesgo):</b> el camino
+     * viejo (hoy activo) multiplica por meses adeudados vía
+     * {@code calcularMesesACobrarMorosos}, que deriva el corte de {@code mes}/{@code anio}
+     * (el período que se calcula), NUNCA de {@code LocalDate.now()} — el resultado es
+     * determinístico para un período dado, sin importar qué día del mes se corra el cierre.</p>
+     *
      * @param solicitud          : Solicitud
-     * @param fecha              : Fecha contable (primer día del mes que se abre)
-     * @param fechaCorteApertura : Último día del mes que se abre
+     * @param fecha              : Fecha contable (primer día del mes que se abre) — TAMBIÉN
+     *                             la fuente de mes/año de {@code calcularAportesEsperados};
+     *                             nunca {@code fechaCorteApertura} ni {@code fechaCorte}.
+     * @param fechaCorteApertura : Último día del mes que se abre (solo para el lado préstamos)
      * @return                   : El sub-proceso con sus líneas
      */
     private SubProcesoCierre armaApertura(SolicitudCierreCartera solicitud, LocalDate fecha,
@@ -694,9 +788,21 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
                 "CRD apertura de cartera " + fecha.getYear() + "-"
                         + dosDigitos(Long.valueOf(fecha.getMonthValue())));
 
-        Object[] aportes = cierreCarteraDaoService.selectAporteMensualEsperado();
-        double totalAportes = redondeaDouble(Double.valueOf(
-                ((Double) aportes[0]).doubleValue() + ((Double) aportes[1]).doubleValue()));
+        // 2026-08-31, decisión FINAL del usuario (ver el javadoc del método): el esperado de
+        // aportes de ③ usa el MISMO algoritmo de la generación real del archivo Petro,
+        // sumado sobre TODAS las filiales, para el MES QUE SE ABRE. "fecha" es fechaProceso
+        // (01 del mes que se abre) — mes/año salen de ahí, NUNCA de
+        // fechaCorte/fechaCorteApertura. selectAporteMensualEsperado sigue existiendo para
+        // calculaDesgloseAportes/armaNeteo/controlaArchivoPetro/avisaExcesoCobro — no se toca.
+        Long mesApertura = Long.valueOf(fecha.getMonthValue());
+        Long anioApertura = Long.valueOf(fecha.getYear());
+        double totalAportes = 0.0;
+        for (Filial filial : filialDaoService.selectAll(NombreEntidadesCredito.FILIAL)) {
+            Map<String, Double> aportesFilial = generacionArchivoPetroService.calcularAportesEsperados(
+                    mesApertura, anioApertura, filial.getCodigo());
+            totalAportes += aportesFilial.getOrDefault("total", 0.0);
+        }
+        totalAportes = redondeaDouble(totalAportes);
 
         double totalPrestamos = 0D;
         for (Object[] fila : cierreCarteraDaoService
@@ -728,23 +834,31 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
     // =====================================================================
 
     /**
-     * ④ Devengo de intereses ordinarios y de mora de las cuotas pendientes con vencimiento
-     * hasta el corte, por familia de producto.
+     * ④ Devengo de intereses ordinarios y de mora, por familia de producto, de las cuotas con
+     * vencimiento EN EL MES QUE SE ABRE — no las acumuladas de meses anteriores (decisión del
+     * usuario, 2026-08-31: "solo los intereses de las cuotas del mes de apertura... son esos
+     * los que se mandan a ingresos"). {@code desdeRango}/{@code hastaRango} son un parámetro
+     * DISTINTO de {@code fecha} (la fecha del asiento) a propósito — reusar un solo parámetro
+     * para las dos cosas es exactamente la confusión que casi se comete con el asiento ②.
      *
      * <p>
      * La mora la calcula a diario {@code ProcesoMoraPrestamoService} y se acumula en
-     * {@code DTPRMRAA}; aquí se devenga lo que quede pendiente al corte, que es lo que
+     * {@code DTPRMRAA}; aquí se devenga lo que quede pendiente de esas cuotas, que es lo que
      * contabilidad necesita a fin de mes (decisión C5 de §9.1). Las dos líneas comparten
-     * cuenta con el ordinario y se distinguen por la DESCRIPCIÓN (decisión D3).
+     * cuenta con el ordinario y se distinguen por la DESCRIPCIÓN (decisión D3). La resta de
+     * pagos ({@code - NVL(g.intr,0)}, {@code - NVL(g.mora,0)}) dentro de la consulta no cambió:
+     * una cuota del mes que se abre puede tener un pago anticipado, y lo devengado es lo no
+     * cobrado.
      * </p>
      *
-     * @param solicitud : Solicitud
-     * @param fecha     : Fecha contable
-     * @param corte     : Último día del mes cerrado
-     * @return          : El sub-proceso con sus líneas
+     * @param solicitud  : Solicitud
+     * @param fecha      : Fecha contable del asiento (NO es el rango de cuotas)
+     * @param desdeRango : Primer día del mes que se abre
+     * @param hastaRango : Último día del mes que se abre
+     * @return           : El sub-proceso con sus líneas
      */
     private SubProcesoCierre armaDevengoIntereses(SolicitudCierreCartera solicitud,
-            LocalDate fecha, LocalDate corte) throws Throwable {
+            LocalDate fecha, LocalDate desdeRango, LocalDate hastaRango) throws Throwable {
 
         SubProcesoCierre sub = nuevoSubProceso(SubProcesoCierreCartera.DEVENGO_INTERESES,
                 "Devengo de intereses a ingresos", "④", fecha,
@@ -753,7 +867,8 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         Long idPlantilla = resuelvePlantilla(PlantillasCredito.DEVENGO_INTERESES,
                 "devengo de intereses", solicitud.getIdEmpresa());
 
-        for (Object[] fila : cierreCarteraDaoService.selectInteresPorTipoPrestamoHasta(corte)) {
+        for (Object[] fila : cierreCarteraDaoService
+                .selectInteresPorTipoPrestamoEnRango(desdeRango, hastaRango)) {
             Long idTipoPrestamo = (Long) fila[0];
             double interes = redondeaDouble((Double) fila[1]);
             double mora = redondeaDouble((Double) fila[2]);
@@ -782,12 +897,19 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
      * cerrado, no el día de proceso.
      *
      * <p>
-     * <b>PENDIENTE DE VALIDAR — el lado de los aportes.</b> Lo no cobrado de préstamos sale
+     * <b>El lado de los aportes: el asiento lleva SOLO lo no cobrado; el exceso NO entra
+     * acá</b> (decisión del usuario, 2026-08-31, opción b). Lo no cobrado de préstamos sale
      * del saldo real de las cuotas, que es exacto. Para aportes no hay un documento de
      * "planilla de aportes emitida" contra el que comparar, así que se toma
      * {@code esperado - registrado en el mes} sobre los tipos 9 (jubilación) y 11
-     * (cesantía). Es la mejor aproximación con el modelo actual; si el negocio necesita
-     * exactitud, hace falta persistir la planilla de aportes del mes.
+     * (cesantía) — {@code esperado} sale de {@link #calculaDesgloseAportes}, la MISMA fuente
+     * que el asiento ③ (para el mes que se cierra, no el que se abre). Si esa diferencia es
+     * NEGATIVA (se cobró de más), el piso en cero de {@code DesgloseAportesCierre.noCobrado}
+     * la deja en $0 en el asiento — un neteo negativo invertiría el asiento, y no es lo que
+     * se pidió. <b>El exceso no desaparece: antes se calculaba y no se mostraba en ningún
+     * lado; ahora {@link #avisaExcesoCobro} lo deja como advertencia visible en la
+     * previsualización</b>, con el monto — se resuelve por el proceso de cobro en exceso, no
+     * por este asiento.
      * </p>
      *
      * @param solicitud : Solicitud
@@ -838,16 +960,39 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
      * Calcula de dónde sale el importe de aportes del neteo: esperado, registrado y las dos
      * lecturas de su diferencia.
      *
+     * <p><b>Esperado (2026-08-31, decisión FINAL del usuario): MISMA fuente que el asiento ③
+     * — {@code GeneracionArchivoPetroService#calcularAportesEsperados}, sumado sobre TODAS
+     * las filiales, sin filtrar por estado — pero para el MES QUE SE CIERRA (a diferencia del
+     * ③, que es del mes que se abre).</b> Antes salía de {@code selectAporteMensualEsperado}
+     * (mismo defecto que llevó a cambiar el ③: no acumula mora, da números por debajo de la
+     * realidad — julio registró $156.797 contra $121.161 "esperados", una diferencia
+     * NEGATIVA que el piso en cero escondía por completo). Que el ⑥ y el ③ usen la MISMA
+     * fuente no es una preferencia de estilo: es lo que garantiza que el ⑥ del mes M+1
+     * "blanquea" exactamente el número que el ③ del mes M abrió — si usaran fuentes
+     * distintas, la cuenta de apertura nunca cerraría en cero y quedaría un residuo que nadie
+     * podría explicar. {@code selectAporteMensualEsperado} sigue existiendo (no se borra,
+     * puede tener otros usos futuros) pero ya no lo llama nada acá.</p>
+     *
      * @param corte : Último día del mes cerrado
      * @return      : El desglose, con el piso en cero ya aplicado en {@code noCobrado}
      */
     private DesgloseAportesCierre calculaDesgloseAportes(LocalDate corte) throws Throwable {
-        Object[] esperados = cierreCarteraDaoService.selectAporteMensualEsperado();
+        Long mesCierre = Long.valueOf(corte.getMonthValue());
+        Long anioCierre = Long.valueOf(corte.getYear());
+        double esperadoJubilacion = 0.0;
+        double esperadoCesantia = 0.0;
+        long participantes = 0L;
+        for (Filial filial : filialDaoService.selectAll(NombreEntidadesCredito.FILIAL)) {
+            Map<String, Double> aportesFilial = generacionArchivoPetroService.calcularAportesEsperados(
+                    mesCierre, anioCierre, filial.getCodigo());
+            esperadoJubilacion += aportesFilial.getOrDefault("jubilacion", 0.0);
+            esperadoCesantia += aportesFilial.getOrDefault("cesantia", 0.0);
+            participantes += aportesFilial.getOrDefault("participantes", 0.0).longValue();
+        }
+
         LocalDate desde = corte.withDayOfMonth(1);
         Object[] registrados = cierreCarteraDaoService.selectAportesRegistrados(desde, corte);
 
-        double esperadoJubilacion = ((Double) esperados[0]).doubleValue();
-        double esperadoCesantia = ((Double) esperados[1]).doubleValue();
         double registradoJubilacion = ((Double) registrados[0]).doubleValue();
         double registradoCesantia = ((Double) registrados[1]).doubleValue();
         double esperado = esperadoJubilacion + esperadoCesantia;
@@ -858,7 +1003,7 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         desglose.setEsperado(redondea(Double.valueOf(esperado)));
         desglose.setEsperadoJubilacion(redondea(Double.valueOf(esperadoJubilacion)));
         desglose.setEsperadoCesantia(redondea(Double.valueOf(esperadoCesantia)));
-        desglose.setParticipes((Long) esperados[2]);
+        desglose.setParticipes(Long.valueOf(participantes));
         desglose.setRegistrado(redondea(Double.valueOf(registrado)));
         desglose.setRegistradoJubilacion(redondea(Double.valueOf(registradoJubilacion)));
         desglose.setRegistradoCesantia(redondea(Double.valueOf(registradoCesantia)));

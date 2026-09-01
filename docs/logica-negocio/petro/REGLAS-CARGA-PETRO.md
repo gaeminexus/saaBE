@@ -51,6 +51,35 @@ FASE 3  aplicarPagosArchivoPetro/{idCarga}           aplicación de pagos a pré
 - Se agrupa por código de producto en `DetalleCargaArchivo` acumulando todos los totales, y se
   calculan los totales generales de `CargaArchivo`.
 
+**⚠️ Líneas `TOTAL` al cierre de cada sección de producto (defecto encontrado y corregido
+2026-08-31).** El reporte de Petro imprime, después del último partícipe de cada producto, una
+línea de resumen —`TOTAL <producto>`, y al final del archivo `TOTAL ZONA CENTRO NORTE` y
+`TOTAL ==>`— que no es un registro de partícipe: no trae código en columnas 0–7 (están en
+blanco). El código **siempre** las descartó por eso (línea 35 de esta tabla, "si viene vacío la
+línea se descarta"), pero el descarte se decidía **después** de intentar `parseDouble` en las
+14 columnas numéricas — si el texto de `TOTAL <producto>` era lo bastante largo para invadir
+alguna de esas columnas (en vez de caer sobre espacios en blanco o sobre las cifras del propio
+total, que sí parsean como número), `parseDouble` fallaba con un `NumberFormatException` que
+parecía un dato de partícipe corrupto.
+
+**No era una regresión del 2026-08-29** (el cambio que dejó de tragarse `NumberFormatException`
+en `parseDouble`, ver §3.1b/nota más abajo): el defecto siempre estuvo — antes quedaba oculto
+porque la línea `TOTAL` fallida se convertía en $0 en silencio; el cambio del 29 no lo
+introdujo, lo **destapó**. Se hizo visible por primera vez con `"APORTE VOLUNTARIO"` (17
+caracteres, más largo que los productos que se habían cargado hasta entonces) en el archivo de
+agosto 2026: columnas 44–50 (`plazoInicial`) caían exactamente sobre `"E VOLU"`.
+
+**El fix:** extraer el código (columnas 0–7) ANTES de tocar cualquier columna numérica; si viene
+vacío, contar la línea como "de resumen, omitida" y saltarla sin parsear nada más — nunca
+depender del texto literal (`"TOTAL"`, que además viene con espacios a la izquierda:
+`.trim()` es obligatorio) porque Petro puede agregar mañana otro rótulo de resumen con la misma
+forma (sin código de partícipe). El conteo de estas líneas se imprime al final de
+`procesarContenido` — si un archivo futuro trae muchas más de las ~8-15 esperadas (una por
+sección de producto), es la señal de que el formato cambió, y tiene que notarse por ese número
+en el log, no porque falten partícipes. El mensaje de error que sí queda (para un dato de
+partícipe genuinamente mal formado) ahora incluye la línea cruda completa, no solo el valor
+extraído.
+
 ### 1.3 Persistencia (transaccional; el archivo físico va al final)
 1. `CargaArchivo` (exige `filial` y `usuarioCarga` del frontend; `fechaCarga = now`).
 2. Un `DetalleCargaArchivo` por producto.
@@ -317,6 +346,38 @@ La tabla AVPC no tiene campo para seguro de incendio (limitación conocida, qued
 
 ### 3.6 Producto `AH` — aportes (`aplicarAporteAH`)
 
+**⚠️ Dinero recibido sin destino automático (2026-08-31, decisión final del usuario — hubo tres
+versiones el mismo día, esta es la que queda).** Antes del 2026-08-29, `aplicarAporteAH`
+clasificaba cinco situaciones de "no se pudo aplicar el dinero" como no-fatales, con `if` /
+`return 0` silenciosos (algunas ni siquiera dejaban `stderr`). Se reclasificaron en tres
+tratamientos, según **si se sabe a quién pertenece el dinero y si esa persona debe aportar**:
+
+| Situación | Tratamiento | Dónde |
+|---|---|---|
+| **Sin entidad** (código Petro no está en el padrón) | **ABORTA** — no se sabe a quién pertenece el dinero, nada que decidir en pantalla | `aplicarAporteAH` |
+| **Sin contrato ACTIVO** | **ABORTA** — dato faltante | `distribuirAportePorDevengo` |
+| Sin `HistorialSueldo` activo (estado 99) | **NOVEDAD** — se sabe quién es, falta decidir la cuenta | `aplicarAporteAH` |
+| `HistorialSueldo` activo con jubilación y cesantía esperadas en $0 | **NOVEDAD** — ídem | `aplicarAporteAH` |
+| Contrato activo, pero ninguna `VigenciaContrato` cubre el mes (o vigencia en $0) | **ADVERTENCIA** — el sistema ya sabe que esa persona no debía aportar ese mes | `distribuirAportePorDevengo` |
+| Monto recibido = $0 | Sin cambios — no hay plata que perder | `aplicarAporteAH` |
+
+**La NOVEDAD reusa el mismo mecanismo del excedente Petro a un aporte (§3.6b):**
+`registrarNovedad` (`HISTORIAL_SUELDO_NO_ENCONTRADO` / `VALORES_HISTORIAL_NULOS`, rubro 169, ya
+estaban en `NOVEDADES_REQUIEREN_AFECTACION_MANUAL`) + la pantalla de novedades, donde el operador
+decide si el valor recibido va a jubilación o a cesantía, aplicado luego vía `AfectacionValoresParticipeCarga.tipoAporte` con `aplicarAfectacionAAporte`. No es un camino nuevo.
+
+**Hallazgo relacionado, no resuelto:** `tieneNovedadesBloqueantes` devuelve `false`
+incondicionalmente ("las novedades son solo informativas") — el mismo patrón raíz (una novedad
+queda registrada pero no impide que el dinero se procese igual) puede existir también del lado
+de préstamos (`PRESTAMO_NO_ENCONTRADO`, `CUOTA_NO_ENCONTRADA`, `MONTO_INCONSISTENTE`, todas en
+`NOVEDADES_REQUIEREN_AFECTACION_MANUAL`), no auditado en este cambio — el de aportes se resolvió
+sin depender de ese método.
+
+**El resumen de `aplicarPagosArchivoPetro` muestra las novedades y advertencias sin tener que
+leer el log:** dos campos de instancia del `@Stateful` (`novedadesGeneradasCargaActual`,
+`advertenciasVigenciaCargaActual`), reseteados al ENTRAR a cada corrida, con las primeras
+`MAX_ADVERTENCIAS_EN_RESUMEN` (10) líneas de cada una y un "... y N más" si sobran.
+
 **Cambio del 2026-08-27 (Fase 1 del plan de devengo de aportes, D1).** `valor` de `CRD.APRT` pasa a
 significar **lo efectivamente recibido**, no lo esperado. Toda fila nueva nace **pagada por
 construcción**: `valorPagado = valor`, `saldo = 0`, `estado = PAGADA (4)`. Desapareció el FIFO
@@ -362,6 +423,27 @@ para cada mes m, desde el primer mes incompleto hasta el mes de la carga (y más
   distinto por atraso o anticipo — D2, contabilidad la sigue leyendo igual), `periodoDevengo` = el
   mes `m` que cubre esa fila, `tipoMovimiento = APORTE_MENSUAL`, `idAsoprep = idCarga`, glosa con
   mes/año **de la carga**/carga (no del devengo), usuario `SAA_AH`.
+
+**Dinero recibido sin aplicar del todo, al agotar el tope de seguridad de 60 meses (2026-08-31,
+decisión del usuario).** Antes del 2026-08-31 esto solo dejaba una advertencia en `stderr` y la
+carga seguía como si nada — el dinero descontado al partícipe desaparecía sin quedar en ninguna
+cuenta. Medido en producción por el equipo 2 antes de que ocurriera: 404 partícipes, 1.972 filas,
+$132.782,01 en riesgo (todos sin contrato ACTIVO). La causa determina si aborta:
+
+- **Sin contrato ACTIVO** (`ContratoDaoService.selectActivoPorEntidad` devuelve `null`) → dato
+  faltante, **aborta la carga completa** con `IncomeException` (mismo criterio TODO O NADA de
+  §3.1b/§4 de este documento). El mensaje trae el partícipe (código y nombre), la entidad, el
+  monto sin aplicar y la carga — hay que crear el contrato antes de reprocesar.
+- **Con contrato ACTIVO pero sin `VigenciaContrato` que cubra alguno de esos meses, o con
+  vigencia en $0** → `esperadoMensual` también da 0, pero NO es un dato faltante: significa que
+  ese partícipe ya no debe aportar ese mes (el caso real es un jubilado al que Petro le sigue
+  descontando — se corrige con devolución o afectación manual, no cargando un dato). **NO
+  aborta**; queda advertencia en `stderr` con partícipe, monto y motivo. Verificado el 2026-08-31
+  que hoy este caso no se dispara (todas las vigencias de producción están abiertas, sin fecha de
+  fin) pero sí se va a disparar con el primer jubilado cuya vigencia se cierre.
+- La causa se determina preguntando **explícitamente** por el contrato
+  (`contratoDaoService.selectActivoPorEntidad`) — nunca deduciéndola de que `esperadoMensual` dio
+  0, porque esa función sola no distingue las dos causas.
 
 **⚠️ PRECONDICIÓN OPERATIVA para desplegar esta fase:** la prelación lee `aportado(m,tipo)` por
 devengo **exacto** (`a.periodoDevengo = m`), no por `NVL(APRTFCTR)` — eso es a propósito, ver el

@@ -380,6 +380,22 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
 
         System.out.println("  DVAP " + devolucion.getCodigo() + " creada por $" + valorTotal);
 
+        // Guardarraíl ANTES de generar nada más (2026-08-31, pedido del usuario): si por lo
+        // que sea ya existe un pago vigente para este idOrigen (CXP lo va a rechazar de todos
+        // modos más abajo), cortar ACÁ con el detalle completo — cuál pago, en qué estado, qué
+        // hacer — en vez de dejar que el rechazo de CXP salga recién después de haber generado
+        // el asiento de reclasificación (que además, con el orden de ANTES, ya se había
+        // logueado como "generado" aunque la transacción todavía podía revertirse completa).
+        List<PagoProgramado> vigentesPrevios = pagoProgramadoDaoService.selectVigentesByOrigen(
+            OrigenPagoExterno.CRD_DEVOLUCION_APORTE, devolucion.getCodigo());
+        if (vigentesPrevios != null && !vigentesPrevios.isEmpty()) {
+            PagoProgramado vigente = vigentesPrevios.get(0);
+            throw new IncomeException(ERR_ERROR_ORDEN_PAGO + ": la devolución " + devolucion.getCodigo()
+                + " ya tiene el pago " + vigente.getId() + " vigente (estado "
+                + nombreEstadoPago(vigente.getEstado()) + "). Anúlelo o revierta ese pago desde"
+                + " Cuentas por Pagar antes de volver a intentar esta devolución.");
+        }
+
         // Si es hoy se conserva la hora del reloj; si es una fecha pasada, el inicio del día
         LocalDateTime fechaHora = fecha.isEqual(LocalDate.now())
             ? LocalDateTime.now() : fecha.atStartOfDay();
@@ -514,21 +530,16 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
                 + "El pago se confirmará sin asiento ni movimiento bancario (§6.5.b).");
         }
 
-        // 3b. Asiento de RECLASIFICACIÓN (decisión del usuario 2026-08-31): la mitad de CRD
-        // del asiento — D pasivo de aportes del socio -> H obligación de liquidación. NO toca
-        // Banco. Quién contabiliza el pago (D liquidación -> H Banco, la otra mitad) es una
-        // definición del usuario todavía ABIERTA al 2026-08-31 (opción B: lo hace CRD junto
-        // con este mismo asiento o uno propio; opción C: lo hace CXP con su "producto de
-        // pago" apuntando a 2.3.01.xx) — este método no la asume ni depende de ella, solo
-        // genera y persiste la reclasificación. Va ANTES de la orden de pago en CXP a
-        // propósito: si el asiento de reclasificación falla (plantilla sin configurar), no
-        // queda una orden de pago en CXP contra una obligación que CRD nunca reconoció.
-        Long idAsientoReclasificacion = generarAsientoReclasificacion(devolucion, tipos, valores);
-        devolucion.setNumeroAsientoReclasificacion(idAsientoReclasificacion);
-        devolucion = devolucionAporteDaoService.save(devolucion, devolucion.getCodigo());
-
-        // 4. La orden de pago en CXP. Si esto lanza, se revierte TODO lo anterior:
-        //    no quedan aportes negativos huérfanos sin orden de pago.
+        // 3b. La orden de pago en CXP — 2026-08-31, invertido a propósito: ANTES iba el asiento
+        // de reclasificación y DESPUÉS esto, con el argumento de que un asiento fallido no
+        // debía dejar una orden de pago huérfana. Pero el riesgo real es al revés: CXP es un
+        // sistema externo con sus propias reglas (p.ej. "ya tiene un pago vigente" para este
+        // idOrigen), y con el orden viejo esa falla llegaba DESPUÉS de que este método ya
+        // había logueado "✅ Asiento contable generado" — un mensaje de éxito impreso en un
+        // punto donde la transacción todavía podía (y terminaba) revirtiéndose entera. Un log
+        // que anuncia éxito antes de que la operación pueda fallar es peor que no tener log: le
+        // costó tiempo real a este mismo diagnóstico. CXP primero: si falla, no se generó
+        // ningún asiento y no hay ningún mensaje de éxito que desmentir.
         Long idPago;
         try {
             BeneficiarioOcasional beneficiario = armaBeneficiario(entidad, cuentaParticipe);
@@ -565,6 +576,20 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
             throw new IncomeException(ERR_ERROR_ORDEN_PAGO
                 + ": no se pudo generar la orden de pago en Cuentas por Pagar. " + e.getMessage());
         }
+
+        // 4. Asiento de RECLASIFICACIÓN (decisión del usuario 2026-08-31): la mitad de CRD del
+        // asiento — D pasivo de aportes del socio -> H obligación de liquidación. NO toca
+        // Banco. Quién contabiliza el pago (D liquidación -> H Banco, la otra mitad) es una
+        // definición del usuario todavía ABIERTA al 2026-08-31 (opción B: lo hace CRD junto con
+        // este mismo asiento o uno propio; opción C: lo hace CXP con su "producto de pago"
+        // apuntando a 2.3.01.xx) — este método no la asume ni depende de ella, solo genera y
+        // persiste la reclasificación. Va DESPUÉS de la orden de pago (ver el comentario de
+        // arriba): si CXP ya aceptó la orden, generar el asiento acá no puede dejar una orden
+        // sin su contraparte contable — a lo sumo, si el asiento fallara, la transacción entera
+        // se revierte y la orden de pago tampoco queda (misma atomicidad que antes, solo que
+        // ahora el paso riesgoso —CXP— corre primero).
+        Long idAsientoReclasificacion = generarAsientoReclasificacion(devolucion, tipos, valores);
+        devolucion.setNumeroAsientoReclasificacion(idAsientoReclasificacion);
 
         // 5. La devolución queda enlazada a su orden de pago
         devolucion.setIdPagoProgramado(idPago);
@@ -1087,8 +1112,19 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
                 + ". No se genera un asiento desbalanceado.");
         }
 
+        // Cédula/nombre, sumado al final (2026-08-31, pedido del usuario). Sin idAsoprep acá:
+        // una devolución de aportes no tiene préstamo asociado — no aplica, no se fuerza.
+        String observacionReclasificacion = prefijo + " - reclasificación";
+        if (devolucion.getEntidad() != null) {
+            observacionReclasificacion += " | Cédula: "
+                + (devolucion.getEntidad().getNumeroIdentificacion() != null
+                    ? devolucion.getEntidad().getNumeroIdentificacion() : "-")
+                + " | Nombre: " + (devolucion.getEntidad().getRazonSocial() != null
+                    ? devolucion.getEntidad().getRazonSocial() : "-");
+        }
+
         com.saa.model.cnt.Asiento asiento = asientoContableService.generarAsiento(idEmpresa,
-            com.saa.rubros.TipoAsientos.CREDITOS, devolucion.getFecha(), prefijo + " - reclasificación",
+            com.saa.rubros.TipoAsientos.CREDITOS, devolucion.getFecha(), observacionReclasificacion,
             devolucion.getUsuarioRegistro(), lineas, Long.valueOf(com.saa.rubros.ModuloSistema.CUENTAS_POR_COBRAR));
 
         System.out.println("  ✅ Asiento de reclasificación generado - Devolución "
@@ -1358,6 +1394,23 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
             case EstadoDevolucionAporte.PAGADA:     return "PAGADA";
             case EstadoDevolucionAporte.RECHAZADA:  return "RECHAZADA";
             case EstadoDevolucionAporte.ANULADA:    return "ANULADA";
+            default: return String.valueOf(estado);
+        }
+    }
+
+    /** Mismo criterio que {@link #nombreEstado}, para {@code PagoProgramado.estado}
+     * ({@code EstadoPagoProgramado}) — un catálogo distinto, nunca confundir los dos. */
+    private String nombreEstadoPago(Long estado) {
+        if (estado == null) {
+            return "SIN ESTADO";
+        }
+        switch (estado.intValue()) {
+            case EstadoPagoProgramado.POR_APROBAR: return "POR APROBAR";
+            case EstadoPagoProgramado.REGISTRADO:  return "REGISTRADO";
+            case EstadoPagoProgramado.EN_ARCHIVO:  return "EN ARCHIVO";
+            case EstadoPagoProgramado.CONFIRMADO:  return "CONFIRMADO";
+            case EstadoPagoProgramado.RECHAZADO:   return "RECHAZADO";
+            case EstadoPagoProgramado.ANULADO:     return "ANULADO";
             default: return String.valueOf(estado);
         }
     }

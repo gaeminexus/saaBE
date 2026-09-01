@@ -167,6 +167,20 @@ public class CobroCredito implements Serializable {
     @JoinColumn(name = "CBCRASN2", referencedColumnName = "ASNTCDGO")
     private Asiento asientoDefinitivo;
 
+    /**
+     * FK - Asiento de REPARTO (2026-08-31, tres asientos por cobro, decisión del usuario) —
+     * paso 2, entre el transitorio (paso 1, {@link #asientoTransitorio}) y el definitivo
+     * (paso 3, {@link #asientoDefinitivo}): D {@code 2.3.01.15.01} (transitoria) → H
+     * {@code 1.4.05.05}/{@code 1.4.05.10} (activo de aportes/préstamos, las MISMAS cuentas
+     * que abre el asiento ③ de apertura del cierre de cartera). Mismo patrón que ya usa
+     * Petro ({@code CRD.CRAP}, plantilla alterno {@code REPARTO_TRANSITORIA}) — acá aparte porque
+     * {@code asientoDefinitivo} (CBCRASN2) ya está ocupado por el paso 3.
+     * DDL en {@code docs/logica-negocio/crd/sql/100_CBCR_ASIENTO_REPARTO.sql}, sin ejecutar.
+     */
+    @ManyToOne
+    @JoinColumn(name = "CBCRASRP", referencedColumnName = "ASNTCDGO")
+    private Asiento asientoReparto;
+
     // ============================================================
     // Getters y Setters
     // ============================================================
@@ -361,5 +375,13 @@ public class CobroCredito implements Serializable {
 
     public void setAsientoDefinitivo(Asiento asientoDefinitivo) {
         this.asientoDefinitivo = asientoDefinitivo;
+    }
+
+    public Asiento getAsientoReparto() {
+        return asientoReparto;
+    }
+
+    public void setAsientoReparto(Asiento asientoReparto) {
+        this.asientoReparto = asientoReparto;
     }
 }

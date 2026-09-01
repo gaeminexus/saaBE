@@ -167,6 +167,34 @@ public interface GeneracionArchivoPetroService extends EntityService<GeneracionA
     GeneracionArchivoPetro marcarDescargado(Long codigoGeneracion, String usuario) throws Exception;
 
     /**
+     * Cuánto se espera cobrar de aportes personales (producto AH) de UNA filial en un
+     * período, SIN generar ni persistir nada — solo el cálculo (2026-08-31, para el asiento
+     * ③ de apertura del cierre de cartera).
+     *
+     * <p><b>Es la MISMA fuente y la MISMA rama que usa la generación real del archivo</b>:
+     * llama al mismo método privado de cálculo que {@code procesarGeneracion} (a través del
+     * mismo despachador detrás de {@code ConfiguracionGeneracionAportesService
+     * #porFaltanteActiva()}, rubro 242) — nunca puede divergir del archivo que
+     * efectivamente se le manda a Petro, porque es literalmente el mismo cálculo, no una
+     * copia. Si el rubro 242 está apagado (el caso de hoy), usa {@code HistorialSueldo} ×
+     * meses adeudados; si se enciende, usa {@code CRD.VGCN} con el faltante acumulado — este
+     * método no necesita cambiar en ninguno de los dos casos.</p>
+     *
+     * <p>Segundo consumidor (2026-08-31): el asiento ⑥ (neteo) del cierre de cartera, para el
+     * MES QUE SE CIERRA — mismo método, mes distinto al del ③. Que el ⑥ y el ③ usen la misma
+     * fuente es lo que garantiza que el ⑥ "blanquea" exactamente lo que el ③ del mes anterior
+     * abrió, sin residuo que nadie pueda explicar.</p>
+     *
+     * @param mes          Mes del período, 1 a 12 — el mes que se quiere cobrar
+     * @param anio         Año del período
+     * @param codigoFilial Filial a calcular
+     * @return             {@code {"jubilacion": .., "cesantia": .., "total": ..,
+     *                     "participantes": ..}}
+     * @throws Exception   Si ocurre un error
+     */
+    Map<String, Double> calcularAportesEsperados(Long mes, Long anio, Long codigoFilial) throws Exception;
+
+    /**
      * Elimina físicamente una generación y todo su detalle (CXPG, PDGA, DTGA),
      * incluido el archivo TXT del disco, para poder volver a generar el periodo.
      *

@@ -8,8 +8,11 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import com.saa.basico.ejb.FileService;
@@ -22,9 +25,11 @@ import com.saa.ejb.crd.service.ParticipeXCargaArchivoService;
 import com.saa.model.crd.AfectacionValoresParticipeCarga;
 import com.saa.model.crd.Aporte;
 import com.saa.model.crd.CargaArchivo;
+import com.saa.model.crd.Contrato;
 import com.saa.model.crd.DetalleCargaArchivo;
 import com.saa.model.crd.DetallePrestamo;
 import com.saa.model.crd.Entidad;
+import com.saa.model.crd.FamiliaNovedadCarga;
 import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.model.crd.NovedadParticipeCarga;
 import com.saa.model.crd.PagoPrestamo;
@@ -144,11 +149,43 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     @EJB
     private com.saa.ejb.crd.service.VigenciaContratoService vigenciaContratoService;
 
+    /**
+     * Solo para distinguir, en {@link #distribuirAportePorDevengo}, "no tiene contrato" (aborta
+     * la carga) de "tiene contrato pero la vigencia no cubre el mes" (no aborta) — nunca lo
+     * infiere de que {@code esperadoMensual} dio 0, que no distingue las dos causas.
+     */
+    @EJB
+    private com.saa.ejb.crd.dao.ContratoDaoService contratoDaoService;
+
     /** Fase 3a: asiento de REPARTO del paso 2, ver {@link #aplicarPagosArchivoPetro}. */
     @EJB
     private com.saa.ejb.crd.service.CobroPetroContableService cobroPetroContableService;
 
-    private static final double TOLERANCIA = 1.0; // Tolerancia de $1 para redondeos
+    /**
+     * Dinero recibido sin aplicar del todo (2026-08-31), acumulado durante UNA corrida de
+     * {@link #aplicarPagosArchivoPetro} para que el resumen final los muestre sin tener que
+     * leer el log del servidor. Dos listas separadas porque el tratamiento es distinto:
+     * {@code advertenciasVigenciaCargaActual} es solo informativa (contrato activo, vigencia
+     * no cubre el mes — ver {@link #distribuirAportePorDevengo}); {@code
+     * novedadesGeneradasCargaActual} son NOVEDAD, requieren decisión del operador en pantalla
+     * (sin HistorialSueldo activo, o esperado en $0 — ver {@link #aplicarAporteAH}).
+     *
+     * <b>Se resetean al ENTRAR a {@code aplicarPagosArchivoPetro}, no al salir.</b> Si una
+     * corrida falla a mitad (TODO O NADA), la siguiente no puede arrastrar advertencias de la
+     * corrida anterior — un reset al salir dejaría el resumen de la corrida fallida contaminado
+     * en la próxima que sí termine. Es seguro como campo de instancia porque esta clase es
+     * {@code @Stateful}: una instancia por sesión de carga.
+     */
+    private List<String> advertenciasVigenciaCargaActual = new ArrayList<>();
+    private List<String> novedadesGeneradasCargaActual = new ArrayList<>();
+
+    /** Cuántas líneas de detalle lleva el resumen antes de resumir el resto. Arbitrario,
+     * ajustable — evita un resumen de 50 líneas tan ilegible como el problema que resuelve. */
+    private static final int MAX_ADVERTENCIAS_EN_RESUMEN = 10;
+
+    // Única definición: FamiliaNovedadCarga.TOLERANCIA (2026-08-31) — el modelo no puede
+    // depender de ejb, así que la constante vive ahí y este archivo la lee, nunca al revés.
+    private static final double TOLERANCIA = FamiliaNovedadCarga.TOLERANCIA;
     
     // Códigos de TipoAporte
     private static final Long TIPO_APORTE_JUBILACION = 9L;  // Código para aporte de jubilación (CORRECTO)
@@ -360,6 +397,32 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 						+ codigoProducto + " — se aborta toda la carga, este partícipe habría "
 						+ "quedado invisible para el resto del proceso. Causa: " + e.getMessage(), e);
 				}
+
+				// 2026-08-31 (decisión del árbitro, opción a): SIN_DESCUENTOS/DESCUENTOS_INCOMPLETOS
+				// también generan su fila NVPC, no solo el campo plano de arriba
+				// (participe.getNovedadesFinancieras()) — ese campo NUNCA tiene montoDiferencia,
+				// así que FamiliaNovedadCarga.clasificar (que solo mira filas NVPC) lo dejaba
+				// INFORMATIVA aunque sea el caso más puro de "no se cobró, hay que gestionar".
+				// Va DESPUÉS del INSERT (participe.getCodigo() recién existe acá) — registrarNovedad
+				// no hace nada si getCodigo() es null. ⚠️ El campo plano NO se borra ni se
+				// reemplaza — sigue existiendo igual que antes; verificar en la pantalla que la
+				// misma novedad no se vea duplicada (una vez por el campo, otra por la fila NVPC).
+				if (participe.getNovedadesFinancieras() != null) {
+					long tipoFinanciera = participe.getNovedadesFinancieras().longValue();
+					if (tipoFinanciera == ASPNovedadesCargaArchivo.SIN_DESCUENTOS
+							|| tipoFinanciera == ASPNovedadesCargaArchivo.DESCUENTOS_INCOMPLETOS) {
+						double montoRecibido = nullSafe(participe.getTotalDescontado());
+						double montoEsperado = montoRecibido + nullSafe(participe.getCapitalNoDescontado())
+								+ nullSafe(participe.getInteresNoDescontado())
+								+ nullSafe(participe.getDesgravamenNoDescontado());
+						registrarNovedad(participe, (int) tipoFinanciera,
+								tipoFinanciera == ASPNovedadesCargaArchivo.SIN_DESCUENTOS
+										? "No se realizó ningún descuento para este partícipe (validación de carga)."
+										: "Descuento incompleto: falta capital, interés o desgravamen por"
+												+ " descontar (validación de carga).",
+								null, null, montoEsperado, montoRecibido);
+					}
+				}
 			}
 		}
         }
@@ -441,6 +504,16 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
         int i = 0;
         int numeroLinea = 1; // Para rastrear la línea en caso de error
         boolean encontroEP = false;
+
+        // 2026-08-31: cuenta las líneas que el reporte de Petro imprime al cierre de cada
+        // sección de producto ("TOTAL <producto>", "TOTAL ZONA...", "TOTAL ==>") y que NO
+        // son un partícipe — se detectan porque no traen código en columnas [0,7). Antes se
+        // descartaban en silencio DESPUÉS de intentar parsear sus columnas numéricas (lo que
+        // podía reventar si el texto de la línea invadía una columna numérica — ver
+        // REGLAS-CARGA-PETRO.md §"líneas TOTAL"); ahora se detectan ANTES y ni siquiera se
+        // tocan esas columnas. Se cuenta para que un cambio de formato de Petro (de 8 líneas
+        // TOTAL a, digamos, 500) se note por un número en el log, no porque falten partícipes.
+        int lineasResumenOmitidas = 0;
         
         while (i < lineas.length) {
             String lineaActual = lineas[i];
@@ -477,22 +550,34 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
                     }
                     
                     if (lineaRegistro != null && lineaRegistro.trim().length() > 0) {
+                        // Línea de resumen del reporte (TOTAL de la sección, TOTAL ==>, etc.):
+                        // no trae código de partícipe en columnas [0,7). Se detecta y se salta
+                        // ANTES de tocar ninguna columna numérica — no es un dato de partícipe
+                        // mal formado, es una línea que nunca debió leerse como partícipe.
+                        // extraerCampo rellena con espacios si la línea es corta, así que es
+                        // segura incluso si lineaRegistro tiene menos de 7 caracteres.
+                        String codigo = extraerCampo(lineaRegistro, 0, 7).trim();
+                        if (codigo.isEmpty()) {
+                            lineasResumenOmitidas++;
+                            i++;
+                            continue;
+                        }
+
                         try {
                             ParticipeXCargaArchivo registro = new ParticipeXCargaArchivo();
-                            
+
                             // Crear un DetalleCargaArchivo temporal para identificación
                             DetalleCargaArchivo detalleTemp = new DetalleCargaArchivo();
                             detalleTemp.setCodigoPetroProducto(codigoAporte);
                             detalleTemp.setNombreProductoPetro(descripcionAporte);
                             registro.setDetalleCargaArchivo(detalleTemp);
-                            
+
                             // Validar que la línea tenga la longitud mínima esperada
                             if (lineaRegistro.length() < 50) {
                                 throw new IllegalArgumentException("Línea muy corta, longitud mínima esperada: 50 caracteres");
                             }
-                            
-                            // Extraer campos del registro
-                            String codigo = extraerCampo(lineaRegistro, 0, 7).trim();
+
+                            // Extraer campos del registro (codigo ya extraído arriba)
                             registro.setNombre(extraerCampo(lineaRegistro, 7, 44).trim());
                             registro.setPlazoInicial(parseDouble(extraerCampo(lineaRegistro, 44, 50).trim()).longValue());
                             registro.setSaldoActual(parseDouble(extraerCampo(lineaRegistro, 50, 61).trim()));
@@ -507,13 +592,20 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
                             registro.setCapitalNoDescontado(parseDouble(extraerCampo(lineaRegistro, 155, 170).trim()));
                             registro.setInteresNoDescontado(parseDouble(extraerCampo(lineaRegistro, 170, 184).trim()));
                             registro.setDesgravamenNoDescontado(parseDouble(extraerCampo(lineaRegistro, 184, 198).trim()));
-                            
-                            if (!codigo.isEmpty()) {
-                                registro.setCodigoPetro(parseLongSimple(codigo));
-                                registrosProcesados.add(registro);
-                            }
+
+                            registro.setCodigoPetro(parseLongSimple(codigo));
+                            registrosProcesados.add(registro);
                         } catch (Exception e) {
-                            throw new IllegalArgumentException("Error al procesar línea " + (numeroLinea + i) + " del producto '" + descripcionAporte + "': " + e.getMessage(), e);
+                            // Texto crudo alrededor de donde probablemente cayó el corte, para
+                            // que el operador vea el problema sin abrir el archivo. No sabemos
+                            // con certeza qué columna exacta falló (son 12 parseDouble en la
+                            // misma línea); mostramos la línea completa recortada — el valor
+                            // mal formado ya viene entre comillas en el mensaje de parseDouble.
+                            String lineaCruda = lineaRegistro.length() > 120
+                                    ? lineaRegistro.substring(0, 120) + "..." : lineaRegistro;
+                            throw new IllegalArgumentException("Error al procesar línea " + (numeroLinea + i)
+                                    + " del producto '" + descripcionAporte + "' (columnas de dato: 0-198): "
+                                    + e.getMessage() + " | Línea cruda: \"" + lineaCruda + "\"", e);
                         }
                     }
                     
@@ -532,7 +624,13 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
         if (!encontroEP) {
             throw new IllegalArgumentException("El archivo no contiene ningún encabezado 'EP' válido. Formato de archivo incorrecto.");
         }
-        
+
+        // Reportado por número, no por "faltan partícipes": si el formato de Petro cambia y
+        // de golpe hay 500 de estas en vez de las ~8-15 de siempre (una por sección de
+        // producto), es la señal de que hay que revisar el archivo, no un partícipe perdido.
+        System.out.println("ℹ️ Líneas de resumen del reporte omitidas (sin código de partícipe,"
+                + " p.ej. \"TOTAL <producto>\"): " + lineasResumenOmitidas);
+
         return registrosProcesados;
     }
     
@@ -934,7 +1032,11 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public String aplicarPagosArchivoPetro(Long codigoCargaArchivo) throws Throwable {
 		System.out.println("=== INICIANDO APLICACIÓN DE PAGOS - Carga: " + codigoCargaArchivo + " ===");
-		
+
+		// Reset AL ENTRAR, no al salir — ver el javadoc de los campos.
+		advertenciasVigenciaCargaActual.clear();
+		novedadesGeneradasCargaActual.clear();
+
 		try {
 			// 1. Obtener el CargaArchivo
 			CargaArchivo cargaArchivo = cargaArchivoService.selectById(codigoCargaArchivo);
@@ -981,6 +1083,27 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			validarRepartoDeExcedentes(cargaArchivo);
 			// ==========================================
 
+			// ⛔ validarPrelacionReparto(cargaArchivo) — ESCRITA, NO CONECTADA (2026-08-31,
+			// decisión del árbitro). El método existe más abajo y funciona para el caso que
+			// prueba, pero tiene dos falsos positivos reales que pueden abortar la carga
+			// completa de 2.000 partícipes por nada:
+			//   1) Agrupa por (novedad, préstamo) — si un partícipe tiene DOS novedades sobre
+			//      el MISMO préstamo (A cubre cuota 1, B cubre cuota 3), validar B sola ve la
+			//      cuota 1 "pendiente sin cubrir" y revienta, aunque A ya la cubrió.
+			//   2) Compara contra selectCuotasPendientesByPrestamoOrdenadas ANTES de que el
+			//      flujo automático aplique nada — las cuotas que va a cubrir el descuento
+			//      ordinario todavía figuran pendientes en ese momento, así que compara contra
+			//      un estado que todavía no es el final.
+			// Hoy no hay ningún cliente que pueda mandar un reparto AVPC fuera de orden (el
+			// único consumidor es el frontend, que ya ordena y bloquea) — así que esta
+			// validación no protege de nada real todavía, y el costo de un falso positivo
+			// (frenar la carga del mes) es mucho mayor que el de no tenerla.
+			// Para encenderla: agrupar por (participe, préstamo) sobre TODAS las novedades de
+			// la carga (no una por una), y comparar contra el estado DESPUÉS de que el flujo
+			// automático (paso 2 de este método) ya aplicó lo que pudo — nunca contra el
+			// snapshot de pendientes previo a esta corrida.
+			// ==========================================
+
 			// 2. ✅ OPTIMIZACIÓN: Obtener SOLO los detalles de esta carga específica
 			// En lugar de traer TODOS los detalles de TODAS las cargas con selectAll()
 			List<DetalleCargaArchivo> detallesCarga = detalleCargaArchivoDaoService.selectByCargaArchivo(codigoCargaArchivo);
@@ -990,6 +1113,7 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			int totalErrores = 0;
 			int totalOmitidos = 0;
 			int totalAportesGenerados = 0;
+			int totalAdvertencias = 0;
 			
 			// 3. Por cada detalle, procesar los partícipes
 			for (DetalleCargaArchivo detalle : detallesCarga) {
@@ -1039,11 +1163,20 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 
 						try {
 							if (CODIGO_PRODUCTO_APORTES.equalsIgnoreCase(codigoProducto)) {
-								// PRODUCTO AH: Generar Aportes
+								// PRODUCTO AH: Generar Aportes. aportesCreados == 0 no es
+								// necesariamente un no-evento: puede ser dinero recibido sin
+								// aplicar (advertencia de vigencia, o novedad de HistorialSueldo)
+								// que NO abortó la carga a propósito — contarlo aparte de
+								// totalExitosos para que no quede invisible en el resumen.
+								int advertenciasAntes = advertenciasVigenciaCargaActual.size()
+									+ novedadesGeneradasCargaActual.size();
 								int aportesCreados = aplicarAporteAH(participe, cargaArchivo);
 								totalAportesGenerados += aportesCreados;
 								if (aportesCreados > 0) {
 									totalExitosos++;
+								} else if (advertenciasVigenciaCargaActual.size()
+										+ novedadesGeneradasCargaActual.size() > advertenciasAntes) {
+									totalAdvertencias++;
 								}
 							} else {
 								// OTROS PRODUCTOS: Aplicar pagos a préstamos
@@ -1059,16 +1192,25 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 				}
 			}
 			
-			String resumen = String.format(
+			StringBuilder resumenBuilder = new StringBuilder(String.format(
 				"=== RESUMEN APLICACIÓN DE PAGOS ===\n" +
 				"Total procesados: %d\n" +
 				"Exitosos: %d\n" +
 				"Aportes generados: %d\n" +
 				"Omitidos (con novedades): %d\n" +
+				"Advertencias (dinero recibido sin aplicar del todo): %d\n" +
 				"Errores: %d\n" +
 				"================================",
-				totalProcesados, totalExitosos, totalAportesGenerados, totalOmitidos, totalErrores
-			);
+				totalProcesados, totalExitosos, totalAportesGenerados, totalOmitidos,
+				totalAdvertencias, totalErrores
+			));
+			resumenBuilder.append(formateaListaResumen(
+				"Novedades generadas (requieren decisión en pantalla — sin HistorialSueldo o esperado $0)",
+				novedadesGeneradasCargaActual));
+			resumenBuilder.append(formateaListaResumen(
+				"Advertencias (contrato activo, vigencia no cubre el mes — no requieren acción inmediata)",
+				advertenciasVigenciaCargaActual));
+			String resumen = resumenBuilder.toString();
 			
 			System.out.println(resumen);
 
@@ -1093,7 +1235,32 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			throw e;
 		}
 	}
-	
+
+	/**
+	 * Arma el bloque del resumen para una de las dos listas de dinero-sin-aplicar-del-todo
+	 * (novedades o advertencias): título, las primeras {@link #MAX_ADVERTENCIAS_EN_RESUMEN}
+	 * líneas y, si sobran, un "... y N más" apuntando al log — nunca un conteo sin detalle ni
+	 * una lista de 50 líneas.
+	 *
+	 * @return bloque de texto (con su propio salto de línea inicial), o "" si la lista está vacía
+	 */
+	private String formateaListaResumen(String titulo, List<String> lineas) {
+		if (lineas == null || lineas.isEmpty()) {
+			return "";
+		}
+		StringBuilder bloque = new StringBuilder("\n\n").append(titulo).append(" (")
+			.append(lineas.size()).append("):");
+		int mostradas = Math.min(lineas.size(), MAX_ADVERTENCIAS_EN_RESUMEN);
+		for (int i = 0; i < mostradas; i++) {
+			bloque.append("\n  - ").append(lineas.get(i));
+		}
+		if (lineas.size() > mostradas) {
+			bloque.append("\n  ... y ").append(lineas.size() - mostradas)
+				.append(" más (detalle completo en el log del servidor).");
+		}
+		return bloque.toString();
+	}
+
 	/**
 	 * Verifica si un partícipe tiene novedades que bloquean el procesamiento de pagos
 	 * ✅ CORRECCIÓN: NINGUNA novedad bloquea el procesamiento
@@ -1118,37 +1285,6 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	// ============================================================================
 	// VALIDACIÓN PREVIA: TODO VALOR DESCONTADO DEBE TENER DESTINO
 	// ============================================================================
-
-	/**
-	 * Novedades con las que el sistema NO puede determinar por sí solo a qué
-	 * préstamo, cuota o aporte aplicar el valor descontado.
-	 *
-	 * Un registro con una de estas novedades solo se puede procesar si el usuario
-	 * dejó registrada la afectación manual (AVPC) diciendo cómo aplicar el valor.
-	 *
-	 * NO entran aquí las novedades que no dejan dinero sin aplicar:
-	 * - SIN_DESCUENTOS, VALORES_CERO, APORTE_VALORES_CERO: no llegó valor alguno.
-	 * - DESCUENTOS_INCOMPLETOS: falta plata, pero la que llegó sí tiene destino.
-	 * - DIFERENCIA_MENOR_UN_DOLAR y su equivalente de aportes: dentro de tolerancia.
-	 * - CUOTA_FECHA_DIFERENTE: la cuota se encontró, solo cambia el mes.
-	 * - Las de resultado (OK, PRESTAMO_PROCESADO_OK, APORTE_GENERADO_OK).
-	 */
-	private static final List<Long> NOVEDADES_REQUIEREN_AFECTACION_MANUAL = Arrays.asList(
-		(long) ASPNovedadesCargaArchivo.PARTICIPE_NO_ENCONTRADO,
-		(long) ASPNovedadesCargaArchivo.CODIGO_ROL_DUPLICADO,
-		(long) ASPNovedadesCargaArchivo.NOMBRE_ENTIDAD_DUPLICADO,
-		(long) ASPNovedadesCargaArchivo.CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE,
-		(long) ASPNovedadesCargaArchivo.DESCUENTOS_ADICIONALES,
-		(long) ASPNovedadesCargaArchivo.PRODUCTO_NO_MAPEADO,
-		(long) ASPNovedadesCargaArchivo.PRESTAMO_NO_ENCONTRADO,
-		(long) ASPNovedadesCargaArchivo.MULTIPLES_PRESTAMOS_ACTIVOS,
-		(long) ASPNovedadesCargaArchivo.CUOTA_NO_ENCONTRADA,
-		(long) ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE,
-		(long) ASPNovedadesCargaArchivo.HISTORIAL_SUELDO_NO_ENCONTRADO,
-		(long) ASPNovedadesCargaArchivo.MULTIPLES_REGISTROS_HISTORIAL_SUELDO,
-		(long) ASPNovedadesCargaArchivo.VALORES_HISTORIAL_NULOS,
-		(long) ASPNovedadesCargaArchivo.APORTE_MONTO_INCONSISTENTE
-	);
 
 	/** Cuántos registros se listan en el mensaje de error antes de resumir el resto. */
 	private static final int MAXIMO_DETALLES_EN_MENSAJE = 20;
@@ -1356,6 +1492,183 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		throw new IncomeException(mensaje.toString());
 	}
 
+	/**
+	 * Corta el procesamiento si el reparto manual (AVPC) de una novedad deja un HUECO: una
+	 * cuota más nueva con valor asignado mientras una cuota más antigua y pendiente del MISMO
+	 * préstamo se quedó sin cubrir (2026-08-31, pedido del usuario: "igual que en cobros
+	 * personales", donde el pago cascadea de la cuota pendiente más antigua a la más nueva).
+	 *
+	 * <p>El frontend ya ordena y bloquea esto en pantalla, pero AVPC también se escribe por API
+	 * ({@code AfectacionValoresParticipeCargaRest#postBatch}) — un cliente puede mandar
+	 * cualquier orden, así que el servidor no puede confiar en que el reparto que llegó ya
+	 * viene en prelación. "Cobros personales" no tiene una función de validación para reusar:
+	 * su cascada ({@code MotorPagoPrestamoServiceImpl}, sobre {@code
+	 * DetallePrestamoDaoService#selectCuotasPendientesByPrestamoOrdenadas}) es estructuralmente
+	 * incapaz de dejar un hueco, porque el operador nunca elige qué cuota paga — el algoritmo
+	 * decide. Acá SÍ hay una elección explícita (AVPC), así que hace falta validarla — pero
+	 * usando la MISMA fuente de "orden correcto" que esa cascada, no un criterio propio.</p>
+	 */
+	private void validarPrelacionReparto(CargaArchivo cargaArchivo) throws Throwable {
+		System.out.println("=== VALIDANDO PRELACIÓN DEL REPARTO (cuota más antigua primero) ===");
+
+		List<Map<String, Object>> conHueco = buscarHuecosDePrelacion(cargaArchivo);
+
+		if (conHueco.isEmpty()) {
+			System.out.println("✅ Ningún reparto manual dejó una cuota más antigua sin cubrir");
+			return;
+		}
+
+		StringBuilder mensaje = new StringBuilder();
+		mensaje.append("No se puede procesar el archivo: hay ").append(conHueco.size())
+		       .append(" préstamo(s) cuyo reparto manual (entre todas sus novedades) cubre una")
+		       .append(" cuota sin cubrir antes una anterior del mismo préstamo, todavía")
+		       .append(" pendiente. Complete el reparto de la más antigua a la más nueva y vuelva")
+		       .append(" a procesar.");
+
+		int listados = 0;
+		for (Map<String, Object> item : conHueco) {
+			if (listados >= MAXIMO_DETALLES_EN_MENSAJE) {
+				mensaje.append("\n  ... y ").append(conHueco.size() - listados).append(" más.");
+				break;
+			}
+			mensaje.append("\n  - Rol ").append(item.get("codigoPetro")).append(" ")
+			       .append(item.get("nombre"))
+			       .append(" (préstamo ").append(item.get("idPrestamo")).append("): la cuota #")
+			       .append(item.get("numeroCuotaConHueco")).append(" tiene valor asignado, pero la")
+			       .append(" cuota #").append(item.get("numeroCuotaSinCubrir"))
+			       .append(" (más antigua, pendiente) no.");
+			listados++;
+		}
+
+		System.err.println(mensaje.toString());
+		throw new IncomeException(mensaje.toString());
+	}
+
+	/**
+	 * Recorre la carga y arma la lista de (partícipe, préstamo) cuyo reparto AVPC dejó una
+	 * cuota antigua pendiente sin cubrir mientras cubrió una más nueva.
+	 *
+	 * <p><b>2026-08-31, rediseño (corrige el primero de los dos falsos positivos que hizo
+	 * desconectar la versión anterior):</b> agrupa las filas de AVPC de TODAS las novedades del
+	 * partícipe, no las de una novedad sola — antes, un partícipe con dos novedades sobre el
+	 * MISMO préstamo (A cubre la cuota 1, B cubre la 3) marcaba un hueco al validar B sola,
+	 * aunque A ya hubiera cubierto la cuota 1. Agrupar primero por partícipe y recién ahí por
+	 * préstamo ve las dos novedades juntas.</p>
+	 *
+	 * <p><b>⚠️ EL SEGUNDO FALSO POSITIVO SIGUE SIN RESOLVERSE, a propósito — no se aproximó.</b>
+	 * Esta comparación sigue siendo contra {@code selectCuotasPendientesByPrestamoOrdenadas}
+	 * ANTES de que el flujo automático (paso 2 de {@code aplicarPagosArchivoPetro}) aplique
+	 * nada — las cuotas que el descuento ordinario va a cubrir todavía figuran "pendientes" en
+	 * este momento, así que pueden salir como huecos aunque el flujo automático las vaya a
+	 * cubrir un instante después. Resolverlo bien exige, o (a) reordenar
+	 * {@code aplicarPagosArchivoPetro} para validar DESPUÉS de la aplicación automática (rompe
+	 * el patrón "todo o nada antes de tocar la primera cuota" que protege el resto del método),
+	 * o (b) simular acá el matching de {@code buscarCuotaAPagar}/{@code validarPrestamo} sin
+	 * aplicar nada — duplicar esa lógica es exactamente el riesgo de divergencia que este
+	 * proyecto viene evitando todo el día. Ninguna de las dos es un cambio chico, así que
+	 * NO SE CONECTA esta validación aunque el primer falso positivo ya esté arreglado — sigue
+	 * desconectada en {@code aplicarPagosArchivoPetro} hasta que se decida cuál de las dos
+	 * hacer.</p>
+	 */
+	private List<Map<String, Object>> buscarHuecosDePrelacion(CargaArchivo cargaArchivo) throws Throwable {
+		List<Map<String, Object>> conHueco = new ArrayList<>();
+
+		List<DetalleCargaArchivo> detallesCarga =
+			detalleCargaArchivoDaoService.selectByCargaArchivo(cargaArchivo.getCodigo());
+		if (detallesCarga == null) {
+			return conHueco;
+		}
+
+		for (DetalleCargaArchivo detalle : detallesCarga) {
+			List<ParticipeXCargaArchivo> participesDetalle =
+				participeXCargaArchivoDaoService.selectByDetalleCargaArchivo(detalle.getCodigo());
+			if (participesDetalle == null) {
+				continue;
+			}
+
+			for (ParticipeXCargaArchivo participe : participesDetalle) {
+				List<NovedadParticipeCarga> novedades =
+					novedadParticipeCargaDaoService.selectByParticipe(participe.getCodigo());
+				if (novedades == null || novedades.isEmpty()) {
+					continue;
+				}
+
+				// TODAS las filas de AVPC de TODAS las novedades del partícipe, juntas —
+				// nunca una novedad a la vez (ver el javadoc, primer falso positivo).
+				List<AfectacionValoresParticipeCarga> afectacionesParticipe = new ArrayList<>();
+				for (NovedadParticipeCarga novedad : novedades) {
+					List<AfectacionValoresParticipeCarga> afectacionesNovedad =
+						afectacionValoresParticipeCargaDaoService.selectByNovedad(novedad.getCodigo());
+					if (afectacionesNovedad != null) {
+						afectacionesParticipe.addAll(afectacionesNovedad);
+					}
+				}
+				if (afectacionesParticipe.isEmpty()) {
+					continue;
+				}
+
+				// Solo filas de CUOTA (prestamo + detallePrestamo) — las de aporte
+				// (tipoAporte, CK_AVPC_PRST_XOR_TPAP) no tienen cuota que ordenar. Agrupadas
+				// por préstamo: la prelación se evalúa dentro de cada préstamo, nunca entre
+				// préstamos distintos.
+				Map<Long, Set<Long>> cuotasCubiertasPorPrestamo = new LinkedHashMap<>();
+				for (AfectacionValoresParticipeCarga afectacion : afectacionesParticipe) {
+					if (afectacion.getPrestamo() == null || afectacion.getDetallePrestamo() == null) {
+						continue;
+					}
+					Long idPrestamo = afectacion.getPrestamo().getCodigo();
+					cuotasCubiertasPorPrestamo.computeIfAbsent(idPrestamo, k -> new HashSet<>())
+							.add(afectacion.getDetallePrestamo().getCodigo());
+				}
+
+				for (Map.Entry<Long, Set<Long>> entrada : cuotasCubiertasPorPrestamo.entrySet()) {
+					Long idPrestamo = entrada.getKey();
+					Set<Long> codigosCubiertos = entrada.getValue();
+
+					List<DetallePrestamo> pendientesOrdenadas =
+						detallePrestamoDaoService.selectCuotasPendientesByPrestamoOrdenadas(idPrestamo);
+					if (pendientesOrdenadas == null) {
+						continue;
+					}
+
+					// Última posición (más nueva) que el reparto cubrió; si alguna posición
+					// ANTERIOR a esa (más antigua, todavía pendiente) no está cubierta, es
+					// el hueco que describe el pedido del usuario. Sigue sin descontar lo que
+					// el flujo automático va a cubrir — ver el ⚠️ del javadoc.
+					int ultimaPosicionCubierta = -1;
+					for (int i = 0; i < pendientesOrdenadas.size(); i++) {
+						if (codigosCubiertos.contains(pendientesOrdenadas.get(i).getCodigo())) {
+							ultimaPosicionCubierta = i;
+						}
+					}
+					for (int i = 0; i < ultimaPosicionCubierta; i++) {
+						DetallePrestamo cuotaSinCubrir = pendientesOrdenadas.get(i);
+						if (!codigosCubiertos.contains(cuotaSinCubrir.getCodigo())) {
+							Map<String, Object> item = new HashMap<>();
+							item.put("codigoPetro", participe.getCodigoPetro());
+							item.put("nombre", participe.getNombre());
+							item.put("idPrestamo", idPrestamo);
+							item.put("numeroCuotaSinCubrir", cuotaSinCubrir.getNumeroCuota());
+							item.put("numeroCuotaConHueco",
+									pendientesOrdenadas.get(ultimaPosicionCubierta).getNumeroCuota());
+							conHueco.add(item);
+
+							System.out.println("⛔ Hueco de prelación - Rol " + participe.getCodigoPetro()
+								+ " (" + participe.getNombre() + ")"
+								+ " - préstamo " + idPrestamo + " - cuota #"
+								+ cuotaSinCubrir.getNumeroCuota() + " pendiente sin cubrir, cuota #"
+								+ pendientesOrdenadas.get(ultimaPosicionCubierta).getNumeroCuota()
+								+ " (más nueva) sí tiene valor asignado.");
+							break; // una fila por (partícipe, préstamo) alcanza para el mensaje
+						}
+					}
+				}
+			}
+		}
+
+		return conHueco;
+	}
+
 	/** Recorre la carga y arma la lista de novedades con excedente cuyo reparto no cuadra. */
 	private List<Map<String, Object>> buscarExcedentesDescuadrados(CargaArchivo cargaArchivo) throws Throwable {
 		List<Map<String, Object>> descuadrados = new ArrayList<>();
@@ -1415,21 +1728,32 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 
 		List<Long> encontradas = new ArrayList<>();
 
-		agregarSiRequiereAfectacion(encontradas, participe.getNovedadesCarga());
-		agregarSiRequiereAfectacion(encontradas, participe.getNovedadesFinancieras());
+		// participe.getNovedadesCarga()/getNovedadesFinancieras() son campos planos (Fase 1
+		// estructural) que NUNCA cargan un tipo con monto (verificado 2026-08-31: solo los 4
+		// estructurales + OK/VALORES_CERO/SIN_DESCUENTOS/DESCUENTOS_INCOMPLETOS) — sin fila
+		// NVPC no hay montoDiferencia que consultar, así que van con null. Nunca cambia su
+		// comportamiento: los 4 estructurales siguen bloqueando siempre (null ⇒ BLOQUEANTE).
+		agregarSiRequiereAfectacion(encontradas, participe.getNovedadesCarga(), null);
+		agregarSiRequiereAfectacion(encontradas, participe.getNovedadesFinancieras(), null);
 
 		if (novedades != null) {
 			for (NovedadParticipeCarga novedad : novedades) {
-				agregarSiRequiereAfectacion(encontradas, novedad.getTipoNovedad());
+				agregarSiRequiereAfectacion(encontradas, novedad.getTipoNovedad(), novedad.getMontoDiferencia());
 			}
 		}
 
 		return encontradas;
 	}
 
-	private void agregarSiRequiereAfectacion(List<Long> acumulador, Long tipoNovedad) {
+	/**
+	 * Bloquea solo cuando {@link FamiliaNovedadCarga#clasificar} da BLOQUEANTE (2026-08-31,
+	 * antes miraba solo el tipo — ver el javadoc de {@link #novedadesQueRequierenAfectacion}).
+	 * COBRANZA e INFORMATIVA no entran a {@code acumulador}: el proceso automático sabe qué
+	 * hacer con ese valor (COBRANZA = ya tiene destino, solo falta cobrarlo).
+	 */
+	private void agregarSiRequiereAfectacion(List<Long> acumulador, Long tipoNovedad, Double montoDiferencia) {
 		if (tipoNovedad != null
-				&& NOVEDADES_REQUIEREN_AFECTACION_MANUAL.contains(tipoNovedad)
+				&& FamiliaNovedadCarga.clasificar(tipoNovedad, montoDiferencia) == FamiliaNovedadCarga.BLOQUEANTE
 				&& !acumulador.contains(tipoNovedad)) {
 			acumulador.add(tipoNovedad);
 		}
@@ -2818,11 +3142,27 @@ private void validarNovedadesFase2(ParticipeXCargaArchivo participe,
 			if (!cuotaEncontrada) {
 				Long codigoProductoDB = (!prestamos.isEmpty()) ? prestamos.get(0).getProducto().getCodigo() : null;
 				Long codigoPrestamoDB = (!prestamos.isEmpty()) ? prestamos.get(0).getCodigo() : null;
+				// 2026-08-31: antes se guardaba montoEsperado=null acá, así que registrarNovedad
+				// nunca armaba montoDiferencia — el caso más puro de "no se cobró nada, va a
+				// mora" quedaba clasificado INFORMATIVA por FamiliaNovedadCarga (sin dato para
+				// decir lo contrario) en vez de COBRANZA.
+				//
+				// ⚠️ No se puede reusar la consulta del bucle de arriba (selectByPrestamoYMesAnio
+				// + filtro de estado): se llega a esta rama JUSTAMENTE cuando esa consulta no
+				// encontró ninguna cuota pendiente para NINGÚN préstamo — repetirla daría $0
+				// siempre, un no-op que no cambia nada. La fuente tiene que ser independiente de
+				// ese resultado vacío: Prestamo.valorCuota (el monto nominal de la cuota
+				// recurrente del préstamo), sumado sobre los préstamos del partícipe — no
+				// depende de que exista un DetallePrestamo para este mes/año exacto.
+				double montoEsperadoPendiente = 0.0;
+				for (Prestamo prestamo : prestamos) {
+					montoEsperadoPendiente += nullSafe(prestamo.getValorCuota());
+				}
 				registrarNovedad(participe, ASPNovedadesCargaArchivo.SIN_DESCUENTOS,
 					"No se realizó ningún descuento para este partícipe. Las cuotas pendientes pasarán a mora",
 					codigoProductoDB,
 					codigoPrestamoDB,
-					null,
+					montoEsperadoPendiente > 0.0 ? Double.valueOf(montoEsperadoPendiente) : null,
 					0.0);
 				return;
 			}
@@ -3425,21 +3765,38 @@ private int aplicarAporteAH(ParticipeXCargaArchivo participe, CargaArchivo carga
 	// error, como si no hubiera pasado nada, mientras algunos Aporte ya habían quedado
 	// grabados a medias. Ya no hay catch general acá: cualquier fallo real propaga tal cual,
 	// con el contexto que ya agrega cada método interno (crearNuevoAporte, crearRegistroPagoAporte).
-	// Las ausencias de dato (sin entidad, monto $0, sin HistorialSueldo activo, sin ningún
-	// aporte con valor) ya estaban manejadas con "if" explícitos y siguen exactamente igual.
+	//
+	// REVISADO 2026-08-31 (decisión final del usuario, tres idas y vueltas el mismo día —
+	// esta es la que queda). La frase original de este comentario decía que las cuatro
+	// ausencias de dato de más abajo ("sin entidad", "monto $0", "sin HistorialSueldo activo",
+	// "ningún aporte con valor") eran todas inocuas y no abortaban. Se reclasificaron en tres
+	// grupos, según si se sabe a quién pertenece el dinero y si esa persona debe aportar:
+	//   - ABORTA (dato faltante, no se sabe a quién pertenece o si debe aportar): "sin
+	//     entidad" — ni siquiera hay a quién buscar en el sistema.
+	//   - NOVEDAD (se sabe quién es, falta decidir la cuenta — igual que el excedente Petro a
+	//     un aporte, mismo mecanismo: registrarNovedad + AVPC + pantalla de decisión): "sin
+	//     HistorialSueldo activo" y "HistorialSueldo con esperado en $0".
+	//   - Sigue sin tocar ("monto $0" — no hay plata que perder, nunca fue parte de esto).
+	// Ver también el caso "contrato activo sin vigencia que cubra el mes" en
+	// distribuirAportePorDevengo (ADVERTENCIA, no aborta) — los cinco casos y su tratamiento
+	// están documentados juntos en REGLAS-CARGA-PETRO.md §3.6.
 	System.out.println("========================================");
 	System.out.println("PROCESANDO APORTES (AH) - Partícipe: " + participe.getCodigoPetro() + " (" + participe.getNombre() + ")");
 	System.out.println("========================================");
 
-	// Buscar la entidad
+	// Buscar la entidad. Sin entidad = no se sabe a quién pertenece el dinero: nada que
+	// decidir en pantalla, aborta toda la carga (decisión del usuario, 2026-08-31).
 	List<Entidad> entidades = entidadDaoService.selectByCodigoPetro(participe.getCodigoPetro());
+	double montoDescontadoSinEntidad = nullSafe(participe.getTotalDescontado());
 	if (entidades == null || entidades.isEmpty()) {
-		System.out.println("⚠️ No se encontró entidad para código Petro: " + participe.getCodigoPetro());
-		return 0;
+		throw new IncomeException("No se encontró la entidad del partícipe con código Petro "
+			+ participe.getCodigoPetro() + " (nombre en el archivo: \"" + participe.getNombre()
+			+ "\"), carga " + cargaArchivo.getCodigo() + ", monto descontado $" + montoDescontadoSinEntidad
+			+ ": cree la entidad con ese código Petro y vuelva a procesar la carga.");
 	}
 
 	Entidad entidad = entidades.get(0);
-	double montoRecibido = nullSafe(participe.getTotalDescontado());
+	double montoRecibido = montoDescontadoSinEntidad;
 
 	if (montoRecibido <= 0.01) {
 		System.out.println("⚠️ Monto recibido es $0 para partícipe: " + participe.getCodigoPetro());
@@ -3459,7 +3816,20 @@ private int aplicarAporteAH(ParticipeXCargaArchivo participe, CargaArchivo carga
 		historialSueldoDaoService.selectByEntidadYEstadoActivo(entidad.getCodigo());
 
 	if (historialActivo == null) {
-		System.out.println("⚠️ No se encontró HistorialSueldo activo (estado 99) - No se pueden procesar aportes");
+		// Se sabe quién es (hay Entidad), falta decidir la cuenta: NOVEDAD, no aborta —
+		// mismo mecanismo que el excedente Petro a un aporte (aplicarAfectacionAAporte):
+		// el operador decide en pantalla si el valor recibido va a jubilación o a cesantía,
+		// y esa decisión se aplica vía AVPC (tipoAporte) en el reproceso. Este código de
+		// novedad YA está en FamiliaNovedadCarga.TIPOS_QUE_EXIGEN_AFECTACION — solo faltaba que esta
+		// ruta (Fase 2, con dinero real) la generara además de la validación de carga
+		// (validarAporteAH, Fase 1) que ya la registra sin datos de monto.
+		registrarNovedad(participe, ASPNovedadesCargaArchivo.HISTORIAL_SUELDO_NO_ENCONTRADO,
+			"No se encontró HistorialSueldo activo (estado 99) para la entidad " + entidad.getCodigo()
+				+ "; no se pudo determinar a qué tipo de aporte aplicar los $" + montoRecibido
+				+ " recibidos. Requiere decisión en pantalla (jubilación o cesantía).",
+			null, null, null, montoRecibido);
+		novedadesGeneradasCargaActual.add("Partícipe " + participe.getCodigoPetro() + " ("
+			+ participe.getNombre() + "): $" + montoRecibido + " sin aplicar — sin HistorialSueldo activo.");
 		return 0;
 	}
 
@@ -3481,7 +3851,14 @@ private int aplicarAporteAH(ParticipeXCargaArchivo participe, CargaArchivo carga
 	System.out.println("   - Tiene Cesantía: " + tieneCesantia);
 
 	if (!tieneJubilacion && !tieneCesantia) {
-		System.out.println("⚠️ Ambos aportes tienen valor $0 - No se procesa nada");
+		// Mismo criterio que arriba: se sabe quién es, falta decidir la cuenta -> NOVEDAD.
+		registrarNovedad(participe, ASPNovedadesCargaArchivo.VALORES_HISTORIAL_NULOS,
+			"El HistorialSueldo activo (código " + historialActivo.getCodigo()
+				+ ") tiene jubilación y cesantía esperadas en $0, pero se recibieron $" + montoRecibido
+				+ ". Requiere decisión en pantalla (jubilación o cesantía).",
+			null, null, Double.valueOf(montoEsperadoTotal), montoRecibido);
+		novedadesGeneradasCargaActual.add("Partícipe " + participe.getCodigoPetro() + " ("
+			+ participe.getNombre() + "): $" + montoRecibido + " sin aplicar — jubilación y cesantía esperadas en $0.");
 		return 0;
 	}
 
@@ -3538,6 +3915,14 @@ private static final List<Long> ORDEN_TIPOS_APORTE = Arrays.asList(TIPO_APORTE_J
  * sin ser lo ideal (el reparto no distingue meses realmente pendientes de meses ya pagados
  * pero sin backfillear, y podría anticipar de más), pero YA NO corrompe datos: no se le
  * cobra dos veces a nadie por un movimiento que en realidad era un retiro.</p>
+ *
+ * <p><b>Dinero recibido sin aplicar del todo (2026-08-31, decisión del usuario).</b> Si al
+ * agotar {@link #TOPE_MESES_DEVENGO} meses queda disponible sin aplicar, la causa determina
+ * si se aborta la carga completa: sin contrato ACTIVO es un dato faltante y ABORTA
+ * ({@code IncomeException}); con contrato activo pero sin vigencia que cubra esos meses (o
+ * con vigencia en $0) es un caso legítimo — el partícipe ya no debe aportar ese mes, p.ej. un
+ * jubilado al que Petro le sigue descontando — y NO aborta, solo deja advertencia en el log
+ * con el partícipe, el monto y el motivo. Ver el bloque final del método.</p>
  *
  * @return Cantidad de filas de Aporte creadas
  */
@@ -3620,9 +4005,32 @@ private int distribuirAportePorDevengo(Entidad entidad, double montoRecibido,
 	}
 
 	if (guard >= TOPE_MESES_DEVENGO && disponible > 0.01) {
+		// Decisión del usuario (2026-08-31): "si no se distribuye todo el dinero recibido,
+		// no se debe permitir procesar la carga" — pero SOLO cuando la causa es que falta un
+		// dato (sin contrato ACTIVO). "esperado = 0" tiene otras dos causas legítimas que NO
+		// deben abortar la carga de 2.000 partícipes por uno solo: contrato activo pero sin
+		// una VigenciaContrato que cubra ese mes, o con vigencia pero monto $0 — ambas
+		// significan "este partícipe ya no debe aportar ese mes" (p.ej. un jubilado al que
+		// Petro le sigue descontando: se corrige con devolución/afectación manual, no
+		// cargando un dato faltante). La única forma de distinguirlas es preguntar por el
+		// contrato EXPLÍCITAMENTE — nunca deducirlo de que esperadoMensual dio 0.
+		Contrato contratoActivo = contratoDaoService.selectActivoPorEntidad(entidad.getCodigo());
+		if (contratoActivo == null) {
+			throw new IncomeException("No se pudo aplicar $" + disponible + " de los $" + montoRecibido
+				+ " recibidos del partícipe " + participe.getCodigoPetro() + " (" + participe.getNombre()
+				+ "), entidad " + entidad.getCodigo() + ", carga " + cargaArchivo.getCodigo()
+				+ ": no tiene contrato ACTIVO. Créelo antes de procesar la carga.");
+		}
 		System.err.println("⚠️ ADVERTENCIA: distribuirAportePorDevengo alcanzó el tope de "
-			+ TOPE_MESES_DEVENGO + " meses. Entidad " + entidad.getCodigo() + " - Carga "
-			+ cargaArchivo.getCodigo() + " - Disponible sin aplicar: $" + disponible);
+			+ TOPE_MESES_DEVENGO + " meses sin poder aplicar todo el monto. Entidad " + entidad.getCodigo()
+			+ " (" + participe.getCodigoPetro() + " - " + participe.getNombre() + ") - Carga "
+			+ cargaArchivo.getCodigo() + " - Disponible sin aplicar: $" + disponible
+			+ " - Tiene contrato activo (código " + contratoActivo.getCodigo()
+			+ ") pero su vigencia no cubre ese mes (sin vigencia vigente, o vigencia con monto $0) "
+			+ "en uno o más de los " + TOPE_MESES_DEVENGO + " meses evaluados.");
+		advertenciasVigenciaCargaActual.add("Partícipe " + participe.getCodigoPetro() + " ("
+			+ participe.getNombre() + "): $" + disponible + " sin aplicar — contrato activo (código "
+			+ contratoActivo.getCodigo() + ") pero su vigencia no cubre ese mes.");
 	}
 
 	System.out.println("   ✅ Total aportes creados: " + aportesCreados);

@@ -1035,6 +1035,38 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
     }
 
     /**
+     * @see GeneracionArchivoPetroService#calcularAportesEsperados
+     *
+     * ADICIÓN PURA (2026-08-31): llama a {@link #recopilarAportes}, el MISMO método privado
+     * que usa {@link #recopilarDatos} dentro de {@link #procesarGeneracion}, sin tocar ni
+     * una línea de los métodos existentes. No persiste nada — solo suma lo que
+     * {@code recopilarAportes} ya devuelve en memoria.
+     */
+    @Override
+    public Map<String, Double> calcularAportesEsperados(Long mes, Long anio, Long codigoFilial) throws Exception {
+        List<LineaArchivo> lineas = new ArrayList<>();
+        recopilarAportes(lineas, mes, anio, codigoFilial);
+
+        double jubilacion = 0.0;
+        double cesantia = 0.0;
+        for (LineaArchivo linea : lineas) {
+            jubilacion += linea.montoJubilacion != null ? linea.montoJubilacion : 0.0;
+            cesantia += linea.montoCesantia != null ? linea.montoCesantia : 0.0;
+        }
+
+        Map<String, Double> resultado = new HashMap<>();
+        resultado.put("jubilacion", jubilacion);
+        resultado.put("cesantia", cesantia);
+        resultado.put("total", jubilacion + cesantia);
+        // "participantes" (2026-08-31, para que el ⑥ del cierre de cartera no pierda el dato
+        // que ya mostraba DesgloseAportesCierre.participes): cuántas líneas de LineaArchivo
+        // salieron con monto > 0 en esta filial — mismo criterio que ya aplica recopilarAportes
+        // (linea.monto > 0 para entrar a la lista).
+        resultado.put("participantes", (double) lineas.size());
+        return resultado;
+    }
+
+    /**
      * CAMINO VIEJO (el de siempre): monto fijo de {@code HistorialSueldo} x meses adeudados
      * para los morosos. Se mantiene intacto detrás del flag {@link #recopilarAportes} —
      * ver {@code docs/logica-negocio/petro/REGLAS-GENERACION-PETRO.md} §2.1 para el porqué

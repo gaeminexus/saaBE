@@ -816,8 +816,24 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
         lineasFinal.add(debe);
         lineasFinal.addAll(lineas);
 
+        // Cédula/nombre/idAsoprep en la observación (2026-08-31, pedido del usuario, "en los
+        // asientos contables en general"): un partícipe/préstamo concretos, a diferencia del
+        // cierre de cartera — acá sí corresponden. Sumado al final, sin tocar el resto del
+        // método.
+        String observacionCondonacion = "Condonación del acuerdo " + acuerdo.getCodigo()
+                + " - préstamo " + prestamo.getCodigo();
+        if (acuerdo.getEntidad() != null) {
+            observacionCondonacion += " | Cédula: " + (acuerdo.getEntidad().getNumeroIdentificacion() != null
+                    ? acuerdo.getEntidad().getNumeroIdentificacion() : "-")
+                    + " | Nombre: " + (acuerdo.getEntidad().getRazonSocial() != null
+                    ? acuerdo.getEntidad().getRazonSocial() : "-");
+        }
+        if (prestamo.getIdAsoprep() != null) {
+            observacionCondonacion += " | idAsoprep: " + prestamo.getIdAsoprep();
+        }
+
         Asiento asiento = asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, fecha,
-                "Condonación del acuerdo " + acuerdo.getCodigo() + " - préstamo " + prestamo.getCodigo(),
+                observacionCondonacion,
                 acuerdo.getUsuarioRegistro(), lineasFinal, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
 
         System.out.println("  💰 Asiento de condonación generado: " + asiento.getCodigo()
@@ -886,9 +902,22 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
                     + " desbalanceado.");
         }
 
+        // Cédula/nombre/idAsoprep, sumado al final (2026-08-31) — mismo criterio que el asiento
+        // de condonación de este archivo.
+        String observacionCruce = "Cruce de aportes - acuerdo " + acuerdo.getCodigo() + " - préstamo "
+                + (prestamo != null ? prestamo.getCodigo() : null);
+        if (acuerdo.getEntidad() != null) {
+            observacionCruce += " | Cédula: " + (acuerdo.getEntidad().getNumeroIdentificacion() != null
+                    ? acuerdo.getEntidad().getNumeroIdentificacion() : "-")
+                    + " | Nombre: " + (acuerdo.getEntidad().getRazonSocial() != null
+                    ? acuerdo.getEntidad().getRazonSocial() : "-");
+        }
+        if (prestamo != null && prestamo.getIdAsoprep() != null) {
+            observacionCruce += " | idAsoprep: " + prestamo.getIdAsoprep();
+        }
+
         Asiento asiento = asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, fecha,
-                "Cruce de aportes - acuerdo " + acuerdo.getCodigo() + " - préstamo "
-                        + (prestamo != null ? prestamo.getCodigo() : null),
+                observacionCruce,
                 acuerdo.getUsuarioRegistro(), lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
 
         System.out.println("  💰 Asiento del cruce de aportes generado: " + asiento.getCodigo()

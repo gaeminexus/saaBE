@@ -35,6 +35,16 @@ public class ContextoPago {
      */
     private Long idEmpresa;
 
+    /**
+     * Código del {@code CobroCredito} (CRD.CBCR) que originó esta operación — discriminador
+     * de origen del circuito de cobros con aportes (2026-08-31). {@code null} = llamada
+     * directa (sin depósito); con valor = la llamada nace de
+     * {@code CobroCreditoServiceImpl.procesarCobro}, que ya genera su propio asiento
+     * (CBCRASN2) por la misma plata — los hooks de {@code ContabilidadPrestamoService} tienen
+     * que verlo para no duplicar. Ver {@code SolicitudPrecancelacion#getIdCobroCredito()}.
+     */
+    private Long idCobroCredito;
+
     public ContextoPago() {
     }
 
@@ -92,5 +102,13 @@ public class ContextoPago {
 
     public void setIdEmpresa(Long idEmpresa) {
         this.idEmpresa = idEmpresa;
+    }
+
+    public Long getIdCobroCredito() {
+        return idCobroCredito;
+    }
+
+    public void setIdCobroCredito(Long idCobroCredito) {
+        this.idCobroCredito = idCobroCredito;
     }
 }

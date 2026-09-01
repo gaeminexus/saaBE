@@ -132,6 +132,11 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
     @EJB
     private BancoDaoService bancoDaoService;
 
+    /** Líneas de aportes/préstamos del reparto (2026-08-31) — extraídas de este archivo para
+     * que CBCR use la misma implementación. Ver su javadoc. */
+    @EJB
+    private com.saa.ejb.crd.service.ContabilizacionIndividualCreditoService contabilizacionIndividualCreditoService;
+
     @EJB
     private BancoExternoDaoService bancoExternoDaoService;
 
@@ -552,31 +557,29 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         List<TransferenciaCargaPetro> vigentes = transferenciaCargaPetroDaoService.selectVigentesByCarga(idCarga);
         Long idEmpresa = resolverEmpresa(vigentes);
 
-        Long idPlantilla = plantillaService.codigoByAlterno(PlantillasCredito.REPARTO_PETRO, idEmpresa);
+        Long idPlantilla = plantillaService.codigoByAlterno(PlantillasCredito.REPARTO_TRANSITORIA, idEmpresa);
         if (idPlantilla == null) {
             throw new IncomeException("No existe la plantilla contable alterno "
-                    + PlantillasCredito.REPARTO_PETRO
+                    + PlantillasCredito.REPARTO_TRANSITORIA
                     + " (COBRO PETROECUADOR/ARCH CORRELACIONADO (1)) para la empresa " + idEmpresa + ".");
         }
+        // Transitoria: SIN CAMBIOS, sigue resolviéndose acá mismo (no se movió al servicio
+        // compartido — ver el javadoc de ContabilizacionIndividualCreditoService#lineasReparto
+        // sobre por qué cada circuito mantiene su propio camino para esta línea).
         DetallePlantilla lineaTransitoria = detallePlantillaDaoService.selectByPlantillaYAuxiliar(idPlantilla, 1);
-        DetallePlantilla lineaAportes = detallePlantillaDaoService.selectByPlantillaYAuxiliar(idPlantilla, 2);
-        DetallePlantilla lineaPrestamos = detallePlantillaDaoService.selectByPlantillaYAuxiliar(idPlantilla, 3);
-        if (lineaTransitoria == null || lineaAportes == null || lineaPrestamos == null) {
-            throw new IncomeException("La plantilla alterno " + PlantillasCredito.REPARTO_PETRO
-                    + " no tiene las 3 líneas esperadas (transitoria/aportes/préstamos).");
+        if (lineaTransitoria == null) {
+            throw new IncomeException("La plantilla alterno " + PlantillasCredito.REPARTO_TRANSITORIA
+                    + " no tiene la línea de la cuenta transitoria (aux1=1).");
         }
 
         List<DetalleAsiento> lineas = new ArrayList<>();
         lineas.add(lineaDesdePlantilla(lineaTransitoria, total,
                 "Reparto Petro/ARCH carga " + idCarga + " - cuenta transitoria"));
-        if (totalAportes > 0.0) {
-            lineas.add(lineaDesdePlantilla(lineaAportes, totalAportes,
-                    "Reparto Petro/ARCH carga " + idCarga + " - aportes"));
-        }
-        if (totalPrestamos > 0.0) {
-            lineas.add(lineaDesdePlantilla(lineaPrestamos, totalPrestamos,
-                    "Reparto Petro/ARCH carga " + idCarga + " - préstamos"));
-        }
+        // Aportes/préstamos (aux1 2/3): 2026-08-31, extraído a ContabilizacionIndividualCreditoService
+        // para que CBCR use la misma implementación — mismo resultado, misma plantilla, mismo
+        // idPlantilla ya resuelto arriba. Refactor puro: el asiento sale idéntico.
+        lineas.addAll(contabilizacionIndividualCreditoService.lineasReparto(idPlantilla, totalAportes,
+                totalPrestamos, "Reparto Petro/ARCH carga " + idCarga));
 
         LocalDate fechaAsiento = LocalDate.now();
         com.saa.model.cnt.Asiento asiento = asientoContableService.generarAsiento(idEmpresa,
