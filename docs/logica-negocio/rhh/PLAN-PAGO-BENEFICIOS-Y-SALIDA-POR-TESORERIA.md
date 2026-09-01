@@ -234,14 +234,74 @@ acreditación y consumo, cerrado en el frente O (`AcreditacionVacacionesServiceI
 escribe `ProvisionNomina`). **Antes de tocar nada acá hay que levantar cómo se descuenta hoy.** No
 se diseña en este documento: se levanta primero. Es trabajo aparte.
 
-⚠️ **3-C (jubilación patronal y desahucio) no pasa por un pago programado anual.** Se paga al
-terminar la relación laboral, y `ContabilizacionNominaService.contabilizarLiquidacion` ya existe.
-La pregunta es si ese asiento ya da de baja la provisión o sólo carga el gasto. **También se
-levanta primero.**
+### 4.1bis 🔴 Frente 3-C — jubilación patronal y desahucio: doble reconocimiento del gasto
 
-**Por eso este documento congela sólo 3-A.** 3-B y 3-C entran como levantamiento, no como
-implementación. Es una reducción deliberada del alcance pedido, y está declarada acá para que sea
-visible: no es un olvido.
+**Levantado y confirmado el 2026-09-01. El usuario decidió corregirlo ya, junto con 3-A.**
+
+`ContabilizacionNominaServiceImpl.lineaDeRubroFiniquito` (`:496-507`) resuelve cinco rubros de
+finiquito consecutivos **con dos criterios distintos**:
+
+| Rubro | Línea que devuelve | Efecto sobre el pasivo |
+|---|---|---|
+| `FINIQUITO_DECIMO_TERCERO` | 40 `PROVISION_DECIMO_TERCERO_POR_PAGAR` | ✅ lo descarga |
+| `FINIQUITO_DECIMO_CUARTO` | 41 `PROVISION_DECIMO_CUARTO_POR_PAGAR` | ✅ lo descarga |
+| `FINIQUITO_VACACIONES` | 42 `PROVISION_VACACIONES_POR_PAGAR` | ✅ lo descarga |
+| **`FINIQUITO_DESAHUCIO`** | **60 `GASTO_DESAHUCIO`** | ❌ el pasivo 45 nunca baja |
+| **`FINIQUITO_JUBILACION_PATRONAL`** | **62 `GASTO_JUBILACION_PATRONAL`** | ❌ el pasivo 44 nunca baja |
+
+Y `ProvisionActuarialServiceImpl.cargarProvisionActuarial` (`:60-95`) **sí** escribe esas dos
+provisiones en `RHH.PVNM` cada vez que se carga el estudio actuarial, contra las cuentas 44 y 45
+(`importesDeProvisiones:757-805`). Nada las consume en ningún punto del código.
+
+**Consecuencia: el gasto se reconoce dos veces** — mensualmente como provisión (líneas 34/35) y otra
+vez completo al liquidar (60/62) — y el pasivo crece sin techo.
+
+#### El tratamiento: descargar hasta el saldo, el exceso a gasto
+
+⛔ **No basta con cambiar el mapeo a 44/45.** Si un empleado no tiene provisión acumulada —porque
+nunca se cargó el estudio actuarial para él, o entró después de la última carga— debitar la cuenta
+de provisión dejaría el pasivo **en negativo** y el gasto sin reconocer. Sería cambiar un defecto
+por otro.
+
+**Regla, para los dos rubros:**
+
+```
+saldoProvision = SUM(PVNMVLOR) de RHH.PVNM  para (empleado, tipoProvision)
+                 tipoProvision = 6 JUBILACION_PATRONAL | 7 DESAHUCIO
+
+parteProvision = min(saldoProvision, valorDelRubroEnElFiniquito)
+parteGasto     = valorDelRubroEnElFiniquito - parteProvision
+
+DEBE  línea 44 / 45   por parteProvision   (si > 0)
+DEBE  línea 62 / 60   por parteGasto       (si > 0)
+```
+
+**Por qué este tratamiento y no otro:** con `saldoProvision = 0` degrada **exactamente** al
+comportamiento de hoy (todo a gasto). Eso lo vuelve seguro de desplegar **aunque no se haya medido
+antes** si el estudio actuarial está cargado o no — que era la única objeción del árbitro a
+corregirlo sin medir. El caso no medido es el caso que no cambia.
+
+**Se suma sin restar consumos** porque hoy nada consume esas provisiones: la suma de `PVNMVLOR` es
+el saldo. ⚠️ **El día que algo las consuma, esta fórmula deja de valer** y hay que restar lo ya
+descargado. Queda anotado acá porque no se deduce leyendo la fórmula.
+
+**Fuera de alcance de 3-C:** `FINIQUITO_DESPIDO_INTEMPESTIVO` → 61 `GASTO_DESPIDO_INTEMPESTIVO`
+**se queda como está**. El despido intempestivo no se provisiona (no hay línea de provisión para él
+en el rubro 214, ni tipo en `RhhTipoProvision`): es un gasto que nace el día del despido. Está bien.
+
+---
+
+**3-B (vacaciones) sigue siendo sólo levantamiento.** A diferencia de 3-C, ahí el finiquito **ya**
+descarga la provisión (línea 42), así que el problema no es un mapeo faltante sino que **nada la
+descarga al consumir vacaciones** (`AcreditacionVacacionesServiceImpl.consumir():268-301` sólo mueve
+días en `SaldoVacaciones`, sin efecto contable). Agregar una baja por consumo **sin** enseñarle al
+finiquito qué ya se descargó produce doble descuento: no hay ninguna marca que distinga los días ya
+reversados de los pendientes. **No se implementa hasta diseñar esa marca.**
+
+*Dato relacionado, encontrado en el mismo levantamiento:* `SaldoVacaciones.diasPagados` existe como
+columna real y **nadie la escribe nunca** con valor > 0 — se inicializa en 0
+(`AcreditacionVacacionesServiceImpl:128`, `MigracionRhhServiceImpl:456`) y ahí muere. Es el mismo
+patrón que `LQBSVLPG`: una columna que aparenta un ciclo cerrado que no existe. No apoyarse en ella.
 
 ### 4.2 Frente 2 — la nómina pasa por la bandeja
 
@@ -339,7 +399,10 @@ lectura. **Las corre el usuario.**
 
 ## 8. Lo que este documento NO decide
 
-- **3-B (vacaciones) y 3-C (jubilación/desahucio):** levantamiento pendiente, §4.1.
+- **3-B (vacaciones):** levantamiento hecho; **no se implementa** hasta diseñar la marca que
+  distinga los días ya descargados de la provisión. Ver §4.1bis, último bloque.
+- ~~**3-C (jubilación/desahucio):** levantamiento pendiente~~ — **levantado y congelado el
+  2026-09-01, §4.1bis.** El usuario decidió corregirlo junto con 3-A.
 - **Formato del CSV del MDT:** bloqueado por el archivo de ejemplo, §5.2.
 - **Si `generarDecimo*` filtra por modalidad:** a verificar por el agente, §3.3. Cambia el alcance.
 - **Numeración de `ODBSNMRO`:** si sigue el patrón de `RDPGNMRO` o usa `CBR.NXPE`. A resolver
