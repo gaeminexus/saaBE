@@ -210,3 +210,24 @@ Los docs antiguos con rutas `/api/...`, `/api/generacion-petro`, `/api/petrocome
 8. El archivo de respuesta se lee en **ISO-8859-1** (ñ/tildes); prohibido cambiar a UTF-8.
 9. `parseDouble` del parser acepta formato europeo (`1.234,56`) y devuelve `0.0` ante error, nunca
    lanza excepción.
+10. **⛔ `PRST.PRSTSLTT` (`saldoTotal`) y `PRST.PRSTSLCP` (`saldoCapital`) son campos MUERTOS: nadie
+    los actualiza.** En todo el backend existe `Prestamo.setSaldoTotal()` y **cero llamadas**; el
+    valor es el que dejó la migración y nunca se movió. Medido el 2026-09-01: los préstamos
+    **cancelados** conservan **28,5 millones** de saldo de capital entre los estados 3 y 4.
+
+    **No filtrar ni sumar por esas dos columnas.** El saldo real se reconstruye desde las cuotas y
+    los pagos (`SaldoPrestamoService` en el frontend, `calcularTotalPendientePrestamo` en el
+    backend), que es lo que ya hacía la pantalla de cobros personales
+    (`cobros-personales.component.ts:292`).
+
+    **Costó un defecto en producción.** La pestaña de descuentos de `archivo-petro/carga/detalle`
+    filtraba la lista de préstamos afectables por `saldoTotal > 0`, así que **los préstamos EN MORA
+    con `PRSTSLTT` en 0 o NULL no aparecían** al afectar una novedad bloqueante — y, por el otro
+    lado, **sí aparecían préstamos ya cancelados**. Corregido el 2026-09-01 filtrando por
+    `idEstado` (VIGENTE 2 y EN_MORA 11; `DE_PLAZO_VENCIDO` 8 queda fuera por decisión del usuario).
+    Diagnóstico en `crd/sql/154_DIAGNOSTICO_PRSTSLTT_AFECTABLES.sql`.
+
+    Lo que hace difícil de ver este defecto: **el filtro no menciona el estado en ninguna parte**,
+    así que buscar "por qué no salen los que están en mora" lleva derecho a los filtros de estado
+    de la carga —que están todos bien e incluyen la mora— y no al filtro de saldo, que es el que
+    los estaba descartando.

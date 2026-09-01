@@ -154,6 +154,52 @@ cita legal**. Es la regla 7 —lo que un agente va a implementar tiene que estar
 
 ---
 
+## 2c. Corrección urgente — préstamos en mora en las novedades bloqueantes de Petro
+
+**Pedido del usuario el 2026-09-01.** En `archivo-petro/carga/detalle`, pestaña descuentos, al
+afectar una novedad BLOQUEANTE solo aparecían los préstamos vigentes y no los que están en mora.
+
+**Entregado:** `b3873b3` (saaFE), un solo archivo. Diagnóstico en `crd/sql/154`. Trampa documentada
+en `petro/REGLAS-GENERALES-PETRO.md` §9.10.
+
+### H10 — `PRSTSLTT` y `PRSTSLCP` son campos muertos, y uno de ellos filtraba una pantalla
+
+La causa **no era un filtro por estado**. El agente de BE recorrió la generación de novedades
+completa y **ninguna condición excluye `EN_MORA`**: todas las que miran estado ya lo incluyen.
+
+El filtro estaba en el frontend (`detalle-consulta-carga.component.ts:2408`) y era por
+**`saldoTotal > 0`** — o sea `PRST.PRSTSLTT`. Y esa columna **no la actualiza nadie**:
+`Prestamo.setSaldoTotal()` existe en el backend con **cero llamadas**. Un préstamo en mora cuyo
+`PRSTSLTT` quedó en 0 o `NULL` desaparecía de la lista, debiera lo que debiera.
+
+**Por qué costaba verlo:** el filtro **no menciona el estado en ninguna parte**, así que la
+pregunta *"¿por qué no salen los que están en mora?"* lleva derecho a los filtros de estado de la
+carga —que están todos bien— y no al de saldo, que era el que los descartaba.
+
+**Efecto colateral corregido de paso, que nadie había reportado:** la pantalla ofrecía préstamos
+**ya cancelados** para afectar, por el mismo campo congelado.
+
+**Precedente que confirmó el diagnóstico:** `cobros-personales.component.ts:292` ya documentaba que
+`saldoTotal`/`saldoCapital` de `PRST` no son fiables, y esa pantalla las había abandonado a favor de
+calcular desde cuotas y pagos. La de Petro nunca se actualizó.
+
+> **Lección de método, y es la que vale:** el agente de BE reportó **«el filtro no existe»** en vez
+> de cambiar el candidato más parecido. Si hubiera "arreglado" el más plausible, hoy habría un
+> cambio en la carga Petro que no arregla nada y que hay que revertir. **Pedir explícitamente que un
+> agente pueda contestar "no está donde decís" es lo que hizo que esto se resolviera bien.**
+
+### H11 — Hay DOS implementaciones de la "fase 2" de la carga Petro
+
+Detectado por el agente de BE. `CargaArchivoPetroServiceImpl` (`asoprep`,
+`POST /asgn/aplicarPagosArchivoPetro`) y `ProcesoCargaPetroServiceImpl` (`crd`,
+`POST /crar/procesarCargaPetro`) conviven, **y las dos escriben «FASE 2» en el log**. La pantalla
+usa la primera (verificado en `detalle-consulta-carga.component.ts:993`); la segunda tiene TODOs sin
+resolver y escribe en un campo único en vez de en `NovedadParticipeCarga`. Parece un resto sin
+desconectar. **Sin resolver, no urgente** — pero es exactamente cómo se diagnostica mal un problema
+de producción leyendo la consola.
+
+---
+
 ## 3. Hallazgos de la revisión de arranque (2026-09-01)
 
 ### H1 — El contrato de API del otorgamiento vivía SOLO en el espejo
