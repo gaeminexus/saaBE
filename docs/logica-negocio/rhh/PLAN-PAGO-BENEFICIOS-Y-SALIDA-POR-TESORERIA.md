@@ -315,7 +315,23 @@ GeneracionOrdenPagoServiceImpl.generar(idPeriodo, idCuentaBancaria, usuario)
 ```
 
 - **Origen nuevo:** `RHH_NOMINA` en `OrigenPagoExterno`.
-- **Columna nueva** en `RHH.RDPG`: `RDPGPGTR NUMBER NULL`, FK al `PagoProgramado`.
+- ⛔ **SIN columna nueva en `RHH.RDPG`. Corregido el 2026-09-01 — la versión anterior de este
+  documento pedía un `RDPGPGTR`.** El vínculo se resuelve al revés: `PGS.PGTR` ya guarda
+  `PGTRORGN` (origen) y `PGTRIDOR` (id del documento de origen), así que el pago de una orden se
+  encuentra consultando `origenExterno = 'RHH_NOMINA' AND idOrigen = idOrdenPago`. **No hace falta
+  tocar `RHH.RDPG`.**
+
+  **Por qué importa, y por qué se aparta del patrón de `AnticipoEmpleado`** (que sí guarda la FK):
+  agregar una columna a `RHH.RDPG` obliga a mapearla en `OrdenPagoNomina`, y por la **regla 9** una
+  columna `@Column` que no existe en la base **rompe toda lectura de la entidad con ORA-00904**.
+  Eso acopla el despliegue: el `.sql` tendría que correr antes del WAR, y si no corre, la pantalla
+  de órdenes de pago de nómina deja de funcionar — **en el primer mes que la nómina se procesa
+  desde el sistema**. Es exactamente el defecto `CBR.ANTC` del 2026-08-29, que ya costó una vez.
+  Consultar por `origen + idOrigen` no necesita DDL, así que **el frente 2 no tiene dependencia de
+  base de datos y se puede desplegar solo**.
+
+  *El frente 1 sí conserva su `ODBS.PGTRCDGO`, y ahí es correcto: `ODBS` es una tabla nueva, se
+  crea entera con esa columna incluida y no hay nada existente que romper.*
 - **`contabilizarPago` NO se toca** (D1). Sigue armando el asiento con `CFNMPLPG`.
 - **`confirmar(idOrdenPago, fechaAcreditacion, usuario)`** pasa a exigir que el pago esté
   `CONFIRMADO` en tesorería antes de contabilizar. Ese es el punto donde la aprobación se vuelve
@@ -385,9 +401,9 @@ lectura. **Las corre el usuario.**
 |---|---|---|
 | 1 | Correr las verificaciones de §6 | — |
 | 2 | Conseguir el CSV de ejemplo del SUT (§5.2) | usuario |
-| 3 | DDL: `RHH.ODBS`, `LQBSODBS`, `RDPGPGTR`, rubro de estados | V1, V4 |
+| 3 | DDL: `RHH.ODBS`, `LQBSODBS`, rubro de estados | V1, V4 |
 | 4 | BE frente 1 (§3) | paso 3 |
-| 5 | BE frente 2 (§4.2) | paso 3 |
+| 5 | BE frente 2 (§4.2) | **nada — no tiene DDL**, ver §4.2 |
 | 6 | BE frente 3-A (§4.1) | paso 4 |
 | 7 | FE: pantalla de órdenes de beneficio social | contrato de API congelado |
 | 8 | Levantamiento 3-B y 3-C (§4.1) | — (independiente) |
