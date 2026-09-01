@@ -459,6 +459,13 @@ public class OrdenBeneficioSocialServiceImpl implements OrdenBeneficioSocialServ
         }
     }
 
+    /**
+     * Numera con un COUNT+1 sobre las ordenes ya emitidas del anio, no con un MAX parseado.
+     * Consecuencia aceptada (2026-09-01): si se anula una orden y se genera otra el mismo
+     * anio, el COUNT vuelve a contar la anulada y el numero visible se repite entre las dos.
+     * No hay unicidad forzada en ODBSNMRO, asi que no rompe nada -es solo lo que se ve-, pero
+     * puede confundir. Si algun dia molesta, pasar a MAX(secuencial) parseado del numero.
+     */
     private String armaNumero(Integer anio) throws Throwable {
         long secuencial = ordenBeneficioSocialDaoService.countByAnio(anio) + 1;
         return String.format(PREFIJO_NUMERO, anio, Long.valueOf(secuencial));
