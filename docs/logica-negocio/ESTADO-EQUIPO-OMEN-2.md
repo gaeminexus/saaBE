@@ -38,12 +38,20 @@ limpios; no se usan.
 
 | # | Módulo | Frente | Estado |
 |---|---|---|---|
-| **1** | rhh/tsr | **Pago de décimos acumulados** | 🔵 diseño congelado, sin implementar |
-| **2** | rhh/tsr | **La nómina pasa por la bandeja de aprobación de TSR** | 🔵 diseño congelado, sin implementar |
-| **3-A** | rhh/cnt | **Baja de provisión de décimos y fondos de reserva al pagar** | 🔵 diseño congelado, sin implementar |
-| **3-B** | rhh | Baja de provisión de **vacaciones** | ⚪ levantamiento pendiente |
-| **3-C** | rhh | Baja de provisión de **jubilación patronal y desahucio** | ⚪ levantamiento pendiente |
-| **4** | rhh | **Reporte del Ministerio de Trabajo (SUT)** | 🔴 bloqueado — falta el CSV de ejemplo |
+| **1** | rhh/tsr | **Pago de décimos acumulados** | 🟠 **FE entregado, BE bloqueado por el V1** (falta la tabla `ODBS`) |
+| **1bis** | rhh | Los décimos se generaban también para los mensualizados | ✅ **entregado** (`e3b53ab`) |
+| **2** | rhh/tsr | **La nómina pasa por la bandeja de aprobación de TSR** | ✅ **entregado BE+FE** (`bb9bccb`, `7081a8c`) |
+| **3-A** | rhh/cnt | Baja de provisión de décimos y fondos de reserva al pagar | 🟠 depende del frente 1 |
+| **3-B** | rhh | Baja de provisión de **vacaciones** | ⚪ levantado; **no se implementa** hasta diseñar la marca de lo ya descargado |
+| **3-C** | rhh | **Baja de provisión de jubilación patronal y desahucio** | ✅ **entregado** (`54c8cdf`) |
+| **4** | rhh | Reporte del Ministerio de Trabajo (SUT) | 🔴 bloqueado — falta el CSV de ejemplo |
+
+**Nada de lo entregado está desplegado.** Todo compila (`mvn -q clean compile` y `ng build`, los dos
+exit 0) y está en `origin/main`.
+
+⛔ **Orden de despliegue del frente 2: el frontend PRIMERO, el WAR después.** FE nuevo con WAR viejo
+es inofensivo (el REST lee el body como `Map` e ignora la clave de más); WAR nuevo con FE viejo
+**rompe `generar()` de nómina**, porque no llegaría el `idUsuario`. Ver §4.2 del diseño.
 
 **Documentos:**
 - Diseño: `rhh/PLAN-PAGO-BENEFICIOS-Y-SALIDA-POR-TESORERIA.md`
@@ -100,9 +108,42 @@ desglose**: `contabilizarSegunOrigen` (`PagoProgramadoServiceImpl:1993-1999`) de
 contabiliza. Eso permite que el pago pase por la bandeja **sin** que tesorería arme un segundo
 asiento, que es la decisión D1 del usuario.
 
-### 2.5 ⚠️ El riesgo más caro del frente 1, todavía sin verificar
+### 2.5 🔴 El defecto que sólo se ve cruzando los dos repositorios
 
-**¿`generarDecimoTercero`/`generarDecimoCuarto` filtran por modalidad ACUMULADO?** No se verificó.
+Tesorería exige un **`idUsuario` numérico** para registrar un pago —lo usa como FK real en
+`em.find(Usuario.class, ...)`— y **todo RRHH maneja el usuario como texto libre** para las columnas
+de auditoría `*USRR`. No había puente.
+
+El agente de backend lo tapó con `UsuarioDaoService.selectByNombre` y **marcó la asunción como no
+verificable desde su lado**. Hizo lo correcto: la asunción es falsa. Verificado en `saaFE`,
+`usuarioSesion()` (`shared/services/usuario-sesion.ts:11-23`) recorre **siete** claves de storage
+—porque el login y `AppStateService.inicializarApp()` guardan el dato con nombres distintos— y **si
+ninguna está poblada devuelve el literal `'SYSTEM'`**, que no existe en `SCP.PJRQ`. Buscar por ese
+texto habría hecho fallar `generar()` de nómina entera, según por dónde se hubiera inicializado la
+sesión, en el primer mes que la nómina corre desde el sistema.
+
+La solución ya existía del otro lado sin que ninguno de los dos la viera: `AppStateService:313-315`
+expone el id numérico con un Javadoc que dice *«listo para mandar como `idUsuario` en un payload»*.
+
+> **Lección, y es la que justifica este rol:** ninguno de los dos agentes podía encontrarlo. El de
+> backend veía un `String` que no servía y no podía saber de dónde salía; el de frontend mandaba un
+> campo que siempre le había funcionado. **El defecto vivía en el espacio entre los dos repos**, que
+> es exactamente lo único que ve el árbitro. Un agente que marca su asunción en vez de darla por
+> buena es lo que lo hizo visible.
+
+### 2.6 Dos columnas muertas que aparentan un ciclo completo
+
+`LQBSVLPG` (valor pagado del beneficio) y `SaldoVacaciones.diasPagados`: las dos existen en la
+entidad y en la base, y **nadie las escribe nunca** con un valor distinto de cero. Leer la entidad
+sugiere que el ciclo de pago está cerrado; no lo está.
+
+**El patrón vale como método:** para saber si un ciclo existe, no alcanza con ver que el campo esté
+declarado — hay que preguntar **quién lo escribe**. Es una búsqueda distinta de *quién lo declara*,
+y es la que encontró los dos defectos de esta jornada.
+
+### 2.7 ✅ El riesgo más caro del frente 1 — verificado y corregido
+
+**¿`generarDecimoTercero`/`generarDecimoCuarto` filtran por modalidad ACUMULADO?** **NO filtraban — confirmado y corregido el 2026-09-01 (`e3b53ab`).**
 Si generan liquidaciones también para contratos MENSUALIZADOS, pagar la orden **pagaría dos veces**
 el mismo décimo: una dentro del rol y otra por la vía nueva. El agente de backend debe verificarlo
 y detenerse si no filtra.
