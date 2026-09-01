@@ -439,6 +439,23 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
                 descuentos = RedondeoNomina.suma(descuentos, valor);
                 continue;
             }
+            // Jubilacion patronal y desahucio se reparten entre la provision acumulada y el
+            // gasto, para no reconocer el gasto dos veces (ver #4.1bis del documento de
+            // diseno). Los demas rubros siguen resolviendo una unica linea.
+            Long rol = rubro.getConceptoNomina() != null
+                    ? rubro.getConceptoNomina().getRolMotor() : null;
+            if (esRol(rol, RhhRolConceptoMotor.FINIQUITO_JUBILACION_PATRONAL)) {
+                descargaProvisionActuarial(importes, empleado.getCodigo(),
+                        RhhTipoProvision.JUBILACION_PATRONAL, RhhLineaAsiento.PROVISION_JUBILACION_PATRONAL,
+                        RhhLineaAsiento.GASTO_JUBILACION_PATRONAL, valor);
+                continue;
+            }
+            if (esRol(rol, RhhRolConceptoMotor.FINIQUITO_DESAHUCIO)) {
+                descargaProvisionActuarial(importes, empleado.getCodigo(),
+                        RhhTipoProvision.DESAHUCIO, RhhLineaAsiento.PROVISION_DESAHUCIO,
+                        RhhLineaAsiento.GASTO_DESAHUCIO, valor);
+                continue;
+            }
             suma(importes, lineaDeRubroFiniquito(rubro), valor);
         }
 
@@ -500,14 +517,71 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
             case RhhRolConceptoMotor.FINIQUITO_VACACIONES:
                 return RhhLineaAsiento.PROVISION_VACACIONES_POR_PAGAR;
             case RhhRolConceptoMotor.FINIQUITO_DESAHUCIO:
+                // Inalcanzable: el for de contabilizarLiquidacion intercepta este rol antes
+                // de llegar aca y llama a descargaProvisionActuarial. Se deja este case como
+                // red: si alguien quita esa intercepcion sin darse cuenta, el rol cae aqui en
+                // vez de en el default (que lo mandaria a GASTO_SUELDOS_LIQUIDACION, un
+                // comportamiento peor y distinto del que hubo siempre).
                 return RhhLineaAsiento.GASTO_DESAHUCIO;
             case RhhRolConceptoMotor.FINIQUITO_DESPIDO_INTEMPESTIVO:
                 return RhhLineaAsiento.GASTO_DESPIDO_INTEMPESTIVO;
             case RhhRolConceptoMotor.FINIQUITO_JUBILACION_PATRONAL:
+                // Inalcanzable por la misma razon que FINIQUITO_DESAHUCIO arriba: lo
+                // intercepta el for de contabilizarLiquidacion antes de llamar a este metodo.
                 return RhhLineaAsiento.GASTO_JUBILACION_PATRONAL;
             default:
                 // Remuneracion pendiente, fondos de reserva pendientes y cualquier rubro nuevo.
                 return RhhLineaAsiento.GASTO_SUELDOS_LIQUIDACION;
+        }
+    }
+
+    /**
+     * Reparte el rubro de jubilacion patronal o desahucio del finiquito entre la provision
+     * acumulada y el gasto, para no reconocer el gasto dos veces.
+     *
+     * <p>Descarga la provision (linea 44/45) hasta el saldo acumulado en <code>RHH.PVNM</code>
+     * y manda el exceso a gasto (linea 62/60). Con saldo cero degrada exactamente al
+     * comportamiento anterior -todo a gasto-, que es lo que permite desplegar esto sin haber
+     * medido antes si el estudio actuarial esta cargado (ver
+     * docs/logica-negocio/rhh/PLAN-PAGO-BENEFICIOS-Y-SALIDA-POR-TESORERIA.md #4.1bis).</p>
+     *
+     * <p>Se suma sin restar consumos porque hoy nada consume esas provisiones: la suma de
+     * <code>PVNMVLOR</code> es el saldo completo. El dia que algo las consuma, esta cuenta deja
+     * de ser el saldo real y hay que restar lo ya descargado.</p>
+     *
+     * <p>Redondea el valor del rubro y la parte de provision, y saca la parte de gasto por
+     * diferencia entre las dos ya redondeadas -la regla del modulo (ver RedondeoNomina)-, en
+     * vez de redondear las dos por separado: redondear cada una independientemente puede dejar
+     * a la suma sin cuadrar contra el valor del rubro y colar una linea de gasto fantasma de
+     * 0,01 o 0,00 en el asiento.</p>
+     *
+     * @param importes			: Mapa que se va llenando
+     * @param idEmpleado		: Id del empleado de la liquidacion
+     * @param tipoProvision		: Codigo alterno del detalle del rubro RHH_TIPO_PROVISION
+     * @param lineaProvision	: Linea de provision por pagar (44 o 45)
+     * @param lineaGasto		: Linea de gasto (62 o 60)
+     * @param valorRubro		: Valor del rubro en el finiquito
+     * @throws Throwable		: Excepcion
+     */
+    private void descargaProvisionActuarial(Map<Integer, Double> importes, Long idEmpleado,
+            int tipoProvision, int lineaProvision, int lineaGasto, Double valorRubro) throws Throwable {
+        Double saldoProvision = provisionNominaDaoService.sumaValorByEmpleadoYTipo(
+                idEmpleado, Long.valueOf(tipoProvision));
+        // Piso en cero: PVNMVLOR no deberia ser negativo, pero un ajuste actuarial mal cargado
+        // no debe volverse un DEBE negativo en el asiento.
+        double saldo = saldoProvision != null ? Math.max(saldoProvision.doubleValue(), 0D) : 0D;
+
+        Double valor = RedondeoNomina.redondea(valorRubro);
+        Double parteProvision = RedondeoNomina.redondea(
+                Double.valueOf(Math.min(saldo, valor.doubleValue())));
+        Double parteGasto = RedondeoNomina.redondea(
+                Double.valueOf(valor.doubleValue() - parteProvision.doubleValue()));
+
+        if (parteProvision.doubleValue() > 0D) {
+            suma(importes, lineaProvision, parteProvision);
+        }
+        if (parteGasto.doubleValue() > 0D) {
+            suma(importes, lineaGasto, parteGasto);
         }
     }
 

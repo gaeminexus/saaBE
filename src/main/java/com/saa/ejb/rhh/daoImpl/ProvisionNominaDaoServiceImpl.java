@@ -81,4 +81,21 @@ public class ProvisionNominaDaoServiceImpl extends EntityDaoImpl<ProvisionNomina
 		query.setParameter("idPeriodo", idPeriodo);
 		return query.getResultList();
 	}
+
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.rhh.dao.ProvisionNominaDaoService#sumaValorByEmpleadoYTipo(java.lang.Long, java.lang.Long)
+	 */
+	@Override
+	public Double sumaValorByEmpleadoYTipo(Long idEmpleado, Long tipoProvision) throws Throwable {
+		System.out.println("Ingresa al metodo sumaValorByEmpleadoYTipo de ProvisionNomina, empleado: "
+				+ idEmpleado + ", tipo: " + tipoProvision);
+		Query query = em.createQuery(" select   sum(t.valor) "
+				+ " from     ProvisionNomina t "
+				+ " where    t.empleado.codigo = :idEmpleado "
+				+ "          and t.tipoProvision = :tipoProvision ");
+		query.setParameter("idEmpleado", idEmpleado);
+		query.setParameter("tipoProvision", tipoProvision);
+		Object resultado = query.getSingleResult();
+		return resultado == null ? Double.valueOf(0D) : Double.valueOf(resultado.toString());
+	}
 }
