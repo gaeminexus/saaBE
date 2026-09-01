@@ -199,3 +199,32 @@ código" que no existían:
 **Pendiente cuando baje la urgencia:** averiguar QUÉ eliminó la columna. Varios equipos trabajan
 sobre esta base. Si vuelve a desaparecer, la pantalla de cobros se cae de nuevo — y esta vez con
 asientos de reparto ya escritos que perderían su referencia.
+
+---
+
+## 7. Ejecutado el 2026-09-01
+
+| Script | Que hizo | Estado |
+|---|---|---|
+| `95_PRODUCTOS_PAGO_APORTES.sql` | 5 grupos + 5 productos de pago, y `CRD.TPAP.TPAPPRDP` para los 11 tipos de `CRD.CTAP` | ✅ ejecutado |
+| `100` (bloque 1, **re-ejecutado**) | `CRD.CBCR.CBCRASRP` + FK + indice — la columna habia desaparecido, ver §6 | ✅ ejecutado y verificado |
+| `106_REFERENCIA_UNICA_COBROS.sql` | `CRD.UX_CBCR_REFERENCIA` — indice unico basado en funcion | ✅ ejecutado, `UNIQUE` / `VALID` / owner `CRD` |
+
+### El tipo de aporte 1 sigue SIN configurar, y no es inocuo
+
+`APORTE PERSONALES` (tipo 1) no tiene cuenta en `CRD.CTAP` ni producto de pago en `CRD.TPAP`.
+La regla de `DevolucionAporteServiceImpl` es **todo o nada** (`contabiliza = tiposSinProducto.isEmpty()`):
+
+- Una devolucion **solo** de ese tipo → se registra, se paga y **NO genera contabilidad**, sin
+  error y sin aviso en pantalla. Solo queda una linea en el log del servidor.
+- Una devolucion que lo **mezcla** con otros tipos → se rechaza con `ERR_TIPO_APORTE_SIN_PRODUCTO`.
+
+**Pasó de verdad el 2026-09-01**: una devolucion se proceso completa sin asientos por este motivo.
+Hasta que se defina esa cuenta, **no devolver aportes personales**.
+
+### Regla que dejo el incidente de `CBCRASRP`
+
+La FK y el indice **no son evidencia de que una columna exista** — los dos controles pasaron con la
+columna ausente. El unico control valido es `ALL_TAB_COLUMNS`, y mejor todavia, abrir la pantalla
+que la usa. Lo mismo al crear un indice: verificar `OWNER = 'CRD'`, porque un `CREATE INDEX` sin
+prefijo se crea en el schema de la sesion y la tabla queda sin indice, sin ningun error.

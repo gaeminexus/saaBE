@@ -1,3 +1,15 @@
+## ⭐ Documento de referencia de contabilidad
+
+**`crd/REGLAS-ASIENTOS-CONTABLES-CRD.md` (2026-09-01) es la referencia vigente de TODO lo contable
+de crd**: los 18 asientos que genera el modulo, que contiene cada uno, con que plantilla y con que
+reglas, como se reversa cada uno, y los 8 huecos conocidos con nombre.
+
+Leerlo ANTES de tocar cualquier cosa que genere un asiento. Reemplaza lo que digan los documentos
+anteriores sobre asientos de crd — varios quedaron desactualizados el 2026-08-31, cuando el
+circuito de cobros paso de dos asientos a tres.
+
+---
+
 # ESTADO DEL TRABAJO EN CURSO — módulo CRD
 
 **Mantenido por el árbitro de `crd`.** **Última actualización: 2026-08-31 (sesión `saabe-25`).**
