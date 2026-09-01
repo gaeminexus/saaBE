@@ -281,7 +281,9 @@ sino **por construcción**: parten de `{...entidadCompleta}` y nunca tienen que 
 
 1. **`forms/comunes/cuerpo-entidad.ts` (`armarCuerpo`)** — helper que ya implementa la regla, y su
    propio comentario la enuncia: *«`base` tiene que ser el registro tal como llegó del backend»*.
-   **Lo usa una sola pantalla.**
+   **Lo invocan dos pantallas**: `contrato-form.component.ts:189` y `seccion-ficha.component.ts:278`.
+   *(Corregido el 2026-09-01: este documento decía «una sola». Lo avisó el árbitro de `lap-saa-1` y
+   lo confirmé por grep — el módulo lo importan siete archivos, pero la mayoría sólo toma `referencia`.)*
 2. **Sacar las transiciones de estado del `PUT` genérico**, moviéndolas a endpoints de proceso con
    body propio. `novedad-iess.service.ts` **ya hizo exactamente eso el 2026-08-21**, tras toparse
    con esta misma clase de defecto — su comentario lo documenta. Es mejor remedio que «copiar el
@@ -289,3 +291,25 @@ sino **por construcción**: parten de `{...entidadCompleta}` y nunca tienen que 
 
 *Los casos 1 y 2 son transiciones de estado, así que les aplica el remedio 2. Los casos 3, 4 y 5 son
 edición de entidad: les aplica el remedio 1.*
+
+---
+
+## 8. El código alterno confundido con la PK — dos casos el mismo día
+
+**2026-09-01.** Aparecieron dos manifestaciones del mismo error conceptual en lugares sin relación,
+y conviene tratarlo como patrón y no como dos anécdotas.
+
+| Dónde | Qué pasa |
+|---|---|
+| **Backend / catálogos** | El registro de reservas controla `PRBRCDGO` (la PK) mientras el código busca los rubros por **`PRBRALTR`** (el alterno). Dos equipos pueden cumplir el registro y colisionar igual. Ver §6 de `REGISTRO-RESERVAS-EQUIPOS.md` |
+| **Frontend / `rrh`** | `extraerCodigo` (`forms/parametrizacion/utiles-parametrizacion.ts:80-86`) **prefiere `codigoAlterno` sobre `codigo`** cuando el objeto trae los dos. El árbitro de `lap-saa-1` reporta un caso verificado: un préstamo hipotecario quedó grabado como «Seguro privado» |
+
+**En este sistema conviven dos identificadores por fila y no son intercambiables.** La PK es única;
+el alterno es el que usan los catálogos y varias pantallas. Elegir el equivocado **no falla**:
+graba o lee la fila de otro, en silencio.
+
+⚠️ **Consecuencia concreta para la propuesta de subir `armarCuerpo` a `shared/`:** arrastraría
+`extraerCodigo` con su preferencia por el alterno. Esa preferencia puede ser correcta **en el
+contexto de parametrización de `rrh`**, donde los combos se llenan del catálogo y el backend espera
+el alterno — pero generalizarla a `shared/` la aplicaría a módulos donde lo que se espera es la PK.
+**Generalizar el helper sin revisar esa línea sería generalizar el defecto.**
