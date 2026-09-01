@@ -139,4 +139,41 @@ public interface ContabilizacionNominaService {
     @TransactionAttribute(TransactionAttributeType.SUPPORTS)
     List<LineaAsientoNomina> previsualizar(Long idPeriodoNomina, Long tipoAsiento) throws Throwable;
 
+    /**
+     * Contabiliza la baja de la provision de un beneficio social acumulado (decimo tercero,
+     * decimo cuarto o fondos de reserva), al confirmar el pago de una orden
+     * {@code RHH.ODBS} (frente 1, 2026-09-01).
+     *
+     * <p>Dos lineas, igual criterio que {@link #contabilizarPago}: DEBE la provision por
+     * pagar que corresponda al tipo (40 decimo tercero, 41 decimo cuarto, 43 fondos de
+     * reserva — rubro 214, <code>RhhLineaAsiento</code>), resuelta contra
+     * <code>ConfiguracionNomina.plantillaProvision</code> —la misma plantilla que ya usa
+     * {@link #contabilizarProvisiones} para dar de alta esas mismas lineas—; HABER banco
+     * (linea 51), resuelta contra <code>ConfiguracionNomina.plantillaPago</code> —la misma
+     * que ya usa {@link #contabilizarPago}. Se reutilizan esas dos plantillas en vez de crear
+     * una tercera: son las que ya tienen esas cuentas configuradas para estas mismas lineas
+     * en otros asientos del modulo.</p>
+     *
+     * <p>Se emite con <code>ModuloSistema.TESORERIA</code>, igual que
+     * {@link #contabilizarPago}: aqui tambien sale el dinero de tesoreria.</p>
+     *
+     * <p>No respeta el interruptor de modo historico: a diferencia del rol y las provisiones
+     * mensuales, esto lo dispara un evento puntual (confirmar el pago de una orden ya
+     * enviada a tesoreria), no el cierre de un periodo historico.</p>
+     *
+     * @param idEmpresa			: Id de la empresa
+     * @param tipoBeneficio		: Codigo alterno del detalle del rubro RHH_TIPO_BENEFICIO_SOCIAL
+     *							  (1 decimo tercero, 2 decimo cuarto, 3 fondos de reserva)
+     * @param total				: Total de la orden a dar de baja
+     * @param fecha				: Fecha del asiento
+     * @param descripcion		: Descripcion del asiento
+     * @param usuario			: Usuario que ejecuta
+     * @return					: El asiento generado
+     * @throws Throwable		: IncomeException si el tipo no tiene linea de provision, o si
+     *							  falta la configuracion/plantilla/cuenta de la empresa
+     */
+    @TransactionAttribute(TransactionAttributeType.REQUIRED)
+    Asiento contabilizarBajaProvisionBeneficioSocial(Long idEmpresa, int tipoBeneficio, Double total,
+            LocalDate fecha, String descripcion, String usuario) throws Throwable;
+
 }

@@ -63,6 +63,7 @@ public interface NombreEntidadesRhh {
     String PROYECCION_IMPUESTO_RENTA     = "ProyeccionImpuestoRenta";
     String LIQUIDACION_BENEFICIO_SOCIAL  = "LiquidacionBeneficioSocial";
     String HORA_EXTRA                    = "HoraExtra";
+    String ORDEN_BENEFICIO_SOCIAL        = "OrdenBeneficioSocial";
 
     // ================= FASE 6: ORDEN DE PAGO =================
     String ORDEN_PAGO_NOMINA             = "OrdenPagoNomina";

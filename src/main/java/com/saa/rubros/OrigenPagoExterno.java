@@ -56,4 +56,13 @@ public interface OrigenPagoExterno {
 	 */
 	public static final String RHH_NOMINA = "RHH_NOMINA";
 
+	/**
+	 * Pago consolidado de una orden de beneficio social (decimo acumulado, fondos de
+	 * reserva), originado en RHH.ODBS. PGTRIDOR lleva el RHH.ODBS.ODBSCDGO correspondiente.
+	 * Uno solo para los tres tipos de beneficio: el tipo concreto ya viaja en ODBSTPBN, y la
+	 * bandeja gana un filtro legible en vez de tres origenes casi iguales (ver
+	 * docs/logica-negocio/rhh/PLAN-PAGO-BENEFICIOS-Y-SALIDA-POR-TESORERIA.md #3.1).
+	 */
+	public static final String RHH_BENEFICIO_SOCIAL = "RHH_BENEFICIO_SOCIAL";
+
 }

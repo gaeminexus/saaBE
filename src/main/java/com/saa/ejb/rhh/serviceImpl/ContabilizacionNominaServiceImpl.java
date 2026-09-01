@@ -43,6 +43,7 @@ import com.saa.rubros.RhhEstadoPeriodoNomina;
 import com.saa.rubros.RhhLineaAsiento;
 import com.saa.rubros.RhhModoPeriodoNomina;
 import com.saa.rubros.RhhRolConceptoMotor;
+import com.saa.rubros.RhhTipoBeneficioSocial;
 import com.saa.rubros.RhhTipoConceptoNomina;
 import com.saa.rubros.RhhTipoProvision;
 import com.saa.rubros.TipoAsientos;
@@ -649,6 +650,81 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
             resultado.add(linea);
         }
         return resultado;
+    }
+
+    /* (non-Javadoc)
+     * @see com.saa.ejb.rhh.service.ContabilizacionNominaService#contabilizarBajaProvisionBeneficioSocial(java.lang.Long, int, java.lang.Double, java.time.LocalDate, java.lang.String, java.lang.String)
+     */
+    @Override
+    @TransactionAttribute(TransactionAttributeType.REQUIRED)
+    public Asiento contabilizarBajaProvisionBeneficioSocial(Long idEmpresa, int tipoBeneficio,
+            Double total, LocalDate fecha, String descripcion, String usuario) throws Throwable {
+        System.out.println("Ingresa al metodo contabilizarBajaProvisionBeneficioSocial de"
+                + " contabilizacionNomina service, empresa: " + idEmpresa + ", tipo: " + tipoBeneficio);
+
+        int lineaProvision = lineaProvisionPorPagarBeneficio(tipoBeneficio);
+
+        ConfiguracionNomina configuracion = configuracionNominaDaoService.selectByEmpresa(idEmpresa);
+        if (configuracion == null) {
+            throw new IncomeException("No existe configuracion de nomina (RHH.CFNM) para la empresa "
+                    + idEmpresa + ".");
+        }
+        Long marcadora = exigeCuentaMarcadora(configuracion);
+        Double valor = RedondeoNomina.redondea(total);
+
+        // DEBE: se descarga la provision por pagar, de la misma plantilla que ya usa
+        // contabilizarProvisiones para darla de alta.
+        Long idPlantillaProvision = resuelvePlantilla(configuracion.getPlantillaProvision(),
+                "baja de provision", idEmpresa);
+        DetallePlantilla lineaDebe = exigeLinea(idPlantillaProvision, lineaProvision, "baja de provision");
+        exigeCuentaReal(lineaDebe, marcadora, "baja de provision");
+
+        // HABER: banco, de la misma plantilla que ya usa contabilizarPago para esa linea.
+        Long idPlantillaPago = resuelvePlantilla(configuracion.getPlantillaPago(),
+                "baja de provision", idEmpresa);
+        DetallePlantilla lineaHaber = exigeLinea(idPlantillaPago, RhhLineaAsiento.BANCO, "baja de provision");
+        exigeCuentaReal(lineaHaber, marcadora, "baja de provision");
+
+        List<DetalleAsiento> lineas = new ArrayList<DetalleAsiento>();
+        lineas.add(construyeLinea(lineaDebe, valor));
+        lineas.add(construyeLinea(lineaHaber, valor));
+        // Sin comprobarCuadre: las dos lineas se construyen del mismo valor ya redondeado una
+        // sola vez, asi que cuadran por construccion.
+
+        Asiento asiento = asientoContableService.generarAsiento(
+                idEmpresa,
+                TipoAsientos.RECURSOS_HUMANOS,
+                fecha,
+                descripcion,
+                usuario,
+                lineas,
+                Long.valueOf(ModuloSistema.TESORERIA));
+
+        System.out.println("Baja de provision de beneficio social contabilizada con el asiento "
+                + asiento.getCodigo());
+        return asiento;
+    }
+
+    /**
+     * Linea de provision por pagar (rubro 214) de un tipo de beneficio social acumulado.
+     *
+     * @param tipoBeneficio	: Codigo alterno del detalle del rubro RHH_TIPO_BENEFICIO_SOCIAL
+     * @return				: Codigo de linea del rubro 214
+     * @throws Throwable	: IncomeException si el tipo no tiene linea de provision
+     */
+    private int lineaProvisionPorPagarBeneficio(int tipoBeneficio) throws Throwable {
+        switch (tipoBeneficio) {
+            case RhhTipoBeneficioSocial.DECIMO_TERCERO:
+                return RhhLineaAsiento.PROVISION_DECIMO_TERCERO_POR_PAGAR;
+            case RhhTipoBeneficioSocial.DECIMO_CUARTO:
+                return RhhLineaAsiento.PROVISION_DECIMO_CUARTO_POR_PAGAR;
+            case RhhTipoBeneficioSocial.FONDOS_DE_RESERVA:
+                return RhhLineaAsiento.PROVISION_FONDOS_DE_RESERVA_POR_PAGAR;
+            default:
+                throw new IncomeException("El tipo de beneficio " + tipoBeneficio + " no tiene linea de"
+                        + " provision por pagar definida. La orden de beneficio social solo admite"
+                        + " decimo tercero (1), decimo cuarto (2) o fondos de reserva (3).");
+        }
     }
 
     // =====================================================================

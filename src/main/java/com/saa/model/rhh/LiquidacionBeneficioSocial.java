@@ -131,6 +131,14 @@ public class LiquidacionBeneficioSocial implements Serializable, EntidadAuditabl
     private Long estado;
 
     /**
+     * Orden de pago de beneficio social que agrupo y pago esta liquidacion. Nulo mientras no
+     * se agrupe; una orden anulada la vuelve a dejar en null para que pueda reagruparse.
+     */
+    @ManyToOne
+    @JoinColumn(name = "LQBSODBS", referencedColumnName = "ODBSCDGO")
+    private OrdenBeneficioSocial ordenBeneficioSocial;
+
+    /**
      * Fecha de registro.
      */
     @Basic
@@ -254,6 +262,14 @@ public class LiquidacionBeneficioSocial implements Serializable, EntidadAuditabl
 
     public void setEstado(Long estado) {
         this.estado = estado;
+    }
+
+    public OrdenBeneficioSocial getOrdenBeneficioSocial() {
+        return ordenBeneficioSocial;
+    }
+
+    public void setOrdenBeneficioSocial(OrdenBeneficioSocial ordenBeneficioSocial) {
+        this.ordenBeneficioSocial = ordenBeneficioSocial;
     }
 
     public LocalDateTime getFechaRegistro() {
