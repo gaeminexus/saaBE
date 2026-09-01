@@ -224,3 +224,54 @@ no se renumera**.
 ### ⚪ Sin prisa
 5. Confirmar contra la base si `tsr/sql/07` y `08` se ejecutaron.
 6. `README-ORDEN.md` para `rhh/sql/` y `cxp/sql/`.
+
+---
+
+## 7. Barrido de payloads parciales en `rrh` — 2026-09-01
+
+Salió de un hallazgo lateral del agente de frontend y se convirtió en un inventario del módulo.
+**Nada de esto está corregido**: espera decisión del usuario.
+
+**El mecanismo** es la trampa del `merge` desnudo de `EntityDaoImpl` (§5): un `PUT` que arma el body
+campo por campo graba `null` en toda columna que no copió.
+
+**Universo:** 11 llamadas reales a `Service.update(...)` en 10 archivos de `rrh` — barrido completo,
+no muestra. 6 archivos seguros, 5 con el defecto, 7 que no hacen `PUT` de entidad.
+
+### Los cinco casos, contrastados contra la entidad Java
+
+| # | Pantalla | Qué pierde | Gravedad |
+|---|---|---|---|
+| **1** | `permisos-licencias-form.component.ts:418-451` | `PTCNMTVO` (motivo) y `PTCNAPRB` (usuario aprobador) **y además resetea `PTCNESTD` a `'SOLICITADA'` hardcodeado** | 🔴 **regresión de negocio** |
+| **2** | `vacaciones-list.component.ts:447-465` | `SLCTFHAP` en la acción de **aprobar/rechazar/anular** | 🔴 afecta toda aprobación |
+| **3** | `vacaciones-form.component.ts:322-354` | `SLCTFHAP` al editar una solicitud aprobada | 🟡 auditoría |
+| **4** | `parametros-anuales.component.ts:139-158` | `PRNMFCHR` | ⚪ auditoría |
+| **5** | `configuracion-nomina.component.ts:123-135` | `CFNMFCHR` | ⚪ auditoría |
+
+**El caso 1 no es pérdida de auditoría, es pérdida de estado.** `RHH.PTCN` tiene 13 columnas;
+editar un permiso ya `APROBADA` lo **devuelve a `SOLICITADA`**, y de paso borra quién lo aprobó y el
+motivo. No hace falta un caso raro: pasa en cualquier edición.
+
+**El caso 2 es el de mayor alcance.** Es literalmente la acción de aprobar: graba
+`usuarioAprobacion` y **nunca la fecha de esa aprobación**. Cada aprobación de vacaciones del
+sistema pasa por ahí.
+
+### El patrón, que vale más que la lista
+
+**Se cae siempre el campo que no tiene control en el formulario** — `fechaAprobacion`,
+`fechaRegistro`, `motivo`, `usuarioAprobador`. Porque el payload se arma **enumerando lo editable**
+en vez de partir de la entidad completa. Los seis casos seguros no lo evitan por revisión cuidadosa
+sino **por construcción**: parten de `{...entidadCompleta}` y nunca tienen que acordarse de nada.
+
+### Dos soluciones que el repositorio ya tiene y nadie generalizó
+
+1. **`forms/comunes/cuerpo-entidad.ts` (`armarCuerpo`)** — helper que ya implementa la regla, y su
+   propio comentario la enuncia: *«`base` tiene que ser el registro tal como llegó del backend»*.
+   **Lo usa una sola pantalla.**
+2. **Sacar las transiciones de estado del `PUT` genérico**, moviéndolas a endpoints de proceso con
+   body propio. `novedad-iess.service.ts` **ya hizo exactamente eso el 2026-08-21**, tras toparse
+   con esta misma clase de defecto — su comentario lo documenta. Es mejor remedio que «copiar el
+   campo que falta», porque elimina la categoría en vez de tapar un caso.
+
+*Los casos 1 y 2 son transiciones de estado, así que les aplica el remedio 2. Los casos 3, 4 y 5 son
+edición de entidad: les aplica el remedio 1.*
