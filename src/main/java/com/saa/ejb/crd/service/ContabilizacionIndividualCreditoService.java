@@ -135,11 +135,21 @@ public interface ContabilizacionIndividualCreditoService {
      * capital de cada {@code HistDetallePrestamo} que ese mismo evento historizó en
      * {@code CRD.HDTP} — esas SÍ son las cuotas que el abono canceló — clasificando cada una por
      * su propia fecha de vencimiento. Ver el javadoc de la implementación para el detalle del
-     * prorrateo. Esto NO alcanza a la trampa gemela de "capital futuro de precancelación"
-     * ({@code ProcesoPagoPrestamoServiceImpl.precancelar}, tipo {@code TIPO_PRECANCELACION}):
-     * esas cuotas futuras se quedan en {@code CRD.DTPR} como {@code CANCELADA_ANTICIPADA}, no se
-     * historizan a {@code CRD.HDTP} — sigue bandeando 100% contra la ancla, sin cambios; es un
-     * problema análogo pero con una fuente de datos distinta, fuera del alcance de este cambio.
+     * prorrateo.
+     *
+     * <p><b>Re-bandeo del capital futuro de una precancelación (2026-09-01, la trampa gemela
+     * de arriba, ya cerrada).</b> Cuando {@code pago.getTipo()} es {@code
+     * ProcesoPagoPrestamoService.TIPO_PRECANCELACION} Y {@code saldoOtros &gt; 0} (el mismo
+     * discriminador que separa esta trampa de un pago de cuota exigible normal — las exigibles
+     * de la misma precancelación comparten el tipo pero pagan con {@code capitalPagado},
+     * {@code saldoOtros = 0}, así que nunca entran acá), el capital NO se bandea 100% contra la
+     * ancla — se reparte, SIN prorrateo, contra las cuotas que {@code
+     * ProcesoPagoPrestamoServiceImpl.precancelar} dejó en {@code CRD.DTPR} con {@code estado =
+     * CANCELADA_ANTICIPADA(7)}: cada una aporta exactamente su propio {@code capital}, porque
+     * una precancelación cancela SIEMPRE la totalidad de las cuotas futuras (verificado: el
+     * método exige que el valor recibido cuadre exacto contra la simulación completa ANTES de
+     * tocar nada, así que nunca deja una cuota a medias — a diferencia del abono, acá no hace
+     * falta prorratear). Ver el javadoc de la implementación para el detalle y el cuadre.</p>
      *
      * <p>Compartido por {@code CobroCreditoServiceImpl} (CBCRASN2),
      * {@code AcuerdoCondonacionServiceImpl} (condonación 100% aportes) y

@@ -341,7 +341,16 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         solicitudValidacion.setObservacion(correccion.getObservacion());
         solicitudValidacion.setUsuario(usuario);
         solicitudValidacion.setDetalles(correccion.getDetalles());
-        validar(solicitudValidacion);
+        // referenciaOriginal = la que YA tiene guardada este cobro (recortada) — si la corrección
+        // no la cambia, validar() se salta el chequeo de unicidad. Necesario porque puede existir
+        // un duplicado histórico (p.ej. otro cobro ANULADO o pre-índice) contra el que este mismo
+        // cobro ya choca sin que el usuario esté tocando la referencia.
+        String referenciaOriginal = cobro.getReferencia() != null ? cobro.getReferencia().trim() : null;
+        validar(solicitudValidacion, idCobro, referenciaOriginal);
+        // validar() normaliza (trim) la referencia mutando solicitudValidacion — pero el WRITE
+        // de más abajo (:372) lee de `correccion`, un objeto DISTINTO. Sin este propagado, la
+        // referencia se guardaría sin recortar y divergiría del valor ya validado como único.
+        correccion.setReferencia(solicitudValidacion.getReferencia());
 
         // ¿Hace falta rehacer el asiento? Solo si cambia el monto o la cuenta bancaria — el
         // DEBE del asiento transitorio depende de las dos. Referencia/observación/respaldo no
@@ -951,7 +960,26 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
     // Validaciones
     // =====================================================================
 
+    /** Registro nuevo: nada que excluir, y no hay una referencia previa que pueda ser "la misma". */
     private Entidad validar(SolicitudRegistroCobro solicitud) throws Throwable {
+        return validar(solicitud, null, null);
+    }
+
+    /**
+     * @param idCobroExcluido    Solo lo manda {@code editarYReenviarCobro}: el cobro que se
+     *                           está corrigiendo no debe chocar contra su propia referencia.
+     * @param referenciaOriginal La referencia YA GUARDADA del cobro que se corrige (recortada
+     *                           por el llamador), o {@code null} en un registro nuevo. Si la
+     *                           nueva referencia es IGUAL a esta, se salta la unicidad —
+     *                           2026-09-01: hay referencias históricas duplicadas de antes de
+     *                           esta regla (verificado por el usuario: '31072026' se repite en
+     *                           tres cobros), y volver a guardar la MISMA referencia de un
+     *                           cobro no crea un conflicto nuevo, aunque otro cobro histórico
+     *                           también la tenga. Sin este salto, esos cobros quedarían sin
+     *                           poder corregirse nunca más.
+     */
+    private Entidad validar(SolicitudRegistroCobro solicitud, Long idCobroExcluido, String referenciaOriginal)
+            throws Throwable {
         if (solicitud == null) {
             throw new IncomeException("La solicitud de registro de cobro es obligatoria");
         }
@@ -985,6 +1013,43 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         if (solicitud.getRutaRespaldo() == null || solicitud.getRutaRespaldo().trim().isEmpty()) {
             throw new IncomeException("El respaldo digitalizado es obligatorio: suba el comprobante"
                     + " antes de registrar el cobro");
+        }
+
+        // Referencia única (2026-09-01, pedido del usuario): obligatoria — el '9'/'09' existen
+        // justamente para los casos sin referencia real, así que dejarla en blanco no tiene
+        // sentido (decisión confirmada con el árbitro). Se normaliza acá, UNA vez, mutando la
+        // propia `solicitud` — registrarCobro y editarYReenviarCobro leen `solicitud
+        // .getReferencia()` después de este método, así que el valor recortado les llega solo.
+        if (solicitud.getReferencia() == null || solicitud.getReferencia().trim().isEmpty()) {
+            throw new IncomeException("La referencia es obligatoria: use '9' o '09' si el cobro no"
+                    + " tiene un número de referencia real");
+        }
+        String referenciaTrim = solicitud.getReferencia().trim();
+        solicitud.setReferencia(referenciaTrim);
+
+        // Valores exentos de la unicidad — MISMA regla que el índice CRD.UX_CBCR_REFERENCIA
+        // (CASE WHEN TRIM(CBCRRFRN) IN ('9','09') OR NVL(CBCRESTD,0) = 5 THEN NULL...):
+        // '9'/'09' exactos tras el trim, nada más — ningún otro valor que empiece o contenga
+        // un 9 exime.
+        boolean exento = "9".equals(referenciaTrim) || "09".equals(referenciaTrim);
+        // Sin cambio real: si el cobro ya tenía ESTA MISMA referencia, no es un conflicto
+        // nuevo — hay históricos duplicados de antes de esta regla (verificado en producción:
+        // '31072026' se repite en tres cobros) y hay que poder seguir corrigiendo esos cobros
+        // sin la referencia como excusa, mientras no la cambien a otra cosa.
+        boolean sinCambio = referenciaOriginal != null && referenciaOriginal.equals(referenciaTrim);
+        if (!exento && !sinCambio) {
+            // Excluye ANULADO (5) — CrdEstadoCobro.ANULADO, nunca el literal (ver el javadoc
+            // de selectByReferencia): un cobro anulado libera su referencia, misma regla que
+            // el índice de la base.
+            List<CobroCredito> enConflicto = cobroCreditoDaoService.selectByReferencia(referenciaTrim,
+                    idCobroExcluido);
+            if (enConflicto != null && !enConflicto.isEmpty()) {
+                CobroCredito existente = enConflicto.get(0);
+                throw new IncomeException("La referencia '" + referenciaTrim + "' ya está en uso por"
+                        + " el cobro " + existente.getCodigo() + " (estado " + textoEstado(existente.getEstado())
+                        + "); cada referencia debe ser única. Use '9' o '09' si el cobro no tiene un"
+                        + " número de referencia real.");
+            }
         }
 
         if (solicitud.getValor() == null || solicitud.getValor() <= 0.0) {

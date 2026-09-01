@@ -16,6 +16,12 @@ import jakarta.ejb.Timer;
  * Es el PRIMER timer EJB del proyecto. Corre todos los días a las 02:00 de la madrugada, hora
  * del servidor, y calcula la mora con la fecha de ese día.
  *
+ * <p><b>DESACTIVADO TEMPORALMENTE (2026-08-31, a pedido del usuario, hasta nuevo aviso)</b>:
+ * el {@code @Schedule} de {@link #ejecutarCalculoDiario(Timer)} está comentado y el timer no
+ * se registra. El cálculo de mora sigue disponible manualmente por
+ * {@code POST /rest/prst/calcularMora} (lote) o {@code POST /rest/prst/calcularMora/{idPrestamo}}
+ * (un préstamo). Ver ese método para cómo reactivarlo.</p>
+ *
  * <p><b>Cómo cambiar el horario</b>: editar la anotación {@code @Schedule} de
  * {@link #ejecutarCalculoDiario(Timer)} (por ejemplo {@code hour = "3"}). Requiere recompilar y
  * redesplegar; el proyecto no tiene un mecanismo de configuración externa para esto.</p>
@@ -47,10 +53,20 @@ public class ProcesoMoraPrestamoTimer {
      * timer en estado de error ni provoque reintentos automáticos de WildFly: el resumen del
      * proceso ya registra los préstamos con error y la recuperación es manual por el endpoint.
      *
+     * <p><b>DESACTIVADO el 2026-08-31 a pedido del usuario, hasta nuevo aviso.</b> Se comenta
+     * el {@code @Schedule} en vez de dejarlo activo con una bandera para que el timer no se
+     * registre en absoluto (mismo criterio que {@link ProcesoDevolucionAporteTimer}). El
+     * cálculo de mora en sí ({@code ProcesoMoraPrestamoServiceImpl}) NO se tocó — sigue
+     * disponible para correr a mano con {@code POST /rest/prst/calcularMora} (todo el lote,
+     * con `fecha`/`usuario` opcionales) o {@code POST /rest/prst/calcularMora/{idPrestamo}}
+     * (un solo préstamo) mientras el timer esté apagado. Para reactivar: descomentar la
+     * anotación de abajo — requiere recompilar y redesplegar, {@code persistent = false}
+     * significa que el timer se reconstruye desde esta anotación en cada arranque.</p>
+     *
      * @param timer Timer que disparó la ejecución (lo inyecta el contenedor)
      */
-    @Schedule(hour = "2", minute = "0", second = "0", persistent = false,
-              info = "Cálculo diario de interés de mora de cuotas vencidas")
+    // @Schedule(hour = "2", minute = "0", second = "0", persistent = false,
+    //           info = "Cálculo diario de interés de mora de cuotas vencidas")
     public void ejecutarCalculoDiario(Timer timer) {
         System.out.println("TIMER MORA - Disparo automático: " + (timer != null ? timer.getInfo() : ""));
 

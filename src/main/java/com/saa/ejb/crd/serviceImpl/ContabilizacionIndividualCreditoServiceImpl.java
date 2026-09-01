@@ -30,6 +30,7 @@ import com.saa.model.crd.Prestamo;
 import com.saa.model.crd.Producto;
 import com.saa.model.crd.TipoAporte;
 import com.saa.rubros.CrdLineaAsiento;
+import com.saa.rubros.EstadoCuotaPrestamo;
 import com.saa.rubros.PlantillasCredito;
 import com.saa.rubros.TipoCarteraBanda;
 
@@ -70,6 +71,9 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
 
     @EJB
     private HistDetallePrestamoDaoService histDetallePrestamoDaoService;
+
+    @EJB
+    private com.saa.ejb.crd.dao.DetallePrestamoDaoService detallePrestamoDaoService;
 
     @Override
     public Long resolverPlantillaAplicacion(Long idEmpresa) throws Throwable {
@@ -253,7 +257,16 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
         }
         Map<String, LineaBandaAcumulada> bandas = acumulaPorBanda(idProducto, idEmpresa, fechaCorte, entradas,
                 prefijoDescripcion);
+        return lineasHaberDesdeBandas(bandas, idProducto, prefijoDescripcion);
+    }
 
+    /**
+     * Arma las líneas de asiento (H) de un mapa de bandas ya acumulado — extraído de {@link
+     * #lineasBandaCapitalAbono} (2026-09-01) para que {@link #lineasBandaCapitalFuturoPrecancelacion}
+     * use la MISMA construcción en vez de una copia.
+     */
+    private List<DetalleAsiento> lineasHaberDesdeBandas(Map<String, LineaBandaAcumulada> bandas, Long idProducto,
+            String prefijoDescripcion) throws Throwable {
         List<DetalleAsiento> lineas = new ArrayList<>();
         for (LineaBandaAcumulada acumulada : bandas.values()) {
             if (acumulada.valor <= 0.0) {
@@ -276,6 +289,75 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
             lineas.add(detalle);
         }
         return lineas;
+    }
+
+    /**
+     * Reclasifica entre bandas el capital futuro de una precancelación — la trampa gemela del
+     * abono (2026-09-01, pedido del usuario), pero SIN prorrateo: una precancelación cancela
+     * SIEMPRE la totalidad de las cuotas futuras (verificado en {@code
+     * ProcesoPagoPrestamoServiceImpl.precancelar}: exige que el valor recibido cuadre exacto
+     * contra la simulación completa ANTES de tocar nada, nunca deja una cuota a medias), así
+     * que cada cuota banda exactamente su propio {@code capital} — no hay nada que repartir
+     * proporcionalmente.
+     *
+     * <p><b>De dónde salen las cuotas:</b> precancelación NO historiza a {@code CRD.HDTP} (a
+     * diferencia del abono) — las cuotas futuras se quedan vivas en {@code CRD.DTPR} con
+     * {@code estado = CANCELADA_ANTICIPADA(7)}. No hace falta ubicarlas por evento: un préstamo
+     * precancelado pasa a {@code CANCELADO_ANTICIPADO}, estado TERMINAL que bloquea una segunda
+     * precancelación, y si la operación se revierte las cuotas en 7 se recalculan y salen de
+     * ese estado antes de que el préstamo pueda volver a operarse — así que "todas las cuotas
+     * en estado 7 de este préstamo" identifica sin ambigüedad las de la precancelación vigente.
+     *
+     * <p><b>Cuadre explícito</b>: la suma del capital de esas cuotas tiene que coincidir con
+     * {@code capitalFuturo} (el {@code saldoOtros} del pago) — si no, {@code IncomeException}
+     * con los cuatro números (préstamo, cuántas cuotas encontró, cuánto suman, contra qué
+     * capital futuro no cuadra), nunca un asiento armado a medias.
+     */
+    private List<DetalleAsiento> lineasBandaCapitalFuturoPrecancelacion(Long idProducto, Long idEmpresa,
+            double capitalFuturo, Prestamo prestamo, LocalDate fechaCorte, String prefijoDescripcion)
+            throws Throwable {
+
+        List<DetallePrestamo> todas = detallePrestamoDaoService.selectByPrestamo(prestamo.getCodigo());
+        List<DetallePrestamo> canceladasAnticipadamente = new ArrayList<>();
+        if (todas != null) {
+            for (DetallePrestamo cuota : todas) {
+                if (cuota.getEstado() != null && cuota.getEstado() == EstadoCuotaPrestamo.CANCELADA_ANTICIPADA) {
+                    canceladasAnticipadamente.add(cuota);
+                }
+            }
+        }
+        if (canceladasAnticipadamente.isEmpty()) {
+            throw new IncomeException(prefijoDescripcion + ": el préstamo " + prestamo.getCodigo()
+                    + " no tiene ninguna cuota en estado CANCELADA_ANTICIPADA(7); no se puede"
+                    + " repartir el capital futuro ($" + redondear(capitalFuturo) + ") por banda."
+                    + " ProcesoPagoPrestamoServiceImpl.precancelar siempre deja al menos una — revise"
+                    + " si esto corrió ANTES del paso 3 de precancelar (que las pone en 7) o si el"
+                    + " evento es realmente de tipo PRECANCELACION.");
+        }
+
+        List<EntradaBanda> entradas = new ArrayList<>();
+        double totalCuotas = 0.0;
+        for (DetallePrestamo cuota : canceladasAnticipadamente) {
+            double capitalCuota = redondear(nvl(cuota.getCapital()));
+            totalCuotas += capitalCuota;
+            LocalDate vencimiento = cuota.getFechaVencimiento() != null
+                    ? cuota.getFechaVencimiento().toLocalDate() : null;
+            entradas.add(new EntradaBanda(vencimiento, capitalCuota,
+                    "la cuota #" + cuota.getNumeroCuota() + " (cancelada anticipadamente)"));
+        }
+        totalCuotas = redondear(totalCuotas);
+
+        if (Math.abs(redondear(totalCuotas - capitalFuturo)) > TOLERANCIA) {
+            throw new IncomeException(prefijoDescripcion + ": el préstamo " + prestamo.getCodigo()
+                    + " tiene " + canceladasAnticipadamente.size() + " cuota(s) en estado"
+                    + " CANCELADA_ANTICIPADA(7) que suman $" + totalCuotas + " de capital, pero no"
+                    + " coincide con el capital futuro del pago ($" + redondear(capitalFuturo)
+                    + "); no se puede armar el reparto por banda de la precancelación.");
+        }
+
+        Map<String, LineaBandaAcumulada> bandas = acumulaPorBanda(idProducto, idEmpresa, fechaCorte, entradas,
+                prefijoDescripcion);
+        return lineasHaberDesdeBandas(bandas, idProducto, prefijoDescripcion);
     }
 
     /**
@@ -568,16 +650,20 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
             // ⚠️ TRAMPAS 2.1/2.2 de la especificación CBCRASN2: el abono a capital y el capital
             // futuro de una precancelación graban en saldoOtros con capitalPagado = 0 — leer
             // solo capitalPagado los contabilizaría en $0, sin ningún error.
-            double capital = nvl(pago.getSaldoOtros()) > 0.0 ? nvl(pago.getSaldoOtros()) : nvl(pago.getCapitalPagado());
+            double saldoOtros = nvl(pago.getSaldoOtros());
+            double capital = saldoOtros > 0.0 ? saldoOtros : nvl(pago.getCapitalPagado());
             if (capital > 0.0) {
                 if (producto == null) {
                     throw new IncomeException(prefijoDescripcion + ": el pago " + pago.getCodigo()
                             + " tiene capital pero no tiene producto; no se puede clasificar por banda.");
                 }
-                // Re-bandeo del abono a capital (2026-08-31, Fase 3): esta rama SOLO cubre
-                // ABONO_CAPITAL (ver javadoc de la interfaz) — precancelación sigue el camino
-                // de siempre, con la ancla, más abajo.
-                if (ProcesoPagoPrestamoService.TIPO_ABONO_CAPITAL.equals(pago.getTipo())) {
+                // Las dos ramas de re-bandeo exigen ADEMÁS saldoOtros > 0 (no alcanza con el
+                // tipo): las cuotas EXIGIBLES de una precancelación comparten
+                // TIPO_PRECANCELACION con el pago de capital futuro, pero pagan con
+                // capitalPagado (saldoOtros = 0) — sin este chequeo, un exigible caería acá y
+                // se rompería lo único que ya bandeaba bien (2026-09-01).
+                if (saldoOtros > 0.0 && ProcesoPagoPrestamoService.TIPO_ABONO_CAPITAL.equals(pago.getTipo())) {
+                    // Re-bandeo del abono a capital (2026-08-31, Fase 3).
                     if (pago.getEventoPrestamo() == null) {
                         throw new IncomeException(prefijoDescripcion + ": el abono " + pago.getCodigo()
                                 + " no tiene EventoPrestamo asociado; no se puede ubicar en"
@@ -595,6 +681,16 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
                     }
                     lineas.addAll(lineasBandaCapitalAbono(producto.getCodigo(), idEmpresa, capital,
                             historizadas, fechaCorte, prefijoDescripcion));
+                } else if (saldoOtros > 0.0 && ProcesoPagoPrestamoService.TIPO_PRECANCELACION.equals(pago.getTipo())) {
+                    // Re-bandeo del capital futuro de una precancelación (2026-09-01, pedido
+                    // del usuario — la trampa gemela del abono, ver javadoc de la interfaz).
+                    if (prestamo == null || prestamo.getCodigo() == null) {
+                        throw new IncomeException(prefijoDescripcion + ": el pago " + pago.getCodigo()
+                                + " (capital futuro de precancelación) no tiene préstamo asociado;"
+                                + " no se puede ubicar qué cuotas canceló.");
+                    }
+                    lineas.addAll(lineasBandaCapitalFuturoPrecancelacion(producto.getCodigo(), idEmpresa,
+                            capital, prestamo, fechaCorte, prefijoDescripcion));
                 } else {
                     if (cuota == null || cuota.getFechaVencimiento() == null) {
                         throw new IncomeException(prefijoDescripcion + ": el pago " + pago.getCodigo()

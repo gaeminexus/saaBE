@@ -38,4 +38,22 @@ public interface CobroCreditoDaoService extends EntityDao<CobroCredito> {
      * @throws Throwable : Excepcion
      */
     List<CobroCredito> selectByEntidad(Long idEntidad) throws Throwable;
+
+    /**
+     * Cobros cuya referencia (recortada) coincide con la buscada — para el chequeo de
+     * unicidad del registro/corrección de un cobro. MISMA comparación que el índice único
+     * {@code CRD.UX_CBCR_REFERENCIA}: {@code TRIM(CBCRRFRN)}, excluyendo los cobros en estado
+     * {@link com.saa.rubros.CrdEstadoCobro#ANULADO} — un cobro anulado libera su referencia
+     * (2026-09-01, decisión del usuario).
+     *
+     * @param referenciaTrim  Ya recortada por el llamador — este método NUNCA la recorta, para
+     *                        que la comparación sea idéntica a la del índice, nunca una copia
+     *                        que pueda divergir.
+     * @param idCobroExcluido Se excluye de la búsqueda (para que corregir un cobro no choque
+     *                        contra sí mismo); {@code null} si es un registro nuevo.
+     * @return                Los cobros en conflicto (normalmente 0 o 1; puede haber más de
+     *                        uno si el índice todavía no corrió sobre datos históricos).
+     * @throws Throwable      Excepcion
+     */
+    List<CobroCredito> selectByReferencia(String referenciaTrim, Long idCobroExcluido) throws Throwable;
 }
