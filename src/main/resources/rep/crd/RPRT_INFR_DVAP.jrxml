@@ -37,7 +37,9 @@ SELECT
     ROW_NUMBER() OVER (ORDER BY a.APRTFCTR) AS ORDEN,
     ta.TPAPNMBR AS CONCEPTO,
     TO_CHAR(a.APRTFCTR, 'DD/MM/YYYY') || ' - ' || a.APRTGLSA AS DETALLE,
-    a.APRTVLRR AS VALOR,
+    -- APRTVLRR viene negativo para APRTTPMV=4 (ProcesoPagoPrestamoServiceImpl.consumirAportes): consume saldo.
+    -- El signo lo da el encabezado del bloque, no el numero.
+    ABS(a.APRTVLRR) AS VALOR,
     (SELECT e.ENTDNMID FROM CRD.ENTD e JOIN CRD.DVAP v ON v.ENTDCDGO = e.ENTDCDGO WHERE v.DVAPCDGO = $P{P_ID_DEVOLUCION}) AS CEDULA,
     (SELECT e.ENTDRZNS FROM CRD.ENTD e JOIN CRD.DVAP v ON v.ENTDCDGO = e.ENTDCDGO WHERE v.DVAPCDGO = $P{P_ID_DEVOLUCION}) AS NOMBRES,
     (SELECT v.DVAPFCHA FROM CRD.DVAP v WHERE v.DVAPCDGO = $P{P_ID_DEVOLUCION}) AS FECHA_DEVOLUCION,
@@ -129,6 +131,9 @@ ORDER BY 1, 2]]></query>
 				</element>
 				<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000113" x="0" y="14" width="515" height="14" fontName="Tahoma" fontSize="7.0" italic="true" hTextAlign="Left" vTextAlign="Middle" printWhenExpression="$F{SECCION}.intValue() == 3">
 					<text><![CDATA[Saldos referenciales a la fecha de emisión.]]></text>
+				</element>
+				<element kind="staticText" uuid="d4000000-0000-0000-0000-000000000114" x="0" y="14" width="515" height="14" fontName="Tahoma" fontSize="7.0" italic="true" hTextAlign="Left" vTextAlign="Middle" printWhenExpression="$F{SECCION}.intValue() == 2">
+					<text><![CDATA[Incluye los cruces registrados en el período consultado. Un cruce posteriormente reversado se lista igual.]]></text>
 				</element>
 			</band>
 		</groupFooter>
