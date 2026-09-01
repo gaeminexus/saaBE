@@ -704,6 +704,54 @@ rechazar el valor por precisión: **en una columna `NUMBER` a secas habría entr
 
 ---
 
+## 16. ✅ EL `08` CORRIÓ Y SE COMMITEÓ — 2026-09-01
+
+Ejecutado por el usuario en producción, desde otra máquina, y **commiteado**.
+
+### 16.1 Los controles
+
+| Control | Resultado | Qué prueba |
+|---|---|---|
+| **`3.1`** | **0** | Ninguna fila con `APRTVLRR` o `APRTFCTR` distintos del respaldo. **No se movió ni un centavo ni una fecha de caja** — el invariante que le importaba al equipo A |
+| **`3.2`** | **0** | Ningún partícipe con saldo distinto |
+| **`3.5`** | **0** | Ningún mes con más de una fila móvil: la compactación no creó colisiones |
+| **`3.3b`** | **8 filas / 6 partícipes** | Ver §16.2 |
+| `3.3`, `3.4` | *pendientes de registrar* | Cuántas quedaron bajo el piso y cuántas se movieron |
+
+### 16.2 Las 8 que quedaron, y por qué no eran motivo para revertir
+
+`AGUILAR VALENCIA` (3 filas), `BRITO MALDONADO`, `MUÑOZ VILLALTA`, `SUAREZ BUSTOS`, `ERAZO ROMAN`
+y `CAIZA GAVILANES`. Tienen contrato y vigencia útil, así que no caían en ninguna de las dos
+exclusiones declaradas: **el control 3.3b hizo exactamente aquello para lo que se agregó.**
+
+> **El dato que decidió: el `MERGE` no las tocó.** Estaban bajo el piso antes del `08` y siguen
+> igual. **Commitear o revertir no tenía ningún efecto sobre ellas** — y revertir habría descartado
+> además todo lo que sí se corrigió.
+
+**Y son sobrantes, por construcción del propio `MERGE`.** El join es `c.RN = m.RN`: fila *i* al cupo
+*i*. Con **N** filas y **M** cupos, si `N ≤ M` **todas** reciben cupo; una fila solo queda sin
+colocar cuando `N > M`. Entonces que hayan quedado 8 sin mover **demuestra** que esos 6 tienen más
+filas móviles que meses esperados — y que los M cupos se llenaron todos, o sea que **no les quedó
+ningún mes en alcance sin cubrir**.
+
+Su dinero es **pago de atrasos anteriores a 2025-06**, meses que el motor no cobra nunca
+(`ALCANCE_MINIMO_DEVENGO`). **No hay doble cobro en ellas.** Lo confirma
+`10_DIAGNOSTICO_LAS_8_DEL_3_3B.sql` §2, que debe devolver 0 filas.
+
+### 16.3 Se llegó antes de la fecha límite
+
+El plazo real de este frente nunca fue una fecha: era **la primera carga que se procese con
+devengo**. Desde esa carga, `distribuirAportePorDevengo` empieza a consumir los huecos con plata
+nueva y el reparto histórico pasa a ser un blanco móvil.
+
+**Agosto no se había procesado todavía.** La reubicación entró antes. Las 854 filas dejaron de ser
+un doble cobro pendiente sobre 744 partícipes.
+
+⚠️ **NO BORRAR `CRD.BKP_APRT_DEVENGO_20260831`.** Es lo que permite revertir con el bloque 4 del
+`08` después del `COMMIT`. Se elimina cuando el usuario dé la corrección por buena.
+
+---
+
 ## 8. Documentos relacionados
 
 - `../ANALISIS-APORTES-DUPLICADOS-PETRO.md` — el marco: versiones del generador, mecanismos M1-M8,
