@@ -140,8 +140,9 @@ public class EgresoServiceImpl implements EgresoService {
 		if (descripcion == null || descripcion.trim().isEmpty()) {
 			throw new IncomeException("Debe indicar el concepto del egreso.");
 		}
-		if (idCuentaBancariaOrigen == null) {
-			throw new IncomeException("Debe indicar la cuenta bancaria propia del egreso.");
+		if (idCuentaBancariaOrigen == null && debitoAutomatico) {
+			throw new IncomeException("Un egreso con débito automático necesita la cuenta bancaria de "
+					+ "origen: se contabiliza en el acto y no pasa por la bandeja de aprobación.");
 		}
 
 		// El producto define la cuenta contable del gasto: se valida aquí para
