@@ -131,7 +131,6 @@ public class ChequeDaoServiceImpl extends EntityDaoImpl<Cheque> implements Chequ
 	}
 
 	@SuppressWarnings("unchecked")
-	@SuppressWarnings("unchecked")
 	public List<Long> selectIdsPagoByCheque(Long idCheque) throws Throwable {
 		System.out.println("Ingresa al Metodo selectIdsPagoByCheque con cheque: " + idCheque);
 		Query query = em.createQuery(
