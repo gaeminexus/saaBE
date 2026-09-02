@@ -16,4 +16,14 @@ public interface FacturaCompraDaoService extends EntityDao<FacturaCompra> {
 	 * @throws Throwable	: Excepcion
 	 */
 	List<FacturaCompra> selectPendientesSustento(Long idEmpresa) throws Throwable;
+
+	/**
+	 * Facturas de compra activas (no anuladas) de un proveedor, para calcular
+	 * cuáles ya tienen el saldo íntegramente comprometido por pagos
+	 * (docs/logica-negocio/cxp/DISENO-FACTURAS-COMPROMETIDAS-EN-COMBO-PAGOS.md).
+	 * @param idTitular  : Id del proveedor
+	 * @return           : Facturas activas y no anuladas del proveedor
+	 * @throws Throwable : Excepcion
+	 */
+	List<FacturaCompra> selectActivasByTitular(Long idTitular) throws Throwable;
 }

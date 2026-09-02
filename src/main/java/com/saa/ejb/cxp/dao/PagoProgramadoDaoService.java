@@ -31,14 +31,42 @@ public interface PagoProgramadoDaoService extends EntityDao<PagoProgramado> {
 	List<PagoProgramado> selectByLote(Long idLote) throws Throwable;
 
 	/**
-	 * Recupera los pagos de una factura que siguen vigentes (registrados, en
-	 * archivo o confirmados). Sirve para no comprometer más valor del que la
-	 * factura debe.
+	 * Recupera los pagos de una factura que siguen vigentes: {@code POR_APROBAR(0)},
+	 * {@code REGISTRADO(1)}, {@code EN_ARCHIVO(2)} o {@code CONFIRMADO(3)}. Sirve
+	 * para no comprometer más valor del que la factura debe — único llamador:
+	 * {@code PagoProgramadoServiceImpl.validaValorContraSaldo}.
+	 * <p>
+	 * Incluye {@code POR_APROBAR} desde el 2026-09-02
+	 * (docs/logica-negocio/cxp/DISENO-FACTURAS-COMPROMETIDAS-EN-COMBO-PAGOS.md): antes
+	 * no lo incluía y la validación quedaba ciega a los pagos que nacen en ese
+	 * estado desde el frente S (bandeja de aprobación) cuando no viene cuenta
+	 * bancaria de origen — el flujo normal hoy —, así que se podía registrar dos
+	 * veces el pago completo de la misma factura sin ningún aviso.
 	 * @param idFacturaCompra : Id de la factura de compra
 	 * @return                : Listado de pagos vigentes
 	 * @throws Throwable      : Excepcion
 	 */
 	List<PagoProgramado> selectVigentesByFactura(Long idFacturaCompra) throws Throwable;
+
+	/**
+	 * Pagos programados de una factura de compra que están COMPROMETIDOS pero
+	 * todavía NO reflejados en el saldo aplicado: {@code POR_APROBAR(0)},
+	 * {@code REGISTRADO(1)}, {@code EN_ARCHIVO(2)}. Deliberadamente EXCLUYE
+	 * {@code CONFIRMADO(3)} — un pago confirmado ya generó su
+	 * {@code AplicacionPagoCxp} y está reflejado en {@code saldoFactura.aplicado},
+	 * así que sumarlo de nuevo aquí duplicaría el compromiso (mismo criterio que
+	 * {@code PagoProgramadoServiceImpl.validaValorContraSaldo}, que excluye
+	 * CONFIRMADO de su suma de "comprometido" con el comentario "Los confirmados
+	 * ya están reflejados en el saldo por su aplicación").
+	 * <p>
+	 * Usado para decidir si una factura ya tiene su saldo íntegramente
+	 * comprometido y debe dejar de ofrecerse en el combo de registrar pagos
+	 * (docs/logica-negocio/cxp/DISENO-FACTURAS-COMPROMETIDAS-EN-COMBO-PAGOS.md §3).
+	 * @param idFacturaCompra : Id de la factura de compra
+	 * @return                : Pagos comprometidos sin confirmar todavía
+	 * @throws Throwable      : Excepcion
+	 */
+	List<PagoProgramado> selectComprometidosNoConfirmadosByFactura(Long idFacturaCompra) throws Throwable;
 
 	/**
 	 * Recupera los pagos de un egreso de tesorería que siguen vigentes

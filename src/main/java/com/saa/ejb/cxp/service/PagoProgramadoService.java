@@ -286,6 +286,22 @@ public interface PagoProgramadoService extends EntityService<PagoProgramado> {
 	Map<String, Object> disponibilidad(Long idCuentaBancaria, String fecha) throws Throwable;
 
 	/**
+	 * Facturas de compra del proveedor cuyo saldo pendiente ya está íntegramente
+	 * comprometido por pagos vigentes (no rechazados ni anulados), y por lo tanto
+	 * no deberían volver a ofrecerse en el combo de registrar pagos
+	 * (docs/logica-negocio/cxp/DISENO-FACTURAS-COMPROMETIDAS-EN-COMBO-PAGOS.md).
+	 * <p>
+	 * "La totalidad", no "algún pago": una factura con un pago PARCIAL sigue
+	 * apareciendo, porque todavía se le puede registrar el resto. La regla vive
+	 * acá y no en el cliente porque el servidor es quien tiene las tres cifras
+	 * (total, aplicado y comprometido); el combo sólo tiene total y estadoPago.
+	 * @param idTitular : Id del proveedor
+	 * @return          : Mapa con idTitular e idsFacturas (las comprometidas)
+	 * @throws Throwable: Excepcion
+	 */
+	Map<String, Object> facturasComprometidas(Long idTitular) throws Throwable;
+
+	/**
 	 * Agrupa los pagos seleccionados en un lote y genera el archivo para el banco.
 	 * Seleccionar un pago aquí equivale a aprobarlo: queda registrado el usuario
 	 * que generó el lote.

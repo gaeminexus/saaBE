@@ -250,6 +250,31 @@ public class PagoProgramadoRest {
     }
 
     /**
+     * Ids de las facturas de compra del proveedor cuyo saldo pendiente ya está íntegramente
+     * comprometido por pagos vigentes (POR_APROBAR/REGISTRADO/EN_ARCHIVO/CONFIRMADO, no
+     * RECHAZADO ni ANULADO) y por eso no deberían volver a ofrecerse en el combo de registrar
+     * pagos. Un pago PARCIAL no saca la factura de la lista.
+     * Ver docs/logica-negocio/cxp/DISENO-FACTURAS-COMPROMETIDAS-EN-COMBO-PAGOS.md.
+     *
+     * GET /rest/pgtr/facturasComprometidas/45 → { "idTitular": 45, "idsFacturas": [12, 87, 103] }
+     */
+    @GET
+    @Path("/facturasComprometidas/{idTitular}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response facturasComprometidas(@PathParam("idTitular") Long idTitular) {
+        System.out.println("LLEGA AL SERVICIO GET /pgtr/facturasComprometidas/" + idTitular);
+        try {
+            Map<String, Object> resultado = pagoProgramadoService.facturasComprometidas(idTitular);
+            return Response.status(Response.Status.OK).entity(resultado)
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("Error al calcular las facturas comprometidas: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
      * Aprueba en bloque los pagos POR_APROBAR indicados: asigna cuenta bancaria y forma de
      * pago, gira el cheque si formaPago=3 y deja cada pago REGISTRADO (transferencia) o
      * CONFIRMADO (cheque o débito automático, contabilizando en el acto). Punto 14, ver

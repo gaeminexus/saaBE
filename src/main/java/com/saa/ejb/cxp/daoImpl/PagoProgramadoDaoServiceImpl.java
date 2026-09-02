@@ -101,15 +101,37 @@ public class PagoProgramadoDaoServiceImpl extends EntityDaoImpl<PagoProgramado>
     @Override
     public List<PagoProgramado> selectVigentesByFactura(Long idFacturaCompra) throws Throwable {
         System.out.println("Ingresa al metodo selectVigentesByFactura con factura: " + idFacturaCompra);
+        // Incluye POR_APROBAR(0) desde el 2026-09-02 (docs/logica-negocio/cxp/
+        // DISENO-FACTURAS-COMPROMETIDAS-EN-COMBO-PAGOS.md): es el estado en el que
+        // nace un pago desde el frente S cuando no viene cuenta bancaria de origen,
+        // el flujo normal hoy. Sin este estado, validaValorContraSaldo (el único
+        // llamador) queda ciego a esos pagos y deja registrar dos veces el pago
+        // completo de la misma factura.
         Query query = em.createQuery(
                 " select p from PagoProgramado p " +
                 " where  p.facturaCompra.id = :idFactura " +
-                " and    p.estado in (:registrado, :enArchivo, :confirmado) " +
+                " and    p.estado in (:porAprobar, :registrado, :enArchivo, :confirmado) " +
                 " order by p.id");
         query.setParameter("idFactura", idFacturaCompra);
+        query.setParameter("porAprobar", Long.valueOf(EstadoPagoProgramado.POR_APROBAR));
         query.setParameter("registrado", Long.valueOf(EstadoPagoProgramado.REGISTRADO));
         query.setParameter("enArchivo",  Long.valueOf(EstadoPagoProgramado.EN_ARCHIVO));
         query.setParameter("confirmado", Long.valueOf(EstadoPagoProgramado.CONFIRMADO));
+        return query.getResultList();
+    }
+
+    @Override
+    public List<PagoProgramado> selectComprometidosNoConfirmadosByFactura(Long idFacturaCompra) throws Throwable {
+        System.out.println("Ingresa al metodo selectComprometidosNoConfirmadosByFactura con factura: " + idFacturaCompra);
+        Query query = em.createQuery(
+                " select p from PagoProgramado p " +
+                " where  p.facturaCompra.id = :idFactura " +
+                " and    p.estado in (:porAprobar, :registrado, :enArchivo) " +
+                " order by p.id");
+        query.setParameter("idFactura", idFacturaCompra);
+        query.setParameter("porAprobar", Long.valueOf(EstadoPagoProgramado.POR_APROBAR));
+        query.setParameter("registrado", Long.valueOf(EstadoPagoProgramado.REGISTRADO));
+        query.setParameter("enArchivo",  Long.valueOf(EstadoPagoProgramado.EN_ARCHIVO));
         return query.getResultList();
     }
 

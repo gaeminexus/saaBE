@@ -92,6 +92,9 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	private AplicacionPagoCxpService aplicacionPagoCxpService;
 
 	@EJB
+	private com.saa.ejb.cxp.dao.FacturaCompraDaoService facturaCompraDaoService;
+
+	@EJB
 	private AnticipoProveedorService anticipoProveedorService;
 
 	@EJB
@@ -1434,6 +1437,45 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		resultado.put("saldo", valores[0]);
 		resultado.put("comprometido", valores[1]);
 		resultado.put("disponible", valores[2]);
+		return resultado;
+	}
+
+	@Override
+	public Map<String, Object> facturasComprometidas(Long idTitular) throws Throwable {
+		System.out.println("=== facturasComprometidas | titular=" + idTitular + " ===");
+		if (idTitular == null) {
+			throw new IncomeException("Debe indicar el proveedor.");
+		}
+
+		List<Long> idsComprometidas = new ArrayList<>();
+		for (FacturaCompra factura : facturaCompraDaoService.selectActivasByTitular(idTitular)) {
+			Map<String, Object> saldos = aplicacionPagoCxpService.saldoFactura(factura.getId());
+			double saldoPendiente = ((Number) saldos.get("saldoPendiente")).doubleValue();
+
+			// "Comprometido" son los pagos vigentes que TODAVÍA no se reflejan en
+			// el saldo aplicado (POR_APROBAR/REGISTRADO/EN_ARCHIVO). Los CONFIRMADO
+			// no se suman acá: ya generaron su AplicacionPagoCxp y por eso ya están
+			// descontados de saldoPendiente — sumarlos de nuevo los contaría dos
+			// veces (mismo criterio que validaValorContraSaldo, ver el javadoc de
+			// selectComprometidosNoConfirmadosByFactura).
+			double comprometido = 0.0;
+			for (PagoProgramado pago
+					: pagoProgramadoDaoService.selectComprometidosNoConfirmadosByFactura(factura.getId())) {
+				comprometido += (pago.getValor() != null) ? pago.getValor() : 0.0;
+			}
+
+			double disponible = saldoPendiente - comprometido;
+			if (disponible <= TOLERANCIA) {
+				idsComprometidas.add(factura.getId());
+			}
+		}
+
+		System.out.println("✓ facturasComprometidas | titular=" + idTitular
+				+ " | comprometidas=" + idsComprometidas.size());
+
+		Map<String, Object> resultado = new HashMap<>();
+		resultado.put("idTitular", idTitular);
+		resultado.put("idsFacturas", idsComprometidas);
 		return resultado;
 	}
 
