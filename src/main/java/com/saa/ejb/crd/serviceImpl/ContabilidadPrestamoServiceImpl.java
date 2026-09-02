@@ -563,10 +563,17 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
                     + " desbalanceado.");
         }
 
-        // "El bien" (aux1=8 en 9/13, ausente en 34) solo lleva valor si la plantilla lo tiene
-        // Y el préstamo ya tiene valor asegurado — hoy 0 por política mientras no exista
-        // póliza (mismo criterio que PrestamoServiceImpl#generarAmortizacion, seguro de
-        // incendio en $0 "no se cobra mientras no exista la póliza que lo respalde").
+        // ⚠️ "El bien" (aux1=8 en 9/13, ausente en 34): esta línea depende de
+        // Prestamo.valorAsegurado (PRSTVLAS), y esa columna NO TIENE ESCRITOR HOY —
+        // verificado por el árbitro el 2026-09-01 (ESTADO-EQUIPO-SEGUROS.md §1.3: una de
+        // las cuatro columnas de seguro de CRD.PRST mapeadas y presentes en la base que
+        // nadie escribe). Mientras eso no cambie, valorBien siempre da 0 y esta línea
+        // NUNCA se genera — un prendario o hipotecario queda sin registrar su garantía en
+        // cuentas de orden, y el asiento cuadra igual (no avisa: es justamente el modo de
+        // falla que este diseño evita en todo lo demás). No es un bug de este método: leer
+        // valorAsegurado era lo razonable con el código de hoy. Pendiente de sql/157
+        // bloque 6 antes del primer prendario/hipotecario real — no bloquea quirografario
+        // (sin línea de bien).
         double valorBien = (mapeo.auxBien() != null) ? redondear(nvl(prestamo.getValorAsegurado())) : 0.0;
 
         // DEBE: cuenta de orden "cartera de créditos" — espeja el DEBE real (totalCapital) MÁS
