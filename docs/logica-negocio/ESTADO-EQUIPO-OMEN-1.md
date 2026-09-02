@@ -408,6 +408,151 @@ de producción leyendo la consola.
 
 ---
 
+## 2f. 2026-09-02 — La jornada de la carga Petro 449
+
+**El día más largo del equipo.** El usuario no podía procesar el archivo del mes; se destrabó en
+etapas y aparecieron defectos que estaban ahí desde antes. Se registra completo porque **la mitad
+del valor está en el recorrido**, no solo en el resultado.
+
+### Lo entregado, en orden
+
+| Commit | Qué |
+|---|---|
+| `d7aef68` | El tipo 4 deja de bloquear en Petrocomercial · normalización de tildes/eñes · toda novedad que bloquee genera su fila `NVPC` |
+| `f94532b` → **`9e55edf`** | La fecha del asiento. **El segundo corrige al primero** — ver H21 |
+| `8a142db` · `53ed29f` | Las dos optimizaciones de rendimiento |
+| `sql/163` · `sql/165` | Parches de datos: novedades faltantes para poder repartir |
+
+### H19 — ⛔ El proceso DESCARTA dinero en silencio. Lo más grave de todo el día
+
+`procesarExcedenteASiguienteCuota:2802-2819`. Cuando detecta que la cuota más antigua **todavía
+tiene saldo**, no la paga y no falla: **loguea una advertencia y hace `return`, perdiendo el
+excedente**. No queda en ningún `PagoPrestamo`, no queda en ninguna cuota, no genera novedad. Solo
+una línea entre miles en el log.
+
+> El comentario del propio código dice *«Tiene saldo pero es cuota anterior/actual - no debería
+> pasar»*. **Sí pasa**, y ahí está exactamente el punto donde vive la regla que pidió el usuario:
+> *nunca dejar una cuota parcial y pasar a la siguiente*. El código **ya detecta la condición** y
+> en vez de resolverla tira el dinero. Está a un `if` de hacer lo correcto.
+
+**Sin corregir.** Es el pendiente más importante que deja este día.
+
+### H20 — El proceso saltea cuotas, medido
+
+`sql/167` bloque 3. Préstamo **4456**: pagó las cuotas **64 a 73** con la **63** sin pagar — diez
+salteadas. Préstamo 3267: pagó 103-105 con la 102 sin pagar. **279 cuotas quedaron PARCIAL** contra
+813 pagadas.
+
+Y **no es por la mora**: la mora pendiente de toda la carga son **$1.284,42 en 200 cuotas** —
+centavos por cuota—, mientras a las parciales les falta muchísimo más (una cuota de $947 con $80
+aplicados). La mora cobrada fue **$0,00**, que es el diseño documentado (`totalBaseCuota:888` la
+resta a propósito).
+
+### H21 — La fecha de efecto es el ÚLTIMO DÍA DEL MES DE CARGA
+
+**Decisión del usuario, y corrige una instrucción mía.** El dinero se descuenta del sueldo, así que
+está pagado a tiempo aunque el archivo se procese al mes siguiente.
+
+**El daño de no tenerlo:** el proceso fechó los pagos el 2 de septiembre y la clasificación de
+bandas mandó **casi toda la cartera a vencidos**. Un préstamo al día contabilizado como vencido.
+
+Yo había hecho poner la **fecha de autorización de contabilidad** (`f94532b`) — también incorrecta.
+`9e55edf` lo corrige: los **tres** asientos, el `PagoPrestamo` y `fechaPagado` al último día del mes,
+y **la fecha real de recepción se conserva en la observación** del asiento y en cada línea de
+transferencia.
+
+### H22 — El seguro de incendio se pierde en las cascadas
+
+`procesarPagoCuota`: `seguroIncendioPagar` se calcula bien y **nunca se usa** — a `crearRegistroPago`
+se le pasa el parámetro, que en las cuotas pagadas **por cascada** llega en `0.0`. Resultado: la fila
+queda con el **total correcto** y el **seguro en cero**, y como el asiento suma componentes mientras
+el reparto usa el total, **el asiento cierra más bajo**. Explica en forma y en signo el descuadre de
+**$2.563,42** entre reparto y aplicación.
+
+⚠️ La línea tiene encima un comentario `✅ CORRECCIÓN: Usar el valor real del seguro (HS)`:
+**alguien la puso así a propósito**. Por eso el arreglo exige verificar antes que
+`capital + interés + desgravamen + seguro == total` en las dos llamadas, no solo en la de cascada.
+
+### H23 — Auditoría de rendimiento: 22 minutos por carga
+
+| # | Qué | Costo | Estado |
+|---|---|---|---|
+| 1 | `esperadoPorEntidad` en doble bucle | hasta **~120 consultas por partícipe** con aportes | ✅ `53ed29f` |
+| 3 | El producto se consulta una vez por partícipe, siempre igual | miles por carga | ✅ `8a142db` |
+| 2 | Entidad/producto/préstamo resueltos **dos veces** (validar y aplicar) | la mayoría de los 2.500 | ⬜ riesgo medio-alto |
+| 4 | Trae la tabla de amortización completa para buscar una cuota | menor | ⬜ riesgo medio |
+
+> **El hallazgo del #1 no fue la optimización, fue lo que apareció al verificarla.**
+> `esperadoEnLotePorFilial` filtra además por **estado de la entidad** (`ACTIVO`, `ACTIVO_EN_MORA`)
+> y el per-entidad no. Un partícipe en otro estado habría salido con «esperado 0» y **su plata se
+> habría anticipado a meses futuros** en vez de cubrir lo que debía. Se resolvió con fallback.
+> **Y el caso no es imposible:** la generación mira el estado al generar el archivo, la carga se
+> procesa un ciclo mensual después — una jubilación en el medio abre la ventana.
+
+### H24 — ⛔ La brecha de $2.906,52 NO está en las cuotas: está al grabar el pago
+
+**Medido, no deducido** (`sql/170`, 2026-09-02). Sobre las 1.092 cuotas que tocó la carga 449:
+
+| | |
+|---|---|
+| `DTPRTTLL` − mora − interés vencido | 275.464,51 |
+| capital + interés + desgravamen + seguro | 275.464,50 |
+| **brecha** | **0,01** |
+
+**Las cuotas cuadran perfecto.** La hipótesis que sostuve durante media jornada — que
+`calcularSaldosRealesCuota` calcula el total de dos formas distintas según la cuota tenga o no
+pagos previos, y que en la cartera migrada esas dos formas no coinciden — **queda descartada con
+datos**. Las dos ramas existen y siguen siendo feas, pero no producen este descuadre.
+
+La brecha nace **al escribir `CRD.PGPR`**: `PGPRVLRR` queda más alto que la suma de los
+componentes que se graban al lado. 237.746,62 registrados contra 234.840,10 desglosados.
+
+**Los dos puntos que pueden generarla, los dos en `aplicarAfectacionManualConRegistroPago`** —
+la ruta que se usó para desbloquear la 449, y por eso aparece justo en esta carga:
+
+- **(A) El seguro de incendio no existe en la afectación manual.** `:3081`
+  `double seguroIncendioAfectar = 0.0; // Por ahora no se maneja seguro`. Si el operador digitó
+  desglose, ese `0.0` sobrevive hasta el grabado — pero el total que se graba es `valorAfectar`
+  **completo**. El propio código lo dice en voz alta en `:3197`: *«Cuota tiene seguro de incendio
+  pero NO se puede afectar manualmente (campo no existe en tabla AVPC)»*. Encaja con que el seguro
+  grabado (893,49) sea menos de la mitad del de las cuotas (2.008,65).
+- **(B) El sobrante de la distribución automática se descarta en silencio.** `:3152` imprime
+  `⚠️ Excedente no aplicado: $X` y después graba `valorTotalAfectar` **completo**. Lo que no
+  encontró destino no se resta del total: se vuelve brecha. Es el mismo patrón que H19, en otro
+  método.
+
+**Nota sobre el commit `a09732f`** (el arreglo del seguro hecho por deducción algebraica): salió
+**peor**. El seguro grabado bajó de 1.124,28 a 893,49 y la brecha **subió 230,79**, exactamente lo
+mismo. El razonamiento sólo valía para la rama con pagos previos. Pendiente de revertir.
+
+**`sql/171` mide cuánto aporta cada ruta** antes de tocar una línea más. Si el grueso cae en
+`PAGO_NORMAL`, hay un tercer defecto sin identificar y no se corrige nada todavía.
+
+### ⛔ Lo que este día enseña sobre mi propio método
+
+**Cuatro diagnósticos míos equivocados en el mismo problema**, y siempre el mismo error:
+
+| Hipótesis | Verificada en código | Medida contra datos | Resultado real |
+|---|---|---|---|
+| El filtro `PRSTSLTT` escondía los préstamos en mora | ✅ | ❌ | escondía **1 de 338** |
+| El préstamo tenía demasiados pagos | ✅ plausible | ❌ | tenía **0** |
+| La pantalla debía repartir el excedente, no el recibido | ✅ | ❌ | al revés: la aplicación manual **reemplaza** al flujo automático |
+| Faltaba el asiento de transitoria por el flag apagado | ✅ | ❌ | **el asiento existía**, con otra fecha |
+
+**El patrón:** encontrar un mecanismo que *puede* producir el síntoma, confirmarlo en el código
+—donde efectivamente es correcto— y **darlo por causa antes de medirlo**. Tres de las cuatro veces
+el script que lo desmentía **lo había escrito yo mismo** y despaché sin esperar su resultado.
+
+**Lo que sí funcionó, y hay que repetirlo:** cuando dos causas se ven idénticas en pantalla, **hacer
+primero que la pantalla las distinga**. El aviso de `10142d5` convirtió «no aparece» en «falló la
+consulta de pagos del préstamo N», y de ahí la causa salió en una sola medición.
+
+Y las correcciones más valiosas del día no vinieron de mí: **el usuario** corrigió dos —que hay que
+procesar según lo ingresado en pantalla, y que la fecha es el fin de mes de carga— y **el agente de
+BE** frenó dos veces ante diferencias que yo le había dado por equivalentes.
+
+---
+
 ## 3. Hallazgos de la revisión de arranque (2026-09-01)
 
 ### H1 — El contrato de API del otorgamiento vivía SOLO en el espejo
@@ -496,3 +641,4 @@ la tasa de desgravamen es una **constante quemada en Java** (`FACTOR_DESGRAVAMEN
 |---|---|
 | 2026-09-01 | Revisión de arranque del árbitro. Estado de los tres frentes verificado contra el código. Creado este documento (H2). Restaurados los dos contratos de API en el lado autoritativo (H1). `mvn -q clean compile` exit 0 sobre `80566a4` |
 | 2026-09-01 | Frente lateral del informe de necesidad de pago, entregado BE+FE en el día. Cinco hallazgos (H5–H9) y un fallo de proceso propio registrado. `sql/152` escrito para validar la query sin desplegar. Queda pendiente la prueba contra el servidor |
+| 2026-09-02 | La brecha de la carga 449 medida en serio: `sql/170` descartó `calcularSaldosRealesCuota` (cuotas cuadran, 0,01) y `sql/171` sale a medir las dos rutas de afectación manual (H24). Quinto diagnóstico mío equivocado en el mismo problema — el patrón sigue siendo deducir en vez de medir |
