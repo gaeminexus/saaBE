@@ -4,6 +4,7 @@ import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.text.Normalizer;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -13,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import com.saa.basico.ejb.FileService;
@@ -38,6 +40,7 @@ import com.saa.model.crd.Prestamo;
 import com.saa.model.crd.Producto;
 import com.saa.rubros.ASPNovedadesCargaArchivo;
 import com.saa.rubros.EstadoParticipeEntidad;
+import com.saa.rubros.Filiales;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateful;
@@ -283,6 +286,10 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 										List<ParticipeXCargaArchivo> participesXCargaArchivo) throws Throwable {
 		// Almacenar CargaArchivo
 		CargaArchivo cargaArchivoGuardado = almacenarCargaArchivo(cargaArchivo);
+		// Filial de la carga (2026-09-02): la identificación de fase 1 y el bloqueo de
+		// CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE dependen de esto — ver esFilialPetrocomercial.
+		Long codigoFilial = cargaArchivoGuardado.getFilial() != null
+			? cargaArchivoGuardado.getFilial().getCodigo() : null;
 		// Asignar la referencia al CargaArchivo guardado
         for (DetalleCargaArchivo detalle : detallesCargaArchivos) {
             detalle.setCargaArchivo(cargaArchivoGuardado);
@@ -331,11 +338,19 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 						} else { // cuando se encuentra solo un codigo petro
 							// Si encuentra solo uno entonces valida que el nombre del participe coincida con el de la entidad
 							int LARGO_NOMBRE_PETRO = 35;
+							String razonSocialTrim = entidades.get(0).getRazonSocial().trim();
 							int largoTrim = LARGO_NOMBRE_PETRO;
-							if(entidades.get(0).getRazonSocial().trim().length() < LARGO_NOMBRE_PETRO) {
-								largoTrim = entidades.get(0).getRazonSocial().trim().length();
+							if(razonSocialTrim.length() < LARGO_NOMBRE_PETRO) {
+								largoTrim = razonSocialTrim.length();
 							}
-							if (!entidades.get(0).getRazonSocial().trim().substring(0,largoTrim).equalsIgnoreCase(participe.getNombre().trim())) {
+							// El truncado a 35 sigue igual (el archivo Petro trunca ahí, es correcto).
+							// Lo que cambia (2026-09-02) es normalizar los DOS lados antes de comparar:
+							// Petrocomercial manda los nombres SIN tildes y CRD.ENTD los guarda CON
+							// tildes, así que chocaban todos los meses con partícipes distintos cada
+							// vez — ver el javadoc de normalizarNombreParaComparar.
+							String nombreEsperado = normalizarNombreParaComparar(razonSocialTrim.substring(0, largoTrim));
+							String nombreArchivo = normalizarNombreParaComparar(participe.getNombre());
+							if (!nombreEsperado.equalsIgnoreCase(nombreArchivo)) {
 								participe.setNovedadesCarga(Long.valueOf(ASPNovedadesCargaArchivo.CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE));
 							} else {
 								participe.setNovedadesCarga(Long.valueOf(ASPNovedadesCargaArchivo.OK));
@@ -423,6 +438,47 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 								null, null, montoEsperado, montoRecibido);
 					}
 				}
+
+					// 2026-09-02 (decisión del usuario, tras la carga 449): toda novedad
+					// ESTRUCTURAL (novedadesCarga) que efectivamente bloquee el procesamiento
+					// tiene que generar también su fila NVPC — si no, el partícipe bloquea la
+					// carga y es INVISIBLE en la pantalla de novedades: el mensaje de error pide
+					// "registre en las novedades cómo aplicar cada valor", pero no hay ninguna
+					// fila contra la cual registrar nada. Fue exactamente el callejón sin salida
+					// de la carga 449 (30 casos de CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE, 26 sin
+					// ninguna fila NVPC), destrabado a mano con sql/163.
+					//
+					// "Bloquea" se resuelve con tipoEstructuralBloquea — LA MISMA función que
+					// usa novedadesQueRequierenAfectacion, no una lista aparte: así el tipo 4 en
+					// Petrocomercial (que dejó de bloquear, ver esFilialPetrocomercial) deja de
+					// generar fila acá también, sin mantener dos listas sincronizadas a mano.
+					//
+					// Va DESPUÉS del INSERT (participe.getCodigo() recién existe acá), igual que
+					// el bloque de novedadesFinancieras de arriba. Guarda contra duplicados por
+					// si el reproceso alguna vez reutiliza el mismo PXCA en vez de insertar uno
+					// nuevo.
+					if (tipoEstructuralBloquea(participe.getNovedadesCarga(), codigoFilial)) {
+						long tipoCarga = participe.getNovedadesCarga().longValue();
+						boolean yaExisteNvpc = false;
+						List<NovedadParticipeCarga> novedadesExistentes =
+							novedadParticipeCargaDaoService.selectByParticipe(participe.getCodigo());
+						if (novedadesExistentes != null) {
+							for (NovedadParticipeCarga existente : novedadesExistentes) {
+								if (existente.getTipoNovedad() != null
+										&& existente.getTipoNovedad().longValue() == tipoCarga) {
+									yaExisteNvpc = true;
+									break;
+								}
+							}
+						}
+						if (!yaExisteNvpc) {
+							double montoRecibido = nullSafe(participe.getTotalDescontado());
+							registrarNovedad(participe, (int) tipoCarga,
+								"Novedad de identificación de fase 1 (validación de carga): "
+									+ describirNovedades(Arrays.asList(participe.getNovedadesCarga())) + ".",
+								null, null, 0.0, montoRecibido);
+						}
+					}
 			}
 		}
         }
@@ -1393,6 +1449,7 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	 */
 	private List<Map<String, Object>> buscarValoresSinDestino(CargaArchivo cargaArchivo) throws Throwable {
 		List<Map<String, Object>> pendientes = new ArrayList<>();
+		Long codigoFilial = cargaArchivo.getFilial() != null ? cargaArchivo.getFilial().getCodigo() : null;
 
 		List<DetalleCargaArchivo> detallesCarga =
 			detalleCargaArchivoDaoService.selectByCargaArchivo(cargaArchivo.getCodigo());
@@ -1422,7 +1479,7 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 				List<NovedadParticipeCarga> novedades =
 					novedadParticipeCargaDaoService.selectByParticipe(participe.getCodigo());
 
-				List<Long> novedadesSinResolver = novedadesQueRequierenAfectacion(participe, novedades);
+				List<Long> novedadesSinResolver = novedadesQueRequierenAfectacion(participe, novedades, codigoFilial);
 				if (novedadesSinResolver.isEmpty()) {
 					// El proceso automático sabe qué hacer con este valor.
 					continue;
@@ -1742,19 +1799,31 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	 * (novedadesCarga / novedadesFinancieras, que es lo que ve el usuario en la
 	 * grilla) y las filas de NVPC, que es el detalle sobre el que se registran
 	 * las afectaciones manuales.
+	 *
+	 * @param codigoFilial Filial de la carga (2026-09-02) — decide si
+	 *                     CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE bloquea. Ver
+	 *                     {@link #tipoEstructuralBloquea}.
 	 */
 	private List<Long> novedadesQueRequierenAfectacion(ParticipeXCargaArchivo participe,
-			List<NovedadParticipeCarga> novedades) {
+			List<NovedadParticipeCarga> novedades, Long codigoFilial) {
 
 		List<Long> encontradas = new ArrayList<>();
 
 		// participe.getNovedadesCarga()/getNovedadesFinancieras() son campos planos (Fase 1
 		// estructural) que NUNCA cargan un tipo con monto (verificado 2026-08-31: solo los 4
 		// estructurales + OK/VALORES_CERO/SIN_DESCUENTOS/DESCUENTOS_INCOMPLETOS) — sin fila
-		// NVPC no hay montoDiferencia que consultar, así que van con null. Nunca cambia su
-		// comportamiento: los 4 estructurales siguen bloqueando siempre (null ⇒ BLOQUEANTE).
-		agregarSiRequiereAfectacion(encontradas, participe.getNovedadesCarga(), null);
-		agregarSiRequiereAfectacion(encontradas, participe.getNovedadesFinancieras(), null);
+		// NVPC no hay montoDiferencia que consultar, así que van con null. Los 3 estructurales
+		// "no sé quién es" (PARTICIPE_NO_ENCONTRADO, CODIGO_ROL_DUPLICADO,
+		// NOMBRE_ENTIDAD_DUPLICADO) siguen bloqueando siempre. El cuarto,
+		// CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE, tiene la excepción de filial — ver
+		// tipoEstructuralBloquea.
+		if (tipoEstructuralBloquea(participe.getNovedadesCarga(), codigoFilial)) {
+			encontradas.add(participe.getNovedadesCarga());
+		}
+		if (tipoEstructuralBloquea(participe.getNovedadesFinancieras(), codigoFilial)
+				&& !encontradas.contains(participe.getNovedadesFinancieras())) {
+			encontradas.add(participe.getNovedadesFinancieras());
+		}
 
 		if (novedades != null) {
 			for (NovedadParticipeCarga novedad : novedades) {
@@ -1777,6 +1846,89 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 				&& !acumulador.contains(tipoNovedad)) {
 			acumulador.add(tipoNovedad);
 		}
+	}
+
+	/**
+	 * Si un tipo de novedad ESTRUCTURAL (participe.getNovedadesCarga()/getNovedadesFinancieras(),
+	 * sin fila NVPC ni montoDiferencia) bloquea el procesamiento — la MISMA pregunta que
+	 * {@link #agregarSiRequiereAfectacion} resuelve para las novedades con fila NVPC, así que
+	 * NO es una lista aparte: se apoya en {@link FamiliaNovedadCarga#clasificar}, con una sola
+	 * excepción.
+	 *
+	 * <p><b>CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE (4) NO bloquea en filial Petrocomercial</b>
+	 * (decisión del usuario, 2026-09-02, tras el callejón sin salida de la carga 449): ahí el
+	 * partícipe ya quedó identificado por rol Petro ANTES de comparar el nombre
+	 * ({@code entidades.get(0)} en la identificación de fase 1), y toda la aplicación (fase 2,
+	 * {@code validarNovedadesFase2}/{@code aplicarPagoParticipe}) resuelve la entidad por
+	 * código Petro, nunca por nombre — la novedad queda como aviso de calidad de dato, no como
+	 * bloqueo.</p>
+	 *
+	 * <p><b>En cualquier otra filial, el tipo 4 SIGUE bloqueando</b>: hoy la carga identifica
+	 * por código Petro también para esas filiales (verificado 2026-09-02: no hay ninguna rama
+	 * por filial en la identificación de fase 1, ni existe todavía identificación por número
+	 * de identificación en este flujo — ver {@code EntidadDaoService.selectByNumeroIdentificacion},
+	 * usado hoy solo por procesos de reportes en {@code rpr}). Hasta que eso exista, ahí no hay
+	 * con qué confiar más que con el rol Petro, así que la novedad sigue exigiendo afectación
+	 * manual.</p>
+	 *
+	 * @param tipoNovedad  {@code participe.getNovedadesCarga()} o {@code getNovedadesFinancieras()}
+	 * @param codigoFilial {@code CargaArchivo.filial.codigo}; null cuenta como Petrocomercial
+	 *                     (mismo criterio que {@link #esFilialPetrocomercial})
+	 */
+	private boolean tipoEstructuralBloquea(Long tipoNovedad, Long codigoFilial) {
+		if (tipoNovedad == null) {
+			return false;
+		}
+		if (tipoNovedad.intValue() == ASPNovedadesCargaArchivo.CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE
+				&& esFilialPetrocomercial(codigoFilial)) {
+			return false;
+		}
+		return FamiliaNovedadCarga.clasificar(tipoNovedad, null) == FamiliaNovedadCarga.BLOQUEANTE;
+	}
+
+	/**
+	 * Mismo criterio que {@code GeneracionArchivoPetroServiceImpl.esFilialPetrocomercial}
+	 * (:990, crd) — copiado a propósito, no reusado: ese método es privado y vive en el lado
+	 * de GENERACIÓN (saliente), este es el de CARGA (entrante); son módulos distintos
+	 * (`crd`/`asoprep`) y este archivo no puede depender de una clase de otro equipo/alcance.
+	 * {@code null} cuenta como Petrocomercial en los dos lados — mismo dato
+	 * ({@code CargaArchivo.filial} / {@code Filiales.PETROCOMERCIAL}), mismo default.
+	 */
+	private boolean esFilialPetrocomercial(Long codigoFilial) {
+		return codigoFilial == null || codigoFilial.longValue() == Filiales.PETROCOMERCIAL;
+	}
+
+	private static final Pattern DIACRITICOS = Pattern.compile("\\p{InCombiningDiacriticalMarks}+");
+	private static final Pattern ESPACIOS_MULTIPLES = Pattern.compile("\\s+");
+
+	/**
+	 * Normaliza un nombre para comparar el maestro de entidades (CRD.ENTD.ENTDRZNS) contra el
+	 * nombre que trae el archivo Petro (2026-09-02, decisión del usuario, medido en la carga
+	 * 449): Petrocomercial manda los nombres SIN tildes y el sistema los guarda CON tildes, así
+	 * que chocaban todos los meses con partícipes distintos cada vez — MADRONERO/MADROÑERO,
+	 * HECTOR/HÉCTOR, GONZALES/GONZALEZ, BUNAY/BUÑAY, EDISON/EDINSON, y casos con doble espacio
+	 * como "BORBOR MALAVE WELLINGTON  ANTO".
+	 *
+	 * <p>No es una comparación difusa ni por similitud: sigue siendo exacta
+	 * ({@code equalsIgnoreCase}) sobre el texto ya normalizado — si después de esto los
+	 * nombres siguen siendo distintos, la novedad se genera igual, que es lo correcto.</p>
+	 *
+	 * @param nombre Texto a normalizar. NO trunca — el truncado a 35 caracteres del archivo
+	 *               Petro se aplica ANTES de llamar a este método, sigue igual que antes.
+	 * @return       Mayúsculas, sin diacríticos, Ñ/ñ → N, espacios múltiples colapsados a uno.
+	 */
+	private String normalizarNombreParaComparar(String nombre) {
+		if (nombre == null) {
+			return "";
+		}
+		String resultado = nombre.trim().toUpperCase();
+		// Ñ -> N explícito: a diferencia de las vocales acentuadas, la Ñ no se descompone con
+		// NFD en todas las configuraciones — no confiar en que el paso de abajo la cubra.
+		resultado = resultado.replace('Ñ', 'N');
+		resultado = Normalizer.normalize(resultado, Normalizer.Form.NFD);
+		resultado = DIACRITICOS.matcher(resultado).replaceAll("");
+		resultado = ESPACIOS_MULTIPLES.matcher(resultado).replaceAll(" ");
+		return resultado.trim();
 	}
 
 	/**

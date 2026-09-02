@@ -106,6 +106,85 @@ Entidad por rolPetroComercial = codigoPetro:
 
 Estas novedades de fase 1 van en los campos `PXCA.novedadesCarga` / `PXCA.novedadesFinancieras`.
 
+#### 1.4.1 Comparación de nombre: normalizada desde 2026-09-02
+
+**El problema no eran los datos, era la comparación.** Petrocomercial manda los nombres SIN
+tildes; `CRD.ENTD.ENTDRZNS` los guarda CON tildes. Antes de este cambio, `razonSocial(35)`
+chocaba contra `participe.nombre` con `equalsIgnoreCase` crudo, así que **cualquier nombre
+acentuado generaba `CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE` todos los meses, con partícipes
+distintos cada vez** — medido en la carga 449: MADRONERO/MADROÑERO, HECTOR/HÉCTOR,
+GONZALES/GONZALEZ, BUNAY/BUÑAY, EDISON/EDINSON, y casos con doble espacio
+("BORBOR MALAVE WELLINGTON  ANTO").
+
+`normalizarNombreParaComparar` (`CargaArchivoPetroServiceImpl`) se aplica a los DOS lados
+DESPUÉS de truncar a 35 (el truncado no cambió): mayúsculas, `Normalizer.Form.NFD` + borrar
+`\p{InCombiningDiacriticalMarks}+` (quita tildes de vocales), `Ñ`/`ñ` → `N` explícito (NO se
+descompone con NFD en todas las configuraciones, no alcanza con el paso anterior), espacios
+múltiples colapsados a uno. **Sigue siendo `equalsIgnoreCase` exacto sobre el texto
+normalizado — nada de comparación difusa ni por similitud.** Si después de normalizar los
+nombres siguen siendo distintos, la novedad se genera igual: ahí sí hay algo que revisar.
+
+#### 1.4.2 `CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE` (4): deja de bloquear, SOLO en filial Petrocomercial
+
+Decisión del usuario, 2026-09-02, tras el callejón sin salida de la carga 449 (ver 1.4.3). En
+filial **Petrocomercial** (`CargaArchivo.filial == null || filial.codigo == Filiales.PETROCOMERCIAL`,
+mismo criterio — copiado, no reusado — que `GeneracionArchivoPetroServiceImpl.esFilialPetrocomercial`),
+el tipo 4 **ya no exige afectación manual ni bloquea el procesamiento**: el partícipe quedó
+identificado por **rol Petro** antes de comparar el nombre (`entidades.get(0)`, paso anterior
+de la misma validación), y toda la fase 2 (`validarNovedadesFase2`, `aplicarPagoParticipe`)
+resuelve la entidad por código Petro, nunca por nombre. La novedad **sigue existiendo** —
+`PXCA.novedadesCarga = 4` y su fila `NVPC` no desaparecen — pero pasa a ser solo un aviso de
+calidad de dato (corregir el maestro de `CRD.ENTD`), no un bloqueo.
+
+⚠️ **En cualquier filial que NO sea Petrocomercial, el tipo 4 SIGUE bloqueando.** Hoy la carga
+identifica por código Petro también para esas filiales — no hay ninguna rama por filial en la
+identificación de fase 1 (§1.4 de arriba es el mismo camino para las dos), ni existe
+identificación por número de identificación/cédula en este flujo (`EntidadDaoService
+.selectByNumeroIdentificacion` existe, pero hoy solo lo usan procesos de reportes en `rpr`, no
+la carga). Hasta que eso se construya, ahí no hay con qué confiar más que el rol Petro, así
+que la novedad sigue exigiendo afectación manual. **Nota operativa (2026-09-02): la filial
+ARCH todavía no carga en producción — hoy toda carga real es Petrocomercial.**
+
+⚠️ **La lista `FamiliaNovedadCarga.TIPOS_QUE_EXIGEN_AFECTACION` NO se tocó.** Esa lista
+también alimenta `NovedadParticipeCarga.getFamilia()` (lo que ve el frontend) y
+`clasificar(tipo, monto)` es una función pura sin acceso a la filial — tocarla ahí habría
+vuelto a separar lo que la pantalla muestra de lo que el proceso realmente bloquea, que es el
+problema que se viene arreglando toda esta semana. La excepción de filial vive en
+`tipoEstructuralBloquea` (nuevo, `CargaArchivoPetroServiceImpl`), que es lo único que
+`novedadesQueRequierenAfectacion` consulta para los dos campos planos
+(`novedadesCarga`/`novedadesFinancieras`) — las novedades con fila `NVPC` (fase 2) siguen
+resolviéndose por `agregarSiRequiereAfectacion`/`clasificar`, sin cambios.
+
+#### 1.4.3 Toda novedad estructural que bloquee genera su fila `NVPC` (desde 2026-09-02)
+
+**El defecto que trabó la carga 449 dos días.** 30 partícipes bloqueaban por
+`PXCANVCA = CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE`, y **26 no tenían ninguna fila en `CRD.NVPC`**
+— el mensaje «Registre en las novedades cómo aplicar cada valor» pedía algo **imposible**: no
+había novedad en pantalla contra la cual registrar nada. Se destrabó a mano con `sql/163`
+(generó esas filas manualmente); esto corrige el sistema para que no se repita con ningún otro
+tipo.
+
+**Regla:** cuando `almacenaRegistros` marca un `novedadesCarga` que `tipoEstructuralBloquea`
+(la MISMA función que usa `novedadesQueRequierenAfectacion` — no una lista aparte, así el tipo
+4 en Petrocomercial automáticamente deja de generar fila también, sin mantener dos listas
+sincronizadas a mano) considera bloqueante, se genera además su fila `NVPC` vía
+`registrarNovedad(...)`, con **`montoEsperado = 0.0`, `montoRecibido = totalDescontado`** —
+mismo criterio que usó `sql/163` a mano: así `montoDiferencia` queda positiva e igual al
+total, la novedad clasifica `BLOQUEANTE`, la pantalla la muestra, y el monto que ofrece el
+diálogo de afectación coincide con el que `validarValoresConDestino` exige para dejar
+procesar. Va DESPUÉS del INSERT en `CRD.PXCA` (`registrarNovedad` no hace nada si
+`participe.getCodigo()` es null), con guarda contra duplicados (no crea otra fila si el
+partícipe ya tiene una `NVPC` del mismo tipo). Mismo patrón que ya existía para
+`SIN_DESCUENTOS`/`DESCUENTOS_INCOMPLETOS` (2026-08-31, ver el comentario en el código
+inmediatamente arriba).
+
+**Caso verificado que cierra el círculo:** rol 4885 (SOLANO) y rol 10228 (PALACIOS)
+bloqueaban por `PXCANVCA = 4`, con sus únicas novedades visibles siendo tipo 17
+(INFORMATIVA) y tipo 13 con −$4,50 (COBRANZA) — es decir, tenían novedad, pero ninguna
+bloqueante: la pantalla los clasificaba bien y el operador nunca los miraba, mientras el
+proceso los rechazaba. Con el cambio de 1.4.2, esos dos casos (filial Petrocomercial) dejan
+de bloquear y se aplican solos.
+
 ## 2. FASE 2 — Validaciones avanzadas (después de insertar TODO)
 
 Se ejecuta al final de la persistencia, para que al validar un PH/PP el registro HS ya exista en BD.
