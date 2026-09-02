@@ -2332,6 +2332,18 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         if (fc == null)
             throw new IncomeException("No se encontrÃ³ FacturaCompra con ID: " + idFacturaCompra);
 
+        // ── Rama intermediario (§5 DISENO-FACTURA-INTERMEDIARIO.md) ───────────
+        // Va ANTES que la de reembolso: son mutuamente excluyentes (la marca se
+        // decide al registrar, no al subir el XML), pero si algún día se marcaran
+        // ambas, el intermediario gana porque su asiento es más simple y explícito
+        // sobre la intención (todo el total a una sola cuenta, sin tocar detalles).
+        boolean esIntermediario = fc.getEsIntermediario() != null && fc.getEsIntermediario() == 1L;
+
+        if (esIntermediario) {
+            return generarAsientoFacturaCompraIntermediario(fc, idEmpresa, codigoAltTipoAsiento,
+                    fechaAsiento, observaciones, usuario);
+        }
+
         // ── Rama reembolso de gastos (§8 CAMBIO-REEMBOLSO-GASTOS-BACKEND.md) ──
         // Cuando la factura es reembolso, el DEBE se construye desde los sustentos
         // (PGS.RMBF), NO desde los detalles (PGS.DFCC). Solo cambia la fuente de
@@ -2439,6 +2451,83 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         haber.setPlanCuenta(cuentaProv); haber.setNumeroCuenta(cuentaProv.getCuentaContable());
         haber.setNombreCuenta(cuentaProv.getNombre());
         haber.setDescripcion("CxP Proveedor: " + fc.getTitular().getNombre());
+        haber.setValorDebe(0.0); haber.setValorHaber(importeTotal);
+        lineas.add(haber);
+
+        return generarAsiento(idEmpresa, codigoAltTipoAsiento,
+                fechaAsiento, observaciones, usuario, lineas);
+    }
+
+    /**
+     * Genera el asiento de una factura de INTERMEDIARIO: el fondo no es dueño del
+     * gasto, es un movimiento de paso entre un arrendatario y el gasto real, así
+     * que el asiento ignora detalles e impuestos y manda el total completo —con
+     * impuestos incluidos— a la cuenta del grupo del producto elegido al registrar
+     * (docs/logica-negocio/cxp/DISENO-FACTURA-INTERMEDIARIO.md §5).
+     * <p>
+     * DEBE = cuenta del grupo de {@code fc.getIdProductoIntermediario()}, por {@code fc.getTotal()}.
+     * HABER = CxP proveedor, por el mismo {@code fc.getTotal()}.
+     * <p>
+     * <b>No se llama a {@link #agregarDiferenciaRedondeoSri}</b>: las dos líneas salen
+     * del mismo número, así que la diferencia siempre sería cero — agregar el
+     * helper sugeriría que hay algo que reconciliar donde no lo hay (§5.1 del
+     * diseño; es la misma propiedad que hace correcta a la ND de compra, ver
+     * DISENO-CUADRE-CONTRA-IMPORTE-TOTAL.md §6.2).
+     * <p>
+     * Repite las validaciones de producto/grupo/cuenta que ya corrió
+     * {@code ProcesoCargaDocumentosServiceImpl.registrarFacturaCompra} al registrar:
+     * el asiento puede generarse por otro camino (recontabilización, corrección)
+     * que no pase por el registro.
+     * @param fc : FacturaCompra con esIntermediario=1 e idProductoIntermediario poblado
+     * @throws IncomeException : si falta el producto, no existe, o su grupo/cuenta no está configurada
+     */
+    private com.saa.model.cnt.Asiento generarAsientoFacturaCompraIntermediario(
+            com.saa.model.cxp.FacturaCompra fc, Long idEmpresa, int codigoAltTipoAsiento,
+            java.time.LocalDate fechaAsiento, String observaciones, String usuario) throws Throwable {
+
+        Long idFacturaCompra = fc.getId();
+        System.out.println("  [intermediario] generarAsientoFacturaCompraIntermediario | id=" + idFacturaCompra);
+
+        Long idProducto = fc.getIdProductoIntermediario();
+        if (idProducto == null)
+            throw new IncomeException("FacturaCompra " + idFacturaCompra
+                    + " está marcada como intermediario pero no tiene idProductoIntermediario.");
+        com.saa.model.cxp.ProductoPago producto = em.find(com.saa.model.cxp.ProductoPago.class, idProducto);
+        if (producto == null)
+            throw new IncomeException("Producto ID " + idProducto + " (intermediario de FacturaCompra "
+                    + idFacturaCompra + ") no encontrado en BD.");
+        com.saa.model.cxp.GrupoProductoPago grupo = producto.getGrupoProducto();
+        if (grupo == null)
+            throw new IncomeException("Producto '" + producto.getNombre() + "' (intermediario de FacturaCompra "
+                    + idFacturaCompra + ") no tiene grupo asignado.");
+        PlanCuenta cuentaGrupo = grupo.getPlanCuenta();
+        if (cuentaGrupo == null)
+            throw new IncomeException("GrupoProductoPago '" + grupo.getNombre() + "' (producto: '"
+                    + producto.getNombre() + "', intermediario de FacturaCompra " + idFacturaCompra
+                    + ") no tiene cuenta contable.");
+
+        if (fc.getTitular() == null)
+            throw new IncomeException("FacturaCompra " + idFacturaCompra + " no tiene proveedor.");
+        PlanCuenta cuentaProv = obtenerCuentaProveedor(fc.getTitular().getCodigo(), idEmpresa);
+        if (cuentaProv == null)
+            throw new IncomeException("El proveedor '" + fc.getTitular().getNombre()
+                    + "' no tiene cuenta CxP configurada (Tipo 1, Rol Proveedor).");
+
+        double importeTotal = redondear2(nvl(fc.getTotal()));
+
+        List<DetalleAsiento> lineas = new ArrayList<>();
+
+        DetalleAsiento debe = new DetalleAsiento();
+        debe.setPlanCuenta(cuentaGrupo); debe.setNumeroCuenta(cuentaGrupo.getCuentaContable());
+        debe.setNombreCuenta(cuentaGrupo.getNombre());
+        debe.setDescripcion("Factura intermediario: " + grupo.getNombre());
+        debe.setValorDebe(importeTotal); debe.setValorHaber(0.0);
+        lineas.add(debe);
+
+        DetalleAsiento haber = new DetalleAsiento();
+        haber.setPlanCuenta(cuentaProv); haber.setNumeroCuenta(cuentaProv.getCuentaContable());
+        haber.setNombreCuenta(cuentaProv.getNombre());
+        haber.setDescripcion("CxP Proveedor (intermediario): " + fc.getTitular().getNombre());
         haber.setValorDebe(0.0); haber.setValorHaber(importeTotal);
         lineas.add(haber);
 

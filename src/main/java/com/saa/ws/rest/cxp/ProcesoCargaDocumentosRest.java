@@ -267,6 +267,13 @@ public class ProcesoCargaDocumentosRest {
     // =========================================================
     /**
      * Body JSON: { "idEmpresa": 1, "idUsuario": 1 }
+     *
+     * "esIntermediario" (boolean, opcional, default false) e "idProductoIntermediario"
+     * (Long, obligatorio si esIntermediario=true) marcan la factura como de intermediario:
+     * el asiento ignora detalles e impuestos y manda el total completo a la cuenta del
+     * grupo de ese producto (docs/logica-negocio/cxp/DISENO-FACTURA-INTERMEDIARIO.md).
+     * A diferencia de "esReembolso" (que se marca al subir el XML), esta marca se decide
+     * al registrar, así que viaja en este body y no en el documento ya persistido.
      */
     @POST
     @Path("/registrarBD/{idDocumentoCxp}")
@@ -279,8 +286,20 @@ public class ProcesoCargaDocumentosRest {
             Long idEmpresa = Long.valueOf(params.get("idEmpresa").toString());
             Long idUsuario = Long.valueOf(params.get("idUsuario").toString());
 
+            boolean esIntermediario = false;
+            if (params.containsKey("esIntermediario")) {
+                Object v = params.get("esIntermediario");
+                esIntermediario = (v instanceof Boolean)
+                        ? (Boolean) v
+                        : ("1".equals(v.toString()) || "true".equalsIgnoreCase(v.toString()));
+            }
+            Long idProductoIntermediario = (params.get("idProductoIntermediario") != null)
+                    ? Long.valueOf(params.get("idProductoIntermediario").toString())
+                    : null;
+
             Map<String, Object> resultado = procesoCargaDocumentosService
-                    .registrarDocumentoBD(idDocumentoCxp, idEmpresa, idUsuario);
+                    .registrarDocumentoBD(idDocumentoCxp, idEmpresa, idUsuario,
+                            esIntermediario, idProductoIntermediario);
 
             // Bloqueantes (productos sin clasificar, tipo asiento no configurado, etc.)
             if (Boolean.TRUE.equals(resultado.get("pendienteClasificacion"))) {

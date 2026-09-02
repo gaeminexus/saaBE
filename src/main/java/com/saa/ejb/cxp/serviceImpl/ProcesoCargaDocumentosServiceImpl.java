@@ -792,8 +792,16 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     @Override
     public Map<String, Object> registrarDocumentoBD(Long idDocumentoCxp,
                                                      Long idEmpresa, Long idUsuario) throws Throwable {
+        return registrarDocumentoBD(idDocumentoCxp, idEmpresa, idUsuario, false, null);
+    }
 
-        System.out.println("=== registrarDocumentoBD idDocumentoCxp=" + idDocumentoCxp);
+    @Override
+    public Map<String, Object> registrarDocumentoBD(Long idDocumentoCxp, Long idEmpresa, Long idUsuario,
+                                                      Boolean esIntermediario, Long idProductoIntermediario)
+            throws Throwable {
+
+        System.out.println("=== registrarDocumentoBD idDocumentoCxp=" + idDocumentoCxp
+                + " esIntermediario=" + esIntermediario);
 
         DocumentoCxp doc = documentoCxpDaoService.selectById(idDocumentoCxp,
                 NombreEntidadesCompra.DOCUMENTO_CXP);
@@ -820,7 +828,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
         try {
             if (TIPO_FACTURA.equalsIgnoreCase(tipo)) {
-                resultado = registrarFacturaCompra(doc, xmlContent, idEmpresa, idUsuario);
+                resultado = registrarFacturaCompra(doc, xmlContent, idEmpresa, idUsuario,
+                        Boolean.TRUE.equals(esIntermediario), idProductoIntermediario);
             } else if (TIPO_NOTA_CREDITO.equalsIgnoreCase(tipo)) {
                 resultado = registrarNotaCreditoCompra(doc, xmlContent, idEmpresa, idUsuario);
             } else if (TIPO_NOTA_DEBITO.equalsIgnoreCase(tipo)) {
@@ -1276,9 +1285,90 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
     private Map<String, Object> registrarFacturaCompra(DocumentoCxp doc, String xmlContent,
                                                         Long idEmpresa, Long idUsuario) throws Throwable {
+        return registrarFacturaCompra(doc, xmlContent, idEmpresa, idUsuario, false, null);
+    }
+
+    /**
+     * Igual que {@link #registrarFacturaCompra(DocumentoCxp, String, Long, Long)}, con la opción
+     * de marcar la factura como de INTERMEDIARIO
+     * (docs/logica-negocio/cxp/DISENO-FACTURA-INTERMEDIARIO.md). Válida el producto ANTES de
+     * crear cualquier registro (proveedor/producto auto-creados, FacturaCompra, detalles): un
+     * bloqueante acá no debe dejar huérfanos a medio crear.
+     */
+    private Map<String, Object> registrarFacturaCompra(DocumentoCxp doc, String xmlContent,
+                                                        Long idEmpresa, Long idUsuario,
+                                                        boolean esIntermediario, Long idProductoIntermediario)
+            throws Throwable {
         Document xmlDoc = parsearXmlComprobante(xmlContent);
         Empresa empresa = em.find(Empresa.class, idEmpresa);
         Usuario usuario = em.find(Usuario.class, idUsuario);
+
+        // ── Factura de intermediario: validar ANTES de crear nada ────────────
+        // Se decide al registrar (no al subir el XML, a diferencia de esReembolso),
+        // así que no hay nada persistido que leer: el producto viene del request.
+        // Ninguno de los tres casos cae a un valor por defecto — ver §4 del diseño.
+        //
+        // Mismo patrón que PRODUCTOS_SIN_CLASIFICAR / GRUPOS_SIN_CUENTA_CONTABLE
+        // más abajo, no IncomeException: es un dato que el usuario corrige en la
+        // pantalla y reintenta, no un fallo del proceso. Lanzar acá caería en el
+        // catch de registrarDocumentoBD, que marca el DocumentoCxp en ERROR
+        // (DCXPESTD) y lo saca de XML_CARGADO — sin poder reintentar "Registrar"
+        // directamente. Corregido tras el hallazgo del 2026-09-02: la primera
+        // versión de este bloque lanzaba IncomeException.
+        if (esIntermediario) {
+            List<Map<String, Object>> bloqueantesIntermediario = new ArrayList<>();
+            if (idProductoIntermediario == null) {
+                Map<String, Object> b = new HashMap<>();
+                b.put("tipo", "INTERMEDIARIO_SIN_PRODUCTO");
+                b.put("detalle", "Una factura de intermediario necesita el producto al que se contabiliza.");
+                bloqueantesIntermediario.add(b);
+            } else {
+                ProductoPago productoIntermediario = em.find(ProductoPago.class, idProductoIntermediario);
+                if (productoIntermediario == null) {
+                    Map<String, Object> b = new HashMap<>();
+                    b.put("tipo", "INTERMEDIARIO_PRODUCTO_INEXISTENTE");
+                    b.put("detalle", "Producto ID " + idProductoIntermediario + " no encontrado en BD.");
+                    bloqueantesIntermediario.add(b);
+                } else {
+                    GrupoProductoPago grupoIntermediario = productoIntermediario.getGrupoProducto();
+                    if (grupoIntermediario == null) {
+                        Map<String, Object> b = new HashMap<>();
+                        b.put("tipo", "INTERMEDIARIO_SIN_GRUPO");
+                        b.put("detalle", "Producto '" + productoIntermediario.getNombre()
+                                + "' no tiene grupo asignado. Clasifíquelo antes de registrar la "
+                                + "factura de intermediario.");
+                        bloqueantesIntermediario.add(b);
+                    } else if (grupoIntermediario.getPlanCuenta() == null) {
+                        Map<String, Object> b = new HashMap<>();
+                        b.put("tipo", "INTERMEDIARIO_SIN_CUENTA_CONTABLE");
+                        b.put("detalle", "GrupoProductoPago '" + grupoIntermediario.getNombre()
+                                + "' (producto: '" + productoIntermediario.getNombre()
+                                + "') no tiene cuenta contable.");
+                        bloqueantesIntermediario.add(b);
+                    }
+                }
+            }
+            if (!bloqueantesIntermediario.isEmpty()) {
+                System.out.println("⚠ Registro de FacturaCompra (intermediario) detenido. Bloqueantes: "
+                        + bloqueantesIntermediario);
+                Map<String, Object> r = new HashMap<>();
+                r.put("pendienteClasificacion", true);
+                r.put("bloqueantes", bloqueantesIntermediario);
+                // registrarDocumentoBD arma la observación del documento leyendo esta clave
+                // (:850) sin distinguir el origen del bloqueante — se puebla acá con el
+                // detalle de cada uno para que esa observación diga algo útil en vez de
+                // "...: null" (la clave sólo existe en la ruta de PRODUCTOS_SIN_CLASIFICAR).
+                List<String> detallesIntermediario = new ArrayList<>();
+                for (Map<String, Object> b : bloqueantesIntermediario) {
+                    detallesIntermediario.add(String.valueOf(b.get("detalle")));
+                }
+                r.put("productosPendientes", detallesIntermediario);
+                r.put("mensaje", "No se puede registrar la factura de intermediario. Hay "
+                        + bloqueantesIntermediario.size() + " condición(es) bloqueante(s) que deben "
+                        + "resolverse primero.");
+                return r;
+            }
+        }
 
         // ── Detección de reembolso de gastos (SRI ANEXO 5) ───────────────────
         // OJO: <codDocReembolso> existe también DENTRO de cada <reembolsoDetalle>;
@@ -1476,6 +1566,15 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             }
         } else {
             factura.setEsReembolso(0L);
+        }
+
+        // ── Factura de intermediario ──────────────────────────────────────────
+        // Ya validado (producto, grupo y cuenta contable existen) antes de llegar
+        // acá; el asiento (generarAsientoFacturaCompraIntermediario) es el que usa
+        // idProductoIntermediario para resolver la cuenta del DEBE.
+        if (esIntermediario) {
+            factura.setEsIntermediario(1L);
+            factura.setIdProductoIntermediario(idProductoIntermediario);
         }
 
         // ── IVA de la cabecera (<totalConImpuestos>) ──────────────────────────
