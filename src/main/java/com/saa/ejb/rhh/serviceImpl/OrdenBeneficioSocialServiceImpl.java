@@ -353,16 +353,20 @@ public class OrdenBeneficioSocialServiceImpl implements OrdenBeneficioSocialServ
 
         List<LiquidacionBeneficioSocial> liquidaciones = liquidacionBeneficioSocialDaoService
                 .selectByOrden(idOrden);
+        List<Long> idsEmpleados = new ArrayList<Long>();
         for (LiquidacionBeneficioSocial liquidacion : liquidaciones) {
             liquidacion.setValorPagado(liquidacion.getValor());
             liquidacion.setFechaPago(fecha);
             liquidacion.setEstado(Long.valueOf(LQBS_PAGADA));
             liquidacionBeneficioSocialDaoService.save(liquidacion, liquidacion.getCodigo());
+            if (liquidacion.getEmpleado() != null) {
+                idsEmpleados.add(liquidacion.getEmpleado().getCodigo());
+            }
         }
 
         Long idEmpresa = orden.getEmpresa() != null ? orden.getEmpresa().getCodigo() : null;
         Asiento asiento = contabilizacionNominaService.contabilizarBajaProvisionBeneficioSocial(
-                idEmpresa, orden.getTipoBeneficio().intValue(), orden.getTotal(), fecha,
+                idEmpresa, orden.getTipoBeneficio().intValue(), idsEmpleados, orden.getTotal(), fecha,
                 "Pago " + textoTipoBeneficio(orden.getTipoBeneficio()) + " " + orden.getAnio()
                         + " orden " + orden.getNumero(),
                 usuario);

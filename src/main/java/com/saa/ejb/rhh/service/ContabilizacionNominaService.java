@@ -144,15 +144,27 @@ public interface ContabilizacionNominaService {
      * decimo cuarto o fondos de reserva), al confirmar el pago de una orden
      * {@code RHH.ODBS} (frente 1, 2026-09-01).
      *
-     * <p>Dos lineas, igual criterio que {@link #contabilizarPago}: DEBE la provision por
-     * pagar que corresponda al tipo (40 decimo tercero, 41 decimo cuarto, 43 fondos de
-     * reserva — rubro 214, <code>RhhLineaAsiento</code>), resuelta contra
-     * <code>ConfiguracionNomina.plantillaProvision</code> —la misma plantilla que ya usa
-     * {@link #contabilizarProvisiones} para dar de alta esas mismas lineas—; HABER banco
-     * (linea 51), resuelta contra <code>ConfiguracionNomina.plantillaPago</code> —la misma
-     * que ya usa {@link #contabilizarPago}. Se reutilizan esas dos plantillas en vez de crear
-     * una tercera: son las que ya tienen esas cuentas configuradas para estas mismas lineas
-     * en otros asientos del modulo.</p>
+     * <p><b>Tope contra la provision realmente contabilizada (2026-09-01, #4bis del plan).</b>
+     * {@code RHH.PVNM} incluye periodos historicos que nunca generaron asiento
+     * ({@code generaProvision} no respeta el interruptor de modo, {@link #contabilizarProvisiones}
+     * si) — descargar el total de la orden sin tope dejaria el pasivo en negativo. Se calcula
+     * {@code parteProvision = min(saldoProvision, total)} (saldo ya sin periodos historicos,
+     * ver {@code ProvisionNominaDaoService.sumaValorByEmpleadosYTipo}) y el excedente
+     * {@code parteGasto = total - parteProvision} va a la linea de gasto del tipo. Mismo
+     * criterio que {@code descargaProvisionActuarial} (frente 3-C, item 6): con saldo cero
+     * degrada a "todo a gasto", que es lo correcto para una provision nunca contabilizada.</p>
+     *
+     * <p>Hasta tres lineas: DEBE la provision por pagar que corresponda al tipo (40 decimo
+     * tercero, 41 decimo cuarto, 43 fondos de reserva — rubro 214, <code>RhhLineaAsiento</code>),
+     * resuelta contra <code>ConfiguracionNomina.plantillaProvision</code> —la misma plantilla
+     * que ya usa {@link #contabilizarProvisiones} para dar de alta esas mismas lineas—; DEBE
+     * el excedente a gasto (6 decimo tercero, 7 decimo cuarto, 5 fondos de reserva), resuelto
+     * contra <code>ConfiguracionNomina.plantillaRol</code> —la misma plantilla que ya usa esas
+     * lineas para el mensualizado dentro del rol—; HABER banco (linea 51), resuelta contra
+     * <code>ConfiguracionNomina.plantillaPago</code> —la misma que ya usa
+     * {@link #contabilizarPago}. Se reutilizan esas tres plantillas en vez de crear una nueva:
+     * son las que ya tienen esas cuentas configuradas para estas mismas lineas en otros
+     * asientos del modulo.</p>
      *
      * <p>Se emite con <code>ModuloSistema.TESORERIA</code>, igual que
      * {@link #contabilizarPago}: aqui tambien sale el dinero de tesoreria.</p>
@@ -164,16 +176,19 @@ public interface ContabilizacionNominaService {
      * @param idEmpresa			: Id de la empresa
      * @param tipoBeneficio		: Codigo alterno del detalle del rubro RHH_TIPO_BENEFICIO_SOCIAL
      *							  (1 decimo tercero, 2 decimo cuarto, 3 fondos de reserva)
+     * @param idsEmpleados		: Ids de los empleados cuyas liquidaciones paga la orden, para
+     *							  sumar el saldo de provision real que topea la baja
      * @param total				: Total de la orden a dar de baja
      * @param fecha				: Fecha del asiento
      * @param descripcion		: Descripcion del asiento
      * @param usuario			: Usuario que ejecuta
      * @return					: El asiento generado
-     * @throws Throwable		: IncomeException si el tipo no tiene linea de provision, o si
-     *							  falta la configuracion/plantilla/cuenta de la empresa
+     * @throws Throwable		: IncomeException si el tipo no tiene linea de provision/gasto, o
+     *							  si falta la configuracion/plantilla/cuenta de la empresa
      */
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
-    Asiento contabilizarBajaProvisionBeneficioSocial(Long idEmpresa, int tipoBeneficio, Double total,
-            LocalDate fecha, String descripcion, String usuario) throws Throwable;
+    Asiento contabilizarBajaProvisionBeneficioSocial(Long idEmpresa, int tipoBeneficio,
+            List<Long> idsEmpleados, Double total, LocalDate fecha, String descripcion, String usuario)
+            throws Throwable;
 
 }

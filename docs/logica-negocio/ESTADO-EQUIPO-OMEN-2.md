@@ -304,6 +304,24 @@ y conviene tratarlo como patrón y no como dos anécdotas.
 | **Backend / catálogos** | El registro de reservas controla `PRBRCDGO` (la PK) mientras el código busca los rubros por **`PRBRALTR`** (el alterno). Dos equipos pueden cumplir el registro y colisionar igual. Ver §6 de `REGISTRO-RESERVAS-EQUIPOS.md` |
 | **Frontend / `rrh`** | `extraerCodigo` (`forms/parametrizacion/utiles-parametrizacion.ts:80-86`) **prefiere `codigoAlterno` sobre `codigo`** cuando el objeto trae los dos. El árbitro de `lap-saa-1` reporta un caso verificado: un préstamo hipotecario quedó grabado como «Seguro privado» |
 
+### Cuarta manifestación, 2026-09-01: dos rubros que numeran distinto
+
+`RhhTipoBeneficioSocial` y `RhhTipoProvision` **no coinciden**, y se cruzan justo en dos valores:
+
+| Código | `RhhTipoBeneficioSocial` | `RhhTipoProvision` |
+|---|---|---|
+| 3 | **FONDOS_DE_RESERVA** | **VACACIONES** |
+| 4 | **VACACIONES** | **FONDOS_DE_RESERVA** |
+
+Usar el tipo de beneficio para consultar `RHH.PVNM` habría sumado **la provisión de vacaciones**
+cuando se pagaban fondos de reserva. Lo encontró el agente de backend implementando el §4bis, y lo
+resolvió con un traductor explícito (`tipoProvisionDeBeneficio`) que además falla ruidoso para los
+tipos sin provisión equivalente.
+
+> **No es el caso de «usar constantes y no literales» —las dos constantes existen y están bien
+> nombradas.** El riesgo es cruzar **dos catálogos distintos** cuyos números se parecen. Un `int`
+> no lleva encima de qué rubro es.
+
 **En este sistema conviven dos identificadores por fila y no son intercambiables.** La PK es única;
 el alterno es el que usan los catálogos y varias pantallas. Elegir el equivocado **no falla**:
 graba o lee la fila de otro, en silencio.
