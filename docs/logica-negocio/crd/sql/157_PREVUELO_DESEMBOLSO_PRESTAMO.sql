@@ -153,3 +153,94 @@ ORDER   BY p.PRDCCDGO;
 -- =====================================================================================
 -- FIN. Pegar la salida de los cuatro bloques.
 -- =====================================================================================
+
+
+-- =====================================================================================
+-- BLOQUE 5 — EL MAPEO PRODUCTO -> FAMILIA CONTABLE (agregado 2026-09-01)
+--
+-- POR QUE HIZO FALTA: el asiento de entrega elige la plantilla segun la familia del
+-- producto (prendario -> 9, hipotecario -> 13, quirografario -> 34). El agente de
+-- backend resolvio la familia comparando CRD.TPPR.TPPRNMBR contra los textos literales
+-- "PRENDARIO" / "HIPOTECARIO" / "QUIROGRAFARIO", porque NO HAY NINGUN PRECEDENTE en el
+-- codigo que clasifique productos por familia — lo busco y no existe.
+--
+-- El riesgo que el mismo detecto: CARGA-INICIAL-BANDAS-PRODUCTO.md muestra que la
+-- familia quirografaria incluye EMERGENTE, CENAPRO, EXPRESS, SUST. BIESS/MERCADO y las
+-- variantes RESTR./NOVACION. Es muy improbable que todos esos tengan TPPRNMBR
+-- literalmente "QUIROGRAFARIO". Con la implementacion actual esos productos se
+-- RECHAZAN al aprobar — que es el comportamiento seguro (mejor frenar que clasificar
+-- mal en silencio), pero significa que no se podrian otorgar.
+--
+-- Este bloque dice, con datos, si esa comparacion por texto alcanza o hace falta otra
+-- fuente para la familia.
+--
+-- Como leerlo:
+--   * Si TPPRNMBR trae exactamente PRENDARIO / HIPOTECARIO / QUIROGRAFARIO y nada mas,
+--     la comparacion por texto sirve tal cual.
+--   * Si TPPRTPOO (la otra columna, un VARCHAR2(50) llamado "tipo") agrupa las familias
+--     — p.ej. varios productos distintos compartiendo el mismo valor — ESA es la fuente
+--     correcta y hay que cambiar la implementacion.
+--   * Si ninguna de las dos agrupa, hace falta una tabla de mapeo nueva y eso cambia el
+--     alcance: AVISAR antes de seguir.
+-- =====================================================================================
+SELECT  t.TPPRCDGO                                 AS ID_TIPO,
+        t.TPPRNMBR                                 AS NOMBRE_TIPO,
+        t.TPPRTPOO                                 AS TIPO_AGRUPADOR,
+        t.TPPRCSPB                                 AS CODIGO_SBS,
+        (SELECT COUNT(*) FROM CRD.PRDC p
+          WHERE p.TPPRCDGO = t.TPPRCDGO)           AS PRODUCTOS
+FROM    CRD.TPPR t
+ORDER   BY t.TPPRCDGO;
+
+-- 5.b El cruce que decide: cada producto con el nombre de su tipo, y si ese nombre
+--     coincide EXACTAMENTE con alguno de los tres literales que hoy busca el codigo.
+--
+-- Como leerlo: la columna MATCH_LITERAL dice si el producto se puede desembolsar hoy.
+-- Todo producto con CARTERA_VIVA > 0 y MATCH_LITERAL = 'NO' es uno que, cuando alguien
+-- intente otorgarlo, va a ser rechazado.
+SELECT  p.PRDCCDGO                                 AS ID_PRODUCTO,
+        p.PRDCNMBR                                 AS PRODUCTO,
+        t.TPPRNMBR                                 AS TIPO,
+        t.TPPRTPOO                                 AS TIPO_AGRUPADOR,
+        CASE WHEN UPPER(TRIM(t.TPPRNMBR)) IN ('PRENDARIO','HIPOTECARIO','QUIROGRAFARIO')
+             THEN 'SI' ELSE 'NO' END               AS MATCH_LITERAL,
+        (SELECT COUNT(*) FROM CRD.PRST pr
+          WHERE pr.PRDCCDGO = p.PRDCCDGO
+            AND pr.PRSTIDST IN (2, 8, 11))         AS CARTERA_VIVA
+FROM    CRD.PRDC p
+LEFT    JOIN CRD.TPPR t ON t.TPPRCDGO = p.TPPRCDGO
+ORDER   BY MATCH_LITERAL, CARTERA_VIVA DESC, p.PRDCCDGO;
+
+
+-- =====================================================================================
+-- BLOQUE 6 — PRSTVLAS (valorAsegurado): confirmar que esta vacia
+--
+-- POR QUE IMPORTA: las plantillas 9 y 13 tienen una linea para el BIEN en garantia
+-- (7.4.01.10 VEHICULOS / 7.4.01.15 BIENES INMUEBLES). El codigo la alimenta con
+-- Prestamo.valorAsegurado (PRSTVLAS).
+--
+-- Y PRSTVLAS es una de las CUATRO COLUMNAS DE SEGURO MUERTAS de CRD.PRST que ya habia
+-- documentado el levantamiento de seguros (ESTADO-EQUIPO-SEGUROS.md §1.3): mapeadas en
+-- la entidad, presentes en la base, y NADIE las escribe. Verificado hoy: el unico lector
+-- en todo el backend es el codigo del desembolso recien escrito.
+--
+-- Consecuencia si esta en 0/NULL: la linea del bien NO se genera nunca. El asiento cuadra
+-- igual (esta hecho para eso), pero un prendario o un hipotecario quedarian SIN registrar
+-- su garantia en cuentas de orden, que es justamente para lo que existe esa linea.
+--
+-- Como leerlo:
+--   * CON_VALOR = 0 -> la linea del bien nunca se va a generar. Hay que decidir de donde
+--     sale ese valor ANTES de otorgar el primer prendario o hipotecario. NO bloquea el
+--     quirografario, que no tiene linea de bien.
+--   * CON_VALOR > 0 -> hay datos y la linea se genera para esos prestamos.
+-- =====================================================================================
+SELECT  COUNT(*)                                            AS PRESTAMOS,
+        SUM(CASE WHEN NVL(p.PRSTVLAS,0) > 0 THEN 1 ELSE 0 END) AS CON_VALOR_ASEGURADO,
+        SUM(CASE WHEN p.PRSTVLAS IS NULL THEN 1 ELSE 0 END) AS EN_NULL,
+        ROUND(SUM(NVL(p.PRSTVLAS,0)), 2)                    AS SUMA
+FROM    CRD.PRST p;
+
+
+-- =====================================================================================
+-- FIN (bloques 1 a 6). Pegar la salida completa.
+-- =====================================================================================
