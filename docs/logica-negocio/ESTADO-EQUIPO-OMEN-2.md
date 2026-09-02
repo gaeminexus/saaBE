@@ -409,3 +409,43 @@ este equipo, ahora entre pares y no entre árbitro y agente.**
 
 Corolario operativo, barato: **un `grep` recorta por definición — muestra lo que casa, no lo que
 decide.** Antes de concluir sobre una rama, leer el bloque completo.
+
+---
+
+## 10. 🟠 `cxp` — tres documentos registran una CxP que no es la de la factura
+
+**Avisado por `lap-saa-1` el 2026-09-02 y verificado acá. Sin corregir: fuera del alcance que el
+usuario decidió, y el equipo que lo encontró también lo dejó pendiente de su propio usuario.**
+
+En `AsientoContableServiceImpl`, el HABER de la cuenta por pagar **no sale del total del documento**:
+se calcula como **la suma del DEBE ya construido**. Como el haber se deriva del debe, **el asiento
+cuadra siempre** — no falla nunca, sólo registra una CxP distinta de la del documento.
+
+**Y es deliberado.** El comentario en `:3051-3053` lo dice textual:
+
+> *«El HABER se calcula como la suma exacta del DEBE ya construido (gasto + IVA de cabecera) para
+> que el asiento cuadre siempre; con `lq.getTotal()` quedaba descuadrado si los detalles no lo
+> sumaban.»*
+
+| Documento | Estado |
+|---|---|
+| Factura de compra | ✅ **corregido** por `lap-saa-1` (`4ff8a13`): el HABER pasa a ser el total y la diferencia va a una cuenta de ajuste, abortando por encima de 0,50 |
+| **Liquidación de compra** (`:3051-3053`) | ❌ **sigue** |
+| **Nota de crédito de compra** (`:2844-2846`) | ❌ **sigue** |
+
+**El diagnóstico de por qué se eligió así, que es lo que vale:** tenían razón en el síntoma —sin una
+línea de ajuste, anclar al total efectivamente descuadra— y les faltaba esa pieza. **Eligieron que
+cuadre siempre por sobre que la CxP sea correcta, y esa es justamente la decisión que produce un
+defecto silencioso**: un asiento que nunca falla y siempre está un poco mal.
+
+*Escala medida en el caso ya corregido: 7 facturas, diferencia máxima de 1 centavo. Los otros dos
+documentos no se midieron.*
+
+⚠️ **Antes de tocarlo hay que verificar si algo depende de que ese HABER sea la suma del DEBE.**
+`lap-saa-1` avisó exactamente por eso.
+
+**Criterio que adopto de ellos:** la revisión **sintáctica** va como pasada **aparte** de la
+semántica —balance de llaves, imports duplicados, anotaciones repetidas— antes de razonar sobre la
+lógica. Lo instauraron tras el `@SuppressWarnings` duplicado que tiró producción, y es lo único que
+sustituye al compilador en una máquina sin Maven. Acá sí hay Maven, pero el principio se sostiene:
+**la lectura semántica no ve los errores de sintaxis**, y es el modo en que se lee un diff.
