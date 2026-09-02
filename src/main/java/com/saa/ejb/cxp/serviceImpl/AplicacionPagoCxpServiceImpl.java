@@ -567,6 +567,12 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	@Override
 	public AplicacionPagoCxp aplicarPagoTransferencia(PagoProgramado pago, Long idUsuario)
 			throws Throwable {
+		return aplicarPagoTransferencia(pago, idUsuario, true);
+	}
+
+	@Override
+	public AplicacionPagoCxp aplicarPagoTransferencia(PagoProgramado pago, Long idUsuario,
+			boolean emitirMovimientoCheque) throws Throwable {
 
 		boolean debitoAutomatico = esDebitoAutomatico(pago);
 		com.saa.model.tsr.Cheque cheque = pago.getCheque();
@@ -619,20 +625,24 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 		aplicacion.setUsuario(em.find(Usuario.class, idUsuario));
 		aplicacion = saveSingle(aplicacion);
 
-		// 3. Movimiento bancario de egreso
-		int tipoMovimiento = (cheque != null)
-				? TipoMovimientoConciliacion.CHEQUES_GIRADOS_Y_NO_COBRADOS
-				: TipoMovimientoConciliacion.TRANSFERENCIAS_DEBITOS_EN_TRANSITO;
-		com.saa.model.tsr.MovimientoBanco mov = movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
-				"Pago proveedor: " + nombreProveedor + " | Factura: " + factura.getNumero()
-				+ (debitoAutomatico ? " | Débito automático" : "")
-				+ (cheque != null ? " | Cheque N° " + cheque.getNumero() : " | Ref: " + nvl(pago.getReferenciaBanco(), "")),
-				asiento, pago.getCuentaBancaria(), pago.getValor(),
-				tipoMovimiento, OrigenMovimientoConciliacion.PAGOS);
-		if (cheque != null) {
-			mov.setCheque(cheque);
-			mov.setNumeroCheque(cheque.getNumero());
-			movimientoBancoService.saveSingle(mov);
+		// 3. Movimiento bancario de egreso. Con cheque agrupado (emitirMovimientoCheque=false,
+		// PagoProgramadoServiceImpl.aprobar con agruparEnUnCheque=true) este pago no emite
+		// el suyo: se emite una sola vez por el total del grupo, después del loop de aprobar.
+		if (cheque == null || emitirMovimientoCheque) {
+			int tipoMovimiento = (cheque != null)
+					? TipoMovimientoConciliacion.CHEQUES_GIRADOS_Y_NO_COBRADOS
+					: TipoMovimientoConciliacion.TRANSFERENCIAS_DEBITOS_EN_TRANSITO;
+			com.saa.model.tsr.MovimientoBanco mov = movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
+					"Pago proveedor: " + nombreProveedor + " | Factura: " + factura.getNumero()
+					+ (debitoAutomatico ? " | Débito automático" : "")
+					+ (cheque != null ? " | Cheque N° " + cheque.getNumero() : " | Ref: " + nvl(pago.getReferenciaBanco(), "")),
+					asiento, pago.getCuentaBancaria(), pago.getValor(),
+					tipoMovimiento, OrigenMovimientoConciliacion.PAGOS);
+			if (cheque != null) {
+				mov.setCheque(cheque);
+				mov.setNumeroCheque(cheque.getNumero());
+				movimientoBancoService.saveSingle(mov);
+			}
 		}
 
 		System.out.println("✓ Pago aplicado: aplicacion=" + aplicacion.getId()

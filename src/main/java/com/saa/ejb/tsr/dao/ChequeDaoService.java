@@ -58,12 +58,14 @@ public interface ChequeDaoService extends EntityDao<Cheque> {
 	Long selectMinChequeActivoPorCuenta(Long idCuentaBancaria) throws Throwable;
 
 	/**
-	 * Id del PagoProgramado asociado al cheque, si existe.
+	 * Ids de los PagoProgramado que respaldan un cheque, ordenados. Antes de
+	 * "un cheque para varios pagos" (docs/logica-negocio/tsr/DISENO-UN-CHEQUE-VARIOS-PAGOS.md)
+	 * esta lista tenía a lo sumo un elemento; con el índice único retirado puede tener varios.
 	 * @param idCheque		: Id del cheque
-	 * @return				: Id del pago, o null si el cheque no está asociado a ningún pago
+	 * @return				: Ids de los pagos, ordenados; lista vacía si el cheque no tiene ninguno
 	 * @throws Throwable	: Excepcion
 	 */
-	Long selectIdPagoByCheque(Long idCheque) throws Throwable;
+	List<Long> selectIdsPagoByCheque(Long idCheque) throws Throwable;
 
 	/**
 	 * Listado de cheques con los datos del pago que los usó (si lo hay), para

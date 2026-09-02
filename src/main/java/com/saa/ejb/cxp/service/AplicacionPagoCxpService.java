@@ -126,6 +126,23 @@ public interface AplicacionPagoCxpService extends EntityService<AplicacionPagoCx
 	 */
 	AplicacionPagoCxp aplicarPagoTransferencia(PagoProgramado pago, Long idUsuario) throws Throwable;
 
+	/**
+	 * Igual que {@link #aplicarPagoTransferencia(PagoProgramado, Long)}, pero con
+	 * control sobre si este pago emite su propio {@code MovimientoBanco} de cheque.
+	 * Lo usa {@code PagoProgramadoServiceImpl.aprobar} cuando el cheque respalda
+	 * varios pagos (agruparEnUnCheque=true): el movimiento se emite una sola vez
+	 * por el total del grupo, no una vez por pago/factura. Sin cheque el parámetro
+	 * no tiene efecto.
+	 * @param pago                  : Pago programado ya ejecutado por el banco
+	 * @param idUsuario             : Id del usuario que registra o procesa el pago
+	 * @param emitirMovimientoCheque: false para suprimir el MovimientoBanco individual
+	 *                                de este pago cuando tiene cheque (cheque agrupado)
+	 * @return                      : Aplicación creada
+	 * @throws Throwable            : Excepcion
+	 */
+	AplicacionPagoCxp aplicarPagoTransferencia(PagoProgramado pago, Long idUsuario,
+			boolean emitirMovimientoCheque) throws Throwable;
+
 	// ── Reversión ────────────────────────────────────────────────────────────
 
 	/**

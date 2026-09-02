@@ -157,6 +157,39 @@ public interface ChequeService extends EntityService<Cheque>{
 			Long idUsuario) throws Throwable;
 
 	/**
+	 * Toma UN cheque disponible de la cuenta, una sola vez, y lo deja GENERADO
+	 * con el valor TOTAL y el beneficiario común de un grupo de pagos que van
+	 * a compartir el mismo cheque físico (tesorería lo marca en la bandeja de
+	 * aprobación). A diferencia de {@link #asignarAPago}, que se llama una vez
+	 * por pago y por eso no sirve para un grupo (pisaría valor y beneficiario
+	 * en cada llamada), este método se llama UNA sola vez para todo el grupo:
+	 * es lo que mantiene el lock pesimista de {@code tomarSiguienteConLock}
+	 * como defensa suficiente contra la carrera de dos usuarios tomando el
+	 * mismo cheque, ahora que el índice único {@code PGS.UQ_PGTR_DTCH} se
+	 * retira (ver docs/logica-negocio/tsr/DISENO-UN-CHEQUE-VARIOS-PAGOS.md §5.2).
+	 * ⛔ No llamar en un loop: el cheque se toma una sola vez por grupo.
+	 * @param idCuentaBancaria	: Id de la cuenta bancaria
+	 * @param valorTotal		: Suma de los valores de todos los pagos del grupo
+	 * @param titular			: Titular común del grupo (puede ser null)
+	 * @param beneficiario		: Nombre del beneficiario común que se imprime en el cheque
+	 * @param idUsuario			: Id del usuario que registra
+	 * @return					: Cheque asignado, en estado GENERADO, con el valor total
+	 * @throws Throwable		: Excepcion
+	 */
+	Cheque asignarAGrupo(Long idCuentaBancaria, Double valorTotal, Titular titular, String beneficiario,
+			Long idUsuario) throws Throwable;
+
+	/**
+	 * Ids de los PagoProgramado que respaldan un cheque, ordenados. Puede
+	 * tener más de un elemento desde que se admite un cheque para varios
+	 * pagos (docs/logica-negocio/tsr/DISENO-UN-CHEQUE-VARIOS-PAGOS.md).
+	 * @param idCheque	: Id del cheque
+	 * @return			: Ids de los pagos, ordenados; lista vacía si no tiene ninguno
+	 * @throws Throwable: Excepcion
+	 */
+	List<Long> idsPagoDelCheque(Long idCheque) throws Throwable;
+
+	/**
 	 * Anula un cheque suelto que todavía está ACTIVO (no asignado a ningún
 	 * pago). Si el cheque tiene un PagoProgramado asociado se rechaza: hay que
 	 * reversar el pago, no anular el cheque directamente.
@@ -194,16 +227,30 @@ public interface ChequeService extends EntityService<Cheque>{
 	void marcarEntregados(List<Long> ids, Long idUsuario) throws Throwable;
 
 	/**
-	 * Listado de cheques con los datos del pago que los usó, para la pantalla
-	 * de consulta de cheques.
+	 * Listado de cheques con los pagos que los usan, para la pantalla de
+	 * consulta de cheques. Agrupado por cheque desde que un cheque puede
+	 * respaldar varios pagos (docs/logica-negocio/tsr/DISENO-UN-CHEQUE-VARIOS-PAGOS.md
+	 * §5.4): antes era una fila por pago y un cheque compartido salía
+	 * repetido con el valor total en cada fila (número equivocado en silencio
+	 * si el frontend sumaba la columna "valor"); ahora es una fila por cheque.
+	 * <p>
+	 * <b>Cambio ADITIVO, no reemplaza el shape viejo:</b> los seis campos que ya
+	 * leen las pantallas existentes (consultas-cheques, cheques-generados,
+	 * cheques-impresos-proc, cheques-entregados-proc) — idPago, tipoPago,
+	 * referenciaPago, idDocumento, origenExterno, idOrigen — se conservan en el
+	 * item, poblados con el PRIMER pago del cheque (null si el cheque no tiene
+	 * ninguno). Se agregan "cantidadPagos" y "pagos" con el detalle completo.
 	 * @param idEmpresa			: Id de la empresa (sólo filtra los cheques con pago asociado)
 	 * @param idCuentaBancaria	: Id de la cuenta bancaria, null para todas
 	 * @param estado			: Estado del cheque (rubro EstadoCheque), null para todos
 	 * @param desde				: Fecha de uso desde, null sin límite inferior
 	 * @param hasta				: Fecha de uso hasta, null sin límite superior
-	 * @return					: Listado con idCheque, numero, estado, valor, beneficiario,
-	 * 							  fechaUso, fechaImpresion, fechaEntrega, idPago, tipoPago,
-	 * 							  referenciaPago, numeroCuenta, banco
+	 * @return					: Un mapa por cheque con idCheque, numero, estado, valor,
+	 * 							  beneficiario, fechaUso, fechaImpresion, fechaEntrega,
+	 * 							  numeroCuenta, banco, idPago, tipoPago, referenciaPago,
+	 * 							  idDocumento (del primer pago; null si no tiene ninguno),
+	 * 							  cantidadPagos y "pagos": lista completa de mapas con
+	 * 							  idPago, tipoPago, referenciaPago, idDocumento
 	 * @throws Throwable		: Excepcion
 	 */
 	List<Map<String, Object>> listar(Long idEmpresa, Long idCuentaBancaria, Long estado,

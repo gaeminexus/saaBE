@@ -22,6 +22,7 @@ import com.saa.ejb.cxp.dao.LotePagoDaoService;
 import com.saa.ejb.cxp.dao.PagoProgramadoDaoService;
 import com.saa.ejb.cxp.service.AnticipoProveedorService;
 import com.saa.ejb.cxp.service.AplicacionPagoCxpService;
+import com.saa.ejb.cxp.service.ConflictoNegocioException;
 import com.saa.ejb.cxp.service.FormateadorArchivoBanco;
 import com.saa.ejb.cxp.service.LectorRespuestaBanco;
 import com.saa.ejb.cxp.service.PagoProgramadoService;
@@ -49,6 +50,7 @@ import com.saa.model.tsr.Cheque;
 import com.saa.model.tsr.CuentaBancaria;
 import com.saa.model.tsr.CuentaBancariaTitular;
 import com.saa.model.tsr.Egreso;
+import com.saa.model.tsr.Titular;
 import com.saa.rubros.EstadoAnticipoProveedor;
 import com.saa.rubros.EstadoEgresoTesoreria;
 import com.saa.rubros.EstadoLotePago;
@@ -1120,8 +1122,15 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public Map<String, Object> aprobar(List<Long> idsPagos, Long idCuentaBancaria, Long formaPago,
 			String fechaPago, Long idUsuario) throws Throwable {
+		return aprobar(idsPagos, idCuentaBancaria, formaPago, fechaPago, idUsuario, null);
+	}
+
+	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRED)
+	public Map<String, Object> aprobar(List<Long> idsPagos, Long idCuentaBancaria, Long formaPago,
+			String fechaPago, Long idUsuario, Boolean agruparEnUnCheque) throws Throwable {
 		System.out.println("=== aprobar (pagos) | ids=" + idsPagos + " | cuenta=" + idCuentaBancaria
-				+ " | formaPago=" + formaPago + " ===");
+				+ " | formaPago=" + formaPago + " | agruparEnUnCheque=" + agruparEnUnCheque + " ===");
 
 		if (idsPagos == null || idsPagos.isEmpty()) {
 			throw new IncomeException("Debe indicar al menos un pago a aprobar.");
@@ -1178,12 +1187,69 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			}
 		}
 
+		// "agruparEnUnCheque" sólo aplica con formaPago=CHEQUE; el frontend lo manda
+		// sólo cuando de verdad aplica y omite la clave en el resto de los casos, así
+		// que acá se trata ausente y false igual (Boolean.TRUE.equals, no unboxing).
+		boolean agrupar = (fp == FormaPagoProgramado.CHEQUE) && Boolean.TRUE.equals(agruparEnUnCheque);
+
+		// Un cheque físico se gira a UN beneficiario: si se agrupa, todos los pagos
+		// tienen que compartir el MISMO titular. Se compara por id (nunca por
+		// nombre: dos proveedores distintos que se llamen igual compartirían un
+		// cheque sin que nada lo detecte — el frontend sí compara por nombre, pero
+		// es un chequeo preventivo suyo, no el que decide) y un titular nulo
+		// rechaza el grupo: sin id no se puede probar que sea el mismo beneficiario.
+		Titular titularGrupo = null;
+		if (agrupar) {
+			List<Long> sinTitular = new ArrayList<>();
+			List<Long> titularesDistintos = new ArrayList<>();
+			for (PagoProgramado pago : pagos) {
+				if (pago.getTitular() == null) {
+					sinTitular.add(pago.getId());
+					continue;
+				}
+				if (titularGrupo == null) {
+					titularGrupo = pago.getTitular();
+				} else if (!titularGrupo.getCodigo().equals(pago.getTitular().getCodigo())) {
+					titularesDistintos.add(pago.getId());
+				}
+			}
+			if (!sinTitular.isEmpty()) {
+				throw new ConflictoNegocioException("No se puede girar un solo cheque: los pagos "
+						+ sinTitular + " no tienen titular identificado, así que no se puede comprobar "
+						+ "que sean del mismo beneficiario.");
+			}
+			if (!titularesDistintos.isEmpty()) {
+				throw new ConflictoNegocioException("No se puede girar un solo cheque para pagos de "
+						+ "beneficiarios distintos: los pagos " + titularesDistintos + " no comparten el "
+						+ "titular del resto del grupo.");
+			}
+		}
+
 		// FASE 3, no implementado todavía — ver el javadoc de validaDisponibilidad.
 		validaDisponibilidad(idCuentaBancaria, total, fecha);
 
 		List<Long> registrados = new ArrayList<>();
 		List<Long> confirmados = new ArrayList<>();
 		List<Map<String, Object>> cheques = new ArrayList<>();
+
+		// Cheque agrupado: se toma UNA sola vez para todo el lote (asignarAGrupo),
+		// antes del loop — es lo que mantiene el lock pesimista como defensa
+		// suficiente contra la carrera ahora que el índice único PGS.UQ_PGTR_DTCH
+		// se retira (docs/logica-negocio/tsr/DISENO-UN-CHEQUE-VARIOS-PAGOS.md §5.2).
+		Cheque chequeGrupo = null;
+		List<Long> pagosGrupo = new ArrayList<>();
+		List<String> asientosGrupo = new ArrayList<>();
+		// El PRIMER asiento no nulo del grupo, no el último: es estable frente al
+		// orden en que se contabilice el grupo (el árbitro, 2026-09-01). Cualquiera
+		// de los N sirve igual para MovimientoBanco.asiento — la conciliación ancla
+		// en DetalleAsiento, no acá (§4 del diseño); se elige por previsibilidad.
+		Asiento primerAsientoGrupo = null;
+		if (agrupar) {
+			String nombreBeneficiarioGrupo = (titularGrupo != null) ? titularGrupo.getNombre()
+					: nvl(pagos.get(0).getBeneficiarioNombre(), "Beneficiario");
+			chequeGrupo = chequeService.asignarAGrupo(idCuentaBancaria, total, titularGrupo,
+					nombreBeneficiarioGrupo, idUsuario);
+		}
 
 		for (PagoProgramado pago : pagos) {
 			pago.setCuentaBancaria(cuenta);
@@ -1192,27 +1258,45 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 
 			if (fp == FormaPagoProgramado.CHEQUE) {
 				pago.setDebitoAutomatico(Long.valueOf(0));
-				String nombreBeneficiario = pago.getTitular() != null
-						? pago.getTitular().getNombre() : nvl(pago.getBeneficiarioNombre(), "Beneficiario");
-				Cheque cheque = chequeService.asignarAPago(idCuentaBancaria, pago.getValor(),
-						pago.getTitular(), nombreBeneficiario, idUsuario);
+				Cheque cheque;
+				if (agrupar) {
+					cheque = chequeGrupo;
+				} else {
+					String nombreBeneficiario = pago.getTitular() != null
+							? pago.getTitular().getNombre() : nvl(pago.getBeneficiarioNombre(), "Beneficiario");
+					cheque = chequeService.asignarAPago(idCuentaBancaria, pago.getValor(),
+							pago.getTitular(), nombreBeneficiario, idUsuario);
+				}
 				pago.setCheque(cheque);
 				pago.setReferenciaBanco("CHQ-" + cheque.getNumero());
 				pago.setFechaRespuesta(fecha);
 				pago.setEstado(Long.valueOf(EstadoPagoProgramado.CONFIRMADO));
 				pago = guardaPagoConCheque(pago, cheque);
 
-				Asiento asiento = contabilizarSegunOrigen(pago, idUsuario);
+				// Con cheque agrupado se suprime el MovimientoBanco individual de
+				// este pago: se emite uno solo por el total, después del loop.
+				Asiento asiento = contabilizarSegunOrigen(pago, idUsuario, !agrupar);
 				pagoProgramadoDaoService.save(pago, pago.getId());
 				confirmados.add(pago.getId());
 
-				Map<String, Object> detalleCheque = new HashMap<>();
-				detalleCheque.put("pago", pago.getId());
-				detalleCheque.put("numeroCheque", cheque.getNumero());
-				if (asiento != null) {
-					detalleCheque.put("asiento", asiento.getNumeroAlterno());
+				if (agrupar) {
+					pagosGrupo.add(pago.getId());
+					if (asiento != null) {
+						asientosGrupo.add(asiento.getNumeroAlterno());
+						if (primerAsientoGrupo == null) {
+							primerAsientoGrupo = asiento;
+						}
+					}
+				} else {
+					Map<String, Object> detalleCheque = new HashMap<>();
+					detalleCheque.put("numeroCheque", cheque.getNumero());
+					detalleCheque.put("valor", pago.getValor());
+					detalleCheque.put("pagos", java.util.Collections.singletonList(pago.getId()));
+					detalleCheque.put("asientos", (asiento != null)
+							? java.util.Collections.singletonList(asiento.getNumeroAlterno())
+							: new ArrayList<String>());
+					cheques.add(detalleCheque);
 				}
-				cheques.add(detalleCheque);
 
 			} else if (fp == FormaPagoProgramado.DEBITO_AUTOMATICO) {
 				pago.setDebitoAutomatico(Long.valueOf(1));
@@ -1234,6 +1318,24 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 				registrados.add(pago.getId());
 			}
 		}
+
+		if (agrupar && chequeGrupo != null) {
+			// Un solo MovimientoBanco por el cheque, por el total del grupo — no uno
+			// por pago (§5.3.3 del diseño). Se cuelga del PRIMER asiento generado
+			// del grupo: los N asientos (uno por pago, decisión D3) son
+			// intercambiables para este propósito, y MovimientoBanco ya no es la
+			// fuente de conciliación (docs/logica-negocio/tsr/DISENO-UN-CHEQUE-VARIOS-PAGOS.md §4).
+			if (primerAsientoGrupo != null) {
+				emitirMovimientoBancoChequeGrupal(chequeGrupo, cuenta, total, primerAsientoGrupo, pagosGrupo);
+			}
+			Map<String, Object> detalleCheque = new HashMap<>();
+			detalleCheque.put("numeroCheque", chequeGrupo.getNumero());
+			detalleCheque.put("valor", total);
+			detalleCheque.put("pagos", pagosGrupo);
+			detalleCheque.put("asientos", asientosGrupo);
+			cheques.add(detalleCheque);
+		}
+
 		em.flush();
 
 		System.out.println("✓ Aprobados " + idsPagos.size() + " pago(s): " + registrados.size()
@@ -1757,6 +1859,26 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 					+ descripcionEstado(pago.getEstado()));
 		}
 
+		// D2 (docs/logica-negocio/tsr/DISENO-UN-CHEQUE-VARIOS-PAGOS.md §2): si el
+		// cheque respalda más de un pago, se rechaza el reverso individual — hay que
+		// reversar el grupo completo. Va ANTES de cualquier efecto de reverso: si se
+		// valida más abajo (como estaba el anularPorReverso), este pago ya habría
+		// quedado con su aplicación/asiento reversados aunque el reverso se rechace.
+		if (pago.getCheque() != null) {
+			List<Long> idsGrupo = chequeService.idsPagoDelCheque(pago.getCheque().getCodigo());
+			List<Long> otrosPagos = new ArrayList<>();
+			for (Long id : idsGrupo) {
+				if (!id.equals(idPago)) {
+					otrosPagos.add(id);
+				}
+			}
+			if (!otrosPagos.isEmpty()) {
+				throw new ConflictoNegocioException("El pago " + idPago + " comparte el cheque N° "
+						+ pago.getCheque().getNumero() + " con los pagos " + otrosPagos
+						+ ". Reverse el grupo completo.");
+			}
+		}
+
 		Map<String, Object> resultado = new HashMap<>();
 
 		if (pago.getOrigenExterno() != null) {
@@ -1991,21 +2113,43 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	 * @throws Throwable: Excepcion
 	 */
 	private Asiento contabilizarSegunOrigen(PagoProgramado pago, Long idUsuario) throws Throwable {
+		return contabilizarSegunOrigen(pago, idUsuario, true);
+	}
+
+	/**
+	 * Igual que {@link #contabilizarSegunOrigen(PagoProgramado, Long)}, pero
+	 * con control sobre si este pago emite su propio {@code MovimientoBanco}
+	 * de cheque. Lo usa {@link #aprobar} cuando {@code agruparEnUnCheque=true}:
+	 * ahí el cheque respalda varios pagos y el movimiento bancario se emite
+	 * UNA sola vez por el total del grupo (después del loop), no una vez por
+	 * pago — ver docs/logica-negocio/tsr/DISENO-UN-CHEQUE-VARIOS-PAGOS.md §5.3.3.
+	 * Sin cheque (transferencia, débito automático) el parámetro no tiene
+	 * efecto: ese movimiento siempre se emite, uno por pago, como siempre.
+	 * @param pago                  : Pago confirmado (o a punto de confirmarse)
+	 * @param idUsuario             : Id del usuario que registra o procesa
+	 * @param emitirMovimientoCheque: false para suprimir el MovimientoBanco individual
+	 *                                de este pago cuando tiene cheque (cheque agrupado)
+	 * @return                      : Asiento generado, o null si el pago de origen externo
+	 *                                no tiene desglose
+	 * @throws Throwable            : Excepcion
+	 */
+	private Asiento contabilizarSegunOrigen(PagoProgramado pago, Long idUsuario, boolean emitirMovimientoCheque)
+			throws Throwable {
 		Asiento asiento;
 		if (pago.getOrigenExterno() != null) {
 			// Documento de origen en otro módulo: el asiento se arma con el
 			// desglose de PGS.DPGT y cuelga del propio pago. Devuelve null si
 			// el pago no tiene desglose.
-			asiento = contabilizarPagoOrigenExterno(pago, idUsuario);
+			asiento = contabilizarPagoOrigenExterno(pago, idUsuario, emitirMovimientoCheque);
 		} else if (pago.getAnticipo() != null) {
-			asiento = contabilizarPagoAnticipo(pago, idUsuario);
+			asiento = contabilizarPagoAnticipo(pago, idUsuario, emitirMovimientoCheque);
 		} else if (pago.getEgreso() != null) {
 			// Pago de un egreso de tesorería: asiento contra la cuenta del
 			// grupo del producto, sin aplicación.
-			asiento = contabilizarPagoEgreso(pago, idUsuario);
+			asiento = contabilizarPagoEgreso(pago, idUsuario, emitirMovimientoCheque);
 		} else {
 			AplicacionPagoCxp aplicacion =
-					aplicacionPagoCxpService.aplicarPagoTransferencia(pago, idUsuario);
+					aplicacionPagoCxpService.aplicarPagoTransferencia(pago, idUsuario, emitirMovimientoCheque);
 			pago.setAplicacion(aplicacion);
 			asiento = aplicacion.getAsiento();
 		}
@@ -2013,6 +2157,38 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			anexaNotaChequeEnHaber(asiento, pago);
 		}
 		return asiento;
+	}
+
+	/**
+	 * Emite el ÚNICO {@code MovimientoBanco} de un cheque que respalda varios
+	 * pagos (agruparEnUnCheque=true): a diferencia del caso 1:1, donde cada
+	 * {@code contabilizarPagoXXX}/{@code aplicarPagoTransferencia} crea el
+	 * suyo, acá se crea uno solo por el valor TOTAL del grupo, después de
+	 * contabilizar todos los pagos. Se cuelga del asiento de referencia que
+	 * pasa el llamador (el último del grupo): {@code MovimientoBanco.asiento}
+	 * es obligatorio y los N asientos del grupo (uno por pago, decisión D3)
+	 * son intercambiables para este propósito — el propio diseño declara que
+	 * esta tabla no es la fuente de conciliación desde el 2026-08-27 (ver
+	 * docs/logica-negocio/tsr/DISENO-UN-CHEQUE-VARIOS-PAGOS.md §4).
+	 * @param cheque           : Cheque del grupo, ya asignado con asignarAGrupo
+	 * @param cuenta           : Cuenta bancaria de origen
+	 * @param valorTotal       : Suma de los valores de todos los pagos del grupo
+	 * @param asientoReferencia: Asiento de referencia (el último generado del grupo)
+	 * @param pagosGrupo       : Ids de los pagos del grupo, para la glosa
+	 * @throws Throwable       : Excepcion
+	 */
+	private void emitirMovimientoBancoChequeGrupal(Cheque cheque, CuentaBancaria cuenta, double valorTotal,
+			Asiento asientoReferencia, List<Long> pagosGrupo) throws Throwable {
+		Long idEmpresa = (cuenta.getPlanCuenta() != null && cuenta.getPlanCuenta().getEmpresa() != null)
+				? cuenta.getPlanCuenta().getEmpresa().getCodigo() : null;
+		String descripcion = "Cheque N° " + cheque.getNumero() + " agrupa " + pagosGrupo.size()
+				+ " pago(s): " + pagosGrupo;
+		com.saa.model.tsr.MovimientoBanco mov = movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
+				descripcion, asientoReferencia, cuenta, valorTotal,
+				TipoMovimientoConciliacion.CHEQUES_GIRADOS_Y_NO_COBRADOS, OrigenMovimientoConciliacion.PAGOS);
+		mov.setCheque(cheque);
+		mov.setNumeroCheque(cheque.getNumero());
+		movimientoBancoService.saveSingle(mov);
 	}
 
 	/**
@@ -2073,6 +2249,11 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	 * @throws Throwable : Excepcion
 	 */
 	private Asiento contabilizarPagoEgreso(PagoProgramado pago, Long idUsuario) throws Throwable {
+		return contabilizarPagoEgreso(pago, idUsuario, true);
+	}
+
+	private Asiento contabilizarPagoEgreso(PagoProgramado pago, Long idUsuario, boolean emitirMovimientoCheque)
+			throws Throwable {
 
 		Egreso egreso = pago.getEgreso();
 		Long idEmpresa = (pago.getEmpresa() != null) ? pago.getEmpresa().getCodigo() : null;
@@ -2099,20 +2280,24 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 				idCuentaBancaria, idEmpresa, TipoAsientos.EGRESO_TESORERIA, fecha,
 				observacionAsiento, usuarioNombre(idUsuario));
 
-		// 2. Movimiento bancario de egreso (mismo criterio que los pagos de facturas)
-		int tipoMovimiento = (cheque != null)
-				? TipoMovimientoConciliacion.CHEQUES_GIRADOS_Y_NO_COBRADOS
-				: TipoMovimientoConciliacion.TRANSFERENCIAS_DEBITOS_EN_TRANSITO;
-		com.saa.model.tsr.MovimientoBanco mov = movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
-				"Egreso tesorería: " + egreso.getDescripcion()
-				+ (debitoAutomatico ? " | Débito automático" : "")
-				+ (cheque != null ? " | Cheque N° " + cheque.getNumero() : " | Ref: " + nvl(pago.getReferenciaBanco(), "")),
-				asiento, pago.getCuentaBancaria(), pago.getValor(),
-				tipoMovimiento, OrigenMovimientoConciliacion.PAGOS);
-		if (cheque != null) {
-			mov.setCheque(cheque);
-			mov.setNumeroCheque(cheque.getNumero());
-			movimientoBancoService.saveSingle(mov);
+		// 2. Movimiento bancario de egreso (mismo criterio que los pagos de facturas).
+		// Con cheque agrupado (emitirMovimientoCheque=false) este pago no emite el
+		// suyo: lo emite aprobar() una sola vez por el total, después del loop.
+		if (cheque == null || emitirMovimientoCheque) {
+			int tipoMovimiento = (cheque != null)
+					? TipoMovimientoConciliacion.CHEQUES_GIRADOS_Y_NO_COBRADOS
+					: TipoMovimientoConciliacion.TRANSFERENCIAS_DEBITOS_EN_TRANSITO;
+			com.saa.model.tsr.MovimientoBanco mov = movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
+					"Egreso tesorería: " + egreso.getDescripcion()
+					+ (debitoAutomatico ? " | Débito automático" : "")
+					+ (cheque != null ? " | Cheque N° " + cheque.getNumero() : " | Ref: " + nvl(pago.getReferenciaBanco(), "")),
+					asiento, pago.getCuentaBancaria(), pago.getValor(),
+					tipoMovimiento, OrigenMovimientoConciliacion.PAGOS);
+			if (cheque != null) {
+				mov.setCheque(cheque);
+				mov.setNumeroCheque(cheque.getNumero());
+				movimientoBancoService.saveSingle(mov);
+			}
 		}
 
 		// 3. El egreso queda pagado, con su asiento vinculado
@@ -2195,15 +2380,20 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	 */
 	private Asiento contabilizarPagoOrigenExterno(PagoProgramado pago, Long idUsuario)
 			throws Throwable {
+		return contabilizarPagoOrigenExterno(pago, idUsuario, true);
+	}
+
+	private Asiento contabilizarPagoOrigenExterno(PagoProgramado pago, Long idUsuario,
+			boolean emitirMovimientoCheque) throws Throwable {
 
 		// La caja chica no usa el desglose de PGS.DPGT: el DEBE es siempre la
 		// cuenta contable de la caja, no un producto por línea. Se resuelve
 		// aparte con su propia plantilla de asiento.
 		if (com.saa.rubros.OrigenPagoExterno.TSR_CAJA_CHICA.equals(pago.getOrigenExterno())) {
-			return contabilizarPagoCajaChica(pago, idUsuario);
+			return contabilizarPagoCajaChica(pago, idUsuario, emitirMovimientoCheque);
 		}
 		if (com.saa.rubros.OrigenPagoExterno.RHH_ANTICIPO_EMPLEADO.equals(pago.getOrigenExterno())) {
-			return contabilizarPagoAnticipoEmpleado(pago, idUsuario);
+			return contabilizarPagoAnticipoEmpleado(pago, idUsuario, emitirMovimientoCheque);
 		}
 
 		Long idEmpresa = (pago.getEmpresa() != null) ? pago.getEmpresa().getCodigo() : null;
@@ -2274,20 +2464,24 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 				TipoAsientos.PAGO_ORIGEN_EXTERNO, fecha, observacionAsiento,
 				usuarioNombre(idUsuario), lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_PAGAR));
 
-		// Movimiento bancario de egreso (mismo criterio que los demás pagos)
-		int tipoMovimiento = (cheque != null)
-				? TipoMovimientoConciliacion.CHEQUES_GIRADOS_Y_NO_COBRADOS
-				: TipoMovimientoConciliacion.TRANSFERENCIAS_DEBITOS_EN_TRANSITO;
-		com.saa.model.tsr.MovimientoBanco mov = movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
-				descripcionBase + " | Beneficiario: " + nvl(pago.getBeneficiarioNombre(), "")
-				+ (debitoAutomatico ? " | Débito automático" : "")
-				+ (cheque != null ? " | Cheque N° " + cheque.getNumero() : " | Ref: " + nvl(pago.getReferenciaBanco(), "")),
-				asiento, pago.getCuentaBancaria(), pago.getValor(),
-				tipoMovimiento, OrigenMovimientoConciliacion.PAGOS);
-		if (cheque != null) {
-			mov.setCheque(cheque);
-			mov.setNumeroCheque(cheque.getNumero());
-			movimientoBancoService.saveSingle(mov);
+		// Movimiento bancario de egreso (mismo criterio que los demás pagos). Con
+		// cheque agrupado este pago no emite el suyo: lo emite aprobar() una sola
+		// vez por el total, después del loop.
+		if (cheque == null || emitirMovimientoCheque) {
+			int tipoMovimiento = (cheque != null)
+					? TipoMovimientoConciliacion.CHEQUES_GIRADOS_Y_NO_COBRADOS
+					: TipoMovimientoConciliacion.TRANSFERENCIAS_DEBITOS_EN_TRANSITO;
+			com.saa.model.tsr.MovimientoBanco mov = movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
+					descripcionBase + " | Beneficiario: " + nvl(pago.getBeneficiarioNombre(), "")
+					+ (debitoAutomatico ? " | Débito automático" : "")
+					+ (cheque != null ? " | Cheque N° " + cheque.getNumero() : " | Ref: " + nvl(pago.getReferenciaBanco(), "")),
+					asiento, pago.getCuentaBancaria(), pago.getValor(),
+					tipoMovimiento, OrigenMovimientoConciliacion.PAGOS);
+			if (cheque != null) {
+				mov.setCheque(cheque);
+				mov.setNumeroCheque(cheque.getNumero());
+				movimientoBancoService.saveSingle(mov);
+			}
 		}
 
 		// El asiento cuelga del pago: no hay documento de CXP donde colgarlo.
@@ -2311,6 +2505,11 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	 * @throws Throwable : Excepcion
 	 */
 	private Asiento contabilizarPagoCajaChica(PagoProgramado pago, Long idUsuario) throws Throwable {
+		return contabilizarPagoCajaChica(pago, idUsuario, true);
+	}
+
+	private Asiento contabilizarPagoCajaChica(PagoProgramado pago, Long idUsuario, boolean emitirMovimientoCheque)
+			throws Throwable {
 
 		Long idEmpresa = (pago.getEmpresa() != null) ? pago.getEmpresa().getCodigo() : null;
 		LocalDate fecha = (pago.getFechaRespuesta() != null) ? pago.getFechaRespuesta() : LocalDate.now();
@@ -2350,19 +2549,21 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 				caja.getPlanCuenta().getCodigo(), pago.getCuentaBancaria().getCodigo(), pago.getValor(),
 				idEmpresa, fecha, observacionAsiento, usuarioNombre(idUsuario));
 
-		int tipoMovimiento = (cheque != null)
-				? TipoMovimientoConciliacion.CHEQUES_GIRADOS_Y_NO_COBRADOS
-				: TipoMovimientoConciliacion.TRANSFERENCIAS_DEBITOS_EN_TRANSITO;
-		com.saa.model.tsr.MovimientoBanco mov = movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
-				etiqueta + " caja chica " + caja.getNombre()
-				+ (debitoAutomatico ? " | Débito automático" : "")
-				+ (cheque != null ? " | Cheque N° " + cheque.getNumero() : " | Ref: " + nvl(pago.getReferenciaBanco(), "")),
-				asiento, pago.getCuentaBancaria(), pago.getValor(),
-				tipoMovimiento, OrigenMovimientoConciliacion.PAGOS);
-		if (cheque != null) {
-			mov.setCheque(cheque);
-			mov.setNumeroCheque(cheque.getNumero());
-			movimientoBancoService.saveSingle(mov);
+		if (cheque == null || emitirMovimientoCheque) {
+			int tipoMovimiento = (cheque != null)
+					? TipoMovimientoConciliacion.CHEQUES_GIRADOS_Y_NO_COBRADOS
+					: TipoMovimientoConciliacion.TRANSFERENCIAS_DEBITOS_EN_TRANSITO;
+			com.saa.model.tsr.MovimientoBanco mov = movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
+					etiqueta + " caja chica " + caja.getNombre()
+					+ (debitoAutomatico ? " | Débito automático" : "")
+					+ (cheque != null ? " | Cheque N° " + cheque.getNumero() : " | Ref: " + nvl(pago.getReferenciaBanco(), "")),
+					asiento, pago.getCuentaBancaria(), pago.getValor(),
+					tipoMovimiento, OrigenMovimientoConciliacion.PAGOS);
+			if (cheque != null) {
+				mov.setCheque(cheque);
+				mov.setNumeroCheque(cheque.getNumero());
+				movimientoBancoService.saveSingle(mov);
+			}
 		}
 
 		pago.setAsiento(asiento);
@@ -2392,6 +2593,11 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	 * @throws Throwable : Excepcion
 	 */
 	private Asiento contabilizarPagoAnticipoEmpleado(PagoProgramado pago, Long idUsuario) throws Throwable {
+		return contabilizarPagoAnticipoEmpleado(pago, idUsuario, true);
+	}
+
+	private Asiento contabilizarPagoAnticipoEmpleado(PagoProgramado pago, Long idUsuario,
+			boolean emitirMovimientoCheque) throws Throwable {
 
 		Long idEmpresa = (pago.getEmpresa() != null) ? pago.getEmpresa().getCodigo() : null;
 		LocalDate fecha = (pago.getFechaRespuesta() != null) ? pago.getFechaRespuesta() : LocalDate.now();
@@ -2427,19 +2633,21 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 				empleado.getCodigo(), pago.getValor(), pago.getCuentaBancaria().getCodigo(),
 				idEmpresa, fecha, observacionAsiento, usuarioNombre(idUsuario));
 
-		int tipoMovimiento = (cheque != null)
-				? TipoMovimientoConciliacion.CHEQUES_GIRADOS_Y_NO_COBRADOS
-				: TipoMovimientoConciliacion.TRANSFERENCIAS_DEBITOS_EN_TRANSITO;
-		com.saa.model.tsr.MovimientoBanco mov = movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
-				"Anticipo a colaborador " + nombreEmpleado
-				+ (debitoAutomatico ? " | Débito automático" : "")
-				+ (cheque != null ? " | Cheque N° " + cheque.getNumero() : " | Ref: " + nvl(pago.getReferenciaBanco(), "")),
-				asiento, pago.getCuentaBancaria(), pago.getValor(),
-				tipoMovimiento, OrigenMovimientoConciliacion.PAGOS);
-		if (cheque != null) {
-			mov.setCheque(cheque);
-			mov.setNumeroCheque(cheque.getNumero());
-			movimientoBancoService.saveSingle(mov);
+		if (cheque == null || emitirMovimientoCheque) {
+			int tipoMovimiento = (cheque != null)
+					? TipoMovimientoConciliacion.CHEQUES_GIRADOS_Y_NO_COBRADOS
+					: TipoMovimientoConciliacion.TRANSFERENCIAS_DEBITOS_EN_TRANSITO;
+			com.saa.model.tsr.MovimientoBanco mov = movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
+					"Anticipo a colaborador " + nombreEmpleado
+					+ (debitoAutomatico ? " | Débito automático" : "")
+					+ (cheque != null ? " | Cheque N° " + cheque.getNumero() : " | Ref: " + nvl(pago.getReferenciaBanco(), "")),
+					asiento, pago.getCuentaBancaria(), pago.getValor(),
+					tipoMovimiento, OrigenMovimientoConciliacion.PAGOS);
+			if (cheque != null) {
+				mov.setCheque(cheque);
+				mov.setNumeroCheque(cheque.getNumero());
+				movimientoBancoService.saveSingle(mov);
+			}
 		}
 
 		pago.setAsiento(asiento);
@@ -2790,6 +2998,11 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	 * @throws Throwable : Excepcion
 	 */
 	private Asiento contabilizarPagoAnticipo(PagoProgramado pago, Long idUsuario) throws Throwable {
+		return contabilizarPagoAnticipo(pago, idUsuario, true);
+	}
+
+	private Asiento contabilizarPagoAnticipo(PagoProgramado pago, Long idUsuario, boolean emitirMovimientoCheque)
+			throws Throwable {
 
 		AnticipoProveedor anticipo = pago.getAnticipo();
 		Long idEmpresa = (pago.getEmpresa() != null) ? pago.getEmpresa().getCodigo() : null;
@@ -2808,19 +3021,21 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 				anticipo.getId(), idCuentaBancaria, fecha, idUsuario, notaCheque);
 
 		// 2. Movimiento bancario de egreso (mismo criterio que los demás pagos)
-		int tipoMovimiento = (cheque != null)
-				? TipoMovimientoConciliacion.CHEQUES_GIRADOS_Y_NO_COBRADOS
-				: TipoMovimientoConciliacion.TRANSFERENCIAS_DEBITOS_EN_TRANSITO;
-		com.saa.model.tsr.MovimientoBanco mov = movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
-				"Anticipo a proveedor: " + anticipo.getTitular().getNombre()
-				+ (debitoAutomatico ? " | Débito automático" : "")
-				+ (cheque != null ? " | Cheque N° " + cheque.getNumero() : " | Ref: " + nvl(pago.getReferenciaBanco(), "")),
-				asiento, pago.getCuentaBancaria(), pago.getValor(),
-				tipoMovimiento, OrigenMovimientoConciliacion.PAGOS);
-		if (cheque != null) {
-			mov.setCheque(cheque);
-			mov.setNumeroCheque(cheque.getNumero());
-			movimientoBancoService.saveSingle(mov);
+		if (cheque == null || emitirMovimientoCheque) {
+			int tipoMovimiento = (cheque != null)
+					? TipoMovimientoConciliacion.CHEQUES_GIRADOS_Y_NO_COBRADOS
+					: TipoMovimientoConciliacion.TRANSFERENCIAS_DEBITOS_EN_TRANSITO;
+			com.saa.model.tsr.MovimientoBanco mov = movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
+					"Anticipo a proveedor: " + anticipo.getTitular().getNombre()
+					+ (debitoAutomatico ? " | Débito automático" : "")
+					+ (cheque != null ? " | Cheque N° " + cheque.getNumero() : " | Ref: " + nvl(pago.getReferenciaBanco(), "")),
+					asiento, pago.getCuentaBancaria(), pago.getValor(),
+					tipoMovimiento, OrigenMovimientoConciliacion.PAGOS);
+			if (cheque != null) {
+				mov.setCheque(cheque);
+				mov.setNumeroCheque(cheque.getNumero());
+				movimientoBancoService.saveSingle(mov);
+			}
 		}
 
 		System.out.println("✓ Anticipo " + anticipo.getId() + " pagado y contabilizado"
