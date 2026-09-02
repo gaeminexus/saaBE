@@ -581,7 +581,18 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         lineas.addAll(contabilizacionIndividualCreditoService.lineasReparto(idPlantilla, totalAportes,
                 totalPrestamos, "Reparto Petro/ARCH carga " + idCarga));
 
-        LocalDate fechaAsiento = LocalDate.now();
+        // 2026-09-02, pedido del usuario: el asiento va con la fecha de AUTORIZACIÓN de
+        // contabilidad, no con la fecha en que corre este proceso — la carga se autoriza un
+        // día y se procesa otro (este proceso tarda ~22 minutos, puede cruzar la medianoche),
+        // y con LocalDate.now() el asiento caía en el período contable equivocado. Sin
+        // fallback a now(): si viniera null es una ruta que nadie previó (en la práctica no
+        // puede pasar — exigeConfirmacionContabilidad ya lo valida antes de llegar acá) y
+        // tiene que gritar, no esconder el mismo defecto detrás de un if.
+        if (carga.getFechaAutorizacionContabilidad() == null) {
+            throw new IncomeException("No se puede generar el asiento de reparto de la carga "
+                    + idCarga + ": falta la fecha de autorización de contabilidad.");
+        }
+        LocalDate fechaAsiento = carga.getFechaAutorizacionContabilidad().toLocalDate();
         com.saa.model.cnt.Asiento asiento = asientoContableService.generarAsiento(idEmpresa,
                 TipoAsientos.CREDITOS, fechaAsiento,
                 "Reparto Petro/ARCH carga " + idCarga, null, lineas,
@@ -919,7 +930,14 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         lineasFinal.addAll(lineas);
 
         double totalAsiento = redondear(totalAportes + totalPrestamos);
-        LocalDate fechaAsiento = LocalDate.now();
+        // 2026-09-02, mismo pedido del usuario que contabilizarReparto: fecha de AUTORIZACIÓN
+        // de contabilidad, no la de hoy — ver el comentario de allá para el porqué completo.
+        // Sin fallback a now(): si viniera null, grita en vez de esconder el mismo defecto.
+        if (carga.getFechaAutorizacionContabilidad() == null) {
+            throw new IncomeException("No se puede generar el asiento de aplicación de la carga "
+                    + idCarga + ": falta la fecha de autorización de contabilidad.");
+        }
+        LocalDate fechaAsiento = carga.getFechaAutorizacionContabilidad().toLocalDate();
         com.saa.model.cnt.Asiento asiento = asientoContableService.generarAsiento(idEmpresa,
                 TipoAsientos.CREDITOS, fechaAsiento,
                 "Aplicación Petro/ARCH carga " + idCarga, null, lineasFinal,
