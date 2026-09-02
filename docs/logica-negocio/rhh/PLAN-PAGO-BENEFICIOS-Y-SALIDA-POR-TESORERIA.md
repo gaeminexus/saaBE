@@ -401,6 +401,68 @@ que rechazan transferencia. La nómina **sí** se paga por transferencia (archiv
 
 ---
 
+## 4bis. 🔴 `RHH.PVNM` NO es el saldo contable de la provisión
+
+**Encontrado el 2026-09-01, DESPUÉS de entregar los frentes 1 y 3-C y ANTES de desplegarlos.
+Los afecta a los dos.**
+
+### El mecanismo
+
+| Qué | Dónde | Efecto |
+|---|---|---|
+| `generaProvision` **NO** está gateado por período histórico | `ProcesoNominaServiceImpl:1617-1621` — la única guarda es `!persistir \|\| valor == 0` | un período histórico **sí** escribe filas reales en `RHH.PVNM` |
+| `contabilizarProvisiones` **SÍ** corta en histórico | `ContabilizacionNominaServiceImpl:227-231` — *«en modo HISTORICO: no se genera asiento de provisiones»* | ese mismo período **no** genera ningún asiento |
+
+**Resultado: hay provisiones en `RHH.PVNM` sin ninguna contrapartida contable.** No es un descuido —
+el Javadoc lo declara: *«es lo que permite cargar enero a julio de 2026 sin plan de cuentas»*. Es un
+trade-off deliberado.
+
+**Pero convierte a `RHH.PVNM` en el devengo operativo, no en el saldo contable de la provisión.**
+Y los dos frentes de hoy lo usan como si fuera lo segundo.
+
+### Qué rompe, en cada frente
+
+**Frente 1 — `confirmarPago` (§3.2 paso 5).** Genera el asiento de baja debitando la línea de
+provisión por pagar **por el total de la orden**, sin tope. Si la provisión contable acumulada es
+menor —o cero, por ser histórica— ese débito **deja el pasivo en negativo y el gasto sin
+reconocer**.
+
+⚠️ **No es hipotético.** Las verificaciones del usuario del 2026-09-01 dieron **140 provisiones de
+décimo tercero ($10.849,11) y 140 de décimo cuarto ($5.580,95)**, y los guiones de carga del
+repositorio van de enero a julio de 2026 — o sea que **es muy probable que esas provisiones sean
+justamente las históricas, sin asiento detrás**. La primera orden que se pague entraría por ahí.
+
+**Frente 3-C — `descargaProvisionActuarial`.** Ya tiene el tope `min(saldo, valor)`, así que no
+descuadra. Pero calcula el saldo con `SUM(PVNMVLOR)`, que **incluye lo histórico no contabilizado**,
+así que podría descargar más de lo que se acreditó. Hoy es inofensivo —no hay filas de tipo 6 ni 7,
+verificado— pero el defecto conceptual es el mismo.
+
+### La corrección
+
+**Las dos mitades, y las dos hacen falta:**
+
+1. **Excluir los períodos históricos** al sumar `RHH.PVNM`. Con eso el saldo de PVNM vuelve a
+   coincidir con lo que se contabilizó. Aplica al frente 3-C y al 1.
+2. **Poner el mismo tope `min(saldo, total)` en `confirmarPago`** que ya tiene
+   `descargaProvisionActuarial`, y mandar el excedente a gasto. Con saldo cero degrada a «todo a
+   gasto», que es exactamente lo correcto para un décimo cuya provisión nunca se contabilizó: el
+   gasto no se reconoció antes, se reconoce ahora.
+
+**Por qué esa segunda mitad es la que de verdad protege:** la primera depende de identificar bien
+los períodos históricos; la segunda **no puede descuadrar aunque la primera falle**, porque nunca
+debita más de lo que hay. Es el mismo criterio que hizo seguro desplegar el 3-C sin medir.
+
+⛔ **No desplegar el frente 1 sin esto.** El código está escrito y compila, pero el primer pago de
+una orden dejaría el asiento mal.
+
+*Alternativa considerada y descartada por ahora: leer el saldo real del mayor con
+`PlanCuentaService.saldoCuentaFechaEmpresa` (lo que ya hace `validaDisponibilidad` del frente J).
+Es más correcto, pero acopla RRHH al plan de cuentas y **el plan de cuentas definitivo sigue
+pendiente del cliente** — los grupos apuntan a la cuenta marcadora 9678. Cuando llegue, conviene
+migrar a esa vía.*
+
+---
+
 ## 5. Frente 4 — reporte del Ministerio de Trabajo
 
 ### 5.1 Sí es obligatorio — confirmado
