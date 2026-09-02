@@ -20,6 +20,7 @@ import com.saa.model.cxc.DetalleFactura;
 import com.saa.model.cxc.Factura;
 import com.saa.model.scp.Empresa;
 import com.saa.model.tsr.Titular;
+import com.saa.rubros.Estado;
 import com.saa.rubros.EstadoAsiento;
 import com.saa.rubros.ModuloSistema;
 import com.saa.rubros.RolPersona;
@@ -78,6 +79,28 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
     @EJB
     private com.saa.ejb.rhh.dao.ConfiguracionNominaDaoService configuracionNominaDaoService;
+
+    // ---------------------------------------------------------------
+    // Cuadre contra importeTotal — docs/logica-negocio/cxp/DISENO-CUADRE-CONTRA-IMPORTE-TOTAL.md
+    // ---------------------------------------------------------------
+
+    /** Código contable (CNT.PLNN.PLNNCNTA) de la cuenta de ajuste por diferencia de redondeo del SRI. */
+    private static final String CUENTA_DIFERENCIA_REDONDEO_SRI = "4.8.90.90.35";
+
+    /**
+     * Tolerancia, en dólares, para la diferencia entre {@code importeTotal} (cabecera del XML)
+     * y la suma de las líneas DEBE de un asiento de compra. Por debajo de {@link #TOLERANCIA_MINIMA_REDONDEO}
+     * no se agrega línea de ajuste; entre esa y esta, se agrega a {@link #CUENTA_DIFERENCIA_REDONDEO_SRI};
+     * por encima, se aborta con {@code IncomeException} en vez de mandar la diferencia en silencio a la
+     * cuenta de ajuste — puede ser ICE o propina mal clasificado, no redondeo.
+     * <p>
+     * Revisable con datos: {@code cxp/sql/lap1-04-diagnostico-descuadre-centavos-fctc.sql} mide la
+     * distribución real de las diferencias (DISENO-CUADRE-CONTRA-IMPORTE-TOTAL.md §4).
+     */
+    private static final double TOLERANCIA_MAXIMA_REDONDEO_SRI = 0.50;
+
+    /** Diferencias por debajo de esto no generan línea de ajuste: no hay diferencia real. */
+    private static final double TOLERANCIA_MINIMA_REDONDEO = 0.01;
 
     // ---------------------------------------------------------------
     // validarCuentasContables
@@ -2400,16 +2423,23 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         if (cuentaProv == null)
             throw new IncomeException("El proveedor '" + fc.getTitular().getNombre()
                     + "' no tiene cuenta CxP configurada (Tipo 1, Rol Proveedor).");
-        // El HABER se calcula como la suma exacta de todas las lÃ­neas DEBE ya construidas
-        // (subtotales por grupo + IVA) para garantizar que el asiento siempre cuadre
-        // independientemente de acumulaciones en punto flotante.
+        // El HABER cuadra contra el importeTotal de la cabecera (<importeTotal> del
+        // XML, FacturaCompra.total), no contra la suma del DEBE: sumar el DEBE
+        // hacia el HABER hace que el asiento cuadre siempre sin importar si está
+        // clasificando la cuenta correcta — es undetectable en silencio. La
+        // diferencia entre importeTotal y el DEBE construido (redondeo legítimo,
+        // o un ICE/propina no clasificado) se resuelve en agregarDiferenciaRedondeoSri
+        // (docs/logica-negocio/cxp/DISENO-CUADRE-CONTRA-IMPORTE-TOTAL.md §3).
         double totalDebe = lineas.stream().mapToDouble(l -> nvl(l.getValorDebe())).sum();
-        double haberRedondeado = Math.round(totalDebe * 100.0) / 100.0;
+        double importeTotal = redondear2(nvl(fc.getTotal()));
+        agregarDiferenciaRedondeoSri(lineas, importeTotal, totalDebe,
+                "FacturaCompra " + idFacturaCompra + " (N° " + fc.getNumero() + ")");
+
         DetalleAsiento haber = new DetalleAsiento();
         haber.setPlanCuenta(cuentaProv); haber.setNumeroCuenta(cuentaProv.getCuentaContable());
         haber.setNombreCuenta(cuentaProv.getNombre());
         haber.setDescripcion("CxP Proveedor: " + fc.getTitular().getNombre());
-        haber.setValorDebe(0.0); haber.setValorHaber(haberRedondeado);
+        haber.setValorDebe(0.0); haber.setValorHaber(importeTotal);
         lineas.add(haber);
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento,
@@ -2422,7 +2452,9 @@ public class AsientoContableServiceImpl implements AsientoContableService {
      * agrupando por GrupoProductoPago igual que lo hace el método estándar con DFCC.
      * DEBE(grupo) = sum(baseImponibleCero + baseImponibleGravada + valorIce) de las filas RMBF.
      * IVA crédito tributario = sum(RMBF.valorIva).
-     * HABER = CxP del proveedor por el total de todas las líneas DEBE (garantiza cuadratura).
+     * HABER = CxP del proveedor por {@code fc.getTotal()} (importeTotal de la cabecera), con la
+     * diferencia contra la suma del DEBE resuelta por {@link #agregarDiferenciaRedondeoSri}
+     * (docs/logica-negocio/cxp/DISENO-CUADRE-CONTRA-IMPORTE-TOTAL.md §3 y §6).
      */
     @SuppressWarnings("unchecked")
     private com.saa.model.cnt.Asiento generarAsientoFacturaCompraReembolso(
@@ -2511,13 +2543,19 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         if (cuentaProv == null)
             throw new IncomeException("El proveedor '" + fc.getTitular().getNombre()
                     + "' no tiene cuenta CxP configurada (Tipo 1, Rol Proveedor).");
+        // Mismo cuadre contra importeTotal que generarAsientoFacturaCompra (§3 y §6
+        // de DISENO-CUADRE-CONTRA-IMPORTE-TOTAL.md): fc es la misma FacturaCompra
+        // de origen, así que fc.getTotal() es la misma fuente de importeTotal.
         double totalDebe = lineas.stream().mapToDouble(l -> nvl(l.getValorDebe())).sum();
-        double haberRedondeado = Math.round(totalDebe * 100.0) / 100.0;
+        double importeTotal = redondear2(nvl(fc.getTotal()));
+        agregarDiferenciaRedondeoSri(lineas, importeTotal, totalDebe,
+                "FacturaCompra (reembolso) " + idFacturaCompra + " (N° " + fc.getNumero() + ")");
+
         DetalleAsiento haber = new DetalleAsiento();
         haber.setPlanCuenta(cuentaProv); haber.setNumeroCuenta(cuentaProv.getCuentaContable());
         haber.setNombreCuenta(cuentaProv.getNombre());
         haber.setDescripcion("CxP Proveedor reembolso: " + fc.getTitular().getNombre());
-        haber.setValorDebe(0.0); haber.setValorHaber(haberRedondeado);
+        haber.setValorDebe(0.0); haber.setValorHaber(importeTotal);
         lineas.add(haber);
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento,
@@ -2529,6 +2567,70 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     private static Long parseLongSafe(String s) {
         if (s == null || s.isEmpty()) return 0L;
         try { return Long.parseLong(s); } catch (NumberFormatException e) { return 0L; }
+    }
+
+    /**
+     * Agrega, si corresponde, la línea de ajuste por diferencia de redondeo del
+     * SRI entre {@code importeTotal} (cabecera del XML) y {@code totalDebe} (suma
+     * de las líneas DEBE ya construidas: gasto por grupo + IVA), o aborta si la
+     * diferencia es demasiado grande para ser redondeo — ver
+     * {@link #TOLERANCIA_MAXIMA_REDONDEO_SRI} y
+     * docs/logica-negocio/cxp/DISENO-CUADRE-CONTRA-IMPORTE-TOTAL.md §4.
+     * <p>
+     * Usado por {@code generarAsientoFacturaCompra} y
+     * {@code generarAsientoFacturaCompraReembolso}: mismo mecanismo, misma
+     * fuente de {@code importeTotal} ({@code FacturaCompra.total}), solo cambia
+     * de dónde sale {@code totalDebe}.
+     * @param lineas            : Líneas del asiento en construcción; se le agrega la línea de
+     *                            ajuste acá si corresponde (mutación intencional)
+     * @param importeTotal      : {@code <importeTotal>} del XML, ya redondeado a 2 decimales
+     * @param totalDebe         : Suma de las líneas DEBE ya construidas
+     * @param etiquetaDocumento : Identificación del documento, para el mensaje de error
+     * @throws IncomeException  : Si {@code |diferencia|} supera {@link #TOLERANCIA_MAXIMA_REDONDEO_SRI}
+     *                            (puede ser ICE o propina sin clasificar, no redondeo), o si hace falta
+     *                            la línea de ajuste y {@link #CUENTA_DIFERENCIA_REDONDEO_SRI} no existe
+     *                            o está inactiva en el plan de cuentas
+     */
+    private void agregarDiferenciaRedondeoSri(List<DetalleAsiento> lineas, double importeTotal,
+            double totalDebe, String etiquetaDocumento) {
+
+        double diferencia = redondear2(importeTotal - totalDebe);
+        double absDiferencia = Math.abs(diferencia);
+
+        if (absDiferencia > TOLERANCIA_MAXIMA_REDONDEO_SRI) {
+            throw new IncomeException(etiquetaDocumento + ": el importeTotal ($"
+                    + String.format(java.util.Locale.US, "%.2f", importeTotal)
+                    + ") difiere de la suma contabilizada ($"
+                    + String.format(java.util.Locale.US, "%.2f", totalDebe)
+                    + ") en $" + String.format(java.util.Locale.US, "%.2f", diferencia)
+                    + ", mas de la tolerancia de redondeo ($"
+                    + String.format(java.util.Locale.US, "%.2f", TOLERANCIA_MAXIMA_REDONDEO_SRI)
+                    + "). Puede ser ICE, propina, u otro rubro sin clasificar: revise la factura "
+                    + "antes de contabilizar.");
+        }
+        if (absDiferencia < TOLERANCIA_MINIMA_REDONDEO) {
+            return;
+        }
+
+        PlanCuenta cuentaAjuste = obtenerCuentaDiferenciaRedondeoSri();
+        if (cuentaAjuste == null) {
+            throw new IncomeException("No se pudo contabilizar " + etiquetaDocumento
+                    + ": falta la cuenta de diferencia por redondeo SRI (codigo "
+                    + CUENTA_DIFERENCIA_REDONDEO_SRI + ") en el plan de cuentas, activa.");
+        }
+        DetalleAsiento ajuste = new DetalleAsiento();
+        ajuste.setPlanCuenta(cuentaAjuste);
+        ajuste.setNumeroCuenta(cuentaAjuste.getCuentaContable());
+        ajuste.setNombreCuenta(cuentaAjuste.getNombre());
+        ajuste.setDescripcion("Diferencia por redondeo SRI");
+        if (diferencia > 0) {
+            ajuste.setValorDebe(diferencia);
+            ajuste.setValorHaber(0.0);
+        } else {
+            ajuste.setValorDebe(0.0);
+            ajuste.setValorHaber(absDiferencia);
+        }
+        lineas.add(ajuste);
     }
 
     // =========================================================================
@@ -3119,6 +3221,36 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             return null;
         } catch (Exception e) {
             System.err.println("âš  obtenerCuentaIVACxpPorCodigo: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Cuenta contable de ajuste por diferencia de redondeo del SRI, resuelta por
+     * su código contable en CNT.PLNN ({@link #CUENTA_DIFERENCIA_REDONDEO_SRI}).
+     * Mismo estilo de fallo que {@link #obtenerCuentaIVACxpPorCodigo}: devuelve
+     * null si no la encuentra o está inactiva, y es el LLAMADOR quien lo traduce
+     * a {@code IncomeException} — nunca "no ajusto nada" en silencio.
+     * <p>
+     * A diferencia de la cuenta de IVA (que sale de PGS.TSRI, configurable por
+     * código SRI), ésta se resuelve directo contra el plan de cuentas: es deuda
+     * declarada del diseño (una empresa nueva con otro plan de cuentas falla en
+     * el alta hasta que exista esta cuenta con este código exacto).
+     */
+    private PlanCuenta obtenerCuentaDiferenciaRedondeoSri() {
+        try {
+            @SuppressWarnings("unchecked")
+            List<PlanCuenta> r = em.createQuery(
+                    "SELECT p FROM PlanCuenta p WHERE p.cuentaContable = :cuenta AND p.estado = :activo")
+                    .setParameter("cuenta", CUENTA_DIFERENCIA_REDONDEO_SRI)
+                    .setParameter("activo", Long.valueOf(Estado.ACTIVO))
+                    .setMaxResults(1).getResultList();
+            if (!r.isEmpty() && r.get(0) != null) return r.get(0);
+            System.err.println("[WARN] No se encontro la cuenta de diferencia por redondeo SRI en CNT.PLNN, "
+                    + "codigo " + CUENTA_DIFERENCIA_REDONDEO_SRI + " (activa).");
+            return null;
+        } catch (Exception e) {
+            System.err.println("[WARN] obtenerCuentaDiferenciaRedondeoSri: " + e.getMessage());
             return null;
         }
     }
