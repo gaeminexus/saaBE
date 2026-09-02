@@ -496,3 +496,68 @@ salen los vigentes». Se persiguieron dos causas equivocadas antes de encontrar 
 
 ⚠️ **Y ojo con el atajo:** un `try/catch` que se trague el error en el consumidor reintroduce 6.1 —
 volvería a hacer indistinguible «no hay filas» de «la consulta se rompió».
+
+---
+
+## 7. ⛔ No mergear a `main` un mapeo cuya columna no está en la base
+
+**Formulado por el árbitro de `lap-saa-1` el 2026-09-02, escrito acá por el de `omen-saa-2` porque
+los dos equipos lo vamos a aplicar. Nació de un caso concreto que se frenó a tiempo.**
+
+### La regla
+
+> **Antes de mergear a `main` una entidad que mapea una columna nueva, la columna tiene que existir
+> en la base.** No alcanza con tener el `.sql` escrito, ni con planear correrlo antes del propio
+> despliegue.
+
+### Por qué «el DDL va antes del WAR» no es suficiente
+
+Esa regla ya está en todos los documentos de paso a producción, y **se piensa como una secuencia
+dentro de un equipo**: *yo* corro el DDL, después *yo* despliego. Funciona mientras haya un solo
+equipo.
+
+Con varios equipos sobre el mismo `main`, deja de funcionar, y la razón es que **`main` es un
+insumo compartido: cualquiera puede construir un WAR desde ahí en cualquier momento.**
+
+> **Mergear código que mapea columnas inexistentes es publicar una bomba con temporizador ajeno: no
+> explota cuando la despliega quien la escribió, explota cuando despliega cualquiera.**
+
+Y el daño no es que falte la función nueva. Hibernate incluye toda columna `@Column` y `@JoinColumn`
+en el `SELECT` que genera, así que **una columna mapeada que no existe rompe cualquier lectura de esa
+entidad con ORA-00904** — la entidad entera y las pantallas que la usan.
+
+### El caso que la originó, 2026-09-02
+
+`lap-saa-1` tenía lista la rama `lap1/cruce-anticipo-liquidacion` (`7595751`), que mapea `APLPLQCC`
+y `LQCCEPAG`, con su DDL (`cxp/sql/lap1-10`) **sin correr**. Compilaba limpio — lo verificó
+`omen-saa-2` en un worktree. **La compilación no ve este riesgo.**
+
+Al mismo tiempo, el usuario de `omen-saa-2` estaba por desplegar un WAR por un frente **de otro
+módulo**. Si el merge hubiera entrado primero, ese despliegue se habría llevado dos entidades de
+`cxp` rotas, sin que nadie de los dos equipos hubiera hecho nada mal según las reglas vigentes.
+
+**Se frenó el merge, y el usuario de `lap-saa-1` corrió el DDL primero.** Con las columnas en base,
+el orden de despliegue deja de importar para todos — que es la propiedad que buscamos.
+
+### Por qué es del mismo tipo que el §2b
+
+El §2b decía que **lo que no está en `origin` no existe para el otro equipo**. Éste dice lo
+complementario: **lo que sí está en `origin` existe para todos, aunque no esté listo para todos.**
+
+> **El árbitro de `lap-saa-1` lo diagnosticó así, y conviene citarlo:** *«estaba tratando la rama
+> como si el riesgo terminara en la compilación, y el riesgo real empieza después. Yo pensaba en mi
+> secuencia de despliegue; el otro veía la suya. Ninguno de los dos tenía la foto completa solo.»*
+> Es el control y lo controlado compartiendo origen, otra vez: verificó su rama contra su propio
+> plan de despliegue, que es la hipótesis con la que la escribió.
+
+### En la práctica
+
+| Situación | Qué hacer |
+|---|---|
+| Tengo el DDL escrito y sin correr | **No mergeo.** Pido que se corra primero |
+| El DDL ya corrió en la base | Mergeo cuando quiera; el orden deja de importar |
+| El cambio no mapea columnas nuevas | Sin restricción |
+| No estoy seguro de si corrió | Consultar `ALL_TAB_COLUMNS`. Es una consulta, no una suposición |
+
+**Un DDL aditivo y nullable es inofensivo para el WAR que ya está corriendo** —nadie lee esas
+columnas todavía— así que correrlo antes no tiene costo ni requiere ventana.
