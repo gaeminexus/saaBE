@@ -131,13 +131,13 @@ public class ChequeDaoServiceImpl extends EntityDaoImpl<Cheque> implements Chequ
 	}
 
 	@SuppressWarnings("unchecked")
-	public Long selectIdPagoByCheque(Long idCheque) throws Throwable {
-		System.out.println("Ingresa al Metodo selectIdPagoByCheque con cheque: " + idCheque);
+	@SuppressWarnings("unchecked")
+	public List<Long> selectIdsPagoByCheque(Long idCheque) throws Throwable {
+		System.out.println("Ingresa al Metodo selectIdsPagoByCheque con cheque: " + idCheque);
 		Query query = em.createQuery(
-				" select p.id from PagoProgramado p where p.cheque.codigo = :idCheque");
+				" select p.id from PagoProgramado p where p.cheque.codigo = :idCheque order by p.id");
 		query.setParameter("idCheque", idCheque);
-		List<Long> resultado = query.getResultList();
-		return resultado.isEmpty() ? null : resultado.get(0);
+		return query.getResultList();
 	}
 
 	@SuppressWarnings("unchecked")

@@ -245,6 +245,33 @@ public interface PagoProgramadoService extends EntityService<PagoProgramado> {
 			String fechaPago, Long idUsuario) throws Throwable;
 
 	/**
+	 * Igual que {@link #aprobar(List, Long, Long, String, Long)}, con la opción de
+	 * girar un único cheque para todos los pagos del lote (sólo con formaPago=CHEQUE;
+	 * con cualquier otra forma de pago el parámetro se ignora). Ver
+	 * docs/logica-negocio/tsr/DISENO-UN-CHEQUE-VARIOS-PAGOS.md.
+	 *
+	 * <p>Con {@code agruparEnUnCheque=true} todos los pagos del lote deben tener el
+	 * MISMO titular (comparado por id, no por nombre) y ninguno puede tener el
+	 * titular nulo — un cheque físico se gira a un solo beneficiario, así que el
+	 * sistema rechaza (IncomeException) un grupo que no lo cumpla.
+	 *
+	 * @param idsPagos          : Ids de los pagos a aprobar, todos POR_APROBAR
+	 * @param idCuentaBancaria  : Id de la cuenta bancaria de la que sale el dinero
+	 * @param formaPago         : Forma de pago (2=Transferencia, 3=Cheque, 4=Débito automático)
+	 * @param fechaPago         : Fecha del pago, yyyy-MM-dd (null = hoy)
+	 * @param idUsuario         : Id del usuario que aprueba
+	 * @param agruparEnUnCheque : true para girar un solo cheque por el total del lote
+	 *                            (default false; sin efecto si formaPago != CHEQUE)
+	 * @return                  : Mapa con exito, mensaje, totalAprobado, registrados,
+	 *                            confirmados y, con cheque, el detalle de cada cheque
+	 *                            girado ("cheques": una entrada por cheque, con
+	 *                            "pagos" y "asientos" en lista)
+	 * @throws Throwable        : Excepcion
+	 */
+	Map<String, Object> aprobar(List<Long> idsPagos, Long idCuentaBancaria, Long formaPago,
+			String fechaPago, Long idUsuario, Boolean agruparEnUnCheque) throws Throwable;
+
+	/**
 	 * Disponibilidad real de una cuenta bancaria a una fecha, para la pantalla de aprobación
 	 * (punto 14): saldo contable (`PlanCuentaService.saldoCuentaFechaEmpresa`, no
 	 * `MovimientoBanco` — ver docs/logica-negocio/tsr/DISENO-CONCILIACION-PARTIDAS-EN-TRANSITO.md

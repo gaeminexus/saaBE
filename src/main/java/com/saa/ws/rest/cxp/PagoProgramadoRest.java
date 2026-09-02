@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.saa.basico.util.DatosBusqueda;
+import com.saa.ejb.cxp.service.ConflictoNegocioException;
 import com.saa.ejb.cxp.service.PagoProgramadoService;
 import com.saa.model.cxp.PagoProgramado;
 
@@ -264,9 +265,13 @@ public class PagoProgramadoRest {
      *   "idCuentaBancaria": 4,
      *   "formaPago": 2,
      *   "fechaPago": "2026-08-27",
-     *   "idUsuario": 5
+     *   "idUsuario": 5,
+     *   "agruparEnUnCheque": true       (opcional, default false; sólo con formaPago=3)
      * }
      * "formaPago": 2=Transferencia, 3=Cheque, 4=Débito automático (1=Efectivo no soportado).
+     * "agruparEnUnCheque" gira UN solo cheque por el total del lote en vez de uno por pago
+     * (docs/logica-negocio/tsr/DISENO-UN-CHEQUE-VARIOS-PAGOS.md). Todos los pagos del lote
+     * deben compartir el mismo titular o se rechaza con 409.
      */
     @POST
     @Path("/aprobar")
@@ -280,6 +285,7 @@ public class PagoProgramadoRest {
             Long formaPago = (datos != null) ? toLong(datos.get("formaPago")) : null;
             String fechaPago = (datos != null) ? (String) datos.get("fechaPago") : null;
             Long idUsuario = (datos != null) ? toLong(datos.get("idUsuario")) : null;
+            boolean agruparEnUnCheque = (datos != null) && toBoolean(datos.get("agruparEnUnCheque"));
 
             if (idsPagos.isEmpty() || idCuentaBancaria == null || formaPago == null) {
                 return Response.status(Response.Status.BAD_REQUEST)
@@ -288,8 +294,19 @@ public class PagoProgramadoRest {
             }
 
             Map<String, Object> resultado = pagoProgramadoService.aprobar(idsPagos, idCuentaBancaria,
-                    formaPago, fechaPago, idUsuario);
+                    formaPago, fechaPago, idUsuario, Boolean.valueOf(agruparEnUnCheque));
             return Response.status(Response.Status.OK).entity(resultado)
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (ConflictoNegocioException e) {
+            // La validación de beneficiario único de agruparEnUnCheque (§6 del diseño)
+            // es la única razón de este método para responder 409: el resto de las
+            // IncomeException de aprobar (cuenta inexistente, pago no POR_APROBAR, saldo
+            // insuficiente, ...) siguen siendo 400, como ya eran — catch por TIPO, no por
+            // texto del mensaje, para que un cambio de redacción no cambie el status en
+            // silencio (ConflictoNegocioException extends IncomeException, así que este
+            // catch tiene que ir antes que el catch(Throwable) genérico de abajo).
+            return Response.status(Response.Status.CONFLICT)
+                    .entity("Error al aprobar los pagos: " + e.getMessage())
                     .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.BAD_REQUEST)
@@ -479,6 +496,15 @@ public class PagoProgramadoRest {
             Map<String, Object> resultado =
                     pagoProgramadoService.revertirPagoConfirmado(id, motivo, idUsuario);
             return Response.status(Response.Status.OK).entity(resultado)
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (ConflictoNegocioException e) {
+            // D2 (docs/logica-negocio/tsr/DISENO-UN-CHEQUE-VARIOS-PAGOS.md §6): el
+            // reverso rechazado por cheque compartido con otros pagos es 409, no el
+            // 500 que este catch ya devolvía para el resto de las excepciones. Catch
+            // por TIPO (ver PagoProgramadoRest.aprobar), tiene que ir antes que el
+            // catch(Throwable) genérico de abajo.
+            return Response.status(Response.Status.CONFLICT)
+                    .entity("Error al reversar el pago: " + e.getMessage())
                     .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)

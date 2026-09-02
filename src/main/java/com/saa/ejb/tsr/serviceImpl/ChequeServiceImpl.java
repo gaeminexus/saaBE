@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -487,6 +488,37 @@ public class ChequeServiceImpl implements ChequeService {
 	}
 
 	@Override
+	public Cheque asignarAGrupo(Long idCuentaBancaria, Double valorTotal, Titular titular, String beneficiario,
+			Long idUsuario) throws Throwable {
+
+		System.out.println("=== asignarAGrupo | cuenta=" + idCuentaBancaria + " | valorTotal=" + valorTotal + " ===");
+
+		// Se toma UNA sola vez para todo el grupo: es la defensa contra la
+		// carrera de dos usuarios tomando el mismo cheque, ahora que el índice
+		// único PGS.UQ_PGTR_DTCH se retira. Llamar esto en loop reintroduciría
+		// exactamente el problema que resuelve (ver javadoc de la interfaz).
+		Cheque cheque = tomarSiguienteConLock(idCuentaBancaria);
+		cheque.setValor(valorTotal);
+		cheque.setTitular(titular);
+		// Pantallas legadas leen DTCHIDBN (idBeneficiario), no solo PRSNCDGO.
+		cheque.setIdBeneficiario(titular);
+		cheque.setBeneficiario(beneficiario);
+		cheque.setFechaUso(LocalDateTime.now());
+		cheque.setRubroEstadoChequeH(Long.valueOf(EstadoCheque.GENERADO));
+		cheque = chequeDaoService.save(cheque, cheque.getCodigo());
+
+		chequeraService.cerrarSiTerminada(cheque.getChequera().getCodigo());
+
+		System.out.println("✓ Cheque N° " + cheque.getNumero() + " asignado a grupo | valorTotal=" + valorTotal);
+		return cheque;
+	}
+
+	@Override
+	public List<Long> idsPagoDelCheque(Long idCheque) throws Throwable {
+		return chequeDaoService.selectIdsPagoByCheque(idCheque);
+	}
+
+	@Override
 	public void anularChequeSuelto(Long idCheque, Long motivo, Long idUsuario) throws Throwable {
 		System.out.println("=== anularChequeSuelto | cheque=" + idCheque + " ===");
 
@@ -502,10 +534,10 @@ public class ChequeServiceImpl implements ChequeService {
 			throw new IncomeException("El cheque N° " + cheque.getNumero()
 					+ " no está activo: no se puede anular directamente.");
 		}
-		Long idPago = chequeDaoService.selectIdPagoByCheque(idCheque);
-		if (idPago != null) {
-			throw new IncomeException("El cheque está asociado al pago " + idPago
-					+ "; reverse el pago.");
+		List<Long> idsPago = chequeDaoService.selectIdsPagoByCheque(idCheque);
+		if (!idsPago.isEmpty()) {
+			throw new IncomeException("El cheque está asociado a los pago(s) " + idsPago
+					+ "; reverse el/los pago(s).");
 		}
 
 		cheque.setRubroEstadoChequeH(Long.valueOf(EstadoCheque.ANULADO));
@@ -588,24 +620,58 @@ public class ChequeServiceImpl implements ChequeService {
 		System.out.println("=== listar cheques | empresa=" + idEmpresa + " | cuenta=" + idCuentaBancaria
 				+ " | estado=" + estado + " ===");
 
+		// La consulta trae una fila por PAGO (left join), así que un cheque con
+		// varios pagos llega repetido: se agrupa acá por idCheque. El "order by
+		// c.numero" del DAO mantiene esas repeticiones contiguas, pero el
+		// agrupamiento no depende de eso (usa un mapa por idCheque).
+		//
+		// Cambio ADITIVO (docs/logica-negocio/tsr/DISENO-UN-CHEQUE-VARIOS-PAGOS.md
+		// §5.4): cuatro pantallas del frontend (consultas-cheques, cheques-generados,
+		// cheques-impresos-proc, cheques-entregados-proc) ya leen idPago/tipoPago/
+		// referenciaPago/idDocumento/origenExterno/idOrigen en SINGULAR sobre cada
+		// item — "idDocumento" es lo que usa el botón "Ver pago" para navegar. Esos
+		// seis campos se conservan, poblados con el PRIMER pago del cheque, y se
+		// agregan "pagos" (detalle completo) y "cantidadPagos" sin sacar nada.
 		List<Object[]> filas = chequeDaoService.selectListado(idCuentaBancaria, estado, desde, hasta, idEmpresa);
-		List<Map<String, Object>> resultado = new ArrayList<>();
+		Map<Long, Map<String, Object>> porCheque = new LinkedHashMap<>();
 
 		for (Object[] fila : filas) {
-			Map<String, Object> item = new HashMap<>();
-			item.put("idCheque", fila[0]);
-			item.put("numero", fila[1]);
-			item.put("estado", fila[2]);
-			item.put("valor", fila[3]);
-			item.put("beneficiario", fila[4]);
-			item.put("fechaUso", fila[5]);
-			item.put("fechaImpresion", fila[6]);
-			item.put("fechaEntrega", fila[7]);
-			item.put("numeroCuenta", fila[8]);
-			item.put("banco", fila[9]);
+			Long idCheque = (Long) fila[0];
+			Map<String, Object> item = porCheque.get(idCheque);
+			List<Map<String, Object>> pagos;
+			if (item == null) {
+				item = new HashMap<>();
+				item.put("idCheque", idCheque);
+				item.put("numero", fila[1]);
+				item.put("estado", fila[2]);
+				item.put("valor", fila[3]);
+				item.put("beneficiario", fila[4]);
+				item.put("fechaUso", fila[5]);
+				item.put("fechaImpresion", fila[6]);
+				item.put("fechaEntrega", fila[7]);
+				item.put("numeroCuenta", fila[8]);
+				item.put("banco", fila[9]);
+				// Compatibilidad hacia atrás: si el cheque no tiene ningún pago (fila
+				// del left join sin match), quedan en null — igual que antes de agrupar.
+				item.put("idPago", null);
+				item.put("tipoPago", null);
+				item.put("referenciaPago", null);
+				item.put("idDocumento", null);
+				pagos = new ArrayList<>();
+				item.put("pagos", pagos);
+				porCheque.put(idCheque, item);
+			} else {
+				@SuppressWarnings("unchecked")
+				List<Map<String, Object>> pagosExistentes = (List<Map<String, Object>>) item.get("pagos");
+				pagos = pagosExistentes;
+			}
 
 			Long idPago = (Long) fila[10];
-			item.put("idPago", idPago);
+			if (idPago == null) {
+				// Cheque activo/suelto, todavía sin pago asociado: fila del
+				// left join sin match, no agrega entrada a "pagos".
+				continue;
+			}
 
 			Long idFactura = (Long) fila[11];
 			String numFactura = (String) fila[12];
@@ -619,6 +685,8 @@ public class ChequeServiceImpl implements ChequeService {
 			String tipoPago = null;
 			String referenciaPago = null;
 			Long idDocumento = null;
+			Map<String, Object> pago = new HashMap<>();
+			pago.put("idPago", idPago);
 			if (idFactura != null) {
 				tipoPago = "FACTURA";
 				referenciaPago = numFactura;
@@ -637,13 +705,35 @@ public class ChequeServiceImpl implements ChequeService {
 				// El origen externo no tiene un id de documento CXP que navegar
 				// directamente: se exponen origenExterno/idOrigen para que el
 				// frontend resuelva la navegación según el módulo que lo generó.
-				item.put("origenExterno", origenExterno);
-				item.put("idOrigen", idOrigen);
+				pago.put("origenExterno", origenExterno);
+				pago.put("idOrigen", idOrigen);
 			}
-			item.put("tipoPago", tipoPago);
-			item.put("referenciaPago", referenciaPago);
-			item.put("idDocumento", idDocumento);
+			pago.put("tipoPago", tipoPago);
+			pago.put("referenciaPago", referenciaPago);
+			pago.put("idDocumento", idDocumento);
 
+			if (pagos.isEmpty()) {
+				// Primer pago de este cheque: puebla los seis campos singulares del
+				// item además de agregarlo a "pagos" — así las cuatro pantallas que
+				// todavía leen el shape viejo siguen funcionando sin tocarlas.
+				item.put("idPago", idPago);
+				item.put("tipoPago", tipoPago);
+				item.put("referenciaPago", referenciaPago);
+				item.put("idDocumento", idDocumento);
+				if (origenExterno != null) {
+					item.put("origenExterno", origenExterno);
+					item.put("idOrigen", idOrigen);
+				}
+			}
+
+			pagos.add(pago);
+		}
+
+		List<Map<String, Object>> resultado = new ArrayList<>();
+		for (Map<String, Object> item : porCheque.values()) {
+			@SuppressWarnings("unchecked")
+			List<Map<String, Object>> pagos = (List<Map<String, Object>>) item.get("pagos");
+			item.put("cantidadPagos", pagos.size());
 			resultado.add(item);
 		}
 		return resultado;
