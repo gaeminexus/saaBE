@@ -355,9 +355,13 @@ public class PrestamoRest {
     /**
      * Aprueba un préstamo: GENERADO (1) → VIGENTE (2). Ver PLAN-CICLO-OTORGAMIENTO.md §3/§4.
      *
+     * <p>Desde PLAN-DESEMBOLSO-PRESTAMO.md §5 (2026-09-01), también registra la orden de pago
+     * del desembolso en CXP y el asiento de entrega — {@code idEmpresa} e {@code idUsuario}
+     * son obligatorios para esto.
+     *
      * @param id Identificador del préstamo
-     * @param solicitud { usuario, observacion }
-     * @return Response con el préstamo actualizado
+     * @param solicitud { usuario, observacion, idEmpresa, idUsuario }
+     * @return Response con el préstamo actualizado, con {@code idPagoProgramado} lleno
      */
     @POST
     @Path("/aprobar/{id}")
@@ -366,9 +370,11 @@ public class PrestamoRest {
     public Response aprobar(@PathParam("id") Long id, SolicitudDecisionPrestamo solicitud) {
         String usuario = solicitud != null ? solicitud.getUsuario() : null;
         String observacion = solicitud != null ? solicitud.getObservacion() : null;
+        Long idEmpresa = solicitud != null ? solicitud.getIdEmpresa() : null;
+        Long idUsuario = solicitud != null ? solicitud.getIdUsuario() : null;
         System.out.println("APROBAR PRÉSTAMO - ID: " + id + ", Usuario: " + usuario);
         try {
-            Prestamo prestamo = prestamoService.aprobar(id, usuario, observacion);
+            Prestamo prestamo = prestamoService.aprobar(id, usuario, observacion, idEmpresa, idUsuario);
             return Response.status(Response.Status.OK)
                     .entity(prestamo)
                     .type(MediaType.APPLICATION_JSON)

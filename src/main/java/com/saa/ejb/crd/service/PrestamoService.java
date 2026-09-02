@@ -78,13 +78,23 @@ public interface PrestamoService extends EntityService<Prestamo>{
 	 * Exige que el préstamo tenga tabla de amortización generada — sin tabla no hay nada que
 	 * aprobar. A partir de esta transición la tabla queda congelada (U4): no se regenera más.
 	 *
+	 * <p>Desde PLAN-DESEMBOLSO-PRESTAMO.md §5 (2026-09-01), aprobar además: registra la orden
+	 * de pago del desembolso en CXP ({@code idPagoProgramado}) y escribe el asiento de entrega
+	 * con la plantilla del producto — <b>CXP primero</b>: si la orden de pago falla, no se
+	 * genera asiento ni se toca el estado del préstamo.
+	 *
 	 * @param idPrestamo ID del préstamo
 	 * @param usuario Usuario que aprueba, se estampa en usuarioAprobacion
 	 * @param observacion Si viene, se concatena a la observación existente (no la pisa)
-	 * @return Préstamo actualizado, ya VIGENTE
-	 * @throws Throwable Si el préstamo no existe, no está en GENERADO, o no tiene cuotas
+	 * @param idEmpresa Empresa contable del asiento de entrega. Obligatorio
+	 * @param idUsuario Quien registra la orden de pago del desembolso en CXP. Obligatorio
+	 * @return Préstamo actualizado, ya VIGENTE, con {@code idPagoProgramado} lleno
+	 * @throws Throwable Si el préstamo no existe, no está en GENERADO, no tiene cuotas, faltan
+	 *                    idEmpresa/idUsuario, el producto no tiene plantilla de entrega, o la
+	 *                    orden de pago no se pudo registrar en CXP
 	 */
-	Prestamo aprobar(Long idPrestamo, String usuario, String observacion) throws Throwable;
+	Prestamo aprobar(Long idPrestamo, String usuario, String observacion, Long idEmpresa, Long idUsuario)
+			throws Throwable;
 
 	/**
 	 * Rechaza un préstamo (PLAN-CICLO-OTORGAMIENTO.md §3, regla 5): PENDIENTE_DE_APROBACION (6)

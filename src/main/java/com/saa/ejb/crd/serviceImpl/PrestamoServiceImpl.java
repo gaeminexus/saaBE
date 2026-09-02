@@ -6,6 +6,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellType;
@@ -20,16 +21,22 @@ import com.saa.ejb.crd.dao.DetallePrestamoDaoService;
 import com.saa.ejb.crd.dao.PagoPrestamoDaoService;
 import com.saa.ejb.crd.dao.PrestamoDaoService;
 import com.saa.ejb.crd.service.CalculadoraAmortizacionService;
+import com.saa.ejb.crd.service.ContabilidadPrestamoService;
 import com.saa.ejb.crd.service.PrestamoService;
 import com.saa.ejb.crd.service.dto.CuotaProyectada;
 import com.saa.ejb.crd.service.dto.ParametrosAmortizacion;
+import com.saa.ejb.cxp.service.PagoProgramadoService;
+import com.saa.ejb.cxp.service.dto.BeneficiarioOcasional;
+import com.saa.ejb.cxp.service.dto.LineaContablePago;
 import com.saa.model.crd.DetallePrestamo;
+import com.saa.model.crd.Entidad;
 import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.model.crd.PagoPrestamo;
 import com.saa.model.crd.Prestamo;
 import com.saa.rubros.Estado;
 import com.saa.rubros.EstadoCuotaPrestamo;
 import com.saa.rubros.EstadoPrestamo;
+import com.saa.rubros.OrigenPagoExterno;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -39,15 +46,21 @@ public class PrestamoServiceImpl implements PrestamoService {
 
     @EJB
     private PrestamoDaoService prestamoDaoService;
-    
+
     @EJB
     private DetallePrestamoDaoService detallePrestamoDaoService;
-    
+
     @EJB
     private PagoPrestamoDaoService pagoPrestamoDaoService;
 
     @EJB
     private CalculadoraAmortizacionService calculadoraAmortizacionService;
+
+    @EJB
+    private PagoProgramadoService pagoProgramadoService;
+
+    @EJB
+    private ContabilidadPrestamoService contabilidadPrestamoService;
 
     @Override
     public Prestamo selectById(Long id) throws Throwable {
@@ -261,9 +274,29 @@ public class PrestamoServiceImpl implements PrestamoService {
         }
     }
 
+    /**
+     * Producto de pago (PGS.PRDP.ID) cuyo grupo apunta a la cuenta {@code 2.3.90.90.10 SOCIOS
+     * POR PAGAR} — el que CXP usa para armar el DEBE del asiento de bancos al confirmar el
+     * desembolso. <b>TODO(sql/157):</b> pendiente de que el usuario corra ese script y lo
+     * resuelva (PLAN-DESEMBOLSO-PRESTAMO.md §4.3).
+     *
+     * <p>Mientras sea {@code null}, {@link #aprobar} falla ruidoso en vez de mandar el
+     * desglose vacío o un id inventado: con el producto equivocado, tesorería paga y el
+     * asiento descarga una cuenta que no es, cuadrado igual y sin ningún error.</p>
+     */
+    private static final Long ID_PRODUCTO_PAGO_SOCIOS_POR_PAGAR = null;
+
     @Override
-    public Prestamo aprobar(Long idPrestamo, String usuario, String observacion) throws Throwable {
+    public Prestamo aprobar(Long idPrestamo, String usuario, String observacion, Long idEmpresa, Long idUsuario)
+            throws Throwable {
         System.out.println("Aprobando préstamo ID: " + idPrestamo + " - Usuario: " + usuario);
+
+        if (idEmpresa == null) {
+            throw new IncomeException("No se puede aprobar el préstamo " + idPrestamo + ": falta idEmpresa.");
+        }
+        if (idUsuario == null) {
+            throw new IncomeException("No se puede aprobar el préstamo " + idPrestamo + ": falta idUsuario.");
+        }
 
         Prestamo prestamo = prestamoDaoService.selectById(idPrestamo, NombreEntidadesCredito.PRESTAMO);
         if (prestamo == null) {
@@ -284,16 +317,94 @@ public class PrestamoServiceImpl implements PrestamoService {
                 + " está en estado GENERADO pero no tiene tabla de amortización; no se puede aprobar.");
         }
 
+        double monto = prestamo.getMontoSolicitado() != null ? prestamo.getMontoSolicitado() : 0.0;
+        if (monto <= 0.01) {
+            throw new IncomeException("El préstamo " + idPrestamo
+                + " no tiene un monto solicitado válido; no se puede aprobar.");
+        }
+
+        // 2. Orden de pago del desembolso, PRIMERO — mismo criterio que
+        // DevolucionAporteServiceImpl:540 ("un log que anuncia éxito antes de que la operación
+        // pueda fallar es peor que no tener log"): si CXP rechaza la orden, no se toca el
+        // asiento ni el estado del préstamo.
+        Long idPago;
+        try {
+            List<LineaContablePago> desglose = armarDesgloseEntrega(prestamo, monto);
+            BeneficiarioOcasional beneficiario = armaBeneficiarioPrestamo(prestamo.getEntidad());
+            String observacionPago = "Desembolso préstamo N° " + prestamo.getCodigo()
+                + (prestamo.getEntidad() != null ? " - " + prestamo.getEntidad().getRazonSocial() : "");
+
+            // idCuentaBancariaOrigen SIEMPRE null (mismo criterio que la devolución de aportes):
+            // con cuenta nula el pago nace POR_APROBAR y tesorería asigna cuenta/forma de pago
+            // al aprobar.
+            Map<String, Object> respuesta = pagoProgramadoService.registrarPagoDeOrigenExterno(
+                OrigenPagoExterno.CRD_DESEMBOLSO_PRESTAMO, prestamo.getCodigo(),
+                idEmpresa, null, monto, LocalDate.now().toString(),
+                beneficiario, desglose, observacionPago, idUsuario,
+                false, null);
+
+            Object valorPago = (respuesta != null) ? respuesta.get("pago") : null;
+            if (valorPago == null) {
+                throw new IncomeException("Cuentas por Pagar no devolvió el número de la orden.");
+            }
+            idPago = ((Number) valorPago).longValue();
+
+        } catch (IncomeException e) {
+            throw new IncomeException("No se pudo generar la orden de pago del desembolso del"
+                + " préstamo " + idPrestamo + ": " + e.getMessage());
+        } catch (Throwable e) {
+            throw new IncomeException("No se pudo generar la orden de pago del desembolso del"
+                + " préstamo " + idPrestamo + ": " + e.getMessage());
+        }
+
+        // 3. Asiento de entrega, con la plantilla del producto.
+        Long idAsientoEntrega = contabilidadPrestamoService.contabilizarEntrega(prestamo, cuotas, idEmpresa,
+            monto, usuario);
+
+        // 4. Estado, auditoría y PRSTIDPG.
         prestamo.setIdEstado(Long.valueOf(EstadoPrestamo.VIGENTE));
         prestamo.setUsuarioAprobacion(usuario);
         prestamo.setFechaAprobacion(LocalDateTime.now());
+        prestamo.setIdPagoProgramado(idPago);
         if (observacion != null && !observacion.trim().isEmpty()) {
             prestamo.setObservacion(concatenarObservacion(prestamo.getObservacion(), observacion));
         }
 
         prestamo = prestamoDaoService.save(prestamo, prestamo.getCodigo());
-        System.out.println("Préstamo " + idPrestamo + " aprobado por " + usuario);
+        System.out.println("Préstamo " + idPrestamo + " aprobado por " + usuario + " - orden de pago "
+            + idPago + (idAsientoEntrega != null ? " - asiento de entrega " + idAsientoEntrega : ""));
         return prestamo;
+    }
+
+    /** Ver el javadoc de {@link #ID_PRODUCTO_PAGO_SOCIOS_POR_PAGAR}. */
+    private List<LineaContablePago> armarDesgloseEntrega(Prestamo prestamo, double monto) throws Throwable {
+        if (ID_PRODUCTO_PAGO_SOCIOS_POR_PAGAR == null) {
+            throw new IncomeException("No se puede aprobar el préstamo " + prestamo.getCodigo()
+                + ": falta resolver el producto de pago de SOCIOS POR PAGAR (2.3.90.90.10,"
+                + " sql/157). El desembolso queda bloqueado hasta completar esa configuración.");
+        }
+        LineaContablePago linea = new LineaContablePago();
+        linea.setIdProductoPago(ID_PRODUCTO_PAGO_SOCIOS_POR_PAGAR);
+        linea.setValor(monto);
+        linea.setConcepto("Desembolso préstamo " + prestamo.getCodigo()
+            + (prestamo.getEntidad() != null ? " - " + prestamo.getEntidad().getRazonSocial() : ""));
+        List<LineaContablePago> desglose = new ArrayList<>();
+        desglose.add(linea);
+        return desglose;
+    }
+
+    /**
+     * Beneficiario del desembolso — el socio. Sin cuenta bancaria: el contrato de
+     * {@code aprobar} no la pide (PLAN-DESEMBOLSO-PRESTAMO.md §5), así que tesorería la
+     * completa al aprobar la orden, igual que la cuenta de origen.
+     */
+    private BeneficiarioOcasional armaBeneficiarioPrestamo(Entidad entidad) {
+        BeneficiarioOcasional beneficiario = new BeneficiarioOcasional();
+        if (entidad != null) {
+            beneficiario.setNombre(entidad.getRazonSocial());
+            beneficiario.setIdentificacion(entidad.getNumeroIdentificacion());
+        }
+        return beneficiario;
     }
 
     @Override

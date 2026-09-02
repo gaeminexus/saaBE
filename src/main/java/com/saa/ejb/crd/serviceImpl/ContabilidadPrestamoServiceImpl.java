@@ -1,6 +1,7 @@
 package com.saa.ejb.crd.serviceImpl;
 
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -19,12 +20,15 @@ import com.saa.ejb.crd.service.dto.MovimientoAporte;
 import com.saa.ejb.crd.service.dto.ResultadoAplicacionPago;
 import com.saa.model.cnt.Asiento;
 import com.saa.model.cnt.DetalleAsiento;
+import com.saa.model.cnt.DetallePlantilla;
+import com.saa.model.cnt.PlanCuenta;
 import com.saa.model.crd.DetallePrestamo;
 import com.saa.model.crd.EventoPrestamo;
 import com.saa.model.crd.HistDetallePrestamo;
 import com.saa.model.crd.PagoPrestamo;
 import com.saa.model.crd.Prestamo;
 import com.saa.rubros.ModuloSistema;
+import com.saa.rubros.PlantillasCredito;
 import com.saa.rubros.TipoAsientos;
 
 import jakarta.ejb.EJB;
@@ -72,6 +76,12 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
 
     @EJB
     private DetallePrestamoDaoService detallePrestamoDaoService;
+
+    @EJB
+    private com.saa.ejb.cnt.service.PlantillaService plantillaService;
+
+    @EJB
+    private com.saa.ejb.cnt.dao.DetallePlantillaDaoService detallePlantillaDaoService;
 
     // =====================================================================
     // Fase 1 — cruce de valores (pagarConAportes). Asiento levantado en
@@ -429,6 +439,195 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         System.out.println("  ↩️ Asiento " + eventoAnulado.getNumeroAsiento() + " reversado"
                 + " (evento " + eventoAnulado.getCodigo() + ")");
         return eventoAnulado.getNumeroAsiento();
+    }
+
+    // =====================================================================
+    // Entrega del préstamo (2026-09-01, PLAN-DESEMBOLSO-PRESTAMO.md §5 paso 3).
+    // =====================================================================
+
+    /**
+     * Posiciones aux1 de una plantilla de entrega — SON de esa plantilla y de ninguna otra
+     * (ver el javadoc de {@link PlantillasCredito#ENTREGA_PRENDARIO}). {@code auxBien} es
+     * {@code null} para la 34 (quirografario): no tiene línea de "el bien".
+     */
+    private record MapeoPlantillaEntrega(int auxOrdenCartera, int auxDocumentosGarantia,
+            Integer auxBien, int auxSociosPorPagar) {
+    }
+
+    @Override
+    public Long contabilizarEntrega(Prestamo prestamo, List<DetallePrestamo> cuotas, Long idEmpresa,
+            double montoOperacion, String usuario) throws Throwable {
+        System.out.println("ContabilidadPrestamoService.contabilizarEntrega - Préstamo: "
+                + (prestamo != null ? prestamo.getCodigo() : null));
+
+        if (!configuracionContabilidadService.contabilidadActiva()) {
+            System.out.println("  Contabilidad de CRD INACTIVA: préstamo "
+                    + (prestamo != null ? prestamo.getCodigo() : null)
+                    + " aprobado sin generar el asiento de entrega.");
+            return null;
+        }
+        if (prestamo == null || prestamo.getCodigo() == null) {
+            throw new IncomeException("No se puede contabilizar la entrega: falta el préstamo.");
+        }
+        if (idEmpresa == null) {
+            throw new IncomeException("No se puede contabilizar la entrega del préstamo "
+                    + prestamo.getCodigo() + ": falta idEmpresa.");
+        }
+        if (prestamo.getProducto() == null || prestamo.getProducto().getTipoPrestamo() == null) {
+            throw new IncomeException("El préstamo " + prestamo.getCodigo()
+                    + " no tiene producto o tipo de préstamo asignado; no se puede resolver la"
+                    + " plantilla del asiento de entrega.");
+        }
+
+        // ⚠️ Mapeo producto → familia SIN precedente verificado en el resto del código (no
+        // hay ningún otro lugar en el proyecto que compare Producto.tipoPrestamo.nombre
+        // contra literales "PRENDARIO"/"HIPOTECARIO"/"QUIROGRAFARIO" — CARGA-INICIAL-BANDAS-
+        // PRODUCTO.md muestra que hay MÁS productos por familia (EMERGENTE, CENAPRO, RESTR.,
+        // NOVACION...) que probablemente NO tienen ese nombre literal en CRD.TPPR.TPPRNMBR, y
+        // ese mismo documento avisa que su lista de códigos es de prueba y puede no calzar
+        // contra producción. Si el préstamo es de uno de esos productos "de la misma
+        // familia pero con otro nombre", este método lo va a RECHAZAR (comportamiento
+        // seguro por diseño: "cualquier otro → rechazar", §5 del plan) en vez de asumir la
+        // plantilla — pero eso puede significar que un producto que SÍ debería tener
+        // plantilla quede bloqueado. Reportado al árbitro; confirmar antes de dar por
+        // cerrado este ítem.
+        String tipoPrestamoNombre = prestamo.getProducto().getTipoPrestamo().getNombre();
+        String familia = (tipoPrestamoNombre != null) ? tipoPrestamoNombre.trim().toUpperCase() : "";
+
+        int alterno;
+        MapeoPlantillaEntrega mapeo;
+        if ("PRENDARIO".equals(familia)) {
+            alterno = PlantillasCredito.ENTREGA_PRENDARIO;
+            mapeo = new MapeoPlantillaEntrega(6, 7, 8, 9);
+        } else if ("HIPOTECARIO".equals(familia)) {
+            alterno = PlantillasCredito.ENTREGA_HIPOTECARIO;
+            mapeo = new MapeoPlantillaEntrega(6, 7, 8, 9);
+        } else if ("QUIROGRAFARIO".equals(familia)) {
+            alterno = PlantillasCredito.ENTREGA_QUIROGRAFARIO;
+            mapeo = new MapeoPlantillaEntrega(6, 7, null, 8);
+        } else {
+            throw new IncomeException("El producto " + prestamo.getProducto().getNombre()
+                    + " (tipo de préstamo '" + tipoPrestamoNombre + "') no tiene plantilla de"
+                    + " asiento de entrega configurada. Solo PRENDARIO (alterno 9), HIPOTECARIO"
+                    + " (13) y QUIROGRAFARIO (34) la tienen; no se elige una plantilla por"
+                    + " defecto para el préstamo " + prestamo.getCodigo() + ".");
+        }
+
+        Long idPlantilla = plantillaService.codigoByAlterno(alterno, idEmpresa);
+        if (idPlantilla == null) {
+            throw new IncomeException("No existe la plantilla contable alterno " + alterno
+                    + " para la empresa " + idEmpresa + ".");
+        }
+        if (prestamo.getFechaInicio() == null) {
+            throw new IncomeException("El préstamo " + prestamo.getCodigo()
+                    + " no tiene fecha de inicio; no se puede distribuir el capital en bandas"
+                    + " por plazo.");
+        }
+
+        String prefijo = "Entrega préstamo " + prestamo.getCodigo();
+        LocalDate fechaInicio = prestamo.getFechaInicio().toLocalDate();
+
+        // DEBE: capital distribuido en las 5 bandas por plazo, según los días de la fecha de
+        // inicio del préstamo al vencimiento de cada cuota — el mismo rango que describen
+        // literalmente las 5 primeras líneas de la plantilla 34 (sql/156: "DE 1 A 30 DIAS" …
+        // "DE MAS DE 360 DIAS"). NO es el modelo dinámico de bandas de ClasificadorBandaService
+        // (CRD.BNDP): esta plantilla trae las 5 cuentas ya fijas en aux1 1-5, así que se
+        // clasifica contra esos rangos literales, no contra la parametrización dinámica.
+        double[] montosPorBanda = new double[5];
+        for (DetallePrestamo cuota : cuotas) {
+            if (cuota.getFechaVencimiento() == null || cuota.getCapital() == null) {
+                continue;
+            }
+            long dias = Math.max(1,
+                    ChronoUnit.DAYS.between(fechaInicio, cuota.getFechaVencimiento().toLocalDate()));
+            int indice = (dias <= 30) ? 0 : (dias <= 90) ? 1 : (dias <= 180) ? 2 : (dias <= 360) ? 3 : 4;
+            montosPorBanda[indice] += cuota.getCapital();
+        }
+
+        List<DetalleAsiento> lineas = new ArrayList<>();
+        double totalCapital = 0.0;
+        for (int i = 0; i < 5; i++) {
+            double valorBanda = redondear(montosPorBanda[i]);
+            if (valorBanda > TOLERANCIA_CUADRE) {
+                lineas.add(lineaEntrega(idPlantilla, i + 1, valorBanda, true, alterno,
+                        prefijo + " - banda " + (i + 1)));
+                totalCapital += valorBanda;
+            }
+        }
+        totalCapital = redondear(totalCapital);
+
+        if (Math.abs(redondear(totalCapital - montoOperacion)) > TOLERANCIA_CUADRE) {
+            throw new IncomeException("El capital distribuido en bandas del préstamo "
+                    + prestamo.getCodigo() + " ($" + totalCapital + ") no coincide con el monto"
+                    + " de la operación ($" + montoOperacion + "). No se genera un asiento"
+                    + " desbalanceado.");
+        }
+
+        // "El bien" (aux1=8 en 9/13, ausente en 34) solo lleva valor si la plantilla lo tiene
+        // Y el préstamo ya tiene valor asegurado — hoy 0 por política mientras no exista
+        // póliza (mismo criterio que PrestamoServiceImpl#generarAmortizacion, seguro de
+        // incendio en $0 "no se cobra mientras no exista la póliza que lo respalde").
+        double valorBien = (mapeo.auxBien() != null) ? redondear(nvl(prestamo.getValorAsegurado())) : 0.0;
+
+        // DEBE: cuenta de orden "cartera de créditos" — espeja el DEBE real (totalCapital) MÁS
+        // el valor del bien, para cuadrar contra las dos líneas HABER de garantía de abajo.
+        double totalOrdenDebe = redondear(totalCapital + valorBien);
+        lineas.add(lineaEntrega(idPlantilla, mapeo.auxOrdenCartera(), totalOrdenDebe, true, alterno,
+                prefijo + " - cartera de créditos (orden)"));
+
+        // HABER: documentos en garantía — el pagaré, común a todo crédito, por el monto real.
+        lineas.add(lineaEntrega(idPlantilla, mapeo.auxDocumentosGarantia(), totalCapital, false,
+                alterno, prefijo + " - documentos en garantía (orden)"));
+
+        // HABER: el bien — solo si la plantilla lo tiene y hay valor asegurado > 0.
+        if (mapeo.auxBien() != null && valorBien > TOLERANCIA_CUADRE) {
+            lineas.add(lineaEntrega(idPlantilla, mapeo.auxBien(), valorBien, false, alterno,
+                    prefijo + " - bien en garantía (orden)"));
+        }
+
+        // HABER: SOCIOS POR PAGAR — la cuenta puente, por el monto real del préstamo.
+        lineas.add(lineaEntrega(idPlantilla, mapeo.auxSociosPorPagar(), totalCapital, false, alterno,
+                prefijo + " - socios por pagar"));
+
+        double totalDebe = 0.0;
+        double totalHaber = 0.0;
+        for (DetalleAsiento linea : lineas) {
+            totalDebe += nvl(linea.getValorDebe());
+            totalHaber += nvl(linea.getValorHaber());
+        }
+        totalDebe = redondear(totalDebe);
+        totalHaber = redondear(totalHaber);
+        if (Math.abs(redondear(totalDebe - totalHaber)) > TOLERANCIA_CUADRE) {
+            throw new IncomeException("El asiento de entrega del préstamo " + prestamo.getCodigo()
+                    + " no cuadra: DEBE $" + totalDebe + ", HABER $" + totalHaber
+                    + ". No se genera un asiento desbalanceado.");
+        }
+
+        Asiento asiento = asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS,
+                fechaInicio, prefijo, usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
+
+        System.out.println("  ✅ contabilizarEntrega OK - Préstamo: " + prestamo.getCodigo()
+                + " - Asiento: " + asiento.getCodigo() + " - Monto: $" + totalCapital);
+
+        return asiento.getCodigo();
+    }
+
+    /** Línea de una plantilla de entrega por aux1 explícito — posicional, ver {@link MapeoPlantillaEntrega}. */
+    private DetalleAsiento lineaEntrega(Long idPlantilla, int aux1, double valor, boolean debe, int alterno,
+            String descripcion) throws Throwable {
+        DetallePlantilla linea = detallePlantillaDaoService.selectByPlantillaYAuxiliar(idPlantilla, aux1);
+        if (linea == null || linea.getPlanCuenta() == null) {
+            throw new IncomeException("La plantilla alterno " + alterno + " no tiene la línea aux1=" + aux1 + ".");
+        }
+        PlanCuenta cuenta = linea.getPlanCuenta();
+        DetalleAsiento detalle = new DetalleAsiento();
+        detalle.setPlanCuenta(cuenta);
+        detalle.setNumeroCuenta(cuenta.getCuentaContable());
+        detalle.setNombreCuenta(cuenta.getNombre());
+        detalle.setDescripcion(descripcion);
+        detalle.setValorDebe(debe ? redondear(valor) : 0.0);
+        detalle.setValorHaber(debe ? 0.0 : redondear(valor));
+        return detalle;
     }
 
     private double nvl(Double valor) {

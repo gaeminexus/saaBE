@@ -296,6 +296,22 @@ public class Prestamo implements Serializable {
     @Column(name = "PRSTPRIN")
     private Double primaSeguroIncendio;
 
+    /**
+     * Orden de pago generada en CXP (PGS.PGTR.PGTRCDGO) para el desembolso del préstamo.
+     * <b>Sin FK a propósito</b>, mismo patrón que {@code DevolucionAporte.idPagoProgramado}
+     * (DVAP.DVAPIDPG): CRD no puede tener una FK dura contra el schema de pagos — ver
+     * docs/logica-negocio/crd/PLAN-DESEMBOLSO-PRESTAMO.md §1 y §4.1.
+     *
+     * ⛔ Requiere {@code ALTER TABLE CRD.PRST ADD (PRSTIDPG NUMBER)} — AÚN NO EJECUTADO al
+     * escribir este mapeo. Hibernate incluye toda columna {@code @Column} en el SELECT: si
+     * el DDL no corrió antes de desplegar este WAR, toda lectura de CRD.PRST revienta con
+     * ORA-00904 (la cartera entera, no solo esta función nueva) — el mismo incidente que
+     * tumbó la pantalla de cobros el 2026-08-31 con CBCRASRP.
+     */
+    @Basic
+    @Column(name = "PRSTIDPG")
+    private Long idPagoProgramado;
+
     // ============================================================
     // Getters y Setters
     // ============================================================
@@ -489,6 +505,9 @@ public class Prestamo implements Serializable {
 
     public Double getPrimaSeguroIncendio() { return primaSeguroIncendio; }
     public void setPrimaSeguroIncendio(Double primaSeguroIncendio) { this.primaSeguroIncendio = primaSeguroIncendio; }
+
+    public Long getIdPagoProgramado() { return idPagoProgramado; }
+    public void setIdPagoProgramado(Long idPagoProgramado) { this.idPagoProgramado = idPagoProgramado; }
 
 }
 

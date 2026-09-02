@@ -65,4 +65,12 @@ public interface OrigenPagoExterno {
 	 */
 	public static final String RHH_BENEFICIO_SOCIAL = "RHH_BENEFICIO_SOCIAL";
 
+	/**
+	 * Desembolso de un prestamo al aprobarlo, originado en CRD.PRST. PGTRIDOR lleva el
+	 * CRD.PRST.PRSTCDGO correspondiente. Nace sin cuenta de origen (idCuentaBancariaOrigen
+	 * null): tesoreria asigna cuenta y forma de pago al aprobar, igual que
+	 * CRD_DEVOLUCION_APORTE. Ver docs/logica-negocio/crd/PLAN-DESEMBOLSO-PRESTAMO.md.
+	 */
+	public static final String CRD_DESEMBOLSO_PRESTAMO = "CRD_DESEMBOLSO_PRESTAMO";
+
 }

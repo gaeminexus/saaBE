@@ -120,6 +120,71 @@ public interface PlantillasCredito {
 	 */
 	public static final int JUBILACION = 29;
 
+	/**
+	 * "ENTREGA DE PRESTAMO PRENDARIO". Asiento de entrega al aprobar (§1 de
+	 * PLAN-DESEMBOLSO-PRESTAMO.md): D bandas por plazo (1.3.05.05/.10/.15/.20/.25) + D
+	 * {@code 7.3.01.05} (orden, cartera de créditos) → H {@code 7.4.01.05} (orden,
+	 * documentos en garantía) + H {@code 7.4.01.10} (orden, el bien — vehículos) + H
+	 * {@code 2.3.90.90.10} SOCIOS POR PAGAR.
+	 *
+	 * <p>⛔ <b>POSICIONAL, 9 líneas, aux1 de 1 a 9 — verificado {@code sql/153} bloque 2.</b>
+	 * El mapeo aux1 → cuenta de esta constante sale de {@code LEVANTAMIENTO-ALIMENTACION-
+	 * CONTABLE-CREDITOS.md §7} (fila del alterno 9, "D bandas 1.3.05 + 7.3.01.05 / H
+	 * 7.4.01.05, 7.4.01.10, 2.3.90.90.10", en ese orden) y de la razón que da {@code
+	 * sql/156} para la plantilla 34 hermana — <b>NO de un volcado línea por línea de
+	 * {@code sql/153} bloque 1</b>, que nadie pegó en un documento. Confirmar contra ese
+	 * bloque 1 antes de dar este mapeo por definitivo:</p>
+	 * <pre>
+	 * aux1 = 1..5  DEBE   1.3.05.05 / .10 / .15 / .20 / .25   (tramos por plazo, en días
+	 *                     desde la fecha de inicio del préstamo hasta el vencimiento de
+	 *                     cada cuota: 1-30, 31-90, 91-180, 181-360, más de 360)
+	 * aux1 = 6     DEBE   7.3.01.05   CARTERA DE CREDITOS (orden)
+	 * aux1 = 7     HABER  7.4.01.05   DOCUMENTOS EN GARANTIA (orden)
+	 * aux1 = 8     HABER  7.4.01.10   VEHICULOS — el bien (orden)
+	 * aux1 = 9     HABER  2.3.90.90.10 SOCIOS POR PAGAR
+	 * </pre>
+	 * <b>Aux1 1-9 son de ESTA plantilla y de ninguna otra</b> — la 13 comparte el mismo
+	 * patrón posicional pero con sus propias cuentas (familia 1.3.09 y el bien en
+	 * {@code 7.4.01.15}), y la 34 (quirografario) reordena aux1=8 a SOCIOS POR PAGAR
+	 * porque no tiene línea de "el bien". No reusar estos números en ninguna otra
+	 * plantilla sin verificar contra {@code CNT.DTPL} de nuevo.
+	 */
+	public static final int ENTREGA_PRENDARIO = 9;
+
+	/**
+	 * "ENTREGA DE PRESTAMO HIPOTECARIO". Mismo patrón que {@link #ENTREGA_PRENDARIO} (9),
+	 * mismo mapeo aux1 1-9, con dos diferencias: las bandas son de la familia
+	 * {@code 1.3.09.xx} y "el bien" (aux1=8) es {@code 7.4.01.15} BIENES INMUEBLES en vez
+	 * de vehículos. Fuente y misma advertencia de verificación que {@link
+	 * #ENTREGA_PRENDARIO}: {@code LEVANTAMIENTO-ALIMENTACION-CONTABLE-CREDITOS.md §7},
+	 * fila del alterno 13, no un volcado de {@code sql/153} bloque 1.
+	 * <pre>
+	 * aux1 = 1..5  DEBE   1.3.09.05 / .10 / .15 / .20 / .25
+	 * aux1 = 6     DEBE   7.3.01.05    CARTERA DE CREDITOS (orden)
+	 * aux1 = 7     HABER  7.4.01.05    DOCUMENTOS EN GARANTIA (orden)
+	 * aux1 = 8     HABER  7.4.01.15    BIENES INMUEBLES — el bien (orden)
+	 * aux1 = 9     HABER  2.3.90.90.10 SOCIOS POR PAGAR
+	 * </pre>
+	 */
+	public static final int ENTREGA_HIPOTECARIO = 13;
+
+	/**
+	 * "CRD ENTREGA DE PRESTAMO QUIROGRAFARIO". Creada por {@code sql/156} (2026-09-01,
+	 * decisión D7) — a diferencia de {@link #ENTREGA_PRENDARIO}/{@link
+	 * #ENTREGA_HIPOTECARIO}, ESTA SÍ está verificada línea por línea contra el script que
+	 * la insertó (8 líneas, aux1 1-8). Un quirografario no tiene bien en garantía, solo
+	 * pagaré: por eso tiene 8 líneas y no 9, y el aux1=8 es SOCIOS POR PAGAR — <b>NO "el
+	 * bien" como en la 9/13</b>, es exactamente la trampa de auxiliares posicionales que
+	 * avisó el equipo A.
+	 * <pre>
+	 * aux1 = 1..5  DEBE   1.3.01.05 / .10 / .15 / .20 / .25
+	 * aux1 = 6     DEBE   7.3.01.05    CARTERA DE CREDITOS (orden)
+	 * aux1 = 7     HABER  7.4.01.05    DOCUMENTOS EN GARANTIA (orden)
+	 * aux1 = 8     HABER  2.3.90.90.10 SOCIOS POR PAGAR
+	 * </pre>
+	 */
+	public static final int ENTREGA_QUIROGRAFARIO = 34;
+
 	// NOTA (2026-08-31): "RECLASIFICACION APORTE O COBRO EN EXCESO" (alterno 27) se evaluó
 	// para el asiento de reclasificación de la devolución de aportes y se descartó — el
 	// usuario confirmó que se devuelve CUALQUIER tipo de aporte, no solo los tres con cuenta

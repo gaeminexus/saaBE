@@ -5,7 +5,9 @@ import java.util.List;
 import com.saa.ejb.crd.service.dto.ContextoPago;
 import com.saa.ejb.crd.service.dto.MovimientoAporte;
 import com.saa.ejb.crd.service.dto.ResultadoAplicacionPago;
+import com.saa.model.crd.DetallePrestamo;
 import com.saa.model.crd.EventoPrestamo;
+import com.saa.model.crd.Prestamo;
 
 import jakarta.ejb.Local;
 
@@ -82,4 +84,30 @@ public interface ContabilidadPrestamoService {
      * @return Código del asiento creado, o null si la contabilidad no está activa.
      */
     Long contabilizarReverso(EventoPrestamo eventoAnulado) throws Throwable;
+
+    /**
+     * Asiento de ENTREGA del préstamo, al aprobarlo (PLAN-DESEMBOLSO-PRESTAMO.md §5, paso 3):
+     * D capital distribuido en las bandas por plazo de la tabla de amortización + D cuenta de
+     * orden "cartera de créditos" → H cuentas de orden de garantía + H
+     * {@code 2.3.90.90.10 SOCIOS POR PAGAR} — la cuenta puente que tesorería debita contra
+     * bancos al confirmar el desembolso.
+     *
+     * <p>La plantilla se resuelve por la familia del producto ({@code Producto.tipoPrestamo
+     * .nombre}): PRENDARIO → alterno {@link com.saa.rubros.PlantillasCredito#ENTREGA_PRENDARIO}
+     * (9), HIPOTECARIO → {@link com.saa.rubros.PlantillasCredito#ENTREGA_HIPOTECARIO} (13),
+     * QUIROGRAFARIO → {@link com.saa.rubros.PlantillasCredito#ENTREGA_QUIROGRAFARIO} (34).
+     * <b>Cualquier otro producto se rechaza</b>: no se elige una plantilla por defecto.</p>
+     *
+     * @param prestamo       Préstamo recién aprobado (aún sin guardar el paso a VIGENTE)
+     * @param cuotas         Tabla de amortización completa del préstamo (todas las cuotas)
+     * @param idEmpresa      Empresa contable del asiento
+     * @param montoOperacion Monto del préstamo (para el cuadre contra la suma de capital de
+     *                       las cuotas)
+     * @param usuario        Quien aprueba, se estampa en el asiento
+     * @return Código del asiento creado, o null si la contabilidad no está activa.
+     * @throws Throwable {@code IncomeException} si el producto no tiene plantilla asignada, si
+     *                    falta una línea en la plantilla, o si el asiento no cuadra
+     */
+    Long contabilizarEntrega(Prestamo prestamo, List<DetallePrestamo> cuotas, Long idEmpresa,
+            double montoOperacion, String usuario) throws Throwable;
 }
