@@ -430,8 +430,9 @@ cuadra siempre** — no falla nunca, sólo registra una CxP distinta de la del d
 | Documento | Estado |
 |---|---|
 | Factura de compra | ✅ **corregido** por `lap-saa-1` (`4ff8a13`): el HABER pasa a ser el total y la diferencia va a una cuenta de ajuste, abortando por encima de 0,50 |
-| **Liquidación de compra** (`:3051-3053`) | ❌ **sigue** |
-| **Nota de crédito de compra** (`:2844-2846`) | ❌ **sigue** |
+| **Liquidación de compra** | ✅ **corregido** por `lap-saa-1` (`8f1fd10`), compilado y verificado por este árbitro |
+| **Nota de crédito de compra** | ✅ **corregido** en el mismo commit. ⚠️ Ahí el signo va al revés —la CxP está del lado del DEBE— así que el helper se llama con los argumentos cruzados: pasarlos en el mismo orden que en la factura **cuadra igual y deja el ajuste del lado equivocado**. La prueba de los dos signos quedó como comentario en el código porque el orden cruzado *parece* un error al leerlo |
+| Nota de **débito** de compra | ✅ **nunca estuvo afectada** — ver abajo |
 
 **El diagnóstico de por qué se eligió así, que es lo que vale:** tenían razón en el síntoma —sin una
 línea de ajuste, anclar al total efectivamente descuadra— y les faltaba esa pieza. **Eligieron que
@@ -449,3 +450,49 @@ semántica —balance de llaves, imports duplicados, anotaciones repetidas— an
 lógica. Lo instauraron tras el `@SuppressWarnings` duplicado que tiró producción, y es lo único que
 sustituye al compilador en una máquina sin Maven. Acá sí hay Maven, pero el principio se sostiene:
 **la lectura semántica no ve los errores de sintaxis**, y es el modo en que se lee un diff.
+
+### 10bis. El principio que explica esta familia entera de defectos
+
+**Formulado por `lap-saa-1` el 2026-09-02, cerrando el frente del descuadre.** Es la generalización
+que vuelve enseñable lo que veníamos encontrando de a uno.
+
+**La nota de débito de compra no está bien porque alguien pensara en el redondeo. Está bien porque
+deriva todo de una sola fuente:** `base = total − IVA`, y el HABER es el total directo. No hay dos
+caminos que puedan discrepar, así que no hay nada que reconciliar. Los otros cuatro documentos
+tenían **dos fuentes independientes** —el detalle y la cabecera— y una regla que las hacía coincidir
+**por construcción** en vez de compararlas.
+
+> **Cuando un valor puede llegar por dos caminos, hay dos salidas válidas: compararlos —y fallar o
+> ajustar explícitamente al discrepar— o derivar uno del otro para que no puedan diferir. Lo que no
+> funciona es el punto medio: hacer que cuadre siempre sin comparar. Eso no elimina la
+> discrepancia, la vuelve invisible.**
+
+**Los cuatro casos del día son la misma familia:**
+
+| Caso | Las dos fuentes | Cómo se ocultaba |
+|---|---|---|
+| CxP de documentos de compra | total del documento vs. suma de los detalles | el HABER se derivaba del DEBE: cuadraba siempre |
+| Baja de provisión (§4bis) | `RHH.PVNM` vs. el mayor contable | se debitaba por el total, sin tope contra lo acreditado |
+| `handleError` del frontend | «falló» vs. «no hay datos» | los dos colapsaban a lista vacía |
+| `extraerCodigo` (§8) | PK vs. código alterno | se elegía uno por defecto en vez de exigirlo del llamador |
+
+**En una línea, y es el criterio de búsqueda que queda:** *un mecanismo que no puede fallar deja de
+avisar cuando está equivocado.* Sospechar de todo lo que **nunca da error**.
+
+### 10ter. Nota de método — el `worktree` volvió a servir para otra cosa
+
+Para compilarle una rama a otro equipo sin mover el árbol propio:
+
+```bash
+git worktree add --detach <dir-temporal> <commit-o-rama>
+cd <dir-temporal> && mvn -q clean compile
+git worktree remove --force <dir-temporal>
+```
+
+Sirve además cuando `git checkout` está bloqueado por permisos, y **no obliga a nadie a pausar**.
+
+⚠️ **Y hay una lección sobre las conclusiones viejas:** `git worktree` se **descartó** hace dos días
+—en `ESTADO-CRD.md` §7 y en el §9.6 de `ESTADO-CXP-CXC-TSR-RHH-SRI.md`— porque no admite la misma
+rama en dos árboles y todos trabajan sobre `main`. Esa conclusión era correcta **para separar
+equipos** y **no aplica** a compilar un commit puntual, donde `--detach` esquiva justamente esa
+limitación. **Una herramienta descartada para un problema no queda descartada para todos.**
