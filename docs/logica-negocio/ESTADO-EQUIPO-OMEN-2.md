@@ -496,3 +496,53 @@ Sirve además cuando `git checkout` está bloqueado por permisos, y **no obliga 
 rama en dos árboles y todos trabajan sobre `main`. Esa conclusión era correcta **para separar
 equipos** y **no aplica** a compilar un commit puntual, donde `--detach` esquiva justamente esa
 limitación. **Una herramienta descartada para un problema no queda descartada para todos.**
+
+---
+
+## 11. 🟠 Cuatro consultas de «pagos vigentes» son ciegas a `POR_APROBAR`
+
+**Avisado por `lap-saa-1` el 2026-09-02, verificado acá. Dos de los llamadores son de este equipo.**
+
+`PagoProgramadoDaoServiceImpl` tiene cuatro consultas de pagos vigentes que filtran
+`estado in (REGISTRADO, EN_ARCHIVO, CONFIRMADO)` — **y omiten `POR_APROBAR(0)`**.
+
+**Por qué importa ahora y no antes:** desde el frente S, **un pago nace `POR_APROBAR`** cuando no
+viene cuenta bancaria de origen, que es el flujo normal desde entonces. Las cuatro consultas están
+ciegas justo a los pagos que el sistema crea hoy.
+
+| Consulta | Llamador | Dueño | Estado |
+|---|---|---|---|
+| `selectVigentesByFactura` | `validaValorContraSaldo` | `lap-saa-1` | ✅ corregido — dejaba **registrar dos veces el pago completo** de una factura |
+| `selectVigentesByOrigen` | `GeneracionOrdenPagoServiceImpl:341` | **este equipo** | 🟠 falla del lado seguro, ver abajo |
+| `selectVigentesByEgreso` | `EgresoServiceImpl` (**tsr**) | **este equipo** | ❌ **sin revisar** |
+| `selectVigentesByAnticipo` | `AnticipoProveedorServiceImpl` (**cxp**) | **este equipo** | ❌ **sin revisar** |
+| `selectVigentesByOrigen` | `DevolucionAporteServiceImpl` (crd) | otro equipo | avisado por `lap-saa-1` |
+
+### El caso propio: bloquea de más y explica mal
+
+`exigePagoConfirmadoEnTesoreria` (frente 2) usa `selectVigentesByOrigen` para impedir que se
+contabilice el pago de nómina antes de que tesorería lo apruebe. Con el pago en `POR_APROBAR` la
+consulta vuelve vacía y **el método lanza `IncomeException`**, así que **el control funciona**: no
+deja contabilizar. Lo que falla es el diagnóstico.
+
+- Dice *«no tiene ningún pago vigente en la bandeja»* cuando **sí lo tiene, esperando aprobación**.
+  Por casualidad el texto sigue con *«tesorería debe aprobarlo primero»*, que es la acción correcta.
+- **Donde sí engaña:** si el pago fue **rechazado o anulado**, la consulta vuelve vacía igual y el
+  usuario lee lo mismo — cuando lo que corresponde es **volver a enviarlo**, no esperar.
+- La segunda rama del método —«está en estado X, no CONFIRMADO»— **es inalcanzable para
+  `POR_APROBAR`**: la consulta nunca lo devuelve.
+
+### La generalización, que es lo que hay que llevarse
+
+> **El mismo defecto de consulta produce consecuencias distintas según qué haga el llamador con la
+> lista vacía.** En `cxp` dejaba duplicar un pago; acá bloquea de más. **Sólo el dueño de cada
+> llamador puede saber cuál es.** Por eso `lap-saa-1` mandó el aviso en vez de corregir los cuatro.
+
+**Pendiente de este equipo:** revisar `EgresoServiceImpl` (`tsr`) y `AnticipoProveedorServiceImpl`
+(`cxp`) con esa pregunta —*¿qué hace este llamador cuando la lista vuelve vacía?*— y corregir el
+mensaje del propio.
+
+**Descartado, para no revisarlo al pepe:** `sumaPagosComprometidos` filtra por
+`p.cuentaBancaria.codigo`, y un pago `POR_APROBAR` **nace sin cuenta** —es la condición que lo pone
+en ese estado— así que no podría matchear ese `WHERE` aunque el estado estuviera en la lista.
+*(Verificado por `lap-saa-1`.)*
