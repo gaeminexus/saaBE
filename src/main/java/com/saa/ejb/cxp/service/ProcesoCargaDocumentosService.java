@@ -101,6 +101,27 @@ public interface ProcesoCargaDocumentosService {
                                               Long idEmpresa, Long idUsuario) throws Throwable;
 
     /**
+     * Igual que {@link #registrarDocumentoBD(Long, Long, Long)}, con la opción de marcar la
+     * factura como de INTERMEDIARIO (docs/logica-negocio/cxp/DISENO-FACTURA-INTERMEDIARIO.md).
+     * A diferencia de "esReembolso" (persistido en {@code DocumentoCxp} al subir el XML), esta
+     * marca se decide en el momento de registrar, así que viaja como parámetro acá y no se lee
+     * de ningún dato ya guardado. Sólo aplica a facturas registradas una por una desde esta
+     * llamada: el registro por lote no la soporta (§7 del diseño, límite conocido).
+     *
+     * @param idDocumentoCxp           ID del DocumentoCxp (debe tener estadoDocumento=2)
+     * @param esIntermediario          true si la factura es de intermediario (default false si null)
+     * @param idProductoIntermediario  Producto al que se contabiliza el total; obligatorio si
+     *                                 esIntermediario=true, ignorado si es false/null
+     * @return Mapa con: idDocumentoBD, tipoTablaDestino, mensaje
+     * @throws com.saa.basico.util.IncomeException si esIntermediario=true y falta el producto,
+     *         el producto no existe, o no tiene grupo/cuenta contable configurada — nunca cae
+     *         a un valor por defecto
+     */
+    Map<String, Object> registrarDocumentoBD(Long idDocumentoCxp, Long idEmpresa, Long idUsuario,
+                                              Boolean esIntermediario, Long idProductoIntermediario)
+            throws Throwable;
+
+    /**
      * FASE 4: Resuelve una novedad en un DocumentoCxp.
      * accion={@link com.saa.rubros.AccionNovedad#REEMPLAZAR} (2) → revierte registros previos, carga nuevo XML y re-registra.
      * accion={@link com.saa.rubros.AccionNovedad#MANTENER}   (1) → marca estadoNovedad=3 sin cambios.

@@ -290,6 +290,35 @@ public class FacturaCompra implements Serializable {
         @Basic @Column(name = "FCTCUSAN", length = 200)
         private String usuarioAnulacion;
 
+        // ─── Factura de intermediario (§3 DISENO-FACTURA-INTERMEDIARIO.md) ────
+        // Se marca al REGISTRAR (no al subir el XML, a diferencia de esReembolso):
+        // la marca viaja en el request de registrarBD, no se persiste antes.
+
+        /**
+         * Es factura de intermediario: 0=No 1=Si (FCTCESIN). El asiento de estas
+         * facturas ignora detalles e impuestos y manda fc.getTotal() completo a
+         * la cuenta del grupo de {@link #idProductoIntermediario}.
+         * <p>
+         * Inicializado en 0L a propósito: la columna es NULLABLE con DEFAULT 0,
+         * pero Hibernate siempre nombra la columna en el INSERT, así que el
+         * DEFAULT de Oracle nunca actúa — sin este inicializador, todo INSERT de
+         * FacturaCompra con este campo en null grabaría NULL explícito (no rompe,
+         * porque la columna es nullable, pero deja el campo indefinido en vez de
+         * en 0). Mismo mecanismo que costó el defecto de CBR.ANTC.ANTCAPLC del
+         * 2026-08-31, con una columna NOT NULL en vez de nullable.
+         */
+        @Basic @Column(name = "FCTCESIN")
+        private Long esIntermediario = 0L;
+
+        /** Producto (PGS.PRDP) al que se contabiliza el total de la factura de intermediario (FCTCPRIN). */
+        @Basic @Column(name = "FCTCPRIN")
+        private Long idProductoIntermediario;
+
+        public Long getEsIntermediario() { return esIntermediario; }
+        public void setEsIntermediario(Long esIntermediario) { this.esIntermediario = esIntermediario; }
+        public Long getIdProductoIntermediario() { return idProductoIntermediario; }
+        public void setIdProductoIntermediario(Long idProductoIntermediario) { this.idProductoIntermediario = idProductoIntermediario; }
+
         public Long getEsReembolso() { return esReembolso; }
         public void setEsReembolso(Long esReembolso) { this.esReembolso = esReembolso; }
         public String getCodDocReembolso() { return codDocReembolso; }
