@@ -154,6 +154,90 @@ cita legal**. Es la regla 7 —lo que un agente va a implementar tiene que estar
 
 ---
 
+## 2e. 2026-09-02 — Producción: por qué no aparecían los préstamos en mora. RESUELTO
+
+**Tres días de diagnóstico, dos causas equivocadas —las dos mías— y la real encontrada con
+datos.** Vale registrar el recorrido entero porque el error de método se repitió.
+
+### La causa real (H16): una búsqueda sin resultados lanza excepción
+
+`sql/159` sobre el préstamo del caso: **49 cuotas y CERO pagos**. Y:
+
+```java
+// PagoPrestamoServiceImpl:90-92
+if (result.isEmpty()) {
+    throw new IncomeException("Busqueda por criterio PagoPrestamo no devolvio ningun registro");
+}
+```
+
+`PagoPrestamoRest:117` lo devuelve como **400**, el frontend lo recibe como fallo, marca
+`cargaFallida` y **el préstamo desaparece de la lista**.
+
+> **El préstamo desaparecía porque NO TENÍA PAGOS.** No por tener demasiados —esa fue mi
+> hipótesis, y el promedio de la cartera es 38 pagos con máximo 168; éste tenía 0—.
+>
+> **Y explica el síntoma original completo:** un préstamo en mora que nunca recibió un pago **no
+> podía aparecer nunca**. Los que tienen pagos cargaban bien. Por eso parecía que «solo salen los
+> vigentes»: los vigentes normalmente ya pagaron algo.
+
+**Corregido en `9343c43` (saaFE), sin tocar backend:** si falla la consulta de pagos el préstamo
+**se muestra igual** con `pagosPorCuota = {}`. Si el error dice «no devolvio ningun registro» va
+**sin aviso** —es el caso normal y el total de cada cuota ES el saldo real—; cualquier otro error
+lleva aviso, porque ahí el saldo podría estar inflado.
+
+⚠️ **Distinguir por el texto del mensaje es frágil y es un puente, no el destino.** El arreglo
+limpio es que `selectByCriteria` devuelva lista vacía. Ver H17.
+
+### H17 — ⛔ `if (result.isEmpty()) throw` está en 255 archivos
+
+```
+grep -rl "if (result.isEmpty())" saaBE/src/main/java/com/saa/ejb  →  255 archivos
+```
+
+`DetallePrestamoServiceImpl:95-97` tiene el mismo patrón, idéntico. **Es la convención de la casa**
+(`CLAUDE.md` la documenta) y es la cuarta deuda transversal — la más costosa de las cuatro:
+
+> Las otras tres hacen que **un fallo parezca dato**. Ésta hace que **un dato normal parezca
+> fallo**. «No hay filas» es una respuesta válida en la enorme mayoría de las consultas, y acá
+> viaja como error hasta el cliente.
+
+**No se toca desde un módulo.** Va al registro §6.
+
+### H18 — `CRD.AVPC`: el `CHECK` permitía lo que la columna prohibía
+
+Al mandar el excedente **solo a un aporte**: `ORA-01400` sobre `AVPC.PRSTCDGO`.
+
+`AVPC` nació cuando toda afectación iba contra una cuota (`PRSTCDGO`/`DTPRCDGO` `NOT NULL`). El
+script **87** agregó `TPAPCDGO` para afectar a un aporte, **diseñó el caso bien** —su comentario
+dice *«De aporte: TPAPCDGO presente, PRSTCDGO/DTPRCDGO NULL»*— y creó
+`CK_AVPC_PRST_XOR_TPAP` para formalizarlo. **Pero nunca quitó las dos `NOT NULL`.**
+
+**Las dos reglas se contradicen y gana la de la columna: la rama de aporte del `CHECK` era
+imposible de satisfacer desde el día uno.** No se detectó porque hasta hoy nadie mandó un excedente
+solo a un aporte. Corregido con `sql/160` (dos `MODIFY`, sin tocar filas, sin desplegar nada).
+
+### La lección de método, que es la que importa
+
+**Dos diagnósticos equivocados seguidos, y el mismo error las dos veces:** encontré un mecanismo
+que *podía* producir el síntoma, lo verifiqué contra el código —donde era correcto— y **lo di por
+causa antes de medirlo contra los datos**.
+
+| Hipótesis | Verificada en código | Medida contra datos | Resultado |
+|---|---|---|---|
+| `PRSTSLTT` muerto escondía los préstamos | ✅ correcta | ❌ no, antes de despachar | Escondía **1 de 338** |
+| El préstamo tenía demasiados pagos | ✅ plausible | ❌ no | Tenía **0** |
+| Una búsqueda vacía lanza excepción | ✅ | ✅ `sql/159` | **Era ésta** |
+
+**Un mecanismo plausible y verificado en el código no es una causa hasta que los datos muestran que
+ocurre con la frecuencia del síntoma.** Las dos veces el script que lo habría desmentido lo escribí
+yo mismo, y las dos veces despaché sin esperar su resultado.
+
+Lo que sí funcionó, y hay que repetirlo: **cuando dos causas se ven idénticas en pantalla, hacer
+primero que la pantalla las distinga.** El aviso de `10142d5` es lo que convirtió «no aparece» en
+«falló la consulta de pagos del préstamo N», y de ahí salió la causa en una medición.
+
+---
+
 ## 2d. Frente lateral — desembolso del préstamo (CRD alimenta a TSR)
 
 **Pedido del usuario el 2026-09-01**, cierra el §6.1 de `PLAN-CICLO-OTORGAMIENTO.md`.

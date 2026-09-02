@@ -461,3 +461,38 @@ plano al cliente**. El filtro no envuelve dos veces lo que ya empieza con `{` o 
 **Al escribir un contrato de API:** decir que el error viene como `{"mensaje": ...}`, y que el
 cliente lea `error.mensaje` con el texto crudo como respaldo. **Un contrato que diga "texto plano"
 es incorrecto** — `API-CICLO-OTORGAMIENTO.md` lo decía y se corrigió el 2026-09-01.
+
+### 6.4 ⛔ Una búsqueda sin resultados lanza excepción — 255 servicios del backend
+
+```java
+if (result.isEmpty()) {
+    throw new IncomeException("Busqueda por criterio X no devolvio ningun registro");
+}
+```
+
+`grep -rl "if (result.isEmpty())" saaBE/src/main/java/com/saa/ejb` → **255 archivos**.
+
+Es la convención de la casa y `CLAUDE.md` la documenta. El REST la convierte en `400`, y el
+cliente recibe **un error donde hubo una respuesta perfectamente válida: "no hay filas"**.
+
+> **Por qué es la más costosa de las cuatro.** Las otras tres hacen que **un fallo parezca dato**.
+> Ésta hace lo inverso: **un dato normal parece un fallo**, y se propaga hasta la pantalla.
+
+**Costó tres días de diagnóstico en producción (2026-09-02, equipo `omen-saa-1`).** En la pantalla
+de descuentos de Petro, un préstamo cuya consulta de pagos devolvía vacío **desaparecía de la
+lista de afectables**. O sea: *un préstamo en mora que nunca recibió un pago no podía aparecer
+nunca* — y como los préstamos vigentes normalmente sí tienen pagos, el síntoma se leía como «solo
+salen los vigentes». Se persiguieron dos causas equivocadas antes de encontrar ésta.
+
+**Cómo se trata, y cómo NO:**
+
+- ✅ **En el consumidor**, tratar ese error específico como lista vacía. Precedente: `9343c43` de
+  `saaFE`. **Es un puente, no el destino**: distingue por el *texto* del mensaje, que se rompe si
+  alguien lo reescribe.
+- ⛔ **No tocar los 255 servicios.** Y no cambiar la convención desde un módulo: hay código que
+  puede estar dependiendo del `throw` para su control de flujo.
+- El arreglo real es que `selectByCriteria` devuelva lista vacía y que el `throw` quede solo donde
+  «sin filas» sea de verdad un error. **Necesita decisión de proyecto, no de equipo.**
+
+⚠️ **Y ojo con el atajo:** un `try/catch` que se trague el error en el consumidor reintroduce 6.1 —
+volvería a hacer indistinguible «no hay filas» de «la consulta se rompió».
