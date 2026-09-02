@@ -79,7 +79,10 @@ public class LiquidacionCompraCompraRest {
 	}
 
 	/**
-	 * Anula una liquidación de compra: {motivo, usuario}. Ver
+	 * Anula una liquidación de compra: {motivo, usuario, idUsuario, anularEnCascada}.
+	 * `idUsuario` sólo hace falta si `anularEnCascada=true` y hay movimientos (aplicaciones de
+	 * anticipo cruzadas) que reversar. Mismo criterio que FacturaCompra/anular — ver
+	 * docs/logica-negocio/cxp/DISENO-CRUCE-ANTICIPO-CONTRA-LIQUIDACION.md §5 punto 5 y
 	 * docs/logica-negocio/sri/LEVANTAMIENTO-ATS-103-104.md §10.3.
 	 */
 	@POST @Path("/anular/{id}") @Consumes(MediaType.APPLICATION_JSON) @Produces(MediaType.APPLICATION_JSON)
@@ -88,10 +91,32 @@ public class LiquidacionCompraCompraRest {
 		try {
 			String motivo = (datos != null && datos.get("motivo") != null) ? datos.get("motivo").toString() : null;
 			String usuario = (datos != null && datos.get("usuario") != null) ? datos.get("usuario").toString() : null;
-			java.util.Map<String, Object> resultado = liquidacionCompraCompraService.anularLiquidacionCompra(id, motivo, usuario);
+			Long idUsuario = (datos != null && datos.get("idUsuario") != null)
+					? Long.valueOf(datos.get("idUsuario").toString()) : null;
+			boolean anularEnCascada = datos != null && Boolean.TRUE.equals(datos.get("anularEnCascada"));
+			java.util.Map<String, Object> resultado = liquidacionCompraCompraService.anularLiquidacionCompra(
+					id, motivo, usuario, idUsuario, anularEnCascada);
 			return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.IncomeException e) {
+			return Response.status(Response.Status.CONFLICT).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al anular LiquidacionCompraCompra: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+		}
+	}
+
+	/**
+	 * Movimientos relacionados a una liquidación de compra (aplicaciones de anticipo cruzadas) —
+	 * para que el frontend muestre la lista antes de preguntar "¿anular con todos los
+	 * movimientos?", igual que FacturaCompra/movimientosRelacionados.
+	 */
+	@GET @Path("/movimientosRelacionados/{id}") @Produces(MediaType.APPLICATION_JSON)
+	public Response movimientosRelacionados(@PathParam("id") Long id) {
+		System.out.println("LLEGA AL SERVICIO GET LiquidacionCompraCompra/movimientosRelacionados id: " + id);
+		try {
+			List<java.util.Map<String, Object>> lista = liquidacionCompraCompraService.movimientosRelacionadosLiquidacion(id);
+			return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+		} catch (Throwable e) {
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al consultar movimientos relacionados: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
 		}
 	}
 

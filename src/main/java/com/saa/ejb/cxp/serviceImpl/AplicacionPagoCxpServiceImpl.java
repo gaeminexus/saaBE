@@ -21,6 +21,7 @@ import com.saa.model.cxc.RetencionV2;
 import com.saa.model.cxp.AnticipoProveedor;
 import com.saa.model.cxp.AplicacionPagoCxp;
 import com.saa.model.cxp.FacturaCompra;
+import com.saa.model.cxp.LiquidacionCompraCompra;
 import com.saa.model.cxp.NombreEntidadesCompra;
 import com.saa.model.cxp.NotaCreditoCompra;
 import com.saa.model.cxp.NotaDebitoCompra;
@@ -28,6 +29,7 @@ import com.saa.model.cxp.PagoProgramado;
 import com.saa.model.scp.Empresa;
 import com.saa.model.scp.Usuario;
 import com.saa.model.tsr.PersonaCuentaContable;
+import com.saa.model.tsr.Titular;
 import com.saa.rubros.EstadoAnticipoProveedor;
 import com.saa.rubros.EstadoAplicacionPago;
 import com.saa.rubros.EstadoPagoFactura;
@@ -235,19 +237,30 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	// =====================================================================
 
 	@Override
-	public Map<String, Object> aplicarAnticipo(Long idFacturaCompra, Double valor,
+	public Map<String, Object> aplicarAnticipo(Long idFacturaCompra, Long idLiquidacionCompra, Double valor,
 			String fechaAplicacion, Long idEmpresa, Long idUsuario, String observacion)
 			throws Throwable {
 
 		System.out.println("=== aplicarAnticipo (FIFO) | factura=" + idFacturaCompra
-				+ " | valor=" + valor + " | empresa=" + idEmpresa + " ===");
+				+ " | liquidacion=" + idLiquidacionCompra + " | valor=" + valor
+				+ " | empresa=" + idEmpresa + " ===");
 
 		if (valor == null || valor <= 0) {
 			throw new IncomeException("El valor a cruzar debe ser mayor a cero.");
 		}
+		validaExactamenteUnDocumento(idFacturaCompra, idLiquidacionCompra);
 
-		FacturaCompra factura = cargaFacturaCompra(idFacturaCompra);
-		Long idProveedor = factura.getTitular().getCodigo();
+		FacturaCompra factura = null;
+		LiquidacionCompraCompra liquidacion = null;
+		Titular titular;
+		if (idFacturaCompra != null) {
+			factura = cargaFacturaCompra(idFacturaCompra);
+			titular = factura.getTitular();
+		} else {
+			liquidacion = cargaLiquidacionCompra(idLiquidacionCompra);
+			titular = liquidacion.getTitular();
+		}
+		Long idProveedor = titular.getCodigo();
 
 		// Sin selección explícita se reparte el valor entre los anticipos
 		// disponibles del más antiguo al más nuevo. Es el comportamiento que
@@ -255,27 +268,37 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 		List<AnticipoProveedor> disponibles = anticipoProveedorDaoService
 				.selectDisponiblesByTitular(idProveedor, idEmpresa);
 
-		List<Object[]> reparto = repartoFifo(disponibles, valor,
-				factura.getTitular().getNombre());
+		List<Object[]> reparto = repartoFifo(disponibles, valor, titular.getNombre());
 
-		return aplicaCruces(factura, reparto, fechaAplicacion, idEmpresa, idUsuario, observacion);
+		return aplicaCruces(factura, liquidacion, reparto, fechaAplicacion, idEmpresa, idUsuario, observacion);
 	}
 
 	@Override
-	public Map<String, Object> aplicarAnticipos(Long idFacturaCompra,
+	public Map<String, Object> aplicarAnticipos(Long idFacturaCompra, Long idLiquidacionCompra,
 			List<Map<String, Object>> detalles, String fechaAplicacion, Long idEmpresa,
 			Long idUsuario, String observacion) throws Throwable {
 
 		System.out.println("=== aplicarAnticipos | factura=" + idFacturaCompra
+				+ " | liquidacion=" + idLiquidacionCompra
 				+ " | detalles=" + ((detalles != null) ? detalles.size() : 0)
 				+ " | empresa=" + idEmpresa + " ===");
 
 		if (detalles == null || detalles.isEmpty()) {
 			throw new IncomeException("Debe indicar al menos un anticipo a cruzar.");
 		}
+		validaExactamenteUnDocumento(idFacturaCompra, idLiquidacionCompra);
 
-		FacturaCompra factura = cargaFacturaCompra(idFacturaCompra);
-		Long idProveedor = factura.getTitular().getCodigo();
+		FacturaCompra factura = null;
+		LiquidacionCompraCompra liquidacion = null;
+		Titular titular;
+		if (idFacturaCompra != null) {
+			factura = cargaFacturaCompra(idFacturaCompra);
+			titular = factura.getTitular();
+		} else {
+			liquidacion = cargaLiquidacionCompra(idLiquidacionCompra);
+			titular = liquidacion.getTitular();
+		}
+		Long idProveedor = titular.getCodigo();
 
 		List<Object[]> reparto = new ArrayList<>();
 		java.util.Set<Long> vistos = new java.util.HashSet<>();
@@ -304,7 +327,28 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 			reparto.add(new Object[]{anticipo, monto});
 		}
 
-		return aplicaCruces(factura, reparto, fechaAplicacion, idEmpresa, idUsuario, observacion);
+		return aplicaCruces(factura, liquidacion, reparto, fechaAplicacion, idEmpresa, idUsuario, observacion);
+	}
+
+	/**
+	 * Valida que exactamente uno de los dos documentos afectables venga
+	 * informado (docs/logica-negocio/cxp/DISENO-CRUCE-ANTICIPO-CONTRA-LIQUIDACION.md
+	 * §2.1/§4.1). No se elige uno por el llamador — un cliente que manda los
+	 * dos está confundido y hay que decírselo, no adivinar cuál vale.
+	 * @param idFacturaCompra     : Id de la factura, o null
+	 * @param idLiquidacionCompra : Id de la liquidación, o null
+	 * @throws Throwable         : IncomeException si vienen los dos o ninguno
+	 */
+	private void validaExactamenteUnDocumento(Long idFacturaCompra, Long idLiquidacionCompra)
+			throws Throwable {
+		if (idFacturaCompra == null && idLiquidacionCompra == null) {
+			throw new IncomeException("Debe indicar la factura de compra o la liquidación de "
+					+ "compra a la que se cruza el anticipo.");
+		}
+		if (idFacturaCompra != null && idLiquidacionCompra != null) {
+			throw new IncomeException("Debe indicar sólo uno de los dos: idFacturaCompra o "
+					+ "idLiquidacionCompra, no ambos.");
+		}
 	}
 
 	/**
@@ -324,6 +368,26 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 					+ " no tiene proveedor asignado.");
 		}
 		return factura;
+	}
+
+	/**
+	 * Carga la liquidación de compra y valida que sirva para cruzar un anticipo.
+	 * Equivalente de {@link #cargaFacturaCompra(Long)}.
+	 * @param idLiquidacionCompra : Id de la liquidación de compra
+	 * @return                    : Liquidación de compra
+	 * @throws Throwable          : Excepcion si no existe o no tiene proveedor
+	 */
+	private LiquidacionCompraCompra cargaLiquidacionCompra(Long idLiquidacionCompra) throws Throwable {
+		LiquidacionCompraCompra liquidacion = em.find(LiquidacionCompraCompra.class, idLiquidacionCompra);
+		if (liquidacion == null) {
+			throw new IncomeException("No se encontró la liquidación de compra con ID: "
+					+ idLiquidacionCompra);
+		}
+		if (liquidacion.getTitular() == null || liquidacion.getTitular().getCodigo() == null) {
+			throw new IncomeException("La liquidación de compra " + idLiquidacionCompra
+					+ " no tiene proveedor asignado.");
+		}
+		return liquidacion;
 	}
 
 	/**
@@ -414,7 +478,13 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	 * Se genera una aplicación por anticipo (y no una sola por el total) porque
 	 * es lo que permite reversar exactamente: al anular un anticipo se deshacen
 	 * sus aplicaciones y ninguna otra.
-	 * @param factura         : Factura de compra que recibe los abonos
+	 * <p>
+	 * <b>Exactamente uno de {@code factura}/{@code liquidacion} debe venir no nulo</b>
+	 * — lo validan los llamadores públicos ({@code aplicarAnticipo}/{@code aplicarAnticipos}
+	 * vía {@link #validaExactamenteUnDocumento}) antes de resolver la entidad, así
+	 * que acá ya se asume correcto.
+	 * @param factura         : Factura de compra que recibe los abonos, o null si es liquidación
+	 * @param liquidacion     : Liquidación de compra que recibe los abonos, o null si es factura
 	 * @param reparto         : Pares {AnticipoProveedor, monto}
 	 * @param fechaAplicacion : Fecha del cruce (yyyy-MM-dd, null = hoy)
 	 * @param idEmpresa       : Id de la empresa contable
@@ -423,23 +493,30 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	 * @return                : Mapa con exito, mensaje, aplicaciones, asientos y saldos
 	 * @throws Throwable      : Excepcion
 	 */
-	private Map<String, Object> aplicaCruces(FacturaCompra factura, List<Object[]> reparto,
-			String fechaAplicacion, Long idEmpresa, Long idUsuario, String observacion)
+	private Map<String, Object> aplicaCruces(FacturaCompra factura, LiquidacionCompraCompra liquidacion,
+			List<Object[]> reparto, String fechaAplicacion, Long idEmpresa, Long idUsuario, String observacion)
 			throws Throwable {
 
 		if (reparto.isEmpty()) {
 			throw new IncomeException("No hay anticipos con saldo para cruzar.");
 		}
 
-		Long idProveedor = factura.getTitular().getCodigo();
+		Titular titular = (factura != null) ? factura.getTitular() : liquidacion.getTitular();
+		String numeroDocumento = (factura != null) ? factura.getNumero() : liquidacion.getNumero();
+		String etiquetaDocumento = (factura != null) ? "Factura" : "Liquidación";
+		Long idProveedor = titular.getCodigo();
 
 		double total = 0.0;
 		for (Object[] linea : reparto) {
 			total += (Double) linea[1];
 		}
 
-		// 1. La factura debe tener saldo suficiente para el total del cruce
-		validaMontoContraSaldo(factura, total, null);
+		// 1. El documento debe tener saldo suficiente para el total del cruce
+		if (factura != null) {
+			validaMontoContraSaldo(factura, total, null);
+		} else {
+			validaMontoContraSaldoLiquidacion(liquidacion, total, null);
+		}
 
 		// 2. El saldo global del proveedor debe respaldar el cruce. Con el saldo
 		//    por anticipo esto es redundante, pero mientras PRCC siga siendo la
@@ -450,7 +527,7 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 				? cuentaAnticipos.getSaldoInicial() : 0.0;
 		if (saldoAnticipos + TOLERANCIA < total) {
 			throw new IncomeException("El saldo de anticipos del proveedor '"
-					+ factura.getTitular().getNombre() + "' es de $"
+					+ titular.getNombre() + "' es de $"
 					+ String.format(java.util.Locale.US, "%.2f", saldoAnticipos)
 					+ " y no alcanza para cruzar $"
 					+ String.format(java.util.Locale.US, "%.2f", total)
@@ -464,9 +541,8 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 			AnticipoProveedor anticipo = (AnticipoProveedor) linea[0];
 			Double monto = (Double) linea[1];
 
-			String observacionAsiento = "Cruce de anticipo | Proveedor: "
-					+ factura.getTitular().getNombre()
-					+ " | Factura: " + factura.getNumero()
+			String observacionAsiento = "Cruce de anticipo | Proveedor: " + titular.getNombre()
+					+ " | " + etiquetaDocumento + ": " + numeroDocumento
 					+ " | Anticipo: " + nvl(anticipo.getNumeroDoc(), "#" + anticipo.getId())
 					+ " | Valor: $" + String.format(java.util.Locale.US, "%.2f", monto);
 
@@ -484,10 +560,11 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 
 			// 5. Aplicación enlazada al anticipo de ORIGEN: es lo que permite
 			//    deshacer exactamente este abono si el anticipo se anula.
-			AplicacionPagoCxp aplicacion = nuevaAplicacion(factura, idEmpresa,
-					TipoDocPagoAplicacion.ANTICIPO, monto, fecha,
-					construyeObservacionCruce(anticipo, observacion),
-					usuarioNombre(idUsuario));
+			AplicacionPagoCxp aplicacion = (factura != null)
+					? nuevaAplicacion(factura, idEmpresa, TipoDocPagoAplicacion.ANTICIPO, monto, fecha,
+							construyeObservacionCruce(anticipo, observacion), usuarioNombre(idUsuario))
+					: nuevaAplicacionLiquidacion(liquidacion, idEmpresa, TipoDocPagoAplicacion.ANTICIPO, monto, fecha,
+							construyeObservacionCruce(anticipo, observacion), usuarioNombre(idUsuario));
 			aplicacion.setAsiento(asiento);
 			aplicacion.setAnticipoOrigen(anticipo);
 			aplicacion.setUsuario(em.find(Usuario.class, idUsuario));
@@ -522,7 +599,7 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 		// Compatibilidad con los clientes que leen un solo cruce
 		resultado.put("aplicacion", lineas.get(0).get("aplicacion"));
 		resultado.put("asiento", lineas.get(0).get("asiento"));
-		resultado.putAll(saldoFactura(factura.getId()));
+		resultado.putAll(factura != null ? saldoFactura(factura.getId()) : saldoLiquidacion(liquidacion.getId()));
 		return resultado;
 	}
 
@@ -683,6 +760,8 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 		resultado.put("aplicacion", idAplicacion);
 		if (aplicacion.getFacturaCompra() != null) {
 			resultado.putAll(saldoFactura(aplicacion.getFacturaCompra().getId()));
+		} else if (aplicacion.getLiquidacionCompra() != null) {
+			resultado.putAll(saldoLiquidacion(aplicacion.getLiquidacionCompra().getId()));
 		}
 		return resultado;
 	}
@@ -756,6 +835,16 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	}
 
 	@Override
+	public List<AplicacionPagoCxp> consultarPorLiquidacion(Long idLiquidacionCompra, boolean soloActivas)
+			throws Throwable {
+		System.out.println("=== consultarPorLiquidacion | liquidacion=" + idLiquidacionCompra
+				+ " | soloActivas=" + soloActivas + " ===");
+		return soloActivas
+				? aplicacionPagoCxpDaoService.selectActivasByLiquidacion(idLiquidacionCompra)
+				: aplicacionPagoCxpDaoService.selectByLiquidacion(idLiquidacionCompra);
+	}
+
+	@Override
 	public Map<String, Object> saldoFactura(Long idFacturaCompra) throws Throwable {
 		System.out.println("=== saldoFactura | factura=" + idFacturaCompra + " ===");
 
@@ -803,6 +892,58 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 		em.merge(factura);
 
 		System.out.println("✓ Estado de pago de la factura " + idFacturaCompra + ": " + estadoPago
+				+ " | total=" + total + " | aplicado=" + aplicado + " | saldo=" + saldo);
+		return estadoPago;
+	}
+
+	@Override
+	public Map<String, Object> saldoLiquidacion(Long idLiquidacionCompra) throws Throwable {
+		System.out.println("=== saldoLiquidacion | liquidacion=" + idLiquidacionCompra + " ===");
+
+		LiquidacionCompraCompra liquidacion = em.find(LiquidacionCompraCompra.class, idLiquidacionCompra);
+		if (liquidacion == null) {
+			throw new IncomeException("No se encontró la liquidación de compra con ID: " + idLiquidacionCompra);
+		}
+
+		double total = (liquidacion.getTotal() != null) ? liquidacion.getTotal() : 0.0;
+		double aplicado = aplicacionPagoCxpDaoService.sumaAplicadoByLiquidacion(idLiquidacionCompra);
+
+		Map<String, Object> saldos = new HashMap<>();
+		saldos.put("liquidacionId", idLiquidacionCompra);
+		saldos.put("numeroLiquidacion", liquidacion.getNumero());
+		saldos.put("total", total);
+		saldos.put("totalAplicado", aplicado);
+		saldos.put("saldoPendiente", total - aplicado);
+		saldos.put("estadoPago", liquidacion.getEstadoPago());
+		return saldos;
+	}
+
+	@Override
+	public Long recalcularEstadoPagoLiquidacion(Long idLiquidacionCompra) throws Throwable {
+		System.out.println("=== recalcularEstadoPagoLiquidacion | liquidacion=" + idLiquidacionCompra + " ===");
+
+		LiquidacionCompraCompra liquidacion = em.find(LiquidacionCompraCompra.class, idLiquidacionCompra);
+		if (liquidacion == null) {
+			throw new IncomeException("No se encontró la liquidación de compra con ID: " + idLiquidacionCompra);
+		}
+
+		double total = (liquidacion.getTotal() != null) ? liquidacion.getTotal() : 0.0;
+		double aplicado = aplicacionPagoCxpDaoService.sumaAplicadoByLiquidacion(idLiquidacionCompra);
+		double saldo = total - aplicado;
+
+		Long estadoPago;
+		if (saldo <= TOLERANCIA) {
+			estadoPago = Long.valueOf(EstadoPagoFactura.PAGADA_TOTAL);
+		} else if (aplicado > 0) {
+			estadoPago = Long.valueOf(EstadoPagoFactura.PAGADA_PARCIAL);
+		} else {
+			estadoPago = Long.valueOf(EstadoPagoFactura.PENDIENTE);
+		}
+
+		liquidacion.setEstadoPago(estadoPago);
+		em.merge(liquidacion);
+
+		System.out.println("✓ Estado de pago de la liquidación " + idLiquidacionCompra + ": " + estadoPago
 				+ " | total=" + total + " | aplicado=" + aplicado + " | saldo=" + saldo);
 		return estadoPago;
 	}
@@ -867,6 +1008,39 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	}
 
 	/**
+	 * Construye una aplicación con los datos comunes, sobre una LIQUIDACIÓN de
+	 * compra en vez de una factura. Equivalente de {@link #nuevaAplicacion(FacturaCompra,
+	 * Long, int, Double, LocalDate, String, String)}.
+	 * @param liquidacion : Liquidación de compra a la que se aplica
+	 * @param idEmpresa   : Id de la empresa
+	 * @param tipoDocPago : Tipo de documento que paga (TipoDocPagoAplicacion)
+	 * @param monto       : Monto aplicado
+	 * @param fecha       : Fecha de la aplicación
+	 * @param observacion : Observación
+	 * @param usuario     : Nombre del usuario
+	 * @return            : Aplicación sin grabar
+	 * @throws Throwable  : Excepcion
+	 */
+	private AplicacionPagoCxp nuevaAplicacionLiquidacion(LiquidacionCompraCompra liquidacion, Long idEmpresa,
+			int tipoDocPago, Double monto, LocalDate fecha, String observacion, String usuario) throws Throwable {
+
+		if (monto == null || monto == 0) {
+			throw new IncomeException("El monto a aplicar no puede ser cero.");
+		}
+
+		AplicacionPagoCxp aplicacion = new AplicacionPagoCxp();
+		aplicacion.setLiquidacionCompra(liquidacion);
+		aplicacion.setEmpresa(em.find(Empresa.class, idEmpresa));
+		aplicacion.setTipoDocPago(Long.valueOf(tipoDocPago));
+		aplicacion.setMontoAplicado(monto);
+		aplicacion.setFechaAplicacion(fecha != null ? fecha : LocalDate.now());
+		aplicacion.setObservacion(observacion);
+		aplicacion.setEstado(Long.valueOf(EstadoAplicacionPago.ACTIVO));
+		aplicacion.setFechaRegistro(LocalDateTime.now());
+		return aplicacion;
+	}
+
+	/**
 	 * Valida que el monto a aplicar no supere el saldo pendiente de la factura.
 	 * @param factura        : Factura de compra
 	 * @param monto          : Monto que se pretende aplicar
@@ -891,6 +1065,31 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	}
 
 	/**
+	 * Valida que el monto a aplicar no supere el saldo pendiente de la
+	 * liquidación de compra. Equivalente de {@link #validaMontoContraSaldo}.
+	 * @param liquidacion    : Liquidación de compra
+	 * @param monto          : Monto que se pretende aplicar
+	 * @param idAplicacionEx : Id de aplicación a excluir del cálculo (null si no aplica)
+	 * @throws Throwable     : Excepcion si el monto supera el saldo
+	 */
+	private void validaMontoContraSaldoLiquidacion(LiquidacionCompraCompra liquidacion, Double monto,
+			Long idAplicacionEx) throws Throwable {
+		if (monto == null || monto <= 0) {
+			return;
+		}
+		double total = (liquidacion.getTotal() != null) ? liquidacion.getTotal() : 0.0;
+		double aplicado = aplicacionPagoCxpDaoService.sumaAplicadoByLiquidacion(liquidacion.getId());
+		double saldo = total - aplicado;
+
+		if (monto > saldo + TOLERANCIA) {
+			throw new IncomeException("El valor a aplicar ($"
+					+ String.format(java.util.Locale.US, "%.2f", monto)
+					+ ") supera el saldo pendiente de la liquidación de compra N° " + liquidacion.getNumero()
+					+ " ($" + String.format(java.util.Locale.US, "%.2f", saldo) + ").");
+		}
+	}
+
+	/**
 	 * Reversa una aplicación: estado reversado, anulación del asiento,
 	 * devolución del saldo de anticipos y anulación del movimiento bancario.
 	 * @param aplicacion : Aplicación a reversar
@@ -902,7 +1101,13 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 		Long idAsiento = (aplicacion.getAsiento() != null)
 				? aplicacion.getAsiento().getCodigo() : null;
 
-		// 1. Marcar reversada y recalcular el estado de pago de la factura
+		// 1. Marcar reversada y recalcular el estado de pago del documento afectado
+		// (factura O liquidación, nunca las dos ni ninguna — ver el javadoc del
+		// campo liquidacionCompra en la entidad. Antes de agregar la liquidación
+		// este bloque sólo miraba getFacturaCompra(), así que reversar un cruce
+		// de liquidación no actualizaba nada: quedaba con estadoPago desfasado
+		// Y, más grave, el saldo global de anticipos del proveedor no se
+		// devolvía — ver el punto 2 más abajo).
 		aplicacion.setEstado(Long.valueOf(EstadoAplicacionPago.REVERSADO));
 		aplicacion.setObservacion(nvl(aplicacion.getObservacion(), "")
 				+ " | REVERSADA: " + motivo);
@@ -911,6 +1116,8 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 
 		if (aplicacion.getFacturaCompra() != null) {
 			recalcularEstadoPago(aplicacion.getFacturaCompra().getId());
+		} else if (aplicacion.getLiquidacionCompra() != null) {
+			recalcularEstadoPagoLiquidacion(aplicacion.getLiquidacionCompra().getId());
 		}
 
 		// 2. Devolver el saldo de anticipos si fue un cruce de anticipo
@@ -919,13 +1126,20 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 
 			// El saldo global del proveedor se devuelve siempre: es la cuenta
 			// que mueve la contabilidad del cruce, exista o no el detalle por
-			// anticipo.
-			FacturaCompra factura = aplicacion.getFacturaCompra();
+			// anticipo. El titular sale de CUALQUIERA de los dos documentos que
+			// pudo afectar la aplicación — antes de este fix sólo miraba
+			// getFacturaCompra(), así que un cruce contra una liquidación
+			// reversaba la aplicación pero dejaba el saldo global de anticipos
+			// del proveedor sin devolver, en silencio.
+			Titular titularDocumento = (aplicacion.getFacturaCompra() != null)
+					? aplicacion.getFacturaCompra().getTitular()
+					: (aplicacion.getLiquidacionCompra() != null)
+							? aplicacion.getLiquidacionCompra().getTitular() : null;
 			Long idEmpresa = (aplicacion.getEmpresa() != null)
 					? aplicacion.getEmpresa().getCodigo() : null;
-			if (factura != null && factura.getTitular() != null) {
+			if (titularDocumento != null) {
 				PersonaCuentaContable cuentaAnticipos =
-						obtenerCuentaAnticipos(factura.getTitular().getCodigo(), idEmpresa);
+						obtenerCuentaAnticipos(titularDocumento.getCodigo(), idEmpresa);
 				double saldoActual = (cuentaAnticipos.getSaldoInicial() != null)
 						? cuentaAnticipos.getSaldoInicial() : 0.0;
 				cuentaAnticipos.setSaldoInicial(

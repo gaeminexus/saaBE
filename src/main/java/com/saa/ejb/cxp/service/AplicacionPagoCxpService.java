@@ -72,42 +72,52 @@ public interface AplicacionPagoCxpService extends EntityService<AplicacionPagoCx
 	// ── Aplicaciones desde la pantalla de tesorería ──────────────────────────
 
 	/**
-	 * Cruza anticipos del proveedor contra una factura de compra indicando solo
-	 * el monto total: el valor se reparte entre los anticipos con saldo del mas
-	 * antiguo al mas nuevo (FIFO) y se genera una aplicacion por cada uno.
-	 * Para elegir a mano de que anticipos sale el dinero, usar
-	 * {@link #aplicarAnticipos(Long, List, String, Long, Long, String)}.
-	 * @param idFacturaCompra : Id de la factura de compra
-	 * @param valor           : Valor de anticipo a cruzar
-	 * @param fechaAplicacion : Fecha de la aplicación (formato yyyy-MM-dd, null = hoy)
-	 * @param idEmpresa       : Id de la empresa contable
-	 * @param idUsuario       : Id del usuario que registra
-	 * @param observacion     : Observación de la aplicación
-	 * @return                : Mapa con exito, mensaje, aplicacion, asiento y saldos
-	 * @throws Throwable      : Excepcion
+	 * Cruza anticipos del proveedor contra una factura de compra O una liquidación
+	 * de compra, indicando solo el monto total: el valor se reparte entre los
+	 * anticipos con saldo del mas antiguo al mas nuevo (FIFO) y se genera una
+	 * aplicacion por cada uno. Para elegir a mano de que anticipos sale el dinero,
+	 * usar {@link #aplicarAnticipos(Long, Long, List, String, Long, Long, String)}.
+	 * <p>
+	 * <b>Exactamente uno de {@code idFacturaCompra}/{@code idLiquidacionCompra}</b>
+	 * debe venir poblado (docs/logica-negocio/cxp/DISENO-CRUCE-ANTICIPO-CONTRA-LIQUIDACION.md
+	 * §2.1 y §4.1): ninguno de los dos, o los dos, es {@code IncomeException}. No
+	 * se elige uno por el llamador — un cliente que manda los dos está confundido
+	 * y hay que decírselo, no adivinar.
+	 * @param idFacturaCompra      : Id de la factura de compra, o null si se cruza contra liquidación
+	 * @param idLiquidacionCompra  : Id de la liquidación de compra, o null si se cruza contra factura
+	 * @param valor                : Valor de anticipo a cruzar
+	 * @param fechaAplicacion      : Fecha de la aplicación (formato yyyy-MM-dd, null = hoy)
+	 * @param idEmpresa            : Id de la empresa contable
+	 * @param idUsuario            : Id del usuario que registra
+	 * @param observacion          : Observación de la aplicación
+	 * @return                     : Mapa con exito, mensaje, aplicacion, asiento y saldos
+	 * @throws Throwable           : Excepcion
 	 */
-	Map<String, Object> aplicarAnticipo(Long idFacturaCompra, Double valor, String fechaAplicacion,
-			Long idEmpresa, Long idUsuario, String observacion) throws Throwable;
+	Map<String, Object> aplicarAnticipo(Long idFacturaCompra, Long idLiquidacionCompra, Double valor,
+			String fechaAplicacion, Long idEmpresa, Long idUsuario, String observacion) throws Throwable;
 
 	/**
-	 * Cruza anticipos ESPECÍFICOS del proveedor contra una factura de compra.
+	 * Cruza anticipos ESPECÍFICOS del proveedor contra una factura de compra O una
+	 * liquidación de compra. Ver la nota de exclusividad en
+	 * {@link #aplicarAnticipo(Long, Long, Double, String, Long, Long, String)}.
 	 * <p>
 	 * Cada línea indica de qué anticipo sale el dinero y cuánto, y genera su
 	 * propia aplicación con su propio asiento. Es lo que permite deshacer
 	 * exactamente los abonos de un anticipo cuando se lo anula, en vez de
 	 * estimarlos contra el saldo global del proveedor.
-	 * @param idFacturaCompra : Id de la factura de compra
-	 * @param detalles        : Líneas del cruce: [{idAnticipo, valor}, ...]
-	 * @param fechaAplicacion : Fecha de la aplicación (yyyy-MM-dd, null = hoy)
-	 * @param idEmpresa       : Id de la empresa contable
-	 * @param idUsuario       : Id del usuario que registra
-	 * @param observacion     : Observación de la aplicación
-	 * @return                : Mapa con exito, mensaje, lineas (una por anticipo),
-	 *                          totalCruzado, saldoAnticipos y los saldos de la factura
-	 * @throws Throwable      : Excepcion si un anticipo no existe, no es del proveedor,
-	 *                          no está confirmado o no tiene saldo suficiente
+	 * @param idFacturaCompra      : Id de la factura de compra, o null si se cruza contra liquidación
+	 * @param idLiquidacionCompra  : Id de la liquidación de compra, o null si se cruza contra factura
+	 * @param detalles             : Líneas del cruce: [{idAnticipo, valor}, ...]
+	 * @param fechaAplicacion      : Fecha de la aplicación (yyyy-MM-dd, null = hoy)
+	 * @param idEmpresa            : Id de la empresa contable
+	 * @param idUsuario            : Id del usuario que registra
+	 * @param observacion          : Observación de la aplicación
+	 * @return                     : Mapa con exito, mensaje, lineas (una por anticipo),
+	 *                               totalCruzado, saldoAnticipos y los saldos del documento
+	 * @throws Throwable           : Excepcion si un anticipo no existe, no es del proveedor,
+	 *                               no está confirmado o no tiene saldo suficiente
 	 */
-	Map<String, Object> aplicarAnticipos(Long idFacturaCompra,
+	Map<String, Object> aplicarAnticipos(Long idFacturaCompra, Long idLiquidacionCompra,
 			List<Map<String, Object>> detalles, String fechaAplicacion, Long idEmpresa,
 			Long idUsuario, String observacion) throws Throwable;
 
@@ -195,6 +205,17 @@ public interface AplicacionPagoCxpService extends EntityService<AplicacionPagoCx
 			throws Throwable;
 
 	/**
+	 * Recupera el historial de aplicaciones de una liquidación de compra.
+	 * Equivalente de {@link #consultarPorFactura(Long, boolean)}.
+	 * @param idLiquidacionCompra : Id de la liquidación de compra
+	 * @param soloActivas         : true devuelve solo las activas
+	 * @return                    : Listado de aplicaciones
+	 * @throws Throwable          : Excepcion
+	 */
+	List<AplicacionPagoCxp> consultarPorLiquidacion(Long idLiquidacionCompra, boolean soloActivas)
+			throws Throwable;
+
+	/**
 	 * Calcula el saldo pendiente de una factura de compra.
 	 * @param idFacturaCompra : Id de la factura de compra
 	 * @return                : Mapa con total, totalAplicado, saldoPendiente y estadoPago
@@ -213,6 +234,31 @@ public interface AplicacionPagoCxpService extends EntityService<AplicacionPagoCx
 	 * @throws Throwable      : Excepcion
 	 */
 	Long recalcularEstadoPago(Long idFacturaCompra) throws Throwable;
+
+	/**
+	 * Calcula el saldo pendiente de una liquidación de compra. Equivalente de
+	 * {@link #saldoFactura(Long)} para el documento afectado alternativo.
+	 * <p>
+	 * ⛔ No confundir con {@code GET /aplp/saldo/{id}} (que resuelve por
+	 * {@code FacturaCompra}): {@code FCTC} y {@code LQCC} usan IDENTITY con
+	 * numeraciones independientes, así que pasarle un id de liquidación a ese
+	 * endpoint devolvería los datos de una factura ajena que coincida en número,
+	 * sin ningún error (docs/logica-negocio/cxp/DISENO-CRUCE-ANTICIPO-CONTRA-LIQUIDACION.md §4.2).
+	 * @param idLiquidacionCompra : Id de la liquidación de compra
+	 * @return                    : Mapa con total, totalAplicado, saldoPendiente y estadoPago
+	 * @throws Throwable          : Excepcion
+	 */
+	Map<String, Object> saldoLiquidacion(Long idLiquidacionCompra) throws Throwable;
+
+	/**
+	 * Recalcula y graba el estado de pago de una liquidación de compra a partir
+	 * de sus aplicaciones activas. Equivalente de {@link #recalcularEstadoPago(Long)}.
+	 * 1 = Pendiente, 2 = Pagada parcialmente, 3 = Pagada totalmente.
+	 * @param idLiquidacionCompra : Id de la liquidación de compra
+	 * @return                    : Nuevo estado de pago grabado
+	 * @throws Throwable          : Excepcion
+	 */
+	Long recalcularEstadoPagoLiquidacion(Long idLiquidacionCompra) throws Throwable;
 
 	/**
 	 * Localiza la factura de compra a la que se refiere un documento por su

@@ -3,11 +3,14 @@ import java.util.List;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.cxp.dao.LiquidacionCompraCompraDaoService;
+import com.saa.ejb.cxp.service.AplicacionPagoCxpService;
 import com.saa.ejb.cxp.service.LiquidacionCompraCompraService;
 import com.saa.ejb.cxp.service.SustentoTributarioService;
+import com.saa.model.cxp.AplicacionPagoCxp;
 import com.saa.model.cxp.LiquidacionCompraCompra;
 import com.saa.model.cxp.NombreEntidadesCompra;
 import com.saa.rubros.Estado;
+import com.saa.rubros.TipoDocPagoAplicacion;
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
@@ -16,6 +19,7 @@ import jakarta.persistence.PersistenceContext;
 public class LiquidacionCompraCompraServiceImpl implements LiquidacionCompraCompraService {
 	@EJB private LiquidacionCompraCompraDaoService liquidacionCompraCompraDaoService;
 	@EJB private SustentoTributarioService sustentoTributarioService;
+	@EJB private AplicacionPagoCxpService aplicacionPagoCxpService;
 	@PersistenceContext private EntityManager em;
 	@Override
 	public LiquidacionCompraCompra selectById(Long id) throws Throwable {
@@ -56,9 +60,44 @@ public class LiquidacionCompraCompraServiceImpl implements LiquidacionCompraComp
 	}
 
 	@Override
-	public java.util.Map<String, Object> anularLiquidacionCompra(Long idLiquidacion, String motivo, String usuario)
+	public java.util.List<java.util.Map<String, Object>> movimientosRelacionadosLiquidacion(Long idLiquidacion)
 			throws Throwable {
-		System.out.println("=== anularLiquidacionCompra | id=" + idLiquidacion + " | usuario=" + usuario + " ===");
+		System.out.println("=== movimientosRelacionadosLiquidacion | idLiquidacion=" + idLiquidacion + " ===");
+		java.util.List<java.util.Map<String, Object>> lista = new java.util.ArrayList<>();
+		if (idLiquidacion == null) {
+			return lista;
+		}
+		for (AplicacionPagoCxp aplicacion : aplicacionPagoCxpService.consultarPorLiquidacion(idLiquidacion, true)) {
+			java.util.Map<String, Object> fila = new java.util.HashMap<>();
+			fila.put("idAplicacion", aplicacion.getId());
+			fila.put("tipoDocPago", aplicacion.getTipoDocPago());
+			fila.put("tipoDocPagoTexto", textoTipoDocPago(aplicacion.getTipoDocPago()));
+			fila.put("montoAplicado", aplicacion.getMontoAplicado());
+			fila.put("fechaAplicacion", aplicacion.getFechaAplicacion() != null
+					? aplicacion.getFechaAplicacion().toString() : null);
+			lista.add(fila);
+		}
+		return lista;
+	}
+
+	private String textoTipoDocPago(Long tipoDocPago) {
+		if (tipoDocPago == null) {
+			return "Desconocido";
+		}
+		int tipo = tipoDocPago.intValue();
+		if (tipo == TipoDocPagoAplicacion.COBRO_DIRECTO) return "Pago directo";
+		if (tipo == TipoDocPagoAplicacion.NOTA_CREDITO) return "Nota de crédito";
+		if (tipo == TipoDocPagoAplicacion.RETENCION) return "Retención";
+		if (tipo == TipoDocPagoAplicacion.ANTICIPO) return "Anticipo";
+		if (tipo == TipoDocPagoAplicacion.NOTA_DEBITO) return "Nota de débito";
+		return "Tipo " + tipoDocPago;
+	}
+
+	@Override
+	public java.util.Map<String, Object> anularLiquidacionCompra(Long idLiquidacion, String motivo, String usuario,
+			Long idUsuario, boolean anularEnCascada) throws Throwable {
+		System.out.println("=== anularLiquidacionCompra | id=" + idLiquidacion + " | usuario=" + usuario
+				+ " | anularEnCascada=" + anularEnCascada + " ===");
 
 		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
 		resultado.put("exito", false);
@@ -77,6 +116,35 @@ public class LiquidacionCompraCompraServiceImpl implements LiquidacionCompraComp
 		String usuarioAnulacion = (usuario != null && !usuario.trim().isEmpty()) ? usuario.trim() : "SISTEMA";
 		String motivoFinal = (motivo != null && !motivo.trim().isEmpty()) ? motivo.trim() : "Anulación manual";
 		java.time.LocalDateTime ahora = java.time.LocalDateTime.now();
+
+		// Movimientos relacionados (mismo criterio que FacturaCompraServiceImpl.anularFacturaCompra,
+		// ítem 13): antes de que la liquidación pudiera tener aplicaciones esto no hacía falta —
+		// docs/logica-negocio/cxp/DISENO-CRUCE-ANTICIPO-CONTRA-LIQUIDACION.md §5 punto 5.
+		java.util.List<AplicacionPagoCxp> movimientos =
+				aplicacionPagoCxpService.consultarPorLiquidacion(idLiquidacion, true);
+		if (!movimientos.isEmpty()) {
+			if (!anularEnCascada) {
+				StringBuilder detalle = new StringBuilder();
+				for (AplicacionPagoCxp m : movimientos) {
+					if (detalle.length() > 0) detalle.append("; ");
+					detalle.append(textoTipoDocPago(m.getTipoDocPago())).append(" $")
+							.append(m.getMontoAplicado()).append(" (id ").append(m.getId()).append(")");
+				}
+				throw new IncomeException("No se puede anular la liquidación de compra " + idLiquidacion
+						+ ": tiene " + movimientos.size() + " movimiento(s) relacionado(s) sin reversar: "
+						+ detalle + ". Reverselos uno por uno, o reenvíe la anulación con "
+						+ "anularEnCascada=true para reversarlos todos junto con la liquidación.");
+			}
+			int reversados = 0;
+			for (AplicacionPagoCxp m : movimientos) {
+				aplicacionPagoCxpService.revertirAplicacion(m.getId(),
+						"Anulación en cascada de la liquidación de compra " + idLiquidacion + ": " + motivoFinal,
+						idUsuario);
+				reversados++;
+			}
+			resultado.put("movimientosReversados", reversados);
+			System.out.println("✓ " + reversados + " movimiento(s) relacionado(s) reversados antes de anular la liquidación.");
+		}
 
 		if (liquidacion.getAsiento() != null && liquidacion.getAsiento().getCodigo() != null) {
 			try {

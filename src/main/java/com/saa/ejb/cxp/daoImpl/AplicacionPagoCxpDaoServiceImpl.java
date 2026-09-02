@@ -30,6 +30,7 @@ public class AplicacionPagoCxpDaoServiceImpl extends EntityDaoImpl<AplicacionPag
             "id",
             "empresa",
             "facturaCompra",
+            "liquidacionCompra",
             "tipoDocPago",
             "notaCredito",
             "notaDebito",
@@ -81,6 +82,41 @@ public class AplicacionPagoCxpDaoServiceImpl extends EntityDaoImpl<AplicacionPag
                 " where  a.facturaCompra.id = :idFactura " +
                 " and    a.estado = 1");
         query.setParameter("idFactura", idFacturaCompra);
+        Object resultado = query.getSingleResult();
+        return (resultado != null) ? ((Number) resultado).doubleValue() : 0.0;
+    }
+
+    @Override
+    public List<AplicacionPagoCxp> selectActivasByLiquidacion(Long idLiquidacionCompra) throws Throwable {
+        System.out.println("Ingresa al metodo selectActivasByLiquidacion con liquidacion: " + idLiquidacionCompra);
+        Query query = em.createQuery(
+                " select a from AplicacionPagoCxp a " +
+                " where  a.liquidacionCompra.id = :idLiquidacion " +
+                " and    a.estado = 1 " +
+                " order by a.fechaAplicacion, a.id");
+        query.setParameter("idLiquidacion", idLiquidacionCompra);
+        return query.getResultList();
+    }
+
+    @Override
+    public List<AplicacionPagoCxp> selectByLiquidacion(Long idLiquidacionCompra) throws Throwable {
+        System.out.println("Ingresa al metodo selectByLiquidacion con liquidacion: " + idLiquidacionCompra);
+        Query query = em.createQuery(
+                " select a from AplicacionPagoCxp a " +
+                " where  a.liquidacionCompra.id = :idLiquidacion " +
+                " order by a.fechaAplicacion, a.id");
+        query.setParameter("idLiquidacion", idLiquidacionCompra);
+        return query.getResultList();
+    }
+
+    @Override
+    public Double sumaAplicadoByLiquidacion(Long idLiquidacionCompra) throws Throwable {
+        System.out.println("Ingresa al metodo sumaAplicadoByLiquidacion con liquidacion: " + idLiquidacionCompra);
+        Query query = em.createQuery(
+                " select coalesce(sum(a.montoAplicado), 0) from AplicacionPagoCxp a " +
+                " where  a.liquidacionCompra.id = :idLiquidacion " +
+                " and    a.estado = 1");
+        query.setParameter("idLiquidacion", idLiquidacionCompra);
         Object resultado = query.getSingleResult();
         return (resultado != null) ? ((Number) resultado).doubleValue() : 0.0;
     }
