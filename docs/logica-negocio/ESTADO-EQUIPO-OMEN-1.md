@@ -154,6 +154,64 @@ cita legal**. Es la regla 7 —lo que un agente va a implementar tiene que estar
 
 ---
 
+## 2d. Frente lateral — desembolso del préstamo (CRD alimenta a TSR)
+
+**Pedido del usuario el 2026-09-01**, cierra el §6.1 de `PLAN-CICLO-OTORGAMIENTO.md`.
+Diseño en `crd/PLAN-DESEMBOLSO-PRESTAMO.md`. Código en `7bca171` y `b9750d4`.
+
+**Decisión del usuario:** el desembolso lo ejecuta **TSR**; CRD lo **alimenta**. La contabilidad se
+escribe al alimentar TSR, **excepto el asiento contra bancos**, que se genera al confirmarse el pago.
+
+### ⭐ El diseño ya estaba implícito en las plantillas, y eso lo valida
+
+Las plantillas 9 y 13 **no tienen cuenta de bancos**. Su contrapartida es `2.3.90.90.10 SOCIOS POR
+PAGAR`, que es la cuenta puente:
+
+```
+al aprobar → DEBE cartera por tramo   HABER socios por pagar    (CRD)
+al pagar   → DEBE socios por pagar    HABER bancos              (CXP, solo)
+```
+
+**La separación que pidió el usuario es la que las plantillas ya suponían.** Y casi todo el
+mecanismo existe: `registrarPagoDeOrigenExterno` ya tiene dos consumidores de `crd` en producción.
+**Este frente no modifica un solo archivo de `cxp` ni de `tsr`.**
+
+### ⛔ Estado: BLOQUEA EL DESPLIEGUE DEL OTORGAMIENTO
+
+`aprobar` **falla ruidoso** hasta que se resuelva `sql/157`: el desglose contable queda tras
+`ID_PRODUCTO_PAGO_SOCIOS_POR_PAGAR = null`. Es deliberado —con el producto equivocado tesorería
+paga y el asiento descarga otra cuenta, cuadrado igual y sin error— pero **el otorgamiento pasó de
+"listo para desplegar" a "esperando el 157"**, y así se le comunicó al usuario.
+
+### H14 — `PRSTVLAS` (valor asegurado) tampoco tiene escritor
+
+El asiento de entrega alimenta la **línea del bien en garantía** (aux 8 de las plantillas 9 y 13)
+con `Prestamo.valorAsegurado`. Verificado: el **único lector en todo el backend** es el código del
+desembolso recién escrito. Es una de las cuatro columnas de seguro que `ESTADO-EQUIPO-SEGUROS.md`
+§1.3 ya había marcado como mapeadas y sin escritor.
+
+**Un prendario o un hipotecario quedaría sin registrar su garantía en cuentas de orden, y el asiento
+cuadra igual** — el mismo modo de falla silenciosa que este equipo pasó el día entero persiguiendo.
+No bloquea el quirografario. Documentado en `ContabilidadPrestamoServiceImpl:566`.
+
+### H15 — No existe ninguna forma establecida de saber la familia de un producto
+
+El asiento elige plantilla por familia (prendario 9 / hipotecario 13 / quirografario 34), y **no hay
+ningún precedente en el código que clasifique productos por familia**. La implementación compara
+`TPPRNMBR` contra los tres literales, y la familia quirografaria incluye EMERGENTE, CENAPRO,
+EXPRESS, SUST. BIESS y las variantes RESTR./NOVACION — que casi seguro no se llaman así.
+
+**Rechaza en vez de clasificar mal**, que es lo correcto, pero significa que esos productos no se
+podrían otorgar. `sql/157` bloque 5 dice si sirve `TPPRNMBR`, si sirve `TPPRTPOO` (un `VARCHAR2(50)`
+llamado «tipo» que podría ser el agrupador), o si hace falta una tabla de mapeo.
+
+> **Los dos supuestos los planteó el agente de BE y frenó en vez de resolverlos solo.** El otro —el
+> orden de los auxiliares de las plantillas 9 y 13— lo dedujo del levantamiento contable y **acertó
+> exacto**, confirmado después contra el output real del `153`. Marcar un acierto como supuesto es
+> lo que permite verificarlo; darlo por hecho es lo que deja un asiento mal clasificado y cuadrado.
+
+---
+
 ## 2c. Corrección urgente — préstamos en mora en las novedades bloqueantes de Petro
 
 **Pedido del usuario el 2026-09-01.** En `archivo-petro/carga/detalle`, pestaña descuentos, al
