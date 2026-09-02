@@ -105,6 +105,12 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
     @EJB
     private CargaArchivoService cargaArchivoService;
 
+    /** Resuelve el último día del mes de carga — fecha de EFECTO de asientos y pagos de esta
+     * ruta (2026-09-02). Mismo servicio que ya usa CargaArchivoPetroServiceImpl para la fecha
+     * del Aporte; no se duplica el cálculo acá. */
+    @EJB
+    private com.saa.basico.ejb.FechaService fechaService;
+
     @EJB
     private TransferenciaCargaPetroDaoService transferenciaCargaPetroDaoService;
 
@@ -376,10 +382,17 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
             debe.setPlanCuenta(cuenta);
             debe.setNumeroCuenta(cuenta.getCuentaContable());
             debe.setNombreCuenta(cuenta.getNombre());
+            // 2026-09-02: el asiento pasa a fecharse a fin de mes de carga (ver más abajo), así
+            // que la fecha REAL en que cada transferencia llegó al banco —la que el operador
+            // ingresó al registrarla— se agrega acá, línea por línea, para no perder la
+            // trazabilidad de cuándo entró cada plata (pedido del usuario: una carga puede
+            // traer transferencias de fechas distintas, medido en la 449: 2026-08-26 y
+            // 2026-09-01).
             debe.setDescripcion("Transferencia " + (transferencia.getNumero() != null
                     ? transferencia.getNumero() : transferencia.getCodigo())
                     + (transferencia.getBancoExterno() != null
-                            ? " - " + transferencia.getBancoExterno().getNombre() : ""));
+                            ? " - " + transferencia.getBancoExterno().getNombre() : "")
+                    + (transferencia.getFecha() != null ? " - recibida " + transferencia.getFecha() : ""));
             debe.setValorDebe(transferencia.getValor());
             debe.setValorHaber(0.0);
             lineas.add(debe);
@@ -394,10 +407,30 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         haber.setValorHaber(totalTransferencias);
         lineas.add(haber);
 
-        LocalDate fechaAsiento = fechaMasReciente(vigentes);
+        // 2026-09-02, aclaración del usuario: el asiento de transitorio TAMBIÉN va a fin de
+        // mes de carga (los tres asientos de este archivo comparten el mismo criterio ahora),
+        // pero la fecha REAL en que se recibió el dinero —la que importa para trazabilidad, no
+        // para el período contable— se conserva en la observación (ver más abajo) y, línea por
+        // línea, en cada DEBE de arriba. Sin fallback a now(): si mes/año de afectación vienen
+        // null, grita.
+        if (carga.getMesAfectacion() == null || carga.getAnioAfectacion() == null) {
+            throw new IncomeException("No se puede generar el asiento de transitorio de la carga "
+                    + idCarga + ": falta el mes o año de afectación de la carga.");
+        }
+        LocalDate fechaAsiento = fechaService.ultimoDiaMesAnioLocal(carga.getMesAfectacion(), carga.getAnioAfectacion());
+
+        // fechaMasReciente/fechaMasAntigua: ya NO deciden la fecha del asiento, pero siguen
+        // vivas para armar la observación con la fecha real de recepción — no se borran.
+        LocalDate fechaRecepcionMasReciente = fechaMasReciente(vigentes);
+        LocalDate fechaRecepcionMasAntigua = fechaMasAntigua(vigentes);
+        String textoFechaRecepcion = fechaRecepcionMasAntigua != null
+                && !fechaRecepcionMasAntigua.equals(fechaRecepcionMasReciente)
+                ? " (transferencias recibidas entre " + fechaRecepcionMasAntigua + " y " + fechaRecepcionMasReciente + ")"
+                : (fechaRecepcionMasReciente != null ? " (transferencia recibida el " + fechaRecepcionMasReciente + ")" : "");
+
         com.saa.model.cnt.Asiento asiento = asientoContableService.generarAsiento(idEmpresa,
                 TipoAsientos.CREDITOS, fechaAsiento,
-                "Cobro Petro/ARCH carga " + idCarga + " - recepción confirmada"
+                "Cobro Petro/ARCH carga " + idCarga + " - recepción confirmada" + textoFechaRecepcion
                         + (solicitud != null && solicitud.getObservacion() != null
                                 ? ": " + solicitud.getObservacion() : ""),
                 solicitud != null ? solicitud.getUsuario() : null, lineas,
@@ -581,18 +614,20 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         lineas.addAll(contabilizacionIndividualCreditoService.lineasReparto(idPlantilla, totalAportes,
                 totalPrestamos, "Reparto Petro/ARCH carga " + idCarga));
 
-        // 2026-09-02, pedido del usuario: el asiento va con la fecha de AUTORIZACIÓN de
-        // contabilidad, no con la fecha en que corre este proceso — la carga se autoriza un
-        // día y se procesa otro (este proceso tarda ~22 minutos, puede cruzar la medianoche),
-        // y con LocalDate.now() el asiento caía en el período contable equivocado. Sin
-        // fallback a now(): si viniera null es una ruta que nadie previó (en la práctica no
-        // puede pasar — exigeConfirmacionContabilidad ya lo valida antes de llegar acá) y
-        // tiene que gritar, no esconder el mismo defecto detrás de un if.
-        if (carga.getFechaAutorizacionContabilidad() == null) {
+        // 2026-09-02, CORRIGE EL CRITERIO DE f94532b (decisión del usuario, confirmada tras
+        // reprocesar y ver el daño real): el asiento NO va con la fecha de autorización de
+        // contabilidad ni con la fecha en que corre este proceso — va con el ÚLTIMO DÍA DEL
+        // MES DE CARGA. El dinero se descontó del sueldo del partícipe ese mes; que Petro lo
+        // devuelva y se procese al mes siguiente no cambia cuándo se considera pagado. Usar
+        // la fecha de autorización (o peor, now()) hizo que el asiento cayera en el período
+        // contable equivocado Y que la clasificación de bandas contable tratara cartera al
+        // día como vencida. Sin fallback a now(): si mes/año de afectación vienen null, grita
+        // en vez de esconder el mismo defecto detrás de un if.
+        if (carga.getMesAfectacion() == null || carga.getAnioAfectacion() == null) {
             throw new IncomeException("No se puede generar el asiento de reparto de la carga "
-                    + idCarga + ": falta la fecha de autorización de contabilidad.");
+                    + idCarga + ": falta el mes o año de afectación de la carga.");
         }
-        LocalDate fechaAsiento = carga.getFechaAutorizacionContabilidad().toLocalDate();
+        LocalDate fechaAsiento = fechaService.ultimoDiaMesAnioLocal(carga.getMesAfectacion(), carga.getAnioAfectacion());
         com.saa.model.cnt.Asiento asiento = asientoContableService.generarAsiento(idEmpresa,
                 TipoAsientos.CREDITOS, fechaAsiento,
                 "Reparto Petro/ARCH carga " + idCarga, null, lineas,
@@ -930,14 +965,14 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         lineasFinal.addAll(lineas);
 
         double totalAsiento = redondear(totalAportes + totalPrestamos);
-        // 2026-09-02, mismo pedido del usuario que contabilizarReparto: fecha de AUTORIZACIÓN
-        // de contabilidad, no la de hoy — ver el comentario de allá para el porqué completo.
-        // Sin fallback a now(): si viniera null, grita en vez de esconder el mismo defecto.
-        if (carga.getFechaAutorizacionContabilidad() == null) {
+        // 2026-09-02, mismo criterio corregido que contabilizarReparto (CORRIGE f94532b): fecha
+        // = último día del mes de carga, no la de autorización ni la de hoy — ver el comentario
+        // de allá para el porqué completo. Sin fallback a now(): si mes/año vienen null, grita.
+        if (carga.getMesAfectacion() == null || carga.getAnioAfectacion() == null) {
             throw new IncomeException("No se puede generar el asiento de aplicación de la carga "
-                    + idCarga + ": falta la fecha de autorización de contabilidad.");
+                    + idCarga + ": falta el mes o año de afectación de la carga.");
         }
-        LocalDate fechaAsiento = carga.getFechaAutorizacionContabilidad().toLocalDate();
+        LocalDate fechaAsiento = fechaService.ultimoDiaMesAnioLocal(carga.getMesAfectacion(), carga.getAnioAfectacion());
         com.saa.model.cnt.Asiento asiento = asientoContableService.generarAsiento(idEmpresa,
                 TipoAsientos.CREDITOS, fechaAsiento,
                 "Aplicación Petro/ARCH carga " + idCarga, null, lineasFinal,
@@ -1014,6 +1049,10 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         return linea;
     }
 
+    // 2026-09-02: fechaMasReciente/fechaMasAntigua ya NO deciden la fecha del asiento de
+    // transitorio (ver confirmarRecepcion — ahora es fin de mes de carga, vía FechaService).
+    // Siguen vivas porque arman el texto de la observación con la fecha REAL de recepción de
+    // cada transferencia, que no se puede perder aunque el asiento se fecha distinto.
     private LocalDate fechaMasReciente(List<TransferenciaCargaPetro> transferencias) {
         LocalDate mayor = null;
         for (TransferenciaCargaPetro transferencia : transferencias) {
@@ -1023,6 +1062,17 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
             }
         }
         return mayor != null ? mayor : LocalDate.now();
+    }
+
+    private LocalDate fechaMasAntigua(List<TransferenciaCargaPetro> transferencias) {
+        LocalDate menor = null;
+        for (TransferenciaCargaPetro transferencia : transferencias) {
+            if (transferencia.getFecha() != null
+                    && (menor == null || transferencia.getFecha().isBefore(menor))) {
+                menor = transferencia.getFecha();
+            }
+        }
+        return menor;
     }
 
     private String periodo(CargaArchivo carga) {

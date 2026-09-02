@@ -2270,7 +2270,7 @@ private DetallePrestamo buscarCuotaAPagar(List<Prestamo> prestamos,
 			DetallePrestamo cuota = resultado.get(0);
 			
 			// ✅ CORRECCIÓN CRÍTICA: Calcular saldos reales consultando tabla PagoPrestamo
-			SaldosRealesCuota saldos = calcularSaldosRealesCuota(cuota);
+			SaldosRealesCuota saldos = calcularSaldosRealesCuota(cuota, cargaArchivo);
 			
 			// ✅ Si calcularSaldosRealesCuota actualizó la cuota a PAGADA, 
 			// volver a buscar la mínima cuota (ahora será la siguiente)
@@ -2318,10 +2318,21 @@ private void procesarPagoCuota(ParticipeXCargaArchivo participe,
                                CargaArchivo cargaArchivo) throws Throwable {
 	
 	System.out.println("    Procesando pago cuota #" + cuota.getNumeroCuota() + " - Monto: $" + montoPagado + " (Seguro incendio: $" + valorSeguroIncendio + ")");
-	
+
+	// 2026-09-02, decisión del usuario: la cuota se fecha como pagada el ÚLTIMO DÍA DEL MES
+	// DE CARGA, no en la fecha de proceso — mismo criterio que crearRegistroPago (el dinero
+	// se descontó del sueldo ese mes; que se procese al mes siguiente no lo cambia). Sin
+	// fallback a now(): si mes/año de afectación vienen null, grita.
+	if (cargaArchivo.getMesAfectacion() == null || cargaArchivo.getAnioAfectacion() == null) {
+		throw new IncomeException("No se puede fechar el pago de la cuota #" + cuota.getNumeroCuota()
+			+ ": falta el mes o año de afectación de la carga " + cargaArchivo.getCodigo() + ".");
+	}
+	java.time.LocalDateTime fechaPagoEfecto = fechaService.ultimoDiaMesAnioLocal(
+		cargaArchivo.getMesAfectacion(), cargaArchivo.getAnioAfectacion()).atTime(23, 59, 59);
+
 	// ✅ CORRECCIÓN CRÍTICA: Calcular saldos reales consultando la tabla PagoPrestamo
 	// Esto asegura que si hay pagos previos registrados, se tomen en cuenta correctamente
-	SaldosRealesCuota saldos = calcularSaldosRealesCuota(cuota);
+	SaldosRealesCuota saldos = calcularSaldosRealesCuota(cuota, cargaArchivo);
 	
 	// ✅ CORRECCIÓN: Recargar el estado de la cuota después de calcularSaldosRealesCuota
 	// porque ese método puede haberla actualizado a PAGADA si ya estaba completa
@@ -2372,7 +2383,7 @@ private void procesarPagoCuota(ParticipeXCargaArchivo participe,
 		// ✅ Pago exacto del saldo pendiente → PAGADA (independiente del desglose)
 		cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
 		cuota.setIdEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
-		cuota.setFechaPagado(java.time.LocalDateTime.now());
+		cuota.setFechaPagado(fechaPagoEfecto);
 		
 		// ✅ ACUMULAR: Completar el pago total de la cuota
 		cuota.setCapitalPagado(nullSafe(cuota.getCapital()));
@@ -2404,7 +2415,7 @@ private void procesarPagoCuota(ParticipeXCargaArchivo participe,
 		// ✅ Pago con excedente → PAGADA y procesar excedente (independiente del desglose)
 		cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
 		cuota.setIdEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
-		cuota.setFechaPagado(java.time.LocalDateTime.now());
+		cuota.setFechaPagado(fechaPagoEfecto);
 		
 		// ✅ ACUMULAR: Completar el pago total de la cuota
 		cuota.setCapitalPagado(nullSafe(cuota.getCapital()));
@@ -2803,7 +2814,7 @@ private void procesarExcedenteASiguienteCuota(ParticipeXCargaArchivo participe,
 		if (candidata.getNumeroCuota() <= cuota.getNumeroCuota()) {
 			// Esta es la cuota actual o anterior, buscar más adelante
 			// Marcarla como PAGADA si tiene saldo insignificante
-			SaldosRealesCuota saldos = calcularSaldosRealesCuota(candidata);
+			SaldosRealesCuota saldos = calcularSaldosRealesCuota(candidata, cargaArchivo);
 			
 			if (saldos.totalPendiente <= 0.01) {
 				candidata.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
@@ -2819,7 +2830,7 @@ private void procesarExcedenteASiguienteCuota(ParticipeXCargaArchivo participe,
 		}
 		
 		// Esta es una cuota posterior a la actual, validar saldo real
-		SaldosRealesCuota saldos = calcularSaldosRealesCuota(candidata);
+		SaldosRealesCuota saldos = calcularSaldosRealesCuota(candidata, cargaArchivo);
 		
 		// Si fue marcada como PAGADA por calcularSaldosRealesCuota, buscar la siguiente
 		if (candidata.getEstado() != null && 
@@ -3061,7 +3072,7 @@ private void aplicarAfectacionManualConRegistroPago(
 	System.out.println("         TOTAL a afectar: $" + valorTotalAfectar);
 	
 	// ✅ CRÍTICO: Calcular saldos reales desde tabla PagoPrestamo
-	SaldosRealesCuota saldos = calcularSaldosRealesCuota(cuota);
+	SaldosRealesCuota saldos = calcularSaldosRealesCuota(cuota, cargaArchivo);
 	
 	// ✅ CORRECCIÓN CRÍTICA: Si NO hay desglose manual (todos en 0), pero SÍ hay valorTotalAfectar,
 	// entonces distribuir el monto respetando el orden correcto: Desgravamen → Interés → Capital
@@ -3178,7 +3189,14 @@ private void aplicarAfectacionManualConRegistroPago(
 	if (Math.abs(totalPagadoAcumulado - totalEsperado) <= 0.01) {
 		cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
 		cuota.setIdEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
-		cuota.setFechaPagado(java.time.LocalDateTime.now());
+		// 2026-09-02: último día del mes de carga, no la fecha de proceso — mismo criterio
+		// que procesarPagoCuota/crearRegistroPago.
+		if (cargaArchivo.getMesAfectacion() == null || cargaArchivo.getAnioAfectacion() == null) {
+			throw new IncomeException("No se puede fechar el pago de la cuota #" + cuota.getNumeroCuota()
+				+ ": falta el mes o año de afectación de la carga " + cargaArchivo.getCodigo() + ".");
+		}
+		cuota.setFechaPagado(fechaService.ultimoDiaMesAnioLocal(
+			cargaArchivo.getMesAfectacion(), cargaArchivo.getAnioAfectacion()).atTime(23, 59, 59));
 		System.out.println("      ✅ Cuota #" + cuota.getNumeroCuota() + " PAGADA COMPLETAMENTE (afectación manual)");
 	} else {
 		cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PARCIAL);
@@ -3666,7 +3684,7 @@ private static class SaldosRealesCuota {
  * ✅ OPTIMIZACIÓN: Usa método específico en lugar de selectAll()
  * ✅ ACUMULA pagos de múltiples registros en PagoPrestamo
  */
-private SaldosRealesCuota calcularSaldosRealesCuota(DetallePrestamo cuota) throws Throwable {
+private SaldosRealesCuota calcularSaldosRealesCuota(DetallePrestamo cuota, CargaArchivo cargaArchivo) throws Throwable {
 	SaldosRealesCuota saldos = new SaldosRealesCuota();
 
 	// TODO O NADA (2026-08-29): antes, cualquier falla acá (típicamente en el
@@ -3717,9 +3735,16 @@ private SaldosRealesCuota calcularSaldosRealesCuota(DetallePrestamo cuota) throw
 			cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
 			cuota.setIdEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA); // ✅ CRÍTICO: Actualizar también idEstado
 			
-			// ✅ Solo establecer fechaPagado si no existe
+			// ✅ Solo establecer fechaPagado si no existe. 2026-09-02: último día del mes de
+			// carga, no la fecha de proceso — mismo criterio que crearRegistroPago.
 			if (cuota.getFechaPagado() == null) {
-				cuota.setFechaPagado(java.time.LocalDateTime.now());
+				if (cargaArchivo.getMesAfectacion() == null || cargaArchivo.getAnioAfectacion() == null) {
+					throw new IncomeException("No se puede fechar el pago de la cuota #"
+						+ cuota.getNumeroCuota() + ": falta el mes o año de afectación de la carga "
+						+ cargaArchivo.getCodigo() + ".");
+				}
+				cuota.setFechaPagado(fechaService.ultimoDiaMesAnioLocal(
+					cargaArchivo.getMesAfectacion(), cargaArchivo.getAnioAfectacion()).atTime(23, 59, 59));
 				System.out.println("    ✅ Fecha de pago establecida");
 			} else {
 				System.out.println("    ℹ️ Respetando fecha de pago existente: " + cuota.getFechaPagado());
@@ -3770,10 +3795,28 @@ private void crearRegistroPago(DetallePrestamo cuota,
 	// MotorPagoPrestamoService). Un fallo de save es siempre un fallo real, nunca ausencia de
 	// dato — no hay "if" que lo reemplace, debe propagar.
 	try {
+		// 2026-09-02, decisión del usuario (corrige la fecha de proceso que venía usándose):
+		// el pago se fecha con el ÚLTIMO DÍA DEL MES DE CARGA, no con la fecha en que corre
+		// este proceso. El dinero se descontó del sueldo del partícipe ese mes — que Petro lo
+		// devuelva y se procese al mes siguiente no cambia cuándo se considera pagado. Con
+		// LocalDateTime.now() (fecha de proceso) el pago quedaba fechado en el mes siguiente,
+		// y clasificadorBandaService.clasificar (que usa esta misma fecha, ver más abajo en
+		// contabilizarAplicacion) mandaba cartera al día a "vencida". Mismo servicio y mismo
+		// criterio que ya usa crearNuevoAporte — sin fallback a now(): si mes/año de
+		// afectación vienen null, grita en vez de esconder el mismo defecto.
+		if (cargaArchivo.getMesAfectacion() == null || cargaArchivo.getAnioAfectacion() == null) {
+			throw new IncomeException("No se puede registrar el pago de la cuota #"
+				+ cuota.getNumeroCuota() + " (préstamo "
+				+ (cuota.getPrestamo() != null ? cuota.getPrestamo().getCodigo() : null)
+				+ "): falta el mes o año de afectación de la carga " + cargaArchivo.getCodigo() + ".");
+		}
+		java.time.LocalDate fechaUltimoDiaPago = fechaService.ultimoDiaMesAnioLocal(
+			cargaArchivo.getMesAfectacion(), cargaArchivo.getAnioAfectacion());
+
 		PagoPrestamo pago = new PagoPrestamo();
 		pago.setDetallePrestamo(cuota);
 		pago.setPrestamo(cuota.getPrestamo());
-		pago.setFecha(java.time.LocalDateTime.now());
+		pago.setFecha(fechaUltimoDiaPago.atTime(23, 59, 59));
 		pago.setCapitalPagado(capitalPagado);
 		pago.setInteresPagado(interesPagado);
 		pago.setDesgravamen(desgravamenPagado);
@@ -4459,11 +4502,22 @@ private void crearRegistroPagoAporte(Aporte aporte, double montoPagado,
 	// mismo problema que crearRegistroPago (arriba) del lado de préstamos: un fallo de save es
 	// siempre un fallo real, debe propagar.
 	try {
+		// 2026-09-02: FechaContable es fecha de EFECTO (igual que crearRegistroPago del lado
+		// de préstamos) — último día del mes de carga, no la fecha de proceso. Sin fallback
+		// a now(): si mes/año de afectación vienen null, grita.
+		if (cargaArchivo.getMesAfectacion() == null || cargaArchivo.getAnioAfectacion() == null) {
+			throw new IncomeException("No se puede fechar el pago del aporte "
+				+ (aporte != null ? aporte.getCodigo() : null) + ": falta el mes o año de afectación"
+				+ " de la carga " + cargaArchivo.getCodigo() + ".");
+		}
+		java.time.LocalDateTime fechaContableAporte = fechaService.ultimoDiaMesAnioLocal(
+			cargaArchivo.getMesAfectacion(), cargaArchivo.getAnioAfectacion()).atTime(23, 59, 59);
+
 		com.saa.model.crd.PagoAporte pago = new com.saa.model.crd.PagoAporte();
 		pago.setFilial(aporte.getFilial()); // Obtener filial desde el aporte
 		pago.setAporte(aporte);
 		pago.setValor(montoPagado);
-		pago.setFechaContable(java.time.LocalDateTime.now());
+		pago.setFechaContable(fechaContableAporte);
 		pago.setConcepto(String.format("Pago aporte mes %d/%d - Partícipe: %d (%s) - CargaArchivo: %d",
 		                               cargaArchivo.getMesAfectacion(),
 		                               cargaArchivo.getAnioAfectacion(),
