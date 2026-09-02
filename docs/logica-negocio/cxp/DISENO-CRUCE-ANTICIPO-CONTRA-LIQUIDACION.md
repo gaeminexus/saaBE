@@ -112,8 +112,58 @@ propio endpoint de saldo**, no reusar éste:
 GET /rest/aplp/saldoLiquidacion/{idLiquidacionCompra}
 ```
 
-Misma forma de respuesta que `/saldo/{id}`, para que el frontend no tenga que tratarlos distinto más
-allá de la ruta.
+**⚠️ Corregido el 2026-09-02: la forma NO es idéntica.** Este documento decía «misma forma de
+respuesta, para que el frontend no tenga que tratarlos distinto más allá de la ruta». **Es falso en
+dos claves de seis**, verificado en `AplicacionPagoCxpServiceImpl.saldoLiquidacion:911-917`:
+
+| `/saldo/{id}` | `/saldoLiquidacion/{id}` |
+|---|---|
+| `facturaId` | **`liquidacionId`** |
+| `numeroFactura` | **`numeroLiquidacion`** |
+| `total`, `totalAplicado`, `saldoPendiente`, `estadoPago` | iguales |
+
+**No se cambió el backend**: `liquidacionId` es el nombre honesto para el id de una liquidación, y
+renombrarlo a `facturaId` mentiría sobre lo que es. Lo que estaba mal era el contrato.
+
+**Y hay un efecto que no es sólo el GET de saldo:** `aplicaCruces:602` hace
+`resultado.putAll(saldoLiquidacion(...))` cuando el cruce fue contra una liquidación, así que **la
+respuesta del propio cruce** también trae las claves distintas. Un frontend que sólo lea
+`numeroFactura` muestra el resumen **en blanco después de un cruce exitoso** — la operación salió
+bien y la pantalla parece rota.
+
+**Resuelto en el borde del servicio del frontend** (`aplicacion-pago-cxp.service.ts`, funciones
+`normalizarSaldo`/`normalizarResultado`), que completa los dos pares de claves sin pisar lo que sí
+vino. El resto de la pantalla, escrita contra la forma de factura, no tiene que enterarse.
+
+> **Lo que enseña, y es por lo que se anota:** *«misma forma de respuesta»* escrito en un contrato no
+> hace que las formas sean iguales. Si el contrato no **enumera las claves**, el implementador elige
+> el nombre que le parece correcto —y acá eligió bien— mientras el consumidor construye contra lo que
+> el contrato prometió. Un contrato que dice «igual que el otro» no es un contrato: es una remisión
+> que nadie verifica.
+
+---
+
+## 4.4 ⛔ «Liquidación de compra» son DOS entidades distintas
+
+Encontrado por el agente de frontend al decidir si extendía el selector existente.
+
+| Nombre en pantalla | Tabla | Qué es |
+|---|---|---|
+| Liquidación de compra | **`CBR.LQCS`** (`LiquidacionCompra`, `cxc`) | la que la empresa **emite** ante el SRI |
+| Liquidación de compra | **`PGS.LQCC`** (`LiquidacionCompraCompra`, `cxp`) | la que la empresa **recibe** de un proveedor |
+
+`FacturaCompraSelectorDialogComponent` ya tiene un tipo `'LIQUIDACION'` —agregado por el equipo
+`eq3`— que apunta a **`LQCS`**, para que una retención elija el documento que afecta. **Extender ese
+diálogo agregándole un segundo significado a la misma etiqueta habría roto la distinción que ese
+equipo ya construyó**, y el fallo habría sido de los silenciosos: el selector devolviendo un
+documento de la tabla equivocada.
+
+Por eso el cruce usa un **diálogo hermano** (`documento-cruce-selector-dialog`) en vez de extender el
+existente.
+
+> Es la misma familia que la trampa ya registrada en `CLAUDE.md`: **`cxc`/`cxp` clasifica por quién
+> emite el documento ante el SRI, no por si entra o sale plata.** Dos entidades con el mismo nombre
+> en español y direcciones opuestas.
 
 ### 4.3 Documentos cruzables del proveedor
 
