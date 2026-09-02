@@ -39,6 +39,34 @@ public interface AplicacionPagoCxpDaoService extends EntityDao<AplicacionPagoCxp
 	Double sumaAplicadoByFactura(Long idFacturaCompra) throws Throwable;
 
 	/**
+	 * Recupera las aplicaciones ACTIVAS de una liquidación de compra.
+	 * Equivalente de {@link #selectActivasByFactura(Long)} para el documento
+	 * afectado alternativo (docs/logica-negocio/cxp/DISENO-CRUCE-ANTICIPO-CONTRA-LIQUIDACION.md).
+	 * @param idLiquidacionCompra : Id de la liquidación de compra
+	 * @return                    : Listado de aplicaciones activas
+	 * @throws Throwable          : Excepcion
+	 */
+	List<AplicacionPagoCxp> selectActivasByLiquidacion(Long idLiquidacionCompra) throws Throwable;
+
+	/**
+	 * Recupera TODAS las aplicaciones de una liquidación de compra, activas y
+	 * reversadas. Equivalente de {@link #selectByFactura(Long)}.
+	 * @param idLiquidacionCompra : Id de la liquidación de compra
+	 * @return                    : Listado de aplicaciones
+	 * @throws Throwable          : Excepcion
+	 */
+	List<AplicacionPagoCxp> selectByLiquidacion(Long idLiquidacionCompra) throws Throwable;
+
+	/**
+	 * Suma los montos aplicados ACTIVOS de una liquidación de compra.
+	 * Equivalente de {@link #sumaAplicadoByFactura(Long)}.
+	 * @param idLiquidacionCompra : Id de la liquidación de compra
+	 * @return                    : Total aplicado, 0.0 si no hay aplicaciones
+	 * @throws Throwable          : Excepcion
+	 */
+	Double sumaAplicadoByLiquidacion(Long idLiquidacionCompra) throws Throwable;
+
+	/**
 	 * Recupera las aplicaciones ACTIVAS generadas por un documento concreto.
 	 * @param tipoDocumento : RETENCION, RETENCION_V2, NOTA_CREDITO o NOTA_DEBITO
 	 * @param idDocumento   : Id del documento que originó la aplicación

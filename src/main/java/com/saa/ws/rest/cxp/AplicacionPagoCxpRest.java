@@ -27,7 +27,8 @@ import jakarta.ws.rs.core.UriInfo;
  *
  * Endpoints principales:
  *   GET  /aplp/factura/{id}              → historial de aplicaciones de una factura
- *   GET  /aplp/saldo/{id}                → total, aplicado y saldo pendiente de una factura
+ *   GET  /aplp/saldo/{id}                → total, aplicado y saldo pendiente de una FACTURA
+ *   GET  /aplp/saldoLiquidacion/{id}      → total, aplicado y saldo pendiente de una LIQUIDACIÓN
  *   POST /aplp/anticipo                  → cruza anticipos por monto total (FIFO sobre los disponibles)
  *   POST /aplp/anticipos                 → cruza anticipos ESPECÍFICOS elegidos por el usuario
  *   POST /aplp/revertir/{id}             → reversa una aplicación (requiere motivo)
@@ -38,6 +39,12 @@ import jakarta.ws.rs.core.UriInfo;
  * Las aplicaciones por retención y por notas de crédito/débito NO se registran
  * desde aquí: se generan automáticamente junto con el asiento contable del
  * documento correspondiente.
+ *
+ * ⛔ /aplp/saldo/{id} y /aplp/saldoLiquidacion/{id} NO son intercambiables:
+ * FCTC y LQCC usan IDENTITY con numeraciones independientes, así que pasarle
+ * un id de liquidación a /saldo/{id} devolvería los datos de una factura ajena
+ * que coincida en número, sin ningún error
+ * (docs/logica-negocio/cxp/DISENO-CRUCE-ANTICIPO-CONTRA-LIQUIDACION.md §4.2).
  */
 @Path("aplp")
 public class AplicacionPagoCxpRest {
@@ -130,11 +137,32 @@ public class AplicacionPagoCxpRest {
     }
 
     /**
+     * Total, aplicado y saldo pendiente de una liquidación de compra.
+     * ⛔ NO es intercambiable con /saldo/{id} — ver el aviso en la cabecera de esta clase.
+     * @param idLiquidacion : Id de la liquidación de compra
+     */
+    @GET
+    @Path("/saldoLiquidacion/{idLiquidacion}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response saldoLiquidacion(@PathParam("idLiquidacion") Long idLiquidacion) {
+        System.out.println("LLEGA AL SERVICIO GET /aplp/saldoLiquidacion/" + idLiquidacion);
+        try {
+            Map<String, Object> saldos = aplicacionPagoCxpService.saldoLiquidacion(idLiquidacion);
+            return Response.status(Response.Status.OK).entity(saldos)
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener el saldo de la liquidación de compra: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
      * Cruza anticipos del proveedor contra una factura de compra indicando solo
      * el monto total: el backend lo reparte entre los anticipos con saldo, del
      * más antiguo al más nuevo. Para elegir a mano de qué anticipos sale el
      * dinero, usar POST /aplp/anticipos.
-     * Body esperado:
+     * Body esperado (contra factura):
      * {
      *   "idFacturaCompra": 123,
      *   "valor": 225.00,
@@ -143,6 +171,9 @@ public class AplicacionPagoCxpRest {
      *   "idUsuario": 5,
      *   "observacion": "Cruce parcial"
      * }
+     * O contra liquidación de compra, con "idLiquidacionCompra" en vez de
+     * "idFacturaCompra" — exactamente uno de los dos, nunca los dos ni ninguno
+     * (docs/logica-negocio/cxp/DISENO-CRUCE-ANTICIPO-CONTRA-LIQUIDACION.md §4.1).
      */
     @POST
     @Path("/anticipo")
@@ -151,21 +182,35 @@ public class AplicacionPagoCxpRest {
     public Response aplicarAnticipo(Map<String, Object> datos) {
         System.out.println("LLEGA AL SERVICIO POST /aplp/anticipo");
         try {
-            Long idFactura   = toLong(datos.get("idFacturaCompra"));
+            Long idFactura     = toLong(datos.get("idFacturaCompra"));
+            Long idLiquidacion = toLong(datos.get("idLiquidacionCompra"));
             Double valor     = toDouble(datos.get("valor"));
             String fecha     = (String) datos.get("fechaAplicacion");
             Long idEmpresa   = toLong(datos.get("idEmpresa"));
             Long idUsuario   = toLong(datos.get("idUsuario"));
             String observacion = (String) datos.get("observacion");
 
-            if (idFactura == null || valor == null || idEmpresa == null) {
+            if (valor == null || idEmpresa == null) {
                 return Response.status(Response.Status.BAD_REQUEST)
-                        .entity("Debe enviar idFacturaCompra, valor e idEmpresa.")
+                        .entity("Debe enviar valor e idEmpresa.")
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
+            // Exactamente uno de los dos: ninguno o los dos son 400, no "gana el
+            // primero" — un cliente que manda los dos está confundido.
+            if (idFactura == null && idLiquidacion == null) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity("Debe enviar idFacturaCompra o idLiquidacionCompra.")
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
+            if (idFactura != null && idLiquidacion != null) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity("Debe enviar sólo uno de los dos: idFacturaCompra o "
+                                + "idLiquidacionCompra, no ambos.")
                         .type(MediaType.APPLICATION_JSON).build();
             }
 
             Map<String, Object> resultado = aplicacionPagoCxpService.aplicarAnticipo(
-                    idFactura, valor, fecha, idEmpresa, idUsuario, observacion);
+                    idFactura, idLiquidacion, valor, fecha, idEmpresa, idUsuario, observacion);
             return Response.status(Response.Status.OK).entity(resultado)
                     .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
@@ -183,7 +228,7 @@ public class AplicacionPagoCxpRest {
      * Los anticipos elegibles se consultan con
      * {@code GET /antp/disponibles/{idTitular}/{idEmpresa}}.
      * <p>
-     * Body esperado:
+     * Body esperado (contra factura):
      * <pre>
      * {
      *   "idFacturaCompra": 123,
@@ -195,6 +240,8 @@ public class AplicacionPagoCxpRest {
      *   "observacion": "Cruce parcial"
      * }
      * </pre>
+     * O contra liquidación de compra, con "idLiquidacionCompra" en vez de
+     * "idFacturaCompra" — mismo criterio de exclusividad que POST /aplp/anticipo.
      */
     @POST
     @Path("/anticipos")
@@ -204,6 +251,7 @@ public class AplicacionPagoCxpRest {
         System.out.println("LLEGA AL SERVICIO POST /aplp/anticipos");
         try {
             Long idFactura     = toLong(datos.get("idFacturaCompra"));
+            Long idLiquidacion = toLong(datos.get("idLiquidacionCompra"));
             String fecha       = (String) datos.get("fechaAplicacion");
             Long idEmpresa     = toLong(datos.get("idEmpresa"));
             Long idUsuario     = toLong(datos.get("idUsuario"));
@@ -213,14 +261,25 @@ public class AplicacionPagoCxpRest {
             List<Map<String, Object>> anticipos =
                     (List<Map<String, Object>>) datos.get("anticipos");
 
-            if (idFactura == null || idEmpresa == null || anticipos == null || anticipos.isEmpty()) {
+            if (idEmpresa == null || anticipos == null || anticipos.isEmpty()) {
                 return Response.status(Response.Status.BAD_REQUEST)
-                        .entity("Debe enviar idFacturaCompra, idEmpresa y al menos un anticipo.")
+                        .entity("Debe enviar idEmpresa y al menos un anticipo.")
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
+            if (idFactura == null && idLiquidacion == null) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity("Debe enviar idFacturaCompra o idLiquidacionCompra.")
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
+            if (idFactura != null && idLiquidacion != null) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity("Debe enviar sólo uno de los dos: idFacturaCompra o "
+                                + "idLiquidacionCompra, no ambos.")
                         .type(MediaType.APPLICATION_JSON).build();
             }
 
             Map<String, Object> resultado = aplicacionPagoCxpService.aplicarAnticipos(
-                    idFactura, anticipos, fecha, idEmpresa, idUsuario, observacion);
+                    idFactura, idLiquidacion, anticipos, fecha, idEmpresa, idUsuario, observacion);
             return Response.status(Response.Status.OK).entity(resultado)
                     .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {

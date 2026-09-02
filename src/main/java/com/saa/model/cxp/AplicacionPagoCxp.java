@@ -58,6 +58,8 @@ import jakarta.persistence.Table;
     @NamedQuery(name = "AplicacionPagoCxpId",  query = "select e from AplicacionPagoCxp e where e.id = :id"),
     @NamedQuery(name = "AplicacionPagoCxpByFactura",
         query = "select e from AplicacionPagoCxp e where e.facturaCompra.id = :facturaId and e.estado = 1"),
+    @NamedQuery(name = "AplicacionPagoCxpByLiquidacion",
+        query = "select e from AplicacionPagoCxp e where e.liquidacionCompra.id = :liquidacionId and e.estado = 1"),
     @NamedQuery(name = "AplicacionPagoCxpByRetencion",
         query = "select e from AplicacionPagoCxp e where e.retencion.id = :documentoId and e.estado = 1"),
     @NamedQuery(name = "AplicacionPagoCxpByRetencionV2",
@@ -87,10 +89,27 @@ public class AplicacionPagoCxp implements Serializable {
 
     /**
      * Factura de compra que recibe el pago. FK a PGS.FCTC.
+     * <p>
+     * <b>Excluyente con {@link #liquidacionCompra}</b>: una aplicación afecta una
+     * factura O una liquidación, nunca las dos ni ninguna — mismo tipo de FK
+     * excluyente que ya tiene {@code PagoProgramado} entre factura/egreso/anticipo,
+     * y es justamente lo que hay que respetar al escribir cualquier código que
+     * reverse o recalcule sobre esta entidad (no asumir que siempre hay factura).
      */
     @ManyToOne
     @JoinColumn(name = "APLPFCTC", referencedColumnName = "ID")
     private FacturaCompra facturaCompra;
+
+    /**
+     * Liquidación de compra que recibe el pago. FK a PGS.LQCC.
+     * <p>
+     * Excluyente con {@link #facturaCompra} — ver esa nota. Se agrega para poder
+     * cruzar anticipos de proveedor contra liquidaciones, no sólo contra facturas
+     * (docs/logica-negocio/cxp/DISENO-CRUCE-ANTICIPO-CONTRA-LIQUIDACION.md).
+     */
+    @ManyToOne
+    @JoinColumn(name = "APLPLQCC", referencedColumnName = "ID")
+    private LiquidacionCompraCompra liquidacionCompra;
 
     // ── Tipo de documento que paga ───────────────────────────────────────────
 
@@ -245,6 +264,9 @@ public class AplicacionPagoCxp implements Serializable {
 
     public FacturaCompra getFacturaCompra() { return facturaCompra; }
     public void setFacturaCompra(FacturaCompra facturaCompra) { this.facturaCompra = facturaCompra; }
+
+    public LiquidacionCompraCompra getLiquidacionCompra() { return liquidacionCompra; }
+    public void setLiquidacionCompra(LiquidacionCompraCompra liquidacionCompra) { this.liquidacionCompra = liquidacionCompra; }
 
     public Long getTipoDocPago() { return tipoDocPago; }
     public void setTipoDocPago(Long tipoDocPago) { this.tipoDocPago = tipoDocPago; }

@@ -161,6 +161,24 @@ public class LiquidacionCompraCompra implements Serializable {
         @Basic @Column(name = "LQCCUSAN", length = 200)
         private String usuarioAnulacion;
 
+        /**
+         * Estado de pago de la liquidación de compra, espejo de {@code FacturaCompra.estadoPago}
+         * (FCTCEPAG): 1=Pendiente (sin ninguna aplicación), 2=Pagada parcialmente, 3=Pagada
+         * totalmente. Se recalcula automáticamente al insertar o reversar una {@code AplicacionPagoCxp}
+         * con {@code liquidacionCompra} poblado (docs/logica-negocio/cxp/DISENO-CRUCE-ANTICIPO-CONTRA-LIQUIDACION.md).
+         * <p>
+         * Inicializado en 1L a propósito, misma razón que {@code FacturaCompra.esIntermediario}:
+         * la columna es NULLABLE con DEFAULT 1, pero Hibernate siempre nombra la columna en el
+         * INSERT, así que el DEFAULT de Oracle nunca actúa — sin este inicializador, un INSERT sin
+         * setEstadoPago() explícito grabaría NULL en vez de 1 (PENDIENTE). Lección de CBR.ANTC.ANTCAPLC
+         * del 2026-08-31.
+         */
+        @Basic @Column(name = "LQCCEPAG")
+        private Long estadoPago = 1L;
+
+        public Long getEstadoPago() { return estadoPago; }
+        public void setEstadoPago(Long estadoPago) { this.estadoPago = estadoPago; }
+
         public Long getId() { return id; }
 	public void setId(Long id) { this.id = id; }
 	public String getTipoComprobante() { return tipoComprobante; }
