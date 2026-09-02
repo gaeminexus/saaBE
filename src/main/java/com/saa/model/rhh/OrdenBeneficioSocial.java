@@ -42,7 +42,7 @@ import jakarta.persistence.Table;
 @SuppressWarnings("serial")
 @Entity
 @Table(name = "ODBS", schema = "RHH")
-@SequenceGenerator(name = "SQ_ODBSCDGO", sequenceName = "RHH.SQ_ODBSCDGO")
+@SequenceGenerator(name = "SQ_ODBSCDGO", sequenceName = "RHH.SQ_ODBSCDGO", allocationSize = 1)
 @NamedQueries({
     @NamedQuery(name = "OrdenBeneficioSocialId",  query = "select e from OrdenBeneficioSocial e where e.codigo=:id"),
     @NamedQuery(name = "OrdenBeneficioSocialAll", query = "select e from OrdenBeneficioSocial e")
