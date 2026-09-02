@@ -2841,11 +2841,29 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             lineas.add(haberIVA);
         }
 
-        // El DEBE (CxP proveedor) se recalcula como la suma exacta del HABER ya
-        // construido (gasto + IVA de cabecera). Con nc.getTotal() el asiento
-        // quedaba descuadrado cuando los detalles no sumaban el importeTotal.
+        // El DEBE (CxP proveedor) cuadra contra el importeTotal de la cabecera
+        // (nc.getTotal()), no contra la suma del HABER: es el espejo de
+        // generarAsientoFacturaCompra, con la CxP del lado del DEBE en vez del
+        // HABER (docs/logica-negocio/cxp/DISENO-CUADRE-CONTRA-IMPORTE-TOTAL.md §6.1).
+        //
+        // El helper agregarDiferenciaRedondeoSri(lineas, a, b, etiqueta) calcula
+        // diferencia = a - b y agrega DEBE si es positiva, HABER si es negativa.
+        // Acá se le pasa (totalHaber, importeTotalNc) CRUZADO respecto de la
+        // factura — pasar (importeTotalNc, totalHaber) como en la factura cuadra
+        // igual pero deja el ajuste del lado equivocado, que es justo el defecto
+        // que este cambio corrige. Prueba de cuadre:
+        //   diferencia = totalHaber − importeTotalNc
+        //   positiva -> va al DEBE -> DEBE = importeTotalNc + diferencia
+        //                                   = importeTotalNc + (totalHaber − importeTotalNc)
+        //                                   = totalHaber = HABER  ✅
+        //   negativa -> va al HABER -> HABER = totalHaber + |diferencia|
+        //                                     = totalHaber + (importeTotalNc − totalHaber)
+        //                                     = importeTotalNc = DEBE  ✅
         double totalHaber = lineas.stream().mapToDouble(l -> nvl(l.getValorHaber())).sum();
-        debe.setValorDebe(redondear2(totalHaber));
+        double importeTotalNc = redondear2(nvl(nc.getTotal()));
+        agregarDiferenciaRedondeoSri(lineas, totalHaber, importeTotalNc,
+                "NotaCreditoCompra " + idNotaCreditoCompra + " (N° " + nc.getNumero() + ")");
+        debe.setValorDebe(importeTotalNc);
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento,
                 fechaAsiento, observaciones, usuario, lineas);
@@ -3048,15 +3066,23 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         if (cuentaProv == null)
             throw new IncomeException("El prestador '" + lq.getTitular().getNombre()
                     + "' no tiene cuenta CxP configurada.");
-        // El HABER se calcula como la suma exacta del DEBE ya construido (gasto
-        // + IVA de cabecera) para que el asiento cuadre siempre; con
-        // lq.getTotal() quedaba descuadrado si los detalles no lo sumaban.
+        // El HABER cuadra contra el importeTotal de la cabecera (lq.getTotal()),
+        // no contra la suma del DEBE ya construido — igual que
+        // generarAsientoFacturaCompra. La diferencia entre importeTotal y el
+        // DEBE construido (redondeo legítimo, o un rubro no clasificado) se
+        // resuelve en agregarDiferenciaRedondeoSri, que ahora sí puede fallar
+        // ruidosamente si la diferencia es demasiado grande para ser redondeo
+        // (docs/logica-negocio/cxp/DISENO-CUADRE-CONTRA-IMPORTE-TOTAL.md §6).
         double totalDebeLq = lineas.stream().mapToDouble(l -> nvl(l.getValorDebe())).sum();
+        double importeTotalLq = redondear2(nvl(lq.getTotal()));
+        agregarDiferenciaRedondeoSri(lineas, importeTotalLq, totalDebeLq,
+                "LiquidacionCompraCompra " + idLiquidacion + " (N° " + lq.getNumero() + ")");
+
         DetalleAsiento haber = new DetalleAsiento();
         haber.setPlanCuenta(cuentaProv); haber.setNumeroCuenta(cuentaProv.getCuentaContable());
         haber.setNombreCuenta(cuentaProv.getNombre());
         haber.setDescripcion("CxP Prestador: " + lq.getTitular().getNombre());
-        haber.setValorDebe(0.0); haber.setValorHaber(redondear2(totalDebeLq));
+        haber.setValorDebe(0.0); haber.setValorHaber(importeTotalLq);
         lineas.add(haber);
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento,

@@ -121,11 +121,68 @@ silencioso «no ajusto nada».
 
 ## 6. Alcance
 
-| Método | Entra | Por qué |
+**Ampliado a todos los documentos de compra por decisión del usuario, 2026-09-02.**
+
+| Método | Entra | Estado |
 |---|---|---|
-| `generarAsientoFacturaCompra` | ✅ | Es el del requerimiento |
-| `generarAsientoFacturaCompraReembolso` | ✅ | Misma clase, mismo patrón de HABER = Σ DEBE, misma factura de origen. Dejarlo afuera dejaría la mitad del módulo con el defecto |
-| Liquidación de compra, NC y ND de compra | ⏸️ **pendiente de decisión del usuario** | Tienen el mismo patrón; no se tocan sin confirmarlo |
+| `generarAsientoFacturaCompra` | ✅ | **hecho** (`4ff8a13`) |
+| `generarAsientoFacturaCompraReembolso` | ✅ | **hecho** (`4ff8a13`) |
+| `generarAsientoLiquidacionCompraCompra` `:3051-3060` | ✅ | **pendiente** — idéntico a factura |
+| `generarAsientoNotaCreditoCompra` `:2844-2848` | ✅ | **pendiente** — ⚠️ **signo invertido**, ver §6.1 |
+| `generarAsientoNotaDebitoCompra` | ⛔ **NO** | **Ya cuadra contra el total.** Ver §6.2 |
+| Retenciones de compra (`generarAsientoRetencionCompra`, `…V2`) | ⛔ NO | No tienen «total con impuestos»: el asiento es el monto retenido contra su cuenta. No hay dos fuentes que puedan discrepar |
+| Documentos de **venta** (`cxc`) | ⛔ NO | Ver §6.3 |
+
+### 6.1 ⚠️ La nota de crédito de compra tiene el signo al revés
+
+En la NC de compra la cuenta por pagar **está del lado del DEBE** (la NC reduce lo que se debe), y el
+gasto se reversa en el HABER. Es el espejo de la factura:
+
+```
+factura:  DEBE = gasto + IVA          HABER = CxP (ancla)
+NC:       DEBE = CxP (ancla)          HABER = reverso gasto + IVA
+```
+
+El helper `agregarDiferenciaRedondeoSri(lineas, a, b, etiqueta)` calcula `diferencia = a - b` y
+agrega **DEBE si es positiva**, **HABER si es negativa**. Para la NC hay que llamarlo con los
+argumentos **cruzados**:
+
+```java
+// factura:  agregarDiferenciaRedondeoSri(lineas, importeTotal, totalDebe, ...)
+// NC:       agregarDiferenciaRedondeoSri(lineas, totalHaber,  importeTotalNc, ...)
+```
+
+**Prueba de cuadre de la NC**, que va como comentario en el código:
+
+`diferencia = totalHaber − ncTotal` → se agrega al **DEBE** cuando es positiva.
+Entonces `DEBE = ncTotal + diferencia = ncTotal + (totalHaber − ncTotal) = totalHaber = HABER`. ✅
+Y si es negativa, se agrega al HABER: `HABER = totalHaber + |dif| = ncTotal = DEBE`. ✅
+
+⛔ **Pasar los argumentos en el mismo orden que en la factura produce un asiento que cuadra igual y
+con el ajuste del lado equivocado** — exactamente el tipo de defecto que este trabajo corrige.
+
+### 6.2 La nota de débito de compra ya está bien, y conviene entender por qué
+
+`generarAsientoNotaDebitoCompra:2882` **ya ancla en el total**: parte de
+`totalND = redondear2(nvl(nd.getTotal()))`, deriva `baseND = totalND − ivaND`, y cierra con
+`HABER = totalND`. O sea `DEBE = base + IVA = totalND = HABER`.
+
+**No hay dos fuentes que puedan discrepar**: todo se deriva del total, así que no existe hueco que
+ajustar. Agregarle el helper sería agregar una línea que siempre valdría cero.
+
+*Es el único de los cinco que ya estaba construido en la dirección correcta. Lo hizo quien separó el
+IVA de la cabecera para no perder el crédito tributario — el mismo cambio que, de paso, lo dejó
+anclado al total.*
+
+### 6.3 Por qué los documentos de venta quedan afuera
+
+En `cxc` los totales **los calcula este sistema**, no un tercero. Una diferencia ahí no es el
+redondeo del emisor: es un defecto propio de cálculo. **Mandarla a «diferencia por redondeo SRI» la
+escondería detrás de un asiento cuadrado**, que es precisamente el mecanismo que este trabajo viene
+a eliminar.
+
+Si alguna vez descuadra un documento de venta, lo correcto es que **falle y se corrija el cálculo**,
+no que se absorba. Se puede revisar si el usuario lo pide, pero por defecto no entra.
 
 ---
 
