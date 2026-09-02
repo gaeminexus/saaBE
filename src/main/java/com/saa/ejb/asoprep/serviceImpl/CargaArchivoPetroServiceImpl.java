@@ -1075,12 +1075,26 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			validarValoresConDestino(cargaArchivo);
 			// ==========================================
 
-			// ==========================================
-			// VALIDACIÓN: cada novedad CON EXCEDENTE tiene que estar repartida al 100%, ni
-			// más ni menos (PLAN-EXCEDENTE-PETRO-A-APORTES.md §5, decisión del usuario
-			// 2026-08-30). Bloqueante: si una sola no cuadra, no se procesa NADA de la carga.
-			// ==========================================
-			validarRepartoDeExcedentes(cargaArchivo);
+			// ⛔ validarRepartoDeExcedentes(cargaArchivo) — ESCRITA, NO CONECTADA (2026-09-02,
+			// decisión del árbitro). Exigía que el reparto manual (AVPC) coincidiera EXACTO
+			// con montoDiferencia (el excedente, PLAN-EXCEDENTE-PETRO-A-APORTES.md §5), pero
+			// esa regla **contradice** a validarValoresConDestino (arriba), que exige que el
+			// reparto cubra el totalDescontado — y cuando hay afectación manual el flujo
+			// automático NO corre (verificarYAplicarAfectacionesManualesTotales es
+			// "PRIORIDAD MÁXIMA", aplica TODOS los pagos según esos registros; correrlo
+			// además del automático pagaría la misma cuota dos veces). Si el reparto fuera
+			// solo el excedente, lo esperado (totalDescontado - excedente) nunca se aplicaría.
+			// Medido en producción, carga 449: caso BUSTOS ALMEIDA (novedad 43883) —
+			// descontado $586,38, esperado $128,20, diferencia (excedente) $458,18. El
+			// operador repartió $586,38 (correcto: cubre TODO lo descontado, tal como pide
+			// validarValoresConDestino). validarRepartoDeExcedentes lo rechazaba con "se
+			// repartió de más $128,20", exactamente el monto esperado que sí debía
+			// aplicarse. ~78 novedades así en esa sola carga, y basta UNA para abortarla
+			// completa (todo o nada, ver el comentario más abajo).
+			// Qué la reemplaza: validarValoresConDestino sigue activa y es la que
+			// efectivamente protege — garantiza que todo valor descontado tenga destino, que
+			// es lo que no puede fallar. Que el reparto cuadrara contra el excedente y no
+			// contra el total era una regla que nunca fue compatible con cómo se aplica.
 			// ==========================================
 
 			// ⛔ validarPrelacionReparto(cargaArchivo) — ESCRITA, NO CONECTADA (2026-08-31,
@@ -1447,6 +1461,12 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	}
 
 	/**
+	 * ⛔ NO CONECTADA (2026-09-02) — ver el comentario en la llamada comentada, dentro de
+	 * {@code aplicarPagosArchivoPetro}, para el porqué (contradice a
+	 * {@code validarValoresConDestino} y al diseño de la aplicación manual total; medido:
+	 * ~78 falsos positivos abortando la carga 449 completa). El método queda intacto, sin
+	 * usar.
+	 *
 	 * Corta el procesamiento si alguna novedad CON EXCEDENTE no está repartida exacto entre
 	 * préstamo(s) y/o aporte(s) — PLAN-EXCEDENTE-PETRO-A-APORTES.md §5, decisión del usuario
 	 * 2026-08-30: "ni más ni menos, o si no no hay cómo procesar".

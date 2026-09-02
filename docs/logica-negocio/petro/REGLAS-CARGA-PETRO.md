@@ -169,16 +169,34 @@ Se excluye únicamente el producto `HS`. Las novedades de esta fase se registran
    carga. Preview sin procesar: `GET /rest/asgn/valoresSinDestino/{idCarga}`.
    NO bloquean: SIN_DESCUENTOS, VALORES_CERO, APORTE_VALORES_CERO, DESCUENTOS_INCOMPLETOS,
    DIFERENCIA_MENOR_UN_DOLAR (y su par de aportes), CUOTA_FECHA_DIFERENTE, ni las de resultado.
-2b. **Excedente a aporte: reparto al 100%** (agregado 2026-08-31, `validarRepartoDeExcedentes`,
-   PLAN-EXCEDENTE-PETRO-A-APORTES.md §5, decisión del usuario: "ni más ni menos, o si no no hay
-   cómo procesar"). Para cada `NovedadParticipeCarga` con excedente (`montoDiferencia > $0.01`),
-   la suma de sus AVPC ACTIVAS (préstamo + aporte, `AfectacionValoresParticipeCargaService
-   .diferenciaReparto`) tiene que coincidir con el excedente dentro de $0.01. Si alguna no
-   cuadra, `IncomeException` listando partícipe/novedad/cuánto falta o sobra y **no se procesa
-   nada**. Misma regla la usa `POST /rest/avpc/batch` para avisar al operador al guardar —
-   un solo método, dos llamadores; no se duplica la tolerancia.
+2b. **⛔ `validarRepartoDeExcedentes` — ESCRITA, NO CONECTADA (desconectada 2026-09-02).**
+   Agregada el 2026-08-31 (`PLAN-EXCEDENTE-PETRO-A-APORTES.md §5`, "ni más ni menos, o si no
+   no hay cómo procesar") con esta regla: para cada `NovedadParticipeCarga` con excedente
+   (`montoDiferencia > $0.01`), la suma de sus AVPC ACTIVAS tenía que coincidir con el
+   **excedente** dentro de $0.01.
+
+   **Esa regla contradice el punto 2 de arriba** (`validarValoresConDestino`, que sigue activa
+   y exige que el reparto cubra el **`totalDescontado`**, no el excedente) y contradice el
+   diseño de aplicación: cuando hay afectación manual, el flujo automático NO corre
+   (`verificarYAplicarAfectacionesManualesTotales` es "PRIORIDAD MÁXIMA", aplica TODOS los
+   pagos según esos registros — correrlo además del automático pagaría la misma cuota dos
+   veces). Si el reparto fuera solo el excedente, lo esperado (`totalDescontado - excedente`)
+   nunca se aplicaría.
+
+   Medido en producción, carga 449: caso BUSTOS ALMEIDA (novedad 43883) — descontado $586,38,
+   esperado $128,20, diferencia (excedente) $458,18. El operador repartió $586,38 (correcto:
+   cubre TODO lo descontado). `validarRepartoDeExcedentes` lo rechazaba con "se repartió de
+   más $128,20" — exactamente el monto esperado que sí debía aplicarse. ~78 novedades así en
+   esa sola carga, y basta UNA para abortarla completa (§3.1b, todo o nada).
+
+   **Qué la reemplaza:** el punto 2 (`validarValoresConDestino`) sigue siendo la protección
+   real — garantiza que todo valor descontado tenga destino, que es lo que no puede fallar.
+   `AfectacionValoresParticipeCargaService.diferenciaReparto` sigue viva y la sigue usando
+   `POST /rest/avpc/batch` (pantalla de novedades) para avisar al operador al guardar — eso
+   no cambió, solo se quitó la llamada dentro de `aplicarPagosArchivoPetro`.
 3. `tieneNovedadesBloqueantes()` retorna **siempre false**: las novedades son informativas; el
-   control real es el punto 2 (y el 2b, para las de excedente).
+   control real es el punto 2 (`validarValoresConDestino`) — el 2b está desconectado desde el
+   2026-09-02, ver arriba.
 
 ### 3.1b TODO O NADA (decisión del usuario, 2026-08-29) — ausencia de dato vs. fallo real
 
@@ -502,12 +520,18 @@ las cuentas "por aplicar" dejarían de quedar en cero por carga, el control que 
 corrección es de diseño (probablemente: `contabilizarReparto` también tiene que contemplar el
 excedente), no una implementación a criterio del agente.
 
-**Control de cuadre bloqueante** (§3.1, punto 2b): antes de aplicar cualquier afectación de la
-carga, `validarRepartoDeExcedentes` exige que cada novedad con excedente esté repartida al 100%
-(tolerancia $0.01) entre sus AVPC de préstamo y de aporte. La regla (`AfectacionValoresParticipeCargaService
-.diferenciaReparto`) vive en un solo lugar; también la usa `POST /rest/avpc/batch` para avisar al
-operador al guardar, sin bloquear el guardado (cada fila se persiste en su propia transacción
-EJB — lo que de verdad protege es este control del proceso, no el aviso de la pantalla).
+**⛔ Ya NO hay control de cuadre bloqueante del reparto de excedentes en el proceso** (§3.1,
+punto 2b): `validarRepartoDeExcedentes` exigía que cada novedad con excedente estuviera
+repartida al 100% (tolerancia $0.01) contra el **excedente**, y esa regla contradecía al punto
+2 (`validarValoresConDestino`, que exige cuadrar contra el **total descontado** — la que de
+verdad protege, y sigue activa) y al diseño de aplicación manual total. Se desconectó el
+2026-09-02 tras romper ~78 novedades reales de la carga 449 con reparto correcto. El método
+sigue escrito, sin llamar — ver el comentario en la propia carga
+(`CargaArchivoPetroServiceImpl`, dentro de `aplicarPagosArchivoPetro`) para el detalle.
+
+`AfectacionValoresParticipeCargaService.diferenciaReparto` sigue viva y la sigue usando
+`POST /rest/avpc/batch` para avisar al operador al guardar, sin bloquear el guardado (cada fila
+se persiste en su propia transacción EJB) — eso no cambió.
 
 **Frontend** (contrato congelado por el árbitro): `GET /rest/avpc/opcionesAporte/{idNovedad}` —
 jubilación y/o cesantía según `VigenciaContratoService.esperadoPorEntidad` con el mes/año de la
