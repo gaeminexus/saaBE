@@ -502,24 +502,32 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	 */
 	private void ejecutarValidacionesFase2(CargaArchivo cargaArchivo, List<ParticipeXCargaArchivo> participesXCargaArchivo) {
 		// Logs innecesarios eliminados para optimizar rendimiento
-		
+
+		// Memoización de productoDaoService.selectAllByCodigoPetro (2026-09-02), acotada al
+		// alcance de ESTA invocación: dentro de una carga, codigoProducto toma un puñado de
+		// valores distintos que se repiten una vez por partícipe (cientos/miles) — misma
+		// consulta, mismos parámetros. Variable LOCAL a propósito, nunca campo de instancia ni
+		// estático: este bean es @Stateful, y un campo así sería estado compartido entre
+		// invocaciones/cargas distintas. Ver resolverProductosPorCodigo.
+		Map<String, List<Producto>> productosCache = new HashMap<>();
+
 		for (ParticipeXCargaArchivo participe : participesXCargaArchivo) {
-			String codigoProducto = participe.getDetalleCargaArchivo() != null ? 
+			String codigoProducto = participe.getDetalleCargaArchivo() != null ?
 									participe.getDetalleCargaArchivo().getCodigoPetroProducto() : null;
-			
+
 			if (codigoProducto == null) {
 				continue;
 			}
-			
+
 			// ✅ CORRECCIÓN: Solo excluir HS de validaciones Fase 2
 			// El producto AH (aportes) SÍ debe validarse en Fase 2
 			boolean esProductoHS = CODIGO_PRODUCTO_HS.equalsIgnoreCase(codigoProducto);
-			
+
 			if (!esProductoHS && participe.getCodigo() != null) {
 				try {
-					validarNovedadesFase2(participe, codigoProducto, cargaArchivo);
+					validarNovedadesFase2(participe, codigoProducto, cargaArchivo, productosCache);
 				} catch (Throwable e) {
-					System.err.println("ERROR en validaciones Fase 2 para partícipe " + 
+					System.err.println("ERROR en validaciones Fase 2 para partícipe " +
 									   participe.getCodigoPetro() + ": " + e.getMessage());
 					e.printStackTrace();
 				}
@@ -1177,7 +1185,11 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			// 2. ✅ OPTIMIZACIÓN: Obtener SOLO los detalles de esta carga específica
 			// En lugar de traer TODOS los detalles de TODAS las cargas con selectAll()
 			List<DetalleCargaArchivo> detallesCarga = detalleCargaArchivoDaoService.selectByCargaArchivo(codigoCargaArchivo);
-			
+
+			// Memoización de productoDaoService.selectAllByCodigoPetro (2026-09-02), acotada al
+			// alcance de ESTA invocación — ver el comentario gemelo en ejecutarValidacionesFase2.
+			Map<String, List<Producto>> productosCache = new HashMap<>();
+
 			int totalProcesados = 0;
 			int totalExitosos = 0;
 			int totalErrores = 0;
@@ -1250,7 +1262,7 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 								}
 							} else {
 								// OTROS PRODUCTOS: Aplicar pagos a préstamos
-								aplicarPagoParticipe(participe, codigoProducto, cargaArchivo);
+								aplicarPagoParticipe(participe, codigoProducto, cargaArchivo, productosCache);
 								totalExitosos++;
 							}
 						} catch (Throwable e) {
@@ -1898,6 +1910,30 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		return codigoFilial == null || codigoFilial.longValue() == Filiales.PETROCOMERCIAL;
 	}
 
+	/**
+	 * {@code productoDaoService.selectAllByCodigoPetro} memoizado (2026-09-02): dentro de una
+	 * carga, {@code codigoProducto} toma un puñado de valores distintos (PH, PP, PQ, AH...) que
+	 * se repiten una vez por partícipe — la MISMA consulta con los MISMOS parámetros, cientos o
+	 * miles de veces (auditoría de rendimiento pedida por el usuario). El resultado no cambia
+	 * entre llamadas dentro de una misma carga: la consulta es de solo lectura contra
+	 * {@code CRD.PRDC} y nada de este proceso modifica productos mientras corre.
+	 *
+	 * <p>{@code cache} es SIEMPRE una variable local del método que orquesta el bucle de
+	 * partícipes ({@code ejecutarValidacionesFase2}, {@code aplicarPagosArchivoPetro}) — nunca
+	 * un campo de instancia ni estático: este bean es {@code @Stateful}, y un campo así sería
+	 * estado compartido entre invocaciones (o cargas) distintas, un bug de datos mucho peor que
+	 * la lentitud que esto arregla.</p>
+	 */
+	private List<Producto> resolverProductosPorCodigo(String codigoProducto,
+			Map<String, List<Producto>> cache) throws Throwable {
+		if (cache.containsKey(codigoProducto)) {
+			return cache.get(codigoProducto);
+		}
+		List<Producto> productos = productoDaoService.selectAllByCodigoPetro(codigoProducto);
+		cache.put(codigoProducto, productos);
+		return productos;
+	}
+
 	private static final Pattern DIACRITICOS = Pattern.compile("\\p{InCombiningDiacriticalMarks}+");
 	private static final Pattern ESPACIOS_MULTIPLES = Pattern.compile("\\s+");
 
@@ -2036,7 +2072,8 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	 * el seguro DEBE venir en un registro separado con código HS.
 	 * Si no se encuentra HS o no corresponde, la cuota queda como PARCIAL.
 	 */
-	private void aplicarPagoParticipe(ParticipeXCargaArchivo participe, String codigoProducto, CargaArchivo cargaArchivo) throws Throwable {
+	private void aplicarPagoParticipe(ParticipeXCargaArchivo participe, String codigoProducto, CargaArchivo cargaArchivo,
+			Map<String, List<Producto>> productosCache) throws Throwable {
 		System.out.println("========================================");
 		System.out.println("APLICAR PAGO " + codigoProducto + " - Partícipe: " + participe.getCodigoPetro() + " (" + participe.getNombre() + ")");
 		System.out.println("Monto: $" + participe.getTotalDescontado());
@@ -2046,7 +2083,7 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		double montoArchivo = nullSafe(participe.getTotalDescontado());
 		if (montoArchivo == 0.0 || Math.abs(montoArchivo) < 0.01) {
 			System.out.println("⚠️ Monto descontado es $0 - No se realizó pago - Marcando cuotas en MORA");
-			marcarCuotasEnMoraPorFaltaDePago(participe, codigoProducto, cargaArchivo);
+			marcarCuotasEnMoraPorFaltaDePago(participe, codigoProducto, cargaArchivo, productosCache);
 			return;
 		}
 		
@@ -2072,14 +2109,15 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		Entidad entidad = entidades.get(0);
 		System.out.println("✅ Entidad encontrada: " + entidad.getRazonSocial() + " (ID: " + entidad.getCodigo() + ")");
 		
-		// ✅ OPTIMIZACIÓN: Buscar productos UNA SOLA VEZ
-		List<Producto> productos = productoDaoService.selectAllByCodigoPetro(codigoProducto);
+		// ✅ OPTIMIZACIÓN: Buscar productos UNA SOLA VEZ (memoizado por carga, ver
+		// resolverProductosPorCodigo)
+		List<Producto> productos = resolverProductosPorCodigo(codigoProducto, productosCache);
 		if (productos == null || productos.isEmpty()) {
 			System.out.println("⚠️ PROCESAMIENTO OMITIDO - No se encontró producto con código Petro: " + codigoProducto);
 			return;
 		}
 		System.out.println("✅ Producto(s) encontrado(s): " + productos.size());
-		
+
 		// ✅ OPTIMIZACIÓN: Buscar préstamos UNA SOLA VEZ
 		List<Prestamo> prestamos = new ArrayList<>();
 		for (Producto producto : productos) {
@@ -2617,9 +2655,10 @@ private void verificarYActualizarEstadoPrestamos(List<Prestamo> prestamos) throw
  * ✅ OPTIMIZACIÓN: Este método se ejecuta ANTES de buscar entidades, productos, préstamos o HS
  * Solo busca lo mínimo necesario para marcar la cuota en mora
  */
-private void marcarCuotasEnMoraPorFaltaDePago(ParticipeXCargaArchivo participe, 
-                                               String codigoProducto, 
-                                               CargaArchivo cargaArchivo) throws Throwable {
+private void marcarCuotasEnMoraPorFaltaDePago(ParticipeXCargaArchivo participe,
+                                               String codigoProducto,
+                                               CargaArchivo cargaArchivo,
+                                               Map<String, List<Producto>> productosCache) throws Throwable {
 	System.out.println("========================================");
 	System.out.println("MARCAR CUOTAS EN MORA - Sin pago recibido");
 	System.out.println("Partícipe: " + participe.getCodigoPetro() + " (" + participe.getNombre() + ")");
@@ -2641,8 +2680,8 @@ private void marcarCuotasEnMoraPorFaltaDePago(ParticipeXCargaArchivo participe,
 		}
 		Entidad entidad = entidades.get(0);
 		
-		// Buscar productos
-		List<Producto> productos = productoDaoService.selectAllByCodigoPetro(codigoProducto);
+		// Buscar productos (memoizado por carga, ver resolverProductosPorCodigo)
+		List<Producto> productos = resolverProductosPorCodigo(codigoProducto, productosCache);
 		if (productos == null || productos.isEmpty()) {
 			System.out.println("⚠️ No se encontró producto - No se pueden marcar cuotas en mora");
 			return;
@@ -3146,9 +3185,10 @@ private void aplicarAfectacionManualConRegistroPago(
 /**
  * Ejecuta validaciones de fase 2 para un partícipe
  */
-private void validarNovedadesFase2(ParticipeXCargaArchivo participe, 
-                                   String codigoProducto, 
-                                   CargaArchivo cargaArchivo) {
+private void validarNovedadesFase2(ParticipeXCargaArchivo participe,
+                                   String codigoProducto,
+                                   CargaArchivo cargaArchivo,
+                                   Map<String, List<Producto>> productosCache) {
 	try {
 		// ==========================================
 		// VALIDACIÓN ESPECIAL: PRODUCTO AH (APORTES)
@@ -3170,7 +3210,7 @@ private void validarNovedadesFase2(ParticipeXCargaArchivo participe,
 		// VALIDACIÓN 9: PRODUCTO_NO_MAPEADO
 		List<Producto> productos = null;
 		try {
-			productos = productoDaoService.selectAllByCodigoPetro(codigoProducto);
+			productos = resolverProductosPorCodigo(codigoProducto, productosCache);
 		} catch (Throwable e) {
 			System.err.println("Error al buscar productos: " + e.getMessage());
 			registrarNovedad(participe, ASPNovedadesCargaArchivo.PRODUCTO_NO_MAPEADO, 
