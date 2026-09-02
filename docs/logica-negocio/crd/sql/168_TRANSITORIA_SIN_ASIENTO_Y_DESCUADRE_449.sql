@@ -85,7 +85,11 @@ SELECT  c.CRARCDGO                                          AS CARGA,
         TO_CHAR(c.CRARFCAC, 'YYYY-MM-DD HH24:MI')           AS FECHA_AUTORIZACION,
         c.CRARESTD                                          AS ESTADO_CARGA,
         (SELECT COUNT(*) FROM CRD.ANCP a
-          WHERE a.CRARCDGO = c.CRARCDGO AND a.ANCPTPOO = 1) AS ASIENTOS_TRANSITORIO,
+          WHERE a.CRARCDGO = c.CRARCDGO AND a.ANCPTPOO = 1
+            AND a.ANCPIDST = 1)                               AS TRANSITORIO_ACTIVO,
+        (SELECT COUNT(*) FROM CRD.ANCP a
+          WHERE a.CRARCDGO = c.CRARCDGO AND a.ANCPTPOO = 1
+            AND NVL(a.ANCPIDST,0) <> 1)                       AS TRANSITORIO_ANULADO,
         (SELECT COUNT(*) FROM CRD.ANCP a
           WHERE a.CRARCDGO = c.CRARCDGO AND a.ANCPTPOO = 2) AS ASIENTOS_REPARTO,
         (SELECT COUNT(*) FROM CRD.ANCP a
@@ -212,3 +216,63 @@ ORDER   BY t.TRCRFCHA;
 --    puede haber MAS cargas en la misma situacion — el bloque 2 se puede repetir para
 --    otras cargas cambiando el DEFINE.
 -- =====================================================================================
+
+
+-- =====================================================================================
+-- BLOQUE 7 — DESCARTAR LAS OTRAS EXPLICACIONES (agregado 2026-09-02, a pedido del usuario)
+--
+-- El usuario pidio no dar por sentado que fue el flag. Se reviso el codigo y solo hay
+-- TRES caminos por los que una carga puede quedar confirmada sin asiento de transitoria:
+--
+--   A) El flag de contabilidad estaba APAGADO al confirmar.
+--      Unico `return` silencioso del metodo (:331-343).
+--
+--   B) Se confirmo, se REVERSO y se volvio a confirmar.
+--      reversarRecepcion (:430) anula el asiento y marca el registro ANCP como anulado,
+--      pero NO BORRA la fila. Si despues se reconfirmo con el flag apagado, queda una
+--      fila anulada y ninguna activa.
+--
+--   C) ⛔ DESCARTADO POR EL MECANISMO, no por suposicion: cualquier OTRO fallo despues
+--      del sello (plantilla COBRO_TRANSITORIO_PETRO inexistente, linea de transitoria
+--      ausente, transferencia con cuenta bancaria sin cuenta contable, empresa no
+--      resoluble) lanza IncomeException — que es @ApplicationException(rollback = true)
+--      y extiende RuntimeException. Eso REVIERTE la transaccion entera, incluido el
+--      sello de CRARFCAC. Una carga que fallo por ahi NO quedaria confirmada.
+--      Por lo tanto: si hay CRARFCAC y no hay asiento activo, es (A) o (B), nunca (C).
+--
+-- Este bloque distingue (A) de (B) y busca otras cargas en la misma situacion.
+--
+-- Como leerlo:
+--   * TRANSITORIO_ANULADO > 0 y TRANSITORIO_ACTIVO = 0 -> caso (B): hubo una reversion.
+--   * Los dos en 0 -> caso (A): el flag estaba apagado. No hubo nunca asiento.
+-- =====================================================================================
+SELECT  c.CRARCDGO                                          AS CARGA,
+        TO_CHAR(c.CRARFCAC, 'YYYY-MM-DD HH24:MI')           AS FECHA_AUTORIZACION,
+        c.CRARESTD                                          AS ESTADO_CARGA,
+        (SELECT COUNT(*) FROM CRD.ANCP a
+          WHERE a.CRARCDGO = c.CRARCDGO AND a.ANCPTPOO = 1
+            AND a.ANCPIDST = 1)                             AS TRANSITORIO_ACTIVO,
+        (SELECT COUNT(*) FROM CRD.ANCP a
+          WHERE a.CRARCDGO = c.CRARCDGO AND a.ANCPTPOO = 1
+            AND NVL(a.ANCPIDST,0) <> 1)                     AS TRANSITORIO_ANULADO,
+        (SELECT COUNT(*) FROM CRD.ANCP a
+          WHERE a.CRARCDGO = c.CRARCDGO AND a.ANCPTPOO IN (2,3)
+            AND a.ANCPIDST = 1)                             AS REPARTO_Y_APLICACION,
+        CASE
+            WHEN c.CRARFCAC IS NULL THEN 'sin confirmar'
+            WHEN (SELECT COUNT(*) FROM CRD.ANCP a
+                   WHERE a.CRARCDGO = c.CRARCDGO AND a.ANCPTPOO = 1
+                     AND a.ANCPIDST = 1) > 0 THEN 'OK'
+            WHEN (SELECT COUNT(*) FROM CRD.ANCP a
+                   WHERE a.CRARCDGO = c.CRARCDGO AND a.ANCPTPOO = 1) > 0
+                 THEN '(B) reversado y reconfirmado'
+            ELSE '(A) confirmado con el flag apagado'
+        END                                                 AS DIAGNOSTICO
+FROM    CRD.CRAR c
+WHERE   c.CRARFCAC IS NOT NULL
+ORDER   BY c.CRARFCAC DESC;
+
+-- ⚠️ ESTE BLOQUE MIRA **TODAS** LAS CARGAS CONFIRMADAS, no solo la 449. Cada fila con
+--    DIAGNOSTICO distinto de 'OK' es una carga cuya transitoria quedo acreditada sin
+--    haber sido debitada. Si son varias, el descuadre de la cuenta 2.3.01.15.01 es la
+--    suma de todas — que es lo que deberia explicar el saldo del bloque 5.
