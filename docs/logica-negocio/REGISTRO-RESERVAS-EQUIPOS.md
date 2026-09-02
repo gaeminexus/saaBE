@@ -379,3 +379,85 @@ respeten. Lo histórico no se toca.
 > llevaba `PRBRALTR` si el catálogo se consulta por ahí. Verificar el esquema antes de escribir un
 > `INSERT` es más barato que descubrirlo en producción, y **la pregunta de alguien que no puede
 > ejecutar sigue siendo verificación.**
+
+---
+
+## 6. Deudas transversales — afectan a TODOS los módulos, y ninguna tiene dueño
+
+**Abierta el 2026-09-01 por el árbitro de `omen-saa-1`, a pedido del de `omen-saa-2`.** Van acá y no
+en el tablero de un equipo porque **no son de un módulo**: el que las encuentra tiene el diagnóstico,
+y el que las sufre después suele ser otro. Cada equipo referencia esta sección en vez de duplicarla.
+
+**Ninguna de las tres se arregla desde un módulo.** Están listadas para que nadie las "arregle" solo
+y para que nadie pierda medio día rediagnosticándolas.
+
+### 6.1 ⛔ `handleError`: un fallo de consulta se lee como «no hay datos» — 316 servicios del frontend
+
+```ts
+private handleError(error: HttpErrorResponse): Observable<null> {
+  if (+error.status === 200) { return of(null); }
+  else { return throwError(() => error.error); }
+}
+```
+
+`grep -rln "if (+error.status === 200)" src/app` → **316 archivos** en `saaFE`.
+
+Un `HttpErrorResponse` con status 200 es un **fallo de parseo** del cuerpo. Ese caso **no llega como
+error de RxJS**: llega como emisión **exitosa** con valor `null`, y el consumidor lo colapsa a `[]`
+con el idiomático `Array.isArray(x) ? x : x ? [x] : []`. **No pasa por ningún `catchError`, no deja
+rastro en consola, y la pantalla dice "no hay datos".**
+
+> **Por qué importa más que un bug normal:** no produce un error, produce **un diagnóstico
+> envenenado**. «La consulta falló» y «no hay resultados» se vuelven indistinguibles desde la silla
+> del operador **y desde la del que depura**. Le costó al equipo `omen-saa-1` medio día y **tres
+> diagnósticos, dos de ellos equivocados**, sobre un préstamo que no aparecía en una lista —cada uno
+> gastó una medición contra producción para descartarse—.
+
+**Cómo se trata, y cómo NO:**
+
+- ✅ **Distinguir `null` de `[]` en el punto de consumo**, en la pantalla afectada. `null` significa
+  "no hubo respuesta utilizable"; `[]` significa "no hay filas". Precedente funcionando:
+  `deudaConsultaFallida` en el diálogo de devolución de aportes, y
+  `detalle-consulta-carga.component.ts` (commit `10142d5` de `saaFE`).
+- ⛔ **No tocar `handleError`.** Son 316 archivos: es un cambio que **nadie puede revisar**, y el
+  comportamiento actual puede estar sosteniendo pantallas que nadie va a probar.
+
+Verificado en dos alcances distintos: `crd` (`omen-saa-1`) y `rhh` (`omen-saa-2`,
+`orden-pago-nomina.service.ts:105`).
+
+### 6.2 ⛔ `EntityDaoImpl.save()` hace `em.merge()` desnudo: un `PUT` parcial graba `NULL`
+
+**Aportado por el árbitro de `omen-saa-2`.** `save()` mergea el objeto **tal como llegó del JSON**,
+sin releer la fila y sin saltar nulos. Como **ningún campo persistido del modelo es primitivo**, una
+clave ausente en el JSON se graba `NULL` — **FKs incluidas**. Un `PUT` que arma el payload campo por
+campo **borra en silencio todo lo que no copió**.
+
+> **El patrón para encontrarlo, que es lo más útil de este hallazgo:** *se cae siempre el campo que
+> **no tiene control en el formulario***, porque el payload se arma enumerando lo editable en vez de
+> partir de la entidad leída.
+
+Medido en `rrh`: de **11 escrituras del módulo, 5 tienen el defecto**; el peor devuelve a
+«solicitado» un permiso ya aprobado. Detalle en `ESTADO-EQUIPO-OMEN-2.md` §7.
+
+- ✅ **Leer la entidad y sobrescribir solo lo editable** antes de mandar el `PUT`. Precedente:
+  `guardarEdicion()` en `prestamo-edit` (`crd`).
+- ⛔ **No tocar `EntityDaoImpl`:** hereda de él **todo el proyecto**.
+
+Documentado también en `docs/general/MERGE-DESNUDO-EN-ENTITYDAOIMPL.md`.
+
+### 6.3 Los errores del REST NO llegan como texto plano, aunque el endpoint los escriba así
+
+**Aportado por el árbitro de `omen-saa-2`; ya costó una lectura de contrato equivocada a dos
+equipos.** `com.saa.ws.rest.MensajeErrorJsonFilter` es un `@Provider` **global** que envuelve toda
+respuesta **≥ 400** cuya entidad sea un `String` y cuyo tipo declarado sea JSON, y la entrega como:
+
+```json
+{ "mensaje": "Error al aprobar el préstamo: ..." }
+```
+
+Así que el `.entity("Error ...: " + e.getMessage())` que usa medio proyecto **no llega como texto
+plano al cliente**. El filtro no envuelve dos veces lo que ya empieza con `{` o `[`.
+
+**Al escribir un contrato de API:** decir que el error viene como `{"mensaje": ...}`, y que el
+cliente lea `error.mensaje` con el texto crudo como respaldo. **Un contrato que diga "texto plano"
+es incorrecto** — `API-CICLO-OTORGAMIENTO.md` lo decía y se corrigió el 2026-09-01.
