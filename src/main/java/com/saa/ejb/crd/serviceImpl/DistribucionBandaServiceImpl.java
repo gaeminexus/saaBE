@@ -12,7 +12,6 @@ import java.util.Map;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.crd.dao.CargaArchivoDaoService;
 import com.saa.ejb.crd.dao.DistribucionBandaDaoService;
-import com.saa.ejb.crd.dao.PagoPrestamoDaoService;
 import com.saa.ejb.crd.service.ClasificadorBandaService;
 import com.saa.ejb.crd.service.ConfiguracionContabilidadService;
 import com.saa.ejb.crd.service.DistribucionBandaService;
@@ -46,6 +45,15 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
 
     private static final double TOLERANCIA = 0.01;
 
+    /**
+     * Tolerancia del CUADRE (recibido vs. distribuido), distinta de {@link #TOLERANCIA}: esta
+     * es de redondeo, no de "¿hay algo mal aplicado?" — mismo criterio que
+     * {@code FamiliaNovedadCarga.TOLERANCIA} (2026-09-02, hallazgo de producción carga 449: con
+     * $0,01 el cuadre marcaba "no cuadra" por puro redondeo y entrenaba al usuario a ignorar el
+     * rojo).
+     */
+    private static final double TOLERANCIA_CUADRE = com.saa.model.crd.FamiliaNovedadCarga.TOLERANCIA;
+
     private static final List<String> ORIGENES_VALIDOS = Arrays.asList(
         DsbnOrigen.CARGA_PETRO, DsbnOrigen.COBRO_INDIVIDUAL,
         DsbnOrigen.EVENTO_PRESTAMO, DsbnOrigen.PAGO_PENSION);
@@ -60,10 +68,10 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
     private ConfiguracionContabilidadService configuracionContabilidadService;
 
     @EJB
-    private PagoPrestamoDaoService pagoPrestamoDaoService;
+    private CargaArchivoDaoService cargaArchivoDaoService;
 
     @EJB
-    private CargaArchivoDaoService cargaArchivoDaoService;
+    private com.saa.ejb.crd.dao.TransferenciaCargaPetroDaoService transferenciaCargaPetroDaoService;
 
     @EJB
     private com.saa.ejb.cnt.dao.AsientoDaoService asientoDaoService;
@@ -323,18 +331,19 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
                 + (carga != null && carga.getAnioAfectacion() != null ? "/" + carga.getAnioAfectacion() : "")
                 + " (" + idOrigen + ")");
 
-            List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectVigentesByCargaArchivo(idOrigen);
-            double recibido = 0.0;
-            if (pagos != null) {
-                for (PagoPrestamo pago : pagos) {
-                    recibido += nvl(pago.getValor());
-                }
-            }
-            recibido = redondear(recibido);
+            // 2026-09-02 (URGENTE, hallazgo de producción carga 449): "recibido" salía de sumar
+            // los PagoPrestamo, pero esos son la SALIDA del reparto (DSBN se escribe a partir de
+            // los mismos pagos) — el cuadre comparaba el reparto contra sí mismo y siempre daba
+            // ~0, sin poder detectar que se aplicó de más. El "recibido" real de una carga Petro
+            // son las TRANSFERENCIAS con las que Petro pagó (TransferenciaCargaPetro vigentes),
+            // el mismo número que usa el asiento transitorio del paso 1. Medido: transferido
+            // $354.491,37, aplicado $354.603,67 — $112,30 aplicados que nadie transfirió, y con
+            // la fuente vieja el cuadre lo escondía.
+            double recibido = redondear(transferenciaCargaPetroDaoService.sumaValorVigentesByCarga(idOrigen));
             double diferencia = redondear(recibido - resultado.getDistribuido());
             resultado.setRecibido(recibido);
             resultado.setDiferencia(diferencia);
-            resultado.setCuadra(Math.abs(diferencia) <= TOLERANCIA);
+            resultado.setCuadra(Math.abs(diferencia) <= TOLERANCIA_CUADRE);
         } else {
             resultado.setDescripcionOrigen(origen + " " + idOrigen);
         }
@@ -470,14 +479,11 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
                     + (carga != null && carga.getMesAfectacion() != null ? " " + carga.getMesAfectacion() : "")
                     + (carga != null && carga.getAnioAfectacion() != null ? "/" + carga.getAnioAfectacion() : ""));
 
-                List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectVigentesByCargaArchivo(idOrigenFila);
-                double recibido = 0.0;
-                if (pagos != null) {
-                    for (PagoPrestamo pago : pagos) {
-                        recibido += nvl(pago.getValor());
-                    }
-                }
-                dto.setCuadra(Math.abs(redondear(recibido) - distribuido) <= TOLERANCIA);
+                // Mismo defecto y misma corrección que obtenerCuadre (2026-09-02): "recibido"
+                // tiene que salir de las transferencias, no de los pagos que el propio reparto
+                // generó — ver el comentario detallado allá.
+                double recibido = redondear(transferenciaCargaPetroDaoService.sumaValorVigentesByCarga(idOrigenFila));
+                dto.setCuadra(Math.abs(recibido - distribuido) <= TOLERANCIA_CUADRE);
             } else {
                 dto.setDescripcion(origenFila + " " + idOrigenFila);
                 dto.setCuadra(null);
