@@ -1257,13 +1257,6 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 				
 				System.out.println("\n📦 Procesando PRODUCTO: " + codigoProducto);
 				
-				// Omitir solo producto HS (seguros independientes)
-				// AH (Aportes) SÍ se procesa
-				if (CODIGO_PRODUCTO_HS.equalsIgnoreCase(codigoProducto)) {
-					System.out.println("  ⊘ Producto HS omitido (se procesa junto con PH/PP)");
-					continue;
-				}
-				
 				// ✅ OPTIMIZACIÓN: Obtener SOLO los partícipes de este detalle específico
 				// En lugar de traer TODOS los partícipes de TODAS las cargas con selectAll()
 				List<ParticipeXCargaArchivo> participesDetalle = 
@@ -1314,6 +1307,18 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 								} else if (advertenciasVigenciaCargaActual.size()
 										+ novedadesGeneradasCargaActual.size() > advertenciasAntes) {
 									totalAdvertencias++;
+								}
+							} else if (CODIGO_PRODUCTO_HS.equalsIgnoreCase(codigoProducto)) {
+								// PRODUCTO HS (§13, 2026-09-03): la mayoría de los HS ya se
+								// cobran junto con su PH/PP (aplicarPagoParticipe, rama PH/PP) —
+								// acá solo se procesan los HUÉRFANOS (sin fila PH/PP en esta
+								// misma carga), que antes no los miraba nadie.
+								// procesarSeguroIncendioHuerfano devuelve false sin hacer nada
+								// cuando el partícipe SÍ tiene PH/PP (ya cubierto por el otro
+								// camino, evita el doble cobro) — eso no es ni éxito ni omisión,
+								// es el caso normal, así que no toca ningún contador.
+								if (procesarSeguroIncendioHuerfano(participe, cargaArchivo, productosCache)) {
+									totalExitosos++;
 								}
 							} else {
 								// OTROS PRODUCTOS: Aplicar pagos a préstamos
@@ -2835,7 +2840,147 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	   verificarYActualizarEstadoPrestamos(prestamos);
 
 	}
-	
+
+/**
+ * HS huérfano — VALIDACION-TOPE-AFECTACION-MANUAL.md §13, REESCRITO 2026-09-03 sobre una
+ * propuesta del usuario más simple que la primera versión: *"sumemos el valor descontado de
+ * HS al valor descontado de préstamos y tratémoslo como un todo que se distribuye con la
+ * prelación definida, y dependiendo de dónde se reparta se contabiliza"*.
+ *
+ * <p><b>El caso normal (con PH/PP) YA hace exactamente eso</b> — más arriba, rama PH/PP de
+ * este método: suma {@code montoHS} a {@code montoArchivo} y aplica el total con
+ * {@code aplicarPagoNormalConMotor}, que reparte por la cascada del motor (el seguro de
+ * incendio es su PRIMER componente) y contabiliza donde cayó, leyendo los componentes del
+ * {@code PagoPrestamo} resultante — sin ninguna regla nueva. Este método NO toca esa rama:
+ * para un partícipe CON PH/PP, no hace nada (ya está cubierto) y el total cobrado es
+ * IDÉNTICO al de antes de esta corrección.</p>
+ *
+ * <p>Al partícipe cuyo HS llega SIN una fila PH/PP en esta carga, nadie lo miraba: no se
+ * aplicaba, no se reclamaba, no aparecía en ningún log. Medido en la carga 449: exactamente
+ * los cuatro casos con diferencia negativa del descuadre (2,47+6,34+7,10+13,18 = 29,09). Para
+ * estos, este método hace LO MISMO que la rama PH/PP — sumar y aplicar por la cascada —, sólo
+ * que primero tiene que resolver A QUÉ préstamo, porque {@code CRD.PXCA} no lleva esa
+ * referencia (sólo rol y producto).</p>
+ *
+ * <p>⛔ <b>Riesgo de doble cobro, verificado antes de escribir.</b> Si este partícipe SÍ
+ * tiene PH o PP en esta carga, su HS YA viaja sumado al monto de esa fila — procesarlo
+ * también acá lo cobraría dos veces. Por eso lo PRIMERO que hace este método es preguntar
+ * "¿existe fila PH o PP de este mismo rol en esta carga?" con
+ * {@code selectByCodigoPetroYProductoEnCarga} — la MISMA consulta que ya usa ese camino,
+ * invertida. Si existe cualquiera de las dos, este método NO HACE NADA.</p>
+ *
+ * <p><b>Resolución del préstamo, con la MISMA búsqueda que usa hoy el camino PH/PP</b>
+ * ({@link #resolverProductosPorCodigo} + {@code selectByEntidadYProductoActivosById}), no una
+ * nueva — sólo que acá hay que CONTAR candidatos antes de aplicar nada, porque un HS huérfano
+ * no dice si es de un hipotecario o un prendario (a diferencia de la rama PH/PP, que ya sabe
+ * el código declarado por el archivo y no tiene esa ambigüedad). Candidato = préstamo activo
+ * de código PH o PP del partícipe con una cuota pendiente (mismo criterio simple que
+ * {@link #buscarCuotaAPagar}, sin filtrar por seguro — la prelación decide dónde cae el
+ * dinero dentro de esa cuota). Cero candidatos, o más de uno, es {@code NOVEDAD BLOQUEANTE}
+ * — no adivinar — para que el operador la resuelva en la pantalla de afectación (§12 ya deja
+ * ese sobrante repartible ahí).</p>
+ *
+ * @return {@code true} si aplicó el pago o generó la novedad bloqueante (en los dos casos
+ *         "se hizo algo" con este HS); {@code false} si NO era huérfano (ya cubierto por
+ *         PH/PP) o si el monto es $0 — ninguno de los dos es un resultado que contar en el
+ *         resumen
+ */
+private boolean procesarSeguroIncendioHuerfano(ParticipeXCargaArchivo participeHS, CargaArchivo cargaArchivo,
+		Map<String, List<Producto>> productosCache) throws Throwable {
+
+	ParticipeXCargaArchivo filaPH = participeXCargaArchivoDaoService.selectByCodigoPetroYProductoEnCarga(
+		participeHS.getCodigoPetro(), CODIGO_PRODUCTO_PH, cargaArchivo.getCodigo());
+	ParticipeXCargaArchivo filaPP = participeXCargaArchivoDaoService.selectByCodigoPetroYProductoEnCarga(
+		participeHS.getCodigoPetro(), CODIGO_PRODUCTO_PP, cargaArchivo.getCodigo());
+	if (filaPH != null || filaPP != null) {
+		System.out.println("  HS NO huérfano - Partícipe " + participeHS.getCodigoPetro()
+			+ " tiene fila PH/PP en esta carga; su HS ya viaja sumado a ese monto.");
+		return false;
+	}
+
+	double montoHS = nullSafe(participeHS.getTotalDescontado());
+	if (montoHS <= 0.01) {
+		return false;
+	}
+
+	System.out.println("  ⚠️ HS HUÉRFANO - Partícipe " + participeHS.getCodigoPetro() + " ("
+		+ participeHS.getNombre() + ") - Monto: $" + montoHS + " - Sin fila PH/PP en esta carga");
+
+	List<Entidad> entidades = entidadDaoService.selectByCodigoPetro(participeHS.getCodigoPetro());
+	if (entidades == null || entidades.isEmpty()) {
+		registrarNovedad(participeHS, ASPNovedadesCargaArchivo.PRESTAMO_NO_ENCONTRADO,
+			"HS huérfano (sin PH/PP en esta carga): no se encontró entidad con código Petro "
+				+ participeHS.getCodigoPetro() + " para determinar a qué préstamo aplicar el seguro de $"
+				+ montoHS + ".",
+			null, null, null, montoHS);
+		return true;
+	}
+	Entidad entidad = entidades.get(0);
+
+	// Candidatos: préstamos ACTIVOS de código Petro PH o PP, sin importar si tienen detalle en
+	// ESTA carga — el HS no trae declarado su propio producto de préstamo. MISMA resolución
+	// que la rama PH/PP de más arriba, no una nueva.
+	Map<Long, Prestamo> prestamosPorCodigo = new LinkedHashMap<>();
+	for (String codigoProductoPrestamo : new String[] { CODIGO_PRODUCTO_PH, CODIGO_PRODUCTO_PP }) {
+		for (Producto producto : resolverProductosPorCodigo(codigoProductoPrestamo, productosCache)) {
+			List<Prestamo> prestamosDelProducto =
+				prestamoDaoService.selectByEntidadYProductoActivosById(entidad.getCodigo(), producto.getCodigo());
+			if (prestamosDelProducto != null) {
+				for (Prestamo prestamo : prestamosDelProducto) {
+					prestamosPorCodigo.put(prestamo.getCodigo(), prestamo);
+				}
+			}
+		}
+	}
+
+	// Candidatos REALES: los que tienen una cuota pendiente donde caer — sin filtrar por
+	// seguro de incendio a propósito: la prelación de la cascada decide dónde cae el dinero
+	// dentro de esa cuota, no este método.
+	List<Prestamo> candidatos = new ArrayList<>();
+	for (Prestamo prestamo : prestamosPorCodigo.values()) {
+		if (tieneCuotaPendiente(prestamo, cargaArchivo)) {
+			candidatos.add(prestamo);
+		}
+	}
+
+	if (candidatos.size() != 1) {
+		String detalleCandidatos = candidatos.isEmpty()
+			? "ningún préstamo hipotecario/prendario activo del partícipe tiene una cuota pendiente"
+			: candidatos.size() + " préstamos tienen cuota pendiente ("
+				+ candidatos.stream().map(p -> "#" + p.getCodigo()).collect(java.util.stream.Collectors.joining(", "))
+				+ ") — no hay destino inequívoco";
+		String descripcion = "HS huérfano (sin PH/PP en esta carga): $" + montoHS + " recibidos de seguro de"
+			+ " incendio, pero " + detalleCandidatos + ". Requiere distribución manual (AVPC).";
+		System.err.println("⛔ NOVEDAD BLOQUEANTE (HS huérfano): partícipe " + participeHS.getCodigoPetro()
+			+ " (" + participeHS.getNombre() + ") - " + descripcion);
+		registrarNovedad(participeHS, ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE, descripcion,
+			null, null, null, Double.valueOf(montoHS));
+		return true;
+	}
+
+	Prestamo unico = candidatos.get(0);
+	System.out.println("  ✅ HS huérfano resuelto - Partícipe " + participeHS.getCodigoPetro() + " ("
+		+ participeHS.getNombre() + ") - Préstamo #" + unico.getCodigo() + " - Monto: $" + montoHS
+		+ " - aplicado por la cascada del motor (misma prelación que el caso normal)");
+	aplicarPagoNormalConMotor(unico, montoHS, cargaArchivo, participeHS);
+	return true;
+}
+
+/**
+ * Si un préstamo tiene una cuota pendiente real donde aplicar un pago — mismo criterio
+ * simple que usa {@link #buscarCuotaAPagar} (mínima cuota no pagada, saldo real > 0.01), pero
+ * sin aplicar nada: {@link #procesarSeguroIncendioHuerfano} necesita CONTAR candidatos antes
+ * de decidir a cuál aplicar.
+ */
+private boolean tieneCuotaPendiente(Prestamo prestamo, CargaArchivo cargaArchivo) throws Throwable {
+	List<DetallePrestamo> resultado = detallePrestamoDaoService.selectMinCuotaNoPagadaByPrestamo(prestamo.getCodigo());
+	if (resultado == null || resultado.isEmpty()) {
+		return false;
+	}
+	SaldosRealesCuota saldos = calcularSaldosRealesCuota(resultado.get(0), cargaArchivo);
+	return saldos.totalPendiente > 0.01;
+}
+
 /**
  * Busca la cuota pendiente a pagar para un préstamo ACTIVO (no de plazo vencido)
  * ✅ CORRECCIÓN CRÍTICA: Usa calcularSaldosRealesCuota para validar saldos desde PagoPrestamo
