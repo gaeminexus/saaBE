@@ -106,6 +106,30 @@ que el `.jasper` faltante: compila, pasa revisión, entra al commit y revienta c
 
 Si el bloque 1 del `172` devuelve filas → **no se sube**, se crean primero esas líneas.
 
+### ✅ VERIFICADO EL 2026-09-02 — el prerrequisito está cumplido, no bloquea
+
+El usuario corrió el `172`. **Bloque 1 vacío**: no falta ninguna línea. La plantilla 1107
+(*CRD COBRO PETRO ASIENTO CONTABLE CORRELACIONADO CIERRE CARTERA*, alterno 21) tiene la línea de
+**interés de mora (`AUX1 = 20`) para los cuatro tipos de préstamo** que aparecen en la carga —
+`AUX2` 0, 1, 2 y 3, líneas 1554, 1573, 1575 y 1574, todas activas. Simétricas con las de interés
+ordinario. **Luz verde para subir el WAR con el cobro de mora activado.**
+
+Lo que la carga 449 va a cobrar de más al reprocesar (bloque 3):
+
+| | |
+|---|---|
+| Cuotas con mora | 200 |
+| **Mora a cobrar** | **$1.284,42** |
+| Interés vencido | $0,00 — confirma que ningún proceso lo alimenta |
+| Préstamos afectados | 82 |
+
+> **Detalle menor, sin prisa:** las dos líneas con `AUX2 = 0` (la 1544 de interés ordinario y la
+> 1554 de mora) llevan como descripción **«DE 1 A 30 DIAS»**, que es texto de una línea de banda de
+> cartera, no de un tipo de préstamo. Funcionan igual —lo que se consulta es `AUX1`/`AUX2`, no la
+> descripción— pero esa descripción viaja al asiento y va a confundir a quien lo lea. Vale
+> corregirla, y de paso confirmar si el tipo de préstamo 0 existe de verdad o si esas dos líneas son
+> un remanente de copiar una línea de banda.
+
 ---
 
 ## 4. Qué se cambia, exactamente
