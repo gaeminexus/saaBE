@@ -26,7 +26,8 @@ import jakarta.ws.rs.core.UriInfo;
  * Base path: /aplp
  *
  * Endpoints principales:
- *   GET  /aplp/factura/{id}              → historial de aplicaciones de una factura
+ *   GET  /aplp/factura/{id}              → historial de aplicaciones de una FACTURA
+ *   GET  /aplp/liquidacion/{id}           → historial de aplicaciones de una LIQUIDACIÓN
  *   GET  /aplp/saldo/{id}                → total, aplicado y saldo pendiente de una FACTURA
  *   GET  /aplp/saldoLiquidacion/{id}      → total, aplicado y saldo pendiente de una LIQUIDACIÓN
  *   POST /aplp/anticipo                  → cruza anticipos por monto total (FIFO sobre los disponibles)
@@ -40,10 +41,10 @@ import jakarta.ws.rs.core.UriInfo;
  * desde aquí: se generan automáticamente junto con el asiento contable del
  * documento correspondiente.
  *
- * ⛔ /aplp/saldo/{id} y /aplp/saldoLiquidacion/{id} NO son intercambiables:
- * FCTC y LQCC usan IDENTITY con numeraciones independientes, así que pasarle
- * un id de liquidación a /saldo/{id} devolvería los datos de una factura ajena
- * que coincida en número, sin ningún error
+ * ⛔ Los pares /aplp/saldo{,Liquidacion}/{id} y /aplp/factura{,liquidacion}/{id} NO son
+ * intercambiables entre sí: FCTC y LQCC usan IDENTITY con numeraciones independientes, así
+ * que pasarle un id de liquidación al endpoint de factura (o viceversa) devolvería los datos
+ * de un documento ajeno que coincida en número, sin ningún error
  * (docs/logica-negocio/cxp/DISENO-CRUCE-ANTICIPO-CONTRA-LIQUIDACION.md §4.2).
  */
 @Path("aplp")
@@ -112,6 +113,30 @@ public class AplicacionPagoCxpRest {
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al obtener las aplicaciones de la factura: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Historial de aplicaciones de una liquidación de compra.
+     * ⛔ NO es intercambiable con /factura/{id} — ver el aviso en la cabecera de esta clase.
+     * @param idLiquidacion : Id de la liquidación de compra
+     * @param soloActivas   : true (por defecto) devuelve solo las aplicaciones vigentes
+     */
+    @GET
+    @Path("/liquidacion/{idLiquidacion}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response porLiquidacion(@PathParam("idLiquidacion") Long idLiquidacion,
+            @QueryParam("soloActivas") @DefaultValue("true") boolean soloActivas) {
+        System.out.println("LLEGA AL SERVICIO GET /aplp/liquidacion/" + idLiquidacion);
+        try {
+            List<AplicacionPagoCxp> lista =
+                    aplicacionPagoCxpService.consultarPorLiquidacion(idLiquidacion, soloActivas);
+            return Response.status(Response.Status.OK).entity(lista)
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener las aplicaciones de la liquidación: " + e.getMessage())
                     .type(MediaType.APPLICATION_JSON).build();
         }
     }
