@@ -88,22 +88,25 @@ ORDER   BY SEGURO_TOTAL DESC;
 
 
 -- =====================================================================================
--- BLOQUE 3 — Cuanto dinero es, para dimensionar la decision
+-- ⛔ BLOQUE 3 — ANULADO. NO CORRERLO. ERROR MIO.
+--
+-- Daba ORA-00937: mezclaba SUM() con una subconsulta escalar en la misma lista de
+-- seleccion, sin GROUP BY. Es la TERCERA vez que cometo esta equivocacion (168, 171 y
+-- aca). Regla para mi: si escribo SUM() al lado de un (SELECT ...) en la misma lista,
+-- esta mal — va como subconsulta en el FROM.
+--
+-- Y aunque hubiera compilado, no habria servido: consultaba CRD.PGPR de la carga 449, y
+-- esa carga REVIRTIO (IncomeException es rollback = true), asi que no quedo ni un pago
+-- que contar.
+--
+-- ➜ REEMPLAZADO POR: sql/180_LOS_DOS_PRESTAMOS_CON_SEGURO_INDEBIDO.sql
+--   Ese script identifica los dos prestamos con su PRSTIDAS y su participe, lista las 16
+--   cuotas una por una, y su bloque 3 —reescrito con subconsultas en el FROM— responde lo
+--   unico que falta decidir: si ese seguro alguna vez se le COBRO al participe en cargas
+--   anteriores. Si se cobro, no alcanza con limpiar el dato: hay que devolverselo.
 -- =====================================================================================
-SELECT  COUNT(*)                                            AS PAGOS_AFECTADOS,
-        COUNT(DISTINCT g.PRSTCDGO)                          AS PRESTAMOS,
-        ROUND(SUM(NVL(g.PGPRVLSI, 0)), 2)                   AS SEGURO_SIN_CUENTA,
-        ROUND((SELECT SUM(NVL(g2.PGPRVLSI,0)) FROM CRD.PGPR g2
-                WHERE g2.CRARCDGO = &CARGA AND NVL(g2.PGPRANUL,0) = 0), 2) AS SEGURO_TOTAL_CARGA
-FROM    CRD.PGPR g
-JOIN    CRD.PRST p  ON p.PRSTCDGO  = g.PRSTCDGO
-JOIN    CRD.PRDC pd ON pd.PRDCCDGO = p.PRDCCDGO
-WHERE   g.CRARCDGO = &CARGA
-AND     NVL(g.PGPRANUL, 0) = 0
-AND     NVL(g.PGPRVLSI, 0) > 0
-AND     NVL(pd.TPPRCDGO, -1) NOT IN (2, 3);
 
 
 -- =====================================================================================
--- FIN. Pegar la salida de los tres bloques.
+-- FIN. Pegar la salida de los bloques 1 y 2. El 3 esta anulado, ver arriba.
 -- =====================================================================================
