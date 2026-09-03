@@ -102,4 +102,23 @@ public interface CargaArchivoPetroService {
      */
     Map<String, Object> obtenerTopeAfectacionManual(Long codigoCargaArchivo, Long codigoPetro) throws Throwable;
 
+    /**
+     * Prevuelo del tope de afectación manual de TODA la carga, de solo lectura —
+     * VALIDACION-TOPE-AFECTACION-MANUAL.md §9. Corre la misma pasada que la validación que
+     * bloquea al procesar, pero sin bloquear: el operador la consulta mientras reparte, para
+     * corregir antes de intentar procesar.
+     *
+     * <b>Alcance:</b> solo ve el exceso de afectaciones MANUALES contra lo descontado; no
+     * detecta lo que el flujo automático vaya a aplicar encima (todavía no ocurrió en este
+     * punto). No reemplaza a {@code DistribucionBandaService#obtenerDiferencia} — ver el
+     * javadoc de la implementación para el contraste completo.
+     *
+     * @param codigoCargaArchivo : ID de la carga (CRD.CRAR)
+     * @return : Map con {@code idCarga}, {@code participesConExceso}, {@code excesoTotal} y
+     *           {@code detalle} (rolPetro, cédula, nombre, disponible, afectado, exceso, AVPC
+     *           por cada partícipe con exceso)
+     * @throws Throwable : Excepción en caso de error
+     */
+    Map<String, Object> obtenerPrevueloAfectacionManual(Long codigoCargaArchivo) throws Throwable;
+
 }

@@ -1666,12 +1666,66 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	private void validarTopeAfectacionManualPorParticipe(CargaArchivo cargaArchivo) throws Throwable {
 		System.out.println("=== VALIDANDO TOPE DE AFECTACION MANUAL POR PARTICIPE (rol Petro) ===");
 
+		List<Map<String, Object>> violaciones = calcularViolacionesTopeAfectacionManual(cargaArchivo);
+
+		if (violaciones.isEmpty()) {
+			System.out.println("✅ Ningún partícipe excede el tope de afectación manual");
+			return;
+		}
+
+		StringBuilder mensaje = new StringBuilder();
+		mensaje.append("No se puede procesar el archivo: ").append(violaciones.size())
+		       .append(" partícipe(s) tienen afectaciones manuales (AVPC) que superan el total")
+		       .append(" descontado. Corrija las afectaciones y vuelva a procesar.");
+
+		int listados = 0;
+		for (Map<String, Object> v : violaciones) {
+			if (listados >= MAXIMO_DETALLES_EN_MENSAJE) {
+				mensaje.append("\n  ... y ").append(violaciones.size() - listados).append(" partícipe(s) más.");
+				break;
+			}
+			mensaje.append("\n  - Rol ").append(v.get("codigoPetro"))
+			       .append(" cédula ").append(v.get("cedula"))
+			       .append(" ").append(v.get("participe"))
+			       .append(": disponible $").append(String.format("%,.2f", (Double) v.get("disponible")))
+			       .append(", afectado $").append(String.format("%,.2f", (Double) v.get("afectado")))
+			       .append(", exceso $").append(String.format("%,.2f", (Double) v.get("exceso")))
+			       .append(". AVPC: ").append(v.get("avpc")).append(".");
+			listados++;
+		}
+
+		System.err.println(mensaje.toString());
+		throw new IncomeException(mensaje.toString());
+	}
+
+	/**
+	 * Núcleo COMPARTIDO del tope por partícipe — ÚNICA definición (VALIDACION-TOPE-AFECTACION-
+	 * MANUAL.md §9): la usan la validación que bloquea al procesar
+	 * ({@link #validarTopeAfectacionManualPorParticipe}) y el prevuelo de solo lectura
+	 * ({@link #obtenerPrevueloAfectacionManual}), que corre esta MISMA pasada mientras el
+	 * operador todavía está repartiendo, sin bloquear. Es la tercera vez que aparece esta
+	 * necesidad exacta (la validación, el tope por partícipe del §8, y esto) — las tres tienen
+	 * que dar el mismo número siempre.
+	 *
+	 * Escanea TODA la carga en UNA sola pasada — pensado para llamarse una vez por invocación,
+	 * nunca por partícipe (ver el javadoc de {@link #obtenerPrevueloAfectacionManual} sobre por
+	 * qué eso importa para una consulta interactiva).
+	 *
+	 * @return una entrada por cada rol Petro cuyo exceso supera la tolerancia de un centavo;
+	 *         VACÍA si ninguno la excede. Cada entrada trae {@code codigoPetro}, {@code cedula},
+	 *         {@code participe}, {@code disponible}, {@code afectado}, {@code exceso} y
+	 *         {@code avpc} (códigos de {@code AfectacionValoresParticipeCarga} involucrados)
+	 */
+	private List<Map<String, Object>> calcularViolacionesTopeAfectacionManual(CargaArchivo cargaArchivo)
+			throws Throwable {
 		final double TOLERANCIA_TOPE = 0.01;
+
+		List<Map<String, Object>> violaciones = new ArrayList<>();
 
 		List<DetalleCargaArchivo> detallesCarga =
 			detalleCargaArchivoDaoService.selectByCargaArchivo(cargaArchivo.getCodigo());
 		if (detallesCarga == null || detallesCarga.isEmpty()) {
-			return;
+			return violaciones;
 		}
 
 		// Acumulado por ROL PETRO (identidad del partícipe: es lo mismo con lo que se busca su
@@ -1704,7 +1758,6 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			}
 		}
 
-		List<Map<String, Object>> violaciones = new ArrayList<>();
 		for (Map.Entry<Long, Double> entry : disponiblePorRol.entrySet()) {
 			Long rolPetro = entry.getKey();
 			double disponible = entry.getValue();
@@ -1719,44 +1772,68 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			}
 
 			Map<String, Object> violacion = new HashMap<>();
-			violacion.put("rolPetro", rolPetro);
-			violacion.put("nombre", nombrePorRol.get(rolPetro));
+			violacion.put("codigoPetro", rolPetro);
+			violacion.put("participe", nombrePorRol.get(rolPetro));
 			violacion.put("cedula", cedulaPorRolPetro(rolPetro));
 			violacion.put("disponible", disponible);
 			violacion.put("afectado", afectado);
 			violacion.put("exceso", exceso);
-			violacion.put("codigosAvpc", codigosAfectacionManual(novedadesRol));
+			violacion.put("avpc", codigosAfectacionManual(novedadesRol));
 			violaciones.add(violacion);
 		}
+		return violaciones;
+	}
 
-		if (violaciones.isEmpty()) {
-			System.out.println("✅ Ningún partícipe excede el tope de afectación manual");
-			return;
+	/**
+	 * Prevuelo del tope de afectación manual, DE SOLO LECTURA — VALIDACION-TOPE-AFECTACION-
+	 * MANUAL.md §9, pedido del usuario: *"poder encontrar también la diferencia al momento de
+	 * aplicar los ajustes, para revisar el error antes de que se genere"*. Corre la MISMA pasada
+	 * que {@link #validarTopeAfectacionManualPorParticipe} (vía
+	 * {@link #calcularViolacionesTopeAfectacionManual}, única definición) pero SIN bloquear —
+	 * el operador la consulta MIENTRAS reparte, que es el único momento en que corregir sale
+	 * barato.
+	 *
+	 * <p>⚠️ <b>Alcance declarado, a propósito:</b> este prevuelo SOLO ve el exceso de
+	 * afectaciones MANUALES contra lo descontado. NO detecta la hipótesis en investigación
+	 * (2026-09-02, sql/184) de que el flujo AUTOMÁTICO aplica encima del tope manual — eso
+	 * todavía no ocurrió en este punto del proceso. Un {@code participesConExceso: 0} acá NO
+	 * garantiza que la carga vaya a cuadrar al aplicarla.</p>
+	 *
+	 * <p>Tampoco reemplaza a {@code DistribucionBandaService#obtenerDiferencia} ("¿dónde está
+	 * la diferencia?"): son dos preguntas en dos momentos distintos — éste pregunta "¿lo que
+	 * cargué va a descuadrar?" ANTES de aplicar; aquél pregunta "¿por qué descuadró?" DESPUÉS.</p>
+	 *
+	 * @param codigoCargaArchivo : ID de la carga (CRD.CRAR)
+	 * @return : Map con {@code idCarga}, {@code participesConExceso}, {@code excesoTotal} y
+	 *           {@code detalle} (una entrada por partícipe con exceso — ver el javadoc de
+	 *           {@link #calcularViolacionesTopeAfectacionManual})
+	 * @throws Throwable : Excepción en caso de error
+	 */
+	@Override
+	public Map<String, Object> obtenerPrevueloAfectacionManual(Long codigoCargaArchivo) throws Throwable {
+		System.out.println("CargaArchivoPetroService.obtenerPrevueloAfectacionManual - carga " + codigoCargaArchivo);
+
+		if (codigoCargaArchivo == null) {
+			throw new IncomeException("El id de la carga es obligatorio");
+		}
+		CargaArchivo cargaArchivo = cargaArchivoService.selectById(codigoCargaArchivo);
+		if (cargaArchivo == null) {
+			throw new IncomeException("No se encontró la carga con ID: " + codigoCargaArchivo);
 		}
 
-		StringBuilder mensaje = new StringBuilder();
-		mensaje.append("No se puede procesar el archivo: ").append(violaciones.size())
-		       .append(" partícipe(s) tienen afectaciones manuales (AVPC) que superan el total")
-		       .append(" descontado. Corrija las afectaciones y vuelva a procesar.");
+		List<Map<String, Object>> violaciones = calcularViolacionesTopeAfectacionManual(cargaArchivo);
 
-		int listados = 0;
-		for (Map<String, Object> v : violaciones) {
-			if (listados >= MAXIMO_DETALLES_EN_MENSAJE) {
-				mensaje.append("\n  ... y ").append(violaciones.size() - listados).append(" partícipe(s) más.");
-				break;
-			}
-			mensaje.append("\n  - Rol ").append(v.get("rolPetro"))
-			       .append(" cédula ").append(v.get("cedula"))
-			       .append(" ").append(v.get("nombre"))
-			       .append(": disponible $").append(String.format("%,.2f", (Double) v.get("disponible")))
-			       .append(", afectado $").append(String.format("%,.2f", (Double) v.get("afectado")))
-			       .append(", exceso $").append(String.format("%,.2f", (Double) v.get("exceso")))
-			       .append(". AVPC: ").append(v.get("codigosAvpc")).append(".");
-			listados++;
+		double excesoTotal = 0.0;
+		for (Map<String, Object> violacion : violaciones) {
+			excesoTotal += (Double) violacion.get("exceso");
 		}
 
-		System.err.println(mensaje.toString());
-		throw new IncomeException(mensaje.toString());
+		Map<String, Object> resultado = new HashMap<>();
+		resultado.put("idCarga", codigoCargaArchivo);
+		resultado.put("participesConExceso", violaciones.size());
+		resultado.put("excesoTotal", Math.round(excesoTotal * 100.0) / 100.0);
+		resultado.put("detalle", violaciones);
+		return resultado;
 	}
 
 	/** Cédula del partícipe a partir de su rol Petro, solo para el mensaje de la violación. */

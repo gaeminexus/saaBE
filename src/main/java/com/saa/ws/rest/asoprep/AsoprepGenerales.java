@@ -498,6 +498,54 @@ public class AsoprepGenerales {
         }
     }
 
+    /**
+     * Prevuelo del tope de afectación manual de TODA la carga, de solo lectura —
+     * VALIDACION-TOPE-AFECTACION-MANUAL.md §9, pedido del usuario: *"poder encontrar también la
+     * diferencia al momento de aplicar los ajustes, para revisar el error antes de que se
+     * genere"*. Corre la MISMA pasada que la validación que bloquea al procesar, sin bloquear —
+     * el operador la consulta mientras reparte, que es el único momento en que corregir sale
+     * barato.
+     *
+     * ⛔ Este endpoint SOLO ve el exceso de afectaciones MANUALES contra lo descontado — no
+     * detecta lo que el flujo AUTOMÁTICO vaya a aplicar encima (todavía no ocurrió en este
+     * punto del proceso). {@code participesConExceso: 0} NO garantiza que la carga vaya a
+     * cuadrar al aplicarla. Tampoco reemplaza a {@code GET /rest/dsbn/diferencia} ("¿dónde está
+     * la diferencia?"): éste pregunta "¿lo que cargué va a descuadrar?" ANTES de aplicar; aquél
+     * pregunta "¿por qué descuadró?" DESPUÉS.
+     *
+     * @param idCarga ID de la carga (CRD.CRAR)
+     * @return {"idCarga", "participesConExceso", "excesoTotal", "detalle": [...]}
+     */
+    @GET
+    @Path("/prevueloAfectacion")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response prevueloAfectacion(@QueryParam("idCarga") Long idCarga) {
+        System.out.println("REST: PREVUELO DE AFECTACION MANUAL - Carga: " + idCarga);
+
+        try {
+            if (idCarga == null) {
+                return Response.status(Status.BAD_REQUEST)
+                        .entity(new FileResponse(false, "idCarga es requerido", null))
+                        .build();
+            }
+
+            Map<String, Object> prevuelo = cargaArchivoPetroService.obtenerPrevueloAfectacionManual(idCarga);
+
+            return Response.ok().entity(prevuelo).build();
+
+        } catch (IncomeException e) {
+            return Response.status(Status.BAD_REQUEST)
+                    .entity(new FileResponse(false, e.getMessage(), null))
+                    .build();
+        } catch (Throwable e) {
+            System.err.println("ERROR al consultar el prevuelo de afectación manual:");
+            e.printStackTrace();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(new FileResponse(false, "Error al consultar el prevuelo de afectación manual: " + e.getMessage(), null))
+                    .build();
+        }
+    }
+
     // =====================================================================================
     // Cobro de Petro en dos pasos (regla 11 de §5 de
     // LEVANTAMIENTO-ALIMENTACION-CONTABLE-CREDITOS.md). CONTRATO CONGELADO con el frontend:
