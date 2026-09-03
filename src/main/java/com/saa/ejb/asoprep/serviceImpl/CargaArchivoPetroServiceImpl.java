@@ -3951,6 +3951,14 @@ private double esperadoDesdeCache(Entidad entidad, Long idTipoAporte, java.time.
 	}
 
 	java.time.LocalDate ultimoDiaMes = java.time.YearMonth.from(mes).atEndOfMonth();
+	// Corrección pedida por el árbitro (2026-09-02): "resultado idéntico" incluye el caso de
+	// error. selectVigenteEnFecha (getSingleResult) lanzaba NonUniqueResultException si más
+	// de una vigencia ACTIVA del mismo tipo cubría la misma fecha — tomar la primera en
+	// silencio sería un resultado DISTINTO (y, peor, cobrarle de más o de menos a alguien sin
+	// que nadie se entere). Se preserva el fallo, con contexto que NonUniqueResultException no
+	// tenía (contrato, tipo, fecha, códigos en conflicto). sql/178 mide si el caso existe hoy
+	// en producción.
+	com.saa.model.crd.VigenciaContrato encontrada = null;
 	for (com.saa.model.crd.VigenciaContrato vigencia : cache.vigencias) {
 		if (vigencia.getTipoAporte() == null || vigencia.getTipoAporte().getCodigo() == null
 				|| !idTipoAporte.equals(vigencia.getTipoAporte().getCodigo())) {
@@ -3963,10 +3971,16 @@ private double esperadoDesdeCache(Entidad entidad, Long idTipoAporte, java.time.
 		java.time.LocalDate fechaFin = vigencia.getFechaFin();
 		if (fechaInicio != null && !ultimoDiaMes.isBefore(fechaInicio)
 				&& (fechaFin == null || !ultimoDiaMes.isAfter(fechaFin))) {
-			return vigencia.getMonto() != null ? vigencia.getMonto() : 0.0;
+			if (encontrada != null) {
+				throw new IncomeException("Hay más de una vigencia ACTIVA del tipo de aporte "
+					+ idTipoAporte + " cubriendo el " + ultimoDiaMes + " para el contrato "
+					+ cache.idContrato + " — vigencias " + encontrada.getCodigo() + " y "
+					+ vigencia.getCodigo() + " en conflicto. No se puede decidir cuál vale.");
+			}
+			encontrada = vigencia;
 		}
 	}
-	return 0.0;
+	return encontrada != null && encontrada.getMonto() != null ? encontrada.getMonto() : 0.0;
 }
 
 /**
