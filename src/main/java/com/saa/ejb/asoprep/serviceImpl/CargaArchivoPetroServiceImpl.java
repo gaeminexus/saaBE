@@ -213,6 +213,21 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     private List<String> advertenciasVigenciaCargaActual = new ArrayList<>();
     private List<String> novedadesGeneradasCargaActual = new ArrayList<>();
 
+    /**
+     * §16 (2026-09-03, revalidación de carga): qué (fila PXCA, tipoNovedad) confirmó
+     * {@code registrarNovedad} durante UNA corrida de {@link #revalidarCarga}, para poder
+     * distinguir "el código actual todavía produce esta novedad" (se reconfirmó — sigue en este
+     * mapa) de "el código actual YA NO la produce" (existe en BD pero no quedó acá — candidata a
+     * desactivar). Se llena SIEMPRE que se llama a {@code registrarNovedad} (también durante el
+     * procesamiento normal de Fase 1/2), no solo durante la revalidación — fuera de una
+     * revalidación nadie lo lee, así que es inofensivo.
+     *
+     * <b>Se resetea al ENTRAR a {@code revalidarCarga}</b>, mismo criterio que las dos listas de
+     * arriba y por la misma razón: es seguro como campo de instancia porque esta clase es
+     * {@code @Stateful} (una instancia por sesión de carga).
+     */
+    private Map<Long, Set<Long>> tiposConfirmadosRevalidacion = new HashMap<>();
+
     /** Cuántas líneas de detalle lleva el resumen antes de resumir el resto. Arbitrario,
      * ajustable — evita un resumen de 50 líneas tan ilegible como el problema que resuelve. */
     private static final int MAX_ADVERTENCIAS_EN_RESUMEN = 10;
@@ -230,7 +245,61 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     private static final String CODIGO_PRODUCTO_HS = "HS";
     private static final String CODIGO_PRODUCTO_PH = "PH"; // Préstamo Hipotecario - El seguro viene en HS
     private static final String CODIGO_PRODUCTO_PP = "PP"; // Préstamo Prendario - El seguro viene en HS
-    
+
+    /**
+     * Tipos ESTRUCTURALES (Fase 1, identificación) — VALIDACION-TOPE-AFECTACION-MANUAL.md §16.
+     * {@link #revalidarCarga} SOLO refresca el MONTO (merge de HS) de una novedad de estos
+     * tipos si ya existe — NO re-deriva la clasificación en sí (¿es realmente
+     * CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE?), porque esa identificación tiene un efecto de lado
+     * (puede actualizar {@code Entidad.rolPetroComercial}) que revalidarCarga, pensado como
+     * recálculo de novedades, no debe disparar de nuevo silenciosamente.
+     */
+    private static final List<Long> TIPOS_ESTRUCTURALES_REVALIDABLES = Arrays.asList(
+        (long) ASPNovedadesCargaArchivo.PARTICIPE_NO_ENCONTRADO,
+        (long) ASPNovedadesCargaArchivo.CODIGO_ROL_DUPLICADO,
+        (long) ASPNovedadesCargaArchivo.NOMBRE_ENTIDAD_DUPLICADO,
+        (long) ASPNovedadesCargaArchivo.CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE
+    );
+
+    /** Tipos que {@link #validarNovedadesFase2} puede registrar para un producto de préstamo
+     * (PH/PP/otros) — VALIDACION-TOPE-AFECTACION-MANUAL.md §16, usado por {@link #revalidarCarga}
+     * para saber qué novedades EXISTENTES de una fila entran en el barrido de "¿siguen
+     * corresponde?".
+     *
+     * <p>⚠️ {@code MONTO_INCONSISTENTE} NO está en esta lista, a propósito — a diferencia de
+     * {@code APORTE_MONTO_INCONSISTENTE} (exclusivo de {@link #validarAporteAH}, sin colisión),
+     * este código lo comparten TRES orígenes distintos: {@link #validarNovedadesFase2} (acá),
+     * {@link #manejarExcedenteNoAplicado} (excedente del motor de pagos, en APLICACIÓN, §15) y
+     * {@link #distribuirAportePorDevengo} (sobrante de aportes, también en APLICACIÓN, §12).
+     * Si se incluyera acá, el barrido "¿ya no corresponde?" de {@link #revalidarCarga} podría
+     * desactivar (o marcar para conservar) una novedad de APLICACIÓN que no tiene nada que ver
+     * con lo que {@code validarNovedadesFase2} está re-evaluando — revalidarCarga SOLO corre
+     * ANTES de aplicar (bloquea si {@code estado == 3}), pero una corrida de
+     * {@code aplicarPagosArchivoPetro} que revirtió por la red del §11 puede haber dejado
+     * novedades de aplicación YA PERSISTIDAS (esa es la razón de ser del §15) en una carga que
+     * todavía no llegó a estado 3. Se prefiere NO tocar {@code MONTO_INCONSISTENTE} en ninguna
+     * dirección (ni refrescarla ni desactivarla) antes que arriesgar pisar o esconder una
+     * novedad que vino de aplicar, no de validar.</p>
+     */
+    private static final List<Long> TIPOS_FASE2_PRESTAMO_REVALIDABLES = Arrays.asList(
+        (long) ASPNovedadesCargaArchivo.PRODUCTO_NO_MAPEADO,
+        (long) ASPNovedadesCargaArchivo.PRESTAMO_NO_ENCONTRADO,
+        (long) ASPNovedadesCargaArchivo.SIN_DESCUENTOS,
+        (long) ASPNovedadesCargaArchivo.CUOTA_NO_ENCONTRADA,
+        (long) ASPNovedadesCargaArchivo.DIFERENCIA_MENOR_UN_DOLAR,
+        (long) ASPNovedadesCargaArchivo.CUOTA_FECHA_DIFERENTE
+    );
+
+    /** Igual que {@link #TIPOS_FASE2_PRESTAMO_REVALIDABLES}, para el producto AH — lo que puede
+     * registrar {@link #validarAporteAH}. */
+    private static final List<Long> TIPOS_FASE2_APORTE_REVALIDABLES = Arrays.asList(
+        (long) ASPNovedadesCargaArchivo.HISTORIAL_SUELDO_NO_ENCONTRADO,
+        (long) ASPNovedadesCargaArchivo.VALORES_HISTORIAL_NULOS,
+        (long) ASPNovedadesCargaArchivo.APORTE_VALORES_CERO,
+        (long) ASPNovedadesCargaArchivo.APORTE_MONTO_INCONSISTENTE,
+        (long) ASPNovedadesCargaArchivo.APORTE_DIFERENCIA_MENOR_UN_DOLAR
+    );
+
     /**
      * Método principal que procesa archivos Petro
      * OPCIÓN 1 APLICADA: Primero operaciones de BD, luego subir archivo
@@ -490,25 +559,22 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 					// nuevo.
 					if (tipoEstructuralBloquea(participe.getNovedadesCarga(), codigoFilial)) {
 						long tipoCarga = participe.getNovedadesCarga().longValue();
-						boolean yaExisteNvpc = false;
-						List<NovedadParticipeCarga> novedadesExistentes =
-							novedadParticipeCargaDaoService.selectByParticipe(participe.getCodigo());
-						if (novedadesExistentes != null) {
-							for (NovedadParticipeCarga existente : novedadesExistentes) {
-								if (existente.getTipoNovedad() != null
-										&& existente.getTipoNovedad().longValue() == tipoCarga) {
-									yaExisteNvpc = true;
-									break;
-								}
-							}
-						}
-						if (!yaExisteNvpc) {
-							double montoRecibido = nullSafe(participe.getTotalDescontado());
-							registrarNovedad(participe, (int) tipoCarga,
-								"Novedad de identificación de fase 1 (validación de carga): "
-									+ describirNovedades(Arrays.asList(participe.getNovedadesCarga())) + ".",
-								null, null, 0.0, montoRecibido);
-						}
+						// registrarNovedad ya es idempotente (§16) — el guard manual de
+						// "yaExisteNvpc" que estaba acá quedó redundante, lo hace por sí solo.
+						//
+						// §16 (2026-09-03): si el producto es PH/PP, intenta sumar el HS del
+						// mismo partícipe — MEJOR ESFUERZO acá, no garantizado: Fase 1 corre
+						// partícipe por detalle, DENTRO del mismo bucle que inserta las filas,
+						// así que el HS puede no estar insertado todavía cuando le toca el turno
+						// al PH (depende del orden de los DetalleCargaArchivo). Por eso esto NO
+						// reemplaza a la revalidación (ver VALIDACION-TOPE-AFECTACION-MANUAL.md
+						// §16): revalidarCarga corre esta MISMA lógica después de que TODO esté
+						// insertado, momento en el que el HS SIEMPRE está disponible si existe.
+						double montoRecibido = montoConHsMergeado(participe, codigoProducto, cargaArchivoGuardado);
+						registrarNovedad(participe, (int) tipoCarga,
+							"Novedad de identificación de fase 1 (validación de carga): "
+								+ describirNovedades(Arrays.asList(participe.getNovedadesCarga())) + ".",
+							null, null, 0.0, montoRecibido);
 					}
 			}
 		}
@@ -1020,9 +1086,28 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	}
 	
 	/**
-	 * Registra una novedad en la tabla hija NovedadParticipeCarga
-	 * Permite que un partícipe tenga múltiples novedades
-	 * 
+	 * Registra (o ACTUALIZA, si ya existe una del mismo tipo para esa fila) una novedad en la
+	 * tabla hija NovedadParticipeCarga.
+	 *
+	 * <b>IDEMPOTENTE desde 2026-09-03 (§16, revalidación de carga):</b> antes SIEMPRE insertaba
+	 * una fila nueva. Ahora busca primero si esta fila PXCA ya tiene una NovedadParticipeCarga
+	 * del mismo {@code tipoNovedad} (activa O inactiva — ver {@link #revalidarCarga}, que
+	 * reactiva una desactivada en vez de duplicarla) y, si existe, la actualiza (y la reactiva,
+	 * {@code estado=1}) en lugar de crear una segunda. Necesario para que
+	 * {@link #revalidarCarga} pueda re-ejecutar Fase 1/2 tantas veces como haga falta sin
+	 * duplicar novedades — con el §10 (cuarta vuelta) sumando pozos sin clave de dedup para
+	 * {@code codigoPrestamo == null}, una duplicación inflaría el pozo (el defecto de SANCHEZ,
+	 * otra vez). El comportamiento de Fase 1/2 durante una carga NUEVA no cambia: ahí nunca
+	 * existe una fila previa para (participe, tipo), así que esto sigue insertando igual que
+	 * antes.
+	 *
+	 * <p>Además, SIEMPRE anota en {@link #tiposConfirmadosRevalidacion} qué (fila, tipo) acaba
+	 * de confirmar — lo lee {@link #revalidarCarga} para decidir qué novedades YA NO
+	 * corresponden (no fueron reconfirmadas en la corrida). Fuera de una revalidación esto se
+	 * llena igual pero nadie lo lee, así que es inofensivo.</p>
+	 *
+	 * @return {@code true} si se CREÓ una fila nueva, {@code false} si se ACTUALIZÓ una
+	 *         existente (o si no se hizo nada por un {@code participe} inválido)
 	 * @param participe El partícipe relacionado
 	 * @param tipoNovedad Tipo de novedad (código del rubro)
 	 * @param descripcion Descripción de la novedad
@@ -1031,38 +1116,44 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	 * @param montoEsperado Monto esperado del sistema (opcional)
 	 * @param montoRecibido Monto recibido del archivo (opcional)
 	 */
-	private void registrarNovedad(ParticipeXCargaArchivo participe, int tipoNovedad, String descripcion, 
+	private boolean registrarNovedad(ParticipeXCargaArchivo participe, int tipoNovedad, String descripcion,
 								  Long codigoProducto, Long codigoPrestamo, Double montoEsperado, Double montoRecibido) {
 		try {
 			if (participe == null || participe.getCodigo() == null) {
-				return;
+				return false;
 			}
-			
-			ParticipeXCargaArchivo participeRef = new ParticipeXCargaArchivo();
-			participeRef.setCodigo(participe.getCodigo());
-			
-			NovedadParticipeCarga novedad = new NovedadParticipeCarga();
-			novedad.setParticipeXCargaArchivo(participeRef);
+
+			NovedadParticipeCarga novedad = buscarNovedadExistente(participe.getCodigo(), tipoNovedad);
+			boolean esNueva = novedad == null;
+			if (esNueva) {
+				novedad = new NovedadParticipeCarga();
+				ParticipeXCargaArchivo participeRef = new ParticipeXCargaArchivo();
+				participeRef.setCodigo(participe.getCodigo());
+				novedad.setParticipeXCargaArchivo(participeRef);
+			}
+
 			novedad.setTipoNovedad(Long.valueOf(tipoNovedad));
 			novedad.setDescripcion(descripcion);
 			novedad.setCodigoProducto(codigoProducto);
 			novedad.setCodigoPrestamo(codigoPrestamo);
 			novedad.setMontoEsperado(montoEsperado);
 			novedad.setMontoRecibido(montoRecibido);
-			
+
 			if (montoEsperado != null && montoRecibido != null) {
-				// Diferencia CON SIGNO: 
+				// Diferencia CON SIGNO:
 				// Negativa = Falta dinero (recibido < esperado)
 				// Positiva = Sobra dinero (recibido > esperado)
 				novedad.setMontoDiferencia(montoRecibido - montoEsperado);
+			} else {
+				novedad.setMontoDiferencia(null);
 			}
-			
+
 			// Llenar código de carga archivo desde el detalle del partícipe
-			if (participe.getDetalleCargaArchivo() != null && 
+			if (participe.getDetalleCargaArchivo() != null &&
 			    participe.getDetalleCargaArchivo().getCargaArchivo() != null) {
 				novedad.setCodigoCargaArchivo(participe.getDetalleCargaArchivo().getCargaArchivo().getCodigo());
 			}
-			
+
 			// Llenar idAsoprep del préstamo si está disponible
 			if (codigoPrestamo != null) {
 				try {
@@ -1074,14 +1165,38 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 					// Si falla, continuar sin el idAsoprep
 				}
 			}
-			
+
+			// SIEMPRE 1 (activa) — si esto se llama es porque el código actual CONFIRMA que la
+			// novedad corresponde; si estaba desactivada por una revalidación anterior, se
+			// reactiva en vez de quedar fantasma.
 			novedad.setEstado(1L);
 			novedadParticipeCargaService.saveSingle(novedad);
-			
+
+			tiposConfirmadosRevalidacion.computeIfAbsent(participe.getCodigo(), k -> new HashSet<>())
+				.add(Long.valueOf(tipoNovedad));
+
+			return esNueva;
 		} catch (Throwable e) {
 			System.err.println("Error al registrar novedad: " + descripcion);
 			e.printStackTrace();
+			return false;
 		}
+	}
+
+	/** Busca, para idempotencia, una NovedadParticipeCarga del mismo tipo en esta fila PXCA —
+	 * SIN filtrar por estado a propósito: una desactivada tiene que encontrarse igual, para
+	 * reactivarla en vez de crear una segunda. */
+	private NovedadParticipeCarga buscarNovedadExistente(Long codigoParticipe, int tipoNovedad) throws Throwable {
+		List<NovedadParticipeCarga> existentes = novedadParticipeCargaDaoService.selectByParticipe(codigoParticipe);
+		if (existentes == null) {
+			return null;
+		}
+		for (NovedadParticipeCarga existente : existentes) {
+			if (existente.getTipoNovedad() != null && existente.getTipoNovedad().intValue() == tipoNovedad) {
+				return existente;
+			}
+		}
+		return null;
 	}
 	
 	/**
@@ -2097,6 +2212,233 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	}
 
 	/**
+	 * Revalida las novedades de una carga YA CARGADA, con el código ACTUAL — VALIDACION-TOPE-
+	 * AFECTACION-MANUAL.md §16, pedido del usuario 2026-09-03: *"como el archivo ya estaba
+	 * cargado cuando restauré la base, me imagino que no está incluyendo los valores de HS. Por
+	 * eso digo que debe existir un botón de reprocesar."*
+	 *
+	 * <p><b>NO relee el .txt ni vuelve a insertar nada</b> — recorre los DTCA/PXCA que YA están
+	 * en la base y RECALCULA sus novedades. <b>NO aplica pagos, aportes ni asientos</b>: es
+	 * validación pura, la misma familia que {@link #obtenerPrevueloAfectacionManual}, no
+	 * {@link #aplicarPagosArchivoPetro}.</p>
+	 *
+	 * <p><b>ACTUALIZA, NUNCA BORRA</b> — decisión del árbitro, no negociable: el operador ya
+	 * gestionó decenas de novedades (afectaciones AVPC cuelgan de {@code NVPCCDGO}); borrar y
+	 * regenerar destruiría ese trabajo. Toda escritura pasa por {@code registrarNovedad}, que
+	 * desde este mismo cambio es IDEMPOTENTE: si ya existe una novedad del mismo tipo para la
+	 * fila, se actualiza (mismo código, los AVPC siguen colgando de ella) — nunca se crea una
+	 * segunda.</p>
+	 *
+	 * <p><b>Qué SÍ recalcula:</b></p>
+	 * <ol>
+	 * <li>El MONTO de una novedad ESTRUCTURAL (tipos 1-4) ya existente sobre una fila PH/PP,
+	 * sumando el HS del mismo partícipe si corresponde ({@link #montoConHsMergeado}) — esto es
+	 * lo que cierra el caso reportado (CABRERA, HS de $13,18 sin ningún pozo). <b>NO re-deriva
+	 * si el tipo estructural en sí sigue siendo correcto</b> (esa identificación puede mutar
+	 * {@code Entidad.rolPetroComercial}, un efecto de lado que una revalidación de montos no
+	 * debe disparar de nuevo).</li>
+	 * <li>Vuelve a ejecutar {@link #validarNovedadesFase2}/{@link #validarAporteAH} tal cual
+	 * existen hoy — mismo código que corre en una carga nueva, sin una copia aparte.</li>
+	 * </ol>
+	 *
+	 * <p><b>"Ya no corresponde":</b> si una novedad de tipo revalidable existía ANTES de esta
+	 * corrida y el código actual NO la reconfirma (no aparece en
+	 * {@link #tiposConfirmadosRevalidacion} al terminar), se la trata como superada:
+	 * <b>si tiene AVPC colgando, se CONSERVA intacta</b> (informada aparte en el resumen, nunca
+	 * tocada) — <b>si no tiene ninguna, se desactiva</b> ({@code estado=0}; {@link
+	 * #disponibleParaTope} ya la ignora, ver su filtro). ⚠️ Ninguna otra pantalla ni endpoint de
+	 * este backend filtra por {@code estado} todavía — una novedad desactivada sigue siendo
+	 * visible en cualquier listado que no pase por {@code disponibleParaTope} (p.ej.
+	 * {@code /nvpc/getByCargaArchivo}), y el frontend Angular (fuera de este repositorio) puede
+	 * no distinguirla tampoco. Es un marcador honesto, no una garantía de que desaparece de la
+	 * pantalla.</p>
+	 *
+	 * <p><b>Por qué esto vive acá y no en Fase 1:</b> Fase 1 corre partícipe por detalle, DENTRO
+	 * del mismo bucle que inserta las filas — el HS de un partícipe puede no estar insertado
+	 * todavía cuando le toca el turno a su PH/PP, según el orden de los
+	 * {@code DetalleCargaArchivo}. Acá, en cambio, la carga YA está completa: cualquier HS que
+	 * exista, existe con certeza para cuando se lo busca.</p>
+	 *
+	 * @param codigoCargaArchivo : ID de la carga (CRD.CRAR)
+	 * @return Map con {@code idCarga}, {@code participesRevisados}, {@code novedadesCreadas},
+	 *         {@code novedadesActualizadas}, {@code novedadesDesactivadas},
+	 *         {@code novedadesConservadasPorAvpc} (y su {@code detalleConservadasPorAvpc}), y
+	 *         {@code errores} (partícipes que fallaron su revalidación individual, sin abortar
+	 *         el resto)
+	 * @throws Throwable Excepción en caso de error
+	 */
+	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRED)
+	public Map<String, Object> revalidarCarga(Long codigoCargaArchivo) throws Throwable {
+		System.out.println("=== REVALIDANDO CARGA (§16) - Carga: " + codigoCargaArchivo + " ===");
+
+		if (codigoCargaArchivo == null) {
+			throw new IncomeException("El id de la carga es obligatorio");
+		}
+		CargaArchivo cargaArchivo = cargaArchivoService.selectById(codigoCargaArchivo);
+		if (cargaArchivo == null) {
+			throw new IncomeException("No se encontró la carga con ID: " + codigoCargaArchivo);
+		}
+		if (cargaArchivo.getEstado() != null && cargaArchivo.getEstado() == 3L) {
+			throw new IncomeException("La carga " + codigoCargaArchivo + " ya fue procesada (estado 3):"
+				+ " revalidar sus novedades no tiene efecto sobre lo que ya se aplicó.");
+		}
+
+		List<DetalleCargaArchivo> detalles = detalleCargaArchivoDaoService.selectByCargaArchivo(codigoCargaArchivo);
+
+		int participesRevisados = 0;
+		int creadas = 0;
+		int actualizadas = 0;
+		int desactivadas = 0;
+		List<Map<String, Object>> conservadasPorAvpc = new ArrayList<>();
+		List<String> errores = new ArrayList<>();
+
+		if (detalles != null && !detalles.isEmpty()) {
+			// Reset AL ENTRAR — mismo criterio que advertenciasVigenciaCargaActual/
+			// novedadesGeneradasCargaActual, ver el javadoc del campo.
+			tiposConfirmadosRevalidacion.clear();
+			Map<String, List<Producto>> productosCache = new HashMap<>();
+
+			for (DetalleCargaArchivo detalle : detalles) {
+				String codigoProducto = detalle.getCodigoPetroProducto();
+				// El HS nunca tiene novedad propia (viaja dentro de la de su PH/PP) — nada que
+				// revalidar en esta fila.
+				if (CODIGO_PRODUCTO_HS.equalsIgnoreCase(codigoProducto)) {
+					continue;
+				}
+				List<ParticipeXCargaArchivo> participesDetalle =
+					participeXCargaArchivoDaoService.selectByDetalleCargaArchivo(detalle.getCodigo());
+				if (participesDetalle == null) {
+					continue;
+				}
+
+				for (ParticipeXCargaArchivo participe : participesDetalle) {
+					if (participe.getCodigo() == null) {
+						continue;
+					}
+					participesRevisados++;
+					try {
+						List<NovedadParticipeCarga> antes =
+							novedadParticipeCargaDaoService.selectByParticipe(participe.getCodigo());
+						Map<Long, NovedadParticipeCarga> antesPorTipo = new HashMap<>();
+						if (antes != null) {
+							for (NovedadParticipeCarga n : antes) {
+								if (esTipoNovedadRevalidable(n.getTipoNovedad())) {
+									antesPorTipo.put(n.getTipoNovedad(), n);
+								}
+							}
+						}
+
+						// 1) Refresca el MONTO de una novedad ESTRUCTURAL ya existente,
+						// sumando HS si corresponde — NO re-deriva si el tipo sigue vigente.
+						Long tipoEstructural = participe.getNovedadesCarga();
+						if (tipoEstructural != null && TIPOS_ESTRUCTURALES_REVALIDABLES.contains(tipoEstructural)
+								&& antesPorTipo.containsKey(tipoEstructural)) {
+							double montoRecalculado = montoConHsMergeado(participe, codigoProducto, cargaArchivo);
+							registrarNovedad(participe, tipoEstructural.intValue(),
+								"Novedad de identificación de fase 1, revalidada (§16): "
+									+ describirNovedades(Arrays.asList(tipoEstructural)) + ".",
+								null, null, 0.0, montoRecalculado);
+						}
+
+						// 2) Re-ejecuta Fase 2 con el código ACTUAL — MISMA llamada que hace
+						// ejecutarValidacionesFase2 en una carga nueva (validarNovedadesFase2 ya
+						// redirige internamente a validarAporteAH para el producto AH), sin
+						// duplicar esa rama acá.
+						validarNovedadesFase2(participe, codigoProducto, cargaArchivo, productosCache);
+
+						// 3) "¿Ya no corresponde?": revalidable que existía ANTES y no fue
+						// reconfirmada en esta corrida.
+						Set<Long> confirmadosFila = tiposConfirmadosRevalidacion
+							.getOrDefault(participe.getCodigo(), java.util.Collections.emptySet());
+						for (Map.Entry<Long, NovedadParticipeCarga> entry : antesPorTipo.entrySet()) {
+							Long tipo = entry.getKey();
+							NovedadParticipeCarga existente = entry.getValue();
+							if (confirmadosFila.contains(tipo)) {
+								continue; // reconfirmada esta corrida — sigue vigente
+							}
+							if (existente.getEstado() != null && existente.getEstado().longValue() == 0L) {
+								continue; // ya estaba desactivada
+							}
+							List<AfectacionValoresParticipeCarga> avpc =
+								afectacionValoresParticipeCargaDaoService.selectByNovedad(existente.getCodigo());
+							if (avpc != null && !avpc.isEmpty()) {
+								Map<String, Object> conservada = new HashMap<>();
+								conservada.put("codigoPetro", participe.getCodigoPetro());
+								conservada.put("participe", participe.getNombre());
+								conservada.put("novedad", existente.getCodigo());
+								conservada.put("tipoNovedad", tipo);
+								conservada.put("avpc", avpc.size());
+								conservadasPorAvpc.add(conservada);
+								System.out.println("⚠️ (§16) Novedad " + existente.getCodigo() + " (tipo " + tipo
+									+ ") del partícipe " + participe.getCodigoPetro() + " ya NO corresponde con"
+									+ " el código actual, pero tiene " + avpc.size() + " AVPC colgando —"
+									+ " SE CONSERVA intacta, no se toca.");
+								continue;
+							}
+							existente.setEstado(0L);
+							novedadParticipeCargaService.saveSingle(existente);
+							desactivadas++;
+							System.out.println("(§16) Novedad " + existente.getCodigo() + " (tipo " + tipo
+								+ ") del partícipe " + participe.getCodigoPetro() + " desactivada: el código"
+								+ " actual ya no la produce y no tenía AVPC.");
+						}
+
+						// 4) Contar creadas/actualizadas comparando contra el "antes".
+						List<NovedadParticipeCarga> despues =
+							novedadParticipeCargaDaoService.selectByParticipe(participe.getCodigo());
+						if (despues != null) {
+							for (NovedadParticipeCarga n : despues) {
+								if (!esTipoNovedadRevalidable(n.getTipoNovedad())) {
+									continue;
+								}
+								if (!antesPorTipo.containsKey(n.getTipoNovedad())) {
+									creadas++;
+								} else if (confirmadosFila.contains(n.getTipoNovedad())) {
+									actualizadas++;
+								}
+							}
+						}
+					} catch (Throwable e) {
+						String msg = "Partícipe " + participe.getCodigoPetro() + " ("
+							+ participe.getNombre() + "): " + e.getMessage();
+						System.err.println("ERROR revalidando (§16) - " + msg);
+						e.printStackTrace();
+						errores.add(msg);
+					}
+				}
+			}
+		}
+
+		Map<String, Object> resumen = new LinkedHashMap<>();
+		resumen.put("idCarga", codigoCargaArchivo);
+		resumen.put("participesRevisados", participesRevisados);
+		resumen.put("novedadesCreadas", creadas);
+		resumen.put("novedadesActualizadas", actualizadas);
+		resumen.put("novedadesDesactivadas", desactivadas);
+		resumen.put("novedadesConservadasPorAvpc", conservadasPorAvpc.size());
+		resumen.put("detalleConservadasPorAvpc", conservadasPorAvpc);
+		resumen.put("errores", errores);
+		System.out.println("=== REVALIDACIÓN TERMINADA (carga " + codigoCargaArchivo + "): "
+			+ participesRevisados + " partícipes, " + creadas + " creadas, " + actualizadas + " actualizadas, "
+			+ desactivadas + " desactivadas, " + conservadasPorAvpc.size() + " conservadas por AVPC, "
+			+ errores.size() + " errores ===");
+		return resumen;
+	}
+
+	/** Tipos de novedad que {@link #revalidarCarga} sabe recalcular — ver
+	 * {@link #TIPOS_ESTRUCTURALES_REVALIDABLES}, {@link #TIPOS_FASE2_PRESTAMO_REVALIDABLES} y
+	 * {@link #TIPOS_FASE2_APORTE_REVALIDABLES}. Cualquier otro tipo (p.ej. las novedades que
+	 * genera la APLICACIÓN, no la validación — MONTO_INCONSISTENTE por excedente del motor de
+	 * pagos, del §15) queda fuera a propósito: la revalidación no aplica pagos, no tiene cómo
+	 * recalcular esas. */
+	private boolean esTipoNovedadRevalidable(Long tipoNovedad) {
+		return tipoNovedad != null && (TIPOS_ESTRUCTURALES_REVALIDABLES.contains(tipoNovedad)
+			|| TIPOS_FASE2_PRESTAMO_REVALIDABLES.contains(tipoNovedad)
+			|| TIPOS_FASE2_APORTE_REVALIDABLES.contains(tipoNovedad));
+	}
+
+	/**
 	 * Pozo de novedades BLOQUEANTES de UNA fila PXCA (un partícipe, un producto), SIN CAPEAR —
 	 * CORRECCIÓN 2026-09-03, VALIDACION-TOPE-AFECTACION-MANUAL.md §10, CUARTA VUELTA.
 	 *
@@ -2188,6 +2530,14 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 
 		if (novedadesDeEstaFila != null) {
 			for (NovedadParticipeCarga novedad : novedadesDeEstaFila) {
+				// §16 (revalidarCarga): una novedad DESACTIVADA (estado=0 — el código actual ya
+				// no la produce y no tenía AVPC colgando) no aporta pozo. selectByParticipe NO
+				// filtra por estado a propósito (la idempotencia de registrarNovedad necesita
+				// ver las inactivas para reactivarlas) — el filtro va acá, en el único consumidor
+				// para el que estado realmente importa.
+				if (novedad.getEstado() != null && novedad.getEstado().longValue() == 0L) {
+					continue;
+				}
 				if (FamiliaNovedadCarga.clasificar(novedad.getTipoNovedad(), novedad.getMontoDiferencia())
 						!= FamiliaNovedadCarga.BLOQUEANTE) {
 					continue;
@@ -2604,6 +2954,62 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 				&& !acumulador.contains(tipoNovedad)) {
 			acumulador.add(tipoNovedad);
 		}
+	}
+
+	/**
+	 * Monto a usar para una novedad BLOQUEANTE sobre una fila PH/PP, sumando el HS del mismo
+	 * partícipe SI corresponde — VALIDACION-TOPE-AFECTACION-MANUAL.md §16, decisión del árbitro
+	 * 2026-09-03: <b>el HS es UN solo importe y nunca se le suma a dos filas.</b>
+	 *
+	 * <p>Regla de desempate, para el caso (no descartado, sin datos que lo confirmen o lo nieguen)
+	 * de un partícipe con novedad candidata en PH Y en PP a la vez: <b>PH se lo lleva siempre,
+	 * PP nunca</b> — mismo orden que {@link #resolverProductosPorCodigo} y el resto del archivo
+	 * usan para PH/PP. Si además existe la fila PP, se deja una línea de log EXPLÍCITA
+	 * (decisión del árbitro: "un desempate silencioso sobre un supuesto no verificado es justo
+	 * lo que después nadie puede reconstruir") — así que si el caso alguna vez ocurre, es
+	 * visible y revisable, no un promedio o una resta silenciosa.</p>
+	 *
+	 * @param participe      La fila PXCA de la novedad (PH, PP, o cualquier otro producto — para
+	 *                       cualquier producto que no sea PH/PP esto es un no-op, devuelve
+	 *                       {@code totalDescontado} tal cual)
+	 * @param codigoProducto {@code participe.getDetalleCargaArchivo().getCodigoPetroProducto()}
+	 * @param cargaArchivo   La carga, para acotar la búsqueda del HS a la MISMA carga
+	 * @return {@code totalDescontado} de la fila, más el {@code totalDescontado} del HS del
+	 *         mismo partícipe en esta carga si existe y le corresponde a esta fila
+	 */
+	private double montoConHsMergeado(ParticipeXCargaArchivo participe, String codigoProducto,
+			CargaArchivo cargaArchivo) throws Throwable {
+		double monto = nullSafe(participe.getTotalDescontado());
+		boolean esPH = CODIGO_PRODUCTO_PH.equalsIgnoreCase(codigoProducto);
+		boolean esPP = CODIGO_PRODUCTO_PP.equalsIgnoreCase(codigoProducto);
+		if (!esPH && !esPP) {
+			return monto;
+		}
+		if (esPP) {
+			ParticipeXCargaArchivo filaPH = participeXCargaArchivoDaoService.selectByCodigoPetroYProductoEnCarga(
+				participe.getCodigoPetro(), CODIGO_PRODUCTO_PH, cargaArchivo.getCodigo());
+			if (filaPH != null) {
+				// PH existe: el HS se lo lleva PH (ver el log del lado PH), nunca PP.
+				return monto;
+			}
+		}
+		ParticipeXCargaArchivo filaHS = participeXCargaArchivoDaoService.selectByCodigoPetroYProductoEnCarga(
+			participe.getCodigoPetro(), CODIGO_PRODUCTO_HS, cargaArchivo.getCodigo());
+		if (filaHS == null) {
+			return monto;
+		}
+		if (esPH) {
+			ParticipeXCargaArchivo filaPP = participeXCargaArchivoDaoService.selectByCodigoPetroYProductoEnCarga(
+				participe.getCodigoPetro(), CODIGO_PRODUCTO_PP, cargaArchivo.getCodigo());
+			if (filaPP != null) {
+				System.out.println("⚠️ CASO AMBIGUO (§16): partícipe " + participe.getCodigoPetro() + " ("
+					+ participe.getNombre() + ") tiene fila PH Y PP en la carga " + cargaArchivo.getCodigo()
+					+ " — el HS ($" + nullSafe(filaHS.getTotalDescontado()) + ") se asigna a PH (fila "
+					+ participe.getCodigo() + "), NUNCA a PP (fila " + filaPP.getCodigo()
+					+ "). Revisar si esto es correcto para este partícipe.");
+			}
+		}
+		return monto + nullSafe(filaHS.getTotalDescontado());
 	}
 
 	/**

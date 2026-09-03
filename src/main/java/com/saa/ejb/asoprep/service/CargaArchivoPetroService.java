@@ -144,4 +144,31 @@ public interface CargaArchivoPetroService {
      */
     Map<String, Object> obtenerPrevueloAfectacionManual(Long codigoCargaArchivo) throws Throwable;
 
+    /**
+     * Revalida las novedades de una carga YA CARGADA, con el código de validación ACTUAL —
+     * VALIDACION-TOPE-AFECTACION-MANUAL.md §16, pedido del usuario 2026-09-03. NO relee el
+     * archivo ni inserta nada: recorre los DTCA/PXCA que ya están en la base y recalcula sus
+     * novedades. NO aplica pagos, aportes ni asientos (es validación pura, como el prevuelo).
+     *
+     * <b>Actualiza, nunca borra:</b> reusa el mismo {@code registrarNovedad} idempotente que ya
+     * usan Fase 1/2 — si ya existe una novedad del mismo tipo para una fila, se actualiza (mismo
+     * código, las afectaciones AVPC que cuelgan de ella no se pierden), nunca se duplica. Una
+     * novedad que el código actual ya no reproduce se desactiva (si no tiene AVPC) o se conserva
+     * intacta y se informa aparte (si tiene AVPC colgando — nunca se toca en ese caso).
+     *
+     * Ver el javadoc de la implementación para el detalle completo (qué SÍ recalcula, qué
+     * deliberadamente NO, y el límite conocido de la desactivación: ningún otro endpoint de este
+     * backend filtra por {@code estado} todavía).
+     *
+     * @param codigoCargaArchivo : ID de la carga (CRD.CRAR). La carga no puede estar en estado 3
+     *                             (ya procesada) — revalidar novedades de una carga ya aplicada
+     *                             no tiene efecto sobre lo que ya se pagó.
+     * @return : Map con {@code idCarga}, {@code participesRevisados}, {@code novedadesCreadas},
+     *           {@code novedadesActualizadas}, {@code novedadesDesactivadas},
+     *           {@code novedadesConservadasPorAvpc} (+ su {@code detalleConservadasPorAvpc}) y
+     *           {@code errores} (partícipes que fallaron individualmente, sin abortar el resto)
+     * @throws Throwable : Excepción en caso de error
+     */
+    Map<String, Object> revalidarCarga(Long codigoCargaArchivo) throws Throwable;
+
 }

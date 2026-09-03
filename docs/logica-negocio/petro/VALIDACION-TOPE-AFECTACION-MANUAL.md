@@ -761,3 +761,168 @@ poder revertir todo de forma limpia.
    tipo para esa fila (actualizada, no duplicada) — no dos.
 3. Una carga que aplica y cuadra sin generar ninguna de las seis novedades de la tabla de arriba no
    debe cambiar de comportamiento en absoluto.
+
+---
+
+## 16. Revalidar una carga ya cargada — "botón de reprocesar", 2026-09-03
+
+> *«Como el archivo ya estaba cargado cuando restauré la base, me imagino que no está incluyendo
+> los valores de HS. Por eso digo que debe existir un botón de reprocesar.»* — el usuario, mirando
+> a CABRERA.
+
+### El disparador
+
+La red del §11 funcionó por primera vez en la jornada: detectó una diferencia, no generó los
+asientos, y la carga no quedó procesada — el usuario no tuvo que restaurar la base. El HS huérfano
+(§13) también funcionó (NAVAS desapareció de la lista de novedades). Pero quedaron cuatro casos de
+"le falta repartir" (§14), y al mirar dos de esos partícipes de cerca aparecieron DOS defectos
+nuevos, los dos del mismo origen: **las novedades de la carga se generaron con el código de
+`ayer`, y sus montos quedaron congelados con la lógica de ese momento.**
+
+| Partícipe | Novedad | Tipo | montoRecibido guardado | Problema |
+|---|---|---|---|---|
+| SANCHEZ (rol 7508) | NVPC 44059 | 13, `MONTO_INCONSISTENTE` | 298,19 (= PH 282,77 + HS 15,42) | Ninguno — esta novedad SÍ incluye el HS |
+| CABRERA (rol 2581) | NVPC 44120 | 4, `CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE` | 323,41 (solo PH) | Le faltan sus $13,18 de HS — no están en ningún pozo |
+
+### Primer hallazgo: doble conteo del tipo 4 (ver §10, quinta vuelta)
+
+Verificado con los datos de CABRERA: el supuesto de que los 4 tipos ESTRUCTURALES "no tienen fila
+NVPC" era falso — SÍ la tienen (`almacenaRegistros`, Fase 1, la crea para cualquiera de los 4 que
+bloquee). El código de esta sesión que le daba al tipo 4 un pozo APARTE en `disponibleParaTope`
+sumaba esa misma fila dos veces (323,41 → 646,82). Corregido y documentado en el §10 — no se repite
+acá.
+
+### Segundo hallazgo: el HS nunca llega a la novedad estructural
+
+Con el doble conteo corregido, CABRERA seguía sin poder afectar sus $13,18 de HS: su novedad (tipo
+4, generada en Fase 1) usa `totalDescontado` de SOLO su fila PH — nunca busca el HS. Comparar con
+`validarNovedadesFase2` (Fase 2, para `MONTO_INCONSISTENTE` y otros tipos): esa SÍ busca el HS del
+mismo partícipe y lo suma antes de registrar su novedad — por eso la de SANCHEZ ya estaba bien.
+
+**Por qué Fase 1 no lo hace, y por qué no es un descuido:** Fase 1 corre PARTÍCIPE POR DETALLE,
+DENTRO del mismo bucle que INSERTA las filas PXCA. El HS del mismo partícipe puede no estar
+insertado todavía cuando le toca el turno a su PH — depende del orden en que vengan los
+`DetalleCargaArchivo`. Por esa razón existe Fase 2: corre DESPUÉS de que TODO esté insertado, momento
+en el que buscar el HS es seguro. Fase 1, estructuralmente, no puede garantizar lo mismo.
+
+**Por qué no se corrigió sumando el HS directamente en `disponibleParaTope`:** la pantalla de
+afectación lee el monto de la novedad DIRECTAMENTE de la fila NVPC (`montoRecibido ?? montoDiferencia
+?? montoEsperado ?? 0`, sin pasar por el backend). Si el pozo se corrigiera solo ahí, el operador
+vería un número (323,41) y el backend aceptaría otro (336,59) — la misma clase de contradicción que
+esta sesión entera viene cerrando, aunque el error caiga "del lado seguro" (el backend permite más de
+lo que se ve, no menos). **La corrección tiene que actualizar la fila NVPC misma.**
+
+### La solución: revalidar, no reprocesar
+
+`POST /rest/asgn/revalidarCarga/{idCargaArchivo}` — recorre los DTCA/PXCA que YA están en la base
+(nunca relee el `.txt`, nunca inserta) y recalcula las novedades con el código ACTUAL. **No aplica
+pagos, aportes ni asientos** — es de la misma familia que el prevuelo (§9/§14), no de
+`aplicarPagosArchivoPetro`.
+
+**Regla no negociable, decisión del árbitro:** el operador ya gestionó decenas de novedades —
+afectaciones AVPC cuelgan de `NVPCCDGO`. Revalidar **ACTUALIZA, nunca BORRA**. Toda escritura pasa
+por `registrarNovedad`, que desde este cambio es **idempotente**: busca si ya existe una novedad
+del mismo tipo para esa fila PXCA (activa o inactiva) y la actualiza (mismo código, mismos AVPC
+colgando) en vez de crear una segunda. Es el mismo patrón que ya usaba
+`RegistradorNovedadCargaPetroService` (§15) para lo mismo en otro contexto.
+
+### Qué recalcula, exactamente
+
+1. **El MONTO de una novedad ESTRUCTURAL (tipos 1-4) que ya existe** sobre una fila PH/PP: suma
+   el HS del mismo partícipe si corresponde (`montoConHsMergeado`). **No re-deriva si el tipo en
+   sí sigue siendo correcto** — esa identificación (¿coincide el nombre? ¿hay duplicados?) puede
+   mutar `Entidad.rolPetroComercial` como efecto de lado, y una revalidación de montos no debe
+   disparar eso de nuevo sin que alguien lo pida explícitamente.
+2. **Vuelve a correr `validarNovedadesFase2`/`validarAporteAH` tal cual existen hoy** — el mismo
+   código que corre en una carga nueva, sin una copia aparte.
+
+### El desempate del HS: PH antes que PP, nunca los dos — con visibilidad
+
+Decisión del árbitro: el HS es UN solo importe. Si un partícipe tuviera novedad candidata en PH Y
+en PP a la vez (no descartado por falta de datos, PH y PP parecen mutuamente excluyentes en la
+práctica pero no hay certeza), **se le asigna siempre a PH, nunca a los dos** — sumarlo dos veces
+sería inventar plata otra vez, el mismo defecto que el doble conteo del tipo 4.
+
+Pero un desempate silencioso sobre un supuesto no verificado es exactamente lo que después nadie
+puede reconstruir — así que si el caso alguna vez ocurre, `montoConHsMergeado` deja una línea de
+log EXPLÍCITA nombrando las dos filas y el monto en juego, para que sea revisable, no invisible.
+
+### "Ya no corresponde": el otro lado de revalidar
+
+Si una novedad de un tipo revalidable existía ANTES de la corrida y el código actual NO la
+reconfirma (el mismo mecanismo de re-ejecutar `validarNovedadesFase2`/`validarAporteAH` simplemente
+no la vuelve a generar):
+
+- **Si tiene AVPC colgando: se CONSERVA intacta, sin excepción.** Se informa aparte en el resumen
+  (`detalleConservadasPorAvpc`) para que quede visible que hay una novedad "vieja" con afectaciones
+  que ya no la respaldan del todo — decisión explícita del árbitro: perder afectaciones de una carga
+  con más de 75 novedades gestionadas sería mucho peor que dejar una novedad de más.
+- **Si NO tiene ninguna: se desactiva** (`estado = 0`). `disponibleParaTope` ya la ignora (filtro
+  agregado ahí mismo).
+
+**⚠️ Límite conocido, declarado a propósito:** ningún otro endpoint ni consumidor de
+`NovedadParticipeCarga` en este backend filtra por `estado` todavía (`selectByParticipe` lo deja sin
+filtrar, a propósito, para que la idempotencia pueda encontrar y reactivar una fila desactivada). Una
+novedad desactivada sigue siendo visible en cualquier listado que no pase por `disponibleParaTope`
+(p. ej. `GET /nvpc/getByCargaArchivo`), y el frontend Angular (fuera de este repositorio) puede no
+distinguirla tampoco. `estado=0` es un marcador honesto de "el código actual ya no la produce", no
+una garantía de que desaparece de la pantalla — eso requeriría tocar el frontend, fuera del alcance
+de este backend.
+
+**Exclusión deliberada — `MONTO_INCONSISTENTE` (el genérico, no `APORTE_MONTO_INCONSISTENTE`):**
+este código lo comparten TRES orígenes: `validarNovedadesFase2` (validación, acá), 
+`manejarExcedenteNoAplicado` (excedente del motor de pagos, en APLICACIÓN, §15) y
+`distribuirAportePorDevengo` (sobrante de aportes, también en APLICACIÓN, §12). Revalidar solo
+puede correr ANTES de aplicar (bloquea si `estado == 3`), pero una corrida de
+`aplicarPagosArchivoPetro` que revirtió por la red del §11 puede haber dejado novedades de
+APLICACIÓN ya persistidas (esa es la razón de ser del §15) en una carga que todavía no llegó a
+estado 3. Si `MONTO_INCONSISTENTE` entrara en el barrido de "¿ya no corresponde?", revalidar podría
+desactivar (o marcar para conservar) una novedad de aplicación que no tiene nada que ver con lo que
+Fase 2 está re-evaluando. Se prefiere no tocar `MONTO_INCONSISTENTE` en ninguna dirección (ni
+refrescarlo ni desactivarlo) antes que arriesgar pisar o esconder una novedad que vino de aplicar,
+no de validar. Consecuencia práctica: una novedad `MONTO_INCONSISTENTE` de Fase 2 sigue
+actualizándose con normalidad si `validarNovedadesFase2` la vuelve a confirmar (eso pasa por el
+`registrarNovedad` idempotente de siempre, sin pasar por el barrido de "ya no corresponde") — lo
+único que NO hace revalidarCarga es desactivarla si deja de aparecer.
+
+### Contrato del endpoint
+
+```
+POST /rest/asgn/revalidarCarga/{idCargaArchivo}
+```
+
+409 si la carga ya está en estado 3 (procesada) — revalidar novedades de una carga ya aplicada no
+tiene efecto sobre lo que ya se pagó.
+
+Respuesta:
+
+```json
+{
+  "idCarga": 449,
+  "participesRevisados": 812,
+  "novedadesCreadas": 0,
+  "novedadesActualizadas": 3,
+  "novedadesDesactivadas": 1,
+  "novedadesConservadasPorAvpc": 0,
+  "detalleConservadasPorAvpc": [],
+  "errores": []
+}
+```
+
+⚠️ **Contrato de frontend:** este endpoint es nuevo — el panel de carga necesita un botón que lo
+dispare (el "botón de reprocesar" que pidió el usuario) y, si `novedadesConservadasPorAvpc > 0`,
+mostrar `detalleConservadasPorAvpc` para que el operador sepa qué novedades quedaron "viejas" pero
+con afectaciones que no se tocaron.
+
+### Verificación
+
+1. Correr sobre la carga real: CABRERA debe pasar a tener su HS ($13,18) incluido en el
+   `montoRecibido` de su novedad tipo 4 (336,59 = 323,41 + 13,18), y su tope debe ofrecerle esa
+   plata para repartir.
+2. Correrlo una segunda vez sobre la misma carga sin cambiar nada más: mismo resultado, sin
+   duplicar ninguna novedad (`novedadesCreadas: 0` la segunda vez, si la primera ya las creó/
+   actualizó todas).
+3. Un partícipe con una afectación manual (AVPC) sobre una novedad que el código actual ya no
+   reproduce: la novedad debe seguir existiendo, intacta, y aparecer en `detalleConservadasPorAvpc`
+   — nunca desactivada.
+4. Una carga ya procesada (estado 3): el endpoint debe responder 409, no revalidar nada.

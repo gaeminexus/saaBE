@@ -546,6 +546,59 @@ public class AsoprepGenerales {
         }
     }
 
+    /**
+     * Revalida las novedades de una carga YA CARGADA con el código de validación ACTUAL —
+     * VALIDACION-TOPE-AFECTACION-MANUAL.md §16, pedido del usuario 2026-09-03: *"como el archivo
+     * ya estaba cargado cuando restauré la base, me imagino que no está incluyendo los valores
+     * de HS. Por eso digo que debe existir un botón de reprocesar."*
+     *
+     * NO relee el .txt ni inserta nada — recorre los DTCA/PXCA que ya están en la base y
+     * recalcula sus novedades. NO aplica pagos, aportes ni asientos (es validación pura, misma
+     * familia que {@code /prevueloAfectacion}, no {@code /aplicarPagosArchivoPetro}).
+     *
+     * <b>Actualiza, nunca borra:</b> ver el javadoc de
+     * {@link CargaArchivoPetroService#revalidarCarga} para el detalle completo (qué SÍ
+     * recalcula, qué deliberadamente no, y el límite conocido de la desactivación).
+     *
+     * @param idCargaArchivo ID de la carga (CRD.CRAR). 409 si la carga ya está en estado 3
+     *                       (procesada) — revalidar novedades de una carga ya aplicada no tiene
+     *                       efecto sobre lo ya pagado.
+     * @return {"idCarga", "participesRevisados", "novedadesCreadas", "novedadesActualizadas",
+     *          "novedadesDesactivadas", "novedadesConservadasPorAvpc",
+     *          "detalleConservadasPorAvpc", "errores"}
+     */
+    @POST
+    @Path("/revalidarCarga/{idCargaArchivo}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response revalidarCarga(@PathParam("idCargaArchivo") Long idCargaArchivo) {
+        System.out.println("========================================");
+        System.out.println("REST: REVALIDAR CARGA (§16) - Carga: " + idCargaArchivo);
+        System.out.println("========================================");
+
+        try {
+            if (idCargaArchivo == null) {
+                return Response.status(Status.BAD_REQUEST)
+                        .entity(new FileResponse(false, "El ID de carga archivo es requerido", null))
+                        .build();
+            }
+
+            Map<String, Object> resumen = cargaArchivoPetroService.revalidarCarga(idCargaArchivo);
+
+            return Response.ok().entity(resumen).build();
+
+        } catch (IncomeException e) {
+            return Response.status(Status.CONFLICT)
+                    .entity(new FileResponse(false, e.getMessage(), null))
+                    .build();
+        } catch (Throwable e) {
+            System.err.println("ERROR al revalidar la carga:");
+            e.printStackTrace();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(new FileResponse(false, "Error al revalidar la carga: " + e.getMessage(), null))
+                    .build();
+        }
+    }
+
     // =====================================================================================
     // Cobro de Petro en dos pasos (regla 11 de §5 de
     // LEVANTAMIENTO-ALIMENTACION-CONTABLE-CREDITOS.md). CONTRATO CONGELADO con el frontend:
