@@ -119,10 +119,6 @@ AND entre sí:
 {
   "totalFilas": 1093, "pagina": 0, "tamanio": 50,
   "totalValorFiltrado": 150939.84,
-  "resumenPorConcepto": [
-    { "concepto": "CAPITAL", "valor": 150939.84, "filas": 1093 },
-    { "concepto": "INTERES_MORA", "valor": 1284.42, "filas": 200 }
-  ],
   "filas": [
     {
       "id": 88123,
@@ -354,3 +350,19 @@ que recibieron de más arriba y en rojo; los de menos, después.
 
 ⛔ **No es una pantalla nueva ni un filtro más:** es la respuesta a «¿y ahora a quién miro?», que hoy
 sólo se puede contestar escribiendo SQL.
+
+---
+
+## `resumenPorConcepto` se elimina — 2026-09-03
+
+**Confirmado que nadie lo consume** (el agente FE lo verificó con un barrido completo de `crd/`: la
+vista Resumen usa exclusivamente `resumenJerarquico`). Sale de la respuesta.
+
+**Por qué no se deja «por las dudas»:** era la **suma de la página**, no un total, pese al nombre. Y
+convivía con `totalValorFiltrado` en el mismo objeto. **Dos totales que significan cosas distintas
+en la misma respuesta es una trampa**, y no es hipotética: el `totalValorFiltrado` calculado sobre la
+página ya produjo porcentajes de **505%** en la pantalla del usuario. Un campo con ese nombre y ese
+alcance vuelve a morder al primero que lo use sin leer el javadoc.
+
+Queda `resumenJerarquico`, que se calcula sobre el conjunto filtrado completo — y `totalValorFiltrado`
+ahora se deriva de él, así que **no pueden discrepar**.
