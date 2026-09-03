@@ -44,6 +44,19 @@ public interface ParticipeXCargaArchivoDaoService extends EntityDao<ParticipeXCa
 	List<ParticipeXCargaArchivo> selectByCodigoPetroEnCarga(Long codigoPetro, Long codigoCargaArchivo) throws Throwable;
 
 	/**
+	 * Descuento total por rol Petro (todos los productos) de una carga — agregado en la
+	 * consulta, no en Java, sobre potencialmente miles de filas PXCA.
+	 * API-AUDITORIA-BANDAS.md §4 ({@code GET /rest/dsbn/diferencia}), sql/184 bloque 1: la
+	 * misma "descontado" que ahí, base para comparar contra lo aplicado.
+	 *
+	 * @param codigoCargaArchivo : Código de la carga (CRD.CRAR)
+	 * @return                   : Filas {@code Object[]{Long codigoPetro, String nombre,
+	 *                             Double descontado}}; VACÍA si la carga no tiene participantes
+	 * @throws Throwable         : Excepcion
+	 */
+	List<Object[]> selectDescontadoPorRolEnCarga(Long codigoCargaArchivo) throws Throwable;
+
+	/**
 	 * Indica si existe alguna carga no anulada para el periodo indicado que
 	 * contenga el producto solicitado.
 	 *

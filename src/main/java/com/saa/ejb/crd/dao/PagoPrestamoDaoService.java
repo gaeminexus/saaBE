@@ -86,4 +86,18 @@ public interface PagoPrestamoDaoService extends EntityDao<PagoPrestamo> {
 	 */
 	long countByIdDetallePrestamo(Long codigoDetallePrestamo) throws Throwable;
 
+	/**
+	 * Aplicado a préstamos de una carga Petro, agregado POR ENTIDAD (partícipe), con el
+	 * desglose manual/automático por el que sale de la brecha — API-AUDITORIA-BANDAS.md §4
+	 * ({@code GET /rest/dsbn/diferencia}), sql/184 bloque 3. El desglose usa el prefijo
+	 * estable de {@code PGPROBSR} que dejó {@code e7b76c8}: {@code 'AFECTACION_MANUAL:%'} es
+	 * manual, cualquier otra cosa (incluido {@code null}) es automático.
+	 *
+	 * @param idCarga Código de la carga (CRD.CRAR)
+	 * @return Filas {@code Object[]{Long idEntidad, Double aplicadoManual, Double
+	 *         aplicadoAutomatico, Double aplicadoTotal}}; VACÍA si la carga no generó pagos
+	 * @throws Throwable Si ocurre algún error
+	 */
+	List<Object[]> selectAplicadoPorEntidadEnCarga(Long idCarga) throws Throwable;
+
 }

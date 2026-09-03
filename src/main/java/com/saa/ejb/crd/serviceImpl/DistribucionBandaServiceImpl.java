@@ -6,13 +6,18 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.crd.dao.AporteDaoService;
 import com.saa.ejb.crd.dao.CargaArchivoDaoService;
 import com.saa.ejb.crd.dao.DistribucionBandaDaoService;
+import com.saa.ejb.crd.dao.EntidadDaoService;
+import com.saa.ejb.crd.dao.ParticipeXCargaArchivoDaoService;
+import com.saa.ejb.crd.dao.PagoPrestamoDaoService;
 import com.saa.ejb.crd.service.ClasificadorBandaService;
 import com.saa.ejb.crd.service.ConfiguracionContabilidadService;
 import com.saa.ejb.crd.service.DistribucionBandaService;
@@ -21,9 +26,11 @@ import com.saa.ejb.crd.service.dto.BandaProductoDetalle;
 import com.saa.ejb.crd.service.dto.FiltroDetalleDistribucionBanda;
 import com.saa.ejb.crd.service.dto.FilaDistribucionBanda;
 import com.saa.ejb.crd.service.dto.OrigenDistribucionBandaResumen;
+import com.saa.ejb.crd.service.dto.DiferenciaParticipeDistribucionBanda;
 import com.saa.ejb.crd.service.dto.ResultadoClasificacionBanda;
 import com.saa.ejb.crd.service.dto.ResultadoCuadreDistribucionBanda;
 import com.saa.ejb.crd.service.dto.ResultadoDetalleDistribucionBanda;
+import com.saa.ejb.crd.service.dto.ResultadoDiferenciaDistribucionBanda;
 import com.saa.ejb.crd.service.dto.ResumenConceptoDistribucionBanda;
 import com.saa.ejb.crd.service.dto.ResumenJerarquicoConcepto;
 import com.saa.ejb.crd.service.dto.ResumenJerarquicoCuentaBanda;
@@ -97,6 +104,15 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
 
     @EJB
     private AporteDaoService aporteDaoService;
+
+    @EJB
+    private ParticipeXCargaArchivoDaoService participeXCargaArchivoDaoService;
+
+    @EJB
+    private EntidadDaoService entidadDaoService;
+
+    @EJB
+    private PagoPrestamoDaoService pagoPrestamoDaoService;
 
     @EJB
     private com.saa.ejb.cnt.dao.AsientoDaoService asientoDaoService;
@@ -429,6 +445,153 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
             resultado.setDescripcionOrigen(origen + " " + idOrigen);
         }
 
+        return resultado;
+    }
+
+    /**
+     * «¿De quién es la diferencia?» — API-AUDITORIA-BANDAS.md §4, sql/184. Todo agregado en la
+     * consulta (nunca fila por fila en Java sobre miles de PGPR/PXCA), y unido por ENTIDAD
+     * (ENTDCDGO), no por rol Petro — igual que sql/184: el rol solo sirve para mostrar, la
+     * identidad real de un partícipe es su Entidad.
+     */
+    @Override
+    public ResultadoDiferenciaDistribucionBanda obtenerDiferencia(String origen, Long idOrigen) throws Throwable {
+        System.out.println("DistribucionBandaService.obtenerDiferencia - " + origen + "/" + idOrigen);
+        validarOrigen(origen);
+        if (idOrigen == null) {
+            throw new IncomeException("idOrigen es obligatorio");
+        }
+        if (!DsbnOrigen.CARGA_PETRO.equals(origen)) {
+            throw new IncomeException("El detalle de diferencia por partícipe solo está disponible hoy"
+                + " para CARGA_PETRO: es el único origen con una fuente independiente de \"descontado\""
+                + " (CRD.PXCA) contra la cual comparar — mismo motivo por el que su cuadre es null para"
+                + " los demás orígenes.");
+        }
+
+        // --- Descontado, por rol Petro (PXCA, todos los productos) ---
+        List<Object[]> descontadoFilas = participeXCargaArchivoDaoService.selectDescontadoPorRolEnCarga(idOrigen);
+        Map<Long, Double> descontadoPorRol = new LinkedHashMap<>();
+        List<Long> codigosPetro = new ArrayList<>();
+        for (Object[] fila : descontadoFilas) {
+            Long codigoPetro = (Long) fila[0];
+            double descontado = ((Number) fila[2]).doubleValue();
+            descontadoPorRol.put(codigoPetro, descontado);
+            codigosPetro.add(codigoPetro);
+        }
+
+        // --- Aplicado, por ENTIDAD: préstamos (con desglose manual/automático) y aportes ---
+        List<Object[]> prestamosFilas = pagoPrestamoDaoService.selectAplicadoPorEntidadEnCarga(idOrigen);
+        List<Object[]> aportesFilas = aporteDaoService.selectAplicadoPorEntidadEnCarga(idOrigen);
+
+        // --- Entidades: primero las que tienen fila PXCA (por rol)... ---
+        Map<Long, Entidad> entidadPorId = new LinkedHashMap<>();
+        Map<Long, Long> entidadPorRolInverso = new LinkedHashMap<>();
+        for (Entidad entidad : entidadDaoService.selectByCodigosPetro(codigosPetro)) {
+            entidadPorId.put(entidad.getCodigo(), entidad);
+            if (entidad.getRolPetroComercial() != null) {
+                entidadPorRolInverso.put(entidad.getRolPetroComercial(), entidad.getCodigo());
+            }
+        }
+
+        // ...y las que aparecen en lo APLICADO pero NO tienen fila PXCA — exactamente el
+        // hallazgo que este endpoint tiene que poder señalar, no ocultar (§4: "si no coinciden,
+        // hay casos que este endpoint no está viendo, y eso es un hallazgo, no un redondeo").
+        Set<Long> idsAplicado = new LinkedHashSet<>();
+        for (Object[] fila : prestamosFilas) {
+            idsAplicado.add((Long) fila[0]);
+        }
+        for (Object[] fila : aportesFilas) {
+            idsAplicado.add((Long) fila[0]);
+        }
+        List<Long> idsFaltantes = new ArrayList<>();
+        for (Long idEntidad : idsAplicado) {
+            if (idEntidad != null && !entidadPorId.containsKey(idEntidad)) {
+                idsFaltantes.add(idEntidad);
+            }
+        }
+        if (!idsFaltantes.isEmpty()) {
+            for (Entidad entidad : entidadDaoService.selectByCodigos(idsFaltantes)) {
+                entidadPorId.put(entidad.getCodigo(), entidad);
+            }
+        }
+
+        // --- Descontado, re-indexado por ENTIDAD (la misma clave que prestamos/aportes) ---
+        Map<Long, Double> descontadoPorEntidad = new LinkedHashMap<>();
+        for (Map.Entry<Long, Double> entry : descontadoPorRol.entrySet()) {
+            Long idEntidad = entidadPorRolInverso.get(entry.getKey());
+            if (idEntidad == null) {
+                // Rol Petro sin Entidad resoluble — dato legacy, no bloquea el resto.
+                continue;
+            }
+            descontadoPorEntidad.merge(idEntidad, entry.getValue(), Double::sum);
+        }
+
+        Map<Long, Double> aplicadoManualPorEntidad = new LinkedHashMap<>();
+        Map<Long, Double> aplicadoAutomaticoPorEntidad = new LinkedHashMap<>();
+        Map<Long, Double> aplicadoPrestamosPorEntidad = new LinkedHashMap<>();
+        for (Object[] fila : prestamosFilas) {
+            Long idEntidad = (Long) fila[0];
+            aplicadoManualPorEntidad.put(idEntidad, ((Number) fila[1]).doubleValue());
+            aplicadoAutomaticoPorEntidad.put(idEntidad, ((Number) fila[2]).doubleValue());
+            aplicadoPrestamosPorEntidad.put(idEntidad, ((Number) fila[3]).doubleValue());
+        }
+        Map<Long, Double> aplicadoAportesPorEntidad = new LinkedHashMap<>();
+        for (Object[] fila : aportesFilas) {
+            aplicadoAportesPorEntidad.put((Long) fila[0], ((Number) fila[1]).doubleValue());
+        }
+
+        Set<Long> todasLasEntidades = new LinkedHashSet<>();
+        todasLasEntidades.addAll(descontadoPorEntidad.keySet());
+        todasLasEntidades.addAll(aplicadoPrestamosPorEntidad.keySet());
+        todasLasEntidades.addAll(aplicadoAportesPorEntidad.keySet());
+
+        List<DiferenciaParticipeDistribucionBanda> detalle = new ArrayList<>();
+        for (Long idEntidad : todasLasEntidades) {
+            double descontado = redondear(descontadoPorEntidad.getOrDefault(idEntidad, 0.0));
+            double aplicadoPrestamos = redondear(aplicadoPrestamosPorEntidad.getOrDefault(idEntidad, 0.0));
+            double aplicadoAportes = redondear(aplicadoAportesPorEntidad.getOrDefault(idEntidad, 0.0));
+            double aplicadoTotal = redondear(aplicadoPrestamos + aplicadoAportes);
+            double diferencia = redondear(aplicadoTotal - descontado);
+            if (Math.abs(diferencia) <= TOLERANCIA_CUADRE) {
+                continue;
+            }
+
+            Entidad entidad = entidadPorId.get(idEntidad);
+            DiferenciaParticipeDistribucionBanda item = new DiferenciaParticipeDistribucionBanda();
+            item.setCodigoPetro(entidad != null ? entidad.getRolPetroComercial() : null);
+            item.setCedula(entidad != null ? entidad.getNumeroIdentificacion() : null);
+            item.setParticipe(entidad != null ? entidad.getRazonSocial() : null);
+            item.setDescontado(descontado);
+            item.setAplicadoPrestamos(aplicadoPrestamos);
+            item.setAplicadoAportes(aplicadoAportes);
+            item.setAplicadoTotal(aplicadoTotal);
+            item.setDiferencia(diferencia);
+            item.setAplicadoManual(redondear(aplicadoManualPorEntidad.getOrDefault(idEntidad, 0.0)));
+            item.setAplicadoAutomatico(redondear(aplicadoAutomaticoPorEntidad.getOrDefault(idEntidad, 0.0)));
+            detalle.add(item);
+        }
+        detalle.sort((a, b) -> Double.compare(b.getDiferencia(), a.getDiferencia()));
+
+        double diferenciaTotal = 0.0;
+        int recibieronDeMas = 0;
+        int recibieronDeMenos = 0;
+        for (DiferenciaParticipeDistribucionBanda item : detalle) {
+            diferenciaTotal += item.getDiferencia();
+            if (item.getDiferencia() > 0) {
+                recibieronDeMas++;
+            } else {
+                recibieronDeMenos++;
+            }
+        }
+
+        ResultadoDiferenciaDistribucionBanda resultado = new ResultadoDiferenciaDistribucionBanda();
+        resultado.setOrigen(origen);
+        resultado.setIdOrigen(idOrigen);
+        resultado.setDiferenciaTotal(redondear(diferenciaTotal));
+        resultado.setParticipesConDiferencia(detalle.size());
+        resultado.setRecibieronDeMas(recibieronDeMas);
+        resultado.setRecibieronDeMenos(recibieronDeMenos);
+        resultado.setDetalle(detalle);
         return resultado;
     }
 

@@ -93,6 +93,24 @@ public class ParticipeXCargaArchivoDaoServiceImpl extends EntityDaoImpl<Particip
 	}
 
 	@Override
+	@SuppressWarnings("unchecked")
+	public List<Object[]> selectDescontadoPorRolEnCarga(Long codigoCargaArchivo) throws Throwable {
+		System.out.println("ParticipeXCargaArchivoDaoService.selectDescontadoPorRolEnCarga - carga "
+			+ codigoCargaArchivo);
+
+		Query query = em.createQuery(
+			"SELECT p.codigoPetro, MIN(p.nombre), SUM(p.totalDescontado) " +
+			"FROM ParticipeXCargaArchivo p " +
+			"WHERE p.detalleCargaArchivo.cargaArchivo.codigo = :codigoCargaArchivo " +
+			"AND p.codigoPetro IS NOT NULL " +
+			"GROUP BY p.codigoPetro"
+		);
+		query.setParameter("codigoCargaArchivo", codigoCargaArchivo);
+
+		return query.getResultList();
+	}
+
+	@Override
 	public boolean existeCargaConProductoEnPeriodo(String codigoProducto,
 			Long anioAfectacion, Long mesAfectacion) throws Throwable {
 		System.out.println("ParticipeXCargaArchivoDaoService.existeCargaConProductoEnPeriodo - producto: "

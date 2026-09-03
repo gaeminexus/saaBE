@@ -1036,4 +1036,26 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 		}
 	}
 
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<Object[]> selectAplicadoPorEntidadEnCarga(Long idCarga) throws Throwable {
+		System.out.println("AporteDaoServiceImpl.selectAplicadoPorEntidadEnCarga - Carga: " + idCarga);
+
+		try {
+			Query query = em.createQuery(
+				" select   a.entidad.codigo, sum(a.valor) " +
+				" from     Aporte a " +
+				" where    a.idAsoprep = :idCarga " +
+				" group by a.entidad.codigo "
+			);
+			query.setParameter("idCarga", idCarga);
+			return query.getResultList();
+
+		} catch (Exception e) {
+			System.err.println("Error en selectAplicadoPorEntidadEnCarga: " + e.getMessage());
+			e.printStackTrace();
+			return new java.util.ArrayList<>();
+		}
+	}
+
 }

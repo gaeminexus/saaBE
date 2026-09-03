@@ -164,6 +164,35 @@ public class PagoPrestamoDaoServiceImpl extends EntityDaoImpl<PagoPrestamo> impl
 	}
 
 	@Override
+	@SuppressWarnings("unchecked")
+	public List<Object[]> selectAplicadoPorEntidadEnCarga(Long idCarga) throws Throwable {
+		System.out.println("PagoPrestamoDaoService.selectAplicadoPorEntidadEnCarga - Carga: " + idCarga);
+
+		try {
+			// Prefijo estable de e7b76c8: 'AFECTACION_MANUAL:%' es la ruta manual, cualquier
+			// otra cosa (incluido observacion null) es la ruta automática.
+			Query query = em.createQuery(
+				"SELECT pr.entidad.codigo, " +
+				"       SUM(CASE WHEN p.observacion LIKE 'AFECTACION_MANUAL:%' THEN p.valor ELSE 0.0 END), " +
+				"       SUM(CASE WHEN p.observacion NOT LIKE 'AFECTACION_MANUAL:%' OR p.observacion IS NULL THEN p.valor ELSE 0.0 END), " +
+				"       SUM(p.valor) " +
+				"FROM PagoPrestamo p JOIN p.prestamo pr " +
+				"WHERE p.cargaArchivo.codigo = :idCarga " +
+				"AND (p.anulado IS NULL OR p.anulado = 0) " +
+				"GROUP BY pr.entidad.codigo"
+			);
+			query.setParameter("idCarga", idCarga);
+
+			return query.getResultList();
+
+		} catch (Exception e) {
+			System.err.println("ERROR en selectAplicadoPorEntidadEnCarga: " + e.getMessage());
+			e.printStackTrace();
+			return new ArrayList<>();
+		}
+	}
+
+	@Override
 	public long countByIdDetallePrestamo(Long codigoDetallePrestamo) throws Throwable {
 		System.out.println("PagoPrestamoDaoService.countByIdDetallePrestamo - DetallePrestamo: " + codigoDetallePrestamo);
 

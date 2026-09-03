@@ -9,6 +9,7 @@ import com.saa.ejb.crd.service.dto.OrigenDistribucionBandaResumen;
 import com.saa.ejb.crd.service.dto.ResultadoClasificacionBanda;
 import com.saa.ejb.crd.service.dto.ResultadoCuadreDistribucionBanda;
 import com.saa.ejb.crd.service.dto.ResultadoDetalleDistribucionBanda;
+import com.saa.ejb.crd.service.dto.ResultadoDiferenciaDistribucionBanda;
 import com.saa.model.crd.PagoPrestamo;
 
 import jakarta.ejb.Local;
@@ -103,6 +104,21 @@ public interface DistribucionBandaService {
      *                    no es uno de {@link com.saa.rubros.DsbnOrigen}
      */
     ResultadoCuadreDistribucionBanda obtenerCuadre(String origen, Long idOrigen) throws Throwable;
+
+    /**
+     * «¿De quién es la diferencia?» — {@code GET /rest/dsbn/diferencia}, API-AUDITORIA-BANDAS.md
+     * §4. El cuadre ya dice QUE hay diferencia; esto dice DE QUIÉN, por partícipe: descontado
+     * vs. aplicado (préstamos + aportes), con el desglose manual/automático que dice POR DÓNDE
+     * entró (usando el prefijo estable de {@code PGPROBSR}, commit {@code e7b76c8}).
+     *
+     * <b>Solo {@code CARGA_PETRO}</b>: es el único origen con una fuente independiente de
+     * "descontado" (CRD.PXCA) contra la cual comparar — mismo motivo por el que su cuadre es
+     * {@code null} para los demás orígenes.
+     *
+     * @throws Throwable {@code IncomeException} si {@code origen} no es {@code CARGA_PETRO}, si
+     *                    falta {@code idOrigen}, o si {@code origen} no es válido
+     */
+    ResultadoDiferenciaDistribucionBanda obtenerDiferencia(String origen, Long idOrigen) throws Throwable;
 
     /**
      * El detalle filtrable y paginado — {@code POST /rest/dsbn/detalle}. Un origen sin filas

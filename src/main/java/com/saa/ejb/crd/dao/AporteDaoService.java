@@ -466,4 +466,17 @@ public interface AporteDaoService extends EntityDao<Aporte>{
 	 */
 	List<Aporte> selectByCarga(Long idCarga) throws Throwable;
 
+	/**
+	 * Aportes de una carga Petro, agregados POR ENTIDAD (partícipe) — API-AUDITORIA-BANDAS.md
+	 * §4 ({@code GET /rest/dsbn/diferencia}), sql/184 bloque 1 ({@code APLICADO_APORTES}).
+	 * Mismo criterio de filtro que {@link #selectByCarga}/{@link #sumValorPorTipoAporteByCarga}
+	 * ({@code idAsoprep}).
+	 *
+	 * @param idCarga Código de la carga (CRD.CRAR)
+	 * @return Filas {@code Object[]{Long idEntidad, Double sumaValor}}; VACÍA si la carga no
+	 *         generó aportes
+	 * @throws Throwable Si ocurre algún error
+	 */
+	List<Object[]> selectAplicadoPorEntidadEnCarga(Long idCarga) throws Throwable;
+
 }

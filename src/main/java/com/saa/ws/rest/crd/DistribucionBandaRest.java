@@ -9,6 +9,7 @@ import com.saa.ejb.crd.service.dto.FiltroDetalleDistribucionBanda;
 import com.saa.ejb.crd.service.dto.OrigenDistribucionBandaResumen;
 import com.saa.ejb.crd.service.dto.ResultadoCuadreDistribucionBanda;
 import com.saa.ejb.crd.service.dto.ResultadoDetalleDistribucionBanda;
+import com.saa.ejb.crd.service.dto.ResultadoDiferenciaDistribucionBanda;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;
@@ -47,6 +48,28 @@ public class DistribucionBandaRest {
         }
         try {
             ResultadoCuadreDistribucionBanda resultado = distribucionBandaService.obtenerCuadre(origen, idOrigen);
+            return Response.status(Response.Status.OK)
+                    .entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return respuestaError(e);
+        }
+    }
+
+    /**
+     * «¿De quién es la diferencia?» — API-AUDITORIA-BANDAS.md §4. El cuadre dice QUE hay
+     * diferencia; esto dice DE QUIÉN. Botón en pantalla, visible solo cuando {@code cuadra === false}.
+     */
+    @GET
+    @Path("/diferencia")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response diferencia(@QueryParam("origen") String origen, @QueryParam("idOrigen") Long idOrigen) {
+        System.out.println("LLEGA AL SERVICIO DIFERENCIA DISTRIBUCION BANDAS - " + origen + "/" + idOrigen);
+        if (origen == null || idOrigen == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe indicar origen e idOrigen", null);
+        }
+        try {
+            ResultadoDiferenciaDistribucionBanda resultado = distribucionBandaService.obtenerDiferencia(origen, idOrigen);
             return Response.status(Response.Status.OK)
                     .entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {

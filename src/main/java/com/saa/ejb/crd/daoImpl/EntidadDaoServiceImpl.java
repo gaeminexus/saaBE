@@ -96,6 +96,44 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 
 	@SuppressWarnings("unchecked")
 	@Override
+	public List<Entidad> selectByCodigosPetro(java.util.List<Long> codigosPetro) throws Throwable {
+		if (codigosPetro == null || codigosPetro.isEmpty()) {
+			return new java.util.ArrayList<>();
+		}
+		try {
+			Query query = em.createQuery(" select b " +
+										 " from   Entidad b" +
+										 " where  b.rolPetroComercial in :codigosPetro");
+			query.setParameter("codigosPetro", codigosPetro);
+			return query.getResultList();
+		} catch (Exception e) {
+			System.err.println("Error al buscar entidades por códigos Petro: " + e.getMessage());
+			e.printStackTrace();
+			return new java.util.ArrayList<>();
+		}
+	}
+
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<Entidad> selectByCodigos(java.util.List<Long> codigosEntidad) throws Throwable {
+		if (codigosEntidad == null || codigosEntidad.isEmpty()) {
+			return new java.util.ArrayList<>();
+		}
+		try {
+			Query query = em.createQuery(" select b " +
+										 " from   Entidad b" +
+										 " where  b.codigo in :codigosEntidad");
+			query.setParameter("codigosEntidad", codigosEntidad);
+			return query.getResultList();
+		} catch (Exception e) {
+			System.err.println("Error al buscar entidades por códigos: " + e.getMessage());
+			e.printStackTrace();
+			return new java.util.ArrayList<>();
+		}
+	}
+
+	@SuppressWarnings("unchecked")
+	@Override
 	public List<BigDecimal> selectCoincidenciasByNombre(String nombre) throws Throwable {
 		System.out.println("Ingresa al metodo selectCoincidenciasByNombre de asiento con empresa: " + nombre);
 		Double sensibilidad = detalleRubroDaoService.selectValorNumericoByRubAltDetAlt(

@@ -18,7 +18,32 @@ public interface EntidadDaoService extends EntityDao<Entidad> {
 	 * @throws Throwable: Excepción en caso de error.
 	 */
 	List<Entidad> selectByCodigoPetro(Long codigoPetro) throws Throwable;
-	
+
+	/**
+	 * Igual que {@link #selectByCodigoPetro} pero para VARIOS rol Petro en una sola consulta
+	 * — API-AUDITORIA-BANDAS.md §4 ({@code GET /rest/dsbn/diferencia}): resolver la entidad de
+	 * cada partícipe de una carga uno por uno sería la misma tormenta de consultas que ya
+	 * mordió tres veces hoy (vigencias, G48, bandas de Petro). Un puñado a miles de
+	 * participantes se resuelve en UNA consulta con {@code IN}.
+	 *
+	 * @param codigosPetro : Roles Petro a buscar
+	 * @return             : Entidades encontradas; VACÍA si la lista es null/vacía o ninguna coincide
+	 * @throws Throwable   : Excepcion
+	 */
+	List<Entidad> selectByCodigosPetro(java.util.List<Long> codigosPetro) throws Throwable;
+
+	/**
+	 * Entidades por su PK (ENTDCDGO), varias en una sola consulta — mismo motivo que
+	 * {@link #selectByCodigosPetro}: API-AUDITORIA-BANDAS.md §4 necesita resolver rol/cédula
+	 * de entidades que aparecen en préstamos/aportes aplicados pero que NO tienen fila PXCA
+	 * (exactamente el caso que el endpoint tiene que poder señalar, no ocultar).
+	 *
+	 * @param codigosEntidad : Códigos de Entidad (ENTDCDGO) a buscar
+	 * @return               : Entidades encontradas; VACÍA si la lista es null/vacía
+	 * @throws Throwable     : Excepcion
+	 */
+	List<Entidad> selectByCodigos(java.util.List<Long> codigosEntidad) throws Throwable;
+
 	/**
 	 * Selecciona las coincidencias de ParticipeXCargaArchivo por nombre.
 	 * @param nombre: Nombre a buscar.
