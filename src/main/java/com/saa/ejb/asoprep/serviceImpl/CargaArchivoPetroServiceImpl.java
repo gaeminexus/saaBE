@@ -131,7 +131,16 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 
     @EJB
     private com.saa.ejb.crd.dao.AporteDaoService aporteDaoService;
-    
+
+    // VALIDACION-TOPE-AFECTACION-MANUAL.md §15: registra en transacción PROPIA las novedades
+    // generadas DURANTE aplicarPagosArchivoPetro (§12 sobrante de aportes, §13 HS huérfano,
+    // excedente no aplicado del motor) — si se registraran con registrarNovedad (transacción
+    // única de todo el proceso) y esta transacción revierte más adelante (p.ej. la red del
+    // §11), la novedad que debía guiar al operador desaparece con el rollback. Ver el javadoc
+    // de la interfaz para por qué esto NO puede ser un método REQUIRES_NEW de esta misma clase.
+    @EJB
+    private com.saa.ejb.asoprep.service.RegistradorNovedadCargaPetroService registradorNovedadTransaccionPropia;
+
     @EJB
     private com.saa.ejb.crd.service.PagoAporteService pagoAporteService;
     
@@ -3015,7 +3024,9 @@ private boolean procesarSeguroIncendioHuerfano(ParticipeXCargaArchivo participeH
 
 	List<Entidad> entidades = entidadDaoService.selectByCodigoPetro(participeHS.getCodigoPetro());
 	if (entidades == null || entidades.isEmpty()) {
-		registrarNovedad(participeHS, ASPNovedadesCargaArchivo.PRESTAMO_NO_ENCONTRADO,
+		// §15: transacción PROPIA — esta novedad debe sobrevivir aunque la red del §11 revierta
+		// aplicarPagosArchivoPetro más adelante.
+		registradorNovedadTransaccionPropia.registrarEnTransaccionPropia(participeHS, ASPNovedadesCargaArchivo.PRESTAMO_NO_ENCONTRADO,
 			"HS huérfano (sin PH/PP en esta carga): no se encontró entidad con código Petro "
 				+ participeHS.getCodigoPetro() + " para determinar a qué préstamo aplicar el seguro de $"
 				+ montoHS + ".",
@@ -3060,7 +3071,8 @@ private boolean procesarSeguroIncendioHuerfano(ParticipeXCargaArchivo participeH
 			+ " incendio, pero " + detalleCandidatos + ". Requiere distribución manual (AVPC).";
 		System.err.println("⛔ NOVEDAD BLOQUEANTE (HS huérfano): partícipe " + participeHS.getCodigoPetro()
 			+ " (" + participeHS.getNombre() + ") - " + descripcion);
-		registrarNovedad(participeHS, ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE, descripcion,
+		// §15: transacción PROPIA — ver comentario del otro registrarNovedad de este método.
+		registradorNovedadTransaccionPropia.registrarEnTransaccionPropia(participeHS, ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE, descripcion,
 			null, null, null, Double.valueOf(montoHS));
 		return true;
 	}
@@ -3224,7 +3236,10 @@ private void manejarExcedenteNoAplicado(ResultadoAplicacionPago resultado, Prest
 		"Excedente sin aplicar tras el pago en cascada del préstamo %d: recibido $%.2f, aplicado $%.2f, "
 		+ "sobran $%.2f sin cuota pendiente donde aplicarlos - requiere distribución manual (AVPC)",
 		prestamo.getCodigo(), resultado.getValorRecibido(), resultado.getValorAplicado(), excedente);
-	registrarNovedad(participe, ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE, descripcion,
+	// §15: transacción PROPIA — este excedente se detecta y registra DENTRO de
+	// aplicarPagosArchivoPetro; si la red del §11 revierte después, no puede llevarse esta
+	// novedad con ella.
+	registradorNovedadTransaccionPropia.registrarEnTransaccionPropia(participe, ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE, descripcion,
 		null, prestamo.getCodigo(), resultado.getValorAplicado(), resultado.getValorRecibido());
 }
 
@@ -4464,7 +4479,8 @@ private int aplicarAporteAH(ParticipeXCargaArchivo participe, CargaArchivo carga
 		// novedad YA está en FamiliaNovedadCarga.TIPOS_QUE_EXIGEN_AFECTACION — solo faltaba que esta
 		// ruta (Fase 2, con dinero real) la generara además de la validación de carga
 		// (validarAporteAH, Fase 1) que ya la registra sin datos de monto.
-		registrarNovedad(participe, ASPNovedadesCargaArchivo.HISTORIAL_SUELDO_NO_ENCONTRADO,
+		// §15: transacción PROPIA — generada DURANTE aplicarPagosArchivoPetro (vía aplicarAporteAH).
+		registradorNovedadTransaccionPropia.registrarEnTransaccionPropia(participe, ASPNovedadesCargaArchivo.HISTORIAL_SUELDO_NO_ENCONTRADO,
 			"No se encontró HistorialSueldo activo (estado 99) para la entidad " + entidad.getCodigo()
 				+ "; no se pudo determinar a qué tipo de aporte aplicar los $" + montoRecibido
 				+ " recibidos. Requiere decisión en pantalla (jubilación o cesantía).",
@@ -4493,7 +4509,8 @@ private int aplicarAporteAH(ParticipeXCargaArchivo participe, CargaArchivo carga
 
 	if (!tieneJubilacion && !tieneCesantia) {
 		// Mismo criterio que arriba: se sabe quién es, falta decidir la cuenta -> NOVEDAD.
-		registrarNovedad(participe, ASPNovedadesCargaArchivo.VALORES_HISTORIAL_NULOS,
+		// §15: transacción PROPIA — mismo motivo que la de arriba.
+		registradorNovedadTransaccionPropia.registrarEnTransaccionPropia(participe, ASPNovedadesCargaArchivo.VALORES_HISTORIAL_NULOS,
 			"El HistorialSueldo activo (código " + historialActivo.getCodigo()
 				+ ") tiene jubilación y cesantía esperadas en $0, pero se recibieron $" + montoRecibido
 				+ ". Requiere decisión en pantalla (jubilación o cesantía).",
@@ -4688,11 +4705,14 @@ private int distribuirAportePorDevengo(Entidad entidad, double montoRecibido,
 		// dentro del tope — con null, FamiliaNovedadCarga.clasificar da BLOQUEANTE igual
 		// (montoDiferencia null cuenta como "sobra, o no hay dato para decir lo contrario").
 		//
-		// No hace falta comprobar si esta fila ya tiene otra novedad bloqueante para no
-		// duplicar: dos novedades bloqueantes sobre el MISMO (producto, préstamo) — acá,
-		// codigoProducto/codigoPrestamo null los dos, como el resto de las novedades de
-		// aportes de este archivo — ya se resuelven por el MÁXIMO en disponibleParaTope, nunca
-		// por la suma.
+		// ⚠️ CORREGIDO 2026-09-03 (§10, cuarta vuelta + §15): el comentario que estuvo acá decía
+		// que no hacía falta cuidar duplicados porque disponibleParaTope resolvía por el MÁXIMO
+		// — eso YA NO es cierto, §10 ahora SUMA (con dedup solo si codigoPrestamo es NO NULO, y
+		// acá es null). Dos novedades de este tipo para esta fila SÍ duplicarían el pozo. La
+		// protección real hoy es OTRA: este registro se hace vía
+		// registradorNovedadTransaccionPropia (§15), que es IDEMPOTENTE — si esta fila ya tiene
+		// una novedad de este tipo (p.ej. de un intento anterior que revirtió más adelante en la
+		// red del §11), la ACTUALIZA en vez de crear una segunda.
 		String descripcion = "Contrato activo (código " + contratoActivo.getCodigo()
 			+ ") pero su vigencia no cubre uno o más de los " + TOPE_MESES_DEVENGO
 			+ " meses evaluados (sin vigencia vigente, o vigencia con monto $0): quedaron $"
@@ -4702,7 +4722,10 @@ private int distribuirAportePorDevengo(Entidad entidad, double montoRecibido,
 			+ TOPE_MESES_DEVENGO + " meses sin poder aplicar todo el monto. Entidad " + entidad.getCodigo()
 			+ " (" + participe.getCodigoPetro() + " - " + participe.getNombre() + ") - Carga "
 			+ cargaArchivo.getCodigo() + " - Sobrante: $" + disponible + " - " + descripcion);
-		registrarNovedad(participe, ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE, descripcion,
+		// §15: transacción PROPIA — el defecto que lo motivó: esta novedad se generaba y la
+		// transacción de aplicarPagosArchivoPetro se la llevaba puesta si la red del §11 revertía
+		// después, dejando al operador sin dónde actuar.
+		registradorNovedadTransaccionPropia.registrarEnTransaccionPropia(participe, ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE, descripcion,
 			null, null, null, Double.valueOf(disponible));
 		novedadesGeneradasCargaActual.add("Partícipe " + participe.getCodigoPetro() + " ("
 			+ participe.getNombre() + "): $" + disponible + " sin aplicar — contrato activo (código "

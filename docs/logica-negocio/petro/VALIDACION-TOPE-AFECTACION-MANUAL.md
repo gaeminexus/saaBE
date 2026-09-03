@@ -652,3 +652,96 @@ procesar.
    lista — su pozo lo resuelve el automático.
 3. `validarTopeAfectacionManualPorParticipe` (la que bloquea) sigue sin ver los faltantes — un
    partícipe con faltante pero sin exceso debe dejar procesar la carga sin problema.
+
+---
+
+## 15. Las novedades generadas DURANTE la aplicación morían con el rollback — 2026-09-03
+
+**El mecanismo completo del §12 (y de otras novedades generadas en el mismo momento) era, hasta
+esta corrección, inalcanzable.**
+
+### El defecto
+
+`aplicarPagosArchivoPetro` es `@TransactionAttribute(REQUIRED)` sobre una clase `@Stateful` — todo
+el proceso corre en UNA sola transacción, desde que arranca hasta que termina (éxito) o hasta que
+algo lanza (rollback completo). El sobrante de aportes del §12 registra una novedad BLOQUEANTE para
+que el operador pueda repartirlo manualmente. Pero el proceso sigue después de registrarla, llega a
+la red del §11 (recibido == aplicado), y si no cuadra, lanza — y la transacción entera revierte,
+**llevándose la novedad que acababa de registrar**. El usuario ve el mensaje de error de la red del
+§11 y no tiene dónde actuar: la novedad que debía guiarlo nunca llegó a persistir.
+
+El usuario lo intuyó desde afuera de la implementación, preguntando si hacía falta un proceso de
+revalidación que reevaluara el archivo. No hacía falta revalidar — hacía falta que esas novedades
+sobrevivieran al rollback.
+
+### Dónde más aparece (no es solo el §12)
+
+Se revisó todo el árbol de llamadas de `aplicarPagosArchivoPetro` buscando otros registros de
+novedad hechos DURANTE la aplicación (no durante la Fase 1/2 de `procesarArchivoPetro`, que es una
+transacción de nivel superior distinta y ya committeada para cuando arranca la aplicación — esas
+están a salvo). Aparecieron, además del §12, otros cinco puntos con el mismo defecto exacto:
+
+| # | Método | Novedad | Motivo |
+|---|---|---|---|
+| 1 | `procesarSeguroIncendioHuerfano` (§13) | `PRESTAMO_NO_ENCONTRADO` | HS huérfano sin Entidad |
+| 2 | `procesarSeguroIncendioHuerfano` (§13) | `MONTO_INCONSISTENTE` | HS huérfano sin destino inequívoco |
+| 3 | `manejarExcedenteNoAplicado` | `MONTO_INCONSISTENTE` | Excedente que el motor de pagos no pudo aplicar (pago normal Y afectación manual) |
+| 4 | `aplicarAporteAH` | `HISTORIAL_SUELDO_NO_ENCONTRADO` | Sin HistorialSueldo activo, con dinero real |
+| 5 | `aplicarAporteAH` | `VALORES_HISTORIAL_NULOS` | Jubilación y cesantía esperadas en $0 |
+| 6 | `distribuirAportePorDevengo` (§12) | `MONTO_INCONSISTENTE` | Sobrante de aportes sin vigencia donde caer |
+
+Los seis se corrigieron igual: mismo mecanismo, misma vez.
+
+### Por qué no alcanza con anotar el método existente
+
+La corrección obvia — poner `@TransactionAttribute(REQUIRES_NEW)` en el `registrarNovedad` que ya
+existe — **no funciona**. Es una llamada de la clase a sí misma (self-invocation): la demarcación
+transaccional de EJB se aplica en el proxy que envuelve al bean, y una llamada interna (sea a un
+método privado o a uno público de la propia clase) nunca pasa por ese proxy — la anotación se
+ignora en silencio. Y forzarlo a pasar por el proxy en un `@Stateful` (vía
+`SessionContext#getBusinessObject(...)`) sería una llamada "loopback" — el bean reentrando sobre sí
+mismo —, que el contenedor EJB puede rechazar.
+
+**La solución:** un bean `@Stateless` DISTINTO —
+`com.saa.ejb.asoprep.serviceImpl.RegistradorNovedadCargaPetroServiceImpl`, invocado vía `@EJB`
+desde `CargaArchivoPetroServiceImpl` —, con su único método anotado
+`@TransactionAttribute(REQUIRES_NEW)`. Una llamada a OTRO bean sí pasa por su propio proxy y abre
+su propia transacción, independiente de la del llamador. No es una idea nueva en este repositorio:
+es el mismo patrón que ya usa `com.saa.ejb.cxp.serviceImpl.MarcadoErrorDocumentoServiceImpl`
+("marcado de error en transacción propia") para el mismo problema exacto en otro módulo.
+
+### Por qué tiene que ser idempotente
+
+Si esta corrección solo moviera la escritura a su propia transacción, aparecería un defecto NUEVO:
+la novedad ahora sobrevive aunque la transacción principal revierta después — así que si el
+operador vuelve a correr `aplicarPagosArchivoPetro`, el mismo evento (misma fila PXCA, mismo tipo
+de novedad) se vuelve a generar, y si eso insertara una SEGUNDA fila `NovedadParticipeCarga`, el
+partícipe terminaría con dos novedades para el mismo hecho. Con la regla del §10 (cuarta vuelta)
+SUMANDO pozos sin clave de dedup para `codigoPrestamo == null` (que es el caso de la mayoría de
+estas seis, incluida la del §12), esa duplicación **duplicaría el pozo** — reintroduciría el
+defecto de SANCHEZ por otra puerta, con otra causa.
+
+Por eso `RegistradorNovedadCargaPetroServiceImpl` es IDEMPOTENTE: antes de insertar, busca si la
+fila PXCA ya tiene una `NovedadParticipeCarga` del mismo `tipoNovedad` — si existe, la ACTUALIZA
+(descripción, montos, diferencia) en vez de crear una segunda. La clave de idempotencia es
+`(codigo de la fila PXCA, tipoNovedad)` — no hace falta agregar la carga a la clave porque la fila
+PXCA ya pertenece a una carga específica.
+
+### Alcance de la corrección — a propósito, nada más que esto
+
+`REQUIRES_NEW` se aplicó SOLO al método que escribe la novedad, en un bean aparte. El resto de
+`aplicarPagosArchivoPetro` sigue siendo una única transacción `REQUIRED`: los pagos, aportes y
+asientos de una carga siguen viviendo o muriendo juntos. Ampliar `REQUIRES_NEW` a cualquier otra
+parte del proceso partiría esa atomicidad, que es exactamente lo que la red del §11 necesita para
+poder revertir todo de forma limpia.
+
+### Verificación
+
+1. Provocar un sobrante de aportes (§12) en una carga que además vaya a fallar la red del §11 (un
+   descuadre real): la novedad `MONTO_INCONSISTENTE` del sobrante debe seguir existiendo en BD
+   DESPUÉS de que el mensaje de error de la red del §11 llegue al usuario — antes de esta
+   corrección, desaparecía.
+2. Reprocesar esa misma carga sin corregir nada más: debe seguir habiendo UNA sola novedad de ese
+   tipo para esa fila (actualizada, no duplicada) — no dos.
+3. Una carga que aplica y cuadra sin generar ninguna de las seis novedades de la tabla de arriba no
+   debe cambiar de comportamiento en absoluto.
