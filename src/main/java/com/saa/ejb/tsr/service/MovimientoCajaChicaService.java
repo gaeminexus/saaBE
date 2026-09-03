@@ -37,12 +37,20 @@ public interface MovimientoCajaChicaService extends EntityService<MovimientoCaja
 	 * y se crea la {@code AplicacionPagoCxp} correspondiente (tipo CAJA_CHICA).
 	 * Exactamente uno de los dos debe venir informado; ninguno de los dos deja
 	 * el comportamiento original sin cambios.
+	 * <p>
+	 * Con documento {@code idProducto} deja de exigirse (ítem 28): la
+	 * contabilidad de ese camino va contra la cuenta del proveedor, no contra
+	 * el grupo del producto. Se deriva de las líneas del documento cuando todas
+	 * coinciden en un mismo producto; si hay más de uno distinto, o el
+	 * documento no clasifica sus líneas por producto, queda en null — no se
+	 * elige ninguno a ciegas.
 	 * @param idCaja               : Id de la caja chica
 	 * @param fecha                : Fecha del gasto
 	 * @param valor                : Valor del gasto (mayor a cero)
 	 * @param descripcion          : Concepto del gasto
 	 * @param observacion          : Observación (obligatoria)
-	 * @param idProducto           : Id del producto CXP que clasifica el gasto (obligatorio)
+	 * @param idProducto           : Id del producto CXP que clasifica el gasto (obligatorio
+	 *                               sin documento; ignorado con documento, ver arriba)
 	 * @param idTitular            : Id del beneficiario/proveedor (obligatorio si paga un documento)
 	 * @param numeroDocumento      : Número del comprobante pagado (opcional, texto libre)
 	 * @param idUsuario            : Id del usuario que registra

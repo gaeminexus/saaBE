@@ -156,7 +156,15 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 		if (descripcion == null || descripcion.trim().isEmpty()) {
 			throw new IncomeException("Debe indicar el concepto del gasto.");
 		}
-		ProductoPago producto = validaProducto(idProducto);
+		// Con documento el producto ya no lo elige el usuario (ítem 28): la
+		// contabilidad de ese camino va contra la cuenta del proveedor, no contra
+		// el grupo del producto, así que validaProducto (que exige grupo con
+		// cuenta configurada) no aplica. Se deriva de las líneas del documento
+		// cuando es inequívoco; sin documento sigue siendo obligatorio, porque de
+		// ahí sale la cuenta contable del gasto suelto.
+		ProductoPago producto = pagaDocumento
+				? derivaProductoDocumento(idFacturaCompra, idLiquidacionCompra)
+				: validaProducto(idProducto);
 
 		double saldoActual = ((Number) cajaChicaService.saldo(idCaja).get("saldo")).doubleValue();
 		if (valor > saldoActual + TOLERANCIA) {
@@ -291,6 +299,41 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 					+ "' no tiene cuenta contable configurada (Contabilidad → Grupos de Producto).");
 		}
 		return producto;
+	}
+
+	/**
+	 * Deriva "el" producto de clasificación del documento que paga el gasto,
+	 * cuando sea inequívoco (ítem 28: con documento el usuario ya no lo elige).
+	 * El producto real vive en las líneas del documento, que puede tener varias
+	 * con productos distintos — ahí no hay "el" producto, y no se elige ninguno
+	 * a ciegas (ni la primera línea ni la de mayor monto): inventar un dato
+	 * plausible es peor que dejarlo vacío. Sólo informativo — la contabilidad
+	 * de este camino va contra la cuenta del proveedor, no la del producto.
+	 * @param idFacturaCompra     : Id de la factura, o null si es liquidación
+	 * @param idLiquidacionCompra : Id de la liquidación, o null si es factura
+	 * @return                    : El producto único de las líneas del documento, o null
+	 * @throws Throwable          : Excepcion
+	 */
+	private ProductoPago derivaProductoDocumento(Long idFacturaCompra, Long idLiquidacionCompra) throws Throwable {
+		if (idFacturaCompra != null) {
+			@SuppressWarnings("unchecked")
+			List<Long> productos = em.createQuery(
+					"select distinct d.producto from DetalleFacturaCompra d "
+					+ "where d.factura.id = :id and d.producto is not null")
+					.setParameter("id", idFacturaCompra)
+					.getResultList();
+			return (productos.size() == 1) ? em.find(ProductoPago.class, productos.get(0)) : null;
+		}
+		if (idLiquidacionCompra != null) {
+			@SuppressWarnings("unchecked")
+			List<ProductoPago> productos = em.createQuery(
+					"select distinct d.producto from DetalleLiquidacionCompraCompra d "
+					+ "where d.liquidacion.id = :id and d.producto is not null")
+					.setParameter("id", idLiquidacionCompra)
+					.getResultList();
+			return (productos.size() == 1) ? productos.get(0) : null;
+		}
+		return null;
 	}
 
 	@Override
