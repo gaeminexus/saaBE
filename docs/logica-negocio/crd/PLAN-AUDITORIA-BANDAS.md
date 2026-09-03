@@ -246,3 +246,29 @@ día que se extraiga el módulo contable del despliegue, esa clase se iría llev
 **No se hace ahora**, y la razón es de riesgo, no de diseño: el motor es el código más crítico del
 módulo, se migró hoy mismo, y el usuario está reprocesando en producción. Es exactamente el cambio
 que no se toca en caliente.
+
+### `EVENTO_PRESTAMO` — investigado 2026-09-02, queda para la convergencia
+
+Los dos casos de este origen (abono a capital y precancelación), verificados contra el código:
+
+- **`ABONO_CAPITAL`: origen declarado y vacío, a propósito.** `PrestamoRest.abonarCapital`
+  (`POST /rest/prst/abonarCapital`) devuelve **409 CONFLICT siempre** — cerrado el 2026-08-31,
+  decisión del árbitro: aplicarlo por esa puerta generaría el asiento de re-bandeo sin el asiento
+  del cobro que lo origina, contabilidad cuadrada y falsa. El único camino real es
+  `CobroCreditoServiceImpl` (tipoOperacion `ABONO_CAPITAL`), ya cubierto por `COBRO_INDIVIDUAL`.
+  **No hay nada que escribir para este caso.**
+- **`PRECANCELACION`: camino real y activo, sin cubrir todavía.** `PrestamoRest.precancelar`
+  (`POST /rest/prst/precancelar`) es, según su propio comentario, "el ÚNICO endpoint directo": limpia
+  `idCobroCredito` antes de llamar a `ProcesoPagoPrestamoServiceImpl.precancelar`. Ese método llama
+  siempre a `ContabilidadPrestamoServiceImpl.contabilizarPrecancelacion`, que discrimina exactamente
+  por `ctx.getIdCobroCredito()` (null = directo, no-null = ya lo contabilizó CBCR) — pero ese hook
+  está **detrás de `if (contabilidadActiva())`**, así que no sirve como punto de escritura de DSBN.
+  El lugar correcto sería dentro de `ProcesoPagoPrestamoServiceImpl.precancelar` mismo, guardado por
+  `ctx.getIdCobroCredito() == null`, escribiendo con `pagoPrestamoDaoService.selectByEvento(evento.getCodigo())`
+  — mismo patrón que `CobroCreditoServiceImpl`.
+
+  **No se hace ahora**, por las mismas dos razones que el motor: es un método sensible que orquesta
+  toda la precancelación (capital futuro, cuotas futuras, aportes, estado terminal del préstamo) con
+  el usuario procesando en producción, y es exactamente el caso que la convergencia en el motor (§9,
+  arriba) resuelve gratis — engancharlo a mano hoy es trabajo que se deshace cuando llegue esa
+  convergencia. Hoy, `EVENTO_PRESTAMO`/`PRECANCELACION` no registra distribución.
