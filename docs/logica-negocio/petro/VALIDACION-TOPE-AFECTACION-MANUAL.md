@@ -273,40 +273,62 @@ automático ya tenía asignada. **`406,73 − 298,19 = 108,54`.**
 > el usuario decidió —se puede mover entre préstamos y aportes— pero el universo no es *todo* lo
 > descontado: es **lo que el operador está repartiendo de verdad**.
 
-### La regla corregida
+### La regla corregida (TERCERA vuelta)
 
-*(Reemplaza a la del mismo nombre que estuvo acá hasta el 2026-09-03 — "tope manual = lo descontado
-en los productos con novedad bloqueante" cerraba el caso SANCHEZ pero no un sobrante PARCIAL dentro
-de un producto ya aplicado en parte. Ver el porqué abajo.)*
+*(Reemplaza a la del mismo nombre que estuvo acá hasta el 2026-09-03 — "SUMA por (producto,
+préstamo) del MÁXIMO pozo de ese grupo" volvió a fallar, y el porqué está documentado abajo porque
+es la tercera vez que se reescribe esta regla y no puede volver a perderse.)*
 
-**Tope manual = SUMA, por (producto, préstamo), del MÁXIMO pozo entre las novedades bloqueantes de
-ese grupo — capeada al total descontado del partícipe.**
+**Tope manual = SUMA de los pozos de todas las novedades bloqueantes de la fila — capeada al total
+descontado del partícipe. Se DEDUPLICA solo cuando hay una clave real: mismo `tipoNovedad` con el
+mismo `codigoPrestamo` NO NULO.**
 
-El pozo de cada novedad bloqueante es **el mismo que la pantalla de afectación le ofrece al
-operador** (`detalle-consulta-carga.component.ts#montoDisponibleAfectacion`):
+El pozo de cada novedad bloqueante sigue siendo el mismo que la pantalla de afectación le ofrece al
+operador (`detalle-consulta-carga.component.ts#montoDisponibleAfectacion`):
 
 ```
 montoRecibido ?? montoDiferencia ?? montoEsperado ?? 0
 ```
 
-**Por qué "el mismo que la pantalla ofrece" y no una fórmula propia:** la primera corrección
-("lo descontado en los productos con novedad bloqueante") funcionó para SANCHEZ porque ahí no se
-había pre-aplicado nada — pero falló en un caso de sobrante de aportes: si un producto de $200 tiene
-$150 ya aplicados legítimamente a meses con vigencia y $50 de sobrante sin poder aplicar, el sobrante
-es la novedad bloqueante y su pozo real es $50, no los $200 del `totalDescontado` del producto. Un
-único campo no cubre los dos casos (en `MONTO_INCONSISTENTE` de SANCHEZ el pozo es el recibido
-completo; en el sobrante es apenas el remanente), pero "lo que la pantalla ya resuelve para los 14
-tipos" sí — porque para eso existe esa cadena de respaldos.
+### ⛔ Por qué se abandonó "agrupar por (producto, préstamo) y tomar el máximo" — y por qué nadie debe volver a proponerlo
 
-**Por qué el MÁXIMO por grupo y no la suma:** dos novedades bloqueantes sobre el MISMO
-(producto, préstamo) describen la MISMA plata vista dos veces, no dos platas — verificado que
+**`codigoProducto` y `codigoPrestamo` vienen `null` en TODAS las novedades de este archivo.** Esto se
+anotó una vez, al implementar el §12 («son null para las novedades de aportes, igual que el resto de
+las de este archivo»), pero no quedó registrado en este documento — y por eso la segunda vuelta
+agrupó por esos dos campos sin darse cuenta de que, al ser `null` en todo, **todas las novedades
+bloqueantes de una fila caían en el MISMO grupo**. El "máximo por grupo" dejaba de ser "el máximo
+entre duplicados de la misma plata" y pasaba a ser "la novedad más grande se queda con el pozo, las
+demás desaparecen".
+
+**Medido en producción el 2026-09-03, con la carga 449 ya corregida por la segunda vuelta:** el
+proceso bloqueó 35 partícipes con "afectaciones que superan lo descontado". SANCHEZ PRADO (rol 7508)
+dio disponible **282,77** — solo su PH — cuando la pantalla le había ofrecido **298,19** (PH 282,77 +
+HS 15,42). El tope quedó POR DEBAJO de lo que el propio sistema invitó al operador a repartir, y
+rechazó una afectación legítima.
+
+**`codigoProducto`/`codigoPrestamo` NO son una clave de agrupación en este archivo — están vacíos.
+Cualquier regla futura que agrupe por esos campos va a repetir este mismo defecto.**
+
+### El matiz que faltaba en el principio "ante la duda, el tope se equivoca por abajo"
+
+Ese principio sigue valiendo para no **inventar** plata — por eso el cap a `totalDescontado` se
+mantiene intacto. Pero un tope **demasiado bajo tampoco es gratis**: le impide al operador repartir
+plata que sí existe, y frena la carga sin que haya remedio (no es un error "seguro" como sí lo es
+negarse a inventar plata). El límite duro que nunca se puede cruzar es el total descontado del
+partícipe; por debajo de ese límite, **sumar es lo correcto**, no maximizar.
+
+**Por qué deduplicar SOLO con clave real:** el caso verificado de doble conteo sigue siendo real —
 `MONTO_INCONSISTENTE` puede registrarse dos veces para el mismo préstamo (Fase 2 al validar el
 archivo, y `manejarExcedenteNoAplicado` durante la aplicación si el motor no encuentra cuota para el
-excedente). Sumarlas sería el mismo defecto que se está cerrando, con otro disfraz.
+excedente) — y ahí sí hay una clave (mismo tipo, mismo préstamo NO nulo) para reconocer que es la
+MISMA plata. Cuando `codigoPrestamo` es `null` no hay manera de saber si dos novedades son la misma
+plata o platas distintas, y en esa duda específica **se suma**, no se colapsa a una — colapsar fue
+exactamente el defecto que le costó los 35 partícipes al usuario.
 
-**Por qué el cap al total descontado:** es la última barrera. Ninguna combinación de novedades puede
-habilitar a afectar más de lo que efectivamente entró — si el cálculo de los pozos se equivocara,
-que se equivoque por debajo, nunca por arriba (ver el principio, abajo).
+**Por qué el cap al total descontado sigue siendo la última barrera:** ninguna combinación de
+novedades puede habilitar a afectar más de lo que efectivamente entró. Con la suma (en vez del
+máximo) el cap es el que impide que un archivo con novedades duplicadas sin clave infle el pozo por
+encima de lo real — y detrás de todo el proceso sigue la red del §11 (recibido == aplicado).
 
 Los 4 tipos ESTRUCTURALES (sin fila `NovedadParticipeCarga`: `PARTICIPE_NO_ENCONTRADO`,
 `CODIGO_ROL_DUPLICADO`, `NOMBRE_ENTIDAD_DUPLICADO`, `CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE`) no pasan
@@ -314,12 +336,12 @@ por la fórmula de arriba, que solo mira `NovedadParticipeCarga`. Para los tres 
 correcto —el frontend nunca los ofrece para afectar (`tipoNovedad > 3`)—, así que quedan en pozo 0.
 
 **El cuarto (`CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE`) SÍ pasa ese filtro del frontend y tiene su propio
-caso, resuelto 2026-09-03:** si bloquea (fuera de la filial Petrocomercial — misma condición exacta
-que decide si bloquea el procesamiento, `tipoEstructuralBloquea`), su pozo es el `totalDescontado`
-COMPLETO de la fila. Razón: si este tipo bloquea, la carga entera se frena y a ese partícipe no se le
-aplicó nada — su plata está íntegra, así que el pozo completo es correcto (y de paso ya coincide con
-el cap, nunca se excede). No viola "ante la duda, el tope se equivoca por abajo": acá no hay duda, no
-hay nada aplicado que descontar.
+caso, sin cambios en esta tercera vuelta:** si bloquea (fuera de la filial Petrocomercial — misma
+condición exacta que decide si bloquea el procesamiento, `tipoEstructuralBloquea`), su pozo es el
+`totalDescontado` COMPLETO de la fila, sumado aparte del resto (nunca colisiona: no tiene fila
+`NovedadParticipeCarga`). Razón: si este tipo bloquea, la carga entera se frena y a ese partícipe no
+se le aplicó nada — su plata está íntegra, así que el pozo completo es correcto, y el cap final lo
+sigue conteniendo igual que a cualquier otro pozo.
 
 Se conserva intacto lo que el usuario decidió: **dentro del universo bloqueado puede mover entre
 préstamos y aportes como quiera** (caso SARMIENTO). Lo que no puede es tomar plata que ya tiene
@@ -328,11 +350,13 @@ destino — ni la del automático (primera vuelta), ni la ya aplicada dentro de 
 
 ### ⛔ El principio para cualquier ajuste futuro de este cálculo
 
-**Ante la duda, el tope se equivoca por abajo.** Quedarse corto es visible y corregible: el operador
-avisa que no puede repartir todo, y se afina. Pasarse **inventa plata** y descuadra la contabilidad
-en silencio — que es exactamente lo que costó la jornada del 2026-09-02/03. Las dos equivocaciones no
-son igual de caras, así que la regla no tiene que ser simétrica: cuando un caso nuevo no cierre,
-resolverlo hacia el lado que da MENOS pozo, nunca más.
+**Ante la duda, el tope se equivoca por abajo — pero "por abajo" tiene un piso, y ese piso es el
+total descontado real del partícipe, no una suma artificialmente reducida.** Inventar plata que no
+existe sigue prohibido (por eso el cap no se toca). Pero negarle al operador plata que sí está,
+tampoco es gratis: bloquea sin remedio, como pasó acá con 35 partícipes. Cuando un caso nuevo no
+cierre: si la duda es "¿puede esto exceder lo real?", resolver hacia el cap (que ya existe para eso).
+Si la duda es "¿son dos novedades la misma plata o platas distintas?", sin una clave real que lo
+confirme, **sumar**, no colapsar a una.
 
 ### ⛔ Los tres consumidores se corrigen juntos
 

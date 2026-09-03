@@ -2003,32 +2003,47 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 
 	/**
 	 * "Disponible" para el tope de UNA fila PXCA (un partícipe, un producto) — CORRECCIÓN
-	 * 2026-09-03, VALIDACION-TOPE-AFECTACION-MANUAL.md §10, SEGUNDA VUELTA.
+	 * 2026-09-03, VALIDACION-TOPE-AFECTACION-MANUAL.md §10, TERCERA VUELTA.
 	 *
 	 * <p><b>Primera vuelta (insuficiente):</b> "el tope es el total descontado del partícipe"
 	 * era incompleto — medido en carga 449, rol 7508 (SANCHEZ), el tope se puso en 406,73
 	 * cuando el operador solo tenía bloqueado 298,19; el resto lo iba a aplicar el automático.
 	 * Primera corrección: "el tope es SOLO lo descontado en los productos con novedad
-	 * bloqueante" — pero esto TAMBIÉN resultó incompleto, verificado antes de escribir esta
+	 * bloqueante" — pero esto TAMBIÉN resultó incompleto, verificado antes de escribir la
 	 * segunda vuelta con un caso de aportes: si una novedad bloqueante es un SOBRANTE parcial
 	 * (p.ej. $50 de un producto de $200, donde $150 ya se aplicaron a meses con vigencia
 	 * válida), usar el {@code totalDescontado} completo de la fila abre un pozo de $200 cuando
 	 * el pozo real es $50 — la misma plata de más, por una razón distinta.</p>
 	 *
-	 * <p><b>La regla, ahora:</b> el pozo de cada novedad BLOQUEANTE es EL MISMO que la pantalla
+	 * <p><b>Segunda vuelta (insuficiente, y la causa fue un dato que no se registró): agrupar
+	 * por {@code (codigoProducto, codigoPrestamo)} y tomar el MÁXIMO de cada grupo.</b> Medido
+	 * en producción el 2026-09-03: SANCHEZ (rol 7508) dio disponible $282,77 — solo su PH, sin
+	 * el HS de $15,42 que la pantalla SÍ le había ofrecido (298,19 = PH + HS), así que el
+	 * proceso rechazaba una afectación que el propio sistema invitó a hacer. La causa:
+	 * {@code codigoProducto}/{@code codigoPrestamo} vienen {@code null} en TODAS las novedades
+	 * de este archivo (se anotó al implementar el §12 y no se registró en este javadoc — por
+	 * eso se repite acá EXPRESAMENTE, es la tercera vez que esta regla se reescribe). Con esos
+	 * dos campos null en todas, todas las novedades bloqueantes de la fila caían en el MISMO
+	 * grupo, y el máximo se quedaba con la más grande, descartando las demás en vez de
+	 * sumarlas. <b>No propongan de nuevo agrupar por esos dos campos: están vacíos en este
+	 * archivo, no son una clave.</b></p>
+	 *
+	 * <p><b>La regla, ahora:</b> el pozo de cada novedad BLOQUEANTE es el mismo que la pantalla
 	 * de afectación le ofrece al operador —
 	 * {@code detalle-consulta-carga.component.ts#montoDisponibleAfectacion}: {@code
 	 * montoRecibido ?? montoDiferencia ?? montoEsperado ?? 0} — para que pantalla y tope NUNCA
-	 * discrepen (si discreparan, el operador repartiría lo que la pantalla ofrece y el proceso
-	 * se lo rechazaría). Se agrupan las novedades bloqueantes por
-	 * {@code (codigoProducto, codigoPrestamo)} y se toma el MÁXIMO de cada grupo, no la suma:
-	 * verificado 2026-09-03 que {@code MONTO_INCONSISTENTE} puede registrarse DOS veces para el
-	 * mismo préstamo (una en Fase 2 al validar el archivo, otra en
-	 * {@link #manejarExcedenteNoAplicado} durante la aplicación si el motor no encuentra cuota
-	 * para el excedente) — son la MISMA plata vista dos veces, sumarlas la duplicaría. Los
-	 * grupos sí se suman entre sí (productos/préstamos distintos son plata distinta), y el
-	 * total se CAPEA a {@code totalDescontado} de la fila: ninguna combinación de novedades
-	 * puede habilitar a afectar más de lo que efectivamente se descontó.</p>
+	 * discrepen. Los pozos se SUMAN, no se toma el máximo. La ÚNICA deduplicación es cuando hay
+	 * una clave real para reconocer la MISMA plata dos veces: dos novedades del MISMO
+	 * {@code tipoNovedad} con el MISMO {@code codigoPrestamo} NO NULO (el caso verificado de
+	 * {@code MONTO_INCONSISTENTE} registrado dos veces para el mismo préstamo — una en Fase 2 al
+	 * validar el archivo, otra en {@link #manejarExcedenteNoAplicado} durante la aplicación si
+	 * el motor no encuentra cuota para el excedente). Cuando {@code codigoPrestamo} es null no
+	 * hay forma de saber si dos novedades son la misma plata o platas distintas, y en la duda se
+	 * SUMAN — quedarse corto acá no es gratis: bloquea al operador de afectar plata que sí le
+	 * corresponde y lo deja sin salida, no es un error "seguro" como sí lo es en otros lugares
+	 * de este archivo. La única protección contra un pozo inflado es el CAP final a
+	 * {@code totalDescontado} de la fila, reforzado además por la red del §11 (recibido ==
+	 * aplicado) detrás de todo el proceso.</p>
 	 *
 	 * <p><b>Los 4 tipos ESTRUCTURALES</b> (PARTICIPE_NO_ENCONTRADO, CODIGO_ROL_DUPLICADO,
 	 * NOMBRE_ENTIDAD_DUPLICADO, CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE — sin fila
@@ -2041,13 +2056,16 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	 * (CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE) SÍ pasa ese filtro del frontend, así que tiene su
 	 * propio caso más abajo ({@link #esTipo4Bloqueante}): si bloquea (fuera de filial
 	 * Petrocomercial), su pozo es el {@code totalDescontado} completo de la fila — porque si
-	 * bloquea, la carga se frena entera y a este partícipe no se le aplicó nada.</p>
+	 * bloquea, la carga se frena entera y a este partícipe no se le aplicó nada. Se suma aparte
+	 * del resto; el cap final evita que la suma se pase de la fila.</p>
 	 *
-	 * <p><b>Principio para cualquier ajuste futuro de este cálculo:</b> ANTE LA DUDA, EL TOPE
-	 * SE EQUIVOCA POR ABAJO, nunca por arriba. Quedarse corto es visible y corregible — el
-	 * operador avisa que no puede repartir todo, se afina. Pasarse INVENTA PLATA y descuadra la
-	 * contabilidad en silencio, que es justo lo que costó la jornada del 2026-09-02/03. Las dos
-	 * equivocaciones no son igual de caras: la regla no tiene que ser simétrica.</p>
+	 * <p><b>Principio para cualquier ajuste futuro de este cálculo, matizado en esta tercera
+	 * vuelta:</b> "ante la duda, el tope se equivoca por abajo" sigue valiendo para no INVENTAR
+	 * plata que no existe — por eso el cap sigue siendo {@code totalDescontado}. Pero un tope
+	 * demasiado bajo tampoco es gratis: le impide al operador repartir plata que sí está, y frena
+	 * la carga sin que haya remedio. El límite duro que nunca se puede cruzar es el total
+	 * descontado del partícipe; por debajo de ese límite, sumar (no maximizar) es lo que
+	 * corresponde.</p>
 	 *
 	 * <b>ÚNICA definición</b> — la usan {@link #calcularViolacionesTopeAfectacionManual} (y por
 	 * lo tanto {@link #validarTopeAfectacionManualPorParticipe} y
@@ -2055,7 +2073,12 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	 */
 	private double disponibleParaTope(ParticipeXCargaArchivo participe, List<NovedadParticipeCarga> novedadesDeEstaFila,
 			Long codigoFilial) {
-		Map<String, Double> poolPorGrupo = new HashMap<>();
+		double totalPozos = 0.0;
+
+		// Dedupe SOLO con clave real (tipoNovedad + codigoPrestamo NO NULO). Sin préstamo no hay
+		// forma de reconocer "misma plata dos veces" — se suma cada novedad tal cual.
+		Map<String, Double> poolPorClaveDedup = new HashMap<>();
+		List<Double> poolsSinClaveDedup = new ArrayList<>();
 
 		if (novedadesDeEstaFila != null) {
 			for (NovedadParticipeCarga novedad : novedadesDeEstaFila) {
@@ -2068,33 +2091,29 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 					: novedad.getMontoDiferencia() != null ? novedad.getMontoDiferencia()
 					: novedad.getMontoEsperado() != null ? novedad.getMontoEsperado()
 					: 0.0;
-				String clave = novedad.getCodigoProducto() + "|" + novedad.getCodigoPrestamo();
-				poolPorGrupo.merge(clave, pool, Math::max);
+				if (novedad.getCodigoPrestamo() != null) {
+					String clave = novedad.getTipoNovedad() + "|" + novedad.getCodigoPrestamo();
+					poolPorClaveDedup.merge(clave, pool, Math::max);
+				} else {
+					poolsSinClaveDedup.add(pool);
+				}
 			}
 		}
-
-		// CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE (tipo 4) — CORRECCIÓN 2026-09-03, pendiente
-		// anotada al cerrar la segunda vuelta del §10: a diferencia de los otros 3 tipos
-		// ESTRUCTURALES (que el frontend nunca ofrece para afectar, detalle-consulta-carga.
-		// component.ts:1459 filtra tipoNovedad > 3), el tipo 4 SÍ pasa ese filtro y hoy bloquea
-		// fuera de la filial Petrocomercial (ver tipoEstructuralBloquea). Sin fila
-		// NovedadParticipeCarga, así que no aparece en el bucle de arriba — si bloquea, se le da
-		// su propio grupo con el TOTAL descontado de la fila como pozo: si este tipo bloquea, la
-		// carga entera se frena y a este partícipe no se le aplicó nada, así que su plata está
-		// íntegra — el pozo completo es correcto (y de paso ya queda igual al cap de abajo, así
-		// que nunca se excede). La condición de bloqueo es la MISMA que usa
-		// tipoEstructuralBloquea (vía esTipo4Bloqueante) a propósito: que "bloquea" y "tiene
-		// pozo" nunca se separen, porque cualquiera de las dos combinaciones es mala.
-		if (esTipo4Bloqueante(participe.getNovedadesCarga(), codigoFilial)
-				|| esTipo4Bloqueante(participe.getNovedadesFinancieras(), codigoFilial)) {
-			poolPorGrupo.merge("ESTRUCTURAL_CODIGO_PETRO_NO_COINCIDE", nullSafe(participe.getTotalDescontado()),
-				Math::max);
-		}
-
-		double totalPozos = 0.0;
-		for (double pool : poolPorGrupo.values()) {
+		for (double pool : poolPorClaveDedup.values()) {
 			totalPozos += pool;
 		}
+		for (double pool : poolsSinClaveDedup) {
+			totalPozos += pool;
+		}
+
+		// CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE (tipo 4) — ver javadoc de arriba. Se suma aparte
+		// (nunca colisiona con el resto: no tiene fila NovedadParticipeCarga), y el cap final la
+		// contiene igual que a cualquier otro pozo.
+		if (esTipo4Bloqueante(participe.getNovedadesCarga(), codigoFilial)
+				|| esTipo4Bloqueante(participe.getNovedadesFinancieras(), codigoFilial)) {
+			totalPozos += nullSafe(participe.getTotalDescontado());
+		}
+
 		double tope = nullSafe(participe.getTotalDescontado());
 		return Math.min(totalPozos, tope);
 	}
