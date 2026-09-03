@@ -370,30 +370,34 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 		// por separado — es el MISMO asiento que aplicarDesdeCajaChica generó y
 		// que quedó enlazado tanto al movimiento como a la aplicación; anularlo
 		// dos veces sería anular dos veces el mismo asiento.
+		// Sólo el id: AplicacionPagoCxp tiene doce @ManyToOne EAGER por defecto —
+		// traer la entidad acá arrastra el mismo join que colgó /mvch/listar
+		// (ver el javadoc de completaDocumentoPagado), y lo único que hace falta
+		// es el id para pasarlo a revertirAplicacionOrigenCajaChica.
 		@SuppressWarnings("unchecked")
-		List<com.saa.model.cxp.AplicacionPagoCxp> aplicaciones = em.createQuery(
-				"select a from AplicacionPagoCxp a where a.movimientoCajaChica.codigo = :idMovimiento "
+		List<Long> idsAplicaciones = em.createQuery(
+				"select a.id from AplicacionPagoCxp a where a.movimientoCajaChica.codigo = :idMovimiento "
 				+ "and a.estado = :activo")
 				.setParameter("idMovimiento", idMovimiento)
 				.setParameter("activo", Long.valueOf(EstadoAplicacionPago.ACTIVO))
 				.getResultList();
 
-		if (aplicaciones.size() > 1) {
+		if (idsAplicaciones.size() > 1) {
 			// No debería existir: el diseño es un gasto por documento (D2). Si
 			// pasa, no elegir una a ciegas y seguir — eso dejaría a las demás
 			// activas contra documentos cuyo gasto ya no existe, pisando su
 			// saldo para siempre sin que nadie se entere.
-			throw new IncomeException("El movimiento " + idMovimiento + " tiene " + aplicaciones.size()
+			throw new IncomeException("El movimiento " + idMovimiento + " tiene " + idsAplicaciones.size()
 					+ " aplicaciones de pago activas: debería tener a lo sumo una. No se puede anular "
 					+ "automáticamente; revise el dato antes de continuar.");
 		}
-		if (!aplicaciones.isEmpty()) {
+		if (!idsAplicaciones.isEmpty()) {
 			// ⚠️ Sin try/catch: si la reversa de la aplicación falla, la
 			// anulación del gasto entera debe fallar. No es lo mismo que la
 			// anulación de asiento «suelta» de más abajo (esa sí se swallow-ea
 			// por convención de la casa cuando no hay aplicación de por medio).
 			aplicacionPagoCxpService.revertirAplicacionOrigenCajaChica(
-					aplicaciones.get(0).getId(), motivo.trim(), idUsuario);
+					idsAplicaciones.get(0), motivo.trim(), idUsuario);
 		} else {
 			Long idAsiento = (movimiento.getAsiento() != null) ? movimiento.getAsiento().getCodigo() : null;
 			if (idAsiento != null) {
@@ -565,6 +569,15 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 	 * consulta por lote (troceado de a 1000 ids: {@code in} con más de 1000
 	 * elementos es ORA-01795, y este listado no pagina — una caja con años de
 	 * gastos puede superarlo), no una por fila.
+	 * <p>
+	 * ⚠️ Trae sólo escalares (proyección), NUNCA la entidad {@code AplicacionPagoCxp}
+	 * completa: tiene doce {@code @ManyToOne} (EAGER por defecto, sin excepción, y
+	 * varias apuntan a entidades que a su vez tienen las suyas), así que un
+	 * {@code select a from AplicacionPagoCxp a ...} arrastra un join enorme por
+	 * cada fila. Fue justamente eso lo que colgó {@code /mvch/listar} en
+	 * producción el 2026-09-03 en el primer intento de este método (versión con
+	 * {@code select a from AplicacionPagoCxp a}) — no repetir ese patrón acá ni
+	 * copiarlo a otro lado sin agregar {@code fetch = FetchType.LAZY} primero.
 	 * @param movimientos : Movimientos ya cargados (se modifican en el sitio)
 	 * @throws Throwable : Excepcion
 	 */
@@ -578,38 +591,43 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 		}
 
 		final int TAMANO_LOTE = 1000;
-		Map<Long, AplicacionPagoCxp> aplicacionPorMovimiento = new HashMap<>();
+		Map<Long, Object[]> filaPorMovimiento = new HashMap<>();
 		for (int desde = 0; desde < ids.size(); desde += TAMANO_LOTE) {
 			List<Long> lote = ids.subList(desde, Math.min(desde + TAMANO_LOTE, ids.size()));
 
 			@SuppressWarnings("unchecked")
-			List<AplicacionPagoCxp> aplicaciones = em.createQuery(
-					"select a from AplicacionPagoCxp a where a.movimientoCajaChica.codigo in :ids "
-					+ "and a.estado = :activo")
+			List<Object[]> filas = em.createQuery(
+					"select a.movimientoCajaChica.codigo, f.id, f.numero, l.id, l.numero "
+					+ "from AplicacionPagoCxp a "
+					+ "left join a.facturaCompra f "
+					+ "left join a.liquidacionCompra l "
+					+ "where a.movimientoCajaChica.codigo in :ids and a.estado = :activo")
 					.setParameter("ids", lote)
 					.setParameter("activo", Long.valueOf(EstadoAplicacionPago.ACTIVO))
 					.getResultList();
 
-			for (AplicacionPagoCxp aplicacion : aplicaciones) {
-				if (aplicacion.getMovimientoCajaChica() != null) {
-					aplicacionPorMovimiento.put(aplicacion.getMovimientoCajaChica().getCodigo(), aplicacion);
-				}
+			for (Object[] fila : filas) {
+				filaPorMovimiento.put((Long) fila[0], fila);
 			}
 		}
 
 		for (MovimientoCajaChica movimiento : movimientos) {
-			AplicacionPagoCxp aplicacion = aplicacionPorMovimiento.get(movimiento.getCodigo());
-			if (aplicacion == null) {
+			Object[] fila = filaPorMovimiento.get(movimiento.getCodigo());
+			if (fila == null) {
 				continue;
 			}
-			if (aplicacion.getFacturaCompra() != null) {
+			Long idFactura = (Long) fila[1];
+			String numeroFactura = (String) fila[2];
+			Long idLiquidacion = (Long) fila[3];
+			String numeroLiquidacion = (String) fila[4];
+			if (idFactura != null) {
 				movimiento.setDocumentoTipo("FACTURA");
-				movimiento.setDocumentoId(aplicacion.getFacturaCompra().getId());
-				movimiento.setDocumentoNumero(aplicacion.getFacturaCompra().getNumero());
-			} else if (aplicacion.getLiquidacionCompra() != null) {
+				movimiento.setDocumentoId(idFactura);
+				movimiento.setDocumentoNumero(numeroFactura);
+			} else if (idLiquidacion != null) {
 				movimiento.setDocumentoTipo("LIQUIDACION_COMPRA");
-				movimiento.setDocumentoId(aplicacion.getLiquidacionCompra().getId());
-				movimiento.setDocumentoNumero(aplicacion.getLiquidacionCompra().getNumero());
+				movimiento.setDocumentoId(idLiquidacion);
+				movimiento.setDocumentoNumero(numeroLiquidacion);
 			}
 		}
 	}
