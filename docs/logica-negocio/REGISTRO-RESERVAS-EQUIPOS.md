@@ -620,7 +620,7 @@ Las seis quedaron corregidas en `saaFE` `762a4b2`, con el mismo método idempote
 `ViewChild` y con el contenedor oculto operaba sobre `undefined`. No es una variante de diseño — es
 la misma corrección alcanzando la parte que dependía de lo mismo.
 
-⚠️ **Apareció una séptima**, que se había escapado del barrido inicial:
+✅ **La séptima, corregida** (`saaFE` `ceb65b2`) — se había escapado del barrido inicial:
 `dialog/mayor-analitico-asiento-dialog` tiene el mismo defecto (sólo paginador, no usa `matSort`):
 `loading` arranca en `true`, así que la tabla y su paginador están ocultos en el primer render.
 
@@ -629,3 +629,13 @@ la misma corrección alcanzando la parte que dependía de lo mismo.
 anterior. Quien lo lea creyendo que está al día va a tomar decisiones con información vieja. **Hay
 que sincronizarlo o borrarlo**; dejarlo así es peor que no tenerlo. No se toca desde acá porque está
 fuera del alcance de escritura de este equipo en `saaFE` (que se limita a `docs/{modulo}/`).
+
+**Cerrado el 2026-09-02: las siete pantallas de `cnt` quedaron corregidas** (`saaFE` `762a4b2` las
+seis, `ceb65b2` el diálogo del mayor analítico). Falta la verificación visual, que sólo puede hacer
+alguien con navegador: abrir cada una y confirmar que el paginador dice «X of Y» y que ordenar y
+cambiar de página responden.
+
+Aparte, y **no es el mismo defecto**: la pantalla `reporte-mayor-analitico` cortaba las columnas
+derechas del panel de movimientos **sin barra de scroll horizontal**. Causa: `.rm-panel` declara
+`overflow: hidden` —que fija los **dos** ejes— y `.rm-panel--detail` sólo pisaba el vertical con
+`overflow-y: auto`. Corregido con `overflow: auto` (`saaFE` `449d209`).
