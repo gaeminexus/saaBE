@@ -1651,6 +1651,7 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		if (cargaArchivo == null) {
 			throw new IncomeException("No se encontró la carga con ID: " + codigoCargaArchivo);
 		}
+		Long codigoFilial = cargaArchivo.getFilial() != null ? cargaArchivo.getFilial().getCodigo() : null;
 
 		List<ParticipeXCargaArchivo> participes =
 			participeXCargaArchivoDaoService.selectByCodigoPetroEnCarga(codigoPetro, codigoCargaArchivo);
@@ -1666,8 +1667,9 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 				}
 				// CORRECCIÓN 2026-09-03 (§10, segunda vuelta) — ver el javadoc de
 				// disponibleParaTope: pozo por (producto, préstamo), máximo por grupo, capeado
-				// al total descontado de la fila.
-				disponible += disponibleParaTope(participe, novedadesParticipe);
+				// al total descontado de la fila. codigoFilial es solo para el tipo 4
+				// estructural (CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE).
+				disponible += disponibleParaTope(participe, novedadesParticipe, codigoFilial);
 			}
 		}
 
@@ -1885,6 +1887,10 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		Map<Long, String> nombrePorRol = new LinkedHashMap<>();
 		Map<Long, List<NovedadParticipeCarga>> novedadesPorRol = new LinkedHashMap<>();
 
+		// Solo para el tipo 4 estructural (CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE) — ver el
+		// javadoc de disponibleParaTope.
+		Long codigoFilial = cargaArchivo.getFilial() != null ? cargaArchivo.getFilial().getCodigo() : null;
+
 		for (DetalleCargaArchivo detalle : detallesCarga) {
 			List<ParticipeXCargaArchivo> participesDetalle =
 				participeXCargaArchivoDaoService.selectByDetalleCargaArchivo(detalle.getCodigo());
@@ -1908,7 +1914,7 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 					novedadesPorRol.computeIfAbsent(rolPetro, k -> new ArrayList<>()).addAll(novedades);
 				}
 
-				disponiblePorRol.merge(rolPetro, disponibleParaTope(participe, novedades), Double::sum);
+				disponiblePorRol.merge(rolPetro, disponibleParaTope(participe, novedades, codigoFilial), Double::sum);
 			}
 		}
 
@@ -2022,16 +2028,15 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	 * <p><b>Los 4 tipos ESTRUCTURALES</b> (PARTICIPE_NO_ENCONTRADO, CODIGO_ROL_DUPLICADO,
 	 * NOMBRE_ENTIDAD_DUPLICADO, CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE — sin fila
 	 * {@code NovedadParticipeCarga}, viven en {@code participe.getNovedadesCarga()}/
-	 * {@code getNovedadesFinancieras()}) no aportan pozo acá, porque este método solo mira
-	 * {@code NovedadParticipeCarga}. Para los tres primeros es lo CORRECTO — verificado con el
-	 * frontend: {@code detalle-consulta-carga.component.ts:1459} filtra
+	 * {@code getNovedadesFinancieras()}) no pasan por el bucle de arriba, que solo mira
+	 * {@code NovedadParticipeCarga}. Para los tres primeros eso es lo CORRECTO y se los deja en
+	 * 0 — verificado con el frontend: {@code detalle-consulta-carga.component.ts:1459} filtra
 	 * {@code tipoNovedad > 3} y nunca los ofrece para afectar (si no se sabe quién es el
-	 * partícipe no hay plata que repartir, hay un dato que corregir). ⚠️ El CUARTO
-	 * (CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE) SÍ pasa ese filtro del frontend y hoy SOLO bloquea
-	 * fuera de la filial Petrocomercial — si es el ÚNICO bloqueo de una fila, este método le da
-	 * pozo 0 igual que a los otros tres, y no se verificó contra el frontend si eso dejaría a
-	 * un operador sin pozo para un caso que la pantalla sí le ofrece. Reportado al árbitro
-	 * 2026-09-03, pendiente de confirmación — no se resolvió acá.</p>
+	 * partícipe no hay plata que repartir, hay un dato que corregir). El CUARTO
+	 * (CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE) SÍ pasa ese filtro del frontend, así que tiene su
+	 * propio caso más abajo ({@link #esTipo4Bloqueante}): si bloquea (fuera de filial
+	 * Petrocomercial), su pozo es el {@code totalDescontado} completo de la fila — porque si
+	 * bloquea, la carga se frena entera y a este partícipe no se le aplicó nada.</p>
 	 *
 	 * <p><b>Principio para cualquier ajuste futuro de este cálculo:</b> ANTE LA DUDA, EL TOPE
 	 * SE EQUIVOCA POR ABAJO, nunca por arriba. Quedarse corto es visible y corregible — el
@@ -2043,30 +2048,62 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	 * lo tanto {@link #validarTopeAfectacionManualPorParticipe} y
 	 * {@link #obtenerPrevueloAfectacionManual}) y {@link #obtenerTopeAfectacionManual}.
 	 */
-	private double disponibleParaTope(ParticipeXCargaArchivo participe, List<NovedadParticipeCarga> novedadesDeEstaFila) {
-		if (novedadesDeEstaFila == null || novedadesDeEstaFila.isEmpty()) {
-			return 0.0;
-		}
+	private double disponibleParaTope(ParticipeXCargaArchivo participe, List<NovedadParticipeCarga> novedadesDeEstaFila,
+			Long codigoFilial) {
 		Map<String, Double> poolPorGrupo = new HashMap<>();
-		for (NovedadParticipeCarga novedad : novedadesDeEstaFila) {
-			if (FamiliaNovedadCarga.clasificar(novedad.getTipoNovedad(), novedad.getMontoDiferencia())
-					!= FamiliaNovedadCarga.BLOQUEANTE) {
-				continue;
+
+		if (novedadesDeEstaFila != null) {
+			for (NovedadParticipeCarga novedad : novedadesDeEstaFila) {
+				if (FamiliaNovedadCarga.clasificar(novedad.getTipoNovedad(), novedad.getMontoDiferencia())
+						!= FamiliaNovedadCarga.BLOQUEANTE) {
+					continue;
+				}
+				// Mismo criterio que la pantalla: montoRecibido ?? montoDiferencia ?? montoEsperado ?? 0.
+				double pool = novedad.getMontoRecibido() != null ? novedad.getMontoRecibido()
+					: novedad.getMontoDiferencia() != null ? novedad.getMontoDiferencia()
+					: novedad.getMontoEsperado() != null ? novedad.getMontoEsperado()
+					: 0.0;
+				String clave = novedad.getCodigoProducto() + "|" + novedad.getCodigoPrestamo();
+				poolPorGrupo.merge(clave, pool, Math::max);
 			}
-			// Mismo criterio que la pantalla: montoRecibido ?? montoDiferencia ?? montoEsperado ?? 0.
-			double pool = novedad.getMontoRecibido() != null ? novedad.getMontoRecibido()
-				: novedad.getMontoDiferencia() != null ? novedad.getMontoDiferencia()
-				: novedad.getMontoEsperado() != null ? novedad.getMontoEsperado()
-				: 0.0;
-			String clave = novedad.getCodigoProducto() + "|" + novedad.getCodigoPrestamo();
-			poolPorGrupo.merge(clave, pool, Math::max);
 		}
+
+		// CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE (tipo 4) — CORRECCIÓN 2026-09-03, pendiente
+		// anotada al cerrar la segunda vuelta del §10: a diferencia de los otros 3 tipos
+		// ESTRUCTURALES (que el frontend nunca ofrece para afectar, detalle-consulta-carga.
+		// component.ts:1459 filtra tipoNovedad > 3), el tipo 4 SÍ pasa ese filtro y hoy bloquea
+		// fuera de la filial Petrocomercial (ver tipoEstructuralBloquea). Sin fila
+		// NovedadParticipeCarga, así que no aparece en el bucle de arriba — si bloquea, se le da
+		// su propio grupo con el TOTAL descontado de la fila como pozo: si este tipo bloquea, la
+		// carga entera se frena y a este partícipe no se le aplicó nada, así que su plata está
+		// íntegra — el pozo completo es correcto (y de paso ya queda igual al cap de abajo, así
+		// que nunca se excede). La condición de bloqueo es la MISMA que usa
+		// tipoEstructuralBloquea (vía esTipo4Bloqueante) a propósito: que "bloquea" y "tiene
+		// pozo" nunca se separen, porque cualquiera de las dos combinaciones es mala.
+		if (esTipo4Bloqueante(participe.getNovedadesCarga(), codigoFilial)
+				|| esTipo4Bloqueante(participe.getNovedadesFinancieras(), codigoFilial)) {
+			poolPorGrupo.merge("ESTRUCTURAL_CODIGO_PETRO_NO_COINCIDE", nullSafe(participe.getTotalDescontado()),
+				Math::max);
+		}
+
 		double totalPozos = 0.0;
 		for (double pool : poolPorGrupo.values()) {
 			totalPozos += pool;
 		}
 		double tope = nullSafe(participe.getTotalDescontado());
 		return Math.min(totalPozos, tope);
+	}
+
+	/**
+	 * Si un tipo de novedad ESTRUCTURAL (sin fila {@code NovedadParticipeCarga}) es,
+	 * específicamente, {@code CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE} bloqueando — usa
+	 * {@link #tipoEstructuralBloquea}, la MISMA función que decide si bloquea el procesamiento,
+	 * para que esta pregunta ("¿le doy pozo?") nunca pueda responder distinto que "¿bloquea?".
+	 */
+	private boolean esTipo4Bloqueante(Long tipoNovedadEstructural, Long codigoFilial) {
+		return tipoNovedadEstructural != null
+			&& tipoNovedadEstructural.intValue() == ASPNovedadesCargaArchivo.CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE
+			&& tipoEstructuralBloquea(tipoNovedadEstructural, codigoFilial);
 	}
 
 	/** Cédula del partícipe a partir de su rol Petro, solo para el mensaje de la violación. */

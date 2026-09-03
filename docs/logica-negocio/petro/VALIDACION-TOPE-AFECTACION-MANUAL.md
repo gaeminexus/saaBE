@@ -309,10 +309,17 @@ habilitar a afectar más de lo que efectivamente entró — si el cálculo de lo
 que se equivoque por debajo, nunca por arriba (ver el principio, abajo).
 
 Los 4 tipos ESTRUCTURALES (sin fila `NovedadParticipeCarga`: `PARTICIPE_NO_ENCONTRADO`,
-`CODIGO_ROL_DUPLICADO`, `NOMBRE_ENTIDAD_DUPLICADO`, `CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE`) no aportan
-pozo con esta fórmula. Correcto para los tres primeros —el frontend nunca los ofrece para afectar
-(`tipoNovedad > 3`)—; el cuarto SÍ pasa ese filtro del frontend y **queda pendiente de verificar**
-que no se quede sin pozo cuando es el único bloqueo de una fila (filial no-Petrocomercial).
+`CODIGO_ROL_DUPLICADO`, `NOMBRE_ENTIDAD_DUPLICADO`, `CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE`) no pasan
+por la fórmula de arriba, que solo mira `NovedadParticipeCarga`. Para los tres primeros eso es
+correcto —el frontend nunca los ofrece para afectar (`tipoNovedad > 3`)—, así que quedan en pozo 0.
+
+**El cuarto (`CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE`) SÍ pasa ese filtro del frontend y tiene su propio
+caso, resuelto 2026-09-03:** si bloquea (fuera de la filial Petrocomercial — misma condición exacta
+que decide si bloquea el procesamiento, `tipoEstructuralBloquea`), su pozo es el `totalDescontado`
+COMPLETO de la fila. Razón: si este tipo bloquea, la carga entera se frena y a ese partícipe no se le
+aplicó nada — su plata está íntegra, así que el pozo completo es correcto (y de paso ya coincide con
+el cap, nunca se excede). No viola "ante la duda, el tope se equivoca por abajo": acá no hay duda, no
+hay nada aplicado que descontar.
 
 Se conserva intacto lo que el usuario decidió: **dentro del universo bloqueado puede mover entre
 préstamos y aportes como quiera** (caso SARMIENTO). Lo que no puede es tomar plata que ya tiene
