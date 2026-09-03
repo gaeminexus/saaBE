@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.Map;
 
 import com.saa.basico.util.IncomeException;
-import com.saa.ejb.cxp.dao.PagoProgramadoDaoService;
 import com.saa.ejb.cxp.service.PagoProgramadoService;
 import com.saa.ejb.cxp.service.dto.BeneficiarioOcasional;
 import com.saa.ejb.rhh.dao.CuentaBancariaEmpleadoDaoService;
@@ -141,9 +140,6 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
 
     @EJB
     private PagoProgramadoService pagoProgramadoService;
-
-    @EJB
-    private PagoProgramadoDaoService pagoProgramadoDaoService;
 
     /* (non-Javadoc)
      * @see com.saa.ejb.rhh.service.GeneracionOrdenPagoService#generar(java.lang.Long, java.lang.Long, java.lang.String, java.lang.Long)
@@ -326,32 +322,82 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
     }
 
     /**
+     * Ultimo pago registrado en <code>PGS.PGTR</code> para un documento origen, sin filtrar
+     * por estado (a diferencia de <code>PagoProgramadoDaoService.selectVigentesByOrigen</code>,
+     * que excluye <code>POR_APROBAR</code>, <code>RECHAZADO</code> y <code>ANULADO</code> —
+     * consulta compartida con otros equipos, no se toca, ver
+     * docs/logica-negocio/ESTADO-EQUIPO-OMEN-2.md #11). El mas reciente (<code>id</code> mayor)
+     * es el que importa: una orden puede acumular pagos RECHAZADO/ANULADO de intentos previos
+     * si se regenero despues de cada uno.
+     *
+     * @param origen		: Etiqueta de {@link OrigenPagoExterno}
+     * @param idOrigen		: Id del documento de origen
+     * @return				: El pago mas reciente, o null si nunca se registro ninguno
+     * @throws Throwable	: Excepcion
+     */
+    @SuppressWarnings("unchecked")
+    private PagoProgramado ultimoPagoDeOrigen(String origen, Long idOrigen) throws Throwable {
+        List<PagoProgramado> pagos = em.createQuery(" select   p "
+                + " from     PagoProgramado p "
+                + " where    p.origenExterno = :origen "
+                + "          and p.idOrigen = :idOrigen "
+                + " order by p.id desc ")
+                .setParameter("origen", origen)
+                .setParameter("idOrigen", idOrigen)
+                .setMaxResults(1)
+                .getResultList();
+        return pagos.isEmpty() ? null : pagos.get(0);
+    }
+
+    /**
      * Exige que la orden tenga un pago CONFIRMADO en la bandeja de tesoreria antes de dejar
      * contabilizar. Sin esto la bandeja es decorativa: se podria contabilizar un pago que
      * tesoreria nunca aprobo.
      *
-     * <p>Un documento origen admite un unico pago vigente a la vez (regla de
-     * <code>PagoProgramadoDaoService</code>), asi que basta con el primero de la lista.</p>
+     * <p><b>Corregido (2026-09, docs/logica-negocio/ESTADO-EQUIPO-OMEN-2.md #11):</b> antes
+     * usaba <code>selectVigentesByOrigen</code>, que no trae <code>POR_APROBAR</code> ni
+     * <code>RECHAZADO</code>/<code>ANULADO</code>. El control en si funcionaba -lista vacia
+     * tambien lanzaba excepcion-, pero el mensaje mentia: decia "no tiene ningun pago vigente"
+     * tanto si el pago estaba POR_APROBAR (hay que esperar) como si estaba RECHAZADO o ANULADO
+     * (hay que volver a generar la orden, no esperar). Ahora usa
+     * {@link #ultimoPagoDeOrigen} -sin filtrar por estado- y distingue las tres situaciones que
+     * le importan al usuario: no existe ningun pago, existe y sigue en tramite, o existe y el
+     * tramite termino sin pagar. El criterio es que el mensaje le diga cual de las dos acciones
+     * tomar -esperar o reintentar-, no solo que algo esta mal.</p>
      *
      * @param idOrdenPago	: Codigo de la orden de pago
-     * @throws Throwable	: IncomeException si no hay pago vigente o no esta CONFIRMADO
+     * @throws Throwable	: IncomeException con el diagnostico exacto si no esta CONFIRMADO
      */
     private void exigePagoConfirmadoEnTesoreria(Long idOrdenPago) throws Throwable {
-        List<PagoProgramado> vigentes = pagoProgramadoDaoService
-                .selectVigentesByOrigen(OrigenPagoExterno.RHH_NOMINA, idOrdenPago);
-        if (vigentes == null || vigentes.isEmpty()) {
+        PagoProgramado pago = ultimoPagoDeOrigen(OrigenPagoExterno.RHH_NOMINA, idOrdenPago);
+
+        if (pago == null) {
             throw new IncomeException("La orden de pago " + idOrdenPago + " no tiene ningun pago"
-                    + " vigente en la bandeja de tesoreria (PGS.PGTR): no se puede contabilizar sin"
-                    + " que tesoreria lo apruebe primero.");
+                    + " registrado en la bandeja de tesoreria (PGS.PGTR). Vuelva a generar la"
+                    + " orden para registrarlo.");
         }
-        PagoProgramado pago = vigentes.get(0);
-        if (pago.getEstado() == null
-                || pago.getEstado().intValue() != EstadoPagoProgramado.CONFIRMADO) {
+
+        int estado = pago.getEstado() != null ? pago.getEstado().intValue() : -1;
+        if (estado == EstadoPagoProgramado.CONFIRMADO) {
+            return;
+        }
+
+        if (estado == EstadoPagoProgramado.RECHAZADO || estado == EstadoPagoProgramado.ANULADO) {
+            // Existe, pero no hay nada que esperar: el circuito termino sin pagar. Es
+            // accionable, no hay que esperar a tesoreria -volver a generar registra un pago
+            // nuevo, porque tienePagoVivoEnBandeja no cuenta estos dos estados como vivos.
             throw new IncomeException("El pago " + pago.getId() + " de la orden " + idOrdenPago
-                    + " esta en estado " + pago.getEstado() + ", no CONFIRMADO ("
-                    + EstadoPagoProgramado.CONFIRMADO + "): tesoreria debe aprobarlo y confirmarlo"
-                    + " antes de contabilizar el pago de nomina.");
+                    + " fue " + (estado == EstadoPagoProgramado.RECHAZADO ? "RECHAZADO" : "ANULADO")
+                    + " en tesoreria: no espere, vuelva a generar la orden de pago para registrar"
+                    + " un pago nuevo.");
         }
+
+        // POR_APROBAR, REGISTRADO o EN_ARCHIVO: existe y sigue vivo en el circuito, todavia no
+        // llego a CONFIRMADO ni murio. La unica accion correcta es esperar.
+        throw new IncomeException("El pago " + pago.getId() + " de la orden " + idOrdenPago
+                + " esta en estado " + estado + ", no CONFIRMADO: sigue en tramite en tesoreria"
+                + " (no fue rechazado ni anulado). Espere a que lo confirmen antes de"
+                + " contabilizar.");
     }
 
     /**
