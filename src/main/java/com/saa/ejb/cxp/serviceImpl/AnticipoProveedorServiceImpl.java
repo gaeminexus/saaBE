@@ -18,6 +18,7 @@ import com.saa.ejb.cxp.service.AnticipoProveedorService;
 import com.saa.ejb.cxp.service.AplicacionPagoCxpService;
 import com.saa.ejb.cxp.service.PagoProgramadoService;
 import com.saa.ejb.tsr.dao.PersonaCuentaContableDaoService;
+import com.saa.ejb.tsr.service.ChequeService;
 import com.saa.ejb.tsr.service.MovimientoBancoService;
 import com.saa.model.cnt.Asiento;
 import com.saa.model.cxp.AnticipoProveedor;
@@ -86,6 +87,9 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
 
     @EJB
     private MovimientoBancoService movimientoBancoService;
+
+    @EJB
+    private ChequeService chequeService;
 
     @PersistenceContext
     private EntityManager em;
@@ -617,6 +621,34 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
         for (PagoProgramado pago : pagosVivosDelAnticipo(idAnticipo)) {
             if (Long.valueOf(EstadoPagoProgramado.ANULADO).equals(pago.getEstado())) {
                 continue;
+            }
+            // Si el pago se giró con cheque, liberarlo antes de pisar el estado del pago —
+            // mismo camino que usa PagoProgramadoServiceImpl.revertirPagoConfirmado
+            // (chequeService.anularPorReverso). Sin esto el cheque queda vivo (entregado, no
+            // anulado) por un pago que ya no existe (item 19bis,
+            // docs/logica-negocio/ESTADO-EQUIPO-OMEN-2.md #11).
+            //
+            // Salvo que el cheque respalde ademas otro pago vigente (un cheque puede respaldar
+            // varios, ver docs/logica-negocio/tsr/DISENO-UN-CHEQUE-VARIOS-PAGOS.md): ahi NO se
+            // anula -mataria un cheque que todavia respalda algo activo-, se deja como gap
+            // conocido y se avisa por consola en vez de fallar a mitad de la anulacion del
+            // anticipo, que para este punto ya reverso la contabilidad (pasos 1-3).
+            if (pago.getCheque() != null) {
+                List<Long> idsGrupo = chequeService.idsPagoDelCheque(pago.getCheque().getCodigo());
+                boolean compartido = false;
+                for (Long idOtro : idsGrupo) {
+                    if (!idOtro.equals(pago.getId())) {
+                        compartido = true;
+                        break;
+                    }
+                }
+                if (compartido) {
+                    System.out.println("⚠ El cheque N° " + pago.getCheque().getNumero()
+                            + " del pago " + pago.getId() + " respalda otro(s) pago(s) vigente(s) ("
+                            + idsGrupo + "): no se anula junto con este anticipo. Revisar aparte.");
+                } else {
+                    chequeService.anularPorReverso(pago.getCheque().getCodigo());
+                }
             }
             pago.setEstado(Long.valueOf(EstadoPagoProgramado.ANULADO));
             pago.setMotivo("Anulación del anticipo " + idAnticipo + ": " + motivoLimpio);
