@@ -3,6 +3,7 @@ package com.saa.ejb.crd.service;
 import java.util.List;
 
 import com.saa.basico.util.EntityService;
+import com.saa.ejb.crd.service.dto.DetallePagoPension;
 import com.saa.ejb.crd.service.dto.ResultadoGeneracionPagosPension;
 import com.saa.ejb.crd.service.dto.ResultadoSincronizacion;
 import com.saa.model.crd.PagoPensionComplementaria;
@@ -66,12 +67,12 @@ public interface PagoPensionComplementariaService extends EntityService<PagoPens
      * su propia transacción — igual que {@code DevolucionAporteService#sincronizarDevolucion}.
      * Expuesto también para regenerar un jubilado puntual sin correr el lote completo.
      *
-     * @return {@code true} si generó un PGPC nuevo; {@code false} si el período ya existía
-     *         para ese jubilado (idempotencia, no es error)
+     * @return el detalle del jubilado — {@code estado = "YA_EXISTIA"} si el período ya existía
+     *         (idempotencia, no es error), {@code "GENERADO"} si creó un PGPC nuevo
      * @throws Throwable {@code IncomeException} con el motivo si el jubilado no se puede pagar
      *                    este período (sin VPPC, sin cuenta, sin saldo)
      */
-    boolean generarPagoIndividual(Long idEntidad, Long idEmpresa, Integer anio, Integer mes, String usuario)
+    DetallePagoPension generarPagoIndividual(Long idEntidad, Long idEmpresa, Integer anio, Integer mes, String usuario)
             throws Throwable;
 
     /**

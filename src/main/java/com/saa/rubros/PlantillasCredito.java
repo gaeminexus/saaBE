@@ -185,6 +185,25 @@ public interface PlantillasCredito {
 	 */
 	public static final int ENTREGA_QUIROGRAFARIO = 34;
 
+	/**
+	 * "CRD PAGO MENSUAL DE PENSION COMPLEMENTARIA". Devengo mensual de la pensión y su seguro
+	 * de salud (PLAN-PAGO-JUBILADOS.md §4, DDL en {@code sql/173}). NO es la 29 (JUBILACION):
+	 * esa es el traslado único al jubilarse, esta es el pago recurrente de cada mes.
+	 *
+	 * <p>⛔ POSICIONAL, 4 líneas, aux1 de 1 a 4 — verificado {@code sql/173} bloque D.1. El
+	 * asiento del PAGO contra banco NO va acá: lo genera CXP/TSR con la orden de pago, igual
+	 * que en la devolución de aportes. Acá solo el devengo.</p>
+	 * <pre>
+	 * aux1 = 1  DEBE   2.1.02.25.01  cuenta del jubilado - tramo pension
+	 * aux1 = 2  HABER  2.3.01.10.03  pensiones complementarias por pagar
+	 * aux1 = 3  DEBE   2.1.02.25.01  cuenta del jubilado - tramo seguro de salud
+	 * aux1 = 4  HABER  2.3.90.90.06  seguro de salud por pagar
+	 * </pre>
+	 * <b>Aux1 1-4 son de ESTA plantilla y de ninguna otra</b> — no reusar estos números en
+	 * ninguna otra plantilla sin verificar contra {@code CNT.DTPL} de nuevo.
+	 */
+	public static final int PAGO_PENSION_COMPLEMENTARIA = 35;
+
 	// NOTA (2026-08-31): "RECLASIFICACION APORTE O COBRO EN EXCESO" (alterno 27) se evaluó
 	// para el asiento de reclasificación de la devolución de aportes y se descartó — el
 	// usuario confirmó que se devuelve CUALQUIER tipo de aporte, no solo los tres con cuenta

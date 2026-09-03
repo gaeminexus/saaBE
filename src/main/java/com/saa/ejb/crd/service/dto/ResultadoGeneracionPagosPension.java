@@ -27,6 +27,18 @@ public class ResultadoGeneracionPagosPension {
 
     private List<String> errores = new ArrayList<>();
 
+    /** Suma de {@code valorPension + valorSeguro} de todos los PGPC generados en esta corrida. */
+    private double totalPagado;
+
+    /** Cuánto de lo pagado se cruzó contra deuda de préstamos vigentes (PLAN-PAGO-JUBILADOS.md §3). */
+    private double totalCruzadoAPrestamos;
+
+    /** Cuánto salió efectivamente como órdenes de pago hacia tesorería. */
+    private double totalOrdenesGeneradas;
+
+    /** Un renglón por jubilado evaluado (generado, ya existía, o con error). */
+    private List<DetallePagoPension> detalle = new ArrayList<>();
+
     public ResultadoGeneracionPagosPension() {
     }
 
@@ -84,5 +96,37 @@ public class ResultadoGeneracionPagosPension {
 
     public void setErrores(List<String> errores) {
         this.errores = errores;
+    }
+
+    public double getTotalPagado() {
+        return totalPagado;
+    }
+
+    public void setTotalPagado(double totalPagado) {
+        this.totalPagado = totalPagado;
+    }
+
+    public double getTotalCruzadoAPrestamos() {
+        return totalCruzadoAPrestamos;
+    }
+
+    public void setTotalCruzadoAPrestamos(double totalCruzadoAPrestamos) {
+        this.totalCruzadoAPrestamos = totalCruzadoAPrestamos;
+    }
+
+    public double getTotalOrdenesGeneradas() {
+        return totalOrdenesGeneradas;
+    }
+
+    public void setTotalOrdenesGeneradas(double totalOrdenesGeneradas) {
+        this.totalOrdenesGeneradas = totalOrdenesGeneradas;
+    }
+
+    public List<DetallePagoPension> getDetalle() {
+        return detalle;
+    }
+
+    public void setDetalle(List<DetallePagoPension> detalle) {
+        this.detalle = detalle;
     }
 }

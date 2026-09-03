@@ -42,6 +42,7 @@ otorgamiento, ni de desembolso, ni servicio que los maneje. La cartera actual es
 | FE `jubilados/proceso-pago-jubilados` | ⚠️ Solo mantiene la tabla de valores. **No genera pagos** |
 | Proceso de jubilación en backend | ❌ **No existe** |
 | Traslado de cuentas a pensión complementaria | ❌ **No existe** |
+| **Pago mensual a jubilados, como proceso** | **✅ CONSTRUIDO el 2026-09-02** (`PagoPensionComplementariaServiceImpl`, `PLAN-PAGO-JUBILADOS.md`): cruce contra préstamo vigente (orquestando `pagarConAportes`), orden de pago a tesorería por el remanente (o ninguna si el cruce se lleva todo), baja del aporte tipo 23, y asiento de devengo en CRD (plantilla alterno 35, `sql/173`) |
 
 **`jubilar-participe.component.ts:459`** lo dice con todas las letras:
 
@@ -61,12 +62,16 @@ cambio, no después.
 ### Lo que hay que construir
 
 1. **El proceso de jubilación**: qué valida, qué estados mueve, qué pasa con los préstamos vigentes
-   del partícipe, y qué registro deja.
+   del partícipe, y qué registro deja. **Sigue abierto** — es el frente que arranca después del
+   pago mensual (§4.b), con su propio plan.
 2. **El traslado de cuentas a pensión complementaria** — el usuario lo pidió explícitamente
    ("que mande sus cuentas a pensión complementaria"). Falta definir qué significa exactamente:
    ¿los aportes cambian de tipo?, ¿se cierra una cuenta y se abre otra?, ¿se conserva el histórico?
-3. **El pago mensual a jubilados como proceso**, no como tabla: generar los pagos del mes,
-   integrarlos con la solicitud a tesorería (que ya es el circuito estándar), y su reverso.
+   **Sigue abierto**, mismo frente que el punto 1.
+3. ~~El pago mensual a jubilados como proceso, no como tabla: generar los pagos del mes,
+   integrarlos con la solicitud a tesorería (que ya es el circuito estándar), y su reverso.~~
+   **✅ Construido el 2026-09-02** — ver `PLAN-PAGO-JUBILADOS.md` y la fila de la tabla de
+   arriba. Incluye el cruce contra préstamos y el asiento de devengo que faltaban.
 
 ### ✅ Decisiones — RESUELTAS el 2026-08-30
 

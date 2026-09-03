@@ -4,29 +4,48 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
+import com.saa.ejb.cnt.dao.DetallePlantillaDaoService;
+import com.saa.ejb.cnt.service.AsientoContableService;
+import com.saa.ejb.cnt.service.PlantillaService;
 import com.saa.ejb.crd.dao.AporteDaoService;
 import com.saa.ejb.crd.dao.EntidadDaoService;
 import com.saa.ejb.crd.dao.PagoAporteDaoService;
 import com.saa.ejb.crd.dao.PagoPensionComplementariaDaoService;
+import com.saa.ejb.crd.dao.PrestamoDaoService;
 import com.saa.ejb.crd.dao.TipoAporteDaoService;
+import com.saa.ejb.crd.service.ConfiguracionContabilidadService;
+import com.saa.ejb.crd.service.MotorPagoPrestamoService;
 import com.saa.ejb.crd.service.PagoPensionComplementariaService;
+import com.saa.ejb.crd.service.ProcesoPagoPrestamoService;
 import com.saa.ejb.crd.service.SaldoAporteService;
 import com.saa.ejb.crd.service.ValorPagoPensionComplementariaService;
+import com.saa.ejb.crd.service.dto.DesgloseAporte;
+import com.saa.ejb.crd.service.dto.DetallePagoPension;
+import com.saa.ejb.crd.service.dto.ResultadoAplicacionPago;
 import com.saa.ejb.crd.service.dto.ResultadoGeneracionPagosPension;
+import com.saa.ejb.crd.service.dto.ResultadoPagoConAportes;
 import com.saa.ejb.crd.service.dto.ResultadoSincronizacion;
+import com.saa.ejb.crd.service.dto.SolicitudPagoConAportes;
 import com.saa.ejb.cxp.dao.PagoProgramadoDaoService;
 import com.saa.ejb.cxp.service.PagoProgramadoService;
 import com.saa.ejb.cxp.service.dto.BeneficiarioOcasional;
+import com.saa.model.cnt.Asiento;
+import com.saa.model.cnt.DetalleAsiento;
+import com.saa.model.cnt.DetallePlantilla;
+import com.saa.model.cnt.PlanCuenta;
 import com.saa.model.crd.Aporte;
 import com.saa.model.crd.CuentaBancariaParticipe;
 import com.saa.model.crd.Entidad;
 import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.model.crd.PagoAporte;
 import com.saa.model.crd.PagoPensionComplementaria;
+import com.saa.model.crd.Prestamo;
 import com.saa.model.crd.TipoAporte;
 import com.saa.model.crd.ValorPagoPensionComplementaria;
 import com.saa.model.cxp.PagoProgramado;
@@ -36,7 +55,11 @@ import com.saa.rubros.EstadoCuotaPrestamo;
 import com.saa.rubros.EstadoPagoPensionComplementaria;
 import com.saa.rubros.EstadoPagoProgramado;
 import com.saa.rubros.EstadoParticipeEntidad;
+import com.saa.rubros.EstadoPrestamo;
+import com.saa.rubros.ModuloSistema;
 import com.saa.rubros.OrigenPagoExterno;
+import com.saa.rubros.PlantillasCredito;
+import com.saa.rubros.TipoAsientos;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -87,6 +110,33 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
     /** crd → cxp: dirección permitida. Solo lectura del estado del pago. */
     @EJB
     private PagoProgramadoDaoService pagoProgramadoDaoService;
+
+    /**
+     * PLAN-PAGO-JUBILADOS.md §3: el cruce contra préstamos se ORQUESTA acá, no se reimplementa
+     * — {@code pagarConAportes} ya está en producción y desde la fase 3 de la carga Petro
+     * (b642be1) además cobra mora vía el motor. Se llama, no se modifica (§6 del plan).
+     */
+    @EJB
+    private ProcesoPagoPrestamoService procesoPagoPrestamoService;
+
+    /** Solo para calcular la deuda pendiente ANTES de decidir cuánto cruzar (§3 del plan). */
+    @EJB
+    private MotorPagoPrestamoService motorPagoPrestamoService;
+
+    @EJB
+    private PrestamoDaoService prestamoDaoService;
+
+    @EJB
+    private ConfiguracionContabilidadService configuracionContabilidadService;
+
+    @EJB
+    private AsientoContableService asientoContableService;
+
+    @EJB
+    private PlantillaService plantillaService;
+
+    @EJB
+    private DetallePlantillaDaoService detallePlantillaDaoService;
 
     /**
      * Auto-inyección: permite que el lote invoque {@code generarPagoIndividual}/
@@ -183,37 +233,61 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         int universo = (jubilados != null) ? jubilados.size() : 0;
         System.out.println("Jubilados JUBILADO_COMPLEMENTARIO a evaluar: " + universo);
 
+        double totalPagado = 0.0;
+        double totalCruzado = 0.0;
+        double totalOrdenes = 0.0;
+
         if (jubilados != null) {
             for (Entidad jubilado : jubilados) {
                 resumen.setEvaluados(resumen.getEvaluados() + 1);
                 try {
                     // A través del proxy: cada jubilado en su propia transacción
-                    boolean generado = self.generarPagoIndividual(jubilado.getCodigo(), idEmpresa, anio, mes, usuario);
-                    if (generado) {
-                        resumen.setGenerados(resumen.getGenerados() + 1);
-                    } else {
+                    DetallePagoPension detalle = self.generarPagoIndividual(
+                        jubilado.getCodigo(), idEmpresa, anio, mes, usuario);
+                    resumen.getDetalle().add(detalle);
+
+                    if ("YA_EXISTIA".equals(detalle.getEstado())) {
                         resumen.setYaGenerados(resumen.getYaGenerados() + 1);
+                    } else {
+                        resumen.setGenerados(resumen.getGenerados() + 1);
+                        totalPagado += nvl(detalle.getValorPension()) + nvl(detalle.getValorSeguroSalud());
+                        totalCruzado += nvl(detalle.getValorCruzadoAPrestamo());
+                        totalOrdenes += nvl(detalle.getValorOrdenPago());
                     }
                 } catch (Throwable e) {
                     resumen.setConError(resumen.getConError() + 1);
                     resumen.getErrores().add("Entidad " + jubilado.getCodigo() + ": " + e.getMessage());
                     System.err.println("Error al generar el pago de pensión de la entidad "
                         + jubilado.getCodigo() + ": " + e.getMessage());
+
+                    DetallePagoPension detalleError = new DetallePagoPension();
+                    detalleError.setIdEntidad(jubilado.getCodigo());
+                    detalleError.setNombre(jubilado.getRazonSocial());
+                    detalleError.setEstado("ERROR");
+                    detalleError.setMensaje(e.getMessage());
+                    resumen.getDetalle().add(detalleError);
                 }
             }
         }
 
+        resumen.setTotalPagado(redondear(totalPagado));
+        resumen.setTotalCruzadoAPrestamos(redondear(totalCruzado));
+        resumen.setTotalOrdenesGeneradas(redondear(totalOrdenes));
+
         System.out.println("GENERACIÓN TERMINADA - Evaluados: " + resumen.getEvaluados()
             + " - Generados: " + resumen.getGenerados()
             + " - Ya generados: " + resumen.getYaGenerados()
-            + " - Con error: " + resumen.getConError());
+            + " - Con error: " + resumen.getConError()
+            + " - Total pagado: $" + resumen.getTotalPagado()
+            + " - Cruzado a préstamos: $" + resumen.getTotalCruzadoAPrestamos()
+            + " - Órdenes generadas: $" + resumen.getTotalOrdenesGeneradas());
 
         return resumen;
     }
 
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
-    public boolean generarPagoIndividual(Long idEntidad, Long idEmpresa, Integer anio, Integer mes, String usuario)
+    public DetallePagoPension generarPagoIndividual(Long idEntidad, Long idEmpresa, Integer anio, Integer mes, String usuario)
             throws Throwable {
         System.out.println("PagoPensionComplementariaService.generarPagoIndividual - Entidad: " + idEntidad
             + " - Período: " + mes + "/" + anio);
@@ -225,7 +299,13 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         if (existente != null) {
             System.out.println("  Entidad " + idEntidad + " ya tiene PGPC " + existente.getCodigo()
                 + " para " + mes + "/" + anio + " - se omite");
-            return false;
+            DetallePagoPension detalleExistente = new DetallePagoPension();
+            detalleExistente.setIdEntidad(idEntidad);
+            detalleExistente.setIdPago(existente.getCodigo());
+            detalleExistente.setValorPension(existente.getValorPension());
+            detalleExistente.setValorSeguroSalud(existente.getValorSeguro());
+            detalleExistente.setEstado("YA_EXISTIA");
+            return detalleExistente;
         }
 
         Entidad entidad = entidadDaoService.find(new Entidad(), idEntidad);
@@ -264,15 +344,31 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         LocalDate fecha = LocalDate.of(anio, mes, 1);
         LocalDateTime fechaHora = LocalDateTime.now();
 
-        // Movimiento NEGATIVO en CRD.APRT — el saldo de pensión complementaria baja.
-        String glosa = "PAGO PENSION COMPLEMENTARIA " + mes + "/" + anio + " - Entidad " + idEntidad;
-        Aporte aporte = crearMovimientoNegativo(entidad, valorTotal, glosa, fechaHora, usuario);
+        // §3 PLAN-PAGO-JUBILADOS.md: cruzar contra préstamo vigente ANTES de decidir cuánto
+        // sale al banco. Orquesta pagarConAportes (motor de pagos en producción) — no se
+        // reimplementa la cascada acá.
+        double montoCruzado = cruzarContraPrestamos(entidad, vppc, valorTotal, idEmpresa, fecha,
+            usuario, mes, anio);
+        double remanente = redondear(valorTotal - montoCruzado);
 
-        // Cuenta bancaria: exactamente una activa. Sin operador que elija, no se puede adivinar.
-        CuentaBancariaParticipe cuenta = unicaCuentaActiva(idEntidad);
+        // Movimiento NEGATIVO en CRD.APRT — SOLO por el remanente que sale al banco. El tramo
+        // cruzado ya generó su propio movimiento NEGATIVO (tipo PAGO_PRESTAMO) dentro de
+        // pagarConAportes/consumirAportes — duplicarlo acá bajaría el saldo del aporte dos
+        // veces por la misma plata. Entre los dos movimientos, la baja total del aporte tipo 23
+        // sigue reflejando el total consumido (cruce + remanente), como pide el §3.
+        Aporte aporte = null;
+        if (remanente > TOLERANCIA) {
+            String glosa = "PAGO PENSION COMPLEMENTARIA " + mes + "/" + anio + " - Entidad " + idEntidad;
+            aporte = crearMovimientoNegativo(entidad, remanente, glosa, fechaHora, usuario);
+        }
+
+        // Cuenta bancaria: exactamente una activa. Solo hace falta si de verdad sale algo al
+        // banco — un jubilado 100% cruzado no necesita tener una cuenta bancaria cargada.
+        CuentaBancariaParticipe cuenta = remanente > TOLERANCIA ? unicaCuentaActiva(idEntidad) : null;
 
         // Cabecera PGPC — REGISTRADA, antes de la orden de pago (si CXP falla, se revierte
-        // todo: no queda un movimiento de APRT huérfano sin orden de pago).
+        // todo: no queda un movimiento de APRT huérfano sin orden de pago). El valor total
+        // sigue siendo el devengado completo (pensión + seguro), no el remanente.
         PagoPensionComplementaria pago = new PagoPensionComplementaria();
         pago.setEntidad(entidad);
         pago.setFilial(entidad.getFilial());
@@ -283,55 +379,249 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         pago.setValor(valorTotal);
         pago.setFecha(fecha);
         pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.REGISTRADA));
-        pago.setIdAporte(aporte.getCodigo());
+        pago.setIdAporte(aporte != null ? aporte.getCodigo() : null);
         pago.setUsuarioRegistro(usuario);
         pago.setFechaRegistro(fechaHora);
         pago = pagoPensionDaoService.save(pago, null);
 
-        System.out.println("  PGPC " + pago.getCodigo() + " creado por $" + valorTotal);
+        System.out.println("  PGPC " + pago.getCodigo() + " creado por $" + valorTotal
+            + " (cruzado a préstamo: $" + montoCruzado + ", remanente al banco: $" + remanente + ")");
 
-        Long idPago;
-        try {
-            BeneficiarioOcasional beneficiario = new BeneficiarioOcasional();
-            beneficiario.setNombre(entidad.getRazonSocial());
-            beneficiario.setIdentificacion(entidad.getNumeroIdentificacion());
-            beneficiario.setIdBancoExterno(cuenta.getBancoExterno() != null ? cuenta.getBancoExterno().getCodigo() : null);
-            beneficiario.setTipoCuenta(cuenta.getTipoCuenta());
-            beneficiario.setNumeroCuenta(cuenta.getNumeroCuenta());
+        Long idPago = null;
+        // ⛔ §3 PLAN-PAGO-JUBILADOS.md: si el cruce se llevó todo, la orden de pago es CERO y
+        // NO se genera — una orden en cero es una orden que tesorería procesa y devuelve.
+        if (remanente > TOLERANCIA) {
+            try {
+                BeneficiarioOcasional beneficiario = new BeneficiarioOcasional();
+                beneficiario.setNombre(entidad.getRazonSocial());
+                beneficiario.setIdentificacion(entidad.getNumeroIdentificacion());
+                beneficiario.setIdBancoExterno(cuenta.getBancoExterno() != null ? cuenta.getBancoExterno().getCodigo() : null);
+                beneficiario.setTipoCuenta(cuenta.getTipoCuenta());
+                beneficiario.setNumeroCuenta(cuenta.getNumeroCuenta());
 
-            String observacion = "Pago pensión complementaria " + mes + "/" + anio + " - "
-                + entidad.getRazonSocial() + " (PGPC " + pago.getCodigo() + ")";
+                String observacion = "Pago pensión complementaria " + mes + "/" + anio + " - "
+                    + entidad.getRazonSocial() + " (PGPC " + pago.getCodigo() + ")";
 
-            // idCuentaBancariaOrigen SIEMPRE null: tesorería asigna cuenta/forma de pago al
-            // aprobar — mismo criterio que DevolucionAporteServiceImpl (punto 14, 2026-08-27).
-            java.util.Map<String, Object> respuesta = pagoProgramadoService.registrarPagoDeOrigenExterno(
-                OrigenPagoExterno.CRD_PAGO_PENSION_COMPLEMENTARIA, pago.getCodigo(),
-                idEmpresa, null, valorTotal, fecha.toString(), beneficiario,
-                null, // sin desglose contable — mismo estado que la devolución hoy (§6.5.b)
-                observacion, null, false, null);
+                // idCuentaBancariaOrigen SIEMPRE null: tesorería asigna cuenta/forma de pago al
+                // aprobar — mismo criterio que DevolucionAporteServiceImpl (punto 14, 2026-08-27).
+                java.util.Map<String, Object> respuesta = pagoProgramadoService.registrarPagoDeOrigenExterno(
+                    OrigenPagoExterno.CRD_PAGO_PENSION_COMPLEMENTARIA, pago.getCodigo(),
+                    idEmpresa, null, remanente, fecha.toString(), beneficiario,
+                    null, // sin desglose contable — mismo estado que la devolución hoy (§6.5.b)
+                    observacion, null, false, null);
 
-            Object valorPago = (respuesta != null) ? respuesta.get("pago") : null;
-            if (valorPago == null) {
-                throw new IncomeException("Cuentas por Pagar no devolvió el número de la orden.");
+                Object valorPago = (respuesta != null) ? respuesta.get("pago") : null;
+                if (valorPago == null) {
+                    throw new IncomeException("Cuentas por Pagar no devolvió el número de la orden.");
+                }
+                idPago = ((Number) valorPago).longValue();
+
+            } catch (IncomeException e) {
+                throw new IncomeException("No se pudo generar la orden de pago en Cuentas por Pagar"
+                    + " para la entidad " + idEntidad + ": " + e.getMessage());
+            } catch (Throwable e) {
+                throw new IncomeException("No se pudo generar la orden de pago en Cuentas por Pagar"
+                    + " para la entidad " + idEntidad + ": " + e.getMessage());
             }
-            idPago = ((Number) valorPago).longValue();
 
-        } catch (IncomeException e) {
-            throw new IncomeException("No se pudo generar la orden de pago en Cuentas por Pagar"
-                + " para la entidad " + idEntidad + ": " + e.getMessage());
-        } catch (Throwable e) {
-            throw new IncomeException("No se pudo generar la orden de pago en Cuentas por Pagar"
-                + " para la entidad " + idEntidad + ": " + e.getMessage());
+            pago.setIdPagoProgramado(idPago);
+            pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.EN_PAGO));
+        } else {
+            // 100% cruzado contra préstamo: no hay nada que esperar del banco. El pago existe,
+            // se contabiliza (ver el devengo más abajo), y no hay salida de dinero.
+            pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.PAGADA));
+            pago.setFechaPago(fecha);
+            System.out.println("  ℹ️ PGPC " + pago.getCodigo() + " sin orden de pago: la deuda"
+                + " de préstamo consumió toda la pensión del mes.");
         }
 
-        pago.setIdPagoProgramado(idPago);
-        pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.EN_PAGO));
+        // §4 PLAN-PAGO-JUBILADOS.md: el devengo lo genera CRD, DESPUÉS de la orden de pago (o
+        // de decidir que no la hay) — mismo orden invertido que
+        // DevolucionAporteServiceImpl#generarAsientoReclasificacion: si el devengo fallara acá,
+        // la transacción entera se revierte y la orden de pago tampoco queda.
+        Long idAsientoDevengo = generarAsientoDevengoPension(pago, entidad, idEmpresa);
+        pago.setNumeroAsiento(idAsientoDevengo);
         pagoPensionDaoService.save(pago, pago.getCodigo());
 
         System.out.println("  ✅ Pago de pensión registrado - Entidad " + idEntidad + " - PGPC "
-            + pago.getCodigo() + " - Orden de pago " + idPago + " - $" + valorTotal);
+            + pago.getCodigo() + " - Orden de pago " + idPago + " - Cruzado: $" + montoCruzado
+            + " - Remanente: $" + remanente);
 
-        return true;
+        DetallePagoPension detalle = new DetallePagoPension();
+        detalle.setIdEntidad(idEntidad);
+        detalle.setNombre(entidad.getRazonSocial());
+        detalle.setIdPago(pago.getCodigo());
+        detalle.setValorPension(valorPension);
+        detalle.setValorSeguroSalud(valorSeguro);
+        detalle.setValorCruzadoAPrestamo(montoCruzado);
+        detalle.setValorOrdenPago(remanente);
+        detalle.setGeneroOrdenPago(idPago != null);
+        detalle.setIdAsientoDevengo(idAsientoDevengo);
+        detalle.setEstado("GENERADO");
+        return detalle;
+    }
+
+    /**
+     * §3 PLAN-PAGO-JUBILADOS.md: si el jubilado tiene préstamo vigente
+     * ({@code VPPC.tienePrestamo} — supuesto declarado del plan, pendiente de confirmar con el
+     * usuario si en cambio debería ser una decisión operador-por-operador), cruza la pensión
+     * del mes contra su deuda ANTES de que nada salga a tesorería. Orquesta
+     * {@code ProcesoPagoPrestamoService.pagarConAportes} — el cruce de valores ya en
+     * producción — nunca reimplementa la cascada acá (§6: se llama, no se modifica).
+     *
+     * @return cuánto de {@code valorDisponible} se aplicó a préstamos (0 si no tiene préstamo
+     *         vigente marcado, o si ninguno tiene deuda pendiente)
+     */
+    private double cruzarContraPrestamos(Entidad entidad, ValorPagoPensionComplementaria vppc,
+            double valorDisponible, Long idEmpresa, LocalDate fecha, String usuario,
+            Integer mes, Integer anio) throws Throwable {
+        if (vppc.getTienePrestamo() == null || vppc.getTienePrestamo() != 1L) {
+            return 0.0;
+        }
+
+        List<Prestamo> prestamos = prestamoDaoService.selectByEntidad(entidad.getCodigo());
+        if (prestamos == null || prestamos.isEmpty()) {
+            return 0.0;
+        }
+
+        double montoCruzado = 0.0;
+        for (Prestamo prestamo : prestamos) {
+            double disponible = redondear(valorDisponible - montoCruzado);
+            if (disponible <= TOLERANCIA) {
+                break;
+            }
+            if (!esPrestamoVigente(prestamo)) {
+                continue;
+            }
+            double deuda = motorPagoPrestamoService.calcularTotalPendientePrestamo(prestamo.getCodigo());
+            if (deuda <= TOLERANCIA) {
+                continue;
+            }
+            double aCruzar = redondear(Math.min(disponible, deuda));
+            if (aCruzar <= TOLERANCIA) {
+                continue;
+            }
+
+            SolicitudPagoConAportes solicitud = new SolicitudPagoConAportes();
+            solicitud.setIdPrestamo(prestamo.getCodigo());
+            DesgloseAporte desglose = new DesgloseAporte();
+            desglose.setIdTipoAporte(TIPO_APORTE_PENSION_COMPLEMENTARIA);
+            desglose.setValor(aCruzar);
+            solicitud.setAportes(Collections.singletonList(desglose));
+            solicitud.setUsuario(usuario);
+            solicitud.setObservacion("Cruce pensión complementaria " + mes + "/" + anio
+                + " contra préstamo " + prestamo.getCodigo());
+            solicitud.setFechaPago(fecha);
+            solicitud.setIdEmpresa(idEmpresa);
+
+            ResultadoPagoConAportes resultado = procesoPagoPrestamoService.pagarConAportes(solicitud);
+            ResultadoAplicacionPago aplicacion = resultado != null ? resultado.getResultado() : null;
+            double aplicado = redondear(aplicacion != null ? aplicacion.getValorAplicado() : 0.0);
+            montoCruzado = redondear(montoCruzado + aplicado);
+
+            System.out.println("    ↳ Cruce pensión-préstamo: $" + aplicado + " aplicados al"
+                + " préstamo " + prestamo.getCodigo() + " (deuda pendiente $" + deuda + ")");
+        }
+
+        return montoCruzado;
+    }
+
+    /** VIGENTE o EN_MORA — mismo criterio de "préstamo vivo" que el resto del módulo. */
+    private boolean esPrestamoVigente(Prestamo prestamo) {
+        if (prestamo == null || prestamo.getIdEstado() == null) {
+            return false;
+        }
+        long estado = prestamo.getIdEstado();
+        return estado == EstadoPrestamo.VIGENTE || estado == EstadoPrestamo.EN_MORA;
+    }
+
+    /**
+     * §4 PLAN-PAGO-JUBILADOS.md: asiento de DEVENGO de la pensión y su seguro de salud —
+     * SIEMPRE por el valor completo devengado (valorPension + valorSeguro), independiente de
+     * cuánto se haya cruzado contra un préstamo: ese tramo lo contabiliza aparte
+     * {@code contabilizarPagoConAportes} (dentro de {@code pagarConAportes}, ya existente, no
+     * se toca). El asiento de PAGO contra banco tampoco va acá — lo genera CXP/TSR con la
+     * orden de pago, igual que en la devolución de aportes.
+     */
+    private Long generarAsientoDevengoPension(PagoPensionComplementaria pago, Entidad entidad, Long idEmpresa)
+            throws Throwable {
+        if (!configuracionContabilidadService.contabilidadActiva()) {
+            System.out.println("  Contabilidad de CRD INACTIVA: PGPC " + pago.getCodigo()
+                + " registrado sin generar el asiento de devengo.");
+            return null;
+        }
+
+        Long idPlantilla = plantillaService.codigoByAlterno(
+            PlantillasCredito.PAGO_PENSION_COMPLEMENTARIA, idEmpresa);
+        if (idPlantilla == null) {
+            throw new IncomeException("No existe la plantilla contable alterno "
+                + PlantillasCredito.PAGO_PENSION_COMPLEMENTARIA + " (pago mensual de pensión"
+                + " complementaria) para la empresa " + idEmpresa + ". Corra sql/173 antes de"
+                + " generar pagos de pensión.");
+        }
+
+        String prefijo = "Pensión complementaria " + pago.getMes() + "/" + pago.getAnio()
+            + " - " + entidad.getRazonSocial() + " (PGPC " + pago.getCodigo() + ")";
+
+        List<DetalleAsiento> lineas = new ArrayList<>();
+        double totalDebe = 0.0;
+        double totalHaber = 0.0;
+
+        double valorPension = redondear(nvl(pago.getValorPension()));
+        if (valorPension > TOLERANCIA) {
+            lineas.add(lineaDevengo(idPlantilla, 1, valorPension, prefijo + " - pensión"));
+            lineas.add(lineaDevengo(idPlantilla, 2, valorPension, prefijo + " - pensión"));
+            totalDebe += valorPension;
+            totalHaber += valorPension;
+        }
+
+        double valorSeguro = redondear(nvl(pago.getValorSeguro()));
+        if (valorSeguro > TOLERANCIA) {
+            lineas.add(lineaDevengo(idPlantilla, 3, valorSeguro, prefijo + " - seguro de salud"));
+            lineas.add(lineaDevengo(idPlantilla, 4, valorSeguro, prefijo + " - seguro de salud"));
+            totalDebe += valorSeguro;
+            totalHaber += valorSeguro;
+        }
+
+        totalDebe = redondear(totalDebe);
+        totalHaber = redondear(totalHaber);
+        double valorTotal = redondear(nvl(pago.getValor()));
+        if (Math.abs(redondear(totalDebe - valorTotal)) > TOLERANCIA
+                || Math.abs(redondear(totalHaber - valorTotal)) > TOLERANCIA) {
+            throw new IncomeException("El asiento de devengo del PGPC " + pago.getCodigo()
+                + " no cuadra contra su valor total: DEBE $" + totalDebe + ", HABER $" + totalHaber
+                + ", pago $" + valorTotal + ". No se genera un asiento desbalanceado.");
+        }
+
+        Asiento asiento = asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS,
+            pago.getFecha(), prefijo, pago.getUsuarioRegistro(), lineas,
+            Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
+
+        System.out.println("  ✅ Asiento de devengo generado - PGPC " + pago.getCodigo()
+            + " - Asiento " + asiento.getCodigo() + " - $" + valorTotal);
+
+        return asiento.getCodigo();
+    }
+
+    /** Arma una línea del devengo desde la plantilla 35 por su aux1 posicional (1..4). */
+    private DetalleAsiento lineaDevengo(Long idPlantilla, int aux1, double valor, String descripcion)
+            throws Throwable {
+        DetallePlantilla linea = detallePlantillaDaoService.selectByPlantillaYAuxiliar(idPlantilla, aux1);
+        if (linea == null || linea.getPlanCuenta() == null) {
+            throw new IncomeException("La plantilla alterno " + PlantillasCredito.PAGO_PENSION_COMPLEMENTARIA
+                + " no tiene la línea aux1=" + aux1 + " — corra sql/173 completo (ver su control"
+                + " D.1, deben salir 4 líneas).");
+        }
+        PlanCuenta cuenta = linea.getPlanCuenta();
+        boolean debe = linea.getMovimiento() != null && linea.getMovimiento().longValue() == 1L;
+        DetalleAsiento detalle = new DetalleAsiento();
+        detalle.setPlanCuenta(cuenta);
+        detalle.setNumeroCuenta(cuenta.getCuentaContable());
+        detalle.setNombreCuenta(cuenta.getNombre());
+        detalle.setDescripcion(descripcion);
+        detalle.setValorDebe(debe ? redondear(valor) : 0.0);
+        detalle.setValorHaber(debe ? 0.0 : redondear(valor));
+        return detalle;
     }
 
     // ========================================================================
@@ -411,7 +701,11 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         if (estadoPago == EstadoPagoProgramado.CONFIRMADO) {
             pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.PAGADA));
             pago.setFechaPago(pagoProgramado.getFechaRespuesta());
-            pago.setNumeroAsiento((pagoProgramado.getAsiento() != null) ? pagoProgramado.getAsiento().getCodigo() : null);
+            // §4 PLAN-PAGO-JUBILADOS.md (2026-09-02): numeroAsiento YA NO se toma prestado del
+            // asiento bancario de CXP — desde generarPagoIndividual guarda el asiento de
+            // DEVENGO que genera CRD (generarAsientoDevengoPension), y no se sobreescribe acá.
+            // El asiento del banco, si hace falta auditarlo, se llega por
+            // pagoProgramado.getAsiento() a través de idPagoProgramado.
             pagoPensionDaoService.save(pago, pago.getCodigo());
             parcial.setMarcadasPagadas(1);
             System.out.println("  ✅ Pago " + idPago + " PAGADO - Fecha: " + pago.getFechaPago());
@@ -599,5 +893,9 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
 
     private double redondear(double valor) {
         return BigDecimal.valueOf(valor).setScale(2, RoundingMode.HALF_UP).doubleValue();
+    }
+
+    private double nvl(Double valor) {
+        return valor != null ? valor : 0.0;
     }
 }
