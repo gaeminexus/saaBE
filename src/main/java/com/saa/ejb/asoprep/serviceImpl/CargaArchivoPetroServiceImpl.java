@@ -1651,7 +1651,6 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		if (cargaArchivo == null) {
 			throw new IncomeException("No se encontró la carga con ID: " + codigoCargaArchivo);
 		}
-		Long codigoFilial = cargaArchivo.getFilial() != null ? cargaArchivo.getFilial().getCodigo() : null;
 
 		List<ParticipeXCargaArchivo> participes =
 			participeXCargaArchivoDaoService.selectByCodigoPetroEnCarga(codigoPetro, codigoCargaArchivo);
@@ -1665,9 +1664,10 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 				if (novedadesParticipe != null) {
 					novedades.addAll(novedadesParticipe);
 				}
-				// CORRECCIÓN 2026-09-03 (§10) — ver el javadoc de disponibleParaTope: solo cuenta
-				// si esta fila (participe, producto) tiene novedad bloqueante.
-				disponible += disponibleParaTope(participe, novedadesParticipe, codigoFilial);
+				// CORRECCIÓN 2026-09-03 (§10, segunda vuelta) — ver el javadoc de
+				// disponibleParaTope: pozo por (producto, préstamo), máximo por grupo, capeado
+				// al total descontado de la fila.
+				disponible += disponibleParaTope(participe, novedadesParticipe);
 			}
 		}
 
@@ -1885,8 +1885,6 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		Map<Long, String> nombrePorRol = new LinkedHashMap<>();
 		Map<Long, List<NovedadParticipeCarga>> novedadesPorRol = new LinkedHashMap<>();
 
-		Long codigoFilial = cargaArchivo.getFilial() != null ? cargaArchivo.getFilial().getCodigo() : null;
-
 		for (DetalleCargaArchivo detalle : detallesCarga) {
 			List<ParticipeXCargaArchivo> participesDetalle =
 				participeXCargaArchivoDaoService.selectByDetalleCargaArchivo(detalle.getCodigo());
@@ -1910,7 +1908,7 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 					novedadesPorRol.computeIfAbsent(rolPetro, k -> new ArrayList<>()).addAll(novedades);
 				}
 
-				disponiblePorRol.merge(rolPetro, disponibleParaTope(participe, novedades, codigoFilial), Double::sum);
+				disponiblePorRol.merge(rolPetro, disponibleParaTope(participe, novedades), Double::sum);
 			}
 		}
 
@@ -1994,38 +1992,81 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 
 	/**
 	 * "Disponible" para el tope de UNA fila PXCA (un partícipe, un producto) — CORRECCIÓN
-	 * 2026-09-03, VALIDACION-TOPE-AFECTACION-MANUAL.md §10: la regla original ("el tope es el
-	 * total descontado del partícipe") era incompleta. Medido en producción, carga 449, rol
-	 * 7508 (SANCHEZ PRADO): descontado PH 282,77 + HS 15,42 + PE 57,79 + AH 50,75 = 406,73,
-	 * pero la novedad bloqueante era SOLO del PH. El operador tenía en sus manos 298,19
-	 * (PH + HS) — PE y AH los iba a aplicar el flujo AUTOMÁTICO porque no estaban bloqueados.
-	 * Poner el tope en 406,73 dejó a la afectación manual consumir plata que el automático ya
-	 * tenía asignada: 406,73 − 298,19 = 108,54 = exactamente los 57,79 (préstamo) + 50,75
-	 * (aporte) que el automático aplicó encima.
+	 * 2026-09-03, VALIDACION-TOPE-AFECTACION-MANUAL.md §10, SEGUNDA VUELTA.
 	 *
-	 * <b>La regla corregida:</b> el tope es por PARTÍCIPE (eso no cambió — reclasificar entre
-	 * productos BLOQUEADOS sigue permitido, caso SARMIENTO), pero el universo no es TODO lo
-	 * descontado: es SOLO lo descontado en los productos que TIENEN novedad bloqueante. Un
-	 * producto sin novedad bloqueante lo resuelve el proceso automático y no debe contar para
-	 * el tope manual.
+	 * <p><b>Primera vuelta (insuficiente):</b> "el tope es el total descontado del partícipe"
+	 * era incompleto — medido en carga 449, rol 7508 (SANCHEZ), el tope se puso en 406,73
+	 * cuando el operador solo tenía bloqueado 298,19; el resto lo iba a aplicar el automático.
+	 * Primera corrección: "el tope es SOLO lo descontado en los productos con novedad
+	 * bloqueante" — pero esto TAMBIÉN resultó incompleto, verificado antes de escribir esta
+	 * segunda vuelta con un caso de aportes: si una novedad bloqueante es un SOBRANTE parcial
+	 * (p.ej. $50 de un producto de $200, donde $150 ya se aplicaron a meses con vigencia
+	 * válida), usar el {@code totalDescontado} completo de la fila abre un pozo de $200 cuando
+	 * el pozo real es $50 — la misma plata de más, por una razón distinta.</p>
+	 *
+	 * <p><b>La regla, ahora:</b> el pozo de cada novedad BLOQUEANTE es EL MISMO que la pantalla
+	 * de afectación le ofrece al operador —
+	 * {@code detalle-consulta-carga.component.ts#montoDisponibleAfectacion}: {@code
+	 * montoRecibido ?? montoDiferencia ?? montoEsperado ?? 0} — para que pantalla y tope NUNCA
+	 * discrepen (si discreparan, el operador repartiría lo que la pantalla ofrece y el proceso
+	 * se lo rechazaría). Se agrupan las novedades bloqueantes por
+	 * {@code (codigoProducto, codigoPrestamo)} y se toma el MÁXIMO de cada grupo, no la suma:
+	 * verificado 2026-09-03 que {@code MONTO_INCONSISTENTE} puede registrarse DOS veces para el
+	 * mismo préstamo (una en Fase 2 al validar el archivo, otra en
+	 * {@link #manejarExcedenteNoAplicado} durante la aplicación si el motor no encuentra cuota
+	 * para el excedente) — son la MISMA plata vista dos veces, sumarlas la duplicaría. Los
+	 * grupos sí se suman entre sí (productos/préstamos distintos son plata distinta), y el
+	 * total se CAPEA a {@code totalDescontado} de la fila: ninguna combinación de novedades
+	 * puede habilitar a afectar más de lo que efectivamente se descontó.</p>
+	 *
+	 * <p><b>Los 4 tipos ESTRUCTURALES</b> (PARTICIPE_NO_ENCONTRADO, CODIGO_ROL_DUPLICADO,
+	 * NOMBRE_ENTIDAD_DUPLICADO, CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE — sin fila
+	 * {@code NovedadParticipeCarga}, viven en {@code participe.getNovedadesCarga()}/
+	 * {@code getNovedadesFinancieras()}) no aportan pozo acá, porque este método solo mira
+	 * {@code NovedadParticipeCarga}. Para los tres primeros es lo CORRECTO — verificado con el
+	 * frontend: {@code detalle-consulta-carga.component.ts:1459} filtra
+	 * {@code tipoNovedad > 3} y nunca los ofrece para afectar (si no se sabe quién es el
+	 * partícipe no hay plata que repartir, hay un dato que corregir). ⚠️ El CUARTO
+	 * (CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE) SÍ pasa ese filtro del frontend y hoy SOLO bloquea
+	 * fuera de la filial Petrocomercial — si es el ÚNICO bloqueo de una fila, este método le da
+	 * pozo 0 igual que a los otros tres, y no se verificó contra el frontend si eso dejaría a
+	 * un operador sin pozo para un caso que la pantalla sí le ofrece. Reportado al árbitro
+	 * 2026-09-03, pendiente de confirmación — no se resolvió acá.</p>
+	 *
+	 * <p><b>Principio para cualquier ajuste futuro de este cálculo:</b> ANTE LA DUDA, EL TOPE
+	 * SE EQUIVOCA POR ABAJO, nunca por arriba. Quedarse corto es visible y corregible — el
+	 * operador avisa que no puede repartir todo, se afina. Pasarse INVENTA PLATA y descuadra la
+	 * contabilidad en silencio, que es justo lo que costó la jornada del 2026-09-02/03. Las dos
+	 * equivocaciones no son igual de caras: la regla no tiene que ser simétrica.</p>
 	 *
 	 * <b>ÚNICA definición</b> — la usan {@link #calcularViolacionesTopeAfectacionManual} (y por
 	 * lo tanto {@link #validarTopeAfectacionManualPorParticipe} y
-	 * {@link #obtenerPrevueloAfectacionManual}) y {@link #obtenerTopeAfectacionManual}. Cambiar
-	 * la regla en un solo lugar y no en el otro es exactamente lo que esta extracción existe
-	 * para evitar.
-	 *
-	 * <p>Reutiliza {@link #novedadesQueRequierenAfectacion} (ya existía, la usa
-	 * {@code buscarValoresSinDestino} para la misma pregunta) — sin consultas nuevas: recibe
-	 * las novedades YA LEÍDAS de esta fila y solo clasifica en memoria.</p>
-	 *
-	 * @return el {@code totalDescontado} de esta fila si tiene alguna novedad bloqueante;
-	 *         {@code 0.0} si no (el automático la va a aplicar, no cuenta para el tope manual)
+	 * {@link #obtenerPrevueloAfectacionManual}) y {@link #obtenerTopeAfectacionManual}.
 	 */
-	private double disponibleParaTope(ParticipeXCargaArchivo participe, List<NovedadParticipeCarga> novedadesDeEstaFila,
-			Long codigoFilial) {
-		List<Long> tiposBloqueantes = novedadesQueRequierenAfectacion(participe, novedadesDeEstaFila, codigoFilial);
-		return tiposBloqueantes.isEmpty() ? 0.0 : nullSafe(participe.getTotalDescontado());
+	private double disponibleParaTope(ParticipeXCargaArchivo participe, List<NovedadParticipeCarga> novedadesDeEstaFila) {
+		if (novedadesDeEstaFila == null || novedadesDeEstaFila.isEmpty()) {
+			return 0.0;
+		}
+		Map<String, Double> poolPorGrupo = new HashMap<>();
+		for (NovedadParticipeCarga novedad : novedadesDeEstaFila) {
+			if (FamiliaNovedadCarga.clasificar(novedad.getTipoNovedad(), novedad.getMontoDiferencia())
+					!= FamiliaNovedadCarga.BLOQUEANTE) {
+				continue;
+			}
+			// Mismo criterio que la pantalla: montoRecibido ?? montoDiferencia ?? montoEsperado ?? 0.
+			double pool = novedad.getMontoRecibido() != null ? novedad.getMontoRecibido()
+				: novedad.getMontoDiferencia() != null ? novedad.getMontoDiferencia()
+				: novedad.getMontoEsperado() != null ? novedad.getMontoEsperado()
+				: 0.0;
+			String clave = novedad.getCodigoProducto() + "|" + novedad.getCodigoPrestamo();
+			poolPorGrupo.merge(clave, pool, Math::max);
+		}
+		double totalPozos = 0.0;
+		for (double pool : poolPorGrupo.values()) {
+			totalPozos += pool;
+		}
+		double tope = nullSafe(participe.getTotalDescontado());
+		return Math.min(totalPozos, tope);
 	}
 
 	/** Cédula del partícipe a partir de su rol Petro, solo para el mensaje de la violación. */

@@ -275,13 +275,57 @@ automático ya tenía asignada. **`406,73 − 298,19 = 108,54`.**
 
 ### La regla corregida
 
-**Tope manual = lo descontado en los productos que tienen novedad bloqueante.**
+*(Reemplaza a la del mismo nombre que estuvo acá hasta el 2026-09-03 — "tope manual = lo descontado
+en los productos con novedad bloqueante" cerraba el caso SANCHEZ pero no un sobrante PARCIAL dentro
+de un producto ya aplicado en parte. Ver el porqué abajo.)*
 
-Equivalentemente: `total descontado − lo que el flujo automático va a aplicar`. El automático aplica
-los productos **sin** novedad bloqueante, y esa plata no está disponible para afectar a mano.
+**Tope manual = SUMA, por (producto, préstamo), del MÁXIMO pozo entre las novedades bloqueantes de
+ese grupo — capeada al total descontado del partícipe.**
 
-Se conserva intacto lo que el usuario decidió: **dentro de ese universo puede mover entre préstamos y
-aportes como quiera**. Lo que deja de poder es tomar plata que ya tiene destino.
+El pozo de cada novedad bloqueante es **el mismo que la pantalla de afectación le ofrece al
+operador** (`detalle-consulta-carga.component.ts#montoDisponibleAfectacion`):
+
+```
+montoRecibido ?? montoDiferencia ?? montoEsperado ?? 0
+```
+
+**Por qué "el mismo que la pantalla ofrece" y no una fórmula propia:** la primera corrección
+("lo descontado en los productos con novedad bloqueante") funcionó para SANCHEZ porque ahí no se
+había pre-aplicado nada — pero falló en un caso de sobrante de aportes: si un producto de $200 tiene
+$150 ya aplicados legítimamente a meses con vigencia y $50 de sobrante sin poder aplicar, el sobrante
+es la novedad bloqueante y su pozo real es $50, no los $200 del `totalDescontado` del producto. Un
+único campo no cubre los dos casos (en `MONTO_INCONSISTENTE` de SANCHEZ el pozo es el recibido
+completo; en el sobrante es apenas el remanente), pero "lo que la pantalla ya resuelve para los 14
+tipos" sí — porque para eso existe esa cadena de respaldos.
+
+**Por qué el MÁXIMO por grupo y no la suma:** dos novedades bloqueantes sobre el MISMO
+(producto, préstamo) describen la MISMA plata vista dos veces, no dos platas — verificado que
+`MONTO_INCONSISTENTE` puede registrarse dos veces para el mismo préstamo (Fase 2 al validar el
+archivo, y `manejarExcedenteNoAplicado` durante la aplicación si el motor no encuentra cuota para el
+excedente). Sumarlas sería el mismo defecto que se está cerrando, con otro disfraz.
+
+**Por qué el cap al total descontado:** es la última barrera. Ninguna combinación de novedades puede
+habilitar a afectar más de lo que efectivamente entró — si el cálculo de los pozos se equivocara,
+que se equivoque por debajo, nunca por arriba (ver el principio, abajo).
+
+Los 4 tipos ESTRUCTURALES (sin fila `NovedadParticipeCarga`: `PARTICIPE_NO_ENCONTRADO`,
+`CODIGO_ROL_DUPLICADO`, `NOMBRE_ENTIDAD_DUPLICADO`, `CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE`) no aportan
+pozo con esta fórmula. Correcto para los tres primeros —el frontend nunca los ofrece para afectar
+(`tipoNovedad > 3`)—; el cuarto SÍ pasa ese filtro del frontend y **queda pendiente de verificar**
+que no se quede sin pozo cuando es el único bloqueo de una fila (filial no-Petrocomercial).
+
+Se conserva intacto lo que el usuario decidió: **dentro del universo bloqueado puede mover entre
+préstamos y aportes como quiera** (caso SARMIENTO). Lo que no puede es tomar plata que ya tiene
+destino — ni la del automático (primera vuelta), ni la ya aplicada dentro de un mismo producto
+(segunda vuelta).
+
+### ⛔ El principio para cualquier ajuste futuro de este cálculo
+
+**Ante la duda, el tope se equivoca por abajo.** Quedarse corto es visible y corregible: el operador
+avisa que no puede repartir todo, y se afina. Pasarse **inventa plata** y descuadra la contabilidad
+en silencio — que es exactamente lo que costó la jornada del 2026-09-02/03. Las dos equivocaciones no
+son igual de caras, así que la regla no tiene que ser simétrica: cuando un caso nuevo no cierre,
+resolverlo hacia el lado que da MENOS pozo, nunca más.
 
 ### ⛔ Los tres consumidores se corrigen juntos
 
