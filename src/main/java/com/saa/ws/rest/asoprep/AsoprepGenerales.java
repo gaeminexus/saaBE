@@ -453,7 +453,51 @@ public class AsoprepGenerales {
                     .build();
         }
     }
-    
+
+    /**
+     * Tope de afectación manual de un partícipe, de solo lectura — VALIDACION-TOPE-AFECTACION-
+     * MANUAL.md §8. La pantalla de afectación lo consulta para mostrar disponible/afectado/
+     * restante MIENTRAS el operador trabaja, sin reimplementar la regla en el frontend: el
+     * backend reutiliza la misma fórmula que {@code aplicarPagosArchivoPetro} usa para bloquear.
+     *
+     * ⛔ Este endpoint INFORMA, no valida ni bloquea. Que no haya excedente acá no garantiza que
+     * la carga procese — la validación real sigue siendo la de aplicarPagosArchivoPetro.
+     *
+     * @param idCarga     ID de la carga (CRD.CRAR)
+     * @param codigoPetro Rol Petro del partícipe
+     * @return {"codigoPetro", "disponible", "afectado", "exceso", "restante"}
+     */
+    @GET
+    @Path("/topeAfectacion")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response topeAfectacion(@QueryParam("idCarga") Long idCarga,
+                                    @QueryParam("codigoPetro") Long codigoPetro) {
+        System.out.println("REST: TOPE DE AFECTACION MANUAL - Carga: " + idCarga + " - Rol Petro: " + codigoPetro);
+
+        try {
+            if (idCarga == null || codigoPetro == null) {
+                return Response.status(Status.BAD_REQUEST)
+                        .entity(new FileResponse(false, "idCarga y codigoPetro son requeridos", null))
+                        .build();
+            }
+
+            Map<String, Object> tope = cargaArchivoPetroService.obtenerTopeAfectacionManual(idCarga, codigoPetro);
+
+            return Response.ok().entity(tope).build();
+
+        } catch (IncomeException e) {
+            return Response.status(Status.BAD_REQUEST)
+                    .entity(new FileResponse(false, e.getMessage(), null))
+                    .build();
+        } catch (Throwable e) {
+            System.err.println("ERROR al consultar el tope de afectación manual:");
+            e.printStackTrace();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(new FileResponse(false, "Error al consultar el tope de afectación manual: " + e.getMessage(), null))
+                    .build();
+        }
+    }
+
     // =====================================================================================
     // Cobro de Petro en dos pasos (regla 11 de §5 de
     // LEVANTAMIENTO-ALIMENTACION-CONTABLE-CREDITOS.md). CONTRATO CONGELADO con el frontend:

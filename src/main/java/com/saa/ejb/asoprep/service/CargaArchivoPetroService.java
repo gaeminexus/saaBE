@@ -81,4 +81,25 @@ public interface CargaArchivoPetroService {
      */
     List<Map<String, Object>> obtenerValoresSinDestino(Long codigoCargaArchivo) throws Throwable;
 
+    /**
+     * Tope de afectación manual de UN partícipe en una carga — VALIDACION-TOPE-AFECTACION-
+     * MANUAL.md §8. Única fuente de verdad: reutiliza la misma regla que
+     * {@code validarTopeAfectacionManualPorParticipe} (la validación que efectivamente bloquea
+     * al procesar), para que la pantalla de afectación pueda mostrar el tope mientras el
+     * operador trabaja SIN reimplementarla en el frontend.
+     *
+     * <b>Este método informa, no valida ni bloquea.</b> Que no haya excedente acá no garantiza
+     * que la carga procese: el tope se arma entre varias pantallas y sesiones, así que la
+     * validación real sigue siendo la de {@code aplicarPagosArchivoPetro}.
+     *
+     * @param codigoCargaArchivo : ID de la carga (CRD.CRAR)
+     * @param codigoPetro        : Rol Petro del partícipe
+     * @return : Map con {@code codigoPetro}, {@code disponible} (SUM PXCADSDO, todos los
+     *           productos), {@code afectado} (SUM AVPCVAFA, todas sus novedades),
+     *           {@code exceso} ({@code max(0, afectado - disponible)}) y {@code restante}
+     *           ({@code max(0, disponible - afectado)})
+     * @throws Throwable : Excepción en caso de error
+     */
+    Map<String, Object> obtenerTopeAfectacionManual(Long codigoCargaArchivo, Long codigoPetro) throws Throwable;
+
 }

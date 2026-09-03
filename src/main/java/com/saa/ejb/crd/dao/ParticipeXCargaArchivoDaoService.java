@@ -24,11 +24,24 @@ public interface ParticipeXCargaArchivoDaoService extends EntityDao<ParticipeXCa
 	
 	/**
 	 * Busca todos los partícipes asociados a un DetalleCargaArchivo específico
-	 * 
+	 *
 	 * @param codigoDetalleCargaArchivo Código del DetalleCargaArchivo
 	 * @return Lista de ParticipeXCargaArchivo encontrados
 	 */
 	List<ParticipeXCargaArchivo> selectByDetalleCargaArchivo(Long codigoDetalleCargaArchivo);
+
+	/**
+	 * Todas las filas de un partícipe (rol Petro) dentro de una carga, TODOS los productos —
+	 * VALIDACION-TOPE-AFECTACION-MANUAL.md §8: es la fuente de "disponible" del endpoint de
+	 * tope, acotada a un solo partícipe (no escanea la carga completa como el método de
+	 * validación, que sí necesita verlos a todos de una vez).
+	 *
+	 * @param codigoPetro        : Rol Petro del partícipe
+	 * @param codigoCargaArchivo : Código de la carga (CRD.CRAR)
+	 * @return                   : Lista; VACÍA si el partícipe no tiene filas en esa carga
+	 * @throws Throwable         : Excepcion
+	 */
+	List<ParticipeXCargaArchivo> selectByCodigoPetroEnCarga(Long codigoPetro, Long codigoCargaArchivo) throws Throwable;
 
 	/**
 	 * Indica si existe alguna carga no anulada para el periodo indicado que

@@ -1595,6 +1595,74 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	 * está perdonando redondeo, se está detectando dinero inventado, y $1 de margen en esa
 	 * dirección es exactamente la clase de plata que este método existe para atajar.</p>
 	 */
+	/**
+	 * Tope de afectación manual, de solo lectura, para UN partícipe — VALIDACION-TOPE-
+	 * AFECTACION-MANUAL.md §8. La pantalla de afectación lo usa para mostrarle al operador el
+	 * disponible/afectado/restante MIENTRAS TRABAJA, sin reimplementar la regla en el frontend:
+	 * reutiliza {@link #totalAfectadoManualmente} y {@link #excesoYRestante}, las mismas dos
+	 * piezas que usa {@link #validarTopeAfectacionManualPorParticipe} para bloquear — el día
+	 * que la fórmula cambie, cambia en esos dos métodos y acá se entera sola.
+	 *
+	 * A diferencia de la validación batch (que escanea TODA la carga en una pasada porque
+	 * necesita verlos a todos a la vez), esto es una consulta puntual: acotada a las filas de
+	 * un solo rol Petro — apropiado para una pantalla que consulta un partícipe por vez.
+	 *
+	 * <b>Informa, no bloquea.</b> Que no haya excedente acá no garantiza que la carga procese:
+	 * la validación real sigue siendo {@link #validarTopeAfectacionManualPorParticipe}.
+	 */
+	@Override
+	public Map<String, Object> obtenerTopeAfectacionManual(Long codigoCargaArchivo, Long codigoPetro)
+			throws Throwable {
+		System.out.println("CargaArchivoPetroService.obtenerTopeAfectacionManual - carga "
+			+ codigoCargaArchivo + " rol " + codigoPetro);
+
+		if (codigoCargaArchivo == null) {
+			throw new IncomeException("El id de la carga es obligatorio");
+		}
+		if (codigoPetro == null) {
+			throw new IncomeException("El codigoPetro es obligatorio");
+		}
+
+		List<ParticipeXCargaArchivo> participes =
+			participeXCargaArchivoDaoService.selectByCodigoPetroEnCarga(codigoPetro, codigoCargaArchivo);
+
+		double disponible = 0.0;
+		List<NovedadParticipeCarga> novedades = new ArrayList<>();
+		if (participes != null) {
+			for (ParticipeXCargaArchivo participe : participes) {
+				disponible += nullSafe(participe.getTotalDescontado());
+				List<NovedadParticipeCarga> novedadesParticipe =
+					novedadParticipeCargaDaoService.selectByParticipe(participe.getCodigo());
+				if (novedadesParticipe != null) {
+					novedades.addAll(novedadesParticipe);
+				}
+			}
+		}
+
+		double afectado = totalAfectadoManualmente(novedades);
+		double[] excesoRestante = excesoYRestante(disponible, afectado);
+
+		Map<String, Object> resultado = new HashMap<>();
+		resultado.put("codigoPetro", codigoPetro);
+		resultado.put("disponible", disponible);
+		resultado.put("afectado", afectado);
+		resultado.put("exceso", excesoRestante[0]);
+		resultado.put("restante", excesoRestante[1]);
+		return resultado;
+	}
+
+	/**
+	 * exceso/restante a partir de (disponible, afectado) — fórmula ÚNICA (VALIDACION-TOPE-
+	 * AFECTACION-MANUAL.md §8), compartida por la validación batch y el endpoint de consulta.
+	 *
+	 * @return {@code [exceso, restante]}, ambos {@code >= 0}
+	 */
+	private double[] excesoYRestante(double disponible, double afectado) {
+		double exceso = Math.max(0.0, afectado - disponible);
+		double restante = Math.max(0.0, disponible - afectado);
+		return new double[] { exceso, restante };
+	}
+
 	private void validarTopeAfectacionManualPorParticipe(CargaArchivo cargaArchivo) throws Throwable {
 		System.out.println("=== VALIDANDO TOPE DE AFECTACION MANUAL POR PARTICIPE (rol Petro) ===");
 
@@ -1645,7 +1713,7 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			// Misma regla que totalAfectadoManualmente: solo cuenta lo que el aplicador va a usar
 			// realmente (una fila sin cuota y sin tipo de aporte no tiene destino y no suma).
 			double afectado = totalAfectadoManualmente(novedadesRol);
-			double exceso = afectado - disponible;
+			double exceso = excesoYRestante(disponible, afectado)[0];
 			if (exceso <= TOLERANCIA_TOPE) {
 				continue;
 			}

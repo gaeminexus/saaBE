@@ -75,6 +75,24 @@ public class ParticipeXCargaArchivoDaoServiceImpl extends EntityDaoImpl<Particip
 	}
 
 	@Override
+	@SuppressWarnings("unchecked")
+	public List<ParticipeXCargaArchivo> selectByCodigoPetroEnCarga(Long codigoPetro, Long codigoCargaArchivo)
+			throws Throwable {
+		System.out.println("ParticipeXCargaArchivoDaoService.selectByCodigoPetroEnCarga - rol " + codigoPetro
+			+ " carga " + codigoCargaArchivo);
+
+		Query query = em.createQuery(
+			"SELECT p FROM ParticipeXCargaArchivo p " +
+			"WHERE p.codigoPetro = :codigoPetro " +
+			"AND p.detalleCargaArchivo.cargaArchivo.codigo = :codigoCargaArchivo"
+		);
+		query.setParameter("codigoPetro", codigoPetro);
+		query.setParameter("codigoCargaArchivo", codigoCargaArchivo);
+
+		return query.getResultList();
+	}
+
+	@Override
 	public boolean existeCargaConProductoEnPeriodo(String codigoProducto,
 			Long anioAfectacion, Long mesAfectacion) throws Throwable {
 		System.out.println("ParticipeXCargaArchivoDaoService.existeCargaConProductoEnPeriodo - producto: "
