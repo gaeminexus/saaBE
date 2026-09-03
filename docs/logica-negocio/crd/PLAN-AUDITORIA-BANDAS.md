@@ -1,0 +1,154 @@
+# Pantalla de auditoría de distribución en bandas
+
+**Fecha:** 2026-09-02 · **Equipo:** CRD / Equipo B · **Estado:** plan aprobado, pendiente de implementar
+
+> **Pedido del usuario, 2026-09-02:** *«una pantalla ultramoderna e intuitiva que me permita ver el
+> resumen de una carga y el detalle de cómo se distribuyeron los valores a cada banda contable. Es
+> para que contabilidad pueda revisar por qué se mandan esos saldos a las cuentas contables […]
+> También debe darme ese detalle por aportes. Debe ser ultradinámica: filtrar por tipo de préstamo,
+> aportes, fechas, partícipes, bandas, cuentas contables, etc.»*
+>
+> **Ampliación, 2026-09-02:** *«la pantalla debe permitirme ver el detalle de cualquier distribución
+> en bandas»* — no sólo la carga Petro.
+>
+> **Restricción de negocio, 2026-09-02:** *«en un momento vamos a desconectar contabilidad de crd
+> para poder vender el sistema aparte»*.
+
+---
+
+## 1. La restricción de la venta separada decide el diseño, y no cuesta nada
+
+**No hace falta una segunda versión del sistema.** Con una sola decisión de diseño, la pantalla
+funciona igual con contabilidad conectada o desconectada. Y esa decisión hay que tomarla **ahora**,
+porque tomarla después sí obliga a rehacer.
+
+### ⛔ Dónde se clasifica hoy — y por qué es el problema
+
+Hoy la clasificación en bandas ocurre **dentro de la contabilización**:
+`CobroPetroContableServiceImpl:720` arma un `Map<String, LineaBandaAcumulada>` en memoria mientras
+construye el asiento, y ese mapa **muere cuando el método termina**. Nadie lo persiste.
+
+Eso tiene dos consecuencias, y la segunda es la que importa para la venta:
+
+1. Contabilidad no puede auditar nada: el dato no existe después del asiento.
+2. **Si `contabilidadActiva()` está en `false`, no se clasifica nada en absoluto.** El día que se
+   desconecte contabilidad, una pantalla alimentada desde la contabilización queda **vacía**.
+
+### ✅ La decisión: se persiste donde se APLICA el pago, no donde se arma el asiento
+
+La banda **no es un dato contable**: es un dato de **cartera**. «Esta cuota vence en 45 días» o
+«esta cuota está vencida hace 200 días» es verdad exista o no un asiento detrás. Contabilidad
+**consume** esa clasificación para elegir una cuenta; no la produce.
+
+Por eso la tabla nueva se escribe en el momento de aplicar el pago —donde ya se conoce la cuota, su
+vencimiento y la fecha de pago— y guarda el hecho **en términos de CRD**:
+
+| Se guarda (CRD) | NO se guarda (CNT) |
+|---|---|
+| producto, tipo de préstamo, tipo de aporte | número de cuenta contable |
+| banda, etiqueta, tipo de cartera, días | plantilla, línea de plantilla |
+| partícipe, préstamo, cuota, concepto, valor | — |
+| origen del hecho y su id | — |
+
+**El enganche con contabilidad es una sola columna anulable: `idAsiento`.** Con contabilidad
+conectada se llena; desconectada queda en null y no pasa nada. La cuenta contable **no se copia**:
+se resuelve al consultar, uniendo con la configuración de bandas (`BandaProducto` ya tiene
+`idPlanCuenta` y `cuentaContable`). Sin CNT, la pantalla pierde **una columna**, no la función.
+
+> Esa es la respuesta a la pregunta del usuario: **no hace falta armar otra versión.** La versión
+> "sin contabilidad" es esta misma con una columna vacía.
+
+---
+
+## 2. Transversal desde el día uno, que sale al mismo precio
+
+La clasificación por bandas no es exclusiva de Petro: la usan también el cobro individual (CBCRASN2)
+y el abono a capital, todos vía `ClasificadorBandaService.clasificar` — que ya es el único punto por
+donde deben pasar.
+
+Si la tabla lleva **origen + id de origen**, la carga Petro es **un filtro más**, no la estructura de
+la pantalla:
+
+| Origen | Id |
+|---|---|
+| `CARGA_PETRO` | `CRD.CRAR` |
+| `COBRO_INDIVIDUAL` | `CRD.CBCR` |
+| `EVENTO_PRESTAMO` | `CRD.EVPR` (abono a capital, precancelación) |
+| `PAGO_PENSION` | `CRD.PGPC` (cuando cierre ese frente) |
+
+Colgarla de la carga cuesta lo mismo hoy y obliga a rehacer tabla y pantalla la primera vez que
+contabilidad pregunte por un cobro individual.
+
+---
+
+## 3. ⛔ Agrupar por CONCEPTO, no por cuenta
+
+**Aclaración del usuario, 2026-09-02:** la **mora se manda a la misma cuenta contable que el interés
+ordinario**, y lo único que las distingue es la descripción de la línea.
+
+Entonces: si la pantalla agrupa **por cuenta contable**, mora e interés ordinario **se fusionan en
+una sola fila** y el desglose desaparece exactamente donde contabilidad lo necesita. El agrupador
+primario es el **concepto**; la cuenta es un dato más de la fila.
+
+Conceptos a distinguir, que son los que el asiento ya separa: capital (por banda), interés ordinario,
+interés de mora, interés vencido, seguro de desgravamen, seguro de incendio, y aportes por tipo.
+
+---
+
+## 4. El cuadre va primero — decisión del usuario
+
+El usuario ya eligió: **el cuadre se muestra antes que el detalle**. La pantalla abre respondiendo
+«¿esto cuadra?» y sólo después deja explorar.
+
+Encabezado, para el origen seleccionado:
+
+| | |
+|---|---|
+| Recibido | lo que entró |
+| Distribuido | suma de la tabla de bandas |
+| **Diferencia** | **la cifra que motivó todo esto** |
+| Asiento(s) | número y estado, o «contabilidad desconectada» |
+
+Una diferencia distinta de cero se muestra **en rojo y arriba**, no escondida en un total al pie.
+Es literalmente el problema que se pasó el día persiguiendo: $2.906,52 que nadie veía.
+
+---
+
+## 5. Qué construir
+
+### 5.1 Backend
+
+1. **Tabla nueva** en `CRD`, con su DDL en `sql/174` (control antes y después, reverso comentado).
+2. **Escritura en el punto de aplicación**, no en la contabilización. Idempotente por
+   (origen, idOrigen): reprocesar una carga **reemplaza** sus filas, no las duplica — la 449 se
+   reprocesó tres veces en un día.
+3. **Endpoints de consulta**: resumen de cuadre por origen, y detalle filtrable. Contrato en
+   `API-AUDITORIA-BANDAS.md`.
+4. La contabilización sigue armando el asiento como hoy. **No se le cambia la lógica**: sólo se le
+   pasa el `idAsiento` a las filas ya escritas.
+
+### 5.2 Frontend
+
+Pantalla nueva bajo `crd/forms/`. Cuadre arriba, detalle abajo, filtros por origen, fechas, producto,
+tipo de préstamo, tipo de aporte, partícipe, banda, concepto y cuenta. Exportable.
+
+---
+
+## 6. Qué NO se toca
+
+- **`ClasificadorBandaService`** y la configuración de bandas: se leen, no se modifican.
+- **La lógica de los asientos.** Esta pantalla audita lo que ya ocurre; no cambia ni un valor.
+- **CNT.** Sólo se lee la cuenta al consultar, y de forma que su ausencia no rompa nada.
+- **Los procesos de aplicación de pago**, salvo la línea que escribe la fila de auditoría.
+
+---
+
+## 7. Verificación
+
+1. `mvn -q compile`.
+2. Sobre la carga 449 reprocesada: `Distribuido` debe igualar al total de los pagos, y la diferencia
+   contra lo recibido debe ser **la misma** que reporta `sql/171`. Si la pantalla dice otra cosa que
+   el SQL, **la pantalla está mal** — el SQL ya está verificado.
+3. Reprocesar dos veces la misma carga: la cantidad de filas **no cambia**.
+4. Con `contabilidadActiva() = false`: la pantalla sigue mostrando la distribución completa, sin
+   columna de cuenta y sin asiento. **Es la prueba de la venta separada** y no es opcional.
