@@ -11,6 +11,7 @@ import com.saa.model.cxp.FacturaCompra;
 import com.saa.model.cxp.NotaCreditoCompra;
 import com.saa.model.cxp.NotaDebitoCompra;
 import com.saa.model.cxp.PagoProgramado;
+import com.saa.model.tsr.MovimientoCajaChica;
 
 import jakarta.ejb.Local;
 
@@ -153,19 +154,84 @@ public interface AplicacionPagoCxpService extends EntityService<AplicacionPagoCx
 	AplicacionPagoCxp aplicarPagoTransferencia(PagoProgramado pago, Long idUsuario,
 			boolean emitirMovimientoCheque) throws Throwable;
 
+	// ── Aplicación desde caja chica ──────────────────────────────────────────
+
+	/**
+	 * Registra el pago (parcial o total) de una factura de compra O una
+	 * liquidación de compra con un gasto de caja chica, en vez de reconocer el
+	 * gasto contra la cuenta del producto — evita reconocer dos veces un gasto
+	 * que ya se reconoció al registrar el documento
+	 * (docs/logica-negocio/tsr/PLAN-GASTO-CAJA-CHICA-PAGA-FACTURA.md §2).
+	 * <p>
+	 * <b>Exactamente uno de {@code idFacturaCompra}/{@code idLiquidacionCompra}</b>
+	 * debe venir poblado — ver la nota de exclusividad en
+	 * {@link #aplicarAnticipo(Long, Long, Double, String, Long, Long, String)}.
+	 * <p>
+	 * Revalida en el servidor que el titular del documento sea el beneficiario
+	 * del gasto: no alcanza con que el combo del frontend ya haya filtrado.
+	 * <p>
+	 * El monto aplicado es el valor íntegro del gasto: el diseño es un gasto
+	 * por factura (1:1, D2 del documento de diseño), así que no existe un monto
+	 * de aplicación distinto — a diferencia del cruce de anticipos, acá no hay
+	 * reparto entre varios orígenes.
+	 * <p>
+	 * No valida lo comprometido en la bandeja de pagos ({@code PagoProgramado}
+	 * en estados no confirmados): esa validación es responsabilidad del
+	 * llamador, antes de registrar el gasto ({@code PagoProgramadoService
+	 * #validaValorContraSaldo}) — acá sólo se valida contra el saldo de
+	 * aplicaciones ya activas del documento.
+	 * @param idFacturaCompra     : Id de la factura de compra, o null si se paga una liquidación
+	 * @param idLiquidacionCompra : Id de la liquidación de compra, o null si se paga una factura
+	 * @param movimiento          : Gasto de caja chica ya persistido que paga el documento
+	 * @param idPlanCuentaCaja    : Id de la cuenta contable de la caja (CajaChica.planCuenta)
+	 * @param idEmpresa           : Id de la empresa contable
+	 * @param idUsuario           : Id del usuario que registra
+	 * @return                    : Aplicación creada, con su asiento
+	 * @throws Throwable          : Excepcion si el documento no existe, no es del mismo
+	 *                              proveedor que el gasto, o el monto supera su saldo
+	 */
+	AplicacionPagoCxp aplicarDesdeCajaChica(Long idFacturaCompra, Long idLiquidacionCompra,
+			MovimientoCajaChica movimiento, Long idPlanCuentaCaja, Long idEmpresa, Long idUsuario)
+			throws Throwable;
+
 	// ── Reversión ────────────────────────────────────────────────────────────
 
 	/**
 	 * Reversa una aplicación: la marca como reversada, anula su asiento,
 	 * devuelve el saldo de anticipos si aplica y anula el movimiento bancario.
 	 * El estado de pago de la factura se recalcula y graba en el backend.
+	 * <p>
+	 * ⛔ Rechaza reversar una aplicación de origen caja chica (APLPTDPG =
+	 * CAJA_CHICA): el camino válido para esas es anular el gasto
+	 * ({@code MovimientoCajaChicaService#anularGasto}), que además valida
+	 * cosas que este método no conoce (que el gasto no esté en un cierre, que
+	 * no haya un BORRADOR abierto que lo cubra). Ver
+	 * docs/logica-negocio/tsr/API-GASTO-CAJA-CHICA.md §3.
+	 * @param idAplicacion : Id de la aplicación a reversar
+	 * @param motivo       : Motivo de la reversión
+	 * @param idUsuario    : Id del usuario que reversa
+	 * @return             : Mapa con exito y mensaje
+	 * @throws Throwable   : Excepcion, o IncomeException si el origen es caja chica
+	 */
+	Map<String, Object> revertirAplicacion(Long idAplicacion, String motivo, Long idUsuario)
+			throws Throwable;
+
+	/**
+	 * Igual que {@link #revertirAplicacion(Long, String, Long)}, pero SIN el
+	 * bloqueo de origen caja chica. Es el único camino válido para reversar una
+	 * aplicación que vino de un gasto de caja chica, y lo usa exclusivamente
+	 * {@code MovimientoCajaChicaServiceImpl#anularGasto} al anular el gasto que
+	 * la originó, después de sus propias validaciones (cierre, borrador). No
+	 * exponer este método por otro camino (REST, otra pantalla): el bloqueo de
+	 * {@link #revertirAplicacion(Long, String, Long)} existe justamente para
+	 * forzar a pasar por ahí.
 	 * @param idAplicacion : Id de la aplicación a reversar
 	 * @param motivo       : Motivo de la reversión
 	 * @param idUsuario    : Id del usuario que reversa
 	 * @return             : Mapa con exito y mensaje
 	 * @throws Throwable   : Excepcion
 	 */
-	Map<String, Object> revertirAplicacion(Long idAplicacion, String motivo, Long idUsuario)
+	Map<String, Object> revertirAplicacionOrigenCajaChica(Long idAplicacion, String motivo, Long idUsuario)
 			throws Throwable;
 
 	/**

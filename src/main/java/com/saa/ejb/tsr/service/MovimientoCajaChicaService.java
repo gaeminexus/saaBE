@@ -24,23 +24,36 @@ import jakarta.ejb.Local;
 public interface MovimientoCajaChicaService extends EntityService<MovimientoCajaChica> {
 
 	/**
-	 * Registra un gasto de caja chica y lo contabiliza en la misma transacción:
-	 * DEBE cuenta del grupo del producto / HABER cuenta contable de la caja.
-	 * @param idCaja          : Id de la caja chica
-	 * @param fecha           : Fecha del gasto
-	 * @param valor           : Valor del gasto (mayor a cero)
-	 * @param descripcion     : Concepto del gasto
-	 * @param observacion     : Observación (obligatoria)
-	 * @param idProducto      : Id del producto CXP que clasifica el gasto (obligatorio)
-	 * @param idTitular       : Id del beneficiario/proveedor (opcional)
-	 * @param numeroDocumento : Número del comprobante pagado (opcional)
-	 * @param idUsuario       : Id del usuario que registra
-	 * @return                : Movimiento registrado, con su asiento
-	 * @throws Throwable      : Excepcion
+	 * Registra un gasto de caja chica y lo contabiliza en la misma transacción.
+	 * <p>
+	 * Sin documento a pagar (comportamiento original): DEBE cuenta del grupo
+	 * del producto / HABER cuenta contable de la caja.
+	 * <p>
+	 * Con {@code idFacturaCompra}/{@code idLiquidacionCompra} informado, el
+	 * gasto paga (parcial o totalmente) ese documento del proveedor en vez de
+	 * reconocerse contra la cuenta del producto — evita reconocer el gasto dos
+	 * veces (docs/logica-negocio/tsr/PLAN-GASTO-CAJA-CHICA-PAGA-FACTURA.md):
+	 * DEBE cuenta de cuentas por pagar del proveedor / HABER cuenta de la caja,
+	 * y se crea la {@code AplicacionPagoCxp} correspondiente (tipo CAJA_CHICA).
+	 * Exactamente uno de los dos debe venir informado; ninguno de los dos deja
+	 * el comportamiento original sin cambios.
+	 * @param idCaja               : Id de la caja chica
+	 * @param fecha                : Fecha del gasto
+	 * @param valor                : Valor del gasto (mayor a cero)
+	 * @param descripcion          : Concepto del gasto
+	 * @param observacion          : Observación (obligatoria)
+	 * @param idProducto           : Id del producto CXP que clasifica el gasto (obligatorio)
+	 * @param idTitular            : Id del beneficiario/proveedor (obligatorio si paga un documento)
+	 * @param numeroDocumento      : Número del comprobante pagado (opcional, texto libre)
+	 * @param idUsuario            : Id del usuario que registra
+	 * @param idFacturaCompra      : Id de la factura de compra que paga el gasto (opcional)
+	 * @param idLiquidacionCompra  : Id de la liquidación de compra que paga el gasto (opcional)
+	 * @return                     : Movimiento registrado, con su asiento
+	 * @throws Throwable           : Excepcion
 	 */
 	MovimientoCajaChica registrarGasto(Long idCaja, LocalDate fecha, Double valor, String descripcion,
-			String observacion, Long idProducto, Long idTitular, String numeroDocumento, Long idUsuario)
-			throws Throwable;
+			String observacion, Long idProducto, Long idTitular, String numeroDocumento, Long idUsuario,
+			Long idFacturaCompra, Long idLiquidacionCompra) throws Throwable;
 
 	/**
 	 * Registra la reposición del fondo desde una cuenta bancaria: crea el

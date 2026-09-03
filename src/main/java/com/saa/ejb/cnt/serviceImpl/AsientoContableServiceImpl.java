@@ -1033,6 +1033,40 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     }
 
     @Override
+    public Asiento generarAsientoAplicacionCajaChica(Long idTitular, Double valor, Long idPlanCuentaCaja,
+            Long idEmpresa, LocalDate fechaAsiento, String observaciones, String usuario) throws Throwable {
+
+        System.out.println("=== generarAsientoAplicacionCajaChica | titular=" + idTitular
+                + " | valor=" + valor + " ===");
+
+        validaDatosAplicacion(idTitular, valor, idEmpresa);
+
+        Titular titular = em.find(Titular.class, idTitular);
+        String nomProv = (titular != null) ? titular.getNombre() : String.valueOf(idTitular);
+
+        // ── DEBE: cuenta CxP del proveedor (tipoCuenta=1) ────────────────────────
+        // Mismo camino que generarAsientoAplicacionAnticipoProveedor: obtenerCuentaProveedorPorTipo
+        // es generico, sin acoplamiento a anticipo (verificado item 25b del plan).
+        PlanCuenta cuentaProveedor = obtenerCuentaProveedorPorTipo(idTitular, idEmpresa, 1L);
+        if (cuentaProveedor == null) {
+            throw new IncomeException(
+                    "El proveedor '" + nomProv + "' no tiene cuenta contable de facturas (Tipo 1) "
+                    + "configurada en Tesorería → Persona → Cuentas Contables (Rol: Proveedor).");
+        }
+
+        // ── HABER: cuenta contable de la caja chica ──────────────────────────────
+        PlanCuenta cuentaCaja = obtenerPlanCuenta(idPlanCuentaCaja,
+                "La caja chica no tiene cuenta contable configurada.");
+
+        List<DetalleAsiento> lineas = new ArrayList<>();
+        lineas.add(creaLinea(cuentaProveedor, "Pago con caja chica: " + nomProv, valor, true));
+        lineas.add(creaLinea(cuentaCaja, "Caja chica: " + nomProv, valor, false));
+
+        return generarAsiento(idEmpresa, TipoAsientos.EGRESO_TESORERIA, fechaAsiento, observaciones,
+                usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA));
+    }
+
+    @Override
     public Asiento generarAsientoReposicionCajaChica(Long idPlanCuentaCaja, Long idCuentaBancaria,
             Double valor, Long idEmpresa, LocalDate fechaAsiento, String observaciones, String usuario)
             throws Throwable {

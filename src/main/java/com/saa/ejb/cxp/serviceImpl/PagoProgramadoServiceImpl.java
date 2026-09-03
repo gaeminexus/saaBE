@@ -2009,7 +2009,8 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	 * @param idPagoEx  : Id de pago a excluir del cálculo (null si no aplica)
 	 * @throws Throwable : Excepcion si el valor supera lo disponible
 	 */
-	private void validaValorContraSaldo(FacturaCompra factura, Double valor, Long idPagoEx)
+	@Override
+	public void validaValorContraSaldo(FacturaCompra factura, Double valor, Long idPagoEx)
 			throws Throwable {
 
 		Map<String, Object> saldos = aplicacionPagoCxpService.saldoFactura(factura.getId());

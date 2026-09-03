@@ -9,6 +9,7 @@ import com.saa.model.cxc.Retencion;
 import com.saa.model.cxc.RetencionV2;
 import com.saa.model.scp.Empresa;
 import com.saa.model.scp.Usuario;
+import com.saa.model.tsr.MovimientoCajaChica;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
@@ -178,6 +179,14 @@ public class AplicacionPagoCxp implements Serializable {
     @JoinColumn(name = "APLPANTO", referencedColumnName = "ANTPCDGO")
     private AnticipoProveedor anticipoOrigen;
 
+    /**
+     * Gasto de caja chica que originó este pago. FK a TSR.MVCH.
+     * Aplica cuando APLPTDPG = 6 (CAJA_CHICA).
+     */
+    @ManyToOne
+    @JoinColumn(name = "APLPMVCH", referencedColumnName = "MVCHCDGO")
+    private MovimientoCajaChica movimientoCajaChica;
+
     // ── Datos del pago directo (solo cuando APLPTDPG = 1) ─────────────────
 
     /**
@@ -288,6 +297,9 @@ public class AplicacionPagoCxp implements Serializable {
 
     public AnticipoProveedor getAnticipoOrigen() { return anticipoOrigen; }
     public void setAnticipoOrigen(AnticipoProveedor anticipoOrigen) { this.anticipoOrigen = anticipoOrigen; }
+
+    public MovimientoCajaChica getMovimientoCajaChica() { return movimientoCajaChica; }
+    public void setMovimientoCajaChica(MovimientoCajaChica movimientoCajaChica) { this.movimientoCajaChica = movimientoCajaChica; }
 
     public Long getFormaPago() { return formaPago; }
     public void setFormaPago(Long formaPago) { this.formaPago = formaPago; }

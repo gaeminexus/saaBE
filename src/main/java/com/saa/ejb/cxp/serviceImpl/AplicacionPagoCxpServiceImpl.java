@@ -28,6 +28,7 @@ import com.saa.model.cxp.NotaDebitoCompra;
 import com.saa.model.cxp.PagoProgramado;
 import com.saa.model.scp.Empresa;
 import com.saa.model.scp.Usuario;
+import com.saa.model.tsr.MovimientoCajaChica;
 import com.saa.model.tsr.PersonaCuentaContable;
 import com.saa.model.tsr.Titular;
 import com.saa.rubros.EstadoAnticipoProveedor;
@@ -728,14 +729,118 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	}
 
 	// =====================================================================
+	// Aplicación desde caja chica
+	// =====================================================================
+
+	@Override
+	public AplicacionPagoCxp aplicarDesdeCajaChica(Long idFacturaCompra, Long idLiquidacionCompra,
+			MovimientoCajaChica movimiento, Long idPlanCuentaCaja, Long idEmpresa, Long idUsuario)
+			throws Throwable {
+
+		System.out.println("=== aplicarDesdeCajaChica | movimiento=" + movimiento.getCodigo()
+				+ " | factura=" + idFacturaCompra + " | liquidacion=" + idLiquidacionCompra + " ===");
+
+		validaExactamenteUnDocumento(idFacturaCompra, idLiquidacionCompra);
+
+		Double monto = movimiento.getValor();
+		if (monto == null || monto <= 0) {
+			throw new IncomeException("El valor del gasto a aplicar debe ser mayor a cero.");
+		}
+		if (movimiento.getTitular() == null || movimiento.getTitular().getCodigo() == null) {
+			throw new IncomeException("El gasto de caja chica no tiene beneficiario: indique el "
+					+ "proveedor para poder aplicarlo a un documento.");
+		}
+		Long idTitularGasto = movimiento.getTitular().getCodigo();
+
+		FacturaCompra factura = null;
+		LiquidacionCompraCompra liquidacion = null;
+		Titular titularDocumento;
+		String numeroDocumento;
+		if (idFacturaCompra != null) {
+			factura = cargaFacturaCompra(idFacturaCompra);
+			titularDocumento = factura.getTitular();
+			numeroDocumento = factura.getNumero();
+		} else {
+			liquidacion = cargaLiquidacionCompra(idLiquidacionCompra);
+			titularDocumento = liquidacion.getTitular();
+			numeroDocumento = liquidacion.getNumero();
+		}
+
+		// Revalidación server-side del proveedor: no alcanza con que el combo del
+		// frontend ya haya filtrado.
+		if (titularDocumento.getCodigo() == null || !idTitularGasto.equals(titularDocumento.getCodigo())) {
+			throw new IncomeException("El documento " + numeroDocumento + " no pertenece al proveedor "
+					+ "beneficiario del gasto de caja chica: no se puede aplicar el pago.");
+		}
+
+		if (factura != null) {
+			validaMontoContraSaldo(factura, monto, null);
+		} else {
+			validaMontoContraSaldoLiquidacion(liquidacion, monto, null);
+		}
+
+		LocalDate fecha = (movimiento.getFecha() != null) ? movimiento.getFecha() : LocalDate.now();
+		String observacionAsiento = "Pago con caja chica | Proveedor: " + titularDocumento.getNombre()
+				+ (factura != null ? " | Factura: " : " | Liquidación: ") + numeroDocumento
+				+ " | Valor: $" + String.format(java.util.Locale.US, "%.2f", monto);
+
+		Asiento asiento = asientoContableService.generarAsientoAplicacionCajaChica(
+				idTitularGasto, monto, idPlanCuentaCaja, idEmpresa, fecha, observacionAsiento,
+				usuarioNombre(idUsuario));
+
+		String observacionAplicacion = "Pago con caja chica | Movimiento N° " + movimiento.getCodigo()
+				+ " | " + nvl(movimiento.getDescripcion(), "");
+
+		AplicacionPagoCxp aplicacion = (factura != null)
+				? nuevaAplicacion(factura, idEmpresa, TipoDocPagoAplicacion.CAJA_CHICA, monto, fecha,
+						observacionAplicacion, usuarioNombre(idUsuario))
+				: nuevaAplicacionLiquidacion(liquidacion, idEmpresa, TipoDocPagoAplicacion.CAJA_CHICA, monto, fecha,
+						observacionAplicacion, usuarioNombre(idUsuario));
+		aplicacion.setAsiento(asiento);
+		aplicacion.setMovimientoCajaChica(movimiento);
+		aplicacion.setUsuario(em.find(Usuario.class, idUsuario));
+		aplicacion = saveSingle(aplicacion);
+
+		// saveSingle sólo recalcula el estado de pago cuando la aplicación es
+		// contra una factura (ver su cuerpo); el caso liquidación se completa acá.
+		if (liquidacion != null) {
+			recalcularEstadoPagoLiquidacion(liquidacion.getId());
+		}
+
+		System.out.println("✓ Gasto de caja chica " + movimiento.getCodigo() + " aplicado a "
+				+ (factura != null ? "factura " + factura.getId() : "liquidación " + liquidacion.getId())
+				+ " | aplicacion=" + aplicacion.getId() + " | asiento=" + asiento.getNumeroAlterno());
+		return aplicacion;
+	}
+
+	// =====================================================================
 	// Reversión
 	// =====================================================================
 
 	@Override
 	public Map<String, Object> revertirAplicacion(Long idAplicacion, String motivo, Long idUsuario)
 			throws Throwable {
+		return revertirAplicacionInterna(idAplicacion, motivo, idUsuario, false);
+	}
 
-		System.out.println("=== revertirAplicacion | aplicacion=" + idAplicacion + " ===");
+	@Override
+	public Map<String, Object> revertirAplicacionOrigenCajaChica(Long idAplicacion, String motivo, Long idUsuario)
+			throws Throwable {
+		return revertirAplicacionInterna(idAplicacion, motivo, idUsuario, true);
+	}
+
+	/**
+	 * Cuerpo común de {@link #revertirAplicacion} y
+	 * {@link #revertirAplicacionOrigenCajaChica}.
+	 * @param permiteOrigenCajaChica : false bloquea reversar una aplicación de
+	 *                                 origen caja chica (camino de abonos); true
+	 *                                 la permite (sólo la anulación del gasto)
+	 */
+	private Map<String, Object> revertirAplicacionInterna(Long idAplicacion, String motivo, Long idUsuario,
+			boolean permiteOrigenCajaChica) throws Throwable {
+
+		System.out.println("=== revertirAplicacion | aplicacion=" + idAplicacion
+				+ " | permiteOrigenCajaChica=" + permiteOrigenCajaChica + " ===");
 
 		Map<String, Object> resultado = new HashMap<>();
 
@@ -750,6 +855,14 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 		if (aplicacion.getEstado() != null
 				&& aplicacion.getEstado().intValue() == EstadoAplicacionPago.REVERSADO) {
 			throw new IncomeException("La aplicación " + idAplicacion + " ya está reversada.");
+		}
+		if (!permiteOrigenCajaChica && aplicacion.getTipoDocPago() != null
+				&& aplicacion.getTipoDocPago().intValue() == TipoDocPagoAplicacion.CAJA_CHICA) {
+			Long idMovimiento = (aplicacion.getMovimientoCajaChica() != null)
+					? aplicacion.getMovimientoCajaChica().getCodigo() : null;
+			throw new IncomeException("La aplicación " + idAplicacion + " vino de un gasto de caja chica"
+					+ (idMovimiento != null ? " (movimiento N° " + idMovimiento + ")" : "")
+					+ ": anule el gasto en Tesorería → Caja chica, no la aplicación directamente.");
 		}
 
 		revierteUnaAplicacion(aplicacion, motivo);

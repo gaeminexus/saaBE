@@ -10,12 +10,15 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.cnt.service.AsientoContableService;
 import com.saa.ejb.cnt.service.AsientoService;
+import com.saa.ejb.cxp.service.AplicacionPagoCxpService;
 import com.saa.ejb.cxp.service.PagoProgramadoService;
 import com.saa.ejb.cxp.service.dto.BeneficiarioOcasional;
 import com.saa.ejb.tsr.dao.CierreCajaChicaDaoService;
 import com.saa.ejb.tsr.dao.MovimientoCajaChicaDaoService;
 import com.saa.ejb.tsr.service.CajaChicaService;
 import com.saa.ejb.tsr.service.MovimientoCajaChicaService;
+import com.saa.model.cxp.AplicacionPagoCxp;
+import com.saa.model.cxp.FacturaCompra;
 import com.saa.model.cxp.PagoProgramado;
 import com.saa.model.cxp.ProductoPago;
 import com.saa.model.scp.Usuario;
@@ -24,6 +27,7 @@ import com.saa.model.tsr.CierreCajaChica;
 import com.saa.model.tsr.MovimientoCajaChica;
 import com.saa.model.tsr.NombreEntidadesTesoreria;
 import com.saa.model.tsr.Titular;
+import com.saa.rubros.EstadoAplicacionPago;
 import com.saa.rubros.EstadoCajaChica;
 import com.saa.rubros.EstadoMovimientoCajaChica;
 import com.saa.rubros.OrigenPagoExterno;
@@ -60,6 +64,9 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 
 	@EJB
 	private PagoProgramadoService pagoProgramadoService;
+
+	@EJB
+	private AplicacionPagoCxpService aplicacionPagoCxpService;
 
 	@PersistenceContext
 	private EntityManager em;
@@ -128,10 +135,13 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 
 	@Override
 	public MovimientoCajaChica registrarGasto(Long idCaja, LocalDate fecha, Double valor, String descripcion,
-			String observacion, Long idProducto, Long idTitular, String numeroDocumento, Long idUsuario)
-			throws Throwable {
+			String observacion, Long idProducto, Long idTitular, String numeroDocumento, Long idUsuario,
+			Long idFacturaCompra, Long idLiquidacionCompra) throws Throwable {
 
-		System.out.println("=== registrarGasto caja chica | caja=" + idCaja + " | valor=" + valor + " ===");
+		System.out.println("=== registrarGasto caja chica | caja=" + idCaja + " | valor=" + valor
+				+ " | factura=" + idFacturaCompra + " | liquidacion=" + idLiquidacionCompra + " ===");
+
+		boolean pagaDocumento = (idFacturaCompra != null || idLiquidacionCompra != null);
 
 		CajaChica caja = cajaChicaService.selectById(idCaja);
 		if (caja.getEstado() == null || caja.getEstado().intValue() != EstadoCajaChica.ACTIVA) {
@@ -171,6 +181,25 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 		}
 		rechazaSiEnBorrador(idCaja, fechaGasto, "el gasto");
 
+		if (pagaDocumento && idTitular == null) {
+			throw new IncomeException("Debe indicar el proveedor beneficiario del gasto para poder "
+					+ "aplicarlo a una factura o liquidación de compra.");
+		}
+
+		// El gasto no puede duplicar lo ya comprometido en la bandeja de pagos: un
+		// pago POR_APROBAR/REGISTRADO/EN_ARCHIVO todavía no generó su
+		// AplicacionPagoCxp y por eso el saldo del documento no lo ve, pero ya
+		// comprometió ese valor. Sólo aplica a facturas: PagoProgramado no tiene
+		// FK a liquidación de compra, así que una liquidación no puede quedar
+		// comprometida por la bandeja.
+		if (idFacturaCompra != null) {
+			FacturaCompra facturaAPagar = em.find(FacturaCompra.class, idFacturaCompra);
+			if (facturaAPagar == null) {
+				throw new IncomeException("No se encontró la factura de compra con ID: " + idFacturaCompra);
+			}
+			pagoProgramadoService.validaValorContraSaldo(facturaAPagar, valor, null);
+		}
+
 		MovimientoCajaChica movimiento = new MovimientoCajaChica();
 		movimiento.setCajaChica(caja);
 		movimiento.setTipo(Long.valueOf(TipoMovimientoCajaChica.GASTO));
@@ -187,14 +216,25 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 		movimiento = saveSingle(movimiento);
 		em.flush();
 
-		String observacionAsiento = "Gasto caja chica " + caja.getNombre()
-				+ " | " + descripcion.trim()
-				+ " | Doc: " + nvl(numeroDocumento, "")
-				+ " | Valor: $" + String.format(java.util.Locale.US, "%.2f", valor);
+		com.saa.model.cnt.Asiento asientoGenerado;
+		if (pagaDocumento) {
+			// El gasto paga (parcial o totalmente) el documento del proveedor: no se
+			// reconoce contra la cuenta del producto para no reconocerlo dos veces
+			// (docs/logica-negocio/tsr/PLAN-GASTO-CAJA-CHICA-PAGA-FACTURA.md §2).
+			AplicacionPagoCxp aplicacion = aplicacionPagoCxpService.aplicarDesdeCajaChica(
+					idFacturaCompra, idLiquidacionCompra, movimiento, caja.getPlanCuenta().getCodigo(),
+					caja.getEmpresa().getCodigo(), idUsuario);
+			asientoGenerado = aplicacion.getAsiento();
+		} else {
+			String observacionAsiento = "Gasto caja chica " + caja.getNombre()
+					+ " | " + descripcion.trim()
+					+ " | Doc: " + nvl(numeroDocumento, "")
+					+ " | Valor: $" + String.format(java.util.Locale.US, "%.2f", valor);
 
-		com.saa.model.cnt.Asiento asientoGenerado = asientoContableService.generarAsientoGastoCajaChica(
-				idProducto, caja.getNombre(), descripcion.trim(), valor, caja.getPlanCuenta().getCodigo(),
-				caja.getEmpresa().getCodigo(), fechaGasto, observacionAsiento, usuarioNombre(idUsuario));
+			asientoGenerado = asientoContableService.generarAsientoGastoCajaChica(
+					idProducto, caja.getNombre(), descripcion.trim(), valor, caja.getPlanCuenta().getCodigo(),
+					caja.getEmpresa().getCodigo(), fechaGasto, observacionAsiento, usuarioNombre(idUsuario));
+		}
 
 		movimiento.setAsiento(asientoGenerado);
 		movimiento = movimientoCajaChicaDaoService.save(movimiento, movimiento.getCodigo());
@@ -281,13 +321,45 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 		rechazaSiEnBorrador(movimiento.getCajaChica().getCodigo(), movimiento.getFecha(),
 				"el movimiento " + idMovimiento);
 
-		Long idAsiento = (movimiento.getAsiento() != null) ? movimiento.getAsiento().getCodigo() : null;
-		if (idAsiento != null) {
-			try {
-				asientoService.anulaAsiento(idAsiento);
-				System.out.println("✓ Asiento " + idAsiento + " anulado / reversado.");
-			} catch (Throwable e) {
-				System.err.println("⚠ No se pudo anular el asiento " + idAsiento + ": " + e.getMessage());
+		// Si el gasto pagó un documento tiene una AplicacionPagoCxp activa
+		// (origen CAJA_CHICA, docs/logica-negocio/tsr/API-GASTO-CAJA-CHICA.md §3):
+		// reversarla es lo que hay que hacer acá, y NO además anular el asiento
+		// por separado — es el MISMO asiento que aplicarDesdeCajaChica generó y
+		// que quedó enlazado tanto al movimiento como a la aplicación; anularlo
+		// dos veces sería anular dos veces el mismo asiento.
+		@SuppressWarnings("unchecked")
+		List<com.saa.model.cxp.AplicacionPagoCxp> aplicaciones = em.createQuery(
+				"select a from AplicacionPagoCxp a where a.movimientoCajaChica.codigo = :idMovimiento "
+				+ "and a.estado = :activo")
+				.setParameter("idMovimiento", idMovimiento)
+				.setParameter("activo", Long.valueOf(EstadoAplicacionPago.ACTIVO))
+				.getResultList();
+
+		if (aplicaciones.size() > 1) {
+			// No debería existir: el diseño es un gasto por documento (D2). Si
+			// pasa, no elegir una a ciegas y seguir — eso dejaría a las demás
+			// activas contra documentos cuyo gasto ya no existe, pisando su
+			// saldo para siempre sin que nadie se entere.
+			throw new IncomeException("El movimiento " + idMovimiento + " tiene " + aplicaciones.size()
+					+ " aplicaciones de pago activas: debería tener a lo sumo una. No se puede anular "
+					+ "automáticamente; revise el dato antes de continuar.");
+		}
+		if (!aplicaciones.isEmpty()) {
+			// ⚠️ Sin try/catch: si la reversa de la aplicación falla, la
+			// anulación del gasto entera debe fallar. No es lo mismo que la
+			// anulación de asiento «suelta» de más abajo (esa sí se swallow-ea
+			// por convención de la casa cuando no hay aplicación de por medio).
+			aplicacionPagoCxpService.revertirAplicacionOrigenCajaChica(
+					aplicaciones.get(0).getId(), motivo.trim(), idUsuario);
+		} else {
+			Long idAsiento = (movimiento.getAsiento() != null) ? movimiento.getAsiento().getCodigo() : null;
+			if (idAsiento != null) {
+				try {
+					asientoService.anulaAsiento(idAsiento);
+					System.out.println("✓ Asiento " + idAsiento + " anulado / reversado.");
+				} catch (Throwable e) {
+					System.err.println("⚠ No se pudo anular el asiento " + idAsiento + ": " + e.getMessage());
+				}
 			}
 		}
 
@@ -435,7 +507,68 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 	public List<MovimientoCajaChica> listar(Long idCaja, LocalDate desde, LocalDate hasta, Long tipo,
 			Long estado) throws Throwable {
 		System.out.println("=== listar movimientos caja chica | caja=" + idCaja + " ===");
-		return movimientoCajaChicaDaoService.selectByCaja(idCaja, desde, hasta, tipo, estado);
+		List<MovimientoCajaChica> movimientos =
+				movimientoCajaChicaDaoService.selectByCaja(idCaja, desde, hasta, tipo, estado);
+		completaDocumentoPagado(movimientos);
+		return movimientos;
+	}
+
+	/**
+	 * Puebla los campos transitorios {@code documentoTipo}/{@code documentoId}/
+	 * {@code documentoNumero} de cada movimiento con el documento que pagó, si lo
+	 * hubo. El vínculo real vive en PGS.APLP.APLPMVCH (la aplicación de pago), no
+	 * en TSR.MVCH — igual que {@code EgresoServiceImpl.completaFormaPago} resuelve
+	 * la forma de pago desde PGS.PGTR sin tener la columna en TSR.EGRS. Una sola
+	 * consulta por lote (troceado de a 1000 ids: {@code in} con más de 1000
+	 * elementos es ORA-01795, y este listado no pagina — una caja con años de
+	 * gastos puede superarlo), no una por fila.
+	 * @param movimientos : Movimientos ya cargados (se modifican en el sitio)
+	 * @throws Throwable : Excepcion
+	 */
+	private void completaDocumentoPagado(List<MovimientoCajaChica> movimientos) throws Throwable {
+		if (movimientos == null || movimientos.isEmpty()) {
+			return;
+		}
+		List<Long> ids = new java.util.ArrayList<>();
+		for (MovimientoCajaChica movimiento : movimientos) {
+			ids.add(movimiento.getCodigo());
+		}
+
+		final int TAMANO_LOTE = 1000;
+		Map<Long, AplicacionPagoCxp> aplicacionPorMovimiento = new HashMap<>();
+		for (int desde = 0; desde < ids.size(); desde += TAMANO_LOTE) {
+			List<Long> lote = ids.subList(desde, Math.min(desde + TAMANO_LOTE, ids.size()));
+
+			@SuppressWarnings("unchecked")
+			List<AplicacionPagoCxp> aplicaciones = em.createQuery(
+					"select a from AplicacionPagoCxp a where a.movimientoCajaChica.codigo in :ids "
+					+ "and a.estado = :activo")
+					.setParameter("ids", lote)
+					.setParameter("activo", Long.valueOf(EstadoAplicacionPago.ACTIVO))
+					.getResultList();
+
+			for (AplicacionPagoCxp aplicacion : aplicaciones) {
+				if (aplicacion.getMovimientoCajaChica() != null) {
+					aplicacionPorMovimiento.put(aplicacion.getMovimientoCajaChica().getCodigo(), aplicacion);
+				}
+			}
+		}
+
+		for (MovimientoCajaChica movimiento : movimientos) {
+			AplicacionPagoCxp aplicacion = aplicacionPorMovimiento.get(movimiento.getCodigo());
+			if (aplicacion == null) {
+				continue;
+			}
+			if (aplicacion.getFacturaCompra() != null) {
+				movimiento.setDocumentoTipo("FACTURA");
+				movimiento.setDocumentoId(aplicacion.getFacturaCompra().getId());
+				movimiento.setDocumentoNumero(aplicacion.getFacturaCompra().getNumero());
+			} else if (aplicacion.getLiquidacionCompra() != null) {
+				movimiento.setDocumentoTipo("LIQUIDACION_COMPRA");
+				movimiento.setDocumentoId(aplicacion.getLiquidacionCompra().getId());
+				movimiento.setDocumentoNumero(aplicacion.getLiquidacionCompra().getNumero());
+			}
+		}
 	}
 
 	// =====================================================================

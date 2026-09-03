@@ -25,4 +25,7 @@ public interface TipoDocPagoAplicacion {
 	/** Nota de Débito que aumenta el valor de la factura. Monto NEGATIVO. */
 	public static final int NOTA_DEBITO = 5;
 
+	/** Gasto de caja chica que paga (parcial o totalmente) el documento. FK a TSR.MVCH. */
+	public static final int CAJA_CHICA = 6;
+
 }

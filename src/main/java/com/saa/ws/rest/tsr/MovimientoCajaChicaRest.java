@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.saa.basico.util.DatosBusqueda;
+import com.saa.basico.util.IncomeException;
 import com.saa.ejb.tsr.dao.MovimientoCajaChicaDaoService;
 import com.saa.ejb.tsr.service.MovimientoCajaChicaService;
 import com.saa.model.tsr.MovimientoCajaChica;
@@ -121,6 +122,15 @@ public class MovimientoCajaChicaRest {
      *   "descripcion": "Compra de suministros", "observacion": "Factura sin RUC del proveedor",
      *   "idProducto": 7, "idTitular": 25, "numeroDocumento": "001-001-000123", "idUsuario": 5
      * }
+     * <p>
+     * Con {@code tipoDocumento} ({@code "FACTURA"} | {@code "LIQUIDACION_COMPRA"}) e
+     * {@code idDocumento} —las dos juntas, opcionales— el gasto paga ese documento del
+     * proveedor en vez de contabilizarse contra la cuenta del producto — ver
+     * {@code MovimientoCajaChicaService#registrarGasto}
+     * (docs/logica-negocio/tsr/API-GASTO-CAJA-CHICA.md).
+     * <p>
+     * Los errores que el usuario puede corregir y reintentar (valor mayor al disponible,
+     * documento de otro proveedor, falta el beneficiario, etc.) responden 400, no 500.
      */
     @POST
     @Path("/gasto")
@@ -139,9 +149,35 @@ public class MovimientoCajaChicaRest {
             String numeroDocumento = (String) datos.get("numeroDocumento");
             Long idUsuario = toLong(datos.get("idUsuario"));
 
+            String tipoDocumento = (String) datos.get("tipoDocumento");
+            Long idDocumento = toLong(datos.get("idDocumento"));
+            if ((tipoDocumento == null) != (idDocumento == null)) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity("Debe enviar tipoDocumento e idDocumento juntos, o ninguno de los dos.")
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
+            Long idFacturaCompra = null;
+            Long idLiquidacionCompra = null;
+            if (tipoDocumento != null) {
+                if ("FACTURA".equals(tipoDocumento)) {
+                    idFacturaCompra = idDocumento;
+                } else if ("LIQUIDACION_COMPRA".equals(tipoDocumento)) {
+                    idLiquidacionCompra = idDocumento;
+                } else {
+                    return Response.status(Response.Status.BAD_REQUEST)
+                            .entity("tipoDocumento debe ser FACTURA o LIQUIDACION_COMPRA.")
+                            .type(MediaType.APPLICATION_JSON).build();
+                }
+            }
+
             MovimientoCajaChica resultado = movimientoCajaChicaService.registrarGasto(idCaja, fecha, valor,
-                    descripcion, observacion, idProducto, idTitular, numeroDocumento, idUsuario);
+                    descripcion, observacion, idProducto, idTitular, numeroDocumento, idUsuario,
+                    idFacturaCompra, idLiquidacionCompra);
             return Response.status(Response.Status.CREATED).entity(resultado)
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (IncomeException e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage())
                     .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)

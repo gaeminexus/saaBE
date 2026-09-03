@@ -489,6 +489,35 @@ public interface AsientoContableService {
             String observaciones, String usuario) throws Throwable;
 
     /**
+     * Genera el asiento de un gasto de caja chica que paga un documento del proveedor
+     * (factura o liquidación de compra), en vez de reconocer gasto contra la cuenta del
+     * producto de pago — evita reconocer dos veces un gasto que ya se reconoció al registrar
+     * el documento (docs/logica-negocio/tsr/PLAN-GASTO-CAJA-CHICA-PAGA-FACTURA.md #2).
+     * <p>
+     * DEBE:  cuenta CxP del proveedor (tipoCuenta=1) — mismo camino que
+     * {@link #generarAsientoAplicacionAnticipoProveedor}, verificado sin acoplamiento a
+     * anticipo.<br>
+     * HABER: cuenta contable de la caja chica (CajaChica.planCuenta), igual que
+     * {@link #generarAsientoGastoCajaChica}.
+     * <p>
+     * Plantilla: {@code TipoAsientos.EGRESO_TESORERIA} — sigue siendo un egreso de
+     * tesorería, no una aplicación de anticipo: no se consume ningún anticipo acá.
+     *
+     * @param idTitular       : Id del proveedor (TSR.TTLR) dueño del documento pagado
+     * @param valor           : Valor del gasto, igual al monto aplicado al documento
+     * @param idPlanCuentaCaja: Id de la cuenta contable de la caja (CajaChica.planCuenta)
+     * @param idEmpresa       : Id de la empresa contable
+     * @param fechaAsiento    : Fecha del asiento
+     * @param observaciones   : Observación de cabecera del asiento
+     * @param usuario         : Nombre del usuario que registra
+     * @return                : Asiento generado
+     * @throws Throwable      : Excepcion (proveedor sin cuenta CxP tipo 1, o caja sin cuenta)
+     */
+    Asiento generarAsientoAplicacionCajaChica(Long idTitular, Double valor, Long idPlanCuentaCaja,
+            Long idEmpresa, java.time.LocalDate fechaAsiento, String observaciones, String usuario)
+            throws Throwable;
+
+    /**
      * Genera el asiento de una apertura o reposición de caja chica pagada desde
      * una cuenta bancaria.
      * <p>

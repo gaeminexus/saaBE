@@ -19,6 +19,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 
 /**
  * Entity MovimientoCajaChica.
@@ -123,6 +124,25 @@ public class MovimientoCajaChica implements Serializable {
     @Column(name = "MVCHUSAR")
     private Long usuario;
 
+    /**
+     * "FACTURA" | "LIQUIDACION_COMPRA", si el gasto pagó un documento del
+     * proveedor. No es una columna de TSR.MVCH: el vínculo real vive en
+     * PGS.APLP.APLPMVCH (la aplicación de pago), no en esta tabla — ver
+     * docs/logica-negocio/tsr/PLAN-GASTO-CAJA-CHICA-PAGA-FACTURA.md §3. Lo
+     * puebla {@code MovimientoCajaChicaServiceImpl.listar} en una sola
+     * consulta por página, no se persiste.
+     */
+    @Transient
+    private String documentoTipo;
+
+    /** Id del documento pagado (FacturaCompra o LiquidacionCompraCompra según {@link #documentoTipo}). */
+    @Transient
+    private Long documentoId;
+
+    /** Número del documento pagado, para mostrar en pantalla. */
+    @Transient
+    private String documentoNumero;
+
     // ── Getters y Setters ────────────────────────────────────────────────────
 
     public Long getCodigo() { return codigo; }
@@ -175,4 +195,13 @@ public class MovimientoCajaChica implements Serializable {
 
     public Long getUsuario() { return usuario; }
     public void setUsuario(Long usuario) { this.usuario = usuario; }
+
+    public String getDocumentoTipo() { return documentoTipo; }
+    public void setDocumentoTipo(String documentoTipo) { this.documentoTipo = documentoTipo; }
+
+    public Long getDocumentoId() { return documentoId; }
+    public void setDocumentoId(Long documentoId) { this.documentoId = documentoId; }
+
+    public String getDocumentoNumero() { return documentoNumero; }
+    public void setDocumentoNumero(String documentoNumero) { this.documentoNumero = documentoNumero; }
 }

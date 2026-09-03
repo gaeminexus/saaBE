@@ -90,6 +90,7 @@ public class LiquidacionCompraCompraServiceImpl implements LiquidacionCompraComp
 		if (tipo == TipoDocPagoAplicacion.RETENCION) return "Retención";
 		if (tipo == TipoDocPagoAplicacion.ANTICIPO) return "Anticipo";
 		if (tipo == TipoDocPagoAplicacion.NOTA_DEBITO) return "Nota de débito";
+		if (tipo == TipoDocPagoAplicacion.CAJA_CHICA) return "Caja chica";
 		return "Tipo " + tipoDocPago;
 	}
 

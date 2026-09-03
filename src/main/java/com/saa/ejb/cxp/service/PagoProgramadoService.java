@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.saa.basico.util.EntityService;
+import com.saa.model.cxp.FacturaCompra;
 import com.saa.model.cxp.PagoProgramado;
 
 import jakarta.ejb.Local;
@@ -380,4 +381,26 @@ public interface PagoProgramadoService extends EntityService<PagoProgramado> {
 	 */
 	Map<String, Object> revertirPagoConfirmado(Long idPago, String motivo, Long idUsuario)
 			throws Throwable;
+
+	/**
+	 * Valida que el valor a pagar quepa en el saldo pendiente de la factura,
+	 * descontando lo ya comprometido en otros pagos vigentes.
+	 * <p>
+	 * Se expone además de {@link #registrarPago} porque cualquier otro origen de
+	 * pago que descuente directamente el saldo de una factura —caja chica, hoy—
+	 * tiene el mismo hueco si sólo mira el saldo: un pago {@code POR_APROBAR}
+	 * todavía no generó su {@code AplicacionPagoCxp} y por eso el saldo no lo ve,
+	 * pero ya comprometió ese valor. Sin esta validación se puede pagar dos veces
+	 * la misma factura: una vez desde la bandeja de pagos y otra desde caja chica
+	 * (docs/logica-negocio/tsr/PLAN-GASTO-CAJA-CHICA-PAGA-FACTURA.md).
+	 * <p>
+	 * Sólo para facturas: {@code PagoProgramado} no tiene FK a liquidación de
+	 * compra y {@code OrigenPagoCxp} no define un origen de liquidación, así que
+	 * una liquidación no puede quedar comprometida por la bandeja de pagos.
+	 * @param factura   : Factura de compra
+	 * @param valor     : Valor que se pretende pagar
+	 * @param idPagoEx  : Id de pago a excluir del cálculo (null si no aplica)
+	 * @throws Throwable : Excepcion si el valor supera lo disponible
+	 */
+	void validaValorContraSaldo(FacturaCompra factura, Double valor, Long idPagoEx) throws Throwable;
 }
