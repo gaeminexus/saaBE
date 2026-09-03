@@ -196,3 +196,53 @@ consultas a un proceso.
 Y está bien: `recibido` sólo existe hoy para Petro, que tiene las transferencias como fuente
 independiente. Un cobro individual no tiene un «recibido» contra el cual contrastarse. Ver el tercer
 estado del contrato — **no inventar un `$0,00`**.
+
+---
+
+## 9. Dónde engancha `COBRO_INDIVIDUAL` — y la convergencia que queda pendiente
+
+**El agente BE paró antes de escribir, y bien.** Al investigar encontró que en el cobro individual la
+clasificación **no está disponible en el punto donde se aplica el pago**:
+
+- `procesarCobro` aplica vía `MotorPagoPrestamoServiceImpl`, y **el motor nunca llama al
+  clasificador**.
+- La clasificación ocurre sólo en `lineaBandaCapital` ← `haberDesdePagos` ← `haberDesdeEvento`, y esa
+  cadena vive **detrás de `if (contabilidadActiva())`**.
+
+O sea: **hoy, con contabilidad desconectada, el cobro individual no clasifica nada.** Escribir en el
+punto de aplicación significa clasificar ahí por primera vez.
+
+### Decisión, 2026-09-02: clasificar en `procesarCobro` y aceptar la duplicación, por ahora
+
+Se clasifica justo después de cada llamada de aplicación —`ResultadoAplicacionPago.cuotasAfectadas`
+ya trae `idPagoPrestamo` e `idCuota`, alcanza— y se escribe DSBN ahí. **El asiento sigue clasificando
+por su lado**, y esa duplicación **se acepta a propósito**:
+
+- Son operaciones **individuales**, de un puñado de cuotas. La regla de «no clasificar dos veces»
+  nació por el lote de Petro, donde eran miles de filas y dos minutos de proceso. Aplicarla acá con
+  el mismo rigor no compra rendimiento.
+- Evitarla exige cambiar la firma de `haberDesdePagos`, que tiene **cuatro llamadores**
+  (`AcuerdoCondonacionServiceImpl`, `CobroCreditoServiceImpl` y `ContabilidadPrestamoServiceImpl` en
+  dos puntos, uno de ellos el pago de pensión recién construido). **Es un cambio ancho en un momento
+  caliente**, y el beneficio no lo justifica.
+
+⚠️ **Queda anotado como deuda, no como resuelto.** Si algún día el cobro individual pasa a procesarse
+en lote, esta duplicación deja de ser barata.
+
+### ⛔ La convergencia real, para cuando el módulo esté tranquilo
+
+El lugar correcto para escribir la distribución **no es ninguno de estos servicios: es el motor**.
+`MotorPagoPrestamoServiceImpl` es el punto por donde pasan **todas** las aplicaciones de pago —Petro,
+cobro individual, abono a capital, precancelación, pago con aportes, pensión— y es literalmente «donde
+se aplica el pago».
+
+Y **puede saber de qué origen se trata sin que nadie se lo diga**: `ContextoPago` ya lleva
+`idCargaArchivo`, `idEvento` e `idCobroCredito`.
+
+Eso daría **un solo punto de escritura para los cuatro orígenes**, y de paso cerraría la salvedad
+anotada al entregar Petro: hoy la escritura vive dentro de `CobroPetroContableServiceImpl`, así que el
+día que se extraiga el módulo contable del despliegue, esa clase se iría llevándose la escritura.
+
+**No se hace ahora**, y la razón es de riesgo, no de diseño: el motor es el código más crítico del
+módulo, se migró hoy mismo, y el usuario está reprocesando en producción. Es exactamente el cambio
+que no se toca en caliente.
