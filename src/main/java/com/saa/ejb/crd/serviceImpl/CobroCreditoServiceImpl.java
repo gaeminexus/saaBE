@@ -1337,6 +1337,15 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
      *
      * @param idEvento null-safe: los flujos sin EventoPrestamo (registro de aporte) no llaman
      *                 a este método
+     *
+     * <p>⚠️ Confirmado por el árbitro (2026-09-02): incluye {@code ACUERDO_CONDONACION}, que
+     * también corre dentro de {@code procesarCobro} y pasa por {@code haberDesdePagos}. PERO una
+     * condonación NO es dinero recibido — es deuda que se perdona. Mueve saldos fuera de las
+     * bandas igual que un pago (por eso contabilidad la quiere ver acá), pero nadie la pagó. Hoy
+     * no rompe nada porque el cuadre de {@code COBRO_INDIVIDUAL} es {@code null} (sin fuente
+     * independiente de "recibido"). El día que se conecte una fuente de recibido para este
+     * origen, la condonación tiene que quedar EXCLUIDA de ese contraste — si no, va a parecer
+     * plata que apareció de la nada.</p>
      */
     private void registrarDistribucionBandaEvento(Long idCobro, Long idEmpresa, Long idEvento, String usuario)
             throws Throwable {
