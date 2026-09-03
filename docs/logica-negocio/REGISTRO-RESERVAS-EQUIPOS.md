@@ -590,12 +590,12 @@ listado de asientos o una mayorización, ve lo que hay en pantalla, y **concluye
 | Pantalla | Estado |
 |---|---|
 | `plantilla-general` | ✅ **Corregido** (`a3e2bf4`) — reportado por el usuario |
-| `asientos-contables-dinamico` | ⛔ paginador y sort |
-| `listado-asientos` | ⛔ paginador |
-| `mayorizacion` | ⛔ paginador y sort |
-| `parametrizacion/centro-grid` | ⛔ paginador y sort |
-| `parametrizacion/periodo-contable` | ⛔ paginador y sort (doblemente afectado) |
-| `parametrizacion/plan-grid` | ⛔ paginador y sort |
+| `asientos-contables-dinamico` | ✅ **Corregido** (`saaFE` `762a4b2`) |
+| `listado-asientos` | ✅ **Corregido** (`saaFE` `762a4b2`) |
+| `mayorizacion` | ✅ **Corregido** (`saaFE` `762a4b2`) |
+| `parametrizacion/centro-grid` | ✅ **Corregido** (`saaFE` `762a4b2`) — además el orden por defecto dependía del mismo `ViewChild` |
+| `parametrizacion/periodo-contable` | ✅ **Corregido** (`saaFE` `762a4b2`) |
+| `parametrizacion/plan-grid` | ✅ **Corregido** (`saaFE` `762a4b2`) |
 | `detalle-mayorizacion` | ✔ no aplica — pagina por *slicing* manual, otra arquitectura |
 | `plan-arbol` | ✔ no aplica — es un árbol, no tiene paginador ni sort |
 | `tipo-asiento-general-grid` · `tipo-asiento-sistema-grid` | ✔ sin gating, siempre en el DOM |
@@ -612,3 +612,20 @@ completa y no pantalla por pantalla.
 > Nota menor, sin tocar: `plantilla-general` declara un `@ViewChild('maestroPaginator')` que no tiene
 > `<mat-paginator #maestroPaginator>` en el HTML ni asignación en el `.ts`. Es una referencia
 > huérfana, no el mismo defecto.
+
+### Actualización 2026-09-02 — las seis corregidas, y una séptima que faltaba
+
+Las seis quedaron corregidas en `saaFE` `762a4b2`, con el mismo método idempotente en todas. En
+`centro-grid` hubo que mover además el orden por defecto al mismo bloque: dependía del mismo
+`ViewChild` y con el contenedor oculto operaba sobre `undefined`. No es una variante de diseño — es
+la misma corrección alcanzando la parte que dependía de lo mismo.
+
+⚠️ **Apareció una séptima**, que se había escapado del barrido inicial:
+`dialog/mayor-analitico-asiento-dialog` tiene el mismo defecto (sólo paginador, no usa `matSort`):
+`loading` arranca en `true`, así que la tabla y su paginador están ocultos en el primer render.
+
+⚠️ **Y una trampa de coordinación, sin resolver:** `saaFE/docs/REGISTRO-RESERVAS-EQUIPOS.md` es un
+**espejo desactualizado** de este documento — 113 líneas contra 615, sin este §7 ni buena parte de lo
+anterior. Quien lo lea creyendo que está al día va a tomar decisiones con información vieja. **Hay
+que sincronizarlo o borrarlo**; dejarlo así es peor que no tenerlo. No se toca desde acá porque está
+fuera del alcance de escritura de este equipo en `saaFE` (que se limita a `docs/{modulo}/`).
