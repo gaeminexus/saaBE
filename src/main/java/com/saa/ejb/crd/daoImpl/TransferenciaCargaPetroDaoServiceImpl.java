@@ -81,4 +81,25 @@ public class TransferenciaCargaPetroDaoServiceImpl extends EntityDaoImpl<Transfe
         }
         return BigDecimal.valueOf(suma).setScale(2, RoundingMode.HALF_UP).doubleValue();
     }
+
+    @Override
+    public Long resolverEmpresaByCarga(Long idCarga) throws Throwable {
+        return resolverEmpresa(selectVigentesByCarga(idCarga));
+    }
+
+    @Override
+    public Long resolverEmpresa(List<TransferenciaCargaPetro> vigentes) throws Throwable {
+        if (vigentes != null) {
+            for (TransferenciaCargaPetro transferencia : vigentes) {
+                if (transferencia.getCuentaBancaria() != null
+                        && transferencia.getCuentaBancaria().getPlanCuenta() != null
+                        && transferencia.getCuentaBancaria().getPlanCuenta().getEmpresa() != null) {
+                    return transferencia.getCuentaBancaria().getPlanCuenta().getEmpresa().getCodigo();
+                }
+            }
+        }
+        throw new com.saa.basico.util.IncomeException("No se pudo determinar la empresa contable:"
+                + " ninguna de las transferencias tiene una cuenta bancaria con cuenta contable y"
+                + " empresa asignadas.");
+    }
 }

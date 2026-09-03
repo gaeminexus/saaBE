@@ -449,4 +449,21 @@ public interface AporteDaoService extends EntityDao<Aporte>{
 	 */
 	List<Object[]> sumValorPorTipoAporteByCarga(Long idCarga) throws Throwable;
 
+	/**
+	 * Los aportes de una carga Petro (CRD.CRAR), uno por uno — misma carga y MISMO CRITERIO DE
+	 * FILTRO que {@link #sumValorPorTipoAporteByCarga} ({@code idAsoprep}, no
+	 * {@code cargaArchivo}/{@code CRARCDGO}; ver el javadoc de ese método para el porqué
+	 * transitorio). Base de {@code DistribucionBandaService.registrarDistribucionCargaPetro}
+	 * (2026-09-02, PLAN-AUDITORIA-BANDAS.md): la pantalla de auditoría de bandas necesita el
+	 * detalle fila por fila de los aportes, no solo el agregado por tipo que usa el asiento —
+	 * pero los dos tienen que leer la carga con el mismo filtro, para que el detalle y el
+	 * asiento nunca puedan divergir por leer columnas distintas. El día que el criterio migre a
+	 * {@code cargaArchivo.codigo}, migra en los dos métodos juntos.
+	 *
+	 * @param idCarga Código de la carga (CRD.CRAR)
+	 * @return Aportes de la carga; VACÍA si no generó ninguno
+	 * @throws Throwable Si ocurre algún error
+	 */
+	List<Aporte> selectByCarga(Long idCarga) throws Throwable;
+
 }

@@ -48,4 +48,31 @@ public interface TransferenciaCargaPetroDaoService extends EntityDao<Transferenc
      * @throws Throwable : Excepcion
      */
     double sumaValorVigentesByCarga(Long idCarga) throws Throwable;
+
+    /**
+     * Empresa contable de una carga Petro, a partir de sus transferencias VIGENTES —
+     * primera transferencia con {@code cuentaBancaria.planCuenta.empresa} resuelta.
+     *
+     * <p>ÚNICA definición del proyecto (2026-09-02): antes vivía privada y duplicada en
+     * {@code CobroPetroContableServiceImpl.resolverEmpresa}; ahora ese método delega acá.
+     * Cualquier lectura que necesite la empresa de una carga (asiento de aplicación, cuadre de
+     * bandas, resolución de cuenta contable para la auditoría) tiene que pasar por este único
+     * lugar — dos implementaciones de la misma resolución divergen.</p>
+     *
+     * @param idCarga    : Código de la carga (CRD.CRAR)
+     * @return           : Código de la empresa (SCP.PJRQ)
+     * @throws Throwable : {@code IncomeException} si ninguna transferencia vigente tiene
+     *                     cuenta bancaria con cuenta contable y empresa asignadas
+     */
+    Long resolverEmpresaByCarga(Long idCarga) throws Throwable;
+
+    /**
+     * Misma resolución que {@link #resolverEmpresaByCarga}, pero sobre una lista de
+     * transferencias YA LEÍDA — para el llamador que ya tiene {@code selectVigentesByCarga} en
+     * la mano y no necesita una segunda consulta a la base para lo mismo.
+     *
+     * @throws Throwable : {@code IncomeException} si ninguna trae cuenta bancaria con cuenta
+     *                     contable y empresa asignadas
+     */
+    Long resolverEmpresa(List<TransferenciaCargaPetro> vigentes) throws Throwable;
 }

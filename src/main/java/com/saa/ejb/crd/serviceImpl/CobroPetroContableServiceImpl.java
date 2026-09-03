@@ -693,14 +693,16 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         // clasificar() otra vez para los mismos pagos (antes los duplicaba: una carga de 20+
         // minutos clasificaba cada pago con capital DOS veces).
         Map<Long, ResultadoClasificacionBanda> clasificacionPorPago = new LinkedHashMap<>();
-        List<TransferenciaCargaPetro> vigentesParaDistribucion = null;
-        if (pagos != null && !pagos.isEmpty()) {
-            vigentesParaDistribucion = transferenciaCargaPetroDaoService.selectVigentesByCarga(idCarga);
-            if (vigentesParaDistribucion != null && !vigentesParaDistribucion.isEmpty()) {
-                Long idEmpresaDistribucion = resolverEmpresa(vigentesParaDistribucion);
-                clasificacionPorPago = distribucionBandaService.registrarDistribucionCargaPetro(
-                    idCarga, idEmpresaDistribucion, pagos, "sistema");
-            }
+        // 2026-09-02: ya NO se condiciona a que haya pagos de préstamo — una carga solo de
+        // aportes (sin pagos) también tiene que registrar su distribución (concepto APORTE),
+        // que registrarDistribucionCargaPetro ahora arma siempre, tenga o no pagos. Antes esta
+        // carga quedaba sin UNA SOLA fila de auditoría: la pantalla no mostraba nada de aportes.
+        List<TransferenciaCargaPetro> vigentesParaDistribucion =
+            transferenciaCargaPetroDaoService.selectVigentesByCarga(idCarga);
+        if (vigentesParaDistribucion != null && !vigentesParaDistribucion.isEmpty()) {
+            Long idEmpresaDistribucion = resolverEmpresa(vigentesParaDistribucion);
+            clasificacionPorPago = distribucionBandaService.registrarDistribucionCargaPetro(
+                idCarga, idEmpresaDistribucion, pagos, "sistema");
         }
 
         if (!configuracionContabilidadService.contabilidadActiva()) {
@@ -723,13 +725,10 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
             return;
         }
 
-        // idEmpresa: mismo criterio que confirmarRecepcion/contabilizarReparto. Ya se fetchó
-        // `vigentes` arriba para la distribución en bandas cuando hay pagos; si esta carga
-        // solo tiene aportes (sin pagos de préstamo) todavía no se resolvió, y se hace acá.
-        List<TransferenciaCargaPetro> vigentes = vigentesParaDistribucion != null
-            ? vigentesParaDistribucion
-            : transferenciaCargaPetroDaoService.selectVigentesByCarga(idCarga);
-        Long idEmpresa = resolverEmpresa(vigentes);
+        // idEmpresa: mismo criterio que confirmarRecepcion/contabilizarReparto. `vigentesParaDistribucion`
+        // ya se fetchó arriba (ahora siempre, tenga o no pagos esta carga) — se reutiliza sin
+        // volver a consultar.
+        Long idEmpresa = resolverEmpresa(vigentesParaDistribucion);
 
         // --- Aportes: cesantía / jubilación --------------------------------------------
         double totalCesantia = 0.0;
@@ -785,6 +784,25 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
                 double mora = nvl(pago.getMoraPagada());
                 double desgravamen = nvl(pago.getDesgravamen());
                 double seguroIncendio = nvl(pago.getValorSeguroIncendio());
+
+                // 2026-09-02: guarda inalcanzable A PROPÓSITO. DTPRINVN/PGPRINVP son SIEMPRE
+                // CERO hoy — medido tres veces (sql/167, sql/169, sql/172 bloque 3) y explícito
+                // en el javadoc de la prelación de MotorPagoPrestamoServiceImpl. Por eso la
+                // plantilla de esta carga nunca necesitó una línea de interés vencido, y por eso
+                // DistribucionBandaServiceImpl.registrarDistribucionCargaPetro deja su cuenta en
+                // null al leer (no hay línea que resolver). El día que algo empiece a alimentar
+                // interés vencido, la alternativa a este throw es un asiento corto EN SILENCIO
+                // — la misma trampa que ya costó una corrida hoy con la línea de mora. Un throw
+                // inalcanzable hoy es barato.
+                double interesVencido = nvl(pago.getInteresVencidoPagado());
+                if (interesVencido > 0.0) {
+                    throw new IncomeException("El pago " + pago.getCodigo() + " de la carga "
+                            + idCarga + " tiene interés vencido cobrado ($" + interesVencido
+                            + ") y la plantilla de aplicación Petro no tiene línea para"
+                            + " contabilizarlo — nunca la necesitó porque hasta hoy el interés"
+                            + " vencido siempre fue cero. Hay que agregar la línea a la plantilla"
+                            + " y el mapeo correspondiente antes de poder aplicar esta carga.");
+                }
 
                 if (capital > 0.0) {
                     DetallePrestamo cuota = pago.getDetallePrestamo();
@@ -1109,18 +1127,14 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
     /**
      * idEmpresa no viaja en ningún DTO del contrato: se deriva de la cuenta bancaria de la
      * primera transferencia vigente (toda CuentaBancaria resuelve un PlanCuenta con empresa).
+     *
+     * <p>ÚNICA definición movida a {@link TransferenciaCargaPetroDaoService#resolverEmpresa}
+     * (2026-09-02) — DistribucionBandaServiceImpl necesitaba la misma resolución para leer la
+     * cuenta contable de las bandas al auditar, y dos copias de una regla de resolución
+     * divergen. Se deja este método privado, sin cambiar ninguno de sus 4 llamadores.</p>
      */
     private Long resolverEmpresa(List<TransferenciaCargaPetro> vigentes) throws Throwable {
-        for (TransferenciaCargaPetro transferencia : vigentes) {
-            if (transferencia.getCuentaBancaria() != null
-                    && transferencia.getCuentaBancaria().getPlanCuenta() != null
-                    && transferencia.getCuentaBancaria().getPlanCuenta().getEmpresa() != null) {
-                return transferencia.getCuentaBancaria().getPlanCuenta().getEmpresa().getCodigo();
-            }
-        }
-        throw new IncomeException("No se pudo determinar la empresa contable: ninguna de las"
-                + " transferencias tiene una cuenta bancaria con cuenta contable y empresa"
-                + " asignadas.");
+        return transferenciaCargaPetroDaoService.resolverEmpresa(vigentes);
     }
 
     /** Construye una línea de asiento a partir de su definición en la plantilla (respeta Debe/Haber). */

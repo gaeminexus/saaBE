@@ -1014,4 +1014,26 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 		}
 	}
 
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<Aporte> selectByCarga(Long idCarga) throws Throwable {
+		System.out.println("AporteDaoServiceImpl.selectByCarga - Carga: " + idCarga);
+
+		try {
+			// Mismo filtro (a.idAsoprep, no a.cargaArchivo) que sumValorPorTipoAporteByCarga —
+			// ver su javadoc para el porqué transitorio. Tienen que leer exactamente la misma
+			// carga o el detalle y el asiento pueden divergir.
+			Query query = em.createQuery(
+				" select a from Aporte a where a.idAsoprep = :idCarga "
+			);
+			query.setParameter("idCarga", idCarga);
+			return query.getResultList();
+
+		} catch (Exception e) {
+			System.err.println("Error en selectByCarga: " + e.getMessage());
+			e.printStackTrace();
+			return new java.util.ArrayList<>();
+		}
+	}
+
 }

@@ -194,11 +194,16 @@ public class DistribucionBandaDaoServiceImpl extends EntityDaoImpl<DistribucionB
         // LEFT JOIN, no implícito: un concepto sin banda (todo salvo CAPITAL) o una banda sin
         // plan de cuenta (CNT desconectado) tienen que seguir sumando, no desaparecer del
         // agregado — un JOIN implícito de JPA sobre una asociación opcional se traduce INNER.
+        // tipoPrestamo/tipoAporte van en el GROUP BY (2026-09-02): la cuenta de los conceptos
+        // sin banda se resuelve al LEER por (concepto, tipo) — DistribucionBandaServiceImpl los
+        // necesita para no fusionar, por ejemplo, seguro de incendio hipotecario y prendario
+        // (cuentas distintas) en un solo grupo.
         String jpql = "select d.concepto, b.codigo, d.etiqueta, pc.cuentaContable, pc.nombre, "
-            + "sum(d.valor), count(d) "
+            + "d.tipoPrestamo, d.tipoAporte, sum(d.valor), count(d) "
             + "from DistribucionBanda d left join d.banda b left join b.planCuenta pc where "
             + construirWhereDetalle(filtro, "b", "pc")
-            + "group by d.concepto, b.codigo, d.etiqueta, pc.cuentaContable, pc.nombre "
+            + "group by d.concepto, b.codigo, d.etiqueta, pc.cuentaContable, pc.nombre, "
+            + "d.tipoPrestamo, d.tipoAporte "
             + "order by d.concepto";
 
         Query query = em.createQuery(jpql);

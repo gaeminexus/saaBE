@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.saa.basico.util.IncomeException;
+import com.saa.ejb.crd.dao.AporteDaoService;
 import com.saa.ejb.crd.dao.CargaArchivoDaoService;
 import com.saa.ejb.crd.dao.DistribucionBandaDaoService;
 import com.saa.ejb.crd.service.ClasificadorBandaService;
@@ -27,16 +28,21 @@ import com.saa.ejb.crd.service.dto.ResumenConceptoDistribucionBanda;
 import com.saa.ejb.crd.service.dto.ResumenJerarquicoConcepto;
 import com.saa.ejb.crd.service.dto.ResumenJerarquicoCuentaBanda;
 import com.saa.model.cnt.Asiento;
+import com.saa.model.cnt.DetallePlantilla;
+import com.saa.model.crd.Aporte;
 import com.saa.model.crd.BandaProducto;
 import com.saa.model.crd.CargaArchivo;
 import com.saa.model.crd.DetallePrestamo;
 import com.saa.model.crd.DistribucionBanda;
+import com.saa.model.crd.Entidad;
 import com.saa.model.crd.PagoPrestamo;
 import com.saa.model.crd.Prestamo;
 import com.saa.model.crd.Producto;
+import com.saa.rubros.CrdLineaAsiento;
 import com.saa.rubros.DsbnConcepto;
 import com.saa.rubros.DsbnOrigen;
 import com.saa.rubros.EstadoAsiento;
+import com.saa.rubros.PlantillasCredito;
 import com.saa.rubros.TipoCarteraBanda;
 
 import jakarta.ejb.EJB;
@@ -60,6 +66,20 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
         DsbnOrigen.CARGA_PETRO, DsbnOrigen.COBRO_INDIVIDUAL,
         DsbnOrigen.EVENTO_PRESTAMO, DsbnOrigen.PAGO_PENSION);
 
+    /**
+     * Duplicadas A PROPÓSITO desde {@code CobroPetroContableServiceImpl} (2026-09-02): mismo
+     * mapeo concepto/tipo → línea de plantilla que arma el asiento de aplicación, para que esta
+     * pantalla de SOLO LECTURA muestre la MISMA cuenta que terminó afectada — nunca se calculan
+     * de forma independiente. Ver {@link #resolverLineaPlantilla}. Si el asiento cambia de
+     * línea o de código, estas constantes tienen que cambiar junto con las de allá.
+     */
+    private static final long TIPO_APORTE_JUBILACION = 9L;
+    private static final long TIPO_APORTE_CESANTIA = 11L;
+    private static final long TIPO_PRESTAMO_HIPOTECARIO = 2L;
+    private static final long TIPO_PRESTAMO_PRENDARIO = 3L;
+    private static final int AUX1_SEGURO_HIPOTECARIO = 42;
+    private static final int AUX1_SEGURO_PRENDARIO = 43;
+
     @EJB
     private DistribucionBandaDaoService distribucionBandaDaoService;
 
@@ -76,7 +96,16 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
     private com.saa.ejb.crd.dao.TransferenciaCargaPetroDaoService transferenciaCargaPetroDaoService;
 
     @EJB
+    private AporteDaoService aporteDaoService;
+
+    @EJB
     private com.saa.ejb.cnt.dao.AsientoDaoService asientoDaoService;
+
+    @EJB
+    private com.saa.ejb.cnt.service.PlantillaService plantillaService;
+
+    @EJB
+    private com.saa.ejb.cnt.dao.DetallePlantillaDaoService detallePlantillaDaoService;
 
     // ========================================================================
     // Escritura — AL APLICAR el pago, no al contabilizar (PLAN-AUDITORIA-BANDAS.md §1)
@@ -100,14 +129,12 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
             System.out.println("  " + borradas + " fila(s) previa(s) de la carga " + idCarga + " reemplazadas.");
         }
 
-        if (pagos == null || pagos.isEmpty()) {
-            System.out.println("  Carga " + idCarga + " sin pagos de préstamo — nada que distribuir.");
-            return clasificacionPorPago;
-        }
-
         LocalDateTime ahora = LocalDateTime.now();
         int filasEscritas = 0;
 
+        if (pagos == null || pagos.isEmpty()) {
+            System.out.println("  Carga " + idCarga + " sin pagos de préstamo — nada que distribuir por ese lado.");
+        } else {
         // Corrección 2026-09-02 (URGENTE, detectado en una carga real de 1167 pagos: ~2.300
         // consultas, más de dos minutos solo en clasificar): la configuración de bandas NO
         // cambia dentro de una carga, y las combinaciones distintas de (producto, empresa,
@@ -180,7 +207,8 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
                 BandaProductoDetalle bandaDetalle = resultado.getBanda();
 
                 DistribucionBanda fila = filaBase(DsbnOrigen.CARGA_PETRO, idCarga, DsbnConcepto.CAPITAL,
-                    capital, prestamo, cuota, producto, idTipoPrestamo, null, fechaAplicacion, usuario, ahora);
+                    capital, prestamo.getEntidad(), prestamo, cuota, producto, idTipoPrestamo, null,
+                    fechaAplicacion, usuario, ahora);
                 fila.setTipoCartera(tipoCartera);
                 fila.setDias(dias);
                 if (bandaDetalle != null && bandaDetalle.getIdBanda() != null) {
@@ -205,32 +233,65 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
 
             if (interes > TOLERANCIA) {
                 distribucionBandaDaoService.save(filaBase(DsbnOrigen.CARGA_PETRO, idCarga,
-                    DsbnConcepto.INTERES_ORDINARIO, interes, prestamo, pago.getDetallePrestamo(),
-                    producto, idTipoPrestamo, null, fechaAplicacion, usuario, ahora), null);
+                    DsbnConcepto.INTERES_ORDINARIO, interes, prestamo.getEntidad(), prestamo,
+                    pago.getDetallePrestamo(), producto, idTipoPrestamo, null, fechaAplicacion, usuario, ahora), null);
                 filasEscritas++;
             }
             if (mora > TOLERANCIA) {
                 distribucionBandaDaoService.save(filaBase(DsbnOrigen.CARGA_PETRO, idCarga,
-                    DsbnConcepto.INTERES_MORA, mora, prestamo, pago.getDetallePrestamo(),
-                    producto, idTipoPrestamo, null, fechaAplicacion, usuario, ahora), null);
+                    DsbnConcepto.INTERES_MORA, mora, prestamo.getEntidad(), prestamo,
+                    pago.getDetallePrestamo(), producto, idTipoPrestamo, null, fechaAplicacion, usuario, ahora), null);
                 filasEscritas++;
             }
             if (interesVencido > TOLERANCIA) {
                 distribucionBandaDaoService.save(filaBase(DsbnOrigen.CARGA_PETRO, idCarga,
-                    DsbnConcepto.INTERES_VENCIDO, interesVencido, prestamo, pago.getDetallePrestamo(),
-                    producto, idTipoPrestamo, null, fechaAplicacion, usuario, ahora), null);
+                    DsbnConcepto.INTERES_VENCIDO, interesVencido, prestamo.getEntidad(), prestamo,
+                    pago.getDetallePrestamo(), producto, idTipoPrestamo, null, fechaAplicacion, usuario, ahora), null);
                 filasEscritas++;
             }
             if (desgravamen > TOLERANCIA) {
                 distribucionBandaDaoService.save(filaBase(DsbnOrigen.CARGA_PETRO, idCarga,
-                    DsbnConcepto.SEGURO_DESGRAVAMEN, desgravamen, prestamo, pago.getDetallePrestamo(),
-                    producto, idTipoPrestamo, null, fechaAplicacion, usuario, ahora), null);
+                    DsbnConcepto.SEGURO_DESGRAVAMEN, desgravamen, prestamo.getEntidad(), prestamo,
+                    pago.getDetallePrestamo(), producto, idTipoPrestamo, null, fechaAplicacion, usuario, ahora), null);
                 filasEscritas++;
             }
             if (seguroIncendio > TOLERANCIA) {
                 distribucionBandaDaoService.save(filaBase(DsbnOrigen.CARGA_PETRO, idCarga,
-                    DsbnConcepto.SEGURO_INCENDIO, seguroIncendio, prestamo, pago.getDetallePrestamo(),
-                    producto, idTipoPrestamo, null, fechaAplicacion, usuario, ahora), null);
+                    DsbnConcepto.SEGURO_INCENDIO, seguroIncendio, prestamo.getEntidad(), prestamo,
+                    pago.getDetallePrestamo(), producto, idTipoPrestamo, null, fechaAplicacion, usuario, ahora), null);
+                filasEscritas++;
+            }
+        }
+        }
+
+        // Aportes (2026-09-02, hueco real: la pantalla nunca mostraba el detalle de aportes —
+        // "también debe darme ese detalle por aportes", carga 449: $116.857,06 de $354.603,67
+        // invisibles). Se registran SIEMPRE, tenga o no pagos de préstamo esta carga — por eso
+        // van fuera del if de arriba — con el MISMO criterio de filtro (idAsoprep) que usa
+        // CobroPetroContableServiceImpl.contabilizarAplicacion (AporteDaoService#selectByCarga,
+        // hermano de #sumValorPorTipoAporteByCarga: ver su javadoc para el porqué transitorio),
+        // para que la pantalla y el asiento nunca puedan divergir por leer columnas distintas.
+        // Sin banda ni cuota (DsbnConcepto: "solo CAPITAL lleva banda") — la cuenta contable de
+        // este concepto se resuelve al LEER, por tipoAporte, igual que la banda se resuelve al
+        // leer para CAPITAL.
+        List<Aporte> aportes = aporteDaoService.selectByCarga(idCarga);
+        if (aportes != null && !aportes.isEmpty()) {
+            for (Aporte aporte : aportes) {
+                double valorAporte = nvl(aporte.getValor());
+                if (valorAporte <= TOLERANCIA) {
+                    continue;
+                }
+                if (aporte.getEntidad() == null) {
+                    throw new IncomeException("El aporte " + aporte.getCodigo() + " de la carga " + idCarga
+                        + " no tiene partícipe asociado; no se puede auditar su distribución.");
+                }
+                LocalDate fechaAplicacionAporte = aporte.getFechaTransaccion() != null
+                    ? aporte.getFechaTransaccion().toLocalDate() : LocalDate.now();
+                Long idTipoAporte = aporte.getTipoAporte() != null ? aporte.getTipoAporte().getCodigo() : null;
+
+                distribucionBandaDaoService.save(filaBase(DsbnOrigen.CARGA_PETRO, idCarga,
+                    DsbnConcepto.APORTE, valorAporte, aporte.getEntidad(), null, null, null, null,
+                    idTipoAporte, fechaAplicacionAporte, usuario, ahora), null);
                 filasEscritas++;
             }
         }
@@ -241,14 +302,14 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
     }
 
     private DistribucionBanda filaBase(String origen, Long idOrigen, String concepto, double valor,
-            Prestamo prestamo, DetallePrestamo cuota, Producto producto, Long idTipoPrestamo,
+            Entidad entidad, Prestamo prestamo, DetallePrestamo cuota, Producto producto, Long idTipoPrestamo,
             Long idTipoAporte, LocalDate fechaAplicacion, String usuario, LocalDateTime ahora) {
         DistribucionBanda fila = new DistribucionBanda();
         fila.setOrigen(origen);
         fila.setIdOrigen(idOrigen);
         fila.setConcepto(concepto);
         fila.setValor(redondear(valor));
-        fila.setEntidad(prestamo.getEntidad());
+        fila.setEntidad(entidad);
         fila.setPrestamo(prestamo);
         fila.setDetallePrestamo(cuota);
         fila.setProducto(producto);
@@ -378,6 +439,14 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
 
         List<DistribucionBanda> filas = distribucionBandaDaoService.selectDetalleFiltrado(filtro);
 
+        // Cuenta contable de los conceptos que NO son CAPITAL (2026-09-02, hueco real: el FE
+        // destapó que interés/mora/seguros/aportes nunca mostraban cuenta — ver
+        // resolverLineaPlantilla). Se resuelve UNA vez por (origen, idOrigen) — no por fila — y
+        // se cachea por (concepto, tipoPrestamo, tipoAporte) para esta llamada: un puñado de
+        // combinaciones frente a potencialmente miles de filas.
+        Long idPlantilla = resolverIdPlantillaParaOrigen(filtro.getOrigen(), filtro.getIdOrigen());
+        Map<String, DetallePlantilla> cacheLineas = new LinkedHashMap<>();
+
         double totalValor = 0.0;
         Map<String, ResumenConceptoDistribucionBanda> resumen = new LinkedHashMap<>();
         List<FilaDistribucionBanda> filasDto = new ArrayList<>();
@@ -392,13 +461,106 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
             porConcepto.setValor(redondear(porConcepto.getValor() + nvl(fila.getValor())));
             porConcepto.setFilas(porConcepto.getFilas() + 1);
 
-            filasDto.add(aFilaDto(fila));
+            filasDto.add(aFilaDto(fila, idPlantilla, cacheLineas));
         }
         resultado.setTotalValorFiltrado(redondear(totalValor));
         resultado.setResumenPorConcepto(new ArrayList<>(resumen.values()));
         resultado.setFilas(filasDto);
-        resultado.setResumenJerarquico(construirResumenJerarquico(filtro));
+        resultado.setResumenJerarquico(construirResumenJerarquico(filtro, idPlantilla, cacheLineas));
         return resultado;
+    }
+
+    /**
+     * Idem del asiento de aplicación Petro: {@code plantillaService.codigoByAlterno} necesita la
+     * empresa contable de la carga, y {@code CargaArchivo} no la tiene como columna propia — hay
+     * que derivarla de sus transferencias vigentes (mismo criterio, ÚNICA definición, en
+     * {@code TransferenciaCargaPetroDaoService#resolverEmpresaByCarga}).
+     *
+     * Solo sabe resolver para {@link DsbnOrigen#CARGA_PETRO} — el mapeo concepto→línea de acá es
+     * el de {@code PlantillasCredito.APLICACION_PETRO}; para el resto de los orígenes no hay
+     * plantilla que resolver todavía y la cuenta queda vacía, que es la ausencia esperada.
+     *
+     * NUNCA lanza: es una pantalla de solo lectura, y un problema resolviendo la plantilla (o la
+     * empresa) no puede tumbarla — la cuenta de los conceptos sin banda simplemente queda null.
+     */
+    private Long resolverIdPlantillaParaOrigen(String origen, Long idOrigen) {
+        if (!DsbnOrigen.CARGA_PETRO.equals(origen) || idOrigen == null) {
+            return null;
+        }
+        try {
+            Long idEmpresa = transferenciaCargaPetroDaoService.resolverEmpresaByCarga(idOrigen);
+            return plantillaService.codigoByAlterno(PlantillasCredito.APLICACION_PETRO, idEmpresa);
+        } catch (Throwable e) {
+            System.err.println("DistribucionBandaService: no se pudo resolver la plantilla de la carga "
+                + idOrigen + " para mostrar cuentas contables (la pantalla sigue, sin esas cuentas): "
+                + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Cuenta contable de un concepto que NO es CAPITAL — espeja el mapeo concepto/tipo → línea
+     * que usa {@code CobroPetroContableServiceImpl.contabilizarAplicacion} para armar el asiento
+     * de aplicación (2026-09-02): misma línea, para que esta pantalla de auditoría muestre la
+     * MISMA cuenta que terminó afectada, nunca una calculada aparte.
+     *
+     * Cacheada por (concepto, tipoPrestamo, tipoAporte): son un puñado de combinaciones
+     * distintas frente a potencialmente miles de filas/grupos — ni una fila entra sin pasar por
+     * el cache.
+     *
+     * @return la línea si existe; {@code null} si el concepto no tiene mapeo conocido
+     *         ({@link DsbnConcepto#CAPITAL}, que no pasa por acá, e
+     *         {@link DsbnConcepto#INTERES_VENCIDO}, que hoy siempre es cero y por eso nunca tuvo
+     *         línea — ver la guarda en {@code contabilizarAplicacion}) o si la plantilla no
+     *         tiene esa línea configurada. Nunca lanza: ausencia de configuración en una
+     *         pantalla de solo lectura no es un error, es una cuenta vacía.
+     */
+    private DetallePlantilla resolverLineaPlantilla(String concepto, Long idTipoPrestamo, Long idTipoAporte,
+            Long idPlantilla, Map<String, DetallePlantilla> cache) throws Throwable {
+        if (idPlantilla == null || concepto == null) {
+            return null;
+        }
+        String clave = concepto + "|" + idTipoPrestamo + "|" + idTipoAporte;
+        if (cache.containsKey(clave)) {
+            return cache.get(clave);
+        }
+
+        DetallePlantilla linea = null;
+        if (DsbnConcepto.INTERES_ORDINARIO.equals(concepto)) {
+            if (idTipoPrestamo != null) {
+                linea = detallePlantillaDaoService.selectByPlantillaYAuxiliares(
+                    idPlantilla, CrdLineaAsiento.INTERES_ORDINARIO_POR_COBRAR, idTipoPrestamo.intValue());
+            }
+        } else if (DsbnConcepto.INTERES_MORA.equals(concepto)) {
+            if (idTipoPrestamo != null) {
+                linea = detallePlantillaDaoService.selectByPlantillaYAuxiliares(
+                    idPlantilla, CrdLineaAsiento.INTERES_MORA_POR_COBRAR, idTipoPrestamo.intValue());
+            }
+        } else if (DsbnConcepto.SEGURO_DESGRAVAMEN.equals(concepto)) {
+            linea = detallePlantillaDaoService.selectByPlantillaYAuxiliar(idPlantilla, CrdLineaAsiento.SEGURO_DESGRAVAMEN);
+        } else if (DsbnConcepto.SEGURO_INCENDIO.equals(concepto)) {
+            if (idTipoPrestamo != null) {
+                Integer aux1 = idTipoPrestamo == TIPO_PRESTAMO_HIPOTECARIO ? AUX1_SEGURO_HIPOTECARIO
+                    : idTipoPrestamo == TIPO_PRESTAMO_PRENDARIO ? AUX1_SEGURO_PRENDARIO : null;
+                if (aux1 != null) {
+                    linea = detallePlantillaDaoService.selectByPlantillaYAuxiliar(idPlantilla, aux1);
+                }
+            }
+        } else if (DsbnConcepto.APORTE.equals(concepto)) {
+            if (idTipoAporte != null) {
+                if (idTipoAporte == TIPO_APORTE_JUBILACION) {
+                    linea = detallePlantillaDaoService.selectByPlantillaYAuxiliar(idPlantilla, CrdLineaAsiento.APORTES_JUBILACION);
+                } else if (idTipoAporte == TIPO_APORTE_CESANTIA) {
+                    linea = detallePlantillaDaoService.selectByPlantillaYAuxiliar(idPlantilla, CrdLineaAsiento.APORTES_CESANTIA);
+                }
+            }
+        }
+        // CAPITAL no pasa por acá (ya trae su cuenta desde la banda); INTERES_VENCIDO no tiene
+        // mapeo (siempre cero hoy) y cualquier otro caso sin línea queda en null — todos
+        // ausencias legítimas, no errores.
+
+        cache.put(clave, linea);
+        return linea;
     }
 
     /**
@@ -408,10 +570,11 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
      * MISMO filtro sin paginar — el conjunto filtrado completo puede ser miles de filas y el
      * resumen tiene que verlas todas, no las 50 de la página. Primer nivel CONCEPTO, segundo
      * cuenta contable + banda (§3 del plan: agrupar por cuenta arriba fusiona mora con interés
-     * ordinario, que comparten cuenta).
+     * ordinario, que comparten cuenta). La cuenta de los conceptos sin banda se resuelve sobre
+     * los GRUPOS ya agregados por la consulta (un puñado), nunca fila por fila.
      */
-    private List<ResumenJerarquicoConcepto> construirResumenJerarquico(FiltroDetalleDistribucionBanda filtro)
-            throws Throwable {
+    private List<ResumenJerarquicoConcepto> construirResumenJerarquico(FiltroDetalleDistribucionBanda filtro,
+            Long idPlantilla, Map<String, DetallePlantilla> cacheLineas) throws Throwable {
         List<Object[]> filas = distribucionBandaDaoService.selectResumenJerarquicoFiltrado(filtro);
 
         Map<String, ResumenJerarquicoConcepto> porConcepto = new LinkedHashMap<>();
@@ -421,8 +584,19 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
             String etiqueta = (String) fila[2];
             String cuentaContable = (String) fila[3];
             String nombreCuenta = (String) fila[4];
-            double valor = redondear(((Number) fila[5]).doubleValue());
-            long filasCuenta = ((Number) fila[6]).longValue();
+            Long idTipoPrestamo = (Long) fila[5];
+            Long idTipoAporte = (Long) fila[6];
+            double valor = redondear(((Number) fila[7]).doubleValue());
+            long filasCuenta = ((Number) fila[8]).longValue();
+
+            if (cuentaContable == null && idBanda == null) {
+                DetallePlantilla linea = resolverLineaPlantilla(concepto, idTipoPrestamo, idTipoAporte,
+                    idPlantilla, cacheLineas);
+                if (linea != null && linea.getPlanCuenta() != null) {
+                    cuentaContable = linea.getPlanCuenta().getCuentaContable();
+                    nombreCuenta = linea.getPlanCuenta().getNombre();
+                }
+            }
 
             ResumenJerarquicoConcepto nivelConcepto = porConcepto.get(concepto);
             if (nivelConcepto == null) {
@@ -445,7 +619,8 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
         return new ArrayList<>(porConcepto.values());
     }
 
-    private FilaDistribucionBanda aFilaDto(DistribucionBanda fila) {
+    private FilaDistribucionBanda aFilaDto(DistribucionBanda fila, Long idPlantilla,
+            Map<String, DetallePlantilla> cacheLineas) throws Throwable {
         FilaDistribucionBanda dto = new FilaDistribucionBanda();
         dto.setId(fila.getCodigo());
         dto.setConcepto(fila.getConcepto());
@@ -480,6 +655,18 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
             if (fila.getBanda().getPlanCuenta() != null) {
                 dto.setCuentaContable(fila.getBanda().getPlanCuenta().getCuentaContable());
                 dto.setNombreCuenta(fila.getBanda().getPlanCuenta().getNombre());
+            }
+        } else {
+            // 2026-09-02, hueco real reportado por el FE al enganchar el resumen: la cuenta
+            // contable SOLO se resolvía desde la banda, y la banda solo existe para CAPITAL —
+            // interés ordinario/mora, seguros y aportes nunca mostraban cuenta, con o sin CNT
+            // conectado. Se resuelve al leer, por (concepto, tipoPrestamo/tipoAporte) — ver
+            // resolverLineaPlantilla. Ausencia de mapeo o de plantilla: cuenta null, no error.
+            DetallePlantilla linea = resolverLineaPlantilla(fila.getConcepto(), fila.getTipoPrestamo(),
+                fila.getTipoAporte(), idPlantilla, cacheLineas);
+            if (linea != null && linea.getPlanCuenta() != null) {
+                dto.setCuentaContable(linea.getPlanCuenta().getCuentaContable());
+                dto.setNombreCuenta(linea.getPlanCuenta().getNombre());
             }
         }
         dto.setIdAsiento(fila.getIdAsiento());
