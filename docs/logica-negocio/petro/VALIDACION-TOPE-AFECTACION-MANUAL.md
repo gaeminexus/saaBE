@@ -581,3 +581,74 @@ Con el §12 puesto, ese sobrante queda repartible en la pantalla.
    concreta **por la prelación**, no por una regla especial.
 3. Ninguna fila HS debe quedar sin procesar ni procesarse dos veces. Contarlas antes y después.
 4. Con esto y la corrección de SANCHEZ, el cuadre de la carga 449 debe dar **0**.
+
+---
+
+## 14. El prevuelo solo miraba una dirección — cerrado 2026-09-03
+
+**Resultado en producción de todo lo de arriba, primera vez en la jornada:** la red del §11 detectó
+$35,64 de diferencia, no generó los asientos, la carga no quedó procesada y el usuario **no tuvo que
+restaurar la base**. El HS huérfano (§13) también funcionó: NAVAS desapareció de la lista de novedades.
+
+Pero esos mismos $35,64 revelaron un hueco distinto, en el prevuelo (§9):
+
+| Partícipe | Pozo disponible | Afectado | Sin repartir |
+|---|---|---|---|
+| SANCHEZ | 298,19 | 289,18 | 9,01 |
+| CABRERA | — | — | 13,18 |
+| MUYULEMA | — | — | 7,10 |
+| SOLANO | — | — | 6,34 |
+| | | **Total** | **35,63** |
+
+### No es un defecto de cálculo — es un defecto de cobertura
+
+Cuando un partícipe tiene afectación manual (AVPC), **el flujo automático no corre para él** —
+decisión del usuario: *"se procesan según se haya ingresado en la tabla de ajuste"*. Es correcto por
+diseño: lo que el operador reparte manualmente reemplaza al automático para ese partícipe, no lo
+complementa. El problema es que **si el operador reparte MENOS que el pozo disponible, lo que falta
+no lo reparte nadie** — ni el automático (no corre) ni el proceso (no lo inventa, por diseño del §3).
+
+**El prevuelo (§9) solo detectaba EXCESO** (afectado > disponible). Nunca miró la otra dirección
+(afectado < disponible), así que estos cuatro partícipes eran invisibles en el prevuelo — visibles
+recién cuando la red del §11 frenó la carga entera, después de que el operador esperó el proceso
+completo.
+
+### La regla, ampliada
+
+`calcularTopeAfectacionManual` (antes `calcularViolacionesTopeAfectacionManual` — renombrado porque
+ya no calcula solo violaciones) ahora arma DOS listas en la misma pasada, reutilizando
+`excesoYRestante` que ya calculaba ambos lados y solo se leía uno:
+
+- **`excesos`**: afectado > disponible (tolerancia $0.01) — sigue bloqueando el procesamiento
+  (`validarTopeAfectacionManualPorParticipe`), sin cambios de comportamiento.
+- **`faltantes`**: disponible > afectado (tolerancia $0.01) — **NO bloquea** (es válido por diseño),
+  pero el prevuelo (`obtenerPrevueloAfectacionManual`) ahora lo expone.
+
+**Condición para entrar en `faltantes`, y es la que evita los falsos positivos:** el partícipe debe
+tener AL MENOS una afectación manual (AVPC) ya registrada. Si no tiene ninguna, el pozo entero lo
+reparte el flujo automático y no falta nada — listar a ese partícipe sería ruido, y con cientos de
+partícipes sin afectación manual por carga normal, el prevuelo se volvería inútil de tan ruidoso.
+
+**Las dos listas van SEPARADAS, nunca mezcladas en un solo número con signo:** son dos acciones
+opuestas para el operador — a los de `excesos` hay que **bajarles** la afectación, a los de
+`faltantes` hay que **subirles/completarles**. Cada entrada de `faltantes` trae un `mensaje` explícito
+diciendo la acción ("afecte el faltante..."), no solo el número.
+
+### Contrato de `obtenerPrevueloAfectacionManual`, actualizado
+
+Antes devolvía `idCarga`, `participesConExceso`, `excesoTotal`, `detalle`. Ahora agrega, sin tocar los
+anteriores: `participesConFaltante`, `faltanteTotal`, `detalleFaltante` — misma forma que `detalle`
+pero con `faltante` en vez de `exceso`.
+
+**⚠️ Contrato de frontend:** el panel de prevuelo hoy solo pinta `detalle`/excesos — necesita agregar
+la segunda lista (`detalleFaltante`) para que el operador vea también a quién completarle antes de
+procesar.
+
+### Verificación
+
+1. Con los cuatro partícipes de la carga real: deben aparecer en `detalleFaltante`, no en `detalle`
+   (no son excesos), con `faltante` igual al "sin repartir" de la tabla de arriba.
+2. Un partícipe SIN ninguna afectación manual, con pozo disponible > 0, NO debe aparecer en ninguna
+   lista — su pozo lo resuelve el automático.
+3. `validarTopeAfectacionManualPorParticipe` (la que bloquea) sigue sin ver los faltantes — un
+   partícipe con faltante pero sin exceso debe dejar procesar la carga sin problema.

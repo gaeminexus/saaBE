@@ -1820,7 +1820,11 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	private void validarTopeAfectacionManualPorParticipe(CargaArchivo cargaArchivo) throws Throwable {
 		System.out.println("=== VALIDANDO TOPE DE AFECTACION MANUAL POR PARTICIPE (rol Petro) ===");
 
-		List<Map<String, Object>> violaciones = calcularViolacionesTopeAfectacionManual(cargaArchivo);
+		// §14: solo los EXCESOS bloquean acá. Los FALTANTES (repartió menos que el pozo) son
+		// correctos por diseño — lo que el operador no reparte, no lo reparte nadie, y eso no es
+		// un error de la carga — así que no se validan en este método; los expone el prevuelo
+		// (§9/§14) para que el operador los vea ANTES de llegar hasta acá.
+		List<Map<String, Object>> violaciones = calcularTopeAfectacionManual(cargaArchivo).excesos();
 
 		if (violaciones.isEmpty()) {
 			System.out.println("✅ Ningún partícipe excede el tope de afectación manual");
@@ -1854,6 +1858,19 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	}
 
 	/**
+	 * Los dos resultados del núcleo del tope por partícipe — VALIDACION-TOPE-AFECTACION-
+	 * MANUAL.md §9 y §14. {@code excesos}: partícipes cuya afectación manual (AVPC) supera su
+	 * pozo disponible — ESO bloquea el procesamiento. {@code faltantes}: partícipes que TIENEN
+	 * afectación manual pero repartieron MENOS que su pozo — eso NO bloquea (es válido por
+	 * diseño: lo que el operador no reparte, no lo reparte nadie), pero es el hueco que el §14
+	 * cerró en el prevuelo, para que el usuario no espere el proceso entero para enterarse.
+	 * Listas separadas a propósito: son dos acciones opuestas para el operador (bajarle a unos,
+	 * subirle a otros), nunca un solo número con signo.
+	 */
+	private record TopeAfectacionManual(List<Map<String, Object>> excesos, List<Map<String, Object>> faltantes) {
+	}
+
+	/**
 	 * Núcleo COMPARTIDO del tope por partícipe — ÚNICA definición (VALIDACION-TOPE-AFECTACION-
 	 * MANUAL.md §9): la usan la validación que bloquea al procesar
 	 * ({@link #validarTopeAfectacionManualPorParticipe}) y el prevuelo de solo lectura
@@ -1867,25 +1884,37 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	 * {@link #disponibleParaTope}. Ver su javadoc para el caso medido (SANCHEZ PRADO, rol 7508)
 	 * que probó que la regla anterior era incompleta.
 	 *
+	 * <b>AMPLIADO 2026-09-03 (§14):</b> además de {@code excesos} (afectado &gt; disponible),
+	 * ahora también arma {@code faltantes} (afectado &lt; disponible) — medido en producción con
+	 * la red del §11 ya funcionando: 4 partícipes (SANCHEZ, CABRERA, MUYULEMA, SOLANO) frenaron
+	 * la carga con $35,64 sin repartir, visibles desde ANTES de arrancar el proceso pero
+	 * invisibles en el prevuelo porque este solo miraba exceso. <b>Un {@code faltante} SOLO
+	 * cuenta si el partícipe TIENE afectación manual</b> (AVPC no vacío, mismo criterio que
+	 * {@code avpc} de abajo) — si no tiene ninguna, el flujo automático se encarga de su pozo
+	 * completo y no falta nada; listar a ese partícipe sería un falso positivo (y con cientos de
+	 * partícipes sin afectación manual por carga, inundaría el prevuelo).
+	 *
 	 * Escanea TODA la carga en UNA sola pasada — pensado para llamarse una vez por invocación,
 	 * nunca por partícipe (ver el javadoc de {@link #obtenerPrevueloAfectacionManual} sobre por
 	 * qué eso importa para una consulta interactiva).
 	 *
-	 * @return una entrada por cada rol Petro cuyo exceso supera la tolerancia de un centavo;
-	 *         VACÍA si ninguno la excede. Cada entrada trae {@code codigoPetro}, {@code cedula},
-	 *         {@code participe}, {@code disponible}, {@code afectado}, {@code exceso} y
-	 *         {@code avpc} (códigos de {@code AfectacionValoresParticipeCarga} involucrados)
+	 * @return {@link TopeAfectacionManual} con las dos listas, cada entrada con
+	 *         {@code codigoPetro}, {@code cedula}, {@code participe}, {@code disponible},
+	 *         {@code afectado}, {@code avpc} (códigos de {@code AfectacionValoresParticipeCarga}
+	 *         involucrados) y, según la lista, {@code exceso} + {@code mensaje} o
+	 *         {@code faltante} + {@code mensaje}
 	 */
-	private List<Map<String, Object>> calcularViolacionesTopeAfectacionManual(CargaArchivo cargaArchivo)
+	private TopeAfectacionManual calcularTopeAfectacionManual(CargaArchivo cargaArchivo)
 			throws Throwable {
 		final double TOLERANCIA_TOPE = 0.01;
 
-		List<Map<String, Object>> violaciones = new ArrayList<>();
+		List<Map<String, Object>> excesos = new ArrayList<>();
+		List<Map<String, Object>> faltantes = new ArrayList<>();
 
 		List<DetalleCargaArchivo> detallesCarga =
 			detalleCargaArchivoDaoService.selectByCargaArchivo(cargaArchivo.getCodigo());
 		if (detallesCarga == null || detallesCarga.isEmpty()) {
-			return violaciones;
+			return new TopeAfectacionManual(excesos, faltantes);
 		}
 
 		// Acumulado por ROL PETRO (identidad del partícipe: es lo mismo con lo que se busca su
@@ -1941,34 +1970,71 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			// Misma regla que totalAfectadoManualmente: solo cuenta lo que el aplicador va a usar
 			// realmente (una fila sin cuota y sin tipo de aporte no tiene destino y no suma).
 			double afectado = totalAfectadoManualmente(novedadesRol);
-			double exceso = excesoYRestante(disponible, afectado)[0];
-			if (exceso <= TOLERANCIA_TOPE) {
+			double[] excesoRestante = excesoYRestante(disponible, afectado);
+			double exceso = excesoRestante[0];
+			double restante = excesoRestante[1];
+
+			if (exceso > TOLERANCIA_TOPE) {
+				Map<String, Object> violacion = new HashMap<>();
+				violacion.put("codigoPetro", rolPetro);
+				violacion.put("participe", nombrePorRol.get(rolPetro));
+				violacion.put("cedula", cedulaPorRolPetro(rolPetro));
+				violacion.put("disponible", disponible);
+				violacion.put("afectado", afectado);
+				violacion.put("exceso", exceso);
+				violacion.put("avpc", codigosAfectacionManual(novedadesRol));
+				violacion.put("mensaje", "Afectación manual por encima del pozo disponible: corrija (baje) las"
+					+ " afectaciones de este partícipe.");
+				excesos.add(violacion);
 				continue;
 			}
 
-			Map<String, Object> violacion = new HashMap<>();
-			violacion.put("codigoPetro", rolPetro);
-			violacion.put("participe", nombrePorRol.get(rolPetro));
-			violacion.put("cedula", cedulaPorRolPetro(rolPetro));
-			violacion.put("disponible", disponible);
-			violacion.put("afectado", afectado);
-			violacion.put("exceso", exceso);
-			violacion.put("avpc", codigosAfectacionManual(novedadesRol));
-			violaciones.add(violacion);
+			if (restante > TOLERANCIA_TOPE) {
+				// §14: SOLO cuenta como faltante si el partícipe TIENE afectación manual — si no
+				// tiene ninguna, el flujo automático se encarga de todo el pozo y no falta nada.
+				List<Long> avpc = codigosAfectacionManual(novedadesRol);
+				if (avpc.isEmpty()) {
+					continue;
+				}
+				Map<String, Object> faltante = new HashMap<>();
+				faltante.put("codigoPetro", rolPetro);
+				faltante.put("participe", nombrePorRol.get(rolPetro));
+				faltante.put("cedula", cedulaPorRolPetro(rolPetro));
+				faltante.put("disponible", disponible);
+				faltante.put("afectado", afectado);
+				faltante.put("faltante", restante);
+				faltante.put("avpc", avpc);
+				faltante.put("mensaje", "Quedan $" + String.format("%,.2f", restante) + " del pozo disponible"
+					+ " sin afectar: afecte el faltante a este partícipe antes de procesar, o no se le"
+					+ " va a repartir (el flujo automático no corre para quien ya tiene afectación manual).");
+				faltantes.add(faltante);
+			}
 		}
-		return violaciones;
+		return new TopeAfectacionManual(excesos, faltantes);
 	}
 
 	/**
 	 * Prevuelo del tope de afectación manual, DE SOLO LECTURA — VALIDACION-TOPE-AFECTACION-
-	 * MANUAL.md §9, pedido del usuario: *"poder encontrar también la diferencia al momento de
-	 * aplicar los ajustes, para revisar el error antes de que se genere"*. Corre la MISMA pasada
-	 * que {@link #validarTopeAfectacionManualPorParticipe} (vía
-	 * {@link #calcularViolacionesTopeAfectacionManual}, única definición) pero SIN bloquear —
-	 * el operador la consulta MIENTRAS reparte, que es el único momento en que corregir sale
-	 * barato.
+	 * MANUAL.md §9/§14, pedido del usuario: *"poder encontrar también la diferencia al momento
+	 * de aplicar los ajustes, para revisar el error antes de que se genere"*. Corre la MISMA
+	 * pasada que {@link #validarTopeAfectacionManualPorParticipe} (vía
+	 * {@link #calcularTopeAfectacionManual}, única definición) pero SIN bloquear — el operador
+	 * la consulta MIENTRAS reparte, que es el único momento en que corregir sale barato.
 	 *
-	 * <p>⚠️ <b>Alcance declarado, a propósito:</b> este prevuelo SOLO ve el exceso de
+	 * <p><b>AMPLIADO 2026-09-03 (§14): ahora mira las DOS direcciones, en listas separadas.</b>
+	 * Hasta acá solo devolvía EXCESO (afectado &gt; disponible). Medido en producción con la red
+	 * del §11 ya funcionando: 4 partícipes (SANCHEZ, CABRERA, MUYULEMA, SOLANO) frenaron la
+	 * carga con $35,64 sin repartir — un caso válido por diseño (afectación manual incompleta:
+	 * el flujo automático no corre para ese partícipe, así que lo que no se reparte, no lo
+	 * reparte nadie), pero invisible en este prevuelo hasta ahora, y visible desde ANTES de
+	 * arrancar el proceso. Por eso ahora también trae {@code faltantes} (afectado &lt;
+	 * disponible), <b>solo para partícipes que YA tienen alguna afectación manual</b> — sin eso
+	 * el listado incluiría a todo partícipe sin afectación manual (el flujo automático se
+	 * encarga de esos) y se llenaría de falsos positivos. <b>Las dos listas van separadas
+	 * — nunca mezcladas en un solo número con signo</b>: son dos acciones opuestas para el
+	 * operador (bajarle a unos, subirle a otros).</p>
+	 *
+	 * <p>⚠️ <b>Alcance declarado, a propósito:</b> este prevuelo SOLO ve exceso/faltante de
 	 * afectaciones MANUALES contra lo descontado. NO detecta la hipótesis en investigación
 	 * (2026-09-02, sql/184) de que el flujo AUTOMÁTICO aplica encima del tope manual — eso
 	 * todavía no ocurrió en este punto del proceso. Un {@code participesConExceso: 0} acá NO
@@ -1979,9 +2045,10 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	 * cargué va a descuadrar?" ANTES de aplicar; aquél pregunta "¿por qué descuadró?" DESPUÉS.</p>
 	 *
 	 * @param codigoCargaArchivo : ID de la carga (CRD.CRAR)
-	 * @return : Map con {@code idCarga}, {@code participesConExceso}, {@code excesoTotal} y
-	 *           {@code detalle} (una entrada por partícipe con exceso — ver el javadoc de
-	 *           {@link #calcularViolacionesTopeAfectacionManual})
+	 * @return : Map con {@code idCarga}, {@code participesConExceso}, {@code excesoTotal},
+	 *           {@code detalle} (excesos — ver el javadoc de {@link #calcularTopeAfectacionManual}),
+	 *           y ahora también {@code participesConFaltante}, {@code faltanteTotal} y
+	 *           {@code detalleFaltante} (misma forma, para la lista de faltantes)
 	 * @throws Throwable : Excepción en caso de error
 	 */
 	@Override
@@ -1996,18 +2063,27 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			throw new IncomeException("No se encontró la carga con ID: " + codigoCargaArchivo);
 		}
 
-		List<Map<String, Object>> violaciones = calcularViolacionesTopeAfectacionManual(cargaArchivo);
+		TopeAfectacionManual tope = calcularTopeAfectacionManual(cargaArchivo);
+		List<Map<String, Object>> excesos = tope.excesos();
+		List<Map<String, Object>> faltantes = tope.faltantes();
 
 		double excesoTotal = 0.0;
-		for (Map<String, Object> violacion : violaciones) {
+		for (Map<String, Object> violacion : excesos) {
 			excesoTotal += (Double) violacion.get("exceso");
+		}
+		double faltanteTotal = 0.0;
+		for (Map<String, Object> faltante : faltantes) {
+			faltanteTotal += (Double) faltante.get("faltante");
 		}
 
 		Map<String, Object> resultado = new HashMap<>();
 		resultado.put("idCarga", codigoCargaArchivo);
-		resultado.put("participesConExceso", violaciones.size());
+		resultado.put("participesConExceso", excesos.size());
 		resultado.put("excesoTotal", Math.round(excesoTotal * 100.0) / 100.0);
-		resultado.put("detalle", violaciones);
+		resultado.put("detalle", excesos);
+		resultado.put("participesConFaltante", faltantes.size());
+		resultado.put("faltanteTotal", Math.round(faltanteTotal * 100.0) / 100.0);
+		resultado.put("detalleFaltante", faltantes);
 		return resultado;
 	}
 
@@ -2016,7 +2092,7 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	 * CORRECCIÓN 2026-09-03, VALIDACION-TOPE-AFECTACION-MANUAL.md §10, CUARTA VUELTA.
 	 *
 	 * <p><b>⛔ Este método YA NO capea nada — devuelve el pozo crudo de la fila.</b> El cap vive
-	 * en los llamadores ({@link #calcularViolacionesTopeAfectacionManual} y
+	 * en los llamadores ({@link #calcularTopeAfectacionManual} y
 	 * {@link #obtenerTopeAfectacionManual}), y es al total descontado del PARTICIPANTE (suma de
 	 * TODAS sus filas PXCA en la carga), nunca al de esta fila sola. Motivo, verificado en
 	 * producción el 2026-09-03: <b>el pozo de una novedad puede abarcar más de una fila.</b> El
@@ -2069,7 +2145,7 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	 * duro que nunca se puede cruzar es el total descontado del PARTICIPANTE; por debajo de ese
 	 * límite, sumar (no maximizar, y no capear por fila) es lo que corresponde.</p>
 	 *
-	 * <b>ÚNICA definición del pozo por fila</b> — la usan {@link #calcularViolacionesTopeAfectacionManual}
+	 * <b>ÚNICA definición del pozo por fila</b> — la usan {@link #calcularTopeAfectacionManual}
 	 * (y por lo tanto {@link #validarTopeAfectacionManualPorParticipe} y
 	 * {@link #obtenerPrevueloAfectacionManual}) y {@link #obtenerTopeAfectacionManual}, que son
 	 * también los ÚNICOS lugares donde se aplica el cap por participante.
@@ -2126,7 +2202,7 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		// bloqueados tenían TODOS hipotecario o prendario con seguro. El cap correcto es al
 		// total descontado del PARTICIPANTE (todas sus filas en la carga), y vive en los
 		// llamadores, que son quienes conocen esa suma — ver
-		// {@link #calcularViolacionesTopeAfectacionManual} y {@link #obtenerTopeAfectacionManual}.
+		// {@link #calcularTopeAfectacionManual} y {@link #obtenerTopeAfectacionManual}.
 		return totalPozos;
 	}
 

@@ -112,7 +112,7 @@ public interface CargaArchivoPetroService {
 
     /**
      * Prevuelo del tope de afectación manual de TODA la carga, de solo lectura —
-     * VALIDACION-TOPE-AFECTACION-MANUAL.md §9. Corre la misma pasada que la validación que
+     * VALIDACION-TOPE-AFECTACION-MANUAL.md §9/§14. Corre la misma pasada que la validación que
      * bloquea al procesar, pero sin bloquear: el operador la consulta mientras reparte, para
      * corregir antes de intentar procesar.
      *
@@ -123,10 +123,23 @@ public interface CargaArchivoPetroService {
      * cualquier otra interacción automático/manual todavía no identificada — no reemplaza a
      * {@code DistribucionBandaService#obtenerDiferencia} (la verificación posterior a aplicar).
      *
+     * <b>Ampliado 2026-09-03 (§14):</b> además del exceso, ahora también informa el FALTANTE —
+     * partícipes con afectación manual que repartieron MENOS que su pozo disponible. Es válido
+     * por diseño (el flujo automático no corre para quien ya tiene afectación manual, así que lo
+     * no repartido no lo reparte nadie), pero antes de esto era invisible hasta que la carga se
+     * frenaba en la red del §11 — medido en producción: 4 partícipes, $35,64 sin repartir,
+     * visibles desde antes de arrancar. Solo se informan partícipes que YA tienen alguna
+     * afectación manual (si no tiene ninguna, el automático se encarga de todo su pozo y no es
+     * un faltante real).
+     *
      * @param codigoCargaArchivo : ID de la carga (CRD.CRAR)
-     * @return : Map con {@code idCarga}, {@code participesConExceso}, {@code excesoTotal} y
-     *           {@code detalle} (rolPetro, cédula, nombre, disponible, afectado, exceso, AVPC
-     *           por cada partícipe con exceso)
+     * @return : Map con {@code idCarga}, {@code participesConExceso}, {@code excesoTotal},
+     *           {@code detalle} (rolPetro, cédula, nombre, disponible, afectado, exceso, AVPC y
+     *           mensaje por cada partícipe con exceso — a estos hay que BAJARLES la afectación),
+     *           y {@code participesConFaltante}, {@code faltanteTotal}, {@code detalleFaltante}
+     *           (misma forma, {@code faltante} en vez de {@code exceso} — a estos hay que
+     *           SUBIRLES/completarles la afectación). Las dos listas van separadas a propósito:
+     *           son acciones opuestas para el operador.
      * @throws Throwable : Excepción en caso de error
      */
     Map<String, Object> obtenerPrevueloAfectacionManual(Long codigoCargaArchivo) throws Throwable;
