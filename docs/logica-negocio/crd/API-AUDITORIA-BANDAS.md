@@ -230,6 +230,22 @@ quedó cumplida en la estructura de la tabla y en la pantalla, pero no en las es
 para cerrarse, y hasta entonces la pantalla no debería ofrecer un filtro que nunca puede tener datos
 sin decir por qué.
 
+### ⚠️ `totalValorFiltrado` sumaba la PÁGINA, no el filtro — corregido 2026-09-03
+
+Defecto real, visto en pantalla por el usuario: el encabezado mostraba «Total filtrado: $30.111,46 ·
+3448 filas» — el importe era la suma de las 50 filas de la página que trajo `selectDetalleFiltrado`
+(paginado), pero el conteo sí era del total. El frontend usa `totalValorFiltrado` como denominador
+del % de participación en el árbol del resumen, y con ese desfase salían porcentajes como 505,0%.
+
+Corregido: `totalValorFiltrado` ahora se deriva de la suma de `resumenJerarquico` (que ya corre su
+propio `GROUP BY` sin paginar) — no de sumar `filas` de la página. Sin consulta nueva.
+
+**`resumenPorConcepto` NO se tocó — sigue siendo la suma de la página, pese al nombre.** Se mantiene
+por compatibilidad con quien ya lo consuma, pero **no usarlo como total ni como denominador de
+porcentajes**: para eso está el primer nivel de `resumenJerarquico`, que además trae cuenta
+contable/banda. Si el frontend no tiene otro consumidor de `resumenPorConcepto`, es candidato a
+eliminarse en una limpieza futura — no se borró acá por no tener esa confirmación.
+
 ---
 
 ## Las DOS vistas — decisión del usuario, 2026-09-02

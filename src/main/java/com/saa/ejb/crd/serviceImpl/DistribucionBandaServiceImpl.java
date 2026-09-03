@@ -628,26 +628,35 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
         Long idPlantilla = resolverIdPlantillaParaOrigen(filtro.getOrigen(), filtro.getIdOrigen());
         Map<String, DetallePlantilla> cacheLineas = new LinkedHashMap<>();
 
-        double totalValor = 0.0;
-        Map<String, ResumenConceptoDistribucionBanda> resumen = new LinkedHashMap<>();
+        // 2026-09-02, defecto real visto en pantalla (reportado por el usuario: "Total filtrado:
+        // $30.111,46 · 3448 filas" — el importe era de las 50 filas de la página, el conteo del
+        // total; el FE lo usa como denominador de % de participación y salían porcentajes de
+        // 505%). totalValorFiltrado se calcula acá, ANTES del bucle de la página, a partir del
+        // MISMO GROUP BY sin paginar que ya usa resumenJerarquico — no agrega una consulta más,
+        // solo deja de sumar la página bajo un nombre que promete el total.
+        List<ResumenJerarquicoConcepto> resumenJerarquico = construirResumenJerarquico(filtro, idPlantilla, cacheLineas);
+        double totalValorFiltrado = 0.0;
+        for (ResumenJerarquicoConcepto concepto : resumenJerarquico) {
+            totalValorFiltrado += concepto.getValor();
+        }
+
+        Map<String, ResumenConceptoDistribucionBanda> resumenPagina = new LinkedHashMap<>();
         List<FilaDistribucionBanda> filasDto = new ArrayList<>();
         for (DistribucionBanda fila : filas) {
-            totalValor += nvl(fila.getValor());
-
-            ResumenConceptoDistribucionBanda porConcepto = resumen.get(fila.getConcepto());
+            ResumenConceptoDistribucionBanda porConcepto = resumenPagina.get(fila.getConcepto());
             if (porConcepto == null) {
                 porConcepto = new ResumenConceptoDistribucionBanda(fila.getConcepto(), 0.0, 0L);
-                resumen.put(fila.getConcepto(), porConcepto);
+                resumenPagina.put(fila.getConcepto(), porConcepto);
             }
             porConcepto.setValor(redondear(porConcepto.getValor() + nvl(fila.getValor())));
             porConcepto.setFilas(porConcepto.getFilas() + 1);
 
             filasDto.add(aFilaDto(fila, idPlantilla, cacheLineas));
         }
-        resultado.setTotalValorFiltrado(redondear(totalValor));
-        resultado.setResumenPorConcepto(new ArrayList<>(resumen.values()));
+        resultado.setTotalValorFiltrado(redondear(totalValorFiltrado));
+        resultado.setResumenPorConcepto(new ArrayList<>(resumenPagina.values()));
         resultado.setFilas(filasDto);
-        resultado.setResumenJerarquico(construirResumenJerarquico(filtro, idPlantilla, cacheLineas));
+        resultado.setResumenJerarquico(resumenJerarquico);
         return resultado;
     }
 

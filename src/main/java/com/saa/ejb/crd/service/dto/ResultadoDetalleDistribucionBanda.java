@@ -9,7 +9,20 @@ public class ResultadoDetalleDistribucionBanda {
     private long totalFilas;
     private int pagina;
     private int tamanio;
+    /**
+     * Suma del CONJUNTO FILTRADO COMPLETO, no de la página — corregido 2026-09-02 (defecto
+     * real visto en pantalla: mostraba la suma de las 50 filas de la página junto al conteo de
+     * las 3.448 del total, y el frontend lo usaba como denominador de % de participación,
+     * dando porcentajes de 500%+). Se deriva del mismo GROUP BY sin paginar que arma
+     * {@link #resumenJerarquico}, no de sumar {@link #filas}.
+     */
     private double totalValorFiltrado;
+    /**
+     * ⚠️ Es la suma de esta PÁGINA nada más — pese al nombre, NO es un total. Para el total por
+     * concepto sobre el conjunto filtrado completo usar {@link #resumenJerarquico} (primer
+     * nivel), que además viene con cuenta contable/banda. Se mantiene por compatibilidad; no
+     * usar como denominador de porcentajes ni como total mostrado en pantalla.
+     */
     private List<ResumenConceptoDistribucionBanda> resumenPorConcepto = new ArrayList<>();
     private List<FilaDistribucionBanda> filas = new ArrayList<>();
     /**
