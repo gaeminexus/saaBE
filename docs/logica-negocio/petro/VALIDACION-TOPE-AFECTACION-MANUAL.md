@@ -116,3 +116,57 @@ está a medio hacer.
 **Los $141,40 ya aplicados a SANCHEZ PRADO.** Es dinero real acreditado a su préstamo que él no
 pagó. Las dos salidas son reversarlos, o dejarlos y ajustarlos contra su próximo descuento. **No se
 decide desde acá.**
+
+---
+
+## 8. El control de pantalla — una sola fuente de verdad
+
+**Decisión, 2026-09-02.** La pantalla de afectación debe mostrar el tope **por partícipe** mientras
+el operador trabaja, en vez de que se entere recién al procesar. Pero **no reimplementando la regla
+en el frontend.**
+
+### Lo que se descartó, y por qué
+
+El agente FE verificó que puede calcular el **disponible** sin ninguna consulta nueva
+(`registrosParticipesCarga` ya trae todas las filas `ParticipeXCargaArchivo` de la carga, con
+`codigoPetro` y `totalDescontado`). Lo que le falta es el **afectado por partícipe**: hoy la pantalla
+sólo carga las afectaciones de la novedad que se abre, nunca del partícipe.
+
+Había un camino client-side —encadenar `NovedadParticipeCarga.selectByCriteria` por `codigoPetro` y
+después `AfectacionValoresParticipeCarga.selectByCriteria` con un OR-chain de esos códigos— y **se
+descarta a propósito**, por dos razones:
+
+1. **Es una cadena de dos consultas nunca probada contra el servidor real, en un control financiero.**
+   Si falla en silencio (paginación, un campo que no resulta ser de un solo nivel), el operador ve un
+   disponible que no es el real **en la misma pantalla que originó el problema**.
+2. **Duplicaría la regla.** El backend ya la calcula en `validarTopeAfectacionManualPorParticipe`
+   (`438257f`). Dos implementaciones de una regla financiera divergen, y el día que difieran nadie va
+   a saber cuál manda.
+
+### Lo que se hace
+
+Un endpoint **de sólo lectura** que devuelva el tope ya calculado, **reusando el mismo método** que
+la validación —no una copia—:
+
+```
+GET /rest/{...}/topeAfectacion?idCarga=449&codigoPetro=7508
+
+{ "codigoPetro": 7508, "disponible": 406.73, "afectado": 439.59,
+  "exceso": 32.86, "restante": 0.00 }
+```
+
+- `disponible`: suma de `PXCA.PXCADSDO` del partícipe en esa carga, **todos los productos**.
+- `afectado`: suma de `AVPC.AVPCVAFA` de **todas** sus novedades en esa carga.
+- `restante`: `max(0, disponible − afectado)` — es lo que la pantalla muestra como tope.
+- `exceso`: `max(0, afectado − disponible)` — mayor a cero significa que ya se pasó.
+
+⛔ **El endpoint no valida ni bloquea: informa.** La validación que impide aplicar sigue siendo la
+del proceso (§4). La pantalla es prevención, **no la última línea de defensa** — y no puede serlo,
+porque el tope se arma entre varias pantallas, varias sesiones y potencialmente varios operadores.
+
+### Lo que el FE verificó y queda descartado
+
+El disponible **sí** descuenta lo ya guardado al reabrir el diálogo: `cargarContextoAfectacionFinanciera()`
+corre en `afterOpened()` y después de cada guardado, y todas sus ramas terminan releyendo las
+afectaciones persistidas de esa novedad. **Dentro de una novedad el control es sólido.** El agujero
+es, y siempre fue, que el tope nunca fue del partícipe.
