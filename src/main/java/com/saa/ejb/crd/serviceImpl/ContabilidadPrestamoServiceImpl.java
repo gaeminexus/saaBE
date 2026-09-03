@@ -3,7 +3,9 @@ package com.saa.ejb.crd.serviceImpl;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.cnt.service.AsientoContableService;
@@ -12,16 +14,20 @@ import com.saa.ejb.crd.dao.DetallePrestamoDaoService;
 import com.saa.ejb.crd.dao.HistDetallePrestamoDaoService;
 import com.saa.ejb.crd.dao.PagoPrestamoDaoService;
 import com.saa.ejb.crd.dao.PrestamoDaoService;
+import com.saa.ejb.crd.service.ClasificadorBandaService;
 import com.saa.ejb.crd.service.ConfiguracionContabilidadService;
 import com.saa.ejb.crd.service.ContabilidadPrestamoService;
 import com.saa.ejb.crd.service.ContabilizacionIndividualCreditoService;
+import com.saa.ejb.crd.service.dto.BandaProductoDetalle;
 import com.saa.ejb.crd.service.dto.ContextoPago;
 import com.saa.ejb.crd.service.dto.DesgloseAporte;
 import com.saa.ejb.crd.service.dto.MovimientoAporte;
 import com.saa.ejb.crd.service.dto.ResultadoAplicacionPago;
+import com.saa.ejb.crd.service.dto.ResultadoClasificacionBanda;
 import com.saa.model.cnt.Asiento;
 import com.saa.model.cnt.DetalleAsiento;
 import com.saa.model.cnt.DetallePlantilla;
+import com.saa.model.cnt.NombreEntidadesContabilidad;
 import com.saa.model.cnt.PlanCuenta;
 import com.saa.model.crd.DetallePrestamo;
 import com.saa.model.crd.Entidad;
@@ -32,6 +38,7 @@ import com.saa.model.crd.Prestamo;
 import com.saa.rubros.ModuloSistema;
 import com.saa.rubros.PlantillasCredito;
 import com.saa.rubros.TipoAsientos;
+import com.saa.rubros.TipoCarteraBanda;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -95,6 +102,15 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
 
     @EJB
     private com.saa.ejb.cnt.dao.DetallePlantillaDaoService detallePlantillaDaoService;
+
+    /** PLAN-ENTREGA-BANDAS-DINAMICAS.md: la entrega clasifica el capital con el mismo modelo
+     * dinámico que ya usa el cobro (ContabilizacionIndividualCreditoServiceImpl.lineaBandaCapital),
+     * en vez de la escalera fija de 5 tramos de antes. */
+    @EJB
+    private ClasificadorBandaService clasificadorBandaService;
+
+    @EJB
+    private com.saa.ejb.cnt.dao.PlanCuentaDaoService planCuentaDaoService;
 
     // =====================================================================
     // Fase 1 — cruce de valores (pagarConAportes). Asiento levantado en
@@ -512,6 +528,17 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
             Integer auxBien, int auxSociosPorPagar) {
     }
 
+    /** Acumulador de capital por banda dinámica al armar el asiento de entrega — una línea
+     * por banda, no una por cuota (PLAN-ENTREGA-BANDAS-DINAMICAS.md §5, punto 4 de verificación). */
+    private static class LineaBandaCapitalAcumulada {
+        private final BandaProductoDetalle banda;
+        private double valor;
+
+        LineaBandaCapitalAcumulada(BandaProductoDetalle banda) {
+            this.banda = banda;
+        }
+    }
+
     @Override
     public Long contabilizarEntrega(Prestamo prestamo, List<DetallePrestamo> cuotas, Long idEmpresa,
             double montoOperacion, String usuario) throws Throwable {
@@ -585,32 +612,55 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         String prefijo = "Entrega préstamo " + prestamo.getCodigo();
         LocalDate fechaInicio = prestamo.getFechaInicio().toLocalDate();
 
-        // DEBE: capital distribuido en las 5 bandas por plazo, según los días de la fecha de
-        // inicio del préstamo al vencimiento de cada cuota — el mismo rango que describen
-        // literalmente las 5 primeras líneas de la plantilla 34 (sql/156: "DE 1 A 30 DIAS" …
-        // "DE MAS DE 360 DIAS"). NO es el modelo dinámico de bandas de ClasificadorBandaService
-        // (CRD.BNDP): esta plantilla trae las 5 cuentas ya fijas en aux1 1-5, así que se
-        // clasifica contra esos rangos literales, no contra la parametrización dinámica.
-        double[] montosPorBanda = new double[5];
+        // DEBE: capital clasificado con el MISMO modelo dinámico de bandas que ya usa el cobro
+        // (ClasificadorBandaService / CRD.BNDP), no la escalera fija de 5 tramos de antes
+        // (PLAN-ENTREGA-BANDAS-DINAMICAS.md). Es una entrega, no un cobro: TODAS las cuotas
+        // están por vencer, y los días se cuentan desde la fecha de inicio del préstamo hasta
+        // el vencimiento de cada cuota — por eso se le pasa fechaInicio como "fecha de corte"
+        // a POR_VENCER, nunca VENCIDO.
+        Map<Long, LineaBandaCapitalAcumulada> bandasEntrega = new LinkedHashMap<>();
         for (DetallePrestamo cuota : cuotas) {
             if (cuota.getFechaVencimiento() == null || cuota.getCapital() == null) {
                 continue;
             }
-            long dias = Math.max(1,
-                    ChronoUnit.DAYS.between(fechaInicio, cuota.getFechaVencimiento().toLocalDate()));
-            int indice = (dias <= 30) ? 0 : (dias <= 90) ? 1 : (dias <= 180) ? 2 : (dias <= 360) ? 3 : 4;
-            montosPorBanda[indice] += cuota.getCapital();
+            LocalDate vencimiento = cuota.getFechaVencimiento().toLocalDate();
+            long dias = Math.max(1, ChronoUnit.DAYS.between(fechaInicio, vencimiento));
+            ResultadoClasificacionBanda resultado = clasificadorBandaService.clasificar(
+                    prestamo.getProducto().getCodigo(), idEmpresa,
+                    Long.valueOf(TipoCarteraBanda.POR_VENCER), Long.valueOf(dias), fechaInicio);
+            BandaProductoDetalle banda = resultado.getBanda();
+            LineaBandaCapitalAcumulada acumulada = bandasEntrega.computeIfAbsent(
+                    banda.getNumero(), k -> new LineaBandaCapitalAcumulada(banda));
+            acumulada.valor += cuota.getCapital();
         }
 
         List<DetalleAsiento> lineas = new ArrayList<>();
         double totalCapital = 0.0;
-        for (int i = 0; i < 5; i++) {
-            double valorBanda = redondear(montosPorBanda[i]);
-            if (valorBanda > TOLERANCIA_CUADRE) {
-                lineas.add(lineaEntrega(idPlantilla, i + 1, valorBanda, true, alterno,
-                        prefijo + " - banda " + (i + 1)));
-                totalCapital += valorBanda;
+        for (LineaBandaCapitalAcumulada acumulada : bandasEntrega.values()) {
+            double valorBanda = redondear(acumulada.valor);
+            if (valorBanda <= TOLERANCIA_CUADRE) {
+                continue;
             }
+            // Mismo guardarraíl que el cobro (ContabilizacionIndividualCreditoServiceImpl.
+            // lineaBandaCapital): sin cuenta asignada en CRD.BNDP, la entrega no se contabiliza
+            // (sql/176 verifica esto ANTES de desplegar — ver PLAN-ENTREGA-BANDAS-DINAMICAS.md §3).
+            if (acumulada.banda.getIdPlanCuenta() == null) {
+                throw new IncomeException("La banda " + acumulada.banda.getNumero() + " del producto "
+                        + prestamo.getProducto().getCodigo() + " no tiene cuenta contable asignada en"
+                        + " CRD.BNDP; no se puede armar el asiento de entrega del préstamo "
+                        + prestamo.getCodigo() + ".");
+            }
+            PlanCuenta cuenta = planCuentaDaoService.selectById(acumulada.banda.getIdPlanCuenta(),
+                    NombreEntidadesContabilidad.PLAN_CUENTA);
+            DetalleAsiento linea = new DetalleAsiento();
+            linea.setPlanCuenta(cuenta);
+            linea.setNumeroCuenta(acumulada.banda.getCuentaContable());
+            linea.setNombreCuenta(acumulada.banda.getNombreCuenta());
+            linea.setDescripcion(prefijo + " - banda " + acumulada.banda.getNumero());
+            linea.setValorDebe(valorBanda);
+            linea.setValorHaber(0.0);
+            lineas.add(linea);
+            totalCapital += valorBanda;
         }
         totalCapital = redondear(totalCapital);
 

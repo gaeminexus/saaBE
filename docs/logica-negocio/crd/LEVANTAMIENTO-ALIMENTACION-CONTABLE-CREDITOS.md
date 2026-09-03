@@ -401,6 +401,15 @@ Las pizarras no desarrollaron asientos específicos para estos tres procesos, pe
 - **Pago de última cuota y marcado como pagado**: contablemente es un pago normal (§3.3/3.4) que deja las bandas de ese préstamo en cero; el cambio de estado del préstamo es de negocio (CRD), sin asiento adicional levantado.
 - Nuevos créditos quirografarios llevan además novación/reestructuración con **traslado completo entre familias** (p.ej. novación: D `1.3.02.xx` todas las bandas ← H `1.3.01.xx` todas las bandas; ver alternos 2, 3, 4, 5, 6, 7, 10, 11, 14, 15).
 
+**Actualización 2026-09-02 (`PLAN-ENTREGA-BANDAS-DINAMICAS.md`, decisión del usuario):** el capital
+de la entrega **dejó de repartirse sobre las 5 líneas `aux1` 1–5 de las plantillas 9/13/34**
+(escalera fija de tramos 1-30/31-90/91-180/181-360/+360 días). Ahora clasifica con el mismo
+`ClasificadorBandaService` dinámico que ya usaba el cobro (`CRD.BNDP`, la cuenta vive en la banda,
+no en la plantilla) — mismo criterio, para que el mismo préstamo nombre la misma banda al entrar y
+al cobrarse. Las líneas `aux1` 1–5 de esas tres plantillas **quedaron sin uso** (no se borraron: si
+hiciera falta revertir, recrearlas sería más caro). El resto de la plantilla (cuenta de orden,
+documentos en garantía, el bien, socios por pagar) sigue exactamente igual.
+
 ---
 
 ## 4. Índice de fotos (trazabilidad)
