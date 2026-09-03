@@ -152,3 +152,47 @@ tipo de préstamo, tipo de aporte, partícipe, banda, concepto y cuenta. Exporta
 3. Reprocesar dos veces la misma carga: la cantidad de filas **no cambia**.
 4. Con `contabilidadActiva() = false`: la pantalla sigue mostrando la distribución completa, sin
    columna de cuenta y sin asiento. **Es la prueba de la venta separada** y no es opcional.
+
+---
+
+## 8. ⚠️ La transversalidad quedó a medias — cómo se cierra
+
+**Estado real al 2026-09-02**, verificado contra el código: `DsbnOrigen` declara **cuatro** orígenes
+y la pantalla los ofrece los cuatro, pero **el único que tiene alguien escribiendo filas es
+`CARGA_PETRO`** (`CobroPetroContableServiceImpl`). Por los otros tres la pantalla devuelve vacío
+siempre, hagan los procesos lo que hagan.
+
+**Es un hueco del despacho, no del código.** El §2 pide transversalidad desde el día uno, y quedó
+cumplida en la estructura de la tabla y en la pantalla — pero el despacho al agente puso todo el
+énfasis en Petro y las escrituras de los otros tres nunca se pidieron. Lo detectó el usuario al
+filtrar por «Cobro individual» y no ver nada.
+
+### Orden de valor
+
+| # | Origen | `idOrigen` | Dónde ya se clasifica |
+|---|---|---|---|
+| 1 | `COBRO_INDIVIDUAL` | `CRD.CBCR` | `CobroCreditoServiceImpl` — `haberDesdeEvento` / `haberDesdePagos` |
+| 2 | `EVENTO_PRESTAMO` | `CRD.EVPR` | `lineasReclasificacionAbonoCapital` / `lineasBandaCapitalAbono` |
+| 3 | `PAGO_PENSION` | `CRD.PGPC` | el pago mensual, cuando hay cruce |
+
+El 1 va primero porque es el que el usuario ya intentó usar.
+
+### ⛔ Reglas, y la tercera es la que se acaba de aprender a los golpes
+
+- La fila se escribe **donde se aplica el pago**, nunca detrás del guardarraíl de `contabilidadActiva`.
+- Idempotente por (origen, idOrigen): reprocesar **reemplaza**, no duplica.
+- **No clasificar dos veces lo mismo en el mismo proceso.** En Petro esto ya pasó: la escritura
+  duplicó las consultas de clasificación que el asiento ya hacía, dentro del proceso de 20+ minutos
+  recién estabilizado. Se corrigió compartiendo el resultado (`1073d28`). **En los tres orígenes que
+  faltan hay que compartir desde el principio**, no clasificar de nuevo.
+- No cambia ni un valor de ningún asiento.
+
+Si en alguno la clasificación **no** está disponible en el punto donde se aplica el pago —y por lo
+tanto habría que clasificar de nuevo— **parar y rediseñar dónde se engancha**, en vez de agregar
+consultas a un proceso.
+
+### El cuadre de estos tres orígenes es `null`
+
+Y está bien: `recibido` sólo existe hoy para Petro, que tiene las transferencias como fuente
+independiente. Un cobro individual no tiene un «recibido» contra el cual contrastarse. Ver el tercer
+estado del contrato — **no inventar un `$0,00`**.
