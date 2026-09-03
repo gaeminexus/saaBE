@@ -84,11 +84,39 @@ COMMENT ON COLUMN PGS.APLP.APLPMVCH IS
 
 
 -- =====================================================================
--- BLOQUE 2 -- LA FK
+-- BLOQUE 1b -- ⚠️ EL GRANT. VA ANTES DE LA FK Y LO CORRE OTRO USUARIO.
 -- =====================================================================
--- MVCH vive en TSR y APLP en PGS, asi que hace falta el GRANT REFERENCES
--- ANTES del ALTER. Si el usuario que ejecuta no es TSR, pedirselo al DBA.
--- GRANT REFERENCES ON TSR.MVCH TO PGS;
+-- Esto fallo el 2026-09-03 y la culpa es de este script, que lo tenia como un
+-- comentario suelto en vez de un paso.
+--
+--   ORA-01031: insufficient privileges
+--
+-- POR QUE
+--   MVCH vive en TSR y APLP en PGS. Una FK cross-schema exige el privilegio
+--   REFERENCES sobre la tabla apuntada, y ese privilegio lo da EL DUEÑO DE TSR.
+--
+-- ⛔ EL ROL DBA NO ALCANZA. REFERENCES no viene con DBA: hay que otorgarlo
+--    explicitamente. Ya se aprendio en este repo — ver el bloque 0.4 de
+--    docs/logica-negocio/crd/sql/DDL-COBRO-PETRO-DOS-PASOS.sql, que lo dice
+--    con todas las letras. Esa leccion estaba escrita y este script no la
+--    aplico.
+--
+-- CONECTADO COMO TSR (no como PGS, no como el ejecutor del resto):
+
+GRANT REFERENCES ON TSR.MVCH TO PGS;
+
+-- Control: confirmar que quedo otorgado antes de seguir. ESPERADO: 1 fila.
+SELECT grantee, privilege, table_name
+  FROM all_tab_privs
+ WHERE table_schema = 'TSR' AND table_name = 'MVCH'
+   AND privilege = 'REFERENCES' AND grantee = 'PGS';
+
+
+-- =====================================================================
+-- BLOQUE 2 -- LA FK  (volver al usuario del resto del script)
+-- =====================================================================
+-- Si el bloque 1 ya corrio y solo fallo esto, NO hace falta rehacer nada:
+-- la columna APLPMVCH ya existe y este bloque se reanuda tal cual.
 
 ALTER TABLE PGS.APLP ADD CONSTRAINT FK_APLP_MVCH
     FOREIGN KEY (APLPMVCH) REFERENCES TSR.MVCH (MVCHCDGO);
