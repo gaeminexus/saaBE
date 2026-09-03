@@ -55,7 +55,10 @@ public interface VigenciaContratoDaoService extends EntityDao<VigenciaContrato> 
      * si una entidad tuviera más de un contrato activo (anomalía de datos): el de mayor código.
      *
      * @param codigoFilial : Código de la filial (CRD.FLLL)
-     * @return             : Filas {@code Object[]{Long idEntidad, Long idTipoAporte, LocalDate fechaInicio, LocalDate fechaFin, Double monto}}
+     * @return             : Filas {@code Object[]{Long idEntidad, Long idTipoAporte, LocalDate fechaInicio, LocalDate fechaFin, Double monto, Long idContrato, Long idVigencia}}
+     *                       — los dos últimos se agregaron el 2026-09-02 para poder identificar
+     *                       vigencias ACTIVAS superpuestas (mismo tipo, mismo contrato,
+     *                       mismo mes) sin tener que volver a la base.
      * @throws Throwable   : Excepcion
      */
     List<Object[]> selectVigentesPorFilial(Long codigoFilial) throws Throwable;

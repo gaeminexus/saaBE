@@ -2,9 +2,11 @@ package com.saa.ejb.crd.service;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 import com.saa.ejb.crd.service.dto.FiltroDetalleDistribucionBanda;
 import com.saa.ejb.crd.service.dto.OrigenDistribucionBandaResumen;
+import com.saa.ejb.crd.service.dto.ResultadoClasificacionBanda;
 import com.saa.ejb.crd.service.dto.ResultadoCuadreDistribucionBanda;
 import com.saa.ejb.crd.service.dto.ResultadoDetalleDistribucionBanda;
 import com.saa.model.crd.PagoPrestamo;
@@ -37,13 +39,21 @@ public interface DistribucionBandaService {
      * <b>No incluye aportes todavía</b> (cesantía/jubilación de la carga) — alcance de esta
      * entrega, ver PLAN-AUDITORIA-BANDAS.md.
      *
+     * <b>Corrección 2026-09-02:</b> devuelve la clasificación de banda de CAPITAL que resolvió
+     * para cada pago (código de {@code PagoPrestamo} → resultado), para que
+     * {@code CobroPetroContableServiceImpl.contabilizarAplicacion} la reutilice al armar sus
+     * propias líneas del asiento en vez de volver a llamar a
+     * {@code ClasificadorBandaService.clasificar} por segunda vez para los mismos pagos —
+     * antes de esto, un mismo proceso de carga (20+ minutos) clasificaba cada pago DOS veces.
+     * Solo trae entrada para los pagos con capital &gt; 0 (los demás no tienen banda).
+     *
      * @param pagos     Pagos VIGENTES de la carga (mismos que consume
      *                  {@code CobroPetroContableService.contabilizarAplicacion})
      * @throws Throwable si falta un dato obligatorio para clasificar (producto, tipo de
      *                    préstamo cuando hace falta, fecha de vencimiento de la cuota)
      */
-    void registrarDistribucionCargaPetro(Long idCarga, Long idEmpresa, List<PagoPrestamo> pagos,
-            String usuario) throws Throwable;
+    Map<Long, ResultadoClasificacionBanda> registrarDistribucionCargaPetro(Long idCarga, Long idEmpresa,
+            List<PagoPrestamo> pagos, String usuario) throws Throwable;
 
     /**
      * Estampa el asiento en todas las filas de un origen — se llama DESPUÉS de que

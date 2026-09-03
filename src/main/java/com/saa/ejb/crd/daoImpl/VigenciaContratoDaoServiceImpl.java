@@ -107,8 +107,13 @@ public class VigenciaContratoDaoServiceImpl extends EntityDaoImpl<VigenciaContra
         // Nativa a proposito: necesita ROW_NUMBER() para el desempate "contrato activo mas
         // reciente" en bloque, para toda la filial en una sola consulta (mismo criterio que
         // ContratoDaoServiceImpl.selectActivoPorEntidad, pero sin una llamada por entidad).
+        // CORRECCION-TORMENTA-CONSULTAS-VIGENCIA.md §3 + correccion del 2026-09-02 (paridad con
+        // esperadoDesdeCache): ca.CNTRCDGO y v.VGCNCDGO se agregan para que
+        // esperadoEnLotePorFilial pueda identificar el contrato y las vigencias en conflicto si
+        // hubiera mas de una ACTIVA superpuesta - antes no se podia, esta consulta no los traia.
         Query query = em.createNativeQuery(
-            " SELECT ca.ENTDCDGO, v.TPAPCDGO, v.VGCNFCIN, v.VGCNFCFN, v.VGCNMNTO "
+            " SELECT ca.ENTDCDGO, v.TPAPCDGO, v.VGCNFCIN, v.VGCNFCFN, v.VGCNMNTO, "
+            + "        ca.CNTRCDGO, v.VGCNCDGO "
             + " FROM ( SELECT c.CNTRCDGO, c.ENTDCDGO, "
             + "               ROW_NUMBER() OVER (PARTITION BY c.ENTDCDGO ORDER BY c.CNTRCDGO DESC) rn "
             + "        FROM   CRD.CNTR c "
@@ -130,7 +135,9 @@ public class VigenciaContratoDaoServiceImpl extends EntityDaoImpl<VigenciaContra
                 fila[1] != null ? ((Number) fila[1]).longValue() : null,
                 aFecha(fila[2]),
                 aFecha(fila[3]),
-                fila[4] != null ? ((Number) fila[4]).doubleValue() : 0.0
+                fila[4] != null ? ((Number) fila[4]).doubleValue() : 0.0,
+                fila[5] != null ? ((Number) fila[5]).longValue() : null,
+                fila[6] != null ? ((Number) fila[6]).longValue() : null
             });
         }
         return resultado;

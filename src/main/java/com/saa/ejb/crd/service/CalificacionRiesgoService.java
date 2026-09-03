@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.ejb.crd.service.dto.ResultadoCalificacionRiesgo;
+import com.saa.model.crd.EscalaCalificacionRiesgo;
 import com.saa.model.crd.Producto;
 
 import jakarta.ejb.Local;
@@ -38,6 +39,29 @@ public interface CalificacionRiesgoService {
      *                      vigente, o si ningún renglón de la escala cubre los días dados
      */
     ResultadoCalificacionRiesgo calificar(Long idProducto, Long idEmpresa, Long dias, LocalDate fecha)
+            throws Throwable;
+
+    /**
+     * Resuelve la configuración vigente de un producto y trae SU escala completa —
+     * separado de {@link #calificar} para que un proceso batch (el G48) la resuelva UNA vez
+     * por producto y clasifique muchas antigüedades distintas contra la misma escala en
+     * memoria, con {@link #calificarEnEscala}, en vez de volver a la base por cada cuota
+     * (corrección 2026-09-02: hay muchísimas menos combinaciones producto+fecha que cuotas).
+     *
+     * @throws Throwable {@code IncomeException} si falta el producto, no hay configuración
+     *                    vigente, o la configuración no tiene calificaciones cargadas
+     */
+    List<EscalaCalificacionRiesgo> resolverEscala(Long idProducto, Long idEmpresa, LocalDate fecha)
+            throws Throwable;
+
+    /**
+     * Clasifica días contra una escala YA resuelta (ver {@link #resolverEscala}), sin volver a
+     * la base. {@code dias == null} se trata como {@code 0}.
+     *
+     * @param idProducto solo para el mensaje de error si ningún renglón cubre los días dados
+     * @throws Throwable {@code IncomeException} si ningún renglón de la escala cubre los días
+     */
+    ResultadoCalificacionRiesgo calificarEnEscala(Long idProducto, List<EscalaCalificacionRiesgo> escala, Long dias)
             throws Throwable;
 
     /**

@@ -29,13 +29,16 @@ public class CalificacionRiesgoServiceImpl implements CalificacionRiesgoService 
             throws Throwable {
         System.out.println("CalificacionRiesgoService.calificar - producto: " + idProducto
             + " - empresa: " + idEmpresa + " - dias: " + dias + " - fecha: " + fecha);
+        List<EscalaCalificacionRiesgo> escala = resolverEscala(idProducto, idEmpresa, fecha);
+        return calificarEnEscala(idProducto, escala, dias);
+    }
 
+    @Override
+    public List<EscalaCalificacionRiesgo> resolverEscala(Long idProducto, Long idEmpresa, LocalDate fecha)
+            throws Throwable {
         if (idProducto == null) {
             throw new IncomeException("El producto es obligatorio para calificar el riesgo");
         }
-        // Mismo criterio que el código cableado que este servicio reemplaza
-        // (GeneracionG48ServiceImpl.calcularCalificacion): sin morosidad, A1.
-        long diasEfectivos = dias != null ? dias : 0L;
         LocalDate fechaEfectiva = fecha != null ? fecha : LocalDate.now();
 
         ConfiguracionCalificacionRiesgo configuracion = configuracionCalificacionRiesgoDaoService
@@ -54,26 +57,36 @@ public class CalificacionRiesgoServiceImpl implements CalificacionRiesgoService 
                     + configuracion.getCodigo() + " (producto " + idProducto
                     + ") no tiene calificaciones cargadas en CRD.ESCR.");
         }
+        return escalas;
+    }
 
-        for (EscalaCalificacionRiesgo escala : escalas) {
-            Long diaDesde = escala.getDiaDesde();
-            Long diaHasta = escala.getDiaHasta();
+    @Override
+    public ResultadoCalificacionRiesgo calificarEnEscala(Long idProducto, List<EscalaCalificacionRiesgo> escala,
+            Long dias) throws Throwable {
+        // Mismo criterio que el código cableado que este servicio reemplaza
+        // (GeneracionG48ServiceImpl.calcularCalificacion): sin morosidad, A1.
+        long diasEfectivos = dias != null ? dias : 0L;
+
+        for (EscalaCalificacionRiesgo renglon : escala) {
+            Long diaDesde = renglon.getDiaDesde();
+            Long diaHasta = renglon.getDiaHasta();
             if (diaDesde != null && diasEfectivos >= diaDesde
                     && (diaHasta == null || diasEfectivos <= diaHasta)) {
                 ResultadoCalificacionRiesgo resultado = new ResultadoCalificacionRiesgo();
-                resultado.setIdConfiguracion(configuracion.getCodigo());
-                resultado.setIdEscala(escala.getCodigo());
-                resultado.setCalificacion(escala.getCalificacion());
-                resultado.setPorcentajeProvision(escala.getPorcentajeProvision());
+                resultado.setIdConfiguracion(renglon.getConfiguracion() != null
+                        ? renglon.getConfiguracion().getCodigo() : null);
+                resultado.setIdEscala(renglon.getCodigo());
+                resultado.setCalificacion(renglon.getCalificacion());
+                resultado.setPorcentajeProvision(renglon.getPorcentajeProvision());
                 resultado.setDiaDesde(diaDesde);
                 resultado.setDiaHasta(diaHasta);
                 return resultado;
             }
         }
 
-        throw new IncomeException("Ninguna calificación de la configuración " + configuracion.getCodigo()
-                + " (producto " + idProducto + ") cubre " + diasEfectivos + " días de morosidad —"
-                + " la escala tiene un hueco. Revise CRD.ESCR (sql/177 control D.3).");
+        throw new IncomeException("Ninguna calificación de la escala del producto " + idProducto
+                + " cubre " + diasEfectivos + " días de morosidad — la escala tiene un hueco."
+                + " Revise CRD.ESCR (sql/177 control D.3).");
     }
 
     @Override

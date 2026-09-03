@@ -73,10 +73,16 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
     // ========================================================================
 
     @Override
-    public void registrarDistribucionCargaPetro(Long idCarga, Long idEmpresa, List<PagoPrestamo> pagos,
-            String usuario) throws Throwable {
+    public Map<Long, ResultadoClasificacionBanda> registrarDistribucionCargaPetro(Long idCarga, Long idEmpresa,
+            List<PagoPrestamo> pagos, String usuario) throws Throwable {
         System.out.println("DistribucionBandaService.registrarDistribucionCargaPetro - Carga: " + idCarga
             + " - Pagos: " + (pagos != null ? pagos.size() : 0));
+
+        // Corrección 2026-09-02: se devuelve para que contabilizarAplicacion NO vuelva a llamar
+        // a clasificar() por los mismos pagos al armar el asiento — "clasificar una vez por
+        // pago, que ambos consuman lo mismo", no duplicar las consultas de clasificación en el
+        // mismo proceso de 20+ minutos que ya se estabilizó por otro motivo hoy.
+        Map<Long, ResultadoClasificacionBanda> clasificacionPorPago = new LinkedHashMap<>();
 
         // Idempotente por (origen, idOrigen) — reprocesar REEMPLAZA, no duplica (§5.1 punto 2).
         int borradas = distribucionBandaDaoService.eliminarPorOrigen(DsbnOrigen.CARGA_PETRO, idCarga);
@@ -86,7 +92,7 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
 
         if (pagos == null || pagos.isEmpty()) {
             System.out.println("  Carga " + idCarga + " sin pagos de préstamo — nada que distribuir.");
-            return;
+            return clasificacionPorPago;
         }
 
         LocalDateTime ahora = LocalDateTime.now();
@@ -136,6 +142,7 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
 
                 ResultadoClasificacionBanda resultado = clasificadorBandaService.clasificar(
                     idProducto, idEmpresa, tipoCartera, dias, fechaAplicacion);
+                clasificacionPorPago.put(pago.getCodigo(), resultado);
                 BandaProductoDetalle bandaDetalle = resultado.getBanda();
 
                 DistribucionBanda fila = filaBase(DsbnOrigen.CARGA_PETRO, idCarga, DsbnConcepto.CAPITAL,
@@ -196,6 +203,7 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
 
         System.out.println("  ✅ Distribución en bandas registrada - Carga " + idCarga
             + " - " + filasEscritas + " fila(s)");
+        return clasificacionPorPago;
     }
 
     private DistribucionBanda filaBase(String origen, Long idOrigen, String concepto, double valor,

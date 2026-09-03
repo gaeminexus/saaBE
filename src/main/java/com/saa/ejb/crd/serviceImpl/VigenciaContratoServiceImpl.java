@@ -256,19 +256,35 @@ public class VigenciaContratoServiceImpl implements VigenciaContratoService {
             LocalDate mes = YearMonth.from(desde).atDay(1);
             while (!mes.isAfter(limite)) {
                 LocalDate ultimoDiaMes = YearMonth.from(mes).atEndOfMonth();
-                double monto = 0.0;
                 // Misma regla que selectVigenteEnFecha: fechaInicio <= fecha AND
                 // (fechaFin es null O fechaFin >= fecha), evaluada contra el ultimo dia del mes.
+                //
+                // CORRECCIONES 2026-09-02 (mismo criterio que esperadoDesdeCache en
+                // CargaArchivoPetroServiceImpl, ver CORRECCION-TORMENTA-CONSULTAS-VIGENCIA.md):
+                // este es el camino del LOTE, el que resuelve la MAYORÍA de los casos — tener la
+                // protección solo en el fallback (minoritario) daba una sensación de cobertura
+                // que no existía. Si hay más de una vigencia ACTIVA superpuesta del mismo tipo
+                // para el mismo contrato, falla en vez de elegir la primera en silencio.
+                Object[] filaEncontrada = null;
                 for (Object[] fila : entrada.getValue()) {
                     LocalDate fechaInicio = (LocalDate) fila[2];
                     LocalDate fechaFin = (LocalDate) fila[3];
-                    Double montoVigencia = (Double) fila[4];
                     if (fechaInicio != null && !ultimoDiaMes.isBefore(fechaInicio)
                             && (fechaFin == null || !ultimoDiaMes.isAfter(fechaFin))) {
-                        monto = montoVigencia != null ? montoVigencia : 0.0;
-                        break;
+                        if (filaEncontrada != null) {
+                            Long idContrato = (Long) fila[5];
+                            Long idTipoAporteConflicto = (Long) fila[1];
+                            throw new IncomeException("Hay más de una vigencia ACTIVA del tipo de"
+                                + " aporte " + idTipoAporteConflicto + " cubriendo el " + ultimoDiaMes
+                                + " para el contrato " + idContrato + " — vigencias "
+                                + filaEncontrada[6] + " y " + fila[6] + " en conflicto. No se puede"
+                                + " decidir cuál vale.");
+                        }
+                        filaEncontrada = fila;
                     }
                 }
+                double monto = filaEncontrada != null && filaEncontrada[4] != null
+                    ? (Double) filaEncontrada[4] : 0.0;
                 resultado.put(entrada.getKey() + "|" + mes, monto);
                 mes = mes.plusMonths(1);
             }

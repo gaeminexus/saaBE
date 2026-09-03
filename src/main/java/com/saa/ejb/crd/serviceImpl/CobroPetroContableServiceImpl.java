@@ -688,12 +688,17 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         // exactamente igual, solo reordenado para que estén disponibles acá. Si no hay
         // vigentes de transferencia (carga sin plata confirmada todavía) no se intenta: no
         // hay con qué resolver la empresa y tampoco habría pagos en ese caso.
+        // Corrección 2026-09-02: registrarDistribucionCargaPetro devuelve la clasificación de
+        // banda que ya calculó por pago — el bucle de abajo la reutiliza en vez de llamar a
+        // clasificar() otra vez para los mismos pagos (antes los duplicaba: una carga de 20+
+        // minutos clasificaba cada pago con capital DOS veces).
+        Map<Long, ResultadoClasificacionBanda> clasificacionPorPago = new LinkedHashMap<>();
         List<TransferenciaCargaPetro> vigentesParaDistribucion = null;
         if (pagos != null && !pagos.isEmpty()) {
             vigentesParaDistribucion = transferenciaCargaPetroDaoService.selectVigentesByCarga(idCarga);
             if (vigentesParaDistribucion != null && !vigentesParaDistribucion.isEmpty()) {
                 Long idEmpresaDistribucion = resolverEmpresa(vigentesParaDistribucion);
-                distribucionBandaService.registrarDistribucionCargaPetro(
+                clasificacionPorPago = distribucionBandaService.registrarDistribucionCargaPetro(
                     idCarga, idEmpresaDistribucion, pagos, "sistema");
             }
         }
@@ -801,8 +806,17 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
                         tipoCartera = TipoCarteraBanda.VENCIDO;
                         dias = ChronoUnit.DAYS.between(fechaVencimiento, fechaPago);
                     }
-                    ResultadoClasificacionBanda resultado = clasificadorBandaService.clasificar(
-                            idProducto, idEmpresa, tipoCartera, dias, fechaPago);
+                    // Corrección 2026-09-02: reutiliza la clasificación que ya calculó
+                    // registrarDistribucionCargaPetro para este mismo pago (arriba, antes del
+                    // guardarraíl de contabilidadActiva) — misma fórmula exacta de
+                    // tipoCartera/dias, así que el resultado es idéntico al que daría volver a
+                    // llamar a clasificar(). Solo se vuelve a consultar si por algo faltara
+                    // (no debería: los dos bucles recorren los mismos pagos con capital > 0).
+                    ResultadoClasificacionBanda resultado = clasificacionPorPago.get(pago.getCodigo());
+                    if (resultado == null) {
+                        resultado = clasificadorBandaService.clasificar(
+                                idProducto, idEmpresa, tipoCartera, dias, fechaPago);
+                    }
                     BandaProductoDetalle banda = resultado.getBanda();
                     String clave = idProducto + "|" + tipoCartera + "|" + banda.getNumero();
                     LineaBandaAcumulada acumulada = bandas.get(clave);

@@ -24,6 +24,7 @@ import com.saa.ejb.rpr.service.HistoricoG48Service;
 import com.saa.ejb.rpr.service.SaldoCuentaG42Service;
 import com.saa.ejb.rpr.service.SaldoOperacionG48Service;
 import com.saa.model.crd.DetallePrestamo;
+import com.saa.model.crd.EscalaCalificacionRiesgo;
 import com.saa.model.crd.Prestamo;
 import com.saa.model.crd.Producto;
 import com.saa.model.rpr.DetalleEjecucionReporte;
@@ -156,6 +157,13 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
                 + " de generar el reporte.");
         }
 
+        // Corrección 2026-09-02: cachea la escala POR PRODUCTO (fecha fija = fechaFinDate para
+        // toda la corrida) — hay muchísimas menos combinaciones de producto que de cuotas, y sin
+        // este cache el bucle principal de abajo repetía, cuota por cuota, la misma consulta que
+        // ya se había hecho para otra cuota del mismo producto. Es el mismo patrón de la
+        // tormenta de consultas de vigencia que se cortó hoy en el devengo de aportes.
+        Map<Long, List<EscalaCalificacionRiesgo>> cacheEscalaPorProducto = new HashMap<>();
+
         // -------------------------------------------------------
         // 5b. Cargar datos del Grupo 2 en batch (igual que CCPM).
         // -------------------------------------------------------
@@ -252,8 +260,15 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
                 }
 
                 Long idProductoCuota = prestamo.getProducto() != null ? prestamo.getProducto().getCodigo() : null;
-                ResultadoCalificacionRiesgo resultadoCalificacion = calificacionRiesgoService.calificar(
-                    idProductoCuota, null, diasMorosidad, fechaFinDate);
+                // Corrección 2026-09-02: la escala se resuelve UNA vez por producto (cache de
+                // arriba) — calificarEnEscala solo clasifica en memoria, sin volver a la base.
+                List<EscalaCalificacionRiesgo> escalaProducto = cacheEscalaPorProducto.get(idProductoCuota);
+                if (escalaProducto == null) {
+                    escalaProducto = calificacionRiesgoService.resolverEscala(idProductoCuota, null, fechaFinDate);
+                    cacheEscalaPorProducto.put(idProductoCuota, escalaProducto);
+                }
+                ResultadoCalificacionRiesgo resultadoCalificacion = calificacionRiesgoService.calificarEnEscala(
+                    idProductoCuota, escalaProducto, diasMorosidad);
                 String calificacionPropia = resultadoCalificacion.getCalificacion();
                 double porcentajeProvisionPropia = resultadoCalificacion.getPorcentajeProvision() != null
                     ? resultadoCalificacion.getPorcentajeProvision() : 0.0;
