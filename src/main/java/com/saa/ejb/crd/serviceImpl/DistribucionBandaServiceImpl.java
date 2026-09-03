@@ -13,6 +13,7 @@ import java.util.Set;
 
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.crd.dao.AporteDaoService;
+import com.saa.ejb.crd.dao.AsientoCargaPetroDaoService;
 import com.saa.ejb.crd.dao.CargaArchivoDaoService;
 import com.saa.ejb.crd.dao.DistribucionBandaDaoService;
 import com.saa.ejb.crd.dao.EntidadDaoService;
@@ -37,6 +38,7 @@ import com.saa.ejb.crd.service.dto.ResumenJerarquicoCuentaBanda;
 import com.saa.model.cnt.Asiento;
 import com.saa.model.cnt.DetallePlantilla;
 import com.saa.model.crd.Aporte;
+import com.saa.model.crd.AsientoCargaPetro;
 import com.saa.model.crd.BandaProducto;
 import com.saa.model.crd.CargaArchivo;
 import com.saa.model.crd.DetallePrestamo;
@@ -50,6 +52,7 @@ import com.saa.rubros.DsbnConcepto;
 import com.saa.rubros.DsbnOrigen;
 import com.saa.rubros.EstadoAsiento;
 import com.saa.rubros.PlantillasCredito;
+import com.saa.rubros.SubProcesoCobroPetro;
 import com.saa.rubros.TipoCarteraBanda;
 
 import jakarta.ejb.EJB;
@@ -113,6 +116,9 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
 
     @EJB
     private PagoPrestamoDaoService pagoPrestamoDaoService;
+
+    @EJB
+    private AsientoCargaPetroDaoService asientoCargaPetroDaoService;
 
     @EJB
     private com.saa.ejb.cnt.dao.AsientoDaoService asientoDaoService;
@@ -362,6 +368,53 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
             return;
         }
         distribucionBandaDaoService.actualizarAsientoPorOrigen(origen, idOrigen, idAsiento);
+    }
+
+    /**
+     * Recálculo de una carga YA PROCESADA — ver el javadoc de la interfaz para el porqué
+     * (2026-09-03: WAR desplegado anterior a {@code 500079b} cuando se procesó la carga 449) y
+     * los tres límites (solo DSBN, idAsiento del ANCP vigente, idempotente).
+     *
+     * Relee EXACTAMENTE la misma fuente que usa el procesamiento normal
+     * ({@code CobroPetroContableServiceImpl.contabilizarAplicacion}): transferencias vigentes
+     * para la empresa, {@code PagoPrestamoDaoService#selectVigentesByCargaArchivo} para los
+     * pagos. {@link #registrarDistribucionCargaPetro} hace el resto (borra y reescribe,
+     * incluidos los aportes) — no se duplica esa lógica acá.
+     */
+    @Override
+    public Map<Long, ResultadoClasificacionBanda> recalcularDistribucionCargaPetro(Long idCarga, String usuario)
+            throws Throwable {
+        System.out.println("DistribucionBandaService.recalcularDistribucionCargaPetro - Carga: " + idCarga);
+
+        if (idCarga == null) {
+            throw new IncomeException("idCarga es obligatorio");
+        }
+        if (usuario == null || usuario.trim().isEmpty()) {
+            throw new IncomeException("usuario es obligatorio");
+        }
+
+        // Misma fuente que contabilizarAplicacion: la empresa sale de las transferencias
+        // vigentes de la carga (única definición, TransferenciaCargaPetroDaoService), los pagos
+        // de selectVigentesByCargaArchivo. NO se toca ninguna de las dos — solo se releen.
+        Long idEmpresa = transferenciaCargaPetroDaoService.resolverEmpresaByCarga(idCarga);
+        List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectVigentesByCargaArchivo(idCarga);
+
+        // registrarDistribucionCargaPetro es idempotente por construcción (eliminarPorOrigen al
+        // principio, siempre) — correr este método dos veces seguidas con los mismos pagos y
+        // aportes en base da el mismo resultado, nunca duplica.
+        Map<Long, ResultadoClasificacionBanda> clasificacionPorPago =
+            registrarDistribucionCargaPetro(idCarga, idEmpresa, pagos, usuario);
+
+        // idAsiento: el mismo que tenían las filas originales — el asiento VIGENTE del
+        // sub-proceso APLICACION en CRD.ANCP. Si no hay (contabilidad estaba inactiva cuando se
+        // procesó), queda null — igual que en el procesamiento normal.
+        AsientoCargaPetro asientoAplicacion = asientoCargaPetroDaoService.selectVigenteByCargaYSubProceso(
+            idCarga, SubProcesoCobroPetro.APLICACION);
+        if (asientoAplicacion != null && asientoAplicacion.getAsiento() != null) {
+            actualizarAsiento(DsbnOrigen.CARGA_PETRO, idCarga, asientoAplicacion.getAsiento());
+        }
+
+        return clasificacionPorPago;
     }
 
     // ========================================================================

@@ -97,6 +97,39 @@ public interface DistribucionBandaService {
     void actualizarAsiento(String origen, Long idOrigen, Long idAsiento) throws Throwable;
 
     /**
+     * Reescribe la distribución en bandas de una carga Petro YA PROCESADA, sin reprocesar nada
+     * — hallazgo 2026-09-03: el WAR desplegado cuando se procesó la carga 449 era anterior a
+     * {@code 500079b} (el commit que agregó el registro de aportes en CRD.DSBN), así que su
+     * distribución quedó sin esas filas. Reprocesar la carga entera para poblar una tabla de
+     * auditoría —20+ minutos, regenerando asientos en producción— no es aceptable.
+     *
+     * <p><b>SOLO reescribe {@code CRD.DSBN}.</b> Relee los {@code PagoPrestamo} y {@code Aporte}
+     * YA EXISTENTES de la carga (no toca asientos, pagos, aportes ni cuotas) y los vuelve a
+     * pasar por {@link #registrarDistribucionCargaPetro} — el mismo camino idempotente
+     * (borra y reescribe por origen) que corre durante el procesamiento normal. Correrlo dos
+     * veces seguidas da el mismo resultado.</p>
+     *
+     * <p>El {@code idAsiento} de las filas se resuelve del asiento VIGENTE de sub-proceso
+     * APLICACIÓN ({@code AsientoCargaPetroDaoService#selectVigenteByCargaYSubProceso}, CRD.ANCP)
+     * — el mismo asiento que las filas originales tenían. Si la carga no tiene asiento de
+     * aplicación vigente (contabilidad estaba inactiva cuando se procesó), queda {@code null},
+     * igual que en el procesamiento normal.</p>
+     *
+     * <p>Solo {@code CARGA_PETRO}: es el único origen con una fuente de pagos/aportes ya
+     * resuelta e idempotente para releer así.</p>
+     *
+     * @param idCarga : Código de la carga (CRD.CRAR), YA PROCESADA (estado 3)
+     * @param usuario : Usuario que ejecuta el recálculo, para auditoría (DSBNUSAR)
+     * @return : La clasificación de banda de CAPITAL que se volvió a resolver, por pago —
+     *           mismo contrato que {@link #registrarDistribucionCargaPetro}
+     * @throws Throwable : {@code IncomeException} si falta {@code idCarga}/{@code usuario}, si
+     *                     la carga no existe, o si no se puede resolver su empresa contable
+     *                     (sin transferencias vigentes)
+     */
+    Map<Long, ResultadoClasificacionBanda> recalcularDistribucionCargaPetro(Long idCarga, String usuario)
+            throws Throwable;
+
+    /**
      * El encabezado de cuadre de un origen — {@code GET /rest/dsbn/cuadre}.
      *
      * @throws Throwable {@code IncomeException} {@link #ERR_ORIGEN_NO_ENCONTRADO} si no hay

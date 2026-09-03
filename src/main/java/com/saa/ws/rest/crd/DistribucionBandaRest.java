@@ -23,7 +23,9 @@ import jakarta.ws.rs.core.Response;
 
 /**
  * Auditoría de distribución en bandas — PLAN-AUDITORIA-BANDAS.md / API-AUDITORIA-BANDAS.md.
- * Todo lo de este REST es de solo lectura: la pantalla audita lo que ya ocurrió.
+ * Casi todo este REST es de solo lectura (la pantalla audita lo que ya ocurrió); la única
+ * excepción es {@link #recalcularDistribucion}, que reescribe CRD.DSBN sin reprocesar nada —
+ * ver su javadoc.
  *
  * @see DistribucionBandaService
  */
@@ -114,6 +116,46 @@ public class DistribucionBandaRest {
                 distribucionBandaService.listarOrigenes(origen, desde, hasta, limite);
             return Response.status(Response.Status.OK)
                     .entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return respuestaError(e);
+        }
+    }
+
+    /**
+     * Reescribe la distribución en bandas de una carga Petro YA PROCESADA, sin reprocesar nada
+     * — hallazgo 2026-09-03: el WAR desplegado cuando se procesó la carga 449 era anterior a
+     * {@code 500079b} (el commit que agregó el registro de aportes en CRD.DSBN), así que quedó
+     * sin esas filas. Ver el javadoc de
+     * {@link DistribucionBandaService#recalcularDistribucionCargaPetro} para los tres límites
+     * (solo reescribe DSBN, idAsiento del ANCP vigente, idempotente).
+     *
+     * Solo {@code CARGA_PETRO} por ahora. {@code usuario} es opcional — "sistema" si no se
+     * indica, mismo valor que usa el procesamiento normal cuando no hay un usuario puntual.
+     */
+    @POST
+    @Path("/recalcularDistribucion")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response recalcularDistribucion(@QueryParam("origen") String origen,
+            @QueryParam("idOrigen") Long idOrigen, @QueryParam("usuario") String usuario) {
+        System.out.println("LLEGA AL SERVICIO RECALCULAR DISTRIBUCION BANDAS - " + origen + "/" + idOrigen);
+        if (origen == null || idOrigen == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe indicar origen e idOrigen", null);
+        }
+        if (!com.saa.rubros.DsbnOrigen.CARGA_PETRO.equals(origen)) {
+            return respuestaFallo(HTTP_REGLA_DE_NEGOCIO,
+                "El recálculo de distribución solo está disponible hoy para CARGA_PETRO", null);
+        }
+        try {
+            java.util.Map<Long, com.saa.ejb.crd.service.dto.ResultadoClasificacionBanda> clasificacionPorPago =
+                distribucionBandaService.recalcularDistribucionCargaPetro(idOrigen,
+                    usuario != null && !usuario.trim().isEmpty() ? usuario : "sistema");
+
+            java.util.Map<String, Object> cuerpo = new java.util.LinkedHashMap<>();
+            cuerpo.put("idCarga", idOrigen);
+            cuerpo.put("pagosClasificados", clasificacionPorPago.size());
+            return Response.status(Response.Status.OK)
+                    .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return respuestaError(e);
         }
