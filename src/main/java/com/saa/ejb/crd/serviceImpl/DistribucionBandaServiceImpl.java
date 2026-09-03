@@ -24,6 +24,8 @@ import com.saa.ejb.crd.service.dto.ResultadoClasificacionBanda;
 import com.saa.ejb.crd.service.dto.ResultadoCuadreDistribucionBanda;
 import com.saa.ejb.crd.service.dto.ResultadoDetalleDistribucionBanda;
 import com.saa.ejb.crd.service.dto.ResumenConceptoDistribucionBanda;
+import com.saa.ejb.crd.service.dto.ResumenJerarquicoConcepto;
+import com.saa.ejb.crd.service.dto.ResumenJerarquicoCuentaBanda;
 import com.saa.model.cnt.Asiento;
 import com.saa.model.crd.BandaProducto;
 import com.saa.model.crd.CargaArchivo;
@@ -395,7 +397,52 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
         resultado.setTotalValorFiltrado(redondear(totalValor));
         resultado.setResumenPorConcepto(new ArrayList<>(resumen.values()));
         resultado.setFilas(filasDto);
+        resultado.setResumenJerarquico(construirResumenJerarquico(filtro));
         return resultado;
+    }
+
+    /**
+     * Vista RESUMEN — API-AUDITORIA-BANDAS.md "Las DOS vistas" (2026-09-02, decisión del
+     * usuario). A diferencia de {@code resumenPorConcepto} de arriba (que suma la PÁGINA que ya
+     * trajo {@code selectDetalleFiltrado}), esto corre una consulta GROUP BY aparte sobre el
+     * MISMO filtro sin paginar — el conjunto filtrado completo puede ser miles de filas y el
+     * resumen tiene que verlas todas, no las 50 de la página. Primer nivel CONCEPTO, segundo
+     * cuenta contable + banda (§3 del plan: agrupar por cuenta arriba fusiona mora con interés
+     * ordinario, que comparten cuenta).
+     */
+    private List<ResumenJerarquicoConcepto> construirResumenJerarquico(FiltroDetalleDistribucionBanda filtro)
+            throws Throwable {
+        List<Object[]> filas = distribucionBandaDaoService.selectResumenJerarquicoFiltrado(filtro);
+
+        Map<String, ResumenJerarquicoConcepto> porConcepto = new LinkedHashMap<>();
+        for (Object[] fila : filas) {
+            String concepto = (String) fila[0];
+            Long idBanda = (Long) fila[1];
+            String etiqueta = (String) fila[2];
+            String cuentaContable = (String) fila[3];
+            String nombreCuenta = (String) fila[4];
+            double valor = redondear(((Number) fila[5]).doubleValue());
+            long filasCuenta = ((Number) fila[6]).longValue();
+
+            ResumenJerarquicoConcepto nivelConcepto = porConcepto.get(concepto);
+            if (nivelConcepto == null) {
+                nivelConcepto = new ResumenJerarquicoConcepto();
+                nivelConcepto.setConcepto(concepto);
+                porConcepto.put(concepto, nivelConcepto);
+            }
+            nivelConcepto.setValor(redondear(nivelConcepto.getValor() + valor));
+            nivelConcepto.setFilas(nivelConcepto.getFilas() + filasCuenta);
+
+            ResumenJerarquicoCuentaBanda item = new ResumenJerarquicoCuentaBanda();
+            item.setIdBanda(idBanda);
+            item.setBanda(etiqueta);
+            item.setCuentaContable(cuentaContable);
+            item.setNombreCuenta(nombreCuenta);
+            item.setValor(valor);
+            item.setFilas(filasCuenta);
+            nivelConcepto.getDetalle().add(item);
+        }
+        return new ArrayList<>(porConcepto.values());
     }
 
     private FilaDistribucionBanda aFilaDto(DistribucionBanda fila) {

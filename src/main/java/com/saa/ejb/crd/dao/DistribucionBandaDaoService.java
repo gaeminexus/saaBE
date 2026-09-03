@@ -47,4 +47,18 @@ public interface DistribucionBandaDaoService extends EntityDao<DistribucionBanda
 
     /** Cuántas filas matchea el filtro, sin paginar — para {@code totalFilas}. */
     long contarDetalleFiltrado(FiltroDetalleDistribucionBanda filtro) throws Throwable;
+
+    /**
+     * Vista RESUMEN de {@code POST /rest/dsbn/detalle} (API-AUDITORIA-BANDAS.md "Las DOS
+     * vistas", 2026-09-02): agregado con GROUP BY sobre el conjunto FILTRADO COMPLETO, mismo
+     * filtro que {@link #selectDetalleFiltrado} pero sin paginar — el resumen no puede salir de
+     * sumar en Java las 50 filas de una página cuando el filtro trae miles.
+     *
+     * Cada fila es {@code [concepto, idBanda, etiqueta, cuentaContable, nombreCuenta, sumaValor,
+     * cantidadFilas]}. {@code idBanda}/{@code etiqueta} vienen null en conceptos sin banda (todo
+     * salvo CAPITAL); {@code cuentaContable}/{@code nombreCuenta} vienen null sin CNT conectado
+     * — en los dos casos el GROUP BY los sigue agrupando correctamente porque el null es
+     * constante dentro del grupo.
+     */
+    List<Object[]> selectResumenJerarquicoFiltrado(FiltroDetalleDistribucionBanda filtro) throws Throwable;
 }

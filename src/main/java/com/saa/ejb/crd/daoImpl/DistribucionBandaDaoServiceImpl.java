@@ -133,13 +133,34 @@ public class DistribucionBandaDaoServiceImpl extends EntityDaoImpl<DistribucionB
         StringBuilder jpql = new StringBuilder(paraContar
             ? "select count(d) from DistribucionBanda d where "
             : "select d from DistribucionBanda d where ");
-        jpql.append("d.origen = :origen and d.idOrigen = :idOrigen ");
+        jpql.append(construirWhereDetalle(filtro, "d.banda", "d.banda.planCuenta"));
+
+        if (!paraContar) {
+            String ordenarPor = campoOrden(filtro.getOrdenarPor());
+            String orden = "asc".equalsIgnoreCase(filtro.getOrden()) ? "asc" : "desc";
+            jpql.append("order by ").append(ordenarPor).append(' ').append(orden);
+        }
+        return jpql.toString();
+    }
+
+    /**
+     * Condiciones WHERE compartidas por {@link #construirJpqlDetalle} y
+     * {@link #selectResumenJerarquicoFiltrado} — mismo filtro, misma semántica, un solo lugar
+     * (2026-09-02). {@code aliasBanda}/{@code aliasPlanCuenta} parametrizan solo el camino hacia
+     * banda: el detalle navega el camino implícito {@code d.banda}/{@code d.banda.planCuenta}
+     * (como siempre), y el resumen jerárquico navega sus JOIN explícitos ({@code b}/{@code pc})
+     * porque necesita LEFT JOIN para no perder los conceptos sin banda (todo salvo CAPITAL) ni
+     * las bandas sin cuenta contable (CNT desconectado).
+     */
+    private String construirWhereDetalle(FiltroDetalleDistribucionBanda filtro, String aliasBanda,
+            String aliasPlanCuenta) {
+        StringBuilder jpql = new StringBuilder("d.origen = :origen and d.idOrigen = :idOrigen ");
 
         if (filtro.getConceptos() != null && !filtro.getConceptos().isEmpty()) {
             jpql.append("and d.concepto in :conceptos ");
         }
         if (filtro.getIdsBanda() != null && !filtro.getIdsBanda().isEmpty()) {
-            jpql.append("and d.banda.codigo in :idsBanda ");
+            jpql.append("and ").append(aliasBanda).append(".codigo in :idsBanda ");
         }
         if (filtro.getIdsProducto() != null && !filtro.getIdsProducto().isEmpty()) {
             jpql.append("and d.producto.codigo in :idsProducto ");
@@ -154,7 +175,7 @@ public class DistribucionBandaDaoServiceImpl extends EntityDaoImpl<DistribucionB
             jpql.append("and d.entidad.codigo in :idsEntidad ");
         }
         if (filtro.getCuentasContables() != null && !filtro.getCuentasContables().isEmpty()) {
-            jpql.append("and d.banda.planCuenta.cuentaContable in :cuentasContables ");
+            jpql.append("and ").append(aliasPlanCuenta).append(".cuentaContable in :cuentasContables ");
         }
         if (filtro.getFechaDesde() != null) {
             jpql.append("and d.fechaAplicacion >= :fechaDesde ");
@@ -162,13 +183,27 @@ public class DistribucionBandaDaoServiceImpl extends EntityDaoImpl<DistribucionB
         if (filtro.getFechaHasta() != null) {
             jpql.append("and d.fechaAplicacion <= :fechaHasta ");
         }
-
-        if (!paraContar) {
-            String ordenarPor = campoOrden(filtro.getOrdenarPor());
-            String orden = "asc".equalsIgnoreCase(filtro.getOrden()) ? "asc" : "desc";
-            jpql.append("order by ").append(ordenarPor).append(' ').append(orden);
-        }
         return jpql.toString();
+    }
+
+    @Override
+    public List<Object[]> selectResumenJerarquicoFiltrado(FiltroDetalleDistribucionBanda filtro) throws Throwable {
+        System.out.println("DistribucionBandaDaoService.selectResumenJerarquicoFiltrado - "
+            + filtro.getOrigen() + "/" + filtro.getIdOrigen());
+
+        // LEFT JOIN, no implícito: un concepto sin banda (todo salvo CAPITAL) o una banda sin
+        // plan de cuenta (CNT desconectado) tienen que seguir sumando, no desaparecer del
+        // agregado — un JOIN implícito de JPA sobre una asociación opcional se traduce INNER.
+        String jpql = "select d.concepto, b.codigo, d.etiqueta, pc.cuentaContable, pc.nombre, "
+            + "sum(d.valor), count(d) "
+            + "from DistribucionBanda d left join d.banda b left join b.planCuenta pc where "
+            + construirWhereDetalle(filtro, "b", "pc")
+            + "group by d.concepto, b.codigo, d.etiqueta, pc.cuentaContable, pc.nombre "
+            + "order by d.concepto";
+
+        Query query = em.createQuery(jpql);
+        aplicarParametrosDetalle(query, filtro);
+        return query.getResultList();
     }
 
     /** Solo columnas propias (no relaciones) — evita inyectar JPQL arbitrario desde el filtro. */

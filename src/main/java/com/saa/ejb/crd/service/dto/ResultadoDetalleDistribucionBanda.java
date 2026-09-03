@@ -12,6 +12,12 @@ public class ResultadoDetalleDistribucionBanda {
     private double totalValorFiltrado;
     private List<ResumenConceptoDistribucionBanda> resumenPorConcepto = new ArrayList<>();
     private List<FilaDistribucionBanda> filas = new ArrayList<>();
+    /**
+     * Vista RESUMEN — API-AUDITORIA-BANDAS.md "Las DOS vistas" (2026-09-02). Calculado sobre el
+     * conjunto FILTRADO COMPLETO (no sobre la página, a diferencia de {@link #resumenPorConcepto}
+     * de arriba): concepto → cuenta contable/banda, con GROUP BY en la consulta.
+     */
+    private List<ResumenJerarquicoConcepto> resumenJerarquico = new ArrayList<>();
 
     public ResultadoDetalleDistribucionBanda() {
     }
@@ -62,5 +68,13 @@ public class ResultadoDetalleDistribucionBanda {
 
     public void setFilas(List<FilaDistribucionBanda> filas) {
         this.filas = filas;
+    }
+
+    public List<ResumenJerarquicoConcepto> getResumenJerarquico() {
+        return resumenJerarquico;
+    }
+
+    public void setResumenJerarquico(List<ResumenJerarquicoConcepto> resumenJerarquico) {
+        this.resumenJerarquico = resumenJerarquico;
     }
 }
