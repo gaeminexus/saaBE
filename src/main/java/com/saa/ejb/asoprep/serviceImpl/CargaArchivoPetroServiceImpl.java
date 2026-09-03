@@ -1147,6 +1147,15 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			validarValoresConDestino(cargaArchivo);
 			// ==========================================
 
+			// ==========================================
+			// VALIDACIÓN: la afectación manual no puede exceder, POR PARTÍCIPE, lo que se le
+			// descontó — VALIDACION-TOPE-AFECTACION-MANUAL.md (2026-09-02, carga 449:
+			// $112,30 aplicados que nadie descontó). Todo o nada, evaluando a TODOS los
+			// partícipes antes de aplicar el primer pago.
+			// ==========================================
+			validarTopeAfectacionManualPorParticipe(cargaArchivo);
+			// ==========================================
+
 			// ⛔ validarRepartoDeExcedentes(cargaArchivo) — ESCRITA, NO CONECTADA (2026-09-02,
 			// decisión del árbitro). Exigía que el reparto manual (AVPC) coincidiera EXACTO
 			// con montoDiferencia (el excedente, PLAN-EXCEDENTE-PETRO-A-APORTES.md §5), pero
@@ -1559,6 +1568,163 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		}
 
 		return pendientes;
+	}
+
+	/**
+	 * Corta el procesamiento si la afectación manual de algún partícipe INVENTA dinero —
+	 * VALIDACION-TOPE-AFECTACION-MANUAL.md, decisión del usuario 2026-09-02.
+	 *
+	 * El caso real (carga 449): SANCHEZ PRADO (rol 7508) tenía $298,19 descontados y las
+	 * afectaciones manuales (AVPC) le asignaron $439,59 — $141,40 que nadie descontó, aplicados
+	 * igual porque el motor de pagos hace exactamente lo que se le pide y nada validaba el
+	 * pedido. El asiento de aplicación termina repartiendo más de lo que el asiento de reparto
+	 * (transferencias) recibió, y cuadra consigo mismo: no se ve sin comparar contra el archivo.
+	 *
+	 * <p><b>El tope es POR PARTÍCIPE (rol Petro), no por producto</b> — reclasificar entre
+	 * préstamos y aportes del MISMO partícipe es una operación legítima del operador (caso
+	 * SARMIENTO en la misma carga: $52,26 descontados como préstamo, aplicados a un aporte). Lo
+	 * único prohibido es que la SUMA de sus afectaciones supere la SUMA de lo que se le descontó,
+	 * sin importar en qué producto haya sido cada cosa.</p>
+	 *
+	 * <p><b>Todo o nada, en una sola pasada</b> (§4 del plan): se evalúan TODOS los partícipes de
+	 * la carga antes de aplicar el primer pago, y se reportan TODAS las violaciones juntas — igual
+	 * que {@code productosSinConfiguracion} del G48. Fallar en el partícipe 800 de 2.500 después
+	 * de 20 minutos de proceso, y solo con ESE partícipe, es el error que esto evita repetir.</p>
+	 *
+	 * <p>Tolerancia de UN CENTAVO — no el {@code TOLERANCIA} ($1) del resto de la clase: acá no se
+	 * está perdonando redondeo, se está detectando dinero inventado, y $1 de margen en esa
+	 * dirección es exactamente la clase de plata que este método existe para atajar.</p>
+	 */
+	private void validarTopeAfectacionManualPorParticipe(CargaArchivo cargaArchivo) throws Throwable {
+		System.out.println("=== VALIDANDO TOPE DE AFECTACION MANUAL POR PARTICIPE (rol Petro) ===");
+
+		final double TOLERANCIA_TOPE = 0.01;
+
+		List<DetalleCargaArchivo> detallesCarga =
+			detalleCargaArchivoDaoService.selectByCargaArchivo(cargaArchivo.getCodigo());
+		if (detallesCarga == null || detallesCarga.isEmpty()) {
+			return;
+		}
+
+		// Acumulado por ROL PETRO (identidad del partícipe: es lo mismo con lo que se busca su
+		// Entidad, ver entidadDaoService.selectByCodigoPetro más abajo), NUNCA por
+		// ParticipeXCargaArchivo — esa fila es por (partícipe, producto), y agrupar por ahí es
+		// exactamente el defecto "por producto" que el punto 3 de la verificación (§6) prohíbe.
+		Map<Long, Double> disponiblePorRol = new LinkedHashMap<>();
+		Map<Long, String> nombrePorRol = new LinkedHashMap<>();
+		Map<Long, List<NovedadParticipeCarga>> novedadesPorRol = new LinkedHashMap<>();
+
+		for (DetalleCargaArchivo detalle : detallesCarga) {
+			List<ParticipeXCargaArchivo> participesDetalle =
+				participeXCargaArchivoDaoService.selectByDetalleCargaArchivo(detalle.getCodigo());
+			if (participesDetalle == null) {
+				continue;
+			}
+			for (ParticipeXCargaArchivo participe : participesDetalle) {
+				Long rolPetro = participe.getCodigoPetro();
+				if (rolPetro == null) {
+					continue;
+				}
+				disponiblePorRol.merge(rolPetro, nullSafe(participe.getTotalDescontado()), Double::sum);
+				nombrePorRol.putIfAbsent(rolPetro, participe.getNombre());
+
+				List<NovedadParticipeCarga> novedades =
+					novedadParticipeCargaDaoService.selectByParticipe(participe.getCodigo());
+				if (novedades != null && !novedades.isEmpty()) {
+					novedadesPorRol.computeIfAbsent(rolPetro, k -> new ArrayList<>()).addAll(novedades);
+				}
+			}
+		}
+
+		List<Map<String, Object>> violaciones = new ArrayList<>();
+		for (Map.Entry<Long, Double> entry : disponiblePorRol.entrySet()) {
+			Long rolPetro = entry.getKey();
+			double disponible = entry.getValue();
+			List<NovedadParticipeCarga> novedadesRol =
+				novedadesPorRol.getOrDefault(rolPetro, java.util.Collections.emptyList());
+			// Misma regla que totalAfectadoManualmente: solo cuenta lo que el aplicador va a usar
+			// realmente (una fila sin cuota y sin tipo de aporte no tiene destino y no suma).
+			double afectado = totalAfectadoManualmente(novedadesRol);
+			double exceso = afectado - disponible;
+			if (exceso <= TOLERANCIA_TOPE) {
+				continue;
+			}
+
+			Map<String, Object> violacion = new HashMap<>();
+			violacion.put("rolPetro", rolPetro);
+			violacion.put("nombre", nombrePorRol.get(rolPetro));
+			violacion.put("cedula", cedulaPorRolPetro(rolPetro));
+			violacion.put("disponible", disponible);
+			violacion.put("afectado", afectado);
+			violacion.put("exceso", exceso);
+			violacion.put("codigosAvpc", codigosAfectacionManual(novedadesRol));
+			violaciones.add(violacion);
+		}
+
+		if (violaciones.isEmpty()) {
+			System.out.println("✅ Ningún partícipe excede el tope de afectación manual");
+			return;
+		}
+
+		StringBuilder mensaje = new StringBuilder();
+		mensaje.append("No se puede procesar el archivo: ").append(violaciones.size())
+		       .append(" partícipe(s) tienen afectaciones manuales (AVPC) que superan el total")
+		       .append(" descontado. Corrija las afectaciones y vuelva a procesar.");
+
+		int listados = 0;
+		for (Map<String, Object> v : violaciones) {
+			if (listados >= MAXIMO_DETALLES_EN_MENSAJE) {
+				mensaje.append("\n  ... y ").append(violaciones.size() - listados).append(" partícipe(s) más.");
+				break;
+			}
+			mensaje.append("\n  - Rol ").append(v.get("rolPetro"))
+			       .append(" cédula ").append(v.get("cedula"))
+			       .append(" ").append(v.get("nombre"))
+			       .append(": disponible $").append(String.format("%,.2f", (Double) v.get("disponible")))
+			       .append(", afectado $").append(String.format("%,.2f", (Double) v.get("afectado")))
+			       .append(", exceso $").append(String.format("%,.2f", (Double) v.get("exceso")))
+			       .append(". AVPC: ").append(v.get("codigosAvpc")).append(".");
+			listados++;
+		}
+
+		System.err.println(mensaje.toString());
+		throw new IncomeException(mensaje.toString());
+	}
+
+	/** Cédula del partícipe a partir de su rol Petro, solo para el mensaje de la violación. */
+	private String cedulaPorRolPetro(Long rolPetro) throws Throwable {
+		List<Entidad> entidades = entidadDaoService.selectByCodigoPetro(rolPetro);
+		if (entidades == null || entidades.isEmpty() || entidades.get(0).getNumeroIdentificacion() == null) {
+			return "?";
+		}
+		return entidades.get(0).getNumeroIdentificacion();
+	}
+
+	/**
+	 * Códigos AVPC que {@link #totalAfectadoManualmente} efectivamente contó, para poder
+	 * señalarlos en el mensaje de la violación (§4 del plan: "sin eso hay que escribir un SELECT
+	 * para saber a quién le pasó"). Misma condición de conteo, duplicada a propósito en vez de
+	 * hacer que el método existente devuelva dos cosas — solo se invoca para los partícipes que
+	 * ya violaron el tope, un puñado por carga.
+	 */
+	private List<Long> codigosAfectacionManual(List<NovedadParticipeCarga> novedades) throws Throwable {
+		List<Long> codigos = new ArrayList<>();
+		if (novedades == null) {
+			return codigos;
+		}
+		for (NovedadParticipeCarga novedad : novedades) {
+			List<AfectacionValoresParticipeCarga> afectaciones =
+				afectacionValoresParticipeCargaDaoService.selectByNovedad(novedad.getCodigo());
+			if (afectaciones == null) {
+				continue;
+			}
+			for (AfectacionValoresParticipeCarga afectacion : afectaciones) {
+				if (afectacion.getTipoAporte() != null || afectacion.getDetallePrestamo() != null) {
+					codigos.add(afectacion.getCodigo());
+				}
+			}
+		}
+		return codigos;
 	}
 
 	/**
