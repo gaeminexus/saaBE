@@ -157,6 +157,13 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     @EJB
     private com.saa.ejb.crd.dao.ContratoDaoService contratoDaoService;
 
+    /**
+     * CORRECCION-TORMENTA-CONSULTAS-VIGENCIA.md §3.2: para resolver, UNA vez por partícipe
+     * (no una por mes×tipo), las vigencias del contrato cuando el lote no lo cubrió.
+     */
+    @EJB
+    private com.saa.ejb.crd.dao.VigenciaContratoDaoService vigenciaContratoDaoService;
+
     /** Fase 3a: asiento de REPARTO del paso 2, ver {@link #aplicarPagosArchivoPetro}. */
     @EJB
     private com.saa.ejb.crd.service.CobroPetroContableService cobroPetroContableService;
@@ -1198,6 +1205,10 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			// SOLO si la carga trae producto AH — es una consulta a nivel de FILIAL completa,
 			// no vale la pena dispararla en una carga que no tiene aportes.
 			Map<String, Double> esperadoEnLoteAportes = null;
+			// CORRECCION-TORMENTA-CONSULTAS-VIGENCIA.md §3.1: qué entidades cubrió el lote,
+			// independiente de si tienen alguna vigencia — desambigua el null de
+			// esperadoEnLoteAportes ("mes sin vigencia" vs "entidad fuera del lote").
+			java.util.Set<Long> entidadesCubiertasAportes = null;
 			boolean cargaTieneAportes = detallesCarga != null && detallesCarga.stream()
 				.anyMatch(d -> CODIGO_PRODUCTO_APORTES.equalsIgnoreCase(d.getCodigoPetroProducto()));
 			if (cargaTieneAportes && cargaArchivo.getFilial() != null
@@ -1206,6 +1217,8 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 					cargaArchivo.getAnioAfectacion().intValue(), cargaArchivo.getMesAfectacion().intValue(), 1);
 				esperadoEnLoteAportes = vigenciaContratoService.esperadoEnLotePorFilial(
 					cargaArchivo.getFilial().getCodigo(), ALCANCE_MINIMO_DEVENGO, mesCargaAportes);
+				entidadesCubiertasAportes = vigenciaContratoDaoService.selectEntidadesConContratoActivoPorFilial(
+					cargaArchivo.getFilial().getCodigo());
 			}
 
 			int totalProcesados = 0;
@@ -1270,7 +1283,8 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 								// totalExitosos para que no quede invisible en el resumen.
 								int advertenciasAntes = advertenciasVigenciaCargaActual.size()
 									+ novedadesGeneradasCargaActual.size();
-								int aportesCreados = aplicarAporteAH(participe, cargaArchivo, esperadoEnLoteAportes);
+								int aportesCreados = aplicarAporteAH(participe, cargaArchivo, esperadoEnLoteAportes,
+								entidadesCubiertasAportes);
 								totalAportesGenerados += aportesCreados;
 								if (aportesCreados > 0) {
 									totalExitosos++;
@@ -3542,7 +3556,7 @@ private void evaluarMoraPorFaltaDeAporte(Entidad entidad, CargaArchivo cargaArch
  * ✅ NUEVA LÓGICA: Similar a procesamiento de préstamos con estados, acumulación y excedentes
  */
 private int aplicarAporteAH(ParticipeXCargaArchivo participe, CargaArchivo cargaArchivo,
-		Map<String, Double> esperadoEnLote) throws Throwable {
+		Map<String, Double> esperadoEnLote, java.util.Set<Long> entidadesCubiertas) throws Throwable {
 	int aportesCreados = 0;
 
 	// TODO O NADA (2026-08-29): antes, si distribuirAportePorDevengo fallaba a mitad de su
@@ -3654,7 +3668,8 @@ private int aplicarAporteAH(ParticipeXCargaArchivo participe, CargaArchivo carga
 		// más antiguo (§2.3), reemplaza la distinción único-tipo / alternado. Si un tipo no
 		// tiene esperado (p. ej. cesantía = $0), su faltante mensual siempre es 0 y el reparto
 		// nunca crea filas de ese tipo: no hace falta una rama aparte para "solo un tipo".
-		aportesCreados = distribuirAportePorDevengo(entidad, montoRecibido, cargaArchivo, participe, esperadoEnLote);
+		aportesCreados = distribuirAportePorDevengo(entidad, montoRecibido, cargaArchivo, participe, esperadoEnLote,
+			entidadesCubiertas);
 	} catch (Throwable e) {
 		throw new RuntimeException("Falló al distribuir el aporte del partícipe "
 			+ participe.getCodigoPetro() + " (" + participe.getNombre() + "), entidad "
@@ -3715,7 +3730,14 @@ private static final List<Long> ORDEN_TIPOS_APORTE = Arrays.asList(TIPO_APORTE_J
  */
 private int distribuirAportePorDevengo(Entidad entidad, double montoRecibido,
         CargaArchivo cargaArchivo, ParticipeXCargaArchivo participe,
-        Map<String, Double> esperadoEnLote) throws Throwable {
+        Map<String, Double> esperadoEnLote, java.util.Set<Long> entidadesCubiertas) throws Throwable {
+
+	// CORRECCION-TORMENTA-CONSULTAS-VIGENCIA.md §3.2: caché LOCAL a esta llamada (un
+	// partícipe) — nunca global, nunca compartido entre partícipes. Si el lote no cubrió a
+	// esta entidad, resuelve contrato+vigencias UNA sola vez acá abajo (en el primer
+	// esperadoMensual que la necesite) y responde el resto de los meses/tipos desde memoria,
+	// en vez de una consulta por mes×tipo.
+	CacheVigenciaParticipe cacheVigencia = new CacheVigenciaParticipe();
 
 	java.time.LocalDate mesCarga = java.time.LocalDate.of(
 		cargaArchivo.getAnioAfectacion().intValue(), cargaArchivo.getMesAfectacion().intValue(), 1);
@@ -3741,7 +3763,7 @@ private int distribuirAportePorDevengo(Entidad entidad, double montoRecibido,
 		guard++;
 		boolean incompleto = false;
 		for (Long idTipo : ORDEN_TIPOS_APORTE) {
-			double esperado = esperadoMensual(entidad, idTipo, mes, esperadoEnLote);
+			double esperado = esperadoMensual(entidad, idTipo, mes, esperadoEnLote, entidadesCubiertas, cacheVigencia);
 			double aportado = aportadoPorMesTipo.getOrDefault(claveMesTipo(mes, idTipo), 0.0);
 			if (esperado - aportado > 0.01) {
 				incompleto = true;
@@ -3770,7 +3792,7 @@ private int distribuirAportePorDevengo(Entidad entidad, double montoRecibido,
 			if (disponible <= 0.01) {
 				break;
 			}
-			double esperado = esperadoMensual(entidad, idTipo, mes, esperadoEnLote);
+			double esperado = esperadoMensual(entidad, idTipo, mes, esperadoEnLote, entidadesCubiertas, cacheVigencia);
 			if (esperado <= 0.0) {
 				continue;
 			}
@@ -3855,20 +3877,96 @@ private String claveMesTipo(java.time.LocalDate mes, Long idTipo) {
  * con valor 0. Por eso {@code esperadoEnLote.get(clave)} y NUNCA
  * {@code getOrDefault(clave, 0.0)}: confundir "no pasó el filtro del lote" con "no debe
  * nada" anticiparía la plata a meses futuros en vez de cobrar lo que sí correspondía —
- * un cambio real en la cuenta del socio, no solo de rendimiento. Si la clave no está,
- * se cae a {@link com.saa.ejb.crd.service.VigenciaContratoService#esperadoPorEntidad},
- * exactamente como se resolvía antes de esta optimización.</p>
+ * un cambio real en la cuenta del socio, no solo de rendimiento.</p>
+ *
+ * <p><b>CORRECCION-TORMENTA-CONSULTAS-VIGENCIA.md §3, 2026-09-02 — el {@code null} del mapa
+ * era ambiguo y eso disparaba una tormenta de consultas:</b> {@code esperadoEnLotePorFilial}
+ * sólo trae filas de (entidad, tipo) que tienen AL MENOS una vigencia ACTIVA; una entidad
+ * ACTIVO/ACTIVO_EN_MORA sin ninguna vigencia para un tipo (p.ej. nunca aportó a cesantía)
+ * quedaba indistinguible de "entidad fuera del filtro" y caía al fallback, mes por mes y tipo
+ * por tipo — hasta 60 consultas por partícipe. Dos correcciones, NINGUNA cambia el criterio
+ * de selección de vigencia (verificado línea por línea contra
+ * {@code VigenciaContratoDaoServiceImpl.selectVigenteEnFecha}), sólo cuántas veces se
+ * consulta:</p>
+ * <ol>
+ * <li><b>§3.1</b> — {@code entidadesCubiertas} (una sola consulta por carga, ver
+ * {@code VigenciaContratoDaoService#selectEntidadesConContratoActivoPorFilial}) desambigua el
+ * {@code null}: si la entidad SÍ pasa el filtro de {@code selectVigentesPorFilial} pero la
+ * clave no está, es un mes/tipo sin vigencia de verdad → {@code 0.0} sin consultar. Si la
+ * entidad NO está ni en el mapa ni en este set, es la fuga documentada arriba → fallback.</li>
+ * <li><b>§3.2</b> — el fallback ya no llama a {@link com.saa.ejb.crd.service.VigenciaContratoService#esperadoPorEntidad}
+ * por cada (mes, tipo): resuelve el contrato y TODAS sus vigencias UNA vez por partícipe en
+ * {@code cache} (ver {@link CacheVigenciaParticipe}/{@link #esperadoDesdeCache}) y responde el
+ * resto desde memoria — mismo resultado, consulta por consulta menos.</li>
+ * </ol>
  */
 private double esperadoMensual(Entidad entidad, Long idTipoAporte, java.time.LocalDate mes,
-		Map<String, Double> esperadoEnLote) throws Throwable {
+		Map<String, Double> esperadoEnLote, java.util.Set<Long> entidadesCubiertas,
+		CacheVigenciaParticipe cache) throws Throwable {
 	if (esperadoEnLote != null) {
 		String clave = entidad.getCodigo() + "|" + idTipoAporte + "|" + mes;
 		Double valorEnLote = esperadoEnLote.get(clave);
 		if (valorEnLote != null) {
 			return valorEnLote;
 		}
+		// §3.1: entidad cubierta por el lote (pasa el filtro de selectVigentesPorFilial) pero
+		// sin vigencia para este tipo/mes puntual — es un dato (0.0), no una duda.
+		if (entidadesCubiertas != null && entidadesCubiertas.contains(entidad.getCodigo())) {
+			return 0.0;
+		}
 	}
-	return vigenciaContratoService.esperadoPorEntidad(entidad.getCodigo(), idTipoAporte, mes);
+	// §3.2: entidad fuera del lote de verdad — resolver UNA vez por partícipe, no por mes.
+	return esperadoDesdeCache(entidad, idTipoAporte, mes, cache);
+}
+
+/**
+ * Caché LOCAL a una llamada de {@link #distribuirAportePorDevengo} (un partícipe) — nunca
+ * global, nunca compartido entre partícipes (CORRECCION-TORMENTA-CONSULTAS-VIGENCIA.md §3.2).
+ */
+private static class CacheVigenciaParticipe {
+	boolean resuelto = false;
+	Long idContrato;
+	List<com.saa.model.crd.VigenciaContrato> vigencias = new ArrayList<>();
+}
+
+/**
+ * Resuelve contrato + vigencias UNA vez por partícipe (en el primer llamado que lo necesite)
+ * y responde TODOS los meses/tipos siguientes desde memoria — mismo criterio exacto que
+ * {@code VigenciaContratoDaoServiceImpl.selectVigenteEnFecha} (tipo de aporte, idEstado
+ * ACTIVO, fechaInicio &lt;= fecha AND (fechaFin null O fechaFin &gt;= fecha)), evaluado contra
+ * el último día de {@code mes}.
+ */
+private double esperadoDesdeCache(Entidad entidad, Long idTipoAporte, java.time.LocalDate mes,
+		CacheVigenciaParticipe cache) throws Throwable {
+	if (!cache.resuelto) {
+		Contrato contrato = contratoDaoService.selectActivoPorEntidad(entidad.getCodigo());
+		cache.idContrato = contrato != null ? contrato.getCodigo() : null;
+		if (cache.idContrato != null) {
+			cache.vigencias = vigenciaContratoDaoService.selectByContrato(cache.idContrato);
+		}
+		cache.resuelto = true;
+	}
+	if (cache.idContrato == null) {
+		return 0.0;
+	}
+
+	java.time.LocalDate ultimoDiaMes = java.time.YearMonth.from(mes).atEndOfMonth();
+	for (com.saa.model.crd.VigenciaContrato vigencia : cache.vigencias) {
+		if (vigencia.getTipoAporte() == null || vigencia.getTipoAporte().getCodigo() == null
+				|| !idTipoAporte.equals(vigencia.getTipoAporte().getCodigo())) {
+			continue;
+		}
+		if (vigencia.getIdEstado() == null || vigencia.getIdEstado() != com.saa.rubros.Estado.ACTIVO) {
+			continue;
+		}
+		java.time.LocalDate fechaInicio = vigencia.getFechaInicio();
+		java.time.LocalDate fechaFin = vigencia.getFechaFin();
+		if (fechaInicio != null && !ultimoDiaMes.isBefore(fechaInicio)
+				&& (fechaFin == null || !ultimoDiaMes.isAfter(fechaFin))) {
+			return vigencia.getMonto() != null ? vigencia.getMonto() : 0.0;
+		}
+	}
+	return 0.0;
 }
 
 /**

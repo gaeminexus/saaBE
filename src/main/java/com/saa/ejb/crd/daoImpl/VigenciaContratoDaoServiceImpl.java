@@ -2,7 +2,9 @@ package com.saa.ejb.crd.daoImpl;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.crd.dao.VigenciaContratoDaoService;
@@ -130,6 +132,36 @@ public class VigenciaContratoDaoServiceImpl extends EntityDaoImpl<VigenciaContra
                 aFecha(fila[3]),
                 fila[4] != null ? ((Number) fila[4]).doubleValue() : 0.0
             });
+        }
+        return resultado;
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public Set<Long> selectEntidadesConContratoActivoPorFilial(Long codigoFilial) throws Throwable {
+        System.out.println("Ingresa al metodo selectEntidadesConContratoActivoPorFilial de VigenciaContrato"
+            + " con codigoFilial: " + codigoFilial);
+        if (codigoFilial == null) {
+            return new HashSet<>();
+        }
+
+        // Mismo filtro que el subquery "ca" de selectVigentesPorFilial, SIN el join a VGCN:
+        // acá interesa la entidad aunque no tenga ninguna vigencia todavía.
+        Query query = em.createNativeQuery(
+            " SELECT DISTINCT c.ENTDCDGO "
+            + " FROM   CRD.CNTR c "
+            + " JOIN   CRD.ENTD e ON e.ENTDCDGO = c.ENTDCDGO "
+            + " WHERE  c.CNTRESTD = " + EstadoContrato.ACTIVO
+            + " AND    e.FLLLCDGO = :codigoFilial "
+            + " AND    e.ENTDIDST IN (" + EstadoParticipeEntidad.ACTIVO + ", "
+            +                             EstadoParticipeEntidad.ACTIVO_EN_MORA + ") ");
+        query.setParameter("codigoFilial", codigoFilial);
+
+        Set<Long> resultado = new HashSet<>();
+        for (Object fila : query.getResultList()) {
+            if (fila != null) {
+                resultado.add(((Number) fila).longValue());
+            }
         }
         return resultado;
     }

@@ -2,6 +2,7 @@ package com.saa.ejb.crd.dao;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
 
 import com.saa.basico.util.EntityDao;
 import com.saa.model.crd.VigenciaContrato;
@@ -58,5 +59,20 @@ public interface VigenciaContratoDaoService extends EntityDao<VigenciaContrato> 
      * @throws Throwable   : Excepcion
      */
     List<Object[]> selectVigentesPorFilial(Long codigoFilial) throws Throwable;
+
+    /**
+     * Códigos de entidad de una filial que pasan el MISMO filtro que {@link #selectVigentesPorFilial}
+     * (contrato ACTIVO, entidad ACTIVO/ACTIVO_EN_MORA) — pero INDEPENDIENTE de que tengan
+     * alguna vigencia. Es la mitad que faltaba para desambiguar el {@code null} del lote de
+     * {@code VigenciaContratoService#esperadoEnLotePorFilial}: una entidad puede pasar este
+     * filtro y no aparecer en {@code selectVigentesPorFilial} porque no tiene NINGUNA vigencia
+     * ACTIVA para ningún tipo de aporte — ausencia de dato legítima (0.0 esperado siempre),
+     * no una entidad fuera del lote (CORRECCION-TORMENTA-CONSULTAS-VIGENCIA.md §3.1).
+     *
+     * @param codigoFilial : Código de la filial (CRD.FLLL)
+     * @return             : Códigos de entidad (CRD.ENTD.ENTDCDGO) cubiertos por el lote
+     * @throws Throwable   : Excepcion
+     */
+    Set<Long> selectEntidadesConContratoActivoPorFilial(Long codigoFilial) throws Throwable;
 
 }
