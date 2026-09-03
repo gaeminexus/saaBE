@@ -117,43 +117,94 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
         System.out.println("DistribucionBandaService.registrarDistribucionCargaPetro - Carga: " + idCarga
             + " - Pagos: " + (pagos != null ? pagos.size() : 0));
 
-        // Corrección 2026-09-02: se devuelve para que contabilizarAplicacion NO vuelva a llamar
-        // a clasificar() por los mismos pagos al armar el asiento — "clasificar una vez por
-        // pago, que ambos consuman lo mismo", no duplicar las consultas de clasificación en el
-        // mismo proceso de 20+ minutos que ya se estabilizó por otro motivo hoy.
-        Map<Long, ResultadoClasificacionBanda> clasificacionPorPago = new LinkedHashMap<>();
-
         // Idempotente por (origen, idOrigen) — reprocesar REEMPLAZA, no duplica (§5.1 punto 2).
+        // UNA sola llamada por carga, así que puede borrar antes de escribir sin riesgo (a
+        // diferencia de registrarDistribucionPorPagos, que puede recibir varias llamadas para
+        // el mismo origen dentro de un mismo proceso — ver su javadoc).
         int borradas = distribucionBandaDaoService.eliminarPorOrigen(DsbnOrigen.CARGA_PETRO, idCarga);
         if (borradas > 0) {
             System.out.println("  " + borradas + " fila(s) previa(s) de la carga " + idCarga + " reemplazadas.");
         }
 
+        // Corrección 2026-09-02: se devuelve para que contabilizarAplicacion NO vuelva a llamar
+        // a clasificar() por los mismos pagos al armar el asiento — "clasificar una vez por
+        // pago, que ambos consuman lo mismo", no duplicar las consultas de clasificación en el
+        // mismo proceso de 20+ minutos que ya se estabilizó por otro motivo hoy.
+        Map<Long, ResultadoClasificacionBanda> clasificacionPorPago =
+            registrarDistribucionPorPagos(DsbnOrigen.CARGA_PETRO, idCarga, idEmpresa, pagos, usuario);
+
+        // Aportes (2026-09-02, hueco real: la pantalla nunca mostraba el detalle de aportes —
+        // "también debe darme ese detalle por aportes", carga 449: $116.857,06 de $354.603,67
+        // invisibles). Con el MISMO criterio de filtro (idAsoprep) que usa
+        // CobroPetroContableServiceImpl.contabilizarAplicacion (AporteDaoService#selectByCarga,
+        // hermano de #sumValorPorTipoAporteByCarga: ver su javadoc para el porqué transitorio),
+        // para que la pantalla y el asiento nunca puedan divergir por leer columnas distintas.
+        // Sin banda ni cuota (DsbnConcepto: "solo CAPITAL lleva banda") — la cuenta contable de
+        // este concepto se resuelve al LEER, por tipoAporte, igual que la banda se resuelve al
+        // leer para CAPITAL. Específico de Petro: los demás orígenes no tienen esta fuente.
+        LocalDateTime ahora = LocalDateTime.now();
+        int filasAportes = 0;
+        List<Aporte> aportes = aporteDaoService.selectByCarga(idCarga);
+        if (aportes != null && !aportes.isEmpty()) {
+            for (Aporte aporte : aportes) {
+                double valorAporte = nvl(aporte.getValor());
+                if (valorAporte <= TOLERANCIA) {
+                    continue;
+                }
+                if (aporte.getEntidad() == null) {
+                    throw new IncomeException("El aporte " + aporte.getCodigo() + " de la carga " + idCarga
+                        + " no tiene partícipe asociado; no se puede auditar su distribución.");
+                }
+                LocalDate fechaAplicacionAporte = aporte.getFechaTransaccion() != null
+                    ? aporte.getFechaTransaccion().toLocalDate() : LocalDate.now();
+                Long idTipoAporte = aporte.getTipoAporte() != null ? aporte.getTipoAporte().getCodigo() : null;
+
+                distribucionBandaDaoService.save(filaBase(DsbnOrigen.CARGA_PETRO, idCarga,
+                    DsbnConcepto.APORTE, valorAporte, aporte.getEntidad(), null, null, null, null,
+                    idTipoAporte, fechaAplicacionAporte, usuario, ahora), null);
+                filasAportes++;
+            }
+        }
+        System.out.println("  ✅ Distribución en bandas (aportes) registrada - Carga " + idCarga
+            + " - " + filasAportes + " fila(s)");
+
+        return clasificacionPorPago;
+    }
+
+    @Override
+    public int eliminarDistribucion(String origen, Long idOrigen) throws Throwable {
+        return distribucionBandaDaoService.eliminarPorOrigen(origen, idOrigen);
+    }
+
+    @Override
+    public Map<Long, ResultadoClasificacionBanda> registrarDistribucionPorPagos(String origen, Long idOrigen,
+            Long idEmpresa, List<PagoPrestamo> pagos, String usuario) throws Throwable {
+        System.out.println("DistribucionBandaService.registrarDistribucionPorPagos - " + origen + "/" + idOrigen
+            + " - Pagos: " + (pagos != null ? pagos.size() : 0));
+
+        Map<Long, ResultadoClasificacionBanda> clasificacionPorPago = new LinkedHashMap<>();
+        if (pagos == null || pagos.isEmpty()) {
+            return clasificacionPorPago;
+        }
+
         LocalDateTime ahora = LocalDateTime.now();
         int filasEscritas = 0;
 
-        if (pagos == null || pagos.isEmpty()) {
-            System.out.println("  Carga " + idCarga + " sin pagos de préstamo — nada que distribuir por ese lado.");
-        } else {
-        // Corrección 2026-09-02 (URGENTE, detectado en una carga real de 1167 pagos: ~2.300
-        // consultas, más de dos minutos solo en clasificar): la configuración de bandas NO
-        // cambia dentro de una carga, y las combinaciones distintas de (producto, empresa,
-        // tipoCartera, fecha) son un puñado frente a miles de pagos. Cache LOCAL a esta
-        // llamada — vive lo que dura el proceso, nunca un campo de clase ni entre cargas (la
-        // fecha es parte de la clave justo porque la vigencia se resuelve a esa fecha). Mismo
-        // patrón que CacheVigenciaParticipe (tormenta de vigencias) y el cache por producto del
-        // G48 (hallazgo 3a) de hoy — acá había quedado sin hacer.
+        // Mismo cache LOCAL a esta llamada que registrarDistribucionCargaPetro (URGENTE
+        // 2026-09-02) — acá el volumen por llamada es chico (un puñado de cuotas de una
+        // operación individual, no miles de una carga), pero el criterio es el mismo: nunca un
+        // campo de clase ni entre llamadas.
         Map<String, List<BandaProductoDetalle>> cacheRangosPorClave = new LinkedHashMap<>();
 
         for (PagoPrestamo pago : pagos) {
             Prestamo prestamo = pago.getPrestamo();
             if (prestamo == null || prestamo.getEntidad() == null) {
-                throw new IncomeException("El pago " + pago.getCodigo() + " de la carga " + idCarga
+                throw new IncomeException("El pago " + pago.getCodigo() + " de " + origen + " " + idOrigen
                     + " no tiene préstamo o partícipe asociado; no se puede auditar su distribución.");
             }
             Producto producto = prestamo.getProducto();
             if (producto == null) {
-                throw new IncomeException("El pago " + pago.getCodigo() + " de la carga " + idCarga
+                throw new IncomeException("El pago " + pago.getCodigo() + " de " + origen + " " + idOrigen
                     + " no tiene producto asignado; no se puede clasificar su distribución.");
             }
             Long idProducto = producto.getCodigo();
@@ -172,7 +223,7 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
                 DetallePrestamo cuota = pago.getDetallePrestamo();
                 LocalDateTime fechaVencimiento = cuota != null ? cuota.getFechaVencimiento() : null;
                 if (fechaVencimiento == null) {
-                    throw new IncomeException("El pago " + pago.getCodigo() + " de la carga " + idCarga
+                    throw new IncomeException("El pago " + pago.getCodigo() + " de " + origen + " " + idOrigen
                         + " no tiene fecha de vencimiento de cuota; no se puede clasificar su capital por banda.");
                 }
                 LocalDate vencimiento = fechaVencimiento.toLocalDate();
@@ -206,7 +257,7 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
                 clasificacionPorPago.put(pago.getCodigo(), resultado);
                 BandaProductoDetalle bandaDetalle = resultado.getBanda();
 
-                DistribucionBanda fila = filaBase(DsbnOrigen.CARGA_PETRO, idCarga, DsbnConcepto.CAPITAL,
+                DistribucionBanda fila = filaBase(origen, idOrigen, DsbnConcepto.CAPITAL,
                     capital, prestamo.getEntidad(), prestamo, cuota, producto, idTipoPrestamo, null,
                     fechaAplicacion, usuario, ahora);
                 fila.setTipoCartera(tipoCartera);
@@ -226,77 +277,44 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
             // tipo de préstamo no se puede resolver la cuenta de interés/mora/seguro — acá
             // tampoco se puede saber a qué familia pertenece la distribución.
             if ((interes > TOLERANCIA || mora > TOLERANCIA || seguroIncendio > TOLERANCIA) && idTipoPrestamo == null) {
-                throw new IncomeException("El pago " + pago.getCodigo() + " de la carga " + idCarga
+                throw new IncomeException("El pago " + pago.getCodigo() + " de " + origen + " " + idOrigen
                     + " tiene interés, mora o seguro de incendio pero su producto no tiene tipo de"
                     + " préstamo asignado; no se puede clasificar su distribución.");
             }
 
             if (interes > TOLERANCIA) {
-                distribucionBandaDaoService.save(filaBase(DsbnOrigen.CARGA_PETRO, idCarga,
+                distribucionBandaDaoService.save(filaBase(origen, idOrigen,
                     DsbnConcepto.INTERES_ORDINARIO, interes, prestamo.getEntidad(), prestamo,
                     pago.getDetallePrestamo(), producto, idTipoPrestamo, null, fechaAplicacion, usuario, ahora), null);
                 filasEscritas++;
             }
             if (mora > TOLERANCIA) {
-                distribucionBandaDaoService.save(filaBase(DsbnOrigen.CARGA_PETRO, idCarga,
+                distribucionBandaDaoService.save(filaBase(origen, idOrigen,
                     DsbnConcepto.INTERES_MORA, mora, prestamo.getEntidad(), prestamo,
                     pago.getDetallePrestamo(), producto, idTipoPrestamo, null, fechaAplicacion, usuario, ahora), null);
                 filasEscritas++;
             }
             if (interesVencido > TOLERANCIA) {
-                distribucionBandaDaoService.save(filaBase(DsbnOrigen.CARGA_PETRO, idCarga,
+                distribucionBandaDaoService.save(filaBase(origen, idOrigen,
                     DsbnConcepto.INTERES_VENCIDO, interesVencido, prestamo.getEntidad(), prestamo,
                     pago.getDetallePrestamo(), producto, idTipoPrestamo, null, fechaAplicacion, usuario, ahora), null);
                 filasEscritas++;
             }
             if (desgravamen > TOLERANCIA) {
-                distribucionBandaDaoService.save(filaBase(DsbnOrigen.CARGA_PETRO, idCarga,
+                distribucionBandaDaoService.save(filaBase(origen, idOrigen,
                     DsbnConcepto.SEGURO_DESGRAVAMEN, desgravamen, prestamo.getEntidad(), prestamo,
                     pago.getDetallePrestamo(), producto, idTipoPrestamo, null, fechaAplicacion, usuario, ahora), null);
                 filasEscritas++;
             }
             if (seguroIncendio > TOLERANCIA) {
-                distribucionBandaDaoService.save(filaBase(DsbnOrigen.CARGA_PETRO, idCarga,
+                distribucionBandaDaoService.save(filaBase(origen, idOrigen,
                     DsbnConcepto.SEGURO_INCENDIO, seguroIncendio, prestamo.getEntidad(), prestamo,
                     pago.getDetallePrestamo(), producto, idTipoPrestamo, null, fechaAplicacion, usuario, ahora), null);
                 filasEscritas++;
             }
         }
-        }
 
-        // Aportes (2026-09-02, hueco real: la pantalla nunca mostraba el detalle de aportes —
-        // "también debe darme ese detalle por aportes", carga 449: $116.857,06 de $354.603,67
-        // invisibles). Se registran SIEMPRE, tenga o no pagos de préstamo esta carga — por eso
-        // van fuera del if de arriba — con el MISMO criterio de filtro (idAsoprep) que usa
-        // CobroPetroContableServiceImpl.contabilizarAplicacion (AporteDaoService#selectByCarga,
-        // hermano de #sumValorPorTipoAporteByCarga: ver su javadoc para el porqué transitorio),
-        // para que la pantalla y el asiento nunca puedan divergir por leer columnas distintas.
-        // Sin banda ni cuota (DsbnConcepto: "solo CAPITAL lleva banda") — la cuenta contable de
-        // este concepto se resuelve al LEER, por tipoAporte, igual que la banda se resuelve al
-        // leer para CAPITAL.
-        List<Aporte> aportes = aporteDaoService.selectByCarga(idCarga);
-        if (aportes != null && !aportes.isEmpty()) {
-            for (Aporte aporte : aportes) {
-                double valorAporte = nvl(aporte.getValor());
-                if (valorAporte <= TOLERANCIA) {
-                    continue;
-                }
-                if (aporte.getEntidad() == null) {
-                    throw new IncomeException("El aporte " + aporte.getCodigo() + " de la carga " + idCarga
-                        + " no tiene partícipe asociado; no se puede auditar su distribución.");
-                }
-                LocalDate fechaAplicacionAporte = aporte.getFechaTransaccion() != null
-                    ? aporte.getFechaTransaccion().toLocalDate() : LocalDate.now();
-                Long idTipoAporte = aporte.getTipoAporte() != null ? aporte.getTipoAporte().getCodigo() : null;
-
-                distribucionBandaDaoService.save(filaBase(DsbnOrigen.CARGA_PETRO, idCarga,
-                    DsbnConcepto.APORTE, valorAporte, aporte.getEntidad(), null, null, null, null,
-                    idTipoAporte, fechaAplicacionAporte, usuario, ahora), null);
-                filasEscritas++;
-            }
-        }
-
-        System.out.println("  ✅ Distribución en bandas registrada - Carga " + idCarga
+        System.out.println("  ✅ Distribución en bandas registrada - " + origen + " " + idOrigen
             + " - " + filasEscritas + " fila(s)");
         return clasificacionPorPago;
     }

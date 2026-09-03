@@ -56,6 +56,40 @@ public interface DistribucionBandaService {
             List<PagoPrestamo> pagos, String usuario) throws Throwable;
 
     /**
+     * Mismo núcleo que {@link #registrarDistribucionCargaPetro} (clasifica CAPITAL por banda y
+     * escribe interés ordinario/mora/interés vencido/seguro desgravamen/seguro incendio, uno
+     * por {@code PagoPrestamo}) para los orígenes NO-Petro — PLAN-AUDITORIA-BANDAS.md §9:
+     * {@code COBRO_INDIVIDUAL} (CRD.CBCR), {@code EVENTO_PRESTAMO} (CRD.EVPR) y
+     * {@code PAGO_PENSION} (CRD.PGPC). No incluye aportes (eso es específico de Petro, donde sí
+     * hay una fuente propia — {@code CRD.APRT} filtrado por carga).
+     *
+     * <b>SIN idempotencia propia</b> — a diferencia de {@code registrarDistribucionCargaPetro},
+     * este método NO borra filas previas del origen antes de escribir. Un mismo
+     * {@code (origen, idOrigen)} puede necesitar más de una llamada dentro del mismo proceso
+     * (ej. un cobro con varias líneas, cada una con su propio {@code EventoPrestamo} y su
+     * propia lista de pagos) — borrar en cada llamada destruiría lo que ya escribió la
+     * anterior. El llamador invoca {@link #eliminarDistribucion} UNA sola vez, antes de la
+     * primera llamada de la operación, si el origen necesita semántica de reemplazo.
+     *
+     * @param pagos Pagos de préstamo YA APLICADOS que corresponden a este origen —
+     *              habitualmente {@code PagoPrestamoDaoService#selectByEvento(idEvento)}
+     * @throws Throwable si falta un dato obligatorio para clasificar (producto, tipo de
+     *                    préstamo cuando hace falta, fecha de vencimiento de la cuota)
+     */
+    Map<Long, ResultadoClasificacionBanda> registrarDistribucionPorPagos(String origen, Long idOrigen,
+            Long idEmpresa, List<PagoPrestamo> pagos, String usuario) throws Throwable;
+
+    /**
+     * Borra las filas previas de un {@code (origen, idOrigen)} — idempotencia EXPLÍCITA para
+     * los llamadores de {@link #registrarDistribucionPorPagos}, que no la incluye (ver su
+     * javadoc). {@code registrarDistribucionCargaPetro} sigue haciendo esto por su cuenta, sin
+     * cambios.
+     *
+     * @return cuántas filas borró
+     */
+    int eliminarDistribucion(String origen, Long idOrigen) throws Throwable;
+
+    /**
      * Estampa el asiento en todas las filas de un origen — se llama DESPUÉS de que
      * contabilidad genera el suyo. No hace nada si {@code idAsiento} es null.
      */

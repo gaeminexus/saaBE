@@ -78,6 +78,7 @@ import com.saa.rubros.CrdEstadoCargaArchivo;
 import com.saa.rubros.CrdEstadoCobro;
 import com.saa.rubros.CrdLineaAsiento;
 import com.saa.rubros.CrdTipoOperacionCobro;
+import com.saa.rubros.DsbnOrigen;
 import com.saa.rubros.ModuloSistema;
 import com.saa.rubros.PlantillasCredito;
 import com.saa.rubros.TipoAsientos;
@@ -181,6 +182,9 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
 
     @EJB
     private com.saa.ejb.crd.service.ContabilizacionIndividualCreditoService contabilizacionIndividualCreditoService;
+
+    @EJB
+    private com.saa.ejb.crd.service.DistribucionBandaService distribucionBandaService;
 
     @Override
     public ResultadoRegistroCobro registrarCobro(SolicitudRegistroCobro solicitud) throws Throwable {
@@ -633,6 +637,13 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                     + " estado APROBADO");
         }
 
+        // Idempotente por (origen, idOrigen) — PLAN-AUDITORIA-BANDAS.md §9, mismo criterio que
+        // Petro (§5.1 punto 2). UNA sola vez acá arriba: este método puede llamar a
+        // registrarDistribucionBandaEvento() más de una vez más abajo (PAGO_MULTIPLE, COBRO_MIXTO
+        // con varias líneas de préstamo), y cada una de esas llamadas NO borra por su cuenta —
+        // ver el javadoc de DistribucionBandaService#registrarDistribucionPorPagos.
+        distribucionBandaService.eliminarDistribucion(DsbnOrigen.COBRO_INDIVIDUAL, idCobro);
+
         List<DetalleCobroCredito> detalles = detalleCobroCreditoDaoService.selectByCobro(idCobro);
         if (detalles == null || detalles.isEmpty()) {
             throw new IncomeException("El cobro " + idCobro + " no tiene líneas de detalle");
@@ -727,12 +738,14 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             // con consumirAportes desde antes de este cambio.
             ResultadoPrecancelacion resultado = procesoPagoPrestamoService.precancelar(solicitud);
             enlazarEvento(linea, resultado.getIdEvento());
+            registrarDistribucionBandaEvento(idCobro, derivarEmpresaCobro(cobro), resultado.getIdEvento(), usuario);
 
         } else if (CrdTipoOperacionCobro.PAGO_CUOTA.equals(tipoOperacion)) {
             DetalleCobroCredito linea = detalles.get(0);
             ResultadoAplicacionPago resultado = procesoPagoPrestamoService.pagarCuota(
                     aSolicitudPagoCuota(cobro, linea, usuario));
             enlazarEvento(linea, resultado.getIdEvento());
+            registrarDistribucionBandaEvento(idCobro, derivarEmpresaCobro(cobro), resultado.getIdEvento(), usuario);
 
         } else if (CrdTipoOperacionCobro.PAGO_MULTIPLE.equals(tipoOperacion)) {
             SolicitudPagoMultiple solicitud = new SolicitudPagoMultiple();
@@ -750,6 +763,8 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             List<ResultadoAplicacionPago> resultados = resultado.getResultados();
             for (int i = 0; i < detalles.size(); i++) {
                 enlazarEvento(detalles.get(i), resultados.get(i).getIdEvento());
+                registrarDistribucionBandaEvento(idCobro, derivarEmpresaCobro(cobro),
+                    resultados.get(i).getIdEvento(), usuario);
             }
 
         } else if (CrdTipoOperacionCobro.ABONO_CAPITAL.equals(tipoOperacion)) {
@@ -767,6 +782,7 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             solicitud.setIdEmpresa(derivarEmpresaCobro(cobro));
             ResultadoAbonoCapital resultado = abonoCapitalPrestamoService.aplicar(solicitud);
             enlazarEvento(linea, resultado.getIdEvento());
+            registrarDistribucionBandaEvento(idCobro, derivarEmpresaCobro(cobro), resultado.getIdEvento(), usuario);
 
         } else if (CrdTipoOperacionCobro.REGISTRO_APORTE.equals(tipoOperacion)) {
             // Varias líneas desde 2026-08-31 (un partícipe puede aportar cesantía Y
@@ -821,6 +837,7 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
 
             ResultadoAplicacionAcuerdo resultado = acuerdoCondonacionService.aplicarAcuerdo(idAcuerdo, usuario);
             enlazarEvento(linea, resultado.getIdEvento());
+            registrarDistribucionBandaEvento(idCobro, derivarEmpresaCobro(cobro), resultado.getIdEvento(), usuario);
 
         } else if (CrdTipoOperacionCobro.COBRO_MIXTO.equals(tipoOperacion)) {
             // Un depósito = un cobro = una aprobación = un reverso (defecto de producción del
@@ -856,6 +873,8 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                     ResultadoAplicacionPago resultadoPago = procesoPagoPrestamoService.pagarCuota(
                             aSolicitudPagoCuota(cobro, linea, usuario));
                     enlazarEvento(linea, resultadoPago.getIdEvento());
+                    registrarDistribucionBandaEvento(idCobro, derivarEmpresaCobro(cobro),
+                        resultadoPago.getIdEvento(), usuario);
                 }
             }
 
@@ -1295,6 +1314,39 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
     // anularCobro. Antes estaba repetida entre ASN1 y ASN2 sin chequear que cobro tuviera
     // cuenta bancaria asignada (NPE si no la tenía); acá se chequea una sola vez.
     // =====================================================================
+
+    /**
+     * Distribución en bandas de UN evento de préstamo — PLAN-AUDITORIA-BANDAS.md §9. Se llama
+     * justo después de CADA aplicación de pago dentro de {@link #procesarCobro} (precancelación,
+     * pago de cuota, pago múltiple, abono a capital, cobro mixto), nunca detrás del guardarraíl
+     * de {@code contabilidadActiva} — la banda es un dato de cartera, no contable.
+     *
+     * <b>No comparte la clasificación con el asiento</b> (DEUDA anotada en el plan, decisión del
+     * árbitro 2026-09-02): {@code ContabilizacionIndividualCreditoService#haberDesdePagos} va a
+     * volver a clasificar los mismos pagos cuando arme el asiento definitivo. Se acepta a
+     * propósito porque son operaciones individuales de un puñado de cuotas —la regla de "no
+     * clasificar dos veces" nació del LOTE de Petro (miles de filas)— y porque compartir
+     * requeriría cambiar la firma de {@code haberDesdePagos}, que tiene otros 3 llamadores, en
+     * medio de una carga en producción. Si el cobro individual pasa a procesarse en lote, esta
+     * duplicación deja de ser barata.
+     *
+     * Reconsulta los pagos por evento ({@code pagoPrestamoDaoService.selectByEvento}) en vez de
+     * reconstruirlos desde {@code ResultadoAplicacionPago.cuotasAfectadas}: es la MISMA consulta
+     * que ya usa {@code haberDesdeEvento} para lo mismo, así que la lista que ve esta escritura
+     * es exactamente la que verá el asiento.
+     *
+     * @param idEvento null-safe: los flujos sin EventoPrestamo (registro de aporte) no llaman
+     *                 a este método
+     */
+    private void registrarDistribucionBandaEvento(Long idCobro, Long idEmpresa, Long idEvento, String usuario)
+            throws Throwable {
+        if (idEvento == null) {
+            return;
+        }
+        List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectByEvento(idEvento);
+        distribucionBandaService.registrarDistribucionPorPagos(
+            DsbnOrigen.COBRO_INDIVIDUAL, idCobro, idEmpresa, pagos, usuario);
+    }
 
     private Long derivarEmpresaCobro(CobroCredito cobro) throws Throwable {
         CuentaBancaria cuentaBancaria = cobro.getCuentaBancaria();
