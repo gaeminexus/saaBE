@@ -4,7 +4,7 @@ import java.io.Serializable;
 import java.time.LocalDateTime;
 
 import com.saa.basico.util.EntidadAuditableFechaHora;
-import com.saa.model.tsr.Banco;
+import com.saa.model.tsr.BancoExterno;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
@@ -47,11 +47,11 @@ public class CuentaBancariaEmpleado implements Serializable, EntidadAuditableFec
     private Empleado empleado;
 
     /**
-     * Banco de la cuenta (TSR.BNCO).
+     * Banco de la cuenta (TSR.BEXT).
      */
     @ManyToOne
-    @JoinColumn(name = "BNCOCDGO", referencedColumnName = "BNCOCDGO")
-    private Banco banco;
+    @JoinColumn(name = "BEXTCDGO", referencedColumnName = "BEXTCDGO")
+    private BancoExterno banco;
 
     /**
      * Tipo de cuenta: detalle del rubro RHH_TIPO_CUENTA_BANCARIA.
@@ -132,11 +132,11 @@ public class CuentaBancariaEmpleado implements Serializable, EntidadAuditableFec
         this.empleado = empleado;
     }
 
-    public Banco getBanco() {
+    public BancoExterno getBanco() {
         return banco;
     }
 
-    public void setBanco(Banco banco) {
+    public void setBanco(BancoExterno banco) {
         this.banco = banco;
     }
 
