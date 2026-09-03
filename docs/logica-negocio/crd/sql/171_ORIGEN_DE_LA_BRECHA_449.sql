@@ -127,25 +127,41 @@ FETCH FIRST 30 ROWS ONLY;
 -- =====================================================================================
 -- BLOQUE 3 — El seguro de incendio: cuanto habia que cobrar y cuanto se grabo
 --
--- Como leerlo: si NO_GRABADO se acerca a la brecha total, el defecto (A) la explica casi
--- entera y el arreglo es uno solo. Si es una fraccion, hay que sumar el (B) — y el bloque 1
--- ya dijo si alcanzan entre los dos.
+-- ⛔ CORREGIDO EL 2026-09-02. La version anterior daba ORA-00937: mezclaba SUM() con una
+--    subconsulta escalar en la misma lista de seleccion. Es la CUARTA vez que cometo esa
+--    equivocacion en el dia (168, 171, 179 y esta). Regla, escrita para que quede:
+--    si aparece SUM() al lado de un (SELECT ...) en la misma lista, esta mal — la
+--    subconsulta va en el FROM.
+--
+-- Como leerlo: NO_GRABADO es seguro que las cuotas tenian y los pagos no registraron.
+-- Cerca de 0 = el seguro se cobro completo. Muy por encima de 0 = quedo sin registrar, y
+-- entonces forma parte de la brecha del bloque 1.
 -- =====================================================================================
-SELECT  COUNT(DISTINCT d.DTPRCDGO)                          AS CUOTAS_CON_SEGURO,
-        ROUND(SUM(NVL(d.DTPRVLSI,0)), 2)                    AS SEGURO_DE_LAS_CUOTAS,
-        ROUND(NVL((SELECT SUM(NVL(g2.PGPRVLSI,0)) FROM CRD.PGPR g2
-                    WHERE g2.CRARCDGO = &CARGA
-                      AND NVL(g2.PGPRANUL,0) = 0), 0), 2)   AS SEGURO_GRABADO_EN_PAGOS,
-        ROUND(SUM(NVL(d.DTPRVLSI,0))
-              - NVL((SELECT SUM(NVL(g2.PGPRVLSI,0)) FROM CRD.PGPR g2
-                      WHERE g2.CRARCDGO = &CARGA
-                        AND NVL(g2.PGPRANUL,0) = 0), 0), 2) AS NO_GRABADO
-FROM    CRD.DTPR d
-WHERE   d.DTPRCDGO IN (SELECT DISTINCT g.DTPRCDGO FROM CRD.PGPR g
-                        WHERE g.CRARCDGO = &CARGA AND NVL(g.PGPRANUL,0) = 0)
-AND     NVL(d.DTPRVLSI,0) > 0.01;
+SELECT  c.CUOTAS_CON_SEGURO,
+        c.SEGURO_DE_LAS_CUOTAS,
+        NVL(g.SEGURO_GRABADO_EN_PAGOS, 0)                       AS SEGURO_GRABADO_EN_PAGOS,
+        ROUND(c.SEGURO_DE_LAS_CUOTAS - NVL(g.SEGURO_GRABADO_EN_PAGOS, 0), 2) AS NO_GRABADO
+FROM (
+    SELECT  COUNT(DISTINCT d.DTPRCDGO)                          AS CUOTAS_CON_SEGURO,
+            ROUND(SUM(NVL(d.DTPRVLSI, 0)), 2)                   AS SEGURO_DE_LAS_CUOTAS
+    FROM    CRD.DTPR d
+    WHERE   d.DTPRCDGO IN (SELECT DISTINCT g1.DTPRCDGO FROM CRD.PGPR g1
+                            WHERE g1.CRARCDGO = &CARGA AND NVL(g1.PGPRANUL,0) = 0)
+    AND     NVL(d.DTPRVLSI, 0) > 0.01
+) c,
+(
+    SELECT  ROUND(NVL(SUM(NVL(g2.PGPRVLSI, 0)), 0), 2)          AS SEGURO_GRABADO_EN_PAGOS
+    FROM    CRD.PGPR g2
+    WHERE   g2.CRARCDGO = &CARGA
+    AND     NVL(g2.PGPRANUL, 0) = 0
+) g;
 
 
 -- =====================================================================================
 -- FIN. Pegar la salida de los tres bloques.
+--
+-- ⚠️ Y AL LEERLOS: un bloque VACIO no es "cuadro". Si los bloques 1 y 2 salen vacios es
+--    porque no se encontro NINGUN pago de la carga — o la carga todavia no confirmo, o
+--    revirtio. Distinguirlo mirando CRD.CRAR.CRARESTD y el conteo de CRD.PGPR antes de
+--    concluir nada. Ya casi se leyo al reves una vez, con el sql/179.
 -- =====================================================================================
