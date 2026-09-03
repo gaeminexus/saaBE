@@ -6,8 +6,10 @@ import java.time.YearMonth;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import com.saa.basico.ejb.UsuarioDaoService;
 import com.saa.basico.util.IncomeException;
@@ -48,6 +50,7 @@ import com.saa.model.crd.AsientoCargaPetro;
 import com.saa.model.crd.CargaArchivo;
 import com.saa.model.crd.DetalleCargaArchivo;
 import com.saa.model.crd.DetallePrestamo;
+import com.saa.model.crd.Entidad;
 import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.model.crd.PagoPrestamo;
 import com.saa.model.crd.Prestamo;
@@ -751,6 +754,14 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         Map<Long, Double> seguroIncendioPorTipo = new LinkedHashMap<>();
         double totalSeguroDesgravamen = 0.0;
 
+        // Para que, si la plantilla no tiene la línea de interés ordinario/mora de un tipo de
+        // préstamo, el mensaje diga qué pagos y préstamos quedaron sin poder contabilizarse —
+        // no sólo el tipo y el total acumulado (que para entonces ya perdió esa identidad).
+        Map<Long, Set<Long>> prestamosPorTipoInteres = new LinkedHashMap<>();
+        Map<Long, Integer> pagosPorTipoInteres = new LinkedHashMap<>();
+        Map<Long, Set<Long>> prestamosPorTipoMora = new LinkedHashMap<>();
+        Map<Long, Integer> pagosPorTipoMora = new LinkedHashMap<>();
+
         if (pagos != null) {
             for (PagoPrestamo pago : pagos) {
                 Prestamo prestamo = pago.getPrestamo();
@@ -810,11 +821,34 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
                 }
                 if (interes > 0.0) {
                     interesPorTipo.merge(idTipoPrestamo, interes, Double::sum);
+                    prestamosPorTipoInteres.computeIfAbsent(idTipoPrestamo, k -> new LinkedHashSet<>())
+                            .add(prestamo.getCodigo());
+                    pagosPorTipoInteres.merge(idTipoPrestamo, 1, Integer::sum);
                 }
                 if (mora > 0.0) {
                     moraPorTipo.merge(idTipoPrestamo, mora, Double::sum);
+                    prestamosPorTipoMora.computeIfAbsent(idTipoPrestamo, k -> new LinkedHashSet<>())
+                            .add(prestamo.getCodigo());
+                    pagosPorTipoMora.merge(idTipoPrestamo, 1, Integer::sum);
                 }
                 if (seguroIncendio > 0.0) {
+                    // Validar ACÁ, con el pago todavía en la mano — no al construir las líneas,
+                    // donde ya sólo queda el tipo y el total acumulado (2026-09-02, reporte del
+                    // usuario sobre un mensaje sin forma de encontrar el caso sin un SELECT).
+                    if (idTipoPrestamo != TIPO_PRESTAMO_HIPOTECARIO && idTipoPrestamo != TIPO_PRESTAMO_PRENDARIO) {
+                        Entidad entidadPago = prestamo.getEntidad();
+                        throw new IncomeException("El pago " + pago.getCodigo() + " de la carga " + idCarga
+                                + " trae seguro de incendio $" + redondear(seguroIncendio) + " pero su préstamo "
+                                + prestamo.getCodigo() + " es de tipo de préstamo " + idTipoPrestamo
+                                + " (producto " + producto.getNombre() + "), que no tiene cuenta de seguro de"
+                                + " incendio definida (solo hipotecario=" + TIPO_PRESTAMO_HIPOTECARIO
+                                + " y prendario=" + TIPO_PRESTAMO_PRENDARIO + ") — partícipe rol Petro "
+                                + (entidadPago != null ? entidadPago.getRolPetroComercial() : null)
+                                + ", cédula " + (entidadPago != null ? entidadPago.getNumeroIdentificacion() : null)
+                                + ", " + (entidadPago != null ? entidadPago.getRazonSocial() : null)
+                                + ", cuota #" + (pago.getDetallePrestamo() != null
+                                    ? pago.getDetallePrestamo().getNumeroCuota() : null) + ".");
+                    }
                     seguroIncendioPorTipo.merge(idTipoPrestamo, seguroIncendio, Double::sum);
                 }
                 totalSeguroDesgravamen += desgravamen;
@@ -869,7 +903,10 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
             if (linea == null) {
                 throw new IncomeException("La plantilla alterno " + PlantillasCredito.APLICACION_PETRO
                         + " no tiene la línea de interés ordinario para el tipo de préstamo "
-                        + entrada.getKey() + ".");
+                        + entrada.getKey() + " — " + pagosPorTipoInteres.getOrDefault(entrada.getKey(), 0)
+                        + " pago(s) de la carga " + idCarga + " sobre el/los préstamo(s) "
+                        + prestamosPorTipoInteres.getOrDefault(entrada.getKey(), java.util.Collections.emptySet())
+                        + " quedaron sin poder contabilizarse.");
             }
             lineas.add(lineaDesdePlantilla(linea, valor,
                     "Aplicación Petro/ARCH carga " + idCarga + " - interés ordinario"));
@@ -885,7 +922,10 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
             if (linea == null) {
                 throw new IncomeException("La plantilla alterno " + PlantillasCredito.APLICACION_PETRO
                         + " no tiene la línea de interés de mora para el tipo de préstamo "
-                        + entrada.getKey() + ".");
+                        + entrada.getKey() + " — " + pagosPorTipoMora.getOrDefault(entrada.getKey(), 0)
+                        + " pago(s) de la carga " + idCarga + " sobre el/los préstamo(s) "
+                        + prestamosPorTipoMora.getOrDefault(entrada.getKey(), java.util.Collections.emptySet())
+                        + " quedaron sin poder contabilizarse.");
             }
             lineas.add(lineaDesdePlantilla(linea, valor,
                     "Aplicación Petro/ARCH carga " + idCarga + " - interés de mora"));
@@ -905,6 +945,10 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
             } else if (entrada.getKey() == TIPO_PRESTAMO_PRENDARIO) {
                 aux1 = AUX1_SEGURO_PRENDARIO;
             } else {
+                // Red de seguridad: el mismo caso ya se valida arriba, en el bucle de
+                // acumulación, con el pago (y su partícipe/préstamo/cuota) todavía en la mano
+                // — no debería alcanzarse nunca más, pero si `seguroIncendioPorTipo` llegara acá
+                // con un tipo inválido por algún camino nuevo, que siga fallando fuerte.
                 throw new IncomeException("El pago con seguro de incendio de la carga " + idCarga
                         + " es de tipo de préstamo " + entrada.getKey()
                         + ", que no tiene cuenta de seguro de incendio definida (solo hipotecario"
