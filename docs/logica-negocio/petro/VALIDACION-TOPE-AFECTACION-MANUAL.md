@@ -449,3 +449,62 @@ arreglarlo.**
 - **El mensaje tiene que decir por qué sobró** —sin vigencia que cubra el mes, vigencia en $0— o el
   operador va a repartirlo sin entender qué pasó, y el mes que viene va a pasar lo mismo.
 - El caso de **contrato inexistente sigue abortando** como hoy: ahí falta un dato, no sobra plata.
+
+---
+
+## 13. ⛔ El HS huérfano — la otra mitad del descuadre, encontrada por el usuario
+
+> *«A él le descuentan aporte y sólo HS, pero no la cuota del préstamo hipotecario, y el sistema no
+> detecta que debe aplicar esos −2,47 a la mínima cuota que no esté pagada en el rubro de seguro de
+> incendio. De hecho los 4 casos que generan el descuadre en negativo son de HS.»*
+
+**Confirmado en el código, y la aritmética cierra exacta:**
+`108,54 − (2,47 + 6,34 + 7,10 + 13,18) = 79,45`. Los cuatro negativos son **enteramente HS
+huérfano**.
+
+### El mecanismo
+
+`CargaArchivoPetroServiceImpl:1262`, en el bucle de aplicación:
+
+```java
+// Omitir solo producto HS (seguros independientes)
+if (CODIGO_PRODUCTO_HS.equalsIgnoreCase(codigoProducto)) {
+    System.out.println("  ⊘ Producto HS omitido (se procesa junto con PH/PP)");
+    continue;
+}
+```
+
+**El producto HS se saltea entero.** Se recoge únicamente desde el camino del PH/PP (`:3477`), que
+busca la fila HS del partícipe y la suma a su monto.
+
+**El supuesto es que todo HS tiene su PH/PP en la misma carga. Cuando no lo tiene, esa plata no la
+mira nadie:** no se aplica, no se reclama, y no aparece en ningún log. Es dinero descontado del sueldo
+del partícipe que se evapora silenciosamente del proceso.
+
+> Y encaja con el patrón del día: **no era un cálculo equivocado, era un camino que nadie recorría.**
+> Igual que el excedente que se descartaba en silencio y que los aportes que no se registraban en la
+> auditoría.
+
+### Qué hacer
+
+1. **Dejar de saltear el HS a ciegas.** Procesar las filas HS **cuyo partícipe NO tiene fila PH/PP en
+   esa misma carga** — las que sí la tienen ya se cobran por ese camino y **no deben tocarse dos
+   veces**.
+2. Para esas, aplicar el monto al **seguro de incendio de la mínima cuota no pagada** de su préstamo
+   hipotecario o prendario. Es el componente que ese descuento paga.
+3. **Si no hay un destino inequívoco** —ningún préstamo con seguro pendiente, o más de un candidato—
+   **novedad bloqueante**, no adivinar. Con el §12 ya en su lugar, ese sobrante queda repartible en la
+   pantalla.
+
+⚠️ **El riesgo a cuidar es el doble cobro.** El HS de un partícipe que sí tiene PH/PP ya viaja en el
+monto de ese producto. Si además se procesara por este camino nuevo, se le cobraría dos veces — el
+defecto contrario y peor. La condición de entrada tiene que ser exactamente «no existe fila PH/PP de
+este partícipe en esta carga», con la misma consulta que ya usa `selectByCodigoPetroYProductoEnCarga`.
+
+### Verificación
+
+1. NAVAS y los otros tres deben quedar **con diferencia cero**, y su HS aplicado al seguro de incendio
+   de una cuota concreta.
+2. Un partícipe **con** PH/PP y HS debe cobrar **exactamente lo mismo que antes** — si su total cambia,
+   se está cobrando dos veces.
+3. Con esto y la corrección del exceso de SANCHEZ, el cuadre de la carga 449 debe dar **0**.
