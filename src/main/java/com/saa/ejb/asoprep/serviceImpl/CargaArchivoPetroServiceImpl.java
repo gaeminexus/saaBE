@@ -2336,7 +2336,7 @@ private void aplicarPagoNormalConMotor(Prestamo prestamo, double monto, CargaArc
 		System.out.println("⚠️ No se puede aplicar el pago: la cuota encontrada no tiene préstamo asociado");
 		return;
 	}
-	ContextoPago ctx = crearContextoPagoCarga(cargaArchivo);
+	ContextoPago ctx = crearContextoPagoCarga(cargaArchivo, "PAGO_NORMAL");
 	ResultadoAplicacionPago resultado = motorPagoPrestamoService.aplicarPago(prestamo.getCodigo(), monto, ctx);
 	System.out.println("    ✅ Pago aplicado vía motor - Recibido: $" + resultado.getValorRecibido() +
 	                   " - Aplicado: $" + resultado.getValorAplicado() +
@@ -2349,8 +2349,14 @@ private void aplicarPagoNormalConMotor(Prestamo prestamo, double monto, CargaArc
  * manual): fecha de efecto = último día del mes de carga (§4.2, sin fallback a now() — si
  * mes/año de afectación vienen null, grita) y la carga misma para trazabilidad (§4.1,
  * ContextoPago#idCargaArchivo).
+ *
+ * {@code origen} identifica la RUTA de este pago (2026-09-02, corrección urgente: la
+ * observación anterior era idéntica para las dos rutas y no permitía distinguirlas al
+ * auditar, ver sql/171_ORIGEN_DE_LA_BRECHA_449.sql). Se antepone como prefijo estable
+ * ("PAGO_NORMAL: " / "AFECTACION_MANUAL: ...") para poder filtrar por
+ * {@code PGPROBSR LIKE 'PAGO_NORMAL:%'} sin ambigüedad.
  */
-private ContextoPago crearContextoPagoCarga(CargaArchivo cargaArchivo) throws Throwable {
+private ContextoPago crearContextoPagoCarga(CargaArchivo cargaArchivo, String origen) throws Throwable {
 	if (cargaArchivo.getMesAfectacion() == null || cargaArchivo.getAnioAfectacion() == null) {
 		throw new IncomeException("No se puede fechar el pago: falta el mes o año de afectación de la carga "
 			+ cargaArchivo.getCodigo() + ".");
@@ -2361,8 +2367,8 @@ private ContextoPago crearContextoPagoCarga(CargaArchivo cargaArchivo) throws Th
 	ContextoPago ctx = new ContextoPago();
 	ctx.setIdCargaArchivo(cargaArchivo.getCodigo());
 	ctx.setFechaPago(fechaPagoEfecto);
-	ctx.setObservacion(String.format("Carga Petro %d - Mes %d/%d",
-		cargaArchivo.getCodigo(), cargaArchivo.getMesAfectacion(), cargaArchivo.getAnioAfectacion()));
+	ctx.setObservacion(String.format("%s: Carga Petro %d - Mes %d/%d",
+		origen, cargaArchivo.getCodigo(), cargaArchivo.getMesAfectacion(), cargaArchivo.getAnioAfectacion()));
 	return ctx;
 }
 
@@ -2766,7 +2772,8 @@ private void aplicarAfectacionManualConRegistroPago(
 			+ ") no tiene préstamo asociado a través de su cuota; no hay destino donde aplicar el pago.");
 	}
 
-	ContextoPago ctx = crearContextoPagoCarga(cargaArchivo);
+	ContextoPago ctx = crearContextoPagoCarga(cargaArchivo, "AFECTACION_MANUAL");
+	ctx.setObservacion(ctx.getObservacion() + " - AVPC " + afectacion.getCodigo());
 	ResultadoAplicacionPago resultado = motorPagoPrestamoService.aplicarPago(
 		cuota.getPrestamo().getCodigo(), valorTotalAfectar, ctx);
 

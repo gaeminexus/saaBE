@@ -540,9 +540,27 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
         // El abono a capital y la precancelación usan saldoOtros; un pago de cuota no.
         pago.setSaldoOtros(0.0);
 
+        // 2026-09-02 (URGENTE, regresión detectada en producción, carga 449): antes se
+        // concatenaba "[Evento: " + idEvento + "]" incondicionalmente, y la carga Petro (que
+        // no tiene EventoPrestamo: es un lote, no una operación individual) quedaba con
+        // "[Evento: null]" visible en pantalla. Solo se anota cuando hay evento real; los
+        // demás llamadores (pago manual, aportes, precancelación, abono capital) siempre
+        // traen idEvento y quedan exactamente igual que hoy.
         String observacion = ctx != null && ctx.getObservacion() != null ? ctx.getObservacion() : "";
         Long idEvento = ctx != null ? ctx.getIdEvento() : null;
-        pago.setObservacion(observacion + " [Evento: " + idEvento + "]");
+        Long idCargaArchivoCtx = ctx != null ? ctx.getIdCargaArchivo() : null;
+        // Detalle de la cuota, solo para la carga Petro: su ContextoPago es compartido por
+        // toda la cascada de un mismo aplicarPago (que puede tocar varias cuotas), y sin esto
+        // todos sus PagoPrestamo quedarían con la misma observación, sin poder distinguir cuál
+        // cuota cubrió cada uno al auditar (sql/171_ORIGEN_DE_LA_BRECHA_449.sql). Los demás
+        // llamadores no traen idCargaArchivo y no cambian.
+        String observacionCompleta = idCargaArchivoCtx != null
+            ? observacion + " - Cuota #" + cuota.getNumeroCuota()
+            : observacion;
+        if (idEvento != null) {
+            observacionCompleta = observacionCompleta + " [Evento: " + idEvento + "]";
+        }
+        pago.setObservacion(observacionCompleta);
         pago.setTipo(ctx != null ? ctx.getTipoPago() : null);
         pago.setUsuarioRegistro(ctx != null ? ctx.getUsuario() : null);
         pago.setRutaDocumentoRespaldo(ctx != null ? ctx.getRutaDocumentoRespaldo() : null);
