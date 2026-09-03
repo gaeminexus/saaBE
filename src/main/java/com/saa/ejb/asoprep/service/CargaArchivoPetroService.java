@@ -92,12 +92,20 @@ public interface CargaArchivoPetroService {
      * que la carga procese: el tope se arma entre varias pantallas y sesiones, así que la
      * validación real sigue siendo la de {@code aplicarPagosArchivoPetro}.
      *
+     * <b>CORREGIDO 2026-09-03 (§10):</b> {@code disponible} NO es {@code SUM(PXCADSDO)} de
+     * TODOS los productos del partícipe — es solo la de los productos con novedad BLOQUEANTE.
+     * Medido en producción (SANCHEZ PRADO, rol 7508, carga 449): con la regla vieja el tope
+     * daba 406,73 (todos los productos) cuando el operador solo tenía bloqueados 298,19
+     * (PH+HS); PE y AH los iba a aplicar el flujo automático, y el tope viejo dejaba a la
+     * afectación manual consumir esa plata igual. Ver el javadoc de
+     * {@code CargaArchivoPetroServiceImpl#disponibleParaTope} (única definición).
+     *
      * @param codigoCargaArchivo : ID de la carga (CRD.CRAR)
      * @param codigoPetro        : Rol Petro del partícipe
-     * @return : Map con {@code codigoPetro}, {@code disponible} (SUM PXCADSDO, todos los
-     *           productos), {@code afectado} (SUM AVPCVAFA, todas sus novedades),
-     *           {@code exceso} ({@code max(0, afectado - disponible)}) y {@code restante}
-     *           ({@code max(0, disponible - afectado)})
+     * @return : Map con {@code codigoPetro}, {@code disponible} (SUM PXCADSDO SOLO de los
+     *           productos con novedad bloqueante), {@code afectado} (SUM AVPCVAFA, todas sus
+     *           novedades), {@code exceso} ({@code max(0, afectado - disponible)}) y
+     *           {@code restante} ({@code max(0, disponible - afectado)})
      * @throws Throwable : Excepción en caso de error
      */
     Map<String, Object> obtenerTopeAfectacionManual(Long codigoCargaArchivo, Long codigoPetro) throws Throwable;
@@ -108,10 +116,12 @@ public interface CargaArchivoPetroService {
      * bloquea al procesar, pero sin bloquear: el operador la consulta mientras reparte, para
      * corregir antes de intentar procesar.
      *
-     * <b>Alcance:</b> solo ve el exceso de afectaciones MANUALES contra lo descontado; no
-     * detecta lo que el flujo automático vaya a aplicar encima (todavía no ocurrió en este
-     * punto). No reemplaza a {@code DistribucionBandaService#obtenerDiferencia} — ver el
-     * javadoc de la implementación para el contraste completo.
+     * <b>Alcance, actualizado 2026-09-03 (§10):</b> el hueco original de este prevuelo — no
+     * detectar lo que el flujo automático aplica encima del tope manual — quedó CERRADO en la
+     * fuente: {@code disponible} ahora excluye los productos sin novedad bloqueante (los que
+     * resuelve el automático), así que ese exceso sí aparece acá. Lo que sigue sin cubrir es
+     * cualquier otra interacción automático/manual todavía no identificada — no reemplaza a
+     * {@code DistribucionBandaService#obtenerDiferencia} (la verificación posterior a aplicar).
      *
      * @param codigoCargaArchivo : ID de la carga (CRD.CRAR)
      * @return : Map con {@code idCarga}, {@code participesConExceso}, {@code excesoTotal} y

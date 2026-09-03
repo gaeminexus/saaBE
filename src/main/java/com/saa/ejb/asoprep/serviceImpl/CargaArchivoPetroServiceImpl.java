@@ -1599,9 +1599,10 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	 * Tope de afectación manual, de solo lectura, para UN partícipe — VALIDACION-TOPE-
 	 * AFECTACION-MANUAL.md §8. La pantalla de afectación lo usa para mostrarle al operador el
 	 * disponible/afectado/restante MIENTRAS TRABAJA, sin reimplementar la regla en el frontend:
-	 * reutiliza {@link #totalAfectadoManualmente} y {@link #excesoYRestante}, las mismas dos
-	 * piezas que usa {@link #validarTopeAfectacionManualPorParticipe} para bloquear — el día
-	 * que la fórmula cambie, cambia en esos dos métodos y acá se entera sola.
+	 * reutiliza {@link #totalAfectadoManualmente}, {@link #excesoYRestante} y (desde el
+	 * 2026-09-03, §10) {@link #disponibleParaTope} — las mismas piezas que usa
+	 * {@link #validarTopeAfectacionManualPorParticipe} para bloquear — el día que la fórmula
+	 * cambie, cambia en esos métodos y acá se entera sola.
 	 *
 	 * A diferencia de la validación batch (que escanea TODA la carga en una pasada porque
 	 * necesita verlos a todos a la vez), esto es una consulta puntual: acotada a las filas de
@@ -1622,6 +1623,11 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		if (codigoPetro == null) {
 			throw new IncomeException("El codigoPetro es obligatorio");
 		}
+		CargaArchivo cargaArchivo = cargaArchivoService.selectById(codigoCargaArchivo);
+		if (cargaArchivo == null) {
+			throw new IncomeException("No se encontró la carga con ID: " + codigoCargaArchivo);
+		}
+		Long codigoFilial = cargaArchivo.getFilial() != null ? cargaArchivo.getFilial().getCodigo() : null;
 
 		List<ParticipeXCargaArchivo> participes =
 			participeXCargaArchivoDaoService.selectByCodigoPetroEnCarga(codigoPetro, codigoCargaArchivo);
@@ -1630,12 +1636,14 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		List<NovedadParticipeCarga> novedades = new ArrayList<>();
 		if (participes != null) {
 			for (ParticipeXCargaArchivo participe : participes) {
-				disponible += nullSafe(participe.getTotalDescontado());
 				List<NovedadParticipeCarga> novedadesParticipe =
 					novedadParticipeCargaDaoService.selectByParticipe(participe.getCodigo());
 				if (novedadesParticipe != null) {
 					novedades.addAll(novedadesParticipe);
 				}
+				// CORRECCIÓN 2026-09-03 (§10) — ver el javadoc de disponibleParaTope: solo cuenta
+				// si esta fila (participe, producto) tiene novedad bloqueante.
+				disponible += disponibleParaTope(participe, novedadesParticipe, codigoFilial);
 			}
 		}
 
@@ -1675,8 +1683,9 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 
 		StringBuilder mensaje = new StringBuilder();
 		mensaje.append("No se puede procesar el archivo: ").append(violaciones.size())
-		       .append(" partícipe(s) tienen afectaciones manuales (AVPC) que superan el total")
-		       .append(" descontado. Corrija las afectaciones y vuelva a procesar.");
+		       .append(" partícipe(s) tienen afectaciones manuales (AVPC) que superan lo descontado")
+		       .append(" en sus productos con novedad bloqueante (§10: no cuenta lo que va a aplicar")
+		       .append(" el flujo automático). Corrija las afectaciones y vuelva a procesar.");
 
 		int listados = 0;
 		for (Map<String, Object> v : violaciones) {
@@ -1707,6 +1716,11 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	 * necesidad exacta (la validación, el tope por partícipe del §8, y esto) — las tres tienen
 	 * que dar el mismo número siempre.
 	 *
+	 * <b>CORREGIDO 2026-09-03 (§10):</b> "disponible" ya no es {@code SUM(PXCADSDO)} de TODOS
+	 * los productos del partícipe — es solo la de los productos con novedad bloqueante, vía
+	 * {@link #disponibleParaTope}. Ver su javadoc para el caso medido (SANCHEZ PRADO, rol 7508)
+	 * que probó que la regla anterior era incompleta.
+	 *
 	 * Escanea TODA la carga en UNA sola pasada — pensado para llamarse una vez por invocación,
 	 * nunca por partícipe (ver el javadoc de {@link #obtenerPrevueloAfectacionManual} sobre por
 	 * qué eso importa para una consulta interactiva).
@@ -1736,6 +1750,8 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		Map<Long, String> nombrePorRol = new LinkedHashMap<>();
 		Map<Long, List<NovedadParticipeCarga>> novedadesPorRol = new LinkedHashMap<>();
 
+		Long codigoFilial = cargaArchivo.getFilial() != null ? cargaArchivo.getFilial().getCodigo() : null;
+
 		for (DetalleCargaArchivo detalle : detallesCarga) {
 			List<ParticipeXCargaArchivo> participesDetalle =
 				participeXCargaArchivoDaoService.selectByDetalleCargaArchivo(detalle.getCodigo());
@@ -1747,14 +1763,19 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 				if (rolPetro == null) {
 					continue;
 				}
-				disponiblePorRol.merge(rolPetro, nullSafe(participe.getTotalDescontado()), Double::sum);
 				nombrePorRol.putIfAbsent(rolPetro, participe.getNombre());
 
 				List<NovedadParticipeCarga> novedades =
 					novedadParticipeCargaDaoService.selectByParticipe(participe.getCodigo());
+
+				// Afectado (más abajo, vía totalAfectadoManualmente): TODO lo que el operador
+				// tipeó manualmente para este rol, sin importar en qué producto — eso no cambia
+				// con la corrección de disponible de abajo.
 				if (novedades != null && !novedades.isEmpty()) {
 					novedadesPorRol.computeIfAbsent(rolPetro, k -> new ArrayList<>()).addAll(novedades);
 				}
+
+				disponiblePorRol.merge(rolPetro, disponibleParaTope(participe, novedades, codigoFilial), Double::sum);
 			}
 		}
 
@@ -1834,6 +1855,42 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		resultado.put("excesoTotal", Math.round(excesoTotal * 100.0) / 100.0);
 		resultado.put("detalle", violaciones);
 		return resultado;
+	}
+
+	/**
+	 * "Disponible" para el tope de UNA fila PXCA (un partícipe, un producto) — CORRECCIÓN
+	 * 2026-09-03, VALIDACION-TOPE-AFECTACION-MANUAL.md §10: la regla original ("el tope es el
+	 * total descontado del partícipe") era incompleta. Medido en producción, carga 449, rol
+	 * 7508 (SANCHEZ PRADO): descontado PH 282,77 + HS 15,42 + PE 57,79 + AH 50,75 = 406,73,
+	 * pero la novedad bloqueante era SOLO del PH. El operador tenía en sus manos 298,19
+	 * (PH + HS) — PE y AH los iba a aplicar el flujo AUTOMÁTICO porque no estaban bloqueados.
+	 * Poner el tope en 406,73 dejó a la afectación manual consumir plata que el automático ya
+	 * tenía asignada: 406,73 − 298,19 = 108,54 = exactamente los 57,79 (préstamo) + 50,75
+	 * (aporte) que el automático aplicó encima.
+	 *
+	 * <b>La regla corregida:</b> el tope es por PARTÍCIPE (eso no cambió — reclasificar entre
+	 * productos BLOQUEADOS sigue permitido, caso SARMIENTO), pero el universo no es TODO lo
+	 * descontado: es SOLO lo descontado en los productos que TIENEN novedad bloqueante. Un
+	 * producto sin novedad bloqueante lo resuelve el proceso automático y no debe contar para
+	 * el tope manual.
+	 *
+	 * <b>ÚNICA definición</b> — la usan {@link #calcularViolacionesTopeAfectacionManual} (y por
+	 * lo tanto {@link #validarTopeAfectacionManualPorParticipe} y
+	 * {@link #obtenerPrevueloAfectacionManual}) y {@link #obtenerTopeAfectacionManual}. Cambiar
+	 * la regla en un solo lugar y no en el otro es exactamente lo que esta extracción existe
+	 * para evitar.
+	 *
+	 * <p>Reutiliza {@link #novedadesQueRequierenAfectacion} (ya existía, la usa
+	 * {@code buscarValoresSinDestino} para la misma pregunta) — sin consultas nuevas: recibe
+	 * las novedades YA LEÍDAS de esta fila y solo clasifica en memoria.</p>
+	 *
+	 * @return el {@code totalDescontado} de esta fila si tiene alguna novedad bloqueante;
+	 *         {@code 0.0} si no (el automático la va a aplicar, no cuenta para el tope manual)
+	 */
+	private double disponibleParaTope(ParticipeXCargaArchivo participe, List<NovedadParticipeCarga> novedadesDeEstaFila,
+			Long codigoFilial) {
+		List<Long> tiposBloqueantes = novedadesQueRequierenAfectacion(participe, novedadesDeEstaFila, codigoFilial);
+		return tiposBloqueantes.isEmpty() ? 0.0 : nullSafe(participe.getTotalDescontado());
 	}
 
 	/** Cédula del partícipe a partir de su rol Petro, solo para el mensaje de la violación. */
