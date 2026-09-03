@@ -1,0 +1,73 @@
+package com.saa.ejb.crd.service;
+
+import java.time.LocalDate;
+import java.util.List;
+
+import com.saa.ejb.crd.service.dto.FiltroDetalleDistribucionBanda;
+import com.saa.ejb.crd.service.dto.OrigenDistribucionBandaResumen;
+import com.saa.ejb.crd.service.dto.ResultadoCuadreDistribucionBanda;
+import com.saa.ejb.crd.service.dto.ResultadoDetalleDistribucionBanda;
+import com.saa.model.crd.PagoPrestamo;
+
+import jakarta.ejb.Local;
+
+/**
+ * Auditoría de distribución en bandas — PLAN-AUDITORIA-BANDAS.md / API-AUDITORIA-BANDAS.md.
+ *
+ * <b>Se escribe donde se APLICA el pago, no donde se arma el asiento</b> — la banda es un
+ * dato de cartera, no contable. {@link #registrarDistribucionCargaPetro} corre SIEMPRE,
+ * exista o no contabilidad activa; el enganche con CNT ({@code idAsiento}) se completa
+ * después, vía {@link #actualizarAsiento}, solo cuando el asiento efectivamente se genera.
+ */
+@Local
+public interface DistribucionBandaService {
+
+    /** 404 - No hay distribución registrada para ese origen */
+    String ERR_ORIGEN_NO_ENCONTRADO = "ORIGEN_NO_ENCONTRADO";
+    /** 422 - {@code origen} fuera del vocabulario de {@link com.saa.rubros.DsbnOrigen} */
+    String ERR_ORIGEN_INVALIDO = "ORIGEN_INVALIDO";
+
+    /**
+     * Clasifica y persiste la distribución en bandas de los pagos de préstamo de una carga
+     * Petro — capital (con banda), interés ordinario, mora, interés vencido, desgravamen y
+     * seguro de incendio, uno por {@code PagoPrestamo}. Idempotente: reemplaza cualquier fila
+     * previa de este {@code (CARGA_PETRO, idCarga)} en vez de duplicar (reprocesar la carga
+     * ya no acumula historial falso).
+     *
+     * <b>No incluye aportes todavía</b> (cesantía/jubilación de la carga) — alcance de esta
+     * entrega, ver PLAN-AUDITORIA-BANDAS.md.
+     *
+     * @param pagos     Pagos VIGENTES de la carga (mismos que consume
+     *                  {@code CobroPetroContableService.contabilizarAplicacion})
+     * @throws Throwable si falta un dato obligatorio para clasificar (producto, tipo de
+     *                    préstamo cuando hace falta, fecha de vencimiento de la cuota)
+     */
+    void registrarDistribucionCargaPetro(Long idCarga, Long idEmpresa, List<PagoPrestamo> pagos,
+            String usuario) throws Throwable;
+
+    /**
+     * Estampa el asiento en todas las filas de un origen — se llama DESPUÉS de que
+     * contabilidad genera el suyo. No hace nada si {@code idAsiento} es null.
+     */
+    void actualizarAsiento(String origen, Long idOrigen, Long idAsiento) throws Throwable;
+
+    /**
+     * El encabezado de cuadre de un origen — {@code GET /rest/dsbn/cuadre}.
+     *
+     * @throws Throwable {@code IncomeException} {@link #ERR_ORIGEN_NO_ENCONTRADO} si no hay
+     *                    filas para ese origen, {@link #ERR_ORIGEN_INVALIDO} si {@code origen}
+     *                    no es uno de {@link com.saa.rubros.DsbnOrigen}
+     */
+    ResultadoCuadreDistribucionBanda obtenerCuadre(String origen, Long idOrigen) throws Throwable;
+
+    /**
+     * El detalle filtrable y paginado — {@code POST /rest/dsbn/detalle}. Un origen sin filas
+     * devuelve listas vacías con 200, NUNCA 404 ni una excepción: "no hay datos" es un
+     * resultado legítimo del filtro, no un fallo.
+     */
+    ResultadoDetalleDistribucionBanda obtenerDetalle(FiltroDetalleDistribucionBanda filtro) throws Throwable;
+
+    /** Orígenes con distribución registrada, del más reciente al más antiguo — {@code GET /rest/dsbn/origenes}. */
+    List<OrigenDistribucionBandaResumen> listarOrigenes(String origen, LocalDate fechaDesde,
+            LocalDate fechaHasta, Integer limite) throws Throwable;
+}

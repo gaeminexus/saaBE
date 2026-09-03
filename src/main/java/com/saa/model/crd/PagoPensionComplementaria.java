@@ -35,9 +35,10 @@ import jakarta.persistence.Table;
  * Ciclo de vida (PGPCESTD), ver {@link com.saa.rubros.EstadoPagoPensionComplementaria} — mismo
  * que {@link DevolucionAporte}, mismo motivo: dinero saliendo a un tercero vía CXP.
  *
- * <b>{@code idPagoProgramado}, {@code idAporte} y {@code numeroAsiento} son números sin FK, a
- * propósito</b> — mismo criterio que {@link DevolucionAporte}: el sistema se comercializa
- * después sin CRD, y la consistencia la garantiza el reconciliador, no la base.
+ * <b>{@code idPagoProgramado}, {@code idAporte}, {@code numeroAsiento} y
+ * {@code numeroAsientoDevengo} son números sin FK, a propósito</b> — mismo criterio que
+ * {@link DevolucionAporte}: el sistema se comercializa después sin CRD, y la consistencia la
+ * garantiza el reconciliador, no la base.
  */
 @SuppressWarnings("serial")
 @Entity
@@ -120,13 +121,26 @@ public class PagoPensionComplementaria implements Serializable {
     private Long idAporte;
 
     /**
-     * Código del asiento contable del pago, cuando exista (ítem 5 de jubilados, pendiente de
-     * confirmar la plantilla alterno 29). {@code null} hasta entonces — ausencia esperada, no
-     * un dato faltante.
+     * Código del asiento del PAGO, generado por CXP con la orden de pago — lo escribe el
+     * reconciliador ({@code sincronizarPago}) al confirmarse. Distinto de
+     * {@link #numeroAsientoDevengo}, que genera CRD. Mismo criterio que
+     * {@code DevolucionAporte.numeroAsiento} / {@code numeroAsientoReclasificacion}
+     * (sql/175, 2026-09-02). {@code null} hasta que el pago se confirme, o si no hubo orden
+     * de pago (100% cruzado contra préstamo) — ausencia esperada, no un dato faltante.
      */
     @Basic
     @Column(name = "PGPCNMAS")
     private Long numeroAsiento;
+
+    /**
+     * Código del asiento de DEVENGO de la pensión y su seguro de salud, generado por CRD con
+     * la plantilla alterno 35 ({@code generarAsientoDevengoPension}) al registrar el pago —
+     * SIEMPRE, exista o no orden de pago. Columna agregada por sql/175 (2026-09-02): antes de
+     * eso, este número vivía por error en {@link #numeroAsiento}.
+     */
+    @Basic
+    @Column(name = "PGPCNMDV")
+    private Long numeroAsientoDevengo;
 
     /** Usuario que generó el pago (el proceso mensual, no necesariamente una persona). */
     @Basic
@@ -263,6 +277,14 @@ public class PagoPensionComplementaria implements Serializable {
 
     public void setNumeroAsiento(Long numeroAsiento) {
         this.numeroAsiento = numeroAsiento;
+    }
+
+    public Long getNumeroAsientoDevengo() {
+        return numeroAsientoDevengo;
+    }
+
+    public void setNumeroAsientoDevengo(Long numeroAsientoDevengo) {
+        this.numeroAsientoDevengo = numeroAsientoDevengo;
     }
 
     public String getUsuarioRegistro() {

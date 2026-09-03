@@ -439,8 +439,11 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         // de decidir que no la hay) — mismo orden invertido que
         // DevolucionAporteServiceImpl#generarAsientoReclasificacion: si el devengo fallara acá,
         // la transacción entera se revierte y la orden de pago tampoco queda.
+        // sql/175 (2026-09-02): el devengo va en numeroAsientoDevengo, NO en numeroAsiento —
+        // esa columna es del asiento del PAGO (CXP), que la escribe sincronizarPago al
+        // confirmarse. Mismo criterio que DVAP.numeroAsientoReclasificacion / numeroAsiento.
         Long idAsientoDevengo = generarAsientoDevengoPension(pago, entidad, idEmpresa);
-        pago.setNumeroAsiento(idAsientoDevengo);
+        pago.setNumeroAsientoDevengo(idAsientoDevengo);
         pagoPensionDaoService.save(pago, pago.getCodigo());
 
         System.out.println("  ✅ Pago de pensión registrado - Entidad " + idEntidad + " - PGPC "
@@ -701,11 +704,10 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         if (estadoPago == EstadoPagoProgramado.CONFIRMADO) {
             pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.PAGADA));
             pago.setFechaPago(pagoProgramado.getFechaRespuesta());
-            // §4 PLAN-PAGO-JUBILADOS.md (2026-09-02): numeroAsiento YA NO se toma prestado del
-            // asiento bancario de CXP — desde generarPagoIndividual guarda el asiento de
-            // DEVENGO que genera CRD (generarAsientoDevengoPension), y no se sobreescribe acá.
-            // El asiento del banco, si hace falta auditarlo, se llega por
-            // pagoProgramado.getAsiento() a través de idPagoProgramado.
+            // sql/175 (2026-09-02): numeroAsiento vuelve a su significado original — el asiento
+            // del PAGO que genera CXP, escrito acá al confirmarse. El de DEVENGO (CRD) vive en
+            // numeroAsientoDevengo desde generarPagoIndividual y no se toca en este método.
+            pago.setNumeroAsiento((pagoProgramado.getAsiento() != null) ? pagoProgramado.getAsiento().getCodigo() : null);
             pagoPensionDaoService.save(pago, pago.getCodigo());
             parcial.setMarcadasPagadas(1);
             System.out.println("  ✅ Pago " + idPago + " PAGADO - Fecha: " + pago.getFechaPago());
