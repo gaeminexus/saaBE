@@ -22,6 +22,7 @@ import com.saa.ejb.crd.service.CargaArchivoService;
 import com.saa.ejb.crd.service.ClasificadorBandaService;
 import com.saa.ejb.crd.service.CobroPetroContableService;
 import com.saa.ejb.crd.service.ConfiguracionContabilidadService;
+import com.saa.ejb.crd.service.DistribucionBandaService;
 import com.saa.ejb.crd.dao.AsientoCargaPetroDaoService;
 import com.saa.ejb.crd.dao.DetalleCargaArchivoDaoService;
 import com.saa.ejb.crd.dao.TransferenciaCargaPetroDaoService;
@@ -128,6 +129,11 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
 
     @EJB
     private ClasificadorBandaService clasificadorBandaService;
+
+    /** PLAN-AUDITORIA-BANDAS.md: la distribución en bandas se escribe al APLICAR el pago, no
+     * al contabilizar — ver el comentario dentro de {@link #contabilizarAplicacion}. */
+    @EJB
+    private DistribucionBandaService distribucionBandaService;
 
     @EJB
     private PlanCuentaDaoService planCuentaDaoService;
@@ -669,14 +675,32 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         System.out.println("CobroPetroContableService.contabilizarAplicacion - Carga: " + idCarga);
         CargaArchivo carga = buscarCarga(idCarga);
 
+        // Pagos: filtran por CRARCDGO (única fuente, sin equivalente previo).
+        List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectVigentesByCargaArchivo(idCarga);
+
+        // PLAN-AUDITORIA-BANDAS.md §1: la distribución en bandas es un dato de CARTERA, no
+        // contable — se escribe SIEMPRE que haya pagos, exista o no contabilidad activa. Por
+        // eso el fetch de `pagos` y la resolución de `idEmpresa` se adelantaron a ANTES del
+        // guardarraíl de contabilidadActiva() de abajo; el resto de este método sigue
+        // exactamente igual, solo reordenado para que estén disponibles acá. Si no hay
+        // vigentes de transferencia (carga sin plata confirmada todavía) no se intenta: no
+        // hay con qué resolver la empresa y tampoco habría pagos en ese caso.
+        List<TransferenciaCargaPetro> vigentesParaDistribucion = null;
+        if (pagos != null && !pagos.isEmpty()) {
+            vigentesParaDistribucion = transferenciaCargaPetroDaoService.selectVigentesByCarga(idCarga);
+            if (vigentesParaDistribucion != null && !vigentesParaDistribucion.isEmpty()) {
+                Long idEmpresaDistribucion = resolverEmpresa(vigentesParaDistribucion);
+                distribucionBandaService.registrarDistribucionCargaPetro(
+                    idCarga, idEmpresaDistribucion, pagos, "sistema");
+            }
+        }
+
         if (!configuracionContabilidadService.contabilidadActiva()) {
             System.out.println("CobroPetroContableService.contabilizarAplicacion - contabilidad de"
                     + " CRD INACTIVA: no se genera el asiento de aplicación de la carga " + idCarga);
             return;
         }
 
-        // Pagos: filtran por CRARCDGO (única fuente, sin equivalente previo).
-        List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectVigentesByCargaArchivo(idCarga);
         // Aportes: sumValorPorTipoAporteByCarga filtra HOY por APRTIDAS, no por CRARCDGO
         // (transitorio hasta el backfill — ver su javadoc y el de Aporte.idAsoprep).
         List<Object[]> aportesPorTipo = aporteDaoService.sumValorPorTipoAporteByCarga(idCarga);
@@ -691,8 +715,12 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
             return;
         }
 
-        // idEmpresa: mismo criterio que confirmarRecepcion/contabilizarReparto.
-        List<TransferenciaCargaPetro> vigentes = transferenciaCargaPetroDaoService.selectVigentesByCarga(idCarga);
+        // idEmpresa: mismo criterio que confirmarRecepcion/contabilizarReparto. Ya se fetchó
+        // `vigentes` arriba para la distribución en bandas cuando hay pagos; si esta carga
+        // solo tiene aportes (sin pagos de préstamo) todavía no se resolvió, y se hace acá.
+        List<TransferenciaCargaPetro> vigentes = vigentesParaDistribucion != null
+            ? vigentesParaDistribucion
+            : transferenciaCargaPetroDaoService.selectVigentesByCarga(idCarga);
         Long idEmpresa = resolverEmpresa(vigentes);
 
         // --- Aportes: cesantía / jubilación --------------------------------------------
@@ -990,6 +1018,12 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         registro.setUsuarioRegistro("SISTEMA");
         registro.setFechaRegistro(LocalDateTime.now());
         asientoCargaPetroDaoService.save(registro, null);
+
+        // PLAN-AUDITORIA-BANDAS.md: el único enganche con contabilidad — se completa DESPUÉS
+        // de que el asiento existe, nunca antes (las filas ya estaban escritas desde el
+        // principio de este método, con o sin este asiento).
+        distribucionBandaService.actualizarAsiento(
+            com.saa.rubros.DsbnOrigen.CARGA_PETRO, idCarga, asiento.getCodigo());
     }
 
     // =====================================================================
