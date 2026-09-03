@@ -10,6 +10,7 @@ import com.saa.ejb.crd.dao.DetallePrestamoDaoService;
 import com.saa.ejb.crd.dao.EventoPrestamoDaoService;
 import com.saa.ejb.crd.dao.PagoPrestamoDaoService;
 import com.saa.ejb.crd.dao.PrestamoDaoService;
+import com.saa.ejb.crd.service.CargaArchivoService;
 import com.saa.ejb.crd.service.DetallePrestamoService;
 import com.saa.ejb.crd.service.MotorPagoPrestamoService;
 import com.saa.ejb.crd.service.PagoPrestamoService;
@@ -18,6 +19,7 @@ import com.saa.ejb.crd.service.dto.ContextoPago;
 import com.saa.ejb.crd.service.dto.DetalleAplicacionCuota;
 import com.saa.ejb.crd.service.dto.ResultadoAplicacionPago;
 import com.saa.ejb.crd.service.dto.SaldosCuota;
+import com.saa.model.crd.CargaArchivo;
 import com.saa.model.crd.DetallePrestamo;
 import com.saa.model.crd.EventoPrestamo;
 import com.saa.model.crd.PagoPrestamo;
@@ -35,8 +37,12 @@ import jakarta.ejb.Stateless;
  * Código NUEVO: es una copia adaptada del comportamiento de
  * {@code CargaArchivoPetroServiceImpl} (calcularSaldosRealesCuota, procesarPagoCuota,
  * procesarExcedenteASiguienteCuota, verificarYActualizarEstadoPrestamo, crearRegistroPago),
- * extendida con mora e interés vencido y con la prelación de 6 componentes. Aquel servicio
- * NO se modifica; la convergencia de ambos es una fase futura.
+ * extendida con mora e interés vencido y con la prelación de 6 componentes.
+ *
+ * 2026-09-02 (PLAN-FASE3-MOTOR-PAGOS.md): la convergencia dejó de ser una fase futura —
+ * {@code CargaArchivoPetroServiceImpl} (fase 3 de la carga Petro) ya llama a
+ * {@link #aplicarPago(Long, double, ContextoPago)} con {@code ContextoPago#getIdCargaArchivo()}
+ * seteado, en vez de reimplementar su propia cascada.
  *
  * @author Sistema SAA
  * @since 2026-08-14
@@ -67,6 +73,10 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
 
     @EJB
     private EventoPrestamoDaoService eventoPrestamoDaoService;
+
+    /** Solo para resolver ctx.getIdCargaArchivo() cuando viene no-null (carga Petro). */
+    @EJB
+    private CargaArchivoService cargaArchivoService;
 
     /** Pedido 10: para que un préstamo sin cuotas vencidas vuelva a VIGENTE en cuanto se paga. */
     @EJB
@@ -496,12 +506,30 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
                                            LocalDateTime fechaPago,
                                            ContextoPago ctx) throws Throwable {
 
+        // §4.6 PLAN-FASE3-MOTOR-PAGOS.md: "dinero sin destino ES el descuadre" — si el total no
+        // cuadra exactamente con la suma de los 6 componentes, PGPR queda con un valor que no se
+        // puede reconstruir desde su propio desglose (rompe el invariante del que depende
+        // calcularSaldosCuota). Nunca hubo esta validación acá; se agrega ahora.
+        double sumaComponentes = redondear(redondear(capitalPagado) + redondear(interesPagado)
+            + redondear(moraPagada) + redondear(interesVencidoPagado) + redondear(desgravamenPagado)
+            + redondear(valorSeguroIncendio));
+        double montoTotalRedondeado = redondear(montoTotal);
+        if (Math.abs(montoTotalRedondeado - sumaComponentes) > TOLERANCIA) {
+            throw new IncomeException("Descuadre al registrar el pago de la cuota #" + cuota.getNumeroCuota()
+                + " (préstamo " + (cuota.getPrestamo() != null ? cuota.getPrestamo().getCodigo() : null)
+                + "): el total $" + montoTotalRedondeado + " no coincide con la suma de sus componentes $"
+                + sumaComponentes + " (capital " + redondear(capitalPagado) + " + interés " + redondear(interesPagado)
+                + " + mora " + redondear(moraPagada) + " + interés vencido " + redondear(interesVencidoPagado)
+                + " + desgravamen " + redondear(desgravamenPagado) + " + seguro incendio "
+                + redondear(valorSeguroIncendio) + ").");
+        }
+
         PagoPrestamo pago = new PagoPrestamo();
         pago.setPrestamo(cuota.getPrestamo());
         pago.setDetallePrestamo(cuota);
         pago.setNumeroCuota(cuota.getNumeroCuota());
         pago.setFecha(fechaPago);
-        pago.setValor(redondear(montoTotal));
+        pago.setValor(montoTotalRedondeado);
 
         pago.setCapitalPagado(redondear(capitalPagado));
         pago.setInteresPagado(redondear(interesPagado));
@@ -525,6 +553,16 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
         pago.setIdEstado(1L);
         pago.setAnulado(0L);
         pago.setEventoPrestamo(buscarEvento(idEvento));
+
+        // §4.1 PLAN-FASE3-MOTOR-PAGOS.md: trazabilidad hacia la carga Petro que originó el pago
+        // (CobroPetroContableServiceImpl.contabilizarAplicacion agrupa por CRARCDGO). Los demás
+        // llamadores del motor (pago manual, aportes, precancelación, reverso) no traen
+        // idCargaArchivo en su ContextoPago y quedan exactamente igual que hoy.
+        Long idCargaArchivo = ctx != null ? ctx.getIdCargaArchivo() : null;
+        if (idCargaArchivo != null) {
+            CargaArchivo cargaArchivo = cargaArchivoService.selectById(idCargaArchivo);
+            pago.setCargaArchivo(cargaArchivo);
+        }
 
         pago = pagoPrestamoService.saveSingle(pago);
         System.out.println("      💾 PagoPrestamo creado: " + pago.getCodigo() + " - Valor: $" + pago.getValor());

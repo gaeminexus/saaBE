@@ -53,8 +53,14 @@ de `saldoOtros` como capital precancelado).
 
 ### 1.3 Fuera de alcance (dejar TODOs, no implementar)
 
-- Refactor del proceso Petro para que consuma el motor nuevo (dejar comentario TODO en
-  `CargaArchivoPetroServiceImpl`).
+- ~~Refactor del proceso Petro para que consuma el motor nuevo (dejar comentario TODO en
+  `CargaArchivoPetroServiceImpl`).~~ **Implementado el 2026-09-02**, fuera del plan de fases de
+  este documento: ver `docs/logica-negocio/petro/PLAN-FASE3-MOTOR-PAGOS.md` y
+  `REGLAS-CARGA-PETRO.md` §3.5. `CargaArchivoPetroServiceImpl` (fase 3 de la carga Petro) ya es
+  un caller del motor — la convergencia dejó de ser una fase futura. Queda pendiente de
+  confirmación con el usuario un punto puntual (§3.5 de `REGLAS-CARGA-PETRO.md`, afectación
+  manual) y un hallazgo sin corregir (divergencia entre `calcularSaldosRealesCuota` de la carga
+  y la del motor — mismo documento).
 - Contabilidad real (solo hooks no-op; pre-requisitos contables listados en §9.3).
 - ~~Servicio nocturno de cálculo de interés de mora diario (futuro; el motor YA cobra lo que ese
   proceso escriba en `DTPRMRAA`/`DTPRINVN`).~~ **Implementado el 2026-08-14**, fuera del plan de
@@ -359,9 +365,16 @@ List<PagoPrestamo> selectByEvento(Long codigoEvento);
 
 ## 6. El motor de pagos — `MotorPagoPrestamoService`
 
-Extracción **desacoplada** (código nuevo, copiado y adaptado; NO tocar
+Extracción **desacoplada** (código nuevo, copiado y adaptado; en esta fase inicial NO se tocó
 `CargaArchivoPetroServiceImpl`) de: `calcularSaldosRealesCuota`, `procesarPagoCuota`,
 `procesarExcedenteASiguienteCuota`, `verificarYActualizarEstadoPrestamo`, `crearRegistroPago`.
+
+**2026-09-02**: esa restricción era solo de esta fase inicial. La convergencia ya ocurrió
+(`PLAN-FASE3-MOTOR-PAGOS.md`) — `procesarPagoCuota` y `procesarExcedenteASiguienteCuota` de
+`CargaArchivoPetroServiceImpl` se BORRARON, y ese servicio ahora llama a
+`aplicarPago(idPrestamo, valor, ctx)` de este motor. `calcularSaldosRealesCuota`/`buscarCuotaAPagar`
+de la carga siguen existiendo, sin tocar, pero solo para decidir a qué préstamo dirigir el pago
+(ver `REGLAS-CARGA-PETRO.md` §3.5 para la divergencia que eso introduce).
 
 ```java
 @Local
@@ -1151,9 +1164,12 @@ Decisiones de implementación (sin desviarse del diseño):
   log y devuelve el sobrante a la cascada. Así `PGPR` sigue cumpliendo que sus componentes
   suman su `PGPRVLRR` y no se pierde dinero.
 
-**Modificado:** `CargaArchivoPetroServiceImpl` — SOLO se agregó el comentario TODO de
-convergencia futura en el JavaDoc de la clase, como manda §1.3. La lógica de pagos del proceso
-Petro NO se tocó.
+**Modificado (fase inicial, 2026-08-14):** `CargaArchivoPetroServiceImpl` — SOLO se agregó el
+comentario TODO de convergencia futura en el JavaDoc de la clase, como mandaba §1.3 de entonces.
+La lógica de pagos del proceso Petro NO se tocó en esa fase.
+
+**2026-09-02**: esa convergencia ya se hizo (`PLAN-FASE3-MOTOR-PAGOS.md`) — ver §6 arriba y
+`REGLAS-CARGA-PETRO.md` §3.5.
 
 ### Fase 2 — Pago manual (2026-08-14)
 

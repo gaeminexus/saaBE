@@ -45,6 +45,16 @@ public class ContextoPago {
      */
     private Long idCobroCredito;
 
+    /**
+     * Código de la {@code CargaArchivo} (ASOPREP/CRD.CRAR) que originó este pago — trazabilidad
+     * para el asiento de aplicación en dos pasos de la carga Petro
+     * ({@code CobroPetroContableServiceImpl.contabilizarAplicacion}, que agrupa por CRARCDGO).
+     * {@code null} = llamada fuera de la carga Petro (pago manual, aportes, precancelación,
+     * reverso): el motor NO debe estampar carga en ese caso, ni cambiar ningún otro
+     * comportamiento. Ver PLAN-FASE3-MOTOR-PAGOS.md §4.1.
+     */
+    private Long idCargaArchivo;
+
     public ContextoPago() {
     }
 
@@ -110,5 +120,13 @@ public class ContextoPago {
 
     public void setIdCobroCredito(Long idCobroCredito) {
         this.idCobroCredito = idCobroCredito;
+    }
+
+    public Long getIdCargaArchivo() {
+        return idCargaArchivo;
+    }
+
+    public void setIdCargaArchivo(Long idCargaArchivo) {
+        this.idCargaArchivo = idCargaArchivo;
     }
 }

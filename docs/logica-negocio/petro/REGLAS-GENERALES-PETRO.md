@@ -33,6 +33,14 @@ por **descuento de nómina**. El ciclo mensual es:
 La **generación** vive en `crd` (`GeneracionArchivoPetroServiceImpl`); la **carga/aplicación** en
 `asoprep` (`CargaArchivoPetroServiceImpl`).
 
+**Desde el 2026-09-02** (`PLAN-FASE3-MOTOR-PAGOS.md`), la aplicación de pagos a préstamos (fase 3,
+paso 5) ya no reimplementa su propia cascada: delega en el motor compartido
+`com.saa.ejb.crd.serviceImpl.MotorPagoPrestamoServiceImpl`, que reparte con una prelación de 6
+componentes (Seguro de Incendio → Desgravamen → **Mora** → Interés Vencido → Interés → Capital).
+**La mora ahora se cobra en la carga** — antes no se cobraba en absoluto por este camino (la
+cascada local nunca tuvo componente de mora). Ver el detalle en
+[REGLAS-CARGA-PETRO.md §3.5](REGLAS-CARGA-PETRO.md).
+
 ## 2. Código fuente autoritativo
 
 | Área | Clase | Notas |
@@ -195,7 +203,11 @@ Los docs antiguos con rutas `/api/...`, `/api/generacion-petro`, `/api/petrocome
    (`DTPRVLSI`), no contra el desgravamen.
 2. **`PGPR` (PagoPrestamo) es la fuente de verdad de lo pagado.** Los campos `*Pagado` de la cuota
    pueden estar desactualizados; `calcularSaldosRealesCuota()` (carga) y `obtenerPagosPorCuota()`
-   (generación) siempre recalculan desde PGPR.
+   (generación) siempre recalculan desde PGPR. **Desde el 2026-09-02**, la de la carga
+   (`CargaArchivoPetroServiceImpl`) ya NO decide la aplicación del pago — solo a qué préstamo
+   dirigirlo (`buscarCuotaAPagar`); `MotorPagoPrestamoServiceImpl` tiene su PROPIA
+   reconstrucción desde PGPR (con mora e interés vencido, la de la carga no los incluye) para
+   decidir la cuota real y el reparto. Ver la nota de divergencia en la trampa 8.
 3. **`saldoCapital = max(0, saldoInicialCapital − capitalPagado)`** — usa `saldoInicialCapital`
    (saldo del préstamo al inicio de la cuota), NO `capital` (capital de la cuota).
 4. **Estado del préstamo va en `PRSTIDST` (idEstado)**, no en `ESPSCDGO`; estado de la cuota va en
@@ -207,6 +219,16 @@ Los docs antiguos con rutas `/api/...`, `/api/generacion-petro`, `/api/petrocome
    pendientes deben escribirse `(d.estado IS NULL OR d.estado NOT IN (:pagada, :cancelada))`.
 7. Oracle no admite más de 1.000 elementos en un `IN`: las consultas agregadas sobre PGPR se hacen
    en bloques de 500.
+8. **⚠️ Divergencia entre las dos implementaciones de saldo, hallazgo del 2026-09-02, NO
+   corregido.** `calcularSaldosRealesCuota` de `CargaArchivoPetroServiceImpl` (usada solo por
+   `buscarCuotaAPagar` para elegir préstamo) excluye mora e interés vencido a propósito
+   (`totalBaseCuota`); la de `MotorPagoPrestamoServiceImpl` (la que aplica el pago de verdad) los
+   incluye. Su autocorrección puede marcar una cuota PAGADA mirando solo el saldo base aunque
+   le quede mora real pendiente según el motor — una vez PAGADA, ninguna de las dos consultas de
+   "cuotas pendientes" la vuelve a mirar, y esa mora queda sin cobrar. Reportado al árbitro,
+   pendiente de decisión sobre si vale la pena hacer mora-aware a `buscarCuotaAPagar` o
+   reemplazarla por lógica del motor. Detalle en
+   [REGLAS-CARGA-PETRO.md §3.5](REGLAS-CARGA-PETRO.md).
 8. El archivo de respuesta se lee en **ISO-8859-1** (ñ/tildes); prohibido cambiar a UTF-8.
 9. `parseDouble` del parser acepta formato europeo (`1.234,56`) y devuelve `0.0` ante error, nunca
    lanza excepción.

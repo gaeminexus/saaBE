@@ -366,7 +366,11 @@ abortaban el resto; ese comportamiento se eliminó. Al final, sin errores: `Carg
    - Si la consulta/validación del HS FALLA de verdad (no "no existe": la excepción de la
      consulta), aborta toda la carga — antes se tragaba el error y la cuota quedaba PARCIAL
      igual, un resultado equivocado disfrazado de degradación legítima (§3.1b).
-5. `buscarCuotaAPagar` (§3.4) y `procesarPagoCuota` (§3.5).
+5. `buscarCuotaAPagar` (§3.4, decide **a qué préstamo** dirigir el pago) y, si encontró cuota,
+   `aplicarPagoNormalConMotor` → `MotorPagoPrestamoService.aplicarPago` (§3.5, decide **cómo**
+   se reparte: el motor vuelve a elegir la cuota real dentro del préstamo con su propia
+   cascada, que puede no ser la misma que encontró `buscarCuotaAPagar` — ver la nota de
+   divergencia en §3.5).
 6. **Red de seguridad**: al final se ejecuta `verificarYActualizarEstadoPrestamos(prestamos)`
    (dedup por código) porque cualquier ruta pudo liquidar la última cuota.
 
@@ -390,40 +394,59 @@ abortaban el resto; ese comportamiento se eliminó. Al final, sin errores: `Carg
     pagos parciales reales en `PGPR`, la trataba como si debiera el 100% de nuevo (riesgo de
     re-cobro).
 
-### 3.5 `procesarPagoCuota` — determinación de estado y desglose
-`totalPendiente` = saldos reales (desgravamen + interés + capital + seguro de incendio).
-La comparación del desglose archivo-vs-cuota (`validarDesgloseCuotaSinTolerancia`, ±0.01 por
-componente) es **solo informativa**: lo que decide el estado es si el monto cubre el saldo.
+### 3.5 Aplicación del pago — delegada en `MotorPagoPrestamoService` (2026-09-02)
 
-| Caso | Resultado |
-|---|---|
-| cuota ya PAGADA según PGPR | todo el monto pasa a excedente (§ excedentes) + verificación de préstamo |
-| `\|monto − totalPendiente\| ≤ 0.01` | **PAGADA**: `fechaPagado = now`, `capitalPagado = capital` (etc. — totales, no acumulativo porque es estado final), `saldoInteres = 0`, `saldoCapital = max(0, saldoInicialCapital − capitalPagado)`, `saldo` global recalculado |
-| `monto > totalPendiente` | **PAGADA** igual que arriba + `crearRegistroPago(totalPendiente, …)` + excedente a la siguiente cuota + verificación de préstamo |
-| `monto < totalPendiente` | **PARCIAL**: distribución en orden **Desgravamen → Interés → Capital → Seguro de Incendio** con `min(restante, pendiente)`; los `*Pagado` se **ACUMULAN** sobre lo previo |
+**Cambio de fondo (`PLAN-FASE3-MOTOR-PAGOS.md`).** Hasta el 2026-09-02, `procesarPagoCuota` +
+`procesarExcedenteASiguienteCuota` reimplementaban acá su propia cascada de 4 componentes
+(Desgravamen → Interés → Capital → Seguro de Incendio), **sin mora ni interés vencido**
+(consistente con §4b: `totalBaseCuota` los excluye a propósito). Eso dejó de existir: los dos
+métodos se borraron. Ahora, tanto el pago normal (`aplicarPagoNormalConMotor`) como la afectación
+manual (`aplicarAfectacionManualConRegistroPago`) arman un `ContextoPago` (con
+`idCargaArchivo` = la carga, para que `CobroPetroContableServiceImpl.contabilizarAplicacion`
+la trazabilice, y `fechaPago` = último día del mes de afectación, sin fallback a `now()`) y llaman
+a `MotorPagoPrestamoService.aplicarPago(idPrestamo, monto, ctx)`.
 
-- Siempre: `cuota.codigoExterno = idCarga`, `saveSingle(cuota)`, `crearRegistroPago(...)` con el
-  monto aplicado en ESTA operación (incluye `valorSeguroIncendio` y `idEstado = 1L` obligatorio,
-  observación `"Pago cuota #N - Mes m/aaaa - Carga X [CargaArchivo: X]"`), y
-  `verificarYActualizarEstadoPrestamo(prestamo)`. Si `crearRegistroPago` falla, aborta toda la
-  carga (§3.1b, corregido 2026-08-29): antes se tragaba el error y la cuota quedaba
-  PAGADA/PARCIAL sin ningún `PagoPrestamo` detrás — rompía el invariante "PGPR es la fuente de
-  verdad" del que depende `calcularSaldosRealesCuota` y el resto del sistema. Mismo criterio
-  para `crearRegistroPagoAporte` del lado de aportes (§3.6): un `Aporte` marcado PAGADA sin su
-  `PagoAporte` es el mismo problema.
+El motor cascadea sobre TODAS las cuotas pendientes del préstamo con su propia prelación de 6
+componentes (Seguro de Incendio → Desgravamen → Mora → Interés Vencido → Interés → Capital,
+ver `ESPECIFICACION-SERVICIOS-PAGO-PRESTAMOS.md` §6), reconstruyendo saldos desde los
+`PagoPrestamo` VIGENTES de cada cuota — **por eso la mora se cobra ahora**, sin ningún cambio en
+`ProcesoMoraPrestamoService` ni en la generación del archivo (`REGLAS-GENERACION-PETRO.md`, que
+ya la incluía en el monto enviado a la empresa). El motor crea su propio `PagoPrestamo` por cada
+cuota que toca (con el invariante `valor == Σ componentes`, o lanza) y marca PAGADA/PARCIAL según
+corresponda — `aplicarPagoParticipe` ya no arma ni guarda esos datos a mano.
 
-**Excedentes** (`procesarExcedenteASiguienteCuota`): cualquier excedente > 0 se aplica a la
-siguiente cuota pendiente con número MAYOR y saldo real > 0.01 (iterativo, máx. 100; las cuotas con
-saldo insignificante se van marcando PAGADA). El excedente se procesa recursivamente vía
-`procesarPagoCuota` con seguro de incendio 0 (ya se aplicó en la cuota original). Si no hay más
-cuotas, el remanente queda sin aplicar (solo log).
+**⚠️ Divergencia con `buscarCuotaAPagar` (§3.4), a tener en cuenta al depurar.**
+`buscarCuotaAPagar`/`calcularSaldosRealesCuota` de ESTA clase **no se tocaron** — siguen usando
+`totalBaseCuota` (sin mora) solo para decidir **a qué préstamo** dirigir el pago. El motor, ya
+adentro, vuelve a elegir la cuota real con su PROPIA cascada (que sí ve mora) — puede no
+coincidir con la que encontró `buscarCuotaAPagar`, y es la del motor la que manda. Más importante:
+la autocorrección de `calcularSaldosRealesCuota` (esta clase) puede marcar una cuota **PAGADA**
+mirando solo el saldo base, aunque esa cuota todavía tenga mora real pendiente según el motor
+(que la dejaría PARCIAL). Una vez PAGADA, ambas consultas de "cuotas pendientes" (la de esta
+clase y la del motor) la excluyen — su mora queda huérfana, sin forma de cobrarse en una carga
+futura. Esto no es nuevo (la autocorrección local existía antes de este cambio y nunca miró
+mora), pero antes era inofensivo porque nada acá cobraba mora; ahora que el motor sí la cobra,
+esta divergencia entre las dos implementaciones de saldo puede bloquearla en casos puntuales.
+**Reportado al árbitro como hallazgo pendiente de decisión — no se corrigió en este cambio**
+(tocar `calcularSaldosRealesCuota`/`buscarCuotaAPagar` está fuera del alcance de
+`PLAN-FASE3-MOTOR-PAGOS.md` §4, que no las lista entre los cambios).
 
-**Afectación manual** (`aplicarAfectacionManualConRegistroPago`): se aplican las AVPC **con cuota**
-ordenadas por número. Si la AVPC no tiene desglose (capital/interés/desgravamen en 0) pero sí
-`valorAfectar`, se distribuye automáticamente con el mismo orden Desgravamen → Interés → Capital →
-Seguro de Incendio contra los saldos reales. Los valores se **acumulan**; estado PAGADA si
-`|totalPagadoAcumulado − totalEsperado| ≤ 0.01`, si no PARCIAL.
-La tabla AVPC no tiene campo para seguro de incendio (limitación conocida, queda advertencia en log).
+**Excedente no aplicado** (`ResultadoAplicacionPago.getExcedenteNoAplicado()`): si el préstamo se
+queda sin más cuotas pendientes con saldo, el excedente **NUNCA se escribe en `PGPRVLRR`** —
+se registra como novedad `MONTO_INCONSISTENTE` (clasifica `BLOQUEANTE` vía
+`FamiliaNovedadCarga.clasificar`, al traer `montoDiferencia` positiva) para que el operador lo
+distribuya manualmente vía AVPC, igual que cualquier otro valor sin destino de esta carga.
+
+**Afectación manual** (`aplicarAfectacionManualConRegistroPago`, **asunción del árbitro
+pendiente de confirmar con el usuario**): se aplican las AVPC **con cuota** ordenadas por
+número, pero cada una ahora llama al motor con `valorAfectar` sobre el **préstamo** de esa
+cuota (`aplicarPago(idPrestamo, valorAfectar, ctx)`), no ya un reparto manual capital/interés/
+desgravamen escrito a mano en los campos de la propia AVPC. AVPC sigue definiendo destino
+(préstamo) y monto; el desglose interno (qué componente cobra cada peso, incluida la mora, que
+AVPC no puede expresar) lo decide la cascada del motor sobre los saldos reales del préstamo —
+que puede terminar aplicando el dinero a una cuota distinta de `afectacion.getDetallePrestamo()`
+si esa ya no es la más antigua pendiente. La tabla AVPC sigue sin campo de seguro de incendio ni
+de mora; con el motor eso deja de ser una limitación, porque ya no hace falta que lo tenga.
 **Desde el 2026-08-31, una AVPC sin cuota YA NO se omite**: si tiene tipo de aporte va por
 §3.6b; si no tiene ninguno de los dos, aborta la carga (ver el punto 2 de §3.3).
 
@@ -438,8 +461,10 @@ La tabla AVPC no tiene campo para seguro de incendio (limitación conocida, qued
   dejaba la última cuota liquidada con el préstamo VIGENTE para siempre (o sin volver de EN_MORA
   a VIGENTE).
 - Debe invocarse al final de TODA ruta que pueda marcar una cuota como PAGADA (pago exacto,
-  excedente, afectación manual, recálculo por PGPR) — hoy: 2 puntos en `procesarPagoCuota`, tras
-  las AVPC, y la red de seguridad de `aplicarPagoParticipe`.
+  excedente, afectación manual, recálculo por PGPR) — hoy: dentro de
+  `MotorPagoPrestamoService.aplicarPago` (cada llamada desde `aplicarPagoNormalConMotor` o
+  `aplicarAfectacionManualConRegistroPago`), tras las AVPC, y la red de seguridad de
+  `aplicarPagoParticipe`.
 
 ### 3.6 Producto `AH` — aportes (`aplicarAporteAH`)
 
@@ -651,14 +676,25 @@ Por qué era obligatorio:
 - **Fase 2**: compara `DTPRTTLL` contra el monto del archivo con tolerancia de $1. Con la mora
   adentro, **toda cuota vencida** generaría `MONTO_INCONSISTENTE (13)` — que está en
   `NOVEDADES_REQUIEREN_AFECTACION_MANUAL` y **bloquearía la fase 3 completa** de la carga mensual.
-- **Fase 3**: `calcularSaldosRealesCuota` usa `DTPRTTLL` como `totalPendiente` cuando la cuota no
-  tiene pagos previos. La prelación de este proceso solo reparte entre **desgravamen, interés,
-  capital y seguro de incendio** — no tiene componente de mora, así que jamás podría agotar un
-  pendiente que la incluya y toda cuota vencida quedaría **PARCIAL en vez de PAGADA**.
+  **Esto sigue vigente sin cambios**: Fase 2 no se tocó en la migración a
+  `MotorPagoPrestamoService` (2026-09-02, `PLAN-FASE3-MOTOR-PAGOS.md`) y sigue necesitando
+  `totalBaseCuota` para no bloquearse a sí misma.
+- **Fase 3, hasta el 2026-09-02**: `calcularSaldosRealesCuota` (de esta clase) usaba `DTPRTTLL`
+  como `totalPendiente` cuando la cuota no tenía pagos previos. La prelación de este proceso solo
+  repartía entre **desgravamen, interés, capital y seguro de incendio** — sin componente de
+  mora, así que jamás podía agotar un pendiente que la incluyera y toda cuota vencida quedaba
+  **PARCIAL en vez de PAGADA**.
 
-⚠️ **Regla permanente**: cualquier lectura nueva de `DTPRTTLL` en este servicio debe pasar por
-`totalBaseCuota(...)`. La mora de las cuotas vencidas la cobra el motor de pagos de préstamos
-(`MotorPagoPrestamoService`), que sí tiene el componente en su prelación de 6.
+⚠️ **Regla permanente para Fase 2 y para `buscarCuotaAPagar`/`calcularSaldosRealesCuota` de esta
+clase**: cualquier lectura de `DTPRTTLL` ahí debe pasar por `totalBaseCuota(...)`.
+
+**Desde el 2026-09-02, la aplicación del pago (§3.5) ya NO usa `totalBaseCuota` ni la
+`calcularSaldosRealesCuota` de esta clase** — delega en `MotorPagoPrestamoService.aplicarPago`,
+que lee `DTPRTTLL` directamente (`cuota.getTotal()`, que YA incluye la mora acumulada por el
+proceso diario) y agrega el interés vencido aparte, sin restar nada — por eso la mora de las
+cuotas vencidas se cobra ahora, con la prelación de 6 componentes del motor. `totalBaseCuota`
+sigue existiendo y en uso, pero solo para Fase 2 y para `buscarCuotaAPagar` (que decide a qué
+préstamo dirigir el pago, no cómo se reparte — ver la nota de divergencia en §3.5).
 
 Nota: `GeneracionArchivoPetroServiceImpl` tampoco lee `DTPRTTLL` — arma el monto en
 `calcularSaldoCuota` sumando los componentes uno a uno (`capital + interés + mora +
