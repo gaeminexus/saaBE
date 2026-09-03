@@ -591,3 +591,29 @@ por un pago que el sistema muestra anulado.
 o que `motivoBloqueo` frene también los `CONFIRMADO`. ⚠️ **Cambia el comportamiento visible**: una
 anulación que hoy pasa empezaría a fallar pidiendo que se revierta primero. Es lo correcto, pero es
 una decisión del usuario, no técnica.
+
+---
+
+## §12 — Deuda: `in :ids` sin techo, y un comentario que describe la intención
+
+**Hallado el 2026-09-03**, revisando el ÍTEM 26 de caja chica.
+
+`EgresoServiceImpl.completaFormaPago:292` resuelve la forma de pago de una página de egresos con
+`... where p.egreso.id in :ids`. **Más de 1000 elementos es `ORA-01795` en Oracle**, y su llamador
+`EgresoServiceImpl.listar(idEmpresa, estado)` **no pagina**: devuelve todos los egresos de una
+empresa en un estado.
+
+Su javadoc dice *«una sola consulta por página»*. **No hay páginas.** La frase describe la
+intención del autor, no el comportamiento del código — y como suena a garantía, el agente que copió
+el molde para caja chica copió también la ausencia de troceo, razonablemente.
+
+> **El principio:** *un comentario que describe la intención y no el comportamiento envejece peor
+> que no tener comentario.* El que no está obliga a leer el código; el que miente convence de no
+> leerlo. Y se propaga: quien copia el molde copia la frase.
+
+**Qué se hizo:** el método nuevo de caja chica trocea en lotes de 1000.
+**Qué NO se hizo, a propósito:** tocar `EgresoServiceImpl`. Es un camino que hoy funciona y el hueco
+es preexistente. Queda como deuda, no como parte del frente.
+
+**No está medido si se dispara.** Según cómo Hibernate 6 renderice el `in`, podría no llegar nunca
+al límite. Se troceó justamente para no depender de averiguarlo.
