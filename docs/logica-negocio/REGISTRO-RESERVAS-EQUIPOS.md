@@ -561,3 +561,54 @@ complementario: **lo que sí está en `origin` existe para todos, aunque no est�
 
 **Un DDL aditivo y nullable es inofensivo para el WAR que ya está corriendo** —nadie lee esas
 columnas todavía— así que correrlo antes no tiene costo ni requiere ventana.
+
+---
+
+## 7. ⛔ Hallazgo transversal en `cnt` (frontend): siete pantallas pueden truncar listados en silencio
+
+**Medido el 2026-09-02 por el equipo B de crd**, al corregir un «0 of 0» que el usuario reportó en la
+pantalla de plantillas. **Ninguna de las pantallas de `cnt` fue modificada salvo esa** — el resto es
+una investigación de sólo lectura que se deja acá para quien tome contabilidad.
+
+### El defecto
+
+El paginador (y a veces el `matSort`) se conecta al `MatTableDataSource` **una sola vez**, en
+`ngAfterViewInit`. Pero vive dentro de un `*ngIf`/`@if` que **arranca en falso** —porque hay un panel
+de bienvenida, o porque `loading` se pone en `true` de forma síncrona en `ngOnInit`, que corre
+**antes** que `ngAfterViewInit`—. En ese momento el `@ViewChild` resuelve `undefined`, la asignación
+no ocurre, y **nunca se vuelve a intentar**: después el paginador aparece de verdad en el DOM y ya
+nadie lo engancha.
+
+### ⛔ Por qué no es cosmético
+
+Una tabla así **muestra las primeras filas de un conjunto más grande sin ningún indicio de que hay
+más**. El contador dice «0 of 0» y los controles no responden. Alguien mira un plan de cuentas, un
+listado de asientos o una mayorización, ve lo que hay en pantalla, y **concluye que eso es todo**.
+
+### Estado
+
+| Pantalla | Estado |
+|---|---|
+| `plantilla-general` | ✅ **Corregido** (`a3e2bf4`) — reportado por el usuario |
+| `asientos-contables-dinamico` | ⛔ paginador y sort |
+| `listado-asientos` | ⛔ paginador |
+| `mayorizacion` | ⛔ paginador y sort |
+| `parametrizacion/centro-grid` | ⛔ paginador y sort |
+| `parametrizacion/periodo-contable` | ⛔ paginador y sort (doblemente afectado) |
+| `parametrizacion/plan-grid` | ⛔ paginador y sort |
+| `detalle-mayorizacion` | ✔ no aplica — pagina por *slicing* manual, otra arquitectura |
+| `plan-arbol` | ✔ no aplica — es un árbol, no tiene paginador ni sort |
+| `tipo-asiento-general-grid` · `tipo-asiento-sistema-grid` | ✔ sin gating, siempre en el DOM |
+
+### La corrección, ya probada
+
+Factorizar el enganche en un método **idempotente** (que sólo reasigna si la referencia cambió) y
+llamarlo también desde `ngAfterViewChecked`. Aplicado y verificado en `plantilla-general`; es
+mecánico y el mismo para las seis.
+
+**No se tocan sin que su dueño lo decida.** Queda acá para que la decisión se tome con la lista
+completa y no pantalla por pantalla.
+
+> Nota menor, sin tocar: `plantilla-general` declara un `@ViewChild('maestroPaginator')` que no tiene
+> `<mat-paginator #maestroPaginator>` en el HTML ni asignación en el `.ts`. Es una referencia
+> huérfana, no el mismo defecto.
