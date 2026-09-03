@@ -113,12 +113,12 @@ generador dentro del módulo daba un negativo falso.
 | `RPRT_ROLL_CNSL` rol consolidado | ✅ |
 | `RPRT_PRVS_PRDO` provisiones | ✅ |
 | `RPRT_APRT_RSMN` resumen de aportes | ✅ |
-| `RPRT_ROLL_INDV` rol individual | 🟠 declarado en el frontend, **no ofrecido** en la pantalla |
+| `RPRT_ROLL_INDV` rol individual | ✅ **conectado** — `roles-pago.component.ts:268`, botón por fila. *(Corregido el 2026-09-03: este documento decía «declarado y no ofrecido». El comentario de `reportes-nomina.component.ts:31-33` YA lo declaraba —«se descarga por colaborador desde la pantalla de roles de pago»— y no lo leí: busqué la constante en el archivo de reportes y concluí sin ver **quién más la usaba**. Lo levantó el agente de frontend.)* |
 | **`RPRT_ACTA_FNQT` acta de finiquito** | ❌ **ninguna referencia en todo el frontend** |
 | **`RPRT_F107_INDV` formulario 107 individual** | ❌ **ninguna referencia** |
 | **`RPRT_IESS_CNTR` control IESS** | ❌ **ninguna referencia** |
 
-**Es el hueco más barato de cerrar de todo el listado**: el trabajo está hecho y compilado; falta
+**Son TRES, no cuatro.** El rol individual ya estaba conectado. **Es el hueco más barato de cerrar de todo el listado**: el trabajo está hecho y compilado; falta
 conectarlo. Y el acta de finiquito deja de ser un faltante del Ministerio para pasar a ser un botón.
 
 > **Tercera aparición del mismo patrón en el día**, y conviene tratarlo como criterio: *los endpoints

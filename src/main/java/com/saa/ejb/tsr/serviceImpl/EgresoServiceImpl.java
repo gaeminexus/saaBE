@@ -8,7 +8,6 @@ import java.util.Map;
 
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
-import com.saa.ejb.cxp.dao.PagoProgramadoDaoService;
 import com.saa.ejb.cxp.service.PagoProgramadoService;
 import com.saa.ejb.tsr.dao.EgresoDaoService;
 import com.saa.ejb.tsr.service.EgresoService;
@@ -35,9 +34,6 @@ public class EgresoServiceImpl implements EgresoService {
 
 	@EJB
 	private PagoProgramadoService pagoProgramadoService;
-
-	@EJB
-	private PagoProgramadoDaoService pagoProgramadoDaoService;
 
 	@PersistenceContext
 	private EntityManager em;
@@ -211,14 +207,24 @@ public class EgresoServiceImpl implements EgresoService {
 
 		// Un pago Registrado se anula junto con el egreso; uno En archivo está
 		// en poder del banco y bloquea la anulación hasta procesar la respuesta.
-		List<PagoProgramado> vigentes = pagoProgramadoDaoService.selectVigentesByEgreso(idEgreso);
+		// Uno Por_aprobar se anula igual que uno Registrado -esta incluso mas atras
+		// en el circuito, ni siquiera llego a la bandeja de tesoreria-.
+		//
+		// selectVigentesByEgreso (PagoProgramadoDaoService) NO incluye POR_APROBAR: es una
+		// consulta compartida con otros equipos (ver docs/logica-negocio/ESTADO-EQUIPO-OMEN-2.md
+		// #11) y no se toca. Sin este reemplazo, un pago registrado sin cuenta de origen
+		// (nace POR_APROBAR) quedaria invisible aqui: el egreso se anularia igual, pero el
+		// pago seguiria vivo apuntandole, y tesoreria podria aprobarlo y confirmarlo despues
+		// -generando contabilidad y movimiento bancario real de un egreso ya anulado-.
+		List<PagoProgramado> vigentes = pagosVivosDelEgreso(idEgreso);
 		for (PagoProgramado pago : vigentes) {
 			int estadoPago = (pago.getEstado() != null) ? pago.getEstado().intValue() : 0;
 			if (estadoPago == EstadoPagoProgramado.EN_ARCHIVO) {
 				throw new IncomeException("El pago " + pago.getId() + " del egreso está en un "
 						+ "archivo enviado al banco. Procese la respuesta del banco antes de anular.");
 			}
-			if (estadoPago == EstadoPagoProgramado.REGISTRADO) {
+			if (estadoPago == EstadoPagoProgramado.REGISTRADO
+					|| estadoPago == EstadoPagoProgramado.POR_APROBAR) {
 				pagoProgramadoService.anularPago(pago.getId(),
 						"Anulación del egreso: " + motivo.trim(), idUsuario);
 			}
@@ -234,6 +240,33 @@ public class EgresoServiceImpl implements EgresoService {
 		resultado.put("mensaje", "Egreso anulado correctamente.");
 		resultado.put("egreso", idEgreso);
 		return resultado;
+	}
+
+	/**
+	 * Pagos vivos de un egreso, incluyendo POR_APROBAR(0).
+	 *
+	 * <p><code>PagoProgramadoDaoService.selectVigentesByEgreso</code> no lo incluye, y es una
+	 * consulta compartida con otros equipos (crd la usa tambien): no se toca, se resuelve con
+	 * consulta propia — mismo patron que <code>tienePagoVivoEnBandeja</code> en
+	 * <code>GeneracionOrdenPagoServiceImpl</code> (item 7). Ver
+	 * docs/logica-negocio/ESTADO-EQUIPO-OMEN-2.md #11.</p>
+	 *
+	 * @param idEgreso		: Id del egreso
+	 * @return				: Pagos en POR_APROBAR, REGISTRADO, EN_ARCHIVO o CONFIRMADO
+	 * @throws Throwable	: Excepcion
+	 */
+	@SuppressWarnings("unchecked")
+	private List<PagoProgramado> pagosVivosDelEgreso(Long idEgreso) throws Throwable {
+		return em.createQuery(" select   p "
+				+ " from     PagoProgramado p "
+				+ " where    p.egreso.id = :idEgreso "
+				+ "          and p.estado in (:porAprobar, :registrado, :enArchivo, :confirmado) ")
+				.setParameter("idEgreso", idEgreso)
+				.setParameter("porAprobar", Long.valueOf(EstadoPagoProgramado.POR_APROBAR))
+				.setParameter("registrado", Long.valueOf(EstadoPagoProgramado.REGISTRADO))
+				.setParameter("enArchivo", Long.valueOf(EstadoPagoProgramado.EN_ARCHIVO))
+				.setParameter("confirmado", Long.valueOf(EstadoPagoProgramado.CONFIRMADO))
+				.getResultList();
 	}
 
 	@Override
