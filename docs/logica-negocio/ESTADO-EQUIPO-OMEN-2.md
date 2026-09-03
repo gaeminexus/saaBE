@@ -546,3 +546,45 @@ mensaje del propio.
 `p.cuentaBancaria.codigo`, y un pago `POR_APROBAR` **nace sin cuenta** —es la condición que lo pone
 en ese estado— así que no podría matchear ese `WHERE` aunque el estado estuviera en la lista.
 *(Verificado por `lap-saa-1`.)*
+
+### 11bis. 🔴 Anular un anticipo anula pagos CONFIRMADOS sin reversar su contabilidad
+
+**Encontrado el 2026-09-03 por el agente de backend mientras corregía el §11, fuera de lo que se le
+pidió. Verificado por el árbitro. NO corregido: cambia lo que el usuario puede hacer en pantalla y
+eso lo decide él.**
+
+`AnticipoProveedorServiceImpl.anularAnticipo` recorre los pagos vivos del anticipo y hace
+**`pago.setEstado(ANULADO)` directo**, salteando sólo los que ya estaban anulados. No pasa por
+`PagoProgramadoService.anularPago`.
+
+**Y `anularPago` existe justamente para impedir ese caso.** Rechaza los `CONFIRMADO` con este
+mensaje:
+
+> *«ya fue confirmado por el banco y tiene contabilidad generada. Use la reversión en lugar de la
+> anulación.»*
+
+**Nadie bloquea antes:** `motivoBloqueo` sólo frena si hay un pago `EN_ARCHIVO`. Un `CONFIRMADO`
+pasa.
+
+**Consecuencia:** anular un anticipo cuyo pago ya fue confirmado marca ese pago como anulado y
+**deja vivos su asiento y su movimiento bancario**. Contabilidad que registra una salida de dinero
+por un pago que el sistema muestra anulado.
+
+### La forma, que es la que se repite
+
+**La protección existía y estaba bien escrita — sólo que en el otro camino.** `anularPago` valida;
+`anularAnticipo` escribe la columna a mano y se la saltea. Es la misma familia que:
+
+| Caso | La protección existía en… | El que la evita |
+|---|---|---|
+| Pago confirmado anulado | `anularPago` | `anularAnticipo`, pisando el estado |
+| CxP derivada del debe (§10) | — | el asiento cuadraba solo |
+| `PVNM` como saldo (§4bis del plan) | — | se debitaba sin tope |
+
+> **Una validación sólo protege el camino que pasa por ella.** Escribir la columna a mano es
+> saltarse todas las reglas que viven en el método que debía escribirla.
+
+**Recomendación al usuario:** hacer que `anularAnticipo` use `anularPago` en vez de pisar el estado,
+o que `motivoBloqueo` frene también los `CONFIRMADO`. ⚠️ **Cambia el comportamiento visible**: una
+anulación que hoy pasa empezaría a fallar pidiendo que se revierta primero. Es lo correcto, pero es
+una decisión del usuario, no técnica.

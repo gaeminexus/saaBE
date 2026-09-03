@@ -608,7 +608,13 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
         // 5. El pago del circuito muere junto con el anticipo. Un pago En
         //    archivo está en poder del banco y bloquea la anulación antes de
         //    llegar aquí (lo verifica motivoBloqueo); el resto se anula.
-        for (PagoProgramado pago : pagoProgramadoDaoService.selectVigentesByAnticipo(idAnticipo)) {
+        //
+        //    selectVigentesByAnticipo NO incluye POR_APROBAR (consulta compartida con otros
+        //    equipos, no se toca — ver docs/logica-negocio/ESTADO-EQUIPO-OMEN-2.md #11). Sin
+        //    este reemplazo, un pago registrado sin cuenta de origen (nace POR_APROBAR)
+        //    quedaría vivo apuntando a un anticipo ya anulado, y tesorería podría aprobarlo y
+        //    confirmarlo después: dinero real saliendo por un anticipo que acá se dio de baja.
+        for (PagoProgramado pago : pagosVivosDelAnticipo(idAnticipo)) {
             if (Long.valueOf(EstadoPagoProgramado.ANULADO).equals(pago.getEstado())) {
                 continue;
             }
@@ -827,6 +833,11 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
                     + "cruce anterior a la migración, no un anticipo: no se anula desde aquí.";
         }
 
+        // Esta consulta SI puede seguir siendo selectVigentesByAnticipo tal cual: solo busca
+        // EN_ARCHIVO para bloquear, y un pago POR_APROBAR (que la consulta no trae) nunca debe
+        // bloquear la anulación -es correcto que este loop no lo vea-. El otro llamador de esta
+        // clase (mas abajo, en anularAnticipo) SI necesita verlo, porque tiene que anularlo
+        // junto con el anticipo: ver pagosVivosDelAnticipo.
         for (PagoProgramado pago
                 : pagoProgramadoDaoService.selectVigentesByAnticipo(anticipo.getId())) {
             int estadoPago = (pago.getEstado() != null) ? pago.getEstado().intValue() : 0;
@@ -836,6 +847,34 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
             }
         }
         return null;
+    }
+
+    /**
+     * Pagos vivos de un anticipo, incluyendo POR_APROBAR(0).
+     *
+     * <p><code>PagoProgramadoDaoService.selectVigentesByAnticipo</code> no lo incluye, y es una
+     * consulta compartida con otros equipos: no se toca, se resuelve con consulta propia —
+     * mismo patron que <code>tienePagoVivoEnBandeja</code> en
+     * <code>GeneracionOrdenPagoServiceImpl</code> (item 7) y
+     * <code>pagosVivosDelEgreso</code> en <code>EgresoServiceImpl</code>. Ver
+     * docs/logica-negocio/ESTADO-EQUIPO-OMEN-2.md #11.</p>
+     *
+     * @param idAnticipo	: Id del anticipo
+     * @return				: Pagos en POR_APROBAR, REGISTRADO, EN_ARCHIVO o CONFIRMADO
+     * @throws Throwable	: Excepcion
+     */
+    private List<PagoProgramado> pagosVivosDelAnticipo(Long idAnticipo) throws Throwable {
+        return em.createQuery(" select   p "
+                + " from     PagoProgramado p "
+                + " where    p.anticipo.id = :idAnticipo "
+                + "          and p.estado in (:porAprobar, :registrado, :enArchivo, :confirmado) ",
+                PagoProgramado.class)
+                .setParameter("idAnticipo", idAnticipo)
+                .setParameter("porAprobar", Long.valueOf(EstadoPagoProgramado.POR_APROBAR))
+                .setParameter("registrado", Long.valueOf(EstadoPagoProgramado.REGISTRADO))
+                .setParameter("enArchivo", Long.valueOf(EstadoPagoProgramado.EN_ARCHIVO))
+                .setParameter("confirmado", Long.valueOf(EstadoPagoProgramado.CONFIRMADO))
+                .getResultList();
     }
 
     /**
