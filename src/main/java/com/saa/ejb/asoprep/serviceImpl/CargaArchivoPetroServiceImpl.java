@@ -1661,7 +1661,8 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		List<ParticipeXCargaArchivo> participes =
 			participeXCargaArchivoDaoService.selectByCodigoPetroEnCarga(codigoPetro, codigoCargaArchivo);
 
-		double disponible = 0.0;
+		double totalPozos = 0.0;
+		double totalDescontadoParticipante = 0.0;
 		List<NovedadParticipeCarga> novedades = new ArrayList<>();
 		if (participes != null) {
 			for (ParticipeXCargaArchivo participe : participes) {
@@ -1670,13 +1671,16 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 				if (novedadesParticipe != null) {
 					novedades.addAll(novedadesParticipe);
 				}
-				// CORRECCIÓN 2026-09-03 (§10, segunda vuelta) — ver el javadoc de
-				// disponibleParaTope: pozo por (producto, préstamo), máximo por grupo, capeado
-				// al total descontado de la fila. codigoFilial es solo para el tipo 4
+				// CORRECCIÓN 2026-09-03 (§10, CUARTA vuelta) — ver el javadoc de
+				// disponibleParaTope: pozo por fila SIN CAPEAR (el pozo de una novedad puede
+				// abarcar más de una fila, caso HS). El cap va acá, al final, sobre la suma de
+				// TODAS las filas del participante. codigoFilial es solo para el tipo 4
 				// estructural (CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE).
-				disponible += disponibleParaTope(participe, novedadesParticipe, codigoFilial);
+				totalPozos += disponibleParaTope(participe, novedadesParticipe, codigoFilial);
+				totalDescontadoParticipante += nullSafe(participe.getTotalDescontado());
 			}
 		}
+		double disponible = Math.min(totalPozos, totalDescontadoParticipante);
 
 		double afectado = totalAfectadoManualmente(novedades);
 		double[] excesoRestante = excesoYRestante(disponible, afectado);
@@ -1888,7 +1892,8 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		// Entidad, ver entidadDaoService.selectByCodigoPetro más abajo), NUNCA por
 		// ParticipeXCargaArchivo — esa fila es por (partícipe, producto), y agrupar por ahí es
 		// exactamente el defecto "por producto" que el punto 3 de la verificación (§6) prohíbe.
-		Map<Long, Double> disponiblePorRol = new LinkedHashMap<>();
+		Map<Long, Double> poolPorRol = new LinkedHashMap<>();
+		Map<Long, Double> totalDescontadoPorRol = new LinkedHashMap<>();
 		Map<Long, String> nombrePorRol = new LinkedHashMap<>();
 		Map<Long, List<NovedadParticipeCarga>> novedadesPorRol = new LinkedHashMap<>();
 
@@ -1919,13 +1924,18 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 					novedadesPorRol.computeIfAbsent(rolPetro, k -> new ArrayList<>()).addAll(novedades);
 				}
 
-				disponiblePorRol.merge(rolPetro, disponibleParaTope(participe, novedades, codigoFilial), Double::sum);
+				// CORRECCIÓN 2026-09-03 (§10, CUARTA vuelta): disponibleParaTope ya NO capea por
+				// fila — el pozo de una novedad (caso HS) puede abarcar más de una fila. Acá se
+				// acumulan los pozos y el total descontado por separado, y el cap se aplica
+				// UNA vez, sobre la suma de TODAS las filas del rol (ver más abajo).
+				poolPorRol.merge(rolPetro, disponibleParaTope(participe, novedades, codigoFilial), Double::sum);
+				totalDescontadoPorRol.merge(rolPetro, nullSafe(participe.getTotalDescontado()), Double::sum);
 			}
 		}
 
-		for (Map.Entry<Long, Double> entry : disponiblePorRol.entrySet()) {
+		for (Map.Entry<Long, Double> entry : poolPorRol.entrySet()) {
 			Long rolPetro = entry.getKey();
-			double disponible = entry.getValue();
+			double disponible = Math.min(entry.getValue(), totalDescontadoPorRol.getOrDefault(rolPetro, 0.0));
 			List<NovedadParticipeCarga> novedadesRol =
 				novedadesPorRol.getOrDefault(rolPetro, java.util.Collections.emptyList());
 			// Misma regla que totalAfectadoManualmente: solo cuenta lo que el aplicador va a usar
@@ -2002,48 +2012,39 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	}
 
 	/**
-	 * "Disponible" para el tope de UNA fila PXCA (un partícipe, un producto) — CORRECCIÓN
-	 * 2026-09-03, VALIDACION-TOPE-AFECTACION-MANUAL.md §10, TERCERA VUELTA.
+	 * Pozo de novedades BLOQUEANTES de UNA fila PXCA (un partícipe, un producto), SIN CAPEAR —
+	 * CORRECCIÓN 2026-09-03, VALIDACION-TOPE-AFECTACION-MANUAL.md §10, CUARTA VUELTA.
 	 *
-	 * <p><b>Primera vuelta (insuficiente):</b> "el tope es el total descontado del partícipe"
-	 * era incompleto — medido en carga 449, rol 7508 (SANCHEZ), el tope se puso en 406,73
-	 * cuando el operador solo tenía bloqueado 298,19; el resto lo iba a aplicar el automático.
-	 * Primera corrección: "el tope es SOLO lo descontado en los productos con novedad
-	 * bloqueante" — pero esto TAMBIÉN resultó incompleto, verificado antes de escribir la
-	 * segunda vuelta con un caso de aportes: si una novedad bloqueante es un SOBRANTE parcial
-	 * (p.ej. $50 de un producto de $200, donde $150 ya se aplicaron a meses con vigencia
-	 * válida), usar el {@code totalDescontado} completo de la fila abre un pozo de $200 cuando
-	 * el pozo real es $50 — la misma plata de más, por una razón distinta.</p>
+	 * <p><b>⛔ Este método YA NO capea nada — devuelve el pozo crudo de la fila.</b> El cap vive
+	 * en los llamadores ({@link #calcularViolacionesTopeAfectacionManual} y
+	 * {@link #obtenerTopeAfectacionManual}), y es al total descontado del PARTICIPANTE (suma de
+	 * TODAS sus filas PXCA en la carga), nunca al de esta fila sola. Motivo, verificado en
+	 * producción el 2026-09-03: <b>el pozo de una novedad puede abarcar más de una fila.</b> El
+	 * HS (seguro de incendio) no tiene novedad propia — su monto viaja DENTRO de la novedad del
+	 * préstamo, porque la validación en {@code aplicarPagoParticipe} (~línea 2798) suma
+	 * {@code montoHS} al monto que valida esa novedad. Con SANCHEZ (rol 7508): la novedad de su
+	 * fila PH trae {@code montoRecibido = 298,19} (PH 282,77 + HS 15,42), pero el
+	 * {@code totalDescontado} de ESA fila es solo 282,77. Capear acá, por fila, truncaba el pozo
+	 * combinado al descontado de la fila del préstamo, perdiendo el HS SIEMPRE — no un caso
+	 * aislado: los 35 partícipes bloqueados con este defecto tenían TODOS hipotecario o
+	 * prendario con seguro, y es el mismo patrón en cada uno de ellos.</p>
 	 *
-	 * <p><b>Segunda vuelta (insuficiente, y la causa fue un dato que no se registró): agrupar
-	 * por {@code (codigoProducto, codigoPrestamo)} y tomar el MÁXIMO de cada grupo.</b> Medido
-	 * en producción el 2026-09-03: SANCHEZ (rol 7508) dio disponible $282,77 — solo su PH, sin
-	 * el HS de $15,42 que la pantalla SÍ le había ofrecido (298,19 = PH + HS), así que el
-	 * proceso rechazaba una afectación que el propio sistema invitó a hacer. La causa:
-	 * {@code codigoProducto}/{@code codigoPrestamo} vienen {@code null} en TODAS las novedades
-	 * de este archivo (se anotó al implementar el §12 y no se registró en este javadoc — por
-	 * eso se repite acá EXPRESAMENTE, es la tercera vez que esta regla se reescribe). Con esos
-	 * dos campos null en todas, todas las novedades bloqueantes de la fila caían en el MISMO
-	 * grupo, y el máximo se quedaba con la más grande, descartando las demás en vez de
-	 * sumarlas. <b>No propongan de nuevo agrupar por esos dos campos: están vacíos en este
-	 * archivo, no son una clave.</b></p>
+	 * <p><b>Historial breve de las vueltas previas</b> (detalle completo en el .md, no acá,
+	 * para que este javadoc no seleccione crecer sin límite en la quinta vuelta):
+	 * 1ª — "tope = total descontado del partícipe": no distinguía qué iba a aplicar el
+	 * automático. 2ª — "tope = descontado en productos con novedad bloqueante": no cubría un
+	 * sobrante PARCIAL dentro de un producto ya aplicado en parte. 3ª — "agrupar por
+	 * (producto, préstamo) y tomar el máximo": esos dos campos vienen {@code null} en TODAS las
+	 * novedades de este archivo, así que agrupar por ellos colapsaba todas las novedades
+	 * bloqueantes de la fila a un solo grupo — <b>no son una clave, no se debe volver a agrupar
+	 * por ellos.</b> Reemplazada por SUMAR los pozos, con dedup SOLO cuando hay clave real
+	 * (mismo {@code tipoNovedad} + mismo {@code codigoPrestamo} NO NULO). Esa suma sigue vigente
+	 * acá abajo — lo único que cambia en esta 4ª vuelta es DÓNDE se capea el total.</p>
 	 *
-	 * <p><b>La regla, ahora:</b> el pozo de cada novedad BLOQUEANTE es el mismo que la pantalla
-	 * de afectación le ofrece al operador —
-	 * {@code detalle-consulta-carga.component.ts#montoDisponibleAfectacion}: {@code
-	 * montoRecibido ?? montoDiferencia ?? montoEsperado ?? 0} — para que pantalla y tope NUNCA
-	 * discrepen. Los pozos se SUMAN, no se toma el máximo. La ÚNICA deduplicación es cuando hay
-	 * una clave real para reconocer la MISMA plata dos veces: dos novedades del MISMO
-	 * {@code tipoNovedad} con el MISMO {@code codigoPrestamo} NO NULO (el caso verificado de
-	 * {@code MONTO_INCONSISTENTE} registrado dos veces para el mismo préstamo — una en Fase 2 al
-	 * validar el archivo, otra en {@link #manejarExcedenteNoAplicado} durante la aplicación si
-	 * el motor no encuentra cuota para el excedente). Cuando {@code codigoPrestamo} es null no
-	 * hay forma de saber si dos novedades son la misma plata o platas distintas, y en la duda se
-	 * SUMAN — quedarse corto acá no es gratis: bloquea al operador de afectar plata que sí le
-	 * corresponde y lo deja sin salida, no es un error "seguro" como sí lo es en otros lugares
-	 * de este archivo. La única protección contra un pozo inflado es el CAP final a
-	 * {@code totalDescontado} de la fila, reforzado además por la red del §11 (recibido ==
-	 * aplicado) detrás de todo el proceso.</p>
+	 * <p>El pozo de cada novedad BLOQUEANTE es el mismo que la pantalla de afectación le ofrece
+	 * al operador — {@code detalle-consulta-carga.component.ts#montoDisponibleAfectacion}:
+	 * {@code montoRecibido ?? montoDiferencia ?? montoEsperado ?? 0} — para que pantalla y tope
+	 * NUNCA discrepen.</p>
 	 *
 	 * <p><b>Los 4 tipos ESTRUCTURALES</b> (PARTICIPE_NO_ENCONTRADO, CODIGO_ROL_DUPLICADO,
 	 * NOMBRE_ENTIDAD_DUPLICADO, CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE — sin fila
@@ -2055,21 +2056,23 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	 * partícipe no hay plata que repartir, hay un dato que corregir). El CUARTO
 	 * (CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE) SÍ pasa ese filtro del frontend, así que tiene su
 	 * propio caso más abajo ({@link #esTipo4Bloqueante}): si bloquea (fuera de filial
-	 * Petrocomercial), su pozo es el {@code totalDescontado} completo de la fila — porque si
-	 * bloquea, la carga se frena entera y a este partícipe no se le aplicó nada. Se suma aparte
-	 * del resto; el cap final evita que la suma se pase de la fila.</p>
+	 * Petrocomercial), su pozo es el {@code totalDescontado} completo de ESTA fila — porque si
+	 * bloquea, la carga se frena entera y a este partícipe no se le aplicó nada, así que su
+	 * plata de esta fila está íntegra. Sigue siendo por fila (no por participante) porque acá no
+	 * hay ambigüedad de a qué fila pertenece, a diferencia del HS.</p>
 	 *
-	 * <p><b>Principio para cualquier ajuste futuro de este cálculo, matizado en esta tercera
-	 * vuelta:</b> "ante la duda, el tope se equivoca por abajo" sigue valiendo para no INVENTAR
-	 * plata que no existe — por eso el cap sigue siendo {@code totalDescontado}. Pero un tope
-	 * demasiado bajo tampoco es gratis: le impide al operador repartir plata que sí está, y frena
-	 * la carga sin que haya remedio. El límite duro que nunca se puede cruzar es el total
-	 * descontado del partícipe; por debajo de ese límite, sumar (no maximizar) es lo que
-	 * corresponde.</p>
+	 * <p><b>Principio para cualquier ajuste futuro de este cálculo:</b> "ante la duda, el tope se
+	 * equivoca por abajo" sigue valiendo para no INVENTAR plata que no existe — por eso el cap
+	 * (en el llamador) sigue siendo el total descontado, ahora del participante completo. Pero
+	 * un tope demasiado bajo tampoco es gratis: le impide al operador repartir plata que sí está
+	 * y frena la carga sin remedio — eso fue exactamente lo que costó capear por fila. El límite
+	 * duro que nunca se puede cruzar es el total descontado del PARTICIPANTE; por debajo de ese
+	 * límite, sumar (no maximizar, y no capear por fila) es lo que corresponde.</p>
 	 *
-	 * <b>ÚNICA definición</b> — la usan {@link #calcularViolacionesTopeAfectacionManual} (y por
-	 * lo tanto {@link #validarTopeAfectacionManualPorParticipe} y
-	 * {@link #obtenerPrevueloAfectacionManual}) y {@link #obtenerTopeAfectacionManual}.
+	 * <b>ÚNICA definición del pozo por fila</b> — la usan {@link #calcularViolacionesTopeAfectacionManual}
+	 * (y por lo tanto {@link #validarTopeAfectacionManualPorParticipe} y
+	 * {@link #obtenerPrevueloAfectacionManual}) y {@link #obtenerTopeAfectacionManual}, que son
+	 * también los ÚNICOS lugares donde se aplica el cap por participante.
 	 */
 	private double disponibleParaTope(ParticipeXCargaArchivo participe, List<NovedadParticipeCarga> novedadesDeEstaFila,
 			Long codigoFilial) {
@@ -2107,15 +2110,24 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		}
 
 		// CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE (tipo 4) — ver javadoc de arriba. Se suma aparte
-		// (nunca colisiona con el resto: no tiene fila NovedadParticipeCarga), y el cap final la
-		// contiene igual que a cualquier otro pozo.
+		// (nunca colisiona con el resto: no tiene fila NovedadParticipeCarga). El cap por
+		// PARTICIPANTE (no por fila, ver javadoc) la contiene igual que a cualquier otro pozo.
 		if (esTipo4Bloqueante(participe.getNovedadesCarga(), codigoFilial)
 				|| esTipo4Bloqueante(participe.getNovedadesFinancieras(), codigoFilial)) {
 			totalPozos += nullSafe(participe.getTotalDescontado());
 		}
 
-		double tope = nullSafe(participe.getTotalDescontado());
-		return Math.min(totalPozos, tope);
+		// SIN cap acá — CORRECCIÓN 2026-09-03 (§10, CUARTA vuelta): el pozo de una novedad
+		// puede abarcar MÁS de una fila (el HS no tiene novedad propia, viaja adentro de la del
+		// préstamo — ver aplicarPagoParticipe:~2798, donde montoHS se suma al monto que valida
+		// la novedad del PH/PP). Capear ACÁ, por fila, truncaba ese pozo combinado al
+		// totalDescontado de la fila del préstamo solo, perdiendo el HS siempre — medido en
+		// producción: SANCHEZ (rol 7508) daba 282,77 en vez de 298,19, y los 35 partícipes
+		// bloqueados tenían TODOS hipotecario o prendario con seguro. El cap correcto es al
+		// total descontado del PARTICIPANTE (todas sus filas en la carga), y vive en los
+		// llamadores, que son quienes conocen esa suma — ver
+		// {@link #calcularViolacionesTopeAfectacionManual} y {@link #obtenerTopeAfectacionManual}.
+		return totalPozos;
 	}
 
 	/**

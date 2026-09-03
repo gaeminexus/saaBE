@@ -273,15 +273,15 @@ automático ya tenía asignada. **`406,73 − 298,19 = 108,54`.**
 > el usuario decidió —se puede mover entre préstamos y aportes— pero el universo no es *todo* lo
 > descontado: es **lo que el operador está repartiendo de verdad**.
 
-### La regla corregida (TERCERA vuelta)
+### La regla corregida (CUARTA vuelta — esta es la vigente)
 
-*(Reemplaza a la del mismo nombre que estuvo acá hasta el 2026-09-03 — "SUMA por (producto,
-préstamo) del MÁXIMO pozo de ese grupo" volvió a fallar, y el porqué está documentado abajo porque
-es la tercera vez que se reescribe esta regla y no puede volver a perderse.)*
+*(Reemplaza a todas las anteriores. No quedan al lado: si alguna de las de abajo sobrevive en algún
+otro documento o comentario, está desactualizada.)*
 
-**Tope manual = SUMA de los pozos de todas las novedades bloqueantes de la fila — capeada al total
-descontado del partícipe. Se DEDUPLICA solo cuando hay una clave real: mismo `tipoNovedad` con el
-mismo `codigoPrestamo` NO NULO.**
+**Tope manual = SUMA de los pozos de todas las novedades bloqueantes de TODAS las filas PXCA del
+PARTICIPANTE en la carga — capeada al total descontado de ESE PARTICIPANTE (suma de
+`totalDescontado` de todas sus filas), nunca al de una fila sola. Se DEDUPLICA solo cuando hay una
+clave real: mismo `tipoNovedad` con el mismo `codigoPrestamo` NO NULO.**
 
 El pozo de cada novedad bloqueante sigue siendo el mismo que la pantalla de afectación le ofrece al
 operador (`detalle-consulta-carga.component.ts#montoDisponibleAfectacion`):
@@ -290,45 +290,56 @@ operador (`detalle-consulta-carga.component.ts#montoDisponibleAfectacion`):
 montoRecibido ?? montoDiferencia ?? montoEsperado ?? 0
 ```
 
-### ⛔ Por qué se abandonó "agrupar por (producto, préstamo) y tomar el máximo" — y por qué nadie debe volver a proponerlo
+En código: `disponibleParaTope` (por fila) ya NO capea nada — devuelve el pozo crudo de esa fila.
+El cap vive en los dos llamadores (`calcularViolacionesTopeAfectacionManual` y
+`obtenerTopeAfectacionManual`), que son los que conocen todas las filas del participante: acumulan
+el pozo y el `totalDescontado` de cada fila por separado, y aplican `Math.min` una sola vez al
+cerrar, sobre las sumas.
 
-**`codigoProducto` y `codigoPrestamo` vienen `null` en TODAS las novedades de este archivo.** Esto se
-anotó una vez, al implementar el §12 («son null para las novedades de aportes, igual que el resto de
-las de este archivo»), pero no quedó registrado en este documento — y por eso la segunda vuelta
-agrupó por esos dos campos sin darse cuenta de que, al ser `null` en todo, **todas las novedades
-bloqueantes de una fila caían en el MISMO grupo**. El "máximo por grupo" dejaba de ser "el máximo
-entre duplicados de la misma plata" y pasaba a ser "la novedad más grande se queda con el pozo, las
-demás desaparecen".
+### ⛔ Por qué el cap NO puede ser por fila — el defecto de la TERCERA vuelta
 
-**Medido en producción el 2026-09-03, con la carga 449 ya corregida por la segunda vuelta:** el
-proceso bloqueó 35 partícipes con "afectaciones que superan lo descontado". SANCHEZ PRADO (rol 7508)
-dio disponible **282,77** — solo su PH — cuando la pantalla le había ofrecido **298,19** (PH 282,77 +
-HS 15,42). El tope quedó POR DEBAJO de lo que el propio sistema invitó al operador a repartir, y
-rechazó una afectación legítima.
+La tercera vuelta ya sumaba en vez de maximizar (correcto), pero seguía capeando el resultado al
+`totalDescontado` de CADA FILA, dentro de `disponibleParaTope`. Parecía inofensivo — "ninguna fila
+puede dar más de lo que se descontó en ella" — pero es falso para este archivo, y el HS es la prueba:
 
-**`codigoProducto`/`codigoPrestamo` NO son una clave de agrupación en este archivo — están vacíos.
-Cualquier regla futura que agrupe por esos campos va a repetir este mismo defecto.**
+**El HS (seguro de incendio) no tiene novedad propia.** Cuando el hipotecario/prendario de un
+partícipe tiene seguro, `aplicarPagoParticipe` (~línea 2798) suma `montoHS` al monto que valida la
+novedad del préstamo — el monto de la novedad de PH/PP YA INCLUYE el HS. Con SANCHEZ (rol 7508): la
+novedad de su fila PH trae `montoRecibido = 298,19` (PH 282,77 + HS 15,42), pero el `totalDescontado`
+de esa fila PH, sola, es 282,77. Capear ahí, por fila, truncaba el pozo combinado a 282,77 y perdía
+el HS SIEMPRE — no un caso raro: **los 35 partícipes bloqueados con este defecto tenían todos
+hipotecario o prendario con seguro**, es el mismo patrón en los 35.
 
-### El matiz que faltaba en el principio "ante la duda, el tope se equivoca por abajo"
+**`codigoProducto`/`codigoPrestamo` vienen `null` en TODAS las novedades de este archivo** (se anotó
+al implementar el §12 y no quedó registrado acá hasta la tercera vuelta — se repite EXPRESAMENTE
+porque es la cuarta vez que esta sección se reescribe). Eso ya tumbó la segunda vuelta (agrupar por
+esos campos y tomar el máximo colapsaba todo a un grupo). **Ninguna regla futura debe agrupar NI
+capear por esos dos campos ni por fila — el pozo de una novedad no respeta los límites de una fila.**
 
-Ese principio sigue valiendo para no **inventar** plata — por eso el cap a `totalDescontado` se
-mantiene intacto. Pero un tope **demasiado bajo tampoco es gratis**: le impide al operador repartir
-plata que sí existe, y frena la carga sin que haya remedio (no es un error "seguro" como sí lo es
-negarse a inventar plata). El límite duro que nunca se puede cruzar es el total descontado del
-partícipe; por debajo de ese límite, **sumar es lo correcto**, no maximizar.
+### El principio, con el matiz que costó cuatro vueltas encontrar
+
+"Ante la duda, el tope se equivoca por abajo" sigue valiendo para no **inventar** plata — por eso el
+cap no desaparece, solo se mueve de dónde se aplicaba (la fila) a dónde corresponde (el
+participante). Pero un tope demasiado bajo tampoco es gratis: le impide al operador repartir plata
+que sí existe y frena la carga sin remedio — eso es lo que costaron la segunda y la tercera vuelta,
+cada una por una razón distinta (agrupar mal, capear en el nivel equivocado). El límite duro que
+nunca se puede cruzar es el total descontado del PARTICIPANTE completo; por debajo de ese límite,
+sumar (nunca maximizar, nunca capear por fila) es lo que corresponde.
 
 **Por qué deduplicar SOLO con clave real:** el caso verificado de doble conteo sigue siendo real —
 `MONTO_INCONSISTENTE` puede registrarse dos veces para el mismo préstamo (Fase 2 al validar el
 archivo, y `manejarExcedenteNoAplicado` durante la aplicación si el motor no encuentra cuota para el
 excedente) — y ahí sí hay una clave (mismo tipo, mismo préstamo NO nulo) para reconocer que es la
 MISMA plata. Cuando `codigoPrestamo` es `null` no hay manera de saber si dos novedades son la misma
-plata o platas distintas, y en esa duda específica **se suma**, no se colapsa a una — colapsar fue
-exactamente el defecto que le costó los 35 partícipes al usuario.
+plata o platas distintas, y en esa duda específica **se suma**, no se colapsa a una.
 
-**Por qué el cap al total descontado sigue siendo la última barrera:** ninguna combinación de
-novedades puede habilitar a afectar más de lo que efectivamente entró. Con la suma (en vez del
-máximo) el cap es el que impide que un archivo con novedades duplicadas sin clave infle el pozo por
-encima de lo real — y detrás de todo el proceso sigue la red del §11 (recibido == aplicado).
+**Por qué el cap al total descontado DEL PARTICIPANTE sigue siendo la última barrera:** ninguna
+combinación de novedades, en ninguna fila, puede habilitar a afectar más de lo que efectivamente
+entró en total. Es teórico hoy en el sentido de que no se encontró en los datos de la 449 un caso
+donde la suma de pozos supere el descontado total del participante — pero es el límite que hace
+que un archivo con novedades duplicadas sin clave (o cualquier otra combinación no prevista) no
+pueda inflar el pozo por encima de lo real. Detrás de todo el proceso sigue además la red del §11
+(recibido == aplicado).
 
 Los 4 tipos ESTRUCTURALES (sin fila `NovedadParticipeCarga`: `PARTICIPE_NO_ENCONTRADO`,
 `CODIGO_ROL_DUPLICADO`, `NOMBRE_ENTIDAD_DUPLICADO`, `CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE`) no pasan
@@ -336,11 +347,12 @@ por la fórmula de arriba, que solo mira `NovedadParticipeCarga`. Para los tres 
 correcto —el frontend nunca los ofrece para afectar (`tipoNovedad > 3`)—, así que quedan en pozo 0.
 
 **El cuarto (`CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE`) SÍ pasa ese filtro del frontend y tiene su propio
-caso, sin cambios en esta tercera vuelta:** si bloquea (fuera de la filial Petrocomercial — misma
+caso, sin cambios en esta cuarta vuelta:** si bloquea (fuera de la filial Petrocomercial — misma
 condición exacta que decide si bloquea el procesamiento, `tipoEstructuralBloquea`), su pozo es el
-`totalDescontado` COMPLETO de la fila, sumado aparte del resto (nunca colisiona: no tiene fila
-`NovedadParticipeCarga`). Razón: si este tipo bloquea, la carga entera se frena y a ese partícipe no
-se le aplicó nada — su plata está íntegra, así que el pozo completo es correcto, y el cap final lo
+`totalDescontado` COMPLETO de ESA fila, sumado aparte del resto (nunca colisiona: no tiene fila
+`NovedadParticipeCarga`). Sigue siendo por fila a propósito — acá no hay ambigüedad de a qué fila
+pertenece, a diferencia del HS. Razón: si este tipo bloquea, la carga entera se frena y a ese
+partícipe no se le aplicó nada — su plata de esa fila está íntegra, y el cap por participante lo
 sigue conteniendo igual que a cualquier otro pozo.
 
 Se conserva intacto lo que el usuario decidió: **dentro del universo bloqueado puede mover entre
@@ -348,21 +360,13 @@ préstamos y aportes como quiera** (caso SARMIENTO). Lo que no puede es tomar pl
 destino — ni la del automático (primera vuelta), ni la ya aplicada dentro de un mismo producto
 (segunda vuelta).
 
-### ⛔ El principio para cualquier ajuste futuro de este cálculo
-
-**Ante la duda, el tope se equivoca por abajo — pero "por abajo" tiene un piso, y ese piso es el
-total descontado real del partícipe, no una suma artificialmente reducida.** Inventar plata que no
-existe sigue prohibido (por eso el cap no se toca). Pero negarle al operador plata que sí está,
-tampoco es gratis: bloquea sin remedio, como pasó acá con 35 partícipes. Cuando un caso nuevo no
-cierre: si la duda es "¿puede esto exceder lo real?", resolver hacia el cap (que ya existe para eso).
-Si la duda es "¿son dos novedades la misma plata o platas distintas?", sin una clave real que lo
-confirme, **sumar**, no colapsar a una.
-
 ### ⛔ Los tres consumidores se corrigen juntos
 
 La validación que bloquea, el tope por partícipe de la pantalla (§8) y el prevuelo (§9) comparten un
 solo método **a propósito**. Cambia ahí, y los tres cambian. **Si alguno queda con la regla vieja,
-van a discrepar y nadie va a saber cuál creer.**
+van a discrepar y nadie va a saber cuál creer.** El cap por participante se aplicó en los DOS
+llamadores de `disponibleParaTope` (el batch y el endpoint por partícipe) — si alguno quedara sin
+cap, la pantalla y el proceso volverían a discrepar, que es el error de fondo de toda esta sección.
 
 ### Verificación
 
