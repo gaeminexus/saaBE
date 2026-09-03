@@ -57,10 +57,11 @@ de `saldoOtros` como capital precancelado).
   `CargaArchivoPetroServiceImpl`).~~ **Implementado el 2026-09-02**, fuera del plan de fases de
   este documento: ver `docs/logica-negocio/petro/PLAN-FASE3-MOTOR-PAGOS.md` y
   `REGLAS-CARGA-PETRO.md` §3.5. `CargaArchivoPetroServiceImpl` (fase 3 de la carga Petro) ya es
-  un caller del motor — la convergencia dejó de ser una fase futura. Queda pendiente de
-  confirmación con el usuario un punto puntual (§3.5 de `REGLAS-CARGA-PETRO.md`, afectación
-  manual) y un hallazgo sin corregir (divergencia entre `calcularSaldosRealesCuota` de la carga
-  y la del motor — mismo documento).
+  un caller del motor — la convergencia dejó de ser una fase futura. El punto de la afectación
+  manual (AVPC indica la cuota, la prelación del motor reparte) ya fue confirmado por el
+  usuario; el hallazgo de divergencia entre `calcularSaldosRealesCuota` de la carga y la del
+  motor ya fue corregido (`CORRECCIONES-2026-09-02.md` §2) — ambas coinciden ahora en cuándo una
+  cuota está pagada, aunque siguen siendo implementaciones separadas.
 - Contabilidad real (solo hooks no-op; pre-requisitos contables listados en §9.3).
 - ~~Servicio nocturno de cálculo de interés de mora diario (futuro; el motor YA cobra lo que ese
   proceso escriba en `DTPRMRAA`/`DTPRINVN`).~~ **Implementado el 2026-08-14**, fuera del plan de

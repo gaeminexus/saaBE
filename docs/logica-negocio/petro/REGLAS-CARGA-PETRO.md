@@ -415,21 +415,25 @@ ya la incluía en el monto enviado a la empresa). El motor crea su propio `PagoP
 cuota que toca (con el invariante `valor == Σ componentes`, o lanza) y marca PAGADA/PARCIAL según
 corresponda — `aplicarPagoParticipe` ya no arma ni guarda esos datos a mano.
 
-**⚠️ Divergencia con `buscarCuotaAPagar` (§3.4), a tener en cuenta al depurar.**
-`buscarCuotaAPagar`/`calcularSaldosRealesCuota` de ESTA clase **no se tocaron** — siguen usando
-`totalBaseCuota` (sin mora) solo para decidir **a qué préstamo** dirigir el pago. El motor, ya
-adentro, vuelve a elegir la cuota real con su PROPIA cascada (que sí ve mora) — puede no
-coincidir con la que encontró `buscarCuotaAPagar`, y es la del motor la que manda. Más importante:
-la autocorrección de `calcularSaldosRealesCuota` (esta clase) puede marcar una cuota **PAGADA**
-mirando solo el saldo base, aunque esa cuota todavía tenga mora real pendiente según el motor
-(que la dejaría PARCIAL). Una vez PAGADA, ambas consultas de "cuotas pendientes" (la de esta
-clase y la del motor) la excluyen — su mora queda huérfana, sin forma de cobrarse en una carga
-futura. Esto no es nuevo (la autocorrección local existía antes de este cambio y nunca miró
-mora), pero antes era inofensivo porque nada acá cobraba mora; ahora que el motor sí la cobra,
-esta divergencia entre las dos implementaciones de saldo puede bloquearla en casos puntuales.
-**Reportado al árbitro como hallazgo pendiente de decisión — no se corrigió en este cambio**
-(tocar `calcularSaldosRealesCuota`/`buscarCuotaAPagar` está fuera del alcance de
-`PLAN-FASE3-MOTOR-PAGOS.md` §4, que no las lista entre los cambios).
+**Divergencia con `buscarCuotaAPagar` (§3.4) — parcialmente corregida el 2026-09-02
+(`CORRECCIONES-2026-09-02.md` §2).** `buscarCuotaAPagar`/`calcularSaldosRealesCuota` de ESTA
+clase siguen siendo una implementación separada de la del motor (no convergieron a una sola) —
+el motor, ya adentro, vuelve a elegir la cuota real con su PROPIA cascada, que puede no coincidir
+con la que encontró `buscarCuotaAPagar` (esta última solo decide **a qué préstamo** dirigir el
+pago). Lo que SÍ se corrigió: `calcularSaldosRealesCuota` de esta clase ahora incluye mora e
+interés vencido en `totalPendiente` (mismo criterio que
+`MotorPagoPrestamoServiceImpl.calcularSaldosCuota`) — su autocorrección ya NO marca una cuota
+PAGADA mirando solo el saldo base. Antes del fix, una cuota con mora pendiente podía marcarse
+PAGADA de todas formas (el motor la habría visto PARCIAL) y, una vez PAGADA, ninguna de las dos
+consultas de "cuotas pendientes" la volvía a mirar — su mora quedaba huérfana para siempre. Esto
+NO era nuevo (la autocorrección nunca miró mora, desde antes de la migración a
+`MotorPagoPrestamoService`), pero era inofensivo mientras nada cobraba mora por este camino;
+desde que el motor la cobra (`PLAN-FASE3-MOTOR-PAGOS.md`), dejó de serlo — de ahí la corrección.
+Verificado antes de aplicar el fix: la query de cuotas pendientes (`selectMinCuotaNoPagadaByPrestamo`)
+filtra por estado, así que el cambio no puede "reabrir" una cuota YA marcada PAGADA en una carga
+anterior (el fix solo endurece la condición para marcar PAGADA de ahora en adelante, nunca revierte
+un estado ya persistido) — solo puede hacer que `buscarCuotaAPagar` encuentre una cuota pendiente
+donde antes, por el bug, saltaba de largo.
 
 **Excedente no aplicado** (`ResultadoAplicacionPago.getExcedenteNoAplicado()`): si el préstamo se
 queda sin más cuotas pendientes con saldo, el excedente **NUNCA se escribe en `PGPRVLRR`** —

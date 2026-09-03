@@ -3221,6 +3221,13 @@ private static class SaldosRealesCuota {
 	double saldoInteres = 0.0;
 	double saldoCapital = 0.0;
 	double saldoSeguroIncendio = 0.0;  // ✅ AGREGADO: Seguro de incendio para PH/PP
+	// CORRECCIONES-2026-09-02.md §2: mora e interés vencido, mismo criterio que
+	// MotorPagoPrestamoServiceImpl.calcularSaldosCuota — antes esta clase los excluía a
+	// propósito (ver totalBaseCuota) y su autocorrección podía marcar PAGADA una cuota con
+	// mora real pendiente, dejándola huérfana para siempre (el motor y esta clase filtran
+	// por estado != PAGADA).
+	double saldoMora = 0.0;
+	double saldoInteresVencido = 0.0;
 	double totalPendiente = 0.0;
 }
 
@@ -3250,29 +3257,46 @@ private SaldosRealesCuota calcularSaldosRealesCuota(DetallePrestamo cuota, Carga
 			saldos.saldoInteres = nullSafe(cuota.getInteres());
 			saldos.saldoCapital = nullSafe(cuota.getCapital());
 			saldos.saldoSeguroIncendio = nullSafe(cuota.getValorSeguroIncendio());  // ✅ AGREGADO
-			saldos.totalPendiente = totalBaseCuota(cuota);
+			// CORRECCIONES-2026-09-02.md §2: DTPRTTLL (cuota.getTotal()) YA INCLUYE la mora
+			// acumulada por el proceso diario (ProcesoMoraPrestamoService) — igual criterio que
+			// MotorPagoPrestamoServiceImpl.calcularSaldosCuota. Solo se agrega el interés
+			// vencido aparte (hoy siempre 0, ningún proceso lo alimenta todavía).
+			saldos.saldoMora = nullSafe(cuota.getMora());
+			saldos.saldoInteresVencido = nullSafe(cuota.getInteresVencido());
+			saldos.totalPendiente = cuota.getTotal() != null
+				? nullSafe(cuota.getTotal()) + saldos.saldoInteresVencido
+				: totalBaseCuota(cuota) + saldos.saldoMora + saldos.saldoInteresVencido;
 			return saldos;
 		}
-		
+
 		// Sumar todos los pagos realizados previamente
 		double desgravamenPagadoTotal = 0.0;
 		double interesPagadoTotal = 0.0;
 		double capitalPagadoTotal = 0.0;
 		double seguroIncendioPagadoTotal = 0.0;  // ✅ AGREGADO
-		
+		double moraPagadaTotal = 0.0;  // CORRECCIONES-2026-09-02.md §2
+		double interesVencidoPagadoTotal = 0.0;  // CORRECCIONES-2026-09-02.md §2
+
 		for (PagoPrestamo pago : pagos) {
 			desgravamenPagadoTotal += nullSafe(pago.getDesgravamen());
 			interesPagadoTotal += nullSafe(pago.getInteresPagado());
 			capitalPagadoTotal += nullSafe(pago.getCapitalPagado());
 			seguroIncendioPagadoTotal += nullSafe(pago.getValorSeguroIncendio());  // ✅ AGREGADO
+			moraPagadaTotal += nullSafe(pago.getMoraPagada());
+			interesVencidoPagadoTotal += nullSafe(pago.getInteresVencidoPagado());
 		}
-		
+
 		// Calcular saldos pendientes
 		saldos.saldoDesgravamen = Math.max(0, nullSafe(cuota.getDesgravamen()) - desgravamenPagadoTotal);
 		saldos.saldoInteres = Math.max(0, nullSafe(cuota.getInteres()) - interesPagadoTotal);
 		saldos.saldoCapital = Math.max(0, nullSafe(cuota.getCapital()) - capitalPagadoTotal);
 		saldos.saldoSeguroIncendio = Math.max(0, nullSafe(cuota.getValorSeguroIncendio()) - seguroIncendioPagadoTotal);  // ✅ AGREGADO
-		saldos.totalPendiente = saldos.saldoDesgravamen + saldos.saldoInteres + saldos.saldoCapital + saldos.saldoSeguroIncendio;  // ✅ INCLUIDO en total
+		// CORRECCIONES-2026-09-02.md §2: mismo criterio que el motor — una cuota con mora o
+		// interés vencido pendiente NO está pagada, aunque el resto del desglose sí lo esté.
+		saldos.saldoMora = Math.max(0, nullSafe(cuota.getMora()) - moraPagadaTotal);
+		saldos.saldoInteresVencido = Math.max(0, nullSafe(cuota.getInteresVencido()) - interesVencidoPagadoTotal);
+		saldos.totalPendiente = saldos.saldoDesgravamen + saldos.saldoInteres + saldos.saldoCapital
+			+ saldos.saldoSeguroIncendio + saldos.saldoMora + saldos.saldoInteresVencido;
 		
 		// ✅ Si el saldo total es 0 pero el estado no es PAGADA, actualizarlo
 		if (saldos.totalPendiente <= 0.01 && cuota.getEstado() != com.saa.rubros.EstadoCuotaPrestamo.PAGADA) {
@@ -3301,12 +3325,21 @@ private SaldosRealesCuota calcularSaldosRealesCuota(DetallePrestamo cuota, Carga
 			// ✅ CORRECCIÓN CRÍTICA: saldoCapital = saldoInicialCapital - capitalPagado (NO poner en 0)
 			cuota.setSaldoCapital(Math.max(0, nullSafe(cuota.getSaldoInicialCapital()) - capitalPagadoTotal));
 			cuota.setSaldoInteres(0.0);
-			
+			// CORRECCIONES-2026-09-02.md §2: persistir también lo pagado de mora e interés
+			// vencido — llegar acá significa que saldos.totalPendiente (que ya los incluye)
+			// dio ≤ 0.01, así que también están saldados.
+			cuota.setMoraPagado(moraPagadaTotal);
+			cuota.setInteresVendidoPagado(interesVencidoPagadoTotal);
+			cuota.setSaldoMora(0.0);
+			cuota.setSaldoInteresVencido(0.0);
+
 			// ✅ CRÍTICO: Actualizar saldo total global de la cuota (independiente del desglose)
-			double totalCuotaRecalculo = nullSafe(cuota.getCapital()) + nullSafe(cuota.getInteres()) + 
-			                             nullSafe(cuota.getDesgravamen()) + nullSafe(cuota.getValorSeguroIncendio());
-			double totalPagadoCuotaRecalculo = capitalPagadoTotal + interesPagadoTotal + 
-			                                   desgravamenPagadoTotal + seguroIncendioPagadoTotal;
+			double totalCuotaRecalculo = nullSafe(cuota.getCapital()) + nullSafe(cuota.getInteres()) +
+			                             nullSafe(cuota.getDesgravamen()) + nullSafe(cuota.getValorSeguroIncendio())
+			                             + nullSafe(cuota.getMora()) + nullSafe(cuota.getInteresVencido());
+			double totalPagadoCuotaRecalculo = capitalPagadoTotal + interesPagadoTotal +
+			                                   desgravamenPagadoTotal + seguroIncendioPagadoTotal
+			                                   + moraPagadaTotal + interesVencidoPagadoTotal;
 			cuota.setSaldo(Math.max(0, totalCuotaRecalculo - totalPagadoCuotaRecalculo));
 			
 			detallePrestamoService.saveSingle(cuota);

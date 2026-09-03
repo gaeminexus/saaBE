@@ -205,9 +205,10 @@ Los docs antiguos con rutas `/api/...`, `/api/generacion-petro`, `/api/petrocome
    pueden estar desactualizados; `calcularSaldosRealesCuota()` (carga) y `obtenerPagosPorCuota()`
    (generación) siempre recalculan desde PGPR. **Desde el 2026-09-02**, la de la carga
    (`CargaArchivoPetroServiceImpl`) ya NO decide la aplicación del pago — solo a qué préstamo
-   dirigirlo (`buscarCuotaAPagar`); `MotorPagoPrestamoServiceImpl` tiene su PROPIA
-   reconstrucción desde PGPR (con mora e interés vencido, la de la carga no los incluye) para
-   decidir la cuota real y el reparto. Ver la nota de divergencia en la trampa 8.
+   dirigirlo (`buscarCuotaAPagar`); `MotorPagoPrestamoServiceImpl` tiene su PROPIA reconstrucción
+   desde PGPR para decidir la cuota real y el reparto. Son dos implementaciones separadas (no
+   convergieron a una sola), pero desde la corrección del mismo día ambas incluyen mora e
+   interés vencido en el criterio de "¿está pagada?". Ver la trampa 8.
 3. **`saldoCapital = max(0, saldoInicialCapital − capitalPagado)`** — usa `saldoInicialCapital`
    (saldo del préstamo al inicio de la cuota), NO `capital` (capital de la cuota).
 4. **Estado del préstamo va en `PRSTIDST` (idEstado)**, no en `ESPSCDGO`; estado de la cuota va en
@@ -219,15 +220,17 @@ Los docs antiguos con rutas `/api/...`, `/api/generacion-petro`, `/api/petrocome
    pendientes deben escribirse `(d.estado IS NULL OR d.estado NOT IN (:pagada, :cancelada))`.
 7. Oracle no admite más de 1.000 elementos en un `IN`: las consultas agregadas sobre PGPR se hacen
    en bloques de 500.
-8. **⚠️ Divergencia entre las dos implementaciones de saldo, hallazgo del 2026-09-02, NO
-   corregido.** `calcularSaldosRealesCuota` de `CargaArchivoPetroServiceImpl` (usada solo por
-   `buscarCuotaAPagar` para elegir préstamo) excluye mora e interés vencido a propósito
-   (`totalBaseCuota`); la de `MotorPagoPrestamoServiceImpl` (la que aplica el pago de verdad) los
-   incluye. Su autocorrección puede marcar una cuota PAGADA mirando solo el saldo base aunque
-   le quede mora real pendiente según el motor — una vez PAGADA, ninguna de las dos consultas de
-   "cuotas pendientes" la vuelve a mirar, y esa mora queda sin cobrar. Reportado al árbitro,
-   pendiente de decisión sobre si vale la pena hacer mora-aware a `buscarCuotaAPagar` o
-   reemplazarla por lógica del motor. Detalle en
+8. **Divergencia entre las dos implementaciones de saldo — hallazgo del 2026-09-02, corregido
+   el mismo día (`CORRECCIONES-2026-09-02.md` §2).** `calcularSaldosRealesCuota` de
+   `CargaArchivoPetroServiceImpl` (usada solo por `buscarCuotaAPagar` para elegir préstamo)
+   excluía mora e interés vencido a propósito (`totalBaseCuota`); la de
+   `MotorPagoPrestamoServiceImpl` (la que aplica el pago de verdad) sí los incluye. Su
+   autocorrección podía marcar una cuota PAGADA mirando solo el saldo base aunque le quedara
+   mora real pendiente según el motor — una vez PAGADA, ninguna de las dos consultas de "cuotas
+   pendientes" la volvía a mirar, y esa mora quedaba sin cobrar. **Ya corregido**:
+   `calcularSaldosRealesCuota` ahora suma mora e interés vencido al `totalPendiente` con el mismo
+   criterio del motor — las dos implementaciones siguen separadas (no convergieron a una sola),
+   pero ya coinciden en CUÁNDO una cuota está pagada. Detalle en
    [REGLAS-CARGA-PETRO.md §3.5](REGLAS-CARGA-PETRO.md).
 8. El archivo de respuesta se lee en **ISO-8859-1** (ñ/tildes); prohibido cambiar a UTF-8.
 9. `parseDouble` del parser acepta formato europeo (`1.234,56`) y devuelve `0.0` ante error, nunca

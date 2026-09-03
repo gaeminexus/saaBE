@@ -11,6 +11,7 @@ import com.saa.ejb.cnt.service.AsientoService;
 import com.saa.ejb.crd.dao.DetallePrestamoDaoService;
 import com.saa.ejb.crd.dao.HistDetallePrestamoDaoService;
 import com.saa.ejb.crd.dao.PagoPrestamoDaoService;
+import com.saa.ejb.crd.dao.PrestamoDaoService;
 import com.saa.ejb.crd.service.ConfiguracionContabilidadService;
 import com.saa.ejb.crd.service.ContabilidadPrestamoService;
 import com.saa.ejb.crd.service.ContabilizacionIndividualCreditoService;
@@ -23,6 +24,7 @@ import com.saa.model.cnt.DetalleAsiento;
 import com.saa.model.cnt.DetallePlantilla;
 import com.saa.model.cnt.PlanCuenta;
 import com.saa.model.crd.DetallePrestamo;
+import com.saa.model.crd.Entidad;
 import com.saa.model.crd.EventoPrestamo;
 import com.saa.model.crd.HistDetallePrestamo;
 import com.saa.model.crd.PagoPrestamo;
@@ -56,6 +58,14 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
 
     private static final double TOLERANCIA_CUADRE = 0.01;
 
+    /**
+     * CORRECCIONES-2026-09-02.md §1: DetalleAsiento.descripcion (DTASDSCR) es VARCHAR2(200) y
+     * los métodos de {@code ContabilizacionIndividualCreditoService} le APPENDEAN un sufijo
+     * (" - banda N", " - consumo aporte <tipo>", …) al prefijo que reciben — dejar margen para
+     * eso, no llenar los 200 con la identificación del partícipe.
+     */
+    private static final int MAX_LARGO_GLOSA_CRUCE = 140;
+
     @EJB
     private ConfiguracionContabilidadService configuracionContabilidadService;
 
@@ -70,6 +80,9 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
 
     @EJB
     private PagoPrestamoDaoService pagoPrestamoDaoService;
+
+    @EJB
+    private PrestamoDaoService prestamoDaoService;
 
     @EJB
     private HistDetallePrestamoDaoService histDetallePrestamoDaoService;
@@ -113,7 +126,8 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         }
 
         Long idPlantillaAplicacion = contabilizacionIndividualCreditoService.resolverPlantillaAplicacion(idEmpresa);
-        String prefijo = "Pago con aportes - evento " + ctx.getIdEvento();
+        String prefijo = construirGlosaCrucePorParticipe(resultado != null ? resultado.getIdPrestamo() : null,
+                ctx.getIdEvento());
 
         // DEBE: cuentas de aporte del socio, diferenciadas por tipo — lo CONSUMIDO.
         // MovimientoAporte.valor viaja NEGATIVO al consumir (ver su javadoc);
@@ -177,6 +191,50 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
                 + " - Evento: " + ctx.getIdEvento() + " - Monto: $" + valorOperacion);
 
         return asiento.getCodigo();
+    }
+
+    /**
+     * CORRECCIONES-2026-09-02.md §1: el asiento del cruce de valores es de UN partícipe, UN
+     * préstamo, UNA operación — a diferencia del asiento de aplicación de la carga Petro (1000+
+     * personas, no hay nombre que poner), acá contabilidad necesita saber de quién es sin salir
+     * del asiento. Construye la glosa con nombre/cédula/código asoprep del titular del préstamo.
+     *
+     * <p>Tolerante a la ausencia de esos datos (se omite el fragmento que falte, un asiento no
+     * se cae por una glosa incompleta) — pero NO a la ausencia del préstamo: sin él no hay de
+     * quién hablar, y eso es un fallo real, no un dato ausente legítimo.
+     */
+    private String construirGlosaCrucePorParticipe(Long idPrestamo, Long idEvento) throws Throwable {
+        if (idPrestamo == null) {
+            throw new IncomeException("No se puede generar la glosa del cruce de valores: falta"
+                    + " el préstamo de la operación (evento " + idEvento + ").");
+        }
+
+        // find() (em.find) en vez de selectById: un código inexistente no debe tumbar la
+        // glosa con un NoResultException — sin el préstamo simplemente se omiten sus datos.
+        Prestamo prestamo = prestamoDaoService.find(new Prestamo(), idPrestamo);
+        Entidad entidad = prestamo != null ? prestamo.getEntidad() : null;
+
+        List<String> datos = new ArrayList<>();
+        if (entidad != null && entidad.getNumeroIdentificacion() != null) {
+            datos.add("CI " + entidad.getNumeroIdentificacion());
+        }
+        if (entidad != null && entidad.getRolPetroComercial() != null) {
+            datos.add("asoprep " + entidad.getRolPetroComercial());
+        }
+
+        StringBuilder glosa = new StringBuilder("Cruce de valores");
+        if (entidad != null && entidad.getRazonSocial() != null) {
+            glosa.append(" - ").append(entidad.getRazonSocial());
+        }
+        if (!datos.isEmpty()) {
+            glosa.append(" (").append(String.join(", ", datos)).append(")");
+        }
+        glosa.append(" - préstamo ").append(idPrestamo).append(" - evento ").append(idEvento);
+
+        String resultado = glosa.toString();
+        return resultado.length() > MAX_LARGO_GLOSA_CRUCE
+                ? resultado.substring(0, MAX_LARGO_GLOSA_CRUCE)
+                : resultado;
     }
 
     // =====================================================================
