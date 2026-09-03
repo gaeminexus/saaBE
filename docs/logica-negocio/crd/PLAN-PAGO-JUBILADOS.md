@@ -190,3 +190,21 @@ intentara deshacer el cruce, chocaría con esa regla y fallaría de una forma di
   `saaFE/docs/crd/`.
 - `LEVANTAMIENTO-TRES-FRENTES-2026-08-30.md` §1 — bajar el pago mensual de «lo que hay que construir»
   a construido, dejando la jubilación como lo que sigue abierto.
+
+---
+
+## ✅ VERIFICADO EL 2026-09-02 — el prerrequisito del §5 está cumplido
+
+El usuario corrió `sql/173`. Control D.1, **4 filas**, y D.2 con el cuadre estructural exacto
+(`LINEAS=4, MIN_AUX1=1, MAX_AUX1=4, DEBES=2, HABERES=2`):
+
+| aux1 | Mov | Cuenta | Nombre en el plan |
+|---|---|---|---|
+| 1 | DEBE | `2.1.02.25.01` | CTA INDIVIDUAL DE PENSIONES COMPLEMENTARIAS |
+| 2 | HABER | `2.3.01.10.03` | PENSIONES COMPLEMENTARIAS POR PAGAR |
+| 3 | DEBE | `2.1.02.25.01` | CTA INDIVIDUAL DE PENSIONES COMPLEMENTARIAS (seguro de salud) |
+| 4 | HABER | `2.3.90.90.06` | SEGURO POR PAGAR JUBILADOS |
+
+Las tres cuentas existían y están activas, y los nombres del plan coinciden con lo que el
+levantamiento contable §3.1 anticipaba. **La plantilla alterno 35 está lista: el asiento de devengo
+del §4 ya tiene de dónde salir.**
