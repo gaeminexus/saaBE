@@ -134,18 +134,67 @@ qué documento fue** el gasto, para que no quede como una salida sin destino.
 
 ---
 
-## 6. El reverso
+## 6. El reverso — pedido explícito del usuario, 2026-09-03
 
-Anular un gasto de caja chica que pagó un documento tiene que **reversar también la aplicación** —si
-no, la factura queda pagada y el dinero devuelto a la caja.
+> *«Y también es necesario el proceso de anulación de gastos de caja chica y que se reverse el pago
+> de factura o el gasto generado.»*
 
-⚠️ **Y al revés:** revertir la aplicación desde la pantalla de abonos **no puede** dejar el gasto de
-caja chica vivo. **Decidir cuál de los dos caminos manda y bloquear el otro con un mensaje que diga
-qué hacer** — es el criterio de `lap-saa-1`: la pregunta no es qué tan grave es el error, sino si el
-usuario puede arreglarlo y reintentar.
+### 6.1 La anulación YA EXISTE, y está bien construida
 
-*Precedente de los dos lados: `anularAnticipo` (que reversa en cascada) y `revertirPagoConfirmado`
-(que bloquea y manda al otro camino).*
+**Verificado el 2026-09-03.** `POST /mvch/anular/{id}` →
+`MovimientoCajaChicaServiceImpl.anularGasto` (~:257). Hoy hace, en este orden:
+
+1. Exige **motivo** no vacío.
+2. Exige que el movimiento sea un **GASTO** (no una apertura ni una reposición).
+3. Rechaza si **ya está anulado**.
+4. ⭐ **Rechaza si el movimiento ya quedó incluido en un cierre de caja**, nombrando el cierre.
+5. **Anula el asiento** contable.
+6. Marca el movimiento `ANULADO` con su motivo.
+
+**No hay que construir nada de esto.** El paso 4 es el que más vale: impide deshacer un movimiento
+que ya se consolidó en un cierre, y esa regla hay que respetarla también para el caso nuevo.
+
+*Quinta pieza en una semana que se dio por faltante y estaba construida. El reflejo correcto en este
+repositorio es buscar antes de estimar.*
+
+### 6.2 Lo único que falta: reversar la aplicación
+
+Cuando el gasto pagó un documento, `anularGasto` tiene que **reversar también la
+`AplicacionPagoCxp`** — si no, la factura queda pagada y el dinero de vuelta en la caja.
+
+⚠️ **Y acá hay una trampa en el código actual que NO se debe copiar.** El paso 5 envuelve
+`anulaAsiento` en un `try/catch` que sólo imprime un aviso por consola y **sigue de largo**: si el
+asiento no se puede anular, el movimiento queda anulado igual.
+
+Eso puede ser tolerable para el asiento —es el criterio que ya eligió quien lo escribió— pero
+**para la aplicación NO lo es**: un gasto anulado con su aplicación viva deja la factura pagada por
+dinero que volvió a la caja. **Si la reversa de la aplicación falla, la anulación entera tiene que
+fallar**, no seguir de largo.
+
+*Es la misma familia que todo lo de esta semana: un paso que no puede fallar deja de avisar cuando
+está equivocado.*
+
+### 6.3 El otro sentido, y hay que elegir
+
+Revertir la aplicación desde la pantalla de abonos **no puede** dejar el gasto de caja chica vivo.
+
+**Decidir cuál de los dos caminos manda y bloquear el otro con un mensaje que diga qué hacer.** No
+alcanza con impedirlo: el mensaje tiene que nombrar el camino correcto. Es el criterio de
+`lap-saa-1` — la pregunta no es qué tan grave es el error, sino **si el usuario puede arreglarlo y
+reintentar**.
+
+**Recomendación:** que mande **la anulación del gasto**, y que el reverso desde abonos bloquee
+diciendo «este abono vino de un gasto de caja chica: anúlelo desde la caja chica». Razón: el gasto
+es el hecho de origen —salió efectivo de una caja— y la aplicación es su consecuencia. Además la
+anulación ya tiene la validación del cierre (§6.1 paso 4), que el reverso de abonos no conoce.
+
+⚠️ **Verificar que ese mensaje no mande a un callejón sin salida**, como pasó el 2026-09-02 con la
+anulación de anticipos: el bloqueo decía «revierta el pago primero» y el camino de reversión
+respondía «anule el anticipo, que lo hace en un solo paso». **Comprobar que anular el gasto es
+realmente posible en ese estado antes de sugerirlo.**
+
+*Precedentes de los dos lados: `anularAnticipo` (reversa en cascada) y `revertirPagoConfirmado`
+(bloquea y manda al otro camino).*
 
 ---
 
@@ -158,7 +207,7 @@ usuario puede arreglarlo y reintentar.
 | 3 | BE: aplicación + contabilidad del §2 | 1, 2 |
 | 4 | BE: endpoint de documentos pendientes por proveedor — **si no existe ya** | — |
 | 5 | FE: selector de documento y monto en el gasto | 4 |
-| 6 | Reverso en los dos sentidos (§6) | 3 |
+| 6 | Extender `anularGasto` para reversar la aplicación, y bloquear el otro sentido (§6) | 3 |
 | 7 | Verificar los dos estados de cuenta (§5) | 3 |
 
 **El DDL va antes del WAR**, y **no se mergea a `main` el mapeo hasta que la columna exista** — §7
@@ -170,6 +219,6 @@ del registro de reservas.
 
 - **De dónde sale la cuenta por pagar del proveedor** en el asiento nuevo: se copia del camino del
   anticipo, y si no aplica, se para y se reporta (§2).
-- **Cuál de los dos reversos manda** (§6).
+- **Cuál de los dos reversos manda** (§6) — hay recomendación, falta confirmar que el camino que se sugiera sea realmente transitable en ese estado.
 - **Si el gasto con documento debe seguir exigiendo producto de pago.** Hoy es obligatorio y
   clasifica el movimiento; con documento, la cuenta ya no sale de ahí. Se mantiene por ahora.
