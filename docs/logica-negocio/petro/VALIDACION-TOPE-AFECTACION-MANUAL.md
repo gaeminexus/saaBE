@@ -508,3 +508,48 @@ este partícipe en esta carga», con la misma consulta que ya usa `selectByCodig
 2. Un partícipe **con** PH/PP y HS debe cobrar **exactamente lo mismo que antes** — si su total cambia,
    se está cobrando dos veces.
 3. Con esto y la corrección del exceso de SANCHEZ, el cuadre de la carga 449 debe dar **0**.
+
+### Corrección del enfoque — decisión del usuario, 2026-09-03
+
+> *«Para evitar cualquier problema, porque al tener el seguro separado se pueden presentar
+> muchísimos escenarios que causen problemas, lo que hagamos es sumar el valor descontado de HS al
+> valor descontado de préstamos y tratarlo como un todo que se distribuye con la prelación definida
+> y, dependiendo de dónde se reparta, se contabiliza. Así evitamos que nos queden cuotas parciales
+> seguidas sin dar por pagadas todas o casos similares.»*
+
+**Es mejor que lo que yo había planteado en el §13, y por una razón de fondo: el HS deja de ser un
+caso especial.**
+
+Con la regla anterior, «aplicar el HS huérfano al seguro de la mínima cuota» era **una excepción
+más** — otro camino que mantener, otro lugar donde el próximo escenario raro se cuela. Sumándolo al
+pozo del préstamo, **la prelación lo resuelve sola**: el seguro de incendio ya es su **primer**
+componente, así que el dinero va exactamente donde tiene que ir sin ninguna regla nueva.
+
+Y la contabilización sigue sin tocarse: el asiento se arma leyendo los componentes de cada
+`PagoPrestamo`, así que **se contabiliza donde el dinero cayó**, que es justo lo que el usuario pide.
+
+Elimina de raíz la familia de escenarios que le preocupa: seguros pagados sin su cuota, cuotas
+parciales encadenadas, y el HS que se cobra dos veces.
+
+### Cómo se implementa
+
+**Antes del bucle de aplicación**, fusionar: por cada fila HS, sumar su monto a la fila PH/PP del
+mismo partícipe en esa carga. Esa fila HS ya no se procesa aparte — con lo que el comportamiento del
+caso normal **no cambia**: hoy el PH ya valida y aplica PH + HS juntos, así que el total es idéntico.
+
+⚠️ **El caso sin PH/PP sigue necesitando resolver el préstamo, y hay que decirlo:** verificado que
+`CRD.PXCA` **no lleva referencia al préstamo** —sólo rol y producto; el préstamo vive en la NOVEDAD
+(`NVPCCDPS`)—. Así que para un partícipe con HS y sin PH/PP hay que buscar su hipotecario/prendario
+con **la misma resolución que usa hoy el camino del PH/PP**, no una nueva.
+
+Si esa resolución no da un destino inequívoco —sin préstamo, o más de uno— **novedad bloqueante**.
+Con el §12 puesto, ese sobrante queda repartible en la pantalla.
+
+### Verificación
+
+1. Un partícipe **con** PH/PP y HS: su total cobrado tiene que ser **idéntico al de hoy**. Es la
+   prueba de que la fusión no duplica.
+2. NAVAS y los otros tres: diferencia **cero**, con su HS aplicado al seguro de incendio de una cuota
+   concreta **por la prelación**, no por una regla especial.
+3. Ninguna fila HS debe quedar sin procesar ni procesarse dos veces. Contarlas antes y después.
+4. Con esto y la corrección de SANCHEZ, el cuadre de la carga 449 debe dar **0**.
