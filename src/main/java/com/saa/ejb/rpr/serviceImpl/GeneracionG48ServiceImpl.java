@@ -11,7 +11,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import com.saa.basico.util.IncomeException;
+import com.saa.ejb.crd.service.CalificacionRiesgoService;
 import com.saa.ejb.crd.service.DetallePrestamoService;
+import com.saa.ejb.crd.service.dto.ResultadoCalificacionRiesgo;
 import com.saa.ejb.rpr.dao.CancelacionG49DaoService;
 import com.saa.ejb.rpr.dao.SaldoOperacionG48DaoService;
 import com.saa.ejb.rpr.service.DetalleEjecucionReporteService;
@@ -22,6 +25,7 @@ import com.saa.ejb.rpr.service.SaldoCuentaG42Service;
 import com.saa.ejb.rpr.service.SaldoOperacionG48Service;
 import com.saa.model.crd.DetallePrestamo;
 import com.saa.model.crd.Prestamo;
+import com.saa.model.crd.Producto;
 import com.saa.model.rpr.DetalleEjecucionReporte;
 import com.saa.model.rpr.EjecucionReporte;
 import com.saa.model.rpr.HistoricoG48;
@@ -43,6 +47,9 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
     @EJB private EjecucionReporteService        ejrcService;
     @EJB private HistoricoG48Service            historicoG48Service;
     @EJB private CancelacionG49DaoService       cg49DaoService;
+    /** PLAN-CALIFICACION-RIESGO-PARAMETRIZABLE.md: la escala de calificación/provisión ya no
+     * está cableada acá — se resuelve contra CRD.CFCR/CRD.ESCR. */
+    @EJB private CalificacionRiesgoService       calificacionRiesgoService;
 
     @Override
     public long generar(DetalleEjecucionReporte detalle) throws Throwable {
@@ -128,6 +135,25 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
         if (cuotasAProcesar.isEmpty()) {
             System.out.println("G48 - Sin cuotas. G48 vacío, OK.");
             return 0L;
+        }
+
+        // PLAN-CALIFICACION-RIESGO-PARAMETRIZABLE.md §5: falla UNA sola vez con el listado
+        // completo de productos sin configurar, antes de arrancar — no producto por producto
+        // a mitad de una corrida que ya lleva rato. Punto único y fácil de invertir (a "caer a
+        // la escala general") si el usuario prefiriera eso más adelante: todavía no respondió.
+        List<Producto> productosSinConfiguracion = calificacionRiesgoService.productosSinConfiguracion(fechaFinDate);
+        if (!productosSinConfiguracion.isEmpty()) {
+            StringBuilder listado = new StringBuilder();
+            for (Producto producto : productosSinConfiguracion) {
+                if (listado.length() > 0) {
+                    listado.append(", ");
+                }
+                listado.append(producto.getCodigo()).append(" (").append(producto.getNombre()).append(")");
+            }
+            throw new IncomeException("No se puede generar el G48: " + productosSinConfiguracion.size()
+                + " producto(s) sin configuración de calificación de riesgo vigente al " + fechaFinDate
+                + " en CRD.CFCR: " + listado + ". Configure la calificación de esos productos antes"
+                + " de generar el reporte.");
         }
 
         // -------------------------------------------------------
@@ -225,8 +251,12 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
                     }
                 }
 
-                String calificacionPropia = calcularCalificacion(diasMorosidad,
-                    (prestamo.getProducto() != null ? prestamo.getProducto().getCodigo() : null));
+                Long idProductoCuota = prestamo.getProducto() != null ? prestamo.getProducto().getCodigo() : null;
+                ResultadoCalificacionRiesgo resultadoCalificacion = calificacionRiesgoService.calificar(
+                    idProductoCuota, null, diasMorosidad, fechaFinDate);
+                String calificacionPropia = resultadoCalificacion.getCalificacion();
+                double porcentajeProvisionPropia = resultadoCalificacion.getPorcentajeProvision() != null
+                    ? resultadoCalificacion.getPorcentajeProvision() : 0.0;
 
                 // ----- VALOR POR VENCER -----
                 // Grupo 1: saldoInicialCapital - capital de la cuota del mes (la cuota que se procesa).
@@ -291,7 +321,8 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
                 Double valorSujetoProvision = Math.max(0.0, (valorPorVencer + valorVencido) - valorCuentaIndividual);
 
                 // ----- PROVISIÓN REQUERIDA ORIGINAL -----
-                Double provisionRequeridaOriginal = calcularProvision(valorSujetoProvision, calificacionPropia);
+                Double provisionRequeridaOriginal = (valorSujetoProvision != null && valorSujetoProvision > 0.0)
+                    ? valorSujetoProvision * porcentajeProvisionPropia : 0.0;
                 
                 // Log de depuración para identificar el problema
                 if (valorCuentaIndividual == 0.0 && valorSujetoProvision > 0.0) {
@@ -446,58 +477,12 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
         return true;
     }
 
-    /**
-     * Calcula la provisionRequeridaOriginal:
-     * Si valorSujetoProvision > 0 → valorSujetoProvision * porcentaje(calificacion), else 0.
-     * Porcentajes: A1=0.99%, A2=1.99%, A3=2%, B1=5%, B2=10%, C1=20%, C2=40%, D=60%, E=100%.
-     */
-    private Double calcularProvision(Double valorSujetoProvision, String calificacion) {
-        if (valorSujetoProvision == null || valorSujetoProvision <= 0.0) return 0.0;
-        double porcentaje;
-        switch (calificacion == null ? "" : calificacion) {
-            case "A1": porcentaje = 0.0099; break;
-            case "A2": porcentaje = 0.0199; break;
-            case "A3": porcentaje = 0.02;   break;
-            case "B1": porcentaje = 0.05;   break;
-            case "B2": porcentaje = 0.10;   break;
-            case "C1": porcentaje = 0.20;   break;
-            case "C2": porcentaje = 0.40;   break;
-            case "D":  porcentaje = 0.60;   break;
-            case "E":  porcentaje = 1.00;   break;
-            default:   porcentaje = 0.0;    break;
-        }
-        return valorSujetoProvision * porcentaje;
-    }
-
-    private String calcularCalificacion(Long dias, Long codigoProducto) {
-        if (dias == null || dias == 0) return "A1";
-
-        // Productos hipotecarios: 7, 8, 21
-        boolean esHipotecario = codigoProducto != null &&
-            (codigoProducto == 7L || codigoProducto == 8L || codigoProducto == 21L);
-
-        if (esHipotecario) {
-            // Tabla hipotecaria
-            if (dias >= 1   && dias <= 30)  return "A2";
-            if (dias >= 31  && dias <= 60)  return "A3";
-            if (dias >= 61  && dias <= 120) return "B1";
-            if (dias >= 121 && dias <= 180) return "B2";
-            if (dias >= 181 && dias <= 210) return "C1";
-            if (dias >= 211 && dias <= 270) return "C2";
-            if (dias >= 271 && dias <= 450) return "D";
-            return "E"; // más de 450 días
-        } else {
-            // Tabla general
-            if (dias >= 1   && dias <= 15)  return "A2";
-            if (dias >= 16  && dias <= 30)  return "A3";
-            if (dias >= 31  && dias <= 60)  return "B1";
-            if (dias >= 61  && dias <= 90)  return "B2";
-            if (dias >= 91  && dias <= 120) return "C1";
-            if (dias >= 121 && dias <= 180) return "C2";
-            if (dias >= 181 && dias <= 270) return "D";
-            return "E"; // más de 270 días
-        }
-    }
+    // calcularProvision/calcularCalificacion (las dos tablas cableadas, literal 7/8/21 para
+    // hipotecario) se eliminaron el 2026-09-02 — PLAN-CALIFICACION-RIESGO-PARAMETRIZABLE.md.
+    // La escala y el porcentaje de provisión ahora se resuelven contra CRD.CFCR/CRD.ESCR vía
+    // CalificacionRiesgoService (ver el punto único arriba, en el bucle principal). El
+    // contenido exacto de las dos tablas que tenían estos métodos quedó cargado tal cual en
+    // sql/177 — están en el historial de git si hiciera falta compararlas letra por letra.
 
     /**
      * Dividendo del reporte: el total de la cuota SIN el interés de mora ni el interés vencido.
