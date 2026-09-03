@@ -103,10 +103,43 @@ siete FK de `APLP`, no sólo de la nueva.
 6. NUEVO: el asiento va contra cuentas por pagar, no contra gasto   (§2)
 ```
 
-**El paso 2 necesita un endpoint que liste los documentos pendientes de un proveedor.** ⚠️ **Antes
-de escribirlo, buscar si ya existe**: la pantalla de cruce de anticipos hace exactamente esa
-consulta. Si está, se reusa. *En este proyecto ya se encontraron cuatro piezas construidas y sin
-puerta en una semana; asumir que algo no existe salió caro cuatro veces.*
+**El paso 2 NO necesita ningún endpoint nuevo. Verificado el 2026-09-03.** Existe
+`DocumentoCruceSelectorDialogComponent` (`saaFE`, `cxp/dialog/documento-cruce-selector-dialog/`),
+que sirve **facturas y liquidaciones de compra en una fila unificada**, filtrando por
+`titular.codigo` con `DatosBusqueda` sobre el `selectByCriteria` genérico. Se reusa tal cual.
+*Sexta pieza construida y sin puerta encontrada en una semana.*
+
+> ⚠️ **No confundirlo con `FacturaCompraSelectorDialogComponent`**, su hermano de nombre parecido: el
+> `'LIQUIDACION'` de ese otro es `CBR.LQCS` —la que ASOPREP **emite**, en cxc— y no `PGS.LQCC`. El
+> propio componente lo advierte en su comentario de cabecera.
+
+### ⚠️ Lo comprometido: el filtro de la lista NO es la protección
+
+El `soloPendientes` de ese selector filtra únicamente por `estadoPago !== PAGADA`. **No excluye las
+facturas ya comprometidas** — esa lógica vive en el otro componente, y sólo para su tipo `FACTURA`.
+*(Este documento afirmó lo contrario durante unas horas del 2026-09-03; lo corrigió el agente de
+frontend leyendo el archivo completo en vez de confiar en la cita con archivo y línea que le pasé.)*
+
+Sin una validación de servidor hay **doble pago real**, y el camino es corto: factura de $100 con un
+pago programado en `POR_APROBAR` por $100 esperando en la bandeja → se paga con caja chica → se crea
+la `APLP` y la factura queda pagada → después aprueban el pago de la bandeja y sale $100 otra vez. El
+saldo no lo evita: un pago `POR_APROBAR` todavía no tiene `APLP`, y por eso no figura como aplicado.
+**Tercera aparición del mismo hueco esta semana** — §11 del documento de estado del equipo.
+
+**Ya está resuelto en el proyecto:** `PagoProgramadoServiceImpl:2012`,
+`validaValorContraSaldo(FacturaCompra, Double, Long idPagoEx)`, que resta lo comprometido excluyendo
+los `CONFIRMADO` —ya reflejados en el saldo— y arma un mensaje con saldo y comprometido por separado.
+Está `private`: se expone **sin tocarle el cuerpo**, y el gasto la llama con `idPagoEx = null`.
+
+**Sólo aplica a facturas, y eso está verificado, no supuesto:** `PagoProgramado` no tiene FK a
+liquidación, y `OrigenPagoCxp` define únicamente `FACTURA_COMPRA`, `EGRESO_TESORERIA` y
+`ANTICIPO_PROVEEDOR` — **no existe `LIQUIDACION_COMPRA`**. Una liquidación no puede quedar
+comprometida por la bandeja, así que para ese caso alcanza con el saldo. No hace falta ningún
+`selectVigentesByLiquidacion`.
+
+> **El principio, que ya lleva varias apariciones:** *una validación sólo protege el camino que pasa
+> por ella.* Un filtro de lista es comodidad para el usuario; lo que impide el doble pago es la
+> comprobación del servidor, porque es la única que está en todos los caminos.
 
 **Validaciones, con el precedente de cada una:**
 
@@ -205,8 +238,9 @@ realmente posible en ese estado antes de sugerirlo.**
 | 1 | DDL: `APLPMVCH` + control del `NULLABLE` de las siete FK | — |
 | 2 | `TipoDocPagoAplicacion.CAJA_CHICA = 6` | — |
 | 3 | BE: aplicación + contabilidad del §2 | 1, 2 |
-| 4 | BE: endpoint de documentos pendientes por proveedor — **si no existe ya** | — |
-| 5 | FE: selector de documento y monto en el gasto | 4 |
+| 4 | ~~BE: endpoint de documentos pendientes por proveedor~~ **ELIMINADO** — el selector ya existe | — |
+| 4b | BE: exponer `validaValorContraSaldo` y llamarla desde el gasto (**sólo facturas**) | 2 |
+| 5 | FE: reusar `DocumentoCruceSelectorDialogComponent` + monto en el gasto; agregar la columna de documento a la tabla de movimientos; **elegir documento obliga a informar beneficiario**, que hoy es opcional y no bloquea guardar | 4b |
 | 6 | Extender `anularGasto` para reversar la aplicación, y bloquear el otro sentido (§6) | 3 |
 | 7 | Verificar los dos estados de cuenta (§5) | 3 |
 
