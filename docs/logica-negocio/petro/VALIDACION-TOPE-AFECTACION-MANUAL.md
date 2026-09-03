@@ -341,19 +341,35 @@ que un archivo con novedades duplicadas sin clave (o cualquier otra combinación
 pueda inflar el pozo por encima de lo real. Detrás de todo el proceso sigue además la red del §11
 (recibido == aplicado).
 
-Los 4 tipos ESTRUCTURALES (sin fila `NovedadParticipeCarga`: `PARTICIPE_NO_ENCONTRADO`,
-`CODIGO_ROL_DUPLICADO`, `NOMBRE_ENTIDAD_DUPLICADO`, `CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE`) no pasan
-por la fórmula de arriba, que solo mira `NovedadParticipeCarga`. Para los tres primeros eso es
-correcto —el frontend nunca los ofrece para afectar (`tipoNovedad > 3`)—, así que quedan en pozo 0.
+### ⛔ QUINTA vuelta, 2026-09-03: los "4 tipos ESTRUCTURALES sin fila NVPC" no existen — se sumaban dos veces
 
-**El cuarto (`CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE`) SÍ pasa ese filtro del frontend y tiene su propio
-caso, sin cambios en esta cuarta vuelta:** si bloquea (fuera de la filial Petrocomercial — misma
-condición exacta que decide si bloquea el procesamiento, `tipoEstructuralBloquea`), su pozo es el
-`totalDescontado` COMPLETO de ESA fila, sumado aparte del resto (nunca colisiona: no tiene fila
-`NovedadParticipeCarga`). Sigue siendo por fila a propósito — acá no hay ambigüedad de a qué fila
-pertenece, a diferencia del HS. Razón: si este tipo bloquea, la carga entera se frena y a ese
-partícipe no se le aplicó nada — su plata de esa fila está íntegra, y el cap por participante lo
-sigue conteniendo igual que a cualquier otro pozo.
+Todo el párrafo que estuvo acá decía que `PARTICIPE_NO_ENCONTRADO`, `CODIGO_ROL_DUPLICADO`,
+`NOMBRE_ENTIDAD_DUPLICADO` y `CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE` "no tienen fila
+`NovedadParticipeCarga`, solo el campo plano `participe.getNovedadesCarga()`", y sobre esa base el
+código le daba al tipo 4 un pozo APARTE (`totalDescontado` completo de la fila) cuando bloqueaba.
+
+**Es falso.** `almacenaRegistros` (Fase 1) ya crea una fila NVPC real para CUALQUIERA de los 4 tipos
+que bloquee (`tipoEstructuralBloquea` — la MISMA condición). Esa fila entra al bucle normal de pozos
+de arriba como cualquier otra novedad bloqueante, porque los 4 tipos están en
+`FamiliaNovedadCarga.TIPOS_QUE_EXIGEN_AFECTACION`. El bloque "aparte" para el tipo 4 sumaba el MISMO
+dinero una segunda vez.
+
+**Medido en producción — CABRERA (rol 2581, carga 449):** novedad NVPC 44120, tipo 4, montoRecibido
+323,41. Con el bloque puesto, su pozo salía en **646,82** — el doble de lo real. Se eliminó el
+bloque entero; el pozo de estos 4 tipos ahora sale SOLO del bucle normal, una vez.
+
+**Por qué el campo plano y la fila NVPC coexisten sin ser un problema:** el campo
+(`participe.getNovedadesCarga()`) es la marca de identificación de Fase 1 (para filtros/consultas
+por ese campo); la fila NVPC es la que efectivamente representa la novedad para el operador y para
+el cálculo del pozo. No hay que sumar las dos — solo la fila cuenta acá.
+
+**Gap real que esto NO corrige, documentado en el §16:** la fila NVPC de estos 4 tipos se crea en
+Fase 1 usando `totalDescontado` de ESA fila sola, sin sumar el HS del partícipe — a diferencia de
+`validarNovedadesFase2` (Fase 2, corre después), que si el producto es PH/PP sí busca el HS y lo
+suma. Es por diseño: Fase 1 corre partícipe por detalle, en el mismo bucle que inserta las filas,
+así que el HS todavía puede no existir cuando le toca el turno al PH. Por eso CABRERA (tipo 4 en su
+fila PH, 323,41) tiene sus 13,18 de HS **sin ningún pozo que los contenga** — no es un problema de
+cap, es que la fila NVPC nunca los sumó. Ver §16.
 
 Se conserva intacto lo que el usuario decidió: **dentro del universo bloqueado puede mover entre
 préstamos y aportes como quiera** (caso SARMIENTO). Lo que no puede es tomar plata que ya tiene

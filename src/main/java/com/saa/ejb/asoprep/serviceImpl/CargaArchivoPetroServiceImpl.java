@@ -2131,20 +2131,38 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	 * {@code montoRecibido ?? montoDiferencia ?? montoEsperado ?? 0} — para que pantalla y tope
 	 * NUNCA discrepen.</p>
 	 *
-	 * <p><b>Los 4 tipos ESTRUCTURALES</b> (PARTICIPE_NO_ENCONTRADO, CODIGO_ROL_DUPLICADO,
-	 * NOMBRE_ENTIDAD_DUPLICADO, CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE — sin fila
-	 * {@code NovedadParticipeCarga}, viven en {@code participe.getNovedadesCarga()}/
-	 * {@code getNovedadesFinancieras()}) no pasan por el bucle de arriba, que solo mira
-	 * {@code NovedadParticipeCarga}. Para los tres primeros eso es lo CORRECTO y se los deja en
-	 * 0 — verificado con el frontend: {@code detalle-consulta-carga.component.ts:1459} filtra
-	 * {@code tipoNovedad > 3} y nunca los ofrece para afectar (si no se sabe quién es el
-	 * partícipe no hay plata que repartir, hay un dato que corregir). El CUARTO
-	 * (CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE) SÍ pasa ese filtro del frontend, así que tiene su
-	 * propio caso más abajo ({@link #esTipo4Bloqueante}): si bloquea (fuera de filial
-	 * Petrocomercial), su pozo es el {@code totalDescontado} completo de ESTA fila — porque si
-	 * bloquea, la carga se frena entera y a este partícipe no se le aplicó nada, así que su
-	 * plata de esta fila está íntegra. Sigue siendo por fila (no por participante) porque acá no
-	 * hay ambigüedad de a qué fila pertenece, a diferencia del HS.</p>
+	 * <p>⛔ <b>CORREGIDO 2026-09-03 (QUINTA vuelta) — supuesto falso sobre los 4 tipos
+	 * ESTRUCTURALES, ELIMINADO.</b> Hasta acá este javadoc decía que PARTICIPE_NO_ENCONTRADO,
+	 * CODIGO_ROL_DUPLICADO, NOMBRE_ENTIDAD_DUPLICADO y CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE
+	 * "no tienen fila {@code NovedadParticipeCarga}, viven solo en
+	 * {@code participe.getNovedadesCarga()}/{@code getNovedadesFinancieras()}", y sobre eso
+	 * había un bloque acá que le sumaba pozo aparte al tipo 4. <b>Es falso: {@code
+	 * almacenaRegistros} (Fase 1, ~línea 491) YA crea una fila NVPC real para CUALQUIERA de los 4
+	 * tipos que bloquee</b> (misma condición, {@code tipoEstructuralBloquea}), y esa fila entra
+	 * al bucle de arriba como cualquier otra novedad bloqueante — los 4 tipos están en
+	 * {@code FamiliaNovedadCarga.TIPOS_QUE_EXIGEN_AFECTACION}. El bloque que sumaba aparte
+	 * DUPLICABA ese pozo. Confirmado en producción con CABRERA (rol 2581, carga 449, tipo 4):
+	 * salía 646,82 en vez de 323,41. El campo plano ({@code participe.getNovedadesCarga()}) y la
+	 * fila NVPC coexisten para estos 4 tipos — el campo es solo la marca de identificación de
+	 * Fase 1, la fila NVPC es la que efectivamente participa del pozo, y no hace falta ni hay
+	 * que sumarla dos veces.</p>
+	 *
+	 * <p>⚠️ <b>Gap real, todavía sin corregir acá — a propósito, ver VALIDACION-TOPE-AFECTACION-
+	 * MANUAL.md §16:</b> la fila NVPC que {@code almacenaRegistros} crea para estos 4 tipos usa
+	 * {@code montoRecibido = participe.getTotalDescontado()} — SOLO el descontado de ESTA fila,
+	 * sin sumar el HS del partícipe (a diferencia de {@code validarNovedadesFase2}, que si el
+	 * producto es PH/PP SÍ busca el HS y lo suma antes de registrar sus propias novedades). Esto
+	 * es por diseño de Fase 1: corre PARTÍCIPE POR DETALLE, dentro del mismo bucle que inserta
+	 * las filas, así que el HS del mismo partícipe puede no estar insertado todavía cuando le
+	 * toca el turno al PH — por eso Fase 2 existe y corre DESPUÉS de que todo esté insertado.
+	 * Medido en CABRERA (carga 449): su fila PH tiene tipo 4 con montoRecibido 323,41, pero su HS
+	 * es 13,18 aparte y NUNCA tiene novedad propia (el HS jamás la tiene) — esos 13,18 no están
+	 * en NINGÚN pozo, el operador no puede afectarlos ni queriendo. No se corrige acá (sumando el
+	 * HS al pozo dentro de este método) porque la pantalla lee el monto de la fila NVPC
+	 * DIRECTAMENTE (misma fórmula citada arriba) — si este método sumara el HS pero la fila
+	 * siguiera diciendo 323,41, pantalla y tope volverían a discrepar, el mismo error que motivó
+	 * la regla de "usar siempre el mismo cálculo que la pantalla". La corrección real es
+	 * actualizar la fila NVPC misma para que refleje el HS (§16, revalidación).</p>
 	 *
 	 * <p><b>Principio para cualquier ajuste futuro de este cálculo:</b> "ante la duda, el tope se
 	 * equivoca por abajo" sigue valiendo para no INVENTAR plata que no existe — por eso el cap
@@ -2194,14 +2212,20 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			totalPozos += pool;
 		}
 
-		// CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE (tipo 4) — ver javadoc de arriba. Se suma aparte
-		// (nunca colisiona con el resto: no tiene fila NovedadParticipeCarga). El cap por
-		// PARTICIPANTE (no por fila, ver javadoc) la contiene igual que a cualquier otro pozo.
-		if (esTipo4Bloqueante(participe.getNovedadesCarga(), codigoFilial)
-				|| esTipo4Bloqueante(participe.getNovedadesFinancieras(), codigoFilial)) {
-			totalPozos += nullSafe(participe.getTotalDescontado());
-		}
-
+		// ⛔ CORREGIDO 2026-09-03 (§10, QUINTA vuelta) — ESTE BLOQUE SE ELIMINÓ, y el porqué
+		// importa para que nadie lo reponga: el supuesto sobre el que se escribió ("los 4 tipos
+		// ESTRUCTURALES no tienen fila NovedadParticipeCarga") es FALSO. `almacenaRegistros`
+		// (Fase 1, ~línea 491) YA crea una fila NVPC real para CUALQUIER tipo estructural que
+		// bloquee (1-4), con la MISMA condición (`tipoEstructuralBloquea`) que este bloque volvía
+		// a evaluar acá — esa fila entra al bucle genérico de arriba como cualquier otra novedad
+		// bloqueante (los 4 tipos están en `FamiliaNovedadCarga.TIPOS_QUE_EXIGEN_AFECTACION`) y
+		// YA aporta su pozo. Este bloque volvía a sumar el mismo dinero una segunda vez.
+		// Confirmado en producción con CABRERA (rol 2581, carga 449): novedad NVPC 44120, tipo 4,
+		// montoRecibido 323,41 — con este bloque puesto, su pozo salía en 646,82 (el doble).
+		// Verificado que tipos 1-3 NO tienen este problema (`esTipo4Bloqueante` solo compara
+		// contra CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE) pero SÍ están expuestos al mismo supuesto
+		// falso en el resto de este javadoc — corregido ahí también.
+		//
 		// SIN cap acá — CORRECCIÓN 2026-09-03 (§10, CUARTA vuelta): el pozo de una novedad
 		// puede abarcar MÁS de una fila (el HS no tiene novedad propia, viaja adentro de la del
 		// préstamo — ver aplicarPagoParticipe:~2798, donde montoHS se suma al monto que valida
@@ -2213,18 +2237,6 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		// llamadores, que son quienes conocen esa suma — ver
 		// {@link #calcularTopeAfectacionManual} y {@link #obtenerTopeAfectacionManual}.
 		return totalPozos;
-	}
-
-	/**
-	 * Si un tipo de novedad ESTRUCTURAL (sin fila {@code NovedadParticipeCarga}) es,
-	 * específicamente, {@code CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE} bloqueando — usa
-	 * {@link #tipoEstructuralBloquea}, la MISMA función que decide si bloquea el procesamiento,
-	 * para que esta pregunta ("¿le doy pozo?") nunca pueda responder distinto que "¿bloquea?".
-	 */
-	private boolean esTipo4Bloqueante(Long tipoNovedadEstructural, Long codigoFilial) {
-		return tipoNovedadEstructural != null
-			&& tipoNovedadEstructural.intValue() == ASPNovedadesCargaArchivo.CODIGO_PETRO_NO_COINCIDE_CON_NOMBRE
-			&& tipoEstructuralBloquea(tipoNovedadEstructural, codigoFilial);
 	}
 
 	/** Cédula del partícipe a partir de su rol Petro, solo para el mensaje de la violación. */
