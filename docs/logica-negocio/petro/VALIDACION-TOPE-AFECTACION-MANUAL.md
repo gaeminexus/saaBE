@@ -299,6 +299,54 @@ van a discrepar y nadie va a saber cuál creer.**
 
 ---
 
+## 11. La red final: recibido == aplicado, o no se generan los asientos — 2026-09-03
+
+> *«Ese botón de recalcular debe estar en la pantalla donde se procesa el archivo Petro para que no
+> permita procesar si el asiento no va a cuadrar hasta el centavo con el dinero recibido.»*
+
+### El disparador
+
+El usuario viene **restaurando la base de producción** cada vez que una carga sale mal. La restaura
+porque el proceso **termina bien y genera un asiento equivocado** — y eso no se puede deshacer. Si el
+proceso se negara a terminar, la transacción revertiría sola y no habría nada que restaurar.
+
+### Dónde va, y por qué ahí y no en otro lado
+
+Al final de `aplicarPagosArchivoPetro`, **después** de aplicar todos los pagos y aportes y **antes**
+de `contabilizarReparto`/`contabilizarAplicacion`.
+
+- **No antes de aplicar**: ahí solo se puede *predecir* lo que el flujo automático va a hacer, y
+  predecirlo es simular el proceso entero. Al final ya no hay que predecir nada — está aplicado, y se
+  cuenta exacto.
+- **No después de los asientos**: si el asiento ya se generó, revertirlo es un problema contable. Si
+  esto lanza antes, la misma transacción `REQUIRED` que aplicó todo revierte sola y no queda rastro.
+
+### El invariante
+
+```
+recibido (SUM TransferenciaCargaPetro vigentes — misma fuente que el asiento de reparto)
+==
+aplicado (SUM PagoPrestamo vigentes + SUM Aporte de la carga — mismas fuentes que el asiento de aplicación)
+```
+
+Tolerancia de **un centavo**. Si no coincide, `IncomeException` con recibido, aplicado, la diferencia,
+y el **desglose por partícipe** de quiénes están descuadrados (recibieron de más o de menos), con el
+detalle manual/automático — reutilizando `DistribucionBandaService#obtenerDiferencia` (cuarto
+consumidor de esa cuenta, no una copia nueva).
+
+### Qué NO reemplaza
+
+Ni al prevuelo (§9) ni a la validación del tope (§8/§10): esos avisan **antes** de esperar 20 minutos.
+Esta es la red que garantiza que un asiento descuadrado **nunca llegue a existir**. Los tres se
+complementan.
+
+### Implementación
+
+`CargaArchivoPetroServiceImpl.validarRecibidoIgualAplicado`, llamado desde `aplicarPagosArchivoPetro`
+justo antes de `contabilizarReparto`.
+
+---
+
 ## 12. El dinero sin destino se vuelve novedad bloqueante — decisión del usuario, 2026-09-03
 
 > *«Si hay dinero no repartido, debe decir exactamente qué dinero no se ha repartido y permitirle al

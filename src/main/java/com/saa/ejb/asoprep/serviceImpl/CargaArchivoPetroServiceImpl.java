@@ -26,7 +26,9 @@ import com.saa.ejb.crd.service.DetalleCargaArchivoService;
 import com.saa.ejb.crd.service.MotorPagoPrestamoService;
 import com.saa.ejb.crd.service.ParticipeXCargaArchivoService;
 import com.saa.ejb.crd.service.dto.ContextoPago;
+import com.saa.ejb.crd.service.dto.DiferenciaParticipeDistribucionBanda;
 import com.saa.ejb.crd.service.dto.ResultadoAplicacionPago;
+import com.saa.ejb.crd.service.dto.ResultadoDiferenciaDistribucionBanda;
 import com.saa.model.crd.AfectacionValoresParticipeCarga;
 import com.saa.model.crd.Aporte;
 import com.saa.model.crd.CargaArchivo;
@@ -42,6 +44,7 @@ import com.saa.model.crd.ParticipeXCargaArchivo;
 import com.saa.model.crd.Prestamo;
 import com.saa.model.crd.Producto;
 import com.saa.rubros.ASPNovedadesCargaArchivo;
+import com.saa.rubros.DsbnOrigen;
 import com.saa.rubros.EstadoParticipeEntidad;
 import com.saa.rubros.Filiales;
 
@@ -140,6 +143,17 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     
     @EJB
     private com.saa.basico.ejb.FechaService fechaService;
+
+    /** §11 VALIDACION-TOPE-AFECTACION-MANUAL.md: recibido de la carga, misma fuente que el
+     * asiento de reparto — ver {@link #validarRecibidoIgualAplicado}. */
+    @EJB
+    private com.saa.ejb.crd.dao.TransferenciaCargaPetroDaoService transferenciaCargaPetroDaoService;
+
+    /** §11 VALIDACION-TOPE-AFECTACION-MANUAL.md: desglose por partícipe del descuadre, para el
+     * mensaje de {@link #validarRecibidoIgualAplicado} — cuarto consumidor de la misma cuenta,
+     * reutilizada, no copiada. */
+    @EJB
+    private com.saa.ejb.crd.service.DistribucionBandaService distribucionBandaService;
 
     /** Pedido 10: para que un préstamo sin cuotas vencidas vuelva a VIGENTE en cuanto se paga. */
     @EJB
@@ -1337,6 +1351,16 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			
 			System.out.println(resumen);
 
+			// ==========================================
+			// VALIDACIÓN FINAL, ANTES DE LOS ASIENTOS (§11 VALIDACION-TOPE-AFECTACION-MANUAL.md):
+			// recibido == aplicado tiene que cuadrar hasta el centavo. Todos los pagos y aportes
+			// de arriba ya están aplicados — acá se cuenta exacto, no se predice. Si no cuadra,
+			// lanza ANTES de generar ningún asiento: la transacción revierte sola y no queda un
+			// asiento equivocado que después haya que deshacer restaurando la base.
+			// ==========================================
+			validarRecibidoIgualAplicado(cargaArchivo);
+			// ==========================================
+
 			// Paso 2 del cobro en dos pasos (regla 11 de §5 del levantamiento), antes de marcar
 			// PROCESADO: si cualquiera de los dos asientos falla, la carga NO queda a medio
 			// contabilizar (misma transacción REQUIRED que aplica todos los pagos).
@@ -1669,6 +1693,117 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		double exceso = Math.max(0.0, afectado - disponible);
 		double restante = Math.max(0.0, disponible - afectado);
 		return new double[] { exceso, restante };
+	}
+
+	/**
+	 * Última red antes de generar los asientos — VALIDACION-TOPE-AFECTACION-MANUAL.md §11
+	 * (2026-09-03, decisión del usuario: *"que no permita procesar si el asiento no va a
+	 * cuadrar hasta el centavo con el dinero recibido"*). El disparador fue que el usuario
+	 * viene RESTAURANDO LA BASE DE PRODUCCIÓN cada vez que una carga sale mal: el proceso
+	 * TERMINA BIEN y genera un asiento equivocado, y eso no se puede deshacer. Si el proceso se
+	 * niega a terminar en cambio, la transacción revierte sola y no hay nada que restaurar.
+	 *
+	 * <p><b>Por qué ACÁ y no antes de aplicar:</b> antes de aplicar solo se puede PREDECIR lo
+	 * que el proceso automático va a hacer — predecirlo es simular el proceso entero. Acá ya no
+	 * hay que predecir nada: los pagos y aportes YA ESTÁN aplicados (el bucle de arriba
+	 * terminó) y se pueden contar exactos.</p>
+	 *
+	 * <p><b>Por qué ACÁ y no después de los asientos:</b> si el asiento ya se generó,
+	 * revertirlo es un problema contable. Si esto lanza ANTES —{@code @TransactionAttribute
+	 * REQUIRED}, misma transacción que aplicó todo— la transacción revierte sola y no queda
+	 * rastro: exactamente el punto entre "terminé de aplicar" y "genero el asiento".</p>
+	 *
+	 * <p><b>Invariante:</b> recibido ({@code SUM TransferenciaCargaPetro} vigentes — misma
+	 * fuente que usa el asiento de reparto) {@code ==} aplicado ({@code SUM PagoPrestamo}
+	 * vigentes + {@code SUM Aporte} de la carga — mismas fuentes que usa el asiento de
+	 * aplicación), tolerancia de UN CENTAVO.</p>
+	 *
+	 * <p>El desglose por partícipe del mensaje reutiliza
+	 * {@link com.saa.ejb.crd.service.DistribucionBandaService#obtenerDiferencia} — cuarto
+	 * consumidor de esa cuenta (descontado/aplicado/manual/automático por partícipe), nunca una
+	 * copia nueva.</p>
+	 *
+	 * <p><b>No reemplaza</b> al prevuelo (§9) ni a la validación del tope (§8/§10): esos
+	 * avisan ANTES de esperar 20 minutos. Esta es la red que garantiza que un asiento
+	 * descuadrado nunca llegue a existir — los tres se complementan.</p>
+	 */
+	private void validarRecibidoIgualAplicado(CargaArchivo cargaArchivo) throws Throwable {
+		final double TOLERANCIA_INVARIANTE = 0.01;
+
+		Long idCarga = cargaArchivo.getCodigo();
+		System.out.println("=== VALIDANDO RECIBIDO == APLICADO ANTES DE GENERAR ASIENTOS (carga "
+			+ idCarga + ") ===");
+
+		double recibido = transferenciaCargaPetroDaoService.sumaValorVigentesByCarga(idCarga);
+
+		double aplicadoPrestamos = 0.0;
+		List<PagoPrestamo> pagosVigentes = pagoPrestamoDaoService.selectVigentesByCargaArchivo(idCarga);
+		if (pagosVigentes != null) {
+			for (PagoPrestamo pago : pagosVigentes) {
+				aplicadoPrestamos += nullSafe(pago.getValor());
+			}
+		}
+		double aplicadoAportes = 0.0;
+		List<Aporte> aportesCarga = aporteDaoService.selectByCarga(idCarga);
+		if (aportesCarga != null) {
+			for (Aporte aporte : aportesCarga) {
+				aplicadoAportes += nullSafe(aporte.getValor());
+			}
+		}
+		double aplicado = aplicadoPrestamos + aplicadoAportes;
+		double diferencia = aplicado - recibido;
+
+		if (Math.abs(diferencia) <= TOLERANCIA_INVARIANTE) {
+			System.out.println("✅ Recibido $" + String.format("%,.2f", recibido) + " == Aplicado $"
+				+ String.format("%,.2f", aplicado) + " (carga " + idCarga + ")");
+			return;
+		}
+
+		StringBuilder mensaje = new StringBuilder();
+		mensaje.append("No se generan los asientos de la carga ").append(idCarga)
+		       .append(": el asiento no cuadraría con el dinero recibido. Recibido (transferencias) $")
+		       .append(String.format("%,.2f", recibido))
+		       .append(", aplicado $").append(String.format("%,.2f", aplicado))
+		       .append(" (préstamos $").append(String.format("%,.2f", aplicadoPrestamos))
+		       .append(" + aportes $").append(String.format("%,.2f", aplicadoAportes)).append(")")
+		       .append(", diferencia $").append(String.format("%,.2f", Math.abs(diferencia)))
+		       .append(diferencia > 0 ? " aplicados de más" : " aplicados de menos")
+		       .append(" de lo recibido. La carga NO quedó procesada: corrija y vuelva a intentar.");
+
+		// El desglose por partícipe es un PLUS para el mensaje (dice a quién mirar primero), no
+		// la validación en sí — si falla, no puede tapar el hallazgo real de arriba.
+		try {
+			ResultadoDiferenciaDistribucionBanda diferenciaPorParticipe =
+				distribucionBandaService.obtenerDiferencia(DsbnOrigen.CARGA_PETRO, idCarga);
+			List<DiferenciaParticipeDistribucionBanda> detalle = diferenciaPorParticipe != null
+				? diferenciaPorParticipe.getDetalle() : null;
+			if (detalle != null && !detalle.isEmpty()) {
+				mensaje.append(" Partícipes descuadrados:");
+				int listados = 0;
+				for (DiferenciaParticipeDistribucionBanda item : detalle) {
+					if (listados >= MAXIMO_DETALLES_EN_MENSAJE) {
+						mensaje.append("\n  ... y ").append(detalle.size() - listados).append(" partícipe(s) más.");
+						break;
+					}
+					mensaje.append("\n  - Rol ").append(item.getCodigoPetro())
+					       .append(" cédula ").append(item.getCedula())
+					       .append(" ").append(item.getParticipe())
+					       .append(": descontado $").append(String.format("%,.2f", item.getDescontado()))
+					       .append(", aplicado $").append(String.format("%,.2f", item.getAplicadoTotal()))
+					       .append(" (manual $").append(String.format("%,.2f", item.getAplicadoManual()))
+					       .append(", automático $").append(String.format("%,.2f", item.getAplicadoAutomatico()))
+					       .append("), diferencia $").append(String.format("%,.2f", item.getDiferencia()))
+					       .append(item.getDiferencia() > 0 ? " de más" : " de menos").append(".");
+					listados++;
+				}
+			}
+		} catch (Throwable e) {
+			System.err.println("No se pudo armar el desglose por partícipe para el mensaje del"
+				+ " invariante recibido==aplicado (carga " + idCarga + "): " + e.getMessage());
+		}
+
+		System.err.println(mensaje.toString());
+		throw new IncomeException(mensaje.toString());
 	}
 
 	private void validarTopeAfectacionManualPorParticipe(CargaArchivo cargaArchivo) throws Throwable {
