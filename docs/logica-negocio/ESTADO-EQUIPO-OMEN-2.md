@@ -7,9 +7,12 @@
 
 ## 0. Alcance — definido por el usuario el 2026-09-01
 
-**`rhh` · `cxp` · `pagos` · `cnt` · `tsr`**
+**`rhh` · `cxp` · `cxc` · `pagos` · `cnt` · `tsr`**
 
-⛔ **NO TOCAR: `crd`, `cxc`.**
+⛔ **NO TOCAR: `crd`.**
+
+*El 2026-09-03 el usuario **levantó la veda de `cxc`**: entra al alcance de este equipo. Sólo
+`crd` sigue vedado. Con eso los seis módulos que tenía `omen-saa-3` quedan cubiertos, más `cnt`.*
 
 **Relevo confirmado por el usuario:** este equipo **releva a `omen-saa-3`** en `cxp`, `pagos`, `tsr`
 y `rhh`. Ese equipo tenía reserva escrita sobre `cxp/cxc/pagos/tsr/rhh/sri` y ya no está activo.
