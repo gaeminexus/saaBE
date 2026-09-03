@@ -183,7 +183,17 @@ desglose interno (capital/interés/desgravamen) lo decide la prelación en vez d
 - Las bandas contables se clasifican por componente. Un desglose digitado a mano manda plata a la
   banda equivocada sin ningún aviso.
 
-> ⚠️ **Decidible pendiente, no bloqueante.** El 2026-09-01 el usuario dijo *«debes procesarlas según
+> ✅ **CONFIRMADO POR EL USUARIO el 2026-09-02:** *«AVPC indica la cuota, pero la prelación decide
+> el reparto interno»*. Deja de ser supuesto mío.
+>
+> **Consecuencia que hay que tener presente** (la levantó el agente BE al implementar, y es real):
+> `aplicarPago` cascada sobre el **préstamo**, desde la mínima cuota pendiente — no sobre la cuota
+> puntual que señala la AVPC. Si esa cuota no es la más antigua pendiente, el dinero se imputa a la
+> más antigua. **Es lo correcto según la regla que fijó el mismo usuario** (*«para poder pasar a la
+> siguiente cuota debe terminar de pagar la cuota anterior»*), pero significa que la cuota elegida
+> en la pantalla es orientativa: manda la antigüedad.
+
+> ⚠️ **Antecedente que esto resolvió.** El 2026-09-01 el usuario dijo *«debes procesarlas según
 > se haya ingresado en la tabla de ajuste de novedades. Eso lo define el usuario»*. Eso resolvía
 > **a qué destino y por cuánto** — que se respeta igual. Este plan avanza asumiendo que **no**
 > cubría el reparto interno entre componentes de una misma cuota. Si el usuario quiere que el
