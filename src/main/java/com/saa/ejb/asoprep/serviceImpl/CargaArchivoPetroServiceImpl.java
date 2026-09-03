@@ -2450,25 +2450,9 @@ private void procesarPagoCuota(ParticipeXCargaArchivo participe,
 		detallePrestamoService.saveSingle(cuota);
 		
 		// Crear registro de pago para esta cuota
-		//
-		// 2026-09-02: se graba seguroIncendioPagar (el PENDIENTE de ESTA cuota, calculado
-		// arriba en :2438), NUNCA el parámetro valorSeguroIncendio. montoTotal acá es
-		// totalPendiente, que YA incluye el seguro pendiente de la cuota (calcularSaldosRealesCuota,
-		// saldos.totalPendiente = saldoDesgravamen + saldoInteres + saldoCapital +
-		// saldoSeguroIncendio) — así que para que capitalPagar+interesPagar+desgravamenPagar+
-		// seguroIncendioPagar sume exactamente montoTotal, el cuarto término tiene que ser el
-		// pendiente de la cuota, no el parámetro.
-		//
-		// El parámetro SIRVE para otra cosa (validar el HS recibido contra lo esperado, en
-		// aplicarPagoParticipe) pero NO es lo que hay que grabar acá: en cascada
-		// (procesarExcedenteASiguienteCuota) ese parámetro llega hardcodeado en 0.0 ("el
-		// excedente no incluye seguro, ya se aplicó en la cuota anterior") — pero la cuota que
-		// RECIBE el excedente puede tener SU PROPIO seguro de incendio pendiente, distinto del
-		// de la cuota anterior. Grabar 0 ahí dejaba el `valor` (PGPRVLRR) más alto que la suma
-		// de sus cuatro componentes, exactamente el gap medido en la carga 449 ($2.675,73).
-		crearRegistroPago(cuota, totalPendiente,
+		crearRegistroPago(cuota, totalPendiente, 
 			capitalPagar, interesPagar, desgravamenPagar,
-			seguroIncendioPagar,
+			valorSeguroIncendio, // ✅ CORRECCIÓN: Usar el valor real del seguro de incendio (HS)
 			String.format("Pago cuota #%d - Mes %d/%d - Carga %d",
 				cuota.getNumeroCuota().intValue(),
 				cargaArchivo.getMesAfectacion(),
