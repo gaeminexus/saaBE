@@ -98,6 +98,16 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
         LocalDateTime ahora = LocalDateTime.now();
         int filasEscritas = 0;
 
+        // Corrección 2026-09-02 (URGENTE, detectado en una carga real de 1167 pagos: ~2.300
+        // consultas, más de dos minutos solo en clasificar): la configuración de bandas NO
+        // cambia dentro de una carga, y las combinaciones distintas de (producto, empresa,
+        // tipoCartera, fecha) son un puñado frente a miles de pagos. Cache LOCAL a esta
+        // llamada — vive lo que dura el proceso, nunca un campo de clase ni entre cargas (la
+        // fecha es parte de la clave justo porque la vigencia se resuelve a esa fecha). Mismo
+        // patrón que CacheVigenciaParticipe (tormenta de vigencias) y el cache por producto del
+        // G48 (hallazgo 3a) de hoy — acá había quedado sin hacer.
+        Map<String, List<BandaProductoDetalle>> cacheRangosPorClave = new LinkedHashMap<>();
+
         for (PagoPrestamo pago : pagos) {
             Prestamo prestamo = pago.getPrestamo();
             if (prestamo == null || prestamo.getEntidad() == null) {
@@ -140,8 +150,22 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
                     dias = ChronoUnit.DAYS.between(vencimiento, fechaAplicacion);
                 }
 
-                ResultadoClasificacionBanda resultado = clasificadorBandaService.clasificar(
-                    idProducto, idEmpresa, tipoCartera, dias, fechaAplicacion);
+                String claveRangos = idProducto + "|" + idEmpresa + "|" + tipoCartera + "|" + fechaAplicacion;
+                List<BandaProductoDetalle> rangos = cacheRangosPorClave.get(claveRangos);
+                if (rangos == null) {
+                    rangos = clasificadorBandaService.resolverRangos(
+                        idProducto, idEmpresa, tipoCartera, fechaAplicacion);
+                    cacheRangosPorClave.put(claveRangos, rangos);
+                }
+                BandaProductoDetalle bandaClasificada = clasificadorBandaService.clasificarEnBandas(rangos, dias);
+
+                ResultadoClasificacionBanda resultado = new ResultadoClasificacionBanda();
+                resultado.setIdProducto(idProducto);
+                resultado.setIdEmpresa(idEmpresa);
+                resultado.setTipoCartera(tipoCartera);
+                resultado.setFecha(fechaAplicacion);
+                resultado.setDias(dias);
+                resultado.setBanda(bandaClasificada);
                 clasificacionPorPago.put(pago.getCodigo(), resultado);
                 BandaProductoDetalle bandaDetalle = resultado.getBanda();
 

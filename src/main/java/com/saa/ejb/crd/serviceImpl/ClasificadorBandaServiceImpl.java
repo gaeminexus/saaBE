@@ -42,13 +42,6 @@ public class ClasificadorBandaServiceImpl implements ClasificadorBandaService {
                 + " - producto: " + idProducto + " empresa: " + idEmpresa
                 + " tipoCartera: " + tipoCartera + " dias: " + dias + " fecha: " + fecha);
 
-        if (idProducto == null) {
-            throw new IncomeException("El producto es obligatorio para clasificar la banda");
-        }
-        if (idEmpresa == null) {
-            throw new IncomeException("La empresa es obligatoria para clasificar la banda");
-        }
-        validaTipoCartera(tipoCartera);
         if (dias == null) {
             throw new IncomeException("Los dias son obligatorios para clasificar la banda");
         }
@@ -56,7 +49,31 @@ public class ClasificadorBandaServiceImpl implements ClasificadorBandaService {
             throw new IncomeException("Los dias deben ser mayores o iguales a 1; se recibio: "
                     + dias);
         }
+        LocalDate fechaEfectiva = (fecha != null ? fecha : LocalDate.now());
 
+        List<BandaProductoDetalle> detalle = resolverRangos(idProducto, idEmpresa, tipoCartera, fechaEfectiva);
+        BandaProductoDetalle bandaEncontrada = clasificarEnBandas(detalle, dias);
+
+        ResultadoClasificacionBanda resultado = new ResultadoClasificacionBanda();
+        resultado.setIdProducto(idProducto);
+        resultado.setIdEmpresa(idEmpresa);
+        resultado.setTipoCartera(tipoCartera);
+        resultado.setFecha(fechaEfectiva);
+        resultado.setDias(dias);
+        resultado.setBanda(bandaEncontrada);
+        return resultado;
+    }
+
+    @Override
+    public List<BandaProductoDetalle> resolverRangos(Long idProducto, Long idEmpresa,
+            Long tipoCartera, LocalDate fecha) throws Throwable {
+        if (idProducto == null) {
+            throw new IncomeException("El producto es obligatorio para clasificar la banda");
+        }
+        if (idEmpresa == null) {
+            throw new IncomeException("La empresa es obligatoria para clasificar la banda");
+        }
+        validaTipoCartera(tipoCartera);
         LocalDate fechaEfectiva = (fecha != null ? fecha : LocalDate.now());
 
         ConfiguracionBandaProducto configuracion = configuracionBandaProductoDaoService
@@ -75,18 +92,7 @@ public class ClasificadorBandaServiceImpl implements ClasificadorBandaService {
                     + " no tiene bandas activas");
         }
 
-        List<BandaProductoDetalle> detalle = derivarRangos(bandas);
-        BandaProductoDetalle bandaEncontrada = clasificarEnBandas(detalle, dias);
-
-        ResultadoClasificacionBanda resultado = new ResultadoClasificacionBanda();
-        resultado.setIdConfiguracion(configuracion.getCodigo());
-        resultado.setIdProducto(idProducto);
-        resultado.setIdEmpresa(idEmpresa);
-        resultado.setTipoCartera(tipoCartera);
-        resultado.setFecha(fechaEfectiva);
-        resultado.setDias(dias);
-        resultado.setBanda(bandaEncontrada);
-        return resultado;
+        return derivarRangos(bandas);
     }
 
     @Override

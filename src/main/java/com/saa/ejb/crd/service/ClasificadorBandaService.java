@@ -60,6 +60,20 @@ public interface ClasificadorBandaService {
             Long dias, LocalDate fecha) throws Throwable;
 
     /**
+     * Resuelve la configuración vigente de (producto, empresa, tipo de cartera, fecha) y trae
+     * SUS rangos ya derivados — separado de {@link #clasificar} para que un proceso que
+     * clasifica MUCHOS días distintos con la MISMA combinación (p.ej. miles de pagos de una
+     * sola carga, casi todos del mismo producto/empresa/fecha) la resuelva UNA vez y clasifique
+     * el resto en memoria con {@link #clasificarEnBandas}, en vez de volver a la base por cada
+     * fila (2026-09-02: es el mismo patrón de {@code CalificacionRiesgoService#resolverEscala}).
+     *
+     * @throws Throwable {@code IncomeException} si faltan parámetros o no hay configuración
+     *                    vigente con bandas
+     */
+    List<BandaProductoDetalle> resolverRangos(Long idProducto, Long idEmpresa, Long tipoCartera,
+            LocalDate fecha) throws Throwable;
+
+    /**
      * Deriva los rangos en días de un juego de bandas ya leído de la base.
      *
      * Recibe las bandas ORDENADAS POR NÚMERO (como las devuelve
