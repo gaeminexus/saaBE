@@ -4382,16 +4382,42 @@ private int distribuirAportePorDevengo(Entidad entidad, double montoRecibido,
 				+ "), entidad " + entidad.getCodigo() + ", carga " + cargaArchivo.getCodigo()
 				+ ": no tiene contrato ACTIVO. Créelo antes de procesar la carga.");
 		}
-		System.err.println("⚠️ ADVERTENCIA: distribuirAportePorDevengo alcanzó el tope de "
+
+		// CORRECCIÓN 2026-09-03, VALIDACION-TOPE-AFECTACION-MANUAL.md §12, decisión del
+		// usuario: "si hay dinero no repartido, debe decir exactamente qué dinero no se ha
+		// repartido y permitirle al usuario repartir ese dinero dentro del partícipe que tenga
+		// el sobrante". Antes esto era una ADVERTENCIA silenciosa (advertenciasVigenciaCargaActual)
+		// y la plata quedaba sin aplicar sin más. Ahora es una novedad BLOQUEANTE — mismo
+		// tratamiento que cuando se aplica de más (manejarExcedenteNoAplicado): las dos
+		// direcciones del descuadre se tratan igual, si no cuadra no procesa y el operador
+		// tiene dónde arreglarlo.
+		//
+		// montoRecibido = EL SOBRANTE EXACTO (no el total de aportes del partícipe) — es lo
+		// que define el pozo que va a ver el operador en la pantalla de afectación
+		// (disponibleParaTope lee este mismo campo). montoEsperado se deja null a propósito:
+		// no hay un "esperado" que tenga sentido para un remanente que no encajó en ningún mes
+		// dentro del tope — con null, FamiliaNovedadCarga.clasificar da BLOQUEANTE igual
+		// (montoDiferencia null cuenta como "sobra, o no hay dato para decir lo contrario").
+		//
+		// No hace falta comprobar si esta fila ya tiene otra novedad bloqueante para no
+		// duplicar: dos novedades bloqueantes sobre el MISMO (producto, préstamo) — acá,
+		// codigoProducto/codigoPrestamo null los dos, como el resto de las novedades de
+		// aportes de este archivo — ya se resuelven por el MÁXIMO en disponibleParaTope, nunca
+		// por la suma.
+		String descripcion = "Contrato activo (código " + contratoActivo.getCodigo()
+			+ ") pero su vigencia no cubre uno o más de los " + TOPE_MESES_DEVENGO
+			+ " meses evaluados (sin vigencia vigente, o vigencia con monto $0): quedaron $"
+			+ disponible + " de los $" + montoRecibido + " recibidos sin poder aplicar."
+			+ " Requiere distribución manual (AVPC) dentro de este partícipe.";
+		System.err.println("⛔ NOVEDAD BLOQUEANTE: distribuirAportePorDevengo alcanzó el tope de "
 			+ TOPE_MESES_DEVENGO + " meses sin poder aplicar todo el monto. Entidad " + entidad.getCodigo()
 			+ " (" + participe.getCodigoPetro() + " - " + participe.getNombre() + ") - Carga "
-			+ cargaArchivo.getCodigo() + " - Disponible sin aplicar: $" + disponible
-			+ " - Tiene contrato activo (código " + contratoActivo.getCodigo()
-			+ ") pero su vigencia no cubre ese mes (sin vigencia vigente, o vigencia con monto $0) "
-			+ "en uno o más de los " + TOPE_MESES_DEVENGO + " meses evaluados.");
-		advertenciasVigenciaCargaActual.add("Partícipe " + participe.getCodigoPetro() + " ("
+			+ cargaArchivo.getCodigo() + " - Sobrante: $" + disponible + " - " + descripcion);
+		registrarNovedad(participe, ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE, descripcion,
+			null, null, null, Double.valueOf(disponible));
+		novedadesGeneradasCargaActual.add("Partícipe " + participe.getCodigoPetro() + " ("
 			+ participe.getNombre() + "): $" + disponible + " sin aplicar — contrato activo (código "
-			+ contratoActivo.getCodigo() + ") pero su vigencia no cubre ese mes.");
+			+ contratoActivo.getCodigo() + ") pero su vigencia no cubre ese mes. Requiere afectación manual.");
 	}
 
 	System.out.println("   ✅ Total aportes creados: " + aportesCreados);
