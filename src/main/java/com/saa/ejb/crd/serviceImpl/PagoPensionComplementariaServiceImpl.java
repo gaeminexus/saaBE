@@ -1095,9 +1095,22 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
      * suma TODAS las cuotas pendientes, exigibles o no — exactamente lo que
      * {@code buscarSiguienteCuotaConSaldo} (sin filtro de fecha, §3bis del plan) prepagaría si
      * se le entregara de más.
+     *
+     * ⛔⛔ Corrección 2026-09-04 (el usuario detectó descuento de más comparando contra la
+     * pantalla de cobros personales): el universo de cuotas tiene que ser el MISMO que el
+     * motor puede aplicar, ni más ni menos. {@code selectByPrestamo} traía TODAS las cuotas
+     * sin filtrar estado — una cuota CANCELADA_ANTICIPADA(7) (precancelación o abono a
+     * capital) no tiene pagos en PGPR por su valor completo, así que
+     * {@code calcularSaldosCuota} le calculaba un pendiente mayor a cero aunque estuviera
+     * liquidada, y el tope se inflaba con deuda que el motor nunca iba a tocar
+     * ({@code buscarSiguienteCuotaConSaldo} usa {@code selectCuotasPendientesByPrestamoOrdenadas},
+     * que sí filtra). Ahora usa el MISMO DAO que el motor — no un filtro de estado a mano acá,
+     * para que el criterio viva en un solo lugar. Excluye PAGADA(4) y CANCELADA_ANTICIPADA(7)
+     * (verificado leyendo la query, no asumido) — el mismo criterio que
+     * {@code saldo-prestamo.service.ts:esCuotaLiquidada} del frontend.
      */
     private double calcularDeudaExigiblePrestamo(Long idPrestamo, LocalDate finCorrida) throws Throwable {
-        List<DetallePrestamo> cuotas = detallePrestamoDaoService.selectByPrestamo(idPrestamo);
+        List<DetallePrestamo> cuotas = detallePrestamoDaoService.selectCuotasPendientesByPrestamoOrdenadas(idPrestamo);
         double total = 0.0;
         if (cuotas != null) {
             for (DetallePrestamo cuota : cuotas) {
