@@ -942,3 +942,23 @@ listado funciona y la columna Tipo no: **son dos caminos distintos y sólo uno e
 
 Verificado el 2026-09-04: **desde el hotfix `241211b` no hay ni un cambio en `src/` de este equipo.**
 Lo único nuevo en el árbol es de `omen-saa-1` (`crd`, pago de pensión). El arreglo es de `saaFE`.
+
+---
+
+## §18 — Modo directo AUTORIZADO por el usuario, 2026-09-04
+
+> *«Tú debes pasarle ese prompt a `omen-saa-2-fe`. Es de tu equipo. Hazlo ya.»*
+
+**Desde ahora el árbitro despacha por `SendMessage` a `omen-saa-2-be` y `omen-saa-2-fe`** y recibe
+sus reportes sin pasar por el usuario. Se lo interrumpe **sólo** para una decisión de negocio o un
+`.sql` que haya que correr.
+
+Se anota acá porque estaba como pendiente decidible desde el 2026-09-01 (§6, ítem 6) y **una
+autorización que sólo vive en el chat se pierde con el chat**.
+
+**Lo que NO cambia:** sigue prohibido mandarle trabajo a los ejecutores de otro equipo
+(`omen-saa-1-*`, `lap-saa-1-*`, `omen-arb-app`). Con los otros **árbitros** sí se habla.
+
+**Primer despacho en modo directo:** el §17 (el campo `tipo` que el frontend no lee), enviado a
+`omen-saa-2-fe` el 2026-09-04 con los cuatro ítems, la trampa de `claseEstadoCierre` marcada
+explícitamente, y la instrucción de parar si el código no coincide con lo descrito.
