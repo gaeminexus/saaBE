@@ -275,6 +275,26 @@ SELECT t.OWNER, t.TABLE_NAME FROM ALL_TABLES t WHERE t.TABLE_NAME = 'XXXX';
 grep -rn 'name = "XXXX"' src/main/java/com/saa/model/
 ```
 
+### ⛔ Reservar un nombre y autorizar una tabla son DOS actos distintos — 2026-09-03
+
+Esta sección los confundía en una sola fila, y la confusión salió a la luz cuando el equipo de la
+laptop reservó `CRD.PGCE` (detalle del cruce de un pago de pensión contra préstamos) para un frente
+cuyo backend es de CRD/Equipo B.
+
+- **Reservar el nombre** evita una colisión de código de 4 letras. Lo puede hacer **cualquier
+  equipo**, en cualquier momento, y es barato: apartar `PGCE` no le cuesta nada a nadie.
+- **Crear la tabla** es **cambiar el modelo de datos del módulo dueño**. Eso lo decide el **dueño
+  del módulo**, no el equipo que la propone — aunque el diseño sea correcto y el nombre ya esté
+  apartado. Y el DDL lo termina corriendo un usuario sobre una base que comparte `main` con las
+  demás.
+
+**En la práctica:** una fila puede estar en «reservada» sin que exista ningún permiso para escribir
+su DDL. La columna **Estado** lo dice; **`reservada` no es `autorizada`**.
+
+> Precedente: `PGCE` quedó reservada el 2026-09-03 con el DDL explícitamente detenido hasta que el
+> usuario de CRD/Equipo B decida sobre el frente de pago a jubilados completo. El equipo que la
+> propuso aceptó la corrección sin discusión — el registro era lo que estaba mal, no ellos.
+
 ### Reservados
 
 | Código | Tabla | Equipo | Estado |
