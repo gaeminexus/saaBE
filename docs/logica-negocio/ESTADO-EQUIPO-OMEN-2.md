@@ -1246,3 +1246,54 @@ Queda esperando la decisión.
 > **Cierre de método que quedó de los dos lados:** el mismo error de eje apareció **tres veces en un
 > día entre dos equipos** —mi §11 catalogando por llamador, y dos casos suyos—. **No es descuido de
 > nadie: es la forma por defecto de equivocarse cuando uno cataloga antes de mirar.**
+
+### §22ter — ARREGLADO (`4827f83`), y el efecto secundario que nadie esperaba
+
+**2026-09-04, autorizado por el usuario.** `selectVigentesByOrigen` incluye `POR_APROBAR`.
+Verificado por el árbitro: quedó **gemela** de `selectVigentesByFactura` —mismo `in`, mismos
+parámetros, mismo orden— y `selectVigentesByEgreso`/`ByAnticipo` **siguen ciegas a propósito**
+(el usuario autorizó sólo ésta, y de esas dos todavía no se analizó qué hace cada llamador con la
+lista vacía). `mvn -q compile` exit 0.
+
+**Estado de las cuatro consultas del §11:**
+
+| Consulta | Incluye `POR_APROBAR` | Quién la arregló |
+|---|---|---|
+| `selectVigentesByFactura` | ✅ | `lap-saa-1`, 2026-09-02 |
+| `selectVigentesByOrigen` | ✅ | este equipo, 2026-09-04 |
+| `selectVigentesByEgreso` | ❌ **deliberado** | — |
+| `selectVigentesByAnticipo` | ❌ **deliberado** | — |
+
+**Cambio de comportamiento en producción:** un `registrarPagoDeOrigenExterno` que antes pasaba
+ahora **falla** si ya existe una orden `POR_APROBAR` para el mismo documento origen. Es lo que la
+guarda siempre quiso impedir. El mensaje se verificó contra `anularPago:1835` y sigue siendo
+correcto para ese estado: «Anúlelo» aplica tal cual a un `POR_APROBAR`.
+
+### El efecto secundario: el arreglo dejó tres comentarios mintiendo
+
+**Lo encontró el agente de backend haciendo el barrido del ítem 3, fuera de lo que se le pidió.**
+
+`GeneracionOrdenPagoServiceImpl` (rhh) tiene **tres bloques** de comentario que justifican **no
+reusar** `selectVigentesByOrigen` — *«porque esa consulta excluye a propósito `POR_APROBAR`»*— y
+**citan el §11 de este documento como respaldo**.
+
+**Hoy esa premisa es falsa.** El código de `rhh` sigue siendo correcto (reimplementa sus consultas
+inline y no llama al DAO), así que **no hay cambio de comportamiento**: lo que quedó roto es la
+justificación.
+
+> **Es el §12 en su forma más cara.** Ahí el problema era un comentario que describía la intención
+> en vez del comportamiento. **Acá el comentario describía correctamente el comportamiento — de OTRO
+> módulo — y ese comportamiento cambió debajo de él.**
+>
+> **Un comentario que documenta una decisión tomada sobre código ajeno tiene una fecha de
+> vencimiento que su autor no controla.** Y éste venía blindado con una cita a un documento, que es
+> justo lo que hace que el próximo lector no lo dude.
+
+**Se corrige, no se borra:** la decisión de no reusar el DAO **sigue en pie**, pero por otra razón —
+`selectVigentesByOrigen` sigue excluyendo `RECHAZADO` y `ANULADO`, y `ultimoPagoDeOrigen` no filtra
+por estado, que es justo lo que `exigePagoConfirmadoEnTesoreria` necesita para distinguir «volvé a
+generar» de «esperá». Con la consulta del DAO esos dos casos volverían lista vacía y serían
+indistinguibles.
+
+**Y este documento tiene su parte:** el §11 quedó citado dentro del código como autoridad de algo
+que dejó de valer. Por eso los comentarios pasan a apuntar al §22.
