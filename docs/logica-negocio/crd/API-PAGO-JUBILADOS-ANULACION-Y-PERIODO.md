@@ -34,6 +34,22 @@ Cada fila incorpora, además de las columnas de la entidad:
 que el frontend no puede evaluar sin replicar lógica del backend. Si el frontend lo dedujera, en el
 momento en que la regla cambie la pantalla ofrecería anular algo que el backend va a rechazar.
 
+### ⛔ Requisito de implementación: `anulable` se calcula AGREGADO, no fila por fila
+
+**Señalado por el árbitro de `eqB` el 2026-09-03, y queda como parte del contrato porque quien
+implemente no tiene por qué descubrirlo.**
+
+La forma natural de resolver `anulable` es, por cada pago, buscar los eventos posteriores vigentes de
+cada uno de sus préstamos. **Eso es un N+1 sobre `CRD.EVPR`**: un período con cientos de jubilados,
+varios préstamos cada uno, multiplica las consultas. El módulo ya tiene un caso igual pendiente
+(`haberDesdePagos`) y se sabe cómo termina.
+
+**Se resuelve con una consulta agregada sobre el período completo** —el mismo patrón con el que se
+resolvió el resumen de bandas: un `GROUP BY` aparte sobre todo el conjunto, no una iteración por
+página. Traer de una sola vez, para todos los préstamos involucrados en el período, cuál es el evento
+vigente más reciente; después decidir `anulable` en memoria comparando contra el evento de cada
+cruce.
+
 ⛔ **Fechas: llegan como ARREGLO, no como string.** `fecha`, `fechaPago`, `fechaRegistro`,
 `fechaAnulacion` son `LocalDate`/`LocalDateTime` y **Jackson los emite como `[2026,8,1]`**, no como
 `"2026-08-01"` (`CLAUDE.md` § Serialización). Formatearlos antes de mostrarlos **y antes de
