@@ -1336,3 +1336,66 @@ hay nada que reactivar; se espera el reporte.
 > escribiendo dejan exactamente los mismos archivos modificados. **La diferencia sólo se ve
 > preguntándole al sistema, no mirando el árbol.** Costó un despliegue aprenderlo y una llamada
 > aplicarlo.
+
+---
+
+## §23 — Cuándo duplicar es correcto, y por qué hoy dije lo contrario tres veces
+
+**2026-09-04.** El agente de backend, al reescribir los comentarios del §22ter, encontró que mi
+instrucción trataba los tres de forma uniforme **y no lo son**. Tenía razón, y de ahí salió el
+matiz que faltaba.
+
+### El hallazgo, verificado
+
+`EstadoPagoProgramado` tiene **exactamente seis** estados (0..5).
+
+| Consulta | Conjunto que devuelve |
+|---|---|
+| `tienePagoVivoEnBandeja` (rhh, inline): `estado <> RECHAZADO and estado <> ANULADO` | `{0,1,2,3}` |
+| `selectVigentesByOrigen` (cxp), **desde hoy**: `in (POR_APROBAR, REGISTRADO, EN_ARCHIVO, CONFIRMADO)` | `{0,1,2,3}` |
+
+**Son idénticos.** La reimplementación de `rhh` quedó **redundante, no divergente** — y el agente no
+inventó una distinción que ya no existía, que era el riesgo de mi instrucción.
+
+Los otros dos (`ultimoPagoDeOrigen`, `exigePagoConfirmadoEnTesoreria`) **sí** conservan una razón
+real: necesitan ver `RECHAZADO`/`ANULADO`, que la consulta de `cxp` sigue excluyendo.
+
+### La propuesta, y por qué la rechazo
+
+El agente ofreció unificar `tienePagoVivoEnBandeja` para que llame al DAO de `cxp` — un cambio de
+una línea. **No se hace.**
+
+Los dos conjuntos son iguales **hoy, por efecto de un cambio que hice yo esta misma tarde**. Lo que
+expresan es distinto:
+
+- `selectVigentesByOrigen` es la noción de **`cxp`** de «pago vigente». `cxp` la puede cambiar, y
+  **acaba de hacerlo**.
+- `tienePagoVivoEnBandeja` es la noción de **`rhh`** de «esta orden ya tiene un pago vivo».
+
+**Si `rhh` llamara al DAO de `cxp`, el próximo ajuste de esa consulta cambiaría el comportamiento de
+la nómina en silencio.** Es la misma falla que produjo los comentarios rancios del §22ter, pero un
+escalón peor: allá envejeció una explicación, acá envejecería una decisión de negocio.
+
+### El criterio que faltaba, y contradice lo que exigí tres veces hoy
+
+Hoy insistí **tres veces** en lo contrario —«un solo helper compartido, no tres copias»— con
+`extraerCodigo`, con el mapa de bloqueantes y con la etiqueta de tipo de comprobante. **Las tres
+veces era correcto y ésta también, y no se contradicen: son categorías distintas.**
+
+| | Duplicar es **defecto** | Duplicar es **desacople** |
+|---|---|---|
+| **Qué es** | Presentación: etiquetas, íconos, formato, resolución de identificador | Un criterio de negocio que **pertenece a otro módulo** |
+| **Ejemplos de hoy** | los dos `extraerCodigo`, el mapa de bloqueantes, la etiqueta de `tipoComprobante` | `tienePagoVivoEnBandeja` vs. `selectVigentesByOrigen` |
+| **Si las dos copias divergen** | es un **bug**: lo mismo se ve distinto según por dónde pase | es **legítimo**: cada módulo define lo suyo |
+
+> **La prueba, y se hace en una pregunta:** *si estas dos copias empezaran a dar resultados
+> distintos, ¿sería un error o una diferencia legítima?* Si es error, hay que unificarlas. Si es
+> legítima, unificarlas crea un acoplamiento que va a morder cuando el otro módulo cambie **su**
+> definición sin saber que alguien depende de ella.
+
+**Que dos consultas coincidan hoy no las hace la misma consulta.** Coinciden porque nadie las
+separó todavía.
+
+**Se deja constancia en el código, no sólo acá:** el comentario nuevo de `tienePagoVivoEnBandeja`
+dice explícitamente que hoy el criterio coincide con el del DAO **y que la reimplementación es
+deliberada**, para que el próximo que note la redundancia no la «limpie».
