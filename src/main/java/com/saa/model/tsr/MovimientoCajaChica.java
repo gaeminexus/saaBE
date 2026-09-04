@@ -5,7 +5,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import com.saa.model.cnt.Asiento;
-import com.saa.model.cxp.PagoProgramado;
 import com.saa.model.cxp.ProductoPago;
 
 import jakarta.persistence.Basic;
@@ -94,10 +93,21 @@ public class MovimientoCajaChica implements Serializable {
     @JoinColumn(name = "ASNTCDGO", referencedColumnName = "ASNTCDGO")
     private Asiento asiento;
 
-    /** Pago programado (PGS.PGTR) con el que se pagó la apertura o reposición desde el banco. */
-    @ManyToOne
-    @JoinColumn(name = "PGTRCDGO", referencedColumnName = "PGTRCDGO")
-    private PagoProgramado pagoProgramado;
+    /**
+     * Id del pago programado (PGS.PGTR) con el que se pagó la apertura o
+     * reposición desde el banco.
+     * <p>
+     * ⚠️ A PROPÓSITO no es {@code @ManyToOne}: PagoProgramado tiene trece
+     * {@code @ManyToOne} EAGER por defecto, así que una relación acá arrastra
+     * ese grafo completo en cada fila de {@code selectByCaja} — el mismo
+     * patrón que causó `ORA-04036` (PGA excedida) al aprobar un pago en
+     * producción el 2026-09-03 (hotfix 241211b, con
+     * {@code AplicacionPagoCxp.idMovimientoCajaChica} como referencia). Id
+     * crudo, como {@link com.saa.model.cxp.DetalleFacturaCompra#getProducto()}
+     * o {@code PagoProgramado.idOrigen}: sin relación no hay grafo.
+     */
+    @Column(name = "PGTRCDGO")
+    private Long idPago;
 
     /** Cierre de caja chica (TSR.CRCH) en el que quedó incluido. */
     @ManyToOne
@@ -178,8 +188,8 @@ public class MovimientoCajaChica implements Serializable {
     public Asiento getAsiento() { return asiento; }
     public void setAsiento(Asiento asiento) { this.asiento = asiento; }
 
-    public PagoProgramado getPagoProgramado() { return pagoProgramado; }
-    public void setPagoProgramado(PagoProgramado pagoProgramado) { this.pagoProgramado = pagoProgramado; }
+    public Long getIdPago() { return idPago; }
+    public void setIdPago(Long idPago) { this.idPago = idPago; }
 
     public CierreCajaChica getCierre() { return cierre; }
     public void setCierre(CierreCajaChica cierre) { this.cierre = cierre; }

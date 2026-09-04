@@ -36,7 +36,7 @@ public class MovimientoCajaChicaDaoServiceImpl extends EntityDaoImpl<MovimientoC
 							"titular",
 							"numeroDocumento",
 							"asiento",
-							"pagoProgramado",
+							"idPago",
 							"cierre",
 							"estado",
 							"motivoAnulacion",

@@ -19,7 +19,6 @@ import com.saa.ejb.tsr.service.CajaChicaService;
 import com.saa.ejb.tsr.service.MovimientoCajaChicaService;
 import com.saa.model.cxp.AplicacionPagoCxp;
 import com.saa.model.cxp.FacturaCompra;
-import com.saa.model.cxp.PagoProgramado;
 import com.saa.model.cxp.ProductoPago;
 import com.saa.model.scp.Usuario;
 import com.saa.model.tsr.CajaChica;
@@ -348,8 +347,8 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 
 		int tipo = (movimiento.getTipo() != null) ? movimiento.getTipo().intValue() : 0;
 		if (tipo != TipoMovimientoCajaChica.GASTO) {
-			String refPago = (movimiento.getPagoProgramado() != null)
-					? String.valueOf(movimiento.getPagoProgramado().getId()) : "desconocido";
+			String refPago = (movimiento.getIdPago() != null)
+					? String.valueOf(movimiento.getIdPago()) : "desconocido";
 			throw new IncomeException("El movimiento " + idMovimiento + " no es un gasto. "
 					+ "Reverse el pago programado N° " + refPago + " (pgtr/revertirConfirmado).");
 		}
@@ -525,14 +524,16 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 
 		Long idPago = (Long) resultadoPago.get("pago");
 		if (idPago != null) {
-			PagoProgramado pago = em.find(PagoProgramado.class, idPago);
-			movimiento.setPagoProgramado(pago);
+			movimiento.setIdPago(idPago);
 			movimiento = movimientoCajaChicaDaoService.save(movimiento, movimiento.getCodigo());
 
 			Map<String, Object> resultado = new HashMap<>();
 			resultado.put("idMovimiento", movimiento.getCodigo());
 			resultado.put("idPago", idPago);
-			resultado.put("estadoPago", pago.getEstado());
+			// registrarPagoDeOrigenExterno ya devuelve el estado del pago recién
+			// creado: reusarlo evita un em.find(PagoProgramado.class, ...) que
+			// volvería a arrastrar sus trece @ManyToOne EAGER.
+			resultado.put("estadoPago", resultadoPago.get("estado"));
 			resultado.put("numeroCheque", resultadoPago.get("numeroCheque"));
 			resultado.put("mensaje", resultadoPago.get("mensaje"));
 			System.out.println("✓ " + etiqueta + " de caja chica registrada: movimiento="
