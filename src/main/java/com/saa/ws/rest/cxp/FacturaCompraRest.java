@@ -5,6 +5,7 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.cxp.dao.FacturaCompraDaoService;
 import com.saa.ejb.cxp.service.FacturaCompraService;
 import com.saa.ejb.cxp.service.SustentoTributarioService;
+import com.saa.ejb.cxp.service.dto.SolicitudNotaVentaCompra;
 import com.saa.model.cxp.FacturaCompra;
 import com.saa.model.cxp.NombreEntidadesCompra;
 import jakarta.ejb.EJB;
@@ -169,6 +170,34 @@ public class FacturaCompraRest {
 			return Response.status(Response.Status.OK).entity(catalogo).type(MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener el catalogo de sustento tributario: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+		}
+	}
+
+	/**
+	 * Registra a mano una nota de venta de compra: comprobante que nunca llega por
+	 * XML. Contrato congelado: docs/logica-negocio/cxp/API-NOTA-VENTA-COMPRA-MANUAL.md.
+	 * Todo o nada: cabecera + detalle + formas de pago + sustento tributario +
+	 * asiento contable en una sola llamada.
+	 * <p>
+	 * ⛔ NO confundir con el {@code POST} genérico de arriba: ése es el CRUD de
+	 * {@code EntityDaoImpl} y no valida nada, no crea detalles, no resuelve
+	 * sustento y no genera asiento.
+	 * <p>
+	 * Un rechazo por bloqueantes de negocio (proveedor sin cuenta, producto sin
+	 * clasificar, tipo de asiento faltante, documento duplicado) responde
+	 * <b>200</b> con {@code exito:false} — el <b>400</b> es sólo para cuerpo
+	 * inválido (falta un obligatorio, {@code detalles} vacío, fecha ilegible).
+	 */
+	@POST @Path("/manual") @Consumes(MediaType.APPLICATION_JSON) @Produces(MediaType.APPLICATION_JSON)
+	public Response registrarManual(SolicitudNotaVentaCompra solicitud) {
+		System.out.println("LLEGA AL SERVICIO POST FacturaCompra/manual");
+		try {
+			Map<String, Object> resultado = facturaCompraService.registrarNotaVentaManual(solicitud);
+			return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+		} catch (IllegalArgumentException e) {
+			return Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+		} catch (Throwable e) {
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al registrar la nota de venta: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
 		}
 	}
 }

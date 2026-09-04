@@ -1,9 +1,36 @@
 package com.saa.ejb.cxp.service;
 import com.saa.basico.util.EntityService;
+import com.saa.ejb.cxp.service.dto.SolicitudNotaVentaCompra;
 import com.saa.model.cxp.FacturaCompra;
 import jakarta.ejb.Local;
 @Local
 public interface FacturaCompraService extends EntityService<FacturaCompra> {
+
+	/**
+	 * Registra a mano una nota de venta de compra: comprobante que nunca llega por XML
+	 * (docs/logica-negocio/cxp/PLAN-NOTA-VENTA-COMPRA-MANUAL.md,
+	 * contrato docs/logica-negocio/cxp/API-NOTA-VENTA-COMPRA-MANUAL.md). Se graba como
+	 * {@code FacturaCompra} con {@code tipoComprobante = "02"} — misma tabla, mismos
+	 * consumidores (pago, cruce de anticipos, ATS) que la factura electrónica; el molde es
+	 * {@code ProcesoCargaDocumentosServiceImpl.registrarFacturaCompra}, sin nada que dependa
+	 * de un XML.
+	 * <p>
+	 * ⛔ NO usar {@code EntityDaoImpl.save}/{@code POST /rest/fctc} para esto: no valida, no
+	 * crea detalles, no resuelve sustento tributario y no genera asiento.
+	 * <p>
+	 * Todo o nada: si hay bloqueantes (proveedor sin cuenta, tipo de asiento faltante,
+	 * producto sin clasificar, grupo sin cuenta, documento duplicado) no se graba nada y se
+	 * devuelven en el mapa bajo {@code bloqueantes} con {@code exito=false} — NO lanza
+	 * excepción por eso, es una condición de negocio que el usuario corrige y reintenta, no
+	 * un error. Si generaConta=0 para la empresa, el asiento queda {@code null} sin ser error.
+	 * NO recalcula los totales de cabecera a partir del detalle: graba lo que llega.
+	 *
+	 * @param solicitud	: Cabecera + detalle + formas de pago (contrato §1)
+	 * @return			: Mapa con exito, idFactura, numero, asiento (String o null),
+	 *					  sustento (String o null), mensaje — o exito=false y bloqueantes
+	 * @throws Throwable: Excepcion
+	 */
+	java.util.Map<String, Object> registrarNotaVentaManual(SolicitudNotaVentaCompra solicitud) throws Throwable;
 
 	/**
 	 * Anula una factura de compra (2026-08-28, ampliado en ítem 13 con cascada): valida que no
