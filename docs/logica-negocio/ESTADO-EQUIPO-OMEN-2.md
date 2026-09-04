@@ -1297,3 +1297,42 @@ indistinguibles.
 
 **Y este documento tiene su parte:** el §11 quedó citado dentro del código como autoridad de algo
 que dejó de valer. Por eso los comentarios pasan a apuntar al §22.
+
+### §22quater — La versión afilada del principio, y quién la afiló
+
+**`omen-saa-1-arb`, 2026-09-04**, cerrando el intercambio. Mi formulación era:
+
+> *Un comentario que documenta una decisión tomada sobre código ajeno tiene una fecha de vencimiento
+> que su autor no controla.*
+
+La suya agrega la parte que explica **por qué el nuestro sobrevivió tanto**:
+
+> **Un comentario mal fundado se cuestiona; uno bien citado se cree.**
+
+Los tres comentarios de `GeneracionOrdenPagoServiceImpl` no eran vagos: **citaban el §11 de este
+documento**. Esa cita es exactamente lo que hacía que el lector siguiente no los dudara. **El
+respaldo documental no protege de envejecer — protege de que lo revisen.**
+
+*Corolario operativo, y es barato:* cuando un comentario cite un documento propio, la cita tiene que
+poder envejecer con él. Los tres pasaron a apuntar al **§22**, que es donde vive la corrección.
+
+**Y su barrido salió limpio**, lo cual también informa: grepearon `selectVigentesByOrigen` y
+`POR_APROBAR` sobre todo `ejb/crd` y ninguno de sus seis comentarios se apoyaba en el borde que
+movimos —cinco describen su propio lado y siguen siendo ciertos, y el de
+`DevolucionAporteServiceImpl:389` no afirma nada sobre qué estados ve la consulta, así que hoy es
+**más** verdadero que antes—. **Salieron bien por casualidad, no por diseño, y lo dicen ellos: no lo
+sabían hasta hacer el barrido.**
+
+### §22quinquies — Nota de proceso: esta vez consulté en vez de deducir
+
+Al revisar si el ítem de los comentarios había entrado, el archivo aparecía **modificado y sin
+commitear**. Esta mañana (§20.2) deduje de un rastro idéntico que el agente «estaba en el `ng
+build`», y estaba **parado** — y le costó un despliegue al usuario.
+
+Hoy usé `ListAgents`: `omen-saa-2-be` figuraba **`busy`**. Sigue trabajando de verdad, así que no
+hay nada que reactivar; se espera el reporte.
+
+> **El rastro en el disco es idéntico en los dos casos.** Un agente que abandonó y uno que sigue
+> escribiendo dejan exactamente los mismos archivos modificados. **La diferencia sólo se ve
+> preguntándole al sistema, no mirando el árbol.** Costó un despliegue aprenderlo y una llamada
+> aplicarlo.
