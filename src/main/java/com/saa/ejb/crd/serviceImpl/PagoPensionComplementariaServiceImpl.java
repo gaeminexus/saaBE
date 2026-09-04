@@ -318,6 +318,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                     detalleError.setIdEntidad(jubilado.getCodigo());
                     detalleError.setNombre(jubilado.getRazonSocial());
                     detalleError.setEstado("ERROR");
+                    detalleError.setParticipacion("BLOQUEADO");
                     detalleError.setMensaje(e.getMessage());
                     resumen.getDetalle().add(detalleError);
                 }
@@ -387,23 +388,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
 
         // §6/D2 del contrato: el certificado gobierna la SALIDA (remanente al banco), NUNCA el
         // cruce contra el préstamo. Se resuelve UNA vez (dato de la entidad, no del mes).
-        // cuentaSalida queda null —y el remanente de cualquier mes se retiene, no se
-        // consume— tanto si no hay cuenta activa (0, o >1 ambigua) como si no tiene
-        // certificado: ninguno de los dos es un problema DE ESTE pago, es que no hay a quién
-        // entregarle el dinero. Sólo el catálogo TPDJ mal configurado (no se puede verificar
-        // NADA, para NADIE) aborta todo el jubilado.
-        CuentaBancariaParticipe cuentaSalida = null;
-        try {
-            CuentaBancariaParticipe candidata = unicaCuentaActiva(idEntidad);
-            validarCertificadoBancario(candidata, idEntidad);
-            cuentaSalida = candidata;
-        } catch (IncomeException e) {
-            if (e.getMessage() != null && e.getMessage().startsWith(ERR_CERTIFICADO_NO_VERIFICABLE)) {
-                throw e;
-            }
-            System.out.println("  Entidad " + idEntidad + " sin salida de remanente disponible"
-                + " (el cruce contra préstamo sigue igual, D2): " + e.getMessage());
-        }
+        CuentaBancariaParticipe cuentaSalida = resolverCuentaSalida(idEntidad);
 
         // §4bis D2: el algoritmo de meses adeudados es SÓLO para quien tiene préstamo — sin
         // préstamo no hay contra qué cruzar, y sigue siendo un pago mensual normal del período
@@ -476,6 +461,13 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         detalle.setIdAsientoDevengo(pago.getNumeroAsientoDevengo());
         detalle.setEstado("GENERADO");
         detalle.setMesesAplicados(1);
+        // Sin préstamo: o sale el dinero completo (COMPLETA), o no hay cruce posible y no
+        // puede salir dinero (BLOQUEADO) — §6 del contrato, regla explícita para este caso.
+        detalle.setParticipacion(cuentaSalida != null ? "COMPLETA" : "BLOQUEADO");
+        if (cuentaSalida == null) {
+            detalle.setMensaje("Sin préstamo y sin cuenta con certificado bancario válido: no"
+                + " hay cruce posible y no se puede entregar la pensión.");
+        }
         return detalle;
     }
 
@@ -500,6 +492,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         LocalDate ancla = resolverAnclaRetroactivo(idEntidad);
         if (ancla == null) {
             resumen.setEstado("SIN_ANCLA");
+            resumen.setParticipacion("BLOQUEADO");
             resumen.setMensaje("La entidad " + idEntidad + " no tiene ningún movimiento negativo de"
                 + " pensión complementaria (tipo 23) ni un movimiento de jubilación registrado en"
                 + " CRD.APRT; no hay desde dónde calcular los meses adeudados.");
@@ -542,6 +535,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         Long ultimoIdPago = null;
         Long ultimoIdAsientoDevengo = null;
         boolean algunaOrdenGenerada = false;
+        boolean algunRemanenteRetenido = false;
         String motivoCorte = "MES_CORRIDA_ALCANZADO";
 
         for (YearMonth ym = desde; !ym.isAfter(corrida); ym = ym.plusMonths(1)) {
@@ -649,6 +643,10 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             if (saleAlBancoEsteMes) {
                 totalOrden = redondear(totalOrden + remanenteMes);
                 algunaOrdenGenerada = true;
+            } else if (remanenteMes > TOLERANCIA) {
+                // Quedó remanente este mes y no se pudo entregar (sin cuenta o sin
+                // certificado) — participación de TODO el resumen baja a SOLO_CRUCE.
+                algunRemanenteRetenido = true;
             }
             ultimoIdPago = pago.getCodigo();
             ultimoIdAsientoDevengo = pago.getNumeroAsientoDevengo();
@@ -673,6 +671,14 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         resumen.setEstado("GENERADO");
         resumen.setMesesAplicados(mesesAplicados);
         resumen.setMotivoCorte(motivoCorte);
+        // §6 del contrato: COMPLETA si NINGÚN mes generado quedó con remanente retenido
+        // (incluye el 100%-cruzado, donde no había remanente que retener); SOLO_CRUCE si AL
+        // MENOS un mes sí lo retuvo (sin cuenta o sin certificado). Sin meses generados
+        // (mesesAplicados == 0, p.ej. SALDO_AGOTADO desde el primer mes elegible) no es un
+        // evento de participación nuevo — motivoCorte ya explica por qué, queda sin setear.
+        if (mesesAplicados > 0) {
+            resumen.setParticipacion(algunRemanenteRetenido ? "SOLO_CRUCE" : "COMPLETA");
+        }
 
         System.out.println("  ✅ Retroactivo Entidad " + idEntidad + " - " + mesesAplicados
             + " mes(es) generado(s) - corte: " + motivoCorte + " - cruzado total $" + totalCruzado
@@ -1209,6 +1215,34 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             throw new IncomeException(ERR_SIN_CERTIFICADO_BANCARIO + ": la cuenta bancaria "
                 + cuenta.getCodigo() + " de la entidad " + idEntidad + " no tiene el certificado"
                 + " bancario cargado; no se puede generar su pago de pensión.");
+        }
+    }
+
+    /**
+     * Resuelve si hay a quién pagarle el remanente de una entidad — §6/D2 del contrato: el
+     * certificado gobierna la SALIDA, nunca el cruce. Extraído para que {@link #generarPagoIndividual}
+     * y la previsualización ({@code previsualizarCorrida}) usen la MISMA regla, no dos copias.
+     *
+     * @return la cuenta con certificado válido, o {@code null} si no hay a quién pagarle (sin
+     *         cuenta activa, cuenta ambigua, o sin certificado — ninguno de los tres aborta al
+     *         llamador, es información, no un fallo)
+     * @throws IncomeException {@link #ERR_CERTIFICADO_NO_VERIFICABLE} SÍ se propaga: el
+     *                          catálogo CRD.TPDJ mal configurado no se puede verificar para
+     *                          NADIE, y eso sí debe abortar (no es "este jubilado no tiene
+     *                          cuenta", es "no sé si nadie tiene o no").
+     */
+    private CuentaBancariaParticipe resolverCuentaSalida(Long idEntidad) throws Throwable {
+        try {
+            CuentaBancariaParticipe candidata = unicaCuentaActiva(idEntidad);
+            validarCertificadoBancario(candidata, idEntidad);
+            return candidata;
+        } catch (IncomeException e) {
+            if (e.getMessage() != null && e.getMessage().startsWith(ERR_CERTIFICADO_NO_VERIFICABLE)) {
+                throw e;
+            }
+            System.out.println("  Entidad " + idEntidad + " sin salida de remanente disponible"
+                + " (el cruce contra préstamo, si aplica, sigue igual, D2): " + e.getMessage());
+            return null;
         }
     }
 

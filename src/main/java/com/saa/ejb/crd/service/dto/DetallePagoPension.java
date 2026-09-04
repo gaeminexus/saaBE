@@ -54,6 +54,18 @@ public class DetallePagoPension {
      */
     private String motivoCorte;
 
+    /**
+     * "COMPLETA" | "SOLO_CRUCE" | "BLOQUEADO" — API-PAGO-PENSION-COMPLEMENTARIA.md §6.
+     * {@code COMPLETA}: hubo cruce (si tenía préstamo) y no quedó remanente retenido —
+     * incluye tanto "salió dinero al banco" como "el cruce absorbió el 100%, no había nada
+     * que sacar". {@code SOLO_CRUCE}: tiene préstamo, canceló deuda, pero quedó un remanente
+     * que no se pudo entregar (sin cuenta o sin certificado). {@code BLOQUEADO}: no participó
+     * en absoluto — sin préstamo y sin certificado (no hay cruce posible y no puede salir
+     * dinero), o cualquier otro motivo que impidió generar el pago ({@code mensaje} dice cuál).
+     * {@code null} en YA_EXISTIA/AL_DIA: no es un evento de participación nuevo de esta corrida.
+     */
+    private String participacion;
+
     public DetallePagoPension() {
     }
 
@@ -159,5 +171,13 @@ public class DetallePagoPension {
 
     public void setMotivoCorte(String motivoCorte) {
         this.motivoCorte = motivoCorte;
+    }
+
+    public String getParticipacion() {
+        return participacion;
+    }
+
+    public void setParticipacion(String participacion) {
+        this.participacion = participacion;
     }
 }
