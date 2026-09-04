@@ -1,7 +1,7 @@
 # Pago retroactivo de pensión a jubilados — diseño
 
 **Fecha:** 2026-09-04 · **Equipo:** CRD / Equipo B (`eqB`, `omen-saa-1`)
-**Estado:** diseño escrito, **dos decisiones pendientes del usuario** — no implementar hasta cerrarlas.
+**Estado:** diseño CERRADO — las dos decisiones se resolvieron el 2026-09-04 (§4bis). Listo para implementar.
 
 > **Pedido del usuario, 2026-09-04**, sobre el jubilado con préstamo al que no se le ha descontado
 > desde hace meses:
@@ -95,7 +95,57 @@ cartera a vencidos por fechar pagos en el mes equivocado.
 
 ---
 
-## 5. ⛔ DECISIÓN PENDIENTE 1 — la fecha contable de los meses retroactivos
+## 4bis. ✅ DECISIONES DEL USUARIO — 2026-09-04, cerradas
+
+> **1.** *«Fecha de mes de corrida, en este caso agosto.»*
+> **2.** *«A todos los que tengan préstamo. Y solo para los que tengan certificado bancario sale
+> pago, de lo contrario no.»*
+
+### D1 — Todas las fechas son las del mes de la corrida
+
+Los `PGPC` retroactivos conservan **su propio período** (`PGPCANNO`/`PGPCMESS` = enero, febrero…),
+que es lo que dice **a qué mes corresponde** cada uno. Pero la **fecha del hecho** —la del pago al
+préstamo y la del asiento— es **la del mes de la corrida**: agosto.
+
+Esto anula la opción (a) del §5: **no se postea nada en meses cerrados.**
+
+⚠️ **La consecuencia, dicha en voz alta:** el motor calcula interés y mora **contra la fecha del
+pago**. Con las ocho mensualidades fechadas en agosto, el motor las ve como ocho pagos del mismo
+día, y **la mora de enero a agosto se le cobra al jubilado**. Si se hubieran fechado en su mes, esa
+mora no existiría.
+
+Es una decisión legítima —la deuda estuvo impaga— pero conviene saber que **el retraso lo causó el
+sistema, no el jubilado**: el proceso nunca corrió. Si más adelante se decide condonar esa mora, es
+un ajuste aparte y este documento deja constancia de dónde se originó.
+
+### D2 — Alcance: todos los que tengan préstamo. El certificado gobierna la SALIDA, no el cruce
+
+| | Con certificado | Sin certificado |
+|---|---|---|
+| **Cruce contra el préstamo** | ✅ sí | ✅ **sí, igual** |
+| **Remanente al banco** | ✅ sí | ⛔ **no sale pago** |
+
+El certificado bancario valida **la cuenta de destino**. Si no hay salida de dinero al banco, no hay
+cuenta que validar — por eso el cruce contra el préstamo procede sin él.
+
+Esto **confirma y generaliza** la excepción que el agente de backend había propuesto para el caso
+100 % cruzado: no era una excepción, era la regla.
+
+#### ⚠️ Supuesto del árbitro sobre el remanente sin certificado
+
+Si a un jubilado **sin** certificado la deuda le consume **solo parte** de la pensión del mes, el
+remanente **no se toca**: no se descuenta de su aporte 23 y le queda a favor.
+
+**Motivo:** no se le puede sacar dinero de la cuenta si no hay forma de entregárselo. Descontarlo y
+no pagarlo sería quitarle saldo sin contrapartida.
+
+**Si el usuario quiere lo contrario** —consumir la pensión completa y dejar el remanente como deuda
+de la asociación hacia el jubilado— hay que decirlo, porque **no hay dónde registrar esa deuda**:
+no existe una tabla de «pensión devengada y no pagada».
+
+---
+
+## 5. ~~DECISIÓN PENDIENTE 1~~ — RESUELTA por D1. Se conserva el análisis
 
 Por el §6bis del contrato, el `PGPC` de enero se fecha `min(31-ene, hoy)` = **31 de enero**, y su
 asiento también.
@@ -115,7 +165,7 @@ períodos.
 
 ---
 
-## 6. ⛔ DECISIÓN PENDIENTE 2 — ¿a quién se le aplica?
+## 6. ~~DECISIÓN PENDIENTE 2~~ — RESUELTA por D2: a todos los que tengan préstamo
 
 El usuario lo planteó sobre el caso *«jubilado sin certificado bancario y con préstamo»*. Pero la
 regla del retroactivo mes a mes tiene sentido para **cualquier** jubilado con meses adeudados.
