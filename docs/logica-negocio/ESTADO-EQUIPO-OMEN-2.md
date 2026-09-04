@@ -5,6 +5,45 @@
 
 ---
 
+## 0bis. ⚠️ ACTUALIZACIÓN 2026-09-04 — el alcance cambió otra vez, y `cxc` SALE
+
+**Alcance vigente, dado por el usuario al abrir la sesión del 2026-09-04:**
+
+> **`rhh` · `cxp` · `pagos` · `cnt` · `tsr`** — ⛔ **NO TOCAR: `crd` · `cxc`.**
+
+**`cxc` volvió a quedar fuera.** Había entrado el 2026-09-03 (`9777078`, §0 de abajo) y duró un día.
+Lo entregado en ese día no se revierte —una corrección de FE, `fadec3b`— pero **no se abre nada
+nuevo en `cxc` ni se le da seguimiento a lo que quedó abierto ahí.**
+
+### Quién tiene qué, verificado contra `origin/main` el 2026-09-04
+
+| Módulo | Dueño |
+|---|---|
+| `rhh` · `cxp` · `pagos` | **este equipo**, en exclusiva |
+| **`cnt` · `tsr`** | **este equipo Y `lap-saa-1`** — ver abajo |
+| `crd` | `omen-saa-1` (`eqB`) y `lap-saa-1`; además el equipo de la app móvil (`omen-arb-app`) |
+| **`cxc`** | **NADIE** |
+| **`sri`** | **NADIE** — y el XML del ATS nunca se validó contra el XSD oficial |
+
+### 🔴 `cnt` y `tsr` están solapados con `lap-saa-1`
+
+`ESTADO-EQUIPO-LAP-1.md` §0 declara que **el 2026-09-03 ese equipo cambió su alcance a
+`crd`/`cnt`/`tsr`**. Dos de esos tres son míos. Ellos lo registraron y lo dijeron en voz alta
+(*«el alcance nuevo entra en territorio ocupado»*), así que **no es un descubrimiento, es una
+convivencia declarada**: la decisión del usuario del 2026-09-01 fue que los equipos convivan y que
+él reparta las tareas.
+
+**La salvaguarda es de los agentes y acá también es obligatoria:** antes de tocar un archivo,
+`git status` y `git log -3` sobre él; si aparece modificado, o commiteado hoy con un marcador que no
+sea `eq2`, **parar y reportar al árbitro** en vez de editarlo y avisar después.
+
+**El riesgo concreto de este solape no es el merge, es `tsr`:** este equipo tuvo dos caídas de
+producción en `tsr` el 2026-09-03 (§14) y `lap-saa-1` tiene ya dos scripts propios en `tsr/sql/`
+(`lap1-02`, `lap1-03`, sobre cheques). **Un cambio de mapeo JPA en ese módulo golpea consultas que
+ni lo mencionan** — es exactamente lo que pasó el 03.
+
+---
+
 ## 0. Alcance — definido por el usuario el 2026-09-01
 
 **`rhh` · `cxp` · `cxc` · `pagos` · `cnt` · `tsr`**
@@ -51,29 +90,48 @@ limpios; no se usan.
 
 ---
 
-## 1. Frentes activos
+## 1. Frentes — **reconstruido el 2026-09-04 contra el código, no contra este documento**
+
+> ⚠️ **La tabla que estaba acá quedó un día entera desactualizada.** Decía que el frente 1 estaba
+> «BE bloqueado, falta la tabla `ODBS`» — y `ODBS` existe, con sus siete capas y su pantalla. Todo
+> el 2026-09-03 (dos frentes nuevos, dos caídas de producción, cuatro scripts) entró al repositorio
+> **sin llegar a este archivo**. Lo de abajo se rearmó leyendo `git log`, `src/` y `docs/`.
 
 | # | Módulo | Frente | Estado |
 |---|---|---|---|
-| **1** | rhh/tsr | **Pago de décimos acumulados** | 🟠 **FE entregado, BE bloqueado por el V1** (falta la tabla `ODBS`) |
-| **1bis** | rhh | Los décimos se generaban también para los mensualizados | ✅ **entregado** (`e3b53ab`) |
-| **2** | rhh/tsr | **La nómina pasa por la bandeja de aprobación de TSR** | ✅ **entregado BE+FE** (`bb9bccb`, `7081a8c`) |
-| **3-A** | rhh/cnt | Baja de provisión de décimos y fondos de reserva al pagar | 🟠 depende del frente 1 |
-| **3-B** | rhh | Baja de provisión de **vacaciones** | ⚪ levantado; **no se implementa** hasta diseñar la marca de lo ya descargado |
-| **3-C** | rhh | **Baja de provisión de jubilación patronal y desahucio** | ✅ **entregado** (`54c8cdf`) |
-| **4** | rhh | Reporte del Ministerio de Trabajo (SUT) | 🔴 bloqueado — falta el CSV de ejemplo |
+| **1** | rhh/tsr | **Pago de décimos acumulados** (`RHH.ODBS`) | ✅ **entregado BE+FE.** 7 capas + `OrdenBeneficioSocialResumen` + pantalla `pago-beneficios-sociales`. DDL `rhh/sql/e2-03`, corregido por `e2-04` |
+| **1bis** | rhh | Los décimos se generaban también para los mensualizados | ✅ entregado (`e3b53ab`) |
+| **2** | rhh/tsr | La nómina pasa por la bandeja de aprobación de TSR | ✅ entregado BE+FE (`bb9bccb`, `7081a8c`) |
+| **3-A** | rhh/cnt | Baja de provisión de décimos y fondos de reserva al pagar | 🟠 destrabado con el frente 1 — **verificar si se implementó** |
+| **3-B** | rhh | Baja de provisión de **vacaciones** | ⚪ levantado; no se implementa hasta diseñar la marca de lo ya descargado |
+| **3-C** | rhh | Baja de provisión de jubilación patronal y desahucio | ✅ entregado (`54c8cdf`) |
+| **4** | rhh | Reporte del Ministerio de Trabajo (SUT) | 🔴 **bloqueado — sigue faltando el CSV de ejemplo** |
+| **5** | rhh | La cuenta del empleado apunta a banco **externo** (`TSR.BEXT`, no `TSR.BNCO`) | ✅ entregado BE+FE (`2d5168b`, `ffefbda`, `60bbc49`). DDL `rhh/sql/e2-06` |
+| **6** | cxp | `GET /aplp/liquidacion/{id}` — el historial de abonos existía sin puerta | ✅ entregado BE+FE (`6d59652`, `42217b6`) |
+| **7** | cxp | 🔴 **URGENTE de producción:** `PGS.APLP.APLPFCTC` debe aceptar `NULL` para cruzar contra liquidación | ✅ código; **DDL `cxp/sql/e2-05` — confirmar que se corrió** |
+| **8** | tsr/cxp | **Un gasto de caja chica paga una factura o liquidación de compra** | ✅ entregado BE+FE. DDL `tsr/sql/e2-07` (`PGS.APLP.APLPMVCH`) |
+| **8bis** | tsr | Baja de las tres pantallas de cajas lógicas/físicas y del menú «Cajas» | ✅ entregado FE (`8e31ad8`, `cc794d8`) |
+| **H1** | tsr | Hotfix — `/mvch/listar` colgado por EAGER en cascada | ✅ (`7a9cad2`) |
+| **H2** | tsr/pagos | Hotfix — **ORA-04036 al aprobar CUALQUIER pago** | ✅ (`241211b`) — ver §14 |
 
-**Nada de lo entregado está desplegado.** Todo compila (`mvn -q clean compile` y `ng build`, los dos
-exit 0) y está en `origin/main`.
+**Compilación verificada el 2026-09-04:** Maven 3.9.8 / JDK 21.0.8, `mvn -q compile` **exit 0** sobre
+el árbol completo — **incluyendo el código sin commitear del equipo de la app móvil** (`crd`,
+`UsuarioApp*`), que vive en este mismo working tree. `saaFE` limpio y al día con `origin`.
 
 ⛔ **Orden de despliegue del frente 2: el frontend PRIMERO, el WAR después.** FE nuevo con WAR viejo
 es inofensivo (el REST lee el body como `Map` e ignora la clave de más); WAR nuevo con FE viejo
 **rompe `generar()` de nómina**, porque no llegaría el `idUsuario`. Ver §4.2 del diseño.
 
+**Y el DDL va antes del WAR en los frentes 1, 5, 7 y 8** — los cuatro mapean columnas o tablas
+nuevas. La regla 9 en su forma concreta: `APLPMVCH`, `APLPFCTC` nullable, `LQBSODBS` y `CBEMBEXT`
+son columnas que Hibernate va a poner en el `SELECT` aunque la pantalla no las muestre.
+
 **Documentos:**
-- Diseño: `rhh/PLAN-PAGO-BENEFICIOS-Y-SALIDA-POR-TESORERIA.md`
-- Contrato de API: `rhh/API-PAGO-BENEFICIOS-SOCIALES.md`, espejado a `saaFE/docs/rrh/`
-- Verificaciones previas: `rhh/sql/e2-01-verificacion-previa-beneficios.sql`
+- Diseño frentes 1/2/3: `rhh/PLAN-PAGO-BENEFICIOS-Y-SALIDA-POR-TESORERIA.md`
+- Contrato frentes 1/2: `rhh/API-PAGO-BENEFICIOS-SOCIALES.md`, espejado a `saaFE/docs/rrh/`
+- Diseño y contrato frente 8: `tsr/PLAN-GASTO-CAJA-CHICA-PAGA-FACTURA.md`, `tsr/API-GASTO-CAJA-CHICA.md`
+- Frente 4: `rhh/PLAN-REPORTE-MDT-SUT.md`
+- Verificaciones previas: `rhh/sql/e2-01`, `rhh/sql/e2-02`
 
 ---
 
@@ -225,22 +283,33 @@ no se renumera**.
 
 ---
 
-## 6. Pendientes del usuario
+## 6. Pendientes del usuario — **reescrito el 2026-09-04**
 
 ### 🔴 Bloqueante
-1. **Correr `rhh/sql/e2-01-verificacion-previa-beneficios.sql`** y devolver los resultados. Es solo
-   lectura. Sin V1 no se puede crear la tabla; sin V5 no se sabe si el frente 1 es preventivo o si
-   hay obligación vencida.
-2. **Descargar del SUT el CSV de ejemplo** del formulario de decimotercera (y decimocuarta si
-   difiere) y dejarlo en `docs/logica-negocio/rhh/muestras/`. El frente 4 está bloqueado sin él.
+1. **Decir qué scripts `.sql` de este equipo se corrieron y dónde** (local / producción):
+   `rhh/sql/e2-03`, `e2-04`, `e2-06`, `cxp/sql/e2-05`, `tsr/sql/e2-07`. Sin eso no se sabe si
+   producción tiene las columnas que el WAR desplegado ya mapea. **`e2-05` era un urgente de
+   producción** (`ORA-01400` al cruzar un anticipo contra una liquidación).
+2. **Correr `rhh/sql/e2-01-verificacion-previa-beneficios.sql`** y devolver los resultados si sigue
+   sin correrse. Es 100% lectura.
+3. **Descargar del SUT el CSV de ejemplo** del formulario de decimotercera (y decimocuarta si
+   difiere) y dejarlo en `docs/logica-negocio/rhh/muestras/`. **El frente 4 lleva tres días
+   bloqueado por esto y no se destraba solo.**
 
 ### 🟡 Decidible
-3. Autorizar o no el **modo directo** (despacho por `SendMessage` a `omen-saa-2-be`/`-fe`).
-4. Qué se hace con **`cxc` y `sri`**, que quedaron sin dueño.
+4. **§11bis — `anularAnticipo` anula pagos CONFIRMADOS sin reversar su contabilidad.** El arreglo
+   **cambia lo que se puede hacer en pantalla**: una anulación que hoy pasa empezaría a fallar
+   pidiendo que se revierta primero. Es lo correcto y es decisión de negocio, no técnica.
+5. **§11 — las tres consultas ciegas a `POR_APROBAR`.** Acá no hay decisión de negocio: es un
+   defecto y se puede despachar. Sólo hace falta el visto bueno para abrir el frente.
+6. Autorizar o no el **modo directo** (despacho por `SendMessage` a `omen-saa-2-be`/`-fe`).
+7. **`cxc` y `sri` no tienen dueño.** `sri` es el más caro: el XML del ATS nunca se validó contra el
+   XSD ni el validador oficial, y eso bloquea cualquier presentación real.
 
 ### ⚪ Sin prisa
-5. Confirmar contra la base si `tsr/sql/07` y `08` se ejecutaron.
-6. `README-ORDEN.md` para `rhh/sql/` y `cxp/sql/`.
+8. Confirmar contra la base si `tsr/sql/07` y `08` se ejecutaron (viene del alcance heredado).
+9. `README-ORDEN.md` para `rhh/sql/` y `cxp/sql/`, que siguen con numeración duplicada.
+10. §12 — el `in :ids` sin techo de `EgresoServiceImpl.completaFormaPago`, deuda preexistente.
 
 ---
 
@@ -648,3 +717,71 @@ lo que quedó afuera** y le da al que lee dónde dudar.
 **Y el corolario sobre diagnosticar el error ajeno:** un fallo suele tener varias causas plausibles
 y todas explican el resultado igual de bien. Preguntar qué se corrió cuesta una línea; deducirlo
 cuesta una corrección más en la cadena.
+
+---
+
+## §14 — Dos caídas de producción el mismo día, por una relación que nunca se consultó
+
+**2026-09-03.** Las dos salieron del frente 8 (caja chica paga un documento) y las dos las arregló
+el agente de backend. **No estaban en este documento hasta el 2026-09-04**; vivían sólo en el
+mensaje del commit `241211b`, que es donde nadie las va a buscar dentro de seis meses.
+
+| # | Síntoma | Causa |
+|---|---|---|
+| **H1** (`7a9cad2`) | `/mvch/listar` colgado | EAGER en cascada al listar movimientos de caja chica |
+| **H2** (`241211b`) | **ORA-04036 (`PGA_AGGREGATE_LIMIT`) al aprobar CUALQUIER pago** | un `@ManyToOne` nuevo cerró un **ciclo** en el grafo EAGER |
+
+### El mecanismo de H2, que es el que hay que entender
+
+`TSR.MVCH` tiene FK a `PGS.PGTR`. El `@ManyToOne` que se agregó
+(`AplicacionPagoCxp.movimientoCajaChica`) cerró un ciclo que antes no existía:
+
+```
+APLP → MVCH → PGTR → (ANTP, ASNT, MYRZ, PRDO, PLNT, FCTC, LQCC, EGRS, DTCH, CHQR,
+                      CNBC, BNCO, PLNN, NTRL, TTLR, PSSS, LTPG …)
+```
+
+Ese segundo `PGTR` **vuelve a expandir todo el grafo desde cero**. Cargar **un** pago por id
+terminaba en ~175 joins.
+
+**Arreglo:** el campo deja de ser `@ManyToOne` y pasa a `idMovimientoCajaChica` (`Long` crudo, el
+mismo patrón que `DetalleFacturaCompra.producto` y `PagoProgramado.idOrigen`). Sin relación no hay
+ciclo. **No se puso `LAZY` a propósito:** un proxy sin inicializar puede reventar al serializar con
+Jackson fuera de la transacción, y ese riesgo no se podía probar con producción caída.
+
+### Lo que vale, y encaja con el §10bis
+
+> **El daño no lo sufrió la pantalla nueva. Lo sufrió aprobar pagos — una ruta que no toca la tabla
+> nueva ni una vez.** Una relación nueva puede cerrar un ciclo con relaciones que **ya existían en
+> el otro extremo**: el costo no está en la FK que agregaste, está en el grafo que esa FK conecta.
+
+**Regla operativa para este módulo, y hay que ponerla en el prompt del próximo `@ManyToOne`:**
+antes de mapear una relación, **mirar las FK del lado de DESTINO, no sólo las del lado de origen**.
+Y en `PGS.PGTR` / `TSR.MVCH` específicamente, la respuesta por defecto es **`Long` crudo**, no
+`@ManyToOne`.
+
+*Es la misma familia del §10bis con otro disfraz:* un mecanismo que «funciona solo» —el fetch EAGER
+que trae todo por las dudas— **deja de avisar cuando está equivocado**, y avisa recién cuando revienta
+en un lugar sin relación aparente con el cambio.
+
+---
+
+## §15 — Verificación de arranque del 2026-09-04 (hecha por el árbitro, no por un agente)
+
+Alcance de la medición, para que se vea el borde (§13): `git log`/`git status` de los dos repos,
+`mvn -q compile` del árbol completo, y lectura directa de los cuatro puntos abiertos del §11 y §11bis
+en `src/main/java`. **No** se consultó la base de datos — nada de lo de abajo dice qué hay en Oracle.
+
+| Qué | Resultado |
+|---|---|
+| `origin/main` vs. local | **al día**, sin commits entrantes, en `saaBE` y en `saaFE` |
+| `mvn -q compile` | **exit 0** — incluye el código sin commitear del equipo de la app móvil |
+| Trabajo sin commitear en el tree | **ninguno mío.** Lo que hay es de `omen-arb-app` (`crd/UsuarioApp*`) y su línea en el registro de reservas. **No tocar** |
+| **§11 — las tres consultas propias** | 🔴 **SIGUEN ABIERTAS.** Verificado en `PagoProgramadoDaoServiceImpl`: `selectVigentesByEgreso:139`, `selectVigentesByAnticipo:154` y `selectVigentesByOrigen:169` **siguen con `estado in (REGISTRADO, EN_ARCHIVO, CONFIRMADO)` y sin `POR_APROBAR`**. La única corregida es `selectVigentesByFactura:102`, que es de `lap-saa-1` |
+| **§11bis — `anularAnticipo`** | 🔴 **SIGUE ABIERTO.** `AnticipoProveedorServiceImpl:653` sigue haciendo `pago.setEstado(ANULADO)` a mano, sin pasar por `anularPago`; `motivoBloqueo:848` sigue frenando sólo `EN_ARCHIVO` |
+| Frente 1 (`ODBS`) | **destrabado y entregado** — al revés de lo que decía el §1 viejo |
+
+**Lo que la verificación NO puede responder desde acá, y es lo que hay que preguntarle al usuario:**
+cuáles de los scripts `e2-03`…`e2-07` se corrieron en producción. Los dos hotfixes de §14 prueban
+que **el WAR del 2026-09-03 SÍ está desplegado** (un `ORA-04036` sólo se llega a dar si la consulta
+corre; si `APLPMVCH` no existiera el error sería `ORA-00904`), pero eso es inferencia, no constancia.
