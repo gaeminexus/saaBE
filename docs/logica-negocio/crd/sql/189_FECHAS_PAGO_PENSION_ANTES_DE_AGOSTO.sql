@@ -103,16 +103,69 @@ PROMPT =========================================================================
 PROMPT Prevuelo grueso, para saber si el resultado de la corrida tiene el tamano
 PROMPT esperado. El prevuelo fino lo hace la pantalla.
 
--- (!) La columna de estado de VPPC es VPPCIDST, no VPPCESTD. Verificado contra
---     ValorPagoPensionComplementaria.java:78. Activa = Estado.ACTIVO = 1, que es lo que
---     filtra unicaActiva() en el ServiceImpl.
-SELECT COUNT(DISTINCT v.ENTDCDGO)                  AS JUBILADOS_CON_VPPC_ACTIVA
-  FROM CRD.VPPC v
- WHERE v.VPPCIDST = 1;
+-- ⛔ CORREGIDO EL 2026-09-04. La primera version de este bloque contaba VPPC activas y
+-- decia "contrastar contra EVALUADOS". ESO ESTABA MAL y daba un numero enganoso (191).
+-- generarPagosDelMes NO parte de VPPC: parte del ESTADO DEL PARTICIPE
+-- (ServiceImpl:240 -> entidadDaoService.selectByIdEstado(JUBILADO_COMPLEMENTARIO)).
+-- VPPC se consulta DESPUES, por jubilado, y su ausencia es un ERROR de la corrida
+-- (SIN_VALOR_PENSION), no un filtro de entrada. Son dos poblaciones distintas.
+
+-- 4.a LA POBLACION REAL que va a evaluar la corrida
+SELECT COUNT(*)                                    AS EVALUADOS_ESPERADOS
+  FROM CRD.ENTD e
+ WHERE e.ENTDIDST = 3;          -- EstadoParticipeEntidad.JUBILADO_COMPLEMENTARIO
 
 PROMPT
-PROMPT (!) Contrastar contra EVALUADOS del resultado de generarPagosDelMes. Si la
-PROMPT     corrida evalua muchos menos, algo esta filtrando de mas.
+PROMPT (!) ESTE es el numero que tiene que coincidir con EVALUADOS de la corrida.
+PROMPT
+
+-- 4.b (!!) EL CONTROL QUE DECIDE SI 4.a SIRVE. Leer antes de creerle al 4.a.
+-- CLAUDE.md y crd/MIGRACION-ESTADO-PARTICIPE.md documentan que en CRD.ENTD la columna
+-- ENTDIDST apuntaba al PK del catalogo mientras el rubro usa el CODIGO ALTERNO. El
+-- propio EstadoParticipeEntidad.java lo deja escrito: "3 JUBILADO COMPLEMENTARIO <- PK 30".
+-- El codigo Java pasa 3. Si en la base quedaron PKs (30, 41, 42), selectByIdEstado(3)
+-- NO DEVUELVE NADA y la corrida evalua CERO jubilados sin fallar.
+SELECT e.ENTDIDST                                  AS VALOR_EN_LA_COLUMNA,
+       COUNT(*)                                    AS PARTICIPES,
+       CASE WHEN e.ENTDIDST BETWEEN 1 AND 9  THEN 'alterno (lo que espera el codigo)'
+            WHEN e.ENTDIDST BETWEEN 25 AND 50 THEN '*** PK del catalogo - NO lo encuentra ***'
+            ELSE 'revisar'
+       END                                         AS INTERPRETACION
+  FROM CRD.ENTD e
+ GROUP BY e.ENTDIDST
+ ORDER BY 1;
+
+PROMPT
+PROMPT (!) Si aparece un 30 con participes, la migracion de estados quedo a medias y esos
+PROMPT     jubilados NO los va a ver la corrida. PARAR y avisar antes de correr agosto.
+PROMPT (!) Si todos los valores son de una sola cifra, la columna ya usa el alterno y el
+PROMPT     4.a es confiable.
+PROMPT
+
+-- 4.c Cuantos de la poblacion real NO tienen VPPC activa: cada uno sera un SIN_VALOR_PENSION
+SELECT COUNT(*)                                    AS JUBILADOS_SIN_VPPC_ACTIVA
+  FROM CRD.ENTD e
+ WHERE e.ENTDIDST = 3
+   AND NOT EXISTS (SELECT 1 FROM CRD.VPPC v
+                    WHERE v.ENTDCDGO = e.ENTDCDGO AND v.VPPCIDST = 1);
+
+PROMPT
+PROMPT (!) Estos van a salir como renglones ERROR con SIN_VALOR_PENSION. Es esperable y no
+PROMPT     rompe la corrida, pero conviene saber cuantos ANTES para no asustarse.
+PROMPT
+
+-- 4.d Al reves: VPPC activa de alguien que NO es JUBILADO_COMPLEMENTARIO. A estos la
+--     corrida NI LOS MIRA, y no dejan rastro en el detalle: desaparecen en silencio.
+SELECT COUNT(*)                                    AS VPPC_ACTIVA_FUERA_DE_LA_POBLACION
+  FROM CRD.VPPC v
+  JOIN CRD.ENTD e ON e.ENTDCDGO = v.ENTDCDGO
+ WHERE v.VPPCIDST = 1
+   AND NVL(e.ENTDIDST, -1) <> 3;
+
+PROMPT
+PROMPT (!) Estos son los peligrosos: alguien les configuro cuanto cobran, pero su estado
+PROMPT     dice que no son jubilados complementarios, asi que NO se les paga y NO aparecen
+PROMPT     en ningun error. Si el numero no es cero, revisar caso por caso antes de correr.
 PROMPT
 
 PROMPT ==========================================================================
