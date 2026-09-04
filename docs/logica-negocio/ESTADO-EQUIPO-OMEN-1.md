@@ -626,13 +626,59 @@ también para dos fechas de negocio. Familia de H21, de alcance mucho menor.
 **Efecto concreto:** cualquier reporte que agrupe `APRT` por fecha pone estas bajas en septiembre.
 **Pendiente de decisión del usuario**, no del árbitro.
 
-### Entregado
+### ⛔⭐ H31 — El botón «Procesar pago del mes» simulaba el pago. Es el hallazgo del día
+
+La pantalla **que está hoy en producción** tenía una sección «4. Procesar pago del mes» cuyo
+`procesarPagoMes()` hacía **exactamente esto**:
+
+```ts
+setInterval(...)  // cuenta 5 segundos
+→ snackBar.open('Pago procesado exitosamente')
+```
+
+**Cero llamadas HTTP.** Verificado por el árbitro sobre el código anterior antes de aprobar su
+retiro: `grep` de `Service.|http|subscribe` en el cuerpo del método → **0 coincidencias**. El botón
+estaba cableado en el HTML (`proceso-pago-jubilados.component.html:274`) y era el único control de
+«procesar» que la pantalla ofrecía.
+
+> **Un operador que apretara ese botón se iba convencido de haber pagado el mes.**
+
+**Reencuadra H30.** `CRD.PGPC` vacía no significa «nadie intentó correr el proceso»: significa que
+**si alguien lo intentó, la pantalla le dijo que había funcionado**. Las dos cosas se ven idénticas
+desde la base de datos, y la diferencia importa — la segunda implica que puede haber alguien
+creyendo que un mes ya se pagó.
+
+**Por qué costaba verlo:** un cascarón que no hace nada se detecta al leerlo; éste **afirmaba
+éxito**, que es la forma más cara de no hacer nada. Es la cuarta vez en el registro de este equipo
+que aparece el mismo patrón —H13, H19, H24 y ahora ésta—: **el sistema informa un resultado que no
+ocurrió**. Y es la primera en que el falso positivo estaba escrito a mano, a propósito, en el
+frontend.
+
+**Lo encontró el agente de FE** al retirar la sección para reemplazarla, y lo reportó como «el
+`setInterval` falso». El árbitro lo verificó antes de aprobarlo y resultó peor que el reporte: no
+era solo un temporizador de adorno, era un mensaje de éxito sobre la nada.
+
+### Entregado — frente CERRADO el 2026-09-04
 
 | Pieza | Estado |
 |---|---|
 | Contrato corregido y espejado | ✅ `b964780` (BE) · `cbf89da` (FE) |
-| `GET /rest/pgpc/porPeriodo`, alcance reducido | ✅ `1933079` — DAO + Service + REST, `mvn -q compile` exit 0, verificado por el árbitro línea por línea |
-| Pantalla: servicio + pestaña «Corrida del mes» + «Seguimiento» reducida | ⬜ en curso (FE) |
+| Regla de fechas `min(fin de mes, hoy)` + pago con fecha actual | ✅ `79204e4` → `1c50d3a` (BE) · `8bd5122`/`33d8287` (contrato) |
+| `GET /rest/pgpc/porPeriodo`, alcance reducido | ✅ `1933079` — DAO + Service + REST, verificado por el árbitro línea por línea |
+| `sql/189` (antes de correr) y `sql/190` (después) | ✅ `5eef7bc`, `f0e2d2b` — sin `PROMPT` ni `DEFINE`, corren en cualquier cliente |
+| **Pantalla: servicio + «Corrida del mes» + «Seguimiento»** | ✅ **`2e74968` (saaFE), 12 archivos, 1.875 líneas, en `origin/main`** |
+
+**Los dos lados están en `origin/main` y son desplegables.** El backend no cambia comportamiento
+existente: `porPeriodo` es un GET nuevo y el cambio de fechas solo toca el pago de pensión, que
+nunca corrió.
+
+### Lección de proceso: `PROMPT` y `DEFINE` no van en los `.sql` de este equipo
+
+El usuario reportó que los scripts le salían con la palabra `PROMPT` impresa. Son comandos de
+**SQL\*Plus**, no SQL: solo funcionan en `sqlplus` y en SQL Developer ejecutando como script.
+Convertidos a comentarios `--`, y `sql/190` perdió `DEFINE`/`&ANIO`/`&MES` a favor de literales.
+**Un script que corre el usuario y no el árbitro tiene que funcionar en el cliente que el usuario
+tenga**, no en el que el árbitro imagina.
 
 ### H29 — La regla de fechas definitiva, y el control que NO hubo que tocar
 
