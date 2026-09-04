@@ -91,6 +91,20 @@ haber buscado `§N` y no `§N.x`. **No fue eso**: el patrón `§6.[0-9]` sí est
 > nunca lo excluido. Un hueco de filtro no se manifiesta como error — se manifiesta como una lista
 > más corta, que es indistinguible de una lista correcta.
 
+⚠️ **Y hubo una quinta vuelta, que generaliza la regla.** La diferencia entre el conteo de cinco y
+el de seis **no fue el `--include`**: la medición de cinco exigía que **el nombre del archivo
+apareciera en la misma línea que el `§`**, y `ESTADO-EQUIPO-OMEN-1.md:204` dice sólo *«Va al registro
+§6»*. Distinto filtro, mismo fallo, cometido otra vez dentro de la corrección del anterior.
+
+> ⛔ **El alcance de una medición no es sólo QUÉ archivos mirás: es también QUÉ FORMA tiene que tener
+> el dato para que lo cuentes.** Anclar a una co-ocurrencia en la misma línea es un filtro tan
+> invisible como un `--include`, y **peor: ni siquiera aparece como opción del comando** — vive
+> dentro del patrón.
+
+**Por eso la práctica correcta no es una regla sobre qué medir, sino pegar el comando.** El comando
+lleva el `--include` *y* la forma del patrón; cualquier regla sobre qué mirar deja afuera la próxima
+manera de recortar sin darse cuenta.
+
 **Cómo se declara un alcance, en la práctica:** pegando el comando. Si la afirmación viene con el
 `grep` que la produjo, cualquiera ve el `--include` y el patrón, y el que sigue no repite el hueco.
 
