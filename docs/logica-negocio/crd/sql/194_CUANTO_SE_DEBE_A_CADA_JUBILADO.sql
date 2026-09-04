@@ -1,54 +1,69 @@
 -- =====================================================================================
--- 194 - Cuanto se le debe a cada jubilado si el pago pasa a ser ACUMULADO
+-- 194 - Cuanto se le PUEDE pagar a cada jubilado si el pago pasa a ser ACUMULADO
 -- FECHA: 2026-09-04 · EQUIPO: CRD / Equipo B (eqB, omen-saa-1)
+-- CORREGIDO: 2026-09-04, misma tarde — ver "Correccion" mas abajo.
 --
 -- SOLO SELECT. No modifica una sola fila.
---
 -- Sin comandos de SQL*Plus: no usa PROMPT, DEFINE, SET ni &variables.
 --
 -- =====================================================================================
--- POR QUE ESTE SCRIPT VA ANTES DE IMPLEMENTAR NADA
+-- LA REGLA, cerrada por el usuario el 2026-09-04
 -- =====================================================================================
--- Pedido del usuario (2026-09-04): el pago mensual debe ACUMULAR los meses no pagados.
--- Se busca el ULTIMO MOVIMIENTO NEGATIVO del aporte 23 y se paga desde ahi hasta el
--- periodo en curso. Si el ultimo fue enero, agosto paga enero..agosto.
+-- El pago mensual ACUMULA los meses no pagados: se busca el ULTIMO MOVIMIENTO NEGATIVO
+-- del aporte 23 y se paga desde ahi hasta el periodo en curso. Si el ultimo fue enero,
+-- agosto paga enero..agosto.
 --
--- (!!) Y ACA ESTA EL PUNTO QUE HAY QUE MEDIR ANTES DE CODIFICAR:
+-- CON DOS CONDICIONES, las dos del usuario:
 --
--- CRD.PGPC esta VACIA (medido con sql/189 el 2026-09-04): el proceso NUNCA corrio. Por
--- lo tanto NINGUN jubilado tiene un movimiento negativo de tipo 23 por pago de pension.
--- Con la regla de acumulacion, eso significa que para TODOS el punto de partida es su
--- JUBILACION, no el mes pasado.
+--   1. El participe tiene que estar en estado JUBILADO COMPLEMENTARIO (ENTDIDST = 3).
+--   2. (!) EL SALDO DE SU CUENTA ES EL TECHO. No se le puede pagar mas de lo que su
+--      saldo del aporte 23 permite. El acumulado se PAGA HASTA DONDE ALCANZA.
 --
--- Es decir: la PRIMERA corrida acumulada no paga un mes. Paga TODO lo retroactivo desde
--- que cada uno se jubilo. Si alguien se jubilo hace tres anios, son 36 mensualidades en
--- un solo pago.
+-- =====================================================================================
+-- CORRECCION - por que este script cambio
+-- =====================================================================================
+-- La primera version media la deuda TEORICA (meses x valor mensual) sin toparla contra
+-- el saldo, y mostraba un TOTAL_SI_SE_ACUMULA que nadie va a pagar nunca. El usuario lo
+-- senalo: "no se le puede pagar mas de lo que el saldo de su cuenta le permite".
 --
--- Eso puede ser exactamente lo que el usuario quiere - o puede ser una consecuencia que
--- no estaba mirando. Este script pone el numero sobre la mesa ANTES, no despues de haber
--- generado 191 ordenes de pago sin reverso.
+-- El numero que importa es el PAGABLE = MIN(deuda acumulada, saldo disponible), y eso es
+-- lo que mide ahora el bloque 1. La diferencia entre deuda y pagable tambien se muestra:
+-- es lo que queda debiendo y NO se va a pagar en esta corrida.
 --
--- QUE ANCLA CADA CASO, verificado contra el codigo el 2026-09-04:
---   - Solo DOS procesos escriben en el aporte 23:
---       AporteServiceImpl:495              -> POSITIVO, tipoMovimiento JUBILACION (7)
---       PagoPensionComplementariaServiceImpl -> NEGATIVO, tipoMovimiento PAGO_PENSION (9)
---   - Asi que "ultimo movimiento negativo del 23" = ultimo pago de pension. Limpio.
---   - Y si no hay ninguno, el ancla natural es el movimiento de JUBILACION.
+-- =====================================================================================
+-- QUE ANCLA CADA CASO, verificado contra el codigo el 2026-09-04
+-- =====================================================================================
+--   Solo DOS procesos escriben en el aporte 23:
+--     AporteServiceImpl:495                 -> POSITIVO, tipoMovimiento JUBILACION (7)
+--     PagoPensionComplementariaServiceImpl  -> NEGATIVO, tipoMovimiento PAGO_PENSION (9)
+--
+--   Asi que "ultimo movimiento negativo del 23" = ultimo pago de pension, limpio. Y si no
+--   hay ninguno, el ancla es el movimiento de JUBILACION - que es exactamente el momento
+--   en que el participe paso a JUBILADO COMPLEMENTARIO, o sea que la condicion 1 del
+--   usuario ya queda cubierta por el propio ancla.
+--
+-- (!!) CRD.PGPC esta VACIA: el proceso nunca corrio. Por lo tanto NADIE tiene movimiento
+-- negativo, y para TODOS el punto de partida es su jubilacion. La primera corrida
+-- acumulada no paga un mes: paga todo lo retroactivo que el saldo permita.
 -- =====================================================================================
 
 -- ==========================================================================
--- BLOQUE 1 - El panorama: cuantos meses debe cada uno y cuanto suma
+-- BLOQUE 1 - (!) EL NUMERO QUE IMPORTA: deuda, saldo y lo realmente pagable
 -- ==========================================================================
 
 SELECT COUNT(*)                                                    AS JUBILADOS,
-       SUM(x.MESES_ADEUDADOS)                                      AS MESES_TOTALES,
        ROUND(AVG(x.MESES_ADEUDADOS), 1)                            AS MESES_PROMEDIO,
        MAX(x.MESES_ADEUDADOS)                                      AS MESES_MAXIMO,
-       ROUND(SUM(x.MESES_ADEUDADOS * x.VALOR_MENSUAL), 2)          AS TOTAL_SI_SE_ACUMULA,
-       ROUND(SUM(x.VALOR_MENSUAL), 2)                              AS TOTAL_SI_ES_UN_MES
+       ROUND(SUM(x.DEUDA), 2)                                      AS DEUDA_TEORICA,
+       ROUND(SUM(LEAST(x.DEUDA, x.SALDO)), 2)                      AS PAGABLE_REAL,
+       ROUND(SUM(GREATEST(x.DEUDA - x.SALDO, 0)), 2)               AS QUEDA_DEBIENDO,
+       ROUND(SUM(x.VALOR_MENSUAL), 2)                              AS SI_FUERA_UN_SOLO_MES
   FROM (SELECT e.ENTDCDGO,
                NVL(v.VPPCVLRR, 0)                                  AS VALOR_MENSUAL,
-               MONTHS_BETWEEN(
+               NVL((SELECT SUM(a3.APRTVLRR) FROM CRD.APRT a3
+                     WHERE a3.ENTDCDGO = e.ENTDCDGO
+                       AND a3.TPAPCDGO = 23), 0)                   AS SALDO,
+               NVL(v.VPPCVLRR, 0) * NVL(MONTHS_BETWEEN(
                    TRUNC(SYSDATE, 'MM'),
                    TRUNC(NVL((SELECT MAX(a.APRTFCTR) FROM CRD.APRT a
                                WHERE a.ENTDCDGO = e.ENTDCDGO
@@ -57,94 +72,46 @@ SELECT COUNT(*)                                                    AS JUBILADOS,
                              (SELECT MIN(a2.APRTFCTR) FROM CRD.APRT a2
                                WHERE a2.ENTDCDGO = e.ENTDCDGO
                                  AND a2.TPAPCDGO = 23
-                                 AND a2.APRTVLRR > 0)), 'MM'))     AS MESES_ADEUDADOS
+                                 AND a2.APRTVLRR > 0)), 'MM')), 0) AS DEUDA,
+               NVL(MONTHS_BETWEEN(
+                   TRUNC(SYSDATE, 'MM'),
+                   TRUNC(NVL((SELECT MAX(a.APRTFCTR) FROM CRD.APRT a
+                               WHERE a.ENTDCDGO = e.ENTDCDGO
+                                 AND a.TPAPCDGO = 23
+                                 AND a.APRTVLRR < 0),
+                             (SELECT MIN(a2.APRTFCTR) FROM CRD.APRT a2
+                               WHERE a2.ENTDCDGO = e.ENTDCDGO
+                                 AND a2.TPAPCDGO = 23
+                                 AND a2.APRTVLRR > 0)), 'MM')), 0) AS MESES_ADEUDADOS
           FROM CRD.ENTD e
           JOIN CRD.VPPC v ON v.ENTDCDGO = e.ENTDCDGO AND v.VPPCIDST = 1
-         WHERE e.ENTDIDST = 3) x
- WHERE x.MESES_ADEUDADOS IS NOT NULL;
+         WHERE e.ENTDIDST = 3) x            -- JUBILADO COMPLEMENTARIO, condicion 1
+ WHERE x.SALDO > 0;
 
 --
--- (!) COMPARAR TOTAL_SI_SE_ACUMULA CONTRA TOTAL_SI_ES_UN_MES. Esa es, en un numero, la
+-- (!) PAGABLE_REAL es lo que de verdad saldria en ordenes de pago. Es el numero a mirar,
+--     no DEUDA_TEORICA.
+-- (!) QUEDA_DEBIENDO es lo que el saldo no alcanza a cubrir. No desaparece: sigue
+--     debiendose, pero no se paga en esta corrida.
+-- (!) Comparar PAGABLE_REAL contra SI_FUERA_UN_SOLO_MES: esa es, en un numero, la
 --     diferencia entre lo que el proceso hace hoy y lo que haria con la regla nueva.
--- (!) MESES_MAXIMO dice cuan viejo es el caso mas retrasado.
--- (!) MESES_ADEUDADOS NULL = ese jubilado no tiene NINGUN movimiento del aporte 23, ni
---     positivo ni negativo. No se jubilo por el proceso (viene de migracion) y no hay
---     fecha de la cual partir. El bloque 3 los lista: son los que NO se pueden acumular
---     sin una decision aparte.
 --
 
 -- ==========================================================================
--- BLOQUE 2 - La distribucion, para ver si es un problema de pocos o de todos
+-- BLOQUE 2 - A cuantos les alcanza el saldo y a cuantos no
 -- ==========================================================================
 
-SELECT CASE WHEN x.MESES_ADEUDADOS <= 1  THEN '0-1 mes (al dia)'
-            WHEN x.MESES_ADEUDADOS <= 3  THEN '2-3 meses'
-            WHEN x.MESES_ADEUDADOS <= 6  THEN '4-6 meses'
-            WHEN x.MESES_ADEUDADOS <= 12 THEN '7-12 meses'
-            WHEN x.MESES_ADEUDADOS <= 24 THEN '1-2 anios'
-            ELSE 'mas de 2 anios'
-       END                                                         AS TRAMO,
-       COUNT(*)                                                    AS JUBILADOS,
-       ROUND(SUM(x.MESES_ADEUDADOS * x.VALOR_MENSUAL), 2)          AS MONTO_DEL_TRAMO
-  FROM (SELECT e.ENTDCDGO,
-               NVL(v.VPPCVLRR, 0)                                  AS VALOR_MENSUAL,
-               MONTHS_BETWEEN(
-                   TRUNC(SYSDATE, 'MM'),
-                   TRUNC(NVL((SELECT MAX(a.APRTFCTR) FROM CRD.APRT a
-                               WHERE a.ENTDCDGO = e.ENTDCDGO
-                                 AND a.TPAPCDGO = 23
-                                 AND a.APRTVLRR < 0),
-                             (SELECT MIN(a2.APRTFCTR) FROM CRD.APRT a2
-                               WHERE a2.ENTDCDGO = e.ENTDCDGO
-                                 AND a2.TPAPCDGO = 23
-                                 AND a2.APRTVLRR > 0)), 'MM'))     AS MESES_ADEUDADOS
-          FROM CRD.ENTD e
-          JOIN CRD.VPPC v ON v.ENTDCDGO = e.ENTDCDGO AND v.VPPCIDST = 1
-         WHERE e.ENTDIDST = 3) x
- WHERE x.MESES_ADEUDADOS IS NOT NULL
- GROUP BY CASE WHEN x.MESES_ADEUDADOS <= 1  THEN '0-1 mes (al dia)'
-               WHEN x.MESES_ADEUDADOS <= 3  THEN '2-3 meses'
-               WHEN x.MESES_ADEUDADOS <= 6  THEN '4-6 meses'
-               WHEN x.MESES_ADEUDADOS <= 12 THEN '7-12 meses'
-               WHEN x.MESES_ADEUDADOS <= 24 THEN '1-2 anios'
-               ELSE 'mas de 2 anios'
-          END
- ORDER BY 1;
-
--- ==========================================================================
--- BLOQUE 3 - (!) Los que NO tienen de donde partir
--- ==========================================================================
-
-SELECT COUNT(*)                                                    AS SIN_ANCLA
-  FROM CRD.ENTD e
-  JOIN CRD.VPPC v ON v.ENTDCDGO = e.ENTDCDGO AND v.VPPCIDST = 1
- WHERE e.ENTDIDST = 3
-   AND NOT EXISTS (SELECT 1 FROM CRD.APRT a
-                    WHERE a.ENTDCDGO = e.ENTDCDGO AND a.TPAPCDGO = 23);
-
---
--- (!) Estos jubilados no tienen NINGUN movimiento del aporte 23: ni el traslado de la
---     jubilacion ni un pago. Vienen de la migracion, no del proceso. Para ellos la regla
---     "desde el ultimo movimiento negativo" no tiene punto de partida, y tampoco lo tiene
---     la variante "desde la jubilacion".
--- (!) Si este numero es alto, la regla de acumulacion necesita una tercera fuente de
---     fecha (una fecha de jubilacion en ENTD, o un mes de arranque fijado a mano) ANTES
---     de poder implementarse. Es una decision del usuario, no del arbitro.
---
-
--- ==========================================================================
--- BLOQUE 4 - Alcanza el saldo del aporte 23 para pagar lo acumulado?
--- ==========================================================================
-
-SELECT SUM(CASE WHEN x.SALDO + 0.005 >= x.DEUDA THEN 1 ELSE 0 END) AS LES_ALCANZA,
-       SUM(CASE WHEN x.SALDO + 0.005 <  x.DEUDA THEN 1 ELSE 0 END) AS NO_LES_ALCANZA,
-       ROUND(SUM(CASE WHEN x.SALDO < x.DEUDA
-                      THEN x.DEUDA - x.SALDO ELSE 0 END), 2)       AS FALTANTE_TOTAL
+SELECT SUM(CASE WHEN x.SALDO + 0.005 >= x.DEUDA THEN 1 ELSE 0 END) AS COBRAN_TODO,
+       SUM(CASE WHEN x.SALDO + 0.005 <  x.DEUDA
+                 AND x.SALDO > 0.005          THEN 1 ELSE 0 END)   AS COBRAN_PARCIAL,
+       SUM(CASE WHEN x.SALDO <= 0.005         THEN 1 ELSE 0 END)   AS SIN_SALDO_NO_COBRAN,
+       ROUND(SUM(CASE WHEN x.SALDO + 0.005 < x.DEUDA
+                      THEN x.SALDO ELSE 0 END), 2)                 AS MONTO_DE_LOS_PARCIALES
   FROM (SELECT e.ENTDCDGO,
                NVL((SELECT SUM(a3.APRTVLRR) FROM CRD.APRT a3
-                     WHERE a3.ENTDCDGO = e.ENTDCDGO AND a3.TPAPCDGO = 23), 0) AS SALDO,
-               NVL(v.VPPCVLRR, 0) *
-               NVL(MONTHS_BETWEEN(
+                     WHERE a3.ENTDCDGO = e.ENTDCDGO
+                       AND a3.TPAPCDGO = 23), 0)                   AS SALDO,
+               NVL(v.VPPCVLRR, 0) * NVL(MONTHS_BETWEEN(
                    TRUNC(SYSDATE, 'MM'),
                    TRUNC(NVL((SELECT MAX(a.APRTFCTR) FROM CRD.APRT a
                                WHERE a.ENTDCDGO = e.ENTDCDGO
@@ -159,10 +126,57 @@ SELECT SUM(CASE WHEN x.SALDO + 0.005 >= x.DEUDA THEN 1 ELSE 0 END) AS LES_ALCANZ
          WHERE e.ENTDIDST = 3) x;
 
 --
--- (!) Hoy el proceso falla con SALDO_INSUFICIENTE si el saldo no cubre el pago. Con
---     acumulacion, NO_LES_ALCANZA dice a cuantos les va a pasar. Si es un numero grande,
---     hace falta decidir que se hace: pagar hasta donde alcance, o rechazar el caso.
---     Tambien es decision del usuario.
+-- (!) COBRAN_PARCIAL es el grupo nuevo que crea esta regla: hoy el proceso los rechaza
+--     enteros con SALDO_INSUFICIENTE; con el tope los paga hasta donde alcanza.
+-- (!) SIN_SALDO_NO_COBRAN: saldo cero o negativo. A estos no se les paga nada, y hay que
+--     decidir si salen como ERROR o como una categoria propia ("saldo agotado"), que no
+--     es lo mismo: un saldo agotado es el final normal de una pension, no una falla.
+--
+
+-- ==========================================================================
+-- BLOQUE 3 - (!) Los que NO tienen de donde partir
+-- ==========================================================================
+
+SELECT COUNT(*)                                                    AS SIN_ANCLA
+  FROM CRD.ENTD e
+  JOIN CRD.VPPC v ON v.ENTDCDGO = e.ENTDCDGO AND v.VPPCIDST = 1
+ WHERE e.ENTDIDST = 3
+   AND NOT EXISTS (SELECT 1 FROM CRD.APRT a
+                    WHERE a.ENTDCDGO = e.ENTDCDGO AND a.TPAPCDGO = 23);
+
+--
+-- (!) Sin ningun movimiento del aporte 23 no hay fecha de la cual partir NI saldo que
+--     pagar. Vienen de migracion, no del proceso. Si el numero es alto, la regla necesita
+--     una tercera fuente de fecha antes de implementarse. Decision del usuario.
+--
+
+-- ==========================================================================
+-- BLOQUE 4 - Los 20 casos mas grandes, para revisarlos uno por uno
+-- ==========================================================================
+
+SELECT * FROM (
+  SELECT e.ENTDNMID                                                AS CEDULA,
+         SUBSTR(e.ENTDRZNS,1,35)                                   AS NOMBRE,
+         v.VPPCVLRR                                                AS VALOR_MENSUAL,
+         NVL(MONTHS_BETWEEN(TRUNC(SYSDATE,'MM'),
+             TRUNC(NVL((SELECT MAX(a.APRTFCTR) FROM CRD.APRT a
+                         WHERE a.ENTDCDGO = e.ENTDCDGO AND a.TPAPCDGO = 23
+                           AND a.APRTVLRR < 0),
+                       (SELECT MIN(a2.APRTFCTR) FROM CRD.APRT a2
+                         WHERE a2.ENTDCDGO = e.ENTDCDGO AND a2.TPAPCDGO = 23
+                           AND a2.APRTVLRR > 0)),'MM')),0)         AS MESES,
+         NVL((SELECT SUM(a3.APRTVLRR) FROM CRD.APRT a3
+               WHERE a3.ENTDCDGO = e.ENTDCDGO AND a3.TPAPCDGO = 23),0) AS SALDO
+    FROM CRD.ENTD e
+    JOIN CRD.VPPC v ON v.ENTDCDGO = e.ENTDCDGO AND v.VPPCIDST = 1
+   WHERE e.ENTDIDST = 3
+   ORDER BY 4 DESC
+) WHERE ROWNUM <= 20;
+
+--
+-- (!) Mirar si los MESES mas altos tienen sentido. Un numero absurdo (cientos de meses)
+--     delata una fecha de movimiento mala, no una deuda real, y con el tope del saldo
+--     igual se pagaria de mas si el saldo es grande.
 --
 
 -- =====================================================================================
