@@ -116,3 +116,36 @@ y proveedor a la vez. El método suma el rol que falta, nunca reemplaza.
   **61 de 87 titulares con cuenta sólo la tienen bajo rol Proveedor**. Exigir el rol Cliente va a
   destapar casos. **Es correcto que los destape** —es el dato que falta de verdad— pero conviene
   medirlo antes de desplegar, con el mismo `e2-10`.
+
+---
+
+## 4. Decisión del usuario, 2026-09-04 — no se mide la parametrización previa
+
+> *«No te preocupes por medir cuáles tienen cuenta de cliente asignada, se les asignará al momento
+> del proceso.»*
+
+**El bloque B1 de `e2-10` deja de ser un paso previo obligatorio.** Pasa a ser informativo: se puede
+correr si alguna vez interesa el panorama, pero **no bloquea el despliegue**.
+
+**Qué significa operativamente:** al cargar una retención de un titular sin cuenta bajo rol Cliente,
+la pantalla va a mostrar el bloqueante `CLIENTE_SIN_CUENTA`, y contabilidad le parametriza la cuenta
+en ese momento —Contabilidad → Cuentas por Titular, rol Cliente— y reintenta.
+
+**Por qué es una decisión razonable y no un atajo:** el bloqueante **es informativo y accionable**.
+Nombra al titular, su RUC y la pantalla exacta donde se resuelve; y el flujo de carga es documento
+por documento, así que el costo de resolverlo en el momento es bajo y lo paga quien tiene el dato.
+Medir 87 titulares por adelantado para parametrizar los que quizá nunca emitan una retención es
+trabajo por adelantado contra un problema que se presenta solo.
+
+> **El criterio que lo hace seguro es el de `lap-saa-1`:** *la pregunta no es qué tan grave es el
+> error, sino si el usuario puede arreglarlo y reintentar.* Acá puede, en la misma sesión, y el
+> mensaje le dice dónde. Ese es exactamente el caso en que un bloqueo puede resolverse sobre la
+> marcha en vez de precocinarse.
+
+### Lo que esta decisión NO cubre — y sigue abierto
+
+**El bloque A2 es otra pregunta.** No trata sobre parametrización futura sino sobre **asientos ya
+generados** que acreditaron la cuenta de proveedor de un cliente. Eso es dato ya grabado: no se
+arregla parametrizando, y ningún reintento lo toca. Sigue valiendo la pena correrlo una vez —son
+segundos, del mismo script— para saber si hay algo que ajustar. **Si da 0 filas, el frente queda
+cerrado del todo.**
