@@ -7,7 +7,9 @@ import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
@@ -15,6 +17,7 @@ import com.saa.ejb.cnt.dao.DetallePlantillaDaoService;
 import com.saa.ejb.cnt.service.AsientoContableService;
 import com.saa.ejb.cnt.service.PlantillaService;
 import com.saa.ejb.crd.dao.AporteDaoService;
+import com.saa.ejb.crd.dao.DetallePrestamoDaoService;
 import com.saa.ejb.crd.dao.EntidadDaoService;
 import com.saa.ejb.crd.dao.PagoAporteDaoService;
 import com.saa.ejb.crd.dao.PagoPensionComplementariaDaoService;
@@ -32,6 +35,7 @@ import com.saa.ejb.crd.service.dto.ResultadoAplicacionPago;
 import com.saa.ejb.crd.service.dto.ResultadoGeneracionPagosPension;
 import com.saa.ejb.crd.service.dto.ResultadoPagoConAportes;
 import com.saa.ejb.crd.service.dto.ResultadoSincronizacion;
+import com.saa.ejb.crd.service.dto.SaldosCuota;
 import com.saa.ejb.crd.service.dto.SolicitudPagoConAportes;
 import com.saa.ejb.cxp.dao.PagoProgramadoDaoService;
 import com.saa.ejb.cxp.service.PagoProgramadoService;
@@ -42,6 +46,7 @@ import com.saa.model.cnt.DetallePlantilla;
 import com.saa.model.cnt.PlanCuenta;
 import com.saa.model.crd.Aporte;
 import com.saa.model.crd.CuentaBancariaParticipe;
+import com.saa.model.crd.DetallePrestamo;
 import com.saa.model.crd.Entidad;
 import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.model.crd.PagoAporte;
@@ -130,6 +135,10 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
 
     @EJB
     private PrestamoDaoService prestamoDaoService;
+
+    /** Para la deuda EXIGIBLE del retroactivo (§3bis del plan) — cuotas, no el pendiente total. */
+    @EJB
+    private DetallePrestamoDaoService detallePrestamoDaoService;
 
     @EJB
     private ConfiguracionContabilidadService configuracionContabilidadService;
@@ -280,13 +289,24 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                         jubilado.getCodigo(), idEmpresa, anio, mes, usuario, idUsuario);
                     resumen.getDetalle().add(detalle);
 
-                    if ("YA_EXISTIA".equals(detalle.getEstado())) {
-                        resumen.setYaGenerados(resumen.getYaGenerados() + 1);
-                    } else {
-                        resumen.setGenerados(resumen.getGenerados() + 1);
+                    // Retroactivo (PLAN-PAGO-RETROACTIVO-JUBILADOS.md): un jubilado puede
+                    // generar 0..N PGPC en una sola llamada, no siempre 1. "generados" cuenta
+                    // PAGOS (PGPC nuevos), no jubilados — por eso se suma mesesAplicados y no
+                    // se incrementa en 1 por jubilado como antes.
+                    if (detalle.getMesesAplicados() > 0) {
+                        resumen.setGenerados(resumen.getGenerados() + detalle.getMesesAplicados());
                         totalPagado += nvl(detalle.getValorPension()) + nvl(detalle.getValorSeguroSalud());
                         totalCruzado += nvl(detalle.getValorCruzadoAPrestamo());
                         totalOrdenes += nvl(detalle.getValorOrdenPago());
+                    } else {
+                        // "YA_EXISTIA" (período único ya generado), "AL_DIA" (sin meses
+                        // pendientes) y "SIN_ANCLA" (no se puede calcular desde dónde) son los
+                        // tres finales normales de 0 PGPC nuevos — ⛔ ninguno es error (ítem 1 y
+                        // 4 del encargo), así que los tres se cuentan junto a "ya generados" en
+                        // vez de inflar "generados" o ensuciar "conError". Interpretación
+                        // propia: el DTO del resumen no distingue los tres; si el operador
+                        // necesita diferenciarlos, están en detalle[].estado.
+                        resumen.setYaGenerados(resumen.getYaGenerados() + 1);
                     }
                 } catch (Throwable e) {
                     resumen.setConError(resumen.getConError() + 1);
@@ -326,29 +346,14 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         System.out.println("PagoPensionComplementariaService.generarPagoIndividual - Entidad: " + idEntidad
             + " - Período: " + mes + "/" + anio);
 
-        // Idempotencia: si ya existe, no se duplica (la UNIQUE de la base es la garantía real;
-        // este chequeo evita el viaje a la excepción de constraint y da un mensaje claro).
-        PagoPensionComplementaria existente = pagoPensionDaoService.selectByEntidadYPeriodo(
-            idEntidad, anio.longValue(), mes.longValue());
-        if (existente != null) {
-            System.out.println("  Entidad " + idEntidad + " ya tiene PGPC " + existente.getCodigo()
-                + " para " + mes + "/" + anio + " - se omite");
-            DetallePagoPension detalleExistente = new DetallePagoPension();
-            detalleExistente.setIdEntidad(idEntidad);
-            detalleExistente.setIdPago(existente.getCodigo());
-            detalleExistente.setValorPension(existente.getValorPension());
-            detalleExistente.setValorSeguroSalud(existente.getValorSeguro());
-            detalleExistente.setEstado("YA_EXISTIA");
-            return detalleExistente;
-        }
-
         Entidad entidad = entidadDaoService.find(new Entidad(), idEntidad);
         if (entidad == null) {
             throw new IncomeException(ERR_ENTIDAD_NO_ENCONTRADA + ": no existe el partícipe " + idEntidad);
         }
 
         // VPPC: exactamente una configuración activa. Ni cero (no se sabe cuánto pagarle) ni
-        // más de una (no se sabe cuál vale — mismo criterio que la cuenta bancaria).
+        // más de una (no se sabe cuál vale — mismo criterio que la cuenta bancaria). El valor
+        // mensual NO varía entre los meses del retroactivo: es la tasa configurada hoy.
         List<ValorPagoPensionComplementaria> configuraciones =
             valorPagoPensionComplementariaService.selectByEntidad(idEntidad);
         ValorPagoPensionComplementaria vppc = unicaActiva(configuraciones, idEntidad);
@@ -366,6 +371,79 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                 + "; no se puede generar un pago de $0.");
         }
 
+        // D1 (PLAN-PAGO-RETROACTIVO-JUBILADOS.md §4bis): TODAS las fechas del hecho —cartera Y
+        // pago— son las del mes de la CORRIDA, UNA sola vez para todo el método, nunca la del
+        // mes M que se esté generando. min(último día del mes de la corrida, hoy): nunca
+        // futura, así que el circuito no choca con validarFechaNoFutura de pagarConAportes.
+        LocalDate finDeMes = YearMonth.of(anio, mes).atEndOfMonth();
+        LocalDate hoy = LocalDate.now();
+        LocalDate fecha = finDeMes.isAfter(hoy) ? hoy : finDeMes;
+        // Auditoría — cuándo se registró de verdad. Separada a propósito de fechaHecho: reusar
+        // una sola fecha para las dos cosas fue el defecto original (79204e4).
+        LocalDateTime fechaRegistro = LocalDateTime.now();
+        // El hecho de cartera, a la hora 00:00 — mismo patrón que
+        // AporteServiceImpl.procesarJubilacion (fechaEfectiva.atStartOfDay()).
+        LocalDateTime fechaHecho = fecha.atStartOfDay();
+
+        // §6/D2 del contrato: el certificado gobierna la SALIDA (remanente al banco), NUNCA el
+        // cruce contra el préstamo. Se resuelve UNA vez (dato de la entidad, no del mes).
+        // cuentaSalida queda null —y el remanente de cualquier mes se retiene, no se
+        // consume— tanto si no hay cuenta activa (0, o >1 ambigua) como si no tiene
+        // certificado: ninguno de los dos es un problema DE ESTE pago, es que no hay a quién
+        // entregarle el dinero. Sólo el catálogo TPDJ mal configurado (no se puede verificar
+        // NADA, para NADIE) aborta todo el jubilado.
+        CuentaBancariaParticipe cuentaSalida = null;
+        try {
+            CuentaBancariaParticipe candidata = unicaCuentaActiva(idEntidad);
+            validarCertificadoBancario(candidata, idEntidad);
+            cuentaSalida = candidata;
+        } catch (IncomeException e) {
+            if (e.getMessage() != null && e.getMessage().startsWith(ERR_CERTIFICADO_NO_VERIFICABLE)) {
+                throw e;
+            }
+            System.out.println("  Entidad " + idEntidad + " sin salida de remanente disponible"
+                + " (el cruce contra préstamo sigue igual, D2): " + e.getMessage());
+        }
+
+        // §4bis D2: el algoritmo de meses adeudados es SÓLO para quien tiene préstamo — sin
+        // préstamo no hay contra qué cruzar, y sigue siendo un pago mensual normal del período
+        // pedido. Interpretación propia a partir de "Alcance: todos los que tengan préstamo";
+        // reportado al árbitro para confirmar.
+        boolean tienePrestamo = vppc.getTienePrestamo() != null && vppc.getTienePrestamo() == 1L;
+        if (!tienePrestamo) {
+            return generarUnMesSinPrestamo(entidad, idEntidad, valorPension, valorSeguro, valorTotal,
+                idEmpresa, anio, mes, usuario, idUsuario, fecha, fechaHecho, fechaRegistro, cuentaSalida);
+        }
+
+        return generarMesesRetroactivos(entidad, idEntidad, valorPension, valorSeguro, valorTotal,
+            idEmpresa, anio, mes, usuario, idUsuario, fecha, fechaHecho, fechaRegistro, finDeMes,
+            cuentaSalida);
+    }
+
+    /**
+     * Circuito SIN préstamo — sin cambios de fondo respecto del original: un único pago del
+     * período pedido, con idempotencia propia. Todo el valor es remanente (no hay contra qué
+     * cruzar), sujeto a que haya cuenta con certificado (§6/D2).
+     */
+    private DetallePagoPension generarUnMesSinPrestamo(Entidad entidad, Long idEntidad, double valorPension,
+            double valorSeguro, double valorTotal, Long idEmpresa, Integer anio, Integer mes, String usuario,
+            Long idUsuario, LocalDate fecha, LocalDateTime fechaHecho, LocalDateTime fechaRegistro,
+            CuentaBancariaParticipe cuentaSalida) throws Throwable {
+
+        PagoPensionComplementaria existente = pagoPensionDaoService.selectByEntidadYPeriodo(
+            idEntidad, anio.longValue(), mes.longValue());
+        if (existente != null) {
+            System.out.println("  Entidad " + idEntidad + " ya tiene PGPC " + existente.getCodigo()
+                + " para " + mes + "/" + anio + " - se omite");
+            DetallePagoPension detalleExistente = new DetallePagoPension();
+            detalleExistente.setIdEntidad(idEntidad);
+            detalleExistente.setIdPago(existente.getCodigo());
+            detalleExistente.setValorPension(existente.getValorPension());
+            detalleExistente.setValorSeguroSalud(existente.getValorSeguro());
+            detalleExistente.setEstado("YA_EXISTIA");
+            return detalleExistente;
+        }
+
         // Saldo suficiente en pensión complementaria (23): guardarraíl anti-carrera, revalidado
         // dentro de la transacción, mismo criterio que consumirAportes.
         double saldo = saldoAporteService.saldoPorEntidadYTipo(idEntidad, TIPO_APORTE_PENSION_COMPLEMENTARIA);
@@ -375,142 +453,16 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                 + " requiere $" + valorTotal + ".");
         }
 
-        // 2026-09-04, decisión del usuario, segunda vuelta (API-PAGO-PENSION-COMPLEMENTARIA.md
-        // §6bis): la fecha del hecho de CARTERA es min(último día del mes del período, hoy) —
-        // nunca el día 1, y nunca una fecha futura. Un período cerrado (agosto corrido en
-        // septiembre) se fecha a fin de mes; un período corrido DENTRO de su propio mes
-        // (septiembre corrido el 20 de septiembre) se fecha al día del proceso, porque fin de
-        // mes todavía no llegó. Por construcción nunca da futuro, así que el circuito no choca
-        // con validarFechaNoFutura de pagarConAportes (la mina de la primera versión,
-        // fin de mes incondicional, commit 79204e4).
-        LocalDate finDeMes = YearMonth.of(anio, mes).atEndOfMonth();
-        LocalDate hoy = LocalDate.now();
-        LocalDate fecha = finDeMes.isAfter(hoy) ? hoy : finDeMes;
-        // Auditoría — cuándo se registró de verdad. Separada a propósito de fechaHecho: reusar
-        // una sola fecha para las dos cosas fue el defecto original.
-        LocalDateTime fechaRegistro = LocalDateTime.now();
-        // El hecho de cartera, a la hora 00:00 — mismo patrón que
-        // AporteServiceImpl.procesarJubilacion (fechaEfectiva.atStartOfDay()).
-        LocalDateTime fechaHecho = fecha.atStartOfDay();
+        String glosa = "PAGO PENSION COMPLEMENTARIA " + mes + "/" + anio + " - Entidad " + idEntidad;
+        // Sin préstamo, aplicadoAlPrestamo=0 y remanente=valorTotal siempre: el saldo ya se
+        // validó suficiente para el nominal completo arriba, así que no hay tope que calcular.
+        PagoPensionComplementaria pago = registrarPgpcDelMes(entidad, idEntidad, anio.longValue(), mes.longValue(),
+            valorPension, valorSeguro, valorTotal, 0.0, valorTotal, fecha, fechaHecho, fechaRegistro, usuario,
+            idUsuario, idEmpresa, cuentaSalida, glosa);
 
-        // §3 PLAN-PAGO-JUBILADOS.md: cruzar contra préstamo vigente ANTES de decidir cuánto
-        // sale al banco. Orquesta pagarConAportes (motor de pagos en producción) — no se
-        // reimplementa la cascada acá.
-        double montoCruzado = cruzarContraPrestamos(entidad, vppc, valorTotal, idEmpresa, fecha,
-            usuario, mes, anio);
-        double remanente = redondear(valorTotal - montoCruzado);
-
-        // Movimiento NEGATIVO en CRD.APRT — SOLO por el remanente que sale al banco. El tramo
-        // cruzado ya generó su propio movimiento NEGATIVO (tipo PAGO_PRESTAMO) dentro de
-        // pagarConAportes/consumirAportes — duplicarlo acá bajaría el saldo del aporte dos
-        // veces por la misma plata. Entre los dos movimientos, la baja total del aporte tipo 23
-        // sigue reflejando el total consumido (cruce + remanente), como pide el §3.
-        Aporte aporte = null;
-        if (remanente > TOLERANCIA) {
-            String glosa = "PAGO PENSION COMPLEMENTARIA " + mes + "/" + anio + " - Entidad " + idEntidad;
-            aporte = crearMovimientoNegativo(entidad, remanente, glosa, fechaHecho, usuario);
-        }
-
-        // Cuenta bancaria: exactamente una activa. Solo hace falta si de verdad sale algo al
-        // banco — un jubilado 100% cruzado no necesita tener una cuenta bancaria cargada.
-        CuentaBancariaParticipe cuenta = remanente > TOLERANCIA ? unicaCuentaActiva(idEntidad) : null;
-
-        // §6 del contrato, decisión del usuario 2026-09-04: no se genera el pago si la cuenta
-        // activa no tiene certificado bancario cargado. Desviación deliberada de la firma que
-        // pasó el árbitro: acá se guarda con "if (cuenta != null)" porque un jubilado 100%
-        // cruzado (remanente == 0) no tiene cuenta que revisar — cuenta queda null a propósito
-        // dos líneas arriba, y no tiene sentido exigirle un certificado a alguien que no le va
-        // a salir plata al banco.
-        if (cuenta != null) {
-            validarCertificadoBancario(cuenta, idEntidad);
-        }
-
-        // Cabecera PGPC — REGISTRADA, antes de la orden de pago (si CXP falla, se revierte
-        // todo: no queda un movimiento de APRT huérfano sin orden de pago). El valor total
-        // sigue siendo el devengado completo (pensión + seguro), no el remanente.
-        PagoPensionComplementaria pago = new PagoPensionComplementaria();
-        pago.setEntidad(entidad);
-        pago.setFilial(entidad.getFilial());
-        pago.setAnio(anio.longValue());
-        pago.setMes(mes.longValue());
-        pago.setValorPension(valorPension);
-        pago.setValorSeguro(valorSeguro);
-        pago.setValor(valorTotal);
-        pago.setFecha(fecha);
-        pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.REGISTRADA));
-        pago.setIdAporte(aporte != null ? aporte.getCodigo() : null);
-        pago.setUsuarioRegistro(usuario);
-        pago.setFechaRegistro(fechaRegistro);
-        pago = pagoPensionDaoService.save(pago, null);
-
-        System.out.println("  PGPC " + pago.getCodigo() + " creado por $" + valorTotal
-            + " (cruzado a préstamo: $" + montoCruzado + ", remanente al banco: $" + remanente + ")");
-
-        Long idPago = null;
-        // ⛔ §3 PLAN-PAGO-JUBILADOS.md: si el cruce se llevó todo, la orden de pago es CERO y
-        // NO se genera — una orden en cero es una orden que tesorería procesa y devuelve.
-        if (remanente > TOLERANCIA) {
-            try {
-                BeneficiarioOcasional beneficiario = new BeneficiarioOcasional();
-                beneficiario.setNombre(entidad.getRazonSocial());
-                beneficiario.setIdentificacion(entidad.getNumeroIdentificacion());
-                beneficiario.setIdBancoExterno(cuenta.getBancoExterno() != null ? cuenta.getBancoExterno().getCodigo() : null);
-                beneficiario.setTipoCuenta(cuenta.getTipoCuenta());
-                beneficiario.setNumeroCuenta(cuenta.getNumeroCuenta());
-
-                String observacion = "Pago pensión complementaria " + mes + "/" + anio + " - "
-                    + entidad.getRazonSocial() + " (PGPC " + pago.getCodigo() + ")";
-
-                // idCuentaBancariaOrigen SIEMPRE null: tesorería asigna cuenta/forma de pago al
-                // aprobar — mismo criterio que DevolucionAporteServiceImpl (punto 14, 2026-08-27).
-                // §6bis (refinamiento 2026-09-04): el PAGO va con la fecha ACTUAL, separado de
-                // lo de cartera — "fecha" es del hecho de cartera (cruce/APRT/contable), no del
-                // pago que sale hoy al banco.
-                java.util.Map<String, Object> respuesta = pagoProgramadoService.registrarPagoDeOrigenExterno(
-                    OrigenPagoExterno.CRD_PAGO_PENSION_COMPLEMENTARIA, pago.getCodigo(),
-                    idEmpresa, null, remanente, LocalDate.now().toString(), beneficiario,
-                    null, // sin desglose contable — mismo estado que la devolución hoy (§6.5.b)
-                    observacion, idUsuario, false, null);
-
-                Object valorPago = (respuesta != null) ? respuesta.get("pago") : null;
-                if (valorPago == null) {
-                    throw new IncomeException("Cuentas por Pagar no devolvió el número de la orden.");
-                }
-                idPago = ((Number) valorPago).longValue();
-
-            } catch (IncomeException e) {
-                throw new IncomeException("No se pudo generar la orden de pago en Cuentas por Pagar"
-                    + " para la entidad " + idEntidad + ": " + e.getMessage());
-            } catch (Throwable e) {
-                throw new IncomeException("No se pudo generar la orden de pago en Cuentas por Pagar"
-                    + " para la entidad " + idEntidad + ": " + e.getMessage());
-            }
-
-            pago.setIdPagoProgramado(idPago);
-            pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.EN_PAGO));
-        } else {
-            // 100% cruzado contra préstamo: no hay nada que esperar del banco. El pago existe,
-            // se contabiliza (ver el devengo más abajo), y no hay salida de dinero.
-            pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.PAGADA));
-            pago.setFechaPago(fecha);
-            System.out.println("  ℹ️ PGPC " + pago.getCodigo() + " sin orden de pago: la deuda"
-                + " de préstamo consumió toda la pensión del mes.");
-        }
-
-        // §4 PLAN-PAGO-JUBILADOS.md: el devengo lo genera CRD, DESPUÉS de la orden de pago (o
-        // de decidir que no la hay) — mismo orden invertido que
-        // DevolucionAporteServiceImpl#generarAsientoReclasificacion: si el devengo fallara acá,
-        // la transacción entera se revierte y la orden de pago tampoco queda.
-        // sql/175 (2026-09-02): el devengo va en numeroAsientoDevengo, NO en numeroAsiento —
-        // esa columna es del asiento del PAGO (CXP), que la escribe sincronizarPago al
-        // confirmarse. Mismo criterio que DVAP.numeroAsientoReclasificacion / numeroAsiento.
-        Long idAsientoDevengo = generarAsientoDevengoPension(pago, entidad, idEmpresa);
-        pago.setNumeroAsientoDevengo(idAsientoDevengo);
-        pagoPensionDaoService.save(pago, pago.getCodigo());
-
+        boolean generoOrden = pago.getIdPagoProgramado() != null;
         System.out.println("  ✅ Pago de pensión registrado - Entidad " + idEntidad + " - PGPC "
-            + pago.getCodigo() + " - Orden de pago " + idPago + " - Cruzado: $" + montoCruzado
-            + " - Remanente: $" + remanente);
+            + pago.getCodigo() + " - Orden de pago " + pago.getIdPagoProgramado());
 
         DetallePagoPension detalle = new DetallePagoPension();
         detalle.setIdEntidad(idEntidad);
@@ -518,12 +470,388 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         detalle.setIdPago(pago.getCodigo());
         detalle.setValorPension(valorPension);
         detalle.setValorSeguroSalud(valorSeguro);
-        detalle.setValorCruzadoAPrestamo(montoCruzado);
-        detalle.setValorOrdenPago(remanente);
-        detalle.setGeneroOrdenPago(idPago != null);
-        detalle.setIdAsientoDevengo(idAsientoDevengo);
+        detalle.setValorCruzadoAPrestamo(0.0);
+        detalle.setValorOrdenPago(generoOrden ? valorTotal : 0.0);
+        detalle.setGeneroOrdenPago(generoOrden);
+        detalle.setIdAsientoDevengo(pago.getNumeroAsientoDevengo());
         detalle.setEstado("GENERADO");
+        detalle.setMesesAplicados(1);
         return detalle;
+    }
+
+    /**
+     * Circuito CON préstamo — PLAN-PAGO-RETROACTIVO-JUBILADOS.md. Genera los meses adeudados,
+     * uno por uno en orden ascendente, cruzando cada mes contra el préstamo SIN pre-pagar
+     * cuotas futuras (§3bis: el motor no filtra por fecha, así que el tope de "cuánto es
+     * exigible a la fecha de la corrida" lo calcula y aplica este método, no
+     * {@code pagarConAportes}).
+     */
+    private DetallePagoPension generarMesesRetroactivos(Entidad entidad, Long idEntidad, double valorPension,
+            double valorSeguro, double valorTotal, Long idEmpresa, Integer anio, Integer mes, String usuario,
+            Long idUsuario, LocalDate fecha, LocalDateTime fechaHecho, LocalDateTime fechaRegistro,
+            LocalDate finDeMes, CuentaBancariaParticipe cuentaSalida) throws Throwable {
+
+        DetallePagoPension resumen = new DetallePagoPension();
+        resumen.setIdEntidad(idEntidad);
+        resumen.setNombre(entidad.getRazonSocial());
+
+        // Ítem 1: el ancla. Si no hay ni movimiento negativo de pensión ni traslado de
+        // jubilación, no hay desde dónde calcular — estado propio, NO "ERROR" genérico.
+        LocalDate ancla = resolverAnclaRetroactivo(idEntidad);
+        if (ancla == null) {
+            resumen.setEstado("SIN_ANCLA");
+            resumen.setMensaje("La entidad " + idEntidad + " no tiene ningún movimiento negativo de"
+                + " pensión complementaria (tipo 23) ni un movimiento de jubilación registrado en"
+                + " CRD.APRT; no hay desde dónde calcular los meses adeudados.");
+            return resumen;
+        }
+
+        YearMonth desde = YearMonth.from(ancla).plusMonths(1);
+        YearMonth corrida = YearMonth.of(anio, mes);
+        if (desde.isAfter(corrida)) {
+            resumen.setEstado("AL_DIA");
+            resumen.setMensaje("La entidad " + idEntidad + " no tiene meses pendientes: su ancla es "
+                + ancla + ", ya cubierta hasta " + corrida + ".");
+            return resumen;
+        }
+
+        // Préstamos VIGENTES y su deuda EXIGIBLE a la fecha de la corrida (ítem 3): cuotas con
+        // vencimiento <= finDeMes, NO el pendiente total del préstamo. Se calcula UNA vez con
+        // calcularSaldosCuota (la variante PURA, sin autocorregir estado — esto es un tope
+        // ANTES de pagar, no un camino de escritura; sustitución deliberada de
+        // calcularSaldosRealesCuota, que el propio JavaDoc del motor desaconseja para lectura).
+        List<Prestamo> todos = prestamoDaoService.selectByEntidad(idEntidad);
+        List<Prestamo> prestamosVigentes = new ArrayList<>();
+        Map<Long, Double> exigibleRestantePorPrestamo = new LinkedHashMap<>();
+        if (todos != null) {
+            for (Prestamo prestamo : todos) {
+                if (!esPrestamoVigente(prestamo)) {
+                    continue;
+                }
+                prestamosVigentes.add(prestamo);
+                exigibleRestantePorPrestamo.put(prestamo.getCodigo(),
+                    calcularDeudaExigiblePrestamo(prestamo.getCodigo(), finDeMes));
+            }
+        }
+        double deudaExigibleTotal = redondear(sumaValores(exigibleRestantePorPrestamo));
+
+        double saldoRestante = saldoAporteService.saldoPorEntidadYTipo(idEntidad, TIPO_APORTE_PENSION_COMPLEMENTARIA);
+
+        int mesesAplicados = 0;
+        double totalPension = 0.0, totalSeguro = 0.0, totalCruzado = 0.0, totalOrden = 0.0;
+        Long ultimoIdPago = null;
+        Long ultimoIdAsientoDevengo = null;
+        boolean algunaOrdenGenerada = false;
+        String motivoCorte = "MES_CORRIDA_ALCANZADO";
+
+        for (YearMonth ym = desde; !ym.isAfter(corrida); ym = ym.plusMonths(1)) {
+            long anioM = ym.getYear();
+            long mesM = ym.getMonthValue();
+
+            // Idempotencia por mes: la UNIQUE(ENTDCDGO,PGPCANNO,PGPCMESS) es la garantía real;
+            // esto solo evita el viaje a la excepción y dice claro por qué se omite. En la
+            // práctica casi nunca dispara: el ancla ya avanza solo con cada corrida anterior.
+            PagoPensionComplementaria existenteM = pagoPensionDaoService.selectByEntidadYPeriodo(
+                idEntidad, anioM, mesM);
+            if (existenteM != null) {
+                System.out.println("  Entidad " + idEntidad + " ya tiene PGPC " + existenteM.getCodigo()
+                    + " para " + mesM + "/" + anioM + " - se omite");
+                continue;
+            }
+
+            // Ítem 4: las tres condiciones de corte, ANTES de procesar el mes.
+            if (saldoRestante <= TOLERANCIA) {
+                motivoCorte = "SALDO_AGOTADO";
+                break;
+            }
+            if (deudaExigibleTotal <= TOLERANCIA) {
+                motivoCorte = "PRESTAMO_AL_DIA";
+                break;
+            }
+
+            double disponibleMes = redondear(Math.min(valorTotal, Math.min(deudaExigibleTotal, saldoRestante)));
+
+            // Cruce del mes: en orden, respetando el tope EXIGIBLE de CADA préstamo (no el
+            // pendiente total) — así el motor jamás llega a una cuota futura, sin tocarlo.
+            double aplicadoEsteMes = 0.0;
+            for (Prestamo prestamo : prestamosVigentes) {
+                double disponibleParaEste = redondear(disponibleMes - aplicadoEsteMes);
+                if (disponibleParaEste <= TOLERANCIA) {
+                    break;
+                }
+                double exigibleRestante = exigibleRestantePorPrestamo.getOrDefault(prestamo.getCodigo(), 0.0);
+                if (exigibleRestante <= TOLERANCIA) {
+                    continue;
+                }
+                double aCruzar = redondear(Math.min(disponibleParaEste, exigibleRestante));
+                if (aCruzar <= TOLERANCIA) {
+                    continue;
+                }
+
+                SolicitudPagoConAportes solicitud = new SolicitudPagoConAportes();
+                solicitud.setIdPrestamo(prestamo.getCodigo());
+                DesgloseAporte desglose = new DesgloseAporte();
+                desglose.setIdTipoAporte(TIPO_APORTE_PENSION_COMPLEMENTARIA);
+                desglose.setValor(aCruzar);
+                solicitud.setAportes(Collections.singletonList(desglose));
+                solicitud.setUsuario(usuario);
+                solicitud.setObservacion("Pago retroactivo pensión complementaria " + mesM + "/" + anioM
+                    + " (corrida " + mes + "/" + anio + ") contra préstamo " + prestamo.getCodigo());
+                // D1: la fecha del PAGO al préstamo es la de la corrida, no la del mes M.
+                solicitud.setFechaPago(fecha);
+                solicitud.setIdEmpresa(idEmpresa);
+
+                double aplicadoPrestamo;
+                try {
+                    ResultadoPagoConAportes resultado = procesoPagoPrestamoService.pagarConAportes(solicitud);
+                    ResultadoAplicacionPago aplicacion = resultado != null ? resultado.getResultado() : null;
+                    aplicadoPrestamo = redondear(aplicacion != null ? aplicacion.getValorAplicado() : 0.0);
+                } catch (IncomeException e) {
+                    if (e.getMessage() != null
+                            && e.getMessage().startsWith(ProcesoPagoPrestamoService.ERR_SIN_CUOTAS_PENDIENTES)) {
+                        // Ítem 4: corte NORMAL de ESTE préstamo — quedó al día. No es error.
+                        exigibleRestantePorPrestamo.put(prestamo.getCodigo(), 0.0);
+                        continue;
+                    }
+                    throw e;
+                }
+                aplicadoEsteMes = redondear(aplicadoEsteMes + aplicadoPrestamo);
+                exigibleRestantePorPrestamo.put(prestamo.getCodigo(), redondear(exigibleRestante - aplicadoPrestamo));
+
+                System.out.println("    ↳ Retroactivo " + mesM + "/" + anioM + ": $" + aplicadoPrestamo
+                    + " aplicados al préstamo " + prestamo.getCodigo());
+            }
+            deudaExigibleTotal = redondear(sumaValores(exigibleRestantePorPrestamo));
+            totalCruzado = redondear(totalCruzado + aplicadoEsteMes);
+
+            // El remanente NOMINAL es lo que queda del valor total tras el cruce, pero nunca
+            // puede exceder lo que de verdad queda LIBRE del saldo del aporte 23 después de
+            // financiar el cruce de este mes — si el saldo alcanzó para cruzar pero no para
+            // todo el remanente nominal, se topa acá; si no, se sobregiraría el aporte más
+            // abajo (bug propio, encontrado y corregido antes de reportar).
+            double remanenteNominal = redondear(valorTotal - aplicadoEsteMes);
+            double saldoLibreParaRemanente = redondear(Math.max(0.0, saldoRestante - aplicadoEsteMes));
+            double remanenteMes = redondear(Math.min(remanenteNominal, saldoLibreParaRemanente));
+
+            String glosa = "PAGO PENSION COMPLEMENTARIA RETROACTIVO " + mesM + "/" + anioM
+                + " - Entidad " + idEntidad;
+            PagoPensionComplementaria pago = registrarPgpcDelMes(entidad, idEntidad, anioM, mesM,
+                valorPension, valorSeguro, valorTotal, aplicadoEsteMes, remanenteMes, fecha, fechaHecho,
+                fechaRegistro, usuario, idUsuario, idEmpresa, cuentaSalida, glosa);
+
+            boolean saleAlBancoEsteMes = pago.getIdPagoProgramado() != null;
+            double consumidoEsteMes = redondear(aplicadoEsteMes + (saleAlBancoEsteMes ? remanenteMes : 0.0));
+            saldoRestante = redondear(saldoRestante - consumidoEsteMes);
+
+            mesesAplicados++;
+            totalPension = redondear(totalPension + valorPension);
+            totalSeguro = redondear(totalSeguro + valorSeguro);
+            if (saleAlBancoEsteMes) {
+                totalOrden = redondear(totalOrden + remanenteMes);
+                algunaOrdenGenerada = true;
+            }
+            ultimoIdPago = pago.getCodigo();
+            ultimoIdAsientoDevengo = pago.getNumeroAsientoDevengo();
+
+            System.out.println("  PGPC " + pago.getCodigo() + " (" + mesM + "/" + anioM + ") - cruzado $"
+                + aplicadoEsteMes + " - remanente $" + remanenteMes
+                + (saleAlBancoEsteMes ? " (pagado)" : " (retenido en su cuenta)"));
+        }
+
+        resumen.setIdPago(ultimoIdPago);
+        resumen.setValorPension(totalPension);
+        resumen.setValorSeguroSalud(totalSeguro);
+        resumen.setValorCruzadoAPrestamo(totalCruzado);
+        resumen.setValorOrdenPago(totalOrden);
+        resumen.setGeneroOrdenPago(algunaOrdenGenerada);
+        resumen.setIdAsientoDevengo(ultimoIdAsientoDevengo);
+        // "AL_DIA" queda RESERVADO para el corte temprano de arriba (desde.isAfter(corrida)):
+        // acá el bucle SÍ corrió. Si terminó con 0 meses (p.ej. SALDO_AGOTADO ya en el primer
+        // mes elegible), no es "al día" — sigue debiendo, sólo que no se le pudo aplicar nada.
+        // mesesAplicados + motivoCorte ya dicen esa historia completa; no hace falta un tercer
+        // estado para distinguirlo dentro de "GENERADO".
+        resumen.setEstado("GENERADO");
+        resumen.setMesesAplicados(mesesAplicados);
+        resumen.setMotivoCorte(motivoCorte);
+
+        System.out.println("  ✅ Retroactivo Entidad " + idEntidad + " - " + mesesAplicados
+            + " mes(es) generado(s) - corte: " + motivoCorte + " - cruzado total $" + totalCruzado
+            + " - pagado total $" + totalOrden);
+
+        return resumen;
+    }
+
+    /**
+     * Crea la fila PGPC de UN mes (retroactivo o normal), su movimiento negativo de remanente
+     * si corresponde, su orden de pago si corresponde, y su asiento de devengo. Compartido por
+     * {@link #generarUnMesSinPrestamo} y {@link #generarMesesRetroactivos} para que las dos
+     * rutas no puedan divergir en cómo arman un PGPC.
+     *
+     * @param aplicadoAlPrestamo cuánto de {@code valorTotal} ya se cruzó contra el préstamo
+     *                           este mes (0 si no aplica) — solo para el registro del PGPC
+     * @param remanente          cuánto corresponde intentar pagar al banco este mes. Lo calcula
+     *                           el llamador, NO {@code valorTotal - aplicadoAlPrestamo}: en el
+     *                           retroactivo, si el saldo del aporte 23 alcanza para el cruce
+     *                           pero no para todo el remanente nominal, el llamador ya lo topó
+     *                           al saldo que de verdad queda libre — pasar el nominal acá
+     *                           sobregiraría el aporte.
+     * @param cuentaSalida       la cuenta con certificado válido, o {@code null} si no hay a
+     *                           quién pagarle el remanente (§6/D2): en ese caso el remanente
+     *                           NO se consume ni se envía a tesorería, queda a favor
+     */
+    private PagoPensionComplementaria registrarPgpcDelMes(Entidad entidad, Long idEntidad, long anioM, long mesM,
+            double valorPension, double valorSeguro, double valorTotal, double aplicadoAlPrestamo, double remanente,
+            LocalDate fecha, LocalDateTime fechaHecho, LocalDateTime fechaRegistro, String usuario, Long idUsuario,
+            Long idEmpresa, CuentaBancariaParticipe cuentaSalida, String glosaMovimiento) throws Throwable {
+
+        boolean saleAlBanco = remanente > TOLERANCIA && cuentaSalida != null;
+
+        // Movimiento NEGATIVO en CRD.APRT — SOLO por el remanente que de verdad sale al banco.
+        // El tramo cruzado ya generó su propio movimiento NEGATIVO (tipo PAGO_PRESTAMO) dentro
+        // de pagarConAportes/consumirAportes — duplicarlo acá bajaría el saldo dos veces.
+        Aporte aporteRemanente = null;
+        if (saleAlBanco) {
+            aporteRemanente = crearMovimientoNegativo(entidad, remanente, glosaMovimiento, fechaHecho, usuario);
+        }
+
+        PagoPensionComplementaria pago = new PagoPensionComplementaria();
+        pago.setEntidad(entidad);
+        pago.setFilial(entidad.getFilial());
+        pago.setAnio(anioM);
+        pago.setMes(mesM);
+        pago.setValorPension(valorPension);
+        pago.setValorSeguro(valorSeguro);
+        pago.setValor(valorTotal);
+        pago.setFecha(fecha);
+        pago.setIdAporte(aporteRemanente != null ? aporteRemanente.getCodigo() : null);
+        pago.setUsuarioRegistro(usuario);
+        pago.setFechaRegistro(fechaRegistro);
+
+        if (saleAlBanco) {
+            Long idPagoOrden;
+            try {
+                idPagoOrden = generarOrdenPagoPension(entidad, cuentaSalida, pago, remanente, idEmpresa,
+                    mesM, anioM, idUsuario);
+            } catch (IncomeException e) {
+                throw new IncomeException("No se pudo generar la orden de pago en Cuentas por Pagar"
+                    + " para la entidad " + idEntidad + " (" + mesM + "/" + anioM + "): " + e.getMessage());
+            } catch (Throwable e) {
+                throw new IncomeException("No se pudo generar la orden de pago en Cuentas por Pagar"
+                    + " para la entidad " + idEntidad + " (" + mesM + "/" + anioM + "): " + e.getMessage());
+            }
+            pago.setIdPagoProgramado(idPagoOrden);
+            pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.EN_PAGO));
+        } else if (remanente <= TOLERANCIA) {
+            // Sin remanente: la deuda (o el cruce del mes) consumió toda la pensión. El pago
+            // existe, se contabiliza, y no hay nada que esperar del banco.
+            pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.PAGADA));
+            pago.setFechaPago(fecha);
+        } else {
+            // Hay remanente pero no se puede entregar (sin cuenta activa, cuenta ambigua, o sin
+            // certificado): el pago se registra igual —el cruce y el devengo ya ocurrieron—
+            // pero SIN pasar por EN_PAGO ni PAGADA, porque ninguna de las dos es cierta todavía.
+            // ⚠️ Interpretación propia del backend, no especificada en el encargo: reportada al
+            // árbitro para confirmar si REGISTRADA es el estado correcto para este caso nuevo.
+            pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.REGISTRADA));
+        }
+
+        pago = pagoPensionDaoService.save(pago, null);
+
+        // §4 PLAN-PAGO-JUBILADOS.md: el devengo lo genera CRD, DESPUÉS de la orden de pago (o
+        // de decidir que no la hay) — si el devengo fallara acá, la transacción entera se
+        // revierte y la orden de pago tampoco queda.
+        Long idAsientoDevengo = generarAsientoDevengoPension(pago, entidad, idEmpresa);
+        pago.setNumeroAsientoDevengo(idAsientoDevengo);
+        pago = pagoPensionDaoService.save(pago, pago.getCodigo());
+
+        return pago;
+    }
+
+    /** Arma y registra la orden de pago del remanente en CXP. Extraído para reusarse por mes. */
+    private Long generarOrdenPagoPension(Entidad entidad, CuentaBancariaParticipe cuenta,
+            PagoPensionComplementaria pago, double remanente, Long idEmpresa, long mesM, long anioM,
+            Long idUsuario) throws Throwable {
+        BeneficiarioOcasional beneficiario = new BeneficiarioOcasional();
+        beneficiario.setNombre(entidad.getRazonSocial());
+        beneficiario.setIdentificacion(entidad.getNumeroIdentificacion());
+        beneficiario.setIdBancoExterno(cuenta.getBancoExterno() != null ? cuenta.getBancoExterno().getCodigo() : null);
+        beneficiario.setTipoCuenta(cuenta.getTipoCuenta());
+        beneficiario.setNumeroCuenta(cuenta.getNumeroCuenta());
+
+        String observacion = "Pago pensión complementaria " + mesM + "/" + anioM + " - "
+            + entidad.getRazonSocial() + " (PGPC " + pago.getCodigo() + ")";
+
+        // idCuentaBancariaOrigen SIEMPRE null: tesorería asigna cuenta/forma de pago al aprobar
+        // — mismo criterio que DevolucionAporteServiceImpl (punto 14, 2026-08-27).
+        // §6bis (refinamiento 2026-09-04): el PAGO va con la fecha ACTUAL, separado de la de
+        // cartera.
+        Map<String, Object> respuesta = pagoProgramadoService.registrarPagoDeOrigenExterno(
+            OrigenPagoExterno.CRD_PAGO_PENSION_COMPLEMENTARIA, pago.getCodigo(),
+            idEmpresa, null, remanente, LocalDate.now().toString(), beneficiario,
+            null, // sin desglose contable — mismo estado que la devolución hoy (§6.5.b)
+            observacion, idUsuario, false, null);
+
+        Object valorPago = (respuesta != null) ? respuesta.get("pago") : null;
+        if (valorPago == null) {
+            throw new IncomeException("Cuentas por Pagar no devolvió el número de la orden.");
+        }
+        return ((Number) valorPago).longValue();
+    }
+
+    /**
+     * Ítem 1: el ancla del retroactivo — fecha del último movimiento NEGATIVO del aporte 23,
+     * o si no hay ninguno, la del movimiento de JUBILACIÓN (positivo). Los meses a generar van
+     * desde el mes SIGUIENTE a esta fecha hasta el mes de la corrida.
+     *
+     * @return la fecha ancla, o {@code null} si la entidad no tiene ninguno de los dos
+     */
+    private LocalDate resolverAnclaRetroactivo(Long idEntidad) throws Throwable {
+        LocalDateTime ultimaNegativa = aporteDaoService.selectFechaUltimoMovimientoNegativo(
+            idEntidad, TIPO_APORTE_PENSION_COMPLEMENTARIA);
+        if (ultimaNegativa != null) {
+            return ultimaNegativa.toLocalDate();
+        }
+        LocalDateTime jubilacion = aporteDaoService.selectFechaMovimientoJubilacion(
+            idEntidad, TIPO_APORTE_PENSION_COMPLEMENTARIA, (long) CrdTipoMovimientoAporte.JUBILACION);
+        return jubilacion != null ? jubilacion.toLocalDate() : null;
+    }
+
+    /**
+     * Ítem 3: deuda EXIGIBLE de un préstamo a una fecha de corte — suma del saldo pendiente de
+     * sus cuotas con {@code fechaVencimiento <= finCorrida}. Usa
+     * {@code calcularSaldosCuota} (la variante PURA, sin autocorregir estado ni persistir
+     * nada): esto es un tope calculado ANTES de pagar, no un camino de escritura — el propio
+     * JavaDoc de {@code calcularSaldosRealesCuota} desaconseja usarla desde ahí.
+     *
+     * ⛔ NO usa {@code MotorPagoPrestamoService.calcularTotalPendientePrestamo}: ese método
+     * suma TODAS las cuotas pendientes, exigibles o no — exactamente lo que
+     * {@code buscarSiguienteCuotaConSaldo} (sin filtro de fecha, §3bis del plan) prepagaría si
+     * se le entregara de más.
+     */
+    private double calcularDeudaExigiblePrestamo(Long idPrestamo, LocalDate finCorrida) throws Throwable {
+        List<DetallePrestamo> cuotas = detallePrestamoDaoService.selectByPrestamo(idPrestamo);
+        double total = 0.0;
+        if (cuotas != null) {
+            for (DetallePrestamo cuota : cuotas) {
+                if (cuota.getFechaVencimiento() == null) {
+                    continue;
+                }
+                if (cuota.getFechaVencimiento().toLocalDate().isAfter(finCorrida)) {
+                    continue;
+                }
+                SaldosCuota saldos = motorPagoPrestamoService.calcularSaldosCuota(cuota);
+                total += saldos != null ? saldos.getTotalPendiente() : 0.0;
+            }
+        }
+        return redondear(total);
+    }
+
+    private double sumaValores(Map<Long, Double> valores) {
+        double total = 0.0;
+        for (Double valor : valores.values()) {
+            total += valor != null ? valor : 0.0;
+        }
+        return total;
     }
 
     /**

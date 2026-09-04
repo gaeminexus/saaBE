@@ -479,4 +479,32 @@ public interface AporteDaoService extends EntityDao<Aporte>{
 	 */
 	List<Object[]> selectAplicadoPorEntidadEnCarga(Long idCarga) throws Throwable;
 
+	/**
+	 * Fecha del último movimiento NEGATIVO (valor &lt; 0) de un tipo de aporte para una
+	 * entidad. Es el ancla del pago retroactivo de pensión complementaria
+	 * (PLAN-PAGO-RETROACTIVO-JUBILADOS.md §3): el mes SIGUIENTE a esta fecha es desde donde
+	 * arranca el retroactivo — ya se descontó hasta ese movimiento, no antes.
+	 *
+	 * @param idEntidad    Código de la entidad
+	 * @param idTipoAporte Código del tipo de aporte (23 = pensión complementaria)
+	 * @return La fecha más reciente, o {@code null} si no hay ningún movimiento negativo de ese tipo
+	 * @throws Throwable Si ocurre un error
+	 */
+	LocalDateTime selectFechaUltimoMovimientoNegativo(Long idEntidad, Long idTipoAporte) throws Throwable;
+
+	/**
+	 * Fecha del movimiento de JUBILACIÓN (POSITIVO, {@code tipoMovimiento} indicado) de una
+	 * entidad para un tipo de aporte. Ancla DE RESPALDO del retroactivo cuando todavía no
+	 * existe ningún pago mensual — {@link #selectFechaUltimoMovimientoNegativo} da
+	 * {@code null} — porque el traslado de jubilación es el hecho que abre la cuenta de
+	 * pensión complementaria.
+	 *
+	 * @param idEntidad      Código de la entidad
+	 * @param idTipoAporte   Código del tipo de aporte (23 = pensión complementaria)
+	 * @param tipoMovimiento {@code CrdTipoMovimientoAporte.JUBILACION}
+	 * @return La fecha, o {@code null} si no hay movimiento de jubilación para ese tipo
+	 * @throws Throwable Si ocurre un error
+	 */
+	LocalDateTime selectFechaMovimientoJubilacion(Long idEntidad, Long idTipoAporte, Long tipoMovimiento) throws Throwable;
+
 }

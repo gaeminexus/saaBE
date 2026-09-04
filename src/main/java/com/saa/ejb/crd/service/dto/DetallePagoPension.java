@@ -31,10 +31,28 @@ public class DetallePagoPension {
      * contabilidad de CRD está inactiva. */
     private Long idAsientoDevengo;
 
-    /** "GENERADO" | "YA_EXISTIA" | "ERROR" */
+    /**
+     * "GENERADO" | "YA_EXISTIA" | "ERROR" | "SIN_ANCLA" | "AL_DIA" (PLAN-PAGO-RETROACTIVO-
+     * JUBILADOS.md): las tres últimas son finales NORMALES de un jubilado con préstamo, nunca
+     * "ERROR" — el operador necesita distinguir "terminó bien" de "se rompió".
+     */
     private String estado;
 
     private String mensaje;
+
+    /**
+     * Cuántos períodos (PGPC) NUEVOS generó esta llamada — 1 en el circuito normal sin
+     * préstamo, 0..N en el retroactivo. Campo nuevo y opcional: el frontend actual sigue
+     * funcionando sin leerlo.
+     */
+    private int mesesAplicados;
+
+    /**
+     * Cuál de las tres condiciones de corte terminó el bucle retroactivo:
+     * "MES_CORRIDA_ALCANZADO" | "PRESTAMO_AL_DIA" | "SALDO_AGOTADO". {@code null} fuera del
+     * circuito retroactivo. Campo nuevo y opcional.
+     */
+    private String motivoCorte;
 
     public DetallePagoPension() {
     }
@@ -125,5 +143,21 @@ public class DetallePagoPension {
 
     public void setMensaje(String mensaje) {
         this.mensaje = mensaje;
+    }
+
+    public int getMesesAplicados() {
+        return mesesAplicados;
+    }
+
+    public void setMesesAplicados(int mesesAplicados) {
+        this.mesesAplicados = mesesAplicados;
+    }
+
+    public String getMotivoCorte() {
+        return motivoCorte;
+    }
+
+    public void setMotivoCorte(String motivoCorte) {
+        this.motivoCorte = motivoCorte;
     }
 }

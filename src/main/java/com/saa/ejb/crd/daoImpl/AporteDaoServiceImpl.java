@@ -1058,4 +1058,36 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 		}
 	}
 
+	@Override
+	public LocalDateTime selectFechaUltimoMovimientoNegativo(Long idEntidad, Long idTipoAporte) throws Throwable {
+		System.out.println("AporteDaoServiceImpl.selectFechaUltimoMovimientoNegativo - entidad: "
+			+ idEntidad + " - tipoAporte: " + idTipoAporte);
+		Query query = em.createQuery(
+			" select max(a.fechaTransaccion) " +
+			" from   Aporte a " +
+			" where  a.entidad.codigo    = :idEntidad " +
+			" and    a.tipoAporte.codigo = :idTipoAporte " +
+			" and    a.valor             < 0 ");
+		query.setParameter("idEntidad", idEntidad);
+		query.setParameter("idTipoAporte", idTipoAporte);
+		return (LocalDateTime) query.getSingleResult();
+	}
+
+	@Override
+	public LocalDateTime selectFechaMovimientoJubilacion(Long idEntidad, Long idTipoAporte, Long tipoMovimiento) throws Throwable {
+		System.out.println("AporteDaoServiceImpl.selectFechaMovimientoJubilacion - entidad: "
+			+ idEntidad + " - tipoAporte: " + idTipoAporte + " - tipoMovimiento: " + tipoMovimiento);
+		Query query = em.createQuery(
+			" select max(a.fechaTransaccion) " +
+			" from   Aporte a " +
+			" where  a.entidad.codigo    = :idEntidad " +
+			" and    a.tipoAporte.codigo = :idTipoAporte " +
+			" and    a.tipoMovimiento    = :tipoMovimiento " +
+			" and    a.valor             > 0 ");
+		query.setParameter("idEntidad", idEntidad);
+		query.setParameter("idTipoAporte", idTipoAporte);
+		query.setParameter("tipoMovimiento", tipoMovimiento);
+		return (LocalDateTime) query.getSingleResult();
+	}
+
 }
