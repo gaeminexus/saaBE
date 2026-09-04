@@ -84,4 +84,18 @@ public class PagoPensionComplementariaDaoServiceImpl extends EntityDaoImpl<PagoP
         query.setParameter("enPago",     Long.valueOf(EstadoPagoPensionComplementaria.EN_PAGO));
         return query.getResultList();
     }
+
+    @Override
+    public List<PagoPensionComplementaria> selectByPeriodo(Long anio, Long mes) throws Throwable {
+        System.out.println("Ingresa al metodo selectByPeriodo de PagoPensionComplementaria"
+                + " - anio: " + anio + " mes: " + mes);
+        Query query = em.createQuery(
+                " select p from PagoPensionComplementaria p " +
+                " where  p.anio = :anio " +
+                " and    p.mes  = :mes " +
+                " order by p.entidad.razonSocial");
+        query.setParameter("anio", anio);
+        query.setParameter("mes", mes);
+        return query.getResultList();
+    }
 }

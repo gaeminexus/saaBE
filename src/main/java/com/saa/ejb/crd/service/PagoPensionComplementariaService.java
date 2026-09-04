@@ -100,4 +100,17 @@ public interface PagoPensionComplementariaService extends EntityService<PagoPens
      * @throws Throwable {@code IncomeException} {@link #ERR_ENTIDAD_NO_ENCONTRADA} si no existe
      */
     List<PagoPensionComplementaria> listarPorEntidad(Long idEntidad) throws Throwable;
+
+    /**
+     * Todos los pagos de un período — el informe mensual completo. Existe porque
+     * {@link #generarPagosDelMes} no puede reconstruirlo en una segunda corrida: su rama
+     * YA_EXISTIA sólo arma un renglón liviano de cinco campos (contrato REST §4).
+     *
+     * <b>Un período sin pagos es una respuesta válida</b>: devuelve lista vacía, NO lanza
+     * {@code IncomeException}. A propósito — no copiar acá el patrón de
+     * "lista vacía = error" que usa el resto del repositorio.
+     *
+     * @throws Throwable Si ocurre un error
+     */
+    List<PagoPensionComplementaria> listarPorPeriodo(Integer anio, Integer mes) throws Throwable;
 }

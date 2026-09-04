@@ -46,4 +46,17 @@ public interface PagoPensionComplementariaDaoService extends EntityDao<PagoPensi
      * @throws Throwable : Excepcion
      */
     List<PagoPensionComplementaria> selectPendientesConciliacion() throws Throwable;
+
+    /**
+     * Todos los pagos de un período, sin importar el jubilado. Es el informe mensual completo:
+     * la rama YA_EXISTIA de {@code generarPagosDelMes} sólo arma un renglón liviano de cinco
+     * campos en una segunda corrida, así que este método es lo que lo recupera si el operador
+     * cierra la pantalla.
+     *
+     * @param anio : Año del período
+     * @param mes  : Mes del período (1-12)
+     * @return     : Listado ordenado por el nombre del partícipe; VACÍO si el período no tiene pagos
+     * @throws Throwable : Excepcion
+     */
+    List<PagoPensionComplementaria> selectByPeriodo(Long anio, Long mes) throws Throwable;
 }

@@ -129,6 +129,29 @@ public class PagoPensionComplementariaRest {
         }
     }
 
+    /**
+     * Todos los pagos de un período — el informe mensual completo. Existe porque
+     * {@code generarPagosDelMes} no puede reconstruirlo en una segunda corrida (idempotencia sin
+     * informe, ver contrato REST §4). Un período sin pagos devuelve {@code []}, no 404.
+     */
+    @GET
+    @Path("/porPeriodo")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response porPeriodo(@QueryParam("anio") Integer anio, @QueryParam("mes") Integer mes) {
+        System.out.println("LLEGA AL SERVICIO PAGOS POR PERIODO - Periodo: " + mes + "/" + anio);
+        if (anio == null || mes == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe indicar anio y mes", null);
+        }
+        try {
+            List<PagoPensionComplementaria> pagos = pagoPensionService.listarPorPeriodo(anio, mes);
+            return Response.status(Response.Status.OK)
+                    .entity(pagos).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return respuestaError(e);
+        }
+    }
+
     // ------------------------------------------------------------------------
     // Sobre de respuesta y mapeo de errores (mismo convenio que AporteRest/PrestamoRest)
     // ------------------------------------------------------------------------

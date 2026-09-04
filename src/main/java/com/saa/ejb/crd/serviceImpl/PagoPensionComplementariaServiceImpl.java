@@ -201,6 +201,14 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         return pagos != null ? pagos : new java.util.ArrayList<>();
     }
 
+    @Override
+    public List<PagoPensionComplementaria> listarPorPeriodo(Integer anio, Integer mes) throws Throwable {
+        System.out.println("PagoPensionComplementariaService.listarPorPeriodo - Periodo: " + mes + "/" + anio);
+        List<PagoPensionComplementaria> pagos = pagoPensionDaoService.selectByPeriodo(
+            anio != null ? anio.longValue() : null, mes != null ? mes.longValue() : null);
+        return pagos != null ? pagos : new java.util.ArrayList<>();
+    }
+
     // ========================================================================
     // Generación mensual
     // ========================================================================
