@@ -177,7 +177,40 @@ Es una decisión legítima —la deuda estuvo impaga— pero conviene saber que 
 sistema, no el jubilado**: el proceso nunca corrió. Si más adelante se decide condonar esa mora, es
 un ajuste aparte y este documento deja constancia de dónde se originó.
 
-### D2 — Alcance: todos los que tengan préstamo. El certificado gobierna la SALIDA, no el cruce
+### ⛔ D4 — AMPLIACIÓN DEL 2026-09-04: el retroactivo es para TODOS, con o sin préstamo
+
+> *«Para tu ejemplo, se le debe pagar los 8 meses, no solo un mes.»*
+> (Sobre un jubilado **sin préstamo**, con certificado y 8 meses adeudados.)
+
+**Esto reemplaza la lectura literal de D2.** Cuando el usuario dijo *«a todos los que tengan
+préstamo»* estaba contestando sobre **el cruce**, no sobre la acumulación. El retroactivo mes a mes
+aplica a **todo jubilado con meses adeudados**.
+
+| Caso | Qué pasa |
+|---|---|
+| Con préstamo | Cruce hasta la deuda exigible; el remanente al banco **si tiene certificado** |
+| **Sin préstamo, con certificado** | **Todo el acumulado sale al banco** |
+| Sin préstamo, sin certificado | `BLOQUEADO`: no hay cruce posible y no puede salir dinero |
+
+**El tope sin préstamo** es `min(meses × pensión, saldo del aporte 23)`. No hay `deudaExigible` que
+lo limite, así que **el saldo es el único techo** — la regla que el usuario ya había fijado.
+
+**Las condiciones de corte sin préstamo** son dos, no tres: llegar al mes de la corrida, o agotar el
+saldo. «Préstamo al día» no aplica.
+
+#### ⚠️ Lo que esto cambia en plata, y hay que medirlo antes de correr
+
+Con el alcance anterior, el retroactivo era mayormente **interno**: cancelaba deuda y casi no salía
+dinero de la asociación. Con D4, **un jubilado sin préstamo y con meses adeudados cobra todo lo
+atrasado en efectivo, de una vez.**
+
+⛔ **El total que sale al banco puede multiplicarse.** `sql/194` es el que lo mide, y
+`previsualizarCorrida` lo muestra separado en «Total a dinero» — que ahora es el número a mirar
+antes de apretar Ejecutar.
+
+---
+
+### D2 — El certificado gobierna la SALIDA, no el cruce
 
 | | Con certificado | Sin certificado |
 |---|---|---|
