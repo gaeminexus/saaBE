@@ -1484,15 +1484,25 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
     }
 
     /**
-     * Agrega cédula, nombre del partícipe e idAsoprep del préstamo a la observación de un
+     * Agrega cédula, nombre del partícipe y los préstamos del cobro a la observación de un
      * asiento — mismo formato en los tres asientos de un cobro, un solo lugar (2026-08-31,
      * pedido del usuario, aplicado primero al circuito de CBCR — condonación/devolución/Petro/
      * cierre de cartera arman su propia observación por separado y quedan afuera de este
      * cambio).
      *
-     * <p>{@code idAsoprep} sale de la primera línea con préstamo — si el cobro tiene varios
-     * (PAGO_MULTIPLE/COBRO_MIXTO) no se listan todos, para no volver la observación
-     * ilegible.</p>
+     * <p><b>Consumido por CBCRASN2 y por TODA la ruta de cobros</b> (transitorio, reparto y
+     * definitivo) — no solo por precancelación. Un cambio acá se ve en cualquier asiento nuevo
+     * de cobro individual, incluidos los que generan otros procesos en paralelo sobre el mismo
+     * préstamo (carga Petro, retroactivo de jubilados): tocar este método con eso corriendo es
+     * a propósito no invasivo (agrega texto, no cambia montos ni cuentas), pero es la razón por
+     * la que el alcance real de este cambio es más grande de lo que el nombre del método
+     * sugiere.</p>
+     *
+     * <p><b>2026-09-04, corregido:</b> antes cortaba en el primer préstamo con {@code idAsoprep}
+     * no nulo (un cobro múltiple o una precancelación con varios préstamos mostraba uno solo) y
+     * dependía de {@code idAsoprep}, que es {@code null} en todo préstamo que no venga de Petro
+     * (en ese caso no mostraba ninguno). Ahora lista TODOS los préstamos distintos del cobro,
+     * con su código siempre, y el {@code idAsoprep} además cuando existe.</p>
      *
      * @param detalles Si viene {@code null} (como en {@code generarAsientoTransitorio}, que no
      *                 recibe la lista), se leen de la base con {@code selectByCobro} — un costo
@@ -1512,10 +1522,17 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                     ? entidad.getRazonSocial() : "-");
         }
         if (lista != null) {
+            List<Long> prestamosListados = new ArrayList<>();
             for (DetalleCobroCredito detalle : lista) {
-                if (detalle.getPrestamo() != null && detalle.getPrestamo().getIdAsoprep() != null) {
-                    obs.append(" | idAsoprep: ").append(detalle.getPrestamo().getIdAsoprep());
-                    break;
+                Prestamo prestamo = detalle.getPrestamo();
+                if (prestamo == null || prestamo.getCodigo() == null
+                        || prestamosListados.contains(prestamo.getCodigo())) {
+                    continue;
+                }
+                prestamosListados.add(prestamo.getCodigo());
+                obs.append(" | Préstamo: ").append(prestamo.getCodigo());
+                if (prestamo.getIdAsoprep() != null) {
+                    obs.append(" (idAsoprep: ").append(prestamo.getIdAsoprep()).append(")");
                 }
             }
         }
@@ -1523,6 +1540,8 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         String resultado = obs.toString();
         // ASNTOBSR admite 2000 caracteres (verificado en com.saa.model.cnt.Asiento) — tope
         // defensivo: nunca asumir que la observación base más esto no va a crecer más que eso.
+        // Con varios préstamos se llega mucho antes que antes de este cambio (2026-09-04) — el
+        // recorte sigue siendo la última línea de defensa, no algo que dejó de hacer falta.
         if (resultado.length() > 2000) {
             resultado = resultado.substring(0, 1997) + "...";
         }
