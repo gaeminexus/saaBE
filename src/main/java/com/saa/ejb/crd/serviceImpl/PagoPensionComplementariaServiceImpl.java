@@ -350,14 +350,21 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                 + " requiere $" + valorTotal + ".");
         }
 
-        // 2026-09-04, decisión del usuario (API-PAGO-PENSION-COMPLEMENTARIA.md §6bis): la fecha
-        // del hecho económico es el ÚLTIMO día del mes del período, no el día 1 ni el día en
-        // que se corre el proceso.
-        LocalDate fecha = YearMonth.of(anio, mes).atEndOfMonth();
-        // Auditoría — cuándo se registró de verdad, nunca fin de mes. Separada a propósito de
-        // fechaHecho: reusar una sola fecha para las dos cosas fue el defecto original.
+        // 2026-09-04, decisión del usuario, segunda vuelta (API-PAGO-PENSION-COMPLEMENTARIA.md
+        // §6bis): la fecha del hecho de CARTERA es min(último día del mes del período, hoy) —
+        // nunca el día 1, y nunca una fecha futura. Un período cerrado (agosto corrido en
+        // septiembre) se fecha a fin de mes; un período corrido DENTRO de su propio mes
+        // (septiembre corrido el 20 de septiembre) se fecha al día del proceso, porque fin de
+        // mes todavía no llegó. Por construcción nunca da futuro, así que el circuito no choca
+        // con validarFechaNoFutura de pagarConAportes (la mina de la primera versión,
+        // fin de mes incondicional, commit 79204e4).
+        LocalDate finDeMes = YearMonth.of(anio, mes).atEndOfMonth();
+        LocalDate hoy = LocalDate.now();
+        LocalDate fecha = finDeMes.isAfter(hoy) ? hoy : finDeMes;
+        // Auditoría — cuándo se registró de verdad. Separada a propósito de fechaHecho: reusar
+        // una sola fecha para las dos cosas fue el defecto original.
         LocalDateTime fechaRegistro = LocalDateTime.now();
-        // El hecho económico, a la hora 00:00 del último día del mes — mismo patrón que
+        // El hecho de cartera, a la hora 00:00 — mismo patrón que
         // AporteServiceImpl.procesarJubilacion (fechaEfectiva.atStartOfDay()).
         LocalDateTime fechaHecho = fecha.atStartOfDay();
 
@@ -421,9 +428,12 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
 
                 // idCuentaBancariaOrigen SIEMPRE null: tesorería asigna cuenta/forma de pago al
                 // aprobar — mismo criterio que DevolucionAporteServiceImpl (punto 14, 2026-08-27).
+                // §6bis (refinamiento 2026-09-04): el PAGO va con la fecha ACTUAL, separado de
+                // lo de cartera — "fecha" es del hecho de cartera (cruce/APRT/contable), no del
+                // pago que sale hoy al banco.
                 java.util.Map<String, Object> respuesta = pagoProgramadoService.registrarPagoDeOrigenExterno(
                     OrigenPagoExterno.CRD_PAGO_PENSION_COMPLEMENTARIA, pago.getCodigo(),
-                    idEmpresa, null, remanente, fecha.toString(), beneficiario,
+                    idEmpresa, null, remanente, LocalDate.now().toString(), beneficiario,
                     null, // sin desglose contable — mismo estado que la devolución hoy (§6.5.b)
                     observacion, null, false, null);
 
