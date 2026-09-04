@@ -36,6 +36,13 @@ public class ResultadoGeneracionPagosPension {
     /** Cuánto salió efectivamente como órdenes de pago hacia tesorería. */
     private double totalOrdenesGeneradas;
 
+    /**
+     * §4bis del contrato, pedido del usuario 2026-09-04: suma del seguro médico
+     * ({@link DetallePagoPension#getTotalSeguro()}) de todos los jubilados de la corrida — va
+     * a una cuenta contable distinta de la pensión (plantilla alterno 35).
+     */
+    private double totalSeguroGeneral;
+
     /** Un renglón por jubilado evaluado (generado, ya existía, o con error). */
     private List<DetallePagoPension> detalle = new ArrayList<>();
 
@@ -120,6 +127,14 @@ public class ResultadoGeneracionPagosPension {
 
     public void setTotalOrdenesGeneradas(double totalOrdenesGeneradas) {
         this.totalOrdenesGeneradas = totalOrdenesGeneradas;
+    }
+
+    public double getTotalSeguroGeneral() {
+        return totalSeguroGeneral;
+    }
+
+    public void setTotalSeguroGeneral(double totalSeguroGeneral) {
+        this.totalSeguroGeneral = totalSeguroGeneral;
     }
 
     public List<DetallePagoPension> getDetalle() {

@@ -14,6 +14,33 @@ public class DetallePagoPension {
     private Double valorPension;
     private Double valorSeguroSalud;
 
+    /**
+     * §4bis del contrato, pedido del usuario 2026-09-04: la pensión y el seguro médico van a
+     * cuentas contables distintas (plantilla alterno 35: pensión a 2.3.01.10.03, seguro a
+     * 2.3.90.90.06), y la pantalla necesita el desglose, no solo el total.
+     *
+     * ⛔ {@code valorPensionMensual + valorSeguroMensual == VPPC.valorPagar}. {@code valorPagar}
+     * YA INCLUYE el seguro — no se suman aparte, se resta (mismo criterio que ya usa
+     * {@code PagoPensionComplementariaServiceImpl}: {@code valorPension = valorTotal - valorSeguro}).
+     */
+    private double valorPensionMensual;
+
+    /** El seguro médico de UN mes ({@code VPPC.valorSeguro}), no acumulado. */
+    private double valorSeguroMensual;
+
+    /**
+     * Pensión acumulada de todos los meses generados en esta llamada. NOMINAL: suma
+     * {@code mesesAplicados × valorPensionMensual}, el mismo criterio que ya usa
+     * {@code PGPC.valorPension} en cada fila (siempre el devengado completo del mes, sin
+     * importar si ese mes quedó topado por saldo o deuda exigible — ítem 7 del reporte del
+     * retroactivo). Si el último mes quedó parcial, este total NO lo prorratea: sigue
+     * contando ese mes completo, igual que ya hace la fila PGPC de ese mes.
+     */
+    private double totalPension;
+
+    /** Seguro médico acumulado — mismo criterio NOMINAL que {@link #totalPension}. */
+    private double totalSeguro;
+
     /** Cuánto de la pensión del mes se cruzó contra deuda de préstamo vigente (0 si no aplica). */
     private Double valorCruzadoAPrestamo;
 
@@ -107,6 +134,38 @@ public class DetallePagoPension {
 
     public void setValorSeguroSalud(Double valorSeguroSalud) {
         this.valorSeguroSalud = valorSeguroSalud;
+    }
+
+    public double getValorPensionMensual() {
+        return valorPensionMensual;
+    }
+
+    public void setValorPensionMensual(double valorPensionMensual) {
+        this.valorPensionMensual = valorPensionMensual;
+    }
+
+    public double getValorSeguroMensual() {
+        return valorSeguroMensual;
+    }
+
+    public void setValorSeguroMensual(double valorSeguroMensual) {
+        this.valorSeguroMensual = valorSeguroMensual;
+    }
+
+    public double getTotalPension() {
+        return totalPension;
+    }
+
+    public void setTotalPension(double totalPension) {
+        this.totalPension = totalPension;
+    }
+
+    public double getTotalSeguro() {
+        return totalSeguro;
+    }
+
+    public void setTotalSeguro(double totalSeguro) {
+        this.totalSeguro = totalSeguro;
     }
 
     public Double getValorCruzadoAPrestamo() {

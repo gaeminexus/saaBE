@@ -265,7 +265,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         List<Entidad> jubilados = entidadDaoService.selectByIdEstado(
             Long.valueOf(EstadoParticipeEntidad.JUBILADO_COMPLEMENTARIO));
 
-        double totalACruzar = 0.0, totalADinero = 0.0;
+        double totalACruzar = 0.0, totalADinero = 0.0, totalSeguroGeneral = 0.0;
         int aptos = 0;
 
         if (jubilados != null) {
@@ -289,6 +289,9 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                     aptos++;
                     totalACruzar = redondear(totalACruzar + fila.getMontoACruzar());
                     totalADinero = redondear(totalADinero + fila.getMontoADinero());
+                    // §4bis: agregado del seguro médico — mismo criterio NOMINAL que la fila
+                    // (ver DetallePrevisualizacionJubilado.totalSeguro).
+                    totalSeguroGeneral = redondear(totalSeguroGeneral + fila.getTotalSeguro());
                 }
             }
         }
@@ -298,6 +301,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         resumen.setTotalACruzarPrestamos(totalACruzar);
         resumen.setTotalADinero(totalADinero);
         resumen.setTotalGeneral(redondear(totalACruzar + totalADinero));
+        resumen.setTotalSeguroGeneral(totalSeguroGeneral);
 
         System.out.println("PREVISUALIZACIÓN TERMINADA - Evaluados: " + resumen.getEvaluados()
             + " - Aptos: " + resumen.getAptos() + " - Bloqueados: " + resumen.getBloqueados()
@@ -347,6 +351,12 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                 + " con valorPagar $0.");
             return fila;
         }
+        // §4bis del contrato: valorPagar YA INCLUYE el seguro — se resta, no se suma (mismo
+        // criterio que generarPagoIndividual). Informativo aunque esta fila termine bloqueada.
+        double valorSeguroMensual = redondear(vppc.getValorSeguro() != null ? vppc.getValorSeguro() : 0.0);
+        double valorPensionMensual = redondear(valorTotal - valorSeguroMensual);
+        fila.setValorPensionMensual(valorPensionMensual);
+        fila.setValorSeguroMensual(valorSeguroMensual);
 
         // Mismo helper que generarPagoIndividual: puede propagar ERR_CERTIFICADO_NO_VERIFICABLE
         // (catálogo TPDJ roto) — a diferencia de la corrida real, acá NO aborta toda la
@@ -375,6 +385,13 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         }
         int mesesAdeudados = (int) (ChronoUnit.MONTHS.between(desde, corrida) + 1);
         fila.setMesesAdeudados(mesesAdeudados);
+        // NOMINAL (mesesAdeudados × tasa mensual), SIN prorratear el último mes si el tope
+        // termina recortando `total` por debajo de esto — ítem 3 del encargo: el prorrateo de
+        // un mes parcial entre pensión y seguro es una decisión contable pendiente del
+        // usuario, no se inventó un criterio acá. Por eso totalPension+totalSeguro puede ser
+        // MAYOR que `total` cuando el último mes queda topado.
+        fila.setTotalPension(redondear(mesesAdeudados * valorPensionMensual));
+        fila.setTotalSeguro(redondear(mesesAdeudados * valorSeguroMensual));
 
         // Deuda EXIGIBLE (ítem 3/§3bis): mismo helper por préstamo vigente que usa la corrida
         // real — nunca el pendiente total, que pre-pagaría cuotas futuras. 0 si no hay ningún
@@ -481,6 +498,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         double totalPagado = 0.0;
         double totalCruzado = 0.0;
         double totalOrdenes = 0.0;
+        double totalSeguroGeneral = 0.0;
 
         if (jubilados != null) {
             for (Entidad jubilado : jubilados) {
@@ -500,6 +518,9 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                         totalPagado += nvl(detalle.getValorPension()) + nvl(detalle.getValorSeguroSalud());
                         totalCruzado += nvl(detalle.getValorCruzadoAPrestamo());
                         totalOrdenes += nvl(detalle.getValorOrdenPago());
+                        // §4bis: agregado del seguro médico — NOMINAL, mismo criterio que la
+                        // fila (ver DetallePagoPension.totalSeguro).
+                        totalSeguroGeneral += detalle.getTotalSeguro();
                     } else {
                         // "YA_EXISTIA" (período único ya generado), "AL_DIA" (sin meses
                         // pendientes) y "SIN_ANCLA" (no se puede calcular desde dónde) son los
@@ -530,6 +551,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         resumen.setTotalPagado(redondear(totalPagado));
         resumen.setTotalCruzadoAPrestamos(redondear(totalCruzado));
         resumen.setTotalOrdenesGeneradas(redondear(totalOrdenes));
+        resumen.setTotalSeguroGeneral(redondear(totalSeguroGeneral));
 
         System.out.println("GENERACIÓN TERMINADA - Evaluados: " + resumen.getEvaluados()
             + " - Generados: " + resumen.getGenerados()
@@ -660,6 +682,10 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         detalle.setIdAsientoDevengo(pago.getNumeroAsientoDevengo());
         detalle.setEstado("GENERADO");
         detalle.setMesesAplicados(1);
+        detalle.setValorPensionMensual(valorPension);
+        detalle.setValorSeguroMensual(valorSeguro);
+        detalle.setTotalPension(valorPension);
+        detalle.setTotalSeguro(valorSeguro);
         // Sin préstamo: o sale el dinero completo (COMPLETA), o no hay cruce posible y no
         // puede salir dinero (BLOQUEADO) — §6 del contrato, regla explícita para este caso.
         detalle.setParticipacion(cuentaSalida != null ? "COMPLETA" : "BLOQUEADO");
@@ -685,6 +711,11 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         DetallePagoPension resumen = new DetallePagoPension();
         resumen.setIdEntidad(idEntidad);
         resumen.setNombre(entidad.getRazonSocial());
+        // §4bis del contrato: la tasa mensual, informativa incluso si este jubilado termina sin
+        // generar ningún mes (SIN_ANCLA/AL_DIA/bloqueado) — valorPension/valorSeguro YA vienen
+        // calculados como valorTotal - valorSeguro / valorSeguro, no se suman aparte.
+        resumen.setValorPensionMensual(valorPension);
+        resumen.setValorSeguroMensual(valorSeguro);
 
         // Ítem 1: el ancla. Si no hay ni movimiento negativo de pensión ni traslado de
         // jubilación, no hay desde dónde calcular — estado propio, NO "ERROR" genérico.
@@ -884,6 +915,12 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         resumen.setIdPago(ultimoIdPago);
         resumen.setValorPension(totalPension);
         resumen.setValorSeguroSalud(totalSeguro);
+        // §4bis: NOMINAL (mesesAplicados × valorSeguroMensual), mismo criterio que ya usa
+        // PGPC.valorSeguro en cada fila — no prorratea el último mes si quedó topado por saldo
+        // o deuda exigible (ítem 3 del encargo: ese prorrateo es una decisión del usuario, no
+        // se inventó acá).
+        resumen.setTotalPension(totalPension);
+        resumen.setTotalSeguro(totalSeguro);
         resumen.setValorCruzadoAPrestamo(totalCruzado);
         resumen.setValorOrdenPago(totalOrden);
         resumen.setGeneroOrdenPago(algunaOrdenGenerada);

@@ -29,6 +29,13 @@ public class ResultadoPrevisualizacionCorrida {
     /** {@code totalACruzarPrestamos + totalADinero}. */
     private double totalGeneral;
 
+    /**
+     * §4bis del contrato, pedido del usuario 2026-09-04: suma del seguro médico
+     * ({@link DetallePrevisualizacionJubilado#getTotalSeguro()}) de todos los jubilados
+     * evaluados — cuenta contable distinta de la pensión (plantilla alterno 35).
+     */
+    private double totalSeguroGeneral;
+
     private List<DetallePrevisualizacionJubilado> detalle = new ArrayList<>();
 
     public ResultadoPrevisualizacionCorrida() {
@@ -96,6 +103,14 @@ public class ResultadoPrevisualizacionCorrida {
 
     public void setTotalGeneral(double totalGeneral) {
         this.totalGeneral = totalGeneral;
+    }
+
+    public double getTotalSeguroGeneral() {
+        return totalSeguroGeneral;
+    }
+
+    public void setTotalSeguroGeneral(double totalSeguroGeneral) {
+        this.totalSeguroGeneral = totalSeguroGeneral;
     }
 
     public List<DetallePrevisualizacionJubilado> getDetalle() {

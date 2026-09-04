@@ -21,6 +21,33 @@ public class DetallePrevisualizacionJubilado {
     /** {@code montoACruzar + montoADinero}. */
     private double total;
 
+    /**
+     * §4bis del contrato, pedido del usuario 2026-09-04: desglose pensión/seguro médico —
+     * cuentas contables distintas (plantilla alterno 35), no un detalle de pantalla.
+     *
+     * ⛔ {@code valorPensionMensual + valorSeguroMensual == VPPC.valorPagar}. {@code valorPagar}
+     * YA INCLUYE el seguro, no se suman aparte.
+     */
+    private double valorPensionMensual;
+
+    /** El seguro médico de UN mes ({@code VPPC.valorSeguro}), no acumulado. */
+    private double valorSeguroMensual;
+
+    /**
+     * Pensión acumulada de {@code mesesAdeudados} meses. NOMINAL: {@code mesesAdeudados ×
+     * valorPensionMensual}, SIN prorratear si el tope (deuda exigible o saldo) termina
+     * recortando {@code total} por debajo de {@code mesesAdeudados × VPPC.valorPagar} — mismo
+     * criterio nominal que ya usa {@code PGPC.valorPension} en la corrida real (ítem 7 del
+     * reporte del retroactivo). Por eso {@code totalPension + totalSeguro} puede ser MAYOR que
+     * {@code total} cuando el último mes queda topado: reflejan lo ADEUDADO, no lo que este
+     * llamado puede efectivamente pagar. Cómo prorratear ese último mes entre las dos cuentas
+     * es una decisión contable pendiente del usuario — no se inventó un criterio acá.
+     */
+    private double totalPension;
+
+    /** Seguro médico acumulado — mismo criterio NOMINAL que {@link #totalPension}. */
+    private double totalSeguro;
+
     private boolean tienePrestamo;
     private boolean tieneCertificado;
 
@@ -83,6 +110,38 @@ public class DetallePrevisualizacionJubilado {
 
     public void setTotal(double total) {
         this.total = total;
+    }
+
+    public double getValorPensionMensual() {
+        return valorPensionMensual;
+    }
+
+    public void setValorPensionMensual(double valorPensionMensual) {
+        this.valorPensionMensual = valorPensionMensual;
+    }
+
+    public double getValorSeguroMensual() {
+        return valorSeguroMensual;
+    }
+
+    public void setValorSeguroMensual(double valorSeguroMensual) {
+        this.valorSeguroMensual = valorSeguroMensual;
+    }
+
+    public double getTotalPension() {
+        return totalPension;
+    }
+
+    public void setTotalPension(double totalPension) {
+        this.totalPension = totalPension;
+    }
+
+    public double getTotalSeguro() {
+        return totalSeguro;
+    }
+
+    public void setTotalSeguro(double totalSeguro) {
+        this.totalSeguro = totalSeguro;
     }
 
     public boolean isTienePrestamo() {
