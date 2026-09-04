@@ -265,26 +265,6 @@ ya hay commits con prefijo `crd:` que no son suyos. La ambigüedad no era hipot�
 
 ## 3. Nombres de tabla de 4 letras
 
-> ### ⛔ Reservar un nombre y autorizar un cambio de modelo son dos actos distintos
->
-> **Anotado el 2026-09-03, a partir de una corrección del árbitro de `omen-saa-1` al de `lap-saa-1`.**
-> Este registro los venía confundiendo en una sola fila, y la confusión es fácil de cometer porque el
-> formulario es el mismo: se escribe una línea en §5 y parece que con eso queda todo resuelto.
->
-> | Acto | Qué significa | Quién lo decide |
-> |---|---|---|
-> | **Reservar el nombre** | Nadie más toma esas 4 letras. Evita la colisión | **El equipo que lo propone.** Es un recurso global y se aparta primero |
-> | **Crear la tabla** | Cambia el modelo de datos de un esquema, y el DDL corre en bases que comparten `main` | **El equipo dueño de ese esquema**, con su usuario |
->
-> **El caso que lo originó:** `lap-saa-1` reservó `CRD.PGCE` para la anulación de pagos de pensión.
-> La reserva estaba bien hecha —nombre verificado libre, anotado antes de usarlo—, pero `CRD` es el
-> esquema de otro equipo, y **crear una tabla ahí no lo decide quien la propone**. El diseño puede
-> ser correcto y aun así la decisión no ser suya.
->
-> **En la práctica:** reservá el nombre apenas lo elegís, y **no escribas ni corras el DDL hasta que
-> el dueño del esquema lo apruebe.** Si el frente termina no haciéndose, la reserva se libera con una
-> línea en §5; una tabla creada en el esquema ajeno no se deshace tan barato.
-
 
 **El código de 4 letras es único en TODO el proyecto, no por esquema.** Verificar antes de
 proponerlo, contra Java y contra la base:
