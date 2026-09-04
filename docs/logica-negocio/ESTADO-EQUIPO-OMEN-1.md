@@ -731,6 +731,63 @@ trabajando. **Un agente que no reporta en dos horas no está pensando: está par
 aplicado fue suscribirse al aviso de inactividad (`notify_when_idle`), que es lo que debió hacerse al
 despachar.
 
+### H32 — Tres defectos de integración en fila, y ninguno se veía sin ejecutar
+
+La primera corrida real de agosto destapó, uno tras otro:
+
+| # | Defecto | Por qué no se veía |
+|---|---|---|
+| 1 | `idUsuario` en `null` a `registrarPagoDeOrigenExterno` → `em.find(Usuario.class, null)` | Compila. Y el mensaje —`id to load is required for loading`— no nombra el campo |
+| 2 | `CRD_PAGO_PENSION_COMPLEMENTARIA` mide **31** y `PGS.PGTR.PGTRORGN` es `VARCHAR2(30)` | Es la **única** de las nueve constantes que se pasa; las demás llegan a 23 |
+| 3 | El certificado se validaba como bloqueo total | Era una contradicción entre dos documentos del propio árbitro |
+
+**Los tres estaban desde que se escribió el código y ninguno se podía ver compilando ni leyendo.**
+Cada intento destapaba la siguiente capa — consecuencia directa de que el proceso **nunca había
+corrido**. El defecto 1 lo encontró la comparación contra `DevolucionAporteServiceImpl`, que llama
+al mismo método y **sí** pasaba el id: cuando algo falla en una integración que otro módulo usa bien,
+el diff entre las dos llamadas es el camino más corto.
+
+### ⛔ H33 — Me contradije entre dos documentos míos, y estaba desplegado
+
+El §6 del contrato decía *«sin certificado no se genera el pago»* (bloqueo total). El §D2 del
+`PLAN-PAGO-RETROACTIVO-JUBILADOS.md`, escrito por el mismo árbitro **horas después**, decía que el
+cruce contra el préstamo procede igual y que el certificado sólo gobierna la salida al banco.
+
+**Lo detectó el agente de frontend releyendo los dos antes de codificar**, y frenó. Para entonces el
+bloqueo total ya estaba implementado y desplegado.
+
+El usuario resolvió por D2: **el certificado valida la cuenta de destino; si no hay salida al banco
+no hay cuenta que validar.** Bloquear el cruce le cobraría al jubilado mora sobre una deuda que su
+propia pensión podía estar cancelando.
+
+> **La lección es sobre el método, no sobre el descuido:** dos documentos escritos el mismo día por
+> la misma persona sobre la misma regla es una fuente de verdad partida en dos. La regla de negocio
+> tiene que vivir en **un** lugar, y el otro documento referenciarla — no repetirla con otras
+> palabras.
+
+**Y el remedio que sí funcionó:** el agente pidió **un campo explícito** (`participacion`) en vez de
+deducir el estado cruzando `tieneCertificado`/`montoADinero`/`montoACruzar`. Tenía razón: tres campos
+combinados a mano se rompen la primera vez que cambia una regla.
+
+### ⭐ H34 — Los dos defectos más caros del día los encontraron los agentes, revisando lo que el árbitro les mandó
+
+Vale registrarlo porque contradice la intuición de que el árbitro revisa y los agentes ejecutan.
+
+**BE — sobregiro del aporte.** En el retroactivo, si el saldo del aporte 23 alcanzaba para el cruce
+de un mes pero **no** para todo el remanente nominal de ese mes, la primera versión intentaba pagar
+el remanente completo igual, **sobregirando la cuenta del jubilado**. No estaba en el encargo: lo
+encontró trazando a mano un caso de saldo justo. Nadie lo habría visto hasta que alguien quedara con
+el aporte en negativo.
+
+**FE — `VPPC` duplicada.** La función «sacar del padrón» que pidió el árbitro **introducía** el
+defecto: sacar a alguien y volver a asignarle valor desde la sección 1 creaba un **segundo `VPPC`
+activo**. Y `unicaActiva` ante dos activas **no elige: lanza excepción**. Ese jubilado habría fallado
+con `SIN_VALOR_PENSION` en cada corrida, sin forma de relacionarlo con lo que se hizo semanas antes.
+
+> **Lo que hizo que los dos aparecieran fue pedir el trazado de un caso concreto** —«contame con qué
+> valor queda cada llamada y dónde cortás»— en vez de aceptar «lo verifiqué». Un agente que tiene que
+> resolver un ejemplo numérico encuentra lo que un agente que sólo confirma no encuentra.
+
 ### Lo que NO se construyó, a propósito
 
 `totalCruzado`, `cruces[]`, `anulable` y `POST /pgpc/anular/{id}` — los cuatro dependen de
