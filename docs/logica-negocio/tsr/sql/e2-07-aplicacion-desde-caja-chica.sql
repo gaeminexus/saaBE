@@ -32,8 +32,8 @@
 --   ESTE SCRIPT VA ANTES del WAR que mapee APLPMVCH. Si el WAR sube primero,
 --   AplicacionPagoCxp mapea una columna que no existe: ORA-00904 en TODA
 --   lectura de esa entidad, que es de las mas usadas del modulo.
---   ⛔ Y no se mergea a main el mapeo hasta que esto este corrido — §7 del
---      registro de reservas.
+--   ⛔ Y no se mergea a main el mapeo hasta que esto este corrido — seccion 7 «No mergear a main un mapeo cuya columna no esta
+--      en la base» del registro de reservas (hay DOS secciones 7: citar por titulo).
 -- =====================================================================
 
 

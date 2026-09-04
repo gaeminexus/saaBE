@@ -304,7 +304,7 @@ y conviene tratarlo como patrón y no como dos anécdotas.
 
 | Dónde | Qué pasa |
 |---|---|
-| **Backend / catálogos** | El registro de reservas controla `PRBRCDGO` (la PK) mientras el código busca los rubros por **`PRBRALTR`** (el alterno). Dos equipos pueden cumplir el registro y colisionar igual. Ver §6 de `REGISTRO-RESERVAS-EQUIPOS.md` |
+| **Backend / catálogos** | El registro de reservas controla `PRBRCDGO` (la PK) mientras el código busca los rubros por **`PRBRALTR`** (el alterno). Dos equipos pueden cumplir el registro y colisionar igual. Ver `REGISTRO-RESERVAS-EQUIPOS.md`, §6 «El registro reserva `PRBRCDGO`, pero el código busca por `PRBRALTR`» (hay DOS §6: citar por título) |
 | **Frontend / `rrh`** | `extraerCodigo` (`forms/parametrizacion/utiles-parametrizacion.ts:80-86`) **prefiere `codigoAlterno` sobre `codigo`** cuando el objeto trae los dos. El árbitro de `lap-saa-1` reporta un caso verificado: un préstamo hipotecario quedó grabado como «Seguro privado» |
 
 ### Cuarta manifestación, 2026-09-01: dos rubros que numeran distinto

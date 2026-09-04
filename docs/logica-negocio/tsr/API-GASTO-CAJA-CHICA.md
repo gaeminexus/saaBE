@@ -140,7 +140,7 @@ así que el riesgo es mostrar «Tipo 6», no perder un movimiento.
 **⛔ La columna `APLPMVCH` va antes que el WAR.** Script: `tsr/sql/e2-07`. Si el WAR sube primero,
 `AplicacionPagoCxp` mapea una columna que no existe y **toda lectura de esa entidad falla con
 ORA-00904**, no sólo la de caja chica. Y no se mergea el mapeo a `main` hasta que esté corrido —
-§7 del registro de reservas.
+§7 del registro de reservas «No mergear a `main` un mapeo cuya columna no está en la base» — hay DOS §7, citar por título.
 
 **La anulación del gasto reversa la aplicación.** Ver §6 del plan: la anulación ya existe y ya
 valida que el gasto no esté incluido en un cierre. Esa validación **el reverso por el lado de los

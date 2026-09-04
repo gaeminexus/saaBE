@@ -35,7 +35,8 @@
 --   primero, CuentaBancariaEmpleado mapea BEXTCDGO y esa columna no existe:
 --   ORA-00904 en toda lectura de la entidad.
 --   ⛔ Y no se mergea a main el cambio de entidad hasta que esto este corrido
---      (seccion 7 del registro de reservas).
+--      (registro de reservas, seccion 7 «No mergear a main un mapeo cuya columna no
+--      esta en la base» — hay DOS secciones 7: citar por titulo).
 -- =====================================================================
 
 
