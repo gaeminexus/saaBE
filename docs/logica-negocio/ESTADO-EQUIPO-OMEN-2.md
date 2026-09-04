@@ -1054,3 +1054,78 @@ DDL del propio equipo respondía. Se borra en vez de dejarse: un `.sql` que no h
 ruido, y el razonamiento queda acá.
 
 **El orden barato, y es el que no seguí:** antes de escribir un control, leer el DDL de la tabla.
+
+---
+
+## §21 — 🔴 La carga SRI trata como PROVEEDOR al cliente que nos retuvo
+
+**2026-09-04, levantado por el usuario desde producción.** Su planteo textual: *«las retenciones,
+aunque se cargan por CxP, nos las emiten clientes y las cargamos del SRI de clientes, no de
+proveedores»*. **Tiene razón, y el código se contradice a sí mismo dentro del mismo método.**
+
+### El síntoma
+
+Al registrar un comprobante de retención desde `cxp/procesos/gestion-documentos`:
+
+> **Proveedor sin cuenta contable CxP** — El proveedor 'COOPERATIVA DE AHORRO Y CREDITO CREDIMAS'
+> (RUC: 1891745687001) no tiene cuenta contable CxP asignada.
+
+### Los dos modelos incompatibles, en el mismo archivo
+
+`ProcesoCargaDocumentosServiceImpl.registrarRetencionCompraV2` (`:3091`) y su gemelo V1 (`:2926`):
+
+| Qué dice el código | Modelo implícito |
+|---|---|
+| `obtenerOAutoCrearProveedor(doc.getRucEmisor(), …)` (`:3100`) — el **emisor** se resuelve como proveedor, y si no existe **se AUTO-CREA como proveedor** | CxP |
+| `verificarCuentaContableProveedor(...)` → `existeCuentaConRolEstricto(..., RolPersona.PROVEEDOR)` (`:2266`) | CxP |
+| Comentario `:3172` — *«la retención abona una factura de **VENTA (CXC)**, así que esa factura debe existir»* | **CxC** |
+| Resuelve el sustento con `AplicacionPagoCxcService.resolverFacturaPorNumero` contra **`CBR.FCTR`** (facturas de venta) | **CxC** |
+| El tipo de asiento se llama **`RETENCIONES_RECIBIDAS`** | **CxC** |
+| `generarAsientoRetencionCompraV2` (`AsientoContableServiceImpl:3288`): **DEBE** = `obtenerCuentaProveedor(...)`, **HABER** = cuenta de retención por código SRI | CxP |
+
+**El asiento que produce es el espejo del correcto.** Para una retención que NOS emitieron, lo que
+corresponde es **DEBE** crédito tributario / anticipo de IR retenido y **HABER** la **CxC del
+cliente** —baja lo que ese cliente nos debe—. Lo que se graba es DEBE la CxP del titular contra
+HABER retención, que es el asiento de una retención que **nosotros emitimos a un proveedor**.
+
+> **Y el comentario del propio asiento ya lo delataba:** dice literal `── HABER: CxP Cliente ──`
+> sobre una línea que va a buscar `obtenerCuentaProveedor`. **«CxP Cliente» no existe como
+> concepto**: es un titular con rol de cliente al que se le pide la cuenta de proveedor. El nombre
+> compuesto es el síntoma de que nadie decidió cuál de los dos era.
+
+### Por qué nunca falló y sí molestó
+
+Es otra vez el §10bis: **el flujo no revienta, sólo pide el dato equivocado.** Pide una cuenta CxP
+para un cliente, y el usuario —que sabe que es un cliente— se da cuenta de que la pregunta está mal.
+**Lo detectó una persona que conoce el negocio, no el sistema.** Ninguna validación podía marcarlo,
+porque las dos mitades son internamente consistentes cada una por su lado.
+
+### ⛔ El atajo que sugiere el mensaje es peor que el bloqueo
+
+El diálogo dice *«Configúrela en Contabilidad → Cuentas por Titular»*. **Hacerlo desbloquea la carga
+y genera un asiento equivocado**: le carga al DEBE la cuenta CxP de un cliente, o sea registra un
+pasivo contra alguien que nos debe. El bloqueo, por accidente, está protegiendo de eso.
+
+*(Sólo no aplica si la empresa tiene `Facturador.generaConta = 0`: sin generación contable no hay
+asiento — `verificarGeneraConta`, `:2277`. Hay que confirmarlo antes de decidir nada.)*
+
+### Dato que agrava la elección, y ya estaba medido en el repositorio
+
+`AsientoContableServiceImpl:117-119`, comentario verificado contra la base:
+
+> *«medido contra la base, **61 de 87 titulares con cuenta sólo la tienen bajo rol Proveedor**, así
+> que facturar a uno de esos clientes tomaba en silencio su cuenta de proveedor»*
+
+Por eso existe `existeCuentaConRolEstricto`. **La parametrización real del sistema está sesgada a
+proveedor**, así que cualquier arreglo que empiece a exigir el rol Cliente va a destapar titulares
+sin esa cuenta. No es razón para no hacerlo: es razón para medirlo antes.
+
+### Y ya existe un camino CxC para esto
+
+`ejb/cxc/serviceImpl/RetencionV2ServiceImpl`, `DetalleRetencionV2ServiceImpl`, sus REST, y
+`AplicacionPagoCxcServiceImpl` aplicando `TipoDocPagoAplicacion.RETENCION` contra la factura de
+venta. **La pregunta abierta no es sólo cuál es el asiento correcto, sino si estos documentos deben
+entrar por la carga de CxP.** ⛔ `cxc` está fuera del alcance de este equipo: la decisión y el
+posible frente hay que acordarlos con el usuario y, si toca `cxc`, con quien lo tenga.
+
+**NO se corrigió nada.** Es una decisión de negocio y de alcance, no técnica.
