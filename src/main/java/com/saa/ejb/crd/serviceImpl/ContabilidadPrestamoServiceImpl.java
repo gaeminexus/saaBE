@@ -460,14 +460,69 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
                     + " asiento desbalanceado.");
         }
 
+        String observacionBase = prefijo + (ctx.getObservacion() != null ? ": " + ctx.getObservacion() : "");
+        String observacion = observacionConParticipeYPrestamos(evento.getPrestamo(), pagos, observacionBase);
+
         Asiento asiento = asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, fechaCorte,
-                prefijo + (ctx.getObservacion() != null ? ": " + ctx.getObservacion() : ""),
-                ctx.getUsuario(), lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
+                observacion, ctx.getUsuario(), lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
 
         System.out.println("  ✅ contabilizarPrecancelacion OK - Asiento: " + asiento.getCodigo()
                 + " - Evento: " + ctx.getIdEvento() + " - Monto: $" + totalDebe);
 
         return asiento.getCodigo();
+    }
+
+    /**
+     * Agrega cédula, nombre del partícipe y los préstamos del evento a la observación de un
+     * asiento — MISMO formato que {@code CobroCreditoServiceImpl#observacionEnriquecida}
+     * (2026-09-04, pedido del usuario: los dos caminos tienen que leerse igual). No se llama a
+     * ese método porque vive en otra clase y no se movió de archivo a propósito (otro equipo
+     * está tocando esa zona de {@code CobroCreditoServiceImpl} en paralelo); si algún día ese
+     * método se expone como utilidad compartida, este helper debería reemplazarse por esa
+     * llamada en vez de mantenerse en paralelo.
+     *
+     * <p>Antes esta observación era solo {@code "Precancelación - evento N"}, sin identificar
+     * a nadie.</p>
+     *
+     * @param prestamoEvento el préstamo del {@code EventoPrestamo} que se está contabilizando
+     *                       (de ahí sale el partícipe); tolerante a {@code null}, igual que
+     *                       {@code observacionEnriquecida} lo es a una entidad ausente.
+     * @param pagos          los {@code PagoPrestamo} del evento — de ahí salen TODOS los
+     *                       préstamos distintos a listar, con su código siempre y el
+     *                       {@code idAsoprep} además cuando existe.
+     */
+    private String observacionConParticipeYPrestamos(Prestamo prestamoEvento, List<PagoPrestamo> pagos,
+            String base) {
+        StringBuilder obs = new StringBuilder(base);
+        Entidad entidad = prestamoEvento != null ? prestamoEvento.getEntidad() : null;
+        if (entidad != null) {
+            obs.append(" | Cédula: ").append(entidad.getNumeroIdentificacion() != null
+                    ? entidad.getNumeroIdentificacion() : "-");
+            obs.append(" | Nombre: ").append(entidad.getRazonSocial() != null
+                    ? entidad.getRazonSocial() : "-");
+        }
+        if (pagos != null) {
+            List<Long> prestamosListados = new ArrayList<>();
+            for (PagoPrestamo pago : pagos) {
+                Prestamo prestamo = pago.getPrestamo();
+                if (prestamo == null || prestamo.getCodigo() == null
+                        || prestamosListados.contains(prestamo.getCodigo())) {
+                    continue;
+                }
+                prestamosListados.add(prestamo.getCodigo());
+                obs.append(" | Préstamo: ").append(prestamo.getCodigo());
+                if (prestamo.getIdAsoprep() != null) {
+                    obs.append(" (idAsoprep: ").append(prestamo.getIdAsoprep()).append(")");
+                }
+            }
+        }
+
+        String resultado = obs.toString();
+        // Mismo tope defensivo que observacionEnriquecida: ASNTOBSR admite 2000 caracteres.
+        if (resultado.length() > 2000) {
+            resultado = resultado.substring(0, 1997) + "...";
+        }
+        return resultado;
     }
 
     // =====================================================================
