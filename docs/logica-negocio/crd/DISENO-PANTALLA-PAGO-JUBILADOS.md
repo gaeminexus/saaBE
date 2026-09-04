@@ -180,6 +180,82 @@ columnas de `CRD.PGPC` no guardan ninguna. **Hoy el backend no puede saber si un
 Guardarlo arregla además que el historial pueda mostrar cuánto fue a deuda y cuánto al banco, que el
 contrato de `eqB` promete y el código no puede cumplir.
 
+## 6bis. ⭐ Cómo se implementa anular un pago CON cruce
+
+**Decisión del usuario del 2026-09-03, que REEMPLAZA a la decisión 2 del §6:** un pago con cruce
+contra préstamo **sí** se anula. Hay que deshacer cuotas ya liquidadas.
+
+**Y la buena noticia es que no hay que inventar nada: el sistema entero ya sabe hacerlo.** Verificado
+contra el código, no deducido.
+
+### Las piezas que ya existen
+
+| Pieza | Dónde | Qué hace |
+|---|---|---|
+| `pagarConAportes` devuelve el evento | `ResultadoAplicacionPago.idEvento` | El cruce **ya sabe** qué `EventoPrestamo` creó — hoy lo descarta |
+| `anularOperacion(SolicitudAnulacion)` | `ProcesoPagoPrestamoService:267` | Reversa un `EventoPrestamo` completo, para los 4 tipos de operación |
+| Reversa de aportes | `anularOperacion` paso 4, `revertirAportes(...)` | **Devuelve el aporte que el cruce consumió.** No hay que hacerlo aparte |
+| `EVPR` soporta anulación | `CRD.EVPR` | Ya tiene `estado`, `usuarioAnulacion`, `fechaAnulacion`, `motivoAnulacion` |
+| Anular la orden en tesorería | `pagoProgramadoService.anularPago(idPago, motivo, idUsuario)` | Y **CRD ya lo llama**, desde `DevolucionAporteServiceImpl:858` |
+| **El precedente completo** | `DevolucionAporteServiceImpl.anularDevolucion` (`:796`) | Mismo circuito, mismo módulo, ya desplegado |
+
+> **`anularPagoPension` es `anularDevolucion` más un bucle que reversa los eventos de préstamo.**
+> Ese es todo el trabajo de diseño.
+
+### Lo único que falta en el modelo: `CRD.PGCE`
+
+El cruce recorre **todos** los préstamos vigentes del jubilado y llama a `pagarConAportes` **una vez
+por préstamo** (`cruzarContraPrestamos`, el `for` con `break` cuando se agota lo disponible). O sea
+**N eventos por pago**, no uno. Por eso no alcanza una columna en `PGPC`: va tabla hija.
+
+**Tabla `CRD.PGCE`** — verificada libre contra `src/main/java/com/saa/model/` y contra las 100 tablas
+`CRD` ya mapeadas. **Confirmar contra `ALL_TABLES` antes de crearla.**
+
+| Columna | Tipo | Qué |
+|---|---|---|
+| `PGCECDGO` | `NUMBER` PK | secuencia `CRD.SQ_PGCECDGO` |
+| `PGPCCDGO` | `NUMBER` FK | el pago de pensión que originó el cruce |
+| `EVPRCDGO` | `NUMBER` FK | el evento de préstamo a reversar |
+| `PRSTCDGO` | `NUMBER` FK | el préstamo, para consultar sin joins |
+| `PGCEVLOR` | `NUMBER(18,2)` | valor aplicado a **ese** préstamo |
+| `PGCEESTD` | `NUMBER` | vigente / reversado |
+| `PGCEFCRG` / `PGCEUSRG` | `TIMESTAMP` / `VARCHAR2(50)` | auditoría |
+
+**Esto reemplaza al `PGPCVLCR` que proponía el §5-B4.** Una sola fuente de verdad: el total cruzado
+es `SUM(PGCEVLOR)`, y así el historial puede mostrar además **contra qué préstamo** fue cada peso,
+que es más de lo que el contrato prometía.
+
+### Orden de operaciones de `POST /rest/pgpc/anular/{id}` — el orden importa
+
+1. **Validar estado** ∈ {`REGISTRADA`, `EN_PAGO`}. Otro estado → 422.
+2. **Si `EN_PAGO`, anular la orden en CXP** con `anularPago`. ⚠️ Mismo criterio que
+   `anularDevolucion:850`: **si el archivo bancario ya se generó, se rechaza** y hay que esperar la
+   respuesta del banco. No se anula algo que ya puede estar en camino.
+3. **Reversar los eventos de cruce, del más nuevo al más viejo** (`anularOperacion` por cada fila de
+   `PGCE`). Eso restaura cuotas, `saldoOtros`, el estado del préstamo **y devuelve los aportes
+   consumidos** por el cruce.
+4. **Contra-movimiento positivo del aporte del REMANENTE**, con el `generarContraMovimiento` que ya
+   existe para `RECHAZADA`. ⛔ **Sólo del remanente**: el tramo cruzado ya lo devolvió el paso 3.
+   Hacerlo de nuevo subiría el saldo del jubilado dos veces por la misma plata.
+5. **Asiento de reversa del devengo** (decisión 3 del usuario).
+6. `estado = ANULADA` y escribir `PGPCUSAN` / `PGPCFCAN` / `PGPCMTAN` — las tres columnas que hoy
+   existen y nunca se escriben.
+
+### ⛔ El límite honesto: LIFO. No se puede anular cualquier mes
+
+`anularOperacion` **rechaza el reverso si hay operaciones posteriores vigentes sobre el mismo
+préstamo** (`ProcesoPagoPrestamoServiceImpl:1237`). No es un defecto: reversar un pago viejo dejando
+vivos los que vinieron después corrompería la cartera.
+
+**Consecuencia operativa, y hay que decirla en la pantalla con palabras:**
+
+- Si el jubilado pagó una cuota después del cruce, o si **la pensión del mes siguiente volvió a
+  cruzar contra el mismo préstamo**, la anulación del mes viejo **va a fallar**.
+- En la práctica: **se anula el último mes, no uno cualquiera del pasado.**
+
+La pantalla no puede mostrar eso como un error crudo. Tiene que decir qué operación posterior lo
+impide y qué habría que anular primero — el mensaje del motor ya nombra el evento que estorba.
+
 ## 7. Qué significa «moderna» acá, y qué no
 
 **Sí:** tarjetas de KPI en vez de números sueltos en texto · estados como chip con **ícono y texto**,
