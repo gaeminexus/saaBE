@@ -67,13 +67,18 @@ public interface PagoPensionComplementariaService extends EntityService<PagoPens
      * su propia transacción — igual que {@code DevolucionAporteService#sincronizarDevolucion}.
      * Expuesto también para regenerar un jubilado puntual sin correr el lote completo.
      *
+     * @param idUsuario Código del usuario ({@code com.saa.model.scp.Usuario.codigo}, tabla
+     *                   SCP.PJRQ) que registra, ya resuelto por el llamador a partir de
+     *                   {@code usuario}. Lo pide
+     *                   {@code PagoProgramadoService.registrarPagoDeOrigenExterno}; pasarlo en
+     *                   {@code null} hace que CXP reviente con {@code em.find(Class, null)}.
      * @return el detalle del jubilado — {@code estado = "YA_EXISTIA"} si el período ya existía
      *         (idempotencia, no es error), {@code "GENERADO"} si creó un PGPC nuevo
      * @throws Throwable {@code IncomeException} con el motivo si el jubilado no se puede pagar
      *                    este período (sin VPPC, sin cuenta, sin saldo)
      */
-    DetallePagoPension generarPagoIndividual(Long idEntidad, Long idEmpresa, Integer anio, Integer mes, String usuario)
-            throws Throwable;
+    DetallePagoPension generarPagoIndividual(Long idEntidad, Long idEmpresa, Integer anio, Integer mes,
+            String usuario, Long idUsuario) throws Throwable;
 
     /**
      * Reconciliador: lee el estado real de la orden de pago en CXP de cada PGPC pendiente

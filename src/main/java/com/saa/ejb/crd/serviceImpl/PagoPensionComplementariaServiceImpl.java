@@ -140,6 +140,14 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
     private DetallePlantillaDaoService detallePlantillaDaoService;
 
     /**
+     * Resuelve el nombre de usuario (String, lo que manda el frontend) al {@code Long} que pide
+     * {@code PagoProgramadoService.registrarPagoDeOrigenExterno} — mismo patrón que
+     * {@code CobroPetroContableServiceImpl}.
+     */
+    @EJB
+    private com.saa.basico.ejb.UsuarioDaoService usuarioDaoService;
+
+    /**
      * Auto-inyección: permite que el lote invoque {@code generarPagoIndividual}/
      * {@code sincronizarPago} a TRAVÉS del proxy EJB, para que cada jubilado corra en su
      * propia transacción (REQUIRES_NEW) — mismo motivo que
@@ -233,6 +241,19 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             throw new IncomeException("usuario es obligatorio");
         }
 
+        // Se resuelve UNA sola vez por corrida (no una vez por jubilado: son ~190 y el nombre
+        // es el mismo para todos). registrarPagoDeOrigenExterno pide un Long, no el nombre —
+        // pasarle null hacía que CXP reventara con em.find(Class, null) en cada jubilado con
+        // cuenta bancaria activa (IllegalArgumentException ilegible, ver DevolucionAporteServiceImpl
+        // y PrestamoServiceImpl, que sí resuelven este Long antes de llamar).
+        com.saa.model.scp.Usuario usuarioRegistro = usuarioDaoService.selectByNombre(usuario);
+        if (usuarioRegistro == null) {
+            throw new IncomeException("USUARIO_NO_ENCONTRADO: no existe el usuario '" + usuario
+                + "' en el sistema; la orden de pago en Cuentas por Pagar necesita el usuario"
+                + " que la registra.");
+        }
+        Long idUsuario = usuarioRegistro.getCodigo();
+
         ResultadoGeneracionPagosPension resumen = new ResultadoGeneracionPagosPension();
         resumen.setAnio(anio);
         resumen.setMes(mes);
@@ -252,7 +273,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                 try {
                     // A través del proxy: cada jubilado en su propia transacción
                     DetallePagoPension detalle = self.generarPagoIndividual(
-                        jubilado.getCodigo(), idEmpresa, anio, mes, usuario);
+                        jubilado.getCodigo(), idEmpresa, anio, mes, usuario, idUsuario);
                     resumen.getDetalle().add(detalle);
 
                     if ("YA_EXISTIA".equals(detalle.getEstado())) {
@@ -296,8 +317,8 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
 
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
-    public DetallePagoPension generarPagoIndividual(Long idEntidad, Long idEmpresa, Integer anio, Integer mes, String usuario)
-            throws Throwable {
+    public DetallePagoPension generarPagoIndividual(Long idEntidad, Long idEmpresa, Integer anio, Integer mes,
+            String usuario, Long idUsuario) throws Throwable {
         System.out.println("PagoPensionComplementariaService.generarPagoIndividual - Entidad: " + idEntidad
             + " - Período: " + mes + "/" + anio);
 
@@ -435,7 +456,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                     OrigenPagoExterno.CRD_PAGO_PENSION_COMPLEMENTARIA, pago.getCodigo(),
                     idEmpresa, null, remanente, LocalDate.now().toString(), beneficiario,
                     null, // sin desglose contable — mismo estado que la devolución hoy (§6.5.b)
-                    observacion, null, false, null);
+                    observacion, idUsuario, false, null);
 
                 Object valorPago = (respuesta != null) ? respuesta.get("pago") : null;
                 if (valorPago == null) {
