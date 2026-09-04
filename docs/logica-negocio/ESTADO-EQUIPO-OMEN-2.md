@@ -865,3 +865,80 @@ que esa pasada es la única verificación que va a existir.
 **pagando dos veces**, y se nota semanas después. *(Y engancha con el §11: `validaValorContraSaldo`
 usa `selectVigentesByFactura`, que es la única de las cuatro consultas que **sí** fue corregida para
 ver `POR_APROBAR` — por eso el caso 6 debería pasar. Probarlo es lo que lo confirma.)*
+
+---
+
+## §17 — 🔴 El botón «Anular gasto» no se renderiza NUNCA: el frontend lee un campo que el backend no manda
+
+**2026-09-04, reportado por el usuario en producción con captura.** Es el defecto que justifica el
+rol: **ninguno de los dos agentes podía verlo desde su lado.**
+
+### El síntoma, y por qué despistaba
+
+El usuario reportó *«no me aparecen los botones de anulación de gasto ni el pago de factura con caja
+chica»*. La primera hipótesis —razonable— fue que **el frontend no se había desplegado**: faltaban
+las dos cosas a la vez y las dos eran del 2026-09-03.
+
+**La captura la refutó.** La tabla **tiene la columna «Documento»**, que es nueva de ese mismo
+frente: el FE desplegado ES el nuevo. Y en la columna «Tipo» **todas** las filas mostraban el chip
+`? Tipo —`.
+
+> **La pista estaba en lo que sí se veía, no en lo que faltaba.** Una columna nueva presente prueba
+> el despliegue mejor que un botón ausente lo refuta.
+
+### La causa
+
+| Lado | Qué dice |
+|---|---|
+| Backend | `MovimientoCajaChica.java:55` tiene **un solo** campo `Long tipo`, getter `getTipo()` → Jackson serializa **`tipo`** |
+| Frontend | `movimiento-caja-chica.ts:27-28` declara **`rubroTipoMovimientoP`** y **`rubroTipoMovimientoH`**, y **no declara `tipo`** |
+
+```ts
+tipoDeMovimiento(m) { return m.rubroTipoMovimientoH ?? m.rubroTipoMovimientoP ?? null; }  // -> siempre null
+esGasto(m)          { return this.tipoDeMovimiento(m) === TipoMovimientoCajaChica.GASTO; } // -> siempre false
+puedeAnular(m)      { return this.esGasto(m) && this.estaActivo(m); }                      // -> siempre false
+```
+
+**`@if (puedeAnular(m))` nunca se cumple, así que el botón no existe para ninguna fila.** El chip
+`? Tipo —` es el mismo `null` cayendo al `default` de `infoTipo` (`help_outline` = el signo de
+pregunta de la captura).
+
+### De dónde salió el nombre inventado — y no fue un descuido
+
+`rubroTipoMovimientoP`/`H` es la convención **real** de otras tres entidades de `tsr`, que sí tienen
+un par de rubro padre/hijo (rubro 37): `movimiento-banco.ts:26-27`,
+`detalle-conciliacion.ts:15-16`, `hist-detalle-conciliacion.ts:11-12`.
+
+**El agente copió la forma del vecino, que en `tsr` es lo correcto en tres casos de cuatro.**
+`TSR.MVCH` es la excepción: tiene un `MVCHTIPO` solo. Copiar el molde del módulo es exactamente lo
+que `CLAUDE.md` recomienda hacer, y acá produjo el defecto.
+
+### Alcance completo, medido
+
+Borde de la medición: `grep -rn "rubroTipoMovimiento" saaFE/src`, todos los archivos.
+
+| Dónde | Efecto |
+|---|---|
+| `gastos-caja-chica.component.ts:565` | 🔴 **el botón de anular no aparece jamás** + chip `Tipo —` |
+| `cierre-caja-chica.component.ts:368` y `:379` | 🟡 etiqueta e ícono del movimiento: `—` y `help_outline`. **Sólo presentación**: los totales del cierre NO se calculan desde acá |
+
+**El backend está bien y no se toca.** `calcularSaldo` usa `selectSumasPorTipo` —agregado en SQL,
+sobre la columna real— así que **el saldo siempre estuvo bien**. El defecto es de lectura del
+payload, no de datos.
+
+### La asimetría que lo mantuvo invisible
+
+El mismo componente **manda** `tipo` correctamente en el filtro
+(`movimiento-caja-chica.service.ts:43`, `params.set('tipo', ...)`) y **lee**
+`rubroTipoMovimientoH`. Escribe con un nombre y lee con otro. Por eso el filtro por tipo del
+listado funciona y la columna Tipo no: **son dos caminos distintos y sólo uno estaba mal.**
+
+> **La regla que queda:** un contrato de API verificado en una dirección no está verificado. El
+> campo que el frontend **manda** lo valida el backend al recibirlo —falla ruidoso—; el campo que el
+> frontend **lee** no lo valida nadie: un nombre que no existe en el JSON es `undefined`, y
+> `undefined` se renderiza como un guion.
+
+### Y por qué desplegar otra vez el WAR no lo iba a arreglar
+
+Verificado el 2026-09-04: **desde el hotfix `241211b` no hay ni un cambio en `src/` de este equipo.**
+Lo único nuevo en el árbol es de `omen-saa-1` (`crd`, pago de pensión). El arreglo es de `saaFE`.
