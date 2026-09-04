@@ -553,6 +553,106 @@ BE** frenó dos veces ante diferencias que yo le había dado por equivalentes.
 
 ---
 
+## 2g. Frente URGENTE — pago mensual a jubilados (2026-09-04)
+
+**Pedido del usuario el 2026-09-04:** *«necesitamos sacar pagos de agosto»*. Es el frente que ya
+venía marcado como el más urgente desde el 2026-09-02.
+
+### El diagnóstico: el proceso existía y no tenía quién lo llamara
+
+```
+grep -rln 'pgpc' saaFE/src/app  ->  CERO archivos
+```
+
+El backend tiene el proceso mensual **completo** desde `554b5f5` (genera, cruza contra préstamos,
+contabiliza el devengo y manda órdenes a tesorería) y **ningún servicio de Angular le habla**. La
+pantalla `proceso-pago-jubilados` (439 líneas) es solo parametrización de `VPPC`: administra cuánto
+cobra cada jubilado y no dispara nada. El proceso solo se podía correr por API cruda.
+
+**Esto solo se ve mirando los dos repositorios a la vez**, que es exactamente para lo que el árbitro
+tiene los dos.
+
+### H25 — El plan decía que faltaba lo que ya estaba hecho
+
+`PLAN-PAGO-JUBILADOS.md` seguía con el encabezado *«pendiente de implementar»* y sus §3 y §4 decían
+*«falta el cruce»* y *«falta el asiento»*. `554b5f5`, del mismo día, los implementó y **el documento
+no se actualizó**. Verificado contra el código: `cruzarContraPrestamos:478` y
+`generarAsientoDevengoPension:549` existen. Regla 1 del árbitro, otra vez: el plan describía un
+estado que ya no existía.
+
+### H26 — El contrato de API afirmaba tres cosas que el código no hace
+
+Encontradas verificando línea por línea **antes** de dejar arrancar al frontend (regla 6). Corregido
+en `b964780`, espejado en `saaFE` en `cbf89da`.
+
+| Lo que decía | Lo que pasa |
+|---|---|
+| §3 `porEntidad` trae los campos de cruce y orden de pago | **Falso.** Devuelve la entidad JPA cruda; esos tres campos existen solo en `DetallePagoPension`, el DTO de la corrida. El frontend habría armado tres columnas que nunca se llenan |
+| Las fechas viajan como `yyyy-MM-dd` | Vale para lo que se **envía**. Lo que **llega** son arreglos de Jackson. Mismo defecto ya corregido en `API-AUDITORIA-BANDAS.md` el 09-03 — se coló en el contrato de al lado |
+| (no lo decía) | `estado` llega como número 1..5 sin leyenda |
+
+> **Confirmación independiente:** el árbitro de `lap-saa-1` había detectado el primero desde su lado
+> y lo dejó anotado en el §6 de `DISENO-PANTALLA-PAGO-JUBILADOS.md` — *«que el contrato de eqB
+> promete y el código no puede cumplir»*. Dos caminos distintos al mismo defecto.
+
+### H27 — La corrida es idempotente, pero el INFORME no se repite
+
+`PagoPensionComplementariaServiceImpl:299-309`. Volver a generar el mismo mes **no duplica pagos**
+—eso está bien resuelto— pero la rama `YA_EXISTIA` arma su renglón con **solo cinco campos**, sin
+`nombre` ni cruce ni orden, y los totales del encabezado solo suman lo generado en esa pasada.
+
+**Si el operador cierra la pantalla, el informe del mes no se recupera generando de nuevo.** Nadie
+lo había escrito. Es lo que motivó `porPeriodo`.
+
+### H28 — ⚠️ La corrida de agosto se fecha en DOS meses distintos
+
+Leyendo el código para saber con qué fecha grabaría una corrida de agosto hecha el 4 de septiembre:
+
+| Qué | Fecha |
+|---|---|
+| `PGPC.fecha`, `fechaPago`, la orden a tesorería | **2026-08-01** ✅ sale del período (`:344`) |
+| El asiento de devengo (plantilla 35) | **2026-08-01** ✅ usa `pago.getFecha()` |
+| `APRT.fechaTransaccion` (`:804`) | ⚠️ **now()** |
+| `PagoAporte.fechaContable` (`:818`) | ⚠️ **now()** |
+
+**El asiento contable cae en agosto**, que es lo que más importa. Lo que queda en septiembre es el
+movimiento del aporte y su fecha contable auxiliar (con `numeroAsiento = null`, no arrastra asiento).
+
+**La señal de que es descuido y no decisión:** el mismo proceso fecha el mismo hecho de dos maneras.
+`fecha` se calcula del período y se pasa al cruce, al pago y al asiento; a `crearMovimientoNegativo`
+se le pasa `fechaHora`, que nació para `fechaRegistro` —donde `now()` es correcto— y terminó usándose
+también para dos fechas de negocio. Familia de H21, de alcance mucho menor.
+
+**Efecto concreto:** cualquier reporte que agrupe `APRT` por fecha pone estas bajas en septiembre.
+**Pendiente de decisión del usuario**, no del árbitro.
+
+### Entregado
+
+| Pieza | Estado |
+|---|---|
+| Contrato corregido y espejado | ✅ `b964780` (BE) · `cbf89da` (FE) |
+| `GET /rest/pgpc/porPeriodo`, alcance reducido | ✅ `1933079` — DAO + Service + REST, `mvn -q compile` exit 0, verificado por el árbitro línea por línea |
+| Pantalla: servicio + pestaña «Corrida del mes» + «Seguimiento» reducida | ⬜ en curso (FE) |
+
+### Lo que NO se construyó, a propósito
+
+`totalCruzado`, `cruces[]`, `anulable` y `POST /pgpc/anular/{id}` — los cuatro dependen de
+**`CRD.PGCE`**, tabla reservada por `lap-saa-1` con el **DDL sin autorizar ni escribir**. Se documentó
+en el §4 del contrato que esos campos **no van a llegar**, para que el frontend no los construya.
+
+### Observación de rendimiento, anotada en su forma y no inflada
+
+`porPeriodo` devuelve N filas y cada `PagoPensionComplementaria` arrastra `Entidad` y `Filial` por
+`@ManyToOne` **sin `fetch`, o sea EAGER por defecto**, y `Entidad` arrastra otros cinco.
+
+Es la **misma forma** de los dos hotfix que `eq2` hizo esta semana en `tsr` (`7a9cad2`, `241211b`:
+cuelgue y `ORA-04036` por cascada EAGER). **Pero no es el mismo caso y no se trata como tal:** acá la
+cascada es de profundidad 2 y las hojas son catálogos chicos que se repiten en todas las filas, así
+que el contexto de persistencia los cachea. **No se pidió optimizar nada**: queda anotado para mirar
+si la corrida real se siente lenta. Anotarlo sin medirlo es lo único honesto que se puede decir hoy.
+
+---
+
 ## 3. Hallazgos de la revisión de arranque (2026-09-01)
 
 ### H1 — El contrato de API del otorgamiento vivía SOLO en el espejo
