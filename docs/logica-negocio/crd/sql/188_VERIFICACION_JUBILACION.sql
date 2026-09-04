@@ -17,12 +17,19 @@
 --    ACTIVO y ACTIVO EN MORA son estados distintos (§5 del plan).
 -- =====================================================================================
 
-SET PAGESIZE 200
-SET LINESIZE 240
-
--- ⚠️ COMPLETAR estos dos antes de correr los bloques 3, 4 y 5.
-DEFINE EMPRESA  = 1     -- empresa contable con la que se prueba
-DEFINE ENTIDAD  = 0     -- el participe del caso en curso
+-- (!) CÓMO SE PARAMETRIZA — corregido el 2026-09-04, sin comandos de SQL*Plus.
+--
+-- Los bloques 3, 4 y 5 miran UN partícipe. Antes de correrlos, buscar y reemplazar en todo
+-- el archivo el texto        0 /*<<ENTIDAD>>*/        por el ID del partícipe del caso en
+-- curso. Son 6 apariciones y un solo reemplazo las cubre todas.
+--
+-- Antes esto usaba DEFINE/&ENTIDAD y SET PAGESIZE/LINESIZE. Los tres son comandos de
+-- SQL*Plus, no SQL: sólo funcionan en sqlplus y en SQL Developer ejecutando como script.
+-- En otros clientes no hacen nada o ensucian la salida — lo reportó el usuario el
+-- 2026-09-04 con los scripts 189 y 190. Se sacaron por el mismo motivo.
+--
+-- La empresa contable no hace falta parametrizarla: el bloque 1 lista TODAS las empresas
+-- que tienen la plantilla alterno 29, que es más útil que filtrar por una.
 
 
 -- =====================================================================================
@@ -34,12 +41,24 @@ DEFINE ENTIDAD  = 0     -- el participe del caso en curso
 --
 -- Si no devuelve cabecera: PARAR, todo el plan falla en C1 por esta causa.
 -- =====================================================================================
+-- (!) TRAMPA DE NOMBRE, verificada en Plantilla.java:64-66 el 2026-09-04:
+-- la EMPRESA de una plantilla es la columna PJRQCDGO. El nombre parece de una FK a
+-- jerarquia, pero el @JoinColumn mapea ahi la Empresa, y es por esa columna que filtra
+-- selectByAlterno(alterno, empresa). No buscar una columna "EMPRCDGO": no existe.
 SELECT  p.PLNSCDGO                                              AS ID_PLANTILLA,
+        p.PJRQCDGO                                              AS ID_EMPRESA,
         p.PLNSCDAL                                              AS ALTERNO,
         SUBSTR(p.PLNSNMBR,1,60)                                 AS NOMBRE,
         p.PLNSESTD                                              AS ESTADO
 FROM    CNT.PLNS p
-WHERE   p.PLNSCDAL = 29;
+WHERE   p.PLNSCDAL = 29
+ORDER   BY p.PJRQCDGO;
+
+-- (!) ID_EMPRESA es lo que hay que pasarle a procesarJubilacion. Si la prueba se corre con
+--     una empresa que NO aparece en esta lista, el caso C1 va a fallar por falta de
+--     plantilla — que es precisamente lo que el caso C6 provoca a proposito.
+--     Anotar de esta lista: una empresa CON plantilla (para C1..C5, C7, C8) y una SIN
+--     plantilla (para C6). Sin las dos, C6 no se puede montar.
 
 SELECT  d.DTPLCDGO                                              AS ID_LINEA,
         d.DTPLAXL1                                              AS AUX1,
@@ -101,7 +120,7 @@ FETCH FIRST 30 ROWS ONLY;
 -- =====================================================================================
 -- BLOQUE 4 — ⛔ DESPUES DE CADA CASO: que le paso a ESE participe.
 --
--- ⚠️ Poner el ID en DEFINE ENTIDAD arriba antes de correrlo.
+-- ⚠️ Reemplazar el marcador <<ENTIDAD>> por el ID del participe antes de correrlo (ver cabecera).
 --
 -- 4.a — Los movimientos de jubilacion generados (APRTTPMV = 7).
 --
@@ -119,7 +138,7 @@ SELECT  a.APRTCDGO                                              AS APORTE,
         a.APRTUSRG                                              AS USUARIO,
         SUBSTR(a.APRTGLSA,1,60)                                 AS GLOSA
 FROM    CRD.APRT a
-WHERE   a.ENTDCDGO = &ENTIDAD
+WHERE   a.ENTDCDGO = 0 /*<<ENTIDAD>>*/
 AND     a.APRTTPMV = 7
 ORDER   BY a.APRTCDGO;
 
@@ -133,7 +152,7 @@ SELECT  ROUND(NVL(SUM(CASE WHEN a.TPAPCDGO = 1  THEN a.APRTVLRR END),0), 2) AS S
         ROUND(NVL(SUM(CASE WHEN a.TPAPCDGO = 2  THEN a.APRTVLRR END),0), 2) AS SALDO_JUBILACION,
         ROUND(NVL(SUM(CASE WHEN a.TPAPCDGO = 23 THEN a.APRTVLRR END),0), 2) AS SALDO_PENSION
 FROM    CRD.APRT a
-WHERE   a.ENTDCDGO = &ENTIDAD;
+WHERE   a.ENTDCDGO = 0 /*<<ENTIDAD>>*/;
 
 
 -- 4.c — El estado del participe.
@@ -144,7 +163,7 @@ SELECT  e.ENTDCDGO                                              AS ID_ENTIDAD,
         SUBSTR(e.ENTDRZNS,1,35)                                 AS PARTICIPE,
         e.ENTDIDST                                              AS ESTADO_ACTUAL
 FROM    CRD.ENTD e
-WHERE   e.ENTDCDGO = &ENTIDAD;
+WHERE   e.ENTDCDGO = 0 /*<<ENTIDAD>>*/;
 
 
 -- 4.d — ⛔ EL ASIENTO, Y LA CUENTA QUE NO DEBE ESTAR.
@@ -178,7 +197,7 @@ SELECT  a.ASNTCDGO                                              AS ASIENTO,
         SUBSTR(d.DTASDSCR,1,50)                                 AS DESCRIPCION
 FROM    CNT.ASNT a
 JOIN    CNT.DTAS d ON d.ASNTCDGO = a.ASNTCDGO
-WHERE   d.DTASDSCR LIKE '%Entidad ' || &ENTIDAD || ' %'
+WHERE   d.DTASDSCR LIKE '%Entidad ' || 0 /*<<ENTIDAD>>*/ || ' %'
 ORDER   BY a.ASNTCDGO, d.DTASCDGO;
 
 -- El cuadre del asiento. Las dos columnas tienen que dar IGUAL.
@@ -188,7 +207,7 @@ SELECT  a.ASNTCDGO                                              AS ASIENTO,
         ROUND(SUM(NVL(d.DTASDBEE,0)) - SUM(NVL(d.DTASHBRR,0)), 2) AS DESCUADRE
 FROM    CNT.ASNT a
 JOIN    CNT.DTAS d ON d.ASNTCDGO = a.ASNTCDGO
-WHERE   d.DTASDSCR LIKE '%Entidad ' || &ENTIDAD || ' %'
+WHERE   d.DTASDSCR LIKE '%Entidad ' || 0 /*<<ENTIDAD>>*/ || ' %'
 GROUP   BY a.ASNTCDGO
 ORDER   BY a.ASNTCDGO;
 
@@ -218,7 +237,7 @@ SELECT  COUNT(DISTINCT a.ASNTCDGO)                              AS ASIENTOS,
         ROUND(SUM(NVL(d.DTASHBRR,0)), 2)                        AS TOTAL_HABER
 FROM    CNT.ASNT a
 JOIN    CNT.DTAS d ON d.ASNTCDGO = a.ASNTCDGO
-WHERE   d.DTASDSCR LIKE '%Entidad ' || &ENTIDAD || ' %';
+WHERE   d.DTASDSCR LIKE '%Entidad ' || 0 /*<<ENTIDAD>>*/ || ' %';
 
 
 -- =====================================================================================
