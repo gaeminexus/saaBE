@@ -296,10 +296,17 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
      * Indica si la orden ya tiene un pago vivo (cualquier estado salvo RECHAZADO o ANULADO) en
      * <code>PGS.PGTR</code> para el origen <code>RHH_NOMINA</code>.
      *
-     * <p>No se usa <code>PagoProgramadoDaoService.selectVigentesByOrigen</code> porque esa
-     * consulta excluye a proposito <code>POR_APROBAR</code> -no es "vigente" para el resto de
-     * los modulos que la usan-, y aqui hace falta detectar tambien el pago recien nacido
-     * POR_APROBAR para no duplicarlo en una regeneracion de la orden.</p>
+     * <p>Reimplementa la condicion en vez de llamar a
+     * <code>PagoProgramadoDaoService.selectVigentesByOrigen</code>: al escribirse (2026-09,
+     * docs/logica-negocio/ESTADO-EQUIPO-OMEN-2.md #11) esa consulta excluia
+     * <code>POR_APROBAR</code> a proposito -no era "vigente" para el resto de los modulos
+     * que la usan-, y aqui hacia falta detectar tambien el pago recien nacido POR_APROBAR
+     * para no duplicarlo en una regeneracion de la orden. Desde el 2026-09-04
+     * (docs/logica-negocio/ESTADO-EQUIPO-OMEN-2.md §22) esa exclusion se corrigio: hoy
+     * <code>selectVigentesByOrigen</code> devuelve exactamente el mismo conjunto que esta
+     * consulta -cualquier estado salvo <code>RECHAZADO</code> y <code>ANULADO</code>-, asi
+     * que la reimplementacion ya no evita nada distinto. Se deja igual porque unificarla es
+     * un cambio de codigo, no de este comentario; la razon original ya no aplica.</p>
      *
      * @param idOrdenPago	: Codigo de la orden de pago (RHH.RDPG.RDPGCDGO)
      * @return				: true si ya existe un pago que no esta RECHAZADO ni ANULADO
@@ -322,11 +329,17 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
     }
 
     /**
-     * Ultimo pago registrado en <code>PGS.PGTR</code> para un documento origen, sin filtrar
-     * por estado (a diferencia de <code>PagoProgramadoDaoService.selectVigentesByOrigen</code>,
-     * que excluye <code>POR_APROBAR</code>, <code>RECHAZADO</code> y <code>ANULADO</code> —
-     * consulta compartida con otros equipos, no se toca, ver
-     * docs/logica-negocio/ESTADO-EQUIPO-OMEN-2.md #11). El mas reciente (<code>id</code> mayor)
+     * Ultimo pago registrado en <code>PGS.PGTR</code> para un documento origen, SIN FILTRAR
+     * por estado -a proposito, y no por una limitacion vieja de
+     * <code>PagoProgramadoDaoService.selectVigentesByOrigen</code>-. Esa consulta (vigente al
+     * 2026-09-04, docs/logica-negocio/ESTADO-EQUIPO-OMEN-2.md §22; antes tampoco traia
+     * <code>POR_APROBAR</code>, ver #11) filtra por diseno: incluye <code>POR_APROBAR</code>
+     * pero sigue excluyendo <code>RECHAZADO</code> y <code>ANULADO</code>, asi que nunca
+     * podria traer el pago rechazado/anulado que <code>exigePagoConfirmadoEnTesoreria</code>
+     * necesita ver para distinguir "hay que reintentar" de "hay que esperar". Es una consulta
+     * compartida con otros equipos y sigue siendo correcta para sus propios llamadores (la
+     * guarda anti-duplicados de <code>PagoProgramadoServiceImpl.registrarPagoDeOrigenExterno</code>);
+     * simplemente no sirve para este caso, y no se toca. El mas reciente (<code>id</code> mayor)
      * es el que importa: una orden puede acumular pagos RECHAZADO/ANULADO de intentos previos
      * si se regenero despues de cada uno.
      *
@@ -355,15 +368,21 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
      * tesoreria nunca aprobo.
      *
      * <p><b>Corregido (2026-09, docs/logica-negocio/ESTADO-EQUIPO-OMEN-2.md #11):</b> antes
-     * usaba <code>selectVigentesByOrigen</code>, que no trae <code>POR_APROBAR</code> ni
-     * <code>RECHAZADO</code>/<code>ANULADO</code>. El control en si funcionaba -lista vacia
-     * tambien lanzaba excepcion-, pero el mensaje mentia: decia "no tiene ningun pago vigente"
-     * tanto si el pago estaba POR_APROBAR (hay que esperar) como si estaba RECHAZADO o ANULADO
-     * (hay que volver a generar la orden, no esperar). Ahora usa
-     * {@link #ultimoPagoDeOrigen} -sin filtrar por estado- y distingue las tres situaciones que
-     * le importan al usuario: no existe ningun pago, existe y sigue en tramite, o existe y el
-     * tramite termino sin pagar. El criterio es que el mensaje le diga cual de las dos acciones
-     * tomar -esperar o reintentar-, no solo que algo esta mal.</p>
+     * usaba <code>selectVigentesByOrigen</code>, que en ese momento no traia
+     * <code>POR_APROBAR</code> ni <code>RECHAZADO</code>/<code>ANULADO</code>. El control en
+     * si funcionaba -lista vacia tambien lanzaba excepcion-, pero el mensaje mentia: decia
+     * "no tiene ningun pago vigente" tanto si el pago estaba POR_APROBAR (hay que esperar)
+     * como si estaba RECHAZADO o ANULADO (hay que volver a generar la orden, no esperar).
+     * Ahora usa {@link #ultimoPagoDeOrigen} -sin filtrar por estado- y distingue las tres
+     * situaciones que le importan al usuario: no existe ningun pago, existe y sigue en
+     * tramite, o existe y el tramite termino sin pagar. El criterio es que el mensaje le diga
+     * cual de las dos acciones tomar -esperar o reintentar-, no solo que algo esta mal.</p>
+     * <p><b>Sigue sin poder usar <code>selectVigentesByOrigen</code> ni siquiera hoy</b>
+     * (docs/logica-negocio/ESTADO-EQUIPO-OMEN-2.md §22, 2026-09-04): esa consulta ya incluye
+     * <code>POR_APROBAR</code>, pero sigue excluyendo <code>RECHAZADO</code> y
+     * <code>ANULADO</code> a proposito -es correcto para sus propios llamadores-, asi que
+     * jamas devolveria el pago rechazado/anulado que este metodo necesita ver para elegir
+     * "reintentar" en vez de "esperar".</p>
      *
      * @param idOrdenPago	: Codigo de la orden de pago
      * @throws Throwable	: IncomeException con el diagnostico exacto si no esta CONFIRMADO
