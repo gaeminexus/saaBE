@@ -43,8 +43,11 @@ public interface OrigenPagoExterno {
 	/**
 	 * Pago mensual de una pension complementaria a un jubilado, originado en CRD.PGPC
 	 * (item 4 de jubilados, 2026-08-31). PGTRIDOR lleva el CRD.PGPC.PGPCCDGO correspondiente.
+	 * Valor acortado a 26 caracteres (2026-09-04): "CRD_PAGO_PENSION_COMPLEMENTARIA" son 31 y
+	 * PGS.PGTR.PGTRORGN es VARCHAR2(30) -- ORA-12899 en todo INSERT. Ninguna fila pudo
+	 * grabarse jamas con el valor viejo, asi que no hace falta migrar datos.
 	 */
-	public static final String CRD_PAGO_PENSION_COMPLEMENTARIA = "CRD_PAGO_PENSION_COMPLEMENTARIA";
+	public static final String CRD_PAGO_PENSION_COMPLEMENTARIA = "CRD_PENSION_COMPLEMENTARIA";
 
 	/**
 	 * Pago consolidado de una orden de nomina, originado en RHH.RDPG.
