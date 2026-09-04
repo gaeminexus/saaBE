@@ -366,7 +366,7 @@ public class FacturaCompraServiceImpl implements FacturaCompraService {
 		boolean generaConta = verificarGeneraConta(solicitud.getIdEmpresa());
 		if (generaConta && !existeTipoAsientoFacturaCompra(solicitud.getIdEmpresa())) {
 			Map<String, Object> b = new HashMap<>();
-			b.put("tipo", "TIPO_ASIENTO_FALTANTE");
+			b.put("tipo", "TIPO_ASIENTO_NO_CONFIGURADO");
 			b.put("detalle", "No existe el Tipo de Asiento de Facturas de Compra para esta empresa. "
 					+ "Configúrelo en Contabilidad → Tipos de Asiento.");
 			bloqueantes.add(b);
@@ -380,12 +380,12 @@ public class FacturaCompraServiceImpl implements FacturaCompraService {
 			if (grupo == null || (grupo.getRubroTipoGrupoH() != null
 					&& grupo.getRubroTipoGrupoH() == TipoGrupoProductos.POR_CLASIFICAR)) {
 				Map<String, Object> b = new HashMap<>();
-				b.put("tipo", "PRODUCTO_SIN_CLASIFICAR");
+				b.put("tipo", "PRODUCTOS_SIN_CLASIFICAR");
 				b.put("detalle", "El producto '" + producto.getNombre() + "' está en el grupo POR_CLASIFICAR.");
 				bloqueantes.add(b);
 			} else if (grupo.getPlanCuenta() == null) {
 				Map<String, Object> b = new HashMap<>();
-				b.put("tipo", "GRUPO_SIN_CUENTA");
+				b.put("tipo", "GRUPOS_SIN_CUENTA_CONTABLE");
 				b.put("detalle", "El grupo '" + grupo.getNombre() + "' del producto '" + producto.getNombre()
 						+ "' no tiene cuenta contable asignada.");
 				bloqueantes.add(b);
