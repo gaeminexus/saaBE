@@ -20,7 +20,7 @@
 --   E2  La consulta devuelve 200 pero Angular no puede interpretar el cuerpo (truncado,
 --       enorme, no-JSON) -> HttpErrorResponse con status 200 -> el handleError compartido
 --       devuelve of(null) -> el consumidor lo lee como "sin datos".
---       Ver REGISTRO-RESERVAS-EQUIPOS.md §6.1.
+--       Ver REGISTRO-RESERVAS-EQUIPOS.md §8.1.
 --
 -- La hipotesis principal es E2 POR VOLUMEN: la pantalla pide TODOS los pagos del
 -- prestamo sin ningun tope. Este script mide exactamente eso.

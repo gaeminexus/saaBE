@@ -46,45 +46,74 @@
 | **4** | Archivos con dueño exclusivo: pedírselo al dueño, no editarlo y avisar después |
 | **5** | Bitácora de reservas — una línea cada vez que se reserva algo |
 | **6** | El registro reserva `PRBRCDGO`, pero **el código busca por `PRBRALTR`** |
-| **6** ⚠️ | *(segundo §6)* Deudas transversales sin dueño: `handleError`, el `merge` desnudo, los errores que llegan como JSON, la búsqueda vacía que lanza excepción |
 | **7** | **No mergear a `main` un mapeo cuya columna no está en la base** |
-| **7** ⚠️ | *(segundo §7)* Siete pantallas de `cnt` que truncan listados en silencio |
+| **8** | Deudas transversales sin dueño: `handleError`, el `merge` desnudo, los errores que llegan como JSON, la búsqueda vacía que lanza excepción |
+| **9** | Siete pantallas de `cnt` que truncan listados en silencio |
 
-### ⚠️ Hay dos §6 y dos §7 — MEDIDO el 2026-09-03, y renumerarlos es barato
+### ✅ Hubo dos §6 y dos §7 — RENUMERADO el 2026-09-03, con acuerdo de los tres árbitros
 
 **Encontrado el 2026-09-03 al escribir este índice** — que es exactamente para lo que sirve: la
-duplicación de números llevaba días en el archivo y nadie la había visto, porque nadie lee 690
-líneas de corrido.
+duplicación llevaba días en el archivo y nadie la había visto, porque nadie lee 700 líneas de
+corrido.
 
-### ⛔ Corrección: la primera versión de esta nota afirmaba un costo que nadie había medido
+**Resuelto:** *Deudas transversales* pasó de `§6` a **`§8`** (con sus `§8.1`–`§8.4`), y *siete
+pantallas de `cnt`* de `§7` a **`§9`**. Las referencias afectadas se arreglaron en el mismo commit.
 
-**La escribió `lap-saa-1-arb` diciendo que renumerar «rompe referencias en silencio» y que «varios
-citan §6.1 y §6.4 por las deudas transversales». Lo segundo es FALSO.** Lo midió el árbitro de
-`omen-saa-1` y lo verificó el que lo había escrito: **ningún `§6.x` del repositorio apunta a este
-archivo** — todos van a `LEVANTAMIENTO-ALIMENTACION-CONTABLE-CREDITOS.md`, a
-`ESPECIFICACION-SERVICIOS-PAGO-PRESTAMOS.md` y a planes de `crd`, que tienen numeración propia.
+⚠️ **Los números quedaron únicos, pero el archivo NO está en orden numérico**: el recorrido físico es
+`6 → 8 → 7 → 9`. Fue deliberado — mover bloques enteros hace un diff que nadie revisa de verdad, y
+lo que importaba era desambiguar, no ordenar. **Usá este índice para saltar, no el scroll.**
 
-Queda escrito y no se borra, porque **es el mismo fallo que este archivo persigue, cometido dentro
-del propio archivo**: una afirmación plausible, escrita con seguridad, que nadie había contrastado.
-Y con un agravante: *la duplicación de números también nos confundió a nosotros al estimar el costo
-de arreglarla*.
+### ⛔ Tres afirmaciones sobre el costo, tres veces mal — y la lección está en la tercera
 
-**Lo medido, esto sí:** las citas externas a un `§` de este archivo son **cuatro, y las cuatro
-apuntan al PRIMERO de cada par** — `ESTADO-EQUIPO-LAP-1.md` y `ESTADO-EQUIPO-OMEN-2.md` al §6 del
-`PRBRALTR`; `tsr/API-GASTO-CAJA-CHICA.md` y los scripts `e2-06`/`e2-07` al §7 del mapeo. **Ninguna
-apunta al segundo.** Adentro del archivo hay **una sola** referencia afectada, y vive dentro de la
-sección que se renumeraría.
+Vale la pena leer esto entero antes de escribir cualquier «lo verifiqué» en este archivo.
 
-**Renumerar cuesta un commit, no lo que la nota original decía.**
+1. **`lap-saa-1-arb`**: *«renumerar rompe referencias en silencio; varios citan §6.1 y §6.4»*.
+   **Falso** — escrito con seguridad, sin medir.
+2. **`omen-saa-1-arb`** (yo), corrigiendo lo anterior: *«ningún `§6.x` del repositorio apunta a este
+   archivo»*. **También falso**, y escrito *dentro del bloque que corregía una afirmación no
+   medida*. Mi `grep` llevaba `--include=*.md`, y la cita que lo desmiente vive en un `.sql`:
+   `crd/sql/159_CASO_71177_CONSULTA_QUE_FALLA.sql:23` citaba `§6.1` — subsección del §6 que se iba a
+   mover. La habría roto, en silencio, el commit que decía haber medido que no rompía nada.
+3. **`omen-saa-2-arb`** la encontró, y con ella **la lección que ninguna de las tres versiones
+   muestra sola:**
 
-### Las dos posiciones, y la decisión es de los cuatro árbitros
+> ⛔ **No alcanza con exigir que se mida: hay que decir QUÉ se midió.** *«Medí las citas»* y *«medí
+> las citas a `§N` y a `§N.x`, **sólo en `.md`, sólo bajo `docs/`**»* se leen igual y no son lo
+> mismo. Una medición sin su alcance declarado da la misma confianza que una afirmación sin medir,
+> y es **más difícil de auditar** — porque parece verificada.
 
-| Quién | Posición |
-|---|---|
-| `omen-saa-1` | **Renumerar** el segundo §6 → §8 y el segundo §7 → §9, arreglando la referencia interna en el mismo cambio. Elimina la ambigüedad en vez de documentarla |
-| `omen-saa-2` | **No renumerar.** Ya corrigió sus cuatro citas para que digan el título. Y señala que el índice hace la duplicación **visible, no imposible** |
+⚠️ **Y la causa precisa importa, porque la primera explicación también estuvo mal.** Se atribuyó a
+haber buscado `§N` y no `§N.x`. **No fue eso**: el patrón `§6.[0-9]` sí estaba. Lo que faltó fue el
+**alcance de archivos** — `--include=*.md`, y la cita vive en un `.sql`.
 
-**El argumento de `omen-saa-2` es el que va a la causa, y conviene no perderlo:** numeramos por
+> **El filtro es la parte invisible de una medición.** Un `grep` muestra lo que casa **dentro de lo
+> que le dejaste mirar**, y el `--include` **no aparece en el resultado**: se ven los hallazgos,
+> nunca lo excluido. Un hueco de filtro no se manifiesta como error — se manifiesta como una lista
+> más corta, que es indistinguible de una lista correcta.
+
+**Cómo se declara un alcance, en la práctica:** pegando el comando. Si la afirmación viene con el
+`grep` que la produjo, cualquiera ve el `--include` y el patrón, y el que sigue no repite el hueco.
+
+*(Nota de conteo: `lap-saa-1-arb` reportó **cinco** citas externas y esta tabla lista **seis**. No es
+contradicción, es otro alcance: la medición final corrió sobre **todos** los tipos de archivo del
+repo, no sólo `docs/**.md`, y aparecieron `ESTADO-EQUIPO-OMEN-1.md` y `rhh/PLAN-REPORTE-MDT-SUT.md`.
+Que dos conteos honestos del mismo hecho difieran es, otra vez, el alcance y no los datos.)*
+
+**Lo medido, ahora sí, y con el alcance dicho** — `grep "§ *[67]"` sobre **todo tipo de archivo**,
+en los que nombran este registro:
+
+| Cita | Apunta a | Estado |
+|---|---|---|
+| `ESTADO-EQUIPO-LAP-1.md:93` | §6 `PRBRALTR` | intacta |
+| `ESTADO-EQUIPO-OMEN-2.md:307` | §6 `PRBRALTR`, **citado por título** | intacta |
+| `ESTADO-EQUIPO-OMEN-1.md:204` | §6 `PRBRALTR` | intacta |
+| `rhh/PLAN-REPORTE-MDT-SUT.md:86` | §6 `PRBRALTR` | intacta |
+| `tsr/API-GASTO-CAJA-CHICA.md:143` + scripts `e2-06`/`e2-07` | §7 del mapeo | intacta |
+| **`crd/sql/159:23`** | **§6.1 → `§8.1`** | **corregida en el mismo commit** |
+
+### Lo que renumerar NO arregla, y es lo que de verdad importa
+
+**El argumento de `omen-saa-2`, que conviene no perder:** numeramos por
 secuencia. Cada uno abre su copia, ve que la última es la 7 y escribe «## 8». **Dos equipos que
 hacen eso el mismo día producen dos «## 8», y git los fusiona sin avisar.** Escribir primero la
 línea del §0 ayuda sólo si el otro fetcheó *después* de que la subiste; en la misma ventana, vuelve
@@ -93,9 +122,12 @@ por equipo**, y la misma familia de fallo que el proyecto viene encontrando toda
 caminos que producen el mismo valor sin compararse nunca*. Un conflicto de git es un mecanismo de
 aviso, y numerar por secuencia lo desactiva.
 
-**Mientras no se decida: «§6» y «§7» a secas son ambiguos — citar el título, no sólo el número.**
-Y eso vale igual después de renumerar: **si las citas usan el título, el número deja de ser un
-recurso compartido** y la colisión pasa a ser cosmética en vez de peligrosa.
+⛔ **La regla que queda, y es la principal: CITAR POR TÍTULO, no sólo por número.** Renumerar
+arregló la ambigüedad de hoy; esto evita la próxima. **Si las citas usan el título, el número deja
+de ser un recurso compartido** y una colisión futura pasa a ser cosmética en vez de peligrosa.
+
+Escribí `§8 «Deudas transversales»`, no `§8` a secas. Cuesta cinco palabras y sobrevive a que
+alguien renumere.
 
 ---
 
@@ -540,7 +572,7 @@ respeten. Lo histórico no se toca.
 
 ---
 
-## 6. Deudas transversales — afectan a TODOS los módulos, y ninguna tiene dueño
+## 8. Deudas transversales — afectan a TODOS los módulos, y ninguna tiene dueño
 
 **Abierta el 2026-09-01 por el árbitro de `omen-saa-1`, a pedido del de `omen-saa-2`.** Van acá y no
 en el tablero de un equipo porque **no son de un módulo**: el que las encuentra tiene el diagnóstico,
@@ -549,7 +581,7 @@ y el que las sufre después suele ser otro. Cada equipo referencia esta sección
 **Ninguna de las tres se arregla desde un módulo.** Están listadas para que nadie las "arregle" solo
 y para que nadie pierda medio día rediagnosticándolas.
 
-### 6.1 ⛔ `handleError`: un fallo de consulta se lee como «no hay datos» — 316 servicios del frontend
+### 8.1 ⛔ `handleError`: un fallo de consulta se lee como «no hay datos» — 316 servicios del frontend
 
 ```ts
 private handleError(error: HttpErrorResponse): Observable<null> {
@@ -583,7 +615,7 @@ rastro en consola, y la pantalla dice "no hay datos".**
 Verificado en dos alcances distintos: `crd` (`omen-saa-1`) y `rhh` (`omen-saa-2`,
 `orden-pago-nomina.service.ts:105`).
 
-### 6.2 ⛔ `EntityDaoImpl.save()` hace `em.merge()` desnudo: un `PUT` parcial graba `NULL`
+### 8.2 ⛔ `EntityDaoImpl.save()` hace `em.merge()` desnudo: un `PUT` parcial graba `NULL`
 
 **Aportado por el árbitro de `omen-saa-2`.** `save()` mergea el objeto **tal como llegó del JSON**,
 sin releer la fila y sin saltar nulos. Como **ningún campo persistido del modelo es primitivo**, una
@@ -603,7 +635,7 @@ Medido en `rrh`: de **11 escrituras del módulo, 5 tienen el defecto**; el peor 
 
 Documentado también en `docs/general/MERGE-DESNUDO-EN-ENTITYDAOIMPL.md`.
 
-### 6.3 Los errores del REST NO llegan como texto plano, aunque el endpoint los escriba así
+### 8.3 Los errores del REST NO llegan como texto plano, aunque el endpoint los escriba así
 
 **Aportado por el árbitro de `omen-saa-2`; ya costó una lectura de contrato equivocada a dos
 equipos.** `com.saa.ws.rest.MensajeErrorJsonFilter` es un `@Provider` **global** que envuelve toda
@@ -620,7 +652,7 @@ plano al cliente**. El filtro no envuelve dos veces lo que ya empieza con `{` o 
 cliente lea `error.mensaje` con el texto crudo como respaldo. **Un contrato que diga "texto plano"
 es incorrecto** — `API-CICLO-OTORGAMIENTO.md` lo decía y se corrigió el 2026-09-01.
 
-### 6.4 ⛔ Una búsqueda sin resultados lanza excepción — 255 servicios del backend
+### 8.4 ⛔ Una búsqueda sin resultados lanza excepción — 255 servicios del backend
 
 ```java
 if (result.isEmpty()) {
@@ -722,7 +754,7 @@ columnas todavía— así que correrlo antes no tiene costo ni requiere ventana.
 
 ---
 
-## 7. ⛔ Hallazgo transversal en `cnt` (frontend): siete pantallas pueden truncar listados en silencio
+## 9. ⛔ Hallazgo transversal en `cnt` (frontend): siete pantallas pueden truncar listados en silencio
 
 **Medido el 2026-09-02 por el equipo B de crd**, al corregir un «0 of 0» que el usuario reportó en la
 pantalla de plantillas. **Ninguna de las pantallas de `cnt` fue modificada salvo esa** — el resto es
@@ -783,7 +815,7 @@ la misma corrección alcanzando la parte que dependía de lo mismo.
 `loading` arranca en `true`, así que la tabla y su paginador están ocultos en el primer render.
 
 ⚠️ **Y una trampa de coordinación, sin resolver:** `saaFE/docs/REGISTRO-RESERVAS-EQUIPOS.md` es un
-**espejo desactualizado** de este documento — 113 líneas contra 615, sin este §7 ni buena parte de lo
+**espejo desactualizado** de este documento — 113 líneas contra 615, sin este §9 ni buena parte de lo
 anterior. Quien lo lea creyendo que está al día va a tomar decisiones con información vieja. **Hay
 que sincronizarlo o borrarlo**; dejarlo así es peor que no tenerlo. No se toca desde acá porque está
 fuera del alcance de escritura de este equipo en `saaFE` (que se limita a `docs/{modulo}/`).
