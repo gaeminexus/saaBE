@@ -304,9 +304,14 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
      * para no duplicarlo en una regeneracion de la orden. Desde el 2026-09-04
      * (docs/logica-negocio/ESTADO-EQUIPO-OMEN-2.md §22) esa exclusion se corrigio: hoy
      * <code>selectVigentesByOrigen</code> devuelve exactamente el mismo conjunto que esta
-     * consulta -cualquier estado salvo <code>RECHAZADO</code> y <code>ANULADO</code>-, asi
-     * que la reimplementacion ya no evita nada distinto. Se deja igual porque unificarla es
-     * un cambio de codigo, no de este comentario; la razon original ya no aplica.</p>
+     * consulta -cualquier estado salvo <code>RECHAZADO</code> y <code>ANULADO</code>-.</p>
+     * <p>Que coincidan HOY no las hace la misma consulta, y la reimplementacion sigue siendo
+     * DELIBERADA, no un descuido pendiente de "limpiar": <code>selectVigentesByOrigen</code>
+     * es la nocion de CXP de "pago vigente", que CXP puede cambiar cuando le convenga a su
+     * propio criterio (como paso hoy mismo); <code>tienePagoVivoEnBandeja</code> es la nocion
+     * de RHH de "esta orden ya tiene un pago vivo", una decision de negocio de este modulo.
+     * Si rhh llamara al DAO de cxp, el proximo ajuste de esa consulta cambiaria el
+     * comportamiento de la nomina EN SILENCIO. NO unificar aunque los conjuntos coincidan.</p>
      *
      * @param idOrdenPago	: Codigo de la orden de pago (RHH.RDPG.RDPGCDGO)
      * @return				: true si ya existe un pago que no esta RECHAZADO ni ANULADO
