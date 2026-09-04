@@ -265,6 +265,27 @@ ya hay commits con prefijo `crd:` que no son suyos. La ambigüedad no era hipot�
 
 ## 3. Nombres de tabla de 4 letras
 
+> ### ⛔ Reservar un nombre y autorizar un cambio de modelo son dos actos distintos
+>
+> **Anotado el 2026-09-03, a partir de una corrección del árbitro de `omen-saa-1` al de `lap-saa-1`.**
+> Este registro los venía confundiendo en una sola fila, y la confusión es fácil de cometer porque el
+> formulario es el mismo: se escribe una línea en §5 y parece que con eso queda todo resuelto.
+>
+> | Acto | Qué significa | Quién lo decide |
+> |---|---|---|
+> | **Reservar el nombre** | Nadie más toma esas 4 letras. Evita la colisión | **El equipo que lo propone.** Es un recurso global y se aparta primero |
+> | **Crear la tabla** | Cambia el modelo de datos de un esquema, y el DDL corre en bases que comparten `main` | **El equipo dueño de ese esquema**, con su usuario |
+>
+> **El caso que lo originó:** `lap-saa-1` reservó `CRD.PGCE` para la anulación de pagos de pensión.
+> La reserva estaba bien hecha —nombre verificado libre, anotado antes de usarlo—, pero `CRD` es el
+> esquema de otro equipo, y **crear una tabla ahí no lo decide quien la propone**. El diseño puede
+> ser correcto y aun así la decisión no ser suya.
+>
+> **En la práctica:** reservá el nombre apenas lo elegís, y **no escribas ni corras el DDL hasta que
+> el dueño del esquema lo apruebe.** Si el frente termina no haciéndose, la reserva se libera con una
+> línea en §5; una tabla creada en el esquema ajeno no se deshace tan barato.
+
+
 **El código de 4 letras es único en TODO el proyecto, no por esquema.** Verificar antes de
 proponerlo, contra Java y contra la base:
 
@@ -357,7 +378,7 @@ Agregá una línea cada vez que reserves algo. Fecha, equipo, qué, para qué.
 | 2026-09-01 | rhh/cxp/pagos/cnt/tsr (árbitro `omen-saa-2`) | **`PRBR` 310** + **`PDTR` 1500–1503** | Rubro nuevo `RHH_ESTADO_ORDEN_BENEFICIO` — `GENERADA(1)`, `ENVIADA_A_TESORERIA(2)`, `PAGADA(3)`, `ANULADA(4)` — para la orden de pago de beneficios sociales (`RHH.ODBS`). **Primeros códigos del bloque 310-329 / 1500-1599**, que este equipo venía proponiendo desde el 2026-08-31 **sin escribirlo**, o sea que hasta hoy no estaba reservado. Control corrido por el usuario justo antes de reservar (regla 2): `MAX(PRBRCDGO)`=**248** y `MAX(PDTRCDGO)`=**1200**, los dos por debajo del bloque, sin colisión. Script `rhh/sql/e2-03`. Se reserva también la tabla **`ODBS`**: verificada libre en `src/main/java/com/saa/model/`, en `docs/`, y **contra `ALL_TABLES` por el usuario el 2026-09-01** — cero filas |
 | 2026-09-01 | cxp/cxc/pagos/tsr/rhh/sri (árbitro `lap-saa-1-arb`, **laptop**) | **Bloque `PRBR` 330-349 / `PDTR` 1600-1699** — ningún código concreto todavía. Marcador de commit **`lap1`**, prefijo de scripts **`lap1-`** | Alta del equipo. Se anota **antes** de usar ningún número, según la regla 1. **Se aplica desde ya la §6:** cuando este equipo tome un `PRBRCDGO` va a anotar **también el `PRBRALTR`**, con la convención `PRBRALTR = PRBRCDGO`, y a correr los dos controles. El `MAX` se revalida con el usuario justo antes de ejecutar (regla 2) — el último control conocido, del mismo día, dio `MAX(PRBRCDGO)`=**248** y `MAX(PDTRCDGO)`=**1200**, los dos muy por debajo de este bloque |
 | 2026-09-03 | `lap-saa-1` (**laptop**) | **Números de script `crd/sql/` 200-249** | El §2b reparte 96-149 (equipo A) y 150-199 (equipo B) y deja **≥200 sin asignar**; este equipo entró a `crd` el 2026-09-03 por el frente de pago a jubilados y necesita rango propio. Verificado el mismo día: el `MAX` real en la carpeta es **188**, así que el bloque está libre con margen. **Los equipos A y B no pierden nada**: su rango no se toca |
-| 2026-09-03 | `lap-saa-1` (**laptop**) | **Tabla `CRD.PGCE`** — cruce de un pago de pensión contra los eventos de préstamo que generó | Anulación de un pago de pensión **con** cruce (decisión del usuario, 2026-09-03). Hace falta tabla y no columna porque `cruzarContraPrestamos` llama a `pagarConAportes` **una vez por préstamo vigente**: son N eventos por pago, no uno. Verificada libre contra `src/main/java/com/saa/model/` y contra las 100 tablas `CRD` ya mapeadas — **falta confirmarla contra `ALL_TABLES`** antes de crearla. ⚠️ **La implementa `eqB`, no este equipo**: por el acuerdo del 2026-09-03 el `saaBE` del frente de jubilados es de ellos y el `saaFE` de `lap-saa-1`. Se reserva acá porque el nombre es un recurso global y lo reserva quien lo propone. Diseño en `crd/DISENO-PANTALLA-PAGO-JUBILADOS.md` §6bis |
+| 2026-09-03 | `lap-saa-1` (**laptop**) | **Tabla `CRD.PGCE`** — cruce de un pago de pensión contra los eventos de préstamo que generó | Anulación de un pago de pensión **con** cruce (decisión del usuario, 2026-09-03). Hace falta tabla y no columna porque `cruzarContraPrestamos` llama a `pagarConAportes` **una vez por préstamo vigente**: son N eventos por pago, no uno. Verificada libre contra `src/main/java/com/saa/model/` y contra las 100 tablas `CRD` ya mapeadas — **falta confirmarla contra `ALL_TABLES`** antes de crearla. ⚠️ **La implementa `eqB`, no este equipo**: por el acuerdo del 2026-09-03 el `saaBE` del frente de jubilados es de ellos y el `saaFE` de `lap-saa-1`. Se reserva acá porque el nombre es un recurso global y lo reserva quien lo propone. Diseño en `crd/DISENO-PANTALLA-PAGO-JUBILADOS.md` §6bis. ⛔ **NOMBRE APARTADO, DDL NO AUTORIZADO** (ver el recuadro del §3): `CRD` es el esquema de `omen-saa-1` y **crear la tabla lo decide su usuario, no este equipo** — aunque el frente termine no haciéndose. El DDL no se escribe ni se corre hasta ese visto bueno |
 
 ---
 
