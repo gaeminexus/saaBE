@@ -891,12 +891,16 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         cobro.setUsuarioProceso(usuario);
         cobro.setFechaProceso(LocalDateTime.now());
 
-        // Tres asientos por cobro (2026-08-31, decisión del usuario): 1=transitorio (ya
-        // generado al registrar), 2=REPARTO (CBCRASRP, nuevo), 3=definitivo (CBCRASN2, sin
-        // cambios). Los dos de acá abajo, detrás del mismo gate y con el mismo criterio que
-        // registrarCobro con el transitorio: apagado, se procesa igual y se informa, no es un
-        // error. Se generan DESPUÉS de todo lo de arriba porque necesitan los EventoPrestamo/
-        // PagoAporte que ese bloque acaba de crear.
+        // Tres asientos fijos por cobro (2026-08-31, decisión del usuario) MÁS uno condicional
+        // (2026-09-04): 1=transitorio (ya generado al registrar), 2=REPARTO (CBCRASRP),
+        // 3=APERTURA EXTRAORDINARIA (nuevo, condicional: solo si hay corrida de cierre de
+        // cartera viva para el período del cobro Y el pago tocó capital posterior a su corte;
+        // si no se cumple alguna de las dos, no se genera — ver
+        // generarAsientoAperturaExtraordinaria), 4=definitivo (CBCRASN2). Los de acá abajo,
+        // detrás del mismo gate y con el mismo criterio que registrarCobro con el transitorio:
+        // apagado, se procesa igual y se informa, no es un error. Se generan DESPUÉS de todo lo
+        // de arriba porque necesitan los EventoPrestamo/PagoAporte que ese bloque acaba de
+        // crear.
         if (configuracionContabilidadService.contabilidadActiva()) {
             List<DetalleCobroCredito> detallesActualizados = detalleCobroCreditoDaoService.selectByCobro(idCobro);
             Asiento asientoReparto = generarAsientoReparto(cobro, detallesActualizados);
