@@ -145,6 +145,34 @@ como catálogo compartido, y lo son.
 **Criterio de desempate, si aun así pasa:** el que ya está en `origin` se queda; renumera el otro.
 `origin` es el único árbitro no ambiguo.
 
+### ⛔ El mismo mecanismo al revés: dos equipos escribiendo la misma idea **no colisionan, se duplican** — 2026-09-03
+
+Arriba el problema es que **lo no pusheado es invisible**. Acá es el inverso, y es más difícil de
+ver: **lo pusheado por dos se suma en silencio.**
+
+Hallazgo de `lap-saa-1-arb`, sobre este mismo archivo. Los dos árbitros escribimos la distinción
+entre *reservar un nombre* y *autorizar una tabla* (§3) al mismo tiempo, cada uno en su copia.
+**El rebase no dio conflicto**: los bloques cayeron en líneas distintas del mismo archivo y git los
+fusionó sin decir nada. Quedaron las dos versiones conviviendo, redactadas distinto.
+
+**Por qué importa más que un conflicto:** un conflicto **avisa** y no se puede ignorar. Una
+duplicación no avisa a nadie. Y un registro con la misma regla dos veces, en dos redacciones,
+**envejece hacia la contradicción** — una se corrige, la otra no, y el día que alguien las lea
+juntas no va a saber cuál manda. Que es exactamente el fallo que este archivo existe para prevenir.
+
+**Qué hacer:**
+
+- **Al escribir una regla nueva acá, avisá al otro árbitro *antes* o *al mismo tiempo* que la subís.**
+  No para pedir permiso: para que el otro pueda buscar la suya. Este caso se detectó **solo** porque
+  se avisó — sin el aviso quedaban las dos y nadie lo notaba.
+- **Al recibir ese aviso, buscá si vos también la escribiste** antes de seguir.
+- **Desempate:** igual que con los números de script, la que está en `origin` se queda. La otra se
+  borra, no se fusiona — dos redacciones de la misma regla no se mejoran mezclándose.
+
+> Y una nota sobre el desempate real de este caso: la que sobrevivió no fue la primera en llegar
+> sino la mejor ubicada (arriba de la tabla de Reservados, apoyada en su columna **Estado**). El
+> criterio de `origin` es para cuando no hay una razón mejor — cuando la hay, se usa la razón.
+
 ### Fuera de `crd/sql/`: prefijo por equipo, y el orden en un README
 
 **Acordado entre los árbitros de `omen-saa-2` y `omen-saa-3` el 2026-08-31.** El §2b de arriba
