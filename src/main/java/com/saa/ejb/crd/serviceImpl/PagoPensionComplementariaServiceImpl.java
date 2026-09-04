@@ -942,10 +942,11 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         resumen.setIdPago(ultimoIdPago);
         resumen.setValorPension(totalPension);
         resumen.setValorSeguroSalud(totalSeguro);
-        // §4bis: NOMINAL (mesesAplicados × valorSeguroMensual), mismo criterio que ya usa
-        // PGPC.valorSeguro en cada fila — no prorratea el último mes si quedó topado por saldo
-        // o deuda exigible (ítem 3 del encargo: ese prorrateo es una decisión del usuario, no
-        // se inventó acá).
+        // §4bis "Mes parcial": totalPension/totalSeguro acumulan, mes a mes, el reparto
+        // PROPORCIONAL a la mensualidad de lo que ese mes procesó (nominal si el mes fue
+        // completo; proporcional si quedó topado por saldo) — el seguro sale por resta dentro
+        // del bucle, nunca con su propia multiplicación, para que sumen exacto. Ver el cálculo
+        // de pensionEsteMes/seguroEsteMes más arriba.
         resumen.setTotalPension(totalPension);
         resumen.setTotalSeguro(totalSeguro);
         resumen.setValorCruzadoAPrestamo(totalCruzado);
