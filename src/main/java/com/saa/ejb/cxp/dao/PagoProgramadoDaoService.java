@@ -89,12 +89,20 @@ public interface PagoProgramadoDaoService extends EntityDao<PagoProgramado> {
 	List<PagoProgramado> selectVigentesByAnticipo(Long idAnticipo) throws Throwable;
 
 	/**
-	 * Recupera los pagos de un documento de ORIGEN EXTERNO que siguen vigentes
-	 * (registrados, en archivo o confirmados). Un documento origen solo admite un
-	 * pago vigente a la vez.
+	 * Recupera los pagos de un documento de ORIGEN EXTERNO que siguen vigentes:
+	 * {@code POR_APROBAR(0)}, {@code REGISTRADO(1)}, {@code EN_ARCHIVO(2)} o
+	 * {@code CONFIRMADO(3)}. Un documento origen solo admite un pago vigente a la vez.
 	 * <p>
 	 * El par (origen, idOrigen) es un dato OPACO para CXP: aqui solo se compara, nunca
 	 * se resuelve contra el modulo que lo produjo.
+	 * <p>
+	 * Incluye {@code POR_APROBAR} desde el 2026-09-04, mismo criterio que
+	 * {@link #selectVigentesByFactura(Long)}: es el estado en el que nace un pago
+	 * de origen externo cuando no viene cuenta bancaria de origen
+	 * ({@code PagoProgramadoServiceImpl.registrarPagoDeOrigenExterno}). Sin este
+	 * estado, la guarda anti-duplicados de ese mismo método (que usa este DAO)
+	 * quedaba ciega a los pagos que ella misma acababa de crear, y dejaba
+	 * registrar dos veces la salida de dinero del mismo documento origen.
 	 * @param origen     : Etiqueta del proceso origen (ver com.saa.rubros.OrigenPagoExterno)
 	 * @param idOrigen   : Id del documento en el modulo origen
 	 * @return           : Listado de pagos vigentes de ese documento

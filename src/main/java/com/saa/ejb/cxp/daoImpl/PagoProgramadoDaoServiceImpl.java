@@ -173,14 +173,22 @@ public class PagoProgramadoDaoServiceImpl extends EntityDaoImpl<PagoProgramado>
         if (origen == null || idOrigen == null) {
             return new ArrayList<>();
         }
+        // Incluye POR_APROBAR(0) desde el 2026-09-04 (mismo criterio que
+        // selectVigentesByFactura desde el 2026-09-02): es el estado en el que
+        // nace un pago de origen externo cuando no viene cuenta bancaria de
+        // origen (PagoProgramadoServiceImpl.registrarPagoDeOrigenExterno). Sin
+        // este estado, la guarda anti-duplicados de ese mismo método quedaba
+        // ciega a los pagos que ella misma acababa de crear, y dejaba
+        // registrar dos veces la salida de dinero del mismo documento origen.
         Query query = em.createQuery(
                 " select p from PagoProgramado p " +
                 " where  p.origenExterno = :origen " +
                 " and    p.idOrigen = :idOrigen " +
-                " and    p.estado in (:registrado, :enArchivo, :confirmado) " +
+                " and    p.estado in (:porAprobar, :registrado, :enArchivo, :confirmado) " +
                 " order by p.id");
         query.setParameter("origen", origen);
         query.setParameter("idOrigen", idOrigen);
+        query.setParameter("porAprobar", Long.valueOf(EstadoPagoProgramado.POR_APROBAR));
         query.setParameter("registrado", Long.valueOf(EstadoPagoProgramado.REGISTRADO));
         query.setParameter("enArchivo",  Long.valueOf(EstadoPagoProgramado.EN_ARCHIVO));
         query.setParameter("confirmado", Long.valueOf(EstadoPagoProgramado.CONFIRMADO));
