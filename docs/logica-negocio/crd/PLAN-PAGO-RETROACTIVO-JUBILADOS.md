@@ -62,11 +62,20 @@ para cada mes M desde ancla+1 hasta el mes en curso:
     si el prestamo no tiene cuotas pendientes -> CORTAR: "prestamo cancelado"
 
     valorMes = min(VPPC.valorPagar, saldo restante del aporte 23)
-    fechaM   = min(ultimo dia de M, hoy)          <- regla del §6bis del contrato
 
-    pagarConAportes(prestamo, valorMes, fechaM)   <- el motor reparte en cascada
-    crear PGPC(entidad, anio(M), mes(M), fechaM)
+    pagarConAportes(prestamo, valorMes, fechaCorrida)  <- el motor reparte en cascada
+    crear PGPC(entidad, anio(M), mes(M), fechaCorrida)
 ```
+
+⛔ **`fechaCorrida` es UNA sola para todo el bucle: la del mes de la corrida** (D1), no la del mes
+`M`. Se calcula una vez, fuera del bucle, con la regla del §6bis del contrato —
+`min(último día del mes de la corrida, hoy)` — y **no cambia entre iteraciones**.
+
+**Lo que sí cambia por iteración es el período del `PGPC`** (`anio(M)`, `mes(M)`): eso es lo que
+dice a qué mes corresponde cada pago, y es lo que hace que la `UNIQUE` funcione como idempotencia.
+
+> Una versión anterior de este algoritmo decía `fechaM = min(último día de M, hoy)`. **Quedó
+> obsoleta con D1** y se corrige acá para que nadie la implemente por leer solo el §3.
 
 ### Las tres condiciones de corte, que son del usuario
 
