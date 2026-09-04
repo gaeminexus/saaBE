@@ -312,6 +312,12 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
      * y {@link #calcularDeudaExigiblePrestamo}, los mismos helpers que la corrida real, para que
      * "meses adeudados" y "deuda exigible" nunca puedan desincronizarse entre las dos.
      *
+     * D4 (PLAN-PAGO-RETROACTIVO-JUBILADOS.md, ampliación 2026-09-04): aplica a TODO jubilado
+     * con meses adeudados, tenga o no préstamo vigente. Sin préstamo vigente,
+     * {@code deudaExigibleTotal} da 0 y la MISMA fórmula {@code min(pensiones acumuladas,
+     * deudaExigibleTotal, saldo)} fuerza {@code montoACruzar = 0} sola — no hace falta una
+     * rama aparte para ese caso.
+     *
      * ⚠️ La fórmula final (el {@code min(...)}) SÍ está escrita dos veces: acá se aplica UNA vez
      * en agregado (estimación simple, {@code API-PAGO-PENSION-COMPLEMENTARIA.md §4bis}), mientras
      * que {@link #generarMesesRetroactivos} la aplica mes a mes con tope por préstamo individual
@@ -342,9 +348,6 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             return fila;
         }
 
-        boolean tienePrestamo = vppc.getTienePrestamo() != null && vppc.getTienePrestamo() == 1L;
-        fila.setTienePrestamo(tienePrestamo);
-
         // Mismo helper que generarPagoIndividual: puede propagar ERR_CERTIFICADO_NO_VERIFICABLE
         // (catálogo TPDJ roto) — a diferencia de la corrida real, acá NO aborta toda la
         // previsualización, solo bloquea esta fila; el resto de jubilados sigue evaluándose
@@ -353,30 +356,6 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         fila.setTieneCertificado(tieneCertificado);
 
         double saldo = Math.max(0.0, saldoAporteService.saldoPorEntidadYTipo(idEntidad, TIPO_APORTE_PENSION_COMPLEMENTARIA));
-
-        if (!tienePrestamo) {
-            // Sin préstamo: un solo mes (el período pedido), no hay "meses adeudados" — mismo
-            // criterio que generarUnMesSinPrestamo.
-            fila.setMesesAdeudados(1);
-            boolean apto = saldo >= valorTotal - TOLERANCIA;
-            fila.setApto(apto);
-            if (!apto) {
-                fila.setMotivoBloqueo(ERR_SALDO_INSUFICIENTE + ": saldo $" + redondear(saldo)
-                    + " insuficiente para $" + valorTotal + ".");
-                return fila;
-            }
-            double montoADinero = tieneCertificado ? valorTotal : 0.0;
-            fila.setMontoACruzar(0.0);
-            fila.setMontoADinero(redondear(montoADinero));
-            fila.setTotal(redondear(montoADinero));
-            fila.setParticipacion(tieneCertificado ? "COMPLETA" : "BLOQUEADO");
-            if (!tieneCertificado) {
-                fila.setMotivoBloqueo("Sin préstamo y sin cuenta con certificado bancario válido:"
-                    + " no hay cruce posible y no se puede entregar la pensión.");
-                fila.setApto(false);
-            }
-            return fila;
-        }
 
         LocalDate ancla = resolverAnclaRetroactivo(idEntidad);
         if (ancla == null) {
@@ -398,32 +377,59 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         fila.setMesesAdeudados(mesesAdeudados);
 
         // Deuda EXIGIBLE (ítem 3/§3bis): mismo helper por préstamo vigente que usa la corrida
-        // real — nunca el pendiente total, que pre-pagaría cuotas futuras.
+        // real — nunca el pendiente total, que pre-pagaría cuotas futuras. 0 si no hay ningún
+        // préstamo vigente (D4: eso ya no es un caso aparte, es simplemente deudaExigible=0).
         List<Prestamo> todos = prestamoDaoService.selectByEntidad(idEntidad);
         double deudaExigibleTotal = 0.0;
+        boolean hayPrestamoVigente = false;
         if (todos != null) {
             for (Prestamo prestamo : todos) {
                 if (!esPrestamoVigente(prestamo)) {
                     continue;
                 }
+                hayPrestamoVigente = true;
                 deudaExigibleTotal += calcularDeudaExigiblePrestamo(prestamo.getCodigo(), finDeMes);
             }
         }
         deudaExigibleTotal = redondear(deudaExigibleTotal);
+        fila.setTienePrestamo(hayPrestamoVigente);
+
+        // D4: sin préstamo vigente y sin certificado, no hay cruce posible y no puede salir
+        // dinero — no hay nada que hacer con esa pensión, y no sería apta para la corrida real
+        // (que tampoco le generaría ningún PGPC).
+        if (!hayPrestamoVigente && !tieneCertificado) {
+            fila.setApto(false);
+            fila.setParticipacion("BLOQUEADO");
+            fila.setMotivoBloqueo("Sin préstamo vigente y sin cuenta con certificado bancario"
+                + " válido: no hay cruce posible y no se puede entregar la pensión.");
+            return fila;
+        }
 
         // §4bis: estimación en AGREGADO — min(pensiones acumuladas, deuda exigible, saldo). La
         // corrida real la aplica mes a mes con tope por préstamo (mora/interés incluidos al
         // aplicar); acá es a propósito más simple, es una estimación y el contrato lo dice.
         double pensionesAcumuladas = redondear(mesesAdeudados * valorTotal);
         double montoACruzar = redondear(Math.min(pensionesAcumuladas, Math.min(deudaExigibleTotal, saldo)));
-        double remanenteNominal = redondear(pensionesAcumuladas - montoACruzar);
-        double montoADinero = tieneCertificado ? remanenteNominal : 0.0;
+
+        // Bug propio encontrado al revisar (no estaba en el encargo): el remanente NOMINAL
+        // (pensionesAcumuladas - montoACruzar) puede exceder lo que de verdad queda LIBRE del
+        // saldo después del cruce, si el saldo fue el factor que topó montoACruzar. Mismo
+        // patrón que el sobregiro que ya se corrigió en generarMesesRetroactivos — acá también
+        // hacía falta, sino el prevuelo mostraría más "a dinero" del que el saldo permite.
+        double montoADineroNominal = redondear(pensionesAcumuladas - montoACruzar);
+        double saldoLibreParaDinero = redondear(Math.max(0.0, saldo - montoACruzar));
+        double montoADinero = tieneCertificado
+            ? redondear(Math.min(montoADineroNominal, saldoLibreParaDinero))
+            : 0.0;
 
         fila.setMontoACruzar(montoACruzar);
-        fila.setMontoADinero(redondear(montoADinero));
+        fila.setMontoADinero(montoADinero);
         fila.setTotal(redondear(montoACruzar + montoADinero));
         fila.setApto(true);
-        fila.setParticipacion(remanenteNominal > TOLERANCIA && !tieneCertificado ? "SOLO_CRUCE" : "COMPLETA");
+        // SOLO_CRUCE no puede darse sin préstamo: si !hayPrestamoVigente llegamos hasta acá
+        // sólo cuando tieneCertificado=true (el bloqueo de arriba ya atrapó el caso contrario),
+        // así que montoADineroNominal siempre se paga entero y esta rama nunca da SOLO_CRUCE.
+        fila.setParticipacion(montoADineroNominal > TOLERANCIA && !tieneCertificado ? "SOLO_CRUCE" : "COMPLETA");
         return fila;
     }
 
@@ -586,25 +592,22 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         // cruce contra el préstamo. Se resuelve UNA vez (dato de la entidad, no del mes).
         CuentaBancariaParticipe cuentaSalida = resolverCuentaSalida(idEntidad);
 
-        // §4bis D2: el algoritmo de meses adeudados es SÓLO para quien tiene préstamo — sin
-        // préstamo no hay contra qué cruzar, y sigue siendo un pago mensual normal del período
-        // pedido. Interpretación propia a partir de "Alcance: todos los que tengan préstamo";
-        // reportado al árbitro para confirmar.
-        boolean tienePrestamo = vppc.getTienePrestamo() != null && vppc.getTienePrestamo() == 1L;
-        if (!tienePrestamo) {
-            return generarUnMesSinPrestamo(entidad, idEntidad, valorPension, valorSeguro, valorTotal,
-                idEmpresa, anio, mes, usuario, idUsuario, fecha, fechaHecho, fechaRegistro, cuentaSalida);
-        }
-
+        // D4 (PLAN-PAGO-RETROACTIVO-JUBILADOS.md, ampliación 2026-09-04): el retroactivo mes a
+        // mes aplica a TODO jubilado con meses adeudados, tenga o no préstamo — "a todos los
+        // que tengan préstamo" contestaba sobre el CRUCE, no sobre la acumulación. Ya no hay
+        // rama separada: generarMesesRetroactivos decide internamente, por mes, si hay algo
+        // contra qué cruzar (según los préstamos vigentes que encuentre) y topa el disponible
+        // por saldo cuando no los hay.
         return generarMesesRetroactivos(entidad, idEntidad, valorPension, valorSeguro, valorTotal,
             idEmpresa, anio, mes, usuario, idUsuario, fecha, fechaHecho, fechaRegistro, finDeMes,
             cuentaSalida);
     }
 
     /**
-     * Circuito SIN préstamo — sin cambios de fondo respecto del original: un único pago del
-     * período pedido, con idempotencia propia. Todo el valor es remanente (no hay contra qué
-     * cruzar), sujeto a que haya cuenta con certificado (§6/D2).
+     * Circuito SIN préstamo — DESUSO desde D4 (2026-09-04): el retroactivo ahora cubre este
+     * caso dentro de {@link #generarMesesRetroactivos} (préstamos vigentes vacío → tope solo
+     * por saldo). No se borra por si hace falta reactivarlo — mismo criterio que
+     * {@link #cruzarContraPrestamos}, también sin llamadores.
      */
     private DetallePagoPension generarUnMesSinPrestamo(Entidad entidad, Long idEntidad, double valorPension,
             double valorSeguro, double valorTotal, Long idEmpresa, Integer anio, Integer mes, String usuario,
@@ -723,6 +726,26 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             }
         }
         double deudaExigibleTotal = redondear(sumaValores(exigibleRestantePorPrestamo));
+        // D4: "tiene préstamo" para estas reglas es "tiene un préstamo VIGENTE que cruzar" —
+        // si VPPC.tienePrestamo dice sí pero ya no queda ninguno vigente, se trata igual que
+        // sin préstamo (no hay contra qué cruzar; el saldo es el único techo). No hace falta
+        // leer vppc.getTienePrestamo() para nada de esto.
+        boolean hayPrestamoVigente = !prestamosVigentes.isEmpty();
+
+        // D4: sin préstamo Y sin certificado, no hay cruce posible y no puede salir dinero —
+        // no hay NADA que hacer con esa pensión. No genera ningún PGPC, a diferencia del caso
+        // con préstamo (ahí el cruce es un hecho económico real aunque no haya certificado).
+        if (!hayPrestamoVigente && cuentaSalida == null) {
+            int mesesAdeudadosSinGenerar = (int) (ChronoUnit.MONTHS.between(desde, corrida) + 1);
+            resumen.setEstado("GENERADO");
+            resumen.setMesesAplicados(0);
+            resumen.setParticipacion("BLOQUEADO");
+            resumen.setMotivoCorte("SIN_PRESTAMO_SIN_CERTIFICADO");
+            resumen.setMensaje("Sin préstamo vigente y sin cuenta con certificado bancario válido:"
+                + " no hay cruce posible y no se puede entregar la pensión. " + mesesAdeudadosSinGenerar
+                + " mes(es) adeudado(s) sin generar.");
+            return resumen;
+        }
 
         double saldoRestante = saldoAporteService.saldoPorEntidadYTipo(idEntidad, TIPO_APORTE_PENSION_COMPLEMENTARIA);
 
@@ -749,17 +772,23 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                 continue;
             }
 
-            // Ítem 4: las tres condiciones de corte, ANTES de procesar el mes.
+            // Ítem 4: las condiciones de corte, ANTES de procesar el mes. D4: sin préstamo
+            // vigente son DOS, no tres — "PRESTAMO_AL_DIA" no puede aplicar si nunca hubo
+            // deuda contra la cual cruzar (deudaExigibleTotal sería 0 desde el principio).
             if (saldoRestante <= TOLERANCIA) {
                 motivoCorte = "SALDO_AGOTADO";
                 break;
             }
-            if (deudaExigibleTotal <= TOLERANCIA) {
+            if (hayPrestamoVigente && deudaExigibleTotal <= TOLERANCIA) {
                 motivoCorte = "PRESTAMO_AL_DIA";
                 break;
             }
 
-            double disponibleMes = redondear(Math.min(valorTotal, Math.min(deudaExigibleTotal, saldoRestante)));
+            // D4: sin préstamo vigente, el tope es min(pensión del mes, saldo) — SIN
+            // deudaExigibleTotal, que sin préstamo vale 0 y forzaría el disponible a 0.
+            double disponibleMes = hayPrestamoVigente
+                ? redondear(Math.min(valorTotal, Math.min(deudaExigibleTotal, saldoRestante)))
+                : redondear(Math.min(valorTotal, saldoRestante));
 
             // Cruce del mes: en orden, respetando el tope EXIGIBLE de CADA préstamo (no el
             // pendiente total) — así el motor jamás llega a una cuota futura, sin tocarlo.
