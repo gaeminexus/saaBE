@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -349,8 +350,16 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                 + " requiere $" + valorTotal + ".");
         }
 
-        LocalDate fecha = LocalDate.of(anio, mes, 1);
-        LocalDateTime fechaHora = LocalDateTime.now();
+        // 2026-09-04, decisión del usuario (API-PAGO-PENSION-COMPLEMENTARIA.md §6bis): la fecha
+        // del hecho económico es el ÚLTIMO día del mes del período, no el día 1 ni el día en
+        // que se corre el proceso.
+        LocalDate fecha = YearMonth.of(anio, mes).atEndOfMonth();
+        // Auditoría — cuándo se registró de verdad, nunca fin de mes. Separada a propósito de
+        // fechaHecho: reusar una sola fecha para las dos cosas fue el defecto original.
+        LocalDateTime fechaRegistro = LocalDateTime.now();
+        // El hecho económico, a la hora 00:00 del último día del mes — mismo patrón que
+        // AporteServiceImpl.procesarJubilacion (fechaEfectiva.atStartOfDay()).
+        LocalDateTime fechaHecho = fecha.atStartOfDay();
 
         // §3 PLAN-PAGO-JUBILADOS.md: cruzar contra préstamo vigente ANTES de decidir cuánto
         // sale al banco. Orquesta pagarConAportes (motor de pagos en producción) — no se
@@ -367,7 +376,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         Aporte aporte = null;
         if (remanente > TOLERANCIA) {
             String glosa = "PAGO PENSION COMPLEMENTARIA " + mes + "/" + anio + " - Entidad " + idEntidad;
-            aporte = crearMovimientoNegativo(entidad, remanente, glosa, fechaHora, usuario);
+            aporte = crearMovimientoNegativo(entidad, remanente, glosa, fechaHecho, usuario);
         }
 
         // Cuenta bancaria: exactamente una activa. Solo hace falta si de verdad sale algo al
@@ -389,7 +398,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.REGISTRADA));
         pago.setIdAporte(aporte != null ? aporte.getCodigo() : null);
         pago.setUsuarioRegistro(usuario);
-        pago.setFechaRegistro(fechaHora);
+        pago.setFechaRegistro(fechaRegistro);
         pago = pagoPensionDaoService.save(pago, null);
 
         System.out.println("  PGPC " + pago.getCodigo() + " creado por $" + valorTotal
@@ -791,9 +800,13 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
      * {@code tipoMovimiento = PAGO_PENSION}, distinto de {@code JUBILACION} (el traslado
      * inicial es único, esto es recurrente). {@code periodoDevengo = null}: no corresponde al
      * aporte esperado de ningún mes, es un descuento de saldo ya trasladado.
+     *
+     * @param fechaHecho fecha de NEGOCIO del movimiento (fin de mes del período, §6bis) — no
+     *                   confundir con la auditoría, que este método fija a {@code now()} por
+     *                   su cuenta en {@code fechaRegistro}.
      */
     private Aporte crearMovimientoNegativo(Entidad entidad, double valor, String glosa,
-            LocalDateTime fechaHora, String usuario) throws Throwable {
+            LocalDateTime fechaHecho, String usuario) throws Throwable {
         TipoAporte tipo = tipoAporteDaoService.find(new TipoAporte(), TIPO_APORTE_PENSION_COMPLEMENTARIA);
         if (tipo == null) {
             throw new IncomeException("No existe el tipo de aporte " + TIPO_APORTE_PENSION_COMPLEMENTARIA
@@ -809,7 +822,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         aporte.setSaldo(0.0);
         aporte.setEstado((long) EstadoCuotaPrestamo.PAGADA);
         aporte.setIdAsoprep(null);
-        aporte.setFechaTransaccion(fechaHora);
+        aporte.setFechaTransaccion(fechaHecho);
         aporte.setPeriodoDevengo(null);
         aporte.setTipoMovimiento((long) CrdTipoMovimientoAporte.PAGO_PENSION);
         aporte.setGlosa(glosa);
@@ -823,7 +836,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         pagoAporte.setAporte(aporte);
         pagoAporte.setFilial(entidad.getFilial());
         pagoAporte.setValor(redondear(valor));
-        pagoAporte.setFechaContable(fechaHora);
+        pagoAporte.setFechaContable(fechaHecho);
         pagoAporte.setNumeroAsiento(null);
         pagoAporte.setConcepto(glosa);
         pagoAporte.setUsuarioRegistro(usuario);

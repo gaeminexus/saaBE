@@ -181,6 +181,9 @@ intentara deshacer el cruce, chocaría con esa regla y fallaría de una forma di
 5. Un jubilado **con** préstamo cuya deuda se lleva todo: **ninguna orden de pago generada**, y el
    `PGPC` igualmente registrado y contabilizado.
 6. Saldo insuficiente del aporte 23: `ERR_SALDO_INSUFICIENTE`, sin efectos parciales.
+7. Los pagos y el asiento del período quedan fechados con el **último día del mes del período**
+   (`PGPC.fecha`, `APRT.fechaTransaccion`, `PagoAporte.fechaContable`); `fechaRegistro` en las
+   tres tablas queda con la fecha real de la corrida (§6bis de `API-PAGO-PENSION-COMPLEMENTARIA.md`).
 
 ---
 
