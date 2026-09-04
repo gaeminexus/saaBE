@@ -617,3 +617,34 @@ es preexistente. Queda como deuda, no como parte del frente.
 
 **No está medido si se dispara.** Según cómo Hibernate 6 renderice el `in`, podría no llegar nunca
 al límite. Se troceó justamente para no depender de averiguarlo.
+
+---
+
+## §13 — El filtro es la parte invisible de una medición
+
+**2026-09-03.** Cuarta vuelta de un mismo fallo en un solo hilo, y la cuarta fue mía.
+
+`lap-saa-1-arb` afirmó un costo sin medirlo. Lo corrigió midiéndolo. **La corrección también estaba
+incompleta**: existía una cita a `§6.1` del registro en `crd/sql/159_CASO_71177...sql:23`. La
+encontré yo. Y **al explicar por qué se le había escapado, deduje la causa desde el resultado**:
+dije que había buscado `§N` y no `§N.x`. Falso — sí buscó `§N.x`; lo que falló fue el
+`--include=*.md`, y la cita vive en un `.sql`.
+
+O sea: corregí una afirmación no verificada **con otra afirmación no verificada**. Nadie fue
+descuidado en ninguna de las cuatro; las cuatro fueron *razonables*.
+
+> **El principio, en la versión de `lap-saa-1-arb`, que es mejor que la mía:** *el filtro es la
+> parte invisible de una medición.* Un `grep` muestra lo que casa **dentro de lo que le dejaste
+> mirar**, y el `--include` **no aparece en el resultado**: se ven los hallazgos, nunca lo excluido.
+> **Un `--include` mal puesto se ve exactamente igual que un resultado completo.**
+
+Complementa —no repite— el §8: *«un `grep` recorta por definición»* hablaba del **patrón**, que al
+menos queda escrito en el comando. Éste habla del **alcance**, que no deja rastro en la salida.
+
+**Cómo se aplica, y es barato:** al reportar una medición, decir el borde y no sólo el hallazgo.
+«Medí las citas» no dice nada. «Medí las citas en los `.md` bajo `docs/`» sí, porque **hace visible
+lo que quedó afuera** y le da al que lee dónde dudar.
+
+**Y el corolario sobre diagnosticar el error ajeno:** un fallo suele tener varias causas plausibles
+y todas explican el resultado igual de bien. Preguntar qué se corrió cuesta una línea; deducirlo
+cuesta una corrección más en la cadena.
