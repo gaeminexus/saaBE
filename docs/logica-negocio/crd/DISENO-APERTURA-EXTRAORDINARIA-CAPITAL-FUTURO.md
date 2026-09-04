@@ -128,8 +128,10 @@ y `PRESTAMOS_POR_APLICAR` (4) — para que el extraordinario y el mensual golpee
 cuentas**. Es lo que permite que el neteo de fin de mes los vea como un solo saldo.
 
 La alternativa —plantilla propia— separa los dos hechos en los reportes pero exige crearla, y
-**romper la identidad de cuentas con el mensual sería el error**. Decisión del usuario si prefiere
-lo contrario.
+**romper la identidad de cuentas con el mensual sería el error**.
+
+✅ **CONFIRMADO por el usuario el 2026-09-04: se usa la plantilla de apertura mensual.** No se crea
+una propia. No re-preguntar.
 
 La descripción de cada línea debe decir que es extraordinaria y por qué, p. ej.
 `"Apertura extraordinaria - capital futuro prepagado - cobro 1234"`.
