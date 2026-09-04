@@ -82,6 +82,7 @@ import com.saa.rubros.CrdLineaAsiento;
 import com.saa.rubros.CrdTipoOperacionCobro;
 import com.saa.rubros.DsbnOrigen;
 import com.saa.rubros.ModuloSistema;
+import com.saa.rubros.MovimientoCuentaPlantilla;
 import com.saa.rubros.PlantillasCredito;
 import com.saa.rubros.TipoAsientos;
 import com.saa.rubros.TipoCarteraBanda;
@@ -1704,28 +1705,58 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
 
         String descripcion = "Apertura extraordinaria - capital futuro prepagado - cobro " + cobro.getCodigo();
 
+        // El lado (Debe/Haber) de CADA línea sale de su propia plantilla (DetallePlantilla
+        // .movimiento, DTPLMVMN) — NUNCA fijado a mano. Mismo criterio que
+        // CierreCarteraServiceImpl.lineaPlantilla usa para la apertura mensual: si se asumiera
+        // a mano cuál lado es cada una, un día que la plantilla se reconfigure la apertura
+        // mensual cambiaría de lado y esta quedaría atrás, invertida, sin que nada lo avise.
         List<DetalleAsiento> lineas = new ArrayList<>();
-        DetalleAsiento debe = new DetalleAsiento();
-        debe.setPlanCuenta(lineaPorCobrar.getPlanCuenta());
-        debe.setNumeroCuenta(lineaPorCobrar.getPlanCuenta().getCuentaContable());
-        debe.setNombreCuenta(lineaPorCobrar.getPlanCuenta().getNombre());
-        debe.setDescripcion(descripcion);
-        debe.setValorDebe(capitalFuturo);
-        debe.setValorHaber(0.0);
-        lineas.add(debe);
+        lineas.add(lineaAperturaDesdePlantilla(lineaPorCobrar, capitalFuturo, descripcion));
+        lineas.add(lineaAperturaDesdePlantilla(lineaPorAplicar, capitalFuturo, descripcion));
 
-        DetalleAsiento haber = new DetalleAsiento();
-        haber.setPlanCuenta(lineaPorAplicar.getPlanCuenta());
-        haber.setNumeroCuenta(lineaPorAplicar.getPlanCuenta().getCuentaContable());
-        haber.setNombreCuenta(lineaPorAplicar.getPlanCuenta().getNombre());
-        haber.setDescripcion(descripcion);
-        haber.setValorDebe(0.0);
-        haber.setValorHaber(capitalFuturo);
-        lineas.add(haber);
+        double totalDebe = 0.0;
+        double totalHaber = 0.0;
+        for (DetalleAsiento linea : lineas) {
+            totalDebe += nvl(linea.getValorDebe());
+            totalHaber += nvl(linea.getValorHaber());
+        }
+        if (Math.abs(redondear(totalDebe - totalHaber)) > TOLERANCIA_CUADRE) {
+            throw new IncomeException("El asiento de apertura extraordinaria del cobro " + cobro.getCodigo()
+                    + " no cuadra: Debe $" + redondear(totalDebe) + " vs Haber $" + redondear(totalHaber)
+                    + " (revise el movimiento configurado en la plantilla alterno "
+                    + PlantillasCredito.APERTURA_PLANILLA_MENSUAL + " para las líneas "
+                    + CrdLineaAsiento.PRESTAMOS_POR_COBRAR + "/" + CrdLineaAsiento.PRESTAMOS_POR_APLICAR
+                    + "). No se genera un asiento desbalanceado.");
+        }
 
         asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, cobro.getFecha(),
                 observacionEnriquecida(cobro, detalles, descripcion), cobro.getUsuarioProceso(), lineas,
                 Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
+    }
+
+    /**
+     * Arma una línea de la apertura extraordinaria leyendo el lado (Debe/Haber) de
+     * {@code DetallePlantilla.movimiento} — NUNCA fijado a mano. Mismo criterio que
+     * {@code CierreCarteraServiceImpl.lineaPlantilla} (apertura mensual) y
+     * {@code ContabilizacionIndividualCreditoServiceImpl.lineaMovimientoDesdePlantilla}
+     * (reparto): las dos líneas de este asiento tienen que golpear las MISMAS cuentas, DEL
+     * MISMO MODO, que la apertura mensual — si el lado se asumiera en vez de leerse, el día
+     * que alguien reconfigure la plantilla las dos rutas divergirían en silencio (el asiento
+     * seguiría cuadrando igual, solo que invertido).
+     */
+    private DetalleAsiento lineaAperturaDesdePlantilla(DetallePlantilla plantilla, double valor,
+            String descripcion) {
+        PlanCuenta cuenta = plantilla.getPlanCuenta();
+        boolean debe = plantilla.getMovimiento() != null
+                && plantilla.getMovimiento().longValue() == MovimientoCuentaPlantilla.DEBE;
+        DetalleAsiento detalle = new DetalleAsiento();
+        detalle.setPlanCuenta(cuenta);
+        detalle.setNumeroCuenta(cuenta.getCuentaContable());
+        detalle.setNombreCuenta(cuenta.getNombre());
+        detalle.setDescripcion(descripcion);
+        detalle.setValorDebe(debe ? redondear(valor) : 0.0);
+        detalle.setValorHaber(debe ? 0.0 : redondear(valor));
+        return detalle;
     }
 
     // =====================================================================
