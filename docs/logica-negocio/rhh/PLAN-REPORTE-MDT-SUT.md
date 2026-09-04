@@ -83,7 +83,7 @@ adivinar el formato, es el conjunto de datos disponibles:
 `ANIO` · `DIAS` · `RUC_EMPLEADOR` · `RAZON_SOCIAL_EMPLEADOR` · `LITERAL_FIJO`
 
 ⚠️ **Reservar `PRBR`/`PDTR` en `REGISTRO-RESERVAS-EQUIPOS.md` antes de escribir el script**, y anotar
-**también el `PRBRALTR`** — ver §6 de ese archivo. Bloque de este equipo: `PRBR` 310-329 /
+**también el `PRBRALTR`** — ver su §6 «El registro reserva `PRBRCDGO`, pero el código busca por `PRBRALTR`». Bloque de este equipo: `PRBR` 310-329 /
 `PDTR` 1500-1599, con 310 y 1500-1503 ya usados.
 
 ### 3.2 El generador
