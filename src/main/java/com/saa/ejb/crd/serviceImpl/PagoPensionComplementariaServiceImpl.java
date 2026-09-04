@@ -92,6 +92,10 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
     @EJB
     private com.saa.ejb.crd.dao.CuentaBancariaParticipeDaoService cuentaBancariaParticipeDaoService;
 
+    /** Para {@code obtenerCertificado} — regla del certificado bancario, §6 del contrato. */
+    @EJB
+    private com.saa.ejb.crd.service.CuentaBancariaParticipeService cuentaBancariaParticipeService;
+
     @EJB
     private SaldoAporteService saldoAporteService;
 
@@ -410,6 +414,16 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         // Cuenta bancaria: exactamente una activa. Solo hace falta si de verdad sale algo al
         // banco — un jubilado 100% cruzado no necesita tener una cuenta bancaria cargada.
         CuentaBancariaParticipe cuenta = remanente > TOLERANCIA ? unicaCuentaActiva(idEntidad) : null;
+
+        // §6 del contrato, decisión del usuario 2026-09-04: no se genera el pago si la cuenta
+        // activa no tiene certificado bancario cargado. Desviación deliberada de la firma que
+        // pasó el árbitro: acá se guarda con "if (cuenta != null)" porque un jubilado 100%
+        // cruzado (remanente == 0) no tiene cuenta que revisar — cuenta queda null a propósito
+        // dos líneas arriba, y no tiene sentido exigirle un certificado a alguien que no le va
+        // a salir plata al banco.
+        if (cuenta != null) {
+            validarCertificadoBancario(cuenta, idEntidad);
+        }
 
         // Cabecera PGPC — REGISTRADA, antes de la orden de pago (si CXP falla, se revierte
         // todo: no queda un movimiento de APRT huérfano sin orden de pago). El valor total
@@ -824,6 +838,50 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                 + " pagarle. Debe quedar una sola activa.");
         }
         return unica;
+    }
+
+    /**
+     * §6 del contrato, decisión del usuario 2026-09-04: no se genera el pago de un jubilado
+     * cuya cuenta bancaria activa no tenga el certificado bancario cargado.
+     *
+     * ⛔ Distingue DOS causas que no se pueden confundir. {@code obtenerCertificado} devuelve
+     * {@code null} cuando la cuenta simplemente no tiene certificado ({@link #ERR_SIN_CERTIFICADO_BANCARIO}
+     * — problema DE LA ENTIDAD, hay que pedirle el documento), pero LANZA
+     * {@code IncomeException(CuentaBancariaParticipeService.ERR_TIPO_ADJUNTO_NO_CONFIGURADO)}
+     * cuando el catálogo CRD.TPDJ no resuelve 'CERTIFICADO BANCARIO' — eso es un problema DEL
+     * SISTEMA que afecta a TODOS los jubilados por igual, y se relanza acá con
+     * {@link #ERR_CERTIFICADO_NO_VERIFICABLE} para que no se confunda con "le falta el
+     * documento" (si se confunde, el operador termina pidiéndole el certificado a 187 personas
+     * que quizá ya lo entregaron).
+     *
+     * ⛔⛔ DEPENDE de que CRD.TPDJ tenga UNA SOLA fila activa llamada 'CERTIFICADO BANCARIO'.
+     * Al 2026-09-04 tiene DOS (ids 4 y 37, sql/192) y
+     * {@code CuentaBancariaParticipeServiceImpl.resolverTipoCertificadoBancario()} resuelve con
+     * {@code tipos.get(0)} sobre una consulta sin {@code ORDER BY}: mientras eso siga así, esta
+     * validación puede rechazar a jubilados que SÍ tienen su certificado (el {@code get(0)}
+     * puede devolver el tipo que no es, y los adjuntos del otro tipo quedan invisibles). El dato
+     * se corrige con sql/193; esta validación no lo arregla ni lo detecta.
+     */
+    private void validarCertificadoBancario(CuentaBancariaParticipe cuenta, Long idEntidad) throws Throwable {
+        com.saa.model.crd.Adjunto certificado;
+        try {
+            certificado = cuentaBancariaParticipeService.obtenerCertificado(cuenta.getCodigo());
+        } catch (IncomeException e) {
+            if (e.getMessage() != null && e.getMessage().startsWith(
+                    com.saa.ejb.crd.service.CuentaBancariaParticipeService.ERR_TIPO_ADJUNTO_NO_CONFIGURADO)) {
+                throw new IncomeException(ERR_CERTIFICADO_NO_VERIFICABLE + ": no se pudo verificar el"
+                    + " certificado bancario porque el catálogo CRD.TPDJ no resuelve"
+                    + " 'CERTIFICADO BANCARIO'. Es un problema de configuración del sistema y afecta a"
+                    + " TODOS los jubilados por igual, no un documento faltante de la entidad "
+                    + idEntidad + ".");
+            }
+            throw e;
+        }
+        if (certificado == null) {
+            throw new IncomeException(ERR_SIN_CERTIFICADO_BANCARIO + ": la cuenta bancaria "
+                + cuenta.getCodigo() + " de la entidad " + idEntidad + " no tiene el certificado"
+                + " bancario cargado; no se puede generar su pago de pensión.");
+        }
     }
 
     /**

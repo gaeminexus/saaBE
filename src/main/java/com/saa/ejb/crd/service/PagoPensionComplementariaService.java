@@ -34,6 +34,19 @@ public interface PagoPensionComplementariaService extends EntityService<PagoPens
     String ERR_SALDO_INSUFICIENTE = "SALDO_INSUFICIENTE";
     /** 422 - El jubilado no tiene exactamente una cuenta bancaria activa */
     String ERR_SIN_CUENTA_BANCARIA = "SIN_CUENTA_BANCARIA";
+    /**
+     * 422 - La cuenta bancaria activa del jubilado no tiene certificado bancario cargado.
+     * Decisión del usuario, 2026-09-04 (API-PAGO-PENSION-COMPLEMENTARIA.md §6). Problema DE LA
+     * ENTIDAD: falta el documento, hay que pedirlo.
+     */
+    String ERR_SIN_CERTIFICADO_BANCARIO = "SIN_CERTIFICADO_BANCARIO";
+    /**
+     * 422 - NO se pudo verificar el certificado bancario porque el catálogo CRD.TPDJ no
+     * resuelve 'CERTIFICADO BANCARIO' ({@code CuentaBancariaParticipeService.ERR_TIPO_ADJUNTO_NO_CONFIGURADO}).
+     * Problema DEL SISTEMA, afecta a todos los jubilados por igual — NUNCA se confunde con
+     * {@link #ERR_SIN_CERTIFICADO_BANCARIO}, que es "falta el documento de este jubilado".
+     */
+    String ERR_CERTIFICADO_NO_VERIFICABLE = "TIPO_ADJUNTO_CERTIFICADO_NO_CONFIGURADO";
     /** 404 - No existe el pago */
     String ERR_PAGO_NO_ENCONTRADO = "PAGO_NO_ENCONTRADO";
 
