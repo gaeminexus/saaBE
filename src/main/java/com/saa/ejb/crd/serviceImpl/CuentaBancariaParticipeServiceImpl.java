@@ -245,6 +245,21 @@ public class CuentaBancariaParticipeServiceImpl implements CuentaBancariaPartici
      * Resuelve el {@code TipoAdjunto} "CERTIFICADO BANCARIO" del catálogo CRD.TPDJ. No hay un
      * código fijo en código: se busca por nombre porque el ID real solo existe después de correr
      * docs/logica-negocio/crd/sql/CARGA-TIPO-ADJUNTO-CERTIFICADO-BANCARIO.sql en cada ambiente.
+     *
+     * ⛔⛔ Corrección 2026-09-04: exige EXACTAMENTE una fila activa, ni cero ni más de una — mismo
+     * criterio que {@code unicaCuentaActiva}/{@code unicaActiva} para cuentas bancarias y VPPC
+     * ("ni cero ni más de una: no se adivina"). Antes, con dos o más, {@code tipos.get(0)}
+     * elegía en silencio sobre una consulta SIN {@code ORDER BY} — Oracle no garantiza el orden
+     * de un resultado sin ordenar, así que esa elección podía cambiar de un día para el otro sin
+     * ningún error visible. Y desde que el certificado gobierna si sale dinero (§6/D2 del
+     * contrato de pago de pensión), un {@code get(0)} equivocado no es un dato mal mostrado: es
+     * plata que deja de salir para TODOS los jubilados, sin ninguna alerta.
+     *
+     * ⚠️ Esta validación DEPENDE de que CRD.TPDJ tenga una sola fila activa "CERTIFICADO
+     * BANCARIO". Mientras existan las dos que hay hoy (ids 4 y 37, medido 2026-09-04), este
+     * método va a fallar SIEMPRE con {@link #ERR_TIPO_ADJUNTO_NO_CONFIGURADO} — es el
+     * comportamiento correcto (preferible a pagar según una lotería de plan de ejecución), pero
+     * bloquea a todos los jubilados hasta que se corra sql/193 para dejar una sola fila activa.
      */
     private TipoAdjunto resolverTipoCertificadoBancario() throws Throwable {
         List<TipoAdjunto> tipos = tipoAdjuntoDaoService.selectByNombre(CERTIFICADO_BANCARIO);
@@ -252,6 +267,19 @@ public class CuentaBancariaParticipeServiceImpl implements CuentaBancariaPartici
             throw new IncomeException(ERR_TIPO_ADJUNTO_NO_CONFIGURADO
                 + ": falta cargar '" + CERTIFICADO_BANCARIO + "' en CRD.TPDJ"
                 + " (docs/logica-negocio/crd/sql/CARGA-TIPO-ADJUNTO-CERTIFICADO-BANCARIO.sql)");
+        }
+        if (tipos.size() > 1) {
+            StringBuilder ids = new StringBuilder();
+            for (TipoAdjunto tipo : tipos) {
+                if (ids.length() > 0) {
+                    ids.append(", ");
+                }
+                ids.append(tipo.getCodigo());
+            }
+            throw new IncomeException(ERR_TIPO_ADJUNTO_NO_CONFIGURADO + ": hay " + tipos.size()
+                + " tipos de adjunto activos llamados '" + CERTIFICADO_BANCARIO + "' en CRD.TPDJ"
+                + " (ids: " + ids + "); no se puede saber cuál vale. Debe quedar uno solo activo"
+                + " (correr sql/193).");
         }
         return tipos.get(0);
     }
