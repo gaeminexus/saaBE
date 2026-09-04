@@ -50,20 +50,52 @@
 | **7** | **No mergear a `main` un mapeo cuya columna no está en la base** |
 | **7** ⚠️ | *(segundo §7)* Siete pantallas de `cnt` que truncan listados en silencio |
 
-### ⚠️ Hay dos §6 y dos §7, y no se renumeran acá
+### ⚠️ Hay dos §6 y dos §7 — MEDIDO el 2026-09-03, y renumerarlos es barato
 
 **Encontrado el 2026-09-03 al escribir este índice** — que es exactamente para lo que sirve: la
 duplicación de números llevaba días en el archivo y nadie la había visto, porque nadie lee 690
 líneas de corrido.
 
-**No se corrige unilateralmente, y el motivo importa:** los cuatro están referenciados desde otros
-documentos —`ESTADO-EQUIPO-LAP-1.md` cita «la §6» por el `PRBRALTR`, varios citan «§6.1» y «§6.4»
-por las deudas transversales, y `crd/DISENO-PANTALLA-PAGO-JUBILADOS.md` cita «§7» por la regla del
-mapeo—. **Renumerar rompe esas referencias en silencio**, que es el mismo tipo de fallo que el
-archivo entero viene evitando.
+### ⛔ Corrección: la primera versión de esta nota afirmaba un costo que nadie había medido
 
-Queda señalado para que los árbitros lo decidan juntos. Mientras tanto, **«§6» y «§7» a secas son
-ambiguos: citar el título, no sólo el número.**
+**La escribió `lap-saa-1-arb` diciendo que renumerar «rompe referencias en silencio» y que «varios
+citan §6.1 y §6.4 por las deudas transversales». Lo segundo es FALSO.** Lo midió el árbitro de
+`omen-saa-1` y lo verificó el que lo había escrito: **ningún `§6.x` del repositorio apunta a este
+archivo** — todos van a `LEVANTAMIENTO-ALIMENTACION-CONTABLE-CREDITOS.md`, a
+`ESPECIFICACION-SERVICIOS-PAGO-PRESTAMOS.md` y a planes de `crd`, que tienen numeración propia.
+
+Queda escrito y no se borra, porque **es el mismo fallo que este archivo persigue, cometido dentro
+del propio archivo**: una afirmación plausible, escrita con seguridad, que nadie había contrastado.
+Y con un agravante: *la duplicación de números también nos confundió a nosotros al estimar el costo
+de arreglarla*.
+
+**Lo medido, esto sí:** las citas externas a un `§` de este archivo son **cuatro, y las cuatro
+apuntan al PRIMERO de cada par** — `ESTADO-EQUIPO-LAP-1.md` y `ESTADO-EQUIPO-OMEN-2.md` al §6 del
+`PRBRALTR`; `tsr/API-GASTO-CAJA-CHICA.md` y los scripts `e2-06`/`e2-07` al §7 del mapeo. **Ninguna
+apunta al segundo.** Adentro del archivo hay **una sola** referencia afectada, y vive dentro de la
+sección que se renumeraría.
+
+**Renumerar cuesta un commit, no lo que la nota original decía.**
+
+### Las dos posiciones, y la decisión es de los cuatro árbitros
+
+| Quién | Posición |
+|---|---|
+| `omen-saa-1` | **Renumerar** el segundo §6 → §8 y el segundo §7 → §9, arreglando la referencia interna en el mismo cambio. Elimina la ambigüedad en vez de documentarla |
+| `omen-saa-2` | **No renumerar.** Ya corrigió sus cuatro citas para que digan el título. Y señala que el índice hace la duplicación **visible, no imposible** |
+
+**El argumento de `omen-saa-2` es el que va a la causa, y conviene no perderlo:** numeramos por
+secuencia. Cada uno abre su copia, ve que la última es la 7 y escribe «## 8». **Dos equipos que
+hacen eso el mismo día producen dos «## 8», y git los fusiona sin avisar.** Escribir primero la
+línea del §0 ayuda sólo si el otro fetcheó *después* de que la subiste; en la misma ventana, vuelve
+a pasar. Es el mismo mecanismo que el §2b ya resolvió para los scripts `.sql` **repartiendo rangos
+por equipo**, y la misma familia de fallo que el proyecto viene encontrando toda la semana: *dos
+caminos que producen el mismo valor sin compararse nunca*. Un conflicto de git es un mecanismo de
+aviso, y numerar por secuencia lo desactiva.
+
+**Mientras no se decida: «§6» y «§7» a secas son ambiguos — citar el título, no sólo el número.**
+Y eso vale igual después de renumerar: **si las citas usan el título, el número deja de ser un
+recurso compartido** y la colisión pasa a ser cosmética en vez de peligrosa.
 
 ---
 
