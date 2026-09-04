@@ -2272,6 +2272,27 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     }
 
     /**
+     * Verifica si el titular tiene cuenta contable CxC (tipoCuenta=1) asignada
+     * para la empresa EN SU ROL DE CLIENTE. Gemelo de
+     * {@link #verificarCuentaContableProveedor}, para el emisor de una
+     * retención recibida: ahí el emisor es un CLIENTE (nos retiene a nosotros),
+     * no un proveedor — ver
+     * docs/logica-negocio/cxp/PLAN-RETENCION-RECIBIDA-ES-DE-CLIENTE.md.
+     * Mismo comportamiento ante error: no propaga, devuelve {@code false} y
+     * el llamador lo traduce en un bloqueante MÁS del documento
+     * (CLIENTE_SIN_CUENTA), no en un aborto del lote.
+     */
+    private boolean verificarCuentaContableCliente(Long codigoTitular, Long idEmpresa) {
+        try {
+            return asientoContableService.existeCuentaConRolEstricto(
+                    codigoTitular, idEmpresa, 1L, RolPersona.CLIENTE);
+        } catch (Throwable e) {
+            System.err.println("⚠ verificarCuentaContableCliente: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Verifica si la empresa tiene generación contable habilitada (Facturador.generaConta=1).
      */
     private boolean verificarGeneraConta(Long idEmpresa) {
@@ -2930,9 +2951,9 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         Usuario usuario = em.find(Usuario.class, idUsuario);
 
         // ══════════════════════════════════════════════════════════════════
-        // PASO 1 — Obtener proveedor y leer nodos del XML para validación
+        // PASO 1 — Obtener cliente y leer nodos del XML para validación
         // ══════════════════════════════════════════════════════════════════
-        Titular proveedor = obtenerOAutoCrearProveedor(doc.getRucEmisor(), doc.getRazonSocialEmisor(), xmlDoc, idUsuario);
+        Titular cliente = obtenerOAutoCrearCliente(doc.getRucEmisor(), doc.getRazonSocialEmisor(), xmlDoc, idUsuario);
 
         NodeList retenciones = obtenerDetallesRetencion(xmlDoc);
 
@@ -2945,13 +2966,15 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         // ══════════════════════════════════════════════════════════════════
         List<Map<String, Object>> bloqueantes = new ArrayList<>();
 
-        // 2a. Cuenta contable CxP del proveedor
-        boolean titularTieneCuenta = verificarCuentaContableProveedor(proveedor.getCodigo(), idEmpresa);
+        // 2a. Cuenta contable CxC del cliente (el emisor de una retención
+        //     recibida es un CLIENTE, no un proveedor — ver
+        //     docs/logica-negocio/cxp/PLAN-RETENCION-RECIBIDA-ES-DE-CLIENTE.md)
+        boolean titularTieneCuenta = verificarCuentaContableCliente(cliente.getCodigo(), idEmpresa);
         if (!titularTieneCuenta) {
             Map<String, Object> b = new HashMap<>();
-            b.put("tipo", "PROVEEDOR_SIN_CUENTA");
-            b.put("detalle", "El proveedor '" + proveedor.getNombre() + "' (RUC: " + proveedor.getIdentificacion()
-                    + ") no tiene cuenta contable CxP asignada. Configúrela en Contabilidad → Cuentas por Titular.");
+            b.put("tipo", "CLIENTE_SIN_CUENTA");
+            b.put("detalle", "El cliente '" + cliente.getNombre() + "' (RUC: " + cliente.getIdentificacion()
+                    + ") no tiene cuenta contable CxC asignada. Configúrela en Contabilidad → Cuentas por Titular.");
             bloqueantes.add(b);
         }
 
@@ -3050,7 +3073,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         rc.setAutorizacion(numeroAutorizacion);
         rc.setPeriodoFiscal(getXmlValue(xmlDoc, "periodoFiscal"));
         rc.setTotal(totalRetenido);
-        rc.setProveedor(proveedor);
+        rc.setProveedor(cliente);
         rc.setUsuario(usuario);
         rc.setEstado(Long.valueOf(Estado.ACTIVO));
         rc.setEstadoEmision(2L);
@@ -3095,9 +3118,9 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         Usuario usuario = em.find(Usuario.class, idUsuario);
 
         // ══════════════════════════════════════════════════════════════════
-        // PASO 1 — Obtener proveedor y leer nodos del XML para validación
+        // PASO 1 — Obtener cliente y leer nodos del XML para validación
         // ══════════════════════════════════════════════════════════════════
-        Titular proveedor = obtenerOAutoCrearProveedor(doc.getRucEmisor(), doc.getRazonSocialEmisor(), xmlDoc, idUsuario);
+        Titular cliente = obtenerOAutoCrearCliente(doc.getRucEmisor(), doc.getRazonSocialEmisor(), xmlDoc, idUsuario);
 
         NodeList retenciones = obtenerDetallesRetencion(xmlDoc);
 
@@ -3110,13 +3133,15 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         // ══════════════════════════════════════════════════════════════════
         List<Map<String, Object>> bloqueantes = new ArrayList<>();
 
-        // 2a. Cuenta contable CxP del proveedor
-        boolean titularTieneCuenta = verificarCuentaContableProveedor(proveedor.getCodigo(), idEmpresa);
+        // 2a. Cuenta contable CxC del cliente (el emisor de una retención
+        //     recibida es un CLIENTE, no un proveedor — ver
+        //     docs/logica-negocio/cxp/PLAN-RETENCION-RECIBIDA-ES-DE-CLIENTE.md)
+        boolean titularTieneCuenta = verificarCuentaContableCliente(cliente.getCodigo(), idEmpresa);
         if (!titularTieneCuenta) {
             Map<String, Object> b = new HashMap<>();
-            b.put("tipo", "PROVEEDOR_SIN_CUENTA");
-            b.put("detalle", "El proveedor '" + proveedor.getNombre() + "' (RUC: " + proveedor.getIdentificacion()
-                    + ") no tiene cuenta contable CxP asignada. Configúrela en Contabilidad → Cuentas por Titular.");
+            b.put("tipo", "CLIENTE_SIN_CUENTA");
+            b.put("detalle", "El cliente '" + cliente.getNombre() + "' (RUC: " + cliente.getIdentificacion()
+                    + ") no tiene cuenta contable CxC asignada. Configúrela en Contabilidad → Cuentas por Titular.");
             bloqueantes.add(b);
         }
 
@@ -3246,7 +3271,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         rc.setAutorizacion(numeroAutorizacion);
         rc.setPeriodoFiscal(getXmlValue(xmlDoc, "periodoFiscal"));
         rc.setTotal(totalRetenido);
-        rc.setProveedor(proveedor);
+        rc.setProveedor(cliente);
         rc.setUsuario(usuario);
         rc.setEstado(Long.valueOf(Estado.ACTIVO));
         rc.setEstadoEmision(2L);
@@ -3790,6 +3815,100 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         } catch (Throwable e) {
             // Si falla el guardado, lanzar excepción para que el documento quede en ERROR
             throw new RuntimeException("Error al auto-crear Titular-Proveedor para RUC "
+                    + ruc + ": " + e.getMessage(), e);
+        }
+
+        return nuevo;
+    }
+
+    /**
+     * Busca un Titular con el RUC dado. Si no existe lo crea con rol de
+     * Cliente. Si existe pero no tiene rol de Cliente, se lo asigna y lo
+     * actualiza en BD — SIN tocar el rol Proveedor si ya lo tiene: un mismo
+     * titular puede ser cliente y proveedor a la vez, y este método SUMA el
+     * rol que falta, nunca reemplaza.
+     * <p>
+     * Gemelo de {@link #obtenerOAutoCrearProveedor}, deliberadamente NO
+     * fusionado con parámetro de rol: lo usan sólo los dos métodos de
+     * retención, porque ahí el emisor del comprobante es quien nos retiene
+     * —un CLIENTE— y no el proveedor que asume el resto de la carga (factura,
+     * NC, ND, liquidación) — ver
+     * docs/logica-negocio/cxp/PLAN-RETENCION-RECIBIDA-ES-DE-CLIENTE.md.
+     * Datos del XML/TXT y detección del tipo de identificación: igual que el
+     * gemelo.
+     *
+     * @param ruc              Número de identificación del emisor
+     * @param razonSocialTxt   Razón social venida del TXT (fallback si el XML no la tiene)
+     * @param xmlDoc           Document XML ya parseado del comprobante
+     * @param idUsuario        ID del usuario que está procesando
+     * @return Titular existente o recién creado, siempre con tipoCliente = 1
+     */
+    private Titular obtenerOAutoCrearCliente(String ruc, String razonSocialTxt,
+                                              Document xmlDoc, Long idUsuario) {
+        // 1. Buscar titular existente por RUC/identificación
+        Titular titular = buscarTitularPorRuc(ruc);
+
+        if (titular != null) {
+            // Existe: verificar si ya tiene rol de Cliente (sin tocar Proveedor)
+            if (!Long.valueOf(1L).equals(titular.getTipoCliente())) {
+                titular.setTipoCliente(1L);
+                try {
+                    titularDaoService.save(titular, titular.getCodigo());
+                    System.out.println("✓ Rol de Cliente asignado a Titular existente: "
+                            + ruc + " | id=" + titular.getCodigo());
+                } catch (Throwable e) {
+                    System.err.println("⚠ No se pudo asignar rol Cliente al Titular id="
+                            + titular.getCodigo() + ": " + e.getMessage());
+                }
+            } else {
+                System.out.println("ℹ Titular ya tiene rol de Cliente: " + ruc + " | id=" + titular.getCodigo()
+                        + " | nombre=" + titular.getNombre());
+            }
+            return titular;
+        }
+
+        // 2. No existe → crear automáticamente con los datos del XML/TXT
+        System.out.println("Auto-creando Titular-Cliente para RUC: " + ruc);
+
+        String razonSocial = getXmlValue(xmlDoc, "razonSocial");
+        if (razonSocial.isEmpty()) razonSocial = getXmlValue(xmlDoc, "nombreComercial");
+        if (razonSocial.isEmpty() && razonSocialTxt != null && !razonSocialTxt.isEmpty())
+            razonSocial = razonSocialTxt;
+        if (razonSocial.isEmpty()) razonSocial = ruc; // último recurso
+        razonSocial = razonSocial.toUpperCase();
+
+        String telefono  = getXmlValue(xmlDoc, "telefono");
+        String email     = getXmlValue(xmlDoc, "correoElectronico");
+        String direccion = getXmlValue(xmlDoc, "dirEstablecimiento");
+        if (direccion.isEmpty()) direccion = getXmlValue(xmlDoc, "dirMatriz");
+
+        Long tipoIdentif;
+        if (ruc != null && ruc.length() == 13) {
+            tipoIdentif = 2L; // RUC
+        } else if (ruc != null && ruc.length() == 10) {
+            tipoIdentif = 1L; // Cédula
+        } else {
+            tipoIdentif = 3L; // Pasaporte / Exterior
+        }
+
+        Titular nuevo = new Titular();
+        nuevo.setIdentificacion(ruc);
+        nuevo.setNombre(razonSocial);
+        nuevo.setRazonSocial(razonSocial);
+        nuevo.setTipoProveedor(0L);      // no es proveedor por defecto
+        nuevo.setTipoCliente(1L);        // rol Cliente
+        nuevo.setEstado(1L);             // activo
+        nuevo.setRubroTipoIdentificacionH(tipoIdentif);
+        if (!telefono.isEmpty())  nuevo.setTelefono(telefono);
+        if (!email.isEmpty())     nuevo.setEmail(email);
+        if (!direccion.isEmpty()) nuevo.setDireccion(direccion);
+
+        try {
+            nuevo = titularDaoService.save(nuevo, null);
+            System.out.println("✓ Titular-Cliente creado automáticamente: "
+                    + ruc + " | " + razonSocial + " | id=" + nuevo.getCodigo());
+        } catch (Throwable e) {
+            throw new RuntimeException("Error al auto-crear Titular-Cliente para RUC "
                     + ruc + ": " + e.getMessage(), e);
         }
 
@@ -4342,8 +4461,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 catch (Throwable t) { throw new Exception(t.getMessage(), t); }
 
             } else if ("RETENCION_COMPRA".equals(tipo)) {
-                // TODO: AuxiliarUno DEBE:  cuenta CxP del proveedor (monto retenido)
-                // TODO: AuxiliarUno HABER: cuenta de retención recibida por código SRI
+                // TODO: AuxiliarUno DEBE:  cuenta de retención recibida por código SRI
+                // TODO: AuxiliarUno HABER: CxC del cliente (monto retenido)
                 try { asiento = asientoContableService.generarAsientoRetencionCompra(
                         idDocBD, idEmpresa,
                         com.saa.rubros.TipoAsientos.RETENCIONES_RECIBIDAS,
@@ -4352,8 +4471,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 catch (Throwable t) { throw new Exception(t.getMessage(), t); }
 
             } else if ("RETENCION_COMPRA_V2".equals(tipo)) {
-                // TODO: AuxiliarUno DEBE:  cuenta CxP del proveedor (monto retenido)
-                // TODO: AuxiliarUno HABER: cuenta de retención recibida por código SRI
+                // TODO: AuxiliarUno DEBE:  cuenta de retención recibida por código SRI
+                // TODO: AuxiliarUno HABER: CxC del cliente (monto retenido)
                 try { asiento = asientoContableService.generarAsientoRetencionCompraV2(
                         idDocBD, idEmpresa,
                         com.saa.rubros.TipoAsientos.RETENCIONES_RECIBIDAS_V2,

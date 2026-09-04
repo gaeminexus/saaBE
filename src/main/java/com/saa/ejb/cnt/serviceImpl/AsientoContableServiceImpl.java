@@ -3214,9 +3214,9 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
     // ---------------------------------------------------------------
     // generarAsientoRetencionCompra
-    // RetenciÃ³n recibida del proveedor: reduce lo que nos deben / aumenta CxP
-    //   DEBE:  CxP Proveedor (monto retenido disminuye la deuda)
-    //   HABER: Cuenta de retenciÃ³n recibida por cÃ³digo SRI
+    // Retención recibida del cliente: reduce lo que ese cliente nos debe.
+    //   DEBE:  Cuenta de retención recibida por código SRI
+    //   HABER: CxC Cliente (el monto retenido baja lo que nos debe)
     // ---------------------------------------------------------------
     @Override
     public com.saa.model.cnt.Asiento generarAsientoRetencionCompra(
@@ -3242,40 +3242,40 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         List<DetalleAsiento> lineas = new ArrayList<>();
         double totalRetenido = 0.0;
 
-        // â”€â”€ HABER: una lÃ­nea por cÃ³digo de retenciÃ³n (cuenta desde TSRI) â”€â”€â”€â”€â”€â”€
+        // ── DEBE: una línea por código de retención (cuenta desde TSRI) ────────
         for (com.saa.model.cxp.DetalleRetencionCompra d : detalles) {
             String codImpuesto = d.getCodImpuesto();
             String codReten = d.getCodRetencion();
             PlanCuenta pcReten = obtenerCuentaRetencionCompra(codImpuesto, codReten);
             if (pcReten == null)
-                throw new IncomeException("No hay cuenta contable para retenciÃ³n "
+                throw new IncomeException("No hay cuenta contable para retención "
                         + "(codImpuesto='" + codImpuesto + "', codRetencion='" + codReten + "') en TSRI. "
-                        + "Configure en Compras â†’ Tipos SRI.");
+                        + "Configure en Compras → Tipos SRI.");
             double valor = nvl(d.getValorReten());
             totalRetenido += valor;
-            DetalleAsiento haberReten = new DetalleAsiento();
-            haberReten.setPlanCuenta(pcReten); haberReten.setNumeroCuenta(pcReten.getCuentaContable());
-            haberReten.setNombreCuenta(pcReten.getNombre());
-            haberReten.setDescripcion("RetenciÃ³n recibida cÃ³digo " + codReten
+            DetalleAsiento debeReten = new DetalleAsiento();
+            debeReten.setPlanCuenta(pcReten); debeReten.setNumeroCuenta(pcReten.getCuentaContable());
+            debeReten.setNombreCuenta(pcReten.getNombre());
+            debeReten.setDescripcion("Retención recibida código " + codReten
                     + " | Base: " + String.format(java.util.Locale.US, "%.2f", nvl(d.getBaseImponible()))
                     + " | " + nvl2(d.getPorcentajeReten()) + "%");
-            haberReten.setValorDebe(valor); haberReten.setValorHaber(0.0);
-            lineas.add(haberReten);
+            debeReten.setValorDebe(valor); debeReten.setValorHaber(0.0);
+            lineas.add(debeReten);
         }
 
-        // â”€â”€ HABER: CxP Cliente (cuenta del proveedor/cliente) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── HABER: CxC del cliente ──────────────────────────────────────────────
         if (rc.getProveedor() == null)
             throw new IncomeException("RetencionCompra " + idRetencionCompra + " no tiene proveedor.");
-        PlanCuenta cuentaProv = obtenerCuentaProveedor(rc.getProveedor().getCodigo(), idEmpresa);
-        if (cuentaProv == null)
-            throw new IncomeException("El proveedor '" + rc.getProveedor().getNombre()
-                    + "' no tiene cuenta CxP configurada.");
-        DetalleAsiento debe = new DetalleAsiento();
-        debe.setPlanCuenta(cuentaProv); debe.setNumeroCuenta(cuentaProv.getCuentaContable());
-        debe.setNombreCuenta(cuentaProv.getNombre());
-        debe.setDescripcion("CxP Cliente retenciÃ³n: " + rc.getProveedor().getNombre());
-        debe.setValorDebe(0.0); debe.setValorHaber(totalRetenido);
-        lineas.add(0, debe);
+        PlanCuenta cuentaCliente = obtenerCuentaCliente(rc.getProveedor().getCodigo(), idEmpresa);
+        if (cuentaCliente == null)
+            throw new IncomeException("El cliente '" + rc.getProveedor().getNombre()
+                    + "' no tiene cuenta contable CxC configurada.");
+        DetalleAsiento haberCliente = new DetalleAsiento();
+        haberCliente.setPlanCuenta(cuentaCliente); haberCliente.setNumeroCuenta(cuentaCliente.getCuentaContable());
+        haberCliente.setNombreCuenta(cuentaCliente.getNombre());
+        haberCliente.setDescripcion("CxC Cliente retención: " + rc.getProveedor().getNombre());
+        haberCliente.setValorDebe(0.0); haberCliente.setValorHaber(totalRetenido);
+        lineas.add(0, haberCliente);
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento,
                 fechaAsiento, observaciones, usuario, lineas);
@@ -3308,39 +3308,39 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         List<DetalleAsiento> lineas = new ArrayList<>();
         double totalRetenido = 0.0;
 
-        // â”€â”€ HABER: por cÃ³digo de retenciÃ³n desde TSRI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── DEBE: por código de retención desde TSRI ────────────────────────────
         for (com.saa.model.cxp.DetalleRetencionCompraV2 d : detalles) {
             String codImpuesto = d.getCodImpuesto();
             String codReten = d.getCodRetencion();
             PlanCuenta pcReten = obtenerCuentaRetencionCompra(codImpuesto, codReten);
             if (pcReten == null)
-                throw new IncomeException("No hay cuenta contable para retenciÃ³n V2 "
+                throw new IncomeException("No hay cuenta contable para retención V2 "
                         + "(codImpuesto='" + codImpuesto + "', codRetencion='" + codReten + "') en TSRI.");
             double valor = nvl(d.getValorReten());
             totalRetenido += valor;
-            DetalleAsiento haberReten = new DetalleAsiento();
-            haberReten.setPlanCuenta(pcReten); haberReten.setNumeroCuenta(pcReten.getCuentaContable());
-            haberReten.setNombreCuenta(pcReten.getNombre());
-            haberReten.setDescripcion("RetenciÃ³n V2 recibida cÃ³digo " + codReten
+            DetalleAsiento debeReten = new DetalleAsiento();
+            debeReten.setPlanCuenta(pcReten); debeReten.setNumeroCuenta(pcReten.getCuentaContable());
+            debeReten.setNombreCuenta(pcReten.getNombre());
+            debeReten.setDescripcion("Retención V2 recibida código " + codReten
                     + " | Base: " + String.format(java.util.Locale.US, "%.2f", nvl(d.getBaseImponible()))
                     + " | " + nvl2(d.getPorcentajeReten()) + "%");
-            haberReten.setValorDebe(valor); haberReten.setValorHaber(0.0);
-            lineas.add(haberReten);
+            debeReten.setValorDebe(valor); debeReten.setValorHaber(0.0);
+            lineas.add(debeReten);
         }
 
-        // â”€â”€ HABER: CxP Cliente â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── HABER: CxC del cliente ────────────────────────────────────────────
         if (rc.getProveedor() == null)
             throw new IncomeException("RetencionCompraV2 " + idRetencionCompraV2 + " no tiene proveedor.");
-        PlanCuenta cuentaProv = obtenerCuentaProveedor(rc.getProveedor().getCodigo(), idEmpresa);
-        if (cuentaProv == null)
-            throw new IncomeException("El proveedor '" + rc.getProveedor().getNombre()
-                    + "' no tiene cuenta CxP configurada.");
-        DetalleAsiento debe = new DetalleAsiento();
-        debe.setPlanCuenta(cuentaProv); debe.setNumeroCuenta(cuentaProv.getCuentaContable());
-        debe.setNombreCuenta(cuentaProv.getNombre());
-        debe.setDescripcion("CxP Cliente retenciÃ³n V2: " + rc.getProveedor().getNombre());
-        debe.setValorDebe(0.0); debe.setValorHaber(totalRetenido);
-        lineas.add(0, debe);
+        PlanCuenta cuentaCliente = obtenerCuentaCliente(rc.getProveedor().getCodigo(), idEmpresa);
+        if (cuentaCliente == null)
+            throw new IncomeException("El cliente '" + rc.getProveedor().getNombre()
+                    + "' no tiene cuenta contable CxC configurada.");
+        DetalleAsiento haberCliente = new DetalleAsiento();
+        haberCliente.setPlanCuenta(cuentaCliente); haberCliente.setNumeroCuenta(cuentaCliente.getCuentaContable());
+        haberCliente.setNombreCuenta(cuentaCliente.getNombre());
+        haberCliente.setDescripcion("CxC Cliente retención V2: " + rc.getProveedor().getNombre());
+        haberCliente.setValorDebe(0.0); haberCliente.setValorHaber(totalRetenido);
+        lineas.add(0, haberCliente);
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento,
                 fechaAsiento, observaciones, usuario, lineas);
