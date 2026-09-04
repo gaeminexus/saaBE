@@ -282,6 +282,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                     fila.setIdEntidad(jubilado.getCodigo());
                     fila.setNombre(jubilado.getRazonSocial());
                     fila.setApto(false);
+                    fila.setParticipacion("BLOQUEADO");
                     fila.setMotivoBloqueo(e.getMessage());
                 }
                 resumen.getDetalle().add(fila);
@@ -339,14 +340,23 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             valorPagoPensionComplementariaService.selectByEntidad(idEntidad);
         ValorPagoPensionComplementaria vppc = unicaActiva(configuraciones, idEntidad);
         if (vppc == null) {
+            // Corrección 2026-09-05: antes esta fila salía con participacion en null (el
+            // default de Java para un String) y el frontend la pintaba como "Sin novedad",
+            // idéntica a un jubilado al que la corrida no le aplica. Ahora hay un default
+            // explícito en el DTO ("BLOQUEADO") y además se confirma acá para que no dependa
+            // silenciosamente de ese default si alguien lo cambia más adelante.
             fila.setApto(false);
+            fila.setParticipacion("BLOQUEADO");
             fila.setMotivoBloqueo(ERR_SIN_VALOR_PENSION + ": sin configuración de pensión"
                 + " complementaria (VPPC) activa.");
             return fila;
         }
         double valorTotal = redondear(vppc.getValorPagar() != null ? vppc.getValorPagar() : 0.0);
         if (valorTotal <= 0.01) {
+            // El caso real medido por el usuario: 182 de 190 configuraciones tienen
+            // valorSeguro cargado pero valorPagar en $0 — caía justo acá.
             fila.setApto(false);
+            fila.setParticipacion("BLOQUEADO");
             fila.setMotivoBloqueo(ERR_SIN_VALOR_PENSION + ": VPPC " + vppc.getCodigo()
                 + " con valorPagar $0.");
             return fila;
@@ -378,9 +388,20 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
 
         YearMonth desde = YearMonth.from(ancla).plusMonths(1);
         if (desde.isAfter(corrida)) {
-            // Al día: apto, cero meses, nada que cruzar ni pagar — no es un bloqueo.
+            // Al día: apto, cero meses, nada que cruzar ni pagar — NO es un bloqueo. Corrección
+            // 2026-09-05 (el caso real que reportó el usuario, no el que se diagnosticó
+            // primero): esta fila salía con participacion en null y el frontend la pintaba
+            // como "Sin novedad", igual que un bloqueo real — sin ninguna explicación de que
+            // el cálculo es correcto y simplemente no hay nada pendiente.
             fila.setMesesAdeudados(0);
             fila.setApto(true);
+            fila.setParticipacion("AL_DIA");
+            // Reusando motivoBloqueo para el texto explicativo porque es el único campo de
+            // texto libre en este DTO — el nombre queda un poco forzado para un caso que NO es
+            // un bloqueo; si el árbitro/frontend prefiere un nombre más genérico (ej. "nota" u
+            // "observacion"), es un cambio de nombre de campo a coordinar, no de contenido.
+            fila.setMotivoBloqueo("Sin meses adeudados: su último movimiento de pensión"
+                + " complementaria (o de jubilación) es posterior al período de la corrida.");
             return fila;
         }
         int mesesAdeudados = (int) (ChronoUnit.MONTHS.between(desde, corrida) + 1);
@@ -656,6 +677,10 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             detalleExistente.setValorPension(existente.getValorPension());
             detalleExistente.setValorSeguroSalud(existente.getValorSeguro());
             detalleExistente.setEstado("YA_EXISTIA");
+            // Ya se generó con éxito en una corrida anterior — no es un bloqueo. Método sin
+            // llamadores (ver el JavaDoc de la clase), pero el default del DTO ahora es
+            // "BLOQUEADO"; se sube explícitamente para no dejarlo mal si se reactiva.
+            detalleExistente.setParticipacion("AL_DIA");
             return detalleExistente;
         }
 
@@ -742,6 +767,10 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         YearMonth corrida = YearMonth.of(anio, mes);
         if (desde.isAfter(corrida)) {
             resumen.setEstado("AL_DIA");
+            // Ítem 4 (2026-09-05): mismo valor que previsualizarJubilado para este caso exacto
+            // — si el prevuelo dice "al día" y la corrida real devolviera otra cosa, la
+            // pantalla prometería algo distinto de lo que pasa.
+            resumen.setParticipacion("AL_DIA");
             resumen.setMensaje("La entidad " + idEntidad + " no tiene meses pendientes: su ancla es "
                 + ancla + ", ya cubierta hasta " + corrida + ".");
             return resumen;
@@ -812,21 +841,31 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                 continue;
             }
 
-            // Ítem 4: las condiciones de corte, ANTES de procesar el mes. D4: sin préstamo
-            // vigente son DOS, no tres — "PRESTAMO_AL_DIA" no puede aplicar si nunca hubo
-            // deuda contra la cual cruzar (deudaExigibleTotal sería 0 desde el principio).
+            // ⛔⛔ Corrección 2026-09-05 (hallazgo propio, auditando participacion, ANTES de la
+            // corrida de agosto): "préstamo al día" YA NO CORTA el bucle. Antes de D4 sí tenía
+            // sentido cortar acá (sin préstamo no había retroactivo en absoluto, así que una
+            // deuda saldada significaba "nada más que hacer"). Después de D4, TODOS los
+            // jubilados con meses adeudados pasan por este mismo bucle — si el préstamo se
+            // cancela a mitad del retroactivo, al jubilado le siguen faltando meses de pensión
+            // en EFECTIVO, y cortar acá se los dejaba sin pagar. El propio prevuelo
+            // (previsualizarJubilado) nunca tuvo este bug —su fórmula agregada ya redirigía
+            // todo el remanente sin deuda a montoADinero— así que la corrida real y el
+            // prevuelo daban resultados DISTINTOS para este caso exacto.
+            //
+            // Quedan DOS finales que terminan el bucle: llegar al mes de la corrida (fin
+            // natural del for) y SALDO_AGOTADO. "PRESTAMO_AL_DIA" ya no es alcanzable como
+            // motivoCorte final — una vez que la deuda exigible llega a 0, el resto de los
+            // meses simplemente sigue procesándose 100% como remanente (ver disponibleMes).
             if (saldoRestante <= TOLERANCIA) {
                 motivoCorte = "SALDO_AGOTADO";
                 break;
             }
-            if (hayPrestamoVigente && deudaExigibleTotal <= TOLERANCIA) {
-                motivoCorte = "PRESTAMO_AL_DIA";
-                break;
-            }
 
-            // D4: sin préstamo vigente, el tope es min(pensión del mes, saldo) — SIN
-            // deudaExigibleTotal, que sin préstamo vale 0 y forzaría el disponible a 0.
-            double disponibleMes = hayPrestamoVigente
+            // D4: con préstamo vigente Y deuda exigible pendiente, el tope es
+            // min(pensión del mes, saldo) — SIN deudaExigibleTotal en el min(): una vez que la
+            // deuda llega a 0 (con o sin préstamo vigente), ya no hay nada que la limite más
+            // que el saldo, y el resto fluye entero a remanente (ver más abajo).
+            double disponibleMes = (hayPrestamoVigente && deudaExigibleTotal > TOLERANCIA)
                 ? redondear(Math.min(valorTotal, Math.min(deudaExigibleTotal, saldoRestante)))
                 : redondear(Math.min(valorTotal, saldoRestante));
 
@@ -961,13 +1000,25 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         resumen.setEstado("GENERADO");
         resumen.setMesesAplicados(mesesAplicados);
         resumen.setMotivoCorte(motivoCorte);
-        // §6 del contrato: COMPLETA si NINGÚN mes generado quedó con remanente retenido
-        // (incluye el 100%-cruzado, donde no había remanente que retener); SOLO_CRUCE si AL
-        // MENOS un mes sí lo retuvo (sin cuenta o sin certificado). Sin meses generados
-        // (mesesAplicados == 0, p.ej. SALDO_AGOTADO desde el primer mes elegible) no es un
-        // evento de participación nuevo — motivoCorte ya explica por qué, queda sin setear.
+        // §6 del contrato, ítem 3 (2026-09-05): ningún camino puede dejar participacion sin
+        // setear — ya viene con default "BLOQUEADO" en el DTO, así que acá se sube
+        // explícitamente a lo que corresponda en los tres casos posibles:
         if (mesesAplicados > 0) {
+            // COMPLETA si NINGÚN mes generado quedó con remanente retenido (incluye el
+            // 100%-cruzado, donde no había remanente que retener); SOLO_CRUCE si AL MENOS
+            // un mes sí lo retuvo (sin cuenta o sin certificado).
             resumen.setParticipacion(algunRemanenteRetenido ? "SOLO_CRUCE" : "COMPLETA");
+        } else if ("MES_CORRIDA_ALCANZADO".equals(motivoCorte)) {
+            // 0 meses aplicados sin que ningún corte haya disparado sólo puede pasar si TODOS
+            // los meses candidatos ya tenían PGPC (el "continue" de idempotencia los saltó
+            // uno por uno) — no es un bloqueo, es estar al día por otro camino que el de
+            // arriba (ancla ya cubierta desde el principio). Mismo valor que ese caso.
+            resumen.setParticipacion("AL_DIA");
+        } else {
+            // SALDO_AGOTADO desde el primer mes elegible: no se le pudo generar nada en esta
+            // corrida. Visible como bloqueado, no como "sin novedad" — motivoCorte ya dice
+            // por qué.
+            resumen.setParticipacion("BLOQUEADO");
         }
 
         System.out.println("  ✅ Retroactivo Entidad " + idEntidad + " - " + mesesAplicados

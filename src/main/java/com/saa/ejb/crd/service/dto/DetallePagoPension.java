@@ -75,23 +75,38 @@ public class DetallePagoPension {
     private int mesesAplicados;
 
     /**
-     * Cuál de las tres condiciones de corte terminó el bucle retroactivo:
-     * "MES_CORRIDA_ALCANZADO" | "PRESTAMO_AL_DIA" | "SALDO_AGOTADO". {@code null} fuera del
-     * circuito retroactivo. Campo nuevo y opcional.
+     * Cuál de las condiciones de corte terminó el bucle retroactivo: "MES_CORRIDA_ALCANZADO" |
+     * "SALDO_AGOTADO" | "SIN_PRESTAMO_SIN_CERTIFICADO". {@code null} fuera del circuito
+     * retroactivo.
+     *
+     * ⛔ "PRESTAMO_AL_DIA" YA NO es alcanzable (corrección 2026-09-05, post-D4): que el préstamo
+     * quede al día ya no corta el bucle — el jubilado sigue cobrando en efectivo los meses que
+     * le falten. Antes de D4 sí cortaba, porque sin préstamo no había retroactivo; después de
+     * D4 todos pasan por el mismo bucle y cortar ahí dejaba sin pagar el resto de los meses.
      */
     private String motivoCorte;
 
     /**
-     * "COMPLETA" | "SOLO_CRUCE" | "BLOQUEADO" — API-PAGO-PENSION-COMPLEMENTARIA.md §6.
-     * {@code COMPLETA}: hubo cruce (si tenía préstamo) y no quedó remanente retenido —
+     * "COMPLETA" | "SOLO_CRUCE" | "BLOQUEADO" | "AL_DIA" — API-PAGO-PENSION-COMPLEMENTARIA.md
+     * §6. {@code COMPLETA}: hubo cruce (si tenía préstamo) y no quedó remanente retenido —
      * incluye tanto "salió dinero al banco" como "el cruce absorbió el 100%, no había nada
      * que sacar". {@code SOLO_CRUCE}: tiene préstamo, canceló deuda, pero quedó un remanente
      * que no se pudo entregar (sin cuenta o sin certificado). {@code BLOQUEADO}: no participó
      * en absoluto — sin préstamo y sin certificado (no hay cruce posible y no puede salir
      * dinero), o cualquier otro motivo que impidió generar el pago ({@code mensaje} dice cuál).
-     * {@code null} en YA_EXISTIA/AL_DIA: no es un evento de participación nuevo de esta corrida.
+     * {@code AL_DIA}: no debe ningún mes a este período — NO es error ni bloqueo, es un final
+     * normal (corrección 2026-09-05: antes esto quedaba en {@code null} y el frontend lo
+     * mostraba idéntico a un bloqueo real, "Sin novedad" sin explicación).
+     *
+     * ⛔⛔ Corrección 2026-09-05: el DEFAULT de este campo es {@code "BLOQUEADO"}, no
+     * {@code null}. Ningún camino de {@code generarPagoIndividual}/{@code previsualizarJubilado}
+     * puede dejarlo sin setear explícitamente — si alguien agrega un return nuevo y se olvida
+     * de setearlo, el default lo hace VISIBLE como bloqueado en vez de invisible como "sin
+     * novedad" (el defecto real que motivó esta corrección: un jubilado sin VPPC activa, o con
+     * valorPagar en $0, salía con participacion null y se veía igual que uno al que la corrida
+     * no le aplica).
      */
-    private String participacion;
+    private String participacion = "BLOQUEADO";
 
     public DetallePagoPension() {
     }

@@ -51,9 +51,17 @@ public class DetallePrevisualizacionJubilado {
     private boolean tienePrestamo;
     private boolean tieneCertificado;
 
-    /** "COMPLETA" | "SOLO_CRUCE" | "BLOQUEADO" — mismo campo y mismo significado que
-     *  {@link DetallePagoPension#getParticipacion()}. */
-    private String participacion;
+    /**
+     * "COMPLETA" | "SOLO_CRUCE" | "BLOQUEADO" | "AL_DIA" — mismo campo y mismo significado que
+     * {@link DetallePagoPension#getParticipacion()}. {@code AL_DIA}: sin meses adeudados a este
+     * período (apto=true, no es bloqueo) — corrección 2026-09-05, ver el JavaDoc del par en
+     * {@code DetallePagoPension}.
+     *
+     * ⛔⛔ DEFAULT {@code "BLOQUEADO"}, no {@code null} — mismo motivo que
+     * {@code DetallePagoPension}: que un return nuevo olvidado sea visible como bloqueado, no
+     * invisible como "sin novedad".
+     */
+    private String participacion = "BLOQUEADO";
 
     /** {@code false} si este jubilado no entra en la corrida real. */
     private boolean apto;
