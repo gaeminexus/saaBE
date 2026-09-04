@@ -1001,3 +1001,56 @@ lugares y **los dos sólo por su id** (`:351` para un mensaje de error, `:529` p
 literal de `obtieneCampos` en el DAO. ⚠️ `AnticipoEmpleado` y `OrdenBeneficioSocial` (los dos de
 `rhh`) tienen un campo con **el mismo nombre** y sí usan la entidad completa: quedan fuera del
 cambio, señalado explícitamente en el prompt.
+
+---
+
+## §20 — Tres fallas de proceso en una hora, y ninguna fue del código
+
+**2026-09-04.** El usuario desplegó **dos veces** sin el arreglo del botón de anular. El código
+estaba bien las dos veces. Lo que falló fue todo lo demás.
+
+### 20.1 🔴 El agente commiteó y no pusheó — y el usuario compila desde otra máquina
+
+`omen-saa-2-fe` dejó su trabajo en `3e22e84`, **local, sin pushear** (`[ahead 1]`), y no reportó.
+
+> **Instrucción del usuario, 2026-09-04:** *«siempre que me digas que despliegue, asegurate de que
+> hayan hecho commit y push tu equipo, porque yo estoy en otra máquina compilando el main y subiendo
+> las versiones.»*
+
+**Un commit local en la máquina omen no existe para él.** Es la misma lección que ya estaba escrita
+para los `.sql` y no se había generalizado a los commits de los agentes.
+
+**Regla, y va en todos los prompts de ahora en adelante:** el agente **pushea**, y el árbitro
+**verifica con `git status -sb` y `git log origin/main` en los DOS repos** antes de escribir la
+palabra «desplegá». El hash concreto va en el mensaje al usuario.
+
+### 20.2 🔴 Deduje el estado de un agente en vez de consultarlo
+
+Le dije al usuario *«le faltan minutos, está en el `ng build`»*. **No lo estaba: estaba `idle`.**
+Lo deduje de que los archivos aparecían modificados en el árbol.
+
+**`ListAgents` dice si un agente está `idle` o trabajando, y yo tenía esa herramienta.** Un agente
+que terminó sin reportar y uno que sigue trabajando **dejan exactamente el mismo rastro en el
+sistema de archivos**. Es el §13 otra vez —*deducir la causa desde el resultado*— y esta vez costó
+un despliegue del usuario.
+
+### 20.3 ⚠️ Escribí un `.sql` con un nombre de columna que no verifiqué
+
+`e2-09` consultaba `MVCHTIPO`. **La columna real es `MVCHTPOO`** (`MovimientoCajaChica:53`). Habría
+fallado con `ORA-00904` en sus cuatro bloques.
+
+**Lo detectó el agente**, de pasada, en el cuerpo de su mensaje de commit — no como un reporte de
+error, sino nombrando la columna al justificar otra cosa. Yo lo leí, dudé, y fui al archivo.
+
+> **Es el §9 al derecho:** *«los dos errores murieron cuando el OTRO fue al archivo»*. Acá el que
+> tenía la otra hipótesis era mi propio agente, y lo que lo hizo visible fue que **escribiera de más
+> en el commit**. Un mensaje de commit que explica el porqué es un canal de verificación, no
+> decoración.
+
+**Y el script entero sobraba.** `tsr/sql/02-caja-chica.sql:128,150` declara
+`MVCHTPOO NUMBER NOT NULL` con `CONSTRAINT CK_MVCH_TPOO CHECK (MVCHTPOO IN (1,2,3,4,5))`: **la base
+ya garantiza lo que el script iba a averiguar.** Escribí un diagnóstico para una pregunta que el
+DDL del propio equipo respondía. Se borra en vez de dejarse: un `.sql` que no hay que correr es
+ruido, y el razonamiento queda acá.
+
+**El orden barato, y es el que no seguí:** antes de escribir un control, leer el DDL de la tabla.
