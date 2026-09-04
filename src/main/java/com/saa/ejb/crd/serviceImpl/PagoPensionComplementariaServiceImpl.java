@@ -385,13 +385,6 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         }
         int mesesAdeudados = (int) (ChronoUnit.MONTHS.between(desde, corrida) + 1);
         fila.setMesesAdeudados(mesesAdeudados);
-        // NOMINAL (mesesAdeudados × tasa mensual), SIN prorratear el último mes si el tope
-        // termina recortando `total` por debajo de esto — ítem 3 del encargo: el prorrateo de
-        // un mes parcial entre pensión y seguro es una decisión contable pendiente del
-        // usuario, no se inventó un criterio acá. Por eso totalPension+totalSeguro puede ser
-        // MAYOR que `total` cuando el último mes queda topado.
-        fila.setTotalPension(redondear(mesesAdeudados * valorPensionMensual));
-        fila.setTotalSeguro(redondear(mesesAdeudados * valorSeguroMensual));
 
         // Deuda EXIGIBLE (ítem 3/§3bis): mismo helper por préstamo vigente que usa la corrida
         // real — nunca el pendiente total, que pre-pagaría cuotas futuras. 0 si no hay ningún
@@ -439,9 +432,25 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             ? redondear(Math.min(montoADineroNominal, saldoLibreParaDinero))
             : 0.0;
 
+        double total = redondear(montoACruzar + montoADinero);
         fila.setMontoACruzar(montoACruzar);
         fila.setMontoADinero(montoADinero);
-        fila.setTotal(redondear(montoACruzar + montoADinero));
+        fila.setTotal(total);
+
+        // §4bis "Mes parcial", decisión del árbitro 2026-09-04: reparto PROPORCIONAL a la
+        // mensualidad, seguro por RESTA (nunca con su propia multiplicación, para que sumen
+        // exacto). Se aplica sobre `total` completo, no sólo sobre un "último mes" — como el
+        // prevuelo no simula mes a mes, esta es la forma agregada de la misma regla: cuando no
+        // hay tope, da idéntico resultado que sumar el nominal de cada mes completo (la razón
+        // 280:20 se preserva linealmente), y cuando SÍ hay tope (por saldo o por falta de
+        // certificado — acá `total` ya excluye el remanente retenido sin certificado, a
+        // diferencia de la corrida real), garantiza totalPension + totalSeguro == total
+        // exactamente, cerrando la inconsistencia que se había reportado.
+        double totalPension = redondear(total * (valorPensionMensual / valorTotal));
+        double totalSeguro = redondear(total - totalPension);
+        fila.setTotalPension(totalPension);
+        fila.setTotalSeguro(totalSeguro);
+
         fila.setApto(true);
         // SOLO_CRUCE no puede darse sin préstamo: si !hayPrestamoVigente llegamos hasta acá
         // sólo cuando tieneCertificado=true (el bloqueo de arriba ya atrapó el caso contrario),
@@ -894,8 +903,26 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             saldoRestante = redondear(saldoRestante - consumidoEsteMes);
 
             mesesAplicados++;
-            totalPension = redondear(totalPension + valorPension);
-            totalSeguro = redondear(totalSeguro + valorSeguro);
+            // §4bis "Mes parcial", decisión del árbitro 2026-09-04: si este mes procesó MENOS
+            // que la mensualidad completa (cruce + remanente < valorTotal — pasa cuando el
+            // saldo del aporte 23 es el factor que topó, no cuando fue la deuda exigible: ahí
+            // lo que sobra del cruce se redirige entero a remanente y el total sigue siendo
+            // valorTotal), el parcial se reparte PROPORCIONAL a la mensualidad. El seguro sale
+            // por RESTA, nunca con su propia multiplicación — dos redondeos independientes
+            // podrían no sumar el total y dejar un descuadre de centavos entre las dos cuentas
+            // contables (mismo motivo que H24).
+            double montoProcesadoEsteMes = redondear(aplicadoEsteMes + remanenteMes);
+            double pensionEsteMes;
+            double seguroEsteMes;
+            if (redondear(valorTotal - montoProcesadoEsteMes) > TOLERANCIA) {
+                pensionEsteMes = redondear(montoProcesadoEsteMes * (valorPension / valorTotal));
+                seguroEsteMes = redondear(montoProcesadoEsteMes - pensionEsteMes);
+            } else {
+                pensionEsteMes = valorPension;
+                seguroEsteMes = valorSeguro;
+            }
+            totalPension = redondear(totalPension + pensionEsteMes);
+            totalSeguro = redondear(totalSeguro + seguroEsteMes);
             if (saleAlBancoEsteMes) {
                 totalOrden = redondear(totalOrden + remanenteMes);
                 algunaOrdenGenerada = true;
