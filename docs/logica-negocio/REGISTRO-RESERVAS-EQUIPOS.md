@@ -12,6 +12,61 @@
 
 ---
 
+## 0. Índice — qué reglas contiene este archivo
+
+> ## ⛔ La línea del índice se escribe PRIMERO. Después la sección.
+>
+> **No al revés, y no «después me acuerdo».** Es la **regla 1 de este archivo aplicada a sí mismo**
+> —*«antes de usar un código, reservalo acá; después escribí el script»*— y funciona por el mismo
+> motivo: así el índice **deja de ser documentación sobre el archivo y pasa a ser el acto de
+> reservar el lugar**. Si escribiste la sección sin la línea, te salteaste el paso 1.
+>
+> **Por qué se insiste tanto:** un índice mantenido a mano envejece igual que todo lo demás acá
+> —este archivo ya registra tres veces la misma forma de fallo—, y **un índice incompleto es peor
+> que ninguno**: miente por omisión, y miente en la dirección peor. Quien lo consulte va a concluir
+> que la regla no existe y **la va a escribir de nuevo**, que es exactamente el problema que este
+> índice viene a resolver.
+>
+> **Y los títulos nombran el CONCEPTO, no el incidente.** «Lo que pasó con `PGCE` el 03-09» sólo lo
+> encuentra quien ya sabe qué pasó; «reservar un nombre ≠ autorizar la tabla» lo encuentra el que
+> viene a hacer justamente eso.
+
+| § | Qué regla vive ahí |
+|---|---|
+| **1** | Las tres reglas: `fetch` primero, reservar acá antes de usar, revalidar el `MAX` antes de ejecutar |
+| **1bis** | Las secuencias `SQ_PRBRCDGO` / `SQ_PDTRCDGO` **no existen**: la regla de sincronizarlas era falsa |
+| **2** | Qué bloque de `PRBR` / `PDTR` tiene cada equipo |
+| **2b** | Números de script `.sql`: rangos dentro de `crd/sql/`, prefijo por equipo fuera de ahí |
+| 2b ▸ | **Un archivo sin commitear es invisible para el otro equipo** — reservar el número no alcanza |
+| 2b ▸ | **Dos equipos escribiendo la misma idea no colisionan: se duplican**, y git no avisa |
+| **2c** | Plantillas contables: cómo se reserva un código alterno `PLNSCDAL` |
+| **2d** | Marcador de equipo en el prefijo de **todos** los commits, no sólo los de coordinación |
+| **3** | Nombres de tabla de 4 letras: son únicos en **todo el proyecto**, no por esquema |
+| 3 ▸ | **Reservar un nombre ≠ autorizar a crear la tabla.** `reservada` no es `autorizada` |
+| **4** | Archivos con dueño exclusivo: pedírselo al dueño, no editarlo y avisar después |
+| **5** | Bitácora de reservas — una línea cada vez que se reserva algo |
+| **6** | El registro reserva `PRBRCDGO`, pero **el código busca por `PRBRALTR`** |
+| **6** ⚠️ | *(segundo §6)* Deudas transversales sin dueño: `handleError`, el `merge` desnudo, los errores que llegan como JSON, la búsqueda vacía que lanza excepción |
+| **7** | **No mergear a `main` un mapeo cuya columna no está en la base** |
+| **7** ⚠️ | *(segundo §7)* Siete pantallas de `cnt` que truncan listados en silencio |
+
+### ⚠️ Hay dos §6 y dos §7, y no se renumeran acá
+
+**Encontrado el 2026-09-03 al escribir este índice** — que es exactamente para lo que sirve: la
+duplicación de números llevaba días en el archivo y nadie la había visto, porque nadie lee 690
+líneas de corrido.
+
+**No se corrige unilateralmente, y el motivo importa:** los cuatro están referenciados desde otros
+documentos —`ESTADO-EQUIPO-LAP-1.md` cita «la §6» por el `PRBRALTR`, varios citan «§6.1» y «§6.4»
+por las deudas transversales, y `crd/DISENO-PANTALLA-PAGO-JUBILADOS.md` cita «§7» por la regla del
+mapeo—. **Renumerar rompe esas referencias en silencio**, que es el mismo tipo de fallo que el
+archivo entero viene evitando.
+
+Queda señalado para que los árbitros lo decidan juntos. Mientras tanto, **«§6» y «§7» a secas son
+ambiguos: citar el título, no sólo el número.**
+
+---
+
 ## 1. Las tres reglas
 
 0. **`git fetch` ANTES de reservar.** Reservar contra un checkout viejo no reserva nada: el número
@@ -162,12 +217,32 @@ juntas no va a saber cuál manda. Que es exactamente el fallo que este archivo e
 
 **Qué hacer:**
 
-- **Al escribir una regla nueva acá, avisá al otro árbitro *antes* o *al mismo tiempo* que la subís.**
-  No para pedir permiso: para que el otro pueda buscar la suya. Este caso se detectó **solo** porque
-  se avisó — sin el aviso quedaban las dos y nadie lo notaba.
-- **Al recibir ese aviso, buscá si vos también la escribiste** antes de seguir.
-- **Desempate:** igual que con los números de script, la que está en `origin` se queda. La otra se
-  borra, no se fusiona — dos redacciones de la misma regla no se mejoran mezclándose.
+**Qué hacer, en este orden — y el orden es el arreglo:**
+
+1. **`git fetch` y buscá el concepto en el §0 antes de escribir.** Es la **regla 0 extendida**: no
+   sólo antes de reservar un código, **antes de escribir cualquier regla**. Es el mecanismo
+   principal porque **no depende de que nadie más haga nada**, escala a los cuatro equipos que
+   escriben este archivo, y funciona para el que arranque mañana sin que nadie lo agregue a una
+   lista.
+2. **Escribí la línea del §0 primero, la sección después** (ver el recuadro del §0).
+3. **Avisá a los árbitros activos al subirla.** Es la **red**, no el mecanismo: atrapa lo que la
+   búsqueda no ve. Y va a **los activos**, en plural — este archivo lo escriben cuatro equipos, no
+   dos.
+4. **Al recibir ese aviso, buscá si vos también la escribiste** antes de seguir.
+5. **Desempate:** la que está en `origin` se queda; la otra se borra, **no se fusiona** — dos
+   redacciones de la misma regla no se mejoran mezclándose.
+
+> ⚠️ **Por qué el `fetch` va primero y el aviso segundo, y no al revés.** La primera versión de esta
+> subsección ponía el aviso como mecanismo principal. **Estaba mal, y se escribió justo después de
+> que este caso se salvara por casualidad:** se detectó *porque* un árbitro avisó, y eso es
+> evidencia de que esa vez hubo suerte, no de que avisar funcione. Un remedio que depende del
+> comportamiento ajeno falla exactamente en el caso que más lo necesita — el del equipo nuevo que
+> todavía no sabe que la convención existe.
+>
+> **Con su propio límite declarado:** *un `grep` recorta por definición — muestra lo que casa, no lo
+> que decide*. Dos redacciones de la misma idea pueden no compartir ninguna palabra. Por eso el
+> paso 3 sigue existiendo, y por eso los títulos del §0 nombran el concepto y no el incidente: para
+> que la búsqueda tenga contra qué casar.
 
 > Y una nota sobre el desempate real de este caso: la que sobrevivió no fue la primera en llegar
 > sino la mejor ubicada (arriba de la tabla de Reservados, apoyada en su columna **Estado**). El
