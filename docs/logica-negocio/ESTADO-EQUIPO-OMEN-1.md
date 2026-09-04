@@ -634,6 +634,57 @@ también para dos fechas de negocio. Familia de H21, de alcance mucho menor.
 | `GET /rest/pgpc/porPeriodo`, alcance reducido | ✅ `1933079` — DAO + Service + REST, `mvn -q compile` exit 0, verificado por el árbitro línea por línea |
 | Pantalla: servicio + pestaña «Corrida del mes» + «Seguimiento» reducida | ⬜ en curso (FE) |
 
+### H29 — La regla de fechas definitiva, y el control que NO hubo que tocar
+
+El usuario refinó su propia decisión en el día: **la fecha del hecho es `min(último día del mes del
+período, hoy)`**, y el pago va con fecha actual.
+
+**Por qué importa más de lo que parece.** Los tres pasos del circuito tienen control de fecha
+futura (`pagarConAportes:594`, `procesarJubilacion:459`, `DevolucionAporte:330`). La alternativa que
+este árbitro estaba por recomendar era **ampliar** ese control — lo que obligaba a modificar
+`pagarConAportes`, **compartido con la carga Petro**, y a avisar a los otros equipos. La regla del
+usuario consigue lo mismo con **radio de impacto cero**: `min(fin de mes, hoy)` no puede dar futuro
+por construcción, así que el control nunca se alcanza.
+
+**Y disolvió un bloqueante que este árbitro había declarado.** Una jubilación no tiene período: es
+un hecho del mes en curso, así que la regla da siempre **hoy** — que es lo que la pantalla ya
+mandaba. El conflicto no necesitaba excepción; necesitaba la regla que lo explicara.
+
+**La mina que se desactivó, y que había durado unas horas:** la primera versión (fin de mes
+**incondicional**, `79204e4`, instrucción de este árbitro) dejaba que correr un período **dentro de
+su propio mes** diera fecha futura, y `cruzarContraPrestamos` -> `pagarConAportes` habría lanzado
+`FECHA_INVALIDA` **para todo jubilado con préstamo vigente**, como renglones `ERROR` dentro de un
+200. Agosto corrido en septiembre no la tocaba, así que la verificación campo por campo del árbitro
+—que se hizo sobre el caso de agosto— **no la vio**. La destapó una pregunta del usuario.
+
+> **La lección, y es la misma de septiembre con otro disfraz:** verifiqué el caso que teníamos
+> delante y lo di por verificado el mecanismo. Un cambio de fecha se verifica contra **el rango de
+> casos**, no contra el caso urgente.
+
+### H30 — `CRD.PGPC` está vacía: el proceso nunca corrió
+
+Medido con `sql/189` bloque 1 el 2026-09-04: **cero filas, ningún período**. Consecuencias:
+
+- **No hay histórico que corregir.** La decisión pendiente sobre períodos viejos con fechas en
+  meses distintos queda sin objeto.
+- **Agosto es la primera corrida real**, así que toda la cartera de pensiones nace con la
+  convención nueva.
+- **Sube la apuesta:** un proceso que mueve plata, genera asientos y crea órdenes en tesorería, que
+  nunca corrió, y **sin reverso** — no existe `revertirPagoPension`. Por eso `sql/190`.
+
+### ⛔ El frente quedó frenado por una sesión que nunca arrancó
+
+**El agente de FE (`omen-saa-1-fe`) figuró en estado «waiting» durante las tres horas de la
+jornada**, sin recoger ninguno de los tres mensajes despachados, mientras las otras seis sesiones de
+la máquina pasaban por `idle`. No escribió una sola línea: en `saaFE` los únicos commits del equipo
+son los tres espejos de documentación del árbitro.
+
+**Fallo de proceso propio:** la señal estuvo desde el primer `ListAgents` de la sesión y este árbitro
+no la leyó como lo que era. Se reportó progreso del frente sin verificar que el ejecutor estuviera
+trabajando. **Un agente que no reporta en dos horas no está pensando: está parado.** El remedio
+aplicado fue suscribirse al aviso de inactividad (`notify_when_idle`), que es lo que debió hacerse al
+despachar.
+
 ### Lo que NO se construyó, a propósito
 
 `totalCruzado`, `cruces[]`, `anulable` y `POST /pgpc/anular/{id}` — los cuatro dependen de
