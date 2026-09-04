@@ -962,3 +962,42 @@ autorización que sólo vive en el chat se pierde con el chat**.
 **Primer despacho en modo directo:** el §17 (el campo `tipo` que el frontend no lee), enviado a
 `omen-saa-2-fe` el 2026-09-04 con los cuatro ítems, la trampa de `claseEstadoCierre` marcada
 explícitamente, y la instrucción de parar si el código no coincide con lo descrito.
+
+---
+
+## §19 — El mismo defecto del §17, otra vez, en el mismo módulo: `idPago`
+
+**Encontrado el 2026-09-04 mientras se preparaba el arreglo del EAGER, no buscándolo.**
+
+| Lado | Qué dice |
+|---|---|
+| Backend | `MovimientoCajaChica` expone la **entidad entera**: `getPagoProgramado()` → Jackson serializa la clave **`pagoProgramado`** con todo el objeto |
+| Frontend | `movimiento-caja-chica.ts:32` declara **`idPago?: number \| null`**, y `reposicion-caja-chica.component.html:105` lo pinta con `@if (r.idPago != null)` |
+
+**`idPago` nunca llega, así que el número de pago de una reposición no se muestra jamás.** Igual
+que el §17: un campo que el front **lee** con un nombre que el back no manda. Silencioso, porque
+`undefined` no es un error — es un bloque que no se renderiza.
+
+**Segunda aparición del mismo patrón en la misma pantalla, encontrada por un camino distinto.** El
+§17 salió de una captura del usuario; éste salió de listar los usos de una relación para poder
+cambiarla. Ninguno de los dos apareció leyendo el contrato.
+
+> **Lo que esto dice del método:** el §17 cerró con *«el campo que el front manda lo valida el
+> backend; el que lee no lo valida nadie»*. Esa frase describe una **familia**, no un caso — y la
+> familia tenía un segundo miembro a treinta líneas del primero. **Cuando se formula un patrón,
+> hay que ir a contar cuántos hay, no anotarlo y seguir.** Es la deuda que dejó el §17.
+
+### Y las dos correcciones convergen en un solo cambio
+
+El arreglo del EAGER —`@ManyToOne PagoProgramado` pasa a `Long idPago` sobre la misma columna
+`PGTRCDGO`, siguiendo el patrón que estableció el hotfix `241211b`— **hace que la clave serializada
+pase a llamarse exactamente `idPago`**, que es lo que el frontend ya esperaba desde el principio.
+
+**No hubo que elegir entre arreglar el rendimiento y arreglar el contrato: el mismo cambio hace las
+dos cosas, y no toca la base** (la columna sigue siendo `PGTRCDGO`).
+
+*Verificado antes de despachar:* `pagoProgramado` se usa en `MovimientoCajaChica` en sólo dos
+lugares y **los dos sólo por su id** (`:351` para un mensaje de error, `:529` para grabarlo), más el
+literal de `obtieneCampos` en el DAO. ⚠️ `AnticipoEmpleado` y `OrdenBeneficioSocial` (los dos de
+`rhh`) tienen un campo con **el mismo nombre** y sí usan la entidad completa: quedan fuera del
+cambio, señalado explícitamente en el prompt.
