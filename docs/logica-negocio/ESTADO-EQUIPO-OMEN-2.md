@@ -1129,3 +1129,82 @@ entrar por la carga de CxP.** ⛔ `cxc` está fuera del alcance de este equipo: 
 posible frente hay que acordarlos con el usuario y, si toca `cxc`, con quien lo tenga.
 
 **NO se corrigió nada.** Es una decisión de negocio y de alcance, no técnica.
+
+---
+
+## §22 — 🔴 CORRECCIÓN del §11: la guarda anti-duplicados está inerte para TODO origen externo
+
+**2026-09-04. Me lo corrigió `omen-saa-1-arb` y tenían razón.** Yo había contestado que el defecto
+del §11 no les aplicaba porque su servicio no llama a `selectVigentesByOrigen`. **Verifiqué su
+corrección en el código y es correcta: no importa quién la llame, porque la llama el método que
+todos usan.**
+
+### El hallazgo, verificado en `PagoProgramadoServiceImpl:842-846`
+
+```java
+// Un mismo documento origen no puede tener dos órdenes de pago vivas: se
+// duplicaría la salida de dinero.
+if (!pagoProgramadoDaoService.selectVigentesByOrigen(etiquetaOrigen, idOrigen).isEmpty()) {
+    throw new IncomeException("El documento " + idOrigen + " de " + etiquetaOrigen
+            + " ya tiene un pago vigente. Anúlelo o reviértalo antes de registrar otro.");
+}
+```
+
+**Cinco líneas más abajo, en el mismo método:**
+
+```java
+// Cuenta nula (punto 14, 2026-08-27): la solicitud nace POR_APROBAR, sin cuenta
+// ni forma de pago -- tesoreria los asigna despues con POST /pgtr/aprobar.
+```
+
+> **El método crea pagos en `POR_APROBAR` y su propia guarda no puede ver `POR_APROBAR`.** La
+> protección contra la duplicación de una salida de dinero está escrita, se ejecuta, y **no puede
+> ver justamente lo que ella misma acaba de crear la vez anterior.**
+
+### Por qué mi §11 lo subestimó, y es un error de encuadre, no de lectura
+
+El §11 catalogó el defecto **por llamador**: «cuatro consultas, tres son de este equipo, hay que
+revisar qué hace cada llamador con la lista vacía». Ese encuadre era correcto para tres de las
+cuatro **y me hizo perder la cuarta**, porque `registrarPagoDeOrigenExterno` no es *un* llamador:
+es **la puerta de entrada compartida por todos los orígenes externos**.
+
+> **Contar llamadores midió el alcance del defecto como si fuera la suma de sus usos. No lo es: uno
+> de los usos ERA el mecanismo.** Cuando una consulta rota vive dentro de una guarda compartida, su
+> alcance no es «los que la llaman» sino «todos los que pasan por lo que ella protege».
+
+**Y hay una segunda capa que me pasó por alto:** yo mismo escribí en el §11 que *«desde el frente S,
+un pago nace POR_APROBAR cuando no viene cuenta bancaria, que es el flujo normal desde entonces»*.
+Tenía las dos mitades —la consulta ciega y el estado en que nacen los pagos— **anotadas en el mismo
+párrafo, y no las junté.**
+
+### Alcance real, corregido
+
+**Afecta a todo origen externo que nazca sin cuenta bancaria**, que hoy es el flujo normal:
+devolución de aportes, pensión complementaria a jubilados, caja chica, anticipo a empleado,
+devolución a cliente, nómina.
+
+### Gravedad hoy: baja, y el diagnóstico es de ellos
+
+`omen-saa-1` lo midió sobre su propio frente sin inflarlo: su `PGPC` tiene `UNIQUE (entidad, año,
+mes)` y la orden se crea en la **misma transacción** que el `PGPC`, con `REQUIRES_NEW` por jubilado,
+así que en el camino normal no se genera una orden doble. **Lo que desaparece es la red**, no el
+piso: cualquier ruta que llame a `registrarPagoDeOrigenExterno` para el mismo documento **fuera** de
+esa transacción —un reintento manual, un reproceso, una pantalla nueva— crearía una segunda orden
+sin que nada la frene. Con lotes de varios cientos de órdenes yendo al banco, **un duplicado no se
+ve a ojo**.
+
+### El arreglo, y por qué no lo despaché solo
+
+Agregar `POR_APROBAR` a `selectVigentesByOrigen` arregla la guarda **y** mejora el diagnóstico de
+`exigePagoConfirmadoEnTesoreria` (§11), que es el otro llamador propio.
+
+⚠️ **Pero cambia comportamiento visible:** un `registrarPagoDeOrigenExterno` que hoy pasa empezaría
+a fallar cuando ya exista una orden `POR_APROBAR` para ese mismo documento. Es lo correcto —es
+exactamente lo que la guarda quiso impedir— pero **es una decisión del usuario, no técnica**, y hay
+un tema de oportunidad: `omen-saa-1` está por correr su primera carga retroactiva de varios cientos
+de órdenes. Si quedaran órdenes `POR_APROBAR` de un intento previo, el arreglo les haría fallar el
+reintento. **Se coordina con ellos antes de desplegarlo.**
+
+> **Nota de método, y es de ellos:** *«no es que no la usemos: es que se ejecuta y no puede ver lo
+> que tendría que ver»*. Es la formulación más limpia que tenemos del §10bis — **un mecanismo que no
+> puede fallar deja de avisar cuando está equivocado**— aplicada a una guarda en vez de a un cálculo.
