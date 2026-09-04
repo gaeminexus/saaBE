@@ -104,6 +104,56 @@ cartera a vencidos por fechar pagos en el mes equivocado.
 
 ---
 
+## 3bis. ⛔ D3 — Hasta las cuotas EXIGIBLES a la fecha de corrida, no más
+
+> *«Que se aplique el saldo hasta que el préstamo quede con sus cuotas pagadas hasta la fecha de
+> corrida, es decir agosto 2026; el resto que se lo deje en su cuenta de pensión complementaria.
+> Lo que sí debemos asegurarnos es que se vayan cruzando los aportes cronológicamente: si el aporte
+> cubre más de lo que se debe en una cuota, antes de usar valores de aporte del siguiente mes se
+> debe cruzar el saldo del mes anterior, y luego sí usar saldo del siguiente mes.»*
+
+### ⛔ El motor NO respeta esto solo. Hay que toparlo desde afuera
+
+**Verificado el 2026-09-04**, y es el hallazgo que decide la implementación:
+`MotorPagoPrestamoServiceImpl.buscarSiguienteCuotaConSaldo(idPrestamo)` (`:333`) **no recibe fecha
+y no filtra por vencimiento**. Devuelve la siguiente cuota pendiente con saldo, **sea exigible o
+futura**, y `aplicarPago` cascadea hasta agotar el dinero o quedarse sin cuotas.
+
+**Si se le entrega el acumulado completo, el motor va a PRE-PAGAR cuotas futuras** — exactamente lo
+que el usuario no quiere. No es un defecto del motor: es correcto para un abono voluntario, y este
+caso no lo es.
+
+### El tope, calculado antes de llamar
+
+```
+finCorrida = ultimo dia del mes de la corrida (2026-08-31)
+
+deudaExigible = SUMA del saldo pendiente de las cuotas del prestamo
+                cuya FECHA DE VENCIMIENTO <= finCorrida
+
+valorAAplicar = min( pension del mes M ,
+                     deudaExigible restante ,
+                     saldo restante del aporte 23 )
+```
+
+`deudaExigible` se **descuenta en cada iteración** por lo que el motor haya aplicado. Cuando llega a
+cero, **se corta el bucle**: el préstamo ya está al día a agosto y no se toca una cuota más.
+
+⛔ **Lo que sobra NO se consume.** Ni se descuenta del aporte 23 ni se manda al banco: queda en la
+cuenta de pensión complementaria del jubilado. *«El resto que se lo deje en su cuenta.»*
+
+### La cronología, que sale sola si el bucle es secuencial
+
+El requisito de *«antes de usar el aporte del siguiente mes, cruzar el saldo del mes anterior»* se
+cumple **por construcción** si se llama al motor **una vez por mes, en orden**: cada llamada
+cascadea hasta agotar el dinero de ESE mes antes de que exista la siguiente.
+
+⛔ **Lo que lo rompería es sumar todos los meses y hacer una sola llamada.** Ahí se pierde de qué mes
+salió cada peso, y con él la cronología que el usuario pide. **Un `pagarConAportes` por mes, en
+orden ascendente. Nunca un acumulado.**
+
+---
+
 ## 4bis. ✅ DECISIONES DEL USUARIO — 2026-09-04, cerradas
 
 > **1.** *«Fecha de mes de corrida, en este caso agosto.»*
