@@ -1208,3 +1208,41 @@ reintento. **Se coordina con ellos antes de desplegarlo.**
 > **Nota de método, y es de ellos:** *«no es que no la usemos: es que se ejecuta y no puede ver lo
 > que tendría que ver»*. Es la formulación más limpia que tenemos del §10bis — **un mecanismo que no
 > puede fallar deja de avisar cuando está equivocado**— aplicada a una guarda en vez de a un cálculo.
+
+### §22bis — Coordinación con `omen-saa-1`, y el dato que agranda el arreglo
+
+**2026-09-04.** El intercambio cerró con tres cosas que conviene dejar escritas.
+
+**1. Los ocho llamadores, medidos.** `registrarPagoDeOrigenExterno` se llama desde:
+
+| Módulo | Llamadores |
+|---|---|
+| `crd` | `DevolucionAporteServiceImpl`, `PagoPensionComplementariaServiceImpl`, `PrestamoServiceImpl` |
+| `cxc` | `AnticipoClienteServiceImpl` |
+| `rhh` | `AnticipoEmpleadoServiceImpl`, `GeneracionOrdenPagoServiceImpl` (nómina), `OrdenBeneficioSocialServiceImpl` |
+| `tsr` | `MovimientoCajaChicaServiceImpl` |
+
+**La guarda está inerte para los ocho.** Antes de medirlo yo había dicho que nómina y caja chica
+estaban «probablemente» afectadas; ahora está medido.
+
+**Y el dato le sirvió al otro equipo más que a mí:** tres de los ocho son suyos. Venían tratando
+esto como *«un defecto ajeno que me afecta en el frente de pensiones»* y resultó que la guarda
+también está inerte para **devolución de aportes y desembolso de préstamos**, dos frentes suyos **ya
+en producción**. La medición cambió de quién era el problema.
+
+**2. La ventana está abierta y verificada del lado de ellos.** `CRD.PGPC` está vacía y la
+previsualización **no escribe**: lo verificaron buscando `.save(`, `pagarConAportes`,
+`registrarPagoDeOrigenExterno` y la generación de asientos en `previsualizarCorrida`, con
+`@TransactionAttribute(NOT_SUPPORTED)` y usando la variante pura `calcularSaldosCuota`. **Avisan
+antes de ejecutar, no después.**
+
+⚠️ **Sigue siendo medición de ellos, no mía** — este árbitro no ejecuta SQL. Se traslada al usuario
+atribuida, no como verificada acá.
+
+**3. No se despachó, y por qué.** El arreglo cambia comportamiento visible en ocho módulos. Un par
+lo pidió con buen fundamento; **un pedido de un par no es una autorización del usuario** (regla 12).
+Queda esperando la decisión.
+
+> **Cierre de método que quedó de los dos lados:** el mismo error de eje apareció **tres veces en un
+> día entre dos equipos** —mi §11 catalogando por llamador, y dos casos suyos—. **No es descuido de
+> nadie: es la forma por defecto de equivocarse cuando uno cataloga antes de mirar.**
