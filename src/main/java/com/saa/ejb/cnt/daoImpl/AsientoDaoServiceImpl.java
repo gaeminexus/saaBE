@@ -127,13 +127,19 @@ public class AsientoDaoServiceImpl extends EntityDaoImpl<Asiento> implements Asi
 		@SuppressWarnings({ "unchecked", "rawtypes" })
 		public List selectMaxNumero(Long tipo, Long empresa) throws Throwable {
 			System.out.println("Ingresa al metodo selectMaxNumero de tipo: " + tipo + " en empresa: " + empresa);
-			Query query = em.createQuery(" select   Max(b.numero) " +
-										 " from     Asiento b " +
-										 " where    b.empresa.codigo = :empresa " +
-										 "          and b.tipoAsiento.codigo = :tipo");
-			query.setParameter("empresa", empresa);		
-			query.setParameter("tipo", tipo);
-			return query.getResultList();
+			long t0 = System.currentTimeMillis();
+			try {
+				Query query = em.createQuery(" select   Max(b.numero) " +
+											 " from     Asiento b " +
+											 " where    b.empresa.codigo = :empresa " +
+											 "          and b.tipoAsiento.codigo = :tipo");
+				query.setParameter("empresa", empresa);
+				query.setParameter("tipo", tipo);
+				return query.getResultList();
+			} finally {
+				System.out.println("[PERF] selectMaxNumero tipo=" + tipo + " empresa=" + empresa
+						+ " -> " + (System.currentTimeMillis() - t0) + " ms");
+			}
 		}
 
 		/* (non-Javadoc)
@@ -312,17 +318,24 @@ public class AsientoDaoServiceImpl extends EntityDaoImpl<Asiento> implements Asi
 		@Override
 		public Long selectMaxNumeroMesTipo(Long tipo, Long empresa, Long mes, Long anio) throws Throwable {
 			System.out.println("Ingresa al metodo selectMaxNumeroMesTipo de tipo: " + tipo + ", empresa: " + empresa + ", mes: " + mes + ", anio: " + anio);
-			Query query = em.createQuery(" select Max(b.numeroMesTipo) " +
-										 " from   Asiento b " +
-										 " where  b.empresa.codigo = :empresa " +
-										 "        and b.tipoAsiento.codigo = :tipo " +
-										 "        and b.numeroMes = :mes " +
-										 "        and b.numeroAnio = :anio");
-			query.setParameter("empresa", empresa);
-			query.setParameter("tipo", tipo);
-			query.setParameter("mes", mes);
-			query.setParameter("anio", anio);
-			return (Long) query.getSingleResult();
+			long t0 = System.currentTimeMillis();
+			try {
+				Query query = em.createQuery(" select Max(b.numeroMesTipo) " +
+											 " from   Asiento b " +
+											 " where  b.empresa.codigo = :empresa " +
+											 "        and b.tipoAsiento.codigo = :tipo " +
+											 "        and b.numeroMes = :mes " +
+											 "        and b.numeroAnio = :anio");
+				query.setParameter("empresa", empresa);
+				query.setParameter("tipo", tipo);
+				query.setParameter("mes", mes);
+				query.setParameter("anio", anio);
+				return (Long) query.getSingleResult();
+			} finally {
+				System.out.println("[PERF] selectMaxNumeroMesTipo tipo=" + tipo + " empresa=" + empresa
+						+ " mes=" + mes + " anio=" + anio
+						+ " -> " + (System.currentTimeMillis() - t0) + " ms");
+			}
 		}
 
 		@SuppressWarnings("unchecked")

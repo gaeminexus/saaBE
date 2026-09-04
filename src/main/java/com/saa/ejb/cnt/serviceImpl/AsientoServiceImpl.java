@@ -185,21 +185,27 @@ public class AsientoServiceImpl implements AsientoService {
 	 */
 	public Long siguienteNumeroAsiento(Long tipo, Long empresa) throws Throwable {
 		System.out.println("Ingresa al metodo siguienteNumeroAsiento con tipo: " + tipo + ", en empresa: " + empresa);
-		Long numero = null;
-		List<Asiento> asientos = asientoDaoService.selectMaxNumero(tipo, empresa);
-		if(asientos.isEmpty()){
-			numero = Long.valueOf(0);
-		}else {
-			for(Object o : asientos){
-				System.out.println("Valor Obtenido: " + o);
-				if(o == null){
-					numero = Long.valueOf(0);
+		long t0 = System.currentTimeMillis();
+		try {
+			Long numero = null;
+			List<Asiento> asientos = asientoDaoService.selectMaxNumero(tipo, empresa);
+			if(asientos.isEmpty()){
+				numero = Long.valueOf(0);
+			}else {
+				for(Object o : asientos){
+					System.out.println("Valor Obtenido: " + o);
+					if(o == null){
+						numero = Long.valueOf(0);
+					}
+					else
+					numero = (Long)o;
 				}
-				else
-				numero = (Long)o;
 			}
+			return numero + 1;
+		} finally {
+			System.out.println("[PERF] siguienteNumeroAsiento tipo=" + tipo + " empresa=" + empresa
+					+ " -> " + (System.currentTimeMillis() - t0) + " ms");
 		}
-		return numero + 1;
 	}
 
 	/**
@@ -213,29 +219,39 @@ public class AsientoServiceImpl implements AsientoService {
 	 */
 	private Asiento asignaNumeroAlterno(Asiento asiento) throws Throwable {
 		System.out.println("Ingresa al metodo asignaNumeroAlterno");
-		Long mes = asiento.getNumeroMes();
-		Long anio = asiento.getNumeroAnio();
-		Long tipo = asiento.getTipoAsiento().getCodigo();
-		Long empresa = asiento.getEmpresa().getCodigo();
+		long t0 = System.currentTimeMillis();
+		Long tipoPerf = null;
+		Long empresaPerf = null;
+		try {
+			Long mes = asiento.getNumeroMes();
+			Long anio = asiento.getNumeroAnio();
+			Long tipo = asiento.getTipoAsiento().getCodigo();
+			Long empresa = asiento.getEmpresa().getCodigo();
+			tipoPerf = tipo;
+			empresaPerf = empresa;
 
-		// Obtiene el maximo consecutivo mensual para este tipo/empresa/mes/anio
-		Long maxNumeroMesTipo = asientoDaoService.selectMaxNumeroMesTipo(tipo, empresa, mes, anio);
-		Long siguienteNumeroMesTipo = (maxNumeroMesTipo == null ? 0L : maxNumeroMesTipo) + 1L;
+			// Obtiene el maximo consecutivo mensual para este tipo/empresa/mes/anio
+			Long maxNumeroMesTipo = asientoDaoService.selectMaxNumeroMesTipo(tipo, empresa, mes, anio);
+			Long siguienteNumeroMesTipo = (maxNumeroMesTipo == null ? 0L : maxNumeroMesTipo) + 1L;
 
-		// Obtiene las 3 primeras letras del nombre del tipo de asiento en mayusculas
-		String nombreTipo = asiento.getTipoAsiento().getNombre();
-		String prefijo = (nombreTipo != null && nombreTipo.length() >= 3)
-				? nombreTipo.substring(0, 3).toUpperCase()
-				: nombreTipo != null ? nombreTipo.toUpperCase() : "ASN";
+			// Obtiene las 3 primeras letras del nombre del tipo de asiento en mayusculas
+			String nombreTipo = asiento.getTipoAsiento().getNombre();
+			String prefijo = (nombreTipo != null && nombreTipo.length() >= 3)
+					? nombreTipo.substring(0, 3).toUpperCase()
+					: nombreTipo != null ? nombreTipo.toUpperCase() : "ASN";
 
-		// Construye el numero alterno: EGR-2026-03-0001
-		String numeroAlterno = String.format("%s-%d-%02d-%04d", prefijo, anio, mes, siguienteNumeroMesTipo);
+			// Construye el numero alterno: EGR-2026-03-0001
+			String numeroAlterno = String.format("%s-%d-%02d-%04d", prefijo, anio, mes, siguienteNumeroMesTipo);
 
-		asiento.setNumeroMesTipo(siguienteNumeroMesTipo);
-		asiento.setNumeroAlterno(numeroAlterno);
-		asiento = asientoDaoService.save(asiento, asiento.getCodigo());
-		System.out.println("numeroAlterno generado: " + numeroAlterno);
-		return asiento;
+			asiento.setNumeroMesTipo(siguienteNumeroMesTipo);
+			asiento.setNumeroAlterno(numeroAlterno);
+			asiento = asientoDaoService.save(asiento, asiento.getCodigo());
+			System.out.println("numeroAlterno generado: " + numeroAlterno);
+			return asiento;
+		} finally {
+			System.out.println("[PERF] asignaNumeroAlterno tipo=" + tipoPerf + " empresa=" + empresaPerf
+					+ " -> " + (System.currentTimeMillis() - t0) + " ms");
+		}
 	}
 	
 	/* (non-Javadoc)
