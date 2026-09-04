@@ -1,6 +1,6 @@
 # Un gasto de caja chica puede pagar una factura o liquidación de compra
 
-**Equipo:** `omen-saa-2` · **Creado:** 2026-09-03 · **Estado:** diseño congelado, sin implementar.
+**Equipo:** `omen-saa-2` · **Creado:** 2026-09-03 · **Estado (2026-09-04):** los 7 pasos del §7 están IMPLEMENTADOS y compilan. ⛔ **Nada se probó contra un servidor real** — la lista de 8 casos está en `API-GASTO-CAJA-CHICA.md` §4. Ver §16 de `ESTADO-EQUIPO-OMEN-2.md`.
 
 ---
 

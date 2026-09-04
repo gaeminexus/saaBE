@@ -785,3 +785,83 @@ en `src/main/java`. **No** se consultó la base de datos — nada de lo de abajo
 cuáles de los scripts `e2-03`…`e2-07` se corrieron en producción. Los dos hotfixes de §14 prueban
 que **el WAR del 2026-09-03 SÍ está desplegado** (un `ORA-04036` sólo se llega a dar si la consulta
 corre; si `APLPMVCH` no existiera el error sería `ORA-00904`), pero eso es inferencia, no constancia.
+
+---
+
+## §16 — Caja chica: inventario de solicitudes al 2026-09-04
+
+Pregunta del usuario: *«¿tenemos todas las solicitudes de caja chica resueltas?»* Contestada
+recorriendo el código paso por paso, no los documentos. **Borde de la medición (§13):** se leyó
+`src/main/java` y `saaFE/src`; **no se consultó la base ni se ejecutó nada contra un servidor.**
+
+### A) Frente M / FASE B — la caja chica original (solicitud 6 del listado del 2026-08-27)
+
+BE ✅ · FE ✅ · DDL `tsr/sql/02-caja-chica.sql` bloques 1-5 **ejecutado en local y producción el
+2026-08-28** · manual `tsr/manuales/CAJA-CHICA.md` escrito. **Queda abierto** lo decidible del §6 de
+`PLAN-CHEQUES-CAJA-CHICA-LIQUIDACIONES-ESTADO-CUENTA.md`, ítems **4** (contabilizar cada gasto en el
+acto) y **7** (cuenta de faltantes/sobrantes elegida en la pantalla de cierre) — abiertos desde el
+2026-08-28 con recomendación tomada y sin objeción; y el ítem **10**, el bloque 6 del DDL que
+inactiva las cuentas 428/429, que sólo va después de migrar el saldo inicial.
+
+### B) Frente 8 — el gasto paga una factura o liquidación (pedido del 2026-09-03)
+
+**Los siete pasos del §7 del plan están implementados.** Verificado uno por uno:
+
+| Paso | Verificación |
+|---|---|
+| 1 · DDL `APLPMVCH` | `tsr/sql/e2-07` escrito. **Sin constancia de que se corriera** |
+| 2 · `TipoDocPagoAplicacion.CAJA_CHICA = 6` | ✅ existe |
+| 3 · aplicación + contabilidad | ✅ `AplicacionPagoCxpServiceImpl.aplicarDesdeCajaChica:~732` |
+| 4b · `validaValorContraSaldo` desde el gasto | ✅ `MovimientoCajaChicaServiceImpl:208` |
+| 5 · FE | ✅ selector reusado, monto, columna de documento, beneficiario obligatorio |
+| 6 · reversa + bloqueo del otro sentido | ✅ **y la trampa se respetó**: la reversa de la aplicación va **sin `try/catch`** (`:395`), al revés que la anulación de asiento suelta. El bloqueo del camino de abonos está en `revertirAplicacionInterna`, con `revertirAplicacionOrigenCajaChica` como única puerta permitida |
+| 7 · los dos estados de cuenta | ✅ **el enumerado que el §5 mandaba buscar está cubierto en los dos lados**: `FacturaCompraServiceImpl.textoTipoDocPago:107` y `LiquidacionCompraCompraServiceImpl:~93` incluyen `CAJA_CHICA`. Del lado de la caja, `completaDocumentoPagado:584` |
+
+También quedó cerrada la pregunta abierta del §8 del plan (si el gasto con documento sigue exigiendo
+producto de pago): **ya no lo exige**, `c4af041`.
+
+### 🟡 C) Lo que sí encontré: un callejón sin salida, y es el que el §6.3 mandó verificar
+
+**El diseño lo dejó escrito como riesgo y nadie lo comprobó.** Verificado hoy leyendo los dos
+métodos:
+
+1. Una factura de compra pagada con un gasto de caja chica.
+2. El gasto **ya entró en un cierre de caja** (o cae en un cierre en borrador).
+3. `anularFacturaCompra(..., anularEnCascada=true)` llama a `revertirAplicacion`
+   (`FacturaCompraServiceImpl:170`) — la variante **bloqueante** — que lanza:
+   *«vino de un gasto de caja chica: anule el gasto en Tesorería → Caja chica».*
+4. El usuario va a caja chica y `anularGasto:360` lanza:
+   *«ya quedó incluido en el cierre N° X: no se puede anular».*
+
+**Cada mensaje es correcto por separado y juntos forman un círculo.** La factura no se puede anular
+por ningún camino y **ninguno de los dos mensajes lo dice**. Reversar «uno por uno» —la otra salida
+que ofrece el mensaje de la cascada— topa con el mismo bloqueo.
+
+**Lo que NO es:** no hay corrupción de datos ni doble pago. `IncomeException` es
+`@ApplicationException(rollback = true)` —verificado— así que la cascada que aborta no deja
+aplicaciones reversadas a medias. **Antes del cierre el camino es transitable y correcto.** Muerde
+sólo después del cierre.
+
+**Y es discutible que el bloqueo esté mal:** un gasto consolidado en un cierre no debería
+deshacerse. Lo que está mal es que la factura quede inanulable **sin que nadie lo diga**. El arreglo
+barato es el mensaje: que la cascada, al toparse con una aplicación de caja chica cuyo gasto ya está
+cerrado, diga *«esta factura no se puede anular: su pago se consolidó en el cierre de caja N° X»* en
+vez de mandar a una pantalla que va a rechazar.
+
+> **Es la tercera vez en la semana que aparece la misma forma**, y ahora con el agravante de que
+> estaba anotada de antemano: el §6.3 decía *«verificar que ese mensaje no mande a un callejón sin
+> salida, como pasó el 2026-09-02 con la anulación de anticipos»*. **Escribir el riesgo en el diseño
+> no lo verifica.** Un riesgo anotado y no medido se lee, en la revisión siguiente, como un riesgo
+> atendido.
+
+### 🔴 D) Lo que falta de verdad: nada de esto se ejecutó nunca
+
+`API-GASTO-CAJA-CHICA.md` §4 lo dice textual: *«Nada de esto se probó contra un servidor real.»*
+Hay **8 casos de prueba manual escritos y cero ejecutados**. El proyecto no tiene suite de tests, así
+que esa pasada es la única verificación que va a existir.
+
+**El caso 6 es el que no se puede saltear:** pagar con caja chica una factura que ya tiene un pago
+`POR_APROBAR` en la bandeja **debe rechazarse**. Los demás casos fallan de forma visible; ése falla
+**pagando dos veces**, y se nota semanas después. *(Y engancha con el §11: `validaValorContraSaldo`
+usa `selectVigentesByFactura`, que es la única de las cuatro consultas que **sí** fue corregida para
+ver `POR_APROBAR` — por eso el caso 6 debería pasar. Probarlo es lo que lo confirma.)*
