@@ -376,7 +376,7 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 		// es el id para pasarlo a revertirAplicacionOrigenCajaChica.
 		@SuppressWarnings("unchecked")
 		List<Long> idsAplicaciones = em.createQuery(
-				"select a.id from AplicacionPagoCxp a where a.movimientoCajaChica.codigo = :idMovimiento "
+				"select a.id from AplicacionPagoCxp a where a.idMovimientoCajaChica = :idMovimiento "
 				+ "and a.estado = :activo")
 				.setParameter("idMovimiento", idMovimiento)
 				.setParameter("activo", Long.valueOf(EstadoAplicacionPago.ACTIVO))
@@ -597,11 +597,11 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 
 			@SuppressWarnings("unchecked")
 			List<Object[]> filas = em.createQuery(
-					"select a.movimientoCajaChica.codigo, f.id, f.numero, l.id, l.numero "
+					"select a.idMovimientoCajaChica, f.id, f.numero, l.id, l.numero "
 					+ "from AplicacionPagoCxp a "
 					+ "left join a.facturaCompra f "
 					+ "left join a.liquidacionCompra l "
-					+ "where a.movimientoCajaChica.codigo in :ids and a.estado = :activo")
+					+ "where a.idMovimientoCajaChica in :ids and a.estado = :activo")
 					.setParameter("ids", lote)
 					.setParameter("activo", Long.valueOf(EstadoAplicacionPago.ACTIVO))
 					.getResultList();

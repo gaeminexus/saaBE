@@ -9,7 +9,6 @@ import com.saa.model.cxc.Retencion;
 import com.saa.model.cxc.RetencionV2;
 import com.saa.model.scp.Empresa;
 import com.saa.model.scp.Usuario;
-import com.saa.model.tsr.MovimientoCajaChica;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
@@ -180,12 +179,21 @@ public class AplicacionPagoCxp implements Serializable {
     private AnticipoProveedor anticipoOrigen;
 
     /**
-     * Gasto de caja chica que originó este pago. FK a TSR.MVCH.
+     * Id del gasto de caja chica que originó este pago (TSR.MVCH.MVCHCDGO).
      * Aplica cuando APLPTDPG = 6 (CAJA_CHICA).
+     * <p>
+     * ⚠️ A PROPÓSITO no es {@code @ManyToOne}: MVCH tiene FK a PGS.PGTR, así
+     * que una relación acá cierra un ciclo en el grafo EAGER
+     * (APLP → MVCH → PGTR → APLP) y cualquier lectura de un {@code PagoProgramado}
+     * —no sólo de caja chica— vuelve a expandir el grafo entero desde ese
+     * segundo PGTR. Reventó `ORA-04036` (PGA excedida) al aprobar un pago en
+     * producción el 2026-09-03 con ~175 joins por una sola fila. Id crudo,
+     * como {@link com.saa.model.cxp.DetalleFacturaCompra#getProducto()} o
+     * {@code PagoProgramado.idOrigen}: sin relación no hay ciclo.
      */
-    @ManyToOne
-    @JoinColumn(name = "APLPMVCH", referencedColumnName = "MVCHCDGO")
-    private MovimientoCajaChica movimientoCajaChica;
+    @Basic
+    @Column(name = "APLPMVCH")
+    private Long idMovimientoCajaChica;
 
     // ── Datos del pago directo (solo cuando APLPTDPG = 1) ─────────────────
 
@@ -298,8 +306,8 @@ public class AplicacionPagoCxp implements Serializable {
     public AnticipoProveedor getAnticipoOrigen() { return anticipoOrigen; }
     public void setAnticipoOrigen(AnticipoProveedor anticipoOrigen) { this.anticipoOrigen = anticipoOrigen; }
 
-    public MovimientoCajaChica getMovimientoCajaChica() { return movimientoCajaChica; }
-    public void setMovimientoCajaChica(MovimientoCajaChica movimientoCajaChica) { this.movimientoCajaChica = movimientoCajaChica; }
+    public Long getIdMovimientoCajaChica() { return idMovimientoCajaChica; }
+    public void setIdMovimientoCajaChica(Long idMovimientoCajaChica) { this.idMovimientoCajaChica = idMovimientoCajaChica; }
 
     public Long getFormaPago() { return formaPago; }
     public void setFormaPago(Long formaPago) { this.formaPago = formaPago; }

@@ -797,7 +797,7 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 				: nuevaAplicacionLiquidacion(liquidacion, idEmpresa, TipoDocPagoAplicacion.CAJA_CHICA, monto, fecha,
 						observacionAplicacion, usuarioNombre(idUsuario));
 		aplicacion.setAsiento(asiento);
-		aplicacion.setMovimientoCajaChica(movimiento);
+		aplicacion.setIdMovimientoCajaChica(movimiento.getCodigo());
 		aplicacion.setUsuario(em.find(Usuario.class, idUsuario));
 		aplicacion = saveSingle(aplicacion);
 
@@ -858,8 +858,7 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 		}
 		if (!permiteOrigenCajaChica && aplicacion.getTipoDocPago() != null
 				&& aplicacion.getTipoDocPago().intValue() == TipoDocPagoAplicacion.CAJA_CHICA) {
-			Long idMovimiento = (aplicacion.getMovimientoCajaChica() != null)
-					? aplicacion.getMovimientoCajaChica().getCodigo() : null;
+			Long idMovimiento = aplicacion.getIdMovimientoCajaChica();
 			throw new IncomeException("La aplicación " + idAplicacion + " vino de un gasto de caja chica"
 					+ (idMovimiento != null ? " (movimiento N° " + idMovimiento + ")" : "")
 					+ ": anule el gasto en Tesorería → Caja chica, no la aplicación directamente.");
