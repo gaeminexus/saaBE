@@ -19,9 +19,9 @@
 -- REFERENCIA: docs/logica-negocio/crd/API-PAGO-PENSION-COMPLEMENTARIA.md §6bis
 -- =====================================================================================
 
-PROMPT ==========================================================================
-PROMPT BLOQUE 1 - Que periodos de pension complementaria existen y como quedaron
-PROMPT ==========================================================================
+-- ==========================================================================
+-- BLOQUE 1 - Que periodos de pension complementaria existen y como quedaron
+-- ==========================================================================
 
 SELECT p.PGPCANNO                                  AS ANIO,
        p.PGPCMESS                                  AS MES,
@@ -39,15 +39,15 @@ SELECT p.PGPCANNO                                  AS ANIO,
  GROUP BY p.PGPCANNO, p.PGPCMESS
  ORDER BY p.PGPCANNO, p.PGPCMESS;
 
-PROMPT
-PROMPT (!) Si DIA_MIN = DIA_MAX = 01, esos periodos usan la convencion VIEJA.
-PROMPT (!) Si la tabla vuelve VACIA, no se corrio nunca: agosto es la primera corrida
-PROMPT     real y no hay ningun dato historico que corregir. Ese es el mejor caso.
-PROMPT
+--
+-- (!) Si DIA_MIN = DIA_MAX = 01, esos periodos usan la convencion VIEJA.
+-- (!) Si la tabla vuelve VACIA, no se corrio nunca: agosto es la primera corrida
+--     real y no hay ningun dato historico que corregir. Ese es el mejor caso.
+--
 
-PROMPT ==========================================================================
-PROMPT BLOQUE 2 - Agosto 2026: existe ya?
-PROMPT ==========================================================================
+-- ==========================================================================
+-- BLOQUE 2 - Agosto 2026: existe ya?
+-- ==========================================================================
 
 SELECT COUNT(*)                                    AS PAGOS_AGOSTO_2026,
        SUM(p.PGPCVLRR)                             AS TOTAL,
@@ -58,21 +58,21 @@ SELECT COUNT(*)                                    AS PAGOS_AGOSTO_2026,
  WHERE p.PGPCANNO = 2026
    AND p.PGPCMESS = 8;
 
-PROMPT
-PROMPT (!) PAGOS_AGOSTO_2026 = 0  -> agosto esta limpio, se puede correr.
-PROMPT (!) PAGOS_AGOSTO_2026 > 0  -> agosto YA se corrio. Volver a generar no duplica,
-PROMPT     pero devuelve renglones YA_EXISTIA sin nombre ni cruce, y los totales del
-PROMPT     encabezado dan casi cero. Para ver el informe usar GET /rest/pgpc/porPeriodo.
-PROMPT (!) SIN_ORDEN_CRUZADO_INTEGRO NO es un error: es el jubilado cuya deuda se llevo
-PROMPT     toda la pension del mes. Queda en estado 1 para siempre y esta bien.
-PROMPT
+--
+-- (!) PAGOS_AGOSTO_2026 = 0  -> agosto esta limpio, se puede correr.
+-- (!) PAGOS_AGOSTO_2026 > 0  -> agosto YA se corrio. Volver a generar no duplica,
+--     pero devuelve renglones YA_EXISTIA sin nombre ni cruce, y los totales del
+--     encabezado dan casi cero. Para ver el informe usar GET /rest/pgpc/porPeriodo.
+-- (!) SIN_ORDEN_CRUZADO_INTEGRO NO es un error: es el jubilado cuya deuda se llevo
+--     toda la pension del mes. Queda en estado 1 para siempre y esta bien.
+--
 
-PROMPT ==========================================================================
-PROMPT BLOQUE 3 - La inconsistencia de fecha, medida
-PROMPT ==========================================================================
-PROMPT Compara, por cada pago, la fecha del PGPC contra la fecha del movimiento de
-PROMPT aporte que lo respalda. Antes del cambio del 2026-09-04 estas dos podian caer
-PROMPT en MESES DISTINTOS: el PGPC en el periodo y el APRT en el dia de la corrida.
+-- ==========================================================================
+-- BLOQUE 3 - La inconsistencia de fecha, medida
+-- ==========================================================================
+-- Compara, por cada pago, la fecha del PGPC contra la fecha del movimiento de
+-- aporte que lo respalda. Antes del cambio del 2026-09-04 estas dos podian caer
+-- en MESES DISTINTOS: el PGPC en el periodo y el APRT en el dia de la corrida.
 
 SELECT p.PGPCANNO                                  AS ANIO,
        p.PGPCMESS                                  AS MES,
@@ -88,20 +88,20 @@ SELECT p.PGPCANNO                                  AS ANIO,
  GROUP BY p.PGPCANNO, p.PGPCMESS
  ORDER BY p.PGPCANNO, p.PGPCMESS;
 
-PROMPT
-PROMPT (!) MESES_DISTINTOS > 0 es la marca del defecto: la baja del aporte quedo
-PROMPT     contabilizada en un mes distinto al del pago que la origino. Es lo que el
-PROMPT     cambio del 2026-09-04 corrige de aca en adelante.
-PROMPT (!) Este script NO corrige nada. Si MESES_DISTINTOS > 0 y se decide corregir el
-PROMPT     historico, eso es un script aparte y una decision del usuario: tocar fechas
-PROMPT     contables de periodos ya cerrados no se hace sin saber si estan cerrados.
-PROMPT
+--
+-- (!) MESES_DISTINTOS > 0 es la marca del defecto: la baja del aporte quedo
+--     contabilizada en un mes distinto al del pago que la origino. Es lo que el
+--     cambio del 2026-09-04 corrige de aca en adelante.
+-- (!) Este script NO corrige nada. Si MESES_DISTINTOS > 0 y se decide corregir el
+--     historico, eso es un script aparte y una decision del usuario: tocar fechas
+--     contables de periodos ya cerrados no se hace sin saber si estan cerrados.
+--
 
-PROMPT ==========================================================================
-PROMPT BLOQUE 4 - Cuantos jubilados espera la corrida de agosto
-PROMPT ==========================================================================
-PROMPT Prevuelo grueso, para saber si el resultado de la corrida tiene el tamano
-PROMPT esperado. El prevuelo fino lo hace la pantalla.
+-- ==========================================================================
+-- BLOQUE 4 - Cuantos jubilados espera la corrida de agosto
+-- ==========================================================================
+-- Prevuelo grueso, para saber si el resultado de la corrida tiene el tamano
+-- esperado. El prevuelo fino lo hace la pantalla.
 
 -- ⛔ CORREGIDO EL 2026-09-04. La primera version de este bloque contaba VPPC activas y
 -- decia "contrastar contra EVALUADOS". ESO ESTABA MAL y daba un numero enganoso (191).
@@ -115,9 +115,9 @@ SELECT COUNT(*)                                    AS EVALUADOS_ESPERADOS
   FROM CRD.ENTD e
  WHERE e.ENTDIDST = 3;          -- EstadoParticipeEntidad.JUBILADO_COMPLEMENTARIO
 
-PROMPT
-PROMPT (!) ESTE es el numero que tiene que coincidir con EVALUADOS de la corrida.
-PROMPT
+--
+-- (!) ESTE es el numero que tiene que coincidir con EVALUADOS de la corrida.
+--
 
 -- 4.b (!!) EL CONTROL QUE DECIDE SI 4.a SIRVE. Leer antes de creerle al 4.a.
 -- CLAUDE.md y crd/MIGRACION-ESTADO-PARTICIPE.md documentan que en CRD.ENTD la columna
@@ -135,12 +135,12 @@ SELECT e.ENTDIDST                                  AS VALOR_EN_LA_COLUMNA,
  GROUP BY e.ENTDIDST
  ORDER BY 1;
 
-PROMPT
-PROMPT (!) Si aparece un 30 con participes, la migracion de estados quedo a medias y esos
-PROMPT     jubilados NO los va a ver la corrida. PARAR y avisar antes de correr agosto.
-PROMPT (!) Si todos los valores son de una sola cifra, la columna ya usa el alterno y el
-PROMPT     4.a es confiable.
-PROMPT
+--
+-- (!) Si aparece un 30 con participes, la migracion de estados quedo a medias y esos
+--     jubilados NO los va a ver la corrida. PARAR y avisar antes de correr agosto.
+-- (!) Si todos los valores son de una sola cifra, la columna ya usa el alterno y el
+--     4.a es confiable.
+--
 
 -- 4.c Cuantos de la poblacion real NO tienen VPPC activa: cada uno sera un SIN_VALOR_PENSION
 SELECT COUNT(*)                                    AS JUBILADOS_SIN_VPPC_ACTIVA
@@ -149,10 +149,10 @@ SELECT COUNT(*)                                    AS JUBILADOS_SIN_VPPC_ACTIVA
    AND NOT EXISTS (SELECT 1 FROM CRD.VPPC v
                     WHERE v.ENTDCDGO = e.ENTDCDGO AND v.VPPCIDST = 1);
 
-PROMPT
-PROMPT (!) Estos van a salir como renglones ERROR con SIN_VALOR_PENSION. Es esperable y no
-PROMPT     rompe la corrida, pero conviene saber cuantos ANTES para no asustarse.
-PROMPT
+--
+-- (!) Estos van a salir como renglones ERROR con SIN_VALOR_PENSION. Es esperable y no
+--     rompe la corrida, pero conviene saber cuantos ANTES para no asustarse.
+--
 
 -- 4.d Al reves: VPPC activa de alguien que NO es JUBILADO_COMPLEMENTARIO. A estos la
 --     corrida NI LOS MIRA, y no dejan rastro en el detalle: desaparecen en silencio.
@@ -162,22 +162,22 @@ SELECT COUNT(*)                                    AS VPPC_ACTIVA_FUERA_DE_LA_PO
  WHERE v.VPPCIDST = 1
    AND NVL(e.ENTDIDST, -1) <> 3;
 
-PROMPT
-PROMPT (!) Estos son los peligrosos: alguien les configuro cuanto cobran, pero su estado
-PROMPT     dice que no son jubilados complementarios, asi que NO se les paga y NO aparecen
-PROMPT     en ningun error. Si el numero no es cero, revisar caso por caso antes de correr.
-PROMPT
+--
+-- (!) Estos son los peligrosos: alguien les configuro cuanto cobran, pero su estado
+--     dice que no son jubilados complementarios, asi que NO se les paga y NO aparecen
+--     en ningun error. Si el numero no es cero, revisar caso por caso antes de correr.
+--
 
-PROMPT ==========================================================================
-PROMPT BLOQUE 5 - (!) APRTPRDV: la via por la que esto llega a los reportes de cartera
-PROMPT ==========================================================================
-PROMPT Aporte.java:175-187 documenta que APRTPRDV es el mes al que PERTENECE el aporte, y
-PROMPT que toda consulta de cartera debe leer NVL(APRTPRDV, TRUNC(APRTFCTR,'MM')), nunca
-PROMPT la columna sola.
-PROMPT
-PROMPT crearMovimientoNegativo hace setPeriodoDevengo(null) para el pago de pension. Con
-PROMPT APRTPRDV en NULL, el NVL cae en TRUNC(APRTFCTR,'MM') - que es justo la fecha que
-PROMPT hasta el 2026-09-04 era now(). Por ahi la fecha equivocada entra a los reportes.
+-- ==========================================================================
+-- BLOQUE 5 - (!) APRTPRDV: la via por la que esto llega a los reportes de cartera
+-- ==========================================================================
+-- Aporte.java:175-187 documenta que APRTPRDV es el mes al que PERTENECE el aporte, y
+-- que toda consulta de cartera debe leer NVL(APRTPRDV, TRUNC(APRTFCTR,'MM')), nunca
+-- la columna sola.
+--
+-- crearMovimientoNegativo hace setPeriodoDevengo(null) para el pago de pension. Con
+-- APRTPRDV en NULL, el NVL cae en TRUNC(APRTFCTR,'MM') - que es justo la fecha que
+-- hasta el 2026-09-04 era now(). Por ahi la fecha equivocada entra a los reportes.
 
 SELECT TO_CHAR(a.APRTFCTR, 'YYYY-MM')              AS MES_SEGUN_APRTFCTR,
        COUNT(*)                                    AS MOVIMIENTOS,
@@ -188,15 +188,15 @@ SELECT TO_CHAR(a.APRTFCTR, 'YYYY-MM')              AS MES_SEGUN_APRTFCTR,
  GROUP BY TO_CHAR(a.APRTFCTR, 'YYYY-MM')
  ORDER BY 1;
 
-PROMPT
-PROMPT (!) SIN_PERIODO_DEVENGO = MOVIMIENTOS significa que TODOS caen al fallback, o sea
-PROMPT     que el mes que ve cartera es el de APRTFCTR. Con el cambio del 2026-09-04
-PROMPT     APRTFCTR pasa a ser fin de mes del periodo, asi que el fallback ya da bien.
-PROMPT (!) Llenar APRTPRDV con el primer dia del mes del periodo seria el arreglo de
-PROMPT     fondo (no depender del fallback). ES UNA DECISION APARTE: esa columna la
-PROMPT     gobierna el plan de devengo de aportes (Fase 2, 2026-08-27), no este frente.
-PROMPT     No se toca sin el visto bueno del usuario.
-PROMPT
+--
+-- (!) SIN_PERIODO_DEVENGO = MOVIMIENTOS significa que TODOS caen al fallback, o sea
+--     que el mes que ve cartera es el de APRTFCTR. Con el cambio del 2026-09-04
+--     APRTFCTR pasa a ser fin de mes del periodo, asi que el fallback ya da bien.
+-- (!) Llenar APRTPRDV con el primer dia del mes del periodo seria el arreglo de
+--     fondo (no depender del fallback). ES UNA DECISION APARTE: esa columna la
+--     gobierna el plan de devengo de aportes (Fase 2, 2026-08-27), no este frente.
+--     No se toca sin el visto bueno del usuario.
+--
 
 -- =====================================================================================
 -- No hay bloque de reverso: este script no escribe nada.
