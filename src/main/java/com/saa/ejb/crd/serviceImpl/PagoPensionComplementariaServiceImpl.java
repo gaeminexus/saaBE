@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -31,9 +32,11 @@ import com.saa.ejb.crd.service.SaldoAporteService;
 import com.saa.ejb.crd.service.ValorPagoPensionComplementariaService;
 import com.saa.ejb.crd.service.dto.DesgloseAporte;
 import com.saa.ejb.crd.service.dto.DetallePagoPension;
+import com.saa.ejb.crd.service.dto.DetallePrevisualizacionJubilado;
 import com.saa.ejb.crd.service.dto.ResultadoAplicacionPago;
 import com.saa.ejb.crd.service.dto.ResultadoGeneracionPagosPension;
 import com.saa.ejb.crd.service.dto.ResultadoPagoConAportes;
+import com.saa.ejb.crd.service.dto.ResultadoPrevisualizacionCorrida;
 import com.saa.ejb.crd.service.dto.ResultadoSincronizacion;
 import com.saa.ejb.crd.service.dto.SaldosCuota;
 import com.saa.ejb.crd.service.dto.SolicitudPagoConAportes;
@@ -229,6 +232,199 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         List<PagoPensionComplementaria> pagos = pagoPensionDaoService.selectByPeriodo(
             anio != null ? anio.longValue() : null, mes != null ? mes.longValue() : null);
         return pagos != null ? pagos : new java.util.ArrayList<>();
+    }
+
+    // ========================================================================
+    // Previsualización (§4bis del contrato) — CERO escritura, ver el JavaDoc de la interfaz
+    // ========================================================================
+
+    @Override
+    @TransactionAttribute(TransactionAttributeType.NOT_SUPPORTED)
+    public ResultadoPrevisualizacionCorrida previsualizarCorrida(Long idEmpresa, Integer anio, Integer mes,
+            String usuario) throws Throwable {
+        System.out.println("PagoPensionComplementariaService.previsualizarCorrida - Periodo: " + mes + "/" + anio);
+
+        if (idEmpresa == null) {
+            throw new IncomeException("idEmpresa es obligatorio: es la empresa contable sobre la que"
+                + " se generaría la orden de pago.");
+        }
+        if (anio == null || mes == null || mes < 1 || mes > 12) {
+            throw new IncomeException("Debe indicar un año y un mes (1-12) válidos.");
+        }
+        if (usuario == null || usuario.trim().isEmpty()) {
+            throw new IncomeException("usuario es obligatorio");
+        }
+
+        LocalDate finDeMes = YearMonth.of(anio, mes).atEndOfMonth();
+        YearMonth corrida = YearMonth.of(anio, mes);
+
+        ResultadoPrevisualizacionCorrida resumen = new ResultadoPrevisualizacionCorrida();
+        resumen.setAnio(anio);
+        resumen.setMes(mes);
+
+        List<Entidad> jubilados = entidadDaoService.selectByIdEstado(
+            Long.valueOf(EstadoParticipeEntidad.JUBILADO_COMPLEMENTARIO));
+
+        double totalACruzar = 0.0, totalADinero = 0.0;
+        int aptos = 0;
+
+        if (jubilados != null) {
+            for (Entidad jubilado : jubilados) {
+                resumen.setEvaluados(resumen.getEvaluados() + 1);
+                DetallePrevisualizacionJubilado fila;
+                try {
+                    fila = previsualizarJubilado(jubilado, finDeMes, corrida);
+                } catch (Throwable e) {
+                    // Ítem 1: NO escribe nada — pero SÍ puede fallar por dato roto (VPPC
+                    // duplicada, TPDJ mal configurado). Igual que generarPagosDelMes, una
+                    // falla de UN jubilado no aborta la previsualización del resto.
+                    fila = new DetallePrevisualizacionJubilado();
+                    fila.setIdEntidad(jubilado.getCodigo());
+                    fila.setNombre(jubilado.getRazonSocial());
+                    fila.setApto(false);
+                    fila.setMotivoBloqueo(e.getMessage());
+                }
+                resumen.getDetalle().add(fila);
+                if (fila.isApto()) {
+                    aptos++;
+                    totalACruzar = redondear(totalACruzar + fila.getMontoACruzar());
+                    totalADinero = redondear(totalADinero + fila.getMontoADinero());
+                }
+            }
+        }
+
+        resumen.setAptos(aptos);
+        resumen.setBloqueados(resumen.getEvaluados() - aptos);
+        resumen.setTotalACruzarPrestamos(totalACruzar);
+        resumen.setTotalADinero(totalADinero);
+        resumen.setTotalGeneral(redondear(totalACruzar + totalADinero));
+
+        System.out.println("PREVISUALIZACIÓN TERMINADA - Evaluados: " + resumen.getEvaluados()
+            + " - Aptos: " + resumen.getAptos() + " - Bloqueados: " + resumen.getBloqueados()
+            + " - A cruzar: $" + resumen.getTotalACruzarPrestamos()
+            + " - A dinero: $" + resumen.getTotalADinero());
+
+        return resumen;
+    }
+
+    /**
+     * El tope de UN jubilado, calculado — NUNCA aplicado. Reusa {@link #resolverAnclaRetroactivo}
+     * y {@link #calcularDeudaExigiblePrestamo}, los mismos helpers que la corrida real, para que
+     * "meses adeudados" y "deuda exigible" nunca puedan desincronizarse entre las dos.
+     *
+     * ⚠️ La fórmula final (el {@code min(...)}) SÍ está escrita dos veces: acá se aplica UNA vez
+     * en agregado (estimación simple, {@code API-PAGO-PENSION-COMPLEMENTARIA.md §4bis}), mientras
+     * que {@link #generarMesesRetroactivos} la aplica mes a mes con tope por préstamo individual
+     * (§3bis, para no pre-pagar cuotas futuras de un préstamo específico). Son dos formas
+     * legítimamente distintas de la misma idea, no una copia descuidada — reportado al árbitro.
+     */
+    private DetallePrevisualizacionJubilado previsualizarJubilado(Entidad jubilado, LocalDate finDeMes,
+            YearMonth corrida) throws Throwable {
+        Long idEntidad = jubilado.getCodigo();
+        DetallePrevisualizacionJubilado fila = new DetallePrevisualizacionJubilado();
+        fila.setIdEntidad(idEntidad);
+        fila.setNombre(jubilado.getRazonSocial());
+
+        List<ValorPagoPensionComplementaria> configuraciones =
+            valorPagoPensionComplementariaService.selectByEntidad(idEntidad);
+        ValorPagoPensionComplementaria vppc = unicaActiva(configuraciones, idEntidad);
+        if (vppc == null) {
+            fila.setApto(false);
+            fila.setMotivoBloqueo(ERR_SIN_VALOR_PENSION + ": sin configuración de pensión"
+                + " complementaria (VPPC) activa.");
+            return fila;
+        }
+        double valorTotal = redondear(vppc.getValorPagar() != null ? vppc.getValorPagar() : 0.0);
+        if (valorTotal <= 0.01) {
+            fila.setApto(false);
+            fila.setMotivoBloqueo(ERR_SIN_VALOR_PENSION + ": VPPC " + vppc.getCodigo()
+                + " con valorPagar $0.");
+            return fila;
+        }
+
+        boolean tienePrestamo = vppc.getTienePrestamo() != null && vppc.getTienePrestamo() == 1L;
+        fila.setTienePrestamo(tienePrestamo);
+
+        // Mismo helper que generarPagoIndividual: puede propagar ERR_CERTIFICADO_NO_VERIFICABLE
+        // (catálogo TPDJ roto) — a diferencia de la corrida real, acá NO aborta toda la
+        // previsualización, solo bloquea esta fila; el resto de jubilados sigue evaluándose
+        // (lo captura el catch de previsualizarCorrida).
+        boolean tieneCertificado = resolverCuentaSalida(idEntidad) != null;
+        fila.setTieneCertificado(tieneCertificado);
+
+        double saldo = Math.max(0.0, saldoAporteService.saldoPorEntidadYTipo(idEntidad, TIPO_APORTE_PENSION_COMPLEMENTARIA));
+
+        if (!tienePrestamo) {
+            // Sin préstamo: un solo mes (el período pedido), no hay "meses adeudados" — mismo
+            // criterio que generarUnMesSinPrestamo.
+            fila.setMesesAdeudados(1);
+            boolean apto = saldo >= valorTotal - TOLERANCIA;
+            fila.setApto(apto);
+            if (!apto) {
+                fila.setMotivoBloqueo(ERR_SALDO_INSUFICIENTE + ": saldo $" + redondear(saldo)
+                    + " insuficiente para $" + valorTotal + ".");
+                return fila;
+            }
+            double montoADinero = tieneCertificado ? valorTotal : 0.0;
+            fila.setMontoACruzar(0.0);
+            fila.setMontoADinero(redondear(montoADinero));
+            fila.setTotal(redondear(montoADinero));
+            fila.setParticipacion(tieneCertificado ? "COMPLETA" : "BLOQUEADO");
+            if (!tieneCertificado) {
+                fila.setMotivoBloqueo("Sin préstamo y sin cuenta con certificado bancario válido:"
+                    + " no hay cruce posible y no se puede entregar la pensión.");
+                fila.setApto(false);
+            }
+            return fila;
+        }
+
+        LocalDate ancla = resolverAnclaRetroactivo(idEntidad);
+        if (ancla == null) {
+            fila.setApto(false);
+            fila.setParticipacion("BLOQUEADO");
+            fila.setMotivoBloqueo("SIN_ANCLA: no tiene ningún movimiento negativo de pensión"
+                + " complementaria ni un movimiento de jubilación registrado.");
+            return fila;
+        }
+
+        YearMonth desde = YearMonth.from(ancla).plusMonths(1);
+        if (desde.isAfter(corrida)) {
+            // Al día: apto, cero meses, nada que cruzar ni pagar — no es un bloqueo.
+            fila.setMesesAdeudados(0);
+            fila.setApto(true);
+            return fila;
+        }
+        int mesesAdeudados = (int) (ChronoUnit.MONTHS.between(desde, corrida) + 1);
+        fila.setMesesAdeudados(mesesAdeudados);
+
+        // Deuda EXIGIBLE (ítem 3/§3bis): mismo helper por préstamo vigente que usa la corrida
+        // real — nunca el pendiente total, que pre-pagaría cuotas futuras.
+        List<Prestamo> todos = prestamoDaoService.selectByEntidad(idEntidad);
+        double deudaExigibleTotal = 0.0;
+        if (todos != null) {
+            for (Prestamo prestamo : todos) {
+                if (!esPrestamoVigente(prestamo)) {
+                    continue;
+                }
+                deudaExigibleTotal += calcularDeudaExigiblePrestamo(prestamo.getCodigo(), finDeMes);
+            }
+        }
+        deudaExigibleTotal = redondear(deudaExigibleTotal);
+
+        // §4bis: estimación en AGREGADO — min(pensiones acumuladas, deuda exigible, saldo). La
+        // corrida real la aplica mes a mes con tope por préstamo (mora/interés incluidos al
+        // aplicar); acá es a propósito más simple, es una estimación y el contrato lo dice.
+        double pensionesAcumuladas = redondear(mesesAdeudados * valorTotal);
+        double montoACruzar = redondear(Math.min(pensionesAcumuladas, Math.min(deudaExigibleTotal, saldo)));
+        double remanenteNominal = redondear(pensionesAcumuladas - montoACruzar);
+        double montoADinero = tieneCertificado ? remanenteNominal : 0.0;
+
+        fila.setMontoACruzar(montoACruzar);
+        fila.setMontoADinero(redondear(montoADinero));
+        fila.setTotal(redondear(montoACruzar + montoADinero));
+        fila.setApto(true);
+        fila.setParticipacion(remanenteNominal > TOLERANCIA && !tieneCertificado ? "SOLO_CRUCE" : "COMPLETA");
+        return fila;
     }
 
     // ========================================================================

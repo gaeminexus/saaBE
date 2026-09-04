@@ -7,6 +7,7 @@ import java.util.Map;
 
 import com.saa.ejb.crd.service.PagoPensionComplementariaService;
 import com.saa.ejb.crd.service.dto.ResultadoGeneracionPagosPension;
+import com.saa.ejb.crd.service.dto.ResultadoPrevisualizacionCorrida;
 import com.saa.ejb.crd.service.dto.ResultadoSincronizacion;
 import com.saa.model.crd.PagoPensionComplementaria;
 
@@ -147,6 +148,56 @@ public class PagoPensionComplementariaRest {
             List<PagoPensionComplementaria> pagos = pagoPensionService.listarPorPeriodo(anio, mes);
             return Response.status(Response.Status.OK)
                     .entity(pagos).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return respuestaError(e);
+        }
+    }
+
+    /**
+     * Previsualización de {@code generarPagosDelMes} — MISMOS parámetros, CERO escritura.
+     * API-PAGO-PENSION-COMPLEMENTARIA.md §4bis: «cuánto en préstamos, cuánto en dinero, y el
+     * total». El monto a cruzar es una ESTIMACIÓN (no simula mora/interés) — el {@code mensaje}
+     * de la respuesta lo aclara para que el frontend pueda mostrarlo sin saberlo por su cuenta.
+     */
+    @POST
+    @Path("/previsualizarCorrida")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response previsualizarCorrida(
+            @QueryParam("idEmpresa") Long idEmpresa,
+            @QueryParam("anio") Integer anio,
+            @QueryParam("mes") Integer mes,
+            @QueryParam("usuario") String usuario) {
+        System.out.println("LLEGA AL SERVICIO PREVISUALIZAR CORRIDA - Periodo: " + mes + "/" + anio);
+
+        if (idEmpresa == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe indicar idEmpresa", null);
+        }
+        if (anio == null || mes == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe indicar anio y mes", null);
+        }
+        if (usuario == null || usuario.trim().isEmpty()) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe indicar el usuario que dispara la previsualización", null);
+        }
+
+        try {
+            ResultadoPrevisualizacionCorrida resultado =
+                pagoPensionService.previsualizarCorrida(idEmpresa, anio, mes, usuario);
+
+            Map<String, Object> cuerpo = new LinkedHashMap<>();
+            cuerpo.put("exito", Boolean.TRUE);
+            cuerpo.put("mensaje", "Previsualización " + mes + "/" + anio + " - " + resultado.getAptos()
+                + " aptos de " + resultado.getEvaluados() + " evaluados. Estimado: $"
+                + resultado.getTotalACruzarPrestamos() + " a préstamos, $" + resultado.getTotalADinero()
+                + " a dinero. El monto a cruzar es una ESTIMACIÓN: el motor calcula mora e interés"
+                + " al aplicar de verdad, y esa parte no se simula acá; el monto real puede diferir.");
+            cuerpo.put("resultado", resultado);
+
+            return Response.status(Response.Status.OK)
+                    .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
+
         } catch (Throwable e) {
             return respuestaError(e);
         }

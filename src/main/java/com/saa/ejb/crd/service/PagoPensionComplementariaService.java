@@ -5,6 +5,7 @@ import java.util.List;
 import com.saa.basico.util.EntityService;
 import com.saa.ejb.crd.service.dto.DetallePagoPension;
 import com.saa.ejb.crd.service.dto.ResultadoGeneracionPagosPension;
+import com.saa.ejb.crd.service.dto.ResultadoPrevisualizacionCorrida;
 import com.saa.ejb.crd.service.dto.ResultadoSincronizacion;
 import com.saa.model.crd.PagoPensionComplementaria;
 
@@ -131,4 +132,25 @@ public interface PagoPensionComplementariaService extends EntityService<PagoPens
      * @throws Throwable Si ocurre un error
      */
     List<PagoPensionComplementaria> listarPorPeriodo(Integer anio, Integer mes) throws Throwable;
+
+    /**
+     * Previsualización de {@link #generarPagosDelMes} — MISMOS parámetros, MISMA regla de
+     * decisión, CERO escritura: ni PGPC, ni movimientos de APRT, ni asientos, ni órdenes en
+     * CXP. API-PAGO-PENSION-COMPLEMENTARIA.md §4bis.
+     *
+     * <b>La garantía de que no escribe es lo único que hace útil este endpoint</b>: el
+     * operador tiene que poder apretarlo tantas veces como quiera, sin miedo. Nunca llama a
+     * {@code pagarConAportes} — sólo calcula el mismo tope ({@code min(pensiones acumuladas,
+     * deuda exigible a la fecha de corrida, saldo del aporte 23)}) que usa la corrida real,
+     * reusando en la implementación los mismos helpers privados que resuelven el ancla y la
+     * deuda exigible por préstamo, para no duplicar esa lógica.
+     *
+     * ⚠️ <b>{@code montoACruzar} es una ESTIMACIÓN.</b> El motor calcula mora e interés al
+     * aplicar de verdad, y esa parte NO se simula acá — sería una cuarta copia de esa
+     * matemática. El monto real de la corrida puede diferir.
+     *
+     * @throws Throwable Si ocurre un error
+     */
+    ResultadoPrevisualizacionCorrida previsualizarCorrida(Long idEmpresa, Integer anio, Integer mes,
+            String usuario) throws Throwable;
 }
