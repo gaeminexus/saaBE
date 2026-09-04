@@ -129,3 +129,61 @@ diseño incluye esa validación como bloqueante (`DOCUMENTO_DUPLICADO`). **Si la
 | 5 | Prueba manual de punta a punta | 2, 4 |
 
 **No hay DDL en este frente.** No hace falta correr nada en la base antes del WAR.
+
+---
+
+## 5. Requisito del usuario, 2026-09-04 — tiene que vivir en todo `cxp` y `tsr`
+
+> *«Este documento debe entrar en todo el ambiente de CxP y TSR: debe incluirse en el estado de
+> cuenta de titular y poder realizar pagos normales y con caja chica.»*
+
+**Verificado camino por camino. Borde de la medición:** se leyeron los tres consumidores en
+`saaBE/src` y `saaFE/src`; **no se ejecutó ninguno.**
+
+### 5.1 ✅ Los tres caminos funcionan por construcción, y la razón importa
+
+| Camino | Cómo busca | ¿Entra la nota de venta? |
+|---|---|---|
+| **Estado de cuenta de titular** (`tsr`) | `estado-cuenta-titular.service.ts:131` enumera **fuentes**: `{etiqueta:'Facturas de compra', url: ServiciosCxp.RS_FCTC, campoTitular:'titular'}` | ✅ **sí** — pega contra `RS_FCTC`, la misma tabla |
+| **Pago normal** (proposición de pago) | `proposicion-pago:201` → `facturaS.selectByCriteria(criterioTitular)` | ✅ **sí** |
+| **Pago con caja chica** | `documento-cruce-selector-dialog:105-113` → criterio único: `titular.codigo IGUAL` | ✅ **sí** |
+
+**Ninguno de los tres filtra por `tipoComprobante`.** Los tres preguntan *«qué documentos tiene este
+titular»*, y la nota de venta **es** un documento de ese titular en esa tabla.
+
+> **Esto es lo que compró la decisión de reutilizar `PGS.FCTC` en vez de crear una tabla.** El
+> requisito del usuario —«que entre en todo el ambiente»— no costó trabajo: ya estaba pagado al
+> elegir el modelo. Con una tabla nueva, cada uno de estos tres consumidores habría necesitado un
+> `forkJoin` más, y **cada uno que alguien olvidara habría sido un saldo mal calculado, en silencio**.
+
+**Y hubo suerte, conviene decirlo:** el §5 del plan de caja chica avisaba de la trampa inversa —*«si
+el estado de cuenta enumera los cinco tipos actuales, el sexto no aparecería»*—. Acá **la
+enumeración es por endpoint, no por tipo**, así que un tipo nuevo sobre un endpoint existente pasa
+solo. Si el estado de cuenta hubiera enumerado tipos de documento en vez de fuentes, este requisito
+habría sido un frente entero. **La diferencia entre las dos formas de enumerar no se ve hasta que
+agregás el elemento número seis.**
+
+### 5.2 🟡 Lo que SÍ falta: las tres pantallas la van a llamar «Factura»
+
+Funciona, pero miente en la etiqueta. Los tres consumidores rotulan por **origen del endpoint**, no
+por el tipo de la fila:
+
+| Dónde | Qué muestra hoy | Qué debe mostrar |
+|---|---|---|
+| Estado de cuenta de titular | la sección **«Facturas de compra»** | distinguir la nota de venta, o al menos mostrar el tipo por fila |
+| Selector de caja chica | mapea todo lo de `facturaService` a `tipo: 'FACTURA'` → etiqueta **«Factura»** | **«Nota de venta»** cuando `tipoComprobante === '02'` |
+| Proposición de pago | ídem | ídem |
+
+**El saldo del titular sale bien igual** —por eso es 🟡 y no 🔴—, pero un usuario que ve «Factura
+001-001-000000123» y busca el XML que no existe pierde el tiempo, y peor, puede creer que falta
+cargar algo.
+
+**Regla para los tres:** la etiqueta sale de `tipoComprobante` de la fila, no de qué servicio la
+trajo. Un solo helper compartido y los tres lo usan.
+
+### 5.3 ⚪ Verificado que NO hace falta tocar el backend para esto
+
+Los tres caminos ya pasan por `selectByCriteria` de `FacturaCompra` o por el endpoint de estado de
+cuenta, ninguno con filtro de tipo. **El requisito es enteramente de etiquetado en el frontend.**
+Que la nota de venta se pueda **pagar** —normal o con caja chica— no necesita ni una línea nueva de
+backend: `AplicacionPagoCxp` ya la referencia como `facturaCompra`, porque es una fila de `FCTC`.
