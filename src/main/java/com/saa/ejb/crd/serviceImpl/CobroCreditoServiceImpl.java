@@ -14,6 +14,7 @@ import com.saa.ejb.cnt.service.PlantillaService;
 import com.saa.ejb.crd.dao.AcuerdoCondonacionDaoService;
 import com.saa.ejb.crd.dao.CargaArchivoDaoService;
 import com.saa.ejb.crd.dao.CobroCreditoDaoService;
+import com.saa.ejb.crd.dao.CorridaCierreCarteraDaoService;
 import com.saa.ejb.crd.dao.DetalleAportePrecancelacionDaoService;
 import com.saa.ejb.crd.dao.DetalleCobroCreditoDaoService;
 import com.saa.ejb.crd.dao.EntidadDaoService;
@@ -59,6 +60,7 @@ import com.saa.model.cnt.PlanCuenta;
 import com.saa.model.crd.AcuerdoCondonacion;
 import com.saa.model.crd.CargaArchivo;
 import com.saa.model.crd.CobroCredito;
+import com.saa.model.crd.CorridaCierreCartera;
 import com.saa.model.crd.DetalleAporteAcuerdoCondonacion;
 import com.saa.model.crd.DetalleAportePrecancelacion;
 import com.saa.model.crd.DetalleCobroCredito;
@@ -80,6 +82,7 @@ import com.saa.rubros.CrdLineaAsiento;
 import com.saa.rubros.CrdTipoOperacionCobro;
 import com.saa.rubros.DsbnOrigen;
 import com.saa.rubros.ModuloSistema;
+import com.saa.rubros.MovimientoCuentaPlantilla;
 import com.saa.rubros.PlantillasCredito;
 import com.saa.rubros.TipoAsientos;
 import com.saa.rubros.TipoCarteraBanda;
@@ -110,6 +113,9 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
 
     @EJB
     private CobroCreditoDaoService cobroCreditoDaoService;
+
+    @EJB
+    private CorridaCierreCarteraDaoService corridaCierreCarteraDaoService;
 
     @EJB
     private DetalleCobroCreditoDaoService detalleCobroCreditoDaoService;
@@ -895,6 +901,10 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             List<DetalleCobroCredito> detallesActualizados = detalleCobroCreditoDaoService.selectByCobro(idCobro);
             Asiento asientoReparto = generarAsientoReparto(cobro, detallesActualizados);
             cobro.setAsientoReparto(asientoReparto);
+            // Apertura extraordinaria (2026-09-04) SIEMPRE antes del asiento definitivo: éste
+            // da de baja contra lo abierto, así que si corriera después estaría dando de baja
+            // algo que todavía no existe. Ver DISENO-APERTURA-EXTRAORDINARIA-CAPITAL-FUTURO.md.
+            generarAsientoAperturaExtraordinaria(cobro, detallesActualizados);
             Asiento asientoDefinitivo = generarAsientoDefinitivo(cobro, detallesActualizados);
             cobro.setAsientoDefinitivo(asientoDefinitivo);
         } else {
@@ -1599,6 +1609,154 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
 
     private double redondear(double valor) {
         return Math.round(valor * 100.0) / 100.0;
+    }
+
+    // =====================================================================
+    // Apertura extraordinaria por capital futuro prepagado (2026-09-04) —
+    // docs/logica-negocio/crd/DISENO-APERTURA-EXTRAORDINARIA-CAPITAL-FUTURO.md
+    //
+    // Un abono a capital o el tramo futuro de una precancelación cobran capital de cuotas que
+    // vencen DESPUÉS del corte del período abierto — capital que la apertura mensual nunca
+    // abrió. El asiento definitivo (CBCRASN2) da de baja contra lo abierto: sin este asiento
+    // ANTES, daría de baja una contrapartida que no existe. Reusa la MISMA plantilla que la
+    // apertura mensual (APERTURA_PLANILLA_MENSUAL, líneas PRESTAMOS_POR_COBRAR/APLICAR) para
+    // que las dos golpeen las mismas cuentas y el neteo de fin de mes las vea como un solo
+    // saldo — decisión del usuario, §5 de la especificación.
+    // =====================================================================
+
+    /**
+     * Genera (si corresponde) el asiento de apertura extraordinaria del capital futuro que este
+     * cobro cancela. Sólo capital — ni interés, ni mora, ni desgravamen, ni incendio: esos
+     * conceptos no se prepagan.
+     *
+     * <p><b>Sólo el capital de cuotas con vencimiento POSTERIOR al corte del período abierto</b>
+     * (decisión del usuario, 2026-09-04, no todo el capital prepagado): la parte que cae dentro
+     * del mes abierto ya la abrió la apertura mensual, y contarla de nuevo descuadraría el
+     * neteo de fin de mes.</p>
+     *
+     * <p><b>Si no hay corrida de cierre viva para el período del cobro, NO se bloquea el
+     * cobro</b> — se procesa igual, sin apertura extraordinaria, con traza. Frenar un cobro por
+     * un asiento de apertura sería peor que el problema que este método resuelve.</p>
+     *
+     * <p>Si el capital futuro da $0 (el pago no tocó ninguna cuota posterior al corte), no se
+     * genera asiento: uno en cero es ruido en el mayor.</p>
+     */
+    private void generarAsientoAperturaExtraordinaria(CobroCredito cobro, List<DetalleCobroCredito> detalles)
+            throws Throwable {
+        Long idEmpresa = derivarEmpresaCobro(cobro);
+        Long anio = Long.valueOf(cobro.getFecha().getYear());
+        Long mes = Long.valueOf(cobro.getFecha().getMonthValue());
+
+        // El corte sale de la corrida de cierre VIVA del período del cobro — nunca recalculado
+        // acá: dos formas de derivar el mismo corte es el patrón que este proyecto viene
+        // pagando caro (ver la especificación, §4.1).
+        CorridaCierreCartera corridaViva = corridaCierreCarteraDaoService.selectVivaByPeriodo(idEmpresa, anio, mes);
+        if (corridaViva == null || corridaViva.getFechaCorte() == null) {
+            System.out.println("CobroCreditoService.generarAsientoAperturaExtraordinaria - cobro "
+                    + cobro.getCodigo() + ": no hay corrida de cierre de cartera viva para " + mes + "/" + anio
+                    + " en empresa " + idEmpresa + "; se procesa el cobro sin apertura extraordinaria.");
+            return;
+        }
+        LocalDate fechaCorteApertura = corridaViva.getFechaCorte();
+
+        // Por cada préstamo del cobro: capital de saldoOtros (abono/precancelación) que vence
+        // después del corte — la clasificación y el reparto por cuota son los MISMOS que usa
+        // haberDesdePagos, nunca recalculados acá (ver el javadoc del método en la interfaz).
+        double capitalFuturo = 0.0;
+        for (DetalleCobroCredito detalle : detalles) {
+            if (detalle.getPrestamo() == null || detalle.getEventoPrestamo() == null) {
+                continue;
+            }
+            List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectByEvento(detalle.getEventoPrestamo().getCodigo());
+            capitalFuturo += contabilizacionIndividualCreditoService.capitalFuturoPosteriorACorte(
+                    pagos, fechaCorteApertura, "Cobro " + cobro.getCodigo());
+        }
+        capitalFuturo = redondear(capitalFuturo);
+
+        if (capitalFuturo <= 0.0) {
+            System.out.println("CobroCreditoService.generarAsientoAperturaExtraordinaria - cobro "
+                    + cobro.getCodigo() + ": no hay capital de cuotas posteriores al corte ("
+                    + fechaCorteApertura + "); no se genera apertura extraordinaria.");
+            return;
+        }
+
+        // Mismo mecanismo de resolución de cuentas que CierreCarteraServiceImpl.agrega: la
+        // plantilla resuelve, aux1 = papel de la línea del catálogo CrdLineaAsiento.
+        Long idPlantilla = plantillaService.codigoByAlterno(PlantillasCredito.APERTURA_PLANILLA_MENSUAL, idEmpresa);
+        if (idPlantilla == null) {
+            throw new IncomeException("No existe la plantilla contable alterno "
+                    + PlantillasCredito.APERTURA_PLANILLA_MENSUAL + " para la empresa " + idEmpresa
+                    + "; no se puede generar la apertura extraordinaria del cobro " + cobro.getCodigo() + ".");
+        }
+        DetallePlantilla lineaPorCobrar = detallePlantillaDaoService.selectByPlantillaYAuxiliar(idPlantilla,
+                CrdLineaAsiento.PRESTAMOS_POR_COBRAR);
+        if (lineaPorCobrar == null || lineaPorCobrar.getPlanCuenta() == null) {
+            throw new IncomeException("La plantilla alterno " + PlantillasCredito.APERTURA_PLANILLA_MENSUAL
+                    + " no tiene la línea de préstamos por cobrar (aux1=" + CrdLineaAsiento.PRESTAMOS_POR_COBRAR
+                    + "); no se puede generar la apertura extraordinaria del cobro " + cobro.getCodigo() + ".");
+        }
+        DetallePlantilla lineaPorAplicar = detallePlantillaDaoService.selectByPlantillaYAuxiliar(idPlantilla,
+                CrdLineaAsiento.PRESTAMOS_POR_APLICAR);
+        if (lineaPorAplicar == null || lineaPorAplicar.getPlanCuenta() == null) {
+            throw new IncomeException("La plantilla alterno " + PlantillasCredito.APERTURA_PLANILLA_MENSUAL
+                    + " no tiene la línea de préstamos por aplicar (aux1=" + CrdLineaAsiento.PRESTAMOS_POR_APLICAR
+                    + "); no se puede generar la apertura extraordinaria del cobro " + cobro.getCodigo() + ".");
+        }
+
+        String descripcion = "Apertura extraordinaria - capital futuro prepagado - cobro " + cobro.getCodigo();
+
+        // El lado (Debe/Haber) de CADA línea sale de su propia plantilla (DetallePlantilla
+        // .movimiento, DTPLMVMN) — NUNCA fijado a mano. Mismo criterio que
+        // CierreCarteraServiceImpl.lineaPlantilla usa para la apertura mensual: si se asumiera
+        // a mano cuál lado es cada una, un día que la plantilla se reconfigure la apertura
+        // mensual cambiaría de lado y esta quedaría atrás, invertida, sin que nada lo avise.
+        List<DetalleAsiento> lineas = new ArrayList<>();
+        lineas.add(lineaAperturaDesdePlantilla(lineaPorCobrar, capitalFuturo, descripcion));
+        lineas.add(lineaAperturaDesdePlantilla(lineaPorAplicar, capitalFuturo, descripcion));
+
+        double totalDebe = 0.0;
+        double totalHaber = 0.0;
+        for (DetalleAsiento linea : lineas) {
+            totalDebe += nvl(linea.getValorDebe());
+            totalHaber += nvl(linea.getValorHaber());
+        }
+        if (Math.abs(redondear(totalDebe - totalHaber)) > TOLERANCIA_CUADRE) {
+            throw new IncomeException("El asiento de apertura extraordinaria del cobro " + cobro.getCodigo()
+                    + " no cuadra: Debe $" + redondear(totalDebe) + " vs Haber $" + redondear(totalHaber)
+                    + " (revise el movimiento configurado en la plantilla alterno "
+                    + PlantillasCredito.APERTURA_PLANILLA_MENSUAL + " para las líneas "
+                    + CrdLineaAsiento.PRESTAMOS_POR_COBRAR + "/" + CrdLineaAsiento.PRESTAMOS_POR_APLICAR
+                    + "). No se genera un asiento desbalanceado.");
+        }
+
+        asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, cobro.getFecha(),
+                observacionEnriquecida(cobro, detalles, descripcion), cobro.getUsuarioProceso(), lineas,
+                Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
+    }
+
+    /**
+     * Arma una línea de la apertura extraordinaria leyendo el lado (Debe/Haber) de
+     * {@code DetallePlantilla.movimiento} — NUNCA fijado a mano. Mismo criterio que
+     * {@code CierreCarteraServiceImpl.lineaPlantilla} (apertura mensual) y
+     * {@code ContabilizacionIndividualCreditoServiceImpl.lineaMovimientoDesdePlantilla}
+     * (reparto): las dos líneas de este asiento tienen que golpear las MISMAS cuentas, DEL
+     * MISMO MODO, que la apertura mensual — si el lado se asumiera en vez de leerse, el día
+     * que alguien reconfigure la plantilla las dos rutas divergirían en silencio (el asiento
+     * seguiría cuadrando igual, solo que invertido).
+     */
+    private DetalleAsiento lineaAperturaDesdePlantilla(DetallePlantilla plantilla, double valor,
+            String descripcion) {
+        PlanCuenta cuenta = plantilla.getPlanCuenta();
+        boolean debe = plantilla.getMovimiento() != null
+                && plantilla.getMovimiento().longValue() == MovimientoCuentaPlantilla.DEBE;
+        DetalleAsiento detalle = new DetalleAsiento();
+        detalle.setPlanCuenta(cuenta);
+        detalle.setNumeroCuenta(cuenta.getCuentaContable());
+        detalle.setNombreCuenta(cuenta.getNombre());
+        detalle.setDescripcion(descripcion);
+        detalle.setValorDebe(debe ? redondear(valor) : 0.0);
+        detalle.setValorHaber(debe ? 0.0 : redondear(valor));
+        return detalle;
     }
 
     // =====================================================================
