@@ -1117,7 +1117,65 @@ y resuelve el envenenamiento de paso**. En investigación al 2026-09-05.
 
 **Criterio del árbitro, por si se pierde el contexto:** no se descarta el camino auditable por el
 irreversible sin haberlo medido. Si al final es el rollback, que sea **porque medimos que el otro
-no alcanza**, no porque no lo miramos. Y en cualquiera de los dos casos **los 181 devengos
+no alcanza**, no porque no lo miramos.
+
+##### Resultado de la medición: el camino auditable NO alcanza. Las tres respuestas
+
+Se midió, y la conclusión es que **`anularOperacion` tampoco resuelve el ancla**. Se deja el
+detalle completo porque es la referencia para cuando se retome H46 — la investigación ya está
+pagada y no hay que rehacerla.
+
+**(1) `(idPrestamo, fecha) → idEvento` se puede resolver sin parsear texto, pero NO es unívoco.**
+`CRD.EVPR` tiene FK real a `Prestamo` (`PRSTCDGO`), `EVPRFCHA` con la fecha que se le pasó, y
+`EVPRTPOO` con el tipo. O sea que
+`WHERE PRSTCDGO=:p AND EVPRTPOO='PAGO_APORTES' AND TRUNC(EVPRFCHA)=:f AND EVPRESTD=1` es viable.
+**Pero el bucle retroactivo multi-mes lo rompe:** en
+`PagoPensionComplementariaServiceImpl:1122-1132`, `fecha` es **fija** para toda la corrida (D1: la
+fecha del pago al préstamo es la de la corrida, no la del mes M) mientras `mesM/anioM` varía en
+cada vuelta. Un jubilado con varios meses de mora contra el mismo préstamo genera **varios
+`EventoPrestamo` con el mismo préstamo, mismo tipo y misma fecha** — solo distinguibles por el
+texto libre de `EVPROBSR`. ⇒ la resolución estructurada sirve solo cuando hubo **un único mes**
+en esa corrida; no se puede asumir en general.
+
+**(2) `anularOperacion` (`ProcesoPagoPrestamoServiceImpl:1201-1417`) hace bien dos de tres cosas.**
+
+- ✅ `PagoPrestamo`: soft delete real (`:1261-1266`, `setAnulado(1L)` + huella).
+- ✅ **Cuotas**: vuelven a su estado real vía `recalcularCuotaDesdePagos`
+  (`MotorPagoPrestamoServiceImpl:678-762`) — suma los `PagoPrestamo` vigentes restantes y
+  reconstruye PAGADA/PARCIAL/PENDIENTE correctamente. **Esto sí resuelve lo que
+  `generarContraMovimiento` no hacía.**
+- ⛔ **`CRD.APRT`: NO.** `revertirAportes` (`:1419-1470`) lee el `Aporte` negativo **solo para
+  clonar sus datos** y guarda uno nuevo positivo con `tipoMovimiento = REVERSO`. **No hay ningún
+  `original.set...()` ni `save(original, ...)` en todo el método.** El negativo queda con el mismo
+  valor, mismo estado, mismo `tipoMovimiento = PAGO_PRESTAMO(4)` y misma `fechaTransaccion` —
+  **indistinguible de un negativo vigente**. Lo único que cambia de estado es
+  `PagoAporte.estado = 0` en la tabla puente `CRD.PGAP`, no el `Aporte` en sí.
+
+⇒ **Confirmado: revertir con `anularOperacion` no limpia el ancla, exactamente igual que
+`generarContraMovimiento`.** El camino auditable llega más lejos (recupera las cuotas) pero
+**muere en el mismo lugar**.
+
+**(3) No existe columna para excluir un negativo reversado; una solución genérica pide DDL.**
+`Aporte` completo: `codigo, filial, entidad, contrato, tipoAporte, cargaArchivo, devolucion,
+fechaTransaccion, glosa, valor, valorPagado, saldo, idAsoprep, fechaRegistro, usuarioRegistro,
+estado, periodoDevengo, tipoMovimiento`. **Ninguna dice «esto fue reversado»** — ni flag ni
+`idAporteReverso` (el patrón que se parecería a `devolucion`, si existiera).
+
+Hay un camino **parcial**: como `revertirAportes` marca `PagoAporte.estado = 0`, se podría filtrar
+con `NOT EXISTS (SELECT 1 FROM CRD.PGAP p WHERE p.APRTCDGO = a.APRTCDGO AND p.PGAPIDST = 0)`.
+**Pero cubre solo la vía `PAGO_PRESTAMO`** —los únicos negativos con fila en `PGAP`— y de todas
+formas **exige cambiar la query del ancla, no es un arreglo de datos**. Para cualquier tipo de
+negativo hace falta **una columna nueva: DDL**.
+
+**Ownership:** `EventoPrestamo.java`, `ProcesoPagoPrestamoServiceImpl.java` y `Aporte.java` no
+tienen marcador de equipo en ningún commit y su autor único es `xeonpotato` — código
+pre-convención, **no es de `lap-saa-1` ni de `eq2`**.
+
+**Qué queda, entonces.** Para esta corrida no importa: el usuario restauró la base y eso limpia
+todo de una. **Para un mes normal de producción sí importa y no hay salida barata:** el arreglo
+mínimo es cambiar la query del ancla (parcial, solo vía préstamo) y el completo pide DDL. Es
+trabajo real, no un parche — y hasta que exista, **una corrida que falle a mitad de camino no se
+puede reintentar sin restaurar la base.** Y en cualquiera de los dos casos **los 181 devengos
 inflados se reversan con asiento** — borrar filas de `CRD`/`PGS` no toca los libros de `CNT`.
 
 **Preguntas abiertas al usuario, y la primera decide la viabilidad del rollback:**
