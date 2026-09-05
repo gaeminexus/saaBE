@@ -206,6 +206,15 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
                     + " desbalanceado.");
         }
 
+        // Cierre de apertura del camino DIRECTO (2026-09-05, §9 del diseño, ÍTEM 3): este
+        // método es el otro camino sin depósito — el cruce de valores, incluido el de jubilados
+        // de omen-saa-1 (el hueco de $16.231,60 reportado). MISMO helper que
+        // contabilizarPrecancelacion, nunca una copia: totalHaber es todo lo que el evento
+        // liquidó del préstamo, el helper le resta el capital futuro y agrega, si corresponde,
+        // las dos líneas invertidas al MISMO asiento.
+        agregaCierreAperturaCaminoDirecto(lineas, idEmpresa, totalHaber, pagos, fechaCorte,
+                "cruce de valores evento " + ctx.getIdEvento());
+
         Asiento asiento = asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, fechaCorte,
                 prefijo + (ctx.getObservacion() != null ? ": " + ctx.getObservacion() : ""),
                 ctx.getUsuario(), lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
