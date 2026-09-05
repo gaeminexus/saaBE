@@ -29,6 +29,15 @@
 <!--   3) P_IDEMPRESA no filtra jubilados: ni CRD.PGPC ni CRD.ENTD ni CRD.FLLL tienen columna de -->
 <!--      empresa (verificado leyendo las tres entidades). Solo se usa para ubicar la orden de pago -->
 <!--      al proveedor del seguro medico en PGS.PGTR (que si es multiempresa). -->
+<!--   4) CORREGIDO 2026-09-05 (encontrado armando sql/203, verificacion contra el mayor): DINERO_BANCO -->
+<!--      es PGPCVLPN (nominal) MENOS el cruzado, no PGPCVLPN crudo. Desde el fix de H43, lo que de -->
+<!--      verdad sale al banco es `remanente` (neto de cruce y de seguro), no la pension nominal -->
+<!--      completa; mostrar el nominal aca hubiera repetido, en el reporte, el mismo error que H43 -->
+<!--      corrigio en el asiento. Asume que el seguro se traspaso integro (seguroInterno=PGPCVLSG -->
+<!--      nominal, el caso normal); si algun dia el saldo del aporte se agotara a mitad de mes y el -->
+<!--      seguro quedara topado por debajo del nominal (riesgo teorico ya documentado en el codigo, -->
+<!--      ver generarAsientoDevengoPension), esta columna se desviaria en esa misma medida: no se -->
+<!--      resuelve aca, es el mismo caso limite ya conocido y aceptado. -->
 <jasperReport name="RPRT_PGPC_CRRD" language="java" pageWidth="842" pageHeight="595" orientation="Landscape" columnWidth="782" leftMargin="30" rightMargin="30" topMargin="30" bottomMargin="30" whenNoDataType="AllSectionsNoDetail" uuid="e5000000-0000-0000-0000-000000000001">
 	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="Oracle"/>
 	<property name="com.jaspersoft.studio.report.description" value="Corrida mensual de pago de pension complementaria a jubilados: resumen, detalle de cruce a prestamos con cuotas/capital/interes, y seguro"/>
@@ -85,7 +94,7 @@ SELECT
     p.PGPCFCHA AS PGPCFCHA,
     p.PGPCFCRG AS PGPCFCRG,
     p.PGPCFCPG AS PGPCFCPG,
-    CASE WHEN p.PGPCESTD IN (2,3) THEN p.PGPCVLPN ELSE 0 END AS DINERO_BANCO,
+    CASE WHEN p.PGPCESTD IN (2,3) THEN GREATEST(p.PGPCVLPN - NVL(cr.CRZ_VALOR,0), 0) ELSE 0 END AS DINERO_BANCO,
     NVL(cr.CRZ_VALOR, 0) AS CRUZADO_PRESTAMOS,
     NVL(cr.CRZ_DETALLE, 'Sin cruce a prestamo este mes') AS DETALLE_CRUCE_PRESTAMOS,
     (SELECT MAX(g2.PGTRCDGO) FROM PGS.PGTR g2
