@@ -112,6 +112,31 @@ public interface CrdLineaAsiento {
 	public static final int APORTE_ADICIONAL_PERSONAL = 52;
 
 	/**
+	 * Aportes personales PENSIÓN COMPLEMENTARIA (CRD.TPAP.TPAPCDGO = 23). Pasivo,
+	 * {@code 2.1.02.25.01} — dato del usuario 2026-09-05, textual: «la cuenta contable es la
+	 * 2.1.02.25.01», la cuenta individual que se abre al jubilar al partícipe. Decisión del
+	 * usuario: no se abre cuenta nueva para el cruce contra préstamos de la pensión
+	 * complementaria — se cierra contra la misma cuenta donde se abrió.
+	 *
+	 * ⚠️ DISCREPANCIA SIN RESOLVER, reportada al árbitro, no silenciada: siguiendo el código
+	 * desde {@code AporteServiceImpl:495} (el movimiento que CREA este aporte al jubilar) hasta
+	 * {@code AporteServiceImpl#generarAsientoJubilacion} (plantilla alterno
+	 * {@code PlantillasCredito.JUBILACION}=29, aux1=5, "pensiones complementarias por pagar"),
+	 * la cuenta que ese asiento ACREDITA es {@code 2.3.01.10.03}, no {@code 2.1.02.25.01}. Puede
+	 * ser una cuenta de reclasificación/consolidación distinta de la individual (dos cuentas
+	 * legítimamente distintas para dos propósitos), pero no se verificó cuál es cuál — se usa
+	 * acá la que dio el usuario directamente, más autoritativa que mi lectura del código.
+	 *
+	 * ⚠️ {@code 53} es el próximo aux1 libre en el catálogo Java de este archivo al
+	 * 2026-09-05 (nada más lo usa; confirmado también por {@code lap-saa-1-arb} contra su propio
+	 * árbol) — PENDIENTE de confirmar contra {@code CNT.DTPL} de la plantilla 21 real (ver
+	 * {@code docs/logica-negocio/crd/sql/199_*.sql}) antes de crear la línea: si la plantilla 21
+	 * ya tiene una fila apuntando a {@code 2.1.02.25.01} con otro aux1, hay que usar ESE número,
+	 * no este.
+	 */
+	public static final int APORTES_PENSION_COMPLEMENTARIA = 53;
+
+	/**
 	 * Seguro de préstamo HIPOTECARIO. Activo, {@code 1.4.90.15.02}. Sin dimensión de tipo de
 	 * préstamo propia (a diferencia de intereses): cada tipo con seguro de incendio tiene su
 	 * propio código de línea, no un aux2.

@@ -51,6 +51,18 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
     private static final long TIPO_APORTE_JUBILACION = 9L;
     private static final long TIPO_APORTE_CESANTIA = 11L;
     private static final long TIPO_APORTE_ADICIONAL = 2L;
+    /**
+     * CRD.TPAP.TPAPCDGO de la pensión complementaria — mismo valor que
+     * {@code PagoPensionComplementariaServiceImpl}/{@code AporteServiceImpl}. Agregado
+     * 2026-09-05, con autorización expresa de {@code lap-saa-1-arb} (dueño de este archivo):
+     * el cruce contra préstamo con este aporte (crd, equipo omen-saa-1) reventaba con
+     * "El tipo de aporte 23 no tiene cuenta contable parametrizada" al llegar a
+     * {@link #aux1ParaTipoAporte}. Cuenta contable {@code 2.1.02.25.01}, dato directo del
+     * usuario — decisión: no se abre cuenta nueva, se cierra contra la misma cuenta individual
+     * que se abre al jubilar. Ver el JavaDoc de {@link CrdLineaAsiento#APORTES_PENSION_COMPLEMENTARIA}
+     * para la discrepancia sin resolver contra lo que el código de la jubilación acredita.
+     */
+    private static final long TIPO_APORTE_PENSION_COMPLEMENTARIA = 23L;
 
     private static final double TOLERANCIA = 0.01;
 
@@ -836,9 +848,19 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
         if (idTipoAporte != null && idTipoAporte == TIPO_APORTE_ADICIONAL) {
             return CrdLineaAsiento.APORTE_ADICIONAL_PERSONAL;
         }
+        // Agregado 2026-09-05 (autorización expresa de lap-saa-1-arb) — ver JavaDoc de
+        // TIPO_APORTE_PENSION_COMPLEMENTARIA. Requiere que CNT.DTPL tenga la línea
+        // DTPLAXL1=53 en la plantilla alterno 21; si no existe todavía, esta rama igual no
+        // rompe nada nuevo: selectByPlantillaYAuxiliar devuelve null y el llamador
+        // (lineaAporteRegistrado/lineasCruceAportesConsumidos) lanza su propio
+        // IncomeException con el aux1 exacto que falta — mismo modo de falla que ya existía,
+        // con mejor mensaje.
+        if (idTipoAporte != null && idTipoAporte == TIPO_APORTE_PENSION_COMPLEMENTARIA) {
+            return CrdLineaAsiento.APORTES_PENSION_COMPLEMENTARIA;
+        }
         throw new IncomeException("El tipo de aporte " + idTipoAporte + " no tiene cuenta contable"
-                + " parametrizada (hoy solo 9 jubilación, 11 cesantía, 2 adicional); no se puede"
-                + " contabilizar.");
+                + " parametrizada (hoy solo 9 jubilación, 11 cesantía, 2 adicional, 23 pensión"
+                + " complementaria); no se puede contabilizar.");
     }
 
     private DetalleAsiento lineaHaberDesdePlantilla(DetallePlantilla plantilla, double valor, String descripcion) {
