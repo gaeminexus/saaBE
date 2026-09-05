@@ -729,6 +729,86 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
         return lineas;
     }
 
+    /**
+     * @see ContabilizacionIndividualCreditoService#capitalFuturoPosteriorACorte(List, LocalDate, String)
+     */
+    @Override
+    public double capitalFuturoPosteriorACorte(List<PagoPrestamo> pagos, LocalDate fechaCorteApertura,
+            String prefijoDescripcion) throws Throwable {
+        if (pagos == null || fechaCorteApertura == null) {
+            return 0.0;
+        }
+        double total = 0.0;
+        for (PagoPrestamo pago : pagos) {
+            if (pago.getAnulado() != null && pago.getAnulado() == 1L) {
+                continue;
+            }
+            double saldoOtros = nvl(pago.getSaldoOtros());
+            if (saldoOtros <= 0.0) {
+                // Mismo discriminador que haberDesdePagos: sin saldoOtros > 0 no hay nada de
+                // capital fuera del cronograma normal que evaluar acá (cuota exigible normal).
+                continue;
+            }
+            if (ProcesoPagoPrestamoService.TIPO_ABONO_CAPITAL.equals(pago.getTipo())) {
+                if (pago.getEventoPrestamo() == null) {
+                    continue;
+                }
+                List<HistDetallePrestamo> historizadas =
+                        histDetallePrestamoDaoService.selectByEvento(pago.getEventoPrestamo().getCodigo());
+                if (historizadas == null || historizadas.isEmpty()) {
+                    continue;
+                }
+                // MISMO reparto proporcional que la banda del abono (lineasBandaCapitalAbono/
+                // lineasReclasificacionAbonoCapital) — nunca un prorrateo nuevo.
+                List<HistDetallePrestamo> ordenadas = ordenarPorNumeroCuota(historizadas);
+                List<Double> partes = repartirProporcionalPorCapital(ordenadas, saldoOtros, prefijoDescripcion);
+                for (int idx = 0; idx < ordenadas.size(); idx++) {
+                    HistDetallePrestamo h = ordenadas.get(idx);
+                    LocalDate vencimiento = h.getFechaVencimiento() != null
+                            ? h.getFechaVencimiento().toLocalDate() : null;
+                    if (vencimiento != null && vencimiento.isAfter(fechaCorteApertura)) {
+                        total += partes.get(idx);
+                    }
+                }
+            } else if (ProcesoPagoPrestamoService.TIPO_PRECANCELACION.equals(pago.getTipo())) {
+                Prestamo prestamo = pago.getPrestamo();
+                if (prestamo == null || prestamo.getCodigo() == null) {
+                    continue;
+                }
+                // MISMA fuente que la banda del capital futuro de precancelación
+                // (lineasBandaCapitalFuturoPrecancelacion): las cuotas CANCELADA_ANTICIPADA(7)
+                // del préstamo, cada una con su propio capital y vencimiento reales — nunca la
+                // cuota ancla.
+                List<DetallePrestamo> todas = detallePrestamoDaoService.selectByPrestamo(prestamo.getCodigo());
+                if (todas != null) {
+                    for (DetallePrestamo cuota : todas) {
+                        if (cuota.getEstado() != null
+                                && cuota.getEstado() == EstadoCuotaPrestamo.CANCELADA_ANTICIPADA
+                                && cuota.getFechaVencimiento() != null
+                                && cuota.getFechaVencimiento().toLocalDate().isAfter(fechaCorteApertura)) {
+                            total += redondear(nvl(cuota.getCapital()));
+                        }
+                    }
+                }
+            }
+            // ⛔ NO agregar acá una rama para TIPO_PAGO_APORTES ("PAGO_APORTES", el cruce de
+            // valores solo). No tiene rama A PROPÓSITO, no es un olvido — decisión del usuario,
+            // 2026-09-04, §5 de DISENO-CIERRE-APERTURA-SOLO-LO-ABIERTO.md ("da igual si se paga
+            // con dinero o con cruce de valores — lo que decide no es cómo se paga, sino qué se
+            // paga"): un cruce liquida deuda EXIGIBLE con saldos del propio socio, nunca capital
+            // futuro, así que no debe excluir nada del cierre. Hoy ya queda afuera solo
+            // (pagarConAportes nunca llama a setSaldoOtros, así que sus PagoPrestamo tienen
+            // saldoOtros = 0 y nunca llegan hasta este if), pero eso es una coincidencia de
+            // implementación, no la regla — si ese guard cambiara, esta ausencia de rama es la
+            // que de verdad lo protege.
+            // (Una precancelación o un abono PAGADOS con aportes sí excluyen su tramo futuro: el
+            // tipo del evento sigue siendo PRECANCELACION/ABONO_CAPITAL, y caen en las ramas de
+            // arriba. Lo que no excluye nada es el cruce como operación propia — no conviertas
+            // esto en "si hay aportes de por medio, no cierra".)
+        }
+        return redondear(total);
+    }
+
     private double nvl(Double valor) {
         return valor != null ? valor : 0.0;
     }
