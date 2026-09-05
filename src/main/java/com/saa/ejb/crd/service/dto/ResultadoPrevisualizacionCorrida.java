@@ -60,11 +60,14 @@ public class ResultadoPrevisualizacionCorrida {
     private double totalSeguroInternoGeneral;
 
     /**
-     * Campo nuevo 2026-09-05: {@code false} si el proveedor del seguro médico
-     * ({@code RUC_PROVEEDOR_SEGURO_MEDICO}) no se pudo resolver — la corrida real de este
-     * período va a fallar ANTES de tocar el primer jubilado. El prevuelo es, en este momento,
-     * el ÚNICO ensayo antes de mover plata real: el frontend tiene que mostrar esto de forma
-     * prominente, no como una nota al pie.
+     * Campo 2026-09-05, alcance ampliado el mismo día: {@code false} si CUALQUIERA de las
+     * condiciones que la corrida real verifica al principio (antes de tocar el primer jubilado)
+     * del lado del proveedor del seguro médico falla — el titular no se resuelve por RUC, la
+     * cuenta contable del devengo no coincide con la del producto de pago 516, o el proveedor no
+     * tiene una única cuenta bancaria activa. El detalle de CUÁL de las tres fue queda en
+     * {@link #mensajeProveedorSeguro}. El prevuelo es, en este momento, el ÚNICO ensayo antes de
+     * mover plata real: el frontend tiene que mostrar esto de forma prominente, no como una nota
+     * al pie.
      */
     private boolean proveedorSeguroEncontrado = true;
 

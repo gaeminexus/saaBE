@@ -44,10 +44,12 @@ import com.saa.ejb.cxp.dao.PagoProgramadoDaoService;
 import com.saa.ejb.cxp.service.PagoProgramadoService;
 import com.saa.ejb.cxp.service.dto.BeneficiarioOcasional;
 import com.saa.ejb.tsr.dao.TitularDaoService;
+import com.saa.ejb.tsr.service.CuentaBancariaTitularService;
 import com.saa.model.cnt.Asiento;
 import com.saa.model.cnt.DetalleAsiento;
 import com.saa.model.cnt.DetallePlantilla;
 import com.saa.model.cnt.PlanCuenta;
+import com.saa.model.tsr.CuentaBancariaTitular;
 import com.saa.model.tsr.Titular;
 import com.saa.model.crd.Aporte;
 import com.saa.model.crd.CuentaBancariaParticipe;
@@ -72,6 +74,8 @@ import com.saa.rubros.ModuloSistema;
 import com.saa.rubros.OrigenPagoExterno;
 import com.saa.rubros.PlantillasCredito;
 import com.saa.rubros.TipoAsientos;
+import com.saa.rubros.TipoComandosBusqueda;
+import com.saa.rubros.TipoDatosBusqueda;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -159,6 +163,14 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
      */
     @EJB
     private TitularDaoService titularDaoService;
+
+    /**
+     * @EJB a tsr, SOLO LECTURA — nunca se modifica nada de tsr desde acá. Resuelve la cuenta
+     * bancaria del proveedor del seguro médico (ver {@link #resolverCuentaBancariaProveedorSeguro}).
+     * Mismo precedente que {@link #titularDaoService}.
+     */
+    @EJB
+    private CuentaBancariaTitularService cuentaBancariaTitularService;
 
     /**
      * @EJB a cxp, SOLO LECTURA — nunca se modifica nada de cxp desde acá. Se usa únicamente
@@ -327,6 +339,34 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                 + " activo con RUC '" + RUC_PROVEEDOR_SEGURO_MEDICO + "' (TSR.TTLR) — la corrida"
                 + " real de este período va a fallar ANTES de tocar el primer jubilado. El seguro"
                 + " médico no se puede descontar sin que exista a quién pagarle la contrapartida.");
+        } else {
+            // Mismo criterio: NO se aborta el prevuelo, solo se informa. Un solo campo alcanza
+            // porque el REST antepone UN mensaje al sobre de respuesta (no hay UI hoy para
+            // pintar tres alertas separadas) — se reporta la PRIMERA de las dos condiciones que
+            // impedirían arrancar la corrida real, igual que generarPagosDelMes las corre en
+            // ese orden (cuenta contable, después cuenta bancaria).
+            try {
+                verificarCuentaProductoPagoSeguroMedico(idEmpresa);
+            } catch (IncomeException e) {
+                resumen.setProveedorSeguroEncontrado(false);
+                resumen.setMensajeProveedorSeguro(e.getMessage());
+            } catch (Throwable e) {
+                resumen.setProveedorSeguroEncontrado(false);
+                resumen.setMensajeProveedorSeguro("No se pudo verificar la cuenta contable del seguro"
+                    + " médico: " + e.getMessage());
+            }
+            if (resumen.isProveedorSeguroEncontrado()) {
+                try {
+                    resolverCuentaBancariaProveedorSeguro(proveedorSeguro);
+                } catch (IncomeException e) {
+                    resumen.setProveedorSeguroEncontrado(false);
+                    resumen.setMensajeProveedorSeguro(e.getMessage());
+                } catch (Throwable e) {
+                    resumen.setProveedorSeguroEncontrado(false);
+                    resumen.setMensajeProveedorSeguro("No se pudo verificar la cuenta bancaria del"
+                        + " proveedor del seguro médico: " + e.getMessage());
+                }
+            }
         }
 
         List<Entidad> jubilados = entidadDaoService.selectByIdEstado(
@@ -654,6 +694,12 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         // verifica UNA vez, al principio, antes de tocar el primer jubilado.
         verificarCuentaProductoPagoSeguroMedico(idEmpresa);
 
+        // ⛔⛔ Sin esto la orden nace sin cuenta de destino y queda IRRECUPERABLE (verificado:
+        // tesorería solo asigna la cuenta de ORIGEN al aprobar, nunca la de destino de un pago
+        // de origen externo) — ver JavaDoc de resolverCuentaBancariaProveedorSeguro. Se resuelve
+        // acá, junto a los otros dos chequeos, para que la corrida no arranque si va a fallar.
+        CuentaBancariaTitular cuentaBancariaProveedorSeguro = resolverCuentaBancariaProveedorSeguro(proveedorSeguro);
+
         ResultadoGeneracionPagosPension resumen = new ResultadoGeneracionPagosPension();
         resumen.setAnio(anio);
         resumen.setMes(mes);
@@ -729,7 +775,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         // REQUIRES_NEW), mismo criterio de "no aborta el lote" que rige todo este método.
         resumen.setIdPagoProveedorSeguro(
             generarOrdenPagoProveedorSeguro(idEmpresa, anio, mes, usuario, idUsuario,
-                proveedorSeguro, totalSeguroPeriodo));
+                proveedorSeguro, cuentaBancariaProveedorSeguro, totalSeguroPeriodo));
 
         System.out.println("GENERACIÓN TERMINADA - Evaluados: " + resumen.getEvaluados()
             + " - Generados: " + resumen.getGenerados()
@@ -1413,6 +1459,76 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
     }
 
     /**
+     * ⛔⛔ Guard 2026-09-05, hallazgo de {@code omen-saa-2-arb} verificado contra
+     * {@code PagoProgramadoServiceImpl}: una orden de origen externo nace SIN cuenta de destino
+     * ({@code idCuentaBancariaOrigen} siempre {@code null} en este flujo — tesorería solo asigna
+     * la cuenta de ORIGEN al aprobar, nunca la de destino) — el destino tiene que venir puesto
+     * desde acá, en el {@code BeneficiarioOcasional}, o la orden queda irrecuperable: no hay
+     * pantalla ni parámetro de {@code /pgtr/aprobar} para completarla después.
+     * {@code FormateadorArchivoBancoPlanoImpl} exige {@code cuentaDestino} o
+     * {@code beneficiarioCuenta} y aborta TODO el lote del archivo bancario en el primer pago
+     * que no la tenga — y la guarda de {@code aprobar} no cubre {@code CRD_SEGURO_JUBILADOS} (no
+     * está en su lista cerrada de orígenes), así que la aprobación pasa sin avisar y el defecto
+     * aparece recién al generar el archivo, con el lote ya aprobado.
+     *
+     * Mismo patrón que {@link #unicaCuentaActiva}: exactamente una cuenta ACTIVA, ni cero ni
+     * más de una — un proveedor con una cuenta vieja dada de baja y otra vigente no se resuelve
+     * adivinando cuál vale.
+     *
+     * Solo LECTURA de {@code tsr} ({@link #cuentaBancariaTitularService}) — no se modifica nada
+     * de ese módulo para esta verificación.
+     *
+     * @return la única cuenta bancaria ACTIVA del proveedor
+     * @throws IncomeException {@code PROVEEDOR_SIN_CUENTA_BANCARIA} si no tiene ninguna cuenta
+     *                          activa, o {@code PROVEEDOR_CUENTA_BANCARIA_AMBIGUA} si tiene más
+     *                          de una
+     */
+    private CuentaBancariaTitular resolverCuentaBancariaProveedorSeguro(Titular proveedorSeguro) throws Throwable {
+        List<DatosBusqueda> criterios = new ArrayList<>();
+        DatosBusqueda criterio = new DatosBusqueda();
+        criterio.setCampo("titular.codigo");
+        criterio.setTipoComparacion(TipoComandosBusqueda.IGUAL);
+        criterio.setTipoDato(TipoDatosBusqueda.LONG);
+        criterio.setValor(proveedorSeguro.getCodigo().toString());
+        criterios.add(criterio);
+
+        List<CuentaBancariaTitular> cuentas;
+        try {
+            cuentas = cuentaBancariaTitularService.selectByCriteria(criterios);
+        } catch (IncomeException e) {
+            // CuentaBancariaTitularServiceImpl.selectByCriteria lanza IncomeException (no
+            // devuelve lista vacía) cuando no encuentra ninguna fila — se traduce acá al mismo
+            // código de error que el caso "0 activas", que es exactamente lo que significa.
+            cuentas = null;
+        }
+
+        CuentaBancariaTitular unica = null;
+        int activas = 0;
+        if (cuentas != null) {
+            for (CuentaBancariaTitular cuenta : cuentas) {
+                if (cuenta.getEstado() != null && cuenta.getEstado() == Estado.ACTIVO) {
+                    activas++;
+                    unica = cuenta;
+                }
+            }
+        }
+        if (activas == 0) {
+            throw new IncomeException("PROVEEDOR_SIN_CUENTA_BANCARIA: el proveedor del seguro médico"
+                + " (RUC " + RUC_PROVEEDOR_SEGURO_MEDICO + ") no tiene ninguna cuenta bancaria ACTIVA"
+                + " registrada (TSR.CTBN) — hay que registrársela antes de correr este período. Una"
+                + " orden de pago de origen externo nace sin cuenta de destino asignable después: si"
+                + " no se resuelve acá, queda irrecuperable.");
+        }
+        if (activas > 1) {
+            throw new IncomeException("PROVEEDOR_CUENTA_BANCARIA_AMBIGUA: el proveedor del seguro"
+                + " médico (RUC " + RUC_PROVEEDOR_SEGURO_MEDICO + ") tiene " + activas + " cuentas"
+                + " bancarias ACTIVAS al mismo tiempo (TSR.CTBN) — no se puede saber a cuál pagarle."
+                + " Debe quedar una sola activa.");
+        }
+        return unica;
+    }
+
+    /**
      * §4quater del contrato, decisión del usuario 2026-09-05: UNA sola orden de pago al
      * proveedor del seguro médico por el TOTAL agregado del período — no una por jubilado.
      * {@code idOrigen} es sintético ({@code anio*100+mes}), sin tabla propia — verificado que
@@ -1432,11 +1548,18 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
      * fuentes de verdad para la misma cuenta, y si divergen la corrida ya abortó antes de tocar
      * el primer jubilado, no acá.
      *
+     * Cuenta de destino (2026-09-05, corrección de {@code omen-saa-2-arb}): {@code cuentaBancaria}
+     * viene YA resuelta y validada por {@link #resolverCuentaBancariaProveedorSeguro} al
+     * principio de {@code generarPagosDelMes} — una orden de origen externo nace SIN cuenta de
+     * destino asignable después (tesorería solo asigna la de ORIGEN al aprobar), así que tiene
+     * que poblarse acá o la orden queda irrecuperable.
+     *
      * @return el código de la orden de pago generada, o {@code null} si no hubo nada que pagar
      *         este período (seguro total $0) o si ya existía una orden vigente para el período
      */
     private Long generarOrdenPagoProveedorSeguro(Long idEmpresa, Integer anio, Integer mes, String usuario,
-            Long idUsuario, Titular proveedorSeguro, double totalSeguroPeriodo) throws Throwable {
+            Long idUsuario, Titular proveedorSeguro, CuentaBancariaTitular cuentaBancaria,
+            double totalSeguroPeriodo) throws Throwable {
         if (totalSeguroPeriodo <= TOLERANCIA) {
             System.out.println("  Sin seguro médico que pagar al proveedor en " + mes + "/" + anio + " ($0).");
             return null;
@@ -1452,12 +1575,15 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             return existentes.get(0).getId();
         }
 
-        // Beneficiario genérico/informativo — mismo criterio que RHH_NOMINA (orden consolidada,
-        // no un beneficiario ocasional con cuenta bancaria propia resuelta acá): tesorería
-        // asigna cuenta/forma de pago al aprobar, igual que el resto de los orígenes de crd.
+        // ⛔ Con cuenta de destino — a diferencia de RHH_NOMINA, acá SÍ hace falta: una orden de
+        // origen externo nace sin cuenta asignable después (ver JavaDoc del método), así que sin
+        // esto el archivo bancario aborta el lote entero al primer intento de aprobarla.
         BeneficiarioOcasional beneficiario = new BeneficiarioOcasional();
         beneficiario.setNombre(proveedorSeguro.getRazonSocial());
         beneficiario.setIdentificacion(RUC_PROVEEDOR_SEGURO_MEDICO);
+        beneficiario.setIdBancoExterno(cuentaBancaria.getBanco() != null ? cuentaBancaria.getBanco().getCodigo() : null);
+        beneficiario.setTipoCuenta(cuentaBancaria.getTipoCuenta());
+        beneficiario.setNumeroCuenta(cuentaBancaria.getNumeroCuenta());
 
         String observacion = "Seguro médico jubilados " + mes + "/" + anio + " - "
             + proveedorSeguro.getRazonSocial() + " (RUC " + RUC_PROVEEDOR_SEGURO_MEDICO + ")";
