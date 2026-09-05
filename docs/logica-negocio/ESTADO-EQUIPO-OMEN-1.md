@@ -805,6 +805,57 @@ cascada es de profundidad 2 y las hojas son catálogos chicos que se repiten en 
 que el contexto de persistencia los cachea. **No se pidió optimizar nada**: queda anotado para mirar
 si la corrida real se siente lenta. Anotarlo sin medirlo es lo único honesto que se puede decir hoy.
 
+### ⛔ 2026-09-05 — LA CORRIDA SE EJECUTÓ. Cinco hallazgos abiertos, y el 5 es grave
+
+**La corrida de agosto 2026 corrió en producción.** Antes hubo dos intentos fallidos, los dos
+revertidos por el usuario, y de cada uno salió un defecto que hoy está corregido:
+
+| Intento | Falla | Causa real | Estado |
+|---|---|---|---|
+| 21:13 | 137 de 181 con error | **`idOrigen=null`**: la orden a CXP se pedía con el PGPC **sin grabar**, así que `getCodigo()` daba null. Es la razón de fondo por la que `CRD.PGPC` estaba vacía — el proceso nunca había llegado tan lejos | ✅ `62cfc1b` |
+| 21:33 | 137 de 181 con error | **`aux1ParaTipoAporte` no conocía el tipo 23.** Mapeaba solo 9/11/2. Reventaba **después** de aplicar el cruce | ✅ `9e36de4` + línea `aux1` 53 → `2.1.02.25.01` en `CNT.DTPL` |
+
+**Verificado y tranquilizador:** el `REQUIRES_NEW` por jubilado revierte limpio —`IncomeException`
+es `@ApplicationException(rollback=true)`— así que las corridas fallidas **no dejaron cuotas
+pagadas huérfanas**. Lo confirmó el agente BE en tres puntos de la cadena.
+
+**Las cuentas del aporte 23, con el catálogo como prueba.** El usuario resolvió una discrepancia
+que el agente hizo bien en no decidir solo: al **jubilar** nace el pasivo (`2.3.01.10.03`,
+PENSIONES COMPLEMENTARIAS POR PAGAR); al **cruzar** contra el préstamo no se paga nada, se da de
+baja el saldo individual (`2.1.02.25.01`). Los datos lo confirman — las cuatro líneas del cluster
+son de la misma familia:
+
+| `aux1` | Cuenta | Nombre |
+|---|---|---|
+| 50 | `2.1.01.05.01` | APORTES PERSONALES CESANTIA |
+| 51 | `2.1.02.05.01` | APORTES PERSONALES JUBILACION |
+| 52 | `2.1.02.15` | APORTE ADICIONAL PERSONAL |
+| **53** | **`2.1.02.25.01`** | **CTA INDIVIDUAL DE PENSIONES COMPLEMENTARIAS** |
+
+Todas `2.1.0X` — cuentas individuales del partícipe. La de jubilación es `2.3` — pasivo. **Que
+alguien no "corrija" una de las dos creyendo que la otra está mal:** está en el §4quinquies del
+contrato con la cita textual del usuario.
+
+#### Los cinco hallazgos de la corrida ejecutada — TODOS ABIERTOS
+
+| # | Qué | Dueño | Gravedad |
+|---|---|---|---|
+| **H41** | ⛔ **Al confirmar el pago solo se generó el asiento del SEGURO, no el de cada jubilado.** Los pagos quedarían sin respaldo contable | nuestro + `omen-saa-2` | **máxima** |
+| **H42** | El cruce toma **fecha de hoy** (`corte: 2026-09-04`) en vez del **fin de mes**, y marca cuotas de agosto como en mora. **Viola D1/§6bis**, que ya estaba cerrada: la cartera va con fin de mes, solo el pago con fecha actual | nuestro | alta |
+| **H43** | Con cruce + dinero, el asiento del pago se hace por **el total de la pensión** en vez de **solo lo transferido**. La parte cruzada ya tiene su propio asiento: contarla dos veces infla el movimiento | nuestro | alta |
+| **H44** | Se generó **una autorización por jubilado**, no una sola por el total. Contradice el requisito cerrado por el usuario | `omen-saa-2` (lote) | media |
+| **H45** | Falta el **asiento de cierre de las cuentas de apertura** del mes. Pendiente de que el usuario aclare si es el mismo mecanismo que rediseña `lap-saa-1` | por definir | por definir |
+
+**Hipótesis sobre H41, planteada a `omen-saa-2` y todavía sin confirmar:** la orden del seguro sí
+generó asiento y las de los jubilados no, y **la única diferencia entre ellas es el `desglose`**
+—la del seguro lo lleva (producto 516), las de jubilados van con `desglose = null`—. Si sin
+desglose CXP no arma el asiento al confirmar, **la devolución de aportes arrastra el mismo
+agujero**, porque usa el mismo patrón. ⚠️ Es hipótesis, no medición.
+
+**Instrucción dada al agente BE:** mirar H41, H42 y H43 **juntos** antes de proponer nada. Los
+tres tocan el asiento del momento del pago; si hay una causa raíz común, va un arreglo y no tres
+parches.
+
 ### 2026-09-04, tarde — el prevuelo se validó y aparecieron dos cosas más
 
 **El usuario desplegó, corrió el prevuelo de agosto 2026 y validó los montos**: 180 evaluados,
