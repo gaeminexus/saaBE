@@ -1464,3 +1464,85 @@ Que la guarda deje de mirar el origen y evalúe la condición real —`cuentaDes
 ⚠️ **Cambia comportamiento visible:** empezaría a rechazar aprobaciones por transferencia que hoy
 pasan (y que hoy fallan más tarde igual). **Se despacha después de que `omen-saa-1` termine su
 corrida**, no durante.
+
+---
+
+## §25 — 🔴 El RUC con espacio: no es «no lo encuentra», es «crea un duplicado»
+
+**Avisado por `omen-saa-1-arb` el 2026-09-04 desde producción. El dato ya lo limpiaron; el flanco
+del código es nuestro y sigue abierto. NO se corrigió: su corrida estaba por ejecutarse.**
+
+### Lo que ellos encontraron
+
+El titular del proveedor del seguro (ID 156) tenía el RUC guardado con **un espacio al final** —
+`'1768153530001 '`, 14 caracteres— y la pantalla lo mostraba perfecto. En Oracle, sobre `VARCHAR2`,
+ese valor **no es igual** a `'1768153530001'`, así que la búsqueda devolvía vacío sobre un registro
+que está a la vista y activo.
+
+`TitularDaoServiceImpl.selectByIdentificacion:86` **trimea el parámetro y no la columna**:
+
+```java
+"SELECT t FROM Titular t WHERE t.identificacion = :identificacion AND t.estado = :estado"
+    .setParameter("identificacion", identificacion.trim())
+```
+
+Corrieron `UPDATE TSR.TTLR SET TTLRIDNT = TRIM(TTLRIDNT) WHERE TTLRCDGO = 156` y verificaron que no
+quedan más casos (`COUNT` de `TTLRIDNT <> TRIM(TTLRIDNT)` = 0).
+
+### 🔴 Lo que aparece al CONTAR cuántos más hay, que es lo que faltaba
+
+`buscarTitularPorRuc` (`ProcesoCargaDocumentosServiceImpl:3712-3719`) tiene la **misma forma y
+peor**, y su consecuencia no es la misma:
+
+```java
+"select t from Titular t where t.identificacion = :ruc"
+    .setParameter("ruc", ruc)          // <-- ni siquiera trimea el parámetro
+```
+
+**Su llamador es `obtenerOAutoCrearProveedor` (y desde hoy también `obtenerOAutoCrearCliente`), cuyo
+javadoc dice: «Busca un Titular con el RUC dado. Si no existe LO CREA».**
+
+> **Acá el mismo defecto no produce «no lo encuentro»: produce un TITULAR DUPLICADO.** Un proveedor
+> cuyo RUC quedó con un espacio no se encuentra al cargar un documento del SRI, así que **se crea
+> otro** — y a partir de ahí las facturas, los pagos y el estado de cuenta de ese proveedor quedan
+> repartidos entre dos titulares con el «mismo» RUC, sin que nada falle.
+
+**Y hay un segundo camino al mismo resultado:** ese método envuelve todo en
+`catch (Exception e) { return null; }`. Cualquier error de la consulta también se lee como «no
+existe» → también crea el duplicado.
+
+### La hipótesis del origen, y es hipótesis, no medición
+
+El RUC entra desde el XML del SRI y **no se trimea al crear**. Es plausible que el espacio del ID
+156 haya entrado exactamente por ahí: un documento con el RUC con relleno creó el titular con el
+relleno. **No lo verifiqué** —haría falta mirar cómo llegó ese titular— pero si es así, el ciclo se
+cierra solo: un dato sucio entra, y el mismo dato sucio impide encontrarlo después.
+
+### El inventario completo, para no arreglar uno y dejar cinco
+
+Comparaciones de `identificacion` sin `TRIM` sobre la columna, medidas sobre `src/main/java`
+(excluidos los setters de DTO, que son ruido):
+
+| Dónde | Módulo | Consecuencia si el dato tiene espacio |
+|---|---|---|
+| `TitularDaoServiceImpl:86` | **tsr** | no lo encuentra (el caso reportado) |
+| `buscarTitularPorRuc:3716` | **cxp** | 🔴 **crea un titular duplicado** |
+| `UsuarioAppDaoServiceImpl:46` | crd | **de otro equipo** — avisar |
+| `HistoricoCJBM`, `HistoricoCPRM`, `HistoricoG42`, `HistoricoG44`, `SaldoCuentaG42` | rpr | sin evaluar |
+
+### Salidas posibles — decisión del usuario, ninguna es gratis
+
+1. **`TRIM(t.identificacion) = :identificacion`** en las consultas. Cierra el síntoma, pero **puede
+   tirar abajo el uso del índice** sobre esa columna y esos DAO se llaman desde varios lados.
+2. **Normalizar al grabar** (trim en el alta y en la actualización, más el `UPDATE` de limpieza que
+   ellos ya corrieron). Ataca la causa, pero no protege de datos que entren por fuera del sistema.
+3. **Un índice funcional sobre `TRIM(TTLRIDNT)`**, si se va por la opción 1 y el plan de ejecución
+   lo pide.
+
+**Recomendación:** la 2 como base —el dato sucio no debería poder entrar— y la 1 **sólo en
+`buscarTitularPorRuc`**, que es la única cuya falla crea datos en vez de no encontrarlos.
+
+> **Lo que este caso enseña, y es de forma:** el mismo defecto de comparación aparece en siete
+> lugares, y **la gravedad no la da el defecto sino lo que el llamador hace con el resultado**. Es
+> literalmente el §11 otra vez —«el mismo defecto de consulta produce consecuencias distintas según
+> qué haga el llamador con la lista vacía»— y esta vez lo apliqué a tiempo: conté antes de proponer.
