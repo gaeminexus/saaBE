@@ -227,13 +227,28 @@ public interface ContabilizacionIndividualCreditoService {
             LocalDate fechaCorte, String prefijoDescripcion) throws Throwable;
 
     /**
-     * tipoCartera + días para {@link ClasificadorBandaService#clasificar}, unificados con la
-     * regla documentada (el primer día vencido es 1, nunca 0): por vencer = días de la fecha
-     * de corte a la de vencimiento (mínimo 1); vencido = días de la de vencimiento a la de
-     * corte, MÁS 1. Antes de este servicio había tres copias de esta cuenta en el código
-     * (Petro, condonación, cierre de cartera) y solo la de cierre de cartera tenía el +1 —
-     * verificado el 2026-08-30, no corregido en esas tres (no se tocan acá), pero esta es la
-     * versión que usan CBCRASN2 y todo lo nuevo.
+     * tipoCartera + días para {@link ClasificadorBandaService#clasificar}.
+     *
+     * <p><b>2026-09-04, corregido — regla de negocio confirmada por el usuario directamente:
+     * el día del vencimiento la cuota TODAVÍA está POR VENCER; recién al día siguiente pasa a
+     * VENCIDA.</b> Por eso la comparación es {@code fechaVencimiento.isBefore(fechaCorte)}
+     * (estrictamente anterior), NUNCA {@code !isAfter} — una cuota que vence el mismo día del
+     * corte cae del lado POR_VENCER, con 1 día (por el {@code Math.max(1, ...)} de abajo, ya
+     * que la resta da 0).</p>
+     *
+     * <p><b>Y por eso NO lleva {@code +1} en la rama VENCIDO.</b> La versión vieja sumaba 1
+     * porque el día del vencimiento contaba como vencido — con esa premisa cambiada, el +1
+     * pasa a contar un día de más en TODAS las cuotas vencidas, y en los bordes de banda (30,
+     * 90, 180, 360 días) manda la plata a la cuenta contable equivocada (30 días vencidos daría
+     * 31 → banda siguiente). Si alguien ve un {@code isBefore} acá donde "debería" haber un
+     * {@code <=}, o le falta un {@code +1} que "debería" estar, NO es un descuido: es
+     * exactamente la corrección de este día.</p>
+     *
+     * <p>Por vencer = días de la fecha de corte a la de vencimiento (mínimo 1); vencido = días
+     * de la de vencimiento a la de corte (mínimo 1, ya sin sumar nada). Antes de este servicio
+     * había tres copias de esta cuenta en el código (Petro, condonación, cierre de cartera) y
+     * ninguna se toca acá — siguen con su propia lógica, correcta o no, hasta que se decida
+     * unificarlas.</p>
      *
      * @return {@code [tipoCartera, dias]}
      */
