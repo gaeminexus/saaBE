@@ -748,7 +748,12 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                 } catch (Throwable e) {
                     resumen.setConError(resumen.getConError() + 1);
                     resumen.getErrores().add("Entidad " + jubilado.getCodigo() + ": " + e.getMessage());
-                    System.err.println("Error al generar el pago de pensión de la entidad "
+                    // ⛔ Corregido 2026-09-05: iba por System.err mientras el resto del proceso
+                    // va por System.out (convención de la casa) — en el log del servidor queda
+                    // como [stderr] separado de [stdout], y en la corrida de agosto el usuario
+                    // filtraba por [stdout] y no vio ninguno de los 137 errores hasta que se le
+                    // pidió el archivo completo.
+                    System.out.println("Error al generar el pago de pensión de la entidad "
                         + jubilado.getCodigo() + ": " + e.getMessage());
 
                     DetallePagoPension detalleError = new DetallePagoPension();
@@ -1322,11 +1327,50 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         pago.setUsuarioRegistro(usuario);
         pago.setFechaRegistro(fechaRegistro);
 
+        // ⛔⛔ CAUSA RAÍZ de la corrida fallida de agosto 2026 (2026-09-05), encontrada por
+        // omen-saa-2-arb contra el log real: acá se llamaba a generarOrdenPagoPension(...,
+        // pago, ...) usando `pago` recién construido con `new` — pago.getCodigo() era null
+        // todavía, y generarOrdenPagoPension lo pasa como idOrigen a
+        // registrarPagoDeOrigenExterno. CXP rechazó CADA orden con "Debe indicar el documento
+        // que origina el pago" — 137 de 181 jubilados con error, exactamente los que tenían
+        // cruce contra préstamo o pensión para pagar al banco (los únicos 2 que pasaron eran
+        // 100% traspaso-de-seguro-sin-orden). No es un defecto de hoy: es la razón de fondo por
+        // la que CRD.PGPC nunca se había poblado antes — el proceso jamás había llegado hasta
+        // este punto en una corrida real.
+        //
+        // CORRECCIÓN: grabar el PGPC PRIMERO (con su estado preliminar) para que tenga código
+        // real, y recién con eso pedir la orden. Seguro porque este método corre dentro de
+        // generarPagoIndividual, @TransactionAttribute(REQUIRES_NEW) invocado a través del
+        // proxy `self` — si generarOrdenPagoPension lanza después, TODA la transacción de este
+        // jubilado se revierte, incluido este primer save: no quedan PGPC huérfanos.
+        if (!saleAlBanco) {
+            if (remanente <= TOLERANCIA) {
+                // Sin remanente de PENSIÓN pendiente: el cruce (y/o el seguro) consumió toda la
+                // pensión del mes. El pago existe, se contabiliza, y no hay nada que esperar del
+                // banco. El seguro, si lo hubo, ya se traspasó arriba independientemente de esto.
+                pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.PAGADA));
+                pago.setFechaPago(fecha);
+            } else {
+                // Hay remanente de PENSIÓN pero no se puede entregar (sin cuenta activa, cuenta
+                // ambigua, o sin certificado): el pago se registra igual —el cruce, el seguro y
+                // el devengo ya ocurrieron— pero SIN pasar por EN_PAGO ni PAGADA, porque ninguna
+                // de las dos es cierta todavía para la pensión.
+                pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.REGISTRADA));
+            }
+        } else {
+            // Estado preliminar: se sube a EN_PAGO más abajo, después de conseguir la orden —
+            // necesita el código de este mismo PGPC, que recién existe tras el save de acá abajo.
+            pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.REGISTRADA));
+        }
+
+        pago = pagoPensionDaoService.save(pago, null);
+
         if (saleAlBanco) {
             Long idPagoOrden;
             try {
                 // El seguro NUNCA entra acá — `remanente` ya es sólo pensión (regla nueva
                 // 2026-09-05): lo que sale al banco del jubilado es exclusivamente su pensión.
+                // `pago` ya tiene código real (save de arriba): idOrigen viaja correcto.
                 idPagoOrden = generarOrdenPagoPension(entidad, cuentaSalida, pago, remanente, idEmpresa,
                     mesM, anioM, idUsuario);
             } catch (IncomeException e) {
@@ -1338,21 +1382,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             }
             pago.setIdPagoProgramado(idPagoOrden);
             pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.EN_PAGO));
-        } else if (remanente <= TOLERANCIA) {
-            // Sin remanente de PENSIÓN pendiente: el cruce (y/o el seguro) consumió toda la
-            // pensión del mes. El pago existe, se contabiliza, y no hay nada que esperar del
-            // banco. El seguro, si lo hubo, ya se traspasó arriba independientemente de esto.
-            pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.PAGADA));
-            pago.setFechaPago(fecha);
-        } else {
-            // Hay remanente de PENSIÓN pero no se puede entregar (sin cuenta activa, cuenta
-            // ambigua, o sin certificado): el pago se registra igual —el cruce, el seguro y el
-            // devengo ya ocurrieron— pero SIN pasar por EN_PAGO ni PAGADA, porque ninguna de
-            // las dos es cierta todavía para la pensión.
-            pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.REGISTRADA));
         }
-
-        pago = pagoPensionDaoService.save(pago, null);
 
         // §4 PLAN-PAGO-JUBILADOS.md: el devengo lo genera CRD, DESPUÉS de la orden de pago (o
         // de decidir que no la hay) — si el devengo fallara acá, la transacción entera se
