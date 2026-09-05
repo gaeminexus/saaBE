@@ -63,6 +63,7 @@ import com.saa.model.crd.TipoAporte;
 import com.saa.model.crd.ValorPagoPensionComplementaria;
 import com.saa.model.cxp.PagoProgramado;
 import com.saa.model.cxp.ProductoPago;
+import com.saa.rubros.CrdLineaAsiento;
 import com.saa.rubros.CrdTipoMovimientoAporte;
 import com.saa.rubros.Estado;
 import com.saa.rubros.EstadoCuotaPrestamo;
@@ -365,6 +366,18 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                     resumen.setProveedorSeguroEncontrado(false);
                     resumen.setMensajeProveedorSeguro("No se pudo verificar la cuenta bancaria del"
                         + " proveedor del seguro médico: " + e.getMessage());
+                }
+            }
+            if (resumen.isProveedorSeguroEncontrado()) {
+                try {
+                    verificarCuentaAporte23ParaCruce(idEmpresa);
+                } catch (IncomeException e) {
+                    resumen.setProveedorSeguroEncontrado(false);
+                    resumen.setMensajeProveedorSeguro(e.getMessage());
+                } catch (Throwable e) {
+                    resumen.setProveedorSeguroEncontrado(false);
+                    resumen.setMensajeProveedorSeguro("No se pudo verificar la cuenta del aporte 23"
+                        + " para el cruce contra préstamo: " + e.getMessage());
                 }
             }
         }
@@ -699,6 +712,11 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         // de origen externo) — ver JavaDoc de resolverCuentaBancariaProveedorSeguro. Se resuelve
         // acá, junto a los otros dos chequeos, para que la corrida no arranque si va a fallar.
         CuentaBancariaTitular cuentaBancariaProveedorSeguro = resolverCuentaBancariaProveedorSeguro(proveedorSeguro);
+
+        // ⛔⛔ Prevalidación (2026-09-05, segunda corrida fallida): la 2da causa real de esa
+        // corrida — ver JavaDoc de verificarCuentaAporte23ParaCruce. Guard #4, mismo criterio
+        // que los otros tres: antes de tocar el primer jubilado.
+        verificarCuentaAporte23ParaCruce(idEmpresa);
 
         ResultadoGeneracionPagosPension resumen = new ResultadoGeneracionPagosPension();
         resumen.setAnio(anio);
@@ -1423,6 +1441,52 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             throw new IncomeException("Cuentas por Pagar no devolvió el número de la orden.");
         }
         return ((Number) valorPago).longValue();
+    }
+
+    /**
+     * ⛔⛔ Guard 2026-09-05, "prevalidación total" (§ decisión del árbitro tras la segunda
+     * corrida fallida — opción (b): detectar de antemano lo que es DETERMINISTA y GLOBAL, en
+     * vez de una transacción única para los 181 jubilados). Los dos errores reales de esa
+     * corrida (idOrigen null y el aporte 23 sin cuenta contable) tenían algo en común: NINGUNO
+     * dependía del jubilado — eran precondiciones que fallan igual para cualquiera que llegue a
+     * ese camino. Este guard cierra la segunda: si el cruce contra préstamo de la pensión
+     * complementaria (tipo 23) no tiene línea en la plantilla alterno {@code APLICACION_PETRO}
+     * (21) — la que {@code aux1ParaTipoAporte}/{@code lineasCruceAportesConsumidos} resuelven
+     * dentro de {@code contabilizarPagoConAportes} — hoy revienta recién a mitad de la corrida,
+     * con cuotas ya marcadas pagadas (después revertidas por el {@code REQUIRES_NEW}, pero solo
+     * después de haber corrido buena parte del lote).
+     *
+     * ⚠️ Alcance deliberadamente ACOTADO, no un simulador completo de los 181: reescribir toda
+     * la lógica de {@code generarMesesRetroactivos} en modo lectura para "probar" cada jubilado
+     * es un trabajo mucho más grande y arriesgado (una divergencia entre el simulador y el
+     * camino real daría FALSA confianza, peor que no prevalidar). Este guard cubre exactamente
+     * la clase de falla que ya mordió dos veces — una precondición global, verificable sin
+     * tocar un solo jubilado — no cualquier anomalía de datos específica de un jubilado
+     * puntual. Esas siguen protegidas por el aislamiento ya verificado de
+     * {@code REQUIRES_NEW} por jubilado (ningún huérfano si una sí ocurre), no por esto.
+     *
+     * Corre UNA vez al principio de {@code generarPagosDelMes}, junto a los otros tres guards,
+     * antes de tocar el primer jubilado — y de forma NO bloqueante en
+     * {@link #previsualizarCorrida}, igual que los otros tres.
+     */
+    private void verificarCuentaAporte23ParaCruce(Long idEmpresa) throws Throwable {
+        Long idPlantilla = plantillaService.codigoByAlterno(PlantillasCredito.APLICACION_PETRO, idEmpresa);
+        if (idPlantilla == null) {
+            throw new IncomeException("No existe la plantilla contable alterno "
+                + PlantillasCredito.APLICACION_PETRO + " (aplicación de pagos y liquidaciones) para"
+                + " la empresa " + idEmpresa + " — el cruce contra préstamo de la pensión"
+                + " complementaria no se puede contabilizar sin ella.");
+        }
+        DetallePlantilla linea = detallePlantillaDaoService.selectByPlantillaYAuxiliar(idPlantilla,
+            CrdLineaAsiento.APORTES_PENSION_COMPLEMENTARIA);
+        if (linea == null || linea.getPlanCuenta() == null) {
+            throw new IncomeException("CUENTA_APORTE23_NO_PARAMETRIZADA: la plantilla alterno "
+                + PlantillasCredito.APLICACION_PETRO + " no tiene la línea del aporte 23 (pensión"
+                + " complementaria, aux1=" + CrdLineaAsiento.APORTES_PENSION_COMPLEMENTARIA + ") —"
+                + " si algún jubilado de este período cruza contra un préstamo, la contabilización"
+                + " del cruce va a fallar a mitad de la corrida. Corra"
+                + " docs/logica-negocio/crd/sql/199 antes de reintentar.");
+        }
     }
 
     /**

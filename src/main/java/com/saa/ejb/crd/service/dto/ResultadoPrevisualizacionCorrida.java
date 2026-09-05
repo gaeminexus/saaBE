@@ -60,14 +60,22 @@ public class ResultadoPrevisualizacionCorrida {
     private double totalSeguroInternoGeneral;
 
     /**
-     * Campo 2026-09-05, alcance ampliado el mismo día: {@code false} si CUALQUIERA de las
-     * condiciones que la corrida real verifica al principio (antes de tocar el primer jubilado)
-     * del lado del proveedor del seguro médico falla — el titular no se resuelve por RUC, la
-     * cuenta contable del devengo no coincide con la del producto de pago 516, o el proveedor no
-     * tiene una única cuenta bancaria activa. El detalle de CUÁL de las tres fue queda en
-     * {@link #mensajeProveedorSeguro}. El prevuelo es, en este momento, el ÚNICO ensayo antes de
-     * mover plata real: el frontend tiene que mostrar esto de forma prominente, no como una nota
-     * al pie.
+     * Campo 2026-09-05, alcance ampliado el mismo día y otra vez tras la segunda corrida
+     * fallida: {@code false} si CUALQUIERA de las precondiciones GLOBALES que la corrida real
+     * verifica al principio (antes de tocar el primer jubilado) falla — el titular del
+     * proveedor no se resuelve por RUC, la cuenta contable del devengo del seguro no coincide
+     * con la del producto de pago 516, el proveedor no tiene una única cuenta bancaria activa,
+     * o el aporte 23 (pensión complementaria) no tiene línea en la plantilla del cruce contra
+     * préstamo (§ prevalidación, ver {@code verificarCuentaAporte23ParaCruce}). El detalle de
+     * CUÁL de las cuatro fue queda en {@link #mensajeProveedorSeguro}. El prevuelo es, en este
+     * momento, el ÚNICO ensayo antes de mover plata real: el frontend tiene que mostrar esto de
+     * forma prominente, no como una nota al pie.
+     *
+     * ⚠️ Esto NO es una prevalidación completa de los 181 jubilados — solo cubre
+     * precondiciones GLOBALES, deterministas, independientes de cada jubilado (las dos que ya
+     * mordieron dos corridas reales). Una anomalía de datos específica de UN jubilado puntual
+     * (no una precondición global) puede seguir fallando recién al procesarlo — pero de forma
+     * aislada, sin dejar huérfanos, por el {@code REQUIRES_NEW} por jubilado ya verificado.
      */
     private boolean proveedorSeguroEncontrado = true;
 
