@@ -463,6 +463,121 @@ con una diferencia sin explicar.
 
 ---
 
+## 4quater. ⛔⛔ SUPERSEDE §4bis y §4ter — el seguro pasa a ser un pago a un PROVEEDOR, no un traspaso interno del jubilado — decisión del usuario, 2026-09-05
+
+> *«el seguro medico es un valor que debe bajar tambien de la pension, así como el valor abonado a
+> prestamos, pero ese valor no debe ir incluido en el valor a pagar al participe, sino debe salir
+> como un pago a parte al TITULAR con un RUC que ya te digo cual es. [...] este proceso debe sacar
+> dos pagos, uno el total a pagar de todos los jubilados y otro el total a pagar por seguros que va
+> a un proveedor especifico y que ese valor se descuenta del aporte de jubilados como pasa con los
+> valores de prestamos»*
+
+**Todo el §4ter (2026-09-04, "el seguro también desbloquea") sigue vigente en la parte de la
+compuerta** (el seguro médico desbloquea igual que el préstamo), **pero el reparto proporcional
+queda reemplazado por completo**: el seguro deja de compartir la mensualidad proporcionalmente con
+la pensión y pasa a tener **prioridad propia**, y deja de depender del certificado bancario en
+absoluto.
+
+### La prioridad nueva — "olla compartida"
+
+> *«por esta razón es que no es necesario el certificado bancario para poder descontar a un
+> jubilado su seguro»* — confirmación del usuario, 2026-09-05.
+
+```
+olla = pensión + seguro del período (lo mismo que antes se llamaba "remanente nominal")
+
+1) CRUCE contra préstamo       (sin cambios de fondo)
+2) SEGURO MÉDICO                — SIEMPRE, con o sin certificado. Topado por lo nominal
+                                   adeudado, lo que queda de la olla, y el saldo.
+3) PENSIÓN al jubilado          — lo que sobra. Sólo sale al banco con certificado.
+                                   ES LA ÚNICA que puede quedar corta.
+```
+
+**`montoADinero` / `totalADinero` vuelven a ser EXCLUSIVAMENTE pensión.** El seguro nunca entra
+ahí, tenga o no certificado el jubilado — a diferencia del §4ter, donde con certificado el
+remanente completo (pensión + seguro) viajaba junto en la orden de pago del jubilado.
+
+**`montoSeguroInterno` / `valorSeguroInterno` / `totalSeguroInternoGeneral` (nombres heredados
+del §4ter) ya NO son "la porción sin certificado": son SIEMPRE todo el seguro adeudado y
+cobrable.** Se recomienda renombrarlos a `montoSeguroProveedor` / `valorSeguroProveedor` /
+`totalSeguroProveedorGeneral` — **no aplicado todavía**, requiere coordinar el cambio con el
+frontend en el mismo despacho.
+
+⚠️ **Nueva duplicación de campos, mismo patrón que `valorPension`/`totalPension` (congelado
+desde el commit `9539959`):** con el seguro separándose siempre, `DetallePagoPension.totalSeguro`
+y `.valorSeguroInterno` quedaron matemáticamente idénticos. **No se toca ahora** — se limpian los
+dos pares juntos después de la corrida de agosto.
+
+### Dos movimientos independientes por mes, no uno
+
+Antes (§4ter) el seguro y la pensión eran mutuamente excluyentes dentro del remanente de un mes:
+o salía todo al banco, o se traspasaba todo el seguro. Ahora pueden coexistir: un mes puede generar
+**dos movimientos NEGATIVOS** en `CRD.APRT` — uno de seguro (siempre que corresponda) y otro de
+pensión (sólo si sale al banco).
+
+**`PGPC.idAporte` es un solo campo** y no puede referenciar los dos. Se prioriza el de PENSIÓN; si
+sólo hubo seguro, se referencia ese. **No se abre DDL para esto** (agregar una columna requiere
+autorización del usuario y pasa por el registro de reservas, no es algo que salga a días de una
+corrida). El daño real es acotado, por tres razones verificadas contra el código:
+
+1. El **ancla del retroactivo no depende de `PGPC.idAporte`** — `resolverAnclaRetroactivo` busca
+   directo en `CRD.APRT` por entidad+tipo+signo, no vía la FK de una fila puntual de PGPC.
+2. **No existe anulación** de un pago de pensión (`POST /pgpc/anular/{id}` no existe y depende de
+   `CRD.PGCE`, tabla reservada sin DDL escrito) — nadie va a usar `idAporte` para revertir.
+3. El movimiento que queda sin referenciar **sigue siendo encontrable** por entidad + período +
+   la glosa `"... - SEGURO MEDICO"` — es trazabilidad por consulta, no por FK.
+
+### El pago al proveedor — RUC provisional, orden agregada PENDIENTE de implementar
+
+**RUC del proveedor: `1768153530001`**, decisión del usuario 2026-09-05, validado
+**ÚNICAMENTE por ese número** (no se contrasta razón social — instrucción explícita: *«Solo
+validalo por RUC»*). Vive como constante con nombre en
+`PagoPensionComplementariaServiceImpl.RUC_PROVEEDOR_SEGURO_MEDICO`, con su JavaDoc marcado
+**PROVISIONAL**: lo que corresponde a futuro es marcar al proveedor en la base con un rol
+("recibe el pago de los seguros de jubilados") y buscarlo por esa marca, no por un número quemado.
+
+**No existe tabla de "Proveedor" independiente en este sistema.** El maestro es `Titular`
+(`TSR.TTLR`), que acumula el rol de cliente y/o proveedor (`TTLRPRVD`); el RUC vive en
+`TTLRIDNT`. Se resuelve con `TitularDaoService.selectByIdentificacion(ruc, Estado.ACTIVO)`
+(`tsr`, sólo lectura desde `crd`).
+
+**Chequeo obligatorio al PRINCIPIO de la corrida y del prevuelo**, antes de tocar el primer
+jubilado — mismo patrón que la resolución del usuario que ya dispara `USUARIO_NO_ENCONTRADO`:
+si el proveedor no existe, `generarPagosDelMes` lanza `PROVEEDOR_SEGURO_NO_ENCONTRADO` y **no
+escribe nada**; `previsualizarCorrida` no aborta (sigue mostrando la estimación completa) pero
+deja `proveedorSeguroEncontrado=false` y `mensajeProveedorSeguro` con el detalle, y antepone la
+alerta al `mensaje` del sobre HTTP. Motivo: el usuario decidió no crear el proveedor en la base
+de pruebas — **la primera ejecución de este circuito es la real, en producción** — así que el
+prevuelo es el único ensayo que existe antes de mover la plata.
+
+⚠️ `TitularDaoService.selectByIdentificacion` trunca a 1 resultado (`setMaxResults(1)` en su
+propia implementación): estructuralmente no puede revelar un RUC duplicado desde `crd`, y
+agregar un método que sí lo haga requeriría tocar `tsr` (fuera de este equipo). Se confía en que
+el RUC es único por restricción de la base (confirmado por el usuario); si esa restricción no
+fuera exactamente sobre esa columna, este código no lo va a detectar.
+
+**⬜ PENDIENTE DE IMPLEMENTAR — la orden de pago agregada al proveedor.** Investigado, no
+escrito todavía:
+
+- El camino correcto es `PagoProgramadoService.registrarPagoDeOrigenExterno` con
+  `BeneficiarioOcasional` (el mismo que ya usa `crd` para devolución de aportes y desembolso de
+  préstamo) — **no** los métodos de proveedor formal (`registrarPago`/`registrarPagoDeEgreso`),
+  que exigen una `idFacturaCompra` que este circuito no tiene.
+- Hay precedente exacto de una orden AGREGADA (no una por jubilado): `OrigenPagoExterno.RHH_NOMINA`
+  llama a `registrarPagoDeOrigenExterno` **una sola vez** por orden consolidada, con `idOrigen`
+  apuntando a un documento propio (`RHH.RDPG`) que agrega N filas. **`crd` no tiene hoy un
+  documento equivalente** para anclar el `idOrigen` de "la orden de seguro de la corrida X" — eso
+  requeriría una tabla nueva (DDL, fuera de este alcance) o un sustituto sin tabla propia
+  (a decidir con el árbitro).
+- La cuenta contable de contrapartida del asiento del pago **debe leerse del mismo lugar** que ya
+  usa la corrida para el devengo del seguro —`plantillaService.codigoByAlterno(PAGO_PENSION_COMPLEMENTARIA,
+  idEmpresa)` + `detallePlantillaDaoService.selectByPlantillaYAuxiliar(idPlantilla, 4)`—, nunca
+  un literal aparte: las dos puntas del asiento (el devengo de la corrida, que ACREDITA
+  `2.3.90.90.06`, y el pago al proveedor, que la DEBE para cerrarla) tienen que leer la cuenta del
+  mismo origen o un cambio de plantilla las desincroniza en silencio.
+
+---
+
 ## 5. Estados de `PGPC` (`PGPCESTD`)
 
 De `com.saa.rubros.EstadoPagoPensionComplementaria`. **Son constantes planas, no catálogo `Rubro`.**

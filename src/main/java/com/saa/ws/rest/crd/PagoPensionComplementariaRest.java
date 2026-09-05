@@ -187,12 +187,19 @@ public class PagoPensionComplementariaRest {
                 pagoPensionService.previsualizarCorrida(idEmpresa, anio, mes, usuario);
 
             Map<String, Object> cuerpo = new LinkedHashMap<>();
+            // ⛔⛔ 2026-09-05: el prevuelo es el único ensayo antes de que la corrida real mueva
+            // plata en producción — si falta el proveedor del seguro médico, esto va PRIMERO en
+            // el mensaje, no al final ni sólo en el campo del resultado.
+            String alertaProveedor = resultado.isProveedorSeguroEncontrado()
+                ? ""
+                : "⛔ " + resultado.getMensajeProveedorSeguro() + " ";
             cuerpo.put("exito", Boolean.TRUE);
-            cuerpo.put("mensaje", "Previsualización " + mes + "/" + anio + " - " + resultado.getAptos()
-                + " aptos de " + resultado.getEvaluados() + " evaluados. Estimado: $"
-                + resultado.getTotalACruzarPrestamos() + " a préstamos, $" + resultado.getTotalADinero()
-                + " a dinero. El monto a cruzar es una ESTIMACIÓN: el motor calcula mora e interés"
-                + " al aplicar de verdad, y esa parte no se simula acá; el monto real puede diferir.");
+            cuerpo.put("mensaje", alertaProveedor + "Previsualización " + mes + "/" + anio + " - "
+                + resultado.getAptos() + " aptos de " + resultado.getEvaluados() + " evaluados."
+                + " Estimado: $" + resultado.getTotalACruzarPrestamos() + " a préstamos, $"
+                + resultado.getTotalADinero() + " a dinero. El monto a cruzar es una ESTIMACIÓN:"
+                + " el motor calcula mora e interés al aplicar de verdad, y esa parte no se simula"
+                + " acá; el monto real puede diferir.");
             cuerpo.put("resultado", resultado);
 
             return Response.status(Response.Status.OK)

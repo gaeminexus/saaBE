@@ -41,16 +41,35 @@ public class ResultadoPrevisualizacionCorrida {
      * §4bis del contrato, pedido del usuario 2026-09-04: suma del seguro médico
      * ({@link DetallePrevisualizacionJubilado#getTotalSeguro()}) de todos los jubilados
      * evaluados — cuenta contable distinta de la pensión (plantilla alterno 35).
+     *
+     * ⚠️ Corrección 2026-09-05: idéntico a {@link #totalSeguroInternoGeneral} ahora que el
+     * seguro SIEMPRE se separa (ver el JavaDoc de ese campo).
      */
     private double totalSeguroGeneral;
 
     /**
-     * §6 (ampliación 2026-09-04): la parte de {@link #totalSeguroGeneral} que se traspasaría
-     * INTERNAMENTE a {@code 2.3.90.90.06 SEGURO POR PAGAR JUBILADOS} —jubilados sin certificado
-     * bancario— sin salir al banco. Es un SUBCONJUNTO de {@code totalSeguroGeneral} y NO está
-     * incluido en {@code totalADinero}; sí está incluido en {@code totalGeneral}.
+     * ⚠️ Nombre heredado de 6abf436 (2026-09-04): ya NO es "sólo jubilados sin certificado", es
+     * TODO el seguro médico de la corrida — corrección 2026-09-05, decisión del usuario: el
+     * seguro se separa siempre (con o sin certificado) y sale como UN pago aparte a un
+     * proveedor, nunca dentro de la orden del jubilado. Es este el número que correspondería a
+     * esa orden agregada al proveedor — ver la investigación pendiente sobre cómo emitirla en
+     * API-PAGO-PENSION-COMPLEMENTARIA.md. NO está incluido en {@code totalADinero}; sí está
+     * incluido en {@code totalGeneral}. Propuesto renombrar a {@code totalSeguroProveedorGeneral}
+     * — no aplicado, requiere coordinar con el frontend.
      */
     private double totalSeguroInternoGeneral;
+
+    /**
+     * Campo nuevo 2026-09-05: {@code false} si el proveedor del seguro médico
+     * ({@code RUC_PROVEEDOR_SEGURO_MEDICO}) no se pudo resolver — la corrida real de este
+     * período va a fallar ANTES de tocar el primer jubilado. El prevuelo es, en este momento,
+     * el ÚNICO ensayo antes de mover plata real: el frontend tiene que mostrar esto de forma
+     * prominente, no como una nota al pie.
+     */
+    private boolean proveedorSeguroEncontrado = true;
+
+    /** Detalle de por qué {@link #proveedorSeguroEncontrado} es {@code false}. {@code null} si es {@code true}. */
+    private String mensajeProveedorSeguro;
 
     private List<DetallePrevisualizacionJubilado> detalle = new ArrayList<>();
 
@@ -135,6 +154,22 @@ public class ResultadoPrevisualizacionCorrida {
 
     public void setTotalSeguroInternoGeneral(double totalSeguroInternoGeneral) {
         this.totalSeguroInternoGeneral = totalSeguroInternoGeneral;
+    }
+
+    public boolean isProveedorSeguroEncontrado() {
+        return proveedorSeguroEncontrado;
+    }
+
+    public void setProveedorSeguroEncontrado(boolean proveedorSeguroEncontrado) {
+        this.proveedorSeguroEncontrado = proveedorSeguroEncontrado;
+    }
+
+    public String getMensajeProveedorSeguro() {
+        return mensajeProveedorSeguro;
+    }
+
+    public void setMensajeProveedorSeguro(String mensajeProveedorSeguro) {
+        this.mensajeProveedorSeguro = mensajeProveedorSeguro;
     }
 
     public List<DetallePrevisualizacionJubilado> getDetalle() {

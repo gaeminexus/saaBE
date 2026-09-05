@@ -29,28 +29,37 @@ public class DetallePagoPension {
     private double valorSeguroMensual;
 
     /**
-     * Pensión acumulada de lo que esta llamada PROCESÓ de verdad, mes a mes: el mes completo
-     * cuando lo fue, y el reparto PROPORCIONAL a la mensualidad cuando quedó topado (§4bis).
+     * Pensión acumulada de lo que esta llamada PROCESÓ de verdad, mes a mes (pagada al banco o
+     * retenida por falta de certificado — nunca lo no-cruzado-ni-procesado).
      *
-     * ⛔ Corrección 2026-09-04: antes acumulaba también el remanente RETENIDO por falta de
-     * certificado —plata que nunca se movió— y por eso no coincidía con el prevuelo, que sí lo
-     * excluye. Ahora las dos rutas cuentan lo mismo. Ojo: NO es el devengado; el devengo del
-     * asiento sigue siendo el nominal completo del mes ({@code PGPC.valorPension}).
+     * ⛔⛔ Corrección 2026-09-05, decisión del usuario: ya NO es un reparto proporcional con el
+     * seguro. La prioridad pasa a ser cruce → seguro → PENSIÓN (la única que puede quedar
+     * corta) — ver el cálculo en {@code generarMesesRetroactivos}. Antes de esto (6abf436,
+     * 2026-09-04) se repartía proporcional a la mensualidad; ese criterio quedó superado en
+     * menos de un día por el pedido del usuario de separar el seguro como pago a un proveedor.
+     * Ojo: NO es el devengado; el devengo del asiento sigue siendo el nominal completo del mes
+     * ({@code PGPC.valorPension}).
      */
     private double totalPension;
 
     /**
-     * Seguro médico acumulado — mismo criterio que {@link #totalPension}, y sale por RESTA para
-     * que {@code totalPension + totalSeguro} sume exacto lo procesado (§4bis).
+     * ⚠️⚠️ Corrección 2026-09-05: idéntico a {@link #valorSeguroInterno} ahora que el seguro
+     * SIEMPRE se separa (ya no sólo sin certificado) — quedaron duplicados por el mismo motivo
+     * que {@code valorPension}/{@code totalPension} (ver la memoria del repo,
+     * "pendiente-limpieza-valorPension-duplicado"): dos campos que nacieron con significados
+     * distintos y una decisión de negocio los volvió sinónimos. NO se resuelve ahora — congelado
+     * hasta después de la corrida de agosto, igual que el otro par.
      */
     private double totalSeguro;
 
     /**
-     * §6 (ampliación 2026-09-04): cuánto de {@link #totalSeguro} se traspasó INTERNAMENTE a
-     * {@code 2.3.90.90.06 SEGURO POR PAGAR JUBILADOS} sin salir al banco, por no haber
-     * certificado bancario. Es un SUBCONJUNTO de {@code totalSeguro}, no un adicional — sumarlo
-     * aparte duplica. 0 cuando hubo certificado: ahí el remanente entero viajó en la orden de
-     * pago.
+     * ⚠️ Nombre heredado de 6abf436 (2026-09-04): ya NO es "lo traspasado por no haber
+     * certificado", es TODO el seguro médico del mes, siempre — corrección 2026-09-05, decisión
+     * del usuario: el seguro se descuenta del aporte 23 con la MISMA prioridad que el préstamo
+     * (cruce, luego seguro, luego pensión), sin mirar el certificado. Ya no es un subconjunto de
+     * {@link #totalSeguro} — desde este cambio son EL MISMO NÚMERO (ver la nota de arriba).
+     * Propuesto renombrar a {@code valorSeguroProveedor} — no aplicado, requiere coordinar con
+     * el frontend.
      */
     private double valorSeguroInterno;
 

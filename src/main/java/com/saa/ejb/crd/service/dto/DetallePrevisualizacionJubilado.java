@@ -15,15 +15,24 @@ public class DetallePrevisualizacionJubilado {
     /** Estimado: cuánto absorbería la deuda exigible del préstamo. No sale de la asociación. */
     private double montoACruzar;
 
-    /** Estimado: cuánto saldría como orden de pago hacia tesorería (0 si no tiene certificado). */
+    /**
+     * Estimado: cuánto saldría como orden de pago hacia tesorería PARA EL JUBILADO — SÓLO
+     * pensión (0 si no tiene certificado). Corrección 2026-09-05, decisión del usuario: el
+     * seguro médico NUNCA entra acá, en ningún caso — antes de este cambio (6abf436, mismo día)
+     * el remanente completo viajaba junto cuando había certificado; ahora la porción de seguro
+     * siempre se separa a {@link #montoSeguroInterno} y sale por un pago aparte a un proveedor.
+     */
     private double montoADinero;
 
     /**
-     * §6 (ampliación 2026-09-04): la porción SEGURO del remanente que se traspasaría
-     * INTERNAMENTE a {@code 2.3.90.90.06 SEGURO POR PAGAR JUBILADOS} por no haber certificado
-     * bancario. NO sale al banco — por eso NO suma a {@code montoADinero}, que sigue siendo
-     * exclusivamente el dinero que sale. 0 cuando hay certificado: ahí el remanente entero va en
-     * la orden de pago y ya está contado en {@code montoADinero}.
+     * ⚠️ Nombre heredado de 6abf436 (2026-09-04): ya NO es "la porción sin certificado", es
+     * SIEMPRE todo el seguro médico adeudado y cobrable — corrección 2026-09-05, decisión del
+     * usuario: «el seguro médico [...] no debe ir incluido en el valor a pagar al partícipe,
+     * sino debe salir como un pago a parte al TITULAR [proveedor]». Se descuenta del aporte 23
+     * con la MISMA prioridad que el préstamo (cruce primero, seguro segundo, pensión al
+     * jubilado al final — la única que puede quedar corta). NUNCA suma a {@link #montoADinero}.
+     * Propuesto renombrar a {@code montoSeguroProveedor} — no aplicado, requiere coordinar con
+     * el frontend.
      */
     private double montoSeguroInterno;
 
@@ -43,17 +52,18 @@ public class DetallePrevisualizacionJubilado {
     private double valorSeguroMensual;
 
     /**
-     * Pensión acumulada de lo que la corrida PROCESARÍA — no lo adeudado. Reparto PROPORCIONAL
-     * a la mensualidad sobre {@code montoACruzar + montoADinero} (§4bis, decisión del árbitro
-     * 2026-09-04); el {@code montoSeguroInterno} es 100% seguro y no entra acá.
+     * Pensión que la corrida PROCESARÍA (pagada o retenida) — no lo adeudado. Corrección
+     * 2026-09-05: ya NO es un reparto proporcional; con la prioridad cruce→seguro→pensión, es
+     * simplemente lo que queda de la "olla" del período después del cruce y el seguro
+     * ({@code montoADinero} si hay certificado, o esa misma cantidad retenida si no).
      *
-     * Garantía del backend, exacta: {@code totalPension + totalSeguro == total} (el seguro sale
-     * por RESTA, nunca con su propia multiplicación — dos redondeos independientes descuadran
-     * las dos cuentas contables por centavos).
+     * Garantía del backend, exacta: {@code totalPension + totalSeguro == total} (ya no por
+     * resta con redondeo: ahora es una consecuencia directa de la prioridad, cada porción es
+     * exacta por construcción).
      */
     private double totalPension;
 
-    /** Seguro médico acumulado — por RESTA contra {@code total}, ver {@link #totalPension}. */
+    /** Seguro médico acumulado — igual a {@link #montoSeguroInterno}, ver ese campo. */
     private double totalSeguro;
 
     private boolean tienePrestamo;
