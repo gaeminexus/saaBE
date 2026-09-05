@@ -256,7 +256,30 @@ seguidas** en `docs/logica-negocio/crd/sql/`.
 | **96–149** | **CRD · EQUIPO A** — cobros, contabilidad y jubilados |
 | **150–199** | **CRD · EQUIPO B** — ciclo del crédito y seguros · **agotado el 2026-09-05** |
 | **200–249** | **CRD · EQUIPO B** — continuación del anterior · **reservado 2026-09-05 por `omen-saa-1-arb`** |
-| ≥ 250 | sin asignar |
+| **250–299** | **`lap-saa-1` (laptop)** · **reservado 2026-09-05** — ver el recuadro de abajo |
+| ≥ 300 | sin asignar |
+
+> ### ⛔ Una reserva escrita SÓLO en la bitácora del §5 no reserva nada — 2026-09-05
+>
+> **`lap-saa-1` reservó el 200–249 el 2026-09-03 y `omen-saa-1` lo reservó otra vez el 2026-09-05.
+> Los dos cumplieron las reglas. Los dos miraron el archivo. Chocaron igual.**
+>
+> **La causa:** este archivo tiene **dos lugares** donde puede vivir una reserva de rango — **esta
+> tabla** y la **bitácora del §5**— y sólo la tabla es la que se lee para decidir. `lap-saa-1`
+> escribió su reserva en la bitácora y **no actualizó esta tabla**, que siguió diciendo
+> «≥200 sin asignar». `omen-saa-1` leyó la tabla, la creyó, y tomó el bloque. **Hizo lo correcto con
+> lo que el archivo decía.**
+>
+> **La regla, y es de una línea: la tabla es la fuente; la bitácora es el historial.**
+> Una reserva de rango **se escribe primero en la tabla**. La línea del §5 explica *por qué* se
+> reservó, nunca *que* se reservó. Si sólo está en el §5, para el resto del proyecto **no existe**.
+>
+> **Resolución de este caso:** el 200–249 **se queda con `omen-saa-1`**, que ya lo está usando
+> (agotaron el 150–199 y el 199 fue el último). `lap-saa-1` **no había usado ni un número** de ese
+> bloque, así que mover el suyo cuesta cero. Toma el **250–299**, anotado en esta tabla.
+>
+> **Es la misma familia que el §0 y que el «se duplican, no colisionan»:** un dato correcto escrito
+> en el lugar que nadie consulta es indistinguible de un dato que no existe.
 
 **Nota de la reserva del 200–249 (2026-09-05).** El rango 150–199 se agotó durante la corrida de
 jubilados de agosto 2026: el 199 fue el último. Se toma el bloque inmediato siguiente **porque el
