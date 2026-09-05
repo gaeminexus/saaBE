@@ -838,6 +838,36 @@ contrato con la cita textual del usuario.
 
 #### Los cinco hallazgos de la corrida ejecutada — TODOS ABIERTOS
 
+### ✅ CERRADO 2026-09-05 — las cinco novedades verificadas EN PRODUCCIÓN, con asientos reales
+
+No «verificado en código»: el usuario desplegó, corrió agosto 2026 contra producción y confirmó
+los pagos. Estado final de cada una:
+
+| # | Novedad | Cómo se verificó |
+|---|---|---|
+| **1** | Fecha de cruce / banda | El asiento del cruce pasó de `1.3.04.05` (vencidos) a **`1.3.01.05`** (por vencer). ⚠️ **Las dos cuentas se llaman «DE 1 A 30 DIAS»** — la diferencia está en la familia (`1.3.01.xx` = por vencer, `1.3.04.xx` = vencido), no en el nombre. Fácil de dar por no corregido si se mira solo la etiqueta |
+| **2** | Saldo duplicado | Devengo de GARCIA SALTOS en **107,39** (era 589,17). Con el cruce de 481,78, `2.1.02.25.01` recibe 589,17 exactos |
+| **3** | Cierre de apertura | `D 2.3.02.10 / H 1.4.05.10` por **481,78**, descripción «Cierre de apertura - vencido y cuota del mes - cruce de valores evento 396». Asiento cuadrado en 963,56 |
+| **4** | Autorizaciones | No era defecto — paso de operación |
+| **5** | Asiento de pago por jubilado | **Confirmado por el usuario: los pagos se confirmaron y los asientos salieron correctos** |
+
+**Después de verificar, el usuario revirtió la base a propósito**, para que quede sin asiento de
+pago: **el pago real al banco se hace el lunes**. O sea que lo probado es el código, no la corrida
+definitiva — **agosto se vuelve a correr el lunes** y ésa es la que va contra el banco.
+
+#### ⚠️ Lo que hay que tener presente para la corrida del lunes
+
+1. **El WAR ya es el correcto** (el usuario desplegó y verificó con él). No hace falta redesplegar
+   salvo que entre algo nuevo — y si entra, **compilar el árbol completo antes**, no solo lo
+   propio: es lo que atajó dos veces código de otros equipos sin compilar.
+2. **Marcar TODOS los pagos y aprobar UNA sola vez** (novedad 4). Aprobarlos de a uno genera una
+   autorización por jubilado.
+3. ⛔ **Tener el respaldo listo ANTES de correr, por H46.** Si la corrida falla a mitad de camino,
+   **no se puede reintentar**: el ancla queda envenenada y el reintento diría «al día» sin pagar a
+   nadie, **sin lanzar ningún error**. La única salida hoy es restaurar. Este mes se pudo hacer
+   tres veces; el lunes también tiene que poder.
+4. **Cuadrar el reporte contra los mayores** con `sql/203` antes de firmar.
+
 | # | Qué | Dueño | Gravedad |
 |---|---|---|---|
 | **H41** | ⛔ **Al confirmar el pago solo se generó el asiento del SEGURO, no el de cada jubilado.** Los pagos quedarían sin respaldo contable. **Causa medida (ver abajo): la orden del jubilado va sin `desglose`** | **nuestro** | **máxima** |
