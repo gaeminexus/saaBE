@@ -1674,3 +1674,43 @@ hace falta.
 **Orden sugerido:** verificar eso primero, después arreglar el desglose, después revertir, y recién
 ahí regenerar. **Revertir 182 pagos y después descubrir que no se pueden regenerar sería el peor
 orden posible.**
+
+### 26.5 El reverso desde el otro lado: qué reversa cada uno, y cómo correr 182 llamadas
+
+**`omen-saa-1` verificó el punto (b) y los bloquea**: su `UNIQUE (entidad, año, mes)` no admite
+regenerar, y su propio DDL dice en mayúsculas *«NO quitarla para poder regenerar»*. **No revierten
+nada hasta resolverlo.** El aviso previo evitó exactamente el peor orden: 182 reversos y después
+descubrir que no se puede regenerar.
+
+**Dos preguntas suyas, contestadas contra el código:**
+
+**A) ¿Doble reverso? No: los dos lados reversan objetos distintos.**
+`revertirPagoConfirmado:1926-1931` delimita su alcance en el comentario: *«se anula el movimiento
+bancario y el asiento **que cuelga del propio pago**. El documento origen **NO se toca**: CXP no lo
+conoce»*. Nosotros el asiento del **pago**; ellos su **cruce/devengo**. Ni se pisan ni podrían.
+
+⚠️ **El riesgo estaba en otro lado y se lo devolví:** *¿su reconciliador procesa también la orden del
+seguro?* Es la única de las 182 con asiento real y su origen es **distinto**
+(`CRD_SEGURO_JUBILADOS`). Si lo procesa, hay que ver qué contra-movimiento emite por algo que nunca
+tuvo el mismo cruce. **Preguntaron por la colisión entre los dos lados; el hueco estaba en el caso
+que no se parece a los otros 181.**
+
+**B) 182 llamadas: script sí, en paralelo NO.**
+`revertirPagoConfirmado` es `REQUIRED` por defecto y, desde REST, **cada llamada es su propia
+transacción**. Por eso:
+- ✅ Script está bien; la pantalla no hace nada extra.
+- ⛔ **Secuencial.** El `ORA-04036` del §14 venía de un **ciclo** EAGER —cerrado en `241211b`— pero
+  cargar un `PagoProgramado` sigue costando 13 `@ManyToOne`. **182 en paralelo es reproducir el mismo
+  error por otra puerta: el `PGA_AGGREGATE_LIMIT` es por instancia, no por sesión.**
+- ⚠️ **Bitácora obligatoria:** 182 transacciones independientes, sin rollback global. Un fallo en la
+  57 deja 56 hechos. A favor: reintentar sobre uno ya revertido **falla con mensaje claro**, así que
+  re-correr el script completo no hace daño.
+
+**Sugerencia que no pidieron:** revertir **el seguro primero y solo**, y verificarlo. Es el único con
+contabilidad real que deshacer. **El caso riesgoso conviene probarlo en aislamiento, no al final con
+181 reversos encima.**
+
+> **Y una pieza que cierra un pendiente nuestro:** su `sincronizarPagos` ya cubre la rama
+> `RECHAZADO`/`ANULADO`. O sea que el *«no hay callback desde CXP»* que documentamos **no es un hueco:
+> es un contrato que el otro lado ya cumple.** Lo que parecía una falta de integración era una
+> división de responsabilidades que nadie había escrito de los dos lados a la vez.
