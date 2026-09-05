@@ -1714,3 +1714,36 @@ contabilidad real que deshacer. **El caso riesgoso conviene probarlo en aislamie
 > `RECHAZADO`/`ANULADO`. O sea que el *«no hay callback desde CXP»* que documentamos **no es un hueco:
 > es un contrato que el otro lado ya cumple.** Lo que parecía una falta de integración era una
 > división de responsabilidades que nadie había escrito de los dos lados a la vez.
+
+### 26.6 Cerrado el escenario, y el reverso de los 181 es contablemente NULO
+
+**Medido por `omen-saa-1`, no deducido:** su reconciliador recorre filas de `CRD.PGPC`, y la orden
+del seguro **no cuelga de ningún `PGPC`** (es una orden agregada al proveedor). **El seguro es
+invisible para su reconciliador** → no hay contra-movimiento espurio. Escenario limpio, y el riesgo
+que les había devuelto queda descartado con medición.
+
+**Y les di un dato que acota su pregunta abierta.** Ellos se preguntaban si su contra-movimiento
+reversa el devengo o sólo el cruce. Desde nuestro lado la respuesta es única:
+
+> **`revertirPagoConfirmado` NO toca el devengo, sea cual sea su respuesta.** Anula el asiento que
+> cuelga del **pago** y su `MovimientoBanco`, nada más. El devengo lo emitió `crd` y **no cuelga de
+> ningún pago nuestro**: CXP no sabe que existe y no tiene forma de alcanzarlo.
+
+**Consecuencia dicha de frente:** revertir los 181 pagos es **contablemente una operación nula** —
+esos pagos no tienen asiento ni movimiento. Lo único que hace el reverso es **liberar el estado para
+que puedan regenerar**. El descuadre que encontraron (1.070,95 contabilizado sobre una pensión de
+589,17, porque el devengo y el cruce debitan la misma cuenta) lo tienen que limpiar ellos. **El
+reverso les habilita el camino; no les arregla el saldo.**
+
+El único de los 182 donde nuestro reverso hace trabajo contable real es **el del seguro**.
+
+> ### La formulación que aportaron, y es mejor que la nuestra
+>
+> Sobre el devengo duplicado: ***«Los dos asientos son correctos por separado y se pisan juntos;
+> nadie los había mirado al mismo tiempo.»***
+>
+> Es la misma familia del §10bis —*«cuando un valor puede llegar por dos caminos, o los comparás o
+> derivás uno del otro; el punto medio no funciona»*— pero agrega la parte operativa que nos
+> faltaba: **no falló ninguna revisión. Falló que las dos revisiones fueron por separado.** Un
+> defecto que sólo existe en la intersección no lo encuentra nadie que mire una pieza a la vez, por
+> cuidadoso que sea.
