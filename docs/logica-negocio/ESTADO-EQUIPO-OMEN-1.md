@@ -805,6 +805,71 @@ cascada es de profundidad 2 y las hojas son catálogos chicos que se repiten en 
 que el contexto de persistencia los cachea. **No se pidió optimizar nada**: queda anotado para mirar
 si la corrida real se siente lenta. Anotarlo sin medirlo es lo único honesto que se puede decir hoy.
 
+### 2026-09-04, tarde — el prevuelo se validó y aparecieron dos cosas más
+
+**El usuario desplegó, corrió el prevuelo de agosto 2026 y validó los montos**: 180 evaluados,
+136 aptos, 44 bloqueados · a préstamos **$16.231,60** · a dinero **$113.278,63** · total
+**$129.510,23**. La corrida real **todavía no se ejecutó**.
+
+**H35 — El seguro médico en $0,00 era el dato, no el cálculo.** El usuario reportó que el seguro
+salía en cero. Se rastreó la cadena completa —columna `VPPCVLSR`, la entidad JPA, las líneas
+366/470/471 del service, la suma en 295, el DTO y el HTML— y **los siete nombres coinciden**: no
+había campo perdido. Eso dejaba solo dos salidas, porque la suma acumula únicamente filas aptas y
+`totalSeguro` se deriva de `total`: o los que tenían seguro estaban bloqueados, o estaban al día
+con cero meses. En las dos el $0,00 era correcto. **El usuario encontró y corrigió el dato.**
+
+Quedó `sql/195` (`ba217b3`, marcado como resuelto en `5669235`) y **se conserva a propósito**: su
+bloque 2 reproduce en SQL las mismas compuertas de `previsualizarJubilado` y contesta «por qué
+este jubilado no entra a la corrida / por qué su monto es cero», que es una pregunta mensual.
+
+**Corrección propia sobre `sql/194`:** ese script calculaba el ancla con `MIN` de todos los
+movimientos positivos, y `resolverAnclaRetroactivo` usa **`MAX` del movimiento de JUBILACIÓN**
+(`APRTTPMV = 7`). Por eso el 194 medía un retroactivo más largo que el real. **El que medía mal
+era mi SQL, no el código** — el `195` sigue al código.
+
+**Filtros de la pestaña «Corrida» (`6f0e7ea`, saaFE).** Con ~180 filas la tabla no se lee entera.
+Buscador por nombre o entidad, y **las seis tarjetas de totales pasaron a ser clicables**: al
+hacer clic, la tabla se reduce a quienes COMPONEN ese total. Los dos filtros se combinan. Tres
+detalles que no son de adorno: el umbral es `> 0,005` y no `> 0` (un residuo de coma flotante
+metía en la lista a alguien que en pantalla figura en $0,00); la tarjeta «Total» rotula «180
+evaluado(s)» pero su monto suma solo a los aptos, así que al filtrar muestra **los que aportan al
+monto**, no los 180; y el CSV exporta lo que se ve con sufijo `-filtrado`, porque un CSV parcial
+con nombre de completo es con lo que después alguien concilia mal.
+
+**⛔ Fallo de proceso propio, registrado.** Esos filtros **los programé yo en vez de despacharlos
+al agente FE**, y el usuario lo marcó: *«ese pedido no lo debiste programar tú sino el agente fe
+[…] solo x esta vez dejémoslo pasar xk es urgente sacar la pantalla»*. El rol de árbitro existe
+para que revise alguien distinto del que escribió; si programo y reviso yo, se pierde esa segunda
+mirada, y encima me vuelvo el cuello de botella con los agentes libres. **Que el pedido sea
+urgente no lo justifica: despachar es más rápido que hacerlo yo, no más lento.**
+
+### D5 — El seguro se paga aunque no haya préstamo, certificado ni cuenta
+
+**Decisión del usuario, 2026-09-04, textual:** *«si un jubilado no tiene préstamo ni certificado
+bancario ni cuenta bancaria, pero sí tiene seguro médico, ese también se le debe pagar ese mes.
+Los que tienen solo seguro médico se desbloquean de la misma forma que los que solo tienen
+préstamo»*.
+
+**Es coherente con la regla del certificado ya cerrada (§6, opción (b)):** el certificado gobierna
+la **salida de dinero al banco**, no el cruce. El seguro tampoco pasa por el banco — va a la
+cuenta **2.3.90.90.06 SEGURO POR PAGAR JUBILADOS**, mientras la pensión va a **2.3.01.10.03**. Es
+un traspaso interno, así que no necesita certificado, igual que el cruce contra el préstamo.
+
+Consecuencia: **el certificado solo debe retener la porción PENSIÓN del remanente.** Nunca el
+cruce (ya era así) ni la porción seguro (esto es lo nuevo).
+
+**Consecuencia que hay que leer bien, y NO es una pérdida.** Al procesar el seguro de un mes se
+registra el movimiento negativo del aporte 23, así que **el ancla retroactiva avanza** y la
+pensión retenida de ese mes no se vuelve a pagar después. **El remanente retenido nunca se
+descuenta: se queda en el saldo del aporte 23 del jubilado.** Es exactamente la semántica que ya
+tiene `SOLO_CRUCE` y que el usuario ya aprobó.
+
+**Estado:** despachado al agente BE el 2026-09-04. Abarca la compuerta D4 de `previsualizarJubilado`,
+la fórmula del monto, la corrida real (`generarMesesRetroactivos` / `generarUnMesSinPrestamo`), el
+valor de `participacion` y el contrato §4bis/§6 con su espejo. **El agente tiene instrucción de
+NO introducir un valor nuevo de `participacion` sin avisarme**: ese cambio de contrato lo coordino
+yo con el agente FE, porque el frontend lee esos literales.
+
 ---
 
 ## 3. Hallazgos de la revisión de arranque (2026-09-01)
@@ -863,6 +928,9 @@ la tasa de desgravamen es una **constante quemada en Java** (`FACTOR_DESGRAVAMEN
 | # | Qué | Tipo |
 |---|---|---|
 | ~~P1~~ | ~~Correr `sql/151`~~ | ✅ **corrido el 2026-09-01, el gate pasó** — §5.b del plan |
+| **P16** | **Ejecutar la corrida real de agosto 2026.** El prevuelo está validado por el usuario, pero **queda pendiente redesplegar con la decisión D5** (seguro sin préstamo/certificado/cuenta), que cambia quiénes entran y por cuánto. ⛔ «A dinero» sale al banco y **no hay anulación**: `POST /pgpc/anular/{id}` no existe y no va a existir (depende de `CRD.PGCE`, reservada por `lap-saa-1` sin DDL) | **bloqueante** — es el frente urgente |
+| **P17** | Cuando se ejecute: **pasarle el conteo de órdenes a `omen-saa-2-arb`**, que maneja el lote de tesorería y la autorización única | va con P16 |
+| **P18** | Limpiar los campos duplicados `valorPension`/`totalPension` de `DetallePagoPension`. **Congelado a propósito** durante el despliegue; `generarPagosDelMes` suma `totalPagado` desde `getValorPension()` + `getValorSeguroSalud()` y hay que migrarlo | después de P16 |
 | **P7** | **Desplegar el build del frontend y reabrir el diálogo de afectación de BUSTOS ALMEIDA** (código Petro 401). Decide el próximo paso del defecto del préstamo 7991: si aparece el aviso rojo nombrándolo, la consulta falla y se va al log del servidor; si no aparece y la lista sigue vacía, se pierde en otro lado | **bloqueante** — es lo único que tiene trabajo detenido |
 | **P8** | **Desplegar el WAR del otorgamiento.** El frente está completo y el gate pasó: no queda nada técnico entre esto y producción | decidible |
 | P6 | Correr `sql/152` y probar el informe de devoluciones contra el servidor | decidible |
@@ -896,3 +964,4 @@ la tasa de desgravamen es una **constante quemada en Java** (`FACTOR_DESGRAVAMEN
 | 2026-09-01 | Revisión de arranque del árbitro. Estado de los tres frentes verificado contra el código. Creado este documento (H2). Restaurados los dos contratos de API en el lado autoritativo (H1). `mvn -q clean compile` exit 0 sobre `80566a4` |
 | 2026-09-01 | Frente lateral del informe de necesidad de pago, entregado BE+FE en el día. Cinco hallazgos (H5–H9) y un fallo de proceso propio registrado. `sql/152` escrito para validar la query sin desplegar. Queda pendiente la prueba contra el servidor |
 | 2026-09-02 | La brecha de la carga 449 medida en serio: `sql/170` descartó `calcularSaldosRealesCuota` (cuotas cuadran, 0,01) y `sql/171` sale a medir las dos rutas de afectación manual (H24). Quinto diagnóstico mío equivocado en el mismo problema — el patrón sigue siendo deducir en vez de medir |
+| 2026-09-04 | Prevuelo de agosto desplegado y **validado por el usuario** (180/136/44, $129.510,23). El seguro en $0,00 resultó ser dato y lo corrigió el usuario (H35); queda `sql/195` como diagnóstico mensual reusable. Corregido un error propio: `sql/194` calculaba el ancla distinto del código. Filtros de la pestaña «Corrida» entregados (`6f0e7ea`) — **y programados por el árbitro en vez de despacharlos, marcado por el usuario como fallo de proceso**. Despachada al agente BE la decisión **D5** (el seguro se paga sin préstamo, certificado ni cuenta). **La corrida real de agosto sigue sin ejecutarse** |
