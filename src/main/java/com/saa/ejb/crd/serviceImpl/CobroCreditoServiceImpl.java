@@ -82,6 +82,7 @@ import com.saa.rubros.CrdLineaAsiento;
 import com.saa.rubros.CrdTipoOperacionCobro;
 import com.saa.rubros.DsbnOrigen;
 import com.saa.rubros.ModuloSistema;
+import com.saa.rubros.MovimientoCuentaPlantilla;
 import com.saa.rubros.PlantillasCredito;
 import com.saa.rubros.TipoAsientos;
 import com.saa.rubros.TipoCarteraBanda;
@@ -904,7 +905,7 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             double capitalFuturo = calcularCapitalFuturoDelCobro(cobro, detallesActualizados);
             Asiento asientoReparto = generarAsientoReparto(cobro, detallesActualizados, capitalFuturo);
             cobro.setAsientoReparto(asientoReparto);
-            Asiento asientoDefinitivo = generarAsientoDefinitivo(cobro, detallesActualizados);
+            Asiento asientoDefinitivo = generarAsientoDefinitivo(cobro, detallesActualizados, capitalFuturo);
             cobro.setAsientoDefinitivo(asientoDefinitivo);
         } else {
             System.out.println("CobroCreditoService.procesarCobro - contabilidad de CRD INACTIVA:"
@@ -1683,8 +1684,8 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
     // el mismo idCobroCredito duplicaría el asiento exactamente como describía este comentario.
     // =====================================================================
 
-    private Asiento generarAsientoDefinitivo(CobroCredito cobro, List<DetalleCobroCredito> detalles)
-            throws Throwable {
+    private Asiento generarAsientoDefinitivo(CobroCredito cobro, List<DetalleCobroCredito> detalles,
+            double capitalFuturo) throws Throwable {
         Long idEmpresa = derivarEmpresaCobro(cobro);
         Long idPlantillaAplicacion = contabilizacionIndividualCreditoService.resolverPlantillaAplicacion(idEmpresa);
         LocalDate fechaCorte = cobro.getFecha();
@@ -1755,29 +1756,69 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
 
         // Debe: "aportes/préstamos por aplicar" — 2026-08-31, corrección: antes volvía a
         // debitar la cuenta transitoria (resolverLineaTransitoria), pero el asiento de reparto
-        // (2) ya la cerró (D transitoria → H por-aplicar) — debitarla OTRA VEZ acá la dejaba
-        // en -cobro.getValor() en vez de en cero. El asiento 3 tiene que cerrar lo que el 2
-        // dejó abierto: debita las MISMAS cuentas "por aplicar" que apertura (③, cierre de
-        // cartera) y la aplicación de Petro ya usan (CrdLineaAsiento.APORTES_POR_APLICAR/
-        // PRESTAMOS_POR_APLICAR, catálogo semántico — NO la plantilla posicional del reparto).
-        // Mismos totales que el Haber del asiento 2 (totalesAportesPrestamos), nunca un cálculo
-        // aparte que pueda desalinearse de lo que ese asiento ya cerró.
+        // (2) ya la cerró ENTERA (D transitoria → H por-aplicar, por el total del cobro) —
+        // debitarla OTRA VEZ acá la dejaba en -cobro.getValor() en vez de en cero. El asiento 3
+        // tiene que cerrar lo que el 2 dejó abierto: debita las MISMAS cuentas "por aplicar"
+        // que apertura (③, cierre de cartera) y la aplicación de Petro ya usan
+        // (CrdLineaAsiento.APORTES_POR_APLICAR/PRESTAMOS_POR_APLICAR, catálogo semántico — NO
+        // la plantilla posicional del reparto).
+        //
+        // 2026-09-05, DISENO-CIERRE-APERTURA-SOLO-LO-ABIERTO.md: el motivo de arriba sigue
+        // siendo válido, pero ahora el asiento 2 YA NO cierra la transitoria entera — le resta
+        // capitalFuturo (ver generarAsientoReparto). Por eso acá el Debe "por aplicar" también
+        // resta capitalFuturo del lado préstamos (mismo total que dejó cerrado el 2, nunca un
+        // cálculo aparte), y SE AGREGA una línea de Debe a la transitoria por ESE capitalFuturo
+        // — no es el defecto que corrigió el comentario de arriba: aquella vez se debitaba la
+        // transitoria por el TOTAL cuando el asiento 2 ya la había cerrado entera; acá se debita
+        // solo por el TRAMO que el asiento 2 dejó a propósito sin cerrar. Las bandas (Haber,
+        // más abajo) siguen recibiendo el TOTAL sin partir — el capital futuro SÍ se cobró,
+        // solo que no contra la cuenta de apertura.
         double[] totales = totalesAportesPrestamos(detalles);
+        double totalPrestamosCerrado = redondear(totales[1] - capitalFuturo);
         List<DetalleAsiento> debe = contabilizacionIndividualCreditoService.lineasAplicacionPorAplicar(
-                idPlantillaAplicacion, totales[0], totales[1], "Cobro crédito " + cobro.getCodigo());
-        if (debe.isEmpty()) {
+                idPlantillaAplicacion, totales[0], totalPrestamosCerrado, "Cobro crédito " + cobro.getCodigo());
+        if (debe.isEmpty() && capitalFuturo <= 0.0) {
             throw new IncomeException("El cobro " + cobro.getCodigo() + " no generó ninguna línea de"
                     + " aportes/préstamos por aplicar para el Debe del asiento definitivo; no se puede"
                     + " contabilizar.");
+        }
+
+        if (capitalFuturo > 0.0) {
+            DetallePlantilla lineaTransitoriaFuturo = resolverLineaTransitoria(idEmpresa);
+            boolean movimientoDeclaradoDebe = lineaTransitoriaFuturo.getMovimiento() != null
+                    && lineaTransitoriaFuturo.getMovimiento().longValue() == MovimientoCuentaPlantilla.DEBE;
+            // ⚠️ Esta línea va SIEMPRE al Debe, IGNORANDO lo que acabamos de leer arriba. La
+            // plantilla de la transitoria (alterno COBRO_TRANSITORIO_PETRO, aux1=1) está
+            // declarada HABER (movimientoDeclaradoDebe = false es lo esperado acá) porque esa
+            // configuración es correcta para su uso normal: el asiento 1 la acredita cuando
+            // RECIBE el depósito. Esta línea tiene un sentido fijo por diseño, distinto del
+            // normal: es lo que deja pendiente de cerrar el capital futuro que el asiento 2 no
+            // tocó (DISENO-CIERRE-APERTURA-SOLO-LO-ABIERTO.md §4). No es un defecto que
+            // movimientoDeclaradoDebe dé false — es la razón por la que este Debe se fuerza en
+            // vez de leerse tal cual.
+            System.out.println("CobroCreditoService.generarAsientoDefinitivo - cobro " + cobro.getCodigo()
+                    + ": línea de transitoria por capital futuro forzada a Debe (plantilla la declara "
+                    + (movimientoDeclaradoDebe ? "DEBE" : "HABER") + " para su uso normal).");
+            DetalleAsiento debeTransitoriaFuturo = new DetalleAsiento();
+            debeTransitoriaFuturo.setPlanCuenta(lineaTransitoriaFuturo.getPlanCuenta());
+            debeTransitoriaFuturo.setNumeroCuenta(lineaTransitoriaFuturo.getPlanCuenta().getCuentaContable());
+            debeTransitoriaFuturo.setNombreCuenta(lineaTransitoriaFuturo.getPlanCuenta().getNombre());
+            debeTransitoriaFuturo.setDescripcion("Cobro crédito " + cobro.getCodigo()
+                    + " - capital futuro no cerrado contra la cuenta de apertura");
+            debeTransitoriaFuturo.setValorDebe(redondear(capitalFuturo));
+            debeTransitoriaFuturo.setValorHaber(0.0);
+            debe.add(debeTransitoriaFuturo);
         }
 
         List<DetalleAsiento> lineas = new ArrayList<>();
         lineas.addAll(debe);
         lineas.addAll(haber);
 
-        // Cuadre por construcción: D = suma de "por aplicar" (totales[0]+totales[1], lo mismo
-        // que acreditó el asiento de reparto), H = suma de las líneas armadas arriba. Si no
-        // cuadran, algo quedó mal clasificado — fallar acá es más seguro que ajustar la
+        // Cuadre por construcción: D = suma de "por aplicar" (totales[0]+totalPrestamosCerrado,
+        // lo mismo que acreditó el asiento de reparto) MÁS la línea de transitoria por
+        // capitalFuturo — entre las dos, D vuelve a sumar el total completo del cobro, que es
+        // lo que tiene que igualar al H de las líneas armadas más abajo (bandas por el TOTAL).
+        // Si no cuadran, algo quedó mal clasificado — fallar acá es más seguro que ajustar la
         // diferencia con una línea de cuadre, porque "cuadra" no prueba que la clasificación
         // sea correcta (§7 de la especificación): un ajuste de centavos escondería
         // precisamente ese tipo de error.
