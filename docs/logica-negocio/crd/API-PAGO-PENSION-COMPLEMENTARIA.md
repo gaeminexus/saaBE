@@ -622,10 +622,21 @@ Palabras del usuario, textuales: *«la que se está registrando al jubilarse es 
 pensión complementaria POR PAGAR; en cambio al cruzar directo con el préstamo se da de baja
 directamente del saldo contable de la cuenta de pensiones complementarias»*.
 
-**Verificación pendiente contra la base real** (no corrida desde acá):
-`docs/logica-negocio/crd/sql/199_VERIFICACION_CUENTA_PENSION_COMPLEMENTARIA_PLANTILLA_21.sql`
-— confirma que `2.1.02.25.01` existe en `CNT.PLNN`, que la plantilla 21 no tenga ya una línea
-apuntándole con otro `aux1`, y trae el `INSERT` comentado para `CNT.DTPL` si hiciera falta.
+**✅ CONFIRMADO en producción, 2026-09-05** — el catálogo real de la plantilla 21 prueba la
+decisión mejor que cualquier razonamiento: las cuatro líneas de este cluster son cuentas
+`2.1.0X` — todas cuentas INDIVIDUALES del partícipe, la misma familia. La `2.3.01.10.03` de la
+jubilación es `2.3` — pasivo por pagar, otra familia. Son deliberadamente distintas.
+
+| `aux1` (`CrdLineaAsiento`) | Cuenta | Nombre |
+|---|---|---|
+| 50 (`APORTES_CESANTIA`) | `2.1.01.05.01` | APORTES PERSONALES CESANTIA |
+| 51 (`APORTES_JUBILACION`) | `2.1.02.05.01` | APORTES PERSONALES JUBILACION |
+| 52 (`APORTE_ADICIONAL_PERSONAL`) | `2.1.02.15` | APORTE ADICIONAL PERSONAL |
+| **53** (`APORTES_PENSION_COMPLEMENTARIA`) | **`2.1.02.25.01`** | **CTA INDIVIDUAL DE PENSIONES COMPLEMENTARIAS** |
+
+Línea insertada por `omen-saa-1-arb` en `CNT.DTPL` (plantilla 21, `PLNNCDGO`=10358) —
+verificación y el `INSERT` ya corrido (con la lección de la PK por secuencia) en
+`docs/logica-negocio/crd/sql/199_VERIFICACION_CUENTA_PENSION_COMPLEMENTARIA_PLANTILLA_21.sql`.
 
 ### Prevalidación (opción (b) del árbitro, tras la segunda corrida fallida)
 

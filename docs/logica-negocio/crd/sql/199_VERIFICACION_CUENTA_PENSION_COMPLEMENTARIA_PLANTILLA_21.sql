@@ -22,6 +22,20 @@
 -- PLNNCDGO, columna de codigo contable PLNNCNTA) -- verificado contra la entidad Java, no
 -- adivinado. Si en algun mensaje aparecio "CNT.PLCN"/"PLCNCDGO", es un nombre distinto al
 -- que usa el codigo actual; correr igual este script contra PLNN primero.
+--
+-- ✅ EJECUTADO EN PRODUCCION el 2026-09-05 (omen-saa-1-arb). La linea YA EXISTE: plantilla 21,
+-- aux1=53, cuenta 2.1.02.25.01 (PLNNCDGO=10358, "CTA INDIVIDUAL DE PENSIONES COMPLEMENTARIAS").
+-- El BLOQUE 5 de mas abajo NO hay que volver a correrlo -- se deja tal cual, con la leccion
+-- aprendida, como referencia para el PROXIMO script de este equipo que necesite un INSERT
+-- manual a una tabla con PK por secuencia.
+--
+-- ⛔ LECCION (nos costo un ORA-01400 en produccion, la version anterior de este script la
+-- tenia mal): DetallePlantilla usa @SequenceGenerator(name="SQ_DTPLCDGO",
+-- sequenceName="CNT.SQ_DTPLCDGO") -- CNT.DTPL.DTPLCDGO es GenerationType.SEQUENCE. JPA la
+-- resuelve sola; un INSERT a mano NO. Cualquier INSERT manual a una tabla cuya entidad use
+-- @SequenceGenerator/@GeneratedValue(SEQUENCE) tiene que llevar la PK explicita:
+-- <ESQUEMA>.SQ_XXXXCDGO.NEXTVAL. Verificar el nombre de la secuencia en la entidad Java antes
+-- de escribir el INSERT, no asumirla por el patron del nombre de tabla.
 -- =====================================================================================
 
 
@@ -83,19 +97,21 @@ WHERE  p.PLNSCDAL = 21
 ORDER  BY d.DTPLAXL1;
 
 -- =====================================================================================
--- BLOQUE 5 - INSERT COMENTADO. Correrlo SOLO si el bloque 3 confirma que 2.1.02.25.01
---            todavia NO tiene linea en la plantilla 21, y el bloque 4 confirma que 53
---            esta libre. Ajustar el 1236 (empresa) si la empresa real es otra -- mismo
---            valor de ejemplo que ya usaba el script 92 para esta plantilla.
+-- BLOQUE 5 - INSERT COMENTADO. YA CORRIDO EN PRODUCCION (2026-09-05) -- no volver a
+--            correrlo, se deja como referencia corregida para el proximo script similar.
+--            Version original de este bloque (antes de esta correccion) NO llevaba
+--            DTPLCDGO ni la secuencia -- fallo con ORA-01400 (no se puede insertar NULL en
+--            CNT.DTPL.DTPLCDGO). Corregido con lo que de verdad se corrio.
 --
---            El DTPLMVMN se copia de la linea 50 (cesantia) de la MISMA plantilla, para no
---            adivinar el valor -- lineasCruceAportesConsumidos fuerza DEBE en el cruce sin
---            mirar este campo (ver el comentario del metodo), asi que lo que importa de
---            verdad es que la CUENTA sea la correcta; el movimiento se copia por prolijidad
---            y consistencia con las otras tres lineas del mismo cluster.
+--            DTPLAXL2 = 0, no NULL: selectByPlantillaYAuxiliar no filtra por auxiliar2 (asi
+--            que NULL habria funcionado igual), pero las tres hermanas (50/51/52) usan 0 --
+--            no hay razon para que esta linea sea distinta.
+--            PLNNCDGO = 10358 literal: es el id real que devolvio el BLOQUE 1 contra la
+--            base de produccion, ya no una subconsulta.
 -- =====================================================================================
 
 -- INSERT INTO CNT.DTPL (
+--     DTPLCDGO,
 --     PLNSCDGO,
 --     PLNNCDGO,
 --     DTPLAXL1,
@@ -105,24 +121,26 @@ ORDER  BY d.DTPLAXL1;
 --     DTPLESTD
 -- )
 -- SELECT
+--     CNT.SQ_DTPLCDGO.NEXTVAL,
 --     (SELECT p.PLNSCDGO FROM CNT.PLNS p WHERE p.PLNSCDAL = 21 AND p.PJRQCDGO = 1236),
---     (SELECT n.PLNNCDGO FROM CNT.PLNN n WHERE n.PLNNCNTA = '2.1.02.25.01' AND n.PJRQCDGO = 1236),
+--     10358,
 --     53,
---     NULL,
---     (SELECT d.DTPLMVMN FROM CNT.DTPL d
---        JOIN CNT.PLNS p2 ON p2.PLNSCDGO = d.PLNSCDGO
---       WHERE p2.PLNSCDAL = 21 AND p2.PJRQCDGO = 1236 AND d.DTPLAXL1 = 50),
+--     0,
+--     2,
 --     'Aportes personales PENSION COMPLEMENTARIA',
 --     1
 -- FROM DUAL;
 
 -- =====================================================================================
--- BLOQUE 6 - Verificacion DESPUES del INSERT (correr solo tras confirmar el bloque 5)
+-- BLOQUE 6 - Verificacion DESPUES del INSERT -- CONFIRMADO en produccion (2026-09-05):
+--
+--   ALTERNO | AUX1 | MOVIMIENTO | CUENTA        | CUENTA_NOMBRE
+--   21      | 53   | 2          | 2.1.02.25.01  | CTA INDIVIDUAL DE PENSIONES COMPLEMENTARIAS
 -- =====================================================================================
--- SELECT p.PLNSCDAL AS ALTERNO, d.DTPLAXL1 AS AUX1, d.DTPLMVMN AS MOVIMIENTO,
---        n.PLNNCNTA AS CUENTA, n.PLNNNMBR AS CUENTA_NOMBRE, d.DTPLDSCR AS DESCRIPCION
--- FROM   CNT.PLNS p
--- JOIN   CNT.DTPL d ON d.PLNSCDGO = p.PLNSCDGO
--- LEFT   JOIN CNT.PLNN n ON n.PLNNCDGO = d.PLNNCDGO
--- WHERE  p.PLNSCDAL = 21
--- AND    d.DTPLAXL1 = 53;
+SELECT p.PLNSCDAL AS ALTERNO, d.DTPLAXL1 AS AUX1, d.DTPLMVMN AS MOVIMIENTO,
+       n.PLNNCNTA AS CUENTA, n.PLNNNMBR AS CUENTA_NOMBRE, d.DTPLDSCR AS DESCRIPCION
+FROM   CNT.PLNS p
+JOIN   CNT.DTPL d ON d.PLNSCDGO = p.PLNSCDGO
+LEFT   JOIN CNT.PLNN n ON n.PLNNCDGO = d.PLNNCDGO
+WHERE  p.PLNSCDAL = 21
+AND    d.DTPLAXL1 = 53;
