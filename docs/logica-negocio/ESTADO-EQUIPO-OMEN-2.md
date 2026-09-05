@@ -1546,3 +1546,50 @@ Comparaciones de `identificacion` sin `TRIM` sobre la columna, medidas sobre `sr
 > lugares, y **la gravedad no la da el defecto sino lo que el llamador hace con el resultado**. Es
 > literalmente el §11 otra vez —«el mismo defecto de consulta produce consecuencias distintas según
 > qué haga el llamador con la lista vacía»— y esta vez lo apliqué a tiempo: conté antes de proponer.
+
+---
+
+## §26 — Dos cosas del circuito de pagos que otro equipo dio por rotas y no lo están
+
+**2026-09-04.** `omen-saa-1` corrió su pago a jubilados en producción y reportó dos síntomas. **Ni
+uno de los dos es un defecto de CXP** — pero los dos son fáciles de leer como defecto, así que
+quedan acá para no volver a diagnosticarlos desde cero.
+
+### 26.1 «Salió una autorización por jubilado, no una sola»
+
+**Aprobar y generar lote son DOS actos distintos, y ninguno es automático.**
+
+| Acto | Dónde | Qué hace |
+|---|---|---|
+| `aprobar(List<Long> idsPagos, …)` | `PagoProgramadoServiceImpl:1133-1380` · `POST /pgtr/aprobar` | Aprueba **N pagos en un solo acto**: una cuenta, una forma de pago, una fecha. **No crea lote.** |
+| `generarLote(List<Long> idsPagos, …)` | `:1487`, crea el `LotePago` en la `:1537` · `POST /pgtr/lote` | Agrupa los pagos en un lote; de ahí sale el archivo del banco |
+
+**Si salen N autorizaciones es porque se aprobaron de a uno.** La pantalla soporta selección
+múltiple (columna `sel` en `aprobacion-pagos.component.ts`): hay que marcar todos y aprobar una vez.
+
+> **Generar N órdenes, una por beneficiario, es lo correcto** — es lo que permite que el archivo del
+> banco lleve el detalle por persona. **La agrupación es al aprobar, no al generar.** Que el pedido
+> del usuario diga «una sola autorización» no significa que el módulo origen deba emitir una sola
+> orden: significa que el operador las aprueba juntas.
+
+### 26.2 «Sólo generó asiento la orden que llevaba desglose»
+
+**Es correcto y es por diseño.** `contabilizarSegunOrigen` (`:2179-2185`), javadoc textual:
+
+> *@return Asiento generado, o **null si el pago de origen externo no tiene desglose***
+
+**Sin `desglose`, CXP no contabiliza.** El diseño asume que **el módulo de origen contabiliza por su
+cuenta** y que la bandeja es control y aprobación, no generadora de asientos. Es la decisión **D1**
+del frente de nómina de este equipo (§3), y estaba anotada en el §2.4 desde el 2026-09-01 — **donde
+nadie de otro equipo la iba a encontrar.**
+
+**La pregunta que decide si hay agujero o no** —y que se le devolvió a ellos, no se respondió por
+ellos— es: *¿el módulo de origen emite su propio asiento?* Si sí, no falta nada. Si no, hay dos
+salidas **excluyentes**: mandar `desglose` (contabiliza CXP) o contabilizar del lado propio (como
+RRHH). **Hacer las dos genera el asiento dos veces.**
+
+> **Lo que este caso enseña sobre la documentación:** el §2.4 tenía la respuesta exacta desde hacía
+> tres días, y aun así otro equipo perdió una corrida de producción preguntándose por qué. **Una
+> decisión de diseño que cruza el borde entre dos módulos no puede vivir sólo en el documento de
+> estado del equipo que la tomó.** Este §26 existe para que la próxima búsqueda por «asiento» y
+> «desglose» la encuentre.
