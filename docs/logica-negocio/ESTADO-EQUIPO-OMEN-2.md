@@ -1633,3 +1633,44 @@ la misma solución cubra las dos.**
 
 **`DevolucionAporteServiceImpl` está en el mismo estado** (su único asiento es el de
 reclasificación). Anotado como pendiente conocido; **no se toca sin que ellos lo pidan.**
+
+### 26.4 La premisa era falsa: no hubo plata, y eso da vuelta la recomendación
+
+**`omen-saa-1` corrigió su propia premisa:** los 182 pagos se confirmaron **manualmente para probar
+el circuito**; **no hubo transferencia real**. Mi objeción al camino 3 —«revertir mete ruido en la
+conciliación»— se apoyaba enteramente en que la plata había salido. **Sin eso, cae.**
+
+> **Los dos operábamos sobre el mismo dato falso, y ninguno lo había verificado.** Ellos lo
+> detectaron preguntándole al usuario. **La objeción era correcta bajo la premisa; la premisa no la
+> había medido nadie.** Es el §13 con otro disfraz: el borde de la medición no era el filtro, era el
+> supuesto de entrada.
+
+**El endpoint de contabilización diferida que iba a plantearle al usuario queda RETIRADO** — no
+hace falta.
+
+#### Las tres respuestas, medidas
+
+| Pregunta | Respuesta |
+|---|---|
+| ¿Cómo se reversa? | `POST /pgtr/revertirConfirmado/{id}`, body con `motivo` e `idUsuario` (`:1885`). Exige estado CONFIRMADO. ⚠️ **Uno por uno: no hay reverso masivo** — 182 llamadas |
+| ¿El asiento del seguro? | **Se anula solo.** `:1926-1929`, rama de origen externo: anula el movimiento bancario **y** el asiento |
+| ¿El `MovimientoBanco`? | **No existe para los 181.** Javadoc `:2394-2412`: *«sin desglose… NO genera asiento NI movimiento bancario»*. Sólo el del seguro tiene ambos |
+
+#### 🔴 Lo que NO preguntaron, y les cambiaba el plan
+
+`revertirPagoConfirmado:1961-1962` deja el pago en **RECHAZADO** (transferencia) o **ANULADO**
+(débito/cheque). **Ninguno es reconfirmable: el pago queda muerto.**
+
+> **No es «revertir y volver a confirmar»: es «revertir y REGENERAR».** Preguntaron cómo revertir
+> —lo que sabían que no sabían— y el hueco estaba en lo que daban por obvio: que después se podría
+> volver a confirmar lo mismo. **La pregunta que no se hace es la que cuesta.**
+
+**Dos consecuencias que se les señalaron antes de empezar:**
+- ✅ **La guarda de `4827f83` no les estorba:** RECHAZADO y ANULADO no cuentan como vigentes, así que
+  una orden nueva para el mismo documento pasa. Es exactamente el caso que el arreglo contempla.
+- ⚠️ **Su `UNIQUE (entidad, año, mes)` sí puede estorbarles** si para regenerar la orden necesitan
+  regenerar el documento origen. **De su lado, y no lo puedo evaluar yo.**
+
+**Orden sugerido:** verificar eso primero, después arreglar el desglose, después revertir, y recién
+ahí regenerar. **Revertir 182 pagos y después descubrir que no se pueden regenerar sería el peor
+orden posible.**
