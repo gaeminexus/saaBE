@@ -1572,24 +1572,43 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
      * {@code capitalFuturoPosteriorACorte} sobre los {@code PagoPrestamo} de cada préstamo del
      * cobro, sin importar el tipo de operación del cobro en sí.</p>
      *
-     * <p><b>Sin corrida de cierre viva para el período del cobro: 0.0, con traza.</b> No se
-     * bloquea el cobro — los dos asientos se comportan exactamente como hoy, con el total
-     * completo, porque sin período abierto no hay apertura que cerrar de más (§5.1 de la
-     * especificación).</p>
+     * <p><b>2026-09-05, corregido — la corrida que ABRE un mes vive registrada bajo el mes
+     * ANTERIOR (el que cerró).</b> {@code CierreCarteraServiceImpl.ejecutar} graba
+     * {@code corrida.anio/mes} como el período que CIERRA (solicitud.getAnio()/getMes()), pero
+     * la apertura que ese mismo proceso genera (sub-proceso ③) corresponde al mes SIGUIENTE
+     * (`fechaProceso`, el 01 del mes que se abre). Buscar la corrida viva del mes DEL COBRO con
+     * {@code selectVivaByPeriodo} nunca la encuentra — hay que buscar la última corrida
+     * EJECUTADA ANTES del mes del cobro con {@code selectUltimaEjecutadaAntesDe} (ya resuelve
+     * el cruce de año, no reimplementar) y sacar el corte de {@code getFechaProceso()} (el 01
+     * del mes abierto), NUNCA de {@code getFechaCorte()} (el 31 del mes anterior, que es el
+     * corte del CIERRE, no de la apertura) ni del mes del cobro (dos formas de derivar el mismo
+     * dato es la trampa que este proyecto viene pagando caro).</p>
+     *
+     * <p><b>Sin corrida ejecutada previa: 0.0, con traza.</b> No se bloquea el cobro — los dos
+     * asientos se comportan exactamente como hoy, con el total completo, porque sin período
+     * abierto no hay apertura que cerrar de más (§5.1 de la especificación).</p>
      */
     private double calcularCapitalFuturoDelCobro(CobroCredito cobro, List<DetalleCobroCredito> detalles)
             throws Throwable {
         Long idEmpresa = derivarEmpresaCobro(cobro);
         Long anio = Long.valueOf(cobro.getFecha().getYear());
         Long mes = Long.valueOf(cobro.getFecha().getMonthValue());
-        CorridaCierreCartera corridaViva = corridaCierreCarteraDaoService.selectVivaByPeriodo(idEmpresa, anio, mes);
-        if (corridaViva == null || corridaViva.getFechaCorte() == null) {
+        // La corrida que abrió el mes del cobro es la que se EJECUTÓ el mes anterior (la que lo
+        // cerró) — nunca la "corrida viva del mes del cobro", que no existe para esto.
+        CorridaCierreCartera corrida = corridaCierreCarteraDaoService.selectUltimaEjecutadaAntesDe(idEmpresa, anio,
+                mes);
+        if (corrida == null || corrida.getFechaProceso() == null) {
             System.out.println("CobroCreditoService.calcularCapitalFuturoDelCobro - cobro " + cobro.getCodigo()
-                    + ": no hay corrida de cierre de cartera viva para " + mes + "/" + anio + " en empresa "
-                    + idEmpresa + "; los asientos 2 y 3 cierran la apertura por el total, sin partir.");
+                    + ": no se encontró la corrida de cierre de cartera que abrió " + mes + "/" + anio
+                    + " en empresa " + idEmpresa + "; los asientos 2 y 3 cierran la apertura por el total, sin"
+                    + " partir.");
             return 0.0;
         }
-        LocalDate fechaCorteApertura = corridaViva.getFechaCorte();
+        // fechaProceso es el 01 del mes que esa corrida abrió; el corte de ESA apertura es su
+        // último día — NUNCA corrida.getFechaCorte() (eso es el corte del CIERRE del mes
+        // anterior, un mes antes de lo que corresponde).
+        LocalDate fechaProceso = corrida.getFechaProceso();
+        LocalDate fechaCorteApertura = fechaProceso.withDayOfMonth(fechaProceso.lengthOfMonth());
 
         double capitalFuturo = 0.0;
         for (DetalleCobroCredito detalle : detalles) {
