@@ -14,6 +14,7 @@ import com.saa.ejb.cnt.service.PlantillaService;
 import com.saa.ejb.crd.dao.AcuerdoCondonacionDaoService;
 import com.saa.ejb.crd.dao.CargaArchivoDaoService;
 import com.saa.ejb.crd.dao.CobroCreditoDaoService;
+import com.saa.ejb.crd.dao.CorridaCierreCarteraDaoService;
 import com.saa.ejb.crd.dao.DetalleAportePrecancelacionDaoService;
 import com.saa.ejb.crd.dao.DetalleCobroCreditoDaoService;
 import com.saa.ejb.crd.dao.EntidadDaoService;
@@ -59,6 +60,7 @@ import com.saa.model.cnt.PlanCuenta;
 import com.saa.model.crd.AcuerdoCondonacion;
 import com.saa.model.crd.CargaArchivo;
 import com.saa.model.crd.CobroCredito;
+import com.saa.model.crd.CorridaCierreCartera;
 import com.saa.model.crd.DetalleAporteAcuerdoCondonacion;
 import com.saa.model.crd.DetalleAportePrecancelacion;
 import com.saa.model.crd.DetalleCobroCredito;
@@ -110,6 +112,9 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
 
     @EJB
     private CobroCreditoDaoService cobroCreditoDaoService;
+
+    @EJB
+    private CorridaCierreCarteraDaoService corridaCierreCarteraDaoService;
 
     @EJB
     private DetalleCobroCreditoDaoService detalleCobroCreditoDaoService;
@@ -893,7 +898,11 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         // PagoAporte que ese bloque acaba de crear.
         if (configuracionContabilidadService.contabilidadActiva()) {
             List<DetalleCobroCredito> detallesActualizados = detalleCobroCreditoDaoService.selectByCobro(idCobro);
-            Asiento asientoReparto = generarAsientoReparto(cobro, detallesActualizados);
+            // Capital futuro (2026-09-05): calculado UNA sola vez acá y compartido entre los
+            // asientos 2 y 3, para que las dos restas contra la cuenta de apertura salgan del
+            // mismo número. Ver el javadoc de calcularCapitalFuturoDelCobro.
+            double capitalFuturo = calcularCapitalFuturoDelCobro(cobro, detallesActualizados);
+            Asiento asientoReparto = generarAsientoReparto(cobro, detallesActualizados, capitalFuturo);
             cobro.setAsientoReparto(asientoReparto);
             Asiento asientoDefinitivo = generarAsientoDefinitivo(cobro, detallesActualizados);
             cobro.setAsientoDefinitivo(asientoDefinitivo);
@@ -1548,8 +1557,53 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         return resultado;
     }
 
-    private Asiento generarAsientoReparto(CobroCredito cobro, List<DetalleCobroCredito> detalles)
+    /**
+     * Capital de cuotas posteriores al corte del período abierto que este cobro cancela — el
+     * tramo que la apertura mensual NUNCA abrió, y que por eso los asientos 2 y 3 NO deben
+     * cerrar contra la cuenta de apertura (2.3.02.10). Compartido entre
+     * {@code generarAsientoReparto} y {@code generarAsientoDefinitivo}: las dos restas tienen
+     * que salir del MISMO número, calculado UNA sola vez acá, nunca de dos cálculos
+     * independientes que puedan desalinearse (2026-09-05, ver
+     * {@code docs/logica-negocio/crd/DISENO-CIERRE-APERTURA-SOLO-LO-ABIERTO.md}).
+     *
+     * <p>Da igual si el tramo futuro se pagó con dinero o con cruce de valores — decisión del
+     * usuario: lo que decide es QUÉ se pagó, no CÓMO. Por eso este método mira
+     * {@code capitalFuturoPosteriorACorte} sobre los {@code PagoPrestamo} de cada préstamo del
+     * cobro, sin importar el tipo de operación del cobro en sí.</p>
+     *
+     * <p><b>Sin corrida de cierre viva para el período del cobro: 0.0, con traza.</b> No se
+     * bloquea el cobro — los dos asientos se comportan exactamente como hoy, con el total
+     * completo, porque sin período abierto no hay apertura que cerrar de más (§5.1 de la
+     * especificación).</p>
+     */
+    private double calcularCapitalFuturoDelCobro(CobroCredito cobro, List<DetalleCobroCredito> detalles)
             throws Throwable {
+        Long idEmpresa = derivarEmpresaCobro(cobro);
+        Long anio = Long.valueOf(cobro.getFecha().getYear());
+        Long mes = Long.valueOf(cobro.getFecha().getMonthValue());
+        CorridaCierreCartera corridaViva = corridaCierreCarteraDaoService.selectVivaByPeriodo(idEmpresa, anio, mes);
+        if (corridaViva == null || corridaViva.getFechaCorte() == null) {
+            System.out.println("CobroCreditoService.calcularCapitalFuturoDelCobro - cobro " + cobro.getCodigo()
+                    + ": no hay corrida de cierre de cartera viva para " + mes + "/" + anio + " en empresa "
+                    + idEmpresa + "; los asientos 2 y 3 cierran la apertura por el total, sin partir.");
+            return 0.0;
+        }
+        LocalDate fechaCorteApertura = corridaViva.getFechaCorte();
+
+        double capitalFuturo = 0.0;
+        for (DetalleCobroCredito detalle : detalles) {
+            if (detalle.getPrestamo() == null || detalle.getEventoPrestamo() == null) {
+                continue;
+            }
+            List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectByEvento(detalle.getEventoPrestamo().getCodigo());
+            capitalFuturo += contabilizacionIndividualCreditoService.capitalFuturoPosteriorACorte(
+                    pagos, fechaCorteApertura, "Cobro " + cobro.getCodigo());
+        }
+        return redondear(capitalFuturo);
+    }
+
+    private Asiento generarAsientoReparto(CobroCredito cobro, List<DetalleCobroCredito> detalles,
+            double capitalFuturo) throws Throwable {
         Long idEmpresa = derivarEmpresaCobro(cobro);
         DetallePlantilla lineaTransitoria = resolverLineaTransitoria(idEmpresa);
 
@@ -1558,9 +1612,17 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         // REGISTRO_APORTE/COBRO_MIXTO); linea.getValor() nunca incluye lo pagado con aportes
         // consumidos (eso vive aparte, en DetalleAportePrecancelacion/
         // DetalleAporteAcuerdoCondonacion, y no entra acá).
+        //
+        // capitalFuturo (2026-09-05) se resta SOLO del lado préstamos, nunca de aportes: es
+        // capital que la apertura mensual nunca abrió (vence después del corte del período
+        // abierto), así que este asiento no debe cerrar la cuenta de apertura (2.3.02.10) por
+        // ese tramo — se resta acá y también del Debe a la transitoria, para que las dos
+        // patas de este asiento sigan cuadrando entre sí. El asiento 3 (generarAsientoDefinitivo)
+        // se encarga de dejar ese tramo pendiente en la transitoria. Ver
+        // docs/logica-negocio/crd/DISENO-CIERRE-APERTURA-SOLO-LO-ABIERTO.md §4.
         double[] totales = totalesAportesPrestamos(detalles);
         double totalAportes = totales[0];
-        double totalPrestamos = totales[1];
+        double totalPrestamosCerrado = redondear(totales[1] - capitalFuturo);
 
         Long idPlantillaReparto = contabilizacionIndividualCreditoService.resolverPlantillaReparto(idEmpresa);
 
@@ -1570,11 +1632,11 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         debe.setNumeroCuenta(lineaTransitoria.getPlanCuenta().getCuentaContable());
         debe.setNombreCuenta(lineaTransitoria.getPlanCuenta().getNombre());
         debe.setDescripcion("Cobro crédito " + cobro.getCodigo() + " - reparto - cuenta transitoria");
-        debe.setValorDebe(cobro.getValor());
+        debe.setValorDebe(redondear(cobro.getValor() - capitalFuturo));
         debe.setValorHaber(0.0);
         lineas.add(debe);
         lineas.addAll(contabilizacionIndividualCreditoService.lineasReparto(idPlantillaReparto, totalAportes,
-                totalPrestamos, "Cobro crédito " + cobro.getCodigo() + " - reparto"));
+                totalPrestamosCerrado, "Cobro crédito " + cobro.getCodigo() + " - reparto"));
 
         // Cuadre explícito, no asumido: si la plantilla de reparto tuviera el movimiento
         // configurado al revés de lo que espera Petro, esto lo revienta acá en vez de dejar
