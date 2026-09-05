@@ -842,7 +842,7 @@ contrato con la cita textual del usuario.
 |---|---|---|---|
 | **H41** | ⛔ **Al confirmar el pago solo se generó el asiento del SEGURO, no el de cada jubilado.** Los pagos quedarían sin respaldo contable. **Causa medida (ver abajo): la orden del jubilado va sin `desglose`** | **nuestro** | **máxima** |
 | **H42** | El cruce toma **fecha de hoy** (`corte: 2026-09-04`) en vez del **fin de mes**, y marca cuotas de agosto como en mora. **Viola D1/§6bis**, que ya estaba cerrada: la cartera va con fin de mes, solo el pago con fecha actual | nuestro | alta |
-| **H43** | Con cruce + dinero, el asiento del pago se hace por **el total de la pensión** en vez de **solo lo transferido**. La parte cruzada ya tiene su propio asiento: contarla dos veces infla el movimiento | nuestro | alta |
+| **H43** | ⛔ **CONFIRMADO CON CAPTURAS DE PRODUCCIÓN, y no estaba donde se buscaba: el defecto está en el DEVENGO, no en el asiento del pago.** Devengo y cruce **debitan la misma cuenta** `2.1.02.25.01` → saldo duplicado. Ver abajo | **nuestro** | **máxima** |
 | ~~**H44**~~ | ~~Se generó **una autorización por jubilado**, no una sola por el total~~ · ✅ **NO ES DEFECTO — cerrado 2026-09-05.** Es paso de operación, ver abajo | — | — |
 | **H45** | Falta el **asiento de cierre de las cuentas de apertura** del mes. ✅ **Contestado por `lap-saa-1` (ver abajo): sí es el mismo mecanismo, y es un defecto real y medido de nuestro camino** | **nuestro** | alta (se ve al cerrar el mes) |
 
@@ -936,6 +936,114 @@ usuario.**
 `DevolucionAporteServiceImpl` es `generarAsientoReclasificacion` (:1062, llamado en :591) —
 reclasificación, **no pago**. El comentario del §6.5.b citado arriba lo dice. Anotado como
 pendiente aparte de los dos lados; **no se toca en esta urgencia de jubilados**.
+
+#### H43 — el devengo duplica lo que el cruce ya debita (confirmado en producción, 2026-09-05)
+
+**Se planteó como hipótesis que no era defecto** —que el usuario había visto el asiento de
+devengo, que por diseño va por el total, y lo había leído como asiento de pago—. **La hipótesis
+era razonable y estaba equivocada.** El usuario mandó las capturas de los dos asientos reales,
+del mismo jubilado (GARCIA SALTOS MILTON RENEE, PGPC 4, préstamo 7747, corrida 8/2026):
+
+`CRE-2026-08-0168` — devengo:
+
+```
+D  2.1.02.25.01  CTA INDIVIDUAL DE PENSIONES COMPLEMENTARIAS   589,17
+H  2.3.01.10.03  PENSIONES COMPLEMENTARIAS POR PAGAR                    589,17
+```
+
+`CRE-2026-08-0167` — cruce:
+
+```
+D  2.1.02.25.01  CTA INDIVIDUAL DE PENSIONES COMPLEMENTARIAS   481,78
+H  1.3.04.05     DE 1 A 30 DIAS (banda 1)                               454,16
+H  1.4.02.05     INTERESES POR PRÉSTAMOS QUIROGRAFARIOS                  24,38
+H  1.4.90.90.10  CUENTA POR COBRAR SEGURO DE DESGRAVAMEN                  3,24
+```
+
+**Las dos debitan `2.1.02.25.01`.** La cuenta individual del jubilado queda debitada
+589,17 + 481,78 = **1.070,95** sobre una pensión de 589,17. Los 481,78 del cruce **ya habían
+salido de esa cuenta dentro del devengo**, y el cruce los vuelve a sacar.
+
+**Por qué se escapó, y conviene no perderlo.** El comentario de `generarAsientoDevengoPension`
+dice que va por el total *«independiente de cuánto se haya cruzado — ese tramo lo contabiliza
+aparte `contabilizarPagoConAportes`»*. **Es cierto: el cruce sí se contabiliza aparte.** Lo que el
+comentario no vio es que ese asiento aparte **debita la misma cuenta**. Los dos asientos son
+correctos por separado y se pisan juntos. ⭐ **El defecto no está en ninguna de las dos piezas:
+está en que nadie las miró al mismo tiempo.** Es el mismo modo de falla que el `SELECT *` de los
+`.jrxml` — cada parte defendible, el conjunto roto.
+
+**La corrección, indicada por el usuario y verificada contra los números:** la línea de pensión
+del devengo (aux1=1/2 de la plantilla 35) debe ir por **`remanente`**, no por el total. En este
+caso 589,17 − 481,78 = **107,39**. Cuadra por los dos lados:
+
+- `2.1.02.25.01` recibe 107,39 (devengo) + 481,78 (cruce) = **589,17**, la pensión exacta.
+- `2.3.01.10.03` queda en **107,39** — lo único realmente exigible en dinero. Lo cruzado no es
+  pasivo: se fue al préstamo.
+
+⭐ **H41 y H43 SÍ eran el mismo defecto, y el mismo valor resuelve los dos:** `remanente` en la
+línea de pensión del devengo, y `remanente` en el desglose de la orden. Y encaja con la plantilla
+35: el pago debitará `2.3.01.10.03` por 107,39 contra banco, cerrando exactamente lo que el
+devengo dejó abierto. **Las tres piezas cierran con el mismo número** — la confirmación más fuerte
+de que el diseño es correcto.
+
+⚠️ **Al implementar, no tocar la línea de seguro** (aux1=3/4, contrapartida `2.3.90.90.06`): esa
+está bien. Verificar que `remanente = pensión − cruce − seguro` y que **remanente + cruce + seguro
+= pensión completa**, sin sobrar ni faltar un centavo. Si no cierra exacto, hay un cuarto destino
+que no estamos viendo.
+
+**Consecuencia sobre el pasado:** hay contabilidad **mal emitida**, no solo faltante — 181
+devengos con la cuenta individual sobredebitada. Eso descarta el asiento manual de regularización
+como salida (regularizar lo que falta no arregla lo que sobra) y refuerza el reverso.
+**Pregunta abierta y decisiva: ¿el contra-movimiento de `sincronizarPagos` reversa el devengo, o
+solo el cruce?** Si solo el cruce, el devengo inflado sobrevive al reverso.
+
+⛔ **Y `omen-saa-2` acotó esa pregunta a una sola posibilidad de su lado: cero.**
+`revertirPagoConfirmado` anula **el asiento que cuelga del pago** (`PGTRASNT`) y su
+`MovimientoBanco`, nada más. El devengo lo emitió `crd` y **no cuelga de ningún pago de CXP**:
+ellos no saben que existe y no tienen forma de alcanzarlo. Textual:
+
+> «Revertir los 181 pagos es, contablemente, **una operación nula**. Lo único que hace es liberar
+> el estado para que puedan regenerar. El descuadre de 1.070,95 sobre 589,17 lo tienen que
+> limpiar ustedes, sí o sí, por su lado. El reverso les habilita el camino; no les arregla el
+> saldo.»
+
+⇒ **El reverso NO limpia el devengo inflado.** Los 181 pagos no tienen asiento, así que su reverso
+no mueve una línea contable. **El único de los 182 donde el reverso hace trabajo contable real es
+el del seguro.** Limpiar los 181 devengos es trabajo nuestro, pase lo que pase con el reverso.
+
+##### La lección transversal, que vale más que el defecto
+
+> **Los dos asientos son correctos por separado y se pisan juntos: nadie los había mirado al mismo
+> tiempo. No falló ninguna revisión — falló que las dos revisiones fueron por separado.**
+
+`omen-saa-2` reportó que venían encontrando la misma familia de fallas todo el día desde su lado,
+con esta formulación complementaria: *«cuando un valor puede llegar por dos caminos, o los
+comparás o derivás uno del otro; lo que no funciona es el punto medio»*. Es además el mismo modo
+de falla que el `SELECT *` de los `.jrxml` documentado en `CLAUDE.md`: cada parte defendible, el
+conjunto roto.
+
+#### H42 — causa raíz real: la mora nunca se recalcula a la fecha del pago
+
+La primera pista (`regularizarPrestamoSiSinMora` con `LocalDate.now()` clavado) **era un defecto
+real pero distinto**: regulariza el *estado* del préstamo, no el monto contabilizado. El que causó
+lo que vio el usuario es otro.
+
+`pagarConAportes` → `aplicarPago` → `aplicarPagoACuota` → `calcularSaldosRealesCuota`
+(`MotorPagoPrestamoServiceImpl`) **nunca recalcula la mora a la fecha del cruce**: solo lee
+`DetallePrestamo.getMora()`, un campo **ya persistido** por el proceso de mora con **su** fecha de
+corte. El mecanismo correcto existe —`recalcularMoraALaFecha` → `calcularMoraCuota(cuota,
+tasaDiaria, fecha)`, que recibe la fecha y no usa `now()`— pero **solo lo llaman la precancelación
+y el acuerdo de condonación**.
+
+**Agravante:** el timer automático de mora está **desactivado desde el 2026-08-31** a pedido del
+usuario. Cualquier corrida manual sin `?fecha=` dejó `DTPRMRAA` calculado a fecha de septiembre, y
+de ahí quedó congelado.
+
+⚠️ **Blast radius mucho mayor que jubilados:** `aplicarPagoACuota`/`calcularSaldosRealesCuota` los
+usa **cualquier pago normal de cuota**. Es decir que **cualquier pago de préstamo hecho con fecha
+distinta a la del último cálculo de mora está cobrando la mora equivocada, hoy, en producción**.
+No es exclusivo del proceso de jubilados. **Avisado a `lap-saa-1` el 2026-09-05** por estar fuera
+de nuestro alcance asignado y tocar un archivo que ellos vienen mirando.
 
 #### H44 — cerrado: no es defecto, es un paso de operación
 
