@@ -2,7 +2,6 @@ package com.saa.ejb.crd.serviceImpl;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -65,7 +64,6 @@ import com.saa.rubros.EstadoPrestamo;
 import com.saa.rubros.ModuloSistema;
 import com.saa.rubros.PlantillasCredito;
 import com.saa.rubros.TipoAsientos;
-import com.saa.rubros.TipoCarteraBanda;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -731,9 +729,20 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
                     continue;
                 }
                 LocalDate vencimiento = cuota.getFechaVencimiento().toLocalDate();
-                long dias = Math.max(1, ChronoUnit.DAYS.between(vencimiento, fecha));
+                // 2026-09-05, corregido — decisión del usuario: "cada cuota se clasifica por su
+                // propia banda". Antes esta línea forzaba VENCIDO para TODA cuota que el
+                // capital condonado alcanzara a tocar, sin mirar su fecha — un defecto, no una
+                // decisión de negocio: pendientes (más arriba,
+                // selectCuotasPendientesByPrestamoOrdenadas) trae cuotas vencidas Y FUTURAS
+                // (filtra solo por estado, sin corte de fecha), y una condonación grande sí
+                // llega a tocar cuotas futuras. Con VENCIDO fijo, esas caían en banda 1 de
+                // vencidos vía Math.max(1, negativo) — en silencio, sin error. Se delega en
+                // ContabilizacionIndividualCreditoService#tipoCarteraYDias, la definición de
+                // referencia (mismo criterio ya usado en CierreCarteraServiceImpl.distribuye):
+                // NO reimplementar acá.
+                long[] tipoYDias = contabilizacionIndividualCreditoService.tipoCarteraYDias(vencimiento, fecha);
                 ResultadoClasificacionBanda resultado = clasificadorBandaService.clasificar(
-                        producto.getCodigo(), idEmpresa, (long) TipoCarteraBanda.VENCIDO, dias, fecha);
+                        producto.getCodigo(), idEmpresa, tipoYDias[0], tipoYDias[1], fecha);
                 BandaProductoDetalle banda = resultado.getBanda();
                 String clave = producto.getCodigo() + "|" + banda.getNumero();
                 LineaBandaCondonada acumulada = bandas.get(clave);
