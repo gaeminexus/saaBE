@@ -61,6 +61,33 @@ el mismo argumento del neteo. La segunda importa más de lo que parece: **una pr
 llevar además cuotas ya vencidas, que sí estaban abiertas** — por eso el §3.2 exige el cruce por
 fecha y no alcanza con `saldoOtros > 0`.
 
+### 3.0bis ⛔ El CRUCE DE VALORES no abre nada — decisión del usuario, 2026-09-04
+
+**Un cruce de valores solo (`pagarConAportes`) NO genera apertura extraordinaria.** Corrige el
+enunciado original del pedido, que decía *«el capital por vencer que se está pagando o cruzando»*.
+
+**Verificado: hoy ya queda excluido, y por dos mecanismos independientes.**
+
+| Mecanismo | Por qué excluye al cruce |
+|---|---|
+| El guard `saldoOtros > 0` | `pagarConAportes` **nunca llama a `setSaldoOtros`**: paga por la cascada normal, con `capitalPagado`. Sus `PagoPrestamo` tienen `saldoOtros = 0` |
+| Las ramas por tipo | El evento del cruce es `TIPO_PAGO_APORTES` (`"PAGO_APORTES"`). `capitalFuturoPosteriorACorte` sólo tiene rama para `ABONO_CAPITAL` y `PRECANCELACION` |
+
+Y la contabilidad del cruce (`contabilizarPagoConAportes`) no llama a la apertura extraordinaria en
+ningún punto.
+
+⛔ **Esto se documenta porque hoy es correcto por construcción, no por una regla escrita — y eso es
+frágil.** Quien vea que `PAGO_APORTES` no tiene rama puede leerlo como un olvido y "completarlo".
+**No es un olvido: es el requisito.** Si un cruce abriera valores, estaría abriendo capital que no
+se prepagó — el cruce liquida deuda exigible con saldos del propio socio, no adelanta capital futuro.
+
+**Regla para quien toque esto: no agregar una rama `PAGO_APORTES` a
+`capitalFuturoPosteriorACorte`, ni llamar a la apertura desde `contabilizarPagoConAportes`.**
+
+*(Caso distinto y no cubierto por esta exclusión: una precancelación o un abono **pagados con
+aportes**. Ahí el hecho sigue siendo precancelación o abono —el tipo del evento lo dice— y sí abre.
+Lo que no abre es el cruce **como operación propia**.)*
+
 ### 3.1 Por qué NO es "todo el capital prepagado"
 
 **Decisión (A) del usuario, coincidida con el árbitro de `omen-saa-1` el 2026-09-04.** La parte del prepago que
