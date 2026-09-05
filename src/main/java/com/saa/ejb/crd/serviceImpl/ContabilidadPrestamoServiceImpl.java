@@ -315,10 +315,22 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
      * (supuesto declarado del árbitro, §9.4 del diseño; si es incorrecto, es una línea de
      * cambio, no un rediseño).</p>
      *
-     * <p><b>Guardas — nunca bloquean la operación:</b> sin corrida de cierre viva para el
-     * período de {@code fechaCorte}, no se agrega nada (nada estaba abierto, con traza). Monto
-     * resultante $0 (o negativo por redondeo), no se agrega nada (un par de líneas en cero es
-     * ruido).</p>
+     * <p><b>2026-09-05, corregido — la corrida que ABRE un mes vive registrada bajo el mes
+     * ANTERIOR (el que cerró).</b> {@code CierreCarteraServiceImpl.ejecutar} graba
+     * {@code corrida.anio/mes} como el período que CIERRA, pero la apertura que ese mismo
+     * proceso genera corresponde al mes SIGUIENTE ({@code fechaProceso}). Por eso el corte se
+     * busca con {@code selectUltimaEjecutadaAntesDe(idEmpresa, año, mes de fechaCorte)} —
+     * última corrida EJECUTADA antes del período de la operación, ya resuelve el cruce de año —
+     * y el corte de esa apertura sale de {@code getFechaProceso()} (el 01 del mes abierto)
+     * llevado a su último día, NUNCA de {@code getFechaCorte()} (el corte del CIERRE del mes
+     * anterior, un mes antes de lo que corresponde) ni derivado de {@code fechaCorte} de esta
+     * operación (dos formas de derivar el mismo dato es la trampa que este proyecto viene
+     * pagando caro).</p>
+     *
+     * <p><b>Guardas — nunca bloquean la operación:</b> sin corrida ejecutada previa al período
+     * de {@code fechaCorte}, no se agrega nada (no se encontró qué apertura cerrar, con traza).
+     * Monto resultante $0 (o negativo por redondeo), no se agrega nada (un par de líneas en
+     * cero es ruido).</p>
      *
      * @param lineas                 la lista de líneas del asiento en construcción — se le
      *                               agregan las dos nuevas al final, si corresponde
@@ -335,14 +347,22 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
             String descripcionOperacion) throws Throwable {
         Long anio = Long.valueOf(fechaCorte.getYear());
         Long mes = Long.valueOf(fechaCorte.getMonthValue());
-        CorridaCierreCartera corridaViva = corridaCierreCarteraDaoService.selectVivaByPeriodo(idEmpresa, anio, mes);
-        if (corridaViva == null || corridaViva.getFechaCorte() == null) {
+        // La corrida que abrió el mes de esta operación es la que se EJECUTÓ el mes anterior
+        // (la que lo cerró) — nunca la "corrida viva del mes de la operación", que no existe.
+        CorridaCierreCartera corrida = corridaCierreCarteraDaoService.selectUltimaEjecutadaAntesDe(idEmpresa, anio,
+                mes);
+        if (corrida == null || corrida.getFechaProceso() == null) {
             System.out.println("ContabilidadPrestamoService.agregaCierreAperturaCaminoDirecto - "
-                    + descripcionOperacion + ": no hay corrida de cierre de cartera viva para " + mes + "/"
-                    + anio + " en empresa " + idEmpresa + "; no se cierra la apertura (nada estaba abierto).");
+                    + descripcionOperacion + ": no se encontró la corrida de cierre de cartera que abrió " + mes
+                    + "/" + anio + " en empresa " + idEmpresa + "; no se cierra la apertura (no se encontró qué"
+                    + " apertura cerrar).");
             return;
         }
-        LocalDate fechaCorteApertura = corridaViva.getFechaCorte();
+        // fechaProceso es el 01 del mes que esa corrida abrió; el corte de ESA apertura es su
+        // último día — NUNCA corrida.getFechaCorte() (eso es el corte del CIERRE del mes
+        // anterior, un mes antes de lo que corresponde).
+        LocalDate fechaProceso = corrida.getFechaProceso();
+        LocalDate fechaCorteApertura = fechaProceso.withDayOfMonth(fechaProceso.lengthOfMonth());
 
         double capitalFuturo = contabilizacionIndividualCreditoService.capitalFuturoPosteriorACorte(
                 pagos, fechaCorteApertura, descripcionOperacion);
