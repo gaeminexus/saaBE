@@ -494,8 +494,8 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         // prevuelo no simula mes a mes, esta es la forma agregada de la misma regla: cuando no
         // hay tope, da idéntico resultado que sumar el nominal de cada mes completo (la razón
         // 280:20 se preserva linealmente), y cuando SÍ hay tope (por saldo o por falta de
-        // certificado — acá `total` ya excluye el remanente retenido sin certificado, a
-        // diferencia de la corrida real), garantiza totalPension + totalSeguro == total
+        // certificado — `total` excluye el remanente retenido sin certificado, y desde el
+        // 2026-09-04 la corrida real hace lo mismo), garantiza totalPension + totalSeguro == total
         // exactamente, cerrando la inconsistencia que se había reportado.
         //
         // Ampliación 2026-09-04: el tramo que lleva las DOS cuentas en proporción es el cruce
