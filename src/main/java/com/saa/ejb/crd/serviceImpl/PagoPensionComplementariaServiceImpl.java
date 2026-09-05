@@ -60,6 +60,7 @@ import com.saa.model.crd.Prestamo;
 import com.saa.model.crd.TipoAporte;
 import com.saa.model.crd.ValorPagoPensionComplementaria;
 import com.saa.model.cxp.PagoProgramado;
+import com.saa.model.cxp.ProductoPago;
 import com.saa.rubros.CrdTipoMovimientoAporte;
 import com.saa.rubros.Estado;
 import com.saa.rubros.EstadoCuotaPrestamo;
@@ -106,6 +107,14 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
      */
     private static final String RUC_PROVEEDOR_SEGURO_MEDICO = "1768153530001";
 
+    /**
+     * {@code PGS.PRDP.ID} del producto de pago «SEGURO POR PAGAR JUBILADOS» que clasifica la
+     * línea del desglose contable del pago al proveedor — creado por el usuario en producción
+     * el 2026-09-05, apunta al mismo plan de cuenta {@code 2.3.90.90.06} que acredita el
+     * devengo (ver {@link #verificarCuentaProductoPagoSeguroMedico}).
+     */
+    private static final Long ID_PRODUCTO_PAGO_SEGURO_JUBILADOS = 516L;
+
     @EJB
     private PagoPensionComplementariaDaoService pagoPensionDaoService;
 
@@ -150,6 +159,16 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
      */
     @EJB
     private TitularDaoService titularDaoService;
+
+    /**
+     * @EJB a cxp, SOLO LECTURA — nunca se modifica nada de cxp desde acá. Se usa únicamente
+     * para leer la cuenta contable configurada del producto de pago del seguro médico y
+     * compararla contra la de la plantilla (ver {@link #verificarCuentaProductoPagoSeguroMedico}).
+     * Mismo patrón que {@link #pagoProgramadoService}/{@link #titularDaoService}: precedente
+     * ya establecido de inyectar servicios de otro módulo con @EJB sin tocar su código.
+     */
+    @EJB
+    private com.saa.ejb.cxp.service.ProductoPagoService productoPagoService;
 
     /**
      * PLAN-PAGO-JUBILADOS.md §3: el cruce contra préstamos se ORQUESTA acá, no se reimplementa
@@ -627,6 +646,13 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         // en la restricción de unicidad de la base que confirmó el usuario. Si esa restricción
         // no fuera sobre la columna que se asume, este código no lo va a detectar — reportado
         // explícitamente, no oculto.
+
+        // ⛔⛔ REGLA NUEVA 2026-09-05: desde que el desglose contable usa el producto de pago
+        // 516, la cuenta que ACREDITA el devengo (plantilla) y la que DEBE el pago (producto)
+        // son DOS fuentes de verdad para la misma cuenta — si alguien cambia una sin la otra,
+        // quedan descuadradas en silencio. Mismo patrón que el chequeo del proveedor: se
+        // verifica UNA vez, al principio, antes de tocar el primer jubilado.
+        verificarCuentaProductoPagoSeguroMedico(idEmpresa);
 
         ResultadoGeneracionPagosPension resumen = new ResultadoGeneracionPagosPension();
         resumen.setAnio(anio);
@@ -1324,6 +1350,69 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
     }
 
     /**
+     * ⛔⛔ Guard 2026-09-05, pedido explícito del árbitro tras definirse
+     * {@link #ID_PRODUCTO_PAGO_SEGURO_JUBILADOS}: la cuenta que ACREDITA el devengo del seguro
+     * (plantilla alterno {@code PAGO_PENSION_COMPLEMENTARIA}, aux1=4 — mismo camino que
+     * {@link #generarAsientoDevengoPension}/{@link #lineaDevengo}) y la cuenta que DEBE el pago
+     * al proveedor (grupo del producto {@link #ID_PRODUCTO_PAGO_SEGURO_JUBILADOS}, resuelta por
+     * {@code cxp} al confirmar el pago) son DOS fuentes de verdad para lo que debería ser LA
+     * MISMA cuenta ({@code 2.3.90.90.06}). Si alguien cambia una sin la otra —p. ej. re-parametriza
+     * la plantilla— el devengo se muda de cuenta, el pago sigue cerrando la vieja, y nada lo
+     * detecta hasta una conciliación manual meses después.
+     *
+     * Se compara por {@code PlanCuenta.codigo} (PK, {@code Long}) — más robusto que comparar el
+     * texto de {@code cuentaContable}. Corre UNA vez al principio de {@code generarPagosDelMes},
+     * antes de tocar el primer jubilado: si difieren, {@link IncomeException} con las dos
+     * cuentas en el mensaje y la corrida no escribe nada.
+     *
+     * Solo LECTURA de {@code cxp} ({@link #productoPagoService}) — no se modifica nada de ese
+     * módulo para esta verificación.
+     */
+    private void verificarCuentaProductoPagoSeguroMedico(Long idEmpresa) throws Throwable {
+        Long idPlantilla = plantillaService.codigoByAlterno(
+            PlantillasCredito.PAGO_PENSION_COMPLEMENTARIA, idEmpresa);
+        if (idPlantilla == null) {
+            throw new IncomeException("No existe la plantilla contable alterno "
+                + PlantillasCredito.PAGO_PENSION_COMPLEMENTARIA + " (pago mensual de pensión"
+                + " complementaria) para la empresa " + idEmpresa + ". Corra sql/173 antes de"
+                + " generar pagos de pensión.");
+        }
+        DetallePlantilla lineaDevengoSeguro = detallePlantillaDaoService.selectByPlantillaYAuxiliar(idPlantilla, 4);
+        if (lineaDevengoSeguro == null || lineaDevengoSeguro.getPlanCuenta() == null) {
+            throw new IncomeException("La plantilla alterno " + PlantillasCredito.PAGO_PENSION_COMPLEMENTARIA
+                + " no tiene la línea aux1=4 (seguro) — corra sql/173 completo (ver su control"
+                + " D.1, deben salir 4 líneas).");
+        }
+        PlanCuenta cuentaDevengo = lineaDevengoSeguro.getPlanCuenta();
+
+        ProductoPago productoSeguro = productoPagoService.selectById(ID_PRODUCTO_PAGO_SEGURO_JUBILADOS);
+        if (productoSeguro == null) {
+            throw new IncomeException("PRODUCTO_PAGO_SEGURO_NO_ENCONTRADO: no existe el producto de pago "
+                + ID_PRODUCTO_PAGO_SEGURO_JUBILADOS + " (PGS.PRDP) — es el que clasifica el desglose"
+                + " contable del pago al proveedor del seguro médico. No se genera ningún pago de"
+                + " este período sin poder verificar su cuenta.");
+        }
+        if (productoSeguro.getGrupoProducto() == null || productoSeguro.getGrupoProducto().getPlanCuenta() == null) {
+            throw new IncomeException("El producto de pago " + ID_PRODUCTO_PAGO_SEGURO_JUBILADOS
+                + " (PGS.PRDP) no tiene grupo o el grupo no tiene cuenta contable configurada — "
+                + " no se puede verificar que cierre contra la cuenta del devengo.");
+        }
+        PlanCuenta cuentaProducto = productoSeguro.getGrupoProducto().getPlanCuenta();
+
+        if (cuentaDevengo.getCodigo() == null || cuentaProducto.getCodigo() == null
+                || !cuentaDevengo.getCodigo().equals(cuentaProducto.getCodigo())) {
+            throw new IncomeException("CUENTA_SEGURO_DESCUADRADA: la cuenta que ACREDITA el devengo"
+                + " del seguro médico (plantilla alterno " + PlantillasCredito.PAGO_PENSION_COMPLEMENTARIA
+                + " aux1=4: cuenta " + cuentaDevengo.getCodigo() + " - " + cuentaDevengo.getCuentaContable()
+                + " - " + cuentaDevengo.getNombre() + ") no coincide con la cuenta que DEBE el pago al"
+                + " proveedor (producto de pago " + ID_PRODUCTO_PAGO_SEGURO_JUBILADOS + ": cuenta "
+                + cuentaProducto.getCodigo() + " - " + cuentaProducto.getCuentaContable() + " - "
+                + cuentaProducto.getNombre() + "). Alguien cambió una sin la otra. No se genera ningún"
+                + " pago de este período hasta que las dos apunten a la misma cuenta.");
+        }
+    }
+
+    /**
      * §4quater del contrato, decisión del usuario 2026-09-05: UNA sola orden de pago al
      * proveedor del seguro médico por el TOTAL agregado del período — no una por jubilado.
      * {@code idOrigen} es sintético ({@code anio*100+mes}), sin tabla propia — verificado que
@@ -1334,11 +1423,14 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
      * período, no genera un segundo — mismo rol que la {@code UNIQUE} de {@code CRD.PGPC}, pero
      * del lado del proveedor.
      *
-     * ⚠️ {@code desglose = null} A PROPÓSITO: armar el asiento automático necesita un
-     * {@code idProductoPago} (PGS.PRDP) que hoy NO está definido para este caso — investigado y
-     * reportado al árbitro, no adivinado. Consecuencia real: el asiento que DEBITA
-     * {@code 2.3.90.90.06} para cerrarla contra lo que la corrida ACREDITA no sale automático
-     * desde acá; hay que contabilizarlo aparte hasta que se defina ese dato.
+     * Desglose contable (2026-09-05, dato que llegó del usuario): UNA línea al producto de pago
+     * {@link #ID_PRODUCTO_PAGO_SEGURO_JUBILADOS} por el total — con eso CXP arma solo, al
+     * confirmar el pago, la línea DEBE contra la cuenta del grupo de ese producto. Antes de
+     * armar esta línea, {@code generarPagosDelMes} ya corrió
+     * {@link #verificarCuentaProductoPagoSeguroMedico} al principio de la corrida: esa cuenta
+     * tiene que ser la MISMA que ACREDITA el devengo (plantilla alterno 35, aux1=4) — dos
+     * fuentes de verdad para la misma cuenta, y si divergen la corrida ya abortó antes de tocar
+     * el primer jubilado, no acá.
      *
      * @return el código de la orden de pago generada, o {@code null} si no hubo nada que pagar
      *         este período (seguro total $0) o si ya existía una orden vigente para el período
@@ -1370,12 +1462,19 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         String observacion = "Seguro médico jubilados " + mes + "/" + anio + " - "
             + proveedorSeguro.getRazonSocial() + " (RUC " + RUC_PROVEEDOR_SEGURO_MEDICO + ")";
 
+        com.saa.ejb.cxp.service.dto.LineaContablePago lineaSeguro =
+            new com.saa.ejb.cxp.service.dto.LineaContablePago();
+        lineaSeguro.setIdProductoPago(ID_PRODUCTO_PAGO_SEGURO_JUBILADOS);
+        lineaSeguro.setValor(totalSeguroPeriodo);
+        lineaSeguro.setConcepto(observacion);
+        List<com.saa.ejb.cxp.service.dto.LineaContablePago> desglose = new ArrayList<>();
+        desglose.add(lineaSeguro);
+
         try {
             Map<String, Object> respuesta = pagoProgramadoService.registrarPagoDeOrigenExterno(
                 OrigenPagoExterno.CRD_SEGURO_JUBILADOS, idOrigenPeriodo, idEmpresa, null,
                 totalSeguroPeriodo, LocalDate.now().toString(), beneficiario,
-                null, // desglose: ver JavaDoc -- idProductoPago no definido, no se adivina
-                observacion, idUsuario, false, null);
+                desglose, observacion, idUsuario, false, null);
 
             Object valorPago = (respuesta != null) ? respuesta.get("pago") : null;
             if (valorPago == null) {

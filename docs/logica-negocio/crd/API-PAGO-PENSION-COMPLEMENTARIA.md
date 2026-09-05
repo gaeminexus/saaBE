@@ -576,13 +576,26 @@ fuera exactamente sobre esa columna, este código no lo va a detectar.
 - `Long idPagoProveedorSeguro` en `ResultadoGeneracionPagosPension`: el código de
   `PagoProgramado` generado, o `null` si no hubo seguro que pagar ($0) o si ya existía una orden
   vigente para el período.
-- ⚠️ **`desglose = null`, a propósito — sigue pendiente.** Armar el asiento contable automático
-  del lado del pago necesita un `idProductoPago` (`PGS.PRDP`) que hoy no está definido para este
-  caso; se reportó al árbitro en vez de adivinarlo. Consecuencia real: el asiento que DEBE
-  cerrar contra lo que la corrida ACREDITA en `plantillaService.codigoByAlterno(
-  PAGO_PENSION_COMPLEMENTARIA, idEmpresa)` + `detallePlantillaDaoService.selectByPlantillaYAuxiliar(
-  idPlantilla, 4)` **no sale automático** desde esta orden — hay que contabilizarlo aparte hasta
-  que se defina ese dato.
+- **✅ Desglose contable IMPLEMENTADO (2026-09-05, segunda vuelta)** — el usuario creó en
+  producción el producto de pago `idProductoPago = 516` («SEGURO POR PAGAR JUBILADOS»,
+  `PGS.PRDP`), apuntando a `2.3.90.90.06`. Con eso, `generarOrdenPagoProveedorSeguro` arma una
+  `LineaContablePago` (`idProductoPago=516`, `valor=totalSeguroPeriodo`) en vez de `desglose=null`;
+  CXP arma solo la línea DEBE del asiento al confirmar el pago, contra la cuenta del grupo de
+  ese producto.
+- ⛔ **Esto reabrió, en otra forma, el problema que ya se había cerrado**: la cuenta que ACREDITA
+  el devengo (`plantillaService.codigoByAlterno(PAGO_PENSION_COMPLEMENTARIA, idEmpresa)` +
+  `detallePlantillaDaoService.selectByPlantillaYAuxiliar(idPlantilla, 4)`) y la cuenta que DEBE
+  el pago (grupo del producto 516, en `cxp`) quedaron como **dos fuentes de verdad** para la
+  misma cuenta — si alguien reparametriza una sin la otra, quedan descuadradas en silencio, sin
+  ningún error, hasta una conciliación manual meses después.
+- **Guard agregado**: `PagoPensionComplementariaServiceImpl.verificarCuentaProductoPagoSeguroMedico`,
+  llamado UNA vez al principio de `generarPagosDelMes` (antes de tocar el primer jubilado, mismo
+  patrón que el chequeo del proveedor). Resuelve las dos cuentas — `PlanCuenta` de la plantilla
+  y `PlanCuenta` del grupo del producto 516, vía `@EJB ProductoPagoService.selectById(516L)`
+  (`cxp`, **solo lectura**, sin modificar nada de ese módulo — precedente ya establecido con
+  `PagoProgramadoService`/`TitularDaoService`) — y las compara por `PlanCuenta.codigo` (PK,
+  `Long`). Si difieren, `IncomeException` con las dos cuentas (código, número contable y nombre)
+  en el mensaje, **antes de que la corrida escriba nada**.
 
 ---
 
