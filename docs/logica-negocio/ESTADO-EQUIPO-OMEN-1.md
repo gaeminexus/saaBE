@@ -840,17 +840,154 @@ contrato con la cita textual del usuario.
 
 | # | Qué | Dueño | Gravedad |
 |---|---|---|---|
-| **H41** | ⛔ **Al confirmar el pago solo se generó el asiento del SEGURO, no el de cada jubilado.** Los pagos quedarían sin respaldo contable | nuestro + `omen-saa-2` | **máxima** |
+| **H41** | ⛔ **Al confirmar el pago solo se generó el asiento del SEGURO, no el de cada jubilado.** Los pagos quedarían sin respaldo contable. **Causa medida (ver abajo): la orden del jubilado va sin `desglose`** | **nuestro** | **máxima** |
 | **H42** | El cruce toma **fecha de hoy** (`corte: 2026-09-04`) en vez del **fin de mes**, y marca cuotas de agosto como en mora. **Viola D1/§6bis**, que ya estaba cerrada: la cartera va con fin de mes, solo el pago con fecha actual | nuestro | alta |
 | **H43** | Con cruce + dinero, el asiento del pago se hace por **el total de la pensión** en vez de **solo lo transferido**. La parte cruzada ya tiene su propio asiento: contarla dos veces infla el movimiento | nuestro | alta |
-| **H44** | Se generó **una autorización por jubilado**, no una sola por el total. Contradice el requisito cerrado por el usuario | `omen-saa-2` (lote) | media |
-| **H45** | Falta el **asiento de cierre de las cuentas de apertura** del mes. Pendiente de que el usuario aclare si es el mismo mecanismo que rediseña `lap-saa-1` | por definir | por definir |
+| ~~**H44**~~ | ~~Se generó **una autorización por jubilado**, no una sola por el total~~ · ✅ **NO ES DEFECTO — cerrado 2026-09-05.** Es paso de operación, ver abajo | — | — |
+| **H45** | Falta el **asiento de cierre de las cuentas de apertura** del mes. ✅ **Contestado por `lap-saa-1` (ver abajo): sí es el mismo mecanismo, y es un defecto real y medido de nuestro camino** | **nuestro** | alta (se ve al cerrar el mes) |
 
-**Hipótesis sobre H41, planteada a `omen-saa-2` y todavía sin confirmar:** la orden del seguro sí
-generó asiento y las de los jubilados no, y **la única diferencia entre ellas es el `desglose`**
-—la del seguro lo lleva (producto 516), las de jubilados van con `desglose = null`—. Si sin
-desglose CXP no arma el asiento al confirmar, **la devolución de aportes arrastra el mismo
-agujero**, porque usa el mismo patrón. ⚠️ Es hipótesis, no medición.
+#### H41 — confirmado y medido por las dos puntas (2026-09-05)
+
+Se planteó como hipótesis que la única diferencia entre la orden del seguro (que sí generó
+asiento) y las de los jubilados (que no) era el **`desglose`**. Quedó confirmada, y **ninguna de
+las dos puntas es memoria: las dos son lectura de código.**
+
+**Lo que midió `omen-saa-2` (tesorería) de su lado:**
+`contabilizarSegunOrigen` (`PagoProgramadoServiceImpl:2179-2185`) documenta en su propio javadoc
+que **devuelve null si el pago de origen externo no trae desglose**. Es deliberado: el diseño
+asume que el módulo de origen se contabiliza solo — la misma decisión D1 que se tomó con la
+nómina de RRHH. **Su null no es el defecto.**
+
+**Lo que medimos de nuestro lado, que es lo que decide:**
+
+- `PagoPensionComplementariaServiceImpl` invoca `asientoContableService.generarAsiento` en **un
+  solo punto**: `generarAsientoDevengoPension` (:1869, llamado en :1408). Es el asiento de
+  **devengo**, uno por jubilado, emitido en la corrida. **No existe ningún asiento de pago en
+  todo el archivo.**
+- La orden del jubilado se pide en **:1436** con desglose en `null`, y el comentario que dejó
+  nuestro propio equipo ahí lo dice literal:
+  `null, // sin desglose contable — mismo estado que la devolución hoy (§6.5.b)`
+- La orden del seguro arma su `List<LineaContablePago>` en **:1690-1691** y la manda en **:1697**.
+
+⇒ **La respuesta a la pregunta decisiva de tesorería —«¿`crd` genera su propio asiento del pago,
+por su lado?»— es NO.** Hay agujero, y es nuestro. El devengo abre la cuenta de pensiones por
+pagar y **nada la cierra**: el pasivo queda abierto y el banco sin acreditar, sobre la corrida de
+~$113.000 que ya salió.
+
+**Salida elegida, de las dos excluyentes que planteó tesorería:** mandar `desglose` en la orden
+del jubilado. **No** contabilizar de nuestro lado al estilo RRHH. Si se hacen las dos, **el
+asiento sale duplicado**. Cuatro razones, la última aportada por tesorería: reusa el camino ya
+probado en producción este mes con el seguro; emite el asiento en el momento real de la
+confirmación del pago, que es la fecha contable correcta; evita que `crd` tenga dos caminos
+contables distintos para dos órdenes del mismo proceso; y **emitir el asiento en la confirmación
+es lo que hace el resto del sistema** — RRHH es la excepción por decisión explícita de su usuario,
+no el patrón.
+
+**⚠️ Qué valor lleva la línea de desglose — dato de `omen-saa-1-be`, y evita reintroducir H43:**
+el valor que hoy viaja en la orden del jubilado (`generarOrdenPagoPension`) es **`remanente`**
+(`remanenteMes = ollaTrasSeguro`, ya neto de cruce y de seguro desde el cambio de «olla
+compartida»). O sea que **la orden ya sale por el valor transferido, no por el total**. Pero eso
+es distinto de `pago.getValorPension()`, que es el **nominal mensual completo** y difiere cuando
+hay cruce parcial. **La línea de desglose tiene que llevar `remanente`, el mismo valor que ya
+viaja como `valor` de la orden — nunca un campo del PGPC.** Armarla con `getValorPension()`
+reintroduce H43 exacto.
+
+##### (a) Cuántos asientos: uno por pago, siempre — respuesta medida de tesorería
+
+Listaron los once llamadores de `contabilizarSegunOrigen` (:333, 383, 545, 588, 741, 784, 1028,
+1281, 1311, 1666, 1771). **Todos reciben UN `pago`**; los de 1281/1311/1666/1771 están dentro de
+loops por pago. **No existe ninguna firma que tome un lote ni una lista.**
+
+⇒ **Nuestra corrida generaría 181 asientos de pago, uno por jubilado.**
+
+Y hay un precedente que contesta si eso es lo esperado, mejor que una opinión: cuando se aprueba
+con `agruparEnUnCheque=true`, **un solo cheque respalda N pagos y el asiento se sigue emitiendo
+por pago**; lo único que se agrupa es el `MovimientoBanco`, que sale una vez por el total
+(javadoc :2163-2168 y `docs/logica-negocio/tsr/DISENO-UN-CHEQUE-VARIOS-PAGOS.md` §5.3.3).
+**El diseño ya enfrentó esta misma disyuntiva y eligió el asiento por pago aun con instrumento
+único.** No es descuido: es la decisión tomada. Pedir el agrupado sería un frente nuevo que la
+contradice.
+
+##### (b) Lo ya pagado NO se puede reprocesar — y la razón es dura
+
+`contabilizarSegunOrigen` arma el asiento **a partir de las filas de `PGS.DPGT`** (javadoc
+:2394-2406). **Nuestros 181 pagos no tienen filas en DPGT**, porque mandamos `desglose = null`.
+
+⛔ **Volver a disparar la contabilización no sirve: devolvería `null` otra vez, por la misma
+razón que la primera. No es que se haya perdido el resultado — el dato de entrada no existe.**
+
+Los tres caminos reales, según tesorería:
+
+1. **Backfill de `PGS.DPGT` + contabilizar.** Hoy **no existe endpoint que contabilice un pago ya
+   confirmado**: habría que construirlo, y decidir con qué fecha contable salen los asientos.
+   **Necesita código de `tsr`, y eso lo autoriza el usuario de ellos, no el árbitro.**
+2. **Asiento manual de regularización**, hecho por contabilidad. Cero código. Puede ser **uno solo
+   por el total**, no 181 — el detalle por jubilado ya está en el devengo.
+3. **Revertir y volver a confirmar.** ⛔ **Desaconsejado por tesorería:** la plata ya salió al
+   banco; revertir en el sistema un pago ya ejecutado ensucia la conciliación bancaria y obliga a
+   deshacer el `MovimientoBanco` ya emitido.
+
+**Lectura de tesorería (lectura, no indicación):** la **2** para lo ya pagado, y el **desglose**
+para las corridas de acá en adelante. **Son dos decisiones separadas: arreglar el futuro no
+arregla el pasado, y no hace falta que la misma solución cubra las dos.** ⇒ **Decisión del
+usuario.**
+
+**La devolución de aportes arrastra el mismo agujero, y también está medido:** el único asiento de
+`DevolucionAporteServiceImpl` es `generarAsientoReclasificacion` (:1062, llamado en :591) —
+reclasificación, **no pago**. El comentario del §6.5.b citado arriba lo dice. Anotado como
+pendiente aparte de los dos lados; **no se toca en esta urgencia de jubilados**.
+
+#### H44 — cerrado: no es defecto, es un paso de operación
+
+`omen-saa-2` lo verificó: `aprobar(List<Long> idsPagos, ...)` (`PagoProgramadoServiceImpl:1133-1380`,
+`POST /pgtr/aprobar`) **aprueba N pagos en un solo acto**, y `generarLote` (:1487, crea el
+`LotePago` en :1537) es una operación aparte. La pantalla de aprobación soporta **selección
+múltiple** (columna `sel`).
+
+> «Si salió una autorización por jubilado, es porque se aprobaron de a uno.»
+
+**No hay nada que corregir en el código.** El operador debe marcar **todos** los pagos del período
+y darle aprobar **una sola vez**. Queda como instrucción de operación.
+
+#### H45 — contestado por `lap-saa-1`: sí es el mismo mecanismo, y es un defecto real nuestro
+
+El usuario de `lap-saa-1` les pidió explicárnoslo porque nuestro cruce tiene que aplicar el mismo
+concepto. Lo que informan, verificado por ellos en código:
+
+**El concepto.** A principio de mes la apertura de cartera (`armaApertura`, sub-proceso ③) manda a
+contabilidad todo lo que se espera cobrar: `D 1.4.05.10 (préstamos por cobrar) → H 2.3.02.10
+(préstamos por aplicar)`. **`2.3.02.10` queda abierta con lo esperado, y cada cobro la va
+cerrando**; a fin de mes `armaNeteo` reversa lo que quedó sin cobrar. En el circuito normal ese
+cierre lo hace `generarAsientoDefinitivo` con `lineasAplicacionPorAplicar`.
+
+**🔴 El defecto.** Verificaron que **`contabilizarPagoConAportes` NO toca las cuentas de apertura**
+— cero menciones de `lineasAplicacionPorAplicar` ni de `PRESTAMOS_POR_APLICAR`. Solo arma
+`D cuentas de aporte consumido → H bandas`. **Y nuestra corrida entra justo por ahí:**
+`PagoPensionComplementariaServiceImpl:1137` llama a `procesoPagoPrestamoService.pagarConAportes(...)`
+**directo**, sin pasar por `procesarCobro`, y sin setear `idCobroCredito`.
+
+**Consecuencia con nuestros números:** las cuotas cruzadas **sí se cobraron**, pero `2.3.02.10` no
+se entera. A fin de mes `armaNeteo` reversará como «no cobrado» un universo que ya no las incluye
+—`selectCobrable...` las ve pagadas— y **la cuenta de apertura queda descuadrada por el total
+cruzado (~$16.231,60)**. No rompe la corrida ni afecta a los jubilados: **aparece al cerrar el
+mes**, lejos de la operación que lo causó.
+
+**La regla a aplicar:** del cruce, la parte que paga **cuotas vencidas y la cuota del mes SÍ debe
+cerrar `2.3.02.10`**. Si alguna vez alcanzara **capital de cuotas posteriores al corte**, ese
+tramo **no toca la apertura** — ni la abre ni la cierra, porque nunca se abrió. El corte que
+separa las dos cosas es **`DTPRFCVN <= fechaCorteApertura`** de la corrida de cierre viva. Todo
+escrito en `docs/logica-negocio/crd/DISENO-CIERRE-APERTURA-SOLO-LO-ABIERTO.md` (§2 cuentas reales
+de producción, §3 circuito completo).
+
+**Molde de referencia:** en `procesarCobro` calculan el tramo futuro una sola vez
+(`calcularCapitalFuturoDelCobro`) y lo pasan a los asientos 2 y 3, para que las dos restas salgan
+del mismo número. Commits `d033d5f2`, `2ffaccac`, `ccd774fd` — ⚠️ **revisados pero sin compilar ni
+ejecutar**: referencia de diseño, no código probado.
+
+**Ofrecimiento de `lap-saa-1`:** cuando cierre nuestra corrida pueden tomarlo ellos —
+`contabilizarPagoConAportes` está en `ContabilidadPrestamoServiceImpl`, que ya vienen tocando, y
+va en la misma familia que el guard de `esTipoAporteContabilizable` que nos deben. **Decisión del
+usuario.**
 
 **Instrucción dada al agente BE:** mirar H41, H42 y H43 **juntos** antes de proponer nada. Los
 tres tocan el asiento del momento del pago; si hay una causa raíz común, va un arreglo y no tres
