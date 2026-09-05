@@ -846,7 +846,7 @@ contrato con la cita textual del usuario.
 | ~~**H44**~~ | ~~Se generó **una autorización por jubilado**, no una sola por el total~~ · ✅ **NO ES DEFECTO — cerrado 2026-09-05.** Es paso de operación, ver abajo | — | — |
 | **H45** | Falta el **asiento de cierre de las cuentas de apertura** del mes. ✅ **Contestado por `lap-saa-1` (ver abajo): sí es el mismo mecanismo, y es un defecto real y medido de nuestro camino.** ✅ **Autorizado por el usuario el 2026-09-05: lo toma `lap-saa-1`** | `lap-saa-1` | alta (se ve al cerrar el mes) |
 | **H46** | ⛔⛔ **NO reportado por el usuario — hallado por el agente BE.** Tras revertir, reintentar la corrida diría **«al día» y no pagaría a nadie**, sin lanzar error: el negativo de `CRD.APRT` sobrevive al reverso y envenena el ancla. **Bloquea el camino de «revertir y regenerar»** | **nuestro** | **máxima** |
-| **H47** | La mora **nunca se recalcula a la fecha del pago** (`pagarConAportes` solo lee el campo persistido). **Afecta a cualquier pago de préstamo, no solo jubilados** — está cobrando mora equivocada en producción hoy. Agravado por el timer de mora apagado desde el 2026-08-31. ✅ **Lo toma `lap-saa-1`** | `lap-saa-1` | alta, y fuera de nuestro alcance |
+| ~~**H47**~~ | ~~La mora nunca se recalcula a la fecha del pago~~ · ⛔ **NO ES DEFECTO — la mora está congelada A PROPÓSITO.** Ver abajo: **no lo "arreglen"** | — | — |
 
 #### H41 — confirmado y medido por las dos puntas (2026-09-05)
 
@@ -1123,6 +1123,47 @@ inflados se reversan con asiento** — borrar filas de `CRD`/`PGS` no toca los l
 **Preguntas abiertas al usuario, y la primera decide la viabilidad del rollback:**
 (1) ¿alguien más tocó esos jubilados, sus préstamos o sus aportes desde la corrida?
 (2) ¿hay respaldo de la base previo a la corrida?
+
+### ⛔ H47 — la mora congelada NO es un defecto. NO LA "ARREGLEN"
+
+**Se reportó como defecto a `lap-saa-1` el 2026-09-05 y su usuario lo devolvió.** Textual:
+
+> *«dejemos la mora como está. Está desactivada de forma consciente y deliberada porque se sigue
+> actualizando pagos de agosto con fecha de fin de agosto y no queremos que se genere mora por las
+> cuotas todavía»*.
+
+**El análisis técnico era correcto:** `aplicarPagoACuota` sí lee `DetallePrestamo.getMora()`
+persistido en vez de llamar a `recalcularMoraALaFecha`, y ése es el mecanismo que congela el
+valor. Lo que estaba equivocado era la conclusión de que había que arreglarlo. El contexto que
+faltaba: **están cuadrando agosto todavía**, y recalcular a la fecha del pago haría aparecer mora
+sobre cuotas que están cerrando con fecha de fin de agosto a propósito.
+
+**Se reactiva cuando el usuario de `lap-saa-1` avise. No hay fecha** — depende del cuadre. Ellos
+notifican.
+
+⭐ **Por qué queda escrito acá y no solo en el tablero de ellos: desde afuera se ve idéntico a un
+defecto.** Sin este registro, el próximo que lo mire —de cualquiera de los dos equipos— lo
+"corrige" y empieza a cobrar mora sobre agosto. Es el mismo patrón que el `PAGO_APORTES` sin rama:
+**una ausencia deliberada es indistinguible de un olvido si nadie la escribe.** Van dos casos en
+dos días; parece una categoría propia y no una coincidencia.
+
+#### ⚠️ Pero esto NO cierra la novedad 1 del usuario — queda una pregunta abierta
+
+Que la mora esté congelada a propósito explica por qué **no se debe recalcular**. No explica lo
+que el usuario reportó. Mirando el asiento del cruce (`CRE-2026-08-0167`) **no hay ninguna línea
+de mora**: solo banda 1 (454,16), interés ordinario (24,38) y seguro de desgravamen (3,24).
+
+⇒ **Puede que la queja no fuera por un monto de mora cobrado, sino por la BANDA.** La cuota cayó
+en `1.3.04.05 — DE 1 A 30 DIAS`, que es la banda de vencido de 1 a 30 días. Si el cruce se hubiera
+hecho al 31/08 en vez de al 04/09, esa misma cuota podría clasificar en otra banda —o como
+vigente—. El usuario lo dijo así: *«tomó la fecha de cruce de septiembre y tomó como que la cuota
+estaba en mora, cuando en realidad el cruce debió hacerse como que se hubiera cruzado el fin de
+mes»*. **«Como que estaba en mora» puede ser la banda, no un cargo.**
+
+**Pendiente de verificar:** de dónde sale la banda del asiento del cruce, y si depende de la fecha
+de cruce o de la de vencimiento. Si depende de la fecha de cruce, la novedad 1 **sigue viva** y es
+independiente de la mora congelada — y se arregla pasando fin de mes, sin tocar el cálculo de mora
+que el usuario de `lap-saa-1` quiere quieto. **Las dos cosas no se contradicen.**
 
 #### H44 — cerrado: no es defecto, es un paso de operación
 
