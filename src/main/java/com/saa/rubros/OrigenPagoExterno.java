@@ -76,4 +76,23 @@ public interface OrigenPagoExterno {
 	 */
 	public static final String CRD_DESEMBOLSO_PRESTAMO = "CRD_DESEMBOLSO_PRESTAMO";
 
+	/**
+	 * Pago AGREGADO (una sola orden, no una por jubilado) del seguro médico de todos los
+	 * jubilados de un período al proveedor titular del RUC
+	 * (ver {@code PagoPensionComplementariaServiceImpl.RUC_PROVEEDOR_SEGURO_MEDICO}), decisión
+	 * del usuario 2026-09-05.
+	 *
+	 * PGTRIDOR lleva un valor SINTÉTICO, {@code anio * 100 + mes} (agosto 2026 → 202608) — NO
+	 * es una FK a ninguna tabla. Decisión del árbitro: abrir una tabla nueva para anclar esto
+	 * requeriría DDL y autorización del usuario, y no hace falta — un período ya es una clave
+	 * natural, y {@code (origen, idOrigen)} juntos sirven como control de idempotencia (mismo
+	 * rol que {@code UNIQUE(ENTDCDGO, PGPCANNO, PGPCMESS)} en {@code CRD.PGPC}, pero del lado
+	 * del proveedor): verificado que NINGÚN código existente dereferencia {@code idOrigen}
+	 * contra una tabla de forma genérica según el valor de {@code origen} — cada consumidor
+	 * (ver {@code TSR_CAJA_CHICA}/{@code RHH_ANTICIPO_EMPLEADO} en
+	 * {@code PagoProgramadoServiceImpl}) exige explícitamente SU PROPIO origen antes de tocar
+	 * {@code idOrigen}, así que un origen nuevo no puede ser mal interpretado por accidente.
+	 */
+	public static final String CRD_SEGURO_JUBILADOS = "CRD_SEGURO_JUBILADOS";
+
 }

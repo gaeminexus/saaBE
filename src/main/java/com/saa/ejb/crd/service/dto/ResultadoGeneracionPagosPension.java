@@ -43,6 +43,15 @@ public class ResultadoGeneracionPagosPension {
      */
     private double totalSeguroGeneral;
 
+    /**
+     * §4quater del contrato (2026-09-05): código de la orden de pago AGREGADA al proveedor del
+     * seguro médico por {@link #totalSeguroGeneral} de este período —
+     * {@code PagoProgramado.codigo}, {@code OrigenPagoExterno.CRD_SEGURO_JUBILADOS}. {@code null}
+     * si no hubo seguro que pagar ($0) o si ya existía una orden vigente para el período
+     * (idempotencia por {@code (origen, idOrigen)}).
+     */
+    private Long idPagoProveedorSeguro;
+
     /** Un renglón por jubilado evaluado (generado, ya existía, o con error). */
     private List<DetallePagoPension> detalle = new ArrayList<>();
 
@@ -135,6 +144,14 @@ public class ResultadoGeneracionPagosPension {
 
     public void setTotalSeguroGeneral(double totalSeguroGeneral) {
         this.totalSeguroGeneral = totalSeguroGeneral;
+    }
+
+    public Long getIdPagoProveedorSeguro() {
+        return idPagoProveedorSeguro;
+    }
+
+    public void setIdPagoProveedorSeguro(Long idPagoProveedorSeguro) {
+        this.idPagoProveedorSeguro = idPagoProveedorSeguro;
     }
 
     public List<DetallePagoPension> getDetalle() {

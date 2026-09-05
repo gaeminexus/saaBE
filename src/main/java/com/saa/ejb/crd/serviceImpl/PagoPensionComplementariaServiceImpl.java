@@ -693,7 +693,17 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         resumen.setTotalPagado(redondear(totalPagado));
         resumen.setTotalCruzadoAPrestamos(redondear(totalCruzado));
         resumen.setTotalOrdenesGeneradas(redondear(totalOrdenes));
-        resumen.setTotalSeguroGeneral(redondear(totalSeguroGeneral));
+        double totalSeguroPeriodo = redondear(totalSeguroGeneral);
+        resumen.setTotalSeguroGeneral(totalSeguroPeriodo);
+
+        // §4quater del contrato: UNA orden agregada al proveedor por el total de seguro del
+        // período, aparte de las órdenes individuales de pensión de cada jubilado. Va DESPUÉS
+        // del lote (necesita el total ya sumado) — si esto fallara, los jubilados ya procesados
+        // NO se revierten: son transacciones independientes (cada uno en su propia
+        // REQUIRES_NEW), mismo criterio de "no aborta el lote" que rige todo este método.
+        resumen.setIdPagoProveedorSeguro(
+            generarOrdenPagoProveedorSeguro(idEmpresa, anio, mes, usuario, idUsuario,
+                proveedorSeguro, totalSeguroPeriodo));
 
         System.out.println("GENERACIÓN TERMINADA - Evaluados: " + resumen.getEvaluados()
             + " - Generados: " + resumen.getGenerados()
@@ -1311,6 +1321,79 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             throw new IncomeException("Cuentas por Pagar no devolvió el número de la orden.");
         }
         return ((Number) valorPago).longValue();
+    }
+
+    /**
+     * §4quater del contrato, decisión del usuario 2026-09-05: UNA sola orden de pago al
+     * proveedor del seguro médico por el TOTAL agregado del período — no una por jubilado.
+     * {@code idOrigen} es sintético ({@code anio*100+mes}), sin tabla propia — verificado que
+     * ningún código existente dereferencia {@code idOrigen} contra otra tabla de forma
+     * genérica (ver {@code OrigenPagoExterno.CRD_SEGURO_JUBILADOS}).
+     *
+     * Idempotencia por {@code (origen, idOrigen)}: si ya existe un pago vigente para este
+     * período, no genera un segundo — mismo rol que la {@code UNIQUE} de {@code CRD.PGPC}, pero
+     * del lado del proveedor.
+     *
+     * ⚠️ {@code desglose = null} A PROPÓSITO: armar el asiento automático necesita un
+     * {@code idProductoPago} (PGS.PRDP) que hoy NO está definido para este caso — investigado y
+     * reportado al árbitro, no adivinado. Consecuencia real: el asiento que DEBITA
+     * {@code 2.3.90.90.06} para cerrarla contra lo que la corrida ACREDITA no sale automático
+     * desde acá; hay que contabilizarlo aparte hasta que se defina ese dato.
+     *
+     * @return el código de la orden de pago generada, o {@code null} si no hubo nada que pagar
+     *         este período (seguro total $0) o si ya existía una orden vigente para el período
+     */
+    private Long generarOrdenPagoProveedorSeguro(Long idEmpresa, Integer anio, Integer mes, String usuario,
+            Long idUsuario, Titular proveedorSeguro, double totalSeguroPeriodo) throws Throwable {
+        if (totalSeguroPeriodo <= TOLERANCIA) {
+            System.out.println("  Sin seguro médico que pagar al proveedor en " + mes + "/" + anio + " ($0).");
+            return null;
+        }
+
+        long idOrigenPeriodo = anio.longValue() * 100L + mes.longValue();
+
+        List<PagoProgramado> existentes = pagoProgramadoDaoService.selectVigentesByOrigen(
+            OrigenPagoExterno.CRD_SEGURO_JUBILADOS, idOrigenPeriodo);
+        if (existentes != null && !existentes.isEmpty()) {
+            System.out.println("  Ya existe una orden de pago al proveedor del seguro médico para "
+                + mes + "/" + anio + " (PagoProgramado " + existentes.get(0).getId() + ") - se omite.");
+            return existentes.get(0).getId();
+        }
+
+        // Beneficiario genérico/informativo — mismo criterio que RHH_NOMINA (orden consolidada,
+        // no un beneficiario ocasional con cuenta bancaria propia resuelta acá): tesorería
+        // asigna cuenta/forma de pago al aprobar, igual que el resto de los orígenes de crd.
+        BeneficiarioOcasional beneficiario = new BeneficiarioOcasional();
+        beneficiario.setNombre(proveedorSeguro.getRazonSocial());
+        beneficiario.setIdentificacion(RUC_PROVEEDOR_SEGURO_MEDICO);
+
+        String observacion = "Seguro médico jubilados " + mes + "/" + anio + " - "
+            + proveedorSeguro.getRazonSocial() + " (RUC " + RUC_PROVEEDOR_SEGURO_MEDICO + ")";
+
+        try {
+            Map<String, Object> respuesta = pagoProgramadoService.registrarPagoDeOrigenExterno(
+                OrigenPagoExterno.CRD_SEGURO_JUBILADOS, idOrigenPeriodo, idEmpresa, null,
+                totalSeguroPeriodo, LocalDate.now().toString(), beneficiario,
+                null, // desglose: ver JavaDoc -- idProductoPago no definido, no se adivina
+                observacion, idUsuario, false, null);
+
+            Object valorPago = (respuesta != null) ? respuesta.get("pago") : null;
+            if (valorPago == null) {
+                throw new IncomeException("Cuentas por Pagar no devolvió el número de la orden.");
+            }
+            Long idPago = ((Number) valorPago).longValue();
+            System.out.println("  ✅ Orden de pago al proveedor del seguro médico generada - "
+                + mes + "/" + anio + " - PagoProgramado " + idPago + " - $" + totalSeguroPeriodo);
+            return idPago;
+        } catch (IncomeException e) {
+            throw new IncomeException("No se pudo generar la orden de pago al proveedor del seguro"
+                + " médico (RUC " + RUC_PROVEEDOR_SEGURO_MEDICO + ") para " + mes + "/" + anio
+                + ": " + e.getMessage());
+        } catch (Throwable e) {
+            throw new IncomeException("No se pudo generar la orden de pago al proveedor del seguro"
+                + " médico (RUC " + RUC_PROVEEDOR_SEGURO_MEDICO + ") para " + mes + "/" + anio
+                + ": " + e.getMessage());
+        }
     }
 
     /**

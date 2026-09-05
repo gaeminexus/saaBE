@@ -556,25 +556,33 @@ agregar un método que sí lo haga requeriría tocar `tsr` (fuera de este equipo
 el RUC es único por restricción de la base (confirmado por el usuario); si esa restricción no
 fuera exactamente sobre esa columna, este código no lo va a detectar.
 
-**⬜ PENDIENTE DE IMPLEMENTAR — la orden de pago agregada al proveedor.** Investigado, no
-escrito todavía:
+**✅ IMPLEMENTADO (2026-09-05) — la orden de pago agregada al proveedor**, en
+`PagoPensionComplementariaServiceImpl.generarOrdenPagoProveedorSeguro`:
 
-- El camino correcto es `PagoProgramadoService.registrarPagoDeOrigenExterno` con
+- El camino usado es `PagoProgramadoService.registrarPagoDeOrigenExterno` con
   `BeneficiarioOcasional` (el mismo que ya usa `crd` para devolución de aportes y desembolso de
   préstamo) — **no** los métodos de proveedor formal (`registrarPago`/`registrarPagoDeEgreso`),
   que exigen una `idFacturaCompra` que este circuito no tiene.
-- Hay precedente exacto de una orden AGREGADA (no una por jubilado): `OrigenPagoExterno.RHH_NOMINA`
-  llama a `registrarPagoDeOrigenExterno` **una sola vez** por orden consolidada, con `idOrigen`
-  apuntando a un documento propio (`RHH.RDPG`) que agrega N filas. **`crd` no tiene hoy un
-  documento equivalente** para anclar el `idOrigen` de "la orden de seguro de la corrida X" — eso
-  requeriría una tabla nueva (DDL, fuera de este alcance) o un sustituto sin tabla propia
-  (a decidir con el árbitro).
-- La cuenta contable de contrapartida del asiento del pago **debe leerse del mismo lugar** que ya
-  usa la corrida para el devengo del seguro —`plantillaService.codigoByAlterno(PAGO_PENSION_COMPLEMENTARIA,
-  idEmpresa)` + `detallePlantillaDaoService.selectByPlantillaYAuxiliar(idPlantilla, 4)`—, nunca
-  un literal aparte: las dos puntas del asiento (el devengo de la corrida, que ACREDITA
-  `2.3.90.90.06`, y el pago al proveedor, que la DEBE para cerrarla) tienen que leer la cuenta del
-  mismo origen o un cambio de plantilla las desincroniza en silencio.
+- **No se abrió tabla nueva.** Se descartó DDL (decisión del árbitro): `idOrigen` es un valor
+  SINTÉTICO, `anio*100+mes` (agosto 2026 → `202608`), sin documento propio que lo respalde — un
+  período ya es clave natural, y `(origen, idOrigen)` = `(OrigenPagoExterno.CRD_SEGURO_JUBILADOS,
+  202608)` sirve como control de idempotencia (mismo rol que `UNIQUE(ENTDCDGO, PGPCANNO, PGPCMESS)`
+  en `CRD.PGPC`, del lado del proveedor). Verificado ANTES de escribir el código que ningún
+  consumidor existente dereferencia `idOrigen` como FK genérica contra otra tabla según el valor
+  de `origen` — cada uno (`TSR_CAJA_CHICA`, `RHH_ANTICIPO_EMPLEADO`, ...) exige explícitamente SU
+  PROPIO origen antes de tocarlo, así que un origen nuevo no puede resolverse mal por accidente.
+  Se llama una sola vez por corrida (`generarPagosDelMes`), después de sumar `totalSeguroGeneral`
+  de todos los jubilados del período — no una orden por jubilado.
+- `Long idPagoProveedorSeguro` en `ResultadoGeneracionPagosPension`: el código de
+  `PagoProgramado` generado, o `null` si no hubo seguro que pagar ($0) o si ya existía una orden
+  vigente para el período.
+- ⚠️ **`desglose = null`, a propósito — sigue pendiente.** Armar el asiento contable automático
+  del lado del pago necesita un `idProductoPago` (`PGS.PRDP`) que hoy no está definido para este
+  caso; se reportó al árbitro en vez de adivinarlo. Consecuencia real: el asiento que DEBE
+  cerrar contra lo que la corrida ACREDITA en `plantillaService.codigoByAlterno(
+  PAGO_PENSION_COMPLEMENTARIA, idEmpresa)` + `detallePlantillaDaoService.selectByPlantillaYAuxiliar(
+  idPlantilla, 4)` **no sale automático** desde esta orden — hay que contabilizarlo aparte hasta
+  que se defina ese dato.
 
 ---
 
