@@ -188,9 +188,17 @@ aplica a **todo jubilado con meses adeudados**.
 
 | Caso | Qué pasa |
 |---|---|
-| Con préstamo | Cruce hasta la deuda exigible; el remanente al banco **si tiene certificado** |
+| Con préstamo | Cruce hasta la deuda exigible; del remanente, la porción **pensión** al banco **si tiene certificado**, y la porción **seguro** siempre |
 | **Sin préstamo, con certificado** | **Todo el acumulado sale al banco** |
-| Sin préstamo, sin certificado | `BLOQUEADO`: no hay cruce posible y no puede salir dinero |
+| Sin préstamo, sin certificado, **con seguro** | **Participa**: se traspasa la porción de seguro (`2.3.90.90.06`); la de pensión queda retenida → `SOLO_CRUCE` |
+| Sin préstamo, sin certificado, **sin seguro** | `BLOQUEADO`: no hay cruce posible, no puede salir dinero y no hay seguro que traspasar |
+
+> ⭐ **Ampliado el 2026-09-04 por decisión del usuario** (*«los que tienen solo seguro médico se
+> desbloquean de la misma forma que los que solo tienen préstamo»*): el certificado gobierna la
+> **salida de dinero al banco**, y el seguro médico no sale al banco — es un traspaso interno entre
+> cuentas de la asociación, igual que el cruce contra el préstamo. **La regla completa, con sus
+> fórmulas y su consecuencia sobre el ancla, vive en `API-PAGO-PENSION-COMPLEMENTARIA.md` §4ter**,
+> que es el contrato; esta tabla es el resumen.
 
 **El tope sin préstamo** es `min(meses × pensión, saldo del aporte 23)`. No hay `deudaExigible` que
 lo limite, así que **el saldo es el único techo** — la regla que el usuario ya había fijado.
@@ -227,6 +235,12 @@ Esto **confirma y generaliza** la excepción que el agente de backend había pro
 
 Si a un jubilado **sin** certificado la deuda le consume **solo parte** de la pensión del mes, el
 remanente **no se toca**: no se descuenta de su aporte 23 y le queda a favor.
+
+> ⭐ **Precisado el 2026-09-04 (§4ter del contrato):** eso vale para la porción **PENSIÓN** del
+> remanente. La porción **SEGURO** sí se descuenta y se traspasa a `2.3.90.90.06` — ahí sí hay
+> «forma de entregárselo», porque el destino no es el banco del jubilado sino una cuenta de la
+> asociación. El párrafo de abajo sobre «no hay dónde registrar esa deuda» sigue valiendo tal cual
+> para la pensión.
 
 **Motivo:** no se le puede sacar dinero de la cuenta si no hay forma de entregárselo. Descontarlo y
 no pagarlo sería quitarle saldo sin contrapartida.
