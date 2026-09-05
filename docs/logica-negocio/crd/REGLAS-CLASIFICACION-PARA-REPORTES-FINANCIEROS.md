@@ -106,6 +106,32 @@ error: con `Math.max(1, DAYS.between(vencimiento, fecha))`, una cuota **futura**
 
 **Si un reporte agrupa cuotas y clasifica el grupo, tiene el mismo defecto.**
 
+## 5bis. ⛔ El nombre de la banda NO distingue vencido de por vencer
+
+**Verificado sobre un asiento real de producción el 2026-09-05, y casi engaña a dos árbitros.**
+
+Las cuentas de banda vienen en **dos familias** que usan **exactamente el mismo nombre**:
+
+| Cuenta | Nombre | Familia |
+|---|---|---|
+| `1.3.01.05` | **DE 1 A 30 DIAS** | **por vencer** |
+| `1.3.04.05` | **DE 1 A 30 DIAS** | **vencido** |
+
+Y lo mismo en el resto: `1.3.01.10` / `1.3.04.10` («DE 31 A 90 DIAS»), `.15`, `.20`, `.25`.
+
+**Consecuencias directas para un reporte financiero:**
+
+- ⛔ **Un reporte que muestre sólo el NOMBRE de la banda no distingue cartera vencida de cartera por
+  vencer.** Dos líneas idénticas en pantalla pueden ser cosas opuestas.
+- ⛔ **Agrupar por nombre de cuenta suma vencido con por vencer** y produce un total que no existe en
+  ningún mayor.
+- **Hay que agrupar y mostrar por CÓDIGO de cuenta**, o llevar el tipo de cartera como columna
+  propia. El nombre sirve para leer, nunca para clasificar ni para cuadrar.
+
+**Cómo apareció:** al verificar la corrección del §2, la cuota pasó de `1.3.04.05` a `1.3.01.05` — el
+comportamiento cambió correctamente— **pero el nombre de la cuenta en el asiento seguía diciendo
+«DE 1 A 30 DIAS» en los dos casos.** Quien verifique leyendo el nombre concluye que no cambió nada.
+
 ## 6. Dónde mirar para contrastar
 
 | Qué | Dónde |
