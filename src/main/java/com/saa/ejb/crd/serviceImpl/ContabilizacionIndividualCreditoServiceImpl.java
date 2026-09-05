@@ -825,12 +825,22 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
         return valor != null ? valor : 0.0;
     }
 
+    /**
+     * @see ContabilizacionIndividualCreditoService#tipoCarteraYDias(LocalDate, LocalDate)
+     */
     @Override
     public long[] tipoCarteraYDias(LocalDate fechaVencimiento, LocalDate fechaCorte) {
-        if (!fechaVencimiento.isAfter(fechaCorte)) {
-            long dias = Math.max(1, ChronoUnit.DAYS.between(fechaVencimiento, fechaCorte) + 1);
+        if (fechaVencimiento.isBefore(fechaCorte)) {
+            // VENCIDO empieza el día DESPUÉS del vencimiento — el día del vencimiento todavía es
+            // POR VENCER (regla de negocio confirmada por el usuario, 2026-09-04). Por eso acá
+            // NO hay +1: un +1 en esta rama contaría el día del vencimiento como vencido otra
+            // vez, corriendo un día de más TODAS las cuotas vencidas y rompiendo los bordes de
+            // banda (30/90/180/360 días). Ver el javadoc de la interfaz para la tabla de verdad.
+            long dias = Math.max(1, ChronoUnit.DAYS.between(fechaVencimiento, fechaCorte));
             return new long[]{TipoCarteraBanda.VENCIDO, dias};
         }
+        // fechaVencimiento == fechaCorte cae ACÁ (POR_VENCER, 1 día) — no es un descuido, es la
+        // regla: el día del vencimiento todavía está por vencer.
         long dias = Math.max(1, ChronoUnit.DAYS.between(fechaCorte, fechaVencimiento));
         return new long[]{TipoCarteraBanda.POR_VENCER, dias};
     }
