@@ -791,6 +791,18 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
                     }
                 }
             }
+            // ⛔ NO agregar acá una rama para TIPO_PAGO_APORTES ("PAGO_APORTES", el cruce de
+            // valores solo). No tiene rama A PROPÓSITO, no es un olvido — decisión del usuario,
+            // 2026-09-04, §3.0bis de DISENO-APERTURA-EXTRAORDINARIA-CAPITAL-FUTURO.md: un cruce
+            // liquida deuda EXIGIBLE con saldos del propio socio, nunca adelanta capital futuro,
+            // así que no debe abrir nada. Hoy ya queda afuera solo (pagarConAportes nunca llama
+            // a setSaldoOtros, así que sus PagoPrestamo tienen saldoOtros = 0 y nunca llegan
+            // hasta este if), pero eso es una coincidencia de implementación, no la regla — si
+            // ese guard cambiara, esta ausencia de rama es la que de verdad lo protege.
+            // (Una precancelación o un abono PAGADOS con aportes sí abren: el tipo del evento
+            // sigue siendo PRECANCELACION/ABONO_CAPITAL, y caen en las ramas de arriba. Lo que
+            // no abre es el cruce como operación propia — no conviertas esto en "si hay aportes
+            // de por medio, no abre".)
         }
         return redondear(total);
     }
