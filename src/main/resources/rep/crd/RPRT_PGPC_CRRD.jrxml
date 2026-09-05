@@ -171,7 +171,7 @@ ORDER BY e.ENTDRZNS, p.PGPCANNO, p.PGPCMESS]]></query>
 		</groupFooter>
 	</group>
 	<background splitType="Stretch"/>
-	<title height="176" splitType="Stretch">
+	<title height="190" splitType="Stretch">
 		<element kind="staticText" uuid="e5000000-0000-0000-0000-000000000201" x="0" y="0" width="782" height="20" fontName="Tahoma" fontSize="12.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[REPORTE MENSUAL DE PAGO DE PENSION COMPLEMENTARIA A JUBILADOS]]></text>
 		</element>
@@ -207,13 +207,13 @@ ORDER BY e.ENTDRZNS, p.PGPCANNO, p.PGPCMESS]]></query>
         + " -- $" + $F{ORDEN_PROVEEDOR_VALOR}.setScale(2, java.math.RoundingMode.HALF_UP)]]></expression>
 			<box leftPadding="4"/>
 		</element>
-		<element kind="staticText" uuid="e5000000-0000-0000-0000-000000000210" x="0" y="123" width="782" height="24" fontName="Tahoma" fontSize="6.5" italic="true" hTextAlign="Left" vTextAlign="Top">
-			<text><![CDATA[Cruzado a prestamos: heuristica por entidad del prestamo + fecha contra CRD.PGPR (pagos de cuota vigentes) -- no hay FK grabada de PGPC a la cuota que cancelo. La ausencia de fila en CRD.PGPC no distingue jubilado bloqueado de jubilado al dia -- ese dato no se persiste hoy en ninguna tabla (no existe forma de mostrar el motivo real de un bloqueo pasado). Si "Con pago generado" + "Sin pago generado" no suma el total de evaluados, o si el resumen de arriba aparece en blanco, es que no hubo ninguna fila para este periodo -- revisar el detalle abajo.]]></text>
+		<element kind="staticText" uuid="e5000000-0000-0000-0000-000000000210" x="0" y="123" width="782" height="36" fontName="Tahoma" fontSize="6.5" italic="true" hTextAlign="Left" vTextAlign="Top">
+			<text><![CDATA[Cruzado a prestamos: heuristica por entidad del prestamo + fecha contra CRD.PGPR (pagos de cuota vigentes) -- no hay FK grabada de PGPC a la cuota que cancelo. ADVERTENCIA: si un mismo jubilado tuvo cruces contra DOS prestamos distintos el mismo dia -- el caso NORMAL de un retroactivo de varios meses de mora, no una excepcion -- el detalle de esta columna puede agrupar o atribuir mal las cuotas entre esos prestamos; no tomarlo como exacto en ese escenario, solo como orientacion. La ausencia de fila en CRD.PGPC no distingue jubilado bloqueado de jubilado al dia -- ese dato no se persiste hoy en ninguna tabla (no existe forma de mostrar el motivo real de un bloqueo pasado). Si "Con pago generado" + "Sin pago generado" no suma el total de evaluados, o si el resumen de arriba aparece en blanco, es que no hubo ninguna fila para este periodo -- revisar el detalle abajo.]]></text>
 		</element>
-		<element kind="textField" uuid="e5000000-0000-0000-0000-000000000204" x="0" y="160" width="391" height="12" fontName="Tahoma" fontSize="7.0" hTextAlign="Left" vTextAlign="Middle">
+		<element kind="textField" uuid="e5000000-0000-0000-0000-000000000204" x="0" y="172" width="391" height="12" fontName="Tahoma" fontSize="7.0" hTextAlign="Left" vTextAlign="Middle">
 			<expression><![CDATA["Generado por: " + $P{P_USUARIO}]]></expression>
 		</element>
-		<element kind="textField" uuid="e5000000-0000-0000-0000-000000000205" x="391" y="160" width="391" height="12" fontName="Tahoma" fontSize="7.0" pattern="dd/MM/yyyy HH:mm" hTextAlign="Right" vTextAlign="Middle">
+		<element kind="textField" uuid="e5000000-0000-0000-0000-000000000205" x="391" y="172" width="391" height="12" fontName="Tahoma" fontSize="7.0" pattern="dd/MM/yyyy HH:mm" hTextAlign="Right" vTextAlign="Middle">
 			<expression><![CDATA[new java.util.Date()]]></expression>
 		</element>
 	</title>
