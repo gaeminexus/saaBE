@@ -844,7 +844,9 @@ contrato con la cita textual del usuario.
 | **H42** | El cruce toma **fecha de hoy** (`corte: 2026-09-04`) en vez del **fin de mes**, y marca cuotas de agosto como en mora. **Viola D1/§6bis**, que ya estaba cerrada: la cartera va con fin de mes, solo el pago con fecha actual | nuestro | alta |
 | **H43** | ⛔ **CONFIRMADO CON CAPTURAS DE PRODUCCIÓN, y no estaba donde se buscaba: el defecto está en el DEVENGO, no en el asiento del pago.** Devengo y cruce **debitan la misma cuenta** `2.1.02.25.01` → saldo duplicado. Ver abajo | **nuestro** | **máxima** |
 | ~~**H44**~~ | ~~Se generó **una autorización por jubilado**, no una sola por el total~~ · ✅ **NO ES DEFECTO — cerrado 2026-09-05.** Es paso de operación, ver abajo | — | — |
-| **H45** | Falta el **asiento de cierre de las cuentas de apertura** del mes. ✅ **Contestado por `lap-saa-1` (ver abajo): sí es el mismo mecanismo, y es un defecto real y medido de nuestro camino** | **nuestro** | alta (se ve al cerrar el mes) |
+| **H45** | Falta el **asiento de cierre de las cuentas de apertura** del mes. ✅ **Contestado por `lap-saa-1` (ver abajo): sí es el mismo mecanismo, y es un defecto real y medido de nuestro camino.** ✅ **Autorizado por el usuario el 2026-09-05: lo toma `lap-saa-1`** | `lap-saa-1` | alta (se ve al cerrar el mes) |
+| **H46** | ⛔⛔ **NO reportado por el usuario — hallado por el agente BE.** Tras revertir, reintentar la corrida diría **«al día» y no pagaría a nadie**, sin lanzar error: el negativo de `CRD.APRT` sobrevive al reverso y envenena el ancla. **Bloquea el camino de «revertir y regenerar»** | **nuestro** | **máxima** |
+| **H47** | La mora **nunca se recalcula a la fecha del pago** (`pagarConAportes` solo lee el campo persistido). **Afecta a cualquier pago de préstamo, no solo jubilados** — está cobrando mora equivocada en producción hoy. Agravado por el timer de mora apagado desde el 2026-08-31. ✅ **Lo toma `lap-saa-1`** | `lap-saa-1` | alta, y fuera de nuestro alcance |
 
 #### H41 — confirmado y medido por las dos puntas (2026-09-05)
 
@@ -1044,6 +1046,83 @@ usa **cualquier pago normal de cuota**. Es decir que **cualquier pago de présta
 distinta a la del último cálculo de mora está cobrando la mora equivocada, hoy, en producción**.
 No es exclusivo del proceso de jubilados. **Avisado a `lap-saa-1` el 2026-09-05** por estar fuera
 de nuestro alcance asignado y tocar un archivo que ellos vienen mirando.
+
+### ⛔⛔ H46 — el ancla se envenena: reintentar la corrida diría «al día» y no pagaría a nadie
+
+**Hallado por `omen-saa-1-be` el 2026-09-05 sin que se lo preguntaran, verificado por el árbitro
+antes de llevarlo al usuario.** Es el hallazgo más peligroso de toda la corrida, y no salió de
+ninguna de las cinco novedades: salió de preguntarse qué pasaría *después* de revertir.
+
+**El mecanismo.** `resolverAnclaRetroactivo:1725` resuelve el ancla en dos pasos: primero
+`selectFechaUltimoMovimientoNegativo`, y **solo si eso da null** cae a
+`selectFechaMovimientoJubilacion`. Y la primera query es (`AporteDaoServiceImpl:1062-1074`):
+
+```java
+select max(a.fechaTransaccion) from Aporte a
+where  a.entidad.codigo = :idEntidad
+and    a.tipoAporte.codigo = :idTipoAporte
+and    a.valor < 0
+```
+
+**Sin filtro de estado y sin excluir movimientos ya reversados.** Y `CRD.APRT` es **append-only
+por diseño**: `generarContraMovimiento` nunca borra ni edita el negativo original — solo **agrega
+un positivo al lado**.
+
+**La consecuencia.** Si se revierte y se vuelve a correr `generarPagosDelMes` para agosto 2026,
+cada jubilado sigue teniendo su negativo del 31/08 como el más reciente:
+
+```
+ancla = 31/08/2026  →  desde = septiembre  →  desde.isAfter(corrida = agosto)  →  "AL_DIA"
+```
+
+Sale por esa rama **sin entrar al bucle y sin tocar un solo PGPC**, para los 181.
+
+⭐ **Y acá está lo peor, que es el modo de falla y no el defecto:** no lanza error. **Informa
+«al día» y no hace nada.** Una corrida que explota se ve; una que dice que todo está bien se firma
+y se archiva. Para un proceso que mueve $113.000 es el peor desenlace posible — peor que el choque
+contra el `UNIQUE`, que al menos hace ruido.
+
+**Lo que el reverso a nivel aplicación NO arregla** (verificado por el BE, con el código citado):
+
+| Qué | Estado tras `revertirConfirmado` + `sincronizarPagos` |
+|---|---|
+| Movimiento negativo de `CRD.APRT` | **Queda** — solo se agrega un positivo. Envenena el ancla |
+| Cuotas del préstamo (`CRD.DTPR`/`PGPR`) | **Quedan PAGADAS.** `generarContraMovimiento:2231` nunca las toca ni llama al motor de pago |
+| `numeroAsientoDevengo` | **Queda apuntando al mismo asiento**, que con H43 sin corregir está **inflado** |
+| Asiento de pago de los 181 | No existe — nada que reversar (`omen-saa-2`: *«contablemente una operación nula»*) |
+| Asiento + movimiento bancario del seguro | ✅ Sí se anulan, es el único con trabajo contable real |
+
+⇒ **«Revertir y regenerar» a nivel aplicación no llega a buen puerto** sin tres arreglos previos
+e independientes: corregir H41+H43; reversar de verdad el cruce contra préstamo; y desenvenenar el
+ancla — este último tocando **la misma función que usa cualquier corrida futura**, no un rincón.
+
+**Las dos salidas, y ninguna es gratis:**
+
+| | A favor | En contra |
+|---|---|---|
+| **Limpieza a nivel de base** | Rápida, resuelve las tres cosas de una | **Irreversible**, sin rastro, y exige garantizar que nada más tocó esas filas desde la corrida — cosa que ni el agente ni el árbitro pueden saber |
+| **Anulación por aplicación** | Auditable, deja rastro, reusa lo que existe | Más código, y **falta medir si alcanza** |
+
+**⭐ La pista que mantiene vivo el camino de aplicación, y sale de las capturas del usuario.** El BE
+descartó `ProcesoPagoPrestamoServiceImpl.anularOperacion(idEvento)` —que **sí** revierte cuotas,
+`PagoPrestamo` y aportes— porque `PagoPensionComplementaria` no guarda el `idEvento`. Cierto que
+no lo guarda. Pero la observación del asiento del cruce dice, textual:
+
+> `... préstamo 7747 - **evento 396**: Pago retroactivo pensión complementaria 8/2026 ...`
+
+**El número está escrito, y a propósito.** Si se puede llegar de `(préstamo, período)` al
+`idEvento` con una consulta —**no parseando la descripción del asiento, eso no cuenta**— y si
+`anularOperacion` además neutraliza el negativo de `APRT`, **el camino de aplicación revive entero
+y resuelve el envenenamiento de paso**. En investigación al 2026-09-05.
+
+**Criterio del árbitro, por si se pierde el contexto:** no se descarta el camino auditable por el
+irreversible sin haberlo medido. Si al final es el rollback, que sea **porque medimos que el otro
+no alcanza**, no porque no lo miramos. Y en cualquiera de los dos casos **los 181 devengos
+inflados se reversan con asiento** — borrar filas de `CRD`/`PGS` no toca los libros de `CNT`.
+
+**Preguntas abiertas al usuario, y la primera decide la viabilidad del rollback:**
+(1) ¿alguien más tocó esos jubilados, sus préstamos o sus aportes desde la corrida?
+(2) ¿hay respaldo de la base previo a la corrida?
 
 #### H44 — cerrado: no es defecto, es un paso de operación
 
