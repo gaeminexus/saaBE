@@ -4,7 +4,6 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -152,6 +151,15 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
     /** Flag global de contabilidad de CRD (D10 del plan de devengo de aportes). */
     @EJB
     private com.saa.ejb.crd.service.ConfiguracionContabilidadService configuracionContabilidadService;
+
+    /**
+     * Sólo para {@code tipoCarteraYDias} (2026-09-05) — {@code distribuye} delegaba antes su
+     * propia clasificación por tipo de cartera/días, con dos defectos ya corregidos en la
+     * versión de este servicio (ver su javadoc). Delegar en vez de mantener una copia propia
+     * es lo que evita que las dos vuelvan a divergir.
+     */
+    @EJB
+    private com.saa.ejb.crd.service.ContabilizacionIndividualCreditoService contabilizacionIndividualCreditoService;
 
     // =====================================================================
     // API
@@ -475,16 +483,19 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
      * corresponden a una fecha dada.
      *
      * <p>
-     * <b>Convención de días</b>, la decisión que define todo el reparto:
+     * <b>2026-09-05, corregido — delega en {@code ContabilizacionIndividualCreditoService
+     * #tipoCarteraYDias}, que es la DEFINICIÓN DE REFERENCIA de esta clasificación</b> (regla
+     * de negocio confirmada por el usuario: el día del vencimiento la cuota todavía está POR
+     * VENCER, recién al día siguiente pasa a VENCIDA — ver el javadoc de ese método para la
+     * tabla de verdad completa). Antes este método tenía su PROPIA copia de la clasificación,
+     * con los MISMOS dos defectos que tenía {@code tipoCarteraYDias} antes de corregirse:
+     * clasificaba VENCIDO cuando {@code vencimiento == fecha} (debería ser POR_VENCER), y
+     * sumaba {@code +1} a los días de vencido (que corría un día de más y rompía los bordes de
+     * banda de 30/90/180/360 días). Se delega en vez de mantener una segunda copia corregida a
+     * mano: dos copias divergen tarde o temprano, y ESTE método es el que clasifica TODA la
+     * cartera en el cierre mensual — si él dice una cosa y el asiento individual de un pago
+     * dice otra para la MISMA cuota, las dos contabilidades se contradicen al conciliar.
      * </p>
-     * <ul>
-     * <li>POR VENCER (vence después del corte): {@code dias = vencimiento - corte}. La
-     * cuota que vence mañana tiene 1 día.</li>
-     * <li>VENCIDO (vence el día del corte o antes): {@code dias = corte - vencimiento + 1}.
-     * La cuota que vence EL DÍA del corte cuenta como 1 día de vencida, no como 0: si
-     * contara 0 el clasificador la rechazaría, y además es la que el sub-proceso ① mueve a
-     * la banda 1 de vencido.</li>
-     * </ul>
      *
      * @param filas      : {@code [idProducto, fechaVencimiento, capital, cantidad]}
      * @param fecha      : Fecha a la que se miden los días
@@ -510,15 +521,13 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
                 continue;
             }
 
-            Long tipoCartera;
-            long dias;
-            if (vencimiento.isAfter(fecha)) {
-                tipoCartera = Long.valueOf(TipoCarteraBanda.POR_VENCER);
-                dias = ChronoUnit.DAYS.between(fecha, vencimiento);
-            } else {
-                tipoCartera = Long.valueOf(TipoCarteraBanda.VENCIDO);
-                dias = ChronoUnit.DAYS.between(vencimiento, fecha) + 1L;
-            }
+            // Delegado (2026-09-05) — ver el javadoc de este método y el de
+            // ContabilizacionIndividualCreditoService#tipoCarteraYDias, la definición de
+            // referencia. NO reimplementar acá: es exactamente cómo se llegó a tener dos
+            // copias divergentes de esta clasificación.
+            long[] tipoYDias = contabilizacionIndividualCreditoService.tipoCarteraYDias(vencimiento, fecha);
+            Long tipoCartera = Long.valueOf(tipoYDias[0]);
+            long dias = tipoYDias[1];
 
             List<BandaProductoDetalle> bandasProducto =
                     bandas.get(claveConfiguracion(idProducto, tipoCartera));
