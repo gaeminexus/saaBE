@@ -266,6 +266,11 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             Long.valueOf(EstadoParticipeEntidad.JUBILADO_COMPLEMENTARIO));
 
         double totalACruzar = 0.0, totalADinero = 0.0, totalSeguroGeneral = 0.0;
+        // §4bis/§6 ampliado 2026-09-04: la porción SEGURO del remanente se procesa aunque no
+        // haya certificado (traspaso interno a 2.3.90.90.06, no sale al banco) — se acumula
+        // APARTE de totalADinero, que sigue siendo EXCLUSIVAMENTE el dinero que sale al banco.
+        double totalSeguroInterno = 0.0;
+        double totalGeneral = 0.0;
         int aptos = 0;
 
         if (jubilados != null) {
@@ -293,6 +298,8 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                     // §4bis: agregado del seguro médico — mismo criterio NOMINAL que la fila
                     // (ver DetallePrevisualizacionJubilado.totalSeguro).
                     totalSeguroGeneral = redondear(totalSeguroGeneral + fila.getTotalSeguro());
+                    totalSeguroInterno = redondear(totalSeguroInterno + fila.getMontoSeguroInterno());
+                    totalGeneral = redondear(totalGeneral + fila.getTotal());
                 }
             }
         }
@@ -301,8 +308,13 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         resumen.setBloqueados(resumen.getEvaluados() - aptos);
         resumen.setTotalACruzarPrestamos(totalACruzar);
         resumen.setTotalADinero(totalADinero);
-        resumen.setTotalGeneral(redondear(totalACruzar + totalADinero));
+        // Ya NO es totalACruzar + totalADinero: con la regla del seguro sin certificado hay una
+        // TERCERA porción (el traspaso interno) que también se descuenta del aporte 23. Se
+        // acumula fila a fila para que siga valiendo, exacta, la identidad que el frontend usa
+        // para su "Total pensión": totalGeneral - totalSeguroGeneral.
+        resumen.setTotalGeneral(totalGeneral);
         resumen.setTotalSeguroGeneral(totalSeguroGeneral);
+        resumen.setTotalSeguroInternoGeneral(totalSeguroInterno);
 
         System.out.println("PREVISUALIZACIÓN TERMINADA - Evaluados: " + resumen.getEvaluados()
             + " - Aptos: " + resumen.getAptos() + " - Bloqueados: " + resumen.getBloqueados()
@@ -425,14 +437,19 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         deudaExigibleTotal = redondear(deudaExigibleTotal);
         fila.setTienePrestamo(hayPrestamoVigente);
 
-        // D4: sin préstamo vigente y sin certificado, no hay cruce posible y no puede salir
-        // dinero — no hay nada que hacer con esa pensión, y no sería apta para la corrida real
-        // (que tampoco le generaría ningún PGPC).
-        if (!hayPrestamoVigente && !tieneCertificado) {
+        // D4, AMPLIADO 2026-09-04 (decisión del usuario): el seguro médico desbloquea igual que
+        // el préstamo. Ni el cruce ni el seguro salen al banco —el cruce cancela deuda, el seguro
+        // es un traspaso interno a 2.3.90.90.06 SEGURO POR PAGAR JUBILADOS— así que ninguno de
+        // los dos necesita certificado, que es lo que valida la CUENTA DE DESTINO. Sólo se
+        // bloquea cuando no hay NINGUNO de los tres: sin préstamo, sin certificado y sin seguro
+        // no queda nada que hacer con esa pensión este mes.
+        boolean haySeguroMensual = valorSeguroMensual > TOLERANCIA;
+        if (!hayPrestamoVigente && !tieneCertificado && !haySeguroMensual) {
             fila.setApto(false);
             fila.setParticipacion("BLOQUEADO");
-            fila.setMotivoBloqueo("Sin préstamo vigente y sin cuenta con certificado bancario"
-                + " válido: no hay cruce posible y no se puede entregar la pensión.");
+            fila.setMotivoBloqueo("Sin préstamo vigente, sin cuenta con certificado bancario"
+                + " válido y sin seguro médico: no hay cruce posible, no se puede entregar la"
+                + " pensión y no hay porción de seguro que traspasar.");
             return fila;
         }
 
@@ -449,13 +466,26 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         // hacía falta, sino el prevuelo mostraría más "a dinero" del que el saldo permite.
         double montoADineroNominal = redondear(pensionesAcumuladas - montoACruzar);
         double saldoLibreParaDinero = redondear(Math.max(0.0, saldo - montoACruzar));
-        double montoADinero = tieneCertificado
-            ? redondear(Math.min(montoADineroNominal, saldoLibreParaDinero))
-            : 0.0;
+        // El remanente que el SALDO de verdad permite procesar — todavía sin mirar el
+        // certificado: el saldo topa por igual a los dos destinos del remanente.
+        double remanenteProcesable = redondear(Math.min(montoADineroNominal, saldoLibreParaDinero));
 
-        double total = redondear(montoACruzar + montoADinero);
+        // §6 ampliado 2026-09-04: el certificado gobierna SÓLO la porción PENSIÓN del remanente.
+        // Reparto PROPORCIONAL a la mensualidad y seguro por RESTA (§4bis) — nunca con su propia
+        // multiplicación, para que las dos porciones sumen el remanente exacto.
+        double remanentePension = redondear(remanenteProcesable * (valorPensionMensual / valorTotal));
+        double remanenteSeguro = redondear(remanenteProcesable - remanentePension);
+
+        // Sin certificado: la porción de pensión queda retenida en el saldo del aporte 23 y la de
+        // seguro se traspasa igual. Con certificado NO cambia nada respecto de antes de este
+        // cambio: el remanente ENTERO viaja en la orden de pago.
+        double montoADinero = tieneCertificado ? remanenteProcesable : 0.0;
+        double montoSeguroInterno = tieneCertificado ? 0.0 : remanenteSeguro;
+
+        double total = redondear(montoACruzar + montoADinero + montoSeguroInterno);
         fila.setMontoACruzar(montoACruzar);
         fila.setMontoADinero(montoADinero);
+        fila.setMontoSeguroInterno(montoSeguroInterno);
         fila.setTotal(total);
 
         // §4bis "Mes parcial", decisión del árbitro 2026-09-04: reparto PROPORCIONAL a la
@@ -467,16 +497,26 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         // certificado — acá `total` ya excluye el remanente retenido sin certificado, a
         // diferencia de la corrida real), garantiza totalPension + totalSeguro == total
         // exactamente, cerrando la inconsistencia que se había reportado.
-        double totalPension = redondear(total * (valorPensionMensual / valorTotal));
+        //
+        // Ampliación 2026-09-04: el tramo que lleva las DOS cuentas en proporción es el cruce
+        // más lo que sale al banco; `montoSeguroInterno` es 100% seguro y entra entero del lado
+        // del seguro, por la resta. Con certificado montoSeguroInterno=0 y esto degenera
+        // EXACTAMENTE en la fórmula anterior.
+        double parteProporcional = redondear(montoACruzar + montoADinero);
+        double totalPension = redondear(parteProporcional * (valorPensionMensual / valorTotal));
         double totalSeguro = redondear(total - totalPension);
         fila.setTotalPension(totalPension);
         fila.setTotalSeguro(totalSeguro);
 
         fila.setApto(true);
-        // SOLO_CRUCE no puede darse sin préstamo: si !hayPrestamoVigente llegamos hasta acá
-        // sólo cuando tieneCertificado=true (el bloqueo de arriba ya atrapó el caso contrario),
-        // así que montoADineroNominal siempre se paga entero y esta rama nunca da SOLO_CRUCE.
-        fila.setParticipacion(montoADineroNominal > TOLERANCIA && !tieneCertificado ? "SOLO_CRUCE" : "COMPLETA");
+        // §6: SOLO_CRUCE se define por RETENCIÓN, no por posesión del certificado. Lo único que
+        // el certificado retiene ahora es la porción PENSIÓN del remanente — la de seguro sale
+        // igual, por el traspaso interno. Un jubilado sin préstamo, sin certificado y con seguro
+        // cae acá con montoACruzar=0: "solo cruce" ya no es literal (§6 del contrato lo redefine
+        // como PARCIAL sin cambiar el literal, para no romper el frontend), pero es el mismo
+        // hecho de negocio — quedó plata retenida y conseguir el certificado la libera.
+        double retenidoPorFaltaDeCertificado = tieneCertificado ? 0.0 : remanentePension;
+        fila.setParticipacion(retenidoPorFaltaDeCertificado > TOLERANCIA ? "SOLO_CRUCE" : "COMPLETA");
         return fila;
     }
 
@@ -696,9 +736,12 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         String glosa = "PAGO PENSION COMPLEMENTARIA " + mes + "/" + anio + " - Entidad " + idEntidad;
         // Sin préstamo, aplicadoAlPrestamo=0 y remanente=valorTotal siempre: el saldo ya se
         // validó suficiente para el nominal completo arriba, así que no hay tope que calcular.
+        // Ampliación 2026-09-04: sin certificado, la porción SEGURO del remanente se traspasa
+        // igual (no sale al banco) — con certificado el remanente entero ya va en la orden.
+        double seguroInternoMes = (cuentaSalida == null) ? valorSeguro : 0.0;
         PagoPensionComplementaria pago = registrarPgpcDelMes(entidad, idEntidad, anio.longValue(), mes.longValue(),
-            valorPension, valorSeguro, valorTotal, 0.0, valorTotal, fecha, fechaHecho, fechaRegistro, usuario,
-            idUsuario, idEmpresa, cuentaSalida, glosa);
+            valorPension, valorSeguro, valorTotal, 0.0, valorTotal, seguroInternoMes, fecha, fechaHecho,
+            fechaRegistro, usuario, idUsuario, idEmpresa, cuentaSalida, glosa);
 
         boolean generoOrden = pago.getIdPagoProgramado() != null;
         System.out.println("  ✅ Pago de pensión registrado - Entidad " + idEntidad + " - PGPC "
@@ -718,14 +761,21 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         detalle.setMesesAplicados(1);
         detalle.setValorPensionMensual(valorPension);
         detalle.setValorSeguroMensual(valorSeguro);
-        detalle.setTotalPension(valorPension);
-        detalle.setTotalSeguro(valorSeguro);
-        // Sin préstamo: o sale el dinero completo (COMPLETA), o no hay cruce posible y no
-        // puede salir dinero (BLOQUEADO) — §6 del contrato, regla explícita para este caso.
-        detalle.setParticipacion(cuentaSalida != null ? "COMPLETA" : "BLOQUEADO");
-        if (cuentaSalida == null) {
-            detalle.setMensaje("Sin préstamo y sin cuenta con certificado bancario válido: no"
-                + " hay cruce posible y no se puede entregar la pensión.");
+        detalle.setTotalPension(cuentaSalida != null ? valorPension : 0.0);
+        detalle.setTotalSeguro(cuentaSalida != null ? valorSeguro : seguroInternoMes);
+        detalle.setValorSeguroInterno(seguroInternoMes);
+        // Sin préstamo: sale el dinero completo (COMPLETA); o no hay salida al banco y sólo se
+        // traspasa el seguro (SOLO_CRUCE, leído como PARCIAL en §6); o no hay ni eso (BLOQUEADO).
+        if (cuentaSalida != null) {
+            detalle.setParticipacion("COMPLETA");
+        } else if (seguroInternoMes > TOLERANCIA) {
+            detalle.setParticipacion("SOLO_CRUCE");
+            detalle.setMensaje("Sin cuenta con certificado bancario válido: sólo se traspasó la"
+                + " porción de seguro médico; la pensión queda retenida en su saldo de aporte 23.");
+        } else {
+            detalle.setParticipacion("BLOQUEADO");
+            detalle.setMensaje("Sin préstamo, sin cuenta con certificado bancario válido y sin"
+                + " seguro médico: no hay cruce posible y no se puede entregar la pensión.");
         }
         return detalle;
     }
@@ -801,17 +851,20 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         // leer vppc.getTienePrestamo() para nada de esto.
         boolean hayPrestamoVigente = !prestamosVigentes.isEmpty();
 
-        // D4: sin préstamo Y sin certificado, no hay cruce posible y no puede salir dinero —
-        // no hay NADA que hacer con esa pensión. No genera ningún PGPC, a diferencia del caso
-        // con préstamo (ahí el cruce es un hecho económico real aunque no haya certificado).
-        if (!hayPrestamoVigente && cuentaSalida == null) {
+        // D4, AMPLIADO 2026-09-04 (decisión del usuario): el seguro médico desbloquea igual que
+        // el préstamo — es un traspaso interno a 2.3.90.90.06, no una salida al banco, así que
+        // el certificado no lo gobierna. Sólo se bloquea sin ninguno de los tres: ahí no hay
+        // cruce, no hay salida y no hay seguro, y no se genera ningún PGPC.
+        boolean haySeguroMensual = valorSeguro > TOLERANCIA;
+        if (!hayPrestamoVigente && cuentaSalida == null && !haySeguroMensual) {
             int mesesAdeudadosSinGenerar = (int) (ChronoUnit.MONTHS.between(desde, corrida) + 1);
             resumen.setEstado("GENERADO");
             resumen.setMesesAplicados(0);
             resumen.setParticipacion("BLOQUEADO");
-            resumen.setMotivoCorte("SIN_PRESTAMO_SIN_CERTIFICADO");
-            resumen.setMensaje("Sin préstamo vigente y sin cuenta con certificado bancario válido:"
-                + " no hay cruce posible y no se puede entregar la pensión. " + mesesAdeudadosSinGenerar
+            resumen.setMotivoCorte("SIN_PRESTAMO_SIN_CERTIFICADO_SIN_SEGURO");
+            resumen.setMensaje("Sin préstamo vigente, sin cuenta con certificado bancario válido y"
+                + " sin seguro médico: no hay cruce posible, no se puede entregar la pensión y no"
+                + " hay porción de seguro que traspasar. " + mesesAdeudadosSinGenerar
                 + " mes(es) adeudado(s) sin generar.");
             return resumen;
         }
@@ -820,6 +873,9 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
 
         int mesesAplicados = 0;
         double totalPension = 0.0, totalSeguro = 0.0, totalCruzado = 0.0, totalOrden = 0.0;
+        // Cuánto del seguro se traspasó internamente (2.3.90.90.06) sin salir al banco —
+        // subconjunto de totalSeguro, informativo para la pantalla. Ver §4bis/§6.
+        double totalSeguroInterno = 0.0;
         Long ultimoIdPago = null;
         Long ultimoIdAsientoDevengo = null;
         boolean algunaOrdenGenerada = false;
@@ -931,14 +987,27 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             double saldoLibreParaRemanente = redondear(Math.max(0.0, saldoRestante - aplicadoEsteMes));
             double remanenteMes = redondear(Math.min(remanenteNominal, saldoLibreParaRemanente));
 
+            // §6 ampliado 2026-09-04: el certificado gobierna SÓLO la porción PENSIÓN del
+            // remanente. Reparto PROPORCIONAL a la mensualidad y seguro por RESTA (§4bis), el
+            // mismo criterio que ya usaba el mes parcial — nunca con su propia multiplicación.
+            double remanentePensionMes = redondear(remanenteMes * (valorPension / valorTotal));
+            double remanenteSeguroMes = redondear(remanenteMes - remanentePensionMes);
+            // Sin certificado la porción de seguro se traspasa igual (interno a 2.3.90.90.06) y
+            // sólo la de pensión queda retenida. Con certificado esto es 0 y el remanente entero
+            // viaja en la orden de pago, exactamente como antes de este cambio.
+            double seguroInternoMes = (cuentaSalida == null) ? remanenteSeguroMes : 0.0;
+
             String glosa = "PAGO PENSION COMPLEMENTARIA RETROACTIVO " + mesM + "/" + anioM
                 + " - Entidad " + idEntidad;
             PagoPensionComplementaria pago = registrarPgpcDelMes(entidad, idEntidad, anioM, mesM,
-                valorPension, valorSeguro, valorTotal, aplicadoEsteMes, remanenteMes, fecha, fechaHecho,
-                fechaRegistro, usuario, idUsuario, idEmpresa, cuentaSalida, glosa);
+                valorPension, valorSeguro, valorTotal, aplicadoEsteMes, remanenteMes, seguroInternoMes,
+                fecha, fechaHecho, fechaRegistro, usuario, idUsuario, idEmpresa, cuentaSalida, glosa);
 
             boolean saleAlBancoEsteMes = pago.getIdPagoProgramado() != null;
-            double consumidoEsteMes = redondear(aplicadoEsteMes + (saleAlBancoEsteMes ? remanenteMes : 0.0));
+            // El seguro traspasado internamente TAMBIÉN consume saldo del aporte 23: no es
+            // gratis, y si no se descontara acá el mes siguiente sobregiraría.
+            double consumidoEsteMes = redondear(aplicadoEsteMes
+                + (saleAlBancoEsteMes ? remanenteMes : seguroInternoMes));
             saldoRestante = redondear(saldoRestante - consumidoEsteMes);
 
             mesesAplicados++;
@@ -950,24 +1019,38 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             // por RESTA, nunca con su propia multiplicación — dos redondeos independientes
             // podrían no sumar el total y dejar un descuadre de centavos entre las dos cuentas
             // contables (mismo motivo que H24).
-            double montoProcesadoEsteMes = redondear(aplicadoEsteMes + remanenteMes);
+            //
+            // ⛔ Corrección 2026-09-04, en el mismo cambio de la regla del seguro: acá se
+            // acumulaba `aplicadoEsteMes + remanenteMes` INCLUSO cuando el remanente quedaba
+            // RETENIDO por falta de certificado — o sea, se contaba como pensión/seguro
+            // "aplicado" plata que nunca se movió, y el prevuelo (que sí lo excluye) daba otro
+            // número para el mismo jubilado. Ahora se acumula lo que de VERDAD se procesó.
+            //
+            // `parteProporcionalMes` es el tramo que lleva las dos cuentas en proporción (cruce
+            // + salida al banco); `seguroInternoMes` es 100% seguro y entra entero por la resta.
+            double parteProporcionalMes = redondear(aplicadoEsteMes
+                + (saleAlBancoEsteMes ? remanenteMes : 0.0));
+            double montoProcesadoEsteMes = redondear(parteProporcionalMes
+                + (saleAlBancoEsteMes ? 0.0 : seguroInternoMes));
             double pensionEsteMes;
             double seguroEsteMes;
-            if (redondear(valorTotal - montoProcesadoEsteMes) > TOLERANCIA) {
-                pensionEsteMes = redondear(montoProcesadoEsteMes * (valorPension / valorTotal));
-                seguroEsteMes = redondear(montoProcesadoEsteMes - pensionEsteMes);
+            if (redondear(valorTotal - parteProporcionalMes) > TOLERANCIA) {
+                pensionEsteMes = redondear(parteProporcionalMes * (valorPension / valorTotal));
             } else {
                 pensionEsteMes = valorPension;
-                seguroEsteMes = valorSeguro;
             }
+            seguroEsteMes = redondear(montoProcesadoEsteMes - pensionEsteMes);
             totalPension = redondear(totalPension + pensionEsteMes);
             totalSeguro = redondear(totalSeguro + seguroEsteMes);
+            totalSeguroInterno = redondear(totalSeguroInterno
+                + (saleAlBancoEsteMes ? 0.0 : seguroInternoMes));
             if (saleAlBancoEsteMes) {
                 totalOrden = redondear(totalOrden + remanenteMes);
                 algunaOrdenGenerada = true;
-            } else if (remanenteMes > TOLERANCIA) {
-                // Quedó remanente este mes y no se pudo entregar (sin cuenta o sin
-                // certificado) — participación de TODO el resumen baja a SOLO_CRUCE.
+            } else if (redondear(remanenteMes - seguroInternoMes) > TOLERANCIA) {
+                // Quedó remanente de PENSIÓN este mes y no se pudo entregar (sin cuenta o sin
+                // certificado) — participación de TODO el resumen baja a SOLO_CRUCE. La porción
+                // de seguro ya NO cuenta como retenida: se traspasó.
                 algunRemanenteRetenido = true;
             }
             ultimoIdPago = pago.getCodigo();
@@ -988,6 +1071,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         // de pensionEsteMes/seguroEsteMes más arriba.
         resumen.setTotalPension(totalPension);
         resumen.setTotalSeguro(totalSeguro);
+        resumen.setValorSeguroInterno(totalSeguroInterno);
         resumen.setValorCruzadoAPrestamo(totalCruzado);
         resumen.setValorOrdenPago(totalOrden);
         resumen.setGeneroOrdenPago(algunaOrdenGenerada);
@@ -1043,22 +1127,46 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
      *                           al saldo que de verdad queda libre — pasar el nominal acá
      *                           sobregiraría el aporte.
      * @param cuentaSalida       la cuenta con certificado válido, o {@code null} si no hay a
-     *                           quién pagarle el remanente (§6/D2): en ese caso el remanente
-     *                           NO se consume ni se envía a tesorería, queda a favor
+     *                           quién pagarle el remanente (§6/D2): en ese caso la porción
+     *                           PENSIÓN del remanente NO se consume ni se envía a tesorería,
+     *                           queda a favor
+     * @param seguroInterno      cuánto del {@code remanente} es porción SEGURO y debe
+     *                           traspasarse igual aunque no haya certificado (§6, ampliación
+     *                           2026-09-04): no sale al banco —va a 2.3.90.90.06 SEGURO POR
+     *                           PAGAR JUBILADOS, un traspaso interno— así que no hay cuenta de
+     *                           destino que el certificado deba validar. El llamador lo pasa en
+     *                           0 cuando SÍ hay certificado: ahí el remanente entero ya viaja
+     *                           en la orden de pago y traspasarlo aparte lo duplicaría
      */
     private PagoPensionComplementaria registrarPgpcDelMes(Entidad entidad, Long idEntidad, long anioM, long mesM,
             double valorPension, double valorSeguro, double valorTotal, double aplicadoAlPrestamo, double remanente,
-            LocalDate fecha, LocalDateTime fechaHecho, LocalDateTime fechaRegistro, String usuario, Long idUsuario,
-            Long idEmpresa, CuentaBancariaParticipe cuentaSalida, String glosaMovimiento) throws Throwable {
+            double seguroInterno, LocalDate fecha, LocalDateTime fechaHecho, LocalDateTime fechaRegistro,
+            String usuario, Long idUsuario, Long idEmpresa, CuentaBancariaParticipe cuentaSalida,
+            String glosaMovimiento) throws Throwable {
 
         boolean saleAlBanco = remanente > TOLERANCIA && cuentaSalida != null;
+        // Guardarraíl: el traspaso interno del seguro sólo tiene sentido cuando NO hay salida al
+        // banco, y nunca puede exceder el remanente del mes (que ya viene topado al saldo libre).
+        double traspasoSeguro = saleAlBanco
+            ? 0.0
+            : redondear(Math.max(0.0, Math.min(seguroInterno, remanente)));
 
-        // Movimiento NEGATIVO en CRD.APRT — SOLO por el remanente que de verdad sale al banco.
-        // El tramo cruzado ya generó su propio movimiento NEGATIVO (tipo PAGO_PRESTAMO) dentro
-        // de pagarConAportes/consumirAportes — duplicarlo acá bajaría el saldo dos veces.
+        // Movimiento NEGATIVO en CRD.APRT — por el remanente que sale al banco, o (sin
+        // certificado) por la porción de seguro que se traspasa internamente. El tramo cruzado
+        // ya generó su propio movimiento NEGATIVO (tipo PAGO_PRESTAMO) dentro de
+        // pagarConAportes/consumirAportes — duplicarlo acá bajaría el saldo dos veces.
+        //
+        // ⚠️ Consecuencia querida y documentada (§6 del contrato): este movimiento negativo es
+        // el ANCLA del retroactivo (resolverAnclaRetroactivo), así que traspasar el seguro de un
+        // mes lo da por SALDADO y la porción de pensión retenida no se vuelve a pagar
+        // retroactivamente después. NO es plata perdida: el remanente retenido nunca se
+        // descuenta, se queda en el saldo del aporte 23 del jubilado.
         Aporte aporteRemanente = null;
         if (saleAlBanco) {
             aporteRemanente = crearMovimientoNegativo(entidad, remanente, glosaMovimiento, fechaHecho, usuario);
+        } else if (traspasoSeguro > TOLERANCIA) {
+            aporteRemanente = crearMovimientoNegativo(entidad, traspasoSeguro,
+                glosaMovimiento + " - SEGURO MEDICO", fechaHecho, usuario);
         }
 
         PagoPensionComplementaria pago = new PagoPensionComplementaria();
@@ -1088,9 +1196,10 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             }
             pago.setIdPagoProgramado(idPagoOrden);
             pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.EN_PAGO));
-        } else if (remanente <= TOLERANCIA) {
-            // Sin remanente: la deuda (o el cruce del mes) consumió toda la pensión. El pago
-            // existe, se contabiliza, y no hay nada que esperar del banco.
+        } else if (redondear(remanente - traspasoSeguro) <= TOLERANCIA) {
+            // Sin remanente PENDIENTE: la deuda (o el cruce del mes) consumió toda la pensión, o
+            // lo poco que quedaba era todo seguro y ya se traspasó. El pago existe, se
+            // contabiliza, y no hay nada que esperar del banco.
             pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.PAGADA));
             pago.setFechaPago(fecha);
         } else {

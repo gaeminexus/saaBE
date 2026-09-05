@@ -26,7 +26,15 @@ public class ResultadoPrevisualizacionCorrida {
     /** Suma de {@code montoADinero} — esto sí es dinero que saldría al banco. */
     private double totalADinero;
 
-    /** {@code totalACruzarPrestamos + totalADinero}. */
+    /**
+     * Lo que se descontaría de las cuentas de pensión complementaria (aporte 23): suma de
+     * {@code total} de cada fila apta.
+     *
+     * ⛔ Desde la ampliación del 2026-09-04 ya NO es {@code totalACruzarPrestamos +
+     * totalADinero}: hay una TERCERA porción, {@link #totalSeguroInternoGeneral}, que también se
+     * descuenta y no sale al banco. La identidad vigente es
+     * {@code totalACruzarPrestamos + totalADinero + totalSeguroInternoGeneral}.
+     */
     private double totalGeneral;
 
     /**
@@ -35,6 +43,14 @@ public class ResultadoPrevisualizacionCorrida {
      * evaluados — cuenta contable distinta de la pensión (plantilla alterno 35).
      */
     private double totalSeguroGeneral;
+
+    /**
+     * §6 (ampliación 2026-09-04): la parte de {@link #totalSeguroGeneral} que se traspasaría
+     * INTERNAMENTE a {@code 2.3.90.90.06 SEGURO POR PAGAR JUBILADOS} —jubilados sin certificado
+     * bancario— sin salir al banco. Es un SUBCONJUNTO de {@code totalSeguroGeneral} y NO está
+     * incluido en {@code totalADinero}; sí está incluido en {@code totalGeneral}.
+     */
+    private double totalSeguroInternoGeneral;
 
     private List<DetallePrevisualizacionJubilado> detalle = new ArrayList<>();
 
@@ -111,6 +127,14 @@ public class ResultadoPrevisualizacionCorrida {
 
     public void setTotalSeguroGeneral(double totalSeguroGeneral) {
         this.totalSeguroGeneral = totalSeguroGeneral;
+    }
+
+    public double getTotalSeguroInternoGeneral() {
+        return totalSeguroInternoGeneral;
+    }
+
+    public void setTotalSeguroInternoGeneral(double totalSeguroInternoGeneral) {
+        this.totalSeguroInternoGeneral = totalSeguroInternoGeneral;
     }
 
     public List<DetallePrevisualizacionJubilado> getDetalle() {

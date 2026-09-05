@@ -29,17 +29,30 @@ public class DetallePagoPension {
     private double valorSeguroMensual;
 
     /**
-     * Pensión acumulada de todos los meses generados en esta llamada. NOMINAL: suma
-     * {@code mesesAplicados × valorPensionMensual}, el mismo criterio que ya usa
-     * {@code PGPC.valorPension} en cada fila (siempre el devengado completo del mes, sin
-     * importar si ese mes quedó topado por saldo o deuda exigible — ítem 7 del reporte del
-     * retroactivo). Si el último mes quedó parcial, este total NO lo prorratea: sigue
-     * contando ese mes completo, igual que ya hace la fila PGPC de ese mes.
+     * Pensión acumulada de lo que esta llamada PROCESÓ de verdad, mes a mes: el mes completo
+     * cuando lo fue, y el reparto PROPORCIONAL a la mensualidad cuando quedó topado (§4bis).
+     *
+     * ⛔ Corrección 2026-09-04: antes acumulaba también el remanente RETENIDO por falta de
+     * certificado —plata que nunca se movió— y por eso no coincidía con el prevuelo, que sí lo
+     * excluye. Ahora las dos rutas cuentan lo mismo. Ojo: NO es el devengado; el devengo del
+     * asiento sigue siendo el nominal completo del mes ({@code PGPC.valorPension}).
      */
     private double totalPension;
 
-    /** Seguro médico acumulado — mismo criterio NOMINAL que {@link #totalPension}. */
+    /**
+     * Seguro médico acumulado — mismo criterio que {@link #totalPension}, y sale por RESTA para
+     * que {@code totalPension + totalSeguro} sume exacto lo procesado (§4bis).
+     */
     private double totalSeguro;
+
+    /**
+     * §6 (ampliación 2026-09-04): cuánto de {@link #totalSeguro} se traspasó INTERNAMENTE a
+     * {@code 2.3.90.90.06 SEGURO POR PAGAR JUBILADOS} sin salir al banco, por no haber
+     * certificado bancario. Es un SUBCONJUNTO de {@code totalSeguro}, no un adicional — sumarlo
+     * aparte duplica. 0 cuando hubo certificado: ahí el remanente entero viajó en la orden de
+     * pago.
+     */
+    private double valorSeguroInterno;
 
     /** Cuánto de la pensión del mes se cruzó contra deuda de préstamo vigente (0 si no aplica). */
     private Double valorCruzadoAPrestamo;
@@ -76,8 +89,13 @@ public class DetallePagoPension {
 
     /**
      * Cuál de las condiciones de corte terminó el bucle retroactivo: "MES_CORRIDA_ALCANZADO" |
-     * "SALDO_AGOTADO" | "SIN_PRESTAMO_SIN_CERTIFICADO". {@code null} fuera del circuito
-     * retroactivo.
+     * "SALDO_AGOTADO" | "SIN_PRESTAMO_SIN_CERTIFICADO_SIN_SEGURO". {@code null} fuera del
+     * circuito retroactivo.
+     *
+     * ⛔ "SIN_PRESTAMO_SIN_CERTIFICADO" (a secas) YA NO es alcanzable: desde la ampliación del
+     * 2026-09-04 tener seguro médico también desbloquea, así que el corte exige los TRES en
+     * cero. Ningún consumidor lo leía —verificado con grep en backend, frontend y docs— por eso
+     * se renombró en vez de agregar un segundo literal.
      *
      * ⛔ "PRESTAMO_AL_DIA" YA NO es alcanzable (corrección 2026-09-05, post-D4): que el préstamo
      * quede al día ya no corta el bucle — el jubilado sigue cobrando en efectivo los meses que
@@ -90,10 +108,14 @@ public class DetallePagoPension {
      * "COMPLETA" | "SOLO_CRUCE" | "BLOQUEADO" | "AL_DIA" — API-PAGO-PENSION-COMPLEMENTARIA.md
      * §6. {@code COMPLETA}: hubo cruce (si tenía préstamo) y no quedó remanente retenido —
      * incluye tanto "salió dinero al banco" como "el cruce absorbió el 100%, no había nada
-     * que sacar". {@code SOLO_CRUCE}: tiene préstamo, canceló deuda, pero quedó un remanente
-     * que no se pudo entregar (sin cuenta o sin certificado). {@code BLOQUEADO}: no participó
-     * en absoluto — sin préstamo y sin certificado (no hay cruce posible y no puede salir
-     * dinero), o cualquier otro motivo que impidió generar el pago ({@code mensaje} dice cuál).
+     * que sacar". {@code SOLO_CRUCE}: quedó un remanente de PENSIÓN que no se pudo entregar
+     * (sin cuenta o sin certificado) — desde la ampliación del 2026-09-04 se lee como PARCIAL y
+     * ya no implica que haya habido cruce: un jubilado sin préstamo, sin certificado y con
+     * seguro médico cae acá con {@code valorCruzadoAPrestamo = 0}, porque su seguro sí se
+     * traspasó. El literal NO cambió, a propósito, para no romper al frontend (§6).
+     * {@code BLOQUEADO}: no participó en absoluto — sin préstamo, sin certificado Y sin seguro
+     * (no hay cruce, no puede salir dinero y no hay seguro que traspasar), o cualquier otro
+     * motivo que impidió generar el pago ({@code mensaje} dice cuál).
      * {@code AL_DIA}: no debe ningún mes a este período — NO es error ni bloqueo, es un final
      * normal (corrección 2026-09-05: antes esto quedaba en {@code null} y el frontend lo
      * mostraba idéntico a un bloqueo real, "Sin novedad" sin explicación).
@@ -177,6 +199,14 @@ public class DetallePagoPension {
 
     public double getTotalSeguro() {
         return totalSeguro;
+    }
+
+    public double getValorSeguroInterno() {
+        return valorSeguroInterno;
+    }
+
+    public void setValorSeguroInterno(double valorSeguroInterno) {
+        this.valorSeguroInterno = valorSeguroInterno;
     }
 
     public void setTotalSeguro(double totalSeguro) {

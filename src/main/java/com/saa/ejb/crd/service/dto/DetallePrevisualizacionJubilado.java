@@ -18,7 +18,16 @@ public class DetallePrevisualizacionJubilado {
     /** Estimado: cuánto saldría como orden de pago hacia tesorería (0 si no tiene certificado). */
     private double montoADinero;
 
-    /** {@code montoACruzar + montoADinero}. */
+    /**
+     * §6 (ampliación 2026-09-04): la porción SEGURO del remanente que se traspasaría
+     * INTERNAMENTE a {@code 2.3.90.90.06 SEGURO POR PAGAR JUBILADOS} por no haber certificado
+     * bancario. NO sale al banco — por eso NO suma a {@code montoADinero}, que sigue siendo
+     * exclusivamente el dinero que sale. 0 cuando hay certificado: ahí el remanente entero va en
+     * la orden de pago y ya está contado en {@code montoADinero}.
+     */
+    private double montoSeguroInterno;
+
+    /** {@code montoACruzar + montoADinero + montoSeguroInterno}. */
     private double total;
 
     /**
@@ -34,18 +43,17 @@ public class DetallePrevisualizacionJubilado {
     private double valorSeguroMensual;
 
     /**
-     * Pensión acumulada de {@code mesesAdeudados} meses. NOMINAL: {@code mesesAdeudados ×
-     * valorPensionMensual}, SIN prorratear si el tope (deuda exigible o saldo) termina
-     * recortando {@code total} por debajo de {@code mesesAdeudados × VPPC.valorPagar} — mismo
-     * criterio nominal que ya usa {@code PGPC.valorPension} en la corrida real (ítem 7 del
-     * reporte del retroactivo). Por eso {@code totalPension + totalSeguro} puede ser MAYOR que
-     * {@code total} cuando el último mes queda topado: reflejan lo ADEUDADO, no lo que este
-     * llamado puede efectivamente pagar. Cómo prorratear ese último mes entre las dos cuentas
-     * es una decisión contable pendiente del usuario — no se inventó un criterio acá.
+     * Pensión acumulada de lo que la corrida PROCESARÍA — no lo adeudado. Reparto PROPORCIONAL
+     * a la mensualidad sobre {@code montoACruzar + montoADinero} (§4bis, decisión del árbitro
+     * 2026-09-04); el {@code montoSeguroInterno} es 100% seguro y no entra acá.
+     *
+     * Garantía del backend, exacta: {@code totalPension + totalSeguro == total} (el seguro sale
+     * por RESTA, nunca con su propia multiplicación — dos redondeos independientes descuadran
+     * las dos cuentas contables por centavos).
      */
     private double totalPension;
 
-    /** Seguro médico acumulado — mismo criterio NOMINAL que {@link #totalPension}. */
+    /** Seguro médico acumulado — por RESTA contra {@code total}, ver {@link #totalPension}. */
     private double totalSeguro;
 
     private boolean tienePrestamo;
@@ -110,6 +118,14 @@ public class DetallePrevisualizacionJubilado {
 
     public void setMontoADinero(double montoADinero) {
         this.montoADinero = montoADinero;
+    }
+
+    public double getMontoSeguroInterno() {
+        return montoSeguroInterno;
+    }
+
+    public void setMontoSeguroInterno(double montoSeguroInterno) {
+        this.montoSeguroInterno = montoSeguroInterno;
     }
 
     public double getTotal() {
