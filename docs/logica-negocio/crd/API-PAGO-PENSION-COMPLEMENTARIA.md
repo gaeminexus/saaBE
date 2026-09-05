@@ -904,3 +904,59 @@ adelante quiere fechar una jubilación en el futuro, acá está la razón por la
   `[2026,9,4,10,15,3,0]` para `LocalDateTime`. Formatearlos antes de mostrarlos **y antes de
   exportarlos**: el 2026-09-03 se encontró un CSV de otro tablero que volcaba `2026,7,31` en una
   celda por saltarse ese paso.
+
+---
+
+## 8. Reporte Jasper de la corrida mensual — `RPRT_PGPC_CRRD` (2026-09-05)
+
+`src/main/resources/rep/crd/RPRT_PGPC_CRRD.jrxml`, servido por `POST /rest/rprt/generar`
+(`{modulo:"crd", nombreReporte:"RPRT_PGPC_CRRD", ...}`). Parámetros `P_ANIO` (`Long`), `P_MES`
+(`Long`), `P_IDEMPRESA` (`Long`), `P_USUARIO` (`String`, solo para el pie del título).
+
+**⛔ PENDIENTE DE COMPILAR — bloqueante.** Este commit trae solo el `.jrxml`. En esta máquina no
+hay Jaspersoft Studio 7.0.3 (solo `iReport 5.6.0`, discontinuado — verificado que tampoco está en
+la máquina del otro equipo — y un `.jasper` generado con esa versión apunta a JasperReports 5.6,
+no a 7.0.3: peor que no tenerlo, porque puede cargar y fallar raro en vez de fallar claro). El
+usuario tiene Jaspersoft Studio 7.0.3 y va a compilar el `.jasper` — hasta que ese archivo se
+agregue junto al `.jrxml` y se commitee, este reporte revienta al ejecutarse
+(`ReporteServiceImpl:110` solo cae al `.jrxml` si no encuentra el `.jasper`, y ese respaldo en
+tiempo de ejecución está muerto en JasperReports 7.0.3 — ver CLAUDE.md).
+
+### Qué muestra
+
+Sección 1, agrupada por jubilado (con subtotal), un renglón por cada `PGPC` de la corrida:
+período cubierto (`PGPCANNO`/`PGPCMESS` — puede no coincidir con `P_ANIO`/`P_MES`, ver más abajo),
+pensión, seguro, total, estado decodificado, cuánto salió a dinero al banco, cuánto se cruzó a
+préstamos y el detalle del cruce por préstamo. Totales de la sección (pensión, seguro, cruzado,
+dinero al banco, total general) y, al pie del reporte, la orden de pago agregada al proveedor del
+seguro médico del período (`PGS.PGTR`, origen `CRD_SEGURO_JUBILADOS`).
+
+Sección 2: los `JUBILADO_COMPLEMENTARIO` (`ENTDIDST=3`) que NO tienen ninguna fila de `PGPC` en el
+rango — ver límite 2 abajo, la ausencia no se interpreta.
+
+### Cuatro límites del modelo de datos, verificados antes de escribir la consulta
+
+1. **No hay vínculo grabado entre un `PGPC` y la(s) cuota(s)/préstamo que cruzó.** El cruce genera
+   su propio `Aporte` tipo 23 (`APRTTPMV=4`, glosa `"PAGO PRESTAMO <id> - Evento <id>"`) y filas
+   `PagoPrestamo`/`DetallePrestamo`, pero ninguna FK vuelve a `PGPCCDGO`. La consulta correlaciona
+   por `ENTDCDGO` + `TRUNC(APRTFCTR) = PGPCFCHA` (misma variable `fecha` del mismo mes en
+   `generarMesesRetroactivos`) — es una **heurística**, no una FK, y por eso el detalle se muestra
+   a nivel **préstamo** (vía `LISTAGG` de la glosa), nunca a nivel cuota.
+2. **Un jubilado bloqueado no genera ninguna fila en `PGPC`.** El motivo de bloqueo no se persiste
+   en ninguna tabla — solo existe transitoriamente en la respuesta HTTP de
+   `previsualizarCorrida`/`generarPagosDelMes`. La Sección 2 lista la ausencia, explícitamente
+   **sin** afirmar que es un bloqueo: puede ser eso o simplemente un jubilado al día. Candidato a
+   persistirse a futuro (DDL, fuera de este alcance — anotado en el tablero por el árbitro).
+3. **El filtro de datos es la fecha de EJECUCIÓN de la corrida (`PGPCFCRG`), no el período
+   cubierto.** Un retroactivo puede generar, en una sola corrida de un mes dado, filas `PGPC` que
+   cubren varios meses anteriores del mismo jubilado — filtrar por `PGPCANNO`/`PGPCMESS` literal
+   habría mostrado solo la fila del mes puntual y un total que no cuadra contra lo autorizado. Por
+   eso `P_ANIO`/`P_MES` acotan `PGPCFCRG` a ese mes calendario, y el período que cada fila cubre
+   queda como **columna** (`PGPCANNO`/`PGPCMESS` del detalle). Si dos corridas caen en el mismo mes
+   calendario, este criterio no las distingue — revisar antes de asumir que alcanza.
+4. **`P_IDEMPRESA` no filtra jubilados.** Ni `CRD.PGPC`, ni `CRD.ENTD`, ni `CRD.FLLL` tienen columna
+   de empresa (verificado leyendo las tres entidades). Solo se usa para ubicar la orden de pago al
+   proveedor del seguro médico en `PGS.PGTR`, que sí es multiempresa.
+
+Verificación de la consulta: `docs/logica-negocio/crd/sql/197_VERIFICACION_REPORTE_CORRIDA_JUBILADOS.sql`
+(solo `SELECT`, literales de ejemplo — correrlo antes de dar el reporte por bueno).

@@ -1,0 +1,305 @@
+<!-- Reporte de la corrida mensual de pago de pension complementaria a jubilados. Contrato: docs/logica-negocio/crd/API-PAGO-PENSION-COMPLEMENTARIA.md (Sec 4/4quater/5). -->
+<!-- PENDIENTE DE COMPILAR (bloqueante): este .jrxml NO tiene su .jasper todavia. En esta maquina no hay Jaspersoft Studio 7.0.3 (solo iReport 5.6.0, discontinuado e incompatible: un .jasper generado con eso apunta a JasperReports 5.6, no a 7.0.3, y ReporteServiceImpl:110 exige el .jasper: sin el, este reporte revienta la primera vez que alguien lo ejecuta). El usuario tiene Jaspersoft Studio 7.0.3 y lo compila el. NO ESTA COMPLETO hasta que el .jasper se agregue en el mismo directorio y se commitee. -->
+<!-- LIMITES DEL MODELO DE DATOS, verificados contra el codigo antes de escribir esta query (no inventar mas alla de esto): -->
+<!--   1) NO hay vinculo grabado entre un PGPC y la(s) cuota(s)/prestamo que cruzo: el cruce genera su propio Aporte tipo 23 -->
+<!--      (APRTTPMV=4, glosa "PAGO PRESTAMO id - Evento id") y filas PagoPrestamo/DetallePrestamo, pero ninguna FK vuelve -->
+<!--      a PGPCCDGO. Esta query correlaciona por ENTDCDGO + TRUNC(APRTFCTR)=PGPCFCHA (misma variable 'fecha' en el mismo -->
+<!--      mes del bucle retroactivo, PagoPensionComplementariaServiceImpl.generarMesesRetroactivos): es una HEURISTICA, -->
+<!--      no una FK, y se muestra a nivel PRESTAMO (via LISTAGG de la glosa), nunca a nivel cuota. -->
+<!--   2) Un jubilado BLOQUEADO no genera NINGUNA fila en PGPC: no hay ninguna tabla que persista el motivo de bloqueo -->
+<!--      de una corrida ya pasada (solo existe transitoriamente en la respuesta HTTP de previsualizarCorrida/ -->
+<!--      generarPagosDelMes, nunca se graba). La SECCION 2 de este reporte lista las AUSENCIAS (jubilados sin fila de -->
+<!--      PGPC en el rango) pero NO afirma el motivo: puede ser bloqueo o simplemente "al dia, nada que pagar". -->
+<!--   3) El filtro de datos es la FECHA DE EJECUCION de la corrida (PGPCFCRG, TIMESTAMP), NO el periodo cubierto -->
+<!--      (PGPCANNO/PGPCMESS): un retroactivo puede generar, en una sola corrida de un mes dado, filas PGPC que CUBREN -->
+<!--      varios meses anteriores para el mismo jubilado. P_ANIO/P_MES identifican el MES EN QUE SE CORRIO el proceso, -->
+<!--      acotando PGPCFCRG a ese mes calendario: el periodo que cada fila CUBRE es la columna PGPCANNO/PGPCMESS del -->
+<!--      detalle, no el parametro. Si esto no alcanza para identificar una corrida (dos corridas el mismo mes), hay que -->
+<!--      revisar el criterio: no se afino mas sin verificarlo contra un caso real. -->
+<!--   4) P_IDEMPRESA no filtra jubilados: ni CRD.PGPC ni CRD.ENTD ni CRD.FLLL tienen columna de empresa (verificado -->
+<!--      leyendo las tres entidades). Solo se usa para ubicar la orden de pago al proveedor del seguro medico en -->
+<!--      PGS.PGTR (que si es multiempresa). -->
+<jasperReport name="RPRT_PGPC_CRRD" language="java" pageWidth="842" pageHeight="595" orientation="Landscape" columnWidth="782" leftMargin="30" rightMargin="30" topMargin="30" bottomMargin="30" whenNoDataType="AllSectionsNoDetail" uuid="e5000000-0000-0000-0000-000000000001">
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="Oracle"/>
+	<property name="com.jaspersoft.studio.report.description" value="Corrida mensual de pago de pension complementaria a jubilados: detalle de cruce a prestamos, seguro y dinero al banco"/>
+	<parameter name="P_ANIO" class="java.lang.Long">
+		<description><![CDATA[Anio del MES EN QUE SE CORRIO el proceso (filtra PGPCFCRG), no el periodo cubierto]]></description>
+	</parameter>
+	<parameter name="P_MES" class="java.lang.Long">
+		<description><![CDATA[Mes (1-12) en que se corrio el proceso (filtra PGPCFCRG), no el periodo cubierto]]></description>
+	</parameter>
+	<parameter name="P_IDEMPRESA" class="java.lang.Long">
+		<description><![CDATA[Empresa contable -- solo se usa para ubicar la orden de pago al proveedor del seguro en PGS.PGTR]]></description>
+	</parameter>
+	<parameter name="P_USUARIO" class="java.lang.String"/>
+	<query language="SQL"><![CDATA[SELECT
+    1 AS SECCION,
+    e.ENTDCDGO AS ENTDCDGO,
+    e.ENTDNMID AS ENTDNMID,
+    e.ENTDRZNS AS ENTDRZNS,
+    p.PGPCCDGO AS PGPCCDGO,
+    p.PGPCANNO AS PGPCANNO,
+    p.PGPCMESS AS PGPCMESS,
+    p.PGPCVLPN AS PGPCVLPN,
+    p.PGPCVLSG AS PGPCVLSG,
+    p.PGPCVLRR AS PGPCVLRR,
+    CASE p.PGPCESTD
+        WHEN 1 THEN 'REGISTRADA'
+        WHEN 2 THEN 'EN_PAGO'
+        WHEN 3 THEN 'PAGADA'
+        WHEN 4 THEN 'RECHAZADA'
+        WHEN 5 THEN 'ANULADA'
+        ELSE 'Estado ' || TO_CHAR(p.PGPCESTD)
+    END AS PGPCESTD_TXT,
+    p.PGPCFCHA AS PGPCFCHA,
+    p.PGPCFCRG AS PGPCFCRG,
+    p.PGPCFCPG AS PGPCFCPG,
+    CASE WHEN p.PGPCESTD IN (2,3) THEN p.PGPCVLPN ELSE 0 END AS DINERO_BANCO,
+    NVL(cr.CRZ_VALOR, 0) AS CRUZADO_PRESTAMOS,
+    NVL(cr.CRZ_DETALLE, 'Sin cruce a prestamo este mes') AS DETALLE_CRUCE_PRESTAMOS,
+    (SELECT MAX(g.PGTRCDGO) FROM PGS.PGTR g
+       WHERE g.PGTRORGN = 'CRD_SEGURO_JUBILADOS'
+         AND g.PGTRIDOR = ($P{P_ANIO} * 100 + $P{P_MES})
+         AND g.PGTRPJRQ = $P{P_IDEMPRESA}) AS ORDEN_PROVEEDOR_CDGO,
+    (SELECT MAX(g.PGTRVLOR) FROM PGS.PGTR g
+       WHERE g.PGTRORGN = 'CRD_SEGURO_JUBILADOS'
+         AND g.PGTRIDOR = ($P{P_ANIO} * 100 + $P{P_MES})
+         AND g.PGTRPJRQ = $P{P_IDEMPRESA}) AS ORDEN_PROVEEDOR_VALOR
+FROM CRD.PGPC p
+JOIN CRD.ENTD e ON e.ENTDCDGO = p.ENTDCDGO
+LEFT JOIN (
+    SELECT a.ENTDCDGO AS ENTDCDGO,
+           TRUNC(a.APRTFCTR) AS FECHA,
+           SUM(ABS(a.APRTVLRR)) AS CRZ_VALOR,
+           LISTAGG(
+               'Prestamo ' || REGEXP_SUBSTR(a.APRTGLSA, 'PAGO PRESTAMO (\d+)', 1, 1, NULL, 1)
+               || ': $' || TO_CHAR(ABS(a.APRTVLRR), 'FM999999990.00'),
+               '; '
+           ) WITHIN GROUP (ORDER BY a.APRTCDGO) AS CRZ_DETALLE
+    FROM CRD.APRT a
+    WHERE a.TPAPCDGO = 23
+      AND a.APRTTPMV = 4
+    GROUP BY a.ENTDCDGO, TRUNC(a.APRTFCTR)
+) cr ON cr.ENTDCDGO = p.ENTDCDGO AND cr.FECHA = p.PGPCFCHA
+WHERE p.PGPCFCRG >= TO_DATE(LPAD(TO_CHAR($P{P_ANIO}),4,'0') || '-' || LPAD(TO_CHAR($P{P_MES}),2,'0') || '-01', 'YYYY-MM-DD')
+  AND p.PGPCFCRG <  ADD_MONTHS(TO_DATE(LPAD(TO_CHAR($P{P_ANIO}),4,'0') || '-' || LPAD(TO_CHAR($P{P_MES}),2,'0') || '-01', 'YYYY-MM-DD'), 1)
+
+UNION ALL
+
+SELECT
+    2 AS SECCION,
+    e.ENTDCDGO AS ENTDCDGO,
+    e.ENTDNMID AS ENTDNMID,
+    e.ENTDRZNS AS ENTDRZNS,
+    CAST(NULL AS NUMBER) AS PGPCCDGO,
+    CAST(NULL AS NUMBER) AS PGPCANNO,
+    CAST(NULL AS NUMBER) AS PGPCMESS,
+    CAST(NULL AS NUMBER) AS PGPCVLPN,
+    CAST(NULL AS NUMBER) AS PGPCVLSG,
+    CAST(NULL AS NUMBER) AS PGPCVLRR,
+    'SIN PAGO GENERADO' AS PGPCESTD_TXT,
+    CAST(NULL AS DATE) AS PGPCFCHA,
+    CAST(NULL AS TIMESTAMP) AS PGPCFCRG,
+    CAST(NULL AS DATE) AS PGPCFCPG,
+    CAST(NULL AS NUMBER) AS DINERO_BANCO,
+    CAST(NULL AS NUMBER) AS CRUZADO_PRESTAMOS,
+    'No tiene ninguna fila de pago en este periodo: puede estar bloqueado o simplemente al dia -- este reporte no distingue entre los dos casos.' AS DETALLE_CRUCE_PRESTAMOS,
+    CAST(NULL AS NUMBER) AS ORDEN_PROVEEDOR_CDGO,
+    CAST(NULL AS NUMBER) AS ORDEN_PROVEEDOR_VALOR
+FROM CRD.ENTD e
+WHERE e.ENTDIDST = 3
+  AND NOT EXISTS (
+      SELECT 1 FROM CRD.PGPC p2
+      WHERE p2.ENTDCDGO = e.ENTDCDGO
+        AND p2.PGPCFCRG >= TO_DATE(LPAD(TO_CHAR($P{P_ANIO}),4,'0') || '-' || LPAD(TO_CHAR($P{P_MES}),2,'0') || '-01', 'YYYY-MM-DD')
+        AND p2.PGPCFCRG <  ADD_MONTHS(TO_DATE(LPAD(TO_CHAR($P{P_ANIO}),4,'0') || '-' || LPAD(TO_CHAR($P{P_MES}),2,'0') || '-01', 'YYYY-MM-DD'), 1)
+  )
+
+ORDER BY 1, 4, 6, 7]]></query>
+	<field name="SECCION" class="java.math.BigDecimal"/>
+	<field name="ENTDCDGO" class="java.math.BigDecimal"/>
+	<field name="ENTDNMID" class="java.lang.String"/>
+	<field name="ENTDRZNS" class="java.lang.String"/>
+	<field name="PGPCCDGO" class="java.math.BigDecimal"/>
+	<field name="PGPCANNO" class="java.math.BigDecimal"/>
+	<field name="PGPCMESS" class="java.math.BigDecimal"/>
+	<field name="PGPCVLPN" class="java.math.BigDecimal"/>
+	<field name="PGPCVLSG" class="java.math.BigDecimal"/>
+	<field name="PGPCVLRR" class="java.math.BigDecimal"/>
+	<field name="PGPCESTD_TXT" class="java.lang.String"/>
+	<field name="PGPCFCHA" class="java.sql.Date"/>
+	<field name="PGPCFCRG" class="java.sql.Timestamp"/>
+	<field name="PGPCFCPG" class="java.sql.Date"/>
+	<field name="DINERO_BANCO" class="java.math.BigDecimal"/>
+	<field name="CRUZADO_PRESTAMOS" class="java.math.BigDecimal"/>
+	<field name="DETALLE_CRUCE_PRESTAMOS" class="java.lang.String"/>
+	<field name="ORDEN_PROVEEDOR_CDGO" class="java.math.BigDecimal"/>
+	<field name="ORDEN_PROVEEDOR_VALOR" class="java.math.BigDecimal"/>
+	<variable name="V_TOTAL_PENSION" calculation="Sum" class="java.math.BigDecimal">
+		<expression><![CDATA[$F{SECCION}.intValue() == 1 && $F{PGPCVLPN} != null ? $F{PGPCVLPN} : java.math.BigDecimal.ZERO]]></expression>
+	</variable>
+	<variable name="V_TOTAL_SEGURO" calculation="Sum" class="java.math.BigDecimal">
+		<expression><![CDATA[$F{SECCION}.intValue() == 1 && $F{PGPCVLSG} != null ? $F{PGPCVLSG} : java.math.BigDecimal.ZERO]]></expression>
+	</variable>
+	<variable name="V_TOTAL_GENERAL" calculation="Sum" class="java.math.BigDecimal">
+		<expression><![CDATA[$F{SECCION}.intValue() == 1 && $F{PGPCVLRR} != null ? $F{PGPCVLRR} : java.math.BigDecimal.ZERO]]></expression>
+	</variable>
+	<variable name="V_TOTAL_DINERO_BANCO" calculation="Sum" class="java.math.BigDecimal">
+		<expression><![CDATA[$F{SECCION}.intValue() == 1 && $F{DINERO_BANCO} != null ? $F{DINERO_BANCO} : java.math.BigDecimal.ZERO]]></expression>
+	</variable>
+	<variable name="V_TOTAL_CRUZADO" calculation="Sum" class="java.math.BigDecimal">
+		<expression><![CDATA[$F{SECCION}.intValue() == 1 && $F{CRUZADO_PRESTAMOS} != null ? $F{CRUZADO_PRESTAMOS} : java.math.BigDecimal.ZERO]]></expression>
+	</variable>
+	<variable name="V_SUBTOTAL_JUBILADO" calculation="Sum" class="java.math.BigDecimal" resetType="Group" resetGroup="G_JUBILADO">
+		<expression><![CDATA[$F{PGPCVLRR} != null ? $F{PGPCVLRR} : java.math.BigDecimal.ZERO]]></expression>
+	</variable>
+	<group name="G_SECCION">
+		<expression><![CDATA[$F{SECCION}]]></expression>
+		<groupHeader>
+			<band height="20" splitType="Stretch">
+				<element kind="textField" uuid="e5000000-0000-0000-0000-000000000101" mode="Opaque" x="0" y="0" width="782" height="20" backcolor="#D1D1D1" fontName="Tahoma" fontSize="9.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+					<expression><![CDATA[$F{SECCION}.intValue() == 1
+    ? "1. PAGOS GENERADOS EN ESTA CORRIDA (" + $P{P_MES} + "/" + $P{P_ANIO} + ")"
+    : "2. JUBILADO_COMPLEMENTARIO SIN PAGO GENERADO EN ESTE PERIODO -- ausencia, NO significa bloqueado"]]></expression>
+					<box leftPadding="4"/>
+				</element>
+			</band>
+		</groupHeader>
+		<groupFooter>
+			<band height="34" splitType="Stretch">
+				<element kind="staticText" uuid="e5000000-0000-0000-0000-000000000102" x="0" y="0" width="782" height="14" fontName="Tahoma" fontSize="7.0" italic="true" hTextAlign="Left" vTextAlign="Middle" printWhenExpression="$F{SECCION}.intValue() == 1">
+					<text><![CDATA[Cruzado a prestamos: heuristica por entidad+fecha contra CRD.APRT (tipo 23, movimiento PAGO_PRESTAMO) -- no hay FK grabada de PGPC a la cuota que cancelo.]]></text>
+				</element>
+				<element kind="staticText" uuid="e5000000-0000-0000-0000-000000000103" x="0" y="14" width="782" height="20" fontName="Tahoma" fontSize="9.0" bold="true" hTextAlign="Right" vTextAlign="Middle" printWhenExpression="$F{SECCION}.intValue() == 1">
+					<expression><![CDATA["TOTALES DE LA SECCION 1  --  Pension: $" + $V{V_TOTAL_PENSION}.setScale(2, java.math.RoundingMode.HALF_UP)
+    + "   Seguro: $" + $V{V_TOTAL_SEGURO}.setScale(2, java.math.RoundingMode.HALF_UP)
+    + "   Cruzado a prestamos: $" + $V{V_TOTAL_CRUZADO}.setScale(2, java.math.RoundingMode.HALF_UP)
+    + "   Dinero al banco: $" + $V{V_TOTAL_DINERO_BANCO}.setScale(2, java.math.RoundingMode.HALF_UP)
+    + "   TOTAL GENERAL: $" + $V{V_TOTAL_GENERAL}.setScale(2, java.math.RoundingMode.HALF_UP)]]></expression>
+				</element>
+			</band>
+		</groupFooter>
+	</group>
+	<group name="G_JUBILADO">
+		<expression><![CDATA[$F{ENTDCDGO}]]></expression>
+		<groupHeader>
+			<band height="16" splitType="Stretch">
+				<element kind="textField" uuid="e5000000-0000-0000-0000-000000000111" mode="Opaque" x="0" y="0" width="782" height="16" backcolor="#EEEEEE" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+					<expression><![CDATA[$F{ENTDNMID} + " - " + $F{ENTDRZNS}]]></expression>
+					<box leftPadding="4"><pen lineWidth="0.25"/></box>
+				</element>
+			</band>
+		</groupHeader>
+		<groupFooter>
+			<band height="14" splitType="Stretch">
+				<element kind="staticText" uuid="e5000000-0000-0000-0000-000000000112" x="600" y="0" width="120" height="14" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle" printWhenExpression="$F{SECCION}.intValue() == 1">
+					<text><![CDATA[Subtotal jubilado:]]></text>
+				</element>
+				<element kind="textField" uuid="e5000000-0000-0000-0000-000000000113" x="722" y="0" width="60" height="14" fontName="Tahoma" fontSize="7.0" bold="true" pattern="#,##0.00" hTextAlign="Right" vTextAlign="Middle" blankWhenNull="true" printWhenExpression="$F{SECCION}.intValue() == 1">
+					<expression><![CDATA[$V{V_SUBTOTAL_JUBILADO}]]></expression>
+				</element>
+			</band>
+		</groupFooter>
+	</group>
+	<background splitType="Stretch"/>
+	<title height="70" splitType="Stretch">
+		<element kind="staticText" uuid="e5000000-0000-0000-0000-000000000201" x="0" y="0" width="782" height="20" fontName="Tahoma" fontSize="12.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[REPORTE MENSUAL DE PAGO DE PENSION COMPLEMENTARIA A JUBILADOS]]></text>
+		</element>
+		<element kind="textField" uuid="e5000000-0000-0000-0000-000000000202" x="0" y="22" width="782" height="16" fontName="Tahoma" fontSize="9.0" hTextAlign="Center" vTextAlign="Middle">
+			<expression><![CDATA["Corrida ejecutada en " + $P{P_MES} + "/" + $P{P_ANIO} + " -- empresa " + $P{P_IDEMPRESA}]]></expression>
+		</element>
+		<element kind="staticText" uuid="e5000000-0000-0000-0000-000000000203" x="0" y="40" width="782" height="12" fontName="Tahoma" fontSize="7.0" italic="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[El periodo del filtro es el MES EN QUE SE EJECUTO la corrida (PGPCFCRG), no el periodo cubierto por cada pago -- ver columna PERIODO de cada fila.]]></text>
+		</element>
+		<element kind="textField" uuid="e5000000-0000-0000-0000-000000000204" x="0" y="54" width="391" height="12" fontName="Tahoma" fontSize="7.0" hTextAlign="Left" vTextAlign="Middle">
+			<expression><![CDATA["Generado por: " + $P{P_USUARIO}]]></expression>
+		</element>
+		<element kind="textField" uuid="e5000000-0000-0000-0000-000000000205" x="391" y="54" width="391" height="12" fontName="Tahoma" fontSize="7.0" pattern="dd/MM/yyyy HH:mm" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[new java.util.Date()]]></expression>
+		</element>
+	</title>
+	<columnHeader height="16" splitType="Stretch">
+		<element kind="staticText" uuid="e5000000-0000-0000-0000-000000000301" mode="Opaque" x="0" y="0" width="60" height="16" backcolor="#EEEEEE" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[PERIODO]]></text>
+			<box><pen lineWidth="0.25"/></box>
+		</element>
+		<element kind="staticText" uuid="e5000000-0000-0000-0000-000000000302" mode="Opaque" x="60" y="0" width="70" height="16" backcolor="#EEEEEE" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<text><![CDATA[PENSION]]></text>
+			<box rightPadding="4"><pen lineWidth="0.25"/></box>
+		</element>
+		<element kind="staticText" uuid="e5000000-0000-0000-0000-000000000303" mode="Opaque" x="130" y="0" width="70" height="16" backcolor="#EEEEEE" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<text><![CDATA[SEGURO]]></text>
+			<box rightPadding="4"><pen lineWidth="0.25"/></box>
+		</element>
+		<element kind="staticText" uuid="e5000000-0000-0000-0000-000000000304" mode="Opaque" x="200" y="0" width="70" height="16" backcolor="#EEEEEE" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<text><![CDATA[TOTAL]]></text>
+			<box rightPadding="4"><pen lineWidth="0.25"/></box>
+		</element>
+		<element kind="staticText" uuid="e5000000-0000-0000-0000-000000000305" mode="Opaque" x="270" y="0" width="80" height="16" backcolor="#EEEEEE" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[ESTADO]]></text>
+			<box><pen lineWidth="0.25"/></box>
+		</element>
+		<element kind="staticText" uuid="e5000000-0000-0000-0000-000000000306" mode="Opaque" x="350" y="0" width="75" height="16" backcolor="#EEEEEE" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<text><![CDATA[DINERO AL BANCO]]></text>
+			<box rightPadding="4"><pen lineWidth="0.25"/></box>
+		</element>
+		<element kind="staticText" uuid="e5000000-0000-0000-0000-000000000307" mode="Opaque" x="425" y="0" width="80" height="16" backcolor="#EEEEEE" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<text><![CDATA[CRUZADO PRESTAMOS]]></text>
+			<box rightPadding="4"><pen lineWidth="0.25"/></box>
+		</element>
+		<element kind="staticText" uuid="e5000000-0000-0000-0000-000000000308" mode="Opaque" x="505" y="0" width="277" height="16" backcolor="#EEEEEE" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+			<text><![CDATA[DETALLE DEL CRUCE (por prestamo)]]></text>
+			<box leftPadding="4"><pen lineWidth="0.25"/></box>
+		</element>
+	</columnHeader>
+	<detail>
+		<band height="14" splitType="Stretch">
+			<element kind="textField" uuid="e5000000-0000-0000-0000-000000000401" x="0" y="0" width="60" height="14" fontSize="7.0" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[$F{PGPCMESS} == null ? "" : ($F{PGPCMESS}.intValue() + "/" + $F{PGPCANNO}.intValue())]]></expression>
+				<box><pen lineWidth="0.25"/></box>
+			</element>
+			<element kind="textField" uuid="e5000000-0000-0000-0000-000000000402" x="60" y="0" width="70" height="14" fontSize="7.0" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+				<expression><![CDATA[$F{PGPCVLPN}]]></expression>
+				<box rightPadding="4"><pen lineWidth="0.25"/></box>
+			</element>
+			<element kind="textField" uuid="e5000000-0000-0000-0000-000000000403" x="130" y="0" width="70" height="14" fontSize="7.0" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+				<expression><![CDATA[$F{PGPCVLSG}]]></expression>
+				<box rightPadding="4"><pen lineWidth="0.25"/></box>
+			</element>
+			<element kind="textField" uuid="e5000000-0000-0000-0000-000000000404" x="200" y="0" width="70" height="14" fontSize="7.0" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+				<expression><![CDATA[$F{PGPCVLRR}]]></expression>
+				<box rightPadding="4"><pen lineWidth="0.25"/></box>
+			</element>
+			<element kind="textField" uuid="e5000000-0000-0000-0000-000000000405" x="270" y="0" width="80" height="14" fontSize="6.5" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[$F{PGPCESTD_TXT}]]></expression>
+				<box><pen lineWidth="0.25"/></box>
+			</element>
+			<element kind="textField" uuid="e5000000-0000-0000-0000-000000000406" x="350" y="0" width="75" height="14" fontSize="7.0" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+				<expression><![CDATA[$F{DINERO_BANCO}]]></expression>
+				<box rightPadding="4"><pen lineWidth="0.25"/></box>
+			</element>
+			<element kind="textField" uuid="e5000000-0000-0000-0000-000000000407" x="425" y="0" width="80" height="14" fontSize="7.0" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+				<expression><![CDATA[$F{CRUZADO_PRESTAMOS}]]></expression>
+				<box rightPadding="4"><pen lineWidth="0.25"/></box>
+			</element>
+			<element kind="textField" uuid="e5000000-0000-0000-0000-000000000408" x="505" y="0" width="277" height="14" fontSize="6.5" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[$F{DETALLE_CRUCE_PRESTAMOS}]]></expression>
+				<box leftPadding="4"><pen lineWidth="0.25"/></box>
+			</element>
+		</band>
+	</detail>
+	<summary>
+		<band height="40" splitType="Stretch">
+			<element kind="staticText" uuid="e5000000-0000-0000-0000-000000000501" x="0" y="0" width="782" height="14" fontName="Tahoma" fontSize="7.0" italic="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[La ausencia de fila en la seccion 2 no distingue jubilado bloqueado de jubilado al dia -- ese dato no se persiste hoy en ninguna tabla.]]></text>
+			</element>
+			<element kind="textField" uuid="e5000000-0000-0000-0000-000000000502" x="0" y="16" width="782" height="20" fontName="Tahoma" fontSize="9.5" bold="true" hTextAlign="Right" vTextAlign="Middle" evaluationTime="Report">
+				<expression><![CDATA[$F{ORDEN_PROVEEDOR_CDGO} == null
+    ? "Orden de pago al proveedor del seguro medico del periodo: NO ENCONTRADA para " + $P{P_MES} + "/" + $P{P_ANIO}
+    : "Orden de pago al proveedor del seguro medico del periodo: PagoProgramado " + $F{ORDEN_PROVEEDOR_CDGO}.longValue()
+        + " -- $" + $F{ORDEN_PROVEEDOR_VALOR}.setScale(2, java.math.RoundingMode.HALF_UP)]]></expression>
+			</element>
+		</band>
+	</summary>
+</jasperReport>
