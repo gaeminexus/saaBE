@@ -10,6 +10,7 @@ import java.util.Map;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.cnt.service.AsientoContableService;
 import com.saa.ejb.cnt.service.AsientoService;
+import com.saa.ejb.crd.dao.CorridaCierreCarteraDaoService;
 import com.saa.ejb.crd.dao.DetallePrestamoDaoService;
 import com.saa.ejb.crd.dao.HistDetallePrestamoDaoService;
 import com.saa.ejb.crd.dao.PagoPrestamoDaoService;
@@ -29,13 +30,16 @@ import com.saa.model.cnt.DetalleAsiento;
 import com.saa.model.cnt.DetallePlantilla;
 import com.saa.model.cnt.NombreEntidadesContabilidad;
 import com.saa.model.cnt.PlanCuenta;
+import com.saa.model.crd.CorridaCierreCartera;
 import com.saa.model.crd.DetallePrestamo;
 import com.saa.model.crd.Entidad;
 import com.saa.model.crd.EventoPrestamo;
 import com.saa.model.crd.HistDetallePrestamo;
 import com.saa.model.crd.PagoPrestamo;
 import com.saa.model.crd.Prestamo;
+import com.saa.rubros.CrdLineaAsiento;
 import com.saa.rubros.ModuloSistema;
+import com.saa.rubros.MovimientoCuentaPlantilla;
 import com.saa.rubros.PlantillasCredito;
 import com.saa.rubros.TipoAsientos;
 import com.saa.rubros.TipoCarteraBanda;
@@ -78,6 +82,9 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
 
     @EJB
     private ContabilizacionIndividualCreditoService contabilizacionIndividualCreditoService;
+
+    @EJB
+    private CorridaCierreCarteraDaoService corridaCierreCarteraDaoService;
 
     @EJB
     private AsientoContableService asientoContableService;
@@ -199,6 +206,15 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
                     + " desbalanceado.");
         }
 
+        // Cierre de apertura del camino DIRECTO (2026-09-05, §9 del diseño, ÍTEM 3): este
+        // método es el otro camino sin depósito — el cruce de valores, incluido el de jubilados
+        // de omen-saa-1 (el hueco de $16.231,60 reportado). MISMO helper que
+        // contabilizarPrecancelacion, nunca una copia: totalHaber es todo lo que el evento
+        // liquidó del préstamo, el helper le resta el capital futuro y agrega, si corresponde,
+        // las dos líneas invertidas al MISMO asiento.
+        agregaCierreAperturaCaminoDirecto(lineas, idEmpresa, totalHaber, pagos, fechaCorte,
+                "cruce de valores evento " + ctx.getIdEvento());
+
         Asiento asiento = asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, fechaCorte,
                 prefijo + (ctx.getObservacion() != null ? ": " + ctx.getObservacion() : ""),
                 ctx.getUsuario(), lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
@@ -251,6 +267,150 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         return resultado.length() > MAX_LARGO_GLOSA_CRUCE
                 ? resultado.substring(0, MAX_LARGO_GLOSA_CRUCE)
                 : resultado;
+    }
+
+    // =====================================================================
+    // Cierre de apertura en el camino DIRECTO (2026-09-05) — §9 de
+    // docs/logica-negocio/crd/DISENO-CIERRE-APERTURA-SOLO-LO-ABIERTO.md.
+    //
+    // §1-§8 de ese documento (implementados en CobroCreditoServiceImpl.generarAsientoReparto/
+    // generarAsientoDefinitivo) cubren SOLO procesarCobro — el camino CON depósito (Petro,
+    // cobros con cuenta bancaria). Verificado con dos logs de producción (eventos 481 y 444):
+    // una precancelación y un cruce de valores reales pasan por ACÁ
+    // (contabilizarPrecancelacion/contabilizarPagoConAportes), nunca por procesarCobro. Sin
+    // este bloque, esos dos caminos jamás cierran la apertura — es la causa del hueco de
+    // $16.231,60 reportado en la corrida de jubilados de omen-saa-1.
+    //
+    // Compartido entre los dos métodos (no una copia): agrega, EN EL MISMO ASIENTO que cada
+    // método ya arma, dos líneas más que reversan la apertura por lo que esta operación
+    // efectivamente pagó del cronograma normal (vencido + cuota del mes) — nunca por el capital
+    // futuro, que la apertura nunca abrió.
+    // =====================================================================
+
+    /**
+     * Agrega, SI CORRESPONDE, las dos líneas que cierran la apertura del lado préstamos por lo
+     * que esta operación pagó del cronograma normal — la contraparte del camino directo a lo
+     * que {@code CobroCreditoServiceImpl#generarAsientoReparto}/{@code generarAsientoDefinitivo}
+     * hacen para el camino con depósito.
+     *
+     * <p><b>Monto:</b> {@code totalLiquidadoPrestamos} (todo lo que este evento liquidó del
+     * préstamo — capital por banda, interés, mora, seguros; el mismo total que ya usa el
+     * llamador para su propio cuadre) MENOS {@link ContabilizacionIndividualCreditoService
+     * #capitalFuturoPosteriorACorte} — el capital que vence después del corte de la corrida de
+     * cierre viva NUNCA se abrió, así que no hay nada que cerrar por él.</p>
+     *
+     * <p><b>Los dos lados van INVERTIDOS respecto de cómo los declara la plantilla, a
+     * propósito.</b> {@code PlantillasCredito#APERTURA_PLANILLA_MENSUAL} declara
+     * {@code PRESTAMOS_POR_APLICAR} (aux 4, cuenta 2.3.02.10) en HABER y
+     * {@code PRESTAMOS_POR_COBRAR} (aux 2, cuenta 1.4.05.10) en DEBE, porque así es como la
+     * apertura mensual los ABRE ({@code CierreCarteraServiceImpl.armaApertura}). Acá se está
+     * DESHACIENDO esa apertura, así que los dos lados se invierten por definición: DEBE
+     * 2.3.02.10, HABER 1.4.05.10. Se lee {@code getMovimiento()} de cada línea igual, y se
+     * ignora a propósito — mismo criterio que la línea de transitoria forzada de
+     * {@code CobroCreditoServiceImpl#generarAsientoDefinitivo}.</p>
+     *
+     * <p><b>Sólo el lado préstamos.</b> La apertura también abre aportes (1.4.05.05/2.3.02.05),
+     * pero eso abre el aporte MENSUAL esperado — una precancelación o un cruce de valores
+     * consumen el saldo acumulado del socio, que es otra cosa. Esas líneas no se tocan
+     * (supuesto declarado del árbitro, §9.4 del diseño; si es incorrecto, es una línea de
+     * cambio, no un rediseño).</p>
+     *
+     * <p><b>Guardas — nunca bloquean la operación:</b> sin corrida de cierre viva para el
+     * período de {@code fechaCorte}, no se agrega nada (nada estaba abierto, con traza). Monto
+     * resultante $0 (o negativo por redondeo), no se agrega nada (un par de líneas en cero es
+     * ruido).</p>
+     *
+     * @param lineas                 la lista de líneas del asiento en construcción — se le
+     *                               agregan las dos nuevas al final, si corresponde
+     * @param totalLiquidadoPrestamos todo lo que el evento liquidó del préstamo en esta
+     *                               operación (capital+interés+mora+seguros), ANTES de restar
+     *                               el capital futuro
+     * @param pagos                  los {@code PagoPrestamo} vigentes del evento — el mismo
+     *                               insumo que ya usa {@code haberDesdePagos}
+     * @param descripcionOperacion   p. ej. {@code "precancelación evento 481"} — sin el prefijo
+     *                               fijo, que este método agrega
+     */
+    private void agregaCierreAperturaCaminoDirecto(List<DetalleAsiento> lineas, Long idEmpresa,
+            double totalLiquidadoPrestamos, List<PagoPrestamo> pagos, LocalDate fechaCorte,
+            String descripcionOperacion) throws Throwable {
+        Long anio = Long.valueOf(fechaCorte.getYear());
+        Long mes = Long.valueOf(fechaCorte.getMonthValue());
+        CorridaCierreCartera corridaViva = corridaCierreCarteraDaoService.selectVivaByPeriodo(idEmpresa, anio, mes);
+        if (corridaViva == null || corridaViva.getFechaCorte() == null) {
+            System.out.println("ContabilidadPrestamoService.agregaCierreAperturaCaminoDirecto - "
+                    + descripcionOperacion + ": no hay corrida de cierre de cartera viva para " + mes + "/"
+                    + anio + " en empresa " + idEmpresa + "; no se cierra la apertura (nada estaba abierto).");
+            return;
+        }
+        LocalDate fechaCorteApertura = corridaViva.getFechaCorte();
+
+        double capitalFuturo = contabilizacionIndividualCreditoService.capitalFuturoPosteriorACorte(
+                pagos, fechaCorteApertura, descripcionOperacion);
+        double totalCierre = redondear(totalLiquidadoPrestamos - capitalFuturo);
+
+        if (totalCierre <= 0.0) {
+            System.out.println("ContabilidadPrestamoService.agregaCierreAperturaCaminoDirecto - "
+                    + descripcionOperacion + ": el monto a cerrar contra la apertura da $" + totalCierre
+                    + " (liquidado $" + redondear(totalLiquidadoPrestamos) + " - futuro $"
+                    + redondear(capitalFuturo) + "); no se agregan líneas.");
+            return;
+        }
+
+        Long idPlantillaApertura = plantillaService.codigoByAlterno(PlantillasCredito.APERTURA_PLANILLA_MENSUAL,
+                idEmpresa);
+        if (idPlantillaApertura == null) {
+            throw new IncomeException("No existe la plantilla contable alterno "
+                    + PlantillasCredito.APERTURA_PLANILLA_MENSUAL + " para la empresa " + idEmpresa
+                    + "; no se puede cerrar la apertura de " + descripcionOperacion + ".");
+        }
+        DetallePlantilla lineaPorAplicar = detallePlantillaDaoService.selectByPlantillaYAuxiliar(idPlantillaApertura,
+                CrdLineaAsiento.PRESTAMOS_POR_APLICAR);
+        if (lineaPorAplicar == null || lineaPorAplicar.getPlanCuenta() == null) {
+            throw new IncomeException("La plantilla alterno " + PlantillasCredito.APERTURA_PLANILLA_MENSUAL
+                    + " no tiene la línea de préstamos por aplicar (aux1=" + CrdLineaAsiento.PRESTAMOS_POR_APLICAR
+                    + "); no se puede cerrar la apertura de " + descripcionOperacion + ".");
+        }
+        DetallePlantilla lineaPorCobrar = detallePlantillaDaoService.selectByPlantillaYAuxiliar(idPlantillaApertura,
+                CrdLineaAsiento.PRESTAMOS_POR_COBRAR);
+        if (lineaPorCobrar == null || lineaPorCobrar.getPlanCuenta() == null) {
+            throw new IncomeException("La plantilla alterno " + PlantillasCredito.APERTURA_PLANILLA_MENSUAL
+                    + " no tiene la línea de préstamos por cobrar (aux1=" + CrdLineaAsiento.PRESTAMOS_POR_COBRAR
+                    + "); no se puede cerrar la apertura de " + descripcionOperacion + ".");
+        }
+
+        // Se lee getMovimiento() de las dos y se invierte A PROPÓSITO: la plantilla las declara
+        // así para ABRIR (por-aplicar en HABER, por-cobrar en DEBE); acá se está DESHACIENDO la
+        // apertura, así que los dos van al revés. No es un error si lo de abajo da lo esperado
+        // (aplicarEsDebeSegunPlantilla=false, cobrarEsDebeSegunPlantilla=true) — es la razón por
+        // la que este método invierte en vez de leer tal cual.
+        boolean aplicarEsDebeSegunPlantilla = lineaPorAplicar.getMovimiento() != null
+                && lineaPorAplicar.getMovimiento().longValue() == MovimientoCuentaPlantilla.DEBE;
+        boolean cobrarEsDebeSegunPlantilla = lineaPorCobrar.getMovimiento() != null
+                && lineaPorCobrar.getMovimiento().longValue() == MovimientoCuentaPlantilla.DEBE;
+        System.out.println("ContabilidadPrestamoService.agregaCierreAperturaCaminoDirecto - "
+                + descripcionOperacion + ": cerrando apertura por $" + totalCierre + " (plantilla declara"
+                + " por-aplicar " + (aplicarEsDebeSegunPlantilla ? "DEBE" : "HABER") + " y por-cobrar "
+                + (cobrarEsDebeSegunPlantilla ? "DEBE" : "HABER") + "; acá van invertidas a propósito).");
+
+        String descripcionLinea = "Cierre de apertura - vencido y cuota del mes - " + descripcionOperacion;
+
+        DetalleAsiento debePorAplicar = new DetalleAsiento();
+        debePorAplicar.setPlanCuenta(lineaPorAplicar.getPlanCuenta());
+        debePorAplicar.setNumeroCuenta(lineaPorAplicar.getPlanCuenta().getCuentaContable());
+        debePorAplicar.setNombreCuenta(lineaPorAplicar.getPlanCuenta().getNombre());
+        debePorAplicar.setDescripcion(descripcionLinea);
+        debePorAplicar.setValorDebe(totalCierre);
+        debePorAplicar.setValorHaber(0.0);
+        lineas.add(debePorAplicar);
+
+        DetalleAsiento haberPorCobrar = new DetalleAsiento();
+        haberPorCobrar.setPlanCuenta(lineaPorCobrar.getPlanCuenta());
+        haberPorCobrar.setNumeroCuenta(lineaPorCobrar.getPlanCuenta().getCuentaContable());
+        haberPorCobrar.setNombreCuenta(lineaPorCobrar.getPlanCuenta().getNombre());
+        haberPorCobrar.setDescripcion(descripcionLinea);
+        haberPorCobrar.setValorDebe(0.0);
+        haberPorCobrar.setValorHaber(totalCierre);
+        lineas.add(haberPorCobrar);
     }
 
     // =====================================================================
@@ -459,6 +619,15 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
                     + totalHaber + " (evento " + ctx.getIdEvento() + "). No se genera un"
                     + " asiento desbalanceado.");
         }
+
+        // Cierre de apertura del camino DIRECTO (2026-09-05, §9 del diseño): esta llamada nace
+        // porque ctx.getIdCobroCredito() es null (verificado en el guard de arriba) — o sea que
+        // NADIE más cierra la apertura por esta precancelación. totalHaber es todo lo que el
+        // evento liquidó del préstamo (capital por banda + interés + mora + seguros); el helper
+        // le resta el capital futuro y agrega, si corresponde, las dos líneas invertidas al
+        // MISMO asiento — nunca uno aparte.
+        agregaCierreAperturaCaminoDirecto(lineas, idEmpresa, totalHaber, pagos, fechaCorte,
+                "precancelación evento " + ctx.getIdEvento());
 
         String observacionBase = prefijo + (ctx.getObservacion() != null ? ": " + ctx.getObservacion() : "");
         String observacion = observacionConParticipeYPrestamos(evento.getPrestamo(), pagos, observacionBase);
