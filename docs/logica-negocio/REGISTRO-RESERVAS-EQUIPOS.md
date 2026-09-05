@@ -254,8 +254,17 @@ seguidas** en `docs/logica-negocio/crd/sql/`.
 |---|---|
 | ≤ 95 | histórico (todos) — ocupado |
 | **96–149** | **CRD · EQUIPO A** — cobros, contabilidad y jubilados |
-| **150–199** | **CRD · EQUIPO B** — ciclo del crédito y seguros |
-| ≥ 200 | sin asignar |
+| **150–199** | **CRD · EQUIPO B** — ciclo del crédito y seguros · **agotado el 2026-09-05** |
+| **200–249** | **CRD · EQUIPO B** — continuación del anterior · **reservado 2026-09-05 por `omen-saa-1-arb`** |
+| ≥ 250 | sin asignar |
+
+**Nota de la reserva del 200–249 (2026-09-05).** El rango 150–199 se agotó durante la corrida de
+jubilados de agosto 2026: el 199 fue el último. Se toma el bloque inmediato siguiente **porque el
+`≥ 200` figuraba explícitamente como «sin asignar»** — no estaba reservado por el equipo A ni por
+nadie. Se anota acá **antes de usarlo**, que es lo que el §2b pide, y se avisó a `lap-saa-1-arb`
+en el mismo acto por ser la contraparte del acuerdo original del 2026-08-31. Si el equipo A ya lo
+tenía tomado sin haberlo escrito, aplica el criterio de desempate del §2b: **el que ya está en
+`origin` se queda; renumera el otro** — y el que estaría en `origin` primero es esta reserva.
 
 ### Por qué hizo falta un rango, y no alcanzaba con avisar
 
@@ -488,6 +497,7 @@ su DDL. La columna **Estado** lo dice; **`reservada` no es `autorizada`**.
 | `TRCR` | Transferencia de carga | CRD | creada |
 | `ANCP` | Asiento por sub-proceso Petro | CRD | creada |
 | `CRTF` | Certificado de crédito | CRD | creada |
+| `USAP` | Usuario de app móvil (credenciales del partícipe) | CRD | **autorizada por el usuario**; creada en local, DDL de producción escrito y sin correr |
 
 ### Propuestos para los frentes nuevos — **verificar antes de usar**
 
@@ -540,6 +550,7 @@ Agregá una línea cada vez que reserves algo. Fecha, equipo, qué, para qué.
 | 2026-09-01 | cxp/cxc/pagos/tsr/rhh/sri (árbitro `lap-saa-1-arb`, **laptop**) | **Bloque `PRBR` 330-349 / `PDTR` 1600-1699** — ningún código concreto todavía. Marcador de commit **`lap1`**, prefijo de scripts **`lap1-`** | Alta del equipo. Se anota **antes** de usar ningún número, según la regla 1. **Se aplica desde ya la §6:** cuando este equipo tome un `PRBRCDGO` va a anotar **también el `PRBRALTR`**, con la convención `PRBRALTR = PRBRCDGO`, y a correr los dos controles. El `MAX` se revalida con el usuario justo antes de ejecutar (regla 2) — el último control conocido, del mismo día, dio `MAX(PRBRCDGO)`=**248** y `MAX(PDTRCDGO)`=**1200**, los dos muy por debajo de este bloque |
 | 2026-09-03 | `lap-saa-1` (**laptop**) | **Números de script `crd/sql/` 200-249** | El §2b reparte 96-149 (equipo A) y 150-199 (equipo B) y deja **≥200 sin asignar**; este equipo entró a `crd` el 2026-09-03 por el frente de pago a jubilados y necesita rango propio. Verificado el mismo día: el `MAX` real en la carpeta es **188**, así que el bloque está libre con margen. **Los equipos A y B no pierden nada**: su rango no se toca |
 | 2026-09-03 | `lap-saa-1` (**laptop**) | **Tabla `CRD.PGCE`** — cruce de un pago de pensión contra los eventos de préstamo que generó | Anulación de un pago de pensión **con** cruce (decisión del usuario, 2026-09-03). Hace falta tabla y no columna porque `cruzarContraPrestamos` llama a `pagarConAportes` **una vez por préstamo vigente**: son N eventos por pago, no uno. Verificada libre contra `src/main/java/com/saa/model/` y contra las 100 tablas `CRD` ya mapeadas — **falta confirmarla contra `ALL_TABLES`** antes de crearla. ⚠️ **La implementa `eqB`, no este equipo**: por el acuerdo del 2026-09-03 el `saaBE` del frente de jubilados es de ellos y el `saaFE` de `lap-saa-1`. Se reserva acá porque el nombre es un recurso global y lo reserva quien lo propone. Diseño en `crd/DISENO-PANTALLA-PAGO-JUBILADOS.md` §6bis. ⛔ **NOMBRE APARTADO, DDL NO AUTORIZADO** (ver el recuadro del §3): `CRD` es el esquema de `omen-saa-1` y **crear la tabla lo decide su usuario, no este equipo** — aunque el frente termine no haciéndose. El DDL no se escribe ni se corre hasta ese visto bueno |
+| 2026-09-03 | app móvil ASOPREP (árbitro `omen-arb-app`) | **Tabla `CRD.USAP`** — credenciales de acceso del partícipe a la app móvil | La app "Asoprep Contigo" deja Azure y pasa a consultar el SAA por un WAR de borde (`SaaMovilBE`) expuesto a internet; `SaaBE` queda en intranet. `USAP` es lo único que le faltaba a `SaaBE`: el almacén de credenciales. **No es la tabla de usuarios del sistema** — es 1:1 con `CRD.ENTD` (`ENTDCDGO` UNIQUE, no sólo FK) y sólo dice «este partícipe puede entrar a la app». Verificada libre contra `src/main/java/com/saa/model/` (grep, cero hits) — **falta confirmarla contra `ALL_TABLES`**, y ese control es el **0.1 del propio DDL**, que detiene el script si devuelve filas. **No consume ningún `PRBR`/`PDTR`**: los estados (activo/bloqueado/eliminado) son constantes planas en `com.saa.rubros.EstadoUsuarioApp`, no catálogo `Rubro`/`DetalleRubro` — es estado técnico de cuenta, no parametría de oficina. DDL en `crd/sql/DDL-USUARIO-APP-MOVIL.sql` (sin número: sigue la convención `DDL-*` y **no toca los rangos numerados del §2b**). API en `crd/API-USUARIO-APP-MOVIL.md`. ⚠️ **`CRD` es el esquema de `omen-saa-1`**: según el recuadro del §3, crear la tabla lo decide su usuario. Acá **la creación la ordenó el usuario directamente** (encargo del 2026-09-03), así que está **autorizada**, no sólo reservada — pero se anota para que `omen-saa-1` lo sepa sin tener que descubrirlo en un merge |
 
 ---
 
