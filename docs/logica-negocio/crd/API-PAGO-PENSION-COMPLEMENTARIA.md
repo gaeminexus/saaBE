@@ -599,6 +599,49 @@ fuera exactamente sobre esa columna, este código no lo va a detectar.
 
 ---
 
+## 4quinquies. La cuenta del cruce contra préstamo (aporte 23) y la de la jubilación son DOS cuentas distintas — no es un error (2026-09-05)
+
+Segunda corrida real fallida: el cruce contra préstamo de la pensión complementaria
+reventaba con *"El tipo de aporte 23 no tiene cuenta contable parametrizada"* — el mapeo de
+`ContabilizacionIndividualCreditoServiceImpl.aux1ParaTipoAporte` solo cubría los tipos 9
+(jubilación), 11 (cesantía) y 2 (adicional), nunca el 23.
+
+**Corrección** (archivo de `lap-saa-1`, tocado con su autorización expresa): nueva constante
+`CrdLineaAsiento.APORTES_PENSION_COMPLEMENTARIA = 53` + rama aditiva en `aux1ParaTipoAporte`
+(9/11/2 sin cambios) apuntando a la cuenta `2.1.02.25.01`.
+
+**⛔⛔ Dos cuentas, dos hechos económicos — verificar acá antes de "corregir" cualquiera de
+las dos:**
+
+| Momento | Cuenta | Qué pasa |
+|---|---|---|
+| **Jubilación** (`AporteServiceImpl#generarAsientoJubilacion`, plantilla alterno `JUBILACION`=29, aux1=5) | `2.3.01.10.03` | Nace el **PASIVO**: la asociación le debe la pensión al partícipe |
+| **Cruce contra préstamo** (`ContabilizacionIndividualCreditoServiceImpl.aux1ParaTipoAporte`, plantilla alterno `APLICACION_PETRO`=21, aux1=53) | `2.1.02.25.01` | **No se paga nada**: se da de baja el saldo de SU cuenta individual — es una compensación, no un desembolso |
+
+Palabras del usuario, textuales: *«la que se está registrando al jubilarse es la cuenta de
+pensión complementaria POR PAGAR; en cambio al cruzar directo con el préstamo se da de baja
+directamente del saldo contable de la cuenta de pensiones complementarias»*.
+
+**Verificación pendiente contra la base real** (no corrida desde acá):
+`docs/logica-negocio/crd/sql/199_VERIFICACION_CUENTA_PENSION_COMPLEMENTARIA_PLANTILLA_21.sql`
+— confirma que `2.1.02.25.01` existe en `CNT.PLNN`, que la plantilla 21 no tenga ya una línea
+apuntándole con otro `aux1`, y trae el `INSERT` comentado para `CNT.DTPL` si hiciera falta.
+
+### Prevalidación (opción (b) del árbitro, tras la segunda corrida fallida)
+
+`generarPagosDelMes` corre `verificarCuentaAporte23ParaCruce(idEmpresa)` como cuarto guard al
+principio (junto al proveedor, la cuenta del seguro y la cuenta bancaria) — antes de tocar el
+primer jubilado, chequea que la plantilla 21 tenga la línea del aporte 23. `previsualizarCorrida`
+hace lo mismo de forma NO bloqueante (mismo campo `proveedorSeguroEncontrado`/`mensajeProveedorSeguro`).
+
+**Alcance deliberadamente acotado**: cubre precondiciones GLOBALES y deterministas (las dos que
+ya mordieron dos corridas reales — `idOrigen` null y esta), no un simulador completo de los ~180
+jubilados. Una anomalía de datos específica de un jubilado puntual puede seguir fallando recién
+al procesarlo, pero de forma aislada — el `REQUIRES_NEW` por jubilado ya está verificado como
+seguro (revierte cuotas/asientos/consumo de aporte de ESE jubilado, no deja huérfanos).
+
+---
+
 ## 5. Estados de `PGPC` (`PGPCESTD`)
 
 De `com.saa.rubros.EstadoPagoPensionComplementaria`. **Son constantes planas, no catálogo `Rubro`.**

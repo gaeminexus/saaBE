@@ -57,10 +57,10 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
      * 2026-09-05, con autorización expresa de {@code lap-saa-1-arb} (dueño de este archivo):
      * el cruce contra préstamo con este aporte (crd, equipo omen-saa-1) reventaba con
      * "El tipo de aporte 23 no tiene cuenta contable parametrizada" al llegar a
-     * {@link #aux1ParaTipoAporte}. Cuenta contable {@code 2.1.02.25.01}, dato directo del
-     * usuario — decisión: no se abre cuenta nueva, se cierra contra la misma cuenta individual
-     * que se abre al jubilar. Ver el JavaDoc de {@link CrdLineaAsiento#APORTES_PENSION_COMPLEMENTARIA}
-     * para la discrepancia sin resolver contra lo que el código de la jubilación acredita.
+     * {@link #aux1ParaTipoAporte}. Cuenta contable {@code 2.1.02.25.01} — la cuenta INDIVIDUAL
+     * del partícipe, distinta a propósito de la {@code 2.3.01.10.03} que se acredita al
+     * jubilar (esa es el pasivo "por pagar"; el cruce no paga, da de baja el saldo individual).
+     * Ver el JavaDoc completo de {@link CrdLineaAsiento#APORTES_PENSION_COMPLEMENTARIA}.
      */
     private static final long TIPO_APORTE_PENSION_COMPLEMENTARIA = 23L;
 

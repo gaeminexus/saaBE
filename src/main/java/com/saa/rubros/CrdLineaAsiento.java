@@ -112,20 +112,26 @@ public interface CrdLineaAsiento {
 	public static final int APORTE_ADICIONAL_PERSONAL = 52;
 
 	/**
-	 * Aportes personales PENSIÓN COMPLEMENTARIA (CRD.TPAP.TPAPCDGO = 23). Pasivo,
-	 * {@code 2.1.02.25.01} — dato del usuario 2026-09-05, textual: «la cuenta contable es la
-	 * 2.1.02.25.01», la cuenta individual que se abre al jubilar al partícipe. Decisión del
-	 * usuario: no se abre cuenta nueva para el cruce contra préstamos de la pensión
-	 * complementaria — se cierra contra la misma cuenta donde se abrió.
+	 * Aportes personales PENSIÓN COMPLEMENTARIA (CRD.TPAP.TPAPCDGO = 23), para el CRUCE contra
+	 * préstamo. Pasivo, {@code 2.1.02.25.01} — la cuenta INDIVIDUAL del partícipe, confirmada
+	 * sin ambigüedad por el usuario 2026-09-05.
 	 *
-	 * ⚠️ DISCREPANCIA SIN RESOLVER, reportada al árbitro, no silenciada: siguiendo el código
-	 * desde {@code AporteServiceImpl:495} (el movimiento que CREA este aporte al jubilar) hasta
-	 * {@code AporteServiceImpl#generarAsientoJubilacion} (plantilla alterno
-	 * {@code PlantillasCredito.JUBILACION}=29, aux1=5, "pensiones complementarias por pagar"),
-	 * la cuenta que ese asiento ACREDITA es {@code 2.3.01.10.03}, no {@code 2.1.02.25.01}. Puede
-	 * ser una cuenta de reclasificación/consolidación distinta de la individual (dos cuentas
-	 * legítimamente distintas para dos propósitos), pero no se verificó cuál es cuál — se usa
-	 * acá la que dio el usuario directamente, más autoritativa que mi lectura del código.
+	 * ⛔⛔ NO es la misma cuenta que {@code AporteServiceImpl#generarAsientoJubilacion}
+	 * (plantilla alterno {@code PlantillasCredito.JUBILACION}=29, aux1=5) acredita al CREAR
+	 * este aporte al jubilar — esa es {@code 2.3.01.10.03}. NO ES UN ERROR, son dos cuentas
+	 * para dos hechos económicos distintos — palabras del usuario, textual: «la que se está
+	 * registrando al jubilarse es la cuenta de pensión complementaria POR PAGAR; en cambio al
+	 * cruzar directo con el préstamo se da de baja directamente del saldo contable de la
+	 * cuenta de pensiones complementarias»:
+	 * <ul>
+	 * <li><b>Jubilación</b> ({@code 2.3.01.10.03}): nace el PASIVO — la asociación le debe la
+	 * pensión al partícipe.</li>
+	 * <li><b>Cruce contra préstamo</b> ({@code 2.1.02.25.01}, esta constante): NO se paga
+	 * nada — se da de baja el saldo de SU cuenta individual. Es una compensación, no un
+	 * desembolso.</li>
+	 * </ul>
+	 * Si algún día alguien ve que estas dos cuentas difieren y piensa que una está mal
+	 * parametrizada: no lo está. Verificar acá antes de "corregir" ninguna de las dos.
 	 *
 	 * ⚠️ {@code 53} es el próximo aux1 libre en el catálogo Java de este archivo al
 	 * 2026-09-05 (nada más lo usa; confirmado también por {@code lap-saa-1-arb} contra su propio

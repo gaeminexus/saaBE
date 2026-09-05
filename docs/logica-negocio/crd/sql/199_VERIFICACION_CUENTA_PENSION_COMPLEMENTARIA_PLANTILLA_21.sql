@@ -34,12 +34,14 @@ FROM   CNT.PLNN n
 WHERE  n.PLNNCNTA = '2.1.02.25.01';
 
 -- =====================================================================================
--- BLOQUE 2 - DISCREPANCIA A REVISAR: la cuenta que el codigo de jubilacion SI acredita hoy
---            (AporteServiceImpl#generarAsientoJubilacion, plantilla 29 aux1=5) es distinta
---            de la que dio el usuario. Traer tambien esta para comparar -- puede ser una
---            cuenta de reclasificacion legitimamente distinta, o puede que haya que avisar
---            si coinciden en PLNNCDGO por algun motivo raro (mismo PLNNCDGO, PLNNCNTA
---            distinto por como se armo el string, etc).
+-- BLOQUE 2 - La OTRA cuenta (referencia, no es un error): 2.3.01.10.03 es la que
+--            AporteServiceImpl#generarAsientoJubilacion (plantilla 29, aux1=5) acredita AL
+--            JUBILAR -- nace el PASIVO, la asociacion le debe la pension al participe.
+--            2.1.02.25.01 (bloque 1) es la cuenta INDIVIDUAL: al cruzar contra un prestamo
+--            no se paga nada, se da de baja el saldo de esa cuenta -- es una compensacion,
+--            no un desembolso. Son dos cuentas para dos hechos economicos distintos, ya
+--            confirmado por el usuario -- este bloque es solo para tener las dos a la vista,
+--            no para "elegir" una.
 -- =====================================================================================
 SELECT n.PLNNCDGO, n.PLNNCNTA AS CUENTA, n.PLNNNMBR AS NOMBRE
 FROM   CNT.PLNN n
