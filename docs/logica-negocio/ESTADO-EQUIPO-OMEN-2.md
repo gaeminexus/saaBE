@@ -1399,3 +1399,68 @@ separó todavía.
 **Se deja constancia en el código, no sólo acá:** el comentario nuevo de `tienePagoVivoEnBandeja`
 dice explícitamente que hoy el criterio coincide con el del DAO **y que la reimplementación es
 deliberada**, para que el próximo que note la redundancia no la «limpie».
+
+---
+
+## §24 — 🟠 La guarda de cuenta de destino enumera orígenes en vez de mirar el dato
+
+**Encontrado el 2026-09-04 contestándole a `omen-saa-1`, que estaba por ejecutar contra producción
+un pago de ~$113.000 con un origen nuevo (`CRD_SEGURO_JUBILADOS`). NO se corrigió: tocar la
+aprobación de pagos en medio de su corrida habría sido peor que el defecto.**
+
+### El mecanismo, en dos piezas que se explican juntas
+
+**1. El formateador exige cuenta de destino, y aborta el lote entero.**
+`FormateadorArchivoBancoPlanoImpl:53-62` recorre **todos** los pagos del lote y por cada uno exige
+`cuentaDestino` **o** `beneficiarioCuenta` no vacío. Si falta en uno, **lanza y no genera el archivo
+para ninguno**. `beneficiarioCuenta` se puebla en un solo lugar —`PagoProgramadoServiceImpl:953`,
+desde el `numeroCuenta` del `BeneficiarioOcasional` que manda el módulo origen—, así que un origen
+externo que no lo mande queda sin cuenta de destino.
+
+**2. La guarda que debería avisar antes, no avisa.**
+`PagoProgramadoServiceImpl:1177-1191` sí bloquea la aprobación por transferencia de pagos sin cuenta
+de destino… pero los identifica con **una lista cerrada de dos orígenes**:
+
+```java
+if (OrigenPagoExterno.RHH_ANTICIPO_EMPLEADO.equals(origenExterno)
+    || OrigenPagoExterno.TSR_CAJA_CHICA.equals(origenExterno)) { ... }
+```
+
+**Cualquier origen nuevo pasa la aprobación** y revienta después, al generar el archivo, con el lote
+ya aprobado. **La falla se corre de un rechazo claro y temprano a un reventón tardío.**
+
+### El defecto real: enumera orígenes en vez de preguntar por la condición
+
+La guarda quiere saber *«¿este pago tiene cuenta de destino?»* y en vez de eso pregunta *«¿es de uno
+de estos dos módulos?»*. **La condición está a mano** —los mismos dos booleanos que usa el
+formateador— y no la usa.
+
+> **Cuarta aparición del mismo error en un solo día**, en cuatro lugares sin relación:
+>
+> | Dónde | Qué enumeraba |
+> |---|---|
+> | El contrato de nota de venta (§?) | inventé códigos nuevos en vez de reusar los que existían |
+> | `OrigenPago` del frontend | unión cerrada de 7 literales; el octavo no aparecía en el combo |
+> | Estado de cuenta de titular | enumera **fuentes**, y por eso la nota de venta pasó sola — el caso donde salió bien |
+> | Esta guarda | enumera **orígenes** en vez de mirar si hay cuenta |
+>
+> **El patrón:** cuando un control enumera *quiénes* en vez de preguntar *qué*, el elemento número
+> N+1 no falla — **pasa de largo**. Y quien agrega el N+1 no tiene forma de saber que existía una
+> lista que debía tocar, porque la lista vive en otro módulo.
+
+*El caso del estado de cuenta es el contraejemplo útil: enumerar por **fuente** (endpoint) en vez de
+por **tipo** hizo que un tipo nuevo entrara solo. La forma de enumerar decide si el N+1 entra o se
+pierde.*
+
+### El arreglo propuesto, pendiente de decisión del usuario
+
+Que la guarda deje de mirar el origen y evalúe la condición real —`cuentaDestino == null` **y**
+`beneficiarioCuenta` vacío—, que es exactamente lo que el formateador va a exigir después. Con eso:
+
+- El rechazo vuelve al momento correcto: **al aprobar**, no al generar el archivo.
+- Deja de haber una lista que actualizar cada vez que nace un origen externo.
+- El mensaje puede nombrar el pago concreto en vez de dos módulos hardcodeados.
+
+⚠️ **Cambia comportamiento visible:** empezaría a rechazar aprobaciones por transferencia que hoy
+pasan (y que hoy fallan más tarde igual). **Se despacha después de que `omen-saa-1` termine su
+corrida**, no durante.
