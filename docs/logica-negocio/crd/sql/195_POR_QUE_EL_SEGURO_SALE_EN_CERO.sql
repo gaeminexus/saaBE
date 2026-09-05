@@ -6,7 +6,20 @@
 -- Sin comandos de SQL*Plus: no usa PROMPT, DEFINE, SET ni &variables.
 --
 -- =====================================================================================
--- EL SINTOMA
+-- (!) RESUELTO EL 2026-09-04: ERA UN ERROR DE DATOS, YA CORREGIDO POR EL USUARIO.
+-- =====================================================================================
+-- El codigo NO tenia ningun defecto: la cadena del seguro estaba bien de punta a punta
+-- (ver "LO QUE YA ESTA DESCARTADO" mas abajo). El $0,00 venia del dato cargado, no del
+-- calculo.
+--
+-- El script SE CONSERVA porque sigue sirviendo: el bloque 2 reproduce en SQL las mismas
+-- puertas que aplica previsualizarJubilado y etiqueta a cada jubilado con la razon por
+-- la que entra o no entra a la corrida. Es la forma mas rapida de contestar "por que
+-- este no aparece / por que su monto es cero", que va a volver a preguntarse.
+-- =====================================================================================
+
+-- =====================================================================================
+-- EL SINTOMA (como se veia antes de la correccion de datos)
 -- =====================================================================================
 -- Prevuelo de agosto 2026: 180 evaluados, 136 aptos, 44 bloqueados.
 --   A PRESTAMOS  $16.231,60
