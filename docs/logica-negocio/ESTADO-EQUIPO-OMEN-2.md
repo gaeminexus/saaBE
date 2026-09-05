@@ -1593,3 +1593,43 @@ RRHH). **Hacer las dos genera el asiento dos veces.**
 > decisión de diseño que cruza el borde entre dos módulos no puede vivir sólo en el documento de
 > estado del equipo que la tomó.** Este §26 existe para que la próxima búsqueda por «asiento» y
 > «desglose» la encuentre.
+
+### 26.3 El agujero era de ellos, y deja una pregunta abierta para NOSOTROS
+
+**`omen-saa-1` midió y confirmó: `crd` NO emite asiento del pago de pensión.** Su único asiento es
+el de **devengo**. Así que el pasivo se abre y **nada lo cierra**: ~$113.000 ya pagados por banco con
+la cuenta de pensiones por pagar abierta. **El defecto es suyo** —no mandaron `desglose`— y nuestro
+`contabilizarSegunOrigen` devolviendo `null` es el diseño funcionando.
+
+Van a mandar `desglose` de acá en adelante. Eso arregla el futuro. **Lo ya pagado es otra decisión.**
+
+#### Dos precisiones que nos pidieron, medidas
+
+**a) ¿Un asiento por pago o uno agrupado?** **Uno por pago, siempre.** Los once llamadores de
+`contabilizarSegunOrigen` (`:333, 383, 545, 588, 741, 784, 1028, 1281, 1311, 1666, 1771`) reciben
+**un** `pago`; no hay firma que tome lote ni lista. Su corrida daría **181 asientos**.
+
+> **Y el precedente responde si eso es lo esperado, mejor que una opinión:** con
+> `agruparEnUnCheque=true` un solo cheque respalda N pagos **y el asiento se sigue emitiendo por
+> pago** — lo único que se agrupa es el `MovimientoBanco`. **El diseño ya enfrentó esta disyuntiva y
+> eligió mantener el asiento por pago aunque el instrumento sea uno solo.**
+
+**b) ⛔ Lo ya pagado NO se puede reprocesar.** El asiento se arma **desde las filas de `PGS.DPGT`**
+(`:2394-2406`), y esos 181 pagos **no tienen ninguna**. Volver a disparar la contabilización
+devolvería `null` por la misma razón que la primera vez: **no se perdió el resultado, nunca existió
+la entrada.**
+
+#### Lo que queda pendiente de decisión — y una parte es nuestra
+
+| Camino | Qué implica | Necesita código nuestro |
+|---|---|---|
+| **1. Backfill de `DPGT` + contabilizar** | Crear el desglose de los 181 y disparar. **Hoy no existe endpoint que contabilice un pago YA confirmado**: hay que construirlo. Y decidir la fecha contable | **SÍ** — lo autoriza el usuario |
+| **2. Asiento manual de regularización** | Contabilidad emite **uno solo** por el total; el detalle por jubilado ya está en el devengo | **NO** |
+| **3. Revertir y reconfirmar** | ⛔ **No recomendado:** la plata ya salió; revertir mete ruido en conciliación y hay que deshacer el `MovimientoBanco` | sí, y es el peor |
+
+**Mi lectura, dada como lectura y no como indicación:** la **2** para el pasado y el desglose para el
+futuro. **Son dos decisiones separadas: arreglar el futuro no arregla el pasado, y no hace falta que
+la misma solución cubra las dos.**
+
+**`DevolucionAporteServiceImpl` está en el mismo estado** (su único asiento es el de
+reclasificación). Anotado como pendiente conocido; **no se toca sin que ellos lo pidan.**
