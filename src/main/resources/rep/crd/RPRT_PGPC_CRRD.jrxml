@@ -1,39 +1,70 @@
-<!-- Reporte de la corrida mensual de pago de pension complementaria a jubilados. Contrato: docs/logica-negocio/crd/API-PAGO-PENSION-COMPLEMENTARIA.md (Sec 4/4quater/5). -->
+<!-- Reporte de la corrida mensual de pago de pension complementaria a jubilados. Contrato: docs/logica-negocio/crd/API-PAGO-PENSION-COMPLEMENTARIA.md (Sec 4/4quater/8). -->
 <!-- PENDIENTE DE COMPILAR (bloqueante): este .jrxml NO tiene su .jasper todavia. En esta maquina no hay Jaspersoft Studio 7.0.3 (solo iReport 5.6.0, discontinuado e incompatible: un .jasper generado con eso apunta a JasperReports 5.6, no a 7.0.3, y ReporteServiceImpl:110 exige el .jasper: sin el, este reporte revienta la primera vez que alguien lo ejecuta). El usuario tiene Jaspersoft Studio 7.0.3 y lo compila el. NO ESTA COMPLETO hasta que el .jasper se agregue en el mismo directorio y se commitee. -->
+<!-- REDISENADO 2026-09-05 (segunda vuelta): la primera version filtraba por PGPCFCRG (fecha de -->
+<!-- EJECUCION de la corrida) usando P_ANIO/P_MES como si fueran ese mes calendario. La corrida real -->
+<!-- se ejecuto el 4-5 de septiembre pero el usuario pidio el reporte con P_ANIO/P_MES=2026/8 (el -->
+<!-- PERIODO que queria ver): la seccion de pagados salio vacia y TODOS los jubilados, incluidos -->
+<!-- los que si cobraron, cayeron en "sin pago" (su fila de septiembre no calzaba en la ventana de -->
+<!-- agosto que pedia el filtro). Confirmado sin ambiguedad con un caso real: GARCIA SALTOS MILTON -->
+<!-- RENEE (PGPC 4, prestamo 7747, devengo CRE-2026-08-0168 y cruce CRE-2026-08-0167, ambos del -->
+<!-- 2026-09-04/05) tenia que aparecer pagado y el reporte lo mostraba "sin pago". -->
+<!-- NUEVO CRITERIO: P_ANIO/P_MES es el PERIODO CUBIERTO (PGPCANNO/PGPCMESS), el criterio intuitivo -->
+<!-- para quien pide "el reporte de agosto". Para no perder el detalle retroactivo (un jubilado -->
+<!-- pagado hoy por varios meses atrasados en la MISMA corrida), la CTE "objetivo" encuentra a los -->
+<!-- jubilados con al menos una fila en el periodo pedido y despues trae TODAS sus filas de la MISMA -->
+<!-- fecha de corrida (TRUNC(PGPCFCRG) igual): asi se ve el retroactivo completo de cada uno, no -->
+<!-- solo la porcion que etiqueta el periodo pedido. -->
 <!-- LIMITES DEL MODELO DE DATOS, verificados contra el codigo antes de escribir esta query (no inventar mas alla de esto): -->
-<!--   1) NO hay vinculo grabado entre un PGPC y la(s) cuota(s)/prestamo que cruzo: el cruce genera su propio Aporte tipo 23 -->
-<!--      (APRTTPMV=4, glosa "PAGO PRESTAMO id - Evento id") y filas PagoPrestamo/DetallePrestamo, pero ninguna FK vuelve -->
-<!--      a PGPCCDGO. Esta query correlaciona por ENTDCDGO + TRUNC(APRTFCTR)=PGPCFCHA (misma variable 'fecha' en el mismo -->
-<!--      mes del bucle retroactivo, PagoPensionComplementariaServiceImpl.generarMesesRetroactivos): es una HEURISTICA, -->
-<!--      no una FK, y se muestra a nivel PRESTAMO (via LISTAGG de la glosa), nunca a nivel cuota. -->
-<!--   2) Un jubilado BLOQUEADO no genera NINGUNA fila en PGPC: no hay ninguna tabla que persista el motivo de bloqueo -->
-<!--      de una corrida ya pasada (solo existe transitoriamente en la respuesta HTTP de previsualizarCorrida/ -->
-<!--      generarPagosDelMes, nunca se graba). La SECCION 2 de este reporte lista las AUSENCIAS (jubilados sin fila de -->
-<!--      PGPC en el rango) pero NO afirma el motivo: puede ser bloqueo o simplemente "al dia, nada que pagar". -->
-<!--   3) El filtro de datos es la FECHA DE EJECUCION de la corrida (PGPCFCRG, TIMESTAMP), NO el periodo cubierto -->
-<!--      (PGPCANNO/PGPCMESS): un retroactivo puede generar, en una sola corrida de un mes dado, filas PGPC que CUBREN -->
-<!--      varios meses anteriores para el mismo jubilado. P_ANIO/P_MES identifican el MES EN QUE SE CORRIO el proceso, -->
-<!--      acotando PGPCFCRG a ese mes calendario: el periodo que cada fila CUBRE es la columna PGPCANNO/PGPCMESS del -->
-<!--      detalle, no el parametro. Si esto no alcanza para identificar una corrida (dos corridas el mismo mes), hay que -->
-<!--      revisar el criterio: no se afino mas sin verificarlo contra un caso real. -->
-<!--   4) P_IDEMPRESA no filtra jubilados: ni CRD.PGPC ni CRD.ENTD ni CRD.FLLL tienen columna de empresa (verificado -->
-<!--      leyendo las tres entidades). Solo se usa para ubicar la orden de pago al proveedor del seguro medico en -->
-<!--      PGS.PGTR (que si es multiempresa). -->
+<!--   1) NO hay vinculo grabado entre un PGPC y la CUOTA especifica que cruzo: pero SI hay FK real -->
+<!--      de PGPR (pago de cuota) a PRST (prestamo) y a DTPR (cuota). La correlacion PGPC->PGPR sigue -->
+<!--      siendo HEURISTICA (por entidad del prestamo + TRUNC(PGPRFCHA)=PGPCFCHA, misma variable -->
+<!--      'fecha' del bucle retroactivo), pero ya no hace falta parsear texto de ninguna glosa: el -->
+<!--      numero de prestamo y de cuota salen de columnas reales (PRSTCDGO, PGPRNMCT). -->
+<!--   2) Un jubilado BLOQUEADO no genera NINGUNA fila en PGPC, y el motivo de bloqueo NO SE PERSISTE -->
+<!--      en ninguna tabla: solo existe transitoriamente en la respuesta HTTP de -->
+<!--      previsualizarCorrida/generarPagosDelMes. Por eso este reporte NO PUEDE mostrar el motivo -->
+<!--      real de un bloqueo de un periodo ya pasado: es un limite del modelo de datos, no una -->
+<!--      omision del reporte. Solo se puede contar CUANTOS jubilados no tienen fila: la ausencia -->
+<!--      no distingue "bloqueado" de "al dia, no se le debia nada". -->
+<!--   3) P_IDEMPRESA no filtra jubilados: ni CRD.PGPC ni CRD.ENTD ni CRD.FLLL tienen columna de -->
+<!--      empresa (verificado leyendo las tres entidades). Solo se usa para ubicar la orden de pago -->
+<!--      al proveedor del seguro medico en PGS.PGTR (que si es multiempresa). -->
 <jasperReport name="RPRT_PGPC_CRRD" language="java" pageWidth="842" pageHeight="595" orientation="Landscape" columnWidth="782" leftMargin="30" rightMargin="30" topMargin="30" bottomMargin="30" whenNoDataType="AllSectionsNoDetail" uuid="e5000000-0000-0000-0000-000000000001">
 	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="Oracle"/>
-	<property name="com.jaspersoft.studio.report.description" value="Corrida mensual de pago de pension complementaria a jubilados: detalle de cruce a prestamos, seguro y dinero al banco"/>
+	<property name="com.jaspersoft.studio.report.description" value="Corrida mensual de pago de pension complementaria a jubilados: resumen, detalle de cruce a prestamos con cuotas/capital/interes, y seguro"/>
 	<parameter name="P_ANIO" class="java.lang.Long">
-		<description><![CDATA[Anio del MES EN QUE SE CORRIO el proceso (filtra PGPCFCRG), no el periodo cubierto]]></description>
+		<description><![CDATA[Anio del PERIODO CUBIERTO por el pago (PGPCANNO) -- el que el usuario quiere ver, no la fecha de ejecucion de la corrida]]></description>
 	</parameter>
 	<parameter name="P_MES" class="java.lang.Long">
-		<description><![CDATA[Mes (1-12) en que se corrio el proceso (filtra PGPCFCRG), no el periodo cubierto]]></description>
+		<description><![CDATA[Mes (1-12) del PERIODO CUBIERTO por el pago (PGPCMESS)]]></description>
 	</parameter>
 	<parameter name="P_IDEMPRESA" class="java.lang.Long">
 		<description><![CDATA[Empresa contable -- solo se usa para ubicar la orden de pago al proveedor del seguro en PGS.PGTR]]></description>
 	</parameter>
 	<parameter name="P_USUARIO" class="java.lang.String"/>
-	<query language="SQL"><![CDATA[SELECT
-    1 AS SECCION,
+	<query language="SQL"><![CDATA[WITH objetivo AS (
+    SELECT DISTINCT p.ENTDCDGO AS ENTDCDGO, TRUNC(p.PGPCFCRG) AS FECHA_CORRIDA
+    FROM CRD.PGPC p
+    WHERE p.PGPCANNO = $P{P_ANIO}
+      AND p.PGPCMESS = $P{P_MES}
+),
+cruce AS (
+    SELECT pr.ENTDCDGO AS ENTDCDGO,
+           TRUNC(g.PGPRFCHA) AS FECHA,
+           SUM(g.PGPRVLRR) AS CRZ_VALOR,
+           LISTAGG(
+               'Prestamo ' || TO_CHAR(pr.PRSTCDGO) || ' cuota ' || TO_CHAR(g.PGPRNMCT)
+               || ': capital $' || TO_CHAR(NVL(g.PGPRCPPG,0), 'FM999999990.00')
+               || ', interes $' || TO_CHAR(NVL(g.PGPRINPG,0) + NVL(g.PGPRINVP,0), 'FM999999990.00')
+               || ', mora $' || TO_CHAR(NVL(g.PGPRMRPG,0), 'FM999999990.00'),
+               '; '
+           ) WITHIN GROUP (ORDER BY g.PGPRFCHA, g.PGPRCDGO) AS CRZ_DETALLE
+    FROM CRD.PGPR g
+    JOIN CRD.PRST pr ON pr.PRSTCDGO = g.PRSTCDGO
+    WHERE (g.PGPRANUL IS NULL OR g.PGPRANUL = 0)
+    GROUP BY pr.ENTDCDGO, TRUNC(g.PGPRFCHA)
+)
+SELECT
     e.ENTDCDGO AS ENTDCDGO,
     e.ENTDNMID AS ENTDNMID,
     e.ENTDRZNS AS ENTDRZNS,
@@ -57,66 +88,28 @@
     CASE WHEN p.PGPCESTD IN (2,3) THEN p.PGPCVLPN ELSE 0 END AS DINERO_BANCO,
     NVL(cr.CRZ_VALOR, 0) AS CRUZADO_PRESTAMOS,
     NVL(cr.CRZ_DETALLE, 'Sin cruce a prestamo este mes') AS DETALLE_CRUCE_PRESTAMOS,
-    (SELECT MAX(g.PGTRCDGO) FROM PGS.PGTR g
-       WHERE g.PGTRORGN = 'CRD_SEGURO_JUBILADOS'
-         AND g.PGTRIDOR = ($P{P_ANIO} * 100 + $P{P_MES})
-         AND g.PGTRPJRQ = $P{P_IDEMPRESA}) AS ORDEN_PROVEEDOR_CDGO,
-    (SELECT MAX(g.PGTRVLOR) FROM PGS.PGTR g
-       WHERE g.PGTRORGN = 'CRD_SEGURO_JUBILADOS'
-         AND g.PGTRIDOR = ($P{P_ANIO} * 100 + $P{P_MES})
-         AND g.PGTRPJRQ = $P{P_IDEMPRESA}) AS ORDEN_PROVEEDOR_VALOR
-FROM CRD.PGPC p
+    (SELECT MAX(g2.PGTRCDGO) FROM PGS.PGTR g2
+       WHERE g2.PGTRORGN = 'CRD_SEGURO_JUBILADOS'
+         AND g2.PGTRIDOR = ($P{P_ANIO} * 100 + $P{P_MES})
+         AND g2.PGTRPJRQ = $P{P_IDEMPRESA}) AS ORDEN_PROVEEDOR_CDGO,
+    (SELECT MAX(g2.PGTRVLOR) FROM PGS.PGTR g2
+       WHERE g2.PGTRORGN = 'CRD_SEGURO_JUBILADOS'
+         AND g2.PGTRIDOR = ($P{P_ANIO} * 100 + $P{P_MES})
+         AND g2.PGTRPJRQ = $P{P_IDEMPRESA}) AS ORDEN_PROVEEDOR_VALOR,
+    (SELECT COUNT(*) FROM CRD.ENTD ee WHERE ee.ENTDIDST = 3) AS CANT_EVALUADOS,
+    (SELECT COUNT(DISTINCT ee.ENTDCDGO) FROM CRD.ENTD ee
+        WHERE ee.ENTDIDST = 3
+        AND EXISTS (SELECT 1 FROM CRD.PGPC pp WHERE pp.ENTDCDGO = ee.ENTDCDGO
+                    AND pp.PGPCANNO = $P{P_ANIO} AND pp.PGPCMESS = $P{P_MES})) AS CANT_PAGADOS,
+    (SELECT COUNT(*) FROM CRD.ENTD ee
+        WHERE ee.ENTDIDST = 3
+        AND NOT EXISTS (SELECT 1 FROM CRD.PGPC pp WHERE pp.ENTDCDGO = ee.ENTDCDGO
+                        AND pp.PGPCANNO = $P{P_ANIO} AND pp.PGPCMESS = $P{P_MES})) AS CANT_SIN_PAGO
+FROM objetivo o
+JOIN CRD.PGPC p ON p.ENTDCDGO = o.ENTDCDGO AND TRUNC(p.PGPCFCRG) = o.FECHA_CORRIDA
 JOIN CRD.ENTD e ON e.ENTDCDGO = p.ENTDCDGO
-LEFT JOIN (
-    SELECT a.ENTDCDGO AS ENTDCDGO,
-           TRUNC(a.APRTFCTR) AS FECHA,
-           SUM(ABS(a.APRTVLRR)) AS CRZ_VALOR,
-           LISTAGG(
-               'Prestamo ' || REGEXP_SUBSTR(a.APRTGLSA, 'PAGO PRESTAMO (\d+)', 1, 1, NULL, 1)
-               || ': $' || TO_CHAR(ABS(a.APRTVLRR), 'FM999999990.00'),
-               '; '
-           ) WITHIN GROUP (ORDER BY a.APRTCDGO) AS CRZ_DETALLE
-    FROM CRD.APRT a
-    WHERE a.TPAPCDGO = 23
-      AND a.APRTTPMV = 4
-    GROUP BY a.ENTDCDGO, TRUNC(a.APRTFCTR)
-) cr ON cr.ENTDCDGO = p.ENTDCDGO AND cr.FECHA = p.PGPCFCHA
-WHERE p.PGPCFCRG >= TO_DATE(LPAD(TO_CHAR($P{P_ANIO}),4,'0') || '-' || LPAD(TO_CHAR($P{P_MES}),2,'0') || '-01', 'YYYY-MM-DD')
-  AND p.PGPCFCRG <  ADD_MONTHS(TO_DATE(LPAD(TO_CHAR($P{P_ANIO}),4,'0') || '-' || LPAD(TO_CHAR($P{P_MES}),2,'0') || '-01', 'YYYY-MM-DD'), 1)
-
-UNION ALL
-
-SELECT
-    2 AS SECCION,
-    e.ENTDCDGO AS ENTDCDGO,
-    e.ENTDNMID AS ENTDNMID,
-    e.ENTDRZNS AS ENTDRZNS,
-    CAST(NULL AS NUMBER) AS PGPCCDGO,
-    CAST(NULL AS NUMBER) AS PGPCANNO,
-    CAST(NULL AS NUMBER) AS PGPCMESS,
-    CAST(NULL AS NUMBER) AS PGPCVLPN,
-    CAST(NULL AS NUMBER) AS PGPCVLSG,
-    CAST(NULL AS NUMBER) AS PGPCVLRR,
-    'SIN PAGO GENERADO' AS PGPCESTD_TXT,
-    CAST(NULL AS DATE) AS PGPCFCHA,
-    CAST(NULL AS TIMESTAMP) AS PGPCFCRG,
-    CAST(NULL AS DATE) AS PGPCFCPG,
-    CAST(NULL AS NUMBER) AS DINERO_BANCO,
-    CAST(NULL AS NUMBER) AS CRUZADO_PRESTAMOS,
-    'No tiene ninguna fila de pago en este periodo: puede estar bloqueado o simplemente al dia -- este reporte no distingue entre los dos casos.' AS DETALLE_CRUCE_PRESTAMOS,
-    CAST(NULL AS NUMBER) AS ORDEN_PROVEEDOR_CDGO,
-    CAST(NULL AS NUMBER) AS ORDEN_PROVEEDOR_VALOR
-FROM CRD.ENTD e
-WHERE e.ENTDIDST = 3
-  AND NOT EXISTS (
-      SELECT 1 FROM CRD.PGPC p2
-      WHERE p2.ENTDCDGO = e.ENTDCDGO
-        AND p2.PGPCFCRG >= TO_DATE(LPAD(TO_CHAR($P{P_ANIO}),4,'0') || '-' || LPAD(TO_CHAR($P{P_MES}),2,'0') || '-01', 'YYYY-MM-DD')
-        AND p2.PGPCFCRG <  ADD_MONTHS(TO_DATE(LPAD(TO_CHAR($P{P_ANIO}),4,'0') || '-' || LPAD(TO_CHAR($P{P_MES}),2,'0') || '-01', 'YYYY-MM-DD'), 1)
-  )
-
-ORDER BY 1, 4, 6, 7]]></query>
-	<field name="SECCION" class="java.math.BigDecimal"/>
+LEFT JOIN cruce cr ON cr.ENTDCDGO = p.ENTDCDGO AND cr.FECHA = p.PGPCFCHA
+ORDER BY e.ENTDRZNS, p.PGPCANNO, p.PGPCMESS]]></query>
 	<field name="ENTDCDGO" class="java.math.BigDecimal"/>
 	<field name="ENTDNMID" class="java.lang.String"/>
 	<field name="ENTDRZNS" class="java.lang.String"/>
@@ -135,51 +128,27 @@ ORDER BY 1, 4, 6, 7]]></query>
 	<field name="DETALLE_CRUCE_PRESTAMOS" class="java.lang.String"/>
 	<field name="ORDEN_PROVEEDOR_CDGO" class="java.math.BigDecimal"/>
 	<field name="ORDEN_PROVEEDOR_VALOR" class="java.math.BigDecimal"/>
+	<field name="CANT_EVALUADOS" class="java.math.BigDecimal"/>
+	<field name="CANT_PAGADOS" class="java.math.BigDecimal"/>
+	<field name="CANT_SIN_PAGO" class="java.math.BigDecimal"/>
 	<variable name="V_TOTAL_PENSION" calculation="Sum" class="java.math.BigDecimal">
-		<expression><![CDATA[$F{SECCION}.intValue() == 1 && $F{PGPCVLPN} != null ? $F{PGPCVLPN} : java.math.BigDecimal.ZERO]]></expression>
+		<expression><![CDATA[$F{PGPCVLPN} != null ? $F{PGPCVLPN} : java.math.BigDecimal.ZERO]]></expression>
 	</variable>
 	<variable name="V_TOTAL_SEGURO" calculation="Sum" class="java.math.BigDecimal">
-		<expression><![CDATA[$F{SECCION}.intValue() == 1 && $F{PGPCVLSG} != null ? $F{PGPCVLSG} : java.math.BigDecimal.ZERO]]></expression>
+		<expression><![CDATA[$F{PGPCVLSG} != null ? $F{PGPCVLSG} : java.math.BigDecimal.ZERO]]></expression>
 	</variable>
 	<variable name="V_TOTAL_GENERAL" calculation="Sum" class="java.math.BigDecimal">
-		<expression><![CDATA[$F{SECCION}.intValue() == 1 && $F{PGPCVLRR} != null ? $F{PGPCVLRR} : java.math.BigDecimal.ZERO]]></expression>
+		<expression><![CDATA[$F{PGPCVLRR} != null ? $F{PGPCVLRR} : java.math.BigDecimal.ZERO]]></expression>
 	</variable>
 	<variable name="V_TOTAL_DINERO_BANCO" calculation="Sum" class="java.math.BigDecimal">
-		<expression><![CDATA[$F{SECCION}.intValue() == 1 && $F{DINERO_BANCO} != null ? $F{DINERO_BANCO} : java.math.BigDecimal.ZERO]]></expression>
+		<expression><![CDATA[$F{DINERO_BANCO} != null ? $F{DINERO_BANCO} : java.math.BigDecimal.ZERO]]></expression>
 	</variable>
 	<variable name="V_TOTAL_CRUZADO" calculation="Sum" class="java.math.BigDecimal">
-		<expression><![CDATA[$F{SECCION}.intValue() == 1 && $F{CRUZADO_PRESTAMOS} != null ? $F{CRUZADO_PRESTAMOS} : java.math.BigDecimal.ZERO]]></expression>
+		<expression><![CDATA[$F{CRUZADO_PRESTAMOS} != null ? $F{CRUZADO_PRESTAMOS} : java.math.BigDecimal.ZERO]]></expression>
 	</variable>
 	<variable name="V_SUBTOTAL_JUBILADO" calculation="Sum" class="java.math.BigDecimal" resetType="Group" resetGroup="G_JUBILADO">
 		<expression><![CDATA[$F{PGPCVLRR} != null ? $F{PGPCVLRR} : java.math.BigDecimal.ZERO]]></expression>
 	</variable>
-	<group name="G_SECCION">
-		<expression><![CDATA[$F{SECCION}]]></expression>
-		<groupHeader>
-			<band height="20" splitType="Stretch">
-				<element kind="textField" uuid="e5000000-0000-0000-0000-000000000101" mode="Opaque" x="0" y="0" width="782" height="20" backcolor="#D1D1D1" fontName="Tahoma" fontSize="9.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
-					<expression><![CDATA[$F{SECCION}.intValue() == 1
-    ? "1. PAGOS GENERADOS EN ESTA CORRIDA (" + $P{P_MES} + "/" + $P{P_ANIO} + ")"
-    : "2. JUBILADO_COMPLEMENTARIO SIN PAGO GENERADO EN ESTE PERIODO -- ausencia, NO significa bloqueado"]]></expression>
-					<box leftPadding="4"/>
-				</element>
-			</band>
-		</groupHeader>
-		<groupFooter>
-			<band height="34" splitType="Stretch">
-				<element kind="staticText" uuid="e5000000-0000-0000-0000-000000000102" x="0" y="0" width="782" height="14" fontName="Tahoma" fontSize="7.0" italic="true" hTextAlign="Left" vTextAlign="Middle" printWhenExpression="$F{SECCION}.intValue() == 1">
-					<text><![CDATA[Cruzado a prestamos: heuristica por entidad+fecha contra CRD.APRT (tipo 23, movimiento PAGO_PRESTAMO) -- no hay FK grabada de PGPC a la cuota que cancelo.]]></text>
-				</element>
-				<element kind="textField" uuid="e5000000-0000-0000-0000-000000000103" x="0" y="14" width="782" height="20" fontName="Tahoma" fontSize="9.0" bold="true" hTextAlign="Right" vTextAlign="Middle" printWhenExpression="$F{SECCION}.intValue() == 1">
-					<expression><![CDATA["TOTALES DE LA SECCION 1  --  Pension: $" + $V{V_TOTAL_PENSION}.setScale(2, java.math.RoundingMode.HALF_UP)
-    + "   Seguro: $" + $V{V_TOTAL_SEGURO}.setScale(2, java.math.RoundingMode.HALF_UP)
-    + "   Cruzado a prestamos: $" + $V{V_TOTAL_CRUZADO}.setScale(2, java.math.RoundingMode.HALF_UP)
-    + "   Dinero al banco: $" + $V{V_TOTAL_DINERO_BANCO}.setScale(2, java.math.RoundingMode.HALF_UP)
-    + "   TOTAL GENERAL: $" + $V{V_TOTAL_GENERAL}.setScale(2, java.math.RoundingMode.HALF_UP)]]></expression>
-				</element>
-			</band>
-		</groupFooter>
-	</group>
 	<group name="G_JUBILADO">
 		<expression><![CDATA[$F{ENTDCDGO}]]></expression>
 		<groupHeader>
@@ -192,30 +161,59 @@ ORDER BY 1, 4, 6, 7]]></query>
 		</groupHeader>
 		<groupFooter>
 			<band height="14" splitType="Stretch">
-				<element kind="staticText" uuid="e5000000-0000-0000-0000-000000000112" x="600" y="0" width="120" height="14" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle" printWhenExpression="$F{SECCION}.intValue() == 1">
+				<element kind="staticText" uuid="e5000000-0000-0000-0000-000000000112" x="600" y="0" width="120" height="14" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
 					<text><![CDATA[Subtotal jubilado:]]></text>
 				</element>
-				<element kind="textField" uuid="e5000000-0000-0000-0000-000000000113" x="722" y="0" width="60" height="14" fontName="Tahoma" fontSize="7.0" bold="true" pattern="#,##0.00" hTextAlign="Right" vTextAlign="Middle" blankWhenNull="true" printWhenExpression="$F{SECCION}.intValue() == 1">
+				<element kind="textField" uuid="e5000000-0000-0000-0000-000000000113" x="722" y="0" width="60" height="14" fontName="Tahoma" fontSize="7.0" bold="true" pattern="#,##0.00" hTextAlign="Right" vTextAlign="Middle" blankWhenNull="true">
 					<expression><![CDATA[$V{V_SUBTOTAL_JUBILADO}]]></expression>
 				</element>
 			</band>
 		</groupFooter>
 	</group>
 	<background splitType="Stretch"/>
-	<title height="70" splitType="Stretch">
+	<title height="176" splitType="Stretch">
 		<element kind="staticText" uuid="e5000000-0000-0000-0000-000000000201" x="0" y="0" width="782" height="20" fontName="Tahoma" fontSize="12.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[REPORTE MENSUAL DE PAGO DE PENSION COMPLEMENTARIA A JUBILADOS]]></text>
 		</element>
 		<element kind="textField" uuid="e5000000-0000-0000-0000-000000000202" x="0" y="22" width="782" height="16" fontName="Tahoma" fontSize="9.0" hTextAlign="Center" vTextAlign="Middle">
-			<expression><![CDATA["Corrida ejecutada en " + $P{P_MES} + "/" + $P{P_ANIO} + " -- empresa " + $P{P_IDEMPRESA}]]></expression>
+			<expression><![CDATA["Periodo cubierto: " + $P{P_MES} + "/" + $P{P_ANIO} + " -- empresa " + $P{P_IDEMPRESA}]]></expression>
 		</element>
 		<element kind="staticText" uuid="e5000000-0000-0000-0000-000000000203" x="0" y="40" width="782" height="12" fontName="Tahoma" fontSize="7.0" italic="true" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[El periodo del filtro es el MES EN QUE SE EJECUTO la corrida (PGPCFCRG), no el periodo cubierto por cada pago -- ver columna PERIODO de cada fila.]]></text>
+			<text><![CDATA[El filtro es el PERIODO CUBIERTO por el pago (PGPCANNO/PGPCMESS). Si un jubilado cobro varios meses atrasados en esta misma corrida, se muestran TODAS sus filas de esa corrida, no solo la de este periodo.]]></text>
 		</element>
-		<element kind="textField" uuid="e5000000-0000-0000-0000-000000000204" x="0" y="54" width="391" height="12" fontName="Tahoma" fontSize="7.0" hTextAlign="Left" vTextAlign="Middle">
+		<element kind="staticText" uuid="e5000000-0000-0000-0000-000000000206" mode="Opaque" x="0" y="56" width="782" height="14" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.5" bold="true" hTextAlign="Left" vTextAlign="Middle">
+			<text><![CDATA[RESUMEN DE LA CORRIDA]]></text>
+			<box leftPadding="4"/>
+		</element>
+		<element kind="textField" uuid="e5000000-0000-0000-0000-000000000207" x="0" y="71" width="782" height="14" fontName="Tahoma" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle" evaluationTime="Report">
+			<expression><![CDATA["Jubilados JUBILADO_COMPLEMENTARIO evaluados: " + $F{CANT_EVALUADOS}
+    + "   |   Con pago generado este periodo: " + $F{CANT_PAGADOS}
+    + "   |   Sin pago generado este periodo: " + $F{CANT_SIN_PAGO}
+    + " (bloqueado o al dia -- no se distingue, ver nota al pie)"]]></expression>
+			<box leftPadding="4"/>
+		</element>
+		<element kind="textField" uuid="e5000000-0000-0000-0000-000000000208" x="0" y="87" width="782" height="16" fontName="Tahoma" fontSize="9.0" bold="true" hTextAlign="Left" vTextAlign="Middle" evaluationTime="Report">
+			<expression><![CDATA["Total pension: $" + $V{V_TOTAL_PENSION}.setScale(2, java.math.RoundingMode.HALF_UP)
+    + "   Total seguro: $" + $V{V_TOTAL_SEGURO}.setScale(2, java.math.RoundingMode.HALF_UP)
+    + "   Total cruzado a prestamos: $" + $V{V_TOTAL_CRUZADO}.setScale(2, java.math.RoundingMode.HALF_UP)
+    + "   Total transferido al banco: $" + $V{V_TOTAL_DINERO_BANCO}.setScale(2, java.math.RoundingMode.HALF_UP)
+    + "   TOTAL GENERAL: $" + $V{V_TOTAL_GENERAL}.setScale(2, java.math.RoundingMode.HALF_UP)]]></expression>
+			<box leftPadding="4"/>
+		</element>
+		<element kind="textField" uuid="e5000000-0000-0000-0000-000000000209" x="0" y="105" width="782" height="14" fontName="Tahoma" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle" evaluationTime="Report">
+			<expression><![CDATA[$F{ORDEN_PROVEEDOR_CDGO} == null
+    ? "Orden de pago al proveedor del seguro medico del periodo: NO ENCONTRADA para " + $P{P_MES} + "/" + $P{P_ANIO}
+    : "Orden de pago al proveedor del seguro medico del periodo: PagoProgramado " + $F{ORDEN_PROVEEDOR_CDGO}.longValue()
+        + " -- $" + $F{ORDEN_PROVEEDOR_VALOR}.setScale(2, java.math.RoundingMode.HALF_UP)]]></expression>
+			<box leftPadding="4"/>
+		</element>
+		<element kind="staticText" uuid="e5000000-0000-0000-0000-000000000210" x="0" y="123" width="782" height="24" fontName="Tahoma" fontSize="6.5" italic="true" hTextAlign="Left" vTextAlign="Top">
+			<text><![CDATA[Cruzado a prestamos: heuristica por entidad del prestamo + fecha contra CRD.PGPR (pagos de cuota vigentes) -- no hay FK grabada de PGPC a la cuota que cancelo. La ausencia de fila en CRD.PGPC no distingue jubilado bloqueado de jubilado al dia -- ese dato no se persiste hoy en ninguna tabla (no existe forma de mostrar el motivo real de un bloqueo pasado). Si "Con pago generado" + "Sin pago generado" no suma el total de evaluados, o si el resumen de arriba aparece en blanco, es que no hubo ninguna fila para este periodo -- revisar el detalle abajo.]]></text>
+		</element>
+		<element kind="textField" uuid="e5000000-0000-0000-0000-000000000204" x="0" y="160" width="391" height="12" fontName="Tahoma" fontSize="7.0" hTextAlign="Left" vTextAlign="Middle">
 			<expression><![CDATA["Generado por: " + $P{P_USUARIO}]]></expression>
 		</element>
-		<element kind="textField" uuid="e5000000-0000-0000-0000-000000000205" x="391" y="54" width="391" height="12" fontName="Tahoma" fontSize="7.0" pattern="dd/MM/yyyy HH:mm" hTextAlign="Right" vTextAlign="Middle">
+		<element kind="textField" uuid="e5000000-0000-0000-0000-000000000205" x="391" y="160" width="391" height="12" fontName="Tahoma" fontSize="7.0" pattern="dd/MM/yyyy HH:mm" hTextAlign="Right" vTextAlign="Middle">
 			<expression><![CDATA[new java.util.Date()]]></expression>
 		</element>
 	</title>
@@ -249,7 +247,7 @@ ORDER BY 1, 4, 6, 7]]></query>
 			<box rightPadding="4"><pen lineWidth="0.25"/></box>
 		</element>
 		<element kind="staticText" uuid="e5000000-0000-0000-0000-000000000308" mode="Opaque" x="505" y="0" width="277" height="16" backcolor="#EEEEEE" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
-			<text><![CDATA[DETALLE DEL CRUCE (por prestamo)]]></text>
+			<text><![CDATA[DETALLE DEL CRUCE (prestamo / cuota / capital / interes / mora)]]></text>
 			<box leftPadding="4"><pen lineWidth="0.25"/></box>
 		</element>
 	</columnHeader>
@@ -289,15 +287,9 @@ ORDER BY 1, 4, 6, 7]]></query>
 			</element>
 		</band>
 	</detail>
-	<summary height="40" splitType="Stretch">
-		<element kind="staticText" uuid="e5000000-0000-0000-0000-000000000501" x="0" y="0" width="782" height="14" fontName="Tahoma" fontSize="7.0" italic="true" hTextAlign="Left" vTextAlign="Middle">
-			<text><![CDATA[La ausencia de fila en la seccion 2 no distingue jubilado bloqueado de jubilado al dia -- ese dato no se persiste hoy en ninguna tabla.]]></text>
-		</element>
-		<element kind="textField" uuid="e5000000-0000-0000-0000-000000000502" x="0" y="16" width="782" height="20" fontName="Tahoma" fontSize="9.5" bold="true" hTextAlign="Right" vTextAlign="Middle" evaluationTime="Report">
-			<expression><![CDATA[$F{ORDEN_PROVEEDOR_CDGO} == null
-    ? "Orden de pago al proveedor del seguro medico del periodo: NO ENCONTRADA para " + $P{P_MES} + "/" + $P{P_ANIO}
-    : "Orden de pago al proveedor del seguro medico del periodo: PagoProgramado " + $F{ORDEN_PROVEEDOR_CDGO}.longValue()
-        + " -- $" + $F{ORDEN_PROVEEDOR_VALOR}.setScale(2, java.math.RoundingMode.HALF_UP)]]></expression>
+	<summary height="26" splitType="Stretch">
+		<element kind="staticText" uuid="e5000000-0000-0000-0000-000000000501" x="0" y="0" width="782" height="26" fontName="Tahoma" fontSize="7.0" italic="true" hTextAlign="Left" vTextAlign="Top">
+			<text><![CDATA[Fin del detalle de jubilados con pago generado en este periodo. Los jubilados sin fila de PGPC para este periodo NO aparecen individualmente en este reporte -- solo su cantidad, en el resumen del encabezado (ver nota de bloqueo/al dia arriba).]]></text>
 		</element>
 	</summary>
 </jasperReport>

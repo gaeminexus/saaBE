@@ -15,6 +15,14 @@ que el `pom.xml` del proyecto ya trae). Errores típicos que "bien formado" no d
   un (o más) `<band height="..." splitType="...">` anidado. Mezclar los dos estilos da
   `UnrecognizedPropertyException` sobre `JRDesignBand` (campo `"band"` no reconocido).
 
+⚠️ **Trampa aparte, y esta SÍ la agarra el chequeo de "XML bien formado" — pero solo si te
+acordás de correrlo primero.** Los comentarios `<!-- ... -->` de cabecera (documentando límites
+del modelo, decisiones, etc.) son casi siempre varias líneas largas con guiones como los de este
+párrafo — un doble guion `--` dentro de un comentario XML es **XML inválido** (la especificación
+lo prohíbe explícitamente), y un editor de texto no lo avisa. Pasó dos veces seguidas en este
+reporte: usar `--` como raya larga en la documentación del propio `.jrxml`. Antes de escribir un
+comentario de cabecera largo, usar `:` o `;` donde iría una raya — nunca `--`.
+
 `ValidateJrxml.java` (en esta misma carpeta) corre el mismo `JacksonReportLoader` que usa Studio,
 sin necesitar Studio instalado, y sin compilar el reporte (no genera `.jasper`, no necesita
 `jasperreports-jdt` — eso sigue siendo tarea de Studio, ver
