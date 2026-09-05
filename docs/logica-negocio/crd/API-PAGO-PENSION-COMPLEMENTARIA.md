@@ -702,9 +702,29 @@ nominal. Riesgo teórico análogo sin verificar: si el saldo del aporte se agota
 `seguroInternoMes` podría quedar por debajo del nominal y esa línea seguiría devengando el
 nominal completo. No es el defecto que se midió — queda anotado, no corregido.
 
-**Dependencia externa que bloquea la corrida real aunque el código esté listo**: el usuario
-tiene que crear el producto de pago (`PGS.PRDP`) para `ID_PRODUCTO_PAGO_PENSION_JUBILADOS`,
-en un grupo cuya cuenta sea `2.3.01.10.03` — mismo criterio que el producto 516 del seguro.
+**Dependencia externa, resuelta 2026-09-05**: `ID_PRODUCTO_PAGO_PENSION_JUBILADOS = 517` —
+**asumido** como el siguiente libre después del 516 (decisión expresa del usuario, «asume que
+el id va a ser el siguiente», para no perder tiempo), creado por
+`docs/logica-negocio/crd/sql/202_CREAR_PRODUCTO_PAGO_PENSION_JUBILADOS.sql`. Si Oracle asignó
+otro número, el guard #5 lo detecta antes de tocar el primer jubilado (cuenta equivocada o
+producto inexistente) y no escribe nada — el riesgo de asumir está acotado por ese guard.
+
+**Validación independiente de que `2.3.01.10.03` es la cuenta correcta**: ya existía un
+producto (`411`) y un grupo (`43`) apuntando a esa misma cuenta, creados para la devolución de
+aportes — sin ninguna relación con este frente. Se llegó al mismo lugar por dos caminos
+independientes (la plantilla 35 acá, la devolución de aportes allá) — no se reusa el 411
+porque compartirlo volvería indistinguibles, en cualquier reporte por producto, el pago
+mensual de la devolución.
+
+**Corrección sobre `DevolucionAporteServiceImpl`**: contra lo que decía una versión anterior de
+este documento, `DevolucionAporteServiceImpl` (líneas 506-515) **sí manda desglose** —
+condicionado a que **todos** los tipos de aporte de la devolución tengan `productoPago`
+configurado en `CRD.TPAP` (si falta alguno, esa devolución puntual va sin desglose, la misma
+degradación que documenta CXP). Es decir, ya usa un mecanismo más directo:
+`TipoAporte.getProductoPago()`, un campo propio de la entidad, en vez de una constante Java por
+tipo. No se adoptó ese mecanismo acá (se mantuvo el patrón `ID_PRODUCTO_PAGO_*` ya usado con el
+516, por velocidad y consistencia con el seguro) — queda anotado como mejora posible, no
+aplicada.
 
 ---
 

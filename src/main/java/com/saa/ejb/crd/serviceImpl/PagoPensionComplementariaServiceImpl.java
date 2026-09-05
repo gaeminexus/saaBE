@@ -129,13 +129,19 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
      * {@code PAGO_PENSION_COMPLEMENTARIA}=35, aux1=2 — ver
      * {@code docs/logica-negocio/crd/sql/200_VERIFICACION_PLANTILLA_35_AUX1_PENSION.sql}).
      *
-     * ⛔⛔ PENDIENTE: el usuario TODAVÍA NO CREÓ este producto en producción (dependencia
-     * externa, igual que el 516 en su momento) — {@code null} A PROPÓSITO, no se adivina un
-     * código. {@link #verificarCuentaProductoPagoPensionJubilados} falla ruidoso mientras esto
-     * sea {@code null}, antes de tocar el primer jubilado: la corrida no puede arrancar sin
-     * este dato, y no hay riesgo de que un número inventado clasifique mal un asiento real.
+     * ⚠️ ASUMIDO, no confirmado por el usuario todavía: {@code 517} — el siguiente libre
+     * después del 516 (seguro, creado un día antes para esta misma corrida). Decisión expresa
+     * del usuario 2026-09-05, «asume que el id va a ser el siguiente», para no perder tiempo
+     * esperando confirmación — creado por
+     * {@code docs/logica-negocio/crd/sql/202_CREAR_PRODUCTO_PAGO_PENSION_JUBILADOS.sql}, cuyo
+     * bloque 3 devuelve el ID real que asignó Oracle (`PGS.PRDP` es {@code IDENTITY}, no se le
+     * puede fijar el código a mano). Si el real no es 517, es cambiar esta única línea y
+     * redesplegar — el riesgo está acotado por
+     * {@link #verificarCuentaProductoPagoPensionJubilados} (guard #5): un ID equivocado o
+     * inexistente frena la corrida ANTES de tocar el primer jubilado, con mensaje claro, sin
+     * escribir nada.
      */
-    private static final Long ID_PRODUCTO_PAGO_PENSION_JUBILADOS = null;
+    private static final Long ID_PRODUCTO_PAGO_PENSION_JUBILADOS = 517L;
 
     @EJB
     private PagoPensionComplementariaDaoService pagoPensionDaoService;
