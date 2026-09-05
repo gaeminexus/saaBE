@@ -864,6 +864,48 @@ pensión retenida de ese mes no se vuelve a pagar después. **El remanente reten
 descuenta: se queda en el saldo del aporte 23 del jubilado.** Es exactamente la semántica que ya
 tiene `SOLO_CRUCE` y que el usuario ya aprobó.
 
+### D6 — El seguro nunca fue plata del jubilado: sale a un proveedor, aparte
+
+**Decisión del usuario, 2026-09-04, textual:** *«el seguro medico es un valor que debe bajar
+también de la pensión, así como el valor abonado a préstamos, pero ese valor no debe ir incluido
+en el valor a pagar al partícipe, sino debe salir como un pago aparte al TITULAR con un RUC […]
+este proceso debe sacar dos pagos, uno el total a pagar de todos los jubilados y otro el total a
+pagar por seguros que va a un proveedor específico»*. Y lo remató: *«por esta razón es que no es
+necesario el certificado bancario para poder descontar a un jubilado su seguro»*.
+
+**Esto supersede a D5 en su forma, no en su fondo.** D5 había resuelto el caso «sin certificado»
+mandando el seguro a un traspaso interno; D6 dice que eso pasa **siempre**. Con D6 desaparece la
+asimetría que había quedado —el seguro terminaba en dos destinos distintos según el certificado— y
+la regla del certificado vuelve a ser una sola cosa: gobierna **la salida de la pensión al banco**,
+nada más.
+
+| Salida de la corrida | A quién | Cómo |
+|---|---|---|
+| Pensión | Cada jubilado con certificado | Una orden por jubilado, como hoy |
+| **Seguro** | **Proveedor RUC `1768153530001`** | **UNA sola orden por el total del período** |
+
+**Contabilidad, cerrada por el usuario:** el pago al proveedor **debita** la misma cuenta que la
+corrida **acredita** — `2.3.90.90.06 SEGURO POR PAGAR JUBILADOS`, la del apartado de seguro de la
+plantilla alterno 35 (`aux1` 3/4). Si todo se paga, la cuenta **neta a cero cada período**, lo que
+da un control de conciliación gratis que conviene usar.
+
+⚠️ **Instrucción de implementación que decide si eso sigue siendo cierto:** las dos puntas leen la
+cuenta del **mismo lugar**. Si el lado del pago la lleva quemada y alguien cambia la plantilla, la
+corrida se movería a una cuenta nueva y el pago seguiría cerrando la vieja — sin ningún error
+visible, solo dos cuentas descuadradas y alguien conciliando a mano durante meses. Es la misma
+forma del defecto de los `SELECT *` en los `.jrxml` que ya costó caro en este repo.
+
+**Prioridad cuando el saldo no alcanza — decisión del árbitro, no del usuario:** préstamo → seguro
+→ pensión. Préstamo y seguro son obligaciones con terceros y el usuario dijo «como pasa con los
+valores de préstamos»; la pensión es lo único que puede quedar corto. **Queda marcada como mía
+para que el usuario pueda revocarla sin arqueología.**
+
+**Búsqueda del proveedor: solo por RUC** («solo validalo por RUC»), con dos condiciones de alto
+que el agente tiene prohibido resolver solo — que el RUC no exista, y que devuelva más de una
+fila. Lo segundo no es paranoia: el mismo día encontramos `CRD.TPDJ` con dos «CERTIFICADO
+BANCARIO» y un `get(0)` sin `ORDER BY` eligiendo en silencio. Ver **P19**: identificar al
+proveedor por RUC es provisional; lo que corresponde es marcarlo en la base y buscarlo por rol.
+
 **Estado:** despachado al agente BE el 2026-09-04. Abarca la compuerta D4 de `previsualizarJubilado`,
 la fórmula del monto, la corrida real (`generarMesesRetroactivos` / `generarUnMesSinPrestamo`), el
 valor de `participacion` y el contrato §4bis/§6 con su espejo. **El agente tiene instrucción de
@@ -928,6 +970,7 @@ la tasa de desgravamen es una **constante quemada en Java** (`FACTOR_DESGRAVAMEN
 | # | Qué | Tipo |
 |---|---|---|
 | ~~P1~~ | ~~Correr `sql/151`~~ | ✅ **corrido el 2026-09-01, el gate pasó** — §5.b del plan |
+| **P19** | **Marcar al proveedor del seguro en la base**, en vez de identificarlo por el RUC quemado `1768153530001`. Decisión del usuario 2026-09-04: *«solo por esta ocasión hagámoslo por RUC, deja anotado que debemos marcar posteriormente al titular como aquel que recibe el pago de los seguros de jubilados»*. Cuando la marca exista, la constante se borra y la búsqueda pasa a ser por rol. ⚠️ Mientras tanto es un literal que **enruta plata a un tercero**: si cambia el proveedor del seguro y nadie toca la constante, el pago sale al equivocado y no hay error que lo delate | **decidible, pero no dejarlo dormir** |
 | **P16** | **Ejecutar la corrida real de agosto 2026.** El prevuelo está validado por el usuario, pero **queda pendiente redesplegar con la decisión D5** (seguro sin préstamo/certificado/cuenta), que cambia quiénes entran y por cuánto. ⛔ «A dinero» sale al banco y **no hay anulación**: `POST /pgpc/anular/{id}` no existe y no va a existir (depende de `CRD.PGCE`, reservada por `lap-saa-1` sin DDL) | **bloqueante** — es el frente urgente |
 | **P17** | Cuando se ejecute: **pasarle el conteo de órdenes a `omen-saa-2-arb`**, que maneja el lote de tesorería y la autorización única | va con P16 |
 | **P18** | Limpiar los campos duplicados `valorPension`/`totalPension` de `DetallePagoPension`. **Congelado a propósito** durante el despliegue; `generarPagosDelMes` suma `totalPagado` desde `getValorPension()` + `getValorSeguroSalud()` y hay que migrarlo | después de P16 |
