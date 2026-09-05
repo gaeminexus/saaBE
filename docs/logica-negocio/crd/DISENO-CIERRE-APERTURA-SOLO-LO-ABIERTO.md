@@ -115,3 +115,63 @@ La consulta de plantillas devolvió **dos filas con alterno 1**: la de partícip
 resuelve por alterno**: si las dos son de la misma empresa, la resolución es ambigua y podría tomar la
 equivocada — un asiento contra caja chica sin que nada avise. **Confirmar con `PJRQCDGO` antes de
 darlo por inofensivo.**
+
+---
+
+## 9. El camino DIRECTO — decisión del usuario, 2026-09-05
+
+**Lo de arriba (§1 a §8) cubre `procesarCobro`. NO cubre el camino por el que el usuario precancela
+de verdad.** Probado con dos logs de producción —eventos 481 y 444— que muestran
+`✅ contabilizarPrecancelacion OK` y **ninguna** traza de `procesarCobro`.
+
+### 9.1 Qué caminos son
+
+| Método | Operación | Cierra la apertura hoy |
+|---|---|---|
+| `ContabilidadPrestamoServiceImpl.contabilizarPrecancelacion` | Precancelación directa | ❌ **nunca** |
+| `ContabilidadPrestamoServiceImpl.contabilizarPagoConAportes` | Cruce de valores (incluye el de jubilados) | ❌ **nunca** |
+
+Los dos arman `D cuentas de aporte consumido → H bandas`. **No hay depósito ni cuenta transitoria:**
+la plata sale de los aportes del socio.
+
+### 9.2 La solución — opción (A), confirmada por el usuario
+
+**Dos líneas más EN EL MISMO ASIENTO**, que reversan la apertura por lo que sí estaba abierto:
+
+```
+D 2.3.02.10 (PRESTAMOS_POR_APLICAR)  →  H 1.4.05.10 (PRESTAMOS_POR_COBRAR)
+```
+
+**Cuadra por construcción:** agrega un Debe y un Haber por el mismo monto, así que el asiento sigue
+cerrando sin tocar el movimiento de dinero.
+
+⛔ **Los lados van INVERTIDOS respecto de la plantilla, y es deliberado.** La plantilla declara
+`PRESTAMOS_POR_APLICAR` como **HABER** y `PRESTAMOS_POR_COBRAR` como **DEBE**, porque así es como
+*abre* la apertura. Acá se está **deshaciendo** esa apertura, así que los dos lados se invierten por
+definición. **Leer el `getMovimiento()` de cada línea, invertirlo explícitamente, y dejarlo dicho en
+un comentario** — si no, el próximo lo lee como el defecto del Debe/Haber que ya cometimos una vez.
+
+### 9.3 El monto — sólo lo vencido y la cuota actual
+
+**`total pagado a préstamos en esta operación − capital futuro posterior al corte`.**
+
+Es la misma resta del §4 y el mismo `capitalFuturoPosteriorACorte` que ya existe. **El tramo futuro
+no entra: nunca se abrió, así que no hay nada que cerrar por él.**
+
+- **Sin corrida de cierre viva** → no se agregan las dos líneas. Nada estaba abierto.
+- **Monto cero** → no se agregan. Un par de líneas en cero es ruido.
+
+### 9.4 ⚠️ Sólo el lado préstamos — supuesto declarado
+
+La apertura también abre aportes (`1.4.05.05` / `2.3.02.05`), y **esas líneas NO se tocan.** Lo que
+abre la apertura del lado aportes es **el aporte mensual que se espera cobrar**; una precancelación o
+un cruce **consumen el saldo acumulado del socio**, que es otra cosa. Cerrar la apertura de aportes
+por un consumo de saldo sería cerrar algo que nunca se abrió por ese concepto.
+
+**Es un supuesto del árbitro, no una instrucción del usuario. Si está mal, cambia una línea.**
+
+### 9.5 La descripción
+
+Tiene que decir qué es, no sólo de dónde viene. Del estilo:
+`"Cierre de apertura - vencido y cuota del mes - precancelación evento N"`.
+El usuario lo pidió explícitamente: **«con la descripción correcta»**.

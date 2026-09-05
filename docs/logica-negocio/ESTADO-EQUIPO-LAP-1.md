@@ -504,3 +504,27 @@ por eso se revirtió la apertura extraordinaria.
 > **El chequeo previo del que despliega resultó mejor red que la promesa del que escribe.** El autor
 > avisa de lo que sabe que va a producción; el que despliega encuentra lo que el autor no pensó que
 > iba. Las dos redes son baratas y sólo la segunda atrapó este caso.
+
+### 10.6 ⛔ La mora congelada NO es un defecto — decisión del usuario, 2026-09-05
+
+`omen-saa-1` reportó como defecto que `aplicarPagoACuota` **no recalcula la mora a la fecha del
+pago**: lee `DetallePrestamo.getMora()` ya persistido, en vez de usar `recalcularMoraALaFecha`, que
+existe y recibe la fecha por parámetro pero **sólo lo llaman la precancelación y el acuerdo de
+condonación**. Sumado a que el timer de mora está apagado desde el 2026-08-31, la mora quedó
+congelada.
+
+**El análisis técnico es correcto. La conclusión de que hay que arreglarlo, no.**
+
+> **Decisión del usuario:** *«dejemos la mora como está. Está desactivada de forma consciente y
+> deliberada porque se sigue actualizando pagos de agosto con fecha de fin de agosto y no queremos
+> que se genere mora por las cuotas todavía»*.
+
+**No se toca.** Y se anota **acá** precisamente porque **desde afuera se ve idéntico a un defecto** —
+tanto que otro equipo lo reportó como tal, con toda la razón desde su punto de vista. Sin este
+registro, el próximo que lo mire lo "corrige" y empieza a cobrar mora sobre agosto.
+
+**Se reactiva cuando el usuario avise. No hay fecha:** depende de cuánto lleve cuadrar agosto, y él
+lo va a notificar. **No preguntar por una fecha ni proponer una.**
+
+Es la misma forma que el `PAGO_APORTES` sin rama del §3.0bis del diseño de cierre de apertura: **una
+ausencia deliberada que no se distingue de un olvido si nadie la escribe.**
