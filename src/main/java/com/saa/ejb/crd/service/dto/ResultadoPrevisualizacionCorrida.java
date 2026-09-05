@@ -65,11 +65,13 @@ public class ResultadoPrevisualizacionCorrida {
      * verifica al principio (antes de tocar el primer jubilado) falla — el titular del
      * proveedor no se resuelve por RUC, la cuenta contable del devengo del seguro no coincide
      * con la del producto de pago 516, el proveedor no tiene una única cuenta bancaria activa,
-     * o el aporte 23 (pensión complementaria) no tiene línea en la plantilla del cruce contra
-     * préstamo (§ prevalidación, ver {@code verificarCuentaAporte23ParaCruce}). El detalle de
-     * CUÁL de las cuatro fue queda en {@link #mensajeProveedorSeguro}. El prevuelo es, en este
-     * momento, el ÚNICO ensayo antes de mover plata real: el frontend tiene que mostrar esto de
-     * forma prominente, no como una nota al pie.
+     * el aporte 23 (pensión complementaria) no tiene línea en la plantilla del cruce contra
+     * préstamo (§ prevalidación, ver {@code verificarCuentaAporte23ParaCruce}), o la cuenta del
+     * producto de pago de la pensión (H41) no coincide con la del devengo — o ese producto ni
+     * siquiera está creado todavía. El detalle de CUÁL de las cinco fue queda en
+     * {@link #mensajeProveedorSeguro}. El prevuelo es, en este momento, el ÚNICO ensayo antes de
+     * mover plata real: el frontend tiene que mostrar esto de forma prominente, no como una nota
+     * al pie.
      *
      * ⚠️ Esto NO es una prevalidación completa de los 181 jubilados — solo cubre
      * precondiciones GLOBALES, deterministas, independientes de cada jubilado (las dos que ya

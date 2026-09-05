@@ -120,6 +120,23 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
      */
     private static final Long ID_PRODUCTO_PAGO_SEGURO_JUBILADOS = 516L;
 
+    /**
+     * {@code PGS.PRDP.ID} del producto de pago que clasifica el desglose contable del pago al
+     * banco de la PENSIÓN individual de cada jubilado (H41, 2026-09-05) — análogo a
+     * {@link #ID_PRODUCTO_PAGO_SEGURO_JUBILADOS} pero para la pensión en vez del seguro
+     * agregado. Su grupo tiene que apuntar a la cuenta {@code 2.3.01.10.03} ("PENSIONES
+     * COMPLEMENTARIAS POR PAGAR") — la MISMA que acredita el devengo (plantilla alterno
+     * {@code PAGO_PENSION_COMPLEMENTARIA}=35, aux1=2 — ver
+     * {@code docs/logica-negocio/crd/sql/200_VERIFICACION_PLANTILLA_35_AUX1_PENSION.sql}).
+     *
+     * ⛔⛔ PENDIENTE: el usuario TODAVÍA NO CREÓ este producto en producción (dependencia
+     * externa, igual que el 516 en su momento) — {@code null} A PROPÓSITO, no se adivina un
+     * código. {@link #verificarCuentaProductoPagoPensionJubilados} falla ruidoso mientras esto
+     * sea {@code null}, antes de tocar el primer jubilado: la corrida no puede arrancar sin
+     * este dato, y no hay riesgo de que un número inventado clasifique mal un asiento real.
+     */
+    private static final Long ID_PRODUCTO_PAGO_PENSION_JUBILADOS = null;
+
     @EJB
     private PagoPensionComplementariaDaoService pagoPensionDaoService;
 
@@ -378,6 +395,18 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                     resumen.setProveedorSeguroEncontrado(false);
                     resumen.setMensajeProveedorSeguro("No se pudo verificar la cuenta del aporte 23"
                         + " para el cruce contra préstamo: " + e.getMessage());
+                }
+            }
+            if (resumen.isProveedorSeguroEncontrado()) {
+                try {
+                    verificarCuentaProductoPagoPensionJubilados(idEmpresa);
+                } catch (IncomeException e) {
+                    resumen.setProveedorSeguroEncontrado(false);
+                    resumen.setMensajeProveedorSeguro(e.getMessage());
+                } catch (Throwable e) {
+                    resumen.setProveedorSeguroEncontrado(false);
+                    resumen.setMensajeProveedorSeguro("No se pudo verificar la cuenta del producto de"
+                        + " pago de la pensión: " + e.getMessage());
                 }
             }
         }
@@ -717,6 +746,11 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         // corrida — ver JavaDoc de verificarCuentaAporte23ParaCruce. Guard #4, mismo criterio
         // que los otros tres: antes de tocar el primer jubilado.
         verificarCuentaAporte23ParaCruce(idEmpresa);
+
+        // ⛔⛔ H41 (2026-09-05): guard #5 — la cuenta del producto de pago de la pensión tiene
+        // que coincidir con la que acredita el devengo, y el producto tiene que existir. Ver
+        // JavaDoc de verificarCuentaProductoPagoPensionJubilados.
+        verificarCuentaProductoPagoPensionJubilados(idEmpresa);
 
         ResultadoGeneracionPagosPension resumen = new ResultadoGeneracionPagosPension();
         resumen.setAnio(anio);
@@ -1405,7 +1439,11 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         // §4 PLAN-PAGO-JUBILADOS.md: el devengo lo genera CRD, DESPUÉS de la orden de pago (o
         // de decidir que no la hay) — si el devengo fallara acá, la transacción entera se
         // revierte y la orden de pago tampoco queda.
-        Long idAsientoDevengo = generarAsientoDevengoPension(pago, entidad, idEmpresa);
+        // ⛔ H43 (2026-09-05): se pasa `remanente`, NO `pago.getValorPension()` — ver JavaDoc de
+        // generarAsientoDevengoPension. `remanente` ya es la pensión nominal neta de cruce Y de
+        // seguro (misma variable que usa generarOrdenPagoPension más arriba): la línea de
+        // pensión del devengo y la orden al banco devengan/pagan exactamente lo mismo.
+        Long idAsientoDevengo = generarAsientoDevengoPension(pago, entidad, idEmpresa, remanente);
         pago.setNumeroAsientoDevengo(idAsientoDevengo);
         pago = pagoPensionDaoService.save(pago, pago.getCodigo());
 
@@ -1426,6 +1464,20 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         String observacion = "Pago pensión complementaria " + mesM + "/" + anioM + " - "
             + entidad.getRazonSocial() + " (PGPC " + pago.getCodigo() + ")";
 
+        // ⛔⛔ H41 (2026-09-05): antes se mandaba desglose=null — "sin desglose contable, mismo
+        // estado que la devolución" — y eso es exactamente lo que dejó a los 181 jubilados sin
+        // asiento al confirmarse el pago (contabilizarPagoOrigenExterno retorna null cuando no
+        // hay filas en PGS.DPGT, comportamiento intencional de CXP, no un bug de ellos). La
+        // línea de desglose lleva `remanente` — el MISMO valor que ya se transfiere al banco
+        // (nunca pago.getValorPension(), el nominal: sería reintroducir H43 del otro lado).
+        com.saa.ejb.cxp.service.dto.LineaContablePago lineaPension =
+            new com.saa.ejb.cxp.service.dto.LineaContablePago();
+        lineaPension.setIdProductoPago(ID_PRODUCTO_PAGO_PENSION_JUBILADOS);
+        lineaPension.setValor(remanente);
+        lineaPension.setConcepto(observacion);
+        List<com.saa.ejb.cxp.service.dto.LineaContablePago> desglose = new ArrayList<>();
+        desglose.add(lineaPension);
+
         // idCuentaBancariaOrigen SIEMPRE null: tesorería asigna cuenta/forma de pago al aprobar
         // — mismo criterio que DevolucionAporteServiceImpl (punto 14, 2026-08-27).
         // §6bis (refinamiento 2026-09-04): el PAGO va con la fecha ACTUAL, separado de la de
@@ -1433,8 +1485,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         Map<String, Object> respuesta = pagoProgramadoService.registrarPagoDeOrigenExterno(
             OrigenPagoExterno.CRD_PAGO_PENSION_COMPLEMENTARIA, pago.getCodigo(),
             idEmpresa, null, remanente, LocalDate.now().toString(), beneficiario,
-            null, // sin desglose contable — mismo estado que la devolución hoy (§6.5.b)
-            observacion, idUsuario, false, null);
+            desglose, observacion, idUsuario, false, null);
 
         Object valorPago = (respuesta != null) ? respuesta.get("pago") : null;
         if (valorPago == null) {
@@ -1546,6 +1597,71 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                 + " aux1=4: cuenta " + cuentaDevengo.getCodigo() + " - " + cuentaDevengo.getCuentaContable()
                 + " - " + cuentaDevengo.getNombre() + ") no coincide con la cuenta que DEBE el pago al"
                 + " proveedor (producto de pago " + ID_PRODUCTO_PAGO_SEGURO_JUBILADOS + ": cuenta "
+                + cuentaProducto.getCodigo() + " - " + cuentaProducto.getCuentaContable() + " - "
+                + cuentaProducto.getNombre() + "). Alguien cambió una sin la otra. No se genera ningún"
+                + " pago de este período hasta que las dos apunten a la misma cuenta.");
+        }
+    }
+
+    /**
+     * ⛔⛔ Guard 2026-09-05, H41: mismo defecto de fondo que
+     * {@link #verificarCuentaProductoPagoSeguroMedico} pero del lado de la PENSIÓN individual
+     * — dos fuentes de verdad para la misma cuenta ({@code 2.3.01.10.03}): la que ACREDITA el
+     * devengo (plantilla alterno {@code PAGO_PENSION_COMPLEMENTARIA}, aux1=2) y la que DEBE el
+     * pago al banco (grupo del producto {@link #ID_PRODUCTO_PAGO_PENSION_JUBILADOS}, resuelta
+     * por {@code cxp} al confirmar el pago). Corre UNA vez al principio de
+     * {@code generarPagosDelMes}, antes de tocar el primer jubilado — y de forma NO bloqueante
+     * en {@link #previsualizarCorrida}, igual que los otros guards.
+     *
+     * También cubre la dependencia externa: si {@link #ID_PRODUCTO_PAGO_PENSION_JUBILADOS}
+     * sigue {@code null} (el usuario todavía no creó el producto), falla acá con un mensaje
+     * explícito en vez de un {@code NullPointerException} más abajo.
+     */
+    private void verificarCuentaProductoPagoPensionJubilados(Long idEmpresa) throws Throwable {
+        if (ID_PRODUCTO_PAGO_PENSION_JUBILADOS == null) {
+            throw new IncomeException("PRODUCTO_PAGO_PENSION_NO_CONFIGURADO: falta crear el producto de"
+                + " pago (PGS.PRDP) que clasifica el desglose contable del pago de pensión a cada"
+                + " jubilado, apuntando a la cuenta 2.3.01.10.03, y fijar su código en"
+                + " ID_PRODUCTO_PAGO_PENSION_JUBILADOS (ver H41). No se genera ningún pago de este"
+                + " período sin esto.");
+        }
+        Long idPlantilla = plantillaService.codigoByAlterno(
+            PlantillasCredito.PAGO_PENSION_COMPLEMENTARIA, idEmpresa);
+        if (idPlantilla == null) {
+            throw new IncomeException("No existe la plantilla contable alterno "
+                + PlantillasCredito.PAGO_PENSION_COMPLEMENTARIA + " (pago mensual de pensión"
+                + " complementaria) para la empresa " + idEmpresa + ". Corra sql/173 antes de"
+                + " generar pagos de pensión.");
+        }
+        DetallePlantilla lineaDevengoPension = detallePlantillaDaoService.selectByPlantillaYAuxiliar(idPlantilla, 2);
+        if (lineaDevengoPension == null || lineaDevengoPension.getPlanCuenta() == null) {
+            throw new IncomeException("La plantilla alterno " + PlantillasCredito.PAGO_PENSION_COMPLEMENTARIA
+                + " no tiene la línea aux1=2 (pensión) — corra sql/173 completo (ver su control"
+                + " D.1, deben salir 4 líneas).");
+        }
+        PlanCuenta cuentaDevengo = lineaDevengoPension.getPlanCuenta();
+
+        ProductoPago productoPension = productoPagoService.selectById(ID_PRODUCTO_PAGO_PENSION_JUBILADOS);
+        if (productoPension == null) {
+            throw new IncomeException("PRODUCTO_PAGO_PENSION_NO_ENCONTRADO: no existe el producto de pago "
+                + ID_PRODUCTO_PAGO_PENSION_JUBILADOS + " (PGS.PRDP) — es el que clasifica el desglose"
+                + " contable del pago de pensión a cada jubilado. No se genera ningún pago de este"
+                + " período sin poder verificar su cuenta.");
+        }
+        if (productoPension.getGrupoProducto() == null || productoPension.getGrupoProducto().getPlanCuenta() == null) {
+            throw new IncomeException("El producto de pago " + ID_PRODUCTO_PAGO_PENSION_JUBILADOS
+                + " (PGS.PRDP) no tiene grupo o el grupo no tiene cuenta contable configurada — "
+                + " no se puede verificar que cierre contra la cuenta del devengo.");
+        }
+        PlanCuenta cuentaProducto = productoPension.getGrupoProducto().getPlanCuenta();
+
+        if (cuentaDevengo.getCodigo() == null || cuentaProducto.getCodigo() == null
+                || !cuentaDevengo.getCodigo().equals(cuentaProducto.getCodigo())) {
+            throw new IncomeException("CUENTA_PENSION_DESCUADRADA: la cuenta que ACREDITA el devengo"
+                + " de la pensión (plantilla alterno " + PlantillasCredito.PAGO_PENSION_COMPLEMENTARIA
+                + " aux1=2: cuenta " + cuentaDevengo.getCodigo() + " - " + cuentaDevengo.getCuentaContable()
+                + " - " + cuentaDevengo.getNombre() + ") no coincide con la cuenta que DEBE el pago al"
+                + " banco (producto de pago " + ID_PRODUCTO_PAGO_PENSION_JUBILADOS + ": cuenta "
                 + cuentaProducto.getCodigo() + " - " + cuentaProducto.getCuentaContable() + " - "
                 + cuentaProducto.getNombre() + "). Alguien cambió una sin la otra. No se genera ningún"
                 + " pago de este período hasta que las dos apunten a la misma cuenta.");
@@ -1859,15 +1975,36 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
     }
 
     /**
-     * §4 PLAN-PAGO-JUBILADOS.md: asiento de DEVENGO de la pensión y su seguro de salud —
-     * SIEMPRE por el valor completo devengado (valorPension + valorSeguro), independiente de
-     * cuánto se haya cruzado contra un préstamo: ese tramo lo contabiliza aparte
-     * {@code contabilizarPagoConAportes} (dentro de {@code pagarConAportes}, ya existente, no
-     * se toca). El asiento de PAGO contra banco tampoco va acá — lo genera CXP/TSR con la
-     * orden de pago, igual que en la devolución de aportes.
+     * §4 PLAN-PAGO-JUBILADOS.md: asiento de DEVENGO de la pensión y su seguro de salud. El
+     * asiento de PAGO contra banco tampoco va acá — lo genera CXP/TSR con la orden de pago,
+     * igual que en la devolución de aportes.
+     *
+     * ⛔⛔ H43, defecto real confirmado con capturas de producción (2026-09-05): la línea de
+     * PENSIÓN de este asiento y la línea del CRUCE contra préstamo (generada aparte, dentro de
+     * {@code contabilizarPagoConAportes}/{@code pagarConAportes}, que no se toca) DEBITAN LA
+     * MISMA CUENTA — {@code 2.1.02.25.01}, la cuenta individual del jubilado. Devengar acá por
+     * el valor NOMINAL completo de la pensión, cuando parte de esa pensión ya se cruzó contra
+     * un préstamo, sobre-debita esa cuenta exactamente por lo cruzado (caso real medido: PGPC 4,
+     * pensión $589,17, cruce $481,78 — el devengo debitaba $589,17 completos, cuando lo único
+     * que de verdad queda como pasivo exigible en dinero es $589,17 − $481,78 = $107,39).
+     *
+     * CORRECCIÓN: la línea de pensión (aux1=1/2) devenga por {@code montoDevengarPension} —
+     * que el llamador ({@code registrarPgpcDelMes}) pasa como {@code remanente}: la pensión
+     * NOMINAL ya neta de cruce Y de seguro (§ olla compartida, {@code generarMesesRetroactivos}).
+     * La identidad que tiene que cerrar siempre, al centavo: {@code remanente + aplicadoAlPrestamo
+     * + seguroInterno == valorTotal} (la pensión+seguro nominal del mes) — los tres términos son
+     * mutuamente excluyentes por construcción (se restan en cascada de la misma "olla"), así que
+     * si no cierra hay un cuarto destino que nadie está viendo.
+     *
+     * ⚠️ La línea de SEGURO (aux1=3/4) NO se toca — sigue por {@code pago.getValorSeguro()}
+     * nominal. Riesgo teórico análogo, documentado pero fuera de este alcance: si el saldo del
+     * aporte se agotara a mitad de mes, {@code seguroInternoMes} podría quedar por debajo del
+     * nominal, y esta línea seguiría devengando el nominal completo. No se toca porque no es lo
+     * que causó el defecto medido, y tocar seguro sin verificarlo por separado sería el mismo
+     * error de raíz que este fix corrige para pensión — arreglar adivinando.
      */
-    private Long generarAsientoDevengoPension(PagoPensionComplementaria pago, Entidad entidad, Long idEmpresa)
-            throws Throwable {
+    private Long generarAsientoDevengoPension(PagoPensionComplementaria pago, Entidad entidad, Long idEmpresa,
+            double montoDevengarPension) throws Throwable {
         if (!configuracionContabilidadService.contabilidadActiva()) {
             System.out.println("  Contabilidad de CRD INACTIVA: PGPC " + pago.getCodigo()
                 + " registrado sin generar el asiento de devengo.");
@@ -1890,7 +2027,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         double totalDebe = 0.0;
         double totalHaber = 0.0;
 
-        double valorPension = redondear(nvl(pago.getValorPension()));
+        double valorPension = redondear(Math.max(0.0, montoDevengarPension));
         if (valorPension > TOLERANCIA) {
             lineas.add(lineaDevengo(idPlantilla, 1, valorPension, prefijo + " - pensión"));
             lineas.add(lineaDevengo(idPlantilla, 2, valorPension, prefijo + " - pensión"));
@@ -1908,12 +2045,16 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
 
         totalDebe = redondear(totalDebe);
         totalHaber = redondear(totalHaber);
-        double valorTotal = redondear(nvl(pago.getValor()));
-        if (Math.abs(redondear(totalDebe - valorTotal)) > TOLERANCIA
-                || Math.abs(redondear(totalHaber - valorTotal)) > TOLERANCIA) {
+        // ⛔ H43: la comparación de cuadre YA NO es contra pago.getValor() (el nominal
+        // pensión+seguro completo) — este asiento, a propósito, ya no devenga lo cruzado.
+        // Cuadra contra lo que este asiento realmente representa: pensión neta + seguro.
+        double valorEsperado = redondear(valorPension + valorSeguro);
+        if (Math.abs(redondear(totalDebe - valorEsperado)) > TOLERANCIA
+                || Math.abs(redondear(totalHaber - valorEsperado)) > TOLERANCIA) {
             throw new IncomeException("El asiento de devengo del PGPC " + pago.getCodigo()
-                + " no cuadra contra su valor total: DEBE $" + totalDebe + ", HABER $" + totalHaber
-                + ", pago $" + valorTotal + ". No se genera un asiento desbalanceado.");
+                + " no cuadra: DEBE $" + totalDebe + ", HABER $" + totalHaber
+                + ", esperado $" + valorEsperado + " (pensión neta $" + valorPension
+                + " + seguro $" + valorSeguro + "). No se genera un asiento desbalanceado.");
         }
 
         Asiento asiento = asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS,
@@ -1921,7 +2062,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
 
         System.out.println("  ✅ Asiento de devengo generado - PGPC " + pago.getCodigo()
-            + " - Asiento " + asiento.getCodigo() + " - $" + valorTotal);
+            + " - Asiento " + asiento.getCodigo() + " - $" + valorEsperado);
 
         return asiento.getCodigo();
     }

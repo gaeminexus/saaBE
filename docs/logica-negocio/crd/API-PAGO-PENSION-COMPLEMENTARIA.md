@@ -653,6 +653,61 @@ seguro (revierte cuotas/asientos/consumo de aporte de ESE jubilado, no deja hué
 
 ---
 
+## 4sexies. H41 + H43 — el desglose del pago y la línea de pensión del devengo, corregidos juntos (2026-09-05)
+
+Segunda corrida real, dos hallazgos que resultaron ser el mismo defecto de fondo visto desde
+dos lados — devengo y confirmación del pago debitaban/generaban de más porque ninguno de los
+dos sabía cuánto se había cruzado contra un préstamo.
+
+**H41 — al confirmar el pago no se generaba NINGÚN asiento para el jubilado** (sí para el
+seguro). Causa: `generarOrdenPagoPension` mandaba `desglose=null` a
+`registrarPagoDeOrigenExterno` — comportamiento intencional de CXP: sin filas en `PGS.DPGT`,
+`contabilizarPagoOrigenExterno` no genera asiento ni movimiento bancario, y el pago igual pasa
+a CONFIRMADO. **Corregido**: se arma una `LineaContablePago` con el nuevo producto de pago
+`ID_PRODUCTO_PAGO_PENSION_JUBILADOS` (constante `null` a propósito hasta que el usuario lo cree
+en producción — mismo patrón que el 516 del seguro) y `valor = remanente`.
+
+**H43 — el asiento de DEVENGO debitaba dos veces la cuenta individual del jubilado.**
+Confirmado con capturas reales de producción (PGPC 4, préstamo 7747): el devengo debitaba
+`2.1.02.25.01` por la pensión NOMINAL completa ($589,17) y el asiento del cruce contra
+préstamo (generado aparte, dentro de `pagarConAportes`/`contabilizarPagoConAportes`, que no se
+toca) debitaba la MISMA cuenta por lo cruzado ($481,78) — total debitado $1.070,95 por una
+pensión de $589,17. **Corregido**: la línea de pensión del devengo (`generarAsientoDevengoPension`,
+aux1=1/2) ahora recibe `remanente` en vez de `pago.getValorPension()` (el nominal). Con el caso
+real: `remanente` = 589,17 − 481,78 = **107,39**, y las tres piezas cierran al centavo:
+
+| Pieza | Cuenta | Valor |
+|---|---|---|
+| Devengo — pensión (corregido) | `2.1.02.25.01` D / `2.3.01.10.03` H | $107,39 |
+| Cruce contra préstamo (sin tocar) | `2.1.02.25.01` D / cuentas del préstamo H | $481,78 |
+| Pago al banco (H41, con desglose) | `2.3.01.10.03` D / banco H | $107,39 |
+
+`2.1.02.25.01` termina debitada exactamente $589,17 (107,39 + 481,78) — la pensión completa,
+ni un centavo de más. `2.3.01.10.03` nace en $107,39 (devengo) y se cierra en $0 con el pago —
+es lo único que de verdad era exigible en dinero.
+
+**Identidad que tiene que cerrar siempre** (`generarMesesRetroactivos`, la misma "olla
+compartida" de §4quater): `remanente + aplicadoAlPrestamo + seguroInterno == valorTotal`
+(pensión + seguro nominal del mes) — los tres términos son mutuamente excluyentes por
+construcción. Si algún mes no cierra al centavo, hay un cuarto destino que nadie está viendo.
+
+**Guard nuevo** (mismo patrón que `verificarCuentaProductoPagoSeguroMedico`):
+`verificarCuentaProductoPagoPensionJubilados` corre al principio de `generarPagosDelMes` (guard
+#5, junto a los otros cuatro) y de forma no bloqueante en `previsualizarCorrida` — confirma que
+la cuenta del producto nuevo coincide con la que acredita el devengo (aux1=2) antes de tocar el
+primer jubilado.
+
+⚠️ **La línea de SEGURO (aux1=3/4) NO se tocó.** Sigue devengando `pago.getValorSeguro()`
+nominal. Riesgo teórico análogo sin verificar: si el saldo del aporte se agotara a mitad de mes,
+`seguroInternoMes` podría quedar por debajo del nominal y esa línea seguiría devengando el
+nominal completo. No es el defecto que se midió — queda anotado, no corregido.
+
+**Dependencia externa que bloquea la corrida real aunque el código esté listo**: el usuario
+tiene que crear el producto de pago (`PGS.PRDP`) para `ID_PRODUCTO_PAGO_PENSION_JUBILADOS`,
+en un grupo cuya cuenta sea `2.3.01.10.03` — mismo criterio que el producto 516 del seguro.
+
+---
+
 ## 5. Estados de `PGPC` (`PGPCESTD`)
 
 De `com.saa.rubros.EstadoPagoPensionComplementaria`. **Son constantes planas, no catálogo `Rubro`.**
