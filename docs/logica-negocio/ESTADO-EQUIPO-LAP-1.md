@@ -435,3 +435,72 @@ alcance sea auditable por el que viene después.
 Y el corolario de `omen-saa-2-arb`, que es la raíz: **un fallo suele tener varias causas plausibles,
 y todas explican el resultado igual de bien.** Por eso releer no alcanza — releer confirma la
 historia con la que escribiste. **Las cinco murieron porque otro fue al archivo.**
+
+---
+
+## 10. Frente de cierre de cuentas de apertura — 2026-09-04/05
+
+**Estado: PARADO esperando una decisión de negocio del usuario, no por capacidad.**
+
+**Documento:** `crd/DISENO-CIERRE-APERTURA-SOLO-LO-ABIERTO.md`.
+**Commits:** `d033d5f2`, `2ffaccac`, `ccd774fd` — revisados, **sin compilar y sin ejecutar**.
+
+### 10.1 Qué es
+
+La apertura mensual (`armaApertura`) abre en `2.3.02.10` lo que se espera cobrar. Cada pago la
+cierra; `armaNeteo` reversa a fin de mes lo no cobrado. **Un abono o una precancelación cierran esa
+cuenta por el TOTAL, capital futuro incluido** — capital que la apertura nunca abrió.
+
+Regla del usuario: **lo vencido y la cuota del mes cierran; el tramo futuro no abre ni cierra.** El
+corte es `DTPRFCVN <= fechaCorteApertura` — la misma definición con la que la apertura abre, y por
+eso el neteo cuadra.
+
+### 10.2 🔴 Impacto medido, y no es teórico
+
+**$16.231,60** sobre 181 jubilados en una sola corrida — medido por `omen-saa-1` (su H45). Es el
+monto por el que `2.3.02.10` queda descuadrada al cerrar agosto, **por el hueco gemelo del cruce de
+valores** (`contabilizarPagoConAportes`, que tampoco cierra la apertura).
+
+**El desvío aparece al CERRAR EL MES, lejos de la operación que lo causó.** Sin el aviso cruzado
+entre equipos se habría perseguido desde cero en octubre.
+
+### 10.3 ⛔ El error de método, cometido DOS veces seguidas
+
+**Las dos implementaciones completas de este frente se escribieron contra `procesarCobro`. Las
+precancelaciones reales del usuario van por `contabilizarPrecancelacion`, el camino directo.**
+Probado con dos logs de producción: evento 481 y evento 444, los dos con la traza
+`✅ contabilizarPrecancelacion OK` y **sin** rastro de `procesarCobro`.
+
+Lo grave no es el primer error: es que **la segunda vez ya estaba escrita la lección**. El 2026-09-04
+quedó anotado *«hay dos caminos para precancelar y yo cubrí uno solo»*, y al día siguiente se
+volvió a especificar contra el mismo camino equivocado.
+
+> **Una lección escrita no es una lección aplicada.** Saber que existe un segundo camino no evita
+> diseñar contra el primero: hay que **verificar por cuál pasa el caso real ANTES de especificar**,
+> y la evidencia barata es el log de una operación de verdad, no la lectura del código.
+
+**Corolario que sí funciona, y salió de la práctica:** las dos veces la causa apareció en el log en
+menos de un minuto, después de horas de deducción. **Pedir el log antes de diseñar, no después de
+fallar.**
+
+### 10.4 Lo que queda abierto — decisión del usuario
+
+En el camino directo **no hay depósito ni cuenta transitoria**: el asiento es
+`D cuentas de aporte consumido → H bandas`. **Contra qué cuenta cierra ahí la apertura no está
+definido**, y hay dos modelos posibles:
+
+- **(A)** la apertura se reversa sola: `D 2.3.02.10 → H 1.4.05.10`, cuadra sin tocar el dinero;
+- **(B)** se entrelaza con el movimiento, como en el circuito de cobros.
+
+**No se deduce.** Las dos veces anteriores el error fue exactamente completar por analogía lo que no
+estaba dicho.
+
+### 10.5 Nota de método sobre la coordinación entre equipos
+
+**Dos veces `omen-saa-1` estuvo por desplegar y preguntó «¿esto está listo?» antes de armar el WAR —
+y las dos encontró código nuestro sin compilar en `main`.** La primera vez la respuesta fue «no» y
+por eso se revirtió la apertura extraordinaria.
+
+> **El chequeo previo del que despliega resultó mejor red que la promesa del que escribe.** El autor
+> avisa de lo que sabe que va a producción; el que despliega encuentra lo que el autor no pensó que
+> iba. Las dos redes son baratas y sólo la segunda atrapó este caso.
