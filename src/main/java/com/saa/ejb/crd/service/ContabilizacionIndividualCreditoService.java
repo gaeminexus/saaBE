@@ -165,38 +165,6 @@ public interface ContabilizacionIndividualCreditoService {
             LocalDate fechaCorte, String prefijoDescripcion) throws Throwable;
 
     /**
-     * Suma el capital de un conjunto de {@code PagoPrestamo} (típicamente los de UN
-     * {@code EventoPrestamo}) que vence DESPUÉS de {@code fechaCorteApertura} — el capital que
-     * un abono a capital o el tramo futuro de una precancelación cancelan sin que la apertura
-     * mensual lo haya abierto nunca (2026-09-04, ver
-     * {@code docs/logica-negocio/crd/DISENO-APERTURA-EXTRAORDINARIA-CAPITAL-FUTURO.md}).
-     *
-     * <p>Reusa EXACTAMENTE el mismo reparto y la misma identificación de cuotas que
-     * {@link #haberDesdePagos} usa para bandear estos mismos pagos — nunca un cálculo aparte
-     * que pueda desalinearse:</p>
-     * <ul>
-     * <li>Abono a capital ({@code saldoOtros > 0} y tipo {@code TIPO_ABONO_CAPITAL}): reparte
-     * proporcional entre las {@code HistDetallePrestamo} del evento (mismo reparto que
-     * {@link #lineasReclasificacionAbonoCapital}/la banda del abono) y suma la parte de las
-     * que vencen después del corte.</li>
-     * <li>Capital futuro de precancelación ({@code saldoOtros > 0} y tipo
-     * {@code TIPO_PRECANCELACION}): suma el capital de las {@code DetallePrestamo} en estado
-     * {@code CANCELADA_ANTICIPADA(7)} del préstamo cuyo vencimiento es posterior al corte —
-     * misma fuente que la banda del capital futuro de precancelación.</li>
-     * <li>Cualquier otro pago (cuota exigible normal, capital dentro del mes abierto) no
-     * suma nada acá: ya lo abrió la apertura mensual o no es capital futuro.</li>
-     * </ul>
-     *
-     * @param pagos               {@code PagoPrestamo} a evaluar; los anulados se ignoran
-     * @param fechaCorteApertura  el corte del período abierto vigente ({@code CRCTFCCR} de la
-     *                            corrida de cierre viva) — nunca recalculado acá
-     * @return la suma del capital futuro, redondeada; 0 si ninguno de los pagos tiene capital
-     *         posterior al corte
-     */
-    double capitalFuturoPosteriorACorte(List<PagoPrestamo> pagos, LocalDate fechaCorteApertura,
-            String prefijoDescripcion) throws Throwable;
-
-    /**
      * Asiento de re-bandeo de un abono a capital (2026-08-31, PLAN-CIERRE-CONTABLE-TOTAL, Fase
      * 3, §9.1 C2 del levantamiento) — reclasifica entre bandas el capital que SIGUE VIVO tras
      * la re-amortización, nunca la plata del abono (esa la banda {@link #haberDesdePagos}, en
