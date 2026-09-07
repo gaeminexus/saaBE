@@ -33,7 +33,7 @@ import jakarta.ws.rs.core.UriInfo;
  *   POST /mvch/gasto       → registra un gasto y lo contabiliza en el acto
  *   POST /mvch/reposicion  → reposición del fondo desde una cuenta bancaria (circuito de pagos)
  *   POST /mvch/apertura    → apertura de una caja nueva pagada desde una cuenta bancaria
- *   POST /mvch/anular/{id} → anula un gasto (no aperturas/reposiciones: reverse su pago)
+ *   POST /mvch/anular/{id} → anula gasto, apertura o reposición (reversa el pago si aplica)
  *   GET  /mvch/listar      → movimientos de una caja, con filtros
  */
 @Path("mvch")
@@ -249,7 +249,10 @@ public class MovimientoCajaChicaRest {
     }
 
     /**
-     * Anula un gasto (no aplica a aperturas/reposiciones: reverse su pago en /pgtr).
+     * Anula un movimiento de caja chica: gasto, apertura o reposición
+     * (docs/logica-negocio/tsr/API-ANULACION-CAJA-CHICA.md §4). Para apertura y
+     * reposición reversa por debajo el pago programado que lo originó — el usuario
+     * no necesita saber que existe un PGS.PGTR.
      * Body: { "motivo": "...", "idUsuario": 5 }
      */
     @POST
@@ -261,13 +264,13 @@ public class MovimientoCajaChicaRest {
         try {
             String motivo = (datos != null) ? (String) datos.get("motivo") : null;
             Long idUsuario = (datos != null) ? toLong(datos.get("idUsuario")) : null;
-            movimientoCajaChicaService.anularGasto(id, motivo, idUsuario);
+            String mensaje = movimientoCajaChicaService.anularMovimiento(id, motivo, idUsuario);
             return Response.status(Response.Status.OK)
-                    .entity(java.util.Collections.singletonMap("mensaje", "Gasto anulado correctamente."))
+                    .entity(java.util.Collections.singletonMap("mensaje", mensaje))
                     .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
-                    .entity("Error al anular el gasto: " + e.getMessage())
+                    .entity("Error al anular el movimiento: " + e.getMessage())
                     .type(MediaType.APPLICATION_JSON).build();
         }
     }

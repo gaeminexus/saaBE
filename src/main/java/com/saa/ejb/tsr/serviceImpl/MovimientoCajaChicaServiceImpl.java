@@ -29,6 +29,7 @@ import com.saa.model.tsr.Titular;
 import com.saa.rubros.EstadoAplicacionPago;
 import com.saa.rubros.EstadoCajaChica;
 import com.saa.rubros.EstadoMovimientoCajaChica;
+import com.saa.rubros.EstadoPagoProgramado;
 import com.saa.rubros.OrigenPagoExterno;
 import com.saa.rubros.TipoMovimientoCajaChica;
 
@@ -414,6 +415,88 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 		movimientoCajaChicaDaoService.save(movimiento, movimiento.getCodigo());
 
 		System.out.println("✓ Gasto de caja chica " + idMovimiento + " anulado. Motivo: " + motivo);
+	}
+
+	@Override
+	public String anularMovimiento(Long idMovimiento, String motivo, Long idUsuario) throws Throwable {
+
+		System.out.println("=== anularMovimiento caja chica | movimiento=" + idMovimiento + " ===");
+
+		if (motivo == null || motivo.trim().isEmpty()) {
+			throw new IncomeException("Debe indicar el motivo de la anulación.");
+		}
+
+		MovimientoCajaChica movimiento = selectById(idMovimiento);
+		int tipo = (movimiento.getTipo() != null) ? movimiento.getTipo().intValue() : 0;
+
+		if (tipo == TipoMovimientoCajaChica.GASTO) {
+			anularGasto(idMovimiento, motivo, idUsuario);
+			return "Gasto anulado correctamente.";
+		}
+
+		if (tipo != TipoMovimientoCajaChica.APERTURA && tipo != TipoMovimientoCajaChica.REPOSICION) {
+			// AJUSTE +/-: no existe hoy ningún proceso que los cree, así que no hay caso
+			// real que cubrir. Inventarles una rama sería código muerto.
+			throw new IncomeException("El movimiento " + idMovimiento + " es un ajuste (tipo " + tipo
+					+ "): la anulación de ajustes no está implementada.");
+		}
+
+		if (movimiento.getEstado() != null
+				&& movimiento.getEstado().intValue() == EstadoMovimientoCajaChica.ANULADO) {
+			throw new IncomeException("El movimiento " + idMovimiento + " ya está anulado.");
+		}
+		if (movimiento.getCierre() != null) {
+			throw new IncomeException("El movimiento " + idMovimiento + " ya quedó incluido en el "
+					+ "cierre N° " + movimiento.getCierre().getCodigo() + ": no se puede anular.");
+		}
+		rechazaSiEnBorrador(movimiento.getCajaChica().getCodigo(), movimiento.getFecha(),
+				"el movimiento " + idMovimiento);
+
+		Long idPago = movimiento.getIdPago();
+		if (idPago == null) {
+			throw new IncomeException("El movimiento " + idMovimiento
+					+ " no tiene pago asociado: no se puede anular automáticamente.");
+		}
+
+		// Sólo el escalar del estado: PagoProgramado tiene trece @ManyToOne EAGER (ver el
+		// javadoc de MovimientoCajaChica.idPago, y el ORA-04036 que causó en producción) y
+		// acá sólo hace falta el estado para decidir por qué método reversar.
+		Long estadoPago;
+		try {
+			estadoPago = (Long) em.createQuery("select p.estado from PagoProgramado p where p.id = :id")
+					.setParameter("id", idPago)
+					.getSingleResult();
+		} catch (jakarta.persistence.NoResultException e) {
+			throw new IncomeException("El movimiento " + idMovimiento + " referencia el pago N° " + idPago
+					+ ", que ya no existe: repórtelo antes de continuar.");
+		}
+		int estado = (estadoPago != null) ? estadoPago.intValue() : -1;
+
+		String etiquetaTipo = (tipo == TipoMovimientoCajaChica.APERTURA) ? "Apertura" : "Reposición";
+
+		// revertirPagoConfirmado y anularPago YA anulan este MovimientoCajaChica por su
+		// cuenta (anularMovimientoCajaChicaSiAplica) y ya reversan/no generan asiento según
+		// corresponda: no volver a marcarlo anulado ni a tocar el asiento acá — sería
+		// reversar dos veces lo mismo (mismo error que ya documenta anularGasto arriba
+		// para las aplicaciones de pago).
+		switch (estado) {
+			case EstadoPagoProgramado.CONFIRMADO:
+				pagoProgramadoService.revertirPagoConfirmado(idPago, motivo.trim(), idUsuario);
+				return etiquetaTipo + " anulada: se reversó el pago N° " + idPago + " y su asiento.";
+			case EstadoPagoProgramado.POR_APROBAR:
+			case EstadoPagoProgramado.REGISTRADO:
+			case EstadoPagoProgramado.EN_ARCHIVO:
+				pagoProgramadoService.anularPago(idPago, motivo.trim(), idUsuario);
+				return etiquetaTipo + " anulada: se anuló el pago N° " + idPago + ".";
+			case EstadoPagoProgramado.RECHAZADO:
+			case EstadoPagoProgramado.ANULADO:
+				throw new IncomeException("El pago N° " + idPago + " de este movimiento ya está en estado "
+						+ estado + ". Si el movimiento sigue activo hay un vínculo roto: repórtelo antes "
+						+ "de continuar.");
+			default:
+				throw new IncomeException("El pago N° " + idPago + " de este movimiento tiene un estado "
+						+ "desconocido (" + estado + "): repórtelo antes de continuar.");
+		}
 	}
 
 	// =====================================================================

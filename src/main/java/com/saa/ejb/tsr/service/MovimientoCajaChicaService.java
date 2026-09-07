@@ -108,6 +108,25 @@ public interface MovimientoCajaChicaService extends EntityService<MovimientoCaja
 	void anularGasto(Long idMovimiento, String motivo, Long idUsuario) throws Throwable;
 
 	/**
+	 * Anula cualquier movimiento anulable de una caja chica, despachando por
+	 * {@code MVCHTPOO} (docs/logica-negocio/tsr/API-ANULACION-CAJA-CHICA.md §4):
+	 * <ul>
+	 *   <li>GASTO: delega en {@link #anularGasto}, sin cambios.</li>
+	 *   <li>APERTURA / REPOSICION: reversa el pago programado que lo originó,
+	 *       eligiendo {@code revertirPagoConfirmado} o {@code anularPago} según
+	 *       su estado (§4.1) — esos métodos ya anulan este movimiento por su
+	 *       cuenta, este método no lo vuelve a marcar.</li>
+	 *   <li>AJUSTE +/-: rechaza (no existe hoy ningún proceso que los cree).</li>
+	 * </ul>
+	 * @param idMovimiento : Id del movimiento
+	 * @param motivo       : Motivo de la anulación
+	 * @param idUsuario    : Id del usuario que anula
+	 * @return             : Mensaje describiendo qué se anuló, para la respuesta al usuario
+	 * @throws Throwable   : Excepcion
+	 */
+	String anularMovimiento(Long idMovimiento, String motivo, Long idUsuario) throws Throwable;
+
+	/**
 	 * Listado de movimientos de una caja, con filtros opcionales.
 	 * @param idCaja : Id de la caja chica
 	 * @param desde  : Fecha desde (opcional)
