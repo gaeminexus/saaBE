@@ -1,7 +1,8 @@
 # API — Pago mensual de pensión complementaria
 
 **Base:** `/SaaBE/rest/pgpc` · **Equipo:** CRD / Equipo B (`eqB`, `omen-saa-1`)
-**Fecha:** 2026-09-02 · **Corregido y ampliado:** 2026-09-04 (última: regla del seguro médico, §4ter)
+**Fecha:** 2026-09-02 · **Corregido y ampliado:** 2026-09-07 (última: auditoría de bandas §4septies,
+cierre/apertura §4octies)
 
 > El path de JAX-RS es `/rest`, así que la URL real es `/SaaBE/rest/pgpc/...`. **No** `/api/...`,
 > que aparece en documentos viejos y ya no existe.
@@ -667,6 +668,13 @@ a CONFIRMADO. **Corregido**: se arma una `LineaContablePago` con el nuevo produc
 `ID_PRODUCTO_PAGO_PENSION_JUBILADOS` (constante `null` a propósito hasta que el usuario lo cree
 en producción — mismo patrón que el 516 del seguro) y `valor = remanente`.
 
+⚠️ **H41 no era un bug de CXP — CXP hizo exactamente lo que su contrato dice.** `desglose=null` →
+sin asiento es **su diseño**, documentado, no un caso raro que se descubrió al tropezar. El defecto
+entero estaba del lado de `crd`: llamar a ese contrato sin mandar el desglose que el contrato exige
+para generar asiento. **Que quede escrito así para que nadie vuelva a reportarlo como "bug de CXP"**
+la próxima vez que alguien vea un pago sin asiento por faltar un desglose — la primera pregunta es
+"¿mandé desglose?", no "¿qué le pasa a CXP?".
+
 **H43 — el asiento de DEVENGO debitaba dos veces la cuenta individual del jubilado.**
 Confirmado con capturas reales de producción (PGPC 4, préstamo 7747): el devengo debitaba
 `2.1.02.25.01` por la pensión NOMINAL completa ($589,17) y el asiento del cruce contra
@@ -675,6 +683,16 @@ toca) debitaba la MISMA cuenta por lo cruzado ($481,78) — total debitado $1.07
 pensión de $589,17. **Corregido**: la línea de pensión del devengo (`generarAsientoDevengoPension`,
 aux1=1/2) ahora recibe `remanente` en vez de `pago.getValorPension()` (el nominal). Con el caso
 real: `remanente` = 589,17 − 481,78 = **107,39**, y las tres piezas cierran al centavo:
+
+⚠️ **Por qué se escapó, y vale más que la corrección misma:** el código y su propio comentario ya
+decían, correctamente, que "el tramo cruzado se contabiliza aparte, dentro de `pagarConAportes`".
+Esa frase es cierta. **Lo que nadie verificó es QUÉ cuenta debita ese asiento aparte** — y resultó
+ser la misma `2.1.02.25.01` que el devengo también debitaba por el nominal completo. Dos asientos,
+generados en dos puntos distintos del código, cada uno "correcto" leído por separado, que juntos
+duplicaban el débito porque compartían cuenta sin que nada en ninguno de los dos lo dijera. **La
+lección no es "revisar los montos" — los montos de cada asiento individual eran correctos —, es
+"cuando dos asientos tocan la misma cuenta desde código distinto, verificar la cuenta destino de
+cada uno, no asumir que 'se contabiliza aparte' significa 'no se solapa'".**
 
 | Pieza | Cuenta | Valor |
 |---|---|---|
@@ -725,6 +743,123 @@ degradación que documenta CXP). Es decir, ya usa un mecanismo más directo:
 tipo. No se adoptó ese mecanismo acá (se mantuvo el patrón `ID_PRODUCTO_PAGO_*` ya usado con el
 516, por velocidad y consistencia con el seguro) — queda anotado como mejora posible, no
 aplicada.
+
+---
+
+## 4septies. Auditoría de distribución en bandas (`CRD.DSBN`, origen `PAGO_PENSION`) — 2026-09-07
+
+**Pedido, textual (relayed por el usuario a través del árbitro):** contabilidad cuadra los pagos a
+jubilados **contra la pantalla `/rest/dsbn`**, no sólo contra el mayor. Hasta el 2026-09-07 esa
+pantalla mostraba **cero** para el origen `PAGO_PENSION`, mientras el mayor ya tenía los asientos —
+faltaba la escritura, no el asiento. Contrato completo del sistema de bandas:
+`docs/logica-negocio/crd/API-AUDITORIA-BANDAS.md`; el vocabulario, los conceptos y las reglas de
+clasificación **no se repiten acá**.
+
+### Qué se escribe y cuándo
+
+`PagoPensionComplementariaServiceImpl.registrarPgpcDelMes` — el método que arma **un** `PGPC` por
+mes retroactivo (no uno por jubilado: un jubilado con 5 meses de retroactivo genera 5 filas `PGPC`,
+cada una con su propio código) — llama a
+`DistribucionBandaService.registrarDistribucionPorPagos(DsbnOrigen.PAGO_PENSION, pago.getCodigo(),
+idEmpresa, pagosDelMes, usuario)` **después** de guardar el `PGPC` (necesita su código real como
+`idOrigen` — mismo orden que evitó el `idOrigen` null de H41) y **antes** de retornar.
+
+`pagosDelMes` son los `PagoPrestamo` reales que produjo el cruce de ESE mes contra préstamo, dentro
+de `generarMesesRetroactivos`: cada llamada a `pagarConAportes` devuelve un `idEvento`
+(`ResultadoAplicacionPago.getIdEvento()`), y se releen con
+`pagoPrestamoDaoService.selectByEvento(idEvento)` — **mismo patrón que
+`CobroCreditoServiceImpl.registrarDistribucionBandaEvento`** (releer por evento, no reconstruir
+desde `cuotasAfectadas`), para que la auditoría vea exactamente lo que quedó en firme, no una
+proyección de lo que se pidió aplicar.
+
+⛔ **No se reimplementa ninguna clasificación acá.** `registrarDistribucionPorPagos` ya sabe separar
+`CAPITAL` (con banda, vía su propia llamada equivalente a `tipoCarteraYDias`) de
+`INTERES_ORDINARIO`/`INTERES_MORA`/`SEGURO_DESGRAVAMEN` (sin banda) — el código de pensión sólo le
+pasa la lista de `PagoPrestamo`.
+
+### Por qué DENTRO de la transacción del jubilado, y no después
+
+Decisión del árbitro (`omen-saa-1-arb`), 2026-09-07: **consistencia sobre disponibilidad.** La
+escritura corre dentro del mismo `@TransactionAttribute(REQUIRES_NEW)` por jubilado que ya usa
+`generarPagoIndividual` (ver §1) — si la escritura en `CRD.DSBN` fallara, **todo** el pago de ese
+mes/jubilado se revierte (PGPC, movimientos de aporte, orden CXP, asiento de devengo), no queda un
+PGPC con pago real y sin respaldo en la pantalla de auditoría.
+
+⛔ **Esto es distinto de `CARGA_PETRO`, y a propósito: `PAGO_PENSION` NO tiene la red de seguridad
+de `POST /dsbn/recalcularDistribucion`.** Verificado en código el 2026-09-07:
+`DistribucionBandaRest.recalcularDistribucion` rechaza cualquier `origen` que no sea `CARGA_PETRO`
+con `HTTP_REGLA_DE_NEGOCIO`. Extenderlo no es trivial — `recalcularDistribucionCargaPetro` relee su
+fuente desde `TransferenciaCargaPetro`, específico de Petro; para pensión habría que guardar en
+algún lado qué eventos/`PagoPrestamo` generó cada `PGPC`, cosa que hoy no se persiste. **Mientras
+eso no exista, la transacción `REQUIRES_NEW` por jubilado es la ÚNICA garantía**: todo o nada por
+jubilado, sin backstop asíncrono si algo falla a mitad de camino.
+
+### Qué mirar en `/rest/dsbn` después de una corrida
+
+Un `PGPC` con pago real tiene que aparecer como `origen=PAGO_PENSION`, `idOrigen=<código del PGPC>`,
+con fila(s) `CAPITAL` (con banda, si hubo cruce contra préstamo) y, si correspondía,
+`INTERES_ORDINARIO`/`INTERES_MORA`/`SEGURO_DESGRAVAMEN` — nunca `APORTE` (ese concepto es específico
+de la carga Petro, ver el vocabulario del contrato de bandas). Un mes sin cruce (100% remanente,
+ningún préstamo vigente) es correcto con **cero** filas de `DSBN` para ese `PGPC` — no es un defecto,
+`registrarDistribucionPorPagos` devuelve temprano si la lista de pagos viene vacía.
+
+---
+
+## 4octies. Cómo el cruce de pensión encaja en el cierre/apertura mensual de cartera — 2026-09-07
+
+**Pedido del usuario:** documentar, desde nuestro lado, cómo la contabilidad del pago a jubilados se
+relaciona con el cierre de las cuentas que se abrieron al inicio del mes. **El mecanismo de
+cierre/apertura es de `lap-saa-1`** (`CierreCarteraServiceImpl`, contrato completo en
+`API-CIERRE-CARTERA.md` y `DISENO-CIERRE-APERTURA-SOLO-LO-ABIERTO.md`) — no se duplica acá. Lo que
+sigue es la parte que **nuestro proceso toca**, y la trampa que casi nos hizo diagnosticar mal un
+mes real.
+
+### Qué abre el mes y qué lo cierra
+
+La apertura mensual registra en `2.3.02.10` (préstamos por aplicar) contra `1.4.05.10` (por cobrar)
+lo que se espera cobrar del mes: capital, interés, mora y seguros de toda cuota con
+`DTPRFCVN <= fechaCorteApertura`. El cruce de pensión contra un préstamo (`pagarConAportes`, dentro
+de `generarMesesRetroactivos`) **cierra exactamente esa apertura, por lo que paga**: si la cuota que
+cruza está vencida o es la del mes en curso (`DTPRFCVN <= corte`), lo que cruza reversa la apertura;
+si el cruce alcanzara a tocar capital futuro (`DTPRFCVN > corte` — no debería pasar, el tope
+`exigibleRestantePorPrestamo` de `generarMesesRetroactivos` existe justamente para que el motor
+nunca llegue a una cuota futura), eso no habría abierto nada y tampoco cerraría nada. **Da igual que
+el pago sea con dinero o con cruce de valores** (nuestro caso): lo que decide si algo cierra es QUÉ
+cuota se pagó, no de dónde salió la plata.
+
+### ⛔⛔ La trampa: la corrida que ABRE un mes está registrada bajo el mes ANTERIOR
+
+**Es la que nos hizo concluir, en un momento de este frente, que agosto no tenía apertura cuando sí
+la tenía — anotado para que no se repita.** `CierreCarteraServiceImpl` graba `corrida.anio/mes` con
+el período que **cierra** (julio), mientras que la apertura que esa misma corrida genera es la del
+mes **siguiente** (agosto): `fechaProceso = fechaCorte.plusDays(1)`.
+
+**Consecuencia práctica: para saber qué se abrió en agosto hay que buscar la corrida de JULIO**, con
+`corridaCierreCarteraDaoService.selectUltimaEjecutadaAntesDe(idEmpresa, anio, mes)` (ya resuelve el
+cruce de año, no reimplementar) — y el corte de esa apertura sale de `corrida.getFechaProceso()`,
+**nunca** de `getFechaCorte()` (esa es el corte del cierre del mes anterior: usarla dispara números
+"plausibles" pero de un mes equivocado). Buscar una corrida "viva" con el mes ya abierto
+(`selectVivaByPeriodo` con el mes de agosto) no encuentra nada — no existe una corrida registrada
+bajo el mes que se abrió. El detalle completo de esta regla, con las cinco reglas hermanas
+(el día del vencimiento, el `+1` que ya no existe, la clasificación por cuota nunca por grupo, el
+choque de nombres de cuenta) está en
+`docs/logica-negocio/crd/REGLAS-CLASIFICACION-PARA-REPORTES-FINANCIEROS.md` — no se repite acá.
+
+### Evidencia real — agosto 2026
+
+Verificado contra la corrida real de agosto (antes de que el usuario revirtiera la base a propósito
+para repetirla en limpio, ver `estado(jub): CERRADO`, commit `64d6409`):
+
+- **Apertura de agosto** (registrada, por la trampa de arriba, bajo la corrida de julio):
+  asiento `CRE-2026-08-0004`, `2.3.02.10` por **$1.879.652,18**.
+- **Cruce de pensión contra préstamo** (un caso real dentro de la corrida de jubilados): asiento con
+  `D 2.3.02.10 / H 1.4.05.10` por **$481,78** — el mismo $481,78 de la reconciliación de H43 (§4sexies):
+  la cuota que el cruce pagó estaba dentro de lo exigible del mes, así que **cierra apertura** por
+  ese monto, además de mover `2.1.02.25.01` como ya documenta H43.
+
+**La prueba que vale no es que estos números cuadren entre sí solos — es que el saldo de
+`2.3.02.10` después de todos los cruces del mes coincida con lo que de verdad sigue sin cobrarse**,
+verificable con `docs/logica-negocio/crd/sql/203_VERIFICACION_REPORTE_CONTRA_EL_MAYOR.sql`.
 
 ---
 
@@ -1063,7 +1198,7 @@ seguro médico del período (`PGS.PGTR`, origen `CRD_SEGURO_JUBILADOS`).
 Sección 2: los `JUBILADO_COMPLEMENTARIO` (`ENTDIDST=3`) que NO tienen ninguna fila de `PGPC` en el
 rango — ver límite 2 abajo, la ausencia no se interpreta.
 
-### Cuatro límites del modelo de datos, verificados antes de escribir la consulta
+### Cinco límites del modelo de datos, verificados antes de escribir la consulta
 
 1. **No hay vínculo grabado entre un `PGPC` y la(s) cuota(s)/préstamo que cruzó.** El cruce genera
    su propio `Aporte` tipo 23 (`APRTTPMV=4`, glosa `"PAGO PRESTAMO <id> - Evento <id>"`) y filas
@@ -1076,14 +1211,24 @@ rango — ver límite 2 abajo, la ausencia no se interpreta.
    `previsualizarCorrida`/`generarPagosDelMes`. La Sección 2 lista la ausencia, explícitamente
    **sin** afirmar que es un bloqueo: puede ser eso o simplemente un jubilado al día. Candidato a
    persistirse a futuro (DDL, fuera de este alcance — anotado en el tablero por el árbitro).
-3. **El filtro de datos es la fecha de EJECUCIÓN de la corrida (`PGPCFCRG`), no el período
-   cubierto.** Un retroactivo puede generar, en una sola corrida de un mes dado, filas `PGPC` que
-   cubren varios meses anteriores del mismo jubilado — filtrar por `PGPCANNO`/`PGPCMESS` literal
-   habría mostrado solo la fila del mes puntual y un total que no cuadra contra lo autorizado. Por
-   eso `P_ANIO`/`P_MES` acotan `PGPCFCRG` a ese mes calendario, y el período que cada fila cubre
-   queda como **columna** (`PGPCANNO`/`PGPCMESS` del detalle). Si dos corridas caen en el mismo mes
-   calendario, este criterio no las distingue — revisar antes de asumir que alcanza.
-4. **`P_IDEMPRESA` no filtra jubilados.** Ni `CRD.PGPC`, ni `CRD.ENTD`, ni `CRD.FLLL` tienen columna
+3. ⛔ **REDISEÑADO 2026-09-05 (segunda vuelta) — este punto decía lo contrario y era el motivo del
+   reclamo del usuario ("reporte sin información útil").** La primera versión filtraba por la fecha
+   de EJECUCIÓN de la corrida (`PGPCFCRG`), y el usuario pedía el reporte por **período cubierto**
+   ("agosto"), corrido en septiembre — cero filas coincidían. **`P_ANIO`/`P_MES` filtran hoy por
+   `PGPCANNO`/`PGPCMESS` (el período que cada fila CUBRE), no por la fecha de la corrida.** Para
+   mostrar el retroactivo completo de un jubilado (que puede cruzar varios meses en una sola
+   corrida) la consulta arma primero una CTE `objetivo` con las entidades que tienen al menos una
+   fila en el período pedido, y después trae **todas** sus filas de la MISMA corrida
+   (`TRUNC(PGPCFCRG)` igual) — no sólo la del mes puntual. Ver el comentario de cabecera del
+   `.jrxml` para el detalle completo, incluida la advertencia de la sección de texto del reporte
+   (`"El filtro es el PERIODO CUBIERTO..."`) para que el usuario que lo lee no se confunda con la
+   fecha de corrida.
+4. ⛔ **`DINERO_BANCO` corregido 2026-09-05** (encontrado armando `sql/203`, verificación contra el
+   mayor, hallazgo propio, sin que nadie lo reportara primero): mostraba el valor NOMINAL de la
+   pensión (`PGPCVLPN`) en vez del neto de cruce que de verdad salió al banco — mismo defecto de
+   fondo que H43, esta vez en el reporte y no en el asiento. Corregido a
+   `CASE WHEN PGPCESTD IN (2,3) THEN GREATEST(PGPCVLPN - NVL(CRZ_VALOR,0), 0) ELSE 0 END`.
+5. **`P_IDEMPRESA` no filtra jubilados.** Ni `CRD.PGPC`, ni `CRD.ENTD`, ni `CRD.FLLL` tienen columna
    de empresa (verificado leyendo las tres entidades). Solo se usa para ubicar la orden de pago al
    proveedor del seguro médico en `PGS.PGTR`, que sí es multiempresa.
 

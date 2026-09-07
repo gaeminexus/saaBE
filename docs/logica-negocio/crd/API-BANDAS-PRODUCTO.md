@@ -535,6 +535,10 @@ que se cierra: no se mandan.
 - **Propósito:** **endpoint de verificación**, no de proceso. Clasifica una antigüedad en
   días contra la parametrización vigente y devuelve la banda y la cuenta que le tocan.
   Existe para que QA y el frontend comprueben que lo cargado hace lo que el usuario espera.
+- ⚠️ **Recibe `dias` ya calculado — no calcula la fecha de vencimiento a días.** Esa cuenta (día del
+  vencimiento = por vencer, sin `+1`) vive en `ContabilizacionIndividualCreditoServiceImpl.tipoCarteraYDias`
+  y sus copias, no acá. Ver `docs/logica-negocio/crd/REGLAS-CLASIFICACION-PARA-REPORTES-FINANCIEROS.md`
+  y `API-AUDITORIA-BANDAS.md` para esa regla — este endpoint sólo clasifica el número que ya le llega.
 - **Ningún proceso contable lo consume:** los procesos llaman al
   `ClasificadorBandaService` por EJB. Si un día la pantalla necesitara clasificar en
   producción, hay que revisar el caso, no reutilizar este endpoint por inercia.

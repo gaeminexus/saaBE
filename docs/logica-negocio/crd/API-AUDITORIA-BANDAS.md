@@ -21,7 +21,7 @@ reescribe la tabla de auditoría de un origen (y sólo esa tabla) — ver su sec
 | `CARGA_PETRO` | `CRD.CRAR` |
 | `COBRO_INDIVIDUAL` | `CRD.CBCR` |
 | `EVENTO_PRESTAMO` | `CRD.EVPR` — abono a capital, precancelación |
-| `PAGO_PENSION` | `CRD.PGPC` — cuando cierre ese frente |
+| `PAGO_PENSION` | `CRD.PGPC` — **implementado 2026-09-07**, ver §"Estado real de las escrituras" |
 
 **Concepto** — el agrupador primario. ⛔ **No agrupar por cuenta contable:** la mora va a la misma
 cuenta que el interés ordinario y se fusionarían, que es justo el desglose que contabilidad quiere ver.
@@ -31,6 +31,40 @@ cuenta que el interés ordinario y se fusionarían, que es justo el desglose que
 
 **Banda** — sólo aplica a `CAPITAL`. En los demás conceptos los campos de banda vienen en null: es
 un dato ausente legítimo, **no un error a ocultar**.
+
+### ⭐ Cómo se clasifica CAPITAL en banda — referencia, no duplicado
+
+`DistribucionBandaServiceImpl.registrarDistribucionPorPagos` (línea ~253-261 al 2026-09-07) es una
+de las **cinco** copias de la fórmula "vencido/por vencer + días" que corren en el sistema — nunca
+reimplementarla acá tampoco si se toca este archivo. **La definición única y las reglas completas
+—día del vencimiento, el `+1` que ya no existe, el choque de nombres de cuenta entre familias— están
+en `docs/logica-negocio/crd/REGLAS-CLASIFICACION-PARA-REPORTES-FINANCIEROS.md` (escrito por
+`lap-saa-1-arb`, 2026-09-05).** No se repite acá para no tener dos versiones que puedan divergir; lo
+que sigue es sólo lo específico de auditoría de bandas que ese documento no cubre:
+
+- **El día del vencimiento es POR VENCER, sin `+1`** (§2 de ese documento) — `dias` en las filas de
+  `CAPITAL` de esta tabla sigue esa regla exacta. Una fila con `tipoCartera=VENCIDO` y `dias=1` es la
+  cuota vencida ayer, no la de hoy.
+- ⚠️ **`1.3.01.05` y `1.3.04.05` se llaman las dos "DE 1 A 30 DIAS"** (§5bis de ese documento) — y lo
+  mismo el resto de los pares `1.3.01.xx`/`1.3.04.xx`. **Cualquier resumen o exportación de esta
+  pantalla que agrupe por NOMBRE de cuenta suma vencido con por vencer** y produce un total que no
+  existe en ningún mayor. `construirResumenJerarquico` y `resolverLineaPlantilla` (este archivo) ya
+  agrupan por código de cuenta / por `tipoCartera` como columna propia — si se agrega una vista nueva
+  sobre esta misma tabla, agrupar igual.
+- **Los reportes de calificación de riesgo (G, `rpr/GeneracionG48ServiceImpl`) NO usan esta tabla ni
+  esta fórmula, y está bien así — es una ausencia deliberada, no un olvido.** Califican riesgo
+  (A2/A3/B1…E), no bandas contables, con su propia regla de días
+  (`GeneracionG48ServiceImpl:257`, `ChronoUnit.DAYS.between(vencimiento, corte)` con piso en 0 —
+  ya sin `+1`, vencimiento igual al corte ya da 0 días, cumple el criterio corregido por otro
+  camino). **No "migrarlos" a `tipoCarteraYDias` ni a esta tabla**: no clasifican en bandas contables
+  y no hay nada que cuadrar entre los dos sistemas.
+- **Quedan 3 copias de la fórmula de días sin migrar a la definición única**, ninguna rota hoy:
+  `ContabilidadPrestamoServiceImpl.contabilizarEntrega:871`,
+  `DistribucionBandaServiceImpl.registrarDistribucionPorPagos:253-261` (la de esta tabla) y
+  `CobroPetroContableServiceImpl.contabilizarAplicacion:818-826`. Migrarlas es trabajo pendiente, no
+  urgente mientras las tres apliquen la misma regla (sin `+1`, día del vencimiento = por vencer) —
+  verificar eso antes de tocar cualquiera de las tres. **Ningún `.jrxml` clasifica en SQL** (0 casos
+  verificados): todos reciben la clasificación ya resuelta desde Java.
 
 ---
 
@@ -215,17 +249,29 @@ frontend contra ese enum, verificada — no adivinada.
 Ver el tercer estado en la sección de `/dsbn/cuadre`. `recibido`, `diferencia` y `cuadra` son
 nullables y hoy sólo `CARGA_PETRO` los trae con valor.
 
-### ⚠️ Estado real de las escrituras, y no coincide con el vocabulario
+### ⚠️ Estado real de las escrituras — actualizado 2026-09-07
 
-El vocabulario declara cuatro orígenes y la pantalla los ofrece los cuatro, pero **hoy sólo
-`CARGA_PETRO` tiene alguien escribiendo filas** (`CobroPetroContableServiceImpl`). Los otros tres
-—`COBRO_INDIVIDUAL`, `EVENTO_PRESTAMO`, `PAGO_PENSION`— están contratados y **sin implementar**: por
-esos filtros la pantalla va a devolver vacío siempre, hagan los procesos lo que hagan.
+El vocabulario declara cuatro orígenes y la pantalla los ofrece los cuatro. Estado real, verificado
+en código (`grep DsbnOrigen.` sobre `src/main/java`):
 
-**Es un hueco del despacho, no del código**: el §2 del plan pide transversalidad desde el día uno y
-quedó cumplida en la estructura de la tabla y en la pantalla, pero no en las escrituras. Está en cola
-para cerrarse, y hasta entonces la pantalla no debería ofrecer un filtro que nunca puede tener datos
-sin decir por qué.
+| Origen | ¿Escribe? | Dónde |
+|---|---|---|
+| `CARGA_PETRO` | ✅ | `CobroPetroContableServiceImpl` (equipo `lap-saa-1`) |
+| `COBRO_INDIVIDUAL` | ✅ | `CobroCreditoServiceImpl.registrarDistribucionBandaEvento`, dentro de `procesarCobro` |
+| `PAGO_PENSION` | ✅ **2026-09-07** | `PagoPensionComplementariaServiceImpl.registrarPgpcDelMes` (equipo `eqB`), ver el contrato del módulo: `API-PAGO-PENSION-COMPLEMENTARIA.md` |
+| `EVENTO_PRESTAMO` | ⬜ **sin implementar** | contratado (abono a capital, precancelación), nadie lo escribe todavía |
+
+**Sólo `EVENTO_PRESTAMO` sigue siendo el hueco del despacho** que describía la versión anterior de
+este párrafo — el §2 del plan pide transversalidad desde el día uno; la estructura de la tabla y la
+pantalla ya la tienen, falta esa única escritura. Mientras eso siga así, filtrar `/dsbn` por
+`EVENTO_PRESTAMO` devuelve vacío siempre, sin importar lo que haga el proceso real.
+
+⛔ **`PAGO_PENSION` NO tiene red de seguridad de `recalcularDistribucion` (§5).** A diferencia de
+`CARGA_PETRO`, si el cableado dentro de `registrarPgpcDelMes` fallara a mitad de un jubilado, no hay
+forma de reconstruir después esas filas sin volver a tocar pagos — por eso se decidió que la
+escritura corra DENTRO de la misma transacción `REQUIRES_NEW` por jubilado que genera el pago: todo
+o nada, consistencia sobre disponibilidad (decisión del árbitro `omen-saa-1-arb`, 2026-09-07). Ver el
+detalle en el contrato de pensión, sección "Auditoría de bandas (DSBN)".
 
 ### ⚠️ `totalValorFiltrado` sumaba la PÁGINA, no el filtro — corregido 2026-09-03
 
@@ -425,6 +471,13 @@ distinto del que habría dado en su momento.
 
 ⛔ **Sólo reescribe `CRD.DSBN`.** No toca asientos, ni pagos, ni aportes, ni cuotas. Idempotente:
 correrlo dos veces deja el mismo resultado.
+
+⛔ **Verificado 2026-09-07: sigue siendo sólo `CARGA_PETRO`.** `DistribucionBandaRest.recalcularDistribucion`
+rechaza explícitamente cualquier otro `origen` con `HTTP_REGLA_DE_NEGOCIO`. **`PAGO_PENSION` no tiene
+este backstop** — extenderlo no es trivial: `recalcularDistribucionCargaPetro` relee su fuente desde
+`TransferenciaCargaPetro`, algo específico de Petro sin equivalente para pensión (habría que guardar,
+en algún lado, qué `PagoPrestamo`/evento generó cada `PGPC` para poder releerlos después). Es la razón
+por la que la escritura de `PAGO_PENSION` corre dentro de la transacción del pago, no después.
 
 ### Para qué sirve — y para qué NO
 
