@@ -69,9 +69,9 @@ SELECT owner, index_name, table_owner, table_name
 -- 0.4 ¿Tiene el usuario que ejecuta el privilegio REFERENCES sobre TSR.BEXT?
 --     Si devuelve 0 filas, el bloque 2 es OBLIGATORIO y lo tiene que correr
 --     TSR o un DBA, no RHH.
-SELECT grantee, owner, table_name, privilege
+SELECT grantee, table_schema, table_name, privilege
   FROM all_tab_privs
- WHERE owner = 'TSR' AND table_name = 'BEXT' AND privilege = 'REFERENCES';
+ WHERE table_schema = 'TSR' AND table_name = 'BEXT' AND privilege = 'REFERENCES';
 
 
 -- =====================================================================

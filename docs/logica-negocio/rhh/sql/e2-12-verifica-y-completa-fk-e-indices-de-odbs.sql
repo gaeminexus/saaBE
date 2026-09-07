@@ -76,9 +76,9 @@ SELECT owner AS DUENO_DEL_INDICE, index_name, uniqueness,
 -- 0.3 ¿Existe el privilegio REFERENCES sobre SCP.PJRQ?
 --     Si 0.1 fallo, esto dice si hace falta el bloque 1 o si el problema es
 --     otro. Ojo: puede estar concedido a PUBLIC, y ahi la FK habria funcionado.
-SELECT grantee, owner, table_name, privilege
+SELECT grantee, table_schema, table_name, privilege
   FROM all_tab_privs
- WHERE owner = 'SCP' AND table_name = 'PJRQ' AND privilege = 'REFERENCES';
+ WHERE table_schema = 'SCP' AND table_name = 'PJRQ' AND privilege = 'REFERENCES';
 
 -- 0.4 Contexto: ¿la tabla ODBS tiene datos? Informativo, no bloquea nada.
 SELECT COUNT(*) AS FILAS_ODBS FROM RHH.ODBS;
