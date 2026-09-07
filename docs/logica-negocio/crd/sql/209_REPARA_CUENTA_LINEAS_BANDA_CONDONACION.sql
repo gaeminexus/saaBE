@@ -2,7 +2,9 @@
 -- LINEAS DE BANDA SIN CUENTA CONTABLE — asientos de condonacion ya grabados
 -- FECHA: 2026-09-07   EQUIPO: omen-saa-1 (omen1)   SCRIPT: 209 (rango 200-249)
 --
--- ESCRIBE (bloque 2). Controles antes y despues; COMMIT y reverso comentados.
+-- ⛔ EL BLOQUE 2 DE ESTE SCRIPT FALLA CON ORA-30926 — USAR sql/210 EN SU LUGAR.
+--    Su UPDATE lleva un JOIN dentro de la subconsulta correlacionada y Oracle no lo acepta.
+--    Los bloques 0 y 1 (solo SELECT) SI sirven y son los que produjeron los datos del 210.
 --
 -- EL DEFECTO, medido contra el codigo y confirmado con un asiento real
 -- (CRE-2026-08-0459, condonacion del acuerdo 7):
