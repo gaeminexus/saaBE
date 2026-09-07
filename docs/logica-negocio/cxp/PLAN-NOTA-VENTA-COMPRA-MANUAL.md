@@ -187,3 +187,30 @@ Los tres caminos ya pasan por `selectByCriteria` de `FacturaCompra` o por el end
 cuenta, ninguno con filtro de tipo. **El requisito es enteramente de etiquetado en el frontend.**
 Que la nota de venta se pueda **pagar** —normal o con caja chica— no necesita ni una línea nueva de
 backend: `AplicacionPagoCxp` ya la referencia como `facturaCompra`, porque es una fila de `FCTC`.
+
+---
+
+## 6. Las dos preguntas abiertas, CERRADAS por el usuario — 2026-09-07
+
+| # | Decisión |
+|---|---|
+| **D5** | El tipo de comprobante **es `"02"`**. Confirmado con contabilidad |
+| **D6** | **NO llevan IVA**: son de contribuyentes **RISE** |
+
+**D5 no requiere cambio.** La constante `TIPO_COMPROBANTE_NOTA_VENTA = "02"` ya estaba bien. Se
+programó en un solo lugar justamente porque era el único dato del frente que este árbitro afirmó
+**de memoria, sin poder verificarlo contra el repositorio** — «nota de venta» no aparecía en ningún
+lado del código ni de los docs. **Quedó bien por suerte, no por método**, y el método fue aislarla
+para que corregirla costara una línea. Eso sí valió.
+
+**D6 sí requiere cambio**, y es del frontend: los campos de IVA de la cabecera y del detalle
+**se ocultan**. El backend los sigue aceptando como opcionales con default 0 y **no se toca**: que
+la API tolere un campo que la pantalla no muestra no molesta a nadie, y endurecerlo sería trabajo
+sin beneficio.
+
+⚠️ **El §3.1 de este plan queda RESUELTO.** Decía *«no lo cerré porque es una pregunta tributaria y
+equivocarse acá afecta el crédito tributario del mes»*. Contabilidad respondió: **no hay crédito
+tributario que afectar, porque no hay IVA.**
+
+**El reporte de respaldo pedido en el mismo mensaje se diseñó aparte:**
+`PLAN-REPORTE-NOTA-VENTA-COMPRA.md`.
