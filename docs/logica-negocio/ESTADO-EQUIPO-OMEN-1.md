@@ -1892,3 +1892,24 @@ ejecutar, lo dice con esas palabras. El agente BE escribio *«lo que entrego es 
 estatica; "deberia" y "medido" no son lo mismo»* antes del defecto 2 — y el defecto cayo
 exactamente ahi. El aviso no lo evito, pero hizo que se commiteara **sabiendo el riesgo** en vez de
 creerlo probado. Se mantiene esa practica y se traslada al usuario tal cual.
+
+### ✅ 2026-09-07 — `sql/210` CORRIDO EN PRODUCCION: las cuentas quedaron reparadas
+
+El usuario confirmo "listo, arregladas las cuentas". Las cuatro lineas de banda de los dos
+asientos de condonacion (8527 / CRE-2026-09-0003 del acuerdo 1, y 9245 / CRE-2026-08-0459 del
+acuerdo 7) ya tienen su `PLNNCDGO`: `1.3.12.20` -> 10552 y `1.3.12.15` -> 10551, empresa 1236,
+$2.691,94 en total.
+
+**Ninguno de los dos periodos estaba mayorizado**, asi que los valores entran al mayor en su
+cuenta desde la primera mayorizacion: no hubo que remayorizar. Se corrio a tiempo por eso.
+
+⭐ **Leccion de la jornada con los `.sql`, y es la segunda vez el mismo dia:** el `209` fallo con
+`ORA-30926` porque escribi la reparacion en forma GENERICA —un `UPDATE` con un `JOIN` dentro de la
+subconsulta correlacionada— para un conjunto de **cuatro filas ya medidas**. El `210` las repara
+con dos `UPDATE` explicitos por id y funciono a la primera. **Cuando el conjunto ya esta medido y
+es chico, el `UPDATE` explicito es mas seguro Y mas rapido de revisar.** La version generica no
+compro nada y costo un viaje al usuario.
+
+Antes, el mismo dia, el `207` habia fallado por dos nombres de columna que escribi de memoria en
+vez de cotejarlos contra su `@Column`. Los dos errores son la misma familia: **deducir en vez de
+medir, pero en SQL, donde el costo lo paga el usuario y no yo.**
