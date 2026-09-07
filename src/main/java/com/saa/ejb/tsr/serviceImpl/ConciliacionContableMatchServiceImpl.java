@@ -10,6 +10,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -61,7 +62,18 @@ import jakarta.ejb.TransactionAttributeType;
 /**
  * @author GaemiSoft
  * <p>Implementación de ConciliacionContableMatchService. Ver javadoc de la
- * interfaz para la regla de negocio (monto Y fecha, ambas obligatorias).</p>
+ * interfaz para la regla de negocio.</p>
+ *
+ * <p>⚠ Desde el 2026-09-07 la fecha DEJÓ de ser un filtro de aceptación en
+ * {@link #conciliarGrupo} y en {@link #sugerirCoincidencias}: el usuario pidió
+ * poder conciliar cualquier movimiento dentro de todo el período (los meses no
+ * tienen la misma cantidad de días, así que un tope fijo de días no tiene
+ * sentido). El control real es que ambos lados ya vienen acotados al período
+ * por {@link #obtenerPendientesAsiento}/{@link #obtenerPendientesExtracto} —
+ * el arrastre de partidas en tránsito de un cierre anterior es la única
+ * excepción deliberada, y depende de que acá no se vuelva a filtrar por fecha.
+ * Ver el javadoc de {@link #conciliarGrupo} para el detalle de qué pasó con
+ * {@code toleranciaDias}.</p>
  */
 @Stateless
 public class ConciliacionContableMatchServiceImpl implements ConciliacionContableMatchService {
@@ -147,6 +159,19 @@ public class ConciliacionContableMatchServiceImpl implements ConciliacionContabl
                 periodo.getEmpresa().getCodigo(), periodo.getPrimerDia(), periodo.getUltimoDia());
     }
 
+    /**
+     * ⚠ Desde el 2026-09-07 {@code toleranciaDias} (rubro
+     * {@code ASP_TOLERANCIA_DIAS_CONCILIACION_CONTABLE}) se SIGUE LEYENDO y
+     * SIGUE GUARDÁNDOSE en {@code GrupoConciliacionContable.toleranciaDiasAplicada}
+     * (columna de auditoría: qué había configurado en el momento de conciliar),
+     * pero YA NO SE APLICA como validación. El control de fechas lo hace el
+     * período: ambos lados de la comparación (extracto y asiento) ya llegan
+     * acotados a {@code periodo.getPrimerDia()}/{@code getUltimoDia()} antes de
+     * entrar acá, y agregar además un tope de días sólo impedía conciliar
+     * dentro del mismo mes, que es justo lo que el usuario pidió destrabar.
+     * Sólo el monto sigue siendo una validación de rechazo (ver
+     * {@code TOLERANCIA_MONETARIA} arriba).
+     */
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     public GrupoConciliacionContable conciliarGrupo(Long idCuentaBancaria, Long idPeriodo,
@@ -227,12 +252,9 @@ public class ConciliacionContableMatchServiceImpl implements ConciliacionContabl
                     valorExtracto, valorAsiento, diferencia));
         }
 
+        // toleranciaDias ya no filtra (ver el javadoc de este método): se lee sólo para
+        // dejar registrado en la auditoría qué valor regía al momento de conciliar.
         int toleranciaDias = obtenerToleranciaDias();
-        long diasEntreFechas = ChronoUnit.DAYS.between(fechaMinima, fechaMaxima);
-        if (diasEntreFechas > toleranciaDias) {
-            throw new IncomeException("Las fechas involucradas difieren " + diasEntreFechas
-                    + " dia(s) entre si, fuera de la tolerancia configurada (" + toleranciaDias + " dia(s))");
-        }
 
         GrupoConciliacionContable grupo = new GrupoConciliacionContable();
         grupo.setConciliacionContable(conciliacion);
@@ -501,43 +523,57 @@ public class ConciliacionContableMatchServiceImpl implements ConciliacionContabl
                 + ", idPeriodo: " + idPeriodo);
         List<DetalleExtractoBancario> pendientesExtracto = obtenerPendientesExtracto(idCuentaBancaria, idPeriodo);
         List<DetalleAsiento> pendientesAsiento = obtenerPendientesAsiento(idCuentaBancaria, idPeriodo);
-        int toleranciaDias = obtenerToleranciaDias();
 
         List<SugerenciaConciliacionContable> sugerencias = new ArrayList<>();
         Set<Long> extractoUsados = new HashSet<>();
         Set<Long> asientoUsados = new HashSet<>();
 
-        // Pase 1: coincidencia exacta 1:1.
+        // Pase 1: coincidencia exacta 1:1. La fecha ya NO filtra (ver el javadoc de la
+        // clase): entre los candidatos que cuadran por importe, se prefiere el de fecha
+        // más cercana a "ex", en vez de aceptar el primero que aparece en la lista, que
+        // sería un desempate arbitrario y silencioso.
         for (DetalleExtractoBancario ex : pendientesExtracto) {
             if (extractoUsados.contains(ex.getCodigo())) {
                 continue;
             }
             double valorEx = valorNeto(ex);
+            DetalleAsiento mejorCandidato = null;
+            long mejorDiferenciaDias = Long.MAX_VALUE;
             for (DetalleAsiento as : pendientesAsiento) {
                 if (asientoUsados.contains(as.getCodigo())) {
                     continue;
                 }
-                if (Math.abs(valorEx - valorNeto(as)) <= TOLERANCIA_MONETARIA
-                        && diasEntre(ex.getFechaTransaccion(), as.getAsiento().getFechaAsiento()) <= toleranciaDias) {
-                    sugerencias.add(construirSugerencia(List.of(ex), List.of(as)));
-                    extractoUsados.add(ex.getCodigo());
-                    asientoUsados.add(as.getCodigo());
-                    break;
+                if (Math.abs(valorEx - valorNeto(as)) <= TOLERANCIA_MONETARIA) {
+                    long diferenciaDias = diasEntre(ex.getFechaTransaccion(), as.getAsiento().getFechaAsiento());
+                    if (mejorCandidato == null || diferenciaDias < mejorDiferenciaDias) {
+                        mejorCandidato = as;
+                        mejorDiferenciaDias = diferenciaDias;
+                    }
                 }
+            }
+            if (mejorCandidato != null) {
+                sugerencias.add(construirSugerencia(List.of(ex), List.of(mejorCandidato)));
+                extractoUsados.add(ex.getCodigo());
+                asientoUsados.add(mejorCandidato.getCodigo());
             }
         }
 
-        // Pase 2: N:1 - varias filas del extracto suman una sola linea contable.
+        // Pase 2: N:1 - varias filas del extracto suman una sola linea contable. La fecha
+        // ya NO filtra: en vez de descartar por estar fuera de una tolerancia de dias, se
+        // toman los MAX_CANDIDATOS_SUBCONJUNTO mas cercanos en fecha a "as". El limit() de
+        // abajo es lo que mantiene viable la busqueda de subconjunto (2^n) - no es cosmetico,
+        // es lo que garantiza el tope por construccion ahora que no hay filtro de dias.
         for (DetalleAsiento as : pendientesAsiento) {
             if (asientoUsados.contains(as.getCodigo())) {
                 continue;
             }
             List<DetalleExtractoBancario> candidatos = pendientesExtracto.stream()
                     .filter(ex -> !extractoUsados.contains(ex.getCodigo()))
-                    .filter(ex -> diasEntre(ex.getFechaTransaccion(), as.getAsiento().getFechaAsiento())
-                            <= toleranciaDias)
+                    .sorted(Comparator.comparingLong(
+                            ex -> diasEntre(ex.getFechaTransaccion(), as.getAsiento().getFechaAsiento())))
+                    .limit(MAX_CANDIDATOS_SUBCONJUNTO)
                     .collect(Collectors.toList());
-            if (candidatos.isEmpty() || candidatos.size() > MAX_CANDIDATOS_SUBCONJUNTO) {
+            if (candidatos.isEmpty()) {
                 continue;
             }
             List<DetalleExtractoBancario> subconjunto = buscarSubconjuntoExtracto(candidatos, valorNeto(as));
@@ -548,17 +584,20 @@ public class ConciliacionContableMatchServiceImpl implements ConciliacionContabl
             }
         }
 
-        // Pase 3: 1:N - una fila del extracto se reparte en varias lineas contables.
+        // Pase 3: 1:N - una fila del extracto se reparte en varias lineas contables. Mismo
+        // criterio que el pase 2: los MAX_CANDIDATOS_SUBCONJUNTO mas cercanos en fecha a
+        // "ex", no un filtro de tolerancia. El limit() acota la combinatoria por construccion.
         for (DetalleExtractoBancario ex : pendientesExtracto) {
             if (extractoUsados.contains(ex.getCodigo())) {
                 continue;
             }
             List<DetalleAsiento> candidatos = pendientesAsiento.stream()
                     .filter(as -> !asientoUsados.contains(as.getCodigo()))
-                    .filter(as -> diasEntre(ex.getFechaTransaccion(), as.getAsiento().getFechaAsiento())
-                            <= toleranciaDias)
+                    .sorted(Comparator.comparingLong(
+                            as -> diasEntre(ex.getFechaTransaccion(), as.getAsiento().getFechaAsiento())))
+                    .limit(MAX_CANDIDATOS_SUBCONJUNTO)
                     .collect(Collectors.toList());
-            if (candidatos.isEmpty() || candidatos.size() > MAX_CANDIDATOS_SUBCONJUNTO) {
+            if (candidatos.isEmpty()) {
                 continue;
             }
             List<DetalleAsiento> subconjunto = buscarSubconjuntoAsiento(candidatos, valorNeto(ex));
