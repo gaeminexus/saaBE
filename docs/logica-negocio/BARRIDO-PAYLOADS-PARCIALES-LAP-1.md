@@ -92,8 +92,44 @@ daño.
 | `tsr/forms/cuentas-bancarias/cuentas-bancarias.component.ts:390-447` | Payload armado enteramente desde los controles del formulario, sin `GET` previo de la entidad completa |
 | `tsr/forms/bancos/bancos-nacionales-extranjeros.component.ts:200-210` | **Mitigación parcial y frágil:** preserva `fechaIngreso` a mano, campo por campo. Cualquier otro que no esté en el formulario se pierde — y el próximo `ALTER TABLE` agrega uno más sin que nadie lo note |
 
-`tsr/forms/caja-chica/parametrizacion/cajas-chicas.component.ts:227-242` **no cuenta como hallazgo
-nuevo**: su propio comentario ya advierte sobre `em.merge()` y el campo `custodio`.
+### 3ter. 🔴 CONFIRMADO EN PRODUCCIÓN (2026-09-07) — editar una caja chica la borra de las pantallas operativas
+
+**Este barrido descartó el caso, y se equivocó.** Decía que
+`tsr/forms/caja-chica/parametrizacion/cajas-chicas.component.ts:227-242` «no cuenta como hallazgo
+nuevo» porque su propio comentario ya advierte sobre `em.merge()`. El comentario advierte sobre
+**`custodio`**, que hoy no se usa. No vio que en el mismo payload falta **`estado`**, que sí se usa
+— y ése es el que rompe.
+
+El usuario subió el tope de una caja desde parametrización y **la caja desapareció de la pantalla de
+gastos.** La cadena, verificada eslabón por eslabón el 2026-09-07:
+
+| # | Eslabón | Verificado |
+|---|---|---|
+| 1 | `cajas-chicas.component.ts:230-240` arma el payload de edición desde cero: no incluye `estado`, `fechaRegistro`, `usuario` ni `custodio` | ✅ |
+| 2 | `CajaChicaRest:89` (`PUT /rest/cjch`) deserializa directo a la entidad `CajaChica` → esos cuatro campos llegan `null` | ✅ |
+| 3 | `CajaChicaServiceImpl.saveSingle:80-87` repone `estado` y `fechaRegistro` **sólo si `codigo == null`** — en edición no repone nada | ✅ |
+| 4 | `EntityDaoImpl.save:310` hace `em.merge()` → `CJCHESTD` queda **NULL** en `TSR.CJCH` | ✅ |
+| 5 | `CajaChicaDaoServiceImpl.selectByEmpresaEstado:41-52` filtra `c.empresa.codigo = :idEmpresa and c.estado = :estado` | ✅ |
+| 6 | `GET /cjch/activas/{idEmpresa}` (`CajaChicaServiceImpl.activas:204-207`) pasa siempre `EstadoCajaChica.ACTIVA` = 1 | ✅ |
+
+**Efecto para el usuario final:** editar cualquier dato de la caja —el tope, el % de alerta, el
+responsable— la saca de **gastos, reposición y cierre** a la vez, y del semáforo de saldos
+(`/cjch/saldos`, que se construye sobre `activas`). Los movimientos ya registrados siguen ahí; la
+caja simplemente deja de ser seleccionable.
+
+> **Por qué costaba verlo:** la caja **no desaparece de la pantalla donde la editaste.**
+> Parametrización lista con `getAll` y filtra sólo por empresa (`:87`), así que ahí sigue visible y
+> con el tope nuevo bien guardado. El daño aparece en otras tres pantallas, en otro momento, sin
+> ningún error. Y el comentario que el propio archivo tiene sobre `em.merge()` da la falsa
+> tranquilidad de que el caso ya estaba mirado.
+
+**Recuperación del dato:** `docs/logica-negocio/tsr/sql/lap1-04-caja-chica-estado-borrado-en-edicion.sql`.
+`CJCHFCRG`, `CJCHUSAR` y `CJCHUSCS` se perdieron en la misma edición y no son reconstruibles.
+
+**Corrección recomendada — del lado servidor.** `estado`, `fechaRegistro` y `usuario` son estado
+interno, no datos del formulario: `CajaChicaServiceImpl.saveSingle` debe releer la fila cuando
+`codigo != null` y preservarlos. Mismo criterio que §1 y que `AnticipoClienteServiceImpl`. Arreglarlo
+sólo en el frontend deja el agujero abierto para cualquier otro cliente del `PUT`.
 
 > El caso de `bancos-nacionales-extranjeros` es el que más conviene entender: **preservar campos a
 > mano no escala.** Funciona el día que se escribe y se rompe callado cada vez que la tabla crece.
