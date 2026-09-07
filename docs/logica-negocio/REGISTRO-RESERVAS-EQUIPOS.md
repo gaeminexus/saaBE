@@ -521,6 +521,7 @@ su DDL. La columna **Estado** lo dice; **`reservada` no es `autorizada`**.
 | `ANCP` | Asiento por sub-proceso Petro | CRD | creada |
 | `CRTF` | Certificado de crédito | CRD | creada |
 | `USAP` | Usuario de app móvil (credenciales del partícipe) | CRD | **autorizada por el usuario**; creada en local, DDL de producción escrito y sin correr |
+| `CRJB` | Corrida mensual de jubilados (cabecera de los dos procesos del mes) | CRD | **autorizada por el usuario 2026-09-07**; DDL en `crd/sql/212`, sin correr |
 
 ### Propuestos para los frentes nuevos — **verificar antes de usar**
 
@@ -878,3 +879,5 @@ Aparte, y **no es el mismo defecto**: la pantalla `reporte-mayor-analitico` cort
 derechas del panel de movimientos **sin barra de scroll horizontal**. Causa: `.rm-panel` declara
 `overflow: hidden` —que fija los **dos** ejes— y `.rm-panel--detail` sólo pisaba el vertical con
 `overflow-y: auto`. Corregido con `overflow: auto` (`saaFE` `449d209`).
+
+| 2026-09-07 | `omen-saa-1` (CRD) | **Tabla `CRD.CRJB`** — cabecera de la corrida mensual de jubilados | El usuario partió el proceso mensual de jubilados en DOS: seguro médico al inicio del mes y pensiones al final, cada uno con su propio disparo y su propio seguimiento (`crd/API-DOS-PROCESOS-MENSUALES-JUBILADOS.md`). Hoy **no existe ninguna cabecera de corrida**: `CRD.PGPC` es una fila por jubilado y por período, así que no hay dónde decir "el seguro de agosto ya se corrió, las pensiones todavía no" — y sin eso no se puede bloquear la corrida de pensiones cuando falta el seguro, que es la decisión D2 del usuario. Una fila por empresa+año+mes, con índice único: la idempotencia queda **por construcción**, no por convención. Código verificado libre contra las más de 400 tablas del modelo (`grep` sobre `@Table` en `src/main/java/com/saa/model/`, cero hits) y contra esta misma lista; **falta el control contra `ALL_TABLES`**, que es el bloque 0 del propio DDL y detiene el script si devuelve filas. **No consume ningún `PRBR`/`PDTR`**: los dos estados son 0/1 planos, estado técnico de proceso y no parametría de oficina. DDL en `crd/sql/212_DDL_CORRIDA_JUBILADOS.sql`, **sin correr**. **Autorizada por el usuario**, no sólo reservada: eligió explícitamente la opción de cabecera propia sabiendo que pedía DDL |
