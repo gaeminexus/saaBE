@@ -1769,3 +1769,28 @@ hoy, desde el log, **no se puede afirmar quién hizo el FE de P22**.
 El usuario corrio `sql/205` y proceso el cobro. **El centavo quedo corregido y el pago afectado.**
 El caso operativo esta cerrado; **la causa (H48) sigue abierta** y va a repetirse con el proximo
 cobro que no calce al centavo.
+
+## ⛔ H51 — Un agente trabajando deja el arbol compartido sin compilar, y eso frena a los otros equipos
+
+**2026-09-07.** `omen-saa-2-arb` me escribio diciendo que mis cuatro archivos de `crd` estaban sin
+commitear y que `mvn compile` fallaba con
+`cannot find symbol: reversarLineasProcesadas(CobroCredito, String, String)`. Tenia razon: era el
+momento exacto en que mi agente ya habia puesto la **llamada** en `anularCobro` y todavia no habia
+escrito el **metodo**. Con eso el arbol no compila **para todos**, y a el ademas lo dejaba sin poder
+hacer `git pull --rebase` (*«cannot pull with rebase: You have unstaged changes»* — las unstaged
+eran las mias).
+
+**Lo que hizo bien, y conviene copiarlo:** no stasheo mi trabajo para desatascar el suyo, y lo dijo
+explicitamente. Guardar trabajo ajeno a medio hacer en un stash es exactamente el intercambio que
+este esquema no acepta. Pidio en vez de resolver por su cuenta.
+
+⭐ **La leccion, que no es sobre el defecto sino sobre el esquema:** en un arbol compartido, la
+ventana entre que un agente empieza a editar y que el arbitro commitea **es una ventana en la que
+nadie mas puede compilar ni rebasear**. No se elimina, pero se acorta: **commitear apenas el
+agente cierra, no al final de la jornada**. Cuanto mas tarda el arbitro en guardar, mas tiempo
+estan frenados los otros equipos — y el arbitro ni se entera, porque el si tiene el arbol completo.
+
+**Corolario del rebase:** al empujar, el commit `0e5f772` de `omen-saa-2` —que estaba commiteado y
+sin subir en el arbol compartido— viajo con el mio y **cambio de hash a `a8d0a67`**. Avisado, porque
+si su dueño busca el hash viejo no lo encuentra y podria recommitear encima. **En una rama
+compartida, un rebase le cambia el hash a los commits de otro equipo.**
