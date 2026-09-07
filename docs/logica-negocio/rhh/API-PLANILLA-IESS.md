@@ -70,12 +70,32 @@ es también un cambio en el plan de cuentas, no solo en la plantilla.
 ⚠️ **Está sin resolver y es un prerrequisito del pago, no del registro.** La Fase 1 se puede
 construir entera sin esto.
 
-### 2.2 CCC y seguro de tiempo parcial no tienen línea propia
+### 2.2 🔴 CCC y seguro de tiempo parcial NO se provisionan — corregido el 2026-09-07
 
-La planilla de control ya los calcula (`contribucionCcc`, `totalSeguroTiempoParcial`), pero
-`RhhLineaAsiento` no los tiene: hoy quedan dentro del aporte patronal (11). Para conciliar el
-comprobante renglón por renglón hay que saber si el plan de cuentas los separa. **Misma consulta a
-la contadora que §2.1.**
+**Este párrafo decía que «hoy quedan dentro del aporte patronal (11)». Era una suposición y es
+falsa.** Verificado: `ContabilizacionNominaServiceImpl` **no menciona el CCC ni el seguro de tiempo
+parcial en ninguna parte** (grep sobre `Ccc`/`CCC`/`contribucion` y sobre `TiempoParcial`: cero
+resultados). La planilla de control **los calcula** —`contribucionCcc`, `totalSeguroTiempoParcial`—
+pero la nómina **no los contabiliza**: no hay línea de asiento, no hay provisión, no hay pasivo.
+
+**Por qué importa, y es el defecto que esto habría causado:** si el pago debita la cuenta «IESS por
+pagar aporte patronal» por el CCC y el seguro de tiempo parcial, estaría debitando un pasivo que
+**nunca se acreditó**. Esa cuenta se iría a saldo deudor por ese monto **todos los meses**, creciendo,
+y no lo notaría nadie hasta un cierre — y ahí el descuadre no apuntaría a su causa.
+
+Es el mismo patrón de siempre: **un lector apuntando a donde nadie escribe.**
+
+**Decisión pendiente del usuario, y es contable, no técnica.** Dos salidas:
+
+- **Reconocerlos como gasto al pagar**: el DEBE va a una cuenta de gasto, no al pasivo. Correcto si
+  nunca se devengaron, y no toca la nómina.
+- **Provisionarlos en la nómina**: líneas de asiento nuevas más su parametrización, y cambia el
+  asiento mensual de nómina. Es lo correcto por devengado, y es un cambio de criterio contable.
+
+**Mientras no se decida, el código no debe elegir por su cuenta.** El mapeo `conceptoTipo` → producto
+es **1:1 y parametrizado** (§6.5): existen productos propios `IESS-CCC` e `IESS-STP`, y a qué cuenta
+apuntan sus grupos lo define `lap1-09`, no el Java. Sea cual sea la decisión, se implementa
+cambiando la cuenta de un grupo.
 
 ---
 
@@ -302,6 +322,29 @@ sentido de todo esto es no pagar sin haber cuadrado.
 no omitir la línea: omitirla haría que el asiento no cuadre contra el valor del pago, y el circuito
 lo rechazaría con un error de cuadre que no dice nada del renglón que lo causó. Mejor fallar
 temprano y explicando.
+
+### 6.5 El mapeo concepto → producto es 1:1 y vive en la parametrización
+
+**Seis productos, no cuatro.** Uno por cada valor del rubro 331 que pueda pagarse, más los de los
+otros tipos de planilla:
+
+| De dónde viene la línea | Código de producto |
+|---|---|
+| Rol · `conceptoTipo` 1 Aporte personal | `IESS-APER` |
+| Rol · `conceptoTipo` 2 Aporte patronal | `IESS-APAT` |
+| Rol · `conceptoTipo` 3 Contribución CCC | `IESS-CCC` |
+| Rol · `conceptoTipo` 4 Seguro tiempo parcial | `IESS-STP` |
+| Planilla tipo 2 y 3 (préstamos), línea única por el total | `IESS-PRST` |
+| Planilla tipo 4 (fondos de reserva), línea única por el total | `IESS-FRES` |
+
+⛔ **Ningún concepto se «pliega» a otro dentro del código.** Plegar CCC y seguro de tiempo parcial al
+producto del aporte patronal parece inofensivo y no lo es: ver §2.2. Si dos conceptos deben terminar
+en la misma cuenta, eso se resuelve **apuntando sus dos grupos a la misma cuenta** en `lap1-09` — un
+`UPDATE`, visible y reversible— y no con un `switch` en Java que nadie va a releer.
+
+`IESS-PRST` sí cubre los dos tipos de préstamo, pero por una razón distinta y ya documentada: hoy
+comparten la única línea de asiento 12 (§2.1). Cuando se separen, se agrega el producto y cambia una
+línea del mapeo.
 
 ### 6.3 Reverso
 

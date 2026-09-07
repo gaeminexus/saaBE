@@ -180,3 +180,90 @@ SELECT g.GRPPNMBR AS GRUPO,
 -- DELETE FROM PGS.PRDP WHERE CODIGO IN ('IESS-APER','IESS-APAT','IESS-PRST','IESS-FRES');
 -- DELETE FROM PGS.GRPP WHERE UPPER(GRPPNMBR) LIKE 'IESS%';
 -- COMMIT;
+
+
+-- =====================================================================
+-- AGREGADO 2026-09-07 — DOS GRUPOS Y DOS PRODUCTOS MAS: CCC Y SEGURO TP
+-- =====================================================================
+--
+-- POR QUE, Y ES UN HALLAZGO QUE CAMBIA EL SCRIPT
+-- La version original de este script tenia cuatro productos porque el
+-- diseno suponia que la contribucion CCC y el seguro de salud de tiempo
+-- parcial "quedan dentro del aporte patronal". Verificado el 2026-09-07:
+-- NO ES ASI. ContabilizacionNominaServiceImpl no menciona ninguno de los
+-- dos — la planilla de control los CALCULA, pero la nomina no los
+-- CONTABILIZA: no hay linea de asiento, no hay provision, no hay pasivo.
+--
+-- Si el pago los debitara contra "IESS por pagar aporte patronal", esa
+-- cuenta iria a saldo deudor por ese monto TODOS LOS MESES, creciendo, sin
+-- que nada avise hasta un cierre.
+--
+-- ⚠️ DECISION PENDIENTE DEL USUARIO, Y ES CONTABLE:
+--    a) Reconocerlos como GASTO al pagar -> el grupo apunta a una cuenta de
+--       gasto. No toca la nomina.
+--    b) Provisionarlos en la nomina -> lineas de asiento nuevas y cambia el
+--       asiento mensual. Correcto por devengado, es un cambio de criterio.
+--
+--    Los dos grupos de abajo existen igual; lo unico que cambia entre (a) y
+--    (b) es a que PLNNCDGO apuntan. Por eso el mapeo vive aca y no en Java:
+--    cambiar de criterio es un UPDATE, no un despliegue.
+
+
+-- ---------------------------------------------------------------------
+-- CONTROL 6 — candidatas de cuenta para el CCC y el seguro TP.
+--             Si se elige (a) gasto, la cuenta sale de aca; si se elige
+--             (b) provision, primero hay que crear la linea de asiento.
+-- ---------------------------------------------------------------------
+SELECT PLNNCDGO, PLNNCNTA, PLNNNMBR
+  FROM CNT.PLNN
+ WHERE UPPER(PLNNNMBR) LIKE '%IESS%'
+    OR UPPER(PLNNNMBR) LIKE '%APORTE%'
+    OR UPPER(PLNNNMBR) LIKE '%SEGURO%'
+ ORDER BY PLNNCNTA;
+
+
+-- ---------------------------------------------------------------------
+-- Los dos grupos y sus productos. COMENTADO, igual que el bloque de
+-- arriba: completar <ID_CUENTA_*> con lo que decida el usuario.
+-- ---------------------------------------------------------------------
+-- INSERT INTO PGS.GRPP (GRPPNMBR, PLNNCDGO, PJRQCDGO, GRPPESTD)
+-- VALUES ('IESS CONTRIBUCION CCC', <ID_CUENTA_CCC>, <ID_EMPRESA>, 1);
+--
+-- INSERT INTO PGS.GRPP (GRPPNMBR, PLNNCDGO, PJRQCDGO, GRPPESTD)
+-- VALUES ('IESS SEGURO TIEMPO PARCIAL', <ID_CUENTA_STP>, <ID_EMPRESA>, 1);
+--
+-- COMMIT;
+--
+-- INSERT INTO PGS.PRDP (EMPRESA, GRUPOPRODUCTO, NOMBRE, CODIGO, ESTADO)
+-- SELECT <ID_EMPRESA>, GRPPCDGO, 'IESS - Contribucion CCC 1%', 'IESS-CCC', 1
+--   FROM PGS.GRPP WHERE GRPPNMBR = 'IESS CONTRIBUCION CCC';
+--
+-- INSERT INTO PGS.PRDP (EMPRESA, GRUPOPRODUCTO, NOMBRE, CODIGO, ESTADO)
+-- SELECT <ID_EMPRESA>, GRPPCDGO, 'IESS - Seguro salud tiempo parcial', 'IESS-STP', 1
+--   FROM PGS.GRPP WHERE GRPPNMBR = 'IESS SEGURO TIEMPO PARCIAL';
+--
+-- COMMIT;
+
+
+-- ---------------------------------------------------------------------
+-- CONTROL 7 — los SEIS productos deben existir antes de pagar una
+--             planilla de rol. Si falta alguno, el pago se rechaza
+--             citando el renglon, que es lo correcto, pero mejor saberlo
+--             antes que con el usuario esperando.
+-- ---------------------------------------------------------------------
+SELECT c.CODIGO_ESPERADO,
+       p.ID       AS ID_PRODUCTO,
+       p.NOMBRE   AS PRODUCTO,
+       g.GRPPNMBR AS GRUPO,
+       pl.PLNNCNTA AS CUENTA,
+       CASE WHEN p.ID IS NULL THEN 'FALTA' ELSE 'OK' END AS DIAGNOSTICO
+  FROM (SELECT 'IESS-APER' AS CODIGO_ESPERADO FROM DUAL
+        UNION ALL SELECT 'IESS-APAT' FROM DUAL
+        UNION ALL SELECT 'IESS-CCC'  FROM DUAL
+        UNION ALL SELECT 'IESS-STP'  FROM DUAL
+        UNION ALL SELECT 'IESS-PRST' FROM DUAL
+        UNION ALL SELECT 'IESS-FRES' FROM DUAL) c
+  LEFT JOIN PGS.PRDP p  ON p.CODIGO = c.CODIGO_ESPERADO
+  LEFT JOIN PGS.GRPP g  ON g.GRPPCDGO = p.GRUPOPRODUCTO
+  LEFT JOIN CNT.PLNN pl ON pl.PLNNCDGO = g.PLNNCDGO
+ ORDER BY c.CODIGO_ESPERADO;
