@@ -29,15 +29,17 @@ de cada uno.**
 | **e2-10** | **`cxp/sql/e2-10-retenciones-cargadas-con-cuenta-de-proveedor.sql`** | Retenciones ya cargadas con la cuenta de proveedor de un cliente (bloque A2) y titulares sin cuenta de cliente (B1). **Solo lectura** | ✅ **CERRADO por el usuario el 2026-09-07.** El B1 quedó descartado el 09-04: la cuenta de cliente se parametriza sobre la marcha |
 | **e2-11** | `rhh/sql/e2-11-completa-la-fk-que-el-e2-06-no-pudo-crear.sql` | `GRANT` + `FK_CBEM_BEXT` + índice, que el `e2-06` no pudo crear | ✅ **corrido y cerrado** (`FK_CBEM_BEXT ENABLED`) |
 | **e2-12** | `rhh/sql/e2-12-verifica-y-completa-fk-e-indices-de-odbs.sql` | Verifica y completa `FK_ODBS_PJRQ` y los índices de `ODBS`/`LQBS` | ✅ **corrido y cerrado** (`FK_ODBS_PJRQ ENABLED`) |
+| **e2-14** | **`tsr/sql/e2-14-codigo-institucion-banco-externo.sql`** | ⚠️ **NO es lectura.** Agrega `TSR.BEXT.BEXTCDBC` (código BCE de cámara), que piden los dos formatos de archivo bancario y que hoy **no existe**. Carga solo los **dos** códigos verificados en el manual del Pacífico (30 y 25); el resto lo completa el usuario | 🔴 **PENDIENTE DE CORRER.** Va **antes** del WAR: en cuanto `BancoExterno` mapee la columna, un `SELECT` sobre una columna ausente da `ORA-00904` |
 
 ---
 
 ## Lo que queda pendiente de correr
 
-**Nada que importe.** De los trece scripts: **doce corridos** y uno borrado (`e2-09`).
+De los catorce scripts: **doce corridos**, uno borrado (`e2-09`) y **uno que sí importa**.
 
 | Script | Por qué sigue sin correr |
 |---|---|
+| 🔴 **`e2-14`** | **Es un bloqueante del frente de archivos bancarios**, abierto el 2026-09-07. Sin esa columna los dos formatos mandan el banco del beneficiario vacío, y el Banco Internacional interpreta el campo vacío como «32 = Banco Internacional»: la transferencia **no rebota, se va a otro banco**. **Va antes del WAR** |
 | `e2-01`, `e2-02` | Verificaciones **de lectura** del frente de beneficios sociales, de principios de septiembre. No arreglan nada ni bloquean nada: contrastan entidades contra el esquema. Correrlas es higiene, no urgencia |
 
 > **Cerrado el 2026-09-07:** el `e2-13` dejó los 15 comandos de búsqueda en `OK`, y con eso

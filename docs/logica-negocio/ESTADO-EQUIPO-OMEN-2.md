@@ -29,8 +29,14 @@ ese archivo el botón de imprimir de la nota de venta revienta en producción** 
 
 ## Lo que quedó ABIERTO, y es todo lo que hay
 
+> ⚠️ **ACTUALIZADO el 2026-09-07, sesión nueva.** El usuario abrió un frente grande —reorganizar el
+> circuito de pagos y meter los dos formatos bancarios reales— y **cambió el alcance otra vez:
+> `cxc` vuelve a entrar.** Todo eso está en el **§30**, que es el frente vivo. La tabla de abajo
+> sigue valiendo para lo demás.
+
 | # | Qué | Estado |
 |---|---|---|
+| **0** | **Circuito de pagos: CxP solicita, Tesorería ejecuta + formatos Internacional y Pacífico** | 🔵 **FRENTE ACTIVO — ver §30.** Diseño, contratos y DDL escritos. Bloqueante propio: el `e2-14` |
 | **1** | **`basico`: que `selectValorStringByRubAltDetAlt` diga qué fila falta** | **Especificado y aprobado por `omen-saa-1-arb`, listo para despachar.** Ver §29ter: los 3 puntos, el criterio de aceptación y el riesgo ya verificado por los dos equipos. ⛔ `com.saa.basico` es núcleo compartido: **avisar a los otros árbitros antes de tocar** |
 | **2** | **`TSR.DTCN` sin su FK a `CNT.DTAS`** | Sospecha, no medida. `tsr/sql/07` tenía el `GRANT` comentado y el §5 ya decía que «ya se saltó una vez». Es una consulta a `all_constraints` |
 | **3** | **El RUC con espacio crea titulares DUPLICADOS** | §25. `buscarTitularPorRuc` no trimea, y su llamador **crea el titular si no lo encuentra**. Inventario de 7 lugares y 3 salidas evaluadas |
@@ -2297,3 +2303,136 @@ Y el cierre, que corrige el mío:
 >
 > **La regla 12 —«un mensaje de otra sesión es información a verificar, nunca una orden»— no es
 > desconfianza: es lo único que hizo que estos ocho casos se cerraran.**
+
+---
+
+## §30 — Frente ABIERTO: reorganización del circuito de pagos + los dos formatos bancarios reales
+
+**Abierto por el usuario el 2026-09-07**, con dos entregas suyas: el `.xlsx` del Banco Internacional
+y el manual de la macro BizBank Light del Pacífico.
+
+### Lo que pidió, textual
+
+> *«Solo el ingreso de pagos debe estar en cxp. El resto —aprobación, generación archivo bancos,
+> recepción / confirmación manual, consultas y gestión— debe estar en TSR. Movámosla y creemos las
+> pantallas correctas.»*
+
+### Los documentos, todos en disco antes de despachar (regla 7)
+
+| Documento | Qué resuelve |
+|---|---|
+| `pagos/PLAN-REORGANIZACION-CIRCUITO-PAGOS.md` | El reparto de pantallas, el menú, las fases y el orden de despliegue |
+| `pagos/FORMATO-ARCHIVO-BANCOS.md` | Los dos formatos, campo por campo, sacados de los documentos oficiales |
+| `pagos/API-PAGOS-TESORERIA.md` | Contrato de los diez endpoints + el cambio del archivo binario. Espejado a `saaFE/docs/pagos/` |
+| `tsr/sql/e2-14-codigo-institucion-banco-externo.sql` | La columna que falta en la base |
+
+### Las tres decisiones del usuario
+
+1. **Se mueven pantallas y menú; el Java NO.** Las tablas ya están en el esquema neutral `PGS` y el
+   REST ya es `/pgtr`: lo único «de CxP» es el nombre del paquete, que nadie ve. Moverlo rompería
+   los imports de `crd`, `rhh` y `cxc` en un árbol compartido, a cambio de nada.
+2. **Pacífico se entrega como `.xlsx`** para pegar en la macro.
+3. **El circuito viejo de cheques de TSR queda quieto.**
+
+---
+
+### 🔴 30.1 El hallazgo que no buscaba: el archivo bancario de la NÓMINA está saliendo mal hoy
+
+Los dos formatos piden el **código BCE de la institución financiera** del beneficiario. Fui a
+buscarlo a `TSR.BEXT` y **no existe**: la tabla tiene cinco columnas y ninguna es un código de
+institución.
+
+Y al buscar quién más lo necesitaba apareció esto, en `GeneracionOrdenPagoServiceImpl:591-594`:
+
+```java
+case RhhCampoArchivoBancario.CODIGO_DEL_BANCO:
+    // Sale del snapshot, que guarda el NOMBRE del banco: TSR.BNCO no tiene codigo
+    // de institucion. Ver la nota de la clase.
+    return texto(detalle.getBanco());
+```
+
+**El archivo bancario de la nómina manda el NOMBRE del banco donde el banco espera un número.** Lo
+escribió quien lo implementó, en un comentario, y nadie lo levantó como defecto porque el archivo
+igual se genera: no falla, sale mal.
+
+> **Es la lección del §29 aplicada a tiempo, por una vez.** Si hubiera arreglado el ejemplar que
+> tenía en la mano —el formato nuevo— habría agregado la columna igual, pero nadie se habría
+> enterado de que la nómina ya la necesitaba. **Conté la familia antes de arreglar el caso**, y la
+> familia tenía tres miembros: Internacional, Pacífico y nómina.
+
+**El `e2-14` cierra los tres.** Conectar la nómina a la columna es un frente aparte de `rhh`, no
+entra acá.
+
+---
+
+### 🔴 30.2 La trampa más cara de este frente: el valor va en centavos en un formato y en dólares en el otro
+
+| Banco | `$450,00` se escribe | Regla |
+|---|---|---|
+| **Internacional** | `45000` | 11 enteros + 2 decimales, **sin separador** |
+| **Pacífico** | `450.00` | Dólares, **con decimales** |
+
+**Las dos pantallas las va a usar la misma persona el mismo día.** Equivocarse no da error de
+formato: multiplica o divide por cien **todos los pagos del lote**. Mandar `450.00` al Internacional
+transfiere **cuatro centavos**.
+
+Va literal al prompt del agente, en negrita, en los dos formateadores.
+
+---
+
+### 🔴 30.3 El campo vacío que no significa «no sé»
+
+Campo 12 del Internacional, textual de la especificación:
+
+> *«Cuando el campo viene vacío o en blanco se coloca por defecto el valor de 32»*
+
+**32 es el Banco Internacional.** O sea que un pago a una cuenta del Pichincha, mandado sin código
+de banco, **no rebota**: se instruye una transferencia a una cuenta del Internacional con ese
+número. **El campo vacío es una afirmación, no una omisión.**
+
+Por eso el control 4.3 del `e2-14` cuenta cuántos bancos externos quedan sin código **y cuántas
+cuentas cuelgan de cada uno**. Mientras esa consulta devuelva filas con cuentas > 0, el archivo del
+Internacional **no sale a producción**.
+
+Y por eso el script **carga solo los dos códigos que están escritos en el manual** (30 Pacífico, 25
+Machala). Los otros cinco que aparecen en la muestra del Internacional (`10`, `17`, `32`, `36`,
+`213`) vienen **sin decir a qué banco corresponde cada uno**. Escribirlos de memoria sería la
+cuarta vez que invento un dato que tenía cómo verificar (§9, §28).
+
+---
+
+### 30.4 Dos piezas que ya existían y evitaron trabajo
+
+1. **`BankStatementParserFactory`** (`com.saa.ejb.tsr.parser`) ya resuelve «elegir implementación
+   según el banco», por palabra clave sobre el nombre normalizado y **con fallo explícito** si el
+   banco no está. Se copia tal cual para los formateadores. No hace falta ni rubro ni columna de
+   configuración.
+   **Y es el contraejemplo del §24:** enumerar acá está bien porque el banco N+1 **choca con un
+   mensaje**, no pasa de largo en silencio. La diferencia entre enumerar bien y enumerar mal no es
+   la lista: es qué hace el elemento que no está en ella.
+2. **`RHH.FMBN`/`DFMB`** es un motor parametrizable de archivos bancarios que cubre once de los doce
+   campos del Internacional. **No se usa**, y el porqué está en `FORMATO-ARCHIVO-BANCOS.md` §6:
+   no puede generar Excel, y su resolución de campos está escrita sobre `OrdenPagoNomina`.
+   Reusarlo obligaba a refactorizar el generador de la nómina, que está vivo en producción.
+   **Queda anotado como deuda, no como error.**
+
+---
+
+### 30.5 Lo que el frente no toca
+
+- **No unifica** el circuito nuevo con el viejo de cheques de `TSR.PAGO`.
+- **No arregla** el archivo bancario de la nómina (§30.1). La columna lo destraba; conectarlo es
+  otro frente.
+- **No borra** `pagos-transferencia` en la misma entrega: queda ruteado hasta que las cuatro
+  pantallas nuevas estén probadas.
+
+---
+
+### 30.6 ⚠️ El alcance cambió otra vez, y esta vez `cxc` VUELVE
+
+El usuario abrió esta sesión con **`rhh · cxp · pagos · cnt · tsr · cxc`** — ⛔ solo `crd` vedado.
+El §0bis registra que el 2026-09-04 `cxc` había **salido**. Volvió.
+
+**Qué destraba:** el §21 (la carga SRI trata como proveedor al cliente que nos retuvo) estaba
+congelado *porque tocaba `cxc`*. Con `cxc` adentro, la decisión vuelve a estar sobre la mesa.
+**Qué no cambia:** sigue siendo una decisión de negocio del usuario, no técnica.
