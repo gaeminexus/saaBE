@@ -23,6 +23,7 @@ import com.saa.model.rhh.PlanillaControlIess;
 import com.saa.model.rhh.PlanillaIess;
 import com.saa.model.scp.Empresa;
 import com.saa.rubros.EstadoPlanillaIess;
+import com.saa.rubros.RhhConceptoPlanillaIess;
 import com.saa.rubros.RhhEstadoPeriodoNomina;
 import com.saa.rubros.RhhTipoPlanillaIess;
 
@@ -207,11 +208,20 @@ public class PlanillaIessServiceImpl implements PlanillaIessService {
 			throw new IncomeException("El valor de la planilla debe ser mayor a cero.");
 		}
 
-		// 5. Si vienen renglones, su suma cuadra con valorIess dentro de un centavo.
+		// 5. Si vienen renglones, su suma cuadra con valorIess dentro de un centavo,
+		// y el conceptoTipo de cada uno (si viene) es válido contra el rubro 331.
 		if (renglones != null && !renglones.isEmpty()) {
 			double sumaRenglones = 0.0;
 			for (DetallePlanillaIess renglon : renglones) {
 				sumaRenglones += (renglon.getValorIess() != null) ? renglon.getValorIess() : 0.0;
+				Long conceptoTipo = renglon.getConceptoTipo();
+				if (conceptoTipo != null && (conceptoTipo.intValue() < RhhConceptoPlanillaIess.APORTE_PERSONAL
+						|| conceptoTipo.intValue() > RhhConceptoPlanillaIess.OTRO)) {
+					throw new IncomeException("El concepto '" + renglon.getConcepto() + "' trae un tipo de "
+							+ "concepto " + conceptoTipo + " inválido: debe ser 1 (aporte personal), 2 "
+							+ "(aporte patronal), 3 (contribución CCC), 4 (seguro de salud tiempo parcial), "
+							+ "5 (otro) o venir vacío (sin clasificar).");
+				}
 			}
 			if (Math.abs(sumaRenglones - planilla.getValorIess()) > 0.01) {
 				throw new IncomeException("La suma de los renglones ($"
@@ -354,19 +364,21 @@ public class PlanillaIessServiceImpl implements PlanillaIessService {
 	}
 
 	/**
-	 * Asigna a cada renglón el valor de control que le corresponde, buscando
-	 * por palabra clave en el concepto capturado. Es un mejor esfuerzo, no una
-	 * correspondencia garantizada: {@code PlanillaControlIess} no expone un
-	 * desglose por el mismo texto libre que trae el comprobante del portal, así
-	 * que un concepto que no case con ninguna palabra clave queda con
-	 * {@code valorControl = null} — igual que los tipos sin control, no se
-	 * inventa un valor. Verificar contra capturas reales del portal.
+	 * Asigna a cada renglón el valor de control que le corresponde, según su
+	 * {@code conceptoTipo} — un dato explícito capturado al registrar, no una
+	 * adivinanza por el texto libre del comprobante (docs/logica-negocio/rhh/
+	 * API-PLANILLA-IESS.md #4.d). Antes de este ítem se buscaba por palabra
+	 * clave en {@code concepto}; se retiró entero porque dos renglones con la
+	 * misma palabra ("PERSONAL" en dos conceptos distintos, por ejemplo)
+	 * recibían el mismo total y la suma de diferencias por renglón dejaba de
+	 * cuadrar con la diferencia de cabecera — un descuadre invisible es peor
+	 * que no comparar.
 	 * @param renglones : Renglones de la planilla (se modifican en el sitio)
 	 * @param control   : Planilla de control ya generada del período
 	 */
 	private void asignaValorControlRenglones(List<DetallePlanillaIess> renglones, PlanillaControlIess control) {
 		for (DetallePlanillaIess renglon : renglones) {
-			Double valorControl = valorControlPorConcepto(renglon.getConcepto(), control);
+			Double valorControl = valorControlPorConceptoTipo(renglon.getConceptoTipo(), control);
 			renglon.setValorControl(valorControl);
 			renglon.setDiferencia((valorControl != null && renglon.getValorIess() != null)
 					? Double.valueOf(renglon.getValorIess().doubleValue() - valorControl.doubleValue())
@@ -374,24 +386,31 @@ public class PlanillaIessServiceImpl implements PlanillaIessService {
 		}
 	}
 
-	private Double valorControlPorConcepto(String concepto, PlanillaControlIess control) {
-		if (concepto == null) {
+	/**
+	 * @param conceptoTipo : Detalle del rubro 331, o null si el renglón no está clasificado
+	 * @param control      : Planilla de control ya generada del período
+	 * @return : El total de control correspondiente, o null si no está clasificado (OTRO
+	 *           incluido) o si no hay contraparte para ese concepto. Null y cero no son lo
+	 *           mismo: cero afirmaría que nuestro control dice que ese concepto vale cero,
+	 *           que es un dato falso y se leería como una diferencia por el total del
+	 *           renglón; null dice, correctamente, que no hay con qué comparar.
+	 */
+	private Double valorControlPorConceptoTipo(Long conceptoTipo, PlanillaControlIess control) {
+		if (conceptoTipo == null) {
 			return null;
 		}
-		String texto = concepto.trim().toUpperCase(Locale.ROOT);
-		if (texto.contains("PATRONAL")) {
-			return control.getTotalAportePatronal();
+		switch (conceptoTipo.intValue()) {
+			case RhhConceptoPlanillaIess.APORTE_PERSONAL:
+				return control.getTotalAportePersonal();
+			case RhhConceptoPlanillaIess.APORTE_PATRONAL:
+				return control.getTotalAportePatronal();
+			case RhhConceptoPlanillaIess.CONTRIBUCION_CCC:
+				return control.getContribucionCcc();
+			case RhhConceptoPlanillaIess.SEGURO_SALUD_TIEMPO_PARCIAL:
+				return control.getTotalSeguroTiempoParcial();
+			default:
+				return null;
 		}
-		if (texto.contains("PERSONAL")) {
-			return control.getTotalAportePersonal();
-		}
-		if (texto.contains("CCC")) {
-			return control.getContribucionCcc();
-		}
-		if (texto.contains("PARCIAL")) {
-			return control.getTotalSeguroTiempoParcial();
-		}
-		return null;
 	}
 
 	private List<Map<String, Object>> renglonesADto(List<DetallePlanillaIess> renglones) {
@@ -399,6 +418,7 @@ public class PlanillaIessServiceImpl implements PlanillaIessService {
 		for (DetallePlanillaIess renglon : renglones) {
 			Map<String, Object> item = new HashMap<>();
 			item.put("concepto", renglon.getConcepto());
+			item.put("conceptoTipo", renglon.getConceptoTipo());
 			item.put("valorIess", renglon.getValorIess());
 			item.put("valorControl", renglon.getValorControl());
 			item.put("diferencia", renglon.getDiferencia());

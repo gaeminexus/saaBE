@@ -27,7 +27,8 @@ public class DetallePlanillaIessDaoServiceImpl extends EntityDaoImpl<DetallePlan
 	 */
 	public String[] obtieneCampos() {
 		System.out.println("Ingresa al metodo (campos) DetallePlanillaIess");
-		return new String[]{"codigo", "planilla", "concepto", "valorIess", "valorControl", "diferencia"};
+		return new String[]{"codigo", "planilla", "concepto", "conceptoTipo", "valorIess", "valorControl",
+				"diferencia"};
 	}
 
 	/* (non-Javadoc)

@@ -55,6 +55,18 @@ public class DetallePlanillaIess implements Serializable {
     private String concepto;
 
     /**
+     * Concepto normalizado del renglon: detalle del rubro
+     * RHH_CONCEPTO_PLANILLA_IESS (331). Ver
+     * {@link com.saa.rubros.RhhConceptoPlanillaIess}. Nulo significa "sin
+     * clasificar" -- es lo que decide contra que total de la planilla de
+     * control se compara este renglon, en vez de adivinarlo por el texto
+     * libre de {@link #concepto}.
+     */
+    @Basic
+    @Column(name = "DLISCNCT")
+    private Long conceptoTipo;
+
+    /**
      * Valor del renglon segun el IESS.
      */
     @Basic
@@ -99,6 +111,14 @@ public class DetallePlanillaIess implements Serializable {
 
     public void setConcepto(String concepto) {
         this.concepto = concepto;
+    }
+
+    public Long getConceptoTipo() {
+        return conceptoTipo;
+    }
+
+    public void setConceptoTipo(Long conceptoTipo) {
+        this.conceptoTipo = conceptoTipo;
     }
 
     public Double getValorIess() {

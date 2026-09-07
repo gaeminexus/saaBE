@@ -270,6 +270,12 @@ public interface Rubros {
 	 * equipo lap-saa-1 (PRBR 330-349): PRBRCDGO 330, PRBRALTR 330.
 	 */
 	int RHH_TIPO_PLANILLA_IESS            = 330;
+	/**
+	 * Concepto normalizado de un renglon de planilla del IESS (DLISCNCT) -> ver
+	 * {@link RhhConceptoPlanillaIess}. Del mismo bloque reservado (PRBR 330-349):
+	 * PRBRCDGO 331.
+	 */
+	int RHH_CONCEPTO_PLANILLA_IESS        = 331;
 
 	// ================= RUBROS CRD (Creditos) =================
 	/** Naturaleza del movimiento de aporte (APRTTPMV) -> ver {@link CrdTipoMovimientoAporte} */

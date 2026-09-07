@@ -112,7 +112,7 @@ public class PlanillaIessRest {
      *   "numeroComprobante": "2026090012345",
      *   "fechaEmision": "2026-09-05", "fechaMaximaPago": "2026-09-15",
      *   "valorIess": 12345.67,
-     *   "renglones": [ { "concepto": "APORTE PERSONAL", "valorIess": 4000.00 } ],
+     *   "renglones": [ { "concepto": "APORTE PERSONAL", "conceptoTipo": 1, "valorIess": 4000.00 } ],
      *   "idUsuario": 12
      * }
      */
@@ -157,6 +157,7 @@ public class PlanillaIessRest {
                         Map<String, Object> fila = (Map<String, Object>) item;
                         DetallePlanillaIess renglon = new DetallePlanillaIess();
                         renglon.setConcepto((String) fila.get("concepto"));
+                        renglon.setConceptoTipo(toLong(fila.get("conceptoTipo")));
                         renglon.setValorIess(toDouble(fila.get("valorIess")));
                         renglones.add(renglon);
                     }
