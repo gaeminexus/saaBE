@@ -1794,3 +1794,26 @@ estan frenados los otros equipos — y el arbitro ni se entera, porque el si tie
 sin subir en el arbol compartido— viajo con el mio y **cambio de hash a `a8d0a67`**. Avisado, porque
 si su dueño busca el hash viejo no lo encuentra y podria recommitear encima. **En una rama
 compartida, un rebase le cambia el hash a los commits de otro equipo.**
+
+## ✅ 2026-09-07 — `crd/sql/206` CORRIDO EN PRODUCCION y su control LEIDO
+
+El usuario corrio el DDL del reverso y **paso la salida del bloque 2.1**, que devolvio las cuatro
+columnas con los tipos exactos que mapea la entidad:
+
+| Columna | Tipo en la base | Mapeo en `CobroCredito` |
+|---|---|---|
+| `CBCRFCRV` | `TIMESTAMP(6)` | `LocalDateTime fechaReverso` |
+| `CBCRMTRV` | `VARCHAR2(2000)` | `String motivoReverso`, `length = 2000` |
+| `CBCRNMRV` | `NUMBER(22)` | `Long numeroReversos` |
+| `CBCRUSRV` | `VARCHAR2(50)` | `String usuarioReverso`, `length = 50` |
+
+Las cuatro nullable, como se diseño: las 5.664 filas historicas nunca se reversaron y un `NOT NULL`
+habria exigido un `DEFAULT` que mentiria sobre ellas.
+
+⭐ **Se registra que el control se LEYO, no solo que el script se corrio.** Es la distincion del
+§29ter de `ESTADO-EQUIPO-OMEN-2.md` y de nuestra propia leccion convergente: *que el script traiga
+la verificacion no prueba que alguien la haya mirado*. Hubo que pedirla seis veces; la proxima vez,
+pedirla junto con el "corrí el script" y no despues.
+
+**Con esto el WAR puede subir.** Sin estas cuatro columnas, Hibernate las incluye en el `SELECT` y
+rompe toda lectura de `CRD.CBCR` con ORA-00904 — la pantalla de cobros entera, no solo el reverso.
