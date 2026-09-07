@@ -2127,3 +2127,65 @@ recibirlo.
 DAO absorben errores a propósito** y devuelven listas vacías. **No aplica a este método** —no
 devuelve lista ni vive en un bucle— **pero sí a otros del mismo archivo.** ⛔ **Se toca sólo el
 `:77`**, sin «emparejar» nada alrededor.
+
+### §29ter — La propuesta, cerrada: cubre DOS defectos, no uno
+
+**`omen-saa-1-arb` leyó `CertificadoServiceImpl.parametro` más a fondo que yo y encontró la segunda
+mitad.** Además del `try/catch`, el método tiene **una validación aparte** debajo:
+
+```java
+if (valor == null || valor.trim().isEmpty()) {
+    throw new IncomeException("Falta la parametrizacion de certificados: rubro "
+            + ... + " detalle " + alternoDetalle + " no tiene valor en SCP.PDTR.PDTRVLRV");
+}
+```
+
+**Quien escribió eso se topó con las DOS formas del defecto** —la fila que no existe y la fila que
+existe con el valor vacío— y las cubrió por separado, con mensajes distintos, nombrando la columna.
+
+> **Su conclusión, que es mejor que mi planteo:** *cuando el arreglo escrito a mano en un llamador
+> cubre más casos que la propuesta del origen, el origen se está quedando corto.*
+
+#### Verificado acá: el valor vacío es PEOR que la fila ausente
+
+`DetalleRubroDaoServiceImpl:77` hace `return (String) query.getSingleResult();` **sin validar nada**,
+así que una fila con `PDTRVLRV` en `NULL` devuelve `null`. Y `EntityDaoImpl:167-169` concatena
+directo:
+
+```java
+strQuery = strQuery + " " + detalleRubroDaoService.selectValorStringByRubAltDetAlt(...);
+```
+
+**En Java `"" + null` produce el texto literal `"null"`.** O sea que una fila vacía **no da error de
+catálogo: inyecta la palabra `null` dentro del JPQL** y explota mucho más adelante como consulta
+inválida, sin decir una palabra sobre rubros. **Es el escenario que el propio `e2-13` evitaba al
+sacar los valores del código en vez de inventarlos.**
+
+#### 🔴 Y lo que me deja mal parado: yo ya tenía ese dato
+
+**El bloque 2 de mi propio `e2-08` distingue las dos formas:**
+
+```sql
+CASE WHEN d.PDTRCDGO IS NULL THEN '*** FALTA ***'
+     WHEN d.PDTRVLRV IS NULL THEN '*** EXISTE PERO SIN VALOR ***'
+```
+
+**Escribí el diagnóstico con los dos casos y propuse el arreglo con uno solo.** Es el §11 otra vez —
+tener las dos mitades y no cruzarlas— y van dos veces en la misma semana.
+
+#### La especificación final, lista para despachar cuando el usuario apruebe
+
+`DetalleRubroDaoServiceImpl.selectValorStringByRubAltDetAlt:77`, **y sólo ese método**:
+
+1. Envolver el `getSingleResult()` y, ante `NoResultException`, lanzar `IncomeException` nombrando
+   **rubro alterno, detalle alterno y `SCP.PDTR`**.
+2. **Validar también el valor**: si vuelve `null` o vacío, lanzar `IncomeException` diciendo que la
+   fila existe pero `PDTRVLRV` está en blanco.
+3. ⛔ **No tocar ningún otro método del archivo.** `CORRECCION_MANEJO_EXCEPCIONES_DAO.md` documenta
+   que otros DAO **absorben errores a propósito** en bucles de lote; emparejarlos rompería
+   comportamiento deliberado.
+
+**Riesgo verificado por los dos equipos:** ningún consumidor depende del tipo `NoResultException` en
+este camino; el `catch (PersistenceException)` de `EntityDaoImpl:95` está en `remove()` y no aplica;
+y el único llamador con protección propia (`CertificadoServiceImpl`) **antepone `IncomeException` al
+suyo**, así que recibe el mensaje nuevo sin cambios.
