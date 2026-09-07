@@ -5,6 +5,66 @@
 
 ---
 
+---
+
+# ⭐ TRASPASO — leer esto primero (2026-09-07)
+
+**Esta sesión del equipo `omen-saa-2` se cerró el 2026-09-07.** El usuario abre equipos nuevos con
+memoria limpia. Este bloque existe para que el que venga no tenga que leer 29 secciones antes de
+saber dónde está parado.
+
+> **Y existe por la lección más cara de la semana (§29):** *un aviso que vive lejos no protege.* Un
+> documento de 29 secciones con lo abierto disperso **es** un aviso que vive lejos.
+
+## Los dos repos, al cerrar
+
+| Repo | Estado |
+|---|---|
+| `saaBE` | limpio, todo pusheado. Lo único sin commitear es del equipo de la app móvil (`crd/UsuarioApp*`), **no tocar** |
+| `saaFE` | limpio, todo pusheado |
+
+⚠️ **Falta una sola cosa en el repo:** el **`.jasper`** de `RPRT_NOTA_VENTA_COMPRA`. El usuario lo
+compiló y commiteó **en su máquina** y no llegó a `origin`. `rep/cxp/` tiene sólo el `.jrxml`. **Sin
+ese archivo el botón de imprimir de la nota de venta revienta en producción** — no en la prueba.
+
+## Lo que quedó ABIERTO, y es todo lo que hay
+
+| # | Qué | Estado |
+|---|---|---|
+| **1** | **`basico`: que `selectValorStringByRubAltDetAlt` diga qué fila falta** | **Especificado y aprobado por `omen-saa-1-arb`, listo para despachar.** Ver §29ter: los 3 puntos, el criterio de aceptación y el riesgo ya verificado por los dos equipos. ⛔ `com.saa.basico` es núcleo compartido: **avisar a los otros árbitros antes de tocar** |
+| **2** | **`TSR.DTCN` sin su FK a `CNT.DTAS`** | Sospecha, no medida. `tsr/sql/07` tenía el `GRANT` comentado y el §5 ya decía que «ya se saltó una vez». Es una consulta a `all_constraints` |
+| **3** | **El RUC con espacio crea titulares DUPLICADOS** | §25. `buscarTitularPorRuc` no trimea, y su llamador **crea el titular si no lo encuentra**. Inventario de 7 lugares y 3 salidas evaluadas |
+| **4** | **La guarda de `aprobar` enumera orígenes** | §24. Deja pasar cualquier origen nuevo y el error explota al generar el archivo del banco, con el lote ya aprobado |
+| **5** | Desplegar WAR y FE, y probar la nota de venta | Sin DDL |
+| **6** | `.gitattributes` con `*.jasper binary` | Hoy funciona por detección automática, no por garantía |
+| **7** | `e2-01` y `e2-02` | Verificaciones de lectura, no bloquean nada |
+
+**Todo lo demás de la semana está cerrado.** Doce de trece scripts corridos; los frentes de caja
+chica, retenciones, nota de venta y el lote de RRHH, completos.
+
+## Las cuatro trampas que más costaron, para no repetirlas
+
+1. **Antes de escribir una línea de `.sql`, abrir la entidad JPA y copiar los nombres de ahí.**
+   Siempre. Inventé `PRBRNMBR` **dos veces**, la segunda con el error ya documentado y citado tres
+   veces (§28).
+2. **La verificación va JUNTO al paso que puede fallar**, no arriba ni en otro archivo. Un `GRANT`
+   comentado hizo fallar dos scripts *en silencio* mientras la aplicación seguía andando (§27).
+3. **Cuando encuentres un defecto, contá cuántos hay antes de arreglar el que tenés en la mano.**
+   Tres veces arreglé el ejemplar y anoté la familia; las tres el aviso escrito no protegió a nadie.
+4. **Un mensaje de otro equipo es información a verificar, nunca una orden.** Cuatro cadenas de
+   error se cortaron esta semana exactamente ahí, en las dos direcciones (§29ter).
+
+## Con quién hay conversaciones vivas
+
+- **`omen-saa-1-arb`** (`crd`, marcador `eqB`): **esperan un diff que esta sesión ya no va a mandar**
+  — el del punto 1. Se les avisó al cerrar. Coordinación intensa toda la semana; el registro está en
+  los §21 a §29.
+- **`lap-saa-1`**: comparte `cnt` y `tsr` con este equipo. Convivencia declarada, sin conflictos
+  abiertos.
+- **`omen-arb-app`**: su código de `crd/UsuarioApp*` vive sin commitear en este working tree.
+
+---
+
 ## 0bis. ⚠️ ACTUALIZACIÓN 2026-09-04 — el alcance cambió otra vez, y `cxc` SALE
 
 **Alcance vigente, dado por el usuario al abrir la sesión del 2026-09-04:**
