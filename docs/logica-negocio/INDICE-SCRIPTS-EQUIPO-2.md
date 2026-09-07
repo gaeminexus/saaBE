@@ -29,23 +29,26 @@ de cada uno.**
 | **e2-10** | **`cxp/sql/e2-10-retenciones-cargadas-con-cuenta-de-proveedor.sql`** | Retenciones ya cargadas con la cuenta de proveedor de un cliente (bloque A2) y titulares sin cuenta de cliente (B1). **Solo lectura** | ✅ **CERRADO por el usuario el 2026-09-07.** El B1 quedó descartado el 09-04: la cuenta de cliente se parametriza sobre la marcha |
 | **e2-11** | `rhh/sql/e2-11-completa-la-fk-que-el-e2-06-no-pudo-crear.sql` | `GRANT` + `FK_CBEM_BEXT` + índice, que el `e2-06` no pudo crear | ✅ **corrido y cerrado** (`FK_CBEM_BEXT ENABLED`) |
 | **e2-12** | `rhh/sql/e2-12-verifica-y-completa-fk-e-indices-de-odbs.sql` | Verifica y completa `FK_ODBS_PJRQ` y los índices de `ODBS`/`LQBS` | ✅ **corrido y cerrado** (`FK_ODBS_PJRQ ENABLED`) |
-| **e2-14** | **`tsr/sql/e2-14-codigo-institucion-banco-externo.sql`** | ⚠️ **NO es lectura.** Agrega `TSR.BEXT.BEXTCDBC` (código BCE de cámara) y carga los **dos** códigos verificados. Los otros **seis** los completa el usuario | 🔴 **PENDIENTE — CONFIRMADO QUE HACE FALTA** por el `e2-15`. Va **antes del WAR**. Reescrito el 2026-09-07 apuntando por `BEXTCDGO`, ya no por `LIKE` sobre el nombre |
+| ~~e2-14~~ | `tsr/sql/e2-14-codigo-institucion-banco-externo.sql` | Agregaba `TSR.BEXT.BEXTCDBC` para el código BCE | ⛔ **CANCELADO el 2026-09-07 por el `e2-17`: la columna NO hace falta.** El código ya estaba en `BEXTTRJT`, con otro nombre. **No correrlo.** Se conserva el archivo como registro de por qué se descartó |
 | **e2-15** | `tsr/sql/e2-15-verifica-si-bextcdgo-ya-es-el-codigo-bce.sql` | ¿`TSR.BEXT.BEXTCDGO` ya es el código del BCE? **Solo lectura** | ✅ **CORRIDO el 2026-09-07. Respuesta: NO lo es.** Machala es 5 y Pacífico es 8; la PK es una secuencia corrida de 1 a 389 sin huecos. Y de paso destapó el `e2-16` |
-| **e2-16** | **`tsr/sql/e2-16-sincroniza-la-secuencia-de-banco-externo.sql`** | ⚠️ **NO es lectura.** `SQ_BEXTCDGO` quedó en **95** con la tabla en **389**: dar de alta un banco externo desde la pantalla muere con **PK duplicada**. Reinicia la secuencia en 390 | 🔴 **PENDIENTE.** Defecto **latente en producción**, independiente del frente de pagos: se puede correr solo |
-| **e2-17** | **`tsr/sql/e2-17-es-bexttrjt-el-codigo-del-bce.sql`** | ¿`TSR.BEXT.BEXTTRJT` es el código del BCE? El usuario dice que sí. **Solo lectura** | 🔴 **PENDIENTE — CORRERLO ANTES QUE EL `e2-14`.** Si da que sí, el `e2-14` se cancela entero. Su bloque 5 además mide si la pantalla de bancos viene **borrando** ese código, porque el FE escribe `1`/`0` en esa columna |
+| **e2-16** | **`tsr/sql/e2-16-sincroniza-la-secuencia-de-banco-externo.sql`** | ⚠️ **NO es lectura.** `SQ_BEXTCDGO` quedó en **95** con la tabla en **389**: dar de alta un banco externo desde la pantalla muere con **PK duplicada**. Reinicia la secuencia en 390 | ✅ **CORRIDO el 2026-09-07.** ⚠️ Y al arreglar el alta **quitó la barrera accidental** que impedía usar la pantalla de bancos: ver §33 del estado |
+| **e2-17** | **`tsr/sql/e2-17-es-bexttrjt-el-codigo-del-bce.sql`** | ¿`TSR.BEXT.BEXTTRJT` es el código del BCE? **Solo lectura** | ✅ **CORRIDO el 2026-09-07. Respuesta: SÍ.** 387 valores distintos de 389 filas (10 a 9997), las dos anclas OK (Machala 25, Pacífico 30) y `32` = `BANCO INTERNACIONAL`, que es lo que la especificación asume. **Cancela el `e2-14`.** El bloque 5 dio **cero daño**: nadie guardó nunca desde esa pantalla |
 
 ---
 
 ## Lo que queda pendiente de correr
 
-De los catorce scripts: **doce corridos**, uno borrado (`e2-09`) y **uno que sí importa**.
+De los quince scripts: **catorce corridos**, uno borrado (`e2-09`), **uno cancelado** (`e2-14`) y
+**ninguno bloqueando nada**.
 
-| Script | Por qué sigue sin correr |
+| Script | Estado |
 |---|---|
-| ⏸️ **`e2-14`** | **EN DUDA desde el 2026-09-07: puede que no haga falta.** El usuario avisó que el código del BCE ya está en la tabla, en `BEXTTRJT`. **Lo resuelve el `e2-17`, que hay que correr primero.** Si `BEXTTRJT` es el código, este script se cancela entero y los seis códigos dejan de hacer falta |
-| 🔴 **`e2-17`** | **Es el que destraba o confirma todo.** Solo lectura, se corre ya |
-| 🔴 **`e2-16`** | **Defecto latente en producción, ajeno a este frente.** Con la secuencia en 95 y la tabla en 389, agregar un banco externo desde la pantalla revienta con `ORA-00001` unas 300 veces seguidas. No depende de nada ni bloquea nada: se corre solo |
+| ⛔ **`e2-14`** | **CANCELADO — NO CORRERLO.** El `e2-17` midió que el código del BCE ya está en `BEXTTRJT`. La columna `BEXTCDBC` que este script agregaba **no hace falta**, y los seis códigos que estábamos esperando del usuario **estaban en la tabla desde siempre** |
 | `e2-01`, `e2-02` | Verificaciones **de lectura** del frente de beneficios sociales, de principios de septiembre. No arreglan nada ni bloquean nada: contrastan entidades contra el esquema. Correrlas es higiene, no urgencia |
+
+> **Cerrado el 2026-09-07:** el `e2-17` destrabó el frente de archivos bancarios sin una sola línea
+> de DDL. **La respuesta era un `SELECT`, no un `ALTER TABLE`** — y el `e2-14`, ya escrito y listo
+> para correr, habría agregado una columna duplicada al lado de la que ya tenía el dato.
 
 > **Cerrado el 2026-09-07:** el `e2-13` dejó los 15 comandos de búsqueda en `OK`, y con eso
 > `selectByCriteria` —que es transversal a **todos** los módulos, no sólo a los nuestros— deja de

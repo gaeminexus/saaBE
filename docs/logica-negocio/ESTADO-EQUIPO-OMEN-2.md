@@ -2839,3 +2839,95 @@ Y también se corrigió `API-PAGOS-TESORERIA.md`, que **se contradecía consigo 
 que `contenidoBase64` venía `null` en formatos de texto, mientras la nota de abajo decía que para el
 Internacional conviene bajar justamente el Base64. El código lo manda siempre. Importaba porque el
 agente estaba a punto de implementar esa rama leyendo la tabla vieja.
+
+---
+
+## §33 — ✅ MEDIDO: `BEXTTRJT` ES el código del BCE. El usuario tenía razón y yo iba a duplicar la columna
+
+**2026-09-07.** El `e2-17` cerró la discusión con tres confirmaciones independientes:
+
+| Prueba | Resultado |
+|---|---|
+| **Forma del dato** | 389 filas, **387 valores distintos**, mínimo 10, máximo 9997. Un booleano no se ve así |
+| **Las dos anclas del manual** | `BANCO DE MACHALA` → **25**, `BANCO DEL PACIFICO` → **30**. Las dos. Y la inversa limpia: nadie más tiene esos valores |
+| **La que no busqué** | La especificación del Internacional dice que un campo 12 vacío se interpreta como `32` = Banco Internacional. En la base, `BEXTTRJT = 32` **es** `BANCO INTERNACIONAL` |
+
+La tercera es la más fuerte precisamente porque no la diseñé como prueba: el bloque 4 estaba ahí
+para ver si los códigos de la muestra resolvían a bancos reales, y terminó confirmando la hipótesis
+por un camino que no había previsto. **Es el §30.11 otra vez, esta vez a favor: pedir de más en un
+diagnóstico paga.**
+
+### Y los seis códigos que le estuve pidiendo al usuario estaban en la tabla
+
+```
+Pichincha 10 · Guayaquil 17 · Pacífico 30 · Internacional 32 · Austro 35 · Produbanco 36 · Bolivariano 37
+```
+
+Los siete bancos con cuentas, todos con su código. **Le pedí al usuario que consiguiera afuera un
+dato que el sistema ya tenía**, y lo puse como el bloqueante número uno durante media jornada.
+
+### 🔴 Dónde estuvo mi error, y no fue no medir
+
+Medí. Corrí el `e2-15`, que preguntaba si `BEXTCDGO` era el código, y contesté bien que no. **El
+problema fue el paso siguiente:** de «la PK no es el código» concluí «la tabla no tiene el código»,
+y esa conclusión la saqué **leyendo los nombres de las cinco columnas**, no los datos.
+
+`BEXTCDGO · BEXTNMBR · BEXTTRJT · BEXTESTD · BEXTFCIN`
+
+Miré esa lista y dije que ninguna era un código de institución. **`tarjeta` no sonaba a código de
+banco, así que la descarté sin mirarle un solo valor.** El dato estaba a un `SELECT DISTINCT` de
+distancia, en una tabla que ya estaba consultando.
+
+> **La lección, y es distinta de todas las anteriores:** las otras veces me equivoqué por no
+> verificar. Acá verifiqué, y me equivoqué **por confiar en un nombre**. Un `@Column` mal bautizado
+> es una afirmación falsa con la autoridad de un identificador — y en un esquema de nombres de 8
+> caracteres, donde `BEXTTRJT` tiene que significar algo en cuatro letras, esa autoridad no vale
+> nada. **Cuando la pregunta es «¿existe este dato?», la respuesta se busca en los valores, no en
+> los rótulos.**
+
+Y el corolario incómodo: el usuario me lo dijo dos veces. La primera —*«la tabla ya tiene los
+códigos»*— la medí contra `BEXTCDGO`, di que no y lo di por cerrado. Recién cuando señaló la columna
+concreta volví a mirar. **Tenía razón las dos veces; lo que fallaba era dónde yo buscaba.**
+
+### El daño: cero, y por un accidente que acabamos de deshacer
+
+El bloque 5 midió **ningún banco con 0 o 1**. Nadie guardó nunca desde la pantalla de bancos
+externos, y ahora se entiende por qué: **el alta estaba rota** por la secuencia desincronizada del
+§30.11.
+
+⚠️ **Y el usuario acaba de correr el `e2-16`, que la arregló.** O sea que la barrera que nos
+protegía por accidente ya no está: la pantalla ahora funciona y su `guardar()` manda
+`tarjeta: this.tarjetaCredito ? 1 : 0` **tanto en alta como en edición**. El primer guardado
+destruye un código del BCE.
+
+> **Un defecto puede estar tapando a otro, y arreglar el de arriba destapa el de abajo.** El `e2-16`
+> era correcto y había que correrlo —era un defecto real en producción—, pero lo despaché como
+> «independiente, no bloquea nada, se corre solo». **No era independiente: era lo único que impedía
+> que se ejecutara un defecto peor.** No se puede saber de antemano, pero sí se puede mirar qué más
+> toca una pantalla antes de declararla inofensiva.
+
+Por eso el arreglo del frontend salió como urgente y no como higiene.
+
+### Lo que cambia en el plan
+
+| Antes | Ahora |
+|---|---|
+| `e2-14` agrega `BEXTCDBC` | ⛔ **CANCELADO.** La columna habría quedado **al lado de la que ya tenía el dato** |
+| Faltan 6 códigos del BCE | ✅ Estaban en la tabla |
+| El WAR espera al `.sql` | ✅ **No hay DDL. La regla del orden de despliegue no aplica a este frente** |
+| `BancoExterno` mapea una columna nueva | ✅ Ya la mapea, con el nombre `tarjeta` |
+
+**El frente de archivos bancarios se destrabó sin una sola línea de DDL.** La respuesta era un
+`SELECT`, no un `ALTER TABLE`.
+
+### Lo que se despachó
+
+1. **BE** — `CodigoBancoBeneficiarioResolver` devuelve `getTarjeta()`, y el javadoc pasa de
+   «PENDIENTE DE CONFIRMAR» a decir qué se midió. Más un javadoc en `BancoExterno.tarjeta`
+   explicando que el nombre miente. ⛔ **No se renombra el campo:** la entidad se serializa directo
+   a JSON y el frontend lee la clave `tarjeta`.
+2. **FE** — la pantalla de bancos deja de escribir `1`/`0`, expone el campo como **«Código BCE»**
+   numérico, y `mostrarTarjeta()` deja de devolver «Sí» para los 389 bancos.
+   ⛔ Con un aviso explícito en el prompt: **no resolverlo sacando `tarjeta` del payload**, porque
+   `EntityDaoImpl.save()` hace `merge()` desnudo y una clave ausente se graba `NULL` (§8.2 del
+   registro) — sería el mismo borrado, más silencioso.
