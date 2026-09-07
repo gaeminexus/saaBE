@@ -1817,3 +1817,78 @@ pedirla junto con el "corrí el script" y no despues.
 
 **Con esto el WAR puede subir.** Sin estas cuatro columnas, Hibernate las incluye en el `SELECT` y
 rompe toda lectura de `CRD.CBCR` con ORA-00904 — la pantalla de cobros entera, no solo el reverso.
+
+---
+
+## 2026-09-07, tarde — cuatro defectos que solo aparecieron AL EJECUTAR
+
+Todos compilaban. Ninguno lo podia atrapar el arbitro ni los agentes. Los cuatro los encontro
+el usuario abriendo la pantalla o procesando un cobro real.
+
+| # | Que | Donde | Commit |
+|---|---|---|---|
+| 1 | El invariante cobrado-vs-aplicado bloqueaba acuerdos y precancelaciones **mixtos** | mio, de H48 | `c254e6f` |
+| 2 | El JPQL del seguimiento aliaseaba un `join fetch` — JPA lo prohibe | `CobroCreditoDaoServiceImpl` | `a546999` |
+| 3 | El buscador del seguimiento no filtraba: propiedad comun leida en un `computed` | FE `seguimiento-cobros` | `870d315` |
+| 4 | Las lineas de banda del asiento de condonacion se grababan **sin la cuenta** | `AcuerdoCondonacionServiceImpl` | `31df053` + `a7b948f` |
+
+### 1 — Mi propio control freno produccion, y del lado correcto
+
+`DCBC.valor` guarda **solo el deposito** en PRECANCELACION y ACUERDO_CONDONACION; los aportes
+viven en `CRD.DAPR`/`CRD.DAAP`, fuera del detalle. El `PagoPrestamo` lleva el total. Comparar uno
+contra otro da negativo por exactamente el monto cruzado con aportes (28.405,72 + 13.657,67 =
+42.063,39 en el cobro 68).
+
+⭐ **El control fallo en el criterio, no en el mecanismo:** freno antes de generar ningun asiento y
+mostro los numeros. Se equivoco frenando de mas, que es el lado correcto cuando hay contabilidad.
+
+Y la exclusion por tipo es **estructural, no circunstancial**: ni `SolicitudPagoCuota` ni
+`SolicitudAbonoCapital` tienen un solo campo por donde recibir un aporte. No hay tercer camino.
+
+### 3 — Dos parentesis entre que ande y que no
+
+`filtroTipo` y `filtroEstado` eran signals; `filtroTexto` una propiedad comun. Los tres leidos en
+el mismo `computed`. **Un `computed` solo se recalcula por lo reactivo que leyo**, asi que el texto
+cambiaba y nadie se enteraba — por eso los otros dos filtros andaban.
+
+⚠️ **`consulta-cobros` tiene el MISMO defecto** (`:72` propiedad comun, leida en el `computed` de
+`:78`), verificado por el arbitro. Su buscador nunca filtro en vivo. **No corregido**, a decision
+del usuario.
+
+### 4 — Una linea que se cayo en una copia
+
+Dos bloques calcados que arman la linea de banda del asiento:
+
+    CobroPetroContableServiceImpl:915   linea.setPlanCuenta(...)   ✅
+    AcuerdoCondonacionServiceImpl:806   (no estaba)                ⛔
+
+El `DetalleAsiento` quedaba sin la FK `PLNNCDGO`; la pantalla resuelve la cuenta por esa relacion
+y mostraba **N/A** aunque el asiento cuadrara en totales. **No era la parametrizacion de bandas**:
+la guarda de `:801` ya verifica que la banda tenga cuenta y no reventó.
+
+Barrido del modulo: `new DetalleAsiento()` esta en 8 archivos de `crd` y con el arreglo **todos**
+setean la cuenta. Era el unico caso.
+
+`sql/209` repara lo grabado. ⛔ **El cruce va por cuenta Y EMPRESA** — `CNT.PLNN` esta scopeado por
+`PJRQCDGO` igual que `CNT.ASNT`, y cruzar solo por numero engancharia la cuenta de otra empresa en
+silencio. El usuario confirmo que **agosto no esta mayorizado**, asi que alcanza con correr el 209
+antes de mayorizar: no hay que remayorizar.
+
+---
+
+## ⛔ H52 — El cuello real: nadie puede ejecutar antes que el usuario
+
+Los cuatro defectos de arriba, mas el `ORA-00904` del `207`, tienen una sola causa comun de
+proceso: **los agentes no pueden levantar WildFly ni tocar la base desde su sesion, y el proyecto
+no tiene tests.** La cadena de verificacion termina en "compila y el codigo dice lo que debe decir".
+
+**La primera ejecucion real siempre es el usuario, en produccion.**
+
+Eso no se arregla con mas cuidado — los cuatro se revisaron linea por linea antes de commitear. Se
+arregla con un ambiente donde probar, que hoy no existe.
+
+⭐ **Lo unico que si esta en nuestras manos, y funciono:** cuando un agente entrega algo que no pudo
+ejecutar, lo dice con esas palabras. El agente BE escribio *«lo que entrego es la verificacion
+estatica; "deberia" y "medido" no son lo mismo»* antes del defecto 2 — y el defecto cayo
+exactamente ahi. El aviso no lo evito, pero hizo que se commiteara **sabiendo el riesgo** en vez de
+creerlo probado. Se mantiene esa practica y se traslada al usuario tal cual.
