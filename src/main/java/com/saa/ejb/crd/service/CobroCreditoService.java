@@ -1,8 +1,10 @@
 package com.saa.ejb.crd.service;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.ejb.crd.service.dto.FilaBandejaAprobacion;
+import com.saa.ejb.crd.service.dto.FilaSeguimientoCobro;
 import com.saa.ejb.crd.service.dto.ResultadoProcesoCobro;
 import com.saa.ejb.crd.service.dto.ResultadoRegistroCobro;
 import com.saa.ejb.crd.service.dto.SolicitudEdicionCobro;
@@ -254,4 +256,22 @@ public interface CobroCreditoService {
      *                     pago rechaza la operación (todo o nada: nada queda aplicado)
      */
     ResultadoProcesoCobro procesarCobro(Long idCobro, String usuario) throws Throwable;
+
+    /**
+     * Seguimiento mensual de cobros personales — una fila por cada {@code CRD.CBCR} cuya fecha
+     * de DEPÓSITO ({@code fecha}, no la de registro) cae en el rango, con la huella completa
+     * del circuito (registro, aprobación, rechazo, proceso, anulación, reverso) y los tres
+     * asientos por su número alterno. Solo lectura: no cambia el circuito. Contrato completo:
+     * {@code docs/logica-negocio/crd/API-SEGUIMIENTO-COBROS.md}.
+     *
+     * TODOS los estados entran, incluidos rechazados y anulados — es una pantalla de
+     * seguimiento, filtrar por estado es cosa de la pantalla, no del endpoint.
+     *
+     * @param desde      : Fecha inicial del rango (inclusive)
+     * @param hasta      : Fecha final del rango (inclusive)
+     * @return           : Filas ordenadas por fecha de cobro descendente; VACÍA si no hubo
+     *                     cobros en el rango (nunca un error: "no hubo cobros" es válido)
+     * @throws Throwable : Si desde/hasta vienen nulos o hasta es anterior a desde
+     */
+    List<FilaSeguimientoCobro> seguimiento(LocalDate desde, LocalDate hasta) throws Throwable;
 }

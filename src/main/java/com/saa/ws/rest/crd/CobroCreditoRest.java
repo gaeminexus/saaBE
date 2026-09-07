@@ -1,11 +1,13 @@
 package com.saa.ws.rest.crd;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.ejb.crd.dao.CobroCreditoDaoService;
 import com.saa.ejb.crd.dao.DetalleCobroCreditoDaoService;
 import com.saa.ejb.crd.service.CobroCreditoService;
 import com.saa.ejb.crd.service.dto.FilaBandejaAprobacion;
+import com.saa.ejb.crd.service.dto.FilaSeguimientoCobro;
 import com.saa.ejb.crd.service.dto.ResultadoProcesoCobro;
 import com.saa.ejb.crd.service.dto.ResultadoRegistroCobro;
 import com.saa.ejb.crd.service.dto.SolicitudAprobacionCobro;
@@ -22,6 +24,7 @@ import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
@@ -288,6 +291,27 @@ public class CobroCreditoRest {
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al obtener la bandeja de aprobación: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * GET /rest/cbcr/seguimiento?desde=yyyy-MM-dd&hasta=yyyy-MM-dd — seguimiento mensual de
+     * cobros personales (solo lectura). Ver {@link CobroCreditoService#seguimiento}.
+     */
+    @GET
+    @Path("/seguimiento")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response seguimiento(@QueryParam("desde") String desde, @QueryParam("hasta") String hasta) {
+        System.out.println("LLEGA AL SERVICIO GET seguimiento - CBCR - desde: " + desde + " - hasta: " + hasta);
+        try {
+            LocalDate fechaDesde = desde != null && !desde.trim().isEmpty() ? LocalDate.parse(desde.trim()) : null;
+            LocalDate fechaHasta = hasta != null && !hasta.trim().isEmpty() ? LocalDate.parse(hasta.trim()) : null;
+            List<FilaSeguimientoCobro> lista = cobroCreditoService.seguimiento(fechaDesde, fechaHasta);
+            return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener el seguimiento de cobros: " + e.getMessage())
                     .type(MediaType.APPLICATION_JSON).build();
         }
     }

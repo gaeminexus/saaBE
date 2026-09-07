@@ -33,6 +33,7 @@ import com.saa.ejb.crd.service.dto.DesgloseAporte;
 import com.saa.ejb.crd.service.dto.ResultadoClasificacionBanda;
 import com.saa.ejb.crd.service.dto.DetalleRegistroCobroDTO;
 import com.saa.ejb.crd.service.dto.FilaBandejaAprobacion;
+import com.saa.ejb.crd.service.dto.FilaSeguimientoCobro;
 import com.saa.ejb.crd.service.dto.ResultadoAbonoCapital;
 import com.saa.ejb.crd.service.dto.ResultadoAnulacion;
 import com.saa.ejb.crd.service.dto.ResultadoAplicacionAcuerdo;
@@ -2065,5 +2066,96 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectByEvento(idEvento);
         return contabilizacionIndividualCreditoService.haberDesdePagos(pagos, idEmpresa, idPlantillaAplicacion,
                 fechaCorte, prefijoDescripcion);
+    }
+
+    // =====================================================================
+    // Seguimiento mensual de cobros personales (2026-09-07, solo lectura) — ver
+    // docs/logica-negocio/crd/API-SEGUIMIENTO-COBROS.md. No cambia el circuito.
+    // =====================================================================
+
+    @Override
+    public List<FilaSeguimientoCobro> seguimiento(LocalDate desde, LocalDate hasta) throws Throwable {
+        System.out.println("CobroCreditoService.seguimiento - desde: " + desde + " - hasta: " + hasta);
+        if (desde == null || hasta == null) {
+            throw new IncomeException("desde y hasta son obligatorios (yyyy-MM-dd)");
+        }
+        if (hasta.isBefore(desde)) {
+            throw new IncomeException("hasta no puede ser anterior a desde");
+        }
+
+        List<CobroCredito> cobros = cobroCreditoDaoService.selectByRangoFechaCobro(desde, hasta);
+        List<FilaSeguimientoCobro> filas = new ArrayList<>();
+        for (CobroCredito cobro : cobros) {
+            FilaSeguimientoCobro fila = new FilaSeguimientoCobro();
+            fila.setIdCobro(cobro.getCodigo());
+            fila.setTipoOperacion(cobro.getTipoOperacion());
+            fila.setEstado(cobro.getEstado());
+            fila.setNombreEstado(textoEstado(cobro.getEstado()));
+            fila.setFechaCobro(cobro.getFecha());
+            fila.setReferencia(cobro.getReferencia());
+            fila.setValor(cobro.getValor());
+
+            if (cobro.getEntidad() != null) {
+                fila.setIdEntidad(cobro.getEntidad().getCodigo());
+                fila.setParticipe(cobro.getEntidad().getRazonSocial());
+                fila.setIdentificacion(cobro.getEntidad().getNumeroIdentificacion());
+            }
+
+            if (cobro.getCuentaBancaria() != null) {
+                // "{banco} - {numeroCuenta}", mismo formato que el resto del proyecto
+                // (ConciliacionCierreServiceImpl.formatoCuenta, TransferenciaServiceImpl, etc.).
+                // No incluye el tipo de cuenta (Ahorros/Corriente): ningún lugar del proyecto
+                // resuelve ese rubro a texto para mostrar, y no se inventa esa resolución acá.
+                String nombreBanco = cobro.getCuentaBancaria().getBanco() != null
+                        ? cobro.getCuentaBancaria().getBanco().getNombre() : "";
+                fila.setCuentaBancaria(nombreBanco + " - " + cobro.getCuentaBancaria().getNumeroCuenta());
+            }
+
+            fila.setUsuarioRegistro(cobro.getUsuarioRegistro());
+            fila.setFechaRegistro(cobro.getFechaRegistro());
+            fila.setUsuarioAprobacion(cobro.getUsuarioAprobacion());
+            fila.setFechaAprobacion(cobro.getFechaAprobacion());
+            fila.setUsuarioRechazo(cobro.getUsuarioRechazo());
+            fila.setFechaRechazo(cobro.getFechaRechazo());
+            fila.setMotivoRechazo(cobro.getMotivoRechazo());
+            fila.setUsuarioProceso(cobro.getUsuarioProceso());
+            fila.setFechaProceso(cobro.getFechaProceso());
+            fila.setUsuarioAnulacion(cobro.getUsuarioAnulacion());
+            fila.setFechaAnulacion(cobro.getFechaAnulacion());
+            fila.setMotivoAnulacion(cobro.getMotivoAnulacion());
+            fila.setUsuarioReverso(cobro.getUsuarioReverso());
+            fila.setFechaReverso(cobro.getFechaReverso());
+            fila.setMotivoReverso(cobro.getMotivoReverso());
+            fila.setNumeroReversos(cobro.getNumeroReversos());
+
+            // null si la etapa no ocurrió — nunca 0, que se confundiría con "fue inmediato"
+            // (§3 del contrato).
+            fila.setHorasHastaAprobacion(horasEntre(cobro.getFechaRegistro(), cobro.getFechaAprobacion()));
+            fila.setHorasHastaProceso(horasEntre(cobro.getFechaAprobacion(), cobro.getFechaProceso()));
+
+            String ruta = cobro.getRutaRespaldo();
+            fila.setRutaRespaldo(ruta);
+            fila.setTieneRespaldo(ruta != null && !ruta.trim().isEmpty());
+
+            fila.setAsientoTransitorio(cobro.getAsientoTransitorio() != null
+                    ? cobro.getAsientoTransitorio().getNumeroAlterno() : null);
+            fila.setAsientoReparto(cobro.getAsientoReparto() != null
+                    ? cobro.getAsientoReparto().getNumeroAlterno() : null);
+            fila.setAsientoDefinitivo(cobro.getAsientoDefinitivo() != null
+                    ? cobro.getAsientoDefinitivo().getNumeroAlterno() : null);
+
+            filas.add(fila);
+        }
+        return filas;
+    }
+
+    /** Horas entre dos fechas, con el mismo {@code redondear()} de 2 decimales que usa el
+     * resto del archivo. {@code null} si cualquiera falta — NUNCA 0.0, que en el seguimiento
+     * significaría "fue inmediato". */
+    private Double horasEntre(LocalDateTime desde, LocalDateTime hasta) {
+        if (desde == null || hasta == null) {
+            return null;
+        }
+        return redondear(java.time.Duration.between(desde, hasta).toMinutes() / 60.0);
     }
 }

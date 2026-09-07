@@ -1,5 +1,6 @@
 package com.saa.ejb.crd.daoImpl;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
@@ -88,6 +89,31 @@ public class CobroCreditoDaoServiceImpl extends EntityDaoImpl<CobroCredito>
         query.setParameter("referenciaTrim", referenciaTrim);
         query.setParameter("idCobroExcluido", idCobroExcluido);
         query.setParameter("estadoAnulado", Long.valueOf(CrdEstadoCobro.ANULADO));
+        return query.getResultList();
+    }
+
+    @Override
+    public List<CobroCredito> selectByRangoFechaCobro(LocalDate desde, LocalDate hasta) throws Throwable {
+        System.out.println("Ingresa al metodo selectByRangoFechaCobro de CobroCredito"
+                + " - desde: " + desde + " - hasta: " + hasta);
+        // JOIN FETCH de entidad/cuentaBancaria/los 3 asientos: la pantalla de seguimiento
+        // muestra las cinco en cada fila y un mes puede traer cientos de cobros — sin esto,
+        // cada fila dispara sus propias consultas al recorrer la lista (N+1). El servicio
+        // además lee cuentaBancaria.banco (para el texto "{banco} - {numeroCuenta}"): aunque
+        // CuentaBancaria.banco es @ManyToOne EAGER por defecto, se fetchea explícito para no
+        // depender de que Hibernate lo resuelva con join y no con una consulta aparte.
+        Query query = em.createQuery(
+                " select c from CobroCredito c " +
+                " left join fetch c.entidad " +
+                " left join fetch c.cuentaBancaria cb " +
+                " left join fetch cb.banco " +
+                " left join fetch c.asientoTransitorio " +
+                " left join fetch c.asientoReparto " +
+                " left join fetch c.asientoDefinitivo " +
+                " where  c.fecha between :desde and :hasta " +
+                " order by c.fecha desc, c.codigo desc");
+        query.setParameter("desde", desde);
+        query.setParameter("hasta", hasta);
         return query.getResultList();
     }
 }

@@ -5,6 +5,7 @@
  */
 package com.saa.ejb.crd.dao;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.util.EntityDao;
@@ -56,4 +57,22 @@ public interface CobroCreditoDaoService extends EntityDao<CobroCredito> {
      * @throws Throwable      Excepcion
      */
     List<CobroCredito> selectByReferencia(String referenciaTrim, Long idCobroExcluido) throws Throwable;
+
+    /**
+     * Cobros cuya fecha del DEPÓSITO (no la de registro) cae en el rango, para la pantalla de
+     * seguimiento mensual (API-SEGUIMIENTO-COBROS.md). Trae con {@code JOIN FETCH} la entidad,
+     * la cuenta bancaria y los tres asientos — evita el N+1 de tocarlos fila por fila cuando un
+     * mes trae cientos de cobros.
+     *
+     * También fetchea {@code cuentaBancaria.banco} (nivel dos), que el service necesita para
+     * el texto "{banco} - {numeroCuenta}".
+     *
+     * @param desde      : Fecha inicial del rango (inclusive)
+     * @param hasta      : Fecha final del rango (inclusive)
+     * @return           : Listado ordenado por fecha de cobro descendente (más reciente
+     *                     primero), y por código descendente entre cobros del mismo día;
+     *                     VACÍO si no hay ninguno en el rango
+     * @throws Throwable : Excepcion
+     */
+    List<CobroCredito> selectByRangoFechaCobro(LocalDate desde, LocalDate hasta) throws Throwable;
 }
