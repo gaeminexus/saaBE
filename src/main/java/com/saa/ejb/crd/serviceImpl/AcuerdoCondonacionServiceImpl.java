@@ -13,6 +13,7 @@ import java.util.List;
 
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.cnt.dao.DetallePlantillaDaoService;
+import com.saa.ejb.cnt.dao.PlanCuentaDaoService;
 import com.saa.ejb.cnt.service.AsientoContableService;
 import com.saa.ejb.cnt.service.PlantillaService;
 import com.saa.ejb.crd.dao.AcuerdoCondonacionDaoService;
@@ -43,6 +44,7 @@ import com.saa.ejb.crd.service.dto.SolicitudRegistroCobro;
 import com.saa.model.cnt.Asiento;
 import com.saa.model.cnt.DetalleAsiento;
 import com.saa.model.cnt.DetallePlantilla;
+import com.saa.model.cnt.NombreEntidadesContabilidad;
 import com.saa.model.crd.AcuerdoCondonacion;
 import com.saa.model.crd.CobroCredito;
 import com.saa.model.crd.DetalleAcuerdoCondonacion;
@@ -138,6 +140,9 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
 
     @EJB
     private CobroCreditoDaoService cobroCreditoDaoService;
+
+    @EJB
+    private PlanCuentaDaoService planCuentaDaoService;
 
     /**
      * Confirma el acuerdo Y registra su cobro en CBCR en el MISMO acto (§5 del plan,
@@ -804,6 +809,8 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
                             + " no se puede armar el asiento de condonación del acuerdo " + acuerdo.getCodigo());
                 }
                 DetalleAsiento linea = new DetalleAsiento();
+                linea.setPlanCuenta(planCuentaDaoService.selectById(acumulada.banda.getIdPlanCuenta(),
+                        NombreEntidadesContabilidad.PLAN_CUENTA));
                 linea.setNumeroCuenta(acumulada.banda.getCuentaContable());
                 linea.setNombreCuenta(acumulada.banda.getNombreCuenta());
                 linea.setDescripcion("Condonación acuerdo " + acuerdo.getCodigo() + " - capital - "
