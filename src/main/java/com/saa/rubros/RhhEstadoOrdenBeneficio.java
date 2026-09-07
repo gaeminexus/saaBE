@@ -24,4 +24,12 @@ public interface RhhEstadoOrdenBeneficio {
 	public static final int PAGADA = 3;
 	public static final int ANULADA = 4;
 
+	/**
+	 * El pago se revirtio (asiento anulado, LQBS de vuelta a pendiente, novedades del
+	 * decimo eliminadas) porque tesoreria ya revirtio el PagoProgramado. Desde aqui solo
+	 * se anula -- no se re-envia a tesoreria, para no enlazar la orden a un pago revertido.
+	 * Ver docs/logica-negocio/rhh/API-PAGO-BENEFICIOS-SOCIALES.md §6.4. Script e2-19.
+	 */
+	public static final int REVERTIDA = 5;
+
 }

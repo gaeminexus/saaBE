@@ -111,4 +111,21 @@ public interface OrdenBeneficioSocialService extends EntityService<OrdenBenefici
      */
     Map<String, Object> anular(Long idOrden, String motivo, String usuario) throws Throwable;
 
+    /**
+     * Revierte una orden ya PAGADA: anula el asiento de baja de provision (la provision
+     * vuelve a estar viva), devuelve cada LQBS a pendiente, y elimina las novedades del
+     * decimo acumulado que creo {@link #confirmarPago}. Deja la orden en REVERTIDA, desde
+     * donde solo se puede anular (nunca reenviar a tesoreria). Ver el contrato §6.
+     *
+     * @param idOrden           : Id de la orden, debe estar PAGADA
+     * @param motivo            : Motivo de la reversion, obligatorio
+     * @param usuario           : Usuario que ejecuta
+     * @return                  : Mapa con exito, idOrden, liquidacionesRevertidas,
+     *                            novedadesEliminadas, asientoAnulado, mensaje
+     * @throws Throwable        : IncomeException (409) si la orden no esta PAGADA, si el
+     *                            PagoProgramado sigue CONFIRMADO en tesoreria, o si el rol del
+     *                            periodo de las novedades ya fue procesado
+     */
+    Map<String, Object> revertirPago(Long idOrden, String motivo, String usuario) throws Throwable;
+
 }

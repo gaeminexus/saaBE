@@ -16,6 +16,7 @@ import com.saa.ejb.rhh.dao.LiquidacionBeneficioSocialDaoService;
 import com.saa.ejb.rhh.dao.NovedadNominaDaoService;
 import com.saa.ejb.rhh.dao.OrdenBeneficioSocialDaoService;
 import com.saa.ejb.rhh.dao.PeriodoNominaDaoService;
+import com.saa.ejb.cnt.service.AsientoService;
 import com.saa.ejb.rhh.service.ContabilizacionNominaService;
 import com.saa.ejb.rhh.service.OrdenBeneficioSocialService;
 import com.saa.ejb.rhh.util.RedondeoNomina;
@@ -78,6 +79,9 @@ public class OrdenBeneficioSocialServiceImpl implements OrdenBeneficioSocialServ
 
     @EJB
     private NovedadNominaDaoService novedadNominaDaoService;
+
+    @EJB
+    private AsientoService asientoService;
 
     // =====================================================================
     // EntityService — los seis de la casa
@@ -448,6 +452,106 @@ public class OrdenBeneficioSocialServiceImpl implements OrdenBeneficioSocialServ
         resultado.put("idOrden", orden.getCodigo());
         resultado.put("mensaje", "Orden anulada.");
         System.out.println("✓ Orden " + idOrden + " anulada. Motivo: " + motivo);
+        return resultado;
+    }
+
+    @Override
+    public Map<String, Object> revertirPago(Long idOrden, String motivo, String usuario) throws Throwable {
+        System.out.println("=== revertirPago orden de beneficio social | idOrden=" + idOrden + " ===");
+
+        OrdenBeneficioSocial orden = em.find(OrdenBeneficioSocial.class, idOrden);
+        if (orden == null) {
+            throw new IncomeException("No existe la orden de beneficio social " + idOrden + ".");
+        }
+        if (motivo == null || motivo.trim().isEmpty()) {
+            throw new IncomeException("Debe indicar el motivo de la reversión.");
+        }
+        if (!Long.valueOf(RhhEstadoOrdenBeneficio.PAGADA).equals(orden.getEstado())) {
+            throw new IncomeException("La orden " + idOrden + " no está PAGADA (estado actual: "
+                    + textoEstadoOrden(orden.getEstado()) + "). Sólo se revierte un pago confirmado.");
+        }
+
+        PagoProgramado pago = orden.getPagoProgramado();
+        if (pago != null && pago.getEstado() != null
+                && pago.getEstado().intValue() == EstadoPagoProgramado.CONFIRMADO) {
+            throw new IncomeException("El pago " + pago.getId() + " sigue CONFIRMADO en tesorería."
+                    + " Revierta primero con POST /pgtr/revertirConfirmado/" + pago.getId() + ".");
+        }
+
+        List<LiquidacionBeneficioSocial> liquidaciones = liquidacionBeneficioSocialDaoService
+                .selectByOrden(idOrden);
+
+        // Caso duro (contrato §6.3): si el rol del periodo de las novedades ya se proceso
+        // (paso mas alla de ABIERTO), rechazar entero -- borrar solo la novedad no borra el
+        // renglon que el rol ya consumio, y eso no da ningun error: se ve como un rol correcto.
+        int tipoBeneficio = orden.getTipoBeneficio().intValue();
+        ConceptoNomina concepto = null;
+        List<NovedadNomina> novedades = new ArrayList<NovedadNomina>();
+        if (tipoBeneficio == RhhTipoBeneficioSocial.DECIMO_TERCERO
+                || tipoBeneficio == RhhTipoBeneficioSocial.DECIMO_CUARTO) {
+            int rolMotor = tipoBeneficio == RhhTipoBeneficioSocial.DECIMO_TERCERO
+                    ? RhhRolConceptoMotor.DECIMO_TERCERO_ACUMULADO_PAGADO
+                    : RhhRolConceptoMotor.DECIMO_CUARTO_ACUMULADO_PAGADO;
+            Long idEmpresa = orden.getEmpresa() != null ? orden.getEmpresa().getCodigo() : null;
+            concepto = conceptoNominaDaoService.selectByRolMotor(Integer.valueOf(rolMotor), idEmpresa);
+            String descripcion = marcadorNovedadDecimo(tipoBeneficio, orden.getCodigo());
+            if (concepto != null) {
+                for (LiquidacionBeneficioSocial liquidacion : liquidaciones) {
+                    if (liquidacion.getEmpleado() == null) {
+                        continue;
+                    }
+                    NovedadNomina novedad = novedadNominaDaoService.selectPorDescripcion(
+                            liquidacion.getEmpleado().getCodigo(), concepto.getCodigo(), descripcion);
+                    if (novedad != null) {
+                        novedades.add(novedad);
+                    }
+                }
+            }
+            if (!novedades.isEmpty()) {
+                PeriodoNomina periodo = novedades.get(0).getPeriodoNomina();
+                if (periodo != null && periodo.getEstado() != null
+                        && periodo.getEstado().longValue() > RhhEstadoPeriodoNomina.ABIERTO) {
+                    throw new IncomeException("El rol del período " + periodo.getMes() + "/"
+                            + periodo.getAnio() + " ya fue procesado e incluye la novedad de esta orden."
+                            + " Reabra o reprocese el período antes de revertir el pago.");
+                }
+            }
+        }
+
+        Long idAsiento = orden.getAsiento();
+        if (idAsiento != null) {
+            asientoService.anulaAsiento(idAsiento);
+        }
+
+        for (LiquidacionBeneficioSocial liquidacion : liquidaciones) {
+            liquidacion.setValorPagado(Double.valueOf(0D));
+            liquidacion.setFechaPago(null);
+            liquidacion.setEstado(Long.valueOf(1L));
+            liquidacionBeneficioSocialDaoService.save(liquidacion, liquidacion.getCodigo());
+        }
+
+        for (NovedadNomina novedad : novedades) {
+            novedadNominaDaoService.remove(new NovedadNomina(), novedad.getCodigo());
+        }
+
+        orden.setEstado(Long.valueOf(RhhEstadoOrdenBeneficio.REVERTIDA));
+        orden.setFechaPago(null);
+        orden.setAsiento(null);
+        String obsAnterior = orden.getObservaciones();
+        orden.setObservaciones("REVERTIDA: " + motivo.trim()
+                + (obsAnterior != null && !obsAnterior.trim().isEmpty() ? " | " + obsAnterior : ""));
+        orden.setUsuarioRegistro(usuario);
+        orden = ordenBeneficioSocialDaoService.save(orden, orden.getCodigo());
+
+        Map<String, Object> resultado = new LinkedHashMap<String, Object>();
+        resultado.put("exito", Boolean.TRUE);
+        resultado.put("idOrden", orden.getCodigo());
+        resultado.put("liquidacionesRevertidas", Integer.valueOf(liquidaciones.size()));
+        resultado.put("novedadesEliminadas", Integer.valueOf(novedades.size()));
+        resultado.put("asientoAnulado", idAsiento);
+        resultado.put("mensaje", "Pago revertido. La provisión vuelve a estar viva y la orden puede anularse.");
+        System.out.println("✓ Orden " + idOrden + " REVERTIDA | asiento anulado=" + idAsiento
+                + " | liquidaciones=" + liquidaciones.size() + " | novedades=" + novedades.size());
         return resultado;
     }
 

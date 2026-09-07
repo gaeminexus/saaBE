@@ -322,6 +322,33 @@ public class OrdenBeneficioSocialRest {
         }
     }
 
+    /**
+     * Revierte una orden ya PAGADA: anula el asiento de baja de provision, devuelve las
+     * LQBS a pendiente y elimina las novedades del decimo. Body: {motivo, usuario} — ver
+     * contrato #6. {@code motivo} es obligatorio.
+     */
+    @POST
+    @Path("/revertirPago/{id}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response revertirPago(@PathParam("id") Long id, Map<String, Object> datos) {
+        System.out.println("LLEGA AL SERVICIO POST /odbs/revertirPago/" + id);
+        try {
+            String motivo = datos != null ? (String) datos.get("motivo") : null;
+            String usuario = datos != null ? (String) datos.get("usuario") : null;
+
+            Map<String, Object> resultado = ordenBeneficioSocialService.revertirPago(id, motivo, usuario);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (IncomeException e) {
+            return respuestaConflicto(e.getMessage());
+        } catch (Throwable e) {
+            System.err.println("ERROR en revertirPago orden de beneficio social: " + e.getMessage());
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al revertir el pago: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────
 
     private Response respuestaConflicto(String mensaje) {
