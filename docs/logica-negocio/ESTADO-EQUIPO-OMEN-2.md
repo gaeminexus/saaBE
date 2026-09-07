@@ -2587,3 +2587,157 @@ la familia antes de dar por arreglado el ejemplar, que es el §29.
 **Lo que esto dice del método:** el bloque 5 estaba en el script *por si acaso*, como testigo de otra
 cosa. Un diagnóstico que sólo contesta la pregunta que le hiciste desperdicia la corrida. **Al
 escribir un `.sql` de verificación conviene pedir de más: la consulta ya está yendo a la base.**
+
+---
+
+## §31 — Sesión 2026-09-07 (tarde): la revisión de los formatos, y el frente nuevo de `cnt`
+
+**Sesión nueva del árbitro, memoria limpia.** El usuario pidió dos cosas: revisar si el frente de
+los formatos de pago estaba listo, y abrir un frente urgente en `cnt`.
+
+### 31.0 Estado de los árboles al abrir
+
+`saaBE` estaba **2 commits atrás** de `origin/main` (dos de `laptop1`, sobre caja chica de `tsr`).
+Fast-forward limpio. Los dos árboles sin nada sin commitear. `mvn -q compile` sobre `main`: **exit
+0**. Maven **3.9.8** y JDK **21.0.8** confirmados en esta máquina.
+
+**Y quedó cerrado un pendiente que el traspaso daba por abierto:** el `.jasper` de
+`RPRT_NOTA_VENTA_COMPRA` **ya está en el repositorio**. El único `.jrxml` sin par en todo el
+proyecto es `rep/test/reporte_prueba.jrxml`, que es de prueba.
+
+---
+
+### 31.1 🔴 Los formatos de pago: el trabajo difícil está bien, y no se puede desplegar
+
+Revisión campo por campo de las 669 líneas de `com.saa.ejb.tsr.formateador` contra
+`FORMATO-ARCHIVO-BANCOS.md`. **Lo que está bien es casi todo**, incluida la trampa más cara: el
+valor va en **centavos** en el Internacional y en **dólares** en el Pacífico, y los dos formateadores
+lo hacen bien. También el truncado a 41, el saneo del tabulador en un solo lugar, la validación de
+identificación por longitud, el ANSI `windows-1252`, y el saneo de la referencia del Pacífico.
+
+Y sin embargo el frente no sirve, por tres cosas — dos de ellas invisibles desde el código que las
+contiene:
+
+#### 🔴 A. El resolver manda la PK como código BCE, y su javadoc dice que está pendiente de una prueba que YA se corrió
+
+`CodigoBancoBeneficiarioResolver:41` devuelve `banco.getCodigo()`, o sea `BEXTCDGO`. Su javadoc dice
+textualmente *«PENDIENTE DE CONFIRMAR… lo verifica el `e2-15`, que el usuario todavía no corrió»*.
+
+**El `e2-15` se corrió el 2026-09-07 y respondió que NO** (§30.10): Machala es PK 5 con código BCE
+25, Pacífico es PK 8 con código 30. Está enganchado al camino vivo:
+`PagoProgramadoServiceImpl:1553` y `:1613`.
+
+> **Lo que hay que llevarse, y no es «el agente se olvidó»:** el pendiente estaba anotado en el
+> lugar correcto —el javadoc de la única clase que había que tocar— y **aun así venció sin que nadie
+> lo levantara**, porque el que corrió el `e2-15` (yo) registré el resultado en el documento de
+> estado y no en el código, y el código seguía diciendo lo contrario. **Es el §29 otra vez, en su
+> forma más incómoda: el aviso que vive lejos no protege ni cuando lo escribiste vos.** Un pendiente
+> anotado en dos lugares que no se miran entre sí es un pendiente sin dueño.
+
+#### 🔴 B. El frontend nunca consumió el contrato binario que el backend ya emite
+
+`PagoProgramadoServiceImpl:1594-1596` manda `contenido` (nulo en binarios), `contenidoBase64`
+(siempre) y `mimeType`. El modelo del FE, `cxp/model/pago-programado.ts:136-145`, **declara sólo
+`contenido`** — no existen `contenidoBase64`, `mimeType` ni `formatoBanco`. Y
+`archivo-banco.component.ts:170-176`, que es el componente **nuevo** creado por `821bca2`, hace:
+
+```ts
+if (!lote?.contenido) return;
+const blob = new Blob([lote.contenido], { type: 'text/plain' });
+```
+
+- **Pacífico:** `contenido` viene `null`, el `return` temprano se dispara, **el botón no hace nada**.
+  Sin error, sin archivo, sin aviso.
+- **Internacional:** baja el ANSI reconstruido como UTF-8, que es exactamente lo que el comentario
+  del backend dice que hay que evitar. Se rompen tildes y `ñ` en los nombres.
+
+> **El contrato estaba escrito, verificado y espejado a `saaFE/docs/pagos/` ANTES de que el
+> frontend arrancara** — la regla 6 se cumplió al pie de la letra. **Y no alcanzó.** Lo que falló no
+> fue escribir el contrato: fue que nadie contrastó el componente entregado contra él. La regla 6
+> hace falta pero no basta; le falta el paso de aceptación, que es la regla 11 (*la verificación de
+> un agente sobre su propio código no es verificación*). **Las dos reglas ya existían, cada una por
+> su lado, y el hueco está justo entre ellas.**
+
+#### 🔴 C. La Fase A no existe
+
+`BancoExterno` mapea cinco columnas y `BEXTCDBC` no está. El `e2-14` sin correr, faltando seis
+códigos del BCE que sólo el usuario consigue. Lo único bueno: **nadie mapeó la columna antes de
+crearla**, así que no hay bomba de `ORA-00904` — la regla 7 del registro, bien aplicada.
+
+**El orden en que se hizo el trabajo fue el inverso al de las dependencias:** las fases B, C y D
+entregadas, y la A —que es la que aporta el dato del que dependen las otras— sin empezar.
+
+---
+
+### 31.2 Frente ABIERTO: pantalla V2 de mayor analítico (`cnt`)
+
+**Pedido del usuario, textual:** *«la actual es muy limitada por scroll y le resulta algo incómoda
+al usuario… que el campo que siempre debe desplegar o exportar a excel sea el campo de
+numeroAlterno… la navegabilidad, búsqueda y ordenamiento debe ser muchísimo más amigable… todo debe
+permitir exportar a csv también»*.
+
+Documentos en disco **antes** de despachar (regla 7), commiteados en `saaBE 00fecaf` / `saaFE 12ae790`:
+
+| Documento | Qué resuelve |
+|---|---|
+| `cnt/API-MAYOR-ANALITICO-V2.md` | Contrato de los 4 endpoints verificados + el único nuevo. Espejado a `saaFE/docs/cnt/` |
+| `cnt/PLAN-MAYOR-ANALITICO-V2.md` | Inventario de las 14 funcionalidades a preservar, diagnóstico del scroll, diseño de las dos vistas |
+
+#### 🟢 El hallazgo que definió el reparto: `numeroAlterno` ya viaja
+
+`DetalleMayorAnalitico` declara `@ManyToOne` (EAGER por defecto) a `Asiento`, el endpoint devuelve la
+entidad y no hay `@JsonIgnore`. O sea que el movimiento **ya llega** con
+`detalle.asiento.numeroAlterno`, y lo confirma el código que ya lo consume
+(`mayor-analitico-asiento-dialog.component.ts:150`, que lo lee del mismo payload).
+
+**El pedido central del usuario no necesitaba backend.** Si lo hubiera dado por supuesto al revés
+—«hace falta exponer el campo»— habría despachado una tarea de BE, un cambio de contrato y una
+espera, para algo que ya estaba en el cable.
+
+⚠️ **La trampa:** `ASNTNMAL` es nullable y lo asigna `AsientoServiceImpl:244` al grabar, así que los
+asientos viejos no lo tienen. El respaldo a `numeroAsiento` es obligatorio en pantalla y en los tres
+CSV. Una columna de identificación de asiento en blanco en un mayor exportado es un renglón que el
+contador no puede rastrear.
+
+#### 🔴 El defecto que no buscaba: una de las tres formas del reporte no se puede pedir
+
+`MayorAnaliticoServiceImpl:163` hace `switch` sobre `ReporteTipoDistribucion` con **tres** casos.
+El `.html` de la pantalla escribe **dos** `<mat-option>` a mano, con etiquetas equivocadas
+(*«Sin distribución»/«Con distribución»*) y sin el valor `2` (*Cuenta por centro*).
+
+Y lo que lo vuelve un caso de manual: **el `.ts` de esa misma pantalla ya declara las tres etiquetas
+correctas** en `opcionesTipoDistribucion` — y el `.html` no usa ese arreglo.
+
+> **Es el §24 en otro disfraz.** Allá una guarda enumeraba orígenes en vez de mirar la condición;
+> acá una plantilla enumera opciones en vez de leer la fuente que tiene al lado. **El denominador
+> común es el mismo: una lista escrita a mano lejos de su fuente de verdad se desincroniza, y el
+> elemento que falta no falla — no existe.** Nadie iba a reportar «falta la tercera opción», porque
+> desde la pantalla no hay forma de saber que existe.
+
+#### La decisión de Excel, y por qué no hay dependencia nueva
+
+El usuario pidió «exportar a excel» y «exportar a csv también». `ExportService.exportToCSV` **ya
+emite BOM UTF-8 y autodetecta el separador**, así que el CSV abre directo en Excel con los acentos
+correctos. Y `package.json` no tiene ninguna librería de hoja de cálculo: sólo Angular, rxjs, tslib
+y zone.js. **Un `.xlsx` de verdad costaba una dependencia npm nueva en un árbol compartido, para un
+problema que ya está resuelto.** Se le dijo al usuario y queda abierto por si quiere formato real.
+
+#### El único endpoint nuevo
+
+`GET /rest/myan/detalleReporte/{secuencialReporte}`. Existe porque hoy exportar todo el reporte hace
+**una petición HTTP por cuenta contable** (`forkJoin` sobre las cabeceras), y porque buscar y ordenar
+sobre todo el reporte es imposible sin traerlo entero.
+
+---
+
+### 31.3 Nota de proceso: el usuario cortó una costumbre mía
+
+Le pasé los dos prompts al chat y le pedí que los copiara a las sesiones de los ejecutores. Su
+respuesta: *«tu gestionas los prompts con tu equipo, no me lo pidas a mi»*.
+
+**Tenía razón y el error era de encuadre.** El esquema dice que por defecto el usuario es
+intermediario *hasta que autorice el modo directo* — y yo leí eso como «pedir permiso cada vez» en
+vez de «pedirlo una vez». El resultado era devolverle trabajo de despacho que es exactamente lo que
+un árbitro existe para sacarle de encima. **Lo que se le consulta son decisiones de negocio y
+scripts que hay que correr; repartir el trabajo entre mis propios ejecutores no es ninguna de las
+dos.**
