@@ -19,7 +19,11 @@ public interface TipoCuentasBancarias {
 
 	// Ids de los elementos hijos
 	public static final int RAIZ = 0;
-	public static final int CORRIENTE = 1;
-	public static final int AHORROS = 2;
+
+	// Codigos alternos del detalle del rubro 23 (SCP.PDTR.PDTRALTR), verificados contra la
+	// base el 2026-09-07: alterno 1 = AHORRO, alterno 2 = CORRIENTE. Hasta esa fecha estos
+	// dos valores estaban invertidos -- no los vuelvas a dar vuelta "arreglandolos".
+	public static final int AHORROS = 1;
+	public static final int CORRIENTE = 2;
 
 }
