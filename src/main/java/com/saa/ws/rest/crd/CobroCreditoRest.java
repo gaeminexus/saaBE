@@ -230,6 +230,31 @@ public class CobroCreditoRest {
     }
 
     /**
+     * POST /rest/cbcr/{id}/reversar — el depósito SÍ llegó y se aplicó mal (a diferencia de
+     * {@code /anular}, donde el depósito nunca llegó). Revierte los pagos, la distribución de
+     * bandas y los asientos, y devuelve el cobro a APROBADO para reprocesarse. Motivo
+     * obligatorio. Ver {@link CobroCreditoService#reversarProceso} y
+     * {@code docs/logica-negocio/crd/API-REVERSO-COBRO-CREDITO.md}.
+     */
+    @POST
+    @Path("/{id}/reversar")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response reversar(@PathParam("id") Long id, SolicitudAprobacionCobro solicitud) {
+        System.out.println("LLEGA AL SERVICIO POST reversar - CBCR - id: " + id);
+        try {
+            CobroCredito cobro = cobroCreditoService.reversarProceso(id,
+                    solicitud != null ? solicitud.getUsuario() : null,
+                    solicitud != null ? solicitud.getMotivo() : null);
+            return Response.status(Response.Status.OK).entity(cobro).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al reversar el cobro " + id + ": " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
      * POST /rest/cbcr/{id}/procesar — paso 3 (PROCESO), lado crédito. Solo desde APROBADO.
      */
     @POST

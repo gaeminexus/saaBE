@@ -165,6 +165,55 @@ public interface CobroCreditoService {
     CobroCredito anularCobro(Long idCobro, String usuario, String motivo) throws Throwable;
 
     /**
+     * Reversa el PROCESO de un cobro — a diferencia de {@link #anularCobro}, acá el depósito
+     * SÍ llegó al banco y se aplicó mal; el cobro vuelve a {@link com.saa.rubros.CrdEstadoCobro
+     * #APROBADO}, no a un estado terminal, para poder reprocesarse. Contrato completo:
+     * {@code docs/logica-negocio/crd/API-REVERSO-COBRO-CREDITO.md}.
+     *
+     * <table border="1">
+     * <caption>Anular vs. reversar</caption>
+     * <tr><th></th><th>Anular ({@link #anularCobro})</th><th>Reversar (este método)</th></tr>
+     * <tr><td>Qué pasó</td><td>El depósito NUNCA llegó al banco</td>
+     *     <td>El depósito SÍ llegó, se aplicó mal</td></tr>
+     * <tr><td>Estado final</td><td>ANULADO (5), terminal</td><td>APROBADO (2), reprocesable</td></tr>
+     * <tr><td>Asiento transitorio</td><td>Se anula y no vuelve</td>
+     *     <td>Se anula Y SE REGENERA</td></tr>
+     * <tr><td>Detalle del cobro</td><td>Queda como está, muerto</td>
+     *     <td>Se DESENGANCHA de sus eventos</td></tr>
+     * </table>
+     *
+     * Siete pasos, todos en la MISMA transacción (todo o nada): (1) validar estado/motivo/tipo;
+     * (2) reversar todas las líneas del detalle ({@link #anularCobro}'s bucle, compartido);
+     * (3) borrar la distribución de bandas ({@code DsbnOrigen.COBRO_INDIVIDUAL}); (4) anular
+     * los asientos de reparto y definitivo, dejando sus FK en {@code null}; (5) anular el
+     * asiento transitorio y REGENERARLO (con la guarda de
+     * {@link ConfiguracionContabilidadService#contabilidadActiva()} — si está apagada el cobro
+     * queda sin transitorio, igual que al registrar); (6) desenganchar cada línea de su
+     * {@code EventoPrestamo}/{@code PagoAporte}, para que un reproceso no escriba encima de un
+     * evento anulado; (7) sellar {@code usuarioReverso}/{@code fechaReverso}/{@code
+     * motivoReverso}, incrementar {@code numeroReversos}, y volver a APROBADO —
+     * {@code usuarioAprobacion}/{@code fechaAprobacion} NO se tocan: la aprobación original
+     * sigue siendo válida y es lo que habilita reprocesar sin que contabilidad apruebe de nuevo.
+     *
+     * ⚠️ El asiento transitorio nuevo lleva la fecha de HOY, no la del depósito original. Si el
+     * período contable del asiento original ya está MAYORIZADO, la regeneración del paso 5
+     * falla fuerte (mismo control que ya hace {@code AsientoService#saveSingle}) y toda la
+     * transacción se revierte — no queda nada a medias.
+     *
+     * ⛔ {@code ACUERDO_CONDONACION} queda FUERA a propósito: su reverso exigiría reabrir un
+     * acuerdo anulado, y esa operación inversa no existe. Se rechaza explícitamente.
+     *
+     * @param idCobro    : Código del cobro
+     * @param usuario    : Usuario de crédito que reversa
+     * @param motivo     : Motivo del reverso. Obligatorio.
+     * @return           : El cobro actualizado, en estado APROBADO
+     * @throws Throwable : Si el cobro no existe, el motivo viene vacío, el estado no es
+     *                     PROCESADO, el tipo es ACUERDO_CONDONACION, o alguna línea rechaza su
+     *                     reverso (mensaje identifica cuál)
+     */
+    CobroCredito reversarProceso(Long idCobro, String usuario, String motivo) throws Throwable;
+
+    /**
      * Bandeja combinada de aprobación de contabilidad: cobros individuales REGISTRADOS +
      * cargas Petro pendientes del paso 1 (confirmación de recepción), sin modelo común.
      * Es de solo lectura — cada fila trae su tipo para que la pantalla despache al endpoint

@@ -157,6 +157,26 @@ public class CobroCredito implements Serializable {
     @Column(name = "CBCRMTAN", length = 2000)
     private String motivoAnulacion;
 
+    /** Usuario del ÚLTIMO reverso del proceso (vuelve el cobro a APROBADO para reprocesar). */
+    @Basic
+    @Column(name = "CBCRUSRV", length = 50)
+    private String usuarioReverso;
+
+    /** Fecha del último reverso. */
+    @Basic
+    @Column(name = "CBCRFCRV")
+    private LocalDateTime fechaReverso;
+
+    /** Motivo del último reverso. Se sobreescribe si se reversa de nuevo: no hay historial de reversos sucesivos. */
+    @Basic
+    @Column(name = "CBCRMTRV", length = 2000)
+    private String motivoReverso;
+
+    /** Cuántas veces se reversó este cobro (arranca en 0, +1 por reverso). Señal operativa: un cobro reversado varias veces amerita revisión. */
+    @Basic
+    @Column(name = "CBCRNMRV")
+    private Long numeroReversos;
+
     /** FK - Asiento TRANSITORIO (paso 1: D banco -> H 2.3.01.15.01, plantilla alterno 19). */
     @ManyToOne
     @JoinColumn(name = "CBCRASN1", referencedColumnName = "ASNTCDGO")
@@ -359,6 +379,38 @@ public class CobroCredito implements Serializable {
 
     public void setMotivoAnulacion(String motivoAnulacion) {
         this.motivoAnulacion = motivoAnulacion;
+    }
+
+    public String getUsuarioReverso() {
+        return usuarioReverso;
+    }
+
+    public void setUsuarioReverso(String usuarioReverso) {
+        this.usuarioReverso = usuarioReverso;
+    }
+
+    public LocalDateTime getFechaReverso() {
+        return fechaReverso;
+    }
+
+    public void setFechaReverso(LocalDateTime fechaReverso) {
+        this.fechaReverso = fechaReverso;
+    }
+
+    public String getMotivoReverso() {
+        return motivoReverso;
+    }
+
+    public void setMotivoReverso(String motivoReverso) {
+        this.motivoReverso = motivoReverso;
+    }
+
+    public Long getNumeroReversos() {
+        return numeroReversos;
+    }
+
+    public void setNumeroReversos(Long numeroReversos) {
+        this.numeroReversos = numeroReversos;
     }
 
     public Asiento getAsientoTransitorio() {

@@ -452,8 +452,9 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                 || CrdTipoOperacionCobro.REGISTRO_APORTE.equals(cobro.getTipoOperacion());
         if (estado == CrdEstadoCobro.PROCESADO && !reversoPorLineas) {
             throw new IncomeException("El cobro " + idCobro + " ya fue PROCESADO; para"
-                    + " deshacerlo use la anulación de la operación sobre el préstamo/aporte"
-                    + " correspondiente (anularOperacion), no la anulación del cobro");
+                    + " deshacerlo use el reverso del proceso (POST /rest/cbcr/" + idCobro
+                    + "/reversar), que revierte los pagos, las bandas y los asientos, y"
+                    + " devuelve el cobro a la bandeja.");
         }
         if (estado == CrdEstadoCobro.ANULADO) {
             throw new IncomeException("El cobro " + idCobro + " ya está ANULADO");
@@ -466,53 +467,16 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         // del detalle, en la MISMA transacción que este método: si cualquier línea falla, el
         // contenedor revierte todo y ninguna queda a medias.
         if (estado == CrdEstadoCobro.PROCESADO) {
-            List<DetalleCobroCredito> detalles = detalleCobroCreditoDaoService.selectByCobro(idCobro);
             String motivoLinea = "Anulación del cobro " + idCobro + ": " + motivo.trim();
-            for (DetalleCobroCredito linea : detalles) {
-                if (linea.getPagoAporte() != null) {
-                    Long idAporte = linea.getPagoAporte().getAporte() != null
-                            ? linea.getPagoAporte().getAporte().getCodigo() : null;
-                    if (idAporte != null) {
-                        try {
-                            aporteService.reversarAporte(idAporte, usuario, motivoLinea);
-                        } catch (IncomeException e) {
-                            throw new IncomeException("No se pudo anular el cobro " + idCobro
-                                    + ": el aporte " + idAporte + " (línea " + linea.getCodigo()
-                                    + ") lo rechazó: " + e.getMessage());
-                        }
-                    }
-                } else if (linea.getEventoPrestamo() != null) {
-                    SolicitudAnulacion solicitudAnulacion = new SolicitudAnulacion();
-                    solicitudAnulacion.setIdEvento(linea.getEventoPrestamo().getCodigo());
-                    solicitudAnulacion.setUsuario(usuario);
-                    solicitudAnulacion.setMotivo(motivoLinea);
-                    // idEmpresa lo pone CBCR con la empresa derivada de la cuenta bancaria del
-                    // cobro, NUNCA la que vino del cliente (contrato
-                    // API-EMPRESA-CONTABLE-CRD.md §2).
-                    solicitudAnulacion.setIdEmpresa(derivarEmpresaCobro(cobro));
-                    Long idPrestamoLinea = linea.getPrestamo() != null
-                            ? linea.getPrestamo().getCodigo() : null;
-                    ResultadoAnulacion resultadoAnulacion;
-                    try {
-                        resultadoAnulacion = procesoPagoPrestamoService.anularOperacion(solicitudAnulacion);
-                    } catch (IncomeException e) {
-                        // Todo-o-nada es correcto (si un préstamo no se puede reversar, no se
-                        // reversa nada) — pero sin este contexto, un cobro de 3+ líneas deja al
-                        // usuario con un error genérico sin saber cuál de los préstamos lo
-                        // bloqueó ni por qué (típicamente ERR_EVENTO_POSTERIOR_VIGENTE: hay una
-                        // operación más nueva sobre ESE préstamo específico que hay que anular
-                        // primero).
-                        throw new IncomeException("No se pudo anular el cobro " + idCobro
-                                + ": el préstamo " + idPrestamoLinea + " (línea " + linea.getCodigo()
-                                + ", evento " + linea.getEventoPrestamo().getCodigo() + ") lo rechazó: "
-                                + e.getMessage());
-                    }
-                    System.out.println("  ↩️ Cobro " + idCobro + " - préstamo "
-                            + resultadoAnulacion.getIdPrestamo() + " revertido (evento "
-                            + resultadoAnulacion.getIdEvento() + ")");
-                }
-            }
+            reversarLineasProcesadas(cobro, usuario, motivoLinea);
         }
+
+        // Idempotente por (origen, idOrigen) — PLAN-AUDITORIA-BANDAS.md §9: si el cobro nunca
+        // llegó a PROCESADO no hay filas de CRD.DSBN que borrar y esto no hace nada. Antes de
+        // este cambio (2026-09-07) nunca se llamaba acá: cada PAGO_MULTIPLE/COBRO_MIXTO/
+        // REGISTRO_APORTE anulado dejaba su distribución de bandas viva, y la auditoría de
+        // bandas contaba plata ya revertida.
+        distribucionBandaService.eliminarDistribucion(DsbnOrigen.COBRO_INDIVIDUAL, idCobro);
 
         // No hubo cobro: el DEBE al banco nunca debió registrarse, a diferencia de un rechazo
         // simple (que sí corresponde a un cobro real, mal registrado). Por eso ACÁ SÍ se
@@ -553,6 +517,166 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                         cobro.getUsuarioAnulacion(), cobro.getFechaAnulacion(), cobro.getMotivoAnulacion());
             }
         }
+
+        return cobro;
+    }
+
+    /**
+     * Reversa TODAS las líneas del detalle de un cobro PROCESADO — préstamos vía
+     * {@link ProcesoPagoPrestamoService#anularOperacion} (una llamada por línea, ese método NO
+     * se toca) y aportes vía {@link AporteService#reversarAporte}. Extraído de
+     * {@link #anularCobro} (2026-09-07) para compartirlo con {@link #reversarProceso}: el
+     * bucle es el MISMO en los dos casos, solo cambia qué pasa con el cobro después (queda
+     * ANULADO y terminal, o vuelve a APROBADO para reprocesar).
+     *
+     * Todo o nada: si cualquier línea falla, el llamador (dentro de la misma transacción)
+     * revierte el resto. El mensaje de error identifica la línea/préstamo/aporte que bloqueó
+     * — típico {@code ERR_EVENTO_POSTERIOR_VIGENTE}, porque ESE préstamo recibió otra
+     * operación después de este cobro y hay que anular esa primero.
+     *
+     * @param cobro       : El cobro cuyas líneas se reversan
+     * @param usuario     : Usuario que ejecuta la reversión
+     * @param motivoLinea : Motivo ya armado por el llamador (nombra el cobro y el motivo de
+     *                      quien anula o reversa)
+     * @throws Throwable  : Si alguna línea rechaza su reverso
+     */
+    private void reversarLineasProcesadas(CobroCredito cobro, String usuario, String motivoLinea)
+            throws Throwable {
+        Long idCobro = cobro.getCodigo();
+        List<DetalleCobroCredito> detalles = detalleCobroCreditoDaoService.selectByCobro(idCobro);
+        for (DetalleCobroCredito linea : detalles) {
+            if (linea.getPagoAporte() != null) {
+                Long idAporte = linea.getPagoAporte().getAporte() != null
+                        ? linea.getPagoAporte().getAporte().getCodigo() : null;
+                if (idAporte != null) {
+                    try {
+                        aporteService.reversarAporte(idAporte, usuario, motivoLinea);
+                    } catch (IncomeException e) {
+                        throw new IncomeException("No se pudo anular el cobro " + idCobro
+                                + ": el aporte " + idAporte + " (línea " + linea.getCodigo()
+                                + ") lo rechazó: " + e.getMessage());
+                    }
+                }
+            } else if (linea.getEventoPrestamo() != null) {
+                SolicitudAnulacion solicitudAnulacion = new SolicitudAnulacion();
+                solicitudAnulacion.setIdEvento(linea.getEventoPrestamo().getCodigo());
+                solicitudAnulacion.setUsuario(usuario);
+                solicitudAnulacion.setMotivo(motivoLinea);
+                // idEmpresa lo pone CBCR con la empresa derivada de la cuenta bancaria del
+                // cobro, NUNCA la que vino del cliente (contrato
+                // API-EMPRESA-CONTABLE-CRD.md §2).
+                solicitudAnulacion.setIdEmpresa(derivarEmpresaCobro(cobro));
+                Long idPrestamoLinea = linea.getPrestamo() != null
+                        ? linea.getPrestamo().getCodigo() : null;
+                ResultadoAnulacion resultadoAnulacion;
+                try {
+                    resultadoAnulacion = procesoPagoPrestamoService.anularOperacion(solicitudAnulacion);
+                } catch (IncomeException e) {
+                    // Todo-o-nada es correcto (si un préstamo no se puede reversar, no se
+                    // reversa nada) — pero sin este contexto, un cobro de 3+ líneas deja al
+                    // usuario con un error genérico sin saber cuál de los préstamos lo
+                    // bloqueó ni por qué (típicamente ERR_EVENTO_POSTERIOR_VIGENTE: hay una
+                    // operación más nueva sobre ESE préstamo específico que hay que anular
+                    // primero).
+                    throw new IncomeException("No se pudo anular el cobro " + idCobro
+                            + ": el préstamo " + idPrestamoLinea + " (línea " + linea.getCodigo()
+                            + ", evento " + linea.getEventoPrestamo().getCodigo() + ") lo rechazó: "
+                            + e.getMessage());
+                }
+                System.out.println("  ↩️ Cobro " + idCobro + " - préstamo "
+                        + resultadoAnulacion.getIdPrestamo() + " revertido (evento "
+                        + resultadoAnulacion.getIdEvento() + ")");
+            }
+        }
+    }
+
+    @Override
+    public CobroCredito reversarProceso(Long idCobro, String usuario, String motivo) throws Throwable {
+        System.out.println("CobroCreditoService.reversarProceso - cobro: " + idCobro);
+        if (usuario == null || usuario.trim().isEmpty()) {
+            throw new IncomeException("usuario es obligatorio");
+        }
+        // Comprobación de estado DENTRO de la misma transacción que el cambio — mismo
+        // razonamiento que aprobarCobro/rechazarCobro/procesarCobro.
+        CobroCredito cobro = buscarCobro(idCobro);
+        long estado = cobro.getEstado() != null ? cobro.getEstado() : -1L;
+        if (estado != CrdEstadoCobro.PROCESADO) {
+            throw new IncomeException("El cobro " + idCobro + " está en estado "
+                    + textoEstado(cobro.getEstado()) + "; solo se puede reversar un cobro PROCESADO");
+        }
+        if (motivo == null || motivo.trim().isEmpty()) {
+            throw new IncomeException("El motivo del reverso es obligatorio");
+        }
+        // ACUERDO_CONDONACION queda fuera a propósito (§8 del contrato): su reverso exigiría
+        // reabrir un acuerdo ya anulado (anularAcuerdoPorCobro), y esa operación inversa no
+        // existe. Inventarla acá, sobre un frente que este equipo no levantó, es exactamente
+        // cómo se rompe algo en silencio.
+        if (CrdTipoOperacionCobro.ACUERDO_CONDONACION.equals(cobro.getTipoOperacion())) {
+            throw new IncomeException("El cobro " + idCobro + " es de tipo ACUERDO_CONDONACION:"
+                    + " su reverso exige reabrir el acuerdo de condonación asociado, que hoy no"
+                    + " tiene operación inversa. Anule el acuerdo y regístrelo de nuevo.");
+        }
+
+        String motivoTrim = motivo.trim();
+        String motivoLinea = "Reverso del cobro " + idCobro + ": " + motivoTrim;
+
+        // Paso 2 — reversar TODAS las líneas del detalle (mismo bucle que anularCobro, ver
+        // reversarLineasProcesadas).
+        reversarLineasProcesadas(cobro, usuario, motivoLinea);
+
+        // Paso 3 — borrar la distribución de bandas. Siempre corrió al procesar (procesarCobro),
+        // así que un cobro PROCESADO siempre tiene algo que borrar acá.
+        distribucionBandaService.eliminarDistribucion(DsbnOrigen.COBRO_INDIVIDUAL, idCobro);
+
+        // Paso 4 — anular los asientos del proceso, orden inverso al de generación (3 -> 2), y
+        // dejar las dos referencias en null: a diferencia de anularCobro (donde el cobro queda
+        // muerto y no importa), acá el cobro vuelve a vivir y procesarCobro va a generar
+        // asientos NUEVOS si se reprocesa.
+        if (cobro.getAsientoDefinitivo() != null) {
+            asientoService.anulaAsiento(cobro.getAsientoDefinitivo().getCodigo(), usuario, motivoLinea);
+            cobro.setAsientoDefinitivo(null);
+        }
+        if (cobro.getAsientoReparto() != null) {
+            asientoService.anulaAsiento(cobro.getAsientoReparto().getCodigo(), usuario, motivoLinea);
+            cobro.setAsientoReparto(null);
+        }
+
+        // Paso 5 — anular y REGENERAR el transitorio (decisión del usuario 2026-09-07). Patrón
+        // calcado de editarYReenviarCobro (líneas ~373-380 y ~416-420): la guarda de
+        // contabilidadActiva() no es opcional, si la contabilidad de CRD está apagada el cobro
+        // se queda sin transitorio, igual que al registrar. El asiento nuevo lleva la fecha de
+        // HOY; si el período del asiento original está MAYORIZADO, generarAsientoTransitorio
+        // falla fuerte (AsientoService#saveSingle ya valida el período) y toda la transacción
+        // se revierte.
+        if (cobro.getAsientoTransitorio() != null) {
+            asientoService.anulaAsiento(cobro.getAsientoTransitorio().getCodigo(), usuario,
+                    "Reverso del cobro " + idCobro + ": " + motivoTrim + ". El asiento se rehace.");
+            cobro.setAsientoTransitorio(null);
+        }
+        if (configuracionContabilidadService.contabilidadActiva()) {
+            cobro.setAsientoTransitorio(generarAsientoTransitorio(cobro));
+        }
+
+        // Paso 6 — desenganchar el detalle. NO existe en anularCobro y acá es obligatorio:
+        // allá el cobro muere, acá vuelve a vivir, y sin esto enlazarEvento escribiría encima
+        // de un evento YA ANULADO al reprocesar (y un anularCobro posterior intentaría
+        // re-anular ese evento muerto).
+        List<DetalleCobroCredito> detalles = detalleCobroCreditoDaoService.selectByCobro(idCobro);
+        for (DetalleCobroCredito linea : detalles) {
+            linea.setEventoPrestamo(null);
+            linea.setPagoAporte(null);
+            detalleCobroCreditoDaoService.save(linea, linea.getCodigo());
+        }
+
+        // Paso 7 — sellar la huella y devolver el cobro a la bandeja. usuarioAprobacion/
+        // fechaAprobacion NO se tocan: la aprobación original sigue siendo válida y es lo que
+        // habilita reprocesar sin que contabilidad apruebe de nuevo.
+        cobro.setEstado(Long.valueOf(CrdEstadoCobro.APROBADO));
+        cobro.setUsuarioReverso(usuario);
+        cobro.setFechaReverso(LocalDateTime.now());
+        cobro.setMotivoReverso(motivoTrim);
+        cobro.setNumeroReversos((cobro.getNumeroReversos() != null ? cobro.getNumeroReversos() : 0L) + 1);
+        cobro = cobroCreditoDaoService.save(cobro, cobro.getCodigo());
 
         return cobro;
     }
