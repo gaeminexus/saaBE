@@ -95,4 +95,16 @@ public interface OrigenPagoExterno {
 	 */
 	public static final String CRD_SEGURO_JUBILADOS = "CRD_SEGURO_JUBILADOS";
 
+	/**
+	 * Pago de una planilla del IESS (rol normal, prestamos quirografarios, prestamos
+	 * hipotecarios o fondos de reserva), originado en RHH.PLIS. PGTRIDOR lleva el
+	 * RHH.PLIS.PLISCDGO correspondiente. Nace CONFIRMADO por debito automatico: el IESS ya
+	 * debito la cuenta, no se esta ordenando un pago sino registrando un hecho ya ocurrido
+	 * (decision del usuario, 2026-09-07 -- ver
+	 * docs/logica-negocio/rhh/API-PLANILLA-IESS.md #6). El desglose contable (una linea DEBE
+	 * por producto de pago) va por el camino generico de PGS.DPGT, no por un metodo propio:
+	 * no hizo falta tocar PagoProgramadoServiceImpl para esta fase.
+	 */
+	public static final String RHH_PLANILLA_IESS = "RHH_PLANILLA_IESS";
+
 }

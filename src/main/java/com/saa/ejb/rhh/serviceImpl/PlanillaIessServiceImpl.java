@@ -10,6 +10,9 @@ import java.util.Map;
 
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
+import com.saa.ejb.cxp.service.PagoProgramadoService;
+import com.saa.ejb.cxp.service.dto.BeneficiarioOcasional;
+import com.saa.ejb.cxp.service.dto.LineaContablePago;
 import com.saa.ejb.rhh.dao.DetallePlanillaIessDaoService;
 import com.saa.ejb.rhh.dao.PeriodoNominaDaoService;
 import com.saa.ejb.rhh.dao.PlanillaIessDaoService;
@@ -22,7 +25,10 @@ import com.saa.model.rhh.PeriodoNomina;
 import com.saa.model.rhh.PlanillaControlIess;
 import com.saa.model.rhh.PlanillaIess;
 import com.saa.model.scp.Empresa;
+import com.saa.rubros.EstadoPagoProgramado;
 import com.saa.rubros.EstadoPlanillaIess;
+import com.saa.rubros.FormaPagoProgramado;
+import com.saa.rubros.OrigenPagoExterno;
 import com.saa.rubros.RhhConceptoPlanillaIess;
 import com.saa.rubros.RhhEstadoPeriodoNomina;
 import com.saa.rubros.RhhTipoPlanillaIess;
@@ -38,9 +44,11 @@ import jakarta.persistence.PersistenceContext;
  * @author GaemiSoft
  * <p>Implementacion de PlanillaIessService.</p>
  *
- * <p>Fase 1 solamente: captura y conciliacion. El pago (Fase 2) tiene una
- * decision de arquitectura abierta -- ver
- * docs/logica-negocio/rhh/API-PLANILLA-IESS.md #6 -- y no se implementa aqui.</p>
+ * <p>Captura, conciliacion y pago. El pago (Fase 2, decision del usuario del
+ * 2026-09-07 -- ver docs/logica-negocio/rhh/API-PLANILLA-IESS.md #6) va por el
+ * circuito de tesoreria (PagoProgramadoService), por su camino generico de
+ * desglose contable (PGS.DPGT): no hizo falta escribir ningun metodo de
+ * contabilizacion propio dentro de com.saa.ejb.cxp.</p>
  */
 @Stateless
 public class PlanillaIessServiceImpl implements PlanillaIessService {
@@ -56,6 +64,9 @@ public class PlanillaIessServiceImpl implements PlanillaIessService {
 
 	@EJB
 	private PlanillaControlIessService planillaControlIessService;
+
+	@EJB
+	private PagoProgramadoService pagoProgramadoService;
 
 	@PersistenceContext
 	private EntityManager em;
@@ -351,9 +362,271 @@ public class PlanillaIessServiceImpl implements PlanillaIessService {
 		return planilla;
 	}
 
+	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRED)
+	public Map<String, Object> pagar(Long idPlanilla, Long idCuentaBancaria, LocalDate fechaPago, Long idUsuario)
+			throws Throwable {
+
+		System.out.println("=== pagar planilla IESS | id=" + idPlanilla + " ===");
+
+		PlanillaIess planilla = recuperaPlanilla(idPlanilla);
+
+		// 1. Estado, cuenta bancaria y que no tenga ya un pago vivo.
+		if (planilla.getEstado() == null || planilla.getEstado().intValue() != EstadoPlanillaIess.CONCILIADA) {
+			throw new IncomeException("La planilla " + idPlanilla + " está en estado " + planilla.getEstado()
+					+ ": solo se puede pagar una planilla en estado Conciliada. El sentido de conciliar "
+					+ "antes de pagar es no pagar sin haber cuadrado.");
+		}
+		if (idCuentaBancaria == null) {
+			throw new IncomeException("Debe indicar la cuenta bancaria desde la que el IESS debita.");
+		}
+		rechazaSiTienePagoVivo(idPlanilla);
+
+		List<DetallePlanillaIess> renglones = detallePlanillaIessDaoService.selectByPlanilla(idPlanilla);
+
+		// 3. El desglose se arma ANTES de llamar al circuito: con débito automático el
+		// pago nace CONFIRMADO y contabiliza en el acto, así que PGS.DPGT tiene que
+		// existir cuando registrarPagoDeOrigenExterno arma el asiento.
+		List<LineaContablePago> desglose = armaDesgloseContable(planilla, renglones);
+
+		LocalDate fecha = (fechaPago != null) ? fechaPago : LocalDate.now();
+
+		BeneficiarioOcasional beneficiario = new BeneficiarioOcasional();
+		beneficiario.setNombre("IESS");
+		beneficiario.setIdentificacion("IESS-" + planilla.getTipo());
+
+		Map<String, Object> resultadoPago = pagoProgramadoService.registrarPagoDeOrigenExterno(
+				OrigenPagoExterno.RHH_PLANILLA_IESS, planilla.getCodigo(), planilla.getEmpresa().getCodigo(),
+				idCuentaBancaria, planilla.getValorIess(), fecha.toString(), beneficiario, desglose,
+				"Pago planilla IESS " + descripcionTipo(planilla.getTipo()) + " N° "
+						+ planilla.getNumeroComprobante(),
+				idUsuario, true, null, Long.valueOf(FormaPagoProgramado.DEBITO_AUTOMATICO));
+
+		Long idPago = (Long) resultadoPago.get("pago");
+		if (idPago == null) {
+			// No debería pasar (registrarPagoDeOrigenExterno siempre devuelve "pago"),
+			// pero se deja explícito en vez de un NPE silencioso más abajo.
+			throw new IncomeException("El circuito de pagos no devolvió el pago generado para la planilla "
+					+ idPlanilla + ".");
+		}
+
+		// Sólo el escalar del asiento: PagoProgramado tiene trece @ManyToOne EAGER, no se
+		// carga la entidad (mismo criterio que en todo este archivo y en CajaChica).
+		Long idAsiento;
+		try {
+			idAsiento = (Long) em.createQuery("select p.asiento.codigo from PagoProgramado p where p.id = :id")
+					.setParameter("id", idPago)
+					.getSingleResult();
+		} catch (jakarta.persistence.NoResultException e) {
+			idAsiento = null;
+		}
+
+		planilla.setEstado(Long.valueOf(EstadoPlanillaIess.PAGADA));
+		planilla.setFechaPago(fecha);
+		planilla.setAsiento(idAsiento != null ? em.getReference(Asiento.class, idAsiento) : null);
+		planilla = planillaIessDaoService.save(planilla, planilla.getCodigo());
+
+		System.out.println("✓ Planilla IESS " + idPlanilla + " pagada | idPago=" + idPago
+				+ " | asiento=" + idAsiento);
+
+		Map<String, Object> resultado = new HashMap<>();
+		resultado.put("idPlanilla", planilla.getCodigo());
+		resultado.put("estado", planilla.getEstado());
+		resultado.put("idPago", idPago);
+		resultado.put("idAsiento", idAsiento);
+		resultado.put("numeroAsiento", resultadoPago.get("asiento"));
+		resultado.put("mensaje", resultadoPago.get("mensaje"));
+		return resultado;
+	}
+
+	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRED)
+	public PlanillaIess reversarPago(Long idPlanilla, String motivo, Long idUsuario) throws Throwable {
+
+		System.out.println("=== reversarPago planilla IESS | id=" + idPlanilla + " ===");
+
+		if (motivo == null || motivo.trim().isEmpty()) {
+			throw new IncomeException("Debe indicar el motivo de la reversión.");
+		}
+		PlanillaIess planilla = recuperaPlanilla(idPlanilla);
+		if (planilla.getEstado() == null || planilla.getEstado().intValue() != EstadoPlanillaIess.PAGADA) {
+			throw new IncomeException("La planilla " + idPlanilla + " está en estado " + planilla.getEstado()
+					+ ": solo se puede reversar el pago de una planilla Pagada.");
+		}
+
+		// La planilla no guarda el id del pago (sólo el asiento): se busca por
+		// (origen, idOrigen), igual que rechazaSiTienePagoVivo. Sólo el escalar.
+		Long idPago;
+		try {
+			idPago = (Long) em.createQuery("select p.id from PagoProgramado p where p.origenExterno = :origen "
+					+ "and p.idOrigen = :idPlanilla and p.estado = :confirmado")
+					.setParameter("origen", OrigenPagoExterno.RHH_PLANILLA_IESS)
+					.setParameter("idPlanilla", idPlanilla)
+					.setParameter("confirmado", Long.valueOf(EstadoPagoProgramado.CONFIRMADO))
+					.getSingleResult();
+		} catch (jakarta.persistence.NoResultException e) {
+			throw new IncomeException("La planilla " + idPlanilla + " está Pagada pero no se encontró su "
+					+ "pago confirmado: revísela antes de continuar.");
+		}
+
+		// revertirPagoConfirmado no sabe nada de PLIS -- no hay un
+		// anularPlanillaIessSiAplica del lado de cxp, y no hace falta agregarlo. Es rhh
+		// quien actualiza su propia planilla después de que el reverso vuelva (#6.3).
+		pagoProgramadoService.revertirPagoConfirmado(idPago, motivo.trim(), idUsuario);
+
+		planilla.setEstado(Long.valueOf(EstadoPlanillaIess.CONCILIADA));
+		planilla.setFechaPago(null);
+		planilla.setAsiento(null);
+		planilla = planillaIessDaoService.save(planilla, planilla.getCodigo());
+
+		System.out.println("✓ Pago de la planilla IESS " + idPlanilla + " reversado.");
+		return planilla;
+	}
+
 	// =====================================================================
 	// Helpers privados
 	// =====================================================================
+
+	/**
+	 * Arma el desglose contable del pago (una {@link LineaContablePago} por fila de
+	 * {@code PGS.DPGT}), resuelto por parametrización — nunca hardcodeando una cuenta —
+	 * buscando el {@code ProductoPago} por su CODIGO en {@code rhh/sql/lap1-09-productos-pago-iess.sql}.
+	 * <p>
+	 * <b>Cómo se decide una fila por renglón o una sola por el total, y por qué:</b> el rol
+	 * normal es el único comprobante que de verdad desglosa en conceptos con cuentas
+	 * distintas (aporte personal / aporte patronal — #2 de la especificación), así que ahí
+	 * se arma una línea por renglón, resuelta por su {@code conceptoTipo}. Quirografarios,
+	 * hipotecarios y fondos de reserva son, cada uno, un pago de un solo concepto (#2 de la
+	 * especificación: "cada una tiene su propio comprobante"), así que se arma una sola
+	 * línea por el valor total de la planilla — los renglones que se hayan capturado ahí
+	 * son solo para la conciliación (#3.2), no participan del desglose contable.
+	 * <p>
+	 * Los cuatro productos (IESS-APER, IESS-APAT, IESS-PRST, IESS-FRES) son los cuatro de
+	 * la tabla de #2: CCC y el seguro de tiempo parcial se pliegan a IESS-APAT porque
+	 * {@code RhhLineaAsiento} todavía no les da línea propia (#2.2, pendiente de la
+	 * contadora); IESS-PRST cubre los dos préstamos porque comparten la única línea 12
+	 * (#2.1, mismo motivo).
+	 * @param planilla  : Planilla a pagar (con tipo y empresa resueltos)
+	 * @param renglones : Renglones ya cargados de la planilla
+	 * @return          : El desglose a pasar a {@code registrarPagoDeOrigenExterno}
+	 * @throws Throwable : IncomeException si un renglón del rol no tiene concepto clasificado,
+	 *                     si el rol no tiene renglones, o si falta el producto en la parametrización
+	 */
+	private List<LineaContablePago> armaDesgloseContable(PlanillaIess planilla, List<DetallePlanillaIess> renglones)
+			throws Throwable {
+
+		Long idEmpresa = planilla.getEmpresa().getCodigo();
+		int tipo = planilla.getTipo().intValue();
+		List<LineaContablePago> desglose = new ArrayList<>();
+
+		if (tipo == RhhTipoPlanillaIess.ROL_NORMAL) {
+			if (renglones == null || renglones.isEmpty()) {
+				throw new IncomeException("La planilla " + planilla.getCodigo() + " no tiene renglones "
+						+ "clasificados: no se puede armar el desglose contable del pago del rol.");
+			}
+			for (DetallePlanillaIess renglon : renglones) {
+				// §6.2: un renglón sin producto rechaza el pago citándolo — no se inventa una
+				// cuenta genérica ni se omite la línea (omitirla descuadraría el asiento
+				// contra el valor del pago, y el circuito lo rechazaría sin decir por qué).
+				String codigoProducto = codigoProductoPorConceptoTipo(renglon.getConceptoTipo());
+				if (codigoProducto == null) {
+					throw new IncomeException("El renglón '" + renglon.getConcepto() + "' (id "
+							+ renglon.getCodigo() + ") de la planilla " + planilla.getCodigo() + " no tiene "
+							+ "un concepto clasificado (aporte personal, patronal, CCC o seguro de tiempo "
+							+ "parcial): no se puede determinar la cuenta contable de su pago. Clasifíquelo "
+							+ "antes de pagar.");
+				}
+				LineaContablePago linea = new LineaContablePago();
+				linea.setIdProductoPago(buscaProductoPago(codigoProducto, idEmpresa));
+				linea.setValor(renglon.getValorIess());
+				linea.setConcepto(renglon.getConcepto());
+				desglose.add(linea);
+			}
+			return desglose;
+		}
+
+		String codigoProducto = (tipo == RhhTipoPlanillaIess.FONDOS_DE_RESERVA) ? "IESS-FRES" : "IESS-PRST";
+		LineaContablePago linea = new LineaContablePago();
+		linea.setIdProductoPago(buscaProductoPago(codigoProducto, idEmpresa));
+		linea.setValor(planilla.getValorIess());
+		linea.setConcepto("Planilla IESS " + descripcionTipo(planilla.getTipo()) + " N° "
+				+ planilla.getNumeroComprobante());
+		desglose.add(linea);
+		return desglose;
+	}
+
+	private String codigoProductoPorConceptoTipo(Long conceptoTipo) {
+		if (conceptoTipo == null) {
+			return null;
+		}
+		switch (conceptoTipo.intValue()) {
+			case RhhConceptoPlanillaIess.APORTE_PERSONAL:
+				return "IESS-APER";
+			case RhhConceptoPlanillaIess.APORTE_PATRONAL:
+			case RhhConceptoPlanillaIess.CONTRIBUCION_CCC:
+			case RhhConceptoPlanillaIess.SEGURO_SALUD_TIEMPO_PARCIAL:
+				return "IESS-APAT";
+			default:
+				// OTRO (5): sin producto, rechaza en armaDesgloseContable.
+				return null;
+		}
+	}
+
+	private Long buscaProductoPago(String codigo, Long idEmpresa) throws Throwable {
+		try {
+			return (Long) em.createQuery("select p.id from ProductoPago p where p.codigo = :codigo "
+					+ "and p.empresa.codigo = :idEmpresa")
+					.setParameter("codigo", codigo)
+					.setParameter("idEmpresa", idEmpresa)
+					.getSingleResult();
+		} catch (jakarta.persistence.NoResultException e) {
+			throw new IncomeException("No existe el producto de pago '" + codigo + "' para la empresa "
+					+ idEmpresa + ": falta correr rhh/sql/lap1-09-productos-pago-iess.sql.");
+		}
+	}
+
+	private String descripcionTipo(Long tipo) {
+		if (tipo == null) {
+			return "";
+		}
+		switch (tipo.intValue()) {
+			case RhhTipoPlanillaIess.ROL_NORMAL:
+				return "Rol Normal";
+			case RhhTipoPlanillaIess.PRESTAMOS_QUIROGRAFARIOS:
+				return "Préstamos Quirografarios";
+			case RhhTipoPlanillaIess.PRESTAMOS_HIPOTECARIOS:
+				return "Préstamos Hipotecarios";
+			case RhhTipoPlanillaIess.FONDOS_DE_RESERVA:
+				return "Fondos de Reserva";
+			default:
+				return String.valueOf(tipo);
+		}
+	}
+
+	/**
+	 * Rechaza si la planilla ya tiene un {@code PGS.PGTR} vivo (origen
+	 * {@link OrigenPagoExterno#RHH_PLANILLA_IESS}) — estado distinto de RECHAZADO o
+	 * ANULADO. Mismo criterio que {@code CajaChicaServiceImpl.rechazaSiTienePagosEnCurso}:
+	 * sólo id y estado, nunca la entidad {@code PagoProgramado}.
+	 * @param idPlanilla : Id de la planilla a validar
+	 * @throws Throwable : IncomeException si hay un pago vivo
+	 */
+	private void rechazaSiTienePagoVivo(Long idPlanilla) throws Throwable {
+		@SuppressWarnings("unchecked")
+		List<Object[]> pagosVivos = em.createQuery(
+				"select p.id, p.estado from PagoProgramado p where p.origenExterno = :origen "
+				+ "and p.idOrigen = :idPlanilla and p.estado not in (:rechazado, :anulado)")
+				.setParameter("origen", OrigenPagoExterno.RHH_PLANILLA_IESS)
+				.setParameter("idPlanilla", idPlanilla)
+				.setParameter("rechazado", Long.valueOf(EstadoPagoProgramado.RECHAZADO))
+				.setParameter("anulado", Long.valueOf(EstadoPagoProgramado.ANULADO))
+				.getResultList();
+		if (!pagosVivos.isEmpty()) {
+			Object[] fila = pagosVivos.get(0);
+			throw new IncomeException("La planilla " + idPlanilla + " ya tiene el pago N° " + fila[0]
+					+ " en curso (estado " + fila[1] + "): no se puede registrar otro pago.");
+		}
+	}
 
 	private PlanillaIess recuperaPlanilla(Long idPlanilla) throws Throwable {
 		PlanillaIess planilla = planillaIessDaoService.selectById(idPlanilla, NombreEntidadesRhh.PLANILLA_IESS);

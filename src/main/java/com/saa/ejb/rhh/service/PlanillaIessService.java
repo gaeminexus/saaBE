@@ -1,5 +1,6 @@
 package com.saa.ejb.rhh.service;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -85,5 +86,40 @@ public interface PlanillaIessService extends EntityService<PlanillaIess> {
 	 */
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	PlanillaIess anular(Long idPlanilla, String motivo, Long idUsuario) throws Throwable;
+
+	/**
+	 * Paga la planilla por el circuito de tesorería (Fase 2, decisión del usuario del
+	 * 2026-09-07 -- ver docs/logica-negocio/rhh/API-PLANILLA-IESS.md #6). Sólo desde
+	 * estado CONCILIADA. Nace por débito automático: el IESS ya debitó la cuenta, así que
+	 * el pago nace CONFIRMADO y contabiliza en el acto.
+	 *
+	 * @param idPlanilla        : Id de la planilla
+	 * @param idCuentaBancaria  : Cuenta bancaria propia desde la que el IESS debita
+	 * @param fechaPago         : Fecha real del débito; null equivale a hoy
+	 * @param idUsuario         : Id del usuario que registra el pago
+	 * @return                  : Mapa con idPlanilla, estado, idPago, idAsiento, numeroAsiento, mensaje
+	 * @throws Throwable        : IncomeException si el estado no lo admite, falta la cuenta, ya
+	 *                            hay un pago vivo, o algún renglón no tiene producto resuelto (#6.2)
+	 */
+	@TransactionAttribute(TransactionAttributeType.REQUIRED)
+	Map<String, Object> pagar(Long idPlanilla, Long idCuentaBancaria, LocalDate fechaPago, Long idUsuario)
+			throws Throwable;
+
+	/**
+	 * Reversa el pago de una planilla Pagada: delega en
+	 * {@code PagoProgramadoService.revertirPagoConfirmado} (anula el asiento y el
+	 * movimiento bancario) y sólo después devuelve la planilla a CONCILIADA, limpiando
+	 * fecha de pago y asiento. {@code revertirPagoConfirmado} no sabe nada de PLIS -- es
+	 * este servicio el que actualiza la planilla (#6.3).
+	 *
+	 * @param idPlanilla    : Id de la planilla
+	 * @param motivo        : Motivo de la reversión (obligatorio)
+	 * @param idUsuario     : Id del usuario que reversa
+	 * @return              : La planilla, de vuelta en estado CONCILIADA
+	 * @throws Throwable    : IncomeException si no existe, falta el motivo, el estado no lo
+	 *                        admite o no se encuentra el pago confirmado asociado
+	 */
+	@TransactionAttribute(TransactionAttributeType.REQUIRED)
+	PlanillaIess reversarPago(Long idPlanilla, String motivo, Long idUsuario) throws Throwable;
 
 }

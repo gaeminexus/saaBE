@@ -35,6 +35,8 @@ import jakarta.ws.rs.core.Response;
  *   POST /plis/registrar          → captura la planilla del portal
  *   POST /plis/conciliar/{id}     → enfrenta contra la planilla de control
  *   POST /plis/anular/{id}        → sólo en estado 1 o 2
+ *   POST /plis/pagar/{id}         → Fase 2: pago por tesorería, sólo desde estado 2
+ *   POST /plis/reversarPago/{id}  → reversa el pago, sólo desde estado 3
  *   PUT  /plis                    → edición estándar
  *   DELETE /plis/{id}             → estándar
  */
@@ -213,6 +215,51 @@ public class PlanillaIessRest {
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al anular la planilla del IESS: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Paga la planilla por el circuito de tesorería (Fase 2). Sólo desde estado 2
+     * (Conciliada). Body: { "idCuentaBancaria": 4, "fechaPago": "2026-09-12", "idUsuario": 12 }
+     */
+    @POST
+    @Path("/pagar/{id}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response pagar(@PathParam("id") Long id, Map<String, Object> datos) {
+        System.out.println("LLEGA AL SERVICIO POST /plis/pagar/" + id);
+        try {
+            Long idCuentaBancaria = (datos != null) ? toLong(datos.get("idCuentaBancaria")) : null;
+            LocalDate fechaPago = (datos != null) ? toFecha((String) datos.get("fechaPago")) : null;
+            Long idUsuario = (datos != null) ? toLong(datos.get("idUsuario")) : null;
+            Map<String, Object> resultado = planillaIessService.pagar(id, idCuentaBancaria, fechaPago, idUsuario);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al pagar la planilla del IESS: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Reversa el pago de la planilla. Sólo desde estado 3 (Pagada), y devuelve la
+     * planilla a estado 2 (Conciliada). Body: { "motivo": "...", "idUsuario": 12 }
+     */
+    @POST
+    @Path("/reversarPago/{id}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response reversarPago(@PathParam("id") Long id, Map<String, Object> datos) {
+        System.out.println("LLEGA AL SERVICIO POST /plis/reversarPago/" + id);
+        try {
+            String motivo = (datos != null) ? (String) datos.get("motivo") : null;
+            Long idUsuario = (datos != null) ? toLong(datos.get("idUsuario")) : null;
+            PlanillaIess resultado = planillaIessService.reversarPago(id, motivo, idUsuario);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al reversar el pago de la planilla del IESS: " + e.getMessage())
                     .type(MediaType.APPLICATION_JSON).build();
         }
     }
