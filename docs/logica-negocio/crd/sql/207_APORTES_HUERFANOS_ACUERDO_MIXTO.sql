@@ -1,4 +1,25 @@
 -- =====================================================================================
+-- ⛔⛔ ANULADO EL 2026-09-07 — NO CORRER ESTE SCRIPT. HIPOTESIS FALSA.
+--
+-- Este script asumia que `AcuerdoCondonacionServiceImpl:566` dejaba la FK PGAP.PGPRCDGO en
+-- NULL por no reasignar el retorno de `saveSingle`. ES FALSO.
+--
+-- `EntityDaoImpl.save():306` NO hace merge cuando la entidad es nueva:
+--     if (id == null) { selloAuditoria(tipo); em.persist(tipo); }
+--     else            { em.merge(tipo); }
+-- y `persist()` escribe el id EN EL OBJETO QUE SE LE PASA. La FK nunca estuvo en null.
+-- Confirmado con datos: la consulta de control devolvio 0 filas en produccion.
+--
+-- ⛔ CORRERLO SOBRE DATOS SANOS LE DEVOLVERIA EL DINERO AL SOCIO POR SEGUNDA VEZ:
+--    insertaria contra-movimientos positivos de aporte que nadie debe.
+--
+-- El diagnostico de verdad esta en 208_DIAGNOSTICO_APORTES_ACUERDO_43.sql (solo SELECT).
+--
+-- Se conserva el archivo, y no se borra, para que quede el rastro del error: deduje la
+-- semantica de save() en vez de leerla, y escribi un script de reparacion sobre esa deduccion.
+-- =====================================================================================
+
+-- =====================================================================================
 -- APORTES CONSUMIDOS Y NUNCA DEVUELTOS — acuerdos de condonacion mixtos
 -- FECHA: 2026-09-07   EQUIPO: omen-saa-1 (omen1)   SCRIPT: 207 (rango 200-249)
 --
