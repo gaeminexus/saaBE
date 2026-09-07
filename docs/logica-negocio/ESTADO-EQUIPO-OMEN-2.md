@@ -2741,3 +2741,101 @@ vez de «pedirlo una vez». El resultado era devolverle trabajo de despacho que 
 un árbitro existe para sacarle de encima. **Lo que se le consulta son decisiones de negocio y
 scripts que hay que correr; repartir el trabajo entre mis propios ejecutores no es ninguna de las
 dos.**
+
+---
+
+## §32 — `BEXTTRJT`: dos lecturas incompatibles de la misma columna
+
+**2026-09-07.** El usuario avisó que el código del BCE **sí** está en `TSR.BEXT`, en la columna
+`BEXTTRJT`. Si tiene razón, **el `e2-14` se cancela entero**: no hay DDL, no hacen falta los seis
+códigos que estábamos esperando, y el único cambio de código es que
+`CodigoBancoBeneficiarioResolver` devuelva `getTarjeta()` en vez de `getCodigo()`.
+
+### Lo que encontré al ir a verificarlo, y es lo que vuelve al caso interesante
+
+En el **backend**, `BancoExterno.tarjeta` (`BEXTTRJT`) **no lo usa nadie**: sólo tiene getter y
+setter. Una columna que el sistema guarda y jamás lee. Eso encaja perfecto con la hipótesis del
+usuario.
+
+En el **frontend**, la misma columna es un **booleano**:
+
+```ts
+// saaFE/src/app/modules/tsr/model/banco-externo.model.ts:6
+tarjeta: boolean;
+
+// saaFE/.../bancos/bancos-nacionales-extranjeros.component.ts:179
+tarjeta: this.tarjetaCredito ? 1 : 0,   // Backend espera Long (1 o 0)
+```
+
+La pantalla de mantenimiento de bancos externos **escribe `1` o `0` en `BEXTTRJT` cada vez que
+alguien guarda un banco**, y la muestra como una columna «sí/no».
+
+### Las dos lecturas no pueden ser ciertas a la vez, y la segunda es peor que un frente parado
+
+| Si `BEXTTRJT` es… | Consecuencia |
+|---|---|
+| Un flag de tarjeta de crédito | El usuario se confundió de columna; el `e2-14` sigue haciendo falta |
+| **El código del BCE** | 🔴 **La pantalla de bancos lo viene destruyendo.** Cada banco que alguien editó quedó con `1` o `0` en lugar de su código |
+
+**Y el daño sería silencioso en las dos direcciones**: nadie ve que se perdió un código porque
+nadie lo mira, y el archivo bancario que sale con `0` o `1` de código de institución **no rebota** —
+el Internacional interpreta el campo vacío o inválido como «32», o sea el propio Internacional.
+
+> **Por eso este caso no se resuelve creyéndole a nadie, ni al usuario ni a mí.** Es la lección del
+> §30.10 al revés: allá yo deduje que el catálogo completo traía los códigos y me equivoqué; acá el
+> usuario afirma que están en otra columna y **puede tener razón**. Las dos veces la salida es la
+> misma: una consulta con anclas independientes.
+
+### El `e2-17`, y qué pide de más
+
+`tsr/sql/e2-17-es-bexttrjt-el-codigo-del-bce.sql`. La prueba decisiva son las **dos anclas del
+manual del Pacífico** —Machala `25`, Pacífico `30`—, mismo diseño que el `e2-15`, que cerró la
+discusión anterior con una sola corrida.
+
+Y aplica el §30.11 —*al escribir un `.sql` de verificación conviene pedir de más*—:
+
+1. **La forma del dato.** Un booleano da 2 o 3 valores distintos; un catálogo del BCE da decenas.
+   Ese bloque solo ya casi decide.
+2. **Los siete bancos que de verdad tienen cuentas.** Es lo único que importa operativamente: si
+   esos siete tienen un código plausible, el frente se destraba aunque el resto del catálogo esté
+   sucio.
+3. **Los cinco códigos de la muestra del Internacional** (`10`, `17`, `32`, `36`, `213`): si
+   `BEXTTRJT` es el código, tienen que resolver a bancos reales, y `32` debería ser el Internacional.
+4. **El bloque 5, que cuenta el daño**: cuántos bancos ya tienen `0`/`1`, y de esos cuáles tienen
+   cuentas. **Ésos son los que sacan el archivo bancario mal hoy.**
+
+⛔ **Si da que sí, la pantalla de bancos se arregla ANTES de recargar ningún dato**, o el código se
+vuelve a perder en la siguiente edición. Recargar primero sería arreglar el ejemplar y dejar viva la
+causa — el §29 exacto.
+
+---
+
+### §32bis — El contrato binario, cerrado, y el respaldo que estaba tan roto como lo nuevo
+
+Mientras el `e2-17` espera, se cerró el defecto B del §31.1, que **no estaba bloqueado por la
+columna** — el backend ya emitía el contrato desde `de36116`. Yo lo había listado entre los
+bloqueados y era falso; el usuario no tenía por qué esperar por eso.
+
+| Commit | Qué |
+|---|---|
+| `fd3aefc` | La pantalla nueva de Tesorería ya descarga: Base64 → `Uint8Array` → Blob con su `mimeType` |
+| `72371b8` | El mismo arreglo en el componente legado de `cxp` |
+
+**El hallazgo del segundo, que es el que vale:** el componente legado no está en ningún menú, pero
+**sigue ruteado a propósito** en `pagos/transferencias-legacy` — es el respaldo previsto por el
+riesgo #4 del plan, para usar mientras se prueban las pantallas nuevas. Y tenía el defecto idéntico.
+
+> **El respaldo que existe justamente para cuando lo nuevo falle estaba igual de roto.** Un plan que
+> deja una pantalla vieja «por las dudas» tiene que verificar que la vieja siga sirviendo para esas
+> dudas; si no, no es un respaldo, es una pantalla muerta con la luz prendida.
+
+El agente lo levantó como hallazgo en vez de tocarlo —el alcance que le di eran dos archivos y lo
+respetó— pero **reportó que estaba «sin ruta», y no era cierto**. Lo verifiqué en `app.routes.ts` y
+ahí estaba, con el comentario que explica por qué. Es la regla 12 dando en el clavo por enésima vez:
+del reporte de un ejecutor, lo que hay que verificar no es lo que hizo —eso está en el diff— sino
+**los datos de contexto con los que justificó lo que no hizo**.
+
+Y también se corrigió `API-PAGOS-TESORERIA.md`, que **se contradecía consigo mismo**: la tabla decía
+que `contenidoBase64` venía `null` en formatos de texto, mientras la nota de abajo decía que para el
+Internacional conviene bajar justamente el Base64. El código lo manda siempre. Importaba porque el
+agente estaba a punto de implementar esa rama leyendo la tabla vieja.
