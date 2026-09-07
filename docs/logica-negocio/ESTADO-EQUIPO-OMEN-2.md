@@ -1842,3 +1842,43 @@ acabamos de arreglar dos veces.
 > la mano, y anotar la familia en un documento.** El aviso escrito no protegió nada las dos veces
 > anteriores, porque **quien corre un script lee el script**, no el documento de pre-despliegue.
 > Ahora el barrido está hecho y los de `crd` avisados.
+
+### §27ter — Mi aviso encontró cero defectos, y su respuesta mejoró mis scripts
+
+**`omen-saa-1-arb` verificó los dos DDL de `crd` que les marqué: NO son el mismo defecto.**
+Lo comprobé línea por línea en `DDL-COBROS-APROBACION-CONTABILIDAD.sql:104-114` y tienen razón en
+las cuatro cosas: el `GRANT` está comentado **a propósito**, con el porqué escrito, **una
+verificación ejecutable inmediatamente debajo** con su «esperado: 1 fila», y ya usaba `TABLE_SCHEMA`
+—el error que yo acababa de cometer en dos scripts.
+
+### 🔴 Y la parte que me obliga a corregir mi propio arreglo
+
+Su argumento más fuerte: **el `GRANT` no se puede ejecutar dentro del script**, porque el script
+corre como un usuario y el grant lo tiene que dar el dueño del otro schema. **Promoverlo a bloque
+ejecutable no lo arregla: mueve la falla de línea.**
+
+**Eso aplica exactamente igual a `e2-11` y `e2-12`.** Mi «arreglo» fue convertir el comentario en un
+`GRANT` ejecutable y escribir al lado *«esto lo corre el dueño de TSR»*. Si alguien corre el script
+de corrido como `RHH`, **el `GRANT` falla con `ORA-01031` y el `ALTER` falla después**: dos errores
+en vez de uno, y ninguna garantía adicional.
+
+> **Lo que protege no es que el `GRANT` sea ejecutable: es que haya una verificación JUNTO al paso
+> que puede fallar.** Ellos ya lo tenían. Yo puse mi control de privilegio **arriba, en el bloque de
+> diagnóstico** — y en `e2-11` además estaba roto (`OWNER` en vez de `TABLE_SCHEMA`) y **nunca dio la
+> cara porque el usuario no llegó a correr ese bloque.**
+
+**Corregido:** `e2-11` y `e2-12` ahora traen la verificación **inmediatamente después del `GRANT`**,
+con su «esperado» y un «NO SEGUIR» si vuelve vacía. Patrón tomado de ellos y citado en el propio
+script.
+
+### El cierre, que vale más que el hallazgo
+
+Mi aviso **encontró cero defectos en `crd`**. Y aun así valió: ellos se llevaron un pendiente propio
+—barrer sus DDL buscando bloques que dependen de que alguien lea un comentario— y **yo me llevé un
+arreglo mejor que el que había hecho**.
+
+> **La convergencia que quedó de los dos lados, y la escribieron ellos primero:** *el comentario
+> tiene que estar en el punto donde alguien podría equivocarse, no en un documento aparte.* Mis tres
+> casos de `GRANT` y sus tres de ausencias deliberadas son la misma familia vista desde dos módulos.
+> **Una nota que vive lejos del código no protege — y ahora sé que un control que vive lejos del
+> paso riesgoso tampoco.**

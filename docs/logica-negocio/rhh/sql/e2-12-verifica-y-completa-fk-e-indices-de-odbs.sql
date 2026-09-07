@@ -94,6 +94,16 @@ SELECT COUNT(*) AS FILAS_ODBS FROM RHH.ODBS;
 
 GRANT REFERENCES ON SCP.PJRQ TO RHH;
 
+-- ⭐ VERIFICACION INMEDIATA, ACA MISMO. Esperado: 1 fila con REFERENCES.
+--   Si vuelve VACIA, el GRANT no surtio efecto -- casi seguro porque lo corrio
+--   el usuario equivocado. NO SEGUIR: el bloque 2 va a fallar con ORA-01031.
+--   Patron tomado de crd/sql/DDL-COBROS-APROBACION-CONTABILIDAD.sql 0.3: la
+--   verificacion va JUNTO al paso que puede fallar, no arriba en el bloque 0.
+SELECT p.TABLE_NAME, p.PRIVILEGE, p.GRANTEE
+  FROM ALL_TAB_PRIVS p
+ WHERE p.TABLE_SCHEMA = 'SCP' AND p.TABLE_NAME = 'PJRQ'
+   AND p.PRIVILEGE = 'REFERENCES' AND p.GRANTEE = 'RHH';
+
 
 -- =====================================================================
 -- BLOQUE 2 -- LA FK
