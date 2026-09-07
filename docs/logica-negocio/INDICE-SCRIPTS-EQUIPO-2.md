@@ -58,3 +58,15 @@ De los catorce scripts: **doce corridos**, uno borrado (`e2-09`) y **uno que sí
 1. **El número es del equipo, la carpeta es del módulo.** `e2-NN` va en `docs/logica-negocio/{modulo}/sql/`, donde `{modulo}` es el que toca el script — no donde se escribió.
 2. **Agregar la fila a este índice en el MISMO commit que el script.** Un script sin fila acá es un script que alguien va a buscar en la carpeta equivocada.
 3. **Prefijo `e2-`** siempre (§2b del registro de reservas), y **la numeración no se reusa**: el `e2-09` está borrado y su número queda muerto.
+4. ⛔ **SQL puro: ni un `PROMPT`, ni un `SET`, ni un `COLUMN`.** Son comandos de **SQL*Plus**, no de
+   Oracle, y **el cliente del usuario no los interpreta**: los escupe como texto en el medio de la
+   salida y la vuelve ilegible. Pasó el 2026-09-07 con la primera versión del `e2-17`.
+   **Para rotular, dos cosas y nada más:**
+   - Comentarios `--` como banner de bloque, con una línea `ESPERADO SI ...` que diga qué se espera
+     ver. Es lo que ya hacían el `e2-08` y el `e2-15`, los dos que corrieron sin problema.
+   - Una **columna literal** al principio de cada `SELECT` (`SELECT 'BLOQUE 2 - anclas' AS bloque, …`),
+     para que cada resultado se identifique solo cuando el usuario pega la salida de vuelta.
+
+   El motivo de fondo: **el script lo corre una persona en su cliente, no nosotros en una consola.**
+   Todo lo que dependa de la herramienta y no del motor es una suposición sobre una máquina que no
+   vemos.
