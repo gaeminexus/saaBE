@@ -49,9 +49,21 @@ public class BancoExterno implements Serializable {
     @Column(name = "BEXTNMBR")
     private String nombre;    
     
+    /**
+     * ⚠ Nombre histórico y engañoso: {@code BEXTTRJT} NO es un indicador de
+     * tarjeta de crédito. Es el código de institución financiera del BCE que
+     * exigen los formatos bancarios de pagos (campo 12 del Internacional,
+     * columna B del Pacífico). Confirmado con el {@code e2-17} (2026-09-07):
+     * 389 filas, 387 valores distintos (mínimo 10, máximo 9997), anclas
+     * Banco de Machala=25 y Banco del Pacífico=30 verificadas sin repetirse
+     * en ningún otro banco, y {@code BEXTTRJT=32} coincide con
+     * {@code BANCO INTERNACIONAL} tal como exige su propia especificación
+     * de archivo. NO renombrar: la entidad se serializa directo a JSON y el
+     * frontend de bancos lee la clave {@code tarjeta}.
+     */
     @Basic
     @Column(name = "BEXTTRJT")
-    private Long tarjeta;    
+    private Long tarjeta;
     
     @Basic
     @Column(name = "BEXTESTD")
@@ -95,6 +107,9 @@ public class BancoExterno implements Serializable {
 	
 	/**
 	 * Devuelve tarjeta
+	 * ⚠ Pese al nombre, es el código de institución financiera del BCE
+	 * ({@code BEXTTRJT}), no un indicador de tarjeta de crédito. Ver el
+	 * javadoc del campo.
 	 * @return tarjeta
 	 */
 	public Long getTarjeta() {
