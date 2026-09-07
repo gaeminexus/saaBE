@@ -69,9 +69,9 @@ SELECT owner, index_name, table_owner, table_name
 -- 0.4 ¿Tiene el usuario que ejecuta el privilegio REFERENCES sobre TSR.BEXT?
 --     Si devuelve 0 filas, el bloque 2 es OBLIGATORIO y lo tiene que correr
 --     TSR o un DBA, no RHH.
-SELECT grantee, owner, table_name, privilege
+SELECT grantee, table_schema, table_name, privilege
   FROM all_tab_privs
- WHERE owner = 'TSR' AND table_name = 'BEXT' AND privilege = 'REFERENCES';
+ WHERE table_schema = 'TSR' AND table_name = 'BEXT' AND privilege = 'REFERENCES';
 
 
 -- =====================================================================
@@ -111,6 +111,16 @@ SELECT c.CBEMCDGO AS ID_CUENTA,
 -- =====================================================================
 
 GRANT REFERENCES ON TSR.BEXT TO RHH;
+
+-- ⭐ VERIFICACION INMEDIATA, ACA MISMO. Esperado: 1 fila con REFERENCES.
+--   Si vuelve VACIA, el GRANT no surtio efecto -- casi seguro porque lo corrio
+--   el usuario equivocado. NO SEGUIR: el bloque 3 va a fallar con ORA-01031.
+--   Patron tomado de crd/sql/DDL-COBROS-APROBACION-CONTABILIDAD.sql 0.3: la
+--   verificacion va JUNTO al paso que puede fallar, no arriba en el bloque 0.
+SELECT p.TABLE_NAME, p.PRIVILEGE, p.GRANTEE
+  FROM ALL_TAB_PRIVS p
+ WHERE p.TABLE_SCHEMA = 'TSR' AND p.TABLE_NAME = 'BEXT'
+   AND p.PRIVILEGE = 'REFERENCES' AND p.GRANTEE = 'RHH';
 
 
 -- =====================================================================

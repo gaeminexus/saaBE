@@ -76,9 +76,9 @@ SELECT owner AS DUENO_DEL_INDICE, index_name, uniqueness,
 -- 0.3 ¿Existe el privilegio REFERENCES sobre SCP.PJRQ?
 --     Si 0.1 fallo, esto dice si hace falta el bloque 1 o si el problema es
 --     otro. Ojo: puede estar concedido a PUBLIC, y ahi la FK habria funcionado.
-SELECT grantee, owner, table_name, privilege
+SELECT grantee, table_schema, table_name, privilege
   FROM all_tab_privs
- WHERE owner = 'SCP' AND table_name = 'PJRQ' AND privilege = 'REFERENCES';
+ WHERE table_schema = 'SCP' AND table_name = 'PJRQ' AND privilege = 'REFERENCES';
 
 -- 0.4 Contexto: ¿la tabla ODBS tiene datos? Informativo, no bloquea nada.
 SELECT COUNT(*) AS FILAS_ODBS FROM RHH.ODBS;
@@ -93,6 +93,16 @@ SELECT COUNT(*) AS FILAS_ODBS FROM RHH.ODBS;
 -- =====================================================================
 
 GRANT REFERENCES ON SCP.PJRQ TO RHH;
+
+-- ⭐ VERIFICACION INMEDIATA, ACA MISMO. Esperado: 1 fila con REFERENCES.
+--   Si vuelve VACIA, el GRANT no surtio efecto -- casi seguro porque lo corrio
+--   el usuario equivocado. NO SEGUIR: el bloque 2 va a fallar con ORA-01031.
+--   Patron tomado de crd/sql/DDL-COBROS-APROBACION-CONTABILIDAD.sql 0.3: la
+--   verificacion va JUNTO al paso que puede fallar, no arriba en el bloque 0.
+SELECT p.TABLE_NAME, p.PRIVILEGE, p.GRANTEE
+  FROM ALL_TAB_PRIVS p
+ WHERE p.TABLE_SCHEMA = 'SCP' AND p.TABLE_NAME = 'PJRQ'
+   AND p.PRIVILEGE = 'REFERENCES' AND p.GRANTEE = 'RHH';
 
 
 -- =====================================================================

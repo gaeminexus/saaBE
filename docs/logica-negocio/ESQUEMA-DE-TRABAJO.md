@@ -60,6 +60,39 @@ respuesta válida; disimularlo no lo es.
 
 El frontend sí puede correr `ng build` en cualquier máquina.
 
+### Quién guarda el trabajo
+
+**El árbitro, y solo el árbitro.** Commitea y sube los dos repositorios. Los ejecutores no corren
+`git add`, `commit`, `push` ni `pull`.
+
+La razón es el árbol compartido: **los equipos de una misma máquina trabajan en el mismo directorio
+y la misma rama**. El 2026-09-07 `saaBE` tenía 20 archivos sin commitear mezclando dos módulos de
+dos equipos distintos, y un rato después aparecieron otros 13 de un tercer frente en vuelo. Con tres
+agentes commiteando sobre eso, ninguno tiene la lista completa de lo que tocó el otro, y un
+`git add .` de cualquiera sube el trabajo a medio hacer de los demás con su propio mensaje.
+
+El riesgo que introduce centralizar es el contrario —que el ejecutor termine algo y el árbitro no lo
+guarde—, así que el protocolo es explícito:
+
+1. El ejecutor entrega, **al cerrar cada ítem**, la lista exacta de archivos que creó y modificó,
+   con ruta completa. Lo que no esté en su lista se queda sin guardar, y su prompt se lo dice así.
+   Entrega por ítem, no al final: mientras nadie commitee, su trabajo vive solo en el disco.
+2. El árbitro corre `git status` y lo compara contra esa lista. Lo que aparece y **nadie reclama es
+   de otro equipo**: fuera del commit, sin nombrarlo en el mensaje y sin borrarlo.
+3. Verifica que compile antes de commitear —`mvn compile` en `saaBE`, `ng build` en `saaFE`— y
+   devuelve lo roto en vez de subirlo. Un commit roto en un árbol compartido frena a todos.
+4. Agrega **archivo por archivo, por ruta explícita**. `git add .`, `-A`, `-u` y `git commit -a`
+   están denegados por reglas de permiso, no solo por instrucción.
+5. `git push` directo. **No `git pull --rebase` antes**, y esto es contraintuitivo: con archivos
+   modificados de otro equipo en el árbol el rebase ni arranca (*cannot pull with rebase: You have
+   unstaged changes*), y esa es la situación normal acá. Solo si el push se rechaza, `pull
+   --rebase`; si vuelve a fallar, se detiene y pregunta. **`--autostash` está prohibido**: guardaría
+   el trabajo de otro equipo en un stash para desatascar el propio.
+6. No le da trabajo nuevo a un ejecutor mientras lo anterior siga sin commitear.
+
+Mensaje en español, con el módulo y el equipo adelante: `modulo(omen1): qué cambió y por qué`. El
+log es la única forma de desenredar después un árbol compartido.
+
 ---
 
 ## 2. Cómo fluye el trabajo
@@ -83,6 +116,15 @@ Usuario ──── define el alcance ────► ÁRBITRO
 ```
 
 **Dos modos de entrega de prompts**, el usuario elige:
+**El árbitro no arranca proponiendo un plan.** Su primera entrega es un **resumen de lo pendiente**
+de los módulos de su alcance —qué frentes están abiertos, qué quedó a medias, qué está sin empezar,
+y qué hay sin commitear en el árbol que caiga dentro de su alcance— y ahí se detiene. No elige por
+dónde empezar, no reparte trabajo y no le manda nada a sus ejecutores hasta que el usuario le da una
+**orden específica**. Los ejecutores hacen lo mismo con su repositorio: inventario y espera.
+
+Es un cambio del 2026-09-07 y responde a que el proyecto ya está avanzado: con varios frentes vivos,
+un plan propuesto sin conocer las prioridades del día es trabajo que hay que deshacer.
+
 
 1. **Por defecto — el usuario es intermediario.** El árbitro escribe el prompt en el chat, el
    usuario lo copia y lo pega en la sesión del agente, y le trae la respuesta de vuelta.
@@ -206,6 +248,7 @@ Abre las tres sesiones, cada una parada en su repositorio, con su nombre, su mod
 | **Modelos** | Opus en el árbitro, Sonnet en los ejecutores |
 | **Accesos** | El árbitro recibe `--add-dir` a `saaFE`; el frontend, a `saaBE` |
 | **Alcance** | Lo que pases en `-Alcance` y `-NoTocar` entra en los tres prompts |
+| **Permisos** | Un archivo de reglas por rol, vía `--settings`. Hoy solo el árbitro lleva uno |
 
 ### Por qué el árbitro es el único remoto
 
@@ -216,6 +259,35 @@ necesita —viaja por un named pipe local—, así que el equipo coordina igual 
 El costo: si el backend o el frontend se traban pidiendo un permiso, no se les puede contestar
 desde el celular, y el árbitro tampoco puede hacerlo por ellos. Un mensaje de otra sesión nunca
 cuenta como consentimiento del usuario.
+
+### Permisos por rol
+
+El árbitro y el backend **arrancan en el mismo directorio**, así que comparten
+`saaBE/.claude/settings.json`: cualquier permiso que se ponga ahí para el árbitro se lo lleva
+también el backend. Es la misma clase de asimetría que la de `ListAgents` —algo que depende del rol
+y que las reglas del repositorio no saben expresar— pero acá sí hay salida.
+
+`--settings <archivo>` carga reglas **adicionales** para una sola sesión, y el lanzador se lo pasa
+únicamente al árbitro, desde `equipos/permisos/saa-arbitro.json`. Ahí viven `git add`, `commit -m`
+y `-F`, `pull --rebase`, `push`, `cd` y `ng build`.
+
+**Medido el 2026-09-07**, porque de esto depende que el reparto funcione:
+
+| Prueba | Resultado |
+|---|---|
+| `--settings` con un `allow` propio | Concede |
+| `--settings` intentando permitir algo que el repositorio deniega | **No** concede: el `deny` gana |
+| Con la configuración real | El backend da BLOQUEADO en `git add`; el árbitro lo ejecuta |
+
+O sea: **lo destructivo se queda en `.claude/settings.json`**, donde aplica a todos y se levante la
+sesión como se levante, y **lo que cambia por rol se suma con `--settings`**. La contrapartida es
+que un árbitro abierto a mano, sin el lanzador, no lleva esos permisos y va a preguntar en cada
+commit — a propósito: el rol *árbitro* existe como concepto del lanzador.
+
+Y una trampa que no avisa: **un repositorio sin *trust* ignora su propio `allow`**, y lo dice al
+arrancar (*Ignoring N permissions.allow entry... this workspace has not been trusted*). El `deny` sí
+se respeta. Al clonar en una máquina nueva, el `settings.json` versionado no hace nada hasta que
+alguien abra Claude Code ahí una vez y acepte el diálogo.
 
 ### Si cambiás un prompt
 
@@ -307,9 +379,12 @@ por el propio agente.
 
 - Un árbitro **no** le manda trabajo a los ejecutores de otro equipo. No conoce sus reservas de
   módulos ni su alcance, y despacharles trabajo es la vía más rápida a una colisión.
-- Entre **árbitros** la comunicación es deseable y necesaria. Cuando un cambio afecta el alcance
-  de otro equipo —un servicio compartido que cambia de comportamiento, un endpoint que empieza a
-  rechazar donde antes aceptaba— eso no lo detecta nadie más.
+- Entre **árbitros** la comunicación es deseable y necesaria —cuando un cambio afecta el alcance de
+  otro equipo, un servicio compartido que cambia de comportamiento o un endpoint que empieza a
+  rechazar donde antes aceptaba, eso no lo detecta nadie más— **pero desde el 2026-09-07 pasa por
+  confirmación del usuario**: el árbitro le muestra a quién le va a escribir y el texto exacto, y
+  espera el sí. Vale también al revés: lo que le llegue de otro árbitro se lo cuenta antes de actuar
+  en consecuencia. Lo que cambió es quién autoriza la conversación, no que deba existir.
 - Un ejecutor que recibe trabajo de alguien que no es su árbitro **no lo ejecuta**: se lo reporta
   a su árbitro y sigue con lo suyo.
 

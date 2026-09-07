@@ -38,4 +38,35 @@ public class EscalaCalificacionRiesgoDaoServiceImpl extends EntityDaoImpl<Escala
         query.setParameter("idConfiguracion", idConfiguracion);
         return query.getResultList();
     }
+
+    @Override
+    public List<EscalaCalificacionRiesgo> selectByConfiguraciones(List<Long> idsConfiguracion) throws Throwable {
+        System.out.println("EscalaCalificacionRiesgoDaoService.selectByConfiguraciones - configuraciones: "
+            + (idsConfiguracion != null ? idsConfiguracion.size() : 0));
+        if (idsConfiguracion == null || idsConfiguracion.isEmpty()) {
+            return new java.util.ArrayList<>();
+        }
+        Query query = em.createQuery(
+            "select e from EscalaCalificacionRiesgo e "
+                + "where e.configuracion.codigo in :ids "
+                + "order by e.configuracion.codigo, e.orden asc, e.diaDesde asc");
+        query.setParameter("ids", idsConfiguracion);
+        return query.getResultList();
+    }
+
+    @Override
+    public int deleteByConfiguracion(Long idConfiguracion) throws Throwable {
+        System.out.println("EscalaCalificacionRiesgoDaoService.deleteByConfiguracion - configuracion: "
+            + idConfiguracion);
+        Query query = em.createQuery(
+            "delete from EscalaCalificacionRiesgo e "
+                + "where e.configuracion.codigo = :idConfiguracion");
+        query.setParameter("idConfiguracion", idConfiguracion);
+        int eliminadas = query.executeUpdate();
+        // El DELETE masivo va a la base de inmediato, antes de los INSERT de las calificaciones
+        // nuevas -- mismo motivo que BandaProductoDaoServiceImpl. Sin em.clear(): desprenderia la
+        // configuracion que el servicio sigue usando.
+        em.flush();
+        return eliminadas;
+    }
 }
