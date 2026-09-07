@@ -1639,3 +1639,127 @@ acá, y ellos adoptaron este patrón citándolo.
 **no prueba que alguien la haya leído**. Pendiente empírico: confirmar contra producción que las
 FK de `DDL-COBRO-PETRO-DOS-PASOS` y `DDL-COBROS-APROBACION-CONTABILIDAD` existen de verdad.
 **No preguntado al usuario todavía — está en la corrida de pago.**
+
+---
+
+# 2026-09-07 — Cobros de crédito: el centavo, y el reverso que no existía
+
+Jornada entera sobre `CRD.CBCR`. Empezó con un cobro que no se podía procesar y terminó
+destapando dos defectos vivos en producción que nadie había visto.
+
+## H48 — El centavo: la cascada de pagos abandona un residuo que sí tenía dónde ir
+
+**Síntoma:** `POST /cbcr/54/procesar` → 500, *«El asiento NNNN no está cuadrado. DEBE=171,86 |
+HABER=171,85 | DIFERENCIA=0,01»*. Tres intentos previos ya se habían anulado (cobros 38, 46, 49
+en estado ANULADO, mismo préstamo, misma cuota, mismo centavo).
+
+**Las dos causas, medidas contra el código, no deducidas:**
+
+1. `MotorPagoPrestamoServiceImpl:286` → `while (valorRestante > TOLERANCIA)`, con
+   `TOLERANCIA = 0.01` (`:54`). Pagada la cuota #18 con 171,85, queda `valorRestante = 0.01`, y
+   `0.01 > 0.01` es **falso**. El bucle sale. **Había 43 cuotas pendientes por delante**: el
+   centavo tenía perfectamente adónde irse. Lo frena la comparación, no la falta de cuotas.
+2. `CobroCreditoServiceImpl:1799` → el asiento definitivo arma sus dos lados de **fuentes
+   distintas**: el DEBE de `totalesAportesPrestamos(detalles)` (o sea `CRD.DCBC`, 171,86) y el
+   HABER de los `PagoPrestamo` realmente grabados (171,85). El asiento asume *lo cobrado == lo
+   aplicado*. **Cualquier excedente del motor descuadra el asiento por ese monto exacto.**
+
+⚠️ **No arreglar el `>` sin mirar el blindaje de `:298`.** Si se cambia a `>=`, el bucle entra con
+0,01, pero `if (detalle.getTotalAplicado() <= TOLERANCIA) break` corta **después** de haber
+agregado el detalle y **antes** de restar el aplicado: el `PagoPrestamo` del centavo queda grabado
+y el `resultado` igual reporta excedente 0,01. Son dos off-by-one que interactúan. No es un
+cambio de cinco minutos, y `MotorPagoPrestamoServiceImpl` lo usan Petro, jubilados y los pagos
+manuales.
+
+**Lo bueno, verificado empíricamente y no por lectura:** `IncomeException` es
+`@ApplicationException(rollback = true)`, así que **los reintentos no dejaron basura** — `sql/204`
+bloque 2 devolvió 0 pagos grabados y `CBCRASRP`/`CBCRASN2` en NULL.
+
+**Radio de impacto (`sql/204` bloque 3): un solo préstamo.** Los demás candidatos eran cobros ya
+PROCESADOS que pagan varias cuotas — ruido del filtro, no casos.
+
+**Entregado:** `sql/204` (diagnóstico) y `sql/205` (corrección puntual: baja el cobro 54 a 171,85,
+con el valor actual en el `WHERE`, control antes y después, COMMIT y reverso comentados). El 0,01
+queda vivo en la transitoria contra el asiento 8572 — **es correcto**: dinero recibido y no
+aplicado. No confundirlo con el incidente del 2026-08-31, donde la transitoria acumulaba porque
+el asiento 2 nunca corría.
+
+**La causa sigue abierta.** Volverá a pasar con el próximo cobro que no calce al centavo.
+
+## ⛔ H49 — La redirección que el propio código recomienda produce un descuadre silencioso
+
+Es el hallazgo más caro del día, y estaba escrito como consejo en un mensaje de error.
+
+`CobroCreditoServiceImpl:453` bloquea anular un cobro PROCESADO de tipo `PAGO_CUOTA`,
+`ABONO_CAPITAL` o `PRECANCELACION` y dice *«use la anulación de la operación sobre el préstamo
+(anularOperacion)»*. Por ese camino:
+
+1. `anularOperacion` anula los `PagoPrestamo`, recalcula cuotas y revierte aportes. ✅
+2. Llama a `contabilidadPrestamoService.contabilizarReverso(evento)`.
+3. `ContabilidadPrestamoServiceImpl:745` ve `eventoAnulado.getNumeroAsiento() == null` y
+   **retorna sin hacer nada** — CASO B, documentado a propósito en `:734-737`: el asiento es
+   `CBCRASN2`, vive en `CobroCredito.asientoDefinitivo`, y **lo reversa `anularCobro`**.
+4. Pero por este camino `anularCobro` nunca corre.
+
+**Resultado: la cartera queda revertida y los tres asientos del cobro quedan vivos, con el cobro
+en PROCESADO.** La contabilidad dice que se cobró y la cartera dice que no. Sin error, sin log.
+
+⭐ **La lección, que es la de siempre en otra forma:** el comentario de `:734-737` es correcto y
+está bien puesto. Lo que estaba mal era **el consejo del otro lado**, a 300 líneas de distancia,
+que mandaba por un camino que ese comentario ya explicaba que no cierra el circuito. Los dos
+textos son verdad por separado y juntos producen un descuadre.
+
+## ⛔ H50 — `anularCobro` nunca borró la distribución de bandas
+
+`procesarCobro:651` hace `eliminarDistribucion(COBRO_INDIVIDUAL, idCobro)` al empezar.
+`anularCobro` **no la borra jamás** — las únicas dos referencias en todo `CobroCreditoServiceImpl`
+son la `:651` y la `:1366`.
+
+**Todo `PAGO_MULTIPLE` / `COBRO_MIXTO` / `REGISTRO_APORTE` anulado hasta hoy dejó sus filas de
+`CRD.DSBN` vivas**, y la auditoría de bandas —la que cuadra los reportes contra el mayor— cuenta
+plata revertida. **Avisado a `omen-saa-2-arb`** el 2026-09-07 porque le toca por `cnt`.
+
+La limpieza del histórico **no la tomó nadie**: es un `.sql` con diagnóstico propio.
+
+## Frente abierto — reverso de un cobro PROCESADO
+
+**Pedido del usuario, 2026-09-07.** Contrato completo en
+`crd/API-REVERSO-COBRO-CREDITO.md` (`af282d0`), espejado a `saaFE/docs/crd/` (`0db97b2`).
+DDL previo en `crd/sql/206`. **Diseñado y NO implementado.**
+
+Lo primero que hay que entender antes de tocarlo: **`anularCobro` ya existe y ya admite
+PROCESADO** para `PAGO_MULTIPLE`, `COBRO_MIXTO` y `REGISTRO_APORTE`. Lo que no existe es
+**reversar**, que es otra cosa:
+
+| | Anular (existe) | Reversar (falta) |
+|---|---|---|
+| Qué pasó | El depósito nunca llegó | El depósito sí llegó, se aplicó mal |
+| Estado final | ANULADO (5), terminal | APROBADO (2), reprocesable |
+| Transitorio | Se anula y no vuelve | Se anula **y se regenera** |
+
+**Decisiones del usuario:** vuelve a APROBADO · el transitorio se anula y se regenera (⚠️ el
+asiento nuevo lleva fecha de hoy: si el reverso cae en otro mes, cambia de período contable) ·
+cubre los seis tipos con evento o aporte · coordinar con el equipo A antes de despachar.
+
+⭐ **El paso que solo aparece porque el cobro vuelve a vivir:** hay que desenganchar el detalle
+(`DCBC.EVPRCDGO` a NULL). `anularCobro` no lo hace y no lo necesita —allá el cobro muere—, pero
+acá, sin eso, al reprocesar `enlazarEvento:948` deja la línea apuntando a un evento **anulado**.
+
+**`ACUERDO_CONDONACION` queda fuera a propósito** (son **siete** tipos, no seis — error mío al
+plantear la decisión, corregido antes de escribir el contrato): su reverso exigiría reabrir un
+acuerdo anulado, operación que no existe, y no se inventa de paso.
+
+## Estado de la coordinación
+
+⛔ **El árbitro del equipo A (`saabe-25`) no es alcanzable desde esta máquina.** No aparece en
+`ListAgents`; commitea `crd(eqA)` en saaFE desde otro lado. `lap-saa-1` tampoco aparece.
+El frente del reverso está **frenado esperando su visto bueno** sobre `CobroCreditoServiceImpl`.
+
+⚠️ **Y `crd` está solapado en vivo, no en el histórico:** el equipo A commiteó cuatro cambios de
+`crd` en saaFE el 2026-09-07 (escala de riesgo, bandas). Además aparecieron y desaparecieron
+archivos modificados de `cnt` en el árbol durante la jornada, y hay cuatro de `cxp`/`tsr` vivos en
+saaFE. Ninguno se tocó ni se commiteó.
+
+⚠️ **Marcadores de commit inconsistentes el mismo día:** `eqB`, `omen1` y `usap` en saaBE, `eqA`
+y `fe` en saaFE. El §2d del registro dice que el marcador es lo único que distingue equipos —
+hoy, desde el log, **no se puede afirmar quién hizo el FE de P22**.
