@@ -751,6 +751,18 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
 
     private static final double TOLERANCIA_STALENESS_PRECANCELACION = 0.01;
 
+    /**
+     * Medio centavo — misma constante y mismo motivo que
+     * {@code MotorPagoPrestamoServiceImpl#MEDIO_CENTAVO}: todo importe pasa por
+     * {@code redondear()} a 2 decimales, así que un residuo real es 0,00 o >= 0,01 y nunca algo
+     * intermedio; comparar contra medio centavo evita depender de la representación binaria del
+     * double. La usa el invariante cobrado-vs-aplicado de {@link #procesarCobro}
+     * (CORRECCION-H48-CENTAVO-CASCADA.md §2.2). No es la misma idea que
+     * {@link #TOLERANCIA_CUADRE} (0,01: cuánto puede diferir un monto editado del guardado antes
+     * de considerarse "el mismo"), así que no la reemplaza.
+     */
+    private static final double MEDIO_CENTAVO = 0.005;
+
     @Override
     public ResultadoProcesoCobro procesarCobro(Long idCobro, String usuario) throws Throwable {
         System.out.println("CobroCreditoService.procesarCobro - cobro: " + idCobro);
@@ -1014,6 +1026,45 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
 
         cobro.setUsuarioProceso(usuario);
         cobro.setFechaProceso(LocalDateTime.now());
+
+        // Invariante que el asiento definitivo asume, hecho explícito (2026-09-07,
+        // CORRECCION-H48-CENTAVO-CASCADA.md §2.2): el DEBE se arma desde CRD.DCBC y el HABER
+        // desde los PGPR que la cascada grabó. Si el préstamo ya no tiene ninguna cuota con
+        // saldo (o el valor del cobro excede la deuda), la cascada aplica MENOS de lo cobrado —
+        // eso es plata sin destino, y hoy ese caso llegaba intacto hasta
+        // AsientoContableServiceImpl como un descuadre D/H opaco. Se verifica ACÁ, antes de
+        // generar nada, con un mensaje que el operador puede accionar. Solo las líneas CON
+        // préstamo: las de aporte no pasan por la cascada del motor y meterlas daría falsos
+        // positivos.
+        List<DetalleCobroCredito> detallesPrestamoVerificar = detalleCobroCreditoDaoService.selectByCobro(idCobro);
+        double cobradoPrestamos = 0.0;
+        double aplicadoPrestamos = 0.0;
+        for (DetalleCobroCredito lineaVerificar : detallesPrestamoVerificar) {
+            if (lineaVerificar.getPrestamo() == null) {
+                continue;
+            }
+            cobradoPrestamos += nvl(lineaVerificar.getValor());
+            if (lineaVerificar.getEventoPrestamo() != null) {
+                for (PagoPrestamo pagoVerificar
+                        : pagoPrestamoDaoService.selectByEvento(lineaVerificar.getEventoPrestamo().getCodigo())) {
+                    if (pagoVerificar.getAnulado() != null && pagoVerificar.getAnulado() == 1L) {
+                        continue;
+                    }
+                    aplicadoPrestamos += nvl(pagoVerificar.getValor());
+                }
+            }
+        }
+        cobradoPrestamos = redondear(cobradoPrestamos);
+        aplicadoPrestamos = redondear(aplicadoPrestamos);
+        double diferenciaPrestamos = redondear(cobradoPrestamos - aplicadoPrestamos);
+        if (Math.abs(diferenciaPrestamos) > MEDIO_CENTAVO) {
+            throw new IncomeException("El cobro " + idCobro + " registra $" + cobradoPrestamos
+                    + " sobre préstamos, pero solo se pudieron aplicar $" + aplicadoPrestamos
+                    + ": sobran $" + diferenciaPrestamos + " que el préstamo no puede absorber"
+                    + " (ya está cancelado, o el valor excede la deuda). El excedente se reparte"
+                    + " al registrar el cobro: a otra cuota, a un aporte o a devolución. Corrija"
+                    + " el detalle del cobro y vuelva a procesarlo.");
+        }
 
         // Tres asientos por cobro (2026-08-31, decisión del usuario): 1=transitorio (ya
         // generado al registrar), 2=REPARTO (CBCRASRP, nuevo), 3=definitivo (CBCRASN2, sin

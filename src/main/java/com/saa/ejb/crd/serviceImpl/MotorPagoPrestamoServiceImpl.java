@@ -50,8 +50,16 @@ import jakarta.ejb.Stateless;
 @Stateless
 public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
 
-    /** Tolerancia de UN CENTAVO para toda comparación de aplicación (§6.1) */
-    private static final double TOLERANCIA = 0.01;
+    /** Una cuota con saldo pendiente menor o igual a esto se considera saldada. */
+    private static final double TOLERANCIA_CUOTA = 0.01;
+
+    /**
+     * Medio centavo. Frontera entre "no queda plata" y "queda plata": todos los importes pasan
+     * por redondear() a 2 decimales, así que un residuo real es 0,00 o >= 0,01 y nunca algo
+     * intermedio. Se usa medio centavo en vez de comparar contra 0,01 para que la comparación no
+     * dependa de la representación binaria del double.
+     */
+    private static final double MEDIO_CENTAVO = 0.005;
 
     /** Tope de seguridad del bucle de cascada */
     private static final int MAX_ITERACIONES = 100;
@@ -177,7 +185,7 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
         }
 
         // ✅ AUTOCORRECCIÓN: la cuota está liquidada según PGPR pero su estado dice otra cosa
-        if (saldos.getTotalPendiente() <= TOLERANCIA && !esEstadoLiquidado(cuota.getEstado())) {
+        if (saldos.getTotalPendiente() <= TOLERANCIA_CUOTA && !esEstadoLiquidado(cuota.getEstado())) {
             System.out.println("    ⚠️ Cuota #" + cuota.getNumeroCuota()
                 + " liquidada según PagoPrestamo - Actualizando estado a PAGADA");
 
@@ -284,7 +292,7 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
         double valorRestante = redondear(valor);
         int iteraciones = 0;
 
-        while (valorRestante > TOLERANCIA && iteraciones < MAX_ITERACIONES) {
+        while (valorRestante > MEDIO_CENTAVO && iteraciones < MAX_ITERACIONES) {
             iteraciones++;
 
             DetallePrestamo cuota = buscarSiguienteCuotaConSaldo(idPrestamo);
@@ -296,8 +304,8 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
             DetalleAplicacionCuota detalle = aplicarPagoACuota(cuota, valorRestante, ctx);
             resultado.getCuotasAfectadas().add(detalle);
 
-            if (detalle.getTotalAplicado() <= TOLERANCIA) {
-                // Blindaje: si una cuota no absorbe nada, no tiene sentido reintentar sobre ella
+            if (detalle.getTotalAplicado() <= MEDIO_CENTAVO) {
+                // Blindaje: si una cuota no absorbió nada, no tiene sentido reintentar sobre ella
                 System.out.println("  ⚠️ La cuota #" + cuota.getNumeroCuota()
                     + " no absorbió valor; se detiene la cascada");
                 break;
@@ -340,7 +348,7 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
 
         for (DetallePrestamo cuota : pendientes) {
             SaldosCuota saldos = calcularSaldosRealesCuota(cuota);
-            if (saldos.getTotalPendiente() > TOLERANCIA) {
+            if (saldos.getTotalPendiente() > TOLERANCIA_CUOTA) {
                 return cuota;
             }
         }
@@ -366,7 +374,7 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
         // calcularSaldosRealesCuota pudo autocorregir el estado: se relee para el resultado
         detalle.setEstadoNuevo(cuota.getEstado());
 
-        if (saldos.getTotalPendiente() <= TOLERANCIA) {
+        if (saldos.getTotalPendiente() <= TOLERANCIA_CUOTA) {
             System.out.println("      ℹ️ La cuota ya no tiene saldo pendiente - no se aplica nada");
             return detalle;
         }
@@ -412,7 +420,7 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
         double totalAplicado = redondear(aplicadoDesgravamen + aplicadoMora + aplicadoIV
             + aplicadoInteres + aplicadoCapital + aplicadoSeguro);
 
-        if (restante > TOLERANCIA) {
+        if (restante > MEDIO_CENTAVO) {
             // Solo ocurre con datos legacy donde DTPRTTLL no cuadra con la suma de los
             // componentes. Se registra el desfase y se imputa SOLO lo que los componentes
             // pudieron absorber, para que PGPR siga cumpliendo "los componentes suman el valor";
@@ -423,7 +431,7 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
             montoAplicar = totalAplicado;
         }
 
-        if (totalAplicado <= TOLERANCIA) {
+        if (totalAplicado <= MEDIO_CENTAVO) {
             System.out.println("      ℹ️ No se pudo imputar valor a ningún componente");
             return detalle;
         }
@@ -461,7 +469,7 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
         // ------------------------------------------------------------------
         LocalDateTime fechaPago = ctx != null && ctx.getFechaPago() != null ? ctx.getFechaPago() : LocalDateTime.now();
 
-        if (Math.abs(montoAplicar - saldos.getTotalPendiente()) <= TOLERANCIA) {
+        if (Math.abs(montoAplicar - saldos.getTotalPendiente()) <= TOLERANCIA_CUOTA) {
             aplicarEstadoCuota(cuota, (long) EstadoCuotaPrestamo.PAGADA);
             cuota.setFechaPagado(fechaPago);
             System.out.println("      ✅ Cuota #" + cuota.getNumeroCuota() + " PAGADA con $" + totalAplicado);
@@ -514,7 +522,7 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
             + redondear(moraPagada) + redondear(interesVencidoPagado) + redondear(desgravamenPagado)
             + redondear(valorSeguroIncendio));
         double montoTotalRedondeado = redondear(montoTotal);
-        if (Math.abs(montoTotalRedondeado - sumaComponentes) > TOLERANCIA) {
+        if (Math.abs(montoTotalRedondeado - sumaComponentes) > TOLERANCIA_CUOTA) {
             throw new IncomeException("Descuadre al registrar el pago de la cuota #" + cuota.getNumeroCuota()
                 + " (préstamo " + (cuota.getPrestamo() != null ? cuota.getPrestamo().getCodigo() : null)
                 + "): el total $" + montoTotalRedondeado + " no coincide con la suma de sus componentes $"
@@ -738,13 +746,13 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
         cuota.setSaldo(Math.max(0, redondear(totalConMoraIV(cuota) - totalPagado)));
 
         // Estado reconstruido
-        if (totalPendiente <= TOLERANCIA) {
+        if (totalPendiente <= TOLERANCIA_CUOTA) {
             aplicarEstadoCuota(cuota, (long) EstadoCuotaPrestamo.PAGADA);
             if (cuota.getFechaPagado() == null) {
                 cuota.setFechaPagado(LocalDateTime.now());
             }
             System.out.println("  → Cuota #" + cuota.getNumeroCuota() + " queda PAGADA");
-        } else if (totalPagado > TOLERANCIA) {
+        } else if (totalPagado > MEDIO_CENTAVO) {
             aplicarEstadoCuota(cuota, (long) EstadoCuotaPrestamo.PARCIAL);
             cuota.setFechaPagado(null);
             System.out.println("  → Cuota #" + cuota.getNumeroCuota() + " queda PARCIAL");
