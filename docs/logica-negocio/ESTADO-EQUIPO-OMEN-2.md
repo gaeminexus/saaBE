@@ -1970,3 +1970,33 @@ falla es el momento**, no la atención.
 
 **Corregido:** el `e2-08` reescrito con los nombres verificados, y el `.md` de `cxp` con sus
 `INSERT` arreglados, incluyendo el `PDTRALTR` que faltaba. El de `crd` se les avisa.
+
+### §28bis — CERRADO el catálogo de comandos de búsqueda — 2026-09-07
+
+**`e2-13` corrido: los 15 comandos dan `OK`.** Faltaban tres detalles bajo el rubro alterno 71:
+**12 (`IS_NULL`), 13 (`ABRE_PARENTESIS`), 14 (`CIERRA_PARENTESIS`)**.
+
+**Con eso deja de reventar `selectByCriteria`, que es transversal a TODOS los módulos** — no sólo a
+los nuestros. El síntoma que lo destapó era de `crd` (`CuentaBancariaParticipe`), pero el defecto era
+del catálogo compartido y afectaba a cualquier pantalla que armara criterios con paréntesis.
+
+**Los valores no se inventaron:** salieron de leer `EntityDaoImpl.selectByCriteria`, el único
+consumidor — `:161-163` concatena `CIERRA_PARENTESIS` tal cual y `:170-173` hace lo mismo con
+`ABRE_PARENTESIS`. Es lo que el propio `e2-08` advertía: **un operador mal escrito no da error de
+catálogo, da un JPQL inválido más adelante**, que es mucho más caro de rastrear que la fila ausente.
+
+**Y un hallazgo que acotó el arreglo:** el **12 (`IS_NULL`) nunca se lee**. `EntityDaoImpl:184` tiene
+el texto `IS NULL` **hardcodeado en Java** y la rama que consulta el catálogo es la del `else`. O sea
+que **esa fila no era la que causaba el error** y el sistema habría funcionado sin ella. Se insertó
+igual para dejar el catálogo completo respecto de `TipoComandosBusqueda`, **y quedó escrito en el
+script que hoy es una fila inerte**, para que nadie la crea activa.
+
+> **Vale la pena separar las dos cosas:** de tres filas faltantes, **dos eran el defecto y una era
+> sólo una incompletitud**. Insertar las tres sin distinguirlas habría dejado la impresión de que el
+> catálogo necesitaba las tres — y el próximo que investigue por qué `IS_NULL` está en la base y no
+> se usa habría perdido el tiempo que este párrafo le ahorra.
+
+### El estado del tablero de scripts
+
+**De trece: doce corridos, uno borrado.** Sólo quedan `e2-01` y `e2-02`, dos verificaciones de
+lectura de principios de mes que no bloquean nada. **El frente de scripts queda cerrado.**

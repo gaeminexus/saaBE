@@ -24,7 +24,7 @@ de cada uno.**
 | **e2-06** | `rhh/sql/e2-06-cuenta-empleado-apunta-a-banco-externo.sql` | `RHH.CBEM`: de banco interno (`TSR.BNCO`) a banco externo (`TSR.BEXT`) | ✅ corrido. Su FK falló en silencio; completada por el `e2-11` |
 | **e2-07** | `tsr/sql/e2-07-aplicacion-desde-caja-chica.sql` | `PGS.APLP.APLPMVCH`: un gasto de caja chica puede originar un pago | ✅ **corrido** (confirmado el 2026-09-04) |
 | **e2-08** | **`tsr/sql/e2-08-diagnostico-comandos-busqueda.sql`** | Qué fila falta en el catálogo de comandos de búsqueda (`SCP.PDTR`, rubro alterno 71). Es la causa del `WFLYEJB0034` de `selectByCriteria`. **Solo lectura** | ✅ **corrido el 2026-09-07.** Faltan los alternos **12, 13 y 14**. *(La v1 no corría: cuatro columnas inventadas, §28)* |
-| **e2-13** | **`tsr/sql/e2-13-inserta-los-tres-comandos-de-busqueda-faltantes.sql`** | ⚠️ **NO es lectura.** Inserta los tres detalles que faltan en `SCP.PDTR`. Valores sacados de `EntityDaoImpl`, no inventados | 🟡 **PENDIENTE** — arregla el `WFLYEJB0034` |
+| **e2-13** | **`tsr/sql/e2-13-inserta-los-tres-comandos-de-busqueda-faltantes.sql`** | ⚠️ **NO es lectura.** Inserta los tres detalles que faltan en `SCP.PDTR`. Valores sacados de `EntityDaoImpl`, no inventados | ✅ **CORRIDO el 2026-09-07.** Los 15 comandos dan OK |
 | ~~e2-09~~ | — | *Borrado el 2026-09-04.* Diagnosticaba si `MVCHTPOO` estaba nulo; el DDL de `tsr/sql/02` ya lo garantiza con `NOT NULL` + `CHECK`. Un `.sql` que no hay que correr es ruido | ⛔ no existe |
 | **e2-10** | **`cxp/sql/e2-10-retenciones-cargadas-con-cuenta-de-proveedor.sql`** | Retenciones ya cargadas con la cuenta de proveedor de un cliente (bloque A2) y titulares sin cuenta de cliente (B1). **Solo lectura** | ✅ **CERRADO por el usuario el 2026-09-07.** El B1 quedó descartado el 09-04: la cuenta de cliente se parametriza sobre la marcha |
 | **e2-11** | `rhh/sql/e2-11-completa-la-fk-que-el-e2-06-no-pudo-crear.sql` | `GRANT` + `FK_CBEM_BEXT` + índice, que el `e2-06` no pudo crear | ✅ **corrido y cerrado** (`FK_CBEM_BEXT ENABLED`) |
@@ -32,14 +32,17 @@ de cada uno.**
 
 ---
 
-## Lo que queda pendiente de correr, en orden de utilidad
+## Lo que queda pendiente de correr
 
-| Script | Qué hace | Riesgo |
-|---|---|---|
-| **`e2-13`** | ⭐ **El único que importa hoy.** Inserta los alternos 12, 13 y 14 en `SCP.PDTR` y con eso deja de reventar `selectByCriteria` | ⚠️ **NO es lectura**: son tres `INSERT` en catálogo compartido. Mirar el bloque 0 antes |
-| `e2-01`, `e2-02` | Verificaciones viejas del frente de beneficios | ninguno, son lectura |
+**Nada que importe.** De los trece scripts: **doce corridos** y uno borrado (`e2-09`).
 
-**Todo lo demás está cerrado.** De los trece scripts, once corridos, uno borrado y uno pendiente.
+| Script | Por qué sigue sin correr |
+|---|---|
+| `e2-01`, `e2-02` | Verificaciones **de lectura** del frente de beneficios sociales, de principios de septiembre. No arreglan nada ni bloquean nada: contrastan entidades contra el esquema. Correrlas es higiene, no urgencia |
+
+> **Cerrado el 2026-09-07:** el `e2-13` dejó los 15 comandos de búsqueda en `OK`, y con eso
+> `selectByCriteria` —que es transversal a **todos** los módulos, no sólo a los nuestros— deja de
+> reventar con `WFLYEJB0034`.
 
 ---
 
