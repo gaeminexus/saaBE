@@ -49,7 +49,15 @@ SELECT GRANTEE, TABLE_SCHEMA, TABLE_NAME, PRIVILEGE FROM ALL_TAB_PRIVS
 --   constraint, ni con rol DBA. Ejecutar como DBA o como CNT.
 --   Si PUBLIC ya lo tiene, esta linea sobra: NO ejecutarla.
 -- ---------------------------------------------------------------------
--- GRANT REFERENCES ON CNT.DTAS TO TSR;
+--
+--   ⚠️ 2026-09-07: ESTA LINEA DEJA DE SER COMENTARIO. En rhh/sql/e2-06 y en
+--   rhh/sql/e2-03 el mismo GRANT quedo comentado, el ALTER de la FK murio con
+--   ORA-01031, y el resto del script paso: la aplicacion funcionaba y lo unico
+--   que faltaba era la integridad, que no se nota hasta que falla. Se descubrio
+--   3 dias despues, en produccion, y hubo que escribir e2-11 y e2-12 para
+--   completarlos. Si PUBLIC ya lo tiene, re-otorgarlo funciona en silencio.
+
+GRANT REFERENCES ON CNT.DTAS TO TSR;
 
 -- ---------------------------------------------------------------------
 -- BLOQUE 2: secuencia del PK

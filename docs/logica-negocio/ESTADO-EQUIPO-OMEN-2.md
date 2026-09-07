@@ -1800,3 +1800,45 @@ durante todo el tiempo sin FK nada impidió grabar un `BEXTCDGO` inexistente, y 
 cargaron en esa ventana**. Dio 0 huérfanos y el DDL corrió limpio.
 
 **Control 5.1 del usuario: `FK_CBEM_BEXT · R · ENABLED · BEXT`. El frente `e2-06` queda CERRADO.**
+
+### §27bis — CERRADO el lote de RRHH, y esta vez SÍ conté toda la familia
+
+**2026-09-07.** Control 4.1 del usuario: **`FK_ODBS_PJRQ · R · ENABLED · PJRQ`**.
+
+**El `e2-03` había fallado igual que el `e2-06`**, y por la misma razón: `GRANT` comentado → `ALTER`
+muerto con `ORA-01031` → el resto del script pasando. **El usuario lo había confirmado como «corrido
+completamente», y lo estaba**: lo que falla es un bloque adentro, en silencio. Pedir la verificación
+igual costó una consulta y encontró una FK ausente en producción.
+
+**Lo que sí salió bien:** el `0.2` mostró los **tres** índices con `OWNER = 'RHH'`, así que
+`IX_LQBS_ODBS` —el que el `e2-04` no había mirado— estaba bien igual. **La sospecha era razonable y
+el dato la desmintió.** Sirve como recordatorio de que contar la familia no significa que todos los
+miembros estén rotos.
+
+**Y un error mío de paso:** el control del privilegio consultaba `ALL_TAB_PRIVS.OWNER`, que **no
+existe** — la columna es `TABLE_SCHEMA`. Estaba mal en `e2-11` y en `e2-12`. En `e2-11` nunca dio la
+cara porque el usuario no llegó a correr ese bloque; **un control que falla al ejecutarse no informa
+nada, y se parece mucho a un control que pasó.**
+
+#### El barrido que debí hacer el primer día
+
+Recién ahora conté **cuántos `GRANT REFERENCES` comentados hay en TODO `docs/`**, no sólo en mis
+scripts:
+
+| Script | Módulo | Estado |
+|---|---|---|
+| `rhh/sql/e2-03` | rhh | ✅ promovido a bloque (§27) |
+| `rhh/sql/e2-06` | rhh | histórico — completado por `e2-11` |
+| `tsr/sql/07-conciliacion-transito.sql:52` | **tsr, mío** | ✅ **promovido hoy**. `GRANT REFERENCES ON CNT.DTAS TO TSR` |
+| `docs/scripts/sql-ingresos-egresos-tesoreria.sql` | tsr/pagos | 🟡 tres `GRANT` comentados, script viejo |
+| `crd/sql/DDL-COBRO-PETRO-DOS-PASOS.sql` | **crd, otro equipo** | 🟡 tres: `TSR.BNCO`, `TSR.CNBC`, `TSR.BEXT` → `CRD` |
+| `crd/sql/DDL-COBROS-APROBACION-CONTABILIDAD.sql` | **crd, otro equipo** | 🟡 uno: `TSR.CNBC` → `CRD` |
+
+⚠️ **`tsr/sql/07` es el que más preocupa de los míos**: el §5 ya registraba que *«ya se saltó una
+vez»*. Si corrió sin el `GRANT`, `TSR.DTCN` existe **sin su FK a `CNT.DTAS`** — el mismo cuadro que
+acabamos de arreglar dos veces.
+
+> **Tres veces me pasó lo mismo esta semana: encontrar un defecto, arreglar el ejemplar que tenía en
+> la mano, y anotar la familia en un documento.** El aviso escrito no protegió nada las dos veces
+> anteriores, porque **quien corre un script lee el script**, no el documento de pre-despliegue.
+> Ahora el barrido está hecho y los de `crd` avisados.
