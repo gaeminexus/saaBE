@@ -1,7 +1,8 @@
 # Plan — pago del décimo acumulado durante el mes, y su novedad en el rol
 
 **Equipo:** `omen-saa-2` · **Escrito:** 2026-09-07 · **Módulo:** `rhh`
-**Estado:** 🟡 diseño, con dos decisiones abiertas (§5). **No despachado.**
+**Estado:** 🔵 **decisiones cerradas el 2026-09-07 (§7). Backend despachado.**
+Las preguntas del §5 quedan como registro de qué se preguntó y por qué; **las respuestas están en el §7.**
 
 **Pedido del usuario, textual:**
 
@@ -145,3 +146,115 @@ de ese período ya se procesó.
 | 2 | 🔴 El ciclo ODBS **nunca se probó** — no tiene consumidor en el frontend | Probarlo de punta a punta **antes** de agregarle nada |
 | 3 | 🟠 Anular una orden pagada con el rol ya procesado | Definir el reverso junto con el alta, no después |
 | 4 | 🟠 `rhh` toca `PagoProgramado`, que es de `cxp` y lo comparte `lap-saa-1` | El enganche es aditivo y dentro de `rhh`; no se toca `cxp` |
+
+---
+
+## 7. ✅ Las cuatro decisiones, cerradas el 2026-09-07
+
+| # | Decisión del usuario |
+|---|---|
+| **A** | **Concepto NUEVO**, no se reusa el del mensualizado |
+| **B** | **El asiento de `confirmarPago` está bien** — no se toca, y `DECIMOS_POR_PAGAR` (17) sigue sin uso |
+| **C** | La novedad se enlaza **como vacaciones**: por convención de descripción, sin FK nueva |
+| **D** | *«Hasta cierto día del mes»* es **práctica operativa, sin control en el sistema** |
+
+---
+
+### 7.A 🟢 El concepto informativo ya tiene mecanismo — el motor NO se toca
+
+Verificado: `RhhTipoConceptoNomina` ya define **`INFORMATIVO = 5`**, y el motor arma el neto sumando
+**sólo** `INGRESO` y `EGRESO`:
+
+```java
+// ProcesoNominaServiceImpl:1078-1080 y :1493-1494
+Double ingresos   = sumaPorTipo(renglones, RhhTipoConceptoNomina.INGRESO);
+Double descuentos = sumaPorTipo(renglones, RhhTipoConceptoNomina.EGRESO);
+```
+
+**Un concepto `INFORMATIVO` no entra al neto por construcción.** No hace falta tocar
+`ProcesoNominaServiceImpl` ni agregar ninguna guarda: el riesgo #1 del §6 —el doble pago— queda
+cerrado por el tipo del concepto, no por una validación que alguien pueda olvidar.
+
+> Es el criterio del §24 del estado del equipo, en su versión buena: **la condición se expresa en el
+> dato, no en una lista de casos que hay que mantener.**
+
+### 7.A.1 Cómo lo encuentra el motor: `CPNMROLM`, rubro 221
+
+`conceptoPorRol` (`ProcesoNominaServiceImpl:1803-1810`) busca por `CPNMROLM` contra
+`RhhRolConceptoMotor`, que es el **rubro 221**, con los valores en `SCP.PDTR.PDTRALTR`.
+**El último valor usado es el 31** (`FINIQUITO_APORTE_PERSONAL`).
+
+Así que el concepto nuevo necesita **tres cosas, no una**:
+
+| # | Qué | Dónde |
+|---|---|---|
+| 1 | Dos constantes nuevas en `RhhRolConceptoMotor` (32 y 33) | Java |
+| 2 | Dos filas en `SCP.PDTR` del rubro **221**, alternos 32 y 33 | ⚠️ **`.sql`** |
+| 3 | Dos filas en `RHH.CPNM` con `CPNMTPCN = 5` y `CPNMROLM = 32/33` | ⚠️ **`.sql`** |
+
+Son **dos** conceptos y no uno, porque el ODBS ya separa el tipo de beneficio (`1` décimo tercero,
+`2` décimo cuarto) y el rol tiene que poder distinguirlos en el detalle.
+
+⛔ **Sin la fila de `SCP.PDTR` el catálogo queda incompleto** y la pantalla de conceptos no puede
+mostrar el rol. Es exactamente lo que costó el `e2-08`/`e2-13`: una constante en Java cuyo detalle
+de rubro no existía en la base.
+
+### 7.B El asiento no se toca
+
+`confirmarPago` genera DEBE provisión por pagar (40/41) / HABER banco (51), y el usuario confirma
+que está bien. **`DECIMOS_POR_PAGAR` (17) queda declarada y sin uso**, como está hoy. Se deja
+anotado acá para que el próximo que la encuentre no crea que es un cabo suelto de este frente.
+
+### 7.C El enlace, por descripción — con los ojos abiertos
+
+Se repite la convención de `SolicitudVacacionesServiceImpl`: la novedad se marca en su descripción
+y se la recupera con `NovedadNominaDaoService.selectPorDescripcion`. **Formato acordado:**
+
+```
+Décimo <tercero|cuarto> acumulado — orden #{idOrden}
+```
+
+⚠️ **Lo que esta decisión acepta a conciencia:** la descripción es texto libre de 300 caracteres y
+nada impide que alguien la edite desde el ABM de novedades y rompa el vínculo. Se elige igual por
+coherencia con el precedente y para no meter DDL en una tabla del motor. **Si algún día hay que
+darle FK, el cambio es aditivo** y este párrafo explica por qué no se hizo ahora.
+
+### 7.D El plazo legal SÍ existe, y ya estaba en el repositorio
+
+El usuario pidió verificar si la normativa fija una fecha límite. **La hay, y no hizo falta buscarla
+afuera** — está en `ANALISIS-MODULO-RRHH.md:107-112`:
+
+| Beneficio | Período de cálculo | **Pago hasta** |
+|---|---|---|
+| Décimo tercero | 1-dic al 30-nov | **24 de diciembre** |
+| Décimo cuarto — Sierra y Amazonía | 1-ago al 31-jul | **15 de agosto** |
+| Décimo cuarto — Costa e Insular | 1-mar al 28-feb | **15 de marzo** |
+
+**Decisión D: no se implementa control.** Queda como práctica operativa. Pero las fechas quedan
+escritas acá, porque son el insumo del día que se quiera un aviso.
+
+---
+
+## 8. Lo que se despacha, y lo que NO
+
+### Se despacha
+
+1. **`.sql`** — las dos filas de `SCP.PDTR` (rubro 221) y los dos conceptos de `RHH.CPNM`.
+   Lo escribe el árbitro. Va **antes** del WAR.
+2. **Backend** — las dos constantes en `RhhRolConceptoMotor`, y el enganche al final de
+   `confirmarPago`: una `NovedadNomina` por empleado del período abierto, aprobada, con el concepto
+   informativo que corresponda al tipo de beneficio, valor = lo pagado a ese empleado, y la
+   descripción del §7.C. Y el reverso en `anular`.
+
+### NO se despacha todavía
+
+⛔ **Nada del frontend.** El ciclo ODBS **no tiene consumidor** en `saaFE` y **nunca se probó**.
+Construir pantalla sobre un ciclo sin estrenar es apilar dos incógnitas. Primero se prueba el ciclo
+que ya existe (riesgo #2 del §6), y con eso medido se decide la pantalla.
+
+### El caso que el agente debe reportar, no resolver
+
+**¿Y si no hay período abierto cuando se confirma el pago?** La novedad necesita `periodoNomina`.
+Si el pago se confirma después de cerrado el período del mes, o antes de que se abra, no hay dónde
+colgarla. **El agente para y reporta**: elegir período por su cuenta es escribir en el rol
+equivocado.
