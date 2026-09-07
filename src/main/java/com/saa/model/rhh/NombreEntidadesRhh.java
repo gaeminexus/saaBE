@@ -82,4 +82,8 @@ public interface NombreEntidadesRhh {
     // ================= ANTICIPOS A TRABAJADORES =================
     String ANTICIPO_EMPLEADO             = "AnticipoEmpleado";
 
+    // ================= PLANILLAS DEL IESS =================
+    String PLANILLA_IESS                 = "PlanillaIess";
+    String DETALLE_PLANILLA_IESS         = "DetallePlanillaIess";
+
 }

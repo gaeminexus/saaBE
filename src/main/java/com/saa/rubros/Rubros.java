@@ -264,6 +264,12 @@ public interface Rubros {
 	int RHH_CODIGO_SEGURO_SOCIAL_IESS     = 230;
 	/** Estado del anticipo entregado a un colaborador (ANTEESTD) -> ver {@link EstadoAnticipoEmpleado} */
 	int RHH_ESTADO_ANTICIPO_EMPLEADO      = 234;
+	/**
+	 * Tipo de planilla del IESS (PLISTIPO): rol normal, quirografarios, hipotecarios,
+	 * fondos de reserva -> ver {@link RhhTipoPlanillaIess}. Del bloque reservado por el
+	 * equipo lap-saa-1 (PRBR 330-349): PRBRCDGO 330, PRBRALTR 330.
+	 */
+	int RHH_TIPO_PLANILLA_IESS            = 330;
 
 	// ================= RUBROS CRD (Creditos) =================
 	/** Naturaleza del movimiento de aporte (APRTTPMV) -> ver {@link CrdTipoMovimientoAporte} */
