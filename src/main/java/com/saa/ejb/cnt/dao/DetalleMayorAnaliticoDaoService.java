@@ -17,5 +17,13 @@ public interface DetalleMayorAnaliticoDaoService  extends EntityDao<DetalleMayor
 	 * @throws Throwable: si ocurre algun error
 	 */
 	List<DetalleMayorAnalitico> selectByIdMayorAnalitico(Long idMayorAnalitico) throws Throwable;
-	
+
+	/**
+	 * Recupera todos los detalles del mayor analitico por secuencial del reporte
+	 * @param secuencialReporte: secuencial del reporte de mayor analitico
+	 * @return: 	Lista de DetalleMayorAnalitico
+	 * @throws Throwable: si ocurre algun error
+	 */
+	List<DetalleMayorAnalitico> selectBySecuencialReporte(Long secuencialReporte) throws Throwable;
+
 }

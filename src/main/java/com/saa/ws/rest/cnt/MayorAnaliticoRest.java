@@ -254,6 +254,35 @@ public class MayorAnaliticoRest {
     }
 
     /**
+     * GET - Consultar todos los movimientos de todas las cuentas de un reporte, en una sola llamada
+     *
+     * @param secuencialReporte ID del secuencial del reporte
+     * @return Lista de movimientos detallados (DetalleMayorAnalitico) de todo el reporte
+     */
+    @GET
+    @Path("/detalleReporte/{secuencialReporte}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getDetalleReporte(@PathParam("secuencialReporte") Long secuencialReporte) {
+        System.out.println("LLEGA AL SERVICIO getDetalleReporte con secuencialReporte: " + secuencialReporte);
+        try {
+            List<DetalleMayorAnalitico> detalles = detalleMayorAnaliticoDaoService.selectBySecuencialReporte(secuencialReporte);
+
+            if (detalles == null || detalles.isEmpty()) {
+                return Response.status(Response.Status.NO_CONTENT).build();
+            }
+
+            return Response.status(Response.Status.OK)
+                .entity(detalles)
+                .type(MediaType.APPLICATION_JSON).build();
+
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                .entity("Error al consultar detalle del reporte: " + e.getMessage())
+                .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
      * DELETE - Eliminar un reporte completo de Mayor Analítico
      * Elimina la cabecera y todos sus detalles
      * 

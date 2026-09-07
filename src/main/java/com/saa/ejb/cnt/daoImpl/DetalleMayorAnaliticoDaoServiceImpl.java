@@ -48,4 +48,16 @@ public class DetalleMayorAnaliticoDaoServiceImpl extends EntityDaoImpl<DetalleMa
 		query.setParameter("idMayorAnalitico", idMayorAnalitico);
 		return query.getResultList();
 	}
+
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<DetalleMayorAnalitico> selectBySecuencialReporte(Long secuencialReporte) throws Throwable {
+		System.out.println("Ingresa al metodo selectBySecuencialReporte con secuencialReporte: " + secuencialReporte);
+		Query query = em.createQuery(" select   b " +
+									 " from     DetalleMayorAnalitico b " +
+									 " where    b.mayorAnalitico.secuencial = :secuencialReporte " +
+									 " order by b.mayorAnalitico.numeroCuenta, b.fechaAsiento, b.codigo");
+		query.setParameter("secuencialReporte", secuencialReporte);
+		return query.getResultList();
+	}
 }
