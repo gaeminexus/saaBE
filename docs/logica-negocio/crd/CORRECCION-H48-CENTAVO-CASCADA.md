@@ -185,3 +185,54 @@ la dirección contraria a ese descarte, que es la correcta.
    como saldada: no debe aparecer en `buscarSiguienteCuotaConSaldo` ni recibir pagos.
 4. **`ResultadoAplicacionPago` coherente:** en todos los casos, `valorAplicado` debe ser igual a la
    suma de los `PGPR` realmente grabados. Es el invariante que el segundo off-by-one rompía.
+
+---
+
+## 6. ✅ IMPLEMENTADO 2026-09-07 — y eran TRES off-by-one, no dos
+
+Commit `0838f7a`. `mvn -q compile` exit 0, verificado por el arbitro.
+
+**Este documento decia que eran dos (`:287` y `:299`) y se equivocaba.** El tercero es el que
+importa:
+
+```java
+if (totalAplicado <= TOLERANCIA_CUOTA) {   // :434 (numeracion previa)
+    System.out.println("      ℹ️ No se pudo imputar valor a ningún componente");
+    return detalle;                        // devuelve SIN aplicar
+}
+```
+
+**Con los otros dos corregidos y este sin corregir, la correccion es inerte:** la cascada entra con
+el centavo, la prelacion lo imputa al desgravamen, `totalAplicado = 0.01`, y ahi devuelve sin
+aplicar nada. El bucle recibe `totalAplicado = 0`, el blindaje corta, y el centavo queda huerfano
+**por otra linea**. Compila, se ve bien y no hace nada.
+
+⭐ **Como aparecio, y es la leccion:** no leyendo el diff —leyendo el diff se ve correcto— sino
+**siguiendo la traza del centavo con los numeros reales del cobro 54** (cuota 660141, desgravamen
+pendiente 6,64, seguro incendio 0), paso por paso, hasta ver donde moria. La revision de codigo no
+lo encontraba; la simulacion aritmetica si.
+
+**Y una cuarta linea que solo se vuelve alcanzable DESPUES del arreglo:** `:755`
+(`totalPagado > TOLERANCIA_CUOTA` → cuota PARCIAL). Antes era inalcanzable porque la cascada nunca
+entregaba un centavo. Con el arreglo puesto, una cuota que reciba exactamente 0,01 tendria un
+`PagoPrestamo` real y quedaria en estado **PENDIENTE**: pago existente, estado diciendo que no.
+Tambien paso a `MEDIO_CENTAVO`.
+
+### Reparto final de las once lineas
+
+| Familia | Constante | Lineas |
+|---|---|---|
+| **Saldo de cuota** — «esta cuota ya no debe nada» | `TOLERANCIA_CUOTA` (0,01) | 188, 351, 377, 472, 525, 749 |
+| **Plata que se mueve** — «queda algo por aplicar» | `MEDIO_CENTAVO` (0,005) | **295, 307, 423, 434, 755** |
+
+La distincion es **saldo de la cuota vs plata que se mueve**, no la cercania en el archivo: `:749`
+y `:755` son lineas consecutivas y van en familias distintas.
+
+### Traza de aceptacion, verificada
+
+Cobro 54 / prestamo 4524 / cuota 660141: el centavo entra al bucle (`:295`), la prelacion lo imputa
+al desgravamen, `:434` ya no retorna temprano, se graba un `PagoPrestamo` de $0,01 vigente ligado al
+evento del cobro, el blindaje de `:307` no corta, y el bucle sale por agotamiento de plata con
+`excedenteNoAplicado = $0,00`. El invariante del §2.2 entonces ve `aplicado == cobrado` y deja pasar.
+
+**Pendiente: probarlo contra datos reales.** La traza es aritmetica sobre el codigo, no una corrida.
