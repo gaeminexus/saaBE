@@ -103,7 +103,13 @@ DEBE desde `CRD.DCBC` y el HABER desde los `PGPR`, y descuadra por el excedente.
   mismas líneas (`pagoPrestamoDaoService.selectByEvento`, que `procesarCobro` ya usa para las bandas).
 - Si `|cobrado − aplicado| > MEDIO_CENTAVO` → `IncomeException` con un mensaje **operativo**:
 
-> `El cobro {id} registra $X sobre préstamos, pero solo se pudieron aplicar $Y: sobran $Z que el préstamo no puede absorber (ya está cancelado, o el valor excede la deuda). Corrija el valor del cobro y vuelva a procesarlo.`
+> `El cobro {id} registra $X sobre préstamos, pero solo se pudieron aplicar $Y: sobran $Z que el préstamo no puede absorber (ya está cancelado, o el valor excede la deuda). El excedente se reparte al registrar el cobro: a otra cuota, a un aporte o a devolución. Corrija el detalle del cobro y vuelva a procesarlo.`
+
+⚠️ **El mensaje dice «corrija el DETALLE», no «corrija el valor», y es a propósito.** Decisión del
+usuario (2026-09-07): cuando un socio deposita de más, **el excedente se gestiona en la pantalla de
+registro y tiene tres destinos posibles — otra cuota, un aporte, o devolución.** Un mensaje que
+invite a bajar el monto del cobro llevaría al operador a registrar menos de lo que el socio
+depositó, y esa diferencia contra el banco no la reclama nadie.
 
 **Solo se comparan las líneas de préstamo.** Las de aporte no pasan por la cascada y no tienen este
 problema; meterlas en la cuenta introduciría falsos positivos.
@@ -118,9 +124,30 @@ operador puede accionar en vez de un volcado de débitos y créditos.
 
 - **No se toca `AsientoContableServiceImpl:529`.** Su validación debe-vs-haber es la última red y
   está bien: el problema era que se llegaba hasta ahí, no que exista. Además vive en `cnt`.
-- **No se decide dónde va un excedente legítimo.** Si un socio deposita de más sobre un préstamo
-  cancelado, ese dinero necesita un destino contable (saldo a favor, aporte, devolución) y **eso es
-  una decisión de negocio, no del motor.** Por ahora se rechaza el proceso con un mensaje claro.
+- **El motor no decide dónde va un excedente, y no debe.** Decisión del usuario 2026-09-07: cuando
+  un socio deposita de más, **el reparto lo hace el operador en la pantalla de registro**, y hay
+  tres destinos: otra cuota, un aporte, o devolución. El backend no elige por él: devuelve el cobro
+  con un mensaje que nombra el excedente exacto.
+
+### ⛔ Consecuencia del circuito, que NO está resuelta
+
+Que el reparto se haga al registrar choca con tres cosas que ya están en el código:
+
+| Hecho | Dónde | Consecuencia |
+|---|---|---|
+| `editarYReenviarCobro` **no cambia el tipo de operación** | javadoc de `CobroCreditoService` | Un cobro registrado como `PAGO_CUOTA` no se puede convertir en `COBRO_MIXTO` para agregarle la línea del excedente |
+| `PAGO_CUOTA`, `ABONO_CAPITAL` y `PRECANCELACION` leen **solo `detalles.get(0)`** | `CobroCreditoServiceImpl:787, 874, 901, 946` | Aunque se le agregue una segunda línea, **se ignora en silencio** |
+| Editar solo se puede desde `RECHAZADO` | `:335` | Hay que rechazar primero |
+
+**Entonces el único camino real hoy es: rechazar → anular → registrar de nuevo como `COBRO_MIXTO`.**
+No es imposible, pero son tres pasos y ninguno se llama "repartir el excedente". Y anular reversa el
+asiento transitorio de un depósito que **sí ocurrió**, con lo que el DEBE al banco se rehace.
+
+⚠️ Hay precedente de que esta trampa es real: el comentario de `CobroCreditoServiceImpl:920`
+registra que una de las ramas **ya había tomado solo `detalles.get(0)`** y que con una sola línea no
+se notaba. Se corrigió ahí; en las otras tres sigue igual.
+
+**Queda planteado al usuario, no resuelto acá.** No entra en esta corrección.
 - **No se cambia la prelación** ni ningún otro comportamiento del motor.
 
 ---
