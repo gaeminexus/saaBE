@@ -133,3 +133,41 @@ imprime desde otro lado.
 | 4 | usuario | Probar de punta a punta |
 
 **El paso 2 no se puede saltear ni delegar.** Es el único del frente que ningún agente puede hacer.
+
+---
+
+## 7. Entregado el `.jrxml` — `97694e0`, verificado por el árbitro
+
+`src/main/resources/rep/cxp/RPRT_NOTA_VENTA_COMPRA.jrxml` (16,8 KB, carpeta `rep/cxp/` creada).
+
+| Control | Resultado |
+|---|---|
+| `SELECT *` | **0 ocurrencias** — columnas explícitas y alias únicos en todos los campos |
+| Parámetro | `P_ID_FACTURA`, único |
+| Menciones de «IVA» | **0** — cumple D6 |
+| Leyenda del §3 | presente: *«DOCUMENTO INTERNO DE RESPALDO — No es un comprobante autorizado por el SRI»* |
+
+### Dos criterios del agente que conviene registrar
+
+**1. Desvío justificado, y correcto:** decidió **no imprimir los badges regulatorios** que sí lleva
+el RIDE (agente de retención, contribuyente especial, RIMPE, obligado a contabilidad). El plan no lo
+prohibía explícitamente. **Son insignias de comprobante autorizado**, y ponerlas habría trabajado en
+contra del §3. Lo marcó como desvío en vez de hacerlo callado, que es lo que permite revisarlo.
+
+**2. Un hueco reportado en vez de inventado — y verificado acá:** el pie trae sólo
+*«Registrado por: \<usuario\>»*, **sin fecha**, porque **`PGS.FCTC` no tiene columna de fecha de
+creación**. Sus únicas fechas son `FECHA` (emisión) y `FECHAAUTORIZACION`.
+
+⚠️ **Y de paso destapó una columna muerta.** `FCTCFCRG` (`fechaRegistroContable`) parecía la
+candidata, pero **nadie la puebla**: verificado, los únicos `setFechaRegistroContable` del proyecto
+son **los setters de las entidades**, en `FacturaCompra`, `LiquidacionCompraCompra`,
+`NotaCreditoCompra` y `NotaDebitoCompra`. **Cuatro entidades declaran la columna y ninguna la
+escribe.** Es el §2.6 otra vez —*«para saber si un ciclo existe hay que preguntar quién lo escribe,
+no quién lo declara»*— y esta vez lo encontró un agente buscando dónde sacar una fecha.
+
+**Pendiente derivado (no urgente):** el nombre sugiere que es para el **ATS**. Si algún día el ATS
+la necesita, hoy iría en `NULL` para los cuatro documentos. **No verificado si el ATS la lee.**
+
+**Si el usuario quiere la fecha real en el pie**, hace falta **una columna nueva** en `PGS.FCTC`.
+Es DDL, y este frente se vendió como «sin DDL»: **queda como opción, no se hace por iniciativa
+propia.**
