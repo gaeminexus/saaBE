@@ -6,6 +6,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -23,12 +24,14 @@ import com.saa.ejb.cxp.dao.PagoProgramadoDaoService;
 import com.saa.ejb.cxp.service.AnticipoProveedorService;
 import com.saa.ejb.cxp.service.AplicacionPagoCxpService;
 import com.saa.ejb.cxp.service.ConflictoNegocioException;
-import com.saa.ejb.cxp.service.FormateadorArchivoBanco;
 import com.saa.ejb.cxp.service.LectorRespuestaBanco;
 import com.saa.ejb.cxp.service.PagoProgramadoService;
 import com.saa.ejb.cxp.service.RespuestaPagoBanco;
 import com.saa.ejb.cxp.service.dto.BeneficiarioOcasional;
 import com.saa.ejb.cxp.service.dto.LineaContablePago;
+import com.saa.ejb.tsr.formateador.ArchivoPagosGenerado;
+import com.saa.ejb.tsr.formateador.FormateadorArchivoPagos;
+import com.saa.ejb.tsr.formateador.FormateadorArchivoPagosFactory;
 import com.saa.ejb.tsr.service.ChequeService;
 import com.saa.ejb.tsr.service.MovimientoBancoService;
 import com.saa.model.cnt.Asiento;
@@ -1546,16 +1549,18 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		lote = lotePagoDaoService.save(lote, null);
 		em.flush();
 
-		// 2. Generar el contenido del archivo
-		FormateadorArchivoBanco formateador = obtenerFormateador(cuentaOrigen);
-		String contenido = formateador.generarContenido(lote, pagos);
-		String nombreArchivo = formateador.nombreArchivo(lote);
+		// 2. Generar el archivo en el formato del banco de la cuenta de origen
+		FormateadorArchivoPagos formateador = obtenerFormateador(cuentaOrigen);
+		ArchivoPagosGenerado archivoGenerado = formateador.generar(lote, pagos);
+		String nombreArchivo = archivoGenerado.getNombreArchivo();
 
-		// 3. Guardar el archivo en disco
+		// 3. Guardar el archivo en disco. Los bytes son los que devuelve el
+		// formateador tal cual -- nunca reconstruidos con un charset fijo, porque
+		// el archivo del Internacional es ANSI (windows-1252), no UTF-8.
 		String path = null;
 		try {
 			path = fileService.uploadFileToPath(
-					new ByteArrayInputStream(contenido.getBytes("UTF-8")),
+					new ByteArrayInputStream(archivoGenerado.getContenido()),
 					nombreArchivo, RUTA_ARCHIVOS_BANCO);
 		} catch (Exception e) {
 			// No se interrumpe: el archivo igual se devuelve para descargar.
@@ -1582,7 +1587,14 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		resultado.put("mensaje", "Archivo de pagos generado con " + pagos.size() + " transferencia(s).");
 		resultado.put("idLote", lote.getId());
 		resultado.put("nombreArchivo", nombreArchivo);
-		resultado.put("contenido", contenido);
+		// contenido: solo en formatos de texto (null en binarios, ej. el .xlsx del
+		// Pacifico). contenidoBase64: siempre, para el Internacional TAMBIEN -- su
+		// texto es ANSI y el FE nuevo lo baja asi para no romperlo reconstruyendolo
+		// como UTF-8 en el navegador (API-PAGOS-TESORERIA.md §3).
+		resultado.put("contenido", archivoGenerado.getTextoPlano());
+		resultado.put("contenidoBase64", Base64.getEncoder().encodeToString(archivoGenerado.getContenido()));
+		resultado.put("mimeType", archivoGenerado.getMimeType());
+		resultado.put("formatoBanco", archivoGenerado.getFormatoBanco());
 		resultado.put("valorTotal", total);
 		resultado.put("numeroPagos", pagos.size());
 		return resultado;
@@ -1598,13 +1610,17 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		}
 
 		List<PagoProgramado> pagos = pagoProgramadoDaoService.selectByLote(idLote);
-		FormateadorArchivoBanco formateador = obtenerFormateador(lote.getCuentaBancaria());
+		FormateadorArchivoPagos formateador = obtenerFormateador(lote.getCuentaBancaria());
+		ArchivoPagosGenerado archivoGenerado = formateador.generar(lote, pagos);
 
 		Map<String, Object> resultado = new HashMap<>();
 		resultado.put("idLote", idLote);
 		resultado.put("nombreArchivo", (lote.getNombreArchivo() != null)
-				? lote.getNombreArchivo() : formateador.nombreArchivo(lote));
-		resultado.put("contenido", formateador.generarContenido(lote, pagos));
+				? lote.getNombreArchivo() : archivoGenerado.getNombreArchivo());
+		resultado.put("contenido", archivoGenerado.getTextoPlano());
+		resultado.put("contenidoBase64", Base64.getEncoder().encodeToString(archivoGenerado.getContenido()));
+		resultado.put("mimeType", archivoGenerado.getMimeType());
+		resultado.put("formatoBanco", archivoGenerado.getFormatoBanco());
 		return resultado;
 	}
 
@@ -1980,14 +1996,15 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	// =====================================================================
 
 	/**
-	 * Devuelve el formateador del archivo según la cuenta bancaria de origen.
-	 * PENDIENTE: cuando existan formatos por banco, elegir aquí la implementación
-	 * que corresponda a partir del banco de la cuenta.
+	 * Devuelve el formateador del archivo según el banco de la cuenta bancaria
+	 * de origen. Ver {@link FormateadorArchivoPagosFactory} y
+	 * docs/logica-negocio/pagos/FORMATO-ARCHIVO-BANCOS.md §5.
 	 * @param cuentaOrigen : Cuenta bancaria propia desde la que se paga
 	 * @return             : Formateador a usar
+	 * @throws IllegalArgumentException : Si el banco de la cuenta no tiene formato implementado
 	 */
-	private FormateadorArchivoBanco obtenerFormateador(CuentaBancaria cuentaOrigen) {
-		return new FormateadorArchivoBancoPlanoImpl();
+	private FormateadorArchivoPagos obtenerFormateador(CuentaBancaria cuentaOrigen) {
+		return FormateadorArchivoPagosFactory.resolver(cuentaOrigen);
 	}
 
 	/**

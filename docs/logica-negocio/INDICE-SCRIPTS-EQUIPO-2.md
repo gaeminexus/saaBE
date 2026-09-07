@@ -20,25 +20,33 @@ de cada uno.**
 | **e2-02** | `rhh/sql/e2-02-verificacion-entidades-vs-esquema-rhh-cnt.sql` | Contrasta entidades JPA contra el esquema en `rhh` y `cnt`. **Solo lectura** | ⚪ sin constancia |
 | **e2-03** | `rhh/sql/e2-03-orden-pago-beneficio-social.sql` | Crea `RHH.ODBS`, su secuencia, `RHH.LQBS.LQBSODBS` y el rubro 310 | ✅ **corrido**. Su FK falló en silencio; completada por el `e2-12` |
 | **e2-04** | `rhh/sql/e2-04-corrige-indices-odbs-fuera-de-schema.sql` | Reubica al schema `RHH` dos índices que el `e2-03` creó sin prefijo | ✅ corrido |
-| **e2-05** | `cxp/sql/e2-05-urgente-aplpfctc-debe-aceptar-null.sql` | `PGS.APLP.APLPFCTC` pasa a aceptar `NULL` (cruce contra liquidación) | ⚪ **sin confirmar** |
+| **e2-05** | `cxp/sql/e2-05-urgente-aplpfctc-debe-aceptar-null.sql` | `PGS.APLP.APLPFCTC` pasa a aceptar `NULL` (cruce contra liquidación) | ✅ **corrido y CONFIRMADO el 2026-09-07** — no por el DDL sino por el síntoma: **el cruce con liquidación funciona en producción** |
 | **e2-06** | `rhh/sql/e2-06-cuenta-empleado-apunta-a-banco-externo.sql` | `RHH.CBEM`: de banco interno (`TSR.BNCO`) a banco externo (`TSR.BEXT`) | ✅ corrido. Su FK falló en silencio; completada por el `e2-11` |
 | **e2-07** | `tsr/sql/e2-07-aplicacion-desde-caja-chica.sql` | `PGS.APLP.APLPMVCH`: un gasto de caja chica puede originar un pago | ✅ **corrido** (confirmado el 2026-09-04) |
 | **e2-08** | **`tsr/sql/e2-08-diagnostico-comandos-busqueda.sql`** | Qué fila falta en el catálogo de comandos de búsqueda (`SCP.PDTR`, rubro alterno 71). Es la causa del `WFLYEJB0034` de `selectByCriteria`. **Solo lectura** | ✅ **corrido el 2026-09-07.** Faltan los alternos **12, 13 y 14**. *(La v1 no corría: cuatro columnas inventadas, §28)* |
-| **e2-13** | **`tsr/sql/e2-13-inserta-los-tres-comandos-de-busqueda-faltantes.sql`** | ⚠️ **NO es lectura.** Inserta los tres detalles que faltan en `SCP.PDTR`. Valores sacados de `EntityDaoImpl`, no inventados | 🟡 **PENDIENTE** — arregla el `WFLYEJB0034` |
+| **e2-13** | **`tsr/sql/e2-13-inserta-los-tres-comandos-de-busqueda-faltantes.sql`** | ⚠️ **NO es lectura.** Inserta los tres detalles que faltan en `SCP.PDTR`. Valores sacados de `EntityDaoImpl`, no inventados | ✅ **CORRIDO el 2026-09-07.** Los 15 comandos dan OK |
 | ~~e2-09~~ | — | *Borrado el 2026-09-04.* Diagnosticaba si `MVCHTPOO` estaba nulo; el DDL de `tsr/sql/02` ya lo garantiza con `NOT NULL` + `CHECK`. Un `.sql` que no hay que correr es ruido | ⛔ no existe |
 | **e2-10** | **`cxp/sql/e2-10-retenciones-cargadas-con-cuenta-de-proveedor.sql`** | Retenciones ya cargadas con la cuenta de proveedor de un cliente (bloque A2) y titulares sin cuenta de cliente (B1). **Solo lectura** | ✅ **CERRADO por el usuario el 2026-09-07.** El B1 quedó descartado el 09-04: la cuenta de cliente se parametriza sobre la marcha |
 | **e2-11** | `rhh/sql/e2-11-completa-la-fk-que-el-e2-06-no-pudo-crear.sql` | `GRANT` + `FK_CBEM_BEXT` + índice, que el `e2-06` no pudo crear | ✅ **corrido y cerrado** (`FK_CBEM_BEXT ENABLED`) |
 | **e2-12** | `rhh/sql/e2-12-verifica-y-completa-fk-e-indices-de-odbs.sql` | Verifica y completa `FK_ODBS_PJRQ` y los índices de `ODBS`/`LQBS` | ✅ **corrido y cerrado** (`FK_ODBS_PJRQ ENABLED`) |
+| **e2-14** | **`tsr/sql/e2-14-codigo-institucion-banco-externo.sql`** | ⚠️ **NO es lectura.** Agregaría `TSR.BEXT.BEXTCDBC` (código BCE de cámara) | ⛔ **NO CORRER — EN VERIFICACIÓN.** El usuario avisó que la tabla ya tiene los códigos. **Depende del `e2-15`**: si la PK resulta ser el código, este script se descarta |
+| **e2-15** | **`tsr/sql/e2-15-verifica-si-bextcdgo-ya-es-el-codigo-bce.sql`** | ¿`TSR.BEXT.BEXTCDGO` ya es el código del BCE? Contrasta la PK contra las **dos anclas verificadas** del manual del Pacífico (30 = Pacífico, 25 = Machala). **Solo lectura** | 🔴 **PENDIENTE DE CORRER — desbloquea el frente de archivos bancarios** |
 
 ---
 
-## Lo que queda pendiente de correr, en orden de utilidad
+## Lo que queda pendiente de correr
 
-| Script | Qué responde | Riesgo |
-|---|---|---|
-| **`e2-08`** | Cuál de los 15 comandos de búsqueda falta en `SCP.PDTR`. Con eso se escribe el `INSERT` | ninguno, es lectura |
-| `e2-05` | — | ⚠️ **no es lectura**: es un `ALTER`. Hay que confirmar si ya corrió antes de nada |
-| `e2-01`, `e2-02` | Verificaciones viejas del frente de beneficios | ninguno, son lectura |
+De los catorce scripts: **doce corridos**, uno borrado (`e2-09`) y **uno que sí importa**.
+
+| Script | Por qué sigue sin correr |
+|---|---|
+| 🔴 **`e2-15`** | **Es el bloqueante del frente de archivos bancarios**, abierto el 2026-09-07. Es de **lectura**, se corre sin riesgo, y decide si hace falta el `e2-14` o no. Los dos formatos necesitan el código del banco del beneficiario; el Banco Internacional interpreta el campo vacío como «32 = Banco Internacional», así que un pago sin código **no rebota, se va a otro banco** |
+| ⛔ **`e2-14`** | **No se corre hasta que el `e2-15` responda.** Puede sobrar entero |
+| `e2-01`, `e2-02` | Verificaciones **de lectura** del frente de beneficios sociales, de principios de septiembre. No arreglan nada ni bloquean nada: contrastan entidades contra el esquema. Correrlas es higiene, no urgencia |
+
+> **Cerrado el 2026-09-07:** el `e2-13` dejó los 15 comandos de búsqueda en `OK`, y con eso
+> `selectByCriteria` —que es transversal a **todos** los módulos, no sólo a los nuestros— deja de
+> reventar con `WFLYEJB0034`.
 
 ---
 

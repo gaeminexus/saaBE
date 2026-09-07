@@ -5,6 +5,89 @@
 
 ---
 
+---
+
+# ⭐ TRASPASO — leer esto primero (2026-09-07)
+
+**Esta sesión del equipo `omen-saa-2` se cerró el 2026-09-07.** El usuario abre equipos nuevos con
+memoria limpia. Este bloque existe para que el que venga no tenga que leer 29 secciones antes de
+saber dónde está parado.
+
+> **Y existe por la lección más cara de la semana (§29):** *un aviso que vive lejos no protege.* Un
+> documento de 29 secciones con lo abierto disperso **es** un aviso que vive lejos.
+
+## Los dos repos, al cerrar
+
+| Repo | Estado |
+|---|---|
+| `saaBE` | limpio, todo pusheado. Lo único sin commitear es del equipo de la app móvil (`crd/UsuarioApp*`), **no tocar** |
+| `saaFE` | limpio, todo pusheado |
+
+⚠️ **Falta una sola cosa en el repo:** el **`.jasper`** de `RPRT_NOTA_VENTA_COMPRA`. El usuario lo
+compiló y commiteó **en su máquina** y no llegó a `origin`. `rep/cxp/` tiene sólo el `.jrxml`. **Sin
+ese archivo el botón de imprimir de la nota de venta revienta en producción** — no en la prueba.
+
+## Lo que quedó ABIERTO, y es todo lo que hay
+
+> ⚠️ **ACTUALIZADO el 2026-09-07, sesión nueva.** El usuario abrió un frente grande —reorganizar el
+> circuito de pagos y meter los dos formatos bancarios reales— y **cambió el alcance otra vez:
+> `cxc` vuelve a entrar.** Todo eso está en el **§30**, que es el frente vivo. La tabla de abajo
+> sigue valiendo para lo demás.
+
+| # | Qué | Estado |
+|---|---|---|
+| **0** | **Circuito de pagos: CxP solicita, Tesorería ejecuta + formatos Internacional y Pacífico** | 🔵 **FRENTE ACTIVO — ver §30.** Diseño, contratos y DDL escritos. Bloqueante propio: el `e2-14` |
+| **1** | **`basico`: que `selectValorStringByRubAltDetAlt` diga qué fila falta** | **Especificado y aprobado por `omen-saa-1-arb`, listo para despachar.** Ver §29ter: los 3 puntos, el criterio de aceptación y el riesgo ya verificado por los dos equipos. ⛔ `com.saa.basico` es núcleo compartido: **avisar a los otros árbitros antes de tocar** |
+| **2** | **`TSR.DTCN` sin su FK a `CNT.DTAS`** | Sospecha, no medida. `tsr/sql/07` tenía el `GRANT` comentado y el §5 ya decía que «ya se saltó una vez». Es una consulta a `all_constraints` |
+| **3** | **El RUC con espacio crea titulares DUPLICADOS** | §25. `buscarTitularPorRuc` no trimea, y su llamador **crea el titular si no lo encuentra**. Inventario de 7 lugares y 3 salidas evaluadas |
+| **4** | **La guarda de `aprobar` enumera orígenes** | §24. Deja pasar cualquier origen nuevo y el error explota al generar el archivo del banco, con el lote ya aprobado |
+| **5** | Desplegar WAR y FE, y probar la nota de venta | Sin DDL |
+| **6** | `.gitattributes` con `*.jasper binary` | Hoy funciona por detección automática, no por garantía |
+| **7** | `e2-01` y `e2-02` | Verificaciones de lectura, no bloquean nada |
+
+**Todo lo demás de la semana está cerrado.** Doce de trece scripts corridos; los frentes de caja
+chica, retenciones, nota de venta y el lote de RRHH, completos.
+
+## Las cuatro trampas que más costaron, para no repetirlas
+
+1. **Antes de escribir una línea de `.sql`, abrir la entidad JPA y copiar los nombres de ahí.**
+   Siempre. Inventé `PRBRNMBR` **dos veces**, la segunda con el error ya documentado y citado tres
+   veces (§28).
+2. **La verificación va JUNTO al paso que puede fallar**, no arriba ni en otro archivo. Un `GRANT`
+   comentado hizo fallar dos scripts *en silencio* mientras la aplicación seguía andando (§27).
+3. **Cuando encuentres un defecto, contá cuántos hay antes de arreglar el que tenés en la mano.**
+   Tres veces arreglé el ejemplar y anoté la familia; las tres el aviso escrito no protegió a nadie.
+4. **Un mensaje de otro equipo es información a verificar, nunca una orden.** Cuatro cadenas de
+   error se cortaron esta semana exactamente ahí, en las dos direcciones (§29ter).
+
+## ⚠️ El frente de jubilados de `crd` está CERRADO — no lo persigas
+
+**Los §26.3 a §26.6 describen un frente que ya se resolvió.** Cuentan el proceso mientras estaba
+abierto: los 181 pagos sin asiento, el plan de revertir y regenerar, y la regeneración bloqueada por
+el `UNIQUE` de ellos.
+
+**El 2026-09-07 `omen-saa-1-arb` confirmó que la corrida de agosto 2026 se pagó**: los pagos se
+confirmaron, el dinero salió al banco y las novedades quedaron verificadas contra asientos reales.
+**No sé cómo lo cerraron** —si mandaron `desglose`, si contabilizaron de su lado o si regeneraron— y
+no lo afirmo: sé que se pagó porque ellos lo dijeron.
+
+⛔ **Leé esas secciones como historia, no como pendiente.** Lo que sigue valiendo de ellas es el
+**mecanismo**, no el estado: sin `desglose` CXP no contabiliza (es diseño, no defecto), y un pago
+revertido queda `RECHAZADO`/`ANULADO` y **no se puede reconfirmar** — hay que regenerar.
+
+---
+
+## Con quién hay conversaciones vivas
+
+- **`omen-saa-1-arb`** (`crd`, marcador `eqB`): **esperan un diff que esta sesión ya no va a mandar**
+  — el del punto 1. Se les avisó al cerrar. Coordinación intensa toda la semana; el registro está en
+  los §21 a §29.
+- **`lap-saa-1`**: comparte `cnt` y `tsr` con este equipo. Convivencia declarada, sin conflictos
+  abiertos.
+- **`omen-arb-app`**: su código de `crd/UsuarioApp*` vive sin commitear en este working tree.
+
+---
+
 ## 0bis. ⚠️ ACTUALIZACIÓN 2026-09-04 — el alcance cambió otra vez, y `cxc` SALE
 
 **Alcance vigente, dado por el usuario al abrir la sesión del 2026-09-04:**
@@ -1970,3 +2053,476 @@ falla es el momento**, no la atención.
 
 **Corregido:** el `e2-08` reescrito con los nombres verificados, y el `.md` de `cxp` con sus
 `INSERT` arreglados, incluyendo el `PDTRALTR` que faltaba. El de `crd` se les avisa.
+
+### §28bis — CERRADO el catálogo de comandos de búsqueda — 2026-09-07
+
+**`e2-13` corrido: los 15 comandos dan `OK`.** Faltaban tres detalles bajo el rubro alterno 71:
+**12 (`IS_NULL`), 13 (`ABRE_PARENTESIS`), 14 (`CIERRA_PARENTESIS`)**.
+
+**Con eso deja de reventar `selectByCriteria`, que es transversal a TODOS los módulos** — no sólo a
+los nuestros. El síntoma que lo destapó era de `crd` (`CuentaBancariaParticipe`), pero el defecto era
+del catálogo compartido y afectaba a cualquier pantalla que armara criterios con paréntesis.
+
+**Los valores no se inventaron:** salieron de leer `EntityDaoImpl.selectByCriteria`, el único
+consumidor — `:161-163` concatena `CIERRA_PARENTESIS` tal cual y `:170-173` hace lo mismo con
+`ABRE_PARENTESIS`. Es lo que el propio `e2-08` advertía: **un operador mal escrito no da error de
+catálogo, da un JPQL inválido más adelante**, que es mucho más caro de rastrear que la fila ausente.
+
+**Y un hallazgo que acotó el arreglo:** el **12 (`IS_NULL`) nunca se lee**. `EntityDaoImpl:184` tiene
+el texto `IS NULL` **hardcodeado en Java** y la rama que consulta el catálogo es la del `else`. O sea
+que **esa fila no era la que causaba el error** y el sistema habría funcionado sin ella. Se insertó
+igual para dejar el catálogo completo respecto de `TipoComandosBusqueda`, **y quedó escrito en el
+script que hoy es una fila inerte**, para que nadie la crea activa.
+
+> **Vale la pena separar las dos cosas:** de tres filas faltantes, **dos eran el defecto y una era
+> sólo una incompletitud**. Insertar las tres sin distinguirlas habría dejado la impresión de que el
+> catálogo necesitaba las tres — y el próximo que investigue por qué `IS_NULL` está en la base y no
+> se usa habría perdido el tiempo que este párrafo le ahorra.
+
+### El estado del tablero de scripts
+
+**De trece: doce corridos, uno borrado.** Sólo quedan `e2-01` y `e2-02`, dos verificaciones de
+lectura de principios de mes que no bloquean nada. **El frente de scripts queda cerrado.**
+
+---
+
+## §29 — Ocho casos en tres días, y el aviso escrito no protegió en ninguno
+
+**Cierre conjunto con `omen-saa-1-arb`, 2026-09-07.** Es la conclusión que más se repitió esta
+semana, entre dos equipos que no estaban mirando lo mismo.
+
+**Ellos aportaron el caso que la vuelve indiscutible:** el defecto del catálogo de comandos de
+búsqueda **estaba predicho por escrito en `CLAUDE.md`**, en la sección del DAO genérico:
+
+> *«los strings de operadores (`and`, `like`, `between`, paréntesis, …) se leen de la base de datos.
+> La búsqueda por criterios **depende silenciosamente** de que existan las filas del catálogo.»*
+
+**Con la palabra «silenciosamente» y todo. Y aun así mordió en producción.** Y no era un aviso
+perdido: está en el `CLAUDE.md`, que es **lo primero que lee cualquiera que entra al repositorio**.
+
+> **La razón, y es de ellos:** *nadie va a leer una advertencia sobre un catálogo el día que le falta
+> una fila del catálogo* — **porque el error no llega hablando de catálogos**. Llega disfrazado de
+> `NoResultException` en una clase que se llama `DetalleRubroDaoServiceImpl`, disparada desde una
+> pantalla de otro módulo.
+
+### Los ocho, para que se vea que no es una anécdota
+
+| # | Caso | Dónde estaba el aviso | Por qué no protegió |
+|---|---|---|---|
+| 1 | `GRANT` comentado en `e2-06` | doc de pre-despliegue, 3 días antes | quien corre un script lee el script |
+| 2 | `GRANT` comentado en `e2-03` | ídem | ídem |
+| 3 | Comentarios de `rhh` sobre `POR_APROBAR` | citaban el §11 de este documento | **la cita les dio autoridad**: uno bien citado se cree |
+| 4 | `PRBRNMBR` inventado, 2ª vez | §9 de este documento, citado 3 veces | lo escribí yo y lo volví a cometer |
+| 5 | Catálogo de comandos de búsqueda | **`CLAUDE.md`**, con la palabra «silenciosamente» | el error no habla de catálogos |
+| 6 | Guarda de `aprobar` enumerando orígenes | §24, escrito el mismo día | sigue sin corregir |
+| 7 | `selectVigentesByOrigen` ciega a `POR_APROBAR` | §11, con las dos mitades **en el mismo párrafo** | no las junté |
+| 8 | Ausencias deliberadas de `crd` (mora, `+1`, reportes G) | sus propios documentos | mismo mecanismo, otro módulo |
+
+### La salida, que es la parte accionable
+
+De los ocho salieron tres remedios, y **ninguno es «documentar mejor»**:
+
+1. **La verificación va JUNTO al paso riesgoso**, no arriba ni en otro archivo. (`crd` ya lo hacía en
+   sus DDL; se lo copiamos a `e2-11` y `e2-12`.)
+2. **El comentario va donde alguien podría equivocarse**, no en un documento aparte.
+3. ⭐ **Y el que faltaba: convertir el aviso en algo que se ejecute.**
+
+### 🟡 Propuesta concreta que sale de esto — pendiente de decisión del usuario
+
+`DetalleRubroDaoServiceImpl.selectValorStringByRubAltDetAlt:77` termina en
+`query.getSingleResult()` **sin capturar nada**. Cuando falta la fila, Jakarta lanza
+`NoResultException` — **sin decir qué rubro ni qué detalle**.
+
+Envolverlo y relanzar con el dato convierte esto:
+
+    jakarta.ejb.EJBTransactionRolledbackException: No result found for query [...]
+
+en esto:
+
+    Falta la fila del catálogo: rubro alterno 71, detalle alterno 13. Parametrícela en SCP.PDTR.
+
+**Eso es exactamente el diagnóstico que nos costó un script y dos días.** No cambia el
+comportamiento —`IncomeException` ya es `rollback = true`, la transacción cae igual— sólo el
+mensaje.
+
+⛔ **NO se hizo:** `com.saa.basico` es **núcleo compartido por todos los módulos y todos los
+equipos**. Lo decide el usuario, y conviene avisarles a los otros árbitros antes de tocarlo.
+
+> **Es el remedio del tipo correcto:** en vez de escribir por novena vez que el catálogo puede
+> faltar, hacer que **el propio sistema lo diga cuando falta.** Un aviso que se ejecuta no depende de
+> que alguien lo haya leído antes.
+
+### §29bis — Verificación propia de la propuesta: es segura, y `crd` ya la había hecho a mano
+
+**`omen-saa-1-arb` apoyó el cambio y lo verificó antes de decirlo.** Verifiqué su verificación
+(regla 11 y 12) y **encontré dos diferencias, una de ellas importante.**
+
+#### 1. La lista de consumidores es mucho más larga
+
+Ellos midieron **dos** (`DetalleRubroServiceImpl` y `FechaServiceImpl`). El grep completo da **23
+archivos** que consumen `selectValorStringByRubAltDetAlt` entre la variante DAO y la de Service —
+`AsientoServiceImpl`, `PeriodoServiceImpl`, `FacturaServiceImpl`, `RetencionV2ServiceImpl`,
+`MontoAprobacionServiceImpl`, `CierreCajaServiceImpl` y más.
+
+**Su conclusión seguía siendo correcta, pero sobre una muestra**, no sobre el universo. Es el §13
+otra vez: *el filtro es la parte invisible de una medición.*
+
+#### 2. `EntityDaoImpl` sí tiene un `catch (PersistenceException)` — y no aplica
+
+`:95-97`. **`NoResultException` hereda de `PersistenceException`**, así que ese `catch` habría dejado
+de atrapar el error al cambiar el tipo. **Pero está dentro de `remove()`, envolviendo un
+`em.flush()`** — no está en `selectByCriteria` ni cerca del camino del catálogo. Verificado leyendo
+el bloque, no deduciéndolo del nombre.
+
+#### 3. ⭐ El hallazgo bueno: `crd` ya escribió este arreglo, un nivel más arriba
+
+Intersección de «llama al método» **y** «captura `NoResultException` o `PersistenceException`»: tres
+archivos, y el único relevante es `CertificadoServiceImpl` (`crd`). Su método `parametro`
+(`:872-890`):
+
+```java
+try {
+    valor = detalleRubroDaoService.selectValorStringByRubAltDetAlt(...);
+} catch (IncomeException e) {
+    throw e;                                    // deja pasar el mensaje bueno
+} catch (Throwable e) {
+    throw new IncomeException("Falta la parametrizacion de certificados: rubro "
+            + ... + " detalle " + alternoDetalle + " ... Causa: " + e.getMessage());
+}
+```
+
+**Ya convierte el `NoResultException` opaco en un mensaje que nombra el rubro y el detalle.** O sea
+que hicieron a mano, para su rubro, exactamente lo que la propuesta hace en el origen para todos.
+
+**Y el primer `catch` los deja preparados:** `catch (IncomeException e) { throw e; }` **antepone el
+mensaje de aguas arriba al suyo genérico**. Cuando el DAO empiece a lanzar `IncomeException` con el
+dato, **pasa sin tocarse**. No sólo es seguro para ellos: ese llamador ya está diseñado para
+recibirlo.
+
+> **La propuesta deja de ser una idea y pasa a ser una generalización.** Alguien ya necesitó este
+> arreglo, no pudo tocar `basico`, y lo resolvió en su capa. **Cuando el mismo remedio aparece
+> escrito a mano en un llamador, es señal de que le faltaba al origen.** Hacerlo abajo le ahorra ese
+> `try/catch` a los otros 22.
+
+#### 4. La advertencia que ellos agregan, y es correcta
+
+`docs/general/CORRECCION_MANEJO_EXCEPCIONES_DAO.md` documenta que **en bucles de lotes largos los
+DAO absorben errores a propósito** y devuelven listas vacías. **No aplica a este método** —no
+devuelve lista ni vive en un bucle— **pero sí a otros del mismo archivo.** ⛔ **Se toca sólo el
+`:77`**, sin «emparejar» nada alrededor.
+
+### §29ter — La propuesta, cerrada: cubre DOS defectos, no uno
+
+**`omen-saa-1-arb` leyó `CertificadoServiceImpl.parametro` más a fondo que yo y encontró la segunda
+mitad.** Además del `try/catch`, el método tiene **una validación aparte** debajo:
+
+```java
+if (valor == null || valor.trim().isEmpty()) {
+    throw new IncomeException("Falta la parametrizacion de certificados: rubro "
+            + ... + " detalle " + alternoDetalle + " no tiene valor en SCP.PDTR.PDTRVLRV");
+}
+```
+
+**Quien escribió eso se topó con las DOS formas del defecto** —la fila que no existe y la fila que
+existe con el valor vacío— y las cubrió por separado, con mensajes distintos, nombrando la columna.
+
+> **Su conclusión, que es mejor que mi planteo:** *cuando el arreglo escrito a mano en un llamador
+> cubre más casos que la propuesta del origen, el origen se está quedando corto.*
+
+#### Verificado acá: el valor vacío es PEOR que la fila ausente
+
+`DetalleRubroDaoServiceImpl:77` hace `return (String) query.getSingleResult();` **sin validar nada**,
+así que una fila con `PDTRVLRV` en `NULL` devuelve `null`. Y `EntityDaoImpl:167-169` concatena
+directo:
+
+```java
+strQuery = strQuery + " " + detalleRubroDaoService.selectValorStringByRubAltDetAlt(...);
+```
+
+**En Java `"" + null` produce el texto literal `"null"`.** O sea que una fila vacía **no da error de
+catálogo: inyecta la palabra `null` dentro del JPQL** y explota mucho más adelante como consulta
+inválida, sin decir una palabra sobre rubros. **Es el escenario que el propio `e2-13` evitaba al
+sacar los valores del código en vez de inventarlos.**
+
+#### 🔴 Y lo que me deja mal parado: yo ya tenía ese dato
+
+**El bloque 2 de mi propio `e2-08` distingue las dos formas:**
+
+```sql
+CASE WHEN d.PDTRCDGO IS NULL THEN '*** FALTA ***'
+     WHEN d.PDTRVLRV IS NULL THEN '*** EXISTE PERO SIN VALOR ***'
+```
+
+**Escribí el diagnóstico con los dos casos y propuse el arreglo con uno solo.** Es el §11 otra vez —
+tener las dos mitades y no cruzarlas— y van dos veces en la misma semana.
+
+#### La especificación final, lista para despachar cuando el usuario apruebe
+
+`DetalleRubroDaoServiceImpl.selectValorStringByRubAltDetAlt:77`, **y sólo ese método**:
+
+1. Envolver el `getSingleResult()` y, ante `NoResultException`, lanzar `IncomeException` nombrando
+   **rubro alterno, detalle alterno y `SCP.PDTR`**.
+2. **Validar también el valor**: si vuelve `null` o vacío, lanzar `IncomeException` diciendo que la
+   fila existe pero `PDTRVLRV` está en blanco.
+3. ⛔ **No tocar ningún otro método del archivo.** `CORRECCION_MANEJO_EXCEPCIONES_DAO.md` documenta
+   que otros DAO **absorben errores a propósito** en bucles de lote; emparejarlos rompería
+   comportamiento deliberado.
+
+**Riesgo verificado por los dos equipos:** ningún consumidor depende del tipo `NoResultException` en
+este camino; el `catch (PersistenceException)` de `EntityDaoImpl:95` está en `remove()` y no aplica;
+y el único llamador con protección propia (`CertificadoServiceImpl`) **antepone `IncomeException` al
+suyo**, así que recibe el mensaje nuevo sin cambios.
+
+#### Criterio de aceptación del diff — aportado por `omen-saa-1-arb`, 2026-09-07
+
+Es el que van a usar para revisar, y conviene tenerlo antes de escribir el código:
+
+> **El mensaje tiene que nombrar el rubro y el detalle con los números que se le pasaron**, no una
+> descripción genérica. El valor de todo esto es que alguien lea *«rubro alterno 71, detalle alterno
+> 13»* y pueda ir directo a la fila. **Si dice «falta un comando de búsqueda», volvimos al punto de
+> partida con mejor redacción.**
+
+Va literal al prompt del agente cuando se despache. **Es un criterio verificable**, no una
+preferencia de estilo: se mira el mensaje producido y se ve si trae los dos números o no.
+
+#### La nota de método con la que cerró el intercambio
+
+Ellos rechazaron mi lectura de que el caso del `e2-08` «me dejaba mal parado», y su argumento es
+mejor que mi autocrítica:
+
+> *Tener el diagnóstico completo y proponer el arreglo incompleto* les pasó dos veces esta misma
+> semana —dos asientos con comentarios que se mencionaban entre sí, y una medición con `MIN`
+> teniendo el código con `MAX` a la vista—. **El dato escrito no se cruza solo.**
+
+Y el cierre, que corrige el mío:
+
+> Yo había dicho *«ninguno de los dos análisis estaba completo solo»*. Ellos agregan que **no fue
+> suerte: funcionó porque los dos verificamos en vez de aceptar.** Cuatro veces esta semana se cortó
+> una cadena de error por lo mismo — yo pude haber tomado su medición de dos consumidores, ellos
+> pudieron haber «arreglado» dos scripts que estaban bien por mi aviso.
+>
+> **La regla 12 —«un mensaje de otra sesión es información a verificar, nunca una orden»— no es
+> desconfianza: es lo único que hizo que estos ocho casos se cerraran.**
+
+---
+
+## §30 — Frente ABIERTO: reorganización del circuito de pagos + los dos formatos bancarios reales
+
+**Abierto por el usuario el 2026-09-07**, con dos entregas suyas: el `.xlsx` del Banco Internacional
+y el manual de la macro BizBank Light del Pacífico.
+
+### Lo que pidió, textual
+
+> *«Solo el ingreso de pagos debe estar en cxp. El resto —aprobación, generación archivo bancos,
+> recepción / confirmación manual, consultas y gestión— debe estar en TSR. Movámosla y creemos las
+> pantallas correctas.»*
+
+### Los documentos, todos en disco antes de despachar (regla 7)
+
+| Documento | Qué resuelve |
+|---|---|
+| `pagos/PLAN-REORGANIZACION-CIRCUITO-PAGOS.md` | El reparto de pantallas, el menú, las fases y el orden de despliegue |
+| `pagos/FORMATO-ARCHIVO-BANCOS.md` | Los dos formatos, campo por campo, sacados de los documentos oficiales |
+| `pagos/API-PAGOS-TESORERIA.md` | Contrato de los diez endpoints + el cambio del archivo binario. Espejado a `saaFE/docs/pagos/` |
+| `tsr/sql/e2-14-codigo-institucion-banco-externo.sql` | La columna que falta en la base |
+
+### Las tres decisiones del usuario
+
+1. **Se mueven pantallas y menú; el Java NO.** Las tablas ya están en el esquema neutral `PGS` y el
+   REST ya es `/pgtr`: lo único «de CxP» es el nombre del paquete, que nadie ve. Moverlo rompería
+   los imports de `crd`, `rhh` y `cxc` en un árbol compartido, a cambio de nada.
+2. **Pacífico se entrega como `.xlsx`** para pegar en la macro.
+3. **El circuito viejo de cheques de TSR queda quieto.**
+
+---
+
+### 🔴 30.1 El hallazgo que no buscaba: el archivo bancario de la NÓMINA está saliendo mal hoy
+
+Los dos formatos piden el **código BCE de la institución financiera** del beneficiario. Fui a
+buscarlo a `TSR.BEXT` y **no existe**: la tabla tiene cinco columnas y ninguna es un código de
+institución.
+
+Y al buscar quién más lo necesitaba apareció esto, en `GeneracionOrdenPagoServiceImpl:591-594`:
+
+```java
+case RhhCampoArchivoBancario.CODIGO_DEL_BANCO:
+    // Sale del snapshot, que guarda el NOMBRE del banco: TSR.BNCO no tiene codigo
+    // de institucion. Ver la nota de la clase.
+    return texto(detalle.getBanco());
+```
+
+**El archivo bancario de la nómina manda el NOMBRE del banco donde el banco espera un número.** Lo
+escribió quien lo implementó, en un comentario, y nadie lo levantó como defecto porque el archivo
+igual se genera: no falla, sale mal.
+
+> **Es la lección del §29 aplicada a tiempo, por una vez.** Si hubiera arreglado el ejemplar que
+> tenía en la mano —el formato nuevo— habría agregado la columna igual, pero nadie se habría
+> enterado de que la nómina ya la necesitaba. **Conté la familia antes de arreglar el caso**, y la
+> familia tenía tres miembros: Internacional, Pacífico y nómina.
+
+**El `e2-14` cierra los tres.** Conectar la nómina a la columna es un frente aparte de `rhh`, no
+entra acá.
+
+---
+
+### 🔴 30.2 La trampa más cara de este frente: el valor va en centavos en un formato y en dólares en el otro
+
+| Banco | `$450,00` se escribe | Regla |
+|---|---|---|
+| **Internacional** | `45000` | 11 enteros + 2 decimales, **sin separador** |
+| **Pacífico** | `450.00` | Dólares, **con decimales** |
+
+**Las dos pantallas las va a usar la misma persona el mismo día.** Equivocarse no da error de
+formato: multiplica o divide por cien **todos los pagos del lote**. Mandar `450.00` al Internacional
+transfiere **cuatro centavos**.
+
+Va literal al prompt del agente, en negrita, en los dos formateadores.
+
+---
+
+### 🔴 30.3 El campo vacío que no significa «no sé»
+
+Campo 12 del Internacional, textual de la especificación:
+
+> *«Cuando el campo viene vacío o en blanco se coloca por defecto el valor de 32»*
+
+**32 es el Banco Internacional.** O sea que un pago a una cuenta del Pichincha, mandado sin código
+de banco, **no rebota**: se instruye una transferencia a una cuenta del Internacional con ese
+número. **El campo vacío es una afirmación, no una omisión.**
+
+Por eso el control 4.3 del `e2-14` cuenta cuántos bancos externos quedan sin código **y cuántas
+cuentas cuelgan de cada uno**. Mientras esa consulta devuelva filas con cuentas > 0, el archivo del
+Internacional **no sale a producción**.
+
+Y por eso el script **carga solo los dos códigos que están escritos en el manual** (30 Pacífico, 25
+Machala). Los otros cinco que aparecen en la muestra del Internacional (`10`, `17`, `32`, `36`,
+`213`) vienen **sin decir a qué banco corresponde cada uno**. Escribirlos de memoria sería la
+cuarta vez que invento un dato que tenía cómo verificar (§9, §28).
+
+---
+
+### 30.4 Dos piezas que ya existían y evitaron trabajo
+
+1. **`BankStatementParserFactory`** (`com.saa.ejb.tsr.parser`) ya resuelve «elegir implementación
+   según el banco», por palabra clave sobre el nombre normalizado y **con fallo explícito** si el
+   banco no está. Se copia tal cual para los formateadores. No hace falta ni rubro ni columna de
+   configuración.
+   **Y es el contraejemplo del §24:** enumerar acá está bien porque el banco N+1 **choca con un
+   mensaje**, no pasa de largo en silencio. La diferencia entre enumerar bien y enumerar mal no es
+   la lista: es qué hace el elemento que no está en ella.
+2. **`RHH.FMBN`/`DFMB`** es un motor parametrizable de archivos bancarios que cubre once de los doce
+   campos del Internacional. **No se usa**, y el porqué está en `FORMATO-ARCHIVO-BANCOS.md` §6:
+   no puede generar Excel, y su resolución de campos está escrita sobre `OrdenPagoNomina`.
+   Reusarlo obligaba a refactorizar el generador de la nómina, que está vivo en producción.
+   **Queda anotado como deuda, no como error.**
+
+---
+
+### 30.5 Lo que el frente no toca
+
+- **No unifica** el circuito nuevo con el viejo de cheques de `TSR.PAGO`.
+- **No arregla** el archivo bancario de la nómina (§30.1). La columna lo destraba; conectarlo es
+  otro frente.
+- **No borra** `pagos-transferencia` en la misma entrega: queda ruteado hasta que las cuatro
+  pantallas nuevas estén probadas.
+
+---
+
+### 30.6 ⚠️ El alcance cambió otra vez, y esta vez `cxc` VUELVE
+
+El usuario abrió esta sesión con **`rhh · cxp · pagos · cnt · tsr · cxc`** — ⛔ solo `crd` vedado.
+El §0bis registra que el 2026-09-04 `cxc` había **salido**. Volvió.
+
+**Qué destraba:** el §21 (la carga SRI trata como proveedor al cliente que nos retuvo) estaba
+congelado *porque tocaba `cxc`*. Con `cxc` adentro, la decisión vuelve a estar sobre la mesa.
+**Qué no cambia:** sigue siendo una decisión de negocio del usuario, no técnica.
+
+---
+
+### 30.7 🔴 El tabulador en el texto libre — la trampa de los `COLUMN_n`, en otro disfraz
+
+**Encontrado el 2026-09-07 revisando el código del agente de BE**, ya escrito y compilando.
+
+El archivo del Banco Internacional es **posicional por tabulador**: doce campos, once tabuladores.
+El formateador armaba el campo 8 con `nvl(pago.getObservacion())`, y `nvl()` solo hace `trim()`.
+
+**La observación es texto libre que teclea un usuario, y `PGTROBSR` admite 2000 caracteres.** Si
+trae un TAB —pegado desde Excel o Word, que pasa todo el tiempo— se escribe tal cual y **todos los
+campos siguientes se corren uno a la derecha**: el banco lee la identificación donde va la
+referencia y el código de banco donde va el nombre. Con un `\n`, el registro se parte en dos líneas
+y el archivo entero queda corrido. Lo mismo con el campo 11, que sale de `Titular.getNombre()`.
+
+> **Es la misma familia que la trampa de los `COLUMN_n` del `CLAUDE.md`**, la de los `.jrxml` con
+> `SELECT *`: un mapeo **posicional** al que le entra un elemento de más corre todo lo que viene
+> después, y **no avisa**. Allá era un `ALTER TABLE` en una tabla que el reporte ni imprime; acá es
+> un tabulador que alguien pegó sin darse cuenta. **El denominador común no es el SQL ni el
+> archivo: es que la posición sea el contrato.**
+
+**El arreglo, y por qué así:** el saneo va **en un solo lugar**, sobre los doce campos ya armados,
+justo antes del `String.join`. No campo por campo. Motivo: el día que exista un campo trece, un
+saneo por campo se lo olvida y el defecto vuelve idéntico. La misma lógica del §29 —el aviso que
+vive lejos no protege— aplicada al código: **la defensa tiene que estar donde se arma el registro,
+no repartida en los campos que hoy son riesgosos.**
+
+Dos hallazgos menores del mismo pase, los dos del tipo «no generar es mejor que generar mal»:
+
+- **El campo 8 se pasaba del máximo.** Referencia = 1000 caracteres; `PGTROBSR` = 2000.
+- **La identificación no se validaba.** El banco valida `C`=10 dígitos, `R`=13, `P`=5 a 15. Con una
+  mal cargada **rechaza el archivo entero y no dice cuál fila fue.** Ahora aborta nombrando el pago
+  y el beneficiario, igual que el campo 12.
+
+### 30.8 Nota de método — las dos preguntas del agente valían más que el defecto
+
+El agente entregó los cinco ítems con **dos dudas marcadas en el código, no resueltas en silencio**.
+Las dos eran buenas, y una me hizo ir a buscar un dato que yo no tenía:
+
+1. **«El §4 no dice de dónde sale la Contrapartida».** Tenía razón: no lo dice. Fui al archivo real
+   (hoja `PLANTILLA ROLES`, 216 filas) y **la columna B trae 1, 2, 3… = número de fila**: el archivo
+   que el usuario manda hoy usa un **consecutivo por archivo**. Decidí quedarnos igual con
+   `pago.getId()` —la especificación admite *«alguna referencia de la transacción»* y es lo único
+   que reconcilia la respuesta del banco— pero **el dato lo aportó su pregunta, no mi diseño.**
+2. **«Escribí los códigos del Pacífico como texto, no como número».** Correcto, y por el motivo
+   correcto: un `00` numérico es `0` y se pierde el tipo de cuenta corriente. Y acertó en lo que de
+   verdad importaba sin que nadie se lo dijera: **dejó la columna del valor como número**, que es
+   obligatorio porque el botón *Ver Totales* de la macro suma esa columna.
+
+**Lo que hay que llevarse:** un ejecutor que marca la duda en el código y sigue vale más que uno que
+elige bien en silencio. De las dos preguntas salió un dato nuevo y una decisión confirmada; ninguna
+de las dos habría aparecido si las hubiera resuelto solo. Y el corolario simétrico: **su
+verificación sobre su propio código no era verificación** — el defecto del tabulador estaba en el
+archivo que él acababa de reportar como completo, y apareció leyéndolo yo.
+
+---
+
+### 30.9 ⚙️ `node` NO resuelve por PATH en esta máquina — y sin él no se verifica el frontend
+
+**2026-09-07.** Al ir a compilar `saaFE` yo mismo me encontré con que **no hay `node`**: ni en el
+PATH, ni en `C:\Program Files\nodejs`, ni lo encuentra una búsqueda recursiva en disco. El agente de
+frontend tenía el mismo problema y lo había resuelto sin decirlo.
+
+**La instalación existe, pero es de `nvm-windows` y el ejecutable NO se llama `node.exe`:**
+
+```
+/c/Users/xeonp/AppData/Roaming/nvm/v22.12.0/node64.exe      (v22.12.0)
+```
+
+Comando que sí corre, desde la raíz de `saaFE`:
+
+```bash
+"/c/Users/xeonp/AppData/Roaming/nvm/v22.12.0/node64.exe" node_modules/@angular/cli/bin/ng.js build --configuration development
+```
+
+⚠️ **No sirve `npx ng`, ni `ng`, ni los `.cmd` de esa carpeta**: todos buscan `node` en el PATH y no
+lo encuentran. Hay que invocar el binario por ruta completa y pasarle el `ng.js` directo.
+⚠️ **El nombre del ejecutable varía según la instalación** (`node64.exe` acá, `node.exe` en otras).
+No asumirlo: mirar la carpeta.
+
+**Por qué esto importa y no es un detalle de entorno:** durante una entrega entera commiteé código de
+frontend con un `ng build` que **no había verificado yo** — lo dije en el mensaje del commit en vez
+de darlo por bueno, que es lo que corresponde, pero es exactamente el agujero de la regla 11. **La
+verificación que hace un agente sobre su propio código no es verificación**, y en esa misma entrega
+quedó demostrado: el `ng build` daba exit 0 **con un botón apuntando a una ruta inexistente** (§30.7
+bis, `registro-egreso:378`). Compilar no es lo mismo que estar bien, pero no poder compilar es peor.
+
+Es el mismo problema que el `CLAUDE.md` ya documenta para `mvn` —«si está disponible depende de la
+máquina, verificalo, no lo asumas»— aplicado a `node`. Vale proponer que entre a esa tabla.
