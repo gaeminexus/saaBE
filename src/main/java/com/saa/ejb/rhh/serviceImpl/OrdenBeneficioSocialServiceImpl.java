@@ -425,8 +425,12 @@ public class OrdenBeneficioSocialServiceImpl implements OrdenBeneficioSocialServ
             throw new IncomeException("Debe indicar el motivo de la anulación.");
         }
         if (Long.valueOf(RhhEstadoOrdenBeneficio.PAGADA).equals(orden.getEstado())) {
-            throw new IncomeException("La orden " + idOrden + " ya está PAGADA: revierta el pago en"
-                    + " tesorería primero (POST /pgtr/revertirConfirmado/{id}) antes de anular.");
+            PagoProgramado pagoOrden = orden.getPagoProgramado();
+            throw new IncomeException("La orden " + idOrden + " ya está PAGADA. Para anularla:"
+                    + " 1) POST /pgtr/revertirConfirmado/"
+                    + (pagoOrden != null ? pagoOrden.getId() : "{idPago}")
+                    + " (revierte el pago en tesorería), 2) POST /rest/odbs/revertirPago/" + idOrden
+                    + " (deja la orden en REVERTIDA), y recién ahí anular.");
         }
         if (Long.valueOf(RhhEstadoOrdenBeneficio.ANULADA).equals(orden.getEstado())) {
             throw new IncomeException("La orden " + idOrden + " ya está ANULADA.");

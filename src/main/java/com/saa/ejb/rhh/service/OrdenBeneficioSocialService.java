@@ -17,6 +17,11 @@ import jakarta.ejb.Local;
  * {@code RHH_BENEFICIO_SOCIAL}) -&gt; PAGADA (al confirmar el pago, RRHH contabiliza la baja
  * de provision). O ANULADA desde GENERADA/ENVIADA_A_TESORERIA sin pago confirmado.</p>
  *
+ * <p>Una orden PAGADA no se anula directo: primero tesoreria revierte el
+ * {@code PagoProgramado} ({@code POST /pgtr/revertirConfirmado/{idPago}}), despues
+ * {@link #revertirPago} anula el asiento, devuelve las LQBS a pendiente y elimina las
+ * novedades del decimo, dejando la orden en REVERTIDA -- y solo desde ahi se anula.</p>
+ *
  * <p>Contrato: docs/logica-negocio/rhh/API-PAGO-BENEFICIOS-SOCIALES.md. Diseno:
  * docs/logica-negocio/rhh/PLAN-PAGO-BENEFICIOS-Y-SALIDA-POR-TESORERIA.md #3.</p>
  */

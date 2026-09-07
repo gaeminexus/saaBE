@@ -31,7 +31,9 @@ import jakarta.ws.rs.core.Response;
  * Base path: /odbs.
  *
  * <p>Contrato: docs/logica-negocio/rhh/API-PAGO-BENEFICIOS-SOCIALES.md. Los seis endpoints
- * estandar (#1.1) mas los cinco procesos (#1.2 a #1.6).</p>
+ * estandar (#1.1) mas los cinco procesos (#1.2 a #1.6) mas {@code revertirPago} (#6): una
+ * orden PAGADA no se anula directo, primero se revierte el pago en tesoreria y despues se
+ * revierte acá, dejándola en REVERTIDA, recién desde donde se puede anular.</p>
  *
  * <p><b>Códigos de estado, tal como los fija el contrato:</b> {@code generar} devuelve 200
  * tanto si crea la orden como si no hay liquidaciones pendientes ({@code exito:false} en el
