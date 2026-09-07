@@ -3,6 +3,91 @@
 **Árbitro:** `omen-saa-1-arb` (máquina **omen**) · **Agentes:** `omen-saa-1-be`, `omen-saa-1-fe`
 **Creado:** 2026-09-01 · **Marcador de commit:** `eqB` · **Este documento lo mantiene SOLO este equipo.**
 
+---
+
+# ⛔ FRENTE DE JUBILADOS: CERRADO Y PAGADO — 2026-09-07
+
+**Lo confirmó el usuario: «listo, todo ok».** La corrida de agosto 2026 corrió contra produccion,
+los pagos se confirmaron y el dinero salio al banco. **No queda nada pendiente de este frente.**
+
+Este bloque esta escrito para alguien que **no participo de nada de esto**: los equipos que
+siguen arrancan con memoria limpia y este documento es todo lo que van a tener.
+
+## Lo que quedo funcionando, y donde mirar si algo falla
+
+| Pieza | Archivo | Contrato |
+|---|---|---|
+| Corrida mensual de pension | `crd/serviceImpl/PagoPensionComplementariaServiceImpl.java` | `crd/API-PAGO-PENSION-COMPLEMENTARIA.md` |
+| Auditoria de bandas (el cuadre contra contabilidad) | origen `PAGO_PENSION` -> `CRD.PGPC` | `crd/API-AUDITORIA-BANDAS.md` |
+| Reporte de la corrida | `rep/crd/RPRT_PGPC_CRRD.jrxml` + `.jasper` | `API-PAGO-PENSION...md` §8 |
+| Verificacion contra el mayor | `crd/sql/203` | — |
+| Producto de pago 517 | creado en produccion con `crd/sql/202` | — |
+
+## Las cinco correcciones, todas verificadas con asientos reales de produccion
+
+1. **Banda del dia de vencimiento** — el dia del vencimiento es POR VENCER, y **sin `+1`**. La
+   cuota paso de `1.3.04.05` a `1.3.01.05`. ⚠️ **Las dos cuentas se llaman «DE 1 A 30 DIAS»**: si
+   alguien verifica por nombre concluye que no cambio nada. Arreglado por `lap-saa-1`.
+2. **El devengo iba por el nominal y duplicaba saldo** — el cruce debita la MISMA cuenta
+   (`2.1.02.25.01`). Ahora va por `remanente`: 107,39 + 481,78 = 589,17.
+3. **Cierre de cuentas de apertura** — `D 2.3.02.10 / H 1.4.05.10`. Arreglado por `lap-saa-1`.
+4. **Una autorizacion por jubilado** — **no era defecto**: la pantalla soporta seleccion multiple.
+   El operador marca todos y aprueba **una sola vez**.
+5. **Faltaba el asiento de pago de cada jubilado** — la orden iba sin `desglose` y CXP no arma
+   asiento sin el (**su diseño, no un defecto ajeno**). Ahora lleva el producto **517**.
+
+## ⛔ Lo unico peligroso que sigue vivo: H46
+
+**Si una corrida falla a mitad de camino, NO se puede reintentar.** El movimiento negativo de
+`CRD.APRT` sobrevive a cualquier reverso (la tabla es append-only y el contra-movimiento solo
+agrega un positivo), asi que el ancla queda envenenada y **el reintento informa «al dia» y no le
+paga a nadie, sin lanzar ningun error**.
+
+**La unica salida hoy es restaurar la base.** Medido: `anularOperacion` tampoco lo resuelve, y una
+solucion generica **pide DDL**. El detalle completo esta mas abajo en la seccion H46 — la
+investigacion ya esta pagada, no hay que rehacerla.
+
+⇒ **Regla para la corrida de cada mes: tener el respaldo listo ANTES de correr.**
+
+## Lo que queda abierto y hereda quien siga
+
+| # | Qué | Estado |
+|---|---|---|
+| **P22** | Pantallas de calificación de riesgo (`/rest/cfcr`, `/rest/escr` + FE). **Código listo de las dos puntas, NUNCA probado contra producción.** Contrato en `crd/API-CALIFICACION-RIESGO.md` | a probar |
+| **H46** | El ancla envenenada (arriba). Pide DDL para resolverse de verdad | medido, sin abrir |
+| **P18–P21** | `valorPension` duplicado; marcar proveedor y grupo de producto por rol; dos fuentes de verdad de la cuenta; precancelación sin cuotas pagadas previas | sin arrancar |
+| **—** | **Verificar contra producción** que existan las FK de `DDL-COBRO-PETRO-DOS-PASOS.sql` y `DDL-COBROS-APROBACION-CONTABILIDAD.sql`. Los scripts traen la verificación, **pero eso no prueba que alguien la haya corrido** | preguntado al usuario, sin respuesta |
+
+## Grabar el motivo de bloqueo — pendiente que nadie tomó
+
+Hoy **nadie puede contestar «¿por qué este jubilado no cobró en agosto?» tres meses después.** El
+motivo existe solo en la respuesta HTTP del momento en que corre el proceso y **no se persiste en
+ninguna tabla**. El reporte lo dice en una nota al pie porque no hay de dónde sacarlo. Es la
+primera pregunta que hace un auditor.
+
+## Herencia de `omen-saa-2` (tesorería) — cuatro cosas que nos rozan
+
+Ese equipo también cerró. Lo suyo queda en `ESTADO-EQUIPO-OMEN-2.md`; esto es lo que nos toca:
+
+1. **El arreglo de `com.saa.basico` quedó ESPECIFICADO, NO HECHO.** `DetalleRubroDaoServiceImpl:77`
+   debería convertir un catálogo faltante en un mensaje que **nombre el rubro y el detalle**, en
+   vez del `NoResultException` opaco de hoy. Su §29/§29bis/§29ter tiene la especificación completa,
+   el criterio de aceptación y el análisis de riesgo **de los dos equipos**. ⚠️ **No rehacer el
+   análisis**: los 23 consumidores, el `catch (PersistenceException)` de `EntityDaoImpl:95` que no
+   aplica, y las dos formas del defecto (fila ausente **y** fila con `PDTRVLRV` vacío, que mete la
+   palabra literal `"null"` en el JPQL) ya están medidos. Nunca se aprobó, no llegó ningún diff.
+2. **`TSR.DTCN` puede no tener su FK a `CNT.DTAS`** — mismo defecto del `GRANT` comentado, **sin
+   medir**. Toca `cnt`, que está en nuestro alcance.
+3. **El RUC con espacio crea titulares DUPLICADOS** en la carga SRI. El caso del titular 156 que
+   encontramos era la punta: `buscarTitularPorRuc` no trimea y **su llamador crea el titular si no
+   lo encuentra**.
+4. ⚠️ **La guarda de `aprobar` enumera orígenes.** Cualquier origen nuevo de `crd` **pasa la
+   aprobación y revienta al generar el archivo del banco, con el lote ya aprobado**. Es lo que casi
+   pasa con `CRD_SEGURO_JUBILADOS`. Tenerlo presente al agregar un origen.
+
+---
+
+
 > ## Por qué nace este archivo
 >
 > Hasta hoy el equipo B no tenía documento de estado propio: usaba `ESTADO-CRD.md`, que **lo
