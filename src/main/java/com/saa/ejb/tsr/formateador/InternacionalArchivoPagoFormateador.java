@@ -26,6 +26,7 @@ public class InternacionalArchivoPagoFormateador implements FormateadorArchivoPa
 	private static final String TAB = "\t";
 	private static final Charset ANSI = Charset.forName("windows-1252");
 	private static final int LARGO_MAXIMO_NOMBRE = 41;
+	private static final int LARGO_MAXIMO_REFERENCIA = 1000;
 
 	@Override
 	public ArchivoPagosGenerado generar(LotePago lote, List<PagoProgramado> pagos) throws Throwable {
@@ -92,25 +93,84 @@ public class InternacionalArchivoPagoFormateador implements FormateadorArchivoPa
 		String codigoBanco = CodigoBancoBeneficiarioResolver.codigoBancoBeneficiario(
 				banco, pago.getId(), nombreBeneficiario(pago));
 
+		// Campo 10: el banco valida la identificacion por longitud segun el tipo
+		// (C=10 digitos, R=13, P=entre 5 y 15). Mejor no generar la linea que
+		// generarla mal y que el banco rechace el archivo entero sin decir cual
+		// fila fue.
+		String numeroId = soloDigitosYLetras(identificacion);
+		validarLongitudIdentificacion(tipoIdentificacion, numeroId, pago);
+
 		String[] campos = new String[12];
 		campos[0] = "PA";
-		// Campo 2, Contrapartida: identificador de la transaccion, no puede ir
-		// vacio. FORMATO-ARCHIVO-BANCOS.md #4 no dice de donde sale este campo
-		// puntual -- se usa el id del pago (PGS.PGTR.PGTRCDGO), unico y nunca
-		// vacio. Reportado al arbitro como algo a confirmar, no asumido en silencio.
+		// Campo 2, Contrapartida: el archivo real que entrego el usuario (hoja
+		// PLANTILLA ROLES) usa un CONSECUTIVO POR ARCHIVO (1, 2, 3... = numero de
+		// fila), no el id de nada. Usamos deliberadamente el id del pago
+		// (PGS.PGTR.PGTRCDGO) en su lugar: la especificacion lo permite ("codigo
+		// del cliente, identificacion o alguna referencia de la transaccion", no
+		// exige el consecutivo), y es lo unico que permite reconciliar la
+		// respuesta del banco contra el pago sin adivinar. Decision confirmada
+		// con el arbitro; consultada tambien al usuario por si su operacion
+		// depende del consecutivo.
 		campos[1] = String.valueOf(pago.getId());
 		campos[2] = "USD";
 		campos[3] = valorEnCentavos(pago);
 		campos[4] = "CTA";
 		campos[5] = tipoCuenta(tipoCuentaRubro, pago);
 		campos[6] = numeroCuenta;
-		campos[7] = nvl(pago.getObservacion());
+		// Campo 8, Referencia: maximo 1000 (FORMATO-ARCHIVO-BANCOS.md #1.2),
+		// mientras que PGTROBSR admite 2000 -- truncar, no dejar que lo rechace el banco.
+		campos[7] = truncar(nvl(pago.getObservacion()), LARGO_MAXIMO_REFERENCIA);
 		campos[8] = tipoIdentificacion;
-		campos[9] = soloDigitosYLetras(identificacion);
+		campos[9] = numeroId;
 		campos[10] = truncar(nombreBeneficiario(pago), LARGO_MAXIMO_NOMBRE);
 		campos[11] = codigoBanco;
 
+		// Saneo final, en UN SOLO LUGAR y sobre los doce campos ya armados: un
+		// tabulador o un salto de linea colado en un texto libre (observacion,
+		// nombre) correria posicionalmente todos los campos siguientes -- misma
+		// familia que la trampa de los COLUMN_n de un SELECT * (CLAUDE.md). Se
+		// aplica aca, no campo por campo, para que un campo trece futuro no se
+		// escape del saneo.
+		for (int i = 0; i < campos.length; i++) {
+			campos[i] = sanearCampo(campos[i]);
+		}
+
 		return String.join(TAB, campos);
+	}
+
+	private String sanearCampo(String campo) {
+		String saneado = campo.replace('\t', ' ').replace('\r', ' ').replace('\n', ' ');
+		return saneado.replaceAll(" {2,}", " ").trim();
+	}
+
+	/**
+	 * Campo 10: valida la identificacion contra la regla con la que el propio
+	 * Banco Internacional la valida (FORMATO-ARCHIVO-BANCOS.md #1.2): C=cedula
+	 * de 10 digitos, R=RUC de 13, P=pasaporte entre 5 y 15. Aborta en vez de
+	 * mandar una identificacion mal cargada que tumbe el archivo entero.
+	 */
+	private void validarLongitudIdentificacion(String tipoIdentificacion, String numeroId, PagoProgramado pago) {
+		int largo = numeroId.length();
+		boolean valido;
+		switch (tipoIdentificacion) {
+			case "C":
+				valido = (largo == 10);
+				break;
+			case "R":
+				valido = (largo == 13);
+				break;
+			case "P":
+				valido = (largo >= 5 && largo <= 15);
+				break;
+			default:
+				valido = false;
+		}
+		if (!valido) {
+			throw new IncomeException("El pago " + pago.getId() + " (beneficiario "
+					+ nombreBeneficiario(pago) + ") tiene una identificacion invalida para el tipo '"
+					+ tipoIdentificacion + "': '" + numeroId + "'. Verifique el numero de identificacion "
+					+ "del beneficiario antes de generar el archivo.");
+		}
 	}
 
 	/**

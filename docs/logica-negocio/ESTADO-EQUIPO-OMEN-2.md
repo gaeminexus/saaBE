@@ -2436,3 +2436,58 @@ El §0bis registra que el 2026-09-04 `cxc` había **salido**. Volvió.
 **Qué destraba:** el §21 (la carga SRI trata como proveedor al cliente que nos retuvo) estaba
 congelado *porque tocaba `cxc`*. Con `cxc` adentro, la decisión vuelve a estar sobre la mesa.
 **Qué no cambia:** sigue siendo una decisión de negocio del usuario, no técnica.
+
+---
+
+### 30.7 🔴 El tabulador en el texto libre — la trampa de los `COLUMN_n`, en otro disfraz
+
+**Encontrado el 2026-09-07 revisando el código del agente de BE**, ya escrito y compilando.
+
+El archivo del Banco Internacional es **posicional por tabulador**: doce campos, once tabuladores.
+El formateador armaba el campo 8 con `nvl(pago.getObservacion())`, y `nvl()` solo hace `trim()`.
+
+**La observación es texto libre que teclea un usuario, y `PGTROBSR` admite 2000 caracteres.** Si
+trae un TAB —pegado desde Excel o Word, que pasa todo el tiempo— se escribe tal cual y **todos los
+campos siguientes se corren uno a la derecha**: el banco lee la identificación donde va la
+referencia y el código de banco donde va el nombre. Con un `\n`, el registro se parte en dos líneas
+y el archivo entero queda corrido. Lo mismo con el campo 11, que sale de `Titular.getNombre()`.
+
+> **Es la misma familia que la trampa de los `COLUMN_n` del `CLAUDE.md`**, la de los `.jrxml` con
+> `SELECT *`: un mapeo **posicional** al que le entra un elemento de más corre todo lo que viene
+> después, y **no avisa**. Allá era un `ALTER TABLE` en una tabla que el reporte ni imprime; acá es
+> un tabulador que alguien pegó sin darse cuenta. **El denominador común no es el SQL ni el
+> archivo: es que la posición sea el contrato.**
+
+**El arreglo, y por qué así:** el saneo va **en un solo lugar**, sobre los doce campos ya armados,
+justo antes del `String.join`. No campo por campo. Motivo: el día que exista un campo trece, un
+saneo por campo se lo olvida y el defecto vuelve idéntico. La misma lógica del §29 —el aviso que
+vive lejos no protege— aplicada al código: **la defensa tiene que estar donde se arma el registro,
+no repartida en los campos que hoy son riesgosos.**
+
+Dos hallazgos menores del mismo pase, los dos del tipo «no generar es mejor que generar mal»:
+
+- **El campo 8 se pasaba del máximo.** Referencia = 1000 caracteres; `PGTROBSR` = 2000.
+- **La identificación no se validaba.** El banco valida `C`=10 dígitos, `R`=13, `P`=5 a 15. Con una
+  mal cargada **rechaza el archivo entero y no dice cuál fila fue.** Ahora aborta nombrando el pago
+  y el beneficiario, igual que el campo 12.
+
+### 30.8 Nota de método — las dos preguntas del agente valían más que el defecto
+
+El agente entregó los cinco ítems con **dos dudas marcadas en el código, no resueltas en silencio**.
+Las dos eran buenas, y una me hizo ir a buscar un dato que yo no tenía:
+
+1. **«El §4 no dice de dónde sale la Contrapartida».** Tenía razón: no lo dice. Fui al archivo real
+   (hoja `PLANTILLA ROLES`, 216 filas) y **la columna B trae 1, 2, 3… = número de fila**: el archivo
+   que el usuario manda hoy usa un **consecutivo por archivo**. Decidí quedarnos igual con
+   `pago.getId()` —la especificación admite *«alguna referencia de la transacción»* y es lo único
+   que reconcilia la respuesta del banco— pero **el dato lo aportó su pregunta, no mi diseño.**
+2. **«Escribí los códigos del Pacífico como texto, no como número».** Correcto, y por el motivo
+   correcto: un `00` numérico es `0` y se pierde el tipo de cuenta corriente. Y acertó en lo que de
+   verdad importaba sin que nadie se lo dijera: **dejó la columna del valor como número**, que es
+   obligatorio porque el botón *Ver Totales* de la macro suma esa columna.
+
+**Lo que hay que llevarse:** un ejecutor que marca la duda en el código y sigue vale más que uno que
+elige bien en silencio. De las dos preguntas salió un dato nuevo y una decisión confirmada; ninguna
+de las dos habría aparecido si las hubiera resuelto solo. Y el corolario simétrico: **su
+verificación sobre su propio código no era verificación** — el defecto del tabulador estaba en el
+archivo que él acababa de reportar como completo, y apareció leyéndolo yo.
