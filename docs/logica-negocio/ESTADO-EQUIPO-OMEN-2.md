@@ -2526,3 +2526,64 @@ bis, `registro-egreso:378`). Compilar no es lo mismo que estar bien, pero no pod
 
 Es el mismo problema que el `CLAUDE.md` ya documenta para `mvn` —«si está disponible depende de la
 máquina, verificalo, no lo asumas»— aplicado a `node`. Vale proponer que entre a esa tabla.
+
+---
+
+### 30.10 ✅ El `e2-15` respondió, y la respuesta fue que NO — más un defecto que no buscaba
+
+**2026-09-07.** El usuario avisó que `TSR.BEXT` ya tenía los códigos de banco. Yo dije que la
+evidencia le daba la razón —389 filas, o sea el sistema financiero completo, o sea una carga desde
+lista oficial— pero que no lo afirmaba sin medirlo. **Medido: no los tiene.**
+
+| Prueba | Resultado |
+|---|---|
+| `BEXTCDGO 25` y `30` (las dos anclas del manual) | «COOPERATIVA ANDALUCIA» y «BANCO COOPNACIONAL S.A.». **Fallan las dos.** Machala es 5, Pacífico es 8 |
+| `10`, `17`, `32` de la muestra del Internacional | «BANCO AMAZONAS», «BANCO SOLIDARIO», «COOPERATIVA PABLO MUÑOZ VEGA» |
+| Forma de la PK | 389 filas, 1 a 389, 389 distintos: **secuencia corrida sin un solo hueco** |
+
+**Dónde estuvo mi error de razonamiento, que es lo que vale guardar:** de «el catálogo está
+completo» deduje «lo cargaron de una lista oficial» y de ahí «trae los códigos de esa lista». Los
+dos primeros pasos eran correctos; el tercero no se sigue. **Completo no es lo mismo que
+codificado** — se cargaron los nombres y se numeraron con la secuencia.
+
+Lo que sí hice bien fue **no afirmarlo**. La prueba estaba diseñada con dos anclas independientes y
+verificadas textualmente, y por eso una sola consulta cerró la discusión en vez de abrir otra.
+
+**Y la medición achicó el problema:** de los 389 bancos, sólo **siete** tienen cuentas. Hacen falta
+**seis códigos**, no 389.
+
+---
+
+### 30.11 🔴 `SQ_BEXTCDGO` está en 95 y la tabla llega a 389 — el alta de un banco externo está rota
+
+**Salió del bloque 5 del `e2-15`, que miraba la secuencia sólo como testigo** para saber si las
+filas se habían cargado con PK explícita. La respuesta fue que sí, y con eso apareció un defecto que
+nadie estaba buscando:
+
+```
+all_sequences.last_number = 95
+MAX(BEXTCDGO)             = 389
+```
+
+`BancoExterno` declara `@GeneratedValue(strategy = SEQUENCE, generator = "SQ_BEXTCDGO")`. Así que
+**dar de alta un banco externo desde la pantalla pide el `NEXTVAL`, le toca ~95, y ese código ya
+existe**: `ORA-00001`. Y no falla una vez — falla en cada intento hasta pasar el 389, unas 300 veces
+seguidas.
+
+Nadie lo reportó porque el catálogo vino completo y nadie necesitó agregar un banco. **Es latente,
+no inocuo:** el día que entre una cooperativa nueva, la pantalla no anda y el mensaje de Oracle no
+dice nada sobre secuencias.
+
+> ⚠️ **Es exactamente la regla 8 del esquema de trabajo de este equipo**, la que dice que después de
+> insertar PKs explícitas hay que sincronizar la secuencia porque *«el próximo insert desde la
+> aplicación muere por PK duplicada, en una pantalla sin relación aparente con lo que hiciste»*.
+> **Estaba escrita antes de encontrar este caso.** Una regla que ya existía encontró su ejemplar.
+
+Lo arregla el **`e2-16`**, que es independiente del `e2-14`: no comparten nada, y se separan para
+que la corrección de la secuencia no quede esperando a que lleguen los códigos del BCE. Su cierre
+incluye además un barrido de **todas** las secuencias de `TSR` contra el máximo de su tabla — contar
+la familia antes de dar por arreglado el ejemplar, que es el §29.
+
+**Lo que esto dice del método:** el bloque 5 estaba en el script *por si acaso*, como testigo de otra
+cosa. Un diagnóstico que sólo contesta la pregunta que le hiciste desperdicia la corrida. **Al
+escribir un `.sql` de verificación conviene pedir de más: la consulta ya está yendo a la base.**

@@ -145,10 +145,43 @@ Subtotales que muestra la macro: `USD · CU · CANT. 2 · TOTAL 300.00`.
 
 ---
 
-## 3. 🔴 El código del banco del beneficiario — EN VERIFICACIÓN
+## 3. 🔴 El código del banco del beneficiario — MEDIDO: no existe, hay que agregarlo
 
 **Los dos formatos piden el código de la institución financiera del beneficiario** — campo 12 del
 Internacional, columna B del Pacífico.
+
+### 3.0bis ✅ RESUELTO el 2026-09-07 por el `e2-15`: la columna HACE FALTA
+
+Se sospechaba que `BEXTCDGO` ya era el código del BCE. **No lo es**, y la medición no deja lugar a
+dudas:
+
+| Prueba | Resultado |
+|---|---|
+| Anclas del manual del Pacífico | `BEXTCDGO 25` → «COOPERATIVA ANDALUCIA» (debería ser Machala) · `BEXTCDGO 30` → «BANCO COOPNACIONAL S.A.» (debería ser Pacífico). **Fallan las dos.** Al revés: Machala es **5**, Pacífico es **8** |
+| Códigos de la muestra del Internacional | `10` → «BANCO AMAZONAS», `17` → «BANCO SOLIDARIO», `32` → «COOPERATIVA PABLO MUÑOZ VEGA». Ninguno cuadra |
+| Forma de la PK | **389 filas, mínimo 1, máximo 389, 389 distintos.** Una secuencia corrida **sin un solo hueco** |
+
+> **La lección, y es la que hay que llevarse:** que la tabla tenga el catálogo **completo** —389
+> instituciones, o sea una carga desde una lista oficial— **no implica que traiga los códigos de esa
+> lista.** Se cargaron los nombres y se numeraron de 1 a 389 con la secuencia. **Completo no es lo
+> mismo que codificado**, y esa inferencia es la que hizo dudar de un hueco que sí existía.
+
+**Y sólo hacen falta siete códigos, no 389.** De los 389 bancos del catálogo, apenas **siete** tienen
+cuentas colgando:
+
+| `BEXTCDGO` | Banco | Ctas. titular | Ctas. empleado | Código BCE |
+|---|---|---|---|---|
+| 1 | BANCO PICHINCHA | 14 | 10 | ⬜ falta |
+| 8 | BANCO DEL PACIFICO | 9 | 2 | ✅ **30** (manual, textual) |
+| 2 | BANCO DE GUAYAQUIL | 7 | 2 | ⬜ falta |
+| 12 | PRODUBANCO-PROMERICA | 6 | 2 | ⬜ falta |
+| 9 | BANCO INTERNACIONAL | 1 | 2 | 🟡 **32**, inferido, a confirmar |
+| 11 | BANCO DEL AUSTRO | 1 | 0 | ⬜ falta |
+| 13 | BANCO BOLIVARIANO | 0 | 1 | ⬜ falta |
+
+*El `32` del Internacional se infiere de que su propia especificación pone `32` por defecto cuando el
+campo va vacío, y un banco que rutea a sí mismo por defecto sugiere que ése es su código. **Es
+inferencia, no dato leído.***
 
 ### 3.0 ⚠️ CORRECCIÓN del 2026-09-07, el mismo día
 

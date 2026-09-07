@@ -29,8 +29,9 @@ de cada uno.**
 | **e2-10** | **`cxp/sql/e2-10-retenciones-cargadas-con-cuenta-de-proveedor.sql`** | Retenciones ya cargadas con la cuenta de proveedor de un cliente (bloque A2) y titulares sin cuenta de cliente (B1). **Solo lectura** | ✅ **CERRADO por el usuario el 2026-09-07.** El B1 quedó descartado el 09-04: la cuenta de cliente se parametriza sobre la marcha |
 | **e2-11** | `rhh/sql/e2-11-completa-la-fk-que-el-e2-06-no-pudo-crear.sql` | `GRANT` + `FK_CBEM_BEXT` + índice, que el `e2-06` no pudo crear | ✅ **corrido y cerrado** (`FK_CBEM_BEXT ENABLED`) |
 | **e2-12** | `rhh/sql/e2-12-verifica-y-completa-fk-e-indices-de-odbs.sql` | Verifica y completa `FK_ODBS_PJRQ` y los índices de `ODBS`/`LQBS` | ✅ **corrido y cerrado** (`FK_ODBS_PJRQ ENABLED`) |
-| **e2-14** | **`tsr/sql/e2-14-codigo-institucion-banco-externo.sql`** | ⚠️ **NO es lectura.** Agregaría `TSR.BEXT.BEXTCDBC` (código BCE de cámara) | ⛔ **NO CORRER — EN VERIFICACIÓN.** El usuario avisó que la tabla ya tiene los códigos. **Depende del `e2-15`**: si la PK resulta ser el código, este script se descarta |
-| **e2-15** | **`tsr/sql/e2-15-verifica-si-bextcdgo-ya-es-el-codigo-bce.sql`** | ¿`TSR.BEXT.BEXTCDGO` ya es el código del BCE? Contrasta la PK contra las **dos anclas verificadas** del manual del Pacífico (30 = Pacífico, 25 = Machala). **Solo lectura** | 🔴 **PENDIENTE DE CORRER — desbloquea el frente de archivos bancarios** |
+| **e2-14** | **`tsr/sql/e2-14-codigo-institucion-banco-externo.sql`** | ⚠️ **NO es lectura.** Agrega `TSR.BEXT.BEXTCDBC` (código BCE de cámara) y carga los **dos** códigos verificados. Los otros **seis** los completa el usuario | 🔴 **PENDIENTE — CONFIRMADO QUE HACE FALTA** por el `e2-15`. Va **antes del WAR**. Reescrito el 2026-09-07 apuntando por `BEXTCDGO`, ya no por `LIKE` sobre el nombre |
+| **e2-15** | `tsr/sql/e2-15-verifica-si-bextcdgo-ya-es-el-codigo-bce.sql` | ¿`TSR.BEXT.BEXTCDGO` ya es el código del BCE? **Solo lectura** | ✅ **CORRIDO el 2026-09-07. Respuesta: NO lo es.** Machala es 5 y Pacífico es 8; la PK es una secuencia corrida de 1 a 389 sin huecos. Y de paso destapó el `e2-16` |
+| **e2-16** | **`tsr/sql/e2-16-sincroniza-la-secuencia-de-banco-externo.sql`** | ⚠️ **NO es lectura.** `SQ_BEXTCDGO` quedó en **95** con la tabla en **389**: dar de alta un banco externo desde la pantalla muere con **PK duplicada**. Reinicia la secuencia en 390 | 🔴 **PENDIENTE.** Defecto **latente en producción**, independiente del frente de pagos: se puede correr solo |
 
 ---
 
@@ -40,8 +41,8 @@ De los catorce scripts: **doce corridos**, uno borrado (`e2-09`) y **uno que sí
 
 | Script | Por qué sigue sin correr |
 |---|---|
-| 🔴 **`e2-15`** | **Es el bloqueante del frente de archivos bancarios**, abierto el 2026-09-07. Es de **lectura**, se corre sin riesgo, y decide si hace falta el `e2-14` o no. Los dos formatos necesitan el código del banco del beneficiario; el Banco Internacional interpreta el campo vacío como «32 = Banco Internacional», así que un pago sin código **no rebota, se va a otro banco** |
-| ⛔ **`e2-14`** | **No se corre hasta que el `e2-15` responda.** Puede sobrar entero |
+| 🔴 **`e2-14`** | **Bloqueante del frente de archivos bancarios.** Va **antes del WAR**. La columna está confirmada como necesaria; faltan **seis códigos** del BCE que solo el usuario puede conseguir (Pichincha, Guayaquil, Produbanco, Internacional, Austro, Bolivariano — son los únicos bancos con cuentas) |
+| 🔴 **`e2-16`** | **Defecto latente en producción, ajeno a este frente.** Con la secuencia en 95 y la tabla en 389, agregar un banco externo desde la pantalla revienta con `ORA-00001` unas 300 veces seguidas. No depende de nada ni bloquea nada: se corre solo |
 | `e2-01`, `e2-02` | Verificaciones **de lectura** del frente de beneficios sociales, de principios de septiembre. No arreglan nada ni bloquean nada: contrastan entidades contra el esquema. Correrlas es higiene, no urgencia |
 
 > **Cerrado el 2026-09-07:** el `e2-13` dejó los 15 comandos de búsqueda en `OK`, y con eso
