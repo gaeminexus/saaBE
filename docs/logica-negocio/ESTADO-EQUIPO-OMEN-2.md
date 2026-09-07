@@ -2491,3 +2491,38 @@ elige bien en silencio. De las dos preguntas salió un dato nuevo y una decisió
 de las dos habría aparecido si las hubiera resuelto solo. Y el corolario simétrico: **su
 verificación sobre su propio código no era verificación** — el defecto del tabulador estaba en el
 archivo que él acababa de reportar como completo, y apareció leyéndolo yo.
+
+---
+
+### 30.9 ⚙️ `node` NO resuelve por PATH en esta máquina — y sin él no se verifica el frontend
+
+**2026-09-07.** Al ir a compilar `saaFE` yo mismo me encontré con que **no hay `node`**: ni en el
+PATH, ni en `C:\Program Files\nodejs`, ni lo encuentra una búsqueda recursiva en disco. El agente de
+frontend tenía el mismo problema y lo había resuelto sin decirlo.
+
+**La instalación existe, pero es de `nvm-windows` y el ejecutable NO se llama `node.exe`:**
+
+```
+/c/Users/xeonp/AppData/Roaming/nvm/v22.12.0/node64.exe      (v22.12.0)
+```
+
+Comando que sí corre, desde la raíz de `saaFE`:
+
+```bash
+"/c/Users/xeonp/AppData/Roaming/nvm/v22.12.0/node64.exe" node_modules/@angular/cli/bin/ng.js build --configuration development
+```
+
+⚠️ **No sirve `npx ng`, ni `ng`, ni los `.cmd` de esa carpeta**: todos buscan `node` en el PATH y no
+lo encuentran. Hay que invocar el binario por ruta completa y pasarle el `ng.js` directo.
+⚠️ **El nombre del ejecutable varía según la instalación** (`node64.exe` acá, `node.exe` en otras).
+No asumirlo: mirar la carpeta.
+
+**Por qué esto importa y no es un detalle de entorno:** durante una entrega entera commiteé código de
+frontend con un `ng build` que **no había verificado yo** — lo dije en el mensaje del commit en vez
+de darlo por bueno, que es lo que corresponde, pero es exactamente el agujero de la regla 11. **La
+verificación que hace un agente sobre su propio código no es verificación**, y en esa misma entrega
+quedó demostrado: el `ng build` daba exit 0 **con un botón apuntando a una ruta inexistente** (§30.7
+bis, `registro-egreso:378`). Compilar no es lo mismo que estar bien, pero no poder compilar es peor.
+
+Es el mismo problema que el `CLAUDE.md` ya documenta para `mvn` —«si está disponible depende de la
+máquina, verificalo, no lo asumas»— aplicado a `node`. Vale proponer que entre a esa tabla.
