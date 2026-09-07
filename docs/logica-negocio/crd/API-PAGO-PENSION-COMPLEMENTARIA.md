@@ -1234,3 +1234,42 @@ rango — ver límite 2 abajo, la ausencia no se interpreta.
 
 Verificación de la consulta: `docs/logica-negocio/crd/sql/197_VERIFICACION_REPORTE_CORRIDA_JUBILADOS.sql`
 (solo `SELECT`, literales de ejemplo — correrlo antes de dar el reporte por bueno).
+
+---
+
+## La referencia de la orden de pago — 2026-09-07
+
+**Pedido del usuario: que no salga el nombre del partícipe, solo el mes.**
+
+`generarOrdenPagoPension` arma la `observacion` que viaja a CxP y termina siendo el **campo
+`referencia` del archivo bancario**:
+
+| | Texto |
+|---|---|
+| Antes | `Pago pensión complementaria 8/2026 - JUAN CARLOS PEREZ GOMEZ (PGPC 1234)` |
+| **Ahora** | `Pago pensión complementaria 8/2026 (PGPC 1234)` |
+
+**Por qué es seguro sacar el nombre, medido y no supuesto:**
+
+- `FormateadorArchivoBancoPlanoImpl:91` hace `.append(nvl(pago.getObservacion()))`, y el layout
+  declarado en el javadoc de `:26` es
+  `idPago|identificacion|nombre|codigoBanco|tipoCuenta|numeroCuenta|valor|referencia`.
+  La observación **es** la referencia.
+- **El nombre del jubilado no se pierde: tiene su propio campo `nombre`**, que sale del
+  `BeneficiarioOcasional` que arma el mismo método (`beneficiario.setNombre(entidad.getRazonSocial())`).
+  Estaba **duplicado**.
+- El formato del **Banco Internacional trunca la referencia a 41 caracteres**
+  (`ESTADO-EQUIPO-OMEN-2.md §30`), así que con un nombre largo el `(PGPC n)` —el único rastro de
+  vuelta a la corrida— **se estaba perdiendo**. Sacar el nombre no es solo lo pedido: hace que la
+  referencia sirva.
+
+**Se conserva el `(PGPC n)`** aunque el pedido decía «solo el mes»: es lo único que enlaza la línea
+del banco con la corrida que la generó. Si alguna vez se saca, no queda forma de contestar de dónde
+salió un pago mirando el archivo.
+
+⚠️ **El seguro médico NO cambia.** Su observación (`Seguro médico jubilados m/a - <proveedor>`)
+lleva el nombre del **proveedor**, no de un partícipe, y es una sola orden por período.
+
+⚠️ **Cruza al módulo de `omen-saa-2`:** el formateador del archivo bancario es de ellos. El cambio
+no les rompe nada —el campo `nombre` sigue igual— pero **cambia lo que sale en un archivo que ellos
+generan**, y por el código no se enteran.

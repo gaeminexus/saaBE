@@ -1515,8 +1515,13 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         beneficiario.setTipoCuenta(cuenta.getTipoCuenta());
         beneficiario.setNumeroCuenta(cuenta.getNumeroCuenta());
 
-        String observacion = "Pago pensión complementaria " + mesM + "/" + anioM + " - "
-            + entidad.getRazonSocial() + " (PGPC " + pago.getCodigo() + ")";
+        // Sin el nombre del jubilado (2026-09-07): esta observación termina siendo la
+        // REFERENCIA del archivo bancario (FormateadorArchivoBancoPlanoImpl:91), un campo
+        // aparte de "nombre" — que ya sale del BeneficiarioOcasional de arriba y no se pierde.
+        // El formato del Banco Internacional trunca la referencia a 41 caracteres, así que con
+        // un nombre largo el "(PGPC n)" —el único rastro de vuelta a la corrida— se perdía.
+        String observacion = "Pago pensión complementaria " + mesM + "/" + anioM
+            + " (PGPC " + pago.getCodigo() + ")";
 
         // ⛔⛔ H41 (2026-09-05): antes se mandaba desglose=null — "sin desglose contable, mismo
         // estado que la devolución" — y eso es exactamente lo que dejó a los 181 jubilados sin
