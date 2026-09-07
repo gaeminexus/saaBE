@@ -20,7 +20,7 @@ de cada uno.**
 | **e2-02** | `rhh/sql/e2-02-verificacion-entidades-vs-esquema-rhh-cnt.sql` | Contrasta entidades JPA contra el esquema en `rhh` y `cnt`. **Solo lectura** | ⚪ sin constancia |
 | **e2-03** | `rhh/sql/e2-03-orden-pago-beneficio-social.sql` | Crea `RHH.ODBS`, su secuencia, `RHH.LQBS.LQBSODBS` y el rubro 310 | ✅ **corrido**. Su FK falló en silencio; completada por el `e2-12` |
 | **e2-04** | `rhh/sql/e2-04-corrige-indices-odbs-fuera-de-schema.sql` | Reubica al schema `RHH` dos índices que el `e2-03` creó sin prefijo | ✅ corrido |
-| **e2-05** | `cxp/sql/e2-05-urgente-aplpfctc-debe-aceptar-null.sql` | `PGS.APLP.APLPFCTC` pasa a aceptar `NULL` (cruce contra liquidación) | ⚪ **sin confirmar** |
+| **e2-05** | `cxp/sql/e2-05-urgente-aplpfctc-debe-aceptar-null.sql` | `PGS.APLP.APLPFCTC` pasa a aceptar `NULL` (cruce contra liquidación) | ✅ **corrido y CONFIRMADO el 2026-09-07** — no por el DDL sino por el síntoma: **el cruce con liquidación funciona en producción** |
 | **e2-06** | `rhh/sql/e2-06-cuenta-empleado-apunta-a-banco-externo.sql` | `RHH.CBEM`: de banco interno (`TSR.BNCO`) a banco externo (`TSR.BEXT`) | ✅ corrido. Su FK falló en silencio; completada por el `e2-11` |
 | **e2-07** | `tsr/sql/e2-07-aplicacion-desde-caja-chica.sql` | `PGS.APLP.APLPMVCH`: un gasto de caja chica puede originar un pago | ✅ **corrido** (confirmado el 2026-09-04) |
 | **e2-08** | **`tsr/sql/e2-08-diagnostico-comandos-busqueda.sql`** | Qué fila falta en el catálogo de comandos de búsqueda (`SCP.PDTR`, rubro alterno 71). Es la causa del `WFLYEJB0034` de `selectByCriteria`. **Solo lectura** | ✅ **corrido el 2026-09-07.** Faltan los alternos **12, 13 y 14**. *(La v1 no corría: cuatro columnas inventadas, §28)* |
@@ -34,11 +34,12 @@ de cada uno.**
 
 ## Lo que queda pendiente de correr, en orden de utilidad
 
-| Script | Qué responde | Riesgo |
+| Script | Qué hace | Riesgo |
 |---|---|---|
-| **`e2-08`** | Cuál de los 15 comandos de búsqueda falta en `SCP.PDTR`. Con eso se escribe el `INSERT` | ninguno, es lectura |
-| `e2-05` | — | ⚠️ **no es lectura**: es un `ALTER`. Hay que confirmar si ya corrió antes de nada |
+| **`e2-13`** | ⭐ **El único que importa hoy.** Inserta los alternos 12, 13 y 14 en `SCP.PDTR` y con eso deja de reventar `selectByCriteria` | ⚠️ **NO es lectura**: son tres `INSERT` en catálogo compartido. Mirar el bloque 0 antes |
 | `e2-01`, `e2-02` | Verificaciones viejas del frente de beneficios | ninguno, son lectura |
+
+**Todo lo demás está cerrado.** De los trece scripts, once corridos, uno borrado y uno pendiente.
 
 ---
 
