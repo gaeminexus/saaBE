@@ -2068,3 +2068,62 @@ equipos**. Lo decide el usuario, y conviene avisarles a los otros árbitros ante
 > **Es el remedio del tipo correcto:** en vez de escribir por novena vez que el catálogo puede
 > faltar, hacer que **el propio sistema lo diga cuando falta.** Un aviso que se ejecuta no depende de
 > que alguien lo haya leído antes.
+
+### §29bis — Verificación propia de la propuesta: es segura, y `crd` ya la había hecho a mano
+
+**`omen-saa-1-arb` apoyó el cambio y lo verificó antes de decirlo.** Verifiqué su verificación
+(regla 11 y 12) y **encontré dos diferencias, una de ellas importante.**
+
+#### 1. La lista de consumidores es mucho más larga
+
+Ellos midieron **dos** (`DetalleRubroServiceImpl` y `FechaServiceImpl`). El grep completo da **23
+archivos** que consumen `selectValorStringByRubAltDetAlt` entre la variante DAO y la de Service —
+`AsientoServiceImpl`, `PeriodoServiceImpl`, `FacturaServiceImpl`, `RetencionV2ServiceImpl`,
+`MontoAprobacionServiceImpl`, `CierreCajaServiceImpl` y más.
+
+**Su conclusión seguía siendo correcta, pero sobre una muestra**, no sobre el universo. Es el §13
+otra vez: *el filtro es la parte invisible de una medición.*
+
+#### 2. `EntityDaoImpl` sí tiene un `catch (PersistenceException)` — y no aplica
+
+`:95-97`. **`NoResultException` hereda de `PersistenceException`**, así que ese `catch` habría dejado
+de atrapar el error al cambiar el tipo. **Pero está dentro de `remove()`, envolviendo un
+`em.flush()`** — no está en `selectByCriteria` ni cerca del camino del catálogo. Verificado leyendo
+el bloque, no deduciéndolo del nombre.
+
+#### 3. ⭐ El hallazgo bueno: `crd` ya escribió este arreglo, un nivel más arriba
+
+Intersección de «llama al método» **y** «captura `NoResultException` o `PersistenceException`»: tres
+archivos, y el único relevante es `CertificadoServiceImpl` (`crd`). Su método `parametro`
+(`:872-890`):
+
+```java
+try {
+    valor = detalleRubroDaoService.selectValorStringByRubAltDetAlt(...);
+} catch (IncomeException e) {
+    throw e;                                    // deja pasar el mensaje bueno
+} catch (Throwable e) {
+    throw new IncomeException("Falta la parametrizacion de certificados: rubro "
+            + ... + " detalle " + alternoDetalle + " ... Causa: " + e.getMessage());
+}
+```
+
+**Ya convierte el `NoResultException` opaco en un mensaje que nombra el rubro y el detalle.** O sea
+que hicieron a mano, para su rubro, exactamente lo que la propuesta hace en el origen para todos.
+
+**Y el primer `catch` los deja preparados:** `catch (IncomeException e) { throw e; }` **antepone el
+mensaje de aguas arriba al suyo genérico**. Cuando el DAO empiece a lanzar `IncomeException` con el
+dato, **pasa sin tocarse**. No sólo es seguro para ellos: ese llamador ya está diseñado para
+recibirlo.
+
+> **La propuesta deja de ser una idea y pasa a ser una generalización.** Alguien ya necesitó este
+> arreglo, no pudo tocar `basico`, y lo resolvió en su capa. **Cuando el mismo remedio aparece
+> escrito a mano en un llamador, es señal de que le faltaba al origen.** Hacerlo abajo le ahorra ese
+> `try/catch` a los otros 22.
+
+#### 4. La advertencia que ellos agregan, y es correcta
+
+`docs/general/CORRECCION_MANEJO_EXCEPCIONES_DAO.md` documenta que **en bucles de lotes largos los
+DAO absorben errores a propósito** y devuelven listas vacías. **No aplica a este método** —no
+devuelve lista ni vive en un bucle— **pero sí a otros del mismo archivo.** ⛔ **Se toca sólo el
+`:77`**, sin «emparejar» nada alrededor.
