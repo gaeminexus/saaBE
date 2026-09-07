@@ -3,6 +3,7 @@ package com.saa.ejb.cxp.dao;
 import java.util.List;
 
 import com.saa.basico.util.EntityDao;
+import com.saa.model.cxp.LotePago;
 import com.saa.model.cxp.PagoProgramado;
 
 import jakarta.ejb.Local;
@@ -166,4 +167,19 @@ public interface PagoProgramadoDaoService extends EntityDao<PagoProgramado> {
 	 * @throws Throwable       : Excepcion
 	 */
 	Double sumaPagosComprometidos(Long idCuentaBancaria, java.time.LocalDate fecha) throws Throwable;
+
+	/**
+	 * Recupera los lotes de pago generados, mas recientes primero, para la bandeja que permite
+	 * volver a descargar el archivo de cualquiera (no hay que regenerar nada: el archivo se
+	 * reformatea desde cero en cada descarga).
+	 *
+	 * @param idEmpresa : Id de la empresa; null para todas
+	 * @param desde     : Fecha de generacion desde (inclusive); null = sin limite inferior
+	 * @param hasta     : Fecha de generacion hasta (inclusive); null = sin limite superior
+	 * @param limite    : Maximo de filas a devolver
+	 * @return          : Lotes, mas recientes primero
+	 * @throws Throwable : Excepcion
+	 */
+	List<LotePago> selectLotes(Long idEmpresa, java.time.LocalDate desde, java.time.LocalDate hasta,
+			Integer limite) throws Throwable;
 }

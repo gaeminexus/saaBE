@@ -33,6 +33,8 @@ import jakarta.ws.rs.core.UriInfo;
  *                                       contabiliza en la misma llamada, sin
  *                                       pasar por aprobación ni por lote)
  *   GET  /pgtr/listar                → listado para seleccionar qué se paga
+ *   GET  /pgtr/lotes                 → bandeja de lotes ya generados, para volver a descargar
+ *                                      el archivo de cualquiera sin regenerar nada
  *   POST /pgtr/lote                  → genera el archivo para el banco con los seleccionados
  *   GET  /pgtr/lote/{id}/archivo     → vuelve a descargar el archivo de un lote
  *   POST /pgtr/lote/{id}/respuesta   → carga el archivo de respuesta del banco
@@ -337,6 +339,38 @@ public class PagoProgramadoRest {
         } catch (Throwable e) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity("Error al aprobar los pagos: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Bandeja de lotes ya generados, más recientes primero, para volver a descargar el
+     * archivo de cualquiera con GET /pgtr/lote/{id}/archivo (que reformatea desde cero, sin
+     * regenerar nada). Todos los parámetros son opcionales.
+     * @param idEmpresa : Id de la empresa; sin filtro si se omite
+     * @param desde     : Fecha de generación desde, yyyy-MM-dd (opcional)
+     * @param hasta     : Fecha de generación hasta, yyyy-MM-dd (opcional)
+     * @param limite    : Máximo de filas a devolver; 50 si se omite
+     */
+    @GET
+    @Path("/lotes")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response lotes(@QueryParam("idEmpresa") Long idEmpresa,
+            @QueryParam("desde") String desde,
+            @QueryParam("hasta") String hasta,
+            @QueryParam("limite") Integer limite) {
+        System.out.println("LLEGA AL SERVICIO GET /pgtr/lotes");
+        try {
+            List<Map<String, Object>> resultado =
+                    pagoProgramadoService.listarLotes(idEmpresa, desde, hasta, limite);
+            if (resultado.isEmpty()) {
+                return Response.status(Response.Status.NO_CONTENT).build();
+            }
+            return Response.status(Response.Status.OK).entity(resultado)
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al listar los lotes de pago: " + e.getMessage())
                     .type(MediaType.APPLICATION_JSON).build();
         }
     }

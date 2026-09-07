@@ -8,6 +8,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -32,6 +33,8 @@ import com.saa.ejb.cxp.service.dto.LineaContablePago;
 import com.saa.ejb.tsr.formateador.ArchivoPagosGenerado;
 import com.saa.ejb.tsr.formateador.FormateadorArchivoPagos;
 import com.saa.ejb.tsr.formateador.FormateadorArchivoPagosFactory;
+import com.saa.ejb.tsr.formateador.InternacionalArchivoPagoFormateador;
+import com.saa.ejb.tsr.formateador.PacificoArchivoPagoFormateador;
 import com.saa.ejb.tsr.service.ChequeService;
 import com.saa.ejb.tsr.service.MovimientoBancoService;
 import com.saa.model.cnt.Asiento;
@@ -1624,6 +1627,38 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		return resultado;
 	}
 
+	@Override
+	public List<Map<String, Object>> listarLotes(Long idEmpresa, String desde, String hasta, Integer limite)
+			throws Throwable {
+		System.out.println("=== listarLotes | empresa=" + idEmpresa + " | desde=" + desde
+				+ " | hasta=" + hasta + " | limite=" + limite + " ===");
+
+		LocalDate fechaDesde = (desde != null && !desde.trim().isEmpty())
+				? LocalDate.parse(desde.trim()) : null;
+		LocalDate fechaHasta = (hasta != null && !hasta.trim().isEmpty())
+				? LocalDate.parse(hasta.trim()) : null;
+
+		List<LotePago> lotes = pagoProgramadoDaoService.selectLotes(idEmpresa, fechaDesde, fechaHasta, limite);
+
+		List<Map<String, Object>> resultado = new ArrayList<>();
+		for (LotePago lote : lotes) {
+			Map<String, Object> fila = new LinkedHashMap<>();
+			fila.put("idLote", lote.getId());
+			fila.put("fechaGeneracion", lote.getFechaGeneracion());
+			fila.put("nombreArchivo", lote.getNombreArchivo());
+			fila.put("numeroPagos", lote.getNumeroPagos());
+			fila.put("valorTotal", lote.getValorTotal());
+			fila.put("estado", lote.getEstado());
+			fila.put("cuentaOrigen", lote.getCuentaBancaria() != null
+					? lote.getCuentaBancaria().getNumeroCuenta() : null);
+			fila.put("bancoOrigen", (lote.getCuentaBancaria() != null && lote.getCuentaBancaria().getBanco() != null)
+					? lote.getCuentaBancaria().getBanco().getNombre() : null);
+			fila.put("formatoBanco", formatoBancoDeCuenta(lote.getCuentaBancaria()));
+			resultado.add(fila);
+		}
+		return resultado;
+	}
+
 	// =====================================================================
 	// Respuesta del banco
 	// =====================================================================
@@ -2005,6 +2040,36 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	 */
 	private FormateadorArchivoPagos obtenerFormateador(CuentaBancaria cuentaOrigen) {
 		return FormateadorArchivoPagosFactory.resolver(cuentaOrigen);
+	}
+
+	/**
+	 * Identifica el formato de archivo de la cuenta de origen del lote, para la bandeja de
+	 * {@link #listarLotes}, sin generar el archivo completo: {@link FormateadorArchivoPagos}
+	 * sólo expone el nombre del formato como efecto de {@code generar(...)}, que exige la
+	 * lista de pagos del lote y falla si viene vacía — correrlo por cada fila de una lista
+	 * sería además de innecesariamente costoso, una forma de romper la fila entera por un
+	 * lote sin pagos, que es justo lo que este método existe para no hacer.
+	 * @param cuentaOrigen : Cuenta bancaria de origen del lote (puede ser null)
+	 * @return             : "INTERNACIONAL" o "PACIFICO"; el nombre de la clase si algún día
+	 *                       se agrega un formateador nuevo; null si la cuenta no tiene banco
+	 *                       con formateador implementado
+	 */
+	private String formatoBancoDeCuenta(CuentaBancaria cuentaOrigen) {
+		if (cuentaOrigen == null) {
+			return null;
+		}
+		try {
+			FormateadorArchivoPagos formateador = FormateadorArchivoPagosFactory.resolver(cuentaOrigen);
+			if (formateador instanceof InternacionalArchivoPagoFormateador) {
+				return "INTERNACIONAL";
+			}
+			if (formateador instanceof PacificoArchivoPagoFormateador) {
+				return "PACIFICO";
+			}
+			return formateador.getClass().getSimpleName();
+		} catch (IllegalArgumentException e) {
+			return null;
+		}
 	}
 
 	/**

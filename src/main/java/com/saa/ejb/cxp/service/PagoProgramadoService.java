@@ -404,4 +404,21 @@ public interface PagoProgramadoService extends EntityService<PagoProgramado> {
 	 * @throws Throwable : Excepcion si el valor supera lo disponible
 	 */
 	void validaValorContraSaldo(FacturaCompra factura, Double valor, Long idPagoEx) throws Throwable;
+
+	/**
+	 * Bandeja de lotes de pago ya generados, mas recientes primero, para poder volver a
+	 * descargar el archivo de cualquiera con {@link #obtenerArchivoLote} (que reformatea desde
+	 * cero, sin regenerar nada). Filtros opcionales.
+	 *
+	 * @param idEmpresa : Id de la empresa; null para todas
+	 * @param desde     : Fecha de generacion desde (inclusive, yyyy-MM-dd); null = sin limite
+	 * @param hasta     : Fecha de generacion hasta (inclusive, yyyy-MM-dd); null = sin limite
+	 * @param limite    : Maximo de filas a devolver; null = 50
+	 * @return          : Filas con idLote, fechaGeneracion, nombreArchivo, numeroPagos,
+	 *                    valorTotal, estado, cuentaOrigen, bancoOrigen y formatoBanco (null si
+	 *                    el banco de la cuenta no tiene formateador implementado)
+	 * @throws Throwable : Excepcion
+	 */
+	List<Map<String, Object>> listarLotes(Long idEmpresa, String desde, String hasta, Integer limite)
+			throws Throwable;
 }

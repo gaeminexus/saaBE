@@ -6,6 +6,7 @@ import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.cxp.dao.PagoProgramadoDaoService;
+import com.saa.model.cxp.LotePago;
 import com.saa.model.cxp.PagoProgramado;
 import com.saa.rubros.EstadoPagoProgramado;
 import com.saa.rubros.OrigenPagoCxp;
@@ -299,5 +300,39 @@ public class PagoProgramadoDaoServiceImpl extends EntityDaoImpl<PagoProgramado>
         query.setParameter("fecha", fecha);
         Object resultado = query.getSingleResult();
         return resultado != null ? ((Number) resultado).doubleValue() : Double.valueOf(0.0);
+    }
+
+    @Override
+    public List<LotePago> selectLotes(Long idEmpresa, LocalDate desde, LocalDate hasta, Integer limite)
+            throws Throwable {
+        System.out.println("Ingresa al metodo selectLotes con empresa: " + idEmpresa
+                + " | desde: " + desde + " | hasta: " + hasta + " | limite: " + limite);
+
+        StringBuilder jpql = new StringBuilder(
+                " select l from LotePago l " +
+                " where  1 = 1 ");
+        if (idEmpresa != null) {
+            jpql.append(" and l.empresa.codigo = :idEmpresa ");
+        }
+        if (desde != null) {
+            jpql.append(" and l.fechaGeneracion >= :desde ");
+        }
+        if (hasta != null) {
+            jpql.append(" and l.fechaGeneracion <= :hasta ");
+        }
+        jpql.append(" order by l.fechaGeneracion desc, l.id desc ");
+
+        Query query = em.createQuery(jpql.toString());
+        if (idEmpresa != null) {
+            query.setParameter("idEmpresa", idEmpresa);
+        }
+        if (desde != null) {
+            query.setParameter("desde", desde);
+        }
+        if (hasta != null) {
+            query.setParameter("hasta", hasta);
+        }
+        query.setMaxResults(limite != null ? limite.intValue() : 50);
+        return query.getResultList();
     }
 }
