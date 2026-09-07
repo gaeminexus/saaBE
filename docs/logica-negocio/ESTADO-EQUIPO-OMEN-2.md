@@ -1747,3 +1747,56 @@ El único de los 182 donde nuestro reverso hace trabajo contable real es **el de
 > faltaba: **no falló ninguna revisión. Falló que las dos revisiones fueron por separado.** Un
 > defecto que sólo existe en la intersección no lo encuentra nadie que mire una pieza a la vez, por
 > cuidadoso que sea.
+
+---
+
+## §27 — El `GRANT` comentado: un script que «pareció» correr, y el costo de arreglar el caso y no la familia
+
+**2026-09-07. CERRADO.** El usuario reportó desde producción que `RHH.CBEM` ya tenía `BEXTCDGO` y 19
+cuentas funcionando, **pero que el control de constraints devolvía una sola `R`: `FK_CBEM_MPLD`.**
+`FK_CBEM_BEXT` no existía.
+
+### Qué había pasado
+
+El `e2-06` **no falló entero: falló a la mitad.** Sus bloques 1 y 2 —quitar la FK vieja, borrar
+`BNCOCDGO`, agregar `BEXTCDGO`— pasaron. El bloque 3 tenía el `GRANT` **como comentario**:
+
+```sql
+-- GRANT REFERENCES ON TSR.BEXT TO RHH;
+ALTER TABLE RHH.CBEM ADD CONSTRAINT FK_CBEM_BEXT ...
+```
+
+Oracle **no considera los privilegios heredados por rol** al crear un constraint. El `ALTER` murió
+con `ORA-01031` y el `CREATE INDEX` de la línea siguiente pudo no correr tampoco.
+
+> **Y por eso nadie se enteró en tres días: la aplicación funcionaba.** La columna estaba, la
+> pantalla andaba, las 19 cuentas se cargaban. **Lo único que faltaba era la garantía de integridad,
+> que por definición no se nota hasta que algo la necesita.** Un script a medias que deja el sistema
+> operativo es más difícil de detectar que uno que falla entero.
+
+### 🔴 Lo que este caso dice sobre mí, y es lo que hay que llevarse
+
+**Yo había avisado exactamente esto el 2026-09-04**, en el documento de pre-despliegue: *«Consecuencia
+si se corre de corrido sin el GRANT: los bloques que borran y agregan columnas SÍ pasan y el de la FK
+falla. Queda la columna sin su FK — el WAR funciona, pero el script quedó a medias y nadie se entera
+salvo que se lean los errores.»*
+
+**Predije el fallo y no lo evité.** Tenía tres scripts con el mismo defecto —`e2-03`, `e2-06`,
+`e2-07`— y **le promoví el `GRANT` a bloque ejecutable a UNO solo** (`e2-07`, commit `ae317c3`),
+porque era el que estaba tocando en ese momento. A los otros dos les dejé el aviso en un documento.
+
+> **Arreglé el caso que dolía y documenté la familia.** Es literalmente el §24 —*«cuando un control
+> enumera quiénes en vez de preguntar qué…»*— pero cometido por mí en la forma más simple: **saber
+> que hay tres y arreglar uno.** El aviso escrito no protegió nada: el script se corrió igual, porque
+> quien lo corre lee el script, no el documento de pre-despliegue de tres días antes.
+
+**Corregido hoy:** el `GRANT` del **`e2-03`** pasa a ser bloque ejecutable, con el relato de este
+incidente adentro. Ya no queda ninguno comentado.
+
+### El cierre
+
+`e2-11` (`317f32b`) completó `GRANT` + FK + índice. Trajo además un control que **no era formalidad**:
+durante todo el tiempo sin FK nada impidió grabar un `BEXTCDGO` inexistente, y **las 19 filas se
+cargaron en esa ventana**. Dio 0 huérfanos y el DDL corrió limpio.
+
+**Control 5.1 del usuario: `FK_CBEM_BEXT · R · ENABLED · BEXT`. El frente `e2-06` queda CERRADO.**

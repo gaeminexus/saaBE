@@ -104,9 +104,26 @@ CREATE TABLE RHH.ODBS (
     CONSTRAINT PK_ODBS PRIMARY KEY (ODBSCDGO)
 );
 
--- Empresa. PJRQ vive en SCP, asi que hace falta el GRANT REFERENCES ANTES
--- del ALTER. Si el usuario que corre esto no es SCP, pedirselo al DBA.
--- GRANT REFERENCES ON SCP.PJRQ TO RHH;
+-- =====================================================================
+-- ⛔ EL GRANT. VA ANTES DE LA FK Y LO CORRE OTRO USUARIO.
+--   PJRQ vive en SCP, y Oracle NO considera los privilegios heredados por ROL
+--   al crear un constraint: hace falta el GRANT directo, y ni siendo DBA
+--   alcanza. Lo ejecuta el dueño del schema SCP (o un DBA), NO el usuario de
+--   la aplicacion.
+--
+--   ⚠️ ESTO ERA UN COMENTARIO Y COSTO CARO. En el e2-06, el mismo GRANT quedo
+--   comentado: los bloques que borran y agregan columnas pasaron, el ALTER de
+--   la FK fallo con ORA-01031, y el script "parecio" correr — la aplicacion
+--   funcionaba y lo unico que faltaba era la garantia de integridad, que no se
+--   nota hasta que falla. Se descubrio 3 dias despues, en produccion, y hubo
+--   que escribir el e2-11 para completarlo. Aca va como BLOQUE EJECUTABLE.
+--
+--   Si el usuario que ejecuta ya tiene el privilegio, re-otorgarlo funciona en
+--   silencio: no falla.
+-- =====================================================================
+
+GRANT REFERENCES ON SCP.PJRQ TO RHH;
+
 ALTER TABLE RHH.ODBS ADD CONSTRAINT FK_ODBS_PJRQ
     FOREIGN KEY (PJRQCDGO) REFERENCES SCP.PJRQ (PJRQCDGO);
 
