@@ -13,7 +13,7 @@
 | # | Decisión |
 |---|---|
 | **M1** | Las 10 pantallas de **Cobros** salen del menú. **NO se borran** ni sus rutas ni sus componentes: quedan alcanzables por URL y volver atrás es una línea |
-| **M2** | **«Solicitud Pagos» ENTRA** al nodo de cheques, como primer paso del ciclo |
+| **M2** | ~~«Solicitud Pagos» ENTRA al nodo de cheques~~ → ⛔ **REVERTIDA el 2026-09-07. La pantalla se BORRÓ.** Ver §4 |
 | **M3** | Menú y mejora de pantallas, **las dos cosas ahora** |
 
 ---
@@ -117,3 +117,71 @@ pantallas para eso sería cargar al usuario con diez.
 | 1 | 🟠 Alguien usa una pantalla de Cobros y deja de encontrarla | Las rutas quedan vivas (M1): el enlace guardado sigue funcionando, y volver a mostrarla en el menú es una línea |
 | 2 | 🟠 `tsr` está compartido con `lap-saa-1`, y el menú es un archivo de alto tráfico | `git status` y `git log -3` sobre `menutesoreria.component.ts` antes de editarlo; si hay algo sin commitear, parar |
 | 3 | 🟡 Ordenar por una columna formateada ordena el texto, no el valor | El `sortingDataAccessor` devuelve el dato crudo para fechas e importes, no la cadena mostrada |
+
+---
+
+## 4. ⛔ «Solicitud de pago» de Tesorería: era una maqueta, y se BORRÓ
+
+**2026-09-07.** La decisión M2 de este mismo plan decía que esa pantalla entraba al nodo de cheques
+como primer paso del ciclo. **Estaba mal, y se revirtió el mismo día.**
+
+### 📌 EL COMMIT QUE LA BORRA — anotado acá a pedido del usuario
+
+| | |
+|---|---|
+| **Repositorio** | `saaFE` |
+| **Commit** | **`9d091b9`** |
+| **Mensaje** | `tsr(omen2): BORRADA la pantalla mock "Solicitud de pago" de Tesoreria` |
+
+**Para recuperar el código fuente**, desde el commit anterior:
+
+```bash
+git show 9d091b9~1:src/app/modules/tsr/forms/pagos/procesos/solicitud/solicitud-pagos.component.ts
+git show 9d091b9~1:src/app/modules/tsr/forms/pagos/procesos/solicitud/solicitud-pagos.component.html
+git show 9d091b9~1:src/app/modules/tsr/forms/pagos/procesos/solicitud/solicitud-pagos.component.scss
+```
+
+Se borraron los tres archivos, su ruta en `app.routes.ts` y su entrada del menú.
+
+### Por qué
+
+La pantalla era **enteramente simulada**: sus filas eran un arreglo escrito a mano y «aprobar
+seleccionadas» hacía `console.log` + `setTimeout`. **Cero llamadas al backend, ningún servicio
+inyectado.**
+
+**La solicitud de pago real es la de CxP** — `cxp/forms/pagos/solicitud-pago/`, con cinco servicios
+reales, construida el mismo día en la reorganización del circuito de pagos. Vive en
+**Cuentas por Pagar → Solicitud de pago** (`/menucuentaxpagar/pagos/solicitud`) y **no se tocó**.
+
+### 🔴 Cómo se coló, y es un error de método del árbitro
+
+Al escribir este plan puse esa pantalla **primera en el ciclo de cheques**, basándome en **su nombre
+y en su lugar en el árbol viejo**. No abrí el componente. El ejecutor lo abrió para agregarle
+ordenamiento y encontró que no tenía backend.
+
+> **La había puesto justo donde más daño hacía: la primera que alguien iba a abrir.**
+>
+> **Un nombre en un menú no es evidencia de qué hace la pantalla.** En un sistema con esta cantidad
+> de piezas viejas conviviendo, el rótulo y el contenido se separan sin que nadie lo note — es la
+> misma familia que `TipoCuentasBancarias`, cuyo nombre decía `CORRIENTE = 1` mientras el catálogo
+> decía lo contrario. **Antes de mover una pantalla de lugar en un menú, hay que abrirla.**
+
+### Por qué se borró en vez de esconderla
+
+El usuario lo pidió explícitamente —*«dala por muerta y bórrala de una vez»*— y el criterio es
+correcto: **una pantalla que muestra datos inventados y responde «aprobado» sin aprobar nada es peor
+que no tenerla.** El que la abre cree que hizo algo. El historial de git conserva el código, así que
+no se pierde nada; sólo deja de estar viva.
+
+⚠️ Se borró también la ruta, no sólo el menú: **una ruta que importa un componente inexistente rompe
+el build.** El `ng build` con exit 0 fue la verificación de que no quedó ninguna huérfana.
+
+### El nodo Cheques queda así
+
+```
+Cheques
+  Cheques generados
+  Cheques impresos
+  Cheques entregados
+  Consulta de cheques
+```
