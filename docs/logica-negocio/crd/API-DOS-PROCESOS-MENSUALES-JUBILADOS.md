@@ -178,3 +178,52 @@ en cero, nunca 404**: «este mes no se corrió nada» es una respuesta válida.
 6. Un jubilado que sale **antes** de fin de mes → tiene seguro pagado y no tiene pensión, y aparece
    en `conSeguroSinPension`.
 7. `GET /corrida/{anio}/{mes}` de un mes sin correr → **200** con los dos estados en `0`.
+
+---
+
+## 8. ⛔ Compatibilidad con lo ya procesado — AGOSTO 2026 Y ANTERIORES
+
+**Dato del usuario (2026-09-07): agosto 2026 YA se procesó y se contabilizó con el esquema
+actual. El esquema nuevo rige desde SEPTIEMBRE.**
+
+### El riesgo concreto, y no es teórico
+
+`CRD.CRJB` nace vacía. Sin hacer nada más, la pantalla de seguimiento mostraría agosto con los dos
+procesos en **PENDIENTE**, porque no hay fila. Y peor: la guarda de D2 protege las **pensiones**
+(exige que el seguro esté generado), pero **no protege el seguro**.
+
+⇒ **Alguien podría disparar el proceso de seguro médico de agosto y pagarle al proveedor por
+segunda vez.** El dinero ya salió al banco en agosto y no hay anulación.
+
+### La protección: sembrar la cabecera de los períodos ya corridos
+
+`crd/sql/213_BACKFILL_CRJB_PERIODOS_ANTERIORES.sql` inserta **una fila de `CRJB` por cada período
+que ya tenga filas en `CRD.PGPC`**, con los dos estados en **1 (GENERADO)** y los totales
+reconstruidos de `PGPC`.
+
+Con eso, sin una sola línea de código extra:
+
+- La pantalla dice la verdad sobre agosto en vez de invitar a correrlo.
+- Los dos endpoints nuevos **rechazan** agosto por la misma guarda de «ya se generó» que usan para
+  cualquier período repetido. **No hace falta una regla de fecha mínima**: la protección sale del
+  dato, que es más robusto que un `if (anio >= 2026 && mes >= 9)` que alguien tendría que mantener.
+
+### Lo que el backfill NO puede reconstruir, y se deja explícito
+
+- **`CRJBIDSG`** (la orden al proveedor) queda **NULL**: `PGPC` es por jubilado y no guarda el id
+  de la orden agregada del período. Se puede completar a mano si hace falta.
+- **`CRJBUSSG` / `CRJBUSPN`** se toman del `PGPCUSRG` de las filas del período. Es quien corrió el
+  proceso único, y con el esquema viejo eso es exacto: **era un solo acto**.
+- **`CRJBVLCR`** (cruzado a préstamos) queda **NULL**: no se puede derivar de `PGPC` sin recorrer
+  los pagos, y no vale la pena para un histórico.
+- ⚠️ **`PGPC` NO guarda la empresa** (tiene `ENTDCDGO` y `FLLLCDGO`, no `PJRQCDGO`). El script usa
+  la empresa **1236** como literal, que es la única con corridas de jubilados hasta hoy, y su
+  bloque 0 lista los períodos para que el usuario lo confirme **antes** de insertar. Si apareciera
+  otra empresa, **parar**: el backfill tendría que decidir a cuál pertenece cada período.
+
+### Y una marca para que se entienda dentro de seis meses
+
+Las filas sembradas llevan `CRJBCTSG` y `CRJBCTPN` con el conteo real de jubilados, pero **el
+lector tiene que poder distinguirlas de una corrida hecha con el esquema nuevo**. Por eso el
+backfill las deja identificables: son las únicas con `CRJBIDSG IS NULL` y `CRJBVLCR IS NULL`
+teniendo `CRJBESSG = 1`. Queda dicho acá y en el encabezado del script.
