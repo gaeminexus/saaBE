@@ -1,0 +1,237 @@
+<!-- Reporte de RESPALDO INTERNO de una nota de venta de compra (PGS.FCTC, TIPOCOMPROBANTE='02').
+     NO es un RIDE: la nota de venta la EMITE el proveedor en papel, no la genera este sistema ni
+     la autoriza el SRI. Ver docs/logica-negocio/cxp/PLAN-REPORTE-NOTA-VENTA-COMPRA.md.
+     Falta el .jasper: JasperReports 7.0.3 no compila en runtime (ver CLAUDE.md, sección
+     Reportes) y ReporteServiceImpl:110 sólo cae al .jrxml si no encuentra el .jasper -y ese
+     respaldo está muerto-. Generarlo con Jaspersoft Studio 7.0.3 y commitear los dos archivos
+     antes de usar este reporte en producción.
+     Pendiente de decisión (ver el commit): FCTC no tiene una columna de "fecha en que se tipeó
+     el documento" -FCTCFCRG es fecha de registro CONTABLE (ATS), un concepto distinto, y no se
+     puebla en ningún lugar del código hoy-, así que el pie sólo muestra el usuario que registró,
+     sin fecha. -->
+<jasperReport name="RPRT_NOTA_VENTA_COMPRA" language="java" pageWidth="595" pageHeight="842" columnWidth="535" leftMargin="30" rightMargin="30" topMargin="20" bottomMargin="20" uuid="7c8a1d20-3f4e-4b5a-9c6d-2e1f0a9b8c7d">
+	<parameter name="P_ID_FACTURA" class="java.lang.Long">
+		<defaultValueExpression><![CDATA[0L]]></defaultValueExpression>
+	</parameter>
+	<query language="SQL"><![CDATA[
+		SELECT
+		    /* ── Cabecera de la nota de venta (PGS.FCTC) ─────────────────────── */
+		    f.NUMERO                                                        AS numero,
+		    TO_CHAR(f.FECHA,     'DD/MM/YYYY')                              AS fecha,
+		    COALESCE(f.AUTORIZACION,       '')                              AS autorizacion,
+		    COALESCE(f.OBSERVACION,        '')                              AS observacion,
+		    COALESCE(f.SUBTOTAL, 0)                                         AS subtotal,
+		    COALESCE(f.DESCUENTO, 0)                                        AS descuentoCabecera,
+		    COALESCE(f.TOTAL, 0)                                            AS total,
+		    /* ── Datos de la empresa (mismo origen que RPRT_RIDE_FACTURA: CBR.FCDR) ── */
+		    COALESCE(fd.NUMDOC,            '')                              AS rucEmpresa,
+		    COALESCE(fd.RAZONSOCIAL,       '')                              AS razonSocialEmpresa,
+		    COALESCE(fd.NOMBRECOMERCIAL,   '')                              AS nombreComercialEmpresa,
+		    COALESCE(fd.DIRECCION,         '')                              AS direccionEmpresa,
+		    COALESCE(fd.TELEFONO,          '')                              AS telefonoEmpresa,
+		    COALESCE(fd.LOGO,              '')                              AS pathLogo,
+		    /* ── Proveedor emisor de la nota de venta (TSR.TTLR) ─────────────── */
+		    COALESCE(t.TTLRRZSC, t.TTLRNMBR, '')                            AS nombreProveedor,
+		    COALESCE(t.TTLRIDNT,           '')                              AS rucProveedor,
+		    COALESCE(t.TTLRDRCC,           '')                              AS direccionProveedor,
+		    COALESCE(t.TTLRTLFN,           '')                              AS telefonoProveedor,
+		    /* ── Usuario que registró (SCP.PJRQ, mismo id que FCTC.USUARIO) ─── */
+		    COALESCE(pj.PJRQNMBR,          '')                              AS nombreUsuario,
+		    /* ── Línea de detalle (PGS.DFCC) ─────────────────────────────────── */
+		    COALESCE(d.DESCRIPCION,        '')                              AS descripcionLinea,
+		    COALESCE(d.CANTIDAD, 0)                                         AS cantidadLinea,
+		    COALESCE(d.VALOR, 0)                                            AS valorLinea,
+		    COALESCE(d.DESCUENTO, 0)                                        AS descuentoLinea,
+		    COALESCE(d.TOTAL, 0)                                            AS totalLinea
+		FROM      PGS.FCTC f
+		LEFT JOIN CBR.FCDR fd ON fd.EMPRESA   = f.EMPRESA AND fd.ESTADO = 1
+		LEFT JOIN TSR.TTLR  t ON t.TTLRCDGO   = f.TITULAR
+		LEFT JOIN SCP.PJRQ  pj ON pj.PJRQCDGO = f.USUARIO
+		LEFT JOIN PGS.DFCC  d ON d.FACTURA    = f.ID AND d.ESTADO = 1
+		WHERE f.ID = $P{P_ID_FACTURA}
+		ORDER BY d.ID
+	]]></query>
+	<field name="numero" class="java.lang.String"/>
+	<field name="fecha" class="java.lang.String"/>
+	<field name="autorizacion" class="java.lang.String"/>
+	<field name="observacion" class="java.lang.String"/>
+	<field name="subtotal" class="java.lang.Double"/>
+	<field name="descuentoCabecera" class="java.lang.Double"/>
+	<field name="total" class="java.lang.Double"/>
+	<field name="rucEmpresa" class="java.lang.String"/>
+	<field name="razonSocialEmpresa" class="java.lang.String"/>
+	<field name="nombreComercialEmpresa" class="java.lang.String"/>
+	<field name="direccionEmpresa" class="java.lang.String"/>
+	<field name="telefonoEmpresa" class="java.lang.String"/>
+	<field name="pathLogo" class="java.lang.String"/>
+	<field name="nombreProveedor" class="java.lang.String"/>
+	<field name="rucProveedor" class="java.lang.String"/>
+	<field name="direccionProveedor" class="java.lang.String"/>
+	<field name="telefonoProveedor" class="java.lang.String"/>
+	<field name="nombreUsuario" class="java.lang.String"/>
+	<field name="descripcionLinea" class="java.lang.String"/>
+	<field name="cantidadLinea" class="java.lang.Double"/>
+	<field name="valorLinea" class="java.lang.Double"/>
+	<field name="descuentoLinea" class="java.lang.Double"/>
+	<field name="totalLinea" class="java.lang.Double"/>
+	<title height="200" splitType="Prevent">
+		<element kind="image" uuid="10000001-1111-1111-1111-000000000001" x="0" y="0" width="90" height="50" scaleImage="RetainShape" onErrorType="Blank" hImageAlign="Left" vImageAlign="Middle">
+			<expression><![CDATA[getClass().getResourceAsStream("/rep/img/logo_aso.jpeg")]]></expression>
+		</element>
+		<element kind="textField" uuid="10000002-1111-1111-1111-000000000002" x="95" y="0" width="440" height="14" fontSize="10.0" blankWhenNull="true" bold="true">
+			<expression><![CDATA[$F{nombreComercialEmpresa}]]></expression>
+		</element>
+		<element kind="textField" uuid="10000003-1111-1111-1111-000000000003" x="95" y="14" width="440" height="11" fontSize="8.0" blankWhenNull="true">
+			<expression><![CDATA[$F{razonSocialEmpresa}]]></expression>
+		</element>
+		<element kind="textField" uuid="10000004-1111-1111-1111-000000000004" x="95" y="25" width="440" height="10" fontSize="7.0" blankWhenNull="true">
+			<expression><![CDATA["RUC: " + $F{rucEmpresa}]]></expression>
+		</element>
+		<element kind="textField" uuid="10000005-1111-1111-1111-000000000005" x="95" y="35" width="440" height="10" fontSize="7.0" blankWhenNull="true">
+			<expression><![CDATA[$F{direccionEmpresa}]]></expression>
+		</element>
+		<element kind="textField" uuid="10000006-1111-1111-1111-000000000006" x="95" y="45" width="440" height="10" fontSize="7.0" blankWhenNull="true">
+			<expression><![CDATA[$F{telefonoEmpresa}.isEmpty() ? "" : ("Tel: " + $F{telefonoEmpresa})]]></expression>
+		</element>
+		<element kind="line" uuid="10000007-1111-1111-1111-000000000007" x="0" y="60" width="535" height="1">
+			<pen lineWidth="0.5"/>
+		</element>
+		<element kind="staticText" uuid="10000008-1111-1111-1111-000000000008" x="0" y="65" width="535" height="20" fontSize="14.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[NOTA DE VENTA DE COMPRA]]></text>
+		</element>
+		<element kind="rectangle" uuid="10000009-1111-1111-1111-000000000009" x="0" y="88" width="535" height="32" backcolor="#FFF3CD" mode="Opaque" radius="3">
+			<pen lineWidth="0.75" lineColor="#8A6D00"/>
+		</element>
+		<element kind="staticText" uuid="1000000a-1111-1111-1111-00000000000a" x="6" y="90" width="523" height="28" fontSize="7.5" bold="true" forecolor="#5C4400" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[DOCUMENTO INTERNO DE RESPALDO — No es un comprobante autorizado por el SRI.
+El comprobante válido es la nota de venta física del proveedor.]]></text>
+		</element>
+		<element kind="textField" uuid="1000000b-1111-1111-1111-00000000000b" x="0" y="124" width="178" height="14" fontSize="8.0" bold="true">
+			<expression><![CDATA["N° " + $F{numero}]]></expression>
+		</element>
+		<element kind="textField" uuid="1000000c-1111-1111-1111-00000000000c" x="178" y="124" width="178" height="14" fontSize="8.0">
+			<expression><![CDATA["Fecha de emisión: " + $F{fecha}]]></expression>
+		</element>
+		<element kind="textField" uuid="1000000d-1111-1111-1111-00000000000d" x="356" y="124" width="179" height="14" fontSize="8.0" blankWhenNull="true">
+			<expression><![CDATA[$F{autorizacion}.isEmpty() ? "" : ("Autorización de la preimpresa: " + $F{autorizacion})]]></expression>
+		</element>
+		<element kind="line" uuid="1000000e-1111-1111-1111-00000000000e" x="0" y="140" width="535" height="1">
+			<pen lineWidth="0.5"/>
+		</element>
+		<element kind="staticText" uuid="1000000f-1111-1111-1111-00000000000f" x="0" y="144" width="535" height="12" backcolor="#F0F0F0" mode="Opaque" fontSize="8.0" bold="true">
+			<text><![CDATA[PROVEEDOR]]></text>
+			<box leftPadding="3"/>
+		</element>
+		<element kind="textField" uuid="10000010-1111-1111-1111-000000000010" x="0" y="158" width="535" height="12" fontSize="8.0">
+			<expression><![CDATA["Nombre / Razón Social: " + $F{nombreProveedor}]]></expression>
+			<box leftPadding="3"/>
+		</element>
+		<element kind="textField" uuid="10000011-1111-1111-1111-000000000011" x="0" y="170" width="260" height="12" fontSize="8.0">
+			<expression><![CDATA["RUC: " + $F{rucProveedor}]]></expression>
+			<box leftPadding="3"/>
+		</element>
+		<element kind="textField" uuid="10000012-1111-1111-1111-000000000012" x="260" y="170" width="275" height="12" fontSize="8.0" blankWhenNull="true">
+			<expression><![CDATA[$F{telefonoProveedor}.isEmpty() ? "" : ("Teléfono: " + $F{telefonoProveedor})]]></expression>
+			<box leftPadding="3"/>
+		</element>
+		<element kind="textField" uuid="10000013-1111-1111-1111-000000000013" x="0" y="182" width="535" height="12" fontSize="8.0" textAdjust="StretchHeight" blankWhenNull="true">
+			<expression><![CDATA[$F{direccionProveedor}.isEmpty() ? "" : ("Dirección: " + $F{direccionProveedor})]]></expression>
+			<box leftPadding="3"/>
+		</element>
+		<element kind="line" uuid="10000014-1111-1111-1111-000000000014" x="0" y="198" width="535" height="1">
+			<pen lineWidth="0.5"/>
+		</element>
+	</title>
+	<columnHeader height="16" splitType="Prevent">
+		<element kind="staticText" uuid="20000001-2222-2222-2222-000000000001" mode="Opaque" x="0" y="0" width="45" height="16" forecolor="#FFFFFF" backcolor="#333333" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[Cant.]]></text>
+			<box><pen lineWidth="0.3"/></box>
+		</element>
+		<element kind="staticText" uuid="20000002-2222-2222-2222-000000000002" mode="Opaque" x="45" y="0" width="260" height="16" forecolor="#FFFFFF" backcolor="#333333" fontSize="7.0" bold="true" vTextAlign="Middle">
+			<text><![CDATA[Descripción]]></text>
+			<box leftPadding="3"><pen lineWidth="0.3"/></box>
+		</element>
+		<element kind="staticText" uuid="20000003-2222-2222-2222-000000000003" mode="Opaque" x="305" y="0" width="70" height="16" forecolor="#FFFFFF" backcolor="#333333" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<text><![CDATA[P. Unitario]]></text>
+			<box rightPadding="3"><pen lineWidth="0.3"/></box>
+		</element>
+		<element kind="staticText" uuid="20000004-2222-2222-2222-000000000004" mode="Opaque" x="375" y="0" width="70" height="16" forecolor="#FFFFFF" backcolor="#333333" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<text><![CDATA[Descuento]]></text>
+			<box rightPadding="3"><pen lineWidth="0.3"/></box>
+		</element>
+		<element kind="staticText" uuid="20000005-2222-2222-2222-000000000005" mode="Opaque" x="445" y="0" width="90" height="16" forecolor="#FFFFFF" backcolor="#333333" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<text><![CDATA[Total línea]]></text>
+			<box rightPadding="3"><pen lineWidth="0.3"/></box>
+		</element>
+	</columnHeader>
+	<detail>
+		<band height="12" splitType="Stretch">
+			<element kind="textField" uuid="30000001-3333-3333-3333-000000000001" x="0" y="0" width="45" height="12" fontSize="7.0" pattern="#,##0.00" hTextAlign="Right">
+				<expression><![CDATA[$F{cantidadLinea}]]></expression>
+				<box rightPadding="3"><pen lineWidth="0.2"/></box>
+			</element>
+			<element kind="textField" uuid="30000002-3333-3333-3333-000000000002" x="45" y="0" width="260" height="12" fontSize="7.0" textAdjust="StretchHeight">
+				<expression><![CDATA[$F{descripcionLinea}]]></expression>
+				<box leftPadding="3"><pen lineWidth="0.2"/></box>
+			</element>
+			<element kind="textField" uuid="30000003-3333-3333-3333-000000000003" x="305" y="0" width="70" height="12" fontSize="7.0" pattern="#,##0.00" hTextAlign="Right">
+				<expression><![CDATA[$F{valorLinea}]]></expression>
+				<box rightPadding="3"><pen lineWidth="0.2"/></box>
+			</element>
+			<element kind="textField" uuid="30000004-3333-3333-3333-000000000004" x="375" y="0" width="70" height="12" fontSize="7.0" pattern="#,##0.00" hTextAlign="Right">
+				<expression><![CDATA[$F{descuentoLinea}]]></expression>
+				<box rightPadding="3"><pen lineWidth="0.2"/></box>
+			</element>
+			<element kind="textField" uuid="30000005-3333-3333-3333-000000000005" x="445" y="0" width="90" height="12" fontSize="7.0" pattern="#,##0.00" hTextAlign="Right">
+				<expression><![CDATA[$F{totalLinea}]]></expression>
+				<box rightPadding="3"><pen lineWidth="0.2"/></box>
+			</element>
+		</band>
+	</detail>
+	<summary height="140" splitType="Stretch">
+		<element kind="line" uuid="40000001-4444-4444-4444-000000000001" x="0" y="0" width="535" height="1">
+			<pen lineWidth="0.5"/>
+		</element>
+		<element kind="staticText" uuid="40000002-4444-4444-4444-000000000002" x="0" y="6" width="535" height="12" backcolor="#F0F0F0" mode="Opaque" fontSize="7.0" bold="true">
+			<text><![CDATA[Observación]]></text>
+			<box leftPadding="3"><pen lineWidth="0.3"/></box>
+		</element>
+		<element kind="textField" uuid="40000003-4444-4444-4444-000000000003" x="0" y="18" width="535" height="30" fontSize="7.0" textAdjust="StretchHeight" blankWhenNull="true">
+			<expression><![CDATA[$F{observacion}]]></expression>
+			<box topPadding="2" leftPadding="3"><pen lineWidth="0.3"/></box>
+		</element>
+		<element kind="line" uuid="40000004-4444-4444-4444-000000000004" x="0" y="52" width="535" height="1">
+			<pen lineWidth="0.5"/>
+		</element>
+		<element kind="staticText" uuid="40000005-4444-4444-4444-000000000005" x="0" y="58" width="445" height="12" backcolor="#F0F0F0" mode="Opaque" fontSize="8.0" bold="true" hTextAlign="Right">
+			<text><![CDATA[SUBTOTAL]]></text>
+			<box rightPadding="6"><pen lineWidth="0.3"/></box>
+		</element>
+		<element kind="textField" uuid="40000006-4444-4444-4444-000000000006" x="445" y="58" width="90" height="12" fontSize="8.0" pattern="#,##0.00" hTextAlign="Right">
+			<expression><![CDATA[$F{subtotal}]]></expression>
+			<box rightPadding="3"><pen lineWidth="0.3"/></box>
+		</element>
+		<element kind="staticText" uuid="40000007-4444-4444-4444-000000000007" x="0" y="72" width="445" height="12" backcolor="#F0F0F0" mode="Opaque" fontSize="8.0" bold="true" hTextAlign="Right">
+			<text><![CDATA[DESCUENTO]]></text>
+			<box rightPadding="6"><pen lineWidth="0.3"/></box>
+		</element>
+		<element kind="textField" uuid="40000008-4444-4444-4444-000000000008" x="445" y="72" width="90" height="12" fontSize="8.0" pattern="#,##0.00" hTextAlign="Right">
+			<expression><![CDATA[$F{descuentoCabecera}]]></expression>
+			<box rightPadding="3"><pen lineWidth="0.3"/></box>
+		</element>
+		<element kind="staticText" uuid="40000009-4444-4444-4444-000000000009" x="0" y="88" width="445" height="16" forecolor="#FFFFFF" backcolor="#333333" mode="Opaque" fontSize="10.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<text><![CDATA[TOTAL]]></text>
+			<box rightPadding="6"><pen lineWidth="0.5"/></box>
+		</element>
+		<element kind="textField" uuid="4000000a-4444-4444-4444-00000000000a" x="445" y="88" width="90" height="16" forecolor="#FFFFFF" backcolor="#333333" mode="Opaque" fontSize="10.0" pattern="#,##0.00" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$F{total}]]></expression>
+			<box rightPadding="3"><pen lineWidth="0.5"/></box>
+		</element>
+		<element kind="line" uuid="4000000b-4444-4444-4444-00000000000b" x="0" y="110" width="535" height="1">
+			<pen lineWidth="0.5"/>
+		</element>
+		<element kind="textField" uuid="4000000c-4444-4444-4444-00000000000c" x="0" y="116" width="535" height="12" fontSize="7.0" italic="true">
+			<expression><![CDATA["Registrado por: " + $F{nombreUsuario}]]></expression>
+		</element>
+	</summary>
+</jasperReport>
