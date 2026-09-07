@@ -1913,3 +1913,60 @@ completo de punta a punta:
 
 3. **Inventé tres códigos de bloqueante que ya existían** con otro nombre, y lo cazó el agente al
    reportar la discrepancia en vez de resolverla solo.
+
+---
+
+## §28 — 🔴 Volví a inventar `PRBRNMBR`. El §9 ya lo registraba como error mío
+
+**2026-09-07.** El usuario corrió el `e2-08` y le dio **`PRBRNMBR: identificador no válido`**
+(ORA-00904).
+
+**Ese error exacto, sobre esa misma tabla, está en el §9 de este documento como un error mío del
+2026-09-01:** *«INSERT con dos columnas inventadas (`PRBRNMBR`, `PRBRESTD`) que habría dado ORA-00904
+— copiando la forma de otro script sin contrastarla contra la entidad»*. Está citado además en el
+registro de reservas y en el tablero de `lap-saa-1`.
+
+**Lo documenté, lo cité tres veces, y lo volví a cometer seis días después.**
+
+### Y eran cuatro, no una
+
+| Inventada | Real | Dónde |
+|---|---|---|
+| `PRBRNMBR` | **`PRBRDSCR`** | bloque 1 |
+| `PDTRNMBR` | **`PDTRDSCR`** | bloques 3 y 4 |
+| `PDTRVLAL` | **`PDTRVLRV`** | bloques 2 y 3 |
+
+`PDTRVLRV` es `DetalleRubro.valorAlfanumerico` — **exactamente lo que devuelve
+`selectValorStringByRubAltDetAlt`**, o sea la columna que el diagnóstico existía para mirar. El
+script no podía funcionar ni por casualidad.
+
+### El barrido, que esta vez sí hice, y encontró dos más
+
+`grep -rn "PRBRNMBR\|PDTRNMBR\|PDTRVLAL\|PRBRESTD" docs/logica-negocio/`:
+
+| Dónde | Qué |
+|---|---|
+| `cxp/rubros-proceso-carga-documentos.md:142,147` | **mío.** Dos `INSERT` con `PDTRRBRR` y `PDTRNMBR` |
+| `crd/sql/89_DIAGNOSTICO_SECUENCIAS_Y_RUBRO_81.sql:53` | de `crd`, otro equipo: usa `PRBRESTD` |
+
+**Y el de `cxp` tenía un tercer defecto, peor que los nombres:** los `INSERT` **omitían
+`PDTRALTR`**. El código busca los detalles **por código alterno**
+(`selectValorStringByRubAltDetAlt` → `DetalleRubro.codigoAlterno` → `PDTRALTR`).
+
+> **Los nombres inventados habrían dado `ORA-00904` y alguien se habría enterado. La columna
+> faltante no: la fila se graba bien y el sistema no la encuentra nunca.** Es el §8 —«la PK y el
+> alterno no son intercambiables»— en su versión más cara: no elegir el identificador equivocado,
+> sino no ponerlo.
+
+### La lección, y no es «tener más cuidado»
+
+Tener cuidado ya lo había intentado: el §9 existe justamente porque me había pasado. **Lo que
+falla es el momento**, no la atención.
+
+> **Antes de escribir una sola línea de `.sql`, abrir la entidad JPA y copiar los nombres de ahí.**
+> Siempre, aunque parezcan obvios, aunque el script sea de lectura, aunque se esté copiando la forma
+> de otro script que sí corría. Es lo que hice bien con `MVCHTPOO`, `CBEMCDGO` y `RCV2` —y en esos
+> tres acerté— y lo que salteé acá porque `PRBR` «ya la conocía».
+
+**Corregido:** el `e2-08` reescrito con los nombres verificados, y el `.md` de `cxp` con sus
+`INSERT` arreglados, incluyendo el `PDTRALTR` que faltaba. El de `crd` se les avisa.

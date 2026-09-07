@@ -138,15 +138,30 @@ estadoDocumento == 5                          →  botón "Resolver novedad"
 -- Verificar el PRBRCDGO del rubro 174 antes de ejecutar:
 -- SELECT PRBRCDGO, PRBRDSCR, PRBRALTR FROM SCP.PRBR WHERE PRBRALTR = 174;
 
+-- ⚠️ CORREGIDO el 2026-09-07. La version anterior de estos INSERT NO CORRIA:
+--    usaba PDTRRBRR y PDTRNMBR, que NO EXISTEN, y habria fallado con ORA-00904.
+--    Y ademas omitia PDTRALTR, que es EL PROBLEMA MAS GRAVE de los tres: el
+--    codigo busca los detalles por CODIGO ALTERNO
+--    (selectValorStringByRubAltDetAlt -> DetalleRubro.codigoAlterno -> PDTRALTR),
+--    asi que una fila insertada sin el se graba bien y el sistema NO LA
+--    ENCUENTRA NUNCA. Ese no habria dado ORA-00904: habria dado una fila
+--    invisible.
+--
+--    Columnas REALES de SCP.PDTR, verificadas contra la entidad DetalleRubro:
+--      PDTRCDGO  PK          PRBRCDGO  FK al rubro (NO "PDTRRBRR")
+--      PDTRDSCR  descripcion (NO "PDTRNMBR")
+--      PDTRVLRN  valor numerico        PDTRVLRV  valor alfanumerico
+--      PDTRALTR  codigo alterno        PDTRESTD  estado (1 = activo)
+
 -- Código 6: REGISTRADO_CON_DIFERENCIAS
-INSERT INTO SCP.PDTR (PDTRCDGO, PDTRRBRR, PDTRVLRN, PDTRVLRV, PDTRNMBR)
-VALUES (SCP.SQ_PDTRCDGO.NEXTVAL, :ID_RUBRO_174, 6, 'REGISTRADO_CON_DIFERENCIAS',
-        'Registrado - Diferencias');
+INSERT INTO SCP.PDTR (PDTRCDGO, PRBRCDGO, PDTRALTR, PDTRVLRN, PDTRVLRV, PDTRDSCR, PDTRESTD)
+VALUES (SCP.SQ_PDTRCDGO.NEXTVAL, :ID_RUBRO_174, 6, 6, 'REGISTRADO_CON_DIFERENCIAS',
+        'Registrado - Diferencias', 1);
 
 -- Código 7: REGISTRADO_DESAPARECIDO
-INSERT INTO SCP.PDTR (PDTRCDGO, PDTRRBRR, PDTRVLRN, PDTRVLRV, PDTRNMBR)
-VALUES (SCP.SQ_PDTRCDGO.NEXTVAL, :ID_RUBRO_174, 7, 'REGISTRADO_DESAPARECIDO',
-        'Registrado - No Aparece');
+INSERT INTO SCP.PDTR (PDTRCDGO, PRBRCDGO, PDTRALTR, PDTRVLRN, PDTRVLRV, PDTRDSCR, PDTRESTD)
+VALUES (SCP.SQ_PDTRCDGO.NEXTVAL, :ID_RUBRO_174, 7, 7, 'REGISTRADO_DESAPARECIDO',
+        'Registrado - No Aparece', 1);
 
 COMMIT;
 ```
