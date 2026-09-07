@@ -1515,3 +1515,42 @@ la tasa de desgravamen es una **constante quemada en Java** (`FACTOR_DESGRAVAMEN
 | 2026-09-01 | Frente lateral del informe de necesidad de pago, entregado BE+FE en el día. Cinco hallazgos (H5–H9) y un fallo de proceso propio registrado. `sql/152` escrito para validar la query sin desplegar. Queda pendiente la prueba contra el servidor |
 | 2026-09-02 | La brecha de la carga 449 medida en serio: `sql/170` descartó `calcularSaldosRealesCuota` (cuotas cuadran, 0,01) y `sql/171` sale a medir las dos rutas de afectación manual (H24). Quinto diagnóstico mío equivocado en el mismo problema — el patrón sigue siendo deducir en vez de medir |
 | 2026-09-04 | Prevuelo de agosto desplegado y **validado por el usuario** (180/136/44, $129.510,23). El seguro en $0,00 resultó ser dato y lo corrigió el usuario (H35); queda `sql/195` como diagnóstico mensual reusable. Corregido un error propio: `sql/194` calculaba el ancla distinto del código. Filtros de la pestaña «Corrida» entregados (`6f0e7ea`) — **y programados por el árbitro en vez de despacharlos, marcado por el usuario como fallo de proceso**. Despachada al agente BE la decisión **D5** (el seguro se paga sin préstamo, certificado ni cuenta). **La corrida real de agosto sigue sin ejecutarse** |
+
+---
+
+## Lección convergente — dónde tiene que vivir un aviso (2026-09-07)
+
+Dos equipos, seis casos, sin comunicación entre ellos hasta el final, y la misma conclusión.
+
+**Nuestros tres**, todos «ausencias deliberadas» — cosas que están bien porque alguien decidió
+que faltaran, y que **son indistinguibles de un olvido**: la mora congelada a propósito, el
+`PAGO_APORTES` sin rama, y el `+1` que no debe reponerse. Las tres corrían el riesgo de que el
+próximo que las mirara las «corrigiera» y rompiera algo.
+
+**Los tres de `omen-saa-2`**, todos `GRANT REFERENCES` comentados: el `ALTER` moría con
+`ORA-01031`, **el resto del script pasaba**, y la aplicación funcionaba — lo único que faltaba era
+la integridad referencial, que por definición no se ve hasta que algo la necesita. Lo
+descubrieron tres días después, en producción.
+
+> ⭐ **El comentario tiene que estar en el punto donde alguien podría equivocarse, no en un
+> documento aparte.** Quien corre un script lee el script, no la nota de pre-despliegue de tres
+> días antes.
+
+**Y el medio paso más, que salió de que ellos revisaran su propio arreglo:**
+
+> ⭐ **Un control que vive lejos del paso riesgoso tampoco protege — y tiene que ser ejecutable.**
+> Su control de privilegio estaba en el bloque de diagnóstico de arriba, y en uno además estaba
+> roto (`ALL_TAB_PRIVS.OWNER`, columna que no existe; es `TABLE_SCHEMA`). **Nunca dio la cara,
+> porque el usuario no llegó a correr ese bloque.** Un control que no se ejecuta se parece
+> muchísimo a uno que pasó.
+
+**Nuestros DDL ya cumplían el patrón** (`DDL-COBROS-APROBACION-CONTABILIDAD.sql §0.3`): `GRANT`
+comentado **a propósito** —lo tiene que correr otra sesión, promoverlo a ejecutable no lo
+arreglaría, fallaría igual en el propio grant—, el porqué escrito al lado, y la verificación
+ejecutable inmediatamente debajo con su «esperado: 1 fila». Su aviso encontró **cero defectos**
+acá, y ellos adoptaron este patrón citándolo.
+
+⚠️ **Lo que queda abierto y no se cierra con documentación:** que el script traiga la verificación
+**no prueba que alguien la haya leído**. Pendiente empírico: confirmar contra producción que las
+FK de `DDL-COBRO-PETRO-DOS-PASOS` y `DDL-COBROS-APROBACION-CONTABILIDAD` existen de verdad.
+**No preguntado al usuario todavía — está en la corrida de pago.**
