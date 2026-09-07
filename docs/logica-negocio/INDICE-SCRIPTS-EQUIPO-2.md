@@ -32,6 +32,7 @@ de cada uno.**
 | **e2-14** | **`tsr/sql/e2-14-codigo-institucion-banco-externo.sql`** | ⚠️ **NO es lectura.** Agrega `TSR.BEXT.BEXTCDBC` (código BCE de cámara) y carga los **dos** códigos verificados. Los otros **seis** los completa el usuario | 🔴 **PENDIENTE — CONFIRMADO QUE HACE FALTA** por el `e2-15`. Va **antes del WAR**. Reescrito el 2026-09-07 apuntando por `BEXTCDGO`, ya no por `LIKE` sobre el nombre |
 | **e2-15** | `tsr/sql/e2-15-verifica-si-bextcdgo-ya-es-el-codigo-bce.sql` | ¿`TSR.BEXT.BEXTCDGO` ya es el código del BCE? **Solo lectura** | ✅ **CORRIDO el 2026-09-07. Respuesta: NO lo es.** Machala es 5 y Pacífico es 8; la PK es una secuencia corrida de 1 a 389 sin huecos. Y de paso destapó el `e2-16` |
 | **e2-16** | **`tsr/sql/e2-16-sincroniza-la-secuencia-de-banco-externo.sql`** | ⚠️ **NO es lectura.** `SQ_BEXTCDGO` quedó en **95** con la tabla en **389**: dar de alta un banco externo desde la pantalla muere con **PK duplicada**. Reinicia la secuencia en 390 | 🔴 **PENDIENTE.** Defecto **latente en producción**, independiente del frente de pagos: se puede correr solo |
+| **e2-17** | **`tsr/sql/e2-17-es-bexttrjt-el-codigo-del-bce.sql`** | ¿`TSR.BEXT.BEXTTRJT` es el código del BCE? El usuario dice que sí. **Solo lectura** | 🔴 **PENDIENTE — CORRERLO ANTES QUE EL `e2-14`.** Si da que sí, el `e2-14` se cancela entero. Su bloque 5 además mide si la pantalla de bancos viene **borrando** ese código, porque el FE escribe `1`/`0` en esa columna |
 
 ---
 
@@ -41,7 +42,8 @@ De los catorce scripts: **doce corridos**, uno borrado (`e2-09`) y **uno que sí
 
 | Script | Por qué sigue sin correr |
 |---|---|
-| 🔴 **`e2-14`** | **Bloqueante del frente de archivos bancarios.** Va **antes del WAR**. La columna está confirmada como necesaria; faltan **seis códigos** del BCE que solo el usuario puede conseguir (Pichincha, Guayaquil, Produbanco, Internacional, Austro, Bolivariano — son los únicos bancos con cuentas) |
+| ⏸️ **`e2-14`** | **EN DUDA desde el 2026-09-07: puede que no haga falta.** El usuario avisó que el código del BCE ya está en la tabla, en `BEXTTRJT`. **Lo resuelve el `e2-17`, que hay que correr primero.** Si `BEXTTRJT` es el código, este script se cancela entero y los seis códigos dejan de hacer falta |
+| 🔴 **`e2-17`** | **Es el que destraba o confirma todo.** Solo lectura, se corre ya |
 | 🔴 **`e2-16`** | **Defecto latente en producción, ajeno a este frente.** Con la secuencia en 95 y la tabla en 389, agregar un banco externo desde la pantalla revienta con `ORA-00001` unas 300 veces seguidas. No depende de nada ni bloquea nada: se corre solo |
 | `e2-01`, `e2-02` | Verificaciones **de lectura** del frente de beneficios sociales, de principios de septiembre. No arreglan nada ni bloquean nada: contrastan entidades contra el esquema. Correrlas es higiene, no urgencia |
 
