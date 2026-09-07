@@ -193,7 +193,8 @@ public class PagoProgramadoRest {
      * @param idEmpresa : Id de la empresa (obligatorio)
      * @param origen    : OrigenPagoCxp (FACTURA_COMPRA, EGRESO_TESORERIA, ANTICIPO_PROVEEDOR)
      *                    u OrigenPagoExterno (CRD_DEVOLUCION_APORTE, TSR_CAJA_CHICA,
-     *                    RHH_ANTICIPO_EMPLEADO); opcional, sin filtro si se omite
+     *                    RHH_ANTICIPO_EMPLEADO); repetible (?origen=A&origen=B), cero
+     *                    orígenes = sin filtro (todos)
      * @param desde     : Fecha solicitada desde, yyyy-MM-dd (opcional)
      * @param hasta     : Fecha solicitada hasta, yyyy-MM-dd (opcional)
      */
@@ -201,7 +202,7 @@ public class PagoProgramadoRest {
     @Path("/porAprobar")
     @Produces(MediaType.APPLICATION_JSON)
     public Response porAprobar(@QueryParam("idEmpresa") Long idEmpresa,
-            @QueryParam("origen") String origen,
+            @QueryParam("origen") List<String> origen,
             @QueryParam("desde") String desde,
             @QueryParam("hasta") String hasta) {
         System.out.println("LLEGA AL SERVICIO GET /pgtr/porAprobar");

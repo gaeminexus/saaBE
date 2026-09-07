@@ -1062,9 +1062,9 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	// =====================================================================
 
 	@Override
-	public List<PagoPorAprobar> porAprobar(Long idEmpresa, String origen, String desde, String hasta)
+	public List<PagoPorAprobar> porAprobar(Long idEmpresa, List<String> origenes, String desde, String hasta)
 			throws Throwable {
-		System.out.println("=== porAprobar | empresa=" + idEmpresa + " | origen=" + origen
+		System.out.println("=== porAprobar | empresa=" + idEmpresa + " | origenes=" + origenes
 				+ " | desde=" + desde + " | hasta=" + hasta + " ===");
 		if (idEmpresa == null) {
 			throw new IncomeException("Debe indicar la empresa.");
@@ -1075,7 +1075,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 				? LocalDate.parse(hasta.trim()) : null;
 
 		List<PagoProgramado> pagos = pagoProgramadoDaoService.selectPorAprobar(idEmpresa,
-				(origen != null && !origen.trim().isEmpty()) ? origen.trim() : null, fechaDesde, fechaHasta);
+				origenes, fechaDesde, fechaHasta);
 
 		List<PagoPorAprobar> resultado = new ArrayList<>();
 		for (PagoProgramado pago : pagos) {

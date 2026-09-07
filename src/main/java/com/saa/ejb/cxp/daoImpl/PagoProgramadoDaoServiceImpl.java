@@ -210,26 +210,41 @@ public class PagoProgramadoDaoServiceImpl extends EntityDaoImpl<PagoProgramado>
     }
 
     @Override
-    public List<PagoProgramado> selectPorAprobar(Long idEmpresa, String origen,
+    public List<PagoProgramado> selectPorAprobar(Long idEmpresa, List<String> origenes,
             LocalDate desde, LocalDate hasta) throws Throwable {
         System.out.println("Ingresa al metodo selectPorAprobar con empresa: " + idEmpresa
-                + " | origen: " + origen + " | desde: " + desde + " | hasta: " + hasta);
+                + " | origenes: " + origenes + " | desde: " + desde + " | hasta: " + hasta);
 
         StringBuilder jpql = new StringBuilder(
                 " select p from PagoProgramado p " +
                 " where  p.empresa.codigo = :idEmpresa " +
                 " and    p.estado = :estado ");
-        if (origen != null && !origen.trim().isEmpty()) {
-            if (OrigenPagoCxp.FACTURA_COMPRA.equals(origen)) {
-                jpql.append(" and p.facturaCompra is not null ");
-            } else if (OrigenPagoCxp.EGRESO_TESORERIA.equals(origen)) {
-                jpql.append(" and p.egreso is not null ");
-            } else if (OrigenPagoCxp.ANTICIPO_PROVEEDOR.equals(origen)) {
-                jpql.append(" and p.anticipo is not null ");
-            } else {
-                // No es uno de los tres propios de CXP: se compara como etiqueta opaca
-                // de OrigenPagoExterno, sin resolverla.
-                jpql.append(" and p.origenExterno = :origen ");
+
+        List<String> externos = new ArrayList<>();
+        if (origenes != null && !origenes.isEmpty()) {
+            List<String> condiciones = new ArrayList<>();
+            for (String o : origenes) {
+                if (o == null || o.trim().isEmpty()) {
+                    continue;
+                }
+                String origen = o.trim();
+                if (OrigenPagoCxp.FACTURA_COMPRA.equals(origen)) {
+                    condiciones.add("p.facturaCompra is not null");
+                } else if (OrigenPagoCxp.EGRESO_TESORERIA.equals(origen)) {
+                    condiciones.add("p.egreso is not null");
+                } else if (OrigenPagoCxp.ANTICIPO_PROVEEDOR.equals(origen)) {
+                    condiciones.add("p.anticipo is not null");
+                } else {
+                    // No es uno de los tres propios de CXP: se compara como etiqueta opaca
+                    // de OrigenPagoExterno, sin resolverla.
+                    externos.add(origen);
+                }
+            }
+            if (!externos.isEmpty()) {
+                condiciones.add("p.origenExterno in :origenesExternos");
+            }
+            if (!condiciones.isEmpty()) {
+                jpql.append(" and ( ").append(String.join(" or ", condiciones)).append(" ) ");
             }
         }
         if (desde != null) {
@@ -243,11 +258,8 @@ public class PagoProgramadoDaoServiceImpl extends EntityDaoImpl<PagoProgramado>
         Query query = em.createQuery(jpql.toString());
         query.setParameter("idEmpresa", idEmpresa);
         query.setParameter("estado", Long.valueOf(EstadoPagoProgramado.POR_APROBAR));
-        if (origen != null && !origen.trim().isEmpty()
-                && !OrigenPagoCxp.FACTURA_COMPRA.equals(origen)
-                && !OrigenPagoCxp.EGRESO_TESORERIA.equals(origen)
-                && !OrigenPagoCxp.ANTICIPO_PROVEEDOR.equals(origen)) {
-            query.setParameter("origen", origen);
+        if (!externos.isEmpty()) {
+            query.setParameter("origenesExternos", externos);
         }
         if (desde != null) {
             query.setParameter("desde", desde);

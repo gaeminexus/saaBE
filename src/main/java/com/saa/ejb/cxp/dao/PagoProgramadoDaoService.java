@@ -127,14 +127,14 @@ public interface PagoProgramadoDaoService extends EntityDao<PagoProgramado> {
 	 * {@code select new}.
 	 *
 	 * @param idEmpresa : Id de la empresa
-	 * @param origen    : {@link com.saa.rubros.OrigenPagoCxp} u {@link com.saa.rubros.OrigenPagoExterno};
-	 *                    null para todos los orígenes
+	 * @param origenes  : {@link com.saa.rubros.OrigenPagoCxp} u {@link com.saa.rubros.OrigenPagoExterno};
+	 *                    null, vacía o con sólo cadenas en blanco = sin filtro (todos los orígenes)
 	 * @param desde     : Fecha programada desde (inclusive); null = sin límite inferior
 	 * @param hasta     : Fecha programada hasta (inclusive); null = sin límite superior
 	 * @return          : Pagos POR_APROBAR, más antiguos primero
 	 * @throws Throwable : Excepcion
 	 */
-	List<PagoProgramado> selectPorAprobar(Long idEmpresa, String origen,
+	List<PagoProgramado> selectPorAprobar(Long idEmpresa, List<String> origenes,
 			java.time.LocalDate desde, java.time.LocalDate hasta) throws Throwable;
 
 	/**

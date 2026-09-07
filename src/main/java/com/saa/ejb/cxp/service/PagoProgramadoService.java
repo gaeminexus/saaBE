@@ -211,14 +211,15 @@ public interface PagoProgramadoService extends EntityService<PagoProgramado> {
 	 * docs/estandar/ESTANDAR-PROYECCIONES-EN-LISTADOS.md.
 	 *
 	 * @param idEmpresa : Id de la empresa
-	 * @param origen    : {@link com.saa.rubros.OrigenPagoCxp} o
-	 *                    {@link com.saa.rubros.OrigenPagoExterno}; null para todos
+	 * @param origenes  : {@link com.saa.rubros.OrigenPagoCxp} o
+	 *                    {@link com.saa.rubros.OrigenPagoExterno}; null, vacía o con sólo
+	 *                    cadenas en blanco = sin filtro (todos los orígenes)
 	 * @param desde     : Fecha solicitada desde, yyyy-MM-dd (opcional)
 	 * @param hasta     : Fecha solicitada hasta, yyyy-MM-dd (opcional)
 	 * @return           : Pagos por aprobar, más antiguos primero
 	 * @throws Throwable : Excepcion
 	 */
-	List<com.saa.model.cxp.PagoPorAprobar> porAprobar(Long idEmpresa, String origen, String desde,
+	List<com.saa.model.cxp.PagoPorAprobar> porAprobar(Long idEmpresa, List<String> origenes, String desde,
 			String hasta) throws Throwable;
 
 	/**
