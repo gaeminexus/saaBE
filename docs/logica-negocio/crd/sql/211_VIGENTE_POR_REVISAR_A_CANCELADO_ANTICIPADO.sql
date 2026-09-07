@@ -17,6 +17,12 @@
 --      ninguna y quedarian PENDIENTES colgando de un prestamo cancelado.
 --
 -- =====================================================================================
+-- ✅ DECISION DEL USUARIO (2026-09-07): "estos no tienen nada que ver con contabilidad, son
+--    solo tema de migracion". Con eso, la advertencia de abajo NO aplica a este lote: no hay
+--    que dar de baja nada contablemente ni cuadrar nada contra el mayor.
+--    ⚠️ Se conserva escrita igual, porque el que reuse este script para OTRO lote tiene que
+--       volver a hacerse la pregunta — la respuesta fue para ESTOS prestamos, no para el SQL.
+--
 -- ⛔ LO MAS IMPORTANTE, Y NO ES TECNICO: ESTO NO GENERA NINGUN ASIENTO CONTABLE
 --
 --   Un UPDATE de SQL cambia la CARTERA y no toca la CONTABILIDAD. Si estos prestamos tienen
