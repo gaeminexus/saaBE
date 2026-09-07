@@ -1763,3 +1763,9 @@ saaFE. Ninguno se tocó ni se commiteó.
 ⚠️ **Marcadores de commit inconsistentes el mismo día:** `eqB`, `omen1` y `usap` en saaBE, `eqA`
 y `fe` en saaFE. El §2d del registro dice que el marcador es lo único que distingue equipos —
 hoy, desde el log, **no se puede afirmar quién hizo el FE de P22**.
+
+## ✅ CERRADO 2026-09-07 — el cobro 54 se proceso
+
+El usuario corrio `sql/205` y proceso el cobro. **El centavo quedo corregido y el pago afectado.**
+El caso operativo esta cerrado; **la causa (H48) sigue abierta** y va a repetirse con el proximo
+cobro que no calce al centavo.
