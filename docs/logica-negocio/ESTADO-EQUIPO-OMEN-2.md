@@ -1882,3 +1882,91 @@ arreglo mejor que el que había hecho**.
 > casos de `GRANT` y sus tres de ausencias deliberadas son la misma familia vista desde dos módulos.
 > **Una nota que vive lejos del código no protege — y ahora sé que un control que vive lejos del
 > paso riesgoso tampoco.**
+
+### §21bis — CERRADO el frente de las retenciones — 2026-09-07
+
+El usuario dio por **cerrado** el `e2-10`, que era el último cabo del §21. Con eso el frente queda
+completo de punta a punta:
+
+| Pieza | Estado |
+|---|---|
+| La cuenta del titular sale del rol **Cliente** en los dos generadores de asiento (V1 y V2) | ✅ `32cdede` |
+| El bloqueante pasa a `CLIENTE_SIN_CUENTA`, sólo en los dos métodos de retención | ✅ `32cdede` |
+| El titular emisor se auto-crea con rol **Cliente**, sin quitarle el de Proveedor | ✅ `32cdede` |
+| Las variables y comentarios invertidos del asiento, renombrados | ✅ `32cdede` |
+| La etiqueta del bloqueante nuevo en el frontend | ✅ `864a949` |
+| **`e2-10` — asientos viejos con la cuenta equivocada** | ✅ **cerrado por el usuario** |
+| **B1 — titulares sin cuenta de rol Cliente** | ⚪ descartado el 2026-09-04: se parametriza sobre la marcha |
+
+**Lo que quedó del frente, más allá del arreglo:**
+
+1. **El código se contradecía dentro del mismo método** — `obtenerOAutoCrearProveedor` + rol
+   `PROVEEDOR` estricto por un lado, y por el otro un comentario que decía *«la retención abona una
+   factura de VENTA (CXC)»* y una resolución del sustento contra `CBR.FCTR`. Lo detectó **una
+   persona que conoce el negocio, no el sistema**: ninguna validación podía marcarlo porque **las
+   dos mitades eran consistentes cada una por su lado**.
+
+2. **Yo reporté que el asiento estaba invertido y era falso.** Los lados siempre estuvieron bien;
+   sólo la cuenta salía del rol equivocado. Me equivoqué **leyendo los rótulos en vez de los
+   valores**, en un método donde la variable que va al haber se llamaba `debe`. **En un archivo con
+   los nombres invertidos, el comentario no es una pista débil: es una pista falsa.**
+
+3. **Inventé tres códigos de bloqueante que ya existían** con otro nombre, y lo cazó el agente al
+   reportar la discrepancia en vez de resolverla solo.
+
+---
+
+## §28 — 🔴 Volví a inventar `PRBRNMBR`. El §9 ya lo registraba como error mío
+
+**2026-09-07.** El usuario corrió el `e2-08` y le dio **`PRBRNMBR: identificador no válido`**
+(ORA-00904).
+
+**Ese error exacto, sobre esa misma tabla, está en el §9 de este documento como un error mío del
+2026-09-01:** *«INSERT con dos columnas inventadas (`PRBRNMBR`, `PRBRESTD`) que habría dado ORA-00904
+— copiando la forma de otro script sin contrastarla contra la entidad»*. Está citado además en el
+registro de reservas y en el tablero de `lap-saa-1`.
+
+**Lo documenté, lo cité tres veces, y lo volví a cometer seis días después.**
+
+### Y eran cuatro, no una
+
+| Inventada | Real | Dónde |
+|---|---|---|
+| `PRBRNMBR` | **`PRBRDSCR`** | bloque 1 |
+| `PDTRNMBR` | **`PDTRDSCR`** | bloques 3 y 4 |
+| `PDTRVLAL` | **`PDTRVLRV`** | bloques 2 y 3 |
+
+`PDTRVLRV` es `DetalleRubro.valorAlfanumerico` — **exactamente lo que devuelve
+`selectValorStringByRubAltDetAlt`**, o sea la columna que el diagnóstico existía para mirar. El
+script no podía funcionar ni por casualidad.
+
+### El barrido, que esta vez sí hice, y encontró dos más
+
+`grep -rn "PRBRNMBR\|PDTRNMBR\|PDTRVLAL\|PRBRESTD" docs/logica-negocio/`:
+
+| Dónde | Qué |
+|---|---|
+| `cxp/rubros-proceso-carga-documentos.md:142,147` | **mío.** Dos `INSERT` con `PDTRRBRR` y `PDTRNMBR` |
+| `crd/sql/89_DIAGNOSTICO_SECUENCIAS_Y_RUBRO_81.sql:53` | de `crd`, otro equipo: usa `PRBRESTD` |
+
+**Y el de `cxp` tenía un tercer defecto, peor que los nombres:** los `INSERT` **omitían
+`PDTRALTR`**. El código busca los detalles **por código alterno**
+(`selectValorStringByRubAltDetAlt` → `DetalleRubro.codigoAlterno` → `PDTRALTR`).
+
+> **Los nombres inventados habrían dado `ORA-00904` y alguien se habría enterado. La columna
+> faltante no: la fila se graba bien y el sistema no la encuentra nunca.** Es el §8 —«la PK y el
+> alterno no son intercambiables»— en su versión más cara: no elegir el identificador equivocado,
+> sino no ponerlo.
+
+### La lección, y no es «tener más cuidado»
+
+Tener cuidado ya lo había intentado: el §9 existe justamente porque me había pasado. **Lo que
+falla es el momento**, no la atención.
+
+> **Antes de escribir una sola línea de `.sql`, abrir la entidad JPA y copiar los nombres de ahí.**
+> Siempre, aunque parezcan obvios, aunque el script sea de lectura, aunque se esté copiando la forma
+> de otro script que sí corría. Es lo que hice bien con `MVCHTPOO`, `CBEMCDGO` y `RCV2` —y en esos
+> tres acerté— y lo que salteé acá porque `PRBR` «ya la conocía».
+
+**Corregido:** el `e2-08` reescrito con los nombres verificados, y el `.md` de `cxp` con sus
+`INSERT` arreglados, incluyendo el `PDTRALTR` que faltaba. El de `crd` se les avisa.

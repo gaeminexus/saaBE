@@ -1,6 +1,27 @@
 -- =====================================================================
 -- DIAGNOSTICO: falta una fila del catalogo de COMANDOS DE BUSQUEDA
--- Modulo: transversal (SCP)  ·  Equipo: omen-saa-2  ·  Fecha: 2026-09-04
+-- Modulo: transversal (SCP)  ·  Equipo: omen-saa-2
+-- Escrito: 2026-09-04  ·  CORREGIDO: 2026-09-07
+--
+-- ⚠️ CORRECCION DEL 2026-09-07 — la version anterior NO CORRIA.
+--   Usaba cuatro nombres de columna INVENTADOS: PRBRNMBR, PDTRNMBR y PDTRVLAL.
+--   Ninguno existe. El usuario lo descubrio al ejecutarlo: "PRBRNMBR
+--   identificador no valido" (ORA-00904).
+--
+--   Nombres REALES, verificados contra las entidades JPA (no supuestos):
+--     SCP.PRBR (Rubro):        PRBRCDGO, PRBRDSCR, PRBRFCHA, PRBRALTR, PRBRTPOO
+--     SCP.PDTR (DetalleRubro): PDTRCDGO, PDTRDSCR, PDTRVLRN, PDTRVLRV,
+--                              PDTRALTR, PDTRESTD
+--   La descripcion es *DSCR, no *NMBR. Y el valor de texto que lee el codigo es
+--   PDTRVLRV -> DetalleRubro.valorAlfanumerico, que es exactamente lo que
+--   devuelve selectValorStringByRubAltDetAlt.
+--
+--   ⛔ Y es la SEGUNDA vez que este equipo inventa PRBRNMBR sobre esta misma
+--   tabla: el §9 del ESTADO ya registraba un INSERT con PRBRNMBR y PRBRESTD
+--   inventados, "copiando la forma de otro script sin contrastarla contra la
+--   entidad". Se documento el error y se volvio a cometer. La leccion util no
+--   es "tener cuidado": es que ANTES de escribir un .sql hay que abrir la
+--   entidad y copiar los nombres de ahi, siempre, aunque parezcan obvios.
 --
 -- EL SINTOMA, reportado por el usuario en produccion
 --   WFLYEJB0034 ... DetalleRubroDaoService.selectValorStringByRubAltDetAlt(int,int)
@@ -33,7 +54,7 @@
 --      suelta: falta el catalogo entero y NINGUNA busqueda por criterios del
 --      sistema funciona.
 -- =====================================================================
-SELECT PRBRCDGO, PRBRALTR, PRBRNMBR
+SELECT PRBRCDGO, PRBRALTR, PRBRDSCR, PRBRTPOO
   FROM SCP.PRBR
  WHERE PRBRALTR = 71;
 
@@ -43,6 +64,10 @@ SELECT PRBRCDGO, PRBRALTR, PRBRNMBR
 --      Los 15 codigos salen de com.saa.rubros.TipoComandosBusqueda.
 --      ESPERADO: la columna ESTADO dice 'OK' en las 15 filas.
 --      Cualquier 'FALTA' es la causa del error.
+--
+--      PDTRVLRV es el valor de texto (DetalleRubro.valorAlfanumerico): es
+--      EXACTAMENTE lo que selectValorStringByRubAltDetAlt devuelve, asi que una
+--      fila que exista con ese campo NULL falla igual que una ausente.
 -- =====================================================================
 WITH ESPERADOS AS (
     SELECT  0 AS ALT, 'RAIZ'               AS NOMBRE FROM DUAL UNION ALL
@@ -63,10 +88,11 @@ WITH ESPERADOS AS (
 )
 SELECT  e.ALT                        AS CODIGO_ALTERNO,
         e.NOMBRE                     AS CONSTANTE_JAVA,
-        d.PDTRVLAL                   AS VALOR_EN_BASE,
+        d.PDTRVLRV                   AS VALOR_EN_BASE,
+        d.PDTRESTD                   AS ESTADO_FILA,
         CASE WHEN d.PDTRCDGO IS NULL THEN '*** FALTA ***'
-             WHEN d.PDTRVLAL IS NULL THEN '*** EXISTE PERO SIN VALOR ***'
-             ELSE 'OK' END           AS ESTADO
+             WHEN d.PDTRVLRV IS NULL THEN '*** EXISTE PERO SIN VALOR ***'
+             ELSE 'OK' END           AS DIAGNOSTICO
   FROM ESPERADOS e
   LEFT JOIN SCP.PRBR r ON r.PRBRALTR = 71
   LEFT JOIN SCP.PDTR d ON d.PRBRCDGO = r.PRBRCDGO AND d.PDTRALTR = e.ALT
@@ -78,7 +104,7 @@ SELECT  e.ALT                        AS CODIGO_ALTERNO,
 --      Sirve para comparar contra local: las dos bases arrancan iguales, asi
 --      que una diferencia es una fila que se cargo de un lado y no del otro.
 -- =====================================================================
-SELECT d.PDTRCDGO, d.PDTRALTR, d.PDTRNMBR, d.PDTRVLAL, d.PDTRESTD
+SELECT d.PDTRCDGO, d.PDTRALTR, d.PDTRDSCR, d.PDTRVLRV, d.PDTRVLRN, d.PDTRESTD
   FROM SCP.PDTR d
   JOIN SCP.PRBR r ON r.PRBRCDGO = d.PRBRCDGO
  WHERE r.PRBRALTR = 71
@@ -90,7 +116,7 @@ SELECT d.PDTRCDGO, d.PDTRALTR, d.PDTRNMBR, d.PDTRVLAL, d.PDTRESTD
 --      puede comportarse igual que una ausente segun como filtre la consulta.
 --      ESPERADO: 0 filas.
 -- =====================================================================
-SELECT d.PDTRALTR, d.PDTRNMBR, d.PDTRESTD
+SELECT d.PDTRALTR, d.PDTRDSCR, d.PDTRVLRV, d.PDTRESTD
   FROM SCP.PDTR d
   JOIN SCP.PRBR r ON r.PRBRCDGO = d.PRBRCDGO
  WHERE r.PRBRALTR = 71
