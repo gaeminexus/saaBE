@@ -129,10 +129,10 @@ solo en `/rest/usap`.
 
 | Ruta | Se apoya en | Notas |
 |---|---|---|
-| `/participe/{idEntidad}` | `entd/getId` + `ParticipeDaoService.selectByEntidad(...)` | Perfil consolidado. El DAO ya tiene el `selectByEntidad`; **falta exponerlo**. DTO recortado: identificación, nombres, apellidos, contacto. Nada de columnas internas |
-| `/prestamos/{idEntidad}` | `PrestamoDaoService.selectByEntidad(...)` | ⚠️ **El estado vigente es `PRSTIDST` (`idEstado`), NO `ESPSCDGO`** — trampa documentada en `CLAUDE.md`. El filtro por estado y el mapeo contra el rubro real se documentan acá cuando se implementen |
+| `/participe/{idEntidad}` | `entd/getId` + `ParticipeDaoService.selectByEntidad(...)` | Perfil consolidado. Se apoya en `ParticipeDaoService.selectByEntidad`, ya expuesto por `ParticipeMovilRest` (`3666a6c`). DTO recortado: identificación, nombres, apellidos, contacto. Nada de columnas internas |
+| `/prestamos/{idEntidad}` | `PrestamoDaoService.selectByEntidad(...)` | ⚠️ **El estado vigente es `PRSTIDST` (`idEstado`), NO `ESPSCDGO`** — trampa documentada en `CLAUDE.md`. El mapeo contra el rubro real está más abajo (los 11 estados de `PRSTIDST`). **El filtro por estado y la paginación los hace el borde**, no este path: `/movil` devuelve los préstamos de la entidad sin filtrar |
 | `/prestamos/{idEntidad}/{idPrestamo}` | `prst` por id | Valida pertenencia → 404 |
-| `/prestamos/{idEntidad}/{idPrestamo}/cuotas` | `DetallePrestamoDaoService.selectByPrestamo(...)` | El DAO ya lo tiene; **falta exponerlo**. `Prestamo` **no** trae las cuotas anidadas: no hay `@OneToMany`. Valida pertenencia |
+| `/prestamos/{idEntidad}/{idPrestamo}/cuotas` | `DetallePrestamoDaoService.selectByPrestamo(...)` | Ya expuesto por `PrestamoMovilRest.cuotas` (`3666a6c`). `Prestamo` **no** trae las cuotas anidadas: no hay `@OneToMany`. Valida pertenencia |
 | `/aportes/{idEntidad}/resumen` | `aprt/saldosPorEntidad` | El endpoint de `/rest` envuelve en `{exito, resultado}`; acá se devuelve el contenido plano |
 | `/aportes/{idEntidad}/movimientos?desde=&hasta=` | `aprt/estadoCuenta` | ⚠️ **`desde`/`hasta` son obligatorios aguas abajo** (`yyyy-MM`, 400 si faltan). Si el borde no los manda, `/movil` aplica un **rango por defecto de los últimos 24 meses** y lo dice en la respuesta |
 | `/cuenta-individual/{idEntidad}` | composición | Saldos de aportes + préstamos con saldo + kardex CXC del partícipe |
@@ -141,7 +141,9 @@ solo en `/rest/usap`.
 
 ### 5.3 Lo que faltaba en `saaBE` — RESUELTO el 2026-09-07 (commit `3666a6c`)
 
-Tres de los apoyos de arriba **no existen hoy** (verificado contra el código el 2026-09-07):
+Tres de los apoyos de arriba **no existían** cuando se escribió este contrato (verificado contra
+el código el 2026-09-07). **Los tres quedaron resueltos ese mismo día**; se conserva el detalle
+porque explica por qué el path se construyó como se construyó:
 
 - **`prtc` por entidad** y **`dtpr` por préstamo**: el método ya está en el DAO
   (`ParticipeDaoService.selectByEntidad`, `DetallePrestamoDaoService.selectByPrestamo`). Solo
