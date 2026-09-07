@@ -84,6 +84,43 @@ public class CajaChicaServiceImpl implements CajaChicaService {
 			if (caja.getFechaRegistro() == null) {
 				caja.setFechaRegistro(LocalDateTime.now());
 			}
+		} else {
+			// ── Guarda de los campos internos en la edición ──────────────────────
+			// El DAO genérico hace em.merge() con el objeto tal cual llegó del JSON: un campo que
+			// el cliente no manda NO queda como estaba, se graba null (ver
+			// docs/general/MERGE-DESNUDO-EN-ENTITYDAOIMPL.md). La pantalla de parametrización arma
+			// el payload de edición desde cero y no incluye estado/fechaRegistro/usuario/custodio,
+			// así que editar una caja la dejaba con CJCHESTD null y la hacía desaparecer de
+			// /cjch/activas (gastos, reposición, cierre, semáforo de saldos). Pasó en producción
+			// el 2026-09-07.
+			//
+			// Se resuelve del lado del servidor, releyendo los cuatro campos, y no pidiéndole al
+			// frontend que los mande: son estado interno, ningún cliente tiene por qué conocerlos,
+			// y confiar en que los reenvíe es exactamente lo que falla en silencio. Se pisan
+			// SIEMPRE con el valor de la fila, no solo cuando vienen null.
+			try {
+				Object[] previos = (Object[]) em.createQuery(
+						"SELECT c.estado, c.fechaRegistro, c.usuario, c.custodio FROM CajaChica c "
+								+ "WHERE c.codigo = :id")
+						.setParameter("id", caja.getCodigo())
+						.getSingleResult();
+				caja.setEstado((Long) previos[0]);
+				caja.setFechaRegistro((LocalDateTime) previos[1]);
+				caja.setUsuario((Long) previos[2]);
+				caja.setCustodio((com.saa.model.scp.Usuario) previos[3]);
+			} catch (jakarta.persistence.NoResultException e) {
+				// Id inexistente: que siga y falle donde corresponde, no acá.
+				System.out.println("⚠ saveSingle CajaChica: no existe el id " + caja.getCodigo()
+						+ " para preservar los campos internos.");
+			}
+			// Red de seguridad: si la fila ya quedó dañada por este mismo defecto antes de que
+			// corriera el script de recuperación, no propagar el null.
+			if (caja.getEstado() == null) {
+				caja.setEstado(Long.valueOf(EstadoCajaChica.ACTIVA));
+			}
+			if (caja.getFechaRegistro() == null) {
+				caja.setFechaRegistro(LocalDateTime.now());
+			}
 		}
 		return cajaChicaDaoService.save(caja, caja.getCodigo());
 	}
