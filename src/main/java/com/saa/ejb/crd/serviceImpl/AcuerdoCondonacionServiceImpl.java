@@ -563,7 +563,12 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
         pago.setEventoPrestamo(evento);
         pago.setRutaDocumentoRespaldo(acuerdo.getCobroCredito() != null
                 ? acuerdo.getCobroCredito().getRutaRespaldo() : null);
-        pagoPrestamoService.saveSingle(pago);
+        // El retorno de saveSingle NO es opcional: PagoPrestamoServiceImpl.saveSingle usa
+        // EntityDaoImpl.save() -> em.merge(), que devuelve una instancia NUEVA administrada
+        // con el código generado — el "pago" original se queda con codigo == null. Este mismo
+        // "pago" se usa 20 líneas más abajo para enlazar los PagoAporte del cruce con aportes
+        // (consumirAportes); sin reasignar, esa FK queda NULL y el reverso nunca los encuentra.
+        pago = pagoPrestamoService.saveSingle(pago);
 
         // 3b. Cruce con aportes (requerimiento del usuario, 2026-08-30): mismo patrón que
         // ProcesoPagoPrestamoServiceImpl.precancelar con su propio desglose de aportes —
