@@ -22,9 +22,11 @@ import com.saa.ejb.crd.dao.DetallePrestamoDaoService;
 import com.saa.ejb.crd.dao.EntidadDaoService;
 import com.saa.ejb.crd.dao.PagoAporteDaoService;
 import com.saa.ejb.crd.dao.PagoPensionComplementariaDaoService;
+import com.saa.ejb.crd.dao.PagoPrestamoDaoService;
 import com.saa.ejb.crd.dao.PrestamoDaoService;
 import com.saa.ejb.crd.dao.TipoAporteDaoService;
 import com.saa.ejb.crd.service.ConfiguracionContabilidadService;
+import com.saa.ejb.crd.service.DistribucionBandaService;
 import com.saa.ejb.crd.service.MotorPagoPrestamoService;
 import com.saa.ejb.crd.service.PagoPensionComplementariaService;
 import com.saa.ejb.crd.service.ProcesoPagoPrestamoService;
@@ -58,6 +60,7 @@ import com.saa.model.crd.Entidad;
 import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.model.crd.PagoAporte;
 import com.saa.model.crd.PagoPensionComplementaria;
+import com.saa.model.crd.PagoPrestamo;
 import com.saa.model.crd.Prestamo;
 import com.saa.model.crd.TipoAporte;
 import com.saa.model.crd.ValorPagoPensionComplementaria;
@@ -65,6 +68,7 @@ import com.saa.model.cxp.PagoProgramado;
 import com.saa.model.cxp.ProductoPago;
 import com.saa.rubros.CrdLineaAsiento;
 import com.saa.rubros.CrdTipoMovimientoAporte;
+import com.saa.rubros.DsbnOrigen;
 import com.saa.rubros.Estado;
 import com.saa.rubros.EstadoCuotaPrestamo;
 import com.saa.rubros.EstadoPagoPensionComplementaria;
@@ -236,6 +240,20 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
 
     @EJB
     private DetallePlantillaDaoService detallePlantillaDaoService;
+
+    /**
+     * Auditoría de distribución en bandas (CRD.DSBN, origen PAGO_PENSION) — API-AUDITORIA-BANDAS.md.
+     * Se escribe DENTRO de la misma transacción REQUIRES_NEW del jubilado (ver
+     * {@link #registrarPgpcDelMes}): consistencia sobre disponibilidad, decisión del árbitro
+     * 2026-09-07 — no hay hoy un recálculo posterior para este origen (a diferencia de
+     * CARGA_PETRO/recalcularDistribucion), así que si esto falla, se revierte el pago entero del
+     * mes y no queda un PGPC sin respaldo en la pantalla de auditoría.
+     */
+    @EJB
+    private DistribucionBandaService distribucionBandaService;
+
+    @EJB
+    private PagoPrestamoDaoService pagoPrestamoDaoService;
 
     /**
      * Resuelve el nombre de usuario (String, lo que manda el frontend) al {@code Long} que pide
@@ -958,7 +976,8 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         double seguroInternoMes = (cuentaSalida == null) ? valorSeguro : 0.0;
         PagoPensionComplementaria pago = registrarPgpcDelMes(entidad, idEntidad, anio.longValue(), mes.longValue(),
             valorPension, valorSeguro, valorTotal, 0.0, valorTotal, seguroInternoMes, fecha, fechaHecho,
-            fechaRegistro, usuario, idUsuario, idEmpresa, cuentaSalida, glosa);
+            fechaRegistro, usuario, idUsuario, idEmpresa, cuentaSalida, glosa,
+            java.util.Collections.emptyList());
 
         boolean generoOrden = pago.getIdPagoProgramado() != null;
         System.out.println("  ✅ Pago de pensión registrado - Entidad " + idEntidad + " - PGPC "
@@ -1145,6 +1164,11 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             // Cruce del mes: en orden, respetando el tope EXIGIBLE de CADA préstamo (no el
             // pendiente total) — así el motor jamás llega a una cuota futura, sin tocarlo.
             double aplicadoEsteMes = 0.0;
+            // Filas de auditoría en bandas (CRD.DSBN, origen PAGO_PENSION) — se acumulan por
+            // MES (no por jubilado: cada mes produce su propio PGPC, ver registrarPgpcDelMes)
+            // y se escriben recién cuando ese PGPC tiene código real, mismo orden que evita el
+            // idOrigen null de H41.
+            List<PagoPrestamo> pagosDelMesParaDsbn = new ArrayList<>();
             for (Prestamo prestamo : prestamosVigentes) {
                 double disponibleParaEste = redondear(disponibleMes - aplicadoEsteMes);
                 if (disponibleParaEste <= TOLERANCIA) {
@@ -1177,6 +1201,16 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                     ResultadoPagoConAportes resultado = procesoPagoPrestamoService.pagarConAportes(solicitud);
                     ResultadoAplicacionPago aplicacion = resultado != null ? resultado.getResultado() : null;
                     aplicadoPrestamo = redondear(aplicacion != null ? aplicacion.getValorAplicado() : 0.0);
+                    // Mismo criterio que CobroCreditoServiceImpl.registrarDistribucionBandaEvento:
+                    // reconsultar por evento en vez de reconstruir desde cuotasAfectadas, para
+                    // que la auditoría vea EXACTAMENTE los PagoPrestamo que quedaron en firme.
+                    if (aplicacion != null && aplicacion.getIdEvento() != null) {
+                        List<PagoPrestamo> pagosDelEvento =
+                            pagoPrestamoDaoService.selectByEvento(aplicacion.getIdEvento());
+                        if (pagosDelEvento != null) {
+                            pagosDelMesParaDsbn.addAll(pagosDelEvento);
+                        }
+                    }
                 } catch (IncomeException e) {
                     if (e.getMessage() != null
                             && e.getMessage().startsWith(ProcesoPagoPrestamoService.ERR_SIN_CUOTAS_PENDIENTES)) {
@@ -1219,7 +1253,8 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                 + " - Entidad " + idEntidad;
             PagoPensionComplementaria pago = registrarPgpcDelMes(entidad, idEntidad, anioM, mesM,
                 valorPension, valorSeguro, valorTotal, aplicadoEsteMes, remanenteMes, seguroInternoMes,
-                fecha, fechaHecho, fechaRegistro, usuario, idUsuario, idEmpresa, cuentaSalida, glosa);
+                fecha, fechaHecho, fechaRegistro, usuario, idUsuario, idEmpresa, cuentaSalida, glosa,
+                pagosDelMesParaDsbn);
 
             boolean saleAlBancoEsteMes = pago.getIdPagoProgramado() != null;
             // El seguro SIEMPRE consume saldo del aporte 23 (se traspasa siempre), y la pensión
@@ -1329,12 +1364,16 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
      *                           destino que el certificado deba validar. El llamador lo pasa en
      *                           0 cuando SÍ hay certificado: ahí el remanente entero ya viaja
      *                           en la orden de pago y traspasarlo aparte lo duplicaría
+     * @param pagosParaDsbn      los {@code PagoPrestamo} que el cruce de ESTE mes generó contra
+     *                           préstamos (puede venir vacío: mes sin cruce, todo a remanente) —
+     *                           API-AUDITORIA-BANDAS.md, origen PAGO_PENSION. Se registran acá,
+     *                           recién con el código real del PGPC de este mes como idOrigen.
      */
     private PagoPensionComplementaria registrarPgpcDelMes(Entidad entidad, Long idEntidad, long anioM, long mesM,
             double valorPension, double valorSeguro, double valorTotal, double aplicadoAlPrestamo, double remanente,
             double seguroInterno, LocalDate fecha, LocalDateTime fechaHecho, LocalDateTime fechaRegistro,
             String usuario, Long idUsuario, Long idEmpresa, CuentaBancariaParticipe cuentaSalida,
-            String glosaMovimiento) throws Throwable {
+            String glosaMovimiento, List<PagoPrestamo> pagosParaDsbn) throws Throwable {
 
         // ⛔⛔ REGLA NUEVA 2026-09-05: `remanente` ahora es EXCLUSIVAMENTE la porción PENSIÓN
         // (el llamador ya separó el seguro con prioridad 2, antes de esta llamada) y
@@ -1452,6 +1491,15 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         Long idAsientoDevengo = generarAsientoDevengoPension(pago, entidad, idEmpresa, remanente);
         pago.setNumeroAsientoDevengo(idAsientoDevengo);
         pago = pagoPensionDaoService.save(pago, pago.getCodigo());
+
+        // Auditoría de distribución en bandas (CRD.DSBN, origen PAGO_PENSION) — DENTRO de esta
+        // misma transacción REQUIRES_NEW del jubilado (decisión del árbitro 2026-09-07:
+        // consistencia sobre disponibilidad, sin red de recálculo posterior para este origen).
+        // pago.getCodigo() ya es real (save de arriba) — mismo orden que evitó H41 para CXP.
+        // Vacío es normal (mes 100% remanente, sin cruce) — registrarDistribucionPorPagos ya
+        // devuelve temprano en ese caso.
+        distribucionBandaService.registrarDistribucionPorPagos(
+            DsbnOrigen.PAGO_PENSION, pago.getCodigo(), idEmpresa, pagosParaDsbn, usuario);
 
         return pago;
     }
