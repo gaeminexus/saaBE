@@ -91,6 +91,11 @@ public class CajaChica implements Serializable {
     @Column(name = "CJCHESTD")
     private Long estado;
 
+    /** Motivo de la baja. Mismo descriptor que {@code TSR.MVCH.MVCHMTAN}. */
+    @Basic
+    @Column(name = "CJCHMTAN", length = 500)
+    private String motivoAnulacion;
+
     /** Fecha de registro. */
     @Basic
     @Column(name = "CJCHFCRG")
@@ -135,6 +140,9 @@ public class CajaChica implements Serializable {
 
     public Long getEstado() { return estado; }
     public void setEstado(Long estado) { this.estado = estado; }
+
+    public String getMotivoAnulacion() { return motivoAnulacion; }
+    public void setMotivoAnulacion(String motivoAnulacion) { this.motivoAnulacion = motivoAnulacion; }
 
     public LocalDateTime getFechaRegistro() { return fechaRegistro; }
     public void setFechaRegistro(LocalDateTime fechaRegistro) { this.fechaRegistro = fechaRegistro; }

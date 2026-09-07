@@ -18,6 +18,8 @@ import com.saa.model.tsr.MovimientoCajaChica;
 import com.saa.model.tsr.NombreEntidadesTesoreria;
 import com.saa.rubros.EstadoCajaChica;
 import com.saa.rubros.EstadoMovimientoCajaChica;
+import com.saa.rubros.EstadoPagoProgramado;
+import com.saa.rubros.OrigenPagoExterno;
 import com.saa.rubros.TipoMovimientoCajaChica;
 
 import jakarta.ejb.EJB;
@@ -31,6 +33,8 @@ import jakarta.persistence.PersistenceContext;
  */
 @Stateless
 public class CajaChicaServiceImpl implements CajaChicaService {
+
+	private static final double TOLERANCIA = 0.01;
 
 	@EJB
 	private CajaChicaDaoService cajaChicaDaoService;
@@ -92,22 +96,25 @@ public class CajaChicaServiceImpl implements CajaChicaService {
 			// el payload de edición desde cero y no incluye estado/fechaRegistro/usuario/custodio,
 			// así que editar una caja la dejaba con CJCHESTD null y la hacía desaparecer de
 			// /cjch/activas (gastos, reposición, cierre, semáforo de saldos). Pasó en producción
-			// el 2026-09-07.
+			// el 2026-09-07. motivoAnulacion se agrega a la misma guarda (ítem 2): es el mismo tipo
+			// de campo interno — lo escriben /cjch/anular y /cjch/activar, no la pantalla de
+			// parametrización — y quedaría igual de expuesto al mismo defecto si no se preserva acá.
 			//
-			// Se resuelve del lado del servidor, releyendo los cuatro campos, y no pidiéndole al
+			// Se resuelve del lado del servidor, releyendo los campos, y no pidiéndole al
 			// frontend que los mande: son estado interno, ningún cliente tiene por qué conocerlos,
 			// y confiar en que los reenvíe es exactamente lo que falla en silencio. Se pisan
 			// SIEMPRE con el valor de la fila, no solo cuando vienen null.
 			try {
 				Object[] previos = (Object[]) em.createQuery(
-						"SELECT c.estado, c.fechaRegistro, c.usuario, c.custodio FROM CajaChica c "
-								+ "WHERE c.codigo = :id")
+						"SELECT c.estado, c.fechaRegistro, c.usuario, c.custodio, c.motivoAnulacion "
+								+ "FROM CajaChica c WHERE c.codigo = :id")
 						.setParameter("id", caja.getCodigo())
 						.getSingleResult();
 				caja.setEstado((Long) previos[0]);
 				caja.setFechaRegistro((LocalDateTime) previos[1]);
 				caja.setUsuario((Long) previos[2]);
 				caja.setCustodio((com.saa.model.scp.Usuario) previos[3]);
+				caja.setMotivoAnulacion((String) previos[4]);
 			} catch (jakarta.persistence.NoResultException e) {
 				// Id inexistente: que siga y falle donde corresponde, no acá.
 				System.out.println("⚠ saveSingle CajaChica: no existe el id " + caja.getCodigo()
@@ -241,6 +248,117 @@ public class CajaChicaServiceImpl implements CajaChicaService {
 	public List<CajaChica> activas(Long idEmpresa) throws Throwable {
 		System.out.println("=== activas | empresa=" + idEmpresa + " ===");
 		return cajaChicaDaoService.selectByEmpresaEstado(idEmpresa, Long.valueOf(EstadoCajaChica.ACTIVA));
+	}
+
+	@Override
+	public Map<String, Object> darDeBaja(Long idCaja, String motivo, Long idUsuario) throws Throwable {
+		System.out.println("=== darDeBaja caja chica | caja=" + idCaja + " ===");
+
+		if (motivo == null || motivo.trim().isEmpty()) {
+			throw new IncomeException("Debe indicar el motivo de la baja.");
+		}
+
+		CajaChica caja = selectById(idCaja);
+
+		if (caja.getEstado() != null && caja.getEstado().intValue() == EstadoCajaChica.INACTIVA) {
+			throw new IncomeException("La caja chica '" + caja.getNombre() + "' ya está dada de baja.");
+		}
+
+		double saldoActual = ((Number) saldo(idCaja).get("saldo")).doubleValue();
+		if (Math.abs(saldoActual) > TOLERANCIA) {
+			throw new IncomeException("La caja chica '" + caja.getNombre() + "' tiene un saldo de $"
+					+ String.format(java.util.Locale.US, "%.2f", saldoActual)
+					+ ": regularícelo antes de darla de baja.");
+		}
+
+		rechazaSiTienePagosEnCurso(caja);
+
+		CierreCajaChica borrador = cierreCajaChicaDaoService.selectBorrador(idCaja);
+		if (borrador != null) {
+			throw new IncomeException("Hay un cierre en preparación (BORRADOR N° " + borrador.getCodigo()
+					+ ") que cubre del " + borrador.getFechaInicio() + " al " + borrador.getFechaFin()
+					+ ": no se puede dar de baja la caja hasta confirmar o anular el cierre.");
+		}
+
+		// No usa saveSingle: acá se está grabando la entidad completa que ya se leyó de la
+		// base (selectById), no un payload parcial del cliente — llamar a saveSingle
+		// releería estado/motivoAnulacion desde la fila TODAVÍA no commiteada y pisaría
+		// justo los dos campos que esta operación necesita cambiar.
+		caja.setEstado(Long.valueOf(EstadoCajaChica.INACTIVA));
+		caja.setMotivoAnulacion(motivo.trim());
+		caja = cajaChicaDaoService.save(caja, caja.getCodigo());
+
+		System.out.println("✓ Caja chica dada de baja: id=" + idCaja);
+
+		Map<String, Object> resultado = new HashMap<>();
+		resultado.put("idCaja", caja.getCodigo());
+		resultado.put("nombre", caja.getNombre());
+		resultado.put("estado", caja.getEstado());
+		resultado.put("mensaje", "Caja chica dada de baja correctamente.");
+		return resultado;
+	}
+
+	@Override
+	public Map<String, Object> activar(Long idCaja, Long idUsuario) throws Throwable {
+		System.out.println("=== activar caja chica | caja=" + idCaja + " ===");
+
+		CajaChica caja = selectById(idCaja);
+		if (caja.getEstado() == null || caja.getEstado().intValue() != EstadoCajaChica.INACTIVA) {
+			throw new IncomeException("La caja chica '" + caja.getNombre() + "' no está dada de baja.");
+		}
+
+		caja.setEstado(Long.valueOf(EstadoCajaChica.ACTIVA));
+		caja.setMotivoAnulacion(null);
+		caja = cajaChicaDaoService.save(caja, caja.getCodigo());
+
+		System.out.println("✓ Caja chica reactivada: id=" + idCaja);
+
+		Map<String, Object> resultado = new HashMap<>();
+		resultado.put("idCaja", caja.getCodigo());
+		resultado.put("nombre", caja.getNombre());
+		resultado.put("estado", caja.getEstado());
+		resultado.put("mensaje", "Caja chica reactivada.");
+		return resultado;
+	}
+
+	/**
+	 * Rechaza la baja si hay un {@code PGS.PGTR} de esta caja (origen
+	 * {@link OrigenPagoExterno#TSR_CAJA_CHICA}) en curso — {@code PGTRESTD} en
+	 * (POR_APROBAR, REGISTRADO, EN_ARCHIVO). Trae sólo id y estado, nunca la entidad
+	 * {@code PagoProgramado}: tiene trece {@code @ManyToOne} EAGER y ya causó un
+	 * {@code ORA-04036} en producción (ver el javadoc de
+	 * {@code MovimientoCajaChica.idPago}).
+	 * @param caja       : Caja chica a validar
+	 * @throws Throwable : IncomeException si hay un pago en curso
+	 */
+	private void rechazaSiTienePagosEnCurso(CajaChica caja) throws Throwable {
+		@SuppressWarnings("unchecked")
+		List<Long> idsMovimientos = em.createQuery(
+				"select m.codigo from MovimientoCajaChica m where m.cajaChica.codigo = :idCaja")
+				.setParameter("idCaja", caja.getCodigo())
+				.getResultList();
+		if (idsMovimientos.isEmpty()) {
+			return;
+		}
+
+		@SuppressWarnings("unchecked")
+		List<Object[]> pagosEnCurso = em.createQuery(
+				"select p.id, p.estado from PagoProgramado p where p.origenExterno = :origen "
+				+ "and p.idOrigen in :ids and p.estado in :estados")
+				.setParameter("origen", OrigenPagoExterno.TSR_CAJA_CHICA)
+				.setParameter("ids", idsMovimientos)
+				.setParameter("estados", java.util.Arrays.asList(
+						Long.valueOf(EstadoPagoProgramado.POR_APROBAR),
+						Long.valueOf(EstadoPagoProgramado.REGISTRADO),
+						Long.valueOf(EstadoPagoProgramado.EN_ARCHIVO)))
+				.getResultList();
+
+		if (!pagosEnCurso.isEmpty()) {
+			Object[] fila = pagosEnCurso.get(0);
+			throw new IncomeException("La caja chica '" + caja.getNombre() + "' tiene el pago N° "
+					+ fila[0] + " en curso (estado " + fila[1] + "): confírmelo, anúlelo o recháncelo "
+					+ "antes de darla de baja.");
+		}
 	}
 
 	@Override

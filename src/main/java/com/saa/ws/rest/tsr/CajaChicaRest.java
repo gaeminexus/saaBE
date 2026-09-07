@@ -34,6 +34,8 @@ import jakarta.ws.rs.core.UriInfo;
  *   GET  /cjch/saldo/{id}       → saldo, alerta y sugerencia de reposición de una caja
  *   GET  /cjch/saldos/{idEmpresa} → saldo de todas las cajas activas de la empresa
  *   GET  /cjch/activas/{idEmpresa} → cajas activas (sin saldo, para selectores)
+ *   POST /cjch/anular/{id}      → da de baja la caja (exige saldo cero y sin pendientes)
+ *   POST /cjch/activar/{id}     → deshace la baja
  */
 @Path("cjch")
 public class CajaChicaRest {
@@ -236,6 +238,49 @@ public class CajaChicaRest {
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al obtener las cajas chicas activas: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Da de baja una caja chica (docs/logica-negocio/tsr/API-ANULACION-CAJA-CHICA.md §2).
+     * Body: { "motivo": "Se cierra la caja de sucursal norte", "idUsuario": 12 }
+     */
+    @POST
+    @Path("/anular/{id}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response anular(@PathParam("id") Long id, Map<String, Object> datos) {
+        System.out.println("LLEGA AL SERVICIO POST /cjch/anular/" + id);
+        try {
+            String motivo = (datos != null) ? (String) datos.get("motivo") : null;
+            Long idUsuario = (datos != null) ? toLong(datos.get("idUsuario")) : null;
+            Map<String, Object> resultado = cajaChicaService.darDeBaja(id, motivo, idUsuario);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al dar de baja la caja chica: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Deshace la baja de una caja chica (docs/logica-negocio/tsr/API-ANULACION-CAJA-CHICA.md §3).
+     * Body: { "idUsuario": 12 }
+     */
+    @POST
+    @Path("/activar/{id}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response activar(@PathParam("id") Long id, Map<String, Object> datos) {
+        System.out.println("LLEGA AL SERVICIO POST /cjch/activar/" + id);
+        try {
+            Long idUsuario = (datos != null) ? toLong(datos.get("idUsuario")) : null;
+            Map<String, Object> resultado = cajaChicaService.activar(id, idUsuario);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al reactivar la caja chica: " + e.getMessage())
                     .type(MediaType.APPLICATION_JSON).build();
         }
     }
