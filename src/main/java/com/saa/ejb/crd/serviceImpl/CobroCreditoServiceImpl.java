@@ -1040,34 +1040,57 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         // generar nada, con un mensaje que el operador puede accionar. Solo las líneas CON
         // préstamo: las de aporte no pasan por la cascada del motor y meterlas daría falsos
         // positivos.
-        List<DetalleCobroCredito> detallesPrestamoVerificar = detalleCobroCreditoDaoService.selectByCobro(idCobro);
-        double cobradoPrestamos = 0.0;
-        double aplicadoPrestamos = 0.0;
-        for (DetalleCobroCredito lineaVerificar : detallesPrestamoVerificar) {
-            if (lineaVerificar.getPrestamo() == null) {
-                continue;
-            }
-            cobradoPrestamos += nvl(lineaVerificar.getValor());
-            if (lineaVerificar.getEventoPrestamo() != null) {
-                for (PagoPrestamo pagoVerificar
-                        : pagoPrestamoDaoService.selectByEvento(lineaVerificar.getEventoPrestamo().getCodigo())) {
-                    if (pagoVerificar.getAnulado() != null && pagoVerificar.getAnulado() == 1L) {
-                        continue;
+        //
+        // ⛔ NO aplica a PRECANCELACION ni a ACUERDO_CONDONACION (2026-09-07, corregido tras el
+        // cobro 68 en producción): en esos dos tipos, DCBC.valor de la línea con préstamo es
+        // SOLO la parte de depósito — los aportes consumidos viven en tablas aparte (CRD.DAPR
+        // / CRD.DAAP), fuera del DCBC. Los PGPR que graba precancelar/aplicarAcuerdo llevan el
+        // TOTAL (depósito + aportes), así que comparar acá daría una diferencia NEGATIVA del
+        // tamaño exacto de lo cruzado con aportes — no es un descuadre real, es una diferencia
+        // de qué mide cada lado. No se pierde cobertura real: precancelar y aplicarAcuerdo
+        // calculan montos exactos y NO usan la cascada del motor, que es lo único que este
+        // invariante existe para atrapar.
+        if (!CrdTipoOperacionCobro.PRECANCELACION.equals(tipoOperacion)
+                && !CrdTipoOperacionCobro.ACUERDO_CONDONACION.equals(tipoOperacion)) {
+            List<DetalleCobroCredito> detallesPrestamoVerificar = detalleCobroCreditoDaoService.selectByCobro(idCobro);
+            double cobradoPrestamos = 0.0;
+            double aplicadoPrestamos = 0.0;
+            for (DetalleCobroCredito lineaVerificar : detallesPrestamoVerificar) {
+                if (lineaVerificar.getPrestamo() == null) {
+                    continue;
+                }
+                cobradoPrestamos += nvl(lineaVerificar.getValor());
+                if (lineaVerificar.getEventoPrestamo() != null) {
+                    for (PagoPrestamo pagoVerificar
+                            : pagoPrestamoDaoService.selectByEvento(lineaVerificar.getEventoPrestamo().getCodigo())) {
+                        if (pagoVerificar.getAnulado() != null && pagoVerificar.getAnulado() == 1L) {
+                            continue;
+                        }
+                        aplicadoPrestamos += nvl(pagoVerificar.getValor());
                     }
-                    aplicadoPrestamos += nvl(pagoVerificar.getValor());
                 }
             }
-        }
-        cobradoPrestamos = redondear(cobradoPrestamos);
-        aplicadoPrestamos = redondear(aplicadoPrestamos);
-        double diferenciaPrestamos = redondear(cobradoPrestamos - aplicadoPrestamos);
-        if (Math.abs(diferenciaPrestamos) > MEDIO_CENTAVO) {
-            throw new IncomeException("El cobro " + idCobro + " registra $" + cobradoPrestamos
-                    + " sobre préstamos, pero solo se pudieron aplicar $" + aplicadoPrestamos
-                    + ": sobran $" + diferenciaPrestamos + " que el préstamo no puede absorber"
-                    + " (ya está cancelado, o el valor excede la deuda). El excedente se reparte"
-                    + " al registrar el cobro: a otra cuota, a un aporte o a devolución. Corrija"
-                    + " el detalle del cobro y vuelva a procesarlo.");
+            cobradoPrestamos = redondear(cobradoPrestamos);
+            aplicadoPrestamos = redondear(aplicadoPrestamos);
+            double diferenciaPrestamos = redondear(cobradoPrestamos - aplicadoPrestamos);
+            if (Math.abs(diferenciaPrestamos) > MEDIO_CENTAVO) {
+                if (diferenciaPrestamos > 0) {
+                    // Sobra plata del depósito: el préstamo no pudo absorber todo lo cobrado.
+                    throw new IncomeException("El cobro " + idCobro + " registra $" + cobradoPrestamos
+                            + " sobre préstamos, pero solo se pudieron aplicar $" + aplicadoPrestamos
+                            + ": sobran $" + diferenciaPrestamos + " que el préstamo no puede absorber"
+                            + " (ya está cancelado, o el valor excede la deuda). El excedente se reparte"
+                            + " al registrar el cobro: a otra cuota, a un aporte o a devolución. Corrija"
+                            + " el detalle del cobro y vuelva a procesarlo.");
+                }
+                // Dirección inversa: se aplicó más de lo que el DCBC dice cobrado. No debería
+                // pasar con la exclusión de arriba, pero si pasa el mensaje tiene que decir
+                // algo accionable, nunca "sobran $-N".
+                throw new IncomeException("El cobro " + idCobro + " aplicó $" + aplicadoPrestamos
+                        + " sobre préstamos pero solo registra $" + cobradoPrestamos + " cobrado: hay $"
+                        + Math.abs(diferenciaPrestamos) + " aplicados de más. Revise el detalle del"
+                        + " cobro antes de procesarlo.");
+            }
         }
 
         // Tres asientos por cobro (2026-08-31, decisión del usuario): 1=transitorio (ya
