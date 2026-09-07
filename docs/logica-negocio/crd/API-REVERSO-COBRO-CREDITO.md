@@ -280,3 +280,62 @@ Un `.sql` de control, después del primer reverso real:
    **nuevo y vigente**, `CBCRNMRV = 1`.
 6. `CRD.DCBC` del cobro → `EVPRCDGO` y su FK de aporte en `NULL`.
 7. Reprocesar el mismo cobro → pasa, y genera asientos nuevos.
+
+---
+
+## 11. ⛔ `ACUERDO_CONDONACION` ENTRA — y el §8 estaba mal razonado
+
+**2026-09-07, mismo dia.** El usuario proceso un acuerdo en produccion (cobro **43**) y quiso
+reversarlo. El rechazo del §8 se lo impidio, y al levantar el caso aparecio que **el motivo escrito
+en el §8 era falso**.
+
+### Lo que decia el §8, y por que no era cierto
+
+> *«Su reverso exige reabrir el acuerdo de condonacion asociado, que hoy no tiene operacion inversa»*
+
+Falso. Cuando el cobro esta **PROCESADO**, el acuerdo no esta ANULADO: esta **APLICADO**
+(`AcuerdoCondonacionServiceImpl:589`). Volverlo a `VIGENTE` es una linea. La operacion inversa que
+«no existia» era trivial.
+
+### El bloqueante REAL, que es peor
+
+`aplicarAcuerdo:568-571` marca **todas** las cuotas pendientes como `CANCELADA_ANTICIPADA`
+**sin crear un `PagoPrestamo` por ellas** — son las condonadas. Y en
+`ProcesoPagoPrestamoServiceImpl:1362` el unico tramo que devuelve esas cuotas a la vida esta
+gateado a `TIPO_PRECANCELACION`:
+
+```java
+if (TIPO_PRECANCELACION.equals(tipo)) {
+    // Las cuotas que quedaron en 7 vuelven a PENDIENTE/EN_MORA segun su vencimiento
+}
+```
+
+**Para un acuerdo ese bloque no corre.** Si se hubiera permitido el reverso sin mas, se revertian el
+asiento y el pago y **la deuda condonada quedaba borrada igual: el socio dejaba de deber, en
+silencio.**
+
+⭐ **La conclusion del §8 (excluirlo) era correcta; el motivo escrito, no.** Un motivo equivocado en
+un documento es peor que no escribirlo: el proximo que lo lea descarta el frente por una razon que
+puede refutar en cinco minutos, y no ve la razon verdadera, que sigue ahi.
+
+### ⛔ Y el mensaje de rechazo mandaba a una puerta cerrada
+
+Decia *«Anule el acuerdo y registrelo de nuevo»*. **Eso tampoco funciona:** `anularCobro` solo
+admite anular un PROCESADO si el tipo es `PAGO_MULTIPLE`, `COBRO_MIXTO` o `REGISTRO_APORTE`
+(`reversoPorLineas`), y `ACUERDO_CONDONACION` no esta en esa lista. **El cobro 43 no tenia salida
+por ningun camino**, y el mensaje ofrecia una que estaba cerrada. Al habilitar el reverso el mensaje
+desaparece; queda anotado como recordatorio de que **un mensaje de error que sugiere un camino tiene
+que haber verificado que ese camino existe.**
+
+### Las cuatro piezas
+
+| # | Que | Donde |
+|---|---|---|
+| 1 | El tramo que restaura las `CANCELADA_ANTICIPADA` deja de estar gateado solo a precancelacion y cubre tambien el acuerdo. **Extension NARROW**, no generalizacion: en `PAGO_MANUAL` puede haber cuotas en 7 de una precancelacion anterior que este evento nunca toco | `ProcesoPagoPrestamoServiceImpl:1362` |
+| 2 | `reabrirAcuerdoPorReverso(idAcuerdo, usuario, fecha, motivo)`: `APLICADO` → `VIGENTE`, con huella, y **desenlaza el evento** (mismo razonamiento del paso 6 del §4) | `AcuerdoCondonacionService` |
+| 3 | Quitar el rechazo y encadenar la reapertura despues de `reversarLineasProcesadas` y antes de los asientos | `reversarProceso` |
+| 4 | **A verificar, no a arreglar a ciegas:** `aplicarAcuerdo:577-579` deja el prestamo en `CANCELADO(3)`. Si el reverso lo deja asi, un prestamo cancelado con cuotas vivas es peor que el problema original | `anularOperacion` paso 5 |
+
+**Criterio de aceptacion:** para un acuerdo con N cuotas condonadas, las N tienen que volver a
+`PENDIENTE`/`EN_MORA` segun su vencimiento. **Si alguna no vuelve, no se entrega:** es deuda de un
+socio.
