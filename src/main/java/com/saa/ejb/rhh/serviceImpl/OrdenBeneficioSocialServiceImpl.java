@@ -11,22 +11,30 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.cxp.service.PagoProgramadoService;
 import com.saa.ejb.cxp.service.dto.BeneficiarioOcasional;
+import com.saa.ejb.rhh.dao.ConceptoNominaDaoService;
 import com.saa.ejb.rhh.dao.LiquidacionBeneficioSocialDaoService;
+import com.saa.ejb.rhh.dao.NovedadNominaDaoService;
 import com.saa.ejb.rhh.dao.OrdenBeneficioSocialDaoService;
+import com.saa.ejb.rhh.dao.PeriodoNominaDaoService;
 import com.saa.ejb.rhh.service.ContabilizacionNominaService;
 import com.saa.ejb.rhh.service.OrdenBeneficioSocialService;
 import com.saa.ejb.rhh.util.RedondeoNomina;
 import com.saa.model.cnt.Asiento;
 import com.saa.model.cxp.PagoProgramado;
+import com.saa.model.rhh.ConceptoNomina;
 import com.saa.model.rhh.LiquidacionBeneficioSocial;
 import com.saa.model.rhh.NombreEntidadesRhh;
+import com.saa.model.rhh.NovedadNomina;
 import com.saa.model.rhh.OrdenBeneficioSocial;
 import com.saa.model.rhh.OrdenBeneficioSocialResumen;
+import com.saa.model.rhh.PeriodoNomina;
 import com.saa.model.scp.Empresa;
 import com.saa.model.scp.Usuario;
 import com.saa.rubros.EstadoPagoProgramado;
 import com.saa.rubros.OrigenPagoExterno;
 import com.saa.rubros.RhhEstadoOrdenBeneficio;
+import com.saa.rubros.RhhEstadoPeriodoNomina;
+import com.saa.rubros.RhhRolConceptoMotor;
 import com.saa.rubros.RhhTipoBeneficioSocial;
 
 import jakarta.ejb.EJB;
@@ -61,6 +69,15 @@ public class OrdenBeneficioSocialServiceImpl implements OrdenBeneficioSocialServ
 
     @EJB
     private ContabilizacionNominaService contabilizacionNominaService;
+
+    @EJB
+    private ConceptoNominaDaoService conceptoNominaDaoService;
+
+    @EJB
+    private PeriodoNominaDaoService periodoNominaDaoService;
+
+    @EJB
+    private NovedadNominaDaoService novedadNominaDaoService;
 
     // =====================================================================
     // EntityService — los seis de la casa
@@ -371,6 +388,8 @@ public class OrdenBeneficioSocialServiceImpl implements OrdenBeneficioSocialServ
                         + " orden " + orden.getNumero(),
                 usuario);
 
+        crearNovedadesDecimoAcumulado(orden, liquidaciones, fecha, usuario);
+
         orden.setEstado(Long.valueOf(RhhEstadoOrdenBeneficio.PAGADA));
         orden.setFechaPago(fecha);
         orden.setAsiento(asiento.getCodigo());
@@ -473,6 +492,74 @@ public class OrdenBeneficioSocialServiceImpl implements OrdenBeneficioSocialServ
     private String armaNumero(Integer anio) throws Throwable {
         long secuencial = ordenBeneficioSocialDaoService.countByAnio(anio) + 1;
         return String.format(PREFIJO_NUMERO, anio, Long.valueOf(secuencial));
+    }
+
+    /**
+     * Registra el decimo acumulado ya pagado como NovedadNomina INFORMATIVA, una por empleado
+     * de la orden, para que el rol de fin de mes lo refleje sin sumarlo al neto (concepto de
+     * rol 32/33, RhhTipoConceptoNomina.INFORMATIVO — el motor arma el neto solo con INGRESO y
+     * EGRESO, asi que este concepto no puede duplicar el pago). Fondos de reserva
+     * (tipoBeneficio=3) no lleva novedad: se saltea sin error. El enlace es por convencion de
+     * descripcion, igual que SolicitudVacacionesServiceImpl (sin FK, decision del usuario —
+     * ver docs/logica-negocio/rhh/PLAN-PAGO-DECIMOS-EN-EL-MES.md §7.C).
+     */
+    private void crearNovedadesDecimoAcumulado(OrdenBeneficioSocial orden,
+            List<LiquidacionBeneficioSocial> liquidaciones, LocalDate fecha, String usuario) throws Throwable {
+        int tipoBeneficio = orden.getTipoBeneficio().intValue();
+        if (tipoBeneficio != RhhTipoBeneficioSocial.DECIMO_TERCERO
+                && tipoBeneficio != RhhTipoBeneficioSocial.DECIMO_CUARTO) {
+            return;
+        }
+        int rolMotor = tipoBeneficio == RhhTipoBeneficioSocial.DECIMO_TERCERO
+                ? RhhRolConceptoMotor.DECIMO_TERCERO_ACUMULADO_PAGADO
+                : RhhRolConceptoMotor.DECIMO_CUARTO_ACUMULADO_PAGADO;
+        Long idEmpresa = orden.getEmpresa() != null ? orden.getEmpresa().getCodigo() : null;
+
+        ConceptoNomina concepto = conceptoNominaDaoService.selectByRolMotor(Integer.valueOf(rolMotor), idEmpresa);
+        if (concepto == null) {
+            throw new IncomeException("No existe en la empresa " + idEmpresa + " el concepto de nomina"
+                    + " con rol de motor " + rolMotor + " (" + textoTipoBeneficio(orden.getTipoBeneficio())
+                    + " acumulado pagado). Falta correr el script que lo crea (rhh/sql/e2-18) antes de"
+                    + " poder registrar la novedad del pago de la orden " + orden.getCodigo() + ".");
+        }
+
+        PeriodoNomina periodo = periodoNominaDaoService.selectByFechaEmpresa(idEmpresa, fecha);
+        if (periodo == null) {
+            throw new IncomeException("No existe un periodo de nomina de la empresa " + idEmpresa
+                    + " que contenga la fecha " + fecha + ": no se puede registrar la novedad del pago"
+                    + " de la orden " + orden.getCodigo() + ".");
+        }
+        if (!Long.valueOf(RhhEstadoPeriodoNomina.ABIERTO).equals(periodo.getEstado())) {
+            throw new IncomeException("El periodo de nomina " + periodo.getMes() + "/" + periodo.getAnio()
+                    + " (id " + periodo.getCodigo() + ") no esta ABIERTO (estado " + periodo.getEstado()
+                    + "): no se puede registrar la novedad del pago de la orden " + orden.getCodigo() + ".");
+        }
+
+        String descripcion = marcadorNovedadDecimo(tipoBeneficio, orden.getCodigo());
+        for (LiquidacionBeneficioSocial liquidacion : liquidaciones) {
+            if (liquidacion.getEmpleado() == null) {
+                continue;
+            }
+            NovedadNomina novedad = new NovedadNomina();
+            novedad.setPeriodoNomina(periodo);
+            novedad.setEmpleado(liquidacion.getEmpleado());
+            novedad.setConceptoNomina(concepto);
+            novedad.setValor(liquidacion.getValorPagado());
+            novedad.setDescripcion(descripcion);
+            novedad.setAprobada("S");
+            novedad.setUsuarioAprueba(usuario);
+            novedad.setFechaAprobacion(LocalDate.now());
+            novedad.setEstado(Long.valueOf(1L));
+            novedad.setFechaRegistro(LocalDateTime.now());
+            novedad.setUsuarioRegistro(usuario);
+            novedadNominaDaoService.save(novedad, null);
+        }
+    }
+
+    /** Marcador de descripcion acordado en el §7.C del plan: "Décimo <tercero|cuarto> acumulado — orden #{idOrden}". */
+    private String marcadorNovedadDecimo(int tipoBeneficio, Long idOrden) {
+        String tipo = tipoBeneficio == RhhTipoBeneficioSocial.DECIMO_TERCERO ? "tercero" : "cuarto";
+        return "Décimo " + tipo + " acumulado — orden #" + idOrden;
     }
 
     private String nombreEmpleado(LiquidacionBeneficioSocial liquidacion) {

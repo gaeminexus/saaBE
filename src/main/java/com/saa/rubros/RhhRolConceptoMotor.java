@@ -66,4 +66,19 @@ public interface RhhRolConceptoMotor {
 	 */
 	public static final int FINIQUITO_APORTE_PERSONAL = 31;
 
+	/**
+	 * Decimo tercero ACUMULADO ya pagado por OrdenBeneficioSocialServiceImpl.confirmarPago,
+	 * registrado como novedad INFORMATIVA (RhhTipoConceptoNomina.INFORMATIVO = 5) para que el
+	 * rol de fin de mes lo refleje sin sumarlo al neto. No confundir con DECIMO_TERCERO (6),
+	 * que es el mensualizado y SI suma al neto: usar el equivocado paga el acumulado dos veces.
+	 * Ver docs/logica-negocio/rhh/PLAN-PAGO-DECIMOS-EN-EL-MES.md §7.A. Script e2-18.
+	 */
+	public static final int DECIMO_TERCERO_ACUMULADO_PAGADO = 32;
+
+	/**
+	 * Decimo cuarto ACUMULADO ya pagado. Misma logica y misma advertencia que
+	 * DECIMO_TERCERO_ACUMULADO_PAGADO, contra DECIMO_CUARTO (7).
+	 */
+	public static final int DECIMO_CUARTO_ACUMULADO_PAGADO = 33;
+
 }
