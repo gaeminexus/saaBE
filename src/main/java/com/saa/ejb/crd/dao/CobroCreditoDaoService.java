@@ -64,8 +64,11 @@ public interface CobroCreditoDaoService extends EntityDao<CobroCredito> {
      * la cuenta bancaria y los tres asientos — evita el N+1 de tocarlos fila por fila cuando un
      * mes trae cientos de cobros.
      *
-     * También fetchea {@code cuentaBancaria.banco} (nivel dos), que el service necesita para
-     * el texto "{banco} - {numeroCuenta}".
+     * ⚠️ NO fetchea {@code cuentaBancaria.banco} (nivel dos, que el service necesita para el
+     * texto "{banco} - {numeroCuenta}"): JPA no permite aliasear un {@code join fetch}, y ese
+     * segundo nivel solo se puede encadenar aliaseando {@code cuentaBancaria}. Hibernate lo
+     * carga igual por ser {@code @ManyToOne} EAGER — con un SELECT aparte por banco distinto,
+     * no por fila. Ver el comentario del JPQL en el {@code Impl}.
      *
      * @param desde      : Fecha inicial del rango (inclusive)
      * @param hasta      : Fecha final del rango (inclusive)

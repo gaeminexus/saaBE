@@ -98,15 +98,24 @@ public class CobroCreditoDaoServiceImpl extends EntityDaoImpl<CobroCredito>
                 + " - desde: " + desde + " - hasta: " + hasta);
         // JOIN FETCH de entidad/cuentaBancaria/los 3 asientos: la pantalla de seguimiento
         // muestra las cinco en cada fila y un mes puede traer cientos de cobros — sin esto,
-        // cada fila dispara sus propias consultas al recorrer la lista (N+1). El servicio
-        // además lee cuentaBancaria.banco (para el texto "{banco} - {numeroCuenta}"): aunque
-        // CuentaBancaria.banco es @ManyToOne EAGER por defecto, se fetchea explícito para no
-        // depender de que Hibernate lo resuelva con join y no con una consulta aparte.
+        // cada fila dispara sus propias consultas al recorrer la lista (N+1). Ninguna lleva
+        // alias: la especificación JPA NO permite aliasear un join fetch
+        // ("The JPA specification does not permit specifying an alias for fetch joins"),
+        // Hibernate 6 lo rechaza en tiempo de ejecución (compila igual, es un string) — NO
+        // vuelvas a aliasear ninguna de estas para encadenar un fetch de segundo nivel.
+        // ⚠️ Residuo conocido: el servicio lee además cuentaBancaria.banco (texto "{banco} -
+        // {numeroCuenta}"). Como no se puede alias-ear cuentaBancaria, ese segundo nivel NO se
+        // puede traer en este mismo fetch. CuentaBancaria.banco es @ManyToOne sin fetch
+        // explícito (EAGER por defecto), así que Hibernate lo va a cargar igual — con toda
+        // probabilidad un SELECT aparte por cada BANCOCDGO distinto entre los cobros del rango,
+        // no uno por fila. Es un N+1 acotado por bancos distintos (normalmente unos pocos), no
+        // por cantidad de cobros, y es el precio de que la especificación no permita el fetch
+        // anidado sin alias. No se resuelve acá: no inventar un @EntityGraph ni otro mecanismo
+        // sin que el equipo lo decida.
         Query query = em.createQuery(
                 " select c from CobroCredito c " +
                 " left join fetch c.entidad " +
-                " left join fetch c.cuentaBancaria cb " +
-                " left join fetch cb.banco " +
+                " left join fetch c.cuentaBancaria " +
                 " left join fetch c.asientoTransitorio " +
                 " left join fetch c.asientoReparto " +
                 " left join fetch c.asientoDefinitivo " +
